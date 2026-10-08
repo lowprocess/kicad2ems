@@ -73,7 +73,7 @@ def out_refs(sim, z0):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[1], formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('board', help='.kicad_pcb or .gbrjob (Gerber job file)')
+    ap.add_argument('board', nargs='?', help='.kicad_pcb or .gbrjob (Gerber job file)')
     ap.add_argument('--config', help='TOML file with any of the options below')
     ap.add_argument('--pos', help='pick-and-place file (.pos / .csv) listing the port components')
     ap.add_argument('--nets', help='comma-separated nets to include (KiCad only; default all)')
@@ -91,6 +91,9 @@ def main(argv=None):
     ap.add_argument('--ncross', type=int, default=4)
     ap.add_argument('--near-fac', type=float, default=4.0, help='near-field radius in cells (accuracy vs memory)')
     ap.add_argument('--solver', default='auto', choices=['auto', 'dense', 'direct', 'blr', 'aca'])
+    ap.add_argument('--gpu', default='auto', choices=['auto', 'cupy', 'torch', 'off'],
+                    help="GPU for the LU of the mixed-precision direct solver (ROCm or CUDA via CuPy / PyTorch)")
+    ap.add_argument('--gpu-info', action='store_true', help="print the detected GPU and exit")
     ap.add_argument('--precision', default='auto', choices=['auto', 'double', 'mixed'],
                     help="direct solver: 'mixed' stores Z in complex64 and refines to double accuracy (auto: mixed when the core is built)")
     ap.add_argument('--z0', type=float, default=50.0, help='output reference impedance')
@@ -108,6 +111,14 @@ def main(argv=None):
                 v = ",".join(map(str, v))
             setattr(a, k, v)
 
+    if a.gpu_info:
+        import mom25d_gpu
+        if a.gpu != 'auto':
+            os.environ.setdefault('MOM25D_GPU', a.gpu)
+        print(mom25d_gpu.describe())
+        return 0
+    if not a.board:
+        ap.error("board file required")
     from mom25d_sim import Metal
     import mom25d_viz as viz
     t0 = time.time()
@@ -129,7 +140,7 @@ def main(argv=None):
     kv = lambda lst: {model.iface[k]: float(v) * 1e-3 for k, v in (s.split('=') for s in lst)}
     sim = model.simulation(dmax=a.dmax * 1e-3, dmax_layer=kv(a.dmax_layer), w_ref=kv(a.wref) or None,
                            ncross=a.ncross, solver=a.solver, verbose=True, fmin=a.fmin * 1e9, fmax=a.fmax * 1e9,
-                           near_fac=a.near_fac, precision=a.precision,
+                           near_fac=a.near_fac, precision=a.precision, gpu=a.gpu,
                            metal=Metal(a.sigma) if a.sigma else None, title=name)
     sim.layer_names = {k: n for n, k in model.iface.items()}
     zc = np.array([p.zc for p in sim.ports])

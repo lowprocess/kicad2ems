@@ -453,6 +453,29 @@ class FastOperator:
             y[Ne:] = self.B.T @ xe + self.C @ x[Ne:]
         return y
 
+    def matvec_exact_multi(self, X, Sx=None):
+        """Y = Z X for several columns (N x k); one far-field kernel pass serves all columns."""
+        sim, Ne = self.sim, self.sim.Ne
+        X = np.asarray(X, complex)
+        if X.ndim == 1:
+            return self.matvec_exact(X, Sx)
+        if not hasattr(self.core, 'matvec_far_multi'):
+            return np.stack([self.matvec_exact(X[:, j], Sx) for j in range(X.shape[1])], 1)
+        Xe = np.ascontiguousarray(X[:Ne])
+        Y = np.empty(X.shape, complex)
+        if getattr(self, 'dZ_exact', None) is not None:
+            near = self.dZ_exact @ Xe
+        else:
+            near = np.stack([self.core.near_matvec(np.ascontiguousarray(Xe[:, j]), self.g, self.tb, self.q,
+                                                   self.nP32, self.nQ32, self.w) for j in range(X.shape[1])], 1)
+        Y[:Ne] = self.core.matvec_far_multi(Xe, self.g, self.tb, self.w) + near
+        if Sx is not None:
+            Y[:Ne] += Sx[:Ne, :Ne] @ Xe
+        if sim.Nv:
+            Y[:Ne] += self.B @ X[Ne:]
+            Y[Ne:] = self.B.T @ Xe + self.C @ X[Ne:]
+        return Y
+
     def setup(self, f, hmatrix=True, mode=None):
         """mode: 'aca' (sparse near field + H-matrix), 'direct' (tables only when the core fills Z),
         'sparse' (sparse near field, no H-matrix)."""
@@ -608,29 +631,59 @@ class FastOperator:
             np.add.at(Z, (Sc.row, Sc.col), Sc.data.astype(dt))
         import scipy.linalg as sla
         dsc = (1.0 / np.sqrt(np.abs(np.diagonal(Z)).astype(float) + 1e-300))
-        with sim.log.timer('LU factor', f"N={N}"):
-            Z *= dsc[:, None].astype(dt)
-            Z *= dsc[None, :].astype(dt)
-            # factor Z^T: it is Fortran-contiguous, so LAPACK works in place (no second N^2 copy);
-            # Z x = b is then solved with trans=1
-            lu, piv = sla.lu_factor(Z.T, overwrite_a=True, check_finite=False)
-            del Z
+        gpu = None
+        if precision == 'mixed' and getattr(sim, 'gpu', 'off') != 'off':
+            from mom25d_gpu import get_backend
+            gpu = get_backend(sim.gpu)
+            if not getattr(self, '_gpu_logged', False):
+                self._gpu_logged = True
+                if gpu is None:
+                    if sim.gpu not in ('auto', None):
+                        sim.log.note("GPU requested but not available: " + "; ".join(get_backend.why))
+                else:
+                    sim.log.note(f"GPU: {gpu.device} via {gpu.name}, {gpu.mem_free() / 1e9:.1f} GB free, "
+                                 f"LU needs ~{gpu.vram_needed(N) / 1e9:.1f} GB")
+            if gpu is not None and not gpu.fits(N):
+                sim.log.note(f"GPU: LU needs ~{gpu.vram_needed(N) / 1e9:.1f} GB, only {gpu.mem_free() / 1e9:.1f} GB "
+                             f"free - factoring on the CPU")
+                gpu = None
+        if gpu is not None:
+            with sim.log.timer('LU factor (GPU)', f"N={N}, {gpu.name}"):
+                Z *= dsc[:, None].astype(dt)
+                Z *= dsc[None, :].astype(dt)
+                try:
+                    gpu.factor(Z)
+                except Exception as e:                      # driver / unsupported dtype: fall back
+                    sim.log.note(f"GPU LU failed ({type(e).__name__}: {e}) - factoring on the CPU")
+                    gpu.release()
+                    gpu = None
+                    lu, piv = sla.lu_factor(Z.T, overwrite_a=True, check_finite=False)
+                del Z
+        else:
+            with sim.log.timer('LU factor', f"N={N}"):
+                Z *= dsc[:, None].astype(dt)
+                Z *= dsc[None, :].astype(dt)
+                # factor Z^T: it is Fortran-contiguous, so LAPACK works in place (no second N^2 copy);
+                # Z x = b is then solved with trans=1
+                lu, piv = sla.lu_factor(Z.T, overwrite_a=True, check_finite=False)
+                del Z
         self.iters = []
         if precision != 'mixed':
             with sim.log.timer('LU solve'):
                 return dsc[:, None] * sla.lu_solve((lu, piv), dsc[:, None] * E, trans=1, check_finite=False)
         # mixed: GMRES on the exact (double, matrix-free) equilibrated operator, LU(complex64) preconditioner
-        A = LinearOperator((N, N), matvec=lambda y: dsc * self.matvec_exact(dsc * y, Sx), dtype=complex)
-        M = LinearOperator((N, N), matvec=lambda r: sla.lu_solve((lu, piv), r.astype(np.complex64), trans=1,
-                                                                 check_finite=False).astype(complex), dtype=complex)
-        X = np.zeros((N, E.shape[1]), complex)
+        if gpu is not None:
+            lu_apply = gpu.solve
+        else:
+            def lu_apply(R):
+                return sla.lu_solve((lu, piv), R.astype(np.complex64), trans=1, check_finite=False).astype(complex)
         with sim.log.timer('refinement (GMRES, exact matvec)'):
-            for j in range(E.shape[1]):
-                it = [0]
-                y, info = gmres(A, dsc * E[:, j], M=M, rtol=self.mixed_tol, restart=30, maxiter=10,
-                                callback=lambda _: it.__setitem__(0, it[0] + 1), callback_type='pr_norm')
-                X[:, j] = dsc * y
-                self.iters.append(it[0])
+            Y, self.iters = gmres_batched(
+                lambda V: dsc[:, None] * self.matvec_exact_multi(dsc[:, None] * V, Sx),
+                dsc[:, None] * E, M=lambda R: lu_apply(R), rtol=self.mixed_tol, restart=30, maxiter=10)
+            X = dsc[:, None] * Y
+        if gpu is not None:
+            gpu.release()
         sim.log.note(f"mixed precision: GMRES iterations per port {self.iters}")
         return X
 
@@ -725,3 +778,68 @@ class FastOperator:
                 self.iters.append(it[0])
         sim.log.note(f"BLR: GMRES iterations per port {self.iters}")
         return X
+
+def gmres_batched(A, B, M=None, x0=None, rtol=1e-6, restart=30, maxiter=10):
+    """
+    Right-preconditioned restarted GMRES for k independent systems A x_j = b_j run in lockstep, so
+    every operator / preconditioner call is one batched (N x k_active) product. A, M: callables on
+    (N x k) arrays. Converged columns drop out. Returns (X, iterations per column).
+    """
+    B = np.asarray(B, complex)
+    N, k = B.shape
+    X = np.zeros((N, k), complex) if x0 is None else np.array(x0, complex)
+    M = M or (lambda R: R)
+    bn = np.linalg.norm(B, axis=0)
+    bn[bn == 0] = 1.0
+    iters = np.zeros(k, int)
+    act = np.arange(k)
+    for _ in range(maxiter):
+        R = B[:, act] - (A(X[:, act]) if np.any(X[:, act]) else 0)
+        beta = np.linalg.norm(R, axis=0)
+        done = beta <= rtol * bn[act]
+        act, R, beta = act[~done], R[:, ~done], beta[~done]
+        if not len(act):
+            break
+        ka = len(act)
+        V = np.zeros((restart + 1, N, ka), complex)
+        Z = np.zeros((restart, N, ka), complex)
+        H = np.zeros((restart + 1, restart, ka), complex)
+        cs, sn = np.zeros((restart, ka), complex), np.zeros((restart, ka), complex)
+        g = np.zeros((restart + 1, ka), complex)
+        g[0] = beta
+        V[0] = R / beta
+        live = np.ones(ka, bool)
+        last = np.full(ka, restart - 1)
+        for j in range(restart):
+            Z[j] = M(V[j])
+            Wv = A(Z[j])
+            for i in range(j + 1):                                   # modified Gram-Schmidt
+                hij = np.einsum('nk,nk->k', V[i].conj(), Wv)
+                H[i, j] = hij
+                Wv = Wv - V[i] * hij
+            hn = np.linalg.norm(Wv, axis=0)
+            H[j + 1, j] = hn
+            V[j + 1] = Wv / np.where(hn > 0, hn, 1)
+            for i in range(j):                                       # apply previous Givens rotations
+                t = cs[i] * H[i, j] + sn[i] * H[i + 1, j]
+                H[i + 1, j] = -np.conj(sn[i]) * H[i, j] + np.conj(cs[i]) * H[i + 1, j]
+                H[i, j] = t
+            den = np.sqrt(np.abs(H[j, j]) ** 2 + np.abs(H[j + 1, j]) ** 2)
+            den[den == 0] = 1.0
+            cs[j] = H[j, j] / den
+            sn[j] = H[j + 1, j] / den
+            H[j, j] = cs[j] * H[j, j] + sn[j] * H[j + 1, j]
+            H[j + 1, j] = 0
+            g[j + 1] = -np.conj(sn[j]) * g[j]
+            g[j] = cs[j] * g[j]
+            iters[act[live]] += 1
+            conv = live & (np.abs(g[j + 1]) <= rtol * bn[act])
+            last[conv] = j
+            live &= ~conv
+            if not live.any():
+                break
+        for c in range(ka):                                           # update each column
+            m = last[c] + 1
+            y = np.linalg.solve(np.triu(H[:m, :m, c]), g[:m, c]) if m else np.zeros(0)
+            X[:, act[c]] += Z[:m, :, c].T @ y
+    return X, iters.tolist()

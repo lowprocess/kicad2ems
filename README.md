@@ -57,6 +57,28 @@ Scd21 = S(4,1) for two pairs). Example: `python examples/make_demo_board.py exam
 Each wave port's reference impedance is computed automatically from its cross-section (trace plus
 the metal covering it) and the result is renormalised to `--z0`.
 
+## GPU acceleration (AMD ROCm or NVIDIA CUDA)
+
+The mixed-precision direct solver can run its LU factorisation and preconditioner solves on a GPU
+in complex64. The matrix fill and the double-precision refinement stay on the CPU, so results
+match the CPU solver (|ΔS| < 1e-7 in the tests). Two backends, tried in this order:
+
+| Backend | Install | VRAM for N unknowns | 16 GB card |
+|---|---|---|---|
+| CuPy (hipSOLVER / cuSOLVER) | CuPy for ROCm, see the CuPy install docs | 8 N² B (LU in place) | ~41k |
+| PyTorch (ROCm or CUDA build) | the ROCm wheel command from pytorch.org | 16 N² B | ~29k |
+
+```bash
+python mom25d_cli.py --gpu-info              # what was detected
+python tools/gpu_selfcheck.py                # accuracy + speed check on your card
+python mom25d_cli.py board.kicad_pcb ... --gpu auto|cupy|torch|off
+```
+
+The GPU is used automatically (`--gpu auto`) when a backend is installed and the LU fits in free
+VRAM; otherwise the CPU LU runs with a note in the log. `MOM25D_GPU=off` disables it. AMD notes:
+check the card with `rocminfo`; consumer RDNA3 cards other than the 7900 series usually need
+`HSA_OVERRIDE_GFX_VERSION=11.0.0` (RDNA2: `10.3.0`).
+
 ## What's inside
 
 | Module | Contents |
@@ -68,6 +90,7 @@ the metal covering it) and the result is renormalised to `--z0`.
 | `mom25d_sing.py` | Analytic off-plane 1/R integrals (thin layers, two-sheet conductors) |
 | `mom25d_sim.py` | `Simulation`: polygons, vias, wave/gap/via ports, lumped R-L-C, metal loss, thick conductors, solvers |
 | `mom25d_fast.py` | Fast operator: far/near split, `direct` / `mixed` / `blr` / `aca` solvers |
+| `mom25d_gpu.py` | GPU LU backends (CuPy / PyTorch, ROCm or CUDA) for the mixed direct solver |
 | `mom25d_blr.py` | Block low-rank LU (tile LU, SVD compression) used as a GMRES preconditioner |
 | `core/mom25d_core.cpp` | C++/OpenMP kernels via pybind11: matrix fill, near correction, matrix-free matvec |
 | `mom25d_afs.py` | Adaptive frequency sweep (set-valued AAA rational fitting) |
