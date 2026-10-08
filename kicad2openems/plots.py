@@ -17,9 +17,9 @@ def preview(m, mesh, path, title=''):
     for i, lay in enumerate(lays):
         ax = fig.add_subplot(gs[i // 2, i % 2])
         for x in mesh['x']:
-            ax.axvline(x, color='0.82', lw=0.3, zorder=0)
+            ax.axvline(x, color='#1d2b3a', lw=0.35, alpha=0.35, zorder=4.5)
         for y in mesh['y']:
-            ax.axhline(y, color='0.82', lw=0.3, zorder=0)
+            ax.axhline(y, color='#1d2b3a', lw=0.35, alpha=0.35, zorder=4.5)
         ax.fill(*m.outline.exterior.xy, color='#e8efe0', zorder=1)
         for p in m.copper[lay]:
             ax.fill(*p.exterior.xy, color='#d4893b', alpha=0.85, lw=0, zorder=2)
@@ -46,7 +46,7 @@ def preview(m, mesh, path, title=''):
     for z in mesh['z']:
         ax.axhline(z, color='0.6', lw=0.4, zorder=2)
     for x in mesh['x']:
-        ax.axvline(x, color='0.85', lw=0.3, zorder=0)
+        ax.axvline(x, color='#1d2b3a', lw=0.3, alpha=0.25, zorder=2)
     zt = m.thickness
     ax.set_xlim(ob[0] - pad, ob[2] + pad * 4); ax.set_ylim(-0.6 * zt - 0.2, 1.6 * zt + 0.2)
     ax.set_xlabel('x (mm)'); ax.set_ylabel('z (mm)')
