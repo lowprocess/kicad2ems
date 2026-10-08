@@ -176,10 +176,10 @@ class Metal:
 class Simulation:
     def __init__(self, stack, shapes, ports=(), vias=(), lumped=(), dmax=0.3e-3, dmax_layer=None,
                  w_ref=None, ncross=6, grade=1.0, near_fac=5.0, mesher='auto', metal=None,
-                 solver='dense', aca_tol=1e-4, refine=1.0e-3, precision='double', verbose=True, title=''):
+                 solver='dense', aca_tol=1e-4, refine=1.0e-3, precision='auto', verbose=True, title=''):
         self.st, self.title, self.metal = stack, title, metal
         self.solver = solver
-        self.precision = precision          # 'double' | 'mixed' (direct solver: complex64 Z + refinement)
+        self.precision = precision          # 'auto' | 'double' | 'mixed' (direct: complex64 Z + refinement)
         self.blr_tol, self.blr_tile, self.blr_eta = 1e-3, 512, 0.7   # solver='blr' preconditioner settings
         self.log = RunLog(verbose)
         self.dmax, self.ncross, self.grade, self.near_fac = dmax, ncross, grade, near_fac
@@ -321,28 +321,33 @@ class Simulation:
                 self.log.note(f"note: wave port {p.name} uses zc = 50 ohm. Set it to the feed line's Zc "
                               f"(line_char / line_char_xs, or BoardModel.characterize) - a wrong zc makes S "
                               f"non-reciprocal when ports differ")
-        if solver == 'auto':
-            # dense reference path up to ~3500 unknowns, direct (lean dense) up to ~14000, then ACA
-            n = r.Ne + self.Nv
-            try:
-                import mom25d_core  # noqa: F401
-                has_core = True
-            except ImportError:
-                has_core = False
-            # dense reference -> lean direct (mixed precision with the core) -> BLR (memory) / ACA.
-            # direct is used whenever its peak memory (measured: ~18 B/N^2 mixed, ~34 B/N^2 double)
-            # fits in 75 % of the memory available now (cgroup limit aware)
-            need = (18.0 if has_core else 34.0) * n * n + 0.4e9
+        n = r.Ne + self.Nv
+        try:
+            import mom25d_core  # noqa: F401
+            has_core = True
+        except ImportError:
+            has_core = False
+        if precision == 'auto':
+            precision = 'mixed' if has_core else 'double'
+        if precision == 'mixed' and not has_core:
+            precision = 'double'
+        self.precision = precision
+        if solver in ('auto', 'direct'):
+            # peak memory of the direct solver (Z + in-place LU + sparse near field + workspace),
+            # checked against what is available now (cgroup aware) so a big model never swaps
+            need = (10.0 if precision == "mixed" else 18.0) * n * n + 0.9e9
             avail = available_memory()
-            if n <= 3500:
-                solver = 'dense'
-            elif need <= 0.75 * avail:
-                solver = 'direct'
-            else:
-                solver = 'blr' if has_core else 'aca'
-            self.log.note(f"memory: direct solver needs ~{need / 1e9:.1f} GB, {avail / 1e9:.1f} GB available")
-            if solver == 'direct' and has_core and precision == 'double':
-                self.precision = 'mixed'
+            self.log.note(f"memory: direct solver needs ~{need / 1e9:.1f} GB ({precision} precision), "
+                          f"{avail / 1e9:.1f} GB available")
+            fits = need <= 0.8 * avail
+            if solver == 'auto':
+                solver = 'dense' if n <= 3500 and fits else ('direct' if fits else ('blr' if has_core else 'aca'))
+            elif not fits:
+                alt = 'blr' if has_core else 'aca'
+                self.log.note(f"WARNING: direct solver would need ~{need / 1e9:.1f} GB but only "
+                              f"{avail / 1e9:.1f} GB is available - switching to {alt}. Coarser dmax / "
+                              f"dmax_layer, a smaller region, or an inner-layer ground reduce N.")
+                solver = alt
             self.solver = solver
             self.log.note(f"solver: {solver} (N = {n})")
         if solver in ('aca', 'direct', 'blr'):

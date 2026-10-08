@@ -91,8 +91,8 @@ def main(argv=None):
     ap.add_argument('--ncross', type=int, default=4)
     ap.add_argument('--near-fac', type=float, default=4.0, help='near-field radius in cells (accuracy vs memory)')
     ap.add_argument('--solver', default='auto', choices=['auto', 'dense', 'direct', 'blr', 'aca'])
-    ap.add_argument('--precision', default='double', choices=['double', 'mixed'],
-                    help="direct solver: 'mixed' stores Z in complex64 and refines to double accuracy")
+    ap.add_argument('--precision', default='auto', choices=['auto', 'double', 'mixed'],
+                    help="direct solver: 'mixed' stores Z in complex64 and refines to double accuracy (auto: mixed when the core is built)")
     ap.add_argument('--z0', type=float, default=50.0, help='output reference impedance')
     ap.add_argument('--sigma', type=float, help='conductor conductivity S/m (enables metal loss)')
     ap.add_argument('--out', default='mom25d_out')
