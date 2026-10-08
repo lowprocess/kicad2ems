@@ -526,15 +526,16 @@ class BoardModel:
             ref_shift = float(props.get('mom.ref', 0)) * MM
             if kind in ('auto', 'wave'):
                 w, L = self._feed(g, c, d, step)
-                need = 6 * step + max(2 * step, 4 * w, 3 * self.stack.z[-1], 1.0e-3)
+                clear = max(2 * step, 4 * w, 3 * self.stack.z[-1], 1.0e-3)   # keep cuts out of the
+                need = 6 * step + clear                                        # next discontinuity's near field
                 if w > 0 and L >= need:
                     g0 = step / 2                               # gap just inside the trace end
-                    # stop sampling well before the next discontinuity (its near field reaches a few
-                    # dielectric heights / line widths)
-                    clear = max(2 * step, 4 * w, 3 * self.stack.z[-1], 1.0e-3)
-                    s1 = L - clear
                     s0 = g0 + 2 * step
-                    p = LinePort(k, c + d * g0, d, w, ref_shift - g0, s0=s0 - g0, s1=s1 - g0, step=step,
+                    s1 = L - clear
+                    # ~10 intervals over the usable feed: the fit needs a few tenths of a radian
+                    # between cuts even at the lowest frequency
+                    pstep = max(step, (s1 - s0) / 10)
+                    p = LinePort(k, c + d * g0, d, w, ref_shift - g0, s0=s0 - g0, s1=s1 - g0, step=pstep,
                                  zc=z0, name=name)
                     out.append(p); continue
                 if kind == 'wave':
@@ -548,7 +549,43 @@ class BoardModel:
             raise ValueError(f"{name}: unknown port kind {kind}")
         return out
 
-    def simulation(self, dmax=0.3e-3, step=None, **kw):
+    def characterize(self, ports, fmin, fmax, n=3, dmax=0.4e-3, log=print):
+        """Reference impedance of each wave port's line cross-section (trace + metal on other layers
+        covering the port), solved as a short centre-fed line at n frequencies and interpolated."""
+        from mom25d_geo import LinePort
+        from mom25d_sim import line_char_xs
+        fs = np.linspace(max(fmin, fmax / 3), fmax, n)    # the fit is well conditioned here; Zc ~ flat
+        cache = {}
+        for p in ports:
+            if not isinstance(p, LinePort):
+                continue
+            pt = Point(*(p.c + p.d * 0.5 * (p.s0 + p.s1)))
+            planes = {}
+            for k, gs in self.shapes.items():
+                if k == p.layer:
+                    continue
+                g = unary_union(gs)
+                if g.buffer(1e-9).contains(pt):
+                    # width of that metal across the line, capped (a plane looks infinite beyond ~30 h)
+                    t = np.array([-p.d[1], p.d[0]])
+                    seg = LineString([np.array(pt.coords[0]) - t * 0.05, np.array(pt.coords[0]) + t * 0.05]).intersection(g)
+                    W = min(getattr(seg, 'length', 0.0), max(30 * self.stack.z[-1], 20 * p.w))
+                    if W > 2 * p.w:
+                        planes[k] = W
+            key = (p.layer, round(p.w * 1e7), tuple(sorted((k, round(W * 1e5)) for k, W in planes.items())))
+            if key not in cache:
+                g, z = line_char_xs(self.stack, p.layer, p.w, fs, planes=planes, dmax=dmax)
+                cache[key] = z.real
+                log(f"  {p.name}: line on M{p.layer}, w={p.w * 1e3:.3f} mm, reference metal "
+                    + (", ".join(f"M{k} ({W * 1e3:.1f} mm)" for k, W in planes.items()) or "ground only")
+                    + f": Zc = " + ", ".join(f"{v:.2f}" for v in z.real) + " ohm")
+            zz = cache[key]
+            p.zc_fn = (lambda f, fs=fs, zz=zz: np.interp(f, fs, zz))
+            p.zc = float(zz[len(zz) // 2])
+
+    def simulation(self, dmax=0.3e-3, step=None, fmin=1e9, fmax=10e9, characterize=True, **kw):
         from mom25d_sim import Simulation
         ports = self.ports(step=step, dmax=dmax)
+        if characterize:
+            self.characterize(ports, fmin, fmax)
         return Simulation(self.stack, self.shapes, ports, vias=self.vias, dmax=dmax, **kw)

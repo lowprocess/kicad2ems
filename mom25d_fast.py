@@ -166,6 +166,7 @@ class FastOperator:
 
     def __init__(self, sim, near_fac=None, tol=1e-4, leaf=64, eta=2.0, max_rank=80, atol_rel=1e-8):
         self.sim = sim
+        self.trace = False
         self.atol_rel = atol_rel
         self.max_rank = max_rank
         r = sim.rwg
@@ -389,7 +390,7 @@ class FastOperator:
                                  shape=(Ne, Ne))
 
     # ---- assemble & solve ---------------------------------------------------------------------------------
-    def setup(self, f):
+    def setup(self, f, hmatrix=True):
         sim = self.sim
         self.f, self.w = f, 2 * np.pi * f
         self.tables = {}
@@ -405,6 +406,9 @@ class FastOperator:
         if sim.Nv:
             with sim.log.timer('via kernels', f"{sim.Nv} chains"):
                 self.B, self.C = sim._via_blocks(f, self._fan_columns())
+        if not hmatrix:
+            self.dZ = dZ.tocsr()
+            return
         with sim.log.timer('H-matrix (ACA)'):
             # global scale: typical self term; far blocks below tol x that per entry are dropped/truncated
             dg = np.abs(self.entry_pairs(np.arange(sim.Ne), np.arange(sim.Ne)) + dZ.diagonal())
@@ -438,7 +442,7 @@ class FastOperator:
             S[:Ne, :Ne] = S[:Ne, :Ne] + sim.metal.zs(f) * G
         return B, S.tocsr()
 
-    def solve(self, f, E, tol=1e-6, restart=200, maxiter=2000):
+    def solve(self, f, E, tol=1e-6, restart=200, maxiter=10):
         sim = self.sim
         self.setup(f)
         _, Sx = self.extra_blocks(f)
@@ -448,17 +452,22 @@ class FastOperator:
         if Nv:                                   # bordered system: dense via rows/columns
             Pn = sparse.bmat([[Pn, sparse.csr_matrix(self.B)],
                               [sparse.csr_matrix(self.B.T), sparse.csr_matrix(self.C)]])
+        Pn = sparse.csr_matrix(Pn)
+        # symmetric diagonal equilibration: via (fan-charge) rows are ~1e6 x larger than strip rows
+        dsc = 1.0 / np.sqrt(np.abs(Pn.diagonal()) + 1e-300)
+        Ds = sparse.diags(dsc)
         with sim.log.timer('preconditioner LU'):
-            lu = splu(sparse.csc_matrix(Pn), permc_spec='COLAMD')
+            lu = splu(sparse.csc_matrix(Ds @ Pn @ Ds), permc_spec='COLAMD')
 
-        def mv(x):
+        def mv(xs):
+            x = dsc * xs
             xe = x[:Ne]
             y = np.empty(N, complex)
             y[:Ne] = self.H.matvec(xe) + self.dZ @ xe + Sx[:Ne, :Ne] @ xe
             if Nv:
                 y[:Ne] += self.B @ x[Ne:]
                 y[Ne:] = self.B.T @ xe + self.C @ x[Ne:]
-            return y
+            return dsc * y
         A = LinearOperator((N, N), matvec=mv, dtype=complex)
         M = LinearOperator((N, N), matvec=lu.solve, dtype=complex)
         X = np.zeros((N, E.shape[1]), complex)
@@ -466,12 +475,51 @@ class FastOperator:
         with sim.log.timer('GMRES', f"{E.shape[1]} rhs"):
             for j in range(E.shape[1]):
                 it = [0]
+                t0 = time.time()
 
-                def cb(_):
+                def cb(rn):
                     it[0] += 1
-                x, info = gmres(A, E[:, j], M=M, rtol=tol, restart=restart, maxiter=maxiter,
+                    if self.trace and it[0] % 25 == 0:
+                        print(f"      GMRES it {it[0]}: residual {rn:.2e}  [{time.time() - t0:.1f}s]", flush=True)
+                y, info = gmres(A, dsc * E[:, j], M=M, rtol=tol, restart=restart, maxiter=maxiter,
                                 callback=cb, callback_type='pr_norm')
-                X[:, j] = x
+                X[:, j] = dsc * y
                 self.iters.append(it[0])
+                if info > 0:
+                    sim.log.note(f"WARNING GMRES did not converge for port {j + 1} ({it[0]} iterations)")
         sim.log.note(f"GMRES iterations per port: {self.iters}")
+        return X
+
+    def solve_direct(self, f, E, block=1024):
+        """Same entries as the fast operator (centroid far field + exact near correction), written
+        into a dense Z block by block and LU-solved: memory ~ N^2 complex, robust at resonances."""
+        sim = self.sim
+        self.setup(f, hmatrix=False)
+        _, Sx = self.extra_blocks(f)
+        Ne, Nv = sim.Ne, sim.Nv
+        N = Ne + Nv
+        Z = np.zeros((N, N), complex)
+        with sim.log.timer('direct fill', f"N={N}"):
+            idx = np.arange(Ne)
+            for r0 in range(0, Ne, block):
+                rr = idx[r0:r0 + block]
+                for c0 in range(0, Ne, block):
+                    cc = idx[c0:c0 + block]
+                    Z[r0:r0 + len(rr), c0:c0 + len(cc)] = self.entry(rr, cc)
+            Z[:Ne, :Ne] += (self.dZ + Sx[:Ne, :Ne]).toarray() if Ne < 4000 else 0
+            if Ne >= 4000:
+                Dz = (self.dZ + Sx[:Ne, :Ne]).tocoo()
+                np.add.at(Z, (Dz.row, Dz.col), Dz.data)
+            if Nv:
+                Z[:Ne, Ne:] = self.B
+                Z[Ne:, :Ne] = self.B.T
+                Z[Ne:, Ne:] = self.C
+        with sim.log.timer('LU solve', f"N={N}"):
+            import scipy.linalg as sla
+            # symmetric diagonal equilibration (via fan-charge rows dwarf strip rows, esp. at low f)
+            dsc = 1.0 / np.sqrt(np.abs(np.diagonal(Z)) + 1e-300)
+            Z *= dsc[:, None]
+            Z *= dsc[None, :]
+            X = dsc[:, None] * sla.solve(Z, dsc[:, None] * E, overwrite_a=True, check_finite=False)
+        self.iters = []
         return X
