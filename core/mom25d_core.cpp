@@ -17,6 +17,7 @@
 #include <cmath>
 #include <vector>
 #include <algorithm>
+#include <stdexcept>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -215,6 +216,68 @@ py::array_t<cd> matvec_far(arr<cd> x, py::dict geom, py::dict tabs, double w) {
         cd yp = g.ap[e] * g.area[p] * (jw * ((g.cent[2 * p] - g.vp[2 * e]) * vAx[p] + (g.cent[2 * p + 1] - g.vp[2 * e + 1]) * vAy[p]) + 4.0 * wQ[p] * inv_jw);
         cd ym = g.am[e] * g.area[q] * (jw * ((g.cent[2 * q] - g.vm[2 * e]) * vAx[q] + (g.cent[2 * q + 1] - g.vm[2 * e + 1]) * vAy[q]) + 4.0 * wQ[q] * inv_jw);
         Y[e] = yp + ym;
+    }
+    return out;
+}
+
+
+// Y = Z_far X for k right-hand sides (X: Ne x k, row-major): one kernel evaluation per triangle
+// pair serves all columns, so k ports cost about the same as one
+py::array_t<cd> matvec_far_multi(arr<cd> x, py::dict geom, py::dict tabs, double w) {
+    MeshHold mh(geom); TabHold th(tabs);
+    const Mesh &g = mh.m; const Tables &tb = th.t;
+    const int Ne = g.Ne, Nt = g.Nt;
+    if (x.ndim() != 2 || x.shape(0) != Ne) throw std::runtime_error("matvec_far_multi: X must be (Ne, k)");
+    const int K = (int)x.shape(1);
+    const cd *X = x.data();
+    const cd jw(0, w), inv_jw = 1.0 / cd(0, w);
+    std::vector<cd> s0((size_t)Nt * K, 0.0), s1x((size_t)Nt * K, 0.0), s1y((size_t)Nt * K, 0.0);
+    std::vector<char> act(Nt, 0);
+    for (int e = 0; e < Ne; ++e) {
+        int p = g.ep[e], q = g.em[e];
+        for (int c = 0; c < K; ++c) {
+            cd xe = X[(size_t)e * K + c];
+            cd a = g.ap[e] * g.area[p] * xe, b = g.am[e] * g.area[q] * xe;
+            size_t ip = (size_t)p * K + c, iq = (size_t)q * K + c;
+            s0[ip] += a; s1x[ip] += a * (g.cent[2 * p] - g.vp[2 * e]); s1y[ip] += a * (g.cent[2 * p + 1] - g.vp[2 * e + 1]);
+            s0[iq] += b; s1x[iq] += b * (g.cent[2 * q] - g.vm[2 * e]); s1y[iq] += b * (g.cent[2 * q + 1] - g.vm[2 * e + 1]);
+        }
+        act[p] = act[q] = 1;
+    }
+    std::vector<cd> vAx((size_t)Nt * K), vAy((size_t)Nt * K), wQ((size_t)Nt * K);
+    {
+        py::gil_scoped_release nogil;
+#pragma omp parallel
+        {
+            std::vector<cd> ax(K), ay(K), aq(K);
+#pragma omp for schedule(dynamic, 16)
+            for (int p = 0; p < Nt; ++p) {
+                std::fill(ax.begin(), ax.end(), cd(0)); std::fill(ay.begin(), ay.end(), cd(0)); std::fill(aq.begin(), aq.end(), cd(0));
+                for (int q = 0; q < Nt; ++q) {
+                    if (!act[q]) continue;
+                    cd ga, gq;
+                    tb.kern(g.lt[p], g.lt[q], dist(g.cent, p, q), ga, gq);
+                    const cd *S0 = &s0[(size_t)q * K], *SX = &s1x[(size_t)q * K], *SY = &s1y[(size_t)q * K];
+                    for (int c = 0; c < K; ++c) { ax[c] += ga * SX[c]; ay[c] += ga * SY[c]; aq[c] += gq * S0[c]; }
+                }
+                for (int c = 0; c < K; ++c) {
+                    vAx[(size_t)p * K + c] = ax[c]; vAy[(size_t)p * K + c] = ay[c]; wQ[(size_t)p * K + c] = aq[c];
+                }
+            }
+        }
+    }
+    py::array_t<cd> out({(py::ssize_t)Ne, (py::ssize_t)K});
+    cd *Y = out.mutable_data();
+    for (int e = 0; e < Ne; ++e) {
+        int p = g.ep[e], q = g.em[e];
+        double dpx = g.cent[2 * p] - g.vp[2 * e], dpy = g.cent[2 * p + 1] - g.vp[2 * e + 1];
+        double dqx = g.cent[2 * q] - g.vm[2 * e], dqy = g.cent[2 * q + 1] - g.vm[2 * e + 1];
+        for (int c = 0; c < K; ++c) {
+            size_t ip = (size_t)p * K + c, iq = (size_t)q * K + c;
+            cd yp = g.ap[e] * g.area[p] * (jw * (dpx * vAx[ip] + dpy * vAy[ip]) + 4.0 * wQ[ip] * inv_jw);
+            cd ym = g.am[e] * g.area[q] * (jw * (dqx * vAx[iq] + dqy * vAy[iq]) + 4.0 * wQ[iq] * inv_jw);
+            Y[(size_t)e * K + c] = yp + ym;
+        }
     }
     return out;
 }
@@ -450,6 +513,7 @@ PYBIND11_MODULE(mom25d_core, m) {
     m.def("fill_far_c64", &fill_far_t<cf>, "far-field entries into a complex64 Z");
     m.def("far_block", &far_block);
     m.def("matvec_far", &matvec_far);
+    m.def("matvec_far_multi", &matvec_far_multi, "Y = Z_far X for several right-hand sides");
     m.def("offplane_pairs", &offplane_pairs);
     m.def("near_into_dense", &near_into_dense);
     m.def("near_matvec", &near_matvec);
