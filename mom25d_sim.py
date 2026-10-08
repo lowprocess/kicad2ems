@@ -115,8 +115,9 @@ class Metal:
 class Simulation:
     def __init__(self, stack, shapes, ports=(), vias=(), lumped=(), dmax=0.3e-3, dmax_layer=None,
                  w_ref=None, ncross=6, grade=1.0, near_fac=5.0, mesher='auto', metal=None,
-                 verbose=True, title=''):
+                 solver='dense', aca_tol=1e-4, verbose=True, title=''):
         self.st, self.title, self.metal = stack, title, metal
+        self.solver = solver
         self.log = RunLog(verbose)
         self.dmax, self.ncross, self.grade, self.near_fac = dmax, ncross, grade, near_fac
         self.ports = [port_from_axis(p) if isinstance(p, MLPort) else p for p in ports]
@@ -228,6 +229,21 @@ class Simulation:
                       + ", ".join(f"M{k}: {len(self.tri_idx[k])} tri ({self.mesher_used[k]})"
                                   for k in self.layers) + ")")
 
+        V = r.nodes[r.tris]
+        self.tri_size = np.linalg.norm(V - np.roll(V, 1, axis=1), axis=2).max(1)
+        self.P3, self.W3 = quad_pts(r, _BAR3), r.area[:, None] * _W3[None, :]
+        self.P6, self.W6 = quad_pts(r, _BAR6), r.area[:, None] * _W6[None, :]
+        ext = r.nodes.max(0) - r.nodes.min(0)
+        self.rho_max = 1.05 * np.hypot(*ext) + 1e-4
+        self._gram = None
+        self._xcache = {}
+        self._edge_sets()
+        self.tables, self.last = {}, None
+        if solver == 'aca':
+            from mom25d_fast import FastOperator
+            self.fast = FastOperator(self, tol=aca_tol)
+            return
+
         # ---- static singular parts ------------------------------------------------------------
         with self.log.timer('singular integrals (static, once)'):
             M0, Mrr = np.zeros((Nt, Nt)), np.zeros((Nt, Nt))
@@ -244,16 +260,6 @@ class Simulation:
             self.SQ = 0.5 * (SQ + SQ.T)
             self.Qs_F = Qs[:, self.F].copy()
             del M0, Mrr, Mr, Qs
-        V = r.nodes[r.tris]
-        self.tri_size = np.linalg.norm(V - np.roll(V, 1, axis=1), axis=2).max(1)
-        self.P3, self.W3 = quad_pts(r, _BAR3), r.area[:, None] * _W3[None, :]
-        self.P6, self.W6 = quad_pts(r, _BAR6), r.area[:, None] * _W6[None, :]
-        ext = r.nodes.max(0) - r.nodes.min(0)
-        self.rho_max = 1.05 * np.hypot(*ext) + 1e-4
-        self._gram = None
-        self._xcache = {}
-        self._edge_sets()
-        self.tables, self.last = {}, None
 
     @staticmethod
     def _guess_wref(g, lps):
@@ -329,7 +335,10 @@ class Simulation:
             Z[:self.Ne, :self.Ne] = 1j * w * ZA + ZQ / (1j * w)
         if self.Nv:
             with self.log.timer('via kernels', f"{self.Nv} chains"):
-                self._via_blocks(f, Z, Q0[:, self.F] + self.Qs_F)
+                B, C = self._via_blocks(f, Q0[:, self.F] + self.Qs_F)
+            Z[:self.Ne, self.Ne:] = B
+            Z[self.Ne:, :self.Ne] = B.T
+            Z[self.Ne:, self.Ne:] = C
         for el, (idx, sig) in zip(self.lumped, self.lumped_edges):
             u = np.zeros(N); u[idx] = sig * r.l[idx]
             Z += el.Z(f) * np.outer(u, u)
@@ -338,13 +347,15 @@ class Simulation:
                 self._gram = gram_matrix(r)
             zs = self.metal.zs(f)
             Z[:self.Ne, :self.Ne] += zs * self._gram
-            for n, (v, kb, kt) in enumerate(self.chains):
-                Z[self.Ne + n, self.Ne + n] += zs * (self.st.z[kt] - self.st.z[kb]) / (2 * np.pi * v.a)
         return 0.5 * (Z + Z.T)
 
-    def _via_blocks(self, f, Z, QF):
+    def _via_blocks(self, f, QF):
+        """Via rows/columns: B (Ne x Nv) strip-via coupling, C (Nv x Nv) via-via (incl. elements in vias)."""
         w = 2 * np.pi * f
-        r, Ne = self.rwg, self.Ne
+        r, Ne = self.rwg, 0
+        Z = np.zeros((self.Ne + self.Nv, self.Ne + self.Nv), complex) if False else None
+        B = np.zeros((self.Ne, self.Nv), complex)
+        C = np.zeros((self.Nv, self.Nv), complex)
         spans = [(kb, kt) for _, kb, kt in self.chains]
         vk = ViaKernels(f, self.st, spans, self.layers, self.rho_max)
         self.via_kernels = vk
@@ -352,8 +363,8 @@ class Simulation:
         DF = r.D[self.F] if len(self.F) else None
         if len(self.F):
             T = QF @ self.dF                                   # (Nt, Nv) potential of fan charges
-            Z[:Ne, Ne:] += (r.D.T @ T) / (1j * w)
-            Z[Ne:, Ne:] += (self.dF.T @ T[self.F]) / (1j * w)
+            B += (r.D.T @ T) / (1j * w)
+            C += (self.dF.T @ T[self.F]) / (1j * w)
         # smooth via -> strip kernel D(rho), Galerkin-tested with the RWG divergence
         for n, (v, kb, kt) in enumerate(self.chains):
             c = np.zeros(len(r.tris), complex)
@@ -361,7 +372,7 @@ class Simulation:
                 idx = self.tri_idx[k]
                 dist = np.hypot(self.P6[idx, :, 0] - v.x, self.P6[idx, :, 1] - v.y)
                 c[idx] = (vk.D[(k, (kb, kt))](dist) * self.W6[idx]).sum(1)
-            Z[:Ne, Ne + n] += r.D.T @ c
+            B[:, n] += r.D.T @ c
         # via-via
         for m, (vm, am, bm) in enumerate(self.chains):
             for n, (vn, an, bn) in enumerate(self.chains):
@@ -369,13 +380,17 @@ class Simulation:
                     continue
                 d = vm.a if vm is vn else max(np.hypot(vm.x - vn.x, vm.y - vn.y), 0.5 * (vm.a + vn.a))
                 val = vk.R((am, bm), (an, bn), d)[0] + vk.homog((am, bm), (an, bn), d)[0]
-                Z[Ne + m, Ne + n] += val
+                C[m, n] += val
                 if n != m:
-                    Z[Ne + n, Ne + m] += val
+                    C[n, m] += val
         for n, (v, kb, kt) in enumerate(self.chains):
             if v.Z is not None and n == self.chains.index(next(c for c in self.chains if c[0] is v)):
-                Z[Ne + n, Ne + n] += v.Z(f)
-        Z[Ne:, :Ne] = Z[:Ne, Ne:].T
+                C[n, n] += v.Z(f)
+        if self.metal is not None:
+            zs = self.metal.zs(f)
+            for n, (v, kb, kt) in enumerate(self.chains):
+                C[n, n] += zs * (self.st.z[kt] - self.st.z[kb]) / (2 * np.pi * v.a)
+        return B, C
 
     def _block(self, ia, ib, a, b, gt):
         r = self.rwg
@@ -387,9 +402,8 @@ class Simulation:
         if xs:
             R3 = np.sqrt(rho ** 2 + gt.d ** 2)
             GA, GQ = GA + gt.cA / R3, GQ + gt.cq / R3
-        if im:
-            R3 = np.sqrt(rho ** 2 + gt.dimg ** 2)
-            GA, GQ = GA + gt.cAi / R3, GQ + gt.cqi / R3
+        # (the extracted image is integrated analytically for ALL pairs below, consistent with the
+        #  exact 1/R part: far from a source over ground they nearly cancel - a dipole field)
         wgt = aa[:, None] * ab[None, :]
         A0 = GA * wgt
         out = [A0, A0 * ca[:, None, 0], A0 * ca[:, None, 1], A0 * cb[None, :, 0], A0 * cb[None, :, 1],
@@ -411,16 +425,18 @@ class Simulation:
                     (ga * (pa * pb).sum(-1)).sum((1, 2)), gq.sum((1, 2))]
             for M, v in zip(out, vals):
                 M[p[c0:c0 + 20000], q[c0:c0 + 20000]] = v
-        for flag, dd, cA, cq in ((xs, gt.d, gt.cA, gt.cq), (im, gt.dimg, gt.cAi, gt.cqi)):
+        for flag, dd, cA, cq, allp in ((xs, gt.d, gt.cA, gt.cq, False), (im, gt.dimg, gt.cAi, gt.cqi, True)):
             if not flag:
                 continue
+            pp, qq = (np.repeat(np.arange(len(ia)), len(ib)), np.tile(np.arange(len(ib)), len(ia))) \
+                if allp else (p, q)
             key = (a, b, dd)
             if key not in self._xcache:                    # geometry only: cache across frequencies
-                self._xcache[key] = offplane_pairs(r.nodes, r.tris, ia[p], ib[q], dd)
+                self._xcache[key] = offplane_pairs(r.nodes, r.tris, ia[pp], ib[qq], dd)
             m0, mro, mrs, mrr = self._xcache[key]
             for M, v in zip(out, [cA * m0, cA * mro[:, 0], cA * mro[:, 1], cA * mrs[:, 0],
                                   cA * mrs[:, 1], cA * mrr, cq * m0]):
-                M[p, q] += v
+                M[pp, qq] += v
         return out
 
     def _near_layer(self, k):
@@ -454,9 +470,11 @@ class Simulation:
             return np.linalg.solve(Z, E)
 
     def sparams(self, f, keep=False):
-        Z = self.impedance(f)
         E = self.excitation()
-        I = self.solve(Z, E)
+        if self.solver == 'aca':
+            I = self.fast.solve(f, E)
+        else:
+            I = self.solve(self.impedance(f), E)
         n = len(self.ports)
         Ap, Bp = np.zeros((n, n), complex), np.zeros((n, n), complex)
         gam, resid = np.full(n, np.nan + 0j), np.zeros(n)
