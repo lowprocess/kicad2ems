@@ -25,7 +25,7 @@ def preview(m, mesh, path, title=''):
             ax.fill(*p.exterior.xy, color='#d4893b', alpha=0.85, lw=0, zorder=2)
             for r in p.interiors:
                 ax.fill(*r.xy, color='#e8efe0', lw=0, zorder=3)
-        for (x, y, r, z0, z1) in m.vias:
+        for (x, y, r, z0, z1) in mesh.get('vias', m.vias):
             if z0 - 1e-9 <= m.cu_z[lay] <= z1 + 1e-9:
                 ax.add_patch(plt.Circle((x, y), r, color='k', zorder=4))
         for p in m.ports:
