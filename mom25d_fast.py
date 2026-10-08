@@ -611,14 +611,17 @@ class FastOperator:
         with sim.log.timer('LU factor', f"N={N}"):
             Z *= dsc[:, None].astype(dt)
             Z *= dsc[None, :].astype(dt)
-            lu, piv = sla.lu_factor(Z, overwrite_a=True, check_finite=False)
+            # factor Z^T: it is Fortran-contiguous, so LAPACK works in place (no second N^2 copy);
+            # Z x = b is then solved with trans=1
+            lu, piv = sla.lu_factor(Z.T, overwrite_a=True, check_finite=False)
+            del Z
         self.iters = []
         if precision != 'mixed':
             with sim.log.timer('LU solve'):
-                return dsc[:, None] * sla.lu_solve((lu, piv), dsc[:, None] * E, check_finite=False)
+                return dsc[:, None] * sla.lu_solve((lu, piv), dsc[:, None] * E, trans=1, check_finite=False)
         # mixed: GMRES on the exact (double, matrix-free) equilibrated operator, LU(complex64) preconditioner
         A = LinearOperator((N, N), matvec=lambda y: dsc * self.matvec_exact(dsc * y, Sx), dtype=complex)
-        M = LinearOperator((N, N), matvec=lambda r: sla.lu_solve((lu, piv), r.astype(np.complex64),
+        M = LinearOperator((N, N), matvec=lambda r: sla.lu_solve((lu, piv), r.astype(np.complex64), trans=1,
                                                                  check_finite=False).astype(complex), dtype=complex)
         X = np.zeros((N, E.shape[1]), complex)
         with sim.log.timer('refinement (GMRES, exact matvec)'):
@@ -661,7 +664,9 @@ class FastOperator:
             dsc = 1.0 / np.sqrt(np.abs(np.diagonal(Z)) + 1e-300)
             Z *= dsc[:, None]
             Z *= dsc[None, :]
-            X = dsc[:, None] * sla.solve(Z, dsc[:, None] * E, overwrite_a=True, check_finite=False)
+            lu, piv = sla.lu_factor(Z.T, overwrite_a=True, check_finite=False)     # in place (see above)
+            del Z
+            X = dsc[:, None] * sla.lu_solve((lu, piv), dsc[:, None] * E, trans=1, check_finite=False)
         self.iters = []
         return X
 
