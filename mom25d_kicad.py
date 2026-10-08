@@ -392,6 +392,21 @@ def read_pos(path):
     return rows
 
 
+def resolve_nets(wanted, available):
+    """Match requested net names to board nets. Hierarchical KiCad nets ('/sheet/REF_SMA_N') also
+    match their bare name ('REF_SMA_N'); matching is case-sensitive first, then case-insensitive."""
+    available = {str(n) for n in available if n}
+    out = set()
+    for w in wanted:
+        hits = ({w} & available) or {n for n in available if n.rsplit('/', 1)[-1] == w.lstrip('/')} \
+            or {n for n in available if n.rsplit('/', 1)[-1].lower() == w.lstrip('/').lower()}
+        if not hits:
+            raise ValueError(f"net {w!r} not found on the board; nets with copper: "
+                             + ", ".join(sorted(available, key=str.lower)))
+        out |= hits
+    return out
+
+
 class DiffLegs(dict):
     """{'+': footprint, '-': footprint} of a differential port (footprints are dicts themselves)."""
 
@@ -439,7 +454,8 @@ class BoardModel:
         if bad:
             self.notes.append(f"copper {bad} sits on the ground interface and is ignored")
         # ---- geometry per interface (sim metres, y up) ----
-        sel = set(nets) if nets else None
+        sel = resolve_nets(nets, {n for _, n, _ in board.items} | {v['net'] for v in board.vias}) if nets else None
+        self.nets = sel
         reg = box(*region) if region else None
         per = {}
         for lay, net, g in board.items:
@@ -531,8 +547,17 @@ class BoardModel:
         k = self.iface[lay]
         g = self._copper_at(k)
         if g is None or not g.buffer(1e-6).contains(Point(*c)):
+            here = sorted({str(n) for l, n, gg in self.board.items
+                           if l == lay and gg.buffer(1e-6).contains(Point(fp['x'], fp['y']))})
+            side = 'B.Cu' if fp['side'] == 'B' else 'F.Cu'
+            on_side = props.get('mom.layer') and lay != side and any(
+                l == side and gg.buffer(1e-6).contains(Point(fp['x'], fp['y'])) for l, n, gg in self.board.items)
+            hint = (f"; the footprint field mom.layer={lay} points away from the {side} copper under it - "
+                    f"delete the field or set it to {side}" if on_side else
+                    f"; copper of net(s) {here} is there - add it to nets" if here else
+                    "; no copper of any net there - check the footprint position and mom.layer")
             raise ValueError(f"{name} ({fp['ref']}) at ({fp['x']:.3f}, {fp['y']:.3f}) mm is not on {lay} copper "
-                             f"of the selected nets/region")
+                             f"of the selected nets/region{hint}")
         return c, d, k, g, props
 
     def _wave_window(self, w, L, step):
@@ -587,6 +612,9 @@ class BoardModel:
                 if kind == 'wave':
                     raise ValueError(f"{name}: straight feed too short for a wave port ({L * 1e3:.2f} mm, need {need * 1e3:.2f} mm)")
             if kind in ('auto', 'via'):
+                if kind == 'auto':
+                    print(f"  note: {name}: no straight feed of {need * 1e3:.1f} mm for a wave port "
+                                      f"(found {L * 1e3:.2f} mm) - using a lumped via port to ground")
                 v = Via(c[0], c[1], 0, k, radius=float(props.get('mom.radius', 0.1)) * MM, name=f"{name}_via")
                 out.append(ViaPort(v, z0=z0, name=name)); continue
             if kind == 'gap':
@@ -606,10 +634,39 @@ class BoardModel:
             if g.buffer(1e-9).contains(pt):
                 p0 = np.array(pt.coords[0])
                 seg = LineString([p0 - t * 0.05, p0 + t * 0.05]).intersection(g)
-                W = min(getattr(seg, 'length', 0.0), max(30 * self.stack.z[-1], 20 * w))
+                dz = abs(self.stack.z[layer] - self.stack.z[k])
+                W = min(getattr(seg, 'length', 0.0), max(16 * dz + 2 * w, 20 * w, 2e-3))
                 if W > 2 * w:
                     planes[k] = W
         return planes
+
+    def _coplanar_at(self, layer, pt, d, w, max_gap=None):
+        """Same-layer metal beside the trace at pt (grounded-CPW side grounds): [(y0, y1)] offsets
+        across the line (trace centred at 0), widths capped; gaps wider than max_gap are ignored."""
+        h = self.stack.z[layer] if layer < len(self.stack.z) else self.stack.z[-1]
+        max_gap = max_gap or max(5 * h, 3 * w)
+        t = np.array([-d[1], d[0]])
+        p0 = np.array(pt.coords[0])
+        g = unary_union(self.shapes.get(layer, []))
+        span = 0.05
+        seg = LineString([p0 - t * span, p0 + t * span]).intersection(g)
+        parts = [seg] if seg.geom_type == 'LineString' else list(getattr(seg, 'geoms', []))
+        iv = sorted(tuple(sorted(((np.array(c) - p0) @ t) for c in (q.coords[0], q.coords[-1]))) for q in parts
+                    if q.length > 0)
+        own = [i for i, (a, b) in enumerate(iv) if a <= 1e-9 <= b or a <= -1e-9 <= b]
+        if not own:
+            return []
+        i = own[0]
+        out = []
+        if i + 1 < len(iv) and iv[i + 1][0] - iv[i][1] <= max_gap:            # right side
+            a, b = iv[i + 1]
+            cap = min(max(2 * (w + 2 * (a - iv[i][1])), 1.0e-3), 2.0e-3)     # the field sees a few gaps
+            out.append((a, min(b, a + cap)))
+        if i - 1 >= 0 and iv[i][0] - iv[i - 1][1] <= max_gap:                  # left side
+            a, b = iv[i - 1]
+            cap = min(max(2 * (w + 2 * (iv[i][0] - b)), 1.0e-3), 2.0e-3)
+            out.append((max(a, b - cap), b))
+        return out
 
     def characterize(self, ports, fmin, fmax, n=3, dmax=0.4e-3, log=print):
         """Reference impedance of each wave port's line cross-section (trace + metal on other layers
@@ -646,15 +703,20 @@ class BoardModel:
                     # width of that metal across the line, capped (a plane looks infinite beyond ~30 h)
                     t = np.array([-p.d[1], p.d[0]])
                     seg = LineString([np.array(pt.coords[0]) - t * 0.05, np.array(pt.coords[0]) + t * 0.05]).intersection(g)
-                    W = min(getattr(seg, 'length', 0.0), max(30 * self.stack.z[-1], 20 * p.w))
+                    dz = abs(self.stack.z[p.layer] - self.stack.z[k])
+                    W = min(getattr(seg, 'length', 0.0), max(16 * dz + 2 * p.w, 20 * p.w, 2e-3))
                     if W > 2 * p.w:
                         planes[k] = W
-            key = (p.layer, round(p.w * 1e7), tuple(sorted((k, round(W * 1e5)) for k, W in planes.items())))
+            cop = self._coplanar_at(p.layer, pt, p.d, p.w)
+            key = (p.layer, round(p.w * 1e7), tuple(sorted((k, round(W * 1e5)) for k, W in planes.items())),
+                   tuple((round(a * 1e6), round(b * 1e6)) for a, b in cop))
             if key not in cache:
-                g, z = line_char_xs(self.stack, p.layer, p.w, fs, planes=planes, dmax=dmax)
+                g, z = line_char_xs(self.stack, p.layer, p.w, fs, planes=planes, coplanar=cop, dmax=dmax)
                 cache[key] = z.real
+                gaps = [min(abs(a), abs(b)) - p.w / 2 for a, b in cop]
                 log(f"  {p.name}: line on M{p.layer}, w={p.w * 1e3:.3f} mm, reference metal "
-                    + (", ".join(f"M{k} ({W * 1e3:.1f} mm)" for k, W in planes.items()) or "ground only")
+                    + (", ".join([f"M{k} ({W * 1e3:.1f} mm)" for k, W in planes.items()]
+                                 + [f"coplanar GND, gap {gp * 1e3:.3f} mm" for gp in gaps]) or "ground only")
                     + f": Zc = " + ", ".join(f"{v:.2f}" for v in z.real) + " ohm")
             zz = cache[key]
             p.zc_fn = (lambda f, fs=fs, zz=zz: np.interp(f, fs, zz))
