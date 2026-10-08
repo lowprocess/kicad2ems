@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kicad2openems"
+version = "0.1.0"
+description = "KiCad board -> openEMS 3D FDTD model with automatic meshing, ports and S-parameter output"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Claude", email = "noreply@anthropic.com" }]
+dependencies = [
+    "numpy>=1.24",
+    "shapely>=2.0",
+    "matplotlib>=3.7",
+    "tomli>=2; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7", "scipy>=1.10"]
+# openEMS and CSXCAD are not on PyPI: install them from your distribution or build them from source
+# (see README); everything except the actual FDTD run works without them.
+
+[project.scripts]
+kicad2openems = "kicad2openems.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["kicad2openems*"]
