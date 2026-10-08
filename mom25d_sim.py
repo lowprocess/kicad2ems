@@ -246,6 +246,11 @@ class Simulation:
         self._xcache = {}
         self._edge_sets()
         self.tables, self.last = {}, None
+        for p in self.ports:
+            if isinstance(p, LinePort) and getattr(p, 'zc_fn', None) is None and p.zc == 50.0:
+                self.log.note(f"note: wave port {p.name} uses zc = 50 ohm. Set it to the feed line's Zc "
+                              f"(line_char / line_char_xs, or BoardModel.characterize) - a wrong zc makes S "
+                              f"non-reciprocal when ports differ")
         if solver == 'auto':
             # dense reference path up to ~3500 unknowns, direct (lean dense) up to ~14000, then ACA
             n = r.Ne + self.Nv
