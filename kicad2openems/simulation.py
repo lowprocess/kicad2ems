@@ -9,41 +9,54 @@ from .constants import EPS0
 from .geometry import split_holes
 
 
+def _f(v):
+    """Plain Python float: older CSXCAD / openEMS releases reject numpy scalars (type checks)."""
+    return float(v)
+
+
+def _fl(v):
+    """List of plain floats (coordinates)."""
+    return [float(x) for x in v]
+
+
 def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=None, max_steps=1_000_000):
     from CSXCAD import ContinuousStructure
     from openEMS import openEMS
-    FDTD = openEMS(NrTS=max_steps, EndCriteria=10 ** (end_db / 10))
-    f0, fc = 0.5 * (fmin + fmax), 0.5 * (fmax - fmin) * 1.05
+    FDTD = openEMS(NrTS=int(max_steps), EndCriteria=_f(10 ** (end_db / 10)))
+    f0, fc = _f(0.5 * (fmin + fmax)), _f(0.5 * (fmax - fmin) * 1.05)
     FDTD.SetGaussExcite(f0, fc)
-    FDTD.SetBoundaryCond(list(bc))
+    FDTD.SetBoundaryCond([str(b) for b in bc])
     CSX = ContinuousStructure()
     FDTD.SetCSX(CSX)
     grid = CSX.GetGrid()
     grid.SetDeltaUnit(1e-3)
-    grid.SetLines('x', mesh['x']); grid.SetLines('y', mesh['y']); grid.SetLines('z', mesh['z'])
+    grid.SetLines('x', np.asarray(mesh['x'], float)); grid.SetLines('y', np.asarray(mesh['y'], float))
+    grid.SetLines('z', np.asarray(mesh['z'], float))
     ox, oy = m.outline.exterior.xy
-    pts = [np.asarray(ox[:-1]), np.asarray(oy[:-1])]
+    pts = [np.asarray(ox[:-1], float), np.asarray(oy[:-1], float)]
     for l in m.layers:                                              # dielectrics (loss at the centre frequency)
-        kappa = 2 * np.pi * f0 * EPS0 * l['er'] * l['tand']
-        mat = CSX.AddMaterial(l['name'].replace(' ', '_'), epsilon=l['er'], kappa=kappa)
-        mat.AddLinPoly(pts, 'z', l['z0'], l['z1'] - l['z0'], priority=1)
+        kappa = _f(2 * np.pi * f0 * EPS0 * l['er'] * l['tand'])
+        mat = CSX.AddMaterial(l['name'].replace(' ', '_'), epsilon=_f(l['er']), kappa=kappa)
+        mat.AddLinPoly(pts, 'z', _f(l['z0']), _f(l['z1'] - l['z0']), priority=1)
     for lay, ps in m.copper.items():
         if sigma:
-            metal = CSX.AddConductingSheet(f"cu_{lay}", conductivity=sigma, thickness=m.cu_t[lay] * 1e-3)
+            metal = CSX.AddConductingSheet(f"cu_{lay}", conductivity=_f(sigma), thickness=_f(m.cu_t[lay] * 1e-3))
         else:
             metal = CSX.AddMetal(f"cu_{lay}")
         for p in ps:
             for q in split_holes(p):
                 x, y = q.exterior.xy
-                metal.AddPolygon([np.asarray(x[:-1]), np.asarray(y[:-1])], 'z', m.cu_z[lay], priority=10)
+                metal.AddPolygon([np.asarray(x[:-1], float), np.asarray(y[:-1], float)], 'z', _f(m.cu_z[lay]),
+                                 priority=10)
     if m.vias:
         vm = CSX.AddMetal('vias')
         for (x, y, r, z0, z1) in m.vias:
-            vm.AddCylinder([x, y, z0], [x, y, z1], r, priority=11)
+            vm.AddCylinder(_fl([x, y, z0]), _fl([x, y, z1]), _f(r), priority=11)
     ports = []
     for i, p in enumerate(m.ports):
         s, e = p.box()
-        ports.append(FDTD.AddLumpedPort(i + 1, p.z0, s, e, 'z', excite=1.0 if i == excite else 0.0, priority=12))
+        ports.append(FDTD.AddLumpedPort(i + 1, _f(p.z0), _fl(s), _fl(e), 'z', excite=1.0 if i == excite else 0.0,
+                                        priority=12))
     return FDTD, CSX, ports
 
 
