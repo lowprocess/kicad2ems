@@ -67,7 +67,9 @@ def main(argv=None):
     ap.add_argument('--wref', action='append', default=[], help='edge-grading width per layer, e.g. F.Cu=0.35')
     ap.add_argument('--ncross', type=int, default=4)
     ap.add_argument('--near-fac', type=float, default=4.0, help='near-field radius in cells (accuracy vs memory)')
-    ap.add_argument('--solver', default='auto', choices=['auto', 'dense', 'direct', 'aca'])
+    ap.add_argument('--solver', default='auto', choices=['auto', 'dense', 'direct', 'blr', 'aca'])
+    ap.add_argument('--precision', default='double', choices=['double', 'mixed'],
+                    help="direct solver: 'mixed' stores Z in complex64 and refines to double accuracy")
     ap.add_argument('--z0', type=float, default=50.0, help='output reference impedance')
     ap.add_argument('--sigma', type=float, help='conductor conductivity S/m (enables metal loss)')
     ap.add_argument('--out', default='mom25d_out')
@@ -104,7 +106,7 @@ def main(argv=None):
     kv = lambda lst: {model.iface[k]: float(v) * 1e-3 for k, v in (s.split('=') for s in lst)}
     sim = model.simulation(dmax=a.dmax * 1e-3, dmax_layer=kv(a.dmax_layer), w_ref=kv(a.wref) or None,
                            ncross=a.ncross, solver=a.solver, verbose=True, fmin=a.fmin * 1e9, fmax=a.fmax * 1e9,
-                           near_fac=a.near_fac,
+                           near_fac=a.near_fac, precision=a.precision,
                            metal=Metal(a.sigma) if a.sigma else None, title=name)
     sim.layer_names = {k: n for n, k in model.iface.items()}
     zc = np.array([p.zc for p in sim.ports])

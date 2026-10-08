@@ -115,9 +115,11 @@ class Metal:
 class Simulation:
     def __init__(self, stack, shapes, ports=(), vias=(), lumped=(), dmax=0.3e-3, dmax_layer=None,
                  w_ref=None, ncross=6, grade=1.0, near_fac=5.0, mesher='auto', metal=None,
-                 solver='dense', aca_tol=1e-4, refine=1.0e-3, verbose=True, title=''):
+                 solver='dense', aca_tol=1e-4, refine=1.0e-3, precision='double', verbose=True, title=''):
         self.st, self.title, self.metal = stack, title, metal
         self.solver = solver
+        self.precision = precision          # 'double' | 'mixed' (direct solver: complex64 Z + refinement)
+        self.blr_tol, self.blr_tile, self.blr_eta = 1e-3, 512, 0.7   # solver='blr' preconditioner settings
         self.log = RunLog(verbose)
         self.dmax, self.ncross, self.grade, self.near_fac = dmax, ncross, grade, near_fac
         self.ports = [port_from_axis(p) if isinstance(p, MLPort) else p for p in ports]
@@ -254,10 +256,18 @@ class Simulation:
         if solver == 'auto':
             # dense reference path up to ~3500 unknowns, direct (lean dense) up to ~14000, then ACA
             n = r.Ne + self.Nv
-            solver = 'dense' if n <= 3500 else ('direct' if n <= 14000 else 'aca')
+            try:
+                import mom25d_core  # noqa: F401
+                has_core = True
+            except ImportError:
+                has_core = False
+            # dense reference -> lean direct (mixed precision with the core) -> BLR (memory) / ACA
+            solver = 'dense' if n <= 3500 else ('direct' if n <= 14000 else ('blr' if has_core else 'aca'))
+            if solver == 'direct' and has_core and precision == 'double':
+                self.precision = 'mixed'
             self.solver = solver
             self.log.note(f"solver: {solver} (N = {n})")
-        if solver in ('aca', 'direct'):
+        if solver in ('aca', 'direct', 'blr'):
             from mom25d_fast import FastOperator
             self.fast = FastOperator(self, tol=aca_tol)
             return
@@ -501,7 +511,9 @@ class Simulation:
         if self.solver == 'aca':
             I = self.fast.solve(f, E)
         elif self.solver == 'direct':
-            I = self.fast.solve_direct(f, E)
+            I = self.fast.solve_direct(f, E, precision=self.precision)
+        elif self.solver == 'blr':
+            I = self.fast.solve_blr(f, E, tol=self.blr_tol, tile=self.blr_tile, eta=self.blr_eta)
         else:
             I = self.solve(self.impedance(f), E)
         n = len(self.ports)

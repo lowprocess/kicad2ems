@@ -22,6 +22,14 @@ from mom25d import _BAR3, _W3, _BAR6, _W6
 from mom25d_ml import GreenTableML
 from mom25d_sing import offplane_pairs
 
+try:                                    # optional compiled kernels (python core/build.py)
+    import os as _os
+    import mom25d_core as _core
+    if _os.environ.get('MOM25D_NO_CORE'):
+        _core = None
+except ImportError:
+    _core = None
+
 
 # =============================================================================
 # Cluster tree and H-matrix
@@ -167,6 +175,7 @@ class FastOperator:
     def __init__(self, sim, near_fac=None, tol=1e-4, leaf=64, eta=2.0, max_rank=80, atol_rel=1e-8):
         self.sim = sim
         self.trace = False
+        self.mixed_tol = 1e-6
         self.atol_rel = atol_rel
         self.max_rank = max_rank
         r = sim.rwg
@@ -193,6 +202,9 @@ class FastOperator:
         self.lidx = {k: i for i, k in enumerate(self.layers)}
         self._near_pairs()
         self._static_cache = {}
+        self.core = _core
+        if self.core is not None:
+            self._core_geometry()
 
     # ---- near pairs (geometry only) ---------------------------------------------------------------
     def _near_pairs(self):
@@ -277,6 +289,8 @@ class FastOperator:
         return out
 
     def entry(self, rows, cols):
+        if self.core is not None:
+            return self.core.far_block(np.asarray(rows, np.int32), np.asarray(cols, np.int32), self.g, self.tb, self.w)
         Ne = self.sim.Ne
         hr = np.concatenate([rows, rows + Ne]); hc = np.concatenate([cols, cols + Ne])
         H = self._far_halves(hr, hc)
@@ -352,12 +366,11 @@ class FastOperator:
                 m = lt == a
                 _, GQ = self._kern(a, lt[q], rho[m])
                 QF[m, j] = GQ * r.area[m] * r.area[q]
-        # accurate (analytic singular + quadrature) correction for every triangle against the fans:
-        # the via input impedance is a small difference of large charge terms, so B must be exact
-        Pall = np.repeat(np.arange(len(r.tris)), len(F))
-        Qall = np.tile(F, len(r.tris))
-        corr = self._near_moments(Pall, Qall)[:, 6]
-        QF += corr.reshape(len(r.tris), len(F))
+        # exact correction for near pairs only (same split as the rest of the operator)
+        pos = {q: j for j, q in enumerate(F)}
+        sel = np.isin(self.nQ, F)
+        cols = np.array([pos[q] for q in self.nQ[sel]], int)
+        np.add.at(QF, (self.nP[sel], cols), self._qcorr[sel])
         return QF
 
     def _near_matrix(self):
@@ -390,7 +403,60 @@ class FastOperator:
                                  shape=(Ne, Ne))
 
     # ---- assemble & solve ---------------------------------------------------------------------------------
-    def setup(self, f, hmatrix=True):
+    # ---- compiled-core data ---------------------------------------------------------------------
+    def _core_geometry(self):
+        sim, r = self.sim, self.sim.rwg
+        Ne, Nt = sim.Ne, len(r.tris)
+        te = -np.ones((Nt, 3), np.int32); ta = np.zeros((Nt, 3)); tv = np.zeros((Nt, 3, 2))
+        fill = np.zeros(Nt, int)
+        for h in range(2 * Ne):
+            t = self.h_tri[h]; k = fill[t]; fill[t] += 1
+            te[t, k] = h % Ne; ta[t, k] = self.h_alpha[h]; tv[t, k] = self.h_v[h]
+        lt = np.array([self.lidx[k] for k in self.layer_of_tri], np.int32)
+        self.g = dict(ep=r.tp.astype(np.int32), em=r.tm.astype(np.int32), lt=lt, te=te, ta=ta, tv=tv,
+                      ap=self.h_alpha[:Ne].copy(), am=self.h_alpha[Ne:].copy(),
+                      vp=np.ascontiguousarray(self.h_v[:Ne]), vm=np.ascontiguousarray(self.h_v[Ne:]),
+                      cent=np.ascontiguousarray(r.cent), area=r.area.copy())
+        self.q = dict(nodes=np.ascontiguousarray(r.nodes), tris=r.tris.astype(np.int32),
+                      P3=np.ascontiguousarray(sim.P3), W3=np.ascontiguousarray(sim.W3),
+                      P6=np.ascontiguousarray(sim.P6), W6=np.ascontiguousarray(sim.W6))
+        self.nP32, self.nQ32 = self.nP.astype(np.int32), self.nQ.astype(np.int32)
+
+    def _core_tables(self):
+        L = len(self.layers)
+        keys = sorted(self.tables)
+        tab = np.zeros((L, L), np.int32)
+        kind = np.zeros(len(keys), np.int32)
+        for i, (a, b) in enumerate(keys):
+            tab[self.lidx[a], self.lidx[b]] = tab[self.lidx[b], self.lidx[a]] = i
+            gt = self.tables[(a, b)]
+            kind[i] = 0 if a == b else (1 if gt.cA != 0 else 2)
+        T = [self.tables[k] for k in keys]
+        c = lambda v: np.array([complex(x) for x in v])
+        self.tb = dict(A=np.stack([t.A_rest for t in T]).astype(complex), Q=np.stack([t.Q_rest for t in T]).astype(complex),
+                       dr=np.array([t.rho[1] for t in T]), d=np.array([t.d for t in T]),
+                       dimg=np.array([t.dimg for t in T]), cA=c(t.cA for t in T), cq=c(t.cq for t in T),
+                       cAi=c(t.cAi for t in T), cqi=c(t.cqi for t in T), tab=tab, kind=kind)
+
+    def matvec_exact(self, x, Sx=None):
+        """y = Z x in double precision without storing Z (far: triangle-aggregated; near: on the fly)."""
+        sim, Ne = self.sim, self.sim.Ne
+        xe = np.ascontiguousarray(x[:Ne], complex)
+        y = np.empty(len(x), complex)
+        near = (self.dZ_exact @ xe) if getattr(self, 'dZ_exact', None) is not None else \
+            self.core.near_matvec(xe, self.g, self.tb, self.q, self.nP32, self.nQ32, self.w)
+        y[:Ne] = self.core.matvec_far(xe, self.g, self.tb, self.w) + near
+        if Sx is not None:
+            y[:Ne] += Sx[:Ne, :Ne] @ xe
+        if sim.Nv:
+            y[:Ne] += self.B @ x[Ne:]
+            y[Ne:] = self.B.T @ xe + self.C @ x[Ne:]
+        return y
+
+    def setup(self, f, hmatrix=True, mode=None):
+        """mode: 'aca' (sparse near field + H-matrix), 'direct' (tables only when the core fills Z),
+        'sparse' (sparse near field, no H-matrix)."""
+        mode = mode or ('aca' if hmatrix else 'sparse')
         sim = self.sim
         self.f, self.w = f, 2 * np.pi * f
         self.tables = {}
@@ -401,12 +467,24 @@ class FastOperator:
                 with sim.log.timer('Green tables', f"M{a}-M{b} @ {f / 1e9:.2f} GHz"):
                     self.tables[(a, b)] = GreenTableML(f, sim.st, a, b, sim.rho_max, cross_sing=xs, image_sing=im)
         sim.tables = self.tables
+        if self.core is not None:
+            self._core_tables()
+            if mode == 'direct':
+                return
         with sim.log.timer('near-field correction'):
-            dZ = self._near_matrix()
+            if self.core is not None:
+                ri, ci, vv, qc = self.core.near_coo(self.g, self.tb, self.q, self.nP32, self.nQ32, self.w)
+                ok = ri >= 0
+                dZ = sparse.csr_matrix((vv[ok], (ri[ok], ci[ok])), shape=(sim.Ne, sim.Ne))
+                self._qcorr = qc
+                del ri, ci, vv
+            else:
+                dZ = self._near_matrix()
+                self._qcorr = self._Mnear[:, 6]
         if sim.Nv:
             with sim.log.timer('via kernels', f"{sim.Nv} chains"):
                 self.B, self.C = sim._via_blocks(f, self._fan_columns())
-        if not hmatrix:
+        if mode != 'aca':
             self.dZ = dZ.tocsr()
             return
         with sim.log.timer('H-matrix (ACA)'):
@@ -490,11 +568,74 @@ class FastOperator:
         sim.log.note(f"GMRES iterations per port: {self.iters}")
         return X
 
-    def solve_direct(self, f, E, block=1024):
+    def solve_direct(self, f, E, block=1024, precision='double'):
+        """Dense LU of the fast-operator entries (centroid far field + exact near correction).
+        precision='mixed': Z stored in complex64 (half the memory), LU in single precision used as a
+        preconditioner for GMRES on the exact double-precision matrix-free operator."""
+        sim = self.sim
+        Ne, Nv = sim.Ne, sim.Nv
+        N = Ne + Nv
+        if self.core is None:
+            if precision == 'mixed':
+                sim.log.note("mixed precision needs the compiled core - using double")
+            return self._solve_direct_numpy(f, E, block)
+        self.setup(f, mode='direct')
+        _, Sx = self.extra_blocks(f)
+        dt = np.complex64 if precision == 'mixed' else np.complex128
+        with sim.log.timer('direct fill', f"N={N}, {np.dtype(dt).name}, {self.core.num_threads()} threads"):
+            Z = np.zeros((N, N), dt)
+            (self.core.fill_far_c64 if dt == np.complex64 else self.core.fill_far)(Z, self.g, self.tb, self.w)
+        with sim.log.timer('near-field correction'):
+            if precision == 'mixed':
+                # keep the exact near correction (sparse, double) for the refinement products
+                ri, ci, vv, qc = self.core.near_coo(self.g, self.tb, self.q, self.nP32, self.nQ32, self.w)
+                ok = ri >= 0
+                self.dZ_exact = sparse.csr_matrix((vv[ok], (ri[ok], ci[ok])), shape=(Ne, Ne))
+                del ri, ci, vv, ok
+                Dc = self.dZ_exact.tocoo()
+                np.add.at(Z, (Dc.row, Dc.col), Dc.data.astype(dt))
+                del Dc
+                self._qcorr = qc
+            else:
+                self.dZ_exact = None
+                self._qcorr = self.core.near_into_dense(Z, self.g, self.tb, self.q, self.nP32, self.nQ32, self.w)
+        if Nv:
+            with sim.log.timer('via kernels', f"{Nv} chains"):
+                self.B, self.C = sim._via_blocks(f, self._fan_columns())
+            Z[:Ne, Ne:] = self.B; Z[Ne:, :Ne] = self.B.T; Z[Ne:, Ne:] = self.C
+        if Sx.nnz:
+            Sc = Sx.tocoo()
+            np.add.at(Z, (Sc.row, Sc.col), Sc.data.astype(dt))
+        import scipy.linalg as sla
+        dsc = (1.0 / np.sqrt(np.abs(np.diagonal(Z)).astype(float) + 1e-300))
+        with sim.log.timer('LU factor', f"N={N}"):
+            Z *= dsc[:, None].astype(dt)
+            Z *= dsc[None, :].astype(dt)
+            lu, piv = sla.lu_factor(Z, overwrite_a=True, check_finite=False)
+        self.iters = []
+        if precision != 'mixed':
+            with sim.log.timer('LU solve'):
+                return dsc[:, None] * sla.lu_solve((lu, piv), dsc[:, None] * E, check_finite=False)
+        # mixed: GMRES on the exact (double, matrix-free) equilibrated operator, LU(complex64) preconditioner
+        A = LinearOperator((N, N), matvec=lambda y: dsc * self.matvec_exact(dsc * y, Sx), dtype=complex)
+        M = LinearOperator((N, N), matvec=lambda r: sla.lu_solve((lu, piv), r.astype(np.complex64),
+                                                                 check_finite=False).astype(complex), dtype=complex)
+        X = np.zeros((N, E.shape[1]), complex)
+        with sim.log.timer('refinement (GMRES, exact matvec)'):
+            for j in range(E.shape[1]):
+                it = [0]
+                y, info = gmres(A, dsc * E[:, j], M=M, rtol=self.mixed_tol, restart=30, maxiter=10,
+                                callback=lambda _: it.__setitem__(0, it[0] + 1), callback_type='pr_norm')
+                X[:, j] = dsc * y
+                self.iters.append(it[0])
+        sim.log.note(f"mixed precision: GMRES iterations per port {self.iters}")
+        return X
+
+    def _solve_direct_numpy(self, f, E, block=1024):
         """Same entries as the fast operator (centroid far field + exact near correction), written
         into a dense Z block by block and LU-solved: memory ~ N^2 complex, robust at resonances."""
         sim = self.sim
-        self.setup(f, hmatrix=False)
+        self.setup(f, mode='sparse')
         _, Sx = self.extra_blocks(f)
         Ne, Nv = sim.Ne, sim.Nv
         N = Ne + Nv
@@ -522,4 +663,60 @@ class FastOperator:
             Z *= dsc[None, :]
             X = dsc[:, None] * sla.solve(Z, dsc[:, None] * E, overwrite_a=True, check_finite=False)
         self.iters = []
+        return X
+
+    def solve_blr(self, f, E, tol=1e-4, tile=256, eta=1.0, dtype=np.complex64):
+        """Block low-rank LU preconditioner + GMRES with the exact matrix-free operator (no stored Z)."""
+        from mom25d_blr import BLRFactor, cluster_tiles
+        assert self.core is not None, "solver='blr' needs the compiled core (python core/build.py)"
+        sim = self.sim
+        Ne, Nv = sim.Ne, sim.Nv
+        N = Ne + Nv
+        self.setup(f, mode='sparse')
+        self.dZ_exact = self.dZ
+        _, Sx = self.extra_blocks(f)
+        Sx = Sx.tocsr()
+        dZx = (self.dZ + Sx[:Ne, :Ne]).tocsr()
+        pts = np.vstack([sim.rwg.mid] + ([np.array([[v.x, v.y] for v, _, _ in sim.chains])] if Nv else []))
+        tiles, boxes = cluster_tiles(pts, tile)
+
+        def raw(rows, cols):
+            M = np.zeros((len(rows), len(cols)), complex)
+            re, ce = rows < Ne, cols < Ne
+            if re.any() and ce.any():
+                r_, c_ = rows[re], cols[ce]
+                M[np.ix_(re, ce)] = self.core.far_block(r_.astype(np.int32), c_.astype(np.int32), self.g, self.tb, self.w) \
+                    + dZx[r_][:, c_].toarray()
+            if Nv:
+                if re.any() and (~ce).any():
+                    M[np.ix_(re, ~ce)] = self.B[rows[re]][:, cols[~ce] - Ne]
+                if (~re).any() and ce.any():
+                    M[np.ix_(~re, ce)] = self.B[cols[ce]][:, rows[~re] - Ne].T
+                if (~re).any() and (~ce).any():
+                    M[np.ix_(~re, ~ce)] = self.C[np.ix_(rows[~re] - Ne, cols[~ce] - Ne)]
+            return M
+        with sim.log.timer('BLR assemble + factor', f"N={N}, {len(tiles)} tiles"):
+            diag = np.empty(N, complex)
+            for t in tiles:
+                diag[t] = np.diagonal(raw(t, t))
+            dsc = 1.0 / np.sqrt(np.abs(diag) + 1e-300)
+            blr = BLRFactor(lambda r, c: raw(r, c) * dsc[r][:, None] * dsc[c][None, :], tiles, boxes,
+                            tol=tol, eta=eta, dtype=dtype, scale=1.0)
+        dense_eq = 16 * N * N
+        sim.log.note(f"BLR: {blr.memory / 2 ** 20:.0f} MB ({100 * blr.memory / (8 * N * N):.0f}% of complex64 dense, "
+                     f"{100 * blr.memory / dense_eq:.0f}% of complex128), {blr.stats['lowrank']} low-rank tiles, "
+                     f"mean rank {blr.stats['rank_sum'] / max(1, blr.stats['lowrank']):.0f}")
+        self.blr = blr
+        A = LinearOperator((N, N), matvec=lambda y: dsc * self.matvec_exact(dsc * y, Sx), dtype=complex)
+        M = LinearOperator((N, N), matvec=blr.solve, dtype=complex)
+        X = np.zeros((N, E.shape[1]), complex)
+        self.iters = []
+        with sim.log.timer('GMRES (BLR preconditioned)'):
+            for j in range(E.shape[1]):
+                it = [0]
+                y, info = gmres(A, dsc * E[:, j], M=M, rtol=self.mixed_tol, restart=50, maxiter=10,
+                                callback=lambda _: it.__setitem__(0, it[0] + 1), callback_type='pr_norm')
+                X[:, j] = dsc * y
+                self.iters.append(it[0])
+        sim.log.note(f"BLR: GMRES iterations per port {self.iters}")
         return X
