@@ -115,7 +115,7 @@ class Metal:
 class Simulation:
     def __init__(self, stack, shapes, ports=(), vias=(), lumped=(), dmax=0.3e-3, dmax_layer=None,
                  w_ref=None, ncross=6, grade=1.0, near_fac=5.0, mesher='auto', metal=None,
-                 solver='dense', aca_tol=1e-4, verbose=True, title=''):
+                 solver='dense', aca_tol=1e-4, refine=1.0e-3, verbose=True, title=''):
         self.st, self.title, self.metal = stack, title, metal
         self.solver = solver
         self.log = RunLog(verbose)
@@ -195,7 +195,14 @@ class Simulation:
                     wr = (w_ref.get(k) if isinstance(w_ref, dict) else w_ref) or self._guess_wref(geoms[k], lp_here)
                     seg = [lp.line(s) for lp, s in lines[k]]
                     vpts = [(v.x, v.y, v.a if v.ring else 0.0) for _, v in vias_here]
-                    nd, tr, vids = mesh_polygons(geoms[k], dm, wr, ncross, grade, lines=seg, vias=vpts)
+                    fine = None
+                    if refine and dm > 1.2 * dmax:
+                        # resolve return currents under/over metal on nearby layers
+                        near = [geoms[j].buffer(3 * abs(stack.z[j] - stack.z[k]) + 2 * dmax)
+                                for j in self.layers if j != k and abs(stack.z[j] - stack.z[k]) < refine]
+                        fine = shapely.unary_union(near) if near else None
+                    nd, tr, vids = mesh_polygons(geoms[k], dm, wr, ncross, grade, lines=seg, vias=vpts,
+                                                 fine=fine, dmax_fine=2 * dmax if fine is not None else None)
                 for (i, v), vid in zip(vias_here, vids):
                     assert vid >= 0, f"via {v.name}: not on the M{k} mesh"
                     via_vertex[(i, k)] = vid + off
@@ -239,7 +246,13 @@ class Simulation:
         self._xcache = {}
         self._edge_sets()
         self.tables, self.last = {}, None
-        if solver == 'aca':
+        if solver == 'auto':
+            # dense reference path up to ~3500 unknowns, direct (lean dense) up to ~14000, then ACA
+            n = r.Ne + self.Nv
+            solver = 'dense' if n <= 3500 else ('direct' if n <= 14000 else 'aca')
+            self.solver = solver
+            self.log.note(f"solver: {solver} (N = {n})")
+        if solver in ('aca', 'direct'):
             from mom25d_fast import FastOperator
             self.fast = FastOperator(self, tol=aca_tol)
             return
@@ -373,13 +386,18 @@ class Simulation:
                 dist = np.hypot(self.P6[idx, :, 0] - v.x, self.P6[idx, :, 1] - v.y)
                 c[idx] = (vk.D[(k, (kb, kt))](dist) * self.W6[idx]).sum(1)
             B[:, n] += r.D.T @ c
-        # via-via
+        # via-via: group all pairs by (span_m, span_n) and evaluate each group's Hankel transform once
+        groups = {}
         for m, (vm, am, bm) in enumerate(self.chains):
             for n, (vn, an, bn) in enumerate(self.chains):
                 if n < m:
                     continue
                 d = vm.a if vm is vn else max(np.hypot(vm.x - vn.x, vm.y - vn.y), 0.5 * (vm.a + vn.a))
-                val = vk.R((am, bm), (an, bn), d)[0] + vk.homog((am, bm), (an, bn), d)[0]
+                groups.setdefault(((am, bm), (an, bn)), []).append((m, n, d))
+        for (sm, sn), lst in groups.items():
+            dd = np.array([d for _, _, d in lst])
+            vals = vk.R(sm, sn, dd) + vk.homog(sm, sn, dd)
+            for (m, n, _), val in zip(lst, vals):
                 C[m, n] += val
                 if n != m:
                     C[n, m] += val
@@ -467,12 +485,18 @@ class Simulation:
 
     def solve(self, Z, E):
         with self.log.timer('LU solve', f"N={Z.shape[0]}"):
-            return np.linalg.solve(Z, E)
+            d = 1.0 / np.sqrt(np.abs(np.diagonal(Z)) + 1e-300)     # symmetric equilibration
+            return d[:, None] * np.linalg.solve(Z * d[:, None] * d[None, :], d[:, None] * E)
 
     def sparams(self, f, keep=False):
+        for p in self.ports:                          # frequency-dependent reference impedance
+            if getattr(p, 'zc_fn', None) is not None:
+                p.zc = float(p.zc_fn(f))
         E = self.excitation()
         if self.solver == 'aca':
             I = self.fast.solve(f, E)
+        elif self.solver == 'direct':
+            I = self.fast.solve_direct(f, E)
         else:
             I = self.solve(self.impedance(f), E)
         n = len(self.ports)
@@ -606,3 +630,30 @@ def line_char(stack, layer, w, freqs, length=20e-3, dmax=0.5e-3, ncross=6, metal
         Cp, Dp = PlanarMoM.fit_waves(IL, sim.samples[1], g)
         gam.append(g); zc.append(1.0 / ((A[0] - B[0]) - (Cp[0] - Dp[0])))
     return np.array(gam), np.array(zc), sim
+
+
+def line_char_xs(stack, layer, w, freqs, planes=None, length=16e-3, dmax=0.4e-3, ncross=4, verbose=False):
+    """
+    Zc and gamma of a strip of width w on `layer` with extra reference metal: planes = {interface:
+    width} adds a centred wide strip on that interface (e.g. a meshed GND plane above or below).
+    Centre-fed long line, travelling-wave fit on both halves.
+    """
+    L2, margin = length / 2, 2e-3
+    shapes = {layer: [(-L2, -w / 2, L2, w / 2)]}
+    for k, W in (planes or {}).items():
+        shapes[k] = [(-L2, -W / 2, L2, W / 2)]
+    step = max(dmax, (L2 - margin - 1e-3) / 8)          # well-conditioned fit at low frequency
+    pR = LinePort(layer, (0, 0), (1, 0), w, L2 - margin, s0=1e-3, step=step, name='R')
+    pL = LinePort(layer, (0, 0), (-1, 0), w, L2 - margin, s0=1e-3, step=step, name='L')
+    wr = {k: (w if k == layer else min(W, 2e-3)) for k, W in [(layer, w)] + list((planes or {}).items())}
+    sim = Simulation(stack, shapes, [pR, pL], dmax=dmax, w_ref=wr, ncross=ncross, verbose=verbose,
+                     refine=0)
+    gam, zc = [], []
+    for f in freqs:
+        I = np.linalg.solve(sim.impedance(f), sim.excitation()[:, [0]])
+        IR, IL = sim.cut_current(I, 0), sim.cut_current(I, 1)
+        g = PlanarMoM.fit_gamma(np.hstack([IR, IL]), step)
+        A, B = PlanarMoM.fit_waves(IR, sim.samples[0], g)
+        Cp, Dp = PlanarMoM.fit_waves(IL, sim.samples[1], g)
+        gam.append(g); zc.append(1.0 / ((A[0] - B[0]) - (Cp[0] - Dp[0])))
+    return np.array(gam), np.array(zc)

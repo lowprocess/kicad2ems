@@ -12,11 +12,12 @@ def circle_pts(cx, cy, r, n=32):
     return [(cx + r * math.cos(2 * math.pi * i / n), cy + r * math.sin(2 * math.pi * i / n)) for i in range(n)]
 
 def make(path, pos_path):
-    W, H = 20.0, 10.0                     # board (mm)
+    W, H = 24.0, 10.0                     # board (mm)
     yc = 5.0
-    via = (10.0, yc)
-    stitch = [(10.0 + 1.3 * math.cos(a), yc + 1.3 * math.sin(a)) for a in (math.radians(d) for d in (45, 135, 225, 315))]
-    stitch += [(x, y) for x in (1.0, 5.0, 15.0, 19.0) for y in (1.0, 9.0)]
+    via = (12.0, yc)
+    # return-path vias around the signal via, and a GND fence along the stripline (In2.Cu)
+    stitch = [(via[0] + 1.3 * math.cos(a), yc + 1.3 * math.sin(a)) for a in (math.radians(d) for d in (45, 135, 225, 315))]
+    stitch += [(x, yc + s) for x in [13.5 + 1.2 * i for i in range(9)] for s in (-1.0, 1.0)]
     L = []
     L.append('(kicad_pcb (version 20240108) (generator "mom25d") (generator_version "8.0")')
     L.append('  (general (thickness 0.7))')
@@ -37,8 +38,8 @@ def make(path, pos_path):
     L.append('    (pad_to_mask_clearance 0))')
     L.append('  (net 0 "") (net 1 "GND") (net 2 "RF")')
     # microstrip on F.Cu, stripline on In2.Cu
-    L.append(f'  (segment (start 0.5 {yc}) (end {via[0]} {yc}) (width 0.35) (layer "F.Cu") (net 2) (uuid "{u()}"))')
-    L.append(f'  (segment (start {via[0]} {yc}) (end 19.5 {yc}) (width 0.15) (layer "In2.Cu") (net 2) (uuid "{u()}"))')
+    L.append(f'  (segment (start 2.0 {yc}) (end {via[0]} {yc}) (width 0.35) (layer "F.Cu") (net 2) (uuid "{u()}"))')
+    L.append(f'  (segment (start {via[0]} {yc}) (end 22.0 {yc}) (width 0.15) (layer "In2.Cu") (net 2) (uuid "{u()}"))')
     L.append(f'  (via blind (at {via[0]} {via[1]}) (size 0.5) (drill 0.25) (layers "F.Cu" "In2.Cu") (net 2) (uuid "{u()}"))')
     for x, y in stitch:
         L.append(f'  (via (at {x:.4f} {y:.4f}) (size 0.5) (drill 0.25) (layers "F.Cu" "B.Cu") (net 1) (uuid "{u()}"))')
@@ -52,7 +53,7 @@ def make(path, pos_path):
     L.append(f'    (polygon (pts {" ".join(f"(xy {x} {y})" for x, y in outer)}))')
     L.append(f'    (filled_polygon (layer "In1.Cu") (pts {" ".join(f"(xy {x:.4f} {y:.4f})" for x, y in pts)})))')
     # port footprints (no copper): Fab text P1/P2, rotation = direction into the circuit
-    for ref, num, x, rot, lay in (("TP1", 1, 0.5, 0, None), ("TP2", 2, 19.5, 180, "In2.Cu")):
+    for ref, num, x, rot, lay in (("TP1", 1, 2.0, 0, None), ("TP2", 2, 22.0, 180, "In2.Cu")):
         L.append(f'  (footprint "mom25d:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x} {yc} {rot})')
         L.append(f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))')
         L.append(f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))')
@@ -67,8 +68,8 @@ def make(path, pos_path):
     with open(pos_path, 'w') as fh:
         fh.write("### Footprint positions - created by mom25d demo ###\n## Unit = mm, Angle = deg.\n## Side : top\n")
         fh.write("# Ref     Val       Package                PosX       PosY       Rot  Side\n")
-        fh.write(f"TP1       P1        RF_Port              0.5000    -{yc:.4f}     0.0000  top\n")
-        fh.write(f"TP2       P2        RF_Port             19.5000    -{yc:.4f}   180.0000  top\n")
+        fh.write(f"TP1       P1        RF_Port              2.0000    -{yc:.4f}     0.0000  top\n")
+        fh.write(f"TP2       P2        RF_Port             22.0000    -{yc:.4f}   180.0000  top\n")
 
 if __name__ == '__main__':
     out = sys.argv[1] if len(sys.argv) > 1 else 'demo_transition'

@@ -114,7 +114,7 @@ def edge_offsets(w_ref, ncross, grade=1.0):
 # Mesher
 # =============================================================================
 def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), amax=None,
-                  max_offset_frac=0.45, tol=1e-9):
+                  max_offset_frac=0.45, tol=1e-9, fine=None, dmax_fine=None):
     """
     geom   : shapely (Multi)Polygon of one metal layer
     dmax   : max edge length along conductors / in open regions
@@ -131,42 +131,73 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), ama
         if not inner.is_empty:
             linework += _rings(inner)
     for p0, p1 in lines:
-        seg = LineString([p0, p1]).intersection(geom.buffer(tol))
+        seg = LineString([p0, p1]).intersection(geom)
         if not seg.is_empty:
             linework.append(seg)
+    fine_parts = []
+    if fine is not None and dmax_fine:
+        fg = fine.intersection(geom).buffer(0)
+        fine_parts = [q for q in getattr(fg, 'geoms', [fg]) if q.geom_type == 'Polygon' and q.area > (2 * dmax_fine) ** 2]
+        for q in fine_parts:                                  # region boundaries as constraints
+            linework += _rings(q)
     vpts = []
     for (x, y, r) in vias:
         vpts.append((x, y))
         if r > 0:
             ring = Point(x, y).buffer(r, quad_segs=2).exterior   # octagon
-            linework.append(LineString(ring.coords).intersection(geom.buffer(tol)))
-    noded = unary_union([g for g in linework if not g.is_empty])
+            linework.append(LineString(ring.coords).intersection(geom))
+    # snap-rounding noding: T-junctions (port lines ending on edges) must split the edge exactly
+    noded = shapely.unary_union([g for g in linework if not g.is_empty], grid_size=tol)
     pieces = list(getattr(noded, 'geoms', [noded]))
-    verts, segs, vid = [], [], {}
-
-    def key(p):
-        return (round(p[0] / tol), round(p[1] / tol))
-
-    def add(p):
-        k = key(p)
-        if k not in vid:
-            vid[k] = len(verts)
-            verts.append((p[0], p[1]))
-        return vid[k]
-
+    chains = []
+    fine_u = unary_union(fine_parts).buffer(tol) if fine_parts else None
     for pc in pieces:
         if pc.length < tol:
             continue
-        pc = shapely.segmentize(pc, dmax)
-        cs = list(pc.coords)
-        ids = [add(c) for c in cs]
-        segs += [(a, b) for a, b in zip(ids[:-1], ids[1:]) if a != b]
-    via_ids = [add(p) for p in vpts]
+        dm = dmax_fine if (fine_u is not None and fine_u.contains(pc.centroid)) else dmax
+        chains.append(np.asarray(shapely.segmentize(pc, dm).coords)[:, :2])
+    allp = np.vstack(chains + [np.array(vpts).reshape(-1, 2)]) if vpts else np.vstack(chains)
+    # merge near-coincident vertices (noding round-off would otherwise create sliver triangles)
+    from scipy.spatial import cKDTree
+    snap = max(10 * tol, 1e-4 * dmax)
+    rep = np.arange(len(allp))
+    for i, j in sorted(cKDTree(allp).query_pairs(snap)):
+        ri, rj = rep[i], rep[j]
+        while rep[ri] != ri: ri = rep[ri]
+        while rep[rj] != rj: rj = rep[rj]
+        if ri != rj:
+            rep[max(ri, rj)] = min(ri, rj)
+    for i in range(len(rep)):
+        r_ = rep[i]
+        while rep[r_] != r_: r_ = rep[r_]
+        rep[i] = r_
+    uniq, inv = np.unique(rep, return_inverse=True)
+    verts = allp[uniq]
+    segs, off = set(), 0
+    for ch in chains:
+        ids = inv[off:off + len(ch)]
+        off += len(ch)
+        for a, b in zip(ids[:-1], ids[1:]):
+            if a != b:
+                segs.add((min(a, b), max(a, b)))
+    via_ids = list(inv[off:off + len(vpts)])
+    segs = np.array(sorted(segs))
     # Triangle's switch parser cannot read exponents ('e' is a switch), so work in units of dmax
-    org = np.array(verts).mean(0)
-    A = dict(vertices=(np.array(verts) - org) / dmax, segments=np.array(segs))
+    org = verts.mean(0)
+    A = dict(vertices=(verts - org) / dmax, segments=segs)
     amax = (amax or 0.5 * dmax ** 2) / dmax ** 2
-    T = tr.triangulate(A, f"pQa{amax:.8f}")
+    if fine_parts:
+        # regional area limits: fine inside the projection of nearby metal, coarse elsewhere
+        afine = 0.5 * (dmax_fine / dmax) ** 2
+        rest = geom.difference(unary_union(fine_parts)).buffer(-2 * tol)
+        reg = [(q.representative_point(), afine) for q in fine_parts]
+        reg += [(q.representative_point(), amax) for q in getattr(rest, 'geoms', [rest])
+                if q.geom_type == 'Polygon' and not q.is_empty]
+        A['regions'] = np.array([[(pt.x - org[0]) / dmax, (pt.y - org[1]) / dmax, i + 1, a]
+                                 for i, (pt, a) in enumerate(reg)])
+        T = tr.triangulate(A, "pQa")
+    else:
+        T = tr.triangulate(A, f"pQa{amax:.8f}")
     nodes, tris = T['vertices'] * dmax + org, T['triangles']
     cent = nodes[tris].mean(1)
     keep = shapely.contains_xy(geom.buffer(tol), cent[:, 0], cent[:, 1])
