@@ -18,6 +18,13 @@ python examples/make_demo_board.py examples/demo_transition
 python mom25d_cli.py examples/demo_transition.kicad_pcb --config examples/demo_transition.mom25d.toml
 ```
 
+![KiCad via transition](docs/kicad_transition_dashboard.png)
+
+*Example: `examples/demo_transition.kicad_pcb` — F.Cu microstrip → blind via → In2.Cu stripline,
+In1.Cu GND plane with antipad, GND via fence; 8.7k unknowns, 19 EM solves for a 401-point sweep
+(adaptive), `direct` solver. Results in `results/demo_transition.s2p`. Wave-port separation is
+reliable above ~1.4 GHz for this feed length (the solver warns below).*
+
 ## KiCad workflow
 
 1. **Ports.** Place a port footprint (e.g. `mom25d:RF_Port`, no copper) at the end of each

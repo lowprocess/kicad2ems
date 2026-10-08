@@ -135,7 +135,19 @@ def main(argv=None):
     ts = os.path.join(a.out, f"{name}.s{S.shape[1]}p")
     write_touchstone(ts, f, S, [a.z0] * S.shape[1], comment=f"{name} ({nsolve} EM solves)")
     dash = viz.dashboard(sim, res, os.path.join(a.out, f"{name}_dashboard.png"))
-    summary = dict(board=a.board, ports=[getattr(p, 'name', '') for p in sim.ports],
+    # lowest frequency where every wave port's sample span covers >= 0.4 rad (from the port Zc lines'
+    # phase velocity estimate: eps_eff from the characterised gamma is not stored, use the fitted one)
+    valid_from = None
+    try:
+        from mom25d_geo import LinePort
+        spans = [abs(s[-1] - s[0]) for p, s in zip(sim.ports, sim.samples) if isinstance(p, LinePort)]
+        if spans:
+            fv = sim.last['f']; gv = np.nanmax(np.abs(sim.last['gamma'].imag) / fv)   # beta/f
+            valid_from = float(0.4 / (gv * min(spans)))
+            print(f"wave-port separation reliable above ~{valid_from / 1e9:.2f} GHz")
+    except Exception:
+        pass
+    summary = dict(board=a.board, valid_from_GHz=None if valid_from is None else round(valid_from / 1e9, 3), ports=[getattr(p, 'name', '') for p in sim.ports],
                    port_kind=[type(p).__name__ for p in sim.ports], zc=list(map(float, zc)),
                    unknowns=int(sim.Ne + sim.Nv), solver=sim.solver, em_solves=int(nsolve),
                    fmin=a.fmin, fmax=a.fmax, wall_time_s=round(time.time() - t0, 1),
