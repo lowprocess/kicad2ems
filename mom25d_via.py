@@ -56,10 +56,25 @@ def sommerfeld_contour(f, stack, rho_max, K=None, nq=8, hmin=None):
     return t + 1j * s, wt * (1 + 1j * ds), K
 
 
-def hankel(spec, kr, dk, rho):
-    """(1/2pi) int spec(kr) J0(kr rho) kr dkr  for an array of rho."""
+def j0_matrix(rho, kr):
+    """J0(rho x kr): complex Bessel only on the lifted part of the contour, fast real J0 elsewhere."""
+    from scipy.special import j0
     rho = np.atleast_1d(rho)
-    return (jv(0, rho[:, None] * kr[None, :]) @ (spec * kr * dk)) / (2 * np.pi)
+    real = np.abs(kr.imag) < 1e-300
+    J = np.empty((len(rho), len(kr)), complex)
+    J[:, real] = j0(rho[:, None] * kr.real[None, real])
+    if (~real).any():
+        J[:, ~real] = jv(0, rho[:, None] * kr[None, ~real])
+    return J
+
+
+def hankel(spec, kr, dk, rho):
+    """(1/2pi) int spec(kr) J0(kr rho) kr dkr  for an array of rho; spec may be (npts,) or (nspec, npts)."""
+    J = j0_matrix(rho, kr)
+    spec = np.asarray(spec)
+    if spec.ndim == 1:
+        return (J @ (spec * kr * dk)) / (2 * np.pi)
+    return (J @ (spec * (kr * dk)[None, :]).T).T / (2 * np.pi)
 
 
 class Table1D:
@@ -164,13 +179,18 @@ class ViaKernels:
         self.gq = gq
         rho = rho_max * np.linspace(0, 1, nrho) ** 2
         self.D = {}
-        for span in set(spans):
+        keys, specs = [], []
+        for span in sorted(set(spans)):
             layers = range(span[0] + 1, span[1] + 1)
             for k in interfaces:
                 spec = net.S(k, layers)
                 for ke, div in chain_ends(*span):
                     spec = spec - div * gq(k, ke) / (1j * w)
-                self.D[(k, span)] = Table1D(rho, hankel(spec, kr, dk, rho), rho_max)
+                keys.append((k, span)); specs.append(spec * np.ones_like(kr))
+        if keys:
+            vals = hankel(np.array(specs), kr, dk, rho)          # one Bessel matrix for all tables
+            for key, v in zip(keys, vals):
+                self.D[key] = Table1D(rho, v, rho_max)
 
     def R(self, sm, sn, rho):
         lm, ln = range(sm[0] + 1, sm[1] + 1), range(sn[0] + 1, sn[1] + 1)

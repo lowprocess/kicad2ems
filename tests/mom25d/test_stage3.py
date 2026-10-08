@@ -153,3 +153,30 @@ def test_fast_operators_match_dense():
         out[solver] = sim.sparams(4e9)
     assert np.max(np.abs(out['direct'] - out['dense'])) < 0.01
     assert np.max(np.abs(out['aca'] - out['direct'])) < 1e-3
+
+
+
+def test_core_matches_numpy_and_solvers_agree():
+    """Compiled core (if built) vs NumPy fallback, and direct/mixed/BLR agreement."""
+    core = pytest.importorskip('mom25d_core')
+    from shapely.geometry import box, Point
+    st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.2e-3, 4.3, 0.02)])
+    w, L = 0.35e-3, 8e-3
+    v1 = Via(L / 2, 0, 0, 2, 0.1e-3)
+    geo2 = [box(-L / 2, -w / 2, L / 2, w / 2), Point(L / 2, 0).buffer(0.25e-3)]
+    geo1 = [box(-L / 2, -2e-3, L / 2 + 1e-3, 2e-3).difference(Point(L / 2, 0).buffer(0.5e-3))]
+    mk = lambda s, p='double': Simulation(st, {1: geo1, 2: geo2}, [ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)), ViaPort(v1)],
+                                          dmax=0.4e-3, dmax_layer={1: 0.6e-3}, w_ref={2: w, 1: 1e-3}, solver=s,
+                                          precision=p, verbose=False)
+    sim = mk('direct')
+    fo = sim.fast
+    fo.setup(4e9, mode='aca')
+    rows, cols = np.arange(0, sim.Ne, 7), np.arange(0, sim.Ne, 5)
+    Bc = fo.entry(rows, cols)
+    fo.core = None
+    Bp = fo.entry(rows, cols)
+    assert np.abs(Bc - Bp).max() < 1e-12 * np.abs(Bp).max()
+    S = {k: mk(*k).sparams(4e9) for k in (('direct', 'double'), ('direct', 'mixed'), ('blr', 'double'))}
+    ref = S[('direct', 'double')]
+    for k, v in S.items():
+        assert np.abs(v - ref).max() < 1e-6, k

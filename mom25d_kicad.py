@@ -523,6 +523,9 @@ class BoardModel:
             kind = props.get('mom.port', 'auto')
             g = self._copper_at(k)
             assert g is not None, f"{name}: no copper on {lay}"
+            if not g.buffer(1e-6).contains(Point(*c)):
+                raise ValueError(f"{name} ({fp['ref']}) at ({fp['x']:.3f}, {fp['y']:.3f}) mm is not on {lay} copper "
+                                 f"of the selected nets/region")
             ref_shift = float(props.get('mom.ref', 0)) * MM
             if kind in ('auto', 'wave'):
                 w, L = self._feed(g, c, d, step)
