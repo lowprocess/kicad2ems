@@ -28,7 +28,8 @@ from .config import apply_toml
 def parser():
     ap = argparse.ArgumentParser(prog='kicad2openems', description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('board', help='.kicad_pcb')
+    ap.add_argument('board', nargs='?', help='.kicad_pcb')
+    ap.add_argument('--check', action='store_true', help='check that this python can run openEMS, then exit')
     ap.add_argument('--config', help='TOML file with any of these options (openEMS ones also under [openems])')
     g = ap.add_argument_group('board')
     g.add_argument('--pos', help='pick-and-place file listing the port components')
@@ -63,6 +64,14 @@ def parser():
 def main(argv=None):
     ap = parser()
     a = ap.parse_args(argv)
+    if a.check:
+        from .simulation import check_openems
+        ok, report = check_openems()
+        print("\n".join(report))
+        print("openEMS: ready" if ok else "openEMS: NOT usable from this python")
+        return 0 if ok else 2
+    if not a.board:
+        ap.error("board file required (or --check)")
     if a.config:
         ignored = apply_toml(a, ap, a.config, argv)
         if ignored:
@@ -86,13 +95,11 @@ def main(argv=None):
     if a.preview:
         return 0
 
-    try:
-        import openEMS  # noqa: F401
-        import CSXCAD  # noqa: F401
-    except ImportError as e:
-        print(f"openEMS Python bindings not found ({e}); install openEMS (see README) or use --preview")
+    from .simulation import run_excitations, port_index, check_openems
+    ok, report = check_openems()
+    if not ok:
+        print("openEMS cannot be imported - details:\n" + "\n".join(report))
         return 2
-    from .simulation import run_excitations, port_index
 
     excite = port_index(m, a.excite)
     freq = np.linspace(fmin, fmax, a.points)

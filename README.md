@@ -102,6 +102,20 @@ dependencies for Debian/Ubuntu and Fedora, builds openEMS-Project and pip-instal
 and `openEMS` Python packages). If `import openEMS` cannot find its libraries, add `<prefix>/lib`
 to `LD_LIBRARY_PATH`.
 
+### "openEMS cannot be imported"
+
+Run `kicad2openems --check` (or `python -m kicad2openems --check`) with the Python you use for the
+simulations. It prints which Python is running, the real import error for numpy, h5py, CSXCAD and
+openEMS, and what to do:
+
+* **not installed for this Python** — the `kicad2openems` command was installed by a different
+  Python than your openEMS venv (`--check` also shows which Python the command on PATH runs).
+  Install kicad2openems inside the venv (`python -m pip install .`) or run `python -m kicad2openems`.
+* **openEMS from your distribution (dnf / apt) but a venv** — a plain venv does not see system
+  packages: recreate it with `python3 -m venv --system-site-packages <dir>`.
+* **missing dependency** (often `h5py`) — `python -m pip install h5py`.
+* **shared library not found** — add the openEMS install's `lib` folder to `LD_LIBRARY_PATH`.
+
 ## Code layout
 
 | Module | Contents |
