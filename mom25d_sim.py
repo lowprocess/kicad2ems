@@ -523,6 +523,15 @@ class Simulation:
                 Ap[i] = (Vp + p.zc * Ip) / (2 * np.sqrt(p.zc))
                 Bp[i] = (Vp - p.zc * Ip) / (2 * np.sqrt(p.zc))
         S = Bp @ np.linalg.inv(Ap)
+        self.low_span = []
+        for i, p in enumerate(self.ports):
+            if isinstance(p, LinePort):
+                span = abs(self.samples[i][-1] - self.samples[i][0])
+                if abs(gam[i].imag) * span < 0.4:
+                    self.low_span.append(p.name)
+                    self.log.note(f"WARNING {f / 1e9:.2f} GHz port {p.name}: feed samples span only "
+                                  f"{abs(gam[i].imag) * span:.2f} rad - wave separation unreliable "
+                                  f"(lengthen the straight feed or use a via/gap port)")
         for i in np.nonzero(resid > 1e-2)[0]:
             self.log.note(f"WARNING {f / 1e9:.2f} GHz port {self.ports[i].name}: wave-fit residual "
                           f"{resid[i]:.1e} - sample cuts too close to a discontinuity (use s1) "

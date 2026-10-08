@@ -202,7 +202,7 @@ def plot_sparams(ax, res, col=0, ylim=(-40, 1)):
     for i in range(n):
         y = 20 * np.log10(np.abs(res.S[:, i, col]) + 1e-12)
         c = SERIES[i % len(SERIES)]
-        ax.plot(f, y, color=c, lw=2, marker='o', ms=3.5, label=f"S{i + 1}{col + 1}")
+        ax.plot(f, y, color=c, lw=2, marker='o' if len(f) <= 60 else None, ms=3.5, label=f"S{i + 1}{col + 1}")
         yl = np.clip(y[-1], *ylim)
         ax.text(f[-1] + 0.01 * (f[-1] - f[0]), yl, f" S{i + 1}{col + 1}", color=INK, va='center', fontsize=8)
     ax.set_xlim(f[0], f[-1] + 0.1 * (f[-1] - f[0]))
@@ -292,7 +292,7 @@ def plot_diagnostics(ax, res):
               (res.resid.max(1), 'wave-fit residual')]
     for i, (y, lab) in enumerate(curves):
         y = np.maximum(y, 1e-16)
-        ax.semilogy(f, y, color=SERIES[i], lw=2, marker='o', ms=3.5, label=lab)
+        ax.semilogy(f, y, color=SERIES[i], lw=2, marker='o' if len(f) <= 60 else None, ms=3.5, label=lab)
     ax.legend(frameon=False, fontsize=7, loc='center right')
     ax.set_xlabel('Frequency (GHz)'); ax.set_ylabel('error')
     ax.grid(color=GRID, lw=0.5); ax.set_axisbelow(True)
