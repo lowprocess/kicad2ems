@@ -22,7 +22,13 @@ def mixed_mode(S, m):
             z = legs[0].z0
             zref += [2 * z, z / 2]
     Mx = np.array(rows)
-    return np.einsum('ij,fjk,lk->fil', Mx, S, Mx), names, zref
+    # unknown entries (NaN: ports not excited) must not spread: transform with zeros, then mark
+    # only the results that actually depend on an unknown entry
+    unknown = np.isnan(S)
+    Smm = np.einsum('ij,fjk,lk->fil', Mx, np.where(unknown, 0, S), Mx)
+    dep = np.einsum('ij,fjk,lk->fil', np.abs(Mx), unknown.astype(float), np.abs(Mx)) > 0
+    Smm[dep] = np.nan
+    return Smm, names, zref
 
 
 def fill_reciprocal(S, excite):

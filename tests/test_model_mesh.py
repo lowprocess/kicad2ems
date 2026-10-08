@@ -105,3 +105,18 @@ def test_boundaries_and_air_margin(demo):
     m2 = OEModel(KiCadBoard(demo + '.kicad_pcb'), nets=['RF'], pos_file=demo + '-top.pos', ground='B.Cu')
     m2.copper.pop('B.Cu')
     assert resolve_bc('auto', m2)[4] == 'MUR'                       # no solid bottom plane -> absorbing
+
+
+def test_mixed_mode_keeps_known_entries_when_some_are_unknown():
+    class P:
+        def __init__(s, n): s.name, s.z0 = n, 50.0
+    ps = [P('P1'), P('P2+'), P('P2-')]
+    m = type('M', (), {'ports': ps, 'user_ports': [('P1', ps[:1]), ('P2', ps[1:])]})()
+    S = np.full((1, 3, 3), 0.1 + 0j)
+    S[0, 0, 0], S[0, 1, 0] = 0.2, 0.7
+    S[0, 1:, 1:] = np.nan                                          # P2 legs not excited
+    Smm, names, _ = mixed_mode(S, m)
+    assert names == ['P1', 'P2d', 'P2c']
+    assert Smm[0, 0, 0] == pytest.approx(0.2)                       # S11 survives
+    assert np.isfinite(Smm[0, 1:, 0]).all()                         # P1 -> P2d / P2c survive
+    assert np.isnan(Smm[0, 1:, 1:]).all()                           # only the unknown block is NaN
