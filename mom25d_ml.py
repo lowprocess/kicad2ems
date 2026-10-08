@@ -107,6 +107,17 @@ class LayerStack:
         """permittivity below + above interface k (sets the 1/rho singular coefficient)."""
         return self.eps(k) + self.eps(k + 1)
 
+    def nearest_discontinuity(self, k):
+        """Distance from interface k to the closest interface with a permittivity step, or a ground."""
+        d = np.inf
+        for j in range(k - 1, -1, -1):                       # down
+            if j == 0 or self.eps(j) != self.eps(j + 1):
+                d = min(d, self.z[k] - self.z[j]); break
+        for j in range(k + 1, self.N + 1):                   # up
+            if (self.top == 'pec' and j == self.N) or self.eps(j) != self.eps(j + 1):
+                d = min(d, self.z[j] - self.z[k]); break
+        return d
+
     def max_er(self):
         e = [abs(l.er_c) for l in self.layers]
         if self.top == 'open':
@@ -172,13 +183,22 @@ class GreenTableML:
     Sommerfeld integrals along a contour lifted into the upper-half kr plane (clear of
     surface-wave / parallel-plate poles and the branch point).
     """
-    def __init__(self, f, stack, o, s, rho_max, nrho=260, nfine=8192, K=None, nq=8):
+    def __init__(self, f, stack, o, s, rho_max, nrho=260, nfine=8192, K=None, nq=8, cross_sing=False,
+                 image_sing=None):
         w = 2 * np.pi * f
         k0 = w / C0
         self.o, self.s, self.f = o, s, f
         same = o == s
+        self.d = abs(stack.z[o] - stack.z[s])
         self.cA = MU0 / (4 * np.pi) if same else 0.0
         self.cq = 1.0 / (2 * np.pi * EPS0 * stack.eps_sum(o)) if same else 0.0
+        if cross_sing and not same:
+            # near-singular 1/sqrt(rho^2+d^2) part between close interfaces: coefficients from the
+            # large-kr limit of the network (reflections from other interfaces have died out)
+            K1 = min(25.0 / stack.hmin, 300.0 / self.d)
+            ga, gq = stack.spectral(np.array([K1 + 0j]), w, o, s)
+            fac = K1 * np.exp(K1 * self.d) / (2 * np.pi)
+            self.cA, self.cq = complex(ga[0] * fac), complex(gq[0] * fac)
         kmax = k0 * np.sqrt(stack.max_er())
         K = K or (max(1e5, 30.0 / stack.hmin) + 40 * kmax)
         t1 = 1.5 * kmax
@@ -196,9 +216,25 @@ class GreenTableML:
         kr = t + 1j * sdef
         dk = wt * (1 + 1j * ds)
         GA, Gq = stack.spectral(kr, w, o, s)
+        self.dimg, self.cAi, self.cqi = 0.0, 0.0, 0.0
         if same:
             GA = GA - MU0 / (2 * kr)
             Gq = Gq - 1.0 / (EPS0 * stack.eps_sum(o) * kr)
+            if image_sing:
+                # nearest image (close dielectric step or ground): extract c/sqrt(rho^2 + dimg^2) too.
+                # Coefficients from the static network (no dynamic remainder to pollute the limit).
+                self.dimg = 2 * stack.nearest_discontinuity(o)
+                K1 = 18.0 / self.dimg        # image term ~e^-18: above round-off, next images negligible
+                ws = 2 * np.pi * 1.0
+                ga, gq = stack.spectral(np.array([K1 + 0j]), ws, o, s)
+                fac = K1 * np.exp(K1 * self.dimg) / (2 * np.pi)
+                self.cAi = complex((ga[0] - MU0 / (2 * K1)) * fac).real
+                self.cqi = complex((gq[0] - 1.0 / (EPS0 * stack.eps_sum(o) * K1)) * fac)
+                e = 2 * np.pi * np.exp(-kr * self.dimg) / kr
+                GA, Gq = GA - self.cAi * e, Gq - self.cqi * e
+        elif self.cA != 0:
+            e = 2 * np.pi * np.exp(-kr * self.d) / kr
+            GA, Gq = GA - self.cA * e, Gq - self.cq * e
         rho = rho_max * np.linspace(0, 1, nrho) ** 2
         J = jv(0, rho[:, None] * kr[None, :])
         dA = J @ (GA * kr * dk) / (2 * np.pi)
@@ -231,7 +267,12 @@ class GreenTableML:
     def total(self, r):
         """Full kernels (singular part included) - for plotting/debug."""
         r = np.asarray(r, float)
-        return self.cA / r + self.A(r), self.cq / r + self.Q(r)
+        R = np.sqrt(r ** 2 + self.d ** 2) if self.o != self.s else r
+        A, Q = self.cA / R + self.A(r), self.cq / R + self.Q(r)
+        if self.dimg:
+            Ri = np.sqrt(r ** 2 + self.dimg ** 2)
+            A, Q = A + self.cAi / Ri, Q + self.cqi / Ri
+        return A, Q
 
 
 # =============================================================================
