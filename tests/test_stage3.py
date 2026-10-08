@@ -180,3 +180,48 @@ def test_core_matches_numpy_and_solvers_agree():
     ref = S[('direct', 'double')]
     for k, v in S.items():
         assert np.abs(v - ref).max() < 1e-6, k
+
+
+def test_coupled_stripline_even_odd_vs_cohn():
+    from mom25d_sim import line_char_pair, coupled_stripline_cohn
+    b, er, w, s = 0.4e-3, 4.3, 0.15e-3, 0.15e-3
+    st = LayerStack([Layer(b / 2, er), Layer(b / 2, er)], top='pec')
+    ge, ze, go, zo = line_char_pair(st, 1, w, s, [5e9])
+    Ze, Zo = coupled_stripline_cohn(w, s, b, er)
+    assert abs(ze[0].real / Ze - 1) < 0.025 and abs(zo[0].real / Zo - 1) < 0.025
+    k0 = 2 * np.pi * 5e9 / C0
+    assert abs((ge[0].imag / k0) ** 2 / er - 1) < 0.003 and abs((go[0].imag / k0) ** 2 / er - 1) < 0.003
+
+
+def test_differential_through_line():
+    from mom25d_sim import DiffPort
+    st = LayerStack([Layer(0.2e-3, 4.3)])
+    w, s, L = 0.25e-3, 0.2e-3, 16e-3
+    yc = (w + s) / 2
+    shapes = {1: [(-L / 2, yc - w / 2, L / 2, yc + w / 2), (-L / 2, -yc - w / 2, L / 2, -yc + w / 2)]}
+
+    def dp(x, d, name):
+        kw = dict(s0=0.6e-3, s1=6e-3, step=0.6e-3)
+        return DiffPort(LinePort(1, (x, yc), (d, 0), w, -0.3e-3, **kw), LinePort(1, (x, -yc), (d, 0), w, -0.3e-3, **kw),
+                        112.4, 36.5, name)
+    sim = Simulation(st, shapes, [dp(-L / 2 + 0.3e-3, 1, 'P1'), dp(L / 2 - 0.3e-3, -1, 'P2')], dmax=0.3e-3,
+                     w_ref=w, ncross=4, verbose=False)
+    S = sim.sparams(5e9)
+    assert [p.name for p in sim.ports] == ['P1d', 'P1c', 'P2d', 'P2c']
+    assert abs(abs(S[2, 0]) - 1) < 2e-3 and abs(S[0, 0]) < 0.01          # matched, lossless, differential
+    assert abs(S[3, 0]) < 1e-3 and abs(S[0, 1]) < 1e-3                    # no mode conversion (symmetric)
+    assert np.abs(S - S.T).max() < 1e-8
+    assert sim.last['resid'].max() < 1e-2
+
+
+def test_kicad_differential_ports(tmp_path):
+    base = str(tmp_path / 'diff')
+    subprocess.check_call([sys.executable, os.path.join(ROOT, 'examples', 'make_demo_board.py'), base, 'diff'])
+    from mom25d_kicad import KiCadBoard
+    from mom25d_sim import DiffPort
+    m = KiCadBoard(base + '.kicad_pcb').build(nets=['D_P', 'D_N'], ground='B.Cu', pos_file=base + '-top.pos',
+                                              include_mask=False)
+    ps = m.ports(dmax=0.3e-3)
+    assert [type(p) for p in ps] == [DiffPort, DiffPort]
+    assert ps[0].pos.w == pytest.approx(0.25e-3, rel=1e-6)
+    assert abs((ps[0].pos.c - ps[0].neg.c) @ ps[0].pos.t) == pytest.approx(0.45e-3, rel=1e-3)

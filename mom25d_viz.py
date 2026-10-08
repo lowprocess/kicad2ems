@@ -154,10 +154,11 @@ def plot_layout(ax, sim, layers=None, mesh=True, ports=True, alpha=0.30):
             c = q['c'] * 1e3
             name = getattr(p, 'name', '') or f"P{i + 1}"
             if q['kind'] == 'wave':
-                for x in (smp if smp is not None else []):          # wave-fit sample cuts
-                    ax.plot(*_seg(q['lp'], x), color=MUTED, lw=0.6)
-                ax.plot(*_seg(q['lp'], q['ref']), color=INK, lw=1.0, ls='--')   # reference plane
-                ax.plot(*_seg(q['lp'], 0.0), color=PORT, lw=2.2)                # gap
+                for lp in [q['lp']] + ([q['lp'].lp_n] if hasattr(q['lp'], 'lp_n') else []):
+                    for x in (smp if smp is not None else []):      # wave-fit sample cuts
+                        ax.plot(*_seg(lp, x), color=MUTED, lw=0.6)
+                    ax.plot(*_seg(lp, q['ref']), color=INK, lw=1.0, ls='--')   # reference plane
+                    ax.plot(*_seg(lp, 0.0), color=PORT, lw=2.2)                # gap
             elif q['kind'] == 'gap':
                 ax.plot(*_seg(q['lp'], 0.0), color=PORT, lw=2.2)
             else:

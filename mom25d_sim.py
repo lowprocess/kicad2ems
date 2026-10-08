@@ -91,6 +91,39 @@ class ViaPort:
         self.layer = None
 
 
+class DiffPort:
+    """
+    Differential wave port on a pair of parallel feeds (positive / negative line), e.g. an
+    edge-coupled pair. Contributes two modal ports to the S-matrix: '<name>d' (differential) and
+    '<name>c' (common). Each mode is fitted with its own propagation constant (odd/even modes of a
+    symmetric pair), so mode conversion and modal dispersion are captured.
+      pos, neg : LinePort for each line (same direction, layer, sampling and reference plane)
+      zdiff, zcomm : modal reference impedances (2 Z_odd and Z_even / 2 of the pair; see line_char_pair)
+    """
+    def __init__(self, pos, neg, zdiff=100.0, zcomm=25.0, name='P'):
+        assert np.allclose(pos.d, neg.d), "differential lines must run in the same direction"
+        self.pos, self.neg, self.zdiff, self.zcomm, self.name = pos, neg, zdiff, zcomm, name
+        self.zd_fn = self.zc_fn = None
+
+    def modes(self):
+        return [ModePort(self, 'd'), ModePort(self, 'c')]
+
+
+class ModePort(LinePort):
+    """One mode of a DiffPort (internal): geometry of the positive line plus the negative line."""
+    def __init__(self, parent, mode):
+        p = parent.pos
+        super().__init__(p.layer, p.c, p.d, p.w, p.ref, s0=p.s0, step=p.step, s1=p.s1,
+                         zc=parent.zdiff if mode == 'd' else parent.zcomm, name=parent.name + mode)
+        self.parent, self.mode = parent, mode
+        self.lp_n = parent.neg
+        self.sign_n = -1.0 if mode == 'd' else 1.0
+        self.cscale = 1.0 if mode == 'd' else 2.0          # Id = (I+ - I-)/2,  Ic = I+ + I-
+        fn = parent.zd_fn if mode == 'd' else parent.zc_fn
+        if fn is not None:
+            self.zc_fn = fn
+
+
 class SeriesLumped:
     """Series element across a strip (cut line of the given width at `center`)."""
     def __init__(self, layer, center, direction, width, Z, name=''):
@@ -122,7 +155,11 @@ class Simulation:
         self.blr_tol, self.blr_tile, self.blr_eta = 1e-3, 512, 0.7   # solver='blr' preconditioner settings
         self.log = RunLog(verbose)
         self.dmax, self.ncross, self.grade, self.near_fac = dmax, ncross, grade, near_fac
-        self.ports = [port_from_axis(p) if isinstance(p, MLPort) else p for p in ports]
+        self.user_ports = list(ports)
+        self.ports = []
+        for p in ports:
+            p = port_from_axis(p) if isinstance(p, MLPort) else p
+            self.ports += p.modes() if isinstance(p, DiffPort) else [p]
         self.vias, self.lumped = list(vias), list(lumped)
         for p in self.ports:
             if isinstance(p, ViaPort) and p.via not in self.vias:
@@ -165,6 +202,9 @@ class Simulation:
                 self.samples.append(s)
                 for L_ in _ls(p.layer):
                     lines[L_] += [(p, x) for x in np.append(s, 0.0)]
+                if isinstance(p, ModePort):
+                    for L_ in _ls(p.lp_n.layer):
+                        lines[L_] += [(p.lp_n, x) for x in np.append(s, 0.0)]
             else:
                 self.samples.append(None)
                 if isinstance(p, GapPort):
@@ -249,7 +289,7 @@ class Simulation:
         self._edge_sets()
         self.tables, self.last = {}, None
         for p in self.ports:
-            if isinstance(p, LinePort) and getattr(p, 'zc_fn', None) is None and p.zc == 50.0:
+            if isinstance(p, LinePort) and not isinstance(p, ModePort) and getattr(p, 'zc_fn', None) is None and p.zc == 50.0:
                 self.log.note(f"note: wave port {p.name} uses zc = 50 ohm. Set it to the feed line's Zc "
                               f"(line_char / line_char_xs, or BoardModel.characterize) - a wrong zc makes S "
                               f"non-reciprocal when ports differ")
@@ -311,7 +351,16 @@ class Simulation:
     def _edge_sets(self):
         self.gap, self.cuts = [], []
         for p, s in zip(self.ports, self.samples):
-            if isinstance(p, LinePort):
+            if isinstance(p, ModePort):
+                def both(x, half):
+                    ip, sp = self._line_edges(p, x)
+                    i_n, sn = self._line_edges(p.lp_n, x)
+                    k = 0.5 if half else 1.0
+                    return np.concatenate([ip, i_n]), np.concatenate([k * sp, k * p.sign_n * sn])
+                self.gap.append(both(0.0, False))
+                self.cuts.append([both(x, True) for x in s])
+                assert all(len(c[0]) for c in self.cuts[-1]), f"port {p.name}: sample cut off the conductor"
+            elif isinstance(p, LinePort):
                 self.gap.append(self._line_edges(p, 0.0))
                 self.cuts.append([self._line_edges(p, x) for x in s])
                 assert all(len(c[0]) for c in self.cuts[-1]), f"port {p.name}: sample cut off the conductor"
@@ -526,8 +575,12 @@ class Simulation:
                 g = PlanarMoM.fit_gamma(Ik, abs(s[1] - s[0]))
                 a, b = PlanarMoM.fit_waves(Ik, s - p.ref, g)
                 M = np.stack([np.exp(-g * (s - p.ref)), np.exp(g * (s - p.ref))], 1)
-                resid[i] = np.max(np.linalg.norm(Ik - M @ np.vstack([a, b]), axis=0) / np.linalg.norm(Ik, axis=0))
-                Ap[i], Bp[i] = np.sqrt(p.zc) * a, -np.sqrt(p.zc) * b
+                # residual relative to the largest response of this port over all excitations (a mode
+                # that is barely excited by some column, e.g. differential under common drive, would
+                # otherwise give noise / ~0)
+                resid[i] = np.max(np.linalg.norm(Ik - M @ np.vstack([a, b]), axis=0)) / np.max(np.linalg.norm(Ik, axis=0))
+                cs = getattr(p, 'cscale', 1.0)                 # modal current definition (diff ports)
+                Ap[i], Bp[i] = np.sqrt(p.zc) * cs * a, -np.sqrt(p.zc) * cs * b
                 gam[i] = g
             else:
                 Vp = np.eye(n)[i]                     # port voltage = applied EMF
@@ -683,3 +736,43 @@ def line_char_xs(stack, layer, w, freqs, planes=None, length=16e-3, dmax=0.4e-3,
         Cp, Dp = PlanarMoM.fit_waves(IL, sim.samples[1], g)
         gam.append(g); zc.append(1.0 / ((A[0] - B[0]) - (Cp[0] - Dp[0])))
     return np.array(gam), np.array(zc)
+
+
+def line_char_pair(stack, layer, w, gap, freqs, planes=None, length=16e-3, dmax=0.4e-3, ncross=4, verbose=False):
+    """
+    Even/odd modes of a symmetric edge-coupled pair (strip width w, edge gap `gap`) on `layer`, with
+    optional reference metal (planes = {interface: width}). Returns (gamma_e, Z_even, gamma_o, Z_odd);
+    the DiffPort reference impedances are Z_diff = 2 Z_odd and Z_comm = Z_even / 2.
+    """
+    L2, margin = length / 2, 2e-3
+    yc = (w + gap) / 2
+    shapes = {layer: [(-L2, yc - w / 2, L2, yc + w / 2), (-L2, -yc - w / 2, L2, -yc + w / 2)]}
+    for k, W in (planes or {}).items():
+        shapes[k] = [(-L2, -W / 2, L2, W / 2)]
+    step = max(dmax, (L2 - margin - 1e-3) / 8)
+    ps = [LinePort(layer, (0, s * yc), (d, 0), w, L2 - margin, s0=1e-3, step=step, name=f"{s}{d}")
+          for s in (1, -1) for d in (1, -1)]                       # (+,R) (+,L) (-,R) (-,L)
+    wr = {layer: w, **{k: min(W, 2e-3) for k, W in (planes or {}).items()}}
+    sim = Simulation(stack, shapes, ps, dmax=dmax, w_ref=wr, ncross=ncross, verbose=verbose, refine=0)
+    out = {'e': ([], []), 'o': ([], [])}
+    for f in freqs:
+        Z = sim.impedance(f)
+        E = sim.excitation()
+        V = np.stack([E[:, 0] + E[:, 2], E[:, 0] - E[:, 2]], 1)       # even / odd drive at x = 0
+        I = sim.solve(Z, V)
+        for c, m in ((0, 'e'), (1, 'o')):
+            IR, IL = sim.cut_current(I, 0)[:, c], sim.cut_current(I, 1)[:, c]     # line + only
+            g = PlanarMoM.fit_gamma(np.stack([IR, IL], 1), step)
+            A, B = PlanarMoM.fit_waves(IR[:, None], sim.samples[0], g)
+            Cp, Dp = PlanarMoM.fit_waves(IL[:, None], sim.samples[1], g)
+            out[m][0].append(g); out[m][1].append(1.0 / ((A[0] - B[0]) - (Cp[0] - Dp[0])))
+    return (np.array(out['e'][0]), np.array(out['e'][1]), np.array(out['o'][0]), np.array(out['o'][1]))
+
+
+def coupled_stripline_cohn(w, s, b, er):
+    """Exact Z_even, Z_odd of zero-thickness edge-coupled strips centred between grounds spaced b."""
+    from scipy.special import ellipk
+    a = np.pi * w / (2 * b); c = np.pi * (w + s) / (2 * b)
+    ke = np.tanh(a) * np.tanh(c); ko = np.tanh(a) / np.tanh(c)
+    Z = lambda k: 30 * np.pi / np.sqrt(er) * ellipk(1 - k ** 2) / ellipk(k ** 2)
+    return Z(ke), Z(ko)

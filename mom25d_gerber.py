@@ -26,7 +26,7 @@ from shapely.geometry import Polygon, LineString, Point, box, MultiPolygon
 from shapely.ops import unary_union
 from shapely import affinity
 
-from mom25d_kicad import _arc_points, read_pos, pos_port_refs, BoardModel
+from mom25d_kicad import _arc_points, read_pos, pos_port_refs, BoardModel, DiffLegs
 
 
 # =============================================================================
@@ -306,7 +306,7 @@ class GerberBoard:
               port_props=None):
         rows = read_pos(pos_file)
         refs = pos_port_refs(rows)
-        pat = re.compile(r'^P(\d+)$', re.I)
+        pat = re.compile(r'^P(\d+)([+\-PN])?$', re.I)
         self._ports = {}
         for r in rows:
             if r['ref'] not in refs:
@@ -314,11 +314,18 @@ class GerberBoard:
             m = pat.match(r['val']) or pat.match(r['ref'])
             if not m:
                 continue
-            n = int(m.group(1))
+            n, leg = int(m.group(1)), (m.group(2) or '').upper()
             props = dict((port_props or {}).get(f"P{n}", {}))
-            self._ports[n] = dict(ref=r['ref'], value=r['val'], fab=[r['val']], props=props, x=r['x'],
-                                  y=-r['y'], rot=r['rot'], side='B' if r['side'].lower().startswith('b') else 'F',
-                                  lib=r['package'], pads=[])
+            fp = dict(ref=r['ref'], value=r['val'], fab=[r['val']], props=props, x=r['x'],
+                      y=-r['y'], rot=r['rot'], side='B' if r['side'].lower().startswith('b') else 'F',
+                      lib=r['package'], pads=[])
+            if leg:
+                self._ports.setdefault(n, DiffLegs())['+' if leg in ('+', 'P') else '-'] = fp
+            else:
+                self._ports[n] = fp
+        for n, v in self._ports.items():
+            if isinstance(v, DiffLegs) and set(v) != {'+', '-'}:
+                raise ValueError(f"differential port P{n} needs both P{n}+ and P{n}- rows")
         self._ports = dict(sorted(self._ports.items()))
         return BoardModel(self, None, ground, cover, region, None, include_mask, flip, 4.5, 0.02)
 
