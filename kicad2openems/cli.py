@@ -47,6 +47,13 @@ def parser():
     g.add_argument('--air', type=float, default=5.0, help='mm of air between the board and the boundary')
     g.add_argument('--ratio', type=float, default=1.4, help='max growth between neighbouring cells')
     g.add_argument('--nz', type=int, default=4, help='minimum cells through each dielectric layer')
+    g.add_argument('--curves', default='extremes', choices=['extremes', 'vertices'],
+                   help='mesh lines for rounded corners / arcs / circles: only the ends and extremes of each curve '
+                        '(default) or every vertex')
+    g.add_argument('--vias', default='auto', choices=['auto', 'exact', 'centre', 'snap'],
+                   help='via mesh lines: auto = exact on signal nets, snap elsewhere; exact = centre and +-radius; '
+                        'centre = one line per axis; snap = move onto existing lines (within --via-snap)')
+    g.add_argument('--via-snap', type=float, default=0.2, help='mm a snapped via may move (default 0.2)')
     g = ap.add_argument_group('solver')
     g.add_argument('--bc', default='auto', help='boundaries: auto (PEC on a solid bottom plane, MUR elsewhere), '
                                                 'MUR, PML_8, PEC, or six values xmin,xmax,ymin,ymax,zmin,zmax')
@@ -87,7 +94,8 @@ def main(argv=None):
               region=region, ground=a.ground)
     print(m.describe())
     bc = resolve_bc(a.bc, m)
-    mesh = auto_mesh(m, fmin, fmax, res=a.res, fine=a.fine, air=a.air, ratio=a.ratio, nz_min=a.nz, bc=bc)
+    mesh = auto_mesh(m, fmin, fmax, res=a.res, fine=a.fine, air=a.air, ratio=a.ratio, nz_min=a.nz, bc=bc,
+                     curves=a.curves, vias=a.vias, via_snap=a.via_snap)
     cavity_check(m, mesh, bc, fmax)
     png = os.path.join(a.out, f"{name}_mesh.png")
     preview(m, mesh, png, name)

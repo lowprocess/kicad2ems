@@ -97,7 +97,7 @@ class Model:
             self.copper[ground] = [orient(self.outline, 1.0)]       # union of its copper and the outline = outline
             self.notes.append(f"{ground}: solid ground plane over the board outline (ground = {ground})")
         # ---- vias (metal cylinders) ----
-        self.vias = []
+        self.vias, self.via_nets = [], []
         for v in board.vias:
             if self.sel is not None and v['net'] not in self.sel:
                 continue
@@ -109,6 +109,7 @@ class Model:
                 continue
             zs = [self.cu_z[l] for l in lys]
             self.vias.append((x, y, v['drill'] / 2, min(zs), max(zs)))
+            self.via_nets.append(v['net'])
         # ---- ports ----
         refs = None
         if pos_file:
@@ -127,6 +128,9 @@ class Model:
                 p = self._port(f"P{n}", fp)
                 self.ports.append(p)
                 self.user_ports.append((p.name, [p]))
+        # signal nets: the nets of the traces the ports sit on; vias on them are 'signal vias'
+        self.signal_nets = {p.net for p in self.ports if p.net}
+        self.via_signal = [n in self.signal_nets for n in self.via_nets]
 
     def _copper_at(self, lay, pt):
         for p in self.copper.get(lay, []):
@@ -176,7 +180,11 @@ class Model:
         if ref is None:
             raise ValueError(f"{name}: no reference copper {'below' if below else 'above'} the port at "
                              f"({fp['x']:.3f}, {fp['y']:.3f}) mm - include the ground net in --nets")
-        return Port(name, lay, zs, self.cu_z[ref], pc, axis, sgn, w, float(port_field(props, 'z0', 50)), leg, pair, ref)
+        port = Port(name, lay, zs, self.cu_z[ref], pc, axis, sgn, w, float(port_field(props, 'z0', 50)), leg, pair, ref)
+        kx, ky = pc[0], -pc[1]                                      # KiCad coordinates of the port point
+        port.net = next((str(n) for l, n, g in self.board.items
+                         if l == lay and n and g.buffer(1e-6).contains(Point(kx, ky))), None)
+        return port
 
     def describe(self):
         L = ["stack (bottom to top):"]
@@ -185,7 +193,9 @@ class Model:
         for n in self.cu_order[::-1]:
             L.append(f"  copper {n:<8s} z {self.cu_z[n]:.3f} mm" + ("" if n in self.copper else "  (nothing selected)"))
         b = self.outline.bounds
-        L.append(f"outline {b[2] - b[0]:.2f} x {b[3] - b[1]:.2f} mm, vias {len(self.vias)}")
+        ns = sum(self.via_signal)
+        L.append(f"outline {b[2] - b[0]:.2f} x {b[3] - b[1]:.2f} mm, vias {len(self.vias)} ({ns} on signal nets "
+                 f"{sorted(self.signal_nets)}, {len(self.vias) - ns} other)")
         for p in self.ports:
             L.append(f"  {p.name}: lumped, {p.layer} -> {p.ref_layer}, w {p.w:.3f} mm, h {abs(p.z_sig - p.z_ref):.3f} mm, "
                      f"at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm")

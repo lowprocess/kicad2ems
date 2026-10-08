@@ -48,9 +48,10 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
                 x, y = q.exterior.xy
                 metal.AddPolygon([np.asarray(x[:-1], float), np.asarray(y[:-1], float)], 'z', _f(m.cu_z[lay]),
                                  priority=10)
-    if m.vias:
+    vias = mesh.get('vias', m.vias)                                 # as placed by the mesher (snapped)
+    if vias:
         vm = CSX.AddMetal('vias')
-        for (x, y, r, z0, z1) in m.vias:
+        for (x, y, r, z0, z1) in vias:
             vm.AddCylinder(_fl([x, y, z0]), _fl([x, y, z1]), _f(r), priority=11)
     ports = []
     for i, p in enumerate(m.ports):

@@ -60,13 +60,29 @@ excited are filled by reciprocity; their own reflection stays unknown (written a
 ## Mesh
 
 * **x / y:** thirds rule at Manhattan copper edges (lines 1/3 of the fine cell inside and 2/3
-  outside the metal), end points of oblique edges, via centre ± radius; port planes and the board
-  outline exactly on lines; lines closer than half the fine cell merged by priority (exact > edge
-  > other); graded filling with ≤ `--ratio` (1.4) growth up to λ/`--res` (λ/20) in the dielectric
-  and in air.
+  outside the metal); port planes and the board outline exactly on lines; graded filling with
+  ≤ `--ratio` (1.4) growth up to λ/`--res` (λ/20) in the dielectric and in air.
+* **Curves** (`--curves`): rounded pad corners, round track ends, arcs, circular antipads and
+  oblique edges add lines only at the ends and the x / y extremes of each curved run (`extremes`,
+  default: a round antipad gives 2 lines per axis); `vertices` adds a line at every vertex.
+* **Vias** (`--vias`): `auto` (default) resolves vias on the port (signal) nets exactly (centre and
+  ± radius) and *snaps* all others (ground stitching / fences) onto the nearest existing line
+  crossing if it is within `--via-snap` mm (0.2), otherwise gives them a single centre line.
+  `exact`, `centre` and `snap` apply one rule to every via.
+* **Merging:** lines closer than half the fine cell are merged without chaining or averaging; the
+  line just inside a copper edge has priority, so every trace keeps its lines (the mesh report and
+  `_openems.json` list the lines across each port trace; fewer than 2 gives a warning).
 * **z:** every interface, at least `--nz` (4) cells per dielectric, copper sheets exactly on lines.
 * **Fine cell** (`--fine`): default min(port widths, 2 × thinnest dielectric) / 4.
 * **Air:** `--air` mm (default 5) between the board and the boundary.
+
+Effect of the curve and via rules (same accuracy: S21 within 0.04 dB / 7° of the full-detail mesh
+on the demo board up to 8 GHz):
+
+| Board | every vertex, exact vias | defaults |
+|---|---|---|
+| demo transition (microstrip → via → stripline) | 1.37 M cells, 272 s | 0.54 M cells, 111 s |
+| 4-layer SMA edge launch with via fences | 0.99 M cells | 0.57 M cells |
 
 ## Boundaries
 

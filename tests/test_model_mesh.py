@@ -120,3 +120,34 @@ def test_mixed_mode_keeps_known_entries_when_some_are_unknown():
     assert Smm[0, 0, 0] == pytest.approx(0.2)                       # S11 survives
     assert np.isfinite(Smm[0, 1:, 0]).all()                         # P1 -> P2d / P2c survive
     assert np.isnan(Smm[0, 1:, 1:]).all()                           # only the unknown block is NaN
+
+
+def test_merge_keeps_inside_line_of_narrow_trace():
+    """Regression: chained clusters + averaging pushed the line inside a 0.15 mm trace outside it."""
+    from kicad2openems.mesh import _merge
+    fine = 0.0375
+    edge = -5.075                                                   # lower edge of a trace, metal above
+    lines = [edge - 2 * fine / 3, -5.081, edge + fine / 3]          # outside third, a curve vertex, inside third
+    out = _merge(lines, fine / 2, prio=[1, 0, 2])
+    assert np.any(np.abs(out - (edge + fine / 3)) < 1e-12)          # the inside line survives exactly
+    assert np.all(np.diff(out) > fine / 2)                          # and nothing closer than tol remains
+
+
+def test_curves_extremes_and_via_snapping(demo):
+    from kicad2openems.mesh import curve_lines
+    from kicad2openems.boundaries import resolve_bc
+    circle = np.array(Point(1, 2).buffer(0.5, quad_segs=8).exterior.coords)
+    xs, ys = curve_lines(circle, 0.05)
+    assert set(np.round(xs, 6)) == {0.5, 1.5} and set(np.round(ys, 6)) == {1.5, 2.5}   # 2 lines per axis, not 32
+    assert len(curve_lines(circle, 0.05, 'vertices')[0]) == 32
+    m = OEModel(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu')
+    assert m.signal_nets == {'RF'} and sum(m.via_signal) == 1
+    bc = resolve_bc('auto', m)
+    exact = auto_mesh(m, 1e9, 8e9, bc=bc, curves='vertices', vias='exact', log=lambda *a: None)
+    simple = auto_mesh(m, 1e9, 8e9, bc=bc, log=lambda *a: None)
+    assert simple['info']['cells'] < 0.6 * exact['info']['cells']
+    assert simple['info']['via_max_move_mm'] <= 0.2
+    sig = [v for v, s in zip(simple['vias'], m.via_signal) if s][0]
+    assert sig[:2] == m.vias[m.via_signal.index(True)][:2]          # the signal via never moves
+    for mesh in (exact, simple):                                     # both ports resolved across their width
+        assert min(mesh['info']['lines_across_ports'].values()) >= 3
