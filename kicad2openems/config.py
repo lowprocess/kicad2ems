@@ -20,7 +20,8 @@ if sys.version_info >= (3, 11):
 else:                                                           # pragma: no cover
     import tomli as tomllib
 
-LIST_KEYS = ('nets', 'region', 'excite')
+LIST_KEYS = ('nets', 'region', 'excite', 'dump_port')
+KEEP_LIST = ('dump',)                                          # specs contain commas: stay a list
 
 
 def apply_toml(args, parser, path, argv=None):
@@ -41,6 +42,8 @@ def apply_toml(args, parser, path, argv=None):
             k, v = 'mask', not v
         if k in LIST_KEYS and isinstance(v, list):
             v = ",".join(map(str, v))
+        if k in KEEP_LIST and isinstance(v, str):
+            v = [v]
         if k not in known:
             ignored.append(k)
             continue

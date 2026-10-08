@@ -93,6 +93,28 @@ values `xmin,xmax,ymin,ymax,zmin,zmax`. PEC side walls close the model into a me
 warns when its first cavity resonance is below fmax (spurious resonances, slow decay) — only use
 them when the real board sits in a shield can of that size.
 
+## Field dumps
+
+`--dump FIELD@REGION[@GHz,...]` (repeatable; or `dump = [...]` under `[openems]` in the TOML):
+
+| Part | Values |
+|---|---|
+| FIELD | `E`, `H`, `J` (total current density, shows the copper currents) |
+| REGION | `F.Cu` (plane at a copper layer), `F.Cu-0.1` / `In1.Cu+0.05` (offset in mm, e.g. inside the dielectric under a trace), `z=0.3`, `x=12`, `y=7` (KiCad mm), `volume` (whole board), `box=x0,y0,z0,x1,y1,z1` |
+| FREQS | GHz list → frequency-domain dump (HDF5) **plus PNG field maps** with copper outlines; omit → time-domain VTK series (animate in ParaView) |
+
+```bash
+kicad2openems board.kicad_pcb --config board.toml --excite P1 \
+    --dump E@F.Cu-0.1@2,6 --dump J@In2.Cu@4 --dump E@y=7
+```
+
+Dumps are recorded in the run of the first excited port (`--dump-port P2` to choose). Planes are
+clipped to the board (+1 mm) and the stack (+1 mm of air). The PNG maps are scaled to a **1 V
+incident wave** at the driven port (checked: |Ez| under a 0.2 mm-high microstrip is 5.0 kV/m).
+`--preview` validates the specs and prints the number of points per dump; the run prints a rough
+disk estimate. Files land in `<out>/openems/exc_<port>/dump_*.h5|.vtr`;
+`kicad2openems.dumps.read_fd(path)` reads an HDF5 dump into numpy (old and new openEMS layouts).
+
 ## Configuration file
 
 Every option can go in a TOML file (`--config`); options typed on the command line win.
@@ -148,6 +170,7 @@ openEMS, and what to do:
 | `mesh.py` | automatic mesh (`auto_mesh`, `smooth_lines`) |
 | `simulation.py` | CSXCAD / openEMS setup and runs |
 | `sparams.py` | mixed-mode conversion, reciprocity fill |
+| `dumps.py` | field-dump specs, CSX dump boxes, HDF5 reader, field-map plots |
 | `touchstone.py` | Touchstone read / write |
 | `plots.py` | mesh preview and S-parameter plots |
 | `config.py` | TOML configuration |
