@@ -53,6 +53,34 @@ def rlc(R=0.0, L=0.0, C=None, parallel=False):
     return Z
 
 
+def available_memory():
+    """Bytes of memory available to this process: MemAvailable, capped by a cgroup limit."""
+    avail = None
+    try:
+        for line in open('/proc/meminfo'):
+            if line.startswith('MemAvailable:'):
+                avail = int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    for lim, use in (('/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory.current'),
+                     ('/sys/fs/cgroup/memory/memory.limit_in_bytes', '/sys/fs/cgroup/memory/memory.usage_in_bytes')):
+        try:
+            L = open(lim).read().strip()
+            if L != 'max' and int(L) < 1 << 60:
+                free = int(L) - int(open(use).read())
+                avail = free if avail is None else min(avail, free)
+            break
+        except (OSError, ValueError):
+            continue
+    if avail is None:
+        try:
+            import psutil
+            avail = psutil.virtual_memory().available
+        except ImportError:
+            avail = 8e9
+    return float(avail)
+
+
 class Via:
     """Plated via: axis (x, y), from interface k_bot to k_top, barrel radius. Z: optional series
     element (callable f -> ohms) placed in the lowest chain (e.g. a chip part to ground)."""
@@ -301,8 +329,18 @@ class Simulation:
                 has_core = True
             except ImportError:
                 has_core = False
-            # dense reference -> lean direct (mixed precision with the core) -> BLR (memory) / ACA
-            solver = 'dense' if n <= 3500 else ('direct' if n <= 14000 else ('blr' if has_core else 'aca'))
+            # dense reference -> lean direct (mixed precision with the core) -> BLR (memory) / ACA.
+            # direct is used whenever its peak memory (measured: ~18 B/N^2 mixed, ~34 B/N^2 double)
+            # fits in 75 % of the memory available now (cgroup limit aware)
+            need = (18.0 if has_core else 34.0) * n * n + 0.4e9
+            avail = available_memory()
+            if n <= 3500:
+                solver = 'dense'
+            elif need <= 0.75 * avail:
+                solver = 'direct'
+            else:
+                solver = 'blr' if has_core else 'aca'
+            self.log.note(f"memory: direct solver needs ~{need / 1e9:.1f} GB, {avail / 1e9:.1f} GB available")
             if solver == 'direct' and has_core and precision == 'double':
                 self.precision = 'mixed'
             self.solver = solver
@@ -552,19 +590,21 @@ class Simulation:
             d = 1.0 / np.sqrt(np.abs(np.diagonal(Z)) + 1e-300)     # symmetric equilibration
             return d[:, None] * np.linalg.solve(Z * d[:, None] * d[None, :], d[:, None] * E)
 
+    def currents(self, f, E):
+        """Basis currents for excitation columns E, with the configured solver."""
+        if self.solver == 'aca':
+            return self.fast.solve(f, E)
+        if self.solver == 'direct':
+            return self.fast.solve_direct(f, E, precision=self.precision)
+        if self.solver == 'blr':
+            return self.fast.solve_blr(f, E, tol=self.blr_tol, tile=self.blr_tile, eta=self.blr_eta)
+        return self.solve(self.impedance(f), E)
+
     def sparams(self, f, keep=False):
         for p in self.ports:                          # frequency-dependent reference impedance
             if getattr(p, 'zc_fn', None) is not None:
                 p.zc = float(p.zc_fn(f))
-        E = self.excitation()
-        if self.solver == 'aca':
-            I = self.fast.solve(f, E)
-        elif self.solver == 'direct':
-            I = self.fast.solve_direct(f, E, precision=self.precision)
-        elif self.solver == 'blr':
-            I = self.fast.solve_blr(f, E, tol=self.blr_tol, tile=self.blr_tile, eta=self.blr_eta)
-        else:
-            I = self.solve(self.impedance(f), E)
+        I = self.currents(f, self.excitation())
         n = len(self.ports)
         Ap, Bp = np.zeros((n, n), complex), np.zeros((n, n), complex)
         gam, resid = np.full(n, np.nan + 0j), np.zeros(n)
@@ -702,7 +742,7 @@ def line_char(stack, layer, w, freqs, length=20e-3, dmax=0.5e-3, ncross=6, metal
                      verbose=verbose)
     gam, zc = [], []
     for f in freqs:
-        I = np.linalg.solve(sim.impedance(f), sim.excitation()[:, [0]])
+        I = sim.currents(f, sim.excitation()[:, [0]])
         IR, IL = sim.cut_current(I, 0), sim.cut_current(I, 1)
         g = PlanarMoM.fit_gamma(np.hstack([IR, IL]), dmax)
         A, B = PlanarMoM.fit_waves(IR, sim.samples[0], g)
@@ -711,25 +751,34 @@ def line_char(stack, layer, w, freqs, length=20e-3, dmax=0.5e-3, ncross=6, metal
     return np.array(gam), np.array(zc), sim
 
 
-def line_char_xs(stack, layer, w, freqs, planes=None, length=16e-3, dmax=0.4e-3, ncross=4, verbose=False):
+def line_char_xs(stack, layer, w, freqs, planes=None, coplanar=None, via_pitch=1e-3, via_r=0.15e-3,
+                 length=16e-3, dmax=0.4e-3, ncross=4, verbose=False):
     """
     Zc and gamma of a strip of width w on `layer` with extra reference metal: planes = {interface:
-    width} adds a centred wide strip on that interface (e.g. a meshed GND plane above or below).
-    Centre-fed long line, travelling-wave fit on both halves.
+    width} adds a centred wide strip on that interface (e.g. a meshed GND plane above or below);
+    coplanar = [(y0, y1), ...] adds same-layer ground strips (grounded CPW), stitched to ground by
+    a via row every via_pitch near their inner edge. Centre-fed long line, travelling-wave fit.
     """
     L2, margin = length / 2, 2e-3
     shapes = {layer: [(-L2, -w / 2, L2, w / 2)]}
     for k, W in (planes or {}).items():
         shapes[k] = [(-L2, -W / 2, L2, W / 2)]
+    vias = []
+    for y0, y1 in (coplanar or []):
+        shapes[layer].append((-L2, y0, L2, y1))
+        inner = y0 if abs(y0) < abs(y1) else y1
+        yv = inner + np.sign(y1 + y0) * min(0.5 * abs(y1 - y0), max(2 * via_r, 0.4e-3))
+        vias += [Via(x, yv, 0, layer, radius=via_r, name='fence')
+                 for x in np.arange(-L2 + via_pitch / 2, L2, via_pitch)]
     step = max(dmax, (L2 - margin - 1e-3) / 8)          # well-conditioned fit at low frequency
     pR = LinePort(layer, (0, 0), (1, 0), w, L2 - margin, s0=1e-3, step=step, name='R')
     pL = LinePort(layer, (0, 0), (-1, 0), w, L2 - margin, s0=1e-3, step=step, name='L')
     wr = {k: (w if k == layer else min(W, 2e-3)) for k, W in [(layer, w)] + list((planes or {}).items())}
-    sim = Simulation(stack, shapes, [pR, pL], dmax=dmax, w_ref=wr, ncross=ncross, verbose=verbose,
-                     refine=0)
+    sim = Simulation(stack, shapes, [pR, pL], vias=vias, dmax=dmax, w_ref=wr, ncross=ncross, verbose=verbose,
+                     refine=0, solver='auto')
     gam, zc = [], []
     for f in freqs:
-        I = np.linalg.solve(sim.impedance(f), sim.excitation()[:, [0]])
+        I = sim.currents(f, sim.excitation()[:, [0]])
         IR, IL = sim.cut_current(I, 0), sim.cut_current(I, 1)
         g = PlanarMoM.fit_gamma(np.hstack([IR, IL]), step)
         A, B = PlanarMoM.fit_waves(IR, sim.samples[0], g)
@@ -753,13 +802,13 @@ def line_char_pair(stack, layer, w, gap, freqs, planes=None, length=16e-3, dmax=
     ps = [LinePort(layer, (0, s * yc), (d, 0), w, L2 - margin, s0=1e-3, step=step, name=f"{s}{d}")
           for s in (1, -1) for d in (1, -1)]                       # (+,R) (+,L) (-,R) (-,L)
     wr = {layer: w, **{k: min(W, 2e-3) for k, W in (planes or {}).items()}}
-    sim = Simulation(stack, shapes, ps, dmax=dmax, w_ref=wr, ncross=ncross, verbose=verbose, refine=0)
+    sim = Simulation(stack, shapes, ps, dmax=dmax, w_ref=wr, ncross=ncross, verbose=verbose, refine=0,
+                     solver='auto')
     out = {'e': ([], []), 'o': ([], [])}
     for f in freqs:
-        Z = sim.impedance(f)
         E = sim.excitation()
         V = np.stack([E[:, 0] + E[:, 2], E[:, 0] - E[:, 2]], 1)       # even / odd drive at x = 0
-        I = sim.solve(Z, V)
+        I = sim.currents(f, V)
         for c, m in ((0, 'e'), (1, 'o')):
             IR, IL = sim.cut_current(I, 0)[:, c], sim.cut_current(I, 1)[:, c]     # line + only
             g = PlanarMoM.fit_gamma(np.stack([IR, IL], 1), step)
