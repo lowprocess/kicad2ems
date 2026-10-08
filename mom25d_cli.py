@@ -25,27 +25,50 @@ except ImportError:                                   # Python < 3.11
     tomllib = None
 
 
-def write_touchstone(path, f, S, zref, comment=''):
-    """N-port Touchstone v1 (RI). Touchstone v1 has a single reference impedance, so the caller
-    renormalises all ports to it first (see renorm)."""
+def write_touchstone(path, f, S, zref, comment='', names=None):
+    """Touchstone v1 when all reference impedances are equal, v2.0 (per-port [Reference]) otherwise."""
     n = S.shape[1]
+    zref = np.asarray(zref, float)
+    v2 = not np.allclose(zref, zref[0])
     with open(path, 'w') as fh:
-        fh.write(f"! mom25d {comment}\n! port reference impedances: {', '.join(f'{z:.3f}' for z in zref)}\n")
+        fh.write(f"! mom25d {comment}\n")
+        if names:
+            fh.write("! ports: " + ", ".join(f"{i + 1}={nm}" for i, nm in enumerate(names)) + "\n")
+        if v2:
+            fh.write("[Version] 2.0\n")
         fh.write(f"# Hz S RI R {zref[0]:.6g}\n")
+        if v2:
+            fh.write(f"[Number of Ports] {n}\n")
+            if n == 2:
+                fh.write("[Two-Port Data Order] 21_12\n")
+            fh.write(f"[Number of Frequencies] {len(f)}\n")
+            fh.write("[Reference] " + " ".join(f"{z:.6g}" for z in zref) + "\n[Network Data]\n")
         for fi, s in zip(f, S):
             vals = [s[i, j] for i in range(n) for j in range(n)] if n != 2 else [s[0, 0], s[1, 0], s[0, 1], s[1, 1]]
             per_line = 4 if n > 2 else len(vals)
             for k in range(0, len(vals), per_line):
                 pre = f"{fi:.9e}" if k == 0 else " " * 15
                 fh.write(pre + " " + " ".join(f"{v.real:.9e} {v.imag:.9e}" for v in vals[k:k + per_line]) + "\n")
+        if v2:
+            fh.write("[End]\n")
 
 
-def renorm(S, zc, z0):
-    n = S.shape[0]
-    if np.allclose(zc, z0):
+def renorm(S, zc, zref):
+    """Renormalise S from reference impedances zc to zref (scalars or per-port, real)."""
+    zc = np.asarray(zc, float); n = S.shape[0]
+    zref = np.broadcast_to(np.asarray(zref, float), (n,))
+    if np.allclose(zc, zref):
         return S
-    from mom25d import renormalize
-    return renormalize(S, zc, z0)
+    I = np.eye(n)
+    Z = np.diag(np.sqrt(zc)) @ (I + S) @ np.linalg.inv(I - S) @ np.diag(np.sqrt(zc))
+    zn = np.diag(1 / np.sqrt(zref)) @ Z @ np.diag(1 / np.sqrt(zref))
+    return (zn - I) @ np.linalg.inv(zn + I)
+
+
+def out_refs(sim, z0):
+    """Output reference per (modal) port: z0 single-ended, 2 z0 differential, z0/2 common."""
+    return np.array([2 * z0 if getattr(p, 'mode', None) == 'd' else (z0 / 2 if getattr(p, 'mode', None) == 'c' else z0)
+                     for p in sim.ports])
 
 
 def main(argv=None):
@@ -110,11 +133,13 @@ def main(argv=None):
                            metal=Metal(a.sigma) if a.sigma else None, title=name)
     sim.layer_names = {k: n for n, k in model.iface.items()}
     zc = np.array([p.zc for p in sim.ports])
+    if a.board.endswith('.gbrjob') is False and any(getattr(p, 'mode', None) for p in sim.ports):
+        print("mixed-mode ports: " + ", ".join(p.name for p in sim.ports))
     if a.linear:
         f = np.linspace(a.fmin, a.fmax, a.linear) * 1e9
         res = sim.sweep(f, currents_at=0.5 * (f[0] + f[-1]))
-        S = np.array([renorm(s, np.array([p.zc_fn(fi) if getattr(p, 'zc_fn', None) else p.zc for p in sim.ports]), a.z0)
-                      for fi, s in zip(f, res.S)])
+        S = np.array([renorm(s, np.array([p.zc_fn(fi) if getattr(p, 'zc_fn', None) else p.zc for p in sim.ports]),
+                             out_refs(sim, a.z0)) for fi, s in zip(f, res.S)])
         res.S = S
         nsolve = len(f)
     else:
@@ -122,7 +147,7 @@ def main(argv=None):
         def solve(fr):
             print(f"  solving {fr / 1e9:.4f} GHz", flush=True)
             Sr = sim.sparams(fr)
-            return renorm(Sr, np.array([p.zc for p in sim.ports]), a.z0)
+            return renorm(Sr, np.array([p.zc for p in sim.ports]), out_refs(sim, a.z0))
         f, S, fs, Ss, hist = adaptive_sweep(solve, a.fmin * 1e9, a.fmax * 1e9, tol=a.afs_tol,
                                             ngrid=a.points, log=print)
         nsolve = len(fs)
@@ -135,7 +160,8 @@ def main(argv=None):
                               recip=np.abs(S - S.transpose(0, 2, 1)).max((1, 2)),
                               passiv=np.array([np.linalg.svd(s, compute_uv=False).max() for s in S]))
     ts = os.path.join(a.out, f"{name}.s{S.shape[1]}p")
-    write_touchstone(ts, f, S, [a.z0] * S.shape[1], comment=f"{name} ({nsolve} EM solves)")
+    write_touchstone(ts, f, S, out_refs(sim, a.z0), comment=f"{name} ({nsolve} EM solves)",
+                     names=[p.name for p in sim.ports])
     dash = viz.dashboard(sim, res, os.path.join(a.out, f"{name}_dashboard.png"))
     # lowest frequency where every wave port's sample span covers >= 0.4 rad (from the port Zc lines'
     # phase velocity estimate: eps_eff from the characterised gamma is not stored, use the fitted one)

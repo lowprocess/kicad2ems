@@ -336,22 +336,32 @@ class KiCadBoard:
 
     # ---- ports ----------------------------------------------------------------------------
     def port_footprints(self, pos_refs=None):
-        """{port number: footprint} from Fab text P<n>, or Reference/Value P<n> for refs in a P&P list."""
-        pat = re.compile(r'^P(\d+)$', re.I)
+        """{n: footprint} for single-ended ports (Fab text P<n>), {n: {'+': fp, '-': fp}} for
+        differential ports (Fab text P<n>+ / P<n>- or P<n>P / P<n>N). Reference/Value are used for
+        refs listed in a pick-and-place file."""
+        pat = re.compile(r'^P(\d+)([+\-PN])?$', re.I)
         out = {}
+
+        def put(m, fp):
+            n, leg = int(m.group(1)), (m.group(2) or '').upper()
+            if leg:
+                out.setdefault(n, DiffLegs())['+' if leg in ('+', 'P') else '-'] = fp
+            else:
+                out[n] = fp
         for fp in self.footprints:
-            num = None
+            done = False
             for t in fp['fab']:
                 m = pat.match(str(t).strip())
                 if m:
-                    num = int(m.group(1)); break
-            if num is None and pos_refs is not None and fp['ref'] in pos_refs:
+                    put(m, fp); done = True; break
+            if not done and pos_refs is not None and fp['ref'] in pos_refs:
                 for t in (fp['value'], fp['ref'], *fp['fab']):
                     m = pat.match(str(t).strip())
                     if m:
-                        num = int(m.group(1)); break
-            if num is not None:
-                out[num] = fp
+                        put(m, fp); break
+        for n, v in out.items():
+            if isinstance(v, DiffLegs) and set(v) != {'+', '-'}:
+                raise ValueError(f"differential port P{n} needs both P{n}+ and P{n}- footprints")
         return dict(sorted(out.items()))
 
     # ---- model -------------------------------------------------------------------------------
@@ -382,7 +392,11 @@ def read_pos(path):
     return rows
 
 
-def pos_port_refs(rows, pattern=r'^P\d+$', package_hint='PORT'):
+class DiffLegs(dict):
+    """{'+': footprint, '-': footprint} of a differential port (footprints are dicts themselves)."""
+
+
+def pos_port_refs(rows, pattern=r'^P\d+[+\-PN]?$', package_hint='PORT'):
     """References of port components: Value or Reference P<n>, or package containing the hint."""
     pat = re.compile(pattern, re.I)
     return {r['ref'] for r in rows if pat.match(r['val']) or pat.match(r['ref'])
@@ -474,7 +488,9 @@ class BoardModel:
                      + (f"   -> metal {cu[0]} on interface {j + 1}" if cu else ''))
         L.append(f"  ground: {self.ground} (z=0)" + (f", PEC cover: {self.cover}" if self.cover else ''))
         L.append(f"metal interfaces: " + ", ".join(f"{n}->M{k}" for n, k in self.iface.items() if k in self.shapes))
-        L.append(f"vias: {len(self.vias)}   ports: " + ", ".join(f"P{n}={fp['ref']}" for n, fp in self.port_fps.items()))
+        L.append(f"vias: {len(self.vias)}   ports: " + ", ".join(
+            f"P{n}=" + (f"{fp['+']['ref']}/{fp['-']['ref']} (diff)" if isinstance(fp, DiffLegs) else fp['ref'])
+            for n, fp in self.port_fps.items()))
         return "\n".join(L + self.notes)
 
     # ---- ports from footprints -----------------------------------------------------------
@@ -504,43 +520,70 @@ class BoardModel:
             s += step
         return w0, s
 
+    def _port_geom(self, name, fp):
+        c = np.array([fp['x'], -fp['y']]) * MM
+        a = np.radians(fp['rot'])
+        d = np.array([np.cos(a), np.sin(a)])
+        props = fp['props']
+        lay = props.get('mom.layer') or ('B.Cu' if fp['side'] == 'B' else 'F.Cu')
+        if lay not in self.iface:
+            raise ValueError(f"{name}: port layer {lay} is not a metal interface of the model")
+        k = self.iface[lay]
+        g = self._copper_at(k)
+        if g is None or not g.buffer(1e-6).contains(Point(*c)):
+            raise ValueError(f"{name} ({fp['ref']}) at ({fp['x']:.3f}, {fp['y']:.3f}) mm is not on {lay} copper "
+                             f"of the selected nets/region")
+        return c, d, k, g, props
+
+    def _wave_window(self, w, L, step):
+        """(gap offset, first and last cut, cut spacing) for a straight feed of width w, length L."""
+        clear = max(2 * step, 4 * w, 3 * self.stack.z[-1], 1.0e-3)   # stay out of the next discontinuity's near field
+        need = 6 * step + clear
+        if w <= 0 or L < need:
+            return None, need
+        g0 = step / 2                                                # gap just inside the trace end
+        s0, s1 = g0 + 2 * step, L - clear
+        return (g0, s0, s1, max(step, (s1 - s0) / 10)), need          # ~10 intervals: well-conditioned fit
+
     def ports(self, step=None, dmax=0.3e-3):
         from mom25d_geo import LinePort
-        from mom25d_sim import ViaPort, GapPort, Via
+        from mom25d_sim import ViaPort, GapPort, Via, DiffPort
         step = step or dmax
         out = []
         for n, fp in self.port_fps.items():
             name = f"P{n}"
-            c = np.array([fp['x'], -fp['y']]) * MM
-            a = np.radians(fp['rot'])
-            d = np.array([np.cos(a), np.sin(a)])
-            props = fp['props']
-            lay = props.get('mom.layer') or (('B.Cu' if fp['side'] == 'B' else 'F.Cu'))
-            if lay not in self.iface:
-                raise ValueError(f"{name}: port layer {lay} is not a metal interface of the model")
-            k = self.iface[lay]
+            if isinstance(fp, DiffLegs):                                  # differential pair
+                legs = {}
+                for sgn in ('+', '-'):
+                    c, d, k, g, props = self._port_geom(name + sgn, fp[sgn])
+                    w, L = self._feed(g, c, d, step)
+                    legs[sgn] = (c, d, k, w, L, props)
+                (cp, dp_, kp, wp, Lp, pp), (cn, dn, kn, wn, Ln, pn) = legs['+'], legs['-']
+                if kp != kn or not np.allclose(dp_, dn, atol=1e-6):
+                    raise ValueError(f"{name}: + and - footprints must be on the same layer with the same rotation")
+                win, need = self._wave_window(max(wp, wn), min(Lp, Ln), step)
+                if win is None:
+                    raise ValueError(f"{name}: straight coupled feed too short for a differential wave port "
+                                     f"({min(Lp, Ln) * 1e3:.2f} mm, need {need * 1e3:.2f} mm)")
+                g0, s0, s1, pstep = win
+                ref_shift = float(pp.get('mom.ref', 0)) * MM
+                mk = lambda c, w: LinePort(kp, c + dp_ * g0, dp_, w, ref_shift - g0, s0=s0 - g0, s1=s1 - g0,
+                                           step=pstep)
+                out.append(DiffPort(mk(cp, wp), mk(cn, wn), float(pp.get('mom.zdiff', 100)),
+                                    float(pp.get('mom.zcomm', 25)), name=name))
+                continue
+            c, d, k, g, props = self._port_geom(name, fp)
             z0 = float(props.get('mom.z0', 50))
             kind = props.get('mom.port', 'auto')
-            g = self._copper_at(k)
-            assert g is not None, f"{name}: no copper on {lay}"
-            if not g.buffer(1e-6).contains(Point(*c)):
-                raise ValueError(f"{name} ({fp['ref']}) at ({fp['x']:.3f}, {fp['y']:.3f}) mm is not on {lay} copper "
-                                 f"of the selected nets/region")
             ref_shift = float(props.get('mom.ref', 0)) * MM
             if kind in ('auto', 'wave'):
                 w, L = self._feed(g, c, d, step)
-                clear = max(2 * step, 4 * w, 3 * self.stack.z[-1], 1.0e-3)   # keep cuts out of the
-                need = 6 * step + clear                                        # next discontinuity's near field
-                if w > 0 and L >= need:
-                    g0 = step / 2                               # gap just inside the trace end
-                    s0 = g0 + 2 * step
-                    s1 = L - clear
-                    # ~10 intervals over the usable feed: the fit needs a few tenths of a radian
-                    # between cuts even at the lowest frequency
-                    pstep = max(step, (s1 - s0) / 10)
-                    p = LinePort(k, c + d * g0, d, w, ref_shift - g0, s0=s0 - g0, s1=s1 - g0, step=pstep,
-                                 zc=z0, name=name)
-                    out.append(p); continue
+                win, need = self._wave_window(w, L, step)
+                if win is not None:
+                    g0, s0, s1, pstep = win
+                    out.append(LinePort(k, c + d * g0, d, w, ref_shift - g0, s0=s0 - g0, s1=s1 - g0, step=pstep,
+                                        zc=z0, name=name))
+                    continue
                 if kind == 'wave':
                     raise ValueError(f"{name}: straight feed too short for a wave port ({L * 1e3:.2f} mm, need {need * 1e3:.2f} mm)")
             if kind in ('auto', 'via'):
@@ -552,6 +595,22 @@ class BoardModel:
             raise ValueError(f"{name}: unknown port kind {kind}")
         return out
 
+    def _planes_at(self, layer, pt, d, w):
+        """Metal on other layers covering point pt (reference planes), with its width across d (capped)."""
+        planes = {}
+        t = np.array([-d[1], d[0]])
+        for k, gs in self.shapes.items():
+            if k == layer:
+                continue
+            g = unary_union(gs)
+            if g.buffer(1e-9).contains(pt):
+                p0 = np.array(pt.coords[0])
+                seg = LineString([p0 - t * 0.05, p0 + t * 0.05]).intersection(g)
+                W = min(getattr(seg, 'length', 0.0), max(30 * self.stack.z[-1], 20 * w))
+                if W > 2 * w:
+                    planes[k] = W
+        return planes
+
     def characterize(self, ports, fmin, fmax, n=3, dmax=0.4e-3, log=print):
         """Reference impedance of each wave port's line cross-section (trace + metal on other layers
         covering the port), solved as a short centre-fed line at n frequencies and interpolated."""
@@ -559,7 +618,22 @@ class BoardModel:
         from mom25d_sim import line_char_xs
         fs = np.linspace(max(fmin, fmax / 3), fmax, n)    # the fit is well conditioned here; Zc ~ flat
         cache = {}
+        from mom25d_sim import DiffPort, line_char_pair
         for p in ports:
+            if isinstance(p, DiffPort):
+                a, b = p.pos, p.neg
+                mid = 0.5 * (a.s0 + a.s1)
+                pt = Point(*(0.5 * (a.c + b.c) + a.d * mid))
+                planes = self._planes_at(a.layer, pt, a.d, a.w)
+                gap = abs((a.c - b.c) @ a.t) - 0.5 * (a.w + b.w)
+                ge, ze, go, zo = line_char_pair(self.stack, a.layer, 0.5 * (a.w + b.w), gap, fs, planes=planes, dmax=dmax)
+                zd, zcm = 2 * zo.real, ze.real / 2
+                p.zd_fn = (lambda f, fs=fs, z=zd: np.interp(f, fs, z))
+                p.zc_fn = (lambda f, fs=fs, z=zcm: np.interp(f, fs, z))
+                p.zdiff, p.zcomm = float(zd[len(zd) // 2]), float(zcm[len(zcm) // 2])
+                log(f"  {p.name}: coupled pair on M{a.layer}, w={a.w * 1e3:.3f} mm, gap={gap * 1e3:.3f} mm: "
+                    f"Zdiff = " + ", ".join(f"{v:.1f}" for v in zd) + ", Zcomm = " + ", ".join(f"{v:.1f}" for v in zcm) + " ohm")
+                continue
             if not isinstance(p, LinePort):
                 continue
             pt = Point(*(p.c + p.d * 0.5 * (p.s0 + p.s1)))
