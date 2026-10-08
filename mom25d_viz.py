@@ -65,7 +65,8 @@ def plot_stackup(ax, sim):
     for k in sim.layers:
         c = layer_color(sim, k)
         ax.plot([0.2, 0.8], [z[k], z[k]], color=c, lw=4, solid_capstyle='butt')
-        ax.text(0.18, z[k], f"M{k}", ha='right', va='center', color=INK, fontsize=8, fontweight='bold')
+        lab = getattr(sim, 'layer_names', {}).get(k, f"M{k}")
+        ax.text(0.18, z[k], lab, ha='right', va='center', color=INK, fontsize=8, fontweight='bold')
     ax.set_xlim(-0.05, 2.1)
     ax.set_ylim(-gh * 1.3, H * 1.22 + gh)
     ax.set_xticks([])
@@ -91,9 +92,13 @@ def plot_3d(ax, sim, zexag=None):
         polys = [np.column_stack([p, np.full(3, zz)]) for p in P]
         ax.add_collection3d(Poly3DCollection(polys, fc=layer_color(sim, k), alpha=0.85, lw=0))
         ax.text(x1, y1, zz, f"M{k}", color=INK, fontsize=8)
+    for v in getattr(sim, 'vias', []):
+        ax.plot([v.x * 1e3] * 2, [v.y * 1e3] * 2, [sim.st.z[v.k_bot] * 1e3 * zexag, sim.st.z[v.k_top] * 1e3 * zexag],
+                color=INK2, lw=1.2)
     for p in sim.ports:
-        c = _port_centre(p) * 1e3
-        ax.scatter([c[0]], [c[1]], [sim.st.z[p.layer] * 1e3 * zexag], color=PORT, s=14, depthshade=False)
+        q = _pinfo(sim, p)
+        c = q['c'] * 1e3
+        ax.scatter([c[0]], [c[1]], [sim.st.z[q['layers'][0]] * 1e3 * zexag], color=PORT, s=14, depthshade=False)
     ax.set_xlim(x0, x1); ax.set_ylim(y0, y1); ax.set_zlim(0, max(H * zexag, 1e-3) * 1.1)
     ax.set_box_aspect((x1 - x0, y1 - y0, max(H * zexag, 1e-3) * 1.1))
     ax.set_xlabel('x (mm)'); ax.set_ylabel('y (mm)'); ax.set_zticks([])
@@ -103,15 +108,29 @@ def plot_3d(ax, sim, zexag=None):
         a.pane.set_facecolor(SURFACE); a.pane.set_edgecolor(GRID)
 
 
-def _port_centre(p):
-    t = 0.5 * (p.span[0] + p.span[1])
-    return np.array([p.pos, t]) if p.axis == 'x' else np.array([t, p.pos])
+def _pinfo(sim, p):
+    """Uniform description of any port type: kind, layers, centre, direction, width (metres)."""
+    from mom25d_geo import LinePort, port_from_axis
+    if hasattr(p, 'axis'):                                   # legacy axis-aligned Port / MLPort
+        p = port_from_axis(p)
+    if isinstance(p, LinePort):
+        lay = list(p.layer) if isinstance(p.layer, tuple) else [p.layer]
+        return dict(kind='wave', layers=lay, c=p.c, d=p.d, w=p.w, ref=p.ref, lp=p)
+    if hasattr(p, 'via'):
+        v = p.via
+        return dict(kind='via', layers=[k for k in sim.layers if v.k_bot < k <= v.k_top][-1:] or sim.layers[:1],
+                    c=np.array([v.x, v.y]), d=None, w=0, via=v)
+    lay = list(p.layer) if isinstance(p.layer, tuple) else [p.layer]
+    return dict(kind='gap', layers=lay, c=p.c, d=p.d, w=p.w, lp=p.lp)
 
 
-def _port_segment(p, c):
-    if p.axis == 'x':
-        return [c, c], [p.span[0], p.span[1]]
-    return [p.span[0], p.span[1]], [c, c]
+def _port_centre(p, sim=None):
+    return _pinfo(sim, p)['c']
+
+
+def _seg(lp, s):
+    a, b = lp.line(s)
+    return np.array([a[0], b[0]]) * 1e3, np.array([a[1], b[1]]) * 1e3
 
 
 def plot_layout(ax, sim, layers=None, mesh=True, ports=True, alpha=0.30):
@@ -121,22 +140,34 @@ def plot_layout(ax, sim, layers=None, mesh=True, ports=True, alpha=0.30):
         c = layer_color(sim, k)
         ax.add_collection(PolyCollection(P, fc=c, alpha=alpha, ec=c if mesh else 'none', lw=0.25,
                                          label=f"M{k}"))
+    vias = getattr(sim, 'vias', [])
+    for v in vias:                                           # vias: barrel footprint
+        on = any(v.k_bot <= k <= v.k_top for k in layers)
+        if on:
+            ax.add_patch(plt.Circle((v.x * 1e3, v.y * 1e3), max(v.a, 0.03e-3) * 1e3, fc='none',
+                                    ec=INK2, lw=0.6))
     if ports:
-        for i, (p, s) in enumerate(zip(sim.ports, sim.samples)):
-            if p.layer not in layers:
+        for i, (p, smp) in enumerate(zip(sim.ports, sim.samples)):
+            q = _pinfo(sim, p)
+            if not set(q['layers']) & set(layers):
                 continue
-            for x in s:                                        # wave-fit sample cuts
-                xs, ys = _port_segment(p, p.pos + p.dir * x)
-                ax.plot(np.array(xs) * 1e3, np.array(ys) * 1e3, color=MUTED, lw=0.6)
-            xs, ys = _port_segment(p, p.pos + p.dir * p.ref)  # reference plane
-            ax.plot(np.array(xs) * 1e3, np.array(ys) * 1e3, color=INK, lw=1.0, ls='--')
-            xs, ys = _port_segment(p, p.pos)                  # gap
-            ax.plot(np.array(xs) * 1e3, np.array(ys) * 1e3, color=PORT, lw=2.2)
-            c = _port_centre(p) * 1e3
-            d = p.dvec * 0.9
-            ax.annotate('', xy=c + d, xytext=c, arrowprops=dict(arrowstyle='->', color=PORT, lw=1.2))
-            ax.text(*(c - d * 0.9), p.name or f"P{i + 1}", color=INK, fontsize=8, fontweight='bold',
-                    ha='center', va='center')
+            c = q['c'] * 1e3
+            name = getattr(p, 'name', '') or f"P{i + 1}"
+            if q['kind'] == 'wave':
+                for x in (smp if smp is not None else []):          # wave-fit sample cuts
+                    ax.plot(*_seg(q['lp'], x), color=MUTED, lw=0.6)
+                ax.plot(*_seg(q['lp'], q['ref']), color=INK, lw=1.0, ls='--')   # reference plane
+                ax.plot(*_seg(q['lp'], 0.0), color=PORT, lw=2.2)                # gap
+            elif q['kind'] == 'gap':
+                ax.plot(*_seg(q['lp'], 0.0), color=PORT, lw=2.2)
+            else:
+                ax.plot(*c, marker='o', ms=7, mfc='none', mec=PORT, mew=1.6)
+            if q['d'] is not None:
+                d = q['d'] * 0.9
+                ax.annotate('', xy=c + d, xytext=c, arrowprops=dict(arrowstyle='->', color=PORT, lw=1.2))
+                ax.text(*(c - d * 0.9), name, color=INK, fontsize=8, fontweight='bold', ha='center', va='center')
+            else:
+                ax.text(c[0] + 0.5, c[1] + 0.5, name, color=INK, fontsize=8, fontweight='bold')
     ax.autoscale_view()
     ax.set_aspect('equal')
     ax.set_xlabel('x (mm)'); ax.set_ylabel('y (mm)')
@@ -224,11 +255,16 @@ def info_lines(sim, res=None):
     r = sim.rwg
     L = [sim.title or 'MultiLayerMoM', '']
     L += sim.st.describe() + ['']
-    L.append(f"unknowns    {r.Ne}   triangles {len(r.tris)}")
+    nv = getattr(sim, 'Nv', 0)
+    L.append(f"unknowns    {r.Ne}" + (f" + {nv} via" if nv else '') + f"   triangles {len(r.tris)}")
+    if getattr(sim, 'solver', 'dense') == 'aca' and getattr(sim.fast, 'H', None) is not None:
+        hs = sim.fast.H.stats()
+        L.append(f"H-matrix    {hs['MB']} MB ({100 * hs['compression']:.0f}% of dense), mean rank {hs['mean_rank']}")
     for k in sim.layers:
         L.append(f"  M{k}: {len(sim.tri_idx[k])} tri, {int((sim.edge_layer == k).sum())} edges")
     L.append(f"dmax {sim.dmax * 1e3:.3g} mm, {sim.ncross} cells across, grade {sim.grade:g}")
-    L.append(f"Z matrix    {r.Ne ** 2 * 16 / 2 ** 20:.0f} MB (complex128)")
+    if getattr(sim, 'solver', 'dense') != 'aca':
+        L.append(f"Z matrix    {(r.Ne + nv) ** 2 * 16 / 2 ** 20:.0f} MB (complex128)")
     if sim.tables:
         gt = next(iter(sim.tables.values()))
         L.append(f"Sommerfeld  {gt.npts} pts, K={gt.K:.2g} 1/m, ρmax={sim.rho_max * 1e3:.1f} mm")
