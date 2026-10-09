@@ -7,3 +7,8 @@ examples/demo_*.kicad_pcb
 examples/demo_*-top.pos
 examples/diff*.kicad_pcb
 examples/diff*-top.pos
+*.lck
+*.bundle
+*.kicad_prl
+fp-info-cache
+examples/examples/

@@ -106,6 +106,7 @@ def plot_results(path, f, S, names, title, compare=None):
 
     n = S.shape[1]
     n_cmp = compare[1].shape[1] if compare is not None else 0
+    cmp_name = (compare[2] if compare is not None and len(compare) > 2 else 'compare')
     fig = plt.figure(figsize=(14, 5.8))
     gs = fig.add_gridspec(1, 2, width_ratios=[1.45, 1])
     ax = fig.add_subplot(gs[0])     # cartesian |S| in dB, all parameters
@@ -125,7 +126,7 @@ def plot_results(path, f, S, names, title, compare=None):
                     lw=2.0 if i == j else 1.6, label=lab + ' openEMS')
             if has_cmp:
                 ax.plot(compare[0] / 1e9, 20 * np.log10(np.abs(compare[1][:, i, j]) + 1e-15), '--',
-                        color=c, lw=1.4, label=lab + ' mom25d')
+                        color=c, lw=1.4, label=f"{lab} {cmp_name}")
 
             # --- Smith chart: reflection coefficients only ---
             if i == j:
@@ -135,7 +136,7 @@ def plot_results(path, f, S, names, title, compare=None):
                 sax.plot(g.real[-1], g.imag[-1], 's', color=c, ms=5)    # stop frequency
                 if has_cmp:
                     gc = compare[1][:, i, i]
-                    sax.plot(gc.real, gc.imag, '--', color=c, lw=1.4, label=lab + ' mom25d')
+                    sax.plot(gc.real, gc.imag, '--', color=c, lw=1.4, label=f"{lab} {cmp_name}")
             k += 1
 
     ax.set_xlabel('Frequency (GHz)')

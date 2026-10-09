@@ -126,11 +126,14 @@ and ignored, so one file can be shared with other tools (see `examples/demo_tran
 | File | Contents |
 |---|---|
 | `<name>_openems.sNp` | S-parameters (mixed-mode for differential ports) |
-| `<name>_openems.png` | reflection and transmission plots (`--compare file.sNp` overlays another result) |
+| `<name>_openems.png` | reflection and transmission plots (`--compare file.sNp` overlays another result, labelled with its file name) |
 | `<name>_mesh.png` | per-layer copper, vias, ports and mesh lines; side view of the stack and z mesh |
 | `<name>_openems.json` | port names, reference impedances, mesh statistics, run time |
 | `<name>.xml` | CSX geometry (open with AppCSXCAD) |
 | `openems/exc_<port>/` | raw openEMS runs |
+
+Reference results for the two example boards (demo transition and microstrip filter) are kept in
+`examples/reference/`, e.g. `--compare examples/reference/filter_openems.s2p` after a change.
 
 ## Installing openEMS
 

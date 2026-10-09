@@ -1,9 +1,9 @@
-# kicad2openems run configuration for the generated demo board
-#   python examples/make_demo_board.py examples/demo_transition
-#   kicad2openems examples/demo_transition.kicad_pcb --config examples/demo_transition.toml
-pos     = "examples/demo_transition-top.pos"
+# kicad2openems run configuration for the microstrip filter board (run from the repository root)
+#   kicad2openems examples/filter.kicad_pcb --config examples/filter.toml --preview
+#   kicad2openems examples/filter.kicad_pcb --config examples/filter.toml
+# Reference result: examples/reference/filter_openems.s2p (use with --compare)
+pos     = "examples/filter-all.pos"
 nets    = ["RF", "GND"]
-ground  = "B.Cu"        # solid ground plane (the demo board has only via pads on B.Cu)
 no_mask = true
 fmin    = 1.0           # GHz
 fmax    = 8.0
@@ -16,4 +16,3 @@ air     = 5.0           # mm of air between the board and the boundary
 bc      = "auto"        # PEC on the solid bottom plane, MUR elsewhere
 end-db  = -40
 fine    = 0.05
-dump    = ["E@F.Cu","J@F.Cu"]
