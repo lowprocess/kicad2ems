@@ -1,0 +1,47 @@
+{
+ "ports": [
+  "P1",
+  "P2"
+ ],
+ "zref": [
+  50.0,
+  50.0
+ ],
+ "mesh": {
+  "nx": 166,
+  "ny": 108,
+  "nz": 17,
+  "cells": 304776,
+  "fine_mm": 0.05,
+  "maxres_die_mm": 0.8932527913780639,
+  "maxres_air_mm": 1.8737028625,
+  "air_mm": 5.0,
+  "bc": [
+   "MUR",
+   "MUR",
+   "MUR",
+   "MUR",
+   "PEC",
+   "MUR"
+  ],
+  "curves": "extremes",
+  "vias": "auto",
+  "vias_snapped": 0,
+  "via_max_move_mm": 0.0,
+  "dt_ps": 0.06194129746154245,
+  "min_cell_mm": [
+   0.02499999999999947,
+   0.03333333333333333,
+   0.04999999999999999
+  ],
+  "mem_gb": 0.0457164,
+  "lines_across_ports": {
+   "P1": 1,
+   "P2": 1
+  }
+ },
+ "excited": [
+  "P1"
+ ],
+ "runtime_s": 131.04617404937744
+}
