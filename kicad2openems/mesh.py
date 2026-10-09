@@ -86,6 +86,14 @@ def smooth_lines(fixed, maxres, ratio=1.4, fine=None):
     return np.array(out)
 
 
+def manhattan(d, L, fine):
+    """Edges (vectors d, lengths L) treated as Manhattan: at least `fine` long and drifting at most
+    fine/10 across their axis. Near-Manhattan edges come from simplify() merging a tiny step (a 1.5 um
+    jog where a track meets a slightly wider rectangle); they still get the thirds rule."""
+    tol = np.minimum(fine / 10, 1e-6 * L + fine / 10)
+    return ((np.abs(d[..., 0]) <= tol) | (np.abs(d[..., 1]) <= tol)) & (L >= fine)
+
+
 def curve_lines(xy, fine, mode='extremes'):
     """Mesh-line candidates of the curved parts of a ring (rounded pad corners, round track ends,
     arcs, circular antipads, oblique edges). Edges that are Manhattan and at least `fine` long are
@@ -98,7 +106,7 @@ def curve_lines(xy, fine, mode='extremes'):
         return [], []
     d = np.roll(xy, -1, axis=0) - xy                                # edge i: vertex i -> i+1
     L = np.hypot(d[:, 0], d[:, 1])
-    manh = ((np.abs(d[:, 0]) < 1e-6 * L) | (np.abs(d[:, 1]) < 1e-6 * L)) & (L >= fine)
+    manh = manhattan(d, L, fine)
     if mode == 'vertices':
         idx = sorted({i for i in range(n) if not manh[i]} | {(i + 1) % n for i in range(n) if not manh[i]})
         return [xy[i, 0] for i in idx], [xy[i, 1] for i in idx]
@@ -168,15 +176,15 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
                 for (x0, y0), (x1, y1) in zip(xy[:-1], xy[1:]):
                     dx, dy = x1 - x0, y1 - y0
                     Ls = np.hypot(dx, dy)
-                    if Ls < fine:
+                    if not manhattan(np.array([dx, dy]), Ls, fine):
                         continue
                     # orient(): exterior CCW, holes CW -> metal is on the left of every edge
-                    if abs(dx) < 1e-6 * Ls:                         # edge along y at x = x0
-                        s = -np.sign(dy)                            # metal on +x if going down
-                        third_in[0].append(x0 + s * fine / 3); third[0].append(x0 - s * 2 * fine / 3)
-                    elif abs(dy) < 1e-6 * Ls:
-                        s = np.sign(dx)
-                        third_in[1].append(y0 + s * fine / 3); third[1].append(y0 - s * 2 * fine / 3)
+                    if abs(dx) <= abs(dy):                          # edge along y at x ~ x0
+                        s, xm = -np.sign(dy), 0.5 * (x0 + x1)       # metal on +x if going down
+                        third_in[0].append(xm + s * fine / 3); third[0].append(xm - s * 2 * fine / 3)
+                    else:
+                        s, ym = np.sign(dx), 0.5 * (y0 + y1)
+                        third_in[1].append(ym + s * fine / 3); third[1].append(ym - s * 2 * fine / 3)
                 cx, cy = curve_lines(xy, fine, curves)
                 fixed[0] += cx; fixed[1] += cy
     # vias

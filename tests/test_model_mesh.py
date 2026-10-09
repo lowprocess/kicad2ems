@@ -151,3 +151,12 @@ def test_curves_extremes_and_via_snapping(demo):
     assert sig[:2] == m.vias[m.via_signal.index(True)][:2]          # the signal via never moves
     for mesh in (exact, simple):                                     # both ports resolved across their width
         assert min(mesh['info']['lines_across_ports'].values()) >= 3
+
+
+def test_near_manhattan_edges_keep_thirds_lines():
+    """filter.kicad_pcb: the 0.35 mm feeds meet 0.353 mm resonator rectangles; simplify() turns the
+    1.5 um step into slightly oblique 6.8 mm edges, which must still get the thirds rule."""
+    m = OEModel(KiCadBoard(os.path.join(ROOT, 'examples', 'filter.kicad_pcb')), nets=['RF', 'GND'],
+                log=lambda *a: None)
+    mesh = auto_mesh(m, 1e9, 8e9, fine=0.05, log=lambda *a: None)
+    assert all(n >= 3 for n in mesh['info']['lines_across_ports'].values()), mesh['info']['lines_across_ports']
