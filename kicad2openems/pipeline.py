@@ -7,6 +7,7 @@ One run of kicad2openems as a sequence of stages, driven by the parsed command l
         preview()   <name>_mesh.png, excitation length; --preview stops here
         solve()     openEMS runs: S-parameters (all excited ports, --jobs), --converge levels, or antenna mode
         outputs()   Touchstone, plots, field-dump maps, antenna / convergence results, <name>_openems.json
+        report()    <name>_report.html (report.py), also after --preview
 
 Every message goes through Job.log, which prints it and keeps it, so the report can list the run's
 warnings; Job.files collects the files written.
@@ -250,4 +251,10 @@ class Job:
         self.log(f"wrote {png}")
 
     def report(self):
-        """HTML report (added with report.py)."""
+        """<name>_report.html (unless --no-report)."""
+        if getattr(self.a, 'no_report', False):
+            return
+        from .report import write_report
+        path = write_report(self)
+        self.wrote('report', path)
+        self.log(f"wrote {path}")

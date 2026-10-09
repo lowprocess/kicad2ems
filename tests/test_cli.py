@@ -77,3 +77,20 @@ def test_toml_as_the_only_argument(demo_files, tmp_path):
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert (tmp_path / 'o' / 'demo_mesh.png').exists()
+
+
+def test_preview_report(demo_files, tmp_path):
+    base, _ = demo_files
+    out = tmp_path / 'out'
+    r = subprocess.run([sys.executable, '-m', 'kicad2openems', base + '.kicad_pcb', '--pos', base + '-top.pos',
+                        '--nets', 'RF,GND', '--ground', 'B.Cu', '--fmin', '1', '--fmax', '8', '--out', str(out),
+                        '--preview'], cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    page = (out / 'demo_report.html').read_text()
+    for part in ("id='summary'", "id='model'", "id='mesh'", 'data:image/png;base64,', 'P1', 'dielectric 1'):
+        assert part in page
+    assert "id='results'" not in page                               # nothing solved in a preview
+    r = subprocess.run([sys.executable, '-m', 'kicad2openems', base + '.kicad_pcb', '--pos', base + '-top.pos',
+                        '--nets', 'RF,GND', '--out', str(tmp_path / 'o2'), '--preview', '--no-report'],
+                       cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 0 and not (tmp_path / 'o2' / 'demo_report.html').exists()
