@@ -1,14 +1,15 @@
-# kicad2openems run configuration for the microstrip filter board (run from the repository root)
-#   kicad2openems examples/filter.kicad_pcb --config examples/filter.toml --preview
-#   kicad2openems examples/filter.kicad_pcb --config examples/filter.toml
+# kicad2openems run configuration for the microstrip filter board
+#   kicad2openems examples/filter.toml --preview
+#   kicad2openems examples/filter.toml
 # Reference result: examples/reference/filter_openems.s2p (use with --compare)
-pos     = "examples/filter-all.pos"
+board   = "filter.kicad_pcb"   # paths are relative to this file
+pos     = "filter-all.pos"
 nets    = ["RF", "GND"]
 no_mask = true
 fmin    = 1.0           # GHz
 fmax    = 8.0
 points  = 401
-out     = "examples/out"
+out     = "out"
 
 [openems]
 excite  = ["P1"]        # S11 and S21 (S12 by reciprocity); remove to excite every port

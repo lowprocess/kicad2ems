@@ -1,14 +1,15 @@
 # kicad2openems run configuration for the generated demo board
 #   python examples/make_demo_board.py examples/demo_transition
-#   kicad2openems examples/demo_transition.kicad_pcb --config examples/demo_transition.toml
-pos     = "examples/demo_transition-top.pos"
+#   kicad2openems examples/demo_transition.toml
+board   = "demo_transition.kicad_pcb"   # paths are relative to this file
+pos     = "demo_transition-top.pos"
 nets    = ["RF", "GND"]
 ground  = "B.Cu"        # solid ground plane (the demo board has only via pads on B.Cu)
 no_mask = true
 fmin    = 1.0           # GHz
 fmax    = 8.0
 points  = 401
-out     = "examples/out"
+out     = "out"
 
 [openems]
 excite  = ["P1"]        # S11 and S21 (S12 by reciprocity); remove to excite every port

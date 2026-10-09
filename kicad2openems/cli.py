@@ -2,6 +2,7 @@
 kicad2openems - KiCad board -> openEMS (3D FDTD) with automatic meshing
 
     kicad2openems board.kicad_pcb --pos board-top.pos --nets SIG,GND --fmin 1 --fmax 6 --preview
+    kicad2openems board.toml                        # config with board = "board.kicad_pcb"
     kicad2openems board.kicad_pcb --config board.toml --excite P1
     kicad2openems board.kicad_pcb ... --compare other_tool.s2p          # overlay another result
 
@@ -21,9 +22,10 @@ from .pipeline import Job
 def parser():
     ap = argparse.ArgumentParser(prog='kicad2openems', description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('board', nargs='?', help='.kicad_pcb')
+    ap.add_argument('board', nargs='?', help='.kicad_pcb, or a .toml config (that names the board)')
     ap.add_argument('--check', action='store_true', help='check that this python can run openEMS, then exit')
-    ap.add_argument('--config', help='TOML file with any of these options (openEMS ones also under [openems])')
+    ap.add_argument('--config', help='TOML file with any of these options (openEMS ones also under [openems]); '
+                                     'its paths are relative to the file')
     g = ap.add_argument_group('board')
     g.add_argument('--pos', help='pick-and-place file listing the port components')
     g.add_argument('--nets', help='comma-separated nets to include (default: all copper)')
@@ -99,12 +101,18 @@ def main(argv=None):
         print("\n".join(report))
         print("openEMS: ready" if ok else "openEMS: NOT usable from this python")
         return 0 if ok else 2
+    if a.board and a.board.lower().endswith('.toml'):
+        if a.config:
+            ap.error("two configs: give the .toml either as the argument or with --config")
+        a.config, a.board = a.board, None
     if a.config:
         ignored = apply_toml(a, ap, a.config, argv)
         if ignored:
             print(f"config: ignoring keys not used here: {', '.join(ignored)}")
+        for note in getattr(a, 'config_notes', []):
+            print(f"config: {note}")
     if not a.board:
-        ap.error("board file required (or --check)")
+        ap.error("board file required: as the argument, or 'board = ...' in the config (or --check)")
     return Job(a).run()
 
 

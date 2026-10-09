@@ -36,3 +36,44 @@ def test_check_reports_python_and_modules():
     assert sys.executable in text and 'numpy' in text
     if not ok:
         assert 'FAILED' in text and 'hints:' in text                # the real error and a hint are shown
+
+
+def test_toml_paths_relative_to_the_file(tmp_path, monkeypatch):
+    d = tmp_path / 'proj'
+    d.mkdir()
+    (d / 'b.kicad_pcb').write_text('')
+    (d / 'b-top.pos').write_text('')
+    cfg = d / 'b.toml'
+    cfg.write_text('board = "b.kicad_pcb"\npos = "b-top.pos"\nout = "out"\n')
+    monkeypatch.chdir(tmp_path)                                    # somewhere else
+    ap = parser()
+    a = ap.parse_args([])
+    apply_toml(a, ap, str(cfg), [])
+    assert a.board == str(d / 'b.kicad_pcb') and a.pos == str(d / 'b-top.pos') and a.out == str(d / 'out')
+    assert a.config_notes == []
+    a = ap.parse_args(['other.kicad_pcb'])                         # a board typed on the command line wins
+    apply_toml(a, ap, str(cfg), ['other.kicad_pcb'])
+    assert a.board == 'other.kicad_pcb'
+
+
+def test_toml_root_relative_paths_still_work(tmp_path, monkeypatch):
+    (tmp_path / 'examples').mkdir()
+    (tmp_path / 'examples' / 'b-top.pos').write_text('')
+    cfg = tmp_path / 'examples' / 'old.toml'
+    cfg.write_text('pos = "examples/b-top.pos"\nout = "examples/out"\n')
+    monkeypatch.chdir(tmp_path)                                    # the repository root
+    ap = parser()
+    a = ap.parse_args(['b.kicad_pcb'])
+    apply_toml(a, ap, str(cfg), ['b.kicad_pcb'])
+    assert a.pos == 'examples/b-top.pos' and a.out == 'examples/out' and len(a.config_notes) == 2
+
+
+def test_toml_as_the_only_argument(demo_files, tmp_path):
+    base, _ = demo_files
+    cfg = tmp_path / 'demo.toml'
+    cfg.write_text(f'board = "{base}.kicad_pcb"\npos = "{base}-top.pos"\nnets = ["RF", "GND"]\nground = "B.Cu"\n'
+                   f'fmin = 1\nfmax = 8\nout = "o"\n')
+    r = subprocess.run([sys.executable, '-m', 'kicad2openems', str(cfg), '--preview'], cwd=ROOT,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert (tmp_path / 'o' / 'demo_mesh.png').exists()
