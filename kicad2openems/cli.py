@@ -12,18 +12,10 @@ plot and the cell / time-step report without running openEMS.
 Outputs in --out: <name>_openems.sNp, <name>_openems.png, <name>_mesh.png, <name>_openems.json,
 the CSX geometry <name>.xml (AppCSXCAD) and the raw runs under openems/.
 """
-import argparse, json, os, sys, time
-import numpy as np
+import argparse, sys
 
-from .kicad.board import KiCadBoard
-from .model import Model
-from .boundaries import resolve_bc, cavity_check
-from .mesh import auto_mesh
-from .plots import preview, plot_results, plot_convergence, plot_antenna, plot_pattern
-from .sparams import mixed_mode, fill_reciprocal
-from .touchstone import write_touchstone, read_touchstone
 from .config import apply_toml
-from .dumps import parse_dump, estimate_size_mb, plot_fd_dumps
+from .pipeline import Job
 
 
 def parser():
@@ -98,14 +90,6 @@ def parser():
     return ap
 
 
-def _ram_gb():
-    """Installed RAM in GB (None where sysconf cannot tell)."""
-    try:
-        return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / 1e9
-    except (ValueError, OSError, AttributeError):
-        return None
-
-
 def main(argv=None):
     ap = parser()
     a = ap.parse_args(argv)
@@ -115,148 +99,13 @@ def main(argv=None):
         print("\n".join(report))
         print("openEMS: ready" if ok else "openEMS: NOT usable from this python")
         return 0 if ok else 2
-    if not a.board:
-        ap.error("board file required (or --check)")
     if a.config:
         ignored = apply_toml(a, ap, a.config, argv)
         if ignored:
             print(f"config: ignoring keys not used here: {', '.join(ignored)}")
-    name = os.path.splitext(os.path.basename(a.board))[0]
-    os.makedirs(a.out, exist_ok=True)
-    fmin, fmax = a.fmin * 1e9, a.fmax * 1e9
-    t0 = time.time()
-
-    board = KiCadBoard(a.board)
-    region = tuple(float(v) for v in a.region.split(',')) if a.region else None
-    m = Model(board, nets=a.nets.split(',') if a.nets else None, pos_file=a.pos, include_mask=a.mask,
-              region=region, ground=a.ground, parts=a.parts)
-    print(m.describe())
-    if a.diel == 'wideband':
-        from .dielectric import describe as describe_diel
-        print("\n".join(describe_diel(m.layers, a.diel_fref * 1e9, fmin, fmax)))
-    antenna = a.mode == 'antenna'
-    if antenna:
-        from .antenna import antenna_defaults
-        if a.converge:
-            ap.error("--converge is not available with --mode antenna")
-        a.air, _ = antenna_defaults(fmin, fmax, a.air)
-        if a.bc == 'auto':
-            a.bc = 'PML_8'
-        print(f"antenna mode: boundaries {a.bc}, air margin {a.air:.1f} mm")
-    bc = resolve_bc(a.bc, m)
-    mesh_kw = dict(air=a.air, ratio=a.ratio, nz_min=a.nz, bc=bc, curves=a.curves, vias=a.vias, via_snap=a.via_snap)
-    levels = None
-    if a.converge:
-        from .converge import parse_levels, mesh_levels, describe_levels
-        factors = parse_levels(a.converge)
-        levels = mesh_levels(m, fmin, fmax, factors, res=a.res, fine=a.fine, **mesh_kw)
-        print("\n".join(describe_levels(levels)))
-        mesh = levels[-1][1]                                        # the finest level gives the result
-    else:
-        mesh = auto_mesh(m, fmin, fmax, res=a.res, fine=a.fine, **mesh_kw)
-    cavity_check(m, mesh, bc, fmax)
-    for sp in (a.dump or []):                                      # validate dump specs before any run
-        print("  " + parse_dump(sp, m, mesh).describe(mesh))
-    png = os.path.join(a.out, f"{name}_mesh.png")
-    preview(m, mesh, png, name)
-    print(f"wrote {png}")
-    from .simulation import pulse_steps
-    from .antenna import exc_fmax
-    ps = pulse_steps(fmin, fmax, mesh['info']['dt_ps'], exc_fmax(fmin, fmax) if antenna else None)
-    print(f"excitation pulse ~{ps} timesteps (estimate); --max-steps {a.max_steps} allows {a.max_steps / ps:.0f} pulse lengths"
-          + (" - few for the fields to ring down: raise --max-steps" if a.max_steps < 20 * ps else ''))
-    if a.preview:
-        return 0
-
-    from .simulation import run_excitations, port_index, check_openems
-    ok, report = check_openems()
-    if not ok:
-        print("openEMS cannot be imported - details:\n" + "\n".join(report))
-        return 2
-
-    excite = port_index(m, a.excite)
-    if antenna and len(excite) > 1:
-        print(f"antenna mode: driving {m.ports[excite[0]].name} only (one port per antenna run; --excite to choose)")
-        excite = excite[:1]
-    dumps = [parse_dump(sp, m, mesh) for sp in (a.dump or [])]
-    dump_runs = port_index(m, a.dump_port) if a.dump_port else None
-    if dumps:
-        n_runs = len(dump_runs) if dump_runs else 1
-        print(f"field dumps: ~{estimate_size_mb(dumps, mesh) * n_runs:.0f} MB on disk (rough), in "
-              f"{n_runs} run(s)")
-    freq = np.linspace(fmin, fmax, a.points)
-    jobs = max(1, min(a.jobs, len(excite)))
-    ram = _ram_gb()
-    if jobs > 1 and ram and jobs * mesh['info']['mem_gb'] > 0.8 * ram:
-        print(f"WARNING: {jobs} parallel runs need ~{jobs * mesh['info']['mem_gb']:.1f} GB, {ram:.1f} GB RAM "
-              f"installed - use fewer --jobs")
-    run_kw = dict(end_db=a.end_db, sigma=a.sigma, threads=a.threads, jobs=jobs, diel=a.diel, max_steps=a.max_steps,
-                  diel_fref=a.diel_fref * 1e9)
-    coarse = []
-    for f, lm in (levels or [])[:-1]:                               # convergence: coarser levels first, no dumps
-        print(f"--- mesh level x{f:g} ({lm['info']['cells'] / 1e6:.2f} M cells) ---")
-        Sl = run_excitations(m, lm, freq, excite, bc, os.path.join(a.out, 'converge', f"L{f:g}"), **run_kw)
-        fill_reciprocal(Sl, excite)
-        coarse.append((f, mixed_mode(Sl, m)[0]))
-    if levels:
-        print(f"--- mesh level x{levels[-1][0]:g} (finest: the result) ---")
-    ant = None
-    if antenna:
-        from .antenna import run_antenna, save as save_antenna
-        ff = [float(v) * 1e9 for v in str(a.ff_freq).split(',')] if a.ff_freq else []
-        S = np.full((len(freq), len(m.ports), len(m.ports)), np.nan + 0j)
-        run_excitations.dump_files = {}
-        S[:, :, excite[0]], ant = run_antenna(
-            m, mesh, freq, excite[0], bc, a.out, ff_extra=ff, ff_pattern=ff[0] if ff else None, end_db=a.end_db,
-            sigma=a.sigma, threads=a.threads, xml_path=os.path.join(a.out, f"{name}.xml"), dumps=dumps,
-            diel=a.diel, diel_fref=a.diel_fref * 1e9, step=a.ff_step, max_steps=a.max_steps)
-    else:
-        S = run_excitations(m, mesh, freq, excite, bc, a.out, xml_path=os.path.join(a.out, f"{name}.xml"),
-                            dumps=dumps, dump_runs=dump_runs, **run_kw)
-    for (pname, dname), path in getattr(run_excitations, 'dump_files', {}).items():
-        d = next(x for x in dumps if x.name == dname)
-        if d.freqs and os.path.exists(path):
-            pngs = plot_fd_dumps(d, path, m, os.path.join(a.out, f"{name}_{pname.replace('+', 'p').replace('-', 'n')}"),
-                                 norm=getattr(run_excitations, 'dump_norm', {}).get(pname), port=pname)
-            print(f"  {dname} ({pname} driven): {path}" + (f" -> {len(pngs)} PNG map(s)" if pngs else ''))
-        else:
-            print(f"  {dname} ({pname} driven): {path}  (time domain: open the .vtr series in ParaView)")
-    missing = fill_reciprocal(S, excite)
-    if missing:
-        print(f"note: {', '.join(m.ports[k].name for k in missing)} not excited - their reflection and the terms "
-              f"between unexcited ports are unknown (written as 0)")
-    Smm, names, zref = mixed_mode(S, m)
-    out = os.path.join(a.out, f"{name}_openems.s{len(names)}p")
-    write_touchstone(out, freq, np.nan_to_num(Smm), zref, comment=f"openEMS FDTD ({name})", names=names)
-    cmp = (*read_touchstone(a.compare), os.path.basename(a.compare)) if a.compare else None
-    plot_results(os.path.join(a.out, f"{name}_openems.png"), freq, Smm, names, f"{name} - openEMS", cmp)
-    info = dict(ports=names, zref=zref, mesh=mesh['info'], excited=[m.ports[k].name for k in excite],
-                parts=[dict(ref=p.ref, value=p.value_str(), layer=p.layer) for p in m.parts], diel=a.diel)
-    if ant:
-        k = excite[0]
-        apng, ppng = os.path.join(a.out, f"{name}_antenna.png"), os.path.join(a.out, f"{name}_pattern.png")
-        plot_antenna(apng, freq, S[:, k, k], m.ports[k].z0, ant, f"{name} - antenna")
-        plot_pattern(ppng, ant, f"{name} - gain pattern")
-        save_antenna(ant, os.path.join(a.out, f"{name}_antenna.json"))
-        info['antenna'] = dict(match=ant['match'], f_pattern=ant['f_pattern'])
-        print(f"wrote {apng}, {ppng}")
-    if levels:
-        from .converge import compare_levels, report
-        tol_db, tol_deg = (float(v) for v in str(a.converge_tol).split(','))
-        dev = compare_levels([S_ for _, S_ in coarse] + [Smm], names) + [{}]      # finest: the reference
-        lines, ok = report([f for f, _ in levels], dev[:-1], tol_db, tol_deg)
-        print("\n".join(lines))
-        cpng = os.path.join(a.out, f"{name}_converge.png")
-        plot_convergence(cpng, freq, [(f"x{f:g}", S_) for f, S_ in coarse] + [(f"x{levels[-1][0]:g}", Smm)], names,
-                         f"{name} - mesh convergence")
-        info['convergence'] = dict(converged=ok, tol_db=tol_db, tol_deg=tol_deg,
-                                   levels=[dict(factor=f, cells=lm['info']['cells'], **d)
-                                           for (f, lm), d in zip(levels, dev)])
-        print(f"wrote {cpng}")
-    with open(os.path.join(a.out, f"{name}_openems.json"), 'w') as fh:
-        json.dump(dict(info, runtime_s=time.time() - t0), fh, indent=1)
-    print(f"wrote {out}, {os.path.join(a.out, name + '_openems.png')}  ({time.time() - t0:.0f} s)")
-    return 0
+    if not a.board:
+        ap.error("board file required (or --check)")
+    return Job(a).run()
 
 
 if __name__ == '__main__':

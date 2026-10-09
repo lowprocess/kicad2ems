@@ -22,7 +22,8 @@ def test_parallel_matches_serial(demo_files, tmp_path, monkeypatch):
     freq = np.linspace(1e9, 2e9, 3)
     excite = list(range(len(m.ports)))
     log = []
-    S1 = simulation.run_excitations(m, {}, freq, excite, None, str(tmp_path), jobs=1, log=log.append)
-    S2 = simulation.run_excitations(m, {}, freq, excite, None, str(tmp_path), jobs=2, log=log.append)
-    assert np.array_equal(S1, S2) and not np.isnan(S1).any()
+    r1 = simulation.run_excitations(m, {}, freq, excite, None, str(tmp_path), jobs=1, log=log.append)
+    r2 = simulation.run_excitations(m, {}, freq, excite, None, str(tmp_path), jobs=2, log=log.append)
+    assert np.array_equal(r1.S, r2.S) and not np.isnan(r1.S).any()
+    assert r1.steps == r2.steps == {p.name: 100 for p in m.ports}
     assert any('2 at a time' in l for l in log)

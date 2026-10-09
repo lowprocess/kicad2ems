@@ -209,13 +209,40 @@ def steps_taken(path, dt_ps=None):
     return None
 
 
-def check_steps(name, path, mesh, max_steps, end_db, log=print):
-    """Warn when a run stopped at --max-steps instead of decaying to --end-db."""
-    n = steps_taken(path, mesh['info']['dt_ps'])
-    if n is not None and n >= 0.97 * max_steps:
-        log(f"  WARNING: {name} ran to the step limit (~{n} of --max-steps {max_steps}) before the energy fell by "
+def step_limit_warning(name, steps, max_steps, end_db):
+    """Warning text when a run stopped at --max-steps instead of decaying to --end-db (None otherwise)."""
+    if steps is None or steps < 0.97 * max_steps:
+        return None
+    return (f"WARNING: {name} ran to the step limit (~{steps} of --max-steps {max_steps}) before the energy fell by "
             f"{-end_db:g} dB - the fields may still be ringing; raise --max-steps (or accept a higher --end-db)")
+
+
+def check_steps(name, path, mesh, max_steps, end_db, log=print):
+    """Steps a finished run took; logs the step-limit warning if it applies."""
+    n = steps_taken(path, mesh['info']['dt_ps'])
+    w = step_limit_warning(name, n, max_steps, end_db)
+    if w:
+        log("  " + w)
     return n
+
+
+def execute(FDTD, path, threads=0, verbose=1):
+    """FDTD.Run in `path`, restoring the working directory (openEMS changes it). Returns seconds taken."""
+    os.makedirs(path, exist_ok=True)
+    cwd, t1 = os.getcwd(), time.time()
+    try:
+        FDTD.Run(path, cleanup=True, numThreads=threads, verbose=verbose)
+    finally:
+        os.chdir(cwd)
+    return time.time() - t1
+
+
+class RunResult:
+    """Result of run_excitations: S (nf, n, n) over the single-ended ports (NaN in the columns of ports not
+    excited), dump_files {(port, dump name): path}, dump_norm {port: {freq: incident voltage}} (field maps
+    scaled to a 1 V incident wave), seconds / steps {port: value} per run."""
+    def __init__(self, S):
+        self.S, self.dump_files, self.dump_norm, self.seconds, self.steps = S, {}, {}, {}, {}
 
 
 def _run_dir(m, k, out_dir):
@@ -234,11 +261,7 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
     os.makedirs(path, exist_ok=True)
     if xml_path:
         CSX.Write2XML(os.path.abspath(xml_path))
-    cwd, t1 = os.getcwd(), time.time()
-    try:
-        FDTD.Run(path, cleanup=True, numThreads=threads, verbose=verbose)
-    finally:
-        os.chdir(cwd)                                           # openEMS changes the working directory
+    seconds = execute(FDTD, path, threads, verbose)
     files, norm = {}, None
     for d in dumps:
         ext = '.h5' if d.freqs else ''
@@ -251,21 +274,17 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
     for p in ports:
         p.CalcPort(path, freq)
     col = np.array([p.uf_ref / ports[k].uf_inc for p in ports]).T
-    return k, col, files, norm, time.time() - t1, steps_taken(path, mesh['info']['dt_ps'])
+    return k, col, files, norm, seconds, steps_taken(path, mesh['info']['dt_ps'])
 
 
 def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, threads=0, xml_path=None,
                     dumps=(), dump_runs=None, jobs=1, diel='fixed', diel_fref=1e9, max_steps=1_000_000, log=print):
-    """One openEMS run per excited port, `jobs` of them at a time (separate processes; without
-    `threads`, half the logical CPUs are shared between them). Returns S (nf, n, n) over the single-ended ports, NaN in the columns of
-    ports that were not excited. Field dumps are added to the runs in dump_runs (port indices;
-    default: the first excited port); their file paths are returned in run_excitations.dump_files
-    as {(port name, dump name): path}."""
+    """One openEMS run per excited port, `jobs` of them at a time (separate processes; without `threads`,
+    half the logical CPUs are shared between them). Field dumps are added to the runs in dump_runs (port
+    indices; default: the first excited port). Returns a RunResult."""
     dump_runs = [excite[0]] if dump_runs is None else dump_runs
-    run_excitations.dump_files = {}
-    run_excitations.dump_norm = {}                                  # port -> {freq: incident voltage}
     n = len(m.ports)
-    S = np.full((len(freq), n, n), np.nan + 0j)
+    res = RunResult(np.full((len(freq), n, n), np.nan + 0j))
     jobs = max(1, min(int(jobs or 1), len(excite)))
     if jobs > 1 and not threads:
         # FDTD is memory-bound: half the logical CPUs (no hyper-thread pairs) shared by the runs; giving each
@@ -274,20 +293,21 @@ def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, 
     tasks = [dict(k=k, dumps=dumps if k in dump_runs else (), xml_path=xml_path if k == excite[0] else None)
              for k in excite]
 
-    def collect(res):
-        k, col, files, norm, dt, steps = res
-        S[:, :, k] = col
-        run_excitations.dump_files.update(files)
+    def collect(out):
+        k, col, files, norm, seconds, steps = out
+        name = m.ports[k].name
+        res.S[:, :, k] = col
+        res.dump_files.update(files)
+        res.seconds[name], res.steps[name] = seconds, steps
         if norm is not None:
-            run_excitations.dump_norm[m.ports[k].name] = norm
+            res.dump_norm[name] = norm
         for (pn, dn), path in files.items():
             if not glob.glob(os.path.join(os.path.dirname(path), dn + '*')):
-                log(f"  warning: no output found for {dn}")
-        log(f"  {m.ports[k].name} done in {dt:.0f} s" + (f", ~{steps} timesteps" if steps else ''))
-        if steps is not None and steps >= 0.97 * max_steps:
-            log(f"  WARNING: {m.ports[k].name} ran to the step limit (~{steps} of --max-steps {max_steps}) before the "
-                f"energy fell by {-end_db:g} dB - the fields may still be ringing; raise --max-steps (or accept a "
-                f"higher --end-db)")
+                log(f"  WARNING: no output found for field dump {dn}")
+        log(f"  {name} done in {seconds:.0f} s" + (f", ~{steps} timesteps" if steps else ''))
+        w = step_limit_warning(name, steps, max_steps, end_db)
+        if w:
+            log("  " + w)
 
     common = dict(m=m, mesh=mesh, freq=freq, bc=bc, out_dir=out_dir, end_db=end_db, sigma=sigma, threads=threads,
                   diel=diel, diel_fref=diel_fref, max_steps=max_steps)
@@ -295,7 +315,7 @@ def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, 
         for t in tasks:
             log(f"openEMS: exciting {m.ports[t['k']].name} -> {_run_dir(m, t['k'], out_dir)}")
             collect(_run_port(**t, **common))
-        return S
+        return res
     import multiprocessing
     from concurrent.futures import ProcessPoolExecutor, as_completed
     log(f"openEMS: {len(tasks)} excitation(s), {jobs} at a time, {threads} thread(s) each "
@@ -304,4 +324,4 @@ def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, 
         futs = [ex.submit(_run_port, **t, **common, verbose=0) for t in tasks]
         for f in as_completed(futs):
             collect(f.result())
-    return S
+    return res

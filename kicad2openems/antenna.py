@@ -11,7 +11,7 @@ far-field (NF2FF) box recorded at a set of frequencies, and after the run:
 Coordinates are those of the model (x right, y up as seen from the top of the board, z out of the
 board's top side), so phi = 0 is +x, theta = 0 is the board's top-side normal.
 """
-import json, os, time
+import json, os
 import numpy as np
 from .constants import C0
 
@@ -86,7 +86,7 @@ def describe(match, rows, f_pat):
 def run_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, end_db=-40, sigma=None, threads=0,
                 xml_path=None, dumps=(), diel='fixed', diel_fref=1e9, step=2.0, max_steps=1_000_000, log=print):
     """FDTD run with port k excited and an NF2FF box. Returns (S column (nf, n), result dict)."""
-    from .simulation import build_fdtd, _run_dir, check_steps
+    from .simulation import build_fdtd, _run_dir, check_steps, execute
     fmin, fmax = freq[0], freq[-1]
     ffr = record_freqs(fmin, fmax, ff_extra)
     path = _run_dir(m, k, out_dir)
@@ -99,13 +99,9 @@ def run_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, end
     if xml_path:
         CSX.Write2XML(os.path.abspath(xml_path))
     log(f"openEMS: antenna run, {m.ports[k].name} driven, NF2FF box recording {len(ffr)} frequencies -> {path}")
-    cwd, t1 = os.getcwd(), time.time()
-    try:
-        FDTD.Run(path, cleanup=True, numThreads=threads, verbose=1)
-    finally:
-        os.chdir(cwd)
+    seconds = execute(FDTD, path, threads)
     n = check_steps(m.ports[k].name, path, mesh, max_steps, end_db, log)
-    log(f"  done in {time.time() - t1:.0f} s" + (f", ~{n} timesteps" if n else ''))
+    log(f"  done in {seconds:.0f} s" + (f", ~{n} timesteps" if n else ''))
     for p in ports:
         p.CalcPort(path, freq)
     col = np.array([p.uf_ref / ports[k].uf_inc for p in ports]).T
@@ -139,7 +135,8 @@ def run_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, end
         g = (c.pop('E') / e_max) ** 2 * dmax * eff
         c['gain_dbi'] = [float(v) for v in 10 * np.log10(np.maximum(g, 1e-6))]
     sphere = dict(theta=th, phi=ph, gain=pattern_gain(full.E_norm[ip], dmax, eff))
-    res = dict(match=match, rows=rows, f_pattern=f_pat, cuts=cuts, sphere=sphere, port=m.ports[k].name)
+    res = dict(match=match, rows=rows, f_pattern=f_pat, cuts=cuts, sphere=sphere, port=m.ports[k].name,
+               seconds=seconds, steps=n)
     for line in describe(match, rows, f_pat):
         log(line)
     return col, res
