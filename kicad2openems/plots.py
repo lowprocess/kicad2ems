@@ -28,6 +28,13 @@ def preview(m, mesh, path, title=''):
         for (x, y, r, z0, z1) in mesh.get('vias', m.vias):
             if z0 - 1e-9 <= m.cu_z[lay] <= z1 + 1e-9:
                 ax.add_patch(plt.Circle((x, y), r, color='k', zorder=4))
+        for pt in getattr(m, 'parts', []):
+            if pt.layer == lay:
+                s, e = pt.box()
+                ax.add_patch(plt.Rectangle((s[0], s[1]), e[0] - s[0], e[1] - s[1], fill=False, hatch='////',
+                                           ec='#6c3483', lw=1.2, zorder=5))
+                ax.annotate(pt.ref, ((s[0] + e[0]) / 2, e[1]), xytext=(0, 4), textcoords='offset points',
+                            color='#6c3483', fontsize=8, ha='center', weight='bold', zorder=6)
         for p in m.ports:
             if p.layer == lay:
                 s, e = p.box()
@@ -154,6 +161,43 @@ def plot_results(path, f, S, names, title, compare=None):
     sax.legend(h, l, fontsize=7.5, loc='upper left', bbox_to_anchor=(-0.02, 1.02), framealpha=0.85)
     sax.set_title('Reflection (Smith chart)', fontsize=10)
 
+    fig.suptitle(title, x=0.02, ha='left', weight='bold')
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+def plot_convergence(path, f, levels, names, title, floor_db=-40.0):
+    """|S| in dB on every mesh level (one colour per parameter, one line style per level) and, below,
+    the deviation from the finest level. levels: [(label, S (nf, n, n)), ...] coarse to fine."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    fig, (ax, dx) = plt.subplots(2, 1, figsize=(11, 8), sharex=True, gridspec_kw=dict(height_ratios=[1.6, 1]))
+    cols = plt.cm.tab10.colors
+    styles = [':', '-.', '--', (0, (5, 1)), '-']
+    styles = styles[-len(levels):] if len(levels) <= len(styles) else ['--'] * (len(levels) - 1) + ['-']
+    n = levels[-1][1].shape[1]
+    ref = levels[-1][1]
+    k = 0
+    for j in range(n):
+        for i in range(j, n):
+            c = cols[k % 10]
+            rdb = 20 * np.log10(np.abs(ref[:, i, j]) + 1e-15)
+            for (lab, S), ls in zip(levels, styles):
+                sdb = 20 * np.log10(np.abs(S[:, i, j]) + 1e-15)
+                ax.plot(f / 1e9, sdb, ls=ls, color=c, lw=1.6 if ls == '-' else 1.2,
+                        label=f"S({names[i]},{names[j]}) {lab}")
+                if S is not ref:
+                    d = np.where(rdb > floor_db, sdb - rdb, np.nan)
+                    dx.plot(f / 1e9, d, ls=ls, color=c, lw=1.2, label=f"S({names[i]},{names[j]}) {lab}")
+            k += 1
+    ax.set_ylabel('|S| (dB)'); ax.grid(alpha=0.3)
+    ax.set_title(f"mesh levels (finest: solid)", fontsize=10)
+    ax.legend(fontsize=7.5, ncol=max(1, len(levels)))
+    dx.axhline(0, color='0.3', lw=0.8)
+    dx.set_ylabel(f"|S| - |S| finest (dB)"); dx.set_xlabel('Frequency (GHz)'); dx.grid(alpha=0.3)
+    dx.set_title(f"deviation from the finest level (where it is above {floor_db:g} dB)", fontsize=10)
     fig.suptitle(title, x=0.02, ha='left', weight='bold')
     fig.tight_layout()
     fig.savefig(path, dpi=130)

@@ -15,6 +15,8 @@ and memory, without running openEMS (it does not need openEMS installed). Try it
 ```bash
 python examples/make_demo_board.py examples/demo_transition
 kicad2openems examples/demo_transition.kicad_pcb --config examples/demo_transition.toml --preview
+python examples/make_demo_board.py examples/demo_rlc rlc     # microstrip with an 0402 series capacitor
+kicad2openems examples/demo_rlc.kicad_pcb --pos examples/demo_rlc-top.pos --nets RF1,RF2,GND --fmax 6 --preview
 ```
 
 ## Marking ports in KiCad
@@ -32,7 +34,8 @@ accepted too.
 ## What the model contains
 
 * **Stackup** from *Board Setup → Physical Stackup*: each dielectric with its thickness, εr and
-  tan δ (loss applied at the band centre); copper layers as zero-thickness sheets at their heights,
+  tan δ (loss applied at the band centre; `--diel wideband` for a model valid over the whole band, see
+  below); copper layers as zero-thickness sheets at their heights,
   PEC by default or conducting sheets with `--sigma 5.8e7` (thickness from the stackup). Solder
   mask only with `--mask` (its 10–20 µm layer forces a much smaller time step).
 * **Copper** of the nets in `--nets` (all nets if omitted): tracks, arcs, filled zones as filled
@@ -42,6 +45,27 @@ accepted too.
 * **Board outline** from Edge.Cuts: the dielectric is finite, as on the real board.
 * `--ground LAYER` models that copper layer as a solid plane over the outline (for boards where the
   reference plane is implied or partly drawn).
+* **Lumped R / L / C parts** (`--parts auto`, the default; `--parts none` to leave them out): every
+  two-pad footprint whose pads are both on modelled copper becomes an openEMS lumped element in the
+  copper plane, spanning the gap between the inner pad edges (both ends on mesh lines). Kind and
+  value come from KiCad's simulation fields (`Sim.Device` R / L / C, `Sim.Params` `c=1.5p`) or else
+  from the reference prefix (R / L / C) and Value (`4p7`, `10k`, `1.2nH`, `0R5`, `100n 50V`).
+  Optional fields `sim.esr` / `sim.esl` make it a series R-L-C; 0 Ω (or 0 H) is a metal strap.
+  DNP, `exclude_from_sim` and `Sim.Enable = 0` footprints are skipped, as are parts whose pads are
+  not in line along x / y or not on the selected nets (a note says why). The pads must be on nets
+  in `--nets`.
+
+### Wideband dielectric (`--diel wideband`)
+
+By default the loss tangent becomes a conductivity matched at the band centre, so tan δ falls as
+1/f: too lossy below the centre, not lossy enough above. `--diel wideband` uses the
+Djordjevic-Sarkar model instead (εr and tan δ from the stackup hold at `--diel-fref`, default
+1 GHz; εr then falls slowly and tan δ stays almost constant over frequency, as for real laminates),
+fitted by Debye poles (1.5 per decade of the band, typically 4) plus a conductivity, with fit
+errors below 0.2 % in εr and 1 % in tan δ. The run prints εr / tan δ at both band edges. The
+poles are expensive: on the filter example (1-8 GHz) a run took 4× as long as with `fixed`
+(5 poles then, 4 now). On that filter the insertion loss at the 3.1 GHz passband came out at
+6.0 dB instead of 7.4 dB, because the default fit overstates the loss below the band centre.
 
 ## Ports
 
@@ -54,7 +78,13 @@ thick substrates at high frequency.
 Differential pairs are simulated as two single-ended ports and converted to mixed mode:
 `P1d` (Z = 2·Z0) and `P1c` (Z = Z0/2), written as Touchstone 2.0 with per-port `[Reference]`.
 
-One FDTD run per excited port (`--excite P1,P2`; default all). Columns of ports that were not
+One FDTD run per excited port (`--excite P1,P2`; default all). `--jobs N` runs N of them at the
+same time in separate processes (openEMS output is then suppressed). Without `--threads`, each run
+gets half the logical CPUs divided by N. FDTD is limited by memory bandwidth, so more threads are
+not always faster: on a 16-core / 24-thread desktop, one run with 6 threads beat one with all 24
+threads, and two parallel runs with 12 threads each were 4× slower. Try `--threads` 4-8 first.
+Results agree between thread counts to within the `--end-db` truncation, because openEMS checks
+the end criterion on a wall-clock interval. Columns of ports that were not
 excited are filled by reciprocity; their own reflection stays unknown (written as 0, with a note).
 
 ## Mesh
@@ -83,6 +113,21 @@ on the demo board up to 8 GHz):
 |---|---|---|
 | demo transition (microstrip → via → stripline) | 1.37 M cells, 272 s | 0.54 M cells, 111 s |
 | 4-layer SMA edge launch with via fences | 0.99 M cells | 0.57 M cells |
+
+### Mesh convergence (`--converge 1,1.5,2`)
+
+Runs the model on several mesh levels: level *f* uses `--res` × *f*, `--fine` / *f* and
+⌈`--nz` × *f*⌉ cells per dielectric. `--preview --converge ...` lists the cells, time step, memory
+and relative run time of every level without running anything. A full run solves the coarser levels
+first (into `<out>/converge/L<f>/`, without field dumps), then the finest level, which gives the
+normal outputs. It prints each level's largest deviation from the finest level (|S| in dB and phase
+in degrees, over points above −40 dB), writes `<name>_converge.png`, and stores the table in
+`<name>_openems.json`. The result counts as **converged** when the second-finest level is within
+`--converge-tol` (default `0.1,2`: 0.1 dB / 2°). On narrowband circuits a small shift of the
+passband between levels shows up as tens of dB on the steep skirts. The microstrip filter example
+is one: from x1 to x1.5 its passband moves up by about 0.15 GHz. The plot shows whether the
+deviation is such a shift (resonators and coupling gaps under-resolved: refine further) or a level
+difference.
 
 ## Boundaries
 
@@ -128,7 +173,8 @@ and ignored, so one file can be shared with other tools (see `examples/demo_tran
 | `<name>_openems.sNp` | S-parameters (mixed-mode for differential ports) |
 | `<name>_openems.png` | reflection and transmission plots (`--compare file.sNp` overlays another result, labelled with its file name) |
 | `<name>_mesh.png` | per-layer copper, vias, ports and mesh lines; side view of the stack and z mesh |
-| `<name>_openems.json` | port names, reference impedances, mesh statistics, run time |
+| `<name>_openems.json` | port names, reference impedances, mesh statistics, lumped parts, run time (+ the convergence table) |
+| `<name>_converge.png` | `--converge`: \|S\| on every mesh level and the deviation from the finest |
 | `<name>.xml` | CSX geometry (open with AppCSXCAD) |
 | `openems/exc_<port>/` | raw openEMS runs |
 
@@ -171,6 +217,9 @@ openEMS, and what to do:
 | `model.py` | `Model`: 3D stack, copper per layer, vias, lumped `Port`s |
 | `boundaries.py` | per-side boundary selection, cavity-resonance check |
 | `mesh.py` | automatic mesh (`auto_mesh`, `smooth_lines`) |
+| `parts.py` | lumped R / L / C parts from two-pad footprints, value parsing |
+| `dielectric.py` | Djordjevic-Sarkar permittivity and its Debye-pole fit |
+| `converge.py` | mesh levels and their comparison for `--converge` |
 | `simulation.py` | CSXCAD / openEMS setup and runs |
 | `sparams.py` | mixed-mode conversion, reciprocity fill |
 | `dumps.py` | field-dump specs, CSX dump boxes, HDF5 reader, field-map plots |
@@ -180,11 +229,14 @@ openEMS, and what to do:
 | `cli.py` | command line (`kicad2openems`, `python -m kicad2openems`) |
 
 Tests (`pytest`) cover the KiCad import, model, ports, mesh rules, boundaries, mixed-mode
-conversion, Touchstone round trip, configuration and an end-to-end `--preview`; none of them
-needs openEMS.
+conversion, Touchstone round trip, configuration, lumped parts, the dielectric fit, parallel runs,
+convergence levels and an end-to-end `--preview`; none of them needs openEMS (the CSXCAD / openEMS
+calls are checked against strict stand-ins).
 
 ## Limits
 
 * Ports must point along x or y; lumped ports only (no de-embedded waveguide/MSL ports yet).
-* Copper is zero-thickness; dielectric loss is fitted at one frequency (the band centre).
-* Connectors and components are not modelled; a lumped port on the connector pad stands in for it.
+* Copper is zero-thickness; dielectric loss is fitted at one frequency (the band centre) unless
+  `--diel wideband`.
+* Of the components, only two-pad R / L / C parts are modelled (ideal, plus optional ESR / ESL fields).
+  Connectors are not modelled; a lumped port on the connector pad stands in for one.

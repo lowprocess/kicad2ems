@@ -7,6 +7,7 @@ The 3D model of a board for openEMS (units mm, y up = -y_KiCad):
   Model.vias     (x, y, radius, z0, z1) metal cylinders
   Model.ports    lumped ports (Port) from the P<n> footprints; Model.user_ports groups the legs
                  of differential ports
+  Model.parts    lumped R / L / C parts between two pads (parts.Part)
 """
 import numpy as np
 from shapely.geometry import Polygon, MultiPolygon, LineString, Point, box
@@ -16,6 +17,7 @@ from .geometry import polygons, flip_y
 from .kicad.outline import board_outline
 from .kicad.nets import resolve_nets, DiffLegs
 from .kicad.pnp import read_pos, pos_port_refs
+from .parts import find_parts
 
 
 def port_field(props, key, default=None):
@@ -45,7 +47,8 @@ class Port:
 class Model:
     """Geometry for openEMS from a KiCadBoard. Units mm, y up (y = -y_kicad)."""
 
-    def __init__(self, board, nets=None, pos_file=None, include_mask=False, region=None, ground=None, log=print):
+    def __init__(self, board, nets=None, pos_file=None, include_mask=False, region=None, ground=None, parts='auto',
+                 log=print):
         self.board, self.log = board, log
         self.notes = []
         # ---- stack, bottom to top ----
@@ -131,6 +134,19 @@ class Model:
         # signal nets: the nets of the traces the ports sit on; vias on them are 'signal vias'
         self.signal_nets = {p.net for p in self.ports if p.net}
         self.via_signal = [n in self.signal_nets for n in self.via_nets]
+        # ---- lumped R / L / C parts ----
+        self.parts = []
+        if parts not in ('auto', 'none', None):
+            raise ValueError(f"parts: 'auto' or 'none', not {parts!r}")
+        if parts == 'auto':
+            self.parts, notes = find_parts(board, self)
+            self.notes += notes
+
+    def __getstate__(self):
+        """Pickled for parallel runs: the parsed board and the log callback stay behind."""
+        st = dict(self.__dict__)
+        st['board'], st['log'] = None, print
+        return st
 
     def _copper_at(self, lay, pt):
         for p in self.copper.get(lay, []):
@@ -199,6 +215,7 @@ class Model:
         for p in self.ports:
             L.append(f"  {p.name}: lumped, {p.layer} -> {p.ref_layer}, w {p.w:.3f} mm, h {abs(p.z_sig - p.z_ref):.3f} mm, "
                      f"at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm")
+        L += [p.describe() for p in self.parts]
         return "\n".join(L + self.notes)
 
 

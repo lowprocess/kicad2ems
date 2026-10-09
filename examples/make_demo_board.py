@@ -71,7 +71,7 @@ def make(path, pos_path):
         fh.write(f"TP1       P1        RF_Port              2.0000    -{yc:.4f}     0.0000  top\n")
         fh.write(f"TP2       P2        RF_Port             22.0000    -{yc:.4f}   180.0000  top\n")
 
-if __name__ == '__main__' and not (len(sys.argv) > 2 and sys.argv[2] == 'diff'):
+if __name__ == '__main__' and not (len(sys.argv) > 2 and sys.argv[2] in ('diff', 'rlc')):
     out = sys.argv[1] if len(sys.argv) > 1 else 'demo_transition'
     make(out + '.kicad_pcb', out + '-top.pos')
     print('wrote', out + '.kicad_pcb', out + '-top.pos')
@@ -135,6 +135,60 @@ def make_diff(path, pos_path):
         fh.write("### Footprint positions ###\n## Unit = mm, Angle = deg.\n# Ref Val Package PosX PosY Rot Side\n")
         for ref, txt, (x, y), rot in ports:
             fh.write(f"{ref} {txt} RF_Port {x:.4f} {-y:.4f} {rot:.4f} top\n")
+
+
+def make_rlc(path, pos_path):
+    """2-layer board: 0.35 mm microstrip on F.Cu over a B.Cu GND plane, broken by a 0.5 mm gap that an
+    0402 capacitor C1 (1.5 pF, pads on nets RF1 / RF2) bridges; plus R9 (DNP) and L3 (value 'tbd'),
+    which are skipped. Ports P1 (x = 2) and P2 (x = 22)."""
+    yc, W, H = 5.0, 24.0, 10.0
+    L = []
+    L.append('(kicad_pcb (version 20240108) (generator "kicad2openems") (generator_version "8.0")')
+    L.append('  (general (thickness 0.2))\n  (paper "A4")')
+    L.append('  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user) (49 "F.Fab" user))')
+    L.append('  (setup (stackup')
+    L.append('    (layer "F.Cu" (type "copper") (thickness 0.035))')
+    L.append('    (layer "dielectric 1" (type "core") (thickness 0.2) (material "FR4") (epsilon_r 4.3) (loss_tangent 0.02))')
+    L.append('    (layer "B.Cu" (type "copper") (thickness 0.035))')
+    L.append('    (copper_finish "None") (dielectric_constraints no))\n    (pad_to_mask_clearance 0))')
+    L.append('  (net 0 "") (net 1 "GND") (net 2 "RF1") (net 3 "RF2")')
+    L.append(f'  (segment (start 2.0 {yc}) (end 11.52 {yc}) (width 0.35) (layer "F.Cu") (net 2) (uuid "{u()}"))')
+    L.append(f'  (segment (start 12.48 {yc}) (end 22.0 {yc}) (width 0.35) (layer "F.Cu") (net 3) (uuid "{u()}"))')
+    outer = [(0, 0), (W, 0), (W, H), (0, H)]
+    L.append(f'  (zone (net 1) (net_name "GND") (layer "B.Cu") (uuid "{u()}") (hatch edge 0.5)')
+    L.append('    (connect_pads (clearance 0.2)) (min_thickness 0.2) (filled_areas_thickness no)')
+    L.append('    (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))')
+    L.append(f'    (polygon (pts {" ".join(f"(xy {x} {y})" for x, y in outer)}))')
+    L.append(f'    (filled_polygon (layer "B.Cu") (pts {" ".join(f"(xy {x} {y})" for x, y in outer)})))')
+    for ref, val, x, y, nets, extra in (("C1", "1.5p", 12.0, yc, (2, 3), ""),
+                                        ("R9", "100", 12.0, 8.0, (0, 0), " dnp"),
+                                        ("L3", "tbd", 6.0, 8.0, (0, 0), "")):
+        L.append(f'  (footprint "Capacitor_SMD:C_0402_1005Metric" (layer "F.Cu") (uuid "{u()}") (at {x} {y} 0)')
+        L.append(f'    (property "Reference" "{ref}" (at 0 -1.2 0) (layer "F.SilkS") (uuid "{u()}"))')
+        L.append(f'    (property "Value" "{val}" (at 0 1.2 0) (layer "F.Fab") (uuid "{u()}"))')
+        L.append(f'    (attr smd{extra})')
+        for num, px, net in (("1", -0.48, nets[0]), ("2", 0.48, nets[1])):
+            nn = ["", "GND", "RF1", "RF2"][net]
+            L.append(f'    (pad "{num}" smd roundrect (at {px} 0) (size 0.56 0.62) (layers "F.Cu" "F.Paste" "F.Mask") '
+                     f'(roundrect_rratio 0.25) (net {net} "{nn}") (uuid "{u()}"))')
+        L.append('  )')
+    ports = [("TP1", "P1", 2.0, 0), ("TP2", "P2", 22.0, 180)]
+    for ref, txt, x, rot in ports:
+        L.append(f'  (footprint "kicad2openems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x} {yc} {rot})')
+        L.append(f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))')
+        L.append(f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))')
+        L.append(f'    (fp_text user "{txt}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )')
+    L.append(f'  (gr_rect (start 0 0) (end {W} {H}) (stroke (width 0.1) (type default)) (fill none) (layer "Edge.Cuts") (uuid "{u()}"))\n)')
+    open(path, 'w').write("\n".join(L) + "\n")
+    with open(pos_path, 'w') as fh:
+        fh.write("### Footprint positions ###\n## Unit = mm, Angle = deg.\n# Ref Val Package PosX PosY Rot Side\n")
+        for ref, txt, x, rot in ports:
+            fh.write(f"{ref} {txt} RF_Port {x:.4f} {-yc:.4f} {rot:.4f} top\n")
+
+
+if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] == 'rlc':
+    make_rlc(sys.argv[1] + '.kicad_pcb', sys.argv[1] + '-top.pos')
+    print('wrote', sys.argv[1] + '.kicad_pcb')
 
 
 if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] == 'diff':

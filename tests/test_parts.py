@@ -1,0 +1,77 @@
+"""Lumped R / L / C parts: value parsing, detection on the board, mesh lines at the element ends and
+the CSXCAD calls (fake openEMS, see test_simulation_setup)."""
+import os, sys, subprocess
+import numpy as np
+import pytest
+from kicad2openems.kicad import KiCadBoard
+from kicad2openems.model import Model
+from kicad2openems.mesh import auto_mesh
+from kicad2openems.parts import parse_value, Part
+from test_simulation_setup import fake_openems                       # noqa: F401  (fixture)
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+@pytest.fixture(scope='module')
+def rlc(tmp_path_factory):
+    d = tmp_path_factory.mktemp('rlc')
+    subprocess.check_call([sys.executable, os.path.join(ROOT, 'examples', 'make_demo_board.py'), str(d / 'rlc'), 'rlc'])
+    return str(d / 'rlc')
+
+
+@pytest.mark.parametrize('text,value', [
+    ('4p7', 4.7e-12), ('10k', 1e4), ('1.2nH', 1.2e-9), ('0R5', 0.5), ('100n', 1e-7), ('1M', 1e6), ('47R', 47.0),
+    ('4.7uF', 4.7e-6), ('2.2 nH', 2.2e-9), ('100n 50V X7R', 1e-7), ('4k7', 4700.0), ('1,5p', 1.5e-12), ('0', 0.0),
+    ('DNP', None), ('R', None), ('tbd', None), ('1.2.3', None)])
+def test_parse_value(text, value):
+    v = parse_value(text)
+    assert v == pytest.approx(value) if value is not None else v is None
+
+
+def test_parts_detected_and_skipped(rlc):
+    m = Model(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
+    assert [p.ref for p in m.parts] == ['C1']
+    c1 = m.parts[0]
+    assert c1.C == pytest.approx(1.5e-12) and c1.R is None and c1.L is None and not c1.series
+    assert c1.axis == 0 and c1.gap == pytest.approx(0.4) and c1.layer == 'F.Cu'
+    assert c1.s[0] == pytest.approx(11.8) and c1.e[0] == pytest.approx(12.2) and c1.s[2] == c1.e[2] == m.cu_z['F.Cu']
+    notes = "\n".join(m.notes)
+    assert 'R9 skipped: DNP' in notes and "L3 skipped: value 'tbd'" in notes
+    assert 'C1: lumped 1.5 pF' in m.describe()
+    # --parts none -> nothing
+    m3 = Model(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', parts='none',
+               log=lambda *a: None)
+    assert not m3.parts
+
+
+def test_part_ends_on_mesh_lines(rlc):
+    m = Model(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
+    mesh = auto_mesh(m, 0.5e9, 6e9, log=lambda *a: None)
+    c1 = m.parts[0]
+    for v in (c1.s[0], c1.e[0]):
+        assert np.min(np.abs(mesh['x'] - v)) < 1e-9
+    assert np.sum((mesh['x'] > c1.s[0]) & (mesh['x'] < c1.e[0])) >= 1            # cells across the gap
+
+
+def test_part_topologies():
+    s, e = [0, 0, 0], [1, 1, 0]
+    assert Part('L1', None, 1e-9, None, 'F.Cu', 0, 0, s, e).series                   # L alone: series
+    assert Part('C1', 0.1, 0.5e-9, 1e-12, 'F.Cu', 0, 0, s, e).series                 # with ESR / ESL
+    assert not Part('R1', 50.0, None, None, 'F.Cu', 0, 0, s, e).series
+    assert Part('R2', 0.0, None, None, 'F.Cu', 0, 0, s, e).short
+    assert Part('C2', 0.1, 0.5e-9, 1e-12, 'F.Cu', 0, 0, s, e).value_str() == '0.1 ohm + 500 pH + 1 pF'
+
+
+def test_build_fdtd_adds_lumped_elements(rlc, fake_openems):
+    from kicad2openems.simulation import build_fdtd
+    from kicad2openems.boundaries import resolve_bc
+    m = Model(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
+    m.parts.append(Part('L7', 0.2, np.float64(2e-9), None, 'F.Cu', m.cu_z['F.Cu'], 1, [3, 3, 0.2], [3.2, 3.5, 0.2]))
+    m.parts.append(Part('R5', 0.0, None, None, 'F.Cu', m.cu_z['F.Cu'], 0, [4, 3, 0.2], [4.4, 3.5, 0.2]))
+    bc = resolve_bc('auto', m)
+    mesh = auto_mesh(m, 0.5e9, 6e9, bc=bc, log=lambda *a: None)
+    build_fdtd(m, mesh, 0.5e9, 6e9, 0, bc=bc)
+    lumped = [x for x in fake_openems if isinstance(x, tuple)]
+    assert lumped[0] == ('lumped', 'part_C1', {'C': 1.5e-12})
+    assert lumped[1] == ('lumped', 'part_L7', {'R': 0.2, 'L': 2e-9, 'LEtype': 1})
+    assert len(lumped) == 2 and fake_openems.count('box') == 3                    # C1, L7 + the 0 ohm strap

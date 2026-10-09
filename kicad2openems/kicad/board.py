@@ -191,8 +191,11 @@ class KiCadBoard:
                 d = float(drill[1]) if len(drill) > 1 and drill[1] != 'oval' else float(drill[2])
                 self.vias.append(dict(x=centre[0], y=centre[1], size=0, drill=d, layers=lys, net=net, pth=True))
             pads.append(dict(name=pad[1], xy=centre, layers=lys, net=net, geom=geom))
+        attr = [str(t) for t in (sx.item(fp, 'attr') or [])[1:]]
+        flag = lambda k: k in attr or sx.val(fp, k, 'no') == 'yes'
         self.footprints.append(dict(ref=ref, value=val, fab=fab_texts, props=props, x=org[0], y=org[1],
-                                    rot=rot, side=side, lib=str(fp[1]), pads=pads))
+                                    rot=rot, side=side, lib=str(fp[1]), pads=pads, dnp=flag('dnp'),
+                                    exclude_from_sim=flag('exclude_from_sim')))
 
     # ---- ports ----------------------------------------------------------------------------
     def port_footprints(self, pos_refs=None):

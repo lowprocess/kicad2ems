@@ -90,7 +90,7 @@ def manhattan(d, L, fine):
     """Edges (vectors d, lengths L) treated as Manhattan: at least `fine` long and drifting at most
     fine/10 across their axis. Near-Manhattan edges come from simplify() merging a tiny step (a 1.5 um
     jog where a track meets a slightly wider rectangle); they still get the thirds rule."""
-    tol = np.minimum(fine / 10, 1e-6 * L + fine / 10)
+    tol = fine / 10
     return ((np.abs(d[..., 0]) <= tol) | (np.abs(d[..., 1]) <= tol)) & (L >= fine)
 
 
@@ -198,6 +198,8 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
     keep = {0: [ob[0], ob[2]], 1: [ob[1], ob[3]]}                  # exact: board outline and port planes
     for p in m.ports:                                               # (the port width snaps to the edge lines)
         keep[p.axis].append(p.c[p.axis])
+    for pt in getattr(m, 'parts', []):                              # lumped parts: both ends on lines
+        keep[pt.axis] += [pt.s[pt.axis], pt.e[pt.axis]]
 
     def xy_lines(extra):
         out = {}
@@ -264,6 +266,12 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
         info.setdefault('lines_across_ports', {})[p.name] = n_in
         if n_in < 2:
             log(f"WARNING: only {n_in} mesh line(s) across the {p.w:.3f} mm trace at {p.name} - use a smaller --fine")
+    for pt in getattr(m, 'parts', []):
+        lines = mesh[pt.axis]
+        ends = [np.min(np.abs(lines - v)) < 1e-9 for v in (pt.s[pt.axis], pt.e[pt.axis])]
+        if not all(ends):
+            log(f"WARNING: the {pt.gap:.3f} mm gap of {pt.ref} is narrower than half the fine cell - "
+                f"use a smaller --fine")
     if nsnap:
         log(f"vias: {nsnap} snapped onto existing lines (moved <= {info['via_max_move_mm']:.3f} mm), "
             f"{len(m.vias) - nsnap} with their own lines")

@@ -20,7 +20,7 @@ if sys.version_info >= (3, 11):
 else:                                                           # pragma: no cover
     import tomli as tomllib
 
-LIST_KEYS = ('nets', 'region', 'excite', 'dump_port')
+LIST_KEYS = ('nets', 'region', 'excite', 'dump_port', 'converge', 'converge_tol')
 KEEP_LIST = ('dump',)                                          # specs contain commas: stay a list
 
 
