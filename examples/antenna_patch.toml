@@ -1,0 +1,9 @@
+# kicad2openems antenna example: inset-fed patch, 2.45 GHz (1.6 mm FR4) (run from the repository root)
+#   python examples/make_antennas.py patch examples/antenna_patch
+#   kicad2openems examples/antenna_patch.kicad_pcb --config examples/antenna_patch.toml --preview
+#   kicad2openems examples/antenna_patch.kicad_pcb --config examples/antenna_patch.toml
+mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+fmin    = 2.0           # GHz
+fmax    = 3.0
+points  = 401
+out     = "examples/out"

@@ -47,8 +47,7 @@ class Part:
         self.s, self.e = np.asarray(s, float), np.asarray(e, float)
         given = [v for v in (R, L, C) if v is not None]
         self.short = given == [0.0] and C is None                   # 0 ohm / 0 H link: metal
-        # one L alone, or several elements: series (openEMS default topology is parallel)
-        self.series = len(given) > 1 or (L is not None and len(given) == 1)
+        self.series = len(given) > 1                                # R + L + C in series (ESR / ESL fields)
 
     @property
     def gap(self):
@@ -56,6 +55,23 @@ class Part:
 
     def box(self):
         return self.s, self.e
+
+    def pieces(self):
+        """openEMS lumped elements along the gap: [(suffix, {'R'|'L'|'C': value}, series topology, start,
+        stop)]. openEMS's series-topology update (0.37) has an undamped DC mode unless a C is in the
+        branch: series R + L grew by ~5 dB per 9000 steps, a lone series L drifted slowly upwards. So:
+        a resistance in series with L / C becomes its own resistive sheet on the first half of the gap;
+        an inductor without C uses the parallel topology (a plain inductor, plus the small parallel
+        capacitance openEMS adds: self-resonance ~4.5 x fmax); L with C uses the series topology."""
+        vals = {k: v for k, v in (('R', self.R), ('L', self.L), ('C', self.C)) if v is not None}
+        x = {k: v for k, v in vals.items() if k != 'R'}
+        if not (self.series and 'R' in vals and x):
+            return [('', vals, 'L' in vals and 'C' in vals, self.s, self.e)]
+        a = self.axis
+        mid_s, mid_e = self.s.copy(), self.e.copy()
+        mid_s[a] = mid_e[a] = 0.5 * (self.s[a] + self.e[a])
+        out = [('_R', {'R': vals['R']}, False, self.s, mid_e)] if vals['R'] > 0 else []
+        return out + [('_X' if out else '', x, 'L' in x and 'C' in x, mid_s, self.e)]
 
     def value_str(self):
         if self.short:

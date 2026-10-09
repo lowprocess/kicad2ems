@@ -19,6 +19,28 @@ python examples/make_demo_board.py examples/demo_rlc rlc     # microstrip with a
 kicad2openems examples/demo_rlc.kicad_pcb --pos examples/demo_rlc-top.pos --nets RF1,RF2,GND --fmax 6 --preview
 ```
 
+**Lumped-element low-pass filter.** This demo is a 3rd-order Butterworth design (1 GHz, 50 Ω) built
+from 0402 parts on microstrip. It is a T network: L1 8.2 nH in series, C2 6.8 pF to a GND pad with
+two vias, then L3 8.2 nH in series. The parts carry KiCad fields for their parasitics: `sim.esr`
+0.4 Ω on the inductors; `sim.esr` 0.1 Ω and `sim.esl` 0.5 nH on the capacitor. The capacitor's ESL
+makes it self-resonate near 2.7 GHz, which appears as a notch in S21. The generator also writes the
+S-parameters of the ideal lumped circuit (no lines or pads, −3 dB at 0.87 GHz). The configuration
+overlays them, so the plot shows what the layout adds:
+
+```bash
+python examples/make_demo_board.py examples/demo_lowpass lowpass
+kicad2openems examples/demo_lowpass.kicad_pcb --config examples/demo_lowpass.toml
+```
+
+Two variants come from the same generator, each with its own config: `highpass` (C 3.3 pF – L 3.9 nH
+to GND – C 3.3 pF) and `bandpass` (series L 27 nH + C 1 pF, then shunt L 2.2 nH ∥ C 12 pF, at
+1 GHz). The simulated low-pass rolls off earlier than the ideal circuit (−3 dB at 0.77 GHz instead
+of 0.87 GHz), and C2's notch moves from 2.7 GHz down to 2.1 GHz. That shift implies about 0.4 nH
+more in the shunt branch than C2's ESL, which is roughly what the stub to the pad, the GND pad and
+its vias add. The band-pass shows the same effect more strongly: its passband peak lands at 0.74 GHz
+instead of 0.88 GHz. Adding 0.5 nH to each shunt branch of the ideal circuit reproduces that. The
+2.2 nH shunt inductor is small enough that the via and pad inductance detunes the filter by 25 %.
+
 ## Marking ports in KiCad
 
 Place a footprint (no copper needed) at the end of each feed line with a **Fab-layer text `P1`,
@@ -66,6 +88,62 @@ errors below 0.2 % in εr and 1 % in tan δ. The run prints εr / tan δ at both
 poles are expensive: on the filter example (1-8 GHz) a run took 4× as long as with `fixed`
 (5 poles then, 4 now). On that filter the insertion loss at the 3.1 GHz passband came out at
 6.0 dB instead of 7.4 dB, because the default fit overstates the loss below the band centre.
+
+## Antenna mode (`--mode antenna`)
+
+For antennas, one port is driven (the first, or `--excite`) and the field leaves through PML
+absorbers on all six sides (`--bc auto` becomes `PML_8`). The default air margin is a quarter
+wavelength at the band centre. A near-field to far-field (NF2FF) box records 21 frequencies across
+the band, plus any given with `--ff-freq`. The Gaussian excitation reaches 30 % of the band beyond
+`--fmax`; near the top edge of a Gaussian's band the far field came out wrong. The run reports and
+writes:
+
+| File | Contents |
+|---|---|
+| `<name>_antenna.png` | \|S11\| with the −10 dB band, input impedance, directivity / gain / realized gain and radiation efficiency over frequency |
+| `<name>_pattern.png` | gain (dBi) in the xz (φ = 0), yz (φ = 90°) and xy (θ = 90°) planes and a 3D pattern at the resonance (or `--ff-freq`), with a summary |
+| `<name>_antenna.json` | resonance, S11, Zin, bandwidth, the gain table and the cuts |
+
+Angles: θ from +z (the normal of the board's top side), φ from +x (KiCad x); y points up in the
+KiCad view. Efficiency is Prad / accepted power (dielectric and copper loss). Realized gain also
+counts the mismatch, Prad / incident power. `--ff-step` sets the angle step of the cuts (default 2°).
+
+**Gap ports.** A port footprint placed *between* two conductors on the same layer, not on copper,
+becomes an in-plane lumped port across the gap: centre-fed dipoles, loops, or a feed across a slot.
+The footprint's rotation gives the axis across the gap, the width is the narrower conductor, and
+`port.z0` sets the reference impedance (e.g. 73 Ω for a dipole). Setting `port.type = z` keeps the
+usual vertical port.
+
+Four examples, all for 2.45 GHz on FR-4 (`examples/make_antennas.py`, one config each):
+
+```bash
+python examples/make_antennas.py dipole examples/antenna_dipole        # also: patch, ifa, slot
+kicad2openems examples/antenna_dipole.kicad_pcb --config examples/antenna_dipole.toml
+```
+
+| Example | Geometry | Feed |
+|---|---|---|
+| `patch` | inset-fed patch, 37.2 × 28.8 mm, 1.6 mm FR-4, B.Cu ground | 50 Ω microstrip from the board edge |
+| `ifa` | inverted-F (arm 17.5 mm, 5 mm high) above the top edge of a 40 × 48 mm ground plane, shorting leg via to ground | at the ground edge, 3 mm from the short |
+| `dipole` | printed half-wave dipole, 2 × 23.3 mm arms, 0.8 mm FR-4, no ground | gap port, 73 Ω |
+| `slot` | 52 × 2 mm slot in the B.Cu ground of a 60 × 60 mm board | microstrip crossing 16 mm off-centre, λ/4 open stub |
+
+The dimensions are parameters of the generator (`make_antennas.py ifa out arm=19 s=2.5`). The
+defaults were tuned with kicad2openems:
+
+| Example | Resonance | S11 | −10 dB band | Directivity | Efficiency | Gain |
+|---|---|---|---|---|---|---|
+| `patch` | 2.438 GHz | −19.4 dB | 2.2 % | 7.0 dBi | 39 % | 2.9 dBi |
+| `ifa` | 2.451 GHz | −33.5 dB | 12.0 % | 2.9 dBi | 91 % | 2.5 dBi |
+| `dipole` | 2.430 GHz | −20.3 dB | 15.6 % | 2.1 dBi | 96 % | 1.9 dBi |
+| `slot` | 2.434 GHz | −26.9 dB | 20.6 % | 4.4 dBi | 87 % | 3.7 dBi |
+
+These are the expected values: the dipole's 2.1 dBi matches the ideal half-wave dipole (2.15 dBi),
+with its doughnut pattern and nulls along its axis. The patch radiates broadside (+z), and its
+39 % efficiency is what FR-4 loss (tan δ 0.02) does to a narrowband patch. The IFA is nearly
+omnidirectional. Tuning took a few sweeps of about 10 s per run. An IFA fed through a 3 mm
+microstrip could not be matched, because the feed width kept the feed point too far from the
+short; feeding at the ground edge fixed it.
 
 ## Ports
 
@@ -220,6 +298,7 @@ openEMS, and what to do:
 | `parts.py` | lumped R / L / C parts from two-pad footprints, value parsing |
 | `dielectric.py` | Djordjevic-Sarkar permittivity and its Debye-pole fit |
 | `converge.py` | mesh levels and their comparison for `--converge` |
+| `antenna.py` | antenna mode: NF2FF box, match, gain / efficiency, patterns |
 | `simulation.py` | CSXCAD / openEMS setup and runs |
 | `sparams.py` | mixed-mode conversion, reciprocity fill |
 | `dumps.py` | field-dump specs, CSX dump boxes, HDF5 reader, field-map plots |

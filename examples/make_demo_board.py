@@ -5,6 +5,7 @@ Writes a small KiCad 8 board for testing the import path (no KiCad needed):
   two port footprints 'kicad2openems:RF_Port' carrying Fab text P1 / P2; and the pick-and-place file.
 """
 import math, sys, uuid
+import numpy as np
 
 def u(): return str(uuid.uuid4())
 
@@ -71,7 +72,7 @@ def make(path, pos_path):
         fh.write(f"TP1       P1        RF_Port              2.0000    -{yc:.4f}     0.0000  top\n")
         fh.write(f"TP2       P2        RF_Port             22.0000    -{yc:.4f}   180.0000  top\n")
 
-if __name__ == '__main__' and not (len(sys.argv) > 2 and sys.argv[2] in ('diff', 'rlc')):
+if __name__ == '__main__' and not (len(sys.argv) > 2 and sys.argv[2] in ('diff', 'rlc', 'lowpass', 'highpass', 'bandpass')):
     out = sys.argv[1] if len(sys.argv) > 1 else 'demo_transition'
     make(out + '.kicad_pcb', out + '-top.pos')
     print('wrote', out + '.kicad_pcb', out + '-top.pos')
@@ -184,6 +185,145 @@ def make_rlc(path, pos_path):
         fh.write("### Footprint positions ###\n## Unit = mm, Angle = deg.\n# Ref Val Package PosX PosY Rot Side\n")
         for ref, txt, x, rot in ports:
             fh.write(f"{ref} {txt} RF_Port {x:.4f} {-yc:.4f} {rot:.4f} top\n")
+
+
+# Lumped-element ladder filters (50 ohm, 0402 parts on 0.35 mm microstrip over a B.Cu GND plane), E12
+# values. A stage is ('series', part) or ('shunt', [parts]) (shunt parts in parallel, each to a GND pad
+# with two vias); a part is (ref, kind 'L' | 'C', value, esr, esl). Inductors carry 0.4 ohm ESR,
+# capacitors 0.1 ohm ESR and 0.5 nH ESL (sim.esr / sim.esl fields).
+LADDERS = {
+    # 3rd-order Butterworth low-pass, fc = 1 GHz: L - C to GND - L (C2's ESL: notch near 2.7 GHz)
+    'lowpass': [('series', ('L1', 'L', 8.2e-9, 0.4, None)), ('shunt', [('C2', 'C', 6.8e-12, 0.1, 0.5e-9)]),
+                ('series', ('L3', 'L', 8.2e-9, 0.4, None))],
+    # 3rd-order Butterworth high-pass, fc = 1 GHz: C - L to GND - C
+    'highpass': [('series', ('C1', 'C', 3.3e-12, 0.1, 0.5e-9)), ('shunt', [('L2', 'L', 3.9e-9, 0.4, None)]),
+                 ('series', ('C3', 'C', 3.3e-12, 0.1, 0.5e-9))],
+    # 2nd-order Butterworth band-pass, f0 = 1 GHz, ~40 % bandwidth: series L-C resonator, then a shunt
+    # L || C resonator
+    'bandpass': [('series', ('L1', 'L', 27e-9, 0.4, None)), ('series', ('C1', 'C', 1.0e-12, 0.1, 0.5e-9)),
+                 ('shunt', [('L2', 'L', 2.2e-9, 0.4, None), ('C2', 'C', 12e-12, 0.1, 0.5e-9)])],
+}
+
+
+def _part_z(kind, val, esr, esl, w):
+    z = (esr or 0) + 1j * w * (esl or 0)
+    return z + (1j * w * val if kind == 'L' else 1 / (1j * w * val))
+
+
+def ladder_ideal(ladder, f, z0=50.0):
+    """S-parameters (nf, 2, 2) of the ideal lumped circuit (no lines, no pads) for --compare."""
+    w = 2 * math.pi * np.asarray(f, float)
+    one, zero = np.ones_like(w, complex), np.zeros_like(w, complex)
+    A, B, C, D = one, zero, zero, one
+    for kind, p in ladder:
+        if kind == 'series':
+            z = _part_z(*p[1:], w)
+            A, B, C, D = A, A * z + B, C, C * z + D
+        else:
+            y = sum(1 / _part_z(*q[1:], w) for q in p)
+            A, B, C, D = A + B * y, B, C + D * y, D
+    den = A + B / z0 + C * z0 + D
+    S = np.empty((len(w), 2, 2), complex)
+    S[:, 0, 0] = (A + B / z0 - C * z0 - D) / den
+    S[:, 0, 1] = 2 * (A * D - B * C) / den
+    S[:, 1, 0] = 2 / den
+    S[:, 1, 1] = (-A + B / z0 - C * z0 + D) / den
+    return S
+
+
+def lowpass_ideal(f, z0=50.0):
+    return ladder_ideal(LADDERS['lowpass'], f, z0)
+
+
+def make_ladder(name, path, pos_path, ideal_path):
+    """Board for LADDERS[name]: P1 -> parts -> P2 along y = 5 mm, plus the ideal circuit's S-parameters
+    (ideal_path, Touchstone, 0.1-4 GHz)."""
+    ladder = LADDERS[name]
+    yc, H = 5.0, 10.0
+    L, nets = [], ["", "GND", "RF_IN"]
+    seg = lambda x0, y0, x1, y1, net: L.append(
+        f'  (segment (start {x0:.3f} {y0}) (end {x1:.3f} {y1}) (width 0.35) (layer "F.Cu") (net {net}) (uuid "{u()}"))')
+    parts, x, prev, net = [], 6.0, 2.0, 2               # prev: where the current node's trace starts
+    for kind, p in ladder:
+        if kind == 'series':
+            cx = x + 0.5
+            seg(prev, yc, cx - 0.48, yc, net)
+            nets.append(f"N{len(nets) - 2}")
+            parts.append((p, cx, yc, 0, (net, len(nets) - 1)))
+            net, prev, x = len(nets) - 1, cx + 0.48, cx + 2.5
+        else:
+            for q in p:
+                cx = x + 0.5
+                seg(cx, yc, cx, yc + 0.52, net)
+                parts.append((q, cx, yc + 1.0, 270, (net, 1)))
+                L.append(f'  (gr_rect (start {cx - 0.6:.3f} {yc + 1.25}) (end {cx + 0.6:.3f} {yc + 2.2}) '
+                         f'(stroke (width 0) (type solid)) (fill yes) (layer "F.Cu") (net 1) (uuid "{u()}"))')
+                for vx in (cx - 0.3, cx + 0.3):
+                    L.append(f'  (via (at {vx:.3f} {yc + 1.85}) (size 0.45) (drill 0.25) (layers "F.Cu" "B.Cu") '
+                             f'(net 1) (uuid "{u()}"))')
+                x = cx + 1.1
+            x += 1.4
+    nets[-1] = "RF_OUT"
+    W = x + 6.0
+    x_out = W - 2.0
+    seg(prev, yc, x_out, yc, net)
+    head = ['(kicad_pcb (version 20240108) (generator "kicad2openems") (generator_version "8.0")',
+            '  (general (thickness 0.2))\n  (paper "A4")',
+            '  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (37 "F.SilkS" user) (44 "Edge.Cuts" user) (49 "F.Fab" user))',
+            '  (setup (stackup',
+            '    (layer "F.Cu" (type "copper") (thickness 0.035))',
+            '    (layer "dielectric 1" (type "core") (thickness 0.2) (material "FR4") (epsilon_r 4.3) (loss_tangent 0.02))',
+            '    (layer "B.Cu" (type "copper") (thickness 0.035))',
+            '    (copper_finish "None") (dielectric_constraints no))\n    (pad_to_mask_clearance 0))',
+            '  ' + ' '.join(f'(net {i} "{n}")' for i, n in enumerate(nets))]
+    L[:0] = head
+    outer = [(0, 0), (W, 0), (W, H), (0, H)]
+    L.append(f'  (zone (net 1) (net_name "GND") (layer "B.Cu") (uuid "{u()}") (hatch edge 0.5)')
+    L.append('    (connect_pads (clearance 0.2)) (min_thickness 0.2) (filled_areas_thickness no)')
+    L.append('    (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))')
+    L.append(f'    (polygon (pts {" ".join(f"(xy {a:.3f} {b})" for a, b in outer)}))')
+    L.append(f'    (filled_polygon (layer "B.Cu") (pts {" ".join(f"(xy {a:.3f} {b})" for a, b in outer)})))')
+    fmt = lambda v, k: f"{v * 1e9:g}nH" if k == 'L' else f"{v * 1e12:g}p"
+    for (ref, kind, val, esr, esl), cx, cy, rot, pn in parts:
+        lib = "Inductor_SMD:L_0402_1005Metric" if kind == 'L' else "Capacitor_SMD:C_0402_1005Metric"
+        L.append(f'  (footprint "{lib}" (layer "F.Cu") (uuid "{u()}") (at {cx:.3f} {cy} {rot})')
+        L.append(f'    (property "Reference" "{ref}" (at 0 -1.1 {rot}) (layer "F.SilkS") (uuid "{u()}"))')
+        L.append(f'    (property "Value" "{fmt(val, kind)}" (at 0 1.1 {rot}) (layer "F.Fab") (uuid "{u()}"))')
+        for k, v in (('sim.esr', f"{esr:g}" if esr else None), ('sim.esl', f"{esl * 1e9:g}nH" if esl else None)):
+            if v:
+                L.append(f'    (property "{k}" "{v}" (at 0 0 {rot}) (layer "F.Fab") (hide yes) (uuid "{u()}"))')
+        L.append('    (attr smd)')
+        for num, px, n in (("1", -0.48, pn[0]), ("2", 0.48, pn[1])):
+            L.append(f'    (pad "{num}" smd roundrect (at {px} 0 {rot}) (size 0.56 0.62) (layers "F.Cu" "F.Paste" "F.Mask") '
+                     f'(roundrect_rratio 0.25) (net {n} "{nets[n]}") (uuid "{u()}"))')
+        L.append('  )')
+    ports = [("TP1", "P1", 2.0, 0), ("TP2", "P2", x_out, 180)]
+    for ref, txt, px, rot in ports:
+        L.append(f'  (footprint "kicad2openems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {px:.3f} {yc} {rot})')
+        L.append(f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))')
+        L.append(f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))')
+        L.append(f'    (fp_text user "{txt}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )')
+    L.append(f'  (gr_rect (start 0 0) (end {W:.3f} {H}) (stroke (width 0.1) (type default)) (fill none) (layer "Edge.Cuts") (uuid "{u()}"))\n)')
+    open(path, 'w').write("\n".join(L) + "\n")
+    with open(pos_path, 'w') as fh:
+        fh.write("### Footprint positions ###\n## Unit = mm, Angle = deg.\n# Ref Val Package PosX PosY Rot Side\n")
+        for ref, txt, px, rot in ports:
+            fh.write(f"{ref} {txt} RF_Port {px:.4f} {-yc:.4f} {rot:.4f} top\n")
+    f = np.linspace(0.1e9, 4e9, 391)
+    S = ladder_ideal(ladder, f)
+    with open(ideal_path, 'w') as fh:
+        fh.write(f"! ideal lumped circuit of the demo {name} filter (with ESR / ESL)\n# Hz S RI R 50\n")
+        for fi, s_ in zip(f, S):
+            fh.write(f"{fi:.6e} " + " ".join(f"{v.real:.9e} {v.imag:.9e}" for v in (s_[0, 0], s_[1, 0], s_[0, 1], s_[1, 1])) + "\n")
+
+
+def make_lowpass(path, pos_path, ideal_path):
+    make_ladder('lowpass', path, pos_path, ideal_path)
+
+
+if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] in LADDERS:
+    make_ladder(sys.argv[2], sys.argv[1] + '.kicad_pcb', sys.argv[1] + '-top.pos', sys.argv[1] + '_ideal.s2p')
+    print('wrote', sys.argv[1] + '.kicad_pcb', sys.argv[1] + '-top.pos', sys.argv[1] + '_ideal.s2p')
 
 
 if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] == 'rlc':

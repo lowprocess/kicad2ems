@@ -19,7 +19,7 @@ from .kicad.board import KiCadBoard
 from .model import Model
 from .boundaries import resolve_bc, cavity_check
 from .mesh import auto_mesh
-from .plots import preview, plot_results, plot_convergence
+from .plots import preview, plot_results, plot_convergence, plot_antenna, plot_pattern
 from .sparams import mixed_mode, fill_reciprocal
 from .touchstone import write_touchstone, read_touchstone
 from .config import apply_toml
@@ -47,7 +47,8 @@ def parser():
     g = ap.add_argument_group('mesh')
     g.add_argument('--res', type=float, default=20, help='cells per wavelength at fmax (in each medium)')
     g.add_argument('--fine', type=float, help='mm, cell size at copper edges (default: min port width / 4)')
-    g.add_argument('--air', type=float, default=5.0, help='mm of air between the board and the boundary')
+    g.add_argument('--air', type=float, help='mm of air between the board and the boundary (default 5; '
+                                              'antenna mode: a quarter wavelength at the band centre)')
     g.add_argument('--ratio', type=float, default=1.4, help='max growth between neighbouring cells')
     g.add_argument('--nz', type=int, default=4, help='minimum cells through each dielectric layer')
     g.add_argument('--curves', default='extremes', choices=['extremes', 'vertices'],
@@ -75,6 +76,13 @@ def parser():
     g.add_argument('--threads', type=int, default=0,
                    help='openEMS threads per run (0 = all cores; with --jobs: half the cores shared by the runs)')
     g.add_argument('--jobs', type=int, default=1, help='excitations run in parallel (separate processes; default 1)')
+    g = ap.add_argument_group('antenna mode')
+    g.add_argument('--mode', default='sparams', choices=['sparams', 'antenna'],
+                   help='sparams (default): S-parameters of all ports; antenna: one driven port, PML on all '
+                        'sides, far field (gain, efficiency, patterns)')
+    g.add_argument('--ff-freq', metavar='GHz,...', help='antenna: frequency for the patterns (default: the '
+                                                        'resonance, minimum |S11|); also recorded')
+    g.add_argument('--ff-step', type=float, default=2.0, help='antenna: angle step of the pattern cuts (deg)')
     g = ap.add_argument_group('field dumps')
     g.add_argument('--dump', action='append', default=[], metavar='FIELD@REGION[@GHz,...]',
                    help='field dump, repeatable: E|H|J @ layer[+-mm] | x=/y=/z= | volume | box=x0,y0,z0,x1,y1,z1 '
@@ -124,6 +132,15 @@ def main(argv=None):
     if a.diel == 'wideband':
         from .dielectric import describe as describe_diel
         print("\n".join(describe_diel(m.layers, a.diel_fref * 1e9, fmin, fmax)))
+    antenna = a.mode == 'antenna'
+    if antenna:
+        from .antenna import antenna_defaults
+        if a.converge:
+            ap.error("--converge is not available with --mode antenna")
+        a.air, _ = antenna_defaults(fmin, fmax, a.air)
+        if a.bc == 'auto':
+            a.bc = 'PML_8'
+        print(f"antenna mode: boundaries {a.bc}, air margin {a.air:.1f} mm")
     bc = resolve_bc(a.bc, m)
     mesh_kw = dict(air=a.air, ratio=a.ratio, nz_min=a.nz, bc=bc, curves=a.curves, vias=a.vias, via_snap=a.via_snap)
     levels = None
@@ -151,6 +168,9 @@ def main(argv=None):
         return 2
 
     excite = port_index(m, a.excite)
+    if antenna and len(excite) > 1:
+        print(f"antenna mode: driving {m.ports[excite[0]].name} only (one port per antenna run; --excite to choose)")
+        excite = excite[:1]
     dumps = [parse_dump(sp, m, mesh) for sp in (a.dump or [])]
     dump_runs = port_index(m, a.dump_port) if a.dump_port else None
     if dumps:
@@ -173,8 +193,19 @@ def main(argv=None):
         coarse.append((f, mixed_mode(Sl, m)[0]))
     if levels:
         print(f"--- mesh level x{levels[-1][0]:g} (finest: the result) ---")
-    S = run_excitations(m, mesh, freq, excite, bc, a.out, xml_path=os.path.join(a.out, f"{name}.xml"), dumps=dumps,
-                        dump_runs=dump_runs, **run_kw)
+    ant = None
+    if antenna:
+        from .antenna import run_antenna, save as save_antenna
+        ff = [float(v) * 1e9 for v in str(a.ff_freq).split(',')] if a.ff_freq else []
+        S = np.full((len(freq), len(m.ports), len(m.ports)), np.nan + 0j)
+        run_excitations.dump_files = {}
+        S[:, :, excite[0]], ant = run_antenna(
+            m, mesh, freq, excite[0], bc, a.out, ff_extra=ff, ff_pattern=ff[0] if ff else None, end_db=a.end_db,
+            sigma=a.sigma, threads=a.threads, xml_path=os.path.join(a.out, f"{name}.xml"), dumps=dumps,
+            diel=a.diel, diel_fref=a.diel_fref * 1e9, step=a.ff_step)
+    else:
+        S = run_excitations(m, mesh, freq, excite, bc, a.out, xml_path=os.path.join(a.out, f"{name}.xml"),
+                            dumps=dumps, dump_runs=dump_runs, **run_kw)
     for (pname, dname), path in getattr(run_excitations, 'dump_files', {}).items():
         d = next(x for x in dumps if x.name == dname)
         if d.freqs and os.path.exists(path):
@@ -194,6 +225,14 @@ def main(argv=None):
     plot_results(os.path.join(a.out, f"{name}_openems.png"), freq, Smm, names, f"{name} - openEMS", cmp)
     info = dict(ports=names, zref=zref, mesh=mesh['info'], excited=[m.ports[k].name for k in excite],
                 parts=[dict(ref=p.ref, value=p.value_str(), layer=p.layer) for p in m.parts], diel=a.diel)
+    if ant:
+        k = excite[0]
+        apng, ppng = os.path.join(a.out, f"{name}_antenna.png"), os.path.join(a.out, f"{name}_pattern.png")
+        plot_antenna(apng, freq, S[:, k, k], m.ports[k].z0, ant, f"{name} - antenna")
+        plot_pattern(ppng, ant, f"{name} - gain pattern")
+        save_antenna(ant, os.path.join(a.out, f"{name}_antenna.json"))
+        info['antenna'] = dict(match=ant['match'], f_pattern=ant['f_pattern'])
+        print(f"wrote {apng}, {ppng}")
     if levels:
         from .converge import compare_levels, report
         tol_db, tol_deg = (float(v) for v in str(a.converge_tol).split(','))

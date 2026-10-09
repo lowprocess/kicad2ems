@@ -38,7 +38,10 @@ def preview(m, mesh, path, title=''):
         for p in m.ports:
             if p.layer == lay:
                 s, e = p.box()
-                ax.plot([s[0], e[0]], [s[1], e[1]], color='#c0392b', lw=3, zorder=5)
+                if getattr(p, 'kind', 'z') == 'gap':
+                    ax.add_patch(plt.Rectangle((s[0], s[1]), e[0] - s[0], e[1] - s[1], color='#c0392b', zorder=5))
+                else:
+                    ax.plot([s[0], e[0]], [s[1], e[1]], color='#c0392b', lw=3, zorder=5)
                 ax.annotate(p.name, (p.c[0], p.c[1]), xytext=(4, 4), textcoords='offset points', color='#c0392b',
                             fontsize=9, weight='bold', zorder=6)
         ax.set_xlim(ob[0] - pad, ob[2] + pad); ax.set_ylim(ob[1] - pad, ob[3] + pad)
@@ -201,4 +204,102 @@ def plot_convergence(path, f, levels, names, title, floor_db=-40.0):
     fig.suptitle(title, x=0.02, ha='left', weight='bold')
     fig.tight_layout()
     fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
+def plot_antenna(path, f, s11, z0, res, title):
+    """Input match (|S11|, input impedance) and gain / directivity / efficiency over frequency."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(2, 2, figsize=(12, 8))
+    fg = f / 1e9
+    mt = res['match']
+    ax = axs[0, 0]
+    ax.plot(fg, 20 * np.log10(np.abs(s11) + 1e-15), color='#1f5f99', lw=1.8)
+    ax.axhline(-10, color='0.5', lw=0.8, ls='--')
+    ax.axvline(mt['f_res'] / 1e9, color='#c0392b', lw=0.8, ls=':')
+    if mt['bw10']:
+        ax.axvspan(mt['bw10_lo'] / 1e9, mt['bw10_hi'] / 1e9, color='#1f5f99', alpha=0.08)
+    ax.set_ylabel('|S11| (dB)'); ax.set_title(f"input match ({res['port']}, {z0:g} ohm)", fontsize=10)
+    ax = axs[0, 1]
+    zin = z0 * (1 + s11) / (1 - s11)
+    ax.plot(fg, zin.real, color='#1f5f99', lw=1.6, label='R')
+    ax.plot(fg, zin.imag, color='#d4893b', lw=1.6, label='X')
+    ax.axhline(0, color='0.5', lw=0.8); ax.axhline(z0, color='0.5', lw=0.8, ls='--')
+    ax.set_ylim(-3 * z0, 4 * z0)
+    ax.set_ylabel('Zin (ohm)'); ax.set_title('input impedance', fontsize=10); ax.legend(fontsize=8)
+    rows = res['rows']
+    rf = np.array([r['f'] for r in rows]) / 1e9
+    val = lambda k: np.array([np.nan if r[k] is None else r[k] for r in rows], float)
+    ax = axs[1, 0]
+    ax.plot(rf, val('D_dbi'), 'o-', ms=3, color='0.4', lw=1.2, label='directivity')
+    ax.plot(rf, val('G_dbi'), 'o-', ms=3, color='#1f5f99', lw=1.6, label='gain')
+    ax.plot(rf, val('Grealized_dbi'), 'o-', ms=3, color='#c0392b', lw=1.6, label='realized gain (incl. mismatch)')
+    ax.set_ylabel('dBi'); ax.set_xlabel('Frequency (GHz)'); ax.legend(fontsize=8)
+    ax.set_title('maximum over all directions', fontsize=10)
+    lo = np.nanmin(val('Grealized_dbi')) if np.isfinite(val('Grealized_dbi')).any() else -20
+    ax.set_ylim(max(lo, np.nanmax(val('D_dbi')) - 30) - 1, np.nanmax(val('D_dbi')) + 2)
+    ax = axs[1, 1]
+    ax.plot(rf, 100 * val('eff'), 'o-', ms=3, color='#2e8b57', lw=1.6)
+    ax.set_ylim(0, 105); ax.set_ylabel('radiation efficiency (%)'); ax.set_xlabel('Frequency (GHz)')
+    ax.set_title('Prad / accepted power', fontsize=10)
+    for a in axs.flat:
+        a.grid(alpha=0.3)
+    for a in axs[0]:
+        a.set_xlabel('Frequency (GHz)')
+    fig.suptitle(title, x=0.02, ha='left', weight='bold')
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
+def plot_pattern(path, res, title, floor_db=-30.0):
+    """Gain cuts (polar, dBi) and the 3D gain pattern at the pattern frequency."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    fig = plt.figure(figsize=(15, 9))
+    gmax = max(max(c['gain_dbi']) for c in res['cuts'].values())
+    top = np.ceil(gmax / 5) * 5
+    for i, (name, c) in enumerate(res['cuts'].items()):
+        ax = fig.add_subplot(2, 3, i + 1, projection='polar')
+        ang = np.radians(c['angle'])
+        g = np.maximum(np.array(c['gain_dbi']), top + floor_db)
+        ax.plot(ang, g, color='#1f5f99', lw=1.8)
+        ax.set_ylim(top + floor_db, top)
+        ax.set_theta_zero_location('N' if 'theta = 90' not in name else 'E')
+        ax.set_theta_direction(-1 if 'theta = 90' not in name else 1)
+        ax.set_title(f"{name}: max {max(c['gain_dbi']):.1f} dBi", fontsize=10, pad=14)
+        ax.tick_params(labelsize=7)
+    sp = res['sphere']
+    TH, PH = np.meshgrid(np.radians(sp['theta']), np.radians(sp['phi']), indexing='ij')
+    gdb = 10 * np.log10(np.maximum(sp['gain'], 1e-9))
+    r = np.clip(gdb - (top + floor_db), 0, None)
+    X, Y, Z = r * np.sin(TH) * np.cos(PH), r * np.sin(TH) * np.sin(PH), r * np.cos(TH)
+    tx = fig.add_subplot(2, 3, 4)
+    tx.axis('off')
+    mt = res['match']
+    row = min(res['rows'], key=lambda r: abs(r['f'] - res['f_pattern']))
+    fmt = lambda v: f"{v:.2f} dBi" if v is not None else '-'
+    lines = [f"pattern frequency  {res['f_pattern'] / 1e9:.3f} GHz", '',
+             f"resonance          {mt['f_res'] / 1e9:.3f} GHz", f"S11 there          {mt['s11_db']:.1f} dB",
+             f"Zin there          {mt['zin'][0]:.1f} {'+' if mt['zin'][1] >= 0 else '-'} j{abs(mt['zin'][1]):.1f} ohm",
+             f"-10 dB band        " + (f"{mt['bw10_lo'] / 1e9:.3f}-{mt['bw10_hi'] / 1e9:.3f} GHz" if mt['bw10'] else 'none'),
+             '', f"directivity        {fmt(row['D_dbi'])}", f"efficiency         {row['eff'] * 100:.1f} %",
+             f"gain               {fmt(row['G_dbi'])}", f"realized gain      {fmt(row['Grealized_dbi'])}"]
+    tx.text(0.02, 0.95, "\n".join(lines), va='top', family='monospace', fontsize=10, transform=tx.transAxes)
+    ax = fig.add_subplot(2, 3, 5, projection='3d')
+    norm = plt.Normalize(top + floor_db, top)
+    ax.plot_surface(X, Y, Z, facecolors=plt.cm.viridis(norm(gdb)), rstride=1, cstride=1, linewidth=0, shade=False)
+    m = plt.cm.ScalarMappable(norm=norm, cmap='viridis')
+    fig.colorbar(m, ax=ax, shrink=0.6, pad=0.15, label='gain (dBi)')
+    lim = np.abs([X, Y, Z]).max()
+    ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_zlim(-lim, lim)
+    ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('z (board normal)')
+    ax.set_title('3D gain pattern', fontsize=10)
+    fig.suptitle(f"{title} - {res['f_pattern'] / 1e9:.3f} GHz (cut angles: theta from +z, phi from +x)",
+                 x=0.02, ha='left', weight='bold')
+    fig.tight_layout()
+    fig.savefig(path, dpi=120)
     plt.close(fig)

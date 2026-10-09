@@ -29,18 +29,36 @@ def port_field(props, key, default=None):
 
 
 class Port:
-    def __init__(self, name, layer, z_sig, z_ref, c, axis, sgn, w, z0, leg=None, pair=None, ref_layer=''):
+    """Lumped port. kind 'z': a vertical sheet across the trace from the reference copper to the trace
+    (feed lines over a plane); kind 'gap': a sheet in the copper plane across a gap between two
+    conductors on the same layer (centre-fed dipoles, gap feeds), from gap[0] to gap[1] along axis."""
+    def __init__(self, name, layer, z_sig, z_ref, c, axis, sgn, w, z0, leg=None, pair=None, ref_layer='',
+                 kind='z', gap=None):
         self.name, self.layer, self.z_sig, self.z_ref = name, layer, z_sig, z_ref
         self.c, self.axis, self.sgn, self.w, self.z0 = np.asarray(c, float), axis, sgn, w, z0
         self.leg, self.pair, self.ref_layer = leg, pair, ref_layer
+        self.kind, self.gap = kind, gap
+
+    @property
+    def direction(self):
+        return 'z' if self.kind == 'z' else 'xy'[self.axis]
+
+    def planes(self):
+        """Coordinates along the axis that must be mesh lines."""
+        return [self.c[self.axis]] if self.kind == 'z' else list(self.gap)
 
     def box(self):
-        """Lumped-port sheet: across the trace, from reference copper to the trace."""
+        """Lumped-port sheet: across the trace, from reference copper to the trace ('z'), or across the
+        gap in the copper plane ('gap')."""
         a, b = self.axis, 1 - self.axis
         s, e = np.zeros(3), np.zeros(3)
-        s[a] = e[a] = self.c[a]
         s[b], e[b] = self.c[b] - self.w / 2, self.c[b] + self.w / 2
-        s[2], e[2] = self.z_ref, self.z_sig
+        if self.kind == 'z':
+            s[a] = e[a] = self.c[a]
+            s[2], e[2] = self.z_ref, self.z_sig
+        else:
+            s[a], e[a] = self.gap
+            s[2] = e[2] = self.z_sig
         return s, e
 
 
@@ -167,6 +185,10 @@ class Model:
         sgn = int(np.sign(d[axis]))
         c = np.array([fp['x'], -fp['y']])
         cu = self._copper_at(lay, Point(*c))
+        if cu is None and str(port_field(props, 'type', '')).lower() != 'z':
+            gp = self._gap_port(name, fp, lay, c, d, axis, sgn, props, leg, pair)
+            if gp is not None:
+                return gp
         if cu is None:
             here = sorted({l for l in self.copper if self._copper_at(l, Point(*c)) is not None})
             raise ValueError(f"{name} ({fp['ref']}) at ({fp['x']:.3f}, {fp['y']:.3f}) mm is not on {lay} copper of the "
@@ -202,6 +224,39 @@ class Model:
                          if l == lay and n and g.buffer(1e-6).contains(Point(kx, ky))), None)
         return port
 
+    def _gap_port(self, name, fp, lay, c, d, axis, sgn, props, leg, pair, reach=5.0):
+        """Port in a gap: copper on lay within `reach` mm on both sides of c along d. The sheet spans the
+        gap between the two copper edges; its width is the narrower of the two conductors there."""
+        ps = self.copper.get(lay, [])
+        ends, widths, mids = [], [], []
+        t = np.array([-d[1], d[0]])
+        for sg in (-1, 1):
+            ray = LineString([c, c + sg * d * reach])
+            hits = [ray.intersection(p) for p in ps]
+            dist = [Point(*c).distance(h) for h in hits if not h.is_empty]
+            if not dist:
+                return None
+            a = min(dist)
+            ends.append(c[axis] + sg * a)
+            probe = c + sg * d * (a + 0.05)
+            cu = next((p for p in ps if p.buffer(1e-6).contains(Point(*probe))), None)
+            if cu is None:
+                return None
+            seg = LineString([probe - t * 20, probe + t * 20]).intersection(cu)
+            parts = [seg] if seg.geom_type == 'LineString' else list(getattr(seg, 'geoms', []))
+            part = min(parts, key=lambda q: q.distance(Point(*probe)))
+            (x0, y0), (x1, y1) = part.coords[0], part.coords[-1]
+            widths.append(float(np.hypot(x1 - x0, y1 - y0)))
+            mids.append(0.5 * (np.array([x0, y0]) + np.array([x1, y1])))
+        w = min(widths)
+        pc = c.copy()
+        pc[1 - axis] = 0.5 * (mids[0][1 - axis] + mids[1][1 - axis])
+        zs = self.cu_z[lay]
+        port = Port(name, lay, zs, zs, pc, axis, sgn, w, float(port_field(props, 'z0', 50)), leg, pair, lay,
+                    kind='gap', gap=(min(ends), max(ends)))
+        port.net = None
+        return port
+
     def describe(self):
         L = ["stack (bottom to top):"]
         for l in self.layers:
@@ -213,6 +268,10 @@ class Model:
         L.append(f"outline {b[2] - b[0]:.2f} x {b[3] - b[1]:.2f} mm, vias {len(self.vias)} ({ns} on signal nets "
                  f"{sorted(self.signal_nets)}, {len(self.vias) - ns} other)")
         for p in self.ports:
+            if p.kind == 'gap':
+                L.append(f"  {p.name}: lumped gap port on {p.layer} along {p.direction}, gap {p.gap[1] - p.gap[0]:.3f} mm, "
+                         f"w {p.w:.3f} mm, at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm")
+                continue
             L.append(f"  {p.name}: lumped, {p.layer} -> {p.ref_layer}, w {p.w:.3f} mm, h {abs(p.z_sig - p.z_ref):.3f} mm, "
                      f"at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm")
         L += [p.describe() for p in self.parts]

@@ -197,9 +197,10 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
             fixed[0].append(x); fixed[1].append(y)
     keep = {0: [ob[0], ob[2]], 1: [ob[1], ob[3]]}                  # exact: board outline and port planes
     for p in m.ports:                                               # (the port width snaps to the edge lines)
-        keep[p.axis].append(p.c[p.axis])
-    for pt in getattr(m, 'parts', []):                              # lumped parts: both ends on lines
-        keep[pt.axis] += [pt.s[pt.axis], pt.e[pt.axis]]
+        keep[p.axis] += p.planes()
+    for pt in getattr(m, 'parts', []):                              # lumped parts: every piece's ends on lines
+        for _, _, _, s, e in pt.pieces():
+            keep[pt.axis] += [s[pt.axis], e[pt.axis]]
 
     def xy_lines(extra):
         out = {}
@@ -268,7 +269,7 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
             log(f"WARNING: only {n_in} mesh line(s) across the {p.w:.3f} mm trace at {p.name} - use a smaller --fine")
     for pt in getattr(m, 'parts', []):
         lines = mesh[pt.axis]
-        ends = [np.min(np.abs(lines - v)) < 1e-9 for v in (pt.s[pt.axis], pt.e[pt.axis])]
+        ends = [np.min(np.abs(lines - v)) < 1e-9 for _, _, _, s, e in pt.pieces() for v in (s[pt.axis], e[pt.axis])]
         if not all(ends):
             log(f"WARNING: the {pt.gap:.3f} mm gap of {pt.ref} is narrower than half the fine cell - "
                 f"use a smaller --fine")

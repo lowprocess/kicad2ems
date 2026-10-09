@@ -20,13 +20,15 @@ def _fl(v):
 
 
 def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=None, max_steps=1_000_000,
-               dumps=(), diel='fixed', diel_fref=1e9):
+               dumps=(), diel='fixed', diel_fref=1e9, exc_fmax=None):
     """diel: 'fixed' (loss as a conductivity fitted at the band centre) or 'wideband' (Djordjevic-Sarkar
-    model matched at diel_fref Hz, as Debye poles; see dielectric.py)."""
+    model matched at diel_fref Hz, as Debye poles; see dielectric.py). exc_fmax: upper edge of the
+    Gaussian excitation (default fmax; antenna runs extend it, see antenna.py)."""
     from CSXCAD import ContinuousStructure
     from openEMS import openEMS
     FDTD = openEMS(NrTS=int(max_steps), EndCriteria=_f(10 ** (end_db / 10)))
-    f0, fc = _f(0.5 * (fmin + fmax)), _f(0.5 * (fmax - fmin) * 1.05)
+    fe = fmax if exc_fmax is None else exc_fmax
+    f0, fc = _f(0.5 * (fmin + fe)), _f(0.5 * (fe - fmin) * 1.05)
     FDTD.SetGaussExcite(f0, fc)
     FDTD.SetBoundaryCond([str(b) for b in bc])
     CSX = ContinuousStructure()
@@ -65,20 +67,21 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
         if pt.short:
             CSX.AddMetal(f"part_{pt.ref}").AddBox(_fl(s), _fl(e), priority=12)
             continue
-        kw = {k: _f(v) for k, v in (('R', pt.R), ('L', pt.L), ('C', pt.C)) if v is not None}
-        if pt.series:
-            kw['LEtype'] = 1
-        try:
-            el = CSX.AddLumpedElement(f"part_{pt.ref}", ny=int(pt.axis), caps=True, **kw)
-        except Exception as ex:                                     # older CSXCAD: no L / LEtype
-            raise RuntimeError(f"{pt.ref}: this CSXCAD cannot make a lumped element with {sorted(kw)} ({ex}) - "
-                               f"update openEMS, or skip the part (--parts none / Sim.Enable = 0)") from ex
-        el.AddBox(_fl(s), _fl(e), priority=12)
+        for suffix, vals, series, ps, pe in pt.pieces():
+            kw = {k: _f(v) for k, v in vals.items()}
+            if series:
+                kw['LEtype'] = 1
+            try:
+                el = CSX.AddLumpedElement(f"part_{pt.ref}{suffix}", ny=int(pt.axis), caps=True, **kw)
+            except Exception as ex:                                 # older CSXCAD: no L / LEtype
+                raise RuntimeError(f"{pt.ref}: this CSXCAD cannot make a lumped element with {sorted(kw)} ({ex}) - "
+                                   f"update openEMS, or skip the part (--parts none / Sim.Enable = 0)") from ex
+            el.AddBox(_fl(ps), _fl(pe), priority=12)
     ports = []
     for i, p in enumerate(m.ports):
         s, e = p.box()
-        ports.append(FDTD.AddLumpedPort(i + 1, _f(p.z0), _fl(s), _fl(e), 'z', excite=1.0 if i == excite else 0.0,
-                                        priority=12))
+        ports.append(FDTD.AddLumpedPort(i + 1, _f(p.z0), _fl(s), _fl(e), getattr(p, 'direction', 'z'),
+                                        excite=1.0 if i == excite else 0.0, priority=12))
     if dumps:
         from .dumps import add_dumps
         add_dumps(CSX, dumps)

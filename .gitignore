@@ -12,3 +12,5 @@ examples/diff*-top.pos
 *.kicad_prl
 fp-info-cache
 examples/examples/
+examples/demo_*_ideal.s2p
+examples/antenna_*.kicad_pcb
