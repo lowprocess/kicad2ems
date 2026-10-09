@@ -1,20 +1,26 @@
 # kicad2openems
 
 Turn a KiCad board into an [openEMS](https://openems.de) 3D FDTD simulation: real stackup, copper,
-vias and board outline, ports from footprints, an automatic mesh, and S-parameters out as Touchstone.
+vias and board outline, ports from footprints, lumped R/L/C parts, an automatic mesh, and
+S-parameters out as Touchstone, or antenna gain, efficiency and patterns, with an HTML report.
+
+**Documentation:** [docs/index.md](docs/index.md) — getting started, every option, how the model, mesh
+and simulation are built, the examples' verified results, testing and maintenance notes.
 
 ```bash
 pip install .                                   # numpy, shapely, matplotlib (+ openEMS, see below)
-kicad2openems board.kicad_pcb --pos board-top.pos --nets RF,GND --fmin 1 --fmax 6 --preview
+kicad2openems board.toml --preview              # a config naming the board: board = "board.kicad_pcb"
+kicad2openems board.toml                        # run openEMS
 kicad2openems board.kicad_pcb --pos board-top.pos --nets RF,GND --fmin 1 --fmax 6 --excite P1
 ```
 
-`--preview` builds the model and mesh, writes `<name>_mesh.png` and prints cell count, time step
-and memory, without running openEMS (it does not need openEMS installed). Try it on the demo board:
+`--preview` builds the model and mesh, writes `<name>_mesh.png` and `<name>_report.html` and prints
+cell count, time step and memory, without running openEMS (it does not need openEMS installed). Try
+it on the demo board:
 
 ```bash
 python examples/make_demo_board.py examples/demo_transition
-kicad2openems examples/demo_transition.kicad_pcb --config examples/demo_transition.toml --preview
+kicad2openems examples/demo_transition.toml --preview
 python examples/make_demo_board.py examples/demo_rlc rlc     # microstrip with an 0402 series capacitor
 kicad2openems examples/demo_rlc.kicad_pcb --pos examples/demo_rlc-top.pos --nets RF1,RF2,GND --fmax 6 --preview
 ```
@@ -29,7 +35,7 @@ overlays them, so the plot shows what the layout adds:
 
 ```bash
 python examples/make_demo_board.py examples/demo_lowpass lowpass
-kicad2openems examples/demo_lowpass.kicad_pcb --config examples/demo_lowpass.toml
+kicad2openems examples/demo_lowpass.toml
 ```
 
 Two variants come from the same generator, each with its own config: `highpass` (C 3.3 pF – L 3.9 nH
@@ -118,7 +124,7 @@ Four examples, all for 2.45 GHz on FR-4 (`examples/make_antennas.py`, one config
 
 ```bash
 python examples/make_antennas.py dipole examples/antenna_dipole        # also: patch, ifa, slot
-kicad2openems examples/antenna_dipole.kicad_pcb --config examples/antenna_dipole.toml
+kicad2openems examples/antenna_dipole.toml
 ```
 
 | Example | Geometry | Feed |
@@ -257,9 +263,21 @@ disk estimate. Files land in `<out>/openems/exc_<port>/dump_*.h5|.vtr`;
 
 ## Configuration file
 
-Every option can go in a TOML file (`--config`); options typed on the command line win.
-openEMS-specific options may sit under `[openems]`, and keys this tool does not know are reported
-and ignored, so one file can be shared with other tools (see `examples/demo_transition.toml`).
+Every option can go in a TOML file; options typed on the command line win. Give the file as the
+only argument (`kicad2openems board.toml`, with `board = "board.kicad_pcb"` in it) or with
+`--config`. Paths in the file (`board`, `pos`, `compare`, `out`) are relative to the file, so it
+works from any directory; configs written with paths relative to the working directory still work,
+with a note. openEMS-specific options may sit under `[openems]`, and keys this tool does not know are
+reported and ignored, so one file can be shared with other tools (see `examples/demo_transition.toml`).
+
+## Progress and the report
+
+While openEMS runs, a progress line per run shows the energy decay, speed and an ETA (from the
+energy trend, or the step limit when that comes first; "energy flat" flags a static plateau).
+openEMS's own output is kept in `openems/exc_<port>/openems.log`; `--openems-output` shows it instead
+of the progress line. Every run (also `--preview`) writes `<name>_report.html`: one self-contained
+page with the summary and warnings, model, mesh, results, antenna / convergence sections, run
+statistics, output files, settings and the log (`--no-report` to skip).
 
 ## Outputs (`--out`, default `openems_out/`)
 
@@ -271,7 +289,8 @@ and ignored, so one file can be shared with other tools (see `examples/demo_tran
 | `<name>_openems.json` | port names, reference impedances, mesh statistics, lumped parts, run time (+ the convergence table) |
 | `<name>_converge.png` | `--converge`: \|S\| on every mesh level and the deviation from the finest |
 | `<name>.xml` | CSX geometry (open with AppCSXCAD) |
-| `openems/exc_<port>/` | raw openEMS runs |
+| `<name>_report.html` | the HTML report (every run, also `--preview`) |
+| `openems/exc_<port>/` | raw openEMS runs, with openEMS's output in `openems.log` |
 
 Reference results for the two example boards (demo transition and microstrip filter) are kept in
 `examples/reference/`, e.g. `--compare examples/reference/filter_openems.s2p` after a change.
@@ -321,13 +340,17 @@ openEMS, and what to do:
 | `dumps.py` | field-dump specs, CSX dump boxes, HDF5 reader, field-map plots |
 | `touchstone.py` | Touchstone read / write |
 | `plots.py` | mesh preview and S-parameter plots |
-| `config.py` | TOML configuration |
+| `progress.py` | openEMS output redirection, progress / ETA |
+| `report.py` | the HTML report |
+| `config.py` | TOML configuration, paths relative to the config |
+| `pipeline.py` | `Job`: the run's stages (model, mesh, preview, solve, outputs, report) |
 | `cli.py` | command line (`kicad2openems`, `python -m kicad2openems`) |
 
 Tests (`pytest`) cover the KiCad import, model, ports, mesh rules, boundaries, mixed-mode
 conversion, Touchstone round trip, configuration, lumped parts, the dielectric fit, parallel runs,
-convergence levels and an end-to-end `--preview`; none of them needs openEMS (the CSXCAD / openEMS
-calls are checked against strict stand-ins).
+convergence levels, antenna post-processing, progress / ETA, the report and an end-to-end
+`--preview`; none of them needs openEMS (the CSXCAD / openEMS calls are checked against strict
+stand-ins). See [docs/testing.md](docs/testing.md) for checks against the real solver.
 
 ## Limits
 

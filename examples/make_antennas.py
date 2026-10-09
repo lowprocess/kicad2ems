@@ -13,7 +13,7 @@ Writes small KiCad 8 antenna boards for kicad2openems --mode antenna (no KiCad n
 
     python examples/make_antennas.py patch examples/antenna_patch
     python examples/make_antennas.py ifa /tmp/ifa arm=20 s=2.5      # dimensions (mm) as parameters
-    kicad2openems examples/antenna_patch.kicad_pcb --config examples/antenna_patch.toml
+    kicad2openems examples/antenna_patch.toml
 
 Dimensions are keyword parameters (mm) of each function, also on the command line (param=value).
 The defaults were tuned with kicad2openems to resonate at 2.43-2.45 GHz with S11 below -19 dB.

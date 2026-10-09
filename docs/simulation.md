@@ -1,0 +1,89 @@
+# 7. Simulation
+
+[← Meshing](meshing.md) · [Index](index.md) · [Next: Post-processing and outputs →](postprocessing.md)
+
+`simulation.py` turns a `Model` and a mesh into an openEMS simulation and runs it; `antenna.py` does the
+same for antenna mode. openEMS / CSXCAD are imported only inside these functions.
+
+## Building the model: `build_fdtd`
+
+`build_fdtd(m, mesh, fmin, fmax, excite, bc, end_db, sigma, max_steps, dumps, diel, diel_fref, exc_fmax)`
+returns `(FDTD, CSX, ports)`:
+
+| Part | CSXCAD / openEMS |
+|---|---|
+| grid | `SetDeltaUnit(1e-3)` (mm), the mesh lines |
+| dielectrics | `AddMaterial` (or a Debye material, below) extruded over the outline (`AddLinPoly`), priority 1 |
+| copper | `AddMetal` (PEC) or `AddConductingSheet` (`--sigma`, with the copper thickness), polygons at the copper heights, priority 10 |
+| vias | `AddMetal` cylinders, priority 11 |
+| lumped parts | `AddLumpedElement` boxes (R / L / C, topology per piece) or a metal box for 0 Ω, priority 12 |
+| ports | `AddLumpedPort` (direction `z`, or `x` / `y` for gap ports), priority 12; only port `excite` is driven |
+| field dumps | `dumps.add_dumps` |
+
+All numbers passed to CSXCAD go through `_f` / `_fl` (plain Python floats): older CSXCAD builds reject
+numpy scalars. The test stand-ins enforce this.
+
+<a id="dielectrics"></a>
+## Dielectrics
+
+- `--diel fixed` (default): εr from the stackup, the loss as a conductivity κ = 2π f0 ε0 εr tan δ at the
+  band centre f0. tan δ then falls as 1/f across the band.
+- `--diel wideband`: the Djordjevic-Sarkar model (εr, tan δ matched at `--diel-fref`, εr falling slowly,
+  tan δ nearly flat), fitted by `dielectric.fit_debye` with Debye poles (1.5 per decade + 1, at least 3)
+  plus a conductivity, by non-negative least squares; fit errors < 0.2 % in εr and < 1 % in tan δ. Built
+  as `CSPropDebyeMaterial` (no `AddDebyeMaterial` helper exists): create, `AddProperty`, then
+  `SetDispersiveMaterialProperty(order=i, eps_delta=…, eps_relax=…)`. openEMS ignores poles with a
+  relaxation time < 2 Δt, so the fit drops poles below 2.5 Δt. Each pole costs run time (about 4× on the
+  filter example with 5 poles).
+
+## Excitation
+
+A Gaussian pulse: `SetGaussExcite(f0, fc)` with f0 = (fmin + fe)/2 and fc = 1.05·(fe − fmin)/2, where
+fe = fmax (or `exc_fmax`). openEMS's pulse lasts 2·9/(2π·fc), so narrow bands mean long pulses
+(`simulation.pulse_steps`, printed in the preview). Antenna runs use fe = fmax + 0.3·(fmax − fmin)
+(`antenna.exc_fmax`), see [maintenance](maintenance.md#excitation-edge).
+
+## Ending a run
+
+openEMS stops when the field energy has fallen by `--end-db` (`EndCriteria = 10^(end_db/10)`) or after
+`--max-steps` (`NrTS`). It checks the energy at its periodic status updates (on a wall-clock interval),
+so runs with different speeds stop at slightly different steps; results agree to the truncation
+level (≈ 0.002 in S at −40 dB).
+
+**Steps taken** (`steps_taken`): the last sample time of the port voltage probe divided by openEMS's own
+time step, read from the excitation file `et` (one sample per step). `step_limit_warning` flags runs
+that used ≥ 97 % of `--max-steps`.
+
+## Running: `execute`
+
+`execute(FDTD, path, threads, verbose, progress)` calls `FDTD.Run(path, cleanup=True, …)` and restores
+the working directory (openEMS changes it). With a `progress` setting (the pipeline always passes one):
+
+1. `progress.redirect_output` points file descriptors 1 and 2 at `<path>/openems.log` (C++ output
+   included; `fflush` before restoring).
+2. A `progress.Monitor` thread tails the log and writes to a duplicate of the original stdout: a
+   progress line (`Tracker.status`) or, with `--openems-output`, the raw lines.
+
+## One run per driven port: `run_excitations`
+
+For each port in `--excite` (default all): `_run_port` builds the model with that port driven, runs it,
+computes every port's incident / reflected waves (`CalcPort`) and returns the S column. Dumps are
+recorded in the runs listed in `--dump-port` (default the first). With `--jobs N`, `_run_port` runs in N
+`spawn` worker processes; workers write their logs (`progress={'mode': 'file'}`) and the main process
+monitors all of them. Without `--threads`, each worker gets half the logical CPUs / N (FDTD is
+memory-bound; oversubscribing hyper-threads made runs 4× slower). Returns a `RunResult`.
+
+## Antenna runs: `antenna.run_antenna`
+
+One driven port; PML on all sides and λ/4 air (set in `Job.mesh`); an NF2FF box
+(`FDTD.CreateNF2FFBox(frequency=…)`, frequency-domain recording at 21 band frequencies plus `--ff-freq`).
+Post-processing is in [Post-processing](postprocessing.md#antenna-mode).
+
+## `--check`
+
+`check_openems()` imports numpy, h5py, CSXCAD and openEMS and turns failures into hints (other Python,
+venv without system site packages, missing module, shared library not found, the `kicad2openems` on
+PATH running a different Python).
+
+---
+[← Meshing](meshing.md) · [Index](index.md) · [Next: Post-processing and outputs →](postprocessing.md)
