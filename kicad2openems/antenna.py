@@ -84,7 +84,8 @@ def describe(match, rows, f_pat):
 
 
 def run_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, end_db=-40, sigma=None, threads=0,
-                xml_path=None, dumps=(), diel='fixed', diel_fref=1e9, step=2.0, max_steps=1_000_000, log=print):
+                xml_path=None, dumps=(), diel='fixed', diel_fref=1e9, step=2.0, max_steps=1_000_000, progress=None,
+                log=print):
     """FDTD run with port k excited and an NF2FF box. Returns (S column (nf, n), result dict)."""
     from .simulation import build_fdtd, _run_dir, check_steps, execute
     fmin, fmax = freq[0], freq[-1]
@@ -99,7 +100,9 @@ def run_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, end
     if xml_path:
         CSX.Write2XML(os.path.abspath(xml_path))
     log(f"openEMS: antenna run, {m.ports[k].name} driven, NF2FF box recording {len(ffr)} frequencies -> {path}")
-    seconds = execute(FDTD, path, threads)
+    if progress is not None:
+        progress = dict(progress, label=m.ports[k].name, end_db=end_db, max_steps=max_steps)
+    seconds = execute(FDTD, path, threads, progress=progress)
     n = check_steps(m.ports[k].name, path, mesh, max_steps, end_db, log)
     log(f"  done in {seconds:.0f} s" + (f", ~{n} timesteps" if n else ''))
     for p in ports:

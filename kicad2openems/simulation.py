@@ -226,15 +226,38 @@ def check_steps(name, path, mesh, max_steps, end_db, log=print):
     return n
 
 
-def execute(FDTD, path, threads=0, verbose=1):
-    """FDTD.Run in `path`, restoring the working directory (openEMS changes it). Returns seconds taken."""
+def execute(FDTD, path, threads=0, verbose=1, progress=None):
+    """FDTD.Run in `path`, restoring the working directory (openEMS changes it). Returns seconds taken.
+    progress: None (openEMS writes to the terminal), or dict(mode, label, end_db, max_steps): openEMS's
+    output goes to <path>/openems.log and, for mode 'bar' / 'raw', a progress line / the raw lines to the
+    terminal ('file': the log only - parallel workers, monitored by the main process)."""
+    from .progress import Monitor, Tracker, redirect_output
     os.makedirs(path, exist_ok=True)
     cwd, t1 = os.getcwd(), time.time()
     try:
-        FDTD.Run(path, cleanup=True, numThreads=threads, verbose=verbose)
+        if progress is None:
+            FDTD.Run(path, cleanup=True, numThreads=threads, verbose=verbose)
+        else:
+            log = log_path(path)
+            open(log, 'w').close()
+            with redirect_output(log) as terminal:
+                mon = None
+                if progress['mode'] in ('bar', 'raw'):
+                    tr = Tracker(progress['label'], progress['end_db'], progress['max_steps'])
+                    mon = Monitor([(progress['label'], log, tr)], progress['mode'], out_fd=terminal).start()
+                try:
+                    FDTD.Run(path, cleanup=True, numThreads=threads, verbose=max(verbose, 1))
+                finally:
+                    if mon:
+                        mon.stop()
     finally:
         os.chdir(cwd)
     return time.time() - t1
+
+
+def log_path(path):
+    """openEMS's output of a run (written when the run has a progress setting)."""
+    return os.path.join(path, 'openems.log')
 
 
 class RunResult:
@@ -251,7 +274,7 @@ def _run_dir(m, k, out_dir):
 
 
 def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, xml_path=None, dumps=(),
-              verbose=1, diel='fixed', diel_fref=1e9, max_steps=1_000_000):
+              verbose=1, diel='fixed', diel_fref=1e9, max_steps=1_000_000, progress=None):
     """One openEMS run with port k excited (top level, so it can run in a worker process). Returns
     (k, S column (nf, n), {(port, dump): path}, {freq: incident voltage} or None, seconds, steps taken)."""
     fmin, fmax = freq[0], freq[-1]
@@ -261,7 +284,9 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
     os.makedirs(path, exist_ok=True)
     if xml_path:
         CSX.Write2XML(os.path.abspath(xml_path))
-    seconds = execute(FDTD, path, threads, verbose)
+    if progress is not None:
+        progress = dict(progress, label=m.ports[k].name, end_db=end_db, max_steps=max_steps)
+    seconds = execute(FDTD, path, threads, verbose, progress)
     files, norm = {}, None
     for d in dumps:
         ext = '.h5' if d.freqs else ''
@@ -278,10 +303,12 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
 
 
 def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, threads=0, xml_path=None,
-                    dumps=(), dump_runs=None, jobs=1, diel='fixed', diel_fref=1e9, max_steps=1_000_000, log=print):
+                    dumps=(), dump_runs=None, jobs=1, diel='fixed', diel_fref=1e9, max_steps=1_000_000, progress=None,
+                    log=print):
     """One openEMS run per excited port, `jobs` of them at a time (separate processes; without `threads`,
     half the logical CPUs are shared between them). Field dumps are added to the runs in dump_runs (port
-    indices; default: the first excited port). Returns a RunResult."""
+    indices; default: the first excited port). progress: None or dict(mode='bar' | 'raw') - see execute().
+    Returns a RunResult."""
     dump_runs = [excite[0]] if dump_runs is None else dump_runs
     n = len(m.ports)
     res = RunResult(np.full((len(freq), n, n), np.nan + 0j))
@@ -314,14 +341,27 @@ def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, 
     if jobs == 1:
         for t in tasks:
             log(f"openEMS: exciting {m.ports[t['k']].name} -> {_run_dir(m, t['k'], out_dir)}")
-            collect(_run_port(**t, **common))
+            collect(_run_port(**t, **common, progress=progress))
         return res
     import multiprocessing
     from concurrent.futures import ProcessPoolExecutor, as_completed
+    from .progress import Monitor, Tracker
     log(f"openEMS: {len(tasks)} excitation(s), {jobs} at a time, {threads} thread(s) each "
-        f"(openEMS output suppressed; runs in {os.path.join(out_dir, 'openems')})")
-    with ProcessPoolExecutor(jobs, mp_context=multiprocessing.get_context('spawn')) as ex:
-        futs = [ex.submit(_run_port, **t, **common, verbose=0) for t in tasks]
-        for f in as_completed(futs):
-            collect(f.result())
+        f"(openEMS output in openems.log of each run under {os.path.join(out_dir, 'openems')})")
+    mon = None
+    if progress is not None:
+        for t in tasks:                                             # fresh logs, so the monitor never reads old ones
+            os.makedirs(_run_dir(m, t['k'], out_dir), exist_ok=True)
+            open(log_path(_run_dir(m, t['k'], out_dir)), 'w').close()
+        mon = Monitor([(m.ports[t['k']].name, log_path(_run_dir(m, t['k'], out_dir)),
+                        Tracker(m.ports[t['k']].name, end_db, max_steps)) for t in tasks], progress['mode']).start()
+    try:
+        with ProcessPoolExecutor(jobs, mp_context=multiprocessing.get_context('spawn')) as ex:
+            futs = [ex.submit(_run_port, **t, **common, verbose=1, progress=dict(mode='file')) for t in tasks]
+            outs = [f.result() for f in as_completed(futs)]
+    finally:
+        if mon:
+            mon.stop()
+    for out in outs:
+        collect(out)
     return res

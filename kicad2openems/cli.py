@@ -88,6 +88,9 @@ def parser():
     g = ap.add_argument_group('output')
     g.add_argument('--compare', help='Touchstone file to overlay on the result plot')
     g.add_argument('--preview', action='store_true', help='write the model/mesh preview and exit')
+    g.add_argument('--openems-output', action='store_true',
+                   help="show openEMS's own output instead of the progress / ETA line (it is always kept in "
+                        "openems.log of each run)")
     g.add_argument('--out', default='openems_out')
     return ap
 

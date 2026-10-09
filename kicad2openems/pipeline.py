@@ -148,8 +148,9 @@ class Job:
         if jobs > 1 and ram and jobs * self.grid['info']['mem_gb'] > 0.8 * ram:
             self.log(f"WARNING: {jobs} parallel runs need ~{jobs * self.grid['info']['mem_gb']:.1f} GB, "
                      f"{ram:.1f} GB RAM installed - use fewer --jobs")
+        progress = dict(mode='raw' if a.openems_output else 'bar')
         run_kw = dict(end_db=a.end_db, sigma=a.sigma, threads=a.threads, jobs=jobs, diel=a.diel,
-                      max_steps=a.max_steps, diel_fref=a.diel_fref * 1e9, log=self.log)
+                      max_steps=a.max_steps, diel_fref=a.diel_fref * 1e9, progress=progress, log=self.log)
         for f, lm in (self.levels or [])[:-1]:                     # convergence: coarser levels first, no dumps
             self.log(f"--- mesh level x{f:g} ({lm['info']['cells'] / 1e6:.2f} M cells) ---")
             r = run_excitations(m, lm, self.freq, self.excite, self.bc,
@@ -169,7 +170,7 @@ class Job:
             self.result.S[:, :, k], self.ant = run_antenna(
                 m, self.grid, self.freq, k, self.bc, a.out, ff_extra=ff, ff_pattern=ff[0] if ff else None,
                 end_db=a.end_db, sigma=a.sigma, threads=a.threads, xml_path=xml, dumps=self.dumps, diel=a.diel,
-                diel_fref=a.diel_fref * 1e9, step=a.ff_step, max_steps=a.max_steps, log=self.log)
+                diel_fref=a.diel_fref * 1e9, step=a.ff_step, max_steps=a.max_steps, progress=progress, log=self.log)
             self.result.seconds[m.ports[k].name] = self.ant['seconds']
             self.result.steps[m.ports[k].name] = self.ant['steps']
         else:
