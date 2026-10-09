@@ -23,6 +23,7 @@ from .plots import preview, plot_results
 from .sparams import mixed_mode, fill_reciprocal
 from .touchstone import write_touchstone, read_touchstone
 from .config import apply_toml
+from .dumps import parse_dump, estimate_size_mb, plot_fd_dumps
 
 
 def parser():
@@ -61,6 +62,12 @@ def parser():
     g.add_argument('--sigma', type=float, help='copper conductivity S/m (conducting sheets; default PEC)')
     g.add_argument('--excite', help='comma-separated ports to excite (default all), e.g. P1')
     g.add_argument('--threads', type=int, default=0, help='openEMS threads (0 = all cores)')
+    g = ap.add_argument_group('field dumps')
+    g.add_argument('--dump', action='append', default=[], metavar='FIELD@REGION[@GHz,...]',
+                   help='field dump, repeatable: E|H|J @ layer[+-mm] | x=/y=/z= | volume | box=x0,y0,z0,x1,y1,z1 '
+                        '[@ frequencies in GHz -> frequency domain + PNG maps; none -> time domain VTK]. '
+                        'e.g. E@F.Cu+0.05@2,6   J@In2.Cu@4   E@y=7')
+    g.add_argument('--dump-port', help='ports whose excitation runs get the dumps (default: the first excited port)')
     g = ap.add_argument_group('output')
     g.add_argument('--compare', help='Touchstone file to overlay on the result plot')
     g.add_argument('--preview', action='store_true', help='write the model/mesh preview and exit')
@@ -97,6 +104,8 @@ def main(argv=None):
     mesh = auto_mesh(m, fmin, fmax, res=a.res, fine=a.fine, air=a.air, ratio=a.ratio, nz_min=a.nz, bc=bc,
                      curves=a.curves, vias=a.vias, via_snap=a.via_snap)
     cavity_check(m, mesh, bc, fmax)
+    for sp in (a.dump or []):                                      # validate dump specs before any run
+        print("  " + parse_dump(sp, m, mesh).describe(mesh))
     png = os.path.join(a.out, f"{name}_mesh.png")
     preview(m, mesh, png, name)
     print(f"wrote {png}")
@@ -110,9 +119,23 @@ def main(argv=None):
         return 2
 
     excite = port_index(m, a.excite)
+    dumps = [parse_dump(sp, m, mesh) for sp in (a.dump or [])]
+    dump_runs = port_index(m, a.dump_port) if a.dump_port else None
+    if dumps:
+        n_runs = len(dump_runs) if dump_runs else 1
+        print(f"field dumps: ~{estimate_size_mb(dumps, mesh) * n_runs:.0f} MB on disk (rough), in "
+              f"{n_runs} run(s)")
     freq = np.linspace(fmin, fmax, a.points)
     S = run_excitations(m, mesh, freq, excite, bc, a.out, end_db=a.end_db, sigma=a.sigma, threads=a.threads,
-                        xml_path=os.path.join(a.out, f"{name}.xml"))
+                        xml_path=os.path.join(a.out, f"{name}.xml"), dumps=dumps, dump_runs=dump_runs)
+    for (pname, dname), path in getattr(run_excitations, 'dump_files', {}).items():
+        d = next(x for x in dumps if x.name == dname)
+        if d.freqs and os.path.exists(path):
+            pngs = plot_fd_dumps(d, path, m, os.path.join(a.out, f"{name}_{pname.replace('+', 'p').replace('-', 'n')}"),
+                                 norm=getattr(run_excitations, 'dump_norm', {}).get(pname), port=pname)
+            print(f"  {dname} ({pname} driven): {path}" + (f" -> {len(pngs)} PNG map(s)" if pngs else ''))
+        else:
+            print(f"  {dname} ({pname} driven): {path}  (time domain: open the .vtr series in ParaView)")
     missing = fill_reciprocal(S, excite)
     if missing:
         print(f"note: {', '.join(m.ports[k].name for k in missing)} not excited - their reflection and the terms "

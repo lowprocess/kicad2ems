@@ -19,7 +19,8 @@ def _fl(v):
     return [float(x) for x in v]
 
 
-def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=None, max_steps=1_000_000):
+def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=None, max_steps=1_000_000,
+               dumps=()):
     from CSXCAD import ContinuousStructure
     from openEMS import openEMS
     FDTD = openEMS(NrTS=int(max_steps), EndCriteria=_f(10 ** (end_db / 10)))
@@ -58,6 +59,9 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
         s, e = p.box()
         ports.append(FDTD.AddLumpedPort(i + 1, _f(p.z0), _fl(s), _fl(e), 'z', excite=1.0 if i == excite else 0.0,
                                         priority=12))
+    if dumps:
+        from .dumps import add_dumps
+        add_dumps(CSX, dumps)
     return FDTD, CSX, ports
 
 
@@ -127,16 +131,22 @@ def port_index(m, names):
 
 
 def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, threads=0, xml_path=None,
-                    log=print):
+                    dumps=(), dump_runs=None, log=print):
     """One openEMS run per excited port. Returns S (nf, n, n) over the single-ended ports, NaN in the
-    columns of ports that were not excited."""
+    columns of ports that were not excited. Field dumps are added to the runs in dump_runs (port
+    indices; default: the first excited port); their file paths are returned in run_excitations.dump_files
+    as {(port name, dump name): path}."""
+    dump_runs = [excite[0]] if dump_runs is None else dump_runs
+    run_excitations.dump_files = {}
+    run_excitations.dump_norm = {}                                  # port -> {freq: incident voltage}
     fmin, fmax = freq[0], freq[-1]
     n = len(m.ports)
     S = np.full((len(freq), n, n), np.nan + 0j)
     for k in excite:
         tag = m.ports[k].name.replace('+', 'p').replace('-', 'n')
         path = os.path.abspath(os.path.join(out_dir, 'openems', f"exc_{tag}"))
-        FDTD, CSX, ports = build_fdtd(m, mesh, fmin, fmax, k, bc=bc, end_db=end_db, sigma=sigma)
+        FDTD, CSX, ports = build_fdtd(m, mesh, fmin, fmax, k, bc=bc, end_db=end_db, sigma=sigma,
+                                      dumps=dumps if k in dump_runs else ())
         os.makedirs(path, exist_ok=True)
         if xml_path and k == excite[0]:
             CSX.Write2XML(os.path.abspath(xml_path))
@@ -146,6 +156,18 @@ def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, 
             FDTD.Run(path, cleanup=True, numThreads=threads, verbose=1)
         finally:
             os.chdir(cwd)                                       # openEMS changes the working directory
+        if k in dump_runs:
+            for d in dumps:
+                ext = '.h5' if d.freqs else ''
+                hits = [f for f in os.listdir(path) if f.startswith(d.name)]
+                run_excitations.dump_files[(m.ports[k].name, d.name)] = (
+                    os.path.join(path, d.name + ext) if d.freqs else os.path.join(path, d.name + '_*.vtr'))
+                if not hits:
+                    log(f"  warning: no output found for {d.name}")
+        fd = sorted({f for d in dumps for f in (d.freqs or [])}) if k in dump_runs else []
+        if fd:                                                      # incident wave at the dump frequencies
+            ports[k].CalcPort(path, np.array(fd))
+            run_excitations.dump_norm[m.ports[k].name] = dict(zip(fd, np.atleast_1d(ports[k].uf_inc)))
         for p in ports:
             p.CalcPort(path, freq)
         for i, p in enumerate(ports):
