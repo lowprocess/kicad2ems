@@ -168,19 +168,69 @@ def port_index(m, names):
     return idx
 
 
+def pulse_steps(fmin, fmax, dt_ps, exc_fmax=None):
+    """Length of openEMS's Gaussian excitation in timesteps (2 * 9 / (2 pi fc) / dt, fc as set in build_fdtd),
+    with the mesher's time step estimate (openEMS's own step is often ~10 % smaller, so the true count is a
+    little higher). The fields must ring down after it: allow --max-steps well above this."""
+    fe = fmax if exc_fmax is None else exc_fmax
+    fc = 0.5 * (fe - fmin) * 1.05
+    return int(np.ceil(2 * 9 / (2 * np.pi * fc) / (dt_ps * 1e-12)))
+
+
+def _times(fn, n=None):
+    """First column of an openEMS text probe file (comment lines start with %); the first n values, or all."""
+    out = []
+    with open(fn) as fh:
+        for line in fh:
+            if line.strip() and not line.startswith('%'):
+                out.append(float(line.split()[0]))
+                if n and len(out) >= n:
+                    break
+    return out
+
+
+def steps_taken(path, dt_ps=None):
+    """Timesteps a finished run took: the last sample time of its port voltage probe divided by openEMS's
+    time step, read from the excitation signal file 'et' (one sample per step; the mesher's estimate dt_ps,
+    used only without 'et', can be ~10 % off). The probes are subsampled, so this may undercount by a few
+    dozen steps. None if there is no probe file."""
+    et = os.path.join(path, 'et')
+    dt = None
+    if os.path.exists(et):
+        t = _times(et, 3)
+        if len(t) >= 3 and t[2] > t[1]:
+            dt = t[2] - t[1]
+    if dt is None and dt_ps:
+        dt = dt_ps * 1e-12
+    for fn in sorted(glob.glob(os.path.join(path, 'port_ut*'))):
+        t = _times(fn)
+        if t and dt:
+            return int(round(t[-1] / dt))
+    return None
+
+
+def check_steps(name, path, mesh, max_steps, end_db, log=print):
+    """Warn when a run stopped at --max-steps instead of decaying to --end-db."""
+    n = steps_taken(path, mesh['info']['dt_ps'])
+    if n is not None and n >= 0.97 * max_steps:
+        log(f"  WARNING: {name} ran to the step limit (~{n} of --max-steps {max_steps}) before the energy fell by "
+            f"{-end_db:g} dB - the fields may still be ringing; raise --max-steps (or accept a higher --end-db)")
+    return n
+
+
 def _run_dir(m, k, out_dir):
     tag = m.ports[k].name.replace('+', 'p').replace('-', 'n')
     return os.path.abspath(os.path.join(out_dir, 'openems', f"exc_{tag}"))
 
 
 def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, xml_path=None, dumps=(),
-              verbose=1, diel='fixed', diel_fref=1e9):
+              verbose=1, diel='fixed', diel_fref=1e9, max_steps=1_000_000):
     """One openEMS run with port k excited (top level, so it can run in a worker process). Returns
-    (k, S column (nf, n), {(port, dump): path}, {freq: incident voltage} or None, seconds)."""
+    (k, S column (nf, n), {(port, dump): path}, {freq: incident voltage} or None, seconds, steps taken)."""
     fmin, fmax = freq[0], freq[-1]
     path = _run_dir(m, k, out_dir)
     FDTD, CSX, ports = build_fdtd(m, mesh, fmin, fmax, k, bc=bc, end_db=end_db, sigma=sigma, dumps=dumps,
-                                  diel=diel, diel_fref=diel_fref)
+                                  diel=diel, diel_fref=diel_fref, max_steps=max_steps)
     os.makedirs(path, exist_ok=True)
     if xml_path:
         CSX.Write2XML(os.path.abspath(xml_path))
@@ -201,11 +251,11 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
     for p in ports:
         p.CalcPort(path, freq)
     col = np.array([p.uf_ref / ports[k].uf_inc for p in ports]).T
-    return k, col, files, norm, time.time() - t1
+    return k, col, files, norm, time.time() - t1, steps_taken(path, mesh['info']['dt_ps'])
 
 
 def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, threads=0, xml_path=None,
-                    dumps=(), dump_runs=None, jobs=1, diel='fixed', diel_fref=1e9, log=print):
+                    dumps=(), dump_runs=None, jobs=1, diel='fixed', diel_fref=1e9, max_steps=1_000_000, log=print):
     """One openEMS run per excited port, `jobs` of them at a time (separate processes; without
     `threads`, half the logical CPUs are shared between them). Returns S (nf, n, n) over the single-ended ports, NaN in the columns of
     ports that were not excited. Field dumps are added to the runs in dump_runs (port indices;
@@ -225,7 +275,7 @@ def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, 
              for k in excite]
 
     def collect(res):
-        k, col, files, norm, dt = res
+        k, col, files, norm, dt, steps = res
         S[:, :, k] = col
         run_excitations.dump_files.update(files)
         if norm is not None:
@@ -233,10 +283,14 @@ def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, 
         for (pn, dn), path in files.items():
             if not glob.glob(os.path.join(os.path.dirname(path), dn + '*')):
                 log(f"  warning: no output found for {dn}")
-        log(f"  {m.ports[k].name} done in {dt:.0f} s")
+        log(f"  {m.ports[k].name} done in {dt:.0f} s" + (f", ~{steps} timesteps" if steps else ''))
+        if steps is not None and steps >= 0.97 * max_steps:
+            log(f"  WARNING: {m.ports[k].name} ran to the step limit (~{steps} of --max-steps {max_steps}) before the "
+                f"energy fell by {-end_db:g} dB - the fields may still be ringing; raise --max-steps (or accept a "
+                f"higher --end-db)")
 
     common = dict(m=m, mesh=mesh, freq=freq, bc=bc, out_dir=out_dir, end_db=end_db, sigma=sigma, threads=threads,
-                  diel=diel, diel_fref=diel_fref)
+                  diel=diel, diel_fref=diel_fref, max_steps=max_steps)
     if jobs == 1:
         for t in tasks:
             log(f"openEMS: exciting {m.ports[t['k']].name} -> {_run_dir(m, t['k'], out_dir)}")

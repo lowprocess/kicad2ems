@@ -23,6 +23,11 @@ def antenna_defaults(fmin, fmax, air=None, bc=None):
     return (max(5.0, lam_c / 4) if air is None else air), (bc or ('PML_8',) * 6)
 
 
+def exc_fmax(fmin, fmax):
+    """Upper edge of the antenna runs' excitation: 30 % of the band beyond fmax."""
+    return fmax + 0.3 * (fmax - fmin)
+
+
 def record_freqs(fmin, fmax, extra=(), n=21):
     """Frequencies (Hz) at which the NF2FF box records: n over the band plus any given ones."""
     return np.unique(np.concatenate([np.linspace(fmin, fmax, n), np.asarray(extra, float)]))
@@ -79,16 +84,16 @@ def describe(match, rows, f_pat):
 
 
 def run_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, end_db=-40, sigma=None, threads=0,
-                xml_path=None, dumps=(), diel='fixed', diel_fref=1e9, step=2.0, log=print):
+                xml_path=None, dumps=(), diel='fixed', diel_fref=1e9, step=2.0, max_steps=1_000_000, log=print):
     """FDTD run with port k excited and an NF2FF box. Returns (S column (nf, n), result dict)."""
-    from .simulation import build_fdtd, _run_dir
+    from .simulation import build_fdtd, _run_dir, check_steps
     fmin, fmax = freq[0], freq[-1]
     ffr = record_freqs(fmin, fmax, ff_extra)
     path = _run_dir(m, k, out_dir)
     # the excitation reaches 30 % of the band beyond fmax: in the top ~15 % of a Gaussian's band (its
     # -20 dB edge) the far field came out wrong (dipole: 6.3 dBi and 107 % efficiency at fmax)
     FDTD, CSX, ports = build_fdtd(m, mesh, fmin, fmax, k, bc=bc, end_db=end_db, sigma=sigma, dumps=dumps,
-                                  diel=diel, diel_fref=diel_fref, exc_fmax=fmax + 0.3 * (fmax - fmin))
+                                  diel=diel, diel_fref=diel_fref, exc_fmax=exc_fmax(fmin, fmax), max_steps=max_steps)
     nf2ff = FDTD.CreateNF2FFBox(frequency=[float(f) for f in ffr])
     os.makedirs(path, exist_ok=True)
     if xml_path:
@@ -99,7 +104,8 @@ def run_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, end
         FDTD.Run(path, cleanup=True, numThreads=threads, verbose=1)
     finally:
         os.chdir(cwd)
-    log(f"  done in {time.time() - t1:.0f} s")
+    n = check_steps(m.ports[k].name, path, mesh, max_steps, end_db, log)
+    log(f"  done in {time.time() - t1:.0f} s" + (f", ~{n} timesteps" if n else ''))
     for p in ports:
         p.CalcPort(path, freq)
     col = np.array([p.uf_ref / ports[k].uf_inc for p in ports]).T

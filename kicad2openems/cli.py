@@ -67,6 +67,8 @@ def parser():
     g.add_argument('--bc', default='auto', help='boundaries: auto (PEC on a solid bottom plane, MUR elsewhere), '
                                                 'MUR, PML_8, PEC, or six values xmin,xmax,ymin,ymax,zmin,zmax')
     g.add_argument('--end-db', type=float, default=-40, help='stop when the field energy has decayed by this much')
+    g.add_argument('--max-steps', type=int, default=1_000_000,
+                   help='timestep limit per run (default 1000000); low frequencies and high-Q circuits need more')
     g.add_argument('--sigma', type=float, help='copper conductivity S/m (conducting sheets; default PEC)')
     g.add_argument('--diel', default='fixed', choices=['fixed', 'wideband'],
                    help='dielectric loss: fixed = conductivity fitted at the band centre (default); wideband = '
@@ -158,6 +160,11 @@ def main(argv=None):
     png = os.path.join(a.out, f"{name}_mesh.png")
     preview(m, mesh, png, name)
     print(f"wrote {png}")
+    from .simulation import pulse_steps
+    from .antenna import exc_fmax
+    ps = pulse_steps(fmin, fmax, mesh['info']['dt_ps'], exc_fmax(fmin, fmax) if antenna else None)
+    print(f"excitation pulse ~{ps} timesteps (estimate); --max-steps {a.max_steps} allows {a.max_steps / ps:.0f} pulse lengths"
+          + (" - few for the fields to ring down: raise --max-steps" if a.max_steps < 20 * ps else ''))
     if a.preview:
         return 0
 
@@ -183,7 +190,7 @@ def main(argv=None):
     if jobs > 1 and ram and jobs * mesh['info']['mem_gb'] > 0.8 * ram:
         print(f"WARNING: {jobs} parallel runs need ~{jobs * mesh['info']['mem_gb']:.1f} GB, {ram:.1f} GB RAM "
               f"installed - use fewer --jobs")
-    run_kw = dict(end_db=a.end_db, sigma=a.sigma, threads=a.threads, jobs=jobs, diel=a.diel,
+    run_kw = dict(end_db=a.end_db, sigma=a.sigma, threads=a.threads, jobs=jobs, diel=a.diel, max_steps=a.max_steps,
                   diel_fref=a.diel_fref * 1e9)
     coarse = []
     for f, lm in (levels or [])[:-1]:                               # convergence: coarser levels first, no dumps
@@ -202,7 +209,7 @@ def main(argv=None):
         S[:, :, excite[0]], ant = run_antenna(
             m, mesh, freq, excite[0], bc, a.out, ff_extra=ff, ff_pattern=ff[0] if ff else None, end_db=a.end_db,
             sigma=a.sigma, threads=a.threads, xml_path=os.path.join(a.out, f"{name}.xml"), dumps=dumps,
-            diel=a.diel, diel_fref=a.diel_fref * 1e9, step=a.ff_step)
+            diel=a.diel, diel_fref=a.diel_fref * 1e9, step=a.ff_step, max_steps=a.max_steps)
     else:
         S = run_excitations(m, mesh, freq, excite, bc, a.out, xml_path=os.path.join(a.out, f"{name}.xml"),
                             dumps=dumps, dump_runs=dump_runs, **run_kw)

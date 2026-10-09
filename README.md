@@ -216,6 +216,23 @@ values `xmin,xmax,ymin,ymax,zmin,zmax`. PEC side walls close the model into a me
 warns when its first cavity resonance is below fmax (spurious resonances, slow decay) — only use
 them when the real board sits in a shield can of that size.
 
+## Run length (`--end-db`, `--max-steps`)
+
+A run stops when the field energy has fallen by `--end-db` (default 40 dB), or after `--max-steps`
+timesteps (default 1,000,000), whichever comes first. `--preview` estimates the length of the
+excitation pulse in timesteps and how many pulse lengths `--max-steps` allows, and says when that
+is too few. Low frequencies make the pulse long (its length grows as 1 / bandwidth), and high-Q
+circuits ring for a long time after it, so both need more steps:
+
+```bash
+kicad2openems board.kicad_pcb --config board.toml --fmin 0.05 --fmax 0.5 --max-steps 5000000
+```
+
+(or `max-steps = 5000000` in the TOML). After each run the number of timesteps taken is printed,
+with a warning when a run stopped at the limit instead of at `--end-db`: its fields may still have
+been ringing. The step count is read from the run folder (openEMS's own time step comes from the
+excitation file `et`).
+
 ## Field dumps
 
 `--dump FIELD@REGION[@GHz,...]` (repeatable; or `dump = [...]` under `[openems]` in the TOML):
