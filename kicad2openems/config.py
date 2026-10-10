@@ -13,6 +13,7 @@ ignored). Lists may be TOML arrays or comma-separated strings:
     fmin = 1.0
     fmax = 6.0
     no_mask = true
+    solvers = ["openems", "mom"]    # default: openEMS only (see Settings.solver_plan)
     [openems]
     excite = ["P1"]
     air = 5.0
@@ -36,9 +37,14 @@ class ConfigError(ValueError):
 
 PATH_KEYS = ('board', 'pos', 'compare', 'out', 'events', 'qucsator')         # relative to the TOML file
 CHOICES = dict(parts=('auto', 'none'), curves=('extremes', 'vertices'), vias=('auto', 'exact', 'centre', 'snap'),
-               diel=('fixed', 'wideband'), end_on=('ports', 'energy'), mode=('sparams', 'antenna'), fast=('skrf', 'qucsator'),
-               mom_port=('auto', 'wave', 'lumped'), mom_mesher=('triangle', 'gmsh'))
+               diel=('fixed', 'wideband'), end_on=('ports', 'energy'), mode=('sparams', 'antenna'),
+               fast=('auto', 'skrf', 'qucsator'), mom_port=('auto', 'wave', 'lumped'), mom_mesher=('triangle', 'gmsh'))
 CLI_ONLY = ('check', 'config')
+# the solvers a run can use (docs/usage.md#solvers): openEMS (3D FDTD), mom25d (2.5D MoM) and the
+# transmission-line model solved as a circuit (scikit-rf or qucsator); each name with its aliases
+SOLVERS = ('openems', 'mom', 'lines')
+SOLVER_ALIASES = dict(openems='openems', fdtd='openems', mom='mom', mom25d='mom', lines='lines', line='lines',
+                      fast='lines')
 
 
 @dataclass
@@ -84,7 +90,8 @@ class Settings:
     dump: list = field(default_factory=list)
     dump_port: list = None
     compare: str = None
-    fast: str = None                    # 'skrf' | 'qucsator': S-parameters of the line model too
+    solvers: list = None                # ['openems', 'mom', 'lines'] named to run (see solver_plan); None: openEMS
+    fast: str = None                    # 'auto' | 'skrf' | 'qucsator': S-parameters of the line model too
     qucsator: str = None                # path of the qucsator executable (default: on PATH)
     mom: bool = False                   # also solve the CSX geometry with mom25d (2.5D MoM): <name>_mom.sNp
     mom_dmax: float = 0.3               # mm: largest MoM cell along the copper (planes: 3x, refined near traces)
@@ -101,6 +108,28 @@ class Settings:
     @property
     def antenna(self):
         return self.mode == 'antenna'
+
+    def solver_plan(self):
+        """(the solvers this run uses, the ones named in `solvers`), both in SOLVERS order.
+
+        The solvers are those named in `solvers` (default: openEMS), plus mom25d with mom = true and the line
+        model with fast = ...; --preview runs no openEMS. A solver named in `solvers` is a result the run is
+        for: if it cannot run, the run stops before it starts. One added by --mom / --fast is a reference
+        next to the others: if it cannot run, that is a warning."""
+        named = list(self.solvers or [])
+        run = set(named) if self.solvers is not None else {'openems'}
+        if self.mom:
+            run.add('mom')
+        if self.fast:
+            run.add('lines')
+        if self.preview:
+            run.discard('openems')
+        return [x for x in SOLVERS if x in run], [x for x in SOLVERS if x in named]
+
+    @property
+    def line_backend(self):
+        """The circuit solver of the line model: fast, or 'auto' (qucsator if installed, else scikit-rf)."""
+        return self.fast or 'auto'
 
     def options(self):
         """The options as a plain dict (for the report and the run summary)."""
@@ -163,8 +192,24 @@ def _sides(v):
     return parse_sides(v)
 
 
-CONVERT = dict(nets=_strlist, excite=_strlist, dump_port=_strlist, region=_region, ports=lambda v: [str(x).strip() for x in (v if isinstance(v, (list, tuple)) else [v]) if str(x).strip()], cut_ports=_bool, converge=lambda v: _floatlist(v) or None,
-               converge_tol=_floats(2), ff_freq=_floatlist, bc=_bc, edge_walls=_sides,
+def _solvers(v):
+    """Solver names (aliases allowed, 'all' for every one) in SOLVERS order, or None for an empty list."""
+    out = set()
+    for x in _strlist(v) or []:
+        x = x.lower()
+        if x == 'all':
+            out.update(SOLVERS)
+        elif x in SOLVER_ALIASES:
+            out.add(SOLVER_ALIASES[x])
+        else:
+            raise ValueError(f"no solver {x!r}: choose from {', '.join(SOLVERS)} (or all)")
+    return [x for x in SOLVERS if x in out] or None
+
+
+CONVERT = dict(nets=_strlist, excite=_strlist, dump_port=_strlist, region=_region,
+               ports=lambda v: [str(x).strip() for x in (v if isinstance(v, (list, tuple)) else [v]) if str(x).strip()],
+               cut_ports=_bool, converge=lambda v: _floatlist(v) or None,
+               converge_tol=_floats(2), ff_freq=_floatlist, bc=_bc, edge_walls=_sides, solvers=_solvers,
                dump=lambda v: [str(x) for x in (v if isinstance(v, (list, tuple)) else [v])],
                mask=_bool, mom=_bool, preview=_bool, no_report=_bool, openems_output=_bool)
 _FIELDS = {f.name: f for f in dataclasses.fields(Settings) if f.name != 'notes'}
@@ -254,4 +299,9 @@ def build_settings(cli=None, config=None):
         raise ConfigError(f"converge needs at least two positive refinement factors, e.g. 1,1.5,2 (got {s.converge})")
     if s.converge and s.antenna:
         raise ConfigError("converge is not available with mode = antenna")
+    run, named = s.solver_plan()
+    if s.antenna and 'mom' in named:
+        raise ConfigError("solvers: mom25d is not available in antenna mode (it models an infinite ground plane)")
+    if s.antenna and not s.preview and 'openems' not in run:
+        raise ConfigError("mode = antenna needs openEMS: add openems to solvers (or use --preview)")
     return s

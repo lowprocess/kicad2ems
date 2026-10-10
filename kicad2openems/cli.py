@@ -1,18 +1,22 @@
 """
-kicad2openems - KiCad board -> openEMS (3D FDTD) with automatic meshing
+kicad2openems - KiCad board -> S-parameters from openEMS (3D FDTD), mom25d (2.5D MoM) and a
+transmission-line model, all from one converted board
 
     kicad2openems board.kicad_pcb --pos board-top.pos --nets SIG,GND --fmin 1 --fmax 6 --preview
     kicad2openems board.toml                        # config with board = "board.kicad_pcb"
+    kicad2openems board.toml --solvers mom,lines    # MoM and the line model: no openEMS needed
+    kicad2openems board.toml --solvers all          # openEMS, MoM and the line model, compared
     kicad2openems board.kicad_pcb --config board.toml --excite P1
     kicad2openems board.kicad_pcb ... --compare other_tool.s2p          # overlay another result
+    kicad2openems --check                           # which solvers this python can run
 
 Ports are footprints with a Fab-layer text P1, P2, ... (or Reference / Value P<n> in the
 pick-and-place file); P<n>+ / P<n>- give a differential port. --preview writes the model + mesh
 plot, the transmission-line sections and the report without running openEMS.
 
-Outputs in --out: <name>_openems.sNp, <name>_openems.png, <name>_mesh.png, <name>_tlines.png,
-<name>_openems.json, <name>_report.html, the CSX geometry <name>.xml (AppCSXCAD) and the raw runs
-under openems/.
+Outputs in --out: <name>_openems.sNp / _mom.sNp / _fast.sNp (per solver), <name>_openems.png,
+<name>_mesh.png, <name>_tlines.png, <name>_openems.json (the run summary), <name>_report.html, the CSX
+geometry <name>.xml (AppCSXCAD) and the raw openEMS runs under openems/.
 """
 import argparse, os, sys
 
@@ -26,9 +30,16 @@ def parser():
     ap = argparse.ArgumentParser(prog='kicad2openems', description=__doc__, argument_default=S,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('board', nargs='?', help='.kicad_pcb, or a .toml config (that names the board)')
-    ap.add_argument('--check', action='store_true', help='check that this python can run openEMS, then exit')
+    ap.add_argument('--check', action='store_true',
+                    help='check that this python can run openEMS (and mom25d, the line model, the GUI), then exit')
     ap.add_argument('--config', help='TOML file with any of these options (openEMS ones also under [openems]); '
                                      'its paths are relative to the file')
+    g = ap.add_argument_group('solvers')
+    g.add_argument('--solvers', metavar='LIST',
+                   help='solvers to run, comma-separated: openems (3D FDTD; the default), mom (mom25d, 2.5D MoM: '
+                        'planar boards over a ground plane, no openEMS needed), lines (the transmission-line model '
+                        'as a circuit: milliseconds) or all. A named solver that cannot run stops the run before it '
+                        'starts; --mom and --fast add theirs as references')
     g = ap.add_argument_group('board')
     g.add_argument('--pos', help='pick-and-place file listing the port components')
     g.add_argument('--nets', help='comma-separated nets to include, or auto (the nets under the ports plus the '
@@ -105,9 +116,10 @@ def parser():
                         'e.g. E@F.Cu+0.05@2,6   J@In2.Cu@4   E@y=7')
     g.add_argument('--dump-port', help='ports whose excitation runs get the dumps (default: the first excited port)')
     g = ap.add_argument_group('transmission-line model')
-    g.add_argument('--fast', choices=['skrf', 'qucsator'],
+    g.add_argument('--fast', choices=['auto', 'skrf', 'qucsator'],
                    help='also solve the transmission-line sections as a circuit (milliseconds) with scikit-rf or '
-                        'qucsator; written as <name>_fast.sNp and compared with openEMS in the report')
+                        'qucsator (auto: qucsator if installed, else scikit-rf); written as <name>_fast.sNp and '
+                        'compared with the other solvers in the report')
     g.add_argument('--qucsator', metavar='PATH', help='qucsator executable (default: qucsator_rf or qucsator on PATH)')
     g = ap.add_argument_group('MoM reference (mom25d)')
     g.add_argument('--mom', action='store_true',
@@ -150,14 +162,40 @@ def settings_from_argv(argv=None):
     return s, False
 
 
+def other_solvers():
+    """--check lines for what runs without openEMS: mom25d, the line model's circuit solvers, the GUI."""
+    import importlib, shutil
+    from .mom import mom25d_status
+    lines = ["other solvers (no openEMS needed):"]
+    ok, what = mom25d_status()
+    lines.append(f"  {'ok' if ok else 'FAILED':7s} mom25d      {what}")
+    try:
+        skrf = importlib.import_module('skrf')
+        lines.append(f"  ok      scikit-rf   {getattr(skrf, '__version__', '')} (line model: --fast skrf)")
+    except ImportError:
+        lines.append("  missing scikit-rf   python -m pip install scikit-rf (line model: --fast skrf)")
+    q = shutil.which('qucsator_rf') or shutil.which('qucsator')
+    lines.append(f"  ok      qucsator    {q} (line model: --fast qucsator)" if q else
+                 "  missing qucsator    optional: Qucs-S's qucsator_rf on PATH (line model with coupled lines, "
+                 "discontinuities)")
+    try:
+        importlib.import_module('PySide6')
+        importlib.import_module('pyqtgraph')
+        lines.append("  ok      GUI         kicad2openems-gui")
+    except ImportError:
+        lines.append("  missing GUI         python -m pip install 'kicad2openems[gui]' (PySide6, pyqtgraph)")
+    return lines
+
+
 def main(argv=None):
     try:
         s, check = settings_from_argv(argv)
         if check:
             from .simulation import check_openems
             ok, report = check_openems()
-            print("\n".join(report))
-            print("openEMS: ready" if ok else "openEMS: NOT usable from this python")
+            print("\n".join(report + [''] + other_solvers() + ['']))
+            print("openEMS: ready" if ok else "openEMS: NOT usable from this python (without it: --preview, "
+                                              "--solvers mom,lines)")
             return 0 if ok else 2
         for note in s.notes:
             print(f"config: {note}")

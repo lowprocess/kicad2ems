@@ -38,6 +38,24 @@ def import_mom25d():
     return mom25d
 
 
+def mom25d_status():
+    """(usable, one-line description) of mom25d for --check and the solver checks before a run: where it
+    comes from, its version and whether its compiled core is built (the NumPy fallback is ~5x slower)."""
+    try:
+        mom25d = import_mom25d()
+        import triangle                                             # noqa: F401  (mom25d's default mesher)
+    except Exception as e:                                          # ImportError, or a broken dependency
+        return False, f"{type(e).__name__}: {e}"
+    where = os.path.dirname(os.path.dirname(os.path.abspath(mom25d.__file__)))
+    src = 'submodule' if os.path.abspath(where) == os.path.abspath(VENDORED) else 'installed'
+    try:
+        from mom25d import _core                                    # noqa: F401
+        core = 'compiled core'
+    except ImportError:
+        core = "no compiled core (NumPy, ~5x slower: python -m mom25d.core.build)"
+    return True, f"{getattr(mom25d, '__version__', '?')} ({src}, {mom25d.__file__}), {core}"
+
+
 def add_hints(path, m, fmin, fmax):
     """Add (or replace) the <mom25d> hints element of a CSX file (see mom25d.csx)."""
     tree = ET.parse(path)

@@ -13,4 +13,4 @@ out     = "out"
 [openems]
 fine    = 0.15    # mm at the copper edges: about w/10 of the 1.53 mm lines
 excite  = ["P1"]
-fast    = "qucsator"    # the transmission-line model (or "skrf"), compared in the report
+fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report

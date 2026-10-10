@@ -1,0 +1,111 @@
+"""Choosing the solvers of a run (openEMS, mom25d, the line model): settings, the checks before a run,
+runs without openEMS, exit codes."""
+import json, os
+import pytest
+from kicad2openems import simulation
+from kicad2openems.cli import settings_from_argv
+from kicad2openems.config import build_settings, ConfigError
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FILTER = os.path.join(ROOT, 'examples', 'filter.toml')
+
+
+def plan(**kw):
+    return build_settings(dict(board='b.kicad_pcb', **kw)).solver_plan()
+
+
+def test_solver_plan():
+    assert plan() == (['openems'], [])                              # the default: openEMS
+    assert plan(mom=True, fast='skrf') == (['openems', 'mom', 'lines'], [])          # --mom / --fast add theirs
+    assert plan(solvers='mom') == (['mom'], ['mom'])
+    assert plan(solvers='lines,MoM25d', fast='qucsator') == (['mom', 'lines'], ['mom', 'lines'])
+    assert plan(solvers=['fdtd', 'line']) == (['openems', 'lines'], ['openems', 'lines'])
+    assert plan(solvers='all')[0] == ['openems', 'mom', 'lines']
+    assert plan(solvers='openems', mom=True) == (['openems', 'mom'], ['openems'])
+    assert plan(preview=True, mom=True) == (['mom'], [])            # --preview: no openEMS run
+    assert plan(preview=True) == ([], [])
+    s = build_settings(dict(board='b.kicad_pcb', solvers='lines'))
+    assert s.line_backend == 'auto' and build_settings(dict(board='b', fast='skrf')).line_backend == 'skrf'
+
+
+@pytest.mark.parametrize('values,match', [
+    (dict(solvers='openems,hfss'), "no solver 'hfss'"),
+    (dict(solvers='mom', mode='antenna'), 'not available in antenna mode'),
+    (dict(solvers='lines', mode='antenna'), 'antenna needs openEMS'),
+    (dict(fast='spice'), 'choose one of')])
+def test_bad_solver_settings(values, match):
+    with pytest.raises(ConfigError, match=match):
+        build_settings(dict(board='b.kicad_pcb', **values))
+
+
+def test_solvers_from_toml_and_command_line(tmp_path):
+    p = tmp_path / 'c.toml'
+    p.write_text('board = "b.kicad_pcb"\nsolvers = ["openems", "mom"]\n')
+    s, _ = settings_from_argv([str(p)])
+    assert s.solver_plan()[0] == ['openems', 'mom']
+    s, _ = settings_from_argv([str(p), '--solvers', 'lines'])       # the command line wins
+    assert s.solver_plan() == (['lines'], ['lines'])
+
+
+
+def test_resolve_backend(monkeypatch):
+    pytest.importorskip('skrf')
+    from kicad2openems import fastsolve
+    monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)
+    assert fastsolve.resolve_backend('auto')[0] == 'skrf'           # no qucsator: scikit-rf
+    with pytest.raises(ValueError, match='--fast skrf'):
+        fastsolve.resolve_backend('qucsator')
+    monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: '/usr/bin/' + name)
+    assert fastsolve.resolve_backend('auto') == ('qucsator', '/usr/bin/qucsator_rf')
+
+
+def test_missing_openems_stops_before_any_work(run_cli, tmp_path, monkeypatch):
+    monkeypatch.setattr(simulation, 'check_openems', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
+    out = tmp_path / 'out'
+    ev = tmp_path / 'ev.jsonl'
+    code, so, _ = run_cli(FILTER, '--out', out, '--events', ev)
+    assert code == 2 and '--solvers mom,lines' in so
+    events = [json.loads(l) for l in ev.read_text().splitlines()]
+    assert not [e for e in events if e['kind'] == 'stage'] and (events[-1]['kind'], events[-1]['code']) == ('done', 2)
+    assert not (out / 'filter_mesh.png').exists()                  # nothing built: it stopped at once
+
+
+def test_line_model_only(run_cli, tmp_path, monkeypatch):
+    pytest.importorskip('skrf')
+    monkeypatch.setattr(simulation, 'check_openems', lambda: pytest.fail('openEMS must not be needed'))
+    out = tmp_path / 'out'
+    code, so, err = run_cli(FILTER, '--solvers', 'lines', '--fast', 'skrf', '--points', '51', '--out', out)
+    assert code == 0, so + err
+    sm = json.loads((out / 'filter_openems.json').read_text())
+    assert sm['solvers'] == ['lines'] and sm['mode'] == 'S-parameters' and 'results' not in sm
+    assert 'pulse_steps' not in sm and not any('max-steps' in w for w in sm['warnings'])   # no openEMS talk
+    assert (out / 'filter_fast.s2p').exists() and (out / 'filter_fast.png').exists()
+    page = (out / 'filter_report.html').read_text()
+    assert 'line model' in page and "<div class='l'>mesh</div>" not in page    # no FDTD mesh tile without openEMS
+
+
+def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatch):
+    pytest.importorskip('skrf')
+    from kicad2openems import mom
+    monkeypatch.setattr(mom, 'mom25d_status', lambda: (True, '0.0 (test)'))
+    monkeypatch.setattr(mom, 'write_xml', lambda *a, **kw: 'xml')
+
+    def broken(*a, **kw):
+        raise RuntimeError('singular matrix')
+    monkeypatch.setattr(mom, 'solve', broken)
+    out = tmp_path / 'out'
+    code, so, _ = run_cli(FILTER, '--solvers', 'mom', '--out', out)
+    assert code == 1 and 'WARNING: mom25d failed: RuntimeError: singular matrix' in so and 'failed: mom25d' in so
+    assert (out / 'filter_report.html').exists()                    # the report still says what happened
+    code, so, _ = run_cli(FILTER, '--preview', '--mom', '--fast', 'skrf', '--out', out)   # a reference: a warning
+    assert code == 0 and 'WARNING: mom25d failed' in so
+
+
+def test_unavailable_reference_is_left_out(run_cli, tmp_path, monkeypatch):
+    from kicad2openems import mom
+    monkeypatch.setattr(mom, 'mom25d_status', lambda: (False, 'ImportError: no mom25d'))
+    out = tmp_path / 'out'
+    code, so, _ = run_cli(FILTER, '--preview', '--mom', '--out', out)
+    assert code == 0 and 'WARNING: mom25d cannot run' in so
+    code, so, _ = run_cli(FILTER, '--solvers', 'mom', '--out', out)       # named: stops before it starts
+    assert code == 2 and 'mom25d cannot run' in so

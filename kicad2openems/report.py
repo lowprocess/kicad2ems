@@ -230,9 +230,15 @@ def build(sm, base):
         body.append(f"<section id='{sid}'><h2>{_e(title)}</h2>{content}</section>")
 
     # ---- summary ----------------------------------------------------------------------------------
-    k = [('mode', _e(sm['mode'])), ('band', f"{st['fmin']:g}–{st['fmax']:g} GHz"),
-         ('ports', _e(", ".join(p['name'] for p in model['ports']))), ('mesh', f"{g['cells'] / 1e6:.2f} M cells"),
-         ('time step', f"{g['dt_ps']:.3f} ps")]
+    names = dict(openems='openEMS', mom='mom25d', lines='line model')
+    fdtd = sm['mode'] == 'preview' or 'openems' in sm.get('solvers', ['openems'])     # the FDTD mesh matters
+    k = [('mode', _e(sm['mode'])),
+         ('solvers', _e(", ".join(names.get(x, x) for x in sm['solvers']) or 'none')) if 'solvers' in sm else None,
+         ('band', f"{st['fmin']:g}–{st['fmax']:g} GHz"),
+         ('ports', _e(", ".join(p['name'] for p in model['ports']))),
+         ('mesh', f"{g['cells'] / 1e6:.2f} M cells") if fdtd else None,
+         ('time step', f"{g['dt_ps']:.3f} ps") if fdtd else None]
+    k = [x for x in k if x]
     ant = sm.get('antenna')
     if ant:
         mt = ant['match']
@@ -300,7 +306,8 @@ def build(sm, base):
             ['curves / vias', f"{_e(g['curves'])} / {_e(g['vias'])} ({g['vias_snapped']} snapped)"],
             *([['edge walls (PEC)', _e(g['edge_walls'])]] if g.get('edge_walls') else []),
             ['lines across port traces', _e(", ".join(f"{k_}: {v}" for k_, v in g.get('lines_across_ports', {}).items()))],
-            ['excitation pulse', f"~{sm.get('pulse_steps', 0):,} timesteps; --max-steps {st['max_steps']:,}"]]
+            *([['excitation pulse', f"~{sm['pulse_steps']:,} timesteps; --max-steps {st['max_steps']:,}"]]
+              if 'pulse_steps' in sm else [])]
     content = _table(['', ''], rows) + _img(sm['images'].get('mesh'), 'model and mesh')
     if sm.get('levels'):
         content += "<h3>Convergence levels</h3>" + _table(

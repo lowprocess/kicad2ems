@@ -18,4 +18,4 @@ out      = "out"
 excite     = ["P1"]     # S11 and S21 (S12 by reciprocity)
 end_db     = -30
 edge_walls = "all"      # PEC where the planes end at every board edge (stitching stand-in)
-fast       = "qucsator"
+fast       = "auto"         # qucsator if installed, else scikit-rf

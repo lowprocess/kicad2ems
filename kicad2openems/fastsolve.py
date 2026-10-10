@@ -149,6 +149,26 @@ def find_qucsator(path=None):
     raise ValueError("--fast qucsator: no qucsator_rf / qucsator on PATH (install Qucs-S, or give --qucsator PATH)")
 
 
+def resolve_backend(backend='auto', qucsator=None):
+    """(backend, what runs it) for a line-model solve: 'auto' is qucsator when it is installed (its coupled-line
+    and discontinuity models), else scikit-rf. ValueError, saying how to fix it, when the backend cannot run."""
+    if backend not in BACKENDS + ('auto',):
+        raise ValueError(f"fast solver: choose one of auto, {', '.join(BACKENDS)}")
+    if backend in ('auto', 'qucsator'):
+        try:
+            return 'qucsator', find_qucsator(qucsator)
+        except ValueError as e:
+            if backend == 'qucsator':
+                raise ValueError(f"{e}; --fast skrf (or auto) solves the same line model with scikit-rf") from None
+    try:
+        import skrf
+    except ImportError:
+        raise ValueError("the line model needs scikit-rf (python -m pip install scikit-rf) or qucsator (Qucs-S) "
+                         "on PATH" if backend == 'auto' else
+                         "--fast skrf needs scikit-rf: python -m pip install scikit-rf") from None
+    return 'skrf', f"scikit-rf {getattr(skrf, '__version__', '')}".strip()
+
+
 def _junction_plan(lm):
     """For qucsator: the node each element end connects to (a discontinuity gets its own nodes per arm)
     and how much each end is shortened (lines are measured to the edges of a corner, tee or cross
@@ -370,8 +390,10 @@ def _qucsator(lm, ports, freq, sheet, sigma, exe, timeout=120.0):
 # ---- entry point ----------------------------------------------------------------------------------
 def solve(lm, ports, freq, backend='skrf', sheet=True, sigma=None, qucsator=None):
     """S-parameters (nf, n, n) over `ports` (model.ports order; NaN for ports without a line model) and
-    the backend's run time in seconds."""
+    the backend's run time in seconds. backend 'auto': see resolve_backend."""
     import time
+    if backend == 'auto':
+        backend, _ = resolve_backend('auto', qucsator)
     if backend not in BACKENDS:
         raise ValueError(f"fast solver: choose one of {', '.join(BACKENDS)}")
     _check_model(lm, ports)

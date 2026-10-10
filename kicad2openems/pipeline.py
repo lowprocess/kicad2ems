@@ -2,11 +2,14 @@
 One run of kicad2openems as a sequence of stages, driven by a config.Settings:
 
     Job(settings).run()
+        preflight() the solvers of the run (Settings.solver_plan) checked before any work: openEMS imports,
+                    mom25d imports, the line model has a circuit solver
         model()     KiCadBoard -> Model (stack, copper, vias, ports, lumped parts)
         mesh()      boundaries, automatic mesh (or the --converge levels), cavity check, field-dump specs
-        lines()     transmission-line sections and Z0 (tlines.py); with --fast, their S-parameters (fastsolve.py)
-        mom()       with --mom: the CSX geometry (<name>.xml) solved by mom25d, a 2.5D MoM reference (mom.py)
-        preview()   <name>_mesh.png, excitation length; --preview stops here (after the report)
+        lines()     transmission-line sections and Z0 (tlines.py); with the line-model solver, their
+                    S-parameters (fastsolve.py)
+        mom()       with mom25d: the CSX geometry (<name>.xml) solved by the 2.5D MoM solver (mom.py)
+        preview()   <name>_mesh.png, excitation length; without openEMS the run ends here (after the report)
         solve()     openEMS runs: S-parameters (all excited ports, --jobs), --converge levels, or antenna mode
         outputs()   Touchstone, plots, field-dump maps, antenna / convergence results, line-model comparison
         report()    <name>_openems.json (the run summary) and <name>_report.html built from it
@@ -85,6 +88,9 @@ def compare_table(freq, S, Sx, names, floor_db=-40.0):
     return rows
 
 
+SOLVER_LABELS = dict(openems='openEMS (FDTD)', mom='mom25d (MoM)', lines='line model')
+
+
 class Job:
     def __init__(self, settings, echo=print, command=None):
         self.s, self.echo = settings, echo
@@ -96,10 +102,17 @@ class Job:
         self.levels = self.ant = self.result = self.lm = self.fast = self.mom_res = None
         self.coarse, self.dumps = [], []
         self.events = None
+        self.plan, self.named = settings.solver_plan()              # the solvers of this run; those named in solvers
+        self.line_backend = None                                    # skrf / qucsator, resolved by preflight()
         mode = 'preview' if settings.preview else ('antenna' if self.antenna else 'S-parameters')
-        self.summary = dict(name=self.name, version=__version__, mode=mode, command=command,
+        self.summary = dict(name=self.name, version=__version__, mode=mode, command=command, solvers=list(self.plan),
                             created=datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), settings=settings.options(),
                             images={}, files=self.files, dumps=[])
+
+    @property
+    def fdtd(self):
+        """True when this run includes openEMS."""
+        return 'openems' in self.plan
 
     # ---- helpers -----------------------------------------------------------------------------------
     def log(self, *msg):
@@ -162,22 +175,65 @@ class Job:
         return code
 
     def _run(self):
+        if not self.preflight():
+            return 2
         for st in (self.model, self.mesh, self.lines, self.mom, self.preview):
             self.stage(st.__name__)
             st()
-        if self.s.preview:
-            self.report()
-            return 0
-        from .simulation import check_openems
-        ok, lines = check_openems()
-        if not ok:
-            self.log("openEMS cannot be imported - details:\n" + "\n".join(lines))
-            return 2
-        for st in (self.solve, self.outputs):
-            self.stage(st.__name__)
-            st()
+        if self.fdtd:
+            for st in (self.solve, self.outputs):
+                self.stage(st.__name__)
+                st()
         self.report()
+        failed = [SOLVER_LABELS[x] for x in self.named if x in self.plan and not self._solved(x)]
+        if failed:
+            self.log(f"failed: {', '.join(failed)} gave no result (see the warnings above)")
+            return 1
         return 0
+
+    def _solved(self, solver):
+        return dict(openems=self.result is not None, mom=self.mom_res is not None or self.antenna,
+                    lines=self.fast is not None)[solver]
+
+    def preflight(self):
+        """Before any work: can the solvers of this run run? One named in `solvers` that cannot stops the run
+        here (False); a reference added by --mom / --fast is left out with a warning."""
+        s = self.s
+        if self.plan:
+            self.log("solvers: " + ", ".join(SOLVER_LABELS[x] for x in self.plan))
+        if self.fdtd:
+            from .simulation import check_openems
+            ok, lines = check_openems()
+            if not ok:
+                self.log("openEMS cannot be imported - details:\n" + "\n".join(lines) + "\n"
+                         "Without openEMS: --preview (model, mesh, line sections), or the solvers that need no "
+                         "openEMS: --solvers mom,lines")
+                return False
+        if 'mom' in self.plan and not self.antenna:
+            from .mom import mom25d_status
+            ok, what = mom25d_status()
+            if not ok:
+                if 'mom' in self.named:
+                    self.log(f"mom25d cannot run: {what}")
+                    return False
+                self.log(f"WARNING: mom25d cannot run, the MoM reference is left out: {what}")
+                self.plan.remove('mom')
+            elif 'no compiled core' in what:
+                self.log(f"note: mom25d {what}")
+        if 'lines' in self.plan:
+            from .fastsolve import resolve_backend
+            try:
+                self.line_backend, _ = resolve_backend(s.line_backend, s.qucsator)
+                if s.line_backend == 'auto':
+                    self.log(f"line model: solved with {self.line_backend} (fast = auto)")
+            except ValueError as e:
+                if 'lines' in self.named:
+                    self.log(f"the line model cannot be solved: {e}")
+                    return False
+                self.log(f"WARNING: fast line model ({s.line_backend}) left out: {e}")
+                self.plan.remove('lines')
+        self.summary['solvers'] = list(self.plan)
+        return True
 
     def model(self):
         s = self.s
@@ -235,7 +291,8 @@ class Job:
                 g['walls'] = snap(walls, g)
                 g['info']['edge_walls'] = describe(walls, m).split(': ', 1)[1]
         self.summary['mesh'] = self.grid['info']
-        cavity_check(m, self.grid, self.bc, self.fmax, log=self.log)
+        if self.fdtd or s.preview:                                  # the box resonances are openEMS's alone
+            cavity_check(m, self.grid, self.bc, self.fmax, log=self.log)
         self.dumps = [parse_dump(sp, m, self.grid) for sp in s.dump]   # validated before any run
         for d in self.dumps:
             self.log("  " + d.describe(self.grid))
@@ -272,13 +329,14 @@ class Job:
                       (", ..." if len(self.lm.groups) > 6 else "") + ")" if self.lm.groups else "") +
                      "; discontinuities: " + (", ".join(f"{n} {k}" for k, n in sorted(cnt.items())) or "none"))
         self.figure(plot_lines(self.lm, self.m, self.name), '_tlines.png', 'lines', 'transmission-line sections')
-        if self.s.fast:
+        if 'lines' in self.plan:
             self.fast_solve()
 
     def mom(self):
-        """With --mom: the CSX geometry solved by mom25d (2.5D Method of Moments), a second full-wave reference
-        next to openEMS and the line model. A reference aid: a failure is a warning, never the end of the run."""
-        if not self.s.mom:
+        """With mom25d among the solvers: the CSX geometry solved by mom25d (2.5D Method of Moments), the full-wave
+        solver next to openEMS and the line model. A failure is a warning here; when mom25d was named in
+        `solvers`, the run ends with exit code 1 (see _run)."""
+        if 'mom' not in self.plan:
             return
         if self.antenna:
             self.log("mom25d: not used in antenna mode (it solves copper over an infinite ground plane)")
@@ -317,23 +375,26 @@ class Job:
         self.log(f"mom25d: {info['solves']} EM solves, {info['seconds']:.0f} s -> {out}")
 
     def fast_solve(self):
-        from .fastsolve import solve
+        from .fastsolve import solve, resolve_backend
         s, m = self.s, self.m
+        backend = self.line_backend or s.line_backend               # resolved by preflight(); else as set
         self.freq = np.linspace(self.fmin, self.fmax, s.points)
         try:
-            S, seconds = solve(self.lm, m.ports, self.freq, backend=s.fast, sigma=s.sigma, qucsator=s.qucsator)
+            if backend == 'auto':
+                backend = resolve_backend('auto', s.qucsator)[0]
+            S, seconds = solve(self.lm, m.ports, self.freq, backend=backend, sigma=s.sigma, qucsator=s.qucsator)
         except (ValueError, RuntimeError) as e:                       # missing package / program: say how to fix
-            self.log(f"WARNING: fast line model ({s.fast}) failed: {e}")
+            self.log(f"WARNING: fast line model ({backend}) failed: {e}")
             return
         Smm, names, zref = mixed_mode(S, m)
         out = self.path(f"_fast.s{len(names)}p")
-        write_touchstone(out, self.freq, np.nan_to_num(Smm), zref, comment=f"line model, {s.fast} ({self.name})",
+        write_touchstone(out, self.freq, np.nan_to_num(Smm), zref, comment=f"line model, {backend} ({self.name})",
                          names=names)
-        self.wrote(f'S-parameters, fast line model ({s.fast})', out)
-        self.fast = dict(S=Smm, names=names, backend=s.fast, seconds=seconds)
-        self.summary['fast'] = dict(backend=s.fast, seconds=seconds, touchstone=self.rel(out),
+        self.wrote(f'S-parameters, fast line model ({backend})', out)
+        self.fast = dict(S=Smm, names=names, backend=backend, seconds=seconds)
+        self.summary['fast'] = dict(backend=backend, seconds=seconds, touchstone=self.rel(out),
                                     table=sparam_table(self.freq, Smm, names))
-        self.log(f"fast line model ({s.fast}): {seconds * 1e3:.0f} ms -> {out}")
+        self.log(f"fast line model ({backend}): {seconds * 1e3:.0f} ms -> {out}")
 
     def preview(self):
         from .simulation import pulse_steps
@@ -341,18 +402,22 @@ class Job:
         s = self.s
         self.figure(preview(self.m, self.grid, self.name), '_mesh.png', 'mesh', 'model and mesh')
         self.log(f"wrote {self.path('_mesh.png')}")
-        ps = pulse_steps(self.fmin, self.fmax, self.grid['info']['dt_ps'],
-                         exc_fmax(self.fmin, self.fmax) if self.antenna else None)
-        self.summary['pulse_steps'] = ps
-        self.log(f"excitation pulse ~{ps} timesteps (estimate); --max-steps {s.max_steps} allows "
-                 f"{s.max_steps / ps:.0f} pulse lengths" +
-                 (" - WARNING: few for the fields to ring down: raise --max-steps" if s.max_steps < 20 * ps else ''))
-        if self.fast and s.preview:                                  # nothing else to show it against
+        if self.fdtd or s.preview:                                  # openEMS's run length: not for MoM / lines alone
+            ps = pulse_steps(self.fmin, self.fmax, self.grid['info']['dt_ps'],
+                             exc_fmax(self.fmin, self.fmax) if self.antenna else None)
+            self.summary['pulse_steps'] = ps
+            self.log(f"excitation pulse ~{ps} timesteps (estimate); --max-steps {s.max_steps} allows "
+                     f"{s.max_steps / ps:.0f} pulse lengths" +
+                     (" - WARNING: few for the fields to ring down: raise --max-steps" if s.max_steps < 20 * ps else ''))
+        if self.fdtd:                                               # the openEMS plot shows the references
+            return
+        if self.fast:                                               # nothing else to show it against
+            b = self.fast['backend']
             self.figure(plot_results(self.freq, self.fast['S'], self.fast['names'],
-                                     f"{self.name} - fast line model ({s.fast})", label=f"line model ({s.fast})"),
+                                     f"{self.name} - fast line model ({b})", label=f"line model ({b})"),
                         '_fast.png', 'fast', 'S-parameter plot, fast line model')
-        if self.mom_res and s.preview:                               # MoM against the line model
-            ov = [(self.freq, self.fast['S'], f"line model ({s.fast})", ':')] if self.fast else []
+        if self.mom_res:                                            # MoM against the line model
+            ov = [(self.freq, self.fast['S'], f"line model ({self.fast['backend']})", ':')] if self.fast else []
             self.figure(plot_results(self.freq, self.mom_res['S'], self.mom_res['names'],
                                      f"{self.name} - mom25d (MoM)", ov, label='mom25d'),
                         '_mom.png', 'mom', 'S-parameter plot, mom25d')

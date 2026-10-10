@@ -17,4 +17,4 @@ air     = 5.0           # mm of air between the board and the boundary
 bc      = "auto"        # PEC on the solid bottom plane, MUR elsewhere
 end-db  = -40
 fine    = 0.05
-fast    = "qucsator"    # line model with coupled lines (or "skrf")
+fast    = "auto"        # line model: qucsator if installed (coupled lines), else scikit-rf

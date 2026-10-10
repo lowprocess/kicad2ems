@@ -15,4 +15,4 @@ out     = "out"
 excite  = ["P1"]
 end_db  = -30
 max_steps = 3000000    # a narrow band: a long pulse and a long ring-down
-fast    = "qucsator"    # or "skrf"
+fast    = "auto"        # qucsator if installed, else scikit-rf
