@@ -4,34 +4,46 @@ KiCadBoard: reads a .kicad_pcb file (KiCad 5 to 10).
   stackup     Board Setup > Physical Stackup: copper / dielectric order, thickness, er, loss
               tangent, solder mask; dielectric sub-layers are split
   copper      tracks, arcs, vias (through / blind / micro), filled zones (the real copper,
-              antipads included), footprint pads (incl. custom), plated through-holes (as vias),
-              gr_poly / gr_rect / gr_circle on copper layers
+              antipads included), footprint pads (incl. custom, chamfered, trapezoid), copper
+              graphics on the board (gr_line / gr_arc / gr_rect / gr_circle / gr_poly / gr_curve)
+              and inside footprints (fp_*), plated through-holes (as vias)
+  outline     every Edge.Cuts item, on the board and in footprints (board.edges)
   ports       footprints marked P<n> (Fab text, or Reference / Value when listed in a pick-and-place
               file); P<n>+ / P<n>- (or P<n>P / P<n>N) mark the legs of a differential port
 
 Items are kept in KiCad coordinates (mm, y down) as shapely geometry: board.items is a list of
-(layer, net, geometry), board.vias a list of dicts, board.footprints a list of dicts.
+(layer, net, geometry), board.tracks the routed tracks (for transmission-line sections), board.vias a
+list of dicts, board.footprints a list of dicts. Not read: zones defined inside footprints.
 """
 import re
 import numpy as np
-from shapely.geometry import Polygon, LineString, Point, box
+from shapely.geometry import Polygon, LineString, Point
 from . import sexpr as sx
 from . import shapes as shp
 from .nets import DiffLegs
 from .sexpr import parse_sexpr
 
 MM = 1e-3                                  # stackup thicknesses are kept in metres
+GRAPHICS = ('line', 'arc', 'rect', 'circle', 'poly', 'curve')
 
 
 class KiCadBoard:
-    def __init__(self, path):
-        self.path = path
-        with open(path, encoding='utf-8') as fh:
-            self.root = parse_sexpr(fh.read())
-        assert self.root[0] == 'kicad_pcb', "not a .kicad_pcb file"
+    def __init__(self, path=None, text=None):
+        """From a file, or from the text of one (KiCad's API returns the open board as text)."""
+        self.path = path or ''
+        if text is None:
+            with open(path, encoding='utf-8') as fh:
+                text = fh.read()
+        self.root = parse_sexpr(text)
+        if not (isinstance(self.root, list) and self.root and self.root[0] == 'kicad_pcb'):
+            raise ValueError(f"{path or 'board text'}: not a .kicad_pcb file")
         self._nets()
         self._stackup()
         self._copper()
+
+    @classmethod
+    def from_text(cls, text, path=''):
+        return cls(path=path, text=text)
 
     # ---- nets ---------------------------------------------------------------------------
     def _nets(self):
@@ -57,9 +69,7 @@ class KiCadBoard:
         self.copper_order = [str(l[1]) for l in (sx.item(self.root, 'layers') or [])[1:]
                              if isinstance(l, list) and len(l) > 1 and str(l[1]).endswith('.Cu')]
         if su is None:
-            self.has_stackup = False
             return
-        self.has_stackup = True
         for l in sx.items(su, 'layer'):
             name, typ = l[1], (sx.val(l, 'type', '') or '').lower()
             if typ == 'copper':
@@ -83,44 +93,33 @@ class KiCadBoard:
                     self.stack_items.append(dict(kind='diel', name=name, t=s.get('thickness', 0.1) * MM,
                                                  er=s.get('epsilon_r', 4.5), tand=s.get('loss_tangent', 0.02)))
 
-    def describe_stackup(self):
-        out = []
-        for it in self.stack_items:
-            if it['kind'] == 'copper':
-                out.append(f"  {it['name']:<14s} copper   {it['t'] * 1e6:6.1f} um")
-            else:
-                out.append(f"  {it['name']:<14s} {it['kind']:<8s} {it['t'] * 1e3:6.3f} mm  er {it['er']:.2f}  tand {it['tand']:.4f}")
-        return "\n".join(out)
-
     # ---- copper -----------------------------------------------------------------------------
+    def _expand(self, lys):
+        out = []
+        for l in lys:
+            if l in ('*.Cu', 'F&B.Cu'):
+                out += self.copper_order if l == '*.Cu' else ['F.Cu', 'B.Cu']
+            elif l.endswith('.Cu'):
+                out.append(l)
+        return out
+
     def _copper(self):
-        """Collect copper items as (layer, net, geometry-in-KiCad-mm) plus vias and port footprints."""
+        """Collect copper items as (layer, net, geometry-in-KiCad-mm) plus tracks, vias, footprints and
+        the Edge.Cuts outline pieces."""
         self.items = []          # (layer, net, shapely geometry (mm, y down))
+        self.tracks = []         # dict(layer, net, width, pts (polyline, mm, y down))
         self.vias = []           # dict(x, y, drill, size, layers, net)
         self.footprints = []
+        self.edges = []          # Edge.Cuts outline pieces (LineString / LinearRing, mm, y down)
         all_cu = self.copper_order
-
-        def expand(lys):
-            out = []
-            for l in lys:
-                if l in ('*.Cu', 'F&B.Cu'):
-                    out += all_cu if l == '*.Cu' else ['F.Cu', 'B.Cu']
-                elif l.endswith('.Cu'):
-                    out.append(l)
-            return out
-
         for s in sx.items(self.root, 'segment'):
-            g = LineString([sx.xy(s, 'start'), sx.xy(s, 'end')]).buffer(sx.val(s, 'width', 0.2, float) / 2, quad_segs=6)
-            for l in expand(sx.layers(s)):
-                self.items.append((l, self._net_of(s), g))
+            pts = [sx.xy(s, 'start'), sx.xy(s, 'end')]
+            self._track(s, pts)
         for a in sx.items(self.root, 'arc'):
-            pts = shp.arc_points(sx.xy(a, 'start'), sx.xy(a, 'mid'), sx.xy(a, 'end'))
-            g = LineString(pts).buffer(sx.val(a, 'width', 0.2, float) / 2, quad_segs=6)
-            for l in expand(sx.layers(a)):
-                self.items.append((l, self._net_of(a), g))
+            self._track(a, shp.arc_points(sx.xy(a, 'start'), sx.xy(a, 'mid'), sx.xy(a, 'end')))
         for v in sx.items(self.root, 'via'):
             x, y = sx.xy(v, 'at')
-            lys = expand(sx.layers(v))
+            lys = self._expand(sx.layers(v))
             kind = 'micro' if 'micro' in v else ('blind' if 'blind' in v else 'through')
             if kind == 'through' and len(lys) == 2 and all_cu:
                 i0, i1 = sorted(all_cu.index(l) for l in lys)
@@ -133,28 +132,33 @@ class KiCadBoard:
             net = sx.val(z, 'net_name', '') or self._net_of(z)
             for fp in sx.items(z, 'filled_polygon'):
                 lay = sx.val(fp, 'layer')
-                pts = [(float(p[1]), float(p[2])) for p in sx.item(fp, 'pts')[1:] if p[0] == 'xy']
+                pts = sx.pts(fp)
                 if len(pts) >= 3:
                     self.items.append((lay, net, Polygon(pts).buffer(0)))
-        for tag in ('gr_poly', 'gr_rect', 'gr_circle'):
-            for g in sx.items(self.root, tag):
-                lys = [l for l in sx.layers(g) if l.endswith('.Cu')]
-                if not lys:
-                    continue
-                if tag == 'gr_poly':
-                    geom = Polygon([(float(p[1]), float(p[2])) for p in sx.item(g, 'pts')[1:] if p[0] == 'xy'])
-                elif tag == 'gr_rect':
-                    (x0, y0), (x1, y1) = sx.xy(g, 'start'), sx.xy(g, 'end')
-                    geom = box(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
-                else:
-                    c, e = np.array(sx.xy(g, 'center')), np.array(sx.xy(g, 'end'))
-                    geom = Point(*c).buffer(np.linalg.norm(e - c), quad_segs=12)
-                for l in lys:
-                    self.items.append((l, self._net_of(g), geom))
+        for kind in GRAPHICS:
+            for g in sx.items(self.root, 'gr_' + kind):
+                lys = sx.layers(g)
+                if 'Edge.Cuts' in lys:
+                    ring = shp.outline_ring(g)
+                    if ring is not None:
+                        self.edges.append(ring)
+                cu = [l for l in lys if l.endswith('.Cu')]
+                geom = shp.graphic(g) if cu else None
+                if geom is not None and not geom.is_empty:
+                    for l in cu:
+                        self.items.append((l, self._net_of(g), geom))
         for fp in sx.items(self.root, 'footprint') + sx.items(self.root, 'module'):
-            self._footprint(fp, expand)
+            self._footprint(fp)
 
-    def _footprint(self, fp, expand):
+    def _track(self, node, pts):
+        w = sx.val(node, 'width', 0.2, float)
+        net = self._net_of(node)
+        g = LineString(pts).buffer(w / 2, quad_segs=6)
+        for l in self._expand(sx.layers(node)):
+            self.items.append((l, net, g))
+            self.tracks.append(dict(layer=l, net=net, width=w, pts=np.asarray(pts, float)))
+
+    def _footprint(self, fp):
         at = sx.item(fp, 'at')
         org = (float(at[1]), float(at[2]))
         rot = float(at[3]) if len(at) > 3 else 0.0
@@ -182,7 +186,7 @@ class KiCadBoard:
                 prot += rot
             centre = np.array(org) + shp.rot(pxy, rot)
             geom = shp.place(shp.pad_shape(pad), centre, prot)
-            lys = expand(sx.layers(pad))
+            lys = self._expand(sx.layers(pad))
             net = self._net_of(pad)
             for l in lys:
                 self.items.append((l, net, geom))
@@ -190,7 +194,23 @@ class KiCadBoard:
             if pad[2] == 'thru_hole' and drill and len(lys) > 1:
                 d = float(drill[1]) if len(drill) > 1 and drill[1] != 'oval' else float(drill[2])
                 self.vias.append(dict(x=centre[0], y=centre[1], size=0, drill=d, layers=lys, net=net, pth=True))
-            pads.append(dict(name=pad[1], xy=centre, layers=lys, net=net, geom=geom))
+            pads.append(dict(name=pad[1], xy=centre, layers=lys, net=net, geom=geom, rot=prot, ref=ref))
+        # graphics: copper shapes (net of the pad they touch on that layer) and Edge.Cuts pieces
+        for kind in GRAPHICS:
+            for g in sx.items(fp, 'fp_' + kind):
+                lys = sx.layers(g)
+                if 'Edge.Cuts' in lys:
+                    ring = shp.outline_ring(g)
+                    if ring is not None:
+                        self.edges.append(shp.place(ring, org, rot))
+                cu = [l for l in self._expand(lys)]
+                local = shp.graphic(g) if cu else None
+                if local is None or local.is_empty:
+                    continue
+                geom = shp.place(local, org, rot)
+                for l in cu:
+                    net = next((p['net'] for p in pads if l in p['layers'] and p['geom'].intersects(geom)), '')
+                    self.items.append((l, net, geom))
         attr = [str(t) for t in (sx.item(fp, 'attr') or [])[1:]]
         flag = lambda k: k in attr or sx.val(fp, k, 'no') == 'yes'
         self.footprints.append(dict(ref=ref, value=val, fab=fab_texts, props=props, x=org[0], y=org[1],
@@ -226,5 +246,3 @@ class KiCadBoard:
             if isinstance(v, DiffLegs) and set(v) != {'+', '-'}:
                 raise ValueError(f"differential port P{n} needs both P{n}+ and P{n}- footprints")
         return dict(sorted(out.items()))
-
-    # ---- model -------------------------------------------------------------------------------

@@ -1,40 +1,25 @@
 """
 Board outline from the Edge.Cuts layer.
 """
-import numpy as np
-from shapely.geometry import Polygon, LineString, Point, box
-from shapely.ops import unary_union, linemerge, polygonize
-from . import sexpr as sx
-from . import shapes as shp
+import shapely
+from shapely.geometry import Polygon
+from shapely.ops import unary_union, polygonize
 
 
-def board_outline(board):
-    """Board outline polygon from Edge.Cuts (KiCad mm, y down), or None."""
-    segs = []
-    for tag in ('gr_line', 'gr_arc', 'gr_rect', 'gr_poly', 'gr_circle'):
-        for g in sx.items(board.root, tag):
-            if 'Edge.Cuts' not in sx.layers(g):
-                continue
-            if tag == 'gr_line':
-                segs.append(LineString([sx.xy(g, 'start'), sx.xy(g, 'end')]))
-            elif tag == 'gr_arc':
-                segs.append(LineString(shp.arc_points(sx.xy(g, 'start'), sx.xy(g, 'mid'), sx.xy(g, 'end'))))
-            elif tag == 'gr_rect':
-                (x0, y0), (x1, y1) = sx.xy(g, 'start'), sx.xy(g, 'end')
-                return box(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
-            elif tag == 'gr_poly':
-                pts = [(float(p[1]), float(p[2])) for p in sx.items(g, 'pts')[0][1:] if p[0] == 'xy'] \
-                    if sx.items(g, 'pts') else []
-                if len(pts) >= 3:
-                    return Polygon(pts).buffer(0)
-            else:
-                c, e = np.array(sx.xy(g, 'center')), np.array(sx.xy(g, 'end'))
-                return Point(*c).buffer(np.linalg.norm(e - c), quad_segs=16)
-    if not segs:
+def board_outline(board, with_holes=False):
+    """Board outline polygon (KiCad mm, y down) from every Edge.Cuts item - lines, arcs, rectangles,
+    polygons, circles and curves, on the board and inside footprints - or None. The pieces are snapped
+    to a 1 nm grid, joined and polygonized; the largest face is the board. Cutouts (mounting holes,
+    slots: the faces inside it) are removed when with_holes, else only the outer edge is returned."""
+    if not board.edges:
         return None
-    # snap nearly-touching ends, then polygonize the closed loops
-    merged = linemerge(unary_union([s for s in segs]))
-    polys = list(polygonize(merged))
-    if not polys:
+    lines = shapely.set_precision(unary_union(board.edges), 1e-6)
+    faces = [p for p in polygonize(unary_union(lines)) if p.area > 0]
+    if not faces:
         return None
-    return max(polys, key=lambda p: p.area)
+    outer = Polygon(max(faces, key=lambda p: Polygon(p.exterior).area).exterior)
+    if not with_holes:
+        return outer
+    holes = [Polygon(p.exterior) for p in faces if p.representative_point().within(outer)
+             and Polygon(p.exterior).area < outer.area]
+    return outer.difference(unary_union(holes)) if holes else outer
