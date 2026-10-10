@@ -20,7 +20,8 @@ ignored). Lists may be TOML arrays or comma-separated strings:
 
 Paths in the file (board, pos, compare, out, events, qucsator) are relative to the file's folder; a path that
 only exists relative to the working directory (older configs written for the repository root) is
-still used, with a note.
+still used, with a note. Unknown keys are reported (with the option they are probably a typo of) and
+ignored.
 """
 import dataclasses, os, sys
 from dataclasses import dataclass, field
@@ -261,9 +262,10 @@ def read_toml(path):
             raise ConfigError(f"{path}: {e}") from None
     base = os.path.dirname(os.path.abspath(path))
     values, ignored, notes = {}, [], []
-    for k, v in list(cfg.items()) + list(cfg.get('openems', {}).items()):
+    ours = [t for t, v in cfg.items() if isinstance(v, dict) and t.lower() == 'openems']     # [openems], [OpenEMS]
+    for k, v in list(cfg.items()) + [kv for t in ours for kv in cfg[t].items()]:
         k = k.replace('-', '_')
-        if k == 'openems' or isinstance(v, dict):
+        if isinstance(v, dict):                                     # tables of other tools
             continue
         if k == 'no_mask':
             k, v = 'mask', not _bool(v)
@@ -276,6 +278,13 @@ def read_toml(path):
     return values, ignored, notes
 
 
+def _suggest(key):
+    """An unknown key, with the option it is probably a typo of."""
+    import difflib
+    near = difflib.get_close_matches(key, list(_FIELDS) + ['no_mask'], n=1, cutoff=0.8)
+    return f"{key} (did you mean {near[0]}?)" if near else key
+
+
 def build_settings(cli=None, config=None):
     """Settings from the defaults, a TOML file (path or None) and command-line values (a dict holding only
     the options that were typed). Raises ConfigError for anything that cannot be used."""
@@ -284,7 +293,7 @@ def build_settings(cli=None, config=None):
     if config:
         values, ignored, notes = read_toml(config)
         if ignored:
-            notes.append(f"ignoring keys not used here: {', '.join(ignored)}")
+            notes.append("ignoring keys not used here: " + ", ".join(_suggest(k) for k in ignored))
     values.update({k: v for k, v in cli.items() if k not in CLI_ONLY})
     unknown = [k for k in values if k not in _FIELDS]
     if unknown:

@@ -143,3 +143,13 @@ def test_empty_converge_means_off(tmp_path):
     p = tmp_path / 'c.toml'
     p.write_text('board = "b.kicad_pcb"\nconverge = []\n')
     assert build_settings({}, str(p)).converge is None
+
+
+def test_config_typos_are_named(tmp_path):
+    p = tmp_path / 'c.toml'
+    p.write_text('board = "b.kicad_pcb"\nfmx = 6\nmom-dmx = 0.5\ndmax = 0.4\n[OpenEMS]\nend_db = -30\n')
+    s = build_settings({}, str(p))
+    note = next(n for n in s.notes if n.startswith('ignoring'))
+    assert 'fmx (did you mean fmax?)' in note and 'mom_dmx (did you mean mom_dmax?)' in note
+    assert 'dmax' in note and 'dmax (did you mean' not in note    # mom25d's own key: no wrong guess
+    assert s.end_db == -30                                          # the [openems] table in any case
