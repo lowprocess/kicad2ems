@@ -256,6 +256,13 @@ class Job:
                      f"{sum(e.length for e, _, _ in secs):.2f} mm" +
                      (f", Z0 {min(zs):.1f}..{max(zs):.1f} ohm" if zs else '') +
                      (f", {len(branches)} branch(es)" if branches else ''))
+        if self.lm.groups or self.lm.junctions:
+            from collections import Counter
+            cnt = Counter(j['kind'] for j in self.lm.junctions)
+            self.log(f"  {len(self.lm.groups)} coupled section(s)" +
+                     (" (" + ", ".join(f"{len(g['members'])} lines {g['length']:.2f} mm" for g in self.lm.groups[:6]) +
+                      (", ..." if len(self.lm.groups) > 6 else "") + ")" if self.lm.groups else "") +
+                     "; discontinuities: " + (", ".join(f"{n} {k}" for k, n in sorted(cnt.items())) or "none"))
         self.figure(plot_lines(self.lm, self.m, self.name), '_tlines.png', 'lines', 'transmission-line sections')
         if self.s.fast:
             self.fast_solve()

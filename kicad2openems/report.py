@@ -105,7 +105,7 @@ def _lines_section(sm):
              "them change), component pads at their own width, via barrels and lumped parts, with closed-form "
              "quasi-static impedances. <b>Z0</b> uses the stackup's copper thickness; <b>Z0 sheet</b> is the same "
              "section with zero-thickness copper, as openEMS models it. Shading: more than 10 % / 25 % from the "
-             "port impedance. A ballpark: no coupling between sections, no radiation.</p>"]
+             "port impedance. Copper drawn as rectilinear shapes becomes strips. A ballpark: no radiation, no plane resonances.</p>"]
     if 'lines' in sm.get('images', {}):
         parts.append(_img(sm['images']['lines'], 'transmission-line sections'))
     for path in ln['paths']:
@@ -130,6 +130,28 @@ def _lines_section(sm):
         parts.append(_table(['#', 'section', 'layer', 'cross-section', 'w (mm)', 'length (mm)', 'Z0 (Ω)',
                              'Z0 sheet (Ω)', 'εeff', 'delay (ps)', 'from (mm)', 'notes'], rows,
                             num=(4, 5, 6, 7, 8, 9, 10)))
+    if ln.get('groups'):
+        parts.append("<h3>Coupled sections</h3><p>Parallel microstrip lines within 5 h of each other, side by side "
+                     "over the same stretch. A pair is qucsator's MCOUPLED; three or more lines (or a pair of unequal "
+                     "widths) are a multiconductor block from neighbour-pair even / odd impedances (Kirschning &amp; "
+                     "Jansen), coupling beyond the nearest neighbour left out. scikit-rf uses the block for all.</p>")
+        rows = []
+        for k, g in enumerate(ln['groups'], 1):
+            pairs = ", ".join(f"{p['ze']:.1f} / {p['zo']:.1f}" for p in g['pairs'])
+            rows.append([str(k), str(g['lines']), _e(g['layer']), _f(g['length'], '.3f'),
+                         ", ".join(f"{w:.3f}" for w in g['widths']), ", ".join(f"{x:.3f}" for x in g['gaps']),
+                         _e(pairs)])
+        parts.append(_table(['#', 'lines', 'layer', 'length (mm)', 'widths (mm)', 'gaps (mm)',
+                             'Ze / Zo per neighbour pair (Ω)'], rows, num=(1, 3)))
+    if ln.get('junctions'):
+        from collections import Counter
+        cnt = Counter(j['kind'] for j in ln['junctions'])
+        model = dict(open='MOPEN / COPEN', corner='MCORN', step='MSTEP / CSTEP', tee='MTEE', cross='MCROSS',
+                     gap='MGAP / CGAP', bend='none', junction='none')
+        rows = [[_e(k), str(n), _e(model.get(k, ''))] for k, n in sorted(cnt.items())]
+        parts.append("<h3>Discontinuities</h3><p>Where sections meet. qucsator models each with its own element "
+                     "(lines measured to the edge of a corner, tee or cross); scikit-rf joins the lines directly.</p>")
+        parts.append(_table(['kind', 'count', 'qucsator model'], rows, num=(1,)))
     if ln['notes']:
         parts.append("<ul>" + "".join(f"<li>{_e(n)}</li>" for n in ln['notes']) + "</ul>")
     return "".join(parts)

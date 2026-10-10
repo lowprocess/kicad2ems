@@ -70,8 +70,12 @@ kicad2openems/
   boundaries.py   per-side boundaries, closed-box resonance check
   mesh.py         auto_mesh and its helpers
   converge.py     mesh levels and their comparison
-  tlines.py       transmission-line sections, cross-sections, closed-form Z0
+  tlines.py       transmission-line sections, cross-sections, closed-form Z0, coupled sections,
+                  discontinuities
+  strips.py       rectilinear copper shapes as line strips
+  coupled.py      coupled microstrip even / odd mode, multiconductor line blocks
   fastsolve.py    the sections as a circuit: scikit-rf or qucsator
+  edges.py        edge walls (PEC where the planes end at the board sides)
   simulation.py   CSXCAD / openEMS model (build_fdtd), runs, RunResult, step counting, --check
   progress.py     openEMS output redirection, progress / ETA monitor
   dielectric.py   Djordjevic-Sarkar model and its Debye fit
@@ -108,8 +112,11 @@ kind), `cu_z` / `cu_t` / `cu_order` (copper heights, thicknesses, bottom to top)
 each port, …; stored as `mesh` in the summary).
 
 **`LineModel`** (`tlines.py`): `elements` (`Element`: kind, nodes a / b, length, layer, width,
-cross-section, z0, z0_sheet, eeff, notes), `ports` (port name → node), `port_z0`, `paths` (per port
-pair: the ordered sections and the branches), `notes`. `summary()` gives the `lines` entry of the
+cross-section, z0, z0_sheet, eeff, notes, group; kinds trace, pad, via, part and the zero-length
+coupling hops of a coupled section), `ports` (port name → node), `port_z0`, `paths` (per port pair: the
+ordered sections and the branches), `groups` (coupled sections: members with their near and far nodes,
+gaps, neighbour-pair even / odd impedances), `junctions` (discontinuities: node, kind, arms, widths),
+`notes`. `summary()` gives the `lines` entry of the
 summary; `fastsolve.solve` turns it into S-parameters.
 
 **`RunResult`** (`simulation.py`): `S` (nf × n × n, single-ended, NaN in columns of ports not driven),

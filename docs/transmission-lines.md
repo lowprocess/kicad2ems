@@ -18,13 +18,26 @@ so with `--region` the sections stop at the crop.
 |---|---|
 | trace | KiCad tracks of one width on one layer. Split at T-junctions (where another track ends on it) and, sampling every 0.25 mm, where the reference planes above or below change (over an antipad, past a plane edge), where the coplanar gap changes by a factor 1.5 (a pour that opens out), and where copper of the trace's own net drawn as a shape or zone widens it by a factor 1.2 (a taper, a teardrop, copper drawn in a footprint): such a piece gets the full copper width across the trace |
 | pad | a component pad at its own width. A trace that ends in a pad is shortened by the part inside the pad: KiCad's track lengths hide this discontinuity. Touching pads with the same number and net are one pad (a connector's signal pad drawn as an oval plus a rectangle). A port on a pad ends the pad section: it runs from where the trace meets the pad to the port |
-| via | a via barrel between the layers that tracks attach to: a coaxial line from the drill to the antipad in the planes it passes, or a lumped inductance (Goldfarb & Pucel) when no plane surrounds it. Barrel beyond the used layers is an open stub |
+| strip | copper drawn as a shape (rectangle, polygon, zone) on a line net, when it is rectilinear (`strips.py`): resonators, hairpins, tapped feeds. The shape is cut on the grid of its vertex coordinates; each cell goes with the direction the copper runs further through it, and connected cells of one direction are one strip with a centreline through their middle. Strips meeting end to end are a corner, one ending on another's side a tee; lengths run to the middle of the corner or tee. A track that ends inside a strip joins its end (entering along it) or its centreline (from the side). Other shapes (a taper, a teardrop) widen the tracks they overlap |
+| via | a via barrel between the layers that tracks attach to: a coaxial line from the drill to the antipad in the planes it passes, or a lumped inductance (Goldfarb & Pucel) when no plane surrounds it. Barrel beyond the used layers is an open stub. A via that lands in a plane (a grounded resonator end) is a via to ground |
 | part | a lumped R / L / C part ([lumped parts](model.md#lumped-parts)). A series part continues the path into the next net; a part whose other pad is on a ground net, or a net outside the line model, is a shunt to ground |
 
-The path follows routed tracks, pads, vias and parts. Copper drawn as shapes or zones only widens the
-tracks it overlaps; a shape that no track runs through is not a section. Gap ports (dipoles) have no
-line model. The legs of a differential pair are single-ended lines: the
-coupling between them (odd / even mode impedance) is not modelled, and a note says so.
+The path follows routed tracks, strips, pads, vias and parts, and hops across coupled sections (below),
+so a coupled-line filter has a path from port to port. Gap ports (dipoles) have no line model.
+
+<a id="coupled"></a>
+**Coupled sections.** Straight microstrip sections on one layer that run parallel within 5 h of each
+other (edge to edge) are cut where their overlaps start and end, and the pieces side by side become a
+coupled section of N lines: the hairpins of a hairpin filter, the fingers of an interdigital filter, the
+legs of a differential pair. Each neighbour pair gets its even / odd mode impedance and effective
+permittivity from Kirschning & Jansen (1984), quasi-static, zero thickness (`coupled.coupled_microstrip`,
+within 0.005 in S of qucsator's MCOUPLED below 3 GHz). For N lines, `coupled.group_lc` builds the
+per-unit-length capacitance matrix from the neighbour pairs (coupling past the nearest neighbour is left
+out) and `coupled.mtl_s` solves the multiconductor line (2N ports).
+
+**Discontinuities** are found where sections meet (`LineModel.junctions`): open end, corner (90°), bend
+(other angles: listed, no model), step (width change in line), tee, cross, and end gap (two open ends
+facing each other within 2 h).
 
 ## Cross-sections and impedances
 
@@ -50,6 +63,17 @@ lower". A strip with no copper above or below gets no Z0.
 **Two impedances per section.** *Z0* uses the stackup's copper thickness: the design value. *Z0 sheet*
 uses zero thickness, which is how openEMS models copper. Example: the 0.35 mm microstrip of the demo
 transition on 0.2 mm FR-4 (εr 4.3) has Z0 50.7 Ω with 35 µm copper and 53.3 Ω as a sheet.
+
+**Filters.** The two example filters, against openEMS (pass-band centre):
+
+| Filter | openEMS | `--fast qucsator` | `--fast skrf` |
+|---|---|---|---|
+| hairpin (`hairpin.toml`, three hairpins, 0.21 mm FR-4) | 3.370 GHz, −6.5 dB | 3.314 GHz (−1.7 %), −6.4 dB | 3.252 GHz (−3.5 %), −6.1 dB |
+| interdigital (`filter.toml`, five fingers grounded by vias) | 3.118 GHz, −7.3 dB | 3.275 GHz (+5 %), −6.5 dB | 3.310 GHz (+6 %), −5.7 dB |
+
+The line model finds both pass bands in a fraction of a second; the interdigital filter, where every
+finger couples to two neighbours, comes out narrower and 5 % high (neighbour-pair coupling only, no
+dispersion in the block).
 
 **Accuracy.** In the tests the formulas agree with scikit-rf's reference values within 0.2 %
 (microstrip) and 0.3 % (grounded CPW), and the stripline with Cohn's exact zero-thickness result within
@@ -86,7 +110,16 @@ nodes, open ends left open. It solves in milliseconds.
 | microstrip | `MLine` (Hammerstad-Jensen, Kirschning-Jansen dispersion) | `MLIN` |
 | grounded CPW | `CPW` with metal backside | `CLIN` (metal backside) |
 | other sections | `DefinedAEpTandZ0`: a line of the section's Z0 and εeff | `RLCG` line of the section's Z0 and εeff, dielectric loss matched at the band centre |
+| via barrel in antipads | a line of its coaxial Z0 | `COAX` |
+| via to ground | shunt inductance | `MVIA` |
 | vias without plane, parts | series impedances | series R-L-C chains |
+| coupled pair | multiconductor block (`coupled.mtl_s`) | `MCOUPLED` (Kirschning & Jansen, with dispersion) |
+| 3+ coupled lines, or a pair of unequal widths | multiconductor block | the same block, written as Touchstone and read with `SPfile` |
+| open end, corner, step, tee, cross, end gap | not modelled: the lines join at the node | `MOPEN`, `MCORN`, `MSTEP`, `MTEE`, `MCROSS`, `MGAP`; on grounded CPW `COPEN`, `CSTEP`, `CGAP` |
+
+The line model counts lengths to the middle of a corner, tee or cross; qucsator's models include the
+junction square, so for qucsator the lines are shortened to its edges (half the width of the crossing
+line). scikit-rf has no junction models and keeps the centreline lengths.
 
 The copper is zero-thickness (Z0 sheet), as in openEMS, so the two compare like with like. Copper loss
 comes from `--sigma` (else lossless). A failing fast solve (package missing, qucsator error) is a
@@ -107,9 +140,11 @@ resonances, the lumped ports) or at a mesh problem.
 
 ## Limits
 
-- Quasi-static impedances (with `--fast`, the solvers' own microstrip models add dispersion).
-- No coupling between sections: coupled-line filters (hairpin, or the interdigital
-  [`filter` example](examples.md#the-microstrip-filter)) are out of scope.
+- Quasi-static impedances (with `--fast`, the solvers' own microstrip models add dispersion; the
+  multiconductor block has none).
+- Coupled sections: microstrip only, straight and parallel; for three or more lines only neighbour
+  pairs couple. Broadside coupling (across layers) is not modelled.
+- Strips only from rectilinear shapes.
 - No radiation, no plane resonances, no return-path breaks (a gap in a plane only changes the
   cross-section above it).
 - Solder mask only when it is modelled (`--mask`).

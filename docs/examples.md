@@ -40,13 +40,21 @@ ABCD matrices.
 config each, `antenna_<kind>.toml`). Their dimensions are keyword parameters of each function, also on
 the command line (`make_antennas.py ifa out arm=19 s=2.5`).
 
+<a id="the-hairpin-filter"></a>
+## The hairpin filter
+
+`hairpin.kicad_pcb` is a 3.3–3.4 GHz band-pass filter: three hairpin resonators and two tapped feeds
+drawn as copper polygons on 0.21 mm FR-4 (εr 4.4, tan δ 0.02), 15 × 15 mm, solid ground on B.Cu.
+`hairpin.toml` previews it with the line model and qucsator (corners, tees, open ends and the two
+coupled pairs between the hairpins); `examples/reference/hairpin_openems.s2p` is its openEMS result.
+
 <a id="the-microstrip-filter"></a>
 ## The microstrip filter
 
 `filter.kicad_pcb` is a KiCad 10 board: an interdigital microstrip filter on 0.2 mm FR-4 (εr 4.4, tan δ
 0.011), its resonators drawn as copper rectangles, fed by 0.35 mm microstrip; `filter.toml` runs it from
-1 to 8 GHz with a 0.05 mm fine cell. Its coupled resonators are outside the
-[line model](transmission-lines.md#limits): the line sections cover only the feed lines.
+1 to 8 GHz with a 0.05 mm fine cell. Its five fingers become strips grounded by their vias, side by
+side in a five-line [coupled section](transmission-lines.md#coupled); `fast = "qucsator"` solves them.
 
 ## Verified results
 

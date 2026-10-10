@@ -126,6 +126,7 @@ class Element:
         self.w = kw.get('w')
         self.pts = kw.get('pts')                    # model coordinates, for drawing
         self.geom = kw.get('geom')                  # pad polygon (model coordinates)
+        self.region = kw.get('region')              # a strip's own copper (strips.py): its width along it
         self.label = kw.get('label', '')
         self.net = kw.get('net', '')
         self.part = kw.get('part')                  # parts.Part for 'part'
@@ -133,6 +134,7 @@ class Element:
         self.z0_sheet = self.eeff_sheet = None      # zero-thickness copper (openEMS sheets)
         self.tand, self.L = 0.0, None               # dielectric loss, via inductance (H) when no antipad
         self.offset = 0.0                           # centre of a widened trace's copper off its centre line (mm)
+        self.group = None                           # index into LineModel.groups for a coupled line
         self.notes = []
 
     @property
@@ -152,6 +154,8 @@ class LineModel:
     paths [(port, other port or None, [(Element, start mm, reversed)], branches)]; notes."""
     def __init__(self):
         self.elements, self.ports, self.port_z0, self.paths, self.notes = [], {}, {}, [], []
+        self.groups = []            # coupled sections: dict(members=[(Element, near node, far node)], gaps, length, ...)
+        self.junctions = []         # discontinuities at nodes: dict(node, kind, arms=[(Element, end)], widths, ...)
 
     def adjacency(self):
         adj = {}
@@ -170,7 +174,14 @@ class LineModel:
                 rows.append(dict(e.row(), start=s0))
             out.append(dict(port=p, to=q, z_port=self.port_z0.get(p), sections=rows,
                             branches=[dict(at=a, length=L, label=lab, z0=z) for a, L, lab, z in branches]))
-        return dict(paths=out, notes=list(self.notes))
+        groups = [dict(lines=len(g['members']), length=g['length'], layer=g['layer'],
+                       widths=[e.w for e, _, _ in g['members']], gaps=list(g['gaps']), h=g['h'], er=g['er'],
+                       labels=[e.label for e, _, _ in g['members']],
+                       pairs=[dict(p) for p in g['pairs']]) for g in self.groups]
+        junctions = [dict(kind=j['kind'], node=j['node'], xs=j['xs'], layer=j['layer'], widths=list(j['widths']),
+                          at=[float(j['xy'][0]), float(-j['xy'][1])], angle=j.get('angle'), gap=j.get('gap'))
+                     for j in self.junctions]
+        return dict(paths=out, notes=list(self.notes), groups=groups, junctions=junctions)
 
 
 def _dielectric(model, z_lo, z_hi):
@@ -354,7 +365,7 @@ class NetCopper:
         nothing widens it."""
         if g is None or g.is_empty:
             return w, 0.0
-        r = max(self.reach, 10 * w)
+        r = max(self.reach if self is not None else 5.0, 10 * w)
         seg = LineString([pt - n * r, pt + n * r]).intersection(g)
         parts = [seg] if seg.geom_type == 'LineString' else [p for p in getattr(seg, 'geoms', []) if p.geom_type == 'LineString']
         part = next((p for p in parts if p.distance(Point(*pt)) < 1e-6), None)
@@ -377,7 +388,10 @@ def _split_by_reference(model, ref, e, netcu=None, step=0.25, max_samples=400):
     n = int(min(max_samples, max(3, math.ceil(L / step))))
     pos = [(i + 0.5) * L / n for i in range(n)]
     hmax = max(model.cu_z.values()) - min(model.cu_z.values())
-    wide = netcu.near(e.layer, line.buffer(max(netcu.reach, 10 * e.w) + 0.1)) if netcu is not None else None
+    if e.region is not None:                               # a strip: the width of its own copper
+        wide = e.region
+    else:
+        wide = netcu.near(e.layer, line.buffer(max(netcu.reach, 10 * e.w) + 0.1)) if netcu is not None else None
     if wide is not None and wide.is_empty:
         wide = None
 
@@ -387,10 +401,10 @@ def _split_by_reference(model, ref, e, netcu=None, step=0.25, max_samples=400):
         a = np.asarray(line.interpolate(max(s - 0.01, 0.0)).coords[0])
         b = np.asarray(line.interpolate(min(s + 0.01, L)).coords[0])
         d = (b - a) / (np.linalg.norm(b - a) or 1.0)
-        w, off = netcu.width(wide, pt, np.array([-d[1], d[0]]), e.w) if wide is not None else (e.w, 0.0)
+        w, off = NetCopper.width(netcu, wide, pt, np.array([-d[1], d[0]]), e.w) if wide is not None else (e.w, 0.0)
         return pt, d, w, off
 
-    rmax = max(netcu.reach, 10 * e.w) if wide is not None else e.w
+    rmax = max(netcu.reach if netcu is not None else 0.0, 10 * e.w) if wide is not None else e.w
     local = _Local(ref, e.layer, line.buffer(rmax + 2 * hmax + 0.1))
     refs, gaps, widths = [], [], []
     for s in pos:
@@ -413,7 +427,8 @@ def _split_by_reference(model, ref, e, netcu=None, step=0.25, max_samples=400):
         piece = substring(line, s0, s1)
         _, _, w, off = across(0.5 * (s0 + s1))
         lab = e.label if abs(w - e.w) < 1e-6 else f"{e.label}, widened to {w:.3g} mm"
-        el = Element('trace', a, b, s1 - s0, layer=e.layer, w=w, pts=np.asarray(piece.coords), net=e.net, label=lab)
+        el = Element('trace', a, b, s1 - s0, layer=e.layer, w=w, pts=np.asarray(piece.coords), net=e.net, label=lab,
+                     region=e.region)
         el.offset = off
         out.append(el)
     return out
@@ -513,8 +528,8 @@ def build(model):
             lm.notes.append(f"{p.name}: gap port - no line model")
     for name, legs in model.user_ports:
         if len(legs) == 2:
-            lm.notes.append(f"{name}: differential pair - each leg is a single-ended line; the coupling between "
-                            f"the legs (odd / even mode impedance) is not modelled")
+            lm.notes.append(f"{name}: differential pair - each leg is a single-ended line; where the legs run "
+                            f"parallel they are a coupled section (even / odd impedances in its table)")
     part_pads = {}
     for pt in model.parts:
         pads = [q for q in fps.get(pt.ref, {}).get('pads', []) if q['layers']]
@@ -560,6 +575,8 @@ def build(model):
         for piece in getattr(g, 'geoms', [g]):
             if piece.geom_type == 'LineString' and piece.length > 1e-6:
                 clipped.append(dict(t, pts=np.asarray(piece.coords)))
+    strip_tracks = _shape_strips(model, nets, inside, lm)  # resonators / feeds drawn as copper shapes
+    clipped = _attach_to_strips(clipped, strip_tracks) + strip_tracks
     for t in _split_at_junctions(clipped):
         line = LineString(t['pts'])
         a, qa = attach(t['layer'], t['pts'][0])
@@ -574,7 +591,8 @@ def build(model):
             L = geom.length
         pts = np.asarray(geom.coords) if geom.geom_type == 'LineString' else t['pts']
         lm.elements.append(Element('trace', a, b, L, layer=t['layer'], w=t['width'], pts=pts, net=t['net'],
-                                   label=f"trace {t['width']:.3g} mm"))
+                                   label=f"{'strip' if t.get('strip') else 'trace'} {t['width']:.3g} mm",
+                                   region=t.get('region')))
     # ---- ports: split the trace they sit on, or end the pad section they sit in ----
     port_on_pad = {}                                       # pad node -> port position
     for p in model.ports:
@@ -602,9 +620,9 @@ def build(model):
             pa = [tuple(c) for c in line.coords if line.project(Point(c)) < s] + [tuple(line.interpolate(s).coords[0])]
             pb = [tuple(line.interpolate(s).coords[0])] + [tuple(c) for c in line.coords if line.project(Point(c)) > s]
             lm.elements[best[1]] = Element('trace', e.a, node, s, layer=e.layer, w=e.w, pts=np.array(pa), net=e.net,
-                                           label=e.label)
+                                           label=e.label, region=e.region)
             lm.elements.append(Element('trace', node, e.b, line.length - s, layer=e.layer, w=e.w, pts=np.array(pb),
-                                       net=e.net, label=e.label))
+                                       net=e.net, label=e.label, region=e.region))
         lm.ports[p.name] = node
         lm.port_z0[p.name] = p.z0
     # ---- pads: a section from where the traces attach to the core (where a part connects) ----
@@ -677,6 +695,20 @@ def build(model):
             g = refcu.geom.get(l)
             if g is not None and not g.is_empty:
                 antipad.append(g.distance(Point(*v['xy'])))
+        grounded = [l for l in lys if l not in att and refcu.covers(l, v['xy'])]
+        if grounded:                                       # it lands in a plane: a via to ground
+            for la in att:
+                lg = min(grounded, key=lambda l: abs(model.cu_z[l] - model.cu_z[la]))
+                h = abs(model.cu_z[lg] - model.cu_z[la])
+                e = Element('via', f"via{v['i']}:{la}", 'gnd', h, layer=f"{la}-{lg}", w=v['drill'],
+                            label=f"via {la} - {lg} (to ground)", net=v['net'], pts=np.array([v['xy'], v['xy']]))
+                zz = sorted((model.cu_z[la], model.cu_z[lg]))
+                e.er, e.tand = _dielectric(model, *zz)
+                e.eeff, e.h = e.er, h
+                e.xs, e.L = 'via to ground', via_inductance(h, v['drill'] / 2)
+                e.notes.append(f"to the {lg} plane: {e.L * 1e9:.3f} nH")
+                lm.elements.append(e)
+            continue
         chain = [l for l in lys if l in att or l == lys[0] or l == lys[-1]]
         for l0, l1 in zip(chain[:-1], chain[1:]):
             h = model.cu_z[l1] - model.cu_z[l0]
@@ -714,6 +746,8 @@ def build(model):
         elif e.kind == 'pad':
             d = e.pts[1] - e.pts[0]
             classify(model, refcu, e, 0.5 * (e.pts[0] + e.pts[1]), d / (np.linalg.norm(d) or 1.0))
+    _couple(lm, model)
+    _junctions(lm, model)
     _paths(lm)
     return lm
 
@@ -793,3 +827,301 @@ def _branch(lm, adj, j, start, on_path):
             stack.append((k, o))
     lab = f"stub ({len(seen)} section{'s' if len(seen) > 1 else ''}, ends: {', '.join(sorted(set(ends))) or 'open'})"
     return total, lab, e0.z0
+
+
+def _shape_strips(model, nets, inside, lm):
+    """Strips (strips.py) of the rectilinear copper shapes of the line nets, per layer and net."""
+    from shapely.ops import unary_union
+    from .strips import shape_strips, rectilinear
+    by = {}
+    for l, n, g in getattr(model.board, 'shapes', []):
+        if n in nets and l in model.cu_z:
+            by.setdefault((l, n), []).append(flip_y(g))
+    out, skipped = [], 0
+    for (l, n), gs in by.items():
+        u = unary_union(gs).intersection(inside)
+        for poly in getattr(u, 'geoms', [u]):
+            if poly.geom_type != 'Polygon' or poly.area < 1e-6:
+                continue
+            if not rectilinear(poly):
+                skipped += 1
+                continue
+            out += shape_strips(poly, l, n)
+    if out:
+        lm.notes.append(f"{len(out)} strip(s) from copper drawn as shapes (rectilinear shapes on the line nets)")
+    return out
+
+
+def _attach_to_strips(tracks, strips_, tol=1e-6):
+    """Tracks that end inside a strip's copper: one entering along the strip stops at the copper edge and
+    joins the strip's end; one entering from the side runs on to the strip's centreline (a T-junction)."""
+    if not strips_:
+        return tracks
+    from shapely.ops import unary_union
+    out = []
+    for t in tracks:
+        line = LineString(t['pts'])
+        mine = [s for s in strips_ if s['layer'] == t['layer'] and s['net'] == t['net']]
+        hit = [s for s in mine if s['region'].buffer(1e-6).contains(Point(*t['pts'][0])) or
+               s['region'].buffer(1e-6).contains(Point(*t['pts'][-1]))]
+        if not hit:
+            out.append(t)
+            continue
+        cu = unary_union([s['region'] for s in mine])
+        rest = line.difference(cu.buffer(1e-6))
+        pieces = [g for g in getattr(rest, 'geoms', [rest]) if g.geom_type == 'LineString' and g.length > 1e-6]
+        for piece in pieces:
+            pts = [tuple(c) for c in piece.coords]
+            for k in (0, -1):
+                q = Point(*pts[k])
+                s = min(mine, key=lambda s_: s_['region'].distance(q))
+                if s['region'].distance(q) > 1e-4:
+                    continue                               # this end is not at a strip
+                c = LineString(s['pts'])
+                d_t = np.subtract(pts[-1 if k == 0 else 0], pts[k])
+                d_t = d_t / (np.linalg.norm(d_t) or 1.0)
+                proj = c.interpolate(c.project(q))
+                seg_dir = _direction_at(c, c.project(q))
+                ends = [np.asarray(s['pts'][0]), np.asarray(s['pts'][-1])]
+                near = min(ends, key=lambda e: np.hypot(*(e - (q.x, q.y))))
+                if abs(np.dot(d_t, seg_dir)) > 0.9 and np.hypot(*(near - (q.x, q.y))) <= s['width'] + 1e-4:
+                    new = tuple(near)                      # along the strip: onto its end
+                else:
+                    new = (proj.x, proj.y)                 # from the side: onto its centreline
+                if k == 0:
+                    pts = [new] + pts
+                else:
+                    pts = pts + [new]
+            out.append(dict(t, pts=np.asarray(pts, float)))
+    return out
+
+
+def _direction_at(line, s):
+    a = np.asarray(line.interpolate(max(s - 1e-3, 0.0)).coords[0])
+    b = np.asarray(line.interpolate(min(s + 1e-3, line.length)).coords[0])
+    d = b - a
+    return d / (np.linalg.norm(d) or 1.0)
+
+
+# ---- coupled lines -------------------------------------------------------------------------------
+COUPLE_H = 5.0          # parallel microstrip lines couple when their edge gap is at most this many h
+COUPLED_XS = ('microstrip',)
+_COPY = ('xs', 'z0', 'eeff', 'z0_sheet', 'eeff_sheet', 'er', 'h', 's', 't', 'tand', 'offset')
+
+
+def _straight(e):
+    p = np.asarray(e.pts)
+    if p is None or len(p) < 2:
+        return False
+    d = p[-1] - p[0]
+    L = np.hypot(*d)
+    if L < 1e-9:
+        return False
+    n = np.array([-d[1], d[0]]) / L
+    return bool(np.all(np.abs((p - p[0]) @ n) < 1e-4))
+
+
+def _piece(e, a, b, p0, p1, tag):
+    el = Element(e.kind, a, b, float(np.hypot(*(np.asarray(p1) - p0))), layer=e.layer, w=e.w,
+                 pts=np.array([p0, p1], float), net=e.net, label=e.label, region=e.region)
+    for k in _COPY:
+        setattr(el, k, getattr(e, k))
+    el.notes = list(e.notes)
+    return el
+
+
+def _split_at(e, ts, u):
+    """Element e (straight) cut where its coordinate along u passes the values ts: pieces in order a -> b."""
+    p0, p1 = np.asarray(e.pts[0], float), np.asarray(e.pts[-1], float)
+    ta, tb = float(p0 @ u), float(p1 @ u)
+    lo, hi = sorted((ta, tb))
+    cuts = sorted(t for t in ts if lo + 1e-4 < t < hi - 1e-4)
+    if not cuts:
+        return [e]
+    if ta > tb:
+        cuts = cuts[::-1]
+    pts = [p0] + [p0 + (p1 - p0) * (t - ta) / (tb - ta) for t in cuts] + [p1]
+    nodes = [e.a] + [f"{e.a}>{e.b}~{t:.4f}" for t in cuts] + [e.b]
+    return [_piece(e, nodes[k], nodes[k + 1], pts[k], pts[k + 1], k) for k in range(len(pts) - 1)]
+
+
+def _couple(lm, model):
+    """Parallel straight microstrip sections on one layer within COUPLE_H * h of each other: cut where
+    their overlaps start and end, and group the pieces side by side into coupled sections."""
+    from .coupled import coupled_microstrip
+    cand = [e for e in lm.elements if e.kind == 'trace' and e.xs in COUPLED_XS and e.length > 1e-3 and _straight(e)]
+    if len(cand) < 2:
+        return
+    info = {}
+    for e in cand:
+        d = np.asarray(e.pts[-1], float) - np.asarray(e.pts[0], float)
+        ang = math.degrees(math.atan2(d[1], d[0])) % 180.0
+        info[id(e)] = ang
+    # interacting pairs (union-find over the candidates)
+    parent = {id(e): id(e) for e in cand}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def geom(e, u, n):
+        p = np.asarray(e.pts, float)
+        t = sorted((float(p[0] @ u), float(p[-1] @ u)))
+        return t[0], t[1], float(p[0] @ n)
+    pairs = []
+    for i, e in enumerate(cand):
+        for f in cand[i + 1:]:
+            if e.layer != f.layer:
+                continue
+            da = abs(info[id(e)] - info[id(f)])
+            if min(da, 180 - da) > 1.0:
+                continue
+            ang = math.radians(info[id(e)])
+            u, n = np.array([math.cos(ang), math.sin(ang)]), np.array([-math.sin(ang), math.cos(ang)])
+            a0, a1, ca = geom(e, u, n)
+            b0, b1, cb = geom(f, u, n)
+            gap = abs(ca - cb) - 0.5 * (e.w + f.w)
+            h = e.h if isinstance(e.h, float) else None
+            if h is None or gap <= 1e-4 or gap > COUPLE_H * h:
+                continue
+            if min(a1, b1) - max(a0, b0) < max(0.2, gap):
+                continue
+            pairs.append((e, f))
+            parent[find(id(e))] = find(id(f))
+    if not pairs:
+        return
+    sets = {}
+    for e in cand:
+        if any(e is x or e is y for x, y in pairs):
+            sets.setdefault(find(id(e)), []).append(e)
+    for members in sets.values():
+        ang = math.radians(info[id(members[0])])
+        u, n = np.array([math.cos(ang), math.sin(ang)]), np.array([-math.sin(ang), math.cos(ang)])
+        cuts = sorted({round(t, 4) for e in members for t in geom(e, u, n)[:2]})
+        pieces = {}
+        for e in members:
+            k = lm.elements.index(e)
+            parts = _split_at(e, cuts, u)
+            lm.elements[k:k + 1] = parts
+            for pc in parts:
+                t0, t1, c = geom(pc, u, n)
+                pieces.setdefault((round(t0, 4), round(t1, 4)), []).append((c, pc))
+        for (t0, t1), row in sorted(pieces.items()):
+            if t1 - t0 < 1e-3 or len(row) < 2:
+                continue
+            row.sort(key=lambda r: r[0])
+            chain = [row[0]]
+            for c, pc in row[1:] + [(None, None)]:
+                prev = chain[-1][1]
+                gap = None if pc is None else (c - chain[-1][0]) - 0.5 * (prev.w + pc.w)
+                if pc is not None and 1e-4 < gap <= COUPLE_H * prev.h:
+                    chain.append((c, pc))
+                    continue
+                if len(chain) >= 2:
+                    _add_group(lm, chain, u, t0, coupled_microstrip)
+                chain = [(c, pc)] if pc is not None else []
+
+
+def _add_group(lm, chain, u, t0, coupled_microstrip):
+    gid = len(lm.groups)
+    members, gaps = [], []
+    for k, (c, e) in enumerate(chain):
+        near_first = float(np.asarray(e.pts[0]) @ u) <= float(np.asarray(e.pts[-1]) @ u)
+        near, far = (e.a, e.b) if near_first else (e.b, e.a)
+        members.append((e, near, far))
+        e.group = gid
+        e.label = f"{e.label} (coupled {k + 1}/{len(chain)})"
+        if k:
+            gaps.append((c - chain[k - 1][0]) - 0.5 * (e.w + chain[k - 1][1].w))
+    e0 = chain[0][1]
+    g = dict(members=members, gaps=gaps, length=e0.length, h=e0.h, er=e0.er, tand=e0.tand, layer=e0.layer, pairs=[])
+    for k, gap in enumerate(gaps):
+        wa, wb = members[k][0].w, members[k + 1][0].w
+        ze, zo, ee, eo = coupled_microstrip(0.5 * (wa + wb), gap, e0.h, e0.er)
+        g['pairs'].append(dict(gap=gap, ze=ze, zo=zo, eeff_e=ee, eeff_o=eo))
+        cp = Element('coupling', members[k][1], members[k + 1][1], 0.0, layer=e0.layer, w=gap, net=e0.net,
+                     label=f"coupled to the next line, gap {gap:.3g} mm",
+                     pts=np.array([np.asarray(members[k][0].pts).mean(0), np.asarray(members[k + 1][0].pts).mean(0)]))
+        cp.xs, cp.group = 'coupled', gid
+        cp.notes.append(f"Ze {ze:.1f} / Zo {zo:.1f} ohm over {e0.length:.2f} mm")
+        lm.elements.append(cp)
+    lm.groups.append(g)
+
+
+# ---- discontinuities -----------------------------------------------------------------------------
+def _out_dir(e, end):
+    p = np.asarray(e.pts, float)
+    d = (p[1] - p[0]) if end == 0 else (p[-2] - p[-1])
+    return d / (np.linalg.norm(d) or 1.0)
+
+
+def _junctions(lm, model):
+    """Discontinuities where trace and pad sections meet: open end, corner (90 degrees), bend (other
+    angles: no model), step (width change in line), tee, cross; facing open ends close together are a
+    gap. Nodes with a port, a via or a part are left out."""
+    arms, busy = {}, set(lm.ports.values())
+    for e in lm.elements:
+        if e.kind in ('trace', 'pad') and e.pts is not None and len(e.pts) >= 2 and e.length > 1e-6:
+            arms.setdefault(e.a, []).append((e, 0))
+            arms.setdefault(e.b, []).append((e, 1))
+        elif e.kind in ('via', 'part'):
+            busy |= {e.a, e.b}
+    opens = []
+    for node, ar in arms.items():
+        if node in busy or node == 'gnd':
+            continue
+        ends = [np.asarray(e.pts[0] if k == 0 else e.pts[-1], float) for e, k in ar]
+        xy = np.mean(ends, axis=0)
+        dirs = [_out_dir(e, k) for e, k in ar]
+        ws = [e.w for e, _ in ar]
+        xs = {e.xs for e, _ in ar}
+        rec = dict(node=node, arms=ar, widths=ws, xy=xy, xs=xs.pop() if len(xs) == 1 else 'mixed', layer=ar[0][0].layer)
+        n = len(ar)
+        if n == 1:
+            rec['kind'] = 'open'
+            opens.append(rec)
+        elif n == 2:
+            cosang = float(np.clip(np.dot(dirs[0], dirs[1]), -1, 1))
+            bend = 180.0 - math.degrees(math.acos(cosang))
+            rec['angle'] = bend
+            if abs(bend - 90) <= 10:
+                rec['kind'] = 'corner'
+            elif bend <= 10:
+                if max(ws) / min(ws) <= 1.05:
+                    continue
+                rec['kind'] = 'step'
+            else:
+                rec['kind'] = 'bend'
+        elif n == 3:
+            best = max(((i, j) for i in range(3) for j in range(i + 1, 3)), key=lambda ij: -np.dot(dirs[ij[0]], dirs[ij[1]]))
+            k3 = ({0, 1, 2} - set(best)).pop()
+            rec['arms'] = [ar[best[0]], ar[best[1]], ar[k3]]
+            rec['widths'] = [ar[best[0]][0].w, ar[best[1]][0].w, ar[k3][0].w]
+            rec['kind'] = 'tee'
+        elif n == 4:
+            order = sorted(range(4), key=lambda i: math.atan2(dirs[i][1], dirs[i][0]))
+            rec['arms'] = [ar[i] for i in order]
+            rec['widths'] = [ar[i][0].w for i in order]
+            rec['kind'] = 'cross'
+        else:
+            rec['kind'] = 'junction'
+        lm.junctions.append(rec)
+    # facing open ends close together: an end gap
+    used = set()
+    for i, a in enumerate(opens):
+        for b in opens[i + 1:]:
+            if id(a) in used or id(b) in used or a['layer'] != b['layer']:
+                continue
+            ea, ka = a['arms'][0]
+            eb, kb = b['arms'][0]
+            da, db = -_out_dir(ea, ka), -_out_dir(eb, kb)       # pointing out of the line, past its end
+            v = b['xy'] - a['xy']
+            g = float(np.linalg.norm(v))
+            h = ea.h if isinstance(ea.h, float) else 0.0
+            if g < 1e-6 or g > 2 * h or np.dot(da, db) > -0.98 or np.dot(v / g, da) < 0.98:
+                continue
+            a.update(kind='gap', gap=g, other=b)
+            used |= {id(a), id(b)}
+    lm.junctions = [r for r in lm.junctions if id(r) not in used or r['kind'] == 'gap']

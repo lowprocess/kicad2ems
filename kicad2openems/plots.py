@@ -152,6 +152,27 @@ def plot_lines(lm, m, title=''):
             ax.annotate(f"{i}" if npath == 1 else f"{k + 1}.{i}", c, xytext=(0, -11), textcoords='offset points',
                         fontsize=7, ha='center', va='center', zorder=8,
                         bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='0.4', lw=0.5))
+    for g in lm.groups:                                    # coupled sections: the gaps shaded
+        mem = [np.asarray(e.pts, float) for e, _, _ in g['members']]
+        for (e1, _, _), (e2, _, _), a, b in zip(g['members'], g['members'][1:], mem, mem[1:]):
+            d = a[-1] - a[0]
+            d = d / (np.linalg.norm(d) or 1.0)
+            n = np.array([-d[1], d[0]])
+            sa = 1 if np.dot(b.mean(0) - a.mean(0), n) > 0 else -1
+            q = [a[0] + n * sa * e1.w / 2, a[-1] + n * sa * e1.w / 2, b[-1] - n * sa * e2.w / 2, b[0] - n * sa * e2.w / 2]
+            ax.add_patch(patches.Polygon(q, closed=True, fc='#f1c40f', alpha=0.45, ec='none', zorder=2.5, hatch='...'))
+    marks = dict(open=('o', 'none'), corner=('s', '#1f618d'), step=('|', '#1f618d'), tee=('^', '#1f618d'),
+                 cross=('P', '#1f618d'), gap=('x', '#c0392b'), bend=('D', '0.4'))
+    seen = set()
+    for j in lm.junctions:
+        mk, fc = marks.get(j['kind'], ('*', '0.3'))
+        ax.plot(*j['xy'], marker=mk, ms=5, mfc=fc, mec='#1f618d', mew=1.0, ls='none', zorder=8,
+                label=j['kind'] if j['kind'] not in seen else None)
+        seen.add(j['kind'])
+    if lm.groups:
+        ax.add_patch(patches.Rectangle((0, 0), 0, 0, fc='#f1c40f', alpha=0.45, label='coupled'))
+    if seen or lm.groups:
+        ax.legend(loc='upper right', fontsize=7, framealpha=0.8, ncol=2)
     for name in lm.ports:
         p = next(pp for pp in m.ports if pp.name == name)
         ax.plot(*p.c, 'o', color='#c0392b', ms=5, zorder=9)
@@ -173,6 +194,9 @@ def plot_lines(lm, m, title=''):
             if e.z0:
                 px.fill_between([s0, s1], 0, e.z0, step=None, color=cmap(norm(e.z0)), alpha=0.85, lw=0)
                 px.plot([s0, s1], [e.z0, e.z0], color='k', lw=1.2)
+            elif e.kind == 'coupling':
+                px.axvline(s0, color='#b7950b', lw=1.2, ls=':')
+                px.text(s0, top * 0.93, 'coupled', ha='center', va='top', fontsize=7, color='#9a7d0a', rotation=90)
             else:
                 px.axvspan(s0, s1, color='#6c3483' if e.kind == 'part' else '0.7', alpha=0.25, lw=0)
                 px.text((s0 + s1) / 2, top * 0.93, e.label if e.kind == 'part' else '?', ha='center', va='top',

@@ -110,4 +110,4 @@ def test_qucsator_matches_skrf_coplanar(launch):
     Sq, _ = solve(lm, m.ports, FREQ, 'qucsator')
     Ss, _ = solve(lm, m.ports, FREQ, 'skrf')
     assert np.max(np.abs(db(Sq[:, 1, 0]) - db(Ss[:, 1, 0]))) < 0.3
-    assert np.max(np.abs(Sq[:, 0, 0] - Ss[:, 0, 0])) < 0.05
+    assert np.max(np.abs(Sq[:, 0, 0] - Ss[:, 0, 0])) < 0.1        # qucsator adds the steps and open ends

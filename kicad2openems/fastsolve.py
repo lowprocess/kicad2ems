@@ -70,9 +70,19 @@ def _skrf(lm, ports, freq, sheet, sigma):
 
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
+        for gid, g in enumerate(lm.groups):                 # coupled sections: one multiconductor block each
+            ntw = _group_network(skrf, fr, g, sheet, f"group{gid}")
+            n = len(g['members'])
+            for k, (e, near, far) in enumerate(g['members']):
+                nodes.setdefault(near, []).append((ntw, k))
+                nodes.setdefault(far, []).append((ntw, n + k))
         for i, e in enumerate(lm.elements):
             name = f"e{i}"
-            if e.kind == 'part':
+            if e.kind == 'coupling' or e.group is not None:
+                continue
+            if e.kind == 'via' and e.b == 'gnd':
+                ntw = shunt_z(1j * w * (e.L or 0.0) + 1e-6, name)
+            elif e.kind == 'part':
                 z = part_impedance(e.part, w)
                 if e.part.short:
                     z = np.full_like(w, 1e-6, dtype=complex)
@@ -111,6 +121,20 @@ def _skrf(lm, ports, freq, sheet, sigma):
         return res.s, list(cir.port_names)
 
 
+def _group_network(skrf, fr, g, sheet, name):
+    """A coupled section as a 2N-port skrf Network (ports: near ends, then far ends)."""
+    S = group_s(g, fr.f)
+    return skrf.Network(frequency=fr, s=S, z0=50.0, name=name)
+
+
+def group_s(g, freq):
+    """S-parameters (nf, 2N, 2N) of a coupled section of the line model (coupled.py)."""
+    from .coupled import group_lc, mtl_s
+    widths = [e.w for e, _, _ in g['members']]
+    C, Ca = group_lc(widths, g['gaps'], g['h'], g['er'])
+    return mtl_s(C, Ca, g['er'], g['tand'] or 0.0, g['length'], freq)
+
+
 # ---- qucsator ---------------------------------------------------------------------------------------
 def find_qucsator(path=None):
     """The qucsator executable: the given path, else qucsator_rf (Qucs-S) or qucsator on PATH."""
@@ -125,8 +149,36 @@ def find_qucsator(path=None):
     raise ValueError("--fast qucsator: no qucsator_rf / qucsator on PATH (install Qucs-S, or give --qucsator PATH)")
 
 
-def qucs_netlist(lm, ports, freq, sheet=True, sigma=None):
-    """The line model as a qucsator netlist (S-parameter sweep over freq)."""
+def _junction_plan(lm):
+    """For qucsator: the node each element end connects to (a discontinuity gets its own nodes per arm)
+    and how much each end is shortened (lines are measured to the edges of a corner, tee or cross
+    square, not to its centre as in the line model)."""
+    endnode, short = {}, {}
+    for k, j in enumerate(lm.junctions):
+        if j['kind'] not in ('corner', 'step', 'tee', 'cross') or j['xs'] not in ('microstrip', 'cpwg'):
+            continue
+        if j['xs'] == 'cpwg' and j['kind'] != 'step':
+            continue
+        ws = j['widths']
+        for a, (e, end) in enumerate(j['arms']):
+            endnode[(id(e), end)] = f"{j['node']}#{k}.{a}"
+            if e.group is not None:
+                continue                                   # a coupled section keeps its common length
+            if j['kind'] == 'corner':
+                short[(id(e), end)] = ws[1 - a] / 2
+            elif j['kind'] == 'tee':
+                short[(id(e), end)] = ws[2] / 2 if a < 2 else 0.5 * (ws[0] + ws[1]) / 2
+            elif j['kind'] == 'cross':
+                short[(id(e), end)] = 0.5 * (ws[(a + 1) % 4] + ws[(a + 3) % 4]) / 2
+    return endnode, short
+
+
+def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
+    """The line model as a qucsator netlist (S-parameter sweep over freq). Microstrip lines, corners,
+    steps, tees, crosses, open ends, end gaps and vias to ground use qucsator's microstrip models
+    (MLIN, MCORN, MSTEP, MTEE, MCROSS, MOPEN, MGAP, MVIA), grounded CPW its coplanar ones (CLIN, CSTEP,
+    COPEN, CGAP), a coupled pair MCOUPLED; three or more coupled lines, or a pair of unequal widths,
+    are a multiconductor block (coupled.py) written to `workdir` as Touchstone and read with SPfile."""
     ids = {}
 
     def node(n):
@@ -136,15 +188,24 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None):
     rho = 1 / sigma if sigma else 1e-15
     f0 = 0.5 * (freq[0] + freq[-1])
     L, subst = [], {}
+    endnode, short = _junction_plan(lm)
 
-    def sub(e):
+    def end(e, k):
+        n = e.a if k == 0 else e.b
+        return node(endnode.get((id(e), k), n)) if n != 'gnd' else 'gnd'
+
+    def sub(e, h=None, er=None, tand=None):
+        h = e.h if h is None else h
+        er = e.er if er is None else er
+        tand = e.tand if tand is None else tand
         t = 1e-9 if sheet else max(e.t, 1e-6) * 1e-3
-        key = (round(e.h, 6), round(e.er, 6), t, round(e.tand, 6))
+        key = (round(h, 6), round(er, 6), t, round(tand or 0.0, 6))
         if key not in subst:
             subst[key] = f"S{len(subst)}"
-            L.append(f'SUBST:{subst[key]} er="{e.er:.6g}" h="{e.h * 1e-3:.6g}" t="{t:.6g}" tand="{e.tand:.6g}" '
+            L.append(f'SUBST:{subst[key]} er="{er:.6g}" h="{h * 1e-3:.6g}" t="{t:.6g}" tand="{tand or 0.0:.6g}" '
                      f'rho="{rho:.6g}" D="0"')
         return subst[key]
+    ms = 'MSDispModel="Kirschning" MSModel="Hammerstad"'
 
     def rlc(name, a, b, part):
         """Series R-L-C chain between nodes a and b."""
@@ -159,25 +220,92 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None):
             L.append(f'{k}:{name}{k}{j} {chain[j]} {chain[j + 1]} {k}="{v:.9g} {unit[k]}"')
 
     for i, e in enumerate(lm.elements):
-        a, b = node(e.a), node(e.b)
+        if e.kind == 'coupling' or e.group is not None:
+            continue
+        a, b = end(e, 0), end(e, 1)
         name = f"E{i}"
+        length = max(e.length - short.get((id(e), 0), 0.0) - short.get((id(e), 1), 0.0), 1e-6)
         if e.kind == 'part':
             rlc(name, a, b, e.part)
+        elif e.kind == 'via' and b == 'gnd':
+            if e.er and e.h:
+                L.append(f'MVIA:{name} {a} gnd D="{e.w * 1e-3:.6g}" Subst="{sub(e, h=e.h)}"')
+            else:
+                L.append(f'L:{name} {a} gnd L="{e.L:.9g} H"')
         elif e.xs == 'lumped' and e.L:
             L.append(f'L:{name} {a} {b} L="{e.L:.9g} H"')
         elif e.xs == 'microstrip' and e.er:
-            L.append(f'MLIN:{name} {a} {b} Subst="{sub(e)}" W="{e.w * 1e-3:.6g}" L="{max(e.length, 1e-9) * 1e-3:.6g}" '
+            L.append(f'MLIN:{name} {a} {b} Subst="{sub(e)}" W="{e.w * 1e-3:.6g}" L="{length * 1e-3:.6g}" '
                      f'Model="Hammerstad" DispModel="Kirschning"')
         elif e.xs == 'cpwg' and e.er:
             L.append(f'CLIN:{name} {a} {b} Subst="{sub(e)}" W="{e.w * 1e-3:.6g}" S="{e.s * 1e-3:.6g}" '
-                     f'L="{max(e.length, 1e-9) * 1e-3:.6g}" Backside="Metal" Approx="no"')
+                     f'L="{length * 1e-3:.6g}" Backside="Metal" Approx="no"')
+        elif e.xs == 'coax' and e.er and e.h:
+            L.append(f'COAX:{name} {a} {b} D="{e.h * 1e-3:.6g}" d="{e.w * 1e-3:.6g}" L="{max(e.length, 1e-6) * 1e-3:.6g}" '
+                     f'er="{e.er:.6g}" mur="1" tand="{e.tand or 0.0:.6g}" rho="{rho:.6g}"')
         elif e.z0:
             z0, ee = _line_params(e, sheet)
             lp, cp = z0 * math.sqrt(ee) / C0, math.sqrt(ee) / (z0 * C0)
-            g = 2 * math.pi * f0 * cp * e.tand                       # dielectric loss matched at the band centre
-            L.append(f'RLCG:{name} {a} {b} R="0" L="{lp:.9g}" C="{cp:.9g}" G="{g:.9g}" Length="{e.length * 1e-3:.9g}"')
+            g = 2 * math.pi * f0 * cp * (e.tand or 0.0)          # dielectric loss matched at the band centre
+            L.append(f'RLCG:{name} {a} {b} R="0" L="{lp:.9g}" C="{cp:.9g}" G="{g:.9g}" Length="{length * 1e-3:.9g}"')
         else:
             L.append(f'R:{name} {a} {b} R="1e-6 Ohm"')
+    # discontinuities
+    for k, j in enumerate(lm.junctions):
+        e0 = j['arms'][0][0]
+        if j['xs'] not in ('microstrip', 'cpwg') or not e0.er:
+            continue
+        nm, ws = f"J{k}", j['widths']
+        arms = [end(e, a) for e, a in j['arms']]
+        if j['xs'] == 'microstrip':
+            if j['kind'] == 'open':
+                L.append(f'MOPEN:{nm} {arms[0]} Subst="{sub(e0)}" W="{ws[0] * 1e-3:.6g}" {ms} Model="Kirschning"')
+            elif j['kind'] == 'gap':
+                eb, kb = j['other']['arms'][0]
+                L.append(f'MGAP:{nm} {arms[0]} {end(eb, kb)} Subst="{sub(e0)}" W1="{ws[0] * 1e-3:.6g}" '
+                         f'W2="{eb.w * 1e-3:.6g}" S="{j["gap"] * 1e-3:.6g}" {ms}')
+            elif j['kind'] == 'corner':
+                L.append(f'MCORN:{nm} {arms[0]} {arms[1]} Subst="{sub(e0)}" W="{0.5 * (ws[0] + ws[1]) * 1e-3:.6g}"')
+            elif j['kind'] == 'step':
+                L.append(f'MSTEP:{nm} {arms[0]} {arms[1]} Subst="{sub(e0)}" W1="{ws[0] * 1e-3:.6g}" '
+                         f'W2="{ws[1] * 1e-3:.6g}" {ms}')
+            elif j['kind'] == 'tee':
+                L.append(f'MTEE:{nm} {arms[0]} {arms[1]} {arms[2]} Subst="{sub(e0)}" ' +
+                         " ".join(f'W{n + 1}="{w * 1e-3:.6g}"' for n, w in enumerate(ws)) + f' {ms}')
+            elif j['kind'] == 'cross':
+                L.append(f'MCROSS:{nm} {" ".join(arms)} Subst="{sub(e0)}" ' +
+                         " ".join(f'W{n + 1}="{w * 1e-3:.6g}"' for n, w in enumerate(ws)) + f' {ms}')
+        else:
+            s_ = (e0.s or ws[0]) * 1e-3
+            if j['kind'] == 'open':
+                L.append(f'COPEN:{nm} {arms[0]} Subst="{sub(e0)}" W="{ws[0] * 1e-3:.6g}" S="{s_:.6g}" G="{s_:.6g}" '
+                         f'Backside="Metal"')
+            elif j['kind'] == 'gap':
+                eb, kb = j['other']['arms'][0]
+                L.append(f'CGAP:{nm} {arms[0]} {end(eb, kb)} Subst="{sub(e0)}" W="{ws[0] * 1e-3:.6g}" '
+                         f'G="{j["gap"] * 1e-3:.6g}" S="{s_:.6g}"')
+            elif j['kind'] == 'step':
+                L.append(f'CSTEP:{nm} {arms[0]} {arms[1]} Subst="{sub(e0)}" W1="{ws[0] * 1e-3:.6g}" '
+                         f'W2="{ws[1] * 1e-3:.6g}" S="{max(s_, max(ws) * 1e-3 * 1.01):.6g}" Backside="Metal"')
+    # coupled sections
+    for gid, g in enumerate(lm.groups):
+        mem = g['members']
+        nodes_near = [end(e, 0 if near == e.a else 1) for e, near, far in mem]
+        nodes_far = [end(e, 0 if far == e.a else 1) for e, near, far in mem]
+        e0 = mem[0][0]
+        ws = [e.w for e, _, _ in mem]
+        if len(mem) == 2 and abs(ws[0] - ws[1]) <= 0.05 * max(ws):
+            L.append(f'MCOUPLED:G{gid} {nodes_near[0]} {nodes_far[0]} {nodes_far[1]} {nodes_near[1]} Subst="{sub(e0)}" '
+                     f'W="{0.5 * (ws[0] + ws[1]) * 1e-3:.6g}" S="{g["gaps"][0] * 1e-3:.6g}" L="{g["length"] * 1e-3:.6g}" '
+                     f'Model="Kirschning" DispModel="Kirschning"')
+        else:
+            import os
+            if workdir is None:
+                raise ValueError("a coupled section of more than two lines needs a working folder for its Touchstone")
+            path = os.path.join(workdir, f"group{gid}.s{2 * len(mem)}p")
+            _write_touchstone(path, freq, group_s(g, freq))
+            L.append(f'SPfile:G{gid} {" ".join(nodes_near + nodes_far)} gnd File="{{{path}}}" Data="rectangular" '
+                     f'Interpolator="linear" duringDC="open"')
     num = 0
     order = []
     for p in ports:
@@ -187,6 +315,25 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None):
             L.append(f'Pac:P{num} {node(lm.ports[p.name])} gnd Num="{num}" Z="{p.z0:g} Ohm" P="0 dBm" f="1 GHz"')
     L.append(f'.SP:SP1 Type="lin" Start="{freq[0]:.9g}" Stop="{freq[-1]:.9g}" Points="{len(freq)}" Noise="no"')
     return "\n".join(L) + "\n", order
+
+
+def _write_touchstone(path, freq, S, z0=50.0):
+    """Touchstone v1 (RI): 2-port data column-major on one line; more ports row by row, at most four
+    values pairs per line, each matrix row starting on a new line."""
+    n = S.shape[1]
+    with open(path, 'w') as fh:
+        fh.write(f"! kicad2openems coupled section\n# Hz S RI R {z0:g}\n")
+        for f, s in zip(freq, S):
+            pair = lambda v: f"{v.real:.10e} {v.imag:.10e}"
+            if n <= 2:
+                vals = [s[0, 0]] if n == 1 else [s[0, 0], s[1, 0], s[0, 1], s[1, 1]]
+                fh.write(f"{f:.9e} " + " ".join(pair(v) for v in vals) + "\n")
+                continue
+            for i in range(n):
+                row = [pair(s[i, j]) for j in range(n)]
+                for k in range(0, n, 4):
+                    lead = f"{f:.9e} " if (i == 0 and k == 0) else "  "
+                    fh.write(lead + " ".join(row[k:k + 4]) + "\n")
 
 
 def read_qucs_dataset(text, n):
@@ -204,9 +351,9 @@ def read_qucs_dataset(text, n):
 
 def _qucsator(lm, ports, freq, sheet, sigma, exe, timeout=120.0):
     exe = find_qucsator(exe)
-    text, order = qucs_netlist(lm, ports, freq, sheet, sigma)
     with tempfile.TemporaryDirectory() as d:
         inp, out = os.path.join(d, 'line_model.net'), os.path.join(d, 'line_model.dat')
+        text, order = qucs_netlist(lm, ports, freq, sheet, sigma, workdir=d)
         with open(inp, 'w') as fh:
             fh.write(text)
         try:

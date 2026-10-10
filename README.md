@@ -17,8 +17,10 @@ can be solved as a circuit in milliseconds.
 - **Automatic mesh** (thirds rule, curves, vias, graded cells) with a mesh-convergence check.
 - **S-parameters** of all ports, or **antenna mode** (PML, near-to-far field: gain, efficiency,
   patterns).
-- **Transmission-line sections** (microstrip, stripline, grounded CPW, vias, pads, parts) with Z0,
-  εeff and delay; `--fast skrf` or `--fast qucsator` solves them as a circuit.
+- **Transmission-line sections** (microstrip, stripline, grounded CPW, vias, pads, parts, resonators
+  drawn as copper shapes, coupled lines) with Z0, εeff and delay; `--fast qucsator` solves them as a
+  circuit with qucsator's corners, tees, steps, open ends and coupled lines (`--fast skrf` too).
+- **Edge walls** (`--edge-walls`): PEC where the planes end at the board edge, for stitching.
 - **Field dumps** (E, H, J) as PNG maps or for ParaView; wideband dielectric model; parallel runs.
 - **TOML configs**, `--preview` without openEMS, an HTML report, JSON-lines events for a GUI or script.
 
@@ -52,9 +54,9 @@ kicad2openems examples/filter.toml                # the openEMS run
 
 Outputs land in `examples/out/`: `filter_openems.s2p`, the S-parameter plot, `filter_mesh.png`,
 `filter_tlines.png`, `filter_openems.json` and `filter_report.html`, which collects everything on one
-page. Add `--fast skrf` to also solve the line sections as a circuit and compare them with openEMS in
-the plot and the report. That suits routed lines; this filter's coupled resonators are outside the line
-model ([Transmission-line model](docs/transmission-lines.md#limits)). For your own board, mark the ports
+page. The config also solves the line sections with qucsator (`fast = "qucsator"`, five coupled
+fingers) in under a second and compares them with openEMS in the plot and the report
+([Transmission-line model](docs/transmission-lines.md#coupled)). For your own board, mark the ports
 in KiCad and write a config: see [Getting started](docs/getting-started.md#your-own-board).
 
 ## Documentation

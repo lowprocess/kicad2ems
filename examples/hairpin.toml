@@ -1,0 +1,18 @@
+# kicad2openems run configuration for the hairpin band-pass filter (3.3-3.4 GHz, three hairpins drawn
+# as copper polygons on 0.21 mm FR-4, 15 x 15 mm)
+#   kicad2openems examples/hairpin.toml --preview          # line model + qucsator in a second
+#   kicad2openems examples/hairpin.toml                    # openEMS (high Q: a long ring-down)
+# Reference result: examples/reference/hairpin_openems.s2p (use with --compare)
+board   = "hairpin.kicad_pcb"
+pos     = "hairpin-top.pos"
+no_mask = true
+fmin    = 2.8           # GHz
+fmax    = 3.9
+points  = 551
+out     = "out"
+
+[openems]
+excite  = ["P1"]
+end_db  = -30
+max_steps = 3000000    # a narrow band: a long pulse and a long ring-down
+fast    = "qucsator"    # or "skrf"
