@@ -112,13 +112,12 @@ def _kind_value(fp):
 def find_parts(board, model):
     """Lumped parts of the board that sit on the model's copper. Returns (parts, notes)."""
     parts, notes = [], []
-    port_refs = set()
-    for v in model.port_fps.values():
-        for fp in (v.values() if isinstance(v, dict) and 'props' not in v else [v]):
-            port_refs.add(fp['ref'])
+    inside = model.outline.buffer(1e-6)
     for fp in board.footprints:
-        if fp['ref'] in port_refs:
+        if fp['ref'] in model.port_refs:
             continue
+        if not any(inside.intersects(flip_y(p['geom'])) for p in fp['pads']):
+            continue                                                # outside the board / region: not a note
         kind, val = _kind_value(fp)
         if kind is None:
             if val:
@@ -136,7 +135,7 @@ def find_parts(board, model):
         side = 'B.Cu' if fp['side'] == 'B' else 'F.Cu'
         lays.sort(key=lambda l: l != side)
         g = [flip_y(p['geom']) for p in pads]
-        lay = next((l for l in lays if all(model._copper_at(l, q.centroid) is not None for q in g)), None)
+        lay = next((l for l in lays if all(model.copper_at(l, q.centroid) is not None for q in g)), None)
         if lay is None:
             notes.append(f"part {ref} skipped: its pads are not on modelled copper (add their nets to --nets)")
             continue

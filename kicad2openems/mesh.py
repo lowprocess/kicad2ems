@@ -140,6 +140,103 @@ def curve_lines(xy, fine, mode='extremes'):
     return xs, ys
 
 
+def _edge_lines(m, fine, curves):
+    """Candidate x / y lines from the copper: the board outline, thirds-rule pairs at Manhattan edges
+    (third: 2/3 outside the metal, third_in: 1/3 inside) and the curve lines (see curve_lines)."""
+    ob = m.outline.bounds
+    fixed = {0: [ob[0], ob[2]], 1: [ob[1], ob[3]]}
+    third, third_in = {0: [], 1: []}, {0: [], 1: []}
+    for lay, ps in m.copper.items():
+        for p in ps:
+            for ring in [p.exterior] + list(p.interiors):
+                xy = np.asarray(ring.coords)
+                for (x0, y0), (x1, y1) in zip(xy[:-1], xy[1:]):
+                    dx, dy = x1 - x0, y1 - y0
+                    if not manhattan(np.array([dx, dy]), np.hypot(dx, dy), fine):
+                        continue
+                    # orient(): exterior CCW, holes CW -> metal is on the left of every edge
+                    if abs(dx) <= abs(dy):                          # edge along y at x ~ x0
+                        s, xm = -np.sign(dy), 0.5 * (x0 + x1)       # metal on +x if going down
+                        third_in[0].append(xm + s * fine / 3); third[0].append(xm - s * 2 * fine / 3)
+                    else:
+                        s, ym = np.sign(dx), 0.5 * (y0 + y1)
+                        third_in[1].append(ym + s * fine / 3); third[1].append(ym - s * 2 * fine / 3)
+                cx, cy = curve_lines(xy, fine, curves)
+                fixed[0] += cx; fixed[1] += cy
+    return fixed, third, third_in
+
+
+def _via_modes(m, vias):
+    """Mesh treatment per via: 'exact' / 'centre' / 'snap' ('auto': exact on signal nets, snap elsewhere)."""
+    sig = getattr(m, 'via_signal', [False] * len(m.vias))
+    return ['exact' if (vias == 'auto' and s_) else ('snap' if vias == 'auto' else vias) for s_ in sig]
+
+
+def _kept_lines(m):
+    """Lines kept exactly: the board outline, the port planes (the port width snaps to the edge lines)
+    and both ends of every lumped-part piece."""
+    ob = m.outline.bounds
+    keep = {0: [ob[0], ob[2]], 1: [ob[1], ob[3]]}
+    for p in m.ports:
+        keep[p.axis] += p.planes()
+    for pt in getattr(m, 'parts', []):
+        for _, _, _, s, e in pt.pieces():
+            keep[pt.axis] += [s[pt.axis], e[pt.axis]]
+    return keep
+
+
+def _snap_vias(m, mode, mesh_xy, via_snap):
+    """Via positions after snapping ('snap' vias move onto the nearest line crossing within via_snap mm)
+    and the indices of those too far from any line."""
+    placed, far = [], []
+    for i, ((x, y, r, z0, z1), md) in enumerate(zip(m.vias, mode)):
+        if md != 'snap':
+            placed.append((x, y, r, z0, z1)); continue
+        jx, jy = np.argmin(np.abs(mesh_xy[0] - x)), np.argmin(np.abs(mesh_xy[1] - y))
+        sx, sy = mesh_xy[0][jx], mesh_xy[1][jy]
+        if abs(sx - x) <= via_snap and abs(sy - y) <= via_snap:
+            placed.append((float(sx), float(sy), r, z0, z1))
+        else:
+            placed.append((x, y, r, z0, z1)); far.append(i)
+    return placed, far
+
+
+def _z_lines(m, ext, M_die, M_air, nz_min, ratio):
+    """z lines: every interface, >= nz_min cells per dielectric, copper sheets exactly on lines, graded
+    air (ext[4] below - none on a PEC bottom plane - and ext[5] above)."""
+    zs = sorted({0.0, m.thickness} | {l['z0'] for l in m.layers} | {l['z1'] for l in m.layers} | set(m.cu_z.values()))
+    zl = []
+    for z0, z1 in zip(zs[:-1], zs[1:]):
+        lay = next((l for l in m.layers if l['z0'] <= z0 + 1e-9 and l['z1'] >= z1 - 1e-9), None)
+        Mz = M_die if lay else M_air
+        n = max(nz_min, int(np.ceil((z1 - z0) / Mz)))
+        zl += list(np.linspace(z0, z1, n + 1))
+    zl = _merge(np.concatenate([np.round(zl, 9), zs]), 1e-7)
+    for lay, zc in m.cu_z.items():                                  # snap: sheets must lie exactly on a line
+        i = np.argmin(np.abs(zl - zc))
+        assert abs(zl[i] - zc) < 1e-6, f"{lay} at z={zc} is not on a z mesh line"
+        zl[i] = zc
+    zfix = np.concatenate([[zl[0] - ext[4]] if ext[4] > 0 else [], zl, [zl[-1] + ext[5]]])
+    return smooth_lines(zfix, lambda z: M_die if 0 <= z <= m.thickness else M_air, ratio)
+
+
+def _check(m, mesh, info, log):
+    """Port traces resolved across their width, lumped-part ends on lines."""
+    for p in m.ports:
+        b = 1 - p.axis
+        lines = mesh[b]
+        n_in = int(np.sum((lines > p.c[b] - p.w / 2 + 1e-9) & (lines < p.c[b] + p.w / 2 - 1e-9)))
+        info.setdefault('lines_across_ports', {})[p.name] = n_in
+        if n_in < 2:
+            log(f"WARNING: only {n_in} mesh line(s) across the {p.w:.3f} mm trace at {p.name} - use a smaller --fine")
+    for pt in getattr(m, 'parts', []):
+        lines = mesh[pt.axis]
+        ends = [np.min(np.abs(lines - v)) < 1e-9 for _, _, _, s, e in pt.pieces() for v in (s[pt.axis], e[pt.axis])]
+        if not all(ends):
+            log(f"WARNING: the {pt.gap:.3f} mm gap of {pt.ref} is narrower than half the fine cell - "
+                f"use a smaller --fine")
+
+
 def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) * 6, nz_min=4,
               curves='extremes', vias='auto', via_snap=0.2, log=print):
     """Mesh lines (mm) for model m. Returns dict(x, y, z, vias, info).
@@ -165,42 +262,14 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
     if bottom_pec:
         ext[4] = 0.0                                                # PEC wall = the bottom plane itself
     ob = m.outline.bounds
-    fixed = {0: [ob[0], ob[2]], 1: [ob[1], ob[3]]}
-    third = {0: [], 1: []}
-    third_in = {0: [], 1: []}                                       # thirds-rule line inside the metal
-    # Manhattan metal edges: thirds rule (1/3 inside the metal, 2/3 outside); curves: see curve_lines
-    for lay, ps in m.copper.items():
-        for p in ps:
-            for ring in [p.exterior] + list(p.interiors):
-                xy = np.asarray(ring.coords)
-                for (x0, y0), (x1, y1) in zip(xy[:-1], xy[1:]):
-                    dx, dy = x1 - x0, y1 - y0
-                    Ls = np.hypot(dx, dy)
-                    if not manhattan(np.array([dx, dy]), Ls, fine):
-                        continue
-                    # orient(): exterior CCW, holes CW -> metal is on the left of every edge
-                    if abs(dx) <= abs(dy):                          # edge along y at x ~ x0
-                        s, xm = -np.sign(dy), 0.5 * (x0 + x1)       # metal on +x if going down
-                        third_in[0].append(xm + s * fine / 3); third[0].append(xm - s * 2 * fine / 3)
-                    else:
-                        s, ym = np.sign(dx), 0.5 * (y0 + y1)
-                        third_in[1].append(ym + s * fine / 3); third[1].append(ym - s * 2 * fine / 3)
-                cx, cy = curve_lines(xy, fine, curves)
-                fixed[0] += cx; fixed[1] += cy
-    # vias
-    sig = getattr(m, 'via_signal', [False] * len(m.vias))
-    mode = ['exact' if (vias == 'auto' and s_) else ('snap' if vias == 'auto' else vias) for s_ in sig]
+    fixed, third, third_in = _edge_lines(m, fine, curves)
+    mode = _via_modes(m, vias)
     for (x, y, r, z0, z1), md in zip(m.vias, mode):
         if md == 'exact':
             fixed[0] += [x - r, x, x + r]; fixed[1] += [y - r, y, y + r]
         elif md == 'centre':
             fixed[0].append(x); fixed[1].append(y)
-    keep = {0: [ob[0], ob[2]], 1: [ob[1], ob[3]]}                  # exact: board outline and port planes
-    for p in m.ports:                                               # (the port width snaps to the edge lines)
-        keep[p.axis] += p.planes()
-    for pt in getattr(m, 'parts', []):                              # lumped parts: every piece's ends on lines
-        for _, _, _, s, e in pt.pieces():
-            keep[pt.axis] += [s[pt.axis], e[pt.axis]]
+    keep = _kept_lines(m)
 
     def xy_lines(extra):
         out = {}
@@ -214,41 +283,14 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
             out[k] = smooth_lines(pts, Mf, ratio, fine)
         return out
 
-    def snap(mesh_xy):
-        placed, far = [], []
-        for i, ((x, y, r, z0, z1), md) in enumerate(zip(m.vias, mode)):
-            if md != 'snap':
-                placed.append((x, y, r, z0, z1)); continue
-            jx, jy = np.argmin(np.abs(mesh_xy[0] - x)), np.argmin(np.abs(mesh_xy[1] - y))
-            sx, sy = mesh_xy[0][jx], mesh_xy[1][jy]
-            if abs(sx - x) <= via_snap and abs(sy - y) <= via_snap:
-                placed.append((float(sx), float(sy), r, z0, z1))
-            else:
-                placed.append((x, y, r, z0, z1)); far.append(i)
-        return placed, far
-
     mesh = xy_lines({0: [], 1: []})
-    placed, far = snap(mesh)
+    placed, far = _snap_vias(m, mode, mesh, via_snap)
     if far:                                                         # too far from any line: give them centre lines
         mesh = xy_lines({0: [m.vias[i][0] for i in far], 1: [m.vias[i][1] for i in far]})
-        placed, _ = snap(mesh)
+        placed, _ = _snap_vias(m, mode, mesh, via_snap)
     moved = [np.hypot(a[0] - b[0], a[1] - b[1]) for a, b in zip(placed, m.vias)]
     nsnap = sum(1 for md in mode if md == 'snap')
-    # z: interfaces, nz_min cells (at least) per dielectric, graded air above and below
-    zs = sorted({0.0, m.thickness} | {l['z0'] for l in m.layers} | {l['z1'] for l in m.layers} | set(m.cu_z.values()))
-    zl = []
-    for z0, z1 in zip(zs[:-1], zs[1:]):
-        lay = next((l for l in m.layers if l['z0'] <= z0 + 1e-9 and l['z1'] >= z1 - 1e-9), None)
-        Mz = M_die if lay else M_air
-        n = max(nz_min, int(np.ceil((z1 - z0) / Mz)))
-        zl += list(np.linspace(z0, z1, n + 1))
-    zl = _merge(np.concatenate([np.round(zl, 9), zs]), 1e-7)
-    for lay, zc in m.cu_z.items():                                  # snap: sheets must lie exactly on a line
-        i = np.argmin(np.abs(zl - zc))
-        assert abs(zl[i] - zc) < 1e-6, f"{lay} at z={zc} is not on a z mesh line"
-        zl[i] = zc
-    zfix = np.concatenate([[zl[0] - ext[4]] if ext[4] > 0 else [], zl, [zl[-1] + ext[5]]])
-    mesh[2] = smooth_lines(zfix, lambda z: M_die if 0 <= z <= m.thickness else M_air, ratio)
+    mesh[2] = _z_lines(m, ext, M_die, M_air, nz_min, ratio)
     nx, ny, nz = (len(mesh[k]) for k in range(3))
     dmin = [np.diff(mesh[k]).min() * 1e-3 for k in range(3)]
     dt = 1 / (C0 * np.sqrt(sum(1 / d ** 2 for d in dmin)))
@@ -260,19 +302,7 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
         f"dielectric / {M_air:.2f} mm in air, air margin {air:.1f} mm), boundaries "
         f"{' '.join(f'{n}={b}' for n, b in zip(SIDES, bc))}" + (" (PEC on the bottom plane)" if bottom_pec else "") +
         f", time step {dt * 1e12:.3f} ps, ~{info['mem_gb']:.1f} GB")
-    for p in m.ports:                                               # every port trace resolved across its width
-        b = 1 - p.axis
-        lines = mesh[b]
-        n_in = int(np.sum((lines > p.c[b] - p.w / 2 + 1e-9) & (lines < p.c[b] + p.w / 2 - 1e-9)))
-        info.setdefault('lines_across_ports', {})[p.name] = n_in
-        if n_in < 2:
-            log(f"WARNING: only {n_in} mesh line(s) across the {p.w:.3f} mm trace at {p.name} - use a smaller --fine")
-    for pt in getattr(m, 'parts', []):
-        lines = mesh[pt.axis]
-        ends = [np.min(np.abs(lines - v)) < 1e-9 for _, _, _, s, e in pt.pieces() for v in (s[pt.axis], e[pt.axis])]
-        if not all(ends):
-            log(f"WARNING: the {pt.gap:.3f} mm gap of {pt.ref} is narrower than half the fine cell - "
-                f"use a smaller --fine")
+    _check(m, mesh, info, log)
     if nsnap:
         log(f"vias: {nsnap} snapped onto existing lines (moved <= {info['via_max_move_mm']:.3f} mm), "
             f"{len(m.vias) - nsnap} with their own lines")

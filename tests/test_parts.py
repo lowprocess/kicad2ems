@@ -1,22 +1,17 @@
 """Lumped R / L / C parts: value parsing, detection on the board, mesh lines at the element ends and
-the CSXCAD calls (fake openEMS, see test_simulation_setup)."""
-import os, sys, subprocess
+the CSXCAD calls (fake openEMS: the fake_openems fixture in conftest.py)."""
 import numpy as np
 import pytest
 from kicad2openems.kicad import KiCadBoard
 from kicad2openems.model import Model
 from kicad2openems.mesh import auto_mesh
 from kicad2openems.parts import parse_value, Part
-from test_simulation_setup import fake_openems                       # noqa: F401  (fixture)
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 @pytest.fixture(scope='module')
-def rlc(tmp_path_factory):
-    d = tmp_path_factory.mktemp('rlc')
-    subprocess.check_call([sys.executable, os.path.join(ROOT, 'examples', 'make_demo_board.py'), str(d / 'rlc'), 'rlc'])
-    return str(d / 'rlc')
+def rlc(boards):
+    return boards['rlc']
 
 
 @pytest.mark.parametrize('text,value', [
@@ -89,11 +84,10 @@ def test_build_fdtd_adds_lumped_elements(rlc, fake_openems):
     assert len(lumped) == 3 and fake_openems.count('box') == 4                    # C1, L7 (2) + the 0 ohm strap
 
 
-def test_lowpass_demo(tmp_path):
+def test_lowpass_demo(boards):
     """examples/make_demo_board.py lowpass: L1 / L3 in line (x), C2 to GND along y, ESR / ESL fields; the
     ideal circuit is a 1 GHz Butterworth low-pass with the capacitor's self-resonance notch."""
-    base = str(tmp_path / 'lp')
-    subprocess.check_call([sys.executable, os.path.join(ROOT, 'examples', 'make_demo_board.py'), base, 'lowpass'])
+    base = boards['lowpass']
     m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF_IN', 'N1', 'RF_OUT', 'GND'], pos_file=base + '-top.pos',
               log=lambda *a: None)
     p = {pt.ref: pt for pt in m.parts}
