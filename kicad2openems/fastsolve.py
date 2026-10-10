@@ -4,7 +4,7 @@ circuit - lines, via barrels, lumped parts, ports at the port nodes, open ends l
 milliseconds by scikit-rf (in-process) or qucsator (Qucs-S's simulator, run as a separate program).
 
 Each backend uses its own models where it has them: scikit-rf MLine (Hammerstad-Jensen with
-Kirschning-Jansen dispersion) and CPW, qucsator MLIN and CPWLINE; every other section (stripline,
+Kirschning-Jansen dispersion) and CPW, qucsator MLIN and CLIN; every other section (stripline,
 offset stripline, embedded microstrip, via barrels) is a line of the section's Z0 and effective
 permittivity. By default the copper is zero-thickness, as openEMS models it (conducting sheets), so the
 result is comparable with openEMS; sheet=False uses the stackup's copper thickness.
@@ -169,7 +169,7 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None):
             L.append(f'MLIN:{name} {a} {b} Subst="{sub(e)}" W="{e.w * 1e-3:.6g}" L="{max(e.length, 1e-9) * 1e-3:.6g}" '
                      f'Model="Hammerstad" DispModel="Kirschning"')
         elif e.xs == 'cpwg' and e.er:
-            L.append(f'CPWLINE:{name} {a} {b} Subst="{sub(e)}" W="{e.w * 1e-3:.6g}" S="{e.s * 1e-3:.6g}" '
+            L.append(f'CLIN:{name} {a} {b} Subst="{sub(e)}" W="{e.w * 1e-3:.6g}" S="{e.s * 1e-3:.6g}" '
                      f'L="{max(e.length, 1e-9) * 1e-3:.6g}" Backside="Metal" Approx="no"')
         elif e.z0:
             z0, ee = _line_params(e, sheet)

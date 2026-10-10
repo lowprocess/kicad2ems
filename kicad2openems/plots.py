@@ -151,7 +151,8 @@ def plot_lines(lm, m, title=''):
     for name in lm.ports:
         p = next(pp for pp in m.ports if pp.name == name)
         ax.plot(*p.c, 'o', color='#c0392b', ms=5, zorder=9)
-        ax.annotate(name, p.c, xytext=(4, 5), textcoords='offset points', color='#c0392b', fontsize=9, weight='bold')
+        ax.annotate(name, p.c, xytext=(4, 5), textcoords='offset points', color='#c0392b', fontsize=9, weight='bold',
+                    zorder=10)
     ax.set_aspect('equal')
     ax.set_xlim(x0, x1); ax.set_ylim(y0, y1)
     from matplotlib.ticker import FuncFormatter

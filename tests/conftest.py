@@ -12,11 +12,11 @@ ANT = os.path.join(ROOT, 'examples', 'make_antennas.py')
 
 @pytest.fixture(scope='session')
 def boards(tmp_path_factory):
-    """Every generated example board, by name: demo (transition), diff, rlc, lowpass and the four antennas.
+    """Every generated example board, by name: demo (transition), diff, rlc, lowpass, launch and the four antennas.
     Values are base paths (add .kicad_pcb / -top.pos)."""
     d = tmp_path_factory.mktemp('boards')
     out = {}
-    for name, variant in (('demo', None), ('diff', 'diff'), ('rlc', 'rlc'), ('lowpass', 'lowpass')):
+    for name, variant in (('demo', None), ('diff', 'diff'), ('rlc', 'rlc'), ('lowpass', 'lowpass'), ('launch', 'launch')):
         subprocess.check_call([sys.executable, GEN, str(d / name)] + ([variant] if variant else []),
                               stdout=subprocess.DEVNULL)
         out[name] = str(d / name)

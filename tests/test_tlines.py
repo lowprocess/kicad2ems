@@ -107,3 +107,33 @@ def test_ground_nets_region_and_partner(boards, demo_files):
     assert any('differential pair' in n for n in lm.notes)
     assert all(not any('beside it' in note for note in e.notes) for _, _, secs, _ in lm.paths for e, _, _ in secs)
     assert all(e.xs == 'microstrip' for _, _, secs, _ in lm.paths for e, _, _ in secs if e.kind == 'trace')
+
+
+def test_edge_launch_pad_port_and_taper(boards):
+    """The connector's signal pad drawn as two pads numbered 1 is one pad section, running from where the
+    feed meets it to P2 on it; the taper drawn as footprint copper widens the trace in steps; the
+    45 degree opening of the F.Cu pour widens the coplanar gap in steps."""
+    base = boards['launch']
+    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', log=lambda *a: None)
+    lm = build(m)
+    (p, q, secs, branches), = lm.paths
+    assert (p, q) == ('P1', 'P2') and not branches
+    p1, p2 = (next(pp for pp in m.ports if pp.name == n) for n in ('P1', 'P2'))
+    assert sum(e.length for e, _, _ in secs) == pytest.approx(p2.c[0] - p1.c[0], abs=0.01)   # port to port
+    pad = secs[-1][0]
+    assert pad.kind == 'pad' and 'J1.1' in pad.label and pad.w == pytest.approx(1.6, abs=0.01)
+    assert pad.length == pytest.approx(p2.c[0] - 13.45, abs=0.05)            # from the oval's edge to the port
+    assert pad.xs == 'cpwg' and pad.h == pytest.approx(1.4858, abs=1e-3)       # over the cut-away inner planes
+    assert len({e.label for e in lm.elements if e.kind == 'pad'}) == 1         # one pad, not two
+    feed = secs[0][0]
+    assert feed.xs == 'cpwg' and feed.s == pytest.approx(0.25, abs=1e-3) and feed.z0 == pytest.approx(55.9, abs=0.5)
+    rest = [(e, s0 + p1.c[0]) for e, s0, _ in secs[1:-1]]
+    assert all(e.kind == 'trace' for e, _ in rest)
+    opening = [e for e, x in rest if x < 11.4]                 # the pour opens out, the trace is still 0.32 mm
+    assert len(opening) >= 3 and all(e.w == pytest.approx(0.32) for e in opening)
+    z = [e.z0 for e in opening]
+    assert z == sorted(z) and z[0] > feed.z0                   # rising Z0 as the gap opens
+    taper = [e for e, x in rest if x > 11.6]
+    w = [e.w for e in taper]
+    assert len(taper) >= 4 and w == sorted(w) and w[0] > 0.33 and w[-1] > 1.0     # the drawn taper, stepped
+    assert all('widened' in e.label for e in taper)

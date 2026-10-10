@@ -107,6 +107,7 @@ class KiCadBoard:
         """Collect copper items as (layer, net, geometry-in-KiCad-mm) plus tracks, vias, footprints and
         the Edge.Cuts outline pieces."""
         self.items = []          # (layer, net, shapely geometry (mm, y down))
+        self.shapes = []         # the zones and drawn copper among items (not tracks, vias or pads)
         self.tracks = []         # dict(layer, net, width, pts (polyline, mm, y down))
         self.vias = []           # dict(x, y, drill, size, layers, net)
         self.footprints = []
@@ -135,6 +136,7 @@ class KiCadBoard:
                 pts = sx.pts(fp)
                 if len(pts) >= 3:
                     self.items.append((lay, net, Polygon(pts).buffer(0)))
+                    self.shapes.append(self.items[-1])
         for kind in GRAPHICS:
             for g in sx.items(self.root, 'gr_' + kind):
                 lys = sx.layers(g)
@@ -147,6 +149,7 @@ class KiCadBoard:
                 if geom is not None and not geom.is_empty:
                     for l in cu:
                         self.items.append((l, self._net_of(g), geom))
+                        self.shapes.append(self.items[-1])
         for fp in sx.items(self.root, 'footprint') + sx.items(self.root, 'module'):
             self._footprint(fp)
 
@@ -211,6 +214,7 @@ class KiCadBoard:
                 for l in cu:
                     net = next((p['net'] for p in pads if l in p['layers'] and p['geom'].intersects(geom)), '')
                     self.items.append((l, net, geom))
+                    self.shapes.append(self.items[-1])
         attr = [str(t) for t in (sx.item(fp, 'attr') or [])[1:]]
         flag = lambda k: k in attr or sx.val(fp, k, 'no') == 'yes'
         self.footprints.append(dict(ref=ref, value=val, fab=fab_texts, props=props, x=org[0], y=org[1],

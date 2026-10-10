@@ -132,6 +132,7 @@ class Element:
         self.xs, self.z0, self.eeff, self.er, self.h, self.s, self.t = 'no reference', None, None, None, None, None, 0.0
         self.z0_sheet = self.eeff_sheet = None      # zero-thickness copper (openEMS sheets)
         self.tand, self.L = 0.0, None               # dielectric loss, via inductance (H) when no antipad
+        self.offset = 0.0                           # centre of a widened trace's copper off its centre line (mm)
         self.notes = []
 
     @property
@@ -300,24 +301,121 @@ def _references(model, ref, layer, pt):
     return tuple(out)
 
 
-def _split_by_reference(model, ref, e, step=0.25, max_samples=400):
-    """A trace element as consecutive pieces with the same reference planes (sampled every `step` mm)."""
+GAP_STEP = 1.5          # a coplanar gap changing by this factor starts a new section (a tapered gap)
+
+
+def _gap_class(model, ref, layer, refs, pt, d, w, local):
+    """Coplanar-gap class at pt: None when there is no ground within 2h on both sides (the reach classify
+    uses), else the mean gap on a log scale (GAP_STEP per class)."""
+    below, above = refs
+    if (below is None) == (above is None):                 # stripline, or no plane: the gap is not used
+        return None
+    h = abs(model.cu_z[below or above] - model.cu_z[layer])
+    n = np.array([-d[1], d[0]])
+    g = [_side_gap(local, layer, pt, s * n, w, 2 * h) for s in (1, -1)]
+    if any(x is None or x >= 2 * h for x in g):
+        return None
+    return int(round(math.log(max(0.5 * (g[0] + g[1]), 1e-3)) / math.log(GAP_STEP)))
+
+
+class _Local:
+    """The reference copper of one layer near one trace (fast ray casts)."""
+    def __init__(self, ref, layer, region):
+        g = ref.geom.get(layer)
+        self.geom = {layer: g.intersection(region)} if g is not None else {}
+
+
+WIDTH_STEP = 1.2        # a copper width changing by this factor starts a new section (a taper)
+
+
+class NetCopper:
+    """The line nets' tracks plus their zones and drawn copper (gr_* / fp_* shapes) per layer, in model
+    coordinates: where a shape of the trace's own net overlaps it (a taper, a teardrop, copper drawn in
+    a footprint) the conductor is wider than the track. Pads and vias are not included: they are
+    sections of their own."""
+    def __init__(self, model, nets, tracks, reach=5.0):
+        from shapely.ops import unary_union
+        by = {}
+        for l, n, g in getattr(model.board, 'shapes', []):
+            if n in nets and l in model.cu_z:
+                by.setdefault(l, []).append(flip_y(g))
+        for t in tracks:                                   # model coordinates already
+            if t['layer'] in by and t['net'] in nets:
+                by[t['layer']].append(LineString(t['pts']).buffer(t['width'] / 2, quad_segs=6))
+        self.geom = {l: unary_union(gs).intersection(model.outline) for l, gs in by.items()}
+        self.reach = reach
+
+    def near(self, layer, region):
+        g = self.geom.get(layer)
+        return None if g is None else g.intersection(region)
+
+    def width(self, g, pt, n, w):
+        """(width, offset of its centre along n) of the copper g across pt; the track's own (w, 0) when
+        nothing widens it."""
+        if g is None or g.is_empty:
+            return w, 0.0
+        r = max(self.reach, 10 * w)
+        seg = LineString([pt - n * r, pt + n * r]).intersection(g)
+        parts = [seg] if seg.geom_type == 'LineString' else [p for p in getattr(seg, 'geoms', []) if p.geom_type == 'LineString']
+        part = next((p for p in parts if p.distance(Point(*pt)) < 1e-6), None)
+        if part is None:
+            return w, 0.0
+        s = [float(np.dot(np.asarray(c) - pt, n)) for c in part.coords]
+        lo, hi = min(s), max(s)
+        if hi - lo <= w * 1.01:
+            return w, 0.0
+        return hi - lo, 0.5 * (hi + lo)
+
+
+def _split_by_reference(model, ref, e, netcu=None, step=0.25, max_samples=400):
+    """A trace element as consecutive pieces with the same reference planes, coplanar gap class and
+    copper width class (sampled every `step` mm; a one-sample change of the gap alone, such as a via
+    pad beside the trace, is ignored). A piece widened by copper shapes of its net gets that width."""
     from shapely.ops import substring
     line = LineString(e.pts)
     L = line.length
     n = int(min(max_samples, max(3, math.ceil(L / step))))
     pos = [(i + 0.5) * L / n for i in range(n)]
-    sig = [_references(model, ref, e.layer, line.interpolate(s).coords[0]) for s in pos]
+    hmax = max(model.cu_z.values()) - min(model.cu_z.values())
+    wide = netcu.near(e.layer, line.buffer(max(netcu.reach, 10 * e.w) + 0.1)) if netcu is not None else None
+    if wide is not None and wide.is_empty:
+        wide = None
+
+    def across(s):
+        """(point, direction, copper width, centre offset) at distance s along the trace."""
+        pt = np.asarray(line.interpolate(s).coords[0])
+        a = np.asarray(line.interpolate(max(s - 0.01, 0.0)).coords[0])
+        b = np.asarray(line.interpolate(min(s + 0.01, L)).coords[0])
+        d = (b - a) / (np.linalg.norm(b - a) or 1.0)
+        w, off = netcu.width(wide, pt, np.array([-d[1], d[0]]), e.w) if wide is not None else (e.w, 0.0)
+        return pt, d, w, off
+
+    rmax = max(netcu.reach, 10 * e.w) if wide is not None else e.w
+    local = _Local(ref, e.layer, line.buffer(rmax + 2 * hmax + 0.1))
+    refs, gaps, widths = [], [], []
+    for s in pos:
+        pt, d, w, off = across(s)
+        r = _references(model, ref, e.layer, pt)
+        refs.append(r)
+        gaps.append(_gap_class(model, ref, e.layer, r, pt + np.array([-d[1], d[0]]) * off, d, w, local))
+        widths.append(int(round(math.log(w / e.w) / math.log(WIDTH_STEP))))
+    for i in range(1, n - 1):
+        if gaps[i - 1] == gaps[i + 1] != gaps[i] and refs[i - 1] == refs[i] == refs[i + 1]:
+            gaps[i] = gaps[i - 1]
+    sig = list(zip(refs, gaps, widths))
     cuts = [0.0] + [0.5 * (pos[i] + pos[i + 1]) for i in range(n - 1) if sig[i] != sig[i + 1]] + [L]
-    if len(cuts) == 2:
+    if len(cuts) == 2 and not any(widths):
         return [e]
     out = []
     for k, (s0, s1) in enumerate(zip(cuts[:-1], cuts[1:])):
         a = e.a if k == 0 else f"{e.a}>{e.b}#{k}"
         b = e.b if k == len(cuts) - 2 else f"{e.a}>{e.b}#{k + 1}"
         piece = substring(line, s0, s1)
-        out.append(Element('trace', a, b, s1 - s0, layer=e.layer, w=e.w, pts=np.asarray(piece.coords), net=e.net,
-                           label=e.label))
+        _, _, w, off = across(0.5 * (s0 + s1))
+        lab = e.label if abs(w - e.w) < 1e-6 else f"{e.label}, widened to {w:.3g} mm"
+        el = Element('trace', a, b, s1 - s0, layer=e.layer, w=w, pts=np.asarray(piece.coords), net=e.net, label=lab)
+        el.offset = off
+        out.append(el)
     return out
 
 
@@ -374,6 +472,31 @@ def _key(layer, x, y):
     return f"{layer}:{x:.4f}:{y:.4f}"
 
 
+def _footprint_pads(fp, nets, model, inside):
+    """(node, pad, ref) for the footprint's pads on the line nets, in model coordinates. Pads sharing a
+    number, net and layers that touch are one pad (a connector's signal pad drawn as several shapes):
+    their union, centred on its centroid."""
+    from shapely.ops import unary_union
+    groups = {}
+    for q in fp['pads']:
+        if q['net'] in nets and any(l in model.cu_z for l in q['layers']):
+            g = flip_y(q['geom'])
+            if g.intersects(inside):
+                groups.setdefault((q['name'], q['net'], tuple(q['layers'])), []).append(dict(q, geom=g))
+    out = []
+    for (name, _, _), qs in groups.items():
+        u = unary_union([q['geom'] for q in qs]) if len(qs) > 1 else qs[0]['geom']
+        parts = list(getattr(u, 'geoms', [u])) if len(qs) > 1 else [u]
+        for k, g in enumerate(parts):
+            if len(qs) == 1:
+                q = dict(qs[0], xy=np.array([qs[0]['xy'][0], -qs[0]['xy'][1]]))
+            else:
+                c = g.centroid
+                q = dict(qs[0], geom=g, xy=np.array([c.x, c.y]))
+            out.append((f"pad:{fp['ref']}.{name}" + (f"#{k + 1}" if len(parts) > 1 else ""), q, fp['ref']))
+    return out
+
+
 def build(model):
     """The line model of the nets the ports sit on (and the nets reached through series parts)."""
     board = model.board
@@ -413,14 +536,8 @@ def build(model):
     # ---- pads and vias the tracks attach to ----
     pads = []                                              # (node, pad dict with model geometry, footprint ref)
     for fp in board.footprints:
-        if fp['ref'] in model.port_refs:
-            continue
-        for q in fp['pads']:
-            if q['net'] in nets and any(l in model.cu_z for l in q['layers']):
-                g = flip_y(q['geom'])
-                if g.intersects(inside):
-                    pads.append((f"pad:{fp['ref']}.{q['name']}", dict(q, geom=g, xy=np.array([q['xy'][0], -q['xy'][1]])),
-                                 fp['ref']))
+        if fp['ref'] not in model.port_refs:
+            pads += _footprint_pads(fp, nets, model, inside)
     vias = [dict(v, xy=np.array([v['x'], -v['y']]), i=i) for i, v in enumerate(board.vias)
             if v['net'] in nets and not v.get('pth') and inside.contains(Point(v['x'], -v['y']))]
     attached = {}                                          # node -> list of (element index, direction away)
@@ -458,7 +575,8 @@ def build(model):
         pts = np.asarray(geom.coords) if geom.geom_type == 'LineString' else t['pts']
         lm.elements.append(Element('trace', a, b, L, layer=t['layer'], w=t['width'], pts=pts, net=t['net'],
                                    label=f"trace {t['width']:.3g} mm"))
-    # ---- ports: split the trace they sit on ----
+    # ---- ports: split the trace they sit on, or end the pad section they sit in ----
+    port_on_pad = {}                                       # pad node -> port position
     for p in model.ports:
         if p.kind != 'z' or not p.net:
             continue
@@ -474,7 +592,9 @@ def build(model):
             if q is None:
                 lm.notes.append(f"{p.name}: no trace or pad under the port")
                 continue
-            node = next(n_ for n_, qq, _ in pads if qq is q) + ':in'
+            pn = next(n_ for n_, qq, _ in pads if qq is q)
+            port_on_pad[pn] = np.asarray(p.c, float)
+            node = pn + ':core'                                # the pad section runs from the trace to the port
         else:
             e = lm.elements[best[1]]
             line = LineString(e.pts)
@@ -496,17 +616,28 @@ def build(model):
     for node, q, ref in pads:
         if node + ':in' not in used and node not in part_of:
             continue
+        lay = next((l for l in model.cu_order[::-1] if l in q['layers']), q['layers'][0])
+        tr = next((e for e in lm.elements if e.kind == 'trace' and node + ':in' in (e.a, e.b)), None)
+        if node in port_on_pad and node not in part_of and tr is not None:
+            entry = np.asarray(tr.pts[-1] if tr.b == node + ':in' else tr.pts[0], float)   # where the trace meets it
+            pc = port_on_pad[node]
+            L = float(np.hypot(*(pc - entry)))
+            d = (pc - entry) / L if L > 1e-9 else np.array([1.0, 0.0])
+            w = _chord(q['geom'], 0.5 * (entry + pc), np.array([-d[1], d[0]]))
+            lm.elements.append(Element('pad', node + ':in', node + ':core', L, layer=lay, w=w, geom=q['geom'],
+                                       label=f"pad {node[4:]} (to the port)", net=q['net'], pts=np.array([entry, pc])))
+            continue
+        if node in port_on_pad:                            # a part's pad: the port sits where the traces attach
+            lm.ports.update({k: node + ':in' for k, v in lm.ports.items() if v == node + ':core'})
         c = q['xy']
         if node in part_of:
             other = next(o for o in part_of[node][1] if o['name'] != q['name'])
             d = np.array([other['xy'][0], -other['xy'][1]]) - c
         else:
-            tr = next((e for e in lm.elements if e.kind == 'trace' and node + ':in' in (e.a, e.b)), None)
             d = (np.asarray(tr.pts[0 if tr.a != node + ':in' else -1]) - c) if tr is not None else np.array([1.0, 0.0])
         d = d / (np.linalg.norm(d) or 1.0)
         L = _chord(q['geom'], c, d)
         w = _chord(q['geom'], c, np.array([-d[1], d[0]]))
-        lay = next((l for l in model.cu_order[::-1] if l in q['layers']), q['layers'][0])
         full = node in part_of
         lm.elements.append(Element('pad', node + ':in', node + ':core', L if full else L / 2, layer=lay, w=w,
                                    geom=q['geom'], label=f"pad {node[4:]}", net=q['net'],
@@ -563,9 +694,10 @@ def build(model):
                 e.notes.append(f"no plane around the barrel: {e.L * 1e9:.3f} nH")
             lm.elements.append(e)
     # ---- cross-sections: traces split where their reference planes change (antipads, plane edges) ----
+    netcu = NetCopper(model, nets, clipped)
     split = []
     for e in lm.elements:
-        split += _split_by_reference(model, refcu, e) if e.kind == 'trace' and e.length > 0 else [e]
+        split += _split_by_reference(model, refcu, e, netcu) if e.kind == 'trace' and e.length > 0 else [e]
     lm.elements = split
     for e in lm.elements:
         if e.kind == 'trace':
@@ -578,7 +710,7 @@ def build(model):
                 a = np.asarray(line.interpolate(max(0.0, line.length / 2 - 1e-3)).coords[0])
                 b = np.asarray(line.interpolate(min(line.length, line.length / 2 + 1e-3)).coords[0])
                 d = (b - a) / (np.linalg.norm(b - a) or 1.0)
-            classify(model, refcu, e, mid, d)
+            classify(model, refcu, e, mid + np.array([-d[1], d[0]]) * e.offset, d)
         elif e.kind == 'pad':
             d = e.pts[1] - e.pts[0]
             classify(model, refcu, e, 0.5 * (e.pts[0] + e.pts[1]), d / (np.linalg.norm(d) or 1.0))
@@ -614,7 +746,7 @@ def _paths(lm):
             targets = [(None, far)] if far is not None and far != src else []
             if targets:
                 lm.notes.append(f"{p} reaches no other port through traces, pads and parts: its path ends "
-                                f"{dist[far]:.2f} mm from it (copper drawn as shapes or zones is not part of the line model)")
+                                f"{dist[far]:.2f} mm from it (copper drawn as shapes or zones is not followed: it only widens the tracks it overlaps)")
         for q, dst in targets:
             done.add((p, q))
             seq, node = [], dst

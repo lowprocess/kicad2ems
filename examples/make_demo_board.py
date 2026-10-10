@@ -11,6 +11,9 @@ Writes small KiCad 8 test boards (no KiCad needed) and their pick-and-place file
   lowpass / highpass / bandpass
                         1 GHz 3rd-order Butterworth ladders of 0402 parts with ESR / ESL fields, plus
                         OUT_ideal.s2p, the ideal lumped circuit (demo_*.toml overlay it with compare)
+  launch                4-layer edge launch: grounded-CPW feed, a taper drawn in the connector
+                        footprint, 45 degree opening of the F.Cu pour, inner planes cut away under a
+                        connector pad drawn as two pads numbered 1; P2 on the pad at the board edge
 
 Port footprints 'kicad2openems:RF_Port' carry the Fab text P1 / P2.
 """
@@ -82,7 +85,7 @@ def make(path, pos_path):
         fh.write(f"TP1       P1        RF_Port              2.0000    -{yc:.4f}     0.0000  top\n")
         fh.write(f"TP2       P2        RF_Port             22.0000    -{yc:.4f}   180.0000  top\n")
 
-VARIANTS = ('transition', 'diff', 'rlc', 'lowpass', 'highpass', 'bandpass')
+VARIANTS = ('transition', 'diff', 'rlc', 'lowpass', 'highpass', 'bandpass', 'launch')
 if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] not in VARIANTS:
     sys.exit(f"make_demo_board.py: unknown variant {sys.argv[2]!r} - choose one of {', '.join(VARIANTS)}")
 if __name__ == '__main__' and not (len(sys.argv) > 2 and sys.argv[2] in VARIANTS[1:]):
@@ -347,3 +350,80 @@ if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] == 'rlc':
 if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] == 'diff':
     make_diff(sys.argv[1] + '.kicad_pcb', sys.argv[1] + '-top.pos')
     print('wrote', sys.argv[1] + '.kicad_pcb')
+
+
+def make_launch(path, pos_path):
+    """4-layer edge launch: a 0.32 mm grounded-CPW feed on F.Cu (F.Cu GND pour, In1.Cu reference
+    0.21 mm below) into an edge connector's signal pad, drawn as two pads numbered 1 (an oval and a
+    rectangle), with a taper drawn as copper in the connector footprint. The F.Cu pour opens out at
+    45 degrees and In1.Cu / In2.Cu are cut away under the launch, so the pad references B.Cu 1.49 mm
+    below. P2 sits on the pad near the board edge, where the connector pin lands."""
+    W, H, yc = 17.0, 10.0, 5.0
+    gap, wt = 0.25, 0.32
+    hw = wt / 2 + gap                                     # half-width of the F.Cu clearance along the feed
+    L = []
+    L.append('(kicad_pcb (version 20240108) (generator "kicad2openems") (generator_version "8.0")')
+    L.append('  (general (thickness 1.6))')
+    L.append('  (paper "A4")')
+    L.append('  (layers (0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal) (31 "B.Cu" signal)'
+             ' (37 "F.SilkS" user) (44 "Edge.Cuts" user) (49 "F.Fab" user))')
+    L.append('  (setup (stackup')
+    L.append('    (layer "F.Cu" (type "copper") (thickness 0.035))')
+    L.append('    (layer "dielectric 1" (type "prepreg") (thickness 0.2104) (material "FR4") (epsilon_r 4.4) (loss_tangent 0.02))')
+    L.append('    (layer "In1.Cu" (type "copper") (thickness 0.035))')
+    L.append('    (layer "dielectric 2" (type "core") (thickness 1.065) (material "FR4") (epsilon_r 4.6) (loss_tangent 0.02))')
+    L.append('    (layer "In2.Cu" (type "copper") (thickness 0.035))')
+    L.append('    (layer "dielectric 3" (type "prepreg") (thickness 0.2104) (material "FR4") (epsilon_r 4.4) (loss_tangent 0.02))')
+    L.append('    (layer "B.Cu" (type "copper") (thickness 0.035))')
+    L.append('    (copper_finish "None") (dielectric_constraints no))')
+    L.append('    (pad_to_mask_clearance 0))')
+    L.append('  (net 0 "") (net 1 "GND") (net 2 "RF")')
+    L.append(f'  (segment (start 2.0 {yc}) (end 16.0 {yc}) (width {wt}) (layer "F.Cu") (net 2) (uuid "{u()}"))')
+    # F.Cu GND pour: CPW gap along the feed, opening at 45 degrees from x = 10 to a 2.41 mm half-width
+    fcu = [(0, 0), (W, 0), (W, yc - 2.41), (12.0, yc - 2.41), (10.0, yc - hw), (1.5, yc - hw), (1.5, yc + hw),
+           (10.0, yc + hw), (12.0, yc + 2.41), (W, yc + 2.41), (W, H), (0, H)]
+    # In1.Cu / In2.Cu GND planes cut away under the launch, open to the board edge; B.Cu solid
+    inner = [(0, 0), (W, 0), (W, yc - 3.0), (9.9, yc - 3.0), (9.9, yc + 3.0), (W, yc + 3.0), (W, H), (0, H)]
+    full = [(0, 0), (W, 0), (W, H), (0, H)]
+    for lay, pts in (('F.Cu', fcu), ('In1.Cu', inner), ('In2.Cu', inner), ('B.Cu', full)):
+        L.append(f'  (zone (net 1) (net_name "GND") (layer "{lay}") (uuid "{u()}") (hatch edge 0.5)')
+        L.append('    (connect_pads (clearance 0.2)) (min_thickness 0.2) (filled_areas_thickness no)')
+        L.append('    (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))')
+        L.append(f'    (polygon (pts {" ".join(f"(xy {x} {y})" for x, y in pts)}))')
+        L.append(f'    (filled_polygon (layer "{lay}") (pts {" ".join(f"(xy {x:.4f} {y:.4f})" for x, y in pts)})))')
+    for x in [3.0 + 1.5 * i for i in range(5)]:           # GND stitching beside the feed
+        for s in (-1.0, 1.0):
+            L.append(f'  (via (at {x} {yc + s}) (size 0.45) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "{u()}"))')
+    # the edge connector: signal pad 1 = oval + rectangle (one pad), GND pads above and below
+    L.append(f'  (footprint "kicad2openems:Edge_SMA" (layer "F.Cu") (uuid "{u()}") (at 15.5 {yc} 0)')
+    L.append(f'    (property "Reference" "J1" (at 0 -4 0) (layer "F.SilkS") (uuid "{u()}"))')
+    L.append(f'    (property "Value" "Edge_SMA" (at 0 4 0) (layer "F.Fab") (uuid "{u()}"))')
+    L.append(f'    (pad "1" smd rect (at 0.25 0) (size 2.5 1.6) (layers "F.Cu") (net 2 "RF") (uuid "{u()}"))')
+    L.append(f'    (pad "1" smd oval (at -1.25 0) (size 1.6 1.6) (layers "F.Cu") (net 2 "RF") (uuid "{u()}"))')
+    for y in (-3.5, 3.5):
+        L.append(f'    (pad "2" smd rect (at 0.25 {y}) (size 2.5 1.5) (layers "F.Cu") (net 1 "GND") (uuid "{u()}"))')
+    # a taper drawn in the footprint (copper, no pad): 0.32 mm at x = 11.5 widening to 1.2 mm into the oval
+    taper = [(-4.0, -wt / 2), (-1.9, -0.6), (-1.9, 0.6), (-4.0, wt / 2)]
+    L.append(f'    (fp_poly (pts {" ".join(f"(xy {x} {y})" for x, y in taper)}) (stroke (width 0) (type solid)) (fill solid)'
+             f' (layer "F.Cu") (uuid "{u()}"))')
+    L.append('  )')
+    for ref, num, x, rot in (("TP1", 1, 2.0, 0), ("TP2", 2, 16.5, 180)):
+        L.append(f'  (footprint "kicad2openems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x} {yc} {rot})')
+        L.append(f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))')
+        L.append(f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))')
+        L.append(f'    (fp_text user "P{num}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))')
+        L.append('  )')
+    L.append(f'  (gr_rect (start 0 0) (end {W} {H}) (stroke (width 0.1) (type default)) (fill none) (layer "Edge.Cuts") (uuid "{u()}"))')
+    L.append(')')
+    open(path, 'w').write("\n".join(L) + "\n")
+    with open(pos_path, 'w') as fh:
+        fh.write("### Footprint positions - created by kicad2openems demo ###\n## Unit = mm, Angle = deg.\n## Side : top\n")
+        fh.write("# Ref     Val       Package                PosX       PosY       Rot  Side\n")
+        fh.write(f"J1        Edge_SMA  Edge_SMA            15.5000    -{yc:.4f}     0.0000  top\n")
+        fh.write(f"TP1       P1        RF_Port              2.0000    -{yc:.4f}     0.0000  top\n")
+        fh.write(f"TP2       P2        RF_Port             16.5000    -{yc:.4f}   180.0000  top\n")
+
+
+if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] == 'launch':
+    make_launch(sys.argv[1] + '.kicad_pcb', sys.argv[1] + '-top.pos')
+    print('wrote', sys.argv[1] + '.kicad_pcb', sys.argv[1] + '-top.pos')

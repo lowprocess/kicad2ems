@@ -23,6 +23,7 @@ rejected.
 | `diff` | 2-layer edge-coupled differential microstrip pair with a 45° jog (ports `P1±`, `P2±`); no ground copper of its own | none: run with `--ground B.Cu` |
 | `rlc` | microstrip with a gap bridged by an 0402 1.5 pF capacitor, plus a DNP part and an unreadable value (skip notes) | none |
 | `lowpass` / `highpass` / `bandpass` | lumped ladder filters (0402 parts with ESR / ESL fields), plus `OUT_ideal.s2p`, the ideal circuit | `demo_lowpass.toml`, … |
+| `launch` | 4-layer edge launch: grounded-CPW feed, a taper drawn as copper in the connector footprint, the F.Cu pour opening out at 45°, inner planes cut away under a connector pad drawn as two pads numbered 1, P2 on the pad at the board edge | none: `--nets RF,GND --fmin 1 --fmax 6` |
 
 ```bash
 python examples/make_demo_board.py examples/diff diff

@@ -88,3 +88,26 @@ def test_unknown_backend(transition):
     m, lm = transition
     with pytest.raises(ValueError, match='choose one of'):
         solve(lm, m.ports, FREQ, 'spice')
+
+
+@pytest.fixture(scope='module')
+def launch(boards):
+    base = boards['launch']
+    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', log=lambda *a: None)
+    return m, build(m)
+
+
+def test_qucsator_netlist_coplanar(launch):
+    m, lm = launch
+    text, _ = qucs_netlist(lm, m.ports, FREQ)
+    assert 'CLIN:' in text and 'Backside="Metal"' in text and 'CPWLINE' not in text      # qucsator's CPW element
+
+
+@pytest.mark.skipif(_qucsator() is None, reason='qucsator not installed')
+def test_qucsator_matches_skrf_coplanar(launch):
+    pytest.importorskip('skrf')
+    m, lm = launch
+    Sq, _ = solve(lm, m.ports, FREQ, 'qucsator')
+    Ss, _ = solve(lm, m.ports, FREQ, 'skrf')
+    assert np.max(np.abs(db(Sq[:, 1, 0]) - db(Ss[:, 1, 0]))) < 0.3
+    assert np.max(np.abs(Sq[:, 0, 0] - Ss[:, 0, 0])) < 0.05

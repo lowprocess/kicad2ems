@@ -16,13 +16,14 @@ so with `--region` the sections stop at the crop.
 
 | Section | What it is |
 |---|---|
-| trace | KiCad tracks of one width on one layer. Split at T-junctions (where another track ends on it) and where the reference planes above or below change, e.g. over an antipad or past a plane edge (sampled every 0.25 mm) |
-| pad | a component pad at its own width. A trace that ends in a pad is shortened by the part inside the pad: KiCad's track lengths hide this discontinuity |
+| trace | KiCad tracks of one width on one layer. Split at T-junctions (where another track ends on it) and, sampling every 0.25 mm, where the reference planes above or below change (over an antipad, past a plane edge), where the coplanar gap changes by a factor 1.5 (a pour that opens out), and where copper of the trace's own net drawn as a shape or zone widens it by a factor 1.2 (a taper, a teardrop, copper drawn in a footprint): such a piece gets the full copper width across the trace |
+| pad | a component pad at its own width. A trace that ends in a pad is shortened by the part inside the pad: KiCad's track lengths hide this discontinuity. Touching pads with the same number and net are one pad (a connector's signal pad drawn as an oval plus a rectangle). A port on a pad ends the pad section: it runs from where the trace meets the pad to the port |
 | via | a via barrel between the layers that tracks attach to: a coaxial line from the drill to the antipad in the planes it passes, or a lumped inductance (Goldfarb & Pucel) when no plane surrounds it. Barrel beyond the used layers is an open stub |
 | part | a lumped R / L / C part ([lumped parts](model.md#lumped-parts)). A series part continues the path into the next net; a part whose other pad is on a ground net, or a net outside the line model, is a shunt to ground |
 
-Only routed tracks, pads, vias and parts are part of the line model. Copper drawn as shapes or zones is
-not. Gap ports (dipoles) have no line model. The legs of a differential pair are single-ended lines: the
+The path follows routed tracks, pads, vias and parts. Copper drawn as shapes or zones only widens the
+tracks it overlaps; a shape that no track runs through is not a section. Gap ports (dipoles) have no
+line model. The legs of a differential pair are single-ended lines: the
 coupling between them (odd / even mode impedance) is not modelled, and a note says so.
 
 ## Cross-sections and impedances
@@ -83,7 +84,7 @@ nodes, open ends left open. It solves in milliseconds.
 | needs | scikit-rf (`pip install scikit-rf`, or the `fast` extra) | `qucsator_rf` (Qucs-S) or `qucsator` on PATH, or `--qucsator PATH` |
 | runs | in-process | as a separate program (netlist in, dataset out) |
 | microstrip | `MLine` (Hammerstad-Jensen, Kirschning-Jansen dispersion) | `MLIN` |
-| grounded CPW | `CPW` with metal backside | `CPWLINE` |
+| grounded CPW | `CPW` with metal backside | `CLIN` (metal backside) |
 | other sections | `DefinedAEpTandZ0`: a line of the section's Z0 and εeff | `RLCG` line of the section's Z0 and εeff, dielectric loss matched at the band centre |
 | vias without plane, parts | series impedances | series R-L-C chains |
 
