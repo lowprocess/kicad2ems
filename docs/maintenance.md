@@ -1,6 +1,6 @@
 # 12. Maintenance notes
 
-[← Testing](testing.md) · [Index](index.md)
+[← Testing](testing.md) · [Index](index.md) · [Next: GUI →](gui.md)
 
 ## openEMS behaviours and their workarounds
 
@@ -121,4 +121,4 @@ copied into the repository (the line-impedance formulas are implemented from the
 `tlines.py`): keep it that way, or check the license of anything you copy in.
 
 ---
-[← Testing](testing.md) · [Index](index.md)
+[← Testing](testing.md) · [Index](index.md) · [Next: GUI →](gui.md)

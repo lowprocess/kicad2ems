@@ -25,6 +25,7 @@ code. The [README](../README.md) is the landing page: install, a quick start and
 | 10 | [Examples](examples.md) | The example boards and generators, and their verified results |
 | 11 | [Testing](testing.md) | Test layout, fixtures and openEMS stand-ins, real-solver checks |
 | 12 | [Maintenance notes](maintenance.md) | openEMS quirks and their workarounds, adding an option, conventions, checklist, license |
+| 13 | [GUI](gui.md) | The first version of `kicad2openems-gui`: setup, preview, run with progress and Stop, results |
 
 ## Where to start
 
