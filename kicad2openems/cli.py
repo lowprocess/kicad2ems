@@ -71,6 +71,9 @@ def parser():
                                 'PML_n), PEC, PMC, or six values xmin,xmax,ymin,ymax,zmin,zmax')
     g.add_argument('--end-db', type=float, help=f'stop when the field energy has decayed by this much '
                                                 f'(default {D.end_db:g})')
+    g.add_argument('--end-on', choices=['ports', 'energy'],
+                   help='ports (default): stop when the port signals have decayed by --end-db, or the field energy '
+                        'has; energy: only the field energy (openEMS\'s own criterion)')
     g.add_argument('--max-steps', type=int,
                    help=f'timestep limit per run (default {D.max_steps}); low frequencies and high-Q circuits need more')
     g.add_argument('--sigma', type=float, help='copper conductivity S/m (conducting sheets; default PEC)')

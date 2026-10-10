@@ -3,7 +3,7 @@ openEMS setup and runs: CSX geometry (dielectrics, copper sheets, via cylinders)
 excitation, boundaries; one FDTD run per excited port. Needs the openEMS / CSXCAD Python
 packages (imported lazily, so everything else works without them).
 """
-import glob, os, time
+import glob, json, math, os, threading, time
 import numpy as np
 from .constants import EPS0
 from .geometry import split_holes
@@ -223,7 +223,74 @@ def step_limit_warning(name, steps, max_steps, end_db):
             f"{-end_db:g} dB - the fields may still be ringing; raise --max-steps (or accept a higher --end-db)")
 
 
-def execute(FDTD, path, threads=0, verbose=1, progress=None):
+class PortWatch:
+    """Thread that ends a run once every port signal has died away: openEMS's own end criterion is the
+    total field energy, which can stall above --end-db when some energy sits where no port sees it (a
+    static field, a mode the ports do not couple to) while the S-parameters are long settled. Every
+    `interval` s it reads the port voltage / current probes (port_ut* / port_it*, which openEMS flushes as
+    it runs); when the time is past t_min (the excitation pulse) and the largest u^2 + (z i)^2 of any port
+    over the last `window` s is end_db below its peak, it writes ABORT into the run folder (openEMS then
+    stops and finishes normally) and records why in run_end.json."""
+    def __init__(self, path, end_db, t_min, window, z=50.0, interval=2.0):
+        self.path, self.end_db, self.t_min, self.window, self.z, self.interval = path, end_db, t_min, window, z, interval
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self.fired = None
+
+    def start(self):
+        self._thread.start()
+        return self
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join(timeout=5)
+
+    def level(self):
+        """(time of the last sample s, level of the last window below the peak in dB) or None."""
+        return port_decay(self.path, self.window, self.z)
+
+    def _loop(self):
+        while not self._stop.wait(self.interval):
+            try:
+                lv = self.level()
+            except Exception:                                   # a half-written file: try again later
+                continue
+            if lv and lv[0] > self.t_min + self.window and lv[1] <= self.end_db:
+                self.fired = dict(reason='ports', t_ns=lv[0] * 1e9, level_db=lv[1])
+                with open(os.path.join(self.path, 'run_end.json'), 'w') as fh:
+                    json.dump(self.fired, fh)
+                open(os.path.join(self.path, 'ABORT'), 'w').close()
+                return
+
+
+def port_decay(path, window, z=50.0):
+    """(last probe time s, max over ports of the signal power in the last `window` s relative to its peak,
+    dB) from the port probe files of a run folder, or None when there are none yet."""
+    peak, last, tmax = 0.0, 0.0, None
+    for fu in sorted(glob.glob(os.path.join(path, 'port_ut*'))):
+        fi = fu.replace('port_ut', 'port_it')
+        u = np.loadtxt(fu, comments='%', ndmin=2)
+        i = np.loadtxt(fi, comments='%', ndmin=2) if os.path.exists(fi) else None
+        n = len(u) if i is None else min(len(u), len(i))
+        if n < 4:
+            return None
+        t = u[:n, 0]
+        pw = u[:n, 1] ** 2 + ((z * i[:n, 1]) ** 2 if i is not None else 0.0)
+        peak = max(peak, float(pw.max()))
+        tmax = t[-1] if tmax is None else min(tmax, t[-1])
+        last = max(last, float(pw[t >= t[-1] - window].max()))
+    if tmax is None or peak <= 0:
+        return None
+    return float(tmax), 10 * math.log10(max(last, 1e-300) / peak)
+
+
+def pulse_time(fmin, fmax):
+    """Length (s) of openEMS's Gaussian excitation for the band (as set in build_fdtd)."""
+    fc = 0.5 * (fmax - fmin) * 1.05
+    return 2 * 9 / (2 * math.pi * fc)
+
+
+def execute(FDTD, path, threads=0, verbose=1, progress=None, watch=None):
     """FDTD.Run in `path`, restoring the working directory (openEMS changes it). Returns seconds taken.
     progress: None (openEMS writes to the terminal), or dict(mode, label, end_db, max_steps[, on_status]):
     openEMS's output goes to <path>/openems.log and, for mode 'bar' / 'raw', a progress line / the raw
@@ -231,7 +298,11 @@ def execute(FDTD, path, threads=0, verbose=1, progress=None):
     on_status(label, status dict) is called for every openEMS status line."""
     from .progress import Monitor, Tracker, redirect_output
     os.makedirs(path, exist_ok=True)
+    for f in ('ABORT', 'run_end.json'):                         # leftovers of an earlier run in this folder
+        if os.path.exists(os.path.join(path, f)):
+            os.remove(os.path.join(path, f))
     cwd, t1 = os.getcwd(), time.time()
+    pw = PortWatch(path, **watch).start() if watch else None
     try:
         if progress is None:
             FDTD.Run(path, cleanup=True, numThreads=threads, verbose=verbose)
@@ -251,6 +322,10 @@ def execute(FDTD, path, threads=0, verbose=1, progress=None):
                         mon.stop()
     finally:
         os.chdir(cwd)
+        if pw:
+            pw.stop()
+    if os.path.exists(os.path.join(path, 'ABORT')):
+        os.remove(os.path.join(path, 'ABORT'))
     return time.time() - t1
 
 
@@ -266,6 +341,7 @@ class RunResult:
     `analyse` hook returned} (antenna mode: the far-field results)."""
     def __init__(self, S):
         self.S, self.dump_files, self.dump_norm, self.seconds, self.steps, self.extra = S, {}, {}, {}, {}, {}
+        self.ended = {}                             # {port: dict(reason='ports', t_ns, level_db)} when PortWatch ended it
 
 
 def run_dir(m, k, out_dir):
@@ -276,7 +352,7 @@ def run_dir(m, k, out_dir):
 
 def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, xml_path=None, dumps=(),
               verbose=1, diel='fixed', diel_fref=1e9, max_steps=1_000_000, progress=None, exc_fmax=None,
-              setup=None, analyse=None):
+              setup=None, analyse=None, end_on='ports'):
     """One openEMS run with port k excited (top level, so it can run in a worker process). setup(FDTD, CSX)
     may add to the model before the run (antenna mode: the NF2FF box) and its return value is handed to
     analyse(path, ports, token, k, col) after the run. Returns (k, S column (nf, n), {(port, dump): path},
@@ -291,7 +367,11 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
         CSX.Write2XML(os.path.abspath(xml_path))
     if progress is not None:
         progress = dict(progress, label=m.ports[k].name, end_db=end_db, max_steps=max_steps)
-    seconds = execute(FDTD, path, threads, verbose, progress)
+    watch = None
+    if end_on == 'ports':
+        fe = fmax if exc_fmax is None else exc_fmax
+        watch = dict(end_db=end_db, t_min=pulse_time(fmin, fe), window=max(2.0 / fmin, 1e-9), z=m.ports[k].z0)
+    seconds = execute(FDTD, path, threads, verbose, progress, watch=watch)
     files, norm = {}, None
     for d in dumps:
         files[(m.ports[k].name, d.name)] = (os.path.join(path, d.name + '.h5') if d.freqs
@@ -309,7 +389,7 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
 
 def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, threads=0, xml_path=None,
                     dumps=(), dump_runs=None, jobs=1, diel='fixed', diel_fref=1e9, max_steps=1_000_000, progress=None,
-                    exc_fmax=None, setup=None, analyse=None, log=print):
+                    exc_fmax=None, setup=None, analyse=None, log=print, end_on='ports'):
     """One openEMS run per excited port, `jobs` of them at a time (separate processes; without `threads`,
     half the logical CPUs are shared between them). Field dumps are added to the runs in dump_runs (port
     indices; default: the first excited port). progress: None or dict(mode='bar' | 'raw'[, on_status]) -
@@ -340,12 +420,19 @@ def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, 
             if not glob.glob(os.path.join(os.path.dirname(path), dn + '*')):
                 log(f"  WARNING: no output found for field dump {dn}")
         log(f"  {name} done in {seconds:.0f} s" + (f", ~{steps} timesteps" if steps else ''))
+        end = os.path.join(run_dir(m, k, out_dir), 'run_end.json')
+        if os.path.exists(end):
+            with open(end) as fh:
+                res.ended[name] = json.load(fh)
+            log(f"  {name}: stopped when the port signals had decayed by {-res.ended[name]['level_db']:.1f} dB "
+                f"(at {res.ended[name]['t_ns']:.2f} ns; the field energy had not reached --end-db)")
         w = step_limit_warning(name, steps, max_steps, end_db)
         if w:
             log("  " + w)
 
     common = dict(m=m, mesh=mesh, freq=freq, bc=bc, out_dir=out_dir, end_db=end_db, sigma=sigma, threads=threads,
-                  diel=diel, diel_fref=diel_fref, max_steps=max_steps, exc_fmax=exc_fmax, setup=setup, analyse=analyse)
+                  diel=diel, diel_fref=diel_fref, max_steps=max_steps, exc_fmax=exc_fmax, setup=setup, analyse=analyse,
+                  end_on=end_on)
     if jobs == 1:
         for t in tasks:
             log(f"openEMS: exciting {m.ports[t['k']].name} -> {run_dir(m, t['k'], out_dir)}")

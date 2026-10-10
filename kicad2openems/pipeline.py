@@ -323,7 +323,7 @@ class Job:
             self.log(f"WARNING: {jobs} parallel runs need ~{jobs * self.grid['info']['mem_gb']:.1f} GB, "
                      f"{ram:.1f} GB RAM installed - use fewer --jobs")
         progress = dict(mode='raw' if s.openems_output else 'bar', on_status=self.status if self.events else None)
-        run_kw = dict(end_db=s.end_db, sigma=s.sigma, threads=s.threads, diel=s.diel, max_steps=s.max_steps,
+        run_kw = dict(end_db=s.end_db, end_on=s.end_on, sigma=s.sigma, threads=s.threads, diel=s.diel, max_steps=s.max_steps,
                       diel_fref=s.diel_fref * 1e9, progress=progress, log=self.log)
         for f, lm in (self.levels or [])[:-1]:                     # convergence: coarser levels first, no dumps
             self.log(f"--- mesh level x{f:g} ({lm['info']['cells'] / 1e6:.2f} M cells) ---")
@@ -379,7 +379,8 @@ class Job:
             self.summary['fast']['compare'] = compare_table(freq, self.Smm, self.fast['S'], self.names)
         self.figure(plot_results(freq, self.Smm, self.names, f"{name} - openEMS", overlays), '_openems.png',
                     'sparams', 'S-parameter plot')
-        runs = {p: dict(seconds=r.seconds.get(p), steps=r.steps.get(p)) for p in r.seconds}
+        runs = {p: dict(seconds=r.seconds.get(p), steps=r.steps.get(p), ended=getattr(r, 'ended', {}).get(p))
+                for p in r.seconds}
         for k in self.excite:
             runs.setdefault(m.ports[k].name, {})['log'] = self.rel(log_path(run_dir(m, k, s.out)))
         self.summary.update(

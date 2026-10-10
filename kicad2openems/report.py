@@ -321,9 +321,11 @@ def build(sm, base):
         rows = []
         for name, r in sm['runs'].items():
             lp = r.get('log')
-            rows.append([_e(name), f"{r.get('seconds') or 0:.0f} s", f"{r['steps']:,}" if r.get('steps') else '–',
+            end = r.get('ended')
+            why = (f"port signals {end['level_db']:.1f} dB at {end['t_ns']:.2f} ns" if end else 'field energy / step limit')
+            rows.append([_e(name), f"{r.get('seconds') or 0:.0f} s", f"{r['steps']:,}" if r.get('steps') else '–', _e(why),
                          f"<a href='{_e(_rel(lp, base))}'>openems.log</a>" if lp and os.path.exists(lp) else '–'])
-        section('runs', 'openEMS runs', _table(['driven port', 'time', 'timesteps', 'solver output'], rows))
+        section('runs', 'openEMS runs', _table(['driven port', 'time', 'timesteps', 'ended on', 'solver output'], rows))
     files = [[_e(l), f"<a href='{_e(_rel(p, base))}'>{_e(os.path.basename(p))}</a>"] for l, p in sm['files']]
     section('files', 'Output files', _table(['', 'file'], files))
     opts = [[f"<code>{_e(k_)}</code>", _e(v)] for k_, v in sorted(st.items())]

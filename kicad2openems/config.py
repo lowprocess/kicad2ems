@@ -36,7 +36,7 @@ class ConfigError(ValueError):
 
 PATH_KEYS = ('board', 'pos', 'compare', 'out', 'events', 'qucsator')         # relative to the TOML file
 CHOICES = dict(parts=('auto', 'none'), curves=('extremes', 'vertices'), vias=('auto', 'exact', 'centre', 'snap'),
-               diel=('fixed', 'wideband'), mode=('sparams', 'antenna'), fast=('skrf', 'qucsator'))
+               diel=('fixed', 'wideband'), end_on=('ports', 'energy'), mode=('sparams', 'antenna'), fast=('skrf', 'qucsator'))
 CLI_ONLY = ('check', 'config')
 
 
@@ -67,6 +67,7 @@ class Settings:
     converge_tol: tuple = (0.1, 2.0)    # (dB, deg)
     bc: str = 'auto'
     end_db: float = -40.0
+    end_on: str = 'ports'               # 'ports': also stop when the port signals have decayed by end_db
     max_steps: int = 1_000_000
     sigma: float = None
     diel: str = 'fixed'

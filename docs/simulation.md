@@ -60,9 +60,14 @@ level (≈ 0.002 in S at −40 dB).
 
 The total field energy can stall above `--end-db` when some of it sits where the ports do not see it:
 on the SMA launch example it levelled off near −36.5 dB while the port voltages had fallen 74 dB from
-their peak, and the run would have gone on to `--max-steps`. `--end-db -30` is usually enough for
-S-parameters and much faster; when a run stalls, writing a file named `ABORT` into its run folder
-(`out/openems/exc_<port>`) makes openEMS stop and finish normally.
+their peak, and the run would have gone on to `--max-steps`. So by default (`--end-on ports`) a run
+also ends when the port signals have decayed: `simulation.PortWatch` reads the port voltage and current
+probes every 2 s (openEMS flushes them as it runs) and, once past the excitation pulse, compares the
+largest u² + (Z i)² of any port over the last 2 / fmin (at least 1 ns) with its peak. At `--end-db` it
+writes `ABORT` into the run folder; openEMS stops and finishes normally, and `run_end.json` records
+the level and time. The log says so, and the report's run table has an *ended on* column.
+`--end-on energy` keeps openEMS's own criterion only. `--end-db -30` is usually enough for S-parameters
+and faster still. Writing `ABORT` into a run folder by hand stops a run the same way.
 
 `--preview` estimates the pulse length in timesteps and how many pulse lengths `--max-steps` allows,
 with a warning below 20. Low frequencies make the pulse long (its length grows as 1 / bandwidth), and

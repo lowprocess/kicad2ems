@@ -97,7 +97,8 @@ used and a `config:` note says so (`config.resolve_path`).
 | Option | Default | Meaning |
 |---|---|---|
 | `--bc` | auto | boundaries: `auto` (PEC on a solid bottom plane, MUR elsewhere), or one value for all sides, or six (`xmin,xmax,ymin,ymax,zmin,zmax`), each `PEC`, `PMC`, `MUR` or `PML_n` (any n, e.g. `PML_8`) |
-| `--end-db` | −40 | stop when the field energy has fallen by this much ([simulation](simulation.md#ending-a-run)) |
+| `--end-db` | −40 | stop when the port signals or the field energy have fallen by this much ([simulation](simulation.md#ending-a-run)) |
+| `--end-on ports\|energy` | ports | `energy`: only openEMS's field-energy criterion |
 | `--max-steps` | 1 000 000 | timestep limit per run |
 | `--sigma` | PEC | copper conductivity (S/m) |
 | `--diel fixed\|wideband` | fixed | dielectric loss model ([simulation](simulation.md#dielectrics)) |
