@@ -2,7 +2,8 @@
 
 [← Post-processing](postprocessing.md) · [Index](index.md) · [Next: Testing →](testing.md)
 
-All example boards except `filter.kicad_pcb` are **generated** (no KiCad needed) and git-ignored. Most
+All example boards except `filter.kicad_pcb`, `hairpin.kicad_pcb` and `sma_launch.kicad_pcb` are
+**generated** (no KiCad needed) and git-ignored. Most
 have a config in `examples/` whose paths are relative to it. Run from the repository root:
 
 ```bash
@@ -47,6 +48,25 @@ the command line (`make_antennas.py ifa out arm=19 s=2.5`).
 drawn as copper polygons on 0.21 mm FR-4 (εr 4.4, tan δ 0.02), 15 × 15 mm, solid ground on B.Cu.
 `hairpin.toml` previews it with the line model and qucsator (corners, tees, open ends and the two
 coupled pairs between the hairpins); `examples/reference/hairpin_openems.s2p` is its openEMS result.
+
+<a id="the-sma-launch"></a>
+## The SMA launch
+
+`sma_launch.kicad_pcb` is a KiCad 10 board: a Molex 73251-1151 end-launch SMA jack (J7) onto a
+50 Ω line (net `REF_SMA_N`) on a 4-layer board, with a taper drawn as copper polygons in the connector
+footprint and two ports (`TP1` at the far end, `TP2` on the connector pad). The ground planes end at the
+board edges with no stitching there, so `sma_launch.toml` closes them with
+[edge walls](meshing.md#edge-walls) (`edge_walls = "all"`): without them the plane pair beyond the last
+via row resonates near 4.7 GHz. It runs from 1 to 6 GHz to −30 dB, about a minute of openEMS
+(16 k steps). The embedded 3D models were removed from the board file.
+
+| 1–6 GHz | worst S11 | S21 at 6 GHz |
+|---|---|---|
+| openEMS (`reference/sma_launch_openems.s2p`) | −10.2 dB at 5.6 GHz | −1.02 dB |
+| line model, qucsator (`reference/sma_launch_fast.s2p`) | −13.2 dB at 5.56 GHz | −0.68 dB |
+
+The line model takes the taper and the pad steps but not the connector body, hence the shallower
+match at the top of the band.
 
 <a id="the-microstrip-filter"></a>
 ## The microstrip filter

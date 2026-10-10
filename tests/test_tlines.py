@@ -137,3 +137,24 @@ def test_edge_launch_pad_port_and_taper(boards):
     w = [e.w for e in taper]
     assert len(taper) >= 4 and w == sorted(w) and w[0] > 0.33 and w[-1] > 1.0     # the drawn taper, stepped
     assert all('widened' in e.label for e in taper)
+
+
+def test_sma_launch_example_line_model():
+    """examples/sma_launch: the drawn taper in the connector footprint widens the line, and the line
+    model stays close to the openEMS reference over 1-6 GHz."""
+    import numpy as np
+    import skrf as rf
+    from kicad2openems.kicad import KiCadBoard
+    from kicad2openems.model import Model
+    from kicad2openems.tlines import build
+    from kicad2openems.fastsolve import solve
+    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
+    m = Model(KiCadBoard(os.path.join(ex, 'sma_launch.kicad_pcb')), nets=['REF_SMA_N', 'GND'],
+              pos_file=os.path.join(ex, 'sma_launch-all.pos'), log=lambda *a: None)
+    lm = build(m)
+    widths = [e.w for e in lm.elements if e.kind == 'trace' and e.w]
+    assert max(widths) > 1.5 * min(widths)                                   # the taper is seen
+    ref = rf.Network(os.path.join(ex, 'reference', 'sma_launch_openems.s2p'))
+    s, _ = solve(lm, m.ports, ref.f, backend='skrf')
+    s21 = 20 * np.log10(np.abs(s[:, 1, 0]))
+    assert np.max(np.abs(s21 - ref.s_db[:, 1, 0])) < 0.6

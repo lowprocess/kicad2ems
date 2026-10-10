@@ -1,0 +1,9 @@
+### Footprint positions - created on 2026-10-08T13:19:20 ###
+### Printed by KiCad version 10.0.5-1.fc44
+## Unit = mm, Angle = deg.
+## Side : All
+# Ref     Val        Package                PosX       PosY       Rot  Side
+J7        732511151  Molex_73251-1151    29.8000    -7.0000  180.0000  top
+TP1       RF_Port    RF_Port              2.0000    -7.0000    0.0000  top
+TP2       RF_Port    RF_Port             29.0000    -7.0000  180.0000  top
+## End
