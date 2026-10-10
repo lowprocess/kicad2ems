@@ -78,10 +78,22 @@ def write_xml(m, mesh, fmin, fmax, path, bc=('MUR',) * 6, backend='auto', **kw):
     return backend
 
 
-def solve(path, m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, log=print):
+def _metal(m, sigma):
+    """mom25d's conductor loss for --sigma: the conductivity with the copper thickness of the ports' layer
+    (openEMS models the same copper as conducting sheets of that conductivity). None without sigma."""
+    if not sigma:
+        return None, None
+    from mom25d.sim import Metal
+    lays = [p.layer for p in m.ports if p.layer in m.cu_t] or [l for l in m.cu_order if l in m.copper]
+    t_mm = m.cu_t.get(lays[0], 0.035) if lays else 0.035
+    return Metal(float(sigma), t_mm * 1e-3), t_mm
+
+
+def solve(path, m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigma=None, log=print):
     """S-parameters of the CSX file `path` on `freq` (Hz) from mom25d, as kicad2openems reports them:
     (S (nf, n, n) in m.user_ports order with differential pairs as (d, c) modes, names, reference
-    impedances, info dict). dmax in mm (planes 3x, refined near the copper of other layers)."""
+    impedances, info dict). dmax in mm (planes 3x, refined near the copper of other layers). sigma (S/m):
+    conductor loss, as --sigma gives openEMS (default: lossless copper, like openEMS's PEC sheets)."""
     import_mom25d()
     from mom25d.csx import CSXModel
     from mom25d.run import solve_band
@@ -95,8 +107,11 @@ def solve(path, m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60
     dm = dmax * 1e-3
     area = m.outline.area * 1e-6
     planes = {k: 3 * dm for k, gs in model.shapes.items() if sum(g.area for g in gs) > 0.5 * area}
+    metal, t_mm = _metal(m, sigma)
+    if metal is not None:                                           # mom25d does not take it from the CSX file
+        log(f"  mom25d: conductor loss sigma {sigma:g} S/m, {t_mm * 1e3:g} um copper")
     sim = model.simulation(dmax=dm, dmax_layer=planes, fmin=fmin, fmax=fmax, solver='auto', verbose=False,
-                           wave_down_to=fmin,
+                           wave_down_to=fmin, metal=metal,
                            mesher='gmsh' if mesher == 'gmsh' else 'auto', title=os.path.basename(path))
     for note in [n for n in model.notes if 'lumped port' in n] + list(sim.log.notes):
         log(f"  mom25d: {note}")

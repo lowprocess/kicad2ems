@@ -83,3 +83,20 @@ def test_mom_without_openems(run_cli, tmp_path, no_csxcad):
         assert (out / f).exists(), f
 
 
+
+
+def test_sigma_reaches_mom(demo_files):
+    """--sigma is conductor loss in openEMS's conducting sheets; MoM gets the same (it is not in the CSX file
+    for mom25d), with the copper thickness of the ports' layer."""
+    from kicad2openems.mom import import_mom25d, _metal
+    from kicad2openems.kicad import KiCadBoard
+    from kicad2openems.model import Model
+    import_mom25d()
+    base, _ = demo_files
+    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
+              log=lambda *a: None)
+    assert _metal(m, None) == (None, None)
+    metal, t = _metal(m, 5.8e7)
+    assert metal.sigma == 5.8e7 and t == pytest.approx(m.cu_t[m.ports[0].layer]) and metal.t == pytest.approx(t * 1e-3)
+    zs = metal.zs(np.array([1e9]))
+    assert zs.real[0] > 0                                           # a lossy surface impedance

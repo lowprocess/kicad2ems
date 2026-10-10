@@ -304,7 +304,7 @@ class Job:
                      f"the same file CSXCAD writes)")
         self.wrote('CSX geometry (AppCSXCAD; solved by mom25d)', xml)
         S, names, zref, info = solve(xml, m, self.freq, dmax=s.mom_dmax, port=s.mom_port, mesher=s.mom_mesher,
-                                     max_solves=s.mom_solves, log=self.log)
+                                     max_solves=s.mom_solves, sigma=s.sigma, log=self.log)
         out = self.path(f"_mom.s{len(names)}p")
         write_touchstone(out, self.freq, np.nan_to_num(S), zref, comment=f"mom25d 2.5D MoM ({self.name})", names=names)
         self.wrote('S-parameters, mom25d (MoM)', out)
