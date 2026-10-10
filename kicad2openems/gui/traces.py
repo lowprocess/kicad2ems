@@ -90,8 +90,8 @@ def load_traces(files, compare=None):
 
 
 def default_visible(tr):
-    """Shown at first: the lower triangle (S11, S21, S22, ...) of non-empty traces."""
-    return tr.i >= tr.j and not tr.empty
+    """Shown at first: the first port's column (S11, S21, S31, ...: what a run driving P1 computes)."""
+    return tr.j == 0 and not tr.empty
 
 
 def group_delay(f, s):

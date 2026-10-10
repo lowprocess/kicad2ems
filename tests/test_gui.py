@@ -164,7 +164,7 @@ def test_window_config_and_plots(tmp_path, monkeypatch):
     _s2p(tmp_path / 'b_openems.s2p', f, S)
     sp = w.results.splot
     sp.set_traces(load_traces([('t', str(tmp_path / 'b_openems.s2p'))]))
-    assert [t.param for t in sp.visible()] == ['S11', 'S21', 'S22'] and [t.param for t in sp.reflections()] == ['S11', 'S22']
+    assert [t.param for t in sp.visible()] == ['S11', 'S21'] and [t.param for t in sp.reflections()] == ['S11']
     sp.add_marker(2e9)
     assert sp.table.rowCount() == 1 and sp.table.item(0, 1).text() == '-13.98 dB'
     sp.kind.setCurrentText('VSWR')

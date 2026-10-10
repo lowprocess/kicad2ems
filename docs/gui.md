@@ -44,7 +44,7 @@ the same run can be repeated from a terminal with `kicad2openems <out>/gui_run.t
 ## S-parameter plots
 
 The Results tab lists every trace of the run on the left, grouped by source (openEMS, mom25d, line model,
-compare file); tick the ones to show. At first: the lower triangle (S11, S21, S22, …); traces that were
+compare file); tick the ones to show. At first: the first port's column (S11, S21, S31, …, what a run driving P1 computes); traces that were
 not computed (ports not driven) are greyed out. *Show* picks the rectangular plot: |S| in dB or linear,
 phase, group delay (−dφ/dω) or VSWR.
 
