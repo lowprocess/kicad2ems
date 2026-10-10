@@ -62,6 +62,14 @@ def sparam_table(freq, S, names):
     return rows
 
 
+def unknown_note(S, names):
+    """'; not computed (written as 0): S(P2,P2), ...' for the Touchstone header: the terms that are NaN (ports
+    not driven, or no path between two ports in the line model), which a Touchstone file cannot leave out."""
+    bad = ~np.isfinite(S).all(0)
+    terms = [f"S({names[i]},{names[j]})" for i in range(len(names)) for j in range(len(names)) if bad[i, j]]
+    return f"; not computed (written as 0): {', '.join(terms)}" if terms else ''
+
+
 def compare_table(freq, S, Sx, names, floor_db=-40.0):
     """openEMS (S) against another result (Sx) on the same frequencies: per S-parameter the largest
     vector difference |S - Sx| and the maxima in dB; for transmissions also the largest |S| difference
@@ -388,8 +396,8 @@ class Job:
             return
         Smm, names, zref = mixed_mode(S, m)
         out = self.path(f"_fast.s{len(names)}p")
-        write_touchstone(out, self.freq, np.nan_to_num(Smm), zref, comment=f"line model, {backend} ({self.name})",
-                         names=names)
+        write_touchstone(out, self.freq, np.nan_to_num(Smm), zref, names=names,
+                         comment=f"line model, {backend} ({self.name})" + unknown_note(Smm, names))
         self.wrote(f'S-parameters, fast line model ({backend})', out)
         self.fast = dict(S=Smm, names=names, backend=backend, seconds=seconds)
         self.summary['fast'] = dict(backend=backend, seconds=seconds, touchstone=self.rel(out),
@@ -488,7 +496,8 @@ class Job:
                      f"terms between unexcited ports are unknown (written as 0)")
         self.Smm, self.names, zref = mixed_mode(r.S, m)
         out = self.path(f"_openems.s{len(self.names)}p")
-        write_touchstone(out, freq, np.nan_to_num(self.Smm), zref, comment=f"openEMS FDTD ({name})", names=self.names)
+        write_touchstone(out, freq, np.nan_to_num(self.Smm), zref, names=self.names,
+                         comment=f"openEMS FDTD ({name})" + unknown_note(self.Smm, self.names))
         self.wrote('S-parameters (Touchstone)', out)
         overlays = []
         if s.compare:

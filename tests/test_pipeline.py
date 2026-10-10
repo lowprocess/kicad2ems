@@ -76,3 +76,19 @@ def test_antenna_run(boards, run_cli, tmp_path, monkeypatch):
     sm = json.loads((out / 'patch_openems.json').read_text())
     assert sm['antenna']['f_pattern'] == 2.45e9 and 'sphere' not in sm['antenna']
     assert "id='antenna'" in (out / 'patch_report.html').read_text()
+
+
+def test_touchstone_says_what_was_not_computed(demo_files, run_cli, tmp_path, no_openems):
+    """With only P1 driven, S22 is unknown: the file still needs a number there (0), and says so."""
+    from kicad2openems.pipeline import unknown_note
+    S = np.zeros((3, 2, 2), complex)
+    S[:, 1, 1] = np.nan
+    assert unknown_note(S, ['P1', 'P2']) == '; not computed (written as 0): S(P2,P2)'
+    assert unknown_note(np.zeros((3, 2, 2)), ['P1', 'P2']) == ''
+    base, _ = demo_files
+    out = tmp_path / 'out'
+    code, so, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'RF,GND', '--ground', 'B.Cu',
+                            '--fmin', '1', '--fmax', '8', '--points', '21', '--out', out, '--excite', 'P1')
+    assert code == 0, err
+    head = (out / 'demo_openems.s2p').read_text().splitlines()[0]
+    assert head.endswith('not computed (written as 0): S(P2,P2)'), head
