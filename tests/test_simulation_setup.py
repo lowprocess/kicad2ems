@@ -1,78 +1,11 @@
 """build_fdtd against strict stand-ins for CSXCAD / openEMS: every scalar handed over must be a plain
 Python number (older CSXCAD releases test type(v) in (int, float) and reject numpy scalars)."""
-import sys, types
 import numpy as np
 import pytest
 from kicad2openems.kicad import KiCadBoard
 from kicad2openems.model import Model
 from kicad2openems.boundaries import resolve_bc
 from kicad2openems.mesh import auto_mesh
-
-
-def _scalar(v, where):
-    assert type(v) in (int, float, bool, str), f"{where}: {type(v).__name__} {v!r} is not a plain Python scalar"
-
-
-def _coords(v, where):
-    if isinstance(v, np.ndarray):
-        return
-    for x in v:
-        _scalar(x, where)
-
-
-class Prim:
-    def __init__(self, log, name): self.log, self.name = log, name
-    def AddLinPoly(self, pts, nd, elev, length, priority=0):
-        _scalar(elev, 'AddLinPoly elevation'); _scalar(length, 'AddLinPoly length'); self.log.append('linpoly')
-    def AddPolygon(self, pts, nd, elev, priority=0):
-        _scalar(elev, 'AddPolygon elevation'); self.log.append('polygon')
-    def AddBox(self, a, b, priority=0):
-        _coords(a, 'box start'); _coords(b, 'box stop'); self.log.append('box')
-    def AddCylinder(self, a, b, r, priority=0):
-        _coords(a, 'cyl start'); _coords(b, 'cyl stop'); _scalar(r, 'cyl radius'); self.log.append('cyl')
-
-
-@pytest.fixture
-def fake_openems(monkeypatch):
-    log = []
-    class Grid:
-        def SetDeltaUnit(self, u): _scalar(u, 'delta unit')
-        def SetLines(self, d, v): assert np.asarray(v).dtype == float
-    class CSX:
-        def GetGrid(self): return Grid()
-        def AddMaterial(self, name, **kw):
-            for k, v in kw.items(): _scalar(v, f'AddMaterial {k}')
-            return Prim(log, name)
-        def AddConductingSheet(self, name, **kw):
-            for k, v in kw.items(): _scalar(v, f'AddConductingSheet {k}')
-            return Prim(log, name)
-        def AddMetal(self, name): return Prim(log, name)
-        def AddLumpedElement(self, name, ny, caps=True, **kw):
-            _scalar(ny, 'lumped ny')
-            for k, v in kw.items(): _scalar(v, f'AddLumpedElement {k}')
-            log.append(('lumped', name, kw)); return Prim(log, name)
-    class FDTD:
-        def __init__(self, NrTS, EndCriteria): _scalar(NrTS, 'NrTS'); _scalar(EndCriteria, 'EndCriteria')
-        def SetGaussExcite(self, f0, fc): _scalar(f0, 'f0'); _scalar(fc, 'fc')
-        def SetBoundaryCond(self, bc): [_scalar(b, 'bc') for b in bc]
-        def SetCSX(self, c): pass
-        def AddLumpedPort(self, nr, R, start, stop, d, excite=0, priority=0):
-            _scalar(R, 'port R'); _coords(start, 'port start'); _coords(stop, 'port stop'); _scalar(excite, 'excite')
-            log.append('port'); return object()
-    class Debye(Prim):
-        def __init__(self, pset, order, name, **kw):
-            _scalar(order, 'debye order')
-            for k, v in kw.items(): _scalar(v, f'Debye {k}')
-            Prim.__init__(self, log, name); log.append(('debye', name, order))
-        def SetDispersiveMaterialProperty(self, order, **kw):
-            for k, v in kw.items(): _scalar(v, f'Debye pole {k}')
-    CSX.GetParameterSet = lambda self: None
-    CSX.AddProperty = lambda self, p: None
-    props = types.SimpleNamespace(CSPropDebyeMaterial=Debye)
-    monkeypatch.setitem(sys.modules, 'CSXCAD', types.SimpleNamespace(ContinuousStructure=CSX, CSProperties=props))
-    monkeypatch.setitem(sys.modules, 'CSXCAD.CSProperties', props)
-    monkeypatch.setitem(sys.modules, 'openEMS', types.SimpleNamespace(openEMS=FDTD))
-    return log
 
 
 @pytest.mark.parametrize('sigma', [None, 5.8e7])
@@ -98,3 +31,39 @@ def test_build_fdtd_wideband_dielectric(demo_files, fake_openems):
     debye = [x for x in fake_openems if isinstance(x, tuple) and x[0] == 'debye']
     assert len(debye) == len(m.layers) and all(order >= 3 for _, _, order in debye)
     assert fake_openems.count('linpoly') == len(m.layers)
+
+
+def test_port_watch_stops_a_decayed_run(tmp_path):
+    """PortWatch writes ABORT once every port signal is end_db below its peak after the pulse, and records
+    why; a signal still ringing keeps the run going."""
+    import json, time, numpy as np
+    from kicad2openems.simulation import PortWatch, port_decay, pulse_time
+    t = np.arange(0, 20e-9, 10e-12)
+    ring = np.exp(-((t - 1e-9) / 0.3e-9) ** 2) + 1e-3 * np.sin(2 * np.pi * 3e9 * t)     # -60 dB ripple: still on
+    for name, sig in (('port_ut_1', ring), ('port_it_1', ring / 50), ('port_ut_2', 0.5 * ring), ('port_it_2', ring / 100)):
+        np.savetxt(tmp_path / name, np.column_stack([t, sig]), header='t u', comments='% ')
+    level = port_decay(str(tmp_path), 2e-9)
+    assert level[0] == pytest.approx(t[-1]) and -62 < level[1] < -55
+    # the field energy still falling (a ringing filter): the port level alone does not stop the run
+    log = "".join(f"[@        {k}s] Timestep:         {1000 * k} || Speed:  100.0 MC/s (1e-3 s/TS) || Energy: ~1e-15 (-{10 + 2 * k:.2f}dB)\n"
+                  for k in range(1, 13))
+    (tmp_path / 'openems.log').write_text(log)
+    w = PortWatch(str(tmp_path), end_db=-40, t_min=2e-9, window=2e-9, interval=0.05).start()
+    time.sleep(0.4)
+    w.stop()
+    assert not (tmp_path / 'ABORT').exists()
+    # stalled energy (the SMA launch: a plateau far above end_db): the ports decide
+    log = "".join(f"[@        {k}s] Timestep:         {1000 * k} || Speed:  100.0 MC/s (1e-3 s/TS) || Energy: ~1e-15 (-{36 + 0.05 * k:.2f}dB)\n"
+                  for k in range(1, 13))
+    (tmp_path / 'openems.log').write_text(log)
+    w = PortWatch(str(tmp_path), end_db=-40, t_min=2e-9, window=2e-9, interval=0.05).start()
+    time.sleep(0.4)
+    w.stop()
+    assert (tmp_path / 'ABORT').exists()
+    assert json.loads((tmp_path / 'run_end.json').read_text())['reason'] == 'ports'
+    (tmp_path / 'ABORT').unlink()
+    w = PortWatch(str(tmp_path), end_db=-70, t_min=2e-9, window=2e-9, interval=0.05).start()
+    time.sleep(0.3)
+    w.stop()
+    assert not (tmp_path / 'ABORT').exists()                        # -60 dB is not -70 dB
+    assert pulse_time(1e9, 6e9) == pytest.approx(2 * 9 / (2 * np.pi * 2.625e9))

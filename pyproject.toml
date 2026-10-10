@@ -4,10 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kicad2openems"
-version = "0.1.0"
+dynamic = ["version"]
 description = "KiCad board -> openEMS 3D FDTD model with automatic meshing, ports and S-parameter output"
 readme = "README.md"
 requires-python = ">=3.10"
+license = {text = "GPL-3.0-or-later"}
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+]
 authors = [{ name = "Claude", email = "noreply@anthropic.com" }]
 dependencies = [
     "numpy>=1.24",
@@ -17,12 +23,22 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=7", "scipy>=1.10"]
+fast = ["scikit-rf>=1.0"]          # --fast skrf: the line model as S-parameters (qucsator: a separate program)
+dumps = ["h5py>=3"]                # frequency-domain field dumps (openEMS's own Python package needs it too)
+gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13"]   # kicad2openems-gui
+test = ["pytest>=7", "scikit-rf>=1.0", "h5py>=3"]
 # openEMS and CSXCAD are not on PyPI: install them from your distribution or build them from source
 # (see README); everything except the actual FDTD run works without them.
 
 [project.scripts]
 kicad2openems = "kicad2openems.cli:main"
+kicad2openems-gui = "kicad2openems.gui:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "kicad2openems.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["kicad2openems*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

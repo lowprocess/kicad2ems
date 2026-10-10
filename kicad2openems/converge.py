@@ -69,7 +69,7 @@ def compare_levels(S_levels, names, floor_db=-40.0):
     return out
 
 
-def report(factors, cmp, tol_db=0.1, tol_deg=2.0):
+def verdict(factors, cmp, tol_db=0.1, tol_deg=2.0):
     """Text table and a verdict: converged when the second-finest level is within tolerance."""
     lines = [f"convergence (vs the finest level x{factors[-1]:g}, |S| > -40 dB):"]
     for f, c in zip(factors, cmp):

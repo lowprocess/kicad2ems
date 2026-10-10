@@ -1,0 +1,21 @@
+# kicad2openems run configuration for an SMA edge launch (Molex 73251-1151 end-launch jack) onto a
+# 50 ohm line on a 4-layer board, with a drawn copper taper at the connector pad. 1-6 GHz.
+#   kicad2openems examples/sma_launch.toml --preview       # line model + qucsator in a second
+#   kicad2openems examples/sma_launch.toml                 # openEMS, about a minute
+# The board's ground planes end at the board edges with no stitching there: edge walls stand in for
+# it (without them the plane pair beyond the last via row resonates near 4.7 GHz).
+# Reference result: examples/reference/sma_launch_openems.s2p (use with --compare)
+board    = "sma_launch.kicad_pcb"
+pos      = "sma_launch-all.pos"
+nets     = ["REF_SMA_N", "GND"]
+no_mask  = true
+fmin     = 1.0          # GHz
+fmax     = 6.0
+points   = 401
+out      = "out"
+
+[openems]
+excite     = ["P1"]     # S11 and S21 (S12 by reciprocity)
+end_db     = -30
+edge_walls = "all"      # PEC where the planes end at every board edge (stitching stand-in)
+fast       = "qucsator"

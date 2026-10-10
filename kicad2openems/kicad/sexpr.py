@@ -46,6 +46,38 @@ def xy(node, name):
     return None if it is None else (float(it[1]), float(it[2]))
 
 
+def pts(node):
+    """Points of a (pts ...) list: (xy x y) entries and, in KiCad 7+ polygons, (arc (start) (mid) (end))
+    entries expanded into points along the arc."""
+    from .shapes import arc_points
+    p = item(node, 'pts')
+    out = []
+    for c in (p[1:] if p else []):
+        if not isinstance(c, list):
+            continue
+        if c[0] == 'xy':
+            out.append((float(c[1]), float(c[2])))
+        elif c[0] == 'arc':
+            out += [tuple(q) for q in arc_points(xy(c, 'start'), xy(c, 'mid'), xy(c, 'end'))]
+    return out
+
+
+def width(node, default=0.0):
+    """Line width: (stroke (width w)) in KiCad 7+, (width w) before."""
+    st = item(node, 'stroke')
+    if st is not None and item(st, 'width') is not None:
+        return val(st, 'width', default, float)
+    return val(node, 'width', default, float)
+
+
+def filled(node, default=True):
+    """Fill flag of a graphic: (fill solid|yes) / (fill none|no); `default` when there is none."""
+    f = val(node, 'fill')
+    if f is None:
+        return default
+    return str(f).lower() in ('solid', 'yes', 'true')
+
+
 def layers(node):
     out = []
     for key in ('layer', 'layers'):

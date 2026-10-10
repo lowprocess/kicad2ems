@@ -1,17 +1,183 @@
 {
- "ports": [
-  "P1",
-  "P2"
+ "name": "filter",
+ "version": "0.2.0",
+ "mode": "S-parameters",
+ "command": "kicad2openems filter.toml --out out",
+ "created": "2026-10-10 11:53",
+ "settings": {
+  "board": "examples/filter.kicad_pcb",
+  "pos": "examples/filter-all.pos",
+  "nets": [
+   "RF",
+   "GND"
+  ],
+  "region": null,
+  "ports": [],
+  "cut_ports": false,
+  "ground": null,
+  "mask": false,
+  "parts": "auto",
+  "fmin": 1.0,
+  "fmax": 8.0,
+  "points": 401,
+  "res": 20.0,
+  "fine": 0.05,
+  "air": 5.0,
+  "ratio": 1.4,
+  "nz": 4,
+  "curves": "extremes",
+  "vias": "auto",
+  "via_snap": 0.2,
+  "edge_walls": [],
+  "edge_keepout": 0.5,
+  "converge": null,
+  "converge_tol": [
+   0.1,
+   2.0
+  ],
+  "bc": "auto",
+  "end_db": -40.0,
+  "end_on": "ports",
+  "max_steps": 1000000,
+  "sigma": null,
+  "diel": "fixed",
+  "diel_fref": 1.0,
+  "excite": [
+   "P1"
+  ],
+  "threads": 0,
+  "jobs": 1,
+  "mode": "sparams",
+  "ff_freq": [],
+  "ff_step": 2.0,
+  "dump": [],
+  "dump_port": null,
+  "compare": null,
+  "fast": "qucsator",
+  "qucsator": null,
+  "preview": false,
+  "no_report": false,
+  "openems_output": false,
+  "events": null,
+  "out": "out"
+ },
+ "images": {
+  "lines": "filter_tlines.png",
+  "mesh": "filter_mesh.png",
+  "sparams": "filter_openems.png"
+ },
+ "files": [
+  [
+   "transmission-line sections",
+   "filter_tlines.png"
+  ],
+  [
+   "S-parameters, fast line model (qucsator)",
+   "filter_fast.s2p"
+  ],
+  [
+   "model and mesh",
+   "filter_mesh.png"
+  ],
+  [
+   "CSX geometry (AppCSXCAD)",
+   "filter.xml"
+  ],
+  [
+   "S-parameters (Touchstone)",
+   "filter_openems.s2p"
+  ],
+  [
+   "S-parameter plot",
+   "filter_openems.png"
+  ],
+  [
+   "run summary (JSON)",
+   "filter_openems.json"
+  ],
+  [
+   "report",
+   "filter_report.html"
+  ]
  ],
- "zref": [
-  50.0,
-  50.0
- ],
+ "dumps": [],
+ "model": {
+  "board": "examples/filter.kicad_pcb",
+  "outline_mm": [
+   20.0,
+   20.0
+  ],
+  "nets": [
+   "RF",
+   "GND"
+  ],
+  "diel": "fixed",
+  "vias": 5,
+  "vias_signal": 5,
+  "signal_nets": [
+   "RF"
+  ],
+  "stack": [
+   {
+    "name": "dielectric 1",
+    "z0": 0.0,
+    "z1": 0.2,
+    "er": 4.4,
+    "tand": 0.011
+   }
+  ],
+  "copper": [
+   {
+    "layer": "F.Cu",
+    "z": 0.2,
+    "modelled": true
+   },
+   {
+    "layer": "B.Cu",
+    "z": 0.0,
+    "modelled": true
+   }
+  ],
+  "ports": [
+   {
+    "name": "P1",
+    "kind": "z",
+    "layer": "F.Cu",
+    "ref_layer": "B.Cu",
+    "w": 0.3500220750551897,
+    "z0": 50.0,
+    "h": 0.2,
+    "at": [
+     1.0875055187637974,
+     13.9
+    ],
+    "direction": "z",
+    "gap": null
+   },
+   {
+    "name": "P2",
+    "kind": "z",
+    "layer": "F.Cu",
+    "ref_layer": "B.Cu",
+    "w": 0.35002208350509534,
+    "z0": 50.0,
+    "h": 0.2,
+    "at": [
+     18.912494479123726,
+     13.9
+    ],
+    "direction": "z",
+    "gap": null
+   }
+  ],
+  "parts": [],
+  "notes": []
+ },
  "mesh": {
-  "nx": 175,
-  "ny": 118,
+  "nx": 181,
+  "ny": 129,
   "nz": 17,
-  "cells": 351050,
+  "cells": 396933,
   "fine_mm": 0.05,
   "maxres_die_mm": 0.8932527913780639,
   "maxres_air_mm": 1.8737028625,
@@ -28,22 +194,647 @@
   "vias": "auto",
   "vias_snapped": 0,
   "via_max_move_mm": 0.0,
-  "dt_ps": 0.06510504496737678,
+  "dt_ps": 0.07011705568647734,
   "min_cell_mm": [
-   0.02499999999999947,
-   0.040000000000000036,
+   0.033333333333333215,
+   0.032222222222222374,
    0.04999999999999999
   ],
-  "mem_gb": 0.052657499999999996,
+  "mem_gb": 0.059539949999999994,
   "lines_across_ports": {
-   "P1": 6,
-   "P2": 6
+   "P1": 7,
+   "P2": 7
   }
  },
+ "lines": {
+  "paths": [
+   {
+    "port": "P1",
+    "to": "P2",
+    "z_port": 50.0,
+    "sections": [
+     {
+      "kind": "trace",
+      "label": "trace 0.35 mm",
+      "layer": "F.Cu",
+      "xs": "microstrip",
+      "w": 0.35,
+      "length": 4.7074944812362025,
+      "z0": 50.20324351470088,
+      "eeff": 3.1795596961213497,
+      "z0_sheet": 52.72191960657493,
+      "eeff_sheet": 3.3061171992484515,
+      "er": 4.4,
+      "h": 0.2,
+      "s": null,
+      "delay_ps": 27.999650362638313,
+      "notes": [],
+      "value": null,
+      "start": 0.0
+     },
+     {
+      "kind": "trace",
+      "label": "strip 0.353 mm",
+      "layer": "F.Cu",
+      "xs": "microstrip",
+      "w": 0.35299999999999976,
+      "length": 2.1765,
+      "z0": 49.9669173706879,
+      "eeff": 3.1824700398446493,
+      "z0_sheet": 52.45939607862922,
+      "eeff_sheet": 3.30848516297216,
+      "er": 4.4,
+      "h": 0.2,
+      "s": null,
+      "delay_ps": 12.951501807312994,
+      "notes": [],
+      "value": null,
+      "start": 4.7074944812362025
+     },
+     {
+      "kind": "coupling",
+      "label": "coupled to the next line, gap 0.584 mm",
+      "layer": "F.Cu",
+      "xs": "coupled",
+      "w": 0.5838000000000001,
+      "length": 0.0,
+      "z0": null,
+      "eeff": null,
+      "z0_sheet": null,
+      "eeff_sheet": null,
+      "er": null,
+      "h": null,
+      "s": null,
+      "delay_ps": null,
+      "notes": [
+       "Ze 54.3 / Zo 50.6 ohm over 10.76 mm"
+      ],
+      "value": null,
+      "start": 6.883994481236202
+     },
+     {
+      "kind": "coupling",
+      "label": "coupled to the next line, gap 0.74 mm",
+      "layer": "F.Cu",
+      "xs": "coupled",
+      "w": 0.7400000000000002,
+      "length": 0.0,
+      "z0": null,
+      "eeff": null,
+      "z0_sheet": null,
+      "eeff_sheet": null,
+      "er": null,
+      "h": null,
+      "s": null,
+      "delay_ps": null,
+      "notes": [
+       "Ze 53.7 / Zo 51.2 ohm over 10.76 mm"
+      ],
+      "value": null,
+      "start": 6.883994481236202
+     },
+     {
+      "kind": "coupling",
+      "label": "coupled to the next line, gap 0.74 mm",
+      "layer": "F.Cu",
+      "xs": "coupled",
+      "w": 0.7400000000000002,
+      "length": 0.0,
+      "z0": null,
+      "eeff": null,
+      "z0_sheet": null,
+      "eeff_sheet": null,
+      "er": null,
+      "h": null,
+      "s": null,
+      "delay_ps": null,
+      "notes": [
+       "Ze 53.7 / Zo 51.2 ohm over 10.76 mm"
+      ],
+      "value": null,
+      "start": 6.883994481236202
+     },
+     {
+      "kind": "coupling",
+      "label": "coupled to the next line, gap 0.584 mm",
+      "layer": "F.Cu",
+      "xs": "coupled",
+      "w": 0.5837999999999983,
+      "length": 0.0,
+      "z0": null,
+      "eeff": null,
+      "z0_sheet": null,
+      "eeff_sheet": null,
+      "er": null,
+      "h": null,
+      "s": null,
+      "delay_ps": null,
+      "notes": [
+       "Ze 54.3 / Zo 50.6 ohm over 10.76 mm"
+      ],
+      "value": null,
+      "start": 6.883994481236202
+     },
+     {
+      "kind": "trace",
+      "label": "strip 0.353 mm",
+      "layer": "F.Cu",
+      "xs": "microstrip",
+      "w": 0.35299999999999976,
+      "length": 2.1739000000000015,
+      "z0": 49.9669173706879,
+      "eeff": 3.1824700398446493,
+      "z0_sheet": 52.45939607862922,
+      "eeff_sheet": 3.30848516297216,
+      "er": 4.4,
+      "h": 0.2,
+      "s": null,
+      "delay_ps": 12.936030222337576,
+      "notes": [],
+      "value": null,
+      "start": 6.883994481236202
+     },
+     {
+      "kind": "trace",
+      "label": "trace 0.35 mm",
+      "layer": "F.Cu",
+      "xs": "microstrip",
+      "w": 0.35,
+      "length": 4.707494479123726,
+      "z0": 50.20324351470088,
+      "eeff": 3.1795596961213497,
+      "z0_sheet": 52.72191960657493,
+      "eeff_sheet": 3.3061171992484515,
+      "er": 4.4,
+      "h": 0.2,
+      "s": null,
+      "delay_ps": 27.999650350073537,
+      "notes": [],
+      "value": null,
+      "start": 9.057894481236204
+     }
+    ],
+    "branches": [
+     {
+      "at": 6.883994481236202,
+      "length": 8.450000000000005,
+      "label": "stub (12 sections, ends: open)",
+      "z0": 49.9669173706879
+     },
+     {
+      "at": 6.883994481236202,
+      "length": 10.889999999999999,
+      "label": "stub (2 sections, ends: open)",
+      "z0": 49.9669173706879
+     },
+     {
+      "at": 6.883994481236202,
+      "length": 8.450000000000006,
+      "label": "stub (12 sections, ends: open)",
+      "z0": 49.9669173706879
+     },
+     {
+      "at": 6.883994481236202,
+      "length": 10.959999999999999,
+      "label": "stub (2 sections, ends: open)",
+      "z0": 49.9669173706879
+     },
+     {
+      "at": 6.883994481236202,
+      "length": 8.450000000000005,
+      "label": "stub (12 sections, ends: open)",
+      "z0": 49.9669173706879
+     },
+     {
+      "at": 6.883994481236202,
+      "length": 10.76,
+      "label": "stub (1 section, ends: open)",
+      "z0": 49.9669173706879
+     },
+     {
+      "at": 6.883994481236202,
+      "length": 8.450000000000006,
+      "label": "stub (12 sections, ends: open)",
+      "z0": 49.9669173706879
+     },
+     {
+      "at": 6.883994481236202,
+      "length": 10.959999999999999,
+      "label": "stub (2 sections, ends: open)",
+      "z0": 49.9669173706879
+     },
+     {
+      "at": 6.883994481236202,
+      "length": 8.450000000000005,
+      "label": "stub (12 sections, ends: open)",
+      "z0": 49.9669173706879
+     },
+     {
+      "at": 6.883994481236202,
+      "length": 10.889999999999999,
+      "label": "stub (2 sections, ends: open)",
+      "z0": 49.9669173706879
+     }
+    ]
+   }
+  ],
+  "notes": [
+   "7 strip(s) from copper drawn as shapes (rectilinear shapes on the line nets)"
+  ],
+  "groups": [
+   {
+    "lines": 5,
+    "length": 1.570000000000002,
+    "layer": "F.Cu",
+    "widths": [
+     0.35299999999999976,
+     0.35299999999999976,
+     0.35299999999999976,
+     0.35299999999999976,
+     0.35299999999999976
+    ],
+    "gaps": [
+     0.5837999999999983,
+     0.7400000000000002,
+     0.7400000000000002,
+     0.5838000000000019
+    ],
+    "h": 0.2,
+    "er": 4.4,
+    "labels": [
+     "strip 0.353 mm (coupled 1/5)",
+     "strip 0.353 mm (coupled 2/5)",
+     "strip 0.353 mm (coupled 3/5)",
+     "strip 0.353 mm (coupled 4/5)",
+     "strip 0.353 mm (coupled 5/5)"
+    ],
+    "pairs": [
+     {
+      "gap": 0.5837999999999983,
+      "ze": 54.2572335831822,
+      "zo": 50.601422023794086,
+      "eeff_e": 3.4542526400563665,
+      "eeff_o": 3.1582936666892656
+     },
+     {
+      "gap": 0.7400000000000002,
+      "ze": 53.71093521956387,
+      "zo": 51.20089442277033,
+      "eeff_e": 3.4228447080703175,
+      "eeff_o": 3.193072973115659
+     },
+     {
+      "gap": 0.7400000000000002,
+      "ze": 53.71093521956387,
+      "zo": 51.20089442277033,
+      "eeff_e": 3.4228447080703175,
+      "eeff_o": 3.193072973115659
+     },
+     {
+      "gap": 0.5838000000000019,
+      "ze": 54.257233583182185,
+      "zo": 50.6014220237941,
+      "eeff_e": 3.4542526400563656,
+      "eeff_o": 3.1582936666892665
+     }
+    ]
+   },
+   {
+    "lines": 5,
+    "length": 10.759999999999996,
+    "layer": "F.Cu",
+    "widths": [
+     0.35299999999999976,
+     0.35299999999999976,
+     0.35299999999999976,
+     0.35299999999999976,
+     0.35299999999999976
+    ],
+    "gaps": [
+     0.5837999999999983,
+     0.7400000000000002,
+     0.7400000000000002,
+     0.5838000000000001
+    ],
+    "h": 0.2,
+    "er": 4.4,
+    "labels": [
+     "strip 0.353 mm (coupled 1/5)",
+     "strip 0.353 mm (coupled 2/5)",
+     "strip 0.353 mm (coupled 3/5)",
+     "strip 0.353 mm (coupled 4/5)",
+     "strip 0.353 mm (coupled 5/5)"
+    ],
+    "pairs": [
+     {
+      "gap": 0.5837999999999983,
+      "ze": 54.2572335831822,
+      "zo": 50.601422023794086,
+      "eeff_e": 3.4542526400563665,
+      "eeff_o": 3.1582936666892656
+     },
+     {
+      "gap": 0.7400000000000002,
+      "ze": 53.71093521956387,
+      "zo": 51.20089442277033,
+      "eeff_e": 3.4228447080703175,
+      "eeff_o": 3.193072973115659
+     },
+     {
+      "gap": 0.7400000000000002,
+      "ze": 53.71093521956387,
+      "zo": 51.20089442277033,
+      "eeff_e": 3.4228447080703175,
+      "eeff_o": 3.193072973115659
+     },
+     {
+      "gap": 0.5838000000000001,
+      "ze": 54.25723358318219,
+      "zo": 50.60142202379409,
+      "eeff_e": 3.454252640056366,
+      "eeff_o": 3.158293666689266
+     }
+    ]
+   }
+  ],
+  "junctions": [
+   {
+    "kind": "tee",
+    "node": "F.Cu:7.9715:-13.9000",
+    "xs": "microstrip",
+    "layer": "F.Cu",
+    "widths": [
+     0.35299999999999976,
+     0.35299999999999976,
+     0.35299999999999976
+    ],
+    "at": [
+     7.9715,
+     13.899999999999999
+    ],
+    "angle": null,
+    "gap": null
+   },
+   {
+    "kind": "open",
+    "node": "F.Cu:7.9715:-3.0100",
+    "xs": "microstrip",
+    "layer": "F.Cu",
+    "widths": [
+     0.35299999999999976
+    ],
+    "at": [
+     7.9715,
+     3.01
+    ],
+    "angle": null,
+    "gap": null
+   },
+   {
+    "kind": "tee",
+    "node": "F.Cu:12.0311:-13.9000",
+    "xs": "microstrip",
+    "layer": "F.Cu",
+    "widths": [
+     0.35299999999999976,
+     0.35299999999999976,
+     0.35299999999999976
+    ],
+    "at": [
+     12.0311,
+     13.899999999999999
+    ],
+    "angle": null,
+    "gap": null
+   },
+   {
+    "kind": "open",
+    "node": "F.Cu:12.0311:-3.0100",
+    "xs": "microstrip",
+    "layer": "F.Cu",
+    "widths": [
+     0.35299999999999976
+    ],
+    "at": [
+     12.031099999999999,
+     3.01
+    ],
+    "angle": null,
+    "gap": null
+   },
+   {
+    "kind": "open",
+    "node": "F.Cu:8.9083:-15.4700",
+    "xs": "microstrip",
+    "layer": "F.Cu",
+    "widths": [
+     0.35299999999999976
+    ],
+    "at": [
+     8.9083,
+     15.47
+    ],
+    "angle": null,
+    "gap": null
+   },
+   {
+    "kind": "open",
+    "node": "F.Cu:10.0013:-3.1400",
+    "xs": "microstrip",
+    "layer": "F.Cu",
+    "widths": [
+     0.35299999999999976
+    ],
+    "at": [
+     10.0013,
+     3.14
+    ],
+    "angle": null,
+    "gap": null
+   },
+   {
+    "kind": "open",
+    "node": "F.Cu:11.0943:-15.4700",
+    "xs": "microstrip",
+    "layer": "F.Cu",
+    "widths": [
+     0.35299999999999976
+    ],
+    "at": [
+     11.0943,
+     15.47
+    ],
+    "angle": null,
+    "gap": null
+   },
+   {
+    "kind": "open",
+    "node": "F.Cu:1.0000:-13.9000",
+    "xs": "microstrip",
+    "layer": "F.Cu",
+    "widths": [
+     0.35
+    ],
+    "at": [
+     1.0,
+     13.9
+    ],
+    "angle": null,
+    "gap": null
+   },
+   {
+    "kind": "open",
+    "node": "F.Cu:19.0000:-13.9000",
+    "xs": "microstrip",
+    "layer": "F.Cu",
+    "widths": [
+     0.35
+    ],
+    "at": [
+     19.0,
+     13.9
+    ],
+    "angle": null,
+    "gap": null
+   }
+  ]
+ },
+ "fast": {
+  "backend": "qucsator",
+  "seconds": 0.37716031074523926,
+  "touchstone": "filter_fast.s2p",
+  "table": [
+   {
+    "param": "S(P1,P1)",
+    "fmin_db": -0.02375818318412812,
+    "fc_db": -0.12934417531218506,
+    "fmax_db": -0.28697464698770125,
+    "min_db": -12.128055107157723,
+    "f_min": 3257500000.0,
+    "max_db": -0.02375818318412812,
+    "f_max": 1000000000.0
+   },
+   {
+    "param": "S(P2,P1)",
+    "fmin_db": -122.30988602285501,
+    "fc_db": -110.60439001483046,
+    "fmax_db": -97.9410776690855,
+    "min_db": -122.30988602285501,
+    "f_min": 1000000000.0,
+    "max_db": -6.458858957208253,
+    "f_max": 3275000000.0
+   },
+   {
+    "param": "S(P2,P2)",
+    "fmin_db": -0.02374938404685764,
+    "fc_db": -0.12931216716492552,
+    "fmax_db": -0.28687563556190976,
+    "min_db": -12.128465416099111,
+    "f_min": 3257500000.0,
+    "max_db": -0.02374938404685861,
+    "f_max": 1000000000.0
+   }
+  ],
+  "compare": [
+   {
+    "param": "S(P1,P1)",
+    "max_ddb": null,
+    "max_dvec": 0.8353638778481487,
+    "openems_max_db": 0.053921101138386385,
+    "other_max_db": -0.02375818318412812,
+    "ddelay_ps": null
+   },
+   {
+    "param": "S(P2,P1)",
+    "max_ddb": 34.1843873214922,
+    "max_dvec": 0.6784262548853383,
+    "openems_max_db": -6.515212943513343,
+    "other_max_db": -6.458858957208253,
+    "ddelay_ps": null
+   }
+  ]
+ },
+ "pulse_steps": 11118,
+ "results": {
+  "names": [
+   "P1",
+   "P2"
+  ],
+  "zref": [
+   50.0,
+   50.0
+  ],
+  "excited": [
+   "P1"
+  ],
+  "freq_ghz": [
+   1.0,
+   4.5,
+   8.0
+  ],
+  "table": [
+   {
+    "param": "S(P1,P1)",
+    "fmin_db": 0.009113258003230389,
+    "fc_db": -0.1426836153378764,
+    "fmax_db": -0.17975065662918052,
+    "min_db": -24.554351023035963,
+    "f_min": 3380000000.0,
+    "max_db": 0.053921101138386385,
+    "f_max": 1070000000.0
+   },
+   {
+    "param": "S(P2,P1)",
+    "fmin_db": -45.66082930830804,
+    "fc_db": -55.500738285521706,
+    "fmax_db": -46.008802068201106,
+    "min_db": -70.58375282792964,
+    "f_min": 6495000000.0,
+    "max_db": -6.515212943513343,
+    "f_max": 3275000000.0
+   }
+  ],
+  "compare_file": null
+ },
+ "runs": {
+  "P1": {
+   "seconds": 491.018919467926,
+   "steps": 195157,
+   "ended": null,
+   "log": "openems/exc_P1/openems.log"
+  }
+ },
+ "warnings": [],
+ "log": [
+  "stack (bottom to top):",
+  "  dielectric 1   z 0.000..0.200 mm  er 4.40  tand 0.0110",
+  "  copper F.Cu     z 0.200 mm",
+  "  copper B.Cu     z 0.000 mm",
+  "outline 20.00 x 20.00 mm, vias 5 (5 on signal nets ['RF'], 0 other)",
+  "  P1: lumped, F.Cu -> B.Cu, w 0.350 mm, h 0.200 mm, at (1.088, 13.900) mm (KiCad), Z 50 ohm",
+  "  P2: lumped, F.Cu -> B.Cu, w 0.350 mm, h 0.200 mm, at (18.912, 13.900) mm (KiCad), Z 50 ohm",
+  "mesh: 181 x 129 x 17 = 0.40 M cells (fine 0.050 mm, max 0.89 mm in dielectric / 1.87 mm in air, air margin 5.0 mm), boundaries xmin=MUR xmax=MUR ymin=MUR ymax=MUR zmin=PEC zmax=MUR (PEC on the bottom plane), time step 0.070 ps, ~0.1 GB",
+  "transmission line P1 -> P2: 8 sections, 13.77 mm, Z0 50.0..50.2 ohm, 10 branch(es)",
+  "  2 coupled section(s) (5 lines 1.57 mm, 5 lines 10.76 mm); discontinuities: 7 open, 2 tee",
+  "fast line model (qucsator): 377 ms -> out/filter_fast.s2p",
+  "wrote out/filter_mesh.png",
+  "excitation pulse ~11118 timesteps (estimate); --max-steps 1000000 allows 90 pulse lengths",
+  "openEMS: exciting P1 -> examples/out/openems/exc_P1",
+  "  P1 done in 491 s, ~195157 timesteps",
+  "note: P2 not excited - their reflection and the terms between unexcited ports are unknown (written as 0)"
+ ],
+ "runtime_s": 493.41026616096497,
+ "ports": [
+  "P1",
+  "P2"
+ ],
+ "zref": [
+  50.0,
+  50.0
+ ],
  "excited": [
   "P1"
  ],
  "parts": [],
- "diel": "fixed",
- "runtime_s": 205.9707670211792
+ "diel": "fixed"
 }
