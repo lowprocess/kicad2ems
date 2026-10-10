@@ -5,6 +5,7 @@ One run of kicad2openems as a sequence of stages, driven by a config.Settings:
         model()     KiCadBoard -> Model (stack, copper, vias, ports, lumped parts)
         mesh()      boundaries, automatic mesh (or the --converge levels), cavity check, field-dump specs
         lines()     transmission-line sections and Z0 (tlines.py); with --fast, their S-parameters (fastsolve.py)
+        mom()       with --mom: the CSX geometry (<name>.xml) solved by mom25d, a 2.5D MoM reference (mom.py)
         preview()   <name>_mesh.png, excitation length; --preview stops here (after the report)
         solve()     openEMS runs: S-parameters (all excited ports, --jobs), --converge levels, or antenna mode
         outputs()   Touchstone, plots, field-dump maps, antenna / convergence results, line-model comparison
@@ -92,7 +93,7 @@ class Job:
         self.fmin, self.fmax = settings.fmin * 1e9, settings.fmax * 1e9
         self.antenna = settings.antenna
         self.t0 = time.time()
-        self.levels = self.ant = self.result = self.lm = self.fast = None
+        self.levels = self.ant = self.result = self.lm = self.fast = self.mom_res = None
         self.coarse, self.dumps = [], []
         self.events = None
         mode = 'preview' if settings.preview else ('antenna' if self.antenna else 'S-parameters')
@@ -161,7 +162,7 @@ class Job:
         return code
 
     def _run(self):
-        for st in (self.model, self.mesh, self.lines, self.preview):
+        for st in (self.model, self.mesh, self.lines, self.mom, self.preview):
             self.stage(st.__name__)
             st()
         if self.s.preview:
@@ -274,6 +275,44 @@ class Job:
         if self.s.fast:
             self.fast_solve()
 
+    def mom(self):
+        """With --mom: the CSX geometry solved by mom25d (2.5D Method of Moments), a second full-wave reference
+        next to openEMS and the line model. A reference aid: a failure is a warning, never the end of the run."""
+        if not self.s.mom:
+            return
+        if self.antenna:
+            self.log("mom25d: not used in antenna mode (it solves copper over an infinite ground plane)")
+            return
+        try:
+            self._mom()
+        except Exception as e:
+            if os.environ.get('KICAD2OPENEMS_TRACEBACK'):
+                raise
+            self.log(f"WARNING: mom25d failed: {type(e).__name__}: {e}")
+            self.mom_res = None
+            self.summary.pop('mom', None)
+
+    def _mom(self):
+        from .mom import write_xml, solve
+        s, m = self.s, self.m
+        self.freq = np.linspace(self.fmin, self.fmax, s.points)
+        xml = self.path('.xml')
+        write_xml(m, self.grid, self.fmin, self.fmax, xml, bc=self.bc, sigma=s.sigma, diel=s.diel,
+                  diel_fref=s.diel_fref * 1e9, max_steps=s.max_steps, end_db=s.end_db)
+        self.wrote('CSX geometry (AppCSXCAD; solved by mom25d)', xml)
+        S, names, zref, info = solve(xml, m, self.freq, dmax=s.mom_dmax, port=s.mom_port, mesher=s.mom_mesher,
+                                     max_solves=s.mom_solves, log=self.log)
+        out = self.path(f"_mom.s{len(names)}p")
+        write_touchstone(out, self.freq, np.nan_to_num(S), zref, comment=f"mom25d 2.5D MoM ({self.name})", names=names)
+        self.wrote('S-parameters, mom25d (MoM)', out)
+        self.mom_res = dict(S=S, names=names, info=info)
+        self.summary['mom'] = dict(touchstone=self.rel(out), table=sparam_table(self.freq, S, names),
+                                   **{k: info[k] for k in ('seconds', 'solves', 'unknowns', 'triangles', 'solver',
+                                                           'mesher', 'dmax_mm', 'ports', 'notes')})
+        if self.fast:
+            self.summary['mom']['compare_fast'] = compare_table(self.freq, S, self.fast['S'], names)
+        self.log(f"mom25d: {info['solves']} EM solves, {info['seconds']:.0f} s -> {out}")
+
     def fast_solve(self):
         from .fastsolve import solve
         s, m = self.s, self.m
@@ -309,6 +348,11 @@ class Job:
             self.figure(plot_results(self.freq, self.fast['S'], self.fast['names'],
                                      f"{self.name} - fast line model ({s.fast})", label=f"line model ({s.fast})"),
                         '_fast.png', 'fast', 'S-parameter plot, fast line model')
+        if self.mom_res and s.preview:                               # MoM against the line model
+            ov = [(self.freq, self.fast['S'], f"line model ({s.fast})", ':')] if self.fast else []
+            self.figure(plot_results(self.freq, self.mom_res['S'], self.mom_res['names'],
+                                     f"{self.name} - mom25d (MoM)", ov, label='mom25d'),
+                        '_mom.png', 'mom', 'S-parameter plot, mom25d')
 
     def solve(self):
         from .simulation import run_excitations, port_index
@@ -385,6 +429,9 @@ class Job:
         if self.fast:
             overlays.append((freq, self.fast['S'], f"line model ({self.fast['backend']})", ':'))
             self.summary['fast']['compare'] = compare_table(freq, self.Smm, self.fast['S'], self.names)
+        if self.mom_res and self.mom_res['names'] == self.names:
+            overlays.append((freq, self.mom_res['S'], 'mom25d (MoM)', '-.'))
+            self.summary['mom']['compare'] = compare_table(freq, self.Smm, self.mom_res['S'], self.names)
         self.figure(plot_results(freq, self.Smm, self.names, f"{name} - openEMS", overlays), '_openems.png',
                     'sparams', 'S-parameter plot')
         runs = {p: dict(seconds=r.seconds.get(p), steps=r.steps.get(p), ended=getattr(r, 'ended', {}).get(p))

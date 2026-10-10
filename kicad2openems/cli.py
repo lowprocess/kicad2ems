@@ -109,6 +109,15 @@ def parser():
                    help='also solve the transmission-line sections as a circuit (milliseconds) with scikit-rf or '
                         'qucsator; written as <name>_fast.sNp and compared with openEMS in the report')
     g.add_argument('--qucsator', metavar='PATH', help='qucsator executable (default: qucsator_rf or qucsator on PATH)')
+    g = ap.add_argument_group('MoM reference (mom25d)')
+    g.add_argument('--mom', action='store_true',
+                   help='also solve the CSX geometry (<name>.xml, the one openEMS gets) with the 2.5D MoM solver mom25d: '
+                        '<name>_mom.sNp, compared with openEMS and the line model; works with --preview')
+    g.add_argument('--mom-dmax', type=float, metavar='MM', help='largest MoM cell along the copper (default 0.3)')
+    g.add_argument('--mom-port', choices=['auto', 'wave', 'lumped'],
+                   help='auto (default): de-embedded wave ports where a straight feed allows, else lumped')
+    g.add_argument('--mom-mesher', choices=['triangle', 'gmsh'], help='MoM surface mesher (default triangle)')
+    g.add_argument('--mom-solves', type=int, metavar='N', help='most EM solves of the adaptive sweep (default 60)')
     g = ap.add_argument_group('output')
     g.add_argument('--compare', help='Touchstone file to overlay on the result plot')
     g.add_argument('--preview', action='store_true', help='write the model/mesh preview and the report, then exit')

@@ -407,6 +407,11 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
                 os.remove(os.path.join(path, f))
     if xml_path:
         CSX.Write2XML(os.path.abspath(xml_path))
+        try:                                                    # what mom25d needs beyond the geometry
+            from .mom import add_hints
+            add_hints(xml_path, m, fmin, fmax)
+        except Exception:
+            pass
     if progress is not None:
         progress = dict(progress, label=m.ports[k].name, end_db=end_db, max_steps=max_steps)
     watch = None

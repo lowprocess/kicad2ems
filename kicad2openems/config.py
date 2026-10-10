@@ -36,7 +36,8 @@ class ConfigError(ValueError):
 
 PATH_KEYS = ('board', 'pos', 'compare', 'out', 'events', 'qucsator')         # relative to the TOML file
 CHOICES = dict(parts=('auto', 'none'), curves=('extremes', 'vertices'), vias=('auto', 'exact', 'centre', 'snap'),
-               diel=('fixed', 'wideband'), end_on=('ports', 'energy'), mode=('sparams', 'antenna'), fast=('skrf', 'qucsator'))
+               diel=('fixed', 'wideband'), end_on=('ports', 'energy'), mode=('sparams', 'antenna'), fast=('skrf', 'qucsator'),
+               mom_port=('auto', 'wave', 'lumped'), mom_mesher=('triangle', 'gmsh'))
 CLI_ONLY = ('check', 'config')
 
 
@@ -85,6 +86,11 @@ class Settings:
     compare: str = None
     fast: str = None                    # 'skrf' | 'qucsator': S-parameters of the line model too
     qucsator: str = None                # path of the qucsator executable (default: on PATH)
+    mom: bool = False                   # also solve the CSX geometry with mom25d (2.5D MoM): <name>_mom.sNp
+    mom_dmax: float = 0.3               # mm: largest MoM cell along the copper (planes: 3x, refined near traces)
+    mom_port: str = 'auto'              # 'auto': wave ports where a straight feed allows, else lumped
+    mom_mesher: str = 'triangle'        # 'triangle' | 'gmsh'
+    mom_solves: int = 60                # most EM solves of the adaptive sweep
     preview: bool = False
     no_report: bool = False
     openems_output: bool = False
@@ -160,7 +166,7 @@ def _sides(v):
 CONVERT = dict(nets=_strlist, excite=_strlist, dump_port=_strlist, region=_region, ports=lambda v: [str(x).strip() for x in (v if isinstance(v, (list, tuple)) else [v]) if str(x).strip()], cut_ports=_bool, converge=lambda v: _floatlist(v) or None,
                converge_tol=_floats(2), ff_freq=_floatlist, bc=_bc, edge_walls=_sides,
                dump=lambda v: [str(x) for x in (v if isinstance(v, (list, tuple)) else [v])],
-               mask=_bool, preview=_bool, no_report=_bool, openems_output=_bool)
+               mask=_bool, mom=_bool, preview=_bool, no_report=_bool, openems_output=_bool)
 _FIELDS = {f.name: f for f in dataclasses.fields(Settings) if f.name != 'notes'}
 
 
