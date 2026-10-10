@@ -140,12 +140,21 @@ def curve_lines(xy, fine, mode='extremes'):
     return xs, ys
 
 
+THIRDS_CELL = 2 / 3     # the cell across a copper edge, as a fraction of `fine` (see _edge_lines)
+
+
 def _edge_lines(m, fine, curves):
     """Candidate x / y lines from the copper: the board outline, thirds-rule pairs at Manhattan edges
     (third: 2/3 outside the metal, third_in: 1/3 inside) and the curve lines (see curve_lines)."""
     ob = m.outline.bounds
     fixed = {0: [ob[0], ob[2]], 1: [ob[1], ob[3]]}
     third, third_in = {0: [], 1: []}, {0: [], 1: []}
+    # The pair straddling an edge spans c = THIRDS_CELL * fine, not fine: with pairs a full `fine` apart,
+    # edges closer than ~1.5 fine (a trace end, the via pad around it, the antipad) gave candidate lines
+    # within the merge distance (fine / 2) of each other and the merge kept too few of them. On the
+    # transition demo that cost 4 ps of delay (138.8 vs 134.7 ps converged); with 2/3 fine the default
+    # mesh gives 135.1 ps with fewer cells (docs/meshing.md, 'Validation').
+    c = THIRDS_CELL * fine
     for lay, ps in m.copper.items():
         for p in ps:
             for ring in [p.exterior] + list(p.interiors):
@@ -157,10 +166,10 @@ def _edge_lines(m, fine, curves):
                     # orient(): exterior CCW, holes CW -> metal is on the left of every edge
                     if abs(dx) <= abs(dy):                          # edge along y at x ~ x0
                         s, xm = -np.sign(dy), 0.5 * (x0 + x1)       # metal on +x if going down
-                        third_in[0].append(xm + s * fine / 3); third[0].append(xm - s * 2 * fine / 3)
+                        third_in[0].append(xm + s * c / 3); third[0].append(xm - s * 2 * c / 3)
                     else:
                         s, ym = np.sign(dx), 0.5 * (y0 + y1)
-                        third_in[1].append(ym + s * fine / 3); third[1].append(ym - s * 2 * fine / 3)
+                        third_in[1].append(ym + s * c / 3); third[1].append(ym - s * 2 * c / 3)
                 cx, cy = curve_lines(xy, fine, curves)
                 fixed[0] += cx; fixed[1] += cy
     return fixed, third, third_in

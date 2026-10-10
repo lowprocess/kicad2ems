@@ -15,9 +15,13 @@ the wavelength; the time step depends on the smallest cell, so every line costs 
 
 ## x / y lines
 
-<a id="thirds-rule"></a>**Thirds rule.** For each Manhattan copper edge (along x or y, at least `fine` long), a line `fine/3`
-inside the metal and one `2·fine/3` outside. This puts the edge between two lines in the right
-proportion for the FDTD field singularity at the metal edge. An edge counts as Manhattan if it drifts
+<a id="thirds-rule"></a>**Thirds rule.** For each Manhattan copper edge (along x or y, at least `fine` long), a pair of
+lines across the edge: one a third of the pair's spacing inside the metal, one two thirds outside. This
+puts the edge between two lines in the right proportion for the FDTD field singularity at the metal
+edge. The pair spans `THIRDS_CELL · fine` = 2/3 `fine` (lines `2·fine/9` inside and `4·fine/9`
+outside): with pairs a full `fine` apart, edges closer than about 1.5 `fine` (a trace end, the via pad
+round it, the antipad) gave lines within the merge distance of each other and too few survived - see
+the validation below. An edge counts as Manhattan if it drifts
 by at most `fine/10` across its axis (`mesh.manhattan`): the 2 µm simplification in `Model` can merge a
 tiny jog into a long, very slightly oblique edge, and without the tolerance such edges got no
 thirds-rule lines (a 0.35 mm feed line ended up with one mesh line across it).
@@ -109,36 +113,36 @@ the mesh is not converged. Not available in antenna mode.
 
 ## Validation: the transition demo
 
-The default mesh is not always converged. On the transition demo (microstrip → blind via →
-stripline, `examples/demo_transition.toml`) the levels compare like this (P1 excited, 1–8 GHz; delay
-from the S21 phase slope; differences against the x2 mesh):
+On the transition demo (microstrip → blind via → stripline, `examples/demo_transition.toml`; P1
+excited, 1–8 GHz; delay from the S21 phase slope) the mesh levels compare like this:
 
-| Mesh | Cells | max \|S11\| | Delay | max \|ΔS11\| | max \|ΔS21\| |
-|---|---|---|---|---|---|
-| default (fine 0.0375 mm, nz 4) | 0.54 M | −25.2 dB | 138.8 ps | 0.046 | 0.197 |
-| `--nz 6` | 0.69 M | −23.5 dB | 138.9 ps | 0.036 | 0.200 |
-| `--res 30` | 0.53 M | −25.5 dB | 138.8 ps | 0.046 | 0.195 |
-| `--vias exact` | 0.63 M | −25.1 dB | 138.8 ps | 0.046 | 0.196 |
-| `--fine 0.025` | 0.68 M | −24.7 dB | 134.8 ps | 0.022 | 0.005 |
-| x1.5 (fine 0.025, nz 6, res 30) | 0.86 M | −22.5 dB | 134.7 ps | 0.004 | 0.000 |
-| x2 (fine 0.019, nz 8, res 40) | 1.42 M | −22.0 dB | 134.7 ps | – | – |
-| line model (`--fast qucsator`) | – | −18.0 dB | 132.2 ps | 0.089 | 0.124 |
+| Mesh | Cells | max \|S11\| | Delay |
+|---|---|---|---|
+| **default** (fine 0.0375 mm, nz 4) | 0.40 M | −24.1 dB | 135.1 ps |
+| `--nz 6` (the example config) | 0.52 M | −21.9 dB | 135.1 ps |
+| x1.5 (fine 0.025, nz 6, res 30) | 0.71 M | −22.5 dB | 134.6 ps |
+| before the change below: default | 0.54 M | −25.2 dB | 138.8 ps |
+| before: x1.5 / x2 | 0.86 / 1.42 M | −22.5 / −22.0 dB | 134.7 / 134.7 ps |
+| line model (`--fast qucsator`) | – | −18.0 dB | 132.2 ps |
 
-- The fine cell sets the delay and the dielectric cells (`--nz`) the return loss; the cells per
-  wavelength (`--res`) and via snapping do not matter here. The example config therefore sets
-  `fine = 0.025` and `nz = 6`.
-- The error is not monotonic in `--fine`: an older mesh with fine 0.1 mm gave 135.5 ps. Single-line
-  boards cut from the same stackup converge at the default mesh (microstrip: 122.6 / 122.7 / 122.8 ps
-  at fine 0.0875 / 0.0375 / 0.025 mm; stripline: 141.4 ps at x1 and x1.5), so the sensitivity sits
-  in the via region. Its cause is not found yet.
-- |S21| agrees within 0.02 dB on every mesh; only the phase and the small reflections move. The
-  line model's |S21| matches too (−0.33 vs −0.34 dB on average); its 2.5 ps shorter delay is most of
-  its vector difference.
+**What was wrong.** The default mesh used to be 4 ps (3 %) long on this board, while boards with only
+the microstrip or only the stripline were converged at the same settings. Of everything tried, only
+the `fine` cell moved the delay; extra lines did not help (refining the via region, the stripline or
+the microstrip with 0.025 mm lines gave 139.5–140.2 ps). Splitting what `fine` controls (`_edge_lines`
+offsets, the smoothing start cell, the merge distance) found it: with the thirds-rule offsets of
+fine 0.025 and everything else at 0.0375 the delay was 135.1 ps; with the merge distance shrunk
+instead, 134.9 ps; the smoothing made no difference. Around the via, the trace end, the round via pad
+and the antipad put edges within about 1.5 `fine` of each other; their thirds-rule pairs, a full `fine`
+wide, fell within the merge distance (`fine/2`) of each other, and the merge kept one line per
+cluster, so the end of the microstrip and the edge of the via pad were placed a cell off. The pair now
+spans 2/3 `fine` (`mesh.THIRDS_CELL`): the default mesh is within 0.5 ps of the converged delay, with
+fewer cells than before.
 
-So: run `--converge 1,1.5` once on every new kind of structure, and treat return loss below about
-−20 dB from an unconverged mesh as uncertain. The transmission-line model (`--fast`, see
-[the transmission-line model](transmission-lines.md)) is a cheap independent check: here it sits
-within 2 % of the converged delay and a few dB above its return loss.
+The return loss still wants more cells through the dielectric (`--nz 6`: −21.9 dB, against −22.0 to
+−22.5 dB at x1.5 / x2), so the example config sets `nz = 6`. So: run
+`--converge 1,1.5` once on every new kind of structure, and treat return loss below about −20 dB from
+an unconverged mesh as uncertain. The transmission-line model is a cheap independent check: here it
+sits within 2 % of the converged delay and a few dB above its return loss.
 
 ---
 [← The 3D model](model.md) · [Index](index.md) · [Next: Transmission-line model →](transmission-lines.md)

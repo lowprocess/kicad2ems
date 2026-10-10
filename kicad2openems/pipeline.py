@@ -22,6 +22,7 @@ from .kicad.board import KiCadBoard
 from .model import Model
 from .boundaries import resolve_bc, cavity_check
 from .mesh import auto_mesh
+CUT_KEEPOUT = 2.0      # mm: edge walls on a region cut stay this far from the signal copper (docs/model.md)
 from .plots import save, preview, plot_results, plot_convergence, plot_antenna, plot_pattern, plot_lines
 from .sparams import mixed_mode, fill_reciprocal
 from .touchstone import write_touchstone, read_touchstone
@@ -220,9 +221,14 @@ class Job:
                                            dt_ps=lm['info']['dt_ps']) for f, lm in self.levels]
         else:
             self.grid = auto_mesh(m, self.fmin, self.fmax, res=s.res, fine=s.fine, **kw)
-        if s.edge_walls:
+        sides, keepout = s.edge_walls, s.edge_keepout
+        if not sides and s.cut_ports and getattr(m, 'cut_sides', None):
+            # a cut through a plane pair leaves it open at the port: close it, well clear of the lines
+            sides, keepout = m.cut_sides, max(s.edge_keepout, CUT_KEEPOUT)
+            self.log(f"edge walls on the region cut ({', '.join(sides)}), {keepout:g} mm clear of the signal copper")
+        if sides:
             from .edges import edge_walls, describe, snap
-            walls = edge_walls(m, s.edge_walls, keepout=s.edge_keepout)
+            walls = edge_walls(m, sides, keepout=keepout)
             self.log(describe(walls, m))
             for g in [self.grid] + [lm for _, lm in (self.levels or [])]:
                 g['walls'] = snap(walls, g)

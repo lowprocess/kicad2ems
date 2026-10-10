@@ -51,8 +51,9 @@ def test_model_ports_and_mesh(demo):
         assert d.max() <= mesh['info']['maxres_air_mm'] + 1e-9
     for p in m.ports:                                               # port plane is a mesh line
         assert np.min(np.abs(mesh['xy'[p.axis]] - p.c[p.axis])) < 1e-9
-    # trace edges: thirds rule -> a line 1/3 fine inside each edge of the 0.35 mm trace
-    yc, w, f = p1.c[1], p1.w, mesh['info']['fine_mm']
+    # trace edges: thirds rule -> a line 1/3 of the edge cell inside each edge of the 0.35 mm trace
+    from kicad2openems.mesh import THIRDS_CELL
+    yc, w, f = p1.c[1], p1.w, mesh['info']['fine_mm'] * THIRDS_CELL
     for e, s in ((yc - w / 2, 1), (yc + w / 2, -1)):
         assert np.min(np.abs(mesh['y'] - (e + s * f / 3))) < 1e-6
 

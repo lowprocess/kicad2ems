@@ -112,6 +112,15 @@ class Model:
             ol = ol.intersection(rpoly)
             if ol.is_empty:
                 raise ValueError(f"region {region} does not overlap the board")
+        # sides where the region cuts the board (named in KiCad coordinates, as --edge-walls)
+        self.cut_sides = []
+        if rpoly is not None:
+            fb, cb = full.bounds, ol.bounds
+            for i, side in enumerate(('xmin', 'ymin', 'xmax', 'ymax')):
+                if (cb[i] > fb[i] + 1e-3) if i < 2 else (cb[i] < fb[i] - 1e-3):
+                    self.cut_sides.append(side)
+            if self.cut_sides:
+                self.notes.append(f"region cuts the board on {', '.join(self.cut_sides)}")
         self.outline = flip_y(ol)
         if isinstance(self.outline, MultiPolygon):
             self.outline = max(self.outline.geoms, key=lambda p: p.area)

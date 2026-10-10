@@ -37,6 +37,7 @@ def test_auto_nets_cut_ports_and_layer_region(demo_files):
     assert p3.layer == 'In2.Cu' and p3.source.startswith('cut') and p3.c[0] == pytest.approx(17 - 0.0385, abs=2e-3)
     assert p3.sgn == -1                                              # pointing back into the region
     assert any('outside the region' in n for n in m.notes)
+    assert m.cut_sides == ['xmax']                                   # closed with edge walls by the pipeline
 
 
 def test_pad_and_point_ports(boards):
@@ -63,3 +64,11 @@ def test_port_specs_and_settings():
     assert build_settings(dict(board='b', region='0,0,5,5')).region == (0, 0, 5, 5)
     with pytest.raises(ConfigError, match='region'):
         build_settings(dict(board='b', region='1,2,3'))
+
+
+def test_cut_ports_close_the_cut(demo_files, run_cli, tmp_path):
+    base, _ = demo_files
+    code, so, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'auto', '--ground', 'B.Cu',
+                            '--region', '0,0,17,10', '--cut-ports', '--out', tmp_path, '--preview', '--no-report')
+    assert code == 0, err
+    assert 'edge walls on the region cut (xmax), 2 mm clear' in so and 'edge walls (PEC): xmax' in so

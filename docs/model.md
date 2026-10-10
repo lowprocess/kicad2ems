@@ -41,7 +41,11 @@ placed just inside the edge, pointing into the region, so the cut line ends in t
 instead of an open end (`region.cut_port_fps`; numbered after the other ports, source `cut (x, y)`).
 Signal nets are the selected nets except the ground nets (or the nets under the ports when every net is
 selected). A track crossing the edge at an angle gets no port (lumped ports run along x or y), with a
-note. Planes simply end at the cut; `--edge-walls` can close them there.
+note. The sides where the region cuts the board (`Model.cut_sides`) are closed with
+[edge walls](meshing.md#edge-walls) that keep 2 mm clear of the signal copper
+(`pipeline.CUT_KEEPOUT`), unless `--edge-walls` names sides itself: a cut through a plane pair leaves it
+open right at the port, and the open edge radiates (on the stripline below: 0.22 dB off without the
+walls). An absorbing boundary on the cut face was tried and is worse (the port sits against it).
 
 **Nets = auto** (`--nets auto`): the nets under the ports plus the ground nets (named like ground, or
 owning zones over a fifth of the board).
@@ -56,8 +60,16 @@ footprints:
   toward the track's far end unless a rotation (degrees, the direction into the circuit) is given.
   `P3+` / `P3-` make a differential pair.
 
-**Validation.** A microstrip and a stripline line (4-layer stack of the transition demo) cropped with a
-cut port agree with the uncropped board whose line ends at the same place: see the table below.
+**Validation.** A 10 mm microstrip (F.Cu over In1) and stripline (In2 between In1 and B.Cu) on the
+transition demo's stackup, 24 × 10 mm board with stitched planes: the line running on to x = 22 and
+cropped at x = 12 with a cut port, against the uncropped board whose line ends at x = 12 with a port
+footprint there (1–8 GHz, default mesh):
+
+| Line | max \|ΔS21\| | max ∠ΔS21 | max \|ΔS11\| |
+|---|---|---|---|
+| microstrip | 0.020 dB | 1.8° | 0.033 |
+| stripline | 0.056 dB | 2.0° | 0.022 |
+| stripline, cut left open (no walls) | 0.22 dB | 0.9° | 0.059 |
 
 ## Vias
 
