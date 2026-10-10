@@ -18,3 +18,6 @@ dist/
 htmlcov/
 .venv/
 .pytest_cache/
+
+# KiCad local history
+.history/
