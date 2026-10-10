@@ -16,7 +16,7 @@ import pyqtgraph as pg
 from .fieldtab import FieldsTab
 from .antennatab import AntennaTab
 from .runner import (FIELDS, SEMICOLON_LISTS, Run, EventTail, stop_runs, settings_values, extra_values,
-                     find_results, save_config)
+                     find_results, save_config, solvers_from_form)
 from .splot import SPlot
 
 pg.setConfigOptions(antialias=True, background='w', foreground='k')
@@ -142,6 +142,7 @@ class SetupTab(QWidget):
 
     # ---- values <-> widgets ----
     def values(self):
+        """The settings of the form (the solver tick boxes as `solvers`, see runner.solvers_from_form)."""
         out = dict(self.extra)                                       # config settings without a field here
         for key, (w, kind) in self.edits.items():
             if kind == 'bool':
@@ -165,7 +166,7 @@ class SetupTab(QWidget):
                 out[key] = [float(x) for x in t.split(',')]
             else:
                 out[key] = t
-        return out
+        return solvers_from_form(out)
 
     def set_values(self, vals):
         """Fill the form (a loaded config): not an edit, so the settings stay unchanged."""
@@ -176,6 +177,8 @@ class SetupTab(QWidget):
             self._loading = loading
 
     def _set_values(self, vals):
+        if 'use_openems' not in vals:                               # settings rather than the form's own values
+            vals = dict(vals, use_openems=vals.get('solvers') is None or 'openems' in vals['solvers'])
         for key, (w, kind) in self.edits.items():
             v = vals.get(key)
             if kind == 'bool':
@@ -240,8 +243,8 @@ class SetupTab(QWidget):
         if board and not os.path.exists(board):
             notes = notes + [f"board not found: {board} (generated examples: see the commands at the top of the file)"]
         self.win.statusBar().showMessage('; '.join(notes) if notes else f"opened {path}", 0 if notes else 5000)
-        out = self.values().get('out')
-        if out and os.path.isdir(out):                            # earlier results of this config
+        out = self.win.out_dir()
+        if os.path.isdir(out):                                     # earlier results of this config
             self.win.open_results(out, quiet=True)
         return True
 
@@ -406,6 +409,7 @@ class MainWindow(QMainWindow):
         self.resize(1400, 900)
         self.tabs = QTabWidget()
         self.proc, self.tail, self.files, self.current, self.ticks = None, None, [], None, 0
+        self._traceback = False
         self.setup, self.runtab, self.results = SetupTab(self), RunTab(self), ResultsTab(self)
         self.fields, self.antenna = FieldsTab(self), AntennaTab(self)
         for w, t in ((self.setup, 'Setup'), (self.runtab, 'Run'), (self.results, 'Results'), (self.fields, 'Fields'),
@@ -508,8 +512,14 @@ class MainWindow(QMainWindow):
         if not quiet and not (files or self.fields.srcs or ant):
             QMessageBox.information(self, 'Results', f"No results in {out_dir}")
 
-    def out_dir(self):
-        return self.setup.values().get('out') or os.path.join(os.getcwd(), 'out')
+    def out_dir(self, vals=None):
+        """The output folder: the form's, else 'out' next to the board (where a run writes), else in the working
+        directory."""
+        vals = self.setup.values() if vals is None else vals
+        if vals.get('out'):
+            return vals['out']
+        board = vals.get('board')
+        return os.path.join(os.path.dirname(os.path.abspath(board)) if board else os.getcwd(), 'out')
 
     def start(self, preview):
         if self.proc is not None:
@@ -519,8 +529,11 @@ class MainWindow(QMainWindow):
         if not vals.get('board'):
             QMessageBox.warning(self, 'Setup', 'Choose a board first')
             return
-        self.current = Run(vals, vals.get('out') or os.path.join(os.path.dirname(vals['board']), 'out'), preview)
-        self.files = []
+        if not preview and vals.get('solvers') == []:
+            QMessageBox.warning(self, 'Setup', 'Choose a solver: openEMS, mom25d or the line model (or Preview)')
+            return
+        self.current = Run(vals, self.out_dir(vals), preview)
+        self.files, self._traceback = [], False
         self.runtab.reset()
         self.tail = EventTail(self.current.events)
         self.proc = QProcess(self)
@@ -550,9 +563,11 @@ class MainWindow(QMainWindow):
                 self.proc.kill()
 
     def _stdout(self):
+        """The process's own output: the log already comes as events, so only errors - a traceback whole."""
         data = bytes(self.proc.readAllStandardOutput()).decode('utf-8', 'replace')
         for line in data.splitlines():
-            if 'Traceback' in line or 'error' in line.lower():
+            self._traceback = self._traceback or line.startswith('Traceback')
+            if self._traceback or 'error' in line.lower():
                 self.runtab.log.appendPlainText(line)
 
     def poll(self):

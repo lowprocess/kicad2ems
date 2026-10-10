@@ -98,6 +98,7 @@ def test_save_config_keeps_the_file(tmp_path):
     assert '# my board' in text and 'board = "b.kicad_pcb"   # the board' in text
     assert 'fmin = 2.0  # GHz' in text and 'pos' not in text and 'future_key = 3' in text
     assert 'air = 5.0   # mm' in text and 'end-db = -40.0' in text and text.index('mom = true') < text.index('[openems]')
+    assert '\nout =' not in text and 'use_openems' not in text      # the default folder is not pinned to the cwd
     s = build_settings({}, str(src))
     assert s.fmin == 2.0 and s.nets == ['RF'] and s.mom and s.pos is None and s.air == 5.0
     assert s.board == str(tmp_path / 'b.kicad_pcb')
@@ -190,3 +191,25 @@ def test_rf_examples_load(name, nports):
         assert len(m.parts) == 1 and abs(m.parts[0].R - 100) < 1e-9
     if name == 'coupler':
         assert len(m.copper['F.Cu']) == 2                           # the gap is open: two separate conductors
+
+
+def test_gui_solver_boxes(tmp_path):
+    from kicad2openems.gui.runner import settings_values, solvers_from_form, save_config, extra_values, write_toml
+    p = tmp_path / 'c.toml'
+    p.write_text('board = "b.kicad_pcb"\nsolvers = ["mom", "lines"]\n')
+    vals = settings_values(str(p))
+    assert vals['use_openems'] is False and vals['mom'] is True and vals['fast'] == 'auto'
+    assert 'solvers' not in extra_values(str(p))                    # the tick boxes own it
+    form = dict(vals, use_openems=True)                                 # openEMS ticked again
+    s = solvers_from_form(form)
+    assert 'use_openems' not in s and 'solvers' not in s
+    save_config(str(p), s, template=str(p))
+    assert 'solvers' not in p.read_text()
+    back = build_settings({}, str(p))
+    assert back.solver_plan()[0] == ['openems', 'mom', 'lines']
+    s = solvers_from_form(dict(vals, use_openems=False, mom=False))     # only the line model
+    assert s['solvers'] == ['lines']
+    write_toml(tmp_path / 'r.toml', s)
+    assert build_settings({}, str(tmp_path / 'r.toml')).solver_plan()[0] == ['lines']
+    assert solvers_from_form(dict(use_openems=False, mom=False, fast=''))['solvers'] == []   # none: the GUI says so
+

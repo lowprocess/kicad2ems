@@ -22,25 +22,38 @@ FIELDS = [
     ('fmin', 'f min (GHz)', 'float', 'Band'),
     ('fmax', 'f max (GHz)', 'float', 'Band'),
     ('points', 'Frequency points', 'int', 'Band'),
-    ('fine', 'Fine cell at copper edges (mm, empty: auto)', 'float', 'Mesh'),
-    ('res', 'Cells per wavelength', 'float', 'Mesh'),
-    ('nz', 'Cells through each dielectric', 'int', 'Mesh'),
-    ('converge', 'Convergence levels (e.g. 1,1.5)', 'list', 'Mesh'),
-    ('excite', 'Driven ports (empty: all)', 'list', 'Solver'),
-    ('mode', 'Mode', ('sparams', 'antenna'), 'Solver'),
-    ('ff_freq', 'Pattern frequencies (GHz, antenna; empty: resonance)', 'list', 'Solver'),
-    ('end_db', 'Stop at (dB)', 'float', 'Solver'),
-    ('end_on', 'Stop on', ('ports', 'energy'), 'Solver'),
-    ('max_steps', 'Timestep limit', 'int', 'Solver'),
-    ('threads', 'Threads (0: openEMS default)', 'int', 'Solver'),
-    ('fast', 'Line model solver', ('', 'skrf', 'qucsator'), 'Solver'),
-    ('mom', 'MoM reference (mom25d)', 'bool', 'Solver'),
-    ('mom_mesher', 'MoM mesher', ('triangle', 'gmsh'), 'Solver'),
+    ('use_openems', 'openEMS (3D FDTD)', 'bool', 'Solvers'),
+    ('mom', 'mom25d (2.5D MoM, no openEMS needed)', 'bool', 'Solvers'),
+    ('fast', 'Line model (auto: qucsator, else scikit-rf)', ('', 'auto', 'skrf', 'qucsator'), 'Solvers'),
+    ('mom_mesher', 'MoM mesher', ('triangle', 'gmsh'), 'Solvers'),
+    ('fine', 'Fine cell at copper edges (mm, empty: auto)', 'float', 'openEMS mesh'),
+    ('res', 'Cells per wavelength', 'float', 'openEMS mesh'),
+    ('nz', 'Cells through each dielectric', 'int', 'openEMS mesh'),
+    ('converge', 'Convergence levels (e.g. 1,1.5)', 'list', 'openEMS mesh'),
+    ('excite', 'Driven ports (empty: all)', 'list', 'openEMS'),
+    ('mode', 'Mode', ('sparams', 'antenna'), 'openEMS'),
+    ('ff_freq', 'Pattern frequencies (GHz, antenna; empty: resonance)', 'list', 'openEMS'),
+    ('end_db', 'Stop at (dB)', 'float', 'openEMS'),
+    ('end_on', 'Stop on', ('ports', 'energy'), 'openEMS'),
+    ('max_steps', 'Timestep limit', 'int', 'openEMS'),
+    ('threads', 'Threads (0: openEMS default)', 'int', 'openEMS'),
     ('dump', 'Dumps (FIELD@REGION[@GHz]; ...)', 'list', 'Field dumps'),
     ('dump_port', 'Runs that record dumps (empty: first driven)', 'list', 'Field dumps'),
     ('out', 'Output folder', 'dir', 'Output'),
 ]
 SEMICOLON_LISTS = ('ports', 'dump')                       # items that may hold commas themselves
+# the openEMS tick box ('use_openems') is not a setting of its own: with it off, the form's values carry
+# solvers = the other solvers that are on (see solvers_from_form); 'solvers' is the GUI's, like the fields
+MANAGED = {k for k, *_ in FIELDS} - {'use_openems'} | {'solvers'}
+
+
+def solvers_from_form(vals):
+    """The form's values (with the openEMS tick box, 'use_openems') as settings: without openEMS, solvers lists
+    the other solvers that are on (an empty list: none is); with it, solvers is left to its default."""
+    out = dict(vals)
+    if not out.pop('use_openems', True):
+        out['solvers'] = [x for x, on in (('mom', out.get('mom')), ('lines', bool(out.get('fast')))) if on]
+    return out
 
 
 def toml_value(v):
@@ -56,7 +69,7 @@ def toml_value(v):
 def write_toml(path, values):
     """A flat TOML file of the non-empty settings."""
     lines = ["# written by the kicad2openems GUI"]
-    for k, v in values.items():
+    for k, v in solvers_from_form(values).items():
         if v is None or v == '' or v == [] or (k in ('cut_ports', 'mom') and v is False):
             continue
         lines.append(f"{k} = {toml_value(v)}")
@@ -106,7 +119,7 @@ def save_config(path, values, template=None):
     from ..config import Settings, PATH_KEYS
     base = os.path.dirname(os.path.abspath(path))
     vals = {}
-    for k, v in values.items():
+    for k, v in solvers_from_form(values).items():
         if k in ('events', 'preview'):
             continue
         if k in PATH_KEYS and isinstance(v, str) and v:
@@ -144,7 +157,7 @@ def save_config(path, values, template=None):
             k = raw.replace('-', '_')
             j = _value_end(src, i, m.end())
             k_val = 'mask' if k == 'no_mask' else k
-            if k_val not in vals and k_val in {f for f, *_ in FIELDS}:  # the field was cleared: drop the line
+            if k_val not in vals and k_val in MANAGED:                  # the field was cleared: drop the line
                 seen.add(k_val)
                 i = j
                 continue
@@ -246,8 +259,7 @@ def stop_runs(out_dir):
 def extra_values(path):
     """The settings of a TOML config that the GUI has no field for (kept and passed on to its runs)."""
     from ..config import read_toml
-    keys = {k for k, *_ in FIELDS}
-    return {k: v for k, v in read_toml(path)[0].items() if k not in keys and k not in ('events', 'preview')}
+    return {k: v for k, v in read_toml(path)[0].items() if k not in MANAGED and k not in ('events', 'preview')}
 
 
 def find_results(out_dir):
@@ -261,13 +273,21 @@ def find_results(out_dir):
 
 
 def settings_values(path):
-    """The GUI's fields from a TOML config (through the same rules as the command line)."""
-    from ..config import build_settings
+    """The GUI's fields from a TOML config (through the same rules as the command line). The solver tick
+    boxes show the config's solvers: openEMS unless solvers leaves it out, mom25d and the line model when
+    either their own key or solvers names them."""
+    from ..config import build_settings, read_toml
     s = build_settings({}, path)
+    named = s.solvers or []
     out = {}
     for key, *_ in FIELDS:
         v = getattr(s, key, None)
         if isinstance(v, tuple):
             v = list(v)
         out[key] = v
+    if 'out' not in read_toml(path)[0]:                    # the default folder: left to the run, not pinned here
+        out['out'] = None
+    out['use_openems'] = s.solvers is None or 'openems' in named
+    out['mom'] = bool(s.mom) or 'mom' in named
+    out['fast'] = s.fast or ('auto' if 'lines' in named else None)
     return out
