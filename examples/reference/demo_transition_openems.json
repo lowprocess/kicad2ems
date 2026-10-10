@@ -1,18 +1,205 @@
 {
- "ports": [
-  "P1",
-  "P2"
+ "name": "demo_transition",
+ "version": "0.2.0",
+ "mode": "S-parameters",
+ "command": "kicad2openems demo_transition.toml --out out",
+ "created": "2026-10-10 03:12",
+ "settings": {
+  "board": "examples/demo_transition.kicad_pcb",
+  "pos": "examples/demo_transition-top.pos",
+  "nets": [
+   "RF",
+   "GND"
+  ],
+  "region": null,
+  "ground": "B.Cu",
+  "mask": false,
+  "parts": "auto",
+  "fmin": 1.0,
+  "fmax": 8.0,
+  "points": 401,
+  "res": 20.0,
+  "fine": 0.025,
+  "air": 5.0,
+  "ratio": 1.4,
+  "nz": 6,
+  "curves": "extremes",
+  "vias": "auto",
+  "via_snap": 0.2,
+  "converge": null,
+  "converge_tol": [
+   0.1,
+   2.0
+  ],
+  "bc": "auto",
+  "end_db": -40.0,
+  "max_steps": 1000000,
+  "sigma": null,
+  "diel": "fixed",
+  "diel_fref": 1.0,
+  "excite": [
+   "P1"
+  ],
+  "threads": 0,
+  "jobs": 1,
+  "mode": "sparams",
+  "ff_freq": [],
+  "ff_step": 2.0,
+  "dump": [],
+  "dump_port": null,
+  "compare": null,
+  "fast": "skrf",
+  "qucsator": null,
+  "preview": false,
+  "no_report": false,
+  "openems_output": false,
+  "events": null,
+  "out": "out"
+ },
+ "images": {
+  "lines": "demo_transition_tlines.png",
+  "mesh": "demo_transition_mesh.png",
+  "sparams": "demo_transition_openems.png"
+ },
+ "files": [
+  [
+   "transmission-line sections",
+   "demo_transition_tlines.png"
+  ],
+  [
+   "S-parameters, fast line model (skrf)",
+   "demo_transition_fast.s2p"
+  ],
+  [
+   "model and mesh",
+   "demo_transition_mesh.png"
+  ],
+  [
+   "CSX geometry (AppCSXCAD)",
+   "demo_transition.xml"
+  ],
+  [
+   "S-parameters (Touchstone)",
+   "demo_transition_openems.s2p"
+  ],
+  [
+   "S-parameter plot",
+   "demo_transition_openems.png"
+  ],
+  [
+   "run summary (JSON)",
+   "demo_transition_openems.json"
+  ],
+  [
+   "report",
+   "demo_transition_report.html"
+  ]
  ],
- "zref": [
-  50.0,
-  50.0
- ],
+ "dumps": [],
+ "model": {
+  "board": "examples/demo_transition.kicad_pcb",
+  "outline_mm": [
+   24.0,
+   10.0
+  ],
+  "nets": [
+   "RF",
+   "GND"
+  ],
+  "diel": "fixed",
+  "vias": 23,
+  "vias_signal": 1,
+  "signal_nets": [
+   "RF"
+  ],
+  "stack": [
+   {
+    "name": "dielectric 1",
+    "z0": 0.4,
+    "z1": 0.6,
+    "er": 4.3,
+    "tand": 0.02
+   },
+   {
+    "name": "dielectric 2",
+    "z0": 0.2,
+    "z1": 0.4,
+    "er": 4.3,
+    "tand": 0.02
+   },
+   {
+    "name": "dielectric 3",
+    "z0": 0.0,
+    "z1": 0.2,
+    "er": 4.3,
+    "tand": 0.02
+   }
+  ],
+  "copper": [
+   {
+    "layer": "F.Cu",
+    "z": 0.6,
+    "modelled": true
+   },
+   {
+    "layer": "In1.Cu",
+    "z": 0.4,
+    "modelled": true
+   },
+   {
+    "layer": "In2.Cu",
+    "z": 0.2,
+    "modelled": true
+   },
+   {
+    "layer": "B.Cu",
+    "z": 0.0,
+    "modelled": true
+   }
+  ],
+  "ports": [
+   {
+    "name": "P1",
+    "kind": "z",
+    "layer": "F.Cu",
+    "ref_layer": "In1.Cu",
+    "w": 0.34999999999999964,
+    "z0": 50.0,
+    "h": 0.19999999999999996,
+    "at": [
+     2.0875,
+     5.0
+    ],
+    "direction": "z",
+    "gap": null
+   },
+   {
+    "name": "P2",
+    "kind": "z",
+    "layer": "In2.Cu",
+    "ref_layer": "B.Cu",
+    "w": 0.15000000000000036,
+    "z0": 50.0,
+    "h": 0.2,
+    "at": [
+     21.9625,
+     5.0
+    ],
+    "direction": "z",
+    "gap": null
+   }
+  ],
+  "parts": [],
+  "notes": [
+   "B.Cu: solid ground plane over the board outline (ground = B.Cu)"
+  ]
+ },
  "mesh": {
-  "nx": 135,
-  "ny": 84,
-  "nz": 25,
-  "cells": 283500,
-  "fine_mm": 0.1,
+  "nx": 230,
+  "ny": 119,
+  "nz": 32,
+  "cells": 875840,
+  "fine_mm": 0.025,
   "maxres_die_mm": 0.9035797563207797,
   "maxres_air_mm": 1.8737028625,
   "air_mm": 5.0,
@@ -27,21 +214,270 @@
   "curves": "extremes",
   "vias": "auto",
   "vias_snapped": 22,
-  "via_max_move_mm": 0.07442049448908546,
-  "dt_ps": 0.10660072917726943,
+  "via_max_move_mm": 0.06428187925068829,
+  "dt_ps": 0.03236841007675418,
   "min_cell_mm": [
-   0.053140001547161475,
-   0.06666666666666643,
-   0.04999999999999993
+   0.01278297093523584,
+   0.016666666666666666,
+   0.033333332999999965
   ],
-  "mem_gb": 0.042525,
+  "mem_gb": 0.131376,
   "lines_across_ports": {
-   "P1": 4,
-   "P2": 2
+   "P1": 13,
+   "P2": 5
   }
  },
+ "lines": {
+  "paths": [
+   {
+    "port": "P1",
+    "to": "P2",
+    "z_port": 50.0,
+    "sections": [
+     {
+      "kind": "trace",
+      "label": "trace 0.35 mm",
+      "layer": "F.Cu",
+      "xs": "microstrip",
+      "w": 0.35,
+      "length": 9.416875,
+      "z0": 50.70908641359268,
+      "eeff": 3.1164413948592475,
+      "z0_sheet": 53.26712877518928,
+      "eeff_sheet": 3.2387848429974215,
+      "er": 4.3,
+      "h": 0.19999999999999996,
+      "s": null,
+      "delay_ps": 55.4517919137927,
+      "notes": [],
+      "value": null,
+      "start": 0.0
+     },
+     {
+      "kind": "trace",
+      "label": "trace 0.35 mm",
+      "layer": "F.Cu",
+      "xs": "microstrip",
+      "w": 0.35,
+      "length": 0.4956250000000004,
+      "z0": 87.15355531185615,
+      "eeff": 2.9120783416727454,
+      "z0_sheet": 90.83686197952652,
+      "eeff_sheet": 3.010873562590402,
+      "er": 4.3,
+      "h": 0.6,
+      "s": null,
+      "delay_ps": 2.821200998609354,
+      "notes": [],
+      "value": null,
+      "start": 9.416875
+     },
+     {
+      "kind": "via",
+      "label": "via In2.Cu - F.Cu",
+      "layer": "In2.Cu-F.Cu",
+      "xs": "coax",
+      "w": 0.25,
+      "length": 0.39999999999999997,
+      "z0": 45.215460279666935,
+      "eeff": 4.3,
+      "z0_sheet": 45.215460279666935,
+      "eeff_sheet": 4.3,
+      "er": 4.3,
+      "h": 1.194188679875429,
+      "s": null,
+      "delay_ps": 2.7667729190609216,
+      "notes": [],
+      "value": null,
+      "start": 9.9125
+     },
+     {
+      "kind": "trace",
+      "label": "trace 0.15 mm",
+      "layer": "In2.Cu",
+      "xs": "embedded microstrip",
+      "w": 0.15,
+      "length": 0.49812499999999993,
+      "z0": 61.75712022759719,
+      "eeff": 4.2737479941854435,
+      "z0_sheet": 69.11596539601639,
+      "eeff_sheet": 4.277107493918768,
+      "er": 4.3,
+      "h": 0.2,
+      "s": null,
+      "delay_ps": 3.4349632168707998,
+      "notes": [],
+      "value": null,
+      "start": 10.3125
+     },
+     {
+      "kind": "trace",
+      "label": "trace 0.15 mm",
+      "layer": "In2.Cu",
+      "xs": "stripline",
+      "w": 0.15,
+      "length": 9.464374999999999,
+      "z0": 49.03103399784479,
+      "eeff": 4.3,
+      "z0_sheet": 56.194401051301774,
+      "eeff_sheet": 4.3,
+      "er": 4.3,
+      "h": [
+       0.2,
+       0.2
+      ],
+      "s": null,
+      "delay_ps": 65.46444111459303,
+      "notes": [],
+      "value": null,
+      "start": 10.810625
+     }
+    ],
+    "branches": []
+   }
+  ],
+  "notes": []
+ },
+ "fast": {
+  "backend": "skrf",
+  "seconds": 0.16644072532653809,
+  "touchstone": "demo_transition_fast.s2p",
+  "table": [
+   {
+    "param": "S(P1,P1)",
+    "fmin_db": -22.287670640403494,
+    "fc_db": -29.280023017946885,
+    "fmax_db": -20.071549000334713,
+    "min_db": -34.70830319243954,
+    "f_min": 6320000000.0,
+    "max_db": -18.732210506888215,
+    "f_max": 2225000000.0
+   },
+   {
+    "param": "S(P2,P1)",
+    "fmin_db": -0.09061250690342906,
+    "fc_db": -0.31643321702009275,
+    "fmax_db": -0.5943820834597252,
+    "min_db": -0.5943820834597242,
+    "f_min": 8000000000.0,
+    "max_db": -0.09061250690342809,
+    "f_max": 1000000000.0
+   },
+   {
+    "param": "S(P2,P2)",
+    "fmin_db": -22.13969554704522,
+    "fc_db": -31.066639388650067,
+    "fmax_db": -19.91483854191808,
+    "min_db": -36.07485059969088,
+    "f_min": 4955000000.0,
+    "max_db": -18.424724686632814,
+    "f_max": 2242500000.0
+   }
+  ],
+  "compare": [
+   {
+    "param": "S(P1,P1)",
+    "max_ddb": null,
+    "max_dvec": 0.0926004535763942,
+    "openems_max_db": -22.458901206870145,
+    "other_max_db": -18.732210506888215,
+    "ddelay_ps": null
+   },
+   {
+    "param": "S(P2,P1)",
+    "max_ddb": 0.2559740545231203,
+    "max_dvec": 0.1272534151331197,
+    "openems_max_db": -0.29913531170517704,
+    "other_max_db": -0.09061250690342809,
+    "ddelay_ps": -2.5506739324460157
+   }
+  ]
+ },
+ "pulse_steps": 24084,
+ "results": {
+  "names": [
+   "P1",
+   "P2"
+  ],
+  "zref": [
+   50.0,
+   50.0
+  ],
+  "excited": [
+   "P1"
+  ],
+  "freq_ghz": [
+   1.0,
+   4.5,
+   8.0
+  ],
+  "table": [
+   {
+    "param": "S(P1,P1)",
+    "fmin_db": -25.154447428467822,
+    "fc_db": -28.37771902543811,
+    "fmax_db": -42.1811467993923,
+    "min_db": -47.79250593134875,
+    "f_min": 7895000000.0,
+    "max_db": -22.458901206870145,
+    "f_max": 2172500000.0
+   },
+   {
+    "param": "S(P2,P1)",
+    "fmin_db": -0.29913531170517704,
+    "fc_db": -0.32360378143383817,
+    "fmax_db": -0.33840802893660393,
+    "min_db": -0.3532802304743068,
+    "f_min": 2452500000.0,
+    "max_db": -0.29913531170517704,
+    "f_max": 1000000000.0
+   }
+  ],
+  "compare_file": null
+ },
+ "runs": {
+  "P1": {
+   "seconds": 265.31957626342773,
+   "steps": 29574,
+   "log": "openems/exc_P1/openems.log"
+  }
+ },
+ "warnings": [],
+ "log": [
+  "stack (bottom to top):",
+  "  dielectric 3   z 0.000..0.200 mm  er 4.30  tand 0.0200",
+  "  dielectric 2   z 0.200..0.400 mm  er 4.30  tand 0.0200",
+  "  dielectric 1   z 0.400..0.600 mm  er 4.30  tand 0.0200",
+  "  copper F.Cu     z 0.600 mm",
+  "  copper In1.Cu   z 0.400 mm",
+  "  copper In2.Cu   z 0.200 mm",
+  "  copper B.Cu     z 0.000 mm",
+  "outline 24.00 x 10.00 mm, vias 23 (1 on signal nets ['RF'], 22 other)",
+  "  P1: lumped, F.Cu -> In1.Cu, w 0.350 mm, h 0.200 mm, at (2.087, 5.000) mm (KiCad), Z 50 ohm",
+  "  P2: lumped, In2.Cu -> B.Cu, w 0.150 mm, h 0.200 mm, at (21.962, 5.000) mm (KiCad), Z 50 ohm",
+  "B.Cu: solid ground plane over the board outline (ground = B.Cu)",
+  "mesh: 230 x 119 x 32 = 0.88 M cells (fine 0.025 mm, max 0.90 mm in dielectric / 1.87 mm in air, air margin 5.0 mm), boundaries xmin=MUR xmax=MUR ymin=MUR ymax=MUR zmin=PEC zmax=MUR (PEC on the bottom plane), time step 0.032 ps, ~0.1 GB",
+  "vias: 22 snapped onto existing lines (moved <= 0.064 mm), 1 with their own lines",
+  "transmission line P1 -> P2: 5 sections, 20.27 mm, Z0 45.2..87.2 ohm",
+  "fast line model (skrf): 166 ms -> out/demo_transition_fast.s2p",
+  "wrote out/demo_transition_mesh.png",
+  "excitation pulse ~24084 timesteps (estimate); --max-steps 1000000 allows 42 pulse lengths",
+  "openEMS: exciting P1 -> examples/out/openems/exc_P1",
+  "  P1 done in 265 s, ~29574 timesteps",
+  "note: P2 not excited - their reflection and the terms between unexcited ports are unknown (written as 0)"
+ ],
+ "runtime_s": 268.50710439682007,
+ "ports": [
+  "P1",
+  "P2"
+ ],
+ "zref": [
+  50.0,
+  50.0
+ ],
  "excited": [
   "P1"
  ],
- "runtime_s": 9.2499418258667
+ "parts": [],
+ "diel": "fixed"
 }

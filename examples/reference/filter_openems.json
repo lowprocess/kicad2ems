@@ -1,12 +1,169 @@
 {
- "ports": [
-  "P1",
-  "P2"
+ "name": "filter",
+ "version": "0.2.0",
+ "mode": "S-parameters",
+ "command": "kicad2openems filter.toml --out out",
+ "created": "2026-10-10 03:11",
+ "settings": {
+  "board": "examples/filter.kicad_pcb",
+  "pos": "examples/filter-all.pos",
+  "nets": [
+   "RF",
+   "GND"
+  ],
+  "region": null,
+  "ground": null,
+  "mask": false,
+  "parts": "auto",
+  "fmin": 1.0,
+  "fmax": 8.0,
+  "points": 401,
+  "res": 20.0,
+  "fine": 0.05,
+  "air": 5.0,
+  "ratio": 1.4,
+  "nz": 4,
+  "curves": "extremes",
+  "vias": "auto",
+  "via_snap": 0.2,
+  "converge": null,
+  "converge_tol": [
+   0.1,
+   2.0
+  ],
+  "bc": "auto",
+  "end_db": -40.0,
+  "max_steps": 1000000,
+  "sigma": null,
+  "diel": "fixed",
+  "diel_fref": 1.0,
+  "excite": [
+   "P1"
+  ],
+  "threads": 0,
+  "jobs": 1,
+  "mode": "sparams",
+  "ff_freq": [],
+  "ff_step": 2.0,
+  "dump": [],
+  "dump_port": null,
+  "compare": null,
+  "fast": null,
+  "qucsator": null,
+  "preview": false,
+  "no_report": false,
+  "openems_output": false,
+  "events": null,
+  "out": "out"
+ },
+ "images": {
+  "lines": "filter_tlines.png",
+  "mesh": "filter_mesh.png",
+  "sparams": "filter_openems.png"
+ },
+ "files": [
+  [
+   "transmission-line sections",
+   "filter_tlines.png"
+  ],
+  [
+   "model and mesh",
+   "filter_mesh.png"
+  ],
+  [
+   "CSX geometry (AppCSXCAD)",
+   "filter.xml"
+  ],
+  [
+   "S-parameters (Touchstone)",
+   "filter_openems.s2p"
+  ],
+  [
+   "S-parameter plot",
+   "filter_openems.png"
+  ],
+  [
+   "run summary (JSON)",
+   "filter_openems.json"
+  ],
+  [
+   "report",
+   "filter_report.html"
+  ]
  ],
- "zref": [
-  50.0,
-  50.0
- ],
+ "dumps": [],
+ "model": {
+  "board": "examples/filter.kicad_pcb",
+  "outline_mm": [
+   20.0,
+   20.0
+  ],
+  "nets": [
+   "RF",
+   "GND"
+  ],
+  "diel": "fixed",
+  "vias": 5,
+  "vias_signal": 5,
+  "signal_nets": [
+   "RF"
+  ],
+  "stack": [
+   {
+    "name": "dielectric 1",
+    "z0": 0.0,
+    "z1": 0.2,
+    "er": 4.4,
+    "tand": 0.011
+   }
+  ],
+  "copper": [
+   {
+    "layer": "F.Cu",
+    "z": 0.2,
+    "modelled": true
+   },
+   {
+    "layer": "B.Cu",
+    "z": 0.0,
+    "modelled": true
+   }
+  ],
+  "ports": [
+   {
+    "name": "P1",
+    "kind": "z",
+    "layer": "F.Cu",
+    "ref_layer": "B.Cu",
+    "w": 0.3500220750551897,
+    "z0": 50.0,
+    "h": 0.2,
+    "at": [
+     1.0875055187637974,
+     13.9
+    ],
+    "direction": "z",
+    "gap": null
+   },
+   {
+    "name": "P2",
+    "kind": "z",
+    "layer": "F.Cu",
+    "ref_layer": "B.Cu",
+    "w": 0.35002208350509534,
+    "z0": 50.0,
+    "h": 0.2,
+    "at": [
+     18.912494479123726,
+     13.9
+    ],
+    "direction": "z",
+    "gap": null
+   }
+  ],
+  "parts": [],
+  "notes": []
+ },
  "mesh": {
   "nx": 175,
   "ny": 118,
@@ -40,10 +197,147 @@
    "P2": 6
   }
  },
+ "lines": {
+  "paths": [
+   {
+    "port": "P1",
+    "to": null,
+    "z_port": 50.0,
+    "sections": [
+     {
+      "kind": "trace",
+      "label": "trace 0.35 mm",
+      "layer": "F.Cu",
+      "xs": "microstrip",
+      "w": 0.35,
+      "length": 5.707494481236202,
+      "z0": 50.20324351470088,
+      "eeff": 3.1795596961213497,
+      "z0_sheet": 52.72191960657493,
+      "eeff_sheet": 3.3061171992484515,
+      "er": 4.4,
+      "h": 0.2,
+      "s": null,
+      "delay_ps": 33.94753845347798,
+      "notes": [],
+      "value": null,
+      "start": 0.0
+     }
+    ],
+    "branches": []
+   },
+   {
+    "port": "P2",
+    "to": null,
+    "z_port": 50.0,
+    "sections": [
+     {
+      "kind": "trace",
+      "label": "trace 0.35 mm",
+      "layer": "F.Cu",
+      "xs": "microstrip",
+      "w": 0.35,
+      "length": 5.707494479123726,
+      "z0": 50.20324351470088,
+      "eeff": 3.1795596961213497,
+      "z0_sheet": 52.72191960657493,
+      "eeff_sheet": 3.3061171992484515,
+      "er": 4.4,
+      "h": 0.2,
+      "s": null,
+      "delay_ps": 33.94753844091321,
+      "notes": [],
+      "value": null,
+      "start": 0.0
+     }
+    ],
+    "branches": []
+   }
+  ],
+  "notes": [
+   "P1 reaches no other port through traces, pads and parts: its path ends 5.71 mm from it (copper drawn as shapes or zones is not part of the line model)",
+   "P2 reaches no other port through traces, pads and parts: its path ends 5.71 mm from it (copper drawn as shapes or zones is not part of the line model)"
+  ]
+ },
+ "pulse_steps": 11974,
+ "results": {
+  "names": [
+   "P1",
+   "P2"
+  ],
+  "zref": [
+   50.0,
+   50.0
+  ],
+  "excited": [
+   "P1"
+  ],
+  "freq_ghz": [
+   1.0,
+   4.5,
+   8.0
+  ],
+  "table": [
+   {
+    "param": "S(P1,P1)",
+    "fmin_db": -0.01758542564238661,
+    "fc_db": -0.1360074663548781,
+    "fmax_db": -0.18665949454473915,
+    "min_db": -17.976883994699662,
+    "f_min": 3135000000.0,
+    "max_db": 0.011708833015760783,
+    "f_max": 1052500000.0
+   },
+   {
+    "param": "S(P2,P1)",
+    "fmin_db": -65.18840952532622,
+    "fc_db": -70.21653566760104,
+    "fmax_db": -50.359162236669704,
+    "min_db": -98.8134959739643,
+    "f_min": 4202500000.0,
+    "max_db": -7.326550122879068,
+    "f_max": 3117500000.0
+   }
+  ],
+  "compare_file": null
+ },
+ "runs": {
+  "P1": {
+   "seconds": 782.3167304992676,
+   "steps": 251783,
+   "log": "openems/exc_P1/openems.log"
+  }
+ },
+ "warnings": [],
+ "log": [
+  "stack (bottom to top):",
+  "  dielectric 1   z 0.000..0.200 mm  er 4.40  tand 0.0110",
+  "  copper F.Cu     z 0.200 mm",
+  "  copper B.Cu     z 0.000 mm",
+  "outline 20.00 x 20.00 mm, vias 5 (5 on signal nets ['RF'], 0 other)",
+  "  P1: lumped, F.Cu -> B.Cu, w 0.350 mm, h 0.200 mm, at (1.088, 13.900) mm (KiCad), Z 50 ohm",
+  "  P2: lumped, F.Cu -> B.Cu, w 0.350 mm, h 0.200 mm, at (18.912, 13.900) mm (KiCad), Z 50 ohm",
+  "mesh: 175 x 118 x 17 = 0.35 M cells (fine 0.050 mm, max 0.89 mm in dielectric / 1.87 mm in air, air margin 5.0 mm), boundaries xmin=MUR xmax=MUR ymin=MUR ymax=MUR zmin=PEC zmax=MUR (PEC on the bottom plane), time step 0.065 ps, ~0.1 GB",
+  "transmission line P1 -> end: 1 sections, 5.71 mm, Z0 50.2..50.2 ohm",
+  "transmission line P2 -> end: 1 sections, 5.71 mm, Z0 50.2..50.2 ohm",
+  "wrote out/filter_mesh.png",
+  "excitation pulse ~11974 timesteps (estimate); --max-steps 1000000 allows 84 pulse lengths",
+  "openEMS: exciting P1 -> examples/out/openems/exc_P1",
+  "  P1 done in 782 s, ~251783 timesteps",
+  "note: P2 not excited - their reflection and the terms between unexcited ports are unknown (written as 0)"
+ ],
+ "runtime_s": 784.1524732112885,
+ "ports": [
+  "P1",
+  "P2"
+ ],
+ "zref": [
+  50.0,
+  50.0
+ ],
  "excited": [
   "P1"
  ],
  "parts": [],
- "diel": "fixed",
- "runtime_s": 205.9707670211792
+ "diel": "fixed"
 }

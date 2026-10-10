@@ -15,5 +15,11 @@ out     = "out"
 excite  = ["P1"]        # S11 and S21 (S12 by reciprocity); remove to excite every port
 air     = 5.0           # mm of air between the board and the boundary
 bc      = "auto"        # PEC on the solid bottom plane, MUR elsewhere
+# The default mesh (fine = 0.0375 mm from the 0.15 mm stripline, nz = 4) is not converged on this
+# board: |S11| comes out ~3 dB low and the delay ~3 % long (see docs/meshing.md). These give the
+# converged result (x1.5 and x2 meshes agree within 0.004 in S11):
+fine    = 0.025         # mm at copper edges
+nz      = 6             # cells through each dielectric layer
+fast    = "skrf"        # also the transmission-line model, compared in the report
 # field dumps (frequency-domain planes give PNG maps; no @GHz = time-domain VTK for ParaView)
 # dump  = ["E@F.Cu-0.1@2,6", "J@In2.Cu@4", "E@y=5"]
