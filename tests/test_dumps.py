@@ -85,11 +85,8 @@ def test_plot_normalised(tmp_path, model):
 
 
 def test_toml_dump_list(tmp_path):
-    from kicad2openems.cli import parser
-    from kicad2openems.config import apply_toml
+    from kicad2openems.cli import settings_from_argv
     c = tmp_path / 'c.toml'
     c.write_text('[openems]\ndump = ["E@F.Cu-0.1@2,6", "J@In2.Cu@4"]\ndump_port = ["P1"]\n')
-    ap = parser(); argv = ['b.kicad_pcb']
-    a = ap.parse_args(argv)
-    apply_toml(a, ap, str(c), argv)
-    assert a.dump == ['E@F.Cu-0.1@2,6', 'J@In2.Cu@4'] and a.dump_port == 'P1'
+    s, _ = settings_from_argv(['b.kicad_pcb', '--config', str(c)])
+    assert s.dump == ['E@F.Cu-0.1@2,6', 'J@In2.Cu@4'] and s.dump_port == ['P1']

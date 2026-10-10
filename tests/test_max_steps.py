@@ -2,9 +2,8 @@
 warning and the CLI / TOML option (no openEMS needed)."""
 import numpy as np
 import pytest
-from kicad2openems.cli import parser
-from kicad2openems.config import apply_toml
-from kicad2openems.simulation import pulse_steps, steps_taken, check_steps
+from kicad2openems.cli import settings_from_argv
+from kicad2openems.simulation import pulse_steps, steps_taken, step_limit_warning
 
 
 def test_pulse_steps():
@@ -24,20 +23,16 @@ def test_steps_taken_and_warning(tmp_path):
     _run_folder(tmp_path / 'a', 4.8e-13, 12000)
     n = steps_taken(str(tmp_path / 'a'), dt_ps=0.53)                 # 'et' wins over the mesher's estimate
     assert 11900 <= n <= 12000
-    log = []
-    mesh = {'info': {'dt_ps': 0.53}}
-    check_steps('P1', str(tmp_path / 'a'), mesh, 1_000_000, -40, log.append)
-    assert not log
-    check_steps('P1', str(tmp_path / 'a'), mesh, 12000, -40, log.append)
-    assert log and 'step limit' in log[0] and '--max-steps 12000' in log[0]
+    assert step_limit_warning('P1', n, 1_000_000, -40) is None
+    w = step_limit_warning('P1', n, 12000, -40)
+    assert w and 'step limit' in w and '--max-steps 12000' in w
     assert steps_taken(str(tmp_path)) is None                         # no probe file
 
 
 def test_cli_and_toml(tmp_path):
-    ap = parser()
-    assert ap.parse_args(['b.kicad_pcb']).max_steps == 1_000_000
-    assert ap.parse_args(['b.kicad_pcb', '--max-steps', '5000000']).max_steps == 5_000_000
+    assert settings_from_argv(['b.kicad_pcb'])[0].max_steps == 1_000_000
+    assert settings_from_argv(['b.kicad_pcb', '--max-steps', '5000000'])[0].max_steps == 5_000_000
     cfg = tmp_path / 'c.toml'
     cfg.write_text('[openems]\nmax-steps = 3000000\n')
-    a = ap.parse_args(['b.kicad_pcb'])
-    assert apply_toml(a, ap, str(cfg), ['b.kicad_pcb']) == [] and a.max_steps == 3_000_000
+    s, _ = settings_from_argv(['b.kicad_pcb', '--config', str(cfg)])
+    assert s.notes == [] and s.max_steps == 3_000_000

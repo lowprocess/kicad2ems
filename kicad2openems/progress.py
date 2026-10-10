@@ -124,9 +124,10 @@ class Tracker:
 class Monitor:
     """Thread tailing openEMS logs: runs = [(label, log path, Tracker)]. mode 'bar' (progress lines) or
     'raw' (the openEMS lines, prefixed with the label when there are several runs). out_fd: where to write
-    (the terminal, also while stdout is redirected)."""
-    def __init__(self, runs, mode='bar', out_fd=None, interval=0.25, plain_every=30.0):
-        self.runs, self.mode, self.interval = runs, mode, interval
+    (the terminal, also while stdout is redirected). on_status(label, status): called for every status
+    line with the parsed values plus the run's progress fraction and ETA (seconds or None)."""
+    def __init__(self, runs, mode='bar', out_fd=None, interval=0.25, plain_every=30.0, on_status=None):
+        self.runs, self.mode, self.interval, self.on_status = runs, mode, interval, on_status
         self.out_fd = sys.stdout.fileno() if out_fd is None else out_fd
         self.tty = os.isatty(self.out_fd)
         self.plain_every, self._last_plain = plain_every, 0.0
@@ -153,7 +154,13 @@ class Monitor:
             self._pos[i] += cut
             lines = chunk[:cut].decode('utf-8', 'replace').splitlines()
             for line in lines:
-                tr.feed(parse_line(line))
+                p = parse_line(line)
+                tr.feed(p)
+                if p and self.on_status:
+                    try:
+                        self.on_status(label, dict(p, fraction=tr.fraction(), eta=tr.eta()[0]))
+                    except Exception:                                # a listener must never stop the monitor
+                        self.on_status = None
                 if self.mode == 'raw':
                     self.write((f"[{label}] " if len(self.runs) > 1 else '') + line + "\n")
 

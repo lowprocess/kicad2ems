@@ -17,8 +17,8 @@ Spec (command line --dump, repeatable, or `dump = [...]` in the TOML config):
 
 Examples:  --dump E@F.Cu+0.05@2,6   --dump J@In2.Cu@4   --dump E@y=7   --dump H@volume@5
 
-Planes and boxes are clipped to the board outline (+1 mm) and the stack (+1 mm air), so a dump does
-not cover the empty air margin.
+Planes are clipped to the board outline (+1 mm) and the stack (+1 mm air), so a dump does not cover
+the empty air margin; `volume` is the board + 0.5 mm; a box is used as given.
 """
 import re
 import numpy as np
@@ -178,8 +178,7 @@ def plot_fd_dumps(d, path, m, out_prefix, norm=None, port='', log=print):
     """|field| maps of a frequency-domain plane dump, one PNG per frequency, copper outlined. norm:
     {freq: incident port voltage} - fields are then scaled to a 1 V incident wave at that port."""
     import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
+    from matplotlib.figure import Figure
     from matplotlib.colors import LogNorm
     mesh, frames = read_fd(path)
     files = []
@@ -200,7 +199,8 @@ def plot_fd_dumps(d, path, m, out_prefix, norm=None, port='', log=print):
         sl[d.normal] = 0
         img = mag[tuple(sl)]
         u, v = mesh[names[ax_u]], mesh[names[ax_v]]
-        fig, ax = plt.subplots(figsize=(10, 5.2))
+        fig = Figure(figsize=(10, 5.2))
+        ax = fig.subplots()
         vmax = np.nanmax(img) if np.isfinite(img).any() and np.nanmax(img) > 0 else 1.0
         base = matplotlib.colormaps['inferno']
         cmap = base.with_extremes(bad=base(0.0))                    # zero field (inside metal) stays dark
@@ -229,6 +229,5 @@ def plot_fd_dumps(d, path, m, out_prefix, norm=None, port='', log=print):
         fig.tight_layout()
         fn = f"{out_prefix}_{d.name}_{f / 1e9:g}GHz.png"
         fig.savefig(fn, dpi=130)
-        plt.close(fig)
         files.append(fn)
     return files

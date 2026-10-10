@@ -1,12 +1,10 @@
 """Mesh convergence: refinement levels, comparison against the finest level, --preview --converge."""
-import os, sys, subprocess
 import numpy as np
 import pytest
 from kicad2openems.kicad import KiCadBoard
 from kicad2openems.model import Model
-from kicad2openems.converge import parse_levels, mesh_levels, compare_levels, report
+from kicad2openems.converge import parse_levels, mesh_levels, compare_levels, verdict
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def test_parse_levels():
@@ -40,15 +38,14 @@ def test_compare_levels_and_verdict():
     cmp = compare_levels([coarse, mid, ref], ['P1', 'P2'])
     assert cmp[0]['max_db'] == pytest.approx(1.0) and 'S(P2,P2)' not in cmp[0]['params']
     assert cmp[1]['max_db'] == pytest.approx(0.05) and cmp[1]['max_deg'] == pytest.approx(1.0)
-    lines, ok = report([1, 1.5, 2], cmp, 0.1, 2)
+    lines, ok = verdict([1, 1.5, 2], cmp, 0.1, 2)
     assert ok and 'converged' in lines[-1]
-    assert not report([1, 1.5, 2], cmp, 0.01, 2)[1]
+    assert not verdict([1, 1.5, 2], cmp, 0.01, 2)[1]
 
 
-def test_preview_converge_end_to_end(demo_files, tmp_path):
+def test_preview_converge_end_to_end(demo_files, tmp_path, run_cli):
     base, _ = demo_files
-    r = subprocess.run([sys.executable, '-m', 'kicad2openems', base + '.kicad_pcb', '--pos', base + '-top.pos',
-                        '--nets', 'RF,GND', '--ground', 'B.Cu', '--fmin', '1', '--fmax', '8', '--out', str(tmp_path),
-                        '--converge', '1,2', '--preview'], cwd=ROOT, capture_output=True, text=True)
-    assert r.returncode == 0, r.stderr
-    assert 'mesh convergence levels:' in r.stdout and 'x2 ' in r.stdout
+    code, out, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'RF,GND', '--ground', 'B.Cu',
+                             '--fmin', '1', '--fmax', '8', '--out', tmp_path, '--converge', '1,2', '--preview')
+    assert code == 0, err
+    assert 'mesh convergence levels:' in out and 'x2 ' in out

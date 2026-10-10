@@ -1,30 +1,18 @@
 """Antenna mode: defaults, match / gain post-processing, gap ports (centre-fed dipole) and an end-to-end
 --mode antenna --preview of the example boards (no openEMS needed)."""
-import os, sys, subprocess
 import numpy as np
 import pytest
 from kicad2openems.kicad import KiCadBoard
 from kicad2openems.model import Model
 from kicad2openems.mesh import auto_mesh
-from kicad2openems.antenna import antenna_defaults, record_freqs, match_summary, gain_table, pattern_gain
-from test_simulation_setup import fake_openems                       # noqa: F401  (fixture)
+from kicad2openems.antenna import antenna_air, record_freqs, match_summary, gain_table, pattern_gain
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-@pytest.fixture(scope='module')
-def boards(tmp_path_factory):
-    d = tmp_path_factory.mktemp('ant')
-    for k in ('patch', 'ifa', 'dipole', 'slot'):
-        subprocess.check_call([sys.executable, os.path.join(ROOT, 'examples', 'make_antennas.py'), k, str(d / k)])
-    return d
 
 
 def test_defaults_and_record_freqs():
-    air, bc = antenna_defaults(2e9, 3e9)
-    assert air == pytest.approx(299.792458 / 2.5 / 4) and bc == ('PML_8',) * 6
-    assert antenna_defaults(2e9, 3e9, air=12.0)[0] == 12.0
-    assert antenna_defaults(20e9, 30e9)[0] == 5.0                    # at least 5 mm
+    assert antenna_air(2e9, 3e9) == pytest.approx(299.792458 / 2.5 / 4)
+    assert antenna_air(2e9, 3e9, air=12.0) == 12.0
+    assert antenna_air(20e9, 30e9) == 5.0                            # at least 5 mm
     f = record_freqs(2e9, 3e9, [2.43e9])
     assert len(f) == 22 and 2.43e9 in f and f[0] == 2e9 and f[-1] == 3e9
 
@@ -48,7 +36,7 @@ def test_gain_table_and_pattern():
 
 
 def test_dipole_gap_port(boards):
-    m = Model(KiCadBoard(str(boards / 'dipole.kicad_pcb')), log=lambda *a: None)
+    m = Model(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
     p = m.ports[0]
     assert p.kind == 'gap' and p.direction == 'x' and p.z0 == 73
     assert p.gap == pytest.approx((34.5, 35.5)) and p.w == pytest.approx(2.0) and p.c[1] == pytest.approx(-10.0)
@@ -62,7 +50,7 @@ def test_dipole_gap_port(boards):
 
 def test_gap_port_direction_in_fdtd(boards, fake_openems, monkeypatch):
     from kicad2openems import simulation
-    m = Model(KiCadBoard(str(boards / 'dipole.kicad_pcb')), log=lambda *a: None)
+    m = Model(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
     mesh = auto_mesh(m, 1.5e9, 3.5e9, bc=('PML_8',) * 6, air=30, log=lambda *a: None)
     seen = []
     import openEMS
@@ -74,10 +62,9 @@ def test_gap_port_direction_in_fdtd(boards, fake_openems, monkeypatch):
 
 
 @pytest.mark.parametrize('kind', ['patch', 'ifa', 'dipole', 'slot'])
-def test_antenna_preview(boards, kind, tmp_path):
-    r = subprocess.run([sys.executable, '-m', 'kicad2openems', str(boards / f'{kind}.kicad_pcb'), '--mode', 'antenna',
-                        '--fmin', '2', '--fmax', '3', '--out', str(tmp_path), '--preview'],
-                       cwd=ROOT, capture_output=True, text=True)
-    assert r.returncode == 0, r.stderr
-    assert 'antenna mode: boundaries PML_8' in r.stdout and 'zmin=PML_8' in r.stdout
-    assert ('gap port' in r.stdout) == (kind == 'dipole')
+def test_antenna_preview(boards, kind, tmp_path, run_cli):
+    code, out, err = run_cli(boards[kind] + '.kicad_pcb', '--mode', 'antenna', '--fmin', '2', '--fmax', '3',
+                             '--out', tmp_path, '--preview', '--no-report')
+    assert code == 0, err
+    assert 'antenna mode: boundaries PML_8' in out and 'zmin=PML_8' in out
+    assert ('gap port' in out) == (kind == 'dipole')

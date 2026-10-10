@@ -11,16 +11,14 @@ far-field (NF2FF) box recorded at a set of frequencies, and after the run:
 Coordinates are those of the model (x right, y up as seen from the top of the board, z out of the
 board's top side), so phi = 0 is +x, theta = 0 is the board's top-side normal.
 """
-import json, os
+import functools, json
 import numpy as np
 from .constants import C0
 
 
-def antenna_defaults(fmin, fmax, air=None, bc=None):
-    """Air margin (mm) and boundaries for antenna runs: lambda / 4 at the band centre (at least 5 mm)
-    and PML_8 on all six sides (unless given)."""
-    lam_c = C0 / (0.5 * (fmin + fmax)) * 1e3
-    return (max(5.0, lam_c / 4) if air is None else air), (bc or ('PML_8',) * 6)
+def antenna_air(fmin, fmax, air=None):
+    """Air margin (mm) of antenna runs: lambda / 4 at the band centre, at least 5 mm (unless given)."""
+    return max(5.0, C0 / (0.5 * (fmin + fmax)) * 1e3 / 4) if air is None else air
 
 
 def exc_fmax(fmin, fmax):
@@ -83,32 +81,19 @@ def describe(match, rows, f_pat):
     return out
 
 
-def run_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, end_db=-40, sigma=None, threads=0,
-                xml_path=None, dumps=(), diel='fixed', diel_fref=1e9, step=2.0, max_steps=1_000_000, progress=None,
-                log=print):
-    """FDTD run with port k excited and an NF2FF box. Returns (S column (nf, n), result dict)."""
-    from .simulation import build_fdtd, _run_dir, check_steps, execute
-    fmin, fmax = freq[0], freq[-1]
-    ffr = record_freqs(fmin, fmax, ff_extra)
-    path = _run_dir(m, k, out_dir)
-    # the excitation reaches 30 % of the band beyond fmax: in the top ~15 % of a Gaussian's band (its
-    # -20 dB edge) the far field came out wrong (dipole: 6.3 dBi and 107 % efficiency at fmax)
-    FDTD, CSX, ports = build_fdtd(m, mesh, fmin, fmax, k, bc=bc, end_db=end_db, sigma=sigma, dumps=dumps,
-                                  diel=diel, diel_fref=diel_fref, exc_fmax=exc_fmax(fmin, fmax), max_steps=max_steps)
-    nf2ff = FDTD.CreateNF2FFBox(frequency=[float(f) for f in ffr])
-    os.makedirs(path, exist_ok=True)
-    if xml_path:
-        CSX.Write2XML(os.path.abspath(xml_path))
-    log(f"openEMS: antenna run, {m.ports[k].name} driven, NF2FF box recording {len(ffr)} frequencies -> {path}")
-    if progress is not None:
-        progress = dict(progress, label=m.ports[k].name, end_db=end_db, max_steps=max_steps)
-    seconds = execute(FDTD, path, threads, progress=progress)
-    n = check_steps(m.ports[k].name, path, mesh, max_steps, end_db, log)
-    log(f"  done in {seconds:.0f} s" + (f", ~{n} timesteps" if n else ''))
-    for p in ports:
-        p.CalcPort(path, freq)
-    col = np.array([p.uf_ref / ports[k].uf_inc for p in ports]).T
-    pk = ports[k]
+def nf2ff_box(freqs):
+    """Run hook (simulation.run_excitations setup=): an NF2FF box recording at `freqs` (Hz)."""
+    return functools.partial(_add_nf2ff, [float(f) for f in freqs])
+
+
+def _add_nf2ff(freqs, FDTD, CSX):
+    return FDTD.CreateNF2FFBox(frequency=freqs)
+
+
+def analyse(m, freq, ffr, ff_pattern=None, step=2.0, log=print, *, path, ports, token, k, col):
+    """Run hook (analyse=): input match, gain over frequency and the pattern cuts from a finished antenna
+    run (token: the NF2FF box). Returns the result dict."""
+    nf2ff, pk = token, ports[k]
     match = match_summary(freq, col[:, k], m.ports[k].z0)
     pk.CalcPort(path, ffr)
     p_acc, p_inc = np.atleast_1d(pk.P_acc), np.atleast_1d(pk.P_inc)
@@ -118,31 +103,34 @@ def run_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, end
     th, ph = np.arange(0, 181, 5.0), np.arange(0, 361, 5.0)
     full = nf2ff.CalcNF2FF(path, list(ffr), th, ph, center=centre, outfile='nf2ff_sphere.h5')
     rows = gain_table(ffr, np.atleast_1d(full.Dmax), np.atleast_1d(full.Prad), p_acc, p_inc)
-    f_pat = ff_pattern if ff_pattern else match['f_res']
-    ip = int(np.argmin(np.abs(ffr - f_pat)))
-    f_pat = float(ffr[ip])
-    eff = rows[ip]['eff']
-    dmax = float(np.atleast_1d(full.Dmax)[ip])
-    # cuts at the pattern frequency
+    ip = int(np.argmin(np.abs(ffr - (ff_pattern if ff_pattern else match['f_res']))))
+    f_pat, eff, dmax = float(ffr[ip]), rows[ip]['eff'], float(np.atleast_1d(full.Dmax)[ip])
+    e_max = float(np.max(full.E_norm[ip]))                       # one normalisation for all cuts
     tc = np.arange(-180, 180 + step / 2, step)
     cuts = {}
     for name, theta, phi in (('xz (phi = 0)', tc, [0.0]), ('yz (phi = 90)', tc, [90.0]),
                              ('xy (theta = 90)', [90.0], np.arange(0, 360 + step / 2, step))):
-        r = nf2ff.CalcNF2FF(path, [f_pat], theta, phi, center=centre,
-                            outfile=f"nf2ff_cut_{name.split()[0]}.h5")
-        e = np.asarray(r.E_norm[0], float).ravel()
-        cuts[name] = dict(angle=list(map(float, theta if len(theta) > 1 else phi)), E=e)
-    # one normalisation for all cuts: the sphere's maximum at f_pat
-    e_max = float(np.max(full.E_norm[ip]))
-    for c in cuts.values():
-        g = (c.pop('E') / e_max) ** 2 * dmax * eff
-        c['gain_dbi'] = [float(v) for v in 10 * np.log10(np.maximum(g, 1e-6))]
+        r = nf2ff.CalcNF2FF(path, [f_pat], theta, phi, center=centre, outfile=f"nf2ff_cut_{name.split()[0]}.h5")
+        g = (np.asarray(r.E_norm[0], float).ravel() / e_max) ** 2 * dmax * eff
+        cuts[name] = dict(angle=list(map(float, theta if len(theta) > 1 else phi)),
+                          gain_dbi=[float(v) for v in 10 * np.log10(np.maximum(g, 1e-6))])
     sphere = dict(theta=th, phi=ph, gain=pattern_gain(full.E_norm[ip], dmax, eff))
-    res = dict(match=match, rows=rows, f_pattern=f_pat, cuts=cuts, sphere=sphere, port=m.ports[k].name,
-               seconds=seconds, steps=n)
     for line in describe(match, rows, f_pat):
         log(line)
-    return col, res
+    return dict(match=match, rows=rows, f_pattern=f_pat, cuts=cuts, sphere=sphere, port=m.ports[k].name)
+
+
+def run_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, step=2.0, log=print, **run_kw):
+    """FDTD run with port k excited and an NF2FF box: simulation.run_excitations with the antenna hooks.
+    The excitation reaches 30 % of the band beyond fmax: in the top ~15 % of a Gaussian's band (its -20 dB
+    edge) the far field came out wrong (dipole: 6.3 dBi and 107 % efficiency at fmax). Returns the
+    RunResult; RunResult.extra[port name] holds the antenna results."""
+    from .simulation import run_excitations
+    ffr = record_freqs(freq[0], freq[-1], ff_extra)
+    log(f"openEMS: antenna run, {m.ports[k].name} driven, NF2FF box recording {len(ffr)} frequencies")
+    return run_excitations(m, mesh, freq, [k], bc, out_dir, jobs=1, exc_fmax=exc_fmax(freq[0], freq[-1]),
+                           setup=nf2ff_box(ffr), log=log,
+                           analyse=functools.partial(analyse, m, freq, ffr, ff_pattern, step, log), **run_kw)
 
 
 def save(res, path):

@@ -60,3 +60,20 @@ def test_redirect_output(tmp_path, capfd):
         os.write(terminal, b"to the terminal\n")
     assert log.read_text() == "from the solver\nsolver warning\n"
     assert 'to the terminal' in capfd.readouterr().out
+
+
+def test_status_events_reach_the_events_file(tmp_path):
+    """A Monitor feeding Job.status writes JSON 'status' events (openEMS's clock as run_time)."""
+    import json
+    from kicad2openems.config import Settings
+    from kicad2openems.pipeline import Job
+    log = tmp_path / 'openems.log'
+    log.write_text(LINE + "\n")
+    job = Job(Settings(board='b.kicad_pcb', events=str(tmp_path / 'ev.jsonl'), out=str(tmp_path)), echo=lambda *a: None)
+    r, w = os.pipe()
+    Monitor([('P1', str(log), Tracker('P1'))], 'bar', out_fd=w, interval=0.01, on_status=job.status).start().stop()
+    os.close(w)
+    job.events.close()
+    ev = [json.loads(l) for l in (tmp_path / 'ev.jsonl').read_text().splitlines()]
+    st = [e for e in ev if e['kind'] == 'status']
+    assert st and st[0]['run'] == 'P1' and st[0]['step'] == 265424 and st[0]['run_time'] == 92.0 and 't' in st[0]

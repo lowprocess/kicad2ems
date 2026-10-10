@@ -1,8 +1,18 @@
 """
-Writes a small KiCad 8 board for testing the import path (no KiCad needed):
-  4-layer stackup with solder mask; F.Cu microstrip -> blind via -> In2.Cu stripline;
-  In1.Cu GND plane with an antipad (filled zone), GND stitching vias to B.Cu;
-  two port footprints 'kicad2openems:RF_Port' carrying Fab text P1 / P2; and the pick-and-place file.
+Writes small KiCad 8 test boards (no KiCad needed) and their pick-and-place files:
+
+    python examples/make_demo_board.py OUT [VARIANT]       # OUT.kicad_pcb, OUT-top.pos
+
+  transition (default)  4-layer stackup with solder mask; F.Cu microstrip -> blind via -> In2.Cu
+                        stripline; In1.Cu GND plane with an antipad, GND stitching vias to B.Cu
+  diff                  2-layer edge-coupled microstrip pair with a 45 degree jog, ports P1+/- P2+/-
+                        (run with --ground B.Cu: the board has no ground copper of its own)
+  rlc                   lumped-part detection cases (C1 used; DNP, unknown values and odd footprints skipped)
+  lowpass / highpass / bandpass
+                        1 GHz 3rd-order Butterworth ladders of 0402 parts with ESR / ESL fields, plus
+                        OUT_ideal.s2p, the ideal lumped circuit (demo_*.toml overlay it with compare)
+
+Port footprints 'kicad2openems:RF_Port' carry the Fab text P1 / P2.
 """
 import math, sys, uuid
 import numpy as np
@@ -72,7 +82,10 @@ def make(path, pos_path):
         fh.write(f"TP1       P1        RF_Port              2.0000    -{yc:.4f}     0.0000  top\n")
         fh.write(f"TP2       P2        RF_Port             22.0000    -{yc:.4f}   180.0000  top\n")
 
-if __name__ == '__main__' and not (len(sys.argv) > 2 and sys.argv[2] in ('diff', 'rlc', 'lowpass', 'highpass', 'bandpass')):
+VARIANTS = ('transition', 'diff', 'rlc', 'lowpass', 'highpass', 'bandpass')
+if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] not in VARIANTS:
+    sys.exit(f"make_demo_board.py: unknown variant {sys.argv[2]!r} - choose one of {', '.join(VARIANTS)}")
+if __name__ == '__main__' and not (len(sys.argv) > 2 and sys.argv[2] in VARIANTS[1:]):
     out = sys.argv[1] if len(sys.argv) > 1 else 'demo_transition'
     make(out + '.kicad_pcb', out + '-top.pos')
     print('wrote', out + '.kicad_pcb', out + '-top.pos')

@@ -1,25 +1,28 @@
 """
-One run of kicad2openems as a sequence of stages, driven by the parsed command line / TOML options:
+One run of kicad2openems as a sequence of stages, driven by a config.Settings:
 
-    Job(args).run()
+    Job(settings).run()
         model()     KiCadBoard -> Model (stack, copper, vias, ports, lumped parts)
         mesh()      boundaries, automatic mesh (or the --converge levels), cavity check, field-dump specs
-        preview()   <name>_mesh.png, excitation length; --preview stops here
+        lines()     transmission-line sections and Z0 (tlines.py); with --fast, their S-parameters (fastsolve.py)
+        preview()   <name>_mesh.png, excitation length; --preview stops here (after the report)
         solve()     openEMS runs: S-parameters (all excited ports, --jobs), --converge levels, or antenna mode
-        outputs()   Touchstone, plots, field-dump maps, antenna / convergence results, <name>_openems.json
-        report()    <name>_report.html (report.py), also after --preview
+        outputs()   Touchstone, plots, field-dump maps, antenna / convergence results, line-model comparison
+        report()    <name>_openems.json (the run summary) and <name>_report.html built from it
 
-Every message goes through Job.log, which prints it and keeps it, so the report can list the run's
-warnings; Job.files collects the files written.
+Everything the report shows is collected in Job.summary, a JSON-friendly dict written to
+<name>_openems.json; report.py renders that dict and nothing else. Every message goes through Job.log
+(printed, kept for the report, and sent to --events as JSON lines).
 """
-import json, os, time
+import datetime, json, os, time
 import numpy as np
 
+from . import __version__
 from .kicad.board import KiCadBoard
 from .model import Model
 from .boundaries import resolve_bc, cavity_check
 from .mesh import auto_mesh
-from .plots import preview, plot_results, plot_convergence, plot_antenna, plot_pattern
+from .plots import save, preview, plot_results, plot_convergence, plot_antenna, plot_pattern, plot_lines
 from .sparams import mixed_mode, fill_reciprocal
 from .touchstone import write_touchstone, read_touchstone
 from .dumps import parse_dump, estimate_size_mb, plot_fd_dumps
@@ -33,40 +36,123 @@ def ram_gb():
         return None
 
 
+def _db(v):
+    return float(20 * np.log10(abs(v) + 1e-15)) if np.isfinite(v) else None
+
+
+def sparam_table(freq, S, names):
+    """Per S-parameter (lower triangle): |S| in dB at fmin, the centre and fmax, and its extremes."""
+    rows, ic = [], len(freq) // 2
+    for j in range(S.shape[1]):
+        for i in range(j, S.shape[1]):
+            s = S[:, i, j]
+            ok = np.isfinite(s)
+            if not ok.any():
+                continue
+            db = 20 * np.log10(np.abs(s[ok]) + 1e-15)
+            fb = freq[ok]
+            rows.append(dict(param=f"S({names[i]},{names[j]})", fmin_db=_db(s[0]), fc_db=_db(s[ic]), fmax_db=_db(s[-1]),
+                             min_db=float(db.min()), f_min=float(fb[np.argmin(db)]),
+                             max_db=float(db.max()), f_max=float(fb[np.argmax(db)])))
+    return rows
+
+
+def compare_table(freq, S, Sx, names, floor_db=-40.0):
+    """openEMS (S) against another result (Sx) on the same frequencies: per S-parameter the largest
+    |S| difference in dB (where openEMS is above floor_db), the largest vector difference |S - Sx|,
+    and for transmissions the delay difference (Sx - S, from the phase slope) in ps."""
+    rows = []
+    w = 2 * np.pi * freq
+    for j in range(S.shape[1]):
+        for i in range(j, S.shape[1]):
+            a, b = S[:, i, j], Sx[:, i, j]
+            ok = np.isfinite(a) & np.isfinite(b)
+            if ok.sum() < 3:
+                continue
+            da, dbx = 20 * np.log10(np.abs(a[ok]) + 1e-15), 20 * np.log10(np.abs(b[ok]) + 1e-15)
+            m = da > floor_db
+            row = dict(param=f"S({names[i]},{names[j]})", max_ddb=float(np.max(np.abs(dbx - da)[m])) if m.any() else None,
+                       max_dvec=float(np.max(np.abs(b[ok] - a[ok]))), openems_max_db=float(da.max()),
+                       other_max_db=float(dbx.max()), ddelay_ps=None)
+            if i != j and m.all():
+                slope = lambda s: -np.polyfit(w[ok], np.unwrap(np.angle(s[ok])), 1)[0]
+                row['ddelay_ps'] = float((slope(b) - slope(a)) * 1e12)
+            rows.append(row)
+    return rows
+
+
 class Job:
-    def __init__(self, args, echo=print):
-        self.a, self.echo = args, echo
+    def __init__(self, settings, echo=print, command=None):
+        self.s, self.echo = settings, echo
         self.messages, self.files = [], []
-        self.name = os.path.splitext(os.path.basename(args.board))[0]
-        self.fmin, self.fmax = args.fmin * 1e9, args.fmax * 1e9
-        self.antenna = args.mode == 'antenna'
+        self.name = os.path.splitext(os.path.basename(settings.board))[0]
+        self.fmin, self.fmax = settings.fmin * 1e9, settings.fmax * 1e9
+        self.antenna = settings.antenna
         self.t0 = time.time()
-        self.levels = self.ant = self.result = None
-        self.coarse, self.dumps, self.info = [], [], {}
+        self.levels = self.ant = self.result = self.lm = self.fast = None
+        self.coarse, self.dumps = [], []
+        self.events = None
+        if settings.events:
+            from .events import EventSink
+            self.events = EventSink(settings.events)
+        mode = 'preview' if settings.preview else ('antenna' if self.antenna else 'S-parameters')
+        self.summary = dict(name=self.name, version=__version__, mode=mode, command=command,
+                            created=datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), settings=settings.options(),
+                            images={}, files=self.files, dumps=[])
 
     # ---- helpers -----------------------------------------------------------------------------------
     def log(self, *msg):
         text = " ".join(str(x) for x in msg)
         self.echo(text)
         self.messages.extend(text.split("\n"))
+        if self.events:
+            self.events.emit('log', text=text)
+
+    def stage(self, name):
+        if self.events:
+            self.events.emit('stage', name=name)
+
+    def status(self, run, st):
+        if self.events:                                              # openEMS's own clock 't' -> 'run_time'
+            self.events.emit('status', run=run, **{('run_time' if k == 't' else k): v for k, v in st.items()})
 
     @property
     def warnings(self):
         return [l.strip() for l in self.messages if 'WARNING' in l or l.strip().lower().startswith('warning')]
 
     def path(self, suffix):
-        return os.path.join(self.a.out, f"{self.name}{suffix}")
+        return os.path.join(self.s.out, f"{self.name}{suffix}")
 
     def wrote(self, label, path):
         self.files.append((label, path))
+        if self.events:
+            self.events.emit('file', label=label, path=path)
+
+    def figure(self, fig, suffix, key, label):
+        """Save a plot as <name><suffix>, record it for the report."""
+        if fig is None:
+            return None
+        p = save(fig, self.path(suffix))
+        self.summary['images'][key] = p
+        self.wrote(label, p)
+        return p
 
     # ---- stages --------------------------------------------------------------------------------------
     def run(self):
-        os.makedirs(self.a.out, exist_ok=True)
-        self.model()
-        self.mesh()
-        self.preview()
-        if self.a.preview:
+        os.makedirs(self.s.out, exist_ok=True)
+        try:
+            code = self._run()
+        finally:
+            if self.events:
+                self.events.emit('done', code=locals().get('code'))
+                self.events.close()
+        return code
+
+    def _run(self):
+        for st in (self.model, self.mesh, self.lines, self.preview):
+            self.stage(st.__name__)
+            st()
+        if self.s.preview:
             self.report()
             return 0
         from .simulation import check_openems
@@ -74,88 +160,145 @@ class Job:
         if not ok:
             self.log("openEMS cannot be imported - details:\n" + "\n".join(lines))
             return 2
-        self.solve()
-        self.outputs()
+        for st in (self.solve, self.outputs):
+            self.stage(st.__name__)
+            st()
         self.report()
         return 0
 
     def model(self):
-        a = self.a
-        region = tuple(float(v) for v in a.region.split(',')) if a.region else None
-        self.board = KiCadBoard(a.board)
-        self.m = Model(self.board, nets=a.nets.split(',') if a.nets else None, pos_file=a.pos, include_mask=a.mask,
-                       region=region, ground=a.ground, parts=a.parts, log=self.log)
-        self.log(self.m.describe())
-        if a.diel == 'wideband':
+        s = self.s
+        self.board = KiCadBoard(s.board)
+        self.m = m = Model(self.board, nets=s.nets, pos_file=s.pos, include_mask=s.mask, region=s.region,
+                           ground=s.ground, parts=s.parts, log=self.log)
+        self.log(m.describe())
+        if s.diel == 'wideband':
             from .dielectric import describe as describe_diel
-            self.log("\n".join(describe_diel(self.m.layers, a.diel_fref * 1e9, self.fmin, self.fmax)))
+            self.log("\n".join(describe_diel(m.layers, s.diel_fref * 1e9, self.fmin, self.fmax)))
+        ob = m.outline.bounds
+        self.summary['model'] = dict(
+            board=s.board, outline_mm=[ob[2] - ob[0], ob[3] - ob[1]], nets=s.nets or 'all', diel=s.diel,
+            vias=len(m.vias), vias_signal=int(sum(m.via_signal)), signal_nets=sorted(m.signal_nets),
+            stack=[dict(name=l['name'], z0=l['z0'], z1=l['z1'], er=l['er'], tand=l['tand']) for l in m.layers[::-1]],
+            copper=[dict(layer=n, z=m.cu_z[n], modelled=n in m.copper) for n in m.cu_order[::-1]],
+            ports=[dict(name=p.name, kind=p.kind, layer=p.layer, ref_layer=p.ref_layer, w=p.w, z0=p.z0,
+                        h=abs(p.z_sig - p.z_ref), at=[float(p.c[0]), float(-p.c[1])], direction=p.direction,
+                        gap=(p.gap[1] - p.gap[0]) if p.kind == 'gap' else None) for p in m.ports],
+            parts=[dict(ref=p.ref, value=p.value_str(), layer=p.layer, gap=p.gap, elements=len(p.pieces()))
+                   for p in m.parts],
+            notes=list(m.notes))
 
     def mesh(self):
-        a, m = self.a, self.m
+        s, m = self.s, self.m
+        air, bc = s.air, s.bc
         if self.antenna:
-            from .antenna import antenna_defaults
-            if a.converge:
-                raise SystemExit("kicad2openems: --converge is not available with --mode antenna")
-            a.air, _ = antenna_defaults(self.fmin, self.fmax, a.air)
-            if a.bc == 'auto':
-                a.bc = 'PML_8'
-            self.log(f"antenna mode: boundaries {a.bc}, air margin {a.air:.1f} mm")
-        self.bc = resolve_bc(a.bc, m)
-        kw = dict(air=a.air, ratio=a.ratio, nz_min=a.nz, bc=self.bc, curves=a.curves, vias=a.vias,
-                  via_snap=a.via_snap, log=self.log)
-        if a.converge:
-            from .converge import parse_levels, mesh_levels, describe_levels
-            self.levels = mesh_levels(m, self.fmin, self.fmax, parse_levels(a.converge), res=a.res, fine=a.fine, **kw)
+            from .antenna import antenna_air
+            air = antenna_air(self.fmin, self.fmax, s.air)
+            bc = 'PML_8' if bc == 'auto' else bc
+            self.log(f"antenna mode: boundaries {bc}, air margin {air:.1f} mm")
+        self.bc = resolve_bc(bc, m)
+        kw = dict(air=air, ratio=s.ratio, nz_min=s.nz, bc=self.bc, curves=s.curves, vias=s.vias,
+                  via_snap=s.via_snap, log=self.log)
+        if s.converge:
+            from .converge import mesh_levels, describe_levels
+            self.levels = mesh_levels(m, self.fmin, self.fmax, sorted(set(s.converge)), res=s.res, fine=s.fine, **kw)
             self.log("\n".join(describe_levels(self.levels)))
             self.grid = self.levels[-1][1]                          # the finest level gives the result
+            self.summary['levels'] = [dict(factor=f, cells=lm['info']['cells'], fine_mm=lm['info']['fine_mm'],
+                                           dt_ps=lm['info']['dt_ps']) for f, lm in self.levels]
         else:
-            self.grid = auto_mesh(m, self.fmin, self.fmax, res=a.res, fine=a.fine, **kw)
+            self.grid = auto_mesh(m, self.fmin, self.fmax, res=s.res, fine=s.fine, **kw)
+        self.summary['mesh'] = self.grid['info']
         cavity_check(m, self.grid, self.bc, self.fmax, log=self.log)
-        for sp in (a.dump or []):                                  # validate dump specs before any run
-            self.log("  " + parse_dump(sp, m, self.grid).describe(self.grid))
+        self.dumps = [parse_dump(sp, m, self.grid) for sp in s.dump]   # validated before any run
+        for d in self.dumps:
+            self.log("  " + d.describe(self.grid))
+
+    def lines(self):
+        """Transmission-line sections (always) and, with --fast, their S-parameters."""
+        from .tlines import build
+        try:
+            self.lm = build(self.m)
+        except Exception as e:                                       # a ballpark aid must never stop a run
+            self.log(f"WARNING: transmission-line sections failed: {type(e).__name__}: {e}")
+            return
+        if not self.lm.paths:
+            self.log("transmission lines: no routed path from the ports" +
+                     (f" ({'; '.join(self.lm.notes)})" if self.lm.notes else ''))
+            return
+        self.summary['lines'] = self.lm.summary()
+        for p, q, secs, branches in self.lm.paths:
+            zs = [e.z0 for e, _, _ in secs if e.z0]
+            self.log(f"transmission line {p} -> {q or 'end'}: {len(secs)} sections, "
+                     f"{sum(e.length for e, _, _ in secs):.2f} mm" +
+                     (f", Z0 {min(zs):.1f}..{max(zs):.1f} ohm" if zs else '') +
+                     (f", {len(branches)} branch(es)" if branches else ''))
+        self.figure(plot_lines(self.lm, self.m, self.name), '_tlines.png', 'lines', 'transmission-line sections')
+        if self.s.fast:
+            self.fast_solve()
+
+    def fast_solve(self):
+        from .fastsolve import solve
+        s, m = self.s, self.m
+        self.freq = np.linspace(self.fmin, self.fmax, s.points)
+        try:
+            S, seconds = solve(self.lm, m.ports, self.freq, backend=s.fast, sigma=s.sigma, qucsator=s.qucsator)
+        except (ValueError, RuntimeError) as e:
+            self.log(f"WARNING: fast line model ({s.fast}) failed: {e}")
+            return
+        Smm, names, zref = mixed_mode(S, m)
+        out = self.path(f"_fast.s{len(names)}p")
+        write_touchstone(out, self.freq, np.nan_to_num(Smm), zref, comment=f"line model, {s.fast} ({self.name})",
+                         names=names)
+        self.wrote(f'S-parameters, fast line model ({s.fast})', out)
+        self.fast = dict(S=Smm, names=names, backend=s.fast, seconds=seconds)
+        self.summary['fast'] = dict(backend=s.fast, seconds=seconds, touchstone=out,
+                                    table=sparam_table(self.freq, Smm, names))
+        self.log(f"fast line model ({s.fast}): {seconds * 1e3:.0f} ms -> {out}")
 
     def preview(self):
         from .simulation import pulse_steps
         from .antenna import exc_fmax
-        a = self.a
-        png = self.path('_mesh.png')
-        preview(self.m, self.grid, png, self.name)
-        self.wrote('model and mesh', png)
-        self.log(f"wrote {png}")
+        s = self.s
+        self.figure(preview(self.m, self.grid, self.name), '_mesh.png', 'mesh', 'model and mesh')
+        self.log(f"wrote {self.path('_mesh.png')}")
         ps = pulse_steps(self.fmin, self.fmax, self.grid['info']['dt_ps'],
                          exc_fmax(self.fmin, self.fmax) if self.antenna else None)
-        self.pulse = ps
-        self.log(f"excitation pulse ~{ps} timesteps (estimate); --max-steps {a.max_steps} allows "
-                 f"{a.max_steps / ps:.0f} pulse lengths" +
-                 (" - WARNING: few for the fields to ring down: raise --max-steps" if a.max_steps < 20 * ps else ''))
+        self.summary['pulse_steps'] = ps
+        self.log(f"excitation pulse ~{ps} timesteps (estimate); --max-steps {s.max_steps} allows "
+                 f"{s.max_steps / ps:.0f} pulse lengths" +
+                 (" - WARNING: few for the fields to ring down: raise --max-steps" if s.max_steps < 20 * ps else ''))
+        if self.fast and s.preview:                                  # nothing else to show it against
+            self.figure(plot_results(self.freq, self.fast['S'], self.fast['names'],
+                                     f"{self.name} - fast line model ({s.fast})", label=f"line model ({s.fast})"),
+                        '_fast.png', 'fast', 'S-parameter plot, fast line model')
 
     def solve(self):
         from .simulation import run_excitations, port_index
-        a, m = self.a, self.m
-        self.excite = port_index(m, a.excite)
+        s, m = self.s, self.m
+        self.excite = port_index(m, s.excite)
         if self.antenna and len(self.excite) > 1:
             self.log(f"antenna mode: driving {m.ports[self.excite[0]].name} only (one port per antenna run; "
                      f"--excite to choose)")
             self.excite = self.excite[:1]
-        self.dumps = [parse_dump(sp, m, self.grid) for sp in (a.dump or [])]
-        dump_runs = port_index(m, a.dump_port) if a.dump_port else None
+        dump_runs = port_index(m, s.dump_port) if s.dump_port else None
         if self.dumps:
             n_runs = len(dump_runs) if dump_runs else 1
             self.log(f"field dumps: ~{estimate_size_mb(self.dumps, self.grid) * n_runs:.0f} MB on disk (rough), in "
                      f"{n_runs} run(s)")
-        self.freq = np.linspace(self.fmin, self.fmax, a.points)
-        jobs = max(1, min(a.jobs, len(self.excite)))
+        self.freq = np.linspace(self.fmin, self.fmax, s.points)
+        jobs = max(1, min(s.jobs, len(self.excite)))
         ram = ram_gb()
         if jobs > 1 and ram and jobs * self.grid['info']['mem_gb'] > 0.8 * ram:
             self.log(f"WARNING: {jobs} parallel runs need ~{jobs * self.grid['info']['mem_gb']:.1f} GB, "
                      f"{ram:.1f} GB RAM installed - use fewer --jobs")
-        progress = dict(mode='raw' if a.openems_output else 'bar')
-        run_kw = dict(end_db=a.end_db, sigma=a.sigma, threads=a.threads, jobs=jobs, diel=a.diel,
-                      max_steps=a.max_steps, diel_fref=a.diel_fref * 1e9, progress=progress, log=self.log)
+        progress = dict(mode='raw' if s.openems_output else 'bar', on_status=self.status if self.events else None)
+        run_kw = dict(end_db=s.end_db, sigma=s.sigma, threads=s.threads, diel=s.diel, max_steps=s.max_steps,
+                      diel_fref=s.diel_fref * 1e9, progress=progress, log=self.log)
         for f, lm in (self.levels or [])[:-1]:                     # convergence: coarser levels first, no dumps
             self.log(f"--- mesh level x{f:g} ({lm['info']['cells'] / 1e6:.2f} M cells) ---")
-            r = run_excitations(m, lm, self.freq, self.excite, self.bc,
-                                os.path.join(a.out, 'converge', f"L{f:g}"), **run_kw)
+            r = run_excitations(m, lm, self.freq, self.excite, self.bc, os.path.join(s.out, 'converge', f"L{f:g}"),
+                                jobs=jobs, **run_kw)
             fill_reciprocal(r.S, self.excite)
             self.coarse.append((f, mixed_mode(r.S, m)[0]))
         if self.levels:
@@ -163,33 +306,29 @@ class Job:
         xml = self.path('.xml')
         if self.antenna:
             from .antenna import run_antenna
-            from .simulation import RunResult
-            ff = [float(v) * 1e9 for v in str(a.ff_freq).split(',')] if a.ff_freq else []
-            n = len(m.ports)
             k = self.excite[0]
-            self.result = RunResult(np.full((len(self.freq), n, n), np.nan + 0j))
-            self.result.S[:, :, k], self.ant = run_antenna(
-                m, self.grid, self.freq, k, self.bc, a.out, ff_extra=ff, ff_pattern=ff[0] if ff else None,
-                end_db=a.end_db, sigma=a.sigma, threads=a.threads, xml_path=xml, dumps=self.dumps, diel=a.diel,
-                diel_fref=a.diel_fref * 1e9, step=a.ff_step, max_steps=a.max_steps, progress=progress, log=self.log)
-            self.result.seconds[m.ports[k].name] = self.ant['seconds']
-            self.result.steps[m.ports[k].name] = self.ant['steps']
+            self.result = run_antenna(m, self.grid, self.freq, k, self.bc, s.out,
+                                      ff_extra=[v * 1e9 for v in s.ff_freq], ff_pattern=s.ff_freq[0] * 1e9 if s.ff_freq else None,
+                                      step=s.ff_step, xml_path=xml, dumps=self.dumps, **run_kw)
+            self.ant = self.result.extra.get(m.ports[k].name)
         else:
-            self.result = run_excitations(m, self.grid, self.freq, self.excite, self.bc, a.out, xml_path=xml,
-                                          dumps=self.dumps, dump_runs=dump_runs, **run_kw)
+            self.result = run_excitations(m, self.grid, self.freq, self.excite, self.bc, s.out, xml_path=xml,
+                                          dumps=self.dumps, dump_runs=dump_runs, jobs=jobs, **run_kw)
         self.wrote('CSX geometry (AppCSXCAD)', xml)
 
     def outputs(self):
-        a, m, name, freq = self.a, self.m, self.name, self.freq
+        from .simulation import run_dir, log_path
+        s, m, name, freq = self.s, self.m, self.name, self.freq
         r = self.result
-        self.dump_pngs = []
         for (pname, dname), path in r.dump_files.items():
             d = next(x for x in self.dumps if x.name == dname)
             if d.freqs and os.path.exists(path):
                 tag = pname.replace('+', 'p').replace('-', 'n')
                 pngs = plot_fd_dumps(d, path, m, self.path(f"_{tag}"), norm=r.dump_norm.get(pname), port=pname,
                                      log=self.log)
-                self.dump_pngs += [(f"{dname} ({pname} driven)", p) for p in pngs]
+                self.summary['dumps'] += [dict(label=f"{dname} ({pname} driven)", png=p) for p in pngs]
+                for p in pngs:
+                    self.wrote(f"field map {dname} ({pname})", p)
                 self.log(f"  {dname} ({pname} driven): {path}" + (f" -> {len(pngs)} PNG map(s)" if pngs else ''))
             else:
                 self.log(f"  {dname} ({pname} driven): {path}  (time domain: open the .vtr series in ParaView)")
@@ -201,60 +340,80 @@ class Job:
         out = self.path(f"_openems.s{len(self.names)}p")
         write_touchstone(out, freq, np.nan_to_num(self.Smm), zref, comment=f"openEMS FDTD ({name})", names=self.names)
         self.wrote('S-parameters (Touchstone)', out)
-        cmp = (*read_touchstone(a.compare), os.path.basename(a.compare)) if a.compare else None
-        png = self.path('_openems.png')
-        plot_results(png, freq, self.Smm, self.names, f"{name} - openEMS", cmp)
-        self.wrote('S-parameter plot', png)
-        self.info = dict(ports=self.names, zref=zref, mesh=self.grid['info'],
-                         excited=[m.ports[k].name for k in self.excite],
-                         parts=[dict(ref=p.ref, value=p.value_str(), layer=p.layer) for p in m.parts], diel=a.diel,
-                         runs={p: dict(seconds=r.seconds.get(p), steps=r.steps.get(p)) for p in r.seconds})
+        overlays = []
+        if s.compare:
+            fc, Sc = read_touchstone(s.compare)
+            overlays.append((fc, Sc, os.path.basename(s.compare), '--'))
+        if self.fast:
+            overlays.append((freq, self.fast['S'], f"line model ({self.fast['backend']})", ':'))
+            self.summary['fast']['compare'] = compare_table(freq, self.Smm, self.fast['S'], self.names)
+        self.figure(plot_results(freq, self.Smm, self.names, f"{name} - openEMS", overlays), '_openems.png',
+                    'sparams', 'S-parameter plot')
+        runs = {p: dict(seconds=r.seconds.get(p), steps=r.steps.get(p)) for p in r.seconds}
+        for k in self.excite:
+            runs.setdefault(m.ports[k].name, {})['log'] = log_path(run_dir(m, k, s.out))
+        self.summary.update(
+            results=dict(names=self.names, zref=zref, excited=[m.ports[k].name for k in self.excite],
+                         freq_ghz=[freq[0] / 1e9, freq[len(freq) // 2] / 1e9, freq[-1] / 1e9],
+                         table=sparam_table(freq, self.Smm, self.names), compare_file=s.compare),
+            runs=runs)
         if self.ant:
             self.antenna_outputs()
         if self.levels:
             self.convergence_outputs()
-        js = self.path('_openems.json')
-        with open(js, 'w') as fh:
-            json.dump(dict(self.info, runtime_s=time.time() - self.t0), fh, indent=1)
-        self.wrote('run summary (JSON)', js)
-        self.log(f"wrote {out}, {png}  ({time.time() - self.t0:.0f} s)")
 
     def antenna_outputs(self):
         from .antenna import save as save_antenna
         k = self.excite[0]
-        apng, ppng, js = self.path('_antenna.png'), self.path('_pattern.png'), self.path('_antenna.json')
-        plot_antenna(apng, self.freq, self.result.S[:, k, k], self.m.ports[k].z0, self.ant, f"{self.name} - antenna")
-        plot_pattern(ppng, self.ant, f"{self.name} - gain pattern")
+        self.figure(plot_antenna(self.freq, self.result.S[:, k, k], self.m.ports[k].z0, self.ant,
+                                 f"{self.name} - antenna"), '_antenna.png', 'antenna', 'antenna: match, gain, efficiency')
+        self.figure(plot_pattern(self.ant, f"{self.name} - gain pattern"), '_pattern.png', 'pattern', 'antenna: patterns')
+        js = self.path('_antenna.json')
         save_antenna(self.ant, js)
-        self.info['antenna'] = dict(match=self.ant['match'], f_pattern=self.ant['f_pattern'])
-        self.wrote('antenna: match, gain, efficiency', apng)
-        self.wrote('antenna: patterns', ppng)
         self.wrote('antenna results (JSON)', js)
-        self.log(f"wrote {apng}, {ppng}")
+        self.summary['antenna'] = {k_: v for k_, v in self.ant.items() if k_ != 'sphere'}
 
     def convergence_outputs(self):
-        from .converge import compare_levels, report
-        a, levels = self.a, self.levels
-        tol_db, tol_deg = (float(v) for v in str(a.converge_tol).split(','))
+        from .converge import compare_levels, verdict
+        s, levels = self.s, self.levels
+        tol_db, tol_deg = s.converge_tol
         dev = compare_levels([S_ for _, S_ in self.coarse] + [self.Smm], self.names) + [{}]   # finest: the reference
-        lines, ok = report([f for f, _ in levels], dev[:-1], tol_db, tol_deg)
+        lines, ok = verdict([f for f, _ in levels], dev[:-1], tol_db, tol_deg)
         self.log("\n".join(lines))
         if not ok:
             self.log("WARNING: mesh not converged (see the convergence table)")
-        png = self.path('_converge.png')
-        plot_convergence(png, self.freq, [(f"x{f:g}", S_) for f, S_ in self.coarse] + [(f"x{levels[-1][0]:g}", self.Smm)],
-                         self.names, f"{self.name} - mesh convergence")
-        self.info['convergence'] = dict(converged=ok, tol_db=tol_db, tol_deg=tol_deg,
-                                        levels=[dict(factor=f, cells=lm['info']['cells'], **d)
-                                                for (f, lm), d in zip(levels, dev)])
-        self.wrote('mesh convergence', png)
-        self.log(f"wrote {png}")
+        self.figure(plot_convergence(self.freq, [(f"x{f:g}", S_) for f, S_ in self.coarse] +
+                                     [(f"x{levels[-1][0]:g}", self.Smm)], self.names, f"{self.name} - mesh convergence"),
+                    '_converge.png', 'converge', 'mesh convergence')
+        self.summary['convergence'] = dict(converged=ok, tol_db=tol_db, tol_deg=tol_deg,
+                                           levels=[dict(factor=f, cells=lm['info']['cells'], **d)
+                                                   for (f, lm), d in zip(levels, dev)])
 
     def report(self):
-        """<name>_report.html (unless --no-report)."""
-        if getattr(self.a, 'no_report', False):
-            return
-        from .report import write_report
-        path = write_report(self)
-        self.wrote('report', path)
-        self.log(f"wrote {path}")
+        """<name>_openems.json (the run summary) and <name>_report.html (unless --no-report)."""
+        js = self.path('_openems.json')
+        self.wrote('run summary (JSON)', js)
+        if not self.s.no_report:
+            self.wrote('report', self.path('_report.html'))
+        sm = self.summary
+        sm.update(warnings=self.warnings, log=list(self.messages), runtime_s=time.time() - self.t0)
+        if 'results' in sm:                                          # the keys older readers use
+            sm.update(ports=sm['results']['names'], zref=sm['results']['zref'], excited=sm['results']['excited'],
+                      parts=sm['model']['parts'], diel=self.s.diel)
+        with open(js, 'w') as fh:
+            json.dump(sm, fh, indent=1, default=_plain)
+        if not self.s.no_report:
+            from .report import write_report
+            write_report(sm, self.path('_report.html'))
+            self.log(f"wrote {self.path('_report.html')}")
+        self.log(f"done ({time.time() - self.t0:.0f} s)")
+
+
+def _plain(v):
+    """numpy values in the summary -> JSON."""
+    if isinstance(v, np.ndarray):
+        return v.tolist()
+    try:
+        return v.item()
+    except AttributeError:
+        return str(v)

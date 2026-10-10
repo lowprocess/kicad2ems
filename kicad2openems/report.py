@@ -1,17 +1,18 @@
 """
-HTML report of a run (<name>_report.html): one self-contained page (the plots embedded) with the model,
-mesh, results, antenna / convergence sections when they apply, the run statistics, warnings, output
-files, settings and the full log. Written from a finished pipeline.Job, also after --preview.
+HTML report of a run (<name>_report.html): one self-contained page (the plots embedded) rendered from
+the run summary (pipeline.Job.summary, also written as <name>_openems.json) and nothing else - so a GUI,
+or a later run, can rebuild it from the JSON file. Sections: summary, model, transmission-line
+sections, mesh, results (with the fast line model compared), antenna, convergence, field maps, the
+openEMS runs, output files, settings and the full log.
 """
-import base64, datetime, html, os, sys
-import numpy as np
+import base64, html, os
 
 CSS = """
 :root { --bg:#fbfbfa; --fg:#1f2328; --muted:#5f6670; --line:#d8dbe0; --card:#ffffff; --accent:#1f5f99;
-        --warn-bg:#fff4e0; --warn:#8a5300; --ok:#1d7a46; --bad:#b42318; }
+        --warn-bg:#fff4e0; --warn:#8a5300; --ok:#1d7a46; --bad:#b42318; --zw:#fdf0d5; --zb:#fbe1de; }
 @media (prefers-color-scheme: dark) {
   :root { --bg:#16181c; --fg:#e6e8eb; --muted:#9aa1ab; --line:#33373e; --card:#1e2126; --accent:#6aa7e0;
-          --warn-bg:#3a2c12; --warn:#f0b75a; --ok:#5cc28a; --bad:#f07167; } }
+          --warn-bg:#3a2c12; --warn:#f0b75a; --ok:#5cc28a; --bad:#f07167; --zw:#3d3218; --zb:#46201d; } }
 * { box-sizing: border-box; }
 body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
 main { max-width:1180px; margin:0 auto; padding:24px 16px 64px; }
@@ -25,6 +26,9 @@ h3 { margin:18px 0 8px; font-size:15px; color:var(--muted); }
 table { border-collapse:collapse; width:100%; font-size:13.5px; font-variant-numeric:tabular-nums; }
 th, td { text-align:left; padding:5px 10px 5px 0; border-bottom:1px solid var(--line); vertical-align:top; }
 th { color:var(--muted); font-weight:600; }
+td.n, th.n { text-align:right; padding-right:14px; }
+td.zw { background:var(--zw); } td.zb { background:var(--zb); }
+tr.branch td { color:var(--muted); font-style:italic; }
 .scroll { overflow-x:auto; }
 img { max-width:100%; height:auto; border:1px solid var(--line); border-radius:6px; background:#fff; margin:6px 0; }
 .kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; }
@@ -49,15 +53,26 @@ def _img(path, alt=''):
     try:
         with open(path, 'rb') as fh:
             data = base64.b64encode(fh.read()).decode()
-    except OSError:
+    except (OSError, TypeError):
         return f"<p class='meta'>(missing image {_e(path)})</p>"
     return f"<img alt='{_e(alt)}' src='data:image/png;base64,{data}'>"
 
 
-def _table(head, rows):
-    h = "".join(f"<th>{_e(c)}</th>" for c in head)
-    b = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
-    return f"<div class='scroll'><table><thead><tr>{h}</tr></thead><tbody>{b}</tbody></table></div>"
+def _table(head, rows, num=()):
+    """rows: lists of cells; a cell may be (html, css class). num: indexes of numeric columns."""
+    h = "".join(f"<th class='{'n' if i in num else ''}'>{_e(c)}</th>" for i, c in enumerate(head))
+    body = []
+    for r in rows:
+        cls = ''
+        if isinstance(r, dict):
+            cls, r = r.get('cls', ''), r['cells']
+        cells = []
+        for i, c in enumerate(r):
+            c, k = c if isinstance(c, tuple) else (c, '')
+            k = (k + (' n' if i in num else '')).strip()
+            cells.append(f"<td class='{k}'>{c}</td>" if k else f"<td>{c}</td>")
+        body.append(f"<tr class='{cls}'>" + "".join(cells) + "</tr>" if cls else "<tr>" + "".join(cells) + "</tr>")
+    return f"<div class='scroll'><table><thead><tr>{h}</tr></thead><tbody>{''.join(body)}</tbody></table></div>"
 
 
 def _kpis(items):
@@ -72,31 +87,77 @@ def _rel(path, base):
         return path
 
 
-def _db(v):
-    return f"{20 * np.log10(abs(v) + 1e-15):.2f}" if v == v else "–"
+def _f(v, fmt='.2f', none='–'):
+    return none if v is None else format(v, fmt)
 
 
-def _sparam_rows(freq, S, names):
-    """Per S-parameter: |S| in dB at fmin, centre and fmax, and its minimum / maximum over the band."""
-    rows, n = [], S.shape[1]
-    ic = len(freq) // 2
-    for j in range(n):
-        for i in range(j, n):
-            s = S[:, i, j]
-            if not np.isfinite(s).any():
-                continue
-            db = 20 * np.log10(np.abs(s[np.isfinite(s)]) + 1e-15)
-            fb = freq[np.isfinite(s)]
-            rows.append([f"S({_e(names[i])},{_e(names[j])})", _db(s[0]), _db(s[ic]), _db(s[-1]),
-                         f"{db.min():.2f} @ {fb[np.argmin(db)] / 1e9:.3f} GHz",
-                         f"{db.max():.2f} @ {fb[np.argmax(db)] / 1e9:.3f} GHz"])
-    return rows
+def _zcell(z, zref, fmt='.1f'):
+    """Z0 cell, shaded by its deviation from the port impedance (10 % / 25 %)."""
+    if z is None:
+        return ('–', '')
+    d = abs(z - zref) / zref
+    return (format(z, fmt), 'zb' if d > 0.25 else ('zw' if d > 0.10 else ''))
 
 
-def build(job):
-    a, m, g = job.a, job.m, job.grid['info']
-    base = os.path.dirname(os.path.abspath(job.path('_report.html')))
-    mode = 'preview' if a.preview else ('antenna' if job.antenna else 'S-parameters')
+def _lines_section(sm):
+    ln = sm['lines']
+    parts = ["<p>Each port's net broken into uniform sections: trace runs (split where the planes under or over "
+             "them change), component pads at their own width, via barrels and lumped parts, with closed-form "
+             "quasi-static impedances. <b>Z0</b> uses the stackup's copper thickness; <b>Z0 sheet</b> is the same "
+             "section with zero-thickness copper, as openEMS models it. Shading: more than 10 % / 25 % from the "
+             "port impedance. A ballpark: no coupling between sections, no radiation.</p>"]
+    if 'lines' in sm.get('images', {}):
+        parts.append(_img(sm['images']['lines'], 'transmission-line sections'))
+    for path in ln['paths']:
+        zref = path['z_port'] or 50.0
+        rows = []
+        for i, r in enumerate(path['sections'], 1):
+            what = _e(r['label'])
+            if r['kind'] == 'part' and r.get('value'):
+                what += f" <span class='meta'>{_e(r['value'])}</span>"
+            note = "; ".join(r['notes'])
+            xs = _e(r['xs']) + (f" <span class='meta'>s {r['s']:.3f}</span>" if r.get('s') else '')
+            rows.append([str(i), what, _e(r['layer']), xs, _f(r['w'], '.3f'), _f(r['length'], '.3f'),
+                         _zcell(r['z0'], zref), _zcell(r['z0_sheet'], zref), _f(r['eeff'], '.2f'),
+                         _f(r['delay_ps'], '.1f'), _f(r['start'], '.2f'), _e(note)])
+        for b in path['branches']:
+            rows.append(dict(cls='branch', cells=['↳', _e(b['label']), '', 'branch', '', _f(b['length'], '.3f'),
+                                                   _zcell(b['z0'], zref), '', '', '', _f(b['at'], '.2f'), '']))
+        tot = sum(r['length'] for r in path['sections'])
+        dl = sum(r['delay_ps'] or 0 for r in path['sections'])
+        parts.append(f"<h3>{_e(path['port'])} → {_e(path['to'] or 'end of the trace')}: {len(path['sections'])} "
+                     f"sections, {tot:.2f} mm, {dl:.0f} ps (port {zref:g} Ω)</h3>")
+        parts.append(_table(['#', 'section', 'layer', 'cross-section', 'w (mm)', 'length (mm)', 'Z0 (Ω)',
+                             'Z0 sheet (Ω)', 'εeff', 'delay (ps)', 'from (mm)', 'notes'], rows,
+                            num=(4, 5, 6, 7, 8, 9, 10)))
+    if ln['notes']:
+        parts.append("<ul>" + "".join(f"<li>{_e(n)}</li>" for n in ln['notes']) + "</ul>")
+    return "".join(parts)
+
+
+def _fast_section(sm, base):
+    fa = sm['fast']
+    txt = (f"<p>The transmission-line sections solved as a circuit with <b>{_e(fa['backend'])}</b> in "
+           f"{fa['seconds'] * 1e3:.0f} ms (zero-thickness copper, like the openEMS model): "
+           f"<a href='{_e(_rel(fa['touchstone'], base))}'>{_e(os.path.basename(fa['touchstone']))}</a>.</p>")
+    if fa.get('compare'):
+        runs = sm.get('runs', {})
+        t = sum(r.get('seconds') or 0 for r in runs.values())
+        txt += (f"<p>Against openEMS ({t:.0f} s): dotted lines in the S-parameter plot. Large differences point at "
+                "something one of the two models leaves out - coupling, radiation, plane resonances, the lumped "
+                "ports - or at a mesh problem.</p>")
+        rows = [[_e(r['param']), _f(r['openems_max_db'], '.1f'), _f(r['other_max_db'], '.1f'), _f(r['max_ddb'], '.2f'),
+                 _f(r['max_dvec'], '.3f'), _f(r['ddelay_ps'], '+.1f')] for r in fa['compare']]
+        txt += _table(['', 'openEMS max (dB)', 'line model max (dB)', 'max |Δ| (dB, where openEMS > −40 dB)',
+                       'max |ΔS| (vector)', 'Δ delay line − openEMS (ps)'], rows, num=(1, 2, 3, 4, 5))
+    elif 'fast' in sm.get('images', {}):
+        txt += _img(sm['images']['fast'], 'fast line model')
+    return txt
+
+
+def build(sm, base):
+    """The report page for a run summary; links are made relative to `base` (the report's folder)."""
+    model, g, st = sm['model'], sm['mesh'], sm['settings']
     nav, body = [], []
 
     def section(sid, title, content):
@@ -104,55 +165,62 @@ def build(job):
         body.append(f"<section id='{sid}'><h2>{_e(title)}</h2>{content}</section>")
 
     # ---- summary ----------------------------------------------------------------------------------
-    k = [('mode', _e(mode)), ('band', f"{a.fmin:g}–{a.fmax:g} GHz"),
-         ('ports', _e(", ".join(p.name for p in m.ports))), ('mesh', f"{g['cells'] / 1e6:.2f} M cells"),
+    k = [('mode', _e(sm['mode'])), ('band', f"{st['fmin']:g}–{st['fmax']:g} GHz"),
+         ('ports', _e(", ".join(p['name'] for p in model['ports']))), ('mesh', f"{g['cells'] / 1e6:.2f} M cells"),
          ('time step', f"{g['dt_ps']:.3f} ps")]
-    if job.ant:
-        mt = job.ant['match']
-        row = min(job.ant['rows'], key=lambda r: abs(r['f'] - job.ant['f_pattern']))
+    ant = sm.get('antenna')
+    if ant:
+        mt = ant['match']
+        row = min(ant['rows'], key=lambda r: abs(r['f'] - ant['f_pattern']))
         k += [('resonance', f"{mt['f_res'] / 1e9:.3f} GHz"), ('S11 at resonance', f"{mt['s11_db']:.1f} dB"),
               ('−10 dB band', f"{mt['bw10'] / mt['f_res'] * 100:.1f} %" if mt['bw10'] else 'none'),
               ('directivity', f"{row['D_dbi']:.2f} dBi" if row['D_dbi'] is not None else '–'),
               ('efficiency', f"{row['eff'] * 100:.0f} %"),
               ('gain', f"{row['G_dbi']:.2f} dBi" if row['G_dbi'] is not None else '–')]
-    if job.levels and 'convergence' in job.info:
-        ok = job.info['convergence']['converged']
+    if 'convergence' in sm:
+        ok = sm['convergence']['converged']
         k.append(('mesh convergence', f"<span class='{'ok' if ok else 'bad'}'>{'converged' if ok else 'not converged'}</span>"))
-    if job.result is not None:
-        k.append(('run time', f"{sum(v for v in job.result.seconds.values() if v):.0f} s solver"))
-    warn = job.warnings
+    if 'runs' in sm:
+        k.append(('run time', f"{sum(r.get('seconds') or 0 for r in sm['runs'].values()):.0f} s solver"))
+    if 'fast' in sm:
+        k.append(('line model', f"{_e(sm['fast']['backend'])}, {sm['fast']['seconds'] * 1e3:.0f} ms"))
+    warn = sm.get('warnings', [])
     w = (f"<div class='warn'><b>{len(warn)} warning(s)</b><ul>" + "".join(f"<li>{_e(x)}</li>" for x in warn) +
          "</ul></div>") if warn else "<p class='ok'>No warnings.</p>"
     section('summary', 'Summary', _kpis(k) + "<h3>Warnings</h3>" + w)
 
     # ---- model ----------------------------------------------------------------------------------------
     stack = [[_e(l['name']), f"{l['z0']:.3f}–{l['z1']:.3f}", f"{l['z1'] - l['z0']:.3f}", f"{l['er']:.2f}",
-              f"{l['tand']:.4f}"] for l in m.layers[::-1]]
-    cu = [[_e(n), f"{m.cu_z[n]:.3f}", 'yes' if n in m.copper else 'nothing selected'] for n in m.cu_order[::-1]]
+              f"{l['tand']:.4f}"] for l in model['stack']]
+    cu = [[_e(c['layer']), f"{c['z']:.3f}", 'yes' if c['modelled'] else 'nothing selected'] for c in model['copper']]
     ports = []
-    for p in m.ports:
-        where = f"({p.c[0]:.3f}, {-p.c[1]:.3f})"
-        if p.kind == 'gap':
-            ports.append([_e(p.name), 'gap', _e(p.layer), f"gap {p.gap[1] - p.gap[0]:.3f} mm along {p.direction}",
-                          f"{p.w:.3f}", f"{p.z0:g}", where])
+    for p in model['ports']:
+        where = f"({p['at'][0]:.3f}, {p['at'][1]:.3f})"
+        if p['kind'] == 'gap':
+            ports.append([_e(p['name']), 'gap', _e(p['layer']), f"gap {p['gap']:.3f} mm along {p['direction']}",
+                          f"{p['w']:.3f}", f"{p['z0']:g}", where])
         else:
-            ports.append([_e(p.name), 'vertical', f"{_e(p.layer)} → {_e(p.ref_layer)}",
-                          f"h {abs(p.z_sig - p.z_ref):.3f} mm", f"{p.w:.3f}", f"{p.z0:g}", where])
-    ob = m.outline.bounds
-    content = (f"<p>Board <code>{_e(a.board)}</code>: outline {ob[2] - ob[0]:.2f} × {ob[3] - ob[1]:.2f} mm, "
-               f"{len(m.vias)} vias ({sum(m.via_signal)} on signal nets), nets "
-               f"{_e(a.nets or 'all')}, dielectric loss {_e(a.diel)}.</p>"
+            ports.append([_e(p['name']), 'vertical', f"{_e(p['layer'])} → {_e(p['ref_layer'])}", f"h {p['h']:.3f} mm",
+                          f"{p['w']:.3f}", f"{p['z0']:g}", where])
+    nets = model['nets'] if isinstance(model['nets'], str) else ", ".join(model['nets'])
+    content = (f"<p>Board <code>{_e(model['board'])}</code>: outline {model['outline_mm'][0]:.2f} × "
+               f"{model['outline_mm'][1]:.2f} mm, {model['vias']} vias ({model['vias_signal']} on signal nets), nets "
+               f"{_e(nets)}, dielectric loss {_e(model['diel'])}.</p>"
                "<h3>Dielectrics (top to bottom)</h3>" +
                _table(['layer', 'z (mm)', 'thickness (mm)', 'εr', 'tan δ'], stack) +
                "<h3>Copper</h3>" + _table(['layer', 'z (mm)', 'modelled'], cu) +
                "<h3>Ports</h3>" + _table(['port', 'kind', 'layer', 'size', 'width (mm)', 'Z0 (Ω)', 'at (KiCad mm)'], ports))
-    if m.parts:
+    if model['parts']:
         content += "<h3>Lumped parts</h3>" + _table(
             ['part', 'value', 'layer', 'gap (mm)', 'openEMS elements'],
-            [[_e(p.ref), _e(p.value_str()), _e(p.layer), f"{p.gap:.3f}", str(len(p.pieces()))] for p in m.parts])
-    if m.notes:
-        content += "<h3>Notes</h3><ul>" + "".join(f"<li>{_e(n)}</li>" for n in m.notes) + "</ul>"
+            [[_e(p['ref']), _e(p['value']), _e(p['layer']), f"{p['gap']:.3f}", str(p['elements'])] for p in model['parts']])
+    if model['notes']:
+        content += "<h3>Notes</h3><ul>" + "".join(f"<li>{_e(n)}</li>" for n in model['notes']) + "</ul>"
     section('model', 'Model', content)
+
+    # ---- transmission lines -----------------------------------------------------------------------------
+    if sm.get('lines'):
+        section('tlines', 'Transmission-line sections', _lines_section(sm))
 
     # ---- mesh ------------------------------------------------------------------------------------------
     rows = [['cells', f"{g['nx']} × {g['ny']} × {g['nz']} = {g['cells']:,}"],
@@ -161,39 +229,43 @@ def build(job):
             ['smallest cell x / y / z', " / ".join(f"{v:.4f}" for v in g['min_cell_mm']) + " mm"],
             ['time step (estimate)', f"{g['dt_ps']:.4f} ps"], ['memory (estimate)', f"{g['mem_gb']:.2f} GB"],
             ['air margin', f"{g['air_mm']:.1f} mm"],
-            ['boundaries', _e(" ".join(f"{s}={b}" for s, b in zip(('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'),
-                                                                   g['bc'])))],
+            ['boundaries', _e(" ".join(f"{s}={b}" for s, b in zip(('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'), g['bc'])))],
             ['curves / vias', f"{_e(g['curves'])} / {_e(g['vias'])} ({g['vias_snapped']} snapped)"],
-            ['lines across port traces', _e(", ".join(f"{k}: {v}" for k, v in g.get('lines_across_ports', {}).items()))],
-            ['excitation pulse', f"~{job.pulse:,} timesteps; --max-steps {a.max_steps:,}"]]
-    content = _table(['', ''], rows) + _img(job.path('_mesh.png'), 'model and mesh')
-    if job.levels:
+            ['lines across port traces', _e(", ".join(f"{k_}: {v}" for k_, v in g.get('lines_across_ports', {}).items()))],
+            ['excitation pulse', f"~{sm.get('pulse_steps', 0):,} timesteps; --max-steps {st['max_steps']:,}"]]
+    content = _table(['', ''], rows) + _img(sm['images'].get('mesh'), 'model and mesh')
+    if sm.get('levels'):
         content += "<h3>Convergence levels</h3>" + _table(
             ['factor', 'cells', 'fine (mm)', 'time step (ps)'],
-            [[f"×{f:g}", f"{lm['info']['cells']:,}", f"{lm['info']['fine_mm']:.4f}", f"{lm['info']['dt_ps']:.4f}"]
-             for f, lm in job.levels])
+            [[f"×{l['factor']:g}", f"{l['cells']:,}", f"{l['fine_mm']:.4f}", f"{l['dt_ps']:.4f}"] for l in sm['levels']])
     section('mesh', 'Mesh', content)
 
     # ---- results -------------------------------------------------------------------------------------
-    if job.result is not None:
-        rows = _sparam_rows(job.freq, job.Smm, job.names)
-        content = (_img(job.path('_openems.png'), 'S-parameters') +
-                   f"<h3>|S| in dB</h3>" + _table(['', f"{a.fmin:g} GHz", f"{job.freq[len(job.freq) // 2] / 1e9:g} GHz",
-                                                   f"{a.fmax:g} GHz", 'minimum', 'maximum'], rows))
-        if a.compare:
-            content += f"<p class='meta'>Dashed: <code>{_e(a.compare)}</code></p>"
+    res = sm.get('results')
+    if res:
+        fq = res['freq_ghz']
+        rows = [[_e(r['param']), _f(r['fmin_db']), _f(r['fc_db']), _f(r['fmax_db']),
+                 f"{r['min_db']:.2f} @ {r['f_min'] / 1e9:.3f} GHz", f"{r['max_db']:.2f} @ {r['f_max'] / 1e9:.3f} GHz"]
+                for r in res['table']]
+        content = (_img(sm['images'].get('sparams'), 'S-parameters') + "<h3>|S| in dB</h3>" +
+                   _table(['', f"{fq[0]:g} GHz", f"{fq[1]:g} GHz", f"{fq[2]:g} GHz", 'minimum', 'maximum'], rows,
+                          num=(1, 2, 3)))
+        if res.get('compare_file'):
+            content += f"<p class='meta'>Dashed: <code>{_e(res['compare_file'])}</code></p>"
         section('results', 'S-parameters', content)
-    if job.ant:
-        rows = [[f"{r['f'] / 1e9:.3f}" + (' ◀' if abs(r['f'] - job.ant['f_pattern']) < 1 else ''),
+    if 'fast' in sm:
+        section('fast', 'Fast line model', _fast_section(sm, base))
+    if ant:
+        rows = [[f"{r['f'] / 1e9:.3f}" + (' ◀' if abs(r['f'] - ant['f_pattern']) < 1 else ''),
                  '–' if r['D_dbi'] is None else f"{r['D_dbi']:.2f}", f"{r['eff'] * 100:.1f}",
                  '–' if r['G_dbi'] is None else f"{r['G_dbi']:.2f}",
-                 '–' if r['Grealized_dbi'] is None else f"{r['Grealized_dbi']:.2f}"] for r in job.ant['rows']]
+                 '–' if r['Grealized_dbi'] is None else f"{r['Grealized_dbi']:.2f}"] for r in ant['rows']]
         section('antenna', 'Antenna',
-                _img(job.path('_antenna.png'), 'antenna') + _img(job.path('_pattern.png'), 'patterns') +
+                _img(sm['images'].get('antenna'), 'antenna') + _img(sm['images'].get('pattern'), 'patterns') +
                 "<h3>Over frequency (◀ pattern frequency)</h3>" +
                 _table(['f (GHz)', 'directivity (dBi)', 'efficiency (%)', 'gain (dBi)', 'realized gain (dBi)'], rows))
-    if job.levels and 'convergence' in job.info:
-        c = job.info['convergence']
+    if 'convergence' in sm:
+        c = sm['convergence']
         rows = [[f"×{l['factor']:g}", f"{l['cells']:,}",
                  f"{l['max_db']:.3f}" if 'max_db' in l else 'reference', f"{l['max_deg']:.2f}" if 'max_deg' in l else '']
                 for l in c['levels']]
@@ -201,40 +273,36 @@ def build(job):
                 f"<p>Tolerance {c['tol_db']:g} dB / {c['tol_deg']:g}°: <span class='{'ok' if c['converged'] else 'bad'}'>"
                 f"{'converged' if c['converged'] else 'not converged'}</span></p>" +
                 _table(['level', 'cells', 'max |Δ| (dB)', 'max Δ phase (°)'], rows) +
-                _img(job.path('_converge.png'), 'convergence'))
-    if getattr(job, 'dump_pngs', None):
-        section('dumps', 'Field maps', "".join(f"<h3>{_e(l)}</h3>{_img(p, l)}" for l, p in job.dump_pngs))
+                _img(sm['images'].get('converge'), 'convergence'))
+    if sm.get('dumps'):
+        section('dumps', 'Field maps', "".join(f"<h3>{_e(d['label'])}</h3>{_img(d['png'], d['label'])}" for d in sm['dumps']))
 
     # ---- runs, files, settings, log ------------------------------------------------------------------
-    if job.result is not None:
-        from .simulation import _run_dir, log_path
+    if sm.get('runs'):
         rows = []
-        for k_ in job.excite:
-            name = m.ports[k_].name
-            lp = log_path(_run_dir(m, k_, a.out))
-            steps = job.result.steps.get(name)
-            rows.append([_e(name), f"{job.result.seconds.get(name, 0):.0f} s", f"{steps:,}" if steps else '–',
-                         f"<a href='{_e(_rel(lp, base))}'>openems.log</a>" if os.path.exists(lp) else '–'])
+        for name, r in sm['runs'].items():
+            lp = r.get('log')
+            rows.append([_e(name), f"{r.get('seconds') or 0:.0f} s", f"{r['steps']:,}" if r.get('steps') else '–',
+                         f"<a href='{_e(_rel(lp, base))}'>openems.log</a>" if lp and os.path.exists(lp) else '–'])
         section('runs', 'openEMS runs', _table(['driven port', 'time', 'timesteps', 'solver output'], rows))
-    files = [[_e(l), f"<a href='{_e(_rel(p, base))}'>{_e(os.path.basename(p))}</a>"] for l, p in job.files]
+    files = [[_e(l), f"<a href='{_e(_rel(p, base))}'>{_e(os.path.basename(p))}</a>"] for l, p in sm['files']]
     section('files', 'Output files', _table(['', 'file'], files))
-    opts = [[f"<code>{_e(k_)}</code>", _e(v)] for k_, v in sorted(vars(a).items()) if k_ != 'config_notes']
+    opts = [[f"<code>{_e(k_)}</code>", _e(v)] for k_, v in sorted(st.items())]
     section('settings', 'Settings', _table(['option', 'value'], opts))
-    section('log', 'Log', f"<details><summary>{len(job.messages)} lines</summary><pre>{_e(chr(10).join(job.messages))}</pre></details>")
+    log = sm.get('log', [])
+    section('log', 'Log', f"<details><summary>{len(log)} lines</summary><pre>{_e(chr(10).join(log))}</pre></details>")
 
-    from . import __version__
-    head = (f"<header><h1>{_e(job.name)}</h1><div class='meta'>kicad2openems {__version__} · "
-            f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} · {_e(mode)} · "
-            f"<code>{_e(' '.join(['kicad2openems'] + sys.argv[1:]))}</code>"
-            f"</div></header>")
+    cmd = f" · <code>{_e(sm['command'])}</code>" if sm.get('command') else ''
+    head = (f"<header><h1>{_e(sm['name'])}</h1><div class='meta'>kicad2openems {_e(sm['version'])} · "
+            f"{_e(sm['created'])} · {_e(sm['mode'])}{cmd}</div></header>")
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>"
-            f"<title>{_e(job.name)} – kicad2openems</title><style>{CSS}</style></head><body><main>{head}"
+            f"<title>{_e(sm['name'])} – kicad2openems</title><style>{CSS}</style></head><body><main>{head}"
             f"<nav>{''.join(nav)}</nav>{''.join(body)}</main></body></html>")
 
 
-def write_report(job):
-    path = job.path('_report.html')
+def write_report(sm, path):
+    """Write the report page for a run summary to `path`."""
     with open(path, 'w', encoding='utf-8') as fh:
-        fh.write(build(job))
+        fh.write(build(sm, os.path.dirname(os.path.abspath(path))))
     return path
