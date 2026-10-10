@@ -44,6 +44,18 @@ def test_port_watch_stops_a_decayed_run(tmp_path):
         np.savetxt(tmp_path / name, np.column_stack([t, sig]), header='t u', comments='% ')
     level = port_decay(str(tmp_path), 2e-9)
     assert level[0] == pytest.approx(t[-1]) and -62 < level[1] < -55
+    # the field energy still falling (a ringing filter): the port level alone does not stop the run
+    log = "".join(f"[@        {k}s] Timestep:         {1000 * k} || Speed:  100.0 MC/s (1e-3 s/TS) || Energy: ~1e-15 (-{10 + 2 * k:.2f}dB)\n"
+                  for k in range(1, 13))
+    (tmp_path / 'openems.log').write_text(log)
+    w = PortWatch(str(tmp_path), end_db=-40, t_min=2e-9, window=2e-9, interval=0.05).start()
+    time.sleep(0.4)
+    w.stop()
+    assert not (tmp_path / 'ABORT').exists()
+    # stalled energy (the SMA launch: a plateau far above end_db): the ports decide
+    log = "".join(f"[@        {k}s] Timestep:         {1000 * k} || Speed:  100.0 MC/s (1e-3 s/TS) || Energy: ~1e-15 (-{36 + 0.05 * k:.2f}dB)\n"
+                  for k in range(1, 13))
+    (tmp_path / 'openems.log').write_text(log)
     w = PortWatch(str(tmp_path), end_db=-40, t_min=2e-9, window=2e-9, interval=0.05).start()
     time.sleep(0.4)
     w.stop()

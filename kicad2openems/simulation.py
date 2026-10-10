@@ -224,18 +224,51 @@ def step_limit_warning(name, steps, max_steps, end_db):
 
 
 class PortWatch:
-    """Thread that ends a run once every port signal has died away: openEMS's own end criterion is the
-    total field energy, which can stall above --end-db when some energy sits where no port sees it (a
-    static field, a mode the ports do not couple to) while the S-parameters are long settled. Every
-    `interval` s it reads the port voltage / current probes (port_ut* / port_it*, which openEMS flushes as
-    it runs); when the time is past t_min (the excitation pulse) and the largest u^2 + (z i)^2 of any port
-    over the last `window` s is end_db below its peak, it writes ABORT into the run folder (openEMS then
-    stops and finishes normally) and records why in run_end.json."""
-    def __init__(self, path, end_db, t_min, window, z=50.0, interval=2.0):
+    """Thread that ends a run whose field energy has stalled once every port signal has died away.
+    openEMS's own end criterion is the total field energy, which can level off above --end-db when some
+    energy sits where no port sees it (a static field, a mode the ports do not couple to) while the
+    S-parameters are long settled. Every `interval` s it reads the port voltage / current probes
+    (port_ut* / port_it*, which openEMS flushes as it runs) and the energy from openEMS's status lines
+    (openems.log). It writes ABORT into the run folder (openEMS stops and finishes normally) and records
+    why in run_end.json when all of these hold:
+      - the time is past t_min (the excitation pulse) and the largest u^2 + (z i)^2 of any port over the
+        last `window` s is end_db below its peak;
+      - the energy has stalled: over the last quarter of the steps so far (and at least 8 status lines)
+        it fell by less than `stall_db`.
+    The second condition matters: in a high-Q circuit (a filter) the stored energy leaks out through
+    the ports slowly, the port signals sit far below their peak while it does, and stopping then cuts
+    the ring-down off (the response comes out smoothed and shifted)."""
+    def __init__(self, path, end_db, t_min, window, z=50.0, interval=2.0, stall_db=1.5):
         self.path, self.end_db, self.t_min, self.window, self.z, self.interval = path, end_db, t_min, window, z, interval
+        self.stall_db, self.energy, self._pos = stall_db, [], 0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self.fired = None
+
+    def _read_energy(self):
+        from .progress import parse_line
+        try:
+            with open(os.path.join(self.path, 'openems.log'), 'rb') as fh:
+                fh.seek(self._pos)
+                chunk = fh.read()
+        except OSError:
+            return
+        cut = chunk.rfind(b'\n') + 1
+        self._pos += cut
+        for line in chunk[:cut].decode('utf-8', 'replace').splitlines():
+            p = parse_line(line)
+            if p and p['db'] == p['db']:
+                self.energy.append((p['step'], p['db']))
+
+    def stalled(self):
+        """The energy fell by less than stall_db over the last quarter of the steps (>= 8 status lines)."""
+        if len(self.energy) < 8:
+            return False
+        last = self.energy[-1][0]
+        recent = [db for st, db in self.energy if st >= 0.75 * last]
+        if len(recent) < 4:
+            recent = [db for _, db in self.energy[-4:]]
+        return max(recent) - min(recent) < self.stall_db
 
     def start(self):
         self._thread.start()
@@ -255,8 +288,10 @@ class PortWatch:
                 lv = self.level()
             except Exception:                                   # a half-written file: try again later
                 continue
-            if lv and lv[0] > self.t_min + self.window and lv[1] <= self.end_db:
-                self.fired = dict(reason='ports', t_ns=lv[0] * 1e9, level_db=lv[1])
+            self._read_energy()
+            if lv and lv[0] > self.t_min + self.window and lv[1] <= self.end_db and self.stalled():
+                self.fired = dict(reason='ports', t_ns=lv[0] * 1e9, level_db=lv[1],
+                                  energy_db=self.energy[-1][1] if self.energy else None)
                 with open(os.path.join(self.path, 'run_end.json'), 'w') as fh:
                     json.dump(self.fired, fh)
                 open(os.path.join(self.path, 'ABORT'), 'w').close()

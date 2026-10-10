@@ -61,11 +61,17 @@ level (≈ 0.002 in S at −40 dB).
 The total field energy can stall above `--end-db` when some of it sits where the ports do not see it:
 on the SMA launch example it levelled off near −36.5 dB while the port voltages had fallen 74 dB from
 their peak, and the run would have gone on to `--max-steps`. So by default (`--end-on ports`) a run
-also ends when the port signals have decayed: `simulation.PortWatch` reads the port voltage and current
-probes every 2 s (openEMS flushes them as it runs) and, once past the excitation pulse, compares the
-largest u² + (Z i)² of any port over the last 2 / fmin (at least 1 ns) with its peak. At `--end-db` it
-writes `ABORT` into the run folder; openEMS stops and finishes normally, and `run_end.json` records
-the level and time. The log says so, and the report's run table has an *ended on* column.
+whose energy has stalled also ends when the port signals have decayed: `simulation.PortWatch` reads the
+port voltage and current probes every 2 s (openEMS flushes them as it runs) and the energy from
+openEMS's status lines. Once past the excitation pulse, when the largest u² + (Z i)² of any port over
+the last 2 / fmin (at least 1 ns) is `--end-db` below its peak **and** the energy fell by less than
+1.5 dB over the last quarter of the steps, it writes `ABORT` into the run folder; openEMS stops and
+finishes normally, and `run_end.json` records the level and time. Both conditions are needed: in a
+high-Q circuit the stored energy leaks out through the ports slowly while the port signals sit far
+below their peak; on the port level alone the interdigital filter stopped at 10 ns with its energy at
+−33 dB, and its pass band came out smoothed (peak −5.9 dB instead of −6.5 dB). With both, the filter
+runs to the energy criterion (−40 dB) and the SMA launch stops once its energy has levelled off near
+−37 dB (247 k steps, 13.5 min, instead of running on to the step limit). The log says so, and the report's run table has an *ended on* column.
 `--end-on energy` keeps openEMS's own criterion only. `--end-db -30` is usually enough for S-parameters
 and faster still. Writing `ABORT` into a run folder by hand stops a run the same way.
 
