@@ -299,10 +299,12 @@ class ResultsTab(QWidget):
         self.plot.clear()
         main = next((p for l, p in files if 'Touchstone' in l and '_fast' not in p), None)
         fast = next((p for l, p in files if p.endswith(tuple(f'_fast.s{n}p' for n in range(1, 9)))), None)
+        mom = next((p for l, p in files if p.endswith(tuple(f'_mom.s{n}p' for n in range(1, 9)))), None)
         self.report = next((p for l, p in files if p.endswith('_report.html')), None)
         self.report_btn.setEnabled(bool(self.report))
         shown = []
-        for path, style, tag in ((main, Qt.SolidLine, 'openEMS'), (fast, Qt.DotLine, 'line model')):
+        for path, style, tag in ((main, Qt.SolidLine, 'openEMS'), (mom, Qt.DashDotLine, 'mom25d'),
+                                 (fast, Qt.DotLine, 'line model')):
             if not path or not os.path.exists(path):
                 continue
             f, S = read_touchstone(path)
@@ -422,9 +424,11 @@ class MainWindow(QMainWindow):
         self.timer.stop()
         self.proc = None
         self.runtab.stop_btn.setEnabled(False)
-        pngs = [p for l, p in self.files if p.endswith(('_mesh.png', '_tlines.png', '_fast.png'))]
+        pngs = [p for l, p in self.files if p.endswith(('_mesh.png', '_tlines.png', '_fast.png', '_mom.png'))]
         if pngs:
             self.setup.show_images(pngs)
+        if self.current.preview and any('_mom.s' in p or '_fast.s' in p for _, p in self.files):
+            self.results.show(self.files)                            # the references, without openEMS
         if not self.current.preview:
             self.results.show(self.files)
             self.fields.load(self.current.out)

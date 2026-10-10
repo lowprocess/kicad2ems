@@ -177,6 +177,31 @@ def _fast_section(sm, base):
     return txt
 
 
+def _mom_section(sm, base):
+    mo = sm['mom']
+    kinds = ", ".join(f"{p['name']} {p['kind']}" for p in mo['ports'])
+    txt = (f"<p>The CSX geometry (the file openEMS gets) solved by <b>mom25d</b>, a 2.5D Method-of-Moments solver: "
+           f"{mo['unknowns']:,} unknowns ({mo['triangles']:,} triangles, {_e(mo['mesher'])} mesher, cells up to "
+           f"{mo['dmax_mm']:g} mm), {mo['solves']} EM solves of an adaptive sweep in {mo['seconds']:.0f} s; ports: "
+           f"{_e(kinds)}. <a href='{_e(_rel(mo['touchstone'], base))}'>{_e(os.path.basename(mo['touchstone']))}</a>. "
+           "MoM sees laterally infinite dielectrics over an infinite ground plane: no board edge, no air box, no "
+           "box resonances; radiation and surface waves are in.</p>")
+    if 'mom' in sm.get('images', {}):
+        txt += _img(sm['images']['mom'], 'mom25d')
+    for key, other in (('compare', 'openEMS'), ('compare_fast', 'line model')):
+        if not mo.get(key):
+            continue
+        a, b = ('openEMS', 'mom25d') if key == 'compare' else ('mom25d', 'line model')
+        rows = [[_e(r['param']), _f(r['openems_max_db'], '.1f'), _f(r['other_max_db'], '.1f'), _f(r['max_ddb'], '.2f'),
+                 _f(r['max_dvec'], '.3f'), _f(r['ddelay_ps'], '+.1f')] for r in mo[key]]
+        txt += f"<h3>mom25d against the {other}</h3>"
+        txt += _table(['', f"{a} max (dB)", f"{b} max (dB)", 'max |Δ| (dB, transmissions)', 'max |ΔS| (vector)',
+                       f"Δ delay {b} − {a} (ps)"], rows, num=(1, 2, 3, 4, 5))
+    if mo.get('notes'):
+        txt += "<ul>" + "".join(f"<li>{_e(n)}</li>" for n in mo['notes']) + "</ul>"
+    return txt
+
+
 def _resolved(sm, base):
     """A copy of the summary with its paths (stored relative to the output folder) made absolute."""
     ab = lambda p: p if (not p or os.path.isabs(p)) else os.path.join(base, p)
@@ -186,6 +211,8 @@ def _resolved(sm, base):
     sm['dumps'] = [dict(d, png=ab(d['png'])) for d in sm.get('dumps', [])]
     if sm.get('fast'):
         sm['fast'] = dict(sm['fast'], touchstone=ab(sm['fast']['touchstone']))
+    if sm.get('mom'):
+        sm['mom'] = dict(sm['mom'], touchstone=ab(sm['mom']['touchstone']))
     if sm.get('runs'):
         sm['runs'] = {k: dict(r, log=ab(r.get('log'))) for k, r in sm['runs'].items()}
     return sm
@@ -222,6 +249,8 @@ def build(sm, base):
         k.append(('run time', f"{sum(r.get('seconds') or 0 for r in sm['runs'].values()):.0f} s solver"))
     if 'fast' in sm:
         k.append(('line model', f"{_e(sm['fast']['backend'])}, {sm['fast']['seconds'] * 1e3:.0f} ms"))
+    if 'mom' in sm:
+        k.append(('mom25d', f"{sm['mom']['unknowns']:,} unknowns, {sm['mom']['seconds']:.0f} s"))
     warn = sm.get('warnings', [])
     w = (f"<div class='warn'><b>{len(warn)} warning(s)</b><ul>" + "".join(f"<li>{_e(x)}</li>" for x in warn) +
          "</ul></div>") if warn else "<p class='ok'>No warnings.</p>"
@@ -294,6 +323,8 @@ def build(sm, base):
         section('results', 'S-parameters', content)
     if 'fast' in sm:
         section('fast', 'Fast line model', _fast_section(sm, base))
+    if 'mom' in sm:
+        section('mom', 'MoM reference (mom25d)', _mom_section(sm, base))
     if ant:
         rows = [[f"{r['f'] / 1e9:.3f}" + (' ◀' if abs(r['f'] - ant['f_pattern']) < 1 else ''),
                  '–' if r['D_dbi'] is None else f"{r['D_dbi']:.2f}", f"{r['eff'] * 100:.1f}",

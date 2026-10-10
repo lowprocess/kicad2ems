@@ -81,6 +81,7 @@ kicad2openems/
   dielectric.py   Djordjevic-Sarkar model and its Debye fit
   antenna.py      antenna runs: NF2FF box and analysis hooks, match, gain, patterns
   dumps.py        field-dump specs, CSX dump boxes, HDF5 reader, field maps, dump_info / dump_norm files
+  mom.py          --mom: the CSX file with <mom25d> hints, mom25d's solve, mixed-mode mapping
   fields.py       field viewing: VTR reader, dumps of a run folder, plane cuts, GIF / MP4 animations
   sparams.py      reciprocity fill, mixed-mode conversion
   touchstone.py   .sNp read / write

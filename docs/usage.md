@@ -31,7 +31,7 @@ factors (an empty list turns it off), no `converge` in antenna mode.
 ## Config files (TOML)
 
 Every option except `check` and `config` can be a key, with dashes or underscores (`end-db` or
-`end_db`): also `preview`, `no_report`, `openems_output`, `mask` (or `no_mask = true`), `events`, `fast`
+`end_db`): also `preview`, `no_report`, `openems_output`, `mask` (or `no_mask = true`), `events`, `fast`, `mom`
 and `qucsator`. Options may also sit under an `[openems]` table, so one file can hold settings for other
 tools; keys the tool doesn't use (a `check` key included) are reported and ignored:
 
@@ -129,6 +129,11 @@ used and a `config:` note says so (`config.resolve_path`).
 | Option | Default | Meaning |
 |---|---|---|
 | `--fast skrf\|qucsator` | off | also solve the line sections as a circuit ([transmission lines](transmission-lines.md#fast)) |
+| `--mom` | off | also solve the CSX geometry with mom25d, the 2.5D MoM solver ([MoM reference](mom.md)); works with `--preview` |
+| `--mom-dmax MM` | 0.3 | largest MoM cell along the copper (planes 3×, refined near the copper of other layers) |
+| `--mom-port auto\|wave\|lumped` | auto | MoM ports: de-embedded wave ports where the feed is long enough down to fmin, else lumped |
+| `--mom-mesher triangle\|gmsh` | triangle | MoM surface mesher ([MoM reference](mom.md#meshers)) |
+| `--mom-solves N` | 60 | most EM solves of the MoM adaptive sweep |
 | `--qucsator PATH` | `qucsator_rf` or `qucsator` on PATH | the qucsator executable |
 
 ### Output
@@ -153,6 +158,8 @@ used and a `config:` note says so (`config.resolve_path`).
 | `<name>_openems.sNp` | S-parameters (mixed-mode for differential ports) |
 | `<name>_openems.png` | \|S\| plot and Smith chart (`--compare` dashed, `--fast` dotted) |
 | `<name>_fast.sNp`, `<name>_fast.png` | `--fast` (the PNG with `--preview` only) |
+| `<name>_mom.sNp`, `<name>_mom.png` | `--mom` (the PNG with `--preview` only; the openEMS plot shows MoM dash-dotted) |
+| `<name>.xml` | CSX geometry (AppCSXCAD), with the `<mom25d>` hints; written by every run (and by `--mom`) |
 | `<name>.xml` | the CSX geometry (AppCSXCAD) |
 | `<name>_antenna.png`, `_pattern.png`, `_antenna.json` | antenna mode |
 | `<name>_converge.png` | `--converge` |

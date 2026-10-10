@@ -25,6 +25,8 @@ can be solved as a circuit in milliseconds.
   volume, saved as GIF / MP4) or for ParaView; wideband dielectric model; parallel runs.
 - **GUI** (`kicad2openems-gui`): setup, preview, run with progress, S-parameters, field view, antenna
   far field (polar cuts and 3D pattern at any recorded frequency).
+- **MoM reference** (`--mom`): the same converted geometry (the CSX file openEMS gets) solved by
+  [mom25d](mom25d/README.md), a 2.5D Method-of-Moments solver kept in `mom25d/` as its own project.
 - **TOML configs**, `--preview` without openEMS, an HTML report, JSON-lines events for a GUI or script.
 
 ## Install

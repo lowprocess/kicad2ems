@@ -34,6 +34,8 @@ FIELDS = [
     ('max_steps', 'Timestep limit', 'int', 'Solver'),
     ('threads', 'Threads (0: openEMS default)', 'int', 'Solver'),
     ('fast', 'Line model solver', ('', 'skrf', 'qucsator'), 'Solver'),
+    ('mom', 'MoM reference (mom25d)', 'bool', 'Solver'),
+    ('mom_mesher', 'MoM mesher', ('triangle', 'gmsh'), 'Solver'),
     ('dump', 'Dumps (FIELD@REGION[@GHz]; ...)', 'list', 'Field dumps'),
     ('dump_port', 'Runs that record dumps (empty: first driven)', 'list', 'Field dumps'),
     ('out', 'Output folder', 'dir', 'Output'),
@@ -55,7 +57,7 @@ def write_toml(path, values):
     """A flat TOML file of the non-empty settings."""
     lines = ["# written by the kicad2openems GUI"]
     for k, v in values.items():
-        if v is None or v == '' or v == [] or (k == 'cut_ports' and v is False):
+        if v is None or v == '' or v == [] or (k in ('cut_ports', 'mom') and v is False):
             continue
         lines.append(f"{k} = {toml_value(v)}")
     with open(path, 'w') as fh:
