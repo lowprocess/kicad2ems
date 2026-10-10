@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.pkl
+.venv/
+examples/out/
+examples/gerbers/
+*.so
+benchmarks/*.npy
+user/
