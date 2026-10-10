@@ -1,0 +1,3 @@
+[submodule "mom25d"]
+	path = mom25d
+	url = git@github.com:lowprocess/mom25d.git

@@ -88,7 +88,7 @@ meshers, same contract (port cuts and via fans conformal), selectable in mom25d 
 filter, lumped ports, 6 frequencies over 2–5 GHz, against a reference of 23k unknowns (Triangle, 0.1 mm,
 ncross 10):
 
-![accuracy per unknown](../mom25d/docs/mesher_study.png)
+![accuracy per unknown](https://github.com/lowprocess/mom25d/raw/main/docs/mesher_study.png)
 
 | mesher | unknowns | max \|ΔS\| | \|S21\| error (dB, where > −30 dB) |
 |---|---|---|---|
@@ -115,7 +115,7 @@ ncross 10):
 one after the other so the times compare): the feed tee of the filter, |J| at 3.25 GHz, the triangle
 quality, |J| across two traces and |S21|:
 
-![mesher gallery](../mom25d/docs/mesher_gallery.png)
+![mesher gallery](https://github.com/lowprocess/mom25d/raw/main/docs/mesher_gallery.png)
 
 - **Triangle / gmsh-rings / distmesh-rings** put a band of thin cells (aspect ratio 5–30) along every copper
   edge and leave a few large cells in the middle of the trace, where the current is flat. gmsh's interior

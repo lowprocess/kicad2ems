@@ -26,15 +26,19 @@ can be solved as a circuit in milliseconds.
 - **GUI** (`kicad2openems-gui`): setup, preview, run with progress, S-parameters, field view, antenna
   far field (polar cuts and 3D pattern at any recorded frequency).
 - **MoM reference** (`--mom`): the same converted geometry (the CSX file openEMS gets) solved by
-  [mom25d](mom25d/README.md), a 2.5D Method-of-Moments solver kept in `mom25d/` as its own project.
+  [mom25d](mom25d/README.md), a 2.5D Method-of-Moments solver, its own repository
+  ([lowprocess/mom25d](https://github.com/lowprocess/mom25d)) included as a git submodule in `mom25d/`.
 - **TOML configs**, `--preview` without openEMS, an HTML report, JSON-lines events for a GUI or script.
 
 ## Install
 
 ```bash
+git clone --recurse-submodules git@github.com:lowprocess/kicad2openems.git   # mom25d/ is a submodule
+git submodule update --init   # in an existing clone without it (only needed for --mom)
 pip install .                 # numpy, shapely, matplotlib
 pip install '.[fast]'         # + scikit-rf, for --fast skrf
 pip install '.[dumps]'        # + h5py, for frequency-domain field dumps
+pip install ./mom25d          # optional, for --mom (otherwise used from the submodule checkout)
 ```
 
 openEMS and its Python bindings are not on PyPI. Install them from your distribution, or build them with

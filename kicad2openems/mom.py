@@ -6,8 +6,8 @@ model all start from one converted board.
     write_xml(m, mesh, fmin, fmax, path, bc)      # CSX geometry + <mom25d> hints (needs CSXCAD / openEMS)
     S, names, zref, info = solve(path, m, freq, dmax=0.3)
 
-mom25d lives in mom25d/ next to this package (its own project: pip install ./mom25d, or used from the
-checkout). The hints tell it what the CSX file cannot: the ground layer, the exact loss tangents, the port
+mom25d is its own repository, a git submodule in mom25d/ (pip install ./mom25d, or used from the
+checkout after git submodule update --init). The hints tell it what the CSX file cannot: the ground layer, the exact loss tangents, the port
 names, layers and feed directions. MoM assumes laterally infinite dielectrics over an infinite ground
 plane; the board outline, edge walls (approximated by via rows) and the air box do not exist for it.
 """
@@ -19,14 +19,15 @@ VENDORED = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 
 
 def import_mom25d():
-    """The mom25d package: installed, or from the mom25d/ folder of this checkout."""
+    """The mom25d package: installed, or from the mom25d/ submodule of this checkout."""
     try:
         import mom25d.csx                                           # noqa: F401
     except ImportError:
         for k in [k for k in sys.modules if k == 'mom25d' or k.startswith('mom25d.')]:
             del sys.modules[k]                                      # a namespace stub of the folder itself
-        if not os.path.isdir(VENDORED):
-            raise ImportError("mom25d is not installed (pip install ./mom25d from the kicad2openems checkout)")
+        if not os.path.isfile(os.path.join(VENDORED, 'mom25d', '__init__.py')):
+            raise ImportError("mom25d is not installed: git submodule update --init (in the kicad2openems "
+                              "checkout), then pip install ./mom25d or run from the checkout")
         sys.path.insert(0, VENDORED)
         import mom25d.csx                                           # noqa: F401
     import mom25d
