@@ -115,3 +115,19 @@ def fake_openems(monkeypatch):
     monkeypatch.setitem(sys.modules, 'CSXCAD.CSProperties', props)
     monkeypatch.setitem(sys.modules, 'openEMS', types.SimpleNamespace(openEMS=FDTD))
     return log
+
+
+# ---- a machine without openEMS ------------------------------------------------------------------------
+@pytest.fixture
+def no_csxcad(monkeypatch):
+    """CSXCAD and openEMS cannot be imported, as on a machine without openEMS."""
+    import builtins
+    real = builtins.__import__
+
+    def imp(name, *a, **kw):
+        if name.split('.')[0] in ('CSXCAD', 'openEMS'):
+            raise ModuleNotFoundError(f"No module named '{name}'", name=name)
+        return real(name, *a, **kw)
+    for k in [k for k in sys.modules if k.split('.')[0] in ('CSXCAD', 'openEMS')]:
+        monkeypatch.delitem(sys.modules, k)
+    monkeypatch.setattr(builtins, '__import__', imp)

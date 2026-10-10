@@ -1,15 +1,19 @@
 """
-mom25d as a second full-wave reference: the openEMS geometry of a run (<name>.xml, CSXCAD's format, the
+mom25d as a second full-wave solver: the openEMS geometry of a run (<name>.xml, CSXCAD's format, the
 file AppCSXCAD shows) is solved by the 2.5D Method-of-Moments solver mom25d, so FDTD, MoM and the line
 model all start from one converted board.
 
-    write_xml(m, mesh, fmin, fmax, path, bc)      # CSX geometry + <mom25d> hints (needs CSXCAD / openEMS)
+    write_xml(m, mesh, fmin, fmax, path, bc)      # CSX geometry + <mom25d> hints (CSXCAD, or csxwrite.py)
     S, names, zref, info = solve(path, m, freq, dmax=0.3)
 
+The geometry file is written by CSXCAD when openEMS's Python packages are installed and by csxwrite.py
+(the same file, no openEMS needed) otherwise, so a MoM-only run (--solvers mom) needs no openEMS.
+
 mom25d is its own repository, a git submodule in mom25d/ (pip install ./mom25d, or used from the
-checkout after git submodule update --init). The hints tell it what the CSX file cannot: the ground layer, the exact loss tangents, the port
-names, layers and feed directions. MoM assumes laterally infinite dielectrics over an infinite ground
-plane; the board outline, edge walls (approximated by via rows) and the air box do not exist for it.
+checkout after git submodule update --init). The hints tell it what the CSX file cannot: the ground layer,
+the exact loss tangents, the port names, layers and feed directions. MoM assumes laterally infinite
+dielectrics over an infinite ground plane; the board outline, edge walls (approximated by via rows) and
+the air box do not exist for it.
 """
 import os, sys
 import xml.etree.ElementTree as ET
@@ -60,14 +64,18 @@ def add_hints(path, m, fmin, fmax):
     tree.write(path, xml_declaration=True, encoding='utf-8')
 
 
-def write_xml(m, mesh, fmin, fmax, path, bc=('MUR',) * 6, **kw):
-    """The CSX geometry openEMS would simulate (build_fdtd, no run) as <path>, with the mom25d hints."""
-    from .simulation import build_fdtd
-    FDTD, CSX, _ = build_fdtd(m, mesh, fmin, fmax, 0, bc=bc, **kw)
+def write_xml(m, mesh, fmin, fmax, path, bc=('MUR',) * 6, backend='auto', **kw):
+    """The CSX geometry openEMS would simulate (build_fdtd, no run) as <path>, with the mom25d hints.
+    backend: 'csxcad', 'xml' (csxwrite.py, no openEMS needed) or 'auto' (CSXCAD when it imports). Returns
+    the backend used."""
+    from .simulation import build_fdtd, have_csxcad
+    if backend == 'auto':
+        backend = 'csxcad' if have_csxcad() else 'xml'
+    FDTD, CSX, _ = build_fdtd(m, mesh, fmin, fmax, 0, bc=bc, backend=backend, **kw)
     CSX.Write2XML(os.path.abspath(path))                            # FDTD owns CSX: keep it alive until here
     del FDTD, CSX
     add_hints(path, m, fmin, fmax)
-    return path
+    return backend
 
 
 def solve(path, m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, log=print):

@@ -1,6 +1,7 @@
 """mom25d as a reference solver: the vendored package, the <mom25d> hints of a CSX file, --mom end to end
 (needs CSXCAD / openEMS to write the CSX file and mom25d's mesher, triangle)."""
 import json, os
+import numpy as np
 import xml.etree.ElementTree as ET
 import pytest
 from kicad2openems.mom import import_mom25d, add_hints
@@ -57,3 +58,28 @@ def test_preview_with_mom(tmp_path, run_cli):
     assert mo['solves'] <= 8 and mo['unknowns'] > 100 and {p['kind'] for p in mo['ports']} == {'lumped'}
     assert mo['compare_fast'] and mo['table'][0]['param'] == 'S(P1,P1)'
     assert 'mom25d' in so
+
+
+FILTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples', 'filter.toml')
+
+
+def test_mom_without_openems(run_cli, tmp_path, no_csxcad):
+    """MoM needs no openEMS: the geometry file comes from csxwrite, and the run is the same."""
+    pytest.importorskip('triangle')
+    pytest.importorskip('skrf')
+    from kicad2openems import simulation
+    assert not simulation.have_csxcad()
+    out = tmp_path / 'out'
+    code, so, err = run_cli(FILTER, '--preview', '--mom', '--fast', 'skrf', '--mom-dmax', '0.8', '--mom-solves', '8',
+                            '--points', '41', '--out', out)
+    assert code == 0, so + err
+    assert 'written by kicad2openems' in so
+    import xml.etree.ElementTree as ET
+    root = ET.parse(out / 'filter.xml').getroot()
+    assert root.tag == 'ContinuousStructure' and root.find('mom25d') is not None
+    sm = json.loads((out / 'filter_openems.json').read_text())
+    assert sm['mom']['solves'] <= 8 and sm['mom']['compare_fast']
+    for f in ('filter_mom.s2p', 'filter_mom.png', 'filter_fast.s2p', 'filter_report.html'):
+        assert (out / f).exists(), f
+
+

@@ -297,8 +297,11 @@ class Job:
         s, m = self.s, self.m
         self.freq = np.linspace(self.fmin, self.fmax, s.points)
         xml = self.path('.xml')
-        write_xml(m, self.grid, self.fmin, self.fmax, xml, bc=self.bc, sigma=s.sigma, diel=s.diel,
-                  diel_fref=s.diel_fref * 1e9, max_steps=s.max_steps, end_db=s.end_db)
+        backend = write_xml(m, self.grid, self.fmin, self.fmax, xml, bc=self.bc, sigma=s.sigma, diel=s.diel,
+                            diel_fref=s.diel_fref * 1e9, max_steps=s.max_steps, end_db=s.end_db)
+        if backend == 'xml':
+            self.log(f"CSX geometry {xml}: written by kicad2openems (openEMS's Python packages are not installed; "
+                     f"the same file CSXCAD writes)")
         self.wrote('CSX geometry (AppCSXCAD; solved by mom25d)', xml)
         S, names, zref, info = solve(xml, m, self.freq, dmax=s.mom_dmax, port=s.mom_port, mesher=s.mom_mesher,
                                      max_solves=s.mom_solves, log=self.log)
