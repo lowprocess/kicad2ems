@@ -59,8 +59,9 @@ def sparam_table(freq, S, names):
 
 def compare_table(freq, S, Sx, names, floor_db=-40.0):
     """openEMS (S) against another result (Sx) on the same frequencies: per S-parameter the largest
-    |S| difference in dB (where openEMS is above floor_db), the largest vector difference |S - Sx|,
-    and for transmissions the delay difference (Sx - S, from the phase slope) in ps."""
+    vector difference |S - Sx| and the maxima in dB; for transmissions also the largest |S| difference
+    in dB (where openEMS is above floor_db) and the delay difference (Sx - S, from the phase slope) in
+    ps. (A reflection's dB difference is dominated by where its nulls fall, so it is left out.)"""
     rows = []
     w = 2 * np.pi * freq
     for j in range(S.shape[1]):
@@ -71,7 +72,8 @@ def compare_table(freq, S, Sx, names, floor_db=-40.0):
                 continue
             da, dbx = 20 * np.log10(np.abs(a[ok]) + 1e-15), 20 * np.log10(np.abs(b[ok]) + 1e-15)
             m = da > floor_db
-            row = dict(param=f"S({names[i]},{names[j]})", max_ddb=float(np.max(np.abs(dbx - da)[m])) if m.any() else None,
+            row = dict(param=f"S({names[i]},{names[j]})",
+                       max_ddb=float(np.max(np.abs(dbx - da)[m])) if m.any() and i != j else None,
                        max_dvec=float(np.max(np.abs(b[ok] - a[ok]))), openems_max_db=float(da.max()),
                        other_max_db=float(dbx.max()), ddelay_ps=None)
             if i != j and m.all():
@@ -92,9 +94,6 @@ class Job:
         self.levels = self.ant = self.result = self.lm = self.fast = None
         self.coarse, self.dumps = [], []
         self.events = None
-        if settings.events:
-            from .events import EventSink
-            self.events = EventSink(settings.events)
         mode = 'preview' if settings.preview else ('antenna' if self.antenna else 'S-parameters')
         self.summary = dict(name=self.name, version=__version__, mode=mode, command=command,
                             created=datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), settings=settings.options(),
@@ -123,8 +122,16 @@ class Job:
     def path(self, suffix):
         return os.path.join(self.s.out, f"{self.name}{suffix}")
 
+    def rel(self, path):
+        """A path as the summary stores it: relative to the output folder (the JSON stays valid when the
+        folder moves)."""
+        try:
+            return os.path.relpath(path, self.s.out)
+        except ValueError:                                           # another drive (Windows)
+            return path
+
     def wrote(self, label, path):
-        self.files.append((label, path))
+        self.files.append((label, self.rel(path)))
         if self.events:
             self.events.emit('file', label=label, path=path)
 
@@ -133,13 +140,17 @@ class Job:
         if fig is None:
             return None
         p = save(fig, self.path(suffix))
-        self.summary['images'][key] = p
+        self.summary['images'][key] = self.rel(p)
         self.wrote(label, p)
         return p
 
     # ---- stages --------------------------------------------------------------------------------------
     def run(self):
         os.makedirs(self.s.out, exist_ok=True)
+        if self.s.events:
+            from .events import EventSink
+            os.makedirs(os.path.dirname(os.path.abspath(self.s.events)), exist_ok=True)
+            self.events = EventSink(self.s.events)
         try:
             code = self._run()
         finally:
@@ -215,13 +226,18 @@ class Job:
             self.log("  " + d.describe(self.grid))
 
     def lines(self):
-        """Transmission-line sections (always) and, with --fast, their S-parameters."""
-        from .tlines import build
+        """Transmission-line sections (always) and, with --fast, their S-parameters. A ballpark aid: whatever
+        goes wrong here is a warning, never the end of the run."""
         try:
-            self.lm = build(self.m)
-        except Exception as e:                                       # a ballpark aid must never stop a run
-            self.log(f"WARNING: transmission-line sections failed: {type(e).__name__}: {e}")
-            return
+            self._lines()
+        except Exception as e:
+            self.log(f"WARNING: transmission-line model failed: {type(e).__name__}: {e}")
+            self.lm = self.fast = None
+            self.summary.pop('fast', None)
+
+    def _lines(self):
+        from .tlines import build
+        self.lm = build(self.m)
         if not self.lm.paths:
             self.log("transmission lines: no routed path from the ports" +
                      (f" ({'; '.join(self.lm.notes)})" if self.lm.notes else ''))
@@ -243,7 +259,7 @@ class Job:
         self.freq = np.linspace(self.fmin, self.fmax, s.points)
         try:
             S, seconds = solve(self.lm, m.ports, self.freq, backend=s.fast, sigma=s.sigma, qucsator=s.qucsator)
-        except (ValueError, RuntimeError) as e:
+        except (ValueError, RuntimeError) as e:                       # missing package / program: say how to fix
             self.log(f"WARNING: fast line model ({s.fast}) failed: {e}")
             return
         Smm, names, zref = mixed_mode(S, m)
@@ -252,7 +268,7 @@ class Job:
                          names=names)
         self.wrote(f'S-parameters, fast line model ({s.fast})', out)
         self.fast = dict(S=Smm, names=names, backend=s.fast, seconds=seconds)
-        self.summary['fast'] = dict(backend=s.fast, seconds=seconds, touchstone=out,
+        self.summary['fast'] = dict(backend=s.fast, seconds=seconds, touchstone=self.rel(out),
                                     table=sparam_table(self.freq, Smm, names))
         self.log(f"fast line model ({s.fast}): {seconds * 1e3:.0f} ms -> {out}")
 
@@ -326,7 +342,7 @@ class Job:
                 tag = pname.replace('+', 'p').replace('-', 'n')
                 pngs = plot_fd_dumps(d, path, m, self.path(f"_{tag}"), norm=r.dump_norm.get(pname), port=pname,
                                      log=self.log)
-                self.summary['dumps'] += [dict(label=f"{dname} ({pname} driven)", png=p) for p in pngs]
+                self.summary['dumps'] += [dict(label=f"{dname} ({pname} driven)", png=self.rel(p)) for p in pngs]
                 for p in pngs:
                     self.wrote(f"field map {dname} ({pname})", p)
                 self.log(f"  {dname} ({pname} driven): {path}" + (f" -> {len(pngs)} PNG map(s)" if pngs else ''))
@@ -351,7 +367,7 @@ class Job:
                     'sparams', 'S-parameter plot')
         runs = {p: dict(seconds=r.seconds.get(p), steps=r.steps.get(p)) for p in r.seconds}
         for k in self.excite:
-            runs.setdefault(m.ports[k].name, {})['log'] = log_path(run_dir(m, k, s.out))
+            runs.setdefault(m.ports[k].name, {})['log'] = self.rel(log_path(run_dir(m, k, s.out)))
         self.summary.update(
             results=dict(names=self.names, zref=zref, excited=[m.ports[k].name for k in self.excite],
                          freq_ghz=[freq[0] / 1e9, freq[len(freq) // 2] / 1e9, freq[-1] / 1e9],

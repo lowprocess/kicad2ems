@@ -69,7 +69,9 @@ def test_status_events_reach_the_events_file(tmp_path):
     from kicad2openems.pipeline import Job
     log = tmp_path / 'openems.log'
     log.write_text(LINE + "\n")
-    job = Job(Settings(board='b.kicad_pcb', events=str(tmp_path / 'ev.jsonl'), out=str(tmp_path)), echo=lambda *a: None)
+    from kicad2openems.events import EventSink
+    job = Job(Settings(board='b.kicad_pcb', out=str(tmp_path)), echo=lambda *a: None)
+    job.events = EventSink(str(tmp_path / 'ev.jsonl'))                  # what Job.run() opens with --events
     r, w = os.pipe()
     Monitor([('P1', str(log), Tracker('P1'))], 'bar', out_fd=w, interval=0.01, on_status=job.status).start().stop()
     os.close(w)

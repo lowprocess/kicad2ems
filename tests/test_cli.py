@@ -128,3 +128,18 @@ def test_toml_as_the_only_argument(demo_files, run_cli, tmp_path):
 def test_settings_defaults_match_the_dataclass():
     s, _ = settings_from_argv(['b.kicad_pcb'])
     assert s.options() == dict(Settings(board='b.kicad_pcb').options())
+
+
+def test_events_in_a_new_output_folder(demo_files, run_cli, tmp_path):
+    base, _ = demo_files
+    out = tmp_path / 'fresh' / 'out'
+    code, _, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'RF,GND', '--ground', 'B.Cu',
+                           '--out', out, '--events', out / 'run.jsonl', '--preview', '--no-report')
+    assert code == 0, err
+    assert (out / 'run.jsonl').read_text().strip().endswith('"kind": "done", "code": 0}')
+
+
+def test_empty_converge_means_off(tmp_path):
+    p = tmp_path / 'c.toml'
+    p.write_text('board = "b.kicad_pcb"\nconverge = []\n')
+    assert build_settings({}, str(p)).converge is None

@@ -17,7 +17,7 @@ ignored). Lists may be TOML arrays or comma-separated strings:
     excite = ["P1"]
     air = 5.0
 
-Paths in the file (board, pos, compare, out, events) are relative to the file's folder; a path that
+Paths in the file (board, pos, compare, out, events, qucsator) are relative to the file's folder; a path that
 only exists relative to the working directory (older configs written for the repository root) is
 still used, with a note.
 """
@@ -34,7 +34,7 @@ class ConfigError(ValueError):
     """A setting that cannot be used (the message names it)."""
 
 
-PATH_KEYS = ('board', 'pos', 'compare', 'out', 'events')         # relative to the TOML file
+PATH_KEYS = ('board', 'pos', 'compare', 'out', 'events', 'qucsator')         # relative to the TOML file
 CHOICES = dict(parts=('auto', 'none'), curves=('extremes', 'vertices'), vias=('auto', 'exact', 'centre', 'snap'),
                diel=('fixed', 'wideband'), mode=('sparams', 'antenna'), fast=('skrf', 'qucsator'))
 CLI_ONLY = ('check', 'config')
@@ -130,7 +130,7 @@ def _bc(v):
     return ",".join(_strlist(v) or ['auto'])
 
 
-CONVERT = dict(nets=_strlist, excite=_strlist, dump_port=_strlist, region=_floats(4), converge=_floatlist,
+CONVERT = dict(nets=_strlist, excite=_strlist, dump_port=_strlist, region=_floats(4), converge=lambda v: _floatlist(v) or None,
                converge_tol=_floats(2), ff_freq=_floatlist, bc=_bc,
                dump=lambda v: [str(x) for x in (v if isinstance(v, (list, tuple)) else [v])],
                mask=_bool, preview=_bool, no_report=_bool, openems_output=_bool)

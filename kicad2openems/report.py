@@ -148,15 +148,31 @@ def _fast_section(sm, base):
                 "ports - or at a mesh problem.</p>")
         rows = [[_e(r['param']), _f(r['openems_max_db'], '.1f'), _f(r['other_max_db'], '.1f'), _f(r['max_ddb'], '.2f'),
                  _f(r['max_dvec'], '.3f'), _f(r['ddelay_ps'], '+.1f')] for r in fa['compare']]
-        txt += _table(['', 'openEMS max (dB)', 'line model max (dB)', 'max |Δ| (dB, where openEMS > −40 dB)',
+        txt += _table(['', 'openEMS max (dB)', 'line model max (dB)', 'max |Δ| (dB, transmissions)',
                        'max |ΔS| (vector)', 'Δ delay line − openEMS (ps)'], rows, num=(1, 2, 3, 4, 5))
     elif 'fast' in sm.get('images', {}):
         txt += _img(sm['images']['fast'], 'fast line model')
     return txt
 
 
+def _resolved(sm, base):
+    """A copy of the summary with its paths (stored relative to the output folder) made absolute."""
+    ab = lambda p: p if (not p or os.path.isabs(p)) else os.path.join(base, p)
+    sm = dict(sm)
+    sm['images'] = {k: ab(v) for k, v in sm.get('images', {}).items()}
+    sm['files'] = [(l, ab(p)) for l, p in sm.get('files', [])]
+    sm['dumps'] = [dict(d, png=ab(d['png'])) for d in sm.get('dumps', [])]
+    if sm.get('fast'):
+        sm['fast'] = dict(sm['fast'], touchstone=ab(sm['fast']['touchstone']))
+    if sm.get('runs'):
+        sm['runs'] = {k: dict(r, log=ab(r.get('log'))) for k, r in sm['runs'].items()}
+    return sm
+
+
 def build(sm, base):
-    """The report page for a run summary; links are made relative to `base` (the report's folder)."""
+    """The report page for a run summary; `base` is the output folder (where the report goes), against
+    which the summary's relative paths are resolved and links are made relative."""
+    sm = _resolved(sm, base)
     model, g, st = sm['model'], sm['mesh'], sm['settings']
     nav, body = [], []
 

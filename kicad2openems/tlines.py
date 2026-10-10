@@ -184,42 +184,68 @@ def _dielectric(model, z_lo, z_hi):
     return (acc / tot if tot > 0 else 1.0), tand
 
 
-def _covers(model, layer, pt, n, reach):
-    """'full' when copper on `layer` covers pt and the points `reach` mm either side along n, 'partial'
-    when only pt, else None."""
-    polys = model.copper.get(layer, [])
-    hit = lambda q: any(p.distance(Point(*q)) < 1e-6 for p in polys)
-    if not hit(pt):
+class RefCopper:
+    """The copper that can be a reference (planes, coplanar ground) for the line sections: every modelled
+    net except the signal nets themselves (so a trace never references itself, a via pad of its own net
+    or the other leg of its differential pair), per layer, in model coordinates; a `ground` layer is the
+    whole outline."""
+    def __init__(self, model, signal_nets):
+        from shapely.ops import unary_union
+        from shapely.prepared import prep
+        sel = model.sel
+        outline = model.outline
+        by_layer = {}
+        for l, n, g in model.board.items:
+            if l in model.cu_z and n not in signal_nets and (sel is None or n in sel):
+                by_layer.setdefault(l, []).append(g)
+        self.geom, self._prep = {}, {}
+        for l, gs in by_layer.items():
+            u = flip_y(unary_union(gs)).intersection(outline)
+            if not u.is_empty:
+                self.geom[l] = u
+        if model.ground:
+            self.geom[model.ground] = outline
+        self._prep = {l: prep(g) for l, g in self.geom.items()}
+
+    def covers(self, layer, pt):
+        p = self._prep.get(layer)
+        return bool(p is not None and p.covers(Point(*pt)))
+
+
+def _covers(ref, layer, pt, n, reach):
+    """'full' when reference copper on `layer` covers pt and the points `reach` mm either side along n,
+    'partial' when only pt, else None."""
+    if not ref.covers(layer, pt):
         return None
-    return 'full' if hit(pt + n * reach) and hit(pt - n * reach) else 'partial'
+    return 'full' if ref.covers(layer, pt + n * reach) and ref.covers(layer, pt - n * reach) else 'partial'
 
 
-def _side_gap(model, layer, pt, n, w, own, reach):
-    """Distance from the strip edge to the nearest other copper on the same layer along +n (None: beyond reach)."""
-    best = None
+def _side_gap(ref, layer, pt, n, w, reach):
+    """Distance from the strip edge to the nearest reference copper on the same layer along +n (None:
+    beyond reach)."""
+    g = ref.geom.get(layer)
+    if g is None:
+        return None
     ray = LineString([pt + n * (w / 2 + 1e-4), pt + n * (w / 2 + reach)])
-    for p in model.copper.get(layer, []):
-        if p is own or not p.intersects(ray):
-            continue
-        d = Point(*(pt + n * (w / 2))).distance(ray.intersection(p))
-        best = d if best is None else min(best, d)
-    return best
+    hit = ray.intersection(g)
+    if hit.is_empty:
+        return None
+    return Point(*(pt + n * (w / 2))).distance(hit)
 
 
-def classify(model, e, pt, d):
+def classify(model, ref, e, pt, d):
     """Set e.xs / z0 / eeff / er / h / s / tand for a trace or pad section on e.layer of width e.w,
-    sampled at pt with direction d (unit vectors, model coordinates)."""
+    sampled at pt with direction d (unit vectors, model coordinates); ref: the RefCopper."""
     n = np.array([-d[1], d[0]])
     zs, w, t = model.cu_z[e.layer], e.w, model.cu_t.get(e.layer, 0.0)
     e.t = t
-    own = model.copper_at(e.layer, Point(*pt))
     found = {}
     for side in ('below', 'above'):
         cand = sorted((l for l in model.cu_order if (model.cu_z[l] < zs if side == 'below' else model.cu_z[l] > zs)),
                       key=lambda l: abs(model.cu_z[l] - zs))
         for l in cand:
             h = abs(model.cu_z[l] - zs)
-            cov = _covers(model, l, pt, n, w / 2 + 2 * h)
+            cov = _covers(ref, l, pt, n, w / 2 + 2 * h)
             if cov:
                 found[side] = (l, h, cov)
                 break
@@ -245,8 +271,8 @@ def classify(model, e, pt, d):
         far = (zs, model.thickness) if side == 'below' else (0.0, zs)
         cover = sum(max(0.0, min(l['z1'], far[1]) - max(l['z0'], far[0])) for l in model.layers)
         reach = max(3 * w, 5 * h)
-        g1 = _side_gap(model, e.layer, pt, n, w, own, reach)
-        g2 = _side_gap(model, e.layer, pt, -n, w, own, reach)
+        g1 = _side_gap(ref, e.layer, pt, n, w, reach)
+        g2 = _side_gap(ref, e.layer, pt, -n, w, reach)
         close = [g for g in (g1, g2) if g is not None and g < 2 * h]
         if len(close) == 2 and cover < 1e-9:
             e.s = 0.5 * (g1 + g2)
@@ -263,25 +289,25 @@ def classify(model, e, pt, d):
     e.z0_sheet, e.eeff_sheet = calc(0.0)                     # zero thickness, as openEMS models copper
 
 
-def _references(model, layer, pt):
-    """(nearest copper layer below, nearest above) covering point pt, or None each."""
-    zs, P = model.cu_z[layer], Point(*pt)
+def _references(model, ref, layer, pt):
+    """(nearest reference layer below, nearest above) covering point pt, or None each."""
+    zs = model.cu_z[layer]
     out = []
     for below in (True, False):
         cand = sorted((l for l in model.cu_order if (model.cu_z[l] < zs if below else model.cu_z[l] > zs)),
                       key=lambda l: abs(model.cu_z[l] - zs))
-        out.append(next((l for l in cand if any(p.distance(P) < 1e-6 for p in model.copper.get(l, []))), None))
+        out.append(next((l for l in cand if ref.covers(l, pt)), None))
     return tuple(out)
 
 
-def _split_by_reference(model, e, step=0.25, max_samples=400):
+def _split_by_reference(model, ref, e, step=0.25, max_samples=400):
     """A trace element as consecutive pieces with the same reference planes (sampled every `step` mm)."""
     from shapely.ops import substring
     line = LineString(e.pts)
     L = line.length
     n = int(min(max_samples, max(3, math.ceil(L / step))))
     pos = [(i + 0.5) * L / n for i in range(n)]
-    sig = [_references(model, e.layer, line.interpolate(s).coords[0]) for s in pos]
+    sig = [_references(model, ref, e.layer, line.interpolate(s).coords[0]) for s in pos]
     cuts = [0.0] + [0.5 * (pos[i] + pos[i + 1]) for i in range(n - 1) if sig[i] != sig[i + 1]] + [L]
     if len(cuts) == 2:
         return [e]
@@ -292,6 +318,22 @@ def _split_by_reference(model, e, step=0.25, max_samples=400):
         piece = substring(line, s0, s1)
         out.append(Element('trace', a, b, s1 - s0, layer=e.layer, w=e.w, pts=np.asarray(piece.coords), net=e.net,
                            label=e.label))
+    return out
+
+
+def ground_nets(model):
+    """Nets that are ground or a reference: named like ground (GND, AGND, VSS, ...) or owning zones that
+    cover at least a fifth of the board on some layer. A part to such a net is a shunt to ground, even
+    when the net has tracks (to its vias)."""
+    import re
+    pat = re.compile(r'(^|[^A-Z])(A|D|P|SIG|CHASSIS)?(GND|GROUND|VSS)', re.I)
+    out = {n for _, n, _ in model.board.items if n and pat.search(str(n))}
+    area = {}
+    kicad_ol = flip_y(model.outline)
+    for l, n, g in model.board.items:
+        if n and l in model.cu_z and g.area > 0.05 * kicad_ol.area:
+            area[(l, n)] = area.get((l, n), 0.0) + g.intersection(kicad_ol).area
+    out |= {n for (l, n), a in area.items() if a >= 0.2 * kicad_ol.area}
     return out
 
 
@@ -346,22 +388,28 @@ def build(model):
     for p in model.ports:
         if p.kind == 'gap':
             lm.notes.append(f"{p.name}: gap port - no line model")
+    for name, legs in model.user_ports:
+        if len(legs) == 2:
+            lm.notes.append(f"{name}: differential pair - each leg is a single-ended line; the coupling between "
+                            f"the legs (odd / even mode impedance) is not modelled")
     part_pads = {}
     for pt in model.parts:
         pads = [q for q in fps.get(pt.ref, {}).get('pads', []) if q['layers']]
         if len(pads) == 2:
             part_pads[pt.ref] = pads
+    grounds = ground_nets(model)
     grew = True
     while grew:
         grew = False
-        for ref, pads in part_pads.items():
+        for r_, pads in part_pads.items():
             pn = [q['net'] for q in pads]
             for i in (0, 1):
-                if pn[i] in nets and pn[1 - i] not in nets and pn[1 - i] in track_nets:
+                if pn[i] in nets and pn[1 - i] not in nets and pn[1 - i] in track_nets and pn[1 - i] not in grounds:
                     nets.add(pn[1 - i]); grew = True
     if not nets:
         lm.notes.append('no port sits on a routed net')
         return lm
+    refcu = RefCopper(model, nets)
     # ---- pads and vias the tracks attach to ----
     pads = []                                              # (node, pad dict with model geometry, footprint ref)
     for fp in board.footprints:
@@ -387,10 +435,16 @@ def build(model):
         return _key(layer, *xy), None
 
     # ---- traces (split at T-junctions, shortened by the pads they end in) ----
-    for t in _split_at_junctions([t for t in tracks if t['net'] in nets]):
-        line = LineString(t['pts'])
-        if not line.intersects(inside):
+    clipped = []
+    for t in tracks:                                       # clipped to the outline: a --region crop cuts them
+        if t['net'] not in nets:
             continue
+        g = LineString(t['pts']).intersection(inside)
+        for piece in getattr(g, 'geoms', [g]):
+            if piece.geom_type == 'LineString' and piece.length > 1e-6:
+                clipped.append(dict(t, pts=np.asarray(piece.coords)))
+    for t in _split_at_junctions(clipped):
+        line = LineString(t['pts'])
         a, qa = attach(t['layer'], t['pts'][0])
         b, qb = attach(t['layer'], t['pts'][-1])
         geom = line
@@ -489,9 +543,9 @@ def build(model):
         for l in lys:
             if l in att:
                 continue
-            others = [p for p in model.copper.get(l, []) if p.distance(Point(*v['xy'])) > 1e-6]
-            if others:
-                antipad.append(min(p.distance(Point(*v['xy'])) for p in others))
+            g = refcu.geom.get(l)
+            if g is not None and not g.is_empty:
+                antipad.append(g.distance(Point(*v['xy'])))
         chain = [l for l in lys if l in att or l == lys[0] or l == lys[-1]]
         for l0, l1 in zip(chain[:-1], chain[1:]):
             h = model.cu_z[l1] - model.cu_z[l0]
@@ -511,7 +565,7 @@ def build(model):
     # ---- cross-sections: traces split where their reference planes change (antipads, plane edges) ----
     split = []
     for e in lm.elements:
-        split += _split_by_reference(model, e) if e.kind == 'trace' and e.length > 0 else [e]
+        split += _split_by_reference(model, refcu, e) if e.kind == 'trace' and e.length > 0 else [e]
     lm.elements = split
     for e in lm.elements:
         if e.kind == 'trace':
@@ -524,10 +578,10 @@ def build(model):
                 a = np.asarray(line.interpolate(max(0.0, line.length / 2 - 1e-3)).coords[0])
                 b = np.asarray(line.interpolate(min(line.length, line.length / 2 + 1e-3)).coords[0])
                 d = (b - a) / (np.linalg.norm(b - a) or 1.0)
-            classify(model, e, mid, d)
+            classify(model, refcu, e, mid, d)
         elif e.kind == 'pad':
             d = e.pts[1] - e.pts[0]
-            classify(model, e, 0.5 * (e.pts[0] + e.pts[1]), d / (np.linalg.norm(d) or 1.0))
+            classify(model, refcu, e, 0.5 * (e.pts[0] + e.pts[1]), d / (np.linalg.norm(d) or 1.0))
     _paths(lm)
     return lm
 

@@ -202,14 +202,17 @@ def read_qucs_dataset(text, n):
     return f, S
 
 
-def _qucsator(lm, ports, freq, sheet, sigma, exe):
+def _qucsator(lm, ports, freq, sheet, sigma, exe, timeout=120.0):
     exe = find_qucsator(exe)
     text, order = qucs_netlist(lm, ports, freq, sheet, sigma)
     with tempfile.TemporaryDirectory() as d:
         inp, out = os.path.join(d, 'line_model.net'), os.path.join(d, 'line_model.dat')
         with open(inp, 'w') as fh:
             fh.write(text)
-        r = subprocess.run([exe, '-i', inp, '-o', out], capture_output=True, text=True)
+        try:
+            r = subprocess.run([exe, '-i', inp, '-o', out], capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"qucsator ({exe}) did not finish within {timeout:g} s") from None
         if r.returncode or not os.path.exists(out):
             raise RuntimeError(f"qucsator failed ({exe}):\n{(r.stdout + r.stderr)[-2000:]}")
         with open(out) as fh:
@@ -234,7 +237,26 @@ def solve(lm, ports, freq, backend='skrf', sheet=True, sigma=None, qucsator=None
     names = [p.name for p in ports]
     full = np.full((len(freq), len(names), len(names)), np.nan + 0j)
     idx = [names.index(n) for n in order]
+    comp = _components(lm)
     for a, i in enumerate(idx):
         for b, j in enumerate(idx):
-            full[:, i, j] = S[:, a, b]
+            if comp.get(lm.ports[order[a]]) == comp.get(lm.ports[order[b]]):     # no path between them: unknown
+                full[:, i, j] = S[:, a, b]
     return full, seconds
+
+
+def _components(lm):
+    """Connected part of the line model each node belongs to (through any element except ground)."""
+    parent = {}
+
+    def find(n):
+        while parent.setdefault(n, n) != n:
+            parent[n] = parent[parent[n]]
+            n = parent[n]
+        return n
+    for e in lm.elements:
+        if e.b != 'gnd':
+            parent[find(e.a)] = find(e.b)
+        else:
+            find(e.a)
+    return {n: find(n) for n in list(parent)}

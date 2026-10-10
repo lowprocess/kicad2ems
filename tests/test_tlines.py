@@ -86,3 +86,24 @@ def test_filter_feeds_and_gap_ports(boards):
     dip = Model(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
     lm = build(dip)
     assert not lm.paths and any('gap port' in n for n in lm.notes)
+
+
+def test_ground_nets_region_and_partner(boards, demo_files):
+    """A shunt part's ground pad with a track stays a shunt; a region crop clips the traces; a
+    differential leg's partner is not its coplanar ground; a trace never references its own net."""
+    base = boards['lowpass']
+    m = Model(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
+    from kicad2openems.tlines import ground_nets
+    assert 'GND' in ground_nets(m)
+    c2 = [e for e in build(m).elements if e.kind == 'part' and e.label == 'C2']
+    assert c2 and c2[0].b == 'gnd'
+    demo, diff = demo_files
+    m = Model(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu',
+              region=(0, -20, 14, 20), log=lambda *a: None)
+    (p, q, secs, _), = build(m).paths
+    assert q is None and sum(e.length for e, _, _ in secs) == pytest.approx(14 - 2.0875 + 0.4, abs=0.05)
+    m = Model(KiCadBoard(diff + '.kicad_pcb'), pos_file=diff + '-top.pos', ground='B.Cu', log=lambda *a: None)
+    lm = build(m)
+    assert any('differential pair' in n for n in lm.notes)
+    assert all(not any('beside it' in note for note in e.notes) for _, _, secs, _ in lm.paths for e, _, _ in secs)
+    assert all(e.xs == 'microstrip' for _, _, secs, _ in lm.paths for e, _, _ in secs if e.kind == 'trace')

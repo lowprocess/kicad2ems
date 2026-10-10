@@ -237,6 +237,9 @@ def plot_results(f, S, names, title, overlays=(), label='openEMS'):
         for i in range(j, n):                               # lower triangle incl. diagonal (reciprocal network)
             c = TAB10[k % 10]
             lab = f"S({names[i]},{names[j]})"
+            k += 1
+            if not np.isfinite(S[:, i, j]).any():                   # not excited: nothing to show or compare
+                continue
             ax.plot(f / 1e9, 20 * np.log10(np.abs(S[:, i, j]) + 1e-15), color=c, lw=2.0 if i == j else 1.6,
                     label=f"{lab} {label}")
             for fo, So, olab, style in overlays:
@@ -251,7 +254,6 @@ def plot_results(f, S, names, title, overlays=(), label='openEMS'):
                 for fo, So, olab, style in overlays:
                     if i < So.shape[1] and np.isfinite(So[:, i, i]).any():
                         sax.plot(So[:, i, i].real, So[:, i, i].imag, style, color=c, lw=1.3, label=f"{lab} {olab}")
-            k += 1
     ax.set_xlabel('Frequency (GHz)')
     ax.set_ylabel('|S| (dB)')
     ax.set_title('S-parameters (reflection: thick, transmission/coupling: thin)', fontsize=10)
