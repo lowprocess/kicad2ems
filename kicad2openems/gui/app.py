@@ -1,6 +1,6 @@
 """
-kicad2openems GUI, first version (PySide6 + pyqtgraph): set up a run, preview it, watch it, see the
-results. Every run is the command-line tool started as a separate process with --events; the GUI
+kicad2openems GUI (PySide6 + pyqtgraph): set up a run, preview it, watch it, see the results: S-parameters,
+field dumps (live while the run goes, saved as PNG / GIF / MP4) and antenna far fields. Every run is the command-line tool started as a separate process with --events; the GUI
 follows its event stream, so a closed window never kills a simulation's results and the GUI needs no
 openEMS of its own.
 
@@ -13,7 +13,10 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget, Q
                                QFormLayout, QGroupBox, QLineEdit, QCheckBox, QComboBox, QPushButton, QLabel,
                                QPlainTextEdit, QProgressBar, QFileDialog, QScrollArea, QSplitter, QMessageBox)
 import pyqtgraph as pg
-from .runner import FIELDS, Run, EventTail, stop_runs, settings_values, write_toml
+from .fieldtab import FieldsTab
+from .antennatab import AntennaTab
+from .runner import (FIELDS, SEMICOLON_LISTS, Run, EventTail, stop_runs, settings_values, extra_values,
+                     find_results, write_toml)
 
 pg.setConfigOptions(antialias=True, background='w', foreground='k')
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
@@ -22,7 +25,7 @@ COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e3
 class SetupTab(QWidget):
     def __init__(self, win):
         super().__init__()
-        self.win, self.edits = win, {}
+        self.win, self.edits, self.extra = win, {}, {}
         outer = QHBoxLayout(self)
         left = QVBoxLayout()
         groups = {}
@@ -52,6 +55,7 @@ class SetupTab(QWidget):
             else:
                 groups[group].addRow(label, w)
             self.edits[key] = (w, kind)
+        groups['Field dumps'].addRow('Add a dump', self._dump_builder())
         buttons = QHBoxLayout()
         for text, slot in (('Load config…', self.load), ('Save config…', self.save), ('Preview', win.preview),
                            ('Run', win.run)):
@@ -78,6 +82,40 @@ class SetupTab(QWidget):
         split.setStretchFactor(1, 2)
         outer.addWidget(split)
 
+    def _dump_builder(self):
+        """FIELD, where (a layer, an x / y / z plane, the volume), GHz -> a spec appended to the dumps."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        fld = QComboBox()
+        fld.addItems(['E', 'H', 'J'])
+        fld.setToolTip('J: current density (shows the copper currents)')
+        kind = QComboBox()
+        kind.addItems(['layer', 'x =', 'y =', 'z =', 'volume'])
+        at = QComboBox()
+        at.setEditable(True)
+        at.addItems(['F.Cu', 'B.Cu', 'In1.Cu', 'In2.Cu', 'F.Cu-0.1'])
+        at.setToolTip('layer: a copper layer, with an offset in mm (F.Cu-0.1: in the dielectric below); '
+                      'x / y / z: mm (KiCad x, y; z from the bottom copper)')
+        kind.currentIndexChanged.connect(lambda i: (at.setEnabled(i != 4), at.setEditText(['F.Cu', '0', '0', '0', ''][i])))
+        ghz = QLineEdit()
+        ghz.setPlaceholderText('GHz (empty: time domain)')
+        ghz.setToolTip('Frequencies (GHz, comma-separated): a frequency-domain dump, animated over the phase. '
+                       'Empty: a time-domain dump, viewable live during the run')
+        add = QPushButton('Add')
+
+        def append():
+            k = kind.currentIndex()
+            where = 'volume' if k == 4 else (at.currentText().strip() if k == 0 else f"{'xyz'[k - 1]}={at.currentText().strip()}")
+            spec = f"{fld.currentText()}@{where}" + (f"@{ghz.text().strip()}" if ghz.text().strip() else '')
+            w = self.edits['dump'][0]
+            w.setText('; '.join([t for t in [w.text().strip()] if t] + [spec]))
+        add.clicked.connect(append)
+        for x in (fld, kind, at, ghz, add):
+            row.addWidget(x)
+        holder = QWidget()
+        holder.setLayout(row)
+        return holder
+
     def _browse(self, key, folder):
         w = self.edits[key][0]
         if folder:
@@ -92,7 +130,7 @@ class SetupTab(QWidget):
 
     # ---- values <-> widgets ----
     def values(self):
-        out = {}
+        out = dict(self.extra)                                       # config settings without a field here
         for key, (w, kind) in self.edits.items():
             if kind == 'bool':
                 out[key] = w.isChecked()
@@ -109,8 +147,8 @@ class SetupTab(QWidget):
             elif kind == 'int':
                 out[key] = int(float(t))
             elif kind == 'list':
-                out[key] = [x.strip() for x in t.replace(';', ',').split(',') if x.strip()] if key != 'ports' \
-                    else [x.strip() for x in t.split(';') if x.strip()]
+                out[key] = [x.strip() for x in t.replace(';', ',').split(',') if x.strip()] \
+                    if key not in SEMICOLON_LISTS else [x.strip() for x in t.split(';') if x.strip()]
             elif key == 'region' and t.replace(',', '').replace('.', '').replace('-', '').replace(' ', '').isdigit():
                 out[key] = [float(x) for x in t.split(',')]
             else:
@@ -128,7 +166,7 @@ class SetupTab(QWidget):
             elif v is None:
                 w.setText('')
             elif isinstance(v, (list, tuple)):
-                sep = '; ' if key == 'ports' else ','
+                sep = '; ' if key in SEMICOLON_LISTS else ','
                 w.setText(sep.join(str(x) if not isinstance(x, (list, tuple)) else ' '.join(map(str, x)) for x in v))
             else:
                 w.setText(str(v))
@@ -139,8 +177,13 @@ class SetupTab(QWidget):
         if path:
             try:
                 self.set_values(settings_values(path))
+                self.extra = extra_values(path)
             except Exception as e:
                 QMessageBox.warning(self, 'Config', str(e))
+                return
+            out = self.values().get('out')
+            if out and os.path.isdir(out):                            # earlier results of this config
+                self.win.open_results(out, quiet=True)
 
     def save(self):
         path, _ = QFileDialog.getSaveFileName(self, 'Save the config', os.getcwd(), 'TOML (*.toml)')
@@ -230,6 +273,9 @@ class ResultsTab(QWidget):
         self.report_btn.setEnabled(False)
         self.report_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.report)))
         top.addWidget(self.report_btn)
+        self.load_btn = QPushButton('Open results folder…')
+        self.load_btn.clicked.connect(self._load)
+        top.addWidget(self.load_btn)
         self.folder_btn = QPushButton('Open folder')
         self.folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.win.out_dir())))
         top.addWidget(self.folder_btn)
@@ -241,6 +287,11 @@ class ResultsTab(QWidget):
         self.plot.showGrid(x=True, y=True, alpha=0.3)
         lay.addWidget(self.plot)
         self.report = None
+
+    def _load(self):
+        d = QFileDialog.getExistingDirectory(self, 'A results folder (the run\'s output folder)', self.win.out_dir())
+        if d:
+            self.win.open_results(d)
 
     def show(self, files):
         import numpy as np
@@ -275,15 +326,27 @@ class MainWindow(QMainWindow):
         self.setWindowTitle('kicad2openems')
         self.resize(1400, 900)
         self.tabs = QTabWidget()
+        self.proc, self.tail, self.files, self.current, self.ticks = None, None, [], None, 0
         self.setup, self.runtab, self.results = SetupTab(self), RunTab(self), ResultsTab(self)
-        for w, t in ((self.setup, 'Setup'), (self.runtab, 'Run'), (self.results, 'Results')):
+        self.fields, self.antenna = FieldsTab(self), AntennaTab(self)
+        for w, t in ((self.setup, 'Setup'), (self.runtab, 'Run'), (self.results, 'Results'), (self.fields, 'Fields'),
+                     (self.antenna, 'Antenna')):
             self.tabs.addTab(w, t)
         self.setCentralWidget(self.tabs)
-        self.proc, self.tail, self.files, self.current = None, None, [], None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         if config:
             self.setup.load(config)
+
+    def open_results(self, out_dir, quiet=False):
+        """Show the results already in a folder: S-parameters, field dumps, antenna far field."""
+        files = find_results(out_dir)
+        if files:
+            self.results.show(files)
+        self.fields.load(out_dir)
+        ant = self.antenna.load(out_dir)
+        if not quiet and not (files or self.fields.srcs or ant):
+            QMessageBox.information(self, 'Results', f"No results in {out_dir}")
 
     def out_dir(self):
         return self.setup.values().get('out') or os.path.join(os.getcwd(), 'out')
@@ -347,6 +410,12 @@ class MainWindow(QMainWindow):
                 self.files.append((ev.get('label', ''), ev.get('path', '')))
             elif k == 'done':
                 self.runtab.stage.setText('done' if ev.get('code') in (0, None) else f"ended with code {ev.get('code')}")
+        self.ticks += 1
+        if self.current and not self.current.preview and self.ticks % 3 == 0:   # field frames, ~1 s
+            try:
+                self.fields.follow(self.current.out)
+            except Exception as e:                                   # never stop following the run over a frame
+                self.runtab.log.appendPlainText(f"field view: {e}")
 
     def _finished(self, code, _status):
         self.poll()
@@ -358,7 +427,10 @@ class MainWindow(QMainWindow):
             self.setup.show_images(pngs)
         if not self.current.preview:
             self.results.show(self.files)
-            self.tabs.setCurrentWidget(self.results)
+            self.fields.load(self.current.out)
+            ant = self.antenna.load(self.current.out)
+            self.tabs.setCurrentWidget(self.antenna if ant and self.current.values.get('mode') == 'antenna'
+                                       else self.results)
         if code:
             self.runtab.stage.setText(f"ended with code {code} - see the log")
 

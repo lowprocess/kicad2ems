@@ -398,6 +398,13 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
                                   diel=diel, diel_fref=diel_fref, max_steps=max_steps, exc_fmax=exc_fmax)
     token = setup(FDTD, CSX) if setup else None
     os.makedirs(path, exist_ok=True)
+    if dumps:
+        from .dumps import write_info
+        write_info(path, dumps, m, mesh['info'].get('dt_ps'))
+    else:                                                       # an earlier run's dumps are gone (openEMS cleans up)
+        for f in ('dump_info.json', 'dump_norm.json'):
+            if os.path.exists(os.path.join(path, f)):
+                os.remove(os.path.join(path, f))
     if xml_path:
         CSX.Write2XML(os.path.abspath(xml_path))
     if progress is not None:
@@ -415,6 +422,8 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
     if fd:                                                      # incident wave at the dump frequencies
         ports[k].CalcPort(path, np.array(fd))
         norm = dict(zip(fd, np.atleast_1d(ports[k].uf_inc)))
+        from .dumps import write_norm
+        write_norm(path, norm)
     for p in ports:
         p.CalcPort(path, freq)
     col = np.array([p.uf_ref / ports[k].uf_inc for p in ports]).T

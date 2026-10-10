@@ -138,3 +138,42 @@ def save(res, path):
     out = {k: v for k, v in res.items() if k != 'sphere'}
     with open(path, 'w') as fh:
         json.dump(out, fh, indent=1)
+
+
+def read_sphere(path):
+    """The full-sphere far field of an antenna run (<run>/nf2ff_sphere.h5, written by analyse) ->
+    dict(theta, phi (deg), freq (Hz), dmax (linear), prad, e_norm (nf, nphi, ntheta) |E| far field)."""
+    import h5py
+    with h5py.File(path, 'r') as h:
+        th, ph = np.degrees(np.asarray(h['Mesh/theta'], float)), np.degrees(np.asarray(h['Mesh/phi'], float))
+        a = h['nf2ff'].attrs
+        freq, dmax, prad = (np.atleast_1d(np.asarray(a[k], float)) for k in ('Frequency', 'Dmax', 'Prad'))
+        e = []
+        for i in range(len(freq)):
+            et = np.asarray(h[f'nf2ff/E_theta/FD/f{i}_real']) + 1j * np.asarray(h[f'nf2ff/E_theta/FD/f{i}_imag'])
+            ep = np.asarray(h[f'nf2ff/E_phi/FD/f{i}_real']) + 1j * np.asarray(h[f'nf2ff/E_phi/FD/f{i}_imag'])
+            e.append(np.sqrt(np.abs(et) ** 2 + np.abs(ep) ** 2))
+    return dict(theta=th, phi=ph, freq=freq, dmax=dmax, prad=prad, e_norm=np.array(e))
+
+
+def sphere_gain(sph, i, scale=1.0):
+    """Pattern (nphi, ntheta, linear) at recorded frequency i: directivity x scale (efficiency -> gain,
+    Prad / Pinc -> realized gain)."""
+    e = sph['e_norm'][i]
+    return (e / e.max()) ** 2 * sph['dmax'][i] * scale
+
+
+def sphere_cuts(sph, g):
+    """The xz (phi 0 / 180), yz (phi 90 / 270) and xy (theta 90) cuts of a sphere pattern g (nphi, ntheta):
+    {name: (angles deg, gain linear)}; xz / yz angles run -180..180 (theta, negative on the far side)."""
+    th, ph = sph['theta'], sph['phi']
+
+    def col(p):
+        return int(np.argmin(np.abs((ph - p + 180) % 360 - 180)))
+    out = {}
+    for name, p0 in (('xz (phi = 0)', 0.0), ('yz (phi = 90)', 90.0)):
+        a, b = g[col(p0)], g[col(p0 + 180)]
+        out[name] = (np.concatenate([-th[::-1], th[1:]]), np.concatenate([b[::-1], a[1:]]))
+    k = int(np.argmin(np.abs(th - 90)))
+    out['xy (theta = 90)'] = (ph, g[:, k])
+    return out

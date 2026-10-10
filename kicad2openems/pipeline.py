@@ -366,9 +366,10 @@ class Job:
                 self.summary['dumps'] += [dict(label=f"{dname} ({pname} driven)", png=self.rel(p)) for p in pngs]
                 for p in pngs:
                     self.wrote(f"field map {dname} ({pname})", p)
-                self.log(f"  {dname} ({pname} driven): {path}" + (f" -> {len(pngs)} PNG map(s)" if pngs else ''))
+                self.log(f"  {dname} ({pname} driven): {path}" + (f" -> {len(pngs)} PNG map(s)" if pngs else
+                                                                   "  (volume: the GUI's Fields tab or ParaView)"))
             else:
-                self.log(f"  {dname} ({pname} driven): {path}  (time domain: open the .vtr series in ParaView)")
+                self.log(f"  {dname} ({pname} driven): {path}  (time domain: the GUI's Fields tab or ParaView)")
         missing = fill_reciprocal(r.S, self.excite)
         if missing:
             self.log(f"note: {', '.join(m.ports[k].name for k in missing)} not excited - their reflection and the "

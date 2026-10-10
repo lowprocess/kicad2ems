@@ -72,7 +72,20 @@ rough disk estimate. Files land in `<out>/openems/exc_<port>/dump_*.h5|.vtr`.
 After the run, `plot_fd_dumps` reads frequency-domain plane dumps (`read_fd`, old and new openEMS HDF5
 layouts) and plots |field| with the copper outlined, scaled to a **1 V incident wave** at the driven
 port (checked: |Ez| under a 0.2 mm-high microstrip is 5.0 kV/m). Volume and time-domain dumps are left
-for ParaView, or `kicad2openems.dumps.read_fd(path)` reads an HDF5 dump into numpy (needs h5py).
+for the GUI's Fields tab ([GUI](gui.md#fields)) or ParaView; `kicad2openems.dumps.read_fd(path)` reads an
+HDF5 dump into numpy (needs h5py) and `kicad2openems.fields.read_vtr(path)` a time-domain frame.
+
+Each run that records dumps also writes `dump_info.json` (before openEMS starts: the dumps, the timestep,
+the board outline, copper per layer and ports, for outlines in a viewer) and, with frequency-domain
+dumps, `dump_norm.json` (the incident port voltage at each dump frequency). `kicad2openems.fields` reads a
+run folder with them:
+
+```python
+from kicad2openems import fields
+src = fields.find_dumps('out')[0]                     # every dump under out/openems/exc_*/
+pl = fields.plane(*src.load(-1), axis=2, index=0, component='z')   # a cut, in KiCad axes
+fields.save_animation(src, 'ez.gif', axis=2, index=0, component='z')     # or .mp4 (needs ffmpeg)
+```
 
 <a id="json-summary"></a>
 ## JSON summary

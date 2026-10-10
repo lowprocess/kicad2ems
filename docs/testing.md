@@ -26,6 +26,7 @@ pytest; tests that need scikit-rf or h5py are skipped without them. The qucsator
 | `test_simulation_setup.py` | `build_fdtd` against the strict CSXCAD / openEMS stand-ins (plain scalars), wideband (Debye) materials |
 | `test_dielectric.py` | Djordjevic-Sarkar model, Debye fit accuracy, dropped short poles |
 | `test_dumps.py` | dump specs, boxes, the HDF5 reader (both layouts), field maps, TOML lists |
+| `test_fields.py` | VTR frames as openEMS writes them (zlib / plain), plane cuts in KiCad axes, dump discovery, outlines, GIF / MP4, the NF2FF sphere cuts, the Fields tab |
 | `test_converge.py` | level parsing, monotonic refinement, comparison and verdict, `--preview --converge` |
 | `test_antenna.py` | antenna defaults, match / gain tables, pattern scaling, gap ports, `--mode antenna --preview` for the four examples |
 | `test_parallel.py` | `--jobs` (stubbed runs in real worker processes) matches the serial loop |

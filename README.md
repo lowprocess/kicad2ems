@@ -21,7 +21,10 @@ can be solved as a circuit in milliseconds.
   drawn as copper shapes, coupled lines) with Z0, εeff and delay; `--fast qucsator` solves them as a
   circuit with qucsator's corners, tees, steps, open ends and coupled lines (`--fast skrf` too).
 - **Edge walls** (`--edge-walls`): PEC where the planes end at the board edge, for stitching.
-- **Field dumps** (E, H, J) as PNG maps or for ParaView; wideband dielectric model; parallel runs.
+- **Field dumps** (E, H, J) as PNG maps, in the GUI (live while the run goes, any x / y / z cut of a
+  volume, saved as GIF / MP4) or for ParaView; wideband dielectric model; parallel runs.
+- **GUI** (`kicad2openems-gui`): setup, preview, run with progress, S-parameters, field view, antenna
+  far field (polar cuts and 3D pattern at any recorded frequency).
 - **TOML configs**, `--preview` without openEMS, an HTML report, JSON-lines events for a GUI or script.
 
 ## Install

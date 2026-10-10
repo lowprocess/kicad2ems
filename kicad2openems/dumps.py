@@ -13,14 +13,14 @@ Spec (command line --dump, repeatable, or `dump = [...]` in the TOML config):
             volume           the whole board (outline x stack) plus 0.5 mm
             box=x0,y0,z0,x1,y1,z1   any box (KiCad mm, z as above)
     FREQS   2,4,6            GHz: frequency-domain dump (HDF5) at those frequencies, plotted to PNG
-            (omitted)        time-domain dump (VTK series: open in ParaView and animate)
+            (omitted)        time-domain dump (VTK series: the GUI's Fields tab, live, or ParaView)
 
 Examples:  --dump E@F.Cu+0.05@2,6   --dump J@In2.Cu@4   --dump E@y=7   --dump H@volume@5
 
 Planes are clipped to the board outline (+1 mm) and the stack (+1 mm air), so a dump does not cover
 the empty air margin; `volume` is the board + 0.5 mm; a box is used as given.
 """
-import re
+import json, os, re
 import numpy as np
 
 FIELDS = {'E': (0, 10), 'H': (1, 11), 'J': (3, 13)}                 # (time-domain, frequency-domain) types
@@ -117,6 +117,29 @@ def add_dumps(CSX, dumps):
         box.AddBox([float(v) for v in d.start], [float(v) for v in d.stop])
 
 
+def write_info(path, dumps, m, dt_ps=None):
+    """<run>/dump_info.json, written before the run so a viewer can follow it live: the dumps, the
+    timestep and the geometry to outline (board outline, copper per layer, ports; model mm, y up)."""
+    def rings(g):
+        g = g.simplify(0.01, preserve_topology=True)
+        return [[[round(x, 4), round(y, 4)] for x, y in r.coords] for r in [g.exterior] + list(g.interiors)]
+    info = dict(dt_ps=dt_ps, dumps=[dict(name=d.name, spec=d.spec, field=d.field, label=d.label, normal=d.normal,
+                                         freqs=d.freqs, start=d.start.tolist(), stop=d.stop.tolist()) for d in dumps],
+                outline=rings(m.outline)[0], cu_z={k: float(v) for k, v in m.cu_z.items()},
+                copper={lay: [rings(p) for p in ps] for lay, ps in m.copper.items()},
+                ports=[dict(name=p.name, at=[float(p.c[0]), float(p.c[1])]) for p in m.ports],
+                thickness=float(m.thickness))
+    os.makedirs(path, exist_ok=True)
+    with open(os.path.join(path, 'dump_info.json'), 'w') as fh:
+        json.dump(info, fh)
+
+
+def write_norm(path, norm):
+    """<run>/dump_norm.json: the incident port voltage at each frequency-domain dump frequency."""
+    with open(os.path.join(path, 'dump_norm.json'), 'w') as fh:
+        json.dump([[float(f), float(np.real(v)), float(np.imag(v))] for f, v in norm.items()], fh)
+
+
 def estimate_size_mb(dumps, mesh, n_td_frames=60):
     """Rough disk use: 3 float32 components per point; FD stores complex values per frequency."""
     tot = 0.0
@@ -183,7 +206,6 @@ def plot_fd_dumps(d, path, m, out_prefix, norm=None, port='', log=print):
     mesh, frames = read_fd(path)
     files = []
     if d.normal is None:
-        log(f"  {d.name}: volume dump - open {path} in ParaView (or read it with kicad2openems.dumps.read_fd)")
         return files
     ax_u, ax_v = [k for k in range(3) if k != d.normal]
     names = 'xyz'

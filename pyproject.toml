@@ -25,7 +25,7 @@ dependencies = [
 [project.optional-dependencies]
 fast = ["scikit-rf>=1.0"]          # --fast skrf: the line model as S-parameters (qucsator: a separate program)
 dumps = ["h5py>=3"]                # frequency-domain field dumps (openEMS's own Python package needs it too)
-gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13"]   # kicad2openems-gui
+gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "h5py>=3"]   # kicad2openems-gui (h5py: FD dumps, far field)
 test = ["pytest>=7", "scikit-rf>=1.0", "h5py>=3"]
 # openEMS and CSXCAD are not on PyPI: install them from your distribution or build them from source
 # (see README); everything except the actual FDTD run works without them.

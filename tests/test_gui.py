@@ -48,3 +48,36 @@ def test_window_builds(tmp_path):
     w.runtab.status(dict(run='P1', step=1000, db=-12.0, fraction=0.3, eta=65))
     assert w.runtab.bars['P1'].value() == 30
     w.close()
+
+
+def test_dump_lists_and_extra_settings(tmp_path):
+    cfg = tmp_path / 'c.toml'
+    cfg.write_text('board = "b.kicad_pcb"\nmode = "antenna"\nair = 7.5\nno_mask = true\n'
+                   'dump = ["E@F.Cu@2,6", "J@y=3"]\n[openems]\nbc = "pml_8"\n')
+    vals = settings_values(str(cfg))
+    assert vals['mode'] == 'antenna' and vals['dump'] == ['E@F.Cu@2,6', 'J@y=3']
+    from kicad2openems.gui.runner import extra_values
+    extra = extra_values(str(cfg))
+    assert extra == dict(air=7.5, mask=False, bc='pml_8')           # kept for the runs: no field in the form
+    write_toml(tmp_path / 'r.toml', dict(vals, **extra))
+    s = build_settings({}, str(tmp_path / 'r.toml'))
+    assert s.air == 7.5 and not s.mask and s.antenna and s.dump == ['E@F.Cu@2,6', 'J@y=3']
+
+
+def test_window_tabs(tmp_path):
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from PySide6.QtWidgets import QApplication
+    from kicad2openems.gui.app import MainWindow
+    app = QApplication.instance() or QApplication([])
+    w = MainWindow()
+    w.setup.set_values(dict(dump=['E@F.Cu@2,6', 'H@volume'], mode='antenna'))
+    v = w.setup.values()
+    assert v['dump'] == ['E@F.Cu@2,6', 'H@volume'] and v['mode'] == 'antenna'
+    w.setup.extra = dict(air=3.0)
+    assert w.setup.values()['air'] == 3.0
+    assert [w.tabs.tabText(i) for i in range(w.tabs.count())] == ['Setup', 'Run', 'Results', 'Fields', 'Antenna']
+    w.fields.load(str(tmp_path))                                    # an empty folder: no dumps, no error
+    assert w.fields.src is None and not w.antenna.load(str(tmp_path))
+    w.close()

@@ -80,7 +80,8 @@ kicad2openems/
   progress.py     openEMS output redirection, progress / ETA monitor
   dielectric.py   Djordjevic-Sarkar model and its Debye fit
   antenna.py      antenna runs: NF2FF box and analysis hooks, match, gain, patterns
-  dumps.py        field-dump specs, CSX dump boxes, HDF5 reader, field maps
+  dumps.py        field-dump specs, CSX dump boxes, HDF5 reader, field maps, dump_info / dump_norm files
+  fields.py       field viewing: VTR reader, dumps of a run folder, plane cuts, GIF / MP4 animations
   sparams.py      reciprocity fill, mixed-mode conversion
   touchstone.py   .sNp read / write
   plots.py        figures: mesh preview, line sections, S-parameters, convergence, antenna, patterns
@@ -89,7 +90,7 @@ kicad2openems/
 
 openEMS and CSXCAD are imported **inside the functions that need them** (`simulation.build_fdtd`,
 `check_openems`, `simulation._debye_material`), scikit-rf inside `fastsolve`, h5py inside
-`dumps.read_fd`. Everything else imports and runs without them. Keep it that way: the tests rely on it.
+`dumps.read_fd` and `antenna.read_sphere`. Everything else imports and runs without them. Keep it that way: the tests rely on it.
 
 ## Data passed between stages
 

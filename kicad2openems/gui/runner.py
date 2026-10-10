@@ -27,13 +27,18 @@ FIELDS = [
     ('nz', 'Cells through each dielectric', 'int', 'Mesh'),
     ('converge', 'Convergence levels (e.g. 1,1.5)', 'list', 'Mesh'),
     ('excite', 'Driven ports (empty: all)', 'list', 'Solver'),
+    ('mode', 'Mode', ('sparams', 'antenna'), 'Solver'),
+    ('ff_freq', 'Pattern frequencies (GHz, antenna; empty: resonance)', 'list', 'Solver'),
     ('end_db', 'Stop at (dB)', 'float', 'Solver'),
     ('end_on', 'Stop on', ('ports', 'energy'), 'Solver'),
     ('max_steps', 'Timestep limit', 'int', 'Solver'),
     ('threads', 'Threads (0: openEMS default)', 'int', 'Solver'),
     ('fast', 'Line model solver', ('', 'skrf', 'qucsator'), 'Solver'),
+    ('dump', 'Dumps (FIELD@REGION[@GHz]; ...)', 'list', 'Field dumps'),
+    ('dump_port', 'Runs that record dumps (empty: first driven)', 'list', 'Field dumps'),
     ('out', 'Output folder', 'dir', 'Output'),
 ]
+SEMICOLON_LISTS = ('ports', 'dump')                       # items that may hold commas themselves
 
 
 def toml_value(v):
@@ -103,6 +108,23 @@ def stop_runs(out_dir):
     for d in dirs:
         open(os.path.join(d, 'ABORT'), 'w').close()
     return dirs
+
+
+def extra_values(path):
+    """The settings of a TOML config that the GUI has no field for (kept and passed on to its runs)."""
+    from ..config import read_toml
+    keys = {k for k, *_ in FIELDS}
+    return {k: v for k, v in read_toml(path)[0].items() if k not in keys and k not in ('events', 'preview')}
+
+
+def find_results(out_dir):
+    """(label, path) of the files of the newest finished run in out_dir (from its <name>_openems.json)."""
+    sums = sorted(glob.glob(os.path.join(out_dir, '*_openems.json')), key=os.path.getmtime)
+    if not sums:
+        return []
+    with open(sums[-1]) as fh:
+        files = json.load(fh).get('files', [])
+    return [(lab, p if os.path.isabs(p) else os.path.join(out_dir, p)) for lab, p in files]
 
 
 def settings_values(path):
