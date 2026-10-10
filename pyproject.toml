@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kicad2openems"
 dynamic = ["version"]
-description = "KiCad board -> openEMS 3D FDTD model with automatic meshing, ports and S-parameter output"
+description = "KiCad board -> S-parameters from openEMS (3D FDTD), mom25d (2.5D MoM) and a transmission-line model"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "GPL-3.0-or-later"}

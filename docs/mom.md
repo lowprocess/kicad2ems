@@ -1,24 +1,29 @@
-# 14. MoM reference (mom25d)
+# 14. MoM solver (mom25d)
 
 [← GUI](gui.md) · [Index](index.md)
 
-`--mom` solves the board a second time with **mom25d**, a 2.5D (planar) Method-of-Moments solver, from the
+`--solvers mom` solves the board with **mom25d**, a 2.5D (planar) Method-of-Moments solver, from the
 very file openEMS gets: `<name>.xml`, CSXCAD's geometry format (the one AppCSXCAD shows). FDTD, MoM and
-the transmission-line model then all start from one converted board, and the three results are compared
-in the plots, the report and the GUI.
+the transmission-line model all start from one converted board, and their results are compared in the
+plots, the report and the GUI. `--mom` adds MoM next to openEMS as a reference (a failure is then a
+warning, not an error: [solvers](usage.md#solvers)).
 
 ```bash
-kicad2openems examples/filter.toml --preview --mom      # line model + MoM, no openEMS run: ~20 s
-kicad2openems examples/filter.toml --mom                # openEMS too, all three compared
+kicad2openems examples/filter.toml --solvers mom,lines  # MoM and the line model, no openEMS: ~1 min
+kicad2openems examples/filter.toml --solvers all        # openEMS too, all three compared
 mom25d out/filter.xml --fmin 1 --fmax 8                 # mom25d on its own, on any CSX file
 ```
+
+**No openEMS needed.** When openEMS's Python packages are installed, CSXCAD writes `<name>.xml`; when they
+are not, kicad2openems writes it itself (`csxwrite.py`: the same calls, the same file byte for byte, which
+`tests/test_csxwrite.py` checks against CSXCAD), and the log says so. The MoM result is the same either way.
 
 | Output | |
 |---|---|
 | `<name>_mom.sNp` | MoM S-parameters, same ports, names, mixed-mode pairs and reference impedances as openEMS |
 | `<name>_mom.png` | with `--preview`: MoM, the line model dotted |
 | `<name>_openems.png` | MoM dash-dotted over openEMS |
-| report, *MoM reference* | unknowns, solves, time, ports; MoM against openEMS and against the line model (largest \|ΔS\|, transmission dB, delay) |
+| report, *MoM reference (mom25d)* | unknowns, solves, time, ports; MoM against openEMS and against the line model (largest \|ΔS\|, transmission dB, delay) |
 
 ## What MoM sees
 
@@ -46,6 +51,9 @@ elements (series / parallel R-L-C across a cut, bridged by a metal strip) and op
 </mom25d>
 ```
 
+- **Copper loss:** `--sigma` makes openEMS's copper conducting sheets of that conductivity; MoM gets the
+  same conductivity (with the copper thickness of the ports' layer) as its surface impedance. Without
+  `--sigma` both are lossless.
 - **Loss tangents:** the CSX file holds a conductivity κ that openEMS fits at the band centre; the hint
   gives MoM the stackup's real tan δ (constant over frequency). Without hints tan δ = κ / (2π f ε0 εr)
   at `f_loss`. This is one real difference between the two results: in a narrow-band filter openEMS's

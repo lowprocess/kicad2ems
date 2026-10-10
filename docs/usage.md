@@ -8,9 +8,46 @@
 kicad2openems board.toml                         # everything from the config (board = "...")
 kicad2openems board.kicad_pcb --config run.toml  # board on the command line, options from the file
 kicad2openems board.kicad_pcb --fmin 1 --fmax 6  # no config file
+kicad2openems board.toml --solvers mom,lines     # other solvers than openEMS (below)
 python -m kicad2openems ...                      # same, with a specific Python
-kicad2openems --check                            # can this Python run openEMS?
+kicad2openems --check                            # which solvers can this Python run?
 ```
+
+Exit codes: 0 done; 1 a solver named in `--solvers` gave no result (the warning says why; the report is
+still written); 2 a setting that cannot be used, or a named solver that cannot run (checked before any
+work).
+
+<a id="solvers"></a>
+## Solvers
+
+One converted board, up to three solvers. `--solvers` (or `solvers = [...]` in a config) names the ones
+to run; the default is openEMS alone.
+
+| Name | Solver | Output | Needs |
+|---|---|---|---|
+| `openems` (alias `fdtd`) | openEMS, 3D FDTD: the whole board in its air box, antennas | `<name>_openems.sNp` | openEMS's Python packages ([getting started](getting-started.md)) |
+| `mom` (alias `mom25d`) | mom25d, 2.5D MoM: copper sheets over an infinite ground ([MoM](mom.md)) | `<name>_mom.sNp` | the `mom25d/` submodule (or `pip install ./mom25d`) |
+| `lines` (aliases `line`, `fast`) | the [line model](transmission-lines.md) solved as a circuit | `<name>_fast.sNp` | scikit-rf, or qucsator (`fast = "auto"` picks qucsator when it is installed) |
+
+```bash
+kicad2openems board.toml --solvers mom              # MoM alone: no openEMS needed
+kicad2openems board.toml --solvers openems,lines    # = kicad2openems board.toml --fast auto
+kicad2openems board.toml --solvers all              # all three, compared in one plot and the report
+```
+
+- **Named or added.** `--mom` and `--fast` add their solver next to the others as a reference: if it
+  cannot run, that is a warning and the run goes on. A solver named in `--solvers` is what the run is
+  for: if it cannot run (openEMS or mom25d does not import, no scikit-rf or qucsator), the run stops before
+  any work, with exit code 2 and how to fix it; if it fails during the run, the run ends with exit code 1.
+- **Checked first.** Every run starts with the solvers it uses (`solvers: openEMS (FDTD), mom25d (MoM)`)
+  and checks they can run before it reads the board, so a missing openEMS is reported in a second, not
+  after the MoM solve.
+- **`--preview`** runs no openEMS: the model, mesh, line sections and report, plus `mom` and `lines` when
+  they are among the solvers.
+- **Without openEMS** the openEMS-only parts are left out: the run-length estimate, the closed-box
+  resonance check, the S-parameter plot against openEMS (each solver gets its own plot instead:
+  `<name>_mom.png`, `<name>_fast.png`). The FDTD mesh is still built: the CSX file mom25d reads carries it.
+- `mode = "antenna"` needs openEMS; mom25d cannot be named in antenna mode (its ground plane is infinite).
 
 ## Settings
 
@@ -31,12 +68,13 @@ factors (an empty list turns it off), no `converge` in antenna mode.
 ## Config files (TOML)
 
 Every option except `check` and `config` can be a key, with dashes or underscores (`end-db` or
-`end_db`): also `preview`, `no_report`, `openems_output`, `mask` (or `no_mask = true`), `events`, `fast`, `mom`
-and `qucsator`. Options may also sit under an `[openems]` table, so one file can hold settings for other
-tools; keys the tool doesn't use (a `check` key included) are reported and ignored:
+`end_db`): also `preview`, `no_report`, `openems_output`, `mask` (or `no_mask = true`), `events`, `solvers`,
+`fast`, `mom` and `qucsator`. Options may also sit under an `[openems]` table (any capitalisation), so one
+file can hold settings for other tools; keys the tool doesn't use (a `check` key included) are reported
+and ignored, with the option a key is probably a typo of:
 
 ```
-config: ignoring keys not used here: check
+config: ignoring keys not used here: check, fmx (did you mean fmax?)
 ```
 
 **Lists** can be TOML arrays or comma-separated strings: `nets`, `excite`, `dump_port`, `region` (4
@@ -128,11 +166,12 @@ used and a `config:` note says so (`config.resolve_path`).
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--fast skrf\|qucsator` | off | also solve the line sections as a circuit ([transmission lines](transmission-lines.md#fast)) |
-| `--mom` | off | also solve the CSX geometry with mom25d, the 2.5D MoM solver ([MoM reference](mom.md)); works with `--preview` |
+| `--solvers LIST` | `openems` | the solvers to run ([above](#solvers)): `openems`, `mom`, `lines` or `all` |
+| `--fast auto\|skrf\|qucsator` | off | also solve the line sections as a circuit ([transmission lines](transmission-lines.md#fast)); `auto`: qucsator if installed, else scikit-rf |
+| `--mom` | off | also solve the CSX geometry with mom25d, the 2.5D MoM solver ([MoM](mom.md)); works with `--preview` |
 | `--mom-dmax MM` | 0.3 | largest MoM cell along the copper (planes 3×, refined near the copper of other layers) |
 | `--mom-port auto\|wave\|lumped` | auto | MoM ports: de-embedded wave ports where the feed is long enough down to fmin, else lumped |
-| `--mom-mesher triangle\|gmsh` | triangle | MoM surface mesher ([MoM reference](mom.md#meshers)) |
+| `--mom-mesher triangle\|gmsh` | triangle | MoM surface mesher ([MoM](mom.md#meshers)) |
 | `--mom-solves N` | 60 | most EM solves of the MoM adaptive sweep |
 | `--qucsator PATH` | `qucsator_rf` or `qucsator` on PATH | the qucsator executable |
 
@@ -155,12 +194,11 @@ used and a `config:` note says so (`config.resolve_path`).
 | `<name>_tlines.png` | every run with routed port nets: [line sections](transmission-lines.md#outputs) |
 | `<name>_openems.json` | every run, also `--preview`: the [run summary](postprocessing.md#json-summary) |
 | `<name>_report.html` | every run (unless `--no-report`): [report](postprocessing.md#the-report) |
-| `<name>_openems.sNp` | S-parameters (mixed-mode for differential ports) |
-| `<name>_openems.png` | \|S\| plot and Smith chart (`--compare` dashed, `--fast` dotted) |
-| `<name>_fast.sNp`, `<name>_fast.png` | `--fast` (the PNG with `--preview` only) |
-| `<name>_mom.sNp`, `<name>_mom.png` | `--mom` (the PNG with `--preview` only; the openEMS plot shows MoM dash-dotted) |
-| `<name>.xml` | CSX geometry (AppCSXCAD), with the `<mom25d>` hints; written by every run (and by `--mom`) |
-| `<name>.xml` | the CSX geometry (AppCSXCAD) |
+| `<name>_openems.sNp` | S-parameters (mixed-mode for differential ports); terms not computed (ports not driven) are written as 0 and named in the header comment |
+| `<name>_openems.png` | \|S\| plot and Smith chart (`--compare` dashed, the line model dotted, MoM dash-dotted) |
+| `<name>_fast.sNp`, `<name>_fast.png` | the line model (the PNG without openEMS only) |
+| `<name>_mom.sNp`, `<name>_mom.png` | mom25d (the PNG without openEMS only, with the line model dotted) |
+| `<name>.xml` | CSX geometry (AppCSXCAD), with the `<mom25d>` hints; written by every openEMS run and by mom25d's |
 | `<name>_antenna.png`, `_pattern.png`, `_antenna.json` | antenna mode |
 | `<name>_converge.png` | `--converge` |
 | `<name>_<port>_<dump>_<GHz>GHz.png` | frequency-domain plane dumps |

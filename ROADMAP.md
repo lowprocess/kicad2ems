@@ -2,12 +2,14 @@
 
 Where kicad2openems stands and what is worth doing next. Items come from what the examples and benchmarks
 showed, so each one names the evidence; details are in the linked docs. Ordered by priority within each
-section. Last updated 2026-10-10.
+section. Last updated 2026-10-11.
 
 ## Where it stands
 
-- **Three references from one converted board**: openEMS (FDTD), mom25d (2.5D MoM, `--mom`) and the
-  transmission-line model (scikit-rf / qucsator, `--fast`), compared in the plots, the report and the GUI.
+- **Three solvers from one converted board**: openEMS (FDTD), mom25d (2.5D MoM) and the
+  transmission-line model (scikit-rf / qucsator), chosen with `--solvers` (or added as references with
+  `--mom` / `--fast`), checked before a run starts, compared in the plots, the report and the GUI. MoM and
+  the line model need no openEMS: without it, kicad2openems writes the CSX file itself (`csxwrite.py`).
   mom25d is its own repository ([lowprocess/mom25d](https://github.com/lowprocess/mom25d)), a git
   submodule in `mom25d/`; it reads the CSX file (`<name>.xml`) openEMS gets, plus a `<mom25d>` hints
   element.
@@ -61,7 +63,7 @@ the affected cases.
   ([mesher study](docs/mom.md#meshers)). gmsh's boundary layer fails where a via fan sits in the layer
   band; only worth more work if a case appears where Triangle fails.
 - **Antenna mode** is not supported (infinite ground under the copper).
-- Housekeeping: add `build/` to mom25d's `.gitignore` (the compiled-core build leaves it untracked).
+- Housekeeping: `build/` in mom25d's `.gitignore` (on its review branch).
 
 ## 4. openEMS pipeline
 
@@ -72,7 +74,28 @@ the affected cases.
   0.14 mm, so the RF configs set `fine` by hand. Deriving `fine` from the smallest copper gap as well as
   the narrowest trace would make the default safe.
 
-## 5. GUI
+## 5. Structure (from the October 2026 review)
+
+- **mom25d's API.** The `review/multi-solver-ux` branch of mom25d adds `mom25d.api.solve_csx(path, freq)`
+  returning a `Result` (S, names, port kinds, unknowns, notes) and fixes its CSX reader dropping the
+  conductivity of conducting sheets. Once it is merged and the submodule bumped, `mom.solve` becomes one
+  call to it instead of reaching into `Simulation` (`sim.Ne`, `sim.rwg.tris`, `hasattr(p, 's0')`).
+- **A `solvers/` package.** The openEMS-only modules (mesh, boundaries, edges, converge, simulation,
+  progress, dielectric, antenna, dumps, fields) and the line model (tlines, strips, coupled, fastsolve)
+  could move under `solvers/openems/` and `solvers/lines/`, next to `solvers/mom.py`, behind the
+  steps of [adding a solver](docs/maintenance.md#adding-a-solver). A move, not a rewrite: do it in one
+  commit with nothing else.
+- **One KiCad reader.** mom25d has its own, older `.kicad_pcb` reader (`mom25d/kicad.py`). Either it keeps
+  only CSX and Gerber input (KiCad boards come through kicad2openems), or `kicad2openems/kicad/` becomes
+  a small package both use.
+- **Names.** The run summary is `<name>_openems.json` and the default output folder `openems_out` whichever
+  solvers run; a solver-neutral `<name>_summary.json` (the GUI reading both for a while) and one default
+  folder for the command line and the GUI (which uses `out` next to the board) would match what the tool
+  is now.
+- **MoM progress.** mom25d's adaptive sweep logs lines but sends no `status` events, so the GUI's Run tab
+  shows no bar for it.
+
+## 6. GUI
 
 - An interactive comparison view: the difference between two sources (e.g. openEMS − mom25d in dB or
   |ΔS|) as its own plot kind, the numbers the report's comparison tables already compute.
@@ -81,7 +104,7 @@ the affected cases.
 - The HTML report's plots are static images; interactive plots there (same traces and markers) would
   match the GUI.
 
-## 6. Examples and validation
+## 7. Examples and validation
 
 - More structures where the solvers are expected to differ: a rat-race (closed loop, 1.5 λ), a radial
   stub, a via-fenced stripline, a differential pair through a via transition.

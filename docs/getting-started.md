@@ -4,15 +4,22 @@
 
 ## Install
 
-kicad2openems needs Python 3.10+, numpy, shapely and matplotlib (installed with the package), and
-openEMS with its Python bindings (`CSXCAD`, `openEMS`) for actual simulations. Everything except the
-FDTD run (model building, meshing, line sections, `--preview`, the report) works without openEMS.
+kicad2openems needs Python 3.10+, numpy, shapely and matplotlib (installed with the package). Each
+solver needs its own part ([solvers](usage.md#solvers)): openEMS with its Python bindings (`CSXCAD`,
+`openEMS`) for FDTD runs, the `mom25d/` submodule for MoM, scikit-rf (or Qucs-S's qucsator) for the line
+model. Everything except the FDTD run works without openEMS: model building, meshing, line sections,
+`--preview`, the report, and the MoM and line-model solvers.
 
 ```bash
+git submodule update --init         # mom25d/, if the clone was made without --recurse-submodules
 pip install .                       # from the repository
-pip install '.[fast]'               # + scikit-rf, for --fast skrf
+pip install '.[fast]'               # + scikit-rf: the line model as a circuit (--solvers lines)
+pip install ./mom25d                # the MoM solver (--solvers mom); optional: python -m mom25d.core.build
 pip install '.[dumps]'              # + h5py, for frequency-domain field dumps
 ```
+
+mom25d runs on NumPy; its compiled core (`python -m mom25d.core.build`, needs g++ with OpenMP and
+pybind11) makes it about five times faster, and `kicad2openems --check` says whether it is built.
 
 openEMS is not on PyPI. Check your distribution first (`dnf search openems`, `apt search openems`).
 Otherwise build it from source without the GUI:
@@ -41,7 +48,8 @@ kicad2openems --check               # or: python -m kicad2openems --check
 
 Run it with the Python you use for the simulations. It prints the Python in use, the import result of
 numpy, h5py, CSXCAD and openEMS with the real error, which Python the `kicad2openems` command on PATH
-runs, and hints:
+runs, hints, and then what runs without openEMS (mom25d with or without its compiled core, scikit-rf,
+qucsator, the GUI). The exit code is openEMS's: 0 when it can run. The hints:
 
 * **not installed for this Python**: the `kicad2openems` command was installed by a different Python
   than your openEMS venv. Install kicad2openems inside the venv (`python -m pip install .`) or run
@@ -67,6 +75,15 @@ kicad2openems examples/demo_transition.toml                # the openEMS run
 their plot, the CSX geometry (open it in AppCSXCAD) and the openEMS run folders. While openEMS runs, a
 progress line shows the energy decay and an ETA.
 
+Without openEMS, the same board through the other two solvers:
+
+```bash
+kicad2openems examples/demo_transition.toml --solvers mom,lines
+```
+
+mom25d meshes the inner planes of this board too (13k unknowns: several minutes; a single-layer microstrip
+like `examples/filter.toml` takes about a minute). [MoM](mom.md#runtime) says which boards suit which solver.
+
 ## Your own board
 
 1. **Stackup.** Fill in *Board Setup → Physical Stackup* (thicknesses, εr, tan δ). The model is built
@@ -86,7 +103,8 @@ progress line shows the energy decay and an ETA.
    ```
 
 4. `kicad2openems myboard.toml --preview`, look at the mesh picture, the line sections and the report,
-   then run without `--preview`.
+   then run without `--preview` (and with `--solvers` for MoM or the line model). A typo in the config is
+   reported with the option it probably means (`fmx (did you mean fmax?)`).
 
 The [Usage page](usage.md) describes every option; [Examples](examples.md) has filters and antennas
 to copy from.

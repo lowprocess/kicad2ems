@@ -9,7 +9,7 @@ pip install '.[test]'        # pytest, scikit-rf, h5py
 python -m pytest -q          # openEMS not needed
 ```
 
-The suite (about 120 tests) runs in-process in about 20 s. It needs numpy, shapely, matplotlib and
+The suite (about 190 tests) runs in-process in about a minute. It needs numpy, shapely, matplotlib and
 pytest; tests that need scikit-rf or h5py are skipped without them. The qucsator test is skipped unless
 `qucsator_rf` or `qucsator` is on PATH.
 
@@ -33,6 +33,9 @@ pytest; tests that need scikit-rf or h5py are skipped without them. The qucsator
 | `test_max_steps.py` | excitation length, steps read back from a run folder, the step-limit warning, option / TOML |
 | `test_progress.py` | status-line parsing, ETA from decay / step limit, flat energy, the monitor (bar / raw), output redirection |
 | `test_cli.py` | Settings (defaults ← TOML ← command line, abbreviated options), lists, path rules, one-line errors, `check` as command-line only, `--preview` end to end with the report and JSON |
+| `test_solvers.py` | `--solvers` (plan, aliases, errors), the checks before a run (missing openEMS stops at once; named vs added solvers), runs without openEMS (line model; MoM with CSXCAD and openEMS blocked), exit code 1, `--sigma` for MoM, config typos, the GUI's solver tick boxes |
+| `test_csxwrite.py` | the CSX file written without CSXCAD: byte for byte against a file CSXCAD wrote (`tests/data/csx_api_golden.xml`), glibc's `rand()` colours, mom25d reading it; with openEMS installed, whole boards against CSXCAD |
+| `test_mom.py` | mom25d from the submodule, the `<mom25d>` hints, `--preview --mom` end to end (with openEMS installed) |
 | `test_pipeline.py` | the whole pipeline with canned solver results: S-parameters with `--fast skrf` and `--converge`, antenna mode; post-processing, plots, JSON summary and report |
 
 ## Fixtures and stand-ins

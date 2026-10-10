@@ -80,6 +80,19 @@ mesh. Antenna runs therefore extend the excitation to fmax + 30 % of the band (`
 6. Document it in `docs/usage.md`, test parsing / TOML in `test_cli.py` and its effect where it
    applies.
 
+## Adding a solver
+
+A solver takes the converted board (`Model`, or the CSX file `<name>.xml` with its hints) and returns
+S-parameters over `Job.freq` in `m.user_ports` order (differential pairs as their modes, `sparams.mixed_mode`).
+
+1. `config.SOLVERS` (and `SOLVER_ALIASES`): its name; `pipeline.SOLVER_LABELS`: how the log names it.
+2. `Job.preflight()`: check that it can run (an import, a program on PATH) before any work, with a fix in
+   the message; `--check` (`cli.other_solvers`) reports the same.
+3. A `Job` stage that runs when it is in `self.plan`, writes `<name>_<solver>.sNp` with `self.wrote`, puts
+   its summary under its own key and logs failures as `WARNING` (the exit code follows from `_solved`).
+4. Compare it in `outputs()` (`compare_table`) and give it a style in `gui/traces.py` (`classify`, `SOURCES`)
+   and a section in the report.
+
 ## Conventions
 
 - Units: mm and Hz inside, GHz on the command line, KiCad coordinates in messages.

@@ -13,11 +13,16 @@ itself needs no openEMS.
 
 | Tab | What it does |
 |---|---|
-| Setup | the main settings by group (board, band, mesh, solver incl. *Mode* and pattern frequencies, field dumps, output; empty fields show their default); open / save the TOML config ([below](#configs)); *Preview* runs `--preview` and shows the mesh preview, the line-model plot and the fast S-parameters; *Run* starts the full run |
+| Setup | the main settings by group (board, band, solvers, openEMS mesh, openEMS incl. *Mode* and pattern frequencies, field dumps, output; empty fields show their default); open / save the TOML config ([below](#configs)); *Preview* runs `--preview` and shows the mesh preview, the line-model plot and the fast S-parameters; *Run* starts the full run with the ticked solvers |
 | Run | stage, one progress bar per driven port (step, dB, ETA), the decay curves, the log; *Stop* writes `ABORT` into every run folder (openEMS stops and finishes normally, so the results up to that point are written) |
 | Results | interactive S-parameter plots: openEMS solid, mom25d dash-dot, line model dotted, the `compare` file dashed; a Smith chart of the return loss beside them, a cursor readout and markers ([below](#plots)); *Open results folder…* (an earlier run), *Open report*, *Open folder* |
 | Fields | the field dumps: live view, x / y / z cuts, playback over time or phase, PNG / GIF / MP4 ([below](#fields)) |
 | Antenna | antenna mode: S11, gain / directivity / realized gain / efficiency over frequency, the far-field pattern at any recorded frequency ([below](#antenna)) |
+
+**Solvers.** *openEMS (3D FDTD)*, *mom25d (2.5D MoM)* and *Line model* choose the solvers of a run
+([solvers](usage.md#solvers)). With openEMS unticked, *Run* runs the other two only (no openEMS needed)
+and the config gets `solvers = [...]`; with it ticked, `solvers` is left out of the config (openEMS, plus
+`mom = true` / `fast = ...`). A config's `solvers` ticks the boxes when it is opened.
 
 <a id="configs"></a>
 ## Configs
@@ -36,7 +41,9 @@ new config gets only the settings that differ from the defaults. A config whose 
 generated antenna examples) says so in the status bar, with the generator command in the file's header.
 
 A loaded config keeps the settings that have no field in the form (`air`, `bc`, `no_mask`, `diel`, …) and
-passes them on to its runs. When the config's output folder already holds results, they are shown.
+passes them on to its runs. When the config's output folder already holds results, they are shown. An
+empty *Output folder* means `out` next to the board (the command line's default is `openems_out` in the
+working directory); saving leaves it empty rather than writing the folder the GUI happened to start in.
 Each run writes `<out>/gui_run.toml` (the settings, with absolute paths) and `<out>/gui_events.jsonl`;
 the same run can be repeated from a terminal with `kicad2openems <out>/gui_run.toml`.
 

@@ -5,17 +5,19 @@
 ## The run pipeline
 
 `kicad2openems` (`cli.main`) parses the command line and builds one typed `config.Settings`
-(`config.build_settings`: defaults ← TOML ← command line). `pipeline.Job(settings)` runs the stages in
-order:
+(`config.build_settings`: defaults ← TOML ← command line). `Settings.solver_plan()` says which solvers
+the run uses ([solvers](usage.md#solvers)). `pipeline.Job(settings)` runs the stages in order:
 
 ```mermaid
 flowchart LR
-    A[".kicad_pcb"] --> B["KiCadBoard<br/>kicad/board.py"]
+    P["preflight<br/>can the solvers run?"] --> A[".kicad_pcb"]
+    A --> B["KiCadBoard<br/>kicad/board.py"]
     B --> C["Model<br/>model.py, parts.py"]
     C --> D["mesh<br/>mesh.py, boundaries.py,<br/>converge.py"]
     D --> L["lines<br/>tlines.py, fastsolve.py"]
-    L --> E["preview<br/>plots.preview"]
-    E -->|--preview| R
+    L --> M["mom<br/>mom.py, csxwrite.py<br/>(mom25d)"]
+    M --> E["preview<br/>plots.preview"]
+    E -->|no openEMS| R
     E --> F["solve<br/>simulation.py / antenna.py<br/>(openEMS)"]
     F --> G["outputs<br/>sparams, touchstone, plots,<br/>dumps, converge, antenna"]
     G --> R["report<br/>JSON summary, report.py"]
@@ -23,16 +25,19 @@ flowchart LR
 
 | Stage | `Job` method | Produces |
 |---|---|---|
+| preflight | `preflight()` | the solvers checked before any work: openEMS imports (`check_openems`), mom25d imports (`mom.mom25d_status`), the line model has a circuit solver (`fastsolve.resolve_backend`); `self.plan` (the solvers that run), `self.line_backend` |
 | model | `model()` | `self.board` (`KiCadBoard`), `self.m` (`Model`) |
 | mesh | `mesh()` | `self.bc` (6 boundary names), `self.grid` (mesh dict), `self.levels` (`--converge`), `self.dumps` |
-| lines | `lines()` | `self.lm` (`tlines.LineModel`), `<name>_tlines.png`; with `--fast`, `self.fast` and `<name>_fast.sNp` |
-| preview | `preview()` | `<name>_mesh.png`, the excitation length; with `--preview --fast`, `<name>_fast.png` |
+| lines | `lines()` | `self.lm` (`tlines.LineModel`), `<name>_tlines.png`; with the `lines` solver, `self.fast` and `<name>_fast.sNp` |
+| mom | `mom()` | with the `mom` solver: `<name>.xml` (CSXCAD, or `csxwrite` without openEMS), `self.mom_res`, `<name>_mom.sNp` |
+| preview | `preview()` | `<name>_mesh.png`, the excitation length (with openEMS or `--preview`); without openEMS, `<name>_fast.png` / `<name>_mom.png` |
 | solve | `solve()` | `self.result` (`RunResult`), `self.ant` (antenna results), `self.coarse` (coarser levels) |
 | outputs | `outputs()` | Touchstone, plots, field maps, `self.Smm` / `self.names` (mixed-mode S), antenna and convergence results, the line-model comparison |
 | report | `report()` | `<name>_openems.json` and `<name>_report.html` |
 
-`--preview` stops after `preview()` and writes the report. A failure in `lines()` is a warning: the line
-model is an aid and never stops a run.
+Without openEMS among the solvers (`--preview`, or `--solvers` without `openems`) the run stops after
+`preview()` and writes the report. A failure in `lines()` or `mom()` is a warning; when that solver was
+named in `--solvers`, the run then ends with exit code 1.
 
 **The summary.** Every stage adds what it computed to `Job.summary`, a JSON-friendly dict
 ([keys](postprocessing.md#json-summary)). `report()` writes it as `<name>_openems.json`, and
@@ -77,11 +82,13 @@ kicad2openems/
   fastsolve.py    the sections as a circuit: scikit-rf or qucsator
   edges.py        edge walls (PEC where the planes end at the board sides)
   simulation.py   CSXCAD / openEMS model (build_fdtd), runs, RunResult, step counting, --check
+  csxwrite.py     the CSX geometry file without CSXCAD: build_fdtd's calls recorded and written as CSXCAD
+                  writes them (byte for byte; tests/test_csxwrite.py), for mom25d without openEMS
   progress.py     openEMS output redirection, progress / ETA monitor
   dielectric.py   Djordjevic-Sarkar model and its Debye fit
   antenna.py      antenna runs: NF2FF box and analysis hooks, match, gain, patterns
   dumps.py        field-dump specs, CSX dump boxes, HDF5 reader, field maps, dump_info / dump_norm files
-  mom.py          --mom: the CSX file with <mom25d> hints, mom25d's solve, mixed-mode mapping
+  mom.py          the MoM solver: the CSX file with <mom25d> hints, mom25d's solve, mixed-mode mapping
   fields.py       field viewing: VTR reader, dumps of a run folder, plane cuts, GIF / MP4 animations
   sparams.py      reciprocity fill, mixed-mode conversion
   touchstone.py   .sNp read / write
@@ -91,7 +98,15 @@ kicad2openems/
 
 openEMS and CSXCAD are imported **inside the functions that need them** (`simulation.build_fdtd`,
 `check_openems`, `simulation._debye_material`), scikit-rf inside `fastsolve`, h5py inside
-`dumps.read_fd` and `antenna.read_sphere`. Everything else imports and runs without them. Keep it that way: the tests rely on it.
+`dumps.read_fd` and `antenna.read_sphere`, mom25d inside `mom.py`. Everything else imports and runs
+without them. Keep it that way: the tests rely on it, and so do the solvers that need no openEMS.
+
+**One geometry for every solver.** openEMS and mom25d read the same CSX file. `build_fdtd(...,
+backend='xml')` makes the same calls on `csxwrite`'s stand-ins instead of CSXCAD's, so the file is the
+same with or without openEMS installed. A change to `build_fdtd` that uses a CSXCAD call or option
+`csxwrite` does not have fails there (`AttributeError`, or `NotImplementedError` for an option): add it to
+`csxwrite` and to `tests/test_csxwrite.py` (`api_calls`, then regenerate the golden file with real
+CSXCAD); with openEMS installed, `test_build_fdtd_file_matches_csxcad` compares whole boards.
 
 ## Data passed between stages
 
