@@ -2,7 +2,8 @@
 
 [← Post-processing](postprocessing.md) · [Index](index.md) · [Next: Testing →](testing.md)
 
-All example boards except `filter.kicad_pcb`, `hairpin.kicad_pcb` and `sma_launch.kicad_pcb` are
+All example boards except `filter.kicad_pcb`, `hairpin.kicad_pcb`, `sma_launch.kicad_pcb` and the
+[RF structures](#rf-structures) (`rf_*.kicad_pcb`, generated but kept in the repository) are
 **generated** (no KiCad needed) and git-ignored. Most
 have a config in `examples/` whose paths are relative to it. Run from the repository root:
 
@@ -40,6 +41,39 @@ ABCD matrices.
 `make_antennas.py KIND OUT [param=mm …]` writes the antennas `patch`, `ifa`, `dipole` and `slot` (one
 config each, `antenna_<kind>.toml`). Their dimensions are keyword parameters of each function, also on
 the command line (`make_antennas.py ifa out arm=19 s=2.5`).
+
+<a id="rf-structures"></a>
+## RF structures
+
+`make_rf_examples.py {branchline,wilkinson,steplpf,stubnotch,gcpw,coupler,all} [OUT]` writes classic
+structures on 0.8 mm FR-4 (εr 4.4, tan δ 0.02) over a B.Cu ground, sized with the package's own line
+formulas (`tlines.microstrip`, `tlines.cpwg`, `coupled.coupled_microstrip`). The boards and their configs
+(`rf_<name>.toml`, each with a `fine` mesh for its narrowest feature and the qucsator line model) are in
+`examples/`; `examples/reference/rf_<name>_openems.s<n>p` are their openEMS results. All of them open from
+the GUI's *File* → *Examples*.
+
+| Board | What it tests | openEMS | mom25d | line model |
+|---|---|---|---|---|
+| `rf_branchline` — 3 dB 90° hybrid, 2.4 GHz, 4 ports | a closed loop of lines, tees, 35 / 50 Ω arms | S21 / S31 −3.77 / −3.34 dB, −139° / 133° | −3.57 / −3.39 dB | −3.46 / −3.38 dB |
+| `rf_wilkinson` — divider, 70.7 Ω arms, 100 Ω 0805 | a lumped resistor between outputs; P1 and P2 driven | S21 −3.35 dB, S22 −18.6 dB, S32 −18.5 dB | −3.31, −20.0, −38.9 dB | −3.30, −18.4, −35.7 dB |
+| `rf_steplpf` — 5-pole stepped-impedance low-pass, 2 GHz | 100 Ω / 20 Ω steps (0.35 / 5.55 mm) | −3 dB at 1.765 GHz | 1.765 GHz | 1.806 GHz |
+| `rf_stubnotch` — two open λ/4 stubs, 2.4 GHz | open ends, tees | notch 2.384 GHz | 2.411 GHz | 2.494 GHz |
+| `rf_gcpw` — grounded CPW, via fences | coplanar ground pours, 38 vias | S11 −18.9 dB, S21 −0.44 dB at 5 GHz | −30.1, −0.32 dB (wave ports) | −21.0, −0.35 dB |
+| `rf_coupler` — 10 dB edge-coupled λ/4 coupler, 2.4 GHz | a 0.14 mm coupled gap, 45° bends | S31 −8.6 dB, S21 −1.05 dB | −10.9, −0.67 dB | −10.4, −0.72 dB |
+
+openEMS runs take 4–34 s each (0.06–0.28 M cells); the full runs with `--mom` under a minute. Where they
+disagree, the examples are doing their job:
+
+- **Wilkinson isolation**: openEMS −18.5 dB against −36 to −39 dB from the two others, which treat the
+  resistor as an ideal 100 Ω. openEMS's lumped resistor fills the 1 mm gap between the pads, so the pads
+  and the gap add parasitics; not yet checked whether that explains all of the difference (an open
+  question for this example).
+- **Coupler**: openEMS couples ~2 dB more strongly. The likely cause: the gap is 0.14 mm and the copper
+  35 µm thick, which openEMS models, while mom25d and the coupled-line formulas use zero-thickness strips
+  and so miss the sidewall capacitance across the gap (lower odd-mode impedance, stronger coupling).
+- **Stubs drawn as rectangles**: the stubs are tracks. Drawn as filled rectangles overlapping the line, the
+  line model took the overlap for an 8 Ω section along the path and put the notch at 3.5 GHz (MoM and
+  openEMS: 2.4 GHz) - a known limitation of the line extraction.
 
 <a id="the-hairpin-filter"></a>
 ## The hairpin filter

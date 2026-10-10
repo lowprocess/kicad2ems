@@ -1,0 +1,16 @@
+# kicad2openems example: band-stop of two open quarter-wave stubs, 2.4 GHz, 0.8 mm FR-4
+#   python examples/make_rf_examples.py stubnotch examples/rf_stubnotch     # regenerate the board (already in the repository)
+#   kicad2openems examples/rf_stubnotch.toml --preview
+#   kicad2openems examples/rf_stubnotch.toml
+# notch at 2.4 GHz and again at 7.2 GHz (3 lambda / 4); the stubs' open-end fringing lowers it a little
+board   = "rf_stubnotch.kicad_pcb"   # paths are relative to this file
+ground  = "B.Cu"
+fmin    = 0.5           # GHz
+fmax    = 6.0
+points  = 401
+out     = "out"
+
+[openems]
+fine    = 0.15    # mm at the copper edges: about w/10 of the 1.53 mm lines
+excite  = ["P1"]
+fast    = "qucsator"    # the transmission-line model (or "skrf"), compared in the report

@@ -1,0 +1,16 @@
+# kicad2openems example: grounded coplanar waveguide through line, 50 ohm, via fences, 0.8 mm FR-4
+#   python examples/make_rf_examples.py gcpw examples/rf_gcpw     # regenerate the board (already in the repository)
+#   kicad2openems examples/rf_gcpw.toml --preview
+#   kicad2openems examples/rf_gcpw.toml
+# strip 1.0 mm, gaps 0.22 mm; the F.Cu pours are stitched to B.Cu every 1.2 mm along both gaps
+board   = "rf_gcpw.kicad_pcb"   # paths are relative to this file
+ground  = "B.Cu"
+fmin    = 1.0           # GHz
+fmax    = 10.0
+points  = 401
+out     = "out"
+
+[openems]
+fine    = 0.05    # mm at the copper edges: the 0.22 mm gaps
+excite  = ["P1"]
+fast    = "qucsator"    # the transmission-line model (or "skrf"), compared in the report
