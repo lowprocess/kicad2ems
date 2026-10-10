@@ -220,11 +220,11 @@ class Job:
         else:
             self.grid = auto_mesh(m, self.fmin, self.fmax, res=s.res, fine=s.fine, **kw)
         if s.edge_walls:
-            from .edges import edge_walls, describe
+            from .edges import edge_walls, describe, snap
             walls = edge_walls(m, s.edge_walls, keepout=s.edge_keepout)
             self.log(describe(walls, m))
             for g in [self.grid] + [lm for _, lm in (self.levels or [])]:
-                g['walls'] = walls
+                g['walls'] = snap(walls, g)
                 g['info']['edge_walls'] = describe(walls, m).split(': ', 1)[1]
         self.summary['mesh'] = self.grid['info']
         cavity_check(m, self.grid, self.bc, self.fmax, log=self.log)

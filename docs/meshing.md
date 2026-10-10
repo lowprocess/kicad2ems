@@ -28,8 +28,10 @@ local x / y extremes; `vertices` adds one at every vertex.
 
 **Vias** (`--vias`): `exact` adds lines at the centre and ± radius; `centre` one line per axis; `snap`
 no lines of their own — the via moves onto the nearest existing line crossing if within `--via-snap`
-(else it gets centre lines). `auto`: exact for vias on the ports' nets, snap for the rest (stitching,
-fences). The moved positions are in `mesh['vias']` and used for the openEMS model.
+(else it gets centre lines). Centre lines can be merged away with their neighbours; a via left off
+every line would be dropped by openEMS ("Unused primitive"), so such vias snap to the nearest crossing
+whatever the distance, and the log counts them. `auto`: exact for vias on the ports' nets, snap for the
+rest (stitching, fences). The moved positions are in `mesh['vias']` and used for the openEMS model.
 
 **Kept lines.** The board outline, port planes (`Port.planes()`) and both ends of every lumped-part
 piece are kept exactly.
@@ -60,9 +62,11 @@ decay): use them only when the real board sits in a shield can of that size.
 <a id="edge-walls"></a>
 **Edge walls** (`--edge-walls xmin,xmax,ymin,ymax|all`, `edges.py`) are PEC sheets standing in for a row
 of stitching vias or edge plating along a board side. Without them the plane pairs of a test coupon are
-open at the board edge and can resonate across the board: on the SMA launch example (30 × 14 mm, planes
-1.07 mm apart, εr 4.6) a half-wave mode across the width notches S21 to −5.7 dB near 4.8 GHz, because
-the via fences run down the middle where that mode has no field. Sides are named in KiCad coordinates
+open at the board edge and can resonate. On an SMA edge-launch coupon (30 × 14 mm, inner planes
+1.07 mm apart, εr 4.6, the last via row 6.5 mm from the connector edge) the plane pair beyond that row,
+shorted at the vias and open at the edge, rang as a quarter-wave resonator: S21 notched to −5.5 dB at
+4.7 GHz and the run decayed slowly. With `--edge-walls all` the notch was gone, S11 followed the line
+model, and the run reached −30 dB in 14 k steps instead of 96 k. Sides are named in KiCad coordinates
 (`ymin` is the top edge as drawn). Each wall stands where the planes end (they are usually pulled back
 from the outline, up to 2 mm), and at each point along the side it spans from the lowest to the highest
 layer with ground copper at the edge (ground: any modelled net that is not a signal net). It is left

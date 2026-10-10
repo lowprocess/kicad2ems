@@ -120,3 +120,13 @@ def describe(walls, model):
         by.setdefault(name(w), []).append(w)
     return "edge walls (PEC): " + ", ".join(f"{s} {len(ws)} piece{'s' * (len(ws) > 1)} {sum(w[3] - w[2] for w in ws):.1f} mm"
                                             for s, ws in by.items())
+
+
+def snap(walls, grid):
+    """The walls moved onto the nearest mesh line across them (a zero-thickness sheet off the grid is
+    dropped by openEMS)."""
+    out = []
+    for axis, c, t0, t1, z0, z1 in walls:
+        lines = np.asarray(grid['x' if axis == 'x' else 'y'], float)
+        out.append((axis, float(lines[np.argmin(np.abs(lines - c))]), t0, t1, z0, z1))
+    return out

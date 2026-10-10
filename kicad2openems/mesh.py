@@ -287,7 +287,9 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
     placed, far = _snap_vias(m, mode, mesh, via_snap)
     if far:                                                         # too far from any line: give them centre lines
         mesh = xy_lines({0: [m.vias[i][0] for i in far], 1: [m.vias[i][1] for i in far]})
-        placed, _ = _snap_vias(m, mode, mesh, via_snap)
+        placed, far = _snap_vias(m, mode, mesh, via_snap)
+        if far:                                                     # their lines were merged away: snap them anyway
+            placed, _ = _snap_vias(m, mode, mesh, np.inf)           # (left off the grid, openEMS would drop them)
     moved = [np.hypot(a[0] - b[0], a[1] - b[1]) for a, b in zip(placed, m.vias)]
     nsnap = sum(1 for md in mode if md == 'snap')
     mesh[2] = _z_lines(m, ext, M_die, M_air, nz_min, ratio)
@@ -305,5 +307,6 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
     _check(m, mesh, info, log)
     if nsnap:
         log(f"vias: {nsnap} snapped onto existing lines (moved <= {info['via_max_move_mm']:.3f} mm), "
-            f"{len(m.vias) - nsnap} with their own lines")
+            f"{len(m.vias) - nsnap} with their own lines" +
+            (f"; {len(far)} moved further than --via-snap {via_snap:g} mm (no line nearer)" if far else ""))
     return dict(x=mesh[0], y=mesh[1], z=mesh[2], vias=placed, info=info)

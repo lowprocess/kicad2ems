@@ -63,3 +63,20 @@ def test_preview_logs_and_reports_walls(boards, run_cli, tmp_path):
     assert code == 0, err
     assert 'edge walls (PEC): xmin 1 piece' in so
     assert 'edge walls (PEC)' in (out / 'launch_report.html').read_text()
+
+
+def test_walls_and_vias_sit_on_mesh_lines(launch, boards):
+    """openEMS drops a zero-thickness sheet or a thin cylinder that misses every mesh line (an 'unused
+    primitive'): walls are snapped onto lines, and vias whose own lines were merged away are snapped
+    even beyond --via-snap."""
+    from kicad2openems.boundaries import resolve_bc
+    from kicad2openems.mesh import auto_mesh
+    from kicad2openems.edges import snap
+    for m in (launch, Model(KiCadBoard(boards['demo'] + '.kicad_pcb'), nets=['RF', 'GND'],
+                            pos_file=boards['demo'] + '-top.pos', ground='B.Cu', log=lambda *a: None)):
+        for fine in (None, 0.05):
+            g = auto_mesh(m, 1e9, 6e9, fine=fine, bc=resolve_bc('auto', m), log=lambda *a: None)
+            X, Y = np.asarray(g['x']), np.asarray(g['y'])
+            assert all(np.min(np.abs(X - v[0])) < 1e-9 and np.min(np.abs(Y - v[1])) < 1e-9 for v in g['vias'])
+            for axis, c, *_ in snap(edge_walls(m, ['xmin', 'xmax', 'ymin', 'ymax']), g):
+                assert np.min(np.abs((X if axis == 'x' else Y) - c)) < 1e-12
