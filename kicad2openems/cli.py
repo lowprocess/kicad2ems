@@ -56,6 +56,11 @@ def parser():
                    help='via mesh lines: auto = exact on signal nets, snap elsewhere; exact = centre and +-radius; '
                         'centre = one line per axis; snap = move onto existing lines (within --via-snap)')
     g.add_argument('--via-snap', type=float, help=f'mm a snapped via may move (default {D.via_snap:g})')
+    g.add_argument('--edge-walls', metavar='SIDES',
+                   help='PEC walls where the ground planes end at these board sides, standing in for stitching vias '
+                        'or edge plating: xmin,xmax,ymin,ymax (KiCad coordinates: ymin = top) or all; '
+                        'kept --edge-keepout clear of signal copper')
+    g.add_argument('--edge-keepout', type=float, help=f'mm between edge walls and signal copper (default {D.edge_keepout:g})')
     g.add_argument('--converge', metavar='F1,F2,...',
                    help='mesh convergence check: run on several mesh levels, level f with --res x f and --fine / f '
                         '(e.g. 1,1.5,2); the finest level gives the result')

@@ -40,6 +40,10 @@ def preview(m, mesh, title=''):
         for (x, y, r, z0, z1) in mesh.get('vias', m.vias):
             if z0 - 1e-9 <= m.cu_z[lay] <= z1 + 1e-9:
                 ax.add_patch(patches.Circle((x, y), r, color='k', zorder=4))
+        for axis, c, t0, t1, z0, z1 in mesh.get('walls') or []:       # --edge-walls through this layer
+            if z0 - 1e-9 <= m.cu_z[lay] <= z1 + 1e-9:
+                ax.plot([c, c] if axis == 'x' else [t0, t1], [t0, t1] if axis == 'x' else [c, c],
+                        color='#1e8449', lw=2.2, solid_capstyle='butt', zorder=5)
         for pt in getattr(m, 'parts', []):
             if pt.layer == lay:
                 s, e = pt.box()

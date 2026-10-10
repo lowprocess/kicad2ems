@@ -16,6 +16,7 @@ returns `(FDTD, CSX, ports)`:
 | dielectrics | `AddMaterial` (or a Debye material, below) extruded over the outline (`AddLinPoly`), priority 1 |
 | copper | `AddMetal` (PEC) or `AddConductingSheet` (`--sigma`, with the copper thickness), polygons at the copper heights, priority 10 |
 | vias | `AddMetal` cylinders, priority 11 |
+| edge walls | `AddMetal` zero-thickness boxes where the planes end at the `--edge-walls` sides (`mesh['walls']`), priority 11 |
 | lumped parts | `AddLumpedElement` boxes (R / L / C, topology per piece) or a metal box for 0 Ω, priority 12 |
 | ports | `AddLumpedPort` (direction `z`, or `x` / `y` for gap ports), priority 12; only port `excite` is driven |
 | field dumps | `dumps.add_dumps` |
@@ -56,6 +57,12 @@ openEMS stops when the field energy has fallen by `--end-db` (`EndCriteria = 10^
 `--max-steps` (`NrTS`). It checks the energy at its periodic status updates (on a wall-clock interval),
 so runs with different speeds stop at slightly different steps; results agree to the truncation
 level (≈ 0.002 in S at −40 dB).
+
+The total field energy can stall above `--end-db` when some of it sits where the ports do not see it:
+on the SMA launch example it levelled off near −36.5 dB while the port voltages had fallen 74 dB from
+their peak, and the run would have gone on to `--max-steps`. `--end-db -30` is usually enough for
+S-parameters and much faster; when a run stalls, writing a file named `ABORT` into its run folder
+(`out/openems/exc_<port>`) makes openEMS stop and finish normally.
 
 `--preview` estimates the pulse length in timesteps and how many pulse lengths `--max-steps` allows,
 with a warning below 20. Low frequencies make the pulse long (its length grows as 1 / bandwidth), and

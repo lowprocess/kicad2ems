@@ -87,6 +87,8 @@ used and a `config:` note says so (`config.resolve_path`).
 | `--curves extremes\|vertices` | extremes | mesh lines for curved copper |
 | `--vias auto\|exact\|centre\|snap` | auto | via mesh lines |
 | `--via-snap` | 0.2 | mm a snapped via may move |
+| `--edge-walls SIDES` | off | PEC walls where the ground planes end at these sides (`xmin,xmax,ymin,ymax` in KiCad coordinates, or `all`), standing in for edge stitching ([edge walls](meshing.md#edge-walls)) |
+| `--edge-keepout` | 0.5 | mm between edge walls and signal copper |
 | `--converge F1,F2,...` | — | run several mesh levels ([meshing](meshing.md#convergence-levels)) |
 | `--converge-tol DB,DEG` | 0.1,2 | convergence tolerance |
 

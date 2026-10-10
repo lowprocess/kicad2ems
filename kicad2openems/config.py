@@ -61,6 +61,8 @@ class Settings:
     curves: str = 'extremes'
     vias: str = 'auto'
     via_snap: float = 0.2
+    edge_walls: list = field(default_factory=list)  # board sides with PEC walls where the planes end
+    edge_keepout: float = 0.5           # mm from signal copper kept clear of edge walls
     converge: list = None               # [refinement factors] or None
     converge_tol: tuple = (0.1, 2.0)    # (dB, deg)
     bc: str = 'auto'
@@ -130,8 +132,13 @@ def _bc(v):
     return ",".join(_strlist(v) or ['auto'])
 
 
+def _sides(v):
+    from .edges import parse_sides
+    return parse_sides(v)
+
+
 CONVERT = dict(nets=_strlist, excite=_strlist, dump_port=_strlist, region=_floats(4), converge=lambda v: _floatlist(v) or None,
-               converge_tol=_floats(2), ff_freq=_floatlist, bc=_bc,
+               converge_tol=_floats(2), ff_freq=_floatlist, bc=_bc, edge_walls=_sides,
                dump=lambda v: [str(x) for x in (v if isinstance(v, (list, tuple)) else [v])],
                mask=_bool, preview=_bool, no_report=_bool, openems_output=_bool)
 _FIELDS = {f.name: f for f in dataclasses.fields(Settings) if f.name != 'notes'}

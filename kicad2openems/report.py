@@ -247,6 +247,7 @@ def build(sm, base):
             ['air margin', f"{g['air_mm']:.1f} mm"],
             ['boundaries', _e(" ".join(f"{s}={b}" for s, b in zip(('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'), g['bc'])))],
             ['curves / vias', f"{_e(g['curves'])} / {_e(g['vias'])} ({g['vias_snapped']} snapped)"],
+            *([['edge walls (PEC)', _e(g['edge_walls'])]] if g.get('edge_walls') else []),
             ['lines across port traces', _e(", ".join(f"{k_}: {v}" for k_, v in g.get('lines_across_ports', {}).items()))],
             ['excitation pulse', f"~{sm.get('pulse_steps', 0):,} timesteps; --max-steps {st['max_steps']:,}"]]
     content = _table(['', ''], rows) + _img(sm['images'].get('mesh'), 'model and mesh')

@@ -62,6 +62,12 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
         vm = CSX.AddMetal('vias')
         for (x, y, r, z0, z1) in vias:
             vm.AddCylinder(_fl([x, y, z0]), _fl([x, y, z1]), _f(r), priority=11)
+    walls = mesh.get('walls') or []                                # --edge-walls: PEC sheets where the planes end
+    if walls:
+        wm = CSX.AddMetal('edge_walls')
+        for axis, c, t0, t1, z0, z1 in walls:
+            s, e = ([c, t0, z0], [c, t1, z1]) if axis == 'x' else ([t0, c, z0], [t1, c, z1])
+            wm.AddBox(_fl(s), _fl(e), priority=11)
     for pt in getattr(m, 'parts', []):                              # lumped R / L / C between two pads
         s, e = pt.box()
         if pt.short:

@@ -57,6 +57,19 @@ without a solid bottom plane gets a note: the wall then sits below the board, af
 `cavity_check` warns when PEC side walls form a box resonating below `fmax` (spurious resonances, slow
 decay): use them only when the real board sits in a shield can of that size.
 
+<a id="edge-walls"></a>
+**Edge walls** (`--edge-walls xmin,xmax,ymin,ymax|all`, `edges.py`) are PEC sheets standing in for a row
+of stitching vias or edge plating along a board side. Without them the plane pairs of a test coupon are
+open at the board edge and can resonate across the board: on the SMA launch example (30 × 14 mm, planes
+1.07 mm apart, εr 4.6) a half-wave mode across the width notches S21 to −5.7 dB near 4.8 GHz, because
+the via fences run down the middle where that mode has no field. Sides are named in KiCad coordinates
+(`ymin` is the top edge as drawn). Each wall stands where the planes end (they are usually pulled back
+from the outline, up to 2 mm), and at each point along the side it spans from the lowest to the highest
+layer with ground copper at the edge (ground: any modelled net that is not a signal net). It is left
+out where fewer than two layers have ground, and within `--edge-keepout` (default 0.5 mm) of signal
+copper on any layer, so a launch pad or a trace running off the edge stays open. The preview draws the
+walls in green on every layer they pass; the log and the report's mesh table list them per side.
+
 The air margin is `--air` (default 5 mm) on every side except a PEC bottom plane. Antenna mode uses a
 quarter wavelength at the band centre, at least 5 mm, and `PML_8` when `--bc` is `auto`.
 
