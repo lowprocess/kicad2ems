@@ -13,16 +13,53 @@ itself needs no openEMS.
 
 | Tab | What it does |
 |---|---|
-| Setup | the main settings by group (board, band, mesh, solver incl. *Mode* and pattern frequencies, field dumps, output); load / save a TOML config; *Preview* runs `--preview` and shows the mesh preview, the line-model plot and the fast S-parameters; *Run* starts the full run |
+| Setup | the main settings by group (board, band, mesh, solver incl. *Mode* and pattern frequencies, field dumps, output; empty fields show their default); open / save the TOML config ([below](#configs)); *Preview* runs `--preview` and shows the mesh preview, the line-model plot and the fast S-parameters; *Run* starts the full run |
 | Run | stage, one progress bar per driven port (step, dB, ETA), the decay curves, the log; *Stop* writes `ABORT` into every run folder (openEMS stops and finishes normally, so the results up to that point are written) |
-| Results | the S-parameters (openEMS solid, line model dotted); *Open results folder…* (an earlier run), *Open report*, *Open folder* |
+| Results | interactive S-parameter plots: openEMS solid, mom25d dash-dot, line model dotted, the `compare` file dashed; a Smith chart of the return loss beside them, a cursor readout and markers ([below](#plots)); *Open results folder…* (an earlier run), *Open report*, *Open folder* |
 | Fields | the field dumps: live view, x / y / z cuts, playback over time or phase, PNG / GIF / MP4 ([below](#fields)) |
 | Antenna | antenna mode: S11, gain / directivity / realized gain / efficiency over frequency, the far-field pattern at any recorded frequency ([below](#antenna)) |
+
+<a id="configs"></a>
+## Configs
+
+*File* → *New* (Ctrl+N), *Open…* (Ctrl+O), *Open recent*, *Examples* (every `examples/*.toml`), *Save*
+(Ctrl+S), *Save as…* (Ctrl+Shift+S); the same as buttons under the form. The window title shows the
+config and `*` while it has unsaved changes; opening another config or closing the window asks first.
+*Run* → *Preview* (Ctrl+P), *Run* (Ctrl+R), *Stop* (Ctrl+.).
+
+Saving over a config that was opened **keeps the file**: its comments, key order, `[openems]` table and
+keys the GUI does not know stay; each setting gets its new value in place (a trailing comment stays in
+its column), a cleared field removes its line, and settings that were not in the file are added above
+the first table. *Save as…* does the same into the new file. Paths are written relative to the config's
+folder (absolute when the target is more than one folder up), so a config can move with its board. A
+new config gets only the settings that differ from the defaults. A config whose board is missing (the
+generated antenna examples) says so in the status bar, with the generator command in the file's header.
 
 A loaded config keeps the settings that have no field in the form (`air`, `bc`, `no_mask`, `diel`, …) and
 passes them on to its runs. When the config's output folder already holds results, they are shown.
 Each run writes `<out>/gui_run.toml` (the settings, with absolute paths) and `<out>/gui_events.jsonl`;
 the same run can be repeated from a terminal with `kicad2openems <out>/gui_run.toml`.
+
+<a id="plots"></a>
+## S-parameter plots
+
+The Results tab lists every trace of the run on the left, grouped by source (openEMS, mom25d, line model,
+compare file); tick the ones to show. At first: the lower triangle (S11, S21, S22, …); traces that were
+not computed (ports not driven) are greyed out. *Show* picks the rectangular plot: |S| in dB or linear,
+phase, group delay (−dφ/dω) or VSWR.
+
+- **Smith chart (return loss)**, beside it: the reflections S11, S22, … of the ticked traces, with
+  resistance circles and reactance arcs; the readout gives Z = Z0 (1 + Γ) / (1 − Γ) for the run's
+  reference impedance. Untick it to give the rectangular plot the width.
+- **Cursor**: the mouse over either plot shows every shown trace at that frequency below the plots (over
+  the Smith chart: the nearest point), with dots on both plots.
+- **Markers**: click a plot (the Smith chart: the nearest point) to drop one, drag its line to move it;
+  the table lists every trace at every marker (and Z for the reflections); select rows and press Delete,
+  or *Clear markers*. Markers keep their frequency when the plot kind changes.
+- **Zoom / pan**: mouse wheel and drag (right-drag: zoom one axis), *Fit* to see everything, right-click
+  for pyqtgraph's menu (axis ranges, log scale, its own export).
+- **Export CSV…**: the shown traces as the plot shows them, on the first trace's frequency grid (others
+  interpolated), plus Re / Im of the Smith chart's reflections. **Save image…**: both plots as PNG.
 
 <a id="fields"></a>
 ## Field dumps

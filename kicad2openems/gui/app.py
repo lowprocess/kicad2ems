@@ -7,8 +7,8 @@ openEMS of its own.
     kicad2openems-gui [config.toml]
 """
 import os, sys
-from PySide6.QtCore import Qt, QProcess, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices, QPixmap
+from PySide6.QtCore import Qt, QProcess, QTimer, QUrl, QSettings
+from PySide6.QtGui import QDesktopServices, QPixmap, QAction, QKeySequence
 from PySide6.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
                                QFormLayout, QGroupBox, QLineEdit, QCheckBox, QComboBox, QPushButton, QLabel,
                                QPlainTextEdit, QProgressBar, QFileDialog, QScrollArea, QSplitter, QMessageBox)
@@ -16,16 +16,22 @@ import pyqtgraph as pg
 from .fieldtab import FieldsTab
 from .antennatab import AntennaTab
 from .runner import (FIELDS, SEMICOLON_LISTS, Run, EventTail, stop_runs, settings_values, extra_values,
-                     find_results, write_toml)
+                     find_results, save_config)
+from .splot import SPlot
 
 pg.setConfigOptions(antialias=True, background='w', foreground='k')
+EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
+MAX_RECENT = 8
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
 
 
 class SetupTab(QWidget):
     def __init__(self, win):
         super().__init__()
+        from ..config import Settings
         self.win, self.edits, self.extra = win, {}, {}
+        self.path, self.dirty, self._loading = None, False, False
+        defaults = Settings()
         outer = QHBoxLayout(self)
         left = QVBoxLayout()
         groups = {}
@@ -36,11 +42,17 @@ class SetupTab(QWidget):
                 left.addWidget(box)
             if kind == 'bool':
                 w = QCheckBox()
+                w.toggled.connect(self._changed)
             elif isinstance(kind, tuple):
                 w = QComboBox()
                 w.addItems([c or '(none)' for c in kind])
+                w.currentIndexChanged.connect(self._changed)
             else:
                 w = QLineEdit()
+                d = getattr(defaults, key, None)
+                if d not in (None, '', []) and kind != 'dir':
+                    w.setPlaceholderText(f"default: {', '.join(map(str, d)) if isinstance(d, (list, tuple)) else d}")
+                w.textChanged.connect(self._changed)
             if kind in ('file', 'dir'):
                 row = QHBoxLayout()
                 row.addWidget(w)
@@ -57,8 +69,8 @@ class SetupTab(QWidget):
             self.edits[key] = (w, kind)
         groups['Field dumps'].addRow('Add a dump', self._dump_builder())
         buttons = QHBoxLayout()
-        for text, slot in (('Load config…', self.load), ('Save config…', self.save), ('Preview', win.preview),
-                           ('Run', win.run)):
+        for text, slot in (('Open…', lambda: self.load()), ('Save', self.save), ('Save as…', self.save_as),
+                           ('Preview', win.preview), ('Run', win.run)):
             b = QPushButton(text)
             b.clicked.connect(slot)
             buttons.addWidget(b)
@@ -156,6 +168,14 @@ class SetupTab(QWidget):
         return out
 
     def set_values(self, vals):
+        """Fill the form (a loaded config): not an edit, so the settings stay unchanged."""
+        loading, self._loading = self._loading, True
+        try:
+            self._set_values(vals)
+        finally:
+            self._loading = loading
+
+    def _set_values(self, vals):
         for key, (w, kind) in self.edits.items():
             v = vals.get(key)
             if kind == 'bool':
@@ -171,24 +191,85 @@ class SetupTab(QWidget):
             else:
                 w.setText(str(v))
 
+    def _changed(self, *_):
+        if not self._loading and not self.dirty:
+            self.dirty = True
+            self.win.update_title()
+
+    def _start_dir(self):
+        if self.path:
+            return os.path.dirname(self.path)
+        return EXAMPLES if os.path.isdir(EXAMPLES) else os.getcwd()
+
+    def maybe_save(self):
+        """True when the form may be replaced: saved, discarded or unchanged."""
+        if not self.dirty:
+            return True
+        r = QMessageBox.question(self, 'Unsaved settings', 'Save the changes to the settings first?',
+                                 QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel, QMessageBox.Save)
+        if r == QMessageBox.Save:
+            return self.save()
+        return r == QMessageBox.Discard
+
+    def new(self):
+        if not self.maybe_save():
+            return
+        self.set_values({})
+        self.extra, self.path, self.dirty = {}, None, False
+        self.win.update_title()
+
     def load(self, path=None):
+        if path is None and not self.maybe_save():
+            return False
         if not path:
-            path, _ = QFileDialog.getOpenFileName(self, 'Load a config', os.getcwd(), 'TOML (*.toml)')
-        if path:
-            try:
-                self.set_values(settings_values(path))
-                self.extra = extra_values(path)
-            except Exception as e:
-                QMessageBox.warning(self, 'Config', str(e))
-                return
-            out = self.values().get('out')
-            if out and os.path.isdir(out):                            # earlier results of this config
-                self.win.open_results(out, quiet=True)
+            path, _ = QFileDialog.getOpenFileName(self, 'Open a config', self._start_dir(), 'TOML (*.toml)')
+        if not path:
+            return False
+        from ..config import build_settings
+        try:
+            vals, extra = settings_values(path), extra_values(path)
+            notes = build_settings({}, path).notes
+        except Exception as e:
+            QMessageBox.warning(self, 'Config', str(e))
+            return False
+        self.set_values(vals)
+        self.extra, self.path, self.dirty = extra, os.path.abspath(path), False
+        self.win.remember(self.path)
+        self.win.update_title()
+        board = vals.get('board')
+        if board and not os.path.exists(board):
+            notes = notes + [f"board not found: {board} (generated examples: see the commands at the top of the file)"]
+        self.win.statusBar().showMessage('; '.join(notes) if notes else f"opened {path}", 0 if notes else 5000)
+        out = self.values().get('out')
+        if out and os.path.isdir(out):                            # earlier results of this config
+            self.win.open_results(out, quiet=True)
+        return True
 
     def save(self):
-        path, _ = QFileDialog.getSaveFileName(self, 'Save the config', os.getcwd(), 'TOML (*.toml)')
-        if path:
-            write_toml(path, self.values())
+        if not self.path:
+            return self.save_as()
+        return self._write(self.path)
+
+    def save_as(self):
+        start = self.path or os.path.join(self._start_dir(), 'config.toml')
+        path, _ = QFileDialog.getSaveFileName(self, 'Save the config as', start, 'TOML (*.toml)')
+        if not path:
+            return False
+        if not path.endswith('.toml'):
+            path += '.toml'
+        return self._write(path)
+
+    def _write(self, path):
+        try:
+            save_config(path, self.values(), template=self.path)       # keeps the comments of the loaded file
+        except Exception as e:
+            QMessageBox.warning(self, 'Config', f"could not save {path}: {e}")
+            return False
+        self.path, self.dirty = os.path.abspath(path), False
+        self.win.remember(self.path)
+        self.win.update_title()
+        self.win.statusBar().showMessage(f"saved {path}", 5000)
+        return True
 
     def show_images(self, paths):
         while self.images.count():
@@ -280,12 +361,8 @@ class ResultsTab(QWidget):
         self.folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.win.out_dir())))
         top.addWidget(self.folder_btn)
         lay.addLayout(top)
-        self.plot = pg.PlotWidget(title='S-parameters')
-        self.plot.setLabel('bottom', 'frequency (GHz)')
-        self.plot.setLabel('left', '|S| (dB)')
-        self.plot.addLegend()
-        self.plot.showGrid(x=True, y=True, alpha=0.3)
-        lay.addWidget(self.plot)
+        self.splot = SPlot()
+        lay.addWidget(self.splot, 1)
         self.report = None
 
     def _load(self):
@@ -293,32 +370,32 @@ class ResultsTab(QWidget):
         if d:
             self.win.open_results(d)
 
-    def show(self, files):
-        import numpy as np
-        from ..touchstone import read_touchstone
-        self.plot.clear()
-        main = next((p for l, p in files if 'Touchstone' in l and '_fast' not in p), None)
-        fast = next((p for l, p in files if p.endswith(tuple(f'_fast.s{n}p' for n in range(1, 9)))), None)
-        mom = next((p for l, p in files if p.endswith(tuple(f'_mom.s{n}p' for n in range(1, 9)))), None)
+    def show(self, files, compare=None):
+        """The S-parameters of a run's files (openEMS, mom25d, line model) and a compare file."""
+        import json
+        from .traces import load_traces
         self.report = next((p for l, p in files if p.endswith('_report.html')), None)
         self.report_btn.setEnabled(bool(self.report))
-        shown = []
-        for path, style, tag in ((main, Qt.SolidLine, 'openEMS'), (mom, Qt.DashDotLine, 'mom25d'),
-                                 (fast, Qt.DotLine, 'line model')):
-            if not path or not os.path.exists(path):
-                continue
-            f, S = read_touchstone(path)
-            n = S.shape[1]
-            k = 0
-            for j in range(n):
-                for i in range(n):
-                    if i < j or not np.isfinite(S[:, i, j]).all() or not np.abs(S[:, i, j]).any():
-                        continue
-                    y = 20 * np.log10(np.abs(S[:, i, j]) + 1e-15)
-                    self.plot.plot(f / 1e9, y, pen=pg.mkPen(COLORS[k % len(COLORS)], width=2, style=style),
-                                   name=f"S{i + 1}{j + 1} {tag}")
-                    k += 1
-            shown.append(os.path.basename(path))
+        z0 = 50.0
+        summary = next((p for l, p in files if p.endswith('_openems.json')), None)
+        if summary and os.path.exists(summary):
+            try:
+                with open(summary) as fh:
+                    sm = json.load(fh)
+                compare = compare or (sm.get('settings') or {}).get('compare')
+                zr = sm.get('zref')
+                z0 = float(zr[0] if isinstance(zr, list) else zr or 50.0)
+            except (ValueError, TypeError, OSError):
+                pass
+        if compare is None:
+            compare = self.win.setup.values().get('compare')
+        try:
+            traces = load_traces(files, compare)
+        except Exception as e:                                       # a damaged file must not take the GUI down
+            self.info.setText(f"could not read the S-parameters: {e}")
+            return
+        self.splot.set_traces(traces, z0)
+        shown = sorted({os.path.basename(t.path) for t in traces})
         self.info.setText(', '.join(shown) if shown else 'no S-parameters in this run')
 
 
@@ -335,10 +412,91 @@ class MainWindow(QMainWindow):
                      (self.antenna, 'Antenna')):
             self.tabs.addTab(w, t)
         self.setCentralWidget(self.tabs)
+        self.qsettings = QSettings('kicad2openems', 'gui')
+        self._menus()
+        self.statusBar()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
+        self.update_title()
         if config:
             self.setup.load(config)
+
+    # ---- menus, title, recent files ----
+    def _menus(self):
+        fm = self.menuBar().addMenu('&File')
+        for text, key, slot in (('&New', QKeySequence.New, self.setup.new),
+                                ('&Open…', QKeySequence.Open, lambda: self.setup.load()),
+                                (None, None, None),
+                                ('&Save', QKeySequence.Save, self.setup.save),
+                                ('Save &as…', QKeySequence.SaveAs, self.setup.save_as)):
+            if text is None:
+                self.recent_menu = fm.addMenu('Open &recent')
+                self.examples_menu = fm.addMenu('&Examples')
+                continue
+            a = QAction(text, self)
+            a.setShortcut(key)
+            a.triggered.connect(slot)
+            fm.addAction(a)
+        fm.addSeparator()
+        a = QAction('Open &results folder…', self)
+        a.triggered.connect(self.results._load)
+        fm.addAction(a)
+        fm.addSeparator()
+        a = QAction('&Quit', self)
+        a.setShortcut(QKeySequence.Quit)
+        a.triggered.connect(self.close)
+        fm.addAction(a)
+        rm = self.menuBar().addMenu('&Run')
+        for text, key, slot in (('&Preview', 'Ctrl+P', self.preview), ('&Run', 'Ctrl+R', self.run),
+                                ('&Stop', 'Ctrl+.', self.stop)):
+            a = QAction(text, self)
+            a.setShortcut(QKeySequence(key))
+            a.triggered.connect(slot)
+            rm.addAction(a)
+        self._fill_recent()
+        self._fill_examples()
+
+    def _fill_examples(self):
+        self.examples_menu.clear()
+        files = sorted(f for f in os.listdir(EXAMPLES) if f.endswith('.toml')) if os.path.isdir(EXAMPLES) else []
+        for f in files:
+            a = QAction(f[:-5], self)
+            a.triggered.connect(lambda _=False, p=os.path.join(EXAMPLES, f): self._open(p))
+            self.examples_menu.addAction(a)
+        self.examples_menu.setEnabled(bool(files))
+
+    def recent(self):
+        v = self.qsettings.value('recent', [])
+        v = [v] if isinstance(v, str) else list(v or [])
+        return [p for p in v if os.path.exists(p)]
+
+    def remember(self, path):
+        r = [path] + [p for p in self.recent() if p != path]
+        self.qsettings.setValue('recent', r[:MAX_RECENT])
+        self._fill_recent()
+
+    def _fill_recent(self):
+        self.recent_menu.clear()
+        r = self.recent()
+        for p in r:
+            a = QAction(p, self)
+            a.triggered.connect(lambda _=False, p=p: self._open(p))
+            self.recent_menu.addAction(a)
+        self.recent_menu.setEnabled(bool(r))
+
+    def _open(self, path):
+        if self.setup.maybe_save():
+            self.setup.load(path)
+
+    def update_title(self):
+        name = os.path.basename(self.setup.path) if self.setup.path else 'untitled'
+        self.setWindowTitle(f"{name}{'*' if self.setup.dirty else ''} - kicad2openems")
+
+    def closeEvent(self, ev):
+        if self.setup.maybe_save():
+            ev.accept()
+        else:
+            ev.ignore()
 
     def open_results(self, out_dir, quiet=False):
         """Show the results already in a folder: S-parameters, field dumps, antenna far field."""
