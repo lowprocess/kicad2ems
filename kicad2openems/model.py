@@ -49,6 +49,7 @@ class Port:
         self.c, self.axis, self.sgn, self.w, self.z0 = np.asarray(c, float), axis, sgn, w, z0
         self.leg, self.pair, self.ref_layer = leg, pair, ref_layer
         self.kind, self.gap, self.net = kind, gap, net
+        self.source = ''                            # footprint TP1 / pad J1.1 / point (x, y) / cut (x, y)
 
     @property
     def direction(self):
@@ -77,21 +78,38 @@ class Model:
     """Geometry for openEMS from a KiCadBoard. Units mm, y up (y = -y_kicad)."""
 
     def __init__(self, board, nets=None, pos_file=None, include_mask=False, region=None, ground=None, parts='auto',
-                 log=print):
+                 log=print, ports=None, cut_ports=False):
+        from .region import region_polygon, auto_nets, extra_port_fps, ground_net_names
         self.board, self.log = board, log
         self.notes = []
         self._stack(board, include_mask)
-        # ---- nets, outline / region ----
-        self.sel = resolve_nets(nets, {n for _, n, _ in board.items} | {v['net'] for v in board.vias}) if nets else None
-        ol = board_outline(board)
-        if ol is None:
-            cop = [g for l, n, g in board.items if l in self.cu_z and (self.sel is None or n in self.sel)]
-            ol = unary_union(cop).envelope.buffer(1.0, join_style=2)
+        self.pos_file, self.port_specs, self.cut_ports = pos_file, list(ports or []), cut_ports
+        # ---- outline / region (KiCad coordinates until flipped) ----
+        full = board_outline(board)
+        rpoly = region_polygon(board, region)
+        if full is None:
+            cop = [g for l, n, g in board.items if l in self.cu_z]
+            full = unary_union(cop).envelope.buffer(1.0, join_style=2)
             self.notes.append("no Edge.Cuts outline: using the copper bounding box + 1 mm")
+        # ---- nets: as given, all copper, or 'auto' (the nets under the ports + the ground nets) ----
+        if nets in ('auto', ['auto'], ('auto',)):
+            refs = pos_port_refs(read_pos(pos_file)) if pos_file else None
+            fps = dict(board.port_footprints(refs))
+            fps.update(extra_port_fps(board, self.port_specs))
+            pts = []
+            for fp in fps.values():
+                for f in (fp.values() if isinstance(fp, DiffLegs) else [fp]):
+                    lay = port_field(f['props'], 'layer') or ('B.Cu' if f['side'] == 'B' else 'F.Cu')
+                    pts.append((lay, f['x'], f['y']))
+            nets = auto_nets(board, pts, full)
+            self.notes.append(f"nets (auto): {', '.join(nets)}")
+        self.sel = resolve_nets(nets, {n for _, n, _ in board.items} | {v['net'] for v in board.vias}) if nets else None
+        self.ground_nets = ground_net_names(board, full)
+        ol = full
         self.region = region
-        if region:
-            x0, y0, x1, y1 = region
-            ol = ol.intersection(box(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)))
+        self.region_poly = rpoly
+        if rpoly is not None:
+            ol = ol.intersection(rpoly)
             if ol.is_empty:
                 raise ValueError(f"region {region} does not overlap the board")
         self.outline = flip_y(ol)
@@ -175,10 +193,30 @@ class Model:
             self.via_nets.append(v['net'])
 
     def _ports(self, board, pos_file):
+        from .region import extra_port_fps, cut_port_fps
         refs = pos_port_refs(read_pos(pos_file)) if pos_file else None
-        fps = board.port_footprints(refs)
+        fps = dict(board.port_footprints(refs))
+        for k, f in fps.items():
+            for leg in (f.values() if isinstance(f, DiffLegs) else [f]):
+                leg.setdefault('source', f"footprint {leg['ref']}")
+        for name, fp in self._extra_ports(board).items():      # ports given in the settings (pad / point)
+            n, leg = name
+            if leg:
+                fps.setdefault(n, DiffLegs())[leg] = fp
+            else:
+                fps[n] = fp
+        if self.cut_ports and self.region_poly is not None:
+            signal = (set(self.sel) - self.ground_nets) if self.sel is not None else \
+                {self._net_at_kicad(f) for f in self._single_legs(fps)} - {None}
+            cut, notes = cut_port_fps(board, self.region_poly, signal, set(self.cu_z), first=max(fps, default=0) + 1)
+            fps.update(cut)
+            self.notes += notes
+            if cut:
+                self.notes.append(f"{len(cut)} port(s) where tracks cross the region edge: "
+                                  f"{', '.join(f'P{n}' for n in cut)}")
         if not fps:
-            raise ValueError("no port footprints found (Fab text P<n>, or P<n> in the pick-and-place file)")
+            raise ValueError("no ports: no port footprints (Fab text P<n>, or P<n> in the pick-and-place file), "
+                             "no ports in the settings and no cut ports")
         inside = self.outline.buffer(1e-6)
         self.port_refs = {f['ref'] for fp in fps.values() for f in (fp.values() if isinstance(fp, DiffLegs) else [fp])}
         self.port_fps = {}
@@ -212,6 +250,26 @@ class Model:
         st = dict(self.__dict__)
         st['board'], st['log'] = None, print
         return st
+
+    def _extra_ports(self, board):
+        from .region import extra_port_fps, parse_port_spec
+        out = {}
+        legs = {int(''.join(ch for ch in parse_port_spec(sp)[0] if ch.isdigit())): parse_port_spec(sp)[0]
+                for sp in self.port_specs}
+        for n, fp in extra_port_fps(board, self.port_specs).items():
+            name = legs.get(n, f"P{n}")
+            out[(n, '+' if name.endswith('+') else '-' if name.endswith('-') else '')] = fp
+        return out
+
+    @staticmethod
+    def _single_legs(fps):
+        for f in fps.values():
+            yield from (f.values() if isinstance(f, DiffLegs) else [f])
+
+    def _net_at_kicad(self, f):
+        from .region import net_at
+        lay = port_field(f['props'], 'layer') or ('B.Cu' if f['side'] == 'B' else 'F.Cu')
+        return net_at(self.board, lay, f['x'], f['y'])
 
     # ---- helpers -----------------------------------------------------------------------------------------
     def copper_at(self, lay, pt):
@@ -274,8 +332,10 @@ class Model:
         if ref is None:
             raise ValueError(f"{name}: no reference copper {'below' if below else 'above'} the port at "
                              f"({fp['x']:.3f}, {fp['y']:.3f}) mm - {self._reference_hint()}")
-        return Port(name, lay, zs, self.cu_z[ref], pc, axis, sgn, w, float(port_field(props, 'z0', 50)), leg, pair, ref,
+        port = Port(name, lay, zs, self.cu_z[ref], pc, axis, sgn, w, float(port_field(props, 'z0', 50)), leg, pair, ref,
                     net=self._net_at(lay, *pc))
+        port.source = fp.get('source', f"footprint {fp['ref']}")
+        return port
 
     def _gap_port(self, name, fp, lay, c, d, axis, sgn, props, leg, pair, reach=5.0):
         """Port in a gap: copper on lay within `reach` mm on both sides of c along d. The sheet spans the
@@ -319,6 +379,7 @@ class Model:
                          f"w {p.w:.3f} mm, at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm")
                 continue
             L.append(f"  {p.name}: lumped, {p.layer} -> {p.ref_layer}, w {p.w:.3f} mm, h {abs(p.z_sig - p.z_ref):.3f} mm, "
-                     f"at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm")
+                     f"at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm" +
+                     (f" [{p.source}]" if p.source and not p.source.startswith('footprint') else ''))
         L += [p.describe() for p in self.parts]
         return "\n".join(L + self.notes)

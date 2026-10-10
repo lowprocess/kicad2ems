@@ -40,7 +40,7 @@ config: ignoring keys not used here: check
 ```
 
 **Lists** can be TOML arrays or comma-separated strings: `nets`, `excite`, `dump_port`, `region` (4
-numbers), `converge`, `converge_tol` (2 numbers), `ff_freq` and `bc` (1 or 6 values). `dump` takes an
+numbers; or an array of [x, y] points, or a drawing layer name), `ports` (an array of port specs), `converge`, `converge_tol` (2 numbers), `ff_freq` and `bc` (1 or 6 values). `dump` takes an
 array or a single string.
 
 ```toml
@@ -67,8 +67,10 @@ used and a `config:` note says so (`config.resolve_path`).
 |---|---|---|
 | `board` | — | the `.kicad_pcb`, or a `.toml` config naming it (positional argument or config key) |
 | `--pos` | — | pick-and-place file (`.pos` or `.csv`); ports may be listed there instead of a Fab text |
-| `--nets` | all copper | nets to include; hierarchical names match their last part |
-| `--region x0,y0,x1,y1` | — | crop (KiCad mm), see [the model](model.md#region) |
+| `--nets` | all copper | nets to include (hierarchical names match their last part), or `auto`: the nets under the ports plus the ground nets |
+| `--region x0,y0,x1,y1\|LAYER` | — | crop to a rectangle (KiCad mm) or the shapes on a drawing layer (`User.1`); a config also takes a list of [x, y] points ([the model](model.md#region)) |
+| `--cut-ports` | off | a port wherever a signal track crosses the region edge |
+| `--port SPEC` | — | an extra port: `P3=J1.1` (pad) or `P3@x,y[,layer[,rotation]]` (point); repeatable ([ports](model.md#extra-ports)) |
 | `--ground LAYER` | — | model that copper layer as a solid plane over the outline |
 | `--mask` | off | include solder mask layers (their thinness shrinks the time step) |
 | `--parts auto\|none` | auto | lumped R/L/C parts from two-pad footprints ([model](model.md#lumped-parts)) |

@@ -112,6 +112,7 @@ class KiCadBoard:
         self.vias = []           # dict(x, y, drill, size, layers, net)
         self.footprints = []
         self.edges = []          # Edge.Cuts outline pieces (LineString / LinearRing, mm, y down)
+        self.drawings = {}       # other non-copper layers: {layer: [outline pieces]} (regions on User.1 ...)
         all_cu = self.copper_order
         for s in sx.items(self.root, 'segment'):
             pts = [sx.xy(s, 'start'), sx.xy(s, 'end')]
@@ -144,6 +145,11 @@ class KiCadBoard:
                     ring = shp.outline_ring(g)
                     if ring is not None:
                         self.edges.append(ring)
+                for l in lys:
+                    if l != 'Edge.Cuts' and not l.endswith('.Cu') and not l.endswith('.Mask'):
+                        ring = shp.outline_ring(g)
+                        if ring is not None:
+                            self.drawings.setdefault(l, []).append(ring)
                 cu = [l for l in lys if l.endswith('.Cu')]
                 geom = shp.graphic(g) if cu else None
                 if geom is not None and not geom.is_empty:

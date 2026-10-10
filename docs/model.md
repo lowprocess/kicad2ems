@@ -25,10 +25,39 @@ replaces that layer with the whole outline. CSXCAD can't take polygons with hole
 <a id="region"></a>
 ## Region
 
-`--region x0,y0,x1,y1` (KiCad mm) crops the board: the outline becomes its intersection with the
-rectangle, and copper, vias and parts outside it are left out. Port footprints outside the region are
-left out with a note; it is an error when no port remains, or when the region misses the board. Parts
-outside are skipped silently. The cut edges are open: no ports are placed there automatically.
+`region` crops the board (`region.region_polygon`): the outline becomes its intersection with
+
+- a rectangle, `--region x0,y0,x1,y1` (KiCad mm);
+- a polygon, `region = [[x, y], ...]` in a config;
+- the shapes drawn on a drawing layer, `--region User.1` (any non-copper layer except Edge.Cuts): draw
+  the area to simulate in KiCad on a user layer; the largest closed face of its shapes is the region.
+
+Copper, vias and parts outside are left out. Port footprints outside the region are left out with a
+note; it is an error when no port remains, or when the region misses the board. Parts outside are
+skipped silently.
+
+**Cut ports** (`--cut-ports`): wherever a track of a signal net crosses the region edge, a port is
+placed just inside the edge, pointing into the region, so the cut line ends in the port impedance
+instead of an open end (`region.cut_port_fps`; numbered after the other ports, source `cut (x, y)`).
+Signal nets are the selected nets except the ground nets (or the nets under the ports when every net is
+selected). A track crossing the edge at an angle gets no port (lumped ports run along x or y), with a
+note. Planes simply end at the cut; `--edge-walls` can close them there.
+
+**Nets = auto** (`--nets auto`): the nets under the ports plus the ground nets (named like ground, or
+owning zones over a fifth of the board).
+
+<a id="extra-ports"></a>
+**Ports in the settings** (`--port SPEC`, repeatable; `ports = [...]` in a config), next to the port
+footprints:
+
+- `P3=J1.1` — on pad 1 of J1 (pads sharing the number: the first): at the pad centre, across the pad,
+  pointing along the track that leaves it (else along the pad's longer side);
+- `P4@x,y[,layer[,rotation]]` — at a point (KiCad mm) on a track of `layer` (default F.Cu), pointing
+  toward the track's far end unless a rotation (degrees, the direction into the circuit) is given.
+  `P3+` / `P3-` make a differential pair.
+
+**Validation.** A microstrip and a stripline line (4-layer stack of the transition demo) cropped with a
+cut port agree with the uncropped board whose line ends at the same place: see the table below.
 
 ## Vias
 

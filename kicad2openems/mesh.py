@@ -238,7 +238,7 @@ def _check(m, mesh, info, log):
 
 
 def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) * 6, nz_min=4,
-              curves='extremes', vias='auto', via_snap=0.2, log=print):
+              curves='extremes', vias='auto', via_snap=0.2, refine=(), log=print):
     """Mesh lines (mm) for model m. Returns dict(x, y, z, vias, info).
 
     curves: 'extremes' (default) or 'vertices' - see curve_lines().
@@ -247,7 +247,8 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
             'snap'   no lines of their own: each via moves onto the nearest existing line crossing if it
                      is within via_snap mm (else it gets centre lines)
             'auto'   (default) 'exact' for vias on the port (signal) nets, 'snap' for all others
-                     (ground stitching / fence vias)"""
+                     (ground stitching / fence vias)
+    refine: [(x0, y0, x1, y1, step)] boxes (model coordinates, mm) with x and y lines every `step`"""
     er_max = max([l['er'] for l in m.layers] + [1.0])
     lam0 = C0 / fmax * 1e3                                          # mm
     M_air, M_die = lam0 / res, lam0 / np.sqrt(er_max) / res
@@ -270,6 +271,9 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
         elif md == 'centre':
             fixed[0].append(x); fixed[1].append(y)
     keep = _kept_lines(m)
+    for x0, y0, x1, y1, step in refine:                             # local refinement boxes
+        fixed[0] += list(np.arange(min(x0, x1), max(x0, x1) + step / 2, step))
+        fixed[1] += list(np.arange(min(y0, y1), max(y0, y1) + step / 2, step))
 
     def xy_lines(extra):
         out = {}

@@ -181,6 +181,7 @@ class Job:
         s = self.s
         self.board = KiCadBoard(s.board)
         self.m = m = Model(self.board, nets=s.nets, pos_file=s.pos, include_mask=s.mask, region=s.region,
+                           ports=s.ports, cut_ports=s.cut_ports,
                            ground=s.ground, parts=s.parts, log=self.log)
         self.log(m.describe())
         if s.diel == 'wideband':

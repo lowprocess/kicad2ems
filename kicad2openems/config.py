@@ -45,8 +45,10 @@ class Settings:
     """Every option of a run, typed. Frequencies in GHz, lengths in mm (as on the command line)."""
     board: str = None
     pos: str = None
-    nets: list = None                   # [str] or None: all copper
-    region: tuple = None                # (x0, y0, x1, y1) KiCad mm
+    nets: list = None                   # [str], ['auto'] (port nets + ground nets) or None: all copper
+    region: object = None               # (x0, y0, x1, y1), [(x, y), ...] or a drawing layer name; KiCad mm
+    ports: list = field(default_factory=list)    # extra ports: 'P3=J1.1' (on a pad) or 'P3@x,y[,layer[,rot]]'
+    cut_ports: bool = False             # ports where signal tracks cross the region edge
     ground: str = None
     mask: bool = False
     parts: str = 'auto'
@@ -129,6 +131,23 @@ def _bool(v):
     raise ValueError("expected true or false")
 
 
+def _region(v):
+    """x0,y0,x1,y1 / [x0, y0, x1, y1] (rectangle), [[x, y], ...] (polygon) or a drawing layer name."""
+    if isinstance(v, str):
+        try:
+            return _floats(4)(v)
+        except (TypeError, ValueError):
+            if ',' in v or not v.strip():
+                raise ValueError("expected x0,y0,x1,y1, a list of [x, y] points or a drawing layer such as User.1")
+            return v.strip()
+    vals = list(v)
+    if vals and all(isinstance(p, (list, tuple)) for p in vals):
+        if len(vals) < 3 or any(len(p) != 2 for p in vals):
+            raise ValueError("a polygon region needs at least three [x, y] points")
+        return [tuple(float(c) for c in p) for p in vals]
+    return _floats(4)(vals)
+
+
 def _bc(v):
     return ",".join(_strlist(v) or ['auto'])
 
@@ -138,7 +157,7 @@ def _sides(v):
     return parse_sides(v)
 
 
-CONVERT = dict(nets=_strlist, excite=_strlist, dump_port=_strlist, region=_floats(4), converge=lambda v: _floatlist(v) or None,
+CONVERT = dict(nets=_strlist, excite=_strlist, dump_port=_strlist, region=_region, ports=lambda v: [str(x).strip() for x in (v if isinstance(v, (list, tuple)) else [v]) if str(x).strip()], cut_ports=_bool, converge=lambda v: _floatlist(v) or None,
                converge_tol=_floats(2), ff_freq=_floatlist, bc=_bc, edge_walls=_sides,
                dump=lambda v: [str(x) for x in (v if isinstance(v, (list, tuple)) else [v])],
                mask=_bool, preview=_bool, no_report=_bool, openems_output=_bool)

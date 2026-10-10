@@ -31,8 +31,13 @@ def parser():
                                      'its paths are relative to the file')
     g = ap.add_argument_group('board')
     g.add_argument('--pos', help='pick-and-place file listing the port components')
-    g.add_argument('--nets', help='comma-separated nets to include (default: all copper)')
-    g.add_argument('--region', help='crop x0,y0,x1,y1 (KiCad mm); ports outside it are left out')
+    g.add_argument('--nets', help='comma-separated nets to include, or auto (the nets under the ports plus the '
+                                  'ground nets; default: all copper)')
+    g.add_argument('--region', help='crop to x0,y0,x1,y1 (KiCad mm) or to the shapes on a drawing layer (e.g. User.1); '
+                                    'in a config also a list of [x, y] points. Ports outside it are left out')
+    g.add_argument('--port', dest='ports', action='append', metavar='SPEC',
+                   help='an extra port: P3=J1.1 (on pad 1 of J1) or P3@x,y[,layer[,rotation]] (KiCad mm); repeatable')
+    g.add_argument('--cut-ports', action='store_true', help='a port wherever a signal track crosses the region edge')
     g.add_argument('--ground', help='copper layer to model as a solid plane over the whole outline')
     g.add_argument('--mask', action='store_true', help='include solder mask layers (thin: smaller time step)')
     g.add_argument('--parts', choices=['auto', 'none'],
