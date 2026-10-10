@@ -2,8 +2,8 @@
  "name": "demo_transition",
  "version": "0.2.0",
  "mode": "S-parameters",
- "command": "kicad2openems demo_transition.toml --out out",
- "created": "2026-10-10 03:12",
+ "command": "kicad2openems demo_transition.toml",
+ "created": "2026-10-10 11:40",
  "settings": {
   "board": "examples/demo_transition.kicad_pcb",
   "pos": "examples/demo_transition-top.pos",
@@ -12,6 +12,8 @@
    "GND"
   ],
   "region": null,
+  "ports": [],
+  "cut_ports": false,
   "ground": "B.Cu",
   "mask": false,
   "parts": "auto",
@@ -19,13 +21,15 @@
   "fmax": 8.0,
   "points": 401,
   "res": 20.0,
-  "fine": 0.025,
+  "fine": null,
   "air": 5.0,
   "ratio": 1.4,
   "nz": 6,
   "curves": "extremes",
   "vias": "auto",
   "via_snap": 0.2,
+  "edge_walls": [],
+  "edge_keepout": 0.5,
   "converge": null,
   "converge_tol": [
    0.1,
@@ -33,6 +37,7 @@
   ],
   "bc": "auto",
   "end_db": -40.0,
+  "end_on": "ports",
   "max_steps": 1000000,
   "sigma": null,
   "diel": "fixed",
@@ -54,7 +59,7 @@
   "no_report": false,
   "openems_output": false,
   "events": null,
-  "out": "out"
+  "out": "examples/out"
  },
  "images": {
   "lines": "demo_transition_tlines.png",
@@ -195,11 +200,11 @@
   ]
  },
  "mesh": {
-  "nx": 230,
-  "ny": 119,
+  "nx": 170,
+  "ny": 95,
   "nz": 32,
-  "cells": 875840,
-  "fine_mm": 0.025,
+  "cells": 516800,
+  "fine_mm": 0.03750000000000009,
   "maxres_die_mm": 0.9035797563207797,
   "maxres_air_mm": 1.8737028625,
   "air_mm": 5.0,
@@ -215,13 +220,13 @@
   "vias": "auto",
   "vias_snapped": 22,
   "via_max_move_mm": 0.06428187925068829,
-  "dt_ps": 0.03236841007675418,
+  "dt_ps": 0.053309824173417855,
   "min_cell_mm": [
-   0.01278297093523584,
-   0.016666666666666666,
+   0.03749999999999787,
+   0.020833333333333037,
    0.033333332999999965
   ],
-  "mem_gb": 0.131376,
+  "mem_gb": 0.07751999999999999,
   "lines_across_ports": {
    "P1": 13,
    "P2": 5
@@ -336,11 +341,44 @@
     "branches": []
    }
   ],
-  "notes": []
+  "notes": [],
+  "groups": [],
+  "junctions": [
+   {
+    "kind": "open",
+    "node": "F.Cu:2.0000:-5.0000",
+    "xs": "microstrip",
+    "layer": "F.Cu",
+    "widths": [
+     0.35
+    ],
+    "at": [
+     2.0,
+     5.0
+    ],
+    "angle": null,
+    "gap": null
+   },
+   {
+    "kind": "open",
+    "node": "In2.Cu:22.0000:-5.0000",
+    "xs": "stripline",
+    "layer": "In2.Cu",
+    "widths": [
+     0.15
+    ],
+    "at": [
+     22.0,
+     5.0
+    ],
+    "angle": null,
+    "gap": null
+   }
+  ]
  },
  "fast": {
   "backend": "skrf",
-  "seconds": 0.16644072532653809,
+  "seconds": 0.1314985752105713,
   "touchstone": "demo_transition_fast.s2p",
   "table": [
    {
@@ -378,22 +416,22 @@
    {
     "param": "S(P1,P1)",
     "max_ddb": null,
-    "max_dvec": 0.0926004535763942,
-    "openems_max_db": -22.458901206870145,
+    "max_dvec": 0.08983434349757827,
+    "openems_max_db": -22.373164816307526,
     "other_max_db": -18.732210506888215,
     "ddelay_ps": null
    },
    {
     "param": "S(P2,P1)",
-    "max_ddb": 0.2559740545231203,
-    "max_dvec": 0.1272534151331197,
-    "openems_max_db": -0.29913531170517704,
+    "max_ddb": 0.2348438526704888,
+    "max_dvec": 0.14073777794804224,
+    "openems_max_db": -0.3119760468927548,
     "other_max_db": -0.09061250690342809,
-    "ddelay_ps": -2.5506739324460157
+    "ddelay_ps": -2.8544387870700154
    }
   ]
  },
- "pulse_steps": 24084,
+ "pulse_steps": 14623,
  "results": {
   "names": [
    "P1",
@@ -414,31 +452,32 @@
   "table": [
    {
     "param": "S(P1,P1)",
-    "fmin_db": -25.154447428467822,
-    "fc_db": -28.37771902543811,
-    "fmax_db": -42.1811467993923,
-    "min_db": -47.79250593134875,
-    "f_min": 7895000000.0,
-    "max_db": -22.458901206870145,
-    "f_max": 2172500000.0
+    "fmin_db": -25.13108769674964,
+    "fc_db": -28.66846189743603,
+    "fmax_db": -36.516046843374916,
+    "min_db": -43.23106448094123,
+    "f_min": 7842500000.0,
+    "max_db": -22.373164816307526,
+    "f_max": 2120000000.0
    },
    {
     "param": "S(P2,P1)",
-    "fmin_db": -0.29913531170517704,
-    "fc_db": -0.32360378143383817,
-    "fmax_db": -0.33840802893660393,
-    "min_db": -0.3532802304743068,
-    "f_min": 2452500000.0,
-    "max_db": -0.29913531170517704,
-    "f_max": 1000000000.0
+    "fmin_db": -0.3124690457532816,
+    "fc_db": -0.32289956124446456,
+    "fmax_db": -0.3890299712482945,
+    "min_db": -0.3890299712482945,
+    "f_min": 8000000000.0,
+    "max_db": -0.3119760468927548,
+    "f_max": 1105000000.0
    }
   ],
   "compare_file": null
  },
  "runs": {
   "P1": {
-   "seconds": 265.31957626342773,
-   "steps": 29574,
+   "seconds": 123.78773903846741,
+   "steps": 42900,
+   "ended": null,
    "log": "openems/exc_P1/openems.log"
   }
  },
@@ -456,17 +495,18 @@
   "  P1: lumped, F.Cu -> In1.Cu, w 0.350 mm, h 0.200 mm, at (2.087, 5.000) mm (KiCad), Z 50 ohm",
   "  P2: lumped, In2.Cu -> B.Cu, w 0.150 mm, h 0.200 mm, at (21.962, 5.000) mm (KiCad), Z 50 ohm",
   "B.Cu: solid ground plane over the board outline (ground = B.Cu)",
-  "mesh: 230 x 119 x 32 = 0.88 M cells (fine 0.025 mm, max 0.90 mm in dielectric / 1.87 mm in air, air margin 5.0 mm), boundaries xmin=MUR xmax=MUR ymin=MUR ymax=MUR zmin=PEC zmax=MUR (PEC on the bottom plane), time step 0.032 ps, ~0.1 GB",
+  "mesh: 170 x 95 x 32 = 0.52 M cells (fine 0.038 mm, max 0.90 mm in dielectric / 1.87 mm in air, air margin 5.0 mm), boundaries xmin=MUR xmax=MUR ymin=MUR ymax=MUR zmin=PEC zmax=MUR (PEC on the bottom plane), time step 0.053 ps, ~0.1 GB",
   "vias: 22 snapped onto existing lines (moved <= 0.064 mm), 1 with their own lines",
   "transmission line P1 -> P2: 5 sections, 20.27 mm, Z0 45.2..87.2 ohm",
-  "fast line model (skrf): 166 ms -> out/demo_transition_fast.s2p",
-  "wrote out/demo_transition_mesh.png",
-  "excitation pulse ~24084 timesteps (estimate); --max-steps 1000000 allows 42 pulse lengths",
+  "  0 coupled section(s); discontinuities: 2 open",
+  "fast line model (skrf): 131 ms -> examples/out/demo_transition_fast.s2p",
+  "wrote examples/out/demo_transition_mesh.png",
+  "excitation pulse ~14623 timesteps (estimate); --max-steps 1000000 allows 68 pulse lengths",
   "openEMS: exciting P1 -> examples/out/openems/exc_P1",
-  "  P1 done in 265 s, ~29574 timesteps",
+  "  P1 done in 124 s, ~42900 timesteps",
   "note: P2 not excited - their reflection and the terms between unexcited ports are unknown (written as 0)"
  ],
- "runtime_s": 268.50710439682007,
+ "runtime_s": 126.27291107177734,
  "ports": [
   "P1",
   "P2"

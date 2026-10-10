@@ -136,7 +136,8 @@ and the antipad put edges within about 1.5 `fine` of each other; their thirds-ru
 wide, fell within the merge distance (`fine/2`) of each other, and the merge kept one line per
 cluster, so the end of the microstrip and the edge of the via pad were placed a cell off. The pair now
 spans 2/3 `fine` (`mesh.THIRDS_CELL`): the default mesh is within 0.5 ps of the converged delay, with
-fewer cells than before.
+fewer cells than before. The same error had put the interdigital filter example's pass band 4.5 % low
+(3.118 GHz; now 3.275 GHz, and its x1.5 mesh agrees); the hairpin example did not move.
 
 The return loss still wants more cells through the dielectric (`--nz 6`: −21.9 dB, against −22.0 to
 −22.5 dB at x1.5 / x2), so the example config sets `nz = 6`. So: run

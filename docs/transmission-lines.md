@@ -64,16 +64,17 @@ lower". A strip with no copper above or below gets no Z0.
 uses zero thickness, which is how openEMS models copper. Example: the 0.35 mm microstrip of the demo
 transition on 0.2 mm FR-4 (εr 4.3) has Z0 50.7 Ω with 35 µm copper and 53.3 Ω as a sheet.
 
-**Filters.** The two example filters, against openEMS (pass-band centre):
+**Filters.** The two example filters against openEMS (pass-band peak; −3 dB band):
 
 | Filter | openEMS | `--fast qucsator` | `--fast skrf` |
 |---|---|---|---|
-| hairpin (`hairpin.toml`, three hairpins, 0.21 mm FR-4) | 3.370 GHz, −6.5 dB | 3.314 GHz (−1.7 %), −6.4 dB | 3.252 GHz (−3.5 %), −6.1 dB |
-| interdigital (`filter.toml`, five fingers grounded by vias) | 3.118 GHz, −7.3 dB | 3.275 GHz (+5 %), −6.5 dB | 3.310 GHz (+6 %), −5.7 dB |
+| hairpin (`hairpin.toml`, three hairpins, 0.21 mm FR-4) | 3.370 GHz, −6.4 dB; 3.29–3.45 GHz | 3.314 GHz (−1.7 %), −6.4 dB; 3.20–3.39 GHz | 3.252 GHz (−3.5 %), −6.1 dB |
+| interdigital (`filter.toml`, five fingers grounded by vias) | 3.275 GHz, −6.5 dB; 3.19–3.35 GHz | 3.275 GHz (0.0 %), −6.5 dB; 3.24–3.36 GHz | 3.310 GHz (+1.1 %), −5.7 dB |
 
-The line model finds both pass bands in a fraction of a second; the interdigital filter, where every
-finger couples to two neighbours, comes out narrower and 5 % high (neighbour-pair coupling only, no
-dispersion in the block).
+Both openEMS results are converged (the interdigital filter at x1 and x1.5 within 0.03 in S21, the
+same −3 dB band). The line model finds both pass bands in a fraction of a second, within 2 % (qucsator);
+the interdigital filter, where every finger couples to two neighbours, comes out about 20 % narrower
+(neighbour-pair coupling only).
 
 **Accuracy.** In the tests the formulas agree with scikit-rf's reference values within 0.2 %
 (microstrip) and 0.3 % (grounded CPW), and the stripline with Cohn's exact zero-thickness result within

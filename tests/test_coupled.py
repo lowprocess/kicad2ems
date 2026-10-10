@@ -125,7 +125,7 @@ def test_filters_against_openems(filters, backend):
         pytest.importorskip('skrf')
     elif _qucsator() is None:
         pytest.skip('qucsator not installed')
-    for name, ref, tol in (('hairpin', 'hairpin_openems.s2p', 0.04), ('interdigital', 'filter_openems.s2p', 0.07)):
+    for name, ref, tol in (('hairpin', 'hairpin_openems.s2p', 0.04), ('interdigital', 'filter_openems.s2p', 0.02)):
         m, lm = filters[name]
         fr, Sr = _reference(ref)
         band = (fr > 2.8e9) & (fr < 3.9e9)
