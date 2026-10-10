@@ -110,6 +110,26 @@ ncross 10):
 - **distmesh**: isotropic node relaxation, so the same verdict as gmsh-graded; inside the offset rings it
   equals Triangle for narrow traces (no room to relax) and only differs on wide copper (planes).
 - The reference is a Triangle mesh, which flatters Triangle at ncross 10 slightly.
+
+**What the meshers produce** (`mom25d/benchmarks/mesher_gallery.py`; dmax 0.3 mm, ncross 6, the cases run
+one after the other so the times compare): the feed tee of the filter, |J| at 3.25 GHz, the triangle
+quality, |J| across two traces and |S21|:
+
+![mesher gallery](../mom25d/docs/mesher_gallery.png)
+
+- **Triangle / gmsh-rings / distmesh-rings** put a band of thin cells (aspect ratio 5–30) along every copper
+  edge and leave a few large cells in the middle of the trace, where the current is flat. gmsh's interior
+  is a symmetric diamond pattern, Triangle's a strip of long cells; the solution is the same (4.4–5.0k
+  unknowns, |S21| within 0.02 dB of each other, -20 dB skirt 5 MHz from the reference).
+- **gmsh-graded / DistMesh** make near-equilateral cells everywhere (median minimum angle 48° against 15°),
+  which is what a FEM mesher aims for, but here the cells must be small along the edge as well as across it:
+  2.9× the unknowns (25 triangles along 0.8 mm of trace edge against 6), and still the edge cells reach
+  60–70 µm into the 0.35 mm trace against 23 µm for the ring meshes (reference 8.5 µm), so the edge peak
+  of the current is averaged away (0.28–0.33 of the reference maximum, against 0.43 for the ring meshes and
+  0.68 for the reference). The missing edge current shows up as a lower peak (−5.04 dB vs −4.93 dB) and the
+  upper skirt 10–15 MHz low.
+- Cost: 13k unknowns take ~15× the solve time of 4.4k (O(N³) LU), so the isotropic meshes are both slower and
+  less accurate here: 158–182 s against 10–18 s for the sweep.
 - The study found two solver issues, now fixed in mom25d: with lumped ports only, the edge-grading width
   was a quarter of the layer's extent (3.2 mm for 0.35 mm traces: much too coarse) - now the narrowest
   conductor's width (2·area/perimeter); and the mixed-precision direct solver could return garbage at low
