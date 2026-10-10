@@ -1,4 +1,4 @@
-# 11. Maintenance notes
+# 12. Maintenance notes
 
 [← Testing](testing.md) · [Index](index.md)
 
@@ -46,9 +46,10 @@ mesh. Antenna runs therefore extend the excitation to fmax + 30 % of the band (`
   so the stopping step varies between runs and machines; results differ by ~1e-3.
 - **Time step.** openEMS's step (Rennings method) is ~10 % smaller than the mesher's CFL estimate
   (`info['dt_ps']`). The real step is in the run folder's `et` file (one sample per step).
-- **Threads.** FDTD is memory-bound. On a 16-core / 24-thread desktop 6 threads beat 24, and two runs
-  with 12 threads each were 4× slower. Defaults: all cores for one run, half the logical CPUs shared by
-  `--jobs`.
+- **Threads.** FDTD is memory-bound, so more threads are not always faster. On a 16-core / 24-thread
+  desktop one run with 6 threads beat one with all 24, and two parallel runs with 12 threads each were
+  4× slower. Try `--threads` 4–8 first. Defaults: all cores for one run, half the logical CPUs shared by
+  the runs with `--jobs`. Results agree between thread counts to within the `--end-db` truncation.
 - **Debye materials.** No `AddDebyeMaterial` helper: create `CSPropDebyeMaterial(CSX.GetParameterSet(),
   order=…, name=…, epsilon=…, kappa=…)`, `CSX.AddProperty(mat)`, then `SetDispersiveMaterialProperty`.
   Poles with τ < 2 Δt are ignored by openEMS.
@@ -66,21 +67,29 @@ mesh. Antenna runs therefore extend the excitation to fmax + 30 % of the band (`
 
 ## Adding a command-line option
 
-1. `cli.parser()`: add it to the right group, with a help text that says the default.
-2. If it takes a list, add its name to `config.LIST_KEYS` (or `KEEP_LIST` when items contain commas);
-   if it is a path, to `config.PATH_KEYS`.
-3. Use it in the relevant `Job` stage (`pipeline.py`), passing plain values down (lower-level functions
-   take keyword arguments, not the `args` object).
-4. If it changes the results, put it in `Job.info` (JSON) and, if useful, in the report.
-5. Document it in `docs/usage.md` (and the README if it is common), test parsing / TOML in `test_cli.py`
-   and its effect where it applies.
+1. `config.Settings`: add a typed field with its default (frequencies in GHz, lengths in mm).
+2. `config.py`: if it takes a list or a boolean, add a converter to `CONVERT`; if it has fixed choices,
+   to `CHOICES`; if it is a path, to `PATH_KEYS` (relative to the TOML file). Command-line-only options
+   go to `CLI_ONLY`.
+3. `cli.parser()`: add it to the right group, with a help text that quotes the default from `Settings`
+   (`D.<field>`). Options default to `argparse.SUPPRESS`, so only typed ones override the TOML.
+4. Use it in the relevant `Job` stage (`pipeline.py`) as `self.s.<field>`, passing plain values down
+   (lower-level functions take keyword arguments, not the `Settings` object).
+5. If it changes the results, it is already in the summary's `settings`; put what it produces into
+   `Job.summary` and, if useful, into the report.
+6. Document it in `docs/usage.md`, test parsing / TOML in `test_cli.py` and its effect where it
+   applies.
 
 ## Conventions
 
 - Units: mm and Hz inside, GHz on the command line, KiCad coordinates in messages.
-- openEMS / CSXCAD imported lazily inside functions.
+- openEMS / CSXCAD, scikit-rf and h5py imported lazily inside functions.
 - Messages through `log` (in a `Job`: `self.log`); warnings contain `WARNING` so the report lists them;
   model-level remarks go to `Model.notes`.
+- Plots return matplotlib `Figure` objects (no pyplot); `plots.save` writes them. The report reads only
+  `Job.summary`: everything it shows must be in there.
+- The version (currently 0.2.0) lives only in `kicad2openems/__init__.py` (`__version__`);
+  `pyproject.toml` reads it, and the report and JSON summary show it.
 - Code style: comments explain *why* (often a measured number); keep the existing density.
 - Generated example boards are git-ignored; commit generators and configs, not outputs (except
   `examples/reference/`).
@@ -91,14 +100,25 @@ mesh. Antenna runs therefore extend the excitation to fmax + 30 % of the band (`
 2. `kicad2openems examples/<config>.toml --preview` for the examples your change touches.
 3. A real run of an affected example ([Testing](testing.md#checking-against-openems)) when the solver
    setup, model or mesh changed, compared with the previous result.
-4. Update these pages and the README.
+4. Update these pages. The README only links to them: change it when a page or an install step is
+   added.
 
 ## Ideas not done yet
 
 Local mesh refinement at part gaps and ports regardless of `--fine`; frequency-dependent `nz`; detecting a
-static plateau and stopping; a DC-free excitation; de-embedded (MSL) ports; exact-frequency patterns via
-a first pass; polarisation cuts; multi-port antennas; automatic thread count; resuming unchanged runs;
-thick copper; surface roughness; TDR; SPICE export; reporting the series-RLC instability upstream.
+static plateau and stopping; a DC-free excitation; de-embedded (MSL) ports; automatic ports where
+`--region` cuts a trace; coupling between line sections (coupled-line filters in the line model);
+exact-frequency patterns via a first pass; polarisation cuts; multi-port antennas; automatic thread
+count; resuming unchanged runs; thick copper; surface roughness; TDR; SPICE export; a KiCad plugin
+(`KiCadBoard.from_text` and `--events` are its hooks); reporting the series-RLC instability upstream.
+
+## License
+
+GPL-3.0-or-later (`LICENSE`, and `license` in `pyproject.toml`), because openEMS's Python bindings
+(GPL-3.0-or-later) run in the same process; the full reasoning is in the README's
+[License](../README.md#license) section. A new dependency must be GPL-compatible. No third-party code is
+copied into the repository (the line-impedance formulas are implemented from the papers cited in
+`tlines.py`): keep it that way, or check the license of anything you copy in.
 
 ---
 [← Testing](testing.md) · [Index](index.md)

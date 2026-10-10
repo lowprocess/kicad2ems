@@ -9,17 +9,26 @@ geometry openEMS needs. Coordinates: mm, **y up** (`y = -y_kicad`), z = 0 at the
 
 The stackup is walked from the bottom up. Each dielectric (and solder mask with `--mask`) becomes a slab
 `(z0, z1, er, tand)` in `Model.layers`; each copper layer gets a height in `Model.cu_z`. Copper is a
-**zero-thickness sheet** at that height (its thickness `cu_t` is only used for `--sigma`). Heights are
-rounded to 1e-6 mm so sheets land exactly on z mesh lines.
+**zero-thickness sheet** at that height (its thickness `cu_t` is only used for `--sigma` and for the
+line model's Z0). Heights are rounded to 1e-6 mm so sheets land exactly on z mesh lines.
 
 ## Copper
 
 Per copper layer, the selected nets' items are merged (`unary_union`), flipped to y up, clipped to the
 outline and **simplified with a 2 µm tolerance** (this keeps polygon counts down; see the
-near-Manhattan note in [Meshing](meshing.md#thirds-rule)). Polygons are oriented counter-clockwise
-(metal on the left of every edge), which the mesher relies on. `--ground LAYER` replaces that layer
-with the whole outline. CSXCAD can't take polygons with holes; `geometry.split_holes` cuts them into
-hole-free pieces when the openEMS model is built.
+near-Manhattan note in [Meshing](meshing.md#thirds-rule)). Only items whose bounding box meets the
+outline are merged, so a small region of a large board stays fast. Polygons are oriented
+counter-clockwise (metal on the left of every edge), which the mesher relies on. `--ground LAYER`
+replaces that layer with the whole outline. CSXCAD can't take polygons with holes;
+`geometry.split_holes` cuts them into hole-free pieces when the openEMS model is built.
+
+<a id="region"></a>
+## Region
+
+`--region x0,y0,x1,y1` (KiCad mm) crops the board: the outline becomes its intersection with the
+rectangle, and copper, vias and parts outside it are left out. Port footprints outside the region are
+left out with a note; it is an error when no port remains, or when the region misses the board. Parts
+outside are skipped silently. The cut edges are open: no ports are placed there automatically.
 
 ## Vias
 
@@ -35,18 +44,23 @@ Each port footprint becomes a lumped port (`model.Port`). Two kinds:
 sit on copper of the port layer (`port.layer`, default F.Cu / B.Cu by side). The port sheet lies across
 the trace, just inside its end (`min(0.25 w, 0.1 mm)` in from the footprint position along the port
 direction), centred on the trace, as wide as the trace there. It runs from the nearest copper **below**
-(top-side ports; above for bottom-side ports, with the other side as fallback) up to the trace.
-Rotation must be a multiple of 90° (the port must be along x or y).
+(top-side ports; above for bottom-side ports, with the other side as fallback, e.g. striplines) up to
+the trace. Rotation must be a multiple of 90° (the port must be along x or y).
 
 **Gap (`kind='gap'`)** — when the footprint sits **between** two conductors on the same layer (not on
-copper), e.g. the feed gap of a dipole: copper is searched within 5 mm on both sides along the port
-direction. The port sheet lies in the copper plane, from one copper edge to the other, as wide as the
-narrower conductor. `port.type = z` forces a vertical port (and its error message) instead.
+copper), e.g. the feed gap of a dipole, a loop or a feed across a slot: copper is searched within 5 mm on
+both sides along the port direction. The port sheet lies in the copper plane, from one copper edge to
+the other, as wide as the narrower conductor. The footprint field `port.type = z` (or `mom.type`)
+forces a vertical port where a gap port would otherwise be detected (and its error message when there
+is no copper under it).
 
 `Port.box()` gives the sheet's corners, `Port.direction` the openEMS excitation direction (`z`, or
 `x` / `y` for gap ports), `Port.planes()` the coordinates that must be mesh lines. Reference impedance:
 `port.z0` (default 50 Ω). Differential legs (`P1+` / `P1-`) are two single-ended ports; they are
 combined in post-processing.
+
+Lumped ports are not de-embedded: the vertical port current adds a small series inductance (about
+0.1 nH on 0.2 mm dielectric), noticeable only on thick substrates at high frequency.
 
 ## Lumped parts
 
@@ -61,10 +75,11 @@ must be in `--nets`), pads not in line along x or y, C = 0 (open).
 
 **Values.** `parts.parse_value` reads `4p7`, `10k`, `1.2nH`, `0R5`, `100n 50V`, `2.2 nH`, `1,5p`, … (SI
 prefixes, R/k/M notation, optional unit). Fields `sim.esr` / `sim.esl` add a series resistance /
-inductance.
+inductance. 0 Ω (or 0 H) is a metal strap.
 
 **Geometry.** A sheet in the copper plane from the inner edge of one pad to the inner edge of the other
-(the gap), as wide as the narrower pad, at the pads' copper height (`Part.s`, `Part.e`).
+(the gap), as wide as the narrower pad, at the pads' copper height (`Part.s`, `Part.e`). Both ends are
+kept as mesh lines.
 
 **openEMS elements** (`Part.pieces()`): openEMS's series-topology lumped element is unstable without a
 capacitor in the branch (see [maintenance](maintenance.md#series-rlc)), so:
@@ -83,6 +98,13 @@ openEMS is the third item of each piece.
 
 `Model.__getstate__` drops the parsed board and the log callable, so a model pickles small for the
 `--jobs` worker processes.
+
+## What is not modelled
+
+- Lumped ports only (no de-embedded waveguide or microstrip ports); ports along x or y.
+- Copper is zero-thickness (`--sigma` makes it a conducting sheet, still zero-thickness in the mesh).
+- Of the components, only two-pad R / L / C parts (ideal, plus optional ESR / ESL fields). Connectors
+  are not modelled; a lumped port on the connector pad stands in for one.
 
 ---
 [← KiCad import](kicad-import.md) · [Index](index.md) · [Next: Meshing →](meshing.md)

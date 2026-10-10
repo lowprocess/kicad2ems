@@ -6,30 +6,50 @@
 
 kicad2openems needs Python 3.10+, numpy, shapely and matplotlib (installed with the package), and
 openEMS with its Python bindings (`CSXCAD`, `openEMS`) for actual simulations. Everything except the
-FDTD run — model building, meshing, `--preview`, the report — works without openEMS.
+FDTD run (model building, meshing, line sections, `--preview`, the report) works without openEMS.
 
 ```bash
 pip install .                       # from the repository
+pip install '.[fast]'               # + scikit-rf, for --fast skrf
+pip install '.[dumps]'              # + h5py, for frequency-domain field dumps
 ```
 
-openEMS is not on PyPI. Use your distribution's package if it has one, or build it with
-`tools/build_openems.sh [prefix]`, which lists the build dependencies and pip-installs the Python
-bindings. Install kicad2openems **into the same Python environment** as openEMS:
+openEMS is not on PyPI. Check your distribution first (`dnf search openems`, `apt search openems`).
+Otherwise build it from source without the GUI:
 
 ```bash
-source /opt/openems/venv/bin/activate
-pip install .                       # re-run after pulling changes (it is a plain, not editable, install)
+tools/build_openems.sh [prefix]     # default prefix ~/opt/openEMS, sources in ~/src/openEMS-Project ($SRC)
 ```
 
-Check that this Python can run openEMS:
+The script lists the build dependencies for Debian / Ubuntu and Fedora in its header. It clones
+openEMS-Project (or updates an existing checkout), builds it, and pip-installs the `CSXCAD` and
+`openEMS` Python packages into the active virtual environment, or with `--user` when none is active. If
+`import openEMS` then cannot find its libraries, add `<prefix>/lib` to `LD_LIBRARY_PATH`.
+
+Install kicad2openems **into the same Python environment** as openEMS:
 
 ```bash
-kicad2openems --check
+source ~/venvs/openems/bin/activate
+pip install .                       # re-run after pulling changes (a plain, not editable, install)
 ```
 
-It prints the Python in use, the import result of numpy, h5py, CSXCAD and openEMS, and hints for the
-usual problems (installed for another Python, venv without system packages, missing `h5py`,
-`LD_LIBRARY_PATH`).
+## Checking the installation
+
+```bash
+kicad2openems --check               # or: python -m kicad2openems --check
+```
+
+Run it with the Python you use for the simulations. It prints the Python in use, the import result of
+numpy, h5py, CSXCAD and openEMS with the real error, which Python the `kicad2openems` command on PATH
+runs, and hints:
+
+* **not installed for this Python**: the `kicad2openems` command was installed by a different Python
+  than your openEMS venv. Install kicad2openems inside the venv (`python -m pip install .`) or run
+  `python -m kicad2openems`.
+* **openEMS from your distribution (dnf / apt) but a venv**: a plain venv does not see system packages.
+  Recreate it with `python3 -m venv --system-site-packages <dir>`.
+* **missing dependency** (often `h5py`): `python -m pip install h5py`.
+* **shared library not found**: add the openEMS install's `lib` folder to `LD_LIBRARY_PATH`.
 
 ## A first run
 
@@ -37,14 +57,15 @@ The demo boards are generated, so no KiCad is needed:
 
 ```bash
 python examples/make_demo_board.py examples/demo_transition
-kicad2openems examples/demo_transition.toml --preview      # model + mesh only, seconds
-kicad2openems examples/demo_transition.toml                # the openEMS run, about a minute
+kicad2openems examples/demo_transition.toml --preview      # model, mesh, line sections: seconds
+kicad2openems examples/demo_transition.toml                # the openEMS run
 ```
 
-`--preview` writes `examples/out/demo_transition_mesh.png` and `demo_transition_report.html` and prints
-the stack, the ports, the mesh size and time step. The full run adds the S-parameters
-(`demo_transition_openems.s2p`), their plot, a JSON summary, the CSX geometry (open it in AppCSXCAD)
-and the openEMS run folders. While openEMS runs, a progress line shows the energy decay and an ETA.
+`--preview` prints the stack, the ports, the line sections, the mesh size and time step, and writes
+`examples/out/demo_transition_mesh.png`, `demo_transition_tlines.png`, the JSON summary and
+`demo_transition_report.html`. The full run adds the S-parameters (`demo_transition_openems.s2p`),
+their plot, the CSX geometry (open it in AppCSXCAD) and the openEMS run folders. While openEMS runs, a
+progress line shows the energy decay and an ETA.
 
 ## Your own board
 
@@ -52,7 +73,8 @@ and the openEMS run folders. While openEMS runs, a progress line shows the energ
    from it.
 2. **Ports.** Put a footprint (no copper needed) at the end of each feed line with a Fab-layer text
    `P1`, `P2`, … Its position is the port location; its rotation the direction *into* the circuit
-   (0° = +x). Differential ports: `P1+` / `P1-`. See [KiCad import](kicad-import.md#ports).
+   (0° = +x; along x or y). Differential ports: `P1+` / `P1-`. Optional fields `port.layer`, `port.z0`,
+   `port.type`: see [KiCad import](kicad-import.md#ports).
 3. **A config file** next to the board:
 
    ```toml
@@ -63,8 +85,8 @@ and the openEMS run folders. While openEMS runs, a progress line shows the energ
    out   = "sim"
    ```
 
-4. `kicad2openems myboard.toml --preview`, look at the mesh picture and the report, then run without
-   `--preview`.
+4. `kicad2openems myboard.toml --preview`, look at the mesh picture, the line sections and the report,
+   then run without `--preview`.
 
 The [Usage page](usage.md) describes every option; [Examples](examples.md) has filters and antennas
 to copy from.
