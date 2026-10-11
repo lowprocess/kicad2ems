@@ -9,8 +9,8 @@ fmin    = 0.5           # GHz
 fmax    = 6.0
 points  = 401
 out     = "out"
+fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
 
-[openems]
+[solver.openems]
 fine    = 0.08    # mm at the copper edges: the 0.35 mm high-impedance sections
 excite  = ["P1"]
-fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report

@@ -17,8 +17,8 @@ The list of output files is in [Usage](usage.md#outputs).
 - **Touchstone** (`touchstone.write_touchstone`): v1 when all reference impedances are equal, v2.0 with
   `[Reference]` otherwise. `read_touchstone` reads v1 / v2, RI / MA / DB (used by `--compare`).
 - **Plot** (`plots.plot_results`): |S| in dB (reflection thick, transmission thin) and a Smith chart of
-  the reflections. `--compare` overlays dashed curves labelled with the file name; `--fast` adds the
-  line model dotted ([transmission lines](transmission-lines.md#fast)).
+  the reflections, of the first solver of the run. `--compare` overlays dashed curves labelled with the
+  file name; the other solvers are overlaid dotted, dash-dotted, ... ([solvers](usage.md#solvers)).
 
 ## Convergence
 
@@ -90,19 +90,19 @@ fields.save_animation(src, 'ez.gif', axis=2, index=0, component='z')     # or .m
 <a id="json-summary"></a>
 ## JSON summary
 
-`<name>_openems.json` is the full run summary (`Job.summary`), written by every run, also `--preview`
-and `--no-report`:
+`<name>_run.json` is the full run summary (`Job.summary`), written by every run, also `--preview`
+and `--no-report` (runs before the solver plugins wrote it as `<name>_openems.json`):
 
 | Key | Contents |
 |---|---|
-| `name`, `version`, `mode`, `command`, `created` | the run |
+| `name`, `version`, `mode`, `command`, `created`, `solvers` | the run, the solvers that ran |
 | `settings` | every option (`Settings.options()`) |
 | `model` | outline, nets, stack, copper layers, ports, parts, notes |
-| `mesh`, `levels`, `pulse_steps` | mesh statistics, convergence levels, excitation length |
+| `mesh`, `levels`, `pulse_steps` | with openEMS: mesh statistics, convergence levels, excitation length |
 | `lines` | [transmission-line sections](transmission-lines.md#outputs) per path, notes |
-| `fast` | `--fast`: backend, time, Touchstone file, \|S\| table, comparison with openEMS |
-| `results` | port names, reference impedances, excited ports, \|S\| table at the band edges and centre with extremes |
-| `runs` | per driven port: seconds, timesteps, log file |
+| `solved` | per solver (`openems`, `mom25d`, `qucs`, `scikit`): label, Touchstone file, seconds, port names, reference impedances, \|S\| table, what it reports of itself (mom25d: unknowns, EM solves, ports; openEMS: driven ports), and `compare` against `reference`, the first solver |
+| `results` | the first solver's: `reference` (its name), port names, reference impedances, excited ports, \|S\| table at the band edges and centre with extremes |
+| `runs` | openEMS, per driven port: seconds, timesteps, log file |
 | `antenna`, `convergence`, `dumps` | when they apply |
 | `images`, `files` | the plots and all output files |
 | `warnings`, `log`, `runtime_s` | every message |
@@ -115,10 +115,11 @@ run; `runtime_s` always.
 
 `<name>_report.html` is rendered by `report.build(summary, base_dir)` from the summary alone: summary
 figures (mode, band, ports, mesh, time step; resonance / S11 / bandwidth / directivity / efficiency /
-gain in antenna mode; the convergence verdict; the line-model time), warnings, the model (stack,
+gain in antenna mode; the convergence verdict; each solver's size and time), warnings, the model (stack,
 copper, ports, parts, notes), the transmission-line sections, the mesh (statistics, preview,
-convergence levels), S-parameters (plot and a table at the band edges and centre with minima and
-maxima), the fast line model, antenna and convergence sections, field maps, the openEMS runs (time,
+convergence levels; openEMS only), S-parameters (the first solver's plot with the others overlaid, and a
+table at the band edges and centre with minima and maxima), one section per solver (what it did, its
+file, its comparison with the first solver), antenna and convergence sections, field maps, the openEMS runs (time,
 steps, link to `openems.log`), the output files, all settings and the full log. Images are embedded
 (base64), so the page is one file; links to other outputs are relative. Styling is plain CSS with a dark
 variant (`prefers-color-scheme`).
@@ -130,7 +131,7 @@ instance after changing `report.py`:
 ```python
 import json
 from kicad2ems.report import write_report
-write_report(json.load(open('out/board_openems.json')), 'out/board_report.html')
+write_report(json.load(open('out/board_run.json')), 'out/board_report.html')
 ```
 
 To add something to the report: put the data into `Job.summary` in the stage that computes it, and add a

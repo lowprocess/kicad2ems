@@ -3,27 +3,35 @@
 [← GUI](gui.md) · [Index](index.md)
 
 `--solvers mom` solves the board with **mom25d**, a 2.5D (planar) Method-of-Moments solver, from the
-very file openEMS gets: `<name>.xml`, CSXCAD's geometry format (the one AppCSXCAD shows). FDTD, MoM and
-the transmission-line model all start from one converted board, and their results are compared in the
-plots, the report and the GUI. `--mom` adds MoM next to openEMS as a reference (a failure is then a
-warning, not an error: [solvers](usage.md#solvers)).
+board every solver gets: `<name>_board.json`, which mom25d reads itself (`mom25d.board.BoardModel`,
+`mom25d.api.solve_board`). FDTD, MoM and the transmission-line model all start from one converted board,
+and their results are compared in the plots, the report and the GUI. `--mom` adds MoM next to openEMS as
+a reference (a failure is then a warning, not an error: [solvers](usage.md#solvers)). mom25d's settings
+are `--mom-*` on the command line, or under `[solver.mom25d]` in a config by their short names (`dmax`,
+`port`, `mesher`, `solves`).
 
 ```bash
 kicad2ems examples/filter.toml --solvers mom,lines  # MoM and the line model, no openEMS: ~1 min
 kicad2ems examples/filter.toml --solvers all        # openEMS too, all three compared
-mom25d out/filter.xml --fmin 1 --fmax 8                 # mom25d on its own, on any CSX file
 ```
 
-**No openEMS needed.** When openEMS's Python packages are installed, CSXCAD writes `<name>.xml`; when they
-are not, kicad2ems writes it itself (`csxwrite.py`: the same calls, the same file byte for byte, which
-`tests/test_csxwrite.py` checks against CSXCAD), and the log says so. The MoM result is the same either way.
+```python
+from mom25d.api import solve_board                  # mom25d on its own, on a board file of an earlier run
+res = solve_board('out/filter_board.json', np.linspace(1e9, 8e9, 401), dmax=0.3e-3)
+```
+
+**No openEMS needed.** MoM reads the board, not openEMS's geometry: a run with mom25d and the line model
+builds no openEMS mesh and imports nothing of openEMS. It also does not inherit openEMS's changes: vias
+stay where they are (openEMS snaps most of them to its mesh), a part with ESR / ESL is one element (openEMS
+0.37 needs two halves), edge walls sit where the planes end.
 
 | Output | |
 |---|---|
-| `<name>_mom.sNp` | MoM S-parameters, same ports, names, mixed-mode pairs and reference impedances as openEMS |
-| `<name>_mom.png` | with `--preview`: MoM, the line model dotted |
+| `<name>_mom25d.sNp` | MoM S-parameters, same ports, names, mixed-mode pairs and reference impedances as openEMS |
+| `<name>_mom25d.png` | when MoM is the first solver of the run (no openEMS): MoM, the line model dotted |
 | `<name>_openems.png` | MoM dash-dotted over openEMS |
-| report, *MoM reference (mom25d)* | unknowns, solves, time, ports; MoM against openEMS and against the line model (largest \|ΔS\|, transmission dB, delay) |
+| report, *mom25d (MoM)* | unknowns, solves, time, ports; MoM against the first solver of the run (largest \|ΔS\|, transmission dB, delay) |
+| `--events` | `status` events after each EM solve of the adaptive sweep (`run` = `mom25d`): the GUI's progress bar |
 
 ## What MoM sees
 

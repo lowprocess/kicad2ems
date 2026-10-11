@@ -96,15 +96,18 @@ end in. Trace overhangs shorter than 0.25 mm behind a port or past a pad are not
 | log | one line per path: sections, length, Z0 range, branches |
 | `<name>_tlines.png` | map of the sections coloured by Z0 and numbered along each path; an impedance profile per path (Z0 against the distance from the first port) with arrows at the branches |
 | report, *Transmission-line sections* | one table per path: section, layer, cross-section, width, length, Z0, Z0 sheet, εeff, delay, start position, notes. Z0 cells are shaded when more than 10 % / 25 % from the port impedance; branches are listed under the path |
-| `<name>_openems.json`, `lines` | the same tables ([JSON summary](postprocessing.md#json-summary)) |
+| `<name>_run.json`, `lines` | the same tables ([JSON summary](postprocessing.md#json-summary)) |
 
 <a id="fast"></a>
-## Fast S-parameters (`--fast`)
+## Fast S-parameters (`--solvers qucs` / `scikit`, `--fast`)
 
 `fastsolve.py` turns the sections into a circuit: lines, via barrels, lumped parts, ports at the port
-nodes, open ends left open. It solves in milliseconds.
+nodes, open ends left open. It solves in milliseconds. Two solver plugins solve it: `qucs` (qucsator) and
+`scikit` (scikit-rf), on the same sections, so a difference between them comes from their circuit
+models; `lines` (or `--fast auto`) is qucs when qucsator is installed, else scikit. `--fast skrf` /
+`--fast qucsator` adds one as a reference next to the other solvers.
 
-| | `--fast skrf` | `--fast qucsator` |
+| | `scikit` (`--fast skrf`) | `qucs` (`--fast qucsator`) |
 |---|---|---|
 | needs | scikit-rf (`pip install scikit-rf`, or the `fast` extra) | `qucsator_rf` (Qucs-S) or `qucsator` on PATH, or `--qucsator PATH` |
 | runs | in-process | as a separate program (netlist in, dataset out) |
@@ -123,18 +126,18 @@ junction square, so for qucsator the lines are shortened to its edges (half the 
 line). scikit-rf has no junction models and keeps the centreline lengths.
 
 The copper is zero-thickness (Z0 sheet), as in openEMS, so the two compare like with like. Copper loss
-comes from `--sigma` (else lossless). A failing fast solve (package missing, qucsator error) is a
-warning, not an error.
+comes from `--sigma` (else lossless). A failing solve (package missing, qucsator error) is a warning (exit
+code 1 when the solver was named in `--solvers`).
 
 Outputs:
 
-- `<name>_fast.sNp` (mixed-mode for differential ports, like the openEMS result);
-- with `--preview`: `<name>_fast.png`;
-- after an openEMS run: the fast result drawn dotted in `<name>_openems.png` (for the S-parameters
-  openEMS computed), and a report section *Fast line model* with, per S-parameter, the openEMS and
-  line-model maxima (dB) and the largest vector difference |ΔS|; for transmissions also the largest
-  |Δ| in dB (where openEMS is above −40 dB) and the delay difference (line model − openEMS, from the
-  phase slope). A reflection's dB difference is left out: it mostly says where the nulls fall.
+- `<name>_qucs.sNp` / `<name>_scikit.sNp` (mixed-mode for differential ports, like the openEMS result);
+- `<name>_qucs.png` / `<name>_scikit.png` when the line model is the first solver of the run;
+- otherwise the line model drawn dotted in the first solver's plot (`<name>_openems.png`), and a report
+  section *line model (qucsator)* / *(scikit-rf)* with, per S-parameter, the first solver's and the
+  line-model maxima (dB) and the largest vector difference |ΔS|; for transmissions also the largest |Δ|
+  in dB (where the first solver is above −40 dB) and the delay difference (line model − first solver, from
+  the phase slope). A reflection's dB difference is left out: it mostly says where the nulls fall.
 
 Large differences point at something one of the two models leaves out (coupling, radiation, plane
 resonances, the lumped ports) or at a mesh problem.

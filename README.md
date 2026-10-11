@@ -31,9 +31,11 @@ Every run also breaks the port nets into transmission-line sections with closed-
   volume, saved as GIF / MP4) or for ParaView; wideband dielectric model; parallel runs.
 - **GUI** (`kicad2ems-gui`): setup, preview, run with progress, S-parameters, field view, antenna
   far field (polar cuts and 3D pattern at any recorded frequency).
-- **MoM** (`--solvers mom`, or `--mom` next to openEMS): the same converted geometry (the CSX file openEMS
-  gets) solved by [mom25d](docs/mom25d.md), the 2.5D Method-of-Moments solver in `mom25d/`.
-  kicad2ems writes that file itself when openEMS is not installed, so MoM needs no openEMS.
+- **MoM** (`--solvers mom`, or `--mom` next to openEMS): the same converted board (`<name>_board.json`)
+  solved by [mom25d](docs/mom25d.md), the 2.5D Method-of-Moments solver in `mom25d/`, which reads that
+  file itself: MoM needs no openEMS.
+- **Solver plugins**: each solver is a plugin with its own settings (`[solver.<name>]` in a config); others
+  install as packages ([architecture](docs/architecture.md#solver-plugins)).
 - **TOML configs** (typos named), `--preview`, `--check` for every solver, an HTML report, JSON-lines
   events for a GUI or script.
 
@@ -70,9 +72,10 @@ kicad2ems examples/filter.toml                        # the openEMS run (and the
 kicad2ems examples/filter.toml --solvers all          # all three, compared
 ```
 
-Outputs land in `examples/out/`: one Touchstone file per solver (`filter_openems.s2p`, `filter_mom.s2p`,
-`filter_fast.s2p`), the S-parameter plot, `filter_mesh.png`, `filter_tlines.png`, `filter_openems.json`
-(the run summary) and `filter_report.html`, which collects everything on one page. The config also
+Outputs land in `examples/out/`: one Touchstone file per solver (`filter_openems.s2p`, `filter_mom25d.s2p`,
+`filter_qucs.s2p` or `filter_scikit.s2p`), the S-parameter plot, `filter_mesh.png`, `filter_tlines.png`,
+`filter_board.json` (the board every solver gets), `filter_run.json` (the run summary) and
+`filter_report.html`, which collects everything on one page. The config also
 solves the line sections as a circuit (`fast = "auto"`: qucsator if installed, five coupled fingers,
 else scikit-rf) in under a second and compares them with the other solvers in the plot and the report
 ([Transmission-line model](docs/transmission-lines.md#coupled)). For your own board, mark the ports

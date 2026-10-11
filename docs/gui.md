@@ -19,10 +19,12 @@ itself needs no openEMS.
 | Fields | the field dumps: live view, x / y / z cuts, playback over time or phase, PNG / GIF / MP4 ([below](#fields)) |
 | Antenna | antenna mode: S11, gain / directivity / realized gain / efficiency over frequency, the far-field pattern at any recorded frequency ([below](#antenna)) |
 
-**Solvers.** *openEMS (3D FDTD)*, *mom25d (2.5D MoM)* and *Line model* choose the solvers of a run
-([solvers](usage.md#solvers)). With openEMS unticked, *Run* runs the other two only (no openEMS needed)
-and the config gets `solvers = [...]`; with it ticked, `solvers` is left out of the config (openEMS, plus
-`mom = true` / `fast = ...`). A config's `solvers` ticks the boxes when it is opened.
+**Solvers.** One tick box per solver plugin: *openEMS (FDTD)*, *mom25d (MoM)*, *line model (qucsator)*,
+*line model (scikit-rf)*, and any solver installed as a plugin ([solvers](usage.md#solvers)). The config
+gets `solvers = [...]` with the ticked ones; with openEMS alone ticked, `solvers` is left out (the
+default). Opening a config ticks the solvers it runs (its `solvers`, `mom = true` and `fast = ...`;
+`lines` ticks qucsator when it is installed, else scikit-rf). The form's fields are made from the solvers'
+option tables, so a plugin's settings that have a GUI label appear in it too.
 
 <a id="configs"></a>
 ## Configs
@@ -32,7 +34,7 @@ and the config gets `solvers = [...]`; with it ticked, `solvers` is left out of 
 config and `*` while it has unsaved changes; opening another config or closing the window asks first.
 *Run* → *Preview* (Ctrl+P), *Run* (Ctrl+R), *Stop* (Ctrl+.).
 
-Saving over a config that was opened **keeps the file**: its comments, key order, `[openems]` table and
+Saving over a config that was opened **keeps the file**: its comments, key order, `[solver.<name>]` tables and
 keys the GUI does not know stay; each setting gets its new value in place (a trailing comment stays in
 its column), a cleared field removes its line, and settings that were not in the file are added above
 the first table. *Save as…* does the same into the new file. Paths are written relative to the config's

@@ -12,7 +12,7 @@ points  = 391
 compare = "demo_highpass_ideal.s2p"
 out     = "out"
 
-[openems]
+[solver.openems]
 excite  = ["P1"]        # S11 and S21 (S12 by reciprocity)
 air     = 5.0
 bc      = "auto"        # PEC on the solid bottom plane, MUR elsewhere

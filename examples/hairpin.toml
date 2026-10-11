@@ -10,9 +10,9 @@ fmin    = 2.8           # GHz
 fmax    = 3.9
 points  = 551
 out     = "out"
+fast    = "auto"        # qucsator if installed, else scikit-rf
 
-[openems]
+[solver.openems]
 excite  = ["P1"]
 end_db  = -30
 max_steps = 3000000    # a narrow band: a long pulse and a long ring-down
-fast    = "auto"        # qucsator if installed, else scikit-rf

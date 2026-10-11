@@ -13,9 +13,9 @@ fmin     = 1.0          # GHz
 fmax     = 6.0
 points   = 401
 out      = "out"
-
-[openems]
-excite     = ["P1"]     # S11 and S21 (S12 by reciprocity)
-end_db     = -30
 edge_walls = "all"      # PEC where the planes end at every board edge (stitching stand-in)
 fast       = "auto"         # qucsator if installed, else scikit-rf
+
+[solver.openems]
+excite     = ["P1"]     # S11 and S21 (S12 by reciprocity)
+end_db     = -30
