@@ -81,7 +81,8 @@ volume) and frequencies. **Without frequencies** the dump is time-domain: openEM
 few timesteps and the Fields tab can follow it **live**. **With frequencies** it is frequency-domain,
 written at the end of the run and scaled to a 1 V incident wave at the driven port.
 
-The Fields tab lists every dump of the output folder (*Refresh*, or *Open results folder…* for another):
+The Fields tab lists every dump of the output folder (*Refresh*, or *Open results folder…* for another),
+openEMS's and mom25d's current dumps (`--mom-dump`, frequency domain, labelled `mom25d P1: J F.Cu`):
 
 | Control | |
 |---|---|

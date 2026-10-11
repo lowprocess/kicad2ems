@@ -298,6 +298,13 @@ class OpenEMS(Solver):
                 run.summary['dumps'] += [dict(label=f"{dname} ({pname} driven)", png=run.rel(q)) for q in pngs]
                 for q in pngs:
                     run.wrote(f"field map {dname} ({pname})", q)
+                if s.dump_animate and d.normal is not None:         # one period at each frequency
+                    from .fields import DumpSource, save_animation
+                    src = DumpSource(os.path.dirname(path), dname, 'FD')
+                    for i, f in enumerate(src.freqs):
+                        q = save_animation(src, f"{run.path(f'_{tag}')}_{dname}_{f / 1e9:g}GHz.{s.dump_animate}",
+                                           d.normal, 0, 'mag', [i])
+                        run.wrote(f"field animation {dname} ({pname}, {f / 1e9:g} GHz)", q)
                 run.log(f"  {dname} ({pname} driven): {path}" + (f" -> {len(pngs)} PNG map(s)" if pngs else
                                                                   "  (volume: the GUI's Fields tab or ParaView)"))
             else:

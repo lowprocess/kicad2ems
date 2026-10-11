@@ -32,6 +32,7 @@ stay where they are (openEMS snaps most of them to its mesh), a part with ESR / 
 | `<name>_openems.png` | MoM dash-dotted over openEMS |
 | report, *mom25d (MoM)* | unknowns, solves, time, ports; MoM against the first solver of the run (largest \|ΔS\|, transmission dB, delay) |
 | `--events` | `status` events after each EM solve of the adaptive sweep (`run` = `mom25d`): the GUI's progress bar |
+| `<name>_mom25d_<port>_dump_J_<layer>_fd_<GHz>GHz.png` | `--mom-dump`: \|J\| on each signal layer ([below](#current-dumps)); `.gif` / `.mp4` with `--dump-animate` |
 
 ## What MoM sees
 
@@ -90,6 +91,26 @@ Below ~0.4 rad of feed the wave fit fails (|S11| > 1 at the low end): `auto` fal
 Lumped MoM ports are the closest to openEMS's (both include the port's own parasitics); wave ports are
 the closest to the line model (an ideal reference plane). Differential pairs: wave ports use mom25d's
 coupled-mode fit (`P1d` / `P1c`); lumped legs are converted like openEMS's.
+
+<a id="current-dumps"></a>
+## Current dumps
+
+`--mom-dump 2.4,5` solves the currents at those frequencies after the sweep (one EM solve each) and writes
+the surface current density J (A/m) of each meshed layer, driven by mom25d's 1 V gap source at the port
+(`--dump-port`, default the first). J is sampled onto a grid a third of `--mom-dmax` apart (the value of
+the triangle each point falls in; 0 off the copper) and stored like an openEMS frequency-domain plane dump
+(`<out>/mom25d/exc_<port>/dump_J_<layer>_fd.npz` and `dump_info.json`), so the same code draws it: a peak
+\|J\| map per frequency, with `--dump-animate gif|mp4` one period of Re(J·e^jφ), the standing waves
+([post-processing](postprocessing.md#animations)), and the GUI's Fields tab lists it next to openEMS's
+dumps.
+
+```bash
+kicad2ems examples/rf_stubnotch.toml --solvers mom --mom-dump 2.4,1.2 --dump-animate gif   # ~22 s
+```
+
+At the notch (2.4 GHz) the first quarter-wave stub stands: its current is largest at the tee and zero
+at the open end, and little reaches P2; at 1.2 GHz the wave runs through. MoM has currents on the copper
+only, not fields in space (those are openEMS's `--dump E@...`).
 
 <a id="meshers"></a>
 ## Meshers

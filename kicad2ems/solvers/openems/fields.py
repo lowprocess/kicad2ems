@@ -1,15 +1,16 @@
 """
 Field-dump viewing: the dumps of a run folder as 2D frames, for the GUI's field view and for animations.
 
-    srcs = find_dumps(out_dir)              # every dump under <out>/openems/exc_*/
+    srcs = find_dumps(out_dir)              # every dump under <out>/<solver>/exc_*/ (openems, mom25d)
     src = srcs[0]; src.refresh()            # time domain: the .vtr frames written so far (a run may be going)
     mesh, data = src.load(i)                # (x/y/z mm, model axes), (nx, ny, nz, 3); complex for FD
     sl = plane(mesh, data, axis, index, component='mag', phase=None)
     save_animation(src, 'out.gif', ...)     # .gif (Pillow) or .mp4 (ffmpeg)
 
 Time-domain dumps are VTK rectilinear grids (one .vtr per frame, zlib-compressed binary as openEMS
-writes them), read here without VTK. Frequency-domain dumps are openEMS HDF5 files (dumps.read_fd);
-they are animated over the phase: Re(F e^(j phi)). A plane dump has one point along its normal; a volume
+writes them), read here without VTK. Frequency-domain dumps are openEMS HDF5 files (dumps.read_fd) or
+mom25d's surface currents on a grid per layer (.npz: x, y, z, freqs, data (nf, nx, ny, nz, 3) complex);
+they are animated over the phase: Re(F e^(j phi)), one period at one frequency: the standing waves. A plane dump has one point along its normal; a volume
 is cut at any x / y / z mesh line. 2D views are in KiCad axes (y down), components too (Fy = -Fy model).
 """
 import base64, glob, json, os, re, shutil, subprocess, zlib
@@ -101,11 +102,12 @@ class DumpSource:
     def __init__(self, run_path, name, domain):
         self.path, self.name, self.domain = run_path, name, domain
         self.run = os.path.basename(run_path).replace('exc_', '', 1)
+        self.solver = os.path.basename(os.path.dirname(run_path))   # openems, mom25d
         info = _info(run_path)
         self.geometry = info
         self.meta = next((d for d in info.get('dumps', []) if d['name'] == name), {})
         self.field = self.meta.get('field') or (re.match(r'dump_([EHJ])_', name) or [None, 'E'])[1]
-        self.unit = UNITS.get(self.field, '')
+        self.unit = self.meta.get('unit') or UNITS.get(self.field, '')
         self.frames, self.freqs, self._cache, self._fd = [], [], {}, None
         self.norm = {}
         self.dt_ps = None
@@ -114,7 +116,8 @@ class DumpSource:
     @property
     def label(self):
         lab = self.meta.get('label') or self.name
-        return f"{self.run}: {self.field} {lab} ({'time' if self.domain == 'TD' else 'frequency'} domain)"
+        who = '' if self.solver == 'openems' else f"{self.solver} "
+        return f"{who}{self.run}: {self.field} {lab} ({'time' if self.domain == 'TD' else 'frequency'} domain)"
 
     def refresh(self):
         """Pick up new frames (time domain: during a run, the newest file may still be being written)."""
@@ -125,7 +128,7 @@ class DumpSource:
             if self.dt_ps is None:
                 self.dt_ps = _dt_ps(self.path, self.geometry)
         else:
-            h5 = os.path.join(self.path, self.name + '.h5')
+            h5, npz = (os.path.join(self.path, self.name + ext) for ext in ('.h5', '.npz'))
             if os.path.exists(h5) and self._fd is None:
                 try:
                     from .dumps import read_fd
@@ -133,6 +136,9 @@ class DumpSource:
                     self.freqs = [f for f, _ in self._fd[1]]
                 except (OSError, KeyError):                         # still being written
                     self._fd = None
+            elif os.path.exists(npz) and self._fd is None:
+                self._fd = read_npz(npz)
+                self.freqs = [f for f, _ in self._fd[1]]
             try:
                 with open(os.path.join(self.path, 'dump_norm.json')) as fh:
                     self.norm = {f: complex(a, b) for f, a, b in json.load(fh)}
@@ -188,16 +194,32 @@ class DumpSource:
         return tuple(len(mesh[a]) for a in AXES)
 
 
+def read_npz(path):
+    """A frequency-domain dump as a grid (mom25d's currents): (mesh x/y/z mm, [(freq Hz, (nx, ny, nz, 3))])."""
+    with np.load(path) as z:
+        mesh = {a: np.asarray(z[a], float) for a in AXES}
+        return mesh, [(float(f), d) for f, d in zip(z['freqs'], z['data'])]
+
+
+def write_npz(path, mesh, freqs, data):
+    """The counterpart of read_npz: data (nf, nx, ny, nz, 3) complex."""
+    np.savez_compressed(path, freqs=np.asarray(freqs, float), data=np.asarray(data, np.complex64),
+                        **{a: np.asarray(mesh[a], float) for a in AXES})
+
+
 def find_dumps(out_dir):
-    """Every field dump in <out>/openems/exc_*/ (the dump_info.json names them before any file exists)."""
+    """Every field dump in <out>/<solver>/exc_*/, openEMS's first (the dump_info.json names them before any
+    file exists)."""
     out = []
-    for run in sorted(glob.glob(os.path.join(out_dir, 'openems', 'exc_*'))):
+    runs = sorted(glob.glob(os.path.join(out_dir, '*', 'exc_*')),
+                  key=lambda r: (os.path.basename(os.path.dirname(r)) != 'openems', r))
+    for run in runs:
         names = {}
         for d in _info(run).get('dumps', []):
             names[d['name']] = 'FD' if d.get('freqs') else 'TD'
         for f in glob.glob(os.path.join(run, 'dump_*')):
             b = os.path.basename(f)
-            m = re.match(r'(dump_.+_td)_\d+\.vtr$', b) or re.match(r'(dump_.+_fd)\.h5$', b)
+            m = re.match(r'(dump_.+_td)_\d+\.vtr$', b) or re.match(r'(dump_.+_fd)\.(h5|npz)$', b)
             if m:
                 names.setdefault(m.group(1), 'TD' if b.endswith('.vtr') else 'FD')
         out += [DumpSource(run, n, dom) for n, dom in sorted(names.items())]
@@ -402,3 +424,27 @@ def save_animation(src, path, axis, index, component='mag', frames=None, fps=12,
     else:
         raise ValueError(f"{path}: save as .gif or .mp4")
     return path
+
+
+def save_fd_outputs(src, prefix, animate=None, log=True, n_phase=24):
+    """The files of a frequency-domain plane dump, per frequency: <prefix>_<GHz>GHz.png (the peak |F|) and, with
+    animate = 'gif' / 'mp4', <prefix>_<GHz>GHz.<animate>: one period of Re(F e^(j phase)), the standing waves.
+    Returns [(freq Hz, path)]."""
+    out = []
+    axis = default_axis(src.shape())
+    what = f"|{src.field}|"
+    for i, f in enumerate(src.freqs):
+        mesh, data = src.load(i)
+        pl = plane(mesh, data, axis, 0)
+        lo, hi = levels([pl.img], False, log)
+        cbar = f"{what} ({src.unit}" + (", 1 V incident)" if src.scale(i) else ")")
+        img = render(pl, lo, hi, log, f"{what} (peak), {src.meta.get('label', '')}, {f / 1e9:g} GHz ({src.run} driven)",
+                     src.geometry, cbar)
+        from PIL import Image
+        png = f"{prefix}_{f / 1e9:g}GHz.png"
+        Image.fromarray(img).save(png)
+        out.append((f, png))
+        if animate:
+            out.append((f, save_animation(src, f"{prefix}_{f / 1e9:g}GHz.{animate}", axis, 0, 'mag', [i], log=log,
+                                          n_phase=n_phase)))
+    return out

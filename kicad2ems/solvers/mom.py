@@ -7,10 +7,11 @@ the 2.5D Method-of-Moments solver mom25d - the package next to this one, which r
 MoM assumes laterally infinite dielectrics over an infinite ground plane: the board outline does not exist
 for it, and edge walls are rows of vias.
 """
+import json
 import os
 import numpy as np
 
-from ..options import Option
+from ..options import Option, floatlist
 from . import Solver, Result, Deviation
 
 G = 'mom25d'
@@ -49,11 +50,13 @@ def _metal(m, sigma):
     return Metal(float(sigma), t_mm * 1e-3), t_mm
 
 
-def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigma=None, log=print, progress=None):
+def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigma=None, log=print, progress=None,
+          hold=None):
     """S-parameters of the board m on `freq` (Hz) from mom25d, as kicad2ems reports them: (S (nf, n, n) in
     m.user_ports order with differential pairs as (d, c) modes, names, reference impedances, info dict).
     dmax in mm (planes 3x, refined near the copper of other layers). sigma (S/m): conductor loss, as --sigma
-    gives openEMS (default: lossless copper, like openEMS's PEC sheets). progress(solves, at most, f)."""
+    gives openEMS (default: lossless copper, like openEMS's PEC sheets). progress(solves, at most, f). hold: a
+    dict that receives mom25d's result as 'res' (its model and simulation, for the current dumps)."""
     from mom25d.api import solve_board
     from ..sparams import mixed_mode
     kind = 'via' if port == 'lumped' else port
@@ -64,6 +67,8 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
     res = solve_board(m.to_dict(), freq, dmax=dmax * 1e-3, port=kind, pairs=pairs, metal=metal, max_solves=max_solves,
                       mesher='gmsh' if mesher == 'gmsh' else 'auto', log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
                       progress=progress)
+    if hold is not None:
+        hold['res'] = res
     for line in res.model.describe().splitlines()[1:] + list(res.sim.log.notes):
         log(f"  mom25d: {line}")
     log(f"mom25d: {res.unknowns:,} unknowns, solver {res.solver}, ports " +
@@ -109,6 +114,10 @@ class MoM25D(Solver):
                name='mesher', gui='MoM mesher', group=G),
         Option('mom_solves', 60, "most EM solves of the adaptive sweep (default {default})", int, name='solves',
                group=G, cli=dict(metavar='N')),
+        Option('mom_dump', [], "surface-current dumps at these frequencies (GHz): |J| maps of each signal layer, and "
+               "with --dump-animate one period of Re(J e^jphi), the standing waves; the ports driven: --dump-port "
+               "(default: the first)", list, conv=floatlist, name='dump', gui='Current dumps (GHz, comma-separated)',
+               group=G, cli=dict(metavar='GHz,...')),
     ]
 
     def check(self, s=None):
@@ -206,8 +215,9 @@ class MoM25D(Solver):
 
     def solve(self, run, prep):
         s = run.s
+        self._held = {}
         S, names, zref, info = solve(run.m, run.freq, dmax=s.mom_dmax, port=s.mom_port, mesher=s.mom_mesher,
-                                     max_solves=s.mom_solves, sigma=s.sigma, log=run.log,
+                                     max_solves=s.mom_solves, sigma=s.sigma, log=run.log, hold=self._held,
                                      progress=lambda k, n, f: run.status('mom25d', dict(fraction=k / n, solves=k,
                                                                                         f_ghz=f / 1e9)))
         kinds = ", ".join(f"{p['name']} {p['kind']}" for p in info['ports'])
@@ -219,3 +229,88 @@ class MoM25D(Solver):
                           f"resonances; radiation and surface waves are in.")
         run.log(f"mom25d: {info['solves']} EM solves, {info['seconds']:.0f} s")
         return Result(S, names, zref, info['seconds'], info=info, comment=f"mom25d 2.5D MoM ({run.name})")
+
+    def outputs(self, run, prep, res):
+        """The current dumps (--mom-dump): <out>/mom25d/exc_<port>/, laid out like openEMS's frequency-domain dumps
+        (the GUI's Fields tab reads both), and their maps and animations next to the other outputs."""
+        held = getattr(self, '_held', {}).get('res')
+        if not run.s.mom_dump or held is None:
+            return
+        from .openems.fields import DumpSource, save_fd_outputs
+        for port, d in current_dumps(run, held, [f * 1e9 for f in run.s.mom_dump], run.s.dump_port):
+            for name in d['names']:
+                src = DumpSource(d['dir'], name, 'FD')
+                tag = port.replace('+', 'p').replace('-', 'n')
+                for f, q in save_fd_outputs(src, run.path(f"_mom25d_{tag}_{name}"), animate=run.s.dump_animate):
+                    label = f"mom25d {name} ({port} driven, {f / 1e9:g} GHz)"
+                    run.wrote(('current map ' if q.endswith('.png') else 'current animation ') + label, q)
+                    if q.endswith('.png'):
+                        run.summary['dumps'].append(dict(label=f"mom25d {name} ({port} driven)", png=run.rel(q)))
+            run.log(f"  mom25d current dumps ({port} driven): {d['dir']}")
+
+
+def _grid(nodes, tris, step, nmax=600):
+    """Grid lines (mm) over the triangles' extent, `step` apart (at most nmax per axis)."""
+    lo, hi = nodes[tris].reshape(-1, 2).min(0), nodes[tris].reshape(-1, 2).max(0)
+    return [np.linspace(lo[a], hi[a], int(min(nmax, max(2, np.ceil((hi[a] - lo[a]) / step) + 1)))) for a in (0, 1)]
+
+
+def current_dumps(run, res, freqs, ports=None):
+    """mom25d's surface current density J (A/m) on each meshed layer at `freqs` (Hz), sampled onto a grid (the
+    value of the triangle each grid point lies in; 0 off the copper), for the ports driven (names, default the
+    first) by mom25d's 1 V gap sources. Writes dump_<layer>_fd.npz and dump_info.json per port under
+    <out>/mom25d/exc_<port>/; returns [(port, dict(dir, names))]."""
+    from matplotlib.tri import Triangulation
+    from .openems.dumps import Dump, write_info
+    from .openems.fields import write_npz
+    sim, model = res.sim, res.model
+    names = [p.name for p in sim.ports]
+    want = [n.strip() for n in (ports.split(',') if isinstance(ports, str) else ports or [])]
+    cols = [j for j, n in enumerate(names) if n in want or n.rstrip('+-') in want] if want else [0]
+    if not cols:
+        raise ValueError(f"--dump-port {ports}: no mom25d port of that name ({', '.join(names)})")
+    lay = {k: l for l, k in model.iface.items()}
+    nodes = sim.rwg.nodes[:, :2] * 1e3
+    Jf = []
+    for f in freqs:
+        I = sim.currents(f, sim.excitation())
+        Jf.append([sim.current_density(I[:, j]) for j in cols])          # per port: (Jx, Jy) per triangle
+    step = max(run.s.mom_dmax / 3, 0.02)
+    out = []
+    for c, j in enumerate(cols):
+        d = os.path.join(run.s.out, 'mom25d', f"exc_{names[j]}")
+        os.makedirs(d, exist_ok=True)
+        dumps, written = [], []
+        for k, idx in sorted(sim.tri_idx.items()):
+            if not len(idx) or k not in lay:
+                continue
+            tris = sim.rwg.tris[idx]
+            gx, gy = _grid(nodes, tris, step)
+            X, Y = np.meshgrid(gx, gy, indexing='ij')
+            used = np.unique(tris)
+            remap = -np.ones(len(nodes), int)
+            remap[used] = np.arange(len(used))
+            tri = Triangulation(nodes[used, 0], nodes[used, 1], remap[tris])
+            hit = tri.get_trifinder()(X, Y)                               # local triangle of each point, -1 off copper
+            z = float(model._zk[k])
+            data = np.zeros((len(freqs), len(gx), len(gy), 1, 3), complex)
+            for i in range(len(freqs)):
+                jx, jy = Jf[i][c]
+                for comp, v in ((0, jx), (1, jy)):
+                    vals = np.asarray(v)[idx]
+                    data[i, :, :, 0, comp] = np.where(hit >= 0, vals[np.clip(hit, 0, None)], 0)
+            label = lay[k]
+            dump = Dump(f"J@{label}", 'J', (gx[0], gy[0], z), (gx[-1], gy[-1], z), list(freqs), 2, label)
+            write_npz(os.path.join(d, dump.name + '.npz'), dict(x=gx, y=gy, z=np.array([z])), freqs, data)
+            dumps.append(dump)
+            written.append(dump.name)
+        write_info(d, dumps, run.m)
+        info = os.path.join(d, 'dump_info.json')                            # surface currents: A/m, not A/m2
+        with open(info) as fh:
+            meta = json.load(fh)
+        for x in meta['dumps']:
+            x['unit'] = 'A/m, 1 V gap source'
+        with open(info, 'w') as fh:
+            json.dump(meta, fh)
+        out.append((names[j], dict(dir=d, names=written)))
+    return out

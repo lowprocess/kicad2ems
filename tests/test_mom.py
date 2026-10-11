@@ -58,3 +58,24 @@ def test_sigma_reaches_mom(demo_files):
     assert metal.sigma == 5.8e7 and t == pytest.approx(m.cu_t[m.ports[0].layer]) and metal.t == pytest.approx(t * 1e-3)
     zs = metal.zs(np.array([1e9]))
     assert zs.real[0] > 0                                           # a lossy surface impedance
+
+
+def test_current_dumps(boards, run_cli, tmp_path):
+    """--mom-dump: mom25d's surface currents at the frequencies asked, a |J| map each, with --dump-animate one
+    period of Re(J e^j phase), and the dumps where the GUI's Fields tab finds them."""
+    pytest.importorskip('triangle')
+    from kicad2ems.solvers.openems import fields as F
+    base, out = boards['lowpass'], tmp_path / 'out'
+    code, so, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--solvers', 'mom', '--mom-dmax', '0.8',
+                            '--mom-solves', '6', '--points', '21', '--mom-dump', '2,5', '--dump-animate', 'gif',
+                            '--out', out)
+    assert code == 0, so + err
+    for f in (2, 5):
+        for ext in ('png', 'gif'):
+            assert (out / f"lowpass_mom25d_P1_dump_J_F_Cu_fd_{f}GHz.{ext}").exists()
+    src, = F.find_dumps(str(out))
+    assert src.solver == 'mom25d' and src.freqs == [2e9, 5e9] and 'A/m' in src.unit
+    mesh, J = src.load(0)
+    assert np.abs(J).max() > 0 and np.all(J[..., 2] == 0)                # in-plane currents only
+    sm = json.loads((out / 'lowpass_run.json').read_text())
+    assert any(d['label'].startswith('mom25d dump_J_F_Cu_fd') for d in sm['dumps'])

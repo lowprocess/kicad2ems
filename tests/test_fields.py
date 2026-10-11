@@ -171,3 +171,29 @@ def test_field_view_tab(run_folder, tmp_path):
     f.phase.setValue(90)
     assert 'phase 90°' in f.frame_lab.text()
     w.close()
+
+
+def test_grid_dumps_next_to_openems(run_folder, tmp_path):
+    """A frequency-domain dump as a grid (.npz, mom25d's currents) is found next to openEMS's, labelled with its
+    solver and unit, and gets a |F| map and one period of Re(F e^j phase) per frequency."""
+    import shutil
+    out, m = run_folder
+    o = tmp_path / 'out'
+    shutil.copytree(out, o)
+    run = o / 'mom25d' / 'exc_P1'
+    d = parse_dump('J@F.Cu@2,4', m)
+    write_info(str(run), [d], m)
+    x, y = np.linspace(0, 10, 20), np.linspace(-5, 0, 8)
+    wave = np.exp(-1j * x / 2)[:, None] * np.ones((1, 8))            # a wave running along x
+    data = np.zeros((2, 20, 8, 1, 3), complex)
+    data[0, :, :, 0, 0], data[1, :, :, 0, 0] = wave, 2 * wave
+    F.write_npz(str(run / f"{d.name}.npz"), dict(x=x, y=y, z=np.array([0.6])), [2e9, 4e9], data)
+    srcs = F.find_dumps(str(o))
+    assert [s.solver for s in srcs] == ['openems', 'openems', 'mom25d']           # openEMS's first
+    g = srcs[-1]
+    assert g.label.startswith('mom25d P1: J') and g.freqs == [2e9, 4e9] and g.shape() == (20, 8, 1)
+    assert np.allclose(g.load(1)[1][..., 0], 2 * wave[..., None]) and g.scale(0) is None
+    files = F.save_fd_outputs(g, str(tmp_path / 'j'), animate='gif', n_phase=6)
+    from PIL import Image
+    assert [os.path.basename(p) for _, p in files] == ['j_2GHz.png', 'j_2GHz.gif', 'j_4GHz.png', 'j_4GHz.gif']
+    assert Image.open(files[1][1]).n_frames == 6

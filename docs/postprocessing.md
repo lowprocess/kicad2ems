@@ -80,9 +80,16 @@ the board outline, copper per layer and ports, for outlines in a viewer) and, wi
 dumps, `dump_norm.json` (the incident port voltage at each dump frequency). `kicad2ems.fields` reads a
 run folder with them:
 
+<a id="animations"></a>
+**Standing waves.** A frequency-domain dump is a phasor F per point; one period of Re(F·e^jφ), φ from 0 to
+2π, is what the field does at that frequency in steady state: a standing wave stands still and breathes,
+a travelling one moves. `--dump-animate gif` (or `mp4`) writes that period (24 frames) for every
+frequency-domain plane dump next to its PNG, openEMS's and mom25d's (`--mom-dump`, [MoM](mom.md#current-dumps));
+the GUI's Fields tab plays and saves the same (*instantaneous, phase*). One colour range covers the period.
+
 ```python
 from kicad2ems import fields
-src = fields.find_dumps('out')[0]                     # every dump under out/openems/exc_*/
+src = fields.find_dumps('out')[0]                     # every dump under out/<solver>/exc_*/ (openems, mom25d)
 pl = fields.plane(*src.load(-1), axis=2, index=0, component='z')   # a cut, in KiCad axes
 fields.save_animation(src, 'ez.gif', axis=2, index=0, component='z')     # or .mp4 (needs ffmpeg)
 ```

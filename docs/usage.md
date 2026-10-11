@@ -193,7 +193,8 @@ used and a `config:` note says so (`config.resolve_path`).
 | Option | Meaning |
 |---|---|
 | `--dump FIELD@REGION[@GHz,...]` | repeatable; `E`/`H`/`J` at a layer, a plane, the volume or a box ([post-processing](postprocessing.md#field-dumps)) |
-| `--dump-port` | the runs that record dumps (default: the first excited port) |
+| `--dump-port` | the runs that record dumps (default: the first excited port); mom25d's current dumps too |
+| `--dump-animate gif\|mp4` | frequency-domain dumps (openEMS and `--mom-dump`): also one period of Re(F·e^jφ) at each frequency, the standing waves ([post-processing](postprocessing.md#animations)); MP4 needs ffmpeg |
 
 ### Solvers
 
@@ -211,6 +212,7 @@ used and a `config:` note says so (`config.resolve_path`).
 | `--mom-port auto\|wave\|lumped` (`port`) | auto | MoM ports: de-embedded wave ports where the feed is long enough down to fmin, else lumped |
 | `--mom-mesher triangle\|gmsh` (`mesher`) | triangle | MoM surface mesher ([MoM](mom.md#meshers)) |
 | `--mom-solves N` (`solves`) | 60 | most EM solves of the MoM adaptive sweep |
+| `--mom-dump GHz,...` (`dump`) | — | surface-current dumps at these frequencies: a \|J\| map per signal layer, with `--dump-animate` one period of Re(J·e^jφ) ([MoM](mom.md#current-dumps)) |
 
 ### Line model (`[solver.qucs]`)
 
@@ -244,7 +246,9 @@ used and a `config:` note says so (`config.resolve_path`).
 | `<name>.xml` | CSX geometry (AppCSXCAD), written by every openEMS run |
 | `<name>_antenna.png`, `_pattern.png`, `_antenna.json` | antenna mode |
 | `<name>_converge.png` | `--converge` |
-| `<name>_<port>_<dump>_<GHz>GHz.png` | frequency-domain plane dumps |
+| `<name>_<port>_<dump>_<GHz>GHz.png` | frequency-domain plane dumps (`.gif` / `.mp4` with `--dump-animate`) |
+| `<name>_mom25d_<port>_<dump>_<GHz>GHz.png` | mom25d current dumps (`--mom-dump`; `.gif` / `.mp4` with `--dump-animate`) |
+| `mom25d/exc_<port>/` | mom25d's current dumps as grids (`dump_J_<layer>_fd.npz`, `dump_info.json`), for the GUI's Fields tab |
 | `openems/exc_<port>/` | one openEMS run folder per driven port, with `openems.log` (`P1+` / `P1-` → `exc_P1p` / `exc_P1n`) |
 | `converge/L<f>/` | the coarser convergence levels |
 
