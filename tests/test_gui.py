@@ -200,8 +200,8 @@ def test_gui_solver_boxes(tmp_path, monkeypatch):
     from kicad2ems.gui.runner import settings_values, solvers_from_form, save_config, extra_values, write_toml, FIELDS
     from kicad2ems.solvers.lines import fastsolve
     monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)    # no qucsator: lines is scikit
-    assert [k for k, *_ in FIELDS if k.startswith('solver:')] == ['solver:openems', 'solver:mom25d', 'solver:qucs',
-                                                                    'solver:scikit']
+    assert [k for k, *_ in FIELDS if k.startswith('solver:')] == ['solver:auto', 'solver:openems', 'solver:mom25d',
+                                                                    'solver:qucs', 'solver:scikit']
     p = tmp_path / 'c.toml'
     p.write_text('board = "b.kicad_pcb"\nsolvers = ["mom", "lines"]\n')
     vals = settings_values(str(p))
@@ -221,6 +221,9 @@ def test_gui_solver_boxes(tmp_path, monkeypatch):
     assert build_settings({}, str(tmp_path / 'r.toml')).solver_plan()[0] == ['scikit']
     none = solvers_from_form({k: False for k, *_ in FIELDS if k.startswith('solver:')})
     assert none['solvers'] == []                                    # none: the GUI says so
+    p.write_text('board = "b.kicad_pcb"\nsolvers = ["auto"]\n')     # auto has a box of its own
+    vals = settings_values(str(p))
+    assert vals['solver:auto'] and not vals['solver:openems'] and solvers_from_form(vals)['solvers'] == ['auto']
 
 
 def test_save_config_in_solver_tables(tmp_path):

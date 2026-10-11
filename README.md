@@ -35,7 +35,9 @@ Every run also breaks the port nets into transmission-line sections with closed-
   solved by [mom25d](docs/mom25d.md), the 2.5D Method-of-Moments solver in `mom25d/`, which reads that
   file itself: MoM needs no openEMS.
 - **Solver plugins**: each solver is a plugin with its own settings (`[solver.<name>]` in a config); others
-  install as packages ([architecture](docs/architecture.md#solver-plugins)).
+  install as packages ([architecture](docs/architecture.md#solver-plugins)). `--solvers auto` picks the
+  full-wave solver estimated cheapest for the board; each solver declares what it changes, and the report
+  shows what each one saw.
 - **TOML configs** (typos named), `--preview`, `--check` for every solver, an HTML report, JSON-lines
   events for a GUI or script.
 

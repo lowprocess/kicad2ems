@@ -14,6 +14,12 @@ from ..options import Option
 from . import Solver, Result, Deviation
 
 G = 'mom25d'
+# --solvers auto (docs/architecture.md#choosing-solvers): seconds per EM solve on 24 cores, fitted on the examples
+# run alone: T0 per pair of metal interfaces (the layered-medium tables of each frequency), plus the dense fill
+# (DENSE_N2 N^2, up to 3.5k unknowns) or the direct solver's LU (LU_N3 N^3), plus VIA2 per pair of vias (the
+# via-via kernels: sma_launch's 185 vias cost 26 s a solve); a sweep takes about SOLVES solves (11..22 on the
+# examples). demo_transition: 12.1 s a solve measured, 12.4 s estimated; sma_launch 33.7 s / 33.7 s.
+T0, DENSE_N2, LU_N3, VIA2, SOLVES, REF_CORES = 1.0, 1.6e-7, 3.7e-12, 7.6e-4, 16, 24
 
 
 def mom25d_status():
@@ -176,6 +182,22 @@ class MoM25D(Solver):
         return dict(vias=[[v.x * 1e3, v.y * 1e3, v.a * 1e3, float(zk[v.k_bot]), float(zk[v.k_top])] for v in bm.vias],
                     copper={lay[k]: sum(g.area for g in gs) * 1e6 for k, gs in bm.shapes.items() if k in lay},
                     parts={e.name: 1 for e in bm.lumped}, ports=ports)
+
+    def estimate(self, run):
+        """The unknowns of mom25d's mesh of the board (meshed here, the ports not characterised) and the time of
+        a sweep of up to SOLVES solves."""
+        from mom25d.board import BoardModel
+        s = run.s
+        bm = BoardModel(run.m.to_dict(), log=lambda *a: None)
+        dmax = s.mom_dmax * 1e-3
+        planes = {k: 3 * dmax for k, gs in bm.shapes.items() if sum(g.area for g in gs) > 0.5 * bm.outline_area}
+        sim = bm.simulation(dmax=dmax, dmax_layer=planes, fmin=run.fmin, fmax=run.fmax, characterize=False,
+                            verbose=False, wave_down_to=run.fmin, mesh_only=True)
+        n, solves, layers = int(sim.Ne + sim.Nv), min(s.mom_solves, SOLVES), len(bm.shapes)
+        per = T0 * layers * (layers + 1) / 2 + (DENSE_N2 * n ** 2 if n <= 3500 else LU_N3 * n ** 3) + \
+            VIA2 * len(bm.vias) ** 2
+        return dict(seconds=solves * per * REF_CORES / (os.cpu_count() or 1), gb=(18 * n ** 2 + 0.9e9) / 1e9,
+                    what=f"{n:,} unknowns, ~{solves} EM solves")
 
     def prepare(self, run):
         what = mom25d_status()[1]

@@ -31,6 +31,7 @@ One converted board, several solvers. Each solver is a plugin (`kicad2ems/solver
 | `qucs` (`qucsator`) | the [line model](transmission-lines.md) as a circuit, solved by qucsator | `<name>_qucs.sNp` | Qucs-S's `qucsator_rf` (or `qucsator`) on PATH, or `--qucsator PATH` |
 | `scikit` (`skrf`) | the same line model, solved by scikit-rf | `<name>_scikit.sNp` | scikit-rf |
 | `lines` | `qucs` when qucsator is installed, else `scikit` | | |
+| `auto` | the full-wave solver estimated cheapest for this board, plus the line model ([below](#auto)) | | |
 | `all` | every solver, the line model once (`lines`) | | |
 
 ```bash
@@ -59,6 +60,19 @@ kicad2ems --check                               # which solvers this Python can 
 - **Without openEMS** nothing of openEMS is built: no mesh (the model alone is drawn in
   `<name>_model.png`), no run-length estimate, no closed-box resonance check.
 - `mode = "antenna"` needs openEMS; mom25d and the line model cannot be named in antenna mode.
+
+<a id="auto"></a>
+**`--solvers auto`** leaves out the solvers that cannot run here or cannot model the board (gap ports or
+antenna mode: openEMS only; no ground plane: no mom25d; no routed path: no line model), estimates the time
+of each full-wave solver left (openEMS from its mesh and the excitation length, mom25d from the unknowns
+of its mesh), runs the cheaper one and adds the line model. It says why:
+
+```
+solvers auto: mom25d + qucs (4,400 unknowns, ~16 EM solves, ~21 s); openems not chosen (0.40 M cells, 1 run(s)
+of ~502,493 timesteps, ~7 min); force one with --solvers <name>
+```
+
+The estimates are rough ([architecture](architecture.md#choosing-solvers)); the default is still openEMS.
 
 ## Settings
 

@@ -101,6 +101,46 @@ choices, converter, its short name in the solver's table, GUI label, group): the
 option), `cli.parser()` makes the command-line options from them, `config.read_toml` reads the top-level
 keys and the `[solver.<name>]` tables by them, and `gui.runner.FIELDS` is the form they describe.
 
+<a id="choosing-solvers"></a>
+## Choosing solvers (`--solvers auto`)
+
+`Job.choose()` replaces `auto` with solvers, after the board and the line model are built:
+
+1. **Drop what cannot run or model the board**: each full-wave solver's `check()` and `assess()` (gap ports
+   or antenna mode leave openEMS only; no ground plane rules out mom25d).
+2. **Estimate the rest** (`Solver.estimate`, in about a second): openEMS: the cells of its mesh × the
+   timesteps × the runs (driven ports, convergence levels), at `CELLS_PER_CORE_S` (21 M) cell updates per
+   second and core. The timesteps are the excitation pulse plus the ring-down, `RING` (1.7) × |end_db| / 17.4
+   dB × the line model's peak group delay (a resonance's energy falls 17.4 dB per group delay), at most
+   `--max-steps`. mom25d: the unknowns N of its mesh (meshed for the estimate only), `SOLVES` (16) solves of
+   `T0` (1 s) per pair of metal layers + `DENSE_N2`·N² (dense, up to 3.5k unknowns) or `LU_N3`·N³ (beyond) +
+   `VIA2` per pair of vias, at 24 cores. A solver that would need more than 80 % of the RAM is left out.
+3. **Run the cheaper one**, and the line model where it applies (only the line model when a full-wave solver
+   is named too).
+4. **Say why**, in the log and the summary (`auto`: chosen, estimates, not used and why) and the report.
+
+The constants come from running each solver alone on the 13 examples (24 cores, mom25d at its default cell
+size; demo_transition and sma_launch at 0.6 mm). openEMS's time is within 2× on 9 of 13 boards; it is
+underestimated 8–16× where the board rings without the line model showing it (rf_gcpw, rf_stubnotch).
+mom25d's is within 1.5× on all 13. Picked against measured:
+
+| Board | openEMS est. / measured (s) | mom25d est. / measured (s) | auto picks | faster |
+|---|---|---|---|---|
+| filter | 396 / 135 | 21 / 24 | mom25d | mom25d |
+| demo_lowpass, highpass | 11 / 12 | 25 / 17 | openEMS | openEMS |
+| demo_bandpass | 52 / 76 | 30 / 34 | mom25d | mom25d |
+| rf_steplpf | 18 / 34 | 30 / 28 | openEMS | mom25d (1.2×) |
+| rf_stubnotch | 2 / 34 | 24 / 21 | openEMS | mom25d (1.6×) |
+| rf_branchline | 5 / 4 | 59 / 46 | openEMS | openEMS |
+| rf_coupler | 29 / 17 | 28 / 21 | mom25d | openEMS (1.2×) |
+| rf_wilkinson | 61 / 25 | 22 / 14 | mom25d | mom25d |
+| hairpin | 74 / 45 | 22 / 15 | mom25d | mom25d |
+| rf_gcpw | 2 / 16 | 36 / 33 | openEMS | openEMS |
+| demo_transition | 58 / 66 | 199 / 158 | openEMS | openEMS |
+| sma_launch | 43 / 22 | 539 / 439 | openEMS | openEMS |
+
+10 of 13 right; the three misses are near ties (the chosen solver at most 1.6× slower).
+
 ## Module map
 
 ```

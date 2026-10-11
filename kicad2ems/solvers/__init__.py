@@ -31,6 +31,7 @@ and implements
                           onto a mesh, parts split, walls as via rows), for the report and the parity checks
   readback(run, prep)     what its native model holds, read back (parity.py: vias, copper area per layer,
                           parts, ports), or None
+  estimate(run)           dict(seconds, gb, what): its rough cost on this board (--solvers auto), or None
 
 `run` is the pipeline's Job. A solver may use run.m (the board), run.s (Settings: its options are fields),
 run.freq (Hz), run.lm (the line model), run.name, run.log(), run.status(run_name, dict) (progress events),
@@ -47,6 +48,7 @@ GROUP = 'kicad2ems.solvers'                 # the entry-point group of solvers i
 BUILTIN = ('kicad2ems.solvers.openems.plugin:OpenEMS', 'kicad2ems.solvers.mom:MoM25D',
            'kicad2ems.solvers.lines.plugin:Qucs', 'kicad2ems.solvers.lines.plugin:Scikit')
 LINES = 'lines'                             # the line model: qucs when qucsator is installed, else scikit
+AUTO = 'auto'                               # the cheapest full-wave solver that can model the board, + the line model
 # what a solver models, the rows of the capabilities table (--check, docs/architecture.md)
 FEATURES = dict(ports='ports on a trace over a plane', gap_ports='gap ports (dipoles, slots)',
                 diff_pairs='differential pairs', parts='lumped R / L / C parts', vias='vias',
@@ -125,6 +127,9 @@ class Solver:
     def readback(self, run, prep):
         return None
 
+    def estimate(self, run):
+        return None
+
 
 _registry, broken = None, []                # broken: (entry point, error) of plugins that failed to load
 
@@ -190,6 +195,7 @@ def ordered(names):
     order = list(registry())
     first_net = next((i for i, n in enumerate(order) if registry()[n].consumes == 'network'), len(order))
     order.insert(first_net, LINES)
+    order.insert(0, AUTO)
     return [n for n in order if n in names]
 
 
@@ -201,7 +207,7 @@ def resolve_lines(s=None):
 
 
 def label(name):
-    return 'line model' if name == LINES else registry()[name].label
+    return {LINES: 'line model', AUTO: 'auto'}.get(name) or registry()[name].label
 
 
 def capability_table():

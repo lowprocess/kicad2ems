@@ -120,3 +120,41 @@ def test_assess_named_and_reference(boards, run_cli, tmp_path, monkeypatch):
     assert code == 2 and 'mom25d cannot model this board' in so and 'gap port' in so
     code, so, _ = run_cli(boards['dipole'] + '.kicad_pcb', '--preview', '--mom', '--fmin', '1', '--fmax', '3', '--out', out)
     assert code == 0 and 'WARNING: mom25d cannot model this board, left out' in so
+
+
+def test_auto_picks_the_cheaper_full_wave_solver(run_cli, tmp_path, monkeypatch):
+    from kicad2ems.solvers import mom
+    from kicad2ems.solvers.openems import plugin as fdtd
+    from kicad2ems.solvers.openems import simulation
+    monkeypatch.setattr(mom, 'solve', _canned_mom)
+    monkeypatch.setattr(mom, 'mom25d_status', lambda: (True, '0.0 (test)'))
+    monkeypatch.setattr(simulation, 'check_openems', lambda: (True, ['  ok      openEMS  /x/openEMS/__init__.py']))
+    cost = dict(openems=100.0, mom25d=10.0)
+    monkeypatch.setattr(fdtd.OpenEMS, 'estimate', lambda self, run: dict(seconds=cost['openems'], gb=0.1, what='0.4 M cells'))
+    monkeypatch.setattr(mom.MoM25D, 'estimate', lambda self, run: dict(seconds=cost['mom25d'], gb=0.1, what='4,400 unknowns'))
+    out = tmp_path / 'out'
+    code, so, err = run_cli(FILTER, '--solvers', 'auto', '--points', '21', '--out', out)
+    assert code == 0, so + err
+    assert 'solvers auto: mom25d + ' in so and 'openems not chosen (0.4 M cells, ~100 s)' in so
+    sm = json.loads((out / 'filter_run.json').read_text())
+    assert sm['solvers'][0] == 'mom25d' and sm['auto']['chosen'][0] == 'mom25d' and 'openems' in sm['auto']['estimates']
+    assert '--solvers auto: mom25d' in (out / 'filter_report.html').read_text()
+    cost.update(openems=5.0)                                        # now openEMS is cheaper: --preview prepares it
+    code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview', '--points', '21', '--out', out)
+    assert code == 0 and 'solvers auto: openems + ' in so and (out / 'filter_mesh.png').exists(), so + err
+    assert settings_plan('auto') == (['auto'], ['auto'])
+
+
+def settings_plan(v):
+    return build_settings(dict(board='b.kicad_pcb', solvers=v)).solver_plan()
+
+
+def test_auto_leaves_out_what_cannot_model_the_board(boards, run_cli, tmp_path, monkeypatch):
+    from kicad2ems.solvers import mom
+    monkeypatch.setattr(mom, 'mom25d_status', lambda: (True, '0.0 (test)'))
+    monkeypatch.setattr(mom.MoM25D, 'estimate', lambda self, run: pytest.fail('a dipole is not for mom25d'))
+    out = tmp_path / 'out'
+    code, so, err = run_cli(boards['dipole'] + '.kicad_pcb', '--solvers', 'auto', '--preview', '--fmin', '1', '--fmax', '3',
+                            '--out', out)
+    assert code == 0, so + err
+    assert 'solvers auto: openems' in so and 'mom25d not used: gap port(s) P1: no planar equivalent' in so

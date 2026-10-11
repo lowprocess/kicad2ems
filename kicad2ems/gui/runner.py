@@ -31,9 +31,10 @@ def make_fields():
     label (config.CORE, then each solver's) and a tick box per solver (key solver:<name>) heading the Solvers
     group; Board and Band first, Output last."""
     from ..config import all_options
-    from ..solvers import registry
+    from ..solvers import registry, AUTO
     rows = [(o.key, o.gui, _kind(o), GUI_GROUPS.get(o.group, o.group)) for _, o in all_options() if o.gui]
-    rows = [(TICK + n, sv.label, 'bool', 'Solvers') for n, sv in registry().items()] + rows
+    rows = [(TICK + AUTO, 'auto: the cheapest full-wave solver + the line model', 'bool', 'Solvers')] + \
+           [(TICK + n, sv.label, 'bool', 'Solvers') for n, sv in registry().items()] + rows
     order = ['Board', 'Band', 'Solvers'] + [g for *_, g in rows if g not in ('Board', 'Band', 'Solvers', 'Output')]
     rank = {g: i for i, g in enumerate(dict.fromkeys(order + ['Output']))}
     return sorted(rows, key=lambda r: rank[r[3]])                 # stable: the option order within a group
@@ -50,14 +51,14 @@ def solver_ticks(vals):
     """{solver:<name>: ticked} for a settings dict: the solvers its plan runs (openEMS by default; solvers, mom =
     true and fast name the others; 'lines' as resolved here). solvers = [] ticks none."""
     from ..config import build_settings
-    from ..solvers import registry, resolve_lines, LINES
+    from ..solvers import registry, resolve_lines, LINES, AUTO
     if vals.get('solvers') == []:
         run = []
     else:
         s = build_settings({k: vals.get(k) for k in ('solvers', 'mom', 'fast') if vals.get(k) not in (None, '')})
         run = s.solver_plan(preview=False)[0]
         run = [resolve_lines(s) if x == LINES else x for x in run]
-    return {TICK + n: n in run for n in registry()}
+    return {TICK + n: n in run for n in [AUTO] + list(registry())}
 
 
 def solvers_from_form(vals):

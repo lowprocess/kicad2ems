@@ -70,8 +70,8 @@ def _sides(v):
 def _solvers(v):
     """Solver names (aliases allowed; 'lines' for the line model, 'all' for every solver) in registry order, or
     None for an empty list."""
-    from .solvers import registry, aliases, ordered, LINES
-    names = dict(aliases(), line=LINES, lines=LINES, fast=LINES)
+    from .solvers import registry, aliases, ordered, LINES, AUTO
+    names = dict(aliases(), line=LINES, lines=LINES, fast=LINES, auto=AUTO)
     out = set()
     for x in strlist(v) or []:
         x = x.lower()
@@ -80,7 +80,7 @@ def _solvers(v):
         elif x in names:
             out.add(names[x])
         else:
-            raise ValueError(f"no solver {x!r}: choose from {', '.join(list(registry()) + [LINES, 'all'])}")
+            raise ValueError(f"no solver {x!r}: choose from {', '.join(list(registry()) + [LINES, AUTO, 'all'])}")
     return ordered(out) or None
 
 
@@ -89,8 +89,9 @@ CORE = [
     Option('solvers', None, "solvers to run, comma-separated: openems (3D FDTD; the default), mom25d (alias mom; 2.5D "
            "MoM: planar boards over a ground plane, no openEMS needed), qucs or scikit (the transmission-line model as "
            "a circuit, solved by qucsator or scikit-rf: milliseconds), lines (qucs when qucsator is installed, else "
-           "scikit) or all. A named solver that cannot run stops the run before it starts; --mom and --fast add "
-           "theirs as references", list, conv=_solvers, group='solvers', cli=dict(metavar='LIST')),
+           "scikit), auto (the full-wave solver estimated cheapest for this board, plus the line model) or all. A "
+           "named solver that cannot run stops the run before it starts; --mom and --fast add theirs as references",
+           list, conv=_solvers, group='solvers', cli=dict(metavar='LIST')),
     Option('mom', False, "also run mom25d, as a reference next to the other solvers (if it cannot run, that is a "
            "warning); works with --preview", bool, group='solvers'),
     Option('fast', None, "also solve the transmission-line model as a circuit, as a reference: skrf (scikit-rf), "
@@ -157,7 +158,7 @@ class _Settings:
         preview=False: the plan as without --preview).
         A solver named in `solvers` is a result the run is for: if it cannot run, the run stops before it starts.
         One added by --mom / --fast is a reference next to the others: if it cannot run, that is a warning."""
-        from .solvers import ordered, registry, LINES
+        from .solvers import ordered, registry, LINES, AUTO
         line = {'skrf': 'scikit', 'qucsator': 'qucs'}.get(self.fast, LINES)
         named = [line if x == LINES else x for x in self.solvers] if self.solvers is not None else ['openems']
         run = set(named)
@@ -166,7 +167,7 @@ class _Settings:
         if self.fast:
             run.add(line)
         if self.preview if preview is None else preview:
-            run = {x for x in run if x == LINES or not registry()[x].previewed}
+            run = {x for x in run if x in (LINES, AUTO) or not registry()[x].previewed}
         return ordered(run), ordered(named)
 
     def options(self):
@@ -325,6 +326,7 @@ def build_settings(cli=None, config=None):
             if cap.startswith('no'):
                 raise ConfigError(f"solvers: {reg[x].label} is not available in antenna mode" +
                                   (f" ({cap.split(':', 1)[1].strip()})" if ':' in cap else ''))
-        if not s.preview and not any(x in reg and reg[x].capabilities.get('antenna') == 'yes' for x in run):
+        if not s.preview and 'auto' not in run and not any(x in reg and reg[x].capabilities.get('antenna') == 'yes'
+                                                          for x in run):
             raise ConfigError("mode = antenna needs openEMS: add openems to solvers (or use --preview)")
     return s

@@ -25,6 +25,32 @@ def _bc(v):
 
 
 G_MESH, G_RUN, G_ANT, G_DUMP = 'openEMS mesh', 'openEMS', 'openEMS antenna mode', 'openEMS field dumps'
+# --solvers auto (docs/architecture.md#choosing-solvers), fitted on openEMS runs of the 13 examples (24 cores):
+# after the pulse the fields ring down for RING x |end_db| / 17.4 dB x the line model's peak group delay (a
+# resonance's energy falls 17.4 dB per group delay; measured 0.4..3x that, median 1.7, and far longer where the
+# board rings without the line model showing it: rf_gcpw, rf_stubnotch), or PULSES - 1 pulse lengths without a line
+# model; CELLS_PER_CORE_S cell updates per second and core (13..35 M, median 21 M). Time within 2x on 9 of 13.
+RING, PULSES, CELLS_PER_CORE_S = 1.7, 5.0, 21e6
+
+
+def _peak_delay(run):
+    """The line model's largest group delay (s) over its terms that carry signal: how long the board rings. None
+    without a line model or a circuit solver for it."""
+    from ..lines.fastsolve import solve, resolve_backend
+    if run.lm is None or not run.lm.paths:
+        return None
+    try:
+        f = np.linspace(run.fmin, run.fmax, 801)
+        S, _ = solve(run.lm, run.m.ports, f, backend=resolve_backend('auto', getattr(run.s, 'qucsator', None))[0])
+    except Exception:                                               # no scikit-rf / qucsator, a failing netlist
+        return None
+    best = None
+    for s in S.reshape(len(f), -1).T:
+        if np.all(np.isfinite(s)) and np.abs(s).max() > 1e-3:
+            g = -np.gradient(np.unwrap(np.angle(s)), 2 * np.pi * f)
+            g = g[np.abs(s) > 0.1 * np.abs(s).max()]
+            best = max(best or 0.0, float(g.max()))
+    return best
 
 
 class OpenEMS(Solver):
@@ -132,6 +158,25 @@ class OpenEMS(Solver):
     def readback(self, run, p):
         from .readback import readback
         return readback(run.m, p.grid, p.bc, sigma=run.s.sigma)
+
+    def estimate(self, run):
+        """Cells of the mesh x timesteps (the pulse and the ring-down, at most --max-steps) x the runs, at
+        CELLS_PER_CORE_S per core."""
+        from .boundaries import resolve_bc
+        from .mesh import auto_mesh
+        from .simulation import pulse_steps, port_index
+        s, m = run.s, run.m
+        bc = resolve_bc('PML_8' if s.antenna and s.bc == 'auto' else s.bc, m)
+        g = auto_mesh(m, run.fmin, run.fmax, res=s.res, fine=s.fine, air=s.air, ratio=s.ratio, nz_min=s.nz, bc=bc,
+                      curves=s.curves, vias=s.vias, via_snap=s.via_snap, log=lambda *a: None)
+        cells, dt = g['info']['cells'], g['info']['dt_ps'] * 1e-12
+        pulse = pulse_steps(run.fmin, run.fmax, g['info']['dt_ps'])
+        tg = _peak_delay(run)
+        ring = RING * abs(s.end_db) / 17.4 * tg / dt if tg else (PULSES - 1) * pulse
+        steps = int(min(s.max_steps, pulse + ring))
+        runs = (1 if s.antenna else len(port_index(m, s.excite))) * max(1, len(s.converge or []))
+        return dict(seconds=runs * cells * steps / (CELLS_PER_CORE_S * (os.cpu_count() or 1)), gb=g['info']['mem_gb'],
+                    what=f"{cells / 1e6:.2f} M cells, {runs} run(s) of ~{steps:,} timesteps")
 
     # ---- the run ---------------------------------------------------------------------------------------
     def prepare(self, run):

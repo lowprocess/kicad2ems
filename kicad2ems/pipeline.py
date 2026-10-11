@@ -8,6 +8,8 @@ One run of kicad2ems as a sequence of stages, driven by a config.Settings, over 
                     as <name>_board.json: what every solver gets
         lines()     the transmission-line model (tlines.py): sections, Z0, coupled groups, discontinuities;
                     what the line solvers (qucs, scikit) solve
+        choose()    --solvers auto: the full-wave solver estimated cheapest for this board (Solver.estimate) among
+                    those that can run and model it, plus the line model; why, in the log and the summary
         assess()    each solver against this board and run: one named that cannot model it stops the run, a
                     reference is left out with a warning
         prepare()   each solver lowers the board to its own form (openEMS: boundaries, mesh and the mesh preview;
@@ -31,7 +33,7 @@ from . import __version__
 from .board import Board
 from .plots import save, preview, plot_results, plot_lines
 from .touchstone import write_touchstone, read_touchstone
-from .solvers import registry, label, resolve_lines, LINES, FEATURES
+from .solvers import registry, label, resolve_lines, LINES, AUTO, FEATURES
 from .parity import describe
 
 
@@ -224,7 +226,7 @@ class Job:
         for st in (self.model, self.lines):
             self.stage(st.__name__)
             st()
-        if not self.assess():
+        if not self.choose() or not self.assess():
             return 2
         for st in (self.prepare, self.solve, self.outputs):
             self.stage(st.__name__)
@@ -257,7 +259,7 @@ class Job:
             self.log(f"line model: solved with {reg[line].tool} (lines: qucsator if installed, else scikit-rf)")
         if self.plan:
             self.log("solvers: " + ", ".join(label(x) for x in self.plan))
-        for name in list(self.plan):
+        for name in [x for x in self.plan if x != AUTO]:
             ok, what = reg[name].check(s)
             if ok:
                 continue
@@ -321,6 +323,53 @@ class Job:
                       (", ..." if len(self.lm.groups) > 6 else "") + ")" if self.lm.groups else "") +
                      "; discontinuities: " + (", ".join(f"{n} {k}" for k, n in sorted(cnt.items())) or "none"))
         self.figure(plot_lines(self.lm, self.m, self.name), '_tlines.png', 'lines', 'transmission-line sections')
+
+    def choose(self):
+        """--solvers auto: the full-wave solver (consumes the board) estimated cheapest among those that can run,
+        can model this board and fit in memory, plus the line model where it applies (only the line model when a
+        full-wave solver is named too). False: auto was named and nothing can run."""
+        if AUTO not in self.plan:
+            return True
+        s, reg, ram = self.s, registry(), ram_gb()
+        est, not_used = {}, {}
+        named_fw = any(n in reg and reg[n].consumes == 'board' for n in self.plan)     # one named: auto adds the line model
+        for n, sv in reg.items():
+            if sv.consumes != 'board' or named_fw:
+                continue
+            ok, what = sv.check(s)
+            why = [] if ok else [f"cannot run: {what}"]
+            why = why or sv.assess(self)
+            if not why:
+                try:
+                    e = sv.estimate(self)
+                except Exception as ex:                             # an estimate never stops the run
+                    e, why = None, [f"no estimate: {type(ex).__name__}: {ex}"]
+                if e is not None and ram and e['gb'] > 0.8 * ram:
+                    why = [f"needs ~{e['gb']:.1f} GB, {ram:.0f} GB installed"]
+                elif e is not None:
+                    est[n] = e
+            if why:
+                not_used[n] = '; '.join(why)
+        pick = [min(est, key=lambda n: est[n]['seconds'])] if est else []
+        line = resolve_lines(s)
+        if reg[line].check(s)[0] and not reg[line].assess(self):
+            pick.append(line)
+        if not pick:
+            return self._drop(AUTO, '; '.join(f"{n}: {w}" for n, w in not_used.items()) or 'no solver applies')
+        t = lambda sec: f"~{sec:.0f} s" if sec < 120 else f"~{sec / 60:.0f} min"
+        self.log(f"solvers auto: {' + '.join(pick)}" + (f" ({est[pick[0]]['what']}, {t(est[pick[0]]['seconds'])})"
+                                                        if pick[0] in est else '') +
+                 "".join(f"; {n} not chosen ({e['what']}, {t(e['seconds'])})" for n, e in est.items() if n not in pick) +
+                 "".join(f"; {n} not used: {w}" for n, w in not_used.items()) + "; force one with --solvers <name>")
+        swap = lambda xs: [x for x in xs if x != AUTO] + [p for p in pick if p not in xs] if AUTO in xs else xs
+        self.plan, self.named = swap(self.plan), swap(self.named)
+        if s.preview:                                               # chosen for a preview: prepared, not solved
+            self.previewed += [n for n in self.plan if reg[n].previewed]
+            self.plan = [n for n in self.plan if not reg[n].previewed]
+        self.plan = [n for n in reg if n in self.plan]
+        self.summary.update(solvers=list(self.plan), auto=dict(chosen=pick, not_used=not_used,
+                                                               estimates={n: dict(e) for n, e in est.items()}))
+        return True
 
     def assess(self):
         """Can each solver model this board in this run? (False: a named one cannot; the run stops.)"""

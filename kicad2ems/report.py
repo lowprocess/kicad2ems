@@ -262,7 +262,17 @@ def build(sm, base):
     warn = sm.get('warnings', [])
     w = (f"<div class='warn'><b>{len(warn)} warning(s)</b><ul>" + "".join(f"<li>{_e(x)}</li>" for x in warn) +
          "</ul></div>") if warn else "<p class='ok'>No warnings.</p>"
-    section('summary', 'Summary', _kpis(k) + "<h3>Warnings</h3>" + w)
+    au = sm.get('auto')
+    if au:                                                          # --solvers auto: what it chose, and why
+        t_ = lambda sec: f"~{sec:.0f} s" if sec < 120 else f"~{sec / 60:.0f} min"
+        rows = [[_e(n), _e(e['what']), t_(e['seconds']), 'chosen' if n in au['chosen'] else 'not chosen']
+                for n, e in au['estimates'].items()] + [[_e(n), '', '', _e(f"not used: {why}")]
+                                                         for n, why in au['not_used'].items()]
+        w = (f"<h3>--solvers auto: {_e(' + '.join(au['chosen']))}</h3>" +
+             _table(['solver', 'estimate', 'time (rough)', ''], rows)) + "<h3>Warnings</h3>" + w
+    else:
+        w = "<h3>Warnings</h3>" + w
+    section('summary', 'Summary', _kpis(k) + w)
 
     # ---- model ----------------------------------------------------------------------------------------
     stack = [[_e(l['name']), f"{l['z0']:.3f}–{l['z1']:.3f}", f"{l['z1'] - l['z0']:.3f}", f"{l['er']:.2f}",
