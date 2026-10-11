@@ -9,50 +9,71 @@ event stream (--events, JSON lines). No Qt here, so it is testable without a dis
 """
 import glob, json, os, sys
 
-# settings the GUI edits, in form order: (key, label, kind, group); kind: str / float / int / bool / choice
-FIELDS = [
-    ('board', 'Board (.kicad_pcb)', 'file', 'Board'),
-    ('pos', 'Pick-and-place file', 'file', 'Board'),
-    ('nets', 'Nets (comma-separated, or auto)', 'list', 'Board'),
-    ('ground', 'Solid ground layer', 'str', 'Board'),
-    ('region', 'Region (x0,y0,x1,y1 or a drawing layer)', 'str', 'Board'),
-    ('ports', 'Extra ports (P3=J1.1, P4@x,y ...)', 'list', 'Board'),
-    ('cut_ports', 'Ports where tracks cross the region edge', 'bool', 'Board'),
-    ('edge_walls', 'Edge walls (xmin,xmax,ymin,ymax or all)', 'list', 'Board'),
-    ('fmin', 'f min (GHz)', 'float', 'Band'),
-    ('fmax', 'f max (GHz)', 'float', 'Band'),
-    ('points', 'Frequency points', 'int', 'Band'),
-    ('use_openems', 'openEMS (3D FDTD)', 'bool', 'Solvers'),
-    ('mom', 'mom25d (2.5D MoM, no openEMS needed)', 'bool', 'Solvers'),
-    ('fast', 'Line model (auto: qucsator, else scikit-rf)', ('', 'auto', 'skrf', 'qucsator'), 'Solvers'),
-    ('mom_mesher', 'MoM mesher', ('triangle', 'gmsh'), 'Solvers'),
-    ('fine', 'Fine cell at copper edges (mm, empty: auto)', 'float', 'openEMS mesh'),
-    ('res', 'Cells per wavelength', 'float', 'openEMS mesh'),
-    ('nz', 'Cells through each dielectric', 'int', 'openEMS mesh'),
-    ('converge', 'Convergence levels (e.g. 1,1.5)', 'list', 'openEMS mesh'),
-    ('excite', 'Driven ports (empty: all)', 'list', 'openEMS'),
-    ('mode', 'Mode', ('sparams', 'antenna'), 'openEMS'),
-    ('ff_freq', 'Pattern frequencies (GHz, antenna; empty: resonance)', 'list', 'openEMS'),
-    ('end_db', 'Stop at (dB)', 'float', 'openEMS'),
-    ('end_on', 'Stop on', ('ports', 'energy'), 'openEMS'),
-    ('max_steps', 'Timestep limit', 'int', 'openEMS'),
-    ('threads', 'Threads (0: openEMS default)', 'int', 'openEMS'),
-    ('dump', 'Dumps (FIELD@REGION[@GHz]; ...)', 'list', 'Field dumps'),
-    ('dump_port', 'Runs that record dumps (empty: first driven)', 'list', 'Field dumps'),
-    ('out', 'Output folder', 'dir', 'Output'),
-]
+# the option groups (options.Option.group) as the form's group boxes; others under their own name
+GUI_GROUPS = {'board': 'Board', 'band': 'Band', 'solvers': 'Solvers', 'output': 'Output', 'mom25d': 'Solvers',
+              'line model': 'Solvers', 'openEMS antenna mode': 'openEMS', 'openEMS field dumps': 'Field dumps'}
+TICK = 'solver:'                                          # a solver's tick box: solver:<name>
+
+
+def _kind(o):
+    """The form widget of an option: file / dir / bool / float / int / list / str, or a tuple of choices."""
+    if o.key == 'out':
+        return 'dir'
+    if o.path:
+        return 'file'
+    if o.choices:
+        return (('',) if o.default is None else ()) + tuple(o.choices)
+    return {bool: 'bool', float: 'float', int: 'int', list: 'list'}.get(o.type, 'str')
+
+
+def make_fields():
+    """The settings the GUI edits, in form order: (key, label, kind, group). Made from the options that have a GUI
+    label (config.CORE, then each solver's) and a tick box per solver (key solver:<name>) heading the Solvers
+    group; Board and Band first, Output last."""
+    from ..config import all_options
+    from ..solvers import registry
+    rows = [(o.key, o.gui, _kind(o), GUI_GROUPS.get(o.group, o.group)) for _, o in all_options() if o.gui]
+    rows = [(TICK + n, sv.label, 'bool', 'Solvers') for n, sv in registry().items()] + rows
+    order = ['Board', 'Band', 'Solvers'] + [g for *_, g in rows if g not in ('Board', 'Band', 'Solvers', 'Output')]
+    rank = {g: i for i, g in enumerate(dict.fromkeys(order + ['Output']))}
+    return sorted(rows, key=lambda r: rank[r[3]])                 # stable: the option order within a group
+
+
+FIELDS = make_fields()
 SEMICOLON_LISTS = ('ports', 'dump')                       # items that may hold commas themselves
-# the openEMS tick box ('use_openems') is not a setting of its own: with it off, the form's values carry
-# solvers = the other solvers that are on (see solvers_from_form); 'solvers' is the GUI's, like the fields
-MANAGED = {k for k, *_ in FIELDS} - {'use_openems'} | {'solvers'}
+# the tick boxes are not settings of their own: the form's values carry solvers = the ticked solvers (see
+# solvers_from_form). 'solvers', 'mom' and 'fast' belong to the boxes, like the fields
+MANAGED = {k for k, *_ in FIELDS if not k.startswith(TICK)} | {'solvers', 'mom', 'fast'}
+
+
+def solver_ticks(vals):
+    """{solver:<name>: ticked} for a settings dict: the solvers its plan runs (openEMS by default; solvers, mom =
+    true and fast name the others; 'lines' as resolved here). solvers = [] ticks none."""
+    from ..config import build_settings
+    from ..solvers import registry, resolve_lines, LINES
+    if vals.get('solvers') == []:
+        run = []
+    else:
+        s = build_settings({k: vals.get(k) for k in ('solvers', 'mom', 'fast') if vals.get(k) not in (None, '')})
+        run = s.solver_plan(preview=False)[0]
+        run = [resolve_lines(s) if x == LINES else x for x in run]
+    return {TICK + n: n in run for n in registry()}
 
 
 def solvers_from_form(vals):
-    """The form's values (with the openEMS tick box, 'use_openems') as settings: without openEMS, solvers lists
-    the other solvers that are on (an empty list: none is); with it, solvers is left to its default."""
+    """The form's values (with the solver tick boxes) as settings: solvers lists the ticked solvers, or is left to
+    its default (openEMS) when that alone is ticked; an empty list when none is. Without tick boxes in vals
+    (settings rather than the form's own values), vals as they are."""
     out = dict(vals)
-    if not out.pop('use_openems', True):
-        out['solvers'] = [x for x, on in (('mom', out.get('mom')), ('lines', bool(out.get('fast')))) if on]
+    ticks = [k for k in out if k.startswith(TICK)]
+    if not ticks:
+        return out
+    on = [k[len(TICK):] for k in ticks if out.pop(k)]
+    out.pop('mom', None)
+    out.pop('fast', None)
+    out.pop('solvers', None)
+    if on != ['openems']:
+        out['solvers'] = on
     return out
 
 
@@ -70,7 +91,7 @@ def write_toml(path, values):
     """A flat TOML file of the non-empty settings."""
     lines = ["# written by the kicad2ems GUI"]
     for k, v in solvers_from_form(values).items():
-        if v is None or v == '' or v == [] or (k in ('cut_ports', 'mom') and v is False):
+        if v is None or v == '' or (v == [] and k != 'solvers') or (k in ('cut_ports', 'mom') and v is False):
             continue
         lines.append(f"{k} = {toml_value(v)}")
     with open(path, 'w') as fh:
@@ -142,21 +163,27 @@ def save_config(path, values, template=None):
     else:
         import re
         src = open(template).read().splitlines()
-        out, seen, i, first_table = [], set(), 0, None
+        out, seen, i, first_table, table = [], set(), 0, None, {}
         key_re = re.compile(r'^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)')
         while i < len(src):
             line = src[i]
-            if re.match(r'^\s*\[', line) and first_table is None:
-                first_table = len(out)
+            head = re.match(r'^\s*\[\s*([^\]]+?)\s*\]', line)
+            if head:
+                first_table = len(out) if first_table is None else first_table
+                table = _table_keys(head.group(1))
             m = key_re.match(line)
-            if not m:
+            if not m or table is None:                              # not a key, or another tool's table
                 out.append(line)
                 i += 1
                 continue
             raw = m.group(2)
             k = raw.replace('-', '_')
             j = _value_end(src, i, m.end())
-            k_val = 'mask' if k == 'no_mask' else k
+            k_val = table.get(k) if table else ('mask' if k == 'no_mask' else k)
+            if k_val is None:                                      # not a setting of that solver: untouched
+                out.extend(src[i:j])
+                i = j
+                continue
             if k_val not in vals and k_val in MANAGED:                  # the field was cleared: drop the line
                 seen.add(k_val)
                 i = j
@@ -192,6 +219,22 @@ def save_config(path, values, template=None):
     with open(tmp, 'w') as fh:
         fh.write(text)
     os.replace(tmp, path)
+
+
+def _table_keys(name):
+    """How save_config reads the keys of a TOML table: {} for one read like the top level ([openems]), {short
+    name: setting} for a solver's [solver.<name>], None for another tool's."""
+    from ..solvers import get
+    name = name.strip().strip('"')
+    if name.lower() == 'openems':
+        return {}
+    if name.lower().startswith('solver.'):
+        try:
+            sv = get(name.split('.', 1)[1].strip('"'))
+        except ValueError:
+            return None
+        return {o.short: o.key for o in sv.options} | {o.key: o.key for o in sv.options}
+    return None
 
 
 def _comment(text):
@@ -263,8 +306,10 @@ def extra_values(path):
 
 
 def find_results(out_dir):
-    """(label, path) of the files of the newest finished run in out_dir (from its <name>_openems.json)."""
-    sums = sorted(glob.glob(os.path.join(out_dir, '*_openems.json')), key=os.path.getmtime)
+    """(label, path) of the files of the newest finished run in out_dir (from its <name>_run.json, or the
+    <name>_openems.json of an older run)."""
+    sums = sorted(glob.glob(os.path.join(out_dir, '*_run.json')) + glob.glob(os.path.join(out_dir, '*_openems.json')),
+                  key=os.path.getmtime)
     if not sums:
         return []
     with open(sums[-1]) as fh:
@@ -274,11 +319,9 @@ def find_results(out_dir):
 
 def settings_values(path):
     """The GUI's fields from a TOML config (through the same rules as the command line). The solver tick
-    boxes show the config's solvers: openEMS unless solvers leaves it out, mom25d and the line model when
-    either their own key or solvers names them."""
+    boxes show the solvers the config runs (solver_ticks)."""
     from ..config import build_settings, read_toml
     s = build_settings({}, path)
-    named = s.solvers or []
     out = {}
     for key, *_ in FIELDS:
         v = getattr(s, key, None)
@@ -287,7 +330,5 @@ def settings_values(path):
         out[key] = v
     if 'out' not in read_toml(path)[0]:                    # the default folder: left to the run, not pinned here
         out['out'] = None
-    out['use_openems'] = s.solvers is None or 'openems' in named
-    out['mom'] = bool(s.mom) or 'mom' in named
-    out['fast'] = s.fast or ('auto' if 'lines' in named else None)
+    out.update(solver_ticks(dict(solvers=s.solvers, mom=s.mom, fast=s.fast)))
     return out

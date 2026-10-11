@@ -9,32 +9,28 @@ openEMS (3D FDTD), mom25d (2.5D MoM) and a transmission-line model.
     mesh = auto_mesh(b, 1e9, 6e9, bc=bc)        # openEMS's mesh of it
 
 Modules
-    importers/    board readers: kicad/ (.kicad_pcb: sexpr, shapes, board, nets, pnp, outline)
-    board         the canonical board: stack, copper, vias, lumped ports (vertical / gap), parts, edge walls,
-                  region cropping; board.json
+    importers/    board readers: kicad/ (.kicad_pcb: sexpr, shapes, board, nets, pnp, outline), gerber.py
+    board         the canonical board: stack, copper with nets, vias, lumped ports (vertical / gap), parts, edge
+                  walls, primitives; board.json
+    region        region cropping, nets = auto, extra ports, cut ports
     geometry      polygon helpers (y flip, hole splitting for CSXCAD)
     parts         lumped R / L / C parts from two-pad footprints
-    boundaries    per-side boundary conditions, cavity-resonance check
-    mesh          automatic rectilinear mesh
-    edges         edge walls: PEC where the ground planes end at chosen board sides
-    converge      mesh convergence levels
-    simulation    openEMS / CSXCAD setup and runs (needs openEMS)
-    progress      openEMS output redirection, progress / ETA
-    dielectric    wideband (Djordjevic-Sarkar / Debye) dielectric model
-    antenna       antenna mode: NF2FF, gain, efficiency, patterns
-    dumps         field dumps
-    tlines        transmission-line sections: cross-sections and closed-form Z0 per trace / pad / via,
-                  coupled sections and discontinuities
-    strips        copper drawn as rectilinear shapes turned into line strips
-    coupled       coupled microstrip (even / odd mode) and multiconductor line blocks
-    fastsolve     the sections as a circuit: S-parameters in milliseconds (scikit-rf or qucsator)
+    edges         edge walls where the ground planes end at chosen board sides
+    options       Option (one setting, declared once) and the value converters
+    solvers/      the solver plugins: Solver, Result, the registry (entry points 'kicad2ems.solvers'),
+                  capabilities
+      openems/      openEMS (3D FDTD): plugin, boundaries, mesh, converge, simulation, progress, dielectric,
+                    antenna, dumps, fields
+      mom           mom25d (2.5D MoM): the board solved through mom25d.api.solve_board
+      lines/        the line model: tlines (sections, Z0, coupled sections, discontinuities), strips, coupled,
+                    fastsolve (the sections as a circuit); plugin (qucs, scikit)
     sparams       mixed-mode conversion, reciprocity fill
     touchstone    .sNp read / write
-    plots         figures: model + mesh preview, line sections, S-parameters, convergence, antenna
-    report        HTML report, rendered from the run summary (<name>_openems.json)
+    plots         figures: model / mesh preview, line sections, S-parameters, convergence, antenna
+    report        HTML report, rendered from the run summary (<name>_run.json)
     events        run events as JSON lines (--events)
-    config        Settings: defaults <- TOML <- command line
-    pipeline      Job: the stages of a run
+    config        Settings (made from the option tables): defaults <- TOML <- command line
+    pipeline      Job: the stages of a run, over the solver plugins
     cli           command line (kicad2ems / python -m kicad2ems)
 
 Documentation: docs/index.md in the repository.

@@ -19,11 +19,14 @@ def test_preview_with_mom(tmp_path, run_cli):
     code, so, se = run_cli(FILTER, '--preview', '--mom', '--mom-dmax', '0.8', '--mom-solves', '8', '--points', '41',
                            '--out', str(out))
     assert code == 0, so + se
-    assert (out / 'filter_mom.s2p').exists() and (out / 'filter_mom.png').exists() and not (out / 'filter.xml').exists()
-    sm = json.load(open(out / 'filter_openems.json'))
-    mo = sm['mom']
+    assert (out / 'filter_mom25d.s2p').exists() and (out / 'filter_mom25d.png').exists()
+    assert not (out / 'filter.xml').exists()                        # no CSX file: MoM reads the board
+    sm = json.load(open(out / 'filter_run.json'))
+    mo = sm['solved']['mom25d']
     assert mo['solves'] <= 8 and mo['unknowns'] > 100 and {p['kind'] for p in mo['ports']} == {'lumped'}
-    assert mo['compare_fast'] and mo['table'][0]['param'] == 'S(P1,P1)'
+    assert mo['table'][0]['param'] == 'S(P1,P1)' and sm['results']['reference'] == 'mom25d'
+    line = next(n for n in sm['solved'] if n != 'mom25d')          # the config's fast = "auto": against MoM
+    assert sm['solved'][line]['reference'] == 'mom25d' and sm['solved'][line]['compare']
     assert 'mom25d' in so
 
 
@@ -35,9 +38,9 @@ def test_mom_without_openems(run_cli, tmp_path, no_csxcad):
     code, so, err = run_cli(FILTER, '--preview', '--mom', '--fast', 'skrf', '--mom-dmax', '0.8', '--mom-solves', '8',
                             '--points', '41', '--out', out)
     assert code == 0, so + err
-    sm = json.loads((out / 'filter_openems.json').read_text())
-    assert sm['mom']['solves'] <= 8 and sm['mom']['compare_fast']
-    for f in ('filter_mom.s2p', 'filter_mom.png', 'filter_fast.s2p', 'filter_report.html', 'filter_board.json'):
+    sm = json.loads((out / 'filter_run.json').read_text())
+    assert sm['solved']['mom25d']['solves'] <= 8 and sm['solved']['scikit']['compare']
+    for f in ('filter_mom25d.s2p', 'filter_mom25d.png', 'filter_scikit.s2p', 'filter_report.html', 'filter_board.json'):
         assert (out / f).exists(), f
 
 

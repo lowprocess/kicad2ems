@@ -1,6 +1,6 @@
 """
-mom25d as a solver: the board of the run (Board.to_dict(), the content of <name>_board.json) solved by the
-2.5D Method-of-Moments solver mom25d - the package next to this one, which reads that format itself.
+mom25d as a solver plugin: the board of the run (Board.to_dict(), the content of <name>_board.json) solved by
+the 2.5D Method-of-Moments solver mom25d - the package next to this one, which reads that format itself.
 
     S, names, zref, info = solve(board, freq, dmax=0.3)
 
@@ -9,6 +9,11 @@ for it, and edge walls are rows of vias.
 """
 import os
 import numpy as np
+
+from ..options import Option
+from . import Solver, Result
+
+G = 'mom25d'
 
 
 def mom25d_status():
@@ -68,3 +73,63 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
     info = dict(seconds=res.seconds, solves=res.solves, unknowns=res.unknowns, triangles=res.triangles,
                 solver=res.solver, mesher=mesher, dmax_mm=dmax, ports=res.ports, notes=res.notes)
     return S, names, zref, info
+
+
+def _solid_ground(m):
+    """The board's ground layer, else the lowest copper layer covering half the outline (mom25d's choice), or
+    None."""
+    if m.ground:
+        return m.ground
+    half = 0.5 * m.outline.area
+    return next((l for l in m.cu_order if sum(p.area for p in m.copper.get(l, [])) >= half), None)
+
+
+class MoM25D(Solver):
+    name, aliases, label = 'mom25d', ('mom',), 'mom25d (MoM)'
+    consumes, previewed, rank = 'board', False, 1
+    capabilities = dict(ports='yes: lumped, or de-embedded wave ports on a long enough feed', gap_ports='no',
+                        diff_pairs='yes', parts='yes: one series element across the gap',
+                        outline='ignored: laterally infinite dielectric', planes='yes: meshed (slow on plane-heavy boards)',
+                        edge_walls='approximated: via rows every 0.5 mm', thickness='ignored: sheets',
+                        conductor_loss='yes', dispersion='no: constant tan d', radiation='yes', cavity='no',
+                        antenna='no: it solves copper over an infinite ground plane')
+    options = [
+        Option('mom_dmax', 0.3, "largest MoM cell along the copper, mm (default {default}; planes 3x, refined near "
+               "traces)", float, name='dmax', group=G, cli=dict(metavar='MM')),
+        Option('mom_port', 'auto', "auto (default): de-embedded wave ports where a straight feed allows, else lumped",
+               choices=('auto', 'wave', 'lumped'), name='port', group=G),
+        Option('mom_mesher', 'triangle', "MoM surface mesher (default triangle)", choices=('triangle', 'gmsh'),
+               name='mesher', gui='MoM mesher', group=G),
+        Option('mom_solves', 60, "most EM solves of the adaptive sweep (default {default})", int, name='solves',
+               group=G, cli=dict(metavar='N')),
+    ]
+
+    def check(self, s=None):
+        return mom25d_status()
+
+    def assess(self, run):
+        m, out = run.m, []
+        if run.s.antenna:
+            out.append("antenna mode: it solves copper over an infinite ground plane")
+        gaps = [p.name for p in m.ports if p.kind == 'gap']
+        if gaps:
+            out.append(f"gap port(s) {', '.join(gaps)}: no planar equivalent")
+        if _solid_ground(m) is None:
+            out.append("no solid ground plane (no copper layer covers half the board): set ground = <layer>")
+        return out
+
+    def solve(self, run, prep):
+        s = run.s
+        S, names, zref, info = solve(run.m, run.freq, dmax=s.mom_dmax, port=s.mom_port, mesher=s.mom_mesher,
+                                     max_solves=s.mom_solves, sigma=s.sigma, log=run.log,
+                                     progress=lambda k, n, f: run.status('mom25d', dict(fraction=k / n, solves=k,
+                                                                                        f_ghz=f / 1e9)))
+        kinds = ", ".join(f"{p['name']} {p['kind']}" for p in info['ports'])
+        info.update(kpi=f"{info['unknowns']:,} unknowns, {info['seconds']:.0f} s",
+                    about=f"mom25d, a 2.5D Method-of-Moments solver: {info['unknowns']:,} unknowns ({info['triangles']:,} "
+                          f"triangles, {info['mesher']} mesher, cells up to {info['dmax_mm']:g} mm), {info['solves']} EM "
+                          f"solves of an adaptive sweep in {info['seconds']:.0f} s; ports: {kinds}. MoM sees laterally "
+                          f"infinite dielectrics over an infinite ground plane: no board edge, no air box, no box "
+                          f"resonances; radiation and surface waves are in.")
+        run.log(f"mom25d: {info['solves']} EM solves, {info['seconds']:.0f} s")
+        return Result(S, names, zref, info['seconds'], info=info, comment=f"mom25d 2.5D MoM ({run.name})")

@@ -1,35 +1,35 @@
 """
-One run of kicad2ems as a sequence of stages, driven by a config.Settings:
+One run of kicad2ems as a sequence of stages, driven by a config.Settings, over the solver plugins (solvers/):
 
     Job(settings).run()
-        preflight() the solvers of the run (Settings.solver_plan) checked before any work: openEMS imports,
-                    mom25d imports, the line model has a circuit solver
+        preflight() the solvers of the run (Settings.solver_plan; 'lines' resolved to qucs or scikit), each
+                    checked before any work: one named in `solvers` that cannot run stops the run here
         model()     the board file -> Board (stack, copper, vias, ports, lumped parts, edge walls), written
                     as <name>_board.json: what every solver gets
-        mesh()      boundaries, automatic mesh (or the --converge levels), cavity check, field-dump specs
-        lines()     transmission-line sections and Z0 (tlines.py); with the line-model solver, their
-                    S-parameters (fastsolve.py)
-        mom()       with mom25d: the board solved by the 2.5D MoM solver (solvers/mom.py)
-        preview()   <name>_mesh.png, excitation length; without openEMS the run ends here (after the report)
-        solve()     openEMS runs: S-parameters (all excited ports, --jobs), --converge levels, or antenna mode
-        outputs()   Touchstone, plots, field-dump maps, antenna / convergence results, line-model comparison
-        report()    <name>_openems.json (the run summary) and <name>_report.html built from it
+        lines()     the transmission-line model (tlines.py): sections, Z0, coupled groups, discontinuities;
+                    what the line solvers (qucs, scikit) solve
+        assess()    each solver against this board and run: one named that cannot model it stops the run, a
+                    reference is left out with a warning
+        prepare()   each solver lowers the board to its own form (openEMS: boundaries, mesh and the mesh preview;
+                    with --preview it is prepared, not solved); without openEMS, <name>_model.png
+        solve()     the solvers, the cheap ones first: S-parameters over the board's ports
+        outputs()   <name>_<solver>.sNp per solver; the first solver's plot <name>_<solver>.png with the others
+                    (and --compare) overlaid, and each compared with it; each solver's own outputs (openEMS:
+                    field maps, antenna, convergence)
+        report()    <name>_run.json (the run summary) and <name>_report.html built from it
 
-Everything the report shows is collected in Job.summary, a JSON-friendly dict written to
-<name>_openems.json; report.py renders that dict and nothing else. Every message goes through Job.log
-(printed, kept for the report, and sent to --events as JSON lines).
+Everything the report shows is collected in Job.summary, a JSON-friendly dict written to <name>_run.json;
+report.py renders that dict and nothing else. Every message goes through Job.log (printed, kept for the
+report, and sent to --events as JSON lines).
 """
 import datetime, json, os, time
 import numpy as np
 
 from . import __version__
 from .board import Board
-from .solvers.openems.boundaries import resolve_bc, cavity_check
-from .solvers.openems.mesh import auto_mesh
-from .plots import save, preview, plot_results, plot_convergence, plot_antenna, plot_pattern, plot_lines
-from .sparams import mixed_mode, fill_reciprocal
+from .plots import save, preview, plot_results, plot_lines
 from .touchstone import write_touchstone, read_touchstone
-from .solvers.openems.dumps import parse_dump, estimate_size_mb, plot_fd_dumps
+from .solvers import registry, label, resolve_lines, LINES
 
 
 def ram_gb():
@@ -70,9 +70,9 @@ def unknown_note(S, names):
 
 
 def compare_table(freq, S, Sx, names, floor_db=-40.0):
-    """openEMS (S) against another result (Sx) on the same frequencies: per S-parameter the largest
+    """A reference result (S) against another (Sx) on the same frequencies: per S-parameter the largest
     vector difference |S - Sx| and the maxima in dB; for transmissions also the largest |S| difference
-    in dB (where openEMS is above floor_db) and the delay difference (Sx - S, from the phase slope) in
+    in dB (where the reference is above floor_db) and the delay difference (Sx - S, from the phase slope) in
     ps. (A reflection's dB difference is dominated by where its nulls fall, so it is left out.)"""
     rows = []
     w = 2 * np.pi * freq
@@ -86,7 +86,7 @@ def compare_table(freq, S, Sx, names, floor_db=-40.0):
             m = da > floor_db
             row = dict(param=f"S({names[i]},{names[j]})",
                        max_ddb=float(np.max(np.abs(dbx - da)[m])) if m.any() and i != j else None,
-                       max_dvec=float(np.max(np.abs(b[ok] - a[ok]))), openems_max_db=float(da.max()),
+                       max_dvec=float(np.max(np.abs(b[ok] - a[ok]))), ref_max_db=float(da.max()),
                        other_max_db=float(dbx.max()), ddelay_ps=None)
             if i != j and m.all():
                 slope = lambda s: -np.polyfit(w[ok], np.unwrap(np.angle(s[ok])), 1)[0]
@@ -95,7 +95,7 @@ def compare_table(freq, S, Sx, names, floor_db=-40.0):
     return rows
 
 
-SOLVER_LABELS = dict(openems='openEMS (FDTD)', mom='mom25d (MoM)', lines='line model')
+OVERLAY_STYLES = (':', '-.', (0, (1, 1)), (0, (5, 1)), (0, (3, 1, 1, 1)))    # the other solvers on the plot
 
 
 def board_from_settings(s, log=print):
@@ -123,22 +123,19 @@ class Job:
         if settings.board.lower().endswith('.json') and self.name.endswith('_board'):
             self.name = self.name[:-len('_board')]                 # <name>_board.json of an earlier run
         self.fmin, self.fmax = settings.fmin * 1e9, settings.fmax * 1e9
+        self.freq = np.linspace(self.fmin, self.fmax, settings.points)
         self.antenna = settings.antenna
         self.t0 = time.time()
-        self.levels = self.ant = self.result = self.lm = self.fast = self.mom_res = None
-        self.coarse, self.dumps = [], []
+        self.lm = self.m = None
         self.events = None
         self.plan, self.named = settings.solver_plan()              # the solvers of this run; those named in solvers
-        self.line_backend = None                                    # skrf / qucsator, resolved by preflight()
+        # solvers --preview prepares without solving them (openEMS: the mesh preview)
+        self.previewed = [x for x in settings.solver_plan(preview=False)[0] if x not in self.plan]
+        self.prep, self.results = {}, {}                             # per solver: prepare()'s form, solve()'s Result
         mode = 'preview' if settings.preview else ('antenna' if self.antenna else 'S-parameters')
         self.summary = dict(name=self.name, version=__version__, mode=mode, command=command, solvers=list(self.plan),
                             created=datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), settings=settings.options(),
-                            images={}, files=self.files, dumps=[])
-
-    @property
-    def fdtd(self):
-        """True when this run includes openEMS."""
-        return 'openems' in self.plan
+                            images={}, files=self.files, dumps=[], solved={})
 
     # ---- helpers -----------------------------------------------------------------------------------
     def log(self, *msg):
@@ -203,61 +200,53 @@ class Job:
     def _run(self):
         if not self.preflight():
             return 2
-        for st in (self.model, self.mesh, self.lines, self.mom, self.preview):
+        for st in (self.model, self.lines):
             self.stage(st.__name__)
             st()
-        if self.fdtd:
-            for st in (self.solve, self.outputs):
-                self.stage(st.__name__)
-                st()
+        if not self.assess():
+            return 2
+        for st in (self.prepare, self.solve, self.outputs):
+            self.stage(st.__name__)
+            st()
         self.report()
-        failed = [SOLVER_LABELS[x] for x in self.named if x in self.plan and not self._solved(x)]
+        failed = [label(x) for x in self.named if x in self.plan and x not in self.results]
         if failed:
             self.log(f"failed: {', '.join(failed)} gave no result (see the warnings above)")
             return 1
         return 0
 
-    def _solved(self, solver):
-        return dict(openems=self.result is not None, mom=self.mom_res is not None or self.antenna,
-                    lines=self.fast is not None)[solver]
+    def _drop(self, name, why, what='cannot run'):
+        """A solver that cannot take part: False (the run stops) when it is named in `solvers`, else it is left
+        out with a warning."""
+        if name in self.named:
+            self.log(f"{name} {what}: {why}")
+            return False
+        self.log(f"WARNING: {name} {what}, left out: {why}")
+        self.plan.remove(name)
+        return True
 
     def preflight(self):
         """Before any work: can the solvers of this run run? One named in `solvers` that cannot stops the run
         here (False); a reference added by --mom / --fast is left out with a warning."""
-        s = self.s
+        s, reg = self.s, registry()
+        if LINES in self.plan:                                      # the line model: qucs if installed, else scikit
+            line = resolve_lines(s)
+            self.plan = [line if x == LINES else x for x in self.plan if x != line or LINES not in self.plan]
+            self.named = [line if x == LINES else x for x in self.named if x != line or LINES not in self.named]
+            self.log(f"line model: solved with {reg[line].tool} (lines: qucsator if installed, else scikit-rf)")
         if self.plan:
-            self.log("solvers: " + ", ".join(SOLVER_LABELS[x] for x in self.plan))
-        if self.fdtd:
-            from .solvers.openems.simulation import check_openems
-            ok, lines = check_openems()
-            if not ok:
-                self.log("openEMS cannot be imported - details:\n" + "\n".join(lines) + "\n"
+            self.log("solvers: " + ", ".join(label(x) for x in self.plan))
+        for name in list(self.plan):
+            ok, what = reg[name].check(s)
+            if ok:
+                continue
+            if name == 'openems' and name in self.named:
+                self.log("openEMS cannot be imported - details:\n" + "\n".join(reg[name].details()[1]) + "\n"
                          "Without openEMS: --preview (model, mesh, line sections), or the solvers that need no "
                          "openEMS: --solvers mom,lines")
                 return False
-        if 'mom' in self.plan and not self.antenna:
-            from .solvers.mom import mom25d_status
-            ok, what = mom25d_status()
-            if not ok:
-                if 'mom' in self.named:
-                    self.log(f"mom25d cannot run: {what}")
-                    return False
-                self.log(f"WARNING: mom25d cannot run, the MoM reference is left out: {what}")
-                self.plan.remove('mom')
-            elif 'no compiled core' in what:
-                self.log(f"note: mom25d {what}")
-        if 'lines' in self.plan:
-            from .solvers.lines.fastsolve import resolve_backend
-            try:
-                self.line_backend, _ = resolve_backend(s.line_backend, s.qucsator)
-                if s.line_backend == 'auto':
-                    self.log(f"line model: solved with {self.line_backend} (fast = auto)")
-            except ValueError as e:
-                if 'lines' in self.named:
-                    self.log(f"the line model cannot be solved: {e}")
-                    return False
-                self.log(f"WARNING: fast line model ({s.line_backend}) left out: {e}")
-                self.plan.remove('lines')
+            if not self._drop(name, what):
+                return False
         self.summary['solvers'] = list(self.plan)
         return True
 
@@ -266,9 +255,6 @@ class Job:
         self.m = m = board_from_settings(s, log=self.log)
         self.log(m.describe())
         self.wrote('board (what every solver gets)', m.save(self.path('_board.json')))
-        if s.diel == 'wideband':
-            from .solvers.openems.dielectric import describe as describe_diel
-            self.log("\n".join(describe_diel(m.layers, s.diel_fref * 1e9, self.fmin, self.fmax)))
         ob = m.outline.bounds
         self.summary['model'] = dict(
             board=s.board, outline_mm=[ob[2] - ob[0], ob[3] - ob[1]], nets=s.nets or 'all', diel=s.diel,
@@ -282,47 +268,15 @@ class Job:
                    for p in m.parts],
             notes=list(m.notes))
 
-    def mesh(self):
-        s, m = self.s, self.m
-        air, bc = s.air, s.bc
-        if self.antenna:
-            from .solvers.openems.antenna import antenna_air
-            air = antenna_air(self.fmin, self.fmax, s.air)
-            bc = 'PML_8' if bc == 'auto' else bc
-            self.log(f"antenna mode: boundaries {bc}, air margin {air:.1f} mm")
-        self.bc = resolve_bc(bc, m)
-        kw = dict(air=air, ratio=s.ratio, nz_min=s.nz, bc=self.bc, curves=s.curves, vias=s.vias,
-                  via_snap=s.via_snap, log=self.log)
-        if s.converge:
-            from .solvers.openems.converge import mesh_levels, describe_levels
-            self.levels = mesh_levels(m, self.fmin, self.fmax, sorted(set(s.converge)), res=s.res, fine=s.fine, **kw)
-            self.log("\n".join(describe_levels(self.levels)))
-            self.grid = self.levels[-1][1]                          # the finest level gives the result
-            self.summary['levels'] = [dict(factor=f, cells=lm['info']['cells'], fine_mm=lm['info']['fine_mm'],
-                                           dt_ps=lm['info']['dt_ps']) for f, lm in self.levels]
-        else:
-            self.grid = auto_mesh(m, self.fmin, self.fmax, res=s.res, fine=s.fine, **kw)
-        if m.walls:
-            from .edges import describe, snap
-            for g in [self.grid] + [lm for _, lm in (self.levels or [])]:
-                g['walls'] = snap(m.walls, g)
-                g['info']['edge_walls'] = describe(m.walls, m).split(': ', 1)[1]
-        self.summary['mesh'] = self.grid['info']
-        if self.fdtd or s.preview:                                  # the box resonances are openEMS's alone
-            cavity_check(m, self.grid, self.bc, self.fmax, log=self.log)
-        self.dumps = [parse_dump(sp, m, self.grid) for sp in s.dump]   # validated before any run
-        for d in self.dumps:
-            self.log("  " + d.describe(self.grid))
-
     def lines(self):
-        """Transmission-line sections (always) and, with --fast, their S-parameters. A ballpark aid: whatever
-        goes wrong here is a warning, never the end of the run."""
+        """The transmission-line model: sections, coupled groups, discontinuities (and their plot). A ballpark aid
+        and what the line solvers solve: whatever goes wrong here is a warning, never the end of the run."""
         try:
             self._lines()
         except Exception as e:
             self.log(f"WARNING: transmission-line model failed: {type(e).__name__}: {e}")
-            self.lm = self.fast = None
-            self.summary.pop('fast', None)
+            self.lm = None
+            self.summary.pop('lines', None)
 
     def _lines(self):
         from .solvers.lines.tlines import build
@@ -346,217 +300,70 @@ class Job:
                       (", ..." if len(self.lm.groups) > 6 else "") + ")" if self.lm.groups else "") +
                      "; discontinuities: " + (", ".join(f"{n} {k}" for k, n in sorted(cnt.items())) or "none"))
         self.figure(plot_lines(self.lm, self.m, self.name), '_tlines.png', 'lines', 'transmission-line sections')
-        if 'lines' in self.plan:
-            self.fast_solve()
 
-    def mom(self):
-        """With mom25d among the solvers: the board solved by mom25d (2.5D Method of Moments), the full-wave
-        solver next to openEMS and the line model. A failure is a warning here; when mom25d was named in
-        `solvers`, the run ends with exit code 1 (see _run)."""
-        if 'mom' not in self.plan:
-            return
-        if self.antenna:
-            self.log("mom25d: not used in antenna mode (it solves copper over an infinite ground plane)")
-            return
-        try:
-            self._mom()
-        except Exception as e:
-            if os.environ.get('KICAD2EMS_TRACEBACK'):
-                raise
-            self.log(f"WARNING: mom25d failed: {type(e).__name__}: {e}")
-            self.mom_res = None
-            self.summary.pop('mom', None)
+    def assess(self):
+        """Can each solver model this board in this run? (False: a named one cannot; the run stops.)"""
+        for name in list(self.plan):
+            why = registry()[name].assess(self)
+            if why and not self._drop(name, '; '.join(why), 'cannot model this board'):
+                return False
+        self.summary['solvers'] = list(self.plan)
+        return True
 
-    def _mom(self):
-        from .solvers.mom import solve
-        s, m = self.s, self.m
-        self.freq = np.linspace(self.fmin, self.fmax, s.points)
-        S, names, zref, info = solve(m, self.freq, dmax=s.mom_dmax, port=s.mom_port, mesher=s.mom_mesher,
-                                     max_solves=s.mom_solves, sigma=s.sigma, log=self.log)
-        out = self.path(f"_mom.s{len(names)}p")
-        write_touchstone(out, self.freq, np.nan_to_num(S), zref, comment=f"mom25d 2.5D MoM ({self.name})", names=names)
-        self.wrote('S-parameters, mom25d (MoM)', out)
-        self.mom_res = dict(S=S, names=names, info=info)
-        self.summary['mom'] = dict(touchstone=self.rel(out), table=sparam_table(self.freq, S, names),
-                                   **{k: info[k] for k in ('seconds', 'solves', 'unknowns', 'triangles', 'solver',
-                                                           'mesher', 'dmax_mm', 'ports', 'notes')})
-        if self.fast:
-            self.summary['mom']['compare_fast'] = compare_table(self.freq, S, self.fast['S'], names)
-        self.log(f"mom25d: {info['solves']} EM solves, {info['seconds']:.0f} s -> {out}")
-
-    def fast_solve(self):
-        from .solvers.lines.fastsolve import solve, resolve_backend
-        s, m = self.s, self.m
-        backend = self.line_backend or s.line_backend               # resolved by preflight(); else as set
-        self.freq = np.linspace(self.fmin, self.fmax, s.points)
-        try:
-            if backend == 'auto':
-                backend = resolve_backend('auto', s.qucsator)[0]
-            S, seconds = solve(self.lm, m.ports, self.freq, backend=backend, sigma=s.sigma, qucsator=s.qucsator)
-        except (ValueError, RuntimeError) as e:                       # missing package / program: say how to fix
-            self.log(f"WARNING: fast line model ({backend}) failed: {e}")
-            return
-        Smm, names, zref = mixed_mode(S, m)
-        out = self.path(f"_fast.s{len(names)}p")
-        write_touchstone(out, self.freq, np.nan_to_num(Smm), zref, names=names,
-                         comment=f"line model, {backend} ({self.name})" + unknown_note(Smm, names))
-        self.wrote(f'S-parameters, fast line model ({backend})', out)
-        self.fast = dict(S=Smm, names=names, backend=backend, seconds=seconds)
-        self.summary['fast'] = dict(backend=backend, seconds=seconds, touchstone=self.rel(out),
-                                    table=sparam_table(self.freq, Smm, names))
-        self.log(f"fast line model ({backend}): {seconds * 1e3:.0f} ms -> {out}")
-
-    def preview(self):
-        from .solvers.openems.simulation import pulse_steps
-        from .solvers.openems.antenna import exc_fmax
-        s = self.s
-        self.figure(preview(self.m, self.grid, self.name), '_mesh.png', 'mesh', 'model and mesh')
-        self.log(f"wrote {self.path('_mesh.png')}")
-        if self.fdtd or s.preview:                                  # openEMS's run length: not for MoM / lines alone
-            ps = pulse_steps(self.fmin, self.fmax, self.grid['info']['dt_ps'],
-                             exc_fmax(self.fmin, self.fmax) if self.antenna else None)
-            self.summary['pulse_steps'] = ps
-            self.log(f"excitation pulse ~{ps} timesteps (estimate); --max-steps {s.max_steps} allows "
-                     f"{s.max_steps / ps:.0f} pulse lengths" +
-                     (" - WARNING: few for the fields to ring down: raise --max-steps" if s.max_steps < 20 * ps else ''))
-        if self.fdtd:                                               # the openEMS plot shows the references
-            return
-        if self.fast:                                               # nothing else to show it against
-            b = self.fast['backend']
-            self.figure(plot_results(self.freq, self.fast['S'], self.fast['names'],
-                                     f"{self.name} - fast line model ({b})", label=f"line model ({b})"),
-                        '_fast.png', 'fast', 'S-parameter plot, fast line model')
-        if self.mom_res:                                            # MoM against the line model
-            ov = [(self.freq, self.fast['S'], f"line model ({self.fast['backend']})", ':')] if self.fast else []
-            self.figure(plot_results(self.freq, self.mom_res['S'], self.mom_res['names'],
-                                     f"{self.name} - mom25d (MoM)", ov, label='mom25d'),
-                        '_mom.png', 'mom', 'S-parameter plot, mom25d')
+    def prepare(self):
+        for name in self.plan + self.previewed:
+            self.prep[name] = registry()[name].prepare(self)
+        if not any(self.summary['images'].get(k) for k in ('mesh', 'model')):     # no mesh preview: the model alone
+            self.figure(preview(self.m, None, self.name), '_model.png', 'model', 'model')
 
     def solve(self):
-        from .solvers.openems.simulation import run_excitations, port_index
-        s, m = self.s, self.m
-        self.excite = port_index(m, s.excite)
-        if self.antenna and len(self.excite) > 1:
-            self.log(f"antenna mode: driving {m.ports[self.excite[0]].name} only (one port per antenna run; "
-                     f"--excite to choose)")
-            self.excite = self.excite[:1]
-        dump_runs = port_index(m, s.dump_port) if s.dump_port else None
-        if self.dumps:
-            n_runs = len(dump_runs) if dump_runs else 1
-            self.log(f"field dumps: ~{estimate_size_mb(self.dumps, self.grid) * n_runs:.0f} MB on disk (rough), in "
-                     f"{n_runs} run(s)")
-        self.freq = np.linspace(self.fmin, self.fmax, s.points)
-        jobs = max(1, min(s.jobs, len(self.excite)))
-        ram = ram_gb()
-        if jobs > 1 and ram and jobs * self.grid['info']['mem_gb'] > 0.8 * ram:
-            self.log(f"WARNING: {jobs} parallel runs need ~{jobs * self.grid['info']['mem_gb']:.1f} GB, "
-                     f"{ram:.1f} GB RAM installed - use fewer --jobs")
-        progress = dict(mode='raw' if s.openems_output else 'bar', on_status=self.status if self.events else None)
-        run_kw = dict(end_db=s.end_db, end_on=s.end_on, sigma=s.sigma, threads=s.threads, diel=s.diel, max_steps=s.max_steps,
-                      diel_fref=s.diel_fref * 1e9, progress=progress, log=self.log)
-        for f, lm in (self.levels or [])[:-1]:                     # convergence: coarser levels first, no dumps
-            self.log(f"--- mesh level x{f:g} ({lm['info']['cells'] / 1e6:.2f} M cells) ---")
-            r = run_excitations(m, lm, self.freq, self.excite, self.bc, os.path.join(s.out, 'converge', f"L{f:g}"),
-                                jobs=jobs, **run_kw)
-            fill_reciprocal(r.S, self.excite)
-            self.coarse.append((f, mixed_mode(r.S, m)[0]))
-        if self.levels:
-            self.log(f"--- mesh level x{self.levels[-1][0]:g} (finest: the result) ---")
-        xml = self.path('.xml')
-        if self.antenna:
-            from .solvers.openems.antenna import run_antenna
-            k = self.excite[0]
-            self.result = run_antenna(m, self.grid, self.freq, k, self.bc, s.out,
-                                      ff_extra=[v * 1e9 for v in s.ff_freq], ff_pattern=s.ff_freq[0] * 1e9 if s.ff_freq else None,
-                                      step=s.ff_step, xml_path=xml, dumps=self.dumps, **run_kw)
-            self.ant = self.result.extra.get(m.ports[k].name)
-        else:
-            self.result = run_excitations(m, self.grid, self.freq, self.excite, self.bc, s.out, xml_path=xml,
-                                          dumps=self.dumps, dump_runs=dump_runs, jobs=jobs, **run_kw)
-        self.wrote('CSX geometry (AppCSXCAD)', xml)
+        """Each solver of the plan, the cheap ones first. A failure is a warning here; when the solver was
+        named in `solvers`, the run ends with exit code 1 (see _run)."""
+        for name in sorted(self.plan, key=lambda n: registry()[n].rank):
+            try:
+                self.results[name] = registry()[name].solve(self, self.prep.get(name))
+            except Exception as e:
+                if os.environ.get('KICAD2EMS_TRACEBACK'):
+                    raise
+                self.log(f"WARNING: {name} failed: {type(e).__name__}: {e}")
 
     def outputs(self):
-        from .solvers.openems.simulation import run_dir, log_path
-        s, m, name, freq = self.s, self.m, self.name, self.freq
-        r = self.result
-        for (pname, dname), path in r.dump_files.items():
-            d = next(x for x in self.dumps if x.name == dname)
-            if d.freqs and os.path.exists(path):
-                tag = pname.replace('+', 'p').replace('-', 'n')
-                pngs = plot_fd_dumps(d, path, m, self.path(f"_{tag}"), norm=r.dump_norm.get(pname), port=pname,
-                                     log=self.log)
-                self.summary['dumps'] += [dict(label=f"{dname} ({pname} driven)", png=self.rel(p)) for p in pngs]
-                for p in pngs:
-                    self.wrote(f"field map {dname} ({pname})", p)
-                self.log(f"  {dname} ({pname} driven): {path}" + (f" -> {len(pngs)} PNG map(s)" if pngs else
-                                                                   "  (volume: the GUI's Fields tab or ParaView)"))
-            else:
-                self.log(f"  {dname} ({pname} driven): {path}  (time domain: the GUI's Fields tab or ParaView)")
-        missing = fill_reciprocal(r.S, self.excite)
-        if missing:
-            self.log(f"note: {', '.join(m.ports[k].name for k in missing)} not excited - their reflection and the "
-                     f"terms between unexcited ports are unknown (written as 0)")
-        self.Smm, self.names, zref = mixed_mode(r.S, m)
-        out = self.path(f"_openems.s{len(self.names)}p")
-        write_touchstone(out, freq, np.nan_to_num(self.Smm), zref, names=self.names,
-                         comment=f"openEMS FDTD ({name})" + unknown_note(self.Smm, self.names))
-        self.wrote('S-parameters (Touchstone)', out)
+        s, freq, reg = self.s, self.freq, registry()
+        done = [n for n in self.plan if n in self.results]          # registry order: the first is the reference
+        if not done:
+            return
+        ref = self.results[done[0]]
+        for n in done:
+            r = self.results[n]
+            out = self.path(f"_{n}.s{len(r.names)}p")
+            write_touchstone(out, freq, np.nan_to_num(r.S), r.zref, names=r.names,
+                             comment=r.comment + unknown_note(r.S, r.names))
+            self.wrote(f"S-parameters, {reg[n].label}", out)
+            entry = dict(r.info, label=reg[n].label, touchstone=self.rel(out), seconds=r.seconds, names=r.names,
+                         zref=r.zref, table=sparam_table(freq, r.S, r.names))
+            if n != done[0] and r.names == ref.names:
+                entry.update(reference=done[0], compare=compare_table(freq, ref.S, r.S, r.names))
+            self.summary['solved'][n] = entry
+            self.log(f"{reg[n].label}: -> {out}")
         overlays = []
         if s.compare:
             fc, Sc = read_touchstone(s.compare)
             overlays.append((fc, Sc, os.path.basename(s.compare), '--'))
-        if self.fast:
-            overlays.append((freq, self.fast['S'], f"line model ({self.fast['backend']})", ':'))
-            self.summary['fast']['compare'] = compare_table(freq, self.Smm, self.fast['S'], self.names)
-        if self.mom_res and self.mom_res['names'] == self.names:
-            overlays.append((freq, self.mom_res['S'], 'mom25d (MoM)', '-.'))
-            self.summary['mom']['compare'] = compare_table(freq, self.Smm, self.mom_res['S'], self.names)
-        self.figure(plot_results(freq, self.Smm, self.names, f"{name} - openEMS", overlays), '_openems.png',
-                    'sparams', 'S-parameter plot')
-        runs = {p: dict(seconds=r.seconds.get(p), steps=r.steps.get(p), ended=getattr(r, 'ended', {}).get(p))
-                for p in r.seconds}
-        for k in self.excite:
-            runs.setdefault(m.ports[k].name, {})['log'] = self.rel(log_path(run_dir(m, k, s.out)))
-        self.summary.update(
-            results=dict(names=self.names, zref=zref, excited=[m.ports[k].name for k in self.excite],
-                         freq_ghz=[freq[0] / 1e9, freq[len(freq) // 2] / 1e9, freq[-1] / 1e9],
-                         table=sparam_table(freq, self.Smm, self.names), compare_file=s.compare),
-            runs=runs)
-        if self.ant:
-            self.antenna_outputs()
-        if self.levels:
-            self.convergence_outputs()
-
-    def antenna_outputs(self):
-        from .solvers.openems.antenna import save as save_antenna
-        k = self.excite[0]
-        self.figure(plot_antenna(self.freq, self.result.S[:, k, k], self.m.ports[k].z0, self.ant,
-                                 f"{self.name} - antenna"), '_antenna.png', 'antenna', 'antenna: match, gain, efficiency')
-        self.figure(plot_pattern(self.ant, f"{self.name} - gain pattern"), '_pattern.png', 'pattern', 'antenna: patterns')
-        js = self.path('_antenna.json')
-        save_antenna(self.ant, js)
-        self.wrote('antenna results (JSON)', js)
-        self.summary['antenna'] = {k_: v for k_, v in self.ant.items() if k_ != 'sphere'}
-
-    def convergence_outputs(self):
-        from .solvers.openems.converge import compare_levels, verdict
-        s, levels = self.s, self.levels
-        tol_db, tol_deg = s.converge_tol
-        dev = compare_levels([S_ for _, S_ in self.coarse] + [self.Smm], self.names) + [{}]   # finest: the reference
-        lines, ok = verdict([f for f, _ in levels], dev[:-1], tol_db, tol_deg)
-        self.log("\n".join(lines))
-        if not ok:
-            self.log("WARNING: mesh not converged (see the convergence table)")
-        self.figure(plot_convergence(self.freq, [(f"x{f:g}", S_) for f, S_ in self.coarse] +
-                                     [(f"x{levels[-1][0]:g}", self.Smm)], self.names, f"{self.name} - mesh convergence"),
-                    '_converge.png', 'converge', 'mesh convergence')
-        self.summary['convergence'] = dict(converged=ok, tol_db=tol_db, tol_deg=tol_deg,
-                                           levels=[dict(factor=f, cells=lm['info']['cells'], **d)
-                                                   for (f, lm), d in zip(levels, dev)])
+        others = [n for n in done[1:] if self.results[n].names == ref.names]
+        overlays += [(freq, self.results[n].S, reg[n].label, OVERLAY_STYLES[i % len(OVERLAY_STYLES)])
+                     for i, n in enumerate(others)]
+        self.figure(plot_results(freq, ref.S, ref.names, f"{self.name} - {reg[done[0]].label}", overlays,
+                                 label=reg[done[0]].label), f"_{done[0]}.png", 'sparams', 'S-parameter plot')
+        self.summary['results'] = dict(reference=done[0], names=ref.names, zref=ref.zref,
+                                       excited=ref.info.get('excited', ref.names),
+                                       freq_ghz=[freq[0] / 1e9, freq[len(freq) // 2] / 1e9, freq[-1] / 1e9],
+                                       table=self.summary['solved'][done[0]]['table'], compare_file=s.compare)
+        for n in done:
+            reg[n].outputs(self, self.prep.get(n), self.results[n])
 
     def report(self):
-        """<name>_openems.json (the run summary) and <name>_report.html (unless --no-report)."""
-        js = self.path('_openems.json')
+        """<name>_run.json (the run summary) and <name>_report.html (unless --no-report)."""
+        js = self.path('_run.json')
         self.wrote('run summary (JSON)', js)
         if not self.s.no_report:
             self.wrote('report', self.path('_report.html'))

@@ -33,6 +33,6 @@ def test_cli_and_toml(tmp_path):
     assert settings_from_argv(['b.kicad_pcb'])[0].max_steps == 1_000_000
     assert settings_from_argv(['b.kicad_pcb', '--max-steps', '5000000'])[0].max_steps == 5_000_000
     cfg = tmp_path / 'c.toml'
-    cfg.write_text('[openems]\nmax-steps = 3000000\n')
+    cfg.write_text('[solver.openems]\nmax-steps = 3000000\n')
     s, _ = settings_from_argv(['b.kicad_pcb', '--config', str(cfg)])
     assert s.notes == [] and s.max_steps == 3_000_000

@@ -104,7 +104,7 @@ def test_preview_report_and_summary(demo_files, run_cli, tmp_path):
                  'dielectric 1', 'microstrip', 'stripline'):
         assert part in page, part
     assert "id='results'" not in page                               # nothing solved in a preview
-    sm = json.loads((out / 'demo_openems.json').read_text())
+    sm = json.loads((out / 'demo_run.json').read_text())
     assert sm['mode'] == 'preview' and sm['lines']['paths'][0]['port'] == 'P1'
     from kicad2ems.report import build                         # the report rebuilds from the JSON alone
     assert "id='tlines'" in build(sm, str(out))

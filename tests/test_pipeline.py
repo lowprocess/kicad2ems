@@ -35,16 +35,16 @@ def test_sparams_run_with_fast_model_and_convergence(demo_files, run_cli, tmp_pa
                             '--fmin', '1', '--fmax', '8', '--points', '51', '--out', out, '--fast', 'skrf',
                             '--converge', '1,1.2')
     assert code == 0, err
-    for f in ('demo_openems.s2p', 'demo_fast.s2p', 'demo_openems.png', 'demo_tlines.png', 'demo_converge.png',
-              'demo_report.html', 'demo_openems.json'):
+    for f in ('demo_openems.s2p', 'demo_scikit.s2p', 'demo_openems.png', 'demo_tlines.png', 'demo_converge.png',
+              'demo_report.html', 'demo_run.json'):
         assert (out / f).exists(), f
-    sm = json.loads((out / 'demo_openems.json').read_text())
+    sm = json.loads((out / 'demo_run.json').read_text())
     assert sm['mode'] == 'S-parameters' and sm['ports'] == ['P1', 'P2'] and sm['excited'] == ['P1', 'P2']
-    cmp = {r['param']: r for r in sm['fast']['compare']}
+    cmp = {r['param']: r for r in sm['solved']['scikit']['compare']}
     assert abs(cmp['S(P2,P1)']['max_ddb']) < 1.5 and cmp['S(P2,P1)']['ddelay_ps'] is not None
     assert sm['convergence']['converged']                                    # identical canned levels
     page = (out / 'demo_report.html').read_text()
-    for part in ("id='results'", "id='fast'", "id='tlines'", "id='convergence'", 'line model', 'Δ delay'):
+    for part in ("id='results'", "id='scikit'", "id='tlines'", "id='convergence'", 'line model', 'Δ delay'):
         assert part in page, part
 
 
@@ -73,7 +73,7 @@ def test_antenna_run(boards, run_cli, tmp_path, monkeypatch):
     assert code == 0, err
     for f in ('patch_antenna.png', 'patch_pattern.png', 'patch_antenna.json', 'patch_report.html'):
         assert (out / f).exists(), f
-    sm = json.loads((out / 'patch_openems.json').read_text())
+    sm = json.loads((out / 'patch_run.json').read_text())
     assert sm['antenna']['f_pattern'] == 2.45e9 and 'sphere' not in sm['antenna']
     assert "id='antenna'" in (out / 'patch_report.html').read_text()
 

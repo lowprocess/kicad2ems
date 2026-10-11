@@ -43,7 +43,8 @@ def test_window_builds(tmp_path):
     w = MainWindow()
     w.setup.set_values(dict(board='x.kicad_pcb', nets=['RF'], fmin=1.0, fast='skrf', cut_ports=True, ports=['P3=J1.1']))
     v = w.setup.values()
-    assert v['board'] == 'x.kicad_pcb' and v['nets'] == ['RF'] and v['fast'] == 'skrf' and v['cut_ports'] is True
+    assert v['board'] == 'x.kicad_pcb' and v['nets'] == ['RF'] and v['cut_ports'] is True
+    assert v['solvers'] == ['openems', 'scikit'] and 'fast' not in v           # fast = skrf: the scikit box
     assert v['ports'] == ['P3=J1.1']
     w.runtab.status(dict(run='P1', step=1000, db=-12.0, fraction=0.3, eta=65))
     assert w.runtab.bars['P1'].value() == 30
@@ -91,16 +92,18 @@ def test_save_config_keeps_the_file(tmp_path):
     src.write_text('# my board\nboard = "b.kicad_pcb"   # the board\npos = "x.pos"\nfmin = 1.0  # GHz\n'
                    'nets = [\n  "RF",\n  "GND",\n]\nfuture_key = 3\n\n[openems]\nair = 5.0   # mm\nend-db = -40\n')
     vals = dict(settings_values(str(src)), **extra_values(str(src)))
-    vals.update(fmin=2.0, nets=['RF'], mom=True)
+    vals.update(fmin=2.0, nets=['RF'], **{'solver:mom25d': True})
     del vals['pos']                                                 # the field was cleared
     save_config(str(src), vals, template=str(src))
     text = src.read_text()
     assert '# my board' in text and 'board = "b.kicad_pcb"   # the board' in text
     assert 'fmin = 2.0  # GHz' in text and 'pos' not in text and 'future_key = 3' in text
-    assert 'air = 5.0   # mm' in text and 'end-db = -40.0' in text and text.index('mom = true') < text.index('[openems]')
-    assert '\nout =' not in text and 'use_openems' not in text      # the default folder is not pinned to the cwd
+    assert 'air = 5.0   # mm' in text and 'end-db = -40.0' in text
+    assert text.index('solvers = ["openems", "mom25d"]') < text.index('[openems]')
+    assert '\nout =' not in text and 'solver:' not in text          # the default folder is not pinned to the cwd
     s = build_settings({}, str(src))
-    assert s.fmin == 2.0 and s.nets == ['RF'] and s.mom and s.pos is None and s.air == 5.0
+    assert s.fmin == 2.0 and s.nets == ['RF'] and s.pos is None and s.air == 5.0
+    assert s.solver_plan()[0] == ['openems', 'mom25d']
     assert s.board == str(tmp_path / 'b.kicad_pcb')
     new = tmp_path / 'sub' / 'n.toml'                                # a new file: only what differs from the defaults
     new.parent.mkdir()
@@ -193,23 +196,43 @@ def test_rf_examples_load(name, nports):
         assert len(m.copper['F.Cu']) == 2                           # the gap is open: two separate conductors
 
 
-def test_gui_solver_boxes(tmp_path):
-    from kicad2ems.gui.runner import settings_values, solvers_from_form, save_config, extra_values, write_toml
+def test_gui_solver_boxes(tmp_path, monkeypatch):
+    from kicad2ems.gui.runner import settings_values, solvers_from_form, save_config, extra_values, write_toml, FIELDS
+    from kicad2ems.solvers.lines import fastsolve
+    monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)    # no qucsator: lines is scikit
+    assert [k for k, *_ in FIELDS if k.startswith('solver:')] == ['solver:openems', 'solver:mom25d', 'solver:qucs',
+                                                                    'solver:scikit']
     p = tmp_path / 'c.toml'
     p.write_text('board = "b.kicad_pcb"\nsolvers = ["mom", "lines"]\n')
     vals = settings_values(str(p))
-    assert vals['use_openems'] is False and vals['mom'] is True and vals['fast'] == 'auto'
+    assert not vals['solver:openems'] and vals['solver:mom25d'] and vals['solver:scikit'] and not vals['solver:qucs']
     assert 'solvers' not in extra_values(str(p))                    # the tick boxes own it
-    form = dict(vals, use_openems=True)                                 # openEMS ticked again
-    s = solvers_from_form(form)
-    assert 'use_openems' not in s and 'solvers' not in s
+    s = solvers_from_form(dict(vals, **{'solver:openems': True}))   # openEMS ticked again
+    assert not any(k.startswith('solver:') for k in s) and s['solvers'] == ['openems', 'mom25d', 'scikit']
     save_config(str(p), s, template=str(p))
-    assert 'solvers' not in p.read_text()
-    back = build_settings({}, str(p))
-    assert back.solver_plan()[0] == ['openems', 'mom', 'lines']
-    s = solvers_from_form(dict(vals, use_openems=False, mom=False))     # only the line model
-    assert s['solvers'] == ['lines']
+    assert build_settings({}, str(p)).solver_plan()[0] == ['openems', 'mom25d', 'scikit']
+    s = solvers_from_form(dict(vals, **{'solver:openems': True, 'solver:mom25d': False, 'solver:scikit': False}))
+    assert 'solvers' not in s                                       # openEMS alone: the default, not written
+    save_config(str(p), s, template=str(p))
+    assert 'solvers' not in p.read_text() and build_settings({}, str(p)).solver_plan()[0] == ['openems']
+    s = solvers_from_form(dict(vals, **{'solver:mom25d': False}))   # only the line model
+    assert s['solvers'] == ['scikit']
     write_toml(tmp_path / 'r.toml', s)
-    assert build_settings({}, str(tmp_path / 'r.toml')).solver_plan()[0] == ['lines']
-    assert solvers_from_form(dict(use_openems=False, mom=False, fast=''))['solvers'] == []   # none: the GUI says so
+    assert build_settings({}, str(tmp_path / 'r.toml')).solver_plan()[0] == ['scikit']
+    none = solvers_from_form({k: False for k, *_ in FIELDS if k.startswith('solver:')})
+    assert none['solvers'] == []                                    # none: the GUI says so
 
+
+def test_save_config_in_solver_tables(tmp_path):
+    """A [solver.<name>] table: its short names are its settings; another tool's table is left alone."""
+    from kicad2ems.gui.runner import settings_values, save_config, extra_values
+    p = tmp_path / 'c.toml'
+    p.write_text('board = "b.kicad_pcb"\n[solver.mom25d]\nmesher = "triangle"  # MoM\ndmax = 0.4\n'
+                 '[other]\nmom_mesher = "x"\n')
+    vals = dict(settings_values(str(p)), **extra_values(str(p)))
+    assert vals['mom_mesher'] == 'triangle' and vals['mom_dmax'] == 0.4
+    save_config(str(p), dict(vals, mom_mesher='gmsh'), template=str(p))
+    text = p.read_text()
+    assert 'mesher = "gmsh"' in text and '# MoM' in text and 'dmax = 0.4' in text and 'mom_mesher = "x"' in text
+    s = build_settings({}, str(p))
+    assert s.mom_mesher == 'gmsh' and s.mom_dmax == 0.4

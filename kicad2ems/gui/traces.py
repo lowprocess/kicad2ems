@@ -13,7 +13,8 @@ KINDS = ('|S| (dB)', '|S| (linear)', 'Phase (deg)', 'Group delay (ns)', 'VSWR') 
 SMITH = 'Smith chart'                                     # the reflections beside it
 UNITS = {'|S| (dB)': 'dB', '|S| (linear)': '', 'Phase (deg)': '°', 'Group delay (ns)': 'ns', 'VSWR': '',
          'Smith chart': ''}
-SOURCES = (('openEMS', 'solid'), ('mom25d', 'dashdot'), ('line model', 'dot'), ('compare', 'dash'))
+SOURCES = (('openEMS', 'solid'), ('mom25d', 'dashdot'), ('qucsator', 'dot'), ('scikit-rf', 'dot'), ('line model', 'dot'),
+           ('compare', 'dash'))
 
 
 class Trace:
@@ -58,14 +59,17 @@ def port_names(path):
     return None
 
 
+BY_SUFFIX = dict(openems='openEMS', mom25d='mom25d', qucs='qucsator', scikit='scikit-rf',
+                 mom='mom25d', fast='line model')             # the last two: file names of older runs
+
+
 def classify(path):
-    """The source of a Touchstone file of a run, from its name."""
-    b = os.path.basename(path)
-    if re.search(r'_fast\.s\d+p$', b):
-        return 'line model'
-    if re.search(r'_mom\.s\d+p$', b):
-        return 'mom25d'
-    return 'openEMS'
+    """The source of a Touchstone file of a run, from its name (<name>_<solver>.sNp)."""
+    m = re.search(r'_([A-Za-z0-9-]+)\.s\d+p$', os.path.basename(path))
+    if m and m.group(1) in BY_SUFFIX:
+        return BY_SUFFIX[m.group(1)]
+    from ..solvers import registry
+    return m.group(1) if m and m.group(1) in registry() else 'openEMS'
 
 
 def load_traces(files, compare=None):

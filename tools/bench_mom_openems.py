@@ -34,11 +34,11 @@ def run_board(name, out, mesher, extra):
     with open(os.path.join(out, f"{name}.log"), 'w') as log:
         code = subprocess.call(cmd, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
     wall = time.time() - t0
-    sm_path = next((os.path.join(od, f) for f in os.listdir(od) if f.endswith('_openems.json')), None) if os.path.isdir(od) else None
+    sm_path = next((os.path.join(od, f) for f in os.listdir(od) if f.endswith('_run.json')), None) if os.path.isdir(od) else None
     if code or not sm_path:
         return dict(board=name, error=f"exit {code}, see {name}.log", wall_s=wall)
     sm = json.load(open(sm_path))
-    runs, mo = sm.get('runs', {}), sm.get('mom', {})
+    runs, mo = sm.get('runs', {}), sm['solved'].get('mom25d', {})          # compared with openEMS, the first solver
     cmp_ = mo.get('compare', [])
     tx = [r for r in cmp_ if r['max_ddb'] is not None]
     return dict(board=name, wall_s=wall, cells=sm['mesh']['cells'], dt_ps=sm['mesh']['dt_ps'],

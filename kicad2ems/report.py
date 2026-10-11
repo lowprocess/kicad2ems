@@ -1,9 +1,9 @@
 """
 HTML report of a run (<name>_report.html): one self-contained page (the plots embedded) rendered from
-the run summary (pipeline.Job.summary, also written as <name>_openems.json) and nothing else - so a GUI,
+the run summary (pipeline.Job.summary, also written as <name>_run.json) and nothing else - so a GUI,
 or a later run, can rebuild it from the JSON file. Sections: summary, model, transmission-line
-sections, mesh, results (with the fast line model compared), antenna, convergence, field maps, the
-openEMS runs, output files, settings and the full log.
+sections, mesh (openEMS), results (the first solver, the others overlaid), one per solver (each compared
+with the first), antenna, convergence, field maps, the openEMS runs, output files, settings and the full log.
 """
 import base64, html, os
 
@@ -157,49 +157,47 @@ def _lines_section(sm):
     return "".join(parts)
 
 
-def _fast_section(sm, base):
-    fa = sm['fast']
-    txt = (f"<p>The transmission-line sections solved as a circuit with <b>{_e(fa['backend'])}</b> in "
-           f"{fa['seconds'] * 1e3:.0f} ms (zero-thickness copper, like the openEMS model): "
-           f"<a href='{_e(_rel(fa['touchstone'], base))}'>{_e(os.path.basename(fa['touchstone']))}</a>.</p>")
-    if fa.get('compare'):
-        runs = sm.get('runs', {})
-        t = sum(r.get('seconds') or 0 for r in runs.values())
-        txt += (f"<p>Against openEMS ({t:.0f} s): dotted lines in the S-parameter plot. Large differences point at "
-                "something one of the two models leaves out - coupling, radiation, plane resonances, the lumped "
+def _solver_section(sm, name, base):
+    """One solver's result: what it did, its Touchstone file, its notes, and how it compares with the first
+    solver of the run."""
+    so = sm['solved'][name]
+    txt = (f"<p>{_e(so.get('about', ''))} <a href='{_e(_rel(so['touchstone'], base))}'>"
+           f"{_e(os.path.basename(so['touchstone']))}</a>.</p>")
+    ref = so.get('reference')
+    if so.get('compare') and ref:
+        a, b = sm['solved'][ref]['label'], so['label']
+        txt += (f"<h3>Against {_e(a)}</h3><p>Overlaid on the S-parameter plot. Large differences point at something "
+                "one of the two models leaves out - coupling, radiation, plane resonances, the board edge, the lumped "
                 "ports - or at a mesh problem.</p>")
-        rows = [[_e(r['param']), _f(r['openems_max_db'], '.1f'), _f(r['other_max_db'], '.1f'), _f(r['max_ddb'], '.2f'),
-                 _f(r['max_dvec'], '.3f'), _f(r['ddelay_ps'], '+.1f')] for r in fa['compare']]
-        txt += _table(['', 'openEMS max (dB)', 'line model max (dB)', 'max |Δ| (dB, transmissions)',
-                       'max |ΔS| (vector)', 'Δ delay line − openEMS (ps)'], rows, num=(1, 2, 3, 4, 5))
-    elif 'fast' in sm.get('images', {}):
-        txt += _img(sm['images']['fast'], 'fast line model')
-    return txt
-
-
-def _mom_section(sm, base):
-    mo = sm['mom']
-    kinds = ", ".join(f"{p['name']} {p['kind']}" for p in mo['ports'])
-    txt = (f"<p>The CSX geometry (the file openEMS gets) solved by <b>mom25d</b>, a 2.5D Method-of-Moments solver: "
-           f"{mo['unknowns']:,} unknowns ({mo['triangles']:,} triangles, {_e(mo['mesher'])} mesher, cells up to "
-           f"{mo['dmax_mm']:g} mm), {mo['solves']} EM solves of an adaptive sweep in {mo['seconds']:.0f} s; ports: "
-           f"{_e(kinds)}. <a href='{_e(_rel(mo['touchstone'], base))}'>{_e(os.path.basename(mo['touchstone']))}</a>. "
-           "MoM sees laterally infinite dielectrics over an infinite ground plane: no board edge, no air box, no "
-           "box resonances; radiation and surface waves are in.</p>")
-    if 'mom' in sm.get('images', {}):
-        txt += _img(sm['images']['mom'], 'mom25d')
-    for key, other in (('compare', 'openEMS'), ('compare_fast', 'line model')):
-        if not mo.get(key):
-            continue
-        a, b = ('openEMS', 'mom25d') if key == 'compare' else ('mom25d', 'line model')
-        rows = [[_e(r['param']), _f(r['openems_max_db'], '.1f'), _f(r['other_max_db'], '.1f'), _f(r['max_ddb'], '.2f'),
-                 _f(r['max_dvec'], '.3f'), _f(r['ddelay_ps'], '+.1f')] for r in mo[key]]
-        txt += f"<h3>mom25d against the {other}</h3>"
+        rows = [[_e(r['param']), _f(r['ref_max_db'], '.1f'), _f(r['other_max_db'], '.1f'), _f(r['max_ddb'], '.2f'),
+                 _f(r['max_dvec'], '.3f'), _f(r['ddelay_ps'], '+.1f')] for r in so['compare']]
         txt += _table(['', f"{a} max (dB)", f"{b} max (dB)", 'max |Δ| (dB, transmissions)', 'max |ΔS| (vector)',
                        f"Δ delay {b} − {a} (ps)"], rows, num=(1, 2, 3, 4, 5))
-    if mo.get('notes'):
-        txt += "<ul>" + "".join(f"<li>{_e(n)}</li>" for n in mo['notes']) + "</ul>"
+    if so.get('notes'):
+        txt += "<ul>" + "".join(f"<li>{_e(n)}</li>" for n in so['notes']) + "</ul>"
     return txt
+
+
+def _mesh_section(sm, g, st):
+    """openEMS's mesh: cells, cell sizes, time step, boundaries, the preview, the convergence levels."""
+    rows = [['cells', f"{g['nx']} × {g['ny']} × {g['nz']} = {g['cells']:,}"],
+            ['fine cell (copper edges)', f"{g['fine_mm']:.4f} mm"],
+            ['largest cell (dielectric / air)', f"{g['maxres_die_mm']:.3f} / {g['maxres_air_mm']:.3f} mm"],
+            ['smallest cell x / y / z', " / ".join(f"{v:.4f}" for v in g['min_cell_mm']) + " mm"],
+            ['time step (estimate)', f"{g['dt_ps']:.4f} ps"], ['memory (estimate)', f"{g['mem_gb']:.2f} GB"],
+            ['air margin', f"{g['air_mm']:.1f} mm"],
+            ['boundaries', _e(" ".join(f"{s}={b}" for s, b in zip(('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'), g['bc'])))],
+            ['curves / vias', f"{_e(g['curves'])} / {_e(g['vias'])} ({g['vias_snapped']} snapped)"],
+            *([['edge walls (PEC)', _e(g['edge_walls'])]] if g.get('edge_walls') else []),
+            ['lines across port traces', _e(", ".join(f"{k_}: {v}" for k_, v in g.get('lines_across_ports', {}).items()))],
+            *([['excitation pulse', f"~{sm['pulse_steps']:,} timesteps; --max-steps {st['max_steps']:,}"]]
+              if 'pulse_steps' in sm else [])]
+    content = _table(['', ''], rows) + _img(sm['images'].get('mesh'), 'model and mesh')
+    if sm.get('levels'):
+        content += "<h3>Convergence levels</h3>" + _table(
+            ['factor', 'cells', 'fine (mm)', 'time step (ps)'],
+            [[f"×{l['factor']:g}", f"{l['cells']:,}", f"{l['fine_mm']:.4f}", f"{l['dt_ps']:.4f}"] for l in sm['levels']])
+    return content
 
 
 def _resolved(sm, base):
@@ -209,10 +207,7 @@ def _resolved(sm, base):
     sm['images'] = {k: ab(v) for k, v in sm.get('images', {}).items()}
     sm['files'] = [(l, ab(p)) for l, p in sm.get('files', [])]
     sm['dumps'] = [dict(d, png=ab(d['png'])) for d in sm.get('dumps', [])]
-    if sm.get('fast'):
-        sm['fast'] = dict(sm['fast'], touchstone=ab(sm['fast']['touchstone']))
-    if sm.get('mom'):
-        sm['mom'] = dict(sm['mom'], touchstone=ab(sm['mom']['touchstone']))
+    sm['solved'] = {k: dict(v, touchstone=ab(v['touchstone'])) for k, v in sm.get('solved', {}).items()}
     if sm.get('runs'):
         sm['runs'] = {k: dict(r, log=ab(r.get('log'))) for k, r in sm['runs'].items()}
     return sm
@@ -222,7 +217,7 @@ def build(sm, base):
     """The report page for a run summary; `base` is the output folder (where the report goes), against
     which the summary's relative paths are resolved and links are made relative."""
     sm = _resolved(sm, base)
-    model, g, st = sm['model'], sm['mesh'], sm['settings']
+    model, g, st = sm['model'], sm.get('mesh'), sm['settings']
     nav, body = [], []
 
     def section(sid, title, content):
@@ -230,14 +225,13 @@ def build(sm, base):
         body.append(f"<section id='{sid}'><h2>{_e(title)}</h2>{content}</section>")
 
     # ---- summary ----------------------------------------------------------------------------------
-    names = dict(openems='openEMS', mom='mom25d', lines='line model')
-    fdtd = sm['mode'] == 'preview' or 'openems' in sm.get('solvers', ['openems'])     # the FDTD mesh matters
+    solved = sm.get('solved', {})
     k = [('mode', _e(sm['mode'])),
-         ('solvers', _e(", ".join(names.get(x, x) for x in sm['solvers']) or 'none')) if 'solvers' in sm else None,
+         ('solvers', _e(", ".join(sm['solvers']) or 'none')) if 'solvers' in sm else None,
          ('band', f"{st['fmin']:g}–{st['fmax']:g} GHz"),
          ('ports', _e(", ".join(p['name'] for p in model['ports']))),
-         ('mesh', f"{g['cells'] / 1e6:.2f} M cells") if fdtd else None,
-         ('time step', f"{g['dt_ps']:.3f} ps") if fdtd else None]
+         ('mesh', f"{g['cells'] / 1e6:.2f} M cells") if g else None,
+         ('time step', f"{g['dt_ps']:.3f} ps") if g else None]
     k = [x for x in k if x]
     ant = sm.get('antenna')
     if ant:
@@ -251,12 +245,7 @@ def build(sm, base):
     if 'convergence' in sm:
         ok = sm['convergence']['converged']
         k.append(('mesh convergence', f"<span class='{'ok' if ok else 'bad'}'>{'converged' if ok else 'not converged'}</span>"))
-    if 'runs' in sm:
-        k.append(('run time', f"{sum(r.get('seconds') or 0 for r in sm['runs'].values()):.0f} s solver"))
-    if 'fast' in sm:
-        k.append(('line model', f"{_e(sm['fast']['backend'])}, {sm['fast']['seconds'] * 1e3:.0f} ms"))
-    if 'mom' in sm:
-        k.append(('mom25d', f"{sm['mom']['unknowns']:,} unknowns, {sm['mom']['seconds']:.0f} s"))
+    k += [(so['label'], _e(so.get('kpi', f"{so['seconds']:.1f} s"))) for so in solved.values()]
     warn = sm.get('warnings', [])
     w = (f"<div class='warn'><b>{len(warn)} warning(s)</b><ul>" + "".join(f"<li>{_e(x)}</li>" for x in warn) +
          "</ul></div>") if warn else "<p class='ok'>No warnings.</p>"
@@ -281,6 +270,7 @@ def build(sm, base):
                f"{_e(nets)}, dielectric loss {_e(model['diel'])}.</p>"
                "<h3>Dielectrics (top to bottom)</h3>" +
                _table(['layer', 'z (mm)', 'thickness (mm)', 'εr', 'tan δ'], stack) +
+               (_img(sm['images']['model'], 'model') if sm['images'].get('model') else '') +
                "<h3>Copper</h3>" + _table(['layer', 'z (mm)', 'modelled'], cu) +
                "<h3>Ports</h3>" + _table(['port', 'kind', 'layer', 'size', 'width (mm)', 'Z0 (Ω)', 'at (KiCad mm)'], ports))
     if model['parts']:
@@ -295,25 +285,9 @@ def build(sm, base):
     if sm.get('lines'):
         section('tlines', 'Transmission-line sections', _lines_section(sm))
 
-    # ---- mesh ------------------------------------------------------------------------------------------
-    rows = [['cells', f"{g['nx']} × {g['ny']} × {g['nz']} = {g['cells']:,}"],
-            ['fine cell (copper edges)', f"{g['fine_mm']:.4f} mm"],
-            ['largest cell (dielectric / air)', f"{g['maxres_die_mm']:.3f} / {g['maxres_air_mm']:.3f} mm"],
-            ['smallest cell x / y / z', " / ".join(f"{v:.4f}" for v in g['min_cell_mm']) + " mm"],
-            ['time step (estimate)', f"{g['dt_ps']:.4f} ps"], ['memory (estimate)', f"{g['mem_gb']:.2f} GB"],
-            ['air margin', f"{g['air_mm']:.1f} mm"],
-            ['boundaries', _e(" ".join(f"{s}={b}" for s, b in zip(('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'), g['bc'])))],
-            ['curves / vias', f"{_e(g['curves'])} / {_e(g['vias'])} ({g['vias_snapped']} snapped)"],
-            *([['edge walls (PEC)', _e(g['edge_walls'])]] if g.get('edge_walls') else []),
-            ['lines across port traces', _e(", ".join(f"{k_}: {v}" for k_, v in g.get('lines_across_ports', {}).items()))],
-            *([['excitation pulse', f"~{sm['pulse_steps']:,} timesteps; --max-steps {st['max_steps']:,}"]]
-              if 'pulse_steps' in sm else [])]
-    content = _table(['', ''], rows) + _img(sm['images'].get('mesh'), 'model and mesh')
-    if sm.get('levels'):
-        content += "<h3>Convergence levels</h3>" + _table(
-            ['factor', 'cells', 'fine (mm)', 'time step (ps)'],
-            [[f"×{l['factor']:g}", f"{l['cells']:,}", f"{l['fine_mm']:.4f}", f"{l['dt_ps']:.4f}"] for l in sm['levels']])
-    section('mesh', 'Mesh', content)
+    # ---- mesh (openEMS) --------------------------------------------------------------------------------
+    if g:
+        section('mesh', 'Mesh (openEMS)', _mesh_section(sm, g, st))
 
     # ---- results -------------------------------------------------------------------------------------
     res = sm.get('results')
@@ -322,16 +296,18 @@ def build(sm, base):
         rows = [[_e(r['param']), _f(r['fmin_db']), _f(r['fc_db']), _f(r['fmax_db']),
                  f"{r['min_db']:.2f} @ {r['f_min'] / 1e9:.3f} GHz", f"{r['max_db']:.2f} @ {r['f_max'] / 1e9:.3f} GHz"]
                 for r in res['table']]
-        content = (_img(sm['images'].get('sparams'), 'S-parameters') + "<h3>|S| in dB</h3>" +
+        ref = solved.get(res.get('reference'), {}).get('label', '')
+        others = [so['label'] for n, so in solved.items() if so.get('compare')]
+        content = (_img(sm['images'].get('sparams'), 'S-parameters') +
+                   (f"<p class='meta'>Solid: {_e(ref)}; overlaid: {_e(', '.join(others))}.</p>" if others else '') +
+                   f"<h3>|S| in dB ({_e(ref)})</h3>" +
                    _table(['', f"{fq[0]:g} GHz", f"{fq[1]:g} GHz", f"{fq[2]:g} GHz", 'minimum', 'maximum'], rows,
                           num=(1, 2, 3)))
         if res.get('compare_file'):
             content += f"<p class='meta'>Dashed: <code>{_e(res['compare_file'])}</code></p>"
         section('results', 'S-parameters', content)
-    if 'fast' in sm:
-        section('fast', 'Fast line model', _fast_section(sm, base))
-    if 'mom' in sm:
-        section('mom', 'MoM reference (mom25d)', _mom_section(sm, base))
+    for n in solved:
+        section(n, solved[n]['label'], _solver_section(sm, n, base))
     if ant:
         rows = [[f"{r['f'] / 1e9:.3f}" + (' ◀' if abs(r['f'] - ant['f_pattern']) < 1 else ''),
                  '–' if r['D_dbi'] is None else f"{r['D_dbi']:.2f}", f"{r['eff'] * 100:.1f}",

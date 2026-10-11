@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget, Q
 import pyqtgraph as pg
 from .fieldtab import FieldsTab
 from .antennatab import AntennaTab
-from .runner import (FIELDS, SEMICOLON_LISTS, Run, EventTail, stop_runs, settings_values, extra_values,
-                     find_results, save_config, solvers_from_form)
+from .runner import (FIELDS, SEMICOLON_LISTS, TICK, Run, EventTail, stop_runs, settings_values, extra_values,
+                     find_results, save_config, solvers_from_form, solver_ticks)
 from .splot import SPlot
 
 pg.setConfigOptions(antialias=True, background='w', foreground='k')
@@ -177,8 +177,8 @@ class SetupTab(QWidget):
             self._loading = loading
 
     def _set_values(self, vals):
-        if 'use_openems' not in vals:                               # settings rather than the form's own values
-            vals = dict(vals, use_openems=vals.get('solvers') is None or 'openems' in vals['solvers'])
+        if not any(k.startswith(TICK) for k in vals):              # settings rather than the form's own values
+            vals = dict(vals, **solver_ticks(vals))
         for key, (w, kind) in self.edits.items():
             v = vals.get(key)
             if kind == 'bool':
@@ -336,8 +336,9 @@ class RunTab(QWidget):
             b.setValue(int(100 * ev['fraction']))
         eta = ev.get('eta')
         db = ev.get('db')
-        b.setFormat(f"{run}: %p%  step {ev.get('step', 0):,}" + (f"  {db:.1f} dB" if db is not None else '') +
-                    (f"  ETA {int(eta // 60)}m{int(eta % 60):02d}s" if eta else ''))
+        what = (f"  {ev['solves']} EM solve(s), last at {ev.get('f_ghz') or 0:.3f} GHz" if ev.get('solves') is not None
+                else f"  step {ev.get('step', 0):,}" + (f"  {db:.1f} dB" if db is not None else ''))     # MoM / openEMS
+        b.setFormat(f"{run}: %p%{what}" + (f"  ETA {int(eta // 60)}m{int(eta % 60):02d}s" if eta else ''))
         if ev.get('step') is not None and db is not None:
             xs, ys = self.hist[run]
             xs.append(ev['step'])
@@ -380,7 +381,7 @@ class ResultsTab(QWidget):
         self.report = next((p for l, p in files if p.endswith('_report.html')), None)
         self.report_btn.setEnabled(bool(self.report))
         z0 = 50.0
-        summary = next((p for l, p in files if p.endswith('_openems.json')), None)
+        summary = next((p for l, p in files if p.endswith(('_run.json', '_openems.json'))), None)
         if summary and os.path.exists(summary):
             try:
                 with open(summary) as fh:
@@ -597,11 +598,12 @@ class MainWindow(QMainWindow):
         self.timer.stop()
         self.proc = None
         self.runtab.stop_btn.setEnabled(False)
-        pngs = [p for l, p in self.files if p.endswith(('_mesh.png', '_tlines.png', '_fast.png', '_mom.png'))]
+        pngs = [p for l, p in self.files if p.endswith(('_mesh.png', '_model.png', '_tlines.png')) or
+                (self.current.preview and l == 'S-parameter plot')]
         if pngs:
             self.setup.show_images(pngs)
-        if self.current.preview and any('_mom.s' in p or '_fast.s' in p for _, p in self.files):
-            self.results.show(self.files)                            # the references, without openEMS
+        if self.current.preview and any(l.startswith('S-parameters') for l, _ in self.files):
+            self.results.show(self.files)                            # the solvers a preview runs (not openEMS)
         if not self.current.preview:
             self.results.show(self.files)
             self.fields.load(self.current.out)

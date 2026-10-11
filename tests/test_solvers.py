@@ -15,17 +15,16 @@ def plan(**kw):
 
 
 def test_solver_plan():
-    assert plan() == (['openems'], [])                              # the default: openEMS
-    assert plan(mom=True, fast='skrf') == (['openems', 'mom', 'lines'], [])          # --mom / --fast add theirs
-    assert plan(solvers='mom') == (['mom'], ['mom'])
-    assert plan(solvers='lines,MoM25d', fast='qucsator') == (['mom', 'lines'], ['mom', 'lines'])
-    assert plan(solvers=['fdtd', 'line']) == (['openems', 'lines'], ['openems', 'lines'])
-    assert plan(solvers='all')[0] == ['openems', 'mom', 'lines']
-    assert plan(solvers='openems', mom=True) == (['openems', 'mom'], ['openems'])
-    assert plan(preview=True, mom=True) == (['mom'], [])            # --preview: no openEMS run
-    assert plan(preview=True) == ([], [])
-    s = build_settings(dict(board='b.kicad_pcb', solvers='lines'))
-    assert s.line_backend == 'auto' and build_settings(dict(board='b', fast='skrf')).line_backend == 'skrf'
+    assert plan() == (['openems'], ['openems'])                    # the default: openEMS, as if named
+    assert plan(mom=True, fast='skrf') == (['openems', 'mom25d', 'scikit'], ['openems'])   # --mom / --fast add theirs
+    assert plan(solvers='mom') == (['mom25d'], ['mom25d'])
+    assert plan(solvers='lines,MoM25d', fast='qucsator') == (['mom25d', 'qucs'], ['mom25d', 'qucs'])
+    assert plan(solvers=['fdtd', 'line']) == (['openems', 'lines'], ['openems', 'lines'])   # lines: resolved later
+    assert plan(solvers='all')[0] == ['openems', 'mom25d', 'lines']
+    assert plan(solvers='skrf,qucsator')[0] == ['qucs', 'scikit']                         # both line solvers
+    assert plan(solvers='openems', mom=True) == (['openems', 'mom25d'], ['openems'])
+    assert plan(preview=True, mom=True)[0] == ['mom25d']           # --preview: no openEMS run
+    assert plan(preview=True)[0] == []
 
 
 @pytest.mark.parametrize('values,match', [
@@ -42,7 +41,7 @@ def test_solvers_from_toml_and_command_line(tmp_path):
     p = tmp_path / 'c.toml'
     p.write_text('board = "b.kicad_pcb"\nsolvers = ["openems", "mom"]\n')
     s, _ = settings_from_argv([str(p)])
-    assert s.solver_plan()[0] == ['openems', 'mom']
+    assert s.solver_plan()[0] == ['openems', 'mom25d']
     s, _ = settings_from_argv([str(p), '--solvers', 'lines'])       # the command line wins
     assert s.solver_plan() == (['lines'], ['lines'])
 
@@ -51,12 +50,13 @@ def test_solvers_from_toml_and_command_line(tmp_path):
 def test_resolve_backend(monkeypatch):
     pytest.importorskip('skrf')
     from kicad2ems.solvers.lines import fastsolve
+    from kicad2ems.solvers import resolve_lines
     monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)
-    assert fastsolve.resolve_backend('auto')[0] == 'skrf'           # no qucsator: scikit-rf
+    assert fastsolve.resolve_backend('auto')[0] == 'skrf' and resolve_lines() == 'scikit'   # no qucsator: scikit-rf
     with pytest.raises(ValueError, match='--fast skrf'):
         fastsolve.resolve_backend('qucsator')
     monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: '/usr/bin/' + name)
-    assert fastsolve.resolve_backend('auto') == ('qucsator', '/usr/bin/qucsator_rf')
+    assert fastsolve.resolve_backend('auto') == ('qucsator', '/usr/bin/qucsator_rf') and resolve_lines() == 'qucs'
 
 
 def test_missing_openems_stops_before_any_work(run_cli, tmp_path, monkeypatch):
@@ -76,10 +76,11 @@ def test_line_model_only(run_cli, tmp_path, monkeypatch):
     out = tmp_path / 'out'
     code, so, err = run_cli(FILTER, '--solvers', 'lines', '--fast', 'skrf', '--points', '51', '--out', out)
     assert code == 0, so + err
-    sm = json.loads((out / 'filter_openems.json').read_text())
-    assert sm['solvers'] == ['lines'] and sm['mode'] == 'S-parameters' and 'results' not in sm
+    sm = json.loads((out / 'filter_run.json').read_text())
+    assert sm['solvers'] == ['scikit'] and sm['mode'] == 'S-parameters' and sm['results']['reference'] == 'scikit'
     assert 'pulse_steps' not in sm and not any('max-steps' in w for w in sm['warnings'])   # no openEMS talk
-    assert (out / 'filter_fast.s2p').exists() and (out / 'filter_fast.png').exists()
+    assert 'mesh' not in sm and (out / 'filter_model.png').exists() and not (out / 'filter_mesh.png').exists()
+    assert (out / 'filter_scikit.s2p').exists() and (out / 'filter_scikit.png').exists()
     page = (out / 'filter_report.html').read_text()
     assert 'line model' in page and "<div class='l'>mesh</div>" not in page    # no FDTD mesh tile without openEMS
 
