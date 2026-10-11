@@ -40,6 +40,8 @@ def test_mom_without_openems(run_cli, tmp_path, no_csxcad):
     assert code == 0, so + err
     sm = json.loads((out / 'filter_run.json').read_text())
     assert sm['solved']['mom25d']['solves'] <= 8 and sm['solved']['scikit']['compare']
+    samples = sm['solved']['mom25d']['samples_ghz']                 # the adaptive sweep's frequencies
+    assert len(samples) == sm['solved']['mom25d']['solves'] and samples == sorted(samples)
     for f in ('filter_mom25d.s2p', 'filter_mom25d.png', 'filter_scikit.s2p', 'filter_report.html', 'filter_board.json'):
         assert (out / f).exists(), f
 

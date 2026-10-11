@@ -82,7 +82,9 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
         order = [res.names.index(p.name) for p in m.ports]
         S, names, zref = mixed_mode(S[:, order][:, :, order], m)
     info = dict(seconds=res.seconds, solves=res.solves, unknowns=res.unknowns, triangles=res.triangles,
-                solver=res.solver, mesher=mesher, dmax_mm=dmax, ports=res.ports, notes=res.notes)
+                solver=res.solver, mesher=mesher, dmax_mm=dmax, ports=res.ports, notes=res.notes,
+                samples_ghz=[round(f / 1e9, 6) for f in sorted(res.solved)])
+    log(f"  mom25d: solved at {', '.join(f'{f:g}' for f in info['samples_ghz'])} GHz")
     return S, names, zref, info
 
 
