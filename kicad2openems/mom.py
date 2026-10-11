@@ -9,51 +9,30 @@ model all start from one converted board.
 The geometry file is written by CSXCAD when openEMS's Python packages are installed and by csxwrite.py
 (the same file, no openEMS needed) otherwise, so a MoM-only run (--solvers mom) needs no openEMS.
 
-mom25d is its own repository, a git submodule in mom25d/ (pip install ./mom25d, or used from the
-checkout after git submodule update --init). The hints tell it what the CSX file cannot: the ground layer,
-the exact loss tangents, the port names, layers and feed directions. MoM assumes laterally infinite
+mom25d is the package next to this one (mom25d/). The hints tell it what the CSX file cannot: the ground
+layer, the exact loss tangents, the port names, layers and feed directions. MoM assumes laterally infinite
 dielectrics over an infinite ground plane; the board outline, edge walls (approximated by via rows) and
 the air box do not exist for it.
 """
-import os, sys
+import os
 import xml.etree.ElementTree as ET
 import numpy as np
-
-VENDORED = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'mom25d', 'src')
-
-
-def import_mom25d():
-    """The mom25d package: installed, or from the mom25d/ submodule of this checkout."""
-    try:
-        import mom25d.csx                                           # noqa: F401
-    except ImportError:
-        for k in [k for k in sys.modules if k == 'mom25d' or k.startswith('mom25d.')]:
-            del sys.modules[k]                                      # a namespace stub of the folder itself
-        if not os.path.isfile(os.path.join(VENDORED, 'mom25d', '__init__.py')):
-            raise ImportError("mom25d is not installed: git submodule update --init (in the kicad2openems "
-                              "checkout), then pip install ./mom25d or run from the checkout")
-        sys.path.insert(0, VENDORED)
-        import mom25d.csx                                           # noqa: F401
-    import mom25d
-    return mom25d
 
 
 def mom25d_status():
     """(usable, one-line description) of mom25d for --check and the solver checks before a run: where it
     comes from, its version and whether its compiled core is built (the NumPy fallback is ~5x slower)."""
     try:
-        mom25d = import_mom25d()
+        import mom25d
         import triangle                                             # noqa: F401  (mom25d's default mesher)
     except Exception as e:                                          # ImportError, or a broken dependency
         return False, f"{type(e).__name__}: {e}"
-    where = os.path.dirname(os.path.dirname(os.path.abspath(mom25d.__file__)))
-    src = 'submodule' if os.path.abspath(where) == os.path.abspath(VENDORED) else 'installed'
     try:
         from mom25d import _core                                    # noqa: F401
         core = 'compiled core'
     except ImportError:
         core = "no compiled core (NumPy, ~5x slower: python -m mom25d.core.build)"
-    return True, f"{getattr(mom25d, '__version__', '?')} ({src}, {mom25d.__file__}), {core}"
+    return True, f"{mom25d.__version__} ({os.path.dirname(mom25d.__file__)}), {core}"
 
 
 def add_hints(path, m, fmin, fmax):
@@ -112,7 +91,6 @@ def solve(path, m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60
     (S (nf, n, n) in m.user_ports order with differential pairs as (d, c) modes, names, reference
     impedances, info dict). dmax in mm (planes 3x, refined near the copper of other layers). sigma (S/m):
     conductor loss, as --sigma gives openEMS (default: lossless copper, like openEMS's PEC sheets)."""
-    import_mom25d()
     from mom25d.csx import CSXModel
     from mom25d.run import solve_band
     from .sparams import mixed_mode

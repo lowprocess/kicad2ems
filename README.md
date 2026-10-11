@@ -8,7 +8,7 @@ JSON run summary and an HTML report that compares them:
 | Solver | `--solvers` | Good for | Needs |
 |---|---|---|---|
 | [openEMS](https://openems.de), 3D FDTD | `openems` (default) | anything: planes, edges, connectors, box effects, antennas (gain, efficiency, patterns) | openEMS's Python packages |
-| [mom25d](https://github.com/lowprocess/mom25d), 2.5D Method of Moments | `mom` | planar circuits over a ground plane: filters, couplers, matching networks (often 5× faster than FDTD, no ring-down) | the `mom25d/` submodule; no openEMS |
+| [mom25d](docs/mom25d.md), 2.5D Method of Moments | `mom` | planar circuits over a ground plane: filters, couplers, matching networks (often 5× faster than FDTD, no ring-down) | included (`mom25d/`); no openEMS |
 | transmission-line model as a circuit (scikit-rf or qucsator) | `lines` | a ballpark in milliseconds: impedance steps, delays, where a layout departs from its design | scikit-rf, or Qucs-S's qucsator |
 
 Every run also breaks the port nets into transmission-line sections with closed-form impedances.
@@ -32,8 +32,7 @@ Every run also breaks the port nets into transmission-line sections with closed-
 - **GUI** (`kicad2openems-gui`): setup, preview, run with progress, S-parameters, field view, antenna
   far field (polar cuts and 3D pattern at any recorded frequency).
 - **MoM** (`--solvers mom`, or `--mom` next to openEMS): the same converted geometry (the CSX file openEMS
-  gets) solved by [mom25d](mom25d/README.md), a 2.5D Method-of-Moments solver, its own repository
-  ([lowprocess/mom25d](https://github.com/lowprocess/mom25d)) included as a git submodule in `mom25d/`.
+  gets) solved by [mom25d](docs/mom25d.md), the 2.5D Method-of-Moments solver in `mom25d/`.
   kicad2openems writes that file itself when openEMS is not installed, so MoM needs no openEMS.
 - **TOML configs** (typos named), `--preview`, `--check` for every solver, an HTML report, JSON-lines
   events for a GUI or script.
@@ -41,12 +40,11 @@ Every run also breaks the port nets into transmission-line sections with closed-
 ## Install
 
 ```bash
-git clone --recurse-submodules https://github.com/lowprocess/kicad2openems.git   # mom25d/ is a submodule
-git submodule update --init   # in an existing clone without it (only needed for the MoM solver)
-pip install .                 # numpy, shapely, matplotlib
+git clone https://github.com/lowprocess/kicad2openems.git
+pip install .                 # numpy, scipy, shapely, matplotlib, triangle (the MoM solver's mesher)
 pip install '.[fast]'         # + scikit-rf: the line model as a circuit
-pip install ./mom25d          # the MoM solver (or used from the submodule checkout: needs scipy, triangle)
 pip install '.[dumps]'        # + h5py, for frequency-domain field dumps
+python -m mom25d.core.build   # optional: the MoM solver's compiled core, ~5x faster (g++ with OpenMP, pybind11)
 ```
 
 openEMS and its Python bindings are not on PyPI. Install them from your distribution, or build them with

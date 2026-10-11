@@ -1,14 +1,14 @@
-"""mom25d as a reference solver: the vendored package, the <mom25d> hints of a CSX file, --mom end to end
+"""mom25d as a reference solver: the package, the <mom25d> hints of a CSX file, --mom end to end
 (needs CSXCAD / openEMS to write the CSX file and mom25d's mesher, triangle)."""
 import json, os
 import numpy as np
 import xml.etree.ElementTree as ET
 import pytest
-from kicad2openems.mom import import_mom25d, add_hints
+from kicad2openems.mom import add_hints
 
 
-def test_import_vendored():
-    mom25d = import_mom25d()
+def test_import():
+    import mom25d
     assert hasattr(mom25d, '__version__')
     from mom25d.csx import CSXModel                                 # noqa: F401
 
@@ -88,10 +88,9 @@ def test_mom_without_openems(run_cli, tmp_path, no_csxcad):
 def test_sigma_reaches_mom(demo_files):
     """--sigma is conductor loss in openEMS's conducting sheets; MoM gets the same (it is not in the CSX file
     for mom25d), with the copper thickness of the ports' layer."""
-    from kicad2openems.mom import import_mom25d, _metal
+    from kicad2openems.mom import _metal
     from kicad2openems.kicad import KiCadBoard
     from kicad2openems.model import Model
-    import_mom25d()
     base, _ = demo_files
     m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
               log=lambda *a: None)

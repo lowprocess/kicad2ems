@@ -17,8 +17,10 @@ classifiers = [
 authors = [{ name = "Claude", email = "noreply@anthropic.com" }]
 dependencies = [
     "numpy>=1.24",
+    "scipy>=1.10",                 # mom25d
     "shapely>=2.0",
     "matplotlib>=3.7",
+    "triangle>=20230923",          # mom25d's surface mesher
     "tomli>=2; python_version < '3.11'",
 ]
 
@@ -26,6 +28,8 @@ dependencies = [
 fast = ["scikit-rf>=1.0"]          # --fast skrf: the line model as S-parameters (qucsator: a separate program)
 dumps = ["h5py>=3"]                # frequency-domain field dumps (openEMS's own Python package needs it too)
 gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "h5py>=3"]   # kicad2openems-gui (h5py: FD dumps, far field)
+gmsh = ["gmsh>=4.11"]              # mom25d's mesher = "gmsh"
+core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster)
 test = ["pytest>=7", "scikit-rf>=1.0", "h5py>=3"]
 # openEMS and CSXCAD are not on PyPI: install them from your distribution or build them from source
 # (see README); everything except the actual FDTD run works without them.
@@ -33,12 +37,16 @@ test = ["pytest>=7", "scikit-rf>=1.0", "h5py>=3"]
 [project.scripts]
 kicad2openems = "kicad2openems.cli:main"
 kicad2openems-gui = "kicad2openems.gui:main"
+mom25d = "mom25d.cli:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "kicad2openems.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["kicad2openems*"]
+include = ["kicad2openems*", "mom25d*"]
+
+[tool.setuptools.package-data]
+mom25d = ["core/*.cpp", "*.so", "*.pyd"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

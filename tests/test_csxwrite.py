@@ -65,8 +65,6 @@ def test_rand_is_glibc():
 def test_mom25d_reads_the_written_file(tmp_path):
     """What the file is for: mom25d's reader takes the stack, metal, vias, parts and ports from it."""
     from kicad2openems import csxwrite
-    from kicad2openems.mom import import_mom25d
-    import_mom25d()
     from mom25d.csx import CSXModel
     p = tmp_path / 'g.xml'
     CSX = csxwrite.ContinuousStructure()
