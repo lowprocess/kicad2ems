@@ -516,11 +516,12 @@ class MainWindow(QMainWindow):
     def out_dir(self, vals=None):
         """The output folder: the form's, else 'out' next to the board (where a run writes), else in the working
         directory."""
+        from ..config import default_out
         vals = self.setup.values() if vals is None else vals
         if vals.get('out'):
             return vals['out']
         board = vals.get('board')
-        return os.path.join(os.path.dirname(os.path.abspath(board)) if board else os.getcwd(), 'out')
+        return default_out(board) if board else os.path.join(os.getcwd(), 'out')
 
     def start(self, preview):
         if self.proc is not None:

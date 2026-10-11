@@ -135,7 +135,8 @@ CORE = [
     Option('no_report', False, "do not write <name>_report.html", bool, group='output'),
     Option('events', None, "also write the run as JSON lines (stages, log, progress, files) to FILE, for a GUI or a "
            "script", path=True, group='output', cli=dict(metavar='FILE')),
-    Option('out', 'openems_out', "output folder (default {default})", path=True, gui='Output folder', group='output'),
+    Option('out', None, "output folder (default: out next to the board; for the <name>_board.json of an earlier run, "
+           "its folder)", path=True, gui='Output folder', group='output'),
 ]
 CLI_ONLY = ('check', 'config')
 
@@ -193,7 +194,13 @@ def settings_class(reg=None):
 Settings = settings_class()
 OPTIONS = {o.key: o for _, o in all_options()}
 PATH_KEYS = tuple(k for k, o in OPTIONS.items() if o.path)          # relative to the TOML file
-CHOICES = {k: o.choices for k, o in OPTIONS.items() if o.choices}
+
+
+def default_out(board):
+    """The output folder when none is given: out next to the board file, or the folder of the <name>_board.json
+    of an earlier run (whose folder is an output folder already)."""
+    base = os.path.dirname(os.path.abspath(board))
+    return base if board.lower().endswith('_board.json') else os.path.join(base, 'out')
 
 
 def _convert(key, value):

@@ -135,6 +135,9 @@ def board_from_settings(s, log=print):
 
 class Job:
     def __init__(self, settings, echo=print, command=None):
+        from .config import default_out
+        if not settings.out:
+            settings.out = default_out(settings.board)
         self.s, self.echo = settings, echo
         self.messages, self.files = [], []
         self.name = os.path.splitext(os.path.basename(settings.board))[0]

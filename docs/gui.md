@@ -44,8 +44,8 @@ generated antenna examples) says so in the status bar, with the generator comman
 
 A loaded config keeps the settings that have no field in the form (`air`, `bc`, `no_mask`, `diel`, …) and
 passes them on to its runs. When the config's output folder already holds results, they are shown. An
-empty *Output folder* means `out` next to the board (the command line's default is `openems_out` in the
-working directory); saving leaves it empty rather than writing the folder the GUI happened to start in.
+empty *Output folder* means `out` next to the board (the command line's default too); saving leaves it
+empty rather than writing the folder the GUI happened to start in.
 Each run writes `<out>/gui_run.toml` (the settings, with absolute paths) and `<out>/gui_events.jsonl`;
 the same run can be repeated from a terminal with `kicad2ems <out>/gui_run.toml`.
 

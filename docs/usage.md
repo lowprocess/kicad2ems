@@ -204,7 +204,7 @@ used and a `config:` note says so (`config.resolve_path`).
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--out` | `openems_out` | output folder |
+| `--out` | `out` next to the board | output folder (for the `<name>_board.json` of an earlier run: its folder) |
 | `--compare FILE.sNp` | — | overlay another result on the S-parameter plot |
 | `--preview` | off | model, openEMS's mesh, line sections, the other solvers, JSON and report; no openEMS run |
 | `--no-report` | off | skip `<name>_report.html` |
