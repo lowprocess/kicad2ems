@@ -40,7 +40,7 @@ the affected cases.
   lumped ports (`mom_port = "lumped"`).
 - **Filter pass-band loss** (`filter`): openEMS ~1.4 dB more loss than mom25d at 3.3 GHz, attributed to
   openEMS's conductivity κ being fitted at the band centre (`diel = fixed`). Re-run with
-  `diel = "wideband"` to confirm ([mom](docs/mom.md#the-csx-file-and-the-hints)).
+  `diel = "wideband"` to confirm ([mom](docs/mom.md#the-board)).
 
 ## 2. Line model
 

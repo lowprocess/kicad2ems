@@ -44,33 +44,39 @@ copper below it is left out. Antenna mode is not supported (no ground plane unde
 Planes on other layers are meshed (3 × `mom_dmax`, refined near the copper of nearby layers); a board
 with large inner planes has many unknowns ([runtime](#runtime)).
 
-## The CSX file and the hints
+<a id="the-board"></a>
+## The board, not the CSX file
 
-`mom25d.csx.CSXModel` reads any CSX file: Material slabs (εr, κ), planar Metal / ConductingSheet
-polygons and boxes, via cylinders, vertical metal sheets (edge walls: rows of vias every 0.5 mm), lumped
-elements (series / parallel R-L-C across a cut, bridged by a metal strip) and openEMS lumped ports
-(`port_resist_<n>`). What the file cannot say, kicad2ems adds as an element the CSXCAD reader ignores:
-
-```xml
-<mom25d version="1" ground="B.Cu" f_loss="4.5e9">
-  <Layer name="F.Cu" z="0.2"/>
-  <Dielectric name="dielectric 1" z0="0" z1="0.2" er="4.4" tand="0.011"/>
-  <Port number="1" name="P1" layer="F.Cu" ref_layer="B.Cu" x="1.09" y="-13.9" dx="1" dy="0" width="0.35" z0="50"/>
-</mom25d>
-```
+MoM reads the board every solver gets (`<name>_board.json`, through `mom25d.board.BoardModel`): the stack
+above the ground, copper per interface, vias over the interfaces with metal at them, edge walls as rows of
+vias every 0.5 mm, a part as one series R-L-C element across its gap (bridged by a metal strip), the ports
+with their layers, reference layers, feed directions and widths, and the stackup's own tan δ.
 
 - **Copper loss:** `--sigma` makes openEMS's copper conducting sheets of that conductivity; MoM gets the
   same conductivity (with the copper thickness of the ports' layer) as its surface impedance. Without
   `--sigma` both are lossless.
-- **Loss tangents:** the CSX file holds a conductivity κ that openEMS fits at the band centre; the hint
-  gives MoM the stackup's real tan δ (constant over frequency). Without hints tan δ = κ / (2π f ε0 εr)
-  at `f_loss`. This is one real difference between the two results: in a narrow-band filter openEMS's
-  loss is higher below the band centre (filter example: ~1 dB at 3.3 GHz with the centre at 4.5 GHz).
-- **Ports:** name, layer, reference layer, feed direction (into the circuit) and width. Without hints:
-  `P<n>`, the direction from the side of the lumped-port sheet that has copper, the reference from the
-  copper at the sheet's ends.
+- **Loss tangents:** MoM uses the stackup's tan δ, constant over frequency; openEMS (`diel = "fixed"`) a
+  conductivity fitted at the band centre. In a narrow-band filter openEMS's loss is then higher below the
+  band centre (filter example: ~1 dB at 3.3 GHz with the centre at 4.5 GHz).
 
-Every openEMS run writes the hints into `<name>.xml` too, so `mom25d <name>.xml` works on any earlier run.
+Until October 2026 MoM read the CSX file openEMS gets (`<name>.xml` with a `<mom25d>` hints element), and so
+inherited openEMS's own changes. Both paths, compared on every example (coarse settings: `mom_dmax` 0.6 mm,
+the same mesh on both sides; S at five frequencies across the band, no adaptive sweep):
+
+| Boards | What MoM gets now instead | max \|ΔS\| |
+|---|---|---|
+| filter, rf_steplpf, rf_stubnotch, rf_branchline, rf_coupler, rf_wilkinson, hairpin, demo_diff | the same model | ≤ 1.5e-4 (the CSX file's 8 digits) |
+| rf_gcpw | 22 of 38 vias where they are, not snapped to the FDTD mesh (moved up to 0.27 mm) | 6.5e-4 (wave ports, away from the vias) |
+| demo_transition | 22 of 23 vias where they are (moved up to 0.064 mm) | 2.0e-2 |
+| demo_lowpass / highpass / bandpass | each part with ESR / ESL one element, not openEMS 0.37's two halves (3 elements instead of 6), 12–16 fewer unknowns; two vias by 0.014 mm | 4.3e-2 / 1.0e-2 / 4.4e-2 |
+| sma_launch | 173 of 185 vias where they are (moved up to 0.30 mm) | 5.4e-2 for the whole run (S21 within 0.36 dB; 772 s on each path, 24 cores) |
+
+A whole run with the adaptive sweep capped at 12 solves can differ much more (|ΔS| up to 1.4 on the
+stub notch): the sweep had not converged on either side, and an unconverged rational fit magnifies the
+smallest difference in its first samples (the filter at the default settings, up to 60 solves, converged
+after 20, its last model change 1.5e-4). The check in the
+parity tests (`tests/test_parity.py`) keeps the two in step from here on: everything MoM changes from the
+board is declared, and anything else fails a test.
 
 ## Ports
 
