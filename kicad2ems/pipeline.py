@@ -22,15 +22,15 @@ import datetime, json, os, time
 import numpy as np
 
 from . import __version__
-from .kicad.board import KiCadBoard
+from .importers.kicad.board import KiCadBoard
 from .model import Model
-from .boundaries import resolve_bc, cavity_check
-from .mesh import auto_mesh
+from .solvers.openems.boundaries import resolve_bc, cavity_check
+from .solvers.openems.mesh import auto_mesh
 CUT_KEEPOUT = 2.0      # mm: edge walls on a region cut stay this far from the signal copper (docs/model.md)
 from .plots import save, preview, plot_results, plot_convergence, plot_antenna, plot_pattern, plot_lines
 from .sparams import mixed_mode, fill_reciprocal
 from .touchstone import write_touchstone, read_touchstone
-from .dumps import parse_dump, estimate_size_mb, plot_fd_dumps
+from .solvers.openems.dumps import parse_dump, estimate_size_mb, plot_fd_dumps
 
 
 def ram_gb():
@@ -210,7 +210,7 @@ class Job:
         if self.plan:
             self.log("solvers: " + ", ".join(SOLVER_LABELS[x] for x in self.plan))
         if self.fdtd:
-            from .simulation import check_openems
+            from .solvers.openems.simulation import check_openems
             ok, lines = check_openems()
             if not ok:
                 self.log("openEMS cannot be imported - details:\n" + "\n".join(lines) + "\n"
@@ -218,7 +218,7 @@ class Job:
                          "openEMS: --solvers mom,lines")
                 return False
         if 'mom' in self.plan and not self.antenna:
-            from .mom import mom25d_status
+            from .solvers.mom import mom25d_status
             ok, what = mom25d_status()
             if not ok:
                 if 'mom' in self.named:
@@ -229,7 +229,7 @@ class Job:
             elif 'no compiled core' in what:
                 self.log(f"note: mom25d {what}")
         if 'lines' in self.plan:
-            from .fastsolve import resolve_backend
+            from .solvers.lines.fastsolve import resolve_backend
             try:
                 self.line_backend, _ = resolve_backend(s.line_backend, s.qucsator)
                 if s.line_backend == 'auto':
@@ -251,7 +251,7 @@ class Job:
                            ground=s.ground, parts=s.parts, log=self.log)
         self.log(m.describe())
         if s.diel == 'wideband':
-            from .dielectric import describe as describe_diel
+            from .solvers.openems.dielectric import describe as describe_diel
             self.log("\n".join(describe_diel(m.layers, s.diel_fref * 1e9, self.fmin, self.fmax)))
         ob = m.outline.bounds
         self.summary['model'] = dict(
@@ -270,7 +270,7 @@ class Job:
         s, m = self.s, self.m
         air, bc = s.air, s.bc
         if self.antenna:
-            from .antenna import antenna_air
+            from .solvers.openems.antenna import antenna_air
             air = antenna_air(self.fmin, self.fmax, s.air)
             bc = 'PML_8' if bc == 'auto' else bc
             self.log(f"antenna mode: boundaries {bc}, air margin {air:.1f} mm")
@@ -278,7 +278,7 @@ class Job:
         kw = dict(air=air, ratio=s.ratio, nz_min=s.nz, bc=self.bc, curves=s.curves, vias=s.vias,
                   via_snap=s.via_snap, log=self.log)
         if s.converge:
-            from .converge import mesh_levels, describe_levels
+            from .solvers.openems.converge import mesh_levels, describe_levels
             self.levels = mesh_levels(m, self.fmin, self.fmax, sorted(set(s.converge)), res=s.res, fine=s.fine, **kw)
             self.log("\n".join(describe_levels(self.levels)))
             self.grid = self.levels[-1][1]                          # the finest level gives the result
@@ -316,7 +316,7 @@ class Job:
             self.summary.pop('fast', None)
 
     def _lines(self):
-        from .tlines import build
+        from .solvers.lines.tlines import build
         self.lm = build(self.m)
         if not self.lm.paths:
             self.log("transmission lines: no routed path from the ports" +
@@ -359,7 +359,7 @@ class Job:
             self.summary.pop('mom', None)
 
     def _mom(self):
-        from .mom import write_xml, solve
+        from .solvers.mom import write_xml, solve
         s, m = self.s, self.m
         self.freq = np.linspace(self.fmin, self.fmax, s.points)
         xml = self.path('.xml')
@@ -383,7 +383,7 @@ class Job:
         self.log(f"mom25d: {info['solves']} EM solves, {info['seconds']:.0f} s -> {out}")
 
     def fast_solve(self):
-        from .fastsolve import solve, resolve_backend
+        from .solvers.lines.fastsolve import solve, resolve_backend
         s, m = self.s, self.m
         backend = self.line_backend or s.line_backend               # resolved by preflight(); else as set
         self.freq = np.linspace(self.fmin, self.fmax, s.points)
@@ -405,8 +405,8 @@ class Job:
         self.log(f"fast line model ({backend}): {seconds * 1e3:.0f} ms -> {out}")
 
     def preview(self):
-        from .simulation import pulse_steps
-        from .antenna import exc_fmax
+        from .solvers.openems.simulation import pulse_steps
+        from .solvers.openems.antenna import exc_fmax
         s = self.s
         self.figure(preview(self.m, self.grid, self.name), '_mesh.png', 'mesh', 'model and mesh')
         self.log(f"wrote {self.path('_mesh.png')}")
@@ -431,7 +431,7 @@ class Job:
                         '_mom.png', 'mom', 'S-parameter plot, mom25d')
 
     def solve(self):
-        from .simulation import run_excitations, port_index
+        from .solvers.openems.simulation import run_excitations, port_index
         s, m = self.s, self.m
         self.excite = port_index(m, s.excite)
         if self.antenna and len(self.excite) > 1:
@@ -462,7 +462,7 @@ class Job:
             self.log(f"--- mesh level x{self.levels[-1][0]:g} (finest: the result) ---")
         xml = self.path('.xml')
         if self.antenna:
-            from .antenna import run_antenna
+            from .solvers.openems.antenna import run_antenna
             k = self.excite[0]
             self.result = run_antenna(m, self.grid, self.freq, k, self.bc, s.out,
                                       ff_extra=[v * 1e9 for v in s.ff_freq], ff_pattern=s.ff_freq[0] * 1e9 if s.ff_freq else None,
@@ -474,7 +474,7 @@ class Job:
         self.wrote('CSX geometry (AppCSXCAD)', xml)
 
     def outputs(self):
-        from .simulation import run_dir, log_path
+        from .solvers.openems.simulation import run_dir, log_path
         s, m, name, freq = self.s, self.m, self.name, self.freq
         r = self.result
         for (pname, dname), path in r.dump_files.items():
@@ -526,7 +526,7 @@ class Job:
             self.convergence_outputs()
 
     def antenna_outputs(self):
-        from .antenna import save as save_antenna
+        from .solvers.openems.antenna import save as save_antenna
         k = self.excite[0]
         self.figure(plot_antenna(self.freq, self.result.S[:, k, k], self.m.ports[k].z0, self.ant,
                                  f"{self.name} - antenna"), '_antenna.png', 'antenna', 'antenna: match, gain, efficiency')
@@ -537,7 +537,7 @@ class Job:
         self.summary['antenna'] = {k_: v for k_, v in self.ant.items() if k_ != 'sphere'}
 
     def convergence_outputs(self):
-        from .converge import compare_levels, verdict
+        from .solvers.openems.converge import compare_levels, verdict
         s, levels = self.s, self.levels
         tol_db, tol_deg = s.converge_tol
         dev = compare_levels([S_ for _, S_ in self.coarse] + [self.Smm], self.names) + [{}]   # finest: the reference

@@ -38,9 +38,9 @@ Documentation: docs/index.md in the repository.
 """
 __version__ = '0.2.0'
 
-from .kicad import KiCadBoard, read_pos
+from .importers.kicad import KiCadBoard, read_pos
 from .model import Model, Port
-from .boundaries import resolve_bc, cavity_check
-from .mesh import auto_mesh, smooth_lines
+from .solvers.openems.boundaries import resolve_bc, cavity_check
+from .solvers.openems.mesh import auto_mesh, smooth_lines
 from .sparams import mixed_mode
 from .touchstone import write_touchstone, read_touchstone

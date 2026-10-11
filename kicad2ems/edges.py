@@ -34,7 +34,7 @@ def parse_sides(v):
 
 
 def _signal_nets(model):
-    from .tlines import ground_nets
+    from .solvers.lines.tlines import ground_nets
     nets = {p.net for p in model.ports if p.net}
     if model.sel:
         nets |= set(model.sel) - ground_nets(model)

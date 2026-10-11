@@ -2,10 +2,10 @@
 --mode antenna --preview of the example boards (no openEMS needed)."""
 import numpy as np
 import pytest
-from kicad2ems.kicad import KiCadBoard
+from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.model import Model
-from kicad2ems.mesh import auto_mesh
-from kicad2ems.antenna import antenna_air, record_freqs, match_summary, gain_table, pattern_gain
+from kicad2ems.solvers.openems.mesh import auto_mesh
+from kicad2ems.solvers.openems.antenna import antenna_air, record_freqs, match_summary, gain_table, pattern_gain
 
 
 
@@ -49,7 +49,7 @@ def test_dipole_gap_port(boards):
 
 
 def test_gap_port_direction_in_fdtd(boards, fake_openems, monkeypatch):
-    from kicad2ems import simulation
+    from kicad2ems.solvers.openems import simulation
     m = Model(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
     mesh = auto_mesh(m, 1.5e9, 3.5e9, bc=('PML_8',) * 6, air=30, log=lambda *a: None)
     seen = []

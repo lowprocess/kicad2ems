@@ -9,7 +9,7 @@ Automatic rectilinear mesh for openEMS.
           (none below a PEC bottom plane), PML cells added only on PML sides
 """
 import numpy as np
-from .constants import C0
+from ...constants import C0
 from .boundaries import SIDES, bottom_is_plane
 
 

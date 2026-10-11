@@ -9,7 +9,7 @@ band centre: tan d then falls as 1/f, too lossy below the centre and too little 
 with e^(+j w t) (eps = eps' - j eps''), m1 = 3 (1 kHz) and m2 = 12 (1 THz).
 """
 import numpy as np
-from .constants import EPS0
+from ...constants import EPS0
 
 M1, M2 = 3.0, 12.0
 

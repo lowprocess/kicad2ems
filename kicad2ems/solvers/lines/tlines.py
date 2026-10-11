@@ -23,8 +23,8 @@ report. Units: mm, Ohm; model coordinates (y up).
 import heapq, math
 import numpy as np
 from shapely.geometry import LineString, Point, Polygon
-from .constants import C0, EPS0
-from .geometry import flip_y
+from ...constants import C0, EPS0
+from ...geometry import flip_y
 
 ETA0 = 376.730313668
 MU0 = 4e-7 * math.pi

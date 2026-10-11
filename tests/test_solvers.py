@@ -2,7 +2,7 @@
 runs without openEMS, exit codes."""
 import json, os
 import pytest
-from kicad2ems import simulation
+from kicad2ems.solvers.openems import simulation
 from kicad2ems.cli import settings_from_argv
 from kicad2ems.config import build_settings, ConfigError
 
@@ -50,7 +50,7 @@ def test_solvers_from_toml_and_command_line(tmp_path):
 
 def test_resolve_backend(monkeypatch):
     pytest.importorskip('skrf')
-    from kicad2ems import fastsolve
+    from kicad2ems.solvers.lines import fastsolve
     monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)
     assert fastsolve.resolve_backend('auto')[0] == 'skrf'           # no qucsator: scikit-rf
     with pytest.raises(ValueError, match='--fast skrf'):
@@ -86,7 +86,7 @@ def test_line_model_only(run_cli, tmp_path, monkeypatch):
 
 def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatch):
     pytest.importorskip('skrf')
-    from kicad2ems import mom
+    from kicad2ems.solvers import mom
     monkeypatch.setattr(mom, 'mom25d_status', lambda: (True, '0.0 (test)'))
     monkeypatch.setattr(mom, 'write_xml', lambda *a, **kw: 'xml')
 
@@ -102,7 +102,7 @@ def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatc
 
 
 def test_unavailable_reference_is_left_out(run_cli, tmp_path, monkeypatch):
-    from kicad2ems import mom
+    from kicad2ems.solvers import mom
     monkeypatch.setattr(mom, 'mom25d_status', lambda: (False, 'ImportError: no mom25d'))
     out = tmp_path / 'out'
     code, so, _ = run_cli(FILTER, '--preview', '--mom', '--out', out)

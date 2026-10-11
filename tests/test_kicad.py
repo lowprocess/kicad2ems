@@ -1,7 +1,7 @@
 """KiCad import: S-expressions, stackup, copper, ports, nets, outline."""
 import pytest
-from kicad2ems.kicad import KiCadBoard, board_outline, resolve_nets, DiffLegs
-from kicad2ems.kicad.sexpr import parse_sexpr, items, val
+from kicad2ems.importers.kicad import KiCadBoard, board_outline, resolve_nets, DiffLegs
+from kicad2ems.importers.kicad.sexpr import parse_sexpr, items, val
 from kicad2ems.model import Model
 
 

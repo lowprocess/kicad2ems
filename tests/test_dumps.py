@@ -3,9 +3,9 @@ plots, TOML lists."""
 import sys, types
 import numpy as np
 import pytest
-from kicad2ems.kicad import KiCadBoard
+from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.model import Model
-from kicad2ems.dumps import parse_dump, add_dumps, read_fd, plot_fd_dumps
+from kicad2ems.solvers.openems.dumps import parse_dump, add_dumps, read_fd, plot_fd_dumps
 
 
 @pytest.fixture(scope='module')

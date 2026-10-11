@@ -3,8 +3,8 @@ plots, line-model comparison, convergence, antenna outputs, JSON summary and rep
 import json
 import numpy as np
 import pytest
-from kicad2ems import simulation, antenna
-from kicad2ems.simulation import RunResult
+from kicad2ems.solvers.openems import simulation, antenna
+from kicad2ems.solvers.openems.simulation import RunResult
 
 
 def _canned(m, mesh, freq, excite, bc, out_dir, **kw):

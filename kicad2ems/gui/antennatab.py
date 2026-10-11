@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt
 import pyqtgraph as pg
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from ..antenna import read_sphere, sphere_gain, sphere_cuts
+from ..solvers.openems.antenna import read_sphere, sphere_gain, sphere_cuts
 
 QUANTITIES = ('Gain (dBi)', 'Realized gain (dBi)', 'Directivity (dBi)')
 RANGE_DB = 30.0                                                     # dynamic range of the 3D pattern

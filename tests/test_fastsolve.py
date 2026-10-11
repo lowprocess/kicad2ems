@@ -3,10 +3,10 @@ qucsator netlist and dataset reader, lumped parts."""
 import shutil
 import numpy as np
 import pytest
-from kicad2ems.kicad import KiCadBoard
+from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.model import Model
-from kicad2ems.tlines import build
-from kicad2ems.fastsolve import solve, qucs_netlist, read_qucs_dataset, part_impedance, find_qucsator
+from kicad2ems.solvers.lines.tlines import build
+from kicad2ems.solvers.lines.fastsolve import solve, qucs_netlist, read_qucs_dataset, part_impedance, find_qucsator
 from kicad2ems.parts import Part
 
 FREQ = np.linspace(1e9, 8e9, 15)

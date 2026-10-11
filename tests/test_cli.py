@@ -71,7 +71,7 @@ def test_check_is_command_line_only(tmp_path):
 
 
 def test_check_reports_python_and_modules():
-    from kicad2ems.simulation import check_openems
+    from kicad2ems.solvers.openems.simulation import check_openems
     ok, lines = check_openems()
     text = "\n".join(lines)
     assert sys.executable in text and 'numpy' in text

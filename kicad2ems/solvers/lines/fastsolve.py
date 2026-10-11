@@ -15,7 +15,7 @@ A ballpark: no coupling between sections, no radiation, no plane resonances, qua
 """
 import math, os, re, shutil, subprocess, tempfile, warnings
 import numpy as np
-from .constants import C0
+from ...constants import C0
 
 BACKENDS = ('skrf', 'qucsator')
 

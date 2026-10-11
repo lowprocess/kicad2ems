@@ -165,7 +165,7 @@ def settings_from_argv(argv=None):
 def other_solvers():
     """--check lines for what runs without openEMS: mom25d, the line model's circuit solvers, the GUI."""
     import importlib, shutil
-    from .mom import mom25d_status
+    from .solvers.mom import mom25d_status
     lines = ["other solvers (no openEMS needed):"]
     ok, what = mom25d_status()
     lines.append(f"  {'ok' if ok else 'FAILED':7s} mom25d      {what}")
@@ -191,7 +191,7 @@ def main(argv=None, prog='kicad2ems'):
     try:
         s, check = settings_from_argv(argv)
         if check:
-            from .simulation import check_openems
+            from .solvers.openems.simulation import check_openems
             ok, report = check_openems()
             print("\n".join(report + [''] + other_solvers() + ['']))
             print("openEMS: ready" if ok else "openEMS: NOT usable from this python (without it: --preview, "

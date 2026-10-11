@@ -15,9 +15,9 @@ from shapely.geometry import Polygon, MultiPolygon, LineString, Point, box
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 from .geometry import polygons, flip_y
-from .kicad.outline import board_outline
-from .kicad.nets import resolve_nets, DiffLegs
-from .kicad.pnp import read_pos, pos_port_refs
+from .importers.kicad.outline import board_outline
+from .importers.kicad.nets import resolve_nets, DiffLegs
+from .importers.kicad.pnp import read_pos, pos_port_refs
 from .parts import find_parts
 
 

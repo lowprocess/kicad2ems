@@ -13,7 +13,7 @@ board's top side), so phi = 0 is +x, theta = 0 is the board's top-side normal.
 """
 import functools, json
 import numpy as np
-from .constants import C0
+from ...constants import C0
 
 
 def antenna_air(fmin, fmax, air=None):

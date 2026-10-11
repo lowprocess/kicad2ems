@@ -49,7 +49,7 @@ def api_calls(ContinuousStructure, openEMS, CSPropDebyeMaterial):
 
 
 def test_writer_matches_csxcad_byte_for_byte(tmp_path):
-    from kicad2ems import csxwrite
+    from kicad2ems.solvers.openems import csxwrite
     out = tmp_path / 'mine.xml'
     FDTD, CSX = api_calls(csxwrite.ContinuousStructure, csxwrite.openEMS, csxwrite.CSPropDebyeMaterial)
     CSX.Write2XML(str(out))
@@ -57,14 +57,14 @@ def test_writer_matches_csxcad_byte_for_byte(tmp_path):
 
 
 def test_rand_is_glibc():
-    from kicad2ems.csxwrite import _Rand
+    from kicad2ems.solvers.openems.csxwrite import _Rand
     r = _Rand()
     assert [r() for _ in range(5)] == [1804289383, 846930886, 1681692777, 1714636915, 1957747793]
 
 
 def test_mom25d_reads_the_written_file(tmp_path):
     """What the file is for: mom25d's reader takes the stack, metal, vias, parts and ports from it."""
-    from kicad2ems import csxwrite
+    from kicad2ems.solvers.openems import csxwrite
     from mom25d.csx import CSXModel
     p = tmp_path / 'g.xml'
     CSX = csxwrite.ContinuousStructure()
@@ -90,11 +90,11 @@ def csxcad():
 
 _SCRIPT = r"""
 import sys
-from kicad2ems.kicad import KiCadBoard
+from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.model import Model
-from kicad2ems.boundaries import resolve_bc
-from kicad2ems.mesh import auto_mesh
-from kicad2ems.simulation import build_fdtd
+from kicad2ems.solvers.openems.boundaries import resolve_bc
+from kicad2ems.solvers.openems.mesh import auto_mesh
+from kicad2ems.solvers.openems.simulation import build_fdtd
 base, backend, out, kind = sys.argv[1:5]
 kw = dict(demo=dict(nets=['RF', 'GND'], ground='B.Cu', pos_file=base + '-top.pos'), diff=dict(ground='B.Cu'))
 kw = kw.get(kind, {})

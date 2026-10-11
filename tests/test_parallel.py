@@ -2,8 +2,8 @@
 no openEMS needed)."""
 import os
 import numpy as np
-from kicad2ems import simulation
-from kicad2ems.kicad import KiCadBoard
+from kicad2ems.solvers.openems import simulation
+from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.model import Model
 
 

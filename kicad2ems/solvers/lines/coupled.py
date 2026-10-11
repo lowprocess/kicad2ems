@@ -16,7 +16,7 @@ Coupled lines for the line model: parallel microstrip sections close enough to c
 """
 import math
 import numpy as np
-from .constants import C0
+from ...constants import C0
 from .tlines import microstrip, _hj_eeff, _hj_z01
 
 ETA0 = 376.730313668

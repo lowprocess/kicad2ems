@@ -4,7 +4,7 @@ import json, os
 import numpy as np
 import xml.etree.ElementTree as ET
 import pytest
-from kicad2ems.mom import add_hints
+from kicad2ems.solvers.mom import add_hints
 
 
 def test_import():
@@ -15,7 +15,7 @@ def test_import():
 
 @pytest.fixture(scope='module')
 def model(demo_files):
-    from kicad2ems.kicad import KiCadBoard
+    from kicad2ems.importers.kicad import KiCadBoard
     from kicad2ems.model import Model
     base, _ = demo_files
     return Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
@@ -67,7 +67,7 @@ def test_mom_without_openems(run_cli, tmp_path, no_csxcad):
     """MoM needs no openEMS: the geometry file comes from csxwrite, and the run is the same."""
     pytest.importorskip('triangle')
     pytest.importorskip('skrf')
-    from kicad2ems import simulation
+    from kicad2ems.solvers.openems import simulation
     assert not simulation.have_csxcad()
     out = tmp_path / 'out'
     code, so, err = run_cli(FILTER, '--preview', '--mom', '--fast', 'skrf', '--mom-dmax', '0.8', '--mom-solves', '8',
@@ -88,8 +88,8 @@ def test_mom_without_openems(run_cli, tmp_path, no_csxcad):
 def test_sigma_reaches_mom(demo_files):
     """--sigma is conductor loss in openEMS's conducting sheets; MoM gets the same (it is not in the CSX file
     for mom25d), with the copper thickness of the ports' layer."""
-    from kicad2ems.mom import _metal
-    from kicad2ems.kicad import KiCadBoard
+    from kicad2ems.solvers.mom import _metal
+    from kicad2ems.importers.kicad import KiCadBoard
     from kicad2ems.model import Model
     base, _ = demo_files
     m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',

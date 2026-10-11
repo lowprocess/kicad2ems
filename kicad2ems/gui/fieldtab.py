@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QRectF, QTimer
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton, QLabel, QCheckBox,
                                QSlider, QSpinBox, QFileDialog, QMessageBox, QProgressDialog, QApplication)
 import pyqtgraph as pg
-from .. import fields as F
+from ..solvers.openems import fields as F
 
 COMPONENTS = [('|F|', 'mag'), ('x', 'x'), ('y', 'y'), ('z', 'z')]
 

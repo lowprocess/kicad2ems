@@ -5,12 +5,12 @@ import numpy as np
 import pytest
 from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
-from kicad2ems.coupled import coupled_microstrip, group_lc, mtl_s
-from kicad2ems.strips import shape_strips, rectilinear
-from kicad2ems.tlines import microstrip, build
-from kicad2ems.kicad import KiCadBoard
+from kicad2ems.solvers.lines.coupled import coupled_microstrip, group_lc, mtl_s
+from kicad2ems.solvers.lines.strips import shape_strips, rectilinear
+from kicad2ems.solvers.lines.tlines import microstrip, build
+from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.model import Model
-from kicad2ems.fastsolve import solve, qucs_netlist, find_qucsator, read_qucs_dataset
+from kicad2ems.solvers.lines.fastsolve import solve, qucs_netlist, find_qucsator, read_qucs_dataset
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EX = os.path.join(ROOT, 'examples')

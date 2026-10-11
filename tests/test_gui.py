@@ -180,7 +180,7 @@ def test_window_config_and_plots(tmp_path, monkeypatch):
                                           ('gcpw', 2), ('coupler', 4)])
 def test_rf_examples_load(name, nports):
     """The RF example boards load: ports, the Wilkinson resistor, the coupler's two separate lines."""
-    from kicad2ems.kicad import KiCadBoard
+    from kicad2ems.importers.kicad import KiCadBoard
     from kicad2ems.model import Model
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     path = os.path.join(root, 'examples', f'rf_{name}.toml')

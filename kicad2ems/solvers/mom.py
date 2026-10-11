@@ -65,7 +65,7 @@ def write_xml(m, mesh, fmin, fmax, path, bc=('MUR',) * 6, backend='auto', **kw):
     """The CSX geometry openEMS would simulate (build_fdtd, no run) as <path>, with the mom25d hints.
     backend: 'csxcad', 'xml' (csxwrite.py, no openEMS needed) or 'auto' (CSXCAD when it imports). Returns
     the backend used."""
-    from .simulation import build_fdtd, have_csxcad
+    from .openems.simulation import build_fdtd, have_csxcad
     if backend == 'auto':
         backend = 'csxcad' if have_csxcad() else 'xml'
     FDTD, CSX, _ = build_fdtd(m, mesh, fmin, fmax, 0, bc=bc, backend=backend, **kw)
@@ -93,7 +93,7 @@ def solve(path, m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60
     conductor loss, as --sigma gives openEMS (default: lossless copper, like openEMS's PEC sheets)."""
     from mom25d.csx import CSXModel
     from mom25d.run import solve_band
-    from .sparams import mixed_mode
+    from ..sparams import mixed_mode
     fmin, fmax = float(freq[0]), float(freq[-1])
     kind = 'via' if port == 'lumped' else port
     pairs = any(len(legs) == 2 for _, legs in m.user_ports) and kind != 'via'
