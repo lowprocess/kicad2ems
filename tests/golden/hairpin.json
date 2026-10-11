@@ -1,0 +1,51 @@
+{
+ "stack": [
+  ["dielectric 1", 0.0, 0.2104, 4.4, 0.02]
+ ],
+ "copper_z": {
+  "B.Cu": 0.0,
+  "F.Cu": 0.2104
+ },
+ "ground": null,
+ "outline": {
+  "area": 225.0,
+  "bounds": [0.0, -15.0, 15.0, 0.0]
+ },
+ "copper": {
+  "B.Cu": {
+   "GND": 225.0
+  },
+  "F.Cu": {
+   "BPF": 47.284
+  }
+ },
+ "vias": [],
+ "ports": [
+  {
+   "name": "P1",
+   "kind": "z",
+   "layer": "F.Cu",
+   "ref_layer": "B.Cu",
+   "at": [0.1, -11.512],
+   "axis": 0,
+   "sgn": 1,
+   "w": 0.4,
+   "z0": 50.0,
+   "net": "BPF"
+  },
+  {
+   "name": "P2",
+   "kind": "z",
+   "layer": "F.Cu",
+   "ref_layer": "B.Cu",
+   "at": [14.9, -11.512],
+   "axis": 0,
+   "sgn": -1,
+   "w": 0.4,
+   "z0": 50.0,
+   "net": "BPF"
+  }
+ ],
+ "parts": [],
+ "walls": []
+}

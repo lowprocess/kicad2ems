@@ -1,6 +1,6 @@
 """
-Lumped R / L / C parts from two-pad footprints, modelled as openEMS lumped elements in the copper
-plane between the pads (units mm, y up, like Model).
+Lumped R / L / C parts from two-pad footprints: an element across the gap between the pads, in their
+copper plane (units mm, y up, like the Board).
 
   kind / value   KiCad simulation fields first (Sim.Device R / L / C, Sim.Params "r=10k"), else the
                  reference prefix R / L / C and the Value field ('4p7', '10k', '1.2nH', '0R5', ...)
@@ -12,7 +12,6 @@ plane between the pads (units mm, y up, like Model).
 import re
 import numpy as np
 from shapely.geometry import Point
-from .geometry import flip_y
 
 _PREFIX = {'f': 1e-15, 'p': 1e-12, 'n': 1e-9, 'u': 1e-6, 'µ': 1e-6, 'μ': 1e-6, 'm': 1e-3, 'k': 1e3, 'K': 1e3,
            'M': 1e6, 'G': 1e9, 'R': 1.0, 'r': 1.0, 'E': 1.0, '': 1.0}
@@ -48,6 +47,14 @@ class Part:
         given = [v for v in (R, L, C) if v is not None]
         self.short = given == [0.0] and C is None                   # 0 ohm / 0 H link: metal
         self.series = len(given) > 1                                # R + L + C in series (ESR / ESL fields)
+
+    def to_dict(self):
+        return dict(ref=self.ref, R=self.R, L=self.L, C=self.C, layer=self.layer, z=self.z, axis=self.axis,
+                    s=[float(v) for v in self.s], e=[float(v) for v in self.e])
+
+    @classmethod
+    def from_dict(cls, d):
+        return cls(d['ref'], d['R'], d['L'], d['C'], d['layer'], d['z'], d['axis'], d['s'], d['e'])
 
     @property
     def gap(self):
@@ -109,14 +116,15 @@ def _kind_value(fp):
     return (mt.group(1), v) if v is not None else (None, f"value '{fp['value']}' not understood")
 
 
-def find_parts(board, model):
-    """Lumped parts of the board that sit on the model's copper. Returns (parts, notes)."""
+def find_parts(board):
+    """Lumped parts among the footprints of a Board (board.Board: its primitives, model coordinates) that sit
+    on its copper. Returns (parts, notes)."""
     parts, notes = [], []
-    inside = model.outline.buffer(1e-6)
-    for fp in board.footprints:
-        if fp['ref'] in model.port_refs:
+    inside = board.outline.buffer(1e-6)
+    for fp in board.prims.footprints:
+        if fp['ref'] in board.port_refs:
             continue
-        if not any(inside.intersects(flip_y(p['geom'])) for p in fp['pads']):
+        if not any(inside.intersects(p['geom']) for p in fp['pads']):
             continue                                                # outside the board / region: not a note
         kind, val = _kind_value(fp)
         if kind is None:
@@ -131,11 +139,11 @@ def find_parts(board, model):
         if len(pads) != 2:
             notes.append(f"part {ref} skipped: {len(pads)} copper pads (lumped parts need 2)")
             continue
-        lays = [l for l in pads[0]['layers'] if l in pads[1]['layers'] and l in model.cu_z]
+        lays = [l for l in pads[0]['layers'] if l in pads[1]['layers'] and l in board.cu_z]
         side = 'B.Cu' if fp['side'] == 'B' else 'F.Cu'
         lays.sort(key=lambda l: l != side)
-        g = [flip_y(p['geom']) for p in pads]
-        lay = next((l for l in lays if all(model.copper_at(l, q.centroid) is not None for q in g)), None)
+        g = [p['geom'] for p in pads]
+        lay = next((l for l in lays if all(board.copper_at(l, q.centroid) is not None for q in g)), None)
         if lay is None:
             notes.append(f"part {ref} skipped: its pads are not on modelled copper (add their nets to --nets)")
             continue
@@ -153,7 +161,7 @@ def find_parts(board, model):
         b = 1 - axis
         w = min(q.bounds[2 + b] - q.bounds[b] for q in g)
         cb = 0.5 * (c[0][b] + c[1][b])
-        z = model.cu_z[lay]
+        z = board.cu_z[lay]
         s, e = np.zeros(3), np.zeros(3)
         s[axis], e[axis] = e1, e2
         s[b], e[b] = cb - w / 2, cb + w / 2

@@ -7,7 +7,7 @@ from shapely.geometry import box, Point
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from kicad2ems.geometry import split_holes
 from kicad2ems.solvers.openems.mesh import smooth_lines, auto_mesh
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 from kicad2ems.sparams import mixed_mode
 from kicad2ems.touchstone import read_touchstone, write_touchstone
 from kicad2ems.importers.kicad import KiCadBoard
@@ -37,7 +37,7 @@ def test_smooth_lines_grading_and_limits():
 
 
 def test_model_ports_and_mesh(demo):
-    m = Model(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu')
+    m = Board(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu')
     p1, p2 = m.ports
     assert (p1.layer, p1.ref_layer, p2.layer, p2.ref_layer) == ('F.Cu', 'In1.Cu', 'In2.Cu', 'B.Cu')
     assert p1.w == pytest.approx(0.35, rel=1e-3) and p2.w == pytest.approx(0.15, rel=1e-3)
@@ -88,7 +88,7 @@ def test_touchstone_roundtrip(tmp_path):
 
 def test_boundaries_and_air_margin(demo):
     from kicad2ems.solvers.openems.boundaries import resolve_bc, cavity_check
-    m = Model(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu')
+    m = Board(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu')
     bc = resolve_bc('auto', m)
     assert bc == ['MUR'] * 4 + ['PEC', 'MUR']                       # solid ground -> PEC bottom
     mesh = auto_mesh(m, 1e9, 8e9, bc=bc, log=lambda *a: None)
@@ -102,7 +102,7 @@ def test_boundaries_and_air_margin(demo):
     msgs = []
     f = cavity_check(m, mesh, ['PEC'] * 6, 20e9, log=msgs.append)
     assert f is not None and f < 20e9 and msgs and 'cavity' in msgs[0]
-    m2 = Model(KiCadBoard(demo + '.kicad_pcb'), nets=['RF'], pos_file=demo + '-top.pos', ground='B.Cu')
+    m2 = Board(KiCadBoard(demo + '.kicad_pcb'), nets=['RF'], pos_file=demo + '-top.pos', ground='B.Cu')
     m2.copper.pop('B.Cu')
     assert resolve_bc('auto', m2)[4] == 'MUR'                       # no solid bottom plane -> absorbing
 
@@ -140,7 +140,7 @@ def test_curves_extremes_and_via_snapping(demo):
     xs, ys = curve_lines(circle, 0.05)
     assert set(np.round(xs, 6)) == {0.5, 1.5} and set(np.round(ys, 6)) == {1.5, 2.5}   # 2 lines per axis, not 32
     assert len(curve_lines(circle, 0.05, 'vertices')[0]) == 32
-    m = Model(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu')
+    m = Board(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu')
     assert m.signal_nets == {'RF'} and sum(m.via_signal) == 1
     bc = resolve_bc('auto', m)
     exact = auto_mesh(m, 1e9, 8e9, bc=bc, curves='vertices', vias='exact', log=lambda *a: None)
@@ -156,7 +156,7 @@ def test_curves_extremes_and_via_snapping(demo):
 def test_near_manhattan_edges_keep_thirds_lines():
     """filter.kicad_pcb: the 0.35 mm feeds meet 0.353 mm resonator rectangles; simplify() turns the
     1.5 um step into slightly oblique 6.8 mm edges, which must still get the thirds rule."""
-    m = Model(KiCadBoard(os.path.join(ROOT, 'examples', 'filter.kicad_pcb')), nets=['RF', 'GND'],
+    m = Board(KiCadBoard(os.path.join(ROOT, 'examples', 'filter.kicad_pcb')), nets=['RF', 'GND'],
                 log=lambda *a: None)
     mesh = auto_mesh(m, 1e9, 8e9, fine=0.05, log=lambda *a: None)
     assert all(n >= 3 for n in mesh['info']['lines_across_ports'].values()), mesh['info']['lines_across_ports']
@@ -165,10 +165,10 @@ def test_near_manhattan_edges_keep_thirds_lines():
 def test_region_leaves_out_ports_outside():
     b = KiCadBoard(os.path.join(ROOT, 'examples', 'filter.kicad_pcb'))
     pos = os.path.join(ROOT, 'examples', 'filter-all.pos')
-    m = Model(b, nets=['RF', 'GND'], pos_file=pos, region=(0, 0, 12, 20), log=lambda *a: None)
+    m = Board(b, nets=['RF', 'GND'], pos_file=pos, region=(0, 0, 12, 20), log=lambda *a: None)
     assert [p.name for p in m.ports] == ['P1'] and any('P2 (TP2) is outside the region' in n for n in m.notes)
     assert m.outline.bounds == pytest.approx((0, -20, 12, 0))
     with pytest.raises(ValueError, match='no port footprints inside the region'):
-        Model(b, nets=['RF', 'GND'], pos_file=pos, region=(5, 0, 12, 20), log=lambda *a: None)
+        Board(b, nets=['RF', 'GND'], pos_file=pos, region=(5, 0, 12, 20), log=lambda *a: None)
     with pytest.raises(ValueError, match='does not overlap'):
-        Model(b, nets=['RF', 'GND'], pos_file=pos, region=(30, 30, 40, 40), log=lambda *a: None)
+        Board(b, nets=['RF', 'GND'], pos_file=pos, region=(30, 30, 40, 40), log=lambda *a: None)

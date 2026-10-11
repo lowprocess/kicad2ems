@@ -3,7 +3,7 @@ graph of the example boards (traces, pads, vias, parts, branches, T-junctions, r
 import os
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 from kicad2ems.solvers.lines.tlines import (build, microstrip, stripline, offset_stripline, cpwg, coax, ellipk,
                                   embedded_microstrip)
 
@@ -43,7 +43,7 @@ def test_stripline_and_friends():
 
 def test_transition_sections(demo_files):
     base, _ = demo_files
-    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
               log=lambda *a: None)
     lm = build(m)
     (p, q, secs, branches), = lm.paths
@@ -63,7 +63,7 @@ def test_transition_sections(demo_files):
 
 def test_lowpass_pads_parts_and_branch(boards):
     base = boards['lowpass']
-    m = Model(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
+    m = Board(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
     lm = build(m)
     (p, q, secs, branches), = lm.paths
     kinds = [e.kind for e, _, _ in secs]
@@ -79,11 +79,11 @@ def test_lowpass_pads_parts_and_branch(boards):
 
 
 def test_filter_feeds_and_gap_ports(boards):
-    m = Model(KiCadBoard(os.path.join(ROOT, 'examples', 'filter.kicad_pcb')), nets=['RF', 'GND'], log=lambda *a: None)
+    m = Board(KiCadBoard(os.path.join(ROOT, 'examples', 'filter.kicad_pcb')), nets=['RF', 'GND'], log=lambda *a: None)
     lm = build(m)
     assert set(lm.ports) == {'P1', 'P2'}
     assert all(secs for _, _, secs, _ in lm.paths)
-    dip = Model(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
+    dip = Board(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
     lm = build(dip)
     assert not lm.paths and any('gap port' in n for n in lm.notes)
 
@@ -92,17 +92,16 @@ def test_ground_nets_region_and_partner(boards, demo_files):
     """A shunt part's ground pad with a track stays a shunt; a region crop clips the traces; a
     differential leg's partner is not its coplanar ground; a trace never references its own net."""
     base = boards['lowpass']
-    m = Model(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
-    from kicad2ems.solvers.lines.tlines import ground_nets
-    assert 'GND' in ground_nets(m)
+    m = Board(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
+    assert 'GND' in m.ground_nets
     c2 = [e for e in build(m).elements if e.kind == 'part' and e.label == 'C2']
     assert c2 and c2[0].b == 'gnd'
     demo, diff = demo_files
-    m = Model(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu',
+    m = Board(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu',
               region=(0, -20, 14, 20), log=lambda *a: None)
     (p, q, secs, _), = build(m).paths
     assert q is None and sum(e.length for e, _, _ in secs) == pytest.approx(14 - 2.0875 + 0.4, abs=0.05)
-    m = Model(KiCadBoard(diff + '.kicad_pcb'), pos_file=diff + '-top.pos', ground='B.Cu', log=lambda *a: None)
+    m = Board(KiCadBoard(diff + '.kicad_pcb'), pos_file=diff + '-top.pos', ground='B.Cu', log=lambda *a: None)
     lm = build(m)
     assert any('differential pair' in n for n in lm.notes)
     assert all(not any('beside it' in note for note in e.notes) for _, _, secs, _ in lm.paths for e, _, _ in secs)
@@ -114,7 +113,7 @@ def test_edge_launch_pad_port_and_taper(boards):
     feed meets it to P2 on it; the taper drawn as footprint copper widens the trace in steps; the
     45 degree opening of the F.Cu pour widens the coplanar gap in steps."""
     base = boards['launch']
-    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', log=lambda *a: None)
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', log=lambda *a: None)
     lm = build(m)
     (p, q, secs, branches), = lm.paths
     assert (p, q) == ('P1', 'P2') and not branches
@@ -145,11 +144,11 @@ def test_sma_launch_example_line_model():
     import numpy as np
     import skrf as rf
     from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.model import Model
+    from kicad2ems.board import Board
     from kicad2ems.solvers.lines.tlines import build
     from kicad2ems.solvers.lines.fastsolve import solve
     ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
-    m = Model(KiCadBoard(os.path.join(ex, 'sma_launch.kicad_pcb')), nets=['REF_SMA_N', 'GND'],
+    m = Board(KiCadBoard(os.path.join(ex, 'sma_launch.kicad_pcb')), nets=['REF_SMA_N', 'GND'],
               pos_file=os.path.join(ex, 'sma_launch-all.pos'), log=lambda *a: None)
     lm = build(m)
     widths = [e.w for e in lm.elements if e.kind == 'trace' and e.w]

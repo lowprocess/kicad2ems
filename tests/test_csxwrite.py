@@ -91,14 +91,14 @@ def csxcad():
 _SCRIPT = r"""
 import sys
 from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 from kicad2ems.solvers.openems.boundaries import resolve_bc
 from kicad2ems.solvers.openems.mesh import auto_mesh
 from kicad2ems.solvers.openems.simulation import build_fdtd
 base, backend, out, kind = sys.argv[1:5]
 kw = dict(demo=dict(nets=['RF', 'GND'], ground='B.Cu', pos_file=base + '-top.pos'), diff=dict(ground='B.Cu'))
 kw = kw.get(kind, {})
-m = Model(KiCadBoard(base + '.kicad_pcb'), log=lambda *a: None, **kw)
+m = Board(KiCadBoard(base + '.kicad_pcb'), log=lambda *a: None, **kw)
 bc = resolve_bc('auto', m)
 mesh = auto_mesh(m, 1e9, 6e9, bc=bc, log=lambda *a: None)
 extra = dict(diel='wideband', sigma=5.8e7) if kind == 'demo' else {}

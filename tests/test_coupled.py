@@ -9,7 +9,7 @@ from kicad2ems.solvers.lines.coupled import coupled_microstrip, group_lc, mtl_s
 from kicad2ems.solvers.lines.strips import shape_strips, rectilinear
 from kicad2ems.solvers.lines.tlines import microstrip, build
 from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 from kicad2ems.solvers.lines.fastsolve import solve, qucs_netlist, find_qucsator, read_qucs_dataset
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -83,10 +83,10 @@ def test_strips_of_a_hairpin_and_a_tee():
 @pytest.fixture(scope='module')
 def filters():
     out = {}
-    m = Model(KiCadBoard(os.path.join(EX, 'filter.kicad_pcb')), nets=['RF', 'GND'],
+    m = Board(KiCadBoard(os.path.join(EX, 'filter.kicad_pcb')), nets=['RF', 'GND'],
               pos_file=os.path.join(EX, 'filter-all.pos'), log=lambda *a: None)
     out['interdigital'] = (m, build(m))
-    m = Model(KiCadBoard(os.path.join(EX, 'hairpin.kicad_pcb')), pos_file=os.path.join(EX, 'hairpin-top.pos'),
+    m = Board(KiCadBoard(os.path.join(EX, 'hairpin.kicad_pcb')), pos_file=os.path.join(EX, 'hairpin-top.pos'),
               log=lambda *a: None)
     out['hairpin'] = (m, build(m))
     return out

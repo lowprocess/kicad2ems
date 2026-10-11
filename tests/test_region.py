@@ -2,7 +2,7 @@
 at points, ports where tracks cross the region edge, and the settings that carry them."""
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 from kicad2ems.config import build_settings, ConfigError
 from kicad2ems.region import parse_port_spec, region_polygon
 
@@ -28,7 +28,7 @@ def test_region_shapes(demo_files):
 def test_auto_nets_cut_ports_and_layer_region(demo_files):
     base, _ = demo_files
     b = _with_drawing(base, (0, 0, 17, 10))
-    m = Model(b, nets='auto', pos_file=base + '-top.pos', ground='B.Cu', region='User.1', cut_ports=True,
+    m = Board(b, nets='auto', pos_file=base + '-top.pos', ground='B.Cu', region='User.1', cut_ports=True,
               log=lambda *a: None)
     assert set(m.sel) == {'RF', 'GND'}
     names = [p.name for p in m.ports]
@@ -42,14 +42,14 @@ def test_auto_nets_cut_ports_and_layer_region(demo_files):
 
 def test_pad_and_point_ports(boards):
     base = boards['launch']
-    m = Model(KiCadBoard(base + '.kicad_pcb'), nets='auto', pos_file=base + '-top.pos',
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets='auto', pos_file=base + '-top.pos',
               ports=['P3=J1.1', 'P4@5,5'], log=lambda *a: None)
     p = {q.name: q for q in m.ports}
     assert p['P3'].source == 'pad J1.1' and p['P3'].w == pytest.approx(1.6, abs=0.01)
     assert p['P4'].source.startswith('point') and p['P4'].layer == 'F.Cu' and p['P4'].w == pytest.approx(0.32)
     assert p['P4'].sgn == 1                                          # toward the far end of the feed
     with pytest.raises(ValueError, match='no footprint J9'):
-        Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ports=['P3=J9.1'],
+        Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ports=['P3=J9.1'],
               log=lambda *a: None)
 
 
@@ -71,4 +71,4 @@ def test_cut_ports_close_the_cut(demo_files, run_cli, tmp_path):
     code, so, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'auto', '--ground', 'B.Cu',
                             '--region', '0,0,17,10', '--cut-ports', '--out', tmp_path, '--preview', '--no-report')
     assert code == 0, err
-    assert 'edge walls on the region cut (xmax), 2 mm clear' in so and 'edge walls (PEC): xmax' in so
+    assert 'edge walls on the region cut (xmax), 2 mm clear' in so and 'edge walls: xmax' in so

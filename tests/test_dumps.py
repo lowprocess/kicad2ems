@@ -4,14 +4,14 @@ import sys, types
 import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 from kicad2ems.solvers.openems.dumps import parse_dump, add_dumps, read_fd, plot_fd_dumps
 
 
 @pytest.fixture(scope='module')
 def model(demo_files):
     base, _ = demo_files
-    return Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
+    return Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
 
 
 def test_parse_regions(model):

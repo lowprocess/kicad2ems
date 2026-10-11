@@ -1,7 +1,8 @@
 """
-Edge walls (--edge-walls): PEC sheets on the board edges where ground copper reaches them, standing in
-for a row of stitching vias or edge plating. Without them the plane pairs of a test coupon are open at
-the board edge and can resonate across the board (a half wave across a 14 mm FR-4 board is ~5 GHz).
+Edge walls (--edge-walls): metal on the board edges where ground copper reaches them, standing in
+for a row of stitching vias or edge plating (openEMS: PEC sheets; mom25d: rows of vias). Without them
+the plane pairs of a test coupon are open at the board edge and can resonate across the board (a half
+wave across a 14 mm FR-4 board is ~5 GHz).
 
 A wall runs parallel to a side of the outline's bounding box, where the ground planes end near it
 (planes are usually pulled back from the board edge; up to `reach` mm in from the outline). At each
@@ -12,7 +13,7 @@ launch pad or a trace running off the edge). Sides are named in KiCad coordinate
 
     xmin = left, xmax = right, ymin = top, ymax = bottom (as drawn in KiCad, y down)
 
-    walls = edge_walls(model, ['xmax'], keepout=0.5)   # [(axis, coord, t0, t1, z0, z1)], model mm
+    walls = edge_walls(board, ['xmax'], keepout=0.5)   # [(axis, coord, t0, t1, z0, z1)], model mm
 """
 import numpy as np
 from shapely.geometry import box, LineString
@@ -33,11 +34,10 @@ def parse_sides(v):
     return [s for s in SIDES if s in items]
 
 
-def _signal_nets(model):
-    from .solvers.lines.tlines import ground_nets
-    nets = {p.net for p in model.ports if p.net}
-    if model.sel:
-        nets |= set(model.sel) - ground_nets(model)
+def _signal_nets(board):
+    nets = {p.net for p in board.ports if p.net}
+    if board.sel:
+        nets |= set(board.sel) - board.ground_nets
     return nets
 
 
@@ -47,23 +47,22 @@ def edge_walls(model, sides, keepout=0.5, step=0.1, depth=0.3, reach=2.0):
     where the planes end (up to `reach` mm in from the outline), not on the outline itself."""
     from shapely.ops import unary_union
     from shapely.prepared import prep
-    from .geometry import flip_y
     if not sides:
         return []
     signal = _signal_nets(model)
     sel = model.sel
     ground, sig = {}, []
-    for l, n, g in model.board.items:
+    for l, n, g in model.prims.items:
         if l not in model.cu_z or (sel is not None and n not in sel):
             continue
         if n in signal:
             sig.append(g)
         else:
             ground.setdefault(l, []).append(g)
-    ground = {l: flip_y(unary_union(gs)).intersection(model.outline) for l, gs in ground.items()}
+    ground = {l: unary_union(gs).intersection(model.outline) for l, gs in ground.items()}
     if model.ground:                                       # a --ground layer is a plane everywhere
         ground[model.ground] = model.outline
-    sig = prep(flip_y(unary_union(sig))) if sig else None
+    sig = prep(unary_union(sig)) if sig else None
     x0, y0, x1, y1 = model.outline.bounds                  # model coordinates: y = -KiCad y
     edges = dict(xmin=('x', x0, (y0, y1), +1), xmax=('x', x1, (y0, y1), -1),
                  ymin=('y', y1, (x0, x1), -1), ymax=('y', y0, (x0, x1), +1))   # KiCad top = model y max
@@ -118,7 +117,7 @@ def describe(walls, model):
     by = {}
     for w in walls:
         by.setdefault(name(w), []).append(w)
-    return "edge walls (PEC): " + ", ".join(f"{s} {len(ws)} piece{'s' * (len(ws) > 1)} {sum(w[3] - w[2] for w in ws):.1f} mm"
+    return "edge walls: " + ", ".join(f"{s} {len(ws)} piece{'s' * (len(ws) > 1)} {sum(w[3] - w[2] for w in ws):.1f} mm"
                                             for s, ws in by.items())
 
 

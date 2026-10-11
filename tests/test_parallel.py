@@ -4,7 +4,7 @@ import os
 import numpy as np
 from kicad2ems.solvers.openems import simulation
 from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 
 
 def fake_run_port(k, m, mesh, freq, bc, out_dir, dumps=(), xml_path=None, verbose=1, **kw):
@@ -16,7 +16,7 @@ def fake_run_port(k, m, mesh, freq, bc, out_dir, dumps=(), xml_path=None, verbos
 
 def test_parallel_matches_serial(demo_files, tmp_path, monkeypatch):
     base, _ = demo_files
-    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
               log=lambda *a: None)
     monkeypatch.setattr(simulation, '_run_port', fake_run_port)
     freq = np.linspace(1e9, 2e9, 3)

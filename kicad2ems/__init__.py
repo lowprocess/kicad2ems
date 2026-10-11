@@ -1,15 +1,18 @@
 """
-kicad2ems - build, mesh and run openEMS (3D FDTD) models of KiCad boards.
+kicad2ems - KiCad (or Gerber) boards as electromagnetic simulations: one canonical board, solved by
+openEMS (3D FDTD), mom25d (2.5D MoM) and a transmission-line model.
 
-    from kicad2ems import KiCadBoard, Model, resolve_bc, auto_mesh
-    m = Model(KiCadBoard('board.kicad_pcb'), nets=['RF', 'GND'], pos_file='board-top.pos')
-    bc = resolve_bc('auto', m)
-    mesh = auto_mesh(m, 1e9, 6e9, bc=bc)
+    from kicad2ems import KiCadBoard, Board, resolve_bc, auto_mesh
+    b = Board(KiCadBoard('board.kicad_pcb'), nets=['RF', 'GND'], pos_file='board-top.pos')
+    b.save('board.json')                        # the board every solver gets
+    bc = resolve_bc('auto', b)
+    mesh = auto_mesh(b, 1e9, 6e9, bc=bc)        # openEMS's mesh of it
 
 Modules
-    kicad/        .kicad_pcb reader (sexpr, shapes, board, nets, pnp, outline)
+    importers/    board readers: kicad/ (.kicad_pcb: sexpr, shapes, board, nets, pnp, outline)
+    board         the canonical board: stack, copper, vias, lumped ports (vertical / gap), parts, edge walls,
+                  region cropping; board.json
     geometry      polygon helpers (y flip, hole splitting for CSXCAD)
-    model         3D model: stack, copper, vias, lumped ports (vertical / gap), region cropping
     parts         lumped R / L / C parts from two-pad footprints
     boundaries    per-side boundary conditions, cavity-resonance check
     mesh          automatic rectilinear mesh
@@ -39,7 +42,7 @@ Documentation: docs/index.md in the repository.
 __version__ = '0.2.0'
 
 from .importers.kicad import KiCadBoard, read_pos
-from .model import Model, Port
+from .board import Board, Port
 from .solvers.openems.boundaries import resolve_bc, cavity_check
 from .solvers.openems.mesh import auto_mesh, smooth_lines
 from .sparams import mixed_mode

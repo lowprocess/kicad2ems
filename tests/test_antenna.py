@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 from kicad2ems.solvers.openems.mesh import auto_mesh
 from kicad2ems.solvers.openems.antenna import antenna_air, record_freqs, match_summary, gain_table, pattern_gain
 
@@ -36,7 +36,7 @@ def test_gain_table_and_pattern():
 
 
 def test_dipole_gap_port(boards):
-    m = Model(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
+    m = Board(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
     p = m.ports[0]
     assert p.kind == 'gap' and p.direction == 'x' and p.z0 == 73
     assert p.gap == pytest.approx((34.5, 35.5)) and p.w == pytest.approx(2.0) and p.c[1] == pytest.approx(-10.0)
@@ -50,7 +50,7 @@ def test_dipole_gap_port(boards):
 
 def test_gap_port_direction_in_fdtd(boards, fake_openems, monkeypatch):
     from kicad2ems.solvers.openems import simulation
-    m = Model(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
+    m = Board(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
     mesh = auto_mesh(m, 1.5e9, 3.5e9, bc=('PML_8',) * 6, air=30, log=lambda *a: None)
     seen = []
     import openEMS

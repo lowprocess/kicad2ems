@@ -3,7 +3,7 @@ the CSXCAD calls (fake openEMS: the fake_openems fixture in conftest.py)."""
 import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 from kicad2ems.solvers.openems.mesh import auto_mesh
 from kicad2ems.parts import parse_value, Part
 
@@ -24,7 +24,7 @@ def test_parse_value(text, value):
 
 
 def test_parts_detected_and_skipped(rlc):
-    m = Model(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
+    m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
     assert [p.ref for p in m.parts] == ['C1']
     c1 = m.parts[0]
     assert c1.C == pytest.approx(1.5e-12) and c1.R is None and c1.L is None and not c1.series
@@ -34,13 +34,13 @@ def test_parts_detected_and_skipped(rlc):
     assert 'R9 skipped: DNP' in notes and "L3 skipped: value 'tbd'" in notes
     assert 'C1: lumped 1.5 pF' in m.describe()
     # --parts none -> nothing
-    m3 = Model(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', parts='none',
+    m3 = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', parts='none',
                log=lambda *a: None)
     assert not m3.parts
 
 
 def test_part_ends_on_mesh_lines(rlc):
-    m = Model(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
+    m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
     mesh = auto_mesh(m, 0.5e9, 6e9, log=lambda *a: None)
     c1 = m.parts[0]
     for v in (c1.s[0], c1.e[0]):
@@ -70,7 +70,7 @@ def test_part_pieces():
 def test_build_fdtd_adds_lumped_elements(rlc, fake_openems):
     from kicad2ems.solvers.openems.simulation import build_fdtd
     from kicad2ems.solvers.openems.boundaries import resolve_bc
-    m = Model(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
+    m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
     m.parts.append(Part('L7', 0.2, np.float64(2e-9), None, 'F.Cu', m.cu_z['F.Cu'], 1, [3, 3, 0.2], [3.2, 3.5, 0.2]))
     m.parts.append(Part('R5', 0.0, None, None, 'F.Cu', m.cu_z['F.Cu'], 0, [4, 3, 0.2], [4.4, 3.5, 0.2]))
     bc = resolve_bc('auto', m)
@@ -88,7 +88,7 @@ def test_lowpass_demo(boards):
     """examples/make_demo_board.py lowpass: L1 / L3 in line (x), C2 to GND along y, ESR / ESL fields; the
     ideal circuit is a 1 GHz Butterworth low-pass with the capacitor's self-resonance notch."""
     base = boards['lowpass']
-    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF_IN', 'N1', 'RF_OUT', 'GND'], pos_file=base + '-top.pos',
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF_IN', 'N1', 'RF_OUT', 'GND'], pos_file=base + '-top.pos',
               log=lambda *a: None)
     p = {pt.ref: pt for pt in m.parts}
     assert sorted(p) == ['C2', 'L1', 'L3']

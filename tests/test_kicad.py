@@ -2,7 +2,7 @@
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard, board_outline, resolve_nets, DiffLegs
 from kicad2ems.importers.kicad.sexpr import parse_sexpr, items, val
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 
 
 def test_sexpr():
@@ -33,7 +33,7 @@ def test_differential_ports(demo_files):
     b = KiCadBoard(diff + '.kicad_pcb')
     fps = b.port_footprints()
     assert all(isinstance(v, DiffLegs) for v in fps.values())
-    m = Model(b, nets=['D_P', 'D_N'], pos_file=diff + '-top.pos', ground='B.Cu')
+    m = Board(b, nets=['D_P', 'D_N'], pos_file=diff + '-top.pos', ground='B.Cu')
     assert [p.name for p in m.ports] == ['P1+', 'P1-', 'P2+', 'P2-']
     assert [n for n, _ in m.user_ports] == ['P1', 'P2']
     assert all(p.ref_layer == 'B.Cu' and p.w == pytest.approx(0.25, rel=1e-3) for p in m.ports)
@@ -42,11 +42,11 @@ def test_differential_ports(demo_files):
 def test_port_errors_are_explained(demo_files):
     base, _ = demo_files
     with pytest.raises(ValueError, match='no reference copper'):
-        Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF'], pos_file=base + '-top.pos')   # ground net left out
+        Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF'], pos_file=base + '-top.pos')   # ground net left out
 
 
 def test_port_fields_both_prefixes():
-    from kicad2ems.model import port_field
+    from kicad2ems.board import port_field
     assert port_field({'mom.layer': 'In2.Cu'}, 'layer') == 'In2.Cu'
     assert port_field({'port.layer': 'B.Cu', 'mom.layer': 'In2.Cu'}, 'layer') == 'B.Cu'
     assert port_field({}, 'z0', 50) == 50

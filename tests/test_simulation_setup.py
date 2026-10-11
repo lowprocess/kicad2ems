@@ -3,7 +3,7 @@ Python number (older CSXCAD releases test type(v) in (int, float) and reject num
 import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 from kicad2ems.solvers.openems.boundaries import resolve_bc
 from kicad2ems.solvers.openems.mesh import auto_mesh
 
@@ -12,7 +12,7 @@ from kicad2ems.solvers.openems.mesh import auto_mesh
 def test_build_fdtd_passes_plain_scalars(demo_files, fake_openems, sigma):
     from kicad2ems.solvers.openems.simulation import build_fdtd
     base, _ = demo_files
-    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
     bc = resolve_bc('auto', m)
     mesh = auto_mesh(m, 1e9, 8e9, bc=bc, log=lambda *a: None)
     freq = np.linspace(1e9, 8e9, 11)                                # numpy scalars, as in a real run
@@ -24,7 +24,7 @@ def test_build_fdtd_passes_plain_scalars(demo_files, fake_openems, sigma):
 def test_build_fdtd_wideband_dielectric(demo_files, fake_openems):
     from kicad2ems.solvers.openems.simulation import build_fdtd
     base, _ = demo_files
-    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
     bc = resolve_bc('auto', m)
     mesh = auto_mesh(m, 1e9, 8e9, bc=bc, log=lambda *a: None)
     build_fdtd(m, mesh, 1e9, 8e9, 0, bc=bc, diel='wideband', diel_fref=1e9)

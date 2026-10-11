@@ -16,9 +16,9 @@ def test_import():
 @pytest.fixture(scope='module')
 def model(demo_files):
     from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.model import Model
+    from kicad2ems.board import Board
     base, _ = demo_files
-    return Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
+    return Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
                  log=lambda *a: None)
 
 
@@ -90,9 +90,9 @@ def test_sigma_reaches_mom(demo_files):
     for mom25d), with the copper thickness of the ports' layer."""
     from kicad2ems.solvers.mom import _metal
     from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.model import Model
+    from kicad2ems.board import Board
     base, _ = demo_files
-    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
               log=lambda *a: None)
     assert _metal(m, None) == (None, None)
     metal, t = _metal(m, 5.8e7)

@@ -181,11 +181,11 @@ def test_window_config_and_plots(tmp_path, monkeypatch):
 def test_rf_examples_load(name, nports):
     """The RF example boards load: ports, the Wilkinson resistor, the coupler's two separate lines."""
     from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.model import Model
+    from kicad2ems.board import Board
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     path = os.path.join(root, 'examples', f'rf_{name}.toml')
     s = build_settings({}, path)
-    m = Model(KiCadBoard(s.board), ground=s.ground, log=lambda *a: None)
+    m = Board(KiCadBoard(s.board), ground=s.ground, log=lambda *a: None)
     assert len(m.ports) == nports
     if name == 'wilkinson':
         assert len(m.parts) == 1 and abs(m.parts[0].R - 100) < 1e-9

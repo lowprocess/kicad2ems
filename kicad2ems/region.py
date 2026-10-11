@@ -4,8 +4,9 @@ Regions and ports beyond port footprints (KiCad coordinates, mm, y down):
 - region_polygon(board, region): the area to simulate from a rectangle (x0, y0, x1, y1), a list of
   points, or a drawing layer ('User.1', 'Dwgs.User', ...) whose closed shapes outline it.
 - auto_nets(board, points, outline): the nets under the port positions plus the ground nets.
+- ground_nets(items, shapes, outline): the nets that look like ground (any coordinates, consistently).
 - extra_port_fps(board, specs): ports given in the settings - 'P3=J1.1' (on pad 1 of J1) or
-  'P3@x,y[,layer[,rot]]' (at a point) - as footprint-like dicts for Model._port.
+  'P3@x,y[,layer[,rot]]' (at a point) - as footprint-like dicts for Board._port.
 - cut_port_fps(board, region, nets, layers): a port wherever a track of the signal nets crosses the
   region edge, pointing into the region (the cut line ends there, terminated in the port impedance).
 """
@@ -43,13 +44,14 @@ def region_polygon(board, region):
     return poly
 
 
-def ground_net_names(board, outline=None):
-    """Nets that look like ground: named so (GND, AGND, VSS, ...) or owning zones covering at least a
-    fifth of the board on some layer."""
-    out = {str(n) for _, n, _ in board.items if n and GROUND_RE.search(str(n))}
+def ground_nets(items, shapes, outline=None):
+    """Nets that look like ground: named so (GND, AGND, VSS, ...) among the copper items [(layer, net,
+    geometry)], or whose shapes (zones, drawn copper) cover at least a fifth of the outline on some layer.
+    A part to such a net is a shunt to ground; with nets = auto they are always modelled."""
+    out = {str(n) for _, n, _ in items if n and GROUND_RE.search(str(n))}
     if outline is not None:
         area = {}
-        for l, n, g in getattr(board, 'shapes', []):
+        for l, n, g in shapes:
             if n and l.endswith('.Cu'):
                 area[(l, n)] = area.get((l, n), 0.0) + g.intersection(outline).area
         out |= {str(n) for (l, n), a in area.items() if a >= 0.2 * outline.area}
@@ -68,7 +70,7 @@ def net_at(board, layer, x, y):
 def auto_nets(board, points, outline=None):
     """nets = 'auto': the nets under the ports [(layer, x, y)] plus the ground nets."""
     nets = {net_at(board, l, x, y) for l, x, y in points} - {None}
-    return sorted(nets | ground_net_names(board, outline))
+    return sorted(nets | ground_nets(board.items, getattr(board, 'shapes', []), outline))
 
 
 def _pad(board, ref, name):

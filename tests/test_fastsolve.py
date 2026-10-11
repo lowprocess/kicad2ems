@@ -4,7 +4,7 @@ import shutil
 import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 from kicad2ems.solvers.lines.tlines import build
 from kicad2ems.solvers.lines.fastsolve import solve, qucs_netlist, read_qucs_dataset, part_impedance, find_qucsator
 from kicad2ems.parts import Part
@@ -16,7 +16,7 @@ db = lambda x: 20 * np.log10(np.abs(x))
 @pytest.fixture(scope='module')
 def transition(demo_files):
     base, _ = demo_files
-    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
               log=lambda *a: None)
     return m, build(m)
 
@@ -51,7 +51,7 @@ def test_qucsator_matches_skrf(transition):
 def test_lowpass_follows_the_ideal_circuit(boards):
     pytest.importorskip('skrf')
     base = boards['lowpass']
-    m = Model(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
+    m = Board(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
     f = np.linspace(0.1e9, 4e9, 40)
     S, _ = solve(build(m), m.ports, f, 'skrf')
     s21 = lambda g: db(np.interp(g, f, np.abs(S[:, 1, 0])))
@@ -64,7 +64,7 @@ def test_qucsator_netlist(transition, boards):
     assert order == ['P1', 'P2'] and text.count('Pac:') == 2 and 'MLIN:' in text and 'RLCG:' in text
     assert '.SP:SP1 Type="lin" Start="1e+09" Stop="8e+09" Points="15"' in text
     base = boards['lowpass']
-    mp = Model(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
+    mp = Board(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
     text, _ = qucs_netlist(build(mp), mp.ports, FREQ)
     assert 'gnd C="6.8e-12 F"' in text and ' L="8.2e-09 H"' in text              # C2 shunt to ground, L1 / L3
 
@@ -93,7 +93,7 @@ def test_unknown_backend(transition):
 @pytest.fixture(scope='module')
 def launch(boards):
     base = boards['launch']
-    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', log=lambda *a: None)
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', log=lambda *a: None)
     return m, build(m)
 
 

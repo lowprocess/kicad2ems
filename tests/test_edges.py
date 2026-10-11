@@ -3,7 +3,7 @@ clear of signal copper; settings, solver setup and the run summary."""
 import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 from kicad2ems.edges import edge_walls, parse_sides, describe
 from kicad2ems.config import build_settings, ConfigError
 
@@ -11,7 +11,7 @@ from kicad2ems.config import build_settings, ConfigError
 @pytest.fixture(scope='module')
 def launch(boards):
     base = boards['launch']
-    return Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', log=lambda *a: None)
+    return Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', log=lambda *a: None)
 
 
 def test_parse_sides():
@@ -61,7 +61,7 @@ def test_preview_logs_and_reports_walls(boards, run_cli, tmp_path):
     code, so, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'RF,GND', '--fmin', '1',
                             '--fmax', '6', '--edge-walls', 'all', '--out', out, '--preview')
     assert code == 0, err
-    assert 'edge walls (PEC): xmin 1 piece' in so
+    assert 'edge walls: xmin 1 piece' in so
     assert 'edge walls (PEC)' in (out / 'launch_report.html').read_text()
 
 
@@ -72,7 +72,7 @@ def test_walls_and_vias_sit_on_mesh_lines(launch, boards):
     from kicad2ems.solvers.openems.boundaries import resolve_bc
     from kicad2ems.solvers.openems.mesh import auto_mesh
     from kicad2ems.edges import snap
-    for m in (launch, Model(KiCadBoard(boards['demo'] + '.kicad_pcb'), nets=['RF', 'GND'],
+    for m in (launch, Board(KiCadBoard(boards['demo'] + '.kicad_pcb'), nets=['RF', 'GND'],
                             pos_file=boards['demo'] + '-top.pos', ground='B.Cu', log=lambda *a: None)):
         for fine in (None, 0.05):
             g = auto_mesh(m, 1e9, 6e9, fine=fine, bc=resolve_bc('auto', m), log=lambda *a: None)

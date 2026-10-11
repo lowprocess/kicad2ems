@@ -11,26 +11,27 @@ KiCadBoard: reads a .kicad_pcb file (KiCad 5 to 10).
   ports       footprints marked P<n> (Fab text, or Reference / Value when listed in a pick-and-place
               file); P<n>+ / P<n>- (or P<n>P / P<n>N) mark the legs of a differential port
 
-Items are kept in KiCad coordinates (mm, y down) as shapely geometry: board.items is a list of
-(layer, net, geometry), board.tracks the routed tracks (for transmission-line sections), board.vias a
-list of dicts, board.footprints a list of dicts. Not read: zones defined inside footprints.
+The board is the raw form of importers/ (Imported): KiCad coordinates (mm, y down), shapely geometry;
+items (layer, net, geometry), tracks (for transmission-line sections), vias, footprints. Not read: zones
+defined inside footprints.
 """
-import re
 import numpy as np
 from shapely.geometry import Polygon, LineString, Point
+from .. import Imported
 from . import sexpr as sx
 from . import shapes as shp
-from .nets import DiffLegs
 from .sexpr import parse_sexpr
 
 MM = 1e-3                                  # stackup thicknesses are kept in metres
 GRAPHICS = ('line', 'arc', 'rect', 'circle', 'poly', 'curve')
 
 
-class KiCadBoard:
+class KiCadBoard(Imported):
+    importer = 'kicad'
+
     def __init__(self, path=None, text=None):
         """From a file, or from the text of one (KiCad's API returns the open board as text)."""
-        self.path = path or ''
+        super().__init__(path or '')
         if text is None:
             with open(path, encoding='utf-8') as fh:
                 text = fh.read()
@@ -65,7 +66,6 @@ class KiCadBoard:
     def _stackup(self):
         setup = sx.item(self.root, 'setup')
         su = sx.item(setup, 'stackup') if setup else None
-        self.stack_items = []
         self.copper_order = [str(l[1]) for l in (sx.item(self.root, 'layers') or [])[1:]
                              if isinstance(l, list) and len(l) > 1 and str(l[1]).endswith('.Cu')]
         if su is None:
@@ -105,14 +105,7 @@ class KiCadBoard:
 
     def _copper(self):
         """Collect copper items as (layer, net, geometry-in-KiCad-mm) plus tracks, vias, footprints and
-        the Edge.Cuts outline pieces."""
-        self.items = []          # (layer, net, shapely geometry (mm, y down))
-        self.shapes = []         # the zones and drawn copper among items (not tracks, vias or pads)
-        self.tracks = []         # dict(layer, net, width, pts (polyline, mm, y down))
-        self.vias = []           # dict(x, y, drill, size, layers, net)
-        self.footprints = []
-        self.edges = []          # Edge.Cuts outline pieces (LineString / LinearRing, mm, y down)
-        self.drawings = {}       # other non-copper layers: {layer: [outline pieces]} (regions on User.1 ...)
+        the Edge.Cuts outline pieces (and the outlines drawn on other layers: regions on User.1 ...)."""
         all_cu = self.copper_order
         for s in sx.items(self.root, 'segment'):
             pts = [sx.xy(s, 'start'), sx.xy(s, 'end')]
@@ -226,33 +219,3 @@ class KiCadBoard:
         self.footprints.append(dict(ref=ref, value=val, fab=fab_texts, props=props, x=org[0], y=org[1],
                                     rot=rot, side=side, lib=str(fp[1]), pads=pads, dnp=flag('dnp'),
                                     exclude_from_sim=flag('exclude_from_sim')))
-
-    # ---- ports ----------------------------------------------------------------------------
-    def port_footprints(self, pos_refs=None):
-        """{n: footprint} for single-ended ports (Fab text P<n>), {n: {'+': fp, '-': fp}} for
-        differential ports (Fab text P<n>+ / P<n>- or P<n>P / P<n>N). Reference/Value are used for
-        refs listed in a pick-and-place file."""
-        pat = re.compile(r'^P(\d+)([+\-PN])?$', re.I)
-        out = {}
-
-        def put(m, fp):
-            n, leg = int(m.group(1)), (m.group(2) or '').upper()
-            if leg:
-                out.setdefault(n, DiffLegs())['+' if leg in ('+', 'P') else '-'] = fp
-            else:
-                out[n] = fp
-        for fp in self.footprints:
-            done = False
-            for t in fp['fab']:
-                m = pat.match(str(t).strip())
-                if m:
-                    put(m, fp); done = True; break
-            if not done and pos_refs is not None and fp['ref'] in pos_refs:
-                for t in (fp['value'], fp['ref'], *fp['fab']):
-                    m = pat.match(str(t).strip())
-                    if m:
-                        put(m, fp); break
-        for n, v in out.items():
-            if isinstance(v, DiffLegs) and set(v) != {'+', '-'}:
-                raise ValueError(f"differential port P{n} needs both P{n}+ and P{n}- footprints")
-        return dict(sorted(out.items()))

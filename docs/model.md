@@ -43,7 +43,7 @@ Signal nets are the selected nets except the ground nets (or the nets under the 
 selected). A track crossing the edge at an angle gets no port (lumped ports run along x or y), with a
 note. The sides where the region cuts the board (`Model.cut_sides`) are closed with
 [edge walls](meshing.md#edge-walls) that keep 2 mm clear of the signal copper
-(`pipeline.CUT_KEEPOUT`), unless `--edge-walls` names sides itself: a cut through a plane pair leaves it
+(`board.CUT_KEEPOUT`), unless `--edge-walls` names sides itself: a cut through a plane pair leaves it
 open right at the port, and the open edge radiates (on the stripline below: 0.22 dB off without the
 walls). An absorbing boundary on the cut face was tried and is worse (the port sits against it).
 

@@ -16,15 +16,15 @@ Pads count at their own width: a trace that ends in a pad is shortened by the pa
 pad is a section of its own (the discontinuity that KiCad's track lengths hide). Parts between two pads
 continue the path (series) or end in a shunt to ground.
 
-build(model) returns a LineModel: nodes and elements (the netlist that fastsolve.py turns into
+build(board) returns a LineModel: nodes and elements (the netlist that fastsolve.py turns into
 S-parameters) and, per port, the path to the other ports as an ordered list of sections for the
-report. Units: mm, Ohm; model coordinates (y up).
+report. It reads the board's primitives (board.Board.prims: tracks, pads, zones, vias). Units: mm, Ohm;
+model coordinates (y up).
 """
 import heapq, math
 import numpy as np
 from shapely.geometry import LineString, Point, Polygon
 from ...constants import C0, EPS0
-from ...geometry import flip_y
 
 ETA0 = 376.730313668
 MU0 = 4e-7 * math.pi
@@ -207,12 +207,12 @@ class RefCopper:
         sel = model.sel
         outline = model.outline
         by_layer = {}
-        for l, n, g in model.board.items:
+        for l, n, g in model.prims.items:
             if l in model.cu_z and n not in signal_nets and (sel is None or n in sel):
                 by_layer.setdefault(l, []).append(g)
         self.geom, self._prep = {}, {}
         for l, gs in by_layer.items():
-            u = flip_y(unary_union(gs)).intersection(outline)
+            u = unary_union(gs).intersection(outline)
             if not u.is_empty:
                 self.geom[l] = u
         if model.ground:
@@ -347,10 +347,10 @@ class NetCopper:
     def __init__(self, model, nets, tracks, reach=5.0):
         from shapely.ops import unary_union
         by = {}
-        for l, n, g in getattr(model.board, 'shapes', []):
+        for l, n, g in model.prims.shapes:
             if n in nets and l in model.cu_z:
-                by.setdefault(l, []).append(flip_y(g))
-        for t in tracks:                                   # model coordinates already
+                by.setdefault(l, []).append(g)
+        for t in tracks:
             if t['layer'] in by and t['net'] in nets:
                 by[t['layer']].append(LineString(t['pts']).buffer(t['width'] / 2, quad_segs=6))
         self.geom = {l: unary_union(gs).intersection(model.outline) for l, gs in by.items()}
@@ -434,22 +434,6 @@ def _split_by_reference(model, ref, e, netcu=None, step=0.25, max_samples=400):
     return out
 
 
-def ground_nets(model):
-    """Nets that are ground or a reference: named like ground (GND, AGND, VSS, ...) or owning zones that
-    cover at least a fifth of the board on some layer. A part to such a net is a shunt to ground, even
-    when the net has tracks (to its vias)."""
-    import re
-    pat = re.compile(r'(^|[^A-Z])(A|D|P|SIG|CHASSIS)?(GND|GROUND|VSS)', re.I)
-    out = {n for _, n, _ in model.board.items if n and pat.search(str(n))}
-    area = {}
-    kicad_ol = flip_y(model.outline)
-    for l, n, g in model.board.items:
-        if n and l in model.cu_z and g.area > 0.05 * kicad_ol.area:
-            area[(l, n)] = area.get((l, n), 0.0) + g.intersection(kicad_ol).area
-    out |= {n for (l, n), a in area.items() if a >= 0.2 * kicad_ol.area}
-    return out
-
-
 def _chord(poly, c, d, reach=50.0):
     """Length of the line through c along d inside poly (the piece containing c)."""
     seg = LineString([c - d * reach, c + d * reach]).intersection(poly)
@@ -495,7 +479,7 @@ def _footprint_pads(fp, nets, model, inside):
     groups = {}
     for q in fp['pads']:
         if q['net'] in nets and any(l in model.cu_z for l in q['layers']):
-            g = flip_y(q['geom'])
+            g = q['geom']
             if g.intersects(inside):
                 groups.setdefault((q['name'], q['net'], tuple(q['layers'])), []).append(dict(q, geom=g))
     out = []
@@ -504,7 +488,7 @@ def _footprint_pads(fp, nets, model, inside):
         parts = list(getattr(u, 'geoms', [u])) if len(qs) > 1 else [u]
         for k, g in enumerate(parts):
             if len(qs) == 1:
-                q = dict(qs[0], xy=np.array([qs[0]['xy'][0], -qs[0]['xy'][1]]))
+                q = qs[0]
             else:
                 c = g.centroid
                 q = dict(qs[0], geom=g, xy=np.array([c.x, c.y]))
@@ -514,13 +498,12 @@ def _footprint_pads(fp, nets, model, inside):
 
 def build(model):
     """The line model of the nets the ports sit on (and the nets reached through series parts)."""
-    board = model.board
+    pr = model.prims
     lm = LineModel()
     inside = model.outline.buffer(1e-6)
-    tracks = [dict(t, pts=np.column_stack([t['pts'][:, 0], -t['pts'][:, 1]])) for t in board.tracks
-              if t['layer'] in model.cu_z]
+    tracks = [t for t in pr.tracks if t['layer'] in model.cu_z]
     track_nets = {t['net'] for t in tracks}
-    fps = {fp['ref']: fp for fp in board.footprints}
+    fps = {fp['ref']: fp for fp in pr.footprints}
     # ---- nets: the ports' nets, extended through series parts ----
     nets = {p.net for p in model.ports if p.net}
     for p in model.ports:
@@ -535,7 +518,7 @@ def build(model):
         pads = [q for q in fps.get(pt.ref, {}).get('pads', []) if q['layers']]
         if len(pads) == 2:
             part_pads[pt.ref] = pads
-    grounds = ground_nets(model)
+    grounds = model.ground_nets
     grew = True
     while grew:
         grew = False
@@ -550,11 +533,11 @@ def build(model):
     refcu = RefCopper(model, nets)
     # ---- pads and vias the tracks attach to ----
     pads = []                                              # (node, pad dict with model geometry, footprint ref)
-    for fp in board.footprints:
+    for fp in pr.footprints:
         if fp['ref'] not in model.port_refs:
             pads += _footprint_pads(fp, nets, model, inside)
-    vias = [dict(v, xy=np.array([v['x'], -v['y']]), i=i) for i, v in enumerate(board.vias)
-            if v['net'] in nets and not v.get('pth') and inside.contains(Point(v['x'], -v['y']))]
+    vias = [dict(v, xy=np.array([v['x'], v['y']]), i=i) for i, v in enumerate(pr.vias)
+            if v['net'] in nets and not v.get('pth') and inside.contains(Point(v['x'], v['y']))]
     attached = {}                                          # node -> list of (element index, direction away)
 
     def attach(layer, xy):
@@ -650,7 +633,7 @@ def build(model):
         c = q['xy']
         if node in part_of:
             other = next(o for o in part_of[node][1] if o['name'] != q['name'])
-            d = np.array([other['xy'][0], -other['xy'][1]]) - c
+            d = np.asarray(other['xy'], float) - c
         else:
             d = (np.asarray(tr.pts[0 if tr.a != node + ':in' else -1]) - c) if tr is not None else np.array([1.0, 0.0])
         d = d / (np.linalg.norm(d) or 1.0)
@@ -834,9 +817,9 @@ def _shape_strips(model, nets, inside, lm):
     from shapely.ops import unary_union
     from .strips import shape_strips, rectilinear
     by = {}
-    for l, n, g in getattr(model.board, 'shapes', []):
+    for l, n, g in model.prims.shapes:
         if n in nets and l in model.cu_z:
-            by.setdefault((l, n), []).append(flip_y(g))
+            by.setdefault((l, n), []).append(g)
     out, skipped = [], 0
     for (l, n), gs in by.items():
         u = unary_union(gs).intersection(inside)

@@ -4,7 +4,8 @@ One run of kicad2ems as a sequence of stages, driven by a config.Settings:
     Job(settings).run()
         preflight() the solvers of the run (Settings.solver_plan) checked before any work: openEMS imports,
                     mom25d imports, the line model has a circuit solver
-        model()     KiCadBoard -> Model (stack, copper, vias, ports, lumped parts)
+        model()     the board file -> Board (stack, copper, vias, ports, lumped parts, edge walls), written
+                    as <name>_board.json: what every solver gets
         mesh()      boundaries, automatic mesh (or the --converge levels), cavity check, field-dump specs
         lines()     transmission-line sections and Z0 (tlines.py); with the line-model solver, their
                     S-parameters (fastsolve.py)
@@ -22,11 +23,9 @@ import datetime, json, os, time
 import numpy as np
 
 from . import __version__
-from .importers.kicad.board import KiCadBoard
-from .model import Model
+from .board import Board
 from .solvers.openems.boundaries import resolve_bc, cavity_check
 from .solvers.openems.mesh import auto_mesh
-CUT_KEEPOUT = 2.0      # mm: edge walls on a region cut stay this far from the signal copper (docs/model.md)
 from .plots import save, preview, plot_results, plot_convergence, plot_antenna, plot_pattern, plot_lines
 from .sparams import mixed_mode, fill_reciprocal
 from .touchstone import write_touchstone, read_touchstone
@@ -99,11 +98,30 @@ def compare_table(freq, S, Sx, names, floor_db=-40.0):
 SOLVER_LABELS = dict(openems='openEMS (FDTD)', mom='mom25d (MoM)', lines='line model')
 
 
+def board_from_settings(s, log=print):
+    """The Board of a run's settings: the board file through its importer, resolved with the selection
+    settings - or a board.json written by an earlier run, as it is (its selection is already applied)."""
+    if s.board.lower().endswith('.json'):
+        b = Board.load(s.board, log=log)
+        given = [k for k in ('nets', 'pos', 'region', 'ground', 'ports', 'cut_ports', 'edge_walls')
+                 if getattr(s, k) not in (None, False, [], ())]
+        if given:
+            log(f"note: {os.path.basename(s.board)} is a resolved board: its own selection holds, not "
+                f"{', '.join(given)} from the settings")
+        return b
+    from .importers import open_board
+    return Board(open_board(s.board, pos=s.pos), nets=s.nets, pos_file=s.pos, include_mask=s.mask, region=s.region, ports=s.ports,
+                 cut_ports=s.cut_ports, ground=s.ground, parts=s.parts, edge_walls=s.edge_walls,
+                 edge_keepout=s.edge_keepout, log=log)
+
+
 class Job:
     def __init__(self, settings, echo=print, command=None):
         self.s, self.echo = settings, echo
         self.messages, self.files = [], []
         self.name = os.path.splitext(os.path.basename(settings.board))[0]
+        if settings.board.lower().endswith('.json') and self.name.endswith('_board'):
+            self.name = self.name[:-len('_board')]                 # <name>_board.json of an earlier run
         self.fmin, self.fmax = settings.fmin * 1e9, settings.fmax * 1e9
         self.antenna = settings.antenna
         self.t0 = time.time()
@@ -245,11 +263,9 @@ class Job:
 
     def model(self):
         s = self.s
-        self.board = KiCadBoard(s.board)
-        self.m = m = Model(self.board, nets=s.nets, pos_file=s.pos, include_mask=s.mask, region=s.region,
-                           ports=s.ports, cut_ports=s.cut_ports,
-                           ground=s.ground, parts=s.parts, log=self.log)
+        self.m = m = board_from_settings(s, log=self.log)
         self.log(m.describe())
+        self.wrote('board (what every solver gets)', m.save(self.path('_board.json')))
         if s.diel == 'wideband':
             from .solvers.openems.dielectric import describe as describe_diel
             self.log("\n".join(describe_diel(m.layers, s.diel_fref * 1e9, self.fmin, self.fmax)))
@@ -286,18 +302,11 @@ class Job:
                                            dt_ps=lm['info']['dt_ps']) for f, lm in self.levels]
         else:
             self.grid = auto_mesh(m, self.fmin, self.fmax, res=s.res, fine=s.fine, **kw)
-        sides, keepout = s.edge_walls, s.edge_keepout
-        if not sides and s.cut_ports and getattr(m, 'cut_sides', None):
-            # a cut through a plane pair leaves it open at the port: close it, well clear of the lines
-            sides, keepout = m.cut_sides, max(s.edge_keepout, CUT_KEEPOUT)
-            self.log(f"edge walls on the region cut ({', '.join(sides)}), {keepout:g} mm clear of the signal copper")
-        if sides:
-            from .edges import edge_walls, describe, snap
-            walls = edge_walls(m, sides, keepout=keepout)
-            self.log(describe(walls, m))
+        if m.walls:
+            from .edges import describe, snap
             for g in [self.grid] + [lm for _, lm in (self.levels or [])]:
-                g['walls'] = snap(walls, g)
-                g['info']['edge_walls'] = describe(walls, m).split(': ', 1)[1]
+                g['walls'] = snap(m.walls, g)
+                g['info']['edge_walls'] = describe(m.walls, m).split(': ', 1)[1]
         self.summary['mesh'] = self.grid['info']
         if self.fdtd or s.preview:                                  # the box resonances are openEMS's alone
             cavity_check(m, self.grid, self.bc, self.fmax, log=self.log)

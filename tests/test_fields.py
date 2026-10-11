@@ -65,9 +65,9 @@ def run_folder(demo_files, tmp_path_factory):
     """A run folder with a time-domain plane dump (VTR frames), a frequency-domain one (HDF5) and their info."""
     h5py = pytest.importorskip('h5py')
     from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.model import Model
+    from kicad2ems.board import Board
     base, _ = demo_files
-    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
     out = tmp_path_factory.mktemp('out')
     run = out / 'openems' / 'exc_P1'
     td, fd = parse_dump('E@F.Cu-0.1', m), parse_dump('J@F.Cu@3', m)

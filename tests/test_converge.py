@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.model import Model
+from kicad2ems.board import Board
 from kicad2ems.solvers.openems.converge import parse_levels, mesh_levels, compare_levels, verdict
 
 
@@ -16,7 +16,7 @@ def test_parse_levels():
 
 def test_levels_refine_monotonically(demo_files):
     base, _ = demo_files
-    m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
               log=lambda *a: None)
     levels = mesh_levels(m, 1e9, 8e9, [1, 1.5, 2], log=lambda *a: None)
     cells = [lm['info']['cells'] for _, lm in levels]
