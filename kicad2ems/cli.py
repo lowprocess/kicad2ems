@@ -9,6 +9,7 @@ transmission-line model (qucsator or scikit-rf), all from one converted board
     kicad2ems board.kicad_pcb --config board.toml --excite P1
     kicad2ems board.kicad_pcb ... --compare other_tool.s2p          # overlay another result
     kicad2ems --check                           # which solvers this python can run
+    kicad2ems --init board.kicad_pcb            # a commented starter config next to the board (board.toml)
 
 Ports are footprints with a Fab-layer text P1, P2, ... (or Reference / Value P<n> in the
 pick-and-place file); P<n>+ / P<n>- give a differential port. --preview writes the model + mesh
@@ -38,6 +39,9 @@ def parser():
     ap.add_argument('--check', action='store_true',
                     help='check which solvers this python can run (openEMS, mom25d, the line model) and the GUI, '
                          'then exit')
+    ap.add_argument('--init', action='store_true',
+                    help='write a commented starter config next to the board (<board>.toml) with the ports found on '
+                         'it, nets = auto and the options typed here, then exit')
     ap.add_argument('--config', help='TOML file with any of these options (a solver\'s also under '
                                      '[solver.<name>]); its paths are relative to the file')
     opts = all_options()
@@ -63,6 +67,7 @@ def settings_from_argv(argv=None):
     """Settings from a command line (the TOML config it names included). Returns (Settings, check flag)."""
     ap = parser()
     typed = vars(ap.parse_args(argv))
+    typed.pop('init', None)
     check = typed.pop('check', False)
     config = typed.pop('config', None)
     board = typed.get('board')
@@ -101,8 +106,23 @@ def check_report():
     return ok_fdtd, lines
 
 
+def init(argv):
+    """--init: the starter config of the board on the command line (the options typed go into it)."""
+    from .config import OPTIONS, _convert
+    from .starter import write_starter
+    typed = {k: v for k, v in vars(parser().parse_args(argv)).items() if k not in ('init', 'check', 'config')}
+    board = typed.pop('board', None)
+    if not board or board.lower().endswith(('.toml', '.json')):
+        raise ConfigError("--init needs the board file: kicad2ems --init board.kicad_pcb")
+    path, ports = write_starter(board, {k: _convert(k, v) for k, v in typed.items() if k in OPTIONS})
+    print(f"wrote {path}" + (f" ({len(ports)} port(s) found)" if ports else " (no ports found yet: see the file)"))
+    return 0
+
+
 def main(argv=None, prog='kicad2ems'):
     try:
+        if '--init' in (sys.argv[1:] if argv is None else argv):
+            return init(sys.argv[1:] if argv is None else argv)
         s, check = settings_from_argv(argv)
         if check:
             ok, lines = check_report()
@@ -112,7 +132,7 @@ def main(argv=None, prog='kicad2ems'):
             print(f"config: {note}")
         from .pipeline import Job
         return Job(s, command=" ".join([prog] + list(sys.argv[1:] if argv is None else argv))).run()
-    except (ConfigError, ValueError, FileNotFoundError, IsADirectoryError) as e:
+    except (ConfigError, ValueError, FileNotFoundError, FileExistsError, IsADirectoryError) as e:
         if os.environ.get('KICAD2EMS_TRACEBACK'):              # for debugging: the full traceback
             raise
         msg = e.strerror + f": {e.filename}" if isinstance(e, OSError) and e.filename else str(e)

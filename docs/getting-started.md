@@ -92,7 +92,9 @@ like `examples/filter.toml` takes about a minute). [MoM](mom.md#runtime) says wh
    `P1`, `P2`, … Its position is the port location; its rotation the direction *into* the circuit
    (0° = +x; along x or y). Differential ports: `P1+` / `P1-`. Optional fields `port.layer`, `port.z0`,
    `port.type`: see [KiCad import](kicad-import.md#ports).
-3. **A config file** next to the board:
+3. **A config file** next to the board: `kicad2ems --init myboard.kicad_pcb --fmin 1 --fmax 6` writes a
+   commented `myboard.toml` with the ports it found (or why it found none), the pick-and-place file next to
+   the board, `nets = "auto"` and the options typed with it. By hand, it is as short as:
 
    ```toml
    board = "myboard.kicad_pcb"

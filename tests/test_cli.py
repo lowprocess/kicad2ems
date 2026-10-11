@@ -153,3 +153,22 @@ def test_config_typos_are_named(tmp_path):
     assert 'fmx (did you mean fmax?)' in note and 'mom_dmx (did you mean mom_dmax?)' in note
     assert 'dmax' in note and 'dmax (did you mean' not in note    # mom25d's own key: no wrong guess
     assert s.end_db == -30                                          # the [openems] table in any case
+
+
+def test_init_writes_a_starter_config(demo_files, run_cli, tmp_path):
+    import shutil
+    base, _ = demo_files
+    for ext in ('.kicad_pcb', '-top.pos'):
+        shutil.copy(base + ext, tmp_path / ('b' + ext))
+    code, so, err = run_cli('--init', tmp_path / 'b.kicad_pcb', '--ground', 'B.Cu', '--fmax', '8')
+    assert code == 0 and '2 port(s) found' in so, so + err
+    text = (tmp_path / 'b.toml').read_text()
+    assert '#   P1: F.Cu' in text and 'pos     = "b-top.pos"' in text and '[solver.openems]' in text
+    s = build_settings({}, str(tmp_path / 'b.toml'))
+    assert s.notes == [] and s.fmax == 8 and s.ground == 'B.Cu' and s.nets == ['auto'] and s.pos == str(tmp_path / 'b-top.pos')
+    code, _, err = run_cli('--init', tmp_path / 'b.kicad_pcb')       # never over a config that is there
+    assert code == 2 and 'exists' in err
+    text = open(base + '.kicad_pcb').read().replace('"P1"', '"X1"').replace('"P2"', '"X2"')
+    (tmp_path / 'c.kicad_pcb').write_text(text)                      # no port footprints: none found, and why
+    code, so, _ = run_cli('--init', tmp_path / 'c.kicad_pcb')
+    assert code == 0 and 'no ports found' in so and 'Fab text P1' in (tmp_path / 'c.toml').read_text()

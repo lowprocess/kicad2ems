@@ -11,6 +11,7 @@ kicad2ems board.kicad_pcb --fmin 1 --fmax 6  # no config file
 kicad2ems board.toml --solvers mom,lines     # other solvers than openEMS (below)
 python -m kicad2ems ...                      # same, with a specific Python
 kicad2ems --check                            # which solvers can this Python run?
+kicad2ems --init board.kicad_pcb --fmax 6    # a commented starter config, board.toml, with the ports found
 ```
 
 Exit codes: 0 done; 1 a solver named in `--solvers` gave no result (the warning says why; the report is
