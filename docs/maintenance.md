@@ -61,44 +61,53 @@ mesh. Antenna runs therefore extend the excitation to fmax + 30 % of the band (`
 ### KiCad-side gotchas
 
 - Zones are read from their **filled** polygons: refill zones in KiCad before simulating.
-- `Model` simplifies copper with a 2 µm tolerance, which can merge tiny jogs into long, slightly oblique
+- `Board` simplifies copper with a 2 µm tolerance, which can merge tiny jogs into long, slightly oblique
   edges; the mesher's Manhattan tolerance (`fine/10`) exists for this.
 - Port footprints must point along x or y.
 
-## Adding a command-line option
+## Adding an option
 
-1. `config.Settings`: add a typed field with its default (frequencies in GHz, lengths in mm).
-2. `config.py`: if it takes a list or a boolean, add a converter to `CONVERT`; if it has fixed choices,
-   to `CHOICES`; if it is a path, to `PATH_KEYS` (relative to the TOML file). Command-line-only options
-   go to `CLI_ONLY`.
-3. `cli.parser()`: add it to the right group, with a help text that quotes the default from `Settings`
-   (`D.<field>`). Options default to `argparse.SUPPRESS`, so only typed ones override the TOML.
-4. Use it in the relevant `Job` stage (`pipeline.py`) as `self.s.<field>`, passing plain values down
-   (lower-level functions take keyword arguments, not the `Settings` object).
-5. If it changes the results, it is already in the summary's `settings`; put what it produces into
+Every setting is declared once, as an `options.Option`: the settings of every run in `config.CORE`, a
+solver's own in its plugin's `options` list ([architecture](architecture.md#solver-plugins)).
+
+1. Add an `Option(key, default, help, type, ...)` to the right list: `help` may quote the default as
+   `{default}`; `choices` for fixed choices, `conv` for a converter (lists, regions: `options.strlist`,
+   `floats(n)`, ...), `path=True` for a path (relative to the TOML file), `name` for its short name under
+   `[solver.<name>]`, `gui` for a label in the GUI's form, `group` for the command-line and form group, `cli`
+   for argparse extras (`flags`, `dest`, `action='append'`, `metavar`). The `Settings` field, the
+   command-line option, the config keys and the form field follow from it.
+2. Use it as `s.<key>` in the stage or plugin that needs it, passing plain values down (lower-level
+   functions take keyword arguments, not the `Settings` object). Settings that cannot be used together go
+   to the plugin's `validate(s)`.
+3. If it changes the results, it is already in the summary's `settings`; put what it produces into
    `Job.summary` and, if useful, into the report.
-6. Document it in `docs/usage.md`, test parsing / TOML in `test_cli.py` and its effect where it
+4. Document it in `docs/usage.md`, test parsing / TOML in `test_cli.py` and its effect where it
    applies.
 
 ## Adding a solver
 
-A solver takes the converted board (`Model`, or the CSX file `<name>.xml` with its hints) and returns
-S-parameters over `Job.freq` in `m.user_ports` order (differential pairs as their modes, `sparams.mixed_mode`).
+A solver is a plugin: a `solvers.Solver` subclass ([architecture](architecture.md#solver-plugins)). It gets
+the `Board` (or, with `consumes = 'network'`, the line model) and returns a `solvers.Result`: S-parameters
+over `Job.freq` for the board's ports as reported (differential pairs as their modes:
+`sparams.mixed_mode`).
 
-1. `config.SOLVERS` (and `SOLVER_ALIASES`): its name; `pipeline.SOLVER_LABELS`: how the log names it.
-2. `Job.preflight()`: check that it can run (an import, a program on PATH) before any work, with a fix in
-   the message; `--check` (`cli.other_solvers`) reports the same.
-3. A `Job` stage that runs when it is in `self.plan`, writes `<name>_<solver>.sNp` with `self.wrote`, puts
-   its summary under its own key and logs failures as `WARNING` (the exit code follows from `_solved`).
-4. Compare it in `outputs()` (`compare_table`) and give it a style in `gui/traces.py` (`classify`, `SOURCES`)
-   and a section in the report.
+1. Declare `name`, `aliases`, `label`, `consumes`, `rank`, `capabilities` (every key of
+   `solvers.FEATURES`) and `options`; implement `check()` (with the fix in its message), `solve()` and, where
+   they apply, `validate()`, `assess()` (why it cannot model a board), `prepare()`, `outputs()`.
+2. Declare what it changes in `deviations()` and read its native model back in `readback()`; add it to
+   `tests/test_parity.py`.
+3. Register it: in `solvers.BUILTIN` (in this repository), or with an entry point in the group
+   `kicad2ems.solvers` (a package of its own). Nothing else in the pipeline, the report or the GUI needs a
+   change: its Touchstone file is `<name>_<solver>.sNp`, it has its own report section and tick box. Give it
+   a line style in `gui/traces.py` (`SOURCES`, `BY_SUFFIX`) if it should not be drawn solid.
+4. Document it in `docs/usage.md` (the solvers table).
 
 ## Conventions
 
 - Units: mm and Hz inside, GHz on the command line, KiCad coordinates in messages.
 - openEMS / CSXCAD, scikit-rf and h5py imported lazily inside functions.
 - Messages through `log` (in a `Job`: `self.log`); warnings contain `WARNING` so the report lists them;
-  model-level remarks go to `Model.notes`.
+  board-level remarks go to `Board.notes`.
 - Plots return matplotlib `Figure` objects (no pyplot); `plots.save` writes them. The report reads only
   `Job.summary`: everything it shows must be in there.
 - The version (currently 0.2.0) lives only in `kicad2ems/__init__.py` (`__version__`);

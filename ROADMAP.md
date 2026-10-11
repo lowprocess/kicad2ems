@@ -6,13 +6,14 @@ section. Last updated 2026-10-11.
 
 ## Where it stands
 
-- **Three solvers from one converted board**: openEMS (FDTD), mom25d (2.5D MoM) and the
-  transmission-line model (scikit-rf / qucsator), chosen with `--solvers` (or added as references with
-  `--mom` / `--fast`), checked before a run starts, compared in the plots, the report and the GUI. MoM and
-  the line model need no openEMS: without it, kicad2ems writes the CSX file itself (`csxwrite.py`).
-  mom25d is its own repository ([lowprocess/mom25d](https://github.com/lowprocess/mom25d)), a git
-  submodule in `mom25d/`; it reads the CSX file (`<name>.xml`) openEMS gets, plus a `<mom25d>` hints
-  element.
+- **One board, solver plugins**: the KiCad or Gerber import gives one board (`<name>_board.json`), which
+  every solver gets: openEMS (FDTD), mom25d (2.5D MoM) and the transmission-line model (qucs / scikit), each a
+  plugin with its own settings (`[solver.<name>]`), chosen with `--solvers` (or added as references with
+  `--mom` / `--fast`), checked before a run starts, compared in the plots, the report and the GUI. Others
+  install as packages ([architecture](docs/architecture.md#solver-plugins)). Each solver declares what it
+  changes on the way (vias snapped, parts split, walls as via rows); the parity tests read each solver's
+  model back and fail on anything undeclared. mom25d lives in `mom25d/` and reads the board file itself;
+  MoM and the line model need no openEMS.
 - **GUI**: setup with config open / save that keeps the file's comments, live run progress, interactive
   S-parameter plots with a return-loss Smith chart and markers, field dumps (live, cuts, GIF / MP4),
   antenna far field.
@@ -59,7 +60,7 @@ the affected cases.
 - **Adaptive sweep**: the convergence test now also checks each new sample's prediction (it had stopped
   early on the coupler). Add a regression test on a case that used to stop early, and log the sample
   frequencies in the run summary.
-- **Meshers**: Triangle with offset rings stays the default; gmsh and DistMesh gave no gain per unknown
+- **Meshers**: Triangle with offset rings stays the default; gmsh and DistMesh (now removed) gave no gain per unknown
   ([mesher study](docs/mom.md#meshers)). gmsh's boundary layer fails where a via fan sits in the layer
   band; only worth more work if a case appears where Triangle fails.
 - **Antenna mode** is not supported (infinite ground under the copper).
@@ -74,26 +75,17 @@ the affected cases.
   0.14 mm, so the RF configs set `fine` by hand. Deriving `fine` from the smallest copper gap as well as
   the narrowest trace would make the default safe.
 
-## 5. Structure (from the October 2026 review)
+## 5. Structure
 
-- **mom25d's API.** The `review/multi-solver-ux` branch of mom25d adds `mom25d.api.solve_csx(path, freq)`
-  returning a `Result` (S, names, port kinds, unknowns, notes) and fixes its CSX reader dropping the
-  conductivity of conducting sheets. Once it is merged and the submodule bumped, `mom.solve` becomes one
-  call to it instead of reaching into `Simulation` (`sim.Ne`, `sim.rwg.tris`, `hasattr(p, 's0')`).
-- **A `solvers/` package.** The openEMS-only modules (mesh, boundaries, edges, converge, simulation,
-  progress, dielectric, antenna, dumps, fields) and the line model (tlines, strips, coupled, fastsolve)
-  could move under `solvers/openems/` and `solvers/lines/`, next to `solvers/mom.py`, behind the
-  steps of [adding a solver](docs/maintenance.md#adding-a-solver). A move, not a rewrite: do it in one
-  commit with nothing else.
-- **One KiCad reader.** mom25d has its own, older `.kicad_pcb` reader (`mom25d/kicad.py`). Either it keeps
-  only CSX and Gerber input (KiCad boards come through kicad2ems), or `kicad2ems/kicad/` becomes
-  a small package both use.
-- **Names.** The run summary is `<name>_openems.json` and the default output folder `openems_out` whichever
-  solvers run; a solver-neutral `<name>_summary.json` (the GUI reading both for a while) and one default
-  folder for the command line and the GUI (which uses `out` next to the board) would match what the tool
-  is now.
-- **MoM progress.** mom25d's adaptive sweep logs lines but sends no `status` events, so the GUI's Run tab
-  shows no bar for it.
+Done on the `kicad2ems` branch: mom25d in this repository, reading the board (no CSX file, no KiCad reader
+of its own), the `solvers/` package with a plugin per solver, solver-neutral names (`<name>_run.json`,
+`out/` next to the board), MoM progress events. Left from the plan ([progress](progress.md)):
+
+- **`--solvers auto`**: pick the full-wave solver by estimated cost (mom25d for planar boards over a ground
+  plane, openEMS once inner planes and many vias must be meshed) and add the line model; log why.
+- **Conformance boards** with known answers (microstrip thru, series RLC, differential pair, grounded CPW),
+  each capable solver within stated tolerances, run with fast settings in CI.
+- **`kicad2ems --init board.kicad_pcb`**: a commented starter config with the detected ports.
 
 ## 6. GUI
 
