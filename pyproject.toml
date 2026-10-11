@@ -39,7 +39,6 @@ kicad2ems = "kicad2ems.cli:main"
 kicad2ems-gui = "kicad2ems.gui:main"
 kicad2openems = "kicad2ems.cli:main_openems"     # the old name: openEMS unless --solvers says otherwise
 kicad2openems-gui = "kicad2ems.gui:main"
-mom25d = "mom25d.cli:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "kicad2ems.__version__"}

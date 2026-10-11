@@ -88,7 +88,6 @@ def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatc
     pytest.importorskip('skrf')
     from kicad2ems.solvers import mom
     monkeypatch.setattr(mom, 'mom25d_status', lambda: (True, '0.0 (test)'))
-    monkeypatch.setattr(mom, 'write_xml', lambda *a, **kw: 'xml')
 
     def broken(*a, **kw):
         raise RuntimeError('singular matrix')

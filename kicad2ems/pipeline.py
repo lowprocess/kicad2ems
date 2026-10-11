@@ -9,7 +9,7 @@ One run of kicad2ems as a sequence of stages, driven by a config.Settings:
         mesh()      boundaries, automatic mesh (or the --converge levels), cavity check, field-dump specs
         lines()     transmission-line sections and Z0 (tlines.py); with the line-model solver, their
                     S-parameters (fastsolve.py)
-        mom()       with mom25d: the CSX geometry (<name>.xml) solved by the 2.5D MoM solver (mom.py)
+        mom()       with mom25d: the board solved by the 2.5D MoM solver (solvers/mom.py)
         preview()   <name>_mesh.png, excitation length; without openEMS the run ends here (after the report)
         solve()     openEMS runs: S-parameters (all excited ports, --jobs), --converge levels, or antenna mode
         outputs()   Touchstone, plots, field-dump maps, antenna / convergence results, line-model comparison
@@ -350,7 +350,7 @@ class Job:
             self.fast_solve()
 
     def mom(self):
-        """With mom25d among the solvers: the CSX geometry solved by mom25d (2.5D Method of Moments), the full-wave
+        """With mom25d among the solvers: the board solved by mom25d (2.5D Method of Moments), the full-wave
         solver next to openEMS and the line model. A failure is a warning here; when mom25d was named in
         `solvers`, the run ends with exit code 1 (see _run)."""
         if 'mom' not in self.plan:
@@ -368,17 +368,10 @@ class Job:
             self.summary.pop('mom', None)
 
     def _mom(self):
-        from .solvers.mom import write_xml, solve
+        from .solvers.mom import solve
         s, m = self.s, self.m
         self.freq = np.linspace(self.fmin, self.fmax, s.points)
-        xml = self.path('.xml')
-        backend = write_xml(m, self.grid, self.fmin, self.fmax, xml, bc=self.bc, sigma=s.sigma, diel=s.diel,
-                            diel_fref=s.diel_fref * 1e9, max_steps=s.max_steps, end_db=s.end_db)
-        if backend == 'xml':
-            self.log(f"CSX geometry {xml}: written by kicad2ems (openEMS's Python packages are not installed; "
-                     f"the same file CSXCAD writes)")
-        self.wrote('CSX geometry (AppCSXCAD; solved by mom25d)', xml)
-        S, names, zref, info = solve(xml, m, self.freq, dmax=s.mom_dmax, port=s.mom_port, mesher=s.mom_mesher,
+        S, names, zref, info = solve(m, self.freq, dmax=s.mom_dmax, port=s.mom_port, mesher=s.mom_mesher,
                                      max_solves=s.mom_solves, sigma=s.sigma, log=self.log)
         out = self.path(f"_mom.s{len(names)}p")
         write_touchstone(out, self.freq, np.nan_to_num(S), zref, comment=f"mom25d 2.5D MoM ({self.name})", names=names)

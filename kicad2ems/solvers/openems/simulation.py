@@ -19,35 +19,13 @@ def _fl(v):
     return [float(x) for x in v]
 
 
-def have_csxcad():
-    """True when CSXCAD and openEMS's Python packages import (the real file writer and FDTD engine)."""
-    try:
-        import CSXCAD, openEMS                                      # noqa: F401
-        return True
-    except Exception:                                               # ImportError, or OSError from the .so
-        return False
-
-
-def _csx_api(backend):
-    """(ContinuousStructure, openEMS, Debye material class or None) of CSXCAD / openEMS ('csxcad'), or of the
-    pure-Python file writer ('xml', csxwrite.py: no FDTD run, only the geometry file)."""
-    if backend == 'xml':
-        from . import csxwrite
-        return csxwrite.ContinuousStructure, csxwrite.openEMS, csxwrite.CSPropDebyeMaterial
-    if backend != 'csxcad':
-        raise ValueError(f"backend: 'csxcad' or 'xml', not {backend!r}")
-    from CSXCAD import ContinuousStructure
-    from openEMS import openEMS
-    return ContinuousStructure, openEMS, None                       # Debye class: imported where it is needed
-
-
 def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=None, max_steps=1_000_000,
-               dumps=(), diel='fixed', diel_fref=1e9, exc_fmax=None, backend='csxcad'):
+               dumps=(), diel='fixed', diel_fref=1e9, exc_fmax=None):
     """diel: 'fixed' (loss as a conductivity fitted at the band centre) or 'wideband' (Djordjevic-Sarkar
     model matched at diel_fref Hz, as Debye poles; see dielectric.py). exc_fmax: upper edge of the
-    Gaussian excitation (default fmax; antenna runs extend it, see antenna.py). backend: 'csxcad' (openEMS's
-    Python packages) or 'xml' (csxwrite: the same calls recorded for the geometry file only, no openEMS)."""
-    ContinuousStructure, openEMS, debye_cls = _csx_api(backend)
+    Gaussian excitation (default fmax; antenna runs extend it, see antenna.py)."""
+    from CSXCAD import ContinuousStructure
+    from openEMS import openEMS
     FDTD = openEMS(NrTS=int(max_steps), EndCriteria=_f(10 ** (end_db / 10)))
     fe = fmax if exc_fmax is None else exc_fmax
     f0, fc = _f(0.5 * (fmin + fe)), _f(0.5 * (fe - fmin) * 1.05)
@@ -64,7 +42,7 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
     for l in m.layers:
         name = l['name'].replace(' ', '_')
         if diel == 'wideband' and l['tand'] > 0:
-            mat = _debye_material(CSX, name, l, diel_fref, fmin, fmax, mesh['info']['dt_ps'] * 1e-12, debye_cls)
+            mat = _debye_material(CSX, name, l, diel_fref, fmin, fmax, mesh['info']['dt_ps'] * 1e-12)
         else:                                                       # loss at the centre frequency
             kappa = _f(2 * np.pi * f0 * EPS0 * l['er'] * l['tand'])
             mat = CSX.AddMaterial(name, epsilon=_f(l['er']), kappa=kappa)
@@ -116,11 +94,10 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
     return FDTD, CSX, ports
 
 
-def _debye_material(CSX, name, layer, fref, fmin, fmax, dt, CSPropDebyeMaterial=None):
+def _debye_material(CSX, name, layer, fref, fmin, fmax, dt):
     """Debye-pole material for one dielectric (openEMS skips relaxation times below 2 time steps, so
     the fit only uses poles above 2.5 dt)."""
-    if CSPropDebyeMaterial is None:
-        from CSXCAD.CSProperties import CSPropDebyeMaterial
+    from CSXCAD.CSProperties import CSPropDebyeMaterial
     from .dielectric import fit_debye
     e_inf, poles, kappa = fit_debye(layer['er'], layer['tand'], fref, fmin, fmax, tau_min=2.5 * dt)
     if not poles:
@@ -430,11 +407,6 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
                 os.remove(os.path.join(path, f))
     if xml_path:
         CSX.Write2XML(os.path.abspath(xml_path))
-        try:                                                    # what mom25d needs beyond the geometry
-            from ..mom import add_hints
-            add_hints(xml_path, m, fmin, fmax)
-        except Exception:
-            pass
     if progress is not None:
         progress = dict(progress, label=m.ports[k].name, end_db=end_db, max_steps=max_steps)
     watch = None
