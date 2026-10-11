@@ -29,7 +29,8 @@ def parser():
     S = argparse.SUPPRESS                        # untyped options stay out: the TOML file can set them
     ap = argparse.ArgumentParser(prog='kicad2ems', description=__doc__, argument_default=S,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('board', nargs='?', help='.kicad_pcb, or a .toml config (that names the board)')
+    ap.add_argument('board', nargs='?', help='.kicad_pcb, .gbrjob (Gerber job file; ports from --pos), the '
+                                             '<name>_board.json of an earlier run, or a .toml config that names one')
     ap.add_argument('--check', action='store_true',
                     help='check that this python can run openEMS (and mom25d, the line model, the GUI), then exit')
     ap.add_argument('--config', help='TOML file with any of these options (openEMS ones also under [openems]); '

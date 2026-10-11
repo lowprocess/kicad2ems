@@ -3,6 +3,7 @@ Board importers: each reads one kind of board file into the same raw form, which
 (KiCad coordinates: mm, y down).
 
     raw = open_board('board.kicad_pcb')                      # KiCad
+    raw = open_board('fab/board-job.gbrjob', pos='fab/board-top.pos')   # Gerber X2 + Excellon + job file
 
 The raw form (Imported): path, importer; stack_items [dict(kind copper / diel / mask, name, t (m), er, tand)]
 top to bottom; copper_order (copper layer names, top to bottom); items [(layer, net, geometry)] (all the
@@ -51,11 +52,14 @@ class Imported:
 
 
 def open_board(path, pos=None):
-    """The imported board of a file, by its extension: .kicad_pcb (KiCad). pos: the pick-and-place file, for
-    an importer whose ports come from it."""
+    """The imported board of a file, by its extension: .kicad_pcb (KiCad) or .gbrjob (the job file of a set
+    of Gerber X2 / Excellon files; the ports come from the pick-and-place file `pos`)."""
     ext = os.path.splitext(path)[1].lower()
     if ext == '.kicad_pcb':
         from .kicad import KiCadBoard
         return KiCadBoard(path)
-    raise ValueError(f"{path}: not a board file kicad2ems reads (.kicad_pcb, or the <name>_board.json of an "
-                     f"earlier run)")
+    if ext == '.gbrjob':
+        from .gerber import GerberBoard
+        return GerberBoard(path, pos=pos)
+    raise ValueError(f"{path}: not a board file kicad2ems reads (.kicad_pcb, .gbrjob, or the <name>_board.json "
+                     f"of an earlier run)")
