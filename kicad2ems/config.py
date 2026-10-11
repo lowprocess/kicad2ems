@@ -7,7 +7,7 @@ TOML keys are the command-line options (dashes or underscores); openEMS-specific
 under an [openems] table, so one file can also drive other tools (unknown keys are reported and
 ignored). Lists may be TOML arrays or comma-separated strings:
 
-    board = "board.kicad_pcb"       # then:  kicad2openems board.toml
+    board = "board.kicad_pcb"       # then:  kicad2ems board.toml
     pos = "board-top.pos"
     nets = ["RF", "GND"]
     fmin = 1.0

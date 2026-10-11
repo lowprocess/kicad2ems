@@ -1,8 +1,8 @@
 """KiCad import: S-expressions, stackup, copper, ports, nets, outline."""
 import pytest
-from kicad2openems.kicad import KiCadBoard, board_outline, resolve_nets, DiffLegs
-from kicad2openems.kicad.sexpr import parse_sexpr, items, val
-from kicad2openems.model import Model
+from kicad2ems.kicad import KiCadBoard, board_outline, resolve_nets, DiffLegs
+from kicad2ems.kicad.sexpr import parse_sexpr, items, val
+from kicad2ems.model import Model
 
 
 def test_sexpr():
@@ -46,7 +46,7 @@ def test_port_errors_are_explained(demo_files):
 
 
 def test_port_fields_both_prefixes():
-    from kicad2openems.model import port_field
+    from kicad2ems.model import port_field
     assert port_field({'mom.layer': 'In2.Cu'}, 'layer') == 'In2.Cu'
     assert port_field({'port.layer': 'B.Cu', 'mom.layer': 'In2.Cu'}, 'layer') == 'B.Cu'
     assert port_field({}, 'z0', 50) == 50

@@ -5,12 +5,12 @@ import numpy as np
 import pytest
 from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
-from kicad2openems.coupled import coupled_microstrip, group_lc, mtl_s
-from kicad2openems.strips import shape_strips, rectilinear
-from kicad2openems.tlines import microstrip, build
-from kicad2openems.kicad import KiCadBoard
-from kicad2openems.model import Model
-from kicad2openems.fastsolve import solve, qucs_netlist, find_qucsator, read_qucs_dataset
+from kicad2ems.coupled import coupled_microstrip, group_lc, mtl_s
+from kicad2ems.strips import shape_strips, rectilinear
+from kicad2ems.tlines import microstrip, build
+from kicad2ems.kicad import KiCadBoard
+from kicad2ems.model import Model
+from kicad2ems.fastsolve import solve, qucs_netlist, find_qucsator, read_qucs_dataset
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EX = os.path.join(ROOT, 'examples')
@@ -114,7 +114,7 @@ def _peak(f, S):
 
 
 def _reference(name):
-    from kicad2openems.touchstone import read_touchstone
+    from kicad2ems.touchstone import read_touchstone
     return read_touchstone(os.path.join(EX, 'reference', name))
 
 

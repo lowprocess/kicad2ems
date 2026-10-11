@@ -2,10 +2,10 @@
 clear of signal copper; settings, solver setup and the run summary."""
 import numpy as np
 import pytest
-from kicad2openems.kicad import KiCadBoard
-from kicad2openems.model import Model
-from kicad2openems.edges import edge_walls, parse_sides, describe
-from kicad2openems.config import build_settings, ConfigError
+from kicad2ems.kicad import KiCadBoard
+from kicad2ems.model import Model
+from kicad2ems.edges import edge_walls, parse_sides, describe
+from kicad2ems.config import build_settings, ConfigError
 
 
 @pytest.fixture(scope='module')
@@ -44,9 +44,9 @@ def test_walls_follow_the_planes_and_clear_the_launch(launch):
 
 
 def test_build_fdtd_adds_the_walls(launch, fake_openems):
-    from kicad2openems.simulation import build_fdtd
-    from kicad2openems.boundaries import resolve_bc
-    from kicad2openems.mesh import auto_mesh
+    from kicad2ems.simulation import build_fdtd
+    from kicad2ems.boundaries import resolve_bc
+    from kicad2ems.mesh import auto_mesh
     m = launch
     bc = resolve_bc('auto', m)
     mesh = auto_mesh(m, 1e9, 6e9, bc=bc, log=lambda *a: None)
@@ -69,9 +69,9 @@ def test_walls_and_vias_sit_on_mesh_lines(launch, boards):
     """openEMS drops a zero-thickness sheet or a thin cylinder that misses every mesh line (an 'unused
     primitive'): walls are snapped onto lines, and vias whose own lines were merged away are snapped
     even beyond --via-snap."""
-    from kicad2openems.boundaries import resolve_bc
-    from kicad2openems.mesh import auto_mesh
-    from kicad2openems.edges import snap
+    from kicad2ems.boundaries import resolve_bc
+    from kicad2ems.mesh import auto_mesh
+    from kicad2ems.edges import snap
     for m in (launch, Model(KiCadBoard(boards['demo'] + '.kicad_pcb'), nets=['RF', 'GND'],
                             pos_file=boards['demo'] + '-top.pos', ground='B.Cu', log=lambda *a: None)):
         for fine in (None, 0.05):

@@ -1,6 +1,6 @@
-# kicad2openems documentation
+# kicad2ems documentation
 
-kicad2openems turns a KiCad board (`.kicad_pcb`) into an [openEMS](https://openems.de) 3D FDTD model:
+kicad2ems turns a KiCad board (`.kicad_pcb`) into an [openEMS](https://openems.de) 3D FDTD model:
 the real stackup, copper, vias and outline, ports marked by footprints, lumped R/L/C parts, an automatic
 mesh. It runs openEMS and writes S-parameters (Touchstone), antenna results (gain, efficiency, patterns),
 plots, a JSON run summary and an HTML report. Every run also breaks the port nets into transmission-line
@@ -13,7 +13,7 @@ code. The [README](../README.md) is the landing page: install, a quick start and
 
 | # | Page | What it covers |
 |---|---|---|
-| 1 | [Getting started](getting-started.md) | Installing kicad2openems and openEMS, `--check`, a first run, your own board |
+| 1 | [Getting started](getting-started.md) | Installing kicad2ems and openEMS, `--check`, a first run, your own board |
 | 2 | [Usage and configuration](usage.md) | Command line, Settings and TOML files, every option, outputs, progress, `--events` |
 | 3 | [Architecture](architecture.md) | The run pipeline, the run summary, module map, the data passed between stages |
 | 4 | [KiCad import](kicad-import.md) | Reading `.kicad_pcb`: stackup, copper, graphics, pads, vias, outline, footprints, port fields |
@@ -25,7 +25,7 @@ code. The [README](../README.md) is the landing page: install, a quick start and
 | 10 | [Examples](examples.md) | The example boards and generators, and their verified results |
 | 11 | [Testing](testing.md) | Test layout, fixtures and openEMS stand-ins, real-solver checks |
 | 12 | [Maintenance notes](maintenance.md) | openEMS quirks and their workarounds, adding an option, conventions, checklist, license |
-| 13 | [GUI](gui.md) | `kicad2openems-gui`: setup, preview, run with progress and Stop, results, live field view with GIF / MP4, antenna far field |
+| 13 | [GUI](gui.md) | `kicad2ems-gui`: setup, preview, run with progress and Stop, results, live field view with GIF / MP4, antenna far field |
 | 14 | [MoM solver (mom25d)](mom.md) | `--solvers mom` / `--mom`: the CSX geometry solved by mom25d (no openEMS needed), the CSX reader, ports, meshers (triangle / gmsh / distmesh), runtime against openEMS |
 
 ## Where to start

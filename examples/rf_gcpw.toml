@@ -1,7 +1,7 @@
-# kicad2openems example: grounded coplanar waveguide through line, 50 ohm, via fences, 0.8 mm FR-4
+# kicad2ems example: grounded coplanar waveguide through line, 50 ohm, via fences, 0.8 mm FR-4
 #   python examples/make_rf_examples.py gcpw examples/rf_gcpw     # regenerate the board (already in the repository)
-#   kicad2openems examples/rf_gcpw.toml --preview
-#   kicad2openems examples/rf_gcpw.toml
+#   kicad2ems examples/rf_gcpw.toml --preview
+#   kicad2ems examples/rf_gcpw.toml
 # strip 1.0 mm, gaps 0.22 mm; the F.Cu pours are stitched to B.Cu every 1.2 mm along both gaps
 board   = "rf_gcpw.kicad_pcb"   # paths are relative to this file
 ground  = "B.Cu"

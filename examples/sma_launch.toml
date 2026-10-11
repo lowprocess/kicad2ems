@@ -1,7 +1,7 @@
-# kicad2openems run configuration for an SMA edge launch (Molex 73251-1151 end-launch jack) onto a
+# kicad2ems run configuration for an SMA edge launch (Molex 73251-1151 end-launch jack) onto a
 # 50 ohm line on a 4-layer board, with a drawn copper taper at the connector pad. 1-6 GHz.
-#   kicad2openems examples/sma_launch.toml --preview       # line model + qucsator in a second
-#   kicad2openems examples/sma_launch.toml                 # openEMS, about a minute
+#   kicad2ems examples/sma_launch.toml --preview       # line model + qucsator in a second
+#   kicad2ems examples/sma_launch.toml                 # openEMS, about a minute
 # The board's ground planes end at the board edges with no stitching there: edge walls stand in for
 # it (without them the plane pair beyond the last via row resonates near 4.7 GHz).
 # Reference result: examples/reference/sma_launch_openems.s2p (use with --compare)

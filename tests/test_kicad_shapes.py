@@ -3,7 +3,7 @@ pad shapes (chamfered, trapezoid, custom primitives), KiCad 5 arcs, polygons wit
 import math
 import pytest
 from shapely.geometry import Point
-from kicad2openems.kicad import KiCadBoard, board_outline
+from kicad2ems.kicad import KiCadBoard, board_outline
 
 HEAD = '''(kicad_pcb (version 20240108) (generator "test")
   (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user))

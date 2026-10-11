@@ -1,7 +1,7 @@
-# kicad2openems antenna example: PCB inverted-F antenna, 2.45 GHz
+# kicad2ems antenna example: PCB inverted-F antenna, 2.45 GHz
 #   python examples/make_antennas.py ifa examples/antenna_ifa
-#   kicad2openems examples/antenna_ifa.toml --preview
-#   kicad2openems examples/antenna_ifa.toml
+#   kicad2ems examples/antenna_ifa.toml --preview
+#   kicad2ems examples/antenna_ifa.toml
 board   = "antenna_ifa.kicad_pcb"   # paths are relative to this file
 mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
 fmin    = 1.8           # GHz

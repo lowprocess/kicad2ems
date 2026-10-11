@@ -1,8 +1,8 @@
 """Settings (defaults <- TOML <- command line), clean errors and end-to-end previews (in process)."""
 import json, os, sys
 import pytest
-from kicad2openems.cli import settings_from_argv
-from kicad2openems.config import build_settings, ConfigError, Settings
+from kicad2ems.cli import settings_from_argv
+from kicad2ems.config import build_settings, ConfigError, Settings
 
 
 def test_toml_config(tmp_path):
@@ -71,7 +71,7 @@ def test_check_is_command_line_only(tmp_path):
 
 
 def test_check_reports_python_and_modules():
-    from kicad2openems.simulation import check_openems
+    from kicad2ems.simulation import check_openems
     ok, lines = check_openems()
     text = "\n".join(lines)
     assert sys.executable in text and 'numpy' in text
@@ -83,7 +83,7 @@ def test_input_errors_are_messages_not_tracebacks(demo_files, run_cli, tmp_path)
     base, _ = demo_files
     code, out, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'FOO', '--out', tmp_path,
                              '--preview')
-    assert code == 2 and 'kicad2openems: error:' in err and "net 'FOO' not found" in err and 'Traceback' not in err
+    assert code == 2 and 'kicad2ems: error:' in err and "net 'FOO' not found" in err and 'Traceback' not in err
     code, _, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'RF', '--out', tmp_path,
                            '--preview')
     assert code == 2 and 'no reference copper' in err and 'include the ground net in nets' in err
@@ -106,7 +106,7 @@ def test_preview_report_and_summary(demo_files, run_cli, tmp_path):
     assert "id='results'" not in page                               # nothing solved in a preview
     sm = json.loads((out / 'demo_openems.json').read_text())
     assert sm['mode'] == 'preview' and sm['lines']['paths'][0]['port'] == 'P1'
-    from kicad2openems.report import build                         # the report rebuilds from the JSON alone
+    from kicad2ems.report import build                         # the report rebuilds from the JSON alone
     assert "id='tlines'" in build(sm, str(out))
     kinds = [json.loads(l)['kind'] for l in (tmp_path / 'ev.jsonl').read_text().splitlines()]
     assert kinds[0] == 'stage' and 'log' in kinds and 'file' in kinds and kinds[-1] == 'done'

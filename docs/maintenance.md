@@ -101,7 +101,7 @@ S-parameters over `Job.freq` in `m.user_ports` order (differential pairs as thei
   model-level remarks go to `Model.notes`.
 - Plots return matplotlib `Figure` objects (no pyplot); `plots.save` writes them. The report reads only
   `Job.summary`: everything it shows must be in there.
-- The version (currently 0.2.0) lives only in `kicad2openems/__init__.py` (`__version__`);
+- The version (currently 0.2.0) lives only in `kicad2ems/__init__.py` (`__version__`);
   `pyproject.toml` reads it, and the report and JSON summary show it.
 - Code style: comments explain *why* (often a measured number); keep the existing density.
 - Generated example boards are git-ignored; commit generators and configs, not outputs (except
@@ -110,7 +110,7 @@ S-parameters over `Job.freq` in `m.user_ports` order (differential pairs as thei
 ## Before committing
 
 1. `python -m pytest -q`
-2. `kicad2openems examples/<config>.toml --preview` for the examples your change touches.
+2. `kicad2ems examples/<config>.toml --preview` for the examples your change touches.
 3. A real run of an affected example ([Testing](testing.md#checking-against-openems)) when the solver
    setup, model or mesh changed, compared with the previous result.
 4. Update these pages. The README only links to them: change it when a page or an install step is

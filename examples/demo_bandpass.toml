@@ -1,7 +1,7 @@
-# kicad2openems run configuration for the generated lumped-element bandpass filter
+# kicad2ems run configuration for the generated lumped-element bandpass filter
 #   python examples/make_demo_board.py examples/demo_bandpass bandpass
-#   kicad2openems examples/demo_bandpass.toml --preview
-#   kicad2openems examples/demo_bandpass.toml
+#   kicad2ems examples/demo_bandpass.toml --preview
+#   kicad2ems examples/demo_bandpass.toml
 # 2nd-order Butterworth band-pass, f0 = 1 GHz: series L1 27 nH + C1 1 pF, then shunt L2 2.2 nH || C2 12 pF
 # (0402, with ESR / ESL fields).
 board   = "demo_bandpass.kicad_pcb"   # paths are relative to this file

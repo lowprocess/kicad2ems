@@ -9,13 +9,13 @@ plots, the report and the GUI. `--mom` adds MoM next to openEMS as a reference (
 warning, not an error: [solvers](usage.md#solvers)).
 
 ```bash
-kicad2openems examples/filter.toml --solvers mom,lines  # MoM and the line model, no openEMS: ~1 min
-kicad2openems examples/filter.toml --solvers all        # openEMS too, all three compared
+kicad2ems examples/filter.toml --solvers mom,lines  # MoM and the line model, no openEMS: ~1 min
+kicad2ems examples/filter.toml --solvers all        # openEMS too, all three compared
 mom25d out/filter.xml --fmin 1 --fmax 8                 # mom25d on its own, on any CSX file
 ```
 
 **No openEMS needed.** When openEMS's Python packages are installed, CSXCAD writes `<name>.xml`; when they
-are not, kicad2openems writes it itself (`csxwrite.py`: the same calls, the same file byte for byte, which
+are not, kicad2ems writes it itself (`csxwrite.py`: the same calls, the same file byte for byte, which
 `tests/test_csxwrite.py` checks against CSXCAD), and the log says so. The MoM result is the same either way.
 
 | Output | |
@@ -41,7 +41,7 @@ with large inner planes has many unknowns ([runtime](#runtime)).
 `mom25d.csx.CSXModel` reads any CSX file: Material slabs (εr, κ), planar Metal / ConductingSheet
 polygons and boxes, via cylinders, vertical metal sheets (edge walls: rows of vias every 0.5 mm), lumped
 elements (series / parallel R-L-C across a cut, bridged by a metal strip) and openEMS lumped ports
-(`port_resist_<n>`). What the file cannot say, kicad2openems adds as an element the CSXCAD reader ignores:
+(`port_resist_<n>`). What the file cannot say, kicad2ems adds as an element the CSXCAD reader ignores:
 
 ```xml
 <mom25d version="1" ground="B.Cu" f_loss="4.5e9">
@@ -83,7 +83,7 @@ coupled-mode fit (`P1d` / `P1c`); lumped legs are converted like openEMS's.
 mom25d meshes each copper layer into triangles (RWG basis). The surface current is singular across a
 conductor edge (~1/√d) and smooth along it, so what matters is **thin cells along the edges**. Four
 meshers, same contract (port cuts and via fans conformal), selectable in mom25d (`Simulation(mesher=)`,
-`mom25d --mesher`; kicad2openems `--mom-mesher triangle|gmsh`):
+`mom25d --mesher`; kicad2ems `--mom-mesher triangle|gmsh`):
 
 | mesher | edge refinement | |
 |---|---|---|

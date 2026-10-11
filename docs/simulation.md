@@ -80,7 +80,7 @@ with a warning below 20. Low frequencies make the pulse long (its length grows a
 high-Q circuits ring long after it, so both need more steps:
 
 ```bash
-kicad2openems board.toml --fmin 0.05 --fmax 0.5 --max-steps 5000000
+kicad2ems board.toml --fmin 0.05 --fmax 0.5 --max-steps 5000000
 ```
 
 **Steps taken** (`steps_taken`): the last sample time of the port voltage probe divided by openEMS's own
@@ -127,7 +127,7 @@ and a larger air margin ([meshing](meshing.md#boundaries-and-air)). Post-process
 ## `--check`
 
 `check_openems()` imports numpy, h5py, CSXCAD and openEMS and turns failures into hints (other Python,
-venv without system site packages, missing module, shared library not found, the `kicad2openems` on
+venv without system site packages, missing module, shared library not found, the `kicad2ems` on
 PATH running a different Python). The pipeline runs it before `solve()`. For users:
 [Getting started](getting-started.md#checking-the-installation).
 

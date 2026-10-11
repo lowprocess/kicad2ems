@@ -1,6 +1,6 @@
-# kicad2openems run configuration for the microstrip filter board
-#   kicad2openems examples/filter.toml --preview
-#   kicad2openems examples/filter.toml
+# kicad2ems run configuration for the microstrip filter board
+#   kicad2ems examples/filter.toml --preview
+#   kicad2ems examples/filter.toml
 # Reference result: examples/reference/filter_openems.s2p (use with --compare)
 board   = "filter.kicad_pcb"   # paths are relative to this file
 pos     = "filter-all.pos"

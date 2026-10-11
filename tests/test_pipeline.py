@@ -3,8 +3,8 @@ plots, line-model comparison, convergence, antenna outputs, JSON summary and rep
 import json
 import numpy as np
 import pytest
-from kicad2openems import simulation, antenna
-from kicad2openems.simulation import RunResult
+from kicad2ems import simulation, antenna
+from kicad2ems.simulation import RunResult
 
 
 def _canned(m, mesh, freq, excite, bc, out_dir, **kw):
@@ -80,7 +80,7 @@ def test_antenna_run(boards, run_cli, tmp_path, monkeypatch):
 
 def test_touchstone_says_what_was_not_computed(demo_files, run_cli, tmp_path, no_openems):
     """With only P1 driven, S22 is unknown: the file still needs a number there (0), and says so."""
-    from kicad2openems.pipeline import unknown_note
+    from kicad2ems.pipeline import unknown_note
     S = np.zeros((3, 2, 2), complex)
     S[:, 1, 1] = np.nan
     assert unknown_note(S, ['P1', 'P2']) == '; not computed (written as 0): S(P2,P2)'

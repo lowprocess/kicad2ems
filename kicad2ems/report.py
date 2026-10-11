@@ -372,11 +372,11 @@ def build(sm, base):
     section('log', 'Log', f"<details><summary>{len(log)} lines</summary><pre>{_e(chr(10).join(log))}</pre></details>")
 
     cmd = f" · <code>{_e(sm['command'])}</code>" if sm.get('command') else ''
-    head = (f"<header><h1>{_e(sm['name'])}</h1><div class='meta'>kicad2openems {_e(sm['version'])} · "
+    head = (f"<header><h1>{_e(sm['name'])}</h1><div class='meta'>kicad2ems {_e(sm['version'])} · "
             f"{_e(sm['created'])} · {_e(sm['mode'])}{cmd}</div></header>")
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>"
-            f"<title>{_e(sm['name'])} – kicad2openems</title><style>{CSS}</style></head><body><main>{head}"
+            f"<title>{_e(sm['name'])} – kicad2ems</title><style>{CSS}</style></head><body><main>{head}"
             f"<nav>{''.join(nav)}</nav>{''.join(body)}</main></body></html>")
 
 

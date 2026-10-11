@@ -5,12 +5,12 @@
 ## Invocation
 
 ```bash
-kicad2openems board.toml                         # everything from the config (board = "...")
-kicad2openems board.kicad_pcb --config run.toml  # board on the command line, options from the file
-kicad2openems board.kicad_pcb --fmin 1 --fmax 6  # no config file
-kicad2openems board.toml --solvers mom,lines     # other solvers than openEMS (below)
-python -m kicad2openems ...                      # same, with a specific Python
-kicad2openems --check                            # which solvers can this Python run?
+kicad2ems board.toml                         # everything from the config (board = "...")
+kicad2ems board.kicad_pcb --config run.toml  # board on the command line, options from the file
+kicad2ems board.kicad_pcb --fmin 1 --fmax 6  # no config file
+kicad2ems board.toml --solvers mom,lines     # other solvers than openEMS (below)
+python -m kicad2ems ...                      # same, with a specific Python
+kicad2ems --check                            # which solvers can this Python run?
 ```
 
 Exit codes: 0 done; 1 a solver named in `--solvers` gave no result (the warning says why; the report is
@@ -30,9 +30,9 @@ to run; the default is openEMS alone.
 | `lines` (aliases `line`, `fast`) | the [line model](transmission-lines.md) solved as a circuit | `<name>_fast.sNp` | scikit-rf, or qucsator (`fast = "auto"` picks qucsator when it is installed) |
 
 ```bash
-kicad2openems board.toml --solvers mom              # MoM alone: no openEMS needed
-kicad2openems board.toml --solvers openems,lines    # = kicad2openems board.toml --fast auto
-kicad2openems board.toml --solvers all              # all three, compared in one plot and the report
+kicad2ems board.toml --solvers mom              # MoM alone: no openEMS needed
+kicad2ems board.toml --solvers openems,lines    # = kicad2ems board.toml --fast auto
+kicad2ems board.toml --solvers all              # all three, compared in one plot and the report
 ```
 
 - **Named or added.** `--mom` and `--fast` add their solver next to the others as a reference: if it
@@ -58,10 +58,10 @@ then the command line. The command line wins, also with abbreviated options (`--
 A value that cannot be used stops the run with one line and exit code 2:
 
 ```
-kicad2openems: error: fmax = 'abc': could not convert string to float: 'abc'
+kicad2ems: error: fmax = 'abc': could not convert string to float: 'abc'
 ```
 
-Set `KICAD2OPENEMS_TRACEBACK=1` to get the Python traceback instead. Checked up front: the choices of
+Set `KICAD2EMS_TRACEBACK=1` to get the Python traceback instead. Checked up front: the choices of
 each option, whole numbers, list lengths, fmin < fmax, `points` ≥ 2, at least two positive `converge`
 factors (an empty list turns it off), no `converge` in antenna mode.
 
@@ -92,7 +92,7 @@ dump   = ["E@F.Cu-0.1@2,6"]
 ```
 
 **Paths.** `board`, `pos`, `compare`, `out`, `events` and `qucsator` in a config file are relative to **the config
-file's folder**, so `kicad2openems path/to/board.toml` works from any directory. Paths typed on the
+file's folder**, so `kicad2ems path/to/board.toml` works from any directory. Paths typed on the
 command line are relative to the working directory. Older configs written for the repository root
 (`pos = "examples/..."`) still work: when a path only exists relative to the working directory, it is
 used and a `config:` note says so (`config.resolve_path`).

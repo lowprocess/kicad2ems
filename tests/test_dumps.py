@@ -3,9 +3,9 @@ plots, TOML lists."""
 import sys, types
 import numpy as np
 import pytest
-from kicad2openems.kicad import KiCadBoard
-from kicad2openems.model import Model
-from kicad2openems.dumps import parse_dump, add_dumps, read_fd, plot_fd_dumps
+from kicad2ems.kicad import KiCadBoard
+from kicad2ems.model import Model
+from kicad2ems.dumps import parse_dump, add_dumps, read_fd, plot_fd_dumps
 
 
 @pytest.fixture(scope='module')
@@ -85,7 +85,7 @@ def test_plot_normalised(tmp_path, model):
 
 
 def test_toml_dump_list(tmp_path):
-    from kicad2openems.cli import settings_from_argv
+    from kicad2ems.cli import settings_from_argv
     c = tmp_path / 'c.toml'
     c.write_text('[openems]\ndump = ["E@F.Cu-0.1@2,6", "J@In2.Cu@4"]\ndump_port = ["P1"]\n')
     s, _ = settings_from_argv(['b.kicad_pcb', '--config', str(c)])

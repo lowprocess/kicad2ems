@@ -1,5 +1,5 @@
 """
-Writes KiCad 8 test boards of classic RF structures for kicad2openems (no KiCad needed), sized with the
+Writes KiCad 8 test boards of classic RF structures for kicad2ems (no KiCad needed), sized with the
 package's own line formulas for 0.8 mm FR-4 (er 4.4, tan d 0.02), B.Cu ground:
 
   branchline   3 dB 90-degree branch-line hybrid, 2.4 GHz: 35.4 ohm series and 50 ohm shunt quarter-wave arms,
@@ -15,16 +15,16 @@ package's own line formulas for 0.8 mm FR-4 (er 4.4, tan d 0.02), B.Cu ground:
 
     python examples/make_rf_examples.py all             # every board, examples/rf_<name>.kicad_pcb
     python examples/make_rf_examples.py coupler /tmp/c  # one board at /tmp/c.kicad_pcb
-    kicad2openems examples/rf_coupler.toml --preview
+    kicad2ems examples/rf_coupler.toml --preview
 
-Ports are kicad2openems:RF_Port footprints (rotation = direction into the circuit), 0.5 mm inside the board
+Ports are kicad2ems:RF_Port footprints (rotation = direction into the circuit), 0.5 mm inside the board
 edge where the feed lines end.
 """
 import math, os, sys, uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from kicad2openems.tlines import microstrip, cpwg               # noqa: E402
-from kicad2openems.coupled import coupled_microstrip           # noqa: E402
+from kicad2ems.tlines import microstrip, cpwg               # noqa: E402
+from kicad2ems.coupled import coupled_microstrip           # noqa: E402
 
 H_SUB, ER, TAND, F0 = 0.8, 4.4, 0.02, 2.4e9
 C0 = 299792458.0
@@ -78,7 +78,7 @@ class Board:
                           f'(uuid "{u()}"))')
 
     def port(self, n, x, y, rot):
-        self.items += [f'  (footprint "kicad2openems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x:.4f} {y:.4f} {rot})',
+        self.items += [f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x:.4f} {y:.4f} {rot})',
                        f'    (property "Reference" "TP{n}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))',
                        f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))',
                        f'    (fp_text user "P{n}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )']
@@ -97,7 +97,7 @@ class Board:
     def write(self, path, W, H, ground=True):
         if ground:
             self.rect(0, 0, W, H, layer='B.Cu', net=1)
-        L = ['(kicad_pcb (version 20240108) (generator "kicad2openems") (generator_version "8.0")',
+        L = ['(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")',
              f'  (general (thickness {H_SUB}))\n  (paper "A4")',
              '  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (37 "F.SilkS" user) (39 "F.Mask" user) (44 "Edge.Cuts" user)'
              ' (49 "F.Fab" user))',

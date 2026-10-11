@@ -149,7 +149,7 @@ def check_openems():
             lines.append(f"  FAILED  {mod:8s} {msg}")
             if isinstance(e, ModuleNotFoundError) and e.name == mod and mod in ('CSXCAD', 'openEMS'):
                 hints.append(f"{mod} is not installed for THIS python ({sys.executable}). If you installed it in a "
-                             f"venv, run kicad2openems from that venv (python -m kicad2openems ...), or pip-install "
+                             f"venv, run kicad2ems from that venv (python -m kicad2ems ...), or pip-install "
                              f"the {mod} python package (openEMS-Project/{mod}/python) with this python.")
             elif isinstance(e, ModuleNotFoundError):
                 hints.append(f"missing dependency '{e.name}': python -m pip install {e.name}")
@@ -157,7 +157,7 @@ def check_openems():
                 hints.append(f"{mod} is installed but cannot load the compiled openEMS/CSXCAD libraries: add the "
                              f"openEMS install's lib folder to LD_LIBRARY_PATH (e.g. export LD_LIBRARY_PATH="
                              f"$HOME/opt/openEMS/lib:$LD_LIBRARY_PATH)")
-    exe = shutil.which('kicad2openems')
+    exe = shutil.which('kicad2ems')
     if exe:
         try:
             with open(exe) as fh:
@@ -168,8 +168,8 @@ def check_openems():
         lines.append(f"command     {exe} -> {launcher or '?'}")
         # compare the bin folders, not resolved files: a venv's python is a symlink to the system one
         if launcher and os.path.dirname(os.path.abspath(launcher.split()[0])) != os.path.dirname(os.path.abspath(sys.executable)):
-            hints.append(f"the 'kicad2openems' command on PATH runs {launcher}, not this python - reinstall it here "
-                         f"(python -m pip install <kicad2openems folder>) or use: python -m kicad2openems ...")
+            hints.append(f"the 'kicad2ems' command on PATH runs {launcher}, not this python - reinstall it here "
+                         f"(python -m pip install <kicad2ems folder>) or use: python -m kicad2ems ...")
     in_venv = sys.prefix != getattr(sys, 'base_prefix', sys.prefix)
     if not ok and in_venv:
         cfg = os.path.join(sys.prefix, 'pyvenv.cfg')

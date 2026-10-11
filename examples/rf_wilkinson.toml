@@ -1,7 +1,7 @@
-# kicad2openems example: Wilkinson power divider, 2.4 GHz, 70.7 ohm arms, 100 ohm resistor, 0.8 mm FR-4
+# kicad2ems example: Wilkinson power divider, 2.4 GHz, 70.7 ohm arms, 100 ohm resistor, 0.8 mm FR-4
 #   python examples/make_rf_examples.py wilkinson examples/rf_wilkinson     # regenerate the board (already in the repository)
-#   kicad2openems examples/rf_wilkinson.toml --preview
-#   kicad2openems examples/rf_wilkinson.toml
+#   kicad2ems examples/rf_wilkinson.toml --preview
+#   kicad2ems examples/rf_wilkinson.toml
 # P1 in, P2 / P3 out (-3 dB each); P2 driven too, for the output match and isolation S32 (resistor R1)
 board   = "rf_wilkinson.kicad_pcb"   # paths are relative to this file
 ground  = "B.Cu"

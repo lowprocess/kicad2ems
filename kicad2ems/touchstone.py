@@ -11,7 +11,7 @@ def write_touchstone(path, f, S, zref, comment='', names=None):
     zref = np.asarray(zref, float)
     v2 = not np.allclose(zref, zref[0])
     with open(path, 'w') as fh:
-        fh.write(f"! kicad2openems {comment}\n")
+        fh.write(f"! kicad2ems {comment}\n")
         if names:
             fh.write("! ports: " + ", ".join(f"{i + 1}={nm}" for i, nm in enumerate(names)) + "\n")
         if v2:

@@ -9,7 +9,7 @@ have a config in `examples/` whose paths are relative to it. Run from the reposi
 
 ```bash
 python examples/make_demo_board.py examples/demo_transition
-kicad2openems examples/demo_transition.toml
+kicad2ems examples/demo_transition.toml
 ```
 
 Results land in `examples/out/`.
@@ -29,9 +29,9 @@ rejected.
 
 ```bash
 python examples/make_demo_board.py examples/diff diff
-kicad2openems examples/diff.kicad_pcb --ground B.Cu --fmin 1 --fmax 8 --preview
+kicad2ems examples/diff.kicad_pcb --ground B.Cu --fmin 1 --fmax 8 --preview
 python examples/make_demo_board.py examples/demo_rlc rlc
-kicad2openems examples/demo_rlc.kicad_pcb --fmax 6 --preview
+kicad2ems examples/demo_rlc.kicad_pcb --fmax 6 --preview
 ```
 
 The filter ladders are defined in `LADDERS` in `make_demo_board.py` (stages `('series', part)` or
@@ -158,7 +158,7 @@ and also holds its line model (`demo_transition_fast.s2p`, `demo_transition_tlin
 a change:
 
 ```bash
-kicad2openems examples/filter.toml --compare examples/reference/filter_openems.s2p
+kicad2ems examples/filter.toml --compare examples/reference/filter_openems.s2p
 ```
 
 ---

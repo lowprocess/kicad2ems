@@ -1,7 +1,7 @@
-# kicad2openems example: 3 dB branch-line (90 degree) hybrid, 2.4 GHz, 0.8 mm FR-4
+# kicad2ems example: 3 dB branch-line (90 degree) hybrid, 2.4 GHz, 0.8 mm FR-4
 #   python examples/make_rf_examples.py branchline examples/rf_branchline     # regenerate the board (already in the repository)
-#   kicad2openems examples/rf_branchline.toml --preview
-#   kicad2openems examples/rf_branchline.toml
+#   kicad2ems examples/rf_branchline.toml --preview
+#   kicad2ems examples/rf_branchline.toml
 # P1 in, P2 through (-3 dB, -90 deg), P3 coupled (-3 dB, -180 deg), P4 isolated; a closed loop of lines
 board   = "rf_branchline.kicad_pcb"   # paths are relative to this file
 ground  = "B.Cu"

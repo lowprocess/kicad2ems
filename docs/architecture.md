@@ -4,7 +4,7 @@
 
 ## The run pipeline
 
-`kicad2openems` (`cli.main`) parses the command line and builds one typed `config.Settings`
+`kicad2ems` (`cli.main`) parses the command line and builds one typed `config.Settings`
 (`config.build_settings`: defaults ← TOML ← command line). `Settings.solver_plan()` says which solvers
 the run uses ([solvers](usage.md#solvers)). `pipeline.Job(settings)` runs the stages in order:
 
@@ -56,7 +56,7 @@ callable (default `print`) so they can be used without a `Job`.
 ## Module map
 
 ```
-kicad2openems/
+kicad2ems/
   __init__.py     __version__ (single source of the version, read by pyproject.toml)
   cli.py          argument parser, main(): Settings, then Job(settings).run()
   config.py       Settings (typed), TOML reading, conversion and checks; paths relative to the config

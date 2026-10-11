@@ -1,7 +1,7 @@
-# kicad2openems run configuration for the generated lumped-element low-pass filter
+# kicad2ems run configuration for the generated lumped-element low-pass filter
 #   python examples/make_demo_board.py examples/demo_lowpass lowpass
-#   kicad2openems examples/demo_lowpass.toml --preview
-#   kicad2openems examples/demo_lowpass.toml
+#   kicad2ems examples/demo_lowpass.toml --preview
+#   kicad2ems examples/demo_lowpass.toml
 # 3rd-order Butterworth, fc = 1 GHz: L1 8.2 nH - C2 6.8 pF to GND - L3 8.2 nH (0402, with ESR / ESL
 # fields). The plot overlays the ideal lumped circuit (demo_lowpass_ideal.s2p).
 # Variants: make_demo_board.py ... highpass / bandpass with demo_highpass.toml / demo_bandpass.toml.

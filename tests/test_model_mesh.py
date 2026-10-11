@@ -5,12 +5,12 @@ import pytest
 from shapely.geometry import box, Point
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-from kicad2openems.geometry import split_holes
-from kicad2openems.mesh import smooth_lines, auto_mesh
-from kicad2openems.model import Model
-from kicad2openems.sparams import mixed_mode
-from kicad2openems.touchstone import read_touchstone, write_touchstone
-from kicad2openems.kicad import KiCadBoard
+from kicad2ems.geometry import split_holes
+from kicad2ems.mesh import smooth_lines, auto_mesh
+from kicad2ems.model import Model
+from kicad2ems.sparams import mixed_mode
+from kicad2ems.touchstone import read_touchstone, write_touchstone
+from kicad2ems.kicad import KiCadBoard
 
 
 @pytest.fixture(scope='session')
@@ -52,7 +52,7 @@ def test_model_ports_and_mesh(demo):
     for p in m.ports:                                               # port plane is a mesh line
         assert np.min(np.abs(mesh['xy'[p.axis]] - p.c[p.axis])) < 1e-9
     # trace edges: thirds rule -> a line 1/3 of the edge cell inside each edge of the 0.35 mm trace
-    from kicad2openems.mesh import THIRDS_CELL
+    from kicad2ems.mesh import THIRDS_CELL
     yc, w, f = p1.c[1], p1.w, mesh['info']['fine_mm'] * THIRDS_CELL
     for e, s in ((yc - w / 2, 1), (yc + w / 2, -1)):
         assert np.min(np.abs(mesh['y'] - (e + s * f / 3))) < 1e-6
@@ -87,7 +87,7 @@ def test_touchstone_roundtrip(tmp_path):
 
 
 def test_boundaries_and_air_margin(demo):
-    from kicad2openems.boundaries import resolve_bc, cavity_check
+    from kicad2ems.boundaries import resolve_bc, cavity_check
     m = Model(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu')
     bc = resolve_bc('auto', m)
     assert bc == ['MUR'] * 4 + ['PEC', 'MUR']                       # solid ground -> PEC bottom
@@ -124,7 +124,7 @@ def test_mixed_mode_keeps_known_entries_when_some_are_unknown():
 
 def test_merge_keeps_inside_line_of_narrow_trace():
     """Regression: chained clusters + averaging pushed the line inside a 0.15 mm trace outside it."""
-    from kicad2openems.mesh import _merge
+    from kicad2ems.mesh import _merge
     fine = 0.0375
     edge = -5.075                                                   # lower edge of a trace, metal above
     lines = [edge - 2 * fine / 3, -5.081, edge + fine / 3]          # outside third, a curve vertex, inside third
@@ -134,8 +134,8 @@ def test_merge_keeps_inside_line_of_narrow_trace():
 
 
 def test_curves_extremes_and_via_snapping(demo):
-    from kicad2openems.mesh import curve_lines
-    from kicad2openems.boundaries import resolve_bc
+    from kicad2ems.mesh import curve_lines
+    from kicad2ems.boundaries import resolve_bc
     circle = np.array(Point(1, 2).buffer(0.5, quad_segs=8).exterior.coords)
     xs, ys = curve_lines(circle, 0.05)
     assert set(np.round(xs, 6)) == {0.5, 1.5} and set(np.round(ys, 6)) == {1.5, 2.5}   # 2 lines per axis, not 32

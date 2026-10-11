@@ -2,7 +2,7 @@
 (no openEMS needed)."""
 import os
 import pytest
-from kicad2openems.progress import parse_line, fmt_time, Tracker, Monitor, redirect_output
+from kicad2ems.progress import parse_line, fmt_time, Tracker, Monitor, redirect_output
 
 LINE = "[@     1m32s] Timestep:       265424 || Speed:  377.2 MC/s (3.435e-04 s/TS) || Energy: ~1.56e-19 (-36.27dB)"
 
@@ -65,11 +65,11 @@ def test_redirect_output(tmp_path, capfd):
 def test_status_events_reach_the_events_file(tmp_path):
     """A Monitor feeding Job.status writes JSON 'status' events (openEMS's clock as run_time)."""
     import json
-    from kicad2openems.config import Settings
-    from kicad2openems.pipeline import Job
+    from kicad2ems.config import Settings
+    from kicad2ems.pipeline import Job
     log = tmp_path / 'openems.log'
     log.write_text(LINE + "\n")
-    from kicad2openems.events import EventSink
+    from kicad2ems.events import EventSink
     job = Job(Settings(board='b.kicad_pcb', out=str(tmp_path)), echo=lambda *a: None)
     job.events = EventSink(str(tmp_path / 'ev.jsonl'))                  # what Job.run() opens with --events
     r, w = os.pipe()

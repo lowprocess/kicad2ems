@@ -342,7 +342,7 @@ def _write_touchstone(path, freq, S, z0=50.0):
     values pairs per line, each matrix row starting on a new line."""
     n = S.shape[1]
     with open(path, 'w') as fh:
-        fh.write(f"! kicad2openems coupled section\n# Hz S RI R {z0:g}\n")
+        fh.write(f"! kicad2ems coupled section\n# Hz S RI R {z0:g}\n")
         for f, s in zip(freq, S):
             pair = lambda v: f"{v.real:.10e} {v.imag:.10e}"
             if n <= 2:

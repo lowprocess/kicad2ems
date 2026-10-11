@@ -34,8 +34,8 @@ def demo_files(boards):
 
 @pytest.fixture
 def run_cli(capsys):
-    """kicad2openems in this process: run_cli(*args) -> (exit code, stdout, stderr)."""
-    from kicad2openems.cli import main
+    """kicad2ems in this process: run_cli(*args) -> (exit code, stdout, stderr)."""
+    from kicad2ems.cli import main
 
     def run(*args):
         code = main([str(a) for a in args])

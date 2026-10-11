@@ -1,5 +1,5 @@
 """
-Writes small KiCad 8 antenna boards for kicad2openems --mode antenna (no KiCad needed), all for
+Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad needed), all for
 2.45 GHz on FR4 (er 4.4, tan d 0.02):
 
   patch   inset-fed rectangular patch (37.2 x 28.8 mm) on 1.6 mm FR4, 50 ohm microstrip feed from the
@@ -13,10 +13,10 @@ Writes small KiCad 8 antenna boards for kicad2openems --mode antenna (no KiCad n
 
     python examples/make_antennas.py patch examples/antenna_patch
     python examples/make_antennas.py ifa /tmp/ifa arm=20 s=2.5      # dimensions (mm) as parameters
-    kicad2openems examples/antenna_patch.toml
+    kicad2ems examples/antenna_patch.toml
 
 Dimensions are keyword parameters (mm) of each function, also on the command line (param=value).
-The defaults were tuned with kicad2openems to resonate at 2.43-2.45 GHz with S11 below -19 dB.
+The defaults were tuned with kicad2ems to resonate at 2.43-2.45 GHz with S11 below -19 dB.
 """
 import math, sys, uuid
 
@@ -47,7 +47,7 @@ class Board:
                           f'(uuid "{u()}"))')
 
     def port(self, ref, text, x, y, rot, z0=None):
-        L = [f'  (footprint "kicad2openems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x:.4f} {y:.4f} {rot})',
+        L = [f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x:.4f} {y:.4f} {rot})',
              f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))',
              f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))']
         if z0:
@@ -56,7 +56,7 @@ class Board:
         self.items += L
 
     def write(self, path, W, H):
-        L = ['(kicad_pcb (version 20240108) (generator "kicad2openems") (generator_version "8.0")',
+        L = ['(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")',
              f'  (general (thickness {self.t}))\n  (paper "A4")',
              '  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (37 "F.SilkS" user) (44 "Edge.Cuts" user) (49 "F.Fab" user))',
              '  (setup (stackup',

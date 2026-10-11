@@ -1,7 +1,7 @@
-# kicad2openems example: 10 dB edge-coupled quarter-wave directional coupler, 2.4 GHz, 0.8 mm FR-4
+# kicad2ems example: 10 dB edge-coupled quarter-wave directional coupler, 2.4 GHz, 0.8 mm FR-4
 #   python examples/make_rf_examples.py coupler examples/rf_coupler     # regenerate the board (already in the repository)
-#   kicad2openems examples/rf_coupler.toml --preview
-#   kicad2openems examples/rf_coupler.toml
+#   kicad2ems examples/rf_coupler.toml --preview
+#   kicad2ems examples/rf_coupler.toml
 # lines 1.28 mm, gap 0.14 mm, 17.5 mm coupled; P1 in, P2 through, P3 coupled (near end, -10 dB), P4 isolated
 board   = "rf_coupler.kicad_pcb"   # paths are relative to this file
 ground  = "B.Cu"

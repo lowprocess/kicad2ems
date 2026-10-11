@@ -1,7 +1,7 @@
-# kicad2openems run configuration for the generated lumped-element highpass filter
+# kicad2ems run configuration for the generated lumped-element highpass filter
 #   python examples/make_demo_board.py examples/demo_highpass highpass
-#   kicad2openems examples/demo_highpass.toml --preview
-#   kicad2openems examples/demo_highpass.toml
+#   kicad2ems examples/demo_highpass.toml --preview
+#   kicad2ems examples/demo_highpass.toml
 # 3rd-order Butterworth high-pass, fc = 1 GHz: C1 3.3 pF - L2 3.9 nH to GND - C3 3.3 pF
 # (0402, with ESR / ESL fields).
 board   = "demo_highpass.kicad_pcb"   # paths are relative to this file

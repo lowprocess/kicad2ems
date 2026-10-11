@@ -1,6 +1,6 @@
-# kicad2openems run configuration for the generated demo board
+# kicad2ems run configuration for the generated demo board
 #   python examples/make_demo_board.py examples/demo_transition
-#   kicad2openems examples/demo_transition.toml
+#   kicad2ems examples/demo_transition.toml
 board   = "demo_transition.kicad_pcb"   # paths are relative to this file
 pos     = "demo_transition-top.pos"
 nets    = ["RF", "GND"]

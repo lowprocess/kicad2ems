@@ -3,8 +3,8 @@ axes, copper outlines, animations; the NF2FF sphere cuts of the antenna view."""
 import base64, json, os, zlib
 import numpy as np
 import pytest
-from kicad2openems import fields as F
-from kicad2openems.dumps import write_info, write_norm, parse_dump
+from kicad2ems import fields as F
+from kicad2ems.dumps import write_info, write_norm, parse_dump
 
 
 def _b64_block(raw, compress):
@@ -64,8 +64,8 @@ def test_plane_axes_and_resample():
 def run_folder(demo_files, tmp_path_factory):
     """A run folder with a time-domain plane dump (VTR frames), a frequency-domain one (HDF5) and their info."""
     h5py = pytest.importorskip('h5py')
-    from kicad2openems.kicad import KiCadBoard
-    from kicad2openems.model import Model
+    from kicad2ems.kicad import KiCadBoard
+    from kicad2ems.model import Model
     base, _ = demo_files
     m = Model(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
     out = tmp_path_factory.mktemp('out')
@@ -124,7 +124,7 @@ def test_save_animations(run_folder, tmp_path):
 
 def test_sphere_cuts(tmp_path):
     h5py = pytest.importorskip('h5py')
-    from kicad2openems.antenna import read_sphere, sphere_gain, sphere_cuts
+    from kicad2ems.antenna import read_sphere, sphere_gain, sphere_cuts
     th, ph = np.radians(np.arange(0, 181, 5.0)), np.radians(np.arange(0, 361, 5.0))
     T, P = np.meshgrid(th, ph)
     e = np.abs(np.sin(T) * np.cos(P)) + 1e-9                        # null along z and along y (phi = 90)
@@ -153,7 +153,7 @@ def test_field_view_tab(run_folder, tmp_path):
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtWidgets import QApplication
-    from kicad2openems.gui.app import MainWindow
+    from kicad2ems.gui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     out, _ = run_folder
     w = MainWindow()

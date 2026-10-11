@@ -1,9 +1,9 @@
 """
-The GUI's link to a run: a kicad2openems process (the command line, run as a separate program) and its
+The GUI's link to a run: a kicad2ems process (the command line, run as a separate program) and its
 event stream (--events, JSON lines). No Qt here, so it is testable without a display.
 
     run = Run(settings_dict, out_dir, preview=False)
-    run.argv()                     # [python, -m, kicad2openems, <out>/gui_run.toml, --events, ...]
+    run.argv()                     # [python, -m, kicad2ems, <out>/gui_run.toml, --events, ...]
     tail = EventTail(path); tail.read() -> [event dicts]
     stop_runs(out_dir)             # ABORT into every run folder: openEMS stops and finishes normally
 """
@@ -68,7 +68,7 @@ def toml_value(v):
 
 def write_toml(path, values):
     """A flat TOML file of the non-empty settings."""
-    lines = ["# written by the kicad2openems GUI"]
+    lines = ["# written by the kicad2ems GUI"]
     for k, v in solvers_from_form(values).items():
         if v is None or v == '' or v == [] or (k in ('cut_ports', 'mom') and v is False):
             continue
@@ -130,7 +130,7 @@ def save_config(path, values, template=None):
     empty = lambda v: v is None or v == '' or v == []
     defaults = Settings()
     if template is None or not os.path.exists(template):
-        lines = ["# kicad2openems run configuration (written by the GUI); paths are relative to this file"]
+        lines = ["# kicad2ems run configuration (written by the GUI); paths are relative to this file"]
         for k, v in vals.items():
             if empty(v) or (k != 'out' and getattr(defaults, k, object()) == v):
                 continue
@@ -209,7 +209,7 @@ def _comment(text):
 
 
 class Run:
-    """One kicad2openems run started from the GUI: its settings file, event file and command line."""
+    """One kicad2ems run started from the GUI: its settings file, event file and command line."""
     def __init__(self, values, out_dir, preview=False):
         self.values, self.out, self.preview = dict(values), os.path.abspath(out_dir), preview
         os.makedirs(self.out, exist_ok=True)
@@ -220,7 +220,7 @@ class Run:
             os.remove(self.events)
 
     def argv(self):
-        return [sys.executable, '-m', 'kicad2openems', self.toml, '--events', self.events] + \
+        return [sys.executable, '-m', 'kicad2ems', self.toml, '--events', self.events] + \
                (['--preview'] if self.preview else [])
 
 

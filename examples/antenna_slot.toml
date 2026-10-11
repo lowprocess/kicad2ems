@@ -1,7 +1,7 @@
-# kicad2openems antenna example: microstrip-fed slot in the ground plane, 2.45 GHz
+# kicad2ems antenna example: microstrip-fed slot in the ground plane, 2.45 GHz
 #   python examples/make_antennas.py slot examples/antenna_slot
-#   kicad2openems examples/antenna_slot.toml --preview
-#   kicad2openems examples/antenna_slot.toml
+#   kicad2ems examples/antenna_slot.toml --preview
+#   kicad2ems examples/antenna_slot.toml
 board   = "antenna_slot.kicad_pcb"   # paths are relative to this file
 mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
 fmin    = 1.8           # GHz

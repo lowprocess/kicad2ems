@@ -1,6 +1,6 @@
 # Roadmap
 
-Where kicad2openems stands and what is worth doing next. Items come from what the examples and benchmarks
+Where kicad2ems stands and what is worth doing next. Items come from what the examples and benchmarks
 showed, so each one names the evidence; details are in the linked docs. Ordered by priority within each
 section. Last updated 2026-10-11.
 
@@ -9,7 +9,7 @@ section. Last updated 2026-10-11.
 - **Three solvers from one converted board**: openEMS (FDTD), mom25d (2.5D MoM) and the
   transmission-line model (scikit-rf / qucsator), chosen with `--solvers` (or added as references with
   `--mom` / `--fast`), checked before a run starts, compared in the plots, the report and the GUI. MoM and
-  the line model need no openEMS: without it, kicad2openems writes the CSX file itself (`csxwrite.py`).
+  the line model need no openEMS: without it, kicad2ems writes the CSX file itself (`csxwrite.py`).
   mom25d is its own repository ([lowprocess/mom25d](https://github.com/lowprocess/mom25d)), a git
   submodule in `mom25d/`; it reads the CSX file (`<name>.xml`) openEMS gets, plus a `<mom25d>` hints
   element.
@@ -86,7 +86,7 @@ the affected cases.
   steps of [adding a solver](docs/maintenance.md#adding-a-solver). A move, not a rewrite: do it in one
   commit with nothing else.
 - **One KiCad reader.** mom25d has its own, older `.kicad_pcb` reader (`mom25d/kicad.py`). Either it keeps
-  only CSX and Gerber input (KiCad boards come through kicad2openems), or `kicad2openems/kicad/` becomes
+  only CSX and Gerber input (KiCad boards come through kicad2ems), or `kicad2ems/kicad/` becomes
   a small package both use.
 - **Names.** The run summary is `<name>_openems.json` and the default output folder `openems_out` whichever
   solvers run; a solver-neutral `<name>_summary.json` (the GUI reading both for a while) and one default

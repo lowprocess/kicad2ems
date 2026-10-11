@@ -1,7 +1,7 @@
 """GUI helpers without a display (the Qt window itself needs PySide6 and is checked when installed)."""
 import json, os, pytest
-from kicad2openems.gui.runner import Run, EventTail, stop_runs, write_toml, settings_values, FIELDS
-from kicad2openems.config import build_settings
+from kicad2ems.gui.runner import Run, EventTail, stop_runs, write_toml, settings_values, FIELDS
+from kicad2ems.config import build_settings
 
 
 def test_settings_round_trip(tmp_path):
@@ -38,7 +38,7 @@ def test_window_builds(tmp_path):
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtWidgets import QApplication
-    from kicad2openems.gui.app import MainWindow
+    from kicad2ems.gui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     w = MainWindow()
     w.setup.set_values(dict(board='x.kicad_pcb', nets=['RF'], fmin=1.0, fast='skrf', cut_ports=True, ports=['P3=J1.1']))
@@ -56,7 +56,7 @@ def test_dump_lists_and_extra_settings(tmp_path):
                    'dump = ["E@F.Cu@2,6", "J@y=3"]\n[openems]\nbc = "pml_8"\n')
     vals = settings_values(str(cfg))
     assert vals['mode'] == 'antenna' and vals['dump'] == ['E@F.Cu@2,6', 'J@y=3']
-    from kicad2openems.gui.runner import extra_values
+    from kicad2ems.gui.runner import extra_values
     extra = extra_values(str(cfg))
     assert extra == dict(air=7.5, mask=False, bc='pml_8')           # kept for the runs: no field in the form
     write_toml(tmp_path / 'r.toml', dict(vals, **extra))
@@ -69,7 +69,7 @@ def test_window_tabs(tmp_path):
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtWidgets import QApplication
-    from kicad2openems.gui.app import MainWindow
+    from kicad2ems.gui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     w = MainWindow()
     w.setup.set_values(dict(dump=['E@F.Cu@2,6', 'H@volume'], mode='antenna'))
@@ -85,7 +85,7 @@ def test_window_tabs(tmp_path):
 
 def test_save_config_keeps_the_file(tmp_path):
     """Saving over a loaded config keeps its comments, tables and unknown keys; paths relative to the file."""
-    from kicad2openems.gui.runner import save_config, extra_values
+    from kicad2ems.gui.runner import save_config, extra_values
     (tmp_path / 'b.kicad_pcb').write_text('')
     src = tmp_path / 'c.toml'
     src.write_text('# my board\nboard = "b.kicad_pcb"   # the board\npos = "x.pos"\nfmin = 1.0  # GHz\n'
@@ -119,7 +119,7 @@ def _s2p(path, f, S, names=('IN', 'OUT')):
 
 def test_traces(tmp_path):
     import numpy as np
-    from kicad2openems.gui.traces import load_traces, transform, value_at, export_csv, smith_grid, default_visible
+    from kicad2ems.gui.traces import load_traces, transform, value_at, export_csv, smith_grid, default_visible
     f = np.linspace(1e9, 3e9, 21)
     tau = 0.5e-9                                                    # a matched 0.5 ns line
     S = np.zeros((21, 2, 2), complex)
@@ -149,8 +149,8 @@ def test_window_config_and_plots(tmp_path, monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))   # recent files in a scratch QSettings
     from PySide6.QtWidgets import QApplication
-    from kicad2openems.gui.app import MainWindow
-    from kicad2openems.gui.traces import load_traces
+    from kicad2ems.gui.app import MainWindow
+    from kicad2ems.gui.traces import load_traces
     app = QApplication.instance() or QApplication([])
     cfg = tmp_path / 'c.toml'
     cfg.write_text('# hello\nboard = "b.kicad_pcb"\nfmin = 1.0\n')
@@ -180,8 +180,8 @@ def test_window_config_and_plots(tmp_path, monkeypatch):
                                           ('gcpw', 2), ('coupler', 4)])
 def test_rf_examples_load(name, nports):
     """The RF example boards load: ports, the Wilkinson resistor, the coupler's two separate lines."""
-    from kicad2openems.kicad import KiCadBoard
-    from kicad2openems.model import Model
+    from kicad2ems.kicad import KiCadBoard
+    from kicad2ems.model import Model
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     path = os.path.join(root, 'examples', f'rf_{name}.toml')
     s = build_settings({}, path)
@@ -194,7 +194,7 @@ def test_rf_examples_load(name, nports):
 
 
 def test_gui_solver_boxes(tmp_path):
-    from kicad2openems.gui.runner import settings_values, solvers_from_form, save_config, extra_values, write_toml
+    from kicad2ems.gui.runner import settings_values, solvers_from_form, save_config, extra_values, write_toml
     p = tmp_path / 'c.toml'
     p.write_text('board = "b.kicad_pcb"\nsolvers = ["mom", "lines"]\n')
     vals = settings_values(str(p))

@@ -2,9 +2,9 @@
 graph of the example boards (traces, pads, vias, parts, branches, T-junctions, reference changes)."""
 import os
 import pytest
-from kicad2openems.kicad import KiCadBoard
-from kicad2openems.model import Model
-from kicad2openems.tlines import (build, microstrip, stripline, offset_stripline, cpwg, coax, ellipk,
+from kicad2ems.kicad import KiCadBoard
+from kicad2ems.model import Model
+from kicad2ems.tlines import (build, microstrip, stripline, offset_stripline, cpwg, coax, ellipk,
                                   embedded_microstrip)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -93,7 +93,7 @@ def test_ground_nets_region_and_partner(boards, demo_files):
     differential leg's partner is not its coplanar ground; a trace never references its own net."""
     base = boards['lowpass']
     m = Model(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
-    from kicad2openems.tlines import ground_nets
+    from kicad2ems.tlines import ground_nets
     assert 'GND' in ground_nets(m)
     c2 = [e for e in build(m).elements if e.kind == 'part' and e.label == 'C2']
     assert c2 and c2[0].b == 'gnd'
@@ -144,10 +144,10 @@ def test_sma_launch_example_line_model():
     model stays close to the openEMS reference over 1-6 GHz."""
     import numpy as np
     import skrf as rf
-    from kicad2openems.kicad import KiCadBoard
-    from kicad2openems.model import Model
-    from kicad2openems.tlines import build
-    from kicad2openems.fastsolve import solve
+    from kicad2ems.kicad import KiCadBoard
+    from kicad2ems.model import Model
+    from kicad2ems.tlines import build
+    from kicad2ems.fastsolve import solve
     ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
     m = Model(KiCadBoard(os.path.join(ex, 'sma_launch.kicad_pcb')), nets=['REF_SMA_N', 'GND'],
               pos_file=os.path.join(ex, 'sma_launch-all.pos'), log=lambda *a: None)

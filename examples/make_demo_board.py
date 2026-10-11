@@ -15,7 +15,7 @@ Writes small KiCad 8 test boards (no KiCad needed) and their pick-and-place file
                         footprint, 45 degree opening of the F.Cu pour, inner planes cut away under a
                         connector pad drawn as two pads numbered 1; P2 on the pad at the board edge
 
-Port footprints 'kicad2openems:RF_Port' carry the Fab text P1 / P2.
+Port footprints 'kicad2ems:RF_Port' carry the Fab text P1 / P2.
 """
 import math, sys, uuid
 import numpy as np
@@ -33,7 +33,7 @@ def make(path, pos_path):
     stitch = [(via[0] + 1.3 * math.cos(a), yc + 1.3 * math.sin(a)) for a in (math.radians(d) for d in (45, 135, 225, 315))]
     stitch += [(x, yc + s) for x in [13.5 + 1.2 * i for i in range(9)] for s in (-1.0, 1.0)]
     L = []
-    L.append('(kicad_pcb (version 20240108) (generator "kicad2openems") (generator_version "8.0")')
+    L.append('(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")')
     L.append('  (general (thickness 0.7))')
     L.append('  (paper "A4")')
     L.append('  (layers (0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal) (31 "B.Cu" signal)'
@@ -68,7 +68,7 @@ def make(path, pos_path):
     L.append(f'    (filled_polygon (layer "In1.Cu") (pts {" ".join(f"(xy {x:.4f} {y:.4f})" for x, y in pts)})))')
     # port footprints (no copper): Fab text P1/P2, rotation = direction into the circuit
     for ref, num, x, rot, lay in (("TP1", 1, 2.0, 0, None), ("TP2", 2, 22.0, 180, "In2.Cu")):
-        L.append(f'  (footprint "kicad2openems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x} {yc} {rot})')
+        L.append(f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x} {yc} {rot})')
         L.append(f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))')
         L.append(f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))')
         if lay:
@@ -80,7 +80,7 @@ def make(path, pos_path):
     L.append(')')
     open(path, 'w').write("\n".join(L) + "\n")
     with open(pos_path, 'w') as fh:
-        fh.write("### Footprint positions - created by kicad2openems demo ###\n## Unit = mm, Angle = deg.\n## Side : top\n")
+        fh.write("### Footprint positions - created by kicad2ems demo ###\n## Unit = mm, Angle = deg.\n## Side : top\n")
         fh.write("# Ref     Val       Package                PosX       PosY       Rot  Side\n")
         fh.write(f"TP1       P1        RF_Port              2.0000    -{yc:.4f}     0.0000  top\n")
         fh.write(f"TP2       P2        RF_Port             22.0000    -{yc:.4f}   180.0000  top\n")
@@ -101,7 +101,7 @@ def make_diff(path, pos_path):
     w, s, yc = 0.25, 0.2, 6.0
     off = (w + s) / 2
     L = []
-    L.append('(kicad_pcb (version 20240108) (generator "kicad2openems") (generator_version "8.0")')
+    L.append('(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")')
     L.append('  (general (thickness 0.2))\n  (paper "A4")')
     L.append('  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (39 "F.Mask" user) (44 "Edge.Cuts" user) (49 "F.Fab" user))')
     L.append('  (setup (stackup')
@@ -142,7 +142,7 @@ def make_diff(path, pos_path):
     pP, pN = offset_path(-1), offset_path(+1)
     ports = [("TP1", "P1+", pP[0], 0), ("TP2", "P1-", pN[0], 0), ("TP3", "P2+", pP[-1], 180), ("TP4", "P2-", pN[-1], 180)]
     for ref, txt, (x, y), rot in ports:
-        L.append(f'  (footprint "kicad2openems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x:.4f} {y:.4f} {rot})')
+        L.append(f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x:.4f} {y:.4f} {rot})')
         L.append(f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))')
         L.append(f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))')
         L.append(f'    (fp_text user "{txt}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )')
@@ -160,7 +160,7 @@ def make_rlc(path, pos_path):
     which are skipped. Ports P1 (x = 2) and P2 (x = 22)."""
     yc, W, H = 5.0, 24.0, 10.0
     L = []
-    L.append('(kicad_pcb (version 20240108) (generator "kicad2openems") (generator_version "8.0")')
+    L.append('(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")')
     L.append('  (general (thickness 0.2))\n  (paper "A4")')
     L.append('  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user) (49 "F.Fab" user))')
     L.append('  (setup (stackup')
@@ -191,7 +191,7 @@ def make_rlc(path, pos_path):
         L.append('  )')
     ports = [("TP1", "P1", 2.0, 0), ("TP2", "P2", 22.0, 180)]
     for ref, txt, x, rot in ports:
-        L.append(f'  (footprint "kicad2openems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x} {yc} {rot})')
+        L.append(f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x} {yc} {rot})')
         L.append(f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))')
         L.append(f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))')
         L.append(f'    (fp_text user "{txt}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )')
@@ -283,7 +283,7 @@ def make_ladder(name, path, pos_path, ideal_path):
     W = x + 6.0
     x_out = W - 2.0
     seg(prev, yc, x_out, yc, net)
-    head = ['(kicad_pcb (version 20240108) (generator "kicad2openems") (generator_version "8.0")',
+    head = ['(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")',
             '  (general (thickness 0.2))\n  (paper "A4")',
             '  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (37 "F.SilkS" user) (44 "Edge.Cuts" user) (49 "F.Fab" user))',
             '  (setup (stackup',
@@ -315,7 +315,7 @@ def make_ladder(name, path, pos_path, ideal_path):
         L.append('  )')
     ports = [("TP1", "P1", 2.0, 0), ("TP2", "P2", x_out, 180)]
     for ref, txt, px, rot in ports:
-        L.append(f'  (footprint "kicad2openems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {px:.3f} {yc} {rot})')
+        L.append(f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {px:.3f} {yc} {rot})')
         L.append(f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))')
         L.append(f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))')
         L.append(f'    (fp_text user "{txt}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )')
@@ -362,7 +362,7 @@ def make_launch(path, pos_path):
     gap, wt = 0.25, 0.32
     hw = wt / 2 + gap                                     # half-width of the F.Cu clearance along the feed
     L = []
-    L.append('(kicad_pcb (version 20240108) (generator "kicad2openems") (generator_version "8.0")')
+    L.append('(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")')
     L.append('  (general (thickness 1.6))')
     L.append('  (paper "A4")')
     L.append('  (layers (0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal) (31 "B.Cu" signal)'
@@ -395,7 +395,7 @@ def make_launch(path, pos_path):
         for s in (-1.0, 1.0):
             L.append(f'  (via (at {x} {yc + s}) (size 0.45) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "{u()}"))')
     # the edge connector: signal pad 1 = oval + rectangle (one pad), GND pads above and below
-    L.append(f'  (footprint "kicad2openems:Edge_SMA" (layer "F.Cu") (uuid "{u()}") (at 15.5 {yc} 0)')
+    L.append(f'  (footprint "kicad2ems:Edge_SMA" (layer "F.Cu") (uuid "{u()}") (at 15.5 {yc} 0)')
     L.append(f'    (property "Reference" "J1" (at 0 -4 0) (layer "F.SilkS") (uuid "{u()}"))')
     L.append(f'    (property "Value" "Edge_SMA" (at 0 4 0) (layer "F.Fab") (uuid "{u()}"))')
     L.append(f'    (pad "1" smd rect (at 0.25 0) (size 2.5 1.6) (layers "F.Cu") (net 2 "RF") (uuid "{u()}"))')
@@ -408,7 +408,7 @@ def make_launch(path, pos_path):
              f' (layer "F.Cu") (uuid "{u()}"))')
     L.append('  )')
     for ref, num, x, rot in (("TP1", 1, 2.0, 0), ("TP2", 2, 16.5, 180)):
-        L.append(f'  (footprint "kicad2openems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x} {yc} {rot})')
+        L.append(f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x} {yc} {rot})')
         L.append(f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))')
         L.append(f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))')
         L.append(f'    (fp_text user "P{num}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))')
@@ -417,7 +417,7 @@ def make_launch(path, pos_path):
     L.append(')')
     open(path, 'w').write("\n".join(L) + "\n")
     with open(pos_path, 'w') as fh:
-        fh.write("### Footprint positions - created by kicad2openems demo ###\n## Unit = mm, Angle = deg.\n## Side : top\n")
+        fh.write("### Footprint positions - created by kicad2ems demo ###\n## Unit = mm, Angle = deg.\n## Side : top\n")
         fh.write("# Ref     Val       Package                PosX       PosY       Rot  Side\n")
         fh.write(f"J1        Edge_SMA  Edge_SMA            15.5000    -{yc:.4f}     0.0000  top\n")
         fh.write(f"TP1       P1        RF_Port              2.0000    -{yc:.4f}     0.0000  top\n")

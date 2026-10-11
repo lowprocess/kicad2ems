@@ -47,7 +47,7 @@ Shared fixtures live in `tests/conftest.py`:
 - `fake_openems`: replaces the `CSXCAD` and `openEMS` modules with strict stand-ins. Every scalar must
   be a plain Python number (as older CSXCAD requires), and every call is logged (`'linpoly'`, `'port'`,
   `('lumped', name, kwargs)`, `('debye', name, order)`, …) for assertions.
-- `run_cli`: runs `kicad2openems` in the test process and returns (exit code, stdout, stderr).
+- `run_cli`: runs `kicad2ems` in the test process and returns (exit code, stdout, stderr).
 
 `test_pipeline.py` replaces `simulation.run_excitations` with canned results (a plausible thru), so
 everything after the solver runs for real. `test_parallel.fake_run_port` is a top-level stub so spawned
@@ -61,17 +61,17 @@ environment and compare:
 
 ```bash
 python examples/make_demo_board.py examples/demo_transition
-kicad2openems examples/demo_transition.toml --compare examples/reference/demo_transition_openems.s2p
+kicad2ems examples/demo_transition.toml --compare examples/reference/demo_transition_openems.s2p
 python examples/make_antennas.py dipole examples/antenna_dipole
-kicad2openems examples/antenna_dipole.toml       # 2.43 GHz, -20 dB, 2.1 dBi, 96 %; 54 s on a 2-vCPU container
+kicad2ems examples/antenna_dipole.toml       # 2.43 GHz, -20 dB, 2.1 dBi, 96 %; 54 s on a 2-vCPU container
 python examples/make_demo_board.py examples/demo_lowpass lowpass
-kicad2openems examples/demo_lowpass.toml         # overlays the ideal circuit
+kicad2ems examples/demo_lowpass.toml         # overlays the ideal circuit
 ```
 
 To compare two result files numerically:
 
 ```python
-from kicad2openems.touchstone import read_touchstone
+from kicad2ems.touchstone import read_touchstone
 import numpy as np
 _, a = read_touchstone('new.s2p'); _, b = read_touchstone('old.s2p')
 print(np.abs(a - b).max())        # same code and mesh: ~1e-3 (end-criterion timing)

@@ -2,9 +2,9 @@
 no openEMS needed)."""
 import os
 import numpy as np
-from kicad2openems import simulation
-from kicad2openems.kicad import KiCadBoard
-from kicad2openems.model import Model
+from kicad2ems import simulation
+from kicad2ems.kicad import KiCadBoard
+from kicad2ems.model import Model
 
 
 def fake_run_port(k, m, mesh, freq, bc, out_dir, dumps=(), xml_path=None, verbose=1, **kw):

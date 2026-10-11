@@ -2,10 +2,10 @@
 the CSXCAD calls (fake openEMS: the fake_openems fixture in conftest.py)."""
 import numpy as np
 import pytest
-from kicad2openems.kicad import KiCadBoard
-from kicad2openems.model import Model
-from kicad2openems.mesh import auto_mesh
-from kicad2openems.parts import parse_value, Part
+from kicad2ems.kicad import KiCadBoard
+from kicad2ems.model import Model
+from kicad2ems.mesh import auto_mesh
+from kicad2ems.parts import parse_value, Part
 
 
 
@@ -68,8 +68,8 @@ def test_part_pieces():
 
 
 def test_build_fdtd_adds_lumped_elements(rlc, fake_openems):
-    from kicad2openems.simulation import build_fdtd
-    from kicad2openems.boundaries import resolve_bc
+    from kicad2ems.simulation import build_fdtd
+    from kicad2ems.boundaries import resolve_bc
     m = Model(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
     m.parts.append(Part('L7', 0.2, np.float64(2e-9), None, 'F.Cu', m.cu_z['F.Cu'], 1, [3, 3, 0.2], [3.2, 3.5, 0.2]))
     m.parts.append(Part('R5', 0.0, None, None, 'F.Cu', m.cu_z['F.Cu'], 0, [4, 3, 0.2], [4.4, 3.5, 0.2]))
@@ -95,7 +95,7 @@ def test_lowpass_demo(boards):
     assert p['L1'].axis == 0 and p['L1'].L == pytest.approx(8.2e-9) and p['L1'].R == pytest.approx(0.4)
     assert p['C2'].axis == 1 and p['C2'].series and p['C2'].L == pytest.approx(0.5e-9)
     assert p['C2'].C == pytest.approx(6.8e-12) and p['C2'].R == pytest.approx(0.1)
-    from kicad2openems.touchstone import read_touchstone
+    from kicad2ems.touchstone import read_touchstone
     f, S = read_touchstone(base + '_ideal.s2p')
     s21 = lambda g: 20 * np.log10(abs(S[np.argmin(abs(f - g * 1e9)), 1, 0]))
     assert s21(0.1) > -0.3 and -6.5 < s21(1.0) < -2 and s21(2.0) < -15

@@ -1,10 +1,10 @@
 """
-kicad2openems GUI (PySide6 + pyqtgraph): set up a run, preview it, watch it, see the results: S-parameters,
+kicad2ems GUI (PySide6 + pyqtgraph): set up a run, preview it, watch it, see the results: S-parameters,
 field dumps (live while the run goes, saved as PNG / GIF / MP4) and antenna far fields. Every run is the command-line tool started as a separate process with --events; the GUI
 follows its event stream, so a closed window never kills a simulation's results and the GUI needs no
 openEMS of its own.
 
-    kicad2openems-gui [config.toml]
+    kicad2ems-gui [config.toml]
 """
 import os, sys
 from PySide6.QtCore import Qt, QProcess, QTimer, QUrl, QSettings
@@ -405,7 +405,7 @@ class ResultsTab(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self, config=None):
         super().__init__()
-        self.setWindowTitle('kicad2openems')
+        self.setWindowTitle('kicad2ems')
         self.resize(1400, 900)
         self.tabs = QTabWidget()
         self.proc, self.tail, self.files, self.current, self.ticks = None, None, [], None, 0
@@ -416,7 +416,7 @@ class MainWindow(QMainWindow):
                      (self.antenna, 'Antenna')):
             self.tabs.addTab(w, t)
         self.setCentralWidget(self.tabs)
-        self.qsettings = QSettings('kicad2openems', 'gui')
+        self.qsettings = QSettings('kicad2ems', 'gui')
         self._menus()
         self.statusBar()
         self.timer = QTimer(self)
@@ -494,7 +494,7 @@ class MainWindow(QMainWindow):
 
     def update_title(self):
         name = os.path.basename(self.setup.path) if self.setup.path else 'untitled'
-        self.setWindowTitle(f"{name}{'*' if self.setup.dirty else ''} - kicad2openems")
+        self.setWindowTitle(f"{name}{'*' if self.setup.dirty else ''} - kicad2ems")
 
     def closeEvent(self, ev):
         if self.setup.maybe_save():

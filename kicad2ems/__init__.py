@@ -1,7 +1,7 @@
 """
-kicad2openems - build, mesh and run openEMS (3D FDTD) models of KiCad boards.
+kicad2ems - build, mesh and run openEMS (3D FDTD) models of KiCad boards.
 
-    from kicad2openems import KiCadBoard, Model, resolve_bc, auto_mesh
+    from kicad2ems import KiCadBoard, Model, resolve_bc, auto_mesh
     m = Model(KiCadBoard('board.kicad_pcb'), nets=['RF', 'GND'], pos_file='board-top.pos')
     bc = resolve_bc('auto', m)
     mesh = auto_mesh(m, 1e9, 6e9, bc=bc)
@@ -32,7 +32,7 @@ Modules
     events        run events as JSON lines (--events)
     config        Settings: defaults <- TOML <- command line
     pipeline      Job: the stages of a run
-    cli           command line (kicad2openems / python -m kicad2openems)
+    cli           command line (kicad2ems / python -m kicad2ems)
 
 Documentation: docs/index.md in the repository.
 """

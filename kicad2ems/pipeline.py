@@ -1,5 +1,5 @@
 """
-One run of kicad2openems as a sequence of stages, driven by a config.Settings:
+One run of kicad2ems as a sequence of stages, driven by a config.Settings:
 
     Job(settings).run()
         preflight() the solvers of the run (Settings.solver_plan) checked before any work: openEMS imports,
@@ -352,7 +352,7 @@ class Job:
         try:
             self._mom()
         except Exception as e:
-            if os.environ.get('KICAD2OPENEMS_TRACEBACK'):
+            if os.environ.get('KICAD2EMS_TRACEBACK'):
                 raise
             self.log(f"WARNING: mom25d failed: {type(e).__name__}: {e}")
             self.mom_res = None
@@ -366,7 +366,7 @@ class Job:
         backend = write_xml(m, self.grid, self.fmin, self.fmax, xml, bc=self.bc, sigma=s.sigma, diel=s.diel,
                             diel_fref=s.diel_fref * 1e9, max_steps=s.max_steps, end_db=s.end_db)
         if backend == 'xml':
-            self.log(f"CSX geometry {xml}: written by kicad2openems (openEMS's Python packages are not installed; "
+            self.log(f"CSX geometry {xml}: written by kicad2ems (openEMS's Python packages are not installed; "
                      f"the same file CSXCAD writes)")
         self.wrote('CSX geometry (AppCSXCAD; solved by mom25d)', xml)
         S, names, zref, info = solve(xml, m, self.freq, dmax=s.mom_dmax, port=s.mom_port, mesher=s.mom_mesher,

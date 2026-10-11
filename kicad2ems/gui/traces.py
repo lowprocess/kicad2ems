@@ -44,7 +44,7 @@ class Trace:
 
 
 def port_names(path):
-    """Port names from the '! ports: 1=P1, 2=P2' comment kicad2openems writes, or None."""
+    """Port names from the '! ports: 1=P1, 2=P2' comment kicad2ems writes, or None."""
     try:
         with open(path) as fh:
             for line in fh:

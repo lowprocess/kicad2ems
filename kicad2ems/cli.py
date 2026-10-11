@@ -1,14 +1,14 @@
 """
-kicad2openems - KiCad board -> S-parameters from openEMS (3D FDTD), mom25d (2.5D MoM) and a
+kicad2ems - KiCad board -> S-parameters from openEMS (3D FDTD), mom25d (2.5D MoM) and a
 transmission-line model, all from one converted board
 
-    kicad2openems board.kicad_pcb --pos board-top.pos --nets SIG,GND --fmin 1 --fmax 6 --preview
-    kicad2openems board.toml                        # config with board = "board.kicad_pcb"
-    kicad2openems board.toml --solvers mom,lines    # MoM and the line model: no openEMS needed
-    kicad2openems board.toml --solvers all          # openEMS, MoM and the line model, compared
-    kicad2openems board.kicad_pcb --config board.toml --excite P1
-    kicad2openems board.kicad_pcb ... --compare other_tool.s2p          # overlay another result
-    kicad2openems --check                           # which solvers this python can run
+    kicad2ems board.kicad_pcb --pos board-top.pos --nets SIG,GND --fmin 1 --fmax 6 --preview
+    kicad2ems board.toml                        # config with board = "board.kicad_pcb"
+    kicad2ems board.toml --solvers mom,lines    # MoM and the line model: no openEMS needed
+    kicad2ems board.toml --solvers all          # openEMS, MoM and the line model, compared
+    kicad2ems board.kicad_pcb --config board.toml --excite P1
+    kicad2ems board.kicad_pcb ... --compare other_tool.s2p          # overlay another result
+    kicad2ems --check                           # which solvers this python can run
 
 Ports are footprints with a Fab-layer text P1, P2, ... (or Reference / Value P<n> in the
 pick-and-place file); P<n>+ / P<n>- give a differential port. --preview writes the model + mesh
@@ -27,7 +27,7 @@ D = Settings()                                   # defaults, quoted in the help
 
 def parser():
     S = argparse.SUPPRESS                        # untyped options stay out: the TOML file can set them
-    ap = argparse.ArgumentParser(prog='kicad2openems', description=__doc__, argument_default=S,
+    ap = argparse.ArgumentParser(prog='kicad2ems', description=__doc__, argument_default=S,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('board', nargs='?', help='.kicad_pcb, or a .toml config (that names the board)')
     ap.add_argument('--check', action='store_true',
@@ -181,13 +181,13 @@ def other_solvers():
     try:
         importlib.import_module('PySide6')
         importlib.import_module('pyqtgraph')
-        lines.append("  ok      GUI         kicad2openems-gui")
+        lines.append("  ok      GUI         kicad2ems-gui")
     except ImportError:
-        lines.append("  missing GUI         python -m pip install 'kicad2openems[gui]' (PySide6, pyqtgraph)")
+        lines.append("  missing GUI         python -m pip install 'kicad2ems[gui]' (PySide6, pyqtgraph)")
     return lines
 
 
-def main(argv=None):
+def main(argv=None, prog='kicad2ems'):
     try:
         s, check = settings_from_argv(argv)
         if check:
@@ -200,13 +200,18 @@ def main(argv=None):
         for note in s.notes:
             print(f"config: {note}")
         from .pipeline import Job
-        return Job(s, command=" ".join(['kicad2openems'] + list(sys.argv[1:] if argv is None else argv))).run()
+        return Job(s, command=" ".join([prog] + list(sys.argv[1:] if argv is None else argv))).run()
     except (ConfigError, ValueError, FileNotFoundError, IsADirectoryError) as e:
-        if os.environ.get('KICAD2OPENEMS_TRACEBACK'):              # for debugging: the full traceback
+        if os.environ.get('KICAD2EMS_TRACEBACK'):              # for debugging: the full traceback
             raise
         msg = e.strerror + f": {e.filename}" if isinstance(e, OSError) and e.filename else str(e)
-        print(f"kicad2openems: error: {msg}", file=sys.stderr)
+        print(f"{prog}: error: {msg}", file=sys.stderr)
         return 2
+
+
+def main_openems(argv=None):
+    """The command under its old name, kicad2openems."""
+    return main(argv, prog='kicad2openems')
 
 
 if __name__ == '__main__':

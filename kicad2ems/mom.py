@@ -87,7 +87,7 @@ def _metal(m, sigma):
 
 
 def solve(path, m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigma=None, log=print):
-    """S-parameters of the CSX file `path` on `freq` (Hz) from mom25d, as kicad2openems reports them:
+    """S-parameters of the CSX file `path` on `freq` (Hz) from mom25d, as kicad2ems reports them:
     (S (nf, n, n) in m.user_ports order with differential pairs as (d, c) modes, names, reference
     impedances, info dict). dmax in mm (planes 3x, refined near the copper of other layers). sigma (S/m):
     conductor loss, as --sigma gives openEMS (default: lossless copper, like openEMS's PEC sheets)."""
@@ -119,7 +119,7 @@ def solve(path, m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60
     if len(f) != len(freq) or not np.allclose(f, freq):
         S = np.stack([np.stack([np.interp(freq, f, S[:, i, j].real) + 1j * np.interp(freq, f, S[:, i, j].imag)
                                 for j in range(S.shape[2])], -1) for i in range(S.shape[1])], 1)
-    if pairs:                                                       # mom25d's modal ports -> kicad2openems order
+    if pairs:                                                       # mom25d's modal ports -> kicad2ems order
         _, names, zref = mixed_mode(np.zeros((1, len(m.ports), len(m.ports))), m)
         idx = [info['names'].index(n) for n in names]
         S = S[:, idx][:, :, idx]

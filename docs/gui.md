@@ -4,7 +4,7 @@
 
 ```bash
 pip install '.[gui]'                 # PySide6 + pyqtgraph + h5py
-kicad2openems-gui [config.toml]      # or: python -m kicad2openems.gui
+kicad2ems-gui [config.toml]      # or: python -m kicad2ems.gui
 ```
 
 The GUI edits a run's settings, starts the command-line tool as a separate process with `--events`, and
@@ -45,7 +45,7 @@ passes them on to its runs. When the config's output folder already holds result
 empty *Output folder* means `out` next to the board (the command line's default is `openems_out` in the
 working directory); saving leaves it empty rather than writing the folder the GUI happened to start in.
 Each run writes `<out>/gui_run.toml` (the settings, with absolute paths) and `<out>/gui_events.jsonl`;
-the same run can be repeated from a terminal with `kicad2openems <out>/gui_run.toml`.
+the same run can be repeated from a terminal with `kicad2ems <out>/gui_run.toml`.
 
 <a id="plots"></a>
 ## S-parameter plots
@@ -92,7 +92,7 @@ The Fields tab lists every dump of the output folder (*Refresh*, or *Open result
 
 Copper is outlined on z planes within 0.3 mm of a copper layer; on x / y cuts the copper crossing the cut
 is drawn at its layer height. The cursor readout gives the position and value under the mouse. The same
-reading, cutting and animation code is usable without the GUI (`kicad2openems.fields`, see
+reading, cutting and animation code is usable without the GUI (`kicad2ems.fields`, see
 [post-processing](postprocessing.md#field-dumps)).
 
 <a id="antenna"></a>

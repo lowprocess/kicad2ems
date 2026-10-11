@@ -1,9 +1,9 @@
 """Mesh convergence: refinement levels, comparison against the finest level, --preview --converge."""
 import numpy as np
 import pytest
-from kicad2openems.kicad import KiCadBoard
-from kicad2openems.model import Model
-from kicad2openems.converge import parse_levels, mesh_levels, compare_levels, verdict
+from kicad2ems.kicad import KiCadBoard
+from kicad2ems.model import Model
+from kicad2ems.converge import parse_levels, mesh_levels, compare_levels, verdict
 
 
 

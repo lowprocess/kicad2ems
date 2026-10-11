@@ -1,10 +1,10 @@
 """Region and ports engine: rectangle / polygon / drawing-layer regions, nets = auto, ports on pads and
 at points, ports where tracks cross the region edge, and the settings that carry them."""
 import pytest
-from kicad2openems.kicad import KiCadBoard
-from kicad2openems.model import Model
-from kicad2openems.config import build_settings, ConfigError
-from kicad2openems.region import parse_port_spec, region_polygon
+from kicad2ems.kicad import KiCadBoard
+from kicad2ems.model import Model
+from kicad2ems.config import build_settings, ConfigError
+from kicad2ems.region import parse_port_spec, region_polygon
 
 
 def _with_drawing(base, rect):

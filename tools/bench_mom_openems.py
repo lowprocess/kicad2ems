@@ -3,7 +3,7 @@ Runtime and agreement benchmark: openEMS (3D FDTD) against mom25d (2.5D MoM) on 
 
     python tools/bench_mom_openems.py [--boards filter,hairpin,...] [--out bench] [--mesher triangle]
 
-Each board is one full kicad2openems run with --mom (the same converted geometry for both solvers), in
+Each board is one full kicad2ems run with --mom (the same converted geometry for both solvers), in
 its own output folder. The table: model size (FDTD cells / MoM unknowns), wall time of each solver (MoM:
 mesh + matrix setup + adaptive sweep), EM solves and timesteps, and the agreement (largest |dS| and
 transmission |dB| difference, delay difference) from the run summary. Results also go to <out>/bench.json
@@ -28,7 +28,7 @@ def run_board(name, out, mesher, extra):
         subprocess.check_call([sys.executable, os.path.join(EX, 'make_demo_board.py'), os.path.join(EX, gen[0])] + gen[1:],
                               stdout=subprocess.DEVNULL)
     od = os.path.join(out, name)
-    cmd = [sys.executable, '-m', 'kicad2openems', os.path.join(EX, toml), '--mom', '--mom-mesher', mesher, '--out', od,
+    cmd = [sys.executable, '-m', 'kicad2ems', os.path.join(EX, toml), '--mom', '--mom-mesher', mesher, '--out', od,
            '--no-report'] + extra
     t0 = time.time()
     with open(os.path.join(out, f"{name}.log"), 'w') as log:
@@ -57,7 +57,7 @@ def main():
     ap.add_argument('--boards', default=",".join(BOARDS))
     ap.add_argument('--out', default=os.path.join(ROOT, 'bench'))
     ap.add_argument('--mesher', default='triangle')
-    ap.add_argument('extra', nargs='*', help='more kicad2openems options (after --)')
+    ap.add_argument('extra', nargs='*', help='more kicad2ems options (after --)')
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     res = []

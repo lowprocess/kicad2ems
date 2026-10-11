@@ -1,6 +1,6 @@
-# kicad2openems
+# kicad2ems
 
-kicad2openems turns a KiCad board into electromagnetic simulations. It reads the real stackup, copper,
+kicad2ems turns a KiCad board into electromagnetic simulations. It reads the real stackup, copper,
 vias and board outline, takes ports from footprints and lumped R/L/C parts from the components, and
 solves the converted board with the solvers you choose, writing S-parameters (Touchstone) with plots, a
 JSON run summary and an HTML report that compares them:
@@ -29,11 +29,11 @@ Every run also breaks the port nets into transmission-line sections with closed-
 - **Edge walls** (`--edge-walls`): PEC where the planes end at the board edge, for stitching.
 - **Field dumps** (E, H, J) as PNG maps, in the GUI (live while the run goes, any x / y / z cut of a
   volume, saved as GIF / MP4) or for ParaView; wideband dielectric model; parallel runs.
-- **GUI** (`kicad2openems-gui`): setup, preview, run with progress, S-parameters, field view, antenna
+- **GUI** (`kicad2ems-gui`): setup, preview, run with progress, S-parameters, field view, antenna
   far field (polar cuts and 3D pattern at any recorded frequency).
 - **MoM** (`--solvers mom`, or `--mom` next to openEMS): the same converted geometry (the CSX file openEMS
   gets) solved by [mom25d](docs/mom25d.md), the 2.5D Method-of-Moments solver in `mom25d/`.
-  kicad2openems writes that file itself when openEMS is not installed, so MoM needs no openEMS.
+  kicad2ems writes that file itself when openEMS is not installed, so MoM needs no openEMS.
 - **TOML configs** (typos named), `--preview`, `--check` for every solver, an HTML report, JSON-lines
   events for a GUI or script.
 
@@ -48,11 +48,11 @@ python -m mom25d.core.build   # optional: the MoM solver's compiled core, ~5x fa
 ```
 
 openEMS and its Python bindings are not on PyPI. Install them from your distribution, or build them with
-`tools/build_openems.sh [prefix]`, and install kicad2openems into the same Python environment. Then
+`tools/build_openems.sh [prefix]`, and install kicad2ems into the same Python environment. Then
 check which solvers this Python can run:
 
 ```bash
-kicad2openems --check
+kicad2ems --check
 ```
 
 Without openEMS, everything except the FDTD run works: the model, mesh, line sections, `--preview`, the
@@ -64,10 +64,10 @@ report, the MoM solver and the line model (`--solvers mom,lines`). Details and t
 The microstrip filter example comes with a config (`examples/filter.toml`) that names the board:
 
 ```bash
-kicad2openems examples/filter.toml --preview              # model, mesh, line sections, report: seconds
-kicad2openems examples/filter.toml --solvers mom,lines    # MoM and the line model: ~1 min, no openEMS
-kicad2openems examples/filter.toml                        # the openEMS run (and the line model)
-kicad2openems examples/filter.toml --solvers all          # all three, compared
+kicad2ems examples/filter.toml --preview              # model, mesh, line sections, report: seconds
+kicad2ems examples/filter.toml --solvers mom,lines    # MoM and the line model: ~1 min, no openEMS
+kicad2ems examples/filter.toml                        # the openEMS run (and the line model)
+kicad2ems examples/filter.toml --solvers all          # all three, compared
 ```
 
 Outputs land in `examples/out/`: one Touchstone file per solver (`filter_openems.s2p`, `filter_mom.s2p`,
@@ -99,8 +99,8 @@ in KiCad and write a config: see [Getting started](docs/getting-started.md#your-
 
 ## License
 
-GPL-3.0-or-later (see [LICENSE](LICENSE)). kicad2openems imports openEMS's Python bindings
+GPL-3.0-or-later (see [LICENSE](LICENSE)). kicad2ems imports openEMS's Python bindings
 (GPL-3.0-or-later) and CSXCAD (LGPL-3.0-or-later) in the same process; qucsator (GPL-2.0-or-later) runs
 as a separate program; numpy, shapely, matplotlib and scikit-rf (BSD / PSF-style licenses) are
 GPL-compatible. No third-party code is copied into the repository: the line-impedance formulas are
-implemented from the published papers cited in `kicad2openems/tlines.py`.
+implemented from the published papers cited in `kicad2ems/tlines.py`.
