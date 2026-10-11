@@ -66,7 +66,6 @@ def group_lc(widths, gaps, h, er):
     """(C, C_air) per metre, N x N Maxwell matrices of N side-by-side microstrip lines (widths[i], gap
     gaps[i] between line i and i+1). Each neighbour pair (at its mean width) sets the mutual term and
     adds its coupling to both self terms; lines further apart are uncoupled."""
-    n = len(widths)
     out = []
     for e in (er, 1.0):
         C = np.diag([_single_c(w, h, e) for w in widths])

@@ -84,7 +84,7 @@ class Tracker:
             recent = tail[first:][-max(4, (len(tail) - first) // 2):]
             t = [p['t'] for p in recent]
             db = [p['db'] for p in recent]
-            n, mt, md = len(t), sum(t) / len(t), sum(db) / len(db)
+            mt, md = sum(t) / len(t), sum(db) / len(db)
             var = sum((x - mt) ** 2 for x in t)
             slope = sum((x - mt) * (y - md) for x, y in zip(t, db)) / var if var > 0 else 0.0
             if slope < -1e-6:

@@ -18,7 +18,7 @@ Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad neede
 Dimensions are keyword parameters (mm) of each function, also on the command line (param=value).
 The defaults were tuned with kicad2ems to resonate at 2.43-2.45 GHz with S11 below -19 dB.
 """
-import math, sys, uuid
+import sys, uuid
 
 
 def u():

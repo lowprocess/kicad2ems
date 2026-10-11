@@ -1,6 +1,5 @@
 """--max-steps: excitation length estimate, steps taken read back from a run folder, the step-limit
 warning and the CLI / TOML option (no openEMS needed)."""
-import numpy as np
 import pytest
 from kicad2ems.cli import settings_from_argv
 from kicad2ems.solvers.openems.simulation import pulse_steps, steps_taken, step_limit_warning

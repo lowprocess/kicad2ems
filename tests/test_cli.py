@@ -1,5 +1,5 @@
 """Settings (defaults <- TOML <- command line), clean errors and end-to-end previews (in process)."""
-import json, os, sys
+import json, sys
 import pytest
 from kicad2ems.cli import settings_from_argv
 from kicad2ems.config import build_settings, ConfigError, Settings

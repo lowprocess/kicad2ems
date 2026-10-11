@@ -1,6 +1,5 @@
 """Fast S-parameters of the line model: scikit-rf and qucsator (each skipped when not installed), the
 qucsator netlist and dataset reader, lumped parts."""
-import shutil
 import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard

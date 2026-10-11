@@ -23,8 +23,8 @@ model coordinates (y up).
 """
 import heapq, math
 import numpy as np
-from shapely.geometry import LineString, Point, Polygon
-from ...constants import C0, EPS0
+from shapely.geometry import LineString, Point
+from ...constants import C0
 
 ETA0 = 376.730313668
 MU0 = 4e-7 * math.pi
@@ -268,7 +268,7 @@ def classify(model, ref, e, pt, d):
         if cov == 'partial':
             e.notes.append(f"{l} under it does not extend {w / 2 + 2 * h:.2f} mm either side")
     if len(found) == 2:
-        (lb, h1, _), (la, h2, _) = found['below'], found['above']
+        (_, h1, _), (_, h2, _) = found['below'], found['above']
         er, e.tand = _dielectric(model, zs - h1, zs + h2)
         e.er, e.h = er, (h1, h2)
         if abs(h1 - h2) <= 0.05 * max(h1, h2):
@@ -538,7 +538,6 @@ def build(model):
             pads += _footprint_pads(fp, nets, model, inside)
     vias = [dict(v, xy=np.array([v['x'], v['y']]), i=i) for i, v in enumerate(pr.vias)
             if v['net'] in nets and not v.get('pth') and inside.contains(Point(v['x'], v['y']))]
-    attached = {}                                          # node -> list of (element index, direction away)
 
     def attach(layer, xy):
         for node, q, _ in pads:
@@ -820,14 +819,13 @@ def _shape_strips(model, nets, inside, lm):
     for l, n, g in model.prims.shapes:
         if n in nets and l in model.cu_z:
             by.setdefault((l, n), []).append(g)
-    out, skipped = [], 0
+    out = []
     for (l, n), gs in by.items():
         u = unary_union(gs).intersection(inside)
         for poly in getattr(u, 'geoms', [u]):
             if poly.geom_type != 'Polygon' or poly.area < 1e-6:
                 continue
             if not rectilinear(poly):
-                skipped += 1
                 continue
             out += shape_strips(poly, l, n)
     if out:

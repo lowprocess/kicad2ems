@@ -1,6 +1,5 @@
 """Field dumps: spec parsing, CSX setup with plain numbers, HDF5 reading (old and new openEMS layouts),
 plots, TOML lists."""
-import sys, types
 import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard

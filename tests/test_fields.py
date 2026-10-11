@@ -1,6 +1,6 @@
 """Field viewing: VTR frames as openEMS writes them, dump discovery in a run folder, plane cuts in KiCad
 axes, copper outlines, animations; the NF2FF sphere cuts of the antenna view."""
-import base64, json, os, zlib
+import base64, os, zlib
 import numpy as np
 import pytest
 from kicad2ems.solvers.openems import fields as F

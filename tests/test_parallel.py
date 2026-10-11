@@ -1,6 +1,5 @@
 """--jobs: excitations run in worker processes fill the same S columns as the serial loop (stub runs,
 no openEMS needed)."""
-import os
 import numpy as np
 from kicad2ems.solvers.openems import simulation
 from kicad2ems.importers.kicad import KiCadBoard

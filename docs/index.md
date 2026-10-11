@@ -26,7 +26,7 @@ code. The [README](../README.md) is the landing page: install, a quick start and
 | 11 | [Testing](testing.md) | Test layout, fixtures and openEMS stand-ins, real-solver checks |
 | 12 | [Maintenance notes](maintenance.md) | openEMS quirks and their workarounds, adding an option, conventions, checklist, license |
 | 13 | [GUI](gui.md) | `kicad2ems-gui`: setup, preview, run with progress and Stop, results, live field view with GIF / MP4, antenna far field |
-| 14 | [MoM solver (mom25d)](mom.md) | `--solvers mom` / `--mom`: the board solved by mom25d (no openEMS needed), ports, meshers (triangle / gmsh / distmesh), runtime against openEMS |
+| 14 | [MoM solver (mom25d)](mom.md) | `--solvers mom` / `--mom`: the board solved by mom25d (no openEMS needed), ports, meshers (triangle / gmsh), runtime against openEMS |
 
 ## Where to start
 

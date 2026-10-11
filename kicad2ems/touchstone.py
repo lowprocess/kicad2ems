@@ -23,12 +23,14 @@ def write_touchstone(path, f, S, zref, comment='', names=None):
                 fh.write("[Two-Port Data Order] 21_12\n")
             fh.write(f"[Number of Frequencies] {len(f)}\n")
             fh.write("[Reference] " + " ".join(f"{z:.6g}" for z in zref) + "\n[Network Data]\n")
-        for fi, s in zip(f, S):
-            vals = [s[i, j] for i in range(n) for j in range(n)] if n != 2 else [s[0, 0], s[1, 0], s[0, 1], s[1, 1]]
-            per_line = 4 if n > 2 else len(vals)
-            for k in range(0, len(vals), per_line):
-                pre = f"{fi:.9e}" if k == 0 else " " * 15
-                fh.write(pre + " " + " ".join(f"{v.real:.9e} {v.imag:.9e}" for v in vals[k:k + per_line]) + "\n")
+        for fi, s in zip(f, S):                                      # 1-2 ports: one line; more: each matrix
+            rows = [[s[0, 0], s[1, 0], s[0, 1], s[1, 1]]] if n == 2 else [list(r) for r in s]   # row on a new line,
+            first = True                                             # at most 4 values a line
+            for row in rows:
+                for k in range(0, len(row), 4):
+                    pre = f"{fi:.9e}" if first else " " * 15
+                    fh.write(pre + " " + " ".join(f"{v.real:.9e} {v.imag:.9e}" for v in row[k:k + 4]) + "\n")
+                    first = False
         if v2:
             fh.write("[End]\n")
 

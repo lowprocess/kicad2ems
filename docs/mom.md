@@ -98,9 +98,8 @@ meshers, same contract (port cuts and via fans conformal), selectable in mom25d 
 | `polygon` (Triangle, default; `tensor` for Manhattan layers without vias) | inward offset rings (cosine-graded, `ncross`), constrained Delaunay | |
 | `gmsh` / `gmsh-rings` | gmsh boundary layer; falls back to the same offset rings embedded by an OpenCASCADE fragment | `pip install gmsh` |
 | `gmsh-graded` | isotropic: size from w/ncross at the edge to dmax (Distance + Threshold fields) | `pip install gmsh` |
-| `distmesh` / `distmesh-rings` | DistMesh node relaxation (Persson & Strang) with an isotropic size function, or inside the offset rings; constrained Delaunay of the nodes | numpy / scipy |
 
-**Study** (`mom25d/benchmarks/mesher_study.py`, results in `mom25d/benchmarks/results/`): the coupled-line
+**Study** (`tools/mom25d/mesher_study.py`, results in `tools/mom25d/results/`): the coupled-line
 filter, lumped ports, 6 frequencies over 2–5 GHz, against a reference of 23k unknowns (Triangle, 0.1 mm,
 ncross 10):
 
@@ -124,10 +123,11 @@ ncross 10):
   fallback to embedded offset rings, and at fine settings the fragment produced occasional bad meshes
   (ncross 10). It costs 0.1–1 s per layer. Worth keeping as an option for awkward geometry; not as default.
 - **distmesh**: isotropic node relaxation, so the same verdict as gmsh-graded; inside the offset rings it
-  equals Triangle for narrow traces (no room to relax) and only differs on wide copper (planes).
+  equals Triangle for narrow traces (no room to relax) and only differs on wide copper (planes). With no
+  gain anywhere, the DistMesh mesher was removed after this study.
 - The reference is a Triangle mesh, which flatters Triangle at ncross 10 slightly.
 
-**What the meshers produce** (`mom25d/benchmarks/mesher_gallery.py`; dmax 0.3 mm, ncross 6, the cases run
+**What the meshers produce** (`tools/mom25d/mesher_gallery.py`; dmax 0.3 mm, ncross 6, the cases run
 one after the other so the times compare): the feed tee of the filter, |J| at 3.25 GHz, the triangle
 quality, |J| across two traces and |S21|:
 

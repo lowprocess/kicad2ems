@@ -16,6 +16,7 @@ A ballpark: no coupling between sections, no radiation, no plane resonances, qua
 import math, os, re, shutil, subprocess, tempfile, warnings
 import numpy as np
 from ...constants import C0
+from ...touchstone import write_touchstone
 
 BACKENDS = ('skrf', 'qucsator')
 
@@ -323,7 +324,7 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
             if workdir is None:
                 raise ValueError("a coupled section of more than two lines needs a working folder for its Touchstone")
             path = os.path.join(workdir, f"group{gid}.s{2 * len(mem)}p")
-            _write_touchstone(path, freq, group_s(g, freq))
+            write_touchstone(path, freq, group_s(g, freq), [50.0] * (2 * len(mem)), comment='coupled section')
             L.append(f'SPfile:G{gid} {" ".join(nodes_near + nodes_far)} gnd File="{{{path}}}" Data="rectangular" '
                      f'Interpolator="linear" duringDC="open"')
     num = 0
@@ -335,25 +336,6 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
             L.append(f'Pac:P{num} {node(lm.ports[p.name])} gnd Num="{num}" Z="{p.z0:g} Ohm" P="0 dBm" f="1 GHz"')
     L.append(f'.SP:SP1 Type="lin" Start="{freq[0]:.9g}" Stop="{freq[-1]:.9g}" Points="{len(freq)}" Noise="no"')
     return "\n".join(L) + "\n", order
-
-
-def _write_touchstone(path, freq, S, z0=50.0):
-    """Touchstone v1 (RI): 2-port data column-major on one line; more ports row by row, at most four
-    values pairs per line, each matrix row starting on a new line."""
-    n = S.shape[1]
-    with open(path, 'w') as fh:
-        fh.write(f"! kicad2ems coupled section\n# Hz S RI R {z0:g}\n")
-        for f, s in zip(freq, S):
-            pair = lambda v: f"{v.real:.10e} {v.imag:.10e}"
-            if n <= 2:
-                vals = [s[0, 0]] if n == 1 else [s[0, 0], s[1, 0], s[0, 1], s[1, 1]]
-                fh.write(f"{f:.9e} " + " ".join(pair(v) for v in vals) + "\n")
-                continue
-            for i in range(n):
-                row = [pair(s[i, j]) for j in range(n)]
-                for k in range(0, n, 4):
-                    lead = f"{f:.9e} " if (i == 0 and k == 0) else "  "
-                    fh.write(lead + " ".join(row[k:k + 4]) + "\n")
 
 
 def read_qucs_dataset(text, n):

@@ -11,7 +11,6 @@ copper plane (units mm, y up, like the Board).
 """
 import re
 import numpy as np
-from shapely.geometry import Point
 
 _PREFIX = {'f': 1e-15, 'p': 1e-12, 'n': 1e-9, 'u': 1e-6, 'µ': 1e-6, 'μ': 1e-6, 'm': 1e-3, 'k': 1e3, 'K': 1e3,
            'M': 1e6, 'G': 1e9, 'R': 1.0, 'r': 1.0, 'E': 1.0, '': 1.0}

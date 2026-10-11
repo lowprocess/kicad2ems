@@ -14,7 +14,7 @@ centreline lengths); where both end there it is a corner.
     tracks = shape_strips(poly, 'F.Cu', 'RF')        # model coordinates; dicts like board.tracks
 """
 import numpy as np
-from shapely.geometry import Polygon, box, LineString, Point
+from shapely.geometry import box, Point
 from shapely.ops import unary_union
 
 TOL = 1e-6

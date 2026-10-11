@@ -102,11 +102,6 @@ def edge_walls(model, sides, keepout=0.5, step=0.1, depth=0.3, reach=2.0):
     return out
 
 
-def _pt(p):
-    from shapely.geometry import Point
-    return Point(*p)
-
-
 def describe(walls, model):
     """One log line: per side, pieces and total length."""
     if not walls:

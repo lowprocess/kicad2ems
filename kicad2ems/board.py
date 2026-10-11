@@ -307,7 +307,7 @@ class Board:
             self.via_nets.append(v['net'])
 
     def _ports(self, raw, pos_file, specs, cut_ports, rpoly):
-        from .region import extra_port_fps, cut_port_fps
+        from .region import cut_port_fps
         refs = pos_port_refs(read_pos(pos_file)) if pos_file else None
         fps = dict(raw.port_footprints(refs))
         for k, f in fps.items():

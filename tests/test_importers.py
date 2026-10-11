@@ -1,7 +1,6 @@
 """Importer parity: a board through the KiCad reader and through its own fabrication data (Gerber X2 with
 nets, Excellon, job file, pick-and-place) resolves to the same Board - the same stack, copper per layer and
 net, vias, ports - so every solver sees the same thing whichever file it came from."""
-import os
 import pytest
 from kicad2ems.board import Board
 from kicad2ems.importers import open_board
