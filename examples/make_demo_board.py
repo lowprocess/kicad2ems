@@ -14,6 +14,8 @@ Writes small KiCad 8 test boards (no KiCad needed) and their pick-and-place file
   launch                4-layer edge launch: grounded-CPW feed, a taper drawn in the connector
                         footprint, 45 degree opening of the F.Cu pour, inner planes cut away under a
                         connector pad drawn as two pads numbered 1; P2 on the pad at the board edge
+  thru                  2-layer lossless 50 ohm microstrip, 30 mm, over a B.Cu plane: a board with a known
+                        answer (|S21| ~ 1, delay = length x sqrt(eps_eff) / c; tests/test_conformance.py)
 
 Port footprints 'kicad2ems:RF_Port' carry the Fab text P1 / P2.
 """
@@ -85,7 +87,7 @@ def make(path, pos_path):
         fh.write(f"TP1       P1        RF_Port              2.0000    -{yc:.4f}     0.0000  top\n")
         fh.write(f"TP2       P2        RF_Port             22.0000    -{yc:.4f}   180.0000  top\n")
 
-VARIANTS = ('transition', 'diff', 'rlc', 'lowpass', 'highpass', 'bandpass', 'launch')
+VARIANTS = ('transition', 'diff', 'rlc', 'lowpass', 'highpass', 'bandpass', 'launch', 'thru')
 if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] not in VARIANTS:
     sys.exit(f"make_demo_board.py: unknown variant {sys.argv[2]!r} - choose one of {', '.join(VARIANTS)}")
 if __name__ == '__main__' and not (len(sys.argv) > 2 and sys.argv[2] in VARIANTS[1:]):
@@ -426,4 +428,46 @@ def make_launch(path, pos_path):
 
 if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] == 'launch':
     make_launch(sys.argv[1] + '.kicad_pcb', sys.argv[1] + '-top.pos')
+    print('wrote', sys.argv[1] + '.kicad_pcb', sys.argv[1] + '-top.pos')
+
+
+THRU = dict(h=0.2, er=4.3, w=0.38, length=30.0)          # mm; w: ~50 ohm on h = 0.2 mm, er 4.3 (zero thickness)
+
+
+def make_thru(path, pos_path):
+    """2-layer board, lossless dielectric (tan d = 0): one straight microstrip on F.Cu over a B.Cu zone covering the
+    board, ports P1 / P2 at its ends."""
+    h, er, w, L = THRU['h'], THRU['er'], THRU['w'], THRU['length']
+    W, H, x0, yc = L + 4.0, 10.0, 2.0, 5.0
+    s = ['(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")',
+         f'  (general (thickness {h}))\n  (paper "A4")',
+         '  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user) (49 "F.Fab" user))',
+         '  (setup (stackup',
+         '    (layer "F.Cu" (type "copper") (thickness 0.035))',
+         f'    (layer "dielectric 1" (type "core") (thickness {h}) (material "ideal") (epsilon_r {er}) (loss_tangent 0))',
+         '    (layer "B.Cu" (type "copper") (thickness 0.035))',
+         '    (copper_finish "None") (dielectric_constraints no))\n    (pad_to_mask_clearance 0))',
+         '  (net 0 "") (net 1 "GND") (net 2 "RF")',
+         f'  (segment (start {x0} {yc}) (end {x0 + L} {yc}) (width {w}) (layer "F.Cu") (net 2) (uuid "{u()}"))',
+         f'  (zone (net 1) (net_name "GND") (layer "B.Cu") (uuid "{u()}") (hatch edge 0.5) (connect_pads (clearance 0))'
+         f' (min_thickness 0.1) (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))'
+         f' (polygon (pts (xy 0 0) (xy {W} 0) (xy {W} {H}) (xy 0 {H})))'
+         f' (filled_polygon (layer "B.Cu") (pts (xy 0 0) (xy {W} 0) (xy {W} {H}) (xy 0 {H}))))']
+    ports = [("TP1", "P1", x0, 0), ("TP2", "P2", x0 + L, 180)]
+    for ref, txt, x, rot in ports:
+        s += [f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x} {yc} {rot})',
+              f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))',
+              f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))',
+              f'    (fp_text user "{txt}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )']
+    s.append(f'  (gr_rect (start 0 0) (end {W} {H}) (stroke (width 0.1) (type default)) (fill none) (layer "Edge.Cuts") '
+             f'(uuid "{u()}"))\n)')
+    open(path, 'w').write("\n".join(s) + "\n")
+    with open(pos_path, 'w') as fh:
+        fh.write("### Footprint positions ###\n## Unit = mm, Angle = deg.\n# Ref Val Package PosX PosY Rot Side\n")
+        for ref, txt, x, rot in ports:
+            fh.write(f"{ref} {txt} RF_Port {x:.4f} {-yc:.4f} {rot:.4f} top\n")
+
+
+if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] == 'thru':
+    make_thru(sys.argv[1] + '.kicad_pcb', sys.argv[1] + '-top.pos')
     print('wrote', sys.argv[1] + '.kicad_pcb', sys.argv[1] + '-top.pos')
