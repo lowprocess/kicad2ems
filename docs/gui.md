@@ -22,7 +22,7 @@ itself needs no openEMS.
 **Solvers.** One tick box per solver plugin: *openEMS (FDTD)*, *mom25d (MoM)*, *line model (qucsator)*,
 *line model (scikit-rf)*, and any solver installed as a plugin ([solvers](usage.md#solvers)), plus *auto*
 (the full-wave solver estimated cheapest for the board, and the line model: [auto](usage.md#auto)). The config
-gets `solvers = [...]` with the ticked ones; with openEMS alone ticked, `solvers` is left out (the
+gets `solvers = [...]` with the ticked ones; with *auto* alone ticked, `solvers` is left out (the
 default). Opening a config ticks the solvers it runs (its `solvers`, `mom = true` and `fast = ...`;
 `lines` ticks qucsator when it is installed, else scikit-rf). The form's fields are made from the solvers'
 option tables, so a plugin's settings that have a GUI label appear in it too.

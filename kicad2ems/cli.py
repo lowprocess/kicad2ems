@@ -63,7 +63,7 @@ def parser():
     return ap
 
 
-def settings_from_argv(argv=None):
+def settings_from_argv(argv=None, default_solvers=None):
     """Settings from a command line (the TOML config it names included). Returns (Settings, check flag)."""
     ap = parser()
     typed = vars(ap.parse_args(argv))
@@ -77,7 +77,7 @@ def settings_from_argv(argv=None):
         config = typed.pop('board')
     if check:
         return None, True
-    s = build_settings(typed, config)
+    s = build_settings(typed, config, default_solvers)
     if not s.board:
         raise ConfigError("board file required: as the argument, or 'board = ...' in the config (or --check)")
     return s, False
@@ -119,11 +119,11 @@ def init(argv):
     return 0
 
 
-def main(argv=None, prog='kicad2ems'):
+def main(argv=None, prog='kicad2ems', default_solvers=None):
     try:
         if '--init' in (sys.argv[1:] if argv is None else argv):
             return init(sys.argv[1:] if argv is None else argv)
-        s, check = settings_from_argv(argv)
+        s, check = settings_from_argv(argv, default_solvers)
         if check:
             ok, lines = check_report()
             print("\n".join(lines))
@@ -141,8 +141,8 @@ def main(argv=None, prog='kicad2ems'):
 
 
 def main_openems(argv=None):
-    """The command under its old name, kicad2openems."""
-    return main(argv, prog='kicad2openems')
+    """The command under its old name, kicad2openems: openEMS unless the solvers are named."""
+    return main(argv, prog='kicad2openems', default_solvers=['openems'])
 
 
 if __name__ == '__main__':

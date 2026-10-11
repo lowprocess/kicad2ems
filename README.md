@@ -44,7 +44,7 @@ Every run also breaks the port nets into transmission-line sections with closed-
 ## Install
 
 ```bash
-git clone https://github.com/lowprocess/kicad2openems.git
+git clone https://github.com/lowprocess/kicad2ems.git && cd kicad2ems
 pip install .                 # numpy, scipy, shapely, matplotlib, triangle (the MoM solver's mesher)
 pip install '.[fast]'         # + scikit-rf: the line model as a circuit
 pip install '.[dumps]'        # + h5py, for frequency-domain field dumps

@@ -17,7 +17,7 @@ may be TOML arrays or comma-separated strings:
     fmin = 1.0
     fmax = 6.0
     no_mask = true
-    solvers = ["openems", "mom25d"] # default: openEMS only (see Settings.solver_plan)
+    solvers = ["openems", "mom25d"] # default: auto (kicad2openems: openems; see Settings.solver_plan)
     [solver.openems]
     excite = ["P1"]
     air = 5.0
@@ -86,10 +86,11 @@ def _solvers(v):
 
 # the settings of every run (each solver's own are in its plugin): (key, default, help, type, ...)
 CORE = [
-    Option('solvers', None, "solvers to run, comma-separated: openems (3D FDTD; the default), mom25d (alias mom; 2.5D "
+    Option('solvers', None, "solvers to run, comma-separated: auto (the default: the full-wave solver estimated "
+           "cheapest for this board, plus the line model; kicad2openems: openems), openems (3D FDTD), mom25d (alias mom; 2.5D "
            "MoM: planar boards over a ground plane, no openEMS needed), qucs or scikit (the transmission-line model as "
            "a circuit, solved by qucsator or scikit-rf: milliseconds), lines (qucs when qucsator is installed, else "
-           "scikit), auto (the full-wave solver estimated cheapest for this board, plus the line model) or all. A "
+           "scikit) or all. A "
            "named solver that cannot run stops the run before it starts; --mom and --fast add theirs as references",
            list, conv=_solvers, group='solvers', cli=dict(metavar='LIST')),
     Option('mom', False, "also run mom25d, as a reference next to the other solvers (if it cannot run, that is a "
@@ -152,7 +153,7 @@ class _Settings:
     def solver_plan(self, preview=None):
         """(the solvers this run uses, the ones named in `solvers`), both in registry order (solvers.ordered).
 
-        The solvers are those named in `solvers` (default: openEMS, as if named), plus mom25d with mom = true and the line
+        The solvers are those named in `solvers` (default: auto, as if named), plus mom25d with mom = true and the line
         model with fast = ... ('lines' until the run resolves it: qucs when qucsator is installed, else scikit;
         fast = "skrf" / "qucsator" names the line solver). --preview solves nothing that is previewed (openEMS;
         preview=False: the plan as without --preview).
@@ -160,7 +161,7 @@ class _Settings:
         One added by --mom / --fast is a reference next to the others: if it cannot run, that is a warning."""
         from .solvers import ordered, registry, LINES, AUTO
         line = {'skrf': 'scikit', 'qucsator': 'qucs'}.get(self.fast, LINES)
-        named = [line if x == LINES else x for x in self.solvers] if self.solvers is not None else ['openems']
+        named = [line if x == LINES else x for x in self.solvers] if self.solvers is not None else [AUTO]
         run = set(named)
         if self.mom:
             run.add('mom25d')
@@ -295,9 +296,10 @@ def _suggest(key):
     return f"{key} (did you mean {near[0]}?)" if near else key
 
 
-def build_settings(cli=None, config=None):
+def build_settings(cli=None, config=None, default_solvers=None):
     """Settings from the defaults, a TOML file (path or None) and command-line values (a dict holding only
-    the options that were typed). Raises ConfigError for anything that cannot be used."""
+    the options that were typed). default_solvers: the solvers when neither names any (kicad2openems: openems;
+    otherwise auto). Raises ConfigError for anything that cannot be used."""
     cli = dict(cli or {})
     values, notes = {}, []
     if config:
@@ -310,6 +312,8 @@ def build_settings(cli=None, config=None):
         raise ConfigError(f"unknown option(s): {', '.join(unknown)}")
     s = Settings(**{k: _convert(k, v) for k, v in values.items()})
     s.notes = notes
+    if s.solvers is None and default_solvers:
+        s.solvers = _convert('solvers', default_solvers)
     if s.fmin >= s.fmax:
         raise ConfigError(f"fmin ({s.fmin:g} GHz) must be below fmax ({s.fmax:g} GHz)")
     if s.points < 2:

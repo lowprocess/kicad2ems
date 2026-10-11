@@ -103,13 +103,13 @@ def test_preview_report_and_summary(demo_files, run_cli, tmp_path):
     for part in ("id='summary'", "id='model'", "id='tlines'", "id='mesh'", 'data:image/png;base64,', 'P1',
                  'dielectric 1', 'microstrip', 'stripline'):
         assert part in page, part
-    assert "id='results'" not in page                               # nothing solved in a preview
+    assert "id='openems'" not in page and "id='mom25d'" not in page   # no full-wave solve in a preview (auto: the line model)
     sm = json.loads((out / 'demo_run.json').read_text())
     assert sm['mode'] == 'preview' and sm['lines']['paths'][0]['port'] == 'P1'
     from kicad2ems.report import build                         # the report rebuilds from the JSON alone
     assert "id='tlines'" in build(sm, str(out))
     kinds = [json.loads(l)['kind'] for l in (tmp_path / 'ev.jsonl').read_text().splitlines()]
-    assert kinds[0] == 'stage' and 'log' in kinds and 'file' in kinds and kinds[-1] == 'done'
+    assert 'stage' in kinds and 'log' in kinds and 'file' in kinds and kinds[-1] == 'done'
     code, _, _ = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'RF,GND', '--ground', 'B.Cu',
                          '--out', tmp_path / 'o2', '--preview', '--no-report')
     assert code == 0 and not (tmp_path / 'o2' / 'demo_report.html').exists()

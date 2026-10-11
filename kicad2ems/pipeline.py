@@ -332,7 +332,7 @@ class Job:
             return True
         s, reg, ram = self.s, registry(), ram_gb()
         est, not_used = {}, {}
-        named_fw = any(n in reg and reg[n].consumes == 'board' for n in self.plan)     # one named: auto adds the line model
+        named_fw = any(n in reg and reg[n].consumes == 'board' for n in self.named)    # one named: auto adds the line model
         for n, sv in reg.items():
             if sv.consumes != 'board' or named_fw:
                 continue
@@ -361,11 +361,14 @@ class Job:
                                                         if pick[0] in est else '') +
                  "".join(f"; {n} not chosen ({e['what']}, {t(e['seconds'])})" for n, e in est.items() if n not in pick) +
                  "".join(f"; {n} not used: {w}" for n, w in not_used.items()) + "; force one with --solvers <name>")
+        if s.preview:                                               # a preview solves no full-wave solver
+            if pick[0] in est:
+                self.log(f"--preview: {pick[0]} would run (without --preview); the preview has the line model and "
+                         f"openEMS's mesh")
+            pick = [p for p in pick if reg[p].consumes != 'board']
+            self.previewed += ['openems'] if 'openems' in reg and 'openems' not in not_used else []
         swap = lambda xs: [x for x in xs if x != AUTO] + [p for p in pick if p not in xs] if AUTO in xs else xs
         self.plan, self.named = swap(self.plan), swap(self.named)
-        if s.preview:                                               # chosen for a preview: prepared, not solved
-            self.previewed += [n for n in self.plan if reg[n].previewed]
-            self.plan = [n for n in self.plan if not reg[n].previewed]
         self.plan = [n for n in reg if n in self.plan]
         self.summary.update(solvers=list(self.plan), auto=dict(chosen=pick, not_used=not_used,
                                                                estimates={n: dict(e) for n, e in est.items()}))

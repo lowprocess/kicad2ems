@@ -15,16 +15,17 @@ def plan(**kw):
 
 
 def test_solver_plan():
-    assert plan() == (['openems'], ['openems'])                    # the default: openEMS, as if named
-    assert plan(mom=True, fast='skrf') == (['openems', 'mom25d', 'scikit'], ['openems'])   # --mom / --fast add theirs
+    assert plan() == (['auto'], ['auto'])                          # the default: auto, as if named
+    assert build_settings(dict(board='b'), default_solvers=['openems']).solver_plan()[0] == ['openems']   # kicad2openems
+    assert plan(mom=True, fast='skrf') == (['auto', 'mom25d', 'scikit'], ['auto'])   # --mom / --fast add theirs
     assert plan(solvers='mom') == (['mom25d'], ['mom25d'])
     assert plan(solvers='lines,MoM25d', fast='qucsator') == (['mom25d', 'qucs'], ['mom25d', 'qucs'])
     assert plan(solvers=['fdtd', 'line']) == (['openems', 'lines'], ['openems', 'lines'])   # lines: resolved later
     assert plan(solvers='all')[0] == ['openems', 'mom25d', 'lines']
     assert plan(solvers='skrf,qucsator')[0] == ['qucs', 'scikit']                         # both line solvers
     assert plan(solvers='openems', mom=True) == (['openems', 'mom25d'], ['openems'])
-    assert plan(preview=True, mom=True)[0] == ['mom25d']           # --preview: no openEMS run
-    assert plan(preview=True)[0] == []
+    assert plan(preview=True, mom=True)[0] == ['auto', 'mom25d']   # --preview: auto then solves only the line model
+    assert plan(solvers='openems', preview=True)[0] == []          # no openEMS run in a preview
 
 
 @pytest.mark.parametrize('values,match', [
@@ -63,7 +64,7 @@ def test_missing_openems_stops_before_any_work(run_cli, tmp_path, monkeypatch):
     monkeypatch.setattr(simulation, 'check_openems', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
     out = tmp_path / 'out'
     ev = tmp_path / 'ev.jsonl'
-    code, so, _ = run_cli(FILTER, '--out', out, '--events', ev)
+    code, so, _ = run_cli(FILTER, '--solvers', 'openems', '--out', out, '--events', ev)
     assert code == 2 and '--solvers mom,lines' in so
     events = [json.loads(l) for l in ev.read_text().splitlines()]
     assert not [e for e in events if e['kind'] == 'stage'] and (events[-1]['kind'], events[-1]['code']) == ('done', 2)
@@ -109,3 +110,10 @@ def test_unavailable_reference_is_left_out(run_cli, tmp_path, monkeypatch):
     assert code == 0 and 'WARNING: mom25d cannot run' in so
     code, so, _ = run_cli(FILTER, '--solvers', 'mom', '--out', out)       # named: stops before it starts
     assert code == 2 and 'mom25d cannot run' in so
+
+
+def test_kicad2openems_keeps_openems_as_its_default(tmp_path, monkeypatch, capsys):
+    from kicad2ems.cli import main_openems
+    monkeypatch.setattr(simulation, 'check_openems', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
+    assert main_openems([FILTER, '--out', str(tmp_path / 'out')]) == 2         # openEMS named by default: stops
+    assert 'openEMS cannot be imported' in capsys.readouterr().out

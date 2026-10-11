@@ -22,7 +22,9 @@ work).
 ## Solvers
 
 One converted board, several solvers. Each solver is a plugin (`kicad2ems/solvers/`, [architecture](architecture.md#solver-plugins));
-`--solvers` (or `solvers = [...]` in a config) names the ones to run, and the default is openEMS alone.
+`--solvers` (or `solvers = [...]` in a config) names the ones to run. The default is `auto`: the full-wave
+solver estimated cheapest for the board, plus the line model ([below](#auto)). The `kicad2openems` command
+keeps openEMS as its default, so older scripts and configs give the same results.
 
 | Name (aliases) | Solver | Output | Needs |
 |---|---|---|---|
@@ -72,7 +74,8 @@ solvers auto: mom25d + qucs (4,400 unknowns, ~16 EM solves, ~21 s); openems not 
 of ~502,493 timesteps, ~7 min); force one with --solvers <name>
 ```
 
-The estimates are rough ([architecture](architecture.md#choosing-solvers)); the default is still openEMS.
+The estimates are rough ([architecture](architecture.md#choosing-solvers)). With `--preview`, `auto` solves
+no full-wave solver: it says which one would run, and the preview has openEMS's mesh and the line model.
 
 ## Settings
 
@@ -196,7 +199,7 @@ used and a `config:` note says so (`config.resolve_path`).
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--solvers LIST` | `openems` | the solvers to run ([above](#solvers)): `openems`, `mom25d`, `qucs`, `scikit`, `lines` or `all` |
+| `--solvers LIST` | `auto` (`kicad2openems`: `openems`) | the solvers to run ([above](#solvers)): `openems`, `mom25d`, `qucs`, `scikit`, `lines` or `all` |
 | `--fast auto\|skrf\|qucsator` | off | also solve the line sections as a circuit, as a reference ([transmission lines](transmission-lines.md#fast)); `auto`: qucsator if installed, else scikit-rf |
 | `--mom` | off | also run mom25d, as a reference ([MoM](mom.md)); works with `--preview` |
 

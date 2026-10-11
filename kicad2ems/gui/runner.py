@@ -63,7 +63,7 @@ def solver_ticks(vals):
 
 def solvers_from_form(vals):
     """The form's values (with the solver tick boxes) as settings: solvers lists the ticked solvers, or is left to
-    its default (openEMS) when that alone is ticked; an empty list when none is. Without tick boxes in vals
+    its default (auto) when that alone is ticked; an empty list when none is. Without tick boxes in vals
     (settings rather than the form's own values), vals as they are."""
     out = dict(vals)
     ticks = [k for k in out if k.startswith(TICK)]
@@ -73,7 +73,7 @@ def solvers_from_form(vals):
     out.pop('mom', None)
     out.pop('fast', None)
     out.pop('solvers', None)
-    if on != ['openems']:
+    if on != ['auto']:
         out['solvers'] = on
     return out
 

@@ -49,7 +49,7 @@ def write_starter(board, typed):
                  nets="the nets under the ports plus the ground nets; or a list, e.g. [\"RF\", \"GND\"]", fmin="GHz",
                  out="output folder")
     cmds = [(f"kicad2ems {stem} --preview", "model, mesh, line sections and the report; no openEMS run"),
-            (f"kicad2ems {stem}", "the run (openEMS; see solvers below for the others)"),
+            (f"kicad2ems {stem}", "the run (solvers: auto, see below)"),
             ("kicad2ems --check", "which solvers this Python can run")]
     w = max(len(c) for c, _ in cmds)
     L = [f"# kicad2ems run configuration for {os.path.basename(board)} (written by kicad2ems --init)"]
@@ -64,8 +64,8 @@ def write_starter(board, typed):
             continue
         line = f"{k:<7s} = {toml_value(v)}"
         L.append(f"{line:<34s}# {notes[k]}" if k in notes else line)
-    L += ["# solvers = [\"openems\", \"mom25d\", \"lines\"]   # default openEMS; mom25d (2.5D MoM) and the line model",
-          "#                                         # need no openEMS (kicad2ems --check)", "",
+    L += ["# solvers = [\"openems\", \"mom25d\", \"lines\"]   # default auto: the full-wave solver estimated cheapest",
+          "#                                         # + the line model (kicad2ems --check)", "",
           "[solver.openems]", "# excite = [\"P1\"]                # the ports to drive (default: all)",
           "# fine   = 0.05                  # mm at the copper edges (default: from the narrowest port trace)", "",
           "[solver.mom25d]", "# dmax   = 0.3                   # largest MoM cell along the copper, mm"]
