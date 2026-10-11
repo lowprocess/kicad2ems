@@ -33,6 +33,7 @@ pytest; tests that need scikit-rf or h5py are skipped without them. The qucsator
 | `test_max_steps.py` | excitation length, steps read back from a run folder, the step-limit warning, option / TOML |
 | `test_progress.py` | status-line parsing, ETA from decay / step limit, flat energy, the monitor (bar / raw), output redirection |
 | `test_cli.py` | Settings (defaults ← TOML ← command line, abbreviated options), lists, path rules, one-line errors, `check` as command-line only, `--preview` end to end with the report and JSON |
+| `test_parity.py` | each solver's model read back against the board (vias, walls, copper area, parts, ports) on the transition, low-pass and launch boards: every difference declared; an undeclared via move and a dropped declaration fail |
 | `test_plugins.py` | the solver plugins: registry and aliases, entry-point plugins (loaded, broken, clashing), `[solver.<name>]` config tables, the command line from the option tables, MoM alone without openEMS's mesh, `assess` (named: stop; added: left out) |
 | `test_solvers.py` | `--solvers` (plan, aliases, errors), the checks before a run (missing openEMS stops at once; named vs added solvers), runs without openEMS (line model; MoM with CSXCAD and openEMS blocked), exit code 1, `--sigma` for MoM, config typos, the GUI's solver tick boxes |
 | `test_csxwrite.py` | the CSX file written without CSXCAD: byte for byte against a file CSXCAD wrote (`tests/data/csx_api_golden.xml`), glibc's `rand()` colours, mom25d reading it; with openEMS installed, whole boards against CSXCAD |

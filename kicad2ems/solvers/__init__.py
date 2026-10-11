@@ -27,6 +27,10 @@ and implements
   prepare(run)            its own form of the board (openEMS: boundaries, mesh), handed to solve()
   solve(run, prep)        Result: S-parameters over the board's ports, as reported
   outputs(run, prep, res) its own extra outputs (plots, files, summary entries); optional
+  deviations(run, prep)   [Deviation]: what it models differently from the board, by its own rules (vias moved
+                          onto a mesh, parts split, walls as via rows), for the report and the parity checks
+  readback(run, prep)     what its native model holds, read back (parity.py: vias, copper area per layer,
+                          parts, ports), or None
 
 `run` is the pipeline's Job. A solver may use run.m (the board), run.s (Settings: its options are fields),
 run.freq (Hz), run.lm (the line model), run.name, run.log(), run.status(run_name, dict) (progress events),
@@ -45,7 +49,8 @@ BUILTIN = ('kicad2ems.solvers.openems.plugin:OpenEMS', 'kicad2ems.solvers.mom:Mo
 LINES = 'lines'                             # the line model: qucs when qucsator is installed, else scikit
 # what a solver models, the rows of the capabilities table (--check, docs/architecture.md)
 FEATURES = dict(ports='ports on a trace over a plane', gap_ports='gap ports (dipoles, slots)',
-                diff_pairs='differential pairs', parts='lumped R / L / C parts', outline='board outline and edges',
+                diff_pairs='differential pairs', parts='lumped R / L / C parts', vias='vias',
+                outline='board outline and edges',
                 planes='inner planes and pours', edge_walls='edge walls', thickness='copper thickness',
                 conductor_loss='conductor loss (sigma)', dispersion='dielectric dispersion',
                 radiation='radiation, surface waves', cavity='box and cavity effects', antenna='antenna mode, far field')
@@ -61,6 +66,23 @@ class Result:
     seconds: float              # the solver's own time
     info: dict = field(default_factory=dict)    # JSON-friendly facts for the run summary and the report
     comment: str = ''           # the first comment line of its Touchstone file
+
+
+@dataclass
+class Deviation:
+    """Something a solver models differently from the board, and says so (parity.py, the report's "What each
+    solver saw" table). item names what it is about: 'via:<index>', 'wall:<index>', 'part:<ref>',
+    'copper:<layer>', 'outline'."""
+    item: str
+    feature: str                # the FEATURES key it belongs to
+    what: str                   # 'moved onto the mesh', 'split in 2 elements', ...
+    amount: float = None        # how much, mm (a move), where it applies
+    to: object = None           # what the solver has instead: a via [x, y, r, z0, z1], a wall [axis, c, t0, t1, z0, z1],
+                                # a part's element count
+    dropped: bool = False       # the item is not in the solver's model
+    added: list = None          # vias the solver adds for it ([x, y, r, z0, z1] each: edge walls as via rows)
+    layer: str = None           # with area: copper the solver adds on this layer (mm2)
+    area: float = None
 
 
 class Solver:
@@ -96,6 +118,12 @@ class Solver:
 
     def outputs(self, run, prep, res):
         pass
+
+    def deviations(self, run, prep):
+        return []
+
+    def readback(self, run, prep):
+        return None
 
 
 _registry, broken = None, []                # broken: (entry point, error) of plugins that failed to load

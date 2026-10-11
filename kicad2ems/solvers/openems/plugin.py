@@ -14,8 +14,10 @@ What openEMS changes on the way (declared deviations, docs/architecture.md): via
 import os
 from types import SimpleNamespace
 
+import numpy as np
+
 from ...options import Option, strlist, items, floatlist, floats
-from .. import Solver, Result
+from .. import Solver, Result, Deviation
 
 
 def _bc(v):
@@ -30,6 +32,7 @@ class OpenEMS(Solver):
     consumes, previewed, rank = 'board', True, 2
     capabilities = dict(ports='yes', gap_ports='yes', diff_pairs='yes',
                         parts='approximated: parts with ESR / ESL split in two elements (openEMS 0.37)',
+                        vias='approximated: off the signal nets moved onto mesh lines (--vias, --via-snap)',
                         outline='yes', planes='yes', edge_walls='yes: PEC sheets', thickness='ignored: conducting sheets',
                         conductor_loss='yes', dispersion='yes: fitted at mid-band, or wideband Debye', radiation='yes',
                         cavity='yes', antenna='yes')
@@ -107,6 +110,28 @@ class OpenEMS(Solver):
         if s.converge and s.antenna:
             return "converge is not available with mode = antenna"
         return None
+
+    # ---- what it changes, and what it holds -------------------------------------------------------------
+    def deviations(self, run, p):
+        """Vias moved onto mesh lines, parts split in two elements, edge walls moved onto mesh lines."""
+        m, out = run.m, []
+        for i, (v, q) in enumerate(zip(m.vias, p.grid.get('vias', m.vias))):
+            d = float(np.hypot(q[0] - v[0], q[1] - v[1]))
+            if d > 1e-9:
+                out.append(Deviation(f"via:{i}", 'vias', 'moved onto the mesh', d, to=list(q)))
+        for pt in m.parts:
+            n = len(pt.pieces())
+            if n > 1 and not pt.short:
+                out.append(Deviation(f"part:{pt.ref}", 'parts', f"split in {n} elements (openEMS 0.37: a series R "
+                                                                f"with L / C is a sheet of its own)", to=n))
+        for i, (w, q) in enumerate(zip(m.walls, p.grid.get('walls') or m.walls)):
+            if abs(q[1] - w[1]) > 1e-9:
+                out.append(Deviation(f"wall:{i}", 'edge_walls', 'moved onto a mesh line', abs(q[1] - w[1]), to=list(q)))
+        return out
+
+    def readback(self, run, p):
+        from .readback import readback
+        return readback(run.m, p.grid, p.bc, sigma=run.s.sigma)
 
     # ---- the run ---------------------------------------------------------------------------------------
     def prepare(self, run):

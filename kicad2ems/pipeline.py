@@ -11,7 +11,9 @@ One run of kicad2ems as a sequence of stages, driven by a config.Settings, over 
         assess()    each solver against this board and run: one named that cannot model it stops the run, a
                     reference is left out with a warning
         prepare()   each solver lowers the board to its own form (openEMS: boundaries, mesh and the mesh preview;
-                    with --preview it is prepared, not solved); without openEMS, <name>_model.png
+                    with --preview it is prepared, not solved) and declares what it changes (deviations: vias
+                    moved, parts split, walls as via rows), the report's "What each solver saw"; without
+                    openEMS, <name>_model.png
         solve()     the solvers, the cheap ones first: S-parameters over the board's ports
         outputs()   <name>_<solver>.sNp per solver; the first solver's plot <name>_<solver>.png with the others
                     (and --compare) overlaid, and each compared with it; each solver's own outputs (openEMS:
@@ -22,14 +24,15 @@ Everything the report shows is collected in Job.summary, a JSON-friendly dict wr
 report.py renders that dict and nothing else. Every message goes through Job.log (printed, kept for the
 report, and sent to --events as JSON lines).
 """
-import datetime, json, os, time
+import dataclasses, datetime, json, os, time
 import numpy as np
 
 from . import __version__
 from .board import Board
 from .plots import save, preview, plot_results, plot_lines
 from .touchstone import write_touchstone, read_touchstone
-from .solvers import registry, label, resolve_lines, LINES
+from .solvers import registry, label, resolve_lines, LINES, FEATURES
+from .parity import describe
 
 
 def ram_gb():
@@ -98,6 +101,21 @@ def compare_table(freq, S, Sx, names, floor_db=-40.0):
 OVERLAY_STYLES = (':', '-.', (0, (1, 1)), (0, (5, 1)), (0, (3, 1, 1, 1)))    # the other solvers on the plot
 
 
+def saw_table(m, s, names, deviations):
+    """The report's "What each solver saw": per feature of the board, each solver's capability (yes / no / ignored /
+    approximated: how) and what it declared changing there."""
+    reg = registry()
+    half = 0.5 * m.outline.area
+    applies = dict(gap_ports=any(p.kind == 'gap' for p in m.ports), diff_pairs=any(p.pair for p in m.ports),
+                   parts=bool(m.parts), vias=bool(m.vias), edge_walls=bool(m.walls), conductor_loss=bool(s.sigma),
+                   planes=any(sum(p.area for p in ps) >= half for ps in m.copper.values()), antenna=s.antenna)
+    rows = [dict(feature=text, cells=[dict(cap=reg[n].capabilities.get(k, '?'),
+                                           deviations=describe([d for d in deviations.get(n, []) if d.feature == k]))
+                                      for n in names])
+            for k, text in FEATURES.items() if applies.get(k, True)]
+    return dict(solvers=[reg[n].label for n in names], rows=rows)
+
+
 def board_from_settings(s, log=print):
     """The Board of a run's settings: the board file through its importer, resolved with the selection
     settings - or a board.json written by an earlier run, as it is (its selection is already applied)."""
@@ -131,7 +149,7 @@ class Job:
         self.plan, self.named = settings.solver_plan()              # the solvers of this run; those named in solvers
         # solvers --preview prepares without solving them (openEMS: the mesh preview)
         self.previewed = [x for x in settings.solver_plan(preview=False)[0] if x not in self.plan]
-        self.prep, self.results = {}, {}                             # per solver: prepare()'s form, solve()'s Result
+        self.prep, self.results, self.deviations = {}, {}, {}        # per solver: prepare()'s form, its Result, what it changes
         mode = 'preview' if settings.preview else ('antenna' if self.antenna else 'S-parameters')
         self.summary = dict(name=self.name, version=__version__, mode=mode, command=command, solvers=list(self.plan),
                             created=datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), settings=settings.options(),
@@ -311,8 +329,15 @@ class Job:
         return True
 
     def prepare(self):
-        for name in self.plan + self.previewed:
-            self.prep[name] = registry()[name].prepare(self)
+        names = [n for n in registry() if n in self.plan + self.previewed]
+        for name in names:
+            sv = registry()[name]
+            self.prep[name] = sv.prepare(self)
+            self.deviations[name] = devs = sv.deviations(self, self.prep[name])
+            if devs:
+                self.log(f"{name} changes: " + "; ".join(describe(devs)))
+        self.summary['deviations'] = {n: [dataclasses.asdict(d) for d in ds] for n, ds in self.deviations.items()}
+        self.summary['saw'] = saw_table(self.m, self.s, names, self.deviations)
         if not any(self.summary['images'].get(k) for k in ('mesh', 'model')):     # no mesh preview: the model alone
             self.figure(preview(self.m, None, self.name), '_model.png', 'model', 'model')
 

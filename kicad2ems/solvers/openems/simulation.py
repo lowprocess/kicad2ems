@@ -20,12 +20,16 @@ def _fl(v):
 
 
 def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=None, max_steps=1_000_000,
-               dumps=(), diel='fixed', diel_fref=1e9, exc_fmax=None):
+               dumps=(), diel='fixed', diel_fref=1e9, exc_fmax=None, api=None):
     """diel: 'fixed' (loss as a conductivity fitted at the band centre) or 'wideband' (Djordjevic-Sarkar
     model matched at diel_fref Hz, as Debye poles; see dielectric.py). exc_fmax: upper edge of the
-    Gaussian excitation (default fmax; antenna runs extend it, see antenna.py)."""
-    from CSXCAD import ContinuousStructure
-    from openEMS import openEMS
+    Gaussian excitation (default fmax; antenna runs extend it, see antenna.py). api: (ContinuousStructure,
+    openEMS) classes to build with instead of CSXCAD's and openEMS's (readback.py records the calls)."""
+    if api is None:
+        from CSXCAD import ContinuousStructure
+        from openEMS import openEMS
+    else:
+        ContinuousStructure, openEMS = api
     FDTD = openEMS(NrTS=int(max_steps), EndCriteria=_f(10 ** (end_db / 10)))
     fe = fmax if exc_fmax is None else exc_fmax
     f0, fc = _f(0.5 * (fmin + fe)), _f(0.5 * (fe - fmin) * 1.05)

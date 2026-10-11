@@ -105,6 +105,8 @@ def test_mom_alone_builds_no_openems_mesh(run_cli, tmp_path, monkeypatch):
         assert (out / f).exists(), f
     page = (out / 'filter_report.html').read_text()
     assert "id='mom25d'" in page and "id='mesh'" not in page and 'canned' in page
+    assert "id='saw'" in page and 'What each solver saw' in page                    # mom25d and the line model
+    assert sm['saw']['solvers'][0] == 'mom25d (MoM)' and any(d['item'] == 'outline' for d in sm['deviations']['mom25d'])
 
 
 def test_assess_named_and_reference(boards, run_cli, tmp_path, monkeypatch):

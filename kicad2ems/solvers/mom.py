@@ -11,7 +11,7 @@ import os
 import numpy as np
 
 from ..options import Option
-from . import Solver, Result
+from . import Solver, Result, Deviation
 
 G = 'mom25d'
 
@@ -89,6 +89,7 @@ class MoM25D(Solver):
     consumes, previewed, rank = 'board', False, 1
     capabilities = dict(ports='yes: lumped, or de-embedded wave ports on a long enough feed', gap_ports='no',
                         diff_pairs='yes', parts='yes: one series element across the gap',
+                        vias='yes: over the layers with metal at the via',
                         outline='ignored: laterally infinite dielectric', planes='yes: meshed (slow on plane-heavy boards)',
                         edge_walls='approximated: via rows every 0.5 mm', thickness='ignored: sheets',
                         conductor_loss='yes', dispersion='no: constant tan d', radiation='yes', cavity='no',
@@ -117,6 +118,69 @@ class MoM25D(Solver):
         if _solid_ground(m) is None:
             out.append("no solid ground plane (no copper layer covers half the board): set ground = <layer>")
         return out
+
+    # ---- what it changes, and what it holds -------------------------------------------------------------
+    WALL_PITCH, WALL_R = 0.5, 0.05                                  # mm: edge walls as via rows (mom25d.board)
+
+    def deviations(self, run, prep):
+        """What mom25d's planar model leaves out or changes, by the rules it states (mom25d.board): the ground is
+        an infinite plane, copper below it and the outline are left out, a via spans only the layers with metal
+        at it, edge walls are via rows, a part is one element across its gap bridged by a strip."""
+        from shapely.geometry import Point, box
+        from shapely.ops import unary_union
+        m, out = run.m, []
+        g = _solid_ground(m)
+        if g is None:
+            return out
+        zg = m.cu_z[g]
+        out.append(Deviation('outline', 'outline', 'ignored: laterally infinite dielectric'))
+        out.append(Deviation(f"copper:{g}", 'planes', 'the infinite ground plane (not meshed)', dropped=True))
+        out += [Deviation(f"copper:{l}", 'planes', 'below the ground: left out', dropped=True)
+                for l in m.copper if m.cu_z[l] < zg - 1e-9]
+        metal = {l: unary_union(m.copper[l]).buffer(1e-6) for l in m.copper if m.cu_z[l] > zg + 1e-9}
+
+        def span(x, y, z0, z1):
+            zs = [zg] * (z0 - 1e-9 <= zg <= z1 + 1e-9) + [m.cu_z[l] for l, cu in metal.items()
+                                                       if z0 - 1e-9 <= m.cu_z[l] <= z1 + 1e-9 and cu.contains(Point(x, y))]
+            return (min(zs), max(zs)) if len(set(zs)) >= 2 else None
+        for i, (x, y, r, z0, z1) in enumerate(m.vias):
+            s = span(x, y, z0, z1)
+            if s is None:
+                out.append(Deviation(f"via:{i}", 'vias', 'left out: metal on fewer than two layers at it', dropped=True))
+            elif abs(s[0] - z0) > 1e-9 or abs(s[1] - z1) > 1e-9:
+                out.append(Deviation(f"via:{i}", 'vias', 'spans only the layers with metal at it', to=[x, y, r, *s]))
+        for i, (axis, c, t0, t1, z0, z1) in enumerate(m.walls):
+            n = max(2, int(round((t1 - t0) / self.WALL_PITCH)) + 1)
+            pts = [(c, t) if axis == 'x' else (t, c) for t in np.linspace(t0, t1, n)]
+            add = [[x, y, self.WALL_R, *s] for x, y in pts for s in [span(x, y, z0, z1)] if s]
+            out.append(Deviation(f"wall:{i}", 'edge_walls', f"a row of {len(add)} vias every {self.WALL_PITCH:g} mm",
+                                 dropped=True, added=add))
+        for p in m.parts:
+            if p.layer not in metal:
+                out.append(Deviation(f"part:{p.ref}", 'parts', f"on {p.layer}, not above the ground: left out", dropped=True))
+                continue
+            before = unary_union(m.copper[p.layer])
+            strip = unary_union([before, box(*p.s[:2], *p.e[:2])]).area - before.area
+            short = [v for v in (p.R, p.L, p.C) if v is not None] == [0.0] and p.C is None
+            out.append(Deviation(f"part:{p.ref}", 'parts', 'a strip alone (0 ohm)' if short else
+                                 'one series element across the gap, bridged by a strip', to=0 if short else 1,
+                                 layer=p.layer, area=strip))
+        return out
+
+    def readback(self, run, prep):
+        """mom25d's planar model of the board (mom25d.board.BoardModel), in board terms."""
+        from mom25d.board import BoardModel
+        bm = BoardModel(run.m.to_dict(), log=lambda *a: None)
+        zk, lay = bm._zk, {k: l for l, k in bm.iface.items()}
+        ports = [leg['name'] for sp in bm.port_specs for leg in (sp['legs'].values() if 'legs' in sp else [sp])]
+        return dict(vias=[[v.x * 1e3, v.y * 1e3, v.a * 1e3, float(zk[v.k_bot]), float(zk[v.k_top])] for v in bm.vias],
+                    copper={lay[k]: sum(g.area for g in gs) * 1e6 for k, gs in bm.shapes.items() if k in lay},
+                    parts={e.name: 1 for e in bm.lumped}, ports=ports)
+
+    def prepare(self, run):
+        what = mom25d_status()[1]
+        if 'no compiled core' in what:                              # ~5x slower: say how to build it
+            run.log(f"note: mom25d {what}")
 
     def solve(self, run, prep):
         s = run.s

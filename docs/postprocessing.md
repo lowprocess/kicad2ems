@@ -103,6 +103,7 @@ and `--no-report` (runs before the solver plugins wrote it as `<name>_openems.js
 | `solved` | per solver (`openems`, `mom25d`, `qucs`, `scikit`): label, Touchstone file, seconds, port names, reference impedances, \|S\| table, what it reports of itself (mom25d: unknowns, EM solves, ports; openEMS: driven ports), and `compare` against `reference`, the first solver |
 | `results` | the first solver's: `reference` (its name), port names, reference impedances, excited ports, \|S\| table at the band edges and centre with extremes |
 | `runs` | openEMS, per driven port: seconds, timesteps, log file |
+| `deviations`, `saw` | per solver, what it declared changing (item, feature, what, how much); the *What each solver saw* table |
 | `antenna`, `convergence`, `dumps` | when they apply |
 | `images`, `files` | the plots and all output files |
 | `warnings`, `log`, `runtime_s` | every message |
@@ -119,7 +120,8 @@ gain in antenna mode; the convergence verdict; each solver's size and time), war
 copper, ports, parts, notes), the transmission-line sections, the mesh (statistics, preview,
 convergence levels; openEMS only), S-parameters (the first solver's plot with the others overlaid, and a
 table at the band edges and centre with minima and maxima), one section per solver (what it did, its
-file, its comparison with the first solver), antenna and convergence sections, field maps, the openEMS runs (time,
+file, its comparison with the first solver), *What each solver saw* (per feature of the board, each
+solver's capability and what it declared changing), antenna and convergence sections, field maps, the openEMS runs (time,
 steps, link to `openems.log`), the output files, all settings and the full log. Images are embedded
 (base64), so the page is one file; links to other outputs are relative. Styling is plain CSS with a dark
 variant (`prefers-color-scheme`).

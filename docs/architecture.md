@@ -82,6 +82,15 @@ by `--check`.
 | `prepare(job)` | its own form of the board, handed to `solve` |
 | `solve(job, prep)` | a `Result` |
 | `outputs(job, prep, result)` | its own extra outputs (optional) |
+| `deviations(job, prep)` | `[solvers.Deviation]`: what it models differently from the board, by its own rules (openEMS: vias moved onto the mesh, parts split, walls moved; mom25d: the ground plane, the outline, via spans, walls as via rows, parts as strips) |
+| `readback(job, prep)` | what its native model holds, in board terms (vias, walls, copper area per layer, part elements, ports): openEMS's from the calls `build_fdtd` makes (recorded by `solvers/openems/readback.py`, no openEMS needed), mom25d's from its `BoardModel` |
+
+**Parity.** A solver may approximate the board, but it must say so. `parity.check(board, readback,
+deviations)` lists every difference between the board and the solver's model that the solver did not
+declare; `tests/test_parity.py` requires none on the example boards and checks that an undeclared change
+(a via moved 0.1 mm) is caught. The declarations also make the report's *What each solver saw* table: per
+feature of the board, each solver's capability and what it changed, where to look first when two solvers
+disagree.
 
 The plugins: `solvers/openems/plugin.py` (`OpenEMS`), `solvers/mom.py` (`MoM25D`, over `mom25d.api.solve_board`),
 `solvers/lines/plugin.py` (`Qucs`, `Scikit`: the same network, two circuit solvers).

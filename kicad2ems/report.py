@@ -178,6 +178,19 @@ def _solver_section(sm, name, base):
     return txt
 
 
+def _saw_section(saw):
+    """Per feature of the board, what each solver models (its capability) and what it declared changing."""
+    def cell(c):
+        word, _, how = c['cap'].partition(':')
+        cls = {'yes': '', 'no': 'bad', 'ignored': 'meta'}.get(word.split(',')[0].strip(), '')
+        txt = f"<b class='{cls}'>{_e(word)}</b>" + (f" <span class='meta'>{_e(how.strip())}</span>" if how else '')
+        return txt + "".join(f"<br><span class='meta'>· {_e(d)}</span>" for d in c['deviations'])
+    rows = [[_e(r['feature'])] + [cell(c) for c in r['cells']] for r in saw['rows']]
+    return ("<p>Where two solvers disagree, look here first: what each one models of this board, and what it "
+            "declared changing on the way (the parity checks fail on anything a solver changes without saying "
+            "so).</p>" + _table([''] + saw['solvers'], rows))
+
+
 def _mesh_section(sm, g, st):
     """openEMS's mesh: cells, cell sizes, time step, boundaries, the preview, the convergence levels."""
     rows = [['cells', f"{g['nx']} × {g['ny']} × {g['nz']} = {g['cells']:,}"],
@@ -306,6 +319,8 @@ def build(sm, base):
         if res.get('compare_file'):
             content += f"<p class='meta'>Dashed: <code>{_e(res['compare_file'])}</code></p>"
         section('results', 'S-parameters', content)
+    if sm.get('saw') and len(sm['saw']['solvers']) > 1:
+        section('saw', 'What each solver saw', _saw_section(sm['saw']))
     for n in solved:
         section(n, solved[n]['label'], _solver_section(sm, n, base))
     if ant:
