@@ -4,18 +4,17 @@
 
 ## Install
 
-kicad2ems needs Python 3.10+, numpy, shapely and matplotlib (installed with the package). Each
-solver needs its own part ([solvers](usage.md#solvers)): openEMS with its Python bindings (`CSXCAD`,
-`openEMS`) for FDTD runs, the `mom25d/` submodule for MoM, scikit-rf (or Qucs-S's qucsator) for the line
-model. Everything except the FDTD run works without openEMS: model building, meshing, line sections,
-`--preview`, the report, and the MoM and line-model solvers.
+kicad2ems needs Python 3.10+, numpy, scipy, shapely, matplotlib and triangle (installed with the package,
+which includes the MoM solver mom25d). The other solvers need their own part ([solvers](usage.md#solvers)):
+openEMS with its Python bindings (`CSXCAD`, `openEMS`) for FDTD runs, scikit-rf (or Qucs-S's qucsator) for
+the line model. Everything except the FDTD run works without openEMS: model building, meshing, line
+sections, `--preview`, the report, and the MoM and line-model solvers.
 
 ```bash
-git submodule update --init         # mom25d/, if the clone was made without --recurse-submodules
-pip install .                       # from the repository
-pip install '.[fast]'               # + scikit-rf: the line model as a circuit (--solvers lines)
-pip install ./mom25d                # the MoM solver (--solvers mom); optional: python -m mom25d.core.build
+pip install .                       # from the repository: kicad2ems and mom25d
+pip install '.[fast]'               # + scikit-rf: the line model as a circuit (--solvers scikit)
 pip install '.[dumps]'              # + h5py, for frequency-domain field dumps
+python -m mom25d.core.build         # optional: mom25d's compiled core (~5x faster)
 ```
 
 mom25d runs on NumPy; its compiled core (`python -m mom25d.core.build`, needs g++ with OpenMP and

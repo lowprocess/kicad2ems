@@ -17,7 +17,7 @@ code. The [README](../README.md) is the landing page: install, a quick start and
 | 2 | [Usage and configuration](usage.md) | Command line, Settings and TOML files, every option, outputs, progress, `--events` |
 | 3 | [Architecture](architecture.md) | The run pipeline, the run summary, module map, the data passed between stages |
 | 4 | [KiCad import](kicad-import.md) | Reading `.kicad_pcb`: stackup, copper, graphics, pads, vias, outline, footprints, port fields |
-| 5 | [The 3D model](model.md) | `Model`: stack, copper, region cropping, vias, ports (vertical and gap), lumped parts, limits |
+| 5 | [The 3D model](model.md) | `Board` (`board.json`): stack, copper, region cropping, vias, ports (vertical and gap), lumped parts, limits |
 | 6 | [Meshing](meshing.md) | The automatic mesh rules, boundaries and air, time step, convergence levels, a validation on the transition demo |
 | 7 | [Transmission-line model](transmission-lines.md) | Line sections, cross-sections and Z0 formulas, paths, `--fast` S-parameters with scikit-rf or qucsator |
 | 8 | [Simulation](simulation.md) | openEMS setup: materials, excitation, run length, runs, `--jobs`, antenna runs |

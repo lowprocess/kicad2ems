@@ -22,7 +22,7 @@ edge. The pair spans `THIRDS_CELL · fine` = 2/3 `fine` (lines `2·fine/9` insid
 outside): with pairs a full `fine` apart, edges closer than about 1.5 `fine` (a trace end, the via pad
 round it, the antipad) gave lines within the merge distance of each other and too few survived - see
 the validation below. An edge counts as Manhattan if it drifts
-by at most `fine/10` across its axis (`mesh.manhattan`): the 2 µm simplification in `Model` can merge a
+by at most `fine/10` across its axis (`mesh.manhattan`): the 2 µm simplification in `Board` can merge a
 tiny jog into a long, very slightly oblique edge, and without the tolerance such edges got no
 thirds-rule lines (a 0.35 mm feed line ended up with one mesh line across it).
 

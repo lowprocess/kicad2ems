@@ -69,7 +69,7 @@ the same mesh on both sides; S at five frequencies across the band, no adaptive 
 | rf_gcpw | 22 of 38 vias where they are, not snapped to the FDTD mesh (moved up to 0.27 mm) | 6.5e-4 (wave ports, away from the vias) |
 | demo_transition | 22 of 23 vias where they are (moved up to 0.064 mm) | 2.0e-2 |
 | demo_lowpass / highpass / bandpass | each part with ESR / ESL one element, not openEMS 0.37's two halves (3 elements instead of 6), 12–16 fewer unknowns; two vias by 0.014 mm | 4.3e-2 / 1.0e-2 / 4.4e-2 |
-| sma_launch | 173 of 185 vias where they are (moved up to 0.30 mm) | 5.4e-2 for the whole run (S21 within 0.36 dB; 772 s on each path, 24 cores) |
+| sma_launch | 173 of 185 vias where they are (moved up to 0.30 mm); 7,714 unknowns instead of 8,671 (the mesh rings around the vias) | 5.4e-2 for the whole run (S21 within 0.36 dB) |
 
 A whole run with the adaptive sweep capped at 12 solves can differ much more (|ΔS| up to 1.4 on the
 stub notch): the sweep had not converged on either side, and an unconverged rational fit magnifies the

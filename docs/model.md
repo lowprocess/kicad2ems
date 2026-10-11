@@ -2,13 +2,18 @@
 
 [← KiCad import](kicad-import.md) · [Index](index.md) · [Next: Meshing →](meshing.md)
 
-`model.Model(board, nets, pos_file, include_mask, region, ground, parts)` turns a `KiCadBoard` into the
-geometry openEMS needs. Coordinates: mm, **y up** (`y = -y_kicad`), z = 0 at the bottom copper.
+`board.Board(raw, nets, pos_file, include_mask, region, ground, parts, ports, cut_ports, edge_walls)` turns an
+imported board (`KiCadBoard`, `GerberBoard`) into the canonical board every solver gets: physical intent only
+(nothing snapped to a mesh, split for a solver or fitted: the solvers do that, and declare it). Every run
+writes it as `<name>_board.json` (format `kicad2ems-board`, version 1), which is also accepted as the board
+of a later run and is what mom25d reads. Coordinates: mm, **y up** (`y = -y_kicad`), z = 0 at the bottom
+copper. `Board.summary()` gives the numbers the parity checks compare (stack, copper area per layer and net,
+vias, ports, parts, walls); `tests/golden/` holds them for every example.
 
 ## Stack
 
 The stackup is walked from the bottom up. Each dielectric (and solder mask with `--mask`) becomes a slab
-`(z0, z1, er, tand)` in `Model.layers`; each copper layer gets a height in `Model.cu_z`. Copper is a
+`(z0, z1, er, tand)` in `Board.layers`; each copper layer gets a height in `Board.cu_z`. Copper is a
 **zero-thickness sheet** at that height (its thickness `cu_t` is only used for `--sigma` and for the
 line model's Z0). Heights are rounded to 1e-6 mm so sheets land exactly on z mesh lines.
 
@@ -41,7 +46,7 @@ placed just inside the edge, pointing into the region, so the cut line ends in t
 instead of an open end (`region.cut_port_fps`; numbered after the other ports, source `cut (x, y)`).
 Signal nets are the selected nets except the ground nets (or the nets under the ports when every net is
 selected). A track crossing the edge at an angle gets no port (lumped ports run along x or y), with a
-note. The sides where the region cuts the board (`Model.cut_sides`) are closed with
+note. The sides where the region cuts the board (`Board.cut_sides`) are closed with
 [edge walls](meshing.md#edge-walls) that keep 2 mm clear of the signal copper
 (`board.CUT_KEEPOUT`), unless `--edge-walls` names sides itself: a cut through a plane pair leaves it
 open right at the port, and the open edge radiates (on the stripline below: 0.22 dB off without the
@@ -74,7 +79,7 @@ footprint there (1–8 GHz, default mesh):
 ## Vias
 
 Each via (and plated hole) on a selected net becomes a metal cylinder of the **drill** diameter between
-the lowest and highest copper layer it joins, if its centre is inside the outline. `Model.via_signal`
+the lowest and highest copper layer it joins, if its centre is inside the outline. `Board.via_signal`
 marks vias on the ports' nets; the mesher treats those more carefully.
 
 ## Ports
@@ -110,7 +115,7 @@ lumped elements.
 
 **Which footprints.** KiCad's simulation fields first: `Sim.Device` R / L / C with the value from
 `Sim.Params` (`c=1.5p`) or Value. Otherwise the reference prefix (`R12`, `L3`, `C7`) and the Value.
-Skipped, with a note in `Model.notes`: DNP / `exclude_from_sim` / `Sim.Enable = 0`, port footprints,
+Skipped, with a note in `Board.notes`: DNP / `exclude_from_sim` / `Sim.Enable = 0`, port footprints,
 values that don't parse (`tbd`), not exactly two copper pads, pads not on modelled copper (their nets
 must be in `--nets`), pads not in line along x or y, C = 0 (open).
 
@@ -137,7 +142,7 @@ openEMS is the third item of each piece.
 
 ## Pickling
 
-`Model.__getstate__` drops the parsed board and the log callable, so a model pickles small for the
+`Board.__getstate__` drops the parsed board and the log callable, so a model pickles small for the
 `--jobs` worker processes.
 
 ## What is not modelled

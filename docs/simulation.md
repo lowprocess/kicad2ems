@@ -2,7 +2,7 @@
 
 [← Transmission-line model](transmission-lines.md) · [Index](index.md) · [Next: Post-processing and outputs →](postprocessing.md)
 
-`simulation.py` turns a `Model` and a mesh into an openEMS simulation and runs it; `antenna.py` adds the
+`simulation.py` turns a `Board` and a mesh into an openEMS simulation and runs it; `antenna.py` adds the
 far field for antenna mode. openEMS / CSXCAD are imported only inside these functions.
 
 ## Building the model: `build_fdtd`
