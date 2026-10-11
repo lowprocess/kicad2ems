@@ -336,7 +336,7 @@ class Job:
         for n, sv in reg.items():
             if sv.consumes != 'board' or named_fw:
                 continue
-            ok, what = sv.check(s)
+            ok, what = sv.check(s) if not (s.preview and sv.previewed) else (True, '')   # a preview only prepares it
             why = [] if ok else [f"cannot run: {what}"]
             why = why or sv.assess(self)
             if not why:

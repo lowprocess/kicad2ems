@@ -142,7 +142,7 @@ def test_sma_launch_example_line_model():
     """examples/sma_launch: the drawn taper in the connector footprint widens the line, and the line
     model stays close to the openEMS reference over 1-6 GHz."""
     import numpy as np
-    import skrf as rf
+    rf = pytest.importorskip('skrf')
     from kicad2ems.importers.kicad import KiCadBoard
     from kicad2ems.board import Board
     from kicad2ems.solvers.lines.tlines import build
