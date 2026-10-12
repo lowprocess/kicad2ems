@@ -209,6 +209,7 @@ dmax    = 0.4
 | `<name>.xml` | openEMS's geometry, for AppCSXCAD |
 | `<name>_antenna.png`, `_pattern.png`, `_antenna.json` | antenna results |
 | `<name>_converge.png` | the mesh convergence check |
+| `<name>_mesh_<solver>.npz` | each solver's mesh for the GUI's 3D view: openEMS's grid lines, mom25d's and EMerge's surface triangles (written by a preview too) |
 | `<name>_<port>_<dump>_<GHz>GHz.png` (`.gif`, `.mp4`) | field dump images and animations |
 | `openems/exc_<port>/` | one openEMS run folder per driven port, with its log and dumps |
 | `mom25d/exc_<port>/` | mom25d's current dumps |

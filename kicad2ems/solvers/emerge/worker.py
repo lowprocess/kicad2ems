@@ -8,7 +8,8 @@ needs EMerge and nothing of kicad2ems.
 job.json: board (path), freqs (Hz, the frequencies to solve), out (path of the result JSON), res (EMerge's
 resolution, a fraction of the wavelength), cell (mm, the mesh size along copper edges), margin (mm of air
 on every side), bc ('abc' absorbing or 'pec' a closed metal box), workers, dense (Hz: the run's frequencies,
-where EMerge's rational fit gives S). Progress lines start with 'K2E '.
+where EMerge's rational fit gives S), mesh (a path: the element faces on the copper, ports and parts, for the
+3D view, kicad2ems.meshes), mesh_only (stop there). Progress lines start with 'K2E '.
 
 The model (the board's own rules, docs/model.md): each dielectric a box over the outline's bounding box,
 copper as zero-thickness PEC sheets (holes cut out), vias as PEC cylinders, each port a lumped port from the
@@ -109,6 +110,19 @@ def main(path):
         model.mesher.set_face_size(plate, min(job['cell'] * MM / 2, (w * h / 50) ** 0.5))
     model.generate_mesh()
     say(f"mesh {model.mesh.n_tets} tetrahedra, {time.time() - t0:.1f} s")
+    if job.get('mesh'):                                             # the 3D view's: element faces on copper, ports, parts
+        surf = [traces] + ports + [plate for plate, *_ in elements]
+        tags = sorted({t for g in surf for t in getattr(g, 'tags', [])})
+        tri = np.unique(np.concatenate([np.asarray(model.mesh.get_triangles([t]), int) for t in tags
+                                        if t in model.mesh.ftag_to_tri]))
+        corners = np.asarray(model.mesh.tris)[:, tri].T                # (m, 3) node indices
+        used, inv = np.unique(corners, return_inverse=True)
+        nodes = np.asarray(model.mesh.nodes)[:, used].T / MM          # model mm, z from the bottom copper
+        nodes[:, 2] += T
+        np.savez_compressed(job['mesh'], kind='tris', nodes=nodes, tris=inv.reshape(-1, 3), tets=int(model.mesh.n_tets))
+        if job.get('mesh_only'):
+            say("mesh written")
+            return
     for i, (pp, p) in enumerate(zip(ports, b['ports'])):
         model.mw.bc.LumpedPort(pp, i + 1, Z0=p['z0'])
     for plate, func, w, h, ref in elements:

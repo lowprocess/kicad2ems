@@ -107,7 +107,11 @@ def test_run_panel_plots_the_mom25d_sweep():
     assert xs == [6, 7, 8] and abs(ys[-1] + 60) < 1e-9                         # 1e-3: -60 dB
     assert rt.hist['mom25d prediction error'][0] == [7, 8]                       # the first has none
     assert rt._tol is not None and abs(rt._tol.value() - 20 * math.log10(5e-3)) < 1e-9
-    assert rt.plot.getPlotItem().getAxis('bottom').labelText == 'EM solve'
+    assert not rt.sweep.isHidden() and rt.plot.isHidden()                       # mom25d alone: its plot alone
+    rt.status(dict(run='P1', step=1000, db=-10.0, fraction=0.1))                # openEMS too: both, one above the other
+    assert not rt.sweep.isHidden() and not rt.plot.isHidden() and 'P1' in rt.curves
+    rt.reset()
+    assert rt.sweep.isHidden() and not rt.plot.isHidden() and not rt.curves
     w.close()
     app.processEvents()
 

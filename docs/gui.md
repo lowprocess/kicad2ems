@@ -26,7 +26,7 @@ Panels open by themselves when a preview or run produces something for them:
 | Line model | the transmission-line sections |
 | Run | progress per driven port; openEMS's energy decay and mom25d's adaptive sweep (its model change and prediction error per solve, in dB, against its tolerance); the log, and *Stop* |
 | Fields | 2D field dumps: cuts, playback, export ([below](#fields)) |
-| 3D fields | volume dumps in a 3D view ([below](#fields3d)) |
+| 3D fields | the board in 3D, with a solver's mesh over it (*Mesh*: openEMS's grid, mom25d's triangles or EMerge's element faces, after a preview or a run), and volume dumps ([below](#fields3d)) |
 | Antenna | antenna results ([below](#antenna)) |
 | Convergence | the mesh convergence check |
 | System | the solvers available here, the GPU, and the memory in use; after a preview, each solver's estimated time and memory for the board |

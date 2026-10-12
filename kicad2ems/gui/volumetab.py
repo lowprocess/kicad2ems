@@ -82,6 +82,7 @@ class VolumeTab(QWidget):
     def __init__(self, win=None):
         super().__init__()
         self.win, self.srcs, self.src, self.vol, self.items = win, [], None, None, {}
+        self.board, self.mesh_files = None, {}                      # <name>_board.json's geometry; meshes.find()
         self._frames, self._key, self.k = [], None, 0
         lay = QHBoxLayout(self)
         self.gl, why = gl_module()
@@ -140,11 +141,14 @@ class VolumeTab(QWidget):
         self._cu_t_auto = True
         self.boxc = QCheckBox('board box and vias')
         self.boxc.setChecked(True)
+        self.mesh = QComboBox()
+        self.mesh.setToolTip("a solver's discretisation of the board (written by a preview or a run): openEMS's "
+                             "grid lines, mom25d's triangles, EMerge's element faces on the copper and ports")
         for label, w in (('Dump', self.dump), ('Frame', self.frame), ('Show', self.comp), ('Colours', self.cmap),
                          ('', self.envelope),
                          ('', self.log), ('Decades', self.decades), ('Range top', self.clip), ('Opacity', self.opacity),
                          ('Fade (gamma)', self.gamma), ('Height scale', self.zscale), ('Resolution', self.res),
-                         ('', self.copper), ('Copper shown', self.cu_t), ('', self.boxc)):
+                         ('', self.copper), ('Copper shown', self.cu_t), ('', self.boxc), ('Mesh', self.mesh)):
             form.addRow(label, w)
         side.addLayout(form)
         self.play_btn = QPushButton('Play')
@@ -185,6 +189,7 @@ class VolumeTab(QWidget):
         for w in (self.envelope, self.log, self.copper, self.boxc):
             w.toggled.connect(self._recolour)
         self.cu_t.valueChanged.connect(self._cu_t_set)
+        self.mesh.currentIndexChanged.connect(lambda *_: self._board())
         for w in (self.decades, self.zscale, self.clip):
             w.valueChanged.connect(self._recolour)
         for w in (self.opacity, self.gamma):
@@ -200,20 +205,51 @@ class VolumeTab(QWidget):
             self._show(self.k)
             self._board()
 
+    @property
+    def geometry(self):
+        """The board drawn: the dump's geometry, else the folder's <name>_board.json."""
+        return self.src.geometry if self.src is not None else self.board
+
     # ---- data ----
     def load(self, out_dir):
-        """The volume dumps of a results folder (False: none, or no OpenGL)."""
+        """A results folder: its volume dumps, its board and the solvers' meshes (a preview writes those). False:
+        nothing to show, or no OpenGL."""
         if self.gl is None:
             return False
+        import glob
         from ..solvers.openems.fields import find_dumps
+        from .. import meshes
         self.srcs = [s for s in find_dumps(out_dir) if v3.is_volume(s)]
+        boards = sorted(glob.glob(os.path.join(out_dir, '*_board.json')), key=os.path.getmtime)
+        try:
+            self.board = v3.geometry_from_board(boards[-1]) if boards else None
+        except (OSError, ValueError, KeyError):
+            self.board = None
+        self.mesh_files = meshes.find(out_dir)
+        keep = self.mesh.currentData()
+        self.mesh.blockSignals(True)
+        self.mesh.clear()
+        self.mesh.addItem('none', None)
+        for solver, path in self.mesh_files.items():
+            self.mesh.addItem(f"{meshes.LABELS.get(solver, solver)}: {meshes.counts(path)}", solver)
+        i = self.mesh.findData(keep)
+        self.mesh.setCurrentIndex(max(i, 0))
+        self.mesh.blockSignals(False)
         self.dump.blockSignals(True)
         self.dump.clear()
         self.dump.addItems([s.label for s in self.srcs])
         self.dump.blockSignals(False)
         if self.srcs:
             self._pick()
-        return bool(self.srcs)
+        else:                                                       # the board alone, and its meshes
+            self.src, self.vol, self._frames = None, None, []
+            for key in list(self.items):
+                self.view.removeItem(self.items.pop(key))
+            self._auto_cu_t()
+            self._board()
+            self.reset_camera()
+            self.status.setText('no volume dumps: the board' + (' and the solvers\' meshes' if self.mesh_files else ''))
+        return bool(self.srcs or (self.board and self.mesh_files))
 
     def _pick(self, *_):
         i = self.dump.currentIndex()
@@ -286,9 +322,9 @@ class VolumeTab(QWidget):
         gl, zs = self.gl, self.zscale.value()
         for key in [k for k in self.items if k != 'vol']:
             self.view.removeItem(self.items.pop(key))
-        if self.src is None:
+        g = self.geometry
+        if g is None:
             return
-        g = self.src.geometry
         if self.copper.isChecked():
             shown = self.cu_t.value()                               # on screen: the slab before the height scale
             t = shown / zs
@@ -336,6 +372,20 @@ class VolumeTab(QWidget):
                 ln.setDepthValue(-20)
                 self.view.addItem(ln)
                 self.items['vias'] = ln
+        solver = self.mesh.currentData()
+        if solver and solver in self.mesh_files:                    # a solver's mesh as lines over the board
+            from .. import meshes
+            b = v3.board_box(g)
+            seg = meshes.segments(self.mesh_files[solver], box=b, planes=sorted(set((g.get('cu_z') or {}).values())))
+            if len(seg):
+                seg = seg.copy()
+                seg[:, 2] *= zs
+                colour = dict(openems=(0.1, 0.3, 0.7, 0.55), mom25d=(0.1, 0.5, 0.2, 0.7),
+                              emerge=(0.55, 0.15, 0.55, 0.7)).get(solver, (0.2, 0.2, 0.2, 0.6))
+                ln = gl.GLLinePlotItem(pos=seg.astype(np.float32), mode='lines', color=colour, width=1, antialias=True)
+                ln.setDepthValue(-1)
+                self.view.addItem(ln)
+                self.items['mesh'] = ln
 
     def _cu_t_set(self, *_):
         self._cu_t_auto = False
@@ -343,7 +393,7 @@ class VolumeTab(QWidget):
 
     def _auto_cu_t(self):
         """The copper's shown thickness for a board: 0.6 % of its larger side (a 32 mm board: 0.2 mm)."""
-        b = v3.board_box(self.src.geometry) if self.src is not None else None
+        b = v3.board_box(self.geometry) if self.geometry is not None else None
         if b is None or not self._cu_t_auto:
             return
         self.cu_t.blockSignals(True)
@@ -351,11 +401,15 @@ class VolumeTab(QWidget):
         self.cu_t.blockSignals(False)
 
     def reset_camera(self):
-        if self.vol is None:
-            return
         zs = self.zscale.value()
-        lo = self.vol.origin
-        hi = lo + self.vol.step * (np.array(self.vol.data.shape[:3]) - 1)
+        if self.vol is not None:
+            lo = self.vol.origin
+            hi = lo + self.vol.step * (np.array(self.vol.data.shape[:3]) - 1)
+        elif self.geometry is not None and v3.board_box(self.geometry) is not None:
+            x0, y0, x1, y1, z0, z1 = v3.board_box(self.geometry)
+            lo, hi = np.array([x0, y0, z0]), np.array([x1, y1, z1])
+        else:
+            return
         c = 0.5 * (lo + hi)
         from PySide6.QtGui import QVector3D
         self.view.setCameraPosition(pos=QVector3D(c[0], c[1], c[2] * zs), distance=1.6 * max(hi[:2] - lo[:2]),

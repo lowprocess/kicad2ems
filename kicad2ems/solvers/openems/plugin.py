@@ -218,6 +218,8 @@ class OpenEMS(Solver):
                 g['walls'] = snap(m.walls, g)
                 g['info']['edge_walls'] = describe(m.walls, m).split(': ', 1)[1]
         run.summary['mesh'] = p.grid['info']
+        from ...meshes import save
+        run.wrote('openEMS grid (3D view)', save(run, 'openems', 'grid', x=p.grid['x'], y=p.grid['y'], z=p.grid['z']))
         cavity_check(m, p.grid, p.bc, run.fmax, log=run.log)
         p.dumps = [parse_dump(sp, m, p.grid) for sp in s.dump]     # validated before any run
         for d in p.dumps:

@@ -93,6 +93,19 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
     return S, names, zref, info
 
 
+def save_mesh(run, sim, model):
+    """mom25d's triangles for the 3D view (meshes.py): each meshed layer at its copper's height."""
+    from ..meshes import save
+    lay = {k: l for l, k in model.iface.items()}
+    z = np.array([run.m.cu_z.get(lay.get(int(k)), np.nan) for k in sim.tri_layer])
+    tris = np.asarray(sim.rwg.tris)
+    keep = np.isfinite(z)
+    nz = np.zeros(len(sim.rwg.nodes))                               # each layer is meshed on its own: no shared nodes
+    nz[tris[keep].ravel()] = np.repeat(z[keep], 3)
+    nodes = np.column_stack([sim.rwg.nodes[:, :2] * 1e3, nz])
+    run.wrote('mom25d mesh (3D view)', save(run, 'mom25d', 'tris', nodes=nodes, tris=tris[keep]))
+
+
 HOW = {'dense': 'dense, NumPy', 'double': 'direct LU in double on the CPU',
        'hybrid': 'complex64 LU on the GPU, double refinement on the host', 'tiled': 'tiled L L^T on the GPU',
        'gpu-lu': 'complex64 LU on the GPU, matrix-free refinement', 'cpu-mixed': 'complex64 LU on the CPU',
@@ -244,6 +257,16 @@ class MoM25D(Solver):
         what = mom25d_status()[1]
         if 'no compiled core' in what:                              # ~5x slower: say how to build it
             run.log(f"note: mom25d {what}")
+        if run.s.preview and mom25d_status()[0]:                   # the mesh alone, for the 3D view
+            from mom25d.board import BoardModel
+            s = run.s
+            bm = BoardModel(run.m.to_dict(), port='via' if s.mom_port == 'lumped' else s.mom_port, log=lambda *a: None)
+            dmax = s.mom_dmax * 1e-3
+            planes = {k: 3 * dmax for k, gs in bm.shapes.items() if sum(g.area for g in gs) > 0.5 * bm.outline_area}
+            sim = bm.simulation(dmax=dmax, dmax_layer=planes, fmin=run.fmin, fmax=run.fmax, characterize=False,
+                                verbose=False, wave_down_to=run.fmin, mesh_only=True,
+                                mesher='gmsh' if s.mom_mesher == 'gmsh' else 'auto')
+            save_mesh(run, sim, bm)
 
     def solve(self, run, prep):
         s = run.s
@@ -271,6 +294,8 @@ class MoM25D(Solver):
 
     def outputs(self, run, prep, res):
         held = getattr(self, '_held', {}).get('res')
+        if held is not None:
+            save_mesh(run, held.sim, held.model)
         if run.antenna and held is not None:
             self._antenna(run, held, res)
         self._dumps(run, held)

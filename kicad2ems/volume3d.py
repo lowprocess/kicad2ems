@@ -200,6 +200,20 @@ def board_box(geometry):
     return (*ol.min(0), *ol.max(0), min(zs, default=0.0), max(zs, default=geometry.get('thickness', 1.6)))
 
 
+def geometry_from_board(path):
+    """A <name>_board.json as the geometry the dumps carry (copper rings per layer, cu_z, vias, outline,
+    thickness, model mm): the 3D view's board without a dump."""
+    import json
+    b = json.load(open(path))
+    rings = lambda g: [g['coordinates']] if g['type'] == 'Polygon' else g['coordinates']
+    copper = {lay: [poly for it in items for poly in rings(it['polygon'])] for lay, items in b['copper'].items()}
+    ol = b['outline']
+    outline = (rings(ol)[0][0] if ol else [])
+    return dict(copper=copper, cu_z={c['name']: c['z'] for c in b['stack']['copper']},
+                vias=[[v['x'], v['y'], v['r'], v['z0'], v['z1']] for v in b['vias']], outline=outline,
+                thickness=b['stack']['thickness'])
+
+
 def is_volume(src):
     """Is a dump a volume (more than one point along every axis)?"""
     try:

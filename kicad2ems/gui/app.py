@@ -307,12 +307,21 @@ class RunTab(QWidget):
         self.bars_box = QVBoxLayout()
         lay.addLayout(self.bars_box)
         self.bars, self.curves, self.hist, self._tol = {}, {}, {}, None
-        self.plot = pg.PlotWidget(title="convergence: openEMS's energy decay, mom25d's adaptive sweep")
+        plots = QVBoxLayout()                                       # one plot per kind of run: their x differ
+        self.plot = pg.PlotWidget(title='openEMS: field energy / port signal decay')
         self.plot.setLabel('bottom', 'timestep')
         self.plot.setLabel('left', 'dB')
         self.plot.addLegend()
         self.plot.showGrid(x=True, y=True, alpha=0.3)
-        lay.addWidget(self.plot, 2)
+        self.sweep = pg.PlotWidget(title="mom25d: the adaptive sweep's model change (max |dS|)")
+        self.sweep.setLabel('bottom', 'EM solve')
+        self.sweep.setLabel('left', 'dB')
+        self.sweep.addLegend()
+        self.sweep.showGrid(x=True, y=True, alpha=0.3)
+        self.sweep.hide()
+        plots.addWidget(self.plot, 1)
+        plots.addWidget(self.sweep, 1)
+        lay.addLayout(plots, 2)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(5000)
@@ -323,9 +332,11 @@ class RunTab(QWidget):
             b.deleteLater()
         self.bars, self.hist = {}, {}
         self.plot.clear()
+        self.sweep.clear()
         self.curves = {}
         self._tol = None
-        self.plot.setLabel('bottom', 'timestep')
+        self.plot.show()
+        self.sweep.hide()
         self.log.clear()
 
     def _sweep(self, run, ev):
@@ -338,7 +349,7 @@ class RunTab(QWidget):
             name = f"{run} {label}"
             if name not in self.curves:
                 pen = pg.mkPen(COLORS[len(self.curves) % len(COLORS)], width=2, style=style)
-                self.curves[name] = self.plot.plot([], [], pen=pen, symbol='o', symbolSize=5, name=name)
+                self.curves[name] = self.sweep.plot([], [], pen=pen, symbol='o', symbolSize=5, name=name)
                 self.hist[name] = ([], [])
             if v is not None and math.isfinite(float(v)):
                 xs, ys = self.hist[name]
@@ -348,10 +359,16 @@ class RunTab(QWidget):
         if ev.get('tol') and self._tol is None:
             self._tol = pg.InfiniteLine(pos=db(ev['tol']), angle=0, pen=pg.mkPen('#c0392b', width=1, style=Qt.DotLine),
                                         label=f"tolerance {ev['tol']:g}", labelOpts=dict(position=0.08, color='#c0392b'))
-            self.plot.addItem(self._tol)
-        steps = any(not k.endswith(('model change', 'prediction error')) and self.hist.get(k, ([], []))[0]
-                    for k in self.curves)
-        self.plot.setLabel('bottom', 'timestep (openEMS) / EM solve (mom25d)' if steps else 'EM solve')
+            self.sweep.addItem(self._tol)
+        self._layout()
+
+    def _layout(self):
+        """The plots with something in them: openEMS's energy (timesteps) and mom25d's sweep (EM solves) one
+        above the other when both run; the energy plot alone while nothing has come in."""
+        sweep = any(k.endswith(('model change', 'prediction error')) for k in self.curves)
+        energy = any(not k.endswith(('model change', 'prediction error')) for k in self.curves)
+        self.sweep.setVisible(sweep)
+        self.plot.setVisible(energy or not sweep)
 
     def status(self, ev):
         run = ev.get('run', '?')
@@ -376,6 +393,7 @@ class RunTab(QWidget):
                 pen = pg.mkPen(COLORS[len(self.curves) % len(COLORS)], width=2)
                 self.curves[run] = self.plot.plot([], [], pen=pen, name=run)
                 self.hist[run] = ([], [])
+                self._layout()
             xs, ys = self.hist[run]
             xs.append(ev['step'])
             ys.append(db)
@@ -775,12 +793,12 @@ class MainWindow(QMainWindow):
             self.show_panel('S-parameters', front=False)
         self.acts['Report'].setEnabled(bool(self.results.report))
         front = 'S-parameters' if has_s else (shown[0] if shown else 'Run')
+        if self.volume.load(self.current.out):                      # dumps, or the board and the solvers' meshes
+            self.show_panel('3D fields', front=False)
         if not self.current.preview:
             self.fields.load(self.current.out)
             if self.fields.srcs:
                 self.show_panel('Fields', front=False)
-            if self.volume.load(self.current.out):
-                self.show_panel('3D fields', front=False)
             ant = self.antenna.load(self.current.out)
             if ant:
                 self.show_panel('Antenna', front=False)

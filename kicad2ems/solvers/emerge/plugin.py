@@ -102,7 +102,7 @@ class EMerge(Solver):
     def estimate(self, run):
         return None
 
-    def solve(self, run, prep):
+    def _job(self, run, mesh_only=False):
         s, m = run.s, run.m
         board = run.path('_board.json')
         if not os.path.exists(board):
@@ -114,14 +114,18 @@ class EMerge(Solver):
         job = dict(board=os.path.abspath(board), freqs=fs.tolist(), dense=list(map(float, run.freq)),
                    parts=[pad_span(m, pt) for pt in m.parts], bottom_plane=bottom_is_plane(m),
                    out=os.path.join(work, 'result.json'), res=s.emerge_res, cell=cell, margin=s.emerge_margin,
-                   bc=s.emerge_bc, workers=max(1, s.emerge_workers))
+                   bc=s.emerge_bc, workers=max(1, s.emerge_workers), mesh=os.path.abspath(run.path('_mesh_emerge.npz')),
+                   mesh_only=mesh_only)
         jp = os.path.join(work, 'job.json')
         json.dump(job, open(jp, 'w'), indent=1)
-        if os.path.exists(job['out']):
-            os.remove(job['out'])
-        py = shutil.which(emerge_python(s)) or emerge_python(s)
-        run.log(f"EMerge: {len(fs)} frequencies, cells {cell:.3g} mm along copper, resolution {s.emerge_res:g} "
-                f"wavelengths, {s.emerge_bc.upper()} boundary {s.emerge_margin:g} mm out")
+        for f in (job['out'], job['mesh']):
+            if os.path.exists(f):
+                os.remove(f)
+        return job, jp, work
+
+    def _worker(self, run, jp, work):
+        """worker.py with EMerge's Python: its progress into the log; an error (or a stop request) raises."""
+        py = shutil.which(emerge_python(run.s)) or emerge_python(run.s)
         t0 = time.time()
         logf = open(os.path.join(work, 'emerge.log'), 'w')
         env = dict(os.environ, PYTHONPATH='')                         # EMerge's own environment
@@ -145,9 +149,37 @@ class EMerge(Solver):
         if p.returncode in (-9, 137):
             raise RuntimeError(f"EMerge was killed, most likely out of memory: try a larger --emerge-cell or "
                                f"--emerge-res, or fewer --emerge-workers (log: {logf.name})")
-        if p.returncode or not os.path.exists(job['out']):
+        if p.returncode:
             err = next((l for l in reversed(tail) if l.strip()), '')
             raise RuntimeError(f"EMerge exited with code {p.returncode}: {err[-200:]} (log: {logf.name})")
+
+    def _wrote_mesh(self, run, job):
+        if os.path.exists(job['mesh']):
+            run.wrote('EMerge mesh (3D view)', job['mesh'])
+
+    def prepare(self, run):
+        """A preview: EMerge's mesh alone, for the 3D view (seconds; no solve)."""
+        if not run.s.preview or not self.check(run.s)[0]:
+            return None
+        job, jp, work = self._job(run, mesh_only=True)
+        try:
+            self._worker(run, jp, work)
+            self._wrote_mesh(run, job)
+        except RuntimeError as e:                                   # a preview goes on without it
+            run.log(f"WARNING: EMerge's mesh: {e}")
+        return None
+
+    def solve(self, run, prep):
+        s, m = run.s, run.m
+        job, jp, work = self._job(run)
+        cell, fs = job['cell'], job['freqs']
+        run.log(f"EMerge: {len(fs)} frequencies, cells {cell:.3g} mm along copper, resolution {s.emerge_res:g} "
+                f"wavelengths, {s.emerge_bc.upper()} boundary {s.emerge_margin:g} mm out")
+        t0 = time.time()
+        self._worker(run, jp, work)
+        self._wrote_mesh(run, job)
+        if not os.path.exists(job['out']):
+            raise RuntimeError(f"EMerge wrote no result (log: {os.path.join(work, 'emerge.log')})")
         r = json.load(open(job['out']))
         S = np.array(r['dense_re']) + 1j * np.array(r['dense_im']) if 'dense_re' in r else \
             _interp(np.array(r['f']), np.array(r['re']) + 1j * np.array(r['im']), run.freq)
