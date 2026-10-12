@@ -11,16 +11,6 @@ examples or benchmarks showed. Last updated 2026-10-12.
   meshes. Neither is fully converged, so the reference results are still uncertain at the 1 dB level.
   The cost is a few minutes per run; a converged reference would be worth one long run each.
 
-Settled:
-- **Wilkinson isolation** (`rf_wilkinson`): openEMS −18.5 dB was the resistor overlapping track copper that
-  reached into its gap, which openEMS's metal shortened (a 100 Ω resistor fed from the side measured 67 Ω).
-  The element now spans the copper-free gap: openEMS −33.2 dB, mom25d −38.7, the line model −35.7.
-- **Stopping on a static plateau** (low-pass, stub notch): the port criterion is converged there (stub
-  notch: |ΔS| < 1e-4 against 3M steps). The lumped filters' looser `end-db = -27` left 0.03 in |S| and is gone.
-- **Filter pass-band loss** (`filter`): it was openEMS's fixed dielectric model, whose loss is set at the
-  band centre. With `--diel wideband`, openEMS's pass-band peak is −5.28 dB against mom25d's −5.23 dB
-  (−6.52 dB with the fixed model), at four times the run time.
-
 ## 2. Line model
 
 - Coupled sections are microstrip only: the stripline half of `rf_diffvia` runs as two uncoupled lines.
