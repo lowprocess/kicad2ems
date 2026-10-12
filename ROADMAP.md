@@ -5,12 +5,6 @@ examples or benchmarks showed. Last updated 2026-10-12.
 
 ## 1. Open questions (correctness)
 
-- **Wilkinson isolation** (`rf_wilkinson`): openEMS gives S32 −18.5 dB at 2.4 GHz (its null shallow, at
-  2.6 GHz); mom25d −40 dB (at 0.3 and 0.15 mm cells) and the line model −35.7 dB. Ruled out: openEMS's
-  resistor (a 100 Ω resistor in series on a 50 Ω line gives −6.3 to −6.5 dB in all three solvers, along x
-  and y), openEMS's mesh (−17.5 dB at 2× finer), and its boundaries (−18.7 dB with PML and 15 mm of air).
-  An ESL would need about 3 nH to explain it in mom25d (1 nH: −27.6 dB). Next: compare the even- and
-  odd-mode responses of the two arms between the solvers, to find which mode differs.
 - **Coupler and grounded CPW: openEMS needs finer meshes than their configs had.** Coupler S31 at 2.4 GHz:
   −8.56, −9.21 and −9.93 dB at 1×, 1.5× and 3×, towards mom25d's −10.9 dB. Grounded CPW S11 at 5 GHz: −18.9
   and −26.1 dB at 1× and 2×, towards −31.4 dB. Their configs and reference results now use the 3× and 2×
@@ -18,6 +12,9 @@ examples or benchmarks showed. Last updated 2026-10-12.
   The cost is a few minutes per run; a converged reference would be worth one long run each.
 
 Settled:
+- **Wilkinson isolation** (`rf_wilkinson`): openEMS −18.5 dB was the resistor overlapping track copper that
+  reached into its gap, which openEMS's metal shortened (a 100 Ω resistor fed from the side measured 67 Ω).
+  The element now spans the copper-free gap: openEMS −33.2 dB, mom25d −38.7, the line model −35.7.
 - **Stopping on a static plateau** (low-pass, stub notch): the port criterion is converged there (stub
   notch: |ΔS| < 1e-4 against 3M steps). The lumped filters' looser `end-db = -27` left 0.03 in |S| and is gone.
 - **Filter pass-band loss** (`filter`): it was openEMS's fixed dielectric model, whose loss is set at the

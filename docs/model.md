@@ -78,7 +78,10 @@ have exactly two pads on modelled copper, or its pads aren't in line along x or 
 **Values** like `4p7`, `10k`, `1.2nH`, `0R5` and `100n 50V` are understood. The fields `sim.esr` and
 `sim.esl` add series resistance and inductance. 0 Ω is a metal strap.
 
-**Geometry.** The element fills the gap between the two pads, as wide as the narrower pad.
+**Geometry.** The element fills the copper-free gap between the two pads, as wide as the narrower pad. A
+track drawn to a pad's centre reaches into the gap with its copper, so the element starts where that copper
+ends. Overlapping copper shortened the element in openEMS: a 100 Ω resistor fed from the side measured
+67 Ω.
 
 **In openEMS** a series lumped element is unstable without a capacitor in it (see
 [maintenance](maintenance.md#series-rlc)). So an inductor is a parallel element with only L, and a part

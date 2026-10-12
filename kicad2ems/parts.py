@@ -115,6 +115,33 @@ def _kind_value(fp):
     return (mt.group(1), v) if v is not None else (None, f"value '{fp['value']}' not understood")
 
 
+def _copper_gap(board, layer, axis, e1, e2, cb, w):
+    """The copper-free part of the gap between a part's pads (e1, e2 along axis, the part's width w about cb):
+    tracks drawn to a pad's centre reach into the gap with their copper, so the element spans from where the
+    copper of each side ends. An element overlapping copper is shorter than drawn in openEMS (its metal
+    wins): a 100 ohm resistor fed from the side, the lines' copper 0.27 mm into a 1 mm gap, measured 67 ohm,
+    and the Wilkinson divider's isolation came out -18.5 dB instead of about -39."""
+    from shapely.geometry import box
+    from shapely.ops import unary_union
+    band = [0.0] * 4
+    band[axis], band[2 + axis] = e1, e2
+    band[1 - axis], band[3 - axis] = cb - w / 2, cb + w / 2
+    band = box(*band)
+    cu = unary_union(board.copper.get(layer, [])).intersection(band)
+    lo, hi = e1, e2
+    for piece in getattr(cu, 'geoms', [cu]):
+        if piece.is_empty or piece.area < 1e-9:
+            continue
+        a0, a1 = piece.bounds[axis], piece.bounds[2 + axis]
+        if a0 <= e1 + 1e-6 and a1 >= e2 - 1e-6:
+            return e1, e1                                       # bridged
+        if a0 <= e1 + 1e-6:
+            lo = max(lo, a1)
+        elif a1 >= e2 - 1e-6:
+            hi = min(hi, a0)
+    return lo, hi
+
+
 def find_parts(board):
     """Lumped parts among the footprints of a Board (board.Board: its primitives, model coordinates) that sit
     on its copper. Returns (parts, notes)."""
@@ -160,6 +187,10 @@ def find_parts(board):
         b = 1 - axis
         w = min(q.bounds[2 + b] - q.bounds[b] for q in g)
         cb = 0.5 * (c[0][b] + c[1][b])
+        e1, e2 = _copper_gap(board, lay, axis, e1, e2, cb, w)
+        if e2 - e1 <= 1e-6:
+            notes.append(f"part {ref} skipped: copper bridges the gap between its pads")
+            continue
         z = board.cu_z[lay]
         s, e = np.zeros(3), np.zeros(3)
         s[axis], e[axis] = e1, e2

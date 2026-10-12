@@ -39,7 +39,7 @@ and their configs (`rf_<name>.toml`) are in the repository, with openEMS results
 | Board | Result | openEMS | mom25d | line model |
 |---|---|---|---|---|
 | `rf_branchline`: 3 dB hybrid, 2.4 GHz | S21 / S31 | −3.77 / −3.34 dB | −3.57 / −3.39 dB | −3.46 / −3.38 dB |
-| `rf_wilkinson`: power divider with a 100 Ω resistor | S21, S22, S32 | −3.35, −18.6, −18.5 dB | −3.31, −20.0, −38.9 dB | −3.30, −18.4, −35.7 dB |
+| `rf_wilkinson`: power divider with a 100 Ω resistor | S21, S22, S32 | −3.35, −19.4, −33.2 dB | −3.31, −20.1, −38.7 dB | −3.30, −18.4, −35.7 dB |
 | `rf_steplpf`: stepped-impedance low-pass, 2 GHz | −3 dB frequency | 1.765 GHz | 1.765 GHz | 1.806 GHz |
 | `rf_stubnotch`: two open λ/4 stubs, 2.4 GHz | notch | 2.384 GHz | 2.411 GHz | 2.494 GHz |
 | `rf_gcpw`: grounded CPW with via fences | S11, S21 at 5 GHz | −26.1, −0.39 dB | −31.4, −0.31 dB | −21.0, −0.35 dB |
@@ -51,9 +51,9 @@ and their configs (`rf_<name>.toml`) are in the repository, with openEMS results
 
 Where the solvers disagree:
 
-- **Wilkinson isolation** is still open. openEMS's isolation null is shallow and at 2.6 GHz. Its resistor
-  checks out on its own (a series 100 Ω on a 50 Ω line agrees with the others within 0.2 dB), and neither a
-  finer mesh nor absorbing boundaries change it.
+- **Wilkinson isolation** was a modelling error, now fixed. The output tracks run to the resistor pads'
+  centres, so their copper reached 0.27 mm into the 1 mm gap, and in openEMS that copper shortened the
+  resistor to an effective 60 Ω or so (isolation −18.5 dB). The element now spans only the copper-free gap.
 - **Coupler and grounded CPW**: openEMS needs much finer meshes here than the defaults. The coupler's S31
   went −8.56, −9.21, −9.93 dB at 1×, 1.5× and 3× refinement, towards mom25d's −10.9 dB (which doesn't move
   between 0.3 and 0.1 mm cells). The grounded CPW's S11 went from −18.9 to −26.1 dB at 2×. Their configs now
