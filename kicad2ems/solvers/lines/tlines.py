@@ -925,9 +925,13 @@ def _direction_at(line, s):
 
 
 # ---- coupled lines -------------------------------------------------------------------------------
-COUPLE_H = 5.0          # parallel microstrip lines couple when their edge gap is at most this many h
-COUPLED_XS = ('microstrip',)
+COUPLE_H = 5.0          # parallel lines couple when their edge gap is at most this many h (striplines: the mean of
+COUPLED_XS = ('microstrip', 'stripline', 'offset stripline')   # the heights to the two planes)
 _COPY = ('xs', 'z0', 'eeff', 'z0_sheet', 'eeff_sheet', 'er', 'h', 's', 't', 'tand', 'offset')
+
+
+def _couple_h(e):
+    return e.h if isinstance(e.h, float) else 0.5 * (e.h[0] + e.h[1])
 
 
 def _straight(e):
@@ -967,9 +971,9 @@ def _split_at(e, ts, u):
 
 
 def _couple(lm, model):
-    """Parallel straight microstrip sections on one layer within COUPLE_H * h of each other: cut where
-    their overlaps start and end, and group the pieces side by side into coupled sections."""
-    from .coupled import coupled_microstrip
+    """Parallel straight sections of one cross-section (microstrip or stripline) on one layer within
+    COUPLE_H * h of each other: cut where their overlaps start and end, and group the pieces side by side
+    into coupled sections."""
     cand = [e for e in lm.elements if e.kind == 'trace' and e.xs in COUPLED_XS and e.length > 1e-3 and _straight(e)]
     if len(cand) < 2:
         return
@@ -994,7 +998,7 @@ def _couple(lm, model):
     pairs = []
     for i, e in enumerate(cand):
         for f in cand[i + 1:]:
-            if e.layer != f.layer:
+            if e.layer != f.layer or e.xs != f.xs or e.h != f.h:
                 continue
             da = abs(info[id(e)] - info[id(f)])
             if min(da, 180 - da) > 1.0:
@@ -1004,8 +1008,7 @@ def _couple(lm, model):
             a0, a1, ca = geom(e, u, n)
             b0, b1, cb = geom(f, u, n)
             gap = abs(ca - cb) - 0.5 * (e.w + f.w)
-            h = e.h if isinstance(e.h, float) else None
-            if h is None or gap <= 1e-4 or gap > COUPLE_H * h:
+            if gap <= 1e-4 or gap > COUPLE_H * _couple_h(e):
                 continue
             if min(a1, b1) - max(a0, b0) < max(0.2, gap):
                 continue
@@ -1044,15 +1047,16 @@ def _couple(lm, model):
             for c, pc in row[1:] + [(None, None)]:
                 prev = chain[-1][1]
                 gap = None if pc is None else (c - chain[-1][0]) - 0.5 * (prev.w + pc.w)
-                if pc is not None and 1e-4 < gap <= COUPLE_H * prev.h:
+                if pc is not None and prev.xs == pc.xs and prev.h == pc.h and 1e-4 < gap <= COUPLE_H * _couple_h(prev):
                     chain.append((c, pc))
                     continue
                 if len(chain) >= 2:
-                    _add_group(lm, chain, u, t0, coupled_microstrip)
+                    _add_group(lm, chain, u, t0)
                 chain = [(c, pc)] if pc is not None else []
 
 
-def _add_group(lm, chain, u, t0, coupled_microstrip):
+def _add_group(lm, chain, u, t0):
+    from .coupled import coupled
     gid = len(lm.groups)
     members, gaps = [], []
     for k, (c, e) in enumerate(chain):
@@ -1064,10 +1068,11 @@ def _add_group(lm, chain, u, t0, coupled_microstrip):
         if k:
             gaps.append((c - chain[k - 1][0]) - 0.5 * (e.w + chain[k - 1][1].w))
     e0 = chain[0][1]
-    g = dict(members=members, gaps=gaps, length=e0.length, h=e0.h, er=e0.er, tand=e0.tand, layer=e0.layer, pairs=[])
+    g = dict(members=members, gaps=gaps, length=e0.length, h=e0.h, er=e0.er, tand=e0.tand, layer=e0.layer, xs=e0.xs,
+             pairs=[])
     for k, gap in enumerate(gaps):
         wa, wb = members[k][0].w, members[k + 1][0].w
-        ze, zo, ee, eo = coupled_microstrip(0.5 * (wa + wb), gap, e0.h, e0.er)
+        ze, zo, ee, eo = coupled(e0.xs, 0.5 * (wa + wb), gap, e0.h, e0.er)
         g['pairs'].append(dict(gap=gap, ze=ze, zo=zo, eeff_e=ee, eeff_o=eo))
         cp = Element('coupling', members[k][1], members[k + 1][1], 0.0, layer=e0.layer, w=gap, net=e0.net,
                      label=f"coupled to the next line, gap {gap:.3g} mm",

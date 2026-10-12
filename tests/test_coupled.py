@@ -5,9 +5,9 @@ import numpy as np
 import pytest
 from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
-from kicad2ems.solvers.lines.coupled import coupled_microstrip, group_lc, mtl_s
+from kicad2ems.solvers.lines.coupled import coupled_microstrip, coupled_stripline, coupled_offset_stripline, group_lc, mtl_s
 from kicad2ems.solvers.lines.strips import shape_strips, rectilinear
-from kicad2ems.solvers.lines.tlines import microstrip, build
+from kicad2ems.solvers.lines.tlines import microstrip, stripline, offset_stripline, build
 from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.board import Board
 from kicad2ems.solvers.lines.fastsolve import solve, qucs_netlist, find_qucsator, read_qucs_dataset
@@ -30,6 +30,30 @@ def test_coupled_pair_bounds_the_single_line():
     assert zo < z < ze and eo < e < ee
     ze2, zo2, _, _ = coupled_microstrip(0.35, 3.0, 0.2, 4.4)               # far apart: both -> the single line
     assert abs(ze2 - z) < 0.02 * z and abs(zo2 - z) < 0.02 * z
+
+
+def test_coupled_stripline():
+    """Cohn's coupled striplines: the pair the differential via example was designed to (Zo 50 ohm), the single
+    line when far apart, and the offset pair from the centred ones like offset_stripline."""
+    ze, zo, ee, eo = coupled_stripline(0.15, 0.2, 0.4, 4.3)
+    z, _ = stripline(0.15, 0.4, 4.3)
+    assert zo < z < ze and ee == eo == 4.3
+    ze2, zo2, _, _ = coupled_stripline(0.15, 3.0, 0.4, 4.3)
+    assert abs(ze2 - z) < 2e-3 * z and abs(zo2 - z) < 2e-3 * z            # Wheeler against Cohn
+    assert coupled_offset_stripline(0.15, 0.2, 0.2, 0.2, 4.3)[:2] == pytest.approx((ze, zo))
+    assert coupled_offset_stripline(0.15, 0.2, 0.1, 0.3, 4.3)[1] < zo
+    C, Ca = group_lc([0.15, 0.15], [0.2], (0.2, 0.2), 4.3, 'stripline')
+    assert np.allclose(C, 4.3 * Ca)                                       # one dielectric: both modes at er
+
+
+def test_differential_via_couples_both_halves():
+    """rf_diffvia: the microstrip pair on F.Cu and the stripline pair on In2.Cu are both coupled sections, the
+    stripline one at its design odd-mode impedance."""
+    lm = build(Board(KiCadBoard(os.path.join(EX, 'rf_diffvia.kicad_pcb')), ground='B.Cu', log=lambda *a: None))
+    xs = {g['layer']: g['xs'] for g in lm.groups}
+    assert xs == {'F.Cu': 'microstrip', 'In2.Cu': 'stripline'}
+    zo = [p['zo'] for g in lm.groups if g['xs'] == 'stripline' for p in g['pairs']]
+    assert zo and all(abs(z - 50) < 1 for z in zo)
 
 
 def test_mtl_single_line_and_block_properties():

@@ -132,7 +132,7 @@ def group_s(g, freq):
     """S-parameters (nf, 2N, 2N) of a coupled section of the line model (coupled.py)."""
     from .coupled import group_lc, mtl_s
     widths = [e.w for e, _, _ in g['members']]
-    C, Ca = group_lc(widths, g['gaps'], g['h'], g['er'])
+    C, Ca = group_lc(widths, g['gaps'], g['h'], g['er'], g.get('xs', 'microstrip'))
     return mtl_s(C, Ca, g['er'], g['tand'] or 0.0, g['length'], freq)
 
 
@@ -198,8 +198,9 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
     """The line model as a qucsator netlist (S-parameter sweep over freq). Microstrip lines, corners,
     steps, tees, crosses, open ends, end gaps and vias to ground use qucsator's microstrip models
     (MLIN, MCORN, MSTEP, MTEE, MCROSS, MOPEN, MGAP, MVIA), grounded CPW its coplanar ones (CLIN, CSTEP,
-    COPEN, CGAP), a coupled pair MCOUPLED; three or more coupled lines, or a pair of unequal widths,
-    are a multiconductor block (coupled.py) written to `workdir` as Touchstone and read with SPfile."""
+    COPEN, CGAP), a coupled microstrip pair MCOUPLED; three or more coupled lines, a pair of unequal
+    widths or coupled striplines are a multiconductor block (coupled.py) written to `workdir` as
+    Touchstone and read with SPfile."""
     ids = {}
 
     def node(n):
@@ -315,7 +316,7 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
         nodes_far = [end(e, 0 if far == e.a else 1) for e, near, far in mem]
         e0 = mem[0][0]
         ws = [e.w for e, _, _ in mem]
-        if len(mem) == 2 and abs(ws[0] - ws[1]) <= 0.05 * max(ws):
+        if g.get('xs', 'microstrip') == 'microstrip' and len(mem) == 2 and abs(ws[0] - ws[1]) <= 0.05 * max(ws):
             L.append(f'MCOUPLED:G{gid} {nodes_near[0]} {nodes_far[0]} {nodes_far[1]} {nodes_near[1]} Subst="{sub(e0)}" '
                      f'W="{0.5 * (ws[0] + ws[1]) * 1e-3:.6g}" S="{g["gaps"][0] * 1e-3:.6g}" L="{g["length"] * 1e-3:.6g}" '
                      f'Model="Kirschning" DispModel="Kirschning"')

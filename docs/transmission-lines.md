@@ -21,10 +21,11 @@ net.
 | part | a lumped R/L/C part, in series or to ground ([details](model.md#lumped-parts)) |
 
 <a id="coupled"></a>
-**Coupled sections.** Straight, parallel microstrip sections on one layer within 5 substrate heights of
-each other become a coupled section: hairpin and interdigital filter fingers, differential pairs. Each
-neighbouring pair gets even- and odd-mode impedances (Kirschning & Jansen). Lines further apart than the
-nearest neighbour aren't coupled.
+**Coupled sections.** Straight, parallel sections of one cross-section on one layer within 5 substrate
+heights of each other become a coupled section: hairpin and interdigital filter fingers, differential
+pairs. Each neighbouring pair gets even- and odd-mode impedances: Kirschning & Jansen for microstrip,
+Cohn's exact zero-thickness formula for stripline (an offset stripline combines the two halves as for a
+single line). Lines further apart than the nearest neighbour aren't coupled.
 
 **Discontinuities** are listed where sections meet: open ends, corners, bends, steps, tees, crosses and
 end gaps.
@@ -75,7 +76,7 @@ The sections become a circuit, solved in milliseconds by one of two programs:
 | needs | scikit-rf (`pip install scikit-rf`) | qucsator from Qucs-S, on PATH or `--qucsator PATH` |
 | microstrip | `MLine` | `MLIN` |
 | grounded CPW | `CPW` | `CLIN` |
-| coupled lines | a multiconductor line block | `MCOUPLED` for a pair, otherwise the same block |
+| coupled lines | a multiconductor line block | `MCOUPLED` for a microstrip pair, otherwise the same block |
 | discontinuities | not modelled | open ends, corners, steps, tees, crosses and gaps |
 
 `--solvers lines` uses qucsator when it's installed, otherwise scikit-rf. `--fast` adds the line model
@@ -90,9 +91,11 @@ ports, or to a mesh problem.
 ## Limits
 
 - Impedances are quasi-static. qucsator's microstrip models add dispersion.
-- Coupled sections must be straight, parallel microstrip. Coupling across layers isn't modelled.
+- Coupled sections must be straight, parallel microstrip or stripline. Coupling across layers isn't modelled.
 - Shapes other than rectangles become strips only as stubs across a track; tapers and teardrops widen the
   track instead. A sliced fan ignores its radial field: the radial stub's notch comes out 6–9 % high.
+- qucsator has no stripline model, so single striplines are RLCG lines whose dielectric loss is set at the
+  band centre (too high below it, too low above). Coupled sections' loss grows with frequency, as it should.
 - No radiation, no plane resonances, no return-path breaks.
 - Solder mask counts only with `--mask`.
 
