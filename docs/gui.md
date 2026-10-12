@@ -33,6 +33,7 @@ them: `estimate: mom25d: 13,670 unknowns, ~16 EM solves, ~2 min, ~5.4 GB + 1.9 G
 | Run | stage, one progress bar per driven port (step, dB, ETA), the decay curves, the log; *Stop* writes `ABORT` into every run folder (openEMS stops and finishes normally, so the results up to that point are written) |
 | Fields | the field dumps, openEMS's and mom25d's (`--mom-dump`): live view, x / y / z cuts, playback over time or phase, PNG / GIF / MP4 ([below](#fields)) |
 | Antenna | antenna mode: S11, gain / directivity / realized gain / efficiency over frequency, the far-field pattern at any recorded frequency ([below](#antenna)); a folder with openEMS's and mom25d's antenna results has a selector for them |
+| 3D fields | volume dumps as a translucent voxel cloud over the copper, navigable, animated over the phase ([below](#fields3d)) |
 | Convergence | openEMS's mesh-convergence plot (`--converge`) |
 | System | beside the others, open from the start: each solver and whether it can run here (its check: version, or what is missing), the CPU cores, the system memory in use and available, the GPU mom25d would use (backend, free and total memory, or why there is none), *Refresh*; after a preview, each full-wave solver's estimate on that board's mesh: time, memory and (mom25d) GPU memory against what is free (*fits* / *tight* / *does not fit*, 20 % kept spare), how mom25d would solve it, and the model size (cells or unknowns). A solver that cannot run here is greyed |
 
@@ -115,6 +116,28 @@ Copper is outlined on z planes within 0.3 mm of a copper layer; on x / y cuts th
 is drawn at its layer height. The cursor readout gives the position and value under the mouse. The same
 reading, cutting and animation code is usable without the GUI (`kicad2ems.fields`, see
 [post-processing](postprocessing.md#field-dumps)).
+
+<a id="fields3d"></a>
+## 3D fields
+
+A volume dump (`--dump E@volume+5@2.4`: the board with 5 mm of air above and below; `volume` alone has 0.5 mm)
+opens the *3D fields* panel: the field as a translucent voxel cloud over the board (copper translucent and
+outlined, vias as lines, the board's box), in an OpenGL view you orbit (drag), zoom (wheel) and pan (Ctrl + drag).
+It needs PyOpenGL (`pip install PyOpenGL`, in the `gui` extra).
+
+| Control | |
+|---|---|
+| Dump, Frame | the volume dumps of the folder, their frequencies (time domain: frames) |
+| Show, Colours | \|F\| or a component (signed at an instant: blue - white - red); the colour map |
+| envelope | frequency domain: the peak \|F\| over a period, no animation; off: Re(F·e^jφ), *Play* turns the phase |
+| log scale, Decades, Range top | colour range: the top at a percentile of the values (99.5 %: a port's gap would otherwise take it all), log over the decades below |
+| Opacity, Fade | how opaque the strongest field is, and how fast the weak field fades out (alpha ∝ value^fade) |
+| Height scale | z stretched (a board is thin) |
+| Resolution | the dump resampled onto a uniform grid of this many voxels along its longest side (OpenGL volume textures are uniform; openEMS's mesh is graded) |
+| copper, board box and vias | the board drawn under the field; untick copper to see between stacked planes |
+| Save GIF / MP4 | the animation from the current camera, at the view's size |
+
+![patch 3D](img/readme/patch_3d.gif)
 
 <a id="antenna"></a>
 ## Antenna far field

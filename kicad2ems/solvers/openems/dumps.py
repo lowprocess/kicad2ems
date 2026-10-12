@@ -11,6 +11,8 @@ Spec (command line --dump, repeatable, or `dump = [...]` in the TOML config):
             z=0.3            plane at a height (mm, z = 0 at the bottom copper)
             x=12  /  y=7     vertical cut planes (KiCad mm, y down as in KiCad)
             volume           the whole board (outline x stack) plus 0.5 mm
+            volume+5         ... with 5 mm of air above and below (fringing fields, an antenna's near field;
+                             the GUI's 3D view)
             box=x0,y0,z0,x1,y1,z1   any box (KiCad mm, z as above)
     FREQS   2,4,6            GHz: frequency-domain dump (HDF5) at those frequencies, plotted to PNG
             (omitted)        time-domain dump (VTK series: the GUI's Fields tab, live, or ParaView)
@@ -51,7 +53,7 @@ class Dump:
     def describe(self, mesh):
         dom = (f"at {', '.join(f'{f / 1e9:g}' for f in self.freqs)} GHz (HDF5)" if self.freqs
                else 'time domain (VTK)')
-        kind = f"plane {self.label}" if self.normal is not None else ('volume' if self.label == 'volume' else f"volume {self.label}")
+        kind = f"plane {self.label}" if self.normal is not None else (self.label if self.label.startswith('volume') else f"volume {self.label}")
         return f"{self.name}: {self.field} {kind}, {self.cells(mesh):,} points, {dom}"
 
 
@@ -91,9 +93,14 @@ def parse_dump(spec, m, mesh=None):
             v = -v                                                  # KiCad y (down) -> model y (up)
             return Dump(spec, field, (x0, v, z0), (x1, v, z1), freqs, 1, region)
         return Dump(spec, field, (x0, y0, v), (x1, y1, v), freqs, 2, region)
-    if region.lower() == 'volume':
-        return Dump(spec, field, (ob[0] - .5, ob[1] - .5, max(z0, -0.5)), (ob[2] + .5, ob[3] + .5, min(z1, m.thickness + .5)),
-                    freqs, None, 'volume')
+    vm = re.fullmatch(r'volume(?:\+([0-9.]+))?', region.lower())
+    if vm:
+        air = float(vm.group(1)) if vm.group(1) else 0.5            # volume+MM: MM of air above and below
+        lo, hi = (max(z0, -air), min(z1, m.thickness + air)) if not vm.group(1) else (-air, m.thickness + air)
+        if mesh is not None:                                        # volume+MM: as far as the simulation goes
+            lo, hi = max(lo, mesh['z'][0]), min(hi, mesh['z'][-1])
+        return Dump(spec, field, (ob[0] - .5, ob[1] - .5, lo), (ob[2] + .5, ob[3] + .5, hi),
+                    freqs, None, 'volume' if not vm.group(1) else f"volume+{air:g}")
     bm = re.fullmatch(r'box\s*=\s*(.+)', region)
     if bm:
         v = [float(t) for t in bm.group(1).split(',')]
@@ -128,6 +135,7 @@ def write_info(path, dumps, m, dt_ps=None):
                 outline=rings(m.outline)[0], cu_z={k: float(v) for k, v in m.cu_z.items()},
                 copper={lay: [rings(p) for p in ps] for lay, ps in m.copper.items()},
                 ports=[dict(name=p.name, at=[float(p.c[0]), float(p.c[1])]) for p in m.ports],
+                vias=[[round(float(v), 4) for v in via] for via in m.vias],        # x, y, r, z0, z1 (the 3D view)
                 thickness=float(m.thickness))
     os.makedirs(path, exist_ok=True)
     with open(os.path.join(path, 'dump_info.json'), 'w') as fh:

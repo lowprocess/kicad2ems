@@ -56,7 +56,7 @@ into a box:
 | Part | Values |
 |---|---|
 | FIELD | `E`, `H`, `J` (total current density: shows the copper currents) |
-| REGION | `F.Cu` (plane at a copper layer), `F.Cu-0.1` / `In1.Cu+0.05` (offset in mm, e.g. inside the dielectric under a trace), `z=0.3`, `x=12`, `y=7` (KiCad mm), `volume`, `box=x0,y0,z0,x1,y1,z1` |
+| REGION | `F.Cu` (plane at a copper layer), `F.Cu-0.1` / `In1.Cu+0.05` (offset in mm, e.g. inside the dielectric under a trace), `z=0.3`, `x=12`, `y=7` (KiCad mm), `volume`, `volume+5` (with 5 mm of air above and below: fringing and near fields, the GUI's 3D view), `box=x0,y0,z0,x1,y1,z1` |
 | FREQS | GHz list → frequency-domain dump (HDF5) **plus PNG field maps** with copper outlines; omit → time-domain VTK series (animate in ParaView) |
 
 ```bash
@@ -64,7 +64,8 @@ kicad2ems board.toml --excite P1 --dump E@F.Cu-0.1@2,6 --dump J@In2.Cu@4 --dump 
 ```
 
 Planes are clipped to the board outline + 1 mm and the stack + 1 mm of air, so a dump does not cover
-the empty air margin; `volume` is the board + 0.5 mm; `box=` is used as given. `add_dumps` adds the
+the empty air margin; `volume` is the board + 0.5 mm, `volume+MM` the board + MM of air as far as the
+simulation domain goes; `box=` is used as given. `add_dumps` adds the
 boxes to CSX (`AddDump`). Dumps are recorded in the run of the first excited port (`--dump-port P2` to
 choose). `--preview` validates the specs and prints the number of points per dump; the run prints a
 rough disk estimate. Files land in `<out>/openems/exc_<port>/dump_*.h5|.vtr`.

@@ -13,6 +13,40 @@ JSON run summary and an HTML report that compares them:
 
 Every run also breaks the port nets into transmission-line sections with closed-form impedances.
 
+## Gallery
+
+<p align="center">
+  <img src="docs/img/readme/patch_3d.gif" width="49%" alt="3D field of a patch antenna">
+  <img src="docs/img/readme/stub_3d.gif" width="49%" alt="3D field of a stub notch filter">
+</p>
+
+*The E field of a 2.45 GHz patch antenna (openEMS, `--dump E@volume+12@2.45`) and of a stub notch filter at its
+2.4 GHz notch, over one period: the GUI's 3D field view, translucent over the copper.*
+
+<p align="center">
+  <img src="docs/img/readme/gui_sparams.png" width="100%" alt="S-parameters of a hairpin filter from three solvers">
+</p>
+
+*A hairpin band-pass filter solved by openEMS (FDTD), mom25d (MoM) and the transmission-line model (qucsator),
+overlaid in the GUI with a Smith chart of the return loss.*
+
+<p align="center">
+  <img src="docs/img/readme/stub_current.gif" width="49%" alt="Surface current standing wave">
+  <img src="docs/img/readme/gui_antenna.png" width="49%" alt="Antenna panel">
+</p>
+
+*Left: mom25d's surface current on the stub notch at 2.4 GHz (`--mom-dump 2.4 --dump-animate gif`): the
+quarter-wave stub holds the standing wave and nothing passes it. Right: the patch in antenna mode: match, gain and
+efficiency over frequency, polar cuts and the 3D pattern.*
+
+<p align="center">
+  <img src="docs/img/readme/gui_mesh.png" width="49%" alt="openEMS model and mesh">
+  <img src="docs/img/readme/hairpin_tlines.png" width="40%" alt="Transmission-line sections">
+</p>
+
+*The openEMS mesh preview (`--preview`) and the transmission-line sections the line model finds.*
+`python tools/readme_media.py --openems-python <python with openEMS>` makes these again from the examples.
+
 ## Features
 
 - **KiCad import** (KiCad 5 to 10): stackup with εr / tan δ, tracks, arcs, filled zones, copper
@@ -28,7 +62,8 @@ Every run also breaks the port nets into transmission-line sections with closed-
   circuit with qucsator's corners, tees, steps, open ends and coupled lines (`--fast skrf` too).
 - **Edge walls** (`--edge-walls`): PEC where the planes end at the board edge, for stitching.
 - **Field dumps** (E, H, J) as PNG maps, in the GUI (live while the run goes, any x / y / z cut of a
-  volume, saved as GIF / MP4) or for ParaView; wideband dielectric model; parallel runs.
+  volume, saved as GIF / MP4), as a navigable translucent **3D view** over the copper (`volume+MM`
+  dumps), or for ParaView; wideband dielectric model; parallel runs.
 - **GUI** (`kicad2ems-gui`): setup, preview, run with progress, S-parameters, field view, antenna
   far field (polar cuts and 3D pattern at any recorded frequency).
 - **MoM** (`--solvers mom`, or `--mom` next to openEMS): the same converted board (`<name>_board.json`)

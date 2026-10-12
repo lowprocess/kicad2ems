@@ -6,6 +6,11 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+try:                                    # GUI tests: shared OpenGL contexts, as kicad2ems.gui.application makes them
+    from PySide6.QtCore import QCoreApplication, Qt
+    QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
+except ImportError:
+    pass
 GEN = os.path.join(ROOT, 'examples', 'make_demo_board.py')
 ANT = os.path.join(ROOT, 'examples', 'make_antennas.py')
 

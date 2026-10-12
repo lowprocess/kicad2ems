@@ -20,11 +20,12 @@ from .runner import (FIELDS, SEMICOLON_LISTS, TICK, Run, EventTail, stop_runs, s
 from .splot import SPlot
 from .panels import Section, ImagePanel
 from .systempanel import SystemPanel
+from .volumetab import VolumeTab
 
 pg.setConfigOptions(antialias=True, background='w', foreground='k')
 EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
 MAX_RECENT = 8
-PANELS = ('S-parameters', 'Model and mesh', 'Line model', 'Run', 'Fields', 'Antenna', 'Convergence')
+PANELS = ('S-parameters', 'Model and mesh', 'Line model', 'Run', 'Fields', '3D fields', 'Antenna', 'Convergence')
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
 
 
@@ -439,6 +440,7 @@ class MainWindow(QMainWindow):
         self._traceback = False
         self.setup, self.runtab, self.results = SetupTab(self), RunTab(self), ResultsTab(self)
         self.fields, self.antenna = FieldsTab(self), AntennaTab(self)
+        self.volume = VolumeTab(self)
         self.model_img = ImagePanel('the model and the mesh of a preview or a run')
         self.lines_img = ImagePanel('the line model of a preview or a run')
         self.conv_img = ImagePanel('mesh convergence: run with --converge (openEMS)')
@@ -457,8 +459,8 @@ class MainWindow(QMainWindow):
         self.work.setCentralWidget(note)
         self.note = note
         self.docks = {}
-        for name, w in zip(PANELS, (self.results, self.model_img, self.lines_img, self.runtab, self.fields, self.antenna,
-                                    self.conv_img)):
+        for name, w in zip(PANELS, (self.results, self.model_img, self.lines_img, self.runtab, self.fields, self.volume,
+                                    self.antenna, self.conv_img)):
             d = QDockWidget(name, self.work)
             d.setObjectName(name)
             d.setWidget(w)
@@ -630,6 +632,8 @@ class MainWindow(QMainWindow):
         self.show_plots(_pngs(out_dir))
         if self.fields.load(out_dir) is not False and self.fields.srcs:
             self.show_panel('Fields', front=False)
+        if self.volume.load(out_dir):
+            self.show_panel('3D fields', front=False)
         ant = self.antenna.load(out_dir)
         if ant:
             self.show_panel('Antenna', front=False)
@@ -737,6 +741,8 @@ class MainWindow(QMainWindow):
             self.fields.load(self.current.out)
             if self.fields.srcs:
                 self.show_panel('Fields', front=False)
+            if self.volume.load(self.current.out):
+                self.show_panel('3D fields', front=False)
             ant = self.antenna.load(self.current.out)
             if ant:
                 self.show_panel('Antenna', front=False)
@@ -759,7 +765,8 @@ def _pngs(out_dir):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    app = QApplication.instance() or QApplication(sys.argv[:1])
+    from . import application
+    app = application(sys.argv[:1])
     w = MainWindow(argv[0] if argv else None)
     w.show()
     return app.exec()

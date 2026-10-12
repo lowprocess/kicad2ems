@@ -78,8 +78,8 @@ def test_window_tabs(tmp_path):
     assert v['dump'] == ['E@F.Cu@2,6', 'H@volume'] and v['mode'] == 'antenna'
     w.setup.extra = dict(air=3.0)
     assert w.setup.values()['air'] == 3.0
-    assert list(w.docks) == ['S-parameters', 'Model and mesh', 'Line model', 'Run', 'Fields', 'Antenna', 'Convergence',
-                             'System']
+    assert list(w.docks) == ['S-parameters', 'Model and mesh', 'Line model', 'Run', 'Fields', '3D fields', 'Antenna',
+                             'Convergence', 'System']
     assert all(not s.expanded for s in w.setup.sections.values())  # settings collapsed when the window opens
     assert 'set)' in w.setup.sections['Field dumps'].head.text()   # the dumps given above count
     assert {'Open', 'Save', 'Preview', 'Run', 'Stop'} <= set(w.acts)

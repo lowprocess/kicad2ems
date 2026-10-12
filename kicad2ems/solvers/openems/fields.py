@@ -406,6 +406,11 @@ def save_animation(src, path, axis, index, component='mag', frames=None, fps=12,
         imgs.append(render(pl, lo, hi, use_log, f"{what}, {where}, {lab} ({src.run} driven)", src.geometry, cbar))
         if progress:
             progress(k + 1, len(views))
+    return write_frames(imgs, path, fps)
+
+
+def write_frames(imgs, path, fps=12):
+    """RGB frames ((h, w, 3) uint8, one size) to .gif (Pillow) or .mp4 (ffmpeg, H.264); returns the path."""
     ext = os.path.splitext(path)[1].lower()
     if ext == '.gif':
         from PIL import Image

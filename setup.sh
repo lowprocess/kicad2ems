@@ -110,7 +110,7 @@ VPY=$VENV/bin/python
 # ---- optional parts ---------------------------------------------------------------------------------
 bold "Optional parts"
 EXTRAS=()
-ask "GUI (kicad2ems-gui: PySide6, pyqtgraph)?" y && EXTRAS+=(gui)
+ask "GUI (kicad2ems-gui: PySide6, pyqtgraph, PyOpenGL for the 3D field view)?" y && EXTRAS+=(gui)
 ask "frequency-domain field dumps and far fields (h5py)?" y && EXTRAS+=(dumps)
 ask "line model with scikit-rf (--fast skrf; qucsator is a separate program)?" y && EXTRAS+=(fast)
 ask "gmsh mesher for mom25d (mom_mesher = \"gmsh\")?" n && EXTRAS+=(gmsh)

@@ -27,7 +27,8 @@ dependencies = [
 [project.optional-dependencies]
 fast = ["scikit-rf>=1.0"]          # --fast skrf: the line model as S-parameters (qucsator: a separate program)
 dumps = ["h5py>=3"]                # frequency-domain field dumps (openEMS's own Python package needs it too)
-gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "h5py>=3"]   # kicad2ems-gui (h5py: FD dumps, far field)
+gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "h5py>=3", "PyOpenGL>=3.1"]   # kicad2ems-gui (h5py: FD dumps,
+                                                                                   # far field; PyOpenGL: 3D fields)
 gmsh = ["gmsh>=4.11"]              # mom25d's mesher = "gmsh"
 core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster)
 # mom25d's GPU solvers (docs/mom25d.md#gpu-acceleration-amd-rocm-or-nvidia-cuda): the CuPy wheel built for your
