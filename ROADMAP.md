@@ -35,8 +35,8 @@ the affected cases.
   causes ([examples: RF structures](docs/examples.md#rf-structures)).
 - **Coupler coupling** (`rf_coupler`, 0.14 mm gap): openEMS −8.6 dB, mom25d −10.9 dB, line model −10.4 dB.
   Not copper thickness: openEMS models the copper as zero-thickness sheets too. Not mom25d's mesh either:
-  S31 at 2.4 GHz is −10.91 dB at `dmax` 0.3 mm and −10.89 dB at 0.15 mm (20k unknowns, 197 s, 10 GB;
-  0.1 mm needs over 2 h on the CPU and was not finished). Next: openEMS with a finer cell across the gap
+  S31 at 2.4 GHz is −10.91 dB at `dmax` 0.3 mm, −10.89 dB at 0.15 mm (20k unknowns) and −10.88 dB at 0.1 mm
+  (45.9k unknowns, one solve in 62 s with the tiled GPU solver). Next: openEMS with a finer cell across the gap
   (`fine` below 0.05 mm) and a check of its port reference planes on the short 4.3 mm feeds.
 - **Grounded CPW return loss** (`rf_gcpw`): S11 −18.9 dB (openEMS) against −30.1 dB (mom25d, wave
   ports, de-embedded). Probably the lumped-port parasitics openEMS includes; check with mom25d forced to
@@ -60,7 +60,9 @@ the affected cases.
   (via transition 14.9 → 6.2 s per solve; the SMA launch does not converge in mixed precision and falls
   back to double) and via-via kernels from a table (SMA via blocks 26.8 → 2.5 s). Tried and dropped: LU
   recycling across frequencies, coarser or signal-only plane refinement (|S21| > 1 on the SMA launch), BLR
-  (4.6× slower than dense at 13.5k unknowns). Left: modelling enclosed plane pairs as a parallel-plate
+  (4.6× slower than dense at 13.5k unknowns). Also done: duplicated edge-wall vias removed (they made the via
+  block singular: the SMA launch's mixed precision now converges, its sweep 448 → 159 s) and a tiled L Lᵀ on
+  the GPU for boards whose dense matrix does not fit (`--mom-tiled`). Left: modelling enclosed plane pairs as a parallel-plate
   stack instead of meshing them (the planes carry the return currents; research-grade).
 - **Current dumps** (`--mom-dump`) take one extra solve per frequency; taking them from the sweep's own
   solves would need the sweep to land on the dump frequencies.

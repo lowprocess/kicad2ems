@@ -33,7 +33,7 @@ def test_sparams_run_with_fast_model_and_convergence(demo_files, run_cli, tmp_pa
     out = tmp_path / 'out'
     code, so, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'RF,GND', '--ground', 'B.Cu',
                             '--fmin', '1', '--fmax', '8', '--points', '51', '--out', out, '--fast', 'skrf',
-                            '--converge', '1,1.2')
+                            '--converge', '1,1.2', '--solvers', 'openems')     # not auto: a GPU makes mom25d cheaper
     assert code == 0, err
     for f in ('demo_openems.s2p', 'demo_scikit.s2p', 'demo_openems.png', 'demo_tlines.png', 'demo_converge.png',
               'demo_report.html', 'demo_run.json'):

@@ -49,7 +49,12 @@ pip install .                 # numpy, scipy, shapely, matplotlib, triangle (the
 pip install '.[fast]'         # + scikit-rf: the line model as a circuit
 pip install '.[dumps]'        # + h5py, for frequency-domain field dumps
 python -m mom25d.core.build   # optional: the MoM solver's compiled core, ~5x faster (g++ with OpenMP, pybind11)
+pip install cupy-rocm-7-0     # optional, one of: the MoM solver on an AMD GPU (ROCm 7) ...
+pip install cupy-cuda12x      # ... or NVIDIA (CUDA 12; cupy-cuda13x for CUDA 13)
 ```
+
+The same CuPy wheels as extras of this package: `pip install '.[gpu-rocm7]'`, `'.[gpu-cuda12]'`,
+`'.[gpu-cuda13]'`.
 
 openEMS and its Python bindings are not on PyPI. Install them from your distribution, or build them with
 `tools/build_openems.sh [prefix]`, and install kicad2ems into the same Python environment. Then

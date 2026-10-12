@@ -78,7 +78,8 @@ def test_window_tabs(tmp_path):
     assert v['dump'] == ['E@F.Cu@2,6', 'H@volume'] and v['mode'] == 'antenna'
     w.setup.extra = dict(air=3.0)
     assert w.setup.values()['air'] == 3.0
-    assert list(w.docks) == ['S-parameters', 'Model and mesh', 'Line model', 'Run', 'Fields', 'Antenna', 'Convergence']
+    assert list(w.docks) == ['S-parameters', 'Model and mesh', 'Line model', 'Run', 'Fields', 'Antenna', 'Convergence',
+                             'System']
     assert all(not s.expanded for s in w.setup.sections.values())  # settings collapsed when the window opens
     assert 'set)' in w.setup.sections['Field dumps'].head.text()   # the dumps given above count
     assert {'Open', 'Save', 'Preview', 'Run', 'Stop'} <= set(w.acts)
@@ -242,3 +243,33 @@ def test_save_config_in_solver_tables(tmp_path):
     assert 'mesher = "gmsh"' in text and '# MoM' in text and 'dmax = 0.4' in text and 'mom_mesher = "x"' in text
     s = build_settings({}, str(p))
     assert s.mom_mesher == 'gmsh' and s.mom_dmax == 0.4
+
+
+def test_system_panel(tmp_path):
+    """The System panel: the machine as kicad2ems.sysinfo reports it, and a preview's estimates against it (a
+    solver that cannot run here greyed, memory that does not fit marked)."""
+    pytest.importorskip('PySide6')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    import json
+    from PySide6.QtWidgets import QApplication
+    from kicad2ems.gui.systempanel import SystemPanel, fit_note
+    from kicad2ems.sysinfo import info
+    app = QApplication.instance() or QApplication([])
+    p = SystemPanel()
+    p.stop()                                                        # the panel's own check: not needed here
+    sysinfo = info()
+    assert {s['name'] for s in sysinfo['solvers']} >= {'mom25d', 'scikit'} and sysinfo['ram']['total'] > 0
+    sysinfo['solvers'] = [dict(name='openems', label='openEMS', ok=False, what='no CSXCAD', consumes='board'),
+                          dict(name='mom25d', label='mom25d', ok=True, what='0.6', consumes='board')]
+    sysinfo['ram'] = dict(total=32.0, available=20.0)
+    sysinfo['gpu'] = dict(device='GPU', backend='cupy', api='ROCm/HIP', free=16.0, total=17.0)
+    p.set_info(sysinfo)
+    assert p.solvers.topLevelItemCount() == 2
+    est = dict(solvers=dict(openems=dict(seconds=60, gb=0.1, what='0.5 M cells'),
+                            mom25d=dict(seconds=600, gb=30.0, gpu_gb=8.1, how='tiled', what='45,000 unknowns')))
+    (tmp_path / 'b_run.json').write_text(json.dumps(dict(estimates=est)))
+    assert p.load_estimates(str(tmp_path)) and p.est_tree.topLevelItemCount() == 2
+    oems, mom = (p.est_tree.topLevelItem(i) for i in range(2))
+    assert 'not available' in oems.text(4) and '~10 min' == mom.text(1)
+    assert 'does not fit' in mom.text(2) and 'fits' in mom.text(3)
+    assert fit_note(10, 20) == 'fits' and fit_note(18, 20) == 'tight' and not p.load_estimates(str(tmp_path / 'none'))

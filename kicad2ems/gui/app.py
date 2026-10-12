@@ -19,6 +19,7 @@ from .runner import (FIELDS, SEMICOLON_LISTS, TICK, Run, EventTail, stop_runs, s
                      find_results, save_config, solvers_from_form, solver_ticks)
 from .splot import SPlot
 from .panels import Section, ImagePanel
+from .systempanel import SystemPanel
 
 pg.setConfigOptions(antialias=True, background='w', foreground='k')
 EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
@@ -441,6 +442,7 @@ class MainWindow(QMainWindow):
         self.model_img = ImagePanel('the model and the mesh of a preview or a run')
         self.lines_img = ImagePanel('the line model of a preview or a run')
         self.conv_img = ImagePanel('mesh convergence: run with --converge (openEMS)')
+        self.system = SystemPanel()
         # the settings: a dock of the window; the results: one workspace of panels (tabbed, split, floated)
         sd = QDockWidget('Settings', self)
         sd.setObjectName('Settings')
@@ -465,6 +467,12 @@ class MainWindow(QMainWindow):
                 self.work.tabifyDockWidget(self.docks[PANELS[0]], d)
             d.hide()
             self.docks[name] = d
+        # the machine (solvers, GPU, memory) and a preview's estimates: beside the results, open from the start
+        d = QDockWidget('System', self.work)
+        d.setObjectName('System')
+        d.setWidget(self.system)
+        self.work.addDockWidget(Qt.RightDockWidgetArea, d)
+        self.docks['System'] = d
         self.setCentralWidget(self.work)
         self.qsettings = QSettings('kicad2ems', 'gui')
         self._toolbar()
@@ -554,7 +562,7 @@ class MainWindow(QMainWindow):
         a.triggered.connect(self.close)
         fm.addAction(a)
         vm = self.menuBar().addMenu('&View')
-        for name in PANELS:
+        for name in PANELS + ('System',):
             vm.addAction(self.docks[name].toggleViewAction())
         vm.addSeparator()
         a = QAction('Show &all panels', self)
@@ -608,6 +616,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, ev):
         if self.setup.maybe_save():
+            self.system.stop()
             ev.accept()
         else:
             ev.ignore()
@@ -734,6 +743,9 @@ class MainWindow(QMainWindow):
                 front = 'Antenna' if self.current.values.get('mode') == 'antenna' else front
         elif shown:
             front = shown[0]
+        if self.current.preview and self.system.load_estimates(self.current.out):
+            self.docks['System'].show()
+            self.docks['System'].raise_()
         self.show_panel(front)
         if code:
             self.runtab.stage.setText(f"ended with code {code} - see the log")

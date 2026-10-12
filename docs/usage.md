@@ -214,6 +214,7 @@ used and a `config:` note says so (`config.resolve_path`).
 | `--mom-port auto\|wave\|lumped` (`port`) | auto | MoM ports: de-embedded wave ports where the feed is long enough down to fmin, else lumped |
 | `--mom-mesher triangle\|gmsh` (`mesher`) | triangle | MoM surface mesher ([MoM](mom.md#meshers)) |
 | `--mom-solves N` (`solves`) | 60 | most EM solves of the MoM adaptive sweep |
+| `--mom-tiled auto\|on\|off` (`tiled`) | auto | mixed precision as complex64 L Lᵀ tiles on the GPU, no dense matrix (half the GPU memory, streamed from the host past it); auto: where the dense GPU solver does not fit ([mom25d](mom25d.md#gpu-acceleration-amd-rocm-or-nvidia-cuda)) |
 | `--mom-dump GHz,...` (`dump`) | — | surface-current dumps at these frequencies: a \|J\| map per signal layer, with `--dump-animate` one period of Re(J·e^jφ) ([MoM](mom.md#current-dumps)) |
 | `--mom-near MM,...` (`near`) | — | with `--mom-dump`: also the E field on planes this far above the top of the board |
 

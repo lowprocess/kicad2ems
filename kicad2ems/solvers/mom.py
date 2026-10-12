@@ -18,9 +18,12 @@ G = 'mom25d'
 # --solvers auto (docs/architecture.md#choosing-solvers): seconds per EM solve on 24 cores, fitted on the examples
 # run alone: T0 per pair of metal interfaces (the layered-medium tables of each frequency), plus the dense fill
 # (DENSE_N2 N^2, up to 3.5k unknowns) or the direct solver's LU (LU_N3 N^3), plus VIA2 per pair of vias (the
-# via-via kernels: sma_launch's 185 vias cost 26 s a solve); a sweep takes about SOLVES solves (11..22 on the
-# examples). demo_transition: 12.1 s a solve measured, 12.4 s estimated; sma_launch 33.7 s / 33.7 s.
-T0, DENSE_N2, LU_N3, VIA2, SOLVES, REF_CORES = 1.0, 1.6e-7, 3.7e-12, 7.6e-4, 16, 24
+# via-via kernels, from a table since: sma_launch's 181 vias 2.5 s a solve, 26 s before); a sweep takes about
+# SOLVES solves (11..22 on the examples). demo_transition: 12.1 s a solve measured, 12.4 s estimated.
+T0, DENSE_N2, LU_N3, VIA2, SOLVES, REF_CORES = 1.0, 1.6e-7, 3.7e-12, 7.6e-5, 16, 24
+# with a GPU (RX 7800 XT, sma_launch, 16.1k unknowns): the fill, the complex64 LU and the refinement 6.3 s a solve
+# (hybrid), the tiled path 10.5 s (its fill block by block, the symmetric near field)
+LU_GPU_N3, LU_TILED_N3 = 1.5e-12, 2.5e-12
 ANT_FREQS = 11                  # antenna mode: frequencies of the far field over the band (+ the pattern one)
 
 
@@ -52,7 +55,7 @@ def _metal(m, sigma):
 
 
 def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigma=None, log=print, progress=None,
-          hold=None):
+          hold=None, tiled='auto'):
     """S-parameters of the board m on `freq` (Hz) from mom25d, as kicad2ems reports them: (S (nf, n, n) in
     m.user_ports order with differential pairs as (d, c) modes, names, reference impedances, info dict).
     dmax in mm (planes 3x, refined near the copper of other layers). sigma (S/m): conductor loss, as --sigma
@@ -67,7 +70,7 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
         log(f"  mom25d: conductor loss sigma {sigma:g} S/m, {t_mm * 1e3:g} um copper")
     res = solve_board(m.to_dict(), freq, dmax=dmax * 1e-3, port=kind, pairs=pairs, metal=metal, max_solves=max_solves,
                       mesher='gmsh' if mesher == 'gmsh' else 'auto', log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
-                      progress=progress)
+                      progress=progress, tiled=tiled)
     if hold is not None:
         hold['res'] = res
     for line in res.model.describe().splitlines()[1:] + list(res.sim.log.notes):
@@ -87,6 +90,21 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
                 samples_ghz=[round(f / 1e9, 6) for f in sorted(res.solved)])
     log(f"  mom25d: solved at {', '.join(f'{f:g}' for f in info['samples_ghz'])} GHz")
     return S, names, zref, info
+
+
+HOW = {'dense': 'dense, NumPy', 'double': 'direct LU in double on the CPU',
+       'hybrid': 'complex64 LU on the GPU, double refinement on the host', 'tiled': 'tiled L L^T on the GPU',
+       'gpu-lu': 'complex64 LU on the GPU, matrix-free refinement', 'cpu-mixed': 'complex64 LU on the CPU',
+       'blr': 'block low-rank, no dense matrix', 'aca': 'H-matrix and GMRES, no dense matrix'}
+
+
+def memory_plan_for(n, tiled='auto'):
+    """mom25d.sim.memory_plan of n unknowns on this machine: the memory available now, the GPU mom25d would use."""
+    from mom25d.sim import memory_plan
+    from mom25d.fast import _core
+    from mom25d.gpu import get_backend
+    g = get_backend('auto') if _core is not None else None
+    return memory_plan(n, _core is not None, None, (g.name, g.mem_free()) if g is not None else None, tiled=tiled)
 
 
 def _solid_ground(m):
@@ -116,6 +134,10 @@ class MoM25D(Solver):
                choices=('auto', 'wave', 'lumped'), name='port', group=G),
         Option('mom_mesher', 'triangle', "MoM surface mesher (default triangle)", choices=('triangle', 'gmsh'),
                name='mesher', gui='MoM mesher', group=G),
+        Option('mom_tiled', 'auto', "mixed precision as complex64 L L^T tiles on the GPU, no dense matrix anywhere "
+               "(half the GPU memory of an LU, streamed from the host past it): auto (default) where the dense "
+               "GPU solver does not fit (it is faster where it fits: 9.9 s against 14.3 s a solve on the SMA "
+               "launch), on, off", choices=('auto', 'on', 'off'), name='tiled', gui='MoM tiled GPU solver', group=G),
         Option('mom_solves', 60, "most EM solves of the adaptive sweep (default {default})", int, name='solves',
                group=G, cli=dict(metavar='N')),
         Option('mom_dump', [], "surface-current dumps at these frequencies (GHz): |J| maps of each signal layer, and "
@@ -169,10 +191,10 @@ class MoM25D(Solver):
                 out.append(Deviation(f"via:{i}", 'vias', 'left out: metal on fewer than two layers at it', dropped=True))
             elif abs(s[0] - z0) > 1e-9 or abs(s[1] - z1) > 1e-9:
                 out.append(Deviation(f"via:{i}", 'vias', 'spans only the layers with metal at it', to=[x, y, r, *s]))
+        from mom25d.board import wall_points
+        pts = wall_points(m.walls, self.WALL_PITCH, [(v[0], v[1]) for v in m.vias])
         for i, (axis, c, t0, t1, z0, z1) in enumerate(m.walls):
-            n = max(2, int(round((t1 - t0) / self.WALL_PITCH)) + 1)
-            pts = [(c, t) if axis == 'x' else (t, c) for t in np.linspace(t0, t1, n)]
-            add = [[x, y, self.WALL_R, *s] for x, y in pts for s in [span(x, y, z0, z1)] if s]
+            add = [[x, y, self.WALL_R, *s] for j, x, y in pts if j == i for s in [span(x, y, z0, z1)] if s]
             out.append(Deviation(f"wall:{i}", 'edge_walls', f"a row of {len(add)} vias every {self.WALL_PITCH:g} mm",
                                  dropped=True, added=add))
         for p in m.parts:
@@ -208,9 +230,13 @@ class MoM25D(Solver):
         sim = bm.simulation(dmax=dmax, dmax_layer=planes, fmin=run.fmin, fmax=run.fmax, characterize=False,
                             verbose=False, wave_down_to=run.fmin, mesh_only=True)
         n, solves, layers = int(sim.Ne + sim.Nv), min(s.mom_solves, SOLVES), len(bm.shapes)
-        per = T0 * layers * (layers + 1) / 2 + (DENSE_N2 * n ** 2 if n <= 3500 else LU_N3 * n ** 3) + \
-            VIA2 * len(bm.vias) ** 2
-        return dict(seconds=solves * per * REF_CORES / (os.cpu_count() or 1), gb=(18 * n ** 2 + 0.9e9) / 1e9,
+        plan = memory_plan_for(n, s.mom_tiled)
+        lu = LU_N3 * REF_CORES / (os.cpu_count() or 1)                 # the CPU LU scales with the cores, a GPU's not
+        lu = dict(hybrid=LU_GPU_N3, tiled=LU_TILED_N3).get(plan['path'], lu)
+        per = (T0 * layers * (layers + 1) / 2 + VIA2 * len(bm.vias) ** 2 + (DENSE_N2 * n ** 2 if n <= 3500 else 0)) \
+            * REF_CORES / (os.cpu_count() or 1) + (lu * n ** 3 if n > 3500 else 0)
+        return dict(seconds=solves * per, gb=plan['host'] / 1e9,
+                    gpu_gb=plan['gpu'] / 1e9 or None, how=HOW.get(plan['path'], plan['path']),
                     what=f"{n:,} unknowns, ~{solves} EM solves")
 
     def prepare(self, run):
@@ -226,7 +252,7 @@ class MoM25D(Solver):
             port = 'lumped'
             run.log("mom25d: antenna mode: lumped ports (--mom-port wave for de-embedded ones)")
         S, names, zref, info = solve(run.m, run.freq, dmax=s.mom_dmax, port=port, mesher=s.mom_mesher,
-                                     max_solves=s.mom_solves, sigma=s.sigma, log=run.log, hold=self._held,
+                                     max_solves=s.mom_solves, sigma=s.sigma, log=run.log, hold=self._held, tiled=s.mom_tiled,
                                      progress=lambda k, n, f: run.status('mom25d', dict(fraction=k / n, solves=k,
                                                                                         f_ghz=f / 1e9)))
         kinds = ", ".join(f"{p['name']} {p['kind']}" for p in info['ports'])

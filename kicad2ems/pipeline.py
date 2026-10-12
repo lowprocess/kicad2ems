@@ -383,7 +383,33 @@ class Job:
         self.summary['solvers'] = list(self.plan)
         return True
 
+    def estimate(self):
+        """--preview: what each full-wave solver would cost on this board (Solver.estimate: time, host memory and,
+        mom25d, GPU memory), whether it is in the run or not, logged and kept as summary['estimates'] (the GUI's
+        System panel shows them against the memory there is)."""
+        s, out = self.s, {}
+        for n, sv in registry().items():
+            if sv.consumes != 'board' or not (sv.check(s)[0] or sv.previewed) or sv.assess(self):
+                continue
+            try:
+                e = sv.estimate(self)
+            except Exception as ex:                                 # an estimate never stops a preview
+                self.log(f"estimate: {n}: none ({type(ex).__name__}: {ex})")
+                continue
+            if e is None:
+                continue
+            out[n] = e = {k: v for k, v in dict(e).items() if v is not None}
+            t = f"~{e['seconds']:.0f} s" if e['seconds'] < 120 else f"~{e['seconds'] / 60:.0f} min"
+            self.log(f"estimate: {n}: {e['what']}, {t}, ~{e['gb']:.1f} GB" +
+                     (f" + {e['gpu_gb']:.1f} GB on the GPU" if e.get('gpu_gb') else '') +
+                     (f" ({e['how']})" if e.get('how') else ''))
+        ram = ram_gb()
+        self.summary['estimates'] = dict(solvers=out, ram_gb=ram)
+        return out
+
     def prepare(self):
+        if self.s.preview:
+            self.estimate()
         names = [n for n in registry() if n in self.plan + self.previewed]
         for name in names:
             sv = registry()[name]

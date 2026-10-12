@@ -30,6 +30,13 @@ dumps = ["h5py>=3"]                # frequency-domain field dumps (openEMS's own
 gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "h5py>=3"]   # kicad2ems-gui (h5py: FD dumps, far field)
 gmsh = ["gmsh>=4.11"]              # mom25d's mesher = "gmsh"
 core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster)
+# mom25d's GPU solvers (docs/mom25d.md#gpu-acceleration-amd-rocm-or-nvidia-cuda): the CuPy wheel built for your
+# GPU stack, one of these extras (pip install '.[gpu-rocm7]'), or the wheel itself (pip install cupy-rocm-7-0);
+# they conflict: install one. The CUDA wheels need the NVIDIA driver; the ROCm wheel the
+# ROCm 7 runtime (rocminfo shows the card). PyTorch is the other backend: its ROCm / CUDA build from pytorch.org.
+gpu-cuda12 = ["cupy-cuda12x>=14"]   # NVIDIA, CUDA 12.x driver
+gpu-cuda13 = ["cupy-cuda13x>=14"]   # NVIDIA, CUDA 13.x driver
+gpu-rocm7 = ["cupy-rocm-7-0>=14"]   # AMD, ROCm 7.0
 test = ["pytest>=7", "scikit-rf>=1.0", "h5py>=3"]
 # openEMS and CSXCAD are not on PyPI: install them from your distribution or build them from source
 # (see README); everything except the actual FDTD run works without them.

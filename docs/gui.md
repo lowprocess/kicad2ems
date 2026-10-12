@@ -22,7 +22,8 @@ settings set in it (`Band (3 set)`). Empty fields show their default.
 float it, or close it (*View* reopens any, *Show all panels* every one). A preview opens the panels it fills
 (*Model and mesh*, *Line model*, and *S-parameters* when a solver ran), a run opens *Run* while it goes and
 then its results: *S-parameters*, *Fields* when it wrote dumps, *Antenna* in antenna mode (in front),
-*Convergence* with `--converge`. Opening a config shows the results already in its output folder the same way.
+*Convergence* with `--converge`. A preview also brings *System* to the front with its estimates (and logs
+them: `estimate: mom25d: 13,670 unknowns, ~16 EM solves, ~2 min, ~5.4 GB + 1.9 GB on the GPU`). Opening a config shows the results already in its output folder the same way.
 
 | Panel | What it shows |
 |---|---|
@@ -33,6 +34,7 @@ then its results: *S-parameters*, *Fields* when it wrote dumps, *Antenna* in ant
 | Fields | the field dumps, openEMS's and mom25d's (`--mom-dump`): live view, x / y / z cuts, playback over time or phase, PNG / GIF / MP4 ([below](#fields)) |
 | Antenna | antenna mode: S11, gain / directivity / realized gain / efficiency over frequency, the far-field pattern at any recorded frequency ([below](#antenna)); a folder with openEMS's and mom25d's antenna results has a selector for them |
 | Convergence | openEMS's mesh-convergence plot (`--converge`) |
+| System | beside the others, open from the start: each solver and whether it can run here (its check: version, or what is missing), the CPU cores, the system memory in use and available, the GPU mom25d would use (backend, free and total memory, or why there is none), *Refresh*; after a preview, each full-wave solver's estimate on that board's mesh: time, memory and (mom25d) GPU memory against what is free (*fits* / *tight* / *does not fit*, 20 % kept spare), how mom25d would solve it, and the model size (cells or unknowns). A solver that cannot run here is greyed |
 
 **Solvers.** One tick box per solver plugin: *openEMS (FDTD)*, *mom25d (MoM)*, *line model (qucsator)*,
 *line model (scikit-rf)*, and any solver installed as a plugin ([solvers](usage.md#solvers)), plus *auto*
