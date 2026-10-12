@@ -12,6 +12,7 @@ moments) or a transmission-line model, and writes S-parameters, antenna results,
 | [GUI](gui.md) | The graphical interface: settings, running, results, field views |
 | [Examples](examples.md) | The example boards and how the solvers compare on them |
 | [Results](postprocessing.md) | S-parameters, antenna results, field dumps, the run summary and report |
+| [Benchmarks](benchmarks.md) | Each solver's run time and memory on each example, CPU and GPU |
 
 ## The solvers
 

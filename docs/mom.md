@@ -136,17 +136,15 @@ fits, that is faster, so `--mom-tiled auto` uses tiling only for larger boards. 
 <a id="runtime"></a>
 ## Speed against openEMS
 
-On 24 CPU cores, with the compiled core and 0.3 mm cells, without a GPU:
+Measured on every example, CPU and GPU: [benchmarks](benchmarks.md). A few of them:
 
-| Board | openEMS | mom25d | Ratio |
+| Board | openEMS | mom25d GPU | mom25d CPU |
 |---|---|---|---|
-| filter (single-layer microstrip) | 126 s | 22 s | 0.17× |
-| hairpin (single-layer microstrip) | 41 s | 8 s | 0.20× |
-| demo_lowpass (lumped parts) | 12 s | 15 s | 1.2× |
-| demo_transition (2 inner planes) | 33 s | 239 s | 7× |
-| sma_launch (3 planes, 185 vias) | 18 s | 448 s | 25× |
-
-With the GPU, the SMA launch takes 159 s.
+| filter (single-layer microstrip) | 119 s | 50 s | 51 s |
+| hairpin (single-layer microstrip) | 50 s | 9 s | 10 s |
+| rf_coupler (0.14 mm gap) | 92 s | 16 s | 20 s |
+| demo_transition (2 inner planes) | 55 s | 434 s | 615 s |
+| sma_launch (3 planes, 185 vias) | 33 s | 171 s | 417 s |
 
 - **mom25d is faster on single-layer microstrip**: filters, couplers and matching networks. It has no
   time-step or ring-down problem with high-Q circuits.
@@ -154,6 +152,9 @@ With the GPU, the SMA launch takes 159 s.
   with the volume.
 - **Agreement**: where both resolve the structure, |S| agrees to about 0.05, and transmission to 0.2 dB
   and 1–3 ps. Larger dB differences appear only deep in stop bands and on steep filter skirts.
+- **On the GPU**, mixed precision can fail to converge at the bottom of a band, where the matrix is worst
+  conditioned. That frequency, and those up to 1.25 times it, are then solved in double precision on the
+  CPU, and the GPU is tried again above that.
 
 ## Inside mom25d
 
