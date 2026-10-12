@@ -48,6 +48,7 @@ and their configs (`rf_<name>.toml`) are in the repository, with openEMS results
 | `rf_radialstub`: one 60° radial stub | notch | 2.13 GHz | 2.18 GHz | 2.32 GHz (the fan as widening slices) |
 | `rf_stripline`: 4 layers, via-fenced stripline | worst S11, S21 at 10 GHz | −17.5, −0.59 dB | −24.8, −0.87 dB | −13.5, −0.63 dB |
 | `rf_diffvia`: 100 Ω pair through two vias | Sdd21 at 5 / 10 GHz, worst Sdd11 | −0.44 / −0.60, −15.4 dB | −0.41 / −0.87, −16.3 dB | −0.46 / −1.34, −9.4 dB |
+| `rf_shielded`: resonator filter in a metal can; EMerge 4.621 GHz ([details](emerge.md#shielded)) | peak | 4.626 GHz (4× mesh; 4.555 by default) | 4.647 GHz (no can) | 4.878 GHz |
 
 Where the solvers disagree:
 

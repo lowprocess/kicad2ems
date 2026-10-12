@@ -96,8 +96,9 @@ def main(path):
         elements.append((plate, impedance(part), width * MM, length * MM, part['ref']))
     pcb.generate_pcb(True, merge=True)
     mg = job['margin']
-    air = em.geo.Box((x1 - x0 + 2 * mg) * MM, (y1 - y0 + 2 * mg) * MM, (T + 2 * mg) * MM,
-                     position=((x0 - mg) * MM, (y0 - mg) * MM, (-T - mg) * MM)).background()
+    below = 0.0 if job['bc'] == 'pec' and job.get('bottom_plane') else mg   # a closed box: its floor the bottom plane
+    air = em.geo.Box((x1 - x0 + 2 * mg) * MM, (y1 - y0 + 2 * mg) * MM, (T + mg + below) * MM,
+                     position=((x0 - mg) * MM, (y0 - mg) * MM, (-T - below) * MM)).background()
     model.commit_geometry()
     model.mw.set_frequency(list(freqs))
     model.mw.set_resolution(job['res'])

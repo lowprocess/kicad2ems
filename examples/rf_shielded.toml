@@ -1,0 +1,30 @@
+# kicad2ems example: a half-wave resonator side-coupled to two 50 ohm lines through 1 mm gaps on 0.508 mm
+# RO4003C, in a closed metal can 4 mm round the board and 4 mm above it (python examples/make_rf_examples.py
+# shielded). A 30 MHz wide band-pass at 4.62 GHz: the case for EMerge (docs/emerge.md#shielded).
+#   kicad2ems examples/rf_shielded.toml --solvers emerge --emerge-python <python with EMerge>    # 25 s
+#   kicad2ems examples/rf_shielded.toml --solvers openems                                        # 3 min
+# EMerge's default mesh is converged (4.621 GHz; 4.626 GHz with half its cells). openEMS needs a fine mesh:
+# its default puts the peak at 4.555 GHz, two bandwidths low (S21 at 4.62 GHz -16.7 dB instead of -3.5 dB),
+# 2x at 4.588 GHz; these settings (4x, 0.39 M cells, 690k timesteps) give 4.626 GHz. mom25d can't model the
+# can (laterally infinite layers): 4.647 GHz, the board without it
+board   = "rf_shielded.kicad_pcb"   # paths are relative to this file
+ground  = "B.Cu"
+fmin    = 4.3           # GHz
+fmax    = 4.9
+points  = 401
+out     = "out"
+fast    = "auto"
+
+[solver.openems]
+bc      = "PEC"         # the can: metal on all six sides, air = its distance from the board
+air     = 4.0
+res     = 80            # 4x the default mesh
+fine    = 0.0625
+nz      = 16
+excite  = ["P1"]
+max_steps = 3000000
+
+[solver.emerge]
+bc      = "pec"         # the same can (its floor the ground plane, as openEMS's)
+margin  = 4.0
+points  = 21

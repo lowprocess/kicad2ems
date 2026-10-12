@@ -122,20 +122,23 @@ class Board:
                      f'(roundrect_rratio 0.25) (net {net} "{self.nets[net]}") (uuid "{u()}"))')
         self.items += L + ['  )']
 
-    def write(self, path, W, H, ground=True, four=False):
+    def write(self, path, W, H, ground=True, four=False, sub=None):
         """four: a 4-layer board (F.Cu, In1.Cu, In2.Cu, B.Cu, H4 mm of FR-4 between them) instead of 0.8 mm
-        2-layer."""
+        2-layer. sub: (h, er, tand, material) of a 2-layer board's substrate instead of the FR-4."""
         if ground:
             self.rect(0, 0, W, H, layer='B.Cu', net=1)
         cu = ['F.Cu', 'In1.Cu', 'In2.Cu', 'B.Cu'] if four else ['F.Cu', 'B.Cu']
         h = H4 if four else H_SUB
+        er, tand, mat = ER, TAND, 'FR4'
+        if sub:
+            h, er, tand, mat = sub
         ids = {'F.Cu': 0, 'In1.Cu': 1, 'In2.Cu': 2, 'B.Cu': 31}
         stack = []
         for i, c in enumerate(cu):
             stack.append(f'    (layer "{c}" (type "copper") (thickness 0.035))')
             if i < len(cu) - 1:
-                stack.append(f'    (layer "dielectric {i + 1}" (type "core") (thickness {h}) (material "FR4") '
-                             f'(epsilon_r {ER}) (loss_tangent {TAND}))')
+                stack.append(f'    (layer "dielectric {i + 1}" (type "core") (thickness {h}) (material "{mat}") '
+                             f'(epsilon_r {er}) (loss_tangent {tand}))')
         L = ['(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")',
              f'  (general (thickness {h * (len(cu) - 1)}))\n  (paper "A4")',
              '  (layers ' + ' '.join(f'({ids[c]} "{c}" signal)' for c in cu) +
@@ -372,8 +375,34 @@ def diffvia(path, length=24.0, s=0.2, pitch=1.0, antipad=0.55):
     return wm, ws
 
 
+RO4003 = (0.508, 3.55, 0.0027, 'RO4003C')
+
+
+def shielded(path, f0=5.0e9, gap=1.0, feed=5.0, margin=4.0):
+    """A half-wave resonator side-coupled to two 50 ohm lines on 0.508 mm RO4003C, made to sit in a shielding
+    can: the input line couples to the resonator's first half, the output line to its second half, through
+    `gap`. A narrow band-pass (loaded Q about 130) whose smallest feature is the 1 mm gap."""
+    h, er = RO4003[:2]
+    w = round(solve(lambda w: microstrip(w, h, er)[0], 50.0, 0.05, 5.0), 3)
+    lr = round(C0 / (f0 * math.sqrt(microstrip(w, h, er)[1])) / 2 * 1e3, 2)      # half a guided wavelength, mm
+    q = lr / 2
+    pitch = w + gap
+    W, H = 2 * feed + lr + q, 2 * margin + 3 * w + 2 * gap
+    yc = H / 2
+    x0 = feed                                                 # the resonator from x0 to x0 + lr
+    bd = Board()
+    bd.track([(0, yc - pitch), (x0 + q, yc - pitch)], w)      # input: along the resonator's first half
+    bd.track([(x0, yc), (x0 + lr, yc)], w)                    # the resonator: RF too, so the port nets select it
+    bd.track([(x0 + q, yc + pitch), (W, yc + pitch)], w)      # output: along its second half
+    bd.port(1, 0.5, yc - pitch, 0)
+    bd.port(2, W - 0.5, yc + pitch, 180)
+    bd.write(path, W, H, sub=RO4003)
+    return w, lr
+
+
 KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf, stubnotch=stubnotch, gcpw=gcpw,
-             coupler=coupler, ratrace=ratrace, radialstub=radialstub, stripline=stripline, diffvia=diffvia)
+             coupler=coupler, ratrace=ratrace, radialstub=radialstub, stripline=stripline, diffvia=diffvia,
+             shielded=shielded)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in list(KINDS) + ['all']:

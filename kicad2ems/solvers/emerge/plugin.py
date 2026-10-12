@@ -16,6 +16,7 @@ import numpy as np
 from ...options import Option
 from .. import Solver, Result, Deviation
 from ... import stop
+from ..openems.boundaries import bottom_is_plane
 
 G = 'EMerge'
 WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'worker.py')
@@ -68,7 +69,8 @@ class EMerge(Solver):
                "trace / 2)", float, name='cell', group=G, cli=dict(metavar='MM')),
         Option('emerge_margin', 3.0, "mm of air on every side of the board (default {default})", float,
                name='margin', group=G, cli=dict(metavar='MM')),
-        Option('emerge_bc', 'abc', "outer boundary: abc (absorbing, default) or pec (a closed metal box)",
+        Option('emerge_bc', 'abc', "outer boundary: abc (absorbing, default) or pec (a closed metal box, its floor "
+               "the bottom plane when that is solid, as openEMS's --bc PEC)",
                choices=('abc', 'pec'), name='bc', group=G),
         Option('emerge_workers', 1, "frequencies solved at once (default {default}); each needs the memory of a "
                "whole solve (4.4 GB on the 34 mm microstrip thru)", int, name='workers', group=G,
@@ -108,7 +110,7 @@ class EMerge(Solver):
         cell = s.emerge_cell or max(0.05, min(p.w for p in m.ports) / 2)
         fs = np.linspace(run.fmin, run.fmax, max(2, s.emerge_points))
         job = dict(board=os.path.abspath(board), freqs=fs.tolist(), dense=list(map(float, run.freq)),
-                   parts=[pad_span(m, pt) for pt in m.parts],
+                   parts=[pad_span(m, pt) for pt in m.parts], bottom_plane=bottom_is_plane(m),
                    out=os.path.join(work, 'result.json'), res=s.emerge_res, cell=cell, margin=s.emerge_margin,
                    bc=s.emerge_bc, workers=max(1, s.emerge_workers))
         jp = os.path.join(work, 'job.json')

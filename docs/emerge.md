@@ -76,7 +76,35 @@ EMerge solves each frequency directly, so a high-Q circuit costs it no more than
 it's a little faster than openEMS, which needs about 200k timesteps to let them ring down. Its tetrahedra follow
 curves, so the rat-race's ring isn't staircased as it is in openEMS. mom25d is faster still on all these
 planar boards. EMerge's place is boards mom25d can't model (a finite ground, board edges, an enclosure) where
-openEMS is slow or staircases the geometry. None of the examples is that yet.
+openEMS needs a fine mesh, as in the next example.
+
+<a id="shielded"></a>
+## Where EMerge is the best choice: a filter in a can
+
+`rf_shielded` is a half-wave resonator side-coupled to two 50 Ω lines through 1 mm gaps, on 0.508 mm RO4003C,
+in a closed metal can 4 mm round the board and above it: a band-pass about 30 MHz wide at 4.62 GHz.
+
+| Solver | Peak | S21 at 4.62 GHz | Time |
+|---|---|---|---|
+| EMerge, default mesh (19k tetrahedra) | 4.621 GHz, −3.5 dB | −3.5 dB | 25 s, 3 GB |
+| EMerge, cells along copper halved | 4.626 GHz, −3.6 dB | −3.6 dB | 64 s, 6 GB |
+| openEMS, default mesh (0.04 M cells) | 4.555 GHz, −4.0 dB | −16.7 dB | 12 s |
+| openEMS, 2× | 4.588 GHz, −3.9 dB | −11.7 dB | 40 s |
+| openEMS, 4× (0.39 M cells, 690k timesteps) | 4.626 GHz, −4.0 dB | −4.0 dB | 175 s |
+| mom25d (no can: it can't model one) | 4.647 GHz, −4.0 dB | −7.9 dB | 13 s |
+| line model | 4.878 GHz, −3.0 dB | −26.0 dB | 1 s |
+
+- **EMerge** is converged on its default mesh: halving its cells moves the peak by 0.1 %. Its walls are exact
+  metal, and its mesh follows the strips.
+- **openEMS** agrees once its mesh is 4× finer, but that takes 7 times as long. On its default mesh the peak
+  is 66 MHz (1.4 %) low, two bandwidths, so it misses the pass band.
+- **mom25d** can't model the can: its layers are laterally infinite. It gives the board without the can,
+  25 MHz higher. `--solvers auto` still picks it here, so name the solver.
+- **The line model** leaves out the open-end and coupling effects that set a half-wave resonator's
+  frequency, so it's 5 % high.
+
+EMerge on the same board *without* the can (`--emerge-bc abc`) is less sure: its first-order absorbing
+boundary 4 mm out gives 4.596 GHz where mom25d gives 4.647 GHz. Closed problems suit it best.
 
 The coupler shows the limit. Its 0.14 mm gap needs a fine mesh, but a 0.14 mm cell along all the copper gave
 150k elements, and the direct solver ran out of memory (over 18 GB). A mesh refined only around gaps would fix
