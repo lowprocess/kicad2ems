@@ -49,7 +49,6 @@ cases.
 - Mixed-mode traces in the trace list.
 - The run's notes and warnings in the results.
 - Interactive plots in the HTML report.
-- Ambient occlusion in the 3D field view (would need custom shaders or a move to PyVista/VTK).
 
 ## 6. Examples and validation
 

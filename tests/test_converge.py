@@ -3,15 +3,8 @@ import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.board import Board
-from kicad2ems.solvers.openems.converge import parse_levels, mesh_levels, compare_levels, verdict
+from kicad2ems.solvers.openems.converge import mesh_levels, compare_levels, verdict
 
-
-
-def test_parse_levels():
-    assert parse_levels('2,1,1.5') == [1.0, 1.5, 2.0]
-    for bad in ('1', '0,1', '1,1'):
-        with pytest.raises(ValueError):
-            parse_levels(bad)
 
 
 def test_levels_refine_monotonically(demo_files):

@@ -779,7 +779,7 @@ def _paths(lm):
             branches = []
             path_elems = {i for i, _, _ in seq}
             for k, (i, u, v) in enumerate(seq):
-                for j, w_ in adj.get(u, []):
+                for j, _ in adj.get(u, []):
                     if j in path_elems or (k > 0 and j == seq[k - 1][0]):
                         continue
                     L, lab, z = _branch(lm, adj, j, u, on_path)

@@ -8,8 +8,8 @@ openEMS of its own.
 """
 import os, sys
 from PySide6.QtCore import Qt, QProcess, QTimer, QUrl, QSettings
-from PySide6.QtGui import QDesktopServices, QPixmap, QAction, QKeySequence
-from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
+from PySide6.QtGui import QDesktopServices, QAction, QKeySequence
+from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QLineEdit, QCheckBox, QComboBox, QPushButton, QLabel, QPlainTextEdit, QProgressBar,
                                QFileDialog, QScrollArea, QMessageBox, QDockWidget, QToolBar, QStyle)
 import pyqtgraph as pg

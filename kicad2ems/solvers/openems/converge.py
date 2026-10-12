@@ -8,15 +8,6 @@ import numpy as np
 from .mesh import auto_mesh
 
 
-def parse_levels(spec):
-    """'1,1.5,2' (or a list) -> sorted refinement factors, at least two, all > 0."""
-    vals = spec.split(',') if isinstance(spec, str) else spec
-    fs = sorted({float(v) for v in vals if str(v).strip()})
-    if len(fs) < 2 or fs[0] <= 0:
-        raise ValueError(f"--converge needs at least two positive refinement factors, e.g. 1,1.5,2 (got {spec!r})")
-    return fs
-
-
 def mesh_levels(m, fmin, fmax, factors, res=20, fine=None, nz_min=4, log=print, **mesh_kw):
     """[(factor, mesh), ...] coarse to fine."""
     quiet = lambda *a: None

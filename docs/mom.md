@@ -180,8 +180,8 @@ The tests (`tests/test_mom25d_*.py`) check it against exact solutions and textbo
 Green's functions to about 1e-5, stripline impedance to 0.6 %, coupled-line couplers to 0.1 dB, plane
 cavity resonances to 0.7 %.
 
-**Limits**: copper is zero-thickness unless you use the two-sheet thick-conductor model, there is no
-surface-roughness model, and wave ports need a straight feed line.
+**Limits**: copper is zero-thickness, there is no surface-roughness model, and wave ports need a straight
+feed line.
 
 ---
 [← openEMS simulation](simulation.md) · [Index](index.md) · [Next: Transmission-line model →](transmission-lines.md)

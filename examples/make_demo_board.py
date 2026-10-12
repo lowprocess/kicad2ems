@@ -249,10 +249,6 @@ def ladder_ideal(ladder, f, z0=50.0):
     return S
 
 
-def lowpass_ideal(f, z0=50.0):
-    return ladder_ideal(LADDERS['lowpass'], f, z0)
-
-
 def make_ladder(name, path, pos_path, ideal_path):
     """Board for LADDERS[name]: P1 -> parts -> P2 along y = 5 mm, plus the ideal circuit's S-parameters
     (ideal_path, Touchstone, 0.1-4 GHz)."""
@@ -333,10 +329,6 @@ def make_ladder(name, path, pos_path, ideal_path):
         fh.write(f"! ideal lumped circuit of the demo {name} filter (with ESR / ESL)\n# Hz S RI R 50\n")
         for fi, s_ in zip(f, S):
             fh.write(f"{fi:.6e} " + " ".join(f"{v.real:.9e} {v.imag:.9e}" for v in (s_[0, 0], s_[1, 0], s_[0, 1], s_[1, 1])) + "\n")
-
-
-def make_lowpass(path, pos_path, ideal_path):
-    make_ladder('lowpass', path, pos_path, ideal_path)
 
 
 if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] in LADDERS:

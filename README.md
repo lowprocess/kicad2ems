@@ -8,7 +8,7 @@ report that compares the solvers.
 | Solver | Name | Best for | Needs |
 |---|---|---|---|
 | [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS |
-| [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | nothing extra (built in) |
+| [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | cuPy for GPU acceleration |
 | Transmission-line model | `lines` | a quick estimate: impedance steps, delays, layout mistakes | scikit-rf or qucsator |
 
 By default kicad2ems picks the full-wave solver it expects to be fastest for your board and adds the

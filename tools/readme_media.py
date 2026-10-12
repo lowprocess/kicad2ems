@@ -100,7 +100,7 @@ def gui_media(only):
         tmp = os.path.join(RUNS, 'patch_3d.gif')
         v.save(tmp, fps=12, orbit=40)
         gif_resized(tmp, os.path.join(IMG, 'patch_3d.gif'))
-        print(f"  docs/img/readme/patch_3d.gif")
+        print("  docs/img/readme/patch_3d.gif")
         w.close()
     if not only or 'stub' in only:
         w = window(os.path.join(RUNS, 'stub'))
@@ -116,12 +116,12 @@ def gui_media(only):
         tmp = os.path.join(RUNS, 'stub_3d.gif')
         v.save(tmp, fps=12)
         gif_resized(tmp, os.path.join(IMG, 'stub_3d.gif'))
-        print(f"  docs/img/readme/stub_3d.gif")
+        print("  docs/img/readme/stub_3d.gif")
         w.close()
         # mom25d's surface-current standing wave (written by the run: --mom-dump 2.4 --dump-animate gif)
         for f in glob.glob(os.path.join(RUNS, 'stub', '*mom25d*_J_F_Cu_fd_2.4GHz.gif')):
             gif_resized(f, os.path.join(IMG, 'stub_current.gif'), width=720)
-            print(f"  docs/img/readme/stub_current.gif")
+            print("  docs/img/readme/stub_current.gif")
 
 
 def copies(only):

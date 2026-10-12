@@ -334,8 +334,8 @@ class MoM25D(Solver):
             run.log(f"  mom25d {line}")
         tag = '' if 'antenna' not in run.summary else '_mom25d'          # openEMS's antenna results come first
         run.figure(plot_antenna(run.freq, s11, m.ports[k].z0, ant, f"{run.name} - antenna (mom25d)"),
-                   f"_mom25d_antenna.png", f"antenna{tag}", 'antenna (mom25d): match, gain, efficiency')
-        run.figure(plot_pattern(ant, f"{run.name} - gain pattern (mom25d)"), f"_mom25d_pattern.png", f"pattern{tag}",
+                   "_mom25d_antenna.png", f"antenna{tag}", 'antenna (mom25d): match, gain, efficiency')
+        run.figure(plot_pattern(ant, f"{run.name} - gain pattern (mom25d)"), "_mom25d_pattern.png", f"pattern{tag}",
                    'antenna (mom25d): patterns')
         js = run.path('_mom25d_antenna.json')
         save_antenna(ant, js)
