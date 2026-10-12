@@ -345,6 +345,8 @@ def read_qucs_dataset(text, n):
     S = np.zeros((len(f), n, n), complex)
     for i in range(n):
         for j in range(n):
+            if f'S[{i + 1},{j + 1}]' not in blocks:            # qucsator leaves out the terms between separate
+                continue                                        # circuits (two legs not coupled): zero
             vals = blocks[f'S[{i + 1},{j + 1}]'].split()
             S[:, i, j] = [complex(v.replace('+j', '+').replace('-j', '-') + 'j') if 'j' in v else complex(float(v))
                           for v in vals]

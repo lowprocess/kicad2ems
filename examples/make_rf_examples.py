@@ -356,12 +356,12 @@ def diffvia(path, length=24.0, s=0.2, pitch=1.0, antipad=0.55):
     wm = round(solve(lambda w: -coupled_microstrip(w, s, H4, ER)[1], -50.0, 0.05, 2.0), 3)
     ws = round(solve(lambda w: -coupled_stripline_cohn(w * 1e-3, s * 1e-3, 2 * H4 * 1e-3, ER)[1], -50.0, 0.03, 2.0), 3)
     H, yc, xv = 8.0, 4.0, length / 2
-    bd = Board()
-    for sgn in (-1, 1):
+    bd = Board(nets=("", "GND", "D_P", "D_N"))
+    for sgn, net in ((-1, 2), (1, 3)):
         ym, ys, yv = yc + sgn * (wm + s) / 2, yc + sgn * (ws + s) / 2, yc + sgn * pitch / 2
-        bd.track([(0, ym), (xv - 1.5, ym), (xv - 1.0, yv), (xv, yv)], wm)
-        bd.track([(xv, yv), (xv + 1.0, yv), (xv + 1.5, ys), (length, ys)], ws, layer='In2.Cu')
-        bd.via(xv, yv, net=2, size=0.5, drill=0.25, layers=('F.Cu', 'In2.Cu'))
+        bd.track([(0, ym), (xv - 1.5, ym), (xv - 1.0, yv), (xv, yv)], wm, net=net)
+        bd.track([(xv, yv), (xv + 1.0, yv), (xv + 1.5, ys), (length, ys)], ws, layer='In2.Cu', net=net)
+        bd.via(xv, yv, net=net, size=0.5, drill=0.25, layers=('F.Cu', 'In2.Cu'))
         for dx in (-0.9, 0.9):                                # return vias beside the pair, clear of both layers' tracks
             bd.via(xv + dx, yc + sgn * (pitch / 2 + 0.9), size=0.5, drill=0.25)
     bd.plane('In1.Cu', length, H, holes=[(xv, yc + sg * pitch / 2, antipad) for sg in (-1, 1)])

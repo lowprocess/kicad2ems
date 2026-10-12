@@ -1018,7 +1018,13 @@ def _couple(lm, model):
     for members in sets.values():
         ang = math.radians(info[id(members[0])])
         u, n = np.array([math.cos(ang), math.sin(ang)]), np.array([-math.sin(ang), math.cos(ang)])
-        cuts = sorted({round(t, 4) for e in members for t in geom(e, u, n)[:2]})
+        # the overlaps' ends, merged within 1 um: rounding apart two ends at the same place (0.57424999 and
+        # 0.57425 to 0.5742 / 0.5743) had put the legs of a pair into separate pieces, and nothing coupled
+        cuts = []
+        for v in sorted(t for e in members for t in geom(e, u, n)[:2]):
+            if not cuts or v - cuts[-1] > 1e-3:
+                cuts.append(v)
+        at = lambda v: int(np.argmin(np.abs(np.asarray(cuts) - v)))
         pieces = {}
         for e in members:
             k = lm.elements.index(e)
@@ -1026,8 +1032,9 @@ def _couple(lm, model):
             lm.elements[k:k + 1] = parts
             for pc in parts:
                 t0, t1, c = geom(pc, u, n)
-                pieces.setdefault((round(t0, 4), round(t1, 4)), []).append((c, pc))
-        for (t0, t1), row in sorted(pieces.items()):
+                pieces.setdefault((at(t0), at(t1)), []).append((c, pc))
+        for (i0, i1), row in sorted(pieces.items()):
+            t0, t1 = cuts[i0], cuts[i1]
             if t1 - t0 < 1e-3 or len(row) < 2:
                 continue
             row.sort(key=lambda r: r[0])
