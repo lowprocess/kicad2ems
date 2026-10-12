@@ -1,7 +1,7 @@
 """Conformance: boards with a known answer, each capable solver within stated tolerances of it, with fast
 settings. The lossless microstrip thru (make_demo_board.py thru): |S21| ~ 1, |S11| small, and the delay of a
 line of Hammerstad-Jensen's effective permittivity. openEMS runs when KICAD2EMS_CONFORMANCE_OPENEMS=1 (slow:
-for a nightly run, not every test run)."""
+for a nightly run, not every test run); EMerge when it is installed (KICAD2EMS_EMERGE_PYTHON: its Python)."""
 import math, os, subprocess, sys
 import numpy as np
 import pytest
@@ -13,10 +13,11 @@ from make_demo_board import THRU                                    # noqa: E402
 
 C0 = 299792458.0
 FAST = {'scikit': [], 'qucs': [], 'mom25d': ['--mom-dmax', '0.8', '--mom-solves', '16'],   # converges in 13
-        'openems': ['--res', '15', '--end-db', '-30']}
+        'openems': ['--res', '15', '--end-db', '-30'], 'emerge': ['--emerge-points', '6']}
 # tolerances: (|S21| at least, |S11| at most, delay error at most)
 TOL = {'scikit': (0.99, 0.08, 0.02), 'qucs': (0.99, 0.08, 0.02), 'mom25d': (0.99, 0.08, 0.02),     # measured: mom25d
-       'openems': (0.98, 0.15, 0.03)}                    # 0.06 % delay, |S11| 0.03; openEMS +2.0 %, |S11| 0.07
+       'openems': (0.98, 0.15, 0.03),                    # 0.06 % delay, |S11| 0.03; openEMS +2.0 %, |S11| 0.07
+       'emerge': (0.98, 0.15, 0.03)}                     # EMerge (KICAD2EMS_EMERGE_PYTHON): +2.0 %, |S11| 0.07
 
 
 def eps_eff(w, h, er):

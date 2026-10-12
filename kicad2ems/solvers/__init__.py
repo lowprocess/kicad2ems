@@ -1,6 +1,6 @@
 """
 The solvers, as plugins: each one a Solver subclass registered under its name. Built in: openems (openEMS,
-3D FDTD), mom25d (2.5D Method of Moments) and the line model solved as a circuit by qucs (qucsator) or scikit
+3D FDTD), mom25d (2.5D Method of Moments), emerge (EMerge, 3D FEM, optional) and the line model solved as a circuit by qucs (qucsator) or scikit
 (scikit-rf). Another solver installs as a package that declares an entry point in the group
 'kicad2ems.solvers' (`mysolver = "mypackage.plugin:MySolver"`) and then appears in --solvers, --check, the
 config tables and the GUI with no change here.
@@ -46,6 +46,7 @@ from ..options import Option                    # noqa: F401  (plugins import it
 
 GROUP = 'kicad2ems.solvers'                 # the entry-point group of solvers installed as packages
 BUILTIN = ('kicad2ems.solvers.openems.plugin:OpenEMS', 'kicad2ems.solvers.mom:MoM25D',
+           'kicad2ems.solvers.emerge.plugin:EMerge',
            'kicad2ems.solvers.lines.plugin:Qucs', 'kicad2ems.solvers.lines.plugin:Scikit')
 LINES = 'lines'                             # the line model: qucs when qucsator is installed, else scikit
 AUTO = 'auto'                               # the cheapest full-wave solver that can model the board, + the line model

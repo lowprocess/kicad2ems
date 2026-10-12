@@ -21,7 +21,7 @@ def test_solver_plan():
     assert plan(solvers='mom') == (['mom25d'], ['mom25d'])
     assert plan(solvers='lines,MoM25d', fast='qucsator') == (['mom25d', 'qucs'], ['mom25d', 'qucs'])
     assert plan(solvers=['fdtd', 'line']) == (['openems', 'lines'], ['openems', 'lines'])   # lines: resolved later
-    assert plan(solvers='all')[0] == ['openems', 'mom25d', 'lines']
+    assert plan(solvers='all')[0] == ['openems', 'mom25d', 'emerge', 'lines']
     assert plan(solvers='skrf,qucsator')[0] == ['qucs', 'scikit']                         # both line solvers
     assert plan(solvers='openems', mom=True) == (['openems', 'mom25d'], ['openems'])
     assert plan(preview=True, mom=True)[0] == ['auto', 'mom25d']   # --preview: auto then solves only the line model

@@ -205,7 +205,7 @@ def test_gui_solver_boxes(tmp_path, monkeypatch):
     from kicad2ems.solvers.lines import fastsolve
     monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)    # no qucsator: lines is scikit
     assert [k for k, *_ in FIELDS if k.startswith('solver:')] == ['solver:auto', 'solver:openems', 'solver:mom25d',
-                                                                    'solver:qucs', 'solver:scikit']
+                                                                    'solver:emerge', 'solver:qucs', 'solver:scikit']
     p = tmp_path / 'c.toml'
     p.write_text('board = "b.kicad_pcb"\nsolvers = ["mom", "lines"]\n')
     vals = settings_values(str(p))
