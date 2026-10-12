@@ -181,7 +181,15 @@ if ! "$VPY" -c 'import triangle' 2>/dev/null && ! "$VPY" -m pip install -q "tria
     note "no triangle wheel for $("$VPY" -V): building it from github.com/drufat/triangle (needs a C compiler)"
     "$VPY" -m pip install "triangle @ git+https://github.com/drufat/triangle.git@$TRIANGLE_COMMIT"
 fi
-"$VPY" -m pip install -e "$SPEC"
+# compat: the checkout's path in a .pth inside the venv, ahead of ~/.local on sys.path. The default editable
+# finder runs after the path search, so a kicad2ems installed in ~/.local (visible through
+# --system-site-packages) was imported instead of this checkout
+"$VPY" -m pip install -e "$SPEC" --config-settings editable_mode=compat
+WHERE=$(cd / && "$VPY" -c 'import kicad2ems, os; print(os.path.dirname(os.path.dirname(kicad2ems.__file__)))')
+if [ "$WHERE" != "$REPO" ]; then
+    note "WARNING: this venv imports kicad2ems from $WHERE, not this checkout: remove that copy"
+    note "(e.g. $PY -m pip uninstall kicad2ems, outside the venv) and run ./setup.sh again"
+fi
 if [ -n "$CUPY" ]; then
     bold "Installing $CUPY"
     # one CuPy wheel at a time: another one in the venv would shadow it
