@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt, QProcess, QTimer, QUrl, QSettings
 from PySide6.QtGui import QDesktopServices, QAction, QKeySequence
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QLineEdit, QCheckBox, QComboBox, QPushButton, QLabel, QPlainTextEdit, QProgressBar,
-                               QFileDialog, QScrollArea, QMessageBox, QDockWidget, QToolBar, QStyle)
+                               QFileDialog, QScrollArea, QMessageBox, QDockWidget, QToolBar, QStyle, QStackedWidget)
 import pyqtgraph as pg
 from .fieldtab import FieldsTab
 from .antennatab import AntennaTab
@@ -25,7 +25,7 @@ from .volumetab import VolumeTab
 pg.setConfigOptions(antialias=True, background='w', foreground='k')
 EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
 MAX_RECENT = 8
-PANELS = ('S-parameters', 'Model and mesh', 'Line model', 'Run', 'Fields', '3D fields', 'Antenna', 'Convergence')
+PANELS = ('S-parameters', 'Model and mesh', 'Line model', 'Run', 'Fields', 'Antenna')
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
 
 
@@ -400,6 +400,42 @@ class RunTab(QWidget):
             self.curves[run].setData(xs, ys)
 
 
+class FieldPanel(QWidget):
+    """The field views in one panel: 2D cuts (any dump, a volume cut at any line) and the 3D view (the board, a
+    solver's mesh, plane and volume dumps in place, the far field), toggled."""
+
+    def __init__(self, cuts, view3d):
+        super().__init__()
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        row = QHBoxLayout()
+        self.buttons = {}
+        for name, tip in (('3D', 'the board in 3D: meshes, dumps in place, far field'),
+                          ('2D', 'a cut through a dump, with its values')):
+            b = QPushButton(name)
+            b.setCheckable(True)
+            b.setToolTip(tip)
+            b.clicked.connect(lambda _=False, n=name: self.set_view(n))
+            row.addWidget(b)
+            self.buttons[name] = b
+        row.addStretch(1)
+        lay.addLayout(row)
+        self.stack = QStackedWidget()
+        self.views = {'3D': view3d, '2D': cuts}
+        for w in (view3d, cuts):
+            self.stack.addWidget(w)
+        lay.addWidget(self.stack, 1)
+        self.set_view('3D')
+
+    def set_view(self, name):
+        self.stack.setCurrentWidget(self.views[name])
+        for n, b in self.buttons.items():
+            b.setChecked(n == name)
+
+    def view(self):
+        return next(n for n, w in self.views.items() if self.stack.currentWidget() is w)
+
+
 class ResultsTab(QWidget):
     def __init__(self, win):
         super().__init__()
@@ -491,9 +527,9 @@ class MainWindow(QMainWindow):
         self.setup, self.runtab, self.results = SetupTab(self), RunTab(self), ResultsTab(self)
         self.fields, self.antenna = FieldsTab(self), AntennaTab(self)
         self.volume = VolumeTab(self)
+        self.field_panel = FieldPanel(self.fields, self.volume)     # 2D cuts and the 3D view, one panel
         self.model_img = ImagePanel('the model and the mesh of a preview or a run')
         self.lines_img = ImagePanel('the line model of a preview or a run')
-        self.conv_img = ImagePanel('mesh convergence: run with --converge (openEMS)')
         self.system = SystemPanel()
         # the settings: a dock of the window; the results: one workspace of panels (tabbed, split, floated)
         sd = QDockWidget('Settings', self)
@@ -509,8 +545,8 @@ class MainWindow(QMainWindow):
         self.work.setCentralWidget(note)
         self.note = note
         self.docks = {}
-        for name, w in zip(PANELS, (self.results, self.model_img, self.lines_img, self.runtab, self.fields, self.volume,
-                                    self.antenna, self.conv_img)):
+        for name, w in zip(PANELS, (self.results, self.model_img, self.lines_img, self.runtab, self.field_panel,
+                                    self.antenna)):
             d = QDockWidget(name, self.work)
             d.setObjectName(name)
             d.setWidget(w)
@@ -569,6 +605,16 @@ class MainWindow(QMainWindow):
         self.acts['Report'].setEnabled(False)
         self.addToolBar(Qt.TopToolBarArea, tb)
 
+    def _load_fields(self, out_dir):
+        """The Fields panel's 2D cuts and 3D view of a folder; the 3D view first (False: nothing to show)."""
+        self.fields.load(out_dir)
+        three = self.volume.load(out_dir)
+        if three:
+            self.field_panel.set_view('3D')
+        elif self.fields.srcs:
+            self.field_panel.set_view('2D')
+        return bool(three or self.fields.srcs)
+
     def show_panel(self, name, front=True):
         """Open a results panel (it may have been closed) and bring it to the front of its tab group."""
         d = self.docks[name]
@@ -578,11 +624,10 @@ class MainWindow(QMainWindow):
             d.raise_()
 
     def show_plots(self, paths):
-        """A preview's or run's plots into their panels: model and mesh, line model, convergence."""
+        """A preview's or run's plots into their panels: model and mesh, line model."""
         groups = {'Model and mesh': [p for p in paths if p.endswith(('_model.png', '_mesh.png'))],
-                  'Line model': [p for p in paths if p.endswith('_tlines.png')],
-                  'Convergence': [p for p in paths if p.endswith('_converge.png')]}
-        panels = {'Model and mesh': self.model_img, 'Line model': self.lines_img, 'Convergence': self.conv_img}
+                  'Line model': [p for p in paths if p.endswith('_tlines.png')]}
+        panels = {'Model and mesh': self.model_img, 'Line model': self.lines_img}
         for name, ps in groups.items():
             if ps:
                 panels[name].show_images(ps)
@@ -680,10 +725,8 @@ class MainWindow(QMainWindow):
             self.results.show(files)
             self.show_panel('S-parameters', front=False)
         self.show_plots(_pngs(out_dir))
-        if self.fields.load(out_dir) is not False and self.fields.srcs:
+        if self._load_fields(out_dir):
             self.show_panel('Fields', front=False)
-        if self.volume.load(out_dir):
-            self.show_panel('3D fields', front=False)
         ant = self.antenna.load(out_dir)
         if ant:
             self.show_panel('Antenna', front=False)
@@ -793,16 +836,16 @@ class MainWindow(QMainWindow):
             self.show_panel('S-parameters', front=False)
         self.acts['Report'].setEnabled(bool(self.results.report))
         front = 'S-parameters' if has_s else (shown[0] if shown else 'Run')
-        if self.volume.load(self.current.out):                      # dumps, or the board and the solvers' meshes
-            self.show_panel('3D fields', front=False)
+        fields = self._load_fields(self.current.out)               # dumps, or the board and the solvers' meshes
+        if fields:
+            self.show_panel('Fields', front=False)
         if not self.current.preview:
-            self.fields.load(self.current.out)
-            if self.fields.srcs:
-                self.show_panel('Fields', front=False)
             ant = self.antenna.load(self.current.out)
             if ant:
                 self.show_panel('Antenna', front=False)
                 front = 'Antenna' if self.current.values.get('mode') == 'antenna' else front
+        elif fields:                                                # a preview: the board and its meshes in 3D
+            front = 'Fields'
         elif shown:
             front = shown[0]
         if self.current.preview and self.system.load_estimates(self.current.out):

@@ -25,10 +25,8 @@ Panels open by themselves when a preview or run produces something for them:
 | Model and mesh | the model and openEMS's mesh |
 | Line model | the transmission-line sections |
 | Run | progress per driven port; openEMS's energy decay and mom25d's adaptive sweep (its model change and prediction error per solve, in dB, against its tolerance); the log, and *Stop* |
-| Fields | 2D field dumps: cuts, playback, export ([below](#fields)) |
-| 3D fields | the board in 3D, with a solver's mesh over it (*Mesh*: openEMS's grid, mom25d's triangles or EMerge's element faces, after a preview or a run), and volume dumps ([below](#fields3d)) |
+| Fields | the board in 3D (the default, and what a preview shows) with a solver's mesh, plane and volume dumps in place and the far field; or, toggled to 2D, a cut through a dump with its values ([3D](#fields3d), [2D](#fields)) |
 | Antenna | antenna results ([below](#antenna)) |
-| Convergence | the mesh convergence check |
 | System | the solvers available here, the GPU, and the memory in use; after a preview, each solver's estimated time and memory for the board |
 
 **Solvers** has one tick box per solver, plus *auto*. Plugin solvers appear too, with their own settings.
@@ -65,9 +63,9 @@ group delay and VSWR.
 - **Export CSV…** and **Save image…**.
 
 <a id="fields"></a>
-## Field dumps
+## Field dumps: 2D cuts
 
-Add dumps under *Field dumps* in the settings; *Add a dump* builds the spec for you
+The Fields panel's *2D* view. Add dumps under *Field dumps* in the settings; *Add a dump* builds the spec for you
 ([syntax](postprocessing.md#field-dumps)). A dump without frequencies is recorded over time, and the
 Fields panel can follow it live while openEMS runs. A dump with frequencies is written at the end.
 
@@ -84,11 +82,21 @@ Fields panel can follow it live while openEMS runs. A dump with frequencies is w
 Copper is outlined on the plots.
 
 <a id="fields3d"></a>
-## 3D fields
+## The 3D view
 
-A volume dump, for example `--dump E@volume+5@2.4` (the board plus 5 mm of air above and below), opens the
-3D view. The field is drawn as a translucent cloud over the board, with the copper as shaded slabs. Drag
-to orbit, scroll to zoom, Ctrl+drag to pan. This needs PyOpenGL, which is in the `gui` extra.
+The Fields panel's *3D* view, the one it opens with. It shows the board, with the copper as shaded slabs,
+after a preview or a run, and over it:
+
+- **Mesh:** a solver's discretisation: openEMS's grid lines, mom25d's triangles or EMerge's element faces on
+  the copper, ports and parts. A preview writes all three in seconds.
+- **a dump:** a volume dump, for example `--dump E@volume+5@2.4` (the board plus 5 mm of air above and
+  below), as a translucent cloud; a plane dump (an openEMS cut, mom25d's surface currents) as a coloured sheet
+  in place, just above the copper when it lies on a copper layer.
+- **Far field:** in antenna mode, the gain pattern at a recorded frequency over the board's centre: its
+  distance from the centre is the gain, over 30 dB. *Far-field size* scales it against the board, and
+  *Far-field height* lifts it off the board's surface.
+
+Drag to orbit, scroll to zoom, Ctrl+drag to pan. This needs PyOpenGL, which is in the `gui` extra.
 
 | Control | |
 |---|---|
@@ -99,6 +107,8 @@ to orbit, scroll to zoom, Ctrl+drag to pan. This needs PyOpenGL, which is in the
 | Height scale | stretches z, since boards are thin |
 | Resolution | voxels along the longest side |
 | copper, Copper shown | show the copper, and how thick it is drawn (0 is flat) |
+| Mesh | none, or a solver's mesh |
+| Far field, Far-field size, height | the pattern at a frequency, its size against the board, and how far above the board's surface it is drawn |
 | Save GIF / MP4 | the animation from the current camera |
 
 ![patch 3D](img/readme/patch_3d.gif)

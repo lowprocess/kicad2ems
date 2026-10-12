@@ -1,6 +1,7 @@
 """
-3D field views: a volume dump as a translucent voxel cloud over the board (copper, vias, substrate), for the
-GUI's 3D field panel (gui/volumetab.py) and its GIF / MP4 export. No Qt here: the arrays the OpenGL items take.
+3D field views: a volume dump as a translucent voxel cloud over the board (copper, vias, substrate), a plane dump
+as a coloured sheet in place, and the far-field pattern as a surface over it, for the GUI's field panel
+(gui/volumetab.py) and its GIF / MP4 export. No Qt here: the arrays the OpenGL items take.
 
     vol = Volume(src, frame)                     # one frame of a volume dump (solvers.openems.fields.DumpSource)
     v, (origin, step) = vol.scalar('mag', phase)  # uniform grid (mm): |F| or |Re(F e^jphi)| or a component
@@ -34,19 +35,23 @@ class Volume:
     def __init__(self, src, frame, n=128, zfine=2.0):
         mesh, data = src.load(frame)
         xs = [np.asarray(mesh[a], float) for a in 'xyz']
-        if min(len(x) for x in xs) < 2:
-            raise ValueError("a plane dump: the 3D view needs a volume (--dump E@volume@GHz)")
+        flat = [k for k, x in enumerate(xs) if len(x) < 2]
+        if len(flat) > 1:
+            raise ValueError("a line or point dump: the 3D view needs a plane or a volume")
+        self.plane = flat[0] if flat else None                         # a plane dump: its normal axis
         span = [x[-1] - x[0] for x in xs]
         h = max(span) / n
         hz = h / zfine
-        self.axes = [np.linspace(x[0], x[-1], max(2, int(round(s / (hz if k == 2 else h))) + 1))
+        self.axes = [x[:1] if k == self.plane else
+                     np.linspace(x[0], x[-1], max(2, int(round(s / (hz if k == 2 else h))) + 1))
                      for k, (x, s) in enumerate(zip(xs, span))]
         d = np.asarray(data)
         for k in range(3):
-            d = _resample_axis(d, xs[k], self.axes[k], k)
-        self.data = d                                                   # (nx, ny, nz, 3)
+            if k != self.plane:
+                d = _resample_axis(d, xs[k], self.axes[k], k)
+        self.data = d                                                   # (nx, ny, nz, 3); 1 along a plane's normal
         self.origin = np.array([a[0] for a in self.axes])
-        self.step = np.array([a[1] - a[0] for a in self.axes])
+        self.step = np.array([a[1] - a[0] if len(a) > 1 else 0.0 for a in self.axes])
         self.complex = np.iscomplexobj(d)
 
     def scalar(self, component='mag', phase=None):
@@ -212,6 +217,35 @@ def geometry_from_board(path):
     return dict(copper=copper, cu_z={c['name']: c['z'] for c in b['stack']['copper']},
                 vias=[[v['x'], v['y'], v['r'], v['z0'], v['z1']] for v in b['vias']], outline=outline,
                 thickness=b['stack']['thickness'])
+
+
+def is_plane(src):
+    """Is a dump a plane (one point along exactly one axis)?"""
+    try:
+        return sorted(n > 1 for n in src.shape()) == [False, True, True]
+    except Exception:
+        return False
+
+
+def pattern_mesh(sph, i, scale, centre, radius, range_db=30.0, cmap='jet'):
+    """A far-field pattern as a coloured surface for the 3D view: the gain (sphere_gain at recorded frequency i,
+    times scale) as the distance from `centre` (mm) in each direction, `radius` mm at the peak and 0 at
+    range_db below it. Returns (vertices (n, 3), faces (m, 3), colours (n, 4) floats, peak dBi)."""
+    import matplotlib
+    from .solvers.openems.antenna import sphere_gain
+    g = sphere_gain(sph, i, scale)                                    # (nphi, ntheta)
+    gdb = 10 * np.log10(np.maximum(g, 1e-12))
+    peak = float(gdb.max())
+    r = np.clip(gdb - (peak - range_db), 0, None) / range_db * radius
+    th, ph = np.meshgrid(np.radians(sph['theta']), np.radians(sph['phi']))
+    v = np.stack([r * np.sin(th) * np.cos(ph), r * np.sin(th) * np.sin(ph), r * np.cos(th)], -1)
+    nphi, nth = g.shape
+    v = v.reshape(-1, 3) + np.asarray(centre, float)
+    idx = np.arange(nphi * nth).reshape(nphi, nth)
+    a, b, c, d = idx[:-1, :-1], idx[1:, :-1], idx[1:, 1:], idx[:-1, 1:]
+    faces = np.concatenate([np.stack([a, b, c], -1).reshape(-1, 3), np.stack([a, c, d], -1).reshape(-1, 3)])
+    col = matplotlib.colormaps[cmap](np.clip((gdb.ravel() - (peak - range_db)) / range_db, 0, 1))
+    return v, faces, col, peak
 
 
 def is_volume(src):

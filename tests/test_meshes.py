@@ -28,3 +28,16 @@ def test_preview_writes_the_meshes(run_cli, tmp_path):
     assert len(edges) // 2 < 3 * len(d['tris'])                                          # each edge once
     assert 'lines' in meshes.counts(found['openems']) and 'triangles' in meshes.counts(found['mom25d'])
     assert v3.copper_triangles(g) and g['thickness'] > 0
+
+
+def test_far_field_pattern_mesh():
+    """The far field as a surface: radius at the peak, 0 at 30 dB below, colours by gain."""
+    th, ph = np.arange(0, 91, 5.0), np.arange(0, 360, 10.0)
+    T, P = np.meshgrid(np.radians(th), np.radians(ph))
+    e = np.cos(T) + 1e-3                                            # a pattern straight up
+    sph = dict(theta=th, phi=ph, e_norm=e[None], dmax=np.array([4.0]), freq=np.array([2.45e9]))
+    v, faces, col, peak = v3.pattern_mesh(sph, 0, 1.0, (10, 20, 1), 5.0)
+    assert v.shape == (len(ph) * len(th), 3) and faces.max() < len(v) and col.shape == (len(v), 4)
+    assert abs(peak - 10 * np.log10(4.0)) < 1e-9
+    top = v[np.argmax(v[:, 2])]
+    assert np.allclose(top, (10, 20, 6), atol=1e-6)                 # 5 mm straight up at theta 0
