@@ -51,9 +51,12 @@ res.S, res.names, res.zref, res.notes
 | `wave` | always a wave port (an error if the feed is too short) |
 | `lumped` | a small via from the reference copper to the trace |
 
-A wave port needs enough feed line to separate the incoming and outgoing waves. When the feed is short,
-the propagation constant comes from a separate characterisation of the line, which works down to a much
-shorter feed.
+A wave port fits the incoming and outgoing waves along its feed line. The propagation constant comes from
+a separate characterisation of the line (a long test line of the same cross-section), so the feed only
+has to be long enough for the two amplitudes, about 0.1 rad at the lowest frequency. Fitting the
+propagation constant from the feed too failed on short feeds with a strong reflection: on the radial
+stub it came out 2–10× low and gave |S11| = 1.19. Switching between the two at a feed length made S jump,
+which cost the via transition 38 solves instead of 21.
 
 Lumped ports are closest to openEMS's ports, since both include the port's own parasitics. Wave ports
 are closest to the line model, which has an ideal reference plane. Differential pairs are one mixed-mode
