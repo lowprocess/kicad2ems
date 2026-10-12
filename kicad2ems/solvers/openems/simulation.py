@@ -41,6 +41,19 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
     grid.SetDeltaUnit(1e-3)
     grid.SetLines('x', np.asarray(mesh['x'], float)); grid.SetLines('y', np.asarray(mesh['y'], float))
     grid.SetLines('z', np.asarray(mesh['z'], float))
+    lines = [np.asarray(mesh[a], float) for a in 'xyz']
+
+    def on_mesh(s, e, tol=1e-5):
+        """A box's flat sides (start = stop on an axis) moved exactly onto the nearest mesh line: openEMS
+        drops a zero-thickness port or element that misses its line. Two differential legs whose port planes
+        differed by 1e-12 mm got one merged line, and the second leg's excitation found no edges."""
+        s, e = list(s), list(e)
+        for a in range(3):
+            if abs(s[a] - e[a]) < 1e-9 and len(lines[a]):
+                near = lines[a][np.argmin(np.abs(lines[a] - s[a]))]
+                if abs(near - s[a]) < tol:
+                    s[a] = e[a] = float(near)
+        return s, e
     ox, oy = m.outline.exterior.xy
     pts = [np.asarray(ox[:-1], float), np.asarray(oy[:-1], float)]
     for l in m.layers:
@@ -78,6 +91,7 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
             CSX.AddMetal(f"part_{pt.ref}").AddBox(_fl(s), _fl(e), priority=12)
             continue
         for suffix, vals, series, ps, pe in pt.pieces():
+            ps, pe = on_mesh(ps, pe)
             kw = {k: _f(v) for k, v in vals.items()}
             if series:
                 kw['LEtype'] = 1
@@ -89,7 +103,7 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
             el.AddBox(_fl(ps), _fl(pe), priority=12)
     ports = []
     for i, p in enumerate(m.ports):
-        s, e = p.box()
+        s, e = on_mesh(*p.box())
         ports.append(FDTD.AddLumpedPort(i + 1, _f(p.z0), _fl(s), _fl(e), getattr(p, 'direction', 'z'),
                                         excite=1.0 if i == excite else 0.0, priority=12))
     if dumps:
@@ -430,6 +444,9 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
         write_norm(path, norm)
     for p in ports:
         p.CalcPort(path, freq)
+    if not np.any(np.abs(ports[k].uf_inc) > 0):                 # nothing went in: no S column to compute
+        raise RuntimeError(f"port {m.ports[k].name} was not excited (no incident wave: its box catches no mesh "
+                           f"edges; see the run's openems.log, 'Voltage excitations')")
     col = np.array([p.uf_ref / ports[k].uf_inc for p in ports]).T
     extra = analyse(path=path, ports=ports, token=token, k=k, col=col) if analyse else None
     return k, col, files, norm, seconds, steps_taken(path, mesh['info']['dt_ps']), extra

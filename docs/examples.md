@@ -31,7 +31,8 @@ for example `make_antennas.py ifa out arm=19`.
 <a id="rf-structures"></a>
 ## RF structures
 
-`make_rf_examples.py` makes classic microwave structures on 0.8 mm FR-4 over a ground plane. The boards
+`make_rf_examples.py` makes classic microwave structures on 0.8 mm FR-4 over a ground plane, and two
+4-layer ones (`stripline`, `diffvia`) on 0.2 mm layers. The boards
 and their configs (`rf_<name>.toml`) are in the repository, with openEMS results in
 `examples/reference/`. They are useful for comparing the solvers:
 
@@ -43,6 +44,9 @@ and their configs (`rf_<name>.toml`) are in the repository, with openEMS results
 | `rf_stubnotch`: two open λ/4 stubs, 2.4 GHz | notch | 2.384 GHz | 2.411 GHz | 2.494 GHz |
 | `rf_gcpw`: grounded CPW with via fences | S11, S21 at 5 GHz | −26.1, −0.39 dB | −31.4, −0.31 dB | −21.0, −0.35 dB |
 | `rf_coupler`: 10 dB coupler, 0.14 mm gap | S31, S21 | −9.9, −0.83 dB | −10.9, −0.67 dB | −10.4, −0.72 dB |
+| `rf_ratrace`: 180° hybrid ring, 2.4 GHz | S21, S41, S31 | −3.58, −3.56, −20.9 dB | −3.34, −3.45, −35.8 dB | −3.34, −3.43, −46.7 dB |
+| `rf_radialstub`: one 60° radial stub | notch | 2.12 GHz | 2.18 GHz | none (a fan only widens the line) |
+| `rf_stripline`: 4 layers, via-fenced stripline | worst S11, S21 at 10 GHz | −16.9, −0.86 dB | −24.8, −0.87 dB | −13.5, −0.63 dB |
 
 Where the solvers disagree:
 
@@ -53,6 +57,9 @@ Where the solvers disagree:
   went −8.56, −9.21, −9.93 dB at 1×, 1.5× and 3× refinement, towards mom25d's −10.9 dB (which doesn't move
   between 0.3 and 0.1 mm cells). The grounded CPW's S11 went from −18.9 to −26.1 dB at 2×. Their configs now
   use those finer meshes, but neither is fully converged.
+- **Curved and fan-shaped copper**: the rat-race ring and the radial stub need finer openEMS meshes than
+  straight lines do. The rat-race's isolation (S31) is still mesh-limited in openEMS; the radial stub's notch
+  moved from 2.04 to 2.12 GHz between 1× and 3×.
 - **Filter loss**: openEMS's default dielectric model overstates the loss of the microstrip filter by
   about 1.3 dB. With `--diel wideband` its pass band matches mom25d's to 0.05 dB.
 

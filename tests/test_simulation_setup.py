@@ -21,6 +21,22 @@ def test_build_fdtd_passes_plain_scalars(demo_files, fake_openems, sigma):
     assert fake_openems.count('cyl') == len(m.vias)
 
 
+def test_port_planes_land_on_mesh_lines(demo_files, fake_openems):
+    """A port plane a hair off its mesh line (two differential legs differing by 1e-12 mm share one merged
+    line) is put exactly on the line: openEMS drops a zero-thickness port that misses it, unexcited."""
+    from kicad2ems.solvers.openems.simulation import build_fdtd
+    base, _ = demo_files
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
+    bc = resolve_bc('auto', m)
+    mesh = auto_mesh(m, 1e9, 8e9, bc=bc, log=lambda *a: None)
+    p = m.ports[0]
+    p.c = p.c + np.eye(2)[p.axis] * 1e-9                          # off its line by far less than any cell
+    build_fdtd(m, mesh, 1e9, 8e9, 0, bc=bc)
+    boxes = [x for x in fake_openems if isinstance(x, tuple) and x[0] == 'port_box']
+    s, e = boxes[0][1], boxes[0][2]
+    assert s[p.axis] == e[p.axis] and s[p.axis] in set(np.asarray(mesh['xy'[p.axis]], float).tolist())
+
+
 def test_build_fdtd_wideband_dielectric(demo_files, fake_openems):
     from kicad2ems.solvers.openems.simulation import build_fdtd
     base, _ = demo_files

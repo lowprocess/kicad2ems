@@ -105,7 +105,7 @@ def fake_openems(monkeypatch):
         def SetCSX(self, c): pass
         def AddLumpedPort(self, nr, R, start, stop, d, excite=0, priority=0):
             _scalar(R, 'port R'); _coords(start, 'port start'); _coords(stop, 'port stop'); _scalar(excite, 'excite')
-            log.append('port'); return object()
+            log.append('port'); log.append(('port_box', tuple(start), tuple(stop))); return object()
 
     class Debye(Prim):
         def __init__(self, pset, order, name, **kw):

@@ -7,4 +7,7 @@ out     = "out"
 fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
 
 [solver.openems]
+fine    = 0.13    # mm: the fan's curved edge needs a fine mesh. The notch is at 2.04 GHz with the default
+res     = 60      # (fine 0.38) and 2.12 GHz at these settings (3x, 0.14 M cells); mom25d 2.18 GHz.
+nz      = 12      # Not fully converged at 3x
 excite  = ["P1"]

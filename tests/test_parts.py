@@ -76,7 +76,7 @@ def test_build_fdtd_adds_lumped_elements(rlc, fake_openems):
     bc = resolve_bc('auto', m)
     mesh = auto_mesh(m, 0.5e9, 6e9, bc=bc, log=lambda *a: None)
     build_fdtd(m, mesh, 0.5e9, 6e9, 0, bc=bc)
-    lumped = [x for x in fake_openems if isinstance(x, tuple)]
+    lumped = [x for x in fake_openems if isinstance(x, tuple) and x[0] == 'lumped']
     assert lumped[0] == ('lumped', 'part_C1', {'C': 1.5e-12})
     # series R + L: a resistive piece and an inductor piece (openEMS's series R-L update is unstable)
     assert lumped[1] == ('lumped', 'part_L7_R', {'R': 0.2})
