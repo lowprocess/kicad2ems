@@ -8,8 +8,28 @@ boards, but memory limits how fine a mesh it can use.
 
 ## Installing
 
-EMerge 2.5 and later need Python 3.13 or older. kicad2ems runs EMerge as a separate process, so it can live in
-a Python of its own:
+**In kicad2ems's own venv** (any Python, 3.14 included): `./setup.sh` asks about EMerge; choose *from git*. Or,
+for an existing venv:
+
+```
+tools/emerge/install_emerge.sh .venv/bin/python
+```
+
+This clones EMerge v2.8.9 and its utilities emsutil v0.8.3 into `.emerge/`, applies the patches in
+`tools/emerge/` and installs them. EMerge 2.8.9 pins Python < 3.14 and gmsh < 4.15, and emsutil NumPy < 2.3;
+the code itself runs on Python 3.14, NumPy 2.4 and gmsh 4.15 once two bugs are fixed:
+
+- gmsh 4.15 throws on a mesh-size field that lists an entity which no longer exists (4.14 ignored it). The
+  exception comes from inside mesh generation and aborts the process. The patch drops such entities.
+- EMerge's search for MKL's PARDISO library returned the last candidate whether it loaded or not, and failed
+  with an `UnboundLocalError` when there was none. The patch takes the first one that loads, or says MKL is
+  missing.
+
+On Python 3.14 with gmsh 4.15 the results match Python 3.13 with gmsh 4.14 (the shielded filter to 1e-10, the
+thru to 3e-3 from a slightly different mesh). EMerge's first run in a new venv compiles its numba code, which
+takes a few minutes once.
+
+**In a Python of its own** (EMerge from PyPI needs Python 3.13 or older):
 
 ```
 python3.13 -m venv ~/emerge-venv
@@ -17,8 +37,8 @@ python3.13 -m venv ~/emerge-venv
 kicad2ems board.toml --solvers emerge --emerge-python ~/emerge-venv/bin/python
 ```
 
-`$KICAD2EMS_EMERGE_PYTHON` does the same as `--emerge-python`. If kicad2ems itself runs on Python 3.13,
-`pip install kicad2ems[emerge]` puts EMerge next to it. `kicad2ems --check` shows whether it's found.
+`$KICAD2EMS_EMERGE_PYTHON` does the same as `--emerge-python`. kicad2ems runs EMerge as a separate process
+either way. `kicad2ems --check` shows whether it's found.
 
 ## How the board is modelled
 

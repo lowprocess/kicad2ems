@@ -18,6 +18,7 @@ dist/
 htmlcov/
 .venv/
 .openems/
+.emerge/
 .pytest_cache/
 
 # KiCad local history

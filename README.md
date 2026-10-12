@@ -9,7 +9,7 @@ report that compares the solvers.
 |---|---|---|---|
 | [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS |
 | [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | cuPy for GPU acceleration |
-| [EMerge](docs/emerge.md) (3D FEM, experimental) | `emerge` | a third, independent full-wave check of small boards | EMerge, in a Python ≤ 3.13 |
+| [EMerge](docs/emerge.md) (3D FEM, experimental) | `emerge` | small closed or high-Q structures (a filter in a shielding can), a third full-wave check | EMerge (`setup.sh`: from git, patched for Python 3.14) |
 | Transmission-line model | `lines` | a quick estimate: impedance steps, delays, layout mistakes | scikit-rf or qucsator |
 
 By default kicad2ems picks the full-wave solver it expects to be fastest for your board and adds the

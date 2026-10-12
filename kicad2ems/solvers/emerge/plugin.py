@@ -1,8 +1,10 @@
 """
 EMerge (https://github.com/FennisRobert/EMerge, GPL-2.0-or-later), a 3D finite-element solver in Python, as an
 optional solver: --solvers emerge. It runs in a process of its own (worker.py) with the Python EMerge is
-installed in, which can be another one than kicad2ems's: EMerge 2.5+ needs Python <= 3.13.
+installed in: kicad2ems's own (tools/emerge/install_emerge.sh: EMerge from git, patched for Python 3.14), or
+another one (PyPI's EMerge 2.5+ needs Python <= 3.13):
 
+    tools/emerge/install_emerge.sh .venv/bin/python                     # or ./setup.sh: EMerge from git
     python3.13 -m venv ~/emerge-venv && ~/emerge-venv/bin/pip install emerge
     kicad2ems board.toml --solvers emerge --emerge-python ~/emerge-venv/bin/python
 
@@ -42,9 +44,9 @@ def emerge_status(python):
             em, py = ver.split()[:2]
             _checked[python] = (True, f"EMerge {em} (Python {py}, {exe})")
         else:
-            _checked[python] = (False, f"EMerge is not installed in {exe}: install it in a Python <= 3.13 "
-                                       f"(python3.13 -m venv ~/emerge-venv && ~/emerge-venv/bin/pip install emerge) "
-                                       f"and give --emerge-python ~/emerge-venv/bin/python")
+            _checked[python] = (False, f"EMerge is not installed in {exe}: tools/emerge/install_emerge.sh {exe} "
+                                       f"(from git, patched for Python 3.14), or a Python <= 3.13 with pip install "
+                                       f"emerge and --emerge-python")
     return _checked[python]
 
 
