@@ -43,6 +43,13 @@ Every run also breaks the port nets into transmission-line sections with closed-
 
 ## Install
 
+The quick way: `./setup.sh` makes a virtual environment in `.venv/` and asks about each optional part: the
+GUI, field dumps, scikit-rf, gmsh, mom25d's compiled core, the CuPy wheel for your GPU (it detects CUDA 12 / 13 or
+ROCm 7), and openEMS (a local build into `.openems/` with `tools/build_openems.sh`, an existing install, or
+none). `./setup.sh --yes` takes the defaults (no openEMS build). Then `source .venv/bin/activate`.
+
+By hand:
+
 ```bash
 git clone https://github.com/lowprocess/kicad2ems.git && cd kicad2ems
 pip install .                 # numpy, scipy, shapely, matplotlib, triangle (the MoM solver's mesher)

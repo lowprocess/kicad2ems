@@ -17,6 +17,7 @@ dist/
 .coverage
 htmlcov/
 .venv/
+.openems/
 .pytest_cache/
 
 # KiCad local history
