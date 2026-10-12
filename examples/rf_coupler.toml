@@ -12,5 +12,7 @@ out     = "out"
 fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
 
 [solver.openems]
-fine    = 0.035   # mm at the copper edges: the 0.14 mm gap between the coupled lines
+fine    = 0.012   # mm at the copper edges. The 0.14 mm gap needs a fine mesh: S31 at 2.4 GHz is -8.56 dB at
+res     = 60      # fine 0.035 / res 20 / nz 4, -9.21 dB at 1.5x that and -9.93 dB at 3x (these settings, 83 s);
+nz      = 12      # mom25d -10.9 dB. Still not fully converged at 3x
 excite  = ["P1"]

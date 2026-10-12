@@ -5,25 +5,26 @@ examples or benchmarks showed. Last updated 2026-10-12.
 
 ## 1. Open questions (correctness)
 
-Disagreements between the solvers that aren't explained yet. Settle them before trusting the affected
-cases.
+- **Wilkinson isolation** (`rf_wilkinson`): openEMS gives S32 −18.5 dB at 2.4 GHz (its null shallow, at
+  2.6 GHz); mom25d −40 dB (at 0.3 and 0.15 mm cells) and the line model −35.7 dB. Ruled out: openEMS's
+  resistor (a 100 Ω resistor in series on a 50 Ω line gives −6.3 to −6.5 dB in all three solvers, along x
+  and y), openEMS's mesh (−17.5 dB at 2× finer), and its boundaries (−18.7 dB with PML and 15 mm of air).
+  An ESL would need about 3 nH to explain it in mom25d (1 nH: −27.6 dB). Next: compare the even- and
+  odd-mode responses of the two arms between the solvers, to find which mode differs.
+- **Coupler and grounded CPW: openEMS needs finer meshes than their configs had.** Coupler S31 at 2.4 GHz:
+  −8.56, −9.21 and −9.93 dB at 1×, 1.5× and 3×, towards mom25d's −10.9 dB. Grounded CPW S11 at 5 GHz: −18.9
+  and −26.1 dB at 1× and 2×, towards −31.4 dB. Their configs and reference results now use the 3× and 2×
+  meshes. Neither is fully converged, so the reference results are still uncertain at the 1 dB level.
+  The cost is a few minutes per run; a converged reference would be worth one long run each.
 
-- **Wilkinson isolation** (`rf_wilkinson`): openEMS gives S32 −18.5 dB at 2.4 GHz; mom25d −38.9 dB and the
-  line model −35.7 dB. The two that treat the resistor as ideal agree, so look at openEMS's resistor: the
-  1 mm pad gap and the mesh in it. Sweeping the gap and `fine`, and testing the resistor alone in a two-port,
-  would separate the causes.
-- **Coupler coupling** (`rf_coupler`, 0.14 mm gap): openEMS −8.6 dB, mom25d −10.9 dB. **openEMS's mesh
-  isn't converged**: 1.5× finer moved S31 to −9.21 dB, towards mom25d (`--converge 1,1.5`: 6.3 dB between
-  levels). A 2×/3× run was queued; the reference result needs regenerating on a converged mesh.
-- **Grounded CPW return loss** (`rf_gcpw`): openEMS −18.9 dB at 5 GHz, mom25d −31.4 dB (wave ports) and
-  −40.0 dB (lumped). Not the port type: mom25d's lumped ports don't reproduce it. Next: openEMS mesh
-  convergence, as for the coupler.
-- **Filter pass-band loss** (`filter`): openEMS shows about 1.4 dB more loss at 3.3 GHz. Probably its loss
-  model, fitted at the band centre; re-run with `diel = "wideband"` to confirm.
+Settled:
+- **Filter pass-band loss** (`filter`): it was openEMS's fixed dielectric model, whose loss is set at the
+  band centre. With `--diel wideband`, openEMS's pass-band peak is −5.28 dB against mom25d's −5.23 dB
+  (−6.52 dB with the fixed model), at four times the run time.
 
 ## 2. Line model
 
-- The differential via transition (`rf_diffvia`) fails in qucsator (`KeyError: 'S[1,2]'`).
+- Coupled sections are microstrip only: the stripline half of `rf_diffvia` runs as two uncoupled lines.
 
 ## 3. mom25d
 

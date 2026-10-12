@@ -29,7 +29,8 @@ numpy values.
 - **`--diel wideband`** uses the Djordjevic-Sarkar model, which matches real laminates: εr falls slowly
   with frequency and tan δ stays nearly flat. The stackup values apply at `--diel-fref` (1 GHz). It is
   built from a sum of Debye poles. Each pole costs run time: on the microstrip filter the run took about
-  four times as long.
+  four times as long, and its pass band then matched mom25d's within 0.05 dB (the fixed model had 1.3 dB
+  more loss). Use it for narrowband filters and wherever the loss matters.
 
 ## Excitation
 

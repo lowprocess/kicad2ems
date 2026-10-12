@@ -94,12 +94,15 @@ def manhattan(d, L, fine):
     return ((np.abs(d[..., 0]) <= tol) | (np.abs(d[..., 1]) <= tol)) & (L >= fine)
 
 
-def curve_lines(xy, fine, mode='extremes'):
+def curve_lines(xy, fine, mode='extremes', step=None):
     """Mesh-line candidates of the curved parts of a ring (rounded pad corners, round track ends,
     arcs, circular antipads, oblique edges). Edges that are Manhattan and at least `fine` long are
     handled by the thirds rule instead. mode 'extremes': for each run of consecutive curved edges only
     its two end points and its local x / y extremes (a round antipad gives 2 lines per axis instead of
-    one per vertex); 'vertices': every vertex (dense, closest to the drawn geometry)."""
+    one per vertex), and with `step` also a line wherever the run has gone `step` mm in x or y since the
+    last one: a thin curved track (the copper's width as the step) stays connected on the mesh. With the
+    extremes alone a rat-race's 0.8 mm ring sat on cells up to 1.8 mm, broke apart, and S21 came out
+    -35.8 dB instead of -3.4. 'vertices': every vertex (dense, closest to the drawn geometry)."""
     xy = np.asarray(xy)[:-1]                                        # closed ring -> unique vertices
     n = len(xy)
     if n < 3:
@@ -130,11 +133,14 @@ def curve_lines(xy, fine, mode='extremes'):
             xs += [pts[:, 0].min(), pts[:, 0].max()]; ys += [pts[:, 1].min(), pts[:, 1].max()]
         elif ext.max() >= fine / 2:                                 # open run; tiny chamfers are ignored
             xs += [pts[0, 0], pts[-1, 0]]; ys += [pts[0, 1], pts[-1, 1]]
+            lx, ly = pts[0]
             for k in range(1, len(pts) - 1):                        # local extremes inside the run
-                if (pts[k, 0] - pts[k - 1, 0]) * (pts[k + 1, 0] - pts[k, 0]) < 0:
-                    xs.append(pts[k, 0])
-                if (pts[k, 1] - pts[k - 1, 1]) * (pts[k + 1, 1] - pts[k, 1]) < 0:
-                    ys.append(pts[k, 1])
+                if (pts[k, 0] - pts[k - 1, 0]) * (pts[k + 1, 0] - pts[k, 0]) < 0 or \
+                        (step and abs(pts[k, 0] - lx) >= step):
+                    xs.append(pts[k, 0]); lx = pts[k, 0]
+                if (pts[k, 1] - pts[k - 1, 1]) * (pts[k + 1, 1] - pts[k, 1]) < 0 or \
+                        (step and abs(pts[k, 1] - ly) >= step):
+                    ys.append(pts[k, 1]); ly = pts[k, 1]
         seen += len(run)
         i = j
     return xs, ys
@@ -170,7 +176,7 @@ def _edge_lines(m, fine, curves):
                     else:
                         s, ym = np.sign(dx), 0.5 * (y0 + y1)
                         third_in[1].append(ym + s * c / 3); third[1].append(ym - s * 2 * c / 3)
-                cx, cy = curve_lines(xy, fine, curves)
+                cx, cy = curve_lines(xy, fine, curves, step=max(fine, 2 * p.area / p.length))   # its width
                 fixed[0] += cx; fixed[1] += cy
     return fixed, third, third_in
 

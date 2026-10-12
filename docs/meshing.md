@@ -10,8 +10,9 @@ extra line costs run time.
 ## Cell sizes
 
 - **Largest cell**: a wavelength at `fmax` divided by `--res` (20), in the dielectric and in air separately.
-- **Fine cell** at copper edges, `--fine`. By default it is a quarter of the smaller of the narrowest port
-  trace and twice the thinnest dielectric.
+- **Fine cell** at copper edges, `--fine`. By default it is a quarter of the smallest of: the narrowest port
+  trace, twice the thinnest dielectric, and the narrowest gap next to the port copper (coupled lines, a
+  coplanar slot). Narrow gaps can still need finer meshes: check with `--converge`.
 - **Growth**: neighbouring cells differ by at most `--ratio` (1.4).
 
 ## x and y lines
@@ -20,8 +21,10 @@ extra line costs run time.
 - **Straight copper edges** get the "thirds rule": a pair of lines across the edge, one third inside the
   metal and two thirds outside. This places the edge correctly for the field singularity there. An edge
   counts as straight if it stays within `fine/10` of an axis.
-- **Curves** (arcs, round ends, oblique edges) get lines at their ends and their x/y extremes
-  (`--curves extremes`, the default), or at every vertex (`vertices`).
+- **Curves** (arcs, round ends, oblique edges) get lines at their ends and their x/y extremes, plus one
+  wherever the curve has run on by the copper's own width (`--curves extremes`, the default), or a line at
+  every vertex (`vertices`). The width rule keeps a thin curved track connected: without it a rat-race
+  ring broke apart on the coarse mesh.
 - **Vias** on the port nets get lines at their centre and edges. Other vias, such as stitching and
   fences, move onto the nearest existing line within `--via-snap` (0.2 mm). Every move is logged.
 - The board outline, the port planes and the ends of each lumped part are kept exactly.

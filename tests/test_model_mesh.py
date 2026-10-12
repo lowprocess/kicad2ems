@@ -172,3 +172,18 @@ def test_region_leaves_out_ports_outside():
         Board(b, nets=['RF', 'GND'], pos_file=pos, region=(5, 0, 12, 20), log=lambda *a: None)
     with pytest.raises(ValueError, match='does not overlap'):
         Board(b, nets=['RF', 'GND'], pos_file=pos, region=(30, 30, 40, 40), log=lambda *a: None)
+
+
+def test_curve_lines_follow_a_thin_curved_track():
+    """Along a curved run, 'extremes' adds a line every `step` mm (the copper's width), so a thin curved
+    track stays connected on the mesh; without a step only the run's ends and extremes."""
+    import numpy as np
+    from kicad2ems.solvers.openems.mesh import curve_lines
+    a = np.linspace(0, np.pi, 60)
+    arc = np.column_stack([10 * np.cos(a), 10 * np.sin(a)])
+    ring = np.vstack([arc, arc[::-1] * 0.92, arc[:1]])            # a half annulus 0.8 mm wide, closed
+    xs0, ys0 = curve_lines(ring, 0.2)
+    xs1, ys1 = curve_lines(ring, 0.2, step=0.8)
+    assert len(xs1) > 3 * len(xs0) and len(ys1) > len(ys0)
+    gaps = np.diff(np.unique(np.round(xs1, 6)))
+    assert gaps.max() < 0.8 + 0.6                                  # never much more than the step apart

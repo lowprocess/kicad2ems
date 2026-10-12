@@ -41,17 +41,20 @@ and their configs (`rf_<name>.toml`) are in the repository, with openEMS results
 | `rf_wilkinson`: power divider with a 100 Ω resistor | S21, S22, S32 | −3.35, −18.6, −18.5 dB | −3.31, −20.0, −38.9 dB | −3.30, −18.4, −35.7 dB |
 | `rf_steplpf`: stepped-impedance low-pass, 2 GHz | −3 dB frequency | 1.765 GHz | 1.765 GHz | 1.806 GHz |
 | `rf_stubnotch`: two open λ/4 stubs, 2.4 GHz | notch | 2.384 GHz | 2.411 GHz | 2.494 GHz |
-| `rf_gcpw`: grounded CPW with via fences | S11, S21 at 5 GHz | −18.9, −0.44 dB | −30.1, −0.32 dB | −21.0, −0.35 dB |
-| `rf_coupler`: 10 dB coupler, 0.14 mm gap | S31, S21 | −8.6, −1.05 dB | −10.9, −0.67 dB | −10.4, −0.72 dB |
+| `rf_gcpw`: grounded CPW with via fences | S11, S21 at 5 GHz | −26.1, −0.39 dB | −31.4, −0.31 dB | −21.0, −0.35 dB |
+| `rf_coupler`: 10 dB coupler, 0.14 mm gap | S31, S21 | −9.9, −0.83 dB | −10.9, −0.67 dB | −10.4, −0.72 dB |
 
 Where the solvers disagree:
 
-- **Wilkinson isolation**: mom25d and the line model treat the resistor as ideal. openEMS models it
-  across a 1 mm gap between pads, which adds parasitics. Whether that explains the whole difference is
-  still open.
-- **Coupler**: openEMS couples about 2 dB more strongly. It isn't copper thickness, since openEMS models
-  the copper as zero-thickness sheets too, and it isn't the MoM mesh: mom25d gives −10.91, −10.89 and
-  −10.88 dB at cell sizes of 0.3, 0.15 and 0.1 mm. The next thing to check is openEMS's mesh across the gap.
+- **Wilkinson isolation** is still open. openEMS's isolation null is shallow and at 2.6 GHz. Its resistor
+  checks out on its own (a series 100 Ω on a 50 Ω line agrees with the others within 0.2 dB), and neither a
+  finer mesh nor absorbing boundaries change it.
+- **Coupler and grounded CPW**: openEMS needs much finer meshes here than the defaults. The coupler's S31
+  went −8.56, −9.21, −9.93 dB at 1×, 1.5× and 3× refinement, towards mom25d's −10.9 dB (which doesn't move
+  between 0.3 and 0.1 mm cells). The grounded CPW's S11 went from −18.9 to −26.1 dB at 2×. Their configs now
+  use those finer meshes, but neither is fully converged.
+- **Filter loss**: openEMS's default dielectric model overstates the loss of the microstrip filter by
+  about 1.3 dB. With `--diel wideband` its pass band matches mom25d's to 0.05 dB.
 
 ## Board files
 
