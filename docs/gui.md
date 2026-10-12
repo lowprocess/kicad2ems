@@ -11,13 +11,28 @@ The GUI edits a run's settings, starts the command-line tool as a separate proce
 follows its event stream (`gui/runner.py`). Closing the window never loses a run's results, and the GUI
 itself needs no openEMS.
 
-| Tab | What it does |
+The window has a **toolbar** (New, Open, Save, Save as · Preview, Run, Stop · Results: open a results folder,
+Report: its HTML report), the **Settings** dock on the left and the **results workspace** on the right.
+
+**Settings** are one collapsible section per group (board, band, solvers, openEMS mesh, openEMS incl. *Mode*
+and pattern frequencies, field dumps, output), all collapsed when the window opens; each header counts the
+settings set in it (`Band (3 set)`). Empty fields show their default.
+
+**The results workspace** is one page of panels, tabbed together; drag a panel's title to split the page,
+float it, or close it (*View* reopens any, *Show all panels* every one). A preview opens the panels it fills
+(*Model and mesh*, *Line model*, and *S-parameters* when a solver ran), a run opens *Run* while it goes and
+then its results: *S-parameters*, *Fields* when it wrote dumps, *Antenna* in antenna mode (in front),
+*Convergence* with `--converge`. Opening a config shows the results already in its output folder the same way.
+
+| Panel | What it shows |
 |---|---|
-| Setup | the main settings by group (board, band, solvers, openEMS mesh, openEMS incl. *Mode* and pattern frequencies, field dumps, output; empty fields show their default); open / save the TOML config ([below](#configs)); *Preview* runs `--preview` and shows the mesh preview, the line-model plot and the fast S-parameters; *Run* starts the full run with the ticked solvers |
+| S-parameters | interactive S-parameter plots: openEMS solid, mom25d dash-dot, line model dotted, the `compare` file dashed, each solver a group of tick boxes; a Smith chart of the return loss beside them, a cursor readout and markers ([below](#plots)); *Add results folder…* overlays another run's S-parameters, labelled by its folder (*Remove added*); *Open folder* |
+| Model and mesh | the model plot and openEMS's mesh preview |
+| Line model | the line sections of the transmission-line model |
 | Run | stage, one progress bar per driven port (step, dB, ETA), the decay curves, the log; *Stop* writes `ABORT` into every run folder (openEMS stops and finishes normally, so the results up to that point are written) |
-| Results | interactive S-parameter plots: openEMS solid, mom25d dash-dot, line model dotted, the `compare` file dashed; a Smith chart of the return loss beside them, a cursor readout and markers ([below](#plots)); *Open results folder…* (an earlier run), *Open report*, *Open folder* |
-| Fields | the field dumps: live view, x / y / z cuts, playback over time or phase, PNG / GIF / MP4 ([below](#fields)) |
-| Antenna | antenna mode: S11, gain / directivity / realized gain / efficiency over frequency, the far-field pattern at any recorded frequency ([below](#antenna)) |
+| Fields | the field dumps, openEMS's and mom25d's (`--mom-dump`): live view, x / y / z cuts, playback over time or phase, PNG / GIF / MP4 ([below](#fields)) |
+| Antenna | antenna mode: S11, gain / directivity / realized gain / efficiency over frequency, the far-field pattern at any recorded frequency ([below](#antenna)); a folder with openEMS's and mom25d's antenna results has a selector for them |
+| Convergence | openEMS's mesh-convergence plot (`--converge`) |
 
 **Solvers.** One tick box per solver plugin: *openEMS (FDTD)*, *mom25d (MoM)*, *line model (qucsator)*,
 *line model (scikit-rf)*, and any solver installed as a plugin ([solvers](usage.md#solvers)), plus *auto*
@@ -31,7 +46,7 @@ option tables, so a plugin's settings that have a GUI label appear in it too.
 ## Configs
 
 *File* → *New* (Ctrl+N), *Open…* (Ctrl+O), *Open recent*, *Examples* (every `examples/*.toml`), *Save*
-(Ctrl+S), *Save as…* (Ctrl+Shift+S); the same as buttons under the form. The window title shows the
+(Ctrl+S), *Save as…* (Ctrl+Shift+S); the same in the toolbar. The window title shows the
 config and `*` while it has unsaved changes; opening another config or closing the window asks first.
 *Run* → *Preview* (Ctrl+P), *Run* (Ctrl+R), *Stop* (Ctrl+.).
 

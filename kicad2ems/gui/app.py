@@ -9,37 +9,47 @@ openEMS of its own.
 import os, sys
 from PySide6.QtCore import Qt, QProcess, QTimer, QUrl, QSettings
 from PySide6.QtGui import QDesktopServices, QPixmap, QAction, QKeySequence
-from PySide6.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
-                               QFormLayout, QGroupBox, QLineEdit, QCheckBox, QComboBox, QPushButton, QLabel,
-                               QPlainTextEdit, QProgressBar, QFileDialog, QScrollArea, QSplitter, QMessageBox)
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
+                               QLineEdit, QCheckBox, QComboBox, QPushButton, QLabel, QPlainTextEdit, QProgressBar,
+                               QFileDialog, QScrollArea, QMessageBox, QDockWidget, QToolBar, QStyle)
 import pyqtgraph as pg
 from .fieldtab import FieldsTab
 from .antennatab import AntennaTab
 from .runner import (FIELDS, SEMICOLON_LISTS, TICK, Run, EventTail, stop_runs, settings_values, extra_values,
                      find_results, save_config, solvers_from_form, solver_ticks)
 from .splot import SPlot
+from .panels import Section, ImagePanel
 
 pg.setConfigOptions(antialias=True, background='w', foreground='k')
 EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
 MAX_RECENT = 8
+PANELS = ('S-parameters', 'Model and mesh', 'Line model', 'Run', 'Fields', 'Antenna', 'Convergence')
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
 
 
 class SetupTab(QWidget):
+    """The settings: one collapsible section per group (collapsed when the window opens; the header counts the
+    settings set), in a scroll area. Open / Save / Preview / Run are the window's toolbar."""
     def __init__(self, win):
         super().__init__()
         from ..config import Settings
         self.win, self.edits, self.extra = win, {}, {}
         self.path, self.dirty, self._loading = None, False, False
-        defaults = Settings()
-        outer = QHBoxLayout(self)
+        self.defaults = Settings()
+        defaults = self.defaults
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
         left = QVBoxLayout()
-        groups = {}
+        left.setSpacing(2)
+        groups, self.sections, self.group_of = {}, {}, {}
         for key, label, kind, group in FIELDS:
             if group not in groups:
-                box = QGroupBox(group)
+                box = QWidget()
                 groups[group] = QFormLayout(box)
-                left.addWidget(box)
+                groups[group].setContentsMargins(0, 0, 0, 0)
+                self.sections[group] = Section(group, box)
+                left.addWidget(self.sections[group])
+            self.group_of[key] = group
             if kind == 'bool':
                 w = QCheckBox()
                 w.toggled.connect(self._changed)
@@ -68,31 +78,29 @@ class SetupTab(QWidget):
                 groups[group].addRow(label, w)
             self.edits[key] = (w, kind)
         groups['Field dumps'].addRow('Add a dump', self._dump_builder())
-        buttons = QHBoxLayout()
-        for text, slot in (('Open…', lambda: self.load()), ('Save', self.save), ('Save as…', self.save_as),
-                           ('Preview', win.preview), ('Run', win.run)):
-            b = QPushButton(text)
-            b.clicked.connect(slot)
-            buttons.addWidget(b)
-        left.addLayout(buttons)
         left.addStretch(1)
         lw = QWidget()
         lw.setLayout(left)
         scroll = QScrollArea()
         scroll.setWidget(lw)
         scroll.setWidgetResizable(True)
-        scroll.setMinimumWidth(420)
-        self.images = QVBoxLayout()
-        iw = QWidget()
-        iw.setLayout(self.images)
-        right = QScrollArea()
-        right.setWidget(iw)
-        right.setWidgetResizable(True)
-        split = QSplitter()
-        split.addWidget(scroll)
-        split.addWidget(right)
-        split.setStretchFactor(1, 2)
-        outer.addWidget(split)
+        scroll.setMinimumWidth(380)
+        outer.addWidget(scroll)
+
+    def _count(self):
+        """Per section: how many of its fields are set (non-empty, a ticked box differing from the default)."""
+        counts = dict.fromkeys(self.sections, 0)
+        for key, (w, kind) in self.edits.items():
+            if kind == 'bool':
+                d = getattr(self.defaults, key, False) if not key.startswith(TICK) else key == f"{TICK}auto"
+                on = w.isChecked() != bool(d)
+            elif isinstance(kind, tuple):
+                on = w.currentIndex() > 0 and w.currentText() != str(getattr(self.defaults, key, ''))
+            else:
+                on = bool(w.text().strip())
+            counts[self.group_of[key]] += on
+        for g, n in counts.items():
+            self.sections[g].set_count(n)
 
     def _dump_builder(self):
         """FIELD, where (a layer, an x / y / z plane, the volume), GHz -> a spec appended to the dumps."""
@@ -175,6 +183,7 @@ class SetupTab(QWidget):
             self._set_values(vals)
         finally:
             self._loading = loading
+        self._count()
 
     def _set_values(self, vals):
         if not any(k.startswith(TICK) for k in vals):              # settings rather than the form's own values
@@ -195,6 +204,7 @@ class SetupTab(QWidget):
                 w.setText(str(v))
 
     def _changed(self, *_):
+        self._count()
         if not self._loading and not self.dirty:
             self.dirty = True
             self.win.update_title()
@@ -275,16 +285,8 @@ class SetupTab(QWidget):
         return True
 
     def show_images(self, paths):
-        while self.images.count():
-            it = self.images.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
-        for p in paths:
-            lab = QLabel()
-            pm = QPixmap(p)
-            lab.setPixmap(pm.scaledToWidth(min(pm.width(), 1100), Qt.SmoothTransformation))
-            self.images.addWidget(lab)
-        self.images.addStretch(1)
+        """A preview's plots: into the window's Model & mesh and Line model panels."""
+        self.win.show_plots(paths)
 
 
 class RunTab(QWidget):
@@ -354,20 +356,39 @@ class ResultsTab(QWidget):
         top = QHBoxLayout()
         self.info = QLabel('no results yet')
         top.addWidget(self.info, 1)
-        self.report_btn = QPushButton('Open report')
-        self.report_btn.setEnabled(False)
-        self.report_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.report)))
-        top.addWidget(self.report_btn)
-        self.load_btn = QPushButton('Open results folder…')
-        self.load_btn.clicked.connect(self._load)
-        top.addWidget(self.load_btn)
+        self.add_btn = QPushButton('Add results folder…')
+        self.add_btn.setToolTip('Overlay the S-parameters of another run (another folder), labelled by its folder')
+        self.add_btn.clicked.connect(self._add)
+        top.addWidget(self.add_btn)
+        self.clear_btn = QPushButton('Remove added')
+        self.clear_btn.clicked.connect(self._clear_added)
+        self.clear_btn.setEnabled(False)
+        top.addWidget(self.clear_btn)
         self.folder_btn = QPushButton('Open folder')
         self.folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.win.out_dir())))
         top.addWidget(self.folder_btn)
         lay.addLayout(top)
         self.splot = SPlot()
         lay.addWidget(self.splot, 1)
-        self.report = None
+        self.report, self.added, self._files = None, [], []
+
+    def open_report(self):
+        if self.report:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self.report))
+
+    def _add(self):
+        d = QFileDialog.getExistingDirectory(self, 'Another results folder to overlay', self.win.out_dir())
+        if d:
+            files = find_results(d)
+            if not files:
+                QMessageBox.information(self, 'Results', f"No S-parameters in {d}")
+                return
+            self.added.append((os.path.basename(os.path.normpath(d)) or d, files))
+            self.show(self._files)
+
+    def _clear_added(self):
+        self.added = []
+        self.show(self._files)
 
     def _load(self):
         d = QFileDialog.getExistingDirectory(self, 'A results folder (the run\'s output folder)', self.win.out_dir())
@@ -378,8 +399,9 @@ class ResultsTab(QWidget):
         """The S-parameters of a run's files (openEMS, mom25d, line model) and a compare file."""
         import json
         from .traces import load_traces
+        self._files = list(files)
         self.report = next((p for l, p in files if p.endswith('_report.html')), None)
-        self.report_btn.setEnabled(bool(self.report))
+        self.clear_btn.setEnabled(bool(self.added))
         z0 = 50.0
         summary = next((p for l, p in files if p.endswith(('_run.json', '_openems.json'))), None)
         if summary and os.path.exists(summary):
@@ -395,6 +417,10 @@ class ResultsTab(QWidget):
             compare = self.win.setup.values().get('compare')
         try:
             traces = load_traces(files, compare)
+            for label, fs in self.added:                             # other runs: their solvers under the folder's name
+                for tr in load_traces(fs):
+                    tr.source = f"{label}: {tr.source}"
+                    traces.append(tr)
         except Exception as e:                                       # a damaged file must not take the GUI down
             self.info.setText(f"could not read the S-parameters: {e}")
             return
@@ -407,17 +433,41 @@ class MainWindow(QMainWindow):
     def __init__(self, config=None):
         super().__init__()
         self.setWindowTitle('kicad2ems')
-        self.resize(1400, 900)
-        self.tabs = QTabWidget()
+        self.resize(1500, 950)
         self.proc, self.tail, self.files, self.current, self.ticks = None, None, [], None, 0
         self._traceback = False
         self.setup, self.runtab, self.results = SetupTab(self), RunTab(self), ResultsTab(self)
         self.fields, self.antenna = FieldsTab(self), AntennaTab(self)
-        for w, t in ((self.setup, 'Setup'), (self.runtab, 'Run'), (self.results, 'Results'), (self.fields, 'Fields'),
-                     (self.antenna, 'Antenna')):
-            self.tabs.addTab(w, t)
-        self.setCentralWidget(self.tabs)
+        self.model_img = ImagePanel('the model and the mesh of a preview or a run')
+        self.lines_img = ImagePanel('the line model of a preview or a run')
+        self.conv_img = ImagePanel('mesh convergence: run with --converge (openEMS)')
+        # the settings: a dock of the window; the results: one workspace of panels (tabbed, split, floated)
+        sd = QDockWidget('Settings', self)
+        sd.setObjectName('Settings')
+        sd.setWidget(self.setup)
+        sd.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
+        self.addDockWidget(Qt.LeftDockWidgetArea, sd)
+        self.work = QMainWindow()
+        self.work.setDockOptions(QMainWindow.AnimatedDocks | QMainWindow.AllowTabbedDocks | QMainWindow.AllowNestedDocks)
+        note = QLabel('Preview or run a board: its results open here (View: every panel)')
+        note.setAlignment(Qt.AlignCenter)
+        note.setStyleSheet('color: gray')
+        self.work.setCentralWidget(note)
+        self.note = note
+        self.docks = {}
+        for name, w in zip(PANELS, (self.results, self.model_img, self.lines_img, self.runtab, self.fields, self.antenna,
+                                    self.conv_img)):
+            d = QDockWidget(name, self.work)
+            d.setObjectName(name)
+            d.setWidget(w)
+            self.work.addDockWidget(Qt.TopDockWidgetArea, d)
+            if self.docks:
+                self.work.tabifyDockWidget(self.docks[PANELS[0]], d)
+            d.hide()
+            self.docks[name] = d
+        self.setCentralWidget(self.work)
         self.qsettings = QSettings('kicad2ems', 'gui')
+        self._toolbar()
         self._menus()
         self.statusBar()
         self.timer = QTimer(self)
@@ -426,7 +476,59 @@ class MainWindow(QMainWindow):
         if config:
             self.setup.load(config)
 
-    # ---- menus, title, recent files ----
+    # ---- toolbar, panels, menus, title, recent files ----
+    def _toolbar(self):
+        tb = QToolBar('Main')
+        tb.setObjectName('Main toolbar')
+        tb.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+        tb.setMovable(False)
+        st = self.style()
+        self.acts = {}
+        for name, icon, tip, slot in (
+                ('New', 'SP_FileIcon', 'New settings (Ctrl+N)', self.setup.new),
+                ('Open', 'SP_DialogOpenButton', 'Open a config (Ctrl+O)', lambda: self.setup.load()),
+                ('Save', 'SP_DialogSaveButton', 'Save the config (Ctrl+S)', self.setup.save),
+                ('Save as', 'SP_DriveFDIcon', 'Save the config as (Ctrl+Shift+S)', self.setup.save_as),
+                (None, None, None, None),
+                ('Preview', 'SP_FileDialogContentsView', 'The model, mesh and line model, no openEMS run (Ctrl+P)',
+                 self.preview),
+                ('Run', 'SP_MediaPlay', 'Run the solvers (Ctrl+R)', self.run),
+                ('Stop', 'SP_MediaStop', 'Stop the run (Ctrl+.)', self.stop),
+                (None, None, None, None),
+                ('Results', 'SP_DirOpenIcon', 'Open a results folder', self.results._load),
+                ('Report', 'SP_FileDialogInfoView', 'Open the HTML report of the results', self.results.open_report)):
+            if name is None:
+                tb.addSeparator()
+                continue
+            a = QAction(st.standardIcon(getattr(QStyle.StandardPixmap, icon)), name, self)
+            a.setToolTip(tip)
+            a.triggered.connect(slot)
+            tb.addAction(a)
+            self.acts[name] = a
+        self.acts['Stop'].setEnabled(False)
+        self.acts['Report'].setEnabled(False)
+        self.addToolBar(Qt.TopToolBarArea, tb)
+
+    def show_panel(self, name, front=True):
+        """Open a results panel (it may have been closed) and bring it to the front of its tab group."""
+        d = self.docks[name]
+        d.show()
+        self.note.hide()                                            # the panels take the whole workspace
+        if front:
+            d.raise_()
+
+    def show_plots(self, paths):
+        """A preview's or run's plots into their panels: model and mesh, line model, convergence."""
+        groups = {'Model and mesh': [p for p in paths if p.endswith(('_model.png', '_mesh.png'))],
+                  'Line model': [p for p in paths if p.endswith('_tlines.png')],
+                  'Convergence': [p for p in paths if p.endswith('_converge.png')]}
+        panels = {'Model and mesh': self.model_img, 'Line model': self.lines_img, 'Convergence': self.conv_img}
+        for name, ps in groups.items():
+            if ps:
+                panels[name].show_images(ps)
+                self.show_panel(name, front=False)
+        return [n for n, ps in groups.items() if ps]
+
     def _menus(self):
         fm = self.menuBar().addMenu('&File')
         for text, key, slot in (('&New', QKeySequence.New, self.setup.new),
@@ -451,6 +553,13 @@ class MainWindow(QMainWindow):
         a.setShortcut(QKeySequence.Quit)
         a.triggered.connect(self.close)
         fm.addAction(a)
+        vm = self.menuBar().addMenu('&View')
+        for name in PANELS:
+            vm.addAction(self.docks[name].toggleViewAction())
+        vm.addSeparator()
+        a = QAction('Show &all panels', self)
+        a.triggered.connect(lambda: [self.show_panel(n, front=False) for n in PANELS])
+        vm.addAction(a)
         rm = self.menuBar().addMenu('&Run')
         for text, key, slot in (('&Preview', 'Ctrl+P', self.preview), ('&Run', 'Ctrl+R', self.run),
                                 ('&Stop', 'Ctrl+.', self.stop)):
@@ -504,12 +613,20 @@ class MainWindow(QMainWindow):
             ev.ignore()
 
     def open_results(self, out_dir, quiet=False):
-        """Show the results already in a folder: S-parameters, field dumps, antenna far field."""
+        """Show the results already in a folder, each in its panel: S-parameters, plots, field dumps, antenna."""
         files = find_results(out_dir)
         if files:
             self.results.show(files)
-        self.fields.load(out_dir)
+            self.show_panel('S-parameters', front=False)
+        self.show_plots(_pngs(out_dir))
+        if self.fields.load(out_dir) is not False and self.fields.srcs:
+            self.show_panel('Fields', front=False)
         ant = self.antenna.load(out_dir)
+        if ant:
+            self.show_panel('Antenna', front=False)
+        self.acts['Report'].setEnabled(bool(self.results.report))
+        if files:
+            self.show_panel('Antenna' if ant else 'S-parameters')
         if not quiet and not (files or self.fields.srcs or ant):
             QMessageBox.information(self, 'Results', f"No results in {out_dir}")
 
@@ -545,9 +662,9 @@ class MainWindow(QMainWindow):
         argv = self.current.argv()
         self.proc.start(argv[0], argv[1:])
         self.runtab.stop_btn.setEnabled(True)
+        self.acts['Stop'].setEnabled(True)
         self.runtab.stage.setText('starting…')
-        if not preview:
-            self.tabs.setCurrentWidget(self.runtab)
+        self.show_panel('Run', front=not preview)
         self.timer.start(300)
 
     def preview(self):
@@ -599,20 +716,33 @@ class MainWindow(QMainWindow):
         self.timer.stop()
         self.proc = None
         self.runtab.stop_btn.setEnabled(False)
-        pngs = [p for l, p in self.files if p.endswith(('_mesh.png', '_model.png', '_tlines.png')) or
-                (self.current.preview and l == 'S-parameter plot')]
-        if pngs:
-            self.setup.show_images(pngs)
-        if self.current.preview and any(l.startswith('S-parameters') for l, _ in self.files):
-            self.results.show(self.files)                            # the solvers a preview runs (not openEMS)
+        self.acts['Stop'].setEnabled(False)
+        shown = self.show_plots([p for _, p in self.files])
+        has_s = any(l.startswith('S-parameters') for l, _ in self.files)
+        if has_s or not self.current.preview:
+            self.results.show(self.files)                            # a preview: the solvers it runs (not openEMS)
+            self.show_panel('S-parameters', front=False)
+        self.acts['Report'].setEnabled(bool(self.results.report))
+        front = 'S-parameters' if has_s else (shown[0] if shown else 'Run')
         if not self.current.preview:
-            self.results.show(self.files)
             self.fields.load(self.current.out)
+            if self.fields.srcs:
+                self.show_panel('Fields', front=False)
             ant = self.antenna.load(self.current.out)
-            self.tabs.setCurrentWidget(self.antenna if ant and self.current.values.get('mode') == 'antenna'
-                                       else self.results)
+            if ant:
+                self.show_panel('Antenna', front=False)
+                front = 'Antenna' if self.current.values.get('mode') == 'antenna' else front
+        elif shown:
+            front = shown[0]
+        self.show_panel(front)
         if code:
             self.runtab.stage.setText(f"ended with code {code} - see the log")
+
+
+def _pngs(out_dir):
+    """The plots of a results folder."""
+    import glob
+    return sorted(glob.glob(os.path.join(out_dir, '*.png')))
 
 
 def main(argv=None):

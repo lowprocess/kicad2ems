@@ -16,9 +16,15 @@ QUANTITIES = ('Gain (dBi)', 'Realized gain (dBi)', 'Directivity (dBi)')
 RANGE_DB = 30.0                                                     # dynamic range of the 3D pattern
 
 
-def find_antenna(out_dir):
-    """(results dict, sphere path or None, S1P path or None) of the newest antenna run in out_dir, or None."""
-    js = sorted(glob.glob(os.path.join(out_dir, '*_antenna.json')), key=os.path.getmtime)
+def antenna_files(out_dir):
+    """The antenna results (<name>[_<solver>]_antenna.json) of a folder, the newest last."""
+    return sorted(glob.glob(os.path.join(out_dir, '*_antenna.json')), key=os.path.getmtime)
+
+
+def find_antenna(out_dir, path=None):
+    """(results dict, sphere path or None, S1P path or None) of an antenna result of out_dir (path: which one;
+    default the newest), or None."""
+    js = [path] if path else antenna_files(out_dir)
     if not js:
         return None
     with open(js[-1]) as fh:
@@ -52,6 +58,10 @@ class AntennaTab(QWidget):
         self.info = QLabel('no antenna results (Setup: Mode = antenna)')
         self.info.setWordWrap(True)
         top.addWidget(self.info, 1)
+        self.which = QComboBox()                                    # openEMS's and mom25d's results of one folder
+        self.which.setToolTip('The antenna results to show (a folder can hold openEMS\'s and mom25d\'s)')
+        self.which.currentIndexChanged.connect(lambda i: self.load(self.out, self.which.itemData(i)) if i >= 0 else None)
+        top.addWidget(self.which)
         top.addWidget(QLabel('pattern at'))
         self.freq = QComboBox()
         self.freq.currentIndexChanged.connect(self.draw_pattern)
@@ -94,10 +104,22 @@ class AntennaTab(QWidget):
         split.setStretchFactor(1, 2)
         lay.addWidget(split, 1)
 
-    def load(self, out_dir):
-        """Show the antenna results of a results folder; False if it holds none."""
-        found = find_antenna(out_dir) if out_dir else None
+    def load(self, out_dir, path=None):
+        """Show the antenna results of a results folder (path: which of them; default the newest); False if it
+        holds none."""
+        found = find_antenna(out_dir, path) if out_dir else None
         self.out = out_dir
+        files = antenna_files(out_dir) if out_dir else []
+        self.which.blockSignals(True)
+        self.which.clear()
+        for f in files:
+            with open(f) as fh:
+                solver = json.load(fh).get('solver', 'openems')
+            self.which.addItem(solver, f)
+        if files:
+            self.which.setCurrentIndex(files.index(path) if path in files else len(files) - 1)
+        self.which.setVisible(len(files) > 1)
+        self.which.blockSignals(False)
         if not found:
             return False
         self.res, sph_path, s1p = found
@@ -122,7 +144,9 @@ class AntennaTab(QWidget):
             self.gain.plot(fr, y, pen=pg.mkPen(color, width=2), symbol='o', symbolSize=4, symbolBrush=color, name=name)
         eff = pg.PlotDataItem(fr, [100 * r['eff'] for r in rows], pen=pg.mkPen('#9467bd', width=2, style=Qt.DashLine))
         self.eff_vb.addItem(eff)
-        self.gain.getPlotItem().legend.addItem(eff, 'efficiency (right)')
+        legend = self.gain.getPlotItem().legend
+        legend.removeItem('efficiency (right)')                     # added again by every load
+        legend.addItem(eff, 'efficiency (right)')
         self.eff_vb.enableAutoRange()
         self.gain.addItem(self.marker)
         self.sph = load_sphere(sph_path) if sph_path else None
