@@ -1,5 +1,5 @@
 """GUI helpers without a display (the Qt window itself needs PySide6 and is checked when installed)."""
-import json, os, pytest
+import json, math, os, pytest
 from kicad2ems.gui.runner import Run, EventTail, stop_runs, write_toml, settings_values, FIELDS
 from kicad2ems.config import build_settings
 
@@ -86,6 +86,30 @@ def test_window_tabs(tmp_path):
     w.fields.load(str(tmp_path))                                    # an empty folder: no dumps, no error
     assert w.fields.src is None and not w.antenna.load(str(tmp_path))
     w.close()
+
+
+def test_run_panel_plots_the_mom25d_sweep():
+    """mom25d's adaptive-sweep steps (status events with change / pred) go to the Run panel's plot: its model
+    change and prediction error in dB per solve, and the tolerance it stops at."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
+    app = application()
+    w = MainWindow()
+    rt = w.runtab
+    for k, (c, p) in enumerate([(2.0, float('inf')), (0.1, 0.5), (1e-3, 2e-3)], 6):
+        rt.status(dict(run='mom25d', fraction=k / 60, solves=k, f_ghz=2.4))     # progress: a bar, no curve
+        rt.status(dict(run='mom25d', afs_solves=k, change=c, pred=p, tol=5e-3))
+    assert set(rt.curves) == {'mom25d model change', 'mom25d prediction error'}
+    xs, ys = rt.hist['mom25d model change']
+    assert xs == [6, 7, 8] and abs(ys[-1] + 60) < 1e-9                         # 1e-3: -60 dB
+    assert rt.hist['mom25d prediction error'][0] == [7, 8]                       # the first has none
+    assert rt._tol is not None and abs(rt._tol.value() - 20 * math.log10(5e-3)) < 1e-9
+    assert rt.plot.getPlotItem().getAxis('bottom').labelText == 'EM solve'
+    w.close()
+    app.processEvents()
 
 
 def test_save_config_keeps_the_file(tmp_path):

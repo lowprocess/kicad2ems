@@ -24,11 +24,11 @@ Panels open by themselves when a preview or run produces something for them:
 | S-parameters | the S-parameters of every solver, a Smith chart, a cursor readout and markers ([below](#plots)) |
 | Model and mesh | the model and openEMS's mesh |
 | Line model | the transmission-line sections |
-| Run | progress per driven port, the energy decay, the log, and *Stop* |
+| Run | progress per driven port; openEMS's energy decay and mom25d's adaptive sweep (its model change and prediction error per solve, in dB, against its tolerance); the log, and *Stop* |
 | Fields | 2D field dumps: cuts, playback, export ([below](#fields)) |
 | 3D fields | volume dumps in a 3D view ([below](#fields3d)) |
 | Antenna | antenna results ([below](#antenna)) |
-| Convergence | openEMS's mesh convergence check (`--converge`), and mom25d's adaptive sweep: how the model settled, solve by solve, and where it solved |
+| Convergence | the mesh convergence check |
 | System | the solvers available here, the GPU, and the memory in use; after a preview, each solver's estimated time and memory for the board |
 
 **Solvers** has one tick box per solver, plus *auto*. Plugin solvers appear too, with their own settings.

@@ -56,7 +56,7 @@ def _metal(m, sigma):
 
 
 def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigma=None, log=print, progress=None,
-          hold=None, tiled='auto'):
+          hold=None, tiled='auto', on_step=None):
     """S-parameters of the board m on `freq` (Hz) from mom25d, as kicad2ems reports them: (S (nf, n, n) in
     m.user_ports order with differential pairs as (d, c) modes, names, reference impedances, info dict).
     dmax in mm (planes 3x, refined near the copper of other layers). sigma (S/m): conductor loss, as --sigma
@@ -71,7 +71,7 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
         log(f"  mom25d: conductor loss sigma {sigma:g} S/m, {t_mm * 1e3:g} um copper")
     res = solve_board(m.to_dict(), freq, dmax=dmax * 1e-3, port=kind, pairs=pairs, metal=metal, max_solves=max_solves,
                       mesher='gmsh' if mesher == 'gmsh' else 'auto', log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
-                      progress=progress, tiled=tiled)
+                      progress=progress, tiled=tiled, on_step=on_step)
     if hold is not None:
         hold['res'] = res
     for line in res.model.describe().splitlines()[1:] + list(res.sim.log.notes):
@@ -255,7 +255,10 @@ class MoM25D(Solver):
         S, names, zref, info = solve(run.m, run.freq, dmax=s.mom_dmax, port=port, mesher=s.mom_mesher,
                                      max_solves=s.mom_solves, sigma=s.sigma, log=run.log, hold=self._held, tiled=s.mom_tiled,
                                      progress=lambda k, n, f: (run.status('mom25d', dict(fraction=k / n, solves=k,
-                                                                                         f_ghz=f / 1e9)), stop.check()))
+                                                                                         f_ghz=f / 1e9)), stop.check()),
+                                     on_step=lambda h: run.status('mom25d', dict(afs_solves=h['solves'],
+                                                                                 change=h['change'], pred=h['pred'],
+                                                                                 tol=h['tol'])))
         kinds = ", ".join(f"{p['name']} {p['kind']}" for p in info['ports'])
         info.update(kpi=f"{info['unknowns']:,} unknowns, {info['seconds']:.0f} s",
                     about=f"mom25d, a 2.5D Method-of-Moments solver: {info['unknowns']:,} unknowns ({info['triangles']:,} "
@@ -267,11 +270,6 @@ class MoM25D(Solver):
         return Result(S, names, zref, info['seconds'], info=info, comment=f"mom25d 2.5D MoM ({run.name})")
 
     def outputs(self, run, prep, res):
-        if res.info.get('afs'):                                     # the adaptive sweep's convergence
-            from ..plots import plot_afs
-            run.figure(plot_afs(run.freq, res.S, res.names, res.info['afs'], res.info.get('afs_tol'),
-                                f"{run.name}: mom25d adaptive sweep, {res.info['solves']} EM solves"),
-                       '_mom25d_converge.png', 'mom_converge', 'mom25d sweep convergence')
         held = getattr(self, '_held', {}).get('res')
         if run.antenna and held is not None:
             self._antenna(run, held, res)

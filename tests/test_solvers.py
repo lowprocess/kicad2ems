@@ -24,7 +24,8 @@ def test_solver_plan():
     assert plan(solvers='all')[0] == ['openems', 'mom25d', 'emerge', 'lines']
     assert plan(solvers='skrf,qucsator')[0] == ['qucs', 'scikit']                         # both line solvers
     assert plan(solvers='openems', mom=True) == (['openems', 'mom25d'], ['openems'])
-    assert plan(preview=True, mom=True)[0] == ['auto', 'mom25d']   # --preview: auto then solves only the line model
+    assert plan(preview=True, mom=True)[0] == ['auto']             # --preview: no full-wave solve (auto: the line model)
+    assert plan(solvers='mom25d,lines', preview=True)[0] == ['lines']
     assert plan(solvers='openems', preview=True)[0] == []          # no openEMS run in a preview
 
 
@@ -98,7 +99,7 @@ def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatc
     code, so, _ = run_cli(FILTER, '--solvers', 'mom', '--out', out)
     assert code == 1 and 'WARNING: mom25d failed: RuntimeError: singular matrix' in so and 'failed: mom25d' in so
     assert (out / 'filter_report.html').exists()                    # the report still says what happened
-    code, so, _ = run_cli(FILTER, '--preview', '--mom', '--fast', 'skrf', '--out', out)   # a reference: a warning
+    code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--mom', '--out', out)   # a reference: a warning
     assert code == 0 and 'WARNING: mom25d failed' in so
 
 

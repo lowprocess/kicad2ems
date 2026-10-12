@@ -306,8 +306,8 @@ class RunTab(QWidget):
         lay.addLayout(top)
         self.bars_box = QVBoxLayout()
         lay.addLayout(self.bars_box)
-        self.bars, self.curves, self.hist = {}, {}, {}
-        self.plot = pg.PlotWidget(title='field energy / port signal decay')
+        self.bars, self.curves, self.hist, self._tol = {}, {}, {}, None
+        self.plot = pg.PlotWidget(title="convergence: openEMS's energy decay, mom25d's adaptive sweep")
         self.plot.setLabel('bottom', 'timestep')
         self.plot.setLabel('left', 'dB')
         self.plot.addLegend()
@@ -324,17 +324,45 @@ class RunTab(QWidget):
         self.bars, self.hist = {}, {}
         self.plot.clear()
         self.curves = {}
+        self._tol = None
+        self.plot.setLabel('bottom', 'timestep')
         self.log.clear()
+
+    def _sweep(self, run, ev):
+        """mom25d's adaptive sweep, model by model: its largest change and its prediction error (max |dS|) in dB
+        against the solve count, and the tolerance it stops at."""
+        import math
+        db = lambda v: 20 * math.log10(max(float(v), 1e-12))
+        for key, label, style in (('change', 'model change', Qt.SolidLine), ('pred', 'prediction error', Qt.DashLine)):
+            v = ev.get(key)
+            name = f"{run} {label}"
+            if name not in self.curves:
+                pen = pg.mkPen(COLORS[len(self.curves) % len(COLORS)], width=2, style=style)
+                self.curves[name] = self.plot.plot([], [], pen=pen, symbol='o', symbolSize=5, name=name)
+                self.hist[name] = ([], [])
+            if v is not None and math.isfinite(float(v)):
+                xs, ys = self.hist[name]
+                xs.append(ev['afs_solves'])
+                ys.append(db(v))
+                self.curves[name].setData(xs, ys)
+        if ev.get('tol') and self._tol is None:
+            self._tol = pg.InfiniteLine(pos=db(ev['tol']), angle=0, pen=pg.mkPen('#c0392b', width=1, style=Qt.DotLine),
+                                        label=f"tolerance {ev['tol']:g}", labelOpts=dict(position=0.08, color='#c0392b'))
+            self.plot.addItem(self._tol)
+        steps = any(not k.endswith(('model change', 'prediction error')) and self.hist.get(k, ([], []))[0]
+                    for k in self.curves)
+        self.plot.setLabel('bottom', 'timestep (openEMS) / EM solve (mom25d)' if steps else 'EM solve')
 
     def status(self, ev):
         run = ev.get('run', '?')
+        if ev.get('change') is not None:                            # a step of mom25d's adaptive sweep
+            self._sweep(run, ev)
+            return
         if run not in self.bars:
             b = QProgressBar()
             b.setFormat(f"{run}: %p%")
             self.bars_box.addWidget(b)
             self.bars[run] = b
-            self.curves[run] = self.plot.plot([], [], pen=pg.mkPen(COLORS[len(self.curves) % len(COLORS)], width=2), name=run)
-            self.hist[run] = ([], [])
         b = self.bars[run]
         if ev.get('fraction') is not None:
             b.setValue(int(100 * ev['fraction']))
@@ -344,6 +372,10 @@ class RunTab(QWidget):
                 else f"  step {ev.get('step', 0):,}" + (f"  {db:.1f} dB" if db is not None else ''))     # MoM / openEMS
         b.setFormat(f"{run}: %p%{what}" + (f"  ETA {int(eta // 60)}m{int(eta % 60):02d}s" if eta else ''))
         if ev.get('step') is not None and db is not None:
+            if run not in self.curves:                              # openEMS's energy: a curve once it has data
+                pen = pg.mkPen(COLORS[len(self.curves) % len(COLORS)], width=2)
+                self.curves[run] = self.plot.plot([], [], pen=pen, name=run)
+                self.hist[run] = ([], [])
             xs, ys = self.hist[run]
             xs.append(ev['step'])
             ys.append(db)
@@ -443,7 +475,7 @@ class MainWindow(QMainWindow):
         self.volume = VolumeTab(self)
         self.model_img = ImagePanel('the model and the mesh of a preview or a run')
         self.lines_img = ImagePanel('the line model of a preview or a run')
-        self.conv_img = ImagePanel("convergence: openEMS's mesh levels (--converge) and mom25d's adaptive sweep")
+        self.conv_img = ImagePanel('mesh convergence: run with --converge (openEMS)')
         self.system = SystemPanel()
         # the settings: a dock of the window; the results: one workspace of panels (tabbed, split, floated)
         sd = QDockWidget('Settings', self)

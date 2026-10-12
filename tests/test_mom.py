@@ -13,10 +13,19 @@ def test_import():
     assert hasattr(mom25d, '__version__')
 
 
-def test_preview_with_mom(tmp_path, run_cli):
+def test_preview_solves_no_full_wave_solver(tmp_path, run_cli):
+    """--preview builds the model and the meshes and solves only the line model: mom25d named (or added with
+    --mom) is not run."""
+    out = tmp_path / 'out'
+    code, so, se = run_cli(FILTER, '--preview', '--solvers', 'mom25d', '--mom', '--points', '41', '--out', str(out))
+    assert code == 0, so + se
+    assert not (out / 'filter_mom25d.s2p').exists() and list(out.glob('filter_*.s2p'))      # the line model's
+
+
+def test_mom_run(tmp_path, run_cli):
     pytest.importorskip('triangle')
     out = tmp_path / 'out'
-    code, so, se = run_cli(FILTER, '--preview', '--mom', '--mom-dmax', '0.8', '--mom-solves', '8', '--points', '41',
+    code, so, se = run_cli(FILTER, '--solvers', 'mom25d', '--mom-dmax', '0.8', '--mom-solves', '8', '--points', '41',
                            '--out', str(out))
     assert code == 0, so + se
     assert (out / 'filter_mom25d.s2p').exists() and (out / 'filter_mom25d.png').exists()
@@ -35,7 +44,7 @@ def test_mom_without_openems(run_cli, tmp_path, no_csxcad):
     pytest.importorskip('triangle')
     pytest.importorskip('skrf')
     out = tmp_path / 'out'
-    code, so, err = run_cli(FILTER, '--preview', '--mom', '--fast', 'skrf', '--mom-dmax', '0.8', '--mom-solves', '8',
+    code, so, err = run_cli(FILTER, '--solvers', 'mom25d', '--fast', 'skrf', '--mom-dmax', '0.8', '--mom-solves', '8',
                             '--points', '41', '--out', out)
     assert code == 0, so + err
     sm = json.loads((out / 'filter_run.json').read_text())

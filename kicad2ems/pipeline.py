@@ -274,6 +274,12 @@ class Job:
                 return False
             if not self._drop(name, what):
                 return False
+        for name in list(self.previewed):                           # a preview prepares them, solves none: warn
+            sv = reg[name]
+            ok, what = (True, '') if sv.previewed else sv.check(s)  # (openEMS's mesh preview needs no openEMS)
+            if not ok:
+                self.log(f"WARNING: {name} cannot run, left out: {what}")
+                self.previewed.remove(name)
         self.summary['solvers'] = list(self.plan)
         return True
 
@@ -384,6 +390,11 @@ class Job:
             why = registry()[name].assess(self)
             if why and not self._drop(name, '; '.join(why), 'cannot model this board'):
                 return False
+        for name in list(self.previewed):
+            why = registry()[name].assess(self)
+            if why:
+                self.log(f"WARNING: {name} cannot model this board, left out: {'; '.join(why)}")
+                self.previewed.remove(name)
         self.summary['solvers'] = list(self.plan)
         return True
 

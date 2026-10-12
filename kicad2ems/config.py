@@ -158,8 +158,8 @@ class _Settings:
 
         The solvers are those named in `solvers` (default: auto, as if named), plus mom25d with mom = true and the line
         model with fast = ... ('lines' until the run resolves it: qucs when qucsator is installed, else scikit;
-        fast = "skrf" / "qucsator" names the line solver). --preview solves nothing that is previewed (openEMS;
-        preview=False: the plan as without --preview).
+        fast = "skrf" / "qucsator" names the line solver). --preview solves no full-wave solver, only the line model
+        (openEMS prepares its mesh preview; preview=False: the plan as without --preview).
         A solver named in `solvers` is a result the run is for: if it cannot run, the run stops before it starts.
         One added by --mom / --fast is a reference next to the others: if it cannot run, that is a warning."""
         from .solvers import ordered, registry, LINES, AUTO
@@ -170,8 +170,8 @@ class _Settings:
             run.add('mom25d')
         if self.fast:
             run.add(line)
-        if self.preview if preview is None else preview:
-            run = {x for x in run if x in (LINES, AUTO) or not registry()[x].previewed}
+        if self.preview if preview is None else preview:                    # no full-wave solve: the line model
+            run = {x for x in run if x in (LINES, AUTO) or registry()[x].consumes != 'board'}
         return ordered(run), ordered(named)
 
     def options(self):
