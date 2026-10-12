@@ -68,7 +68,7 @@ def main(path):
         pcb.add_vias((v['x'], v['y']), radius=v['r'], z1=zem(v['z0']), z2=zem(v['z1']))
     (x0, y0, x1, y1) = _bounds(b['outline'])
     pcb.set_bounds(x0, y0, x1, y1)
-    traces = pcb.compile_paths(merge=True)
+    traces = pcb.compile_paths(merge=True, fragment=False)        # its fragmenting made zero-length edges (filters)
     if b['vias']:
         pcb.generate_vias(merge=True)
     ports = []

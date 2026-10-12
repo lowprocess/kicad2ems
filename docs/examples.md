@@ -61,8 +61,8 @@ Where the solvers disagree:
   converged. mom25d's coupling is 0.3–0.4 dB stronger.
 - **Curved and fan-shaped copper**: the default mesh refines over arcs and fans (`--curve-res`). The radial
   stub's notch is at 2.13 GHz, as on meshes 3–4× finer. The rat-race's isolation null converges in openEMS
-  to 2.24 GHz (the reference is at `--curve-res 12`), not the 2.4 GHz of the design, mom25d and the line
-  model: the staircased ring is electrically long, and refining doesn't remove that.
+  to 2.24 GHz (the reference is at `--curve-res 12`), against mom25d's 2.33, EMerge's 2.31 and the line
+  model's 2.40 (the design): the staircased ring is electrically long, and refining doesn't remove that.
 - **Differential via**: the line model's via is the weak part above 5 GHz (worst Sdd11 −9.4 dB). Its
   stripline pair is a coupled section at the design's odd-mode 50 Ω.
 - **Filter loss**: openEMS's default dielectric model overstates the loss of the microstrip filter by

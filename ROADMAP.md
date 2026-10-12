@@ -5,8 +5,8 @@ examples or benchmarks showed. Last updated 2026-10-12.
 
 ## 1. Open questions (correctness)
 
-- **Rat-race isolation in openEMS** converges to a null at 2.24 GHz, not the 2.4 GHz of the design, mom25d
-  and the line model: the staircased ring is electrically long, and refining doesn't remove it. Worth
+- **Rat-race isolation in openEMS** converges to a null at 2.24 GHz, against mom25d's 2.33, EMerge's 2.31 and
+  the line model's 2.40 (the design): the staircased ring is electrically long, and refining doesn't remove it. Worth
   trying: openEMS's conformal or diagonal-edge options for curved copper, if they apply to sheets.
 
 ## 2. Line model

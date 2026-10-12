@@ -57,6 +57,26 @@ On one machine (24 threads, 31 GB), the default settings:
 | `rf_wilkinson` at 2.4 GHz: S21, S22, S32 | −3.26, −21.3, −32.6 dB | −3.35, −19.4, −33.2 dB | −3.31, −20.1, −38.7 dB | 18 s, 3 GB |
 | `rf_gcpw` at 5 GHz: S21 | −0.45 dB | −0.39 dB | −0.31 dB | 30 s, 4 GB |
 | `rf_coupler` at 2.4 GHz: S31 | −7.8 dB | −10.5 dB | −10.9 dB | 18 s, 3 GB |
+| `rf_ratrace`: isolation null | 2.31 GHz | 2.24 GHz | 2.33 GHz | 49 s, 5 GB |
+| `demo_lowpass`: S21 at 1 / 2 GHz | −7.9 / −40.7 dB | −7.9 / −40.7 dB | −8.4 / −46.2 dB | 59 s, 7 GB |
+| `demo_bandpass`: S21 at 0.8 / 1.2 GHz | −3.4 / −24.8 dB | −4.4 / −26.9 dB | −3.5 / −26.4 dB | 65 s, 8 GB |
+
+Solve times against the other two (mom25d on the GPU, openEMS on its default mesh):
+
+| Board | EMerge | openEMS | mom25d |
+|---|---|---|---|
+| `rf_wilkinson` | 18 s | 26 s | 8 s |
+| `rf_stubnotch` | 17 s | 35 s | 11 s |
+| `rf_gcpw` | 30 s | 21 s | 30 s |
+| `rf_ratrace` | 49 s | 15 s | 34 s |
+| `demo_lowpass` | 59 s | 69 s | 19 s |
+| `demo_bandpass` | 65 s | 81 s | 38 s |
+
+EMerge solves each frequency directly, so a high-Q circuit costs it no more than a line: on the lumped filters
+it's a little faster than openEMS, which needs about 200k timesteps to let them ring down. Its tetrahedra follow
+curves, so the rat-race's ring isn't staircased as it is in openEMS. mom25d is faster still on all these
+planar boards. EMerge's place is boards mom25d can't model (a finite ground, board edges, an enclosure) where
+openEMS is slow or staircases the geometry. None of the examples is that yet.
 
 The coupler shows the limit. Its 0.14 mm gap needs a fine mesh, but a 0.14 mm cell along all the copper gave
 150k elements, and the direct solver ran out of memory (over 18 GB). A mesh refined only around gaps would fix
