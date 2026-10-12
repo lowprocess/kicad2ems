@@ -87,7 +87,12 @@ board is declared, and anything else fails a test.
 | `wave` | wave port (error if the feed is too short) | the port position (de-embedded) |
 | `lumped` | a via from the reference copper to the trace with the port in it (radius w/4) | the port position (the via's inductance included, like openEMS's lumped port) |
 
-Below ~0.4 rad of feed the wave fit fails (|S11| > 1 at the low end): `auto` falls back to lumped then.
+Below ~0.4 rad of feed the wave fit of gamma fails (|S11| > 1 at the low end); there the port takes gamma
+from the line characterisation (`characterize`: a centre-fed line of the port's cross-section, at least 10 x
+(width + stack height) long: 16 mm for a 3 mm line on 1.6 mm FR4 had given Zc 1.6 / 24 / 33 ohm) and fits
+only the two wave amplitudes, which needs 0.1 rad. The 30 mm thru keeps wave ports down to 0.2 GHz that way
+(|S11| < 0.03, |S21| 1.000). Shorter feeds than that (a 3 mm feed at 0.5 GHz spans 0.02 rad) are lumped:
+`auto` falls back.
 Lumped MoM ports are the closest to openEMS's (both include the port's own parasitics); wave ports are
 the closest to the line model (an ideal reference plane). Differential pairs: wave ports use mom25d's
 coupled-mode fit (`P1d` / `P1c`); lumped legs are converted like openEMS's.
