@@ -121,8 +121,8 @@ reading, cutting and animation code is usable without the GUI (`kicad2ems.fields
 ## 3D fields
 
 A volume dump (`--dump E@volume+5@2.4`: the board with 5 mm of air above and below; `volume` alone has 0.5 mm)
-opens the *3D fields* panel: the field as a translucent voxel cloud over the board (copper translucent and
-outlined, vias as lines, the board's box), in an OpenGL view you orbit (drag), zoom (wheel) and pan (Ctrl + drag).
+opens the *3D fields* panel: the field as a translucent voxel cloud over the board (copper as shaded,
+translucent slabs, outlined, vias as lines, the board's box), in an OpenGL view you orbit (drag), zoom (wheel) and pan (Ctrl + drag).
 It needs PyOpenGL (`pip install PyOpenGL`, in the `gui` extra).
 
 | Control | |
@@ -135,6 +135,7 @@ It needs PyOpenGL (`pip install PyOpenGL`, in the `gui` extra).
 | Height scale | z stretched (a board is thin) |
 | Resolution | the dump resampled onto a uniform grid of this many voxels along its longest side (OpenGL volume textures are uniform; openEMS's mesh is graded) |
 | copper, board box and vias | the board drawn under the field; untick copper to see between stacked planes |
+| Copper shown | the copper as shaded slabs this thick on screen (real copper, ~35 µm, would not show; default 0.6 % of the board's larger side), lit from the view so the edges and walls stand out as it turns; 0: flat |
 | Save GIF / MP4 | the animation from the current camera, at the view's size |
 
 ![patch 3D](img/readme/patch_3d.gif)

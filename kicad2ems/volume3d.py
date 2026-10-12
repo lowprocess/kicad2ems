@@ -126,6 +126,44 @@ def copper_triangles(geometry):
     return out
 
 
+def copper_solids(geometry, thickness):
+    """The copper as slabs `thickness` mm thick (centred on each layer: shown thicker than it is, so that its
+    edges catch the light): [(layer, z mm, vertices (n, 3), faces (m, 3))], faces wound with outward normals
+    (top +z, bottom -z, walls away from the copper) for a shaded mesh."""
+    import shapely
+    from shapely.geometry import Polygon
+    from shapely.geometry.polygon import orient
+    out = []
+    cu_z, h = geometry.get('cu_z', {}), 0.5 * thickness
+    for lay, polys in (geometry.get('copper') or {}).items():
+        z = cu_z.get(lay)
+        if z is None or not polys:
+            continue
+        tri = []                                                    # (3, 3) vertex triples, wound outward
+        for rings in polys:
+            g = Polygon(rings[0], rings[1:]).buffer(0)
+            for p in shapely.get_parts(g):
+                if p.is_empty or p.geom_type != 'Polygon':
+                    continue
+                p = orient(p, 1.0)                                  # exterior counter-clockwise, holes clockwise
+                for t in shapely.get_parts(shapely.constrained_delaunay_triangles(p)):
+                    c = np.asarray(t.exterior.coords)[:3]
+                    if (c[1, 0] - c[0, 0]) * (c[2, 1] - c[0, 1]) - (c[1, 1] - c[0, 1]) * (c[2, 0] - c[0, 0]) < 0:
+                        c = c[::-1]                                 # counter-clockwise seen from above
+                    tri.append(np.column_stack([c, np.full(3, z + h)]))
+                    tri.append(np.column_stack([c[::-1], np.full(3, z - h)]))
+                for ring in [p.exterior] + list(p.interiors):
+                    r = np.asarray(ring.coords)
+                    for a, b in zip(r[:-1], r[1:]):                 # a wall quad as two triangles: normal (dy, -dx)
+                        lo_a, lo_b, hi_a, hi_b = (*a, z - h), (*b, z - h), (*a, z + h), (*b, z + h)
+                        tri.append(np.array([lo_a, lo_b, hi_b]))
+                        tri.append(np.array([lo_a, hi_b, hi_a]))
+        if tri:
+            v = np.concatenate(tri)
+            out.append((lay, float(z), v, np.arange(len(v)).reshape(-1, 3)))
+    return out
+
+
 def copper_outlines(geometry):
     """Every copper ring as line segments at its layer's height: (2 k, 3) points (pairs), model mm."""
     cu_z, segs = geometry.get('cu_z', {}), []

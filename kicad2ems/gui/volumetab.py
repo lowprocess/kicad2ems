@@ -25,6 +25,47 @@ def gl_module():
         return None, f"{type(e).__name__}: {e}"
 
 
+_COPPER_SHADER = None
+
+
+def copper_shader():
+    """A shader for the copper slabs: pyqtgraph's 'shaded' inputs, brighter: ambient 0.5, a key light from the upper
+    front of the view (two-sided: a wall seen from inside the slab is lit too) and a small highlight, so the top
+    faces stay copper-coloured and the walls and edges shade as the view turns."""
+    global _COPPER_SHADER
+    if _COPPER_SHADER is None:
+        from pyqtgraph.opengl import shaders as S
+        _COPPER_SHADER = S.ShaderProgram('kicad2ems_copper', [S.VertexShader("""
+            uniform mat4 u_mvp;
+            uniform mat3 u_normal;
+            attribute vec4 a_position;
+            attribute vec3 a_normal;
+            attribute vec4 a_color;
+            varying vec4 v_color;
+            varying vec3 v_normal;
+            void main() {
+                v_normal = normalize(u_normal * a_normal);
+                v_color = a_color;
+                gl_Position = u_mvp * a_position;
+            }
+        """), S.FragmentShader("""
+            #ifdef GL_ES
+            precision mediump float;
+            #endif
+            varying vec4 v_color;
+            varying vec3 v_normal;
+            void main() {
+                vec3 n = normalize(v_normal);
+                vec3 l = normalize(vec3(-0.35, 0.55, 1.0));
+                float d = abs(dot(n, l));
+                float s = pow(max(dot(reflect(-l, n), vec3(0.0, 0.0, 1.0)), 0.0), 24.0);
+                vec3 rgb = v_color.rgb * (0.5 + 0.55 * d) + vec3(0.25) * s;
+                gl_FragColor = vec4(min(rgb, vec3(1.0)), v_color.a);
+            }
+        """)])
+    return _COPPER_SHADER
+
+
 def _view_class(gl):
     """GLViewWidget that reports each new OpenGL context (after the first paint is set up)."""
     class View(gl.GLViewWidget):
@@ -88,13 +129,22 @@ class VolumeTab(QWidget):
         self.res.setSuffix(' voxels')
         self.copper = QCheckBox('copper')
         self.copper.setChecked(True)
+        self.cu_t = QDoubleSpinBox()
+        self.cu_t.setRange(0, 5)
+        self.cu_t.setDecimals(2)
+        self.cu_t.setSingleStep(0.05)
+        self.cu_t.setSpecialValueText('flat')
+        self.cu_t.setSuffix(' mm')
+        self.cu_t.setToolTip('the copper drawn as shaded slabs this thick (on screen; real copper is ~35 um): '
+                             'its edges catch the light; 0: flat, unshaded')
+        self._cu_t_auto = True
         self.boxc = QCheckBox('board box and vias')
         self.boxc.setChecked(True)
         for label, w in (('Dump', self.dump), ('Frame', self.frame), ('Show', self.comp), ('Colours', self.cmap),
                          ('', self.envelope),
                          ('', self.log), ('Decades', self.decades), ('Range top', self.clip), ('Opacity', self.opacity),
                          ('Fade (gamma)', self.gamma), ('Height scale', self.zscale), ('Resolution', self.res),
-                         ('', self.copper), ('', self.boxc)):
+                         ('', self.copper), ('Copper shown', self.cu_t), ('', self.boxc)):
             form.addRow(label, w)
         side.addLayout(form)
         self.play_btn = QPushButton('Play')
@@ -134,6 +184,7 @@ class VolumeTab(QWidget):
             w.currentIndexChanged.connect(self._recolour)
         for w in (self.envelope, self.log, self.copper, self.boxc):
             w.toggled.connect(self._recolour)
+        self.cu_t.valueChanged.connect(self._cu_t_set)
         for w in (self.decades, self.zscale, self.clip):
             w.valueChanged.connect(self._recolour)
         for w in (self.opacity, self.gamma):
@@ -175,6 +226,7 @@ class VolumeTab(QWidget):
         self.frame.setCurrentIndex(0 if self.src.domain == 'FD' else max(0, len(self.src) - 1))
         self.frame.blockSignals(False)
         self.envelope.setEnabled(self.src.domain == 'FD')
+        self._auto_cu_t()
         self._board()
         self._rebuild()
         self.reset_camera()
@@ -238,18 +290,26 @@ class VolumeTab(QWidget):
             return
         g = self.src.geometry
         if self.copper.isChecked():
-            for i, (lay, z, verts, faces) in enumerate(v3.copper_triangles(g)):
+            shown = self.cu_t.value()                               # on screen: the slab before the height scale
+            t = shown / zs
+            parts = v3.copper_solids(g, t) if shown > 0 else v3.copper_triangles(g)
+            for i, (lay, z, verts, faces) in enumerate(parts):
                 v = verts.copy()
                 v[:, 2] *= zs
-                m = gl.GLMeshItem(vertexes=v.astype(np.float32), faces=faces.astype(np.uint32),
-                                  color=(0.85, 0.5, 0.15, 0.55), smooth=False, glOptions='translucent')
+                if shown > 0:                                       # lit by the faces' angle to the view
+                    md = gl.MeshData(vertexes=v.astype(np.float32), faces=faces.astype(np.uint32))
+                    m = gl.GLMeshItem(meshdata=md, color=(0.85, 0.5, 0.2, 0.7), smooth=False, shader=copper_shader(),
+                                      glOptions='translucent')
+                else:
+                    m = gl.GLMeshItem(vertexes=v.astype(np.float32), faces=faces.astype(np.uint32),
+                                      color=(0.85, 0.5, 0.15, 0.55), smooth=False, glOptions='translucent')
                 m.setDepthValue(-10 + i)
                 self.view.addItem(m)
                 self.items[f'cu{i}'] = m
             ol = v3.copper_outlines(g)                              # dark edges: the copper reads through the field
             if len(ol):
                 ol = ol.copy()
-                ol[:, 2] *= zs
+                ol[:, 2] = (ol[:, 2] + 0.5 * t) * zs if shown > 0 else ol[:, 2] * zs   # on the slab's top
                 ln = gl.GLLinePlotItem(pos=ol, mode='lines', color=(0.35, 0.18, 0.03, 1.0), width=1.5, antialias=True)
                 ln.setDepthValue(-5)
                 self.view.addItem(ln)
@@ -276,6 +336,19 @@ class VolumeTab(QWidget):
                 ln.setDepthValue(-20)
                 self.view.addItem(ln)
                 self.items['vias'] = ln
+
+    def _cu_t_set(self, *_):
+        self._cu_t_auto = False
+        self._board()
+
+    def _auto_cu_t(self):
+        """The copper's shown thickness for a board: 0.6 % of its larger side (a 32 mm board: 0.2 mm)."""
+        b = v3.board_box(self.src.geometry) if self.src is not None else None
+        if b is None or not self._cu_t_auto:
+            return
+        self.cu_t.blockSignals(True)
+        self.cu_t.setValue(round(0.006 * max(b[2] - b[0], b[3] - b[1]), 2))
+        self.cu_t.blockSignals(False)
 
     def reset_camera(self):
         if self.vol is None:

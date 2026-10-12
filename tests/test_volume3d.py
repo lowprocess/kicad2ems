@@ -85,6 +85,26 @@ def test_board_geometry(volume_run):
     assert (x0, y0, x1, y1) == pytest.approx(m.outline.bounds, abs=1e-3) and z1 == pytest.approx(max(m.cu_z.values()))
 
 
+def test_copper_solids_face_outward():
+    """A square with a hole as a slab: top faces up, bottom faces down, every wall facing away from the copper
+    (out of the square, into the hole), and the caps' area that of the copper."""
+    sq = [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]
+    hole = [[4, 4], [4, 6], [6, 6], [6, 4], [4, 4]]
+    g = dict(cu_z={'F.Cu': 1.0}, copper={'F.Cu': [[sq, hole]]})
+    (lay, z, v, f), = v3.copper_solids(g, 0.2)
+    tri = v[f]
+    n = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    c = tri.mean(1)
+    top, bot = np.isclose(c[:, 2], 1.1), np.isclose(c[:, 2], 0.9)
+    assert (n[top, 2] > 0).all() and (n[bot, 2] < 0).all()
+    assert 0.5 * n[top, 2].sum() == pytest.approx(100 - 4)
+    wall = ~(top | bot)
+    out = c[wall, :2] - 5.0                                     # from the square's centre
+    inner = np.abs(out).max(1) < 1.5                             # the hole's walls
+    radial = (n[wall, :2] * out).sum(1)
+    assert (radial[~inner] > 0).all() and (radial[inner] < 0).all()
+
+
 def test_volume_panel(volume_run, tmp_path):
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
@@ -104,5 +124,8 @@ def test_volume_panel(volume_run, tmp_path):
     w.comp.setCurrentIndex(3)
     w.envelope.setChecked(False)                                 # Ez at an instant: signed
     assert 'Ez' in w.status.text() and '-' in w.status.text().split(':')[1]
+    assert w.cu_t.value() > 0                                     # shaded slabs, as thick as 0.6 % of the board
+    w.cu_t.setValue(0)                                           # flat
+    assert any(k.startswith('cu') for k in w.items)
     w.copper.setChecked(False)
     assert not any(k.startswith('cu') or k == 'outline' for k in w.items)
