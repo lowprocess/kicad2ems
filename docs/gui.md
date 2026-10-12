@@ -28,7 +28,7 @@ Panels open by themselves when a preview or run produces something for them:
 | Fields | 2D field dumps: cuts, playback, export ([below](#fields)) |
 | 3D fields | volume dumps in a 3D view ([below](#fields3d)) |
 | Antenna | antenna results ([below](#antenna)) |
-| Convergence | the mesh convergence check |
+| Convergence | openEMS's mesh convergence check (`--converge`), and mom25d's adaptive sweep: how the model settled, solve by solve, and where it solved |
 | System | the solvers available here, the GPU, and the memory in use; after a preview, each solver's estimated time and memory for the board |
 
 **Solvers** has one tick box per solver, plus *auto*. Plugin solvers appear too, with their own settings.

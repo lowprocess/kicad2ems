@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# EMerge (3D FEM, github.com/FennisRobert/EMerge) from git into a Python, patched for Python 3.14, NumPy 2.4 and
-# gmsh 4.15, so it can share kicad2ems's venv (--solvers emerge then needs no --emerge-python):
+# EMerge (3D FEM, github.com/FennisRobert/EMerge; an experimental kicad2ems solver) from git into a Python,
+# patched for Python 3.14, NumPy 2.4 and gmsh 4.15, so it can share kicad2ems's venv (--solvers emerge then
+# needs no --emerge-python):
 #   tools/emerge/install_emerge.sh .venv/bin/python [build dir, default .emerge]
 # EMerge 2.8.9 pins Python < 3.14 and gmsh < 4.15, and emsutil 0.8.3 (its utilities) NumPy < 2.3. The patches
 # (next to this script) widen those pins, and make EMerge's mesher skip mesh-size fields on entities that no

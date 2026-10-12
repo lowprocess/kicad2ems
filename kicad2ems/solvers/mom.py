@@ -88,7 +88,7 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
         S, names, zref = mixed_mode(S[:, order][:, :, order], m)
     info = dict(seconds=res.seconds, solves=res.solves, unknowns=res.unknowns, triangles=res.triangles,
                 solver=res.solver, mesher=mesher, dmax_mm=dmax, ports=res.ports, notes=res.notes,
-                samples_ghz=[round(f / 1e9, 6) for f in sorted(res.solved)])
+                samples_ghz=[round(f / 1e9, 6) for f in sorted(res.solved)], afs=res.afs, afs_tol=res.afs_tol)
     log(f"  mom25d: solved at {', '.join(f'{f:g}' for f in info['samples_ghz'])} GHz")
     return S, names, zref, info
 
@@ -267,6 +267,11 @@ class MoM25D(Solver):
         return Result(S, names, zref, info['seconds'], info=info, comment=f"mom25d 2.5D MoM ({run.name})")
 
     def outputs(self, run, prep, res):
+        if res.info.get('afs'):                                     # the adaptive sweep's convergence
+            from ..plots import plot_afs
+            run.figure(plot_afs(run.freq, res.S, res.names, res.info['afs'], res.info.get('afs_tol'),
+                                f"{run.name}: mom25d adaptive sweep, {res.info['solves']} EM solves"),
+                       '_mom25d_converge.png', 'mom_converge', 'mom25d sweep convergence')
         held = getattr(self, '_held', {}).get('res')
         if run.antenna and held is not None:
             self._antenna(run, held, res)

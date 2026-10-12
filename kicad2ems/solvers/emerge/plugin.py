@@ -1,6 +1,6 @@
 """
 EMerge (https://github.com/FennisRobert/EMerge, GPL-2.0-or-later), a 3D finite-element solver in Python, as an
-optional solver: --solvers emerge. It runs in a process of its own (worker.py) with the Python EMerge is
+optional, experimental solver: --solvers emerge. It runs in a process of its own (worker.py) with the Python EMerge is
 installed in: kicad2ems's own (tools/emerge/install_emerge.sh: EMerge from git, patched for Python 3.14), or
 another one (PyPI's EMerge 2.5+ needs Python <= 3.13):
 
@@ -20,7 +20,7 @@ from .. import Solver, Result, Deviation
 from ... import stop
 from ..openems.boundaries import bottom_is_plane
 
-G = 'EMerge'
+G = 'EMerge (experimental)'
 WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'worker.py')
 _checked = {}
 
@@ -51,7 +51,7 @@ def emerge_status(python):
 
 
 class EMerge(Solver):
-    name, aliases, label = 'emerge', ('fem',), 'EMerge (FEM)'
+    name, aliases, label = 'emerge', ('fem',), 'EMerge (FEM, experimental)'
     consumes, previewed, rank = 'board', False, 2
     capabilities = dict(ports='yes: lumped, from the reference copper to the trace', gap_ports='no',
                         diff_pairs='yes', parts='yes: one lumped element across the gap',

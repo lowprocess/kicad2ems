@@ -443,7 +443,7 @@ class MainWindow(QMainWindow):
         self.volume = VolumeTab(self)
         self.model_img = ImagePanel('the model and the mesh of a preview or a run')
         self.lines_img = ImagePanel('the line model of a preview or a run')
-        self.conv_img = ImagePanel('mesh convergence: run with --converge (openEMS)')
+        self.conv_img = ImagePanel("convergence: openEMS's mesh levels (--converge) and mom25d's adaptive sweep")
         self.system = SystemPanel()
         # the settings: a dock of the window; the results: one workspace of panels (tabbed, split, floated)
         sd = QDockWidget('Settings', self)

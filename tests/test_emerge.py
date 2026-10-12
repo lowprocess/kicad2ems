@@ -14,7 +14,7 @@ EX = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '
 
 
 def test_registered_and_check_without_emerge(tmp_path):
-    assert 'emerge' in registry() and registry()['emerge'].label == 'EMerge (FEM)'
+    assert 'emerge' in registry() and registry()['emerge'].label == 'EMerge (FEM, experimental)'
     py = tmp_path / 'python'                                        # a Python without EMerge
     py.write_text(f"#!/bin/sh\nexec {sys.executable} -I -S \"$@\"\n")
     py.chmod(0o755)

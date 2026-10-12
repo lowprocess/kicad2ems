@@ -33,6 +33,14 @@ speed-up: `python -m mom25d.core.build` (needs g++ with OpenMP and pybind11).
 Other copper layers, including inner planes and pours, are meshed. Large planes add many unknowns and
 slow mom25d down (see [speed](#runtime)).
 
+<a id="sweep"></a>
+**The adaptive sweep.** mom25d solves only some frequencies. It fits one rational model through all of
+S (AAA) and adds a solve where two successive models disagree most. It stops when the model changes by
+less than the tolerance (5e-3 in |S|) and had predicted the newest solve as closely, twice in a row, or
+after `--mom-solves` (60) solves. `<name>_mom25d_converge.png`, in the GUI's Convergence panel, shows how it
+went: the model change and the prediction error after each solve, and where on the band it solved. A sweep
+that ends at the cap without settling shows there.
+
 <a id="the-board"></a>
 mom25d reads the board file every solver gets, `<name>_board.json`. It can also run on its own:
 

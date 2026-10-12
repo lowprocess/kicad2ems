@@ -337,6 +337,59 @@ def plot_convergence(f, levels, names, title, floor_db=-40.0):
     return fig
 
 
+def plot_afs(f, S, names, hist, tol, title):
+    """mom25d's adaptive sweep (mom25d.afs): above, the largest model change and the prediction error after
+    each solve, against the tolerance; below, the final |S| with a tick at every solved frequency, and on a log
+    axis each model change at the frequency where it was largest and each prediction error at the frequency
+    then solved, coloured by solve. hist: afs.adaptive_sweep's history (dicts)."""
+    import matplotlib as mpl
+    fig = Figure(figsize=(11, 8))
+    ax, fx = fig.subplots(2, 1, gridspec_kw=dict(height_ratios=[1, 1.4]))
+    n_s = [h['solves'] for h in hist]
+    chg = np.array([h['change'] for h in hist])
+    pred = np.array([h['pred'] for h in hist], float)
+    ax.semilogy(n_s, chg, 'o-', color='#1f5f99', ms=4, lw=1.4, label='max model change (on the grid)')
+    ok = np.isfinite(pred)
+    ax.semilogy(np.array(n_s)[ok], pred[ok], 's--', color='#d4893b', ms=4, lw=1.2,
+                label='prediction error (the previous model at the new sample)')
+    if tol:
+        ax.axhline(tol, color='#c0392b', lw=1, ls=':', label=f'tolerance {tol:g}')
+    ax.set_xlabel('EM solves'); ax.set_ylabel('max |dS|'); ax.grid(alpha=0.3, which='both')
+    ax.legend(fontsize=8); ax.set_title('convergence of the rational model, solve by solve', fontsize=10)
+    fg = f / 1e9
+    n = S.shape[1]
+    k = 0
+    for j in range(n):
+        for i in range(j, n):
+            fx.plot(fg, 20 * np.log10(np.abs(S[:, i, j]) + 1e-15), color=TAB10[k % 10], lw=1.2,
+                    label=f"S({names[i]},{names[j]})")
+            k += 1
+    solved = sorted({h['f_new'] for h in hist if h['f_new'] is not None})
+    for fs in solved:
+        fx.axvline(fs / 1e9, color='0.75', lw=0.6, zorder=0)
+    fx.set_ylabel('|S| (dB)'); fx.set_xlabel('Frequency (GHz)'); fx.grid(alpha=0.3)
+    fx.legend(fontsize=7.5, loc='lower left', ncol=max(1, k // 4))
+    ex = fx.twinx()
+    cmap, norm = mpl.colormaps['viridis'], mpl.colors.Normalize(min(n_s), max(n_s))
+    ex.scatter([h['f_change'] / 1e9 for h in hist], chg, c=n_s, cmap=cmap, norm=norm, marker='o', s=22,
+               edgecolors='k', linewidths=0.3, label='max model change, where it was')
+    pf = [(prev['f_new'] / 1e9, h['pred'], h['solves']) for prev, h in zip(hist[:-1], hist[1:])
+          if prev['f_new'] is not None and np.isfinite(h['pred'])]
+    if pf:
+        ex.scatter(*zip(*[(a, b) for a, b, _ in pf]), c=[c for *_, c in pf], cmap=cmap, norm=norm, marker='s', s=22,
+                   edgecolors='k', linewidths=0.3, label='prediction error at the frequency solved')
+    if tol:
+        ex.axhline(tol, color='#c0392b', lw=1, ls=':')
+    ex.set_yscale('log'); ex.set_ylabel('max |dS| (colour: solves)')
+    ex.legend(fontsize=7.5, loc='lower right')
+    fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ex, pad=0.08, label='EM solves')
+    fx.set_title(f'where the sweep solved ({len(solved) + (hist[0]["solves"] if hist else 0)} solves; grey: '
+                 f'solved frequencies after the first {hist[0]["solves"] if hist else 0})', fontsize=10)
+    fig.suptitle(title, x=0.02, ha='left', weight='bold')
+    fig.tight_layout()
+    return fig
+
+
 # ---- antenna -------------------------------------------------------------------------------------------
 def plot_antenna(f, s11, z0, res, title):
     """Input match (|S11|, input impedance) and gain / directivity / efficiency over frequency."""

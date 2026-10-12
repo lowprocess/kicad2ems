@@ -6,7 +6,7 @@
 #   ./setup.sh --python python3.12 --venv /path/to/venv
 #
 # Asks about: the GUI, field dumps, the scikit-rf line model, the gmsh mesher, mom25d's compiled core, the test
-# tools, EMerge (3D FEM: from git, patched for Python 3.14, or PyPI); the CuPy wheel for your GPU (detected: NVIDIA CUDA 12 / 13, AMD ROCm 7); openEMS (build a local copy
+# tools, EMerge (3D FEM, experimental: from git, patched for Python 3.14, or PyPI); the CuPy wheel for your GPU (detected: NVIDIA CUDA 12 / 13, AMD ROCm 7); openEMS (build a local copy
 # into .openems/ with tools/build_openems.sh, use one already installed, or none). Run it again to change
 # anything: an existing .venv is kept and added to (or made anew if you say so).
 set -euo pipefail
@@ -123,7 +123,7 @@ fi
 ask "test tools (pytest)?" n && EXTRAS+=(test)
 
 # ---- EMerge: the optional 3D FEM solver (docs/emerge.md) ---------------------------------------------
-choose "EMerge (3D FEM, --solvers emerge)?" 1 \
+choose "EMerge (3D FEM, experimental: --solvers emerge)?" 1 \
     "none" \
     "from git, patched for this Python (NumPy 2.4, gmsh 4.15): tools/emerge/install_emerge.sh" \
     "from PyPI (needs Python <= 3.13)"
@@ -201,11 +201,11 @@ elif [ $DROP_CUPY = 1 ]; then
     "$VPY" -m pip uninstall -y cupy-rocm-7-0 cupy-cuda12x cupy-cuda13x 2>/dev/null || true
 fi
 if [ "$EMERGE" = git ]; then
-    bold "Installing EMerge from git (patched)"
+    bold "Installing EMerge (experimental) from git, patched"
     command -v git >/dev/null || { echo "  git is needed for EMerge from git"; exit 1; }
     "$REPO/tools/emerge/install_emerge.sh" "$VPY" "$REPO/.emerge"
 elif [ "$EMERGE" = pypi ]; then
-    bold "Installing EMerge from PyPI"
+    bold "Installing EMerge (experimental) from PyPI"
     "$VPY" -m pip install "emerge>=2.8"
 fi
 if [ $CORE = 1 ]; then

@@ -209,6 +209,7 @@ dmax    = 0.4
 | `<name>.xml` | openEMS's geometry, for AppCSXCAD |
 | `<name>_antenna.png`, `_pattern.png`, `_antenna.json` | antenna results |
 | `<name>_converge.png` | the mesh convergence check |
+| `<name>_mom25d_converge.png` | mom25d's adaptive sweep: model change and prediction error per solve, and where it solved ([details](mom.md#sweep)) |
 | `<name>_<port>_<dump>_<GHz>GHz.png` (`.gif`, `.mp4`) | field dump images and animations |
 | `openems/exc_<port>/` | one openEMS run folder per driven port, with its log and dumps |
 | `mom25d/exc_<port>/` | mom25d's current dumps |
