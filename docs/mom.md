@@ -125,8 +125,8 @@ openEMS sees the board's 80 mm ground; MoM an infinite one.
 
 `--mom-dump 2.4,5` solves the currents at those frequencies after the sweep (one EM solve each) and writes
 the surface current density J (A/m) of each meshed layer, driven by mom25d's 1 V gap source at the port
-(`--dump-port`, default the first). J is sampled onto a grid a third of `--mom-dmax` apart (the value of
-the triangle each point falls in; 0 off the copper) and stored like an openEMS frequency-domain plane dump
+(`--dump-port`, default the first). J is sampled onto a grid a third of `--mom-dmax` apart (the RWG basis
+functions at each point; 0 off the copper) and stored like an openEMS frequency-domain plane dump
 (`<out>/mom25d/exc_<port>/dump_J_<layer>_fd.npz` and `dump_info.json`), so the same code draws it: a peak
 \|J\| map per frequency, with `--dump-animate gif|mp4` one period of Re(J·e^jφ), the standing waves
 ([post-processing](postprocessing.md#animations)), and the GUI's Fields tab lists it next to openEMS's
@@ -135,6 +135,12 @@ dumps.
 ```bash
 kicad2ems examples/rf_stubnotch.toml --solvers mom --mom-dump 2.4,1.2 --dump-animate gif   # ~22 s
 ```
+
+`--mom-near 0.5,2` adds the E field on planes that many mm above the top of the board, at the same
+frequencies (`dump_E_top+<mm>mm_fd`): the currents' plane-wave spectrum (each layer's RWG basis functions on a
+grid, FFT, zero-padded to twice the grid) through the stack's TM / TE line voltages and up by e^{-j kz h}
+(`mom25d.farfield.near_field`; to 1e-5 of the exact field of a dipole over ground). Below about one MoM cell
+(`--mom-dmax`) above the copper the sampled currents do not resolve it.
 
 At the notch (2.4 GHz) the first quarter-wave stub stands: its current is largest at the tee and zero
 at the open end, and little reaches P2; at 1.2 GHz the wave runs through. MoM has currents on the copper

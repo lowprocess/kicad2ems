@@ -70,13 +70,15 @@ def test_current_dumps(boards, run_cli, tmp_path):
     base, out = boards['lowpass'], tmp_path / 'out'
     code, so, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--solvers', 'mom', '--mom-dmax', '0.8',
                             '--mom-solves', '6', '--points', '21', '--mom-dump', '2,5', '--dump-animate', 'gif',
-                            '--out', out)
+                            '--mom-near', '1', '--out', out)
     assert code == 0, so + err
     for f in (2, 5):
         for ext in ('png', 'gif'):
             assert (out / f"lowpass_mom25d_P1_dump_J_F_Cu_fd_{f}GHz.{ext}").exists()
-    src, = F.find_dumps(str(out))
+    E, src = F.find_dumps(str(out))                                  # sorted by name: E@top+1mm, J@F.Cu
     assert src.solver == 'mom25d' and src.freqs == [2e9, 5e9] and 'A/m' in src.unit
+    assert E.field == 'E' and 'V/m' in E.unit and np.abs(E.load(0)[1]).max() > 0
+    assert (out / 'lowpass_mom25d_P1_dump_E_topp1mm_fd_5GHz.gif').exists()
     mesh, J = src.load(0)
     assert np.abs(J).max() > 0 and np.all(J[..., 2] == 0)                # in-plane currents only
     sm = json.loads((out / 'lowpass_run.json').read_text())

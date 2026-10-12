@@ -215,6 +215,7 @@ used and a `config:` note says so (`config.resolve_path`).
 | `--mom-mesher triangle\|gmsh` (`mesher`) | triangle | MoM surface mesher ([MoM](mom.md#meshers)) |
 | `--mom-solves N` (`solves`) | 60 | most EM solves of the MoM adaptive sweep |
 | `--mom-dump GHz,...` (`dump`) | — | surface-current dumps at these frequencies: a \|J\| map per signal layer, with `--dump-animate` one period of Re(J·e^jφ) ([MoM](mom.md#current-dumps)) |
+| `--mom-near MM,...` (`near`) | — | with `--mom-dump`: also the E field on planes this far above the top of the board |
 
 ### Line model (`[solver.qucs]`)
 

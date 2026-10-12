@@ -122,6 +122,9 @@ class MoM25D(Solver):
                "with --dump-animate one period of Re(J e^jphi), the standing waves; the ports driven: --dump-port "
                "(default: the first)", list, conv=floatlist, name='dump', gui='Current dumps (GHz, comma-separated)',
                group=G, cli=dict(metavar='GHz,...')),
+        Option('mom_near', [], "with --mom-dump: also the E field on planes this far (mm) above the top of the board, "
+               "from the currents (e.g. 0.5,2); at least about --mom-dmax above the copper to resolve it", list,
+               conv=floatlist, name='near', gui='Near-field planes (mm above the top)', group=G, cli=dict(metavar='MM,...')),
     ]
 
     def check(self, s=None):
@@ -320,7 +323,7 @@ class MoM25D(Solver):
         if not run.s.mom_dump or held is None:
             return
         from .openems.fields import DumpSource, save_fd_outputs
-        for port, d in current_dumps(run, held, [f * 1e9 for f in run.s.mom_dump], run.s.dump_port):
+        for port, d in current_dumps(run, held, [f * 1e9 for f in run.s.mom_dump], run.s.dump_port, run.s.mom_near):
             for name in d['names']:
                 src = DumpSource(d['dir'], name, 'FD')
                 tag = port.replace('+', 'p').replace('-', 'n')
@@ -338,12 +341,13 @@ def _grid(nodes, tris, step, nmax=600):
     return [np.linspace(lo[a], hi[a], int(min(nmax, max(2, np.ceil((hi[a] - lo[a]) / step) + 1)))) for a in (0, 1)]
 
 
-def current_dumps(run, res, freqs, ports=None):
-    """mom25d's surface current density J (A/m) on each meshed layer at `freqs` (Hz), sampled onto a grid (the
-    value of the triangle each grid point lies in; 0 off the copper), for the ports driven (names, default the
-    first) by mom25d's 1 V gap sources. Writes dump_<layer>_fd.npz and dump_info.json per port under
-    <out>/mom25d/exc_<port>/; returns [(port, dict(dir, names))]."""
-    from matplotlib.tri import Triangulation
+def current_dumps(run, res, freqs, ports=None, near=()):
+    """mom25d's surface current density J (A/m) on each meshed layer at `freqs` (Hz), its RWG basis functions
+    sampled onto a grid (0 off the copper), and with `near` (mm) the E field on planes that far above the top
+    of the stack (mom25d.farfield.near_field), for the ports driven (names, default the first) by mom25d's 1 V
+    gap sources. Writes dump_*_fd.npz and dump_info.json per port under <out>/mom25d/exc_<port>/; returns
+    [(port, dict(dir, names))]."""
+    from mom25d.farfield import current_on_grid, near_field
     from .openems.dumps import Dump, write_info
     from .openems.fields import write_npz
     sim, model = res.sim, res.model
@@ -353,47 +357,52 @@ def current_dumps(run, res, freqs, ports=None):
     if not cols:
         raise ValueError(f"--dump-port {ports}: no mom25d port of that name ({', '.join(names)})")
     lay = {k: l for l, k in model.iface.items()}
+    layers = [k for k, idx in sorted(sim.tri_idx.items()) if len(idx) and k in lay]
     nodes = sim.rwg.nodes[:, :2] * 1e3
-    Jf = []
-    for f in freqs:
-        I = sim.currents(f, sim.excitation())
-        Jf.append([sim.current_density(I[:, j]) for j in cols])          # per port: (Jx, Jy) per triangle
+    I_f = [sim.currents(f, sim.excitation()) for f in freqs]
     step = max(run.s.mom_dmax / 3, 0.02)
+    ztop = float(model._zk[-1])
     out = []
-    for c, j in enumerate(cols):
+    for j in cols:
         d = os.path.join(run.s.out, 'mom25d', f"exc_{names[j]}")
         os.makedirs(d, exist_ok=True)
-        dumps, written = [], []
-        for k, idx in sorted(sim.tri_idx.items()):
-            if not len(idx) or k not in lay:
-                continue
-            tris = sim.rwg.tris[idx]
-            gx, gy = _grid(nodes, tris, step)
-            X, Y = np.meshgrid(gx, gy, indexing='ij')
-            used = np.unique(tris)
-            remap = -np.ones(len(nodes), int)
-            remap[used] = np.arange(len(used))
-            tri = Triangulation(nodes[used, 0], nodes[used, 1], remap[tris])
-            hit = tri.get_trifinder()(X, Y)                               # local triangle of each point, -1 off copper
-            z = float(model._zk[k])
+        dumps, units = [], {}
+        for k in layers:
+            gx, gy = _grid(nodes, sim.rwg.tris[sim.tri_idx[k]], step)
             data = np.zeros((len(freqs), len(gx), len(gy), 1, 3), complex)
-            for i in range(len(freqs)):
-                jx, jy = Jf[i][c]
-                for comp, v in ((0, jx), (1, jy)):
-                    vals = np.asarray(v)[idx]
-                    data[i, :, :, 0, comp] = np.where(hit >= 0, vals[np.clip(hit, 0, None)], 0)
-            label = lay[k]
-            dump = Dump(f"J@{label}", 'J', (gx[0], gy[0], z), (gx[-1], gy[-1], z), list(freqs), 2, label)
+            for i, I in enumerate(I_f):
+                Jx, Jy, _ = current_on_grid(sim, I[:, j], gx * 1e-3, gy * 1e-3, k)
+                data[i, :, :, 0, 0], data[i, :, :, 0, 1] = Jx, Jy
+            z = float(model._zk[k])
+            dump = Dump(f"J@{lay[k]}", 'J', (gx[0], gy[0], z), (gx[-1], gy[-1], z), list(freqs), 2, lay[k])
             write_npz(os.path.join(d, dump.name + '.npz'), dict(x=gx, y=gy, z=np.array([z])), freqs, data)
             dumps.append(dump)
-            written.append(dump.name)
+            units[dump.name] = 'A/m, 1 V gap source'
+        for h in near or ():
+            # one grid over all the copper, padded so the FFT's wrap-around stays far from the board
+            allt = np.concatenate([sim.tri_idx[k] for k in layers])
+            pad = max(5.0, 3 * h)
+            lo = nodes[sim.rwg.tris[allt]].reshape(-1, 2).min(0) - pad
+            hi = nodes[sim.rwg.tris[allt]].reshape(-1, 2).max(0) + pad
+            st_ = max(step, (hi - lo).max() / 1023, h / 4)              # near_field pads to 2x for its FFT
+            gx, gy = np.arange(lo[0], hi[0], st_), np.arange(lo[1], hi[1], st_)
+            data = np.zeros((len(freqs), len(gx), len(gy), 1, 3), complex)
+            for i, (f, I) in enumerate(zip(freqs, I_f)):
+                LJ = {k: current_on_grid(sim, I[:, j], gx * 1e-3, gy * 1e-3, k)[:2] for k in layers}
+                data[i, :, :, 0, :] = near_field(sim, LJ, gx * 1e-3, gy * 1e-3, f, h * 1e-3)
+            z = ztop + h
+            label = f"top+{h:g}mm"
+            dump = Dump(f"E@{label}", 'E', (gx[0], gy[0], z), (gx[-1], gy[-1], z), list(freqs), 2, label)
+            write_npz(os.path.join(d, dump.name + '.npz'), dict(x=gx, y=gy, z=np.array([z])), freqs, data)
+            dumps.append(dump)
+            units[dump.name] = 'V/m, 1 V gap source'
         write_info(d, dumps, run.m)
-        info = os.path.join(d, 'dump_info.json')                            # surface currents: A/m, not A/m2
+        info = os.path.join(d, 'dump_info.json')                            # J: surface current, A/m
         with open(info) as fh:
             meta = json.load(fh)
         for x in meta['dumps']:
-            x['unit'] = 'A/m, 1 V gap source'
+            x['unit'] = units[x['name']]
         with open(info, 'w') as fh:
             json.dump(meta, fh)
-        out.append((names[j], dict(dir=d, names=written)))
+        out.append((names[j], dict(dir=d, names=[x.name for x in dumps])))
     return out

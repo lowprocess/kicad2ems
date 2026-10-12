@@ -44,7 +44,8 @@ feed: a corporate network of T junctions and quarter-wave (35 ohm) transformers,
 bottom edges and the bottom row at its top edges, the bottom branch half a guided wavelength longer to
 undo that 180 deg. mom25d (`kicad2ems examples/antenna_array2x2.toml --solvers mom`, 53 s, 7.3k unknowns):
 resonance 2.438 GHz, S11 -25.6 dB, directivity 12.97 dBi (the patch: 6.39), gain 6.97 dBi, efficiency 25 %
-(the patch: 36 %; the rest is the 230 mm of feed on FR4). Their dimensions are keyword parameters of each function, also on
+(the patch: 36 %; the rest is the 230 mm of feed on FR4). openEMS (the board's 220 x 190 mm ground, 271 s):
+2.430 GHz, -22.0 dB, at 2.45 GHz 13.26 dBi, gain 7.54 dBi, efficiency 27 %. Their dimensions are keyword parameters of each function, also on
 the command line (`make_antennas.py ifa out arm=19 s=2.5`).
 
 <a id="rf-structures"></a>
