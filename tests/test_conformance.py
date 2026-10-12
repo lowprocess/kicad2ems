@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(ROOT, 'examples'))
 from make_demo_board import THRU                                    # noqa: E402
 
 C0 = 299792458.0
-FAST = {'scikit': [], 'qucs': [], 'mom25d': ['--mom-dmax', '0.8', '--mom-solves', '10'],
+FAST = {'scikit': [], 'qucs': [], 'mom25d': ['--mom-dmax', '0.8', '--mom-solves', '16'],   # converges in 13
         'openems': ['--res', '15', '--end-db', '-30']}
 # tolerances: (|S21| at least, |S11| at most, delay error at most)
 TOL = {'scikit': (0.99, 0.08, 0.02), 'qucs': (0.99, 0.08, 0.02), 'mom25d': (0.99, 0.08, 0.02),     # measured: mom25d
