@@ -1,135 +1,88 @@
-# 8. Simulation
+# openEMS: simulation
 
-[← Transmission-line model](transmission-lines.md) · [Index](index.md) · [Next: Post-processing and outputs →](postprocessing.md)
+[← openEMS meshing](meshing.md) · [Index](index.md) · [Next: mom25d →](mom.md)
 
-`simulation.py` turns a `Board` and a mesh into an openEMS simulation and runs it; `antenna.py` adds the
-far field for antenna mode. openEMS / CSXCAD are imported only inside these functions.
+`solvers/openems/simulation.py` turns the board and its mesh into an openEMS model and runs it.
+`antenna.py` adds the far field in antenna mode. openEMS is imported only inside these functions, so the
+rest of kicad2ems works without it.
 
-## Building the model: `build_fdtd`
+## The model
 
-`build_fdtd(m, mesh, fmin, fmax, excite, bc, end_db, sigma, max_steps, dumps, diel, diel_fref, exc_fmax)`
-returns `(FDTD, CSX, ports)`:
-
-| Part | CSXCAD / openEMS |
+| Part | openEMS / CSXCAD |
 |---|---|
-| grid | `SetDeltaUnit(1e-3)` (mm), the mesh lines |
-| dielectrics | `AddMaterial` (or a Debye material, below) extruded over the outline (`AddLinPoly`), priority 1 |
-| copper | `AddMetal` (PEC) or `AddConductingSheet` (`--sigma`, with the copper thickness), polygons at the copper heights, priority 10 |
-| vias | `AddMetal` cylinders, priority 11 |
-| edge walls | `AddMetal` zero-thickness boxes where the planes end at the `--edge-walls` sides (`mesh['walls']`), priority 11 |
-| lumped parts | `AddLumpedElement` boxes (R / L / C, topology per piece) or a metal box for 0 Ω, priority 12 |
-| ports | `AddLumpedPort` (direction `z`, or `x` / `y` for gap ports), priority 12; only port `excite` is driven |
-| field dumps | `dumps.add_dumps` |
+| dielectrics | materials extruded over the board outline |
+| copper | perfect conductors, or conducting sheets with `--sigma` |
+| vias | metal cylinders |
+| edge walls | thin metal boxes where the planes end |
+| lumped parts | lumped R/L/C elements across their gaps |
+| ports | lumped ports; only the driven port is excited |
+| field dumps | dump boxes |
 
-All numbers passed to CSXCAD go through `_f` / `_fl` (plain Python floats): older CSXCAD builds reject
-numpy scalars. The test stand-ins enforce this.
+Every number passed to CSXCAD is converted to a plain Python float, because older CSXCAD builds reject
+numpy values.
 
 <a id="dielectrics"></a>
 ## Dielectrics
 
-- `--diel fixed` (default): εr from the stackup, the loss as a conductivity κ = 2π f0 ε0 εr tan δ at the
-  band centre f0. tan δ then falls as 1/f across the band: too lossy below the centre, not lossy enough
-  above.
-- `--diel wideband`: the Djordjevic-Sarkar model. εr and tan δ from the stackup hold at `--diel-fref`
-  (default 1 GHz); εr then falls slowly and tan δ stays nearly flat, as for real laminates. The run
-  prints εr / tan δ of each dielectric at both band edges.
-
-**The Debye fit** (`dielectric.fit_debye`): Debye poles log-spaced over [fmin / 2, 2 fmax] (fmin at
-least fmax / 1000), 1.5 per decade (rounded up) plus one, at least 3, plus a conductivity, fitted by non-negative least
-squares; fit errors < 0.2 % in εr and < 1 % in tan δ. openEMS ignores poles with a relaxation time below
-2 time steps, so poles faster than 2.5 time steps are dropped. The material is a
-`CSPropDebyeMaterial` (`simulation._debye_material`; how to build one: [maintenance](maintenance.md#other-quirks)).
-
-Each pole costs run time: on the microstrip filter example (1–8 GHz) a wideband run took about 4× as long
-as with `fixed`. There, the insertion loss in the 3.1 GHz passband came out at 6.0 dB instead of 7.4 dB
-with `fixed`, whose conductivity overstates the loss below the band centre.
+- **`--diel fixed`** (the default) uses the stackup's εr, with the loss as a conductivity set at the
+  band centre. That makes the loss too high below the centre and too low above it.
+- **`--diel wideband`** uses the Djordjevic-Sarkar model, which matches real laminates: εr falls slowly
+  with frequency and tan δ stays nearly flat. The stackup values apply at `--diel-fref` (1 GHz). It is
+  built from a sum of Debye poles. Each pole costs run time: on the microstrip filter the run took about
+  four times as long.
 
 ## Excitation
 
-A Gaussian pulse: `SetGaussExcite(f0, fc)` with f0 = (fmin + fe)/2 and fc = 1.05·(fe − fmin)/2, where
-fe = fmax (or `exc_fmax`). openEMS's pulse lasts 2·9/(2π·fc), so narrow bands mean long pulses
-(`simulation.pulse_steps`, printed in the preview). Antenna runs use fe = fmax + 0.3·(fmax − fmin)
-(`antenna.exc_fmax`), see [maintenance](maintenance.md#excitation-edge).
+openEMS is driven with a Gaussian pulse covering the band. A narrow band means a long pulse, so low
+frequencies and narrow bands need more timesteps. Antenna runs extend the pulse above `fmax` by 30 % of the band,
+because the far field is wrong near the top edge of the excitation (see
+[maintenance](maintenance.md#excitation-edge)).
 
-## Ending a run
+<a id="ending-a-run"></a>
+## When a run stops
 
-openEMS stops when the field energy has fallen by `--end-db` (`EndCriteria = 10^(end_db/10)`) or after
-`--max-steps` (`NrTS`). It checks the energy at its periodic status updates (on a wall-clock interval),
-so runs with different speeds stop at slightly different steps; results agree to the truncation
-level (≈ 0.002 in S at −40 dB).
+openEMS stops when the field energy has decayed by `--end-db` (−40 dB) or after `--max-steps` timesteps.
 
-The total field energy can stall above `--end-db` when some of it sits where the ports do not see it:
-on the SMA launch example it levelled off near −36.5 dB while the port voltages had fallen 74 dB from
-their peak, and the run would have gone on to `--max-steps`. So by default (`--end-on ports`) a run
-whose energy has stalled also ends when the port signals have decayed: `simulation.PortWatch` reads the
-port voltage and current probes every 2 s (openEMS flushes them as it runs) and the energy from
-openEMS's status lines. Once past the excitation pulse, when the largest u² + (Z i)² of any port over
-the last 2 / fmin (at least 1 ns) is `--end-db` below its peak **and** the energy fell by less than
-1.5 dB over the last quarter of the steps, it writes `ABORT` into the run folder; openEMS stops and
-finishes normally, and `run_end.json` records the level and time. Both conditions are needed: in a
-high-Q circuit the stored energy leaks out through the ports slowly while the port signals sit far
-below their peak; on the port level alone the interdigital filter stopped at 10 ns with its energy at
-−33 dB, and its pass band came out smoothed (peak −5.9 dB instead of −6.5 dB). With both, the filter
-runs to the energy criterion (−40 dB) and the SMA launch stops once its energy has levelled off near
-−37 dB (247 k steps, 13.5 min, instead of running on to the step limit). The log says so, and the report's run table has an *ended on* column.
-`--end-on energy` keeps openEMS's own criterion only. `--end-db -30` is usually enough for S-parameters
-and faster still. Writing `ABORT` into a run folder by hand stops a run the same way.
+Sometimes the energy stalls above `--end-db` because it is trapped where the ports can't see it. On the
+SMA launch it levelled off near −36.5 dB while the port signals had fallen 74 dB. So by default
+(`--end-on ports`), a run also stops when **both**:
 
-`--preview` estimates the pulse length in timesteps and how many pulse lengths `--max-steps` allows,
-with a warning below 20. Low frequencies make the pulse long (its length grows as 1 / bandwidth), and
-high-Q circuits ring long after it, so both need more steps:
+- the port signals have decayed by `--end-db` from their peak, and
+- the energy has stopped falling (less than 1.5 dB over the last quarter of the run).
+
+Both are needed. A high-Q filter leaks its stored energy slowly through the ports while their signals are
+already low, and stopping on the ports alone smoothed its pass band. `--end-on energy` uses openEMS's own
+criterion only.
+
+`--end-db -30` is usually enough for S-parameters, and faster. You can also stop a run by hand: writing
+a file called `ABORT` into its run folder makes openEMS finish cleanly. The GUI's *Stop* does this.
+
+`--preview` estimates the pulse length and warns when `--max-steps` allows fewer than 20 pulse lengths.
+For low frequencies, raise it:
 
 ```bash
 kicad2ems board.toml --fmin 0.05 --fmax 0.5 --max-steps 5000000
 ```
 
-**Steps taken** (`steps_taken`): the last sample time of the port voltage probe divided by openEMS's own
-time step, read from the excitation file `et` (one sample per step). `step_limit_warning` flags runs
-that used ≥ 97 % of `--max-steps`: their fields may still have been ringing.
+A run that used at least 97 % of `--max-steps` gets a warning, since its fields may still have been
+ringing.
 
-## Running: `execute`
+## Runs
 
-`execute(FDTD, path, threads, verbose, progress)` calls `FDTD.Run(path, cleanup=True, …)` and restores
-the working directory (openEMS changes it). With a `progress` setting (the pipeline always passes one):
+There's one openEMS run per driven port (`--excite`, by default every port), each in
+`<out>/openems/exc_<port>/`. Each run gives one column of the S-matrix.
 
-1. `progress.redirect_output` points file descriptors 1 and 2 at `<path>/openems.log` (C++ output
-   included; `fflush` before restoring).
-2. A `progress.Monitor` thread tails the log and writes to a duplicate of the original stdout: a
-   progress line (`Tracker.status`) or, with `--openems-output`, the raw lines. Each status line is also
-   handed to `on_status` (the `--events` status events).
+`--jobs N` runs N ports at once in separate processes. Each then gets a share of the CPU threads, since
+FDTD is limited by memory bandwidth (see [maintenance](maintenance.md#other-quirks)). kicad2ems warns when
+the runs would need more than 80 % of the RAM.
 
-## One run per driven port: `run_excitations`
+openEMS's output goes to each run's `openems.log`, and a progress line is shown instead.
 
-For each port in `--excite` (default all): `_run_port` builds the model with that port driven, runs it
-in `<out>/openems/exc_<port>` (`P1+` / `P1-` → `exc_P1p` / `exc_P1n`), computes every port's incident /
-reflected waves (`CalcPort`) and returns the S column. Dumps are recorded in the runs listed in
-`--dump-port` (default the first). Returns a `RunResult`.
+## Antenna runs
 
-With `--jobs N`, `_run_port` runs in N `spawn` worker processes. The workers only redirect their output
-to their logs (`progress={'mode': 'file'}`); one monitor in the main process shows all runs. Without
-`--threads`, each worker gets half the logical CPUs / N (FDTD is memory-bound, see
-[maintenance](maintenance.md#other-quirks)). The pipeline warns when N runs need more than 80 % of the
-installed RAM.
-
-`run_excitations` takes two optional hooks that every run calls: `setup(FDTD, CSX)` before the run (its
-return value is the run's token) and `analyse(path, ports, token, k, col)` after it; what `analyse`
-returns lands in `RunResult.extra[port]`. With `--jobs` the hooks must pickle (top-level functions or
-`functools.partial`).
-
-## Antenna runs: `antenna.run_antenna`
-
-Antenna mode uses the same run path: `run_excitations` with one driven port (the first of `--excite`),
-an NF2FF box as `setup` (`FDTD.CreateNF2FFBox(frequency=…)`, frequency-domain recording at 21 band
-frequencies plus `--ff-freq`) and the far-field analysis as `analyse`. `Job.mesh` sets PML boundaries
-and a larger air margin ([meshing](meshing.md#boundaries-and-air)). Post-processing is in
-[Post-processing](postprocessing.md#antenna-mode).
-
-## `--check`
-
-`check_openems()` imports numpy, h5py, CSXCAD and openEMS and turns failures into hints (other Python,
-venv without system site packages, missing module, shared library not found, the `kicad2ems` on
-PATH running a different Python). The pipeline runs it before `solve()`. For users:
-[Getting started](getting-started.md#checking-the-installation).
+Antenna mode uses one driven port, absorbing PML boundaries, more air, and a near-to-far-field box that
+records 21 frequencies across the band plus the pattern frequencies. The results are described in
+[Results](postprocessing.md#antenna-mode).
 
 ---
-[← Transmission-line model](transmission-lines.md) · [Index](index.md) · [Next: Post-processing and outputs →](postprocessing.md)
+[← openEMS meshing](meshing.md) · [Index](index.md) · [Next: mom25d →](mom.md)

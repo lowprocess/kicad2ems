@@ -1,142 +1,116 @@
-# 9. Post-processing and outputs
+# Results
 
-[← Simulation](simulation.md) · [Index](index.md) · [Next: Examples →](examples.md)
+[← Examples](examples.md) · [Index](index.md) · [Next: openEMS meshing →](meshing.md)
 
-The list of output files is in [Usage](usage.md#outputs).
+[Usage](usage.md#outputs) lists the output files. This page explains what's in them.
 
 ## S-parameters
 
-`S[:, i, k] = uf_ref(port i) / uf_inc(port k)` from the run with port k driven (`simulation._run_port`).
+Each solver writes a Touchstone file, `<name>_<solver>.sNp`.
 
-- **Reciprocity** (`sparams.fill_reciprocal`): columns of ports not driven are filled from S_ik = S_ki.
-  Their own reflection and the terms between two undriven ports stay unknown (NaN, written as 0, with a
-  note).
-- **Mixed mode** (`sparams.mixed_mode`): differential pairs become a differential (`P1d`, Z = 2·Z0) and a
-  common (`P1c`, Z = Z0/2) mode. Unknown entries don't spread: the transform runs with zeros and only
-  results that depend on an unknown entry are marked unknown.
-- **Touchstone** (`touchstone.write_touchstone`): v1 when all reference impedances are equal, v2.0 with
-  `[Reference]` otherwise. `read_touchstone` reads v1 / v2, RI / MA / DB (used by `--compare`).
-- **Plot** (`plots.plot_results`): |S| in dB (reflection thick, transmission thin) and a Smith chart of
-  the reflections, of the first solver of the run. `--compare` overlays dashed curves labelled with the
-  file name; the other solvers are overlaid dotted, dash-dotted, ... ([solvers](usage.md#solvers)).
+- **Ports that weren't driven.** openEMS only drives the ports in `--excite`. The missing columns are filled
+  in by reciprocity (S_ik = S_ki). Terms that are still unknown are written as 0 and listed in the file
+  header.
+- **Differential pairs** become a differential mode (`P1d`, 2·Z0) and a common mode (`P1c`, Z0/2).
+- **Reference impedances.** The file uses Touchstone v1 when all ports share one impedance, and v2
+  otherwise.
+- **The plot** `<name>_<solver>.png` shows |S| in dB and a Smith chart of the reflections for the first
+  solver, with the others and any `--compare` file drawn over it.
 
-## Convergence
+## Mesh convergence
 
-`converge.compare_levels` and `converge.verdict` (see [Meshing](meshing.md#convergence-levels));
-`plots.plot_convergence` shows |S| per level (line style per level) and the deviation from the finest.
-The verdict and the table go to the JSON, the log (a `WARNING` when not converged) and the report.
+With `--converge`, openEMS also runs coarser meshes and compares them with the finest
+([details](meshing.md#convergence-levels)). `<name>_converge.png` shows each level, and the log and the
+report give a verdict. A `WARNING` means the result hasn't converged.
 
 <a id="antenna-mode"></a>
 ## Antenna mode
 
-After the run (the `antenna.analyse` hook):
+With `mode = "antenna"`, kicad2ems computes the far field after the run:
 
-| Result | How |
+| Result | How it is computed |
 |---|---|
-| S11, Zin | from the driven port; `match_summary`: resonance = minimum \|S11\|, −10 dB band around it |
-| accepted / incident power | `port.CalcPort` at the recorded frequencies: `P_acc`, `P_inc` |
-| directivity, Prad | `nf2ff.CalcNF2FF` on a 5° full sphere at every recorded frequency: `Dmax`, `Prad` |
-| efficiency, gain | η = Prad / P_acc (dielectric and copper loss); G = D·η; realized gain = D·Prad / P_inc (includes the mismatch) |
-| patterns | cuts φ = 0 (xz), φ = 90° (yz), θ = 90° (xy) at the pattern frequency (`--ff-freq` or the recorded frequency nearest the resonance), angle step `--ff-step`, normalised to the sphere's maximum; the 3D pattern from the sphere |
+| resonance, S11, input impedance | from the driven port; the resonance is the lowest \|S11\| |
+| directivity | from the far field over the whole sphere |
+| efficiency | radiated power / accepted power (dielectric and copper loss) |
+| gain | directivity × efficiency |
+| realized gain | gain including the mismatch loss |
+| patterns | the xz, yz and xy cuts, and a 3D pattern |
 
-Angles: θ from +z (the normal of the board's top side), φ from +x (KiCad x); y points up in the KiCad
-view. The phase centre is the outline centre at mid-stack. Outputs:
+θ is measured from +z (the board's top normal) and φ from +x.
 
 | File | Contents |
 |---|---|
-| `<name>_antenna.png` | \|S11\| with the −10 dB band, input impedance, directivity / gain / realized gain and radiation efficiency over frequency |
-| `<name>_pattern.png` | gain (dBi) in the three cuts and a 3D pattern at the pattern frequency, with a summary |
-| `<name>_antenna.json` | resonance, S11, Zin, bandwidth, the gain table and the cuts |
+| `<name>_antenna.png` | match, impedance, directivity, gain and efficiency over frequency |
+| `<name>_pattern.png` | the pattern cuts and a 3D pattern |
+| `<name>_antenna.json` | the numbers behind both |
 
+mom25d writes the same files with `_mom25d` in the name ([details](mom.md#antenna-mode)).
+
+<a id="field-dumps"></a>
 ## Field dumps
 
-`--dump FIELD@REGION[@GHz,...]` (repeatable; or `dump = [...]` in the TOML). `dumps.parse_dump` turns it
-into a box:
+`--dump FIELD@REGION[@GHz,...]` saves a field during an openEMS run. It can be repeated.
 
 | Part | Values |
 |---|---|
-| FIELD | `E`, `H`, `J` (total current density: shows the copper currents) |
-| REGION | `F.Cu` (plane at a copper layer), `F.Cu-0.1` / `In1.Cu+0.05` (offset in mm, e.g. inside the dielectric under a trace), `z=0.3`, `x=12`, `y=7` (KiCad mm), `volume`, `volume+5` (with 5 mm of air above and below: fringing and near fields, the GUI's 3D view), `box=x0,y0,z0,x1,y1,z1` |
-| FREQS | GHz list → frequency-domain dump (HDF5) **plus PNG field maps** with copper outlines; omit → time-domain VTK series (animate in ParaView) |
+| FIELD | `E`, `H`, or `J` (current density, which shows the copper currents) |
+| REGION | `F.Cu` (a plane at a copper layer), `F.Cu-0.1` (offset in mm, for example inside the dielectric), `z=0.3`, `x=12`, `y=7` (mm), `volume` (the board plus 0.5 mm), `volume+5` (plus 5 mm of air above and below), or `box=x0,y0,z0,x1,y1,z1` |
+| GHz | frequencies: a frequency-domain dump, saved as HDF5 with a PNG map per frequency. Leave them out for a time-domain dump (a series of frames) |
 
 ```bash
-kicad2ems board.toml --excite P1 --dump E@F.Cu-0.1@2,6 --dump J@In2.Cu@4 --dump E@y=7
+kicad2ems board.toml --dump E@F.Cu-0.1@2,6 --dump J@In2.Cu@4 --dump E@volume+5@2.4
 ```
 
-Planes are clipped to the board outline + 1 mm and the stack + 1 mm of air, so a dump does not cover
-the empty air margin; `volume` is the board + 0.5 mm, `volume+MM` the board + MM of air as far as the
-simulation domain goes; `box=` is used as given. `add_dumps` adds the
-boxes to CSX (`AddDump`). Dumps are recorded in the run of the first excited port (`--dump-port P2` to
-choose). `--preview` validates the specs and prints the number of points per dump; the run prints a
-rough disk estimate. Files land in `<out>/openems/exc_<port>/dump_*.h5|.vtr`.
-
-After the run, `plot_fd_dumps` reads frequency-domain plane dumps (`read_fd`, old and new openEMS HDF5
-layouts) and plots |field| with the copper outlined, scaled to a **1 V incident wave** at the driven
-port (checked: |Ez| under a 0.2 mm-high microstrip is 5.0 kV/m). Volume and time-domain dumps are left
-for the GUI's Fields tab ([GUI](gui.md#fields)) or ParaView; `kicad2ems.dumps.read_fd(path)` reads an
-HDF5 dump into numpy (needs h5py) and `kicad2ems.fields.read_vtr(path)` a time-domain frame.
-
-Each run that records dumps also writes `dump_info.json` (before openEMS starts: the dumps, the timestep,
-the board outline, copper per layer and ports, for outlines in a viewer) and, with frequency-domain
-dumps, `dump_norm.json` (the incident port voltage at each dump frequency). `kicad2ems.fields` reads a
-run folder with them:
+- Dumps are recorded in the run of the first driven port; `--dump-port` picks another.
+- Frequency-domain dumps are scaled to a 1 V incident wave at the driven port.
+- `--preview` checks the specs and reports the size of each dump.
+- The files go to `<out>/openems/exc_<port>/`. The GUI's Fields and 3D fields panels read them, and so
+  does ParaView.
 
 <a id="animations"></a>
-**Standing waves.** A frequency-domain dump is a phasor F per point; one period of Re(F·e^jφ), φ from 0 to
-2π, is what the field does at that frequency in steady state: a standing wave stands still and breathes,
-a travelling one moves. `--dump-animate gif` (or `mp4`) writes that period (24 frames) for every
-frequency-domain plane dump next to its PNG, openEMS's and mom25d's (`--mom-dump`, [MoM](mom.md#current-dumps));
-the GUI's Fields tab plays and saves the same (*instantaneous, phase*). One colour range covers the period.
+### Animations
+
+A frequency-domain dump holds a complex value at each point. Playing Re(F·e^jφ) for φ from 0 to 2π shows
+what the field does over one cycle: standing waves pulse in place, travelling waves move.
+`--dump-animate gif` (or `mp4`) writes this for every frequency-domain plane dump, from openEMS and from
+mom25d's `--mom-dump`.
+
+The same is available from Python:
 
 ```python
 from kicad2ems import fields
-src = fields.find_dumps('out')[0]                     # every dump under out/<solver>/exc_*/ (openems, mom25d)
-pl = fields.plane(*src.load(-1), axis=2, index=0, component='z')   # a cut, in KiCad axes
-fields.save_animation(src, 'ez.gif', axis=2, index=0, component='z')     # or .mp4 (needs ffmpeg)
+src = fields.find_dumps('out')[0]
+fields.save_animation(src, 'ez.gif', axis=2, index=0, component='z')
 ```
 
 <a id="json-summary"></a>
-## JSON summary
+## The run summary
 
-`<name>_run.json` is the full run summary (`Job.summary`), written by every run, also `--preview`
-and `--no-report` (runs before the solver plugins wrote it as `<name>_openems.json`):
+`<name>_run.json` records the whole run, including previews:
 
 | Key | Contents |
 |---|---|
-| `name`, `version`, `mode`, `command`, `created`, `solvers` | the run, the solvers that ran |
-| `settings` | every option (`Settings.options()`) |
-| `model` | outline, nets, stack, copper layers, ports, parts, notes |
-| `mesh`, `levels`, `pulse_steps` | with openEMS: mesh statistics, convergence levels, excitation length |
-| `lines` | [transmission-line sections](transmission-lines.md#outputs) per path, notes |
-| `solved` | per solver (`openems`, `mom25d`, `qucs`, `scikit`): label, Touchstone file, seconds, port names, reference impedances, \|S\| table, what it reports of itself (mom25d: unknowns, EM solves, ports; openEMS: driven ports), and `compare` against `reference`, the first solver |
-| `results` | the first solver's: `reference` (its name), port names, reference impedances, excited ports, \|S\| table at the band edges and centre with extremes |
-| `runs` | openEMS, per driven port: seconds, timesteps, log file |
-| `deviations`, `saw` | per solver, what it declared changing (item, feature, what, how much); the *What each solver saw* table |
+| `settings` | every option |
+| `model` | outline, nets, stack, copper, ports, parts |
+| `mesh`, `levels` | the openEMS mesh and convergence levels |
+| `lines` | the [line sections](transmission-lines.md#outputs) |
+| `solved` | per solver: its file, run time, ports, S-parameter table, and comparison with the first solver |
+| `results` | the first solver's results |
+| `runs` | openEMS: time and timesteps per driven port |
+| `deviations`, `saw` | what each solver changed from the board, and the *What each solver saw* table |
+| `estimates` | after a preview: each solver's estimated time and memory |
 | `antenna`, `convergence`, `dumps` | when they apply |
-| `images`, `files` | the plots and all output files |
-| `warnings`, `log`, `runtime_s` | every message |
-
-The keys older readers use (`ports`, `zref`, `excited`, `parts`, `diel`) are still written after a solver
-run; `runtime_s` always.
+| `warnings`, `log` | every message |
 
 <a id="the-report"></a>
 ## The report
 
-`<name>_report.html` is rendered by `report.build(summary, base_dir)` from the summary alone: summary
-figures (mode, band, ports, mesh, time step; resonance / S11 / bandwidth / directivity / efficiency /
-gain in antenna mode; the convergence verdict; each solver's size and time), warnings, the model (stack,
-copper, ports, parts, notes), the transmission-line sections, the mesh (statistics, preview,
-convergence levels; openEMS only), S-parameters (the first solver's plot with the others overlaid, and a
-table at the band edges and centre with minima and maxima), one section per solver (what it did, its
-file, its comparison with the first solver), *What each solver saw* (per feature of the board, each
-solver's capability and what it declared changing), antenna and convergence sections, field maps, the openEMS runs (time,
-steps, link to `openems.log`), the output files, all settings and the full log. Images are embedded
-(base64), so the page is one file; links to other outputs are relative. Styling is plain CSS with a dark
-variant (`prefers-color-scheme`).
+`<name>_report.html` is one self-contained page built from the run summary. It covers the model, the line
+sections, the mesh, the S-parameters with a table at key frequencies, a section per solver, what each
+solver saw of the board, antenna and convergence results, field maps, warnings and the full log.
 
-Paths in the summary (images, files, field maps, run logs) are stored relative to the output folder.
-Because it needs only the JSON (and the plots at the paths stored in it), a report can be rebuilt, for
-instance after changing `report.py`:
+The report can be rebuilt from the summary, for example after changing `report.py`:
 
 ```python
 import json
@@ -144,8 +118,5 @@ from kicad2ems.report import write_report
 write_report(json.load(open('out/board_run.json')), 'out/board_report.html')
 ```
 
-To add something to the report: put the data into `Job.summary` in the stage that computes it, and add a
-`section(...)` call in `report.build`.
-
 ---
-[← Simulation](simulation.md) · [Index](index.md) · [Next: Examples →](examples.md)
+[← Examples](examples.md) · [Index](index.md) · [Next: openEMS meshing →](meshing.md)

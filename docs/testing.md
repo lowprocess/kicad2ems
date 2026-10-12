@@ -1,88 +1,69 @@
-# 11. Testing
+# Testing
 
-[← Examples](examples.md) · [Index](index.md) · [Next: Maintenance notes →](maintenance.md)
+[← The board model](model.md) · [Index](index.md) · [Next: Maintenance notes →](maintenance.md)
 
 ## Running the tests
 
 ```bash
-pip install '.[test]'        # pytest, scikit-rf, h5py
-python -m pytest -q          # openEMS not needed
+pip install '.[test]'      # pytest, scikit-rf, h5py
+python -m pytest -q        # about 280 tests, a few minutes; openEMS not needed
 ```
 
-The suite (about 190 tests) runs in-process in about a minute. It needs numpy, shapely, matplotlib and
-pytest; tests that need scikit-rf or h5py are skipped without them. The qucsator test is skipped unless
-`qucsator_rf` or `qucsator` is on PATH.
+Tests that need an optional package are skipped without it: scikit-rf, h5py, qucsator, PySide6 for the
+GUI, PyOpenGL for the 3D view, and mom25d's compiled core for the GPU tests.
 
 ## What is covered
 
-| File | Covers |
+| Area | Files |
 |---|---|
-| `test_kicad.py` | S-expressions, stackup, copper items, vias, footprints, port footprints and their fields, nets, outline |
-| `test_kicad_shapes.py` | outlines from any Edge.Cuts mix (mounting holes and cutouts ignored, KiCad 5 arcs, footprint edges), copper graphics on the board and in footprints, pad shapes (chamfered, trapezoid, custom), `from_text` |
-| `test_model_mesh.py` | hole splitting, mesh grading, model building, port placement, thirds rule incl. near-Manhattan edges, merging, curves and via snapping, boundaries, region cropping, mixed mode, Touchstone round trip |
-| `test_parts.py` | value parsing, part detection and skip notes, element pieces and topologies, mesh lines at part ends, the low-pass demo and its ideal circuit |
-| `test_tlines.py` | the closed-form impedances against reference values; the sections of the example boards (pads, vias, parts, branches, T-junctions, reference changes, gap ports) |
-| `test_fastsolve.py` | scikit-rf and qucsator solves, the qucsator netlist and dataset reader, part impedances |
-| `test_simulation_setup.py` | `build_fdtd` against the strict CSXCAD / openEMS stand-ins (plain scalars), wideband (Debye) materials |
-| `test_dielectric.py` | Djordjevic-Sarkar model, Debye fit accuracy, dropped short poles |
-| `test_dumps.py` | dump specs, boxes, the HDF5 reader (both layouts), field maps, TOML lists |
-| `test_fields.py` | VTR frames as openEMS writes them (zlib / plain), plane cuts in KiCad axes, dump discovery, outlines, GIF / MP4, the NF2FF sphere cuts, the Fields tab |
-| `test_converge.py` | level parsing, monotonic refinement, comparison and verdict, `--preview --converge` |
-| `test_antenna.py` | antenna defaults, match / gain tables, pattern scaling, gap ports, `--mode antenna --preview` for the four examples |
-| `test_parallel.py` | `--jobs` (stubbed runs in real worker processes) matches the serial loop |
-| `test_max_steps.py` | excitation length, steps read back from a run folder, the step-limit warning, option / TOML |
-| `test_progress.py` | status-line parsing, ETA from decay / step limit, flat energy, the monitor (bar / raw), output redirection |
-| `test_cli.py` | Settings (defaults ← TOML ← command line, abbreviated options), lists, path rules, one-line errors, `check` as command-line only, `--preview` end to end with the report and JSON |
-| `test_conformance.py` | boards with a known answer, each solver with fast settings: the lossless 50 Ω microstrip thru (`make_demo_board.py OUT thru`) against |S21| ≈ 1, a small S11 and Hammerstad–Jensen's delay (measured: mom25d within 0.06 %, openEMS +2 %); openEMS only with `KICAD2EMS_CONFORMANCE_OPENEMS=1` (a nightly run) |
-| `test_parity.py` | each solver's model read back against the board (vias, walls, copper area, parts, ports) on the transition, low-pass and launch boards: every difference declared; an undeclared via move and a dropped declaration fail |
-| `test_plugins.py` | the solver plugins: registry and aliases, entry-point plugins (loaded, broken, clashing), `[solver.<name>]` config tables, the command line from the option tables, MoM alone without openEMS's mesh, `assess` (named: stop; added: left out) |
-| `test_solvers.py` | `--solvers` (plan, aliases, errors), the checks before a run (missing openEMS stops at once; named vs added solvers), runs without openEMS (line model; MoM with CSXCAD and openEMS blocked), exit code 1, `--sigma` for MoM, config typos, the GUI's solver tick boxes |
-| `test_csxwrite.py` | the CSX file written without CSXCAD: byte for byte against a file CSXCAD wrote (`tests/data/csx_api_golden.xml`), glibc's `rand()` colours, mom25d reading it; with openEMS installed, whole boards against CSXCAD |
-| `test_mom.py` | mom25d imports, `--preview --mom` end to end (MoM reads the board, no CSX file), MoM without openEMS, `--sigma` as conductor loss |
-| `test_pipeline.py` | the whole pipeline with canned solver results: S-parameters with `--fast skrf` and `--converge`, antenna mode; post-processing, plots, JSON summary and report |
+| KiCad and Gerber import | `test_kicad.py`, `test_kicad_shapes.py`, `test_importers.py` |
+| the board model, mesh and parts | `test_model_mesh.py`, `test_parts.py` |
+| the line model and its circuit solvers | `test_tlines.py`, `test_fastsolve.py` |
+| openEMS setup, against strict stand-ins | `test_simulation_setup.py`, `test_dielectric.py`, `test_dumps.py` |
+| field reading, animations, the 3D view | `test_fields.py`, `test_volume3d.py` |
+| convergence, antennas, parallel runs, progress | `test_converge.py`, `test_antenna.py`, `test_parallel.py`, `test_progress.py`, `test_max_steps.py` |
+| settings, the command line, solver choice, plugins | `test_cli.py`, `test_solvers.py`, `test_plugins.py` |
+| what each solver saw against the board | `test_parity.py` |
+| boards with a known answer | `test_conformance.py` |
+| the whole pipeline, with canned solver results | `test_pipeline.py` |
+| mom25d | `test_mom.py`, `test_mom25d_*.py` (including the GPU paths, against a fake CuPy) |
+| the GUI | `test_gui.py` |
 
-## Fixtures and stand-ins
+`test_conformance.py` runs openEMS only when `KICAD2EMS_CONFORMANCE_OPENEMS=1` is set.
 
-Shared fixtures live in `tests/conftest.py`:
+## Fixtures
 
-- `boards`: every generated example board (demo transition, diff, rlc, lowpass and the four antennas),
-  generated once per session; `demo_files` gives the transition and diff boards.
-- `fake_openems`: replaces the `CSXCAD` and `openEMS` modules with strict stand-ins. Every scalar must
-  be a plain Python number (as older CSXCAD requires), and every call is logged (`'linpoly'`, `'port'`,
-  `('lumped', name, kwargs)`, `('debye', name, order)`, …) for assertions.
-- `run_cli`: runs `kicad2ems` in the test process and returns (exit code, stdout, stderr).
+`tests/conftest.py` provides:
 
-`test_pipeline.py` replaces `simulation.run_excitations` with canned results (a plausible thru), so
-everything after the solver runs for real. `test_parallel.fake_run_port` is a top-level stub so spawned
-workers can import it.
+- `boards`: every generated example board, made once per session.
+- `fake_openems`: strict stand-ins for CSXCAD and openEMS. They reject numpy scalars, as older CSXCAD
+  does, and log every call so tests can check them.
+- `run_cli`: runs `kicad2ems` in the test process and returns the exit code and output.
+
+`test_pipeline.py` replaces the openEMS runs with canned results, so everything after them runs for real.
 
 ## Checking against openEMS
 
-The unit tests can't catch solver behaviour (stability, accuracy). Before a release, or after touching
-`simulation.py`, `parts.py`, `antenna.py`, `mesh.py` or `model.py`, run a few real cases in the openEMS
-environment and compare:
+Unit tests can't catch solver behaviour such as stability or accuracy. After changing the openEMS
+simulation, parts, antenna, mesh or model code, run a few real cases and compare them with the reference
+results:
 
 ```bash
 python examples/make_demo_board.py examples/demo_transition
 kicad2ems examples/demo_transition.toml --compare examples/reference/demo_transition_openems.s2p
 python examples/make_antennas.py dipole examples/antenna_dipole
-kicad2ems examples/antenna_dipole.toml       # 2.43 GHz, -20 dB, 2.1 dBi, 96 %; 54 s on a 2-vCPU container
-python examples/make_demo_board.py examples/demo_lowpass lowpass
-kicad2ems examples/demo_lowpass.toml         # overlays the ideal circuit
+kicad2ems examples/antenna_dipole.toml       # expect 2.43 GHz, −20 dB, 2.1 dBi, 96 %
 ```
 
-To compare two result files numerically:
+The same model run twice should agree to about 1e-3, because the end criterion is checked on a
+wall-clock interval. A larger difference means the model or mesh changed:
 
 ```python
 from kicad2ems.touchstone import read_touchstone
 import numpy as np
 _, a = read_touchstone('new.s2p'); _, b = read_touchstone('old.s2p')
-print(np.abs(a - b).max())        # same code and mesh: ~1e-3 (end-criterion timing)
+print(np.abs(a - b).max())
 ```
 
-The same model run twice with a different thread count, or by old and new code, should agree to about
-1e-3; larger differences mean the model or mesh changed (check the mesh statistics in the report).
-`examples/reference/` is regenerated with the current mesher ([examples](examples.md#reference-results)).
-
 ---
-[← Examples](examples.md) · [Index](index.md) · [Next: Maintenance notes →](maintenance.md)
+[← The board model](model.md) · [Index](index.md) · [Next: Maintenance notes →](maintenance.md)

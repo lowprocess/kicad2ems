@@ -1,59 +1,50 @@
-# 3. Architecture
+# Architecture
 
-[← Usage](usage.md) · [Index](index.md) · [Next: KiCad import →](kicad-import.md)
+[← Transmission-line model](transmission-lines.md) · [Index](index.md) · [Next: KiCad import →](kicad-import.md)
 
 ## The run pipeline
 
-`kicad2ems` (`cli.main`) parses the command line and builds one typed `config.Settings`
-(`config.build_settings`: defaults ← TOML ← command line). `Settings.solver_plan()` says which solvers
-the run uses ([solvers](usage.md#solvers)). `pipeline.Job(settings)` runs the stages in order; every
-solver-specific step goes through the solver's plugin (below):
+`cli.main` reads the command line and the config into one `config.Settings`. `pipeline.Job` then runs the
+stages in order. Everything solver-specific goes through the solver's plugin.
 
 ```mermaid
 flowchart LR
-    P["preflight<br/>can the solvers run?"] --> A[".kicad_pcb / .gbrjob<br/>/ board.json"]
-    A --> B["importers/<br/>kicad, gerber"]
-    B --> C["Board<br/>board.py, parts.py, edges.py<br/>&rarr; &lt;name&gt;_board.json"]
-    C --> L["lines<br/>tlines.py (the network)"]
+    P["preflight<br/>can the solvers run?"] --> A[".kicad_pcb / Gerber<br/>/ board.json"]
+    A --> B["importers/"]
+    B --> C["Board<br/>&rarr; &lt;name&gt;_board.json"]
+    C --> L["lines<br/>the line model"]
     L --> S["assess<br/>can each solver model it?"]
-    S --> E["prepare<br/>each plugin (openEMS: mesh)"]
-    E --> F["solve<br/>each plugin, cheap first"]
-    F --> G["outputs<br/>&lt;name&gt;_&lt;solver&gt;.sNp, plot,<br/>comparisons, plugin extras"]
-    G --> R["report<br/>&lt;name&gt;_run.json, report.py"]
+    S --> E["prepare<br/>(openEMS: mesh)"]
+    E --> F["solve"]
+    F --> G["outputs<br/>.sNp, plots, comparisons"]
+    G --> R["report<br/>_run.json, _report.html"]
 ```
 
-| Stage | `Job` method | Produces |
-|---|---|---|
-| preflight | `preflight()` | `self.plan` (the solvers that run, `lines` resolved to `qucs` or `scikit`), `self.named` (those named in `--solvers`), each solver's `check()`: a named one that cannot run stops the run (exit 2), a reference is left out |
-| model | `model()` | `self.m` (`board.Board`), `<name>_board.json` |
-| lines | `lines()` | `self.lm` (`tlines.LineModel`, the network the line solvers solve), `<name>_tlines.png` |
-| assess | `assess()` | each solver's `assess(job)`: why it cannot model this board (mom25d: gap ports, no ground plane); named: the run stops (exit 2), a reference is left out |
-| prepare | `prepare()` | `self.prep[solver]`: each solver's own form of the board (openEMS: boundaries, mesh, dumps, `<name>_mesh.png`); `self.previewed` solvers (openEMS with `--preview`) are prepared, not solved; without a mesh, `<name>_model.png` |
-| solve | `solve()` | `self.results[solver]`: a `solvers.Result` each (S over the board's ports as reported, names, reference impedances, info); a failure is a warning (exit 1 when the solver was named) |
-| outputs | `outputs()` | `<name>_<solver>.sNp`, the first solver's plot `<name>_<solver>.png` with the others overlaid, each compared with it; then each solver's `outputs()` (openEMS: field maps, run table, antenna, convergence) |
-| report | `report()` | `<name>_run.json` and `<name>_report.html` |
+| Stage | What it does |
+|---|---|
+| preflight | resolves which solvers run and checks each can. A named solver that can't stops the run (exit 2); a reference is dropped with a warning |
+| model | builds the `Board` and writes `<name>_board.json` |
+| lines | builds the line model and `<name>_tlines.png` |
+| assess | asks each solver whether it can model this board (mom25d can't model gap ports) |
+| prepare | each solver builds its own form of the board (openEMS: the mesh). With `--preview`, openEMS stops here |
+| solve | runs each solver, cheapest first. A failure is a warning (exit 1 for a named solver) |
+| outputs | writes each solver's Touchstone file, the comparison plot, and each solver's extra outputs |
+| report | writes `<name>_run.json` and `<name>_report.html` |
 
-**The summary.** Every stage adds what it computed to `Job.summary`, a JSON-friendly dict
-([keys](postprocessing.md#json-summary)): `solved` holds one entry per solver (its label, Touchstone file,
-time, \|S\| table, info, and `compare` against the first solver), `results` the first solver's.
-`report()` writes it as `<name>_run.json`, and `report.build(summary, base_dir)` renders the HTML page
-from that dict alone, so the report can be rebuilt from the JSON file
-([post-processing](postprocessing.md#the-report)).
+Each stage adds its results to `Job.summary`, a JSON-friendly dict ([keys](postprocessing.md#json-summary)).
+The report is rendered from that dict alone, so it can be rebuilt from the JSON file.
 
-**Messages.** All messages go through `Job.log`, which prints them, keeps them (`Job.messages`) and sends
-them to `--events`; lines containing `WARNING` become the report's warning list. `Job.stage` and
-`Job.status` emit the stage and progress events, `Job.wrote(label, path)` records output files, and
-`Job.figure(fig, suffix, key, label)` saves a plot and records it. Lower-level functions take a `log`
-callable (default `print`) so they can be used without a `Job`.
+All messages go through `Job.log`. It prints them, keeps them for the report, and sends them to
+`--events`. Lines containing `WARNING` go into the report's warning list. Lower-level functions take a
+`log` callable, so they can be used without a `Job`.
 
-**Plots** are matplotlib `Figure` objects (no pyplot, no global backend state), so a GUI can embed them;
-`plots.save(fig, path)` writes a PNG.
+Plots are matplotlib `Figure` objects without pyplot, so the GUI can embed them.
 
 <a id="solver-plugins"></a>
 ## Solver plugins
 
-A solver is a `solvers.Solver` subclass registered under its name. The built-in ones are listed in
-`solvers.BUILTIN`; another package adds one with an entry point in the group `kicad2ems.solvers`:
+A solver is a subclass of `solvers.Solver`. The built-in ones are in `solvers.BUILTIN`. A separate package
+can add one through an entry point:
 
 ```toml
 # the plugin package's pyproject.toml
@@ -61,177 +52,111 @@ A solver is a `solvers.Solver` subclass registered under its name. The built-in 
 mysolver = "mypackage.plugin:MySolver"
 ```
 
-It then appears in `--solvers`, `--check`, the config (`[solver.mysolver]`) and the GUI's tick boxes, with
-no change to kicad2ems. A plugin that fails to load, or reuses a name or a setting, is left out and listed
-by `--check`.
+It then appears in `--solvers`, `--check`, the config (`[solver.mysolver]`) and the GUI. A plugin that
+fails to load is left out and listed by `--check`.
 
-| Declares | |
+A solver declares:
+
+| Attribute | Meaning |
 |---|---|
-| `name`, `aliases`, `label` | `'mom25d'`, `('mom',)`, `'mom25d (MoM)'`; `name` is also its output suffix and its config table |
-| `consumes` | `'board'` (the geometry) or `'network'` (the line model, `tlines.LineModel`) |
-| `previewed` | `True`: `--preview` prepares it without solving (openEMS) |
-| `rank` | rough cost (0 circuit, 1 planar, 2 3D): the cheap solvers run first |
-| `capabilities` | what it models, per feature of `solvers.FEATURES`: `yes`, `no`, `ignored` or `approximated: how` (the table `--check` prints) |
-| `options` | its settings, `options.Option` each |
+| `name`, `aliases`, `label` | e.g. `'mom25d'`, `('mom',)`, `'mom25d (MoM)'` |
+| `consumes` | `'board'` (the geometry) or `'network'` (the line model) |
+| `previewed` | `--preview` prepares it without solving |
+| `rank` | rough cost; cheap solvers run first |
+| `capabilities` | what it models, per feature (`yes`, `no`, `ignored`, or `approximated: how`) |
+| `options` | its settings |
 
-| Implements | |
+and implements:
+
+| Method | Returns |
 |---|---|
-| `check(s=None)` | `(usable, one line)`: version and origin, or what is missing and how to get it |
-| `validate(s)` | a message when its settings cannot be used together (checked with the settings) |
-| `assess(job)` | why it cannot model this board in this run (`[]`: it can) |
-| `prepare(job)` | its own form of the board, handed to `solve` |
-| `solve(job, prep)` | a `Result` |
-| `outputs(job, prep, result)` | its own extra outputs (optional) |
-| `deviations(job, prep)` | `[solvers.Deviation]`: what it models differently from the board, by its own rules (openEMS: vias moved onto the mesh, parts split, walls moved; mom25d: the ground plane, the outline, via spans, walls as via rows, parts as strips) |
-| `readback(job, prep)` | what its native model holds, in board terms (vias, walls, copper area per layer, part elements, ports): openEMS's from the calls `build_fdtd` makes (recorded by `solvers/openems/readback.py`, no openEMS needed), mom25d's from its `BoardModel` |
+| `check()` | whether it can run here, and a one-line reason |
+| `validate(s)` | a message if its settings can't be used together |
+| `assess(job)` | why it can't model this board (empty: it can) |
+| `prepare(job)` | its own form of the board |
+| `solve(job, prep)` | a `Result`: S-parameters, port names, reference impedances |
+| `outputs(job, prep, result)` | extra outputs (optional) |
+| `deviations(job, prep)` | what it models differently from the board |
+| `readback(job, prep)` | what its own model holds, in board terms |
+| `estimate(job)` | its expected time and memory on this board |
 
-**Parity.** A solver may approximate the board, but it must say so. `parity.check(board, readback,
-deviations)` lists every difference between the board and the solver's model that the solver did not
-declare; `tests/test_parity.py` requires none on the example boards and checks that an undeclared change
-(a via moved 0.1 mm) is caught. The declarations also make the report's *What each solver saw* table: per
-feature of the board, each solver's capability and what it changed, where to look first when two solvers
-disagree.
+**Parity.** A solver may approximate the board, but it must say so. `parity.check` compares the board
+with each solver's readback and lists any difference the solver didn't declare. `tests/test_parity.py`
+requires none on the examples. The declarations also produce the report's *What each solver saw* table.
 
-The plugins: `solvers/openems/plugin.py` (`OpenEMS`), `solvers/mom.py` (`MoM25D`, over `mom25d.api.solve_board`),
-`solvers/lines/plugin.py` (`Qucs`, `Scikit`: the same network, two circuit solvers).
-
-**Settings as data.** Every setting is declared once as an `options.Option` (key, default, help, type,
-choices, converter, its short name in the solver's table, GUI label, group): the run's own in
-`config.CORE`, each solver's in its plugin. `config.Settings` is a dataclass made from them (a field per
-option), `cli.parser()` makes the command-line options from them, `config.read_toml` reads the top-level
-keys and the `[solver.<name>]` tables by them, and `gui.runner.FIELDS` is the form they describe.
+**Settings as data.** Every setting is declared once, as an `options.Option`: the run's own in
+`config.CORE`, each solver's in its plugin. The settings class, the command-line options, the config
+reader and the GUI form are all built from these declarations.
 
 <a id="choosing-solvers"></a>
-## Choosing solvers (`--solvers auto`)
+## Choosing solvers (`auto`)
 
-`Job.choose()` replaces `auto` with solvers, after the board and the line model are built:
+`Job.choose()` replaces `auto` once the board and line model exist:
 
-1. **Drop what cannot run or model the board**: each full-wave solver's `check()` and `assess()` (gap ports
-   leave openEMS only; no ground plane rules out mom25d; antenna mode keeps the solvers with a far field).
-2. **Estimate the rest** (`Solver.estimate`, in about a second): openEMS: the cells of its mesh × the
-   timesteps × the runs (driven ports, convergence levels), at `CELLS_PER_CORE_S` (21 M) cell updates per
-   second and core. The timesteps are the excitation pulse plus the ring-down, `RING` (1.7) × |end_db| / 17.4
-   dB × the line model's peak group delay (a resonance's energy falls 17.4 dB per group delay), at most
-   `--max-steps`. mom25d: the unknowns N of its mesh (meshed for the estimate only), `SOLVES` (16) solves of
-   `T0` (1 s) per pair of metal layers + `DENSE_N2`·N² (dense, up to 3.5k unknowns) or `LU_N3`·N³ (beyond) +
-   `VIA2` per pair of vias, at 24 cores. A solver that would need more than 80 % of the RAM is left out.
-3. **Run the cheaper one**, and the line model where it applies (only the line model when a full-wave solver
-   is named too).
-4. **Say why**, in the log and the summary (`auto`: chosen, estimates, not used and why) and the report.
+1. Drop the solvers that can't run or can't model the board.
+2. Estimate the rest. openEMS: mesh cells × timesteps × runs. The timesteps come from the pulse length
+   and the line model's longest delay. mom25d: the unknowns of its mesh, the matrix work for that size on
+   the CPU or GPU, and the via count. A solver that needs more than 80 % of the RAM is dropped.
+3. Run the faster one, plus the line model.
+4. Log the reason.
 
-The constants come from running each solver alone on the 13 examples (24 cores, mom25d at its default cell
-size; demo_transition and sma_launch at 0.6 mm). openEMS's time is within 2× on 9 of 13 boards; it is
-underestimated 8–16× where the board rings without the line model showing it (rf_gcpw, rf_stubnotch).
-mom25d's is within 1.5× on all 13. Picked against measured:
-
-| Board | openEMS est. / measured (s) | mom25d est. / measured (s) | auto picks | faster |
-|---|---|---|---|---|
-| filter | 396 / 135 | 21 / 24 | mom25d | mom25d |
-| demo_lowpass, highpass | 11 / 12 | 25 / 17 | openEMS | openEMS |
-| demo_bandpass | 52 / 76 | 30 / 34 | mom25d | mom25d |
-| rf_steplpf | 18 / 34 | 30 / 28 | openEMS | mom25d (1.2×) |
-| rf_stubnotch | 2 / 34 | 24 / 21 | openEMS | mom25d (1.6×) |
-| rf_branchline | 5 / 4 | 59 / 46 | openEMS | openEMS |
-| rf_coupler | 29 / 17 | 28 / 21 | mom25d | openEMS (1.2×) |
-| rf_wilkinson | 61 / 25 | 22 / 14 | mom25d | mom25d |
-| hairpin | 74 / 45 | 22 / 15 | mom25d | mom25d |
-| rf_gcpw | 2 / 16 | 36 / 33 | openEMS | openEMS |
-| demo_transition | 58 / 66 | 199 / 158 | openEMS | openEMS |
-| sma_launch | 43 / 22 | 539 / 439 | openEMS | openEMS |
-
-10 of 13 right; the three misses are near ties (the chosen solver at most 1.6× slower).
+The estimates are calibrated on the examples. On 10 of 13 they picked the faster solver, and in the
+other three the choice was at most 1.6 times slower.
 
 ## Module map
 
 ```
 kicad2ems/
-  __init__.py     __version__ (single source of the version, read by pyproject.toml)
-  cli.py          argument parser (from the option tables), main(): Settings, then Job(settings).run(); --check
-  config.py       CORE options, Settings (made from the option tables), TOML reading, checks; paths relative to the config
-  options.py      Option and the value converters
-  pipeline.py     Job: the stages above, the run summary
-  events.py       EventSink: --events JSON lines
-  importers/      board readers into one raw form (Imported)
-    kicad/          .kicad_pcb: sexpr, shapes, board (KiCadBoard), nets, pnp, outline
-    gerber.py       Gerber X2 + Excellon + job file (GerberBoard)
-  board.py        Board: the canonical board (stack, copper with nets, vias, Port, parts, walls, primitives),
-                  board.json read / write, summary() for the parity checks
-  region.py       region cropping, nets = auto, extra ports, cut ports
-  parts.py        lumped R/L/C parts: value parsing, detection, openEMS pieces
-  edges.py        edge walls where the planes end at the board sides
-  geometry.py     y flip, polygon lists, hole splitting for CSXCAD
-  solvers/        Solver, Result, the registry (entry points), capabilities
-    openems/        plugin.py (OpenEMS); boundaries, mesh, converge, simulation (build_fdtd, runs, --check),
-                    progress, dielectric, antenna, dumps, fields
-    mom.py          MoM25D: the board solved by mom25d (mom25d.api.solve_board), mixed-mode mapping
-    lines/          plugin.py (Qucs, Scikit); tlines (sections, Z0, coupled sections, discontinuities),
-                    strips, coupled, fastsolve (the sections as a circuit)
-  sparams.py      reciprocity fill, mixed-mode conversion
-  touchstone.py   .sNp read / write
-  plots.py        figures: model / mesh preview, line sections, S-parameters, convergence, antenna, patterns
-  report.py       the HTML report, rendered from the run summary
-  gui/            kicad2ems-gui: runner (form fields, configs, runs), app, traces, splot, fieldtab, antennatab
-mom25d/           the 2.5D MoM solver; reads <name>_board.json (board.py), api.solve_board
+  cli.py          the command line
+  config.py       the run's options, Settings, config files
+  options.py      Option and value converters
+  pipeline.py     Job: the stages above
+  events.py       --events
+  sysinfo.py      what this machine can run (the GUI's System panel)
+  importers/      KiCad (kicad/) and Gerber readers
+  board.py        Board: the converted board, board.json
+  region.py       cropping, nets = auto, extra and cut ports
+  parts.py        lumped R/L/C parts
+  edges.py        edge walls
+  geometry.py     coordinate and polygon helpers
+  solvers/        the Solver base class and registry
+    openems/        the openEMS plugin: mesh, boundaries, simulation, antenna, dumps, field reading
+    mom.py          the mom25d plugin
+    lines/          the line model and its two circuit solvers
+  sparams.py      reciprocity and mixed-mode conversion
+  touchstone.py   .sNp files
+  plots.py        figures
+  report.py       the HTML report
+  volume3d.py     3D field views: resampling, colouring, the board as meshes
+  gui/            kicad2ems-gui
+mom25d/           the MoM solver (see mom.md)
 ```
 
-openEMS and CSXCAD are imported **inside the functions that need them** (`simulation.build_fdtd`,
-`check_openems`, `simulation._debye_material`), scikit-rf inside `fastsolve`, h5py inside
-`dumps.read_fd` and `antenna.read_sphere`, mom25d inside `solvers/mom.py`. A plugin module imports
-nothing heavy at module level: the registry loads every plugin to build the settings. Everything else
-imports and runs without them. Keep it that way: the tests rely on it, and so do the solvers that need
-no openEMS.
+openEMS, CSXCAD, scikit-rf, h5py and mom25d are imported **inside the functions that need them**. A plugin
+imports nothing heavy at module level, because the registry loads every plugin to build the settings.
+Keep it that way: the tests rely on it, and so do runs without openEMS.
 
-**One board for every solver.** No solver reads KiCad or Gerber files: each gets the `Board`
-(`<name>_board.json`), and mom25d reads that file itself, without kicad2ems. openEMS's changes on the way
-(vias snapped to the mesh, parts split, walls moved onto mesh lines) stay inside its plugin.
+**One board for every solver.** No solver reads KiCad files. Each gets the `Board`, and mom25d reads
+`<name>_board.json` itself. Changes a solver makes, such as openEMS snapping vias to its mesh, stay in
+its plugin.
 
-## Data passed between stages
+## Main data structures
 
-**`Settings`** (`config.py`): one field per option, typed (GHz, mm, lists, tuples); `Settings.options()`
-is the dict stored in the summary.
-
-**`KiCadBoard`** (KiCad coordinates, y down, mm; stackup thicknesses in metres):
-`stack_items` (list of dicts: kind copper/diel/mask, name, t, er, tand), `items`
-(`(layer, net, shapely geometry)` for every copper item), `tracks` (routed tracks: layer, net, width,
-points), `vias` (dicts: x, y, drill, size, layers, net, `pth` for plated holes), `footprints` (dicts:
-ref, value, props, fab, x, y, rot, side, pads, dnp, exclude_from_sim), `edges` (Edge.Cuts pieces).
-
-**`Board`** (`board.py`; model coordinates, y up, mm): `layers` (dielectrics bottom to top: name, z0, z1, er, tand,
-kind), `cu_z` / `cu_t` / `cu_order` (copper heights, thicknesses, bottom to top), `copper`
-(`{layer: [Polygon]}`, oriented CCW, simplified), `outline`, `vias` (`(x, y, r, z0, z1)`), `via_signal`,
-`ports` (`Port`), `user_ports` (single ports and differential pairs), `parts` (`parts.Part`), `walls`,
-`prims` (the primitives: items, tracks, vias, footprints), `notes`. `to_dict()` / `save()` is board.json.
-
-**mesh dict** (`auto_mesh`): `x`, `y`, `z` (numpy arrays of line positions, mm), `vias` (vias as placed
-— snapped ones moved onto lines), `info` (cells, fine_mm, dt_ps, min_cell_mm, mem_gb, bc, lines across
-each port, …; stored as `mesh` in the summary).
-
-**`LineModel`** (`tlines.py`): `elements` (`Element`: kind, nodes a / b, length, layer, width,
-cross-section, z0, z0_sheet, eeff, notes, group; kinds trace, pad, via, part and the zero-length
-coupling hops of a coupled section), `ports` (port name → node), `port_z0`, `paths` (per port pair: the
-ordered sections and the branches), `groups` (coupled sections: members with their near and far nodes,
-gaps, neighbour-pair even / odd impedances), `junctions` (discontinuities: node, kind, arms, widths),
-`notes`. `summary()` gives the `lines` entry of the
-summary; `fastsolve.solve` turns it into S-parameters.
-
-**`RunResult`** (`simulation.py`): `S` (nf × n × n, single-ended, NaN in columns of ports not driven),
-`dump_files`, `dump_norm`, `seconds` and `steps` per driven port, `extra` (per driven port, what the
-run's `analyse` hook returned: in antenna mode the far-field results).
-
-**Antenna results** (`RunResult.extra[port]`): dict with `match`, `rows` (gain table), `f_pattern`,
-`cuts`, `sphere`, `port`.
+- **`Settings`**: one typed field per option.
+- **`KiCadBoard`** (KiCad coordinates, y down): the stackup, copper items, tracks, vias, footprints and
+  outline as read.
+- **`Board`** (model coordinates, y up, mm): dielectric layers, copper heights and polygons per layer,
+  outline, vias `(x, y, r, z0, z1)`, ports, parts, edge walls. `to_dict()` is board.json.
+- **The mesh** (`auto_mesh`): x, y and z line positions, the vias as placed, and mesh statistics.
+- **`LineModel`**: sections, port nodes, paths, coupled groups and discontinuities.
+- **`RunResult`**: openEMS's S-matrix (NaN for ports not driven), dump files, and per-run times.
 
 ## Processes and threads
 
-- A normal run is one process. `--jobs N` starts N worker processes (`spawn`) that each build and run one
-  excitation (`simulation._run_port`; it is top-level so it pickles). `Board.__getstate__` drops the log
-  callable.
-- S-parameter and antenna runs share one path: `simulation.run_excitations` with optional `setup(FDTD,
-  CSX)` and `analyse(...)` hooks. Antenna mode passes the NF2FF box as `setup` and the far-field
-  analysis as `analyse` (`antenna.run_antenna`).
+- A run is one process. `--jobs N` starts N worker processes, one per driven port.
 - openEMS uses its own threads (`--threads`).
-- `progress.Monitor` is a thread in the main process that tails the `openems.log` files and calls
-  `Job.status` for `--events`.
+- A monitor thread follows the `openems.log` files for the progress line and `--events`.
+- The GUI runs kicad2ems as a separate process and reads its `--events` file.
 
 ---
-[← Usage](usage.md) · [Index](index.md) · [Next: KiCad import →](kicad-import.md)
+[← Transmission-line model](transmission-lines.md) · [Index](index.md) · [Next: KiCad import →](kicad-import.md)

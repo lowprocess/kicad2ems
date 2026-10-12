@@ -31,7 +31,7 @@ gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "h5py>=3", "PyOpenGL>=3.1"]
                                                                                    # far field; PyOpenGL: 3D fields)
 gmsh = ["gmsh>=4.11"]              # mom25d's mesher = "gmsh"
 core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster)
-# mom25d's GPU solvers (docs/mom25d.md#gpu-acceleration-amd-rocm-or-nvidia-cuda): the CuPy wheel built for your
+# mom25d's GPU solvers (docs/mom.md#gpu): the CuPy wheel built for your
 # GPU stack, one of these extras (pip install '.[gpu-rocm7]'), or the wheel itself (pip install cupy-rocm-7-0);
 # they conflict: install one. The CUDA wheels need the NVIDIA driver; the ROCm wheel the
 # ROCm 7 runtime (rocminfo shows the card). PyTorch is the other backend: its ROCm / CUDA build from pytorch.org.

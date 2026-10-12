@@ -1,160 +1,114 @@
-# 13. GUI
+# GUI
 
-[← Maintenance notes](maintenance.md) · [Index](index.md)
+[← Usage](usage.md) · [Index](index.md) · [Next: Examples →](examples.md)
 
 ```bash
-pip install '.[gui]'                 # PySide6 + pyqtgraph + h5py
-kicad2ems-gui [config.toml]      # or: python -m kicad2ems.gui
+pip install '.[gui]'          # PySide6, pyqtgraph, h5py, PyOpenGL
+kicad2ems-gui [config.toml]   # or: python -m kicad2ems.gui
 ```
 
-The GUI edits a run's settings, starts the command-line tool as a separate process with `--events`, and
-follows its event stream (`gui/runner.py`). Closing the window never loses a run's results, and the GUI
-itself needs no openEMS.
+The GUI edits a run's settings and starts the command-line tool as a separate process. Closing the
+window never loses a run, and the GUI itself doesn't need openEMS.
 
-The window has a **toolbar** (New, Open, Save, Save as · Preview, Run, Stop · Results: open a results folder,
-Report: its HTML report), the **Settings** dock on the left and the **results workspace** on the right.
+## The window
 
-**Settings** are one collapsible section per group (board, band, solvers, openEMS mesh, openEMS incl. *Mode*
-and pattern frequencies, field dumps, output), all collapsed when the window opens; each header counts the
-settings set in it (`Band (3 set)`). Empty fields show their default.
+- **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, open a results folder, open the report.
+- **Settings** (left): one collapsible section per group. Each header shows how many settings in it are
+  set, for example `Band (3 set)`. Empty fields use the default, shown as a hint.
+- **Results** (right): panels you can tab, split, float or close. *View* reopens them.
 
-**The results workspace** is one page of panels, tabbed together; drag a panel's title to split the page,
-float it, or close it (*View* reopens any, *Show all panels* every one). A preview opens the panels it fills
-(*Model and mesh*, *Line model*, and *S-parameters* when a solver ran), a run opens *Run* while it goes and
-then its results: *S-parameters*, *Fields* when it wrote dumps, *Antenna* in antenna mode (in front),
-*Convergence* with `--converge`. A preview also brings *System* to the front with its estimates (and logs
-them: `estimate: mom25d: 13,670 unknowns, ~16 EM solves, ~2 min, ~5.4 GB + 1.9 GB on the GPU`). Opening a config shows the results already in its output folder the same way.
+Panels open by themselves when a preview or run produces something for them:
 
-| Panel | What it shows |
+| Panel | Shows |
 |---|---|
-| S-parameters | interactive S-parameter plots: openEMS solid, mom25d dash-dot, line model dotted, the `compare` file dashed, each solver a group of tick boxes; a Smith chart of the return loss beside them, a cursor readout and markers ([below](#plots)); *Add results folder…* overlays another run's S-parameters, labelled by its folder (*Remove added*); *Open folder* |
-| Model and mesh | the model plot and openEMS's mesh preview |
-| Line model | the line sections of the transmission-line model |
-| Run | stage, one progress bar per driven port (step, dB, ETA), the decay curves, the log; *Stop* writes `ABORT` into every run folder (openEMS stops and finishes normally, so the results up to that point are written) |
-| Fields | the field dumps, openEMS's and mom25d's (`--mom-dump`): live view, x / y / z cuts, playback over time or phase, PNG / GIF / MP4 ([below](#fields)) |
-| Antenna | antenna mode: S11, gain / directivity / realized gain / efficiency over frequency, the far-field pattern at any recorded frequency ([below](#antenna)); a folder with openEMS's and mom25d's antenna results has a selector for them |
-| 3D fields | volume dumps as a translucent voxel cloud over the copper, navigable, animated over the phase ([below](#fields3d)) |
-| Convergence | openEMS's mesh-convergence plot (`--converge`) |
-| System | beside the others, open from the start: each solver and whether it can run here (its check: version, or what is missing), the CPU cores, the system memory in use and available, the GPU mom25d would use (backend, free and total memory, or why there is none), *Refresh*; after a preview, each full-wave solver's estimate on that board's mesh: time, memory and (mom25d) GPU memory against what is free (*fits* / *tight* / *does not fit*, 20 % kept spare), how mom25d would solve it, and the model size (cells or unknowns). A solver that cannot run here is greyed |
+| S-parameters | the S-parameters of every solver, a Smith chart, a cursor readout and markers ([below](#plots)) |
+| Model and mesh | the model and openEMS's mesh |
+| Line model | the transmission-line sections |
+| Run | progress per driven port, the energy decay, the log, and *Stop* |
+| Fields | 2D field dumps: cuts, playback, export ([below](#fields)) |
+| 3D fields | volume dumps in a 3D view ([below](#fields3d)) |
+| Antenna | antenna results ([below](#antenna)) |
+| Convergence | the mesh convergence check |
+| System | the solvers available here, the GPU, and the memory in use; after a preview, each solver's estimated time and memory for the board |
 
-**Solvers.** One tick box per solver plugin: *openEMS (FDTD)*, *mom25d (MoM)*, *line model (qucsator)*,
-*line model (scikit-rf)*, and any solver installed as a plugin ([solvers](usage.md#solvers)), plus *auto*
-(the full-wave solver estimated cheapest for the board, and the line model: [auto](usage.md#auto)). The config
-gets `solvers = [...]` with the ticked ones; with *auto* alone ticked, `solvers` is left out (the
-default). Opening a config ticks the solvers it runs (its `solvers`, `mom = true` and `fast = ...`;
-`lines` ticks qucsator when it is installed, else scikit-rf). The form's fields are made from the solvers'
-option tables, so a plugin's settings that have a GUI label appear in it too.
+**Solvers** has one tick box per solver, plus *auto*. Plugin solvers appear too, with their own settings.
 
 <a id="configs"></a>
 ## Configs
 
-*File* → *New* (Ctrl+N), *Open…* (Ctrl+O), *Open recent*, *Examples* (every `examples/*.toml`), *Save*
-(Ctrl+S), *Save as…* (Ctrl+Shift+S); the same in the toolbar. The window title shows the
-config and `*` while it has unsaved changes; opening another config or closing the window asks first.
-*Run* → *Preview* (Ctrl+P), *Run* (Ctrl+R), *Stop* (Ctrl+.).
+The *File* menu has New, Open, recent files, the examples, Save and Save as. The title shows `*` while
+there are unsaved changes.
 
-Saving over a config that was opened **keeps the file**: its comments, key order, `[solver.<name>]` tables and
-keys the GUI does not know stay; each setting gets its new value in place (a trailing comment stays in
-its column), a cleared field removes its line, and settings that were not in the file are added above
-the first table. *Save as…* does the same into the new file. Paths are written relative to the config's
-folder (absolute when the target is more than one folder up), so a config can move with its board. A
-new config gets only the settings that differ from the defaults. A config whose board is missing (the
-generated antenna examples) says so in the status bar, with the generator command in the file's header.
+Saving over an existing config **keeps the file as it was**: comments, key order, tables and keys the
+GUI doesn't know all stay. Only the changed values are rewritten. Paths are saved relative to the
+config. Settings that have no field in the form are kept and passed on to runs.
 
-A loaded config keeps the settings that have no field in the form (`air`, `bc`, `no_mask`, `diel`, …) and
-passes them on to its runs. When the config's output folder already holds results, they are shown. An
-empty *Output folder* means `out` next to the board (the command line's default too); saving leaves it
-empty rather than writing the folder the GUI happened to start in.
-Each run writes `<out>/gui_run.toml` (the settings, with absolute paths) and `<out>/gui_events.jsonl`;
-the same run can be repeated from a terminal with `kicad2ems <out>/gui_run.toml`.
+Each run writes `<out>/gui_run.toml`, so you can repeat it from a terminal with
+`kicad2ems <out>/gui_run.toml`.
 
 <a id="plots"></a>
 ## S-parameter plots
 
-The Results tab lists every trace of the run on the left, grouped by source (openEMS, mom25d, line model,
-compare file); tick the ones to show. At first: the first port's column (S11, S21, S31, …, what a run driving P1 computes); traces that were
-not computed (ports not driven) are greyed out. *Show* picks the rectangular plot: |S| in dB or linear,
-phase, group delay (−dφ/dω) or VSWR.
+The traces are listed on the left, grouped by solver; tick the ones to show. Traces that weren't
+computed (ports that weren't driven) are greyed out. *Show* switches between |S| in dB or linear, phase,
+group delay and VSWR.
 
-- **Smith chart (return loss)**, beside it: the reflections S11, S22, … of the ticked traces, with
-  resistance circles and reactance arcs; the readout gives Z = Z0 (1 + Γ) / (1 − Γ) for the run's
-  reference impedance. Untick it to give the rectangular plot the width.
-- **Cursor**: the mouse over either plot shows every shown trace at that frequency below the plots (over
-  the Smith chart: the nearest point), with dots on both plots.
-- **Markers**: click a plot (the Smith chart: the nearest point) to drop one, drag its line to move it;
-  the table lists every trace at every marker (and Z for the reflections); select rows and press Delete,
-  or *Clear markers*. Markers keep their frequency when the plot kind changes.
-- **Zoom / pan**: mouse wheel and drag (right-drag: zoom one axis), *Fit* to see everything, right-click
-  for pyqtgraph's menu (axis ranges, log scale, its own export).
-- **Export CSV…**: the shown traces as the plot shows them, on the first trace's frequency grid (others
-  interpolated), plus Re / Im of the Smith chart's reflections. **Save image…**: both plots as PNG.
+- **Smith chart**: the reflections (S11, S22, …) with an impedance readout.
+- **Cursor**: hover over a plot to read every trace at that frequency.
+- **Markers**: click to add, drag to move, Delete to remove. The table lists each trace at each marker.
+- **Zoom**: mouse wheel and drag; *Fit* shows everything.
+- **Add results folder…**: overlay another run, for comparison.
+- **Export CSV…** and **Save image…**.
 
 <a id="fields"></a>
 ## Field dumps
 
-Add dumps in Setup → *Field dumps*: the line takes specs separated by `;`
-([spec syntax](postprocessing.md#field-dumps)), and *Add a dump* builds one: field (E, H, J), where (a
-copper layer with an optional offset such as `F.Cu-0.1`, an `x =` / `y =` / `z =` plane in mm, or the
-volume) and frequencies. **Without frequencies** the dump is time-domain: openEMS writes a frame every
-few timesteps and the Fields tab can follow it **live**. **With frequencies** it is frequency-domain,
-written at the end of the run and scaled to a 1 V incident wave at the driven port.
-
-The Fields tab lists every dump of the output folder (*Refresh*, or *Open results folder…* for another),
-openEMS's and mom25d's current dumps (`--mom-dump`, frequency domain, labelled `mom25d P1: J F.Cu`):
+Add dumps under *Field dumps* in the settings; *Add a dump* builds the spec for you
+([syntax](postprocessing.md#field-dumps)). A dump without frequencies is recorded over time, and the
+Fields panel can follow it live while openEMS runs. A dump with frequencies is written at the end.
 
 | Control | |
 |---|---|
-| Component | \|F\| or the x / y / z component (KiCad axes: y down) |
-| Cut normal to, slider | a plane dump has its one plane; a volume can be cut at any x, y or z mesh line |
-| log scale, auto range per frame | colour scale; without auto range one range is taken over the series (12 frames across a time-domain dump, half a period at a frequency) so playback does not flicker; dragging the colour bar fixes it |
-| frame, Play | time-domain frames (step and time), or the dump frequencies; *every n-th frame* thins playback and animations |
-| instantaneous, phase | frequency domain: Re(F·e^jφ) at the phase (Play turns it); off: the peak \|F\| |
-| Live | while a run goes, show each new time-domain frame as it is written (the range follows the run) |
-| Save PNG / GIF / MP4 | the current view, or an animation (time domain: the frames; frequency domain: one period in 24 steps) with one colour range, drawn with matplotlib; MP4 needs `ffmpeg` on PATH (or `pip install imageio-ffmpeg`) |
+| Component | \|F\| or the x, y or z component |
+| Cut normal to | for a volume, the plane to show |
+| log scale, auto range | the colour scale |
+| Frame, Play | step through time frames or frequencies |
+| instantaneous, phase | for a frequency dump: the field at a phase of the cycle; *Play* turns it |
+| Live | follow a running simulation |
+| Save PNG / GIF / MP4 | the view or an animation (MP4 needs ffmpeg) |
 
-Copper is outlined on z planes within 0.3 mm of a copper layer; on x / y cuts the copper crossing the cut
-is drawn at its layer height. The cursor readout gives the position and value under the mouse. The same
-reading, cutting and animation code is usable without the GUI (`kicad2ems.fields`, see
-[post-processing](postprocessing.md#field-dumps)).
+Copper is outlined on the plots.
 
 <a id="fields3d"></a>
 ## 3D fields
 
-A volume dump (`--dump E@volume+5@2.4`: the board with 5 mm of air above and below; `volume` alone has 0.5 mm)
-opens the *3D fields* panel: the field as a translucent voxel cloud over the board (copper as shaded,
-translucent slabs, outlined, vias as lines, the board's box), in an OpenGL view you orbit (drag), zoom (wheel) and pan (Ctrl + drag).
-It needs PyOpenGL (`pip install PyOpenGL`, in the `gui` extra).
+A volume dump, for example `--dump E@volume+5@2.4` (the board plus 5 mm of air above and below), opens the
+3D view. The field is drawn as a translucent cloud over the board, with the copper as shaded slabs. Drag
+to orbit, scroll to zoom, Ctrl+drag to pan. This needs PyOpenGL, which is in the `gui` extra.
 
 | Control | |
 |---|---|
-| Dump, Frame | the volume dumps of the folder, their frequencies (time domain: frames) |
-| Show, Colours | \|F\| or a component (signed at an instant: blue - white - red); the colour map |
-| envelope | frequency domain: the peak \|F\| over a period, no animation; off: Re(F·e^jφ), *Play* turns the phase |
-| log scale, Decades, Range top | colour range: the top at a percentile of the values (99.5 %: a port's gap would otherwise take it all), log over the decades below |
-| Opacity, Fade | how opaque the strongest field is, and how fast the weak field fades out (alpha ∝ value^fade) |
-| Height scale | z stretched (a board is thin) |
-| Resolution | the dump resampled onto a uniform grid of this many voxels along its longest side (OpenGL volume textures are uniform; openEMS's mesh is graded) |
-| copper, board box and vias | the board drawn under the field; untick copper to see between stacked planes |
-| Copper shown | the copper as shaded slabs this thick on screen (real copper, ~35 µm, would not show; default 0.6 % of the board's larger side), lit from the view so the edges and walls stand out as it turns; 0: flat |
-| Save GIF / MP4 | the animation from the current camera, at the view's size |
+| Show, Colours | \|F\| or one component; the colour map |
+| envelope | the peak over a cycle instead of an animation |
+| log scale, Decades, Range top | the colour range; *Range top* ignores the strongest few voxels, such as a port gap |
+| Opacity, Fade | how solid the strongest field looks, and how fast the weak field fades out |
+| Height scale | stretches z, since boards are thin |
+| Resolution | voxels along the longest side |
+| copper, Copper shown | show the copper, and how thick it is drawn (0 is flat) |
+| Save GIF / MP4 | the animation from the current camera |
 
 ![patch 3D](img/readme/patch_3d.gif)
 
 <a id="antenna"></a>
-## Antenna far field
+## Antenna results
 
-With *Mode* = antenna, the Antenna tab opens after the run (or with *Open results folder…*). It reads
-`<name>_antenna.json` and the full-sphere NF2FF result `openems/exc_<port>/nf2ff_sphere.h5` (5° grid,
-every recorded frequency: 21 over the band plus the *Pattern frequencies*):
+In antenna mode, the Antenna panel shows:
 
-- the input match and the resonance, impedance and −10 dB band;
-- directivity, gain, realized gain (dBi) and radiation efficiency (right axis) over frequency, with the
-  pattern frequency marked;
-- at the chosen frequency and quantity (gain, realized gain or directivity): the xz (φ = 0), yz (φ = 90°)
-  and xy (θ = 90°) polar cuts and a 3D pattern (30 dB range), in model axes (x right, y up in the KiCad
-  view, z out of the top side); *Save pattern PNG…*.
+- the input match, with the resonance, impedance and −10 dB band;
+- directivity, gain, realized gain and efficiency over frequency;
+- polar cuts and a 3D pattern at any recorded frequency.
 
-Not yet: the interactive mesh view, phase / Smith charts and overlays, run history.
+When both openEMS and mom25d ran, a selector switches between them.
 
 ---
-[← Maintenance notes](maintenance.md) · [Index](index.md)
+[← Usage](usage.md) · [Index](index.md) · [Next: Examples →](examples.md)

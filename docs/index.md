@@ -1,47 +1,40 @@
 # kicad2ems documentation
 
-kicad2ems turns a KiCad board (`.kicad_pcb`) into an [openEMS](https://openems.de) 3D FDTD model:
-the real stackup, copper, vias and outline, ports marked by footprints, lumped R/L/C parts, an automatic
-mesh. It runs openEMS and writes S-parameters (Touchstone), antenna results (gain, efficiency, patterns),
-plots, a JSON run summary and an HTML report. Every run also breaks the port nets into transmission-line
-sections with closed-form impedances, and can solve them as a circuit in milliseconds.
+kicad2ems converts a KiCad board into a model, solves it with openEMS (3D FDTD), mom25d (2.5D method of
+moments) or a transmission-line model, and writes S-parameters, antenna results, field images and a report.
 
-These pages are for **users who want the details** and for **maintainers** who need to change the
-code. The [README](../README.md) is the landing page: install, a quick start and links to these pages.
+## Using kicad2ems
 
-## Pages
+| Page | Contents |
+|---|---|
+| [Getting started](getting-started.md) | Installing, checking the install, a first run, preparing your own board |
+| [Usage](usage.md) | The command line, config files, choosing solvers, every option, the output files |
+| [GUI](gui.md) | The graphical interface: settings, running, results, field views |
+| [Examples](examples.md) | The example boards and how the solvers compare on them |
+| [Results](postprocessing.md) | S-parameters, antenna results, field dumps, the run summary and report |
 
-| # | Page | What it covers |
-|---|---|---|
-| 1 | [Getting started](getting-started.md) | Installing kicad2ems and openEMS, `--check`, a first run, your own board |
-| 2 | [Usage and configuration](usage.md) | Command line, Settings and TOML files, every option, outputs, progress, `--events` |
-| 3 | [Architecture](architecture.md) | The run pipeline, the run summary, module map, the data passed between stages |
-| 4 | [KiCad import](kicad-import.md) | Reading `.kicad_pcb`: stackup, copper, graphics, pads, vias, outline, footprints, port fields |
-| 5 | [The 3D model](model.md) | `Board` (`board.json`): stack, copper, region cropping, vias, ports (vertical and gap), lumped parts, limits |
-| 6 | [Meshing](meshing.md) | The automatic mesh rules, boundaries and air, time step, convergence levels, a validation on the transition demo |
-| 7 | [Transmission-line model](transmission-lines.md) | Line sections, cross-sections and Z0 formulas, paths, `--fast` S-parameters with scikit-rf or qucsator |
-| 8 | [Simulation](simulation.md) | openEMS setup: materials, excitation, run length, runs, `--jobs`, antenna runs |
-| 9 | [Post-processing and outputs](postprocessing.md) | S-parameters, mixed mode, convergence, antenna far field, field dumps, JSON summary, report |
-| 10 | [Examples](examples.md) | The example boards and generators, and their verified results |
-| 11 | [Testing](testing.md) | Test layout, fixtures and openEMS stand-ins, real-solver checks |
-| 12 | [Maintenance notes](maintenance.md) | openEMS quirks and their workarounds, adding an option, conventions, checklist, license |
-| 13 | [GUI](gui.md) | `kicad2ems-gui`: toolbar, collapsible settings, one results workspace of docking panels (S-parameters, model and mesh, line model, run, fields, antenna, convergence) |
-| 14 | [MoM solver (mom25d)](mom.md) | `--solvers mom` / `--mom`: the board solved by mom25d (no openEMS needed), ports, meshers (triangle / gmsh), runtime against openEMS |
+## The solvers
 
-## Where to start
+| Page | Contents |
+|---|---|
+| [openEMS: meshing](meshing.md) | How the FDTD mesh, boundaries and time step are chosen |
+| [openEMS: simulation](simulation.md) | Materials, excitation, when a run stops, parallel and antenna runs |
+| [mom25d](mom.md) | The method-of-moments solver: what it models, ports, antennas, speed, GPU |
+| [Transmission-line model](transmission-lines.md) | Line sections, impedance formulas, the circuit solvers |
 
-- **Using the tool:** read 1 → 2, then 10 for examples; 7 for the line model.
-- **Changing the tool:** read 3 for the overall shape, then the page for the stage you're touching (4–9),
-  then 11 and 12 before committing. [Maintenance notes](maintenance.md) lists the openEMS behaviours
-  that cost the most time to find; read it before changing anything in `simulation.py`, `parts.py`
-  or `antenna.py`.
+## Working on kicad2ems
 
-## Conventions used in these pages
+| Page | Contents |
+|---|---|
+| [Architecture](architecture.md) | The run pipeline, solver plugins, the module map |
+| [KiCad import](kicad-import.md) | What is read from a `.kicad_pcb` |
+| [The board model](model.md) | The board every solver gets: stack, copper, vias, ports, parts |
+| [Testing](testing.md) | Running and extending the tests |
+| [Maintenance notes](maintenance.md) | openEMS quirks, adding an option or a solver, conventions |
 
-- **Units.** Geometry is in mm, frequencies in Hz inside the code and GHz on the command line.
-- **Coordinates.** KiCad's y axis points down; the model's y axis points up (`y_model = -y_kicad`).
-  Messages and the report give positions in KiCad coordinates so they can be found in the PCB editor.
-- **z.** z = 0 is the bottom copper layer; the stack grows upwards.
+## Conventions
 
----
-[Getting started →](getting-started.md)
+- Lengths are in mm. Frequencies are in GHz on the command line and in Hz in the code.
+- KiCad's y axis points down; the model's points up (`y_model = -y_kicad`). Messages give positions in
+  KiCad coordinates, so you can find them in the PCB editor.
+- z = 0 is the bottom copper layer.
