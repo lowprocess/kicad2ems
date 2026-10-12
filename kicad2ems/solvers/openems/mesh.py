@@ -246,6 +246,23 @@ def _check(m, mesh, info, log):
                 f"use a smaller --fine")
 
 
+def signal_gaps(m, near=2.0):
+    """The gaps (mm) between the copper the ports sit on and other copper of the same layer, closer than `near`:
+    coupled lines, a grounded CPW's slots. Copper pieces are the separate polygons of a layer."""
+    from shapely.geometry import Point
+    out = []
+    for p in m.ports:
+        polys = m.copper.get(p.layer, [])
+        mine = [g for g in polys if g.distance(Point(*p.c)) < 1e-3]
+        for g in mine:
+            for h in polys:
+                if h is not g:
+                    d = g.distance(h)
+                    if 0 < d < near:
+                        out.append(float(d))
+    return out
+
+
 def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) * 6, nz_min=4,
               curves='extremes', vias='auto', via_snap=0.2, refine=(), log=print):
     """Mesh lines (mm) for model m. Returns dict(x, y, z, vias, info).
@@ -264,7 +281,9 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
     widths = [p.w for p in m.ports]
     h_min = min([l['z1'] - l['z0'] for l in m.layers if l['kind'] == 'diel'] + [1.0])
     if fine is None:
-        fine = float(np.clip(min(widths + [h_min * 2]) / 4, 0.01, M_die / 4))
+        # a quarter of the narrowest of: the port traces, twice the thinnest dielectric, and the gaps next to the
+        # signal copper (the coupler's 0.14 mm gap between 1.5 mm lines had had a cell of 0.38 mm)
+        fine = float(np.clip(min(widths + [h_min * 2] + signal_gaps(m)) / 4, 0.01, M_die / 4))
     air = 5.0 if air is None else air
     npml = [int(b.split('_')[1]) if b.startswith('PML_') else 0 for b in bc]
     ext = [air + npml[i] * M_air for i in range(6)]                 # per side: air margin (+ PML cells)

@@ -12,19 +12,18 @@ cases.
   line model −35.7 dB. The two that treat the resistor as ideal agree, so look at openEMS's resistor: the
   1 mm pad gap and the mesh in it. Sweeping the gap and `fine`, and testing the resistor alone in a two-port,
   would separate the causes.
-- **Coupler coupling** (`rf_coupler`, 0.14 mm gap): openEMS −8.6 dB, mom25d −10.9 dB, line model −10.4 dB.
-  It isn't copper thickness or the MoM mesh (−10.91, −10.89 and −10.88 dB at 0.3, 0.15 and 0.1 mm cells).
-  Next: openEMS with a fine cell below 0.05 mm across the gap, and its port reference planes on the short
-  4.3 mm feeds.
-- **Grounded CPW return loss** (`rf_gcpw`): openEMS −18.9 dB, mom25d −30.1 dB with wave ports. Probably the
-  lumped-port parasitics in openEMS; check with mom25d's lumped ports.
+- **Coupler coupling** (`rf_coupler`, 0.14 mm gap): openEMS −8.6 dB, mom25d −10.9 dB. **openEMS's mesh
+  isn't converged**: 1.5× finer moved S31 to −9.21 dB, towards mom25d (`--converge 1,1.5`: 6.3 dB between
+  levels). A 2×/3× run was queued; the reference result needs regenerating on a converged mesh.
+- **Grounded CPW return loss** (`rf_gcpw`): openEMS −18.9 dB at 5 GHz, mom25d −31.4 dB (wave ports) and
+  −40.0 dB (lumped). Not the port type: mom25d's lumped ports don't reproduce it. Next: openEMS mesh
+  convergence, as for the coupler.
 - **Filter pass-band loss** (`filter`): openEMS shows about 1.4 dB more loss at 3.3 GHz. Probably its loss
   model, fitted at the band centre; re-run with `diel = "wideband"` to confirm.
 
 ## 2. Line model
 
-- **Stubs drawn as filled shapes over a track**: the overlap is taken for an 8 Ω section, putting the notch
-  at 3.5 GHz instead of 2.4 GHz. Treat a shape crossing a track as a tee with a stub.
+- The differential via transition (`rf_diffvia`) fails in qucsator (`KeyError: 'S[1,2]'`).
 
 ## 3. mom25d
 
@@ -40,8 +39,6 @@ cases.
 
 - The low-pass and stub examples stop at −24 to −28 dB on the port criterion. Check that their
   S-parameters have converged there.
-- The automatic fine cell follows the narrowest trace, not the smallest copper gap, so the coupler's config
-  sets `fine` by hand. Deriving it from the gaps too would make the default safe.
 
 ## 5. GUI
 
@@ -52,8 +49,8 @@ cases.
 
 ## 6. Examples and validation
 
-- More structures where the solvers should differ: a rat-race, a radial stub, a via-fenced stripline, a
-  differential pair through a via transition.
+- Run the three solvers on the new structures (`rf_ratrace`, `rf_radialstub`, `rf_stripline`, `rf_diffvia`)
+  and add them to the comparison table in docs/examples.md.
 - A script that regenerates the solver comparison over every example before a release.
 
 ## Shelved

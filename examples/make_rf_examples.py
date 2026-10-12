@@ -12,6 +12,10 @@ package's own line formulas for 0.8 mm FR-4 (er 4.4, tan d 0.02), B.Cu ground:
                fences along both gaps
   coupler      10 dB edge-coupled quarter-wave directional coupler, 2.4 GHz: P1 in, P2 through, P3 coupled
                (the near end), P4 isolated
+  ratrace      rat-race (180-degree) hybrid ring, 2.4 GHz: 70.7 ohm ring 1.5 wavelengths round
+  radialstub   band-stop of one 60-degree radial open stub on a 50 ohm line
+  stripline    4-layer: 50 ohm stripline between ground planes, fenced by vias on both sides
+  diffvia      4-layer: a 100 ohm differential pair from microstrip through two vias to stripline
 
     python examples/make_rf_examples.py all             # every board, examples/rf_<name>.kicad_pcb
     python examples/make_rf_examples.py coupler /tmp/c  # one board at /tmp/c.kicad_pcb
@@ -23,10 +27,11 @@ edge where the feed lines end.
 import math, os, sys, uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from kicad2ems.solvers.lines.tlines import microstrip, cpwg               # noqa: E402
+from kicad2ems.solvers.lines.tlines import microstrip, cpwg, stripline as strip_z   # noqa: E402
 from kicad2ems.solvers.lines.coupled import coupled_microstrip           # noqa: E402
 
 H_SUB, ER, TAND, F0 = 0.8, 4.4, 0.02, 2.4e9
+H4 = 0.2                                # mm of FR-4 between the layers of the 4-layer boards
 C0 = 299792458.0
 
 
@@ -73,15 +78,38 @@ class Board:
         self.items.append(f'  (gr_rect (start {x0:.4f} {y0:.4f}) (end {x1:.4f} {y1:.4f}) (stroke (width 0) (type solid)) '
                           f'(fill yes) (layer "{layer}") (net {net}) (uuid "{u()}"))')
 
-    def via(self, x, y, net=1, size=0.6, drill=0.3):
-        self.items.append(f'  (via (at {x:.4f} {y:.4f}) (size {size}) (drill {drill}) (layers "F.Cu" "B.Cu") (net {net}) '
+    def via(self, x, y, net=1, size=0.6, drill=0.3, layers=('F.Cu', 'B.Cu')):
+        kind = '' if layers == ('F.Cu', 'B.Cu') else ' blind'
+        self.items.append(f'  (via{kind} (at {x:.4f} {y:.4f}) (size {size}) (drill {drill}) (layers "{layers[0]}" "{layers[1]}") '
+                          f'(net {net}) (uuid "{u()}"))')
+
+    def poly(self, pts, layer='F.Cu', net=2):
+        xy = ' '.join(f'(xy {x:.4f} {y:.4f})' for x, y in pts)
+        self.items.append(f'  (gr_poly (pts {xy}) (stroke (width 0) (type solid)) (fill yes) (layer "{layer}") (net {net}) '
                           f'(uuid "{u()}"))')
 
-    def port(self, n, x, y, rot):
-        self.items += [f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x:.4f} {y:.4f} {rot})',
-                       f'    (property "Reference" "TP{n}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))',
-                       f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))',
-                       f'    (fp_text user "P{n}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )']
+    def plane(self, layer, W, H, net=1, holes=()):
+        """A filled ground zone over the board with round antipads [(x, y, r)] (cut in through slits, as KiCad
+        fills them)."""
+        outer = [(0, 0), (W, 0), (W, H), (0, H)]
+        pts = list(outer) + [outer[0]]
+        for x, y, r in holes:
+            ring = [(x + r * math.cos(-2 * math.pi * i / 32), y + r * math.sin(-2 * math.pi * i / 32)) for i in range(32)]
+            pts += [(x + r, y)] + ring + [(x + r, y), outer[0]]
+        xy = lambda ps: ' '.join(f'(xy {a:.4f} {b:.4f})' for a, b in ps)
+        self.items.append(f'  (zone (net {net}) (net_name "{self.nets[net]}") (layer "{layer}") (uuid "{u()}") (hatch edge 0.5)'
+                          f' (connect_pads (clearance 0)) (min_thickness 0.1) (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))'
+                          f' (polygon (pts {xy(outer)})) (filled_polygon (layer "{layer}") (pts {xy(pts)})))')
+
+    def port(self, n, x, y, rot, layer=None):
+        """A port footprint: n is 1, 2, ... or a name such as '1+' (a differential leg); layer: port.layer."""
+        ref = str(n).replace('+', 'P').replace('-', 'N')
+        L = [f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x:.4f} {y:.4f} {rot})',
+             f'    (property "Reference" "TP{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))',
+             f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))']
+        if layer:
+            L.append(f'    (property "port.layer" "{layer}" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "{u()}"))')
+        self.items += L + [f'    (fp_text user "P{n}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )']
 
     def resistor(self, ref, value, x, y, rot, net=2, pitch=2.0, pad=(1.0, 1.25)):
         """A two-pad SMD resistor (0805-like) centred at x, y, pads `pitch` mm apart along its rotation."""
@@ -94,17 +122,25 @@ class Board:
                      f'(roundrect_rratio 0.25) (net {net} "{self.nets[net]}") (uuid "{u()}"))')
         self.items += L + ['  )']
 
-    def write(self, path, W, H, ground=True):
+    def write(self, path, W, H, ground=True, four=False):
+        """four: a 4-layer board (F.Cu, In1.Cu, In2.Cu, B.Cu, H4 mm of FR-4 between them) instead of 0.8 mm
+        2-layer."""
         if ground:
             self.rect(0, 0, W, H, layer='B.Cu', net=1)
+        cu = ['F.Cu', 'In1.Cu', 'In2.Cu', 'B.Cu'] if four else ['F.Cu', 'B.Cu']
+        h = H4 if four else H_SUB
+        ids = {'F.Cu': 0, 'In1.Cu': 1, 'In2.Cu': 2, 'B.Cu': 31}
+        stack = []
+        for i, c in enumerate(cu):
+            stack.append(f'    (layer "{c}" (type "copper") (thickness 0.035))')
+            if i < len(cu) - 1:
+                stack.append(f'    (layer "dielectric {i + 1}" (type "core") (thickness {h}) (material "FR4") '
+                             f'(epsilon_r {ER}) (loss_tangent {TAND}))')
         L = ['(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")',
-             f'  (general (thickness {H_SUB}))\n  (paper "A4")',
-             '  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (37 "F.SilkS" user) (39 "F.Mask" user) (44 "Edge.Cuts" user)'
-             ' (49 "F.Fab" user))',
-             '  (setup (stackup',
-             '    (layer "F.Cu" (type "copper") (thickness 0.035))',
-             f'    (layer "dielectric 1" (type "core") (thickness {H_SUB}) (material "FR4") (epsilon_r {ER}) (loss_tangent {TAND}))',
-             '    (layer "B.Cu" (type "copper") (thickness 0.035))',
+             f'  (general (thickness {h * (len(cu) - 1)}))\n  (paper "A4")',
+             '  (layers ' + ' '.join(f'({ids[c]} "{c}" signal)' for c in cu) +
+             ' (37 "F.SilkS" user) (39 "F.Mask" user) (44 "Edge.Cuts" user) (49 "F.Fab" user))',
+             '  (setup (stackup'] + stack + [
              '    (copper_finish "None") (dielectric_constraints no))\n    (pad_to_mask_clearance 0))',
              '  ' + ' '.join(f'(net {i} "{n}")' for i, n in enumerate(self.nets))]
         L += self.items
@@ -175,15 +211,20 @@ def steplpf(path, fc=2.0e9, zh=100.0, zl=20.0, feed=5.0):
     return secs
 
 
-def stubnotch(path, feed=6.0):
+def stubnotch(path, feed=6.0, rects=False):
+    """rects: the stubs drawn as filled rectangles overlapping the line instead of tracks (the line model's
+    regression case: a shape crossing a track is a tee and a stub, not a wide section of the line)."""
     q = quarter(W50)
     yc = q + W50 / 2 + 3.0
     xs = (feed + W50, feed + W50 + q)                         # stub centres, a quarter wave apart
     W, H = xs[1] + W50 + feed, yc + W50 / 2 + 3.0
     bd = Board()
     bd.track([(0, yc), (W, yc)], W50)
-    for x in xs:                                              # open stubs up from the line (y down in KiCad): tracks
-        bd.track([(x, yc), (x, yc - q)], W50)                 # the round end cap reaches q beyond the line's edge
+    for x in xs:                                              # open stubs up from the line (y down in KiCad)
+        if rects:                                             # from the line's far edge to q beyond its near edge
+            bd.rect(x - W50 / 2, yc - W50 / 2 - q, x + W50 / 2, yc + W50 / 2)
+        else:                                                 # tracks: the round end cap reaches q beyond the edge
+            bd.track([(x, yc), (x, yc - q)], W50)
     bd.port(1, 0.5, yc, 0)
     bd.port(2, W - 0.5, yc, 180)
     bd.write(path, W, H)
@@ -243,8 +284,96 @@ def coupler(path, c_db=10.0, feed=5.0, spread=4.0):
     return w, s, ze, zo, lc
 
 
+def ratrace(path, feed=6.0, n=96):
+    """Rat-race (180-degree hybrid) ring, 2.4 GHz: a 70.7 ohm ring 1.5 guided wavelengths round, P1..P4 a quarter
+    wave apart (60 degrees of the ring), 3/4 wave from P4 back to P1. From P1: P2 and P4 -3 dB, P3 isolated."""
+    w70 = width(50 * math.sqrt(2))
+    r = 1.5 * 4 * quarter(w70) / (2 * math.pi)
+    cx, cy = feed + r, feed + r * math.sin(math.radians(60))
+    W, H = 2 * (feed + r), cy + r + 3.0
+    bd = Board()
+    ring = [(cx + r * math.cos(2 * math.pi * k / n), cy + r * math.sin(2 * math.pi * k / n)) for k in range(n + 1)]
+    bd.track(ring, w70)
+    at = {a: (cx + r * math.cos(math.radians(a)), cy + r * math.sin(math.radians(a))) for a in (0, -60, -120, 180)}
+    bd.track([at[0], (W, cy)], W50)                           # P1 right, P2 / P3 up (y down in KiCad), P4 left
+    bd.track([at[-60], (at[-60][0], 0)], W50)
+    bd.track([at[-120], (at[-120][0], 0)], W50)
+    bd.track([at[180], (0, cy)], W50)
+    bd.port(1, W - 0.5, cy, 180)
+    bd.port(2, at[-60][0], 0.5, 270)
+    bd.port(3, at[-120][0], 0.5, 270)
+    bd.port(4, 0.5, cy, 0)
+    bd.write(path, W, H)
+    return r
+
+
+def radialstub(path, feed=8.0, angle=60.0, frac=0.75, n=24):
+    """Band-stop of one radial (fan-shaped) open stub on a 50 ohm line: angle degrees wide, radius frac x a
+    straight quarter wave at 2.4 GHz (a radial stub resonates shorter than a straight one). The line model
+    sees the fan only as copper widening the line: a case for the field solvers."""
+    r = round(frac * quarter(W50), 3)
+    yc = r + 3.0
+    W, H = 2 * feed + 2 * r * math.sin(math.radians(angle / 2)) + W50, yc + W50 / 2 + 3.0
+    xs = W / 2
+    bd = Board()
+    bd.track([(0, yc), (W, yc)], W50)
+    a0, a1 = math.radians(-90 - angle / 2), math.radians(-90 + angle / 2)   # opening up from the line (y down)
+    fan = [(xs, yc)] + [(xs + r * math.cos(a0 + (a1 - a0) * k / n), yc + r * math.sin(a0 + (a1 - a0) * k / n))
+                        for k in range(n + 1)]
+    bd.poly(fan)
+    bd.port(1, 0.5, yc, 0)
+    bd.port(2, W - 0.5, yc, 180)
+    bd.write(path, W, H)
+    return r
+
+
+def stripline(path, length=24.0, gap=1.0, pitch=1.2):
+    """A 50 ohm stripline on In1.Cu between ground planes on F.Cu and In2.Cu (B.Cu ground too), fenced by vias
+    through every plane gap mm from each edge, pitch mm apart: the fence keeps the parallel-plate mode off."""
+    b = 2 * H4
+    w = round(solve(lambda w: -strip_z(w, b, ER)[0], -50.0, 0.03, 2.0), 3)
+    H, yc = 8.0, 4.0
+    bd = Board()
+    bd.track([(0, yc), (length, yc)], w, layer='In1.Cu')
+    for layer in ('F.Cu', 'In2.Cu'):
+        bd.plane(layer, length, H)
+    n = int((length - 2.0) / pitch)
+    for k in range(n + 1):
+        x = 1.0 + k * (length - 2.0) / n
+        for s in (-1, 1):
+            bd.via(x, yc + s * (w / 2 + gap), size=0.5, drill=0.25)
+    bd.port(1, 0.5, yc, 0, layer='In1.Cu')
+    bd.port(2, length - 0.5, yc, 180, layer='In1.Cu')
+    bd.write(path, length, H, four=True)
+    return w
+
+
+def diffvia(path, length=24.0, s=0.2, pitch=1.0, antipad=0.55):
+    """A 100 ohm differential pair from F.Cu microstrip (over the In1.Cu plane) through two blind vias to In2.Cu
+    stripline (between In1.Cu and B.Cu), the pair fanned out to the via pitch, antipads round the vias in In1.Cu
+    and four return vias beside them. Ports P1+ / P1- on F.Cu, P2+ / P2- on In2.Cu."""
+    from mom25d.sim import coupled_stripline_cohn
+    wm = round(solve(lambda w: -coupled_microstrip(w, s, H4, ER)[1], -50.0, 0.05, 2.0), 3)
+    ws = round(solve(lambda w: -coupled_stripline_cohn(w * 1e-3, s * 1e-3, 2 * H4 * 1e-3, ER)[1], -50.0, 0.03, 2.0), 3)
+    H, yc, xv = 8.0, 4.0, length / 2
+    bd = Board()
+    for sgn in (-1, 1):
+        ym, ys, yv = yc + sgn * (wm + s) / 2, yc + sgn * (ws + s) / 2, yc + sgn * pitch / 2
+        bd.track([(0, ym), (xv - 1.5, ym), (xv - 1.0, yv), (xv, yv)], wm)
+        bd.track([(xv, yv), (xv + 1.0, yv), (xv + 1.5, ys), (length, ys)], ws, layer='In2.Cu')
+        bd.via(xv, yv, net=2, size=0.5, drill=0.25, layers=('F.Cu', 'In2.Cu'))
+        for dx in (-0.9, 0.9):                                # return vias beside the pair, clear of both layers' tracks
+            bd.via(xv + dx, yc + sgn * (pitch / 2 + 0.9), size=0.5, drill=0.25)
+    bd.plane('In1.Cu', length, H, holes=[(xv, yc + sg * pitch / 2, antipad) for sg in (-1, 1)])
+    for leg, sgn in (('+', -1), ('-', 1)):
+        bd.port(f'1{leg}', 0.5, yc + sgn * (wm + s) / 2, 0)
+        bd.port(f'2{leg}', length - 0.5, yc + sgn * (ws + s) / 2, 180, layer='In2.Cu')
+    bd.write(path, length, H, four=True)
+    return wm, ws
+
+
 KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf, stubnotch=stubnotch, gcpw=gcpw,
-             coupler=coupler)
+             coupler=coupler, ratrace=ratrace, radialstub=radialstub, stripline=stripline, diffvia=diffvia)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in list(KINDS) + ['all']:

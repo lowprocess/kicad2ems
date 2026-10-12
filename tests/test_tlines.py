@@ -157,3 +157,27 @@ def test_sma_launch_example_line_model():
     s, _ = solve(lm, m.ports, ref.f, backend='skrf')
     s21 = 20 * np.log10(np.abs(s[:, 1, 0]))
     assert np.max(np.abs(s21 - ref.s_db[:, 1, 0])) < 0.6
+
+
+def test_stubs_drawn_as_rectangles_are_tees(tmp_path):
+    """Stubs drawn as filled rectangles over the line (not tracks) are tees with open stubs: the line keeps its
+    50 ohm, and the notch stays near 2.4 GHz (the shapes had widened the line into an 8 ohm piece, the notch at
+    3.5 GHz)."""
+    import sys
+    import numpy as np
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples'))
+    import make_rf_examples as rf
+    path = str(tmp_path / 'stubrect.kicad_pcb')
+    rf.stubnotch(path, rects=True)
+    m = Board(KiCadBoard(path), ground='B.Cu', log=lambda *a: None)
+    lm = build(m)
+    (path_,) = lm.summary()['paths']
+    assert min(s['z0'] for s in path_['sections']) > 45
+    long_ = [b for b in path_['branches'] if b['length'] > 10]
+    assert len(long_) == 2 and all(abs(b['length'] - long_[0]['length']) < 1e-6 for b in long_)
+    pytest.importorskip('skrf')
+    from kicad2ems.solvers.lines.fastsolve import solve
+    f = np.linspace(1e9, 4e9, 301)
+    S, _ = solve(lm, m.ports, f, backend='skrf')
+    notch = f[np.argmin(np.abs(S[:, 1, 0]))]
+    assert 2.2e9 < notch < 2.6e9

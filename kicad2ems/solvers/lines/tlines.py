@@ -24,6 +24,7 @@ model coordinates (y up).
 import heapq, math
 import numpy as np
 from shapely.geometry import LineString, Point
+from shapely.ops import substring
 from ...constants import C0
 
 ETA0 = 376.730313668
@@ -344,12 +345,19 @@ class NetCopper:
     coordinates: where a shape of the trace's own net overlaps it (a taper, a teardrop, copper drawn in
     a footprint) the conductor is wider than the track. Pads and vias are not included: they are
     sections of their own."""
-    def __init__(self, model, nets, tracks, reach=5.0):
+    def __init__(self, model, nets, tracks, reach=5.0, strips_=()):
         from shapely.ops import unary_union
         by = {}
+        made = {}                                   # copper that became strips: a section of its own, not a widening
+        for s in strips_:
+            made.setdefault(s['layer'], []).append(s['region'])
+        made = {l: unary_union(gs).buffer(1e-6) for l, gs in made.items()}
         for l, n, g in model.prims.shapes:
             if n in nets and l in model.cu_z:
-                by.setdefault(l, []).append(g)
+                if l in made:
+                    g = g.difference(made[l])
+                if not g.is_empty:
+                    by.setdefault(l, []).append(g)
         for t in tracks:
             if t['layer'] in by and t['net'] in nets:
                 by[t['layer']].append(LineString(t['pts']).buffer(t['width'] / 2, quad_segs=6))
@@ -708,7 +716,7 @@ def build(model):
                 e.notes.append(f"no plane around the barrel: {e.L * 1e9:.3f} nH")
             lm.elements.append(e)
     # ---- cross-sections: traces split where their reference planes change (antipads, plane edges) ----
-    netcu = NetCopper(model, nets, clipped)
+    netcu = NetCopper(model, nets, clipped, strips_=strip_tracks)
     split = []
     for e in lm.elements:
         split += _split_by_reference(model, refcu, e, netcu) if e.kind == 'trace' and e.length > 0 else [e]
@@ -833,12 +841,42 @@ def _shape_strips(model, nets, inside, lm):
     return out
 
 
+def _split_at_strips(tracks, strips_):
+    """A track that runs through a strip (a stub drawn as a rectangle over the line) is cut where it crosses
+    the strip's centreline, so each half ends inside the strip and joins it as a T-junction. Left whole, the
+    shape only widened the track: the stub notch's rectangle stubs became an 8 ohm piece of the line, the
+    notch at 3.5 GHz instead of 2.4 GHz."""
+    out = []
+    for t in tracks:
+        pieces = [np.asarray(t['pts'], float)]
+        for s in strips_:
+            if s['layer'] != t['layer'] or s['net'] != t['net']:
+                continue
+            nxt = []
+            for p in pieces:
+                line, region = LineString(p), s['region'].buffer(1e-6)
+                ends_in = region.contains(Point(*p[0])) or region.contains(Point(*p[-1]))
+                x = line.intersection(LineString(s['pts']))
+                if ends_in or x.is_empty or x.geom_type != 'Point':
+                    nxt.append(p)
+                    continue
+                d = line.project(x)
+                a = [tuple(c) for c in substring(line, 0, d).coords]
+                b = [tuple(c) for c in substring(line, d, line.length).coords]
+                nxt += [np.asarray(q, float) for q in (a, b) if len(q) > 1 and LineString(q).length > 1e-6]
+            pieces = nxt
+        out += [dict(t, pts=p) for p in pieces]
+    return out
+
+
 def _attach_to_strips(tracks, strips_, tol=1e-6):
     """Tracks that end inside a strip's copper: one entering along the strip stops at the copper edge and
-    joins the strip's end; one entering from the side runs on to the strip's centreline (a T-junction)."""
+    joins the strip's end; one entering from the side runs on to the strip's centreline (a T-junction).
+    Tracks running through a strip are cut there first (_split_at_strips)."""
     if not strips_:
         return tracks
     from shapely.ops import unary_union
+    tracks = _split_at_strips(tracks, strips_)
     out = []
     for t in tracks:
         line = LineString(t['pts'])

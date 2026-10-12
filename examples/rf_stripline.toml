@@ -1,0 +1,10 @@
+board   = "rf_stripline.kicad_pcb"   # paths are relative to this file (python examples/make_rf_examples.py stripline)
+ground  = "B.Cu"
+fmin    = 1.0           # GHz
+fmax    = 10.0
+points  = 301
+out     = "out"
+fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+
+[solver.openems]
+excite  = ["P1"]
