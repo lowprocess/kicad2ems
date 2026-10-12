@@ -117,6 +117,8 @@ dmax    = 0.4
 | `--ratio` | 1.4 | largest size ratio of neighbouring cells |
 | `--nz` | 4 | fewest cells through each dielectric layer |
 | `--curves extremes\|vertices` | extremes | mesh lines for curved copper |
+| `--z-sheet` | 1 | first z cell next to signal copper, × the fine cell, graded into the dielectric; 0: uniform ([details](meshing.md#z-lines)) |
+| `--curve-res` | 6 | over arcs and fans the largest cell is the dielectric's ÷ this; 1: off |
 | `--vias auto\|exact\|centre\|snap` | auto | mesh lines for vias |
 | `--via-snap` | 0.2 | how far a snapped via may move, mm |
 | `--edge-walls SIDES` | off | metal walls at the board edge, standing in for stitching vias (`xmin,xmax,ymin,ymax` or `all`; [details](meshing.md#edge-walls)) |

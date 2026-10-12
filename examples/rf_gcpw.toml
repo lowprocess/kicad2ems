@@ -12,7 +12,6 @@ out     = "out"
 fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
 
 [solver.openems]
-fine    = 0.025   # mm at the copper edges, the 0.22 mm gaps: S11 at 5 GHz is -18.9 dB at fine 0.05 / res 20 /
-res     = 40      # nz 4 and -26.1 dB at 2x that (these settings); mom25d -31.4 dB. Not converged at 2x
-nz      = 8
+# The default mesh grades the z cells at the strip (--z-sheet): S11 at 5 GHz -31.5 dB in 21 s, converged about
+# -33 dB (examples/reference: --z-sheet 0.25, -32.7 dB); mom25d -31.4 dB. Uniform z cells gave -19.3 dB
 excite  = ["P1"]

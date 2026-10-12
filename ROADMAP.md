@@ -5,20 +5,19 @@ examples or benchmarks showed. Last updated 2026-10-12.
 
 ## 1. Open questions (correctness)
 
-- **Coupler and grounded CPW: openEMS needs finer meshes than their configs had.** Coupler S31 at 2.4 GHz:
-  −8.56, −9.21 and −9.93 dB at 1×, 1.5× and 3×, towards mom25d's −10.9 dB. Grounded CPW S11 at 5 GHz: −18.9
-  and −26.1 dB at 1× and 2×, towards −31.4 dB. Their configs and reference results now use the 3× and 2×
-  meshes. Neither is fully converged, so the reference results are still uncertain at the 1 dB level.
-  The cost is a few minutes per run; a converged reference would be worth one long run each.
+- **Rat-race isolation in openEMS** converges to a null at 2.24 GHz, not the 2.4 GHz of the design, mom25d
+  and the line model: the staircased ring is electrically long, and refining doesn't remove it. Worth
+  trying: openEMS's conformal or diagonal-edge options for curved copper, if they apply to sheets.
 
 ## 2. Line model
 
-- Coupled sections are microstrip only: the stripline half of `rf_diffvia` runs as two uncoupled lines.
+- **Vias** are the weak part of `rf_diffvia` above 5 GHz (worst Sdd11 −9.4 dB against openEMS's −15.4 dB):
+  a coupled via pair in its antipads.
 
 ## 3. mom25d
 
-- **Boards with planes are slow**: 7–25 times slower than openEMS on the CPU once inner planes and via rows
-  must be meshed. The GPU solvers help (SMA launch 448 s → 159 s). Left: modelling enclosed plane pairs as a
+- **Boards with planes are slow**: 8–23 times slower than openEMS on the CPU once inner planes and via rows
+  must be meshed. The GPU solvers help (SMA launch 417 s → 171 s). Left: modelling enclosed plane pairs as a
   parallel-plate stack instead of meshing them, which is research-level work.
 - **Current dumps** cost one extra solve per frequency; the sweep's own solves rarely land on the dump
   frequencies.
@@ -27,10 +26,9 @@ examples or benchmarks showed. Last updated 2026-10-12.
 
 ## 4. openEMS
 
-- Several examples need finer meshes than the defaults give (the coupler, the grounded CPW, the radial
-  stub, the rat-race's isolation). The automatic fine cell now follows narrow gaps and thin curved copper,
-  but a per-structure check (`--converge`) is still needed. Worth making cheaper: a mesh refinement only
-  around gaps and curves, rather than everywhere.
+- Other structures may still need a `--converge` check: the mesh now grades z cells at signal copper and
+  refines over curves, which settled the coupler, the grounded CPW and the radial stub, but only those were
+  studied. The other references (`examples/reference/`) were made before these mesh changes.
 
 ## 5. GUI
 
@@ -41,7 +39,6 @@ examples or benchmarks showed. Last updated 2026-10-12.
 
 ## 6. Examples and validation
 
-- Reference results (`examples/reference/`) for the four new structures, on converged meshes.
 - A script that regenerates the solver comparison over every example before a release.
 
 ## Shelved
