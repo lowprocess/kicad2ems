@@ -18,6 +18,8 @@ examples or benchmarks showed. Last updated 2026-10-12.
   The cost is a few minutes per run; a converged reference would be worth one long run each.
 
 Settled:
+- **Stopping on a static plateau** (low-pass, stub notch): the port criterion is converged there (stub
+  notch: |ΔS| < 1e-4 against 3M steps). The lumped filters' looser `end-db = -27` left 0.03 in |S| and is gone.
 - **Filter pass-band loss** (`filter`): it was openEMS's fixed dielectric model, whose loss is set at the
   band centre. With `--diel wideband`, openEMS's pass-band peak is −5.28 dB against mom25d's −5.23 dB
   (−6.52 dB with the fixed model), at four times the run time.
@@ -38,8 +40,10 @@ Settled:
 
 ## 4. openEMS
 
-- The low-pass and stub examples stop at −24 to −28 dB on the port criterion. Check that their
-  S-parameters have converged there.
+- Several examples need finer meshes than the defaults give (the coupler, the grounded CPW, the radial
+  stub, the rat-race's isolation). The automatic fine cell now follows narrow gaps and thin curved copper,
+  but a per-structure check (`--converge`) is still needed. Worth making cheaper: a mesh refinement only
+  around gaps and curves, rather than everywhere.
 
 ## 5. GUI
 
@@ -50,8 +54,7 @@ Settled:
 
 ## 6. Examples and validation
 
-- Run the three solvers on the new structures (`rf_ratrace`, `rf_radialstub`, `rf_stripline`, `rf_diffvia`)
-  and add them to the comparison table in docs/examples.md.
+- Reference results (`examples/reference/`) for the four new structures, on converged meshes.
 - A script that regenerates the solver comparison over every example before a release.
 
 ## Shelved

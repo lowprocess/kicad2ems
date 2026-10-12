@@ -21,9 +21,10 @@ the energy.
 ### Bands starting near 0 Hz leave a static field
 
 The excitation of a band that starts near DC has a DC component. It leaves a static field that never
-decays, so the energy levels off and the run goes on to `--max-steps`. The S-parameters aren't affected.
-Set `--end-db` just above the plateau (the low-pass example uses −27), or start the band higher. The
-progress line shows `energy flat` when this happens.
+decays, so the energy levels off. The default stop (`--end-on ports`) handles it: the run ends once the
+port signals have decayed and the energy has stopped falling. On the low-pass example that is after 200k
+steps, with S within 1e-4 of a 300k-step run. Don't loosen `--end-db` to the plateau instead: stopping at
+−27 dB left errors of 0.03 in |S|. The progress line shows `energy flat` when this happens.
 
 <a id="excitation-edge"></a>
 ### The far field is wrong near the top of the excitation band

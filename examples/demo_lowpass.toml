@@ -17,5 +17,5 @@ out     = "out"
 excite  = ["P1"]        # S11 and S21 (S12 by reciprocity)
 air     = 5.0
 bc      = "auto"        # PEC on the solid bottom plane, MUR elsewhere
-end-db  = -27         # the 0.1 GHz start gives the excitation a DC part that leaves a static field at
-                      # -28 dB; stopping here changes S by < 0.01 compared with a 1M-step run
+# the 0.1 GHz start leaves a static field (the energy levels off near -32 dB): the run stops on the
+# port signals instead (end-on = "ports", the default), after 200k steps; S within 1e-4 of a 300k-step run

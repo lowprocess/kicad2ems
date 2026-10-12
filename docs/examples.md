@@ -47,6 +47,7 @@ and their configs (`rf_<name>.toml`) are in the repository, with openEMS results
 | `rf_ratrace`: 180° hybrid ring, 2.4 GHz | S21, S41, S31 | −3.58, −3.56, −20.9 dB | −3.34, −3.45, −35.8 dB | −3.34, −3.43, −46.7 dB |
 | `rf_radialstub`: one 60° radial stub | notch | 2.12 GHz | 2.18 GHz | none (a fan only widens the line) |
 | `rf_stripline`: 4 layers, via-fenced stripline | worst S11, S21 at 10 GHz | −16.9, −0.86 dB | −24.8, −0.87 dB | −13.5, −0.63 dB |
+| `rf_diffvia`: 100 Ω pair through two vias | Sdd21 at 5 / 10 GHz, worst Sdd11 | −0.45 / −0.61, −15.0 dB | −0.41 / −0.87, −16.3 dB | −0.44 / −1.00, −10.6 dB |
 
 Where the solvers disagree:
 
