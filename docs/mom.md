@@ -92,6 +92,34 @@ Lumped MoM ports are the closest to openEMS's (both include the port's own paras
 the closest to the line model (an ideal reference plane). Differential pairs: wave ports use mom25d's
 coupled-mode fit (`P1d` / `P1c`); lumped legs are converted like openEMS's.
 
+<a id="antenna-mode"></a>
+## Antenna mode
+
+`mode = "antenna"` with `--solvers mom` gives openEMS's antenna results from MoM: the input match, then the
+far field of the driven port's currents at 11 frequencies over the band and the pattern frequency
+(`--ff-freq`, else the resonance): directivity, efficiency, gain and realized gain over frequency, the
+xz / yz / xy cuts and a sphere, as `<name>_mom25d_antenna.json`, `_mom25d_antenna.png`,
+`_mom25d_pattern.png` and `_mom25d_sphere.npz` (the GUI's Antenna tab reads them). Ports are lumped unless
+`--mom-port wave`: the accepted power is the 1 V gap source's.
+
+`mom25d.farfield` takes each layer's current, Fourier transformed at k_rho = k0 sin(theta), through the
+stack's TM / TE transmission-line voltages to the top surface (E_u = -V^e J_u, E_v = -V^h J_v) and from
+there to the far field (r E_theta = j k0 / 2 pi E_u, r E_phi = j k0 cos(theta) / 2 pi E_v). Checked
+against a dipole over a ground plane (shape and size to 1e-9), and on a lossless patch: efficiency 88.8 %,
+the rest the surface wave a 1.6 mm FR4 substrate guides away.
+
+The model is the board over an **infinite** ground: nothing radiates below it, there is no board edge.
+That suits patches and arrays on a ground larger than they are; an inverted-F, a monopole at the board
+edge or anything whose radiation comes from the finite ground is not this model's antenna (openEMS is).
+Via currents are left out of the far field.
+
+| `antenna_patch.toml` | resonance | S11 | Zin | -10 dB band | efficiency | directivity | gain | time |
+|---|---|---|---|---|---|---|---|---|
+| mom25d (2 mm cells) | 2.450 GHz | -31.4 dB | 48.2 + j1.9 ohm | 2.3 % | 36.1 % | 6.39 dBi | 1.97 dBi | 20 s |
+| openEMS | 2.4375 GHz | -32.3 dB | 47.9 + j1.2 ohm | 2.6 % | 38.3 % | 7.04 dBi | 2.87 dBi | 81 s |
+
+openEMS sees the board's 80 mm ground; MoM an infinite one.
+
 <a id="current-dumps"></a>
 ## Current dumps
 

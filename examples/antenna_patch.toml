@@ -8,3 +8,6 @@ fmin    = 2.0           # GHz
 fmax    = 3.0
 points  = 401
 out     = "out"
+
+[solver.mom25d]
+dmax    = 2.0           # mm (--solvers mom): lambda_g / 30; 1 mm gave the same resonance, S11 and gain

@@ -24,10 +24,23 @@ def find_antenna(out_dir):
     with open(js[-1]) as fh:
         res = json.load(fh)
     name = os.path.basename(js[-1])[:-len('_antenna.json')]
-    tag = res.get('port', 'P1').replace('+', 'p').replace('-', 'n')
-    sph = os.path.join(out_dir, 'openems', f"exc_{tag}", 'nf2ff_sphere.h5')
-    s1p = os.path.join(out_dir, f"{name}_openems.s1p")
-    return res, (sph if os.path.exists(sph) else None), (s1p if os.path.exists(s1p) else None)
+    solver = res.get('solver', 'openems')
+    if solver != 'openems':                                         # <name>_<solver>_antenna.json, its own sphere
+        name = name[:-len(f"_{solver}")] if name.endswith(f"_{solver}") else name
+        sph = os.path.join(out_dir, res.get('sphere_file', ''))
+    else:
+        tag = res.get('port', 'P1').replace('+', 'p').replace('-', 'n')
+        sph = os.path.join(out_dir, 'openems', f"exc_{tag}", 'nf2ff_sphere.h5')
+    s1p = os.path.join(out_dir, f"{name}_{solver}.s1p")
+    return res, (sph if os.path.isfile(sph) else None), (s1p if os.path.exists(s1p) else None)
+
+
+def load_sphere(path):
+    """An antenna sphere: openEMS's NF2FF HDF5 file, or the .npz of mom25d's antenna mode (the same keys)."""
+    if path.endswith('.npz'):
+        with np.load(path) as z:
+            return {k: np.asarray(z[k]) for k in z.files}
+    return read_sphere(path)
 
 
 class AntennaTab(QWidget):
@@ -112,7 +125,7 @@ class AntennaTab(QWidget):
         self.gain.getPlotItem().legend.addItem(eff, 'efficiency (right)')
         self.eff_vb.enableAutoRange()
         self.gain.addItem(self.marker)
-        self.sph = read_sphere(sph_path) if sph_path else None
+        self.sph = load_sphere(sph_path) if sph_path else None
         self.freq.blockSignals(True)
         self.freq.clear()
         if self.sph is not None:

@@ -27,7 +27,7 @@ flowchart LR
 | preflight | `preflight()` | `self.plan` (the solvers that run, `lines` resolved to `qucs` or `scikit`), `self.named` (those named in `--solvers`), each solver's `check()`: a named one that cannot run stops the run (exit 2), a reference is left out |
 | model | `model()` | `self.m` (`board.Board`), `<name>_board.json` |
 | lines | `lines()` | `self.lm` (`tlines.LineModel`, the network the line solvers solve), `<name>_tlines.png` |
-| assess | `assess()` | each solver's `assess(job)`: why it cannot model this board (mom25d: gap ports, no ground plane, antenna mode); named: the run stops (exit 2), a reference is left out |
+| assess | `assess()` | each solver's `assess(job)`: why it cannot model this board (mom25d: gap ports, no ground plane); named: the run stops (exit 2), a reference is left out |
 | prepare | `prepare()` | `self.prep[solver]`: each solver's own form of the board (openEMS: boundaries, mesh, dumps, `<name>_mesh.png`); `self.previewed` solvers (openEMS with `--preview`) are prepared, not solved; without a mesh, `<name>_model.png` |
 | solve | `solve()` | `self.results[solver]`: a `solvers.Result` each (S over the board's ports as reported, names, reference impedances, info); a failure is a warning (exit 1 when the solver was named) |
 | outputs | `outputs()` | `<name>_<solver>.sNp`, the first solver's plot `<name>_<solver>.png` with the others overlaid, each compared with it; then each solver's `outputs()` (openEMS: field maps, run table, antenna, convergence) |
@@ -107,7 +107,7 @@ keys and the `[solver.<name>]` tables by them, and `gui.runner.FIELDS` is the fo
 `Job.choose()` replaces `auto` with solvers, after the board and the line model are built:
 
 1. **Drop what cannot run or model the board**: each full-wave solver's `check()` and `assess()` (gap ports
-   or antenna mode leave openEMS only; no ground plane rules out mom25d).
+   leave openEMS only; no ground plane rules out mom25d; antenna mode keeps the solvers with a far field).
 2. **Estimate the rest** (`Solver.estimate`, in about a second): openEMS: the cells of its mesh × the
    timesteps × the runs (driven ports, convergence levels), at `CELLS_PER_CORE_S` (21 M) cell updates per
    second and core. The timesteps are the excitation pulse plus the ring-down, `RING` (1.7) × |end_db| / 17.4

@@ -1,0 +1,15 @@
+# kicad2ems antenna example: 2 x 2 patch array from one feed, 2.45 GHz (1.6 mm FR4)
+#   python examples/make_antennas.py array2x2 examples/antenna_array2x2
+#   kicad2ems examples/antenna_array2x2.toml --solvers mom      # MoM: the array over an infinite ground
+#   kicad2ems examples/antenna_array2x2.toml                    # openEMS (the board's own ground)
+board   = "antenna_array2x2.kicad_pcb"   # paths are relative to this file
+mode    = "antenna"     # far field: gain, efficiency, patterns
+fmin    = 2.0           # GHz
+fmax    = 3.0
+points  = 401
+nets    = ["RF", "GND"]
+ground  = "B.Cu"
+out     = "out"
+
+[solver.mom25d]
+dmax    = 2.0           # mm: lambda_g / 30; on the patch the same resonance, S11 and gain as 1 mm

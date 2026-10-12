@@ -333,7 +333,8 @@ def build_settings(cli=None, config=None, default_solvers=None):
             if cap.startswith('no'):
                 raise ConfigError(f"solvers: {reg[x].label} is not available in antenna mode" +
                                   (f" ({cap.split(':', 1)[1].strip()})" if ':' in cap else ''))
-        if not s.preview and 'auto' not in run and not any(x in reg and reg[x].capabilities.get('antenna') == 'yes'
-                                                          for x in run):
-            raise ConfigError("mode = antenna needs openEMS: add openems to solvers (or use --preview)")
+        able = [n for n, sv in reg.items() if not sv.capabilities.get('antenna', 'no').startswith('no')]
+        if not s.preview and 'auto' not in run and not any(x in able for x in run):
+            raise ConfigError(f"mode = antenna needs a solver with a far field: add {' or '.join(able)} to solvers "
+                              f"(or use --preview)")
     return s

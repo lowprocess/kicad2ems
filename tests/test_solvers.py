@@ -30,8 +30,8 @@ def test_solver_plan():
 
 @pytest.mark.parametrize('values,match', [
     (dict(solvers='openems,hfss'), "no solver 'hfss'"),
-    (dict(solvers='mom', mode='antenna'), 'not available in antenna mode'),
-    (dict(solvers='lines', mode='antenna'), 'antenna needs openEMS'),
+    (dict(solvers='scikit', mode='antenna'), 'not available in antenna mode'),
+    (dict(solvers='lines', mode='antenna'), 'antenna needs a solver with a far field'),
     (dict(fast='spice'), 'choose one of')])
 def test_bad_solver_settings(values, match):
     with pytest.raises(ConfigError, match=match):

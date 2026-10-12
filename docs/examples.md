@@ -38,8 +38,13 @@ The filter ladders are defined in `LADDERS` in `make_demo_board.py` (stages `('s
 `('shunt', [parts])`), so new topologies are a few lines; `ladder_ideal` computes the ideal circuit by
 ABCD matrices.
 
-`make_antennas.py KIND OUT [param=mm …]` writes the antennas `patch`, `ifa`, `dipole` and `slot` (one
-config each, `antenna_<kind>.toml`). Their dimensions are keyword parameters of each function, also on
+`make_antennas.py KIND OUT [param=mm …]` writes the antennas `patch`, `ifa`, `dipole`, `slot` and
+`array2x2` (one config each, `antenna_<kind>.toml`). `array2x2` is four of the patch 100 mm apart from one
+feed: a corporate network of T junctions and quarter-wave (35 ohm) transformers, the top row fed at its
+bottom edges and the bottom row at its top edges, the bottom branch half a guided wavelength longer to
+undo that 180 deg. mom25d (`kicad2ems examples/antenna_array2x2.toml --solvers mom`, 53 s, 7.3k unknowns):
+resonance 2.438 GHz, S11 -25.6 dB, directivity 12.97 dBi (the patch: 6.39), gain 6.97 dBi, efficiency 25 %
+(the patch: 36 %; the rest is the 230 mm of feed on FR4). Their dimensions are keyword parameters of each function, also on
 the command line (`make_antennas.py ifa out arm=19 s=2.5`).
 
 <a id="rf-structures"></a>

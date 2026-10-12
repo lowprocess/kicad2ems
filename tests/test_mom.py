@@ -81,3 +81,23 @@ def test_current_dumps(boards, run_cli, tmp_path):
     assert np.abs(J).max() > 0 and np.all(J[..., 2] == 0)                # in-plane currents only
     sm = json.loads((out / 'lowpass_run.json').read_text())
     assert any(d['label'].startswith('mom25d dump_J_F_Cu_fd') for d in sm['dumps'])
+
+
+def test_antenna_mode(run_cli, tmp_path):
+    """mom25d in antenna mode on the patch example: the resonance, efficiency below 1, and openEMS's antenna
+    outputs (JSON, plots, the sphere the GUI reads)."""
+    pytest.importorskip('triangle')
+    import subprocess, sys
+    ex = os.path.join(os.path.dirname(FILTER), 'make_antennas.py')
+    subprocess.check_call([sys.executable, ex, 'patch', str(tmp_path / 'patch')], stdout=subprocess.DEVNULL)
+    out = tmp_path / 'out'
+    code, so, err = run_cli(tmp_path / 'patch.kicad_pcb', '--mode', 'antenna', '--fmin', '2.3', '--fmax', '2.6',
+                            '--points', '61', '--solvers', 'mom', '--mom-dmax', '2', '--mom-solves', '12', '--out', out)
+    assert code == 0, so + err
+    res = json.loads((out / 'patch_mom25d_antenna.json').read_text())
+    assert 2.38e9 < res['match']['f_res'] < 2.52e9 and res['solver'] == 'mom25d'
+    row = min(res['rows'], key=lambda r: abs(r['f'] - res['f_pattern']))
+    assert 0.1 < row['eff'] < 1 and 5 < row['D_dbi'] < 9
+    assert set(res['cuts']) == {'xz (phi = 0)', 'yz (phi = 90)', 'xy (theta = 90)'}
+    for f in ('patch_mom25d_antenna.png', 'patch_mom25d_pattern.png', 'patch_mom25d_sphere.npz'):
+        assert (out / f).exists(), f

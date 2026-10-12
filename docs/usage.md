@@ -61,11 +61,13 @@ kicad2ems --check                               # which solvers this Python can 
   other solvers of the run.
 - **Without openEMS** nothing of openEMS is built: no mesh (the model alone is drawn in
   `<name>_model.png`), no run-length estimate, no closed-box resonance check.
-- `mode = "antenna"` needs openEMS; mom25d and the line model cannot be named in antenna mode.
+- `mode = "antenna"` needs a solver with a far field: openEMS (the board as it is), or mom25d (over an infinite
+  ground plane: patches and arrays, not antennas that use the board edge; [MoM](mom.md#antenna-mode)). The
+  line model cannot be named in antenna mode.
 
 <a id="auto"></a>
 **`--solvers auto`** leaves out the solvers that cannot run here or cannot model the board (gap ports or
-antenna mode: openEMS only; no ground plane: no mom25d; no routed path: no line model), estimates the time
+antenna mode or gap ports: openEMS, and mom25d in antenna mode without gap ports; no ground plane: no mom25d; no routed path: no line model), estimates the time
 of each full-wave solver left (openEMS from its mesh and the excitation length, mom25d from the unknowns
 of its mesh), runs the cheaper one and adds the line model. It says why:
 

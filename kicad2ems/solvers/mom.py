@@ -21,6 +21,7 @@ G = 'mom25d'
 # via-via kernels: sma_launch's 185 vias cost 26 s a solve); a sweep takes about SOLVES solves (11..22 on the
 # examples). demo_transition: 12.1 s a solve measured, 12.4 s estimated; sma_launch 33.7 s / 33.7 s.
 T0, DENSE_N2, LU_N3, VIA2, SOLVES, REF_CORES = 1.0, 1.6e-7, 3.7e-12, 7.6e-4, 16, 24
+ANT_FREQS = 11                  # antenna mode: frequencies of the far field over the band (+ the pattern one)
 
 
 def mom25d_status():
@@ -106,7 +107,8 @@ class MoM25D(Solver):
                         outline='ignored: laterally infinite dielectric', planes='yes: meshed (slow on plane-heavy boards)',
                         edge_walls='approximated: via rows every 0.5 mm', thickness='ignored: sheets',
                         conductor_loss='yes', dispersion='no: constant tan d', radiation='yes', cavity='no',
-                        antenna='no: it solves copper over an infinite ground plane')
+                        antenna='approximated: over an infinite ground plane (patches, arrays; not an antenna that '
+                                'uses the board edge or a finite ground)')
     options = [
         Option('mom_dmax', 0.3, "largest MoM cell along the copper, mm (default {default}; planes 3x, refined near "
                "traces)", float, name='dmax', group=G, cli=dict(metavar='MM')),
@@ -127,8 +129,6 @@ class MoM25D(Solver):
 
     def assess(self, run):
         m, out = run.m, []
-        if run.s.antenna:
-            out.append("antenna mode: it solves copper over an infinite ground plane")
         gaps = [p.name for p in m.ports if p.kind == 'gap']
         if gaps:
             out.append(f"gap port(s) {', '.join(gaps)}: no planar equivalent")
@@ -218,7 +218,11 @@ class MoM25D(Solver):
     def solve(self, run, prep):
         s = run.s
         self._held = {}
-        S, names, zref, info = solve(run.m, run.freq, dmax=s.mom_dmax, port=s.mom_port, mesher=s.mom_mesher,
+        port = s.mom_port
+        if run.antenna and port == 'auto':                          # the gap source the antenna's power is taken from
+            port = 'lumped'
+            run.log("mom25d: antenna mode: lumped ports (--mom-port wave for de-embedded ones)")
+        S, names, zref, info = solve(run.m, run.freq, dmax=s.mom_dmax, port=port, mesher=s.mom_mesher,
                                      max_solves=s.mom_solves, sigma=s.sigma, log=run.log, hold=self._held,
                                      progress=lambda k, n, f: run.status('mom25d', dict(fraction=k / n, solves=k,
                                                                                         f_ghz=f / 1e9)))
@@ -233,9 +237,86 @@ class MoM25D(Solver):
         return Result(S, names, zref, info['seconds'], info=info, comment=f"mom25d 2.5D MoM ({run.name})")
 
     def outputs(self, run, prep, res):
+        held = getattr(self, '_held', {}).get('res')
+        if run.antenna and held is not None:
+            self._antenna(run, held, res)
+        self._dumps(run, held)
+
+    def _antenna(self, run, held, result):
+        """Antenna mode: the far field of the driven port's currents (mom25d.farfield) at frequencies over the
+        band and the pattern frequency, as openEMS's antenna results (the same JSON, plots and report section).
+        Gain counts substrate loss and surface waves as loss; nothing radiates below the infinite ground."""
+        from mom25d.farfield import far_field, radiated, port_power
+        from .openems.antenna import match_summary, gain_table, describe, save as save_antenna
+        from ..plots import plot_antenna, plot_pattern
+        s, m, sim = run.s, run.m, held.sim
+        names = [p.name for p in sim.ports]
+        want = [x.strip() for x in (s.excite.split(',') if isinstance(s.excite, str) else s.excite or [])]
+        k = next((j for j, n in enumerate(names) if n in want), 0)
+        s11 = result.S[:, k, k]
+        match = match_summary(run.freq, s11, m.ports[k].z0)
+        f_pat = float(s.ff_freq[0]) * 1e9 if s.ff_freq else match['f_res']
+        ffr = np.unique(np.concatenate([np.linspace(run.fmin, run.fmax, ANT_FREQS), [f_pat]]))
+        th, ph = np.arange(0, 181, 5.0), np.arange(0, 361, 5.0)
+        up = th <= 90
+        dmax, prad, pacc, pinc, e_norm = [], [], [], [], []
+        run.log(f"mom25d: antenna, {names[k]} driven: far field at {len(ffr)} frequencies")
+        for f in ffr:
+            I = sim.currents(f, sim.excitation())[:, k]
+            Et, Ep = far_field(sim, I, f, th[up], ph)
+            U, pr = radiated(Et, Ep, th[up], ph)
+            pa = port_power(sim, I, k)
+            g11 = np.interp(f, run.freq, s11.real) + 1j * np.interp(f, run.freq, s11.imag)
+            dmax.append(4 * np.pi * U.max() / pr)
+            prad.append(pr); pacc.append(pa); pinc.append(pa / max(1 - abs(g11) ** 2, 1e-12))
+            e = np.zeros((len(ph), len(th)))
+            e[:, up] = np.sqrt(np.abs(Et) ** 2 + np.abs(Ep) ** 2)
+            e_norm.append(e)
+        rows = gain_table(ffr, dmax, prad, pacc, pinc)
+        ip = int(np.argmin(np.abs(ffr - f_pat)))
+        I = sim.currents(ffr[ip], sim.excitation())[:, k]
+        step = s.ff_step
+        tc = np.arange(-180, 180 + step / 2, step)
+        cuts = {}
+        for name, phi0 in (('xz (phi = 0)', 0.0), ('yz (phi = 90)', 90.0)):
+            g = np.zeros(len(tc))
+            for sign, sel in ((1, tc >= 0), (-1, tc < 0)):          # negative theta: the far side, phi + 180
+                a = np.abs(tc[sel])
+                ok = a <= 90
+                if ok.any():
+                    Et, Ep = far_field(sim, I, ffr[ip], a[ok], [phi0 if sign > 0 else phi0 + 180])
+                    gg = np.zeros(sel.sum())
+                    gg[ok] = 4 * np.pi * radiated(Et, Ep, a[ok], [0.0])[0][0] / pacc[ip]
+                    g[sel] = gg
+            cuts[name] = dict(angle=list(map(float, tc)), gain_dbi=[float(v) for v in 10 * np.log10(np.maximum(g, 1e-6))])
+        pa_ = np.arange(0, 360 + step / 2, step)
+        Et, Ep = far_field(sim, I, ffr[ip], [90.0], pa_)
+        g = 4 * np.pi * radiated(Et, Ep, [90.0], pa_)[0][:, 0] / pacc[ip]
+        cuts['xy (theta = 90)'] = dict(angle=list(map(float, pa_)), gain_dbi=[float(v) for v in 10 * np.log10(np.maximum(g, 1e-6))])
+        sph_file = run.path('_mom25d_sphere.npz')
+        np.savez_compressed(sph_file, theta=th, phi=ph, freq=ffr, dmax=np.array(dmax), prad=np.array(prad),
+                            e_norm=np.array(e_norm))
+        eff = rows[ip]['eff']
+        ant = dict(match=match, rows=rows, f_pattern=float(ffr[ip]), cuts=cuts, port=names[k], solver='mom25d',
+                   sphere=dict(theta=th, phi=ph, gain=((e_norm[ip] / e_norm[ip].max()) ** 2 * dmax[ip] * eff).T),
+                   sphere_file=os.path.basename(sph_file),
+                   model='infinite ground plane: no radiation below it, no board edge')
+        for line in describe(match, rows, ant['f_pattern']):
+            run.log(f"  mom25d {line}")
+        tag = '' if 'antenna' not in run.summary else '_mom25d'          # openEMS's antenna results come first
+        run.figure(plot_antenna(run.freq, s11, m.ports[k].z0, ant, f"{run.name} - antenna (mom25d)"),
+                   f"_mom25d_antenna.png", f"antenna{tag}", 'antenna (mom25d): match, gain, efficiency')
+        run.figure(plot_pattern(ant, f"{run.name} - gain pattern (mom25d)"), f"_mom25d_pattern.png", f"pattern{tag}",
+                   'antenna (mom25d): patterns')
+        js = run.path('_mom25d_antenna.json')
+        save_antenna(ant, js)
+        run.wrote('antenna results, mom25d (JSON)', js)
+        run.wrote('antenna sphere, mom25d', sph_file)
+        run.summary['antenna' + tag] = {k_: v for k_, v in ant.items() if k_ != 'sphere'}
+
+    def _dumps(self, run, held):
         """The current dumps (--mom-dump): <out>/mom25d/exc_<port>/, laid out like openEMS's frequency-domain dumps
         (the GUI's Fields tab reads both), and their maps and animations next to the other outputs."""
-        held = getattr(self, '_held', {}).get('res')
         if not run.s.mom_dump or held is None:
             return
         from .openems.fields import DumpSource, save_fd_outputs

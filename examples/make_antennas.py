@@ -10,6 +10,8 @@ Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad neede
           port.z0 = 73 ohm)
   slot    52 mm slot in the B.Cu ground plane, fed off-centre by a microstrip crossing it with an
           open quarter-wave stub
+  array2x2  four of the patch, 100 mm apart, from one 50 ohm feed through a corporate network (T junctions
+          and quarter-wave transformers), the bottom row's branch half a guided wavelength longer
 
     python examples/make_antennas.py patch examples/antenna_patch
     python examples/make_antennas.py ifa /tmp/ifa arm=20 s=2.5      # dimensions (mm) as parameters
@@ -131,7 +133,62 @@ def slot(path, sl=52.0, sw=2.0, wf=3.0, stub=16.8, off=16.0):
     b.write(path, W, H)
 
 
-KINDS = dict(patch=patch, ifa=ifa, dipole=dipole, slot=slot)
+def array2x2(path, pw=37.2, pl=28.8, inset=8.8, gap=1.0, wf=3.0, d=100.0, wq=5.2, lq=16.2, lg=67.4, a=4.0):
+    """2 x 2 array of the inset-fed patch, d mm apart (0.82 lambda0: room between the rows for the two transformers
+    and the detour), one corporate feed from the left edge.
+    The top row is fed at its bottom edges and the bottom row at its top edges, so both rows' feeds meet in the
+    gap between them; the bottom row's branch is lg / 2 (half a 50 ohm guided wavelength) longer, which undoes
+    the 180 deg of the flipped feed. Each T joins two 50 ohm lines (25 ohm), and a quarter-wave transformer
+    (wq wide = 35.4 ohm, lq long) brings it back to 50 ohm: one per row, one after the centre T."""
+    W, H = 2 * d + 20.0, 2 * d - 10.0
+    b = Board(1.6)
+    xc, yc = W / 2 + 4.0, H / 2                                   # array centre (KiCad, y down)
+    h = wf / 2
+
+    def patch_at(px, py, feed_down):
+        x0, y0 = px - pw / 2, py - pl / 2
+        y1 = y0 + pl
+        if feed_down:                                              # inset in the bottom edge
+            b.poly([(x0, y0), (x0 + pw, y0), (x0 + pw, y1), (px + h + gap, y1), (px + h + gap, y1 - inset),
+                    (px - h - gap, y1 - inset), (px - h - gap, y1), (x0, y1)])
+            return y1 - inset
+        b.poly([(x0, y1), (x0 + pw, y1), (x0 + pw, y0), (px + h + gap, y0), (px + h + gap, y0 + inset),
+                (px - h - gap, y0 + inset), (px - h - gap, y0), (x0, y0)])
+        return y0 + inset
+
+    def row(py, down):
+        """Two patches at py, their feeds turning to a T at x = xc, a below (top row) or above the patches."""
+        yt = py + (pl / 2 + a) * (1 if down else -1)               # the row's horizontal feed line
+        for px in (xc - d / 2, xc + d / 2):
+            ys = patch_at(px, py, down)
+            b.rect(px - h, min(ys, yt) - (h if not down else 0), px + h, max(ys, yt) + (h if down else 0))
+        b.rect(xc - d / 2 - h, yt - h, xc + d / 2 + h, yt + h)
+        return yt
+    yu, yl = row(yc - d / 2, True), row(yc + d / 2, False)
+    # top row: transformer down from its T, then 50 ohm to the centre T
+    b.rect(xc - wq / 2, yu + h, xc + wq / 2, yu + h + lq)
+    b.rect(xc - h, yu + h + lq, xc + h, yc + h)
+    # bottom row: transformer up from its T, then 50 ohm with a U detour adding lg / 2
+    yq = yl - h - lq
+    b.rect(xc - wq / 2, yq, xc + wq / 2, yl - h)
+    det = lg / 4                                                    # two legs of lg / 4: lg / 2 longer
+    ya, yb = yq - 2.0, yq - 2.0 - 6.0                             # the detour's two horizontal runs
+    if yb - h < yc + wq / 2 + 1.0:
+        raise ValueError("array2x2: no room for the detour between the rows: a larger d")
+    b.rect(xc - h, ya - h, xc + h, yq)                             # up from the transformer
+    b.rect(xc - h, ya - h, xc + det + h, ya + h)                   # right
+    b.rect(xc + det - h, yb - h, xc + det + h, ya + h)             # up
+    b.rect(xc - h, yb - h, xc + det + h, yb + h)                   # back left
+    b.rect(xc - h, yc - h, xc + h, yb + h)                         # up to the centre T
+    # centre T -> transformer -> 50 ohm to the port at the left edge
+    b.rect(xc - h - lq, yc - wq / 2, xc - h, yc + wq / 2)
+    b.rect(0, yc - h, xc - h - lq, yc + h)
+    b.rect(0, 0, W, H, layer='B.Cu', net=1)
+    b.port('TP1', 'P1', 0.5, yc, 0)
+    b.write(path, W, H)
+
+
+KINDS = dict(patch=patch, ifa=ifa, dipole=dipole, slot=slot, array2x2=array2x2)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in KINDS:
