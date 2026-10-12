@@ -181,3 +181,26 @@ def test_stubs_drawn_as_rectangles_are_tees(tmp_path):
     S, _ = solve(lm, m.ports, f, backend='skrf')
     notch = f[np.argmin(np.abs(S[:, 1, 0]))]
     assert 2.2e9 < notch < 2.6e9
+
+
+def test_radial_stub_is_a_tee_and_a_widening_stub(tmp_path):
+    """A fan-shaped stub across the line (not rectilinear) is a tee and an open stub sliced into sections
+    that widen with the fan, and the notch comes out near the field solvers' 2.1-2.2 GHz (before: no stub,
+    no notch)."""
+    import sys
+    import numpy as np
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples'))
+    import make_rf_examples as rf
+    path = str(tmp_path / 'radial.kicad_pcb')
+    rf.radialstub(path)
+    m = Board(KiCadBoard(path), ground='B.Cu', log=lambda *a: None)
+    lm = build(m)
+    (p,) = lm.summary()['paths']
+    stub = max(p['branches'], key=lambda b: b['length'])
+    assert stub['length'] > 10 and 'ends: open' in stub['label'] and int(stub['label'].split('(')[1].split()[0]) > 5
+    assert min(s['z0'] for s in p['sections']) > 45                  # the line itself is not widened
+    pytest.importorskip('skrf')
+    from kicad2ems.solvers.lines.fastsolve import solve
+    f = np.linspace(1e9, 4e9, 301)
+    S, _ = solve(lm, m.ports, f, backend='skrf')
+    assert 1.8e9 < f[np.argmin(np.abs(S[:, 1, 0]))] < 2.7e9        # scikit-rf 1.99 GHz (no step models), qucsator 2.32

@@ -565,7 +565,7 @@ def build(model):
         for piece in getattr(g, 'geoms', [g]):
             if piece.geom_type == 'LineString' and piece.length > 1e-6:
                 clipped.append(dict(t, pts=np.asarray(piece.coords)))
-    strip_tracks = _shape_strips(model, nets, inside, lm)  # resonators / feeds drawn as copper shapes
+    strip_tracks = _shape_strips(model, nets, inside, lm, clipped)   # resonators, feeds, stubs drawn as shapes
     clipped = _attach_to_strips(clipped, strip_tracks) + strip_tracks
     for t in _split_at_junctions(clipped):
         line = LineString(t['pts'])
@@ -819,10 +819,11 @@ def _branch(lm, adj, j, start, on_path):
     return total, lab, e0.z0
 
 
-def _shape_strips(model, nets, inside, lm):
-    """Strips (strips.py) of the rectilinear copper shapes of the line nets, per layer and net."""
+def _shape_strips(model, nets, inside, lm, tracks=()):
+    """Strips (strips.py) of the rectilinear copper shapes of the line nets, per layer and net, and of the
+    other shapes that sit across a track as a stub (strips.fan_strip: a radial stub)."""
     from shapely.ops import unary_union
-    from .strips import shape_strips, rectilinear
+    from .strips import shape_strips, rectilinear, fan_strip
     by = {}
     for l, n, g in model.prims.shapes:
         if n in nets and l in model.cu_z:
@@ -834,6 +835,7 @@ def _shape_strips(model, nets, inside, lm):
             if poly.geom_type != 'Polygon' or poly.area < 1e-6:
                 continue
             if not rectilinear(poly):
+                out += fan_strip(poly, l, n, tracks)
                 continue
             out += shape_strips(poly, l, n)
     if out:

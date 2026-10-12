@@ -16,7 +16,7 @@ net.
 |---|---|
 | trace | tracks of one width on one layer. A trace is split at junctions, and where its surroundings change: the reference planes, the gap to coplanar ground, or extra copper widening it (a taper or teardrop) |
 | pad | a component pad. A trace ending in a pad is shortened by the part inside it |
-| strip | copper drawn as a rectangular shape: resonators, hairpins, tapped feeds |
+| strip | copper drawn as a shape: rectangular shapes (resonators, hairpins, tapped feeds, stubs drawn as rectangles), and other shapes that sit across a track as a stub (a radial stub). A strip is sliced into sections that follow its width, so a fan becomes a stub that widens step by step |
 | via | a via barrel: a coaxial line through the planes it passes, or an inductance where there's no plane |
 | part | a lumped R/L/C part, in series or to ground ([details](model.md#lumped-parts)) |
 
@@ -91,7 +91,8 @@ ports, or to a mesh problem.
 
 - Impedances are quasi-static. qucsator's microstrip models add dispersion.
 - Coupled sections must be straight, parallel microstrip. Coupling across layers isn't modelled.
-- Strips must be rectangular shapes.
+- Shapes other than rectangles become strips only as stubs across a track; tapers and teardrops widen the
+  track instead. A sliced fan ignores its radial field: the radial stub's notch comes out 6–9 % high.
 - No radiation, no plane resonances, no return-path breaks.
 - Solder mask counts only with `--mask`.
 

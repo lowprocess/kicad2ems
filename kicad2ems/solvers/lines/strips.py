@@ -164,6 +164,40 @@ def shape_strips(poly, layer, net, aspect=1.0):
     return out
 
 
+def fan_strip(poly, layer, net, tracks, reach=2.0):
+    """A shape that is not rectilinear but sits across a track as a stub (a radial stub, a fan): one strip from
+    the track's centreline straight out through the shape, its region the shape, so the line model slices it
+    into sections that widen with the copper. Only when the shape reaches `reach` track widths beyond the
+    track's centreline, mostly on one side: tapers and teardrops along a track keep widening it.
+    Returns [strip dict] or []."""
+    from shapely.geometry import LineString
+    for t in tracks:
+        if t['layer'] != layer or t['net'] != net:
+            continue
+        line = LineString(t['pts'])
+        w = float(t['width'])
+        over = line.buffer(w / 2).intersection(poly)              # where the shape overlaps the track's copper
+        if over.is_empty or over.area < 1e-6:
+            continue
+        s0 = line.project(over.centroid)
+        mid = np.asarray(line.interpolate(s0).coords[0])
+        a = np.asarray(line.interpolate(max(s0 - 1e-3, 0)).coords[0])
+        b = np.asarray(line.interpolate(min(s0 + 1e-3, line.length)).coords[0])
+        d = (b - a) / (np.linalg.norm(b - a) or 1.0)
+        n = np.array([-d[1], d[0]])
+        pts = np.asarray(poly.exterior.coords)
+        side = (pts - mid) @ n
+        if abs(side.min()) > abs(side.max()):
+            n, side = -n, -side
+        if side.max() < reach * w or -side.min() > 0.25 * side.max():
+            continue
+        tip = mid + n * side.max()
+        edge = LineString([mid + n * (w / 2) - d * 1e3, mid + n * (w / 2) + d * 1e3]).intersection(poly)
+        w0 = max(edge.length if not edge.is_empty else 0.0, 0.1 * w)
+        return [dict(layer=layer, net=net, width=float(w0), pts=np.array([mid, tip]), region=poly, strip=True)]
+    return []
+
+
 def _join(s, o, cs, co, xs, ys):
     """Connect strips s and o, whose cells cs and co touch: a strip ending at the other (within half the
     other's thickness of the meeting point) runs on to the meeting point; both ending there is a
