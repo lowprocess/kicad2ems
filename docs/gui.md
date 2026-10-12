@@ -33,6 +33,10 @@ Panels open by themselves when a preview or run produces something for them:
 
 **Solvers** has one tick box per solver, plus *auto*. Plugin solvers appear too, with their own settings.
 
+**Stop** asks the run to stop: openEMS ends at once and keeps what it has computed, mom25d ends after the
+frequency it is solving (with no result), and solvers that haven't started are skipped. Press Stop again to
+end the process at once.
+
 <a id="configs"></a>
 ## Configs
 

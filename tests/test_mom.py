@@ -103,3 +103,27 @@ def test_antenna_mode(run_cli, tmp_path):
     assert set(res['cuts']) == {'xz (phi = 0)', 'yz (phi = 90)', 'xy (theta = 90)'}
     for f in ('patch_mom25d_antenna.png', 'patch_mom25d_pattern.png', 'patch_mom25d_sphere.npz'):
         assert (out / f).exists(), f
+
+
+def test_stop_ends_mom25d_after_its_current_solve(run_cli, tmp_path, monkeypatch):
+    """The GUI's Stop (a STOP file, kicad2ems.stop): mom25d ends after the frequency it is solving, with no
+    result; the line model (the --fast reference) still gives its. ABORT alone had left mom25d running."""
+    pytest.importorskip('triangle')
+    from kicad2ems import pipeline
+    from kicad2ems.gui.runner import stop_runs
+    out = tmp_path / 'out'
+    seen = []
+    status = pipeline.Job.status
+
+    def stop_at_second(self, run, st):
+        status(self, run, st)
+        if run == 'mom25d':
+            seen.append(st['solves'])
+            if st['solves'] == 2:
+                stop_runs(str(out))
+    monkeypatch.setattr(pipeline.Job, 'status', stop_at_second)
+    code, so, se = run_cli(FILTER, '--solvers', 'mom25d', '--fast', 'auto', '--mom-dmax', '0.8', '--points', '41',
+                           '--no-report', '--out', out)
+    assert code == 1 and seen == [1, 2], so + se
+    assert 'stopped: mom25d (MoM) ended early, no result' in so + se
+    assert not (out / 'filter_mom25d.s2p').exists() and list(out.glob('filter_*.s2p'))

@@ -29,7 +29,7 @@ report, and sent to --events as JSON lines).
 import dataclasses, datetime, json, os, time
 import numpy as np
 
-from . import __version__
+from . import __version__, stop
 from .board import Board
 from .plots import save, preview, plot_results, plot_lines
 from .touchstone import write_touchstone, read_touchstone
@@ -208,6 +208,7 @@ class Job:
     # ---- stages --------------------------------------------------------------------------------------
     def run(self):
         os.makedirs(self.s.out, exist_ok=True)
+        stop.arm(self.s.out)                                         # the GUI's Stop: a STOP file there (stop.py)
         if self.s.events:
             from .events import EventSink
             os.makedirs(os.path.dirname(os.path.abspath(self.s.events)), exist_ok=True)
@@ -215,6 +216,7 @@ class Job:
         try:
             code = self._run()
         finally:
+            stop.disarm()
             if self.events:
                 self.events.emit('done', code=locals().get('code'))
                 self.events.close()
@@ -233,6 +235,8 @@ class Job:
             st()
         self.report()
         failed = [label(x) for x in self.named if x in self.plan and x not in self.results]
+        if failed and stop.requested():
+            return 1
         if failed:
             self.log(f"failed: {', '.join(failed)} gave no result (see the warnings above)")
             return 1
@@ -425,9 +429,15 @@ class Job:
     def solve(self):
         """Each solver of the plan, the cheap ones first. A failure is a warning here; when the solver was
         named in `solvers`, the run ends with exit code 1 (see _run)."""
-        for name in sorted(self.plan, key=lambda n: registry()[n].rank):
+        order = sorted(self.plan, key=lambda n: registry()[n].rank)
+        for i, name in enumerate(order):
+            if stop.requested():
+                self.log(f"stopped: {', '.join(label(n) for n in order[i:])} not run")
+                break
             try:
                 self.results[name] = registry()[name].solve(self, self.prep.get(name))
+            except stop.Stopped:
+                self.log(f"stopped: {label(name)} ended early, no result")
             except Exception as e:
                 if os.environ.get('KICAD2EMS_TRACEBACK'):
                     raise

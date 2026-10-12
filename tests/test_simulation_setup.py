@@ -83,3 +83,23 @@ def test_port_watch_stops_a_decayed_run(tmp_path):
     w.stop()
     assert not (tmp_path / 'ABORT').exists()                        # -60 dB is not -70 dB
     assert pulse_time(1e9, 6e9) == pytest.approx(2 * 9 / (2 * np.pi * 2.625e9))
+
+
+def test_stop_request_starts_no_further_openems_run(tmp_path, monkeypatch):
+    """After the GUI's Stop (kicad2ems.stop) no further excitation or convergence level starts."""
+    from kicad2ems import stop
+    from kicad2ems.solvers.openems.simulation import execute
+    monkeypatch.delenv(stop.ENV, raising=False)
+    stop.arm(tmp_path)
+    ran = []
+
+    class FDTD:
+        def Run(self, path, **kw):
+            ran.append(path)
+    execute(FDTD(), str(tmp_path / 'exc_1'))
+    stop.request(tmp_path)
+    with pytest.raises(stop.Stopped):
+        execute(FDTD(), str(tmp_path / 'exc_2'))
+    assert ran == [str(tmp_path / 'exc_1')]
+    stop.disarm()
+    assert not stop.requested() and not (tmp_path / stop.NAME).exists()

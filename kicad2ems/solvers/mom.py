@@ -13,6 +13,7 @@ import numpy as np
 
 from ..options import Option, floatlist
 from . import Solver, Result, Deviation
+from .. import stop
 
 G = 'mom25d'
 # --solvers auto (docs/architecture.md#choosing-solvers): seconds per EM solve on 24 cores, fitted on the examples
@@ -253,8 +254,8 @@ class MoM25D(Solver):
             run.log("mom25d: antenna mode: lumped ports (--mom-port wave for de-embedded ones)")
         S, names, zref, info = solve(run.m, run.freq, dmax=s.mom_dmax, port=port, mesher=s.mom_mesher,
                                      max_solves=s.mom_solves, sigma=s.sigma, log=run.log, hold=self._held, tiled=s.mom_tiled,
-                                     progress=lambda k, n, f: run.status('mom25d', dict(fraction=k / n, solves=k,
-                                                                                        f_ghz=f / 1e9)))
+                                     progress=lambda k, n, f: (run.status('mom25d', dict(fraction=k / n, solves=k,
+                                                                                         f_ghz=f / 1e9)), stop.check()))
         kinds = ", ".join(f"{p['name']} {p['kind']}" for p in info['ports'])
         info.update(kpi=f"{info['unknowns']:,} unknowns, {info['seconds']:.0f} s",
                     about=f"mom25d, a 2.5D Method-of-Moments solver: {info['unknowns']:,} unknowns ({info['triangles']:,} "
@@ -291,6 +292,7 @@ class MoM25D(Solver):
         dmax, prad, pacc, pinc, e_norm = [], [], [], [], []
         run.log(f"mom25d: antenna, {names[k]} driven: far field at {len(ffr)} frequencies")
         for f in ffr:
+            stop.check()
             I = sim.currents(f, sim.excitation())[:, k]
             Et, Ep = far_field(sim, I, f, th[up], ph)
             U, pr = radiated(Et, Ep, th[up], ph)
@@ -385,7 +387,7 @@ def current_dumps(run, res, freqs, ports=None, near=()):
     lay = {k: l for l, k in model.iface.items()}
     layers = [k for k, idx in sorted(sim.tri_idx.items()) if len(idx) and k in lay]
     nodes = sim.rwg.nodes[:, :2] * 1e3
-    I_f = [sim.currents(f, sim.excitation()) for f in freqs]
+    I_f = [(stop.check(), sim.currents(f, sim.excitation()))[1] for f in freqs]
     step = max(run.s.mom_dmax / 3, 0.02)
     ztop = float(model._zk[-1])
     out = []

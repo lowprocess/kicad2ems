@@ -437,7 +437,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle('kicad2ems')
         self.resize(1500, 950)
         self.proc, self.tail, self.files, self.current, self.ticks = None, None, [], None, 0
-        self._traceback = False
+        self._traceback = self._stopping = False
         self.setup, self.runtab, self.results = SetupTab(self), RunTab(self), ResultsTab(self)
         self.fields, self.antenna = FieldsTab(self), AntennaTab(self)
         self.volume = VolumeTab(self)
@@ -665,7 +665,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, 'Setup', 'Choose a solver: openEMS, mom25d or the line model (or Preview)')
             return
         self.current = Run(vals, self.out_dir(vals), preview)
-        self.files, self._traceback = [], False
+        self.files, self._traceback, self._stopping = [], False, False
         self.runtab.reset()
         self.tail = EventTail(self.current.events)
         self.proc = QProcess(self)
@@ -687,12 +687,18 @@ class MainWindow(QMainWindow):
         self.start(False)
 
     def stop(self):
-        if self.current:
-            dirs = stop_runs(self.current.out)
-            self.runtab.log.appendPlainText(f"stop: ABORT written to {len(dirs)} run folder(s)" if dirs else
-                                            "stop: no openEMS run yet - ending the process")
-            if not dirs and self.proc:
-                self.proc.kill()
+        """First press: ask the run to stop (stop.py: mom25d after the frequency it is solving, openEMS at once
+        with what it has, later solvers skipped). Second press: end the process."""
+        if not (self.current and self.proc):
+            return
+        if self._stopping:
+            self.runtab.log.appendPlainText("stop: ending the process")
+            self.proc.kill()
+            return
+        self._stopping = True
+        stop_runs(self.current.out)
+        self.runtab.log.appendPlainText("stop: requested - the run ends after its current step "
+                                        "(press Stop again to end the process at once)")
 
     def _stdout(self):
         """The process's own output: the log already comes as events, so only errors - a traceback whole."""

@@ -5,7 +5,7 @@ event stream (--events, JSON lines). No Qt here, so it is testable without a dis
     run = Run(settings_dict, out_dir, preview=False)
     run.argv()                     # [python, -m, kicad2ems, <out>/gui_run.toml, --events, ...]
     tail = EventTail(path); tail.read() -> [event dicts]
-    stop_runs(out_dir)             # ABORT into every run folder: openEMS stops and finishes normally
+    stop_runs(out_dir)             # STOP for the run (stop.py), ABORT into every openEMS run folder
 """
 import glob, json, os, sys
 
@@ -292,7 +292,10 @@ class EventTail:
 
 
 def stop_runs(out_dir):
-    """ABORT into every openEMS run folder under out_dir; returns the folders."""
+    """Ask the run writing to out_dir to stop: its STOP file (every solver checks it, stop.py), and ABORT into
+    every openEMS run folder under out_dir (openEMS stops and finishes normally); returns those folders."""
+    from .. import stop
+    stop.request(out_dir)
     dirs = glob.glob(os.path.join(out_dir, 'openems', 'exc_*')) + \
         glob.glob(os.path.join(out_dir, 'converge', '*', 'openems', 'exc_*'))
     for d in dirs:

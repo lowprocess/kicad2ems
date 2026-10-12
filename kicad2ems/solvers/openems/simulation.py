@@ -301,7 +301,12 @@ class PortWatch:
         return port_decay(self.path, self.window, self.z)
 
     def _loop(self):
+        from ... import stop
         while not self._stop.wait(self.interval):
+            if stop.requested():                                # the GUI's Stop (stop.py)
+                self.fired = dict(reason='stop')
+                open(os.path.join(self.path, 'ABORT'), 'w').close()
+                return
             try:
                 lv = self.level()
             except Exception:                                   # a half-written file: try again later
@@ -350,6 +355,8 @@ def execute(FDTD, path, threads=0, verbose=1, progress=None, watch=None):
     lines to the terminal ('file': the log only - parallel workers, monitored by the main process);
     on_status(label, status dict) is called for every openEMS status line."""
     from .progress import Monitor, Tracker, redirect_output
+    from ... import stop
+    stop.check()                                                # stopped: no further excitation or level
     os.makedirs(path, exist_ok=True)
     for f in ('ABORT', 'run_end.json'):                         # leftovers of an earlier run in this folder
         if os.path.exists(os.path.join(path, f)):
