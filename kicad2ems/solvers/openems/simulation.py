@@ -241,6 +241,9 @@ def step_limit_warning(name, steps, max_steps, end_db):
             f"{-end_db:g} dB - the fields may still be ringing; raise --max-steps (or accept a higher --end-db)")
 
 
+DEAD_DB = -120.0         # PortWatch: port signals this far below their peak end a run at once
+
+
 class PortWatch:
     """Thread that ends a run whose field energy has stalled once every port signal has died away.
     openEMS's own end criterion is the total field energy, which can level off above --end-db when some
@@ -255,7 +258,9 @@ class PortWatch:
         it fell by less than `stall_db`.
     The second condition matters: in a high-Q circuit (a filter) the stored energy leaks out through
     the ports slowly, the port signals sit far below their peak while it does, and stopping then cuts
-    the ring-down off (the response comes out smoothed and shifted)."""
+    the ring-down off (the response comes out smoothed and shifted). Port signals below DEAD_DB end it
+    without the stall: nothing reaches the ports any more (a radial stub held the pulse's DC charge at
+    -33 dB of energy, its ports at -222 dB, for 176k timesteps where 20k were enough)."""
     def __init__(self, path, end_db, t_min, window, z=50.0, interval=2.0, stall_db=1.5):
         self.path, self.end_db, self.t_min, self.window, self.z, self.interval = path, end_db, t_min, window, z, interval
         self.stall_db, self.energy, self._pos = stall_db, [], 0
@@ -312,7 +317,7 @@ class PortWatch:
             except Exception:                                   # a half-written file: try again later
                 continue
             self._read_energy()
-            if lv and lv[0] > self.t_min + self.window and lv[1] <= self.end_db and self.stalled():
+            if lv and lv[0] > self.t_min + self.window and lv[1] <= self.end_db and (self.stalled() or lv[1] <= DEAD_DB):
                 self.fired = dict(reason='ports', t_ns=lv[0] * 1e9, level_db=lv[1],
                                   energy_db=self.energy[-1][1] if self.energy else None)
                 with open(os.path.join(self.path, 'run_end.json'), 'w') as fh:

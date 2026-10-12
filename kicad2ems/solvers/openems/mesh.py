@@ -94,7 +94,7 @@ def manhattan(d, L, fine):
     return ((np.abs(d[..., 0]) <= tol) | (np.abs(d[..., 1]) <= tol)) & (L >= fine)
 
 
-def curve_lines(xy, fine, mode='extremes', step=None):
+def curve_lines(xy, fine, mode='extremes', step=None, boxes=None):
     """Mesh-line candidates of the curved parts of a ring (rounded pad corners, round track ends,
     arcs, circular antipads, oblique edges). Edges that are Manhattan and at least `fine` long are
     handled by the thirds rule instead. mode 'extremes': for each run of consecutive curved edges only
@@ -102,7 +102,9 @@ def curve_lines(xy, fine, mode='extremes', step=None):
     one per vertex), and with `step` also a line wherever the run has gone `step` mm in x or y since the
     last one: a thin curved track (the copper's width as the step) stays connected on the mesh. With the
     extremes alone a rat-race's 0.8 mm ring sat on cells up to 1.8 mm, broke apart, and S21 came out
-    -35.8 dB instead of -3.4. 'vertices': every vertex (dense, closest to the drawn geometry)."""
+    -35.8 dB instead of -3.4. 'vertices': every vertex (dense, closest to the drawn geometry).
+    boxes: a list that gets (x0, y0, x1, y1) of each curved run longer than 4 fine and twice `step` (the
+    copper's width): arcs, rings and fans, not the round end of a track or a pad's corner."""
     xy = np.asarray(xy)[:-1]                                        # closed ring -> unique vertices
     n = len(xy)
     if n < 3:
@@ -111,6 +113,8 @@ def curve_lines(xy, fine, mode='extremes', step=None):
     L = np.hypot(d[:, 0], d[:, 1])
     manh = manhattan(d, L, fine)
     if mode == 'vertices':
+        if boxes is not None:
+            curve_lines(np.vstack([xy, xy[:1]]), fine, 'extremes', step=step, boxes=boxes)
         idx = sorted({i for i in range(n) if not manh[i]} | {(i + 1) % n for i in range(n) if not manh[i]})
         return [xy[i, 0] for i in idx], [xy[i, 1] for i in idx]
     if not (~manh).any():
@@ -129,6 +133,8 @@ def curve_lines(xy, fine, mode='extremes', step=None):
         verts = [run[0]] + [(e + 1) % n for e in run]               # vertex indices along the run
         pts = xy[verts]
         ext = pts.max(0) - pts.min(0)
+        if boxes is not None and ext.max() >= max(4 * fine, 2 * (step or 0)):    # not a round end or corner
+            boxes.append((*pts.min(0), *pts.max(0)))
         if ext.max() >= fine / 2 and len(run) == n:                 # closed curve (circle): its extremes only
             xs += [pts[:, 0].min(), pts[:, 0].max()]; ys += [pts[:, 1].min(), pts[:, 1].max()]
         elif ext.max() >= fine / 2:                                 # open run; tiny chamfers are ignored
@@ -149,9 +155,10 @@ def curve_lines(xy, fine, mode='extremes', step=None):
 THIRDS_CELL = 2 / 3     # the cell across a copper edge, as a fraction of `fine` (see _edge_lines)
 
 
-def _edge_lines(m, fine, curves):
+def _edge_lines(m, fine, curves, boxes=None):
     """Candidate x / y lines from the copper: the board outline, thirds-rule pairs at Manhattan edges
-    (third: 2/3 outside the metal, third_in: 1/3 inside) and the curve lines (see curve_lines)."""
+    (third: 2/3 outside the metal, third_in: 1/3 inside) and the curve lines (see curve_lines; boxes: the
+    curved runs' boxes)."""
     ob = m.outline.bounds
     fixed = {0: [ob[0], ob[2]], 1: [ob[1], ob[3]]}
     third, third_in = {0: [], 1: []}, {0: [], 1: []}
@@ -176,7 +183,7 @@ def _edge_lines(m, fine, curves):
                     else:
                         s, ym = np.sign(dx), 0.5 * (y0 + y1)
                         third_in[1].append(ym + s * c / 3); third[1].append(ym - s * 2 * c / 3)
-                cx, cy = curve_lines(xy, fine, curves, step=max(fine, 2 * p.area / p.length))   # its width
+                cx, cy = curve_lines(xy, fine, curves, step=max(fine, 2 * p.area / p.length), boxes=boxes)   # its width
                 fixed[0] += cx; fixed[1] += cy
     return fixed, third, third_in
 
@@ -216,17 +223,37 @@ def _snap_vias(m, mode, mesh_xy, via_snap):
     return placed, far
 
 
-def _z_lines(m, ext, M_die, M_air, nz_min, ratio):
+def signal_sheets(m, plane=0.85):
+    """Heights of the copper sheets with signal edges on them: the ports' layers and every layer that is not
+    a plane (copper over less than `plane` of the board)."""
+    area = m.outline.area
+    out = {m.cu_z[p.layer] for p in m.ports if p.layer in m.cu_z}
+    for lay, ps in m.copper.items():
+        if lay in m.cu_z and sum(p.area for p in ps) < plane * area:
+            out.add(m.cu_z[lay])
+    return sorted(out)
+
+
+def _z_lines(m, ext, M_die, M_air, nz_min, ratio, dz_sheet=None):
     """z lines: every interface, >= nz_min cells per dielectric, copper sheets exactly on lines, graded
-    air (ext[4] below - none on a PEC bottom plane - and ext[5] above)."""
+    air (ext[4] below - none on a PEC bottom plane - and ext[5] above). dz_sheet (mm): the first cell either
+    side of each signal sheet (signal_sheets), graded by `ratio` into the dielectric."""
     zs = sorted({0.0, m.thickness} | {l['z0'] for l in m.layers} | {l['z1'] for l in m.layers} | set(m.cu_z.values()))
-    zl = []
+    sheets = signal_sheets(m) if dz_sheet else []
+    zl, extra = [], []
     for z0, z1 in zip(zs[:-1], zs[1:]):
         lay = next((l for l in m.layers if l['z0'] <= z0 + 1e-9 and l['z1'] >= z1 - 1e-9), None)
         Mz = M_die if lay else M_air
         n = max(nz_min, int(np.ceil((z1 - z0) / Mz)))
-        zl += list(np.linspace(z0, z1, n + 1))
-    zl = _merge(np.concatenate([np.round(zl, 9), zs]), 1e-7)
+        h = (z1 - z0) / n
+        near = [zc for zc in (z0, z1) if lay and any(abs(zc - sz) < 1e-9 for sz in sheets)]
+        if not near or dz_sheet >= h:
+            zl += list(np.linspace(z0, z1, n + 1))
+            continue
+        # graded from dz_sheet at the sheet(s) up to the uniform cell h
+        fixed = [z0, z1] + [z0 + dz_sheet if zc == z0 else z1 - dz_sheet for zc in near]
+        extra += list(smooth_lines(fixed, h, ratio))
+    zl = _merge(np.concatenate([np.round(zl, 9), np.round(extra, 9), zs]), 1e-7)
     for lay, zc in m.cu_z.items():                                  # snap: sheets must lie exactly on a line
         i = np.argmin(np.abs(zl - zc))
         assert abs(zl[i] - zc) < 1e-6, f"{lay} at z={zc} is not on a z mesh line"
@@ -270,7 +297,7 @@ def signal_gaps(m, near=2.0):
 
 
 def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) * 6, nz_min=4,
-              curves='extremes', vias='auto', via_snap=0.2, refine=(), log=print):
+              curves='extremes', vias='auto', via_snap=0.2, refine=(), z_sheet=1.0, curve_res=6.0, log=print):
     """Mesh lines (mm) for model m. Returns dict(x, y, z, vias, info).
 
     curves: 'extremes' (default) or 'vertices' - see curve_lines().
@@ -280,7 +307,14 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
                      is within via_snap mm (else it gets centre lines)
             'auto'   (default) 'exact' for vias on the port (signal) nets, 'snap' for all others
                      (ground stitching / fence vias)
-    refine: [(x0, y0, x1, y1, step)] boxes (model coordinates, mm) with x and y lines every `step`"""
+    refine: [(x0, y0, x1, y1, step)] boxes (model coordinates, mm) with x and y lines every `step`
+    z_sheet: the first z cell either side of a copper sheet with signal edges, x fine, graded into the
+             dielectric (0: uniform cells, nz_min per dielectric). On 0.8 mm FR-4 the default nz of 4 gave a
+             10 dB coupler -8.6 dB (converged about -10.6) and a grounded CPW's S11 at 5 GHz -19 dB (about -33);
+             grading from the fine cell gave -10.3 and -31.6 dB for 1.4x the run time. The gap and edge cells in
+             x / y hardly mattered (docs/meshing.md#z-lines)
+    curve_res: over curved copper (curve_lines' boxes) the largest cell is the dielectric's / curve_res: a radial
+             stub's fan had cells up to 1.8 mm and notched at 2.03 GHz instead of 2.13"""
     er_max = max([l['er'] for l in m.layers] + [1.0])
     lam0 = C0 / fmax * 1e3                                          # mm
     M_air, M_die = lam0 / res, lam0 / np.sqrt(er_max) / res
@@ -297,7 +331,8 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
     if bottom_pec:
         ext[4] = 0.0                                                # PEC wall = the bottom plane itself
     ob = m.outline.bounds
-    fixed, third, third_in = _edge_lines(m, fine, curves)
+    boxes = []
+    fixed, third, third_in = _edge_lines(m, fine, curves, boxes)
     mode = _via_modes(m, vias)
     for (x, y, r, z0, z1), md in zip(m.vias, mode):
         if md == 'exact':
@@ -317,7 +352,9 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
                                     np.full(len(third_in[k]), 2.0)])
             lo, hi = ob[k], ob[2 + k]
             pts = np.concatenate([[lo - ext[2 * k]], pts, [hi + ext[2 * k + 1]]])
-            Mf = (lambda x, lo=lo, hi=hi: M_die if lo - 1e-9 <= x <= hi + 1e-9 else M_air)
+            spans = [(b[k], b[2 + k]) for b in boxes] if curve_res > 1 else []
+            Mf = (lambda x, lo=lo, hi=hi, sp=spans: M_air if not lo - 1e-9 <= x <= hi + 1e-9 else
+                  (M_die / curve_res if any(a <= x <= b for a, b in sp) else M_die))
             out[k] = smooth_lines(pts, Mf, ratio, fine)
         return out
 
@@ -330,7 +367,7 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
             placed, _ = _snap_vias(m, mode, mesh, np.inf)           # (left off the grid, openEMS would drop them)
     moved = [np.hypot(a[0] - b[0], a[1] - b[1]) for a, b in zip(placed, m.vias)]
     nsnap = sum(1 for md in mode if md == 'snap')
-    mesh[2] = _z_lines(m, ext, M_die, M_air, nz_min, ratio)
+    mesh[2] = _z_lines(m, ext, M_die, M_air, nz_min, ratio, dz_sheet=z_sheet * fine if z_sheet else None)
     nx, ny, nz = (len(mesh[k]) for k in range(3))
     dmin = [np.diff(mesh[k]).min() * 1e-3 for k in range(3)]
     dt = 1 / (C0 * np.sqrt(sum(1 / d ** 2 for d in dmin)))

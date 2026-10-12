@@ -25,16 +25,37 @@ extra line costs run time.
   wherever the curve has run on by the copper's own width (`--curves extremes`, the default), or a line at
   every vertex (`vertices`). The width rule keeps a thin curved track connected: without it a rat-race
   ring broke apart on the coarse mesh.
+- **Over curved copper** (arcs, rings and fans longer than twice the copper's width, not round track ends)
+  the largest cell is the dielectric's divided by `--curve-res` (6). A radial stub's fan had sat on 1.8 mm
+  cells, and its notch came out at 2.03 GHz instead of 2.13.
 - **Vias** on the port nets get lines at their centre and edges. Other vias, such as stitching and
   fences, move onto the nearest existing line within `--via-snap` (0.2 mm). Every move is logged.
 - The board outline, the port planes and the ends of each lumped part are kept exactly.
 - Lines closer than `fine/2` are merged, keeping the most important one.
 - The gaps are then filled with graded lines up to the largest cell.
 
+<a id="z-lines"></a>
 ## z lines
 
 There's a line at every interface (dielectric boundaries and copper heights), at least `--nz` (4) cells
 through each dielectric, and graded air above and below.
+
+Next to a copper layer with signal edges (a port's layer, or any layer that isn't a plane), the first cell
+on either side is `--z-sheet` (1) × the fine cell, growing by `--ratio` into the dielectric and the air.
+The field at a strip's edge needs resolving vertically as much as sideways. On 0.8 mm FR-4, uniform cells
+gave a 10 dB coupler's coupling and a grounded CPW's match far off, and refining the edge cells in x and y
+didn't help:
+
+| Mesh | Coupler S31 at 2.4 GHz | Grounded CPW S11 at 5 GHz |
+|---|---|---|
+| uniform, `--nz 4` | −8.6 dB, 0.32 M cells | −19.3 dB, 0.09 M cells |
+| uniform, fine cell ÷ 3 (÷ 2 for the CPW) | −8.4 dB, 0.75 M cells | −18.1 dB, 0.18 M cells |
+| uniform, `--nz 36` (32 for the CPW) | −10.5 dB, 1.21 M cells | −33.1 dB, 0.34 M cells |
+| graded from the fine cell (the default) | −10.4 dB, 0.57 M cells | −31.5 dB, 0.14 M cells |
+
+The graded mesh took 1.3× the uniform one's run time. `--z-sheet 0.5` gets closer (−10.5 dB, −32.6 dB)
+for about twice the time, and `--z-sheet 0` turns grading off. Grading only starts where the fine cell
+is smaller than the uniform cell, so wide lines on thin dielectrics are unchanged.
 
 <a id="boundaries-and-air"></a>
 ## Boundaries and air

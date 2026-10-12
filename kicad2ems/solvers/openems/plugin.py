@@ -73,6 +73,11 @@ class OpenEMS(Solver):
         Option('ratio', 1.4, "max growth between neighbouring cells (default {default})", float, group=G_MESH),
         Option('nz', 4, "minimum cells through each dielectric layer (default {default})", int,
                gui='Cells through each dielectric', group=G_MESH),
+        Option('z_sheet', 1.0, "first z cell either side of a copper layer with signal edges, as a multiple of the "
+               "fine cell, graded into the dielectric (default {default}; 0: uniform, --nz cells)", float,
+               gui='First z cell at signal copper (x fine)', group=G_MESH),
+        Option('curve_res', 6.0, "over curved copper (arcs, fans) the largest cell is the dielectric's / this "
+               "(default {default}; 1: no refinement)", float, gui='Refinement over curved copper', group=G_MESH),
         Option('curves', 'extremes', "mesh lines for rounded corners / arcs / circles: only the ends and extremes of "
                "each curve (default) or every vertex", choices=('extremes', 'vertices'), group=G_MESH),
         Option('vias', 'auto', "via mesh lines: auto = exact on signal nets, snap elsewhere; exact = centre and "
@@ -168,7 +173,8 @@ class OpenEMS(Solver):
         s, m = run.s, run.m
         bc = resolve_bc('PML_8' if s.antenna and s.bc == 'auto' else s.bc, m)
         g = auto_mesh(m, run.fmin, run.fmax, res=s.res, fine=s.fine, air=s.air, ratio=s.ratio, nz_min=s.nz, bc=bc,
-                      curves=s.curves, vias=s.vias, via_snap=s.via_snap, log=lambda *a: None)
+                      curves=s.curves, vias=s.vias, via_snap=s.via_snap, z_sheet=s.z_sheet, curve_res=s.curve_res,
+                      log=lambda *a: None)
         cells, dt = g['info']['cells'], g['info']['dt_ps'] * 1e-12
         pulse = pulse_steps(run.fmin, run.fmax, g['info']['dt_ps'])
         tg = _peak_delay(run)
@@ -196,7 +202,7 @@ class OpenEMS(Solver):
             run.log(f"antenna mode: boundaries {bc}, air margin {air:.1f} mm")
         p.bc = resolve_bc(bc, m)
         kw = dict(air=air, ratio=s.ratio, nz_min=s.nz, bc=p.bc, curves=s.curves, vias=s.vias, via_snap=s.via_snap,
-                  log=run.log)
+                  z_sheet=s.z_sheet, curve_res=s.curve_res, log=run.log)
         if s.converge:
             from .converge import mesh_levels, describe_levels
             p.levels = mesh_levels(m, run.fmin, run.fmax, sorted(set(s.converge)), res=s.res, fine=s.fine, **kw)
