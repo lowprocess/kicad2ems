@@ -56,7 +56,7 @@ a separate characterisation of the line (a long test line of the same cross-sect
 has to be long enough for the two amplitudes, about 0.1 rad at the lowest frequency. Fitting the
 propagation constant from the feed too failed on short feeds with a strong reflection: on the radial
 stub it came out 2–10× low and gave |S11| = 1.19. Switching between the two at a feed length made S jump,
-which cost the via transition 38 solves instead of 21.
+which cost the via transition 42 solves instead of 21.
 
 Lumped ports are closest to openEMS's ports, since both include the port's own parasitics. Wave ports
 are closest to the line model, which has an ideal reference plane. Differential pairs are one mixed-mode
@@ -143,10 +143,10 @@ Measured on every example, CPU and GPU: [benchmarks](benchmarks.md). A few of th
 
 | Board | openEMS | mom25d GPU | mom25d CPU |
 |---|---|---|---|
-| filter (single-layer microstrip) | 119 s | 50 s | 51 s |
+| filter (single-layer microstrip) | 119 s | 18 s | 22 s |
 | hairpin (single-layer microstrip) | 50 s | 9 s | 10 s |
 | rf_coupler (0.14 mm gap) | 92 s | 16 s | 20 s |
-| demo_transition (2 inner planes) | 55 s | 434 s | 615 s |
+| demo_transition (2 inner planes) | 55 s | 188 s | 436 s |
 | sma_launch (3 planes, 185 vias) | 33 s | 171 s | 417 s |
 
 - **mom25d is faster on single-layer microstrip**: filters, couplers and matching networks. It has no
