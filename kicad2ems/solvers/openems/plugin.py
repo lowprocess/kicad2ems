@@ -24,7 +24,8 @@ def _bc(v):
     return ",".join(strlist(v) or ['auto'])
 
 
-G_MESH, G_RUN, G_ANT, G_DUMP = 'openEMS mesh', 'openEMS', 'openEMS antenna mode', 'openEMS field dumps'
+G_MESH, G_RUN, G_DUMP = 'openEMS/Mesh', 'openEMS/Run', 'openEMS/Field dumps'   # the GUI's openEMS sub-sections
+G_ANT, G_SHARED_DUMP = 'antenna', 'field dumps'           # shared with mom25d: the GUI's Antenna and Field dumps
 # --solvers auto (docs/architecture.md#choosing-solvers), fitted on openEMS runs of the 13 examples (24 cores):
 # after the pulse the fields ring down for RING x |end_db| / 17.4 dB x the line model's peak group delay (a
 # resonance's energy falls 17.4 dB per group delay; measured 0.4..3x that, median 1.7, and far longer where the
@@ -103,15 +104,15 @@ class OpenEMS(Solver):
                "= Djordjevic-Sarkar model (er / tand constant-ish over the band) as Debye poles",
                choices=('fixed', 'wideband'), group=G_RUN),
         Option('diel_fref', 1.0, "GHz at which the stackup er / tand hold (wideband; default 1)", float, group=G_RUN),
-        Option('excite', None, "comma-separated ports to excite (default all), e.g. P1", list,
-               gui='Driven ports (empty: all)', group=G_RUN),
+        Option('excite', None, "comma-separated ports to excite (default all), e.g. P1; antenna mode: the antenna's "
+               "port (openEMS and mom25d)", list, gui='Driven ports (empty: all)', group='solvers'),
         Option('threads', 0, "openEMS threads per run (default 0 = all cores; with --jobs above 1: half the cores, "
                "shared by the runs)", int, gui='Threads (0: openEMS default)', group=G_RUN),
         Option('jobs', 1, "excitations run in parallel (separate processes; default 1)", int, group=G_RUN),
         Option('openems_output', False, "show openEMS's own output instead of the progress / ETA line (it is always "
                "kept in openems.log of each run)", bool, group=G_RUN),
         Option('ff_freq', [], "antenna: frequency for the patterns (default: the resonance, minimum |S11|); also "
-               "recorded", list, conv=floatlist, gui='Pattern frequencies (GHz, antenna; empty: resonance)',
+               "recorded", list, conv=floatlist, gui='Antenna: pattern frequencies (GHz; empty: the resonance)',
                group=G_ANT, cli=dict(metavar='GHz,...')),
         Option('ff_step', 2.0, "antenna: angle step of the pattern cuts (deg, default 2)", float, group=G_ANT),
         Option('dump', [], "field dump, repeatable: E|H|J @ layer[+-mm] | x=/y=/z= | volume | box=x0,y0,z0,x1,y1,z1 "
@@ -119,7 +120,7 @@ class OpenEMS(Solver):
                "J@In2.Cu@4   E@y=7", list, conv=items, gui='Dumps (FIELD@REGION[@GHz]; ...)', group=G_DUMP,
                cli=dict(action='append', metavar='FIELD@REGION[@GHz,...]')),
         Option('dump_port', None, "ports whose excitation runs get the dumps (default: the first excited port)", list,
-               gui='Runs that record dumps (empty: first driven)', group=G_DUMP),
+               gui='Runs that record dumps (empty: first driven)', group=G_SHARED_DUMP),
     ]
 
     def check(self, s=None):

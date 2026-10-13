@@ -54,7 +54,17 @@ class SetupTab(QWidget):
         left = QVBoxLayout()
         left.setSpacing(2)
         groups, self.sections, self.group_of, self.solver_boxes, self.solver_labels = {}, {}, {}, {}, {}
+        self.parents = {}                                           # 'openEMS': (its section, the layout of its subs)
+        self.field_labels = {}                                      # key: its label (greyed with the field)
         for key, label, kind, group in FIELDS:
+            if '/' in group and group.split('/')[0] not in self.parents:     # a solver's section of sub-sections
+                top = group.split('/')[0]
+                holder = QWidget()
+                sub = QVBoxLayout(holder)
+                sub.setContentsMargins(0, 0, 0, 0)
+                sub.setSpacing(2)
+                self.parents[top] = (Section(top, holder), sub)
+                left.addWidget(self.parents[top][0])
             if group not in groups:
                 box = QWidget()
                 groups[group] = QFormLayout(box)
@@ -69,8 +79,8 @@ class SetupTab(QWidget):
                     extra.setToolTip('Solvers and hardware: what can run here, the GPU, the memory, the estimates')
                     extra.clicked.connect(lambda: self.win.show_solvers())
                     self.help_btn = extra
-                self.sections[group] = Section(group, box, extra=extra)
-                left.addWidget(self.sections[group])
+                self.sections[group] = Section(group.split('/')[-1], box, extra=extra)
+                (self.parents[group.split('/')[0]][1] if '/' in group else left).addWidget(self.sections[group])
             self.group_of[key] = group
             if kind == 'bool':
                 w = QCheckBox()
@@ -104,8 +114,9 @@ class SetupTab(QWidget):
                 groups[group].addRow(w)
             else:
                 groups[group].addRow(label, w)
+            self.field_labels[key] = groups[group].labelForField(w)
             self.edits[key] = (w, kind)
-        groups['Field dumps'].addRow('Add a dump', self._dump_builder())
+        groups['openEMS/Field dumps'].addRow('Add a dump', self._dump_builder())
         left.addStretch(1)
         lw = QWidget()
         lw.setLayout(left)
@@ -118,6 +129,7 @@ class SetupTab(QWidget):
         bar = scroll.verticalScrollBar().sizeHint().width()
         scroll.setMinimumWidth(max(270, lw.minimumSizeHint().width() + bar + 2 * scroll.frameWidth() + 2))
         outer.addWidget(scroll)
+        self._update_sections()                                     # before any config: nothing ticked, all greyed
 
     def set_availability(self, info):
         """The machine's solvers (sysinfo): a solver that cannot run here says why on its tick box."""
@@ -157,6 +169,39 @@ class SetupTab(QWidget):
             counts[self.group_of[key]] += on
         for g, n in counts.items():
             self.sections[g].set_count(n)
+        for top, (sec, _) in self.parents.items():                  # a solver's section: its sub-sections' sum
+            sec.set_count(sum(n for g, n in counts.items() if g.split('/')[0] == top))
+
+    def _update_sections(self):
+        """A solver's section (and the shared ones) greyed while none of its solvers is ticked: auto may run
+        openEMS, mom25d and the line model."""
+        from .runner import SECTION_SOLVERS
+        ticked = {n for n, w in self.solver_boxes.items() if w.isChecked()}
+        auto = self.edits.get(f"{TICK}auto", (None,))[0]
+        if auto is not None and auto.isChecked():
+            ticked |= {'openems', 'mom25d', 'qucs', 'scikit'}
+        tops = {g.split('/')[0]: sec for g, sec in self.sections.items() if '/' not in g}
+        tops.update({t: sec for t, (sec, _) in self.parents.items()})
+        for top, sec in tops.items():
+            need = SECTION_SOLVERS.get(top)
+            if need is None:
+                continue
+            on = bool(need & ticked)
+            sec.setEnabled(on)
+            names = ', '.join(self.solver_labels.get(n, n) for n in sorted(need) if n in self.solver_labels)
+            sec.setToolTip('' if on else f"for {names}: tick it under Solvers to use these settings")
+        from .runner import ANTENNA_FIELDS
+        mode = self.edits.get('mode', (None,))[0]
+        antenna = mode is not None and mode.currentText() == 'antenna' and bool({'openems', 'mom25d'} & ticked)
+        for key in ANTENNA_FIELDS:                                  # antenna settings: antenna mode only
+            if key not in self.edits:
+                continue
+            w = self.edits[key][0]
+            w.setEnabled(antenna)
+            lab = self.field_labels.get(key)
+            if lab is not None:
+                lab.setEnabled(antenna)
+            w.setToolTip('' if antenna else "antenna mode only (Solvers: Mode = antenna, with openEMS or mom25d)")
 
     def _dump_builder(self):
         """FIELD, where (a layer, an x / y / z plane, the volume), GHz -> a spec appended to the dumps."""
@@ -249,6 +294,7 @@ class SetupTab(QWidget):
         finally:
             self._loading = loading
         self._count()
+        self._update_sections()
 
     def _set_values(self, vals):
         from ..solvers import shown, aliases
@@ -274,6 +320,7 @@ class SetupTab(QWidget):
 
     def _changed(self, *_):
         self._count()
+        self._update_sections()
         if not self._loading and not self.dirty:
             self.dirty = True
             self.win.update_title()

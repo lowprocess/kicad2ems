@@ -46,8 +46,9 @@ class LineSolver(Solver):
 
 class Qucs(LineSolver):
     name, aliases, label, backend, tool = 'qucs', ('qucsator',), 'line model (qucsator)', 'qucsator', 'qucsator'
-    options = [Option('qucsator', None, "qucsator executable (default: qucsator_rf or qucsator on PATH)", path=True,
-                      name='path', group='line model', cli=dict(metavar='PATH'))]
+    options = [Option('qucsator', None, "qucsator executable (default: the one setup.sh recorded, else qucsator_rf or "
+                      "qucsator on PATH; the GUI: Solvers and hardware)", path=True, name='path', group='line model',
+                      cli=dict(metavar='PATH'))]
 
     def check(self, s=None):
         from .fastsolve import find_qucsator

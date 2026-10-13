@@ -20,9 +20,13 @@ window never loses a run, and the GUI itself doesn't need openEMS.
 - **Status bar**: the system's memory in use, the GPU's (through `nvidia-smi` or `rocm-smi`; without them, as
   the Solvers window found it), and while a run goes the run's own memory (kicad2ems, its workers, openEMS).
   A bar turns amber above 80 % and red above 95 %.
-- **Settings** (left): one collapsible section per group. Each header shows how many settings in it are
-  set, for example `Band (3 set)`. Empty fields use the default, shown as a hint. In a narrow dock a
-  field moves under its label.
+- **Settings** (left): collapsible sections: *Board*, *Frequency*, *Solvers* (the tick boxes, the mode and
+  the driven ports), then one per solver, *openEMS* (with *Mesh*, *Run* and *Field dumps* inside) and
+  *mom25d*, and *Output* (the folder, the dump settings both solvers use, the antenna's pattern
+  frequencies). A solver's section is greyed while that solver isn't ticked (*auto* may run either), and
+  the antenna settings outside antenna mode. Each header shows how many settings in it are set, for
+  example `Band (3 set)`. Empty fields use the default, shown as a hint. In a narrow dock a field moves
+  under its label.
 - **Pages** (right): **Viewer**, **Run** and **Results**, tabbed. Drag a tab out to see two side by side
   (the Run page next to the Viewer's live field, say), or float it. A page can be closed and shown again
   from the *View* menu (back in the window if it had floated). *View > Reset layout* puts them all back.
@@ -50,7 +54,11 @@ tooltip says why.
 
 **?** beside *Solvers* (or *Help > Solvers and hardware*) opens the Solvers window: every solver with ✔
 or ✖ and what it found, the CPU, the memory and the GPU mom25d would use, and the last preview's
-estimates against what is available.
+estimates against what is available. Its *Programs* box sets where qucsator is, a setting of the machine
+rather than of a board: it goes into `~/.config/kicad2ems/site.toml`, and empty finds it on the PATH or
+where `setup.sh` recorded it.
+
+Experimental solvers (EMerge) appear only when the GUI is started with `kicad2ems-gui --experimental`.
 
 **Stop** asks the run to stop: openEMS ends at once and keeps what it has computed, mom25d ends after the
 frequency it is solving (with no result), and solvers that haven't started are skipped. Press Stop again to

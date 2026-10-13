@@ -10,8 +10,15 @@ event stream (--events, JSON lines). No Qt here, so it is testable without a dis
 import glob, json, os, sys
 
 # the option groups (options.Option.group) as the form's group boxes; others under their own name
-GUI_GROUPS = {'board': 'Board', 'band': 'Frequency', 'solvers': 'Solvers', 'output': 'Output', 'mom25d': 'Solvers',
-              'line model': 'Solvers', 'openEMS antenna mode': 'openEMS', 'openEMS field dumps': 'Field dumps'}
+GUI_GROUPS = {'board': 'Board', 'band': 'Frequency', 'solvers': 'Solvers', 'output': 'Output', 'mom25d': 'mom25d',
+              'antenna': 'Output', 'field dumps': 'Output', 'EMerge (experimental)': 'EMerge (experimental)'}
+# a section per solver, greyed while none of its solvers is ticked (auto: openEMS, mom25d and the line model may
+# run); 'openEMS/Mesh': the Mesh sub-section of openEMS's
+SECTION_SOLVERS = {'openEMS': {'openems'}, 'mom25d': {'mom25d'}, 'EMerge (experimental)': {'emerge'}}
+SECTION_ORDER = ['Board', 'Frequency', 'Solvers', 'openEMS', 'mom25d', 'EMerge (experimental)', 'Output']
+# single settings greyed unless their case holds: the antenna's in antenna mode, with a solver that has one
+ANTENNA_FIELDS = ('ff_freq',)
+# the line model's qucsator is a setting of the machine, not of a board: the Solvers and hardware window
 TICK = 'solver:'                                          # a solver's tick box: solver:<name>
 
 
@@ -37,9 +44,9 @@ def make_fields():
             if o.gui and (name is None or name in vis or name not in registry())]
     rows = [(TICK + AUTO, 'auto: fastest full-wave + line model', 'bool', 'Solvers')] + \
            [(TICK + n, sv.label, 'bool', 'Solvers') for n, sv in vis.items()] + rows
-    order = ['Board', 'Frequency', 'Solvers'] + [g for *_, g in rows if g not in ('Board', 'Frequency', 'Solvers', 'Output')]
-    rank = {g: i for i, g in enumerate(dict.fromkeys(order + ['Output']))}
-    return sorted(rows, key=lambda r: rank[r[3]])                 # stable: the option order within a group
+    rank = {g: i for i, g in enumerate(SECTION_ORDER)}
+    return sorted(rows, key=lambda r: (rank.get(r[3].split('/')[0], len(rank) - 1), r[0] != 'out'))   # the folder
+    # first in Output; otherwise stable: the option order within a section
 
 
 FIELDS = make_fields()

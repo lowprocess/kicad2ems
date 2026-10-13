@@ -143,16 +143,16 @@ class MoM25D(Solver):
                                 'uses the board edge or a finite ground)')
     options = [
         Option('mom_dmax', 0.3, "largest MoM cell along the copper, mm (default {default}; planes 3x, refined near "
-               "traces)", float, name='dmax', group=G, cli=dict(metavar='MM')),
+               "traces)", float, name='dmax', gui='Largest cell along the copper (mm)', group=G, cli=dict(metavar='MM')),
         Option('mom_port', 'auto', "auto (default): de-embedded wave ports where a straight feed allows, else lumped",
-               choices=('auto', 'wave', 'lumped'), name='port', group=G),
+               choices=('auto', 'wave', 'lumped'), name='port', gui='Ports', group=G),
         Option('mom_mesher', 'triangle', "MoM surface mesher (default triangle)", choices=('triangle', 'gmsh'),
                name='mesher', gui='MoM mesher', group=G),
         Option('mom_tiled', 'auto', "mixed precision as complex64 L L^T tiles on the GPU, no dense matrix anywhere "
                "(half the GPU memory of an LU, streamed from the host past it): auto (default) where the dense "
                "GPU solver does not fit (it is faster where it fits: 9.9 s against 14.3 s a solve on the SMA "
                "launch), on, off", choices=('auto', 'on', 'off'), name='tiled', gui='MoM tiled GPU solver', group=G),
-        Option('mom_solves', 60, "most EM solves of the adaptive sweep (default {default})", int, name='solves',
+        Option('mom_solves', 60, "most EM solves of the adaptive sweep (default {default})", int, name='solves', gui='Most EM solves of the sweep',
                group=G, cli=dict(metavar='N')),
         Option('mom_dump', [], "surface-current dumps at these frequencies (GHz): |J| maps of each signal layer, and "
                "with --dump-animate one period of Re(J e^jphi), the standing waves; the ports driven: --dump-port "

@@ -7,7 +7,7 @@ with the interpreter the runs use), and after a preview what each full-wave solv
 import glob, json, os, sys
 from PySide6.QtCore import QProcess, Qt, Signal
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTreeWidget, QTreeWidgetItem,
-                               QProgressBar, QGroupBox, QFormLayout, QHeaderView)
+                               QProgressBar, QGroupBox, QFormLayout, QHeaderView, QLineEdit)
 
 OK, NO = '✔', '✖'
 
@@ -26,6 +26,20 @@ def fit_note(need, have):
     if not need or have is None:
         return ''
     return 'fits' if need <= 0.8 * have else ('tight' if need <= have else 'does not fit')
+
+
+def _user_value(key):
+    """The user's own site.toml setting of key, or '' (the field shows it, not setup.sh's)."""
+    from .. import sitecfg
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
+    try:
+        with open(sitecfg.user_file(), 'rb') as fh:
+            return str(tomllib.load(fh).get(key) or '')
+    except (OSError, ValueError):
+        return ''
 
 
 class SystemPanel(QWidget):
@@ -51,6 +65,21 @@ class SystemPanel(QWidget):
         self.solvers.header().setSectionResizeMode(2, QHeaderView.Stretch)
         bl.addWidget(self.solvers)
         lay.addWidget(box)
+        box = QGroupBox('Programs')                                 # the machine's, not a board's: site.toml
+        pf = QFormLayout(box)
+        row = QHBoxLayout()
+        self.qucsator = QLineEdit()
+        self.qucsator.setToolTip("the line model's circuit solver (Qucs-S's qucsator_rf, or qucsator): empty finds it "
+                                 "on the PATH (or where setup.sh recorded it); saved in ~/.config/kicad2ems/site.toml")
+        self.qucsator.setText(_user_value('qucsator'))
+        self.qucsator.editingFinished.connect(self._save_programs)
+        row.addWidget(self.qucsator, 1)
+        b = QPushButton('…')
+        b.setFixedWidth(28)
+        b.clicked.connect(self._browse_qucsator)
+        row.addWidget(b)
+        pf.addRow('qucsator program', row)
+        lay.addWidget(box)
         box = QGroupBox('Hardware')
         self.hw = QFormLayout(box)
         lay.addWidget(box)
@@ -66,6 +95,23 @@ class SystemPanel(QWidget):
         self.est_tree.header().setSectionResizeMode(5, QHeaderView.Stretch)
         el.addWidget(self.est_tree)
         lay.addWidget(box, 1)
+        self.refresh()
+
+    # ---- the programs ----
+    def _browse_qucsator(self):
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(self, 'qucsator program', self.qucsator.text() or '/usr/bin')
+        if path:
+            self.qucsator.setText(path)
+            self._save_programs()
+
+    def _save_programs(self):
+        """The programs into the user's site.toml (sitecfg), then the solvers checked again."""
+        from .. import sitecfg
+        path = self.qucsator.text().strip()
+        if path == _user_value('qucsator'):
+            return
+        sitecfg.set_user('qucsator', path)
         self.refresh()
 
     # ---- the machine ----

@@ -85,7 +85,8 @@ def test_window_tabs(tmp_path):
     w.viewer.set_view('Plan')
     assert w.viewer.view() == 'Plan' and w.viewer.buttons['Plan'].isChecked()
     assert all(not s.expanded for s in w.setup.sections.values())  # settings collapsed when the window opens
-    assert 'set)' in w.setup.sections['Field dumps'].head.text()   # the dumps given above count
+    assert 'set)' in w.setup.sections['openEMS/Field dumps'].head.text()   # the dumps given above count
+    assert 'set)' in w.setup.parents['openEMS'][0].head.text()            # and in openEMS's own section
     assert {'Open', 'Save', 'Preview', 'Run', 'Stop'} <= set(w.acts)
     assert w.setup.help_btn.text() == '?' and not w.solvers_dialog.isVisible()
     w.setup.help_btn.click()                                        # ? beside Solvers: the Solvers window
@@ -671,3 +672,64 @@ def test_hidden_named_solver_kept_on_saving(tmp_path, monkeypatch):
     assert w.setup.values().get('solvers') in (None, ['auto'])
     w.hide()
     app.processEvents()
+
+
+def test_solver_sections(tmp_path):
+    """Each solver's settings in a section of its own (openEMS's in Mesh, Run and Field dumps sub-sections), the
+    shared ones apart (Antenna; the dump settings both use under Output), qucsator not a board's setting (the
+    Solvers and hardware window); a section greyed while none of its solvers is ticked."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
+    app = application()
+    w = MainWindow()
+    st = w.setup
+    if not any(b.isChecked() for b in st.solver_boxes.values()) and not st.edits['solver:auto'][0].isChecked():
+        assert not st.parents['openEMS'][0].isEnabled() and not st.sections['mom25d'].isEnabled()   # first launch
+        assert not st.edits['ff_freq'][0].isEnabled()
+    assert st.group_of['res'] == 'openEMS/Mesh' and st.group_of['mom_dmax'] == 'mom25d'
+    assert st.group_of['excite'] == 'Solvers' and st.group_of['ff_freq'] == 'Output' and 'Antenna' not in st.sections
+    assert st.group_of['dump_port'] == st.group_of['dump_animate'] == 'Output'
+    assert 'qucsator' not in st.group_of and 'Line model' not in st.sections and 'Field dumps' not in st.sections
+    assert 'mom_dmax' not in [k for k, g in st.group_of.items() if g == 'Solvers']
+    assert w.system.qucsator.text() == ''                           # the Solvers window's, empty: the PATH's
+    st.set_values(dict(board='b.kicad_pcb', solvers=['mom25d']))
+    oems, mom = st.parents['openEMS'][0], st.sections['mom25d']
+    assert not oems.isEnabled() and mom.isEnabled() and 'openEMS' in oems.toolTip()
+    assert st.sections['Output'].isEnabled() and not st.edits['ff_freq'][0].isEnabled()    # S-parameters: no pattern
+    st.edits['mode'][0].setCurrentText('antenna')
+    assert st.edits['ff_freq'][0].isEnabled() and st.field_labels['ff_freq'].isEnabled()
+    st.solver_boxes['openems'].setChecked(True)
+    assert oems.isEnabled()
+    st.set_values(dict(board='b.kicad_pcb'))                        # auto: openEMS, mom25d and the line model may run
+    assert oems.isEnabled() and mom.isEnabled()
+    w.hide()
+    app.processEvents()
+
+
+def test_solvers_window_saves_qucsator(tmp_path, monkeypatch):
+    """The Solvers and hardware window's qucsator field: saved for the user (sitecfg), then the solvers checked
+    again; emptied, the PATH's again."""
+    pytest.importorskip('PySide6')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
+    from kicad2ems import sitecfg
+    monkeypatch.setattr(sitecfg, '_cache', None)
+    from kicad2ems.gui import application
+    from kicad2ems.gui.systempanel import SystemPanel
+    app = application()
+    p = SystemPanel()
+    p.stop()
+    checks = []
+    monkeypatch.setattr(p, 'refresh', lambda: checks.append(1))
+    p.qucsator.setText('/opt/qucs/bin/qucsator_rf')
+    p._save_programs()
+    assert sitecfg.get('qucsator') == '/opt/qucs/bin/qucsator_rf' and checks == [1]
+    p._save_programs()                                              # unchanged: no new check
+    assert checks == [1]
+    p.qucsator.setText('')
+    p._save_programs()
+    assert sitecfg.get('qucsator') is None and checks == [1, 1]
+    monkeypatch.setattr(sitecfg, '_cache', None)

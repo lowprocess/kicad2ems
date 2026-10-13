@@ -137,7 +137,7 @@ CORE = [
     Option('no_report', False, "do not write <name>_report.html", bool, group='output'),
     Option('dump_animate', None, "frequency-domain dumps (openEMS --dump ...@GHz, mom25d --mom-dump): also write one "
            "period of Re(F e^jphi) at each frequency, the standing waves: gif or mp4 (mp4 needs ffmpeg)",
-           choices=('gif', 'mp4'), gui='Animate frequency-domain dumps (gif / mp4; empty: no)', group='output'),
+           choices=('gif', 'mp4'), gui='Animate frequency-domain dumps (gif / mp4; empty: no)', group='field dumps'),
     Option('events', None, "also write the run as JSON lines (stages, log, progress, files) to FILE, for a GUI or a "
            "script", path=True, group='output', cli=dict(metavar='FILE')),
     Option('out', None, "output folder (default: out next to the board; for the <name>_board.json of an earlier run, "

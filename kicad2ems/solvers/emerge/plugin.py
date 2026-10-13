@@ -64,21 +64,21 @@ class EMerge(Solver):
                         cavity='yes', antenna='no')
     options = [
         Option('emerge_python', None, "the Python EMerge is installed in (default: $KICAD2EMS_EMERGE_PYTHON, else "
-               "this one); EMerge 2.5+ needs Python <= 3.13", path=True, name='python', group=G,
+               "this one); EMerge 2.5+ needs Python <= 3.13", path=True, name='python', gui='Python with EMerge', group=G,
                cli=dict(metavar='PATH')),
         Option('emerge_points', 11, "frequencies EMerge solves, spread over the band; a rational fit through them "
-               "gives the run's points (default {default})", int, name='points', group=G, cli=dict(metavar='N')),
+               "gives the run's points (default {default})", int, name='points', gui='Frequencies solved', group=G, cli=dict(metavar='N')),
         Option('emerge_res', 0.2, "EMerge's mesh resolution: the largest element as a fraction of the wavelength "
-               "(default {default})", float, name='res', group=G),
+               "(default {default})", float, name='res', gui='Resolution (fraction of a wavelength)', group=G),
         Option('emerge_cell', None, "mm, the mesh size along copper edges and on ports (default: the narrowest port "
-               "trace / 2)", float, name='cell', group=G, cli=dict(metavar='MM')),
+               "trace / 2)", float, name='cell', gui='Cell along copper (mm, empty: auto)', group=G, cli=dict(metavar='MM')),
         Option('emerge_margin', 3.0, "mm of air on every side of the board (default {default})", float,
-               name='margin', group=G, cli=dict(metavar='MM')),
+               name='margin', gui='Air on every side (mm)', group=G, cli=dict(metavar='MM')),
         Option('emerge_bc', 'abc', "outer boundary: abc (absorbing, default) or pec (a closed metal box, its floor "
                "the bottom plane when that is solid, as openEMS's --bc PEC)",
-               choices=('abc', 'pec'), name='bc', group=G),
+               choices=('abc', 'pec'), name='bc', gui='Outer boundary', group=G),
         Option('emerge_workers', 1, "frequencies solved at once (default {default}); each needs the memory of a "
-               "whole solve (4.4 GB on the 34 mm microstrip thru)", int, name='workers', group=G,
+               "whole solve (4.4 GB on the 34 mm microstrip thru)", int, name='workers', gui='Frequencies at once', group=G,
                cli=dict(metavar='N')),
     ]
 
