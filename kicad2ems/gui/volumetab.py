@@ -221,6 +221,9 @@ class VolumeTab(QWidget):
         self.far_up.setSingleStep(1)
         self.far_up.setSuffix(' mm')
         self.far_up.setToolTip("how far above the board's top surface the pattern's centre is drawn (on screen)")
+        from .steering import SteeringBar
+        self.steer = SteeringBar(compact=True)                      # the Results page's, linked (app.py)
+        self.steer.steered.connect(lambda *_: self._far_on())
         from ..solvers import shown
         self.mesh.setToolTip("a solver's discretisation of the board (written by a preview or a run): openEMS's "
                              "grid lines, mom25d's triangles" + (", EMerge's element faces on the copper and ports"
@@ -263,7 +266,8 @@ class VolumeTab(QWidget):
                   ('Board', True, (('Height scale', self.zscale), ('', self.copper), ('Copper shown', self.cu_t),
                                    ('', self.boxc), ('Mesh', self.mesh), ('', self.lines_on),
                                    ('Z0 relief', self.relief), ('', self.parts_on))),
-                  ('Far field', True, (('Pattern', self.far), ('Size', self.far_size), ('Height', self.far_up))))
+                  ('Far field', True, (('Pattern', self.far), ('Size', self.far_size), ('Height', self.far_up),
+                                       ('', self.steer))))
         self.sections = {}
         for title, open_, rows in groups:
             box = QWidget()
@@ -507,6 +511,12 @@ class VolumeTab(QWidget):
             o[2] = z * zs + top + 0.01
         it.setTransform(QMatrix4x4(eu[0], ev[0], en[0], o[0], eu[1], ev[1], en[1], o[1],
                                    eu[2], ev[2], en[2], o[2], 0, 0, 0, 1))
+
+    def _far_on(self):
+        """Steering from this view with no pattern shown: the pattern frequency's."""
+        if self.far.currentData() is None and self.ant is not None and self.far.count() > 1:
+            f0 = self.ant[0].get('f_pattern', self.ant[1]['freq'][0])
+            self.far.setCurrentIndex(1 + int(np.argmin(np.abs(np.asarray(self.ant[1]['freq']) - f0))))
 
     def set_far(self, res, sph):
         """A new pattern of the folder's antenna (a steered drive): only the far field redrawn."""

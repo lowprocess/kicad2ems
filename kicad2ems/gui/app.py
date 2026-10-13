@@ -547,8 +547,9 @@ class ResultsTab(QWidget):
         lay.addLayout(top)
         from .steering import SteeringBar
         self.steer = SteeringBar()
-        self.steer.steered.connect(self._steered)
         lay.addWidget(self.steer)
+        self.steers = []
+        self.link_steering(self.steer)
         self.splot = SPlot()
         self.splot.layout_changed.connect(self._save_layout)
         lay.addWidget(self.splot, 1)
@@ -626,7 +627,8 @@ class ResultsTab(QWidget):
             arr = None
         self.splot.set_antenna(res, sph)                            # first: the plots' antenna options exist then
         self._restore_layout('antenna' if res else 'sparams')
-        self.steer.set_data(res, arr)
+        for b in self.steers:
+            b.set_data(res, arr)
         if res:
             m = res['match']
             bw = (f", −10 dB band {m['bw10_lo'] / 1e9:.3f}–{m['bw10_hi'] / 1e9:.3f} GHz" if m.get('bw10') else
@@ -636,12 +638,22 @@ class ResultsTab(QWidget):
                               f"{'+' if m['zin'][1] >= 0 else '−'} j{abs(m['zin'][1]):.1f} Ω{bw}")
         return bool(res)
 
-    def _steered(self, res, sphere):
-        """A steered drive (the Beam steering bar): the antenna plots and the 3D view's pattern."""
+    def link_steering(self, bar):
+        """A Beam steering bar (this page's, the 3D view's): every bar shows the same drive, and steering any
+        redraws the antenna plots and the 3D pattern."""
+        self.steers.append(bar)
+        bar.steered.connect(lambda res, sphere, src=bar: self._steered(res, sphere, src))
+        bar.anim.toggled.connect(lambda on, src=bar: [b.follow_animation(on) for b in self.steers if b is not src])
+
+    def _steered(self, res, sphere, src=None):
+        """A steered drive (a Beam steering bar): the antenna plots, the 3D view's pattern, the other bars."""
         self.splot.update_antenna(res, sphere)
         vol = getattr(self.win, 'volume', None)
-        if vol is not None:
+        if vol is not None and hasattr(vol, 'set_far'):
             vol.set_far(res, sphere)
+        for b in self.steers:
+            if b is not src:
+                b.mirror(src)
 
     def show(self, files, compare=None):
         """The S-parameters of a run's files (openEMS, mom25d, line model) and a compare file."""
@@ -705,6 +717,8 @@ class MainWindow(QMainWindow):
         self.setup, self.runtab, self.results = SetupTab(self), RunTab(self), ResultsTab(self)
         self.viewer = Viewer(self)
         self.fields, self.volume = self.viewer.cuts, self.viewer.volume      # the field views, inside the viewer
+        if getattr(self.volume, 'steer', None) is not None:          # its Far field section steers too
+            self.results.link_steering(self.volume.steer)
         self.system = SystemPanel()                                 # the Solvers window's content: checked now,
         self.system.ready.connect(self.setup.set_availability)      # so the tick boxes can say what cannot run
         self.meters = MemoryMeters()                                # the status bar: RAM, GPU, the run's memory

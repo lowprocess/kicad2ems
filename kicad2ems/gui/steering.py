@@ -5,9 +5,10 @@ a phase step added from each driven port to the next, recombined at once, withou
 (gain over frequency, the far-field cuts) and the 3D view's pattern follow; Animate sweeps the step back and
 forth.
 
-    bar = SteeringBar()
+    bar = SteeringBar()              # compact=True: stacked, for the 3D view's side panel
     bar.set_data(res, data)          # the antenna result (JSON dict) and phased.load's data, or None: hidden
     bar.steered.connect(lambda res, sphere: ...)
+    other.mirror(bar)                # another bar showing the same drive and step (the Results page's, the 3D view's)
 """
 import numpy as np
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -23,7 +24,7 @@ ANIM_DEG = 3            # the step's change per frame
 class SteeringBar(QGroupBox):
     steered = Signal(object, object)                                # (antenna result, sphere) of the drive
 
-    def __init__(self):
+    def __init__(self, compact=False):
         super().__init__('Beam steering')
         self.setToolTip("Each port's far field was kept: any drive is their sum (exact, with the coupling between "
                         "the elements), recombined without solving again")
@@ -36,6 +37,9 @@ class SteeringBar(QGroupBox):
                               "waves; the ports not named are terminated), e.g. P1@0, P2=0.5@90")
         self.drive.editingFinished.connect(self.update)
         row.addWidget(self.drive, 2)
+        if compact:                                                 # a narrow side panel: a row each
+            lay.addLayout(row)
+            row = QHBoxLayout()
         row.addWidget(QLabel('Phase step'))
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(-STEP_MAX, STEP_MAX)
@@ -47,8 +51,17 @@ class SteeringBar(QGroupBox):
         self.slider.valueChanged.connect(self.spin.setValue)
         self.spin.valueChanged.connect(self.slider.setValue)
         self.spin.valueChanged.connect(lambda *_: self.update())
-        row.addWidget(self.slider, 3)
-        row.addWidget(self.spin)
+        if compact:                                                 # the slider on a row of its own
+            row.addWidget(self.spin)
+            lay.addLayout(row)
+            row = QHBoxLayout()
+            row.addWidget(self.slider)
+        else:
+            row.addWidget(self.slider, 3)
+            row.addWidget(self.spin)
+        if compact:
+            lay.addLayout(row)
+            row = QHBoxLayout()
         self.anim = QPushButton('Animate')
         self.anim.setCheckable(True)
         self.anim.setToolTip(f"sweep the phase step back and forth over ±{STEP_MAX}°")
@@ -58,6 +71,8 @@ class SteeringBar(QGroupBox):
         self.reset.setToolTip("the run's drive, no phase step")
         self.reset.clicked.connect(self._reset)
         row.addWidget(self.reset)
+        if compact:
+            row.addStretch(1)
         lay.addLayout(row)
         self.readout = QLabel()
         self.readout.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -87,6 +102,26 @@ class SteeringBar(QGroupBox):
         self.spin.blockSignals(False)
         self.slider.blockSignals(False)
         self.update(emit=emit)
+
+    def mirror(self, other):
+        """Show another bar's drive and phase step (its plots are already drawn: nothing emitted)."""
+        if self.data is None:
+            return
+        self.drive.setText(other.drive.text())
+        self.spin.blockSignals(True)
+        self.slider.blockSignals(True)
+        self.spin.setValue(other.spin.value())
+        self.slider.setValue(other.spin.value())
+        self.spin.blockSignals(False)
+        self.slider.blockSignals(False)
+        self.update(emit=False)
+
+    def follow_animation(self, on):
+        """Another bar started or stopped Animate: the button shows it, this bar's own timer stays off."""
+        self.timer.stop()
+        self.anim.blockSignals(True)
+        self.anim.setChecked(on)
+        self.anim.blockSignals(False)
 
     def weights(self):
         """The incident waves of the drive and the phase step; ValueError for a drive that does not parse."""

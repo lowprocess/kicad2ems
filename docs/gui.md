@@ -207,7 +207,8 @@ then a sum of those fields, recombined at once without solving again:
 
 The line below gives the beam's direction, its gain and realized gain, and each driven port's active
 reflection. The gain and efficiency plots, the far-field cuts and the Viewer's 3D pattern follow the
-steering.
+steering. The Viewer's 3D view has the same controls in its *Far field* section; the two stay in step, so
+the beam can be steered or animated from either.
 
 ---
 [← Usage](usage.md) · [Index](index.md) · [Next: Examples →](examples.md)

@@ -764,6 +764,16 @@ def test_beam_steering_bar(tmp_path, monkeypatch):
     bar.spin.setValue(60)
     assert got and got[-1]['drive'] == ['P1@0', 'P2@60'] and got[-1]['peak']['theta'] > 10
     assert w.results.splot.antenna['peak'] == got[-1]['peak']        # the plots show the steered drive
+    vb = getattr(w.volume, 'steer', None)                            # the 3D view's bar (with PyOpenGL)
+    if vb is not None:
+        assert vb.data is not None and vb.spin.value() == 60 and vb.readout.text() == bar.readout.text()
+        vb.spin.setValue(-30)                                        # steered from the 3D view: this page follows
+        assert bar.spin.value() == -30 and w.results.splot.antenna['drive'] == ['P1@0', 'P2@-30']
+        vb.anim.setChecked(True)                                     # one timer runs, both buttons show it
+        assert vb.timer.isActive() and bar.anim.isChecked() and not bar.timer.isActive()
+        bar.anim.setChecked(False)
+        assert not vb.timer.isActive() and not vb.anim.isChecked()
+        bar.spin.setValue(60)
     bar.anim.setChecked(True)
     bar._frame()
     assert bar.spin.value() == 63
