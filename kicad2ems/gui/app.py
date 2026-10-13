@@ -317,9 +317,7 @@ class SetupTab(QWidget):
         if board and not os.path.exists(board):
             notes = notes + [f"board not found: {board} (generated examples: see the commands at the top of the file)"]
         self.win.statusBar().showMessage('; '.join(notes) if notes else f"opened {path}", 0 if notes else 5000)
-        out = self.win.out_dir()
-        if os.path.isdir(out):                                     # earlier results of this config
-            self.win.open_results(out, quiet=True)
+        self.win.board_loaded()                                     # its last run, and a fresh preview
         return True
 
     def save(self):
@@ -661,7 +659,11 @@ class MainWindow(QMainWindow):
             d = QDockWidget(name, self.work)
             d.setObjectName(name)
             d.setWidget(w)
-            d.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
+            # closable: a page can be hidden and shown again (View menu); not closable, a floated page the window
+            # manager closed (or that went behind the window) had no way back, its View action disabled
+            d.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable |
+                          QDockWidget.DockWidgetClosable)
+            d.topLevelChanged.connect(lambda floating, d=d: floating and QTimer.singleShot(100, lambda: self._fit_floating(d)))
             self.work.addDockWidget(Qt.TopDockWidgetArea, d)
             if self.docks:
                 self.work.tabifyDockWidget(self.docks[PANELS[0]], d)
@@ -760,6 +762,14 @@ class MainWindow(QMainWindow):
             self.acts[name] = a
         self.acts['Stop'].setEnabled(False)
         self.acts['Report'].setEnabled(False)
+        self.runs_box = QComboBox()                                 # whose results the pages show
+        self.runs_box.setToolTip("the results the Viewer and Results pages show: this board's preview, or one of "
+                                 "its runs (each in its own folder: <board>_<date>_<time>)")
+        self.runs_box.setMinimumWidth(260)
+        self.runs_box.activated.connect(lambda i: self._pick_run(self.runs_box.itemData(i)))
+        tb.addSeparator()
+        tb.addWidget(QLabel(' Results of '))
+        tb.addWidget(self.runs_box)
         self.est_btn = EstimateButton()                             # beside Run / Stop: what a run would take
         self.est_btn.clicked.connect(self.show_solvers)
         acts = tb.actions()
@@ -767,11 +777,23 @@ class MainWindow(QMainWindow):
         self.addToolBar(Qt.TopToolBarArea, tb)
 
     def show_panel(self, name, front=True):
-        """Open a page (it may have been closed) and, front: bring it to the front of its tab group."""
+        """Open a page (it may have been closed) and, front: bring it to the front of its tab group. A floated page
+        that was closed comes back docked: on Wayland a separate window can't be raised or placed by the app."""
         d = self.docks[name]
+        if d.isFloating() and not d.isVisible():
+            d.setFloating(False)
         d.show()
         if front:
             d.raise_()
+
+    def _fit_floating(self, d):
+        """A page just floated: at most 80 % of the screen, centred on the window (a floated page as wide as the
+        whole workspace could open partly off the screen)."""
+        scr = (self.screen() or d.screen()).availableGeometry()
+        w, h = min(d.width(), int(0.8 * scr.width())), min(d.height(), int(0.8 * scr.height()))
+        d.resize(w, h)
+        c = self.frameGeometry().center()
+        d.move(max(scr.x(), min(c.x() - w // 2, scr.right() - w)), max(scr.y(), min(c.y() - h // 2, scr.bottom() - h)))
 
     def show_solvers(self):
         """The Solvers window: what can run here, the GPU, the memory, the last preview's estimates."""
@@ -806,7 +828,9 @@ class MainWindow(QMainWindow):
         vm = self.menuBar().addMenu('&View')
         vm.addAction(self.settings_dock.toggleViewAction())
         for name in PANELS:
-            vm.addAction(self.docks[name].toggleViewAction())
+            a = self.docks[name].toggleViewAction()
+            a.triggered.connect(lambda on, d=self.docks[name]: on and d.isFloating() and d.setFloating(False))  # back, docked
+            vm.addAction(a)
         vm.addSeparator()
         for name in VIEWS:
             a = QAction(f"Viewer: {name}", self)
@@ -928,6 +952,51 @@ class MainWindow(QMainWindow):
         if not quiet and not (files or seen or ant):
             QMessageBox.information(self, 'Results', f"No results in {out_dir}")
 
+    # ---- this board's runs: a folder each (runfolders.py) ----
+    def board_loaded(self):
+        """A config was opened: its newest run into the pages, and a preview to show the board as it is now (the
+        Viewer then shows the preview; the toolbar's Results of picks a run instead)."""
+        from .runfolders import preview_dir
+        rs = self.refresh_runs()
+        board = self.setup.values().get('board')
+        if rs:
+            self.open_results(rs[0][0], quiet=True)
+        else:                                                       # nothing of the last board left in the pages
+            self.results.load_antenna(None)
+            self.results.show([])
+            self.viewer.load(preview_dir(self.out_dir(), board) if board else os.path.join(os.getcwd(), 'out', '-'))
+        QTimer.singleShot(0, self._auto_preview)
+
+    def _auto_preview(self):
+        """The preview a newly opened config gets: only in a window on the screen (not a test's), when idle."""
+        board = self.setup.values().get('board')
+        if self.isVisible() and board and os.path.exists(board) and self.proc is None:
+            self.preview()
+
+    def refresh_runs(self, select=None):
+        """The Results of choice: this board's preview and runs, the newest first; select: the folder to show
+        as chosen. Returns the runs [(folder, label)]."""
+        from .runfolders import runs, preview_dir
+        vals = self.setup.values()
+        board = vals.get('board')
+        base = self.out_dir(vals)
+        rs = runs(base, board) if board else []
+        self.runs_box.blockSignals(True)
+        self.runs_box.clear()
+        pv = preview_dir(base, board) if board else None
+        if pv and os.path.isdir(pv):
+            self.runs_box.addItem('preview', pv)
+        for d, label in rs:
+            self.runs_box.addItem(f"run {label}", d)
+        i = self.runs_box.findData(select) if select else -1
+        self.runs_box.setCurrentIndex(i if i >= 0 else 0)
+        self.runs_box.blockSignals(False)
+        return rs
+
+    def _pick_run(self, folder):
+        if folder and os.path.isdir(folder):
+            self.open_results(folder, quiet=True)
+
     def out_dir(self, vals=None):
         """The output folder: the form's, else 'out' next to the board (where a run writes), else in the working
         directory."""
@@ -949,7 +1018,9 @@ class MainWindow(QMainWindow):
         if not preview and vals.get('solvers') == []:
             QMessageBox.warning(self, 'Setup', 'Choose a solver: openEMS, mom25d or the line model (or Preview)')
             return
-        self.current = Run(vals, self.out_dir(vals), preview)
+        from .runfolders import run_dir, preview_dir
+        base = self.out_dir(vals)                                   # each run in a folder of its own
+        self.current = Run(vals, preview_dir(base, vals['board']) if preview else run_dir(base, vals['board']), preview)
         self.files, self._traceback, self._stopping = [], False, False
         self.runtab.reset()
         self.tail = EventTail(self.current.events)
@@ -1034,6 +1105,7 @@ class MainWindow(QMainWindow):
         if has_s or not self.current.preview:
             self.results.show(self.files)                            # a preview: the solvers it runs (the line model)
         seen = self.viewer.load(out)
+        self.refresh_runs(select=out)
         self.acts['Report'].setEnabled(bool(self.results.report))
         if self.current.preview and self.system.load_estimates(out):
             self.new_estimates(self.system.est)

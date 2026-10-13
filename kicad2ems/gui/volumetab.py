@@ -78,6 +78,69 @@ def _view_class(gl):
     return View
 
 
+class FrameSlider(QWidget):
+    """The frame (a time step or a frequency) as a slider with the frame's label beside it; the methods of the
+    QComboBox it replaced (currentIndex, setCurrentIndex, addItems, clear, count, currentIndexChanged)."""
+    from PySide6.QtCore import Signal
+    currentIndexChanged = Signal(int)
+
+    def __init__(self):
+        super().__init__()
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setRange(0, 0)
+        self.label = QLabel('')
+        self.label.setMinimumWidth(90)
+        lay.addWidget(self.slider, 1)
+        lay.addWidget(self.label)
+        self.labels = []
+        self.slider.valueChanged.connect(self._moved)
+
+    def _moved(self, i):
+        self.label.setText(self.labels[i] if 0 <= i < len(self.labels) else '')
+        if not self.signalsBlocked():
+            self.currentIndexChanged.emit(i)
+
+    def clear(self):
+        self.labels = []
+        self.slider.blockSignals(True)
+        self.slider.setRange(0, 0)
+        self.slider.blockSignals(False)
+        self.label.setText('')
+
+    def addItems(self, labels):
+        self.labels += list(labels)
+        self.slider.blockSignals(True)
+        self.slider.setRange(0, max(0, len(self.labels) - 1))
+        self.slider.blockSignals(False)
+        self._moved(self.slider.value()) if not self.signalsBlocked() else self.label.setText(
+            self.labels[self.slider.value()] if self.labels else '')
+        self.slider.setEnabled(len(self.labels) > 1)
+
+    def count(self):
+        return len(self.labels)
+
+    def currentText(self):
+        i = self.currentIndex()
+        return self.labels[i] if i >= 0 else ''
+
+    def currentIndex(self):
+        return self.slider.value() if self.labels else -1
+
+    def setCurrentIndex(self, i):
+        if not self.labels:
+            return
+        i = max(0, min(int(i), len(self.labels) - 1))
+        if i == self.slider.value():
+            self.label.setText(self.labels[i])
+            return
+        self.slider.blockSignals(self.signalsBlocked())
+        self.slider.setValue(i)
+        self.slider.blockSignals(False)
+        self.label.setText(self.labels[i])
+
+
 class VolumeTab(QWidget):
     def __init__(self, win=None):
         super().__init__()
@@ -96,7 +159,7 @@ class VolumeTab(QWidget):
             return
         side = QVBoxLayout()
         self.dump = QComboBox()
-        self.frame = QComboBox()
+        self.frame = FrameSlider()
         self.comp = QComboBox()
         self.comp.addItems(['|F|', 'Fx', 'Fy', 'Fz'])
         self.cmap = QComboBox()

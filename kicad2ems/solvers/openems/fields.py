@@ -116,8 +116,8 @@ class DumpSource:
     @property
     def label(self):
         lab = self.meta.get('label') or self.name
-        who = '' if self.solver == 'openems' else f"{self.solver} "
-        return f"{who}{self.run}: {self.field} {lab} ({'time' if self.domain == 'TD' else 'frequency'} domain)"
+        who = {'openems': 'openEMS'}.get(self.solver, self.solver)   # which solver: both can have dumps in a folder
+        return f"{who} {self.run}: {self.field} {lab} ({'time' if self.domain == 'TD' else 'frequency'} domain)"
 
     def refresh(self):
         """Pick up new frames (time domain: during a run, the newest file may still be being written)."""

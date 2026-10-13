@@ -587,3 +587,26 @@ def test_parts_in_the_viewer(wilkinson_preview):
     assert f"ln{strip}" not in vol.items                            # no line-model strip inside the chip
     vol.parts_on.setChecked(False)
     assert not any(k.startswith('part') for k in vol.items) and f"ln{strip}" in vol.items
+
+
+def test_run_folders(tmp_path):
+    """Each GUI run in a folder of its own (<board>_<date>_<time>), a preview in <board>_preview; a board's runs
+    are only its own, the newest first, and only those that wrote a summary."""
+    import datetime
+    from kicad2ems.gui.runfolders import run_dir, preview_dir, runs, board_name
+    base = str(tmp_path)
+    assert board_name('/x/rf_coupler.kicad_pcb') == 'rf_coupler' and board_name('a/b_board.json') == 'b'
+    t = datetime.datetime(2026, 10, 13, 14, 15, 2)
+    d1 = run_dir(base, 'x/rf_coupler.kicad_pcb', t)
+    d2 = run_dir(base, 'x/rf_coupler.kicad_pcb', t + datetime.timedelta(minutes=5))
+    other = run_dir(base, 'x/rf_coupler2.kicad_pcb', t)              # another board, a name that starts the same
+    assert os.path.basename(d1) == 'rf_coupler_20261013_141502'
+    assert preview_dir(base, 'x/rf_coupler.kicad_pcb') == os.path.join(base, 'rf_coupler_preview')
+    for d, solvers in ((d1, ['openems']), (d2, ['mom25d', 'qucs']), (other, ['openems'])):
+        os.makedirs(d)
+        name = os.path.basename(d).rsplit('_', 2)[0]
+        json.dump(dict(solvers=solvers), open(os.path.join(d, f"{name}_run.json"), 'w'))
+    os.makedirs(run_dir(base, 'x/rf_coupler.kicad_pcb', t + datetime.timedelta(hours=1)))   # stopped: no summary
+    rs = runs(base, 'x/rf_coupler.kicad_pcb')
+    assert [d for d, _ in rs] == [d2, d1]
+    assert rs[0][1] == '2026-10-13 14:20:02 (mom25d, qucs)'

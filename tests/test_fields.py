@@ -197,3 +197,16 @@ def test_grid_dumps_next_to_openems(run_folder, tmp_path):
     from PIL import Image
     assert [os.path.basename(p) for _, p in files] == ['j_2GHz.png', 'j_2GHz.gif', 'j_4GHz.png', 'j_4GHz.gif']
     assert Image.open(files[1][1]).n_frames == 6
+
+
+def test_dumps_of_both_solvers_are_listed(tmp_path):
+    """A folder with openEMS's and mom25d's dumps: both are found, openEMS's first, each label naming its
+    solver (the Viewer's 3D and Cut lists offer both)."""
+    import json
+    from kicad2ems.solvers.openems.fields import find_dumps
+    for solver, name in (('openems', 'dump_E_F_Cu_fd'), ('mom25d', 'dump_J_F_Cu_fd')):
+        d = tmp_path / solver / 'exc_P1'
+        d.mkdir(parents=True)
+        json.dump(dict(dumps=[dict(name=name, freqs=[2.4e9])]), open(d / 'dump_info.json', 'w'))
+    labels = [s.label for s in find_dumps(str(tmp_path))]
+    assert len(labels) == 2 and labels[0].startswith('openEMS P1: ') and labels[1].startswith('mom25d P1: ')

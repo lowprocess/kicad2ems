@@ -13,7 +13,8 @@ window never loses a run, and the GUI itself doesn't need openEMS.
 ## The window
 
 - **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, the run's estimate, open a results folder, open
-  the report. The estimate (after a preview) is the time and memory of the full-wave solvers ticked, or the one
+  the report, and *Results of*: whose results the pages show, this board's preview or one of its runs
+  ([below](#run-folders)). The estimate (after a preview) is the time and memory of the full-wave solvers ticked, or the one
   *auto* would pick, for example `~4 min · 1.3 GB` over `mom25d (auto)`. It is grey once other settings change
   (preview again), red when it won't fit in the memory available, and opens the Solvers window.
 - **Status bar**: the system's memory in use, the GPU's (through `nvidia-smi` or `rocm-smi`; without them, as
@@ -23,10 +24,18 @@ window never loses a run, and the GUI itself doesn't need openEMS.
   set, for example `Band (3 set)`. Empty fields use the default, shown as a hint. In a narrow dock a
   field moves under its label.
 - **Pages** (right): **Viewer**, **Run** and **Results**, tabbed. Drag a tab out to see two side by side
-  (the Run page next to the Viewer's live field, say), or float it. *View > Reset layout* puts them back.
+  (the Run page next to the Viewer's live field, say), or float it. A page can be closed and shown again
+  from the *View* menu (back in the window if it had floated). *View > Reset layout* puts them all back.
 
 The pages come to the front when they have something new: the Run page when a run starts, the Viewer when a
 preview ends, the Results page when a run ends.
+
+<a id="run-folders"></a>
+**Where results go.** Each run from the GUI gets a folder of its own under the output folder, named after the
+board and when it started: `<out>/<board>_20261013_104514/`. A preview goes to `<out>/<board>_preview/`, which
+each preview refreshes. A folder so only ever holds one board's results. Opening a config shows its newest
+run on the Results page and starts a preview, so the Viewer shows the board as it is now; *Results of* picks
+an earlier run instead.
 
 The window remembers its size and position, where the docks and pages are, the splitters, and the plots of
 the Results page, from one session to the next.
@@ -57,8 +66,8 @@ Saving over an existing config **keeps the file as it was**: comments, key order
 GUI doesn't know all stay. Only the changed values are rewritten. Paths are saved relative to the
 config. Settings that have no field in the form are kept and passed on to runs.
 
-Each run writes `<out>/gui_run.toml`, so you can repeat it from a terminal with
-`kicad2ems <out>/gui_run.toml`. Runs start in the output folder.
+Each run writes `gui_run.toml` into its folder, so you can repeat it from a terminal with
+`kicad2ems <folder>/gui_run.toml`. Runs start in their folder.
 
 <a id="viewer"></a>
 ## The Viewer
@@ -134,7 +143,7 @@ Cut view can follow it live while openEMS runs. A dump with frequencies is writt
 | Component | \|F\| or the x, y or z component |
 | Cut normal to | for a volume, the plane to show |
 | log scale, auto range | the colour scale |
-| Frame, Play | step through time frames or frequencies |
+| Frame (a slider), Play | step through time frames or frequencies |
 | instantaneous, phase | for a frequency dump: the field at a phase of the cycle; *Play* turns it |
 | Live | follow a running simulation |
 | Save PNG / GIF / MP4 | the view or an animation (MP4 needs ffmpeg) |
