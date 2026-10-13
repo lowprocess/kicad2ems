@@ -178,7 +178,10 @@ def test_saved_animations(volume_run, board, tmp_path, monkeypatch):
     tops = [v3.levels([v3.Volume(w2.src, k, n=w2.res.value()).scalar('mag')], False, False, clip=w2.clip.value())[1]
             for k in range(4)]
     assert top == pytest.approx(max(tops), rel=1e-3)
-    from kicad2ems.solvers.openems.fields import write_frames
     from PIL import Image
-    p = write_frames(imgs, str(tmp_path / 'a.gif'))
-    assert Image.open(p).n_frames == 4
+    w2.every.setValue(2)                                             # every other time step, at 5 fps
+    w2.fps.setValue(5)
+    p = w2.save(str(tmp_path / 'a.gif'))
+    assert Image.open(p).n_frames == 2 and Image.open(p).info['duration'] == 200
+    assert [t for t, _ in shown[-2:]] == [0, 2] and w2.timer.interval() == 200
+    assert not w.every.isEnabled() and w2.every.isEnabled()          # frequency domain: its period

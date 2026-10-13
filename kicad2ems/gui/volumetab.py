@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QFormLayout, Q
 from .. import volume3d as v3
 
 N_PHASE = 24
-MAX_SAVED = 120        # time steps in a saved animation of a time-domain dump (evenly spaced)
 
 
 def gl_module():
@@ -239,6 +238,15 @@ class VolumeTab(QWidget):
         self.play_btn = QPushButton('Play')
         self.play_btn.setCheckable(True)
         self.play_btn.toggled.connect(self._play)
+        self.fps = QSpinBox()                                       # as the Cut view's
+        self.fps.setRange(1, 60)
+        self.fps.setValue(12)
+        self.fps.setToolTip('frames per second of Play and of saved animations')
+        self.fps.valueChanged.connect(lambda v: self.timer.setInterval(int(1000 / v)))
+        self.every = QSpinBox()
+        self.every.setRange(1, 1000)
+        self.every.setToolTip('Time domain: every n-th time step, for Play and saved animations (set for a long '
+                              'dump to about 120 frames)')
         saves = QHBoxLayout()
         for ext in ('gif', 'mp4'):
             b = QPushButton(f"Save {ext.upper()}")
@@ -266,7 +274,8 @@ class VolumeTab(QWidget):
         groups = (('Field', True, (('Dump', self.dump), ('Frame', self.frame), ('Show', self.comp),
                                    ('Colours', self.cmap), ('', self.envelope), ('', self.whole), ('', self.log),
                                    ('Decades', self.decades), ('Range top', self.clip), ('Opacity', self.opacity),
-                                   ('Fade (gamma)', self.gamma), ('Resolution', self.res), ('', self.play_btn),
+                                   ('Fade (gamma)', self.gamma), ('Resolution', self.res), ('fps', self.fps),
+                                   ('Every n-th frame', self.every), ('', self.play_btn),
                                    ('', saves))),
                   ('Board', True, (('Height scale', self.zscale), ('', self.copper), ('Copper shown', self.cu_t),
                                    ('', self.boxc), ('Mesh', self.mesh), ('', self.lines_on),
@@ -419,6 +428,12 @@ class VolumeTab(QWidget):
         self.frame.setCurrentIndex(0 if self.src.domain == 'FD' else max(0, len(self.src) - 1))
         self.frame.blockSignals(False)
         self.envelope.setEnabled(self.src.domain == 'FD')
+        n, fd = len(self.src), self.src.domain == 'FD'             # as the Cut view: a long dump about 120 frames
+        self.every.setEnabled(not fd)
+        if fd:
+            self.every.setValue(1)
+        elif n > 200 and self.every.value() == 1:
+            self.every.setValue(max(1, n // 120))
         self._auto_cu_t()
         self._board()
         self._rebuild()
@@ -805,7 +820,7 @@ class VolumeTab(QWidget):
     def _play(self, on):
         self.play_btn.setText('Pause' if on else 'Play')
         if on:
-            self.timer.start(80)
+            self.timer.start(int(1000 / self.fps.value()))
         else:
             self.timer.stop()
 
@@ -816,7 +831,7 @@ class VolumeTab(QWidget):
             self.k = (self.k + 1) % len(self._frames)
             self._show(self.k)
         elif self.src is not None and self.src.domain == 'TD' and len(self.src) > 1:
-            self.frame.setCurrentIndex((self.frame.currentIndex() + 1) % len(self.src))
+            self.frame.setCurrentIndex((self.frame.currentIndex() + self.every.value()) % len(self.src))
 
     def grab_rgb(self):
         """The view as it is drawn now: (h, w, 3) uint8."""
@@ -835,8 +850,8 @@ class VolumeTab(QWidget):
 
     def render_frames(self, orbit=0.0):
         """The animation as RGB images from the current camera, at the view's size (orbit: degrees of azimuth
-        turned over the animation): a frequency-domain dump's phases, or a time-domain dump's time steps (at
-        most MAX_SAVED of them, evenly spaced). A time-domain dump had given one frame: a still 'animation'."""
+        turned over the animation): a frequency-domain dump's phases, or a time-domain dump's time steps (every
+        n-th, as Every n-th frame says). A time-domain dump had given one frame: a still 'animation'."""
         from PySide6.QtWidgets import QApplication
         kind = self.animated()
         if kind is None:
@@ -845,8 +860,7 @@ class VolumeTab(QWidget):
         if kind == 'phase':
             steps = list(range(len(self._frames)))
         else:
-            n = len(self.src)
-            steps = list(range(0, n, max(1, -(-n // MAX_SAVED))))
+            steps = list(range(0, len(self.src), self.every.value()))
         az0, t0 = self.view.opts['azimuth'], self.frame.currentIndex()
         imgs = []
         for n, k in enumerate(steps):
@@ -872,9 +886,9 @@ class VolumeTab(QWidget):
             self._show(self.k)
         return imgs
 
-    def save(self, path, fps=12, orbit=0.0):
+    def save(self, path, fps=None, orbit=0.0):
         from ..solvers.openems.fields import write_frames
-        return write_frames(self.render_frames(orbit), path, fps)
+        return write_frames(self.render_frames(orbit), path, fps or self.fps.value())
 
     def save_dialog(self, ext):
         if self.src is None:

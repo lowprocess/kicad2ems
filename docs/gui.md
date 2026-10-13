@@ -136,7 +136,8 @@ shown: *Field* with a dump, *Far field* with antenna results.
 | parts at true size | the lumped parts as chips |
 | Mesh | none, or a solver's mesh |
 | Far field: Pattern, Size, Height | the pattern at a frequency, its size against the board, and how far above the board's surface it is drawn |
-| Save GIF / MP4 | the animation from the current camera: a period of a frequency-domain dump, or the time steps of a time-domain one (up to 120) |
+| fps, Every n-th frame | the speed of Play and of saved animations, and for a time-domain dump which time steps they use (a long dump starts at about 120 frames), as in the Cut view |
+| Save GIF / MP4 | the animation from the current camera: a period of a frequency-domain dump, or the time steps of a time-domain one |
 
 ![patch 3D](img/readme/patch_3d.gif)
 
