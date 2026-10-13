@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QFormLayout, Q
 from .. import volume3d as v3
 
 N_PHASE = 24
+MAX_SAVED = 120        # time steps in a saved animation of a time-domain dump (evenly spaced)
 
 
 def gl_module():
@@ -139,6 +140,7 @@ class FrameSlider(QWidget):
         self.slider.setValue(i)
         self.slider.blockSignals(False)
         self.label.setText(self.labels[i])
+
 
 
 class VolumeTab(QWidget):
@@ -784,22 +786,52 @@ class VolumeTab(QWidget):
         a = np.frombuffer(img.constBits(), np.uint8, img.sizeInBytes()).reshape(img.height(), img.bytesPerLine())
         return np.ascontiguousarray(a[:, :3 * img.width()].reshape(img.height(), img.width(), 3))
 
+    def animated(self):
+        """What a saved animation steps through: 'phase' (a frequency-domain dump's period), 'time' (a time-domain
+        dump's steps) or None (one frame: the envelope, a single time step)."""
+        if len(self._frames) > 1:
+            return 'phase'
+        if self.src is not None and self.src.domain == 'TD' and len(self.src) > 1:
+            return 'time'
+        return None
+
     def render_frames(self, orbit=0.0):
         """The animation as RGB images from the current camera, at the view's size (orbit: degrees of azimuth
-        turned over the animation)."""
-        imgs = []
-        frames = range(len(self._frames)) if len(self._frames) > 1 else range(1)
-        az0 = self.view.opts['azimuth']
+        turned over the animation): a frequency-domain dump's phases, or a time-domain dump's time steps (at
+        most MAX_SAVED of them, evenly spaced). A time-domain dump had given one frame: a still 'animation'."""
         from PySide6.QtWidgets import QApplication
-        for n, k in enumerate(frames):
-            self._show(k)
+        kind = self.animated()
+        if kind is None:
+            raise ValueError("one frame only: nothing animates" + (" (untick envelope to save the period)"
+                                                                   if self.envelope.isChecked() else ""))
+        if kind == 'phase':
+            steps = list(range(len(self._frames)))
+        else:
+            n = len(self.src)
+            steps = list(range(0, n, max(1, -(-n // MAX_SAVED))))
+        az0, t0 = self.view.opts['azimuth'], self.frame.currentIndex()
+        imgs = []
+        for n, k in enumerate(steps):
+            if kind == 'phase':
+                self._show(k)
+            else:                                                   # the time step's volume, as the slider would
+                self.frame.blockSignals(True)
+                self.frame.setCurrentIndex(k)
+                self.frame.blockSignals(False)
+                self._rebuild()
             if orbit:
-                self.view.setCameraPosition(azimuth=az0 + orbit * n / max(len(frames), 1))
+                self.view.setCameraPosition(azimuth=az0 + orbit * n / max(len(steps), 1))
             self.view.update()
             QApplication.processEvents()                            # the new texture reaches the GPU on a repaint
             imgs.append(self.grab_rgb())
         self.view.setCameraPosition(azimuth=az0)
-        self._show(self.k)
+        if kind == 'time':
+            self.frame.blockSignals(True)
+            self.frame.setCurrentIndex(t0)
+            self.frame.blockSignals(False)
+            self._rebuild()
+        else:
+            self._show(self.k)
         return imgs
 
     def save(self, path, fps=12, orbit=0.0):
@@ -808,6 +840,11 @@ class VolumeTab(QWidget):
 
     def save_dialog(self, ext):
         if self.src is None:
+            return
+        if self.animated() is None:
+            QMessageBox.information(self, f"Save {ext.upper()}", "Only one frame to save: nothing animates" +
+                                    (". Untick envelope to save the field over a period." if self.envelope.isChecked()
+                                     else "."))
             return
         d = os.path.dirname(self.src.path)
         path, _ = QFileDialog.getSaveFileName(self, f"Save {ext.upper()}", os.path.join(d, f"{self.src.name}_3d.{ext}"),

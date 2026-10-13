@@ -415,14 +415,17 @@ def write_frames(imgs, path, fps=12):
     if ext == '.gif':
         from PIL import Image
         ims = [Image.fromarray(a) for a in imgs]
-        ims[0].save(path, save_all=True, append_images=ims[1:], duration=int(1000 / fps), loop=0, optimize=False)
+        ims[0].save(path, save_all=True, append_images=ims[1:], duration=int(1000 / fps), loop=0, optimize=False,
+                    disposal=1)                                     # each frame over the last (Pillow stores changes)
     elif ext == '.mp4':
         exe = ffmpeg_exe()
         if not exe:
             raise RuntimeError("saving .mp4 needs ffmpeg (install it, or pip install imageio-ffmpeg); .gif works without")
         h, w, _ = imgs[0].shape
         cmd = [exe, '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f"{w}x{h}", '-r', str(fps),
-               '-i', '-', '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', '-pix_fmt', 'yuv420p', '-vcodec', 'libx264', path]
+               '-i', '-', '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=out_color_matrix=bt709:out_range=tv',
+               '-pix_fmt', 'yuv420p', '-vcodec', 'libx264', '-colorspace', 'bt709', '-color_primaries', 'bt709',
+               '-color_trc', 'bt709', '-color_range', 'tv', path]     # tagged: players had guessed the colours
         p = subprocess.run(cmd, input=b''.join(a.tobytes() for a in imgs), capture_output=True)
         if p.returncode:
             raise RuntimeError(f"ffmpeg failed: {p.stderr.decode(errors='replace').strip()[-400:]}")

@@ -129,3 +129,48 @@ def test_volume_panel(volume_run, tmp_path):
     assert any(k.startswith('cu') for k in w.items)
     w.copper.setChecked(False)
     assert not any(k.startswith('cu') or k == 'outline' for k in w.items)
+
+
+def test_saved_animations(volume_run, board, tmp_path, monkeypatch):
+    """Save GIF / MP4 of the 3D view: a frequency-domain dump's period, a time-domain dump's time steps (it had
+    given a single still frame), and one frame only (the envelope) refused."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    pytest.importorskip('OpenGL')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from PySide6.QtWidgets import QApplication
+    from kicad2ems.gui.volumetab import VolumeTab, N_PHASE
+    from test_fields import write_vtr
+    app = QApplication.instance() or QApplication([])
+    out, m, _ = volume_run
+    shown = []                                                       # no GL offscreen: what each grab would show
+    monkeypatch.setattr(VolumeTab, 'grab_rgb', lambda self: (shown.append((self.frame.currentIndex(), self.k)),
+                                                             np.full((8, 8, 3), 7 * len(shown) % 256, np.uint8))[1])
+    w = VolumeTab()
+    w.resize(400, 300)
+    assert w.load(out) and w.animated() == 'phase' and len(w.render_frames()) == N_PHASE
+    w.envelope.setChecked(True)
+    assert w.animated() is None
+    with pytest.raises(ValueError, match='untick envelope'):
+        w.render_frames()
+    td_out = tmp_path / 'td'
+    run = td_out / 'openems' / 'exc_P1'
+    d = parse_dump('E@volume+2', m)
+    write_info(str(run), [d], m, dt_ps=0.5)
+    x, y = np.linspace(d.start[0], d.stop[0], 12), np.linspace(d.start[1], d.stop[1], 8)
+    z = np.linspace(d.start[2], d.stop[2], 6)
+    for k in range(4):
+        f = np.zeros((12, 8, 6, 3), np.float32)
+        f[..., 2] = np.sin(x / 3 + k)[:, None, None]
+        write_vtr(run / f"{d.name}_{k * 60:010d}.vtr", x, y, z, f)
+    w2 = VolumeTab()
+    w2.resize(400, 300)
+    assert w2.load(str(td_out)) and w2.src.domain == 'TD' and w2.animated() == 'time'
+    t0 = w2.frame.currentIndex()
+    imgs = w2.render_frames()
+    assert len(imgs) == 4 and w2.frame.currentIndex() == t0      # each time step, then back where it was
+    assert [t for t, _ in shown[-4:]] == [0, 1, 2, 3]
+    from kicad2ems.solvers.openems.fields import write_frames
+    from PIL import Image
+    p = write_frames(imgs, str(tmp_path / 'a.gif'))
+    assert Image.open(p).n_frames == 4
