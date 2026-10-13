@@ -185,3 +185,32 @@ def test_saved_animations(volume_run, board, tmp_path, monkeypatch):
     assert Image.open(p).n_frames == 2 and Image.open(p).info['duration'] == 200
     assert [t for t, _ in shown[-2:]] == [0, 2] and w2.timer.interval() == 200
     assert not w.every.isEnabled() and w2.every.isEnabled()          # frequency domain: its period
+
+
+def test_voxels_and_pixels_centred_on_their_samples(volume_run, tmp_path):
+    """pyqtgraph draws voxel / pixel k from k to k + 1: the 3D view shifts them back half a cell, so each sits
+    centred on its sample (a half-cell offset in +x, +y had shown the current off the copper)."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    pytest.importorskip('OpenGL')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from PySide6.QtWidgets import QApplication
+    from PySide6.QtGui import QVector3D
+    from kicad2ems.gui.volumetab import VolumeTab
+    app = QApplication.instance() or QApplication([])
+    out, m, _ = volume_run
+    w = VolumeTab()
+    assert w.load(out) and w.vol.plane is None
+    zs, v = w.zscale.value(), w.vol
+    p = w.items['vol'].transform().map(QVector3D(0.5, 0.5, 0.5))     # the first voxel's centre
+    assert (p.x(), p.y(), p.z()) == pytest.approx((v.origin[0], v.origin[1], v.origin[2] * zs), abs=1e-6)
+    d = parse_dump('J@F.Cu@3', m)                                    # a layer dump: an image
+    run = tmp_path / 'openems' / 'exc_P1'
+    write_info(str(run), [d], m)
+    x, y = np.linspace(d.start[0], d.stop[0], 30), np.linspace(d.start[1], d.stop[1], 12)
+    F.write_npz(str(run / f"{d.name}.npz"), dict(x=x, y=y, z=np.array([d.start[2]])), [3e9],
+                np.ones((1, 30, 12, 1, 3), complex))
+    w2 = VolumeTab()
+    assert w2.load(str(tmp_path)) and w2.vol.plane == 2
+    p = w2.items['vol'].transform().map(QVector3D(0.5, 0.5, 0))
+    assert (p.x(), p.y()) == pytest.approx((w2.vol.origin[0], w2.vol.origin[1]), abs=1e-6)

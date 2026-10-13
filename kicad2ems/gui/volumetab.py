@@ -516,7 +516,8 @@ class VolumeTab(QWidget):
             it.setData(rgba)
         it.resetTransform()
         it.scale(self.vol.step[0], self.vol.step[1], self.vol.step[2] * zs)
-        it.translate(self.vol.origin[0], self.vol.origin[1], self.vol.origin[2] * zs)
+        o = self.vol.origin - 0.5 * self.vol.step                  # voxel k spans k..k+1: its centre on sample k
+        it.translate(o[0], o[1], o[2] * zs)
 
     def _show_plane(self, rgba):
         """A plane dump's frame as an image at its position (normal x, y or z), at the height scale."""
@@ -539,7 +540,7 @@ class VolumeTab(QWidget):
         eu[a], ev[b] = self.vol.step[a] * sc[a], self.vol.step[b] * sc[b]
         en = np.zeros(3)
         en[n] = 1.0
-        o = self.vol.origin * sc
+        o = self.vol.origin * sc - 0.5 * (eu + ev)                 # pixel k spans k..k+1: its centre on sample k
         cu = (self.geometry or {}).get('cu_z') or {}
         layer = (getattr(self.src, 'meta', None) or {}).get('label')
         z = cu.get(layer) if n == 2 else None                       # a layer dump (E@F.Cu): at its copper layer;
