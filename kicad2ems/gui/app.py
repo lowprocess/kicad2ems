@@ -110,7 +110,11 @@ class SetupTab(QWidget):
         scroll = QScrollArea()
         scroll.setWidget(lw)
         scroll.setWidgetResizable(True)
-        scroll.setMinimumWidth(270)                                 # the form wraps its rows below this
+        # the form wraps its rows instead of scrolling sideways: as wide as its narrowest layout, plus room for
+        # the vertical scroll bar (a long form shows it, and without that room a sideways one appeared too)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        bar = scroll.verticalScrollBar().sizeHint().width()
+        scroll.setMinimumWidth(max(270, lw.minimumSizeHint().width() + bar + 2 * scroll.frameWidth() + 2))
         outer.addWidget(scroll)
 
     def set_availability(self, info):
@@ -279,6 +283,7 @@ class SetupTab(QWidget):
         if not self.maybe_save():
             return
         self.set_values({})
+        self.set_estimates(None)                                    # another board: the last one's no longer apply
         self.extra, self.path, self.dirty = {}, None, False
         self.win.update_title()
 
@@ -297,6 +302,7 @@ class SetupTab(QWidget):
             QMessageBox.warning(self, 'Config', str(e))
             return False
         self.set_values(vals)
+        self.set_estimates(None)                                    # another board: the last one's no longer apply
         self.extra, self.path, self.dirty = extra, os.path.abspath(path), False
         self.win.remember(self.path)
         self.win.update_title()

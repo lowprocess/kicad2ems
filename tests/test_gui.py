@@ -111,6 +111,8 @@ def test_solver_boxes_estimates_and_availability():
     assert w.setup.solver_boxes['mom25d'].text() == 'mom25d (MoM)  ·  ~35 s, 1.3 GB'
     assert w.setup.solver_boxes['openems'].text().endswith('~15 min, 0.4 GB')
     assert w.setup.solver_boxes['emerge'].text() == 'EMerge (FEM, experimental)'      # no estimate: its name
+    w.setup.new()                                                   # another board: the estimates go
+    assert w.setup.solver_boxes['mom25d'].text() == 'mom25d (MoM)'
     w.setup.set_availability(dict(solvers=[dict(name='openems', ok=False, what='no CSXCAD'),
                                            dict(name='mom25d', ok=True, what='0.6')]))
     assert 'no CSXCAD' in w.setup.solver_boxes['openems'].toolTip() and w.setup.solver_boxes['mom25d'].toolTip() == ''
@@ -394,6 +396,9 @@ def test_viewer_sections_and_views(wilkinson_preview):
     assert v.plan.sel == i and v.volume.sel == i and 'Z0' in v.detail.text()
     v.plan.selected.emit(0)                                         # a click in the plan: the list follows
     assert v.tree.selectedItems()[0].data(0, Qt_UserRole()) == 0
+    v.load(wilkinson_preview)                                       # the folder again: nothing selected
+    assert v.detail.text().strip() == '' and v.plan.sel is None
+    v.select(0)
     v.lines_on.setChecked(False)                                    # the overlay off: no list
     assert v.side.isHidden() and not v.plan.show_lines
     v.set_view('Images')

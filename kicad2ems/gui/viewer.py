@@ -151,6 +151,7 @@ class Viewer(QWidget):
                 if p.endswith(('_model.png', '_mesh.png', '_tlines.png'))]
         self.images.show_images(imgs)
         self._fill_tree()
+        self.detail.setText(' ')                                    # a new folder: nothing selected
         has = {'3D': self.volume.gl is not None and bool(three or plan), 'Plan': plan,
                'Cut': bool(self.cuts.srcs), 'Images': bool(imgs)}
         for n, b in self.buttons.items():
