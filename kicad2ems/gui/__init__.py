@@ -10,6 +10,10 @@ def application(argv=()):
     if app is None:
         QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
         app = QApplication(list(argv))
+        import os
+        from PySide6.QtGui import QIcon
+        app.setWindowIcon(QIcon(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'kicad2ems.svg')))
+        app.setDesktopFileName('kicad2ems')                         # Wayland: the window's launcher entry and icon
     return app
 
 

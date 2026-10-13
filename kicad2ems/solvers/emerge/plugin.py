@@ -26,8 +26,11 @@ _checked = {}
 
 
 def emerge_python(s=None):
-    """The Python to run EMerge with: --emerge-python, else $KICAD2EMS_EMERGE_PYTHON, else this one."""
-    return (getattr(s, 'emerge_python', None) or os.environ.get('KICAD2EMS_EMERGE_PYTHON') or sys.executable)
+    """The Python to run EMerge with: --emerge-python, else $KICAD2EMS_EMERGE_PYTHON, else the one setup.sh
+    recorded (sitecfg), else this one."""
+    from ...sitecfg import get
+    return (getattr(s, 'emerge_python', None) or os.environ.get('KICAD2EMS_EMERGE_PYTHON') or get('emerge_python')
+            or sys.executable)
 
 
 def emerge_status(python):

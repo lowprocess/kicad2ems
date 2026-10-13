@@ -1,28 +1,38 @@
 #!/bin/bash
-# kicad2ems setup: a virtual environment in this directory (.venv) with kicad2ems and the parts you choose.
+# kicad2ems setup: kicad2ems and the parts you choose, where you choose, with a launcher entry for the GUI.
 #
-#   ./setup.sh              asks about each optional part (defaults in [brackets]; Enter takes them)
-#   ./setup.sh --yes        takes every default without asking
-#   ./setup.sh --python python3.12 --venv /path/to/venv
+#   ./setup.sh                    asks about each part (defaults in [brackets]; Enter takes them)
+#   ./setup.sh --yes              takes every default without asking
+#   ./setup.sh --target user      where: checkout (.venv here, the default), user (~/.local, commands on your
+#                                 PATH), system (/opt/kicad2ems, /usr/local/bin; runs sudo) or python (into
+#                                 the Python itself, pip --user: no venv)
+#   ./setup.sh --openems /opt/openems/venv/bin/python    an openEMS installed elsewhere (or: build, none)
+#   ./setup.sh --qucsator /usr/bin/qucsator_rf           the line model's circuit solver (or: none)
+#   ./setup.sh --python python3.12 --venv /path/to/venv  another Python, another venv (checkout target)
+#   ./setup.sh --uninstall --target user                 remove what an install of that target added
 #
 # Asks about: the GUI, field dumps, the scikit-rf line model, the gmsh mesher, mom25d's compiled core, the test
-# tools, EMerge (3D FEM, experimental: from git, patched for Python 3.14, or PyPI); the CuPy wheel for your GPU (detected: NVIDIA CUDA 12 / 13, AMD ROCm 7); openEMS (build a local copy
-# into .openems/ with tools/build_openems.sh, use one already installed, or none). Run it again to change
-# anything: an existing .venv is kept and added to (or made anew if you say so).
+# tools, EMerge (3D FEM, experimental: from git, patched for Python 3.14, or PyPI), the CuPy wheel for your GPU
+# (detected: NVIDIA CUDA 12 / 13, AMD ROCm 7), openEMS (one this Python has, one in another venv linked in,
+# build one with tools/build_openems.sh, or none), qucsator, and a launcher entry and desktop icon for the GUI.
+# Run it again to change anything: an existing venv is kept and added to (or made anew if you say so).
 set -euo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-VENV=$REPO/.venv
 PY=${PYTHON:-python3}
-YES=0
-OEMS_PREFIX=$REPO/.openems
+YES=0 TARGET= VENV_ARG= OEMS_ARG= QUCS_ARG= UNINSTALL=0
 TRIANGLE_COMMIT=595b43eb6682992a0b1012b9671bf860c0e6ae56    # triangle 20250106, builds on Python 3.14
+SYSROOT=${KICAD2EMS_SYSROOT:-}                              # tests: the system target under a scratch root, no sudo
 while [ $# -gt 0 ]; do
     case $1 in
         -y|--yes) YES=1 ;;
         --python) PY=$2; shift ;;
-        --venv) VENV=$(realpath -m "$2"); shift ;;
-        -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --venv) VENV_ARG=$(realpath -m "$2"); shift ;;
+        --target) TARGET=$2; shift ;;
+        --openems) OEMS_ARG=$2; shift ;;
+        --qucsator) QUCS_ARG=$2; shift ;;
+        --uninstall) UNINSTALL=1 ;;
+        -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option: $1 (--help)"; exit 2 ;;
     esac
     shift
@@ -60,52 +70,148 @@ choose() {  # choose "question" default-index option... -> sets CHOICE (the opti
     done
 }
 
+askpath() { # askpath "question" default -> sets ANSWER (empty: skipped)
+    local a
+    if [ $YES = 1 ]; then ANSWER=$2; return; fi
+    read -r -p "  $1 [${2:-skip}] " a || a=
+    ANSWER=${a:-$2}
+}
+
+# ---- where: the target ---------------------------------------------------------------------------------
+DATA=${XDG_DATA_HOME:-$HOME/.local/share}
+CONF=${XDG_CONFIG_HOME:-$HOME/.config}
+if [ -z "$TARGET" ]; then
+    if [ -n "$VENV_ARG" ]; then
+        TARGET=checkout
+    elif [ $UNINSTALL = 1 ]; then
+        echo "--uninstall needs --target (checkout, user, system or python)"; exit 2
+    else
+        bold "Where to install"
+        choose "kicad2ems goes:" 1 \
+            "checkout  a venv in this checkout (.venv); run it from here or the launcher entry" \
+            "user      for you: a venv in $DATA/kicad2ems, kicad2ems and kicad2ems-gui on your PATH (~/.local/bin)" \
+            "system    for every user: a venv in /opt/kicad2ems, commands in /usr/local/bin (runs sudo)" \
+            "python    into $PY itself (pip install --user, no venv)"
+        TARGET=${CHOICE%% *}
+    fi
+fi
+SUDO= USERFLAG=() EDITABLE=1
+APPS=$DATA/applications ICONS=$DATA/icons/hicolor/scalable/apps BIN=
+case $TARGET in
+    checkout) VENV=${VENV_ARG:-$REPO/.venv}; OEMS_PREFIX=$REPO/.openems; RECORD=$VENV/kicad2ems-installed ;;
+    user)     VENV=$DATA/kicad2ems/venv; BIN=$HOME/.local/bin; OEMS_PREFIX=$DATA/kicad2ems/openems
+              RECORD=$DATA/kicad2ems/installed ;;
+    system)   VENV=$SYSROOT/opt/kicad2ems/venv; BIN=$SYSROOT/usr/local/bin; OEMS_PREFIX=$SYSROOT/opt/kicad2ems/openems
+              APPS=$SYSROOT/usr/share/applications ICONS=$SYSROOT/usr/share/icons/hicolor/scalable/apps
+              RECORD=$SYSROOT/opt/kicad2ems/installed EDITABLE=0
+              [ -z "$SYSROOT" ] && [ "$(id -u)" != 0 ] && SUDO=sudo ;;
+    python)   VENV=; USERFLAG=(--user); OEMS_PREFIX=$DATA/kicad2ems/openems; RECORD=$DATA/kicad2ems/installed-python ;;
+    *) echo "unknown --target $TARGET: checkout, user, system or python"; exit 2 ;;
+esac
+
+record() {  # a file or link this install made: removed again by --uninstall
+    $SUDO mkdir -p "$(dirname "$RECORD")"
+    echo "$1" | $SUDO tee -a "$RECORD" >/dev/null
+}
+
+# ---- uninstall ----------------------------------------------------------------------------------------
+if [ $UNINSTALL = 1 ]; then
+    bold "Removing the $TARGET install"
+    if [ -f "$RECORD" ]; then
+        while read -r f; do
+            [ -n "$f" ] && { [ -e "$f" ] || [ -L "$f" ]; } && $SUDO rm -f "$f" && note "removed $f"
+        done < "$RECORD"
+        $SUDO rm -f "$RECORD"
+    else
+        note "nothing recorded for the $TARGET target ($RECORD)"
+    fi
+    if [ "$TARGET" = python ]; then
+        "$PY" -m pip uninstall -y kicad2ems && note "kicad2ems uninstalled from $PY's user site"
+    elif [ -d "$VENV" ] && ask "remove the venv $VENV too?" y; then
+        $SUDO rm -rf "$VENV" && note "removed $VENV"
+    fi
+    command -v update-desktop-database >/dev/null && $SUDO update-desktop-database -q "$APPS" 2>/dev/null || true
+    exit 0
+fi
+
 # ---- Python and the virtual environment -------------------------------------------------------------
 bold "Python"
 command -v "$PY" >/dev/null || { echo "  $PY not found (--python to name another)"; exit 1; }
 "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 10))' || {
     echo "  kicad2ems needs Python 3.10 or newer; $PY is $("$PY" -V 2>&1)"; exit 1; }
+PYVER=$("$PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
 note "$("$PY" -V) ($(command -v "$PY"))"
+if [ "$TARGET" = python ] && "$PY" -c 'import sys, sysconfig, os; sys.exit(not os.path.exists(os.path.join(sysconfig.get_paths()["stdlib"], "EXTERNALLY-MANAGED")))'; then
+    echo "  $PY is managed by your distribution (EXTERNALLY-MANAGED): pip may not install into it."
+    echo "  Choose --target user instead (a venv of its own, the commands on your PATH)."
+    exit 1
+fi
 
-# openEMS first: an existing install outside the venv is only seen with --system-site-packages
+# openEMS first: one this Python has is only seen from a venv with --system-site-packages; one in another venv is
+# linked in (its CSXCAD and openEMS packages), which needs the same Python version
 bold "openEMS (3D FDTD; not on PyPI)"
-SYS_OEMS=0
+SYS_OEMS=0 EXT_PY=
 "$PY" -c 'import CSXCAD, openEMS' 2>/dev/null && SYS_OEMS=1
-if [ $SYS_OEMS = 1 ]; then
-    note "this Python already has openEMS: $("$PY" -c 'import openEMS, os; print(os.path.dirname(openEMS.__file__))')"
-    choose "openEMS for kicad2ems:" 1 "use that install (the venv sees the system packages)" \
-        "build a local copy into .openems/" "none (mom25d and the line model only)"
-else
-    note "this Python has no openEMS (import CSXCAD, openEMS failed). One in another venv: install kicad2ems"
-    note "there instead (<venv>/bin/pip install -e $REPO), or build a local copy here"
-    choose "openEMS for kicad2ems:" 3 "use an install of this Python (none found)" \
-        "build a local copy into .openems/ (10-20 min, needs the build dependencies)" \
-        "none (mom25d and the line model only)"
-fi
-case $CHOICE in
-    use*) OEMS=system ;;
-    build*) OEMS=build ;;
-    *) OEMS=none ;;
+FOUND=
+for c in /opt/openems/venv/bin/python "$HOME/opt/openEMS/venv/bin/python" "$HOME/venvs/openems/bin/python" \
+         "$REPO/.venv/bin/python"; do
+    [ -x "$c" ] && [ "$(realpath "$c")" != "$(realpath "$(command -v "$PY")")" ] && \
+        "$c" -c 'import CSXCAD, openEMS' 2>/dev/null && { FOUND=$c; break; }
+done
+case $OEMS_ARG in
+    '') opts=()
+        [ $SYS_OEMS = 1 ] && opts+=("this     $PY has it: $("$PY" -c 'import openEMS, os; print(os.path.dirname(openEMS.__file__))')")
+        opts+=("elsewhere  another venv's openEMS, linked in${FOUND:+ (found: $FOUND)}")
+        opts+=("build    a copy built with tools/build_openems.sh into $OEMS_PREFIX (10-20 min)")
+        opts+=("none     mom25d and the line model only")
+        def=${#opts[@]}
+        [ $SYS_OEMS = 1 ] && def=1
+        [ $SYS_OEMS = 0 ] && [ -n "$FOUND" ] && def=1
+        choose "openEMS for kicad2ems:" $def "${opts[@]}"
+        OEMS=${CHOICE%% *} ;;
+    build|none) OEMS=$OEMS_ARG ;;
+    *) OEMS=elsewhere; EXT_PY=$OEMS_ARG ;;
 esac
-if [ $OEMS = system ] && [ $SYS_OEMS = 0 ]; then
-    note "no openEMS install found: going on without (run setup.sh again to build one)"
-    OEMS=none
-fi
-
-bold "Virtual environment: $VENV"
-SITE=()
-[ $OEMS = system ] && SITE=(--system-site-packages)
-if [ -x "$VENV/bin/python" ]; then
-    if ask "it exists: make it anew (otherwise it is kept and added to)?" n; then
-        rm -rf "$VENV"
+if [ "$OEMS" = elsewhere ]; then
+    if [ -z "$EXT_PY" ]; then
+        askpath "the Python of the venv openEMS is installed in:" "$FOUND"
+        EXT_PY=$ANSWER
+    fi
+    [ -d "$EXT_PY" ] && EXT_PY=$EXT_PY/bin/python                  # a venv's folder
+    if [ -z "$EXT_PY" ] || ! "$EXT_PY" -c 'import CSXCAD, openEMS' 2>/dev/null; then
+        note "no openEMS in ${EXT_PY:-(none given)} (import CSXCAD, openEMS failed): going on without"
+        OEMS=none
+    else
+        EXTVER=$("$EXT_PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+        if [ "$EXTVER" != "$PYVER" ]; then
+            note "that openEMS is built for Python $EXTVER, kicad2ems would run on $PYVER: its compiled modules"
+            note "can't be shared. Run setup.sh again with --python python$EXTVER, or build openEMS for $PYVER."
+            OEMS=none
+        else
+            note "linking the openEMS of $EXT_PY ($("$EXT_PY" -c 'import openEMS, os; print(os.path.dirname(openEMS.__file__))'))"
+        fi
     fi
 fi
-if [ ! -x "$VENV/bin/python" ]; then
-    "$PY" -m venv ${SITE[@]+"${SITE[@]}"} "$VENV"
-    note "made with $("$VENV/bin/python" -V)${SITE:+, seeing the system packages (openEMS)}"
+[ "$OEMS" = this ] && [ $SYS_OEMS = 0 ] && OEMS=none
+
+if [ -n "$VENV" ]; then
+    bold "Virtual environment: $VENV"
+    SITE=()
+    [ "$OEMS" = this ] && SITE=(--system-site-packages)
+    if [ -x "$VENV/bin/python" ] && ask "it exists: make it anew (otherwise it is kept and added to)?" n; then
+        $SUDO rm -rf "$VENV"
+    fi
+    if [ ! -x "$VENV/bin/python" ]; then
+        $SUDO mkdir -p "$(dirname "$VENV")"
+        $SUDO "$PY" -m venv ${SITE[@]+"${SITE[@]}"} "$VENV"
+        note "made with $("$VENV/bin/python" -V)${SITE:+, seeing the system packages (openEMS)}"
+    fi
+    VPY=$VENV/bin/python
+else
+    VPY=$(command -v "$PY")
 fi
-VPY=$VENV/bin/python
-"$VPY" -m pip install -q --upgrade pip setuptools wheel
+pipi() { $SUDO "$VPY" -m pip install ${USERFLAG[@]+"${USERFLAG[@]}"} "$@"; }
+[ -n "$VENV" ] && pipi -q --upgrade pip setuptools wheel
 
 # ---- optional parts ---------------------------------------------------------------------------------
 bold "Optional parts"
@@ -121,6 +227,7 @@ else
     note "no C++ compiler (g++): mom25d's compiled core is skipped (NumPy kernels, ~5x slower)"
 fi
 ask "test tools (pytest)?" n && EXTRAS+=(test)
+[ "$OEMS" = elsewhere ] && [[ " ${EXTRAS[*]-} " != *" dumps "* ]] && EXTRAS+=(dumps)   # openEMS's ports need h5py
 
 # ---- EMerge: the optional 3D FEM solver (docs/emerge.md) ---------------------------------------------
 choose "EMerge (3D FEM, experimental: --solvers emerge)?" 1 \
@@ -168,53 +275,104 @@ choose "CuPy wheel:" $((GPU_DEF == 0 ? 4 : GPU_DEF)) \
 CUPY=${CHOICE%% *}
 [ "$CUPY" = none ] && CUPY=
 DROP_CUPY=0
-if [ -z "$CUPY" ] && [ -x "$VPY" ] && "$VPY" -m pip show -q cupy-rocm-7-0 cupy-cuda12x cupy-cuda13x >/dev/null 2>&1; then
+if [ -z "$CUPY" ] && [ -n "$VENV" ] && [ -x "$VPY" ] && "$VPY" -m pip show -q cupy-rocm-7-0 cupy-cuda12x cupy-cuda13x >/dev/null 2>&1; then
     ask "the venv has a CuPy wheel already: remove it (mom25d on the CPU)?" n && DROP_CUPY=1
 fi
 
+# ---- qucsator: the line model's circuit solver, a separate program ---------------------------------------
+bold "qucsator (the line model's circuit solver; scikit-rf stands in without it)"
+QUCS=
+case $QUCS_ARG in
+    none) ;;
+    '') QUCS=$(command -v qucsator_rf || command -v qucsator || true)
+        if [ -n "$QUCS" ]; then
+            note "found: $QUCS"
+        else
+            DEPS=
+            command -v dnf >/dev/null && DEPS="sudo dnf install qucs-s"
+            command -v apt-get >/dev/null && DEPS="sudo apt install qucs-s"
+            opts=("path     give the path of a qucsator_rf / qucsator you have")
+            [ -n "$DEPS" ] && opts+=("install  from your distribution: $DEPS")
+            opts+=("none     scikit-rf solves the line model instead")
+            choose "qucsator:" ${#opts[@]} "${opts[@]}"
+            case ${CHOICE%% *} in
+                path) askpath "qucsator's path:" ""; QUCS=$ANSWER ;;
+                install) $DEPS && QUCS=$(command -v qucsator_rf || command -v qucsator || true) ;;
+            esac
+        fi ;;
+    *) QUCS=$QUCS_ARG ;;
+esac
+if [ -n "$QUCS" ] && [ ! -x "$QUCS" ]; then
+    note "$QUCS is not an executable: going on without qucsator"
+    QUCS=
+fi
+
 # ---- install ----------------------------------------------------------------------------------------
-bold "Installing kicad2ems${EXTRAS:+ [$(IFS=,; echo "${EXTRAS[*]}")]} (editable: this checkout's code is what runs)"
 SPEC=$REPO
 [ ${#EXTRAS[@]} -gt 0 ] && SPEC="$REPO[$(IFS=,; echo "${EXTRAS[*]}")]"
+bold "Installing kicad2ems${EXTRAS:+ [$(IFS=,; echo "${EXTRAS[*]}")]}$([ $EDITABLE = 1 ] && echo ' (editable: this checkout'"'"'s code is what runs)' || echo ' (a copy of this checkout)')"
 # mom25d's mesher: PyPI has no triangle >= 20230923 for every Python (none for 3.14): build it from its repository
-if ! "$VPY" -c 'import triangle' 2>/dev/null && ! "$VPY" -m pip install -q "triangle>=20230923" 2>/dev/null; then
+if ! "$VPY" -c 'import triangle' 2>/dev/null && ! pipi -q "triangle>=20230923" 2>/dev/null; then
     note "no triangle wheel for $("$VPY" -V): building it from github.com/drufat/triangle (needs a C compiler)"
-    "$VPY" -m pip install "triangle @ git+https://github.com/drufat/triangle.git@$TRIANGLE_COMMIT"
+    pipi "triangle @ git+https://github.com/drufat/triangle.git@$TRIANGLE_COMMIT"
 fi
-# compat: the checkout's path in a .pth inside the venv, ahead of ~/.local on sys.path. The default editable
-# finder runs after the path search, so a kicad2ems installed in ~/.local (visible through
-# --system-site-packages) was imported instead of this checkout
-"$VPY" -m pip install -e "$SPEC" --config-settings editable_mode=compat
+if [ $EDITABLE = 1 ]; then
+    # compat: the checkout's path in a .pth inside the environment, ahead of ~/.local on sys.path. The default
+    # editable finder runs after the path search, so a kicad2ems installed in ~/.local (visible through
+    # --system-site-packages) was imported instead of this checkout
+    pipi -e "$SPEC" --config-settings editable_mode=compat
+else
+    pipi "$SPEC"
+fi
 WHERE=$(cd / && "$VPY" -c 'import kicad2ems, os; print(os.path.dirname(os.path.dirname(kicad2ems.__file__)))')
-if [ "$WHERE" != "$REPO" ]; then
-    note "WARNING: this venv imports kicad2ems from $WHERE, not this checkout: remove that copy"
+if [ $EDITABLE = 1 ] && [ "$WHERE" != "$REPO" ]; then
+    note "WARNING: kicad2ems is imported from $WHERE, not this checkout: remove that copy"
     note "(e.g. $PY -m pip uninstall kicad2ems, outside the venv) and run ./setup.sh again"
 fi
+SITEDIR=$("$VPY" -c "$([ "$TARGET" = python ] && echo 'import site; print(site.getusersitepackages())' || echo 'import sysconfig; print(sysconfig.get_paths()["purelib"])')")
+SITECFG=$("$VPY" -c "$([ "$TARGET" = python ] && echo 'import site, os; print(os.path.join(site.getuserbase(), "kicad2ems-site.toml"))' || echo 'import sys, os; print(os.path.join(sys.prefix, "kicad2ems-site.toml"))')")
 if [ -n "$CUPY" ]; then
     bold "Installing $CUPY"
     # one CuPy wheel at a time: another one in the venv would shadow it
     for other in cupy-rocm-7-0 cupy-cuda12x cupy-cuda13x; do
-        [ "$other" != "$CUPY" ] && "$VPY" -m pip uninstall -y -q "$other" 2>/dev/null || true
+        [ "$other" != "$CUPY" ] && $SUDO "$VPY" -m pip uninstall -y -q "$other" 2>/dev/null || true
     done
-    "$VPY" -m pip install "$CUPY>=14"
+    pipi "$CUPY>=14"
 elif [ $DROP_CUPY = 1 ]; then
-    "$VPY" -m pip uninstall -y cupy-rocm-7-0 cupy-cuda12x cupy-cuda13x 2>/dev/null || true
+    $SUDO "$VPY" -m pip uninstall -y cupy-rocm-7-0 cupy-cuda12x cupy-cuda13x 2>/dev/null || true
 fi
 if [ "$EMERGE" = git ]; then
     bold "Installing EMerge (experimental) from git, patched"
     command -v git >/dev/null || { echo "  git is needed for EMerge from git"; exit 1; }
-    "$REPO/tools/emerge/install_emerge.sh" "$VPY" "$REPO/.emerge"
+    $SUDO "$REPO/tools/emerge/install_emerge.sh" "$VPY" "$REPO/.emerge"
 elif [ "$EMERGE" = pypi ]; then
     bold "Installing EMerge (experimental) from PyPI"
-    "$VPY" -m pip install "emerge>=2.8"
+    pipi "emerge>=2.8"
 fi
 if [ $CORE = 1 ]; then
     bold "Building mom25d's compiled core"
-    (cd "$REPO" && "$VPY" -m mom25d.core.build) || note "the core did not build: mom25d runs on NumPy (see the error above)"
+    (cd / && $SUDO "$VPY" -m mom25d.core.build) || note "the core did not build: mom25d runs on NumPy (see the error above)"
 fi
 
-# ---- openEMS from source ----------------------------------------------------------------------------
-if [ $OEMS = build ]; then
+# ---- openEMS: linked in from another venv, or built from source ---------------------------------------
+if [ "$OEMS" = elsewhere ]; then
+    bold "Linking openEMS from $EXT_PY"
+    LINK=$([ -n "$VENV" ] && echo "$VENV/kicad2ems-openems" || echo "$DATA/kicad2ems/openems-link")
+    $SUDO mkdir -p "$LINK"
+    for pkg in CSXCAD openEMS; do
+        src=$("$EXT_PY" -c "import $pkg, os; print(os.path.dirname($pkg.__file__))")
+        $SUDO ln -sfn "$src" "$LINK/$pkg"
+    done
+    $SUDO mkdir -p "$SITEDIR"
+    echo "$LINK" | $SUDO tee "$SITEDIR/kicad2ems-openems.pth" >/dev/null
+    record "$SITEDIR/kicad2ems-openems.pth"
+    if (cd / && "$VPY" -c 'import CSXCAD, openEMS') 2>/dev/null; then
+        note "openEMS imports in kicad2ems's Python ($LINK)"
+    else
+        note "WARNING: linked, but import CSXCAD, openEMS fails in $VPY (see: $VPY -c 'import openEMS')"
+    fi
+fi
+if [ "$OEMS" = build ]; then
     bold "Building openEMS into $OEMS_PREFIX"
     missing=()
     for t in cmake git make; do command -v $t >/dev/null || missing+=($t); done
@@ -235,14 +393,15 @@ if [ $OEMS = build ]; then
     else
         note "install a C++ compiler, cmake, git and the HDF5, VTK, CGAL, TinyXML and Boost headers first"
     fi
-    "$VPY" -m pip install -q cython numpy h5py setuptools
+    pipi -q cython numpy h5py setuptools
     if ask "build openEMS now (sources in $OEMS_PREFIX/src)?" y; then
-        if (export VIRTUAL_ENV=$VENV PATH=$VENV/bin:$PATH SRC=$OEMS_PREFIX/src
-            bash "$REPO/tools/build_openems.sh" "$OEMS_PREFIX"); then
+        BENV=(SRC="$OEMS_PREFIX/src")
+        [ -n "$VENV" ] && BENV+=(VIRTUAL_ENV="$VENV" PATH="$VENV/bin:$PATH")
+        if $SUDO env "${BENV[@]}" bash "$REPO/tools/build_openems.sh" "$OEMS_PREFIX"; then
             # the venv's activate script finds the libraries; the GUI and kicad2ems started from it too
-            if ! grep -q 'kicad2ems: openEMS libraries' "$VENV/bin/activate"; then
+            if [ -n "$VENV" ] && ! grep -q 'kicad2ems: openEMS libraries' "$VENV/bin/activate"; then
                 printf '\n# kicad2ems: openEMS libraries (setup.sh)\nexport LD_LIBRARY_PATH="%s/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\n' \
-                    "$OEMS_PREFIX" >> "$VENV/bin/activate"
+                    "$OEMS_PREFIX" | $SUDO tee -a "$VENV/bin/activate" >/dev/null
             fi
             OEMS=built
         else
@@ -251,14 +410,73 @@ if [ $OEMS = build ]; then
     fi
 fi
 
-# ---- what this venv can run -------------------------------------------------------------------------
+# ---- where the external programs are: kicad2ems-site.toml (kicad2ems/sitecfg.py) ------------------------
+if [ -n "$QUCS" ]; then
+    { echo "# written by setup.sh: where kicad2ems finds its external programs (kicad2ems/sitecfg.py)"
+      echo "qucsator = \"$QUCS\""; } | $SUDO tee "$SITECFG" >/dev/null
+    note "qucsator: $QUCS (in $SITECFG)"
+    record "$SITECFG"
+fi
+
+# ---- commands on the PATH, the launcher entry, a desktop icon -------------------------------------------
+GUI_CMD=$([ -n "$VENV" ] && echo "$VENV/bin/kicad2ems-gui" || "$VPY" -c 'import site, os; print(os.path.join(site.getuserbase(), "bin", "kicad2ems-gui"))')
+if [ -n "$BIN" ]; then
+    bold "Commands in $BIN"
+    $SUDO mkdir -p "$BIN"
+    for cmd in kicad2ems kicad2ems-gui; do
+        [ -x "$VENV/bin/$cmd" ] || continue
+        $SUDO ln -sfn "$VENV/bin/$cmd" "$BIN/$cmd"                    # the venv's own script: no activation needed
+        record "$BIN/$cmd"
+        note "$BIN/$cmd -> $VENV/bin/$cmd"
+    done
+    case ":$PATH:" in *":$BIN:"*) ;; *) note "$BIN is not on your PATH: add it (export PATH=\"$BIN:\$PATH\")" ;; esac
+fi
+if [[ " ${EXTRAS[*]-} " == *" gui "* ]] && [ -x "$GUI_CMD" ]; then
+    bold "The GUI in the application launcher"
+    if ask "a launcher entry for kicad2ems-gui (runs $GUI_CMD)?" y; then
+        $SUDO mkdir -p "$APPS" "$ICONS"
+        $SUDO cp "$REPO/kicad2ems/gui/kicad2ems.svg" "$ICONS/kicad2ems.svg"
+        record "$ICONS/kicad2ems.svg"
+        ENTRY=$(cat <<EOF
+[Desktop Entry]
+Type=Application
+Name=kicad2ems
+GenericName=EM simulation of KiCad boards
+Comment=S-parameters, fields and antennas of KiCad boards: openEMS, mom25d and the line model
+Exec="$GUI_CMD" %f
+Icon=$ICONS/kicad2ems.svg
+Terminal=false
+Categories=Science;Engineering;Electronics;
+StartupWMClass=kicad2ems
+EOF
+)
+        echo "$ENTRY" | $SUDO tee "$APPS/kicad2ems.desktop" >/dev/null
+        record "$APPS/kicad2ems.desktop"
+        command -v update-desktop-database >/dev/null && $SUDO update-desktop-database -q "$APPS" 2>/dev/null || true
+        note "$APPS/kicad2ems.desktop"
+        DESK=$(command -v xdg-user-dir >/dev/null && xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
+        if [ -d "$DESK" ] && [ "$DESK" != "$HOME" ] && ask "an icon on the desktop too ($DESK)?" n; then
+            echo "$ENTRY" > "$DESK/kicad2ems.desktop"
+            chmod +x "$DESK/kicad2ems.desktop"
+            command -v gio >/dev/null && gio set "$DESK/kicad2ems.desktop" metadata::trusted true 2>/dev/null || true
+            record "$DESK/kicad2ems.desktop"
+            note "$DESK/kicad2ems.desktop"
+        fi
+    fi
+fi
+
+# ---- what this install can run ----------------------------------------------------------------------
 bold "Check"
 [ $OEMS = built ] && export LD_LIBRARY_PATH="$OEMS_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-PATH=$VENV/bin:$PATH VIRTUAL_ENV=$VENV "$VENV/bin/kicad2ems" --check || true
+K2E=$([ -n "$VENV" ] && echo "$VENV/bin/kicad2ems" || "$VPY" -c 'import site, os; print(os.path.join(site.getuserbase(), "bin", "kicad2ems"))')
+(cd / && ${VENV:+env PATH="$VENV/bin:$PATH" VIRTUAL_ENV="$VENV"} "$K2E" --check) || true
 [ -n "$CUPY" ] && "$VPY" -c "from mom25d.gpu import describe; print('  ' + describe())" || true
-command -v qucsator_rf >/dev/null || command -v qucsator >/dev/null || \
-    note "qucsator (the line model's circuit solver) is not installed: scikit-rf stands in for it"
 echo
-echo "Done. Use it with:"
-echo "  source ${VENV/#$REPO\//}/bin/activate"
-echo "  kicad2ems examples/demo_transition.toml        # or: kicad2ems-gui"
+echo "Done ($TARGET install). Use it with:"
+case $TARGET in
+    checkout) echo "  source ${VENV/#$REPO\//}/bin/activate"
+              echo "  kicad2ems examples/demo_transition.toml        # or: kicad2ems-gui" ;;
+    user|system) echo "  kicad2ems examples/demo_transition.toml        # or: kicad2ems-gui (also in the launcher)" ;;
+    python)   echo "  $K2E examples/demo_transition.toml" ;;
+esac
+echo "Remove it again with: ./setup.sh --uninstall --target $TARGET"

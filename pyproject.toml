@@ -57,6 +57,7 @@ include = ["kicad2ems*", "mom25d*"]
 
 [tool.setuptools.package-data]
 mom25d = ["core/*.cpp", "*.so", "*.pyd"]
+"kicad2ems.gui" = ["*.svg"]                 # the window's and the application launcher's icon
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -138,7 +138,11 @@ def group_s(g, freq):
 
 # ---- qucsator ---------------------------------------------------------------------------------------
 def find_qucsator(path=None):
-    """The qucsator executable: the given path, else qucsator_rf (Qucs-S) or qucsator on PATH."""
+    """The qucsator executable: the given path, else the one setup.sh recorded (sitecfg), else qucsator_rf
+    (Qucs-S) or qucsator on PATH."""
+    if not path:
+        from ...sitecfg import get
+        path = get('qucsator')
     if path:
         if os.path.isfile(path) and os.access(path, os.X_OK):
             return path

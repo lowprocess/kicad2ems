@@ -70,10 +70,12 @@ git clone https://github.com/lowprocess/kicad2ems.git && cd kicad2ems
 source .venv/bin/activate
 ```
 
-`setup.sh` creates a virtual environment in `.venv/` and asks which optional parts you want: the GUI,
-field dumps, the line model, the gmsh mesher, mom25d's compiled core, the CuPy package for your GPU, and
-openEMS (build a local copy, use an existing one, or skip it). `./setup.sh --yes` takes the defaults.
-Installing by hand is described in [Getting started](docs/getting-started.md).
+`setup.sh` asks where to install (a venv in this checkout, the default; for your user, with the commands on
+your PATH; system-wide; or into the Python itself) and which optional parts you want: the GUI, field dumps,
+the line model, the gmsh mesher, mom25d's compiled core, the CuPy package for your GPU, openEMS (one you
+have, one in another venv linked in, a local build, or none), qucsator, and a launcher entry and desktop
+icon for the GUI. `./setup.sh --yes` takes the defaults; `./setup.sh --target user` installs for your user.
+The options and installing by hand are in [Getting started](docs/getting-started.md).
 
 openEMS is only needed for the FDTD solver. Everything else works without it. To see what your setup
 can run:

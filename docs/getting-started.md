@@ -12,12 +12,31 @@ The simplest way is the setup script in the repository:
 source .venv/bin/activate
 ```
 
-It creates a virtual environment in `.venv/`, installs kicad2ems, and offers:
+It first asks where kicad2ems goes (`--target`):
+
+| Target | The environment | The commands | The GUI's launcher entry |
+|---|---|---|---|
+| `checkout` (default) | a venv in `.venv/` | `.venv/bin/` (activate it) | `~/.local/share/applications` |
+| `user` | a venv in `~/.local/share/kicad2ems/` | linked into `~/.local/bin` | `~/.local/share/applications` |
+| `system` | a venv in `/opt/kicad2ems/` (runs sudo) | linked into `/usr/local/bin` | `/usr/share/applications` |
+| `python` | the Python itself (`pip install --user`) | `~/.local/bin` | `~/.local/share/applications` |
+
+The checkout and user installs follow this checkout (editable: a `git pull` updates them); the system install
+is a copy. It then installs kicad2ems and offers:
 
 - the GUI, field-dump support (h5py), the scikit-rf line model and the gmsh mesher;
 - mom25d's compiled core, which makes the MoM solver about five times faster (needs a C++ compiler);
 - the CuPy package that matches your GPU (detected: CUDA 12, CUDA 13 or ROCm 7);
-- openEMS: build a local copy into `.openems/`, use one already installed, or skip it.
+- openEMS: one the Python already has; one installed in another venv, linked in (its CSXCAD and openEMS
+  packages; it must be built for the same Python version); a copy built with `tools/build_openems.sh`; or none.
+  `--openems /opt/openems/venv/bin/python` names the other venv's Python;
+- qucsator: found on the PATH, a path you give (`--qucsator PATH`), installed from your distribution, or none.
+  Its path goes into `kicad2ems-site.toml` in the environment, which kicad2ems reads;
+- a launcher entry for the GUI, and an icon on the desktop. Both run the environment's own `kicad2ems-gui`,
+  so nothing needs activating.
+
+`./setup.sh --uninstall --target user` removes what that install added: the commands, the launcher entry and
+desktop icon, the link to openEMS, and the venv if you say so.
 
 ### By hand
 
