@@ -194,8 +194,52 @@ def fan_strip(poly, layer, net, tracks, reach=2.0):
         tip = mid + n * side.max()
         edge = LineString([mid + n * (w / 2) - d * 1e3, mid + n * (w / 2) + d * 1e3]).intersection(poly)
         w0 = max(edge.length if not edge.is_empty else 0.0, 0.1 * w)
-        return [dict(layer=layer, net=net, width=float(w0), pts=np.array([mid, tip]), region=poly, strip=True)]
+        return [dict(layer=layer, net=net, width=float(w0), pts=np.array([mid, tip]), region=poly, strip=True,
+                     radial=radial_sector(poly, mid, n, w))]
     return []
+
+
+def radial_sector(poly, mid, n, w, tol=0.05):
+    """A fan across a track (centreline point mid, normal n towards the fan, width w) as a circular sector, the
+    radial stub of qucsator's MRSTUB: dict(ri, ro (mm, from the sector's apex: where it leaves the track's edge,
+    its arc), alpha (deg), wf (its width at the track's edge)), or None when the shape is not one. The apex is a
+    vertex inside the track's copper, or for a fan cut off at the track's edge, where its two sides meet."""
+    pts = np.asarray(poly.exterior.coords)[:-1]
+    m = len(pts)
+    if m < 5:
+        return None
+    off = (pts - mid) @ n
+    near = np.where(np.abs(off - w / 2) < 1e-3 + 1e-3 * w)[0]
+    inside = [i for i in range(m) if off[i] < w / 2 - 1e-6 and abs((pts[i] - mid) @ np.array([n[1], -n[0]])) < w]
+    if len(inside) == 1:                                       # the apex on the track
+        i = inside[0]
+        apex, s0, s1 = pts[i], pts[(i - 1) % m], pts[(i + 1) % m]
+        arc = [k for k in range(m) if k != i]
+    elif len(near) == 2 and (near[1] - near[0]) % m in (1, m - 1):     # cut off at the edge: the sides' meeting
+        b, c = near if (near[1] - near[0]) % m == 1 else near[::-1]
+        pb, pc = pts[(b - 1) % m], pts[(c + 1) % m]
+        d1, d2 = pts[b] - pb, pts[c] - pc
+        A = np.array([d1, -d2]).T
+        if abs(np.linalg.det(A)) < 1e-9:
+            return None
+        t = np.linalg.solve(A, pts[c] - pb)
+        apex, s0, s1 = pb + t[0] * d1, pb, pc
+        arc = [k for k in range(m) if k not in (b, c)]
+    else:
+        return None
+    r = np.linalg.norm(pts[arc] - apex, axis=1)
+    ro = float(r.max())
+    far = pts[arc][r > 0.5 * ro]
+    if len(far) < 3 or np.ptp(np.linalg.norm(far - apex, axis=1)) > tol * ro:      # not an arc about the apex
+        return None
+    u0, u1 = (s0 - apex) / np.linalg.norm(s0 - apex), (s1 - apex) / np.linalg.norm(s1 - apex)
+    alpha = float(np.degrees(np.arccos(np.clip(u0 @ u1, -1, 1))))
+    bis = (u0 + u1) / (np.linalg.norm(u0 + u1) or 1.0)
+    h = (w / 2 - (apex - mid) @ n) / max(bis @ n, 1e-6)          # apex to the track's edge, along the fan's axis
+    ri = max(float(h), 1e-3)
+    if not 5 < alpha < 175 or ri >= 0.8 * ro:
+        return None
+    return dict(ri=ri, ro=ro, alpha=alpha, wf=float(2 * ri * np.tan(np.radians(alpha / 2))))
 
 
 def _join(s, o, cs, co, xs, ys):

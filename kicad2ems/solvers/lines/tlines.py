@@ -128,6 +128,7 @@ class Element:
         self.pts = kw.get('pts')                    # model coordinates, for drawing
         self.geom = kw.get('geom')                  # pad polygon (model coordinates)
         self.region = kw.get('region')              # a strip's own copper (strips.py): its width along it
+        self.radial = kw.get('radial')              # a radial stub's sector (strips.radial_sector), or None
         self.label = kw.get('label', '')
         self.net = kw.get('net', '')
         self.part = kw.get('part')                  # parts.Part for 'part'
@@ -460,7 +461,7 @@ def _split_by_reference(model, ref, e, netcu=None, step=0.25, max_samples=400):
         _, _, w, off = across(0.5 * (s0 + s1))
         lab = e.label if abs(w - e.w) < 1e-6 else f"{e.label}, widened to {w:.3g} mm"
         el = Element('trace', a, b, s1 - s0, layer=e.layer, w=w, pts=np.asarray(piece.coords), net=e.net, label=lab,
-                     region=e.region)
+                     region=e.region, radial=e.radial)
         el.offset = off
         out.append(el)
     return out
@@ -606,7 +607,7 @@ def build(model):
         pts = np.asarray(geom.coords) if geom.geom_type == 'LineString' else t['pts']
         lm.elements.append(Element('trace', a, b, L, layer=t['layer'], w=t['width'], pts=pts, net=t['net'],
                                    label=f"{'strip' if t.get('strip') else 'trace'} {t['width']:.3g} mm",
-                                   region=t.get('region')))
+                                   region=t.get('region'), radial=t.get('radial')))
     # ---- ports: split the trace they sit on, or end the pad section they sit in ----
     port_on_pad = {}                                       # pad node -> port position
     for p in model.ports:
@@ -634,9 +635,9 @@ def build(model):
             pa = [tuple(c) for c in line.coords if line.project(Point(c)) < s] + [tuple(line.interpolate(s).coords[0])]
             pb = [tuple(line.interpolate(s).coords[0])] + [tuple(c) for c in line.coords if line.project(Point(c)) > s]
             lm.elements[best[1]] = Element('trace', e.a, node, s, layer=e.layer, w=e.w, pts=np.array(pa), net=e.net,
-                                           label=e.label, region=e.region)
+                                           label=e.label, region=e.region, radial=e.radial)
             lm.elements.append(Element('trace', node, e.b, line.length - s, layer=e.layer, w=e.w, pts=np.array(pb),
-                                       net=e.net, label=e.label, region=e.region))
+                                       net=e.net, label=e.label, region=e.region, radial=e.radial))
         lm.ports[p.name] = node
         lm.port_z0[p.name] = p.z0
     # ---- pads: a section from where the traces attach to the core (where a part connects) ----
@@ -972,7 +973,7 @@ def _straight(e):
 
 def _piece(e, a, b, p0, p1, tag):
     el = Element(e.kind, a, b, float(np.hypot(*(np.asarray(p1) - p0))), layer=e.layer, w=e.w,
-                 pts=np.array([p0, p1], float), net=e.net, label=e.label, region=e.region)
+                 pts=np.array([p0, p1], float), net=e.net, label=e.label, region=e.region, radial=e.radial)
     for k in _COPY:
         setattr(el, k, getattr(e, k))
     el.notes = list(e.notes)

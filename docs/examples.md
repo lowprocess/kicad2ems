@@ -45,7 +45,7 @@ and their configs (`rf_<name>.toml`) are in the repository, with openEMS results
 | `rf_gcpw`: grounded CPW with via fences | S11, S21 at 5 GHz | −32.6, −0.39 dB | −31.4, −0.31 dB | −21.0, −0.35 dB |
 | `rf_coupler`: 10 dB coupler, 0.14 mm gap | S31, S21 | −10.5, −0.75 dB | −10.9, −0.67 dB | −10.4, −0.72 dB |
 | `rf_ratrace`: 180° hybrid ring, 2.4 GHz | S21, S41, S31 | −3.38, −3.54, −28.2 dB | −3.34, −3.45, −35.8 dB | −3.34, −3.43, −46.7 dB |
-| `rf_radialstub`: one 60° radial stub | notch | 2.13 GHz | 2.18 GHz | 2.32 GHz (the fan as widening slices) |
+| `rf_radialstub`: one 60° radial stub | notch | 2.13 GHz | 2.18 GHz | 2.18 GHz (qucsator's radial stub; scikit-rf slices the fan: 1.99 GHz) |
 | `rf_stripline`: 4 layers, via-fenced stripline | worst S11, S21 at 10 GHz | −17.5, −0.59 dB | −24.8, −0.87 dB | −13.5, −0.63 dB |
 | `rf_diffvia`: 100 Ω pair through two vias | Sdd21 at 5 / 10 GHz, worst Sdd11 | −0.44 / −0.60, −15.4 dB | −0.41 / −0.87, −16.3 dB | −0.46 / −1.34, −9.4 dB |
 | `rf_shielded`: resonator filter in a metal can; EMerge 4.621 GHz ([details](emerge.md#shielded)) | peak | 4.626 GHz (4× mesh; 4.555 by default) | 4.647 GHz (no can) | 4.878 GHz |

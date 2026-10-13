@@ -203,4 +203,38 @@ def test_radial_stub_is_a_tee_and_a_widening_stub(tmp_path):
     from kicad2ems.solvers.lines.fastsolve import solve
     f = np.linspace(1e9, 4e9, 301)
     S, _ = solve(lm, m.ports, f, backend='skrf')
-    assert 1.8e9 < f[np.argmin(np.abs(S[:, 1, 0]))] < 2.7e9        # scikit-rf 1.99 GHz (no step models), qucsator 2.32
+    assert 1.8e9 < f[np.argmin(np.abs(S[:, 1, 0]))] < 2.7e9        # scikit-rf 1.99 GHz (no step models)
+
+
+def test_radial_stub_in_qucsator_is_mrstub(tmp_path):
+    """The fan is a circular sector (strips.radial_sector: its apex on the line, 60 deg, the example's radius),
+    and qucsator models it as one MRSTUB on the tee instead of its widening sections: the notch at mom25d's
+    2.18 GHz (openEMS 2.13; the sections had given 2.32)."""
+    import sys
+    import numpy as np
+    from shapely.geometry import Polygon
+    from kicad2ems.solvers.lines import fastsolve
+    from kicad2ems.solvers.lines.strips import radial_sector
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples'))
+    import make_rf_examples as rf
+    a = np.radians(np.linspace(60, 120, 25))
+    fan = Polygon([(0, 0)] + list(zip(13 * np.cos(a), 13 * np.sin(a))))
+    sec = radial_sector(fan, np.zeros(2), np.array([0.0, 1.0]), 1.5)
+    assert sec['ri'] == pytest.approx(0.75) and sec['ro'] == pytest.approx(13) and sec['alpha'] == pytest.approx(60)
+    cut = fan.intersection(Polygon([(-20, 0.75), (20, 0.75), (20, 20), (-20, 20)]))     # cut off at the edge
+    assert radial_sector(cut, np.zeros(2), np.array([0.0, 1.0]), 1.5) == pytest.approx(sec)
+    assert radial_sector(Polygon([(0, 0), (5, 0), (5, 8), (0, 8), (0, 0.5)]), np.zeros(2), np.array([0.0, 1.0]),
+                         1.5) is None                                # not a sector
+    path = str(tmp_path / 'radial.kicad_pcb')
+    r = rf.radialstub(path)
+    m = Board(KiCadBoard(path), ground='B.Cu', log=lambda *a: None)
+    lm = build(m)
+    f = np.linspace(1e9, 4e9, 301)
+    text, _ = fastsolve.qucs_netlist(lm, m.ports, f)
+    (line,) = [x for x in text.splitlines() if x.startswith('MRSTUB')]
+    assert 'alpha="60' in line and f'ro="{r * 1e-3:.4g}' in line
+    assert 'MSTEP' not in text and text.count('MOPEN') == 2          # the two port ends, not the stub's
+    if not fastsolve.find_qucsator(None):
+        pytest.skip('no qucsator')
+    S, _ = fastsolve.solve(lm, m.ports, f, backend='qucsator')
+    assert 2.12e9 < f[np.argmin(np.abs(S[:, 1, 0]))] < 2.24e9

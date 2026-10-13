@@ -16,7 +16,7 @@ net.
 |---|---|
 | trace | tracks of one width on one layer. A trace is split at junctions, and where its surroundings change: the reference planes, the gap to coplanar ground, or extra copper widening it (a taper or teardrop) |
 | pad | a component pad. A trace ending in a pad is shortened by the part inside it |
-| strip | copper drawn as a shape: rectangular shapes (resonators, hairpins, tapped feeds, stubs drawn as rectangles), and other shapes that sit across a track as a stub (a radial stub). A strip is sliced into sections that follow its width, so a fan becomes a stub that widens step by step |
+| strip | copper drawn as a shape: rectangular shapes (resonators, hairpins, tapped feeds, stubs drawn as rectangles), and other shapes that sit across a track as a stub (a radial stub). A strip is sliced into sections that follow its width, so a fan becomes a stub that widens step by step; with qucsator, a fan that is a circular sector is one radial stub (MRSTUB) instead |
 | via | a via barrel: a coaxial line through the planes it passes, or an inductance where there's no plane |
 | part | a lumped R/L/C part, in series or to ground ([details](model.md#lumped-parts)) |
 
@@ -94,7 +94,14 @@ ports, or to a mesh problem.
 - Impedances are quasi-static. qucsator's microstrip models add dispersion.
 - Coupled sections must be straight, parallel microstrip or stripline. Coupling across layers isn't modelled.
 - Shapes other than rectangles become strips only as stubs across a track; tapers and teardrops widen the
-  track instead. A sliced fan ignores its radial field: the radial stub's notch comes out 6–9 % high.
+  track instead.
+- **Radial stubs**: with qucsator, a fan that is a circular sector (its point on the track, or cut off at
+  the track's edge) is qucsator's radial stub (MRSTUB, March's model with Chew and Kong's effective size).
+  Its radial line is taken to start half the track's width beyond the track's edge: at the edge itself,
+  the notches came out 17–20 % low. That offset is fitted against mom25d on 60°, 90° and 40° fans on
+  0.8 mm FR-4, where the notches then agree within 0 to −2.4 %. scikit-rf has no radial stub: there the
+  fan is sliced into widening sections, which ignores its radial field (notches 5–8 % high with qucsator's
+  step models).
 - qucsator has no stripline model, so single striplines are RLCG lines whose dielectric loss is set at the
   band centre (too high below it, too low above). Coupled sections' loss grows with frequency, as it should.
 - No radiation, no plane resonances, no return-path breaks.

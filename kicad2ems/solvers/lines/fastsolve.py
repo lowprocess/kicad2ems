@@ -198,10 +198,50 @@ def _junction_plan(lm):
     return endnode, short
 
 
+RSTUB_MODEL, RSTUB_DIMENS = 'March', 'Chew_Kong'                # qucsator's MRSTUB: its model, its effective size
+# The radial line starts half the main line's width beyond its edge, not at the edge: a fan whose point is on the
+# line's centre does not carry a radial wave yet where it leaves the line. Fitted against mom25d on 60, 90 and
+# 40 deg fans on 0.8 mm FR-4: notches within 0 / -0.5 / -2.4 % (at the edge: -17 to -20 %; the widening
+# sections before this: +5 to +8 %)
+RSTUB_RI_LINE = 0.5
+
+
+def _radial_stubs(lm):
+    """The microstrip radial stubs of the line model (strips.radial_sector, its sections tagged), each one MRSTUB
+    in qucsator instead of its widening sections: [(element, end at the junction with the line, sector)] and the
+    junctions inside the stubs (steps between the sections, the open end) to leave out. A stub that does not meet
+    the line at one junction keeps its sections."""
+    groups = {}
+    for e in lm.elements:
+        if getattr(e, 'radial', None) and e.xs == 'microstrip' and e.er and e.group is None:
+            groups.setdefault(id(e.radial), (e.radial, []))[1].append(e)
+    out, skip = [], set()
+    for rad, els in groups.values():
+        ids_ = {id(e) for e in els}
+        inner, joins = [], []
+        for k, j in enumerate(lm.junctions):
+            mine = [(e, a) for e, a in j['arms'] if id(e) in ids_]
+            if mine and len(mine) == len(j['arms']):
+                inner.append(k)
+            elif mine:
+                joins.append((*mine[0], j))
+        if len(joins) != 1:
+            continue
+        e, a, j = joins[0]
+        line_w = max([w for (x, _), w in zip(j['arms'], j['widths']) if id(x) not in ids_] or [0.0])
+        ri = rad['ri'] + RSTUB_RI_LINE * line_w
+        if ri >= 0.8 * rad['ro']:
+            continue
+        rad = dict(rad, ri=ri, wf=2 * ri * math.tan(math.radians(rad['alpha'] / 2)), _elements=els)
+        out.append((e, a, rad))
+        skip.update(inner)
+    return out, skip
+
+
 def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
     """The line model as a qucsator netlist (S-parameter sweep over freq). Microstrip lines, corners,
     steps, tees, crosses, open ends, end gaps and vias to ground use qucsator's microstrip models
-    (MLIN, MCORN, MSTEP, MTEE, MCROSS, MOPEN, MGAP, MVIA), grounded CPW its coplanar ones (CLIN, CSTEP,
+    (MLIN, MCORN, MSTEP, MTEE, MCROSS, MOPEN, MGAP, MVIA; a radial stub MRSTUB), grounded CPW its coplanar ones (CLIN, CSTEP,
     COPEN, CGAP), a coupled microstrip pair MCOUPLED; three or more coupled lines, a pair of unequal
     widths or coupled striplines are a multiconductor block (coupled.py) written to `workdir` as
     Touchstone and read with SPfile."""
@@ -245,8 +285,14 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
             v = max(v, 1e-6) if k == 'R' else v
             L.append(f'{k}:{name}{k}{j} {chain[j]} {chain[j + 1]} {k}="{v:.9g} {unit[k]}"')
 
+    stubs, skip_j = _radial_stubs(lm)
+    for e, k, rad in stubs:                                        # radial stubs: qucsator's own model
+        L.append(f'MRSTUB:RS{len(L)} {end(e, k)} Subst="{sub(e)}" ri="{rad["ri"] * 1e-3:.6g}" '
+                 f'ro="{rad["ro"] * 1e-3:.6g}" alpha="{rad["alpha"]:.6g}" Wf="{rad["wf"] * 1e-3:.6g}" '
+                 f'EffDimens="{RSTUB_DIMENS}" Model="{RSTUB_MODEL}"')
+    in_stub = {id(x) for e, _, rad in stubs for x in rad['_elements']}
     for i, e in enumerate(lm.elements):
-        if e.kind == 'coupling' or e.group is not None:
+        if e.kind == 'coupling' or e.group is not None or id(e) in in_stub:
             continue
         a, b = end(e, 0), end(e, 1)
         name = f"E{i}"
@@ -279,7 +325,7 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
     # discontinuities
     for k, j in enumerate(lm.junctions):
         e0 = j['arms'][0][0]
-        if j['xs'] not in ('microstrip', 'cpwg') or not e0.er:
+        if j['xs'] not in ('microstrip', 'cpwg') or not e0.er or k in skip_j:
             continue
         nm, ws = f"J{k}", j['widths']
         arms = [end(e, a) for e, a in j['arms']]
