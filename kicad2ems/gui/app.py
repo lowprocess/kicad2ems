@@ -545,6 +545,10 @@ class ResultsTab(QWidget):
         self.folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.win.out_dir())))
         top.addWidget(self.folder_btn)
         lay.addLayout(top)
+        from .steering import SteeringBar
+        self.steer = SteeringBar()
+        self.steer.steered.connect(self._steered)
+        lay.addWidget(self.steer)
         self.splot = SPlot()
         self.splot.layout_changed.connect(self._save_layout)
         lay.addWidget(self.splot, 1)
@@ -593,7 +597,7 @@ class ResultsTab(QWidget):
 
     def load_antenna(self, out_dir, path=None):
         """The antenna results of a folder (path: which; default the newest) into the plots; False: none."""
-        from .antennatab import find_antenna, antenna_files, load_sphere
+        from .antennatab import find_antenna, antenna_files, load_sphere, load_array
         self.out = out_dir
         files = antenna_files(out_dir) if out_dir else []
         self.which.blockSignals(True)
@@ -616,8 +620,13 @@ class ResultsTab(QWidget):
             found, sph = None, None
             self.info.setText(f"could not read the antenna results: {e}")
         res = found[0] if found else None
+        try:
+            arr = load_array(out_dir, res) if res else None
+        except Exception:                                           # no steering then
+            arr = None
         self.splot.set_antenna(res, sph)                            # first: the plots' antenna options exist then
         self._restore_layout('antenna' if res else 'sparams')
+        self.steer.set_data(res, arr)
         if res:
             m = res['match']
             bw = (f", −10 dB band {m['bw10_lo'] / 1e9:.3f}–{m['bw10_hi'] / 1e9:.3f} GHz" if m.get('bw10') else
@@ -626,6 +635,13 @@ class ResultsTab(QWidget):
                               f"{m['f_res'] / 1e9:.4f} GHz, S11 {m['s11_db']:.1f} dB, Zin {m['zin'][0]:.1f} "
                               f"{'+' if m['zin'][1] >= 0 else '−'} j{abs(m['zin'][1]):.1f} Ω{bw}")
         return bool(res)
+
+    def _steered(self, res, sphere):
+        """A steered drive (the Beam steering bar): the antenna plots and the 3D view's pattern."""
+        self.splot.update_antenna(res, sphere)
+        vol = getattr(self.win, 'volume', None)
+        if vol is not None:
+            vol.set_far(res, sphere)
 
     def show(self, files, compare=None):
         """The S-parameters of a run's files (openEMS, mom25d, line model) and a compare file."""

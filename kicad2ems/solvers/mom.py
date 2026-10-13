@@ -272,6 +272,9 @@ class MoM25D(Solver):
         s = run.s
         self._held = {}
         port = s.mom_port
+        if run.antenna and s.drive:                                 # a drive that names no port: before the solve
+            from ..phased import parse_drive
+            parse_drive(s.drive, [p.name for p in run.m.ports])
         if run.antenna and port == 'auto':                          # the gap source the antenna's power is taken from
             port = 'lumped'
             run.log("mom25d: antenna mode: lumped ports (--mom-port wave for de-embedded ones)")
@@ -301,51 +304,67 @@ class MoM25D(Solver):
         self._dumps(run, held)
 
     def _antenna(self, run, held, result):
-        """Antenna mode: the far field of the driven port's currents (mom25d.farfield) at frequencies over the
-        band and the pattern frequency, as openEMS's antenna results (the same JSON, plots and report section).
-        Gain counts substrate loss and surface waves as loss; nothing radiates below the infinite ground."""
-        from mom25d.farfield import far_field, radiated, port_power
-        from .openems.antenna import match_summary, gain_table, describe, save as save_antenna
+        """Antenna mode: the far field of each port driven alone (mom25d.farfield; the others shorted) at
+        frequencies over the band and the pattern frequency, combined for the drive (phased.combine: --drive's
+        incident waves, else the one antenna port, the other ports terminated), as openEMS's antenna results
+        (the same JSON, plots and report section). With several ports the per-port fields are kept
+        (<name>_mom25d_array.npz) for the GUI's beam steering. Gain counts substrate loss and surface waves as
+        loss; nothing radiates below the infinite ground."""
+        from mom25d.farfield import far_field, radiated
+        from .. import phased
+        from .openems.antenna import match_summary, describe, save as save_antenna
         from ..plots import plot_antenna, plot_pattern
         s, m, sim = run.s, run.m, held.sim
         names = [p.name for p in sim.ports]
-        want = [x.strip() for x in (s.excite.split(',') if isinstance(s.excite, str) else s.excite or [])]
-        k = next((j for j, n in enumerate(names) if n in want), 0)
-        s11 = result.S[:, k, k]
+        n = len(names)
+        if s.drive:
+            a = phased.parse_drive(s.drive, names)
+        else:
+            want = [x.strip() for x in (s.excite.split(',') if isinstance(s.excite, str) else s.excite or [])]
+            a = np.eye(n, dtype=complex)[next((j for j, nm in enumerate(names) if nm in want), 0)]
+        driven = [j for j in range(n) if abs(a[j]) > 0]
+        k = driven[0]
+        zc = np.array([p.zc for p in sim.ports], float)
+        Sa = result.S @ a                                                  # (nf, n): reflected waves over the band
+        s11 = Sa[:, k] / a[k]                                              # the active reflection of the first
         match = match_summary(run.freq, s11, m.ports[k].z0)
         f_pat = float(s.ff_freq[0]) * 1e9 if s.ff_freq else match['f_res']
         ffr = np.unique(np.concatenate([np.linspace(run.fmin, run.fmax, ANT_FREQS), [f_pat]]))
         th, ph = np.arange(0, 181, 5.0), np.arange(0, 361, 5.0)
         up = th <= 90
-        dmax, prad, pacc, pinc, e_norm = [], [], [], [], []
-        run.log(f"mom25d: antenna, {names[k]} driven: far field at {len(ffr)} frequencies")
-        for f in ffr:
-            stop.check()
-            I = sim.currents(f, sim.excitation())[:, k]
-            Et, Ep = far_field(sim, I, f, th[up], ph)
-            U, pr = radiated(Et, Ep, th[up], ph)
-            pa = port_power(sim, I, k)
-            g11 = np.interp(f, run.freq, s11.real) + 1j * np.interp(f, run.freq, s11.imag)
-            dmax.append(4 * np.pi * U.max() / pr)
-            prad.append(pr); pacc.append(pa); pinc.append(pa / max(1 - abs(g11) ** 2, 1e-12))
-            e = np.zeros((len(ph), len(th)))
-            e[:, up] = np.sqrt(np.abs(Et) ** 2 + np.abs(Ep) ** 2)
-            e_norm.append(e)
-        rows = gain_table(ffr, dmax, prad, pacc, pinc)
+        what = ', '.join(phased.format_drive(a, names)) if len(driven) > 1 else names[k]
+        run.log(f"mom25d: antenna, {what} driven: far field of {n} port{'s' if n > 1 else ''} at {len(ffr)} "
+                f"frequencies")
+        Ys, Eth, Eph = [], [], []
         ip = int(np.argmin(np.abs(ffr - f_pat)))
-        I = sim.currents(ffr[ip], sim.excitation())[:, k]
+        for i, f in enumerate(ffr):
+            stop.check()
+            I = sim.currents(f, sim.excitation())
+            Ys.append(np.array([np.atleast_1d(sim.port_current(I, j)) for j in range(n)]))
+            ee = [far_field(sim, I[:, c], f, th[up], ph) for c in range(n)]
+            Eth.append([e[0] for e in ee])
+            Eph.append([e[1] for e in ee])
+            if i == ip:
+                I_pat = I
+        data = dict(theta=th[up], phi=ph, theta_sphere=th, freq=ffr, ports=names, zc=zc, Y=np.array(Ys),
+                    Eth=np.array(Eth), Eph=np.array(Eph), drive=a, f_pattern=float(ffr[ip]))
+        comb = phased.combine(data, a)
+        rows, sph = comb['rows'], comb['sphere']
+        dmax, pacc = sph['dmax'], [r['Pacc'] for r in rows]
+        V, _ = phased.waves(data['Y'][ip], zc, a)
+        I = I_pat @ V                                                      # the drive's currents at the pattern f
         step = s.ff_step
         tc = np.arange(-180, 180 + step / 2, step)
         cuts = {}
         for name, phi0 in (('xz (phi = 0)', 0.0), ('yz (phi = 90)', 90.0)):
             g = np.zeros(len(tc))
             for sign, sel in ((1, tc >= 0), (-1, tc < 0)):          # negative theta: the far side, phi + 180
-                a = np.abs(tc[sel])
-                ok = a <= 90
+                ang = np.abs(tc[sel])
+                ok = ang <= 90
                 if ok.any():
-                    Et, Ep = far_field(sim, I, ffr[ip], a[ok], [phi0 if sign > 0 else phi0 + 180])
+                    Et, Ep = far_field(sim, I, ffr[ip], ang[ok], [phi0 if sign > 0 else phi0 + 180])
                     gg = np.zeros(sel.sum())
-                    gg[ok] = 4 * np.pi * radiated(Et, Ep, a[ok], [0.0])[0][0] / pacc[ip]
+                    gg[ok] = 4 * np.pi * radiated(Et, Ep, ang[ok], [0.0])[0][0] / pacc[ip]
                     g[sel] = gg
             cuts[name] = dict(angle=list(map(float, tc)), gain_dbi=[float(v) for v in 10 * np.log10(np.maximum(g, 1e-6))])
         pa_ = np.arange(0, 360 + step / 2, step)
@@ -353,13 +372,28 @@ class MoM25D(Solver):
         g = 4 * np.pi * radiated(Et, Ep, [90.0], pa_)[0][:, 0] / pacc[ip]
         cuts['xy (theta = 90)'] = dict(angle=list(map(float, pa_)), gain_dbi=[float(v) for v in 10 * np.log10(np.maximum(g, 1e-6))])
         sph_file = run.path('_mom25d_sphere.npz')
-        np.savez_compressed(sph_file, theta=th, phi=ph, freq=ffr, dmax=np.array(dmax), prad=np.array(prad),
-                            e_norm=np.array(e_norm))
+        np.savez_compressed(sph_file, **sph)
         eff = rows[ip]['eff']
+        e_pat = sph['e_norm'][ip]
         ant = dict(match=match, rows=rows, f_pattern=float(ffr[ip]), cuts=cuts, port=names[k], solver='mom25d',
-                   sphere=dict(theta=th, phi=ph, gain=((e_norm[ip] / e_norm[ip].max()) ** 2 * dmax[ip] * eff).T),
+                   sphere=dict(theta=th, phi=ph, gain=((e_pat / e_pat.max()) ** 2 * dmax[ip] * eff).T),
                    sphere_file=os.path.basename(sph_file),
                    model='infinite ground plane: no radiation below it, no board edge')
+        if n > 1:                                                          # the per-port fields: the GUI steers
+            arr_file = run.path('_mom25d_array.npz')
+            phased.save(arr_file, **data)
+            run.wrote('antenna, each port\'s far field, mom25d (beam steering)', arr_file)
+            ant['array_file'] = os.path.basename(arr_file)
+            ant['drive'] = phased.format_drive(a, names)
+            ant['peak'] = comb['peak']
+            ant['active_db'] = {names[j]: float(20 * np.log10(max(abs(comb['active'][ip][j]), 1e-15)))
+                                for j in driven}
+            if len(driven) > 1:
+                ant['port'] = ', '.join(ant['drive'])
+                pk = comb['peak']
+                run.log(f"  mom25d phased drive {ant['port']}: beam at theta {pk['theta']:g}, phi {pk['phi']:g} deg; "
+                        f"active S11 " + ', '.join(f"{p} {v:.1f} dB" for p, v in ant['active_db'].items()) +
+                        f" at {ffr[ip] / 1e9:.4g} GHz")
         for line in describe(match, rows, ant['f_pattern']):
             run.log(f"  mom25d {line}")
         tag = '' if 'antenna' not in run.summary else '_mom25d'          # openEMS's antenna results come first

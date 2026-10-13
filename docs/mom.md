@@ -86,6 +86,29 @@ from a finite ground, such as an inverted-F or a monopole at the board edge; use
 | mom25d | 2.450 GHz | −31.4 dB | 36 % | 6.4 dBi | 2.0 dBi | 20 s |
 | openEMS | 2.438 GHz | −32.3 dB | 38 % | 7.0 dBi | 2.9 dBi | 81 s |
 
+<a id="phased-drive"></a>
+### Phased arrays
+
+`drive` drives several ports at once, each as `PORT[=amplitude][@phase]` (the incident waves, phases in
+degrees). Ports not named are terminated in their reference impedance.
+
+```bash
+kicad2ems examples/antenna_array2x2_phased.toml                     # drive = ["P1@0", "P2@60"]
+kicad2ems examples/antenna_array2x2_phased.toml --drive P1@0,P2=0.5@-90
+```
+
+mom25d solves each port driven alone, then adds their far fields for the drive. The solve is linear, so
+this is exact at every frequency and includes the coupling between the elements. The gain uses the power
+accepted by all the driven ports. The log and the JSON give the beam's direction and each driven port's
+*active reflection*: what it sees with its neighbours driven too, which changes as the beam is steered.
+
+Each port's far field is kept in `<name>_mom25d_array.npz`. The GUI's Results page uses it to steer the
+beam without solving again ([Beam steering](gui.md#beam-steering)).
+
+The example is a 2×2 patch array, 70 mm (0.57 λ) apart, with a feed per row. With P2 60° behind P1 the
+beam tilts to θ 15° in the yz plane, with both ports matched (active S11 −29 and −23 dB); 45 s. openEMS
+has no phased drive yet: with `drive` it drives the first port alone.
+
 <a id="current-dumps"></a>
 ## Current dumps
 

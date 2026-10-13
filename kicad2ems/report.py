@@ -255,6 +255,10 @@ def build(sm, base):
               ('directivity', f"{row['D_dbi']:.2f} dBi" if row['D_dbi'] is not None else '–'),
               ('efficiency', f"{row['eff'] * 100:.0f} %"),
               ('gain', f"{row['G_dbi']:.2f} dBi" if row['G_dbi'] is not None else '–')]
+        if ant.get('peak') and len(ant.get('drive') or []) > 1:     # a phased drive: where the beam points
+            pk = ant['peak']
+            k += [('drive', _e(', '.join(ant['drive']))), ('beam', f"θ {pk['theta']:g}°, φ {pk['phi']:g}°"),
+                  ('active S11', _e(', '.join(f"{p} {v:.1f} dB" for p, v in (ant.get('active_db') or {}).items())))]
     if 'convergence' in sm:
         ok = sm['convergence']['converged']
         k.append(('mesh convergence', f"<span class='{'ok' if ok else 'bad'}'>{'converged' if ok else 'not converged'}</span>"))

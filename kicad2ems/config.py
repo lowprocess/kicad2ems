@@ -98,9 +98,14 @@ CORE = [
     Option('fast', None, "also solve the transmission-line model as a circuit, as a reference: skrf (scikit-rf), "
            "qucsator, or auto (qucsator if installed, else scikit-rf)", choices=('auto', 'skrf', 'qucsator'),
            group='solvers'),
-    Option('mode', 'sparams', "sparams (default): S-parameters of all ports; antenna: one driven port, PML on all "
-           "sides, far field (gain, efficiency, patterns); openEMS only", choices=('sparams', 'antenna'),
+    Option('mode', 'sparams', "sparams (default): S-parameters of all ports; antenna: a driven port (several with "
+           "--drive), far field (gain, efficiency, patterns); openEMS and mom25d", choices=('sparams', 'antenna'),
            gui='Mode', group='solvers'),
+    Option('drive', [], "antenna mode: drive several ports at once, each PORT[=amplitude][@phase in deg] (the "
+           "incident waves; the other ports terminated), e.g. P1@0,P2@60: a phased array (mom25d; openEMS drives "
+           "the first). The GUI's Results page steers the beam afterwards", list, conv=strlist,
+           gui='Antenna: phased drive (P1@0, P2@60 ...; empty: one port)', group='antenna',
+           cli=dict(metavar='PORT[=AMP][@DEG],...')),
     Option('board', None, ".kicad_pcb, .gbrjob (Gerber job file; ports from --pos), the <name>_board.json of an "
            "earlier run, or a .toml config that names one", path=True, gui='Board (.kicad_pcb)', group='board',
            cli=dict(flags=['board'], nargs='?')),

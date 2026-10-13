@@ -194,5 +194,20 @@ results is.
 In antenna mode the line above the plots gives the resonance, the input impedance and the −10 dB band. When
 both openEMS and mom25d ran, a selector beside it switches between them. The pattern in 3D is in the Viewer.
 
+<a id="beam-steering"></a>
+**Beam steering.** For an antenna with several ports, mom25d keeps each port's far field
+([Phased arrays](mom.md#phased-drive)), and a *Beam steering* bar appears above the plots. Any drive is
+then a sum of those fields, recombined at once without solving again:
+
+- **Drive**: `PORT[=amplitude][@phase]` per driven port, the run's to start with. Ports not named are
+  terminated.
+- **Phase step**: added from each driven port to the next, on top of the drive's phases. The beam tilts
+  across the ports.
+- **Animate** sweeps the phase step back and forth over ±180°; **Reset** goes back to the run's drive.
+
+The line below gives the beam's direction, its gain and realized gain, and each driven port's active
+reflection. The gain and efficiency plots, the far-field cuts and the Viewer's 3D pattern follow the
+steering.
+
 ---
 [← Usage](usage.md) · [Index](index.md) · [Next: Examples →](examples.md)

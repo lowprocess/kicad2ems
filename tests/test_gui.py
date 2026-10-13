@@ -733,3 +733,45 @@ def test_solvers_window_saves_qucsator(tmp_path, monkeypatch):
     p._save_programs()
     assert sitecfg.get('qucsator') is None and checks == [1, 1]
     monkeypatch.setattr(sitecfg, '_cache', None)
+
+
+def test_beam_steering_bar(tmp_path, monkeypatch):
+    """An antenna result with each port's far field kept: the Results page's Beam steering bar recombines them for
+    a phase step (the plots' antenna results follow), Animate steps it, a drive that does not parse is shown."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
+    from kicad2ems import phased
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
+    from test_phased import two_sources
+    app = application()
+    data, _ = two_sources()
+    phased.save(tmp_path / 'b_mom25d_array.npz', **data)
+    c = phased.combine(data, data['drive'])
+    np.savez_compressed(tmp_path / 'b_mom25d_sphere.npz', **c['sphere'])
+    res = dict(match=dict(f_res=2.45e9, s11_db=-20.0, zin=[50.0, 0.0], bw10=None), rows=c['rows'],
+               f_pattern=2.45e9, port='P1@0, P2@0', solver='mom25d', sphere_file='b_mom25d_sphere.npz',
+               array_file='b_mom25d_array.npz', drive=['P1@0', 'P2@0'], peak=c['peak'])
+    (tmp_path / 'b_mom25d_antenna.json').write_text(json.dumps(res))
+    w = MainWindow()
+    assert w.results.load_antenna(str(tmp_path))
+    bar = w.results.steer
+    assert bar.isVisibleTo(w.results) and bar.drive.text() == 'P1@0, P2@0' and 'θ 0°' in bar.readout.text()
+    got = []
+    bar.steered.connect(lambda r, s: got.append(r))
+    bar.spin.setValue(60)
+    assert got and got[-1]['drive'] == ['P1@0', 'P2@60'] and got[-1]['peak']['theta'] > 10
+    assert w.results.splot.antenna['peak'] == got[-1]['peak']        # the plots show the steered drive
+    bar.anim.setChecked(True)
+    bar._frame()
+    assert bar.spin.value() == 63
+    bar.anim.setChecked(False)
+    bar.drive.setText('P7@0')
+    bar.update()
+    assert 'no port' in bar.readout.text()
+    bar.reset.click()
+    assert bar.spin.value() == 0 and bar.drive.text() == 'P1@0, P2@0'
+    assert not w.results.load_antenna(None) and not bar.isVisibleTo(w.results)
+    w.hide()

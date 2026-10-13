@@ -17,7 +17,7 @@ GUI_GROUPS = {'board': 'Board', 'band': 'Frequency', 'solvers': 'Solvers', 'outp
 SECTION_SOLVERS = {'openEMS': {'openems'}, 'mom25d': {'mom25d'}, 'EMerge (experimental)': {'emerge'}}
 SECTION_ORDER = ['Board', 'Frequency', 'Solvers', 'openEMS', 'mom25d', 'EMerge (experimental)', 'Output']
 # single settings greyed unless their case holds: the antenna's in antenna mode, with a solver that has one
-ANTENNA_FIELDS = ('ff_freq',)
+ANTENNA_FIELDS = ('ff_freq', 'drive')
 # the line model's qucsator is a setting of the machine, not of a board: the Solvers and hardware window
 TICK = 'solver:'                                          # a solver's tick box: solver:<name>
 

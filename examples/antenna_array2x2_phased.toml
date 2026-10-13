@@ -1,0 +1,19 @@
+# kicad2ems antenna example: 2 x 2 patch array with a feed per row, driven with a phase difference, 2.45 GHz
+# (1.6 mm FR4)
+#   python examples/make_antennas.py array2x2_phased examples/antenna_array2x2_phased
+#   kicad2ems examples/antenna_array2x2_phased.toml       # mom25d: each port's far field, then the drive below
+# drive = PORT[=amplitude][@phase deg]: P2 60 deg behind P1 tilts the beam in the yz plane. The GUI's Results
+# page steers it afterwards (Beam steering: the phase step between the ports), without solving again.
+board   = "antenna_array2x2_phased.kicad_pcb"   # paths are relative to this file
+mode    = "antenna"     # far field: gain, efficiency, patterns
+drive   = ["P1@0", "P2@60"]
+solvers = ["mom25d"]
+fmin    = 2.0           # GHz
+fmax    = 3.0
+points  = 401
+nets    = ["RF", "GND"]
+ground  = "B.Cu"
+out     = "out"
+
+[solver.mom25d]
+dmax    = 2.0           # mm: lambda_g / 30

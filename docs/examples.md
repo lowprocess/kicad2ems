@@ -24,8 +24,8 @@ kicad2ems examples/demo_transition.toml
 | `lowpass`, `highpass`, `bandpass` | lumped filters of 0402 parts, plus the ideal circuit for comparison | `demo_lowpass.toml`, … |
 | `launch` | a 4-layer edge launch with a grounded-CPW feed | none: `--nets RF,GND --fmin 1 --fmax 6` |
 
-`make_antennas.py KIND OUT [param=mm …]` makes antennas for 2.45 GHz: `patch`, `ifa`, `dipole`, `slot`
-and `array2x2`, each with a config `antenna_<kind>.toml`. Dimensions can be changed on the command line,
+`make_antennas.py KIND OUT [param=mm …]` makes antennas for 2.45 GHz: `patch`, `ifa`, `dipole`, `slot`,
+`array2x2` and `array2x2_phased`, each with a config `antenna_<kind>.toml`. Dimensions can be changed on the command line,
 for example `make_antennas.py ifa out arm=19`.
 
 <a id="rf-structures"></a>
@@ -106,6 +106,10 @@ loss.
 
 The **2×2 patch array** is four patches fed from one line. mom25d: 2.438 GHz, S11 −25.6 dB,
 directivity 13.0 dBi, gain 7.0 dBi, 53 s. openEMS: 2.430 GHz, −22.0 dB, 13.3 dBi, gain 7.5 dBi, 271 s.
+
+The **phased 2×2 array** (`antenna_array2x2_phased.toml`) has a feed per row, P1 and P2, driven with a
+phase difference: P2 60° behind P1 tilts the beam to θ 15°, with 7.7 dBi gain (mom25d, 45 s). See
+[Phased arrays](mom.md#phased-drive); the GUI steers it afterwards.
 
 ## Reference results
 

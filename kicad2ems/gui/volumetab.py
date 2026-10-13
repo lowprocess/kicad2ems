@@ -506,6 +506,16 @@ class VolumeTab(QWidget):
         it.setTransform(QMatrix4x4(eu[0], ev[0], en[0], o[0], eu[1], ev[1], en[1], o[1],
                                    eu[2], ev[2], en[2], o[2], 0, 0, 0, 1))
 
+    def set_far(self, res, sph):
+        """A new pattern of the folder's antenna (a steered drive): only the far field redrawn."""
+        if self.gl is None or self.ant is None or len(sph['freq']) != len(self.ant[1]['freq']):
+            return
+        self.ant = (res, sph)
+        if 'far' in self.items:
+            self.view.removeItem(self.items.pop('far'))
+        if self.geometry is not None:
+            self._far_field(self.geometry, self.zscale.value())
+
     def _far_field(self, g, zs):
         """The far-field pattern over the board's centre (`Far-field height` above its top), the peak `Far-field
         size` x the board's larger side away."""

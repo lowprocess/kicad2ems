@@ -12,6 +12,8 @@ Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad neede
           open quarter-wave stub
   array2x2  four of the patch, 100 mm apart, from one 50 ohm feed through a corporate network (T junctions
           and quarter-wave transformers), the bottom row's branch half a guided wavelength longer
+  array2x2_phased  four of the patch, 70 mm apart, a feed per row (P1 the top row, P2 the bottom one): driven
+          with a phase difference (drive = ["P1@0", "P2@60"]) the beam tilts in the yz plane
 
     python examples/make_antennas.py patch examples/antenna_patch
     python examples/make_antennas.py ifa /tmp/ifa arm=20 s=2.5      # dimensions (mm) as parameters
@@ -188,7 +190,37 @@ def array2x2(path, pw=37.2, pl=28.8, inset=8.8, gap=1.0, wf=3.0, d=100.0, wq=5.2
     b.write(path, W, H)
 
 
-KINDS = dict(patch=patch, ifa=ifa, dipole=dipole, slot=slot, array2x2=array2x2)
+def array2x2_phased(path, pw=37.2, pl=28.8, inset=8.8, gap=1.0, wf=3.0, d=70.0, wq=5.2, lq=16.2, a=4.0, s=4.0):
+    """2 x 2 array of the inset-fed patch, d mm apart (0.57 lambda0: no grating lobe steering to about 45 deg), a
+    feed per row from the left edge: P1 the top row, P2 the bottom one. Both rows are alike (fed at their bottom
+    edges, the same lines), so driving P1 and P2 in phase points the beam up; a phase difference tilts it in the
+    yz plane. Each row's T joins its two 50 ohm patch lines (25 ohm), a quarter-wave transformer (wq wide =
+    35.4 ohm, lq long) brings it back to 50 ohm, then s mm down and 50 ohm to the board edge."""
+    W = H = 150.0
+    b = Board(1.6)
+    xc, yc = W / 2, 65.0                                          # array centre (KiCad, y down)
+    h = wf / 2
+    for ref, py in (('P1', yc - d / 2), ('P2', yc + d / 2)):
+        yt = py + pl / 2 + a                                      # the row's feed line, below its patches
+        for px in (xc - d / 2, xc + d / 2):
+            x0, y0 = px - pw / 2, py - pl / 2
+            y1 = y0 + pl
+            b.poly([(x0, y0), (x0 + pw, y0), (x0 + pw, y1), (px + h + gap, y1), (px + h + gap, y1 - inset),
+                    (px - h - gap, y1 - inset), (px - h - gap, y1), (x0, y1)])
+            b.rect(px - h, y1 - inset, px + h, yt + h)
+        b.rect(xc - d / 2 - h, yt - h, xc + d / 2 + h, yt + h)
+        b.rect(xc - wq / 2, yt + h, xc + wq / 2, yt + h + lq)       # transformer down from the T
+        yp = yt + h + lq + s
+        b.rect(xc - h, yt + h + lq, xc + h, yp + h)
+        b.rect(0, yp - h, xc + h, yp + h)                          # 50 ohm to the left edge
+        if ref == 'P1' and yp + h + 3 > yc + d / 2 - pl / 2:
+            raise ValueError("array2x2_phased: the top row's feed runs into the bottom row: a larger d")
+        b.port('TP' + ref[1], ref, 0.5, yp, 0)
+    b.rect(0, 0, W, H, layer='B.Cu', net=1)
+    b.write(path, W, H)
+
+
+KINDS = dict(patch=patch, ifa=ifa, dipole=dipole, slot=slot, array2x2=array2x2, array2x2_phased=array2x2_phased)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in KINDS:

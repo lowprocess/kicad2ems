@@ -245,7 +245,11 @@ class OpenEMS(Solver):
         from ...pipeline import ram_gb
         s, m = run.s, run.m
         p.excite = port_index(m, s.excite)
-        if s.antenna and len(p.excite) > 1:
+        if s.antenna and s.drive:                                   # a phased drive: mom25d's for now
+            first = s.drive[0].partition('@')[0].partition('=')[0].strip()
+            p.excite = port_index(m, [first])
+            run.log(f"note: openEMS has no phased drive yet (--drive: mom25d): driving {first} alone")
+        elif s.antenna and len(p.excite) > 1:
             run.log(f"antenna mode: driving {m.ports[p.excite[0]].name} only (one port per antenna run; "
                     f"--excite to choose)")
             p.excite = p.excite[:1]

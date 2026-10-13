@@ -334,6 +334,13 @@ class SPlot(QWidget):
             sp.fill_options()
         self.redraw()
 
+    def update_antenna(self, res, sphere):
+        """New antenna results of the same run (a steered drive): the antenna plots redrawn, the rest kept."""
+        self.antenna, self.sphere = res, sphere
+        for sp in self.subplots:
+            if sp.mode in ANT_KINDS or sp.mode == FAR_CUTS:
+                self._draw(sp)
+
     def visible(self):
         """The checked traces."""
         out = []

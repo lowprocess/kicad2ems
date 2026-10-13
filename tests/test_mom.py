@@ -114,6 +114,31 @@ def test_antenna_mode(run_cli, tmp_path):
         assert (out / f).exists(), f
 
 
+def test_phased_array(run_cli, tmp_path):
+    """The 2 x 2 array with a feed per row, P2 60 deg behind P1 (--drive): the beam tilts in the yz plane, the
+    per-port fields are kept, and recombining them (phased.combine) gives the run's result back and broadside
+    for the drive in phase."""
+    pytest.importorskip('triangle')
+    import subprocess, sys
+    from kicad2ems import phased
+    ex = os.path.join(os.path.dirname(FILTER), 'make_antennas.py')
+    subprocess.check_call([sys.executable, ex, 'array2x2_phased', str(tmp_path / 'arr')], stdout=subprocess.DEVNULL)
+    out = tmp_path / 'out'
+    code, so, err = run_cli(tmp_path / 'arr.kicad_pcb', '--mode', 'antenna', '--drive', 'P1@0,P2@60', '--fmin',
+                            '2.3', '--fmax', '2.6', '--points', '61', '--solvers', 'mom', '--mom-dmax', '3',
+                            '--mom-solves', '12', '--out', out)
+    assert code == 0, so + err
+    res = json.loads((out / 'arr_mom25d_antenna.json').read_text())
+    assert res['drive'] == ['P1@0', 'P2@60'] and res['port'] == 'P1@0, P2@60'
+    assert 5 <= res['peak']['theta'] <= 25 and res['peak']['phi'] == 90
+    assert set(res['active_db']) == {'P1', 'P2'}
+    data = phased.load(out / res['array_file'])
+    assert data['ports'] == ['P1', 'P2'] and data['Eth'].shape[:2] == (len(data['freq']), 2)
+    again = phased.combine(data, data['drive'])
+    assert np.allclose([r['G_dbi'] for r in again['rows']], [r['G_dbi'] for r in res['rows']], atol=0.01)
+    assert phased.combine(data, [1, 1])['peak']['theta'] <= 5
+
+
 def test_stop_ends_mom25d_after_its_current_solve(run_cli, tmp_path, monkeypatch):
     """The GUI's Stop (a STOP file, kicad2ems.stop): mom25d ends after the frequency it is solving, with no
     result; the line model (the --fast reference) still gives its. ABORT alone had left mom25d running."""

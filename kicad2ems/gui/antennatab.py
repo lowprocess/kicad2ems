@@ -33,6 +33,13 @@ def find_antenna(out_dir, path=None):
     return res, (sph if os.path.isfile(sph) else None), (s1p if os.path.exists(s1p) else None)
 
 
+def load_array(out_dir, res):
+    """Each port's far field of an antenna result (mom25d's <name>_mom25d_array.npz: phased.load), or None."""
+    from ..phased import load
+    f = os.path.join(out_dir, (res or {}).get('array_file') or '')
+    return load(f) if (res or {}).get('array_file') and os.path.isfile(f) else None
+
+
 def load_sphere(path):
     """An antenna sphere: openEMS's NF2FF HDF5 file, or the .npz of mom25d's antenna mode (the same keys)."""
     if path.endswith('.npz'):

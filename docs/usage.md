@@ -146,6 +146,7 @@ dmax    = 0.4
 | Option | Default | Meaning |
 |---|---|---|
 | `--mode sparams\|antenna` | sparams | antenna: one driven port, absorbing boundaries, the far field ([details](postprocessing.md#antenna-mode)) |
+| `--drive` | one port | drive several ports, `PORT[=amplitude][@phase]` each: a phased array (mom25d; [details](mom.md#phased-drive)) |
 | `--ff-freq` | the resonance | the frequencies of the radiation patterns, GHz |
 | `--ff-step` | 2 | the angle step of the pattern cuts, degrees |
 
