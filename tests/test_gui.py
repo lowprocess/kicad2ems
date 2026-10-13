@@ -788,3 +788,42 @@ def test_beam_steering_bar(tmp_path, monkeypatch):
     assert bar.spin.value() == 0 and bar.drive.text() == 'P1@0, P2@0'
     assert not w.results.load_antenna(None) and not bar.isVisibleTo(w.results)
     w.hide()
+
+
+def test_trace_colours_and_styles(tmp_path, monkeypatch):
+    """Every trace its own colour, every source its own line style (S11 of two solvers had shared both, an added
+    folder's traces openEMS's solid line); the user's colour / style / width from the trace list, remembered."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
+    from PySide6.QtCore import QSettings
+    from kicad2ems.gui import application
+    from kicad2ems.gui.splot import SPlot
+    from kicad2ems.gui.traces import load_traces
+    app = application()
+    QSettings('kicad2ems', 'gui').clear()
+    f = np.linspace(1e9, 3e9, 11)
+    S = np.zeros((11, 2, 2), complex)
+    S[:, 0, 0], S[:, 1, 0] = 0.2, 0.9
+    for name in ('b_openems', 'b_mom25d', 'b_qucs', 'b_scikit'):
+        _s2p(tmp_path / f'{name}.s2p', f, S)
+    tr = load_traces([('t', str(tmp_path / f'{n}.s2p')) for n in ('b_openems', 'b_mom25d', 'b_qucs', 'b_scikit')])
+    extra = load_traces([('t', str(tmp_path / 'b_openems.s2p'))])
+    for t in extra:
+        t.source = f"other run: {t.source}"
+    sp = SPlot()
+    sp.set_traces(tr + extra)
+    looks = [sp.look(t) for t in sp.traces]
+    assert len({c for c, _, _ in looks}) == len(looks)               # a colour each
+    s11 = [t for t in sp.traces if t.param == 'S11']
+    assert len({sp.look(t)[1] for t in s11}) == len(s11) == 5        # a style per source, the added folder too
+    sp.set_look([s11[0]], color='#000000', style='dot', width=3)
+    assert sp.look(s11[0]) == ('#000000', 'dot', 3) and sp._pen(s11[0]).width() == 3
+    assert not sp.tree.topLevelItem(0).child(0).icon(0).isNull()     # the line beside its name
+    sp2 = SPlot()                                                    # remembered
+    sp2.set_traces(tr + extra)
+    assert sp2.look(sp2.traces[0]) == ('#000000', 'dot', 3)
+    sp2.set_look([sp2.traces[0]], color=None, style=None, width=None)
+    assert sp2.look(sp2.traces[0]) == looks[0]
+    QSettings('kicad2ems', 'gui').clear()

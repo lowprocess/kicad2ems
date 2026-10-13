@@ -180,7 +180,10 @@ it. The plots fill as many columns as the page's width allows.
 | Polar | S in polar form, or with antenna results the far-field cuts (xz, yz, xy) at a recorded frequency, as gain, realized gain or directivity |
 
 The traces are listed on the left, grouped by solver; tick the ones to show. Traces that weren't
-computed (ports that weren't driven) are greyed out.
+computed (ports that weren't driven) are greyed out. Each trace has its own colour and each source
+(a solver, the compare file, an added folder) its own line style, shown beside the trace's name.
+Right-click a trace to change its colour, line style or width, or a source to set the style of all its
+traces; *Automatic colour and style* undoes it. Your choices are remembered from one session to the next.
 
 - **Cursor**: hover over any plot to read every trace at that frequency.
 - **Markers**: click to add, drag to move, Delete to remove. A marker is on every plot. The table lists each

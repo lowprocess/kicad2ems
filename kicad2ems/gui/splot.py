@@ -22,8 +22,14 @@ from .panels import FlowLayout
 from .traces import (KINDS, SMITH, transform, value_at, fmt_value, nearest, smith_grid, polar_grid, pattern_xy,
                      export_csv, default_visible)
 
-COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
-STYLES = dict(solid=Qt.SolidLine, dashdot=Qt.DashDotLine, dot=Qt.DotLine, dash=Qt.DashLine)
+# a colour per trace (tab10, then darker ones), a line style per source; both changeable from the trace list
+COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
+          '#393b79', '#e6550d', '#31a354', '#843c39', '#7b4173', '#3182bd', '#8c6d31', '#637939', '#ad494a', '#636363']
+STYLES = dict(solid=Qt.SolidLine, dash=Qt.DashLine, dot=Qt.DotLine, dashdot=Qt.DashDotLine,
+              dashdotdot=Qt.DashDotDotLine)
+STYLE_NAMES = dict(solid='solid', dash='dashed', dot='dotted', dashdot='dash-dot', dashdotdot='dash-dot-dot')
+WIDTHS = (1, 2, 3, 4)
+LOOKS_KEY = 'results/trace_looks'                                  # QSettings: the user's colours and styles
 CARTESIAN, SMITH_PLOT, POLAR = 'Cartesian', 'Smith', 'Polar'
 TYPES = (CARTESIAN, SMITH_PLOT, POLAR)
 ANT_KINDS = ('Gain (dBi)', 'Efficiency (%)')                       # Cartesian, with antenna results
@@ -195,6 +201,10 @@ class SPlot(QWidget):
         self.tree.setHeaderHidden(True)
         self.tree.setMinimumWidth(150)
         self.tree.itemChanged.connect(lambda *_: self.redraw())
+        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._tree_menu)
+        self.tree.setToolTip('right-click a trace (or a source) for its colour, line style and width')
+        self.looks = self._load_looks()                             # 'source|S21' -> {color, style, width}
         self.grid_host = QWidget()
         self.grid = QGridLayout(self.grid_host)
         self.grid.setContentsMargins(0, 0, 0, 0)
@@ -322,6 +332,7 @@ class SPlot(QWidget):
                 it.setToolTip(0, 'not computed (port not excited)')
             groups[t.source].addChild(it)
         self.tree.expandAll()
+        self._swatches()
         self.tree.blockSignals(False)
         self.redraw()
         self.fit()
@@ -370,12 +381,108 @@ class SPlot(QWidget):
         """The S-parameter quantities the Cartesian plots show, in order, each once."""
         return list(dict.fromkeys(sp.s_kind for sp in self.subplots if sp.s_kind))
 
+    # ---- how each trace looks: a colour each, a style per source, the user's choices over both ----
+    @staticmethod
+    def look_key(t):
+        return f"{t.source}|{t.param}"
+
+    def look(self, t):
+        """(colour, style name, width) of a trace: its own colour (by its place in the list), its source's line
+        style (the sources in order: solid, dashed, dotted, ...), then what the user chose."""
+        k = next((n for n, x in enumerate(self.traces) if x is t), 0)
+        sources = list(dict.fromkeys(x.source for x in self.traces))
+        si = sources.index(t.source) if t.source in sources else 0
+        auto = dict(color=COLORS[k % len(COLORS)], style=list(STYLES)[si % len(STYLES)], width=2)
+        auto.update(self.looks.get(self.look_key(t), {}))
+        return auto['color'], auto['style'] if auto['style'] in STYLES else 'solid', int(auto['width'])
+
     def _color(self, t):
-        n = max(int(np.sqrt(len([x for x in self.traces if x.source == t.source]))), 1)
-        return COLORS[(t.j * n + t.i) % len(COLORS)]
+        return self.look(t)[0]
 
     def _pen(self, t):
-        return pg.mkPen(self._color(t), width=2, style=STYLES[t.style])
+        c, st, w = self.look(t)
+        return pg.mkPen(c, width=w, style=STYLES[st])
+
+    def _load_looks(self):
+        from PySide6.QtCore import QSettings
+        import json
+        try:
+            v = QSettings('kicad2ems', 'gui').value(LOOKS_KEY)
+            d = json.loads(v) if v else {}
+            return d if isinstance(d, dict) else {}
+        except (ValueError, TypeError):
+            return {}
+
+    def _save_looks(self):
+        from PySide6.QtCore import QSettings
+        import json
+        QSettings('kicad2ems', 'gui').setValue(LOOKS_KEY, json.dumps(self.looks))
+
+    def set_look(self, traces, **kw):
+        """The user's colour / style / width for these traces (kw None: back to the automatic one)."""
+        for t in traces:
+            d = self.looks.setdefault(self.look_key(t), {})
+            for k, v in kw.items():
+                if v is None:
+                    d.pop(k, None)
+                else:
+                    d[k] = v
+            if not d:
+                self.looks.pop(self.look_key(t), None)
+        self._save_looks()
+        self._swatches()
+        self.redraw()
+
+    def _swatches(self):
+        """Each trace's line, as it is drawn, beside its name in the list."""
+        from PySide6.QtGui import QPixmap, QPainter, QPen, QColor, QIcon
+        for g in range(self.tree.topLevelItemCount()):
+            grp = self.tree.topLevelItem(g)
+            for c in range(grp.childCount()):
+                it = grp.child(c)
+                t = self.traces[it.data(0, Qt.UserRole)]
+                col, st, w = self.look(t)
+                pm = QPixmap(28, 12)
+                pm.fill(Qt.transparent)
+                p = QPainter(pm)
+                p.setPen(QPen(QColor(col), w, STYLES[st]))
+                p.drawLine(1, 6, 27, 6)
+                p.end()
+                it.setIcon(0, QIcon(pm))
+
+    def _tree_menu(self, pos):
+        """Right-click on a trace (or a source: all of its traces): colour, line style, width, automatic."""
+        from PySide6.QtWidgets import QColorDialog
+        from PySide6.QtGui import QColor
+        it = self.tree.itemAt(pos)
+        if it is None:
+            return
+        idx = [it.child(c).data(0, Qt.UserRole) for c in range(it.childCount())] if it.childCount() else \
+            [it.data(0, Qt.UserRole)]
+        ts = [self.traces[i] for i in idx if i is not None]
+        if not ts:
+            return
+        menu = QMenu(self)
+        if len(ts) == 1:
+            menu.addAction('Colour…').triggered.connect(lambda: (
+                lambda c: c.isValid() and self.set_look(ts, color=c.name()))(
+                QColorDialog.getColor(QColor(self.look(ts[0])[0]), self, f"Colour of {ts[0].label}")))
+        sm = menu.addMenu('Line style')
+        for key, name in STYLE_NAMES.items():
+            a = sm.addAction(name)
+            a.setCheckable(True)
+            a.setChecked(all(self.look(t)[1] == key for t in ts))
+            a.triggered.connect(lambda _=False, k=key: self.set_look(ts, style=k))
+        wm = menu.addMenu('Width')
+        for w in WIDTHS:
+            a = wm.addAction(f"{w} px")
+            a.setCheckable(True)
+            a.setChecked(all(self.look(t)[2] == w for t in ts))
+            a.triggered.connect(lambda _=False, v=w: self.set_look(ts, width=v))
+        menu.addSeparator()
+        menu.addAction('Automatic colour and style').triggered.connect(
+            lambda: self.set_look(ts, color=None, style=None, width=None))
+        menu.exec(self.tree.viewport().mapToGlobal(pos))
 
     # ---- drawing ----
     def redraw(self):
