@@ -490,8 +490,17 @@ class VolumeTab(QWidget):
         en[n] = 1.0
         o = self.vol.origin * sc
         cu = (self.geometry or {}).get('cu_z') or {}
-        if n == 2 and any(abs(self.vol.origin[2] - z) < 1e-3 for z in cu.values()) and self.copper.isChecked():
-            o[2] += 0.5 * self.cu_t.value() + 0.01                  # on a copper layer: just above its slab
+        layer = (getattr(self.src, 'meta', None) or {}).get('label')
+        z = cu.get(layer) if n == 2 else None                       # a layer dump (E@F.Cu): at its copper layer;
+        if z is None and n == 2:                                    # openEMS samples it a cell into the dielectric
+            z = next((c for c in cu.values() if abs(self.vol.origin[2] - c) < 1e-3), None)
+        if z is not None:                                           # on top of what is drawn on its layer:
+            top = 0.5 * self.cu_t.value() if self.copper.isChecked() else 0.0          # the copper's slab,
+            if self.lines and self.lines_on.isChecked() and any(                       # the line model's slabs
+                    e.get('z') is not None and abs(e['z'] - z) < 1e-3 and e.get('kind') != 'coupling'
+                    for e in self.lines.get('elements', [])):
+                top += 0.005 + max(self.relief.value(), 0.01)
+            o[2] = z * zs + top + 0.01
         it.setTransform(QMatrix4x4(eu[0], ev[0], en[0], o[0], eu[1], ev[1], en[1], o[1],
                                    eu[2], ev[2], en[2], o[2], 0, 0, 0, 1))
 
@@ -592,6 +601,8 @@ class VolumeTab(QWidget):
         self._line_model(zs)
         self._parts(zs)
         self._far_field(g, zs)
+        if self.vol is not None and self.vol.plane is not None and self._frames:     # a layer dump: on top of them
+            self._show_plane(self._frames[self.k])
 
     def _line_model(self, zs):
         """The line model's sections as slabs at their copper width, standing on the copper, coloured by Z0 against
