@@ -110,7 +110,7 @@ def test_solver_boxes_estimates_and_availability():
                                             openems=dict(seconds=900, gb=0.4))))
     assert w.setup.solver_boxes['mom25d'].text() == 'mom25d (MoM)  ·  ~35 s, 1.3 GB'
     assert w.setup.solver_boxes['openems'].text().endswith('~15 min, 0.4 GB')
-    assert w.setup.solver_boxes['emerge'].text() == 'EMerge (FEM, experimental)'      # no estimate: its name
+    assert 'emerge' not in w.setup.solver_boxes                    # experimental: --experimental only
     w.setup.dirty = False
     w.setup.new()                                                   # another board: the estimates go
     assert w.setup.solver_boxes['mom25d'].text() == 'mom25d (MoM)'
@@ -267,7 +267,7 @@ def test_gui_solver_boxes(tmp_path, monkeypatch):
     from kicad2ems.solvers.lines import fastsolve
     monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)    # no qucsator: lines is scikit
     assert [k for k, *_ in FIELDS if k.startswith('solver:')] == ['solver:auto', 'solver:openems', 'solver:mom25d',
-                                                                    'solver:emerge', 'solver:qucs', 'solver:scikit']
+                                                                    'solver:qucs', 'solver:scikit']
     p = tmp_path / 'c.toml'
     p.write_text('board = "b.kicad_pcb"\nsolvers = ["mom", "lines"]\n')
     vals = settings_values(str(p))
@@ -610,3 +610,64 @@ def test_run_folders(tmp_path):
     rs = runs(base, 'x/rf_coupler.kicad_pcb')
     assert [d for d, _ in rs] == [d2, d1]
     assert rs[0][1] == '2026-10-13 14:20:02 (mom25d, qucs)'
+
+
+def test_experimental_solvers_hidden_without_the_flag(tmp_path, monkeypatch):
+    """EMerge (experimental) is out of the GUI unless it was started with --experimental (KICAD2EMS_EXPERIMENTAL):
+    no tick box, no settings, no row in the Solvers window, no trace, no mesh; with it, all back."""
+    from kicad2ems.gui.runner import make_fields, solver_ticks
+    from kicad2ems.gui.traces import load_traces
+    from kicad2ems import sysinfo, meshes
+    from kicad2ems.solvers import shown, registry
+    import numpy as np
+    from kicad2ems.touchstone import write_touchstone
+    f = np.linspace(1e9, 2e9, 3)
+    S = np.zeros((3, 1, 1), complex)
+    files = []
+    for solver in ('mom25d', 'emerge'):
+        p = str(tmp_path / f"b_{solver}.s1p")
+        write_touchstone(p, f, S, [50.0])
+        files.append((f"S-parameters ({solver})", p))
+        np.savez(tmp_path / f"b_mesh_{solver}.npz", kind='tris', nodes=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]))
+    for on, expect in ((False, False), (True, True)):
+        if on:
+            monkeypatch.setenv('KICAD2EMS_EXPERIMENTAL', '1')
+        else:
+            monkeypatch.delenv('KICAD2EMS_EXPERIMENTAL', raising=False)
+        keys = [k for k, *_ in make_fields()]
+        assert ('solver:emerge' in keys) == expect
+        assert ('solver:emerge' in solver_ticks({})) == expect
+        assert ('emerge' in [s['name'] for s in sysinfo.solvers()]) == expect
+        assert ('emerge' in {t.source for t in load_traces(files)}) == expect
+        assert ('emerge' in meshes.find(str(tmp_path))) == expect
+        assert ('emerge' in shown()) == expect and 'emerge' in registry()        # the command line keeps it
+
+
+def test_gui_flag_sets_experimental(monkeypatch):
+    """kicad2ems-gui --experimental: the flag is taken out of the arguments and shown to the runs it starts."""
+    import kicad2ems.gui as g
+    monkeypatch.delenv('KICAD2EMS_EXPERIMENTAL', raising=False)
+    seen = {}
+    monkeypatch.setattr('kicad2ems.gui.app.main', lambda argv: seen.update(argv=argv) or 0)
+    assert g.main(['b.toml', '--experimental']) == 0
+    assert seen['argv'] == ['b.toml'] and os.environ['KICAD2EMS_EXPERIMENTAL'] == '1'
+
+
+def test_hidden_named_solver_kept_on_saving(tmp_path, monkeypatch):
+    """A config naming EMerge, opened without --experimental: no tick box for it, but the form's settings keep it
+    (saving the config doesn't drop it)."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    monkeypatch.delenv('KICAD2EMS_EXPERIMENTAL', raising=False)
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
+    app = application()
+    w = MainWindow()
+    w.setup.set_values(dict(board='b.kicad_pcb', solvers=['mom', 'emerge']))
+    assert 'emerge' not in w.setup.solver_boxes and w.setup.solver_boxes['mom25d'].isChecked()
+    assert w.setup.values()['solvers'] == ['mom25d', 'emerge']
+    w.setup.set_values({})                                          # another config: nothing kept from this one
+    assert w.setup.values().get('solvers') in (None, ['auto'])
+    w.hide()
+    app.processEvents()

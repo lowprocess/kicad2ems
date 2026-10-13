@@ -114,11 +114,11 @@ def estimate(est, values, usable=None, ram_avail=None):
     in 80 % of ram_avail GB. Returns dict(rows=[(name, seconds, gb, gpu_gb, auto)], seconds (summed: they run one
     after the other), gb (the largest), gpu_gb, fits, missing (named solvers without an estimate)), or None when
     no full-wave solver would run or none has an estimate."""
-    from ..solvers import registry, AUTO
-    rows = (est or {}).get('solvers') or {}
+    from ..solvers import shown, registry, AUTO
+    rows = {n: r for n, r in ((est or {}).get('solvers') or {}).items() if n in shown()}
     plan = values.get('solvers')
     plan = [AUTO] if plan is None else list(plan)
-    full = {n for n, sv in registry().items() if sv.consumes == 'board'}
+    full = {n for n, sv in registry().items() if sv.consumes == 'board'}     # named, even hidden: auto adds none
     named = [n for n in plan if n in full]
     out, missing = [], [n for n in named if n not in rows]
     for n in named:

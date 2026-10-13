@@ -75,9 +75,12 @@ def classify(path):
 def load_traces(files, compare=None):
     """Traces of every Touchstone file in (label, path) files (a run's file list), plus a compare file."""
     from ..touchstone import read_touchstone
+    from ..solvers import registry, shown
+    hidden = set(registry()) - set(shown())                         # an experimental solver's, without --experimental
     paths = [p for _, p in files if re.search(r'\.s\d+p$', p) and os.path.exists(p)]
     seen, out = set(), []
     items = [(classify(p), p) for p in paths]
+    items = [(s, p) for s, p in items if s not in hidden]
     if compare and os.path.exists(compare):
         items.append(('compare', compare))
     for source, p in items:

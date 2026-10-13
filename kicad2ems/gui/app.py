@@ -234,7 +234,12 @@ class SetupTab(QWidget):
                 out[key] = [float(x) for x in t.split(',')]
             else:
                 out[key] = t
-        return solvers_from_form(out)
+        out = solvers_from_form(out)
+        hidden = getattr(self, 'hidden_solvers', [])                 # named in the config, not shown here: kept
+        if hidden:
+            named = out.get('solvers')
+            out['solvers'] = (['auto'] if named is None else list(named)) + [n for n in hidden if n not in (named or [])]
+        return out
 
     def set_values(self, vals):
         """Fill the form (a loaded config): not an edit, so the settings stay unchanged."""
@@ -246,7 +251,11 @@ class SetupTab(QWidget):
         self._count()
 
     def _set_values(self, vals):
+        from ..solvers import shown, aliases
         if not any(k.startswith(TICK) for k in vals):              # settings rather than the form's own values
+            named = [aliases().get(str(x).lower(), x) for x in (vals.get('solvers') or [])]
+            # an experimental solver the config names, without --experimental: no tick box, but kept on saving
+            self.hidden_solvers = [n for n in named if n in aliases().values() and n not in shown()]
             vals = dict(vals, **solver_ticks(vals))
         for key, (w, kind) in self.edits.items():
             v = vals.get(key)

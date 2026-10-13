@@ -18,6 +18,13 @@ def application(argv=()):
 
 
 def main(argv=None):
+    """kicad2ems-gui [config.toml] [--experimental]: --experimental shows the experimental solvers (EMerge), for
+    the GUI and the runs it starts (KICAD2EMS_EXPERIMENTAL)."""
+    import os, sys
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if '--experimental' in argv:                                    # before the GUI's modules list the solvers
+        argv.remove('--experimental')
+        os.environ['KICAD2EMS_EXPERIMENTAL'] = '1'
     try:
         from .app import main as _main
     except ImportError as e:

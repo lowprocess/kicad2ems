@@ -219,8 +219,10 @@ class VolumeTab(QWidget):
         self.far_up.setSingleStep(1)
         self.far_up.setSuffix(' mm')
         self.far_up.setToolTip("how far above the board's top surface the pattern's centre is drawn (on screen)")
+        from ..solvers import shown
         self.mesh.setToolTip("a solver's discretisation of the board (written by a preview or a run): openEMS's "
-                             "grid lines, mom25d's triangles, EMerge's element faces on the copper and ports")
+                             "grid lines, mom25d's triangles" + (", EMerge's element faces on the copper and ports"
+                                                                 if 'emerge' in shown() else ''))
         # the controls: one folding section per subject, shown when the folder has something for it (a field
         # dump, a far field), in a side panel the splitter can narrow or close
         from .panels import Section

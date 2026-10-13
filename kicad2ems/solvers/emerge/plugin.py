@@ -55,7 +55,7 @@ def emerge_status(python):
 
 class EMerge(Solver):
     name, aliases, label = 'emerge', ('fem',), 'EMerge (FEM, experimental)'
-    consumes, previewed, rank = 'board', False, 2
+    consumes, previewed, rank, experimental = 'board', False, 2, True
     capabilities = dict(ports='yes: lumped, from the reference copper to the trace', gap_ports='no',
                         diff_pairs='yes', parts='yes: one lumped element across the gap',
                         vias='yes: PEC cylinders', outline='approximated: dielectric over the outline\'s bounding box',

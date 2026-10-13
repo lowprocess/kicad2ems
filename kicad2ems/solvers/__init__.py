@@ -37,7 +37,7 @@ and implements
 run.freq (Hz), run.lm (the line model), run.name, run.log(), run.status(run_name, dict) (progress events),
 run.path(suffix), run.wrote(label, path), run.figure(fig, suffix, key, label) and run.summary.
 """
-import importlib
+import importlib, os
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -88,10 +88,27 @@ class Deviation:
     area: float = None
 
 
+EXPERIMENTAL = 'KICAD2EMS_EXPERIMENTAL'      # set (kicad2ems-gui --experimental): experimental solvers shown
+
+
+def experimental_on():
+    """Are experimental solvers shown? (The GUI's --experimental sets KICAD2EMS_EXPERIMENTAL for itself and the
+    runs it starts; the command line always has them.)"""
+    return os.environ.get(EXPERIMENTAL, '') not in ('', '0')
+
+
+def shown():
+    """{name: Solver}: the registry without the experimental solvers unless experimental_on(): what the GUI
+    lists, ticks, estimates and plots."""
+    on = experimental_on()
+    return {n: sv for n, sv in registry().items() if on or not sv.experimental}
+
+
 class Solver:
     name = ''
     aliases = ()
     label = ''
+    experimental = False        # a solver still being tried: hidden in the GUI without --experimental
     consumes = 'board'
     previewed = False
     rank = 1

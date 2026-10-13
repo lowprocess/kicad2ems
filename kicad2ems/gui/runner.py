@@ -10,7 +10,7 @@ event stream (--events, JSON lines). No Qt here, so it is testable without a dis
 import glob, json, os, sys
 
 # the option groups (options.Option.group) as the form's group boxes; others under their own name
-GUI_GROUPS = {'board': 'Board', 'band': 'Band', 'solvers': 'Solvers', 'output': 'Output', 'mom25d': 'Solvers',
+GUI_GROUPS = {'board': 'Board', 'band': 'Frequency', 'solvers': 'Solvers', 'output': 'Output', 'mom25d': 'Solvers',
               'line model': 'Solvers', 'openEMS antenna mode': 'openEMS', 'openEMS field dumps': 'Field dumps'}
 TICK = 'solver:'                                          # a solver's tick box: solver:<name>
 
@@ -31,11 +31,13 @@ def make_fields():
     label (config.CORE, then each solver's) and a tick box per solver (key solver:<name>) heading the Solvers
     group; Board and Band first, Output last."""
     from ..config import all_options
-    from ..solvers import registry, AUTO
-    rows = [(o.key, o.gui, _kind(o), GUI_GROUPS.get(o.group, o.group)) for _, o in all_options() if o.gui]
+    from ..solvers import shown, registry, AUTO
+    vis = shown()                                                   # experimental solvers: --experimental only
+    rows = [(o.key, o.gui, _kind(o), GUI_GROUPS.get(o.group, o.group)) for name, o in all_options()
+            if o.gui and (name is None or name in vis or name not in registry())]
     rows = [(TICK + AUTO, 'auto: fastest full-wave + line model', 'bool', 'Solvers')] + \
-           [(TICK + n, sv.label, 'bool', 'Solvers') for n, sv in registry().items()] + rows
-    order = ['Board', 'Band', 'Solvers'] + [g for *_, g in rows if g not in ('Board', 'Band', 'Solvers', 'Output')]
+           [(TICK + n, sv.label, 'bool', 'Solvers') for n, sv in vis.items()] + rows
+    order = ['Board', 'Frequency', 'Solvers'] + [g for *_, g in rows if g not in ('Board', 'Frequency', 'Solvers', 'Output')]
     rank = {g: i for i, g in enumerate(dict.fromkeys(order + ['Output']))}
     return sorted(rows, key=lambda r: rank[r[3]])                 # stable: the option order within a group
 
@@ -51,14 +53,14 @@ def solver_ticks(vals):
     """{solver:<name>: ticked} for a settings dict: the solvers its plan runs (openEMS by default; solvers, mom =
     true and fast name the others; 'lines' as resolved here). solvers = [] ticks none."""
     from ..config import build_settings
-    from ..solvers import registry, resolve_lines, LINES, AUTO
+    from ..solvers import shown, resolve_lines, LINES, AUTO
     if vals.get('solvers') == []:
         run = []
     else:
         s = build_settings({k: vals.get(k) for k in ('solvers', 'mom', 'fast') if vals.get(k) not in (None, '')})
         run = s.solver_plan(preview=False)[0]
         run = [resolve_lines(s) if x == LINES else x for x in run]
-    return {TICK + n: n in run for n in [AUTO] + list(registry())}
+    return {TICK + n: n in run for n in [AUTO] + list(shown())}
 
 
 def solvers_from_form(vals):

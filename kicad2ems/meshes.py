@@ -22,11 +22,15 @@ def save(run, solver, kind, **arrays):
 
 
 def find(out_dir):
-    """{solver: path} of the mesh files of a results folder (the newest run's name first)."""
+    """{solver: path} of the mesh files of a results folder (the newest run's name first); an experimental
+    solver's only when they are shown (solvers.shown: the GUI's --experimental)."""
+    from .solvers import registry, shown
+    hidden = set(registry()) - set(shown())
     out = {}
     for p in sorted(glob.glob(os.path.join(out_dir, '*_mesh_*.npz')), key=os.path.getmtime, reverse=True):
         solver = os.path.basename(p)[:-4].rsplit('_mesh_', 1)[1]
-        out.setdefault(solver, p)
+        if solver not in hidden:
+            out.setdefault(solver, p)
     return out
 
 
