@@ -732,6 +732,9 @@ def test_solvers_window_saves_qucsator(tmp_path, monkeypatch):
     p.qucsator.setText('')
     p._save_programs()
     assert sitecfg.get('qucsator') is None and checks == [1, 1]
+    p.openems_venv.setText('/opt/openems/venv')                     # the openEMS environment, the same way
+    p._save_programs()
+    assert sitecfg.get('openems_venv') == '/opt/openems/venv' and sitecfg.get('qucsator') is None and checks == [1, 1, 1]
     monkeypatch.setattr(sitecfg, '_cache', None)
 
 

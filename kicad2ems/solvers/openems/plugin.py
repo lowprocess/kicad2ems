@@ -128,6 +128,10 @@ class OpenEMS(Solver):
         mods = {l.split()[1]: l.split(None, 2)[2] for l in lines if l.strip().startswith(('ok ', 'FAILED '))}
         if ok:
             return True, os.path.dirname(mods.get('openEMS', '')) or 'openEMS'
+        unused = next((l.split('(not used: ', 1)[1][:-1] for l in lines
+                       if l.startswith('openems_venv') and '(not used: ' in l), None)
+        if unused:                                                  # the setting is why: say so first
+            return False, unused
         return False, next((f"{m}: {e}" for m, e in mods.items() if any(l.strip().startswith(f'FAILED  {m}') for l in lines)),
                            'openEMS cannot be imported')
 

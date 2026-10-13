@@ -79,6 +79,20 @@ class SystemPanel(QWidget):
         b.clicked.connect(self._browse_qucsator)
         row.addWidget(b)
         pf.addRow('qucsator program', row)
+        row = QHBoxLayout()
+        self.openems_venv = QLineEdit()
+        self.openems_venv.setToolTip("a Python environment (venv) with openEMS (CSXCAD and openEMS), when it is not "
+                                     "in kicad2ems's own: its folder, or its bin/python. It must be the same Python "
+                                     "version as kicad2ems's; saved in ~/.config/kicad2ems/site.toml")
+        self.openems_venv.setPlaceholderText('empty: openEMS in kicad2ems\'s own Python')
+        self.openems_venv.setText(_user_value('openems_venv'))
+        self.openems_venv.editingFinished.connect(self._save_programs)
+        row.addWidget(self.openems_venv, 1)
+        b = QPushButton('…')
+        b.setFixedWidth(28)
+        b.clicked.connect(self._browse_openems)
+        row.addWidget(b)
+        pf.addRow('openEMS environment', row)
         lay.addWidget(box)
         box = QGroupBox('Hardware')
         self.hw = QFormLayout(box)
@@ -105,14 +119,25 @@ class SystemPanel(QWidget):
             self.qucsator.setText(path)
             self._save_programs()
 
+    def _browse_openems(self):
+        from PySide6.QtWidgets import QFileDialog
+        path = QFileDialog.getExistingDirectory(self, 'A Python environment (venv) with openEMS',
+                                                self.openems_venv.text() or os.path.expanduser('~'))
+        if path:
+            self.openems_venv.setText(path)
+            self._save_programs()
+
     def _save_programs(self):
         """The programs into the user's site.toml (sitecfg), then the solvers checked again."""
         from .. import sitecfg
-        path = self.qucsator.text().strip()
-        if path == _user_value('qucsator'):
-            return
-        sitecfg.set_user('qucsator', path)
-        self.refresh()
+        changed = False
+        for key, field in (('qucsator', self.qucsator), ('openems_venv', self.openems_venv)):
+            path = field.text().strip()
+            if path != _user_value(key):
+                sitecfg.set_user(key, path)
+                changed = True
+        if changed:
+            self.refresh()
 
     # ---- the machine ----
     def refresh(self):

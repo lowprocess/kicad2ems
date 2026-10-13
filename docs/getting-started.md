@@ -57,8 +57,10 @@ tools/build_openems.sh [prefix]   # default prefix ~/opt/openEMS
 
 The script's header lists the build dependencies for Debian/Ubuntu and Fedora. It installs openEMS's
 Python packages into the active virtual environment. kicad2ems must be installed in the **same**
-Python environment as openEMS. If `import openEMS` can't find its libraries, add `<prefix>/lib` to
-`LD_LIBRARY_PATH`.
+Python environment as openEMS, or point it at openEMS's: `setup.sh --openems PATH`, the GUI's *Solvers and
+hardware* window (*openEMS environment*), or `openems_venv = "/path/to/venv"` in
+`~/.config/kicad2ems/site.toml`. The two must be the same Python version. If `import openEMS` can't find
+its libraries, add `<prefix>/lib` to `LD_LIBRARY_PATH`.
 
 ## Checking the install
 

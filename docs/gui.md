@@ -54,9 +54,11 @@ tooltip says why.
 
 **?** beside *Solvers* (or *Help > Solvers and hardware*) opens the Solvers window: every solver with ✔
 or ✖ and what it found, the CPU, the memory and the GPU mom25d would use, and the last preview's
-estimates against what is available. Its *Programs* box sets where qucsator is, a setting of the machine
-rather than of a board: it goes into `~/.config/kicad2ems/site.toml`, and empty finds it on the PATH or
-where `setup.sh` recorded it.
+estimates against what is available. Its *Programs* box sets where qucsator is, and the **openEMS
+environment**: a venv with openEMS, when it isn't in kicad2ems's own Python (its folder or its
+`bin/python`; it must be the same Python version, since openEMS's compiled modules load only in their own).
+These are settings of the machine rather than of a board: they go into `~/.config/kicad2ems/site.toml`.
+Empty finds qucsator on the PATH or where `setup.sh` recorded it, and openEMS in kicad2ems's own Python.
 
 Experimental solvers (EMerge) appear only when the GUI is started with `kicad2ems-gui --experimental`.
 

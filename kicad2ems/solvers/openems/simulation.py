@@ -26,6 +26,8 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
     Gaussian excitation (default fmax; antenna runs extend it, see antenna.py). api: (ContinuousStructure,
     openEMS) classes to build with instead of CSXCAD's and openEMS's (readback.py records the calls)."""
     if api is None:
+        from .venv import activate
+        activate()                                              # an openEMS in another venv (openems_venv)
         from CSXCAD import ContinuousStructure
         from openEMS import openEMS
     else:
@@ -130,10 +132,15 @@ def _debye_material(CSX, name, layer, fref, fmin, fmax, dt):
 def check_openems():
     """Can this Python import openEMS? Returns (ok, report lines) with the real errors and hints."""
     import importlib, shutil, sys
+    from .venv import activate
+    from ... import sitecfg
+    why = activate()
     lines = [f"python      {sys.executable}",
              f"environment {sys.prefix}" + ("  (virtual env)" if sys.prefix != getattr(sys, 'base_prefix', sys.prefix) else "  (no virtual env active)"),
              f"LD_LIBRARY_PATH={os.environ.get('LD_LIBRARY_PATH', '')}"]
-    ok, hints = True, []
+    if sitecfg.get('openems_venv'):
+        lines.append(f"openems_venv {sitecfg.get('openems_venv')}" + (f"  (not used: {why})" if why else ''))
+    ok, hints = True, [why] if why else []
     for mod in ('numpy', 'h5py', 'CSXCAD', 'openEMS'):
         try:
             m = importlib.import_module(mod)
