@@ -157,7 +157,8 @@ solver needs ...`):
 
 | Path | When | Memory for N unknowns |
 |---|---|---|
-| double precision on the CPU | it fits in half the free RAM, and there is no GPU | 18 N² bytes |
+| double precision on the CPU | up to 3,500 unknowns (or no compiled core), and it fits in half the free RAM | 18 N² bytes |
+| mixed precision on the CPU | above 3,500 unknowns, no GPU: single-precision LU refined to double (about 1.3× faster) | 10 N² bytes |
 | GPU LU | the single-precision matrix fits on the GPU | 24 N² bytes RAM, 8 N² bytes GPU |
 | tiled | the GPU LU doesn't fit (`--mom-tiled`) | little RAM, 4 N² bytes GPU, the rest streamed from RAM |
 | compressed (BLR / ACA) | nothing else fits | much less, but slower |
