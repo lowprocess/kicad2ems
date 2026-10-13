@@ -188,7 +188,38 @@ Measured on every example, CPU and GPU: [benchmarks](benchmarks.md). A few of th
   and 1–3 ps. Larger dB differences appear only deep in stop bands and on steep filter skirts.
 - **On the GPU**, mixed precision can fail to converge at the bottom of a band, where the matrix is worst
   conditioned. That frequency, and those up to 1.25 times it, are then solved in double precision on the
-  CPU, and the GPU is tried again above that.
+  CPU, and the GPU is tried again above that. On the SMA launch, whether that happens at a given frequency
+  depends on rounding in the last digit of the matrix: relative noise of 1e-15 moved the fallbacks from
+  run to run, and with them the run time, between about 195 and 410 s.
+
+<a id="core"></a>
+## The compiled core
+
+The core (`mom25d/core/mom25d_core.cpp`, pybind11 and OpenMP) fills the matrix, evaluates the near-pair
+corrections, finds the near pairs, sums the Green's function tables' Sommerfeld integrals, builds the via
+fans' columns and prepares the GPU's complex64 copy of the matrix. NumPy versions of all of them remain as
+the fallback. `mom_core` chooses:
+
+| `mom_core` | Kernels |
+|---|---|
+| `auto` (default) | the core where it's built; boards up to 3,500 unknowns use NumPy's dense solver |
+| `compiled` | the core for every board, small ones through its direct solver; stops if the core isn't built |
+| `python` | NumPy only: slower, for checking the core |
+
+Measured on the RX 7800 XT machine (whole runs, mom25d only):
+
+| Board | Unknowns | NumPy paths before | Core with the new kernels | `compiled` |
+|---|---|---|---|---|
+| antenna_patch | 1,391 | 19.6 s | 17.9 s | 5.3 s |
+| demo_lowpass | 1,875 | 21.5 s | 19.0 s | 2.7 s |
+| rf_wilkinson | 4,657 | 7.2 s | 5.4 s | – |
+| rf_stubnotch | 5,090 | 10.3 s | 8.8 s | – |
+| rf_stripline | 15,563 | 135 s | 101 s | – |
+
+On small boards, `compiled` gives |S| within about 0.005 of the dense solver's (the two split near and far
+interactions differently), with the same resonances. A profile of the larger boards shows what a complete
+C++ port could still gain: about 60 % of their time is already compiled (the core, the GPU's LU, BLAS in the
+refinement), and most of the rest is NumPy on large arrays rather than interpreted Python.
 
 ## Inside mom25d
 

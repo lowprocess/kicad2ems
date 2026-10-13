@@ -56,7 +56,7 @@ def _metal(m, sigma):
 
 
 def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigma=None, log=print, progress=None,
-          hold=None, tiled='auto', on_step=None):
+          hold=None, tiled='auto', on_step=None, core='auto'):
     """S-parameters of the board m on `freq` (Hz) from mom25d, as kicad2ems reports them: (S (nf, n, n) in
     m.user_ports order with differential pairs as (d, c) modes, names, reference impedances, info dict).
     dmax in mm (planes 3x, refined near the copper of other layers). sigma (S/m): conductor loss, as --sigma
@@ -71,7 +71,7 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
         log(f"  mom25d: conductor loss sigma {sigma:g} S/m, {t_mm * 1e3:g} um copper")
     res = solve_board(m.to_dict(), freq, dmax=dmax * 1e-3, port=kind, pairs=pairs, metal=metal, max_solves=max_solves,
                       mesher='gmsh' if mesher == 'gmsh' else 'auto', log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
-                      progress=progress, tiled=tiled, on_step=on_step)
+                      progress=progress, tiled=tiled, on_step=on_step, core=core)
     if hold is not None:
         hold['res'] = res
     for line in res.model.describe().splitlines()[1:] + list(res.sim.log.notes):
@@ -152,6 +152,11 @@ class MoM25D(Solver):
                "(half the GPU memory of an LU, streamed from the host past it): auto (default) where the dense "
                "GPU solver does not fit (it is faster where it fits: 9.9 s against 14.3 s a solve on the SMA "
                "launch), on, off", choices=('auto', 'on', 'off'), name='tiled', gui='MoM tiled GPU solver', group=G),
+        Option('mom_core', 'auto', "mom25d's kernels: auto (default: the compiled core where it is built, NumPy's "
+               "dense solver for boards up to 3,500 unknowns), compiled (the core for every board: 4-8x faster on "
+               "small ones, |S| within about 0.005 of the dense solver's; stops if the core is not built) or python "
+               "(NumPy only: slower, for checking the core)", choices=('auto', 'compiled', 'python'), name='core',
+               gui='Core (compiled / python)', group=G),
         Option('mom_solves', 60, "most EM solves of the adaptive sweep (default {default})", int, name='solves', gui='Most EM solves of the sweep',
                group=G, cli=dict(metavar='N')),
         Option('mom_dump', [], "surface-current dumps at these frequencies (GHz): |J| maps of each signal layer, and "
@@ -162,6 +167,14 @@ class MoM25D(Solver):
                "from the currents (e.g. 0.5,2); at least about --mom-dmax above the copper to resolve it", list,
                conv=floatlist, name='near', gui='Near-field planes (mm above the top)', group=G, cli=dict(metavar='MM,...')),
     ]
+
+    def validate(self, s):
+        if getattr(s, 'mom_core', 'auto') == 'compiled':
+            from mom25d.fast import _built
+            if _built is None:
+                return ("mom_core = compiled, but mom25d's compiled core is not built (python -m mom25d.core.build, "
+                        "or setup.sh): auto or python run on NumPy")
+        return None
 
     def check(self, s=None):
         return mom25d_status()
@@ -280,6 +293,7 @@ class MoM25D(Solver):
             run.log("mom25d: antenna mode: lumped ports (--mom-port wave for de-embedded ones)")
         S, names, zref, info = solve(run.m, run.freq, dmax=s.mom_dmax, port=port, mesher=s.mom_mesher,
                                      max_solves=s.mom_solves, sigma=s.sigma, log=run.log, hold=self._held, tiled=s.mom_tiled,
+                                     core=s.mom_core,
                                      progress=lambda k, n, f: (run.status('mom25d', dict(fraction=k / n, solves=k,
                                                                                          f_ghz=f / 1e9)), stop.check()),
                                      on_step=lambda h: run.status('mom25d', dict(afs_solves=h['solves'],
