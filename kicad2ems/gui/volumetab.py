@@ -167,6 +167,11 @@ class VolumeTab(QWidget):
         self.cmap = QComboBox()
         self.cmap.addItems(['turbo', 'inferno', 'plasma', 'viridis', 'hot'])
         self.envelope = QCheckBox('envelope (no animation)')
+        self.whole = QCheckBox('one colour range for every frame')
+        self.whole.setToolTip("the colour range over the whole dump (every time step, or every frequency), so a "
+                              "field that grows and decays shows it; off: each frame its own range (a frequency "
+                              "domain dump's period always shares one)")
+        self._ranges = {}                                           # (dump, settings) -> the whole dump's top
         self.log = QCheckBox('log scale')
         self.log.setChecked(True)
         self.decades = QDoubleSpinBox()
@@ -259,7 +264,7 @@ class VolumeTab(QWidget):
                                  'resistors green, capacitors cyan, inductors pink, with their value')
         self.parts_on.toggled.connect(lambda *_: self._board())
         groups = (('Field', True, (('Dump', self.dump), ('Frame', self.frame), ('Show', self.comp),
-                                   ('Colours', self.cmap), ('', self.envelope), ('', self.log),
+                                   ('Colours', self.cmap), ('', self.envelope), ('', self.whole), ('', self.log),
                                    ('Decades', self.decades), ('Range top', self.clip), ('Opacity', self.opacity),
                                    ('Fade (gamma)', self.gamma), ('Resolution', self.res), ('', self.play_btn),
                                    ('', saves))),
@@ -315,7 +320,7 @@ class VolumeTab(QWidget):
         self.res.valueChanged.connect(self._rebuild)
         for w in (self.comp, self.cmap):
             w.currentIndexChanged.connect(self._recolour)
-        for w in (self.envelope, self.log, self.copper, self.boxc):
+        for w in (self.envelope, self.whole, self.log, self.copper, self.boxc):
             w.toggled.connect(self._recolour)
         self.cu_t.valueChanged.connect(self._cu_t_set)
         self.mesh.currentIndexChanged.connect(lambda *_: self._board())
@@ -434,6 +439,24 @@ class VolumeTab(QWidget):
             return list(np.linspace(0, 2 * np.pi, N_PHASE, endpoint=False))
         return [None]
 
+    def _whole_top(self, comp, phases):
+        """The top of the colour range over every frame of the dump (each frame's `Range top` percentile, the
+        largest), at the current resolution; kept per dump and settings."""
+        from PySide6.QtWidgets import QApplication
+        key = (self.src.path, self.src.name, comp, len(phases), self.clip.value(), self.res.value())
+        if key not in self._ranges:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                tops = []
+                for k in range(len(self.src)):
+                    vol = self.vol if k == self.frame.currentIndex() else v3.Volume(self.src, k, n=self.res.value())
+                    tops.append(v3.levels([vol.scalar(comp, p) for p in phases], True, False,
+                                          clip=self.clip.value())[1])
+                self._ranges[key] = max(tops)
+            finally:
+                QApplication.restoreOverrideCursor()
+        return self._ranges[key]
+
     def _recolour(self, *_):
         """The voxels of every animation frame at the current settings (one colour range for all)."""
         if self.vol is None:
@@ -443,6 +466,10 @@ class VolumeTab(QWidget):
         signed = self.vol.signed(comp, phases[0])
         log = self.log.isChecked() and not signed
         lo, hi = v3.levels(vals, signed, log, self.decades.value(), self.clip.value())
+        whole = self.whole.isChecked() and len(self.src) > 1
+        if whole:                                                   # the top over every frame of the dump
+            top = self._whole_top(comp, phases)
+            lo, hi = (-top, top) if signed else ((top * 10 ** -self.decades.value(), top) if log else (0.0, top))
         cmap = self.cmap.currentText() if not signed else None          # a signed component: blue - white - red
         self._frames = [v3.colour(v, lo, hi, log, signed, self.opacity.value() / 100, self.gamma.value() / 10, cmap)
                         for v in vals]
@@ -450,6 +477,7 @@ class VolumeTab(QWidget):
         self._show(self.k)
         what = f"|{self.src.field}|" if comp == 'mag' else f"{self.src.field}{comp}"
         self.status.setText(f"{what}: {lo:.3g} to {hi:.3g} {self.src.unit}" + (' (log)' if log else '')
+                            + (' over every frame' if whole else '')
                             + f"; grid {' x '.join(map(str, self.vol.data.shape[:3]))}; drag to orbit, wheel to zoom, "
                               f"Ctrl + drag to pan")
         self._board()

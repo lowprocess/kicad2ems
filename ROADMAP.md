@@ -1,7 +1,7 @@
 # Roadmap
 
 What is worth doing next, in priority order within each section. Each item comes from something the
-examples or benchmarks showed. Last updated 2026-10-12.
+examples or benchmarks showed. Last updated 2026-10-13.
 
 ## 1. Open questions (correctness)
 
@@ -23,6 +23,14 @@ examples or benchmarks showed. Last updated 2026-10-12.
   frequencies.
 - **Antenna mode** assumes an infinite ground, so antennas that use the board edge are out of reach, and
   via currents are left out of the far field.
+- **Beam steering to an angle** for phased arrays (`--drive`): today the phase step is added from each
+  driven port to the next in the order the ports are listed, which only steers cleanly for a line of equally
+  spaced elements numbered along it. A target θ, φ instead would give each port −k₀(xₖ sin θ cos φ +
+  yₖ sin θ sin φ) from its position, on top of the drive's phases: any number of feeds in any layout
+  (rows and columns, a triangle), and Animate sweeping the angle. Test it on a 1×3 row of patches. Feed
+  points well off their element's centre still need the drive's phases to make up the difference.
+- **Phased drive in openEMS**: one run per port, then the near-to-far-field results combined with the
+  drive's weights (exact at every frequency). It drives the first port alone today.
 
 ## 4. openEMS
 

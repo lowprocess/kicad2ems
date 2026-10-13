@@ -126,6 +126,7 @@ shown: *Field* with a dump, *Far field* with antenna results.
 |---|---|
 | Show, Colours | \|F\| or one component; the colour map |
 | envelope | the peak over a cycle instead of an animation |
+| one colour range for every frame | the range over the whole dump (every time step, or every frequency), so a pulse is seen passing and dying away; off, each time step is scaled on its own |
 | log scale, Decades, Range top | the colour range; *Range top* ignores the strongest few voxels, such as a port gap |
 | Opacity, Fade | how solid the strongest field looks, and how fast the weak field fades out |
 | Height scale | stretches z, since boards are thin |
@@ -135,7 +136,7 @@ shown: *Field* with a dump, *Far field* with antenna results.
 | parts at true size | the lumped parts as chips |
 | Mesh | none, or a solver's mesh |
 | Far field: Pattern, Size, Height | the pattern at a frequency, its size against the board, and how far above the board's surface it is drawn |
-| Save GIF / MP4 | the animation from the current camera |
+| Save GIF / MP4 | the animation from the current camera: a period of a frequency-domain dump, or the time steps of a time-domain one (up to 120) |
 
 ![patch 3D](img/readme/patch_3d.gif)
 

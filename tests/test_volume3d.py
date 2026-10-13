@@ -170,6 +170,14 @@ def test_saved_animations(volume_run, board, tmp_path, monkeypatch):
     imgs = w2.render_frames()
     assert len(imgs) == 4 and w2.frame.currentIndex() == t0      # each time step, then back where it was
     assert [t for t, _ in shown[-4:]] == [0, 1, 2, 3]
+    w2.log.setChecked(False)
+    own = float(w2.status.text().split(' to ')[1].split()[0])        # this frame's own range
+    w2.whole.setChecked(True)                                        # one range over the four time steps
+    top = float(w2.status.text().split(' to ')[1].split()[0])
+    assert 'over every frame' in w2.status.text() and top >= own
+    tops = [v3.levels([v3.Volume(w2.src, k, n=w2.res.value()).scalar('mag')], False, False, clip=w2.clip.value())[1]
+            for k in range(4)]
+    assert top == pytest.approx(max(tops), rel=1e-3)
     from kicad2ems.solvers.openems.fields import write_frames
     from PIL import Image
     p = write_frames(imgs, str(tmp_path / 'a.gif'))
