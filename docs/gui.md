@@ -12,7 +12,13 @@ window never loses a run, and the GUI itself doesn't need openEMS.
 
 ## The window
 
-- **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, open a results folder, open the report.
+- **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, the run's estimate, open a results folder, open
+  the report. The estimate (after a preview) is the time and memory of the full-wave solvers ticked, or the one
+  *auto* would pick, for example `~4 min · 1.3 GB` over `mom25d (auto)`. It is grey once other settings change
+  (preview again), red when it won't fit in the memory available, and opens the Solvers window.
+- **Status bar**: the system's memory in use, the GPU's (through `nvidia-smi` or `rocm-smi`; without them, as
+  the Solvers window found it), and while a run goes the run's own memory (kicad2ems, its workers, openEMS).
+  A bar turns amber above 80 % and red above 95 %.
 - **Settings** (left): one collapsible section per group. Each header shows how many settings in it are
   set, for example `Band (3 set)`. Empty fields use the default, shown as a hint. In a narrow dock a
   field moves under its label.
@@ -70,8 +76,10 @@ Everything about the board and its fields, in four views. A view the folder has 
 ### The line model over the board
 
 With *Line model* ticked, the 3D and Plan views draw the [line model](transmission-lines.md)'s sections on
-their copper, coloured by Z0: grey at the ports' impedance, blue below it, red above. The colour bar beside
-the view gives the scale.
+their copper at their width, coloured by Z0: grey at the ports' impedance, blue below it, red above. The colour
+bar beside the view gives the scale. In 3D each section also stands as tall as its Z0 is high (*Z0 relief*: the
+highest Z0 that tall, the lowest a quarter of it), so every change of impedance, a step, a tee, a pad, shows as
+a step in height.
 
 The list beside the view has every section by path (`P1 → P2`, …) with its Z0, length, delay and εeff.
 Pick a section in the list, or click it in the plan, and both views mark it. Hovering over a section in
@@ -84,6 +92,10 @@ Drag to orbit, scroll to zoom, Ctrl+drag to pan. This needs PyOpenGL, which is i
 controls are in folding sections beside the view, and only the ones the folder has something for are
 shown: *Field* with a dump, *Far field* with antenna results.
 
+- **Parts:** the lumped R / C / L parts as their chips at true size, from the footprint's name (0201, 0402,
+  0603, 0805, …; without a size in the name, the pads' extent): resistors green, capacitors cyan, inductors
+  pink, a 0 Ω link grey, with metal end caps and a label with the reference and value. A part on the bottom
+  layer hangs below the board. The plan view outlines them in the same colours.
 - **Mesh:** a solver's discretisation: openEMS's grid lines, mom25d's triangles or EMerge's element faces on
   the copper, ports and parts. A preview writes all three in seconds.
 - **a dump:** a volume dump, for example `--dump E@volume+5@2.4` (the board plus 5 mm of air above and
@@ -102,6 +114,8 @@ shown: *Field* with a dump, *Far field* with antenna results.
 | Height scale | stretches z, since boards are thin |
 | Resolution | voxels along the longest side |
 | copper, Copper shown | show the copper, and how thick it is drawn (0 is flat) |
+| line model, Z0 relief | the sections, and how tall the highest Z0 stands (0 is flat) |
+| parts at true size | the lumped parts as chips |
 | Mesh | none, or a solver's mesh |
 | Far field: Pattern, Size, Height | the pattern at a frequency, its size against the board, and how far above the board's surface it is drawn |
 | Save GIF / MP4 | the animation from the current camera |

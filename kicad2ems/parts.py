@@ -8,6 +8,9 @@ copper plane (units mm, y up, like the Board).
   skipped        DNP and exclude_from_sim footprints, Sim.Enable = 0, port footprints, parts whose
                  two pads are not on modelled copper (net not in --nets) or not in line along x / y
   0 ohm          a metal strap between the pads instead of a lumped element
+  package        the chip size from the footprint's name (R_0402_1005Metric: 0402), its body L x W x H in mm
+                 (SIZES), centred between the pads: what the GUI's viewer draws; without a size in the name, the
+                 pads' outer extent
 """
 import re
 import numpy as np
@@ -15,6 +18,28 @@ import numpy as np
 _PREFIX = {'f': 1e-15, 'p': 1e-12, 'n': 1e-9, 'u': 1e-6, 'µ': 1e-6, 'μ': 1e-6, 'm': 1e-3, 'k': 1e3, 'K': 1e3,
            'M': 1e6, 'G': 1e9, 'R': 1.0, 'r': 1.0, 'E': 1.0, '': 1.0}
 _VALUE = re.compile(r'^(\d*)(?:[.,](\d+))?([fpnuµμmkKMGRrE]?)(\d*)(F|H|Ω|ohms?|OHMS?)?$')
+
+
+# chip sizes (imperial code): body length, width, height in mm (typical EIA values)
+SIZES = {'01005': (0.4, 0.2, 0.13), '0201': (0.6, 0.3, 0.26), '0402': (1.0, 0.5, 0.35), '0603': (1.6, 0.8, 0.45),
+         '0805': (2.0, 1.25, 0.5), '1206': (3.2, 1.6, 0.55), '1210': (3.2, 2.5, 0.55), '1806': (4.5, 1.6, 0.6),
+         '1812': (4.5, 3.2, 0.6), '2010': (5.0, 2.5, 0.6), '2512': (6.3, 3.2, 0.6)}
+METRIC = {'0402': '01005', '0603': '0201', '1005': '0402', '1608': '0603', '2012': '0805', '3216': '1206',
+          '3225': '1210', '4516': '1806', '4532': '1812', '5025': '2010', '6332': '2512'}
+
+
+def package(lib):
+    """The imperial chip size of a footprint name: 'Resistor_SMD:R_0402_1005Metric' -> '0402', 'C_1608Metric' ->
+    '0603', 'L_0603' -> '0603'; None when the name has none."""
+    name = str(lib or '').split(':')[-1]
+    m = re.search(r'(?<!\d)(\d{4,5})_(\d{4})Metric', name)
+    if m and m.group(1) in SIZES:
+        return m.group(1)
+    m = re.search(r'(?<!\d)(\d{4})Metric', name)
+    if m and m.group(1) in METRIC:
+        return METRIC[m.group(1)]
+    m = re.search(r'(?<![\d])(01005|0201|0402|0603|0805|1206|1210|1806|1812|2010|2512)(?![\d])', name)
+    return m.group(1) if m else None
 
 
 def parse_value(text):
@@ -46,14 +71,26 @@ class Part:
         given = [v for v in (R, L, C) if v is not None]
         self.short = given == [0.0] and C is None                   # 0 ohm / 0 H link: metal
         self.series = len(given) > 1                                # R + L + C in series (ESR / ESL fields)
+        self.package, self.body, self.centre = None, None, None      # the chip as drawn: size, (L, W, H), (x, y)
+
+    @property
+    def kind(self):
+        """What the part is mainly: 'C' when it has a capacitance, else 'L' with an inductance, else 'R'."""
+        return 'C' if self.C is not None else ('L' if self.L is not None else 'R')
 
     def to_dict(self):
-        return dict(ref=self.ref, R=self.R, L=self.L, C=self.C, layer=self.layer, z=self.z, axis=self.axis,
-                    s=[float(v) for v in self.s], e=[float(v) for v in self.e])
+        d = dict(ref=self.ref, R=self.R, L=self.L, C=self.C, layer=self.layer, z=self.z, axis=self.axis,
+                 s=[float(v) for v in self.s], e=[float(v) for v in self.e])
+        if self.body is not None:
+            d.update(package=self.package, body=[float(v) for v in self.body],
+                     centre=[float(v) for v in self.centre])
+        return d
 
     @classmethod
     def from_dict(cls, d):
-        return cls(d['ref'], d['R'], d['L'], d['C'], d['layer'], d['z'], d['axis'], d['s'], d['e'])
+        p = cls(d['ref'], d['R'], d['L'], d['C'], d['layer'], d['z'], d['axis'], d['s'], d['e'])
+        p.package, p.body, p.centre = d.get('package'), d.get('body'), d.get('centre')
+        return p
 
     @property
     def gap(self):
@@ -216,5 +253,13 @@ def find_parts(board):
                     R = v if R is None else R + v
                 else:
                     L = v if L is None else L + v
-        parts.append(Part(ref, R, L, C, lay, z, axis, s, e))
+        part = Part(ref, R, L, C, lay, z, axis, s, e)
+        part.package = package(fp.get('lib'))
+        if part.package:
+            part.body = SIZES[part.package]
+        else:                                                       # the pads' outer extent, as tall as an 0402
+            part.body = (max(q.bounds[2 + axis] for q in g) - min(q.bounds[axis] for q in g), w, 0.35)
+        mid = 0.5 * (c[0] + c[1])
+        part.centre = (float(mid[0]), float(mid[1]))
+        parts.append(part)
     return parts, notes

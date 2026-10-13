@@ -100,6 +100,29 @@ def describe(e):
     return ' · '.join(parts)
 
 
+def section_polygon(e):
+    """A section's copper as a shapely geometry (model mm): its centre line widened by its width (flat ends,
+    mitred corners); a via or a pad without length a disc; a part without width a thin strip."""
+    from shapely.geometry import LineString, Point
+    pts = np.asarray(e['pts'], float)
+    w = e.get('w') or 0.0
+    if len(pts) == 1 or np.allclose(pts[0], pts[-1]):
+        return Point(pts[0]).buffer(max(w, 0.3) / 2, quad_segs=8)
+    if w > 0:
+        return LineString(pts).buffer(w / 2, cap_style='flat', join_style='mitre')
+    return LineString(pts).buffer(0.08, cap_style='flat')
+
+
+def relief(z0, lo, hi, floor=0.25):
+    """A section's height in the 3D view as a fraction of the full relief: `floor` at the lowest Z0 of the model
+    (lo), 1 at the highest (hi), so a step in Z0 is a step in height; `floor` for a section without a Z0 (a part)."""
+    if z0 is None or not np.isfinite(z0) or hi is None or lo is None:
+        return floor
+    if hi - lo < 1e-9:
+        return 0.5 * (1 + floor)
+    return floor + (1 - floor) * float(np.clip((z0 - lo) / (hi - lo), 0, 1))
+
+
 def plan_segments(path, box, z):
     """A solver's mesh (meshes.py file) seen from above on the copper plane at height z: its line segments
     (2 k, 2) in that plane, model mm. box: the board's (xmin, ymin, xmax, ymax, z0, z1)."""

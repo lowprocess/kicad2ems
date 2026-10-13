@@ -27,6 +27,8 @@ from .splot import SPlot, default_layout
 from .panels import Section, FlowLayout
 from .systempanel import SystemPanel
 from .viewer import Viewer, VIEWS
+from .statusbar import MemoryMeters, EstimateButton
+from .meters import duration
 
 pg.setConfigOptions(antialias=True, background='w', foreground='k')
 EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
@@ -44,7 +46,7 @@ class SetupTab(QWidget):
         super().__init__()
         from ..config import Settings
         self.win, self.edits, self.extra = win, {}, {}
-        self.path, self.dirty, self._loading = None, False, False
+        self.path, self.dirty, self._loading, self.est = None, False, False, None
         self.defaults = Settings()
         defaults = self.defaults
         outer = QVBoxLayout(self)
@@ -126,17 +128,20 @@ class SetupTab(QWidget):
                 w.setStyleSheet('' if s['ok'] else 'QCheckBox { color: gray; }')
 
     def set_estimates(self, est):
-        """A preview's estimates beside the full-wave solvers' tick boxes: time and memory on that board."""
+        """A preview's estimates beside the full-wave solvers' tick boxes: time and memory on that board (None:
+        none, the box shows its name alone). The window's toolbar shows them for the solvers ticked."""
+        self.est = est
         rows = (est or {}).get('solvers', {})
         for name, w in self.solver_boxes.items():
             e = rows.get(name)
             w.setText(self.solver_labels.get(name, name))
             if not e:
                 continue
-            sec = e.get('seconds', 0)
-            t = f"~{sec:.0f} s" if sec < 120 else (f"~{sec / 60:.0f} min" if sec < 7200 else f"~{sec / 3600:.1f} h")
+            t = duration(e.get('seconds', 0))
             w.setText(f"{self.solver_labels.get(name, name)}  ·  {t}, {e['gb']:.1f} GB")
             w.setToolTip(f"last preview: {t}, {e['gb']:.1f} GB" + (f"; {e['what']}" if e.get('what') else ''))
+        if hasattr(self.win, 'update_estimate'):
+            self.win.update_estimate()
 
     def _count(self):
         """Per section: how many of its fields are set (non-empty, a ticked box differing from the default)."""
@@ -263,6 +268,8 @@ class SetupTab(QWidget):
         if not self._loading and not self.dirty:
             self.dirty = True
             self.win.update_title()
+        if hasattr(self.win, 'update_estimate'):                    # the toolbar's: the solvers ticked now
+            self.win.update_estimate()
 
     def _start_dir(self):
         if self.path:
@@ -630,6 +637,10 @@ class MainWindow(QMainWindow):
         self.fields, self.volume = self.viewer.cuts, self.viewer.volume      # the field views, inside the viewer
         self.system = SystemPanel()                                 # the Solvers window's content: checked now,
         self.system.ready.connect(self.setup.set_availability)      # so the tick boxes can say what cannot run
+        self.meters = MemoryMeters()                                # the status bar: RAM, GPU, the run's memory
+        self.system.ready.connect(self.meters.set_info)
+        self.system.ready.connect(lambda *_: self.update_estimate())
+        self._est_basis = None                                      # the settings the estimates were made with
         self.solvers_dialog = SolversDialog(self, self.system)
         # the settings: a dock of the window; the pages: Viewer, Run, Results (tabbed, split or floated)
         sd = QDockWidget('Settings', self)
@@ -659,7 +670,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.work)
         self._toolbar()
         self._menus()
-        self.statusBar()
+        self.statusBar().addPermanentWidget(self.meters)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         self._restore_shape()
@@ -749,6 +760,10 @@ class MainWindow(QMainWindow):
             self.acts[name] = a
         self.acts['Stop'].setEnabled(False)
         self.acts['Report'].setEnabled(False)
+        self.est_btn = EstimateButton()                             # beside Run / Stop: what a run would take
+        self.est_btn.clicked.connect(self.show_solvers)
+        acts = tb.actions()
+        tb.insertWidget(acts[acts.index(self.acts['Results']) - 1], self.est_btn)     # before Results' separator
         self.addToolBar(Qt.TopToolBarArea, tb)
 
     def show_panel(self, name, front=True):
@@ -850,6 +865,36 @@ class MainWindow(QMainWindow):
         if self.setup.maybe_save():
             self.setup.load(path)
 
+    def _basis(self):
+        """The settings an estimate depends on: all but the solver choice (which the estimate follows) and where the
+        results go."""
+        v = self.setup.values()
+        for k in ('solvers', 'out', 'compare', 'no_report', 'events'):
+            v.pop(k, None)
+        return json.dumps(v, sort_keys=True, default=str)
+
+    def new_estimates(self, est):
+        """A preview's estimates: beside the tick boxes and in the toolbar, for the settings as they are now."""
+        self.setup.set_estimates(est)
+        self._est_basis = self._basis() if est else None
+        self.update_estimate()
+
+    def update_estimate(self):
+        """The toolbar's estimate for the solvers ticked now (greyed when other settings changed since)."""
+        if not hasattr(self, 'est_btn'):
+            return
+        from .meters import estimate
+        est = self.setup.est
+        if not est:
+            self.est_btn.show_estimate(None, has_preview=False)
+            return
+        info = self.system.info or {}
+        usable = {x['name'] for x in info.get('solvers', []) if x['ok']} if info.get('solvers') else None
+        e = estimate(est, self.setup.values(), usable, self.meters.free_gb)
+        labels = {x['name']: x['label'].split(' (')[0] for x in info.get('solvers', [])}
+        self.est_btn.show_estimate(e, stale=self._est_basis is not None and self._basis() != self._est_basis,
+                                   labels=labels)
+
     def update_title(self):
         name = os.path.basename(self.setup.path) if self.setup.path else 'untitled'
         self.setWindowTitle(f"{name}{'*' if self.setup.dirty else ''} - kicad2ems")
@@ -858,6 +903,7 @@ class MainWindow(QMainWindow):
         if self.setup.maybe_save():
             self._save_shape()
             self.system.stop()
+            self.meters.stop()
             self.solvers_dialog.close()
             ev.accept()
         else:
@@ -873,7 +919,7 @@ class MainWindow(QMainWindow):
             self.results.show(files)
         seen = self.viewer.load(out_dir)
         if self.system.load_estimates(out_dir):
-            self.setup.set_estimates(self.system.est)
+            self.new_estimates(self.system.est)
         self.acts['Report'].setEnabled(bool(self.results.report))
         if files or ant:
             self.show_panel('Results')
@@ -916,6 +962,7 @@ class MainWindow(QMainWindow):
         self.proc.finished.connect(self._finished)
         argv = self.current.argv()
         self.proc.start(argv[0], argv[1:])
+        self.meters.set_run(self.proc.processId() or None)
         self.runtab.stop_btn.setEnabled(True)
         self.acts['Stop'].setEnabled(True)
         self.runtab.stage.setText('starting…')
@@ -978,6 +1025,7 @@ class MainWindow(QMainWindow):
         self.poll()
         self.timer.stop()
         self.proc = None
+        self.meters.set_run(None)
         self.runtab.stop_btn.setEnabled(False)
         self.acts['Stop'].setEnabled(False)
         out = self.current.out
@@ -988,7 +1036,7 @@ class MainWindow(QMainWindow):
         seen = self.viewer.load(out)
         self.acts['Report'].setEnabled(bool(self.results.report))
         if self.current.preview and self.system.load_estimates(out):
-            self.setup.set_estimates(self.system.est)
+            self.new_estimates(self.system.est)
             self.statusBar().showMessage('preview done: estimates beside the solvers (? for details)', 8000)
         if code:
             self.runtab.stage.setText(f"ended with code {code} - see the log")

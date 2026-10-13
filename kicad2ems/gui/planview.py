@@ -52,17 +52,8 @@ def _item(path, pen=None, brush=None, z=0):
 
 
 def section_path(e):
-    """A section's outline as a QPainterPath: the centre line widened by its width (flat ends); a via or a part
-    without width: a small disc / the line itself."""
-    from shapely.geometry import LineString, Point
-    pts = np.asarray(e['pts'], float)
-    w = e.get('w') or 0.0
-    if len(pts) == 1 or np.allclose(pts[0], pts[-1]):
-        g = Point(pts[0]).buffer(max(w, 0.3) / 2, quad_segs=8)
-    elif w > 0:
-        g = LineString(pts).buffer(w / 2, cap_style='flat', join_style='mitre')
-    else:
-        g = LineString(pts).buffer(0.08, cap_style='flat')
+    """A section's outline as a QPainterPath (overlay.section_polygon)."""
+    g = ov.section_polygon(e)
     if g.is_empty:
         return QPainterPath()
     polys = [g] if g.geom_type == 'Polygon' else list(g.geoms)
@@ -207,6 +198,21 @@ class PlanView(QWidget):
                 it = _item(section_path(e), pen, QBrush(col), 10)
                 add(it)
                 self._sec[e['id']] = it
+        from .. import volume3d as v3
+        for p in self.board.get('parts', []):                       # lumped parts as their chips, true size
+            if p.get('layer') != lay or not p.get('body') or not p.get('centre'):
+                continue
+            L, W, _ = p['body']
+            cx, cy = p['centre']
+            hx, hy = (L / 2, W / 2) if int(p.get('axis', 0)) == 0 else (W / 2, L / 2)
+            body = [[[cx - hx, cy - hy], [cx + hx, cy - hy], [cx + hx, cy + hy], [cx - hx, cy + hy]]]
+            r, g, b = v3.PART_COLOURS[v3.part_kind(p)]
+            col = QColor.fromRgbF(r, g, b, 0.9)
+            add(_item(_path([body]), QPen(col.darker(170), 1.2), QBrush(col), 25))
+            t = pg.TextItem(p['ref'], color='#111', anchor=(0.5, 1.15))
+            t.setPos(cx, cy + hy)
+            t.setZValue(31)
+            add(t)
         for p in self.board.get('ports', []):
             if p.get('layer') != lay or not p.get('c'):
                 continue

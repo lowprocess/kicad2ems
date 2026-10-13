@@ -136,7 +136,7 @@ class Prims:
         for fp in getattr(raw, 'footprints', []):
             if any(l in layers for q in fp['pads'] for l in q['layers']) and any(q['geom'].intersects(k_reach) for q in fp['pads']):
                 pads = [dict(q, xy=np.array([q['xy'][0], -q['xy'][1]], float), geom=flip_y(q['geom'])) for q in fp['pads']]
-                fps.append(dict({k: v for k, v in fp.items() if k not in ('pads', 'fab', 'lib')}, y=-fp['y'], pads=pads))
+                fps.append(dict({k: v for k, v in fp.items() if k not in ('pads', 'fab')}, y=-fp['y'], pads=pads))
         return cls(items, shapes, tracks, vias, fps)
 
     def to_dict(self):

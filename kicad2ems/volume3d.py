@@ -216,7 +216,51 @@ def geometry_from_board(path):
     outline = (rings(ol)[0][0] if ol else [])
     return dict(copper=copper, cu_z={c['name']: c['z'] for c in b['stack']['copper']},
                 vias=[[v['x'], v['y'], v['r'], v['z0'], v['z1']] for v in b['vias']], outline=outline,
-                thickness=b['stack']['thickness'])
+                thickness=b['stack']['thickness'], parts=b.get('parts') or [])
+
+
+PART_COLOURS = dict(R=(0.15, 0.85, 0.30), C=(0.00, 0.82, 0.95), L=(1.00, 0.35, 0.75),   # green, cyan, pink
+                    short=(0.72, 0.72, 0.76))                                          # a 0 ohm link: metal
+CAP_COLOUR = (0.86, 0.86, 0.88)                                     # the end terminations: tinned metal
+
+
+def part_kind(p):
+    """A board.json part's colour key: 'C' with a capacitance, 'L' with an inductance, 'short' for a 0 ohm link,
+    else 'R'."""
+    if p.get('C') is not None:
+        return 'C'
+    if p.get('L') not in (None, 0):
+        return 'L'
+    return 'short' if p.get('R') in (0, 0.0) and p.get('L') in (None, 0) else 'R'
+
+
+def part_solids(p, cu_z, zs=1.0, lift=0.0):
+    """A board.json part as its chip at true size (body L x W x H, along its pads' axis; the height scale zs
+    places it on its layer but does not stretch it), standing on its copper (`lift` mm on screen above it: the copper's shown
+    half thickness), below the board on the bottom layer: [(role 'body' | 'cap', rgb, vertices, faces)] for a
+    shaded mesh, and the point above it for its label. None for a part without a body (older board.json)."""
+    if not p.get('body') or not p.get('centre'):
+        return None
+    L, W, H = (float(v) for v in p['body'])
+    cx, cy = (float(v) for v in p['centre'])
+    axis, z, hh = int(p.get('axis', 0)), float(p['z']) * zs, H
+    below = len(cu_z) > 1 and float(p['z']) <= min(cu_z.values()) + 1e-9
+    z0 = z - lift - hh if below else z + lift                       # the body's bottom
+
+    def box(length, width, height, at, bottom):
+        hx, hy = (0.5 * length, 0.5 * width) if axis == 0 else (0.5 * width, 0.5 * length)
+        x, y = at
+        ring = [[x - hx, y - hy], [x + hx, y - hy], [x + hx, y + hy], [x - hx, y + hy], [x - hx, y - hy]]
+        out = copper_solids(dict(copper={'b': [[ring]]}, cu_z={'b': bottom + 0.5 * height}), height)
+        return out[0][2], out[0][3]
+    cap, grow = 0.22 * L, 0.03 * W                                  # end caps: a little proud of the body
+    # the body ends inside the caps: no face of it shares a plane with theirs (that flickered)
+    solids = [('body', PART_COLOURS[part_kind(p)], *box(L - 1.6 * cap, W, hh, (cx, cy), z0))]
+    for sgn in (-1, 1):
+        at = (cx + sgn * 0.5 * (L - cap), cy) if axis == 0 else (cx, cy + sgn * 0.5 * (L - cap))
+        solids.append(('cap', CAP_COLOUR, *box(cap, W + 2 * grow, hh + 2 * grow, at, z0 - grow)))
+    top = z0 - 0.15 * max(L, 1.0) if below else z0 + hh + 0.15 * max(L, 1.0)
+    return solids, (cx, cy, top)
 
 
 def is_plane(src):

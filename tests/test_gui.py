@@ -111,6 +111,7 @@ def test_solver_boxes_estimates_and_availability():
     assert w.setup.solver_boxes['mom25d'].text() == 'mom25d (MoM)  ·  ~35 s, 1.3 GB'
     assert w.setup.solver_boxes['openems'].text().endswith('~15 min, 0.4 GB')
     assert w.setup.solver_boxes['emerge'].text() == 'EMerge (FEM, experimental)'      # no estimate: its name
+    w.setup.dirty = False
     w.setup.new()                                                   # another board: the estimates go
     assert w.setup.solver_boxes['mom25d'].text() == 'mom25d (MoM)'
     w.setup.set_availability(dict(solvers=[dict(name='openems', ok=False, what='no CSXCAD'),
@@ -470,3 +471,119 @@ def test_results_subplots_and_layout(tmp_path, monkeypatch):
     w2.setup.dirty = False
     w2.close()
     app.processEvents()
+
+
+def test_meters(tmp_path):
+    """The status bar's readings: system RAM from /proc/meminfo, a process tree's memory, the GPU tools' output."""
+    from kicad2ems.gui import meters
+    mi = tmp_path / 'meminfo'
+    mi.write_text('MemTotal:       16000000 kB\nMemFree:  1 kB\nMemAvailable:    4000000 kB\n')
+    used, total = meters.ram(str(mi))
+    assert total == pytest.approx(16.384) and used == pytest.approx(12.288)
+    assert meters.ram(str(tmp_path / 'none')) is None or len(meters.ram(str(tmp_path / 'none'))) == 2   # sysconf
+    if os.path.isdir('/proc/self'):
+        assert meters.tree_rss(os.getpid()) > 0.01                  # this test process
+    assert meters.tree_rss(None) is None and meters.tree_rss(2 ** 30) is None
+    assert meters.parse_gpu('nvidia-smi', '2048, 16384, RTX\n') == [pytest.approx((2.147483648, 17.179869184))]
+    rocm = 'WARNING: x\n{"card0": {"VRAM Total Memory (B)": "17163091968", "VRAM Total Used Memory (B)": "1000000000"}}'
+    assert meters.parse_gpu('/opt/rocm/bin/rocm-smi', rocm) == [pytest.approx((1.0, 17.163091968))]
+    assert meters.parse_gpu('nvidia-smi', 'garbage') == [] and meters.duration(263) == '~4 min'
+
+
+def test_estimate_follows_the_solvers():
+    """The toolbar's estimate: auto takes the fastest solver that can run and fits; named solvers add up; auto adds
+    no full-wave solver beside a named one (as the pipeline); stale settings and a misfit are marked."""
+    from kicad2ems.gui.meters import estimate
+    est = dict(solvers=dict(openems=dict(seconds=818, gb=0.05), mom25d=dict(seconds=264, gb=1.3, gpu_gb=0.8)))
+    e = estimate(est, {})                                           # the default: auto
+    assert [r[0] for r in e['rows']] == ['mom25d'] and e['rows'][0][4] and e['gpu_gb'] == 0.8
+    assert estimate(est, {}, usable={'openems'})['rows'][0][0] == 'openems'          # mom25d can't run here
+    assert estimate(est, {}, ram_avail=1.0)['rows'][0][0] == 'openems'               # mom25d doesn't fit
+    both = estimate(est, dict(solvers=['openems', 'mom25d', 'scikit']))
+    assert both['seconds'] == 818 + 264 and both['gb'] == 1.3 and not any(r[4] for r in both['rows'])
+    named = estimate(est, dict(solvers=['auto', 'emerge']))         # a named full-wave solver: auto adds none
+    assert named is None
+    assert estimate(est, dict(solvers=['scikit'])) is None and estimate(None, {}) is None
+    assert not estimate(est, dict(solvers=['mom25d']), ram_avail=1.0)['fits']
+    pytest.importorskip('PySide6')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
+    app = application()
+    w = MainWindow()
+    w.system.stop()
+    assert w.est_btn.text().startswith('No estimate')
+    w.setup.set_values(dict(board='b.kicad_pcb'))
+    w.new_estimates(est)
+    assert w.est_btn.text().startswith('~4 min · 1.3 GB · GPU 0.8 GB') and '(auto)' in w.est_btn.text()
+    assert 'changed' not in w.est_btn.text()
+    w.setup.solver_boxes['openems'].setChecked(True)                # a named solver: auto's choice gives way
+    assert w.est_btn.text().startswith('~14 min') and 'changed' not in w.est_btn.text()
+    w.setup.edits['out'][0].setText('elsewhere')                   # where results go: the same estimate
+    assert 'changed' not in w.est_btn.text()
+    w.setup.edits['fmax'][0].setText('9')                           # another setting: the estimate is stale
+    assert w.est_btn.text().endswith('· changed')
+    w.setup.dirty = False                                           # (else New asks to save first)
+    w.setup.new()                                                   # another board: no estimate
+    assert w.est_btn.text().startswith('No estimate')
+    assert w.meters.ram.format().startswith('RAM ') and not w.meters.run.isVisible()
+    w.setup.dirty = False
+    w.close()
+    app.processEvents()
+
+
+def test_line_model_relief(wilkinson_preview):
+    """The 3D line model: sections as slabs at their width, taller for a higher Z0."""
+    from kicad2ems import overlay as ov
+    d = ov.load_lines(wilkinson_preview)
+    arm = next(e for e in d['elements'] if e['kind'] == 'trace' and e['z0'] > 60 and len(e['pts']) == 2)
+    g = ov.section_polygon(arm)
+    assert g.area == pytest.approx(arm['w'] * arm['length'], rel=1e-6)          # its width, its length
+    assert ov.relief(69, 49, 69) == 1.0 and ov.relief(49, 49, 69) == 0.25 and ov.relief(None, 49, 69) == 0.25
+    assert ov.relief(59, 49, 69) == pytest.approx(0.625) and ov.relief(50, 50, 50) == pytest.approx(0.625)
+    pytest.importorskip('PySide6')
+    pytest.importorskip('OpenGL')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from kicad2ems.gui import application
+    from kicad2ems.gui.volumetab import VolumeTab
+    app = application()
+    v = VolumeTab()
+    if v.gl is None:
+        pytest.skip('no OpenGL')
+    v.set_lines(d)
+    assert v.load(wilkinson_preview)
+    slabs = [k for k in v.items if k.startswith('ln') and k != 'ln_rims']
+    assert len(slabs) >= 20 and 'ln_rims' in v.items and v.relief.value() == pytest.approx(0.38)
+    tall = v.items[f"ln{arm['id']}"].opts['meshdata'].vertexes()[:, 2].max()
+    feed = next(e for e in d['elements'] if e['kind'] == 'trace' and e['z0'] < 55 and len(e['pts']) == 2)
+    low = v.items[f"ln{feed['id']}"].opts['meshdata'].vertexes()[:, 2].max()
+    assert tall - low == pytest.approx(0.75 * 0.38, abs=1e-3)       # the step in Z0 is a step in height
+    v.lines_on.setChecked(False)
+    assert not any(k.startswith('ln') for k in v.items)
+
+
+def test_parts_in_the_viewer(wilkinson_preview):
+    """The Wilkinson's resistor as an 0805 chip: green in 3D with its value, outlined in the plan."""
+    pytest.importorskip('PySide6')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from kicad2ems.gui import application
+    from kicad2ems.gui.viewer import Viewer
+    from kicad2ems.gui.volumetab import _value
+    app = application()
+    v = Viewer()
+    assert v.load(wilkinson_preview)
+    r1 = v.plan.board['parts'][0]
+    assert r1['ref'] == 'R1' and r1['package'] == '0805' and _value(r1) == '100 Ω'
+    assert _value(dict(R=0.4, L=2.7e-8, C=None), main=True) == '27 nH' and _value(dict(R=0.4, L=2.7e-8, C=None)) == \
+        '0.4 Ω + 27 nH'
+    v.set_view('Plan')
+    assert any(isinstance(it, __import__('pyqtgraph').TextItem) and it.toPlainText() == 'R1' for it in v.plan._items)
+    vol = v.volume
+    if vol.gl is None:
+        return
+    assert not vol.parts_on.isHidden() and {'part0_0', 'part0_1', 'part0_2', 'part0_label'} <= set(vol.items)
+    assert vol.items['part0_label'].text == 'R1 100 Ω'
+    strip = next(e['id'] for e in v.lines['elements'] if e['kind'] == 'part')
+    assert f"ln{strip}" not in vol.items                            # no line-model strip inside the chip
+    vol.parts_on.setChecked(False)
+    assert not any(k.startswith('part') for k in vol.items) and f"ln{strip}" in vol.items

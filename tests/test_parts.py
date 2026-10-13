@@ -101,3 +101,42 @@ def test_lowpass_demo(boards):
     assert s21(0.1) > -0.3 and -6.5 < s21(1.0) < -2 and s21(2.0) < -15
     srf = 1 / (2 * np.pi * np.sqrt(0.5e-9 * 6.8e-12)) / 1e9                    # ~2.73 GHz: deepest S21
     assert abs(f[np.argmin(abs(S[:, 1, 0]))] / 1e9 - srf) < 0.05
+
+
+@pytest.mark.parametrize('lib,pkg', [
+    ('Resistor_SMD:R_0402_1005Metric', '0402'), ('Capacitor_SMD:C_01005_0402Metric', '01005'),
+    ('Inductor_SMD:L_0201_0603Metric', '0201'), ('C_1608Metric', '0603'), ('L_0603', '0603'),
+    ('R_2512_6332Metric_Pad1.40x3.35mm', '2512'), ('Resistor_SMD:R_0805_2012Metric', '0805'),
+    ('R_Small', None), ('RF:SMA_Edge', None), ('', None), (None, None)])
+def test_package_from_footprint_name(lib, pkg):
+    from kicad2ems.parts import package
+    assert package(lib) == pkg
+
+
+def test_part_body_true_size(rlc):
+    """A part's chip: its size from the footprint name, centred between its pads, kept through board.json; drawn as
+    a coloured body and two metal end caps standing on its copper, below the board on the bottom layer."""
+    from kicad2ems.parts import SIZES
+    from kicad2ems import volume3d as v3
+    m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
+    c1 = m.parts[0]
+    assert c1.package == '0402' and tuple(c1.body) == SIZES['0402'] and c1.kind == 'C'
+    assert c1.centre[0] == pytest.approx(12.0) and c1.centre[1] == pytest.approx(0.5 * (c1.s[1] + c1.e[1]))
+    d = c1.to_dict()
+    back = Part.from_dict(d)
+    assert back.package == '0402' and list(back.body) == list(c1.body) and back.to_dict() == d
+    old = {k: v for k, v in d.items() if k not in ('package', 'body', 'centre')}     # an older board.json
+    assert Part.from_dict(old).body is None and v3.part_solids(old, {'F.Cu': 0.2}) is None
+    cu_z = {'B.Cu': 0.0, 'F.Cu': 0.2}
+    solids, label = v3.part_solids(d, cu_z, zs=2.0, lift=0.05)
+    assert [r for r, *_ in solids] == ['body', 'cap', 'cap'] and solids[0][1] == v3.PART_COLOURS['C']
+    allv = np.concatenate([v for *_, v, f in solids])
+    assert allv[:, 0].max() - allv[:, 0].min() == pytest.approx(1.0 + 0.0, abs=1e-6)          # 0402: 1.0 mm long
+    body = solids[0][2]
+    assert body[:, 2].min() == pytest.approx(0.2 * 2 + 0.05)                     # on the copper, at the height scale
+    assert body[:, 2].max() - body[:, 2].min() == pytest.approx(0.35)            # its true height, not stretched
+    assert label[2] > allv[:, 2].max()
+    under, _ = v3.part_solids(dict(d, layer='B.Cu', z=0.0), cu_z, zs=2.0, lift=0.05)
+    assert under[0][2][:, 2].max() == pytest.approx(-0.05)                       # the bottom layer: below the board
+    assert v3.part_kind(dict(R=100.0, L=None, C=None)) == 'R' and v3.part_kind(dict(R=0.4, L=2e-9, C=None)) == 'L'
+    assert v3.part_kind(dict(R=0.0, L=None, C=None)) == 'short' and v3.part_kind(dict(R=0.1, L=5e-10, C=1e-12)) == 'C'

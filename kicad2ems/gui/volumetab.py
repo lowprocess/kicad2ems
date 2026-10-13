@@ -173,13 +173,29 @@ class VolumeTab(QWidget):
         self.lines_on.setChecked(True)
         self.lines_on.setToolTip("the line model's sections on their layers; pick one in the section list")
         self.lines_on.toggled.connect(lambda *_: self._board())
+        self.relief = QDoubleSpinBox()
+        self.relief.setRange(0, 20)
+        self.relief.setDecimals(2)
+        self.relief.setSingleStep(0.1)
+        self.relief.setSuffix(' mm')
+        self.relief.setSpecialValueText('flat')
+        self.relief.setToolTip("the line model's tallest section on screen (the highest Z0); the lowest Z0 stands a "
+                               "quarter as high, so each step in height is a step in impedance. 0: flat")
+        self.relief.valueChanged.connect(self._relief_set)
+        self._relief_auto = True
+        self.parts_on = QCheckBox('parts at true size (R / C / L)')
+        self.parts_on.setChecked(True)
+        self.parts_on.setToolTip('lumped parts as their chips (0201, 0402, 0603, ... from the footprint name): '
+                                 'resistors green, capacitors cyan, inductors pink, with their value')
+        self.parts_on.toggled.connect(lambda *_: self._board())
         groups = (('Field', True, (('Dump', self.dump), ('Frame', self.frame), ('Show', self.comp),
                                    ('Colours', self.cmap), ('', self.envelope), ('', self.log),
                                    ('Decades', self.decades), ('Range top', self.clip), ('Opacity', self.opacity),
                                    ('Fade (gamma)', self.gamma), ('Resolution', self.res), ('', self.play_btn),
                                    ('', saves))),
                   ('Board', True, (('Height scale', self.zscale), ('', self.copper), ('Copper shown', self.cu_t),
-                                   ('', self.boxc), ('Mesh', self.mesh), ('', self.lines_on))),
+                                   ('', self.boxc), ('Mesh', self.mesh), ('', self.lines_on),
+                                   ('Z0 relief', self.relief), ('', self.parts_on))),
                   ('Far field', True, (('Pattern', self.far), ('Size', self.far_size), ('Height', self.far_up))))
         self.sections = {}
         for title, open_, rows in groups:
@@ -511,28 +527,86 @@ class VolumeTab(QWidget):
                 self.view.addItem(ln)
                 self.items['mesh'] = ln
         self._line_model(zs)
+        self._parts(zs)
         self._far_field(g, zs)
 
     def _line_model(self, zs):
-        """The line model's sections as lines on their copper (on the slab's top), coloured by Z0 against the
-        ports' impedance; the selected one wider."""
+        """The line model's sections as slabs at their copper width, standing on the copper, coloured by Z0 against
+        the ports' impedance and as tall as their Z0 is high (overlay.relief: a quarter of `Z0 relief` at the
+        model's lowest Z0, all of it at the highest), so every change of impedance is a step; dark rims on their
+        tops; the selected one dark. All on screen: the height scale does not stretch them."""
         if not (self.lines and self.lines_on.isChecked()):
             return
         from .. import overlay as ov
         ref, half = ov.reference(self.lines), ov.span(self.lines)
-        lift = (0.5 * self.cu_t.value() if self.copper.isChecked() else 0.0) + 0.02   # on screen, above the copper
+        zs_all = [e['z0'] for e in self.lines['elements'] if e.get('z0') and e.get('kind') != 'coupling']
+        lo, hi = (min(zs_all), max(zs_all)) if zs_all else (None, None)
+        full = max(self.relief.value(), 0.01)                       # on screen, mm
+        base = 0.5 * self.cu_t.value() if self.copper.isChecked() else 0.0
+        chips = bool((self.board or {}).get('parts')) and self.parts_on.isChecked()
+        rims = []
         for e in self.lines['elements']:
-            pts = np.asarray(e['pts'], float)
-            if e.get('z') is None or e.get('kind') == 'coupling' or len(pts) < 2 or np.allclose(pts[0], pts[-1]):
+            if e.get('z') is None or e.get('kind') == 'coupling':
                 continue
-            pos = np.column_stack([pts, np.full(len(pts), e['z'] * zs + lift)]).astype(np.float32)
+            if e.get('kind') == 'part' and chips:                   # the chip is drawn: no strip inside it
+                continue
+            g = ov.section_polygon(e)
+            if g.is_empty:
+                continue
+            h = full * ov.relief(e.get('z0'), lo, hi)
+            bottom = e['z'] * zs + base + 0.005                     # just above the copper's top: no z-fighting
+            parts = [g] if g.geom_type == 'Polygon' else list(g.geoms)
+            polys = [[list(p.exterior.coords)] + [list(r.coords) for r in p.interiors] for p in parts]
+            solids = v3.copper_solids(dict(copper={'s': polys}, cu_z={'s': bottom + 0.5 * h}), h)
+            if not solids:
+                continue
+            _, _, verts, faces = solids[0]
             sel = e['id'] == self.sel
-            rgb = (0.05, 0.05, 0.05) if sel else ov.z0_colour(e.get('z0'), ref, half)
-            ln = self.gl.GLLinePlotItem(pos=pos, mode='line_strip', color=(*rgb, 1.0), width=7 if sel else 4,
-                                        antialias=True)
-            ln.setDepthValue(3 if sel else 2)
+            rgb = (0.12, 0.12, 0.12) if sel else ov.z0_colour(e.get('z0'), ref, half)
+            md = self.gl.MeshData(vertexes=verts.astype(np.float32), faces=faces.astype(np.uint32))
+            m = self.gl.GLMeshItem(meshdata=md, color=(*rgb, 1.0), smooth=False, shader=copper_shader(),
+                                   glOptions='opaque')
+            m.setDepthValue(2)
+            self.view.addItem(m)
+            self.items[f"ln{e['id']}"] = m
+            for p in parts:                                         # the top's rim, as segment pairs
+                r = np.asarray(p.exterior.coords)
+                top = np.column_stack([r, np.full(len(r), bottom + h + 0.002)])
+                rims.append(np.repeat(top, 2, 0)[1:-1])
+        if rims:
+            ln = self.gl.GLLinePlotItem(pos=np.concatenate(rims).astype(np.float32), mode='lines',
+                                        color=(0.1, 0.1, 0.1, 0.9), width=1.2, antialias=True)
+            ln.setDepthValue(3)
             self.view.addItem(ln)
-            self.items[f"ln{e['id']}"] = ln
+            self.items['ln_rims'] = ln
+
+    def _parts(self, zs):
+        """The lumped parts as their chips (volume3d.part_solids): coloured body, metal end caps, a label."""
+        parts = (self.board or {}).get('parts') or []
+        if not (parts and self.parts_on.isChecked()):
+            return
+        g = self.board
+        lift = 0.5 * self.cu_t.value() if self.copper.isChecked() else 0.0
+        for k, p in enumerate(parts):
+            made = v3.part_solids(p, g.get('cu_z') or {}, zs, lift)
+            if made is None:
+                continue
+            solids, (lx, ly, lz) = made
+            for j, (role, rgb, verts, faces) in enumerate(solids):
+                md = self.gl.MeshData(vertexes=verts.astype(np.float32), faces=faces.astype(np.uint32))
+                m = self.gl.GLMeshItem(meshdata=md, color=(*rgb, 1.0), smooth=False, shader=copper_shader(),
+                                       glOptions='opaque')
+                m.setDepthValue(4)
+                self.view.addItem(m)
+                self.items[f"part{k}_{j}"] = m
+            t = self.gl.GLTextItem(pos=(lx, ly, lz), text=f"{p['ref']} {_value(p, main=True)}".strip(),
+                                   color=(20, 20, 20, 255))
+            from OpenGL import GL                                   # on top: never hidden behind its chip
+            t.setGLOptions({GL.GL_DEPTH_TEST: False, GL.GL_BLEND: True,
+                            'glBlendFunc': (GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)})
+            t.setDepthValue(20)
+            self.view.addItem(t)
+            self.items[f"part{k}_label"] = t
 
     def set_lines(self, lines):
         """The line model of the folder (overlay.load_lines), or None."""
@@ -553,19 +627,34 @@ class VolumeTab(QWidget):
         self.sections['Field'].setVisible(bool(self.srcs))
         self.sections['Far field'].setVisible(self.ant is not None)
         self.lines_on.setVisible(self.lines is not None)
+        self.relief.setVisible(self.lines is not None)
+        self.parts_on.setVisible(bool((self.board or {}).get('parts')))
+        lab = self.relief.parentWidget().layout().labelForField(self.relief) if self.relief.parentWidget() else None
+        if lab is not None:
+            lab.setVisible(self.lines is not None)
+
+    def _relief_set(self, *_):
+        self._relief_auto = False
+        self._board()
 
     def _cu_t_set(self, *_):
         self._cu_t_auto = False
         self._board()
 
     def _auto_cu_t(self):
-        """The copper's shown thickness for a board: 0.6 % of its larger side (a 32 mm board: 0.2 mm)."""
+        """The copper's shown thickness for a board, 0.6 % of its larger side (a 32 mm board: 0.2 mm), and the line
+        model's relief, 1.5 %; each unless set by hand."""
         b = v3.board_box(self.geometry) if self.geometry is not None else None
-        if b is None or not self._cu_t_auto:
+        if b is None:
             return
-        self.cu_t.blockSignals(True)
-        self.cu_t.setValue(round(0.006 * max(b[2] - b[0], b[3] - b[1]), 2))
-        self.cu_t.blockSignals(False)
+        if self._cu_t_auto:
+            self.cu_t.blockSignals(True)
+            self.cu_t.setValue(round(0.006 * max(b[2] - b[0], b[3] - b[1]), 2))
+            self.cu_t.blockSignals(False)
+        if self._relief_auto:
+            self.relief.blockSignals(True)
+            self.relief.setValue(round(0.015 * max(b[2] - b[0], b[3] - b[1]), 2))
+            self.relief.blockSignals(False)
 
     def reset_camera(self):
         zs = self.zscale.value()
@@ -643,3 +732,25 @@ class VolumeTab(QWidget):
                 self.status.setText(f"saved {path}")
             except Exception as e:
                 QMessageBox.warning(self, 'Save', f"{type(e).__name__}: {e}")
+
+
+def _value(p, main=False):
+    """A board.json part's value as text: 100 Ω, 1.5 pF, 2.2 nH (series parts: each, joined; main: only its main
+    element's, the capacitance or the inductance without the ESR / ESL fields)."""
+    def fmt(v, unit, scales):
+        for f, pre in scales:
+            if abs(v) >= f * 0.999:
+                return f"{v / f:.3g} {pre}{unit}"
+        f, pre = scales[-1]
+        return f"{v / f:.3g} {pre}{unit}"
+    out = []
+    if main:
+        kind = v3.part_kind(p)
+        p = {k: (p.get(k) if k == kind or (kind == 'short' and k == 'R') else None) for k in ('R', 'L', 'C')}
+    if p.get('R') is not None:
+        out.append('0 Ω' if p['R'] == 0 else fmt(p['R'], 'Ω', [(1e6, 'M'), (1e3, 'k'), (1, '')]))
+    if p.get('L') is not None:
+        out.append(fmt(p['L'], 'H', [(1e-6, 'µ'), (1e-9, 'n'), (1e-12, 'p')]))
+    if p.get('C') is not None:
+        out.append(fmt(p['C'], 'F', [(1e-6, 'µ'), (1e-9, 'n'), (1e-12, 'p'), (1e-15, 'f')]))
+    return ' + '.join(out)
