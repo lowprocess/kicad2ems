@@ -1,5 +1,6 @@
 """GUI helpers without a display (the Qt window itself needs PySide6 and is checked when installed)."""
 import json, math, os, pytest
+import numpy as np
 from kicad2ems.gui.runner import Run, EventTail, stop_runs, write_toml, settings_values, FIELDS
 from kicad2ems.config import build_settings
 
@@ -66,6 +67,7 @@ def test_dump_lists_and_extra_settings(tmp_path):
 
 
 def test_window_tabs(tmp_path):
+    """Three pages (Viewer, Run, Results), the settings collapsed, the Solvers window behind ? and Help."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -78,16 +80,43 @@ def test_window_tabs(tmp_path):
     assert v['dump'] == ['E@F.Cu@2,6', 'H@volume'] and v['mode'] == 'antenna'
     w.setup.extra = dict(air=3.0)
     assert w.setup.values()['air'] == 3.0
-    assert list(w.docks) == ['S-parameters', 'Model and mesh', 'Line model', 'Run', 'Fields', 'Antenna', 'System']
-    assert w.field_panel.view() == '3D'                              # the field views: one panel, 3D first
-    w.field_panel.set_view('2D')
-    assert w.field_panel.view() == '2D' and w.field_panel.buttons['2D'].isChecked()
+    assert list(w.docks) == ['Viewer', 'Run', 'Results']
+    assert w.viewer.view() in ('3D', 'Plan')                         # 3D when OpenGL can be had
+    w.viewer.set_view('Plan')
+    assert w.viewer.view() == 'Plan' and w.viewer.buttons['Plan'].isChecked()
     assert all(not s.expanded for s in w.setup.sections.values())  # settings collapsed when the window opens
     assert 'set)' in w.setup.sections['Field dumps'].head.text()   # the dumps given above count
     assert {'Open', 'Save', 'Preview', 'Run', 'Stop'} <= set(w.acts)
+    assert w.setup.help_btn.text() == '?' and not w.solvers_dialog.isVisible()
+    w.setup.help_btn.click()                                        # ? beside Solvers: the Solvers window
+    assert w.solvers_dialog.isVisible() and w.system.isVisibleTo(w.solvers_dialog)
     w.fields.load(str(tmp_path))                                    # an empty folder: no dumps, no error
-    assert w.fields.src is None and not w.antenna.load(str(tmp_path))
+    assert w.fields.src is None and not w.results.load_antenna(str(tmp_path))
+    assert not w.viewer.load(str(tmp_path)) and not w.viewer.buttons['Cut'].isEnabled()
+    w.setup.dirty = False
     w.close()
+
+
+def test_solver_boxes_estimates_and_availability():
+    """A preview's estimates beside the solver tick boxes; a solver that cannot run here says why there."""
+    pytest.importorskip('PySide6')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
+    app = application()
+    w = MainWindow()
+    w.system.stop()
+    w.setup.set_estimates(dict(solvers=dict(mom25d=dict(seconds=35, gb=1.3, what='4,657 unknowns'),
+                                            openems=dict(seconds=900, gb=0.4))))
+    assert w.setup.solver_boxes['mom25d'].text() == 'mom25d (MoM)  ·  ~35 s, 1.3 GB'
+    assert w.setup.solver_boxes['openems'].text().endswith('~15 min, 0.4 GB')
+    assert w.setup.solver_boxes['emerge'].text() == 'EMerge (FEM, experimental)'      # no estimate: its name
+    w.setup.set_availability(dict(solvers=[dict(name='openems', ok=False, what='no CSXCAD'),
+                                           dict(name='mom25d', ok=True, what='0.6')]))
+    assert 'no CSXCAD' in w.setup.solver_boxes['openems'].toolTip() and w.setup.solver_boxes['mom25d'].toolTip() == ''
+    w.setup.dirty = False
+    w.close()
+    app.processEvents()
 
 
 def test_run_panel_plots_the_mom25d_sweep():
@@ -303,3 +332,136 @@ def test_system_panel(tmp_path):
     assert 'not available' in oems.text(4) and '~10 min' == mom.text(1)
     assert 'does not fit' in mom.text(2) and 'fits' in mom.text(3)
     assert fit_note(10, 20) == 'fits' and fit_note(18, 20) == 'tight' and not p.load_estimates(str(tmp_path / 'none'))
+
+
+@pytest.fixture(scope='module')
+def wilkinson_preview(tmp_path_factory):
+    """A preview of the Wilkinson divider: its board, line model (<name>_lines.json), meshes and plots."""
+    from kicad2ems.cli import main
+    out = tmp_path_factory.mktemp('wilk')
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    assert main([os.path.join(root, 'examples', 'rf_wilkinson.toml'), '--preview', '--out', str(out),
+                 '--solvers', 'mom,lines', '--no-report']) == 0
+    return str(out)
+
+
+def test_line_model_drawing(wilkinson_preview):
+    """<name>_lines.json: every section with its points, layer height and Z0; paths as ids; the overlay's
+    colours, hit test and description."""
+    from kicad2ems import overlay as ov
+    d = ov.load_lines(wilkinson_preview)
+    assert d and d['format'] == 'kicad2ems-lines' and d['path'].endswith('_lines.json')
+    els = d['elements']
+    assert [e['id'] for e in els] == list(range(len(els)))
+    assert all(len(e['pts']) >= 1 and e['z'] == pytest.approx(0.8) for e in els if e['layer'] == 'F.Cu')
+    assert [p['port'] for p in d['paths']] == ['P1', 'P1', 'P2'] and all(p['ids'] for p in d['paths'])
+    z0 = sorted({round(e['z0']) for e in els if e.get('z0') and e['kind'] == 'trace'})
+    assert z0 == [49, 69]                                           # the 50 ohm feeds and the 70.7 ohm arms
+    assert ov.reference(d) == 50.0 and ov.span(d) == pytest.approx(19.04, abs=0.05)
+    arm = next(e for e in els if e['kind'] == 'trace' and e['z0'] > 60 and len(e['pts']) == 2)
+    mid = np.mean(arm['pts'], 0)
+    assert ov.nearest(els, mid[0], mid[1], 0.1) == arm['id']
+    assert ov.nearest(els, 1e3, 1e3, 0.1) is None and ov.nearest(els, mid[0], mid[1], 0.1, layer='B.Cu') is None
+    assert ov.z0_colour(50, 50, 10) == ov.MID and ov.z0_colour(None) == ov.MID
+    assert ov.z0_colour(80, 50, 10) == pytest.approx(ov.HIGH) and ov.z0_colour(20, 50, 10) == pytest.approx(ov.LOW)
+    assert 'Z0 69.0 Ω' in ov.describe(arm) and 'mm' in ov.describe(arm)
+    seg = ov.plan_segments(next(iter(__import__('kicad2ems.meshes', fromlist=['find']).find(wilkinson_preview).values())),
+                           (0, -20, 25, 0, 0, 0.8), 0.8)
+    assert seg.shape[1] == 2 and len(seg) % 2 == 0 and len(seg) > 0
+
+
+def test_viewer_sections_and_views(wilkinson_preview):
+    """The viewer on a preview: the plan and the section list, one selection in every view; the views a folder
+    has nothing for disabled."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from kicad2ems.gui import application
+    from kicad2ems.gui.viewer import Viewer
+    app = application()
+    v = Viewer()
+    assert v.load(wilkinson_preview)
+    assert v.buttons['Plan'].isEnabled() and v.buttons['Images'].isEnabled() and not v.buttons['Cut'].isEnabled()
+    assert v.plan.current_layer() == 'F.Cu' and v.plan.layer.count() == 2      # top first
+    n = len([e for e in v.lines['elements'] if e['kind'] != 'coupling'])
+    rows = sum(v.tree.topLevelItem(k).childCount() for k in range(v.tree.topLevelItemCount()))
+    assert rows >= n and v.tree.topLevelItem(0).text(0) == 'P1 → P2'
+    v.set_view('Plan')
+    assert not v.side.isHidden()
+    sec = v.tree.topLevelItem(0).child(1)
+    sec.setSelected(True)                                           # the list: the plan and 3D follow
+    i = sec.data(0, Qt_UserRole())
+    assert v.plan.sel == i and v.volume.sel == i and 'Z0' in v.detail.text()
+    v.plan.selected.emit(0)                                         # a click in the plan: the list follows
+    assert v.tree.selectedItems()[0].data(0, Qt_UserRole()) == 0
+    v.lines_on.setChecked(False)                                    # the overlay off: no list
+    assert v.side.isHidden() and not v.plan.show_lines
+    v.set_view('Images')
+    assert v.side.isHidden()
+    v.plan.mesh.setCurrentIndex(1)                                  # a solver's mesh on the layer
+    assert v.plan.mesh.currentData() in ('openems', 'mom25d')
+
+
+def Qt_UserRole():
+    from PySide6.QtCore import Qt
+    return Qt.UserRole
+
+
+def test_results_subplots_and_layout(tmp_path, monkeypatch):
+    """Subplots added and removed (Cartesian, Smith, polar), markers on all of them, antenna quantities when a
+    folder has antenna results, the layout and the window's shape remembered by the next window."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
+    from PySide6.QtCore import QSettings
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
+    from kicad2ems.gui.splot import default_layout
+    from kicad2ems.gui.traces import load_traces
+    app = application()
+    QSettings('kicad2ems', 'gui').clear()
+    w = MainWindow()
+    sp = w.results.splot
+    assert sp.layout_spec() == default_layout()
+    f = np.linspace(1e9, 3e9, 11)
+    S = np.zeros((11, 2, 2), complex)
+    S[:, 0, 0], S[:, 1, 0] = 0.2, 0.9
+    _s2p(tmp_path / 'b_openems.s2p', f, S)
+    sp.set_traces(load_traces([('t', str(tmp_path / 'b_openems.s2p'))]))
+    polar = sp.add_subplot('Polar')
+    assert sp.layout_spec()[-1] == 'Polar:S (polar)' and polar.option.count() == 1   # no far field: S only
+    sp.add_subplot('Cartesian', 'Phase (deg)')
+    assert sp.s_kinds() == ['|S| (dB)', 'Phase (deg)']
+    m = sp.add_marker(2e9)
+    assert set(m['items']) == {id(p) for p in sp.subplots}          # on every plot
+    assert sp.table.columnCount() == 1 + 2 * 2 + 1                  # f, |S| and phase of S11, S21, S11 on Smith
+    m['items'][id(sp.subplots[0])][0].setValue(2.4)                  # dragged on one plot: moved on the others
+    assert m['f'] == pytest.approx(2.4e9) and m['items'][id(sp.subplots[3])][0].value() == pytest.approx(2.4)
+    sp.remove_subplot(polar)
+    assert 'Polar:S (polar)' not in sp.layout_spec() and len(sp.subplots) == 3
+    res = dict(rows=[dict(f=f0, D_dbi=5.0, G_dbi=3.0, Grealized_dbi=2.5, eff=0.6, Prad=0.6, Pinc=1.0)
+                     for f0 in (1e9, 2e9, 3e9)], f_pattern=2e9)
+    th, ph = np.arange(0, 181, 5.0), np.arange(0, 360, 5.0)
+    sph = dict(freq=np.array([2e9]), theta=th, phi=ph, e_norm=np.ones((1, len(ph), len(th))), dmax=np.array([2.0]))
+    sp.set_antenna(res, sph)
+    assert sp.subplots[0].option.findText('Gain (dBi)') >= 0
+    cuts = sp.add_subplot('Polar', 'Far-field cuts')
+    assert cuts.mode == 'Far-field cuts' and cuts.freq.count() == 1 and cuts.freq.isVisibleTo(cuts)
+    sp.subplots[0].option.setCurrentText('Gain (dBi)')
+    assert 'gain' in [sp.table.horizontalHeaderItem(c).text() for c in range(sp.table.columnCount())]
+    spec = sp.layout_spec()
+    w.results._mode = 'sparams'
+    w.results._save_layout()
+    w.resize(760, 590)                                              # fits the offscreen screen (800 x 800)
+    w.setup.dirty = False
+    w.close()
+    w2 = MainWindow()                                               # the next window: the same plots and size
+    assert w2.results.splot.layout_spec() == spec and (w2.width(), w2.height()) == (760, 590)
+    first = w2.results.splot.subplots[0]
+    assert first.mode == '|S| (dB)'                                 # no antenna results here: |S| for now
+    w2.results.splot.set_antenna(res, sph)
+    assert first.mode == 'Gain (dBi)'                               # and the gain once there are
+    w2.setup.dirty = False
+    w2.close()
+    app.processEvents()

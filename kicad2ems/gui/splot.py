@@ -1,43 +1,186 @@
 """
-Interactive S-parameter plots (pyqtgraph): a rectangular plot (dB, linear, phase, group delay, VSWR) and, beside
-it, a Smith chart of the return loss (the reflections S11, S22, ... of the picked traces). Pick the traces
-(openEMS, mom25d, line model, compare file), read values under the mouse (both plots follow it), drop markers
-(click either plot; drag a marker line to move it, Delete in the table to remove) and export what is shown
-(CSV, PNG). Mouse wheel / drag zoom and pan; right-click for pyqtgraph's own menu.
+The Results page's plots (pyqtgraph): S-parameters and antenna results as a grid of subplots you add (Add plot)
+and close (x on each), laid out in as many columns as the width allows.
+
+    Cartesian  over frequency: |S| dB or linear, phase, group delay, VSWR; with antenna results also gain /
+               directivity / realized gain and the radiation efficiency
+    Smith      the reflections (S11, S22, ...) with an impedance readout
+    Polar      S in polar form (|S| and angle), or the far-field cuts (xz, yz, xy) at a recorded frequency
+
+The traces (one tree: openEMS, mom25d, the line model, a compare file, added folders) are shared by every plot.
+The mouse reads every plot at a frequency; a click drops a marker on all of them (drag a marker line to move
+it, Delete in the table to remove it). Export CSV and Save image take what is shown.
 """
 import numpy as np
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton, QLabel, QTreeWidget,
-                               QTreeWidgetItem, QTableWidget, QTableWidgetItem, QSplitter, QFileDialog, QMessageBox,
-                               QHeaderView, QAbstractItemView, QCheckBox)
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QComboBox, QPushButton, QLabel,
+                               QTreeWidget, QTreeWidgetItem, QTableWidget, QTableWidgetItem, QSplitter, QFileDialog,
+                               QMessageBox, QHeaderView, QAbstractItemView, QToolButton, QMenu, QFrame, QScrollArea,
+                               QSizePolicy)
 import pyqtgraph as pg
-from .traces import KINDS, SMITH, transform, value_at, fmt_value, nearest, smith_grid, export_csv, default_visible
+from .panels import FlowLayout
+from .traces import (KINDS, SMITH, transform, value_at, fmt_value, nearest, smith_grid, polar_grid, pattern_xy,
+                     export_csv, default_visible)
 
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 STYLES = dict(solid=Qt.SolidLine, dashdot=Qt.DashDotLine, dot=Qt.DotLine, dash=Qt.DashLine)
+CARTESIAN, SMITH_PLOT, POLAR = 'Cartesian', 'Smith', 'Polar'
+TYPES = (CARTESIAN, SMITH_PLOT, POLAR)
+ANT_KINDS = ('Gain (dBi)', 'Efficiency (%)')                       # Cartesian, with antenna results
+S_POLAR, FAR_CUTS = 'S (polar)', 'Far-field cuts'
+PATTERN_QTY = ('Gain (dBi)', 'Realized gain (dBi)', 'Directivity (dBi)')
+RANGE_DB = 30.0
+MIN_COL_WIDTH = 430                                                 # a column of plots needs this many pixels
+MIN_PLOT_HEIGHT = 240
+
+
+def default_layout(antenna=False):
+    """The subplots a page starts with: |S| and the Smith chart; for an antenna also its gain and pattern."""
+    if antenna:
+        return [f"{CARTESIAN}:{KINDS[0]}", f"{CARTESIAN}:{ANT_KINDS[0]}", f"{POLAR}:{FAR_CUTS}", SMITH_PLOT]
+    return [f"{CARTESIAN}:{KINDS[0]}", SMITH_PLOT]
+
+
+class Subplot(QFrame):
+    """One plot of the grid: a header (its type, what it shows, close) and a pyqtgraph plot."""
+    def __init__(self, host, kind, option=None):
+        super().__init__()
+        self.host, self.kind = host, kind
+        self.wanted = option                                        # what was asked for: back once it exists
+        self.setFrameShape(QFrame.StyledPanel)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(4, 2, 4, 4)
+        lay.setSpacing(2)
+        head = QHBoxLayout()
+        head.addWidget(QLabel(f"<b>{kind}</b>"))
+        self.option = QComboBox()
+        self.option.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        head.addWidget(self.option)
+        self.freq = QComboBox()                                     # the far-field cuts' frequency and quantity
+        self.qty = QComboBox()
+        self.qty.addItems(PATTERN_QTY)
+        for w in (self.freq, self.qty):
+            w.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+            head.addWidget(w)
+        head.addStretch(1)
+        close = QToolButton()
+        close.setText('✕')
+        close.setAutoRaise(True)
+        close.setToolTip('Remove this plot')
+        close.clicked.connect(lambda: host.remove_subplot(self))
+        head.addWidget(close)
+        lay.addLayout(head)
+        self.pw = pg.PlotWidget()
+        self.pw.setMinimumHeight(MIN_PLOT_HEIGHT - 40)
+        self.pw.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        lay.addWidget(self.pw, 1)
+        self.legend = self.pw.addLegend(offset=(-10, 10) if kind == CARTESIAN else (5, 5))
+        if kind == CARTESIAN:
+            self.pw.showGrid(x=True, y=True, alpha=0.3)
+            self.pw.setLabel('bottom', 'frequency (GHz)')
+        else:
+            self.pw.setAspectLocked(True)
+            self.pw.hideAxis('left')
+            self.pw.hideAxis('bottom')
+        self.cursor = pg.InfiniteLine(angle=90, pen=pg.mkPen('#888', width=1, style=Qt.DotLine))
+        self.dot = pg.ScatterPlotItem(size=9, pen=pg.mkPen('k'), brush=pg.mkBrush(255, 255, 255, 180))
+        self.fill_options()
+        self.option.currentIndexChanged.connect(self._option_changed)
+        self.freq.currentIndexChanged.connect(lambda *_: host.redraw())
+        self.qty.currentIndexChanged.connect(lambda *_: host.redraw())
+        self.pw.scene().sigMouseMoved.connect(lambda pos: host._moved(self, pos))
+        self.pw.scene().sigMouseClicked.connect(lambda ev: host._clicked(self, ev))
+        self._fit_head()
+
+    def fill_options(self):
+        """What this plot can show, for what the page has (antenna quantities only with antenna results)."""
+        keep = self.option.currentText()
+        self.option.blockSignals(True)
+        self.option.clear()
+        if self.kind == CARTESIAN:
+            self.option.addItems(list(KINDS) + (list(ANT_KINDS) if self.host.antenna else []))
+        elif self.kind == POLAR:
+            self.option.addItems([S_POLAR] + ([FAR_CUTS] if self.host.sphere is not None else []))
+        for pick in (self.wanted, keep):
+            if pick and self.option.findText(pick) >= 0:
+                self.option.setCurrentText(pick)
+                break
+        self.option.blockSignals(False)
+        self.option.setVisible(self.kind != SMITH_PLOT)
+        sph = self.host.sphere
+        keep = self.freq.currentIndex()
+        self.freq.blockSignals(True)
+        self.freq.clear()
+        if sph is not None:
+            self.freq.addItems([f"{f / 1e9:.4g} GHz" for f in sph['freq']])
+            f0 = (self.host.antenna or {}).get('f_pattern', sph['freq'][0])
+            pick = keep if 0 <= keep < len(sph['freq']) else int(np.argmin(np.abs(sph['freq'] - f0)))
+            self.freq.setCurrentIndex(pick)
+        self.freq.blockSignals(False)
+        self._fit_head()
+
+    def _fit_head(self):
+        far = self.mode == FAR_CUTS
+        self.freq.setVisible(far)
+        self.qty.setVisible(far)
+
+    def _option_changed(self, *_):
+        self.wanted = self.option.currentText()
+        self._fit_head()
+        self.host.redraw()
+        self.host.layout_changed.emit()
+
+    @property
+    def mode(self):
+        return self.option.currentText() if self.kind != SMITH_PLOT else SMITH_PLOT
+
+    @property
+    def on_frequency(self):
+        """A plot over frequency (cursor line, marker lines)."""
+        return self.kind == CARTESIAN
+
+    @property
+    def s_kind(self):
+        """The S-parameter quantity of a Cartesian plot, else None."""
+        return self.mode if self.kind == CARTESIAN and self.mode in KINDS else None
+
+    @property
+    def complex_plane(self):
+        """A plot of complex S (Smith, polar S): markers and the cursor are points on its traces."""
+        return self.kind == SMITH_PLOT or (self.kind == POLAR and self.mode == S_POLAR)
+
+    def spec(self):
+        """What the window remembers: the kind and what it was asked to show (a plot of the gain stays one while
+        a folder without antenna results shows |S| in it)."""
+        return self.kind if self.kind == SMITH_PLOT else f"{self.kind}:{self.wanted or self.mode}"
 
 
 class SPlot(QWidget):
+    layout_changed = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.traces, self.markers = [], []
-        self.z0 = 50.0
+        self.traces, self.markers, self.subplots = [], [], []
+        self.z0, self.antenna, self.sphere = 50.0, None, None
+        self._cols, self._moving = 0, False
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        bar = QHBoxLayout()
-        bar.addWidget(QLabel('Show'))
-        self.kind = QComboBox()
-        self.kind.addItems(KINDS)
-        self.kind.currentIndexChanged.connect(self.redraw)
-        bar.addWidget(self.kind)
-        self.smith_on = QCheckBox('Smith chart (return loss)')
-        self.smith_on.setChecked(True)
-        self.smith_on.toggled.connect(lambda on: (self.smith.setVisible(on), self.redraw()))
-        bar.addWidget(self.smith_on)
-        for text, slot, tip in (('Fit', self.fit, 'Zoom to all shown traces'),
+        bar = FlowLayout()                                          # wraps when the page is narrow
+        add = QToolButton()
+        add.setText('Add plot')
+        add.setPopupMode(QToolButton.InstantPopup)
+        add.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        menu = QMenu(add)
+        for kind, tip in ((CARTESIAN, 'over frequency'), (SMITH_PLOT, 'the reflections'),
+                          (POLAR, 'S in polar form, or the far-field cuts')):
+            a = menu.addAction(f"{kind}: {tip}")
+            a.triggered.connect(lambda _=False, k=kind: self.add_subplot(k))
+        add.setMenu(menu)
+        bar.addWidget(add)
+        for text, slot, tip in (('Fit', self.fit, 'Zoom every plot to what it shows'),
                                 ('Clear markers', self.clear_markers, 'Remove every marker (or select one and press Delete)'),
-                                ('Export CSV…', self.export_csv, 'The shown traces as the plot shows them'),
-                                ('Save image…', self.save_image, 'Both plots as PNG')):
+                                ('Export CSV…', self.export_csv, 'The shown traces as the first plot shows them'),
+                                ('Save image…', self.save_image, 'Every plot as one PNG')):
             b = QPushButton(text)
             b.setToolTip(tip)
             b.clicked.connect(slot)
@@ -50,24 +193,16 @@ class SPlot(QWidget):
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
-        self.tree.setMinimumWidth(190)
+        self.tree.setMinimumWidth(150)
         self.tree.itemChanged.connect(lambda *_: self.redraw())
-        self.plot = pg.PlotWidget()
-        self.plot.showGrid(x=True, y=True, alpha=0.3)
-        self.plot.setLabel('bottom', 'frequency (GHz)')
-        self.legend = self.plot.addLegend(offset=(-10, 10))
-        self.cursor = pg.InfiniteLine(angle=90, pen=pg.mkPen('#888', width=1, style=Qt.DotLine))
-        self.dot = pg.ScatterPlotItem(size=9, pen=pg.mkPen('k'), brush=pg.mkBrush(255, 255, 255, 180))
-        self.plot.scene().sigMouseMoved.connect(self._moved)
-        self.plot.scene().sigMouseClicked.connect(self._clicked)
-        self.smith = pg.PlotWidget()
-        self.smith.setAspectLocked(True)
-        self.smith.hideAxis('left')
-        self.smith.hideAxis('bottom')
-        self.smith.setTitle('return loss: S11, S22, … (Z for the reference impedance)', size='9pt')
-        self.sdot = pg.ScatterPlotItem(size=9, pen=pg.mkPen('k'), brush=pg.mkBrush(255, 255, 255, 180))
-        self.smith.scene().sigMouseMoved.connect(self._smith_moved)
-        self.smith.scene().sigMouseClicked.connect(self._smith_clicked)
+        self.grid_host = QWidget()
+        self.grid = QGridLayout(self.grid_host)
+        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.grid.setSpacing(4)
+        self.scroll = QScrollArea()
+        self.scroll.setWidget(self.grid_host)
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.NoFrame)
         self.readout = QLabel(' ')
         self.readout.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.readout.setWordWrap(True)
@@ -77,27 +212,96 @@ class SPlot(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.setMaximumHeight(150)
         self.table.keyPressEvent = self._table_key
-
-        plots = QSplitter()
-        plots.addWidget(self.plot)
-        plots.addWidget(self.smith)
-        plots.setStretchFactor(0, 3)
-        plots.setStretchFactor(1, 2)
         right = QWidget()
         rl = QVBoxLayout(right)
         rl.setContentsMargins(0, 0, 0, 0)
-        rl.addWidget(plots, 1)
+        rl.addWidget(self.scroll, 1)
         rl.addWidget(self.readout)
         rl.addWidget(self.table)
-        split = QSplitter()
-        split.addWidget(self.tree)
-        split.addWidget(right)
-        split.setStretchFactor(1, 4)
-        lay.addWidget(split, 1)
+        self.split = QSplitter()
+        self.split.setObjectName('results')
+        self.split.addWidget(self.tree)
+        self.split.addWidget(right)
+        self.split.setStretchFactor(1, 4)
+        self.split.setCollapsible(1, False)
+        self.split.setSizes([220, 1000])
+        lay.addWidget(self.split, 1)
+        self.set_layout(default_layout())
+
+    # ---- the subplots ----
+    def add_subplot(self, kind, option=None, redraw=True):
+        sp = Subplot(self, kind, option)
+        self.subplots.append(sp)
+        self._reflow(force=True)
+        if redraw:
+            self.redraw()
+            self._fit_one(sp)
+            self.layout_changed.emit()
+        return sp
+
+    def remove_subplot(self, sp):
+        if sp not in self.subplots:
+            return
+        self.subplots.remove(sp)
+        for m in self.markers:
+            m['items'].pop(id(sp), None)
+        self.grid.removeWidget(sp)
+        sp.setParent(None)
+        sp.deleteLater()
+        self._reflow(force=True)
+        self._update_table()
+        self.layout_changed.emit()
+
+    def layout_spec(self):
+        """The subplots as strings (Cartesian:|S| (dB), Smith, Polar:Far-field cuts): what the window remembers."""
+        return [sp.spec() for sp in self.subplots]
+
+    def set_layout(self, spec):
+        """Replace the subplots by these (layout_spec strings); unknown entries are skipped."""
+        for sp in list(self.subplots):
+            self.subplots.remove(sp)
+            self.grid.removeWidget(sp)
+            sp.setParent(None)
+            sp.deleteLater()
+        for m in self.markers:
+            m['items'] = {}
+        for s in spec or []:
+            kind, _, opt = str(s).partition(':')
+            if kind in TYPES:
+                self.add_subplot(kind, opt or None, redraw=False)
+        if not self.subplots:
+            for s in default_layout(bool(self.antenna)):
+                kind, _, opt = s.partition(':')
+                self.add_subplot(kind, opt or None, redraw=False)
+        self.redraw()
+        self.fit()
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._reflow()
+
+    def _reflow(self, force=False):
+        """As many columns as the width allows (at least MIN_COL_WIDTH each), the plots row by row."""
+        n = len(self.subplots)
+        width = max(self.scroll.viewport().width(), 1)
+        cols = max(1, min(n, width // MIN_COL_WIDTH, 3)) if n else 1
+        if cols == self._cols and not force:
+            return
+        self._cols = cols
+        for sp in self.subplots:
+            self.grid.removeWidget(sp)
+        for k, sp in enumerate(self.subplots):
+            self.grid.addWidget(sp, k // cols, k % cols)
+        rows = (n + cols - 1) // cols
+        for r in range(max(rows, self.grid.rowCount())):
+            self.grid.setRowStretch(r, 1 if r < rows else 0)
+        for c in range(max(cols, self.grid.columnCount())):
+            self.grid.setColumnStretch(c, 1 if c < cols else 0)
+        self.grid_host.setMinimumHeight(rows * MIN_PLOT_HEIGHT)
 
     # ---- data ----
     def set_traces(self, traces, z0=50.0):
-        """Show these traces (a new run): keeps the kind and the markers' frequencies."""
+        """Show these traces (a new run): keeps the plots and the markers' frequencies."""
         self.traces, self.z0 = list(traces), z0
         self.tree.blockSignals(True)
         self.tree.clear()
@@ -122,8 +326,16 @@ class SPlot(QWidget):
         self.redraw()
         self.fit()
 
+    def set_antenna(self, res=None, sphere=None):
+        """Antenna results (the run's <name>_antenna.json as a dict) and its far-field sphere, or None: the
+        Cartesian plots offer gain and efficiency, the polar plots the far-field cuts."""
+        self.antenna, self.sphere = res, sphere
+        for sp in self.subplots:
+            sp.fill_options()
+        self.redraw()
+
     def visible(self):
-        """The checked traces (the rectangular plot)."""
+        """The checked traces."""
         out = []
         for g in range(self.tree.topLevelItemCount()):
             grp = self.tree.topLevelItem(g)
@@ -134,8 +346,22 @@ class SPlot(QWidget):
         return out
 
     def reflections(self):
-        """The checked reflections (the Smith chart)."""
-        return [t for t in self.visible() if t.i == t.j] if self.smith_on.isChecked() else []
+        """The checked reflections (what a Smith chart shows)."""
+        return [t for t in self.visible() if t.i == t.j]
+
+    def _plane_traces(self, sp):
+        """The traces a complex-plane plot shows: a Smith chart the reflections, a polar plot every checked one."""
+        return self.reflections() if sp.kind == SMITH_PLOT else self.visible()
+
+    @property
+    def kind(self):
+        """The quantity box of the first Cartesian plot (one is added if there is none)."""
+        sp = next((s for s in self.subplots if s.kind == CARTESIAN), None) or self.add_subplot(CARTESIAN)
+        return sp.option
+
+    def s_kinds(self):
+        """The S-parameter quantities the Cartesian plots show, in order, each once."""
+        return list(dict.fromkeys(sp.s_kind for sp in self.subplots if sp.s_kind))
 
     def _color(self, t):
         n = max(int(np.sqrt(len([x for x in self.traces if x.source == t.source]))), 1)
@@ -146,66 +372,135 @@ class SPlot(QWidget):
 
     # ---- drawing ----
     def redraw(self):
-        kind = self.kind.currentText()
-        self.plot.clear()
-        self.legend.clear()
-        self.plot.setLabel('left', kind)
-        for t in self.visible():
-            x, y = transform(kind, t)
-            self.plot.plot(x, y, pen=self._pen(t), name=t.label)
-        self.plot.addItem(self.cursor, ignoreBounds=True)
-        self.plot.addItem(self.dot)
-        self.dot.setData([], [])
-        self.smith.clear()
-        for x, y in smith_grid():
-            self.smith.plot(x, y, pen=pg.mkPen('#cccccc', width=1))
-        for r in (0.2, 0.5, 1, 2, 5):                                # resistance labels on the real axis
-            lab = pg.TextItem(f"{r:g}", color='#999999', anchor=(1.1, 0))
-            lab.setPos((r - 1) / (r + 1), 0)
-            self.smith.addItem(lab)
-        for t in self.reflections():
-            x, y = transform(SMITH, t)
-            self.smith.plot(x, y, pen=self._pen(t))
-        self.smith.addItem(self.sdot)
-        self.sdot.setData([], [])
+        for sp in self.subplots:
+            self._draw(sp)
         for m in self.markers:
             self._place_marker(m)
         self._update_table()
 
+    def _draw(self, sp):
+        pw = sp.pw
+        pw.clear()
+        pw.setTitle(None)
+        if sp.legend is not None:
+            sp.legend.clear()
+        mode = sp.mode
+        if sp.kind == CARTESIAN and mode in KINDS:
+            pw.setLabel('left', mode)
+            for t in self.visible():
+                x, y = transform(mode, t)
+                pw.plot(x, y, pen=self._pen(t), name=t.label)
+        elif sp.kind == CARTESIAN:
+            pw.setLabel('left', mode)
+            rows = (self.antenna or {}).get('rows') or []
+            fr = np.array([r['f'] for r in rows]) / 1e9
+            if mode == ANT_KINDS[0]:
+                for key, name, color in (('D_dbi', 'directivity', '#2ca02c'), ('G_dbi', 'gain', '#1f77b4'),
+                                         ('Grealized_dbi', 'realized gain', '#d62728')):
+                    y = np.array([np.nan if r.get(key) is None else r[key] for r in rows], float)
+                    pw.plot(fr, y, pen=pg.mkPen(color, width=2), symbol='o', symbolSize=4, symbolBrush=color,
+                            name=name)
+            else:
+                pw.plot(fr, [100 * r['eff'] for r in rows], pen=pg.mkPen('#9467bd', width=2), symbol='o',
+                        symbolSize=4, symbolBrush='#9467bd', name='radiation efficiency')
+        elif sp.complex_plane:
+            grid = smith_grid() if sp.kind == SMITH_PLOT else polar_grid()
+            for x, y in grid:
+                pw.plot(x, y, pen=pg.mkPen('#cccccc', width=1))
+            if sp.kind == SMITH_PLOT:
+                for r in (0.2, 0.5, 1, 2, 5):                        # resistance labels on the real axis
+                    lab = pg.TextItem(f"{r:g}", color='#999999', anchor=(1.1, 0))
+                    lab.setPos((r - 1) / (r + 1), 0)
+                    pw.addItem(lab)
+            else:
+                for r in (0.25, 0.5, 0.75, 1.0):
+                    lab = pg.TextItem(f"{r:g}", color='#999999', anchor=(0, 1))
+                    lab.setPos(r * 0.707, r * 0.707)
+                    pw.addItem(lab)
+            for t in self._plane_traces(sp):
+                pw.plot(t.s.real, t.s.imag, pen=self._pen(t))
+        else:                                                       # the far-field cuts
+            self._draw_cuts(sp)
+        if sp.on_frequency:
+            pw.addItem(sp.cursor, ignoreBounds=True)
+        if sp.on_frequency or sp.complex_plane:
+            pw.addItem(sp.dot)
+            sp.dot.setData([], [])
+
+    def _draw_cuts(self, sp):
+        from ..solvers.openems.antenna import sphere_cuts, sphere_gain
+        pw, sph, res = sp.pw, self.sphere, self.antenna
+        if sph is None or res is None or sp.freq.currentIndex() < 0:
+            return
+        i = sp.freq.currentIndex()
+        f = float(sph['freq'][i])
+        r = min(res['rows'], key=lambda row: abs(row['f'] - f))
+        q = sp.qty.currentIndex()
+        scale = (r['eff'], r['Prad'] / r['Pinc'] if r.get('Pinc') else np.nan, 1.0)[q]
+        g = sphere_gain(sph, i, scale)
+        peak = float(10 * np.log10(max(g.max(), 1e-12)))
+        top = np.ceil(peak / 5) * 5
+        lo = top - RANGE_DB
+        rings = [k / 6 for k in range(1, 7)]
+        for x, y in polar_grid(rings):
+            pw.plot(x, y, pen=pg.mkPen('#cccccc', width=1))
+        for k, rr in enumerate(rings):
+            if k % 2 == 1:
+                lab = pg.TextItem(f"{lo + rr * RANGE_DB:.0f}", color='#999999', anchor=(0.5, 1))
+                lab.setPos(0, rr)
+                pw.addItem(lab)
+        for name, (ang, gg) in sphere_cuts(sph, g).items():
+            x, y = pattern_xy(ang, gg, lo, RANGE_DB)
+            color = {'xz': '#1f77b4', 'yz': '#d62728', 'xy': '#2ca02c'}[name[:2]]
+            pw.plot(x, y, pen=pg.mkPen(color, width=2), name=name)
+        pw.setTitle(f"{PATTERN_QTY[q]} at {f / 1e9:.4g} GHz, peak {peak:.2f} dBi", size='9pt')
+        pw.setRange(xRange=(-1.05, 1.05), yRange=(-1.05, 1.05), padding=0.02)
+
     def fit(self):
-        self.plot.enableAutoRange()
-        self.smith.setRange(xRange=(-1.05, 1.05), yRange=(-1.05, 1.05), padding=0.02)
+        for sp in self.subplots:
+            self._fit_one(sp)
 
-    # ---- cursor ----
-    def _moved(self, pos):
-        if not self.plot.sceneBoundingRect().contains(pos):
+    def _fit_one(self, sp):
+        if sp.kind == CARTESIAN:
+            sp.pw.enableAutoRange()
+        else:
+            sp.pw.setRange(xRange=(-1.05, 1.05), yRange=(-1.05, 1.05), padding=0.02)
+
+    # ---- the cursor ----
+    def _moved(self, sp, pos):
+        if not sp.pw.sceneBoundingRect().contains(pos):
             return
-        p = self.plot.getPlotItem().vb.mapSceneToView(pos)
-        self._show_at(p.x() * 1e9)
+        p = sp.pw.getPlotItem().vb.mapSceneToView(pos)
+        if sp.on_frequency:
+            self._show_at(p.x() * 1e9, src=sp)
+        elif sp.complex_plane:
+            trs = self._plane_traces(sp)
+            if trs:
+                t, k = nearest(trs, p.x(), p.y())
+                self._show_at(float(t.f[k]), head=f"nearest: {t.label} &nbsp; ")
 
-    def _show_at(self, f, head=''):
-        """Cursor, dots on both plots and the readout at frequency f (Hz)."""
-        kind = self.kind.currentText()
-        trs, refl = self.visible(), self.reflections()
-        self.cursor.setPos(f / 1e9)
-        vals = [(t, value_at(kind, t, f)) for t in trs]
-        self.dot.setData([f / 1e9] * len(vals), [v for _, v in vals])
-        g = [value_at(SMITH, t, f) for t in refl]
-        self.sdot.setData([v.real for v in g], [v.imag for v in g])
-        parts = [f"<span style='color:{self._color(t)}'>{t.label}</span> {fmt_value(kind, v)}" for t, v in vals]
-        parts += [f"<span style='color:{self._color(t)}'>{t.param} {t.source}</span> Z "
-                  + fmt_value(SMITH, v, self.z0).split('Z ')[-1] for t, v in zip(refl, g) if np.isfinite(v)]
+    def _show_at(self, f, head='', src=None):
+        """Every plot at frequency f (Hz): the cursor lines, the dots, the readout."""
+        trs = self.visible()
+        kinds = self.s_kinds()
+        kind = src.s_kind if src is not None and src.s_kind else (kinds[0] if kinds else KINDS[0])
+        for sp in self.subplots:
+            if sp.on_frequency:
+                sp.cursor.setPos(f / 1e9)
+                if sp.s_kind:
+                    sp.dot.setData([f / 1e9] * len(trs), [value_at(sp.s_kind, t, f) for t in trs])
+                else:
+                    sp.dot.setData([], [])
+            elif sp.complex_plane:
+                g = [value_at(SMITH, t, f) for t in self._plane_traces(sp)]
+                sp.dot.setData([v.real for v in g], [v.imag for v in g])
+        parts = [f"<span style='color:{self._color(t)}'>{t.label}</span> {fmt_value(kind, value_at(kind, t, f))}"
+                 for t in trs]
+        if any(sp.kind == SMITH_PLOT for sp in self.subplots):
+            parts += [f"<span style='color:{self._color(t)}'>{t.param} {t.source}</span> Z "
+                      + fmt_value(SMITH, v, self.z0).split('Z ')[-1]
+                      for t in self.reflections() for v in [value_at(SMITH, t, f)] if np.isfinite(v)]
         self.readout.setText(f"{head}<b>{f / 1e9:.4f} GHz</b> &nbsp; " + ' &nbsp; '.join(parts))
-
-    def _smith_moved(self, pos):
-        if not self.smith.sceneBoundingRect().contains(pos):
-            return
-        refl = self.reflections()
-        if not refl:
-            return
-        p = self.smith.getPlotItem().vb.mapSceneToView(pos)
-        t, k = nearest(refl, p.x(), p.y())
-        self._show_at(float(t.f[k]), head=f"nearest: {t.label} &nbsp; ")
 
     # ---- markers ----
     def _snap(self, f):
@@ -213,55 +508,72 @@ class SPlot(QWidget):
         if not trs:
             return f
         grid = trs[0].f
-        return float(grid[np.argmin(np.abs(grid - f))])                  # on a computed frequency
+        return float(grid[np.argmin(np.abs(grid - f))])             # on a computed frequency
 
-    def _clicked(self, ev):
-        if ev.button() != Qt.LeftButton or ev.double() or not self.visible():
+    def _clicked(self, sp, ev):
+        if ev.button() != Qt.LeftButton or ev.double():
             return
-        if not self.plot.sceneBoundingRect().contains(ev.scenePos()):
+        if not sp.pw.sceneBoundingRect().contains(ev.scenePos()):
             return
-        p = self.plot.getPlotItem().vb.mapSceneToView(ev.scenePos())
-        self.add_marker(self._snap(p.x() * 1e9))
-
-    def _smith_clicked(self, ev):
-        refl = self.reflections()
-        if ev.button() != Qt.LeftButton or ev.double() or not refl:
-            return
-        p = self.smith.getPlotItem().vb.mapSceneToView(ev.scenePos())
-        t, k = nearest(refl, p.x(), p.y())
-        self.add_marker(float(t.f[k]))
+        p = sp.pw.getPlotItem().vb.mapSceneToView(ev.scenePos())
+        if sp.on_frequency and (self.visible() or self.antenna):
+            self.add_marker(self._snap(p.x() * 1e9))
+        elif sp.complex_plane and self._plane_traces(sp):
+            t, k = nearest(self._plane_traces(sp), p.x(), p.y())
+            self.add_marker(float(t.f[k]))
 
     def add_marker(self, f):
-        m = dict(f=f, name=f"M{1 + max([int(x['name'][1:]) for x in self.markers] or [0])}")
+        m = dict(f=f, name=f"M{1 + max([int(x['name'][1:]) for x in self.markers] or [0])}", items={})
         self.markers.append(m)
         self._place_marker(m)
         self._update_table()
         return m
 
     def _place_marker(self, m):
-        line = pg.InfiniteLine(pos=m['f'] / 1e9, angle=90, movable=True, pen=pg.mkPen('#444', width=1, style=Qt.DashLine),
-                               label=m['name'], labelOpts=dict(position=0.95, color='k', fill=(255, 255, 255, 200)))
-        line.sigPositionChanged.connect(lambda ln, m=m: self._marker_moved(m, ln))
-        self.plot.addItem(line, ignoreBounds=True)
-        sc = pg.ScatterPlotItem(size=10, symbol='d', pen=pg.mkPen('k'), brush=pg.mkBrush('#ffd700'))
-        txt = pg.TextItem(m['name'], color='k', anchor=(-0.2, 1))
-        self.smith.addItem(sc)
-        self.smith.addItem(txt)
-        m.update(line=line, sc=sc, txt=txt)
-        self._move_smith_marker(m)
+        """The marker on every plot: a movable line over frequency, points on the complex-plane plots."""
+        m['items'] = {}
+        for sp in self.subplots:
+            if sp.on_frequency:
+                line = pg.InfiniteLine(pos=m['f'] / 1e9, angle=90, movable=True,
+                                       pen=pg.mkPen('#444', width=1, style=Qt.DashLine), label=m['name'],
+                                       labelOpts=dict(position=0.95, color='k', fill=(255, 255, 255, 200)))
+                line.sigPositionChanged.connect(lambda ln, m=m: self._marker_moved(m, ln))
+                sp.pw.addItem(line, ignoreBounds=True)
+                m['items'][id(sp)] = (line,)
+            elif sp.complex_plane:
+                sc = pg.ScatterPlotItem(size=10, symbol='d', pen=pg.mkPen('k'), brush=pg.mkBrush('#ffd700'))
+                txt = pg.TextItem(m['name'], color='k', anchor=(-0.2, 1))
+                sp.pw.addItem(sc)
+                sp.pw.addItem(txt)
+                m['items'][id(sp)] = (sc, txt)
+        self._move_plane_markers(m)
 
-    def _move_smith_marker(self, m):
-        g = [value_at(SMITH, t, m['f']) for t in self.reflections()]
-        g = [v for v in g if np.isfinite(v)]
-        m['sc'].setData([v.real for v in g], [v.imag for v in g])
-        m['txt'].setVisible(bool(g))
-        if g:
-            m['txt'].setPos(g[0].real, g[0].imag)
+    def _move_plane_markers(self, m):
+        for sp in self.subplots:
+            it = m['items'].get(id(sp))
+            if not it or not sp.complex_plane:
+                continue
+            sc, txt = it
+            g = [v for v in (value_at(SMITH, t, m['f']) for t in self._plane_traces(sp)) if np.isfinite(v)]
+            sc.setData([v.real for v in g], [v.imag for v in g])
+            txt.setVisible(bool(g))
+            if g:
+                txt.setPos(g[0].real, g[0].imag)
 
     def _marker_moved(self, m, line):
-        m['f'] = line.value() * 1e9
-        self._move_smith_marker(m)
-        self._update_table()
+        if self._moving:
+            return
+        self._moving = True
+        try:
+            m['f'] = line.value() * 1e9
+            for sp in self.subplots:                                # the same marker on the other plots
+                it = m['items'].get(id(sp))
+                if it and sp.on_frequency and it[0] is not line:
+                    it[0].setValue(m['f'] / 1e9)
+            self._move_plane_markers(m)
+            self._update_table()
+        finally:
+            self._moving = False
 
     def clear_markers(self):
         self.markers = []
@@ -276,20 +588,48 @@ class SPlot(QWidget):
         else:
             QTableWidget.keyPressEvent(self.table, ev)
 
+    def _ant_value(self, key, f):
+        rows = (self.antenna or {}).get('rows') or []
+        fr = np.array([r['f'] for r in rows])
+        y = np.array([np.nan if r.get(key) is None else r[key] for r in rows], float)
+        if len(fr) < 1 or f < fr.min() or f > fr.max():
+            return np.nan
+        return float(np.interp(f, fr, y))
+
+    def _columns(self):
+        """The table's columns: (title, value at f) for every S quantity a Cartesian plot shows and every checked
+        trace, the Smith chart's reflections, and the antenna's gain / efficiency when a plot shows them."""
+        trs, cols = self.visible(), []
+        for k in self.s_kinds():
+            cols += [(t.label if len(self.s_kinds()) == 1 else f"{t.label} {k}",
+                      lambda f, t=t, k=k: fmt_value(k, value_at(k, t, f), self.z0)) for t in trs]
+        if any(sp.kind == SMITH_PLOT for sp in self.subplots):
+            cols += [(f"{t.label} (Smith)", lambda f, t=t: fmt_value(SMITH, value_at(SMITH, t, f), self.z0))
+                     for t in self.reflections()]
+        modes = {sp.mode for sp in self.subplots if sp.kind == CARTESIAN}
+        if self.antenna and ANT_KINDS[0] in modes:
+            cols += [(name, lambda f, k=key: f"{self._ant_value(k, f):.2f} dBi")
+                     for key, name in (('G_dbi', 'gain'), ('D_dbi', 'directivity'))]
+        if self.antenna and ANT_KINDS[1] in modes:
+            cols += [('efficiency', lambda f: f"{100 * self._ant_value('eff', f):.1f} %")]
+        return cols
+
     def _update_table(self):
-        kind = self.kind.currentText()
-        trs, refl = self.visible(), self.reflections()
-        cols = [(t, kind) for t in trs] + [(t, SMITH) for t in refl]
+        cols = self._columns()
         self.table.setColumnCount(1 + len(cols))
-        self.table.setHorizontalHeaderLabels(['f (GHz)'] + [t.label if k != SMITH else f"{t.label} (Smith)"
-                                                            for t, k in cols])
+        self.table.setHorizontalHeaderLabels(['f (GHz)'] + [c for c, _ in cols])
         self.table.setRowCount(len(self.markers))
         self.table.setVerticalHeaderLabels([m['name'] for m in self.markers])
         for r, m in enumerate(self.markers):
             self.table.setItem(r, 0, QTableWidgetItem(f"{m['f'] / 1e9:.4f}"))
-            for c, (t, k) in enumerate(cols):
-                self.table.setItem(r, 1 + c, QTableWidgetItem(fmt_value(k, value_at(k, t, m['f']), self.z0)))
+            for c, (_, val) in enumerate(cols):
+                self.table.setItem(r, 1 + c, QTableWidgetItem(val(m['f'])))
         self.table.setVisible(bool(self.markers))
+        if self.markers:                                            # as tall as its rows, up to five of them
+            rows = min(len(self.markers), 5)
+            h = self.table.horizontalHeader().height() + rows * self.table.verticalHeader().defaultSectionSize()
+            sb = self.table.horizontalScrollBar().sizeHint().height() if self.table.horizontalScrollBar().isVisible() else 0
+            self.table.setFixedHeight(h + sb + 2 * self.table.frameWidth() + 2)
 
     # ---- export ----
     def export_csv(self, path=None):
@@ -300,10 +640,12 @@ class SPlot(QWidget):
         if not path:
             path, _ = QFileDialog.getSaveFileName(self, 'Export the shown traces', 'sparams.csv', 'CSV (*.csv)')
         if path:
-            export_csv(path, trs, self.kind.currentText(), reflections=self.reflections())
+            kinds = self.s_kinds()
+            refl = self.reflections() if any(sp.kind == SMITH_PLOT for sp in self.subplots) else []
+            export_csv(path, trs, kinds[0] if kinds else KINDS[0], reflections=refl)
 
     def save_image(self, path=None):
         if not path:
-            path, _ = QFileDialog.getSaveFileName(self, 'Save the plots', 'sparams.png', 'PNG (*.png)')
+            path, _ = QFileDialog.getSaveFileName(self, 'Save the plots', 'results.png', 'PNG (*.png)')
         if path:
-            self.plot.parentWidget().grab().save(path)
+            self.grid_host.grab().save(path)

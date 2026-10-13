@@ -15,6 +15,14 @@ GEN = os.path.join(ROOT, 'examples', 'make_demo_board.py')
 ANT = os.path.join(ROOT, 'examples', 'make_antennas.py')
 
 
+@pytest.fixture(autouse=True)
+def _scratch_settings(tmp_path_factory, monkeypatch):
+    """The GUI's QSettings (recent files, the window's shape, the Results plots) in a scratch folder: a test
+    never writes the user's own."""
+    if 'XDG_CONFIG_HOME' not in os.environ or not os.environ['XDG_CONFIG_HOME'].startswith(str(tmp_path_factory.getbasetemp())):
+        monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path_factory.getbasetemp() / 'xdg'))
+
+
 @pytest.fixture(scope='session')
 def boards(tmp_path_factory):
     """Every generated example board, by name: demo (transition), diff, rlc, lowpass, highpass, bandpass, launch

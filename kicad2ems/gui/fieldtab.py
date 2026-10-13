@@ -6,9 +6,10 @@ Reading and drawing for files live in ..fields (no Qt).
 import os
 import numpy as np
 from PySide6.QtCore import Qt, QRectF, QTimer
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton, QLabel, QCheckBox,
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QComboBox, QPushButton, QLabel, QCheckBox,
                                QSlider, QSpinBox, QFileDialog, QMessageBox, QProgressDialog, QApplication)
 import pyqtgraph as pg
+from .panels import FlowLayout
 from ..solvers.openems import fields as F
 
 COMPONENTS = [('|F|', 'mag'), ('x', 'x'), ('y', 'y'), ('z', 'z')]
@@ -28,10 +29,12 @@ class FieldsTab(QWidget):
         self.user_lim = False                                       # the colour bar was dragged: keep it
         lay = QVBoxLayout(self)
 
-        row = QHBoxLayout()
+        row = FlowLayout()
         row.addWidget(QLabel('Dump'))
         self.dump = QComboBox()
-        self.dump.setMinimumWidth(360)
+        self.dump.setMinimumWidth(200)
+        self.dump.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.dump.setMinimumContentsLength(28)
         self.dump.currentIndexChanged.connect(self._pick)
         row.addWidget(self.dump, 1)
         b = QPushButton('Refresh')
@@ -46,7 +49,7 @@ class FieldsTab(QWidget):
         row.addWidget(self.live)
         lay.addLayout(row)
 
-        row = QHBoxLayout()
+        row = FlowLayout()
         row.addWidget(QLabel('Component'))
         self.comp = QComboBox()
         self.comp.addItems([c for c, _ in COMPONENTS])
@@ -59,6 +62,7 @@ class FieldsTab(QWidget):
         self.axis.currentIndexChanged.connect(self._axis_changed)
         row.addWidget(self.axis)
         self.slice = _slider()
+        self.slice.setMinimumWidth(160)
         self.slice.valueChanged.connect(self._new_range)
         row.addWidget(self.slice, 1)
         self.slice_lab = QLabel('')
@@ -87,13 +91,14 @@ class FieldsTab(QWidget):
         self.view.scene().sigMouseMoved.connect(self._hover)
         lay.addWidget(self.view, 1)
 
-        row = QHBoxLayout()
+        row = FlowLayout()
         self.play_btn = QPushButton('▶ Play')
         self.play_btn.setCheckable(True)
         self.play_btn.toggled.connect(self._play)
         row.addWidget(self.play_btn)
         row.addWidget(QLabel('frame'))
         self.frame = _slider()
+        self.frame.setMinimumWidth(160)
         self.frame.valueChanged.connect(self.draw)
         row.addWidget(self.frame, 2)
         self.phase_on = QCheckBox('instantaneous, phase')
@@ -102,6 +107,7 @@ class FieldsTab(QWidget):
         row.addWidget(self.phase_on)
         self.phase = _slider()
         self.phase.setMaximum(359)
+        self.phase.setMinimumWidth(120)
         self.phase.valueChanged.connect(self.draw)
         row.addWidget(self.phase, 1)
         self.frame_lab = QLabel('')
@@ -109,8 +115,9 @@ class FieldsTab(QWidget):
         row.addWidget(self.frame_lab)
         lay.addLayout(row)
 
-        row = QHBoxLayout()
+        row = FlowLayout()
         self.readout = QLabel('')
+        self.readout.setMinimumWidth(220)
         row.addWidget(self.readout, 1)
         row.addWidget(QLabel('fps'))
         self.fps = QSpinBox()

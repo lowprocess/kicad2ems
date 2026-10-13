@@ -206,6 +206,7 @@ dmax    = 0.4
 | `<name>_board.json` | the converted board every solver gets ([details](model.md)) |
 | `<name>_mesh.png` / `_model.png` | the openEMS mesh, or the model alone without openEMS |
 | `<name>_tlines.png` | the line sections ([details](transmission-lines.md#outputs)) |
+| `<name>_lines.json` | the line sections' geometry and impedances, for the GUI's Viewer |
 | `<name>.xml` | openEMS's geometry, for AppCSXCAD |
 | `<name>_antenna.png`, `_pattern.png`, `_antenna.json` | antenna results |
 | `<name>_converge.png` | the mesh convergence check |

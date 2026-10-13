@@ -63,6 +63,7 @@ such as stubs and shunt parts, are listed with their position, length and what t
 |---|---|
 | the log | one line per path: sections, length, impedance range, branches |
 | `<name>_tlines.png` | the sections coloured by impedance, and an impedance profile along each path |
+| `<name>_lines.json` | every section's geometry, Z0, εeff, length and delay: the GUI's [line-model overlay](gui.md#line-model) |
 | the report | a table per path: layer, cross-section, width, length, Z0, εeff, delay. Impedances more than 10 % or 25 % off the port impedance are shaded |
 | `<name>_run.json` | the same tables, under `lines` |
 

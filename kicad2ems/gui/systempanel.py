@@ -1,10 +1,11 @@
 """
-The System panel: the solvers this machine can run, the GPU mom25d would use, the memory of the system and
-of the GPU (kicad2ems.sysinfo, run as its own process with the interpreter the runs use), and after a preview
-what each full-wave solver would need on that board (summary['estimates'] of <name>_run.json) against it.
+The Solvers window (Help > Solvers and hardware, or ? beside the Solvers settings): the solvers this machine can
+run, the GPU mom25d would use, the memory of the system and of the GPU (kicad2ems.sysinfo, run as its own process
+with the interpreter the runs use), and after a preview what each full-wave solver would need on that board
+(summary['estimates'] of <name>_run.json) against it.
 """
 import glob, json, os, sys
-from PySide6.QtCore import QProcess, Qt
+from PySide6.QtCore import QProcess, Qt, Signal
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTreeWidget, QTreeWidgetItem,
                                QProgressBar, QGroupBox, QFormLayout, QHeaderView)
 
@@ -28,6 +29,8 @@ def fit_note(need, have):
 
 
 class SystemPanel(QWidget):
+    ready = Signal(dict)                                            # the machine's info, when its check is done
+
     def __init__(self):
         super().__init__()
         self.info, self.est, self.proc = None, None, None
@@ -105,6 +108,7 @@ class SystemPanel(QWidget):
             self.solvers.addTopLevelItem(it)
         for i in range(2):
             self.solvers.resizeColumnToContents(i)
+        self.ready.emit(info)
         rows = max(1, self.solvers.topLevelItemCount())
         self.solvers.setFixedHeight(self.solvers.header().height() + rows * self.solvers.sizeHintForRow(0) + 6)
         while self.hw.rowCount():

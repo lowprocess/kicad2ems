@@ -319,6 +319,10 @@ class Job:
                      (f" ({'; '.join(self.lm.notes)})" if self.lm.notes else ''))
             return
         self.summary['lines'] = self.lm.summary()
+        out = self.path('_lines.json')                              # the sections' geometry: the GUI's overlay
+        with open(out, 'w') as fh:
+            json.dump(self.lm.drawing(getattr(self.m, 'cu_z', None)), fh)
+        self.wrote('line model sections (JSON)', out)
         for p, q, secs, branches in self.lm.paths:
             zs = [e.z0 for e, _, _ in secs if e.z0]
             self.log(f"transmission line {p} -> {q or 'end'}: {len(secs)} sections, "

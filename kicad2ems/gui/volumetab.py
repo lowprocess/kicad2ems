@@ -85,6 +85,7 @@ class VolumeTab(QWidget):
         self.board, self.mesh_files = None, {}                      # <name>_board.json's geometry; meshes.find()
         self.ant = None                                             # (antenna results, sphere) of the folder
         self._frames, self._key, self.k = [], None, 0
+        self.lines, self.sel = None, None                           # the line model (overlay.load_lines), a section
         lay = QHBoxLayout(self)
         self.gl, why = gl_module()
         if self.gl is None:
@@ -94,7 +95,6 @@ class VolumeTab(QWidget):
             lay.addWidget(note)
             return
         side = QVBoxLayout()
-        form = QFormLayout()
         self.dump = QComboBox()
         self.frame = QComboBox()
         self.comp = QComboBox()
@@ -158,29 +158,43 @@ class VolumeTab(QWidget):
         self.far_up.setToolTip("how far above the board's top surface the pattern's centre is drawn (on screen)")
         self.mesh.setToolTip("a solver's discretisation of the board (written by a preview or a run): openEMS's "
                              "grid lines, mom25d's triangles, EMerge's element faces on the copper and ports")
-        for label, w in (('Dump', self.dump), ('Frame', self.frame), ('Show', self.comp), ('Colours', self.cmap),
-                         ('', self.envelope),
-                         ('', self.log), ('Decades', self.decades), ('Range top', self.clip), ('Opacity', self.opacity),
-                         ('Fade (gamma)', self.gamma), ('Height scale', self.zscale), ('Resolution', self.res),
-                         ('', self.copper), ('Copper shown', self.cu_t), ('', self.boxc), ('Mesh', self.mesh),
-                         ('Far field', self.far), ('Far-field size', self.far_size), ('Far-field height', self.far_up)):
-            form.addRow(label, w)
-        side.addLayout(form)
+        # the controls: one folding section per subject, shown when the folder has something for it (a field
+        # dump, a far field), in a side panel the splitter can narrow or close
+        from .panels import Section
         self.play_btn = QPushButton('Play')
         self.play_btn.setCheckable(True)
         self.play_btn.toggled.connect(self._play)
-        reset = QPushButton('Reset view')
-        reset.clicked.connect(self.reset_camera)
-        row = QHBoxLayout()
-        row.addWidget(self.play_btn)
-        row.addWidget(reset)
-        side.addLayout(row)
-        row = QHBoxLayout()
+        saves = QHBoxLayout()
         for ext in ('gif', 'mp4'):
             b = QPushButton(f"Save {ext.upper()}")
             b.clicked.connect(lambda _=False, e=ext: self.save_dialog(e))
-            row.addWidget(b)
-        side.addLayout(row)
+            saves.addWidget(b)
+        self.lines_on = QCheckBox('line model (coloured by Z0)')
+        self.lines_on.setChecked(True)
+        self.lines_on.setToolTip("the line model's sections on their layers; pick one in the section list")
+        self.lines_on.toggled.connect(lambda *_: self._board())
+        groups = (('Field', True, (('Dump', self.dump), ('Frame', self.frame), ('Show', self.comp),
+                                   ('Colours', self.cmap), ('', self.envelope), ('', self.log),
+                                   ('Decades', self.decades), ('Range top', self.clip), ('Opacity', self.opacity),
+                                   ('Fade (gamma)', self.gamma), ('Resolution', self.res), ('', self.play_btn),
+                                   ('', saves))),
+                  ('Board', True, (('Height scale', self.zscale), ('', self.copper), ('Copper shown', self.cu_t),
+                                   ('', self.boxc), ('Mesh', self.mesh), ('', self.lines_on))),
+                  ('Far field', True, (('Pattern', self.far), ('Size', self.far_size), ('Height', self.far_up))))
+        self.sections = {}
+        for title, open_, rows in groups:
+            box = QWidget()
+            f = QFormLayout(box)
+            f.setContentsMargins(0, 0, 0, 0)
+            f.setRowWrapPolicy(QFormLayout.WrapLongRows)
+            f.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+            for label, w in rows:
+                f.addRow(label, w)
+            self.sections[title] = Section(title, box, expanded=open_)
+            side.addWidget(self.sections[title])
+        reset = QPushButton('Reset view')
+        reset.clicked.connect(self.reset_camera)
+        side.insertWidget(0, reset)
         self.status = QLabel('')
         self.status.setWordWrap(True)
         self.status.setStyleSheet('color: gray')
@@ -188,12 +202,25 @@ class VolumeTab(QWidget):
         side.addStretch(1)
         sw = QWidget()
         sw.setLayout(side)
-        sw.setFixedWidth(300)
-        lay.addWidget(sw)
+        from PySide6.QtWidgets import QScrollArea, QSplitter
+        scroll = QScrollArea()
+        scroll.setWidget(sw)
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumWidth(200)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view = _view_class(self.gl)()
         self.view.on_init = self._new_context
         self.view.setBackgroundColor('w')
-        lay.addWidget(self.view, 1)
+        self.split = QSplitter()
+        self.split.setObjectName('viewer3d')
+        self.split.addWidget(scroll)
+        self.split.addWidget(self.view)
+        self.split.setStretchFactor(1, 1)
+        self.split.setCollapsible(1, False)
+        self.split.setSizes([270, 900])
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.split)
+        self._fit_sections()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
         self.dump.currentIndexChanged.connect(self._pick)
@@ -268,7 +295,8 @@ class VolumeTab(QWidget):
             self._board()
             self.reset_camera()
             self.status.setText('no volume dumps: the board' + (' and the solvers\' meshes' if self.mesh_files else ''))
-        return bool(self.srcs or (self.board and (self.mesh_files or self.ant)))
+        self._fit_sections()
+        return bool(self.srcs or (self.board and (self.mesh_files or self.ant or self.lines)))
 
     def _load_far(self, out_dir):
         """The folder's far-field pattern (its newest antenna result with a sphere) into the Far field choice."""
@@ -482,7 +510,49 @@ class VolumeTab(QWidget):
                 ln.setDepthValue(-1)
                 self.view.addItem(ln)
                 self.items['mesh'] = ln
+        self._line_model(zs)
         self._far_field(g, zs)
+
+    def _line_model(self, zs):
+        """The line model's sections as lines on their copper (on the slab's top), coloured by Z0 against the
+        ports' impedance; the selected one wider."""
+        if not (self.lines and self.lines_on.isChecked()):
+            return
+        from .. import overlay as ov
+        ref, half = ov.reference(self.lines), ov.span(self.lines)
+        lift = (0.5 * self.cu_t.value() if self.copper.isChecked() else 0.0) + 0.02   # on screen, above the copper
+        for e in self.lines['elements']:
+            pts = np.asarray(e['pts'], float)
+            if e.get('z') is None or e.get('kind') == 'coupling' or len(pts) < 2 or np.allclose(pts[0], pts[-1]):
+                continue
+            pos = np.column_stack([pts, np.full(len(pts), e['z'] * zs + lift)]).astype(np.float32)
+            sel = e['id'] == self.sel
+            rgb = (0.05, 0.05, 0.05) if sel else ov.z0_colour(e.get('z0'), ref, half)
+            ln = self.gl.GLLinePlotItem(pos=pos, mode='line_strip', color=(*rgb, 1.0), width=7 if sel else 4,
+                                        antialias=True)
+            ln.setDepthValue(3 if sel else 2)
+            self.view.addItem(ln)
+            self.items[f"ln{e['id']}"] = ln
+
+    def set_lines(self, lines):
+        """The line model of the folder (overlay.load_lines), or None."""
+        self.lines, self.sel = lines, None
+        if self.gl is not None:
+            self._fit_sections()
+            self._board()
+
+    def select(self, i):
+        """Mark a section of the line model (None: none)."""
+        self.sel = i
+        if self.gl is not None:
+            self._board()
+
+    def _fit_sections(self):
+        """The control sections the folder has something for: the field's with a dump, the far field's with an
+        antenna result, the line model's tick box with a line model."""
+        self.sections['Field'].setVisible(bool(self.srcs))
+        self.sections['Far field'].setVisible(self.ant is not None)
+        self.lines_on.setVisible(self.lines is not None)
 
     def _cu_t_set(self, *_):
         self._cu_t_auto = False

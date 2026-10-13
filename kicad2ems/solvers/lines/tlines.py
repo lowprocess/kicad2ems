@@ -184,6 +184,30 @@ class LineModel:
                      for j in self.junctions]
         return dict(paths=out, notes=list(self.notes), groups=groups, junctions=junctions)
 
+    def drawing(self, cu_z=None):
+        """JSON-friendly geometry of the model for the GUI's viewer (<name>_lines.json): every element with its
+        points (model mm, y up), its layer's height (cu_z: {layer: z mm}) and its row (Z0, eeff, length, delay),
+        and each path as the ids of its elements in order."""
+        cu_z = cu_z or {}
+        rnd = lambda v: None if v is None else round(float(v), 6)
+        elements, index = [], {}
+        for e in self.elements:
+            if e.pts is None:
+                continue
+            pts = np.asarray(e.pts, float).reshape(-1, 2)
+            index[id(e)] = len(elements)
+            r = e.row()
+            elements.append(dict(id=len(elements), kind=e.kind, label=e.label, layer=e.layer, net=e.net,
+                                 z=rnd(cu_z.get(e.layer)), w=rnd(e.w), xs=e.xs, z0=rnd(e.z0), eeff=rnd(e.eeff),
+                                 length=rnd(e.length), delay_ps=rnd(r['delay_ps']), group=e.group,
+                                 value=r['value'], notes=list(e.notes),
+                                 pts=[[round(float(x), 5), round(float(y), 5)] for x, y in pts]))
+        paths = [dict(port=p, to=q, ids=[index[id(e)] for e, _, _ in secs if id(e) in index])
+                 for p, q, secs, _ in self.paths]
+        z0s = [e['z0'] for e in elements if e['z0']]
+        return dict(format='kicad2ems-lines', version=1, elements=elements, paths=paths,
+                    port_z0=dict(self.port_z0), z0_range=[min(z0s), max(z0s)] if z0s else None)
+
 
 def _dielectric(model, z_lo, z_hi):
     """Thickness-weighted er and the largest tan d of the dielectrics between two heights."""

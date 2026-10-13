@@ -14,22 +14,28 @@ window never loses a run, and the GUI itself doesn't need openEMS.
 
 - **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, open a results folder, open the report.
 - **Settings** (left): one collapsible section per group. Each header shows how many settings in it are
-  set, for example `Band (3 set)`. Empty fields use the default, shown as a hint.
-- **Results** (right): panels you can tab, split, float or close. *View* reopens them.
+  set, for example `Band (3 set)`. Empty fields use the default, shown as a hint. In a narrow dock a
+  field moves under its label.
+- **Pages** (right): **Viewer**, **Run** and **Results**, tabbed. Drag a tab out to see two side by side
+  (the Run page next to the Viewer's live field, say), or float it. *View > Reset layout* puts them back.
 
-Panels open by themselves when a preview or run produces something for them:
+The pages come to the front when they have something new: the Run page when a run starts, the Viewer when a
+preview ends, the Results page when a run ends.
 
-| Panel | Shows |
-|---|---|
-| S-parameters | the S-parameters of every solver, a Smith chart, a cursor readout and markers ([below](#plots)) |
-| Model and mesh | the model and openEMS's mesh |
-| Line model | the transmission-line sections |
-| Run | progress per driven port; openEMS's energy decay and mom25d's adaptive sweep (its model change and prediction error per solve, in dB, against its tolerance); the log, and *Stop* |
-| Fields | the board in 3D (the default, and what a preview shows) with a solver's mesh, plane and volume dumps in place and the far field; or, toggled to 2D, a cut through a dump with its values ([3D](#fields3d), [2D](#fields)) |
-| Antenna | antenna results ([below](#antenna)) |
-| System | the solvers available here, the GPU, and the memory in use; after a preview, each solver's estimated time and memory for the board |
+The window remembers its size and position, where the docks and pages are, the splitters, and the plots of
+the Results page, from one session to the next.
 
-**Solvers** has one tick box per solver, plus *auto*. Plugin solvers appear too, with their own settings.
+<a id="solvers"></a>
+## Solvers
+
+**Solvers** in the settings has one tick box per solver, plus *auto*. Plugin solvers appear too, with
+their own settings. After a preview, each full-wave solver's box shows its estimated time and memory on
+that board, for example `mom25d (MoM) · ~4 min, 1.3 GB`. A solver that can't run here is grey, and its
+tooltip says why.
+
+**?** beside *Solvers* (or *Help > Solvers and hardware*) opens the Solvers window: every solver with ✔
+or ✖ and what it found, the CPU, the memory and the GPU mom25d would use, and the last preview's
+estimates against what is available.
 
 **Stop** asks the run to stop: openEMS ends at once and keeps what it has computed, mom25d ends after the
 frequency it is solving (with no result), and solvers that haven't started are skipped. Press Stop again to
@@ -46,28 +52,68 @@ GUI doesn't know all stay. Only the changed values are rewritten. Paths are save
 config. Settings that have no field in the form are kept and passed on to runs.
 
 Each run writes `<out>/gui_run.toml`, so you can repeat it from a terminal with
-`kicad2ems <out>/gui_run.toml`.
+`kicad2ems <out>/gui_run.toml`. Runs start in the output folder.
 
-<a id="plots"></a>
-## S-parameter plots
+<a id="viewer"></a>
+## The Viewer
 
-The traces are listed on the left, grouped by solver; tick the ones to show. Traces that weren't
-computed (ports that weren't driven) are greyed out. *Show* switches between |S| in dB or linear, phase,
-group delay and VSWR.
+Everything about the board and its fields, in four views. A view the folder has nothing for is greyed out.
 
-- **Smith chart**: the reflections (S11, S22, …) with an impedance readout.
-- **Cursor**: hover over a plot to read every trace at that frequency.
-- **Markers**: click to add, drag to move, Delete to remove. The table lists each trace at each marker.
-- **Zoom**: mouse wheel and drag; *Fit* shows everything.
-- **Add results folder…**: overlay another run, for comparison.
-- **Export CSV…** and **Save image…**.
+| View | Shows |
+|---|---|
+| 3D | the board with its copper as shaded slabs, a solver's mesh, the line model, dumps in place, the far field |
+| Plan | the board from above: one layer's copper (the others faint), a solver's mesh on it, the ports, the line model |
+| Cut | a cut through a field dump, with its values ([below](#fields)) |
+| Images | the plots a run wrote: openEMS's mesh with its side views, the model, the line model |
+
+<a id="line-model"></a>
+### The line model over the board
+
+With *Line model* ticked, the 3D and Plan views draw the [line model](transmission-lines.md)'s sections on
+their copper, coloured by Z0: grey at the ports' impedance, blue below it, red above. The colour bar beside
+the view gives the scale.
+
+The list beside the view has every section by path (`P1 → P2`, …) with its Z0, length, delay and εeff.
+Pick a section in the list, or click it in the plan, and both views mark it. Hovering over a section in
+the plan shows its values. A preview writes the sections as `<name>_lines.json`.
+
+<a id="fields3d"></a>
+### 3D
+
+Drag to orbit, scroll to zoom, Ctrl+drag to pan. This needs PyOpenGL, which is in the `gui` extra. The
+controls are in folding sections beside the view, and only the ones the folder has something for are
+shown: *Field* with a dump, *Far field* with antenna results.
+
+- **Mesh:** a solver's discretisation: openEMS's grid lines, mom25d's triangles or EMerge's element faces on
+  the copper, ports and parts. A preview writes all three in seconds.
+- **a dump:** a volume dump, for example `--dump E@volume+5@2.4` (the board plus 5 mm of air above and
+  below), as a translucent cloud; a plane dump (an openEMS cut, mom25d's surface currents) as a coloured sheet
+  in place, just above the copper when it lies on a copper layer.
+- **Far field:** in antenna mode, the gain pattern at a recorded frequency over the board's centre: its
+  distance from the centre is the gain, over 30 dB. *Size* scales it against the board, and *Height* lifts
+  it off the board's surface.
+
+| Control | |
+|---|---|
+| Show, Colours | \|F\| or one component; the colour map |
+| envelope | the peak over a cycle instead of an animation |
+| log scale, Decades, Range top | the colour range; *Range top* ignores the strongest few voxels, such as a port gap |
+| Opacity, Fade | how solid the strongest field looks, and how fast the weak field fades out |
+| Height scale | stretches z, since boards are thin |
+| Resolution | voxels along the longest side |
+| copper, Copper shown | show the copper, and how thick it is drawn (0 is flat) |
+| Mesh | none, or a solver's mesh |
+| Far field: Pattern, Size, Height | the pattern at a frequency, its size against the board, and how far above the board's surface it is drawn |
+| Save GIF / MP4 | the animation from the current camera |
+
+![patch 3D](img/readme/patch_3d.gif)
 
 <a id="fields"></a>
-## Field dumps: 2D cuts
+### Cut: field dumps in 2D
 
-The Fields panel's *2D* view. Add dumps under *Field dumps* in the settings; *Add a dump* builds the spec for you
+Add dumps under *Field dumps* in the settings; *Add a dump* builds the spec for you
 ([syntax](postprocessing.md#field-dumps)). A dump without frequencies is recorded over time, and the
-Fields panel can follow it live while openEMS runs. A dump with frequencies is written at the end.
+Cut view can follow it live while openEMS runs. A dump with frequencies is written at the end.
 
 | Control | |
 |---|---|
@@ -81,48 +127,41 @@ Fields panel can follow it live while openEMS runs. A dump with frequencies is w
 
 Copper is outlined on the plots.
 
-<a id="fields3d"></a>
-## The 3D view
+## The Run page
 
-The Fields panel's *3D* view, the one it opens with. It shows the board, with the copper as shaded slabs,
-after a preview or a run, and over it:
+Progress per driven port, openEMS's energy decay, mom25d's adaptive sweep (its model change and prediction
+error per solve, in dB, against its tolerance), the log, and *Stop*.
 
-- **Mesh:** a solver's discretisation: openEMS's grid lines, mom25d's triangles or EMerge's element faces on
-  the copper, ports and parts. A preview writes all three in seconds.
-- **a dump:** a volume dump, for example `--dump E@volume+5@2.4` (the board plus 5 mm of air above and
-  below), as a translucent cloud; a plane dump (an openEMS cut, mom25d's surface currents) as a coloured sheet
-  in place, just above the copper when it lies on a copper layer.
-- **Far field:** in antenna mode, the gain pattern at a recorded frequency over the board's centre: its
-  distance from the centre is the gain, over 30 dB. *Far-field size* scales it against the board, and
-  *Far-field height* lifts it off the board's surface.
+<a id="plots"></a>
+## The Results page
 
-Drag to orbit, scroll to zoom, Ctrl+drag to pan. This needs PyOpenGL, which is in the `gui` extra.
+S-parameters and antenna results on one page, as a grid of plots. *Add plot* adds one; ✕ on a plot removes
+it. The plots fill as many columns as the page's width allows.
 
-| Control | |
+| Plot | Shows |
 |---|---|
-| Show, Colours | \|F\| or one component; the colour map |
-| envelope | the peak over a cycle instead of an animation |
-| log scale, Decades, Range top | the colour range; *Range top* ignores the strongest few voxels, such as a port gap |
-| Opacity, Fade | how solid the strongest field looks, and how fast the weak field fades out |
-| Height scale | stretches z, since boards are thin |
-| Resolution | voxels along the longest side |
-| copper, Copper shown | show the copper, and how thick it is drawn (0 is flat) |
-| Mesh | none, or a solver's mesh |
-| Far field, Far-field size, height | the pattern at a frequency, its size against the board, and how far above the board's surface it is drawn |
-| Save GIF / MP4 | the animation from the current camera |
+| Cartesian | over frequency: \|S\| in dB or linear, phase, group delay or VSWR; with antenna results also directivity, gain and realized gain, or the radiation efficiency |
+| Smith | the reflections (S11, S22, …) with an impedance readout |
+| Polar | S in polar form, or with antenna results the far-field cuts (xz, yz, xy) at a recorded frequency, as gain, realized gain or directivity |
 
-![patch 3D](img/readme/patch_3d.gif)
+The traces are listed on the left, grouped by solver; tick the ones to show. Traces that weren't
+computed (ports that weren't driven) are greyed out.
+
+- **Cursor**: hover over any plot to read every trace at that frequency.
+- **Markers**: click to add, drag to move, Delete to remove. A marker is on every plot. The table lists each
+  trace at each marker, and the gain and efficiency when a plot shows them.
+- **Zoom**: mouse wheel and drag; *Fit* shows everything.
+- **Add results folder…**: overlay another run, for comparison.
+- **Export CSV…** and **Save image…**.
+
+The page starts with |S| and a Smith chart, or for an antenna with |S|, the gain, the far-field cuts and a
+Smith chart. Your plots are remembered, one set for S-parameters and one for antennas. A plot of the gain
+stays one while a folder without antenna results is open, and shows the gain again when one with antenna
+results is.
 
 <a id="antenna"></a>
-## Antenna results
-
-In antenna mode, the Antenna panel shows:
-
-- the input match, with the resonance, impedance and −10 dB band;
-- directivity, gain, realized gain and efficiency over frequency;
-- polar cuts and a 3D pattern at any recorded frequency.
-
-When both openEMS and mom25d ran, a selector switches between them.
+In antenna mode the line above the plots gives the resonance, the input impedance and the −10 dB band. When
+both openEMS and mom25d ran, a selector beside it switches between them. The pattern in 3D is in the Viewer.
 
 ---
 [← Usage](usage.md) · [Index](index.md) · [Next: Examples →](examples.md)

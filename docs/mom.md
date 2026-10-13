@@ -75,7 +75,7 @@ port (`P1d`, `P1c`).
 
 With `mode = "antenna"`, mom25d computes the far field of the currents and writes the same results as
 openEMS: match, directivity, efficiency, gain and patterns (`<name>_mom25d_antenna.json`, `_antenna.png`,
-`_pattern.png`). The GUI's Antenna panel shows them.
+`_pattern.png`). The GUI's Results page plots them, and its Viewer draws the pattern in 3D.
 
 The ground is infinite, so nothing radiates below the board and there's no board edge. That suits
 patches and arrays on a ground larger than themselves. It doesn't suit antennas whose radiation comes
@@ -91,7 +91,7 @@ from a finite ground, such as an inverted-F or a monopole at the board edge; use
 
 `--mom-dump 2.4,5` saves the surface current on each layer at those frequencies, driven from the port
 named by `--dump-port` (default: the first). Each frequency costs one extra solve. The dumps are drawn as
-|J| maps, animated with `--dump-animate`, and shown in the GUI's Fields panel.
+|J| maps, animated with `--dump-animate`, and shown in the GUI's Viewer.
 
 ```bash
 kicad2ems examples/rf_stubnotch.toml --solvers mom --mom-dump 2.4,1.2 --dump-animate gif
@@ -126,7 +126,7 @@ the CPU. Install the CuPy package for your GPU stack:
 | NVIDIA, CUDA 12 / 13 | `pip install cupy-cuda12x` / `cupy-cuda13x` |
 
 PyTorch also works as a backend. `kicad2ems --check` shows the GPU mom25d will use, and so does the GUI's
-System panel. `MOM25D_GPU=off` turns it off. Consumer AMD cards outside ROCm's support list may need
+Solvers window (Help > Solvers and hardware). `MOM25D_GPU=off` turns it off. Consumer AMD cards outside ROCm's support list may need
 `HSA_OVERRIDE_GFX_VERSION=11.0.0` (RDNA3) or `10.3.0` (RDNA2).
 
 mom25d chooses how to solve from the memory available. The log says which it chose (`memory: direct

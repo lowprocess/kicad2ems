@@ -65,7 +65,7 @@ kicad2ems board.toml --dump E@F.Cu-0.1@2,6 --dump J@In2.Cu@4 --dump E@volume+5@2
 - Dumps are recorded in the run of the first driven port; `--dump-port` picks another.
 - Frequency-domain dumps are scaled to a 1 V incident wave at the driven port.
 - `--preview` checks the specs and reports the size of each dump.
-- The files go to `<out>/openems/exc_<port>/`. The GUI's Fields panel (its 2D and 3D views) reads them, and so
+- The files go to `<out>/openems/exc_<port>/`. The GUI's Viewer (its Cut and 3D views) reads them, and so
   does ParaView.
 
 <a id="animations"></a>

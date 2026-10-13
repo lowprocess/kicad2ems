@@ -24,7 +24,7 @@ flowchart LR
 |---|---|
 | preflight | resolves which solvers run and checks each can. A named solver that can't stops the run (exit 2); a reference is dropped with a warning |
 | model | builds the `Board` and writes `<name>_board.json` |
-| lines | builds the line model and `<name>_tlines.png` |
+| lines | builds the line model, `<name>_tlines.png` and `<name>_lines.json` (its sections, for the GUI) |
 | assess | asks each solver whether it can model this board (mom25d can't model gap ports) |
 | prepare | each solver builds its own form of the board (openEMS: the mesh). With `--preview`, openEMS stops here |
 | solve | runs each solver, cheapest first. A failure is a warning (exit 1 for a named solver) |
@@ -112,7 +112,7 @@ kicad2ems/
   options.py      Option and value converters
   pipeline.py     Job: the stages above
   events.py       --events
-  sysinfo.py      what this machine can run (the GUI's System panel)
+  sysinfo.py      what this machine can run (the GUI's Solvers window)
   importers/      KiCad (kicad/) and Gerber readers
   board.py        Board: the converted board, board.json
   region.py       cropping, nets = auto, extra and cut ports
@@ -128,6 +128,7 @@ kicad2ems/
   plots.py        figures
   report.py       the HTML report
   volume3d.py     3D field views: resampling, colouring, the board as meshes
+  overlay.py      the line model over the board (<name>_lines.json): colours by Z0, picking a section
   gui/            kicad2ems-gui
 mom25d/           the MoM solver (see mom.md)
 ```
@@ -156,7 +157,7 @@ its plugin.
 - A run is one process. `--jobs N` starts N worker processes, one per driven port.
 - openEMS uses its own threads (`--threads`).
 - A monitor thread follows the `openems.log` files for the progress line and `--events`.
-- The GUI runs kicad2ems as a separate process and reads its `--events` file.
+- The GUI runs kicad2ems as a separate process, in the output folder, and reads its `--events` file.
 
 ---
 [← Transmission-line model](transmission-lines.md) · [Index](index.md) · [Next: KiCad import →](kicad-import.md)

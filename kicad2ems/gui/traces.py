@@ -173,6 +173,26 @@ def smith_grid(n=181):
     return lines
 
 
+def polar_grid(rings=(0.25, 0.5, 0.75, 1.0), spokes=12, n=181):
+    """Polylines (x, y) of a polar grid: circles of the given radii and `spokes` radial lines out to the largest."""
+    t = np.linspace(0, 2 * np.pi, n)
+    lines = [(r * np.cos(t), r * np.sin(t)) for r in rings]
+    R = max(rings)
+    for k in range(spokes):
+        a = 2 * np.pi * k / spokes
+        lines.append((np.array([0, R * np.cos(a)]), np.array([0, R * np.sin(a)])))
+    return lines
+
+
+def pattern_xy(angles_deg, gain, lo_db, range_db):
+    """A far-field cut on a polar plot: angle 0 at the top, clockwise; the radius 0 at lo_db, 1 at lo_db +
+    range_db. gain linear. Returns (x, y)."""
+    db = 10 * np.log10(np.maximum(np.asarray(gain, float), 1e-12))
+    r = np.clip((db - lo_db) / range_db, 0, 1)
+    a = np.radians(np.asarray(angles_deg, float))
+    return r * np.sin(a), r * np.cos(a)
+
+
 def export_csv(path, trs, kind, reflections=()):
     """The traces as a kind shows them, plus Re / Im of the Smith chart's reflections, on the frequency grid of
     the first trace (the others interpolated; NaN outside their band)."""

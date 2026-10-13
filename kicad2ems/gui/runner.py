@@ -33,7 +33,7 @@ def make_fields():
     from ..config import all_options
     from ..solvers import registry, AUTO
     rows = [(o.key, o.gui, _kind(o), GUI_GROUPS.get(o.group, o.group)) for _, o in all_options() if o.gui]
-    rows = [(TICK + AUTO, 'auto: the cheapest full-wave solver + the line model', 'bool', 'Solvers')] + \
+    rows = [(TICK + AUTO, 'auto: fastest full-wave + line model', 'bool', 'Solvers')] + \
            [(TICK + n, sv.label, 'bool', 'Solvers') for n, sv in registry().items()] + rows
     order = ['Board', 'Band', 'Solvers'] + [g for *_, g in rows if g not in ('Board', 'Band', 'Solvers', 'Output')]
     rank = {g: i for i, g in enumerate(dict.fromkeys(order + ['Output']))}
