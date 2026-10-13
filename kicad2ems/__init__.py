@@ -35,7 +35,7 @@ Modules
 
 Documentation: docs/index.md in the repository.
 """
-__version__ = '0.2.0'
+__version__ = '261013-r1'
 
 from .importers.kicad import KiCadBoard, read_pos
 from .board import Board, Port
