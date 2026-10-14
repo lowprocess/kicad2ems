@@ -173,8 +173,8 @@ are meshed separately:
 
 | Option | Values |
 |---|---|
-| `--mom-signal-vias` | `round` (default): pads and antipads as drawn, an octagon of the via radius. `square`: pads and antipads as squares, the via a single vertex |
-| `--mom-stitching-vias` | `auto` (default): square outside `--mom-zone`, else round. `round`, `square` |
+| `--mom-signal-vias` | `round` (default): pads and antipads as drawn, an octagon of the via radius. `square` or a number of sides N: pads, antipads and the via barrel as N-gons |
+| `--mom-stitching-vias` | `auto` (default): square outside `--mom-zone`, else round. `round`, `square` or N: pads and antipads as N-gons, the via a single vertex |
 
 A pad on its own becomes a square of the same area, and a pad on a trace the square around the round pad, so the
 joint is kept. A round antipad becomes a square hole of the same area.
@@ -186,6 +186,22 @@ Difference from a fine reference at 2 / 5 / 8 GHz, with `--mom-zone on`:
 | Demo transition (cropped) | 2,701: 0.016 / 0.018 / 0.010 | 2,695: 0.015 / 0.016 / 0.011 | 2,470: 0.010 / 0.050 / 0.040 |
 | GCPW | 2,430: 0.001 / 0.001 / 0.002 | 1,533: 0.001 / 0.002 / 0.006 | 1,533: same |
 | Differential via | 5,067: 0.003 / 0.010 / 0.024 | 5,070: same | 4,778: 0.013 / 0.041 / 0.057 |
+
+Signal vias by number of sides (with the zone; difference from the fine reference at 2 / 5 / 8 GHz):
+
+| Sides | Demo transition (cropped) | Differential via |
+|---|---|---|
+| round | 2,701: 0.016 / 0.018 / 0.010 | 5,067: 0.003 / 0.011 / 0.024 |
+| 16 | 2,875: 0.019 / 0.025 / 0.018 | 6,060: 0.002 / 0.006 / 0.025 |
+| 12 | 2,801: 0.015 / 0.016 / 0.008 | 5,675: 0.003 / 0.012 / 0.024 |
+| 8 | 2,682: 0.013 / 0.019 / 0.012 | 5,291: 0.003 / 0.015 / 0.024 |
+| 6 | 2,617: 0.014 / 0.022 / 0.021 | 5,043: 0.004 / 0.019 / 0.029 |
+| 4 | 2,473: 0.015 / 0.046 / 0.052 | 4,823: 0.010 / 0.035 / 0.047 |
+| 8, no barrel | 2,634: 0.012 / 0.021 / 0.018 | 5,195: 0.004 / 0.018 / 0.028 |
+
+Eight sides or more match the round vias within the mesh's own scatter (about 0.01 on these boards); six start
+to drift, and four lose 0.03 to 0.05 at 5 to 8 GHz. The n-gons save next to nothing, though: KiCad's round pads
+are already coarse polygons, and a board has few signal vias. Keep `round`.
 
 Square signal vias cost accuracy wherever the via is the structure (the transition, the differential pair):
 the pad and antipad set its capacitance. Square stitching vias are close; on the GCPW its fence carries the

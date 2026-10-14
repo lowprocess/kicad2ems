@@ -55,6 +55,14 @@ def _metal(m, sigma):
     return Metal(float(sigma), t_mm * 1e-3), t_mm
 
 
+def _via_sides(v, words):
+    """--mom-signal-vias / --mom-stitching-vias: one of `words`, or a number of sides of at least 3."""
+    v = str(v).strip().lower()
+    if v in words or (v.isdigit() and int(v) >= 3):
+        return v
+    raise ValueError(f"{v!r}: {', '.join(words)} or a number of sides (3 or more)")
+
+
 def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigma=None, log=print, progress=None,
           hold=None, tiled='auto', on_step=None, core='auto', quads=False, zone=None,
           signal_vias='round', stitching_vias='auto'):
@@ -159,12 +167,14 @@ class MoM25D(Solver):
                "of the unknowns at the same accuracy (docs/mom.md#zone): off (default), on", choices=('off', 'on'),
                name='zone', gui='MoM signal zone (experimental)', group=G),
         Option('mom_signal_vias', 'round', "how vias on signal nets are meshed: round (default: pads and antipads "
-               "as drawn, an octagon of the via radius) or square (pads and antipads as squares, the via a single "
-               "vertex: fewer unknowns; docs/mom.md#vias)", choices=('round', 'square'), name='signal_vias',
-               gui='MoM signal vias', group=G),
+               "as drawn, an octagon of the via radius), square, or a number of sides N >= 3 (pads, antipads and "
+               "the barrel as N-gons; fewer unknowns, docs/mom.md#vias)", str, name='signal_vias',
+               conv=lambda v: _via_sides(v, ('round', 'square')),
+               gui='MoM signal vias', group=G, cli=dict(metavar='round|square|N')),
         Option('mom_stitching_vias', 'auto', "how vias on ground nets (stitching, fences, edge walls) are meshed: "
-               "auto (default: square outside --mom-zone, else round), round or square", choices=('auto', 'round', 'square'),
-               name='stitching_vias', gui='MoM stitching vias', group=G),
+               "auto (default: square outside --mom-zone, else round), round, square or N sides", str,
+               conv=lambda v: _via_sides(v, ('auto', 'round', 'square')),
+               name='stitching_vias', gui='MoM stitching vias', group=G, cli=dict(metavar='auto|round|square|N')),
         Option('mom_tiled', 'auto', "mixed precision as complex64 L L^T tiles on the GPU, no dense matrix anywhere "
                "(half the GPU memory of an LU, streamed from the host past it): auto (default) where the dense "
                "GPU solver does not fit (it is faster where it fits: 9.9 s against 14.3 s a solve on the SMA "
