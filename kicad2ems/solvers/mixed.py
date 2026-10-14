@@ -25,7 +25,21 @@ G = 'mixed (mom25d + lines)'
 CUT_MIN = 3.0           # mm: the shortest stretch worth cutting out
 
 
-def plan_cuts(model, data, dmax, fmin, cut_min=CUT_MIN * 1e-3, keep_out=None, log=print):
+def _feed_areas(ports):
+    """The copper each wave port's fit samples (gap to last cut, plus its width either side), so a cut keeps out."""
+    from shapely.geometry import LineString
+    from mom25d.geo import LinePort
+    out = []
+    for p in ports:
+        for q in (p.pos, p.neg) if hasattr(p, 'pos') else (p,):
+            if isinstance(q, LinePort):
+                far = q.s1 if q.s1 is not None else q.ref
+                a, b = q.c + q.d * min(0.0, q.ref), q.c + q.d * (max(far, q.ref) + 2 * q.w)
+                out.append(LineString([a, b]).buffer(2 * q.w))
+    return out
+
+
+def plan_cuts(model, data, dmax, fmin, cut_min=CUT_MIN * 1e-3, keep_out=None, log=print, feeds=()):
     """The stretches of trace to cut out: [(Run of the cut, the run it is in)]. model: mom25d BoardModel; data: its
     board dict (nets per polygon); dmax (m); fmin (Hz): the wave ports on the cut faces need their feed."""
     from shapely.geometry import Point, LineString, shape
@@ -59,6 +73,7 @@ def plan_cuts(model, data, dmax, fmin, cut_min=CUT_MIN * 1e-3, keep_out=None, lo
         er = model.stack.layers[r.k - 1].er
         beta = 2 * np.pi * fmin * np.sqrt(0.5 * (er + 1)) / 299792458.0
         need = max(need0, 1.0 - (win[2] - win[1]) + KNOWN_SPAN / beta)        # the feed each cut face needs
+        need += 1e-6                                                          # (rounding: the port still fits)
         xc0, xc1 = r.x0 + need, r.x1 - need
         if xc1 - xc0 < cut_min:
             continue
@@ -69,7 +84,7 @@ def plan_cuts(model, data, dmax, fmin, cut_min=CUT_MIN * 1e-3, keep_out=None, lo
         near = rect.buffer(d)
         if any(rect.buffer(max(2 * w, 3 * h)).contains(p) for p in vias) or any(near.contains(p) for p in ports):
             continue
-        if any(near.intersects(LineString(l)) for l in parts):
+        if any(near.intersects(LineString(l)) for l in parts) or any(rect.intersects(a) for a in feeds):
             continue
         own = Run(r.k, r.c0, r.t, r.a * (1 + 1e-6), xc0 - 2 * d, xc1 + 2 * d).polygon(pad=1e-7)
         crowded = False
@@ -108,7 +123,7 @@ def line_S(gamma, zc, length, z0):
 
 
 def solve_mixed(m, freq, dmax=0.3, sigma=None, max_solves=60, cut_min=CUT_MIN, keep_out=None, log=print,
-                progress=None, on_step=None, port='auto', **mom_kw):
+                progress=None, on_step=None, port='auto', hold=None, **mom_kw):
     """S over the board's ports (kicad2ems order, as mom.solve returns them), with the long straight runs cut out of
     mom25d's model and put back as lines. mom_kw: the mom25d mesh options (quads, zone, lines, signal_vias, ...)."""
     from mom25d.board import BoardModel
@@ -123,7 +138,27 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, max_solves=60, cut_min=CUT_MIN, k
     dm = dmax * 1e-3
     metal, t_mm = _metal(m, sigma)
     model = BoardModel(data, port='via' if port == 'lumped' else port, log=lambda *a: None)
-    cuts = plan_cuts(model, data, dm, fmin, cut_min=cut_min * 1e-3, keep_out=keep_out and keep_out * 1e-3, log=log)
+    # the board's own ports, from the uncut copper: a cut would shorten their straight feeds (wave ports turned
+    # lumped, and so different terminations); the cuts keep out of their feeds
+    # (each wave port's feed capped at what its fit needs down to fmin - a port fits over its whole straight feed
+    # otherwise, and leaves nothing of the line to cut)
+    from mom25d.model import KNOWN_SPAN
+    er_min = min(l.er for l in model.stack.layers)
+    beta_lo = 2 * np.pi * fmin * np.sqrt(0.5 * (er_min + 1)) / 299792458.0
+    feed = model._feed
+
+    def capped(g, c, d, step):
+        w, L = feed(g, c, d, step)
+        win, need0 = model._wave_window(w, 1.0, step)
+        if win is None:
+            return w, L
+        need = max(need0, 1.0 - (win[2] - win[1]) + 1.2 * KNOWN_SPAN / beta_lo)
+        return w, min(L, need)
+    model._feed = capped
+    base = model.ports(step=None, dmax=dm, fmin=fmin)
+    model._feed = feed
+    cuts = plan_cuts(model, data, dm, fmin, cut_min=cut_min * 1e-3, keep_out=keep_out and keep_out * 1e-3, log=log,
+                     feeds=_feed_areas(base))
     removed = 0.0
     cut_ports = []
     for j, (c, r) in enumerate(cuts):
@@ -144,10 +179,8 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, max_solves=60, cut_min=CUT_MIN, k
             ", ".join(f"M{c.k} w={2 * c.a * 1e3:.3f} mm {1e3 * (c.x1 - c.x0):.1f} mm" for c, _ in cuts))
     else:
         log("mixed: no long, lone straight run to cut - this is mom25d alone")
-    base_ports = model.ports
-
     def ports(**kw):
-        return base_ports(**kw) + cut_ports
+        return list(base) + cut_ports
     model.ports = ports
     planes = {k: 3 * dm for k, gs in model.shapes.items() if sum(g.area for g in gs) > 0.5 * model.outline_area}
     zone, lines = mom_kw.pop('zone', None), mom_kw.pop('lines', None)
@@ -180,7 +213,110 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, max_solves=60, cut_min=CUT_MIN, k
     info = dict(seconds=time.time() - t0, solves=int(info['solves']), unknowns=unknowns, cuts=len(cuts),
                 cut_mm=round(removed * 1e3, 3), notes=list(model.notes) + list(sim.log.notes),
                 samples_ghz=[round(x / 1e9, 6) for x in sorted(info['solved'])])
+    if hold is not None:                         # for the current dumps (Mixed.outputs)
+        hold.update(sim=sim, model=model, cuts=cuts, cut_ports=cut_ports, pairs=pairs)
     return S, out_names, out_zref, info
+
+
+def dump_fields(h):
+    """current_dumps' currents(f) and extra(...) for a mixed solution h (solve_mixed's hold): mom25d's currents of
+    each port driven alone (1 V gap source) combined into the joined network's state, as mom25d's own dumps: 1 V
+    on the driven port's gap, the board's other ports' gaps shorted, the cut ports loaded by their lines. The cut
+    stretches are drawn from their lines' waves: on the trace with mom25d's own profile across it (taken just outside
+    the faces), and on the planes over and under it their return current, the line's image spread over its height."""
+    sim, cuts, cut_ports, pairs = h['sim'], h['cuts'], h['cut_ports'], h['pairs']
+    n = len(sim.ports)
+    c = [i for ab in pairs for i in ab]
+    x = [i for i in range(n) if i not in c]
+    waves = []                                    # per call (frequency): {column: (a, b)}
+
+    def currents(f):
+        S = sim.sparams(f, keep=True)
+        I, A, B = sim.last['I'], sim.last['A'], sim.last['B']
+        L = np.zeros((len(c), len(c)), complex)
+        for j, (cut, _) in enumerate(cuts):
+            tau = np.exp(-cut_ports[2 * j].gamma_fn(f) * (cut.x1 - cut.x0))
+            L[2 * j, 2 * j + 1] = L[2 * j + 1, 2 * j] = tau          # each line matched to its ports' own Zc
+        out = np.zeros((I.shape[0], n), complex)
+        w = {}
+        for jj in x:
+            # mom25d's convention: 1 V on the driven port's gap, the other board ports' gaps shorted; the cut
+            # ports' gap voltages are whatever makes their waves those of the lines: A_c V = L B_c V
+            V = np.zeros(n, complex)
+            V[jj] = 1.0
+            if c:
+                M = A[c] - L @ B[c]
+                V[c] = np.linalg.solve(M[:, c], -M[:, jj])
+            out[:, jj] = I @ V
+            w[jj] = (A @ V, B @ V)
+        waves.append((f, w))
+        return out
+
+    # the planes over and under each cut stretch (they carry its return current), and their share of it
+    model = h['model']
+    zk = model.stack.z
+    refs = []
+    for cut, _ in cuts:
+        from shapely.geometry import Point
+        mid = cut.c0 + cut.t * 0.5 * (cut.x0 + cut.x1)
+        planes = model._planes_at(cut.k, Point(*mid), cut.t, 2 * cut.a)
+        below = max([q for q in planes if q < cut.k] + [0])
+        above = [q for q in planes if q > cut.k]
+        near = [(below, zk[cut.k] - zk[below])] + ([(min(above), zk[min(above)] - zk[cut.k])] if above else [])
+        tot = sum(1 / hh for _, hh in near)
+        refs.append([(q, hh, (1 / hh) / tot) for q, hh in near if q > 0])     # the ground (q = 0) is not meshed
+
+    def extra(k, i, j, gx, gy, Jx, Jy):
+        X, Y = np.meshgrid(gx, gy, indexing='ij')
+        f, w = waves[i]
+        if j not in w:
+            return Jx, Jy
+        a, b = w[j]
+        Jx, Jy = Jx.copy(), Jy.copy()
+        P = np.c_[X.ravel(), Y.ravel()]
+        for m, (cut, _) in enumerate(cuts):
+            on_trace, planes = cut.k == k, {q: (hh, sh) for q, hh, sh in refs[m]}
+            if not on_trace and k not in planes:
+                continue
+            pa = pairs[m][0]
+            p = cut_ports[2 * m]
+            g, zc = p.gamma_fn(f), float(p.zc_fn(f))
+            u, v = cut.local(P)
+            line = lambda s_: (b[pa] * np.exp(-g * s_) - a[pa] * np.exp(g * s_)) / np.sqrt(zc)   # along +t, A
+            if on_trace:
+                # the profile across the trace: mom25d's own, from the columns just outside the two faces
+                dx = abs(gx[1] - gx[0]) if len(gx) > 1 else 1e-4
+                prof, wsum = np.zeros(len(u)), 0.0
+                off = max(5 * dx, 4 * cut.a)                     # clear of the cut ports' gaps
+                for xf in (cut.x0 - off, cut.x1 + off):
+                    col = (np.abs(u - xf) < 0.75 * dx) & (np.abs(v) < cut.a)
+                    Jt = (Jx.ravel()[col] * cut.t[0] + Jy.ravel()[col] * cut.t[1])
+                    I_face = line(xf - cut.x0)
+                    if col.any() and abs(I_face) > 0:
+                        pr = np.real(Jt / I_face)
+                        prof += np.interp(v, v[col][np.argsort(v[col])], pr[np.argsort(v[col])])
+                        wsum += 1
+                # the line's current from the profile columns inward: past the faces too, over the cut ports'
+                # gap sources (their near field is an artefact of the cut, not of the board)
+                on = (u >= cut.x0 - off) & (u <= cut.x1 + off) & (np.abs(v) < cut.a)
+                if wsum:
+                    prof = prof / wsum
+                else:                                                   # the isolated strip's, if no columns
+                    prof = 1 / (np.pi * np.sqrt(np.maximum(cut.a ** 2 - v ** 2, (0.05 * cut.a) ** 2)))
+                J = np.zeros(len(u), complex)
+                J[on] = line(u[on] - cut.x0) * prof[on]
+                keep = ~on.reshape(X.shape)                              # replace, not add, on the trace
+                Jx, Jy = Jx * keep, Jy * keep
+            else:
+                # the plane's return current under the stretch: the image of the line, spread over ~ its height
+                hh, sh = planes[k]
+                on = (u >= cut.x0) & (u <= cut.x1)
+                J = np.zeros(len(u), complex)
+                J[on] = -sh * line(u[on] - cut.x0) * (hh / np.pi) / (hh * hh + v[on] ** 2)
+            Jx += (J * cut.t[0]).reshape(X.shape)
+            Jy += (J * cut.t[1]).reshape(X.shape)
+        return Jx, Jy
+    return currents, extra
 
 
 class Mixed(MoM25D):
@@ -198,9 +334,10 @@ class Mixed(MoM25D):
     def solve(self, run, prep):
         s = run.s
         self._held = {}
+        self._held = {}
         S, names, zref, info = solve_mixed(
             run.m, run.freq, dmax=s.mom_dmax, sigma=s.sigma, max_solves=s.mom_solves, cut_min=s.mixed_cut, log=run.log,
-            port=s.mom_port,
+            port=s.mom_port, hold=self._held,
             quads={'off': False, 'on': True}.get(s.mom_quads, s.mom_quads),
             zone='auto' if s.mom_zone == 'on' else None, lines=s.mom_lines,
             signal_vias=s.mom_signal_vias, stitching_vias=s.mom_stitching_vias,
@@ -215,7 +352,14 @@ class Mixed(MoM25D):
         return Result(S, names, zref, info['seconds'], info=info, comment=f"mixed: mom25d + lines ({run.name})")
 
     def outputs(self, run, prep, res):
-        return None
+        """The current dumps (--mom-dump) of the joined solution: <out>/mixed/exc_<port>/."""
+        h = getattr(self, '_held', None)
+        if not run.s.mom_dump or not h:
+            return
+        from types import SimpleNamespace
+        currents, extra = dump_fields(h)
+        self._dumps(run, SimpleNamespace(sim=h['sim'], model=h['model']), currents=currents, extra=extra,
+                    unit='1 V gap source')
 
     def estimate(self, run):
         return None

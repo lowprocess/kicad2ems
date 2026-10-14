@@ -456,22 +456,25 @@ class MoM25D(Solver):
         run.wrote('antenna sphere, mom25d', sph_file)
         run.summary['antenna' + tag] = {k_: v for k_, v in ant.items() if k_ != 'sphere'}
 
-    def _dumps(self, run, held):
-        """The current dumps (--mom-dump): <out>/mom25d/exc_<port>/, laid out like openEMS's frequency-domain dumps
-        (the GUI's Fields tab reads both), and their maps and animations next to the other outputs."""
+    def _dumps(self, run, held, **kw):
+        """The current dumps (--mom-dump): <out>/<solver>/exc_<port>/, laid out like openEMS's frequency-domain dumps
+        (the GUI's Fields tab reads both), and their maps and animations next to the other outputs. kw: current_dumps'
+        currents / extra / unit (the mixed solver's)."""
         if not run.s.mom_dump or held is None:
             return
         from .openems.fields import DumpSource, save_fd_outputs
-        for port, d in current_dumps(run, held, [f * 1e9 for f in run.s.mom_dump], run.s.dump_port, run.s.mom_near):
+        tag = self.name
+        for port, d in current_dumps(run, held, [f * 1e9 for f in run.s.mom_dump], run.s.dump_port, run.s.mom_near,
+                                     tag=tag, **kw):
             for name in d['names']:
                 src = DumpSource(d['dir'], name, 'FD')
-                tag = port.replace('+', 'p').replace('-', 'n')
-                for f, q in save_fd_outputs(src, run.path(f"_mom25d_{tag}_{name}"), animate=run.s.dump_animate):
-                    label = f"mom25d {name} ({port} driven, {f / 1e9:g} GHz)"
+                ptag = port.replace('+', 'p').replace('-', 'n')
+                for f, q in save_fd_outputs(src, run.path(f"_{tag}_{ptag}_{name}"), animate=run.s.dump_animate):
+                    label = f"{tag} {name} ({port} driven, {f / 1e9:g} GHz)"
                     run.wrote(('current map ' if q.endswith('.png') else 'current animation ') + label, q)
                     if q.endswith('.png'):
-                        run.summary['dumps'].append(dict(label=f"mom25d {name} ({port} driven)", png=run.rel(q)))
-            run.log(f"  mom25d current dumps ({port} driven): {d['dir']}")
+                        run.summary['dumps'].append(dict(label=f"{tag} {name} ({port} driven)", png=run.rel(q)))
+            run.log(f"  {tag} current dumps ({port} driven): {d['dir']}")
 
 
 def _grid(nodes, tris, step, nmax=600):
@@ -480,12 +483,15 @@ def _grid(nodes, tris, step, nmax=600):
     return [np.linspace(lo[a], hi[a], int(min(nmax, max(2, np.ceil((hi[a] - lo[a]) / step) + 1)))) for a in (0, 1)]
 
 
-def current_dumps(run, res, freqs, ports=None, near=()):
+def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d', currents=None, extra=None,
+                  unit='1 V gap source'):
     """mom25d's surface current density J (A/m) on each meshed layer at `freqs` (Hz), its RWG basis functions
     sampled onto a grid (0 off the copper), and with `near` (mm) the E field on planes that far above the top
     of the stack (mom25d.farfield.near_field), for the ports driven (names, default the first) by mom25d's 1 V
     gap sources. Writes dump_*_fd.npz and dump_info.json per port under <out>/mom25d/exc_<port>/; returns
-    [(port, dict(dir, names))]."""
+    [(port, dict(dir, names))]. tag: the solver (the directory under <out>). currents(f) -> (N x len(sim.ports)) the
+    RWG currents of each port driven (default: sim.currents of the excitations); extra(k, f_index, column, gx, gy, Jx,
+    Jy) -> (Jx, Jy): layer k's grid with what the solver adds (mixed: the stretches put back as lines)."""
     from mom25d.farfield import current_on_grid, near_field
     from .openems.dumps import Dump, write_info
     from .openems.fields import write_npz
@@ -498,12 +504,13 @@ def current_dumps(run, res, freqs, ports=None, near=()):
     lay = {k: l for l, k in model.iface.items()}
     layers = [k for k, idx in sorted(sim.tri_idx.items()) if len(idx) and k in lay]
     nodes = sim.rwg.nodes[:, :2] * 1e3
-    I_f = [(stop.check(), sim.currents(f, sim.excitation()))[1] for f in freqs]
+    currents = currents or (lambda f: sim.currents(f, sim.excitation()))
+    I_f = [(stop.check(), currents(f))[1] for f in freqs]
     step = max(run.s.mom_dmax / 3, 0.02)
     ztop = float(model._zk[-1])
     out = []
     for j in cols:
-        d = os.path.join(run.s.out, 'mom25d', f"exc_{names[j]}")
+        d = os.path.join(run.s.out, tag, f"exc_{names[j]}")
         os.makedirs(d, exist_ok=True)
         dumps, units = [], {}
         for k in layers:
@@ -511,12 +518,14 @@ def current_dumps(run, res, freqs, ports=None, near=()):
             data = np.zeros((len(freqs), len(gx), len(gy), 1, 3), complex)
             for i, I in enumerate(I_f):
                 Jx, Jy, _ = current_on_grid(sim, I[:, j], gx * 1e-3, gy * 1e-3, k)
+                if extra is not None:
+                    Jx, Jy = extra(k, i, j, gx * 1e-3, gy * 1e-3, Jx, Jy)
                 data[i, :, :, 0, 0], data[i, :, :, 0, 1] = Jx, Jy
             z = float(model._zk[k])
             dump = Dump(f"J@{lay[k]}", 'J', (gx[0], gy[0], z), (gx[-1], gy[-1], z), list(freqs), 2, lay[k])
             write_npz(os.path.join(d, dump.name + '.npz'), dict(x=gx, y=gy, z=np.array([z])), freqs, data)
             dumps.append(dump)
-            units[dump.name] = 'A/m, 1 V gap source'
+            units[dump.name] = f'A/m, {unit}'
         for h in near or ():
             # one grid over all the copper, padded so the FFT's wrap-around stays far from the board
             allt = np.concatenate([sim.tri_idx[k] for k in layers])
@@ -534,7 +543,7 @@ def current_dumps(run, res, freqs, ports=None, near=()):
             dump = Dump(f"E@{label}", 'E', (gx[0], gy[0], z), (gx[-1], gy[-1], z), list(freqs), 2, label)
             write_npz(os.path.join(d, dump.name + '.npz'), dict(x=gx, y=gy, z=np.array([z])), freqs, data)
             dumps.append(dump)
-            units[dump.name] = 'V/m, 1 V gap source'
+            units[dump.name] = f'V/m, {unit}'
         write_info(d, dumps, run.m)
         info = os.path.join(d, 'dump_info.json')                            # J: surface current, A/m
         with open(info) as fh:
