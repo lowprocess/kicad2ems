@@ -165,6 +165,32 @@ Layers made only of signal copper are left as they are. The differential via sho
 via transition excites the space between its ground planes, and the coarser mesh away from the signal costs
 about 0.02 there. Studies: `tools/mom25d/zone_study.py`.
 
+<a id="vias"></a>
+### Via meshing
+
+Signal vias (on any net but the ground nets) and stitching vias (ground nets: stitching, fences, edge walls)
+are meshed separately:
+
+| Option | Values |
+|---|---|
+| `--mom-signal-vias` | `round` (default): pads and antipads as drawn, an octagon of the via radius. `square`: pads and antipads as squares, the via a single vertex |
+| `--mom-stitching-vias` | `auto` (default): square outside `--mom-zone`, else round. `round`, `square` |
+
+A pad on its own becomes a square of the same area, and a pad on a trace the square around the round pad, so the
+joint is kept. A round antipad becomes a square hole of the same area.
+
+Difference from a fine reference at 2 / 5 / 8 GHz, with `--mom-zone on`:
+
+| Board | Stitching `auto` | Stitching `square` | Signal and stitching `square` |
+|---|---|---|---|
+| Demo transition (cropped) | 2,701: 0.016 / 0.018 / 0.010 | 2,695: 0.015 / 0.016 / 0.011 | 2,470: 0.010 / 0.050 / 0.040 |
+| GCPW | 2,430: 0.001 / 0.001 / 0.002 | 1,533: 0.001 / 0.002 / 0.006 | 1,533: same |
+| Differential via | 5,067: 0.003 / 0.010 / 0.024 | 5,070: same | 4,778: 0.013 / 0.041 / 0.057 |
+
+Square signal vias cost accuracy wherever the via is the structure (the transition, the differential pair):
+the pad and antipad set its capacitance. Square stitching vias are close; on the GCPW its fence carries the
+return current, and the error at 8 GHz grows from 0.002 to 0.006.
+
 <a id="quads"></a>
 ### Quad cells (experimental)
 
@@ -178,6 +204,10 @@ matrix is still filled on the triangles and then reduced before the factorisatio
 | Stepped microstrip, tensor mesh | 795 → 511 | 0.014 from a fine reference, triangles 0.015 |
 | Hairpin filter | 4,763 → 3,974 | 0.006; S21 within 0.1 dB through the passband |
 | Demo transition (cropped, via ports) | 8,334 → 6,509 | 0.017 from a fine reference, triangles 0.015 |
+
+`--mom-quads centre` merges only in the middle of signal lines: no triangle with a corner on the copper outline,
+none off the signal copper. It merges fewer (rf_coupler: 5,864 → 5,173 unknowns, against 4,725 with `on`); both
+stay as close to a fine reference as the triangles (0.015 / 0.014 / 0.015 at 8 GHz).
 
 On the demo transition the factorisation went from 8.3 s to 4.1 s a frequency, plus 1.4 s to reduce the
 matrix (2 cores). On the fine reference mesh itself, quads stay within 0.006 of the triangles. Quads work

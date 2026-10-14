@@ -15,6 +15,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   vias; stitching-via pads as squares, coarser cells elsewhere. A third to a quarter of the unknowns on
   boards with via fences (docs/mom.md#zone).
 
+- mom25d: `--mom-signal-vias round|square` and `--mom-stitching-vias auto|round|square`: pads and antipads
+  as drawn or as squares, per kind of via (docs/mom.md#vias).
+- mom25d: `--mom-quads centre`: quad cells only in the middle of signal lines.
+
+### Fixed
+- `kicad2ems --help` failed on a `%` in the `--mom-quads` help text.
+
 ### Changed
 - mom25d: mixed precision on the CPU by default above 3,500 unknowns (about 1.3x faster); a stalled
   refinement gives up after 30 iterations instead of 300.

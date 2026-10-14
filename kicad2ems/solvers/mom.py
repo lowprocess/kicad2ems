@@ -56,7 +56,8 @@ def _metal(m, sigma):
 
 
 def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigma=None, log=print, progress=None,
-          hold=None, tiled='auto', on_step=None, core='auto', quads=False, zone=None):
+          hold=None, tiled='auto', on_step=None, core='auto', quads=False, zone=None,
+          signal_vias='round', stitching_vias='auto'):
     """S-parameters of the board m on `freq` (Hz) from mom25d, as kicad2ems reports them: (S (nf, n, n) in
     m.user_ports order with differential pairs as (d, c) modes, names, reference impedances, info dict).
     dmax in mm (planes 3x, refined near the copper of other layers). sigma (S/m): conductor loss, as --sigma
@@ -71,7 +72,8 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
         log(f"  mom25d: conductor loss sigma {sigma:g} S/m, {t_mm * 1e3:g} um copper")
     res = solve_board(m.to_dict(), freq, dmax=dmax * 1e-3, port=kind, pairs=pairs, metal=metal, max_solves=max_solves,
                       mesher='gmsh' if mesher == 'gmsh' else 'auto', log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
-                      progress=progress, tiled=tiled, on_step=on_step, core=core, quads=quads, zone=zone)
+                      progress=progress, tiled=tiled, on_step=on_step, core=core, quads=quads, zone=zone,
+                      signal_vias=signal_vias, stitching_vias=stitching_vias)
     if hold is not None:
         hold['res'] = res
     for line in res.model.describe().splitlines()[1:] + list(res.sim.log.notes):
@@ -148,14 +150,21 @@ class MoM25D(Solver):
                choices=('auto', 'wave', 'lumped'), name='port', gui='Ports', group=G),
         Option('mom_mesher', 'triangle', "MoM surface mesher (default triangle)", choices=('triangle', 'gmsh'),
                name='mesher', gui='MoM mesher', group=G),
-        Option('mom_quads', 'off', "experimental: merge near-rectangular triangle pairs (straight runs) into quad "
-               "cells, a constant-divergence subspace with ~20% fewer unknowns and a ~2x cheaper LU at the same "
-               "accuracy (docs/mom.md#quads): off (default), on", choices=('off', 'on'), name='quads',
-               gui='MoM quad cells (experimental)', group=G),
+        Option('mom_quads', 'off', "experimental: merge near-rectangular triangle pairs into quad cells, a "
+               "constant-divergence subspace with fewer unknowns and a cheaper LU (docs/mom.md#quads): off (default), "
+               "on (wherever they pair up) or centre (only in the middle of signal lines, away from the copper edges)",
+               choices=('off', 'on', 'centre'), name='quads', gui='MoM quad cells (experimental)', group=G),
         Option('mom_zone', 'off', "experimental: mesh detail only within 0.5 mm of the signal copper (every net but "
                "the ground nets): no edge rings, coarse cells and square stitching-via pads elsewhere; about a third "
                "of the unknowns at the same accuracy (docs/mom.md#zone): off (default), on", choices=('off', 'on'),
                name='zone', gui='MoM signal zone (experimental)', group=G),
+        Option('mom_signal_vias', 'round', "how vias on signal nets are meshed: round (default: pads and antipads "
+               "as drawn, an octagon of the via radius) or square (pads and antipads as squares, the via a single "
+               "vertex: fewer unknowns; docs/mom.md#vias)", choices=('round', 'square'), name='signal_vias',
+               gui='MoM signal vias', group=G),
+        Option('mom_stitching_vias', 'auto', "how vias on ground nets (stitching, fences, edge walls) are meshed: "
+               "auto (default: square outside --mom-zone, else round), round or square", choices=('auto', 'round', 'square'),
+               name='stitching_vias', gui='MoM stitching vias', group=G),
         Option('mom_tiled', 'auto', "mixed precision as complex64 L L^T tiles on the GPU, no dense matrix anywhere "
                "(half the GPU memory of an LU, streamed from the host past it): auto (default) where the dense "
                "GPU solver does not fit (it is faster where it fits: 9.9 s against 14.3 s a solve on the SMA "
@@ -301,8 +310,9 @@ class MoM25D(Solver):
             run.log("mom25d: antenna mode: lumped ports (--mom-port wave for de-embedded ones)")
         S, names, zref, info = solve(run.m, run.freq, dmax=s.mom_dmax, port=port, mesher=s.mom_mesher,
                                      max_solves=s.mom_solves, sigma=s.sigma, log=run.log, hold=self._held, tiled=s.mom_tiled,
-                                     core=s.mom_core, quads=s.mom_quads == 'on',
+                                     core=s.mom_core, quads={'off': False, 'on': True}.get(s.mom_quads, s.mom_quads),
                                      zone='auto' if s.mom_zone == 'on' else None,
+                                     signal_vias=s.mom_signal_vias, stitching_vias=s.mom_stitching_vias,
                                      progress=lambda k, n, f: (run.status('mom25d', dict(fraction=k / n, solves=k,
                                                                                          f_ghz=f / 1e9)), stop.check()),
                                      on_step=lambda h: run.status('mom25d', dict(afs_solves=h['solves'],
