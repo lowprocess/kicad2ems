@@ -137,6 +137,34 @@ unknowns. gmsh made nicer triangles but wasn't more accurate. The study is in
 
 ![mesher study](img/mesher_study.png)
 
+<a id="zone"></a>
+### Signal zone (experimental)
+
+`--mom-zone on` keeps the mesh detail where the current crowds: within a zone around the signal copper
+(every net except the ground nets). The zone reaches 0.5 mm from the signal copper or 1.5 times the
+thickest dielectric, whichever is more, and 1 mm around each signal via, so its return vias are inside.
+Outside the zone:
+
+- copper edges get no edge rings, and cells grow to 5 times `--mom-dmax`;
+- vias get no octagon, only their attachment point;
+- small pads (stitching vias) become squares of the same area;
+- the layers nearby are not refined under it.
+
+Most of the unknowns this removes were stitching-via pads. Each round pad had edge rings, an octagon and a
+fan: about 130 unknowns, against 4 now.
+
+| Board | Unknowns | Difference from a fine reference at 2 / 5 / 8 GHz |
+|---|---|---|
+| Demo transition (cropped, via ports) | 8,334 → 2,781 | 0.015 / 0.018 / 0.009 (default mesh: 0.015 / 0.015 / 0.010) |
+| Same, `--mom-dmax 0.2` and the zone | 4,611 | 0.001 / 0.002 / 0.002 |
+| Grounded coplanar waveguide | 3,416 → 2,430 | 0.001 / 0.001 / 0.002 (default: 0.001 / 0.001 / 0.003) |
+| Differential via | 7,404 → 5,079 | 0.002 / 0.007 / 0.024 (default: 0.004 / 0.007 / 0.009) |
+| Demo transition, whole board | 13,543 → 3,623 | (the default mesh does not fit in 7 GB) |
+
+Layers made only of signal copper are left as they are. The differential via shows the limit: at 8 GHz the
+via transition excites the space between its ground planes, and the coarser mesh away from the signal costs
+about 0.02 there. Studies: `tools/mom25d/zone_study.py`.
+
 <a id="quads"></a>
 ### Quad cells (experimental)
 

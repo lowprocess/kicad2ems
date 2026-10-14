@@ -11,7 +11,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - mom25d: quad cells on straight runs (`--mom-quads on`, experimental): about 20% fewer unknowns and half
   the LU time at the same accuracy (docs/mom.md#quads).
-- mom25d (experimental, not wired in): edge rings only near the signal copper (`geo.mesh_polygons(edge_zone=)`).
+- mom25d: signal zone (`--mom-zone on`, experimental): mesh detail only around the signal copper and
+  vias; stitching-via pads as squares, coarser cells elsewhere. A third to a quarter of the unknowns on
+  boards with via fences (docs/mom.md#zone).
 
 ### Changed
 - mom25d: mixed precision on the CPU by default above 3,500 unknowns (about 1.3x faster); a stalled
