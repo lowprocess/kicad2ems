@@ -6,6 +6,17 @@ example `261013-r1`, the first release on 13 October 2026).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-10-14
+
+### Added
+- mom25d: quad cells on straight runs (`--mom-quads on`, experimental): about 20% fewer unknowns and half
+  the LU time at the same accuracy (docs/mom.md#quads).
+- mom25d (experimental, not wired in): edge rings only near the signal copper (`geo.mesh_polygons(edge_zone=)`).
+
+### Changed
+- mom25d: mixed precision on the CPU by default above 3,500 unknowns (about 1.3x faster); a stalled
+  refinement gives up after 30 iterations instead of 300.
+
 ## 2026-10-13
 
 ### Added

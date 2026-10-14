@@ -137,6 +137,24 @@ unknowns. gmsh made nicer triangles but wasn't more accurate. The study is in
 
 ![mesher study](img/mesher_study.png)
 
+<a id="quads"></a>
+### Quad cells (experimental)
+
+`--mom-quads on` merges pairs of triangles that together make a near-rectangle (the strips along straight
+traces) into one quad cell. The current on a quad is kept at the same charge density on both triangles, so
+the shared diagonal stops being an unknown. Quads have the unknowns of rooftop cells, one per side. The
+matrix is still filled on the triangles and then reduced before the factorisation.
+
+| Board | Unknowns | Change in S from quads |
+|---|---|---|
+| Stepped microstrip, tensor mesh | 795 → 511 | 0.014 from a fine reference, triangles 0.015 |
+| Hairpin filter | 4,763 → 3,974 | 0.006; S21 within 0.1 dB through the passband |
+| Demo transition (cropped, via ports) | 8,334 → 6,509 | 0.017 from a fine reference, triangles 0.015 |
+
+On the demo transition the factorisation went from 8.3 s to 4.1 s a frequency, plus 1.4 s to reduce the
+matrix (2 cores). On the fine reference mesh itself, quads stay within 0.006 of the triangles. Quads work
+with the direct solver on the CPU (double and mixed precision); the GPU and compressed solvers ignore them. Studies: `tools/mom25d/quad_study.py`.
+
 <a id="gpu"></a>
 ## GPU
 
