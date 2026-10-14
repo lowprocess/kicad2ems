@@ -46,7 +46,7 @@ from ..options import Option                    # noqa: F401  (plugins import it
 
 GROUP = 'kicad2ems.solvers'                 # the entry-point group of solvers installed as packages
 BUILTIN = ('kicad2ems.solvers.openems.plugin:OpenEMS', 'kicad2ems.solvers.mom:MoM25D',
-           'kicad2ems.solvers.emerge.plugin:EMerge',
+           'kicad2ems.solvers.emerge.plugin:EMerge', 'kicad2ems.solvers.mixed:Mixed',
            'kicad2ems.solvers.lines.plugin:Qucs', 'kicad2ems.solvers.lines.plugin:Scikit')
 LINES = 'lines'                             # the line model: qucs when qucsator is installed, else scikit
 AUTO = 'auto'                               # the cheapest full-wave solver that can model the board, + the line model

@@ -65,7 +65,7 @@ def _via_sides(v, words):
 
 def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigma=None, log=print, progress=None,
           hold=None, tiled='auto', on_step=None, core='auto', quads=False, zone=None,
-          signal_vias='round', stitching_vias='auto'):
+          signal_vias='round', stitching_vias='auto', lines=None):
     """S-parameters of the board m on `freq` (Hz) from mom25d, as kicad2ems reports them: (S (nf, n, n) in
     m.user_ports order with differential pairs as (d, c) modes, names, reference impedances, info dict).
     dmax in mm (planes 3x, refined near the copper of other layers). sigma (S/m): conductor loss, as --sigma
@@ -81,7 +81,7 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
     res = solve_board(m.to_dict(), freq, dmax=dmax * 1e-3, port=kind, pairs=pairs, metal=metal, max_solves=max_solves,
                       mesher='gmsh' if mesher == 'gmsh' else 'auto', log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
                       progress=progress, tiled=tiled, on_step=on_step, core=core, quads=quads, zone=zone,
-                      signal_vias=signal_vias, stitching_vias=stitching_vias)
+                      signal_vias=signal_vias, stitching_vias=stitching_vias, lines=lines)
     if hold is not None:
         hold['res'] = res
     for line in res.model.describe().splitlines()[1:] + list(res.sim.log.notes):
@@ -166,6 +166,11 @@ class MoM25D(Solver):
                "the ground nets): no edge rings, coarse cells and square stitching-via pads elsewhere; about a third "
                "of the unknowns at the same accuracy (docs/mom.md#zone): off (default), on", choices=('off', 'on'),
                name='zone', gui='MoM signal zone (experimental)', group=G),
+        Option('mom_lines', 'off', "experimental: line basis functions on straight runs of trace - per column along "
+               "the run a few functions with the edge-peaked current profile across it, in place of the triangles' "
+               "unknowns inside the run (docs/mom.md#lines): off (default), on (even + odd profile: coupled lines), "
+               "even (isolated lines only), full (even, flat and odd)", choices=('off', 'on', 'even', 'full'),
+               name='lines', gui='MoM line functions (experimental)', group=G),
         Option('mom_signal_vias', 'round', "how vias on signal nets are meshed: round (default: pads and antipads "
                "as drawn, an octagon of the via radius), square, or a number of sides N >= 3 (pads, antipads and "
                "the barrel as N-gons; fewer unknowns, docs/mom.md#vias)", str, name='signal_vias',
@@ -323,6 +328,7 @@ class MoM25D(Solver):
                                      core=s.mom_core, quads={'off': False, 'on': True}.get(s.mom_quads, s.mom_quads),
                                      zone='auto' if s.mom_zone == 'on' else None,
                                      signal_vias=s.mom_signal_vias, stitching_vias=s.mom_stitching_vias,
+                                     lines=s.mom_lines,
                                      progress=lambda k, n, f: (run.status('mom25d', dict(fraction=k / n, solves=k,
                                                                                          f_ghz=f / 1e9)), stop.check()),
                                      on_step=lambda h: run.status('mom25d', dict(afs_solves=h['solves'],

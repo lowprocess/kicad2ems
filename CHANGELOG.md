@@ -19,6 +19,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   antipads as drawn or as N-gons, per kind of via (docs/mom.md#vias).
 - mom25d: `--mom-quads centre`: quad cells only in the middle of signal lines.
 
+- mom25d: line functions (`--mom-lines on|even|full`, experimental): straight runs of trace as a few functions
+  per column with the edge-peaked current profile, in place of the triangles' unknowns (docs/mom.md#lines).
+- The `mixed` solver (`--solvers mixed`): mom25d with long, lone straight runs cut out and put back as
+  transmission lines (docs/mom.md#mixed).
+
 ### Fixed
 - `kicad2ems --help` failed on a `%` in the `--mom-quads` help text.
 

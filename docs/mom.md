@@ -207,6 +207,46 @@ Square signal vias cost accuracy wherever the via is the structure (the transiti
 the pad and antipad set its capacitance. Square stitching vias are close; on the GCPW its fence carries the
 return current, and the error at 8 GHz grows from 0.002 to 0.006.
 
+<a id="lines"></a>
+### Line functions (experimental)
+
+`--mom-lines on` finds straight runs of signal trace and, inside each, replaces the triangles' unknowns with a few
+functions per column along the run (`mom25d/line.py`). Each one carries current along the line with a fixed shape
+across it: peaked at both edges, as 1/√(distance to the edge), plus an odd shape that pushes the current to one
+side (coupled lines need it). The runs stop short of bends, tees, pads, ports and vias, and the matrix is reduced
+the same way as for quads. `even` keeps only the symmetric shape (isolated lines), `full` adds a flat one.
+
+Difference from a fine reference at 2 / 5 / 8 GHz (columns 2 × `--mom-dmax` long):
+
+| Board | Unknowns | With line functions | Without |
+|---|---|---|---|
+| rf_coupler | 5,864 → 4,027 | 0.006 / 0.013 / 0.018 | 0.004 / 0.009 / 0.015 |
+| Demo transition (cropped, zone) | 2,701 → 2,307 | 0.017 / 0.019 / 0.008 | 0.016 / 0.018 / 0.010 |
+| GCPW (zone) | 2,430 → 2,159 | 0.003 / 0.002 / 0.004 | 0.001 / 0.001 / 0.002 |
+| Differential via (zone) | 5,067 → 3,860 | 0.003 / 0.012 / 0.024 | 0.003 / 0.011 / 0.024 |
+
+Inside a run they replace the unknowns about 10 to 20 to one; what is left is the rest of the board. `even` alone
+loses 0.04 on the coupler. Columns one cell long fail (the functions' kinks fall inside the triangles), so they are
+at least two cells long.
+
+<a id="mixed"></a>
+## The mixed solver: long lines as transmission lines
+
+`--solvers mixed` (`kicad2ems/solvers/mixed.py`) is mom25d with the middle of each long, lone, straight run of
+signal trace cut out of the board and put back as a transmission line. mom25d solves the rest with a de-embedded
+wave port on each face of each cut. Each port's line is characterised on its own cross-section: the planes over
+it and coplanar ground beside it. Each cut then becomes a line of that γ and Zc, and the lines are joined into
+mom25d's network.
+
+A stretch is cut only where no other signal copper (on any layer) comes within 3 widths or 4 heights of it, and
+not through vias, parts or ports. Each face keeps the straight feed its wave port needs down to `fmin`, and a cut
+is at least `--mixed-cut` mm long (default 3). It uses mom25d's mesh options (`--mom-dmax`, `--mom-zone`, ...).
+
+On rf_stripline (with `--mom-zone on`), one 12.5 mm stretch is cut, taking 5,069 unknowns to 4,203. The mixed
+result's group delay is 166.6 ps against openEMS's 166.8 ps, where mom25d alone gives 160.2 ps. The analytic line
+is closer than the zone's coarser MoM line.
+The demo transition gets no cut: at 1 GHz each wave port needs about 5.5 mm of feed, and its traces are 10 mm.
+
 <a id="quads"></a>
 ### Quad cells (experimental)
 

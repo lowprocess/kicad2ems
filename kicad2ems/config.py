@@ -68,7 +68,8 @@ def _sides(v):
 
 
 def _solvers(v):
-    """Solver names (aliases allowed; 'lines' for the line model, 'all' for every solver) in registry order, or
+    """Solver names (aliases allowed; 'lines' for the line model, 'all' for every solver but the variants of another, as mixed) in
+    registry order, or
     None for an empty list."""
     from .solvers import registry, aliases, ordered, LINES, AUTO
     names = dict(aliases(), line=LINES, lines=LINES, fast=LINES, auto=AUTO)
@@ -76,7 +77,7 @@ def _solvers(v):
     for x in strlist(v) or []:
         x = x.lower()
         if x == 'all':                                          # every solver, the line model once
-            out |= {n for n, sv in registry().items() if sv.consumes != 'network'} | {LINES}
+            out |= {n for n, sv in registry().items() if sv.consumes != 'network' and getattr(sv, 'in_all', True)} | {LINES}
         elif x in names:
             out.add(names[x])
         else:
@@ -88,7 +89,7 @@ def _solvers(v):
 CORE = [
     Option('solvers', None, "solvers to run, comma-separated: auto (the default: the full-wave solver estimated "
            "cheapest for this board, plus the line model; kicad2openems: openems), openems (3D FDTD), mom25d (alias mom; 2.5D "
-           "MoM: planar boards over a ground plane, no openEMS needed), qucs or scikit (the transmission-line model as "
+           "MoM: planar boards over a ground plane, no openEMS needed), mixed (mom25d with long straight runs as transmission lines; not in all), qucs or scikit (the transmission-line model as "
            "a circuit, solved by qucsator or scikit-rf: milliseconds), lines (qucs when qucsator is installed, else "
            "scikit) or all. A "
            "named solver that cannot run stops the run before it starts; --mom and --fast add theirs as references",
