@@ -8,8 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-10-19
 
-Releases `261019-r1` (everything up to the KiCad plugin's net runs, with 2026-10-18 and before) and
-`261019-r2` (adds the FDTD mesh zone, the port end-criterion window and the mom25d fixes below).
+Releases `261019-r1` (everything up to the KiCad plugin's net runs, with 2026-10-18 and before),
+`261019-r2` (adds the FDTD mesh zone, the port end-criterion window and the mom25d fixes below) and
+`261019-r3` (adds the mixed solver's current dumps and wave-port fix, below).
+
+### Fixed (261019-r3)
+- The `mixed` solver: the board's own wave ports are made from the uncut copper, their feeds capped at what
+  the fit needs down to fmin. On rf_stripline its result was 0.38 in |S| (25 degrees of S21) from mom25d's;
+  now within 0.007 (0.4 degrees). Current dumps (`--mom-dump`) work for it, from the joined solution.
 
 ### Added
 - KiCad plugin: simulate a net, a differential pair or a set of nets. Pick them on the map or take them from
