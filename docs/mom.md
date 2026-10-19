@@ -261,10 +261,21 @@ A stretch is cut only where no other signal copper (on any layer) comes within 3
 not through vias, parts or ports. Each face keeps the straight feed its wave port needs down to `fmin`, and a cut
 is at least `--mixed-cut` mm long (default 3). It uses mom25d's mesh options (`--mom-dmax`, `--mom-zone`, ...).
 
-On rf_stripline (with `--mom-zone on`), one 12.5 mm stretch is cut, taking 5,069 unknowns to 4,203. The mixed
-result's group delay is 166.6 ps against openEMS's 166.8 ps, where mom25d alone gives 160.2 ps. The analytic line
-is closer than the zone's coarser MoM line.
+The board's own ports are made from the uncut copper, with their wave-port feeds capped at what the fit needs
+down to `fmin`. Otherwise a port fits over its whole straight feed and leaves nothing to cut, or, once the
+line is cut short, it falls back to a lumped port.
+
+On rf_stripline (with `--mom-zone on`), one 12.5 mm stretch is cut, taking 5,069 unknowns to 4,335. The result
+matches mom25d's own: S21 within 0.5° up to 10 GHz, and a group delay of 160.1 ps against 160.2 ps.
 The demo transition gets no cut: at 1 GHz each wave port needs about 5.5 mm of feed, and its traces are 10 mm.
+
+**Current dumps** (`--mom-dump`) work. Each port's mom25d solution (1 V on its gap) is combined into the
+joined network's state, using mom25d's own dump convention: 1 V on the driven gap, the board's other ports'
+gaps shorted, and the cut ports' gap voltages set so their waves are those of the lines. On the cut stretch,
+the trace current comes from the line's waves, with mom25d's own profile across the trace taken just outside
+the faces. The planes over and under it carry the line's image as return current. On rf_stripline at 5 GHz,
+the trace current matches mom25d's within 5% along the whole line. The planes under the stretch follow
+mom25d's shape about 20% low, with small spikes at the cut faces.
 
 <a id="quads"></a>
 ### Quad cells (experimental)

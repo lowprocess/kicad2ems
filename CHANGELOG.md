@@ -79,7 +79,7 @@ Releases `261019-r1` (everything up to the KiCad plugin's net runs, with 2026-10
 - mom25d: line functions (`--mom-lines on|even|full`, experimental): straight runs of trace as a few functions
   per column with the edge-peaked current profile, in place of the triangles' unknowns (docs/mom.md#lines).
 - The `mixed` solver (`--solvers mixed`): mom25d with long, lone straight runs cut out and put back as
-  transmission lines (docs/mom.md#mixed).
+  transmission lines (docs/mom.md#mixed), with current dumps of the joined solution (`--mom-dump`).
 
 ### Fixed
 - `kicad2ems --help` failed on a `%` in the `--mom-quads` help text.
