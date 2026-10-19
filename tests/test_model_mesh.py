@@ -187,3 +187,22 @@ def test_curve_lines_follow_a_thin_curved_track():
     assert len(xs1) > 3 * len(xs0) and len(ys1) > len(ys0)
     gaps = np.diff(np.unique(np.round(xs1, 6)))
     assert gaps.max() < 0.8 + 0.6                                  # never much more than the step apart
+
+
+def test_mesh_zone_keeps_the_signal_detail():
+    """--mesh-zone: the ground copper's edges get lines only near the signal copper. On sma_launch the planes'
+    cut-outs far from the line no longer set the y mesh; every line near the signal trace stays."""
+    from kicad2ems.solvers.openems.mesh import signal_zone
+    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
+    m = Board(KiCadBoard(os.path.join(ex, 'sma_launch.kicad_pcb')), nets=['REF_SMA_N', 'GND'],
+              pos_file=os.path.join(ex, 'sma_launch-all.pos'), log=lambda *a: None)
+    off = auto_mesh(m, 1e9, 6e9, log=lambda *a: None)
+    on = auto_mesh(m, 1e9, 6e9, zone=True, log=lambda *a: None)
+    assert on['info']['cells'] < 0.8 * off['info']['cells']
+    z = signal_zone(m)
+    sig = [p for lay, ps in m.copper.items() for p, n in zip(ps, m.copper_nets[lay]) if n not in m.ground_nets]
+    assert z.contains(sig[0]) and z.area < 0.7 * m.outline.area
+    y0, y1 = sig[0].bounds[1], sig[0].bounds[3]                    # across the trace: the same lines
+    near = lambda g: [round(v, 6) for v in g['y'] if y0 - 0.3 <= v <= y1 + 0.3]
+    assert near(on) == near(off)
+    assert auto_mesh(m, 1e9, 6e9, zone=0.0, log=lambda *a: None)['info']['cells'] <= on['info']['cells']

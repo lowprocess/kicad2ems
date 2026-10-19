@@ -16,8 +16,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   nothing. Where a component or a pair of open ends sits on both legs of a pair, that is one differential port.
   The run also solves the line model (`fast = auto`). The window's new S-parameters tab plots each full-wave
   solver against the line model (|S| in dB; differential terms of pairs) and lists the largest differences.
+- openEMS and gfdtd: `--mesh-zone` (default on): ground copper's edges get mesh lines only within a zone
+  around the signal copper, so planes' pours, antipads and pads far from the signal no longer set the mesh.
+  KiCad's CM5 demo, an HDMI pair: 75 M cells to 17 M at the default fine cell (9.5 M to 3.6 M at
+  `--fine 0.1`, S within 0.024); the examples change by at most 0.0033. Never in antenna mode.
+
+### Changed
+- The port end criterion (`--end-on ports`) judges the port signals over two periods of the board's lowest
+  cavity mode where that is shorter than two periods at fmin (no lumped parts on the signal nets): a band
+  from 0.1 GHz no longer keeps a 6-layer board's run going for 20 ns of simulated time.
 
 ### Fixed
+- mom25d, `--mom-port auto`: a differential pair whose coupled feed is too short for a wave port (ports
+  on pads) is solved with single-ended legs instead of failing. An EM solve that returns non-finite values
+  (mom25d's GPU solver on a 22,700-unknown board) is reported as such, not as an SVD error in the sweep.
 - Differential ports given as specs (`ports = ["P1+=U1.5", "P1-=U1.6"]`): the second leg overwrote the
   first, so the run failed (`KeyError: '+'`), and `nets = auto` missed one leg's net.
 

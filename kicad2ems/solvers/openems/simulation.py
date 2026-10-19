@@ -358,6 +358,35 @@ class PortWatch:
                 return
 
 
+def watch_window(m, fmin):
+    """PortWatch's window (s): two periods of the slowest ringing the ports can see. That is fmin's, except on a
+    board without lumped parts on its signal nets: nothing there rings below its lowest cavity mode, c0 / (2 D sqrt(er)) over the
+    outline's diagonal D, so a band reaching far below it (fmin 0.1 GHz: a 20 ns window, longer than a whole
+    run on a 6-layer board) waits no longer than that mode's two periods. At least 1 ns."""
+    from ...constants import C0
+    w = 2.0 / fmin
+    gnd = set(getattr(m, 'ground_nets', ()) or ())
+    signal_parts = [pt for pt in getattr(m, 'parts', []) or [] if any(n and n not in gnd for n in _part_nets(m, pt))]
+    if not signal_parts:                                        # (decoupling between two ground nets does not count)
+        x0, y0, x1, y1 = m.outline.bounds
+        er = max([l['er'] for l in m.layers] + [1.0])
+        f_low = C0 / (2 * np.hypot(x1 - x0, y1 - y0) * 1e-3 * np.sqrt(er))
+        w = min(w, 2.0 / f_low)
+    return max(w, 1e-9)
+
+
+def _part_nets(m, pt, reach=0.1):
+    """The nets of the copper at a lumped part's two ends (its pads, within `reach` mm of the ends)."""
+    from shapely.geometry import Point
+    ps, nets = m.copper.get(pt.layer, []), getattr(m, 'copper_nets', {}).get(pt.layer, [])
+    out = []
+    for c in (pt.s, pt.e):
+        q = Point(float(c[0]), float(c[1]))
+        hit = [(g.distance(q), n) for g, n in zip(ps, nets) if g.distance(q) <= reach]
+        out.append(min(hit)[1] if hit else None)
+    return out
+
+
 def port_decay(path, window, z=50.0):
     """(last probe time s, max over ports of the signal power in the last `window` s relative to its peak,
     dB) from the port probe files of a run folder, or None when there are none yet."""
@@ -490,7 +519,7 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
     watch = None
     if end_on == 'ports':
         fe = fmax if exc_fmax is None else exc_fmax
-        watch = dict(end_db=end_db, t_min=pulse_time(fmin, fe), window=max(2.0 / fmin, 1e-9), z=m.ports[k].z0)
+        watch = dict(end_db=end_db, t_min=pulse_time(fmin, fe), window=watch_window(m, fmin), z=m.ports[k].z0)
     seconds = execute(FDTD, path, threads, verbose, progress, watch=watch)
     files, norm = {}, None
     for d in dumps:

@@ -94,7 +94,7 @@ def manhattan(d, L, fine):
     return ((np.abs(d[..., 0]) <= tol) | (np.abs(d[..., 1]) <= tol)) & (L >= fine)
 
 
-def curve_lines(xy, fine, mode='extremes', step=None, boxes=None):
+def curve_lines(xy, fine, mode='extremes', step=None, boxes=None, inside=None):
     """Mesh-line candidates of the curved parts of a ring (rounded pad corners, round track ends,
     arcs, circular antipads, oblique edges). Edges that are Manhattan and at least `fine` long are
     handled by the thirds rule instead. mode 'extremes': for each run of consecutive curved edges only
@@ -104,7 +104,17 @@ def curve_lines(xy, fine, mode='extremes', step=None, boxes=None):
     extremes alone a rat-race's 0.8 mm ring sat on cells up to 1.8 mm, broke apart, and S21 came out
     -35.8 dB instead of -3.4. 'vertices': every vertex (dense, closest to the drawn geometry).
     boxes: a list that gets (x0, y0, x1, y1) of each curved run longer than 4 fine and twice `step` (the
-    copper's width): arcs, rings and fans, not the round end of a track or a pad's corner."""
+    copper's width): arcs, rings and fans, not the round end of a track or a pad's corner.
+    inside: a test of (x, y): only the lines of points it passes (the ground copper within the signal zone)."""
+    if inside is not None:
+        allx, ally = _curve_points(xy, fine, mode, step, boxes)
+        return [p[0] for p in allx if inside(*p)], [p[1] for p in ally if inside(*p)]
+    allx, ally = _curve_points(xy, fine, mode, step, boxes)
+    return [p[0] for p in allx], [p[1] for p in ally]
+
+
+def _curve_points(xy, fine, mode='extremes', step=None, boxes=None):
+    """curve_lines' candidates as the points they come from: ([(x, y)] for x lines, [(x, y)] for y lines)."""
     xy = np.asarray(xy)[:-1]                                        # closed ring -> unique vertices
     n = len(xy)
     if n < 3:
@@ -116,7 +126,7 @@ def curve_lines(xy, fine, mode='extremes', step=None, boxes=None):
         if boxes is not None:
             curve_lines(np.vstack([xy, xy[:1]]), fine, 'extremes', step=step, boxes=boxes)
         idx = sorted({i for i in range(n) if not manh[i]} | {(i + 1) % n for i in range(n) if not manh[i]})
-        return [xy[i, 0] for i in idx], [xy[i, 1] for i in idx]
+        return [tuple(xy[i]) for i in idx], [tuple(xy[i]) for i in idx]
     if not (~manh).any():
         return [], []
     xs, ys = [], []
@@ -136,29 +146,58 @@ def curve_lines(xy, fine, mode='extremes', step=None, boxes=None):
         if boxes is not None and ext.max() >= max(4 * fine, 2 * (step or 0)):    # not a round end or corner
             boxes.append((*pts.min(0), *pts.max(0)))
         if ext.max() >= fine / 2 and len(run) == n:                 # closed curve (circle): its extremes only
-            xs += [pts[:, 0].min(), pts[:, 0].max()]; ys += [pts[:, 1].min(), pts[:, 1].max()]
+            xs += [tuple(pts[np.argmin(pts[:, 0])]), tuple(pts[np.argmax(pts[:, 0])])]
+            ys += [tuple(pts[np.argmin(pts[:, 1])]), tuple(pts[np.argmax(pts[:, 1])])]
         elif ext.max() >= fine / 2:                                 # open run; tiny chamfers are ignored
-            xs += [pts[0, 0], pts[-1, 0]]; ys += [pts[0, 1], pts[-1, 1]]
+            xs += [tuple(pts[0]), tuple(pts[-1])]; ys += [tuple(pts[0]), tuple(pts[-1])]
             lx, ly = pts[0]
             for k in range(1, len(pts) - 1):                        # local extremes inside the run
                 if (pts[k, 0] - pts[k - 1, 0]) * (pts[k + 1, 0] - pts[k, 0]) < 0 or \
                         (step and abs(pts[k, 0] - lx) >= step):
-                    xs.append(pts[k, 0]); lx = pts[k, 0]
+                    xs.append(tuple(pts[k])); lx = pts[k, 0]
                 if (pts[k, 1] - pts[k - 1, 1]) * (pts[k + 1, 1] - pts[k, 1]) < 0 or \
                         (step and abs(pts[k, 1] - ly) >= step):
-                    ys.append(pts[k, 1]); ly = pts[k, 1]
+                    ys.append(tuple(pts[k])); ly = pts[k, 1]
         seen += len(run)
         i = j
     return xs, ys
 
 
 THIRDS_CELL = 2 / 3     # the cell across a copper edge, as a fraction of `fine` (see _edge_lines)
+ZONE_DIST = 1.0         # zone: the ground copper's edges are resolved within this many mm of the signal copper,
+ZONE_H = 3.0            # or this many times the thickest dielectric, whichever is more (signal_zone)
+ZONE_SMALL = 2.0        # mm: a ground ring no larger than this (a pad, an antipad, a via) that touches the zone keeps
+                        # all its lines (rf_diffvia: half of a return via's lines had moved its common mode by 0.14)
 
 
-def _edge_lines(m, fine, curves, boxes=None):
+def signal_zone(m, dist=None):
+    """Where the mesh resolves the ground copper's edges (model mm): within `dist` of the signal copper (copper of
+    any net but the ground nets, on any layer) and of the signal vias. dist None: ZONE_DIST or ZONE_H x the
+    thickest dielectric, whichever is more. None when the board has no signal copper apart from the ground."""
+    from shapely.geometry import Point
+    from shapely.ops import unary_union
+    gnd = set(getattr(m, 'ground_nets', ()) or ())
+    nets = getattr(m, 'copper_nets', {})
+    sig = [p for lay, ps in m.copper.items() for p, n in zip(ps, nets.get(lay, [''] * len(ps))) if n and n not in gnd]
+    sig += [Point(v[0], v[1]).buffer(v[2]) for v, s_ in zip(m.vias, getattr(m, 'via_signal', [])) if s_]
+    if not sig:
+        return None
+    if dist is None:
+        h = max([l['z1'] - l['z0'] for l in m.layers if l['kind'] == 'diel'] + [0.0])
+        dist = max(ZONE_DIST, ZONE_H * h)
+    return unary_union(sig).buffer(dist, quad_segs=4)
+
+
+def _edge_lines(m, fine, curves, boxes=None, zone=None):
     """Candidate x / y lines from the copper: the board outline, thirds-rule pairs at Manhattan edges
     (third: 2/3 outside the metal, third_in: 1/3 inside) and the curve lines (see curve_lines; boxes: the
-    curved runs' boxes)."""
+    curved runs' boxes). zone (signal_zone): the ground copper's edges count only inside it (signal copper's
+    always)."""
+    from shapely.geometry import LineString, Point
+    from shapely.prepared import prep
+    zp = prep(zone) if zone is not None else None
+    gnd = set(getattr(m, 'ground_nets', ()) or ())
+    nets = getattr(m, 'copper_nets', {})
     ob = m.outline.bounds
     fixed = {0: [ob[0], ob[2]], 1: [ob[1], ob[3]]}
     third, third_in = {0: [], 1: []}, {0: [], 1: []}
@@ -169,12 +208,22 @@ def _edge_lines(m, fine, curves, boxes=None):
     # mesh gives 135.1 ps with fewer cells (docs/meshing.md, 'Validation').
     c = THIRDS_CELL * fine
     for lay, ps in m.copper.items():
-        for p in ps:
+        for p, net in zip(ps, nets.get(lay, [''] * len(ps))):
+            ground = zp is not None and (not net or net in gnd)
             for ring in [p.exterior] + list(p.interiors):
                 xy = np.asarray(ring.coords)
+                cut = ground                                        # filter this ring's lines by the zone
+                if ground:
+                    b = ring.bounds
+                    if max(b[2] - b[0], b[3] - b[1]) <= ZONE_SMALL:   # small: all of it, or none
+                        if not zp.intersects(ring):
+                            continue
+                        cut = False
                 for (x0, y0), (x1, y1) in zip(xy[:-1], xy[1:]):
                     dx, dy = x1 - x0, y1 - y0
                     if not manhattan(np.array([dx, dy]), np.hypot(dx, dy), fine):
+                        continue
+                    if cut and not zp.intersects(LineString([(x0, y0), (x1, y1)])):
                         continue
                     # orient(): exterior CCW, holes CW -> metal is on the left of every edge
                     if abs(dx) <= abs(dy):                          # edge along y at x ~ x0
@@ -183,7 +232,8 @@ def _edge_lines(m, fine, curves, boxes=None):
                     else:
                         s, ym = np.sign(dx), 0.5 * (y0 + y1)
                         third_in[1].append(ym + s * c / 3); third[1].append(ym - s * 2 * c / 3)
-                cx, cy = curve_lines(xy, fine, curves, step=max(fine, 2 * p.area / p.length), boxes=boxes)   # its width
+                cx, cy = curve_lines(xy, fine, curves, step=max(fine, 2 * p.area / p.length), boxes=boxes,  # its width
+                                     inside=(lambda x, y: zp.contains(Point(x, y))) if cut else None)
                 fixed[0] += cx; fixed[1] += cy
     return fixed, third, third_in
 
@@ -297,7 +347,8 @@ def signal_gaps(m, near=2.0):
 
 
 def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) * 6, nz_min=4,
-              curves='extremes', vias='auto', via_snap=0.2, refine=(), z_sheet=1.0, curve_res=6.0, log=print):
+              curves='extremes', vias='auto', via_snap=0.2, refine=(), z_sheet=1.0, curve_res=6.0, zone=False,
+              log=print):
     """Mesh lines (mm) for model m. Returns dict(x, y, z, vias, info).
 
     curves: 'extremes' (default) or 'vertices' - see curve_lines().
@@ -314,7 +365,9 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
              grading from the fine cell gave -10.3 and -31.6 dB for 1.4x the run time. The gap and edge cells in
              x / y hardly mattered (docs/meshing.md#z-lines)
     curve_res: over curved copper (curve_lines' boxes) the largest cell is the dielectric's / curve_res: a radial
-             stub's fan had cells up to 1.8 mm and notched at 2.03 GHz instead of 2.13"""
+             stub's fan had cells up to 1.8 mm and notched at 2.03 GHz instead of 2.13
+    zone:   True: the ground copper's edges get mesh lines only near the signal copper (signal_zone); far from it
+             the planes' pours, antipads and pads are left to the graded mesh. A number: the zone's reach (mm)"""
     er_max = max([l['er'] for l in m.layers] + [1.0])
     lam0 = C0 / fmax * 1e3                                          # mm
     M_air, M_die = lam0 / res, lam0 / np.sqrt(er_max) / res
@@ -332,7 +385,8 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
         ext[4] = 0.0                                                # PEC wall = the bottom plane itself
     ob = m.outline.bounds
     boxes = []
-    fixed, third, third_in = _edge_lines(m, fine, curves, boxes)
+    zg = signal_zone(m, None if zone is True else float(zone)) if zone is not False and zone is not None else None
+    fixed, third, third_in = _edge_lines(m, fine, curves, boxes, zg)
     mode = _via_modes(m, vias)
     for (x, y, r, z0, z1), md in zip(m.vias, mode):
         if md == 'exact':

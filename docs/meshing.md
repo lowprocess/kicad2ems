@@ -34,6 +34,29 @@ extra line costs run time.
 - Lines closer than `fine/2` are merged, keeping the most important one.
 - The gaps are then filled with graded lines up to the largest cell.
 
+<a id="signal-zone"></a>
+### The signal zone
+
+Every mesh line runs across the whole model, so on a real board the ground planes' pours, antipads and
+pads would set the mesh everywhere, not just near the signal. `--mesh-zone on` (the default) gives ground
+copper's edges lines only within a zone around the signal copper (every net but the ground nets, on any
+layer, and the signal vias). The zone reaches 1 mm or 3 times the thickest dielectric, whichever is more;
+`--mesh-zone 2.5` sets the reach in mm and `--mesh-zone off` meshes every copper edge. Outside the zone
+the planes are left to the graded mesh. A small ground ring (a pad, an antipad or a via, up to 2 mm across)
+that touches the zone keeps all its lines: the return vias next to a signal via matter, and on
+`rf_diffvia` cutting half of their lines moved the common mode by 0.14. Antenna mode never uses the zone,
+since there the ground copper is often the radiator.
+
+| Board | Cells, zone off → on | Largest change in S |
+|---|---|---|
+| KiCad's CM5 demo, HDMI D0 pair, default fine cell | 75 M → 17 M | not runnable before |
+| the same, `--fine 0.1` | 9.5 M → 3.6 M (142 s → 47 s) | 0.024 |
+| `sma_launch` | 1.14 M → 0.82 M | 0.0001 |
+| `filter` | 0.40 M → 0.34 M | 0.0033 |
+| `demo_transition` | 0.53 M → 0.51 M | 0.0003 |
+
+The other examples lie within their zones and mesh as before.
+
 <a id="z-lines"></a>
 ## z lines
 

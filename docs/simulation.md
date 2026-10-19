@@ -55,6 +55,13 @@ Both are needed. A high-Q filter leaks its stored energy slowly through the port
 already low, and stopping on the ports alone smoothed its pass band. `--end-on energy` uses openEMS's own
 criterion only.
 
+The port signals are judged over a window of two periods of the slowest ringing they can carry: two
+periods at `fmin`. A board without lumped parts on its signal nets can't ring below its lowest cavity mode,
+c0 / (2 D √εr) over the outline's diagonal D, so there the window is at most two periods of that mode (at
+least 1 ns). Before this, a band from 0.1 GHz meant a 20 ns window: on a 16 × 21 mm region of KiCad's CM5
+demo the criterion could not fire before 21 ns, and a run went on for 23 minutes (3.4 ns) with its port
+signals already 68 dB down.
+
 `--end-db -30` is usually enough for S-parameters, and faster. You can also stop a run by hand: writing
 a file called `ABORT` into its run folder makes openEMS finish cleanly. The GUI's *Stop* does this.
 

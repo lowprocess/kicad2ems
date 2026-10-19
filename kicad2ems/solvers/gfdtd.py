@@ -15,7 +15,7 @@ import os
 from types import SimpleNamespace
 
 from . import Result, Option
-from .openems.plugin import OpenEMS
+from .openems.plugin import OpenEMS, mesh_zone
 
 G = 'gfdtd (GPU FDTD)'
 
@@ -89,7 +89,7 @@ class GFDTD(OpenEMS):
         p.bc = resolve_bc(bc, m)
         p.grid = auto_mesh(m, run.fmin, run.fmax, res=s.res, fine=s.fine, air=air, ratio=s.ratio, nz_min=s.nz,
                            bc=p.bc, curves=s.curves, vias=s.vias, via_snap=s.via_snap, z_sheet=s.z_sheet,
-                           curve_res=s.curve_res, log=lambda *a: None)
+                           curve_res=s.curve_res, zone=mesh_zone(s), log=lambda *a: None)
         if m.walls:
             from ..edges import snap
             p.grid['walls'] = snap(m.walls, p.grid)

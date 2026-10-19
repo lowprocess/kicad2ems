@@ -54,6 +54,20 @@ def _peak_delay(run):
     return best
 
 
+
+def mesh_zone(s):
+    """auto_mesh's zone from --mesh-zone: False (off), True (on) or a distance in mm. Never in antenna mode: there
+    the ground copper is often the radiator (a slot, an inverted-F's ground)."""
+    v = str(getattr(s, 'mesh_zone', 'on') or 'on').lower()
+    if v in ('off', 'no', 'false', '0') or getattr(s, 'antenna', False):
+        return False
+    if v in ('on', 'auto', 'yes', 'true'):
+        return True
+    try:
+        return float(v)
+    except ValueError:
+        raise ValueError(f"--mesh-zone {v!r}: on, off or a distance in mm") from None
+
 class OpenEMS(Solver):
     name, aliases, label = 'openems', ('fdtd',), 'openEMS (FDTD)'
     consumes, previewed, rank = 'board', True, 2
@@ -72,6 +86,11 @@ class OpenEMS(Solver):
         Option('air', None, "mm of air between the board and the boundary (default 5; antenna mode: a quarter "
                "wavelength at the band centre, at least 5)", float, group=G_MESH),
         Option('ratio', 1.4, "max growth between neighbouring cells (default {default})", float, group=G_MESH),
+        Option('mesh_zone', 'on', "mesh lines at the ground copper's edges only near the signal copper: on (default: "
+               "within 1 mm or 3x the thickest dielectric; never in antenna mode), a distance in mm, or off (every "
+               "copper edge). Large boards: the planes' pours, antipads and pads far from the signal no longer set "
+               "the mesh",
+               conv=lambda v: str(v).lower(), gui='Mesh zone around the signal (on / mm / off)', group=G_MESH),
         Option('nz', 4, "minimum cells through each dielectric layer (default {default})", int,
                gui='Cells through each dielectric', group=G_MESH),
         Option('z_sheet', 1.0, "first z cell either side of a copper layer with signal edges, as a multiple of the "
@@ -179,7 +198,7 @@ class OpenEMS(Solver):
         bc = resolve_bc('PML_8' if s.antenna and s.bc == 'auto' else s.bc, m)
         g = auto_mesh(m, run.fmin, run.fmax, res=s.res, fine=s.fine, air=s.air, ratio=s.ratio, nz_min=s.nz, bc=bc,
                       curves=s.curves, vias=s.vias, via_snap=s.via_snap, z_sheet=s.z_sheet, curve_res=s.curve_res,
-                      log=lambda *a: None)
+                      zone=mesh_zone(s), log=lambda *a: None)
         cells, dt = g['info']['cells'], g['info']['dt_ps'] * 1e-12
         pulse = pulse_steps(run.fmin, run.fmax, g['info']['dt_ps'])
         tg = _peak_delay(run)
@@ -207,7 +226,7 @@ class OpenEMS(Solver):
             run.log(f"antenna mode: boundaries {bc}, air margin {air:.1f} mm")
         p.bc = resolve_bc(bc, m)
         kw = dict(air=air, ratio=s.ratio, nz_min=s.nz, bc=p.bc, curves=s.curves, vias=s.vias, via_snap=s.via_snap,
-                  z_sheet=s.z_sheet, curve_res=s.curve_res, log=run.log)
+                  z_sheet=s.z_sheet, curve_res=s.curve_res, zone=mesh_zone(s), log=run.log)
         if s.converge:
             from .converge import mesh_levels, describe_levels
             p.levels = mesh_levels(m, run.fmin, run.fmax, sorted(set(s.converge)), res=s.res, fine=s.fine, **kw)
