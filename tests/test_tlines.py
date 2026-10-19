@@ -139,8 +139,8 @@ def test_edge_launch_pad_port_and_taper(boards):
 
 
 def test_sma_launch_example_line_model():
-    """examples/sma_launch: the drawn taper in the connector footprint widens the line, and the line
-    model stays close to the openEMS reference over 1-6 GHz."""
+    """examples/sma_launch: a straight 0.32 mm line onto the connector pad (no taper), and the line model stays
+    close to the openEMS reference over 1-6 GHz."""
     import numpy as np
     rf = pytest.importorskip('skrf')
     from kicad2ems.importers.kicad import KiCadBoard
@@ -152,7 +152,7 @@ def test_sma_launch_example_line_model():
               pos_file=os.path.join(ex, 'sma_launch-all.pos'), log=lambda *a: None)
     lm = build(m)
     widths = [e.w for e in lm.elements if e.kind == 'trace' and e.w]
-    assert max(widths) > 1.5 * min(widths)                                   # the taper is seen
+    assert set(widths) == {0.32}                                             # no taper: one width to the pad
     ref = rf.Network(os.path.join(ex, 'reference', 'sma_launch_openems.s2p'))
     s, _ = solve(lm, m.ports, ref.f, backend='skrf')
     s21 = 20 * np.log10(np.abs(s[:, 1, 0]))
