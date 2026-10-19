@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-10-19
 
+Releases `261019-r1` (everything up to the KiCad plugin's net runs, with 2026-10-18 and before) and
+`261019-r2` (adds the FDTD mesh zone, the port end-criterion window and the mom25d fixes below).
+
 ### Added
 - KiCad plugin: simulate a net, a differential pair or a set of nets. Pick them on the map or take them from
   KiCad's selection, then **Set up region and ports**. The region is the box around their copper plus a margin
