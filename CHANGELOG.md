@@ -10,7 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Releases `261019-r1` (everything up to the KiCad plugin's net runs, with 2026-10-18 and before),
 `261019-r2` (adds the FDTD mesh zone, the port end-criterion window and the mom25d fixes below) and
-`261019-r3` (adds the mixed solver's current dumps and wave-port fix, below).
+`261019-r3` (adds the mixed solver's current dumps and wave-port fix, below) and `261019-r4` (the plugin's
+map redraws, below, and the README's KiCad plugin gallery).
+
+### Fixed (261019-r4)
+- KiCad plugin: the impedance map redraws at most four times a second while it fills in, instead of once per
+  group of nets. On KiCad's CM5 demo the window no longer freezes for seconds at a time, and the map is done
+  in 3 s instead of 11 s.
 
 ### Fixed (261019-r3)
 - The `mixed` solver: the board's own wave ports are made from the uncut copper, their feeds capped at what

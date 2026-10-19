@@ -19,6 +19,31 @@ line model.
 ## Gallery
 
 <p align="center">
+  <img src="docs/img/readme/kicad_plugin.jpg" width="100%"
+       alt="The KiCad plugin beside KiCad's PCB editor, set up to simulate an HDMI pair">
+</p>
+
+*The KiCad plugin beside KiCad 10's PCB editor with its CM5 Minima demo board: the HDMI D0 pair selected in KiCad,
+and the region and ports the plugin set up around it.*
+
+<p align="center">
+  <img src="docs/img/readme/plugin_map.gif" width="32%" alt="The impedance map filling in">
+  <img src="docs/img/readme/plugin_section.jpg" width="32%" alt="An HDMI section read on the map">
+  <img src="docs/img/readme/plugin_results.png" width="32%" alt="The pair's S-parameters against the line model">
+</p>
+
+*Left: the impedance map of the board's 94 signal nets filling in, in real time. Middle: the HDMI pairs against their
+100 ohm class; the section read out at the bottom is 117.8 ohm differential (+18 %). Right: the D0 pair's
+mixed-mode S-parameters from gfdtd (solid) and the line model (dashed), with the largest differences.*
+
+<p align="center">
+  <img src="docs/img/readme/hdmi_field.gif" width="80%" alt="Differential E field of the HDMI pair">
+</p>
+
+*The same pair driven differentially from the module: its E field just inside the F.Cu and B.Cu dielectrics,
+in dB re the peak (30 dB range). gfdtd field dumps of the two legs' runs, combined as (E+ - E-) / sqrt(2).*
+
+<p align="center">
   <img src="docs/img/readme/patch_3d.gif" width="49%" alt="3D field of a patch antenna">
   <img src="docs/img/readme/stub_3d.gif" width="49%" alt="3D field of a stub notch filter">
 </p>
@@ -48,7 +73,8 @@ efficiency over frequency, polar cuts and the 3D pattern.*
 </p>
 
 *The openEMS mesh preview (`--preview`) and the transmission-line sections the line model finds.*
-`python tools/readme_media.py --openems-python <python with openEMS>` makes these again from the examples.
+`python tools/readme_media.py --openems-python <python with openEMS>` makes these again from the examples. The
+plugin's media were recorded from KiCad 10 on a virtual display, the plugin driven by a script.
 
 ## Features
 
