@@ -78,10 +78,20 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
     metal, t_mm = _metal(m, sigma)
     if metal is not None:
         log(f"  mom25d: conductor loss sigma {sigma:g} S/m, {t_mm * 1e3:g} um copper")
-    res = solve_board(m.to_dict(), freq, dmax=dmax * 1e-3, port=kind, pairs=pairs, metal=metal, max_solves=max_solves,
-                      mesher='gmsh' if mesher == 'gmsh' else 'auto', log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
-                      progress=progress, tiled=tiled, on_step=on_step, core=core, quads=quads, zone=zone,
-                      signal_vias=signal_vias, stitching_vias=stitching_vias, lines=lines)
+    kw = dict(dmax=dmax * 1e-3, port=kind, metal=metal, max_solves=max_solves,
+              mesher='gmsh' if mesher == 'gmsh' else 'auto', log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
+              progress=progress, tiled=tiled, on_step=on_step, core=core, quads=quads, zone=zone,
+              signal_vias=signal_vias, stitching_vias=stitching_vias, lines=lines)
+    try:
+        res = solve_board(m.to_dict(), freq, pairs=pairs, **kw)
+    except ValueError as e:
+        # a pair whose straight coupled feed is too short for a differential wave port (a pad, a connector pin):
+        # with port auto, its legs as single-ended ports (wave or lumped each), the modes taken below
+        if not (pairs and port == 'auto' and 'differential wave port' in str(e)):
+            raise
+        log(f"  mom25d: {e} - the pairs' legs as single-ended ports, the modes from them")
+        pairs = False
+        res = solve_board(m.to_dict(), freq, pairs=False, **kw)
     if hold is not None:
         hold['res'] = res
     for line in res.model.describe().splitlines()[1:] + list(res.sim.log.notes):

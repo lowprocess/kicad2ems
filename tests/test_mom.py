@@ -161,3 +161,34 @@ def test_stop_ends_mom25d_after_its_current_solve(run_cli, tmp_path, monkeypatch
     assert code == 1 and seen == [1, 2], so + se
     assert 'stopped: mom25d (MoM) ended early, no result' in so + se
     assert not (out / 'filter_mom25d.s2p').exists() and list(out.glob('filter_*.s2p'))
+
+
+def test_short_differential_feed_falls_back_to_single_ended_legs(monkeypatch):
+    """--mom-port auto: a pair whose coupled feed is too short for a differential wave port (ports on pads) is
+    solved with its legs as single-ended ports and the modes taken from them, instead of failing."""
+    import types
+    import mom25d.api
+    from kicad2ems.board import Board
+    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems.solvers.mom import solve
+    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
+    m = Board(KiCadBoard(os.path.join(ex, 'rf_diffvia.kicad_pcb')), ground='B.Cu', log=lambda *a: None)
+    names = [p.name for p in m.ports]
+    calls = []
+
+    def fake(board, freq, pairs=False, **kw):
+        calls.append(pairs)
+        if pairs:
+            raise ValueError("P1: straight coupled feed too short for a differential wave port (0.15 mm, need 2.80 mm)")
+        n = len(names)
+        model = types.SimpleNamespace(describe=lambda: 'model')
+        return types.SimpleNamespace(S=np.zeros((len(freq), n, n), complex), names=names, model=model,
+                                     sim=types.SimpleNamespace(log=types.SimpleNamespace(notes=[])), unknowns=1,
+                                     solver='fake', ports=[dict(name=x, kind='via') for x in names], seconds=0.0,
+                                     solves=1, triangles=1, notes=[], solved=list(freq), afs=False, afs_tol=None)
+
+    monkeypatch.setattr(mom25d.api, 'solve_board', fake)
+    log = []
+    S, out_names, zref, info = solve(m, np.array([1e9, 2e9]), port='auto', log=log.append)
+    assert calls == [True, False] and out_names == ['P1d', 'P1c', 'P2d', 'P2c'] and S.shape == (2, 4, 4)
+    assert any('single-ended' in line for line in log)

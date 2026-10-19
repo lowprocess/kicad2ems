@@ -68,7 +68,26 @@ which cost the via transition 42 solves instead of 21.
 
 Lumped ports are closest to openEMS's ports, since both include the port's own parasitics. Wave ports
 are closest to the line model, which has an ideal reference plane. Differential pairs are one mixed-mode
-port (`P1d`, `P1c`).
+port (`P1d`, `P1c`). With `auto`, a pair whose straight coupled feed is too short for a differential wave
+port (ports on pads or connector pins) is solved with its legs as single-ended ports, and the modes are
+taken from them as for openEMS.
+
+<a id="real-boards"></a>
+### On real boards
+
+mom25d suits planar circuits over one ground plane. On a multilayer board it has three limits, seen on
+KiCad's CM5 demo (HDMI D0 pair, 6 layers):
+
+- **The ground plane**: by default it's the lowest layer covering half the board (B.Cu there), and every
+  plane above it is meshed: 128,000 unknowns, an estimated 35 hours. With `ground = "In1.Cu"` the region
+  drops to 22,700 unknowns, but the copper below the ground is left out.
+- **Ports below the ground**: the module's pads sit on B.Cu, under that ground, so they can't be ports. On
+  that board every high-speed pair starts there.
+- **Results**: with the ports moved to F.Cu, the GPU solver returned NaN (now reported as such; on the CPU,
+  `MOM25D_GPU=off`, it solves, about 3 minutes a frequency). The adaptive sweep did not converge in 15
+  solves, and a lumped port in the middle of a trace reflected almost everything (|S| 0.99, gfdtd 0.29).
+
+For such boards use openEMS or gfdtd.
 
 <a id="antenna-mode"></a>
 ## Antenna mode
