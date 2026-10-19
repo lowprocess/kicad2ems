@@ -10,6 +10,7 @@ moments) or a transmission-line model, and writes S-parameters, antenna results,
 | [Getting started](getting-started.md) | Installing, checking the install, a first run, preparing your own board |
 | [Usage](usage.md) | The command line, config files, choosing solvers, every option, the output files |
 | [GUI](gui.md) | The graphical interface: settings, running, results, field views |
+| [KiCad plugin](kicad-plugin.md) | In KiCad's PCB editor: the impedance map of the open board, a region and ports, a simulation |
 | [Examples](examples.md) | The example boards and how the solvers compare on them |
 | [Results](postprocessing.md) | S-parameters, antenna results, field dumps, the run summary and report |
 | [Benchmarks](benchmarks.md) | Each solver's run time and memory on each example, CPU and GPU |

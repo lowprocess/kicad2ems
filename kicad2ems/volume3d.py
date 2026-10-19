@@ -206,10 +206,10 @@ def board_box(geometry):
 
 
 def geometry_from_board(path):
-    """A <name>_board.json as the geometry the dumps carry (copper rings per layer, cu_z, vias, outline,
-    thickness, model mm): the 3D view's board without a dump."""
+    """A <name>_board.json (or its content, Board.to_dict()) as the geometry the dumps carry (copper rings per
+    layer, cu_z, vias, outline, thickness, model mm): the 3D view's board without a dump."""
     import json
-    b = json.load(open(path))
+    b = path if isinstance(path, dict) else json.load(open(path))
     rings = lambda g: [g['coordinates']] if g['type'] == 'Polygon' else g['coordinates']
     copper = {lay: [poly for it in items for poly in rings(it['polygon'])] for lay, items in b['copper'].items()}
     ol = b['outline']

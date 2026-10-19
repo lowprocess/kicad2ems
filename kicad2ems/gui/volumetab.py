@@ -688,7 +688,7 @@ class VolumeTab(QWidget):
         chips = bool((self.board or {}).get('parts')) and self.parts_on.isChecked()
         rims = []
         for e in self.lines['elements']:
-            if e.get('z') is None or e.get('kind') == 'coupling':
+            if e.get('z') is None or not ov.drawn(e):
                 continue
             if e.get('kind') == 'part' and chips:                   # the chip is drawn: no strip inside it
                 continue

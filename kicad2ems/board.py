@@ -172,12 +172,13 @@ def inside_items(raw, layers, outline):
 class Board:
     """The board of a run, resolved from an imported board (`raw`: KiCadBoard, GerberBoard) and the
     selection settings: nets, pick-and-place file, solder mask, region, solid ground layer, lumped parts,
-    extra ports, ports where tracks cross the region edge and edge walls."""
+    extra ports, ports where tracks cross the region edge and edge walls. need_ports=False: a board without
+    ports is fine (the KiCad plugin's impedance map, before any are placed)."""
 
     def __init__(self, raw, nets=None, pos_file=None, include_mask=False, region=None, ground=None, parts='auto',
-                 log=print, ports=None, cut_ports=False, edge_walls=(), edge_keepout=0.5):
+                 log=print, ports=None, cut_ports=False, edge_walls=(), edge_keepout=0.5, need_ports=True):
         from .region import region_polygon, auto_nets, extra_port_fps, ground_nets
-        self.log, self.notes = log, []
+        self.log, self.notes, self.need_ports = log, [], need_ports
         self.source = dict(importer=getattr(raw, 'importer', 'kicad'), file=getattr(raw, 'path', ''))
         self.request = dict(nets=nets, pos=pos_file, mask=include_mask, region=region, ground=ground, parts=parts,
                             ports=list(ports or []), cut_ports=cut_ports, edge_walls=list(edge_walls or []),
@@ -194,7 +195,8 @@ class Board:
         if nets in ('auto', ['auto'], ('auto',)):
             refs = pos_port_refs(read_pos(pos_file)) if pos_file else None
             fps = dict(raw.port_footprints(refs))
-            fps.update(extra_port_fps(raw, ports or []))
+            for i, sp in enumerate(ports or []):                # one at a time: a pair's legs share a number
+                fps.update({('spec', i): fp for fp in extra_port_fps(raw, [sp]).values()})
             pts = []
             for fp in fps.values():
                 for f in (fp.values() if isinstance(fp, DiffLegs) else [fp]):
@@ -286,8 +288,12 @@ class Board:
             tree = shapely.STRtree([g for _, g in items]) if items else None
             nets = []
             for p in ps:
+                hit = tree.query(p, predicate='intersects') if tree is not None else []
+                if len({items[i][0] for i in hit}) == 1:             # one net here: no areas to weigh
+                    nets.append(str(items[hit[0]][0]))
+                    continue
                 area = {}
-                for i in (tree.query(p) if tree is not None else []):
+                for i in hit:
                     n, g = items[i]
                     area[n] = area.get(n, 0.0) + g.intersection(p).area
                 nets.append(str(max(area, key=area.get)) if area else '')
@@ -327,7 +333,7 @@ class Board:
             if cut:
                 self.notes.append(f"{len(cut)} port(s) where tracks cross the region edge: "
                                   f"{', '.join(f'P{n}' for n in cut)}")
-        if not fps:
+        if not fps and self.need_ports:
             raise ValueError("no ports: no port footprints (Fab text P<n>, or P<n> in the pick-and-place file), "
                              "no ports in the settings and no cut ports")
         inside = self.outline.buffer(1e-6)
@@ -341,7 +347,7 @@ class Board:
                                   f"{'region' if self.region else 'board outline'}: left out")
                 continue
             port_fps[n] = fp
-        if not port_fps:
+        if not port_fps and self.need_ports:
             raise ValueError("no port footprints inside the " + ("region" if self.region else "board outline"))
         self.ports = []
         for n, fp in port_fps.items():
@@ -392,10 +398,10 @@ class Board:
     def _extra_ports(self, raw, specs):
         from .region import extra_port_fps, parse_port_spec
         out = {}
-        legs = {int(''.join(ch for ch in parse_port_spec(sp)[0] if ch.isdigit())): parse_port_spec(sp)[0] for sp in specs}
-        for n, fp in extra_port_fps(raw, specs).items():
-            name = legs.get(n, f"P{n}")
-            out[(n, '+' if name.endswith('+') else '-' if name.endswith('-') else '')] = fp
+        for sp in specs:                                    # one at a time: a pair's legs (P1+, P1-) share a number
+            name = parse_port_spec(sp)[0]
+            for n, fp in extra_port_fps(raw, [sp]).items():
+                out[(n, '+' if name.endswith('+') else '-' if name.endswith('-') else '')] = fp
         return out
 
     @staticmethod

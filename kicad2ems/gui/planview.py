@@ -62,6 +62,7 @@ def section_path(e):
 
 class PlanView(QWidget):
     selected = Signal(object)                                       # a section id, or None
+    copper_colour, other_colour = COPPER, OTHER                     # the layer shown, the others
 
     def __init__(self):
         super().__init__()
@@ -114,11 +115,18 @@ class PlanView(QWidget):
         boards = sorted(glob.glob(os.path.join(out_dir, '*_board.json')), key=os.path.getmtime) if out_dir else []
         try:
             with open(boards[-1]) as fh:
-                self.board = json.load(fh)
+                board = json.load(fh)
         except (IndexError, OSError, ValueError):
-            self.board = None
-        self.box = v3.board_box(v3.geometry_from_board(boards[-1])) if self.board else None
-        self.meshes = meshes.find(out_dir) if out_dir else {}
+            board = None
+        return self.set_board(board, lines, meshes.find(out_dir) if out_dir else {})
+
+    def set_board(self, board, lines=None, found_meshes=None, fit=True):
+        """A board (Board.to_dict(), model mm) and its line model's drawing, without a results folder (the KiCad
+        plugin's live board); False when there is no board."""
+        from .. import meshes, volume3d as v3
+        self.board = board
+        self.box = v3.board_box(v3.geometry_from_board(board)) if board else None
+        self.meshes = found_meshes or {}
         self.lines = lines
         keep = self.layer.currentData()
         self.layer.blockSignals(True)
@@ -141,7 +149,8 @@ class PlanView(QWidget):
         self.mesh.blockSignals(False)
         self.sel = self.hover = None
         self.redraw()
-        self.fit()
+        if fit:
+            self.fit()
         return self.board is not None
 
     def set_lines_visible(self, on):
@@ -175,7 +184,7 @@ class PlanView(QWidget):
                 polys = [r for it in items for r in _rings(it['polygon'])]
                 own = name == lay
                 add(_item(_path(polys), QPen(QColor(150, 90, 30), 1) if own else QPen(Qt.NoPen),
-                          QBrush(COPPER if own else OTHER), -10 if own else -20))
+                          QBrush(self.copper_colour if own else self.other_colour), -10 if own else -20))
         solver = self.mesh.currentData()
         if solver in self.meshes and self.box is not None and self.z_of(lay) is not None:
             seg = ov.plan_segments(self.meshes[solver], self.box, self.z_of(lay))
@@ -188,9 +197,9 @@ class PlanView(QWidget):
         if self.lines and self.show_lines:
             ref, half = ov.reference(self.lines), ov.span(self.lines)
             for e in self.lines['elements']:
-                if e.get('layer') != lay or e.get('kind') == 'coupling':
+                if e.get('layer') != lay or not ov.drawn(e):
                     continue
-                r, g, b = ov.z0_colour(e.get('z0'), ref, half)
+                r, g, b = ov.section_colour(e, self.lines, ref, half)
                 col = QColor.fromRgbF(r, g, b, 0.85)
                 pen = QPen(col.darker(140), 1)
                 if e.get('kind') == 'part':

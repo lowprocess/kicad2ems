@@ -36,10 +36,43 @@ def reference(d):
 
 
 def span(d, ref=None):
-    """Half the colour range in ohm: the largest departure of a section from `ref`, at least 10 % of it."""
+    """Half the colour range in ohm: the largest departure of a section from `ref`, at least 10 % of it. With
+    d['robust'] (a whole board's map, where a few power shapes and big pads sit far off): the 95th percentile of
+    the traces' departures, so that the traces use the colours (the outliers saturate)."""
     ref = reference(d) if ref is None else ref
-    zs = [e['z0'] for e in d.get('elements', []) if e.get('z0')]
+    els = d.get('elements', [])
+    if d.get('relative'):                                   # a fraction of each section's target
+        dev = [abs(v) for v in (deviation(e, ref) for e in els if e.get('kind') == 'trace') if v is not None]
+        return max(float(np.percentile(dev, 95)), 0.1) if dev else 0.1
+    if d.get('robust'):
+        dev = [abs(e['z0'] - ref) for e in els if e.get('z0') and e.get('kind') == 'trace']
+        if dev:
+            return max(float(np.percentile(dev, 95)), 0.1 * ref)
+    zs = [e['z0'] for e in els if e.get('z0')]
     return max([abs(z - ref) for z in zs] + [0.1 * ref])
+
+
+def against_target(e, ref=50.0):
+    """(value, target ohm, what the value is) a section is judged by: against a differential target, Zdiff of the
+    coupled legs (2 Z0 where they run apart); otherwise Z0, against its single-ended target or `ref`."""
+    z0, t = e.get('z0'), e.get('target')
+    if t and e.get('tkind') == 'diff':
+        return (e['zdiff'], t, 'Zdiff') if e.get('zdiff') else ((2 * z0 if z0 else None), t, '2 Z0 (legs apart)')
+    return z0, t or ref, 'Z0'
+
+
+def deviation(e, ref=50.0):
+    """(value - target) / target of a section, or None (no impedance)."""
+    v, t, _ = against_target(e, ref)
+    return None if v is None or not t else (v - t) / t
+
+
+def section_colour(e, d, ref, half):
+    """A section's colour: by its deviation from its target in a map with targets (d['relative']; half: a
+    fraction), else by its Z0 against ref (half: ohm)."""
+    if d.get('relative'):
+        return z0_colour(deviation(e, ref), 0.0, half)
+    return z0_colour(e.get('z0'), ref, half)
 
 
 def z0_colour(z0, ref=50.0, half=10.0):
@@ -69,12 +102,18 @@ def distance(e, x, y):
     return min(_seg_dist(p, pts[k], pts[k + 1]) for k in range(len(pts) - 1))
 
 
+def drawn(e):
+    """Is a section drawn (and picked)? Not a coupling, nor a trace of no length: a stub that lies wholly inside a
+    pad (routers leave them, 0.01 mm long) is the pad's, and drawn over it, it hid it."""
+    return e.get('kind') != 'coupling' and not (e.get('kind') == 'trace' and not e.get('length'))
+
+
 def nearest(elements, x, y, tol, layer=None):
     """Id of the section whose centre line is nearest to (x, y), within tol mm plus its half width; None if none
     is. layer: only that layer's sections."""
     best, bid = np.inf, None
     for e in elements:
-        if layer and e.get('layer') != layer:
+        if (layer and e.get('layer') != layer) or not drawn(e):
             continue
         d = distance(e, x, y) - 0.5 * (e.get('w') or 0.0)
         if d < best and d <= tol:
@@ -89,6 +128,13 @@ def describe(e):
         parts.append(str(e['value']))
     if e.get('z0'):
         parts.append(f"Z0 {e['z0']:.1f} Ω")
+    if e.get('netclass') is not None:
+        if e.get('target'):
+            v, t, what = against_target(e)
+            dev = f", {what} {v:.1f} Ω ({(v - t) / t * 100:+.0f} %)" if v else ''
+            parts.append(f"class {e['netclass']}: {t:g} Ω {'diff' if e.get('tkind') == 'diff' else 'SE'}{dev}")
+        else:
+            parts.append(f"class {e['netclass']}")
     if e.get('eeff'):
         parts.append(f"εeff {e['eeff']:.2f}")
     if e.get('length') is not None:
@@ -101,9 +147,13 @@ def describe(e):
 
 
 def section_polygon(e):
-    """A section's copper as a shapely geometry (model mm): its centre line widened by its width (flat ends,
-    mitred corners); a via or a pad without length a disc; a part without width a thin strip."""
-    from shapely.geometry import LineString, Point
+    """A section's copper as a shapely geometry (model mm): a pad its own outline; otherwise its centre line widened
+    by its width (flat ends, mitred corners); a via or a pad without length a disc; a part without width a thin
+    strip."""
+    from shapely.geometry import LineString, Point, Polygon
+    from shapely.ops import unary_union
+    if e.get('outline'):
+        return unary_union([Polygon(r) for r in e['outline'] if len(r) >= 3])
     pts = np.asarray(e['pts'], float)
     w = e.get('w') or 0.0
     if len(pts) == 1 or np.allclose(pts[0], pts[-1]):

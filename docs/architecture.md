@@ -131,6 +131,7 @@ kicad2ems/
   volume3d.py     3D field views: resampling, colouring, the board as meshes
   overlay.py      the line model over the board (<name>_lines.json): colours by Z0, picking a section
   gui/            kicad2ems-gui
+  kicadplugin/    the KiCad plugin (IPC API): the open board's impedance map, region and ports (kicad-plugin.md)
 mom25d/           the MoM solver (see mom.md)
 gfdtd/            the GPU FDTD solver, CSXCAD / openEMS compatible (see gfdtd.md); core/: its update code
                   (GPU and CPU) and the compiled CPU core

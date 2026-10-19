@@ -60,6 +60,8 @@ efficiency over frequency, polar cuts and the 3D pattern.*
 - **Antenna mode**: gain, efficiency and radiation patterns.
 - **Field dumps** of E, H or current density: images, animations, and a 3D view.
 - **GUI** (`kicad2ems-gui`) for setup, preview, progress and results.
+- **KiCad plugin** (KiCad 9+, IPC API): the open board's trace impedances in the PCB editor, and a region with
+  ports to simulate ([KiCad plugin](docs/kicad-plugin.md)).
 - **GPU acceleration** for mom25d (AMD ROCm or NVIDIA CUDA).
 - **Solver plugins**: other solvers can be added as packages.
 

@@ -31,6 +31,7 @@ emerge = ["emerge>=2.8; python_version < '3.14'"]   # --solvers emerge (PyPI's n
 gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "h5py>=3", "PyOpenGL>=3.1"]   # kicad2ems-gui (h5py: FD dumps,
                                                                                    # far field; PyOpenGL: 3D fields)
 gmsh = ["gmsh>=4.11"]              # mom25d's mesher = "gmsh"
+kicad = ["kicad-python>=0.5", "PySide6-Essentials>=6.5", "pyqtgraph>=0.13"]   # the KiCad plugin (IPC API, KiCad 9+)
 core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster);
                                    # python -m gfdtd.core.build: gfdtd's CPU core (~15x numpy)
 # mom25d's GPU solvers (docs/mom.md#gpu): the CuPy wheel built for your
@@ -50,6 +51,7 @@ kicad2ems-gui = "kicad2ems.gui:main"
 kicad2openems = "kicad2ems.cli:main_openems"     # the old name: openEMS unless --solvers says otherwise
 kicad2openems-gui = "kicad2ems.gui:main"
 gfdtd = "gfdtd.fdtd:main"                      # run an openEMS XML file on gfdtd (GPU FDTD)
+kicad2ems-kicad = "kicad2ems.kicadplugin.__main__:main"   # the KiCad plugin's window; install / uninstall it
 
 [tool.setuptools.dynamic]
 version = {attr = "kicad2ems.__version__"}

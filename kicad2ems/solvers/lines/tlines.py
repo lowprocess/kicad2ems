@@ -201,6 +201,7 @@ class LineModel:
             elements.append(dict(id=len(elements), kind=e.kind, label=e.label, layer=e.layer, net=e.net,
                                  z=rnd(cu_z.get(e.layer)), w=rnd(e.w), xs=e.xs, z0=rnd(e.z0), eeff=rnd(e.eeff),
                                  length=rnd(e.length), delay_ps=rnd(r['delay_ps']), group=e.group,
+                                 zdiff=rnd(getattr(e, 'zdiff', None)), outline=_outline(e),
                                  value=r['value'], notes=list(e.notes),
                                  pts=[[round(float(x), 5), round(float(y), 5)] for x, y in pts]))
         paths = [dict(port=p, to=q, ids=[index[id(e)] for e, _, _ in secs if id(e) in index])
@@ -208,6 +209,16 @@ class LineModel:
         z0s = [e['z0'] for e in elements if e['z0']]
         return dict(format='kicad2ems-lines', version=1, elements=elements, paths=paths,
                     port_z0=dict(self.port_z0), z0_range=[min(z0s), max(z0s)] if z0s else None)
+
+
+def _outline(e):
+    """A pad section's copper as drawn: the pad's own outline rings (model mm), or None (other sections are
+    drawn from their centre line and width)."""
+    g = getattr(e, 'geom', None)
+    if e.kind != 'pad' or g is None or g.is_empty:
+        return None
+    polys = [g] if g.geom_type == 'Polygon' else [p for p in getattr(g, 'geoms', []) if p.geom_type == 'Polygon']
+    return [[[round(float(x), 5), round(float(y), 5)] for x, y in p.exterior.coords] for p in polys] or None
 
 
 def _dielectric(model, z_lo, z_hi):
@@ -245,6 +256,45 @@ class RefCopper:
             self.geom[model.ground] = outline
         self._prep = {l: prep(g) for l, g in self.geom.items()}
 
+    def __getstate__(self):                                 # pickled for worker processes: no prepared geometry
+        return {'geom': self.geom}
+
+    def __setstate__(self, st):
+        from shapely.prepared import prep
+        self.geom = st['geom']
+        self._prep = {l: prep(g) for l, g in self.geom.items()}
+
+    def _tiled(self, layer):
+        """The layer's reference copper cut into TILE mm squares (clip_by_rect, built once per layer) and an
+        index of them: a ray tests the few pieces it crosses, not a whole plane with all its holes."""
+        cache = self.__dict__.setdefault('_tiles', {})
+        if layer not in cache:
+            import shapely
+            g = self.geom[layer]
+            x0, y0, x1, y1 = g.bounds
+            pieces = []
+            for x in np.arange(x0, x1, TILE):
+                for y in np.arange(y0, y1, TILE):
+                    p = shapely.clip_by_rect(g, x, y, x + TILE, y + TILE)
+                    if not p.is_empty:
+                        pieces.append(p)
+            cache[layer] = (shapely.STRtree(pieces), pieces)
+        return cache[layer]
+
+    def ray_gap(self, layer, origin, ray):
+        """Distance from `origin` to the nearest reference copper of `layer` on the segment `ray`, or None; the
+        same as ray.intersection(whole layer) (the nearest hit lies in the piece that holds it)."""
+        if layer not in self.geom:
+            return None
+        tree, pieces = self._tiled(layer)
+        best = None
+        for i in tree.query(ray):
+            hit = ray.intersection(pieces[i])
+            if not hit.is_empty:
+                d = origin.distance(hit)
+                best = d if best is None else min(best, d)
+        return best
+
     def covers(self, layer, pt):
         p = self._prep.get(layer)
         return bool(p is not None and p.covers(Point(*pt)))
@@ -265,6 +315,8 @@ def _side_gap(ref, layer, pt, n, w, reach):
     if g is None:
         return None
     ray = LineString([pt + n * (w / 2 + 1e-4), pt + n * (w / 2 + reach)])
+    if TILE and isinstance(ref, RefCopper):
+        return ref.ray_gap(layer, Point(*(pt + n * (w / 2))), ray)
     hit = ray.intersection(g)
     if hit.is_empty:
         return None
@@ -277,6 +329,9 @@ def classify(model, ref, e, pt, d):
     n = np.array([-d[1], d[0]])
     zs, w, t = model.cu_z[e.layer], e.w, model.cu_t.get(e.layer, 0.0)
     e.t = t
+    if not w or w <= 0:                                      # a degenerate pad chord: no cross-section
+        e.notes.append('no width here: no impedance')
+        return
     found = {}
     for side in ('below', 'above'):
         cand = sorted((l for l in model.cu_order if (model.cu_z[l] < zs if side == 'below' else model.cu_z[l] > zs)),
@@ -339,6 +394,10 @@ def _references(model, ref, layer, pt):
 
 
 GAP_STEP = 1.5          # a coplanar gap changing by this factor starts a new section (a tapered gap)
+TILE = 4.0              # mm: reference copper cut into squares of this size for ray casts (None: whole planes)
+ADAPTIVE = None         # mm between samples away from any change (None: every `step`, 0.25 mm). Tried at 1-4 mm:
+                        # the same map, but no faster (1.0-1.1x on KiCad's CM5 and video demos, 0.9x on the Jetson
+                        # one): finding where copper corners lie along a trace cost what the samples saved
 
 
 def _gap_class(model, ref, layer, refs, pt, d, w, local):
@@ -438,16 +497,28 @@ def _split_by_reference(model, ref, e, netcu=None, step=0.25, max_samples=400):
         return pt, d, w, off
 
     rmax = max(netcu.reach if netcu is not None else 0.0, 10 * e.w) if wide is not None else e.w
-    local = _Local(ref, e.layer, line.buffer(rmax + 2 * hmax + 0.1))
-    refs, gaps, widths = [], [], []
-    for s in pos:
+    local = ref if TILE else _Local(ref, e.layer, line.buffer(rmax + 2 * hmax + 0.1))
+
+    def sample(s):
         pt, d, w, off = across(s)
         r = _references(model, ref, e.layer, pt)
-        refs.append(r)
-        gaps.append(_gap_class(model, ref, e.layer, r, pt + np.array([-d[1], d[0]]) * off, d, w, local))
-        widths.append(int(round(math.log(w / e.w) / math.log(WIDTH_STEP))))
+        return r, _gap_class(model, ref, e.layer, r, pt + np.array([-d[1], d[0]]) * off, d, w, local), \
+            int(round(math.log(w / e.w) / math.log(WIDTH_STEP)))
+
+    if ADAPTIVE and TILE and isinstance(ref, RefCopper) and L > 2 * ADAPTIVE:
+        pos, got = _adaptive(model, ref, e, line, L, step, wide, rmax, sample, max_samples)
+        n = len(pos)
+        refs, gaps, widths = (list(x) for x in zip(*got))
+    else:
+        refs, gaps, widths = [], [], []
+        for s in pos:
+            r, g, wc = sample(s)
+            refs.append(r)
+            gaps.append(g)
+            widths.append(wc)
     for i in range(1, n - 1):
-        if gaps[i - 1] == gaps[i + 1] != gaps[i] and refs[i - 1] == refs[i] == refs[i + 1]:
+        near = pos[i + 1] - pos[i - 1] <= 2.02 * L / max(1, min(max_samples, math.ceil(L / step)))
+        if near and gaps[i - 1] == gaps[i + 1] != gaps[i] and refs[i - 1] == refs[i] == refs[i + 1]:
             gaps[i] = gaps[i - 1]
     sig = list(zip(refs, gaps, widths))
     cuts = [0.0] + [0.5 * (pos[i] + pos[i + 1]) for i in range(n - 1) if sig[i] != sig[i + 1]] + [L]
@@ -465,6 +536,87 @@ def _split_by_reference(model, ref, e, netcu=None, step=0.25, max_samples=400):
         el.offset = off
         out.append(el)
     return out
+
+
+SAMPLES = [0]           # sample() calls of the adaptive sampling (for measuring it)
+
+
+def _adaptive(model, ref, e, line, L, step, wide, rmax, sample, max_samples):
+    """Sample positions along a trace (and what sample() gives at each), dense only where something can change:
+    within `step` of every place where reference copper of another layer crosses the trace, and of every corner of
+    the same-layer reference copper or of copper widening it within reach; every ADAPTIVE mm elsewhere; then
+    halving the space between any two neighbours that differ, down to `step`, so that the cuts fall where they
+    did with every sample.
+
+    The reach of the coplanar ground is 2 h (h: the height to the reference plane, as _gap_class has it): the
+    coarse samples give the largest h; where they find no plane, every sample is taken."""
+    import shapely
+    n_full = int(min(max_samples, max(3, math.ceil(L / step))))
+    fine = [(i + 0.5) * L / n_full for i in range(n_full)]
+    got = {}
+
+    def at(i):
+        if i not in got:
+            got[i] = sample(fine[i])
+            SAMPLES[0] += 1
+        return got[i]
+    coarse = max(1, int(round(ADAPTIVE / (L / n_full))))
+    keep = set(range(0, n_full, coarse)) | {n_full - 1}
+    zs, h = model.cu_z[e.layer], 0.0
+    for i in sorted(keep):
+        below, above = at(i)[0]
+        if below is None and above is None:
+            h = None                                       # no plane: nothing to bound the reach
+            break
+        if (below is None) != (above is None):
+            h = max(h, abs(model.cu_z[below or above] - zs))
+    if h is None:
+        keep = set(range(n_full))
+    else:
+        marks = []
+
+        def project(geom):
+            """Where the copper's corners (and crossings) lie along the trace: a gap or a reference can change
+            only there (between them a straight edge keeps it, or changes it steadily: the halving finds that)."""
+            pts = shapely.get_coordinates(geom)
+            if len(pts):
+                marks.append(shapely.line_locate_point(line, shapely.points(pts)))
+        near = line.buffer(e.w / 2 + 2 * h + 0.05)
+        for l in ref.geom:
+            tree, pieces = ref._tiled(l)
+            if l == e.layer:                               # coplanar ground within reach of the strip
+                if h > 0:
+                    for k in tree.query(near):
+                        g = pieces[k].intersection(near)
+                        if not g.is_empty:
+                            project(g.boundary if g.geom_type in ('Polygon', 'MultiPolygon') else g)
+            else:                                          # planes above / below: where an edge crosses the trace
+                for k in tree.query(line):
+                    hit = line.intersection(pieces[k].boundary)
+                    if not hit.is_empty:
+                        project(hit)
+        if wide is not None:                               # copper of its own net widening it
+            w_near = wide.intersection(line.buffer(rmax + 0.1))
+            if not w_near.is_empty:
+                project(w_near.boundary)
+        if marks:
+            fp = np.asarray(fine)
+            for sv in np.unique(np.round(np.concatenate(marks) / step)) * step:
+                lo, hi = np.searchsorted(fp, [sv - step, sv + step])
+                keep.update(range(int(lo), int(hi)))
+    idx = sorted(keep)
+    for i in idx:
+        at(i)
+    k = 0
+    while k < len(idx) - 1:                                # halve where neighbours differ
+        a, b = idx[k], idx[k + 1]
+        if b - a > 1 and got[a] != got[b]:
+            m = (a + b) // 2
+            at(m)
+            idx.insert(k + 1, m)
+            continue
+        k += 1
+    return [fine[i] for i in idx], [got[i] for i in idx]
 
 
 def _chord(poly, c, d, reach=50.0):
@@ -529,8 +681,10 @@ def _footprint_pads(fp, nets, model, inside):
     return out
 
 
-def build(model):
-    """The line model of the nets the ports sit on (and the nets reached through series parts)."""
+def build(model, nets=None, refcu=None):
+    """The line model of the nets the ports sit on (and the nets reached through series parts); `nets`: these
+    nets instead (the KiCad plugin's impedance map of a board before it has ports), refcu: their reference
+    copper (RefCopper) when it is built once for several calls (every signal net excluded, not only these)."""
     pr = model.prims
     lm = LineModel()
     inside = model.outline.buffer(1e-6)
@@ -538,7 +692,7 @@ def build(model):
     track_nets = {t['net'] for t in tracks}
     fps = {fp['ref']: fp for fp in pr.footprints}
     # ---- nets: the ports' nets, extended through series parts ----
-    nets = {p.net for p in model.ports if p.net}
+    nets = set(nets) if nets is not None else {p.net for p in model.ports if p.net}
     for p in model.ports:
         if p.kind == 'gap':
             lm.notes.append(f"{p.name}: gap port - no line model")
@@ -563,7 +717,7 @@ def build(model):
     if not nets:
         lm.notes.append('no port sits on a routed net')
         return lm
-    refcu = RefCopper(model, nets)
+    refcu = refcu or RefCopper(model, nets)
     # ---- pads and vias the tracks attach to ----
     pads = []                                              # (node, pad dict with model geometry, footprint ref)
     for fp in pr.footprints:
@@ -572,13 +726,24 @@ def build(model):
     vias = [dict(v, xy=np.array([v['x'], v['y']]), i=i) for i, v in enumerate(pr.vias)
             if v['net'] in nets and not v.get('pth') and inside.contains(Point(v['x'], v['y']))]
 
+    import shapely
+    pad_tree = shapely.STRtree([q['geom'] for _, q, _ in pads]) if pads else None
+    via_xy = np.array([v['xy'] for v in vias], float).reshape(-1, 2)
+    via_r = np.array([max(v['size'], v['drill']) / 2 for v in vias], float)
+
     def attach(layer, xy):
-        for node, q, _ in pads:
-            if layer in q['layers'] and q['geom'].distance(Point(*xy)) < 1e-6:
-                return node + ':in', q
-        for v in vias:
-            if layer in v['layers'] and np.hypot(*(xy - v['xy'])) <= max(v['size'], v['drill']) / 2 + 1e-6:
-                return f"via{v['i']}:{layer}", None
+        """The pad (first in order) or via a trace end at xy lies on, through spatial indexes (a scan of every pad
+        and via per trace end took a second on a board of 4000 ends)."""
+        pt = Point(*xy)
+        if pad_tree is not None:
+            for i in sorted(pad_tree.query(pt, predicate='dwithin', distance=1e-6)):
+                node, q, _ = pads[i]
+                if layer in q['layers'] and q['geom'].distance(pt) < 1e-6:
+                    return node + ':in', q
+        if len(vias):
+            for i in np.nonzero(np.hypot(*(via_xy - np.asarray(xy, float)).T) <= via_r + 1e-6)[0]:
+                if layer in vias[i]['layers']:
+                    return f"via{vias[i]['i']}:{layer}", None
         return _key(layer, *xy), None
 
     # ---- traces (split at T-junctions, shortened by the pads they end in) ----

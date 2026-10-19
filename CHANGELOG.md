@@ -6,9 +6,36 @@ example `261013-r1`, the first release on 13 October 2026).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-10-19
+
+### Added
+- KiCad plugin: simulate a net, a differential pair or a set of nets. Pick them on the map or take them from
+  KiCad's selection, then **Set up region and ports**. The region is the box around their copper plus a margin
+  (2 mm by default). R / L / C parts to ground stay in as shunt parts; parts in series also bring in the net on
+  their far side. Every other component on the nets gets a port on its pad, and so does a track end that reaches
+  nothing. Where a component or a pair of open ends sits on both legs of a pair, that is one differential port.
+  The run also solves the line model (`fast = auto`). The window's new S-parameters tab plots each full-wave
+  solver against the line model (|S| in dB; differential terms of pairs) and lists the largest differences.
+
+### Fixed
+- Differential ports given as specs (`ports = ["P1+=U1.5", "P1-=U1.6"]`): the second leg overwrote the
+  first, so the run failed (`KeyError: '+'`), and `nets = auto` missed one leg's net.
+
 ## 2026-10-18
 
 ### Added
+- A KiCad plugin (KiCad 9+, through its IPC API): a button in the PCB editor opens the open board's impedance
+  map (every signal trace coloured by its line-model Z0; hover to read, click to select the track in KiCad),
+  with a region (drawn, or around KiCad's selection) and ports (clicked on traces and pads, or where tracks cross
+  the region edge) to run kicad2ems on, or to open in kicad2ems's GUI. `kicad2ems-kicad install` (the `kicad`
+  extra); docs/kicad-plugin.md. The map filters by net class and judges each trace against its class's target
+  (50R_SE, 100R_DIFF, 90ohm ...: Z0, or Zdiff = 2 Zodd for a pair); #PWR nets are never mapped. The map is
+  built a net or pair at a time over worker processes and kept in a cache per board (only edited nets are mapped
+  again): KiCad's video demo board in 2.4 s (was 87 s), 1 s from the cache.
+- The line model finds the pad or via a trace ends on through spatial indexes (a second faster on a board of
+  4000 trace ends).
+- Boards build much faster on large designs: the net of each copper polygon is weighed only where nets meet (the
+  video demo board: 41 s to 3 s, with parts off).
 - gfdtd (`--solvers gfdtd`, or its tick box in the GUI): a 3D FDTD solver in the manner of openEMS that runs on the GPU
   (CuPy: ROCm or CUDA) or on the CPU (a compiled OpenMP core, `python -m gfdtd.core.build`; numpy without
   it). It gets openEMS's model, mesh and settings through its own copy of CSXCAD's and openEMS's Python
