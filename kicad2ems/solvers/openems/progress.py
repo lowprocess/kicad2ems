@@ -128,8 +128,13 @@ class Monitor:
     line with the parsed values plus the run's progress fraction and ETA (seconds or None)."""
     def __init__(self, runs, mode='bar', out_fd=None, interval=0.25, plain_every=30.0, on_status=None):
         self.runs, self.mode, self.interval, self.on_status = runs, mode, interval, on_status
-        self.out_fd = sys.stdout.fileno() if out_fd is None else out_fd
-        self.tty = os.isatty(self.out_fd)
+        if out_fd is None:
+            try:
+                out_fd = sys.stdout.fileno()
+            except (AttributeError, OSError, ValueError):            # a stdout without a descriptor (captured)
+                out_fd = None
+        self.out_fd = out_fd
+        self.tty = out_fd is not None and os.isatty(out_fd)
         self.plain_every, self._last_plain = plain_every, 0.0
         self._pos = [0] * len(runs)                                  # read position per run
         self._stop = threading.Event()
@@ -138,8 +143,12 @@ class Monitor:
 
     def write(self, text):
         try:
-            os.write(self.out_fd, text.encode('utf-8', 'replace'))
-        except OSError:
+            if self.out_fd is None:
+                sys.stdout.write(text)
+                sys.stdout.flush()
+            else:
+                os.write(self.out_fd, text.encode('utf-8', 'replace'))
+        except (OSError, ValueError):
             pass
 
     def _read(self):

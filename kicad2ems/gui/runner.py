@@ -11,11 +11,13 @@ import glob, json, os, sys
 
 # the option groups (options.Option.group) as the form's group boxes; others under their own name
 GUI_GROUPS = {'board': 'Board', 'band': 'Frequency', 'solvers': 'Solvers', 'output': 'Output', 'mom25d': 'mom25d',
-              'antenna': 'Output', 'field dumps': 'Output', 'EMerge (experimental)': 'EMerge (experimental)'}
+              'antenna': 'Output', 'field dumps': 'Output', 'EMerge (experimental)': 'EMerge (experimental)',
+              'gfdtd (GPU FDTD)': 'gfdtd'}
 # a section per solver, greyed while none of its solvers is ticked (auto: openEMS, mom25d and the line model may
-# run); 'openEMS/Mesh': the Mesh sub-section of openEMS's
-SECTION_SOLVERS = {'openEMS': {'openems'}, 'mom25d': {'mom25d'}, 'EMerge (experimental)': {'emerge'}}
-SECTION_ORDER = ['Board', 'Frequency', 'Solvers', 'openEMS', 'mom25d', 'EMerge (experimental)', 'Output']
+# run); 'openEMS/Mesh': the Mesh sub-section of openEMS's. gfdtd runs openEMS's model: its mesh and run settings
+SECTION_SOLVERS = {'openEMS': {'openems', 'gfdtd'}, 'gfdtd': {'gfdtd'}, 'mom25d': {'mom25d'},
+                   'EMerge (experimental)': {'emerge'}}
+SECTION_ORDER = ['Board', 'Frequency', 'Solvers', 'openEMS', 'gfdtd', 'mom25d', 'EMerge (experimental)', 'Output']
 # single settings greyed unless their case holds: the antenna's in antenna mode, with a solver that has one
 ANTENNA_FIELDS = ('ff_freq', 'drive')
 # the line model's qucsator is a setting of the machine, not of a board: the Solvers and hardware window
@@ -305,7 +307,7 @@ def stop_runs(out_dir):
     every openEMS run folder under out_dir (openEMS stops and finishes normally); returns those folders."""
     from .. import stop
     stop.request(out_dir)
-    dirs = glob.glob(os.path.join(out_dir, 'openems', 'exc_*')) + \
+    dirs = glob.glob(os.path.join(out_dir, 'openems', 'exc_*')) + glob.glob(os.path.join(out_dir, 'gfdtd', 'exc_*')) + \
         glob.glob(os.path.join(out_dir, 'converge', '*', 'openems', 'exc_*'))
     for d in dirs:
         open(os.path.join(d, 'ABORT'), 'w').close()

@@ -303,29 +303,9 @@ class OpenEMS(Solver):
 
     def outputs(self, run, p, res):
         from .simulation import run_dir, log_path
-        from .dumps import plot_fd_dumps
         s, m, r = run.s, run.m, p.result
         run.wrote('CSX geometry (AppCSXCAD)', p.xml)
-        for (pname, dname), path in r.dump_files.items():
-            d = next(x for x in p.dumps if x.name == dname)
-            if d.freqs and os.path.exists(path):
-                tag = pname.replace('+', 'p').replace('-', 'n')
-                pngs = plot_fd_dumps(d, path, m, run.path(f"_{tag}"), norm=r.dump_norm.get(pname), port=pname,
-                                     log=run.log)
-                run.summary['dumps'] += [dict(label=f"{dname} ({pname} driven)", png=run.rel(q)) for q in pngs]
-                for q in pngs:
-                    run.wrote(f"field map {dname} ({pname})", q)
-                if s.dump_animate and d.normal is not None:         # one period at each frequency
-                    from .fields import DumpSource, save_animation
-                    src = DumpSource(os.path.dirname(path), dname, 'FD')
-                    for i, f in enumerate(src.freqs):
-                        q = save_animation(src, f"{run.path(f'_{tag}')}_{dname}_{f / 1e9:g}GHz.{s.dump_animate}",
-                                           d.normal, 0, 'mag', [i])
-                        run.wrote(f"field animation {dname} ({pname}, {f / 1e9:g} GHz)", q)
-                run.log(f"  {dname} ({pname} driven): {path}" + (f" -> {len(pngs)} PNG map(s)" if pngs else
-                                                                  "  (volume: the GUI's Fields tab or ParaView)"))
-            else:
-                run.log(f"  {dname} ({pname} driven): {path}  (time domain: the GUI's Fields tab or ParaView)")
+        self._dump_outputs(run, p)
         runs = {n: dict(seconds=r.seconds.get(n), steps=r.steps.get(n), ended=getattr(r, 'ended', {}).get(n))
                 for n in r.seconds}
         for k in p.excite:
@@ -335,6 +315,32 @@ class OpenEMS(Solver):
             self._antenna(run, p)
         if p.levels:
             self._convergence(run, p, res)
+
+    def _dump_outputs(self, run, p, prefix=''):
+        """The field maps (PNG, and animations with --dump-animate) of the frequency-domain plane dumps; prefix:
+        before their file names and labels (another engine's dumps beside openEMS's)."""
+        from .dumps import plot_fd_dumps
+        s, m, r = run.s, run.m, p.result
+        for (pname, dname), path in r.dump_files.items():
+            d = next(x for x in p.dumps if x.name == dname)
+            if d.freqs and os.path.exists(path):
+                tag = prefix.replace(' ', '_') + pname.replace('+', 'p').replace('-', 'n')
+                pngs = plot_fd_dumps(d, path, m, run.path(f"_{tag}"), norm=r.dump_norm.get(pname), port=pname,
+                                     log=run.log)
+                run.summary['dumps'] += [dict(label=f"{prefix}{dname} ({pname} driven)", png=run.rel(q)) for q in pngs]
+                for q in pngs:
+                    run.wrote(f"field map {prefix}{dname} ({pname})", q)
+                if s.dump_animate and d.normal is not None:         # one period at each frequency
+                    from .fields import DumpSource, save_animation
+                    src = DumpSource(os.path.dirname(path), dname, 'FD')
+                    for i, f in enumerate(src.freqs):
+                        q = save_animation(src, f"{run.path(f'_{tag}')}_{dname}_{f / 1e9:g}GHz.{s.dump_animate}",
+                                           d.normal, 0, 'mag', [i])
+                        run.wrote(f"field animation {prefix}{dname} ({pname}, {f / 1e9:g} GHz)", q)
+                run.log(f"  {prefix}{dname} ({pname} driven): {path}" + (
+                    f" -> {len(pngs)} PNG map(s)" if pngs else "  (volume: the GUI's Fields tab or ParaView)"))
+            else:
+                run.log(f"  {prefix}{dname} ({pname} driven): {path}  (time domain: the GUI's Fields tab or ParaView)")
 
     def _antenna(self, run, p):
         from .antenna import save as save_antenna

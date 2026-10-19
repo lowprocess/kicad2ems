@@ -14,7 +14,7 @@ FILTER = os.path.join(ROOT, 'examples', 'filter.toml')
 
 def test_registry_and_aliases():
     reg = solvers.registry()
-    assert list(reg) == ['openems', 'mom25d', 'emerge', 'mixed', 'qucs', 'scikit']
+    assert list(reg) == ['openems', 'mom25d', 'emerge', 'mixed', 'gfdtd', 'qucs', 'scikit']
     assert [solvers.get(a).name for a in ('fdtd', 'MOM', 'qucsator', 'skrf')] == ['openems', 'mom25d', 'qucs', 'scikit']
     with pytest.raises(ValueError, match="no solver 'hfss'"):
         solvers.get('hfss')
@@ -48,7 +48,7 @@ def test_entry_point_plugins(monkeypatch):
     monkeypatch.setattr(solvers, '_entry_points', lambda: [_EP('fake', _Fake), _EP('bad', ImportError('no numpy')),
                                                            _EP('clash', Clash)])
     reg = solvers.registry()
-    assert list(reg) == ['openems', 'mom25d', 'emerge', 'mixed', 'qucs', 'scikit', 'fake'] and solvers.get('fk') is reg['fake']
+    assert list(reg) == ['openems', 'mom25d', 'emerge', 'mixed', 'gfdtd', 'qucs', 'scikit', 'fake'] and solvers.get('fk') is reg['fake']
     assert [b[0].split(' =')[0] for b in solvers.broken] == ['bad', 'clash']
     assert 'ImportError: no numpy' in solvers.broken[0][1] and 'fmin' in solvers.broken[1][1]
     S = settings_class(reg)                                         # its options become settings

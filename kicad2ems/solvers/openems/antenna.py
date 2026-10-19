@@ -125,9 +125,10 @@ def run_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, ste
     The excitation reaches 30 % of the band beyond fmax: in the top ~15 % of a Gaussian's band (its -20 dB
     edge) the far field came out wrong (dipole: 6.3 dBi and 107 % efficiency at fmax). Returns the
     RunResult; RunResult.extra[port name] holds the antenna results."""
-    from .simulation import run_excitations
+    from .simulation import run_excitations, engine_name
     ffr = record_freqs(freq[0], freq[-1], ff_extra)
-    log(f"openEMS: antenna run, {m.ports[k].name} driven, NF2FF box recording {len(ffr)} frequencies")
+    log(f"{engine_name(run_kw.get('engine'))[1]}: antenna run, {m.ports[k].name} driven, NF2FF box recording "
+        f"{len(ffr)} frequencies")
     return run_excitations(m, mesh, freq, [k], bc, out_dir, jobs=1, exc_fmax=exc_fmax(freq[0], freq[-1]),
                            setup=nf2ff_box(ffr), log=log,
                            analyse=functools.partial(analyse, m, freq, ffr, ff_pattern, step, log), **run_kw)

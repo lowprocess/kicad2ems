@@ -9,6 +9,7 @@ report that compares the solvers.
 |---|---|---|---|
 | [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS |
 | [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | cuPy for GPU acceleration |
+| [gfdtd](docs/gfdtd.md) (3D FDTD on the GPU) | `gfdtd` | openEMS's model, 8–20x faster on a GPU, ~2x on the CPU: the same boards and antennas as openEMS, without conductor loss | CuPy and a GPU, or its CPU core (`python -m gfdtd.core.build`) |
 | [EMerge](docs/emerge.md) (3D FEM, experimental) | `emerge` | small closed or high-Q structures (a filter in a shielding can), a third full-wave check | EMerge (`setup.sh`: from git, patched for Python 3.14) |
 | Transmission-line model | `lines` | a quick estimate: impedance steps, delays, layout mistakes | scikit-rf or qucsator |
 

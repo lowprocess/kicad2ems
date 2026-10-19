@@ -192,7 +192,7 @@ class SetupTab(QWidget):
             sec.setToolTip('' if on else f"for {names}: tick it under Solvers to use these settings")
         from .runner import ANTENNA_FIELDS
         mode = self.edits.get('mode', (None,))[0]
-        antenna = mode is not None and mode.currentText() == 'antenna' and bool({'openems', 'mom25d'} & ticked)
+        antenna = mode is not None and mode.currentText() == 'antenna' and bool({'openems', 'gfdtd', 'mom25d'} & ticked)
         for key in ANTENNA_FIELDS:                                  # antenna settings: antenna mode only
             if key not in self.edits:
                 continue
@@ -201,7 +201,8 @@ class SetupTab(QWidget):
             lab = self.field_labels.get(key)
             if lab is not None:
                 lab.setEnabled(antenna)
-            w.setToolTip('' if antenna else "antenna mode only (Solvers: Mode = antenna, with openEMS or mom25d)")
+            w.setToolTip('' if antenna else "antenna mode only (Solvers: Mode = antenna, with openEMS, gfdtd or "
+                                            "mom25d)")
 
     def _dump_builder(self):
         """FIELD, where (a layer, an x / y / z plane, the volume), GHz -> a spec appended to the dumps."""

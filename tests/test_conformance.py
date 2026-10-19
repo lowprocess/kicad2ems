@@ -13,10 +13,11 @@ from make_demo_board import THRU                                    # noqa: E402
 
 C0 = 299792458.0
 FAST = {'scikit': [], 'qucs': [], 'mom25d': ['--mom-dmax', '0.8', '--mom-solves', '16'],   # converges in 13
-        'openems': ['--res', '15', '--end-db', '-30'], 'emerge': ['--emerge-points', '6']}
+        'openems': ['--res', '15', '--end-db', '-30'], 'gfdtd': ['--res', '15', '--end-db', '-30'], 'emerge': ['--emerge-points', '6']}
 # tolerances: (|S21| at least, |S11| at most, delay error at most)
 TOL = {'scikit': (0.99, 0.08, 0.02), 'qucs': (0.99, 0.08, 0.02), 'mom25d': (0.99, 0.08, 0.02),     # measured: mom25d
        'openems': (0.98, 0.15, 0.03),                    # 0.06 % delay, |S11| 0.03; openEMS +2.0 %, |S11| 0.07
+       'gfdtd': (0.98, 0.15, 0.03),                      # openEMS's model on gfdtd: +2.1 %, |S11| 0.08 (CPU: ~15 s)
        'emerge': (0.98, 0.15, 0.03)}                     # EMerge (KICAD2EMS_EMERGE_PYTHON): +2.0 %, |S11| 0.07
 
 

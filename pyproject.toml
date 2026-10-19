@@ -31,7 +31,8 @@ emerge = ["emerge>=2.8; python_version < '3.14'"]   # --solvers emerge (PyPI's n
 gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "h5py>=3", "PyOpenGL>=3.1"]   # kicad2ems-gui (h5py: FD dumps,
                                                                                    # far field; PyOpenGL: 3D fields)
 gmsh = ["gmsh>=4.11"]              # mom25d's mesher = "gmsh"
-core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster)
+core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster);
+                                   # python -m gfdtd.core.build: gfdtd's CPU core (~15x numpy)
 # mom25d's GPU solvers (docs/mom.md#gpu): the CuPy wheel built for your
 # GPU stack, one of these extras (pip install '.[gpu-rocm7]'), or the wheel itself (pip install cupy-rocm-7-0);
 # they conflict: install one. The CUDA wheels need the NVIDIA driver; the ROCm wheel the
@@ -48,15 +49,17 @@ kicad2ems = "kicad2ems.cli:main"
 kicad2ems-gui = "kicad2ems.gui:main"
 kicad2openems = "kicad2ems.cli:main_openems"     # the old name: openEMS unless --solvers says otherwise
 kicad2openems-gui = "kicad2ems.gui:main"
+gfdtd = "gfdtd.fdtd:main"                      # run an openEMS XML file on gfdtd (GPU FDTD)
 
 [tool.setuptools.dynamic]
 version = {attr = "kicad2ems.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["kicad2ems*", "mom25d*"]
+include = ["kicad2ems*", "mom25d*", "gfdtd*"]
 
 [tool.setuptools.package-data]
 mom25d = ["core/*.cpp", "*.so", "*.pyd"]
+gfdtd = ["core/*.cpp", "core/*.h", "*.so", "*.pyd"]     # the update code (GPU kernels and CPU core), the built core
 "kicad2ems.gui" = ["*.svg"]                 # the window's and the application launcher's icon
 
 [tool.pytest.ini_options]

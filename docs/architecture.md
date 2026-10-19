@@ -122,6 +122,7 @@ kicad2ems/
   solvers/        the Solver base class and registry
     openems/        the openEMS plugin: mesh, boundaries, simulation, antenna, dumps, field reading
     mom.py          the mom25d plugin
+    gfdtd.py        the gfdtd plugin: openEMS's plugin run on gfdtd's engine
     lines/          the line model and its two circuit solvers
   sparams.py      reciprocity and mixed-mode conversion
   touchstone.py   .sNp files
@@ -131,6 +132,8 @@ kicad2ems/
   overlay.py      the line model over the board (<name>_lines.json): colours by Z0, picking a section
   gui/            kicad2ems-gui
 mom25d/           the MoM solver (see mom.md)
+gfdtd/            the GPU FDTD solver, CSXCAD / openEMS compatible (see gfdtd.md); core/: its update code
+                  (GPU and CPU) and the compiled CPU core
 ```
 
 openEMS, CSXCAD, scikit-rf, h5py and mom25d are imported **inside the functions that need them**. A plugin

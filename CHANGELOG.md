@@ -6,6 +6,21 @@ example `261013-r1`, the first release on 13 October 2026).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-10-18
+
+### Added
+- gfdtd (`--solvers gfdtd`, or its tick box in the GUI): a 3D FDTD solver in the manner of openEMS that runs on the GPU
+  (CuPy: ROCm or CUDA) or on the CPU (a compiled OpenMP core, `python -m gfdtd.core.build`; numpy without
+  it). It gets openEMS's model, mesh and settings through its own copy of CSXCAD's and openEMS's Python
+  interface, and it reads and writes openEMS's XML (`gfdtd model.xml`). On the examples it agrees with openEMS
+  to 0.004–0.05 in |S|; an RX 7800 XT runs them 8–20 times faster than openEMS on 24 threads, and the CPU core
+  about twice as fast on the same CPU (five times with PML and wideband dielectrics). It has PML boundaries (CPML), Debye dielectrics (`--diel wideband`), field
+  dumps (`--dump`, in openEMS's .vtr / HDF5 files, so the field maps and the GUI's Fields tab work) and
+  antenna mode (openEMS's NF2FF box and result file: gain, efficiency, patterns, the GUI's antenna page). Not
+  yet: conductor loss, `--converge`, phased drives (docs/gfdtd.md). On the GPU a timestep is three launches
+  (PML, Debye poles, Mur, excitation and lumped parts folded in), small boards' excitations run side by side, and
+  dump boxes are one kernel each. `tools/bench_gfdtd.py` times its engine.
+
 ## 2026-10-14
 
 ### Added
