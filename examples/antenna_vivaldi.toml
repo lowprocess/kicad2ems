@@ -12,6 +12,6 @@ out     = "out"
 res     = 15            # cells per wavelength at fmax
 curve_res = 2           # the taper is a long curve: the default 6 makes ~9 M cells
 solvers = ["gfdtd"]     # FDTD: the board's outline and edges matter here (mom25d ignores them)
-ff_freq = [4, 6, 8]     # pattern frequencies, GHz
+ff_freq = [4, 6, 8]     # GHz: the pattern is drawn at the first; all three get rows in the gain table
 dump    = ["E@box=-10,-10,0.4,60,72,0.4@4,6,8"]  # mid-substrate plane, out into the air past the aperture
 dump_animate = "gif"

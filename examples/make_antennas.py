@@ -1,5 +1,5 @@
 """
-Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad needed), all for
+Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad needed), all but the vivaldi for
 2.45 GHz on FR4 (er 4.4, tan d 0.02):
 
   patch   inset-fed rectangular patch (37.2 x 28.8 mm) on 1.6 mm FR4, 50 ohm microstrip feed from the
@@ -10,6 +10,8 @@ Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad neede
           port.z0 = 73 ohm)
   slot    52 mm slot in the B.Cu ground plane, fed off-centre by a microstrip crossing it with an
           open quarter-wave stub
+  vivaldi exponentially tapered slot in a B.Cu ground on 0.8 mm FR4 (50 x 70 mm), endfire off the top edge,
+          microstrip-to-slotline feed with a radial stub and a circular slot cavity; wideband, 3-10 GHz
   array2x2  four of the patch, 100 mm apart, from one 50 ohm feed through a corporate network (T junctions
           and quarter-wave transformers), the bottom row's branch half a guided wavelength longer
   array2x2_phased  four of the patch, 70 mm apart, a feed per row (P1 the top row, P2 the bottom one): driven
@@ -220,7 +222,7 @@ def array2x2_phased(path, pw=37.2, pl=28.8, inset=8.8, gap=1.0, wf=3.0, d=70.0, 
     b.write(path, W, H)
 
 
-def vivaldi(path, ap=44.0, lt=40.0, ws=0.4, ls=6.0, rc=3.5, wf=1.5, xf=10.0, rs=6.0, fan=90.0, n=48):
+def vivaldi(path, ap=44.0, lt=40.0, ws=0.3, ls=2.0, rc=3.0, wf=1.5, xf=10.0, rs=4.0, fan=90.0, n=48):
     """Tapered-slot (Vivaldi) antenna, 50 x 70 mm on 0.8 mm FR4, endfire towards -y (the board's top edge).
     The slot is cut in the B.Cu ground: an exponential taper lt mm long opening from ws to an ap mm wide
     aperture at the top edge, then ls mm of ws slotline down to the feed crossing and a circular cavity of

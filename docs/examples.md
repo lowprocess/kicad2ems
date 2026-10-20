@@ -25,7 +25,7 @@ kicad2ems examples/demo_transition.toml
 | `launch` | a 4-layer edge launch with a grounded-CPW feed | none: `--nets RF,GND --fmin 1 --fmax 6` |
 
 `make_antennas.py KIND OUT [param=mm …]` makes antennas for 2.45 GHz: `patch`, `ifa`, `dipole`, `slot`,
-`array2x2` and `array2x2_phased`, each with a config `antenna_<kind>.toml`. Dimensions can be changed on the command line,
+`vivaldi`, `array2x2` and `array2x2_phased`, each with a config `antenna_<kind>.toml`. Dimensions can be changed on the command line,
 for example `make_antennas.py ifa out arm=19`.
 
 <a id="rf-structures"></a>
@@ -100,6 +100,14 @@ adds:
 | inverted-F | 2.451 GHz | −33.5 dB | 12.0 % | 2.9 dBi | 91 % | 2.5 dBi |
 | dipole | 2.430 GHz | −20.3 dB | 15.6 % | 2.1 dBi | 96 % | 1.9 dBi |
 | slot | 2.434 GHz | −26.9 dB | 20.6 % | 4.4 dBi | 87 % | 3.7 dBi |
+
+The **Vivaldi** (`antenna_vivaldi.toml`) is wideband, 3–10 GHz on 0.8 mm FR-4, and runs on gfdtd: it radiates
+off the board's top edge, so the outline matters (mom25d ignores it). |S11| is below −10 dB over 83 % of the
+band (worst −8.3 dB near 6.7 GHz), gain 3.0 dBi at 3 GHz, 6.0 dBi at 6 GHz, 6.4 dBi at 8 GHz, efficiency
+67–73 % (FR-4 loss), 87 s on 2 CPU threads. The config writes animations of the E field in the substrate at 4,
+6 and 8 GHz (`dump_animate = "gif"`): the wave leaves the taper further out at low frequencies and nearer the
+throat at high ones. The run's headline −10 dB band is only the contiguous band around the deepest dip, which
+for a wideband antenna is the narrow 8.5–10 GHz one; read the S11 plot.
 
 The dipole's 2.1 dBi matches an ideal half-wave dipole (2.15 dBi). The patch's low efficiency is FR-4
 loss.
