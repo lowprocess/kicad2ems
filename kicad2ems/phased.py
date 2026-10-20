@@ -13,6 +13,7 @@ reflection of each driven port b_k / a_k (what it sees with its neighbours drive
     a2 = steer(a, 30)                                   # a phase step of 30 deg from each driven port to the next
     g = parse_grid('4x4', names)                        # a 2D array: {port: (column, row)}, P1..P4 the top row
     a3 = steer2d(a, names, g, 30, -45)                  # +30 deg per column, -45 deg per row
+    a4 = taper(a, names, g, 'taylor:30')                # amplitudes: a Taylor taper per column x per row
     data = load(path)                                   # mom25d's <name>_mom25d_array.npz
     out = combine(data, a)                              # dict(sphere, rows, active, peak)
 
@@ -126,11 +127,75 @@ def steer2d(a, names, grid, step_x, step_y):
     return out
 
 
-def settings_drive(drive, names, grid_spec=None, steps=None):
-    """The incident waves of a run's settings: --drive (parse_drive), --steer's phase steps (X[,Y]) across
-    --grid (steer2d), and the grid itself (None without one). ValueError for one that does not parse."""
+TAPERS = ('uniform', 'taylor', 'chebyshev', 'cosine')
+TAPER_SLL = 25.0        # dB: Taylor's and Chebyshev's sidelobe level when none is given
+TAYLOR_NBAR = 4         # Taylor's nearly equal sidelobes next to the main beam
+
+
+def parse_taper(spec):
+    """(kind, sidelobe level in dB, positive) of KIND[:SLL]: uniform, taylor, chebyshev, cosine; e.g. taylor:30,
+    chebyshev:-25 (either sign). Empty: uniform. ValueError for an unknown kind or a bad level."""
+    spec = str(spec or '').strip().lower()
+    kind, _, sll = spec.partition(':')
+    kind = kind.strip() or 'uniform'
+    if kind not in TAPERS:
+        raise ValueError(f"taper: {spec!r}: one of {', '.join(TAPERS)}, optionally :SLL in dB (e.g. taylor:30)")
+    try:
+        level = abs(float(sll)) if sll.strip() else TAPER_SLL
+    except ValueError:
+        raise ValueError(f"taper: {spec!r}: the sidelobe level after ':' is a number of dB (e.g. taylor:30)")
+    if kind in ('taylor', 'chebyshev') and not 13.3 <= level <= 80:
+        raise ValueError(f"taper: {spec!r}: a sidelobe level of 13.3..80 dB (13.3: uniform's own)")
+    return kind, level
+
+
+def taper_1d(kind, n, sll=TAPER_SLL):
+    """n amplitude weights across a line of elements, the largest 1."""
+    import warnings
+    from scipy.signal import windows
+    if n < 3 or kind == 'uniform':
+        return np.ones(n)
+    if kind == 'taylor':
+        w = windows.taylor(n, nbar=min(TAYLOR_NBAR, n), sll=sll, norm=False)
+    elif kind == 'chebyshev':
+        with warnings.catch_warnings():                     # scipy's spectral-analysis note: not ours
+            warnings.simplefilter('ignore')
+            w = windows.chebwin(n, sll)
+    else:
+        w = windows.cosine(n)
+    return np.asarray(w, float) / np.max(w)
+
+
+def taper(a, names, grid, spec):
+    """The drive a with an amplitude taper (parse_taper's spec) multiplied in, on top of its own amplitudes. With
+    a grid (parse_grid's) the taper is separable: a column weight times a row weight, the columns and rows
+    counted by their distinct places (an offset lattice's half steps are columns of their own). Without one,
+    across the driven ports in port order. Undriven ports stay off."""
+    kind, sll = parse_taper(spec)
+    out = np.array(a, complex)
+    if kind == 'uniform':
+        return out
+    driven = [i for i, v in enumerate(out) if abs(v) > 0]
+    if not grid:
+        out[driven] *= taper_1d(kind, len(driven), sll)
+        return out
+    on = [i for i in driven if names[i] in grid]
+    cols = sorted({grid[names[i]][0] for i in on})
+    rows = sorted({grid[names[i]][1] for i in on})
+    wc, wr = taper_1d(kind, len(cols), sll), taper_1d(kind, len(rows), sll)
+    for i in on:
+        c, r = grid[names[i]]
+        out[i] *= wc[cols.index(c)] * wr[rows.index(r)]
+    return out
+
+
+def settings_drive(drive, names, grid_spec=None, steps=None, taper_spec=None):
+    """The incident waves of a run's settings: --drive (parse_drive), --taper's amplitudes, --steer's phase
+    steps (X[,Y]) across --grid (steer2d), and the grid itself (None without one). ValueError for one that does
+    not parse."""
     a = parse_drive(drive, names)
     g = parse_grid(grid_spec, names)
+    a = taper(a, names, g, taper_spec)
     steps = list(steps or [])
     if steps:
         sx, sy = (steps + [0.0])[:2]

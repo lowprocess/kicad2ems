@@ -149,6 +149,7 @@ dmax    = 0.4
 | `--drive` | one port | drive several ports, `PORT[=amplitude][@phase]` each: a phased array (mom25d; [details](mom.md#phased-drive)) |
 | `--grid` | a line | the ports' places in a 2D array: `COLSxROWS` (ports in order, row by row) or `PORT:COL,ROW ...` ([details](mom.md#phased-drive)) |
 | `--steer` | none | phase steps added to `--drive`: `X[,Y]`, X per column and Y per row of `--grid` (no grid: X from port to port) |
+| `--taper` | uniform | amplitude taper for lower sidelobes: `taylor`, `chebyshev` or `cosine`, `:SLL` in dB (e.g. `taylor:25`) |
 | `--ff-freq` | the resonance | the frequencies of the radiation patterns, GHz |
 | `--ff-step` | 2 | the angle step of the pattern cuts, degrees |
 

@@ -75,6 +75,15 @@ def _steer(v):
     return vals or None
 
 
+def _taper(v):
+    """--taper: KIND[:SLL] (phased.parse_taper checks it); None for an empty one."""
+    from .phased import parse_taper
+    v = str(v or '').strip()
+    if v:
+        parse_taper(v)
+    return v or None
+
+
 def _solvers(v):
     """Solver names (aliases allowed; 'lines' for the line model, 'all' for every solver but the variants of another, as mixed) in
     registry order, or
@@ -122,6 +131,11 @@ CORE = [
     Option('steer', None, "antenna mode: phase steps (deg) added to --drive: X[,Y], X per column and Y per row of "
            "--grid (without a grid: X from each driven port to the next), e.g. 30,-45", list,
            conv=_steer, gui='Antenna: phase step X, Y (deg)', group='antenna', cli=dict(metavar='X[,Y]')),
+    Option('taper', None, "antenna mode: an amplitude taper multiplied into --drive, for lower sidelobes: uniform, "
+           "taylor, chebyshev or cosine, with :SLL for the sidelobe level in dB (taylor and chebyshev; default "
+           "25), e.g. taylor:30. Across --grid's columns times its rows, else across the driven ports",
+           conv=_taper, gui='Antenna: amplitude taper (taylor:30, chebyshev:25, cosine)', group='antenna',
+           cli=dict(metavar='KIND[:SLL]')),
     Option('board', None, ".kicad_pcb, .gbrjob (Gerber job file; ports from --pos), the <name>_board.json of an "
            "earlier run, or a .toml config that names one", path=True, gui='Board (.kicad_pcb)', group='board',
            cli=dict(flags=['board'], nargs='?')),
@@ -347,6 +361,8 @@ def build_settings(cli=None, config=None, default_solvers=None):
         msg = sv.validate(s)
         if msg:
             raise ConfigError(msg)
+    if s.steer and len(s.steer) > 1 and s.steer[1] and not s.grid:
+        raise ConfigError("steer: a Y step needs grid (the ports' columns and rows), e.g. grid = \"4x4\"")
     run, named = s.solver_plan()
     if s.antenna:
         for x in named:

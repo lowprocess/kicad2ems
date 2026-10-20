@@ -133,3 +133,62 @@ def test_beam_follows_both_steps_of_a_4x4_array():
         u, v = np.sin(th) * np.cos(ph), np.sin(th) * np.sin(ph)
         assert abs(u + np.radians(sx) / (k0 * d)) < 0.04, (sx, sy, pk)   # later columns ahead: the beam to -x
         assert abs(v + np.radians(sy) / (k0 * d)) < 0.04, (sx, sy, pk)
+
+
+def line_sidelobe_db(w, d=0.5):
+    """The highest sidelobe (dB below the peak) of a line of isotropic elements d wavelengths apart, weights w."""
+    u = np.linspace(-1, 1, 20001)
+    af = np.abs(np.exp(2j * np.pi * d * np.outer(u, np.arange(len(w)))) @ np.asarray(w))
+    af = 20 * np.log10(af / af.max() + 1e-12)
+    i0 = int(np.argmax(af))
+    j = i0
+    while j + 1 < len(af) and af[j + 1] < af[j]:                     # down the main lobe to its first null
+        j += 1
+    return float(af[j:].max())
+
+
+def test_parse_taper_and_weights():
+    assert phased.parse_taper('') == ('uniform', phased.TAPER_SLL)
+    assert phased.parse_taper('Taylor:-30') == ('taylor', 30.0) and phased.parse_taper('cosine')[0] == 'cosine'
+    for bad, msg in (('hann', 'one of'), ('taylor:x', 'number'), ('chebyshev:10', '13.3')):
+        with pytest.raises(ValueError, match=msg):
+            phased.parse_taper(bad)
+    assert np.allclose(phased.taper_1d('uniform', 4), 1) and np.allclose(phased.taper_1d('taylor', 2), 1)
+    for kind, n in (('taylor', 4), ('chebyshev', 6), ('cosine', 5)):
+        w = phased.taper_1d(kind, n, 30)
+        assert w.max() == pytest.approx(1) and np.allclose(w, w[::-1]) and w[0] < w[n // 2]
+    assert line_sidelobe_db(np.ones(4)) == pytest.approx(-11.3, abs=0.2)
+    assert line_sidelobe_db(phased.taper_1d('chebyshev', 6, 25)) == pytest.approx(-25, abs=0.3)
+    assert line_sidelobe_db(phased.taper_1d('taylor', 8, 30)) < -27
+
+
+def test_taper_on_a_grid_is_separable():
+    names = [f'P{i + 1}' for i in range(17)]
+    g = phased.parse_grid('4x4', names)                              # P17 off the grid
+    a = phased.taper(np.ones(17, complex), names, g, 'taylor:25')
+    w = phased.taper_1d('taylor', 4, 25)
+    assert np.allclose(np.abs(a[:16]).reshape(4, 4), np.outer(w, w)) and a[16] == 1
+    b = phased.taper([1, 0, 1j, 1], names[:4], None, 'cosine')       # no grid: across the driven ports
+    assert b[1] == 0 and np.allclose(np.abs(b[[0, 2, 3]]), phased.taper_1d('cosine', 3))
+    assert np.isclose(np.angle(b[2]), np.pi / 2)                     # phases kept
+    a, _ = phased.settings_drive([f'P{i + 1}' for i in range(16)], names, '4x4', [30, 0], 'taylor:25')
+    assert np.allclose(np.abs(a[:16]).reshape(4, 4), np.outer(w, w)) and np.isclose(np.angle(a[1] / a[0]),
+                                                                                     np.radians(30))
+
+
+def test_taper_lowers_the_4x4_sidelobes():
+    data, k0, d = grid_sources()
+    names = data['ports']
+    g = phased.parse_grid('4x4', names)
+
+    def sidelobe(a):                                                  # the phi = 0 cut, past the first null
+        e = phased.combine(data, a)['sphere']['e_norm'][0]
+        cut = 20 * np.log10(e[0, :91] / e.max() + 1e-12)
+        j = 0
+        while j + 1 < len(cut) and cut[j + 1] < cut[j]:              # down the main lobe to its first null
+            j += 1
+        return float(cut[j:].max())
+
+    uni = sidelobe(data['drive'])
+    tay = sidelobe(phased.taper(data['drive'], names, g, 'taylor:25'))
+    assert uni == pytest.approx(-11.3, abs=1.0) and tay < -21

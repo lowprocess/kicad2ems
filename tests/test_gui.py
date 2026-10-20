@@ -866,7 +866,7 @@ def test_beam_steering_bar_2d(tmp_path, monkeypatch):
     th, ph = np.radians(r['peak']['theta']), np.radians(r['peak']['phi'])
     assert abs(np.sin(th) * np.cos(ph) + np.radians(40) / (k0 * d)) < 0.05
     assert abs(np.sin(th) * np.sin(ph) - np.radians(40) / (k0 * d)) < 0.05
-    assert abs(dict((n, p) for _, _, n, p, _ in bar.map.cells)['P16']) < 1e-6   # 3 x 40 - 3 x 40
+    assert abs({c[2]: c[3] for c in bar.map.cells}['P16']) < 1e-6   # 3 x 40 - 3 x 40
     assert 'worst' in bar.readout.text()                             # 16 active reflections: the range
     vb = getattr(w.volume, 'steer', None)
     if vb is not None:
@@ -889,3 +889,16 @@ def test_beam_steering_bar_2d(tmp_path, monkeypatch):
     assert not bar.spin_y.isVisibleTo(bar) and bar.label_x.text() == 'Phase step' and 'grid' not in got[-1]
     bar.reset.click()
     assert bar.grid.text() == '4x4' and bar.spin.value() == 0 and bar.spin_y.value() == 0
+    bar.taper.setCurrentIndex(1)                                     # Taylor: the corners weakest
+    assert bar.sll.isEnabled() and bar.taper_spec() == 'taylor:25'
+    r = got[-1]
+    amps = {c[2]: c[5] for c in bar.map.cells}
+    assert amps['P1'] < amps['P2'] < 1 and amps['P6'] == pytest.approx(1) and 'Taylor' in bar.readout.text()
+    assert 'P1=0.' in ', '.join(r['drive']) and r['peak']['gain_dbi'] < res['peak']['gain_dbi']
+    if vb is not None:
+        assert vb.taper_spec() == 'taylor:25'
+    bar.taper.setCurrentIndex(3)                                     # cosine: no level to set
+    assert not bar.sll.isEnabled() and bar.taper_spec() == 'cosine'
+    bar.set_data(dict(res, drive_base=drive, taper='chebyshev:30', steer=[20.0, -10.0]), bar.data)
+    assert bar.taper_spec() == 'chebyshev:30' and (bar.spin.value(), bar.spin_y.value()) == (20, -10)
+    assert bar.drive.text() == ', '.join(drive)                      # the run's untapered drive, not tapered twice

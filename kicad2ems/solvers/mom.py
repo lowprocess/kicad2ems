@@ -327,9 +327,9 @@ class MoM25D(Solver):
         s = run.s
         self._held = {}
         port = s.mom_port
-        if run.antenna and (s.drive or s.grid or s.steer):         # a drive that names no port: before the solve
+        if run.antenna and (s.drive or s.grid or s.steer or s.taper):  # a drive that names no port: before the solve
             from ..phased import settings_drive
-            settings_drive(s.drive, [p.name for p in run.m.ports], s.grid, s.steer)
+            settings_drive(s.drive, [p.name for p in run.m.ports], s.grid, s.steer, s.taper)
         if run.antenna and port == 'auto':                          # the gap source the antenna's power is taken from
             port = 'lumped'
             run.log("mom25d: antenna mode: lumped ports (--mom-port wave for de-embedded ones)")
@@ -378,10 +378,10 @@ class MoM25D(Solver):
         n = len(names)
         grid = phased.parse_grid(s.grid, names)
         if s.drive:
-            a, grid = phased.settings_drive(s.drive, names, s.grid, s.steer)
+            a, grid = phased.settings_drive(s.drive, names, s.grid, s.steer, s.taper)
         else:
-            if s.steer:
-                run.log("note: --steer needs --drive (the ports to drive): ignored")
+            if s.steer or s.taper:
+                run.log("note: --steer and --taper need --drive (the ports to drive): ignored")
             want = [x.strip() for x in (s.excite.split(',') if isinstance(s.excite, str) else s.excite or [])]
             a = np.eye(n, dtype=complex)[next((j for j, nm in enumerate(names) if nm in want), 0)]
         driven = [j for j in range(n) if abs(a[j]) > 0]
@@ -449,6 +449,10 @@ class MoM25D(Solver):
             ant['drive'] = phased.format_drive(a, names)
             if grid:
                 ant['grid'] = phased.format_grid(grid, names)             # the GUI's steering starts with it
+            if s.drive and (s.taper or s.steer):                         # the GUI's Reset: these settings again
+                ant['drive_base'] = phased.format_drive(phased.parse_drive(s.drive, names), names)
+                ant['taper'] = s.taper or 'uniform'
+                ant['steer'] = [float(x) for x in (list(s.steer or []) + [0.0, 0.0])[:2]]
             ant['peak'] = comb['peak']
             ant['active_db'] = {names[j]: float(20 * np.log10(max(abs(comb['active'][ip][j]), 1e-15)))
                                 for j in driven}

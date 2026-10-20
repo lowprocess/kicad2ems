@@ -1,7 +1,8 @@
 """
 The Results page's Beam steering bar, for an antenna result with each port's far field kept (mom25d's
 <name>_mom25d_array.npz, phased.py): the drive (PORT[=amplitude][@phase] per port, the run's to start with) and
-phase steps on top of it, recombined at once, without solving again. Without a grid the step goes from each
+phase steps on top of it, with an amplitude taper (Taylor, Chebyshev, cosine) for lower sidelobes, recombined
+at once, without solving again. Without a grid the step goes from each
 driven port to the next (a line of elements); with one (COLSxROWS, or PORT:COL,ROW per port: a 2D array such as
 a 4 x 4 patch array with a feed line per patch) there are two, X per column and Y per row, and a phase map shows
 each element's phase and active reflection. The plots (gain over frequency, the far-field cuts) and the 3D
@@ -16,7 +17,7 @@ import math
 import numpy as np
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import (QComboBox, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
+from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
                                QSlider, QSpinBox, QVBoxLayout, QWidget)
 from .. import phased
 
@@ -36,10 +37,11 @@ class PhaseMap(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.cells = []                                             # (col, row, name, phase deg or None, dB)
+        self.cells = []                                 # (col, row, name, phase deg or None, dB, amplitude)
+        self.tapered = False                            # some amplitude below the largest: a line for it
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        self.setToolTip("each element of the array: its port, phase (the colour) and active reflection (with its "
-                        "neighbours driven too)")
+        self.setToolTip("each element of the array: its port, phase (the colour), amplitude (×, when tapered; "
+                        "fainter for weaker) and active reflection (with its neighbours driven too)")
 
     def set(self, names, grid, a, active):
         self.cells = []
@@ -48,7 +50,10 @@ class PhaseMap(QWidget):
                 c, r = grid[n]
                 ph = math.degrees(math.atan2(v.imag, v.real)) if abs(v) > 0 else None
                 db = 20 * math.log10(max(abs(act), 1e-15)) if np.isfinite(act) else None
-                self.cells.append((c, r, n, ph, db))
+                self.cells.append((c, r, n, ph, db, abs(v)))
+        top = max((cell[5] for cell in self.cells), default=0) or 1.0
+        self.cells = [(*cell[:5], cell[5] / top) for cell in self.cells]     # amplitude relative to the largest
+        self.tapered = any(ph is not None and amp < 0.999 for _, _, _, ph, _, amp in self.cells)
         self._fit()
         self.update()
 
@@ -60,7 +65,10 @@ class PhaseMap(QWidget):
         cols = 1 + max(c for c, *_ in self.cells)
         rows = 1 + max(r for _, r, *_ in self.cells)                 # cells at (column, row) x the cell size
         w = min(self.CELL, max(8.0, (self.width() - 2) / cols))
-        return cols, rows, w, w * self.ASPECT
+        return cols, rows, w, w * self._aspect()
+
+    def _aspect(self):
+        return self.ASPECT * (4.5 / 3.5 if self.tapered else 1.0)          # four lines of text, not three
 
     def hasHeightForWidth(self):
         return True
@@ -70,7 +78,7 @@ class PhaseMap(QWidget):
             return 0
         cols = 1 + max(c for c, *_ in self.cells)
         rows = 1 + max(r for _, r, *_ in self.cells)
-        return int(math.ceil(rows * min(self.CELL, max(8.0, (width - 2) / cols)) * self.ASPECT)) + 2
+        return int(math.ceil(rows * min(self.CELL, max(8.0, (width - 2) / cols)) * self._aspect())) + 2
 
     def sizeHint(self):
         if not self.cells:
@@ -89,17 +97,21 @@ class PhaseMap(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         f = p.font()
-        f.setPointSizeF(max(6.0, min(f.pointSizeF(), h / 5)))
+        f.setPointSizeF(max(6.0, min(f.pointSizeF(), h / (6.5 if self.tapered else 5))))
         p.setFont(f)
-        for c, r, name, ph, db in self.cells:
+        for c, r, name, ph, db, amp in self.cells:
             rect = QRectF(1 + c * w, 1 + r * h, w - 2, h - 2)
-            fill = QColor(150, 150, 150, 90) if ph is None else QColor.fromHsvF((ph % 360) / 360, 0.55, 0.95)
+            fill = (QColor(150, 150, 150, 90) if ph is None else
+                    QColor.fromHsvF((ph % 360) / 360, 0.15 + 0.45 * amp, 0.95))      # weaker: paler
             p.setBrush(fill)
             p.setPen(QPen(self.palette().mid().color(), 1))
             p.drawRoundedRect(rect, 3, 3)
             if w >= self.MIN_TEXT:
                 p.setPen(Qt.black if ph is not None else self.palette().text().color())
-                lines = [name, '-' if ph is None else f"{ph:.0f}°"]
+                deg = None if ph is None else int(round(ph)) or 0          # no "-0"
+                lines = [name, '-' if ph is None else f"{180 if deg == -180 else deg}°"]
+                if self.tapered and ph is not None:
+                    lines.append(f"×{amp:.2f}")
                 if db is not None:
                     lines.append(f"{db:.1f} dB" if db > -60 else "< −60 dB")
                 p.drawText(rect, Qt.AlignCenter, '\n'.join(lines))
@@ -170,6 +182,27 @@ class SteeringBar(QGroupBox):
         self.label_y, self.slider_y, self.spin_y, _ = step_row(
             'Y step', "with a grid: added per row (row 0 the top one): the beam tilts across the rows")
         row = QHBoxLayout()
+        row.addWidget(QLabel('Taper'))
+        self.taper = QComboBox()
+        self.taper.addItems([t.capitalize() for t in phased.TAPERS])
+        self.taper.setToolTip("an amplitude taper multiplied into the drive, for lower sidelobes at the cost of a "
+                              "wider beam and some gain: Taylor (nearly equal sidelobes at the level set), "
+                              "Chebyshev (all sidelobes at the level), cosine. With a grid: per column times per "
+                              "row; without: across the driven ports")
+        self.taper.currentIndexChanged.connect(lambda *_: self._taper_changed())
+        row.addWidget(self.taper)
+        self.sll = QDoubleSpinBox()
+        self.sll.setRange(13.5, 80)
+        self.sll.setDecimals(0)
+        self.sll.setValue(phased.TAPER_SLL)
+        self.sll.setPrefix('−')
+        self.sll.setSuffix(' dB')
+        self.sll.setToolTip("Taylor's and Chebyshev's sidelobe level, below the main beam")
+        self.sll.valueChanged.connect(lambda *_: self.update())
+        row.addWidget(self.sll)
+        row.addStretch(1)
+        lay.addLayout(row)
+        row = QHBoxLayout()
         self.anim = QPushButton('Animate')
         self.anim.setCheckable(True)
         self.anim.setToolTip(f"sweep the phase step back and forth over ±{STEP_MAX}° (with a grid: X, Y, or both "
@@ -183,7 +216,7 @@ class SteeringBar(QGroupBox):
         self.anim_mode.currentIndexChanged.connect(lambda *_: self._restart_circle())
         row.addWidget(self.anim_mode)
         self.reset = QPushButton('Reset')
-        self.reset.setToolTip("the run's drive and grid, no phase steps")
+        self.reset.setToolTip("the run's drive, grid, taper and phase steps")
         self.reset.clicked.connect(self._reset)
         row.addWidget(self.reset)
         row.addStretch(1)
@@ -198,6 +231,7 @@ class SteeringBar(QGroupBox):
         self.timer.setInterval(ANIM_MS)
         self.timer.timeout.connect(self._frame)
         self._show_2d(False)
+        self._taper_changed(update=False)
         self.hide()
 
     # ---- state -----------------------------------------------------------------------------------------
@@ -223,6 +257,29 @@ class SteeringBar(QGroupBox):
             w.setValue(int(round(v)))
             w.blockSignals(False)
 
+    def taper_spec(self):
+        kind = phased.TAPERS[self.taper.currentIndex()]
+        return f"{kind}:{self.sll.value():g}" if kind in ('taylor', 'chebyshev') else kind
+
+    def _set_taper(self, spec):
+        """The taper controls from a spec (phased.parse_taper's), without an update; a bad one: uniform."""
+        try:
+            kind, sll = phased.parse_taper(spec)
+        except ValueError:
+            kind, sll = 'uniform', phased.TAPER_SLL
+        for w in (self.taper, self.sll):
+            w.blockSignals(True)
+        self.taper.setCurrentIndex(phased.TAPERS.index(kind))
+        self.sll.setValue(sll)
+        for w in (self.taper, self.sll):
+            w.blockSignals(False)
+        self.sll.setEnabled(kind in ('taylor', 'chebyshev'))
+
+    def _taper_changed(self, update=True):
+        self.sll.setEnabled(phased.TAPERS[self.taper.currentIndex()] in ('taylor', 'chebyshev'))
+        if update:
+            self.update()
+
     def _parse_grid(self):
         """The grid field's places (phased.parse_grid), shown or hidden with it; ValueError for a bad one."""
         g = phased.parse_grid(self.grid.text(), self.data['ports'])
@@ -231,11 +288,16 @@ class SteeringBar(QGroupBox):
         return g
 
     def _reset(self, *_, emit=True):
-        d = self.data
-        drive = (self.res or {}).get('drive') or phased.format_drive(d['drive'], d['ports'])
+        d, res = self.data, self.res or {}
+        if res.get('drive_base'):                                   # the run's settings: untapered, unsteered
+            drive, steps = res['drive_base'], (list(res.get('steer') or []) + [0, 0])[:2]
+            self._set_taper(res.get('taper'))
+        else:                                                       # the run's drive as it was driven
+            drive, steps = res.get('drive') or phased.format_drive(d['drive'], d['ports']), [0, 0]
+            self._set_taper(None)
         self.drive.setText(', '.join(drive))
-        self.grid.setText((self.res or {}).get('grid') or '')
-        self._set_steps(0, 0)
+        self.grid.setText(res.get('grid') or '')
+        self._set_steps(*steps)
         self.update(emit=emit)
 
     def mirror(self, other):
@@ -244,6 +306,7 @@ class SteeringBar(QGroupBox):
             return
         self.drive.setText(other.drive.text())
         self.grid.setText(other.grid.text())
+        self._set_taper(other.taper_spec())
         self.anim_mode.blockSignals(True)
         self.anim_mode.setCurrentIndex(other.anim_mode.currentIndex())
         self.anim_mode.blockSignals(False)
@@ -258,13 +321,14 @@ class SteeringBar(QGroupBox):
         self.anim.blockSignals(False)
 
     def weights(self):
-        """The incident waves of the drive, the grid and the phase steps; ValueError for a drive or grid that
-        does not parse."""
+        """The incident waves of the drive, the taper, the grid and the phase steps; ValueError for a drive or
+        grid that does not parse."""
         names = self.data['ports']
         a = phased.parse_drive([x for x in self.drive.text().split(',')], names)
         if not np.any(np.abs(a) > 0):
             raise ValueError("drive: no port driven")
         g = self._parse_grid()
+        a = phased.taper(a, names, g, self.taper_spec())
         return phased.steer2d(a, names, g, self.spin.value(), self.spin_y.value() if g else 0)
 
     def update(self, emit=True):
@@ -282,6 +346,8 @@ class SteeringBar(QGroupBox):
             res['grid'] = phased.format_grid(self._grid, names)
         else:
             res.pop('grid', None)
+        for k in ('drive_base', 'taper', 'steer'):                  # the run's: this drive is all in 'drive'
+            res.pop(k, None)
         pk = c['peak']
         ip = int(np.argmin(np.abs(self.data['freq'] - pk['f'])))
         act = [(n, 20 * np.log10(max(abs(v), 1e-15))) for n, v in zip(names, c['active'][ip]) if np.isfinite(v)]
@@ -289,6 +355,8 @@ class SteeringBar(QGroupBox):
         g = f"{pk['gain_dbi']:.2f} dBi" if pk['gain_dbi'] is not None else '-'
         head = (f"steps X {self.spin.value()}°, Y {self.spin_y.value()}°" if self._grid else
                 ', '.join(res['drive']))
+        if self.taper.currentIndex():
+            head += f", {self.taper.currentText()}" + (f" −{self.sll.value():g} dB" if self.sll.isEnabled() else '')
         if len(act) > 4:                                            # a large array: the range, the worst named
             worst = max(act, key=lambda t: t[1])
             act_s = f"{min(v for _, v in act):.1f} to {worst[1]:.1f} dB (worst {worst[0]})"

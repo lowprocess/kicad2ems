@@ -20,6 +20,11 @@ Release `261020-r1`.
   run's to start with), an X step per column and a Y step per row, and a phase map of the elements, each
   coloured by its phase with its active reflection. Animate sweeps X, Y, or both round a circle (a conical
   scan). For more than four driven ports the readout gives the active reflections' range and the worst port.
+- Amplitude tapers for phased arrays: `taper = "taylor:25"` (`--taper`; also `chebyshev:SLL` and `cosine`),
+  a column weight times a row weight on a grid, otherwise across the driven ports. In the GUI, a *Taper*
+  choice and a sidelobe level sit in the Beam steering bar, and the phase map shows each element's amplitude.
+  A run records its base drive, taper and steps, so the GUI's Reset brings back exactly those instead of
+  tapering twice. On the 4×4 example, Taylor 25 dB takes the sidelobes from −13 dB to −25 dB for 0.9 dB of gain.
 - Example `array4x4_phased` (`make_antennas.py`, `antenna_array4x4_phased.toml`): sixteen patches 65 mm
   apart, each with its own feed line and port.
 
