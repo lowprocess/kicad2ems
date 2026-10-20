@@ -121,6 +121,19 @@ this is exact at every frequency and includes the coupling between the elements.
 accepted by all the driven ports. The log and the JSON give the beam's direction and each driven port's
 *active reflection*: what it sees with its neighbours driven too, which changes as the beam is steered.
 
+For a 2D array, `grid` says where each port sits and `steer` adds a phase step per column and per row:
+
+```bash
+kicad2ems examples/antenna_array4x4_phased.toml                     # grid = "4x4", steer = [30, 0]
+kicad2ems examples/antenna_array4x4_phased.toml --steer 30,-45      # 30 deg per column, -45 deg per row
+kicad2ems board.toml --grid "P1:0,0 P2:1,0 P3:0,1 P4:1,1" --steer 0,60
+```
+
+`grid` is `COLSxROWS` (the ports in order fill the rows, top row first: `4x4` for P1..P16) or
+`PORT:COL,ROW` per port, separated by spaces (fractional places for an offset lattice). An element at
+column *c*, row *r* gets *c*·X + *r*·Y more phase on top of its `drive` phase. Without a grid, `steer X`
+adds X from each driven port to the next.
+
 Each port's far field is kept in `<name>_mom25d_array.npz`. The GUI's Results page uses it to steer the
 beam without solving again ([Beam steering](gui.md#beam-steering)).
 

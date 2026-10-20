@@ -11,13 +11,15 @@ reflection of each driven port b_k / a_k (what it sees with its neighbours drive
 
     a = parse_drive(['P1@0', 'P2=0.5@90'], names)      # incident wave per port (undriven: 0)
     a2 = steer(a, 30)                                   # a phase step of 30 deg from each driven port to the next
+    g = parse_grid('4x4', names)                        # a 2D array: {port: (column, row)}, P1..P4 the top row
+    a3 = steer2d(a, names, g, 30, -45)                  # +30 deg per column, -45 deg per row
     data = load(path)                                   # mom25d's <name>_mom25d_array.npz
     out = combine(data, a)                              # dict(sphere, rows, active, peak)
 
 The .npz: theta, phi (deg; the upper hemisphere), freq (Hz), ports, zc (ohm), Y (nf, n, n), Eth, Eph (nf, n,
 nphi, ntheta: r E per port column), drive (the run's a), and the sphere's theta (0..180, the lower half 0).
 """
-import cmath, math
+import cmath, math, re
 import numpy as np
 
 ETA0 = 376.730313668
@@ -64,6 +66,78 @@ def steer(a, step_deg):
             out[i] = v * cmath.exp(1j * math.radians(k * step_deg))
             k += 1
     return out
+
+
+def parse_grid(spec, names):
+    """Each port's place in a 2D array, {port: (column, row)}, for steer2d. spec: empty (None: no grid),
+    COLSxROWS (the ports in port order fill the rows, left to right, top row first; e.g. 4x4 for P1..P16), or
+    PORT:COL,ROW items separated by spaces or semicolons (fractional places too: an offset, triangular lattice),
+    e.g. 'P1:0,0 P2:1,0 P3:0,1 P4:1,1'. A port not placed gets no phase step. ValueError for an unknown port
+    or a bad item."""
+    spec = ' '.join(spec) if isinstance(spec, (list, tuple)) else str(spec or '')
+    spec = spec.strip()
+    if not spec:
+        return None
+    m = re.fullmatch(r'(\d+)\s*[xX×]\s*(\d+)', spec)
+    if m:
+        cols, rows = int(m.group(1)), int(m.group(2))
+        if cols < 1 or rows < 1:
+            raise ValueError(f"grid: {spec!r}: at least one column and one row")
+        return {n: (k % cols, k // cols) for k, n in enumerate(names[:cols * rows])}
+    out = {}
+    for item in re.split(r'[\s;]+', spec.replace(', ', ',')):
+        if not item:
+            continue
+        name, sep, place = item.rpartition(':')
+        try:
+            if not sep:
+                raise ValueError
+            col, row = (float(x) for x in place.split(','))
+        except ValueError:
+            raise ValueError(f"grid: {item!r}: expected COLSxROWS, or PORT:COLUMN,ROW per port")
+        if name not in names:
+            raise ValueError(f"grid: no port {name!r} (the ports: {', '.join(names)})")
+        out[name] = (col, row)
+    return out or None
+
+
+def format_grid(grid, names):
+    """The grid (parse_grid's) as a spec: COLSxROWS when it is the ports in order row by row, else the items."""
+    if not grid:
+        return ''
+    cols = 1 + max(int(c) for c, _ in grid.values())
+    rows = 1 + max(int(r) for _, r in grid.values())
+    if parse_grid(f"{cols}x{rows}", names) == grid:
+        return f"{cols}x{rows}"
+    return ' '.join(f"{n}:{c:g},{r:g}" for n, (c, r) in grid.items())
+
+
+def steer2d(a, names, grid, step_x, step_y):
+    """The drive a (one per port of names) with phase steps across a 2D array: a driven port at (column, row) of
+    grid (parse_grid's) gets column x step_x + row x step_y more phase (deg) on top of its own; ports off the
+    grid are kept. No grid: steer(a, step_x), the 1D step from each driven port to the next."""
+    if not grid:
+        return steer(a, step_x)
+    out = np.array(a, complex)
+    for i, n in enumerate(names):
+        if n in grid and abs(out[i]) > 0:
+            c, r = grid[n]
+            out[i] *= cmath.exp(1j * math.radians(c * step_x + r * step_y))
+    return out
+
+
+def settings_drive(drive, names, grid_spec=None, steps=None):
+    """The incident waves of a run's settings: --drive (parse_drive), --steer's phase steps (X[,Y]) across
+    --grid (steer2d), and the grid itself (None without one). ValueError for one that does not parse."""
+    a = parse_drive(drive, names)
+    g = parse_grid(grid_spec, names)
+    steps = list(steps or [])
+    if steps:
+        sx, sy = (steps + [0.0])[:2]
+        if sy and not g:
+            raise ValueError("steer: a Y step needs --grid (the ports' rows)")
+        a = steer2d(a, names, g, sx, sy)
+    return a, g
 
 
 def waves(Y, zc, a):

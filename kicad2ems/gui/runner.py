@@ -19,7 +19,7 @@ SECTION_SOLVERS = {'openEMS': {'openems', 'gfdtd'}, 'gfdtd': {'gfdtd'}, 'mom25d'
                    'EMerge (experimental)': {'emerge'}}
 SECTION_ORDER = ['Board', 'Frequency', 'Solvers', 'openEMS', 'gfdtd', 'mom25d', 'EMerge (experimental)', 'Output']
 # single settings greyed unless their case holds: the antenna's in antenna mode, with a solver that has one
-ANTENNA_FIELDS = ('ff_freq', 'drive')
+ANTENNA_FIELDS = ('ff_freq', 'drive', 'grid', 'steer')
 # the line model's qucsator is a setting of the machine, not of a board: the Solvers and hardware window
 TICK = 'solver:'                                          # a solver's tick box: solver:<name>
 

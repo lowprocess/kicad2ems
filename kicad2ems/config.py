@@ -32,7 +32,7 @@ reported (with the option they are probably a typo of) and ignored.
 import dataclasses, os, sys
 from dataclasses import field
 
-from .options import Option, strlist, items, floats, boolean
+from .options import Option, strlist, items, floats, floatlist, boolean
 from . import solvers as _solvers_pkg
 
 if sys.version_info >= (3, 11):
@@ -65,6 +65,14 @@ def _region(v):
 def _sides(v):
     from .edges import parse_sides
     return parse_sides(v)
+
+
+def _steer(v):
+    """--steer: one or two phase steps (deg), as a list; None for an empty one."""
+    vals = floatlist(v)
+    if len(vals) > 2:
+        raise ValueError("expected X or X,Y (phase steps in degrees)")
+    return vals or None
 
 
 def _solvers(v):
@@ -107,6 +115,13 @@ CORE = [
            "the first). The GUI's Results page steers the beam afterwards", list, conv=strlist,
            gui='Antenna: phased drive (P1@0, P2@60 ...; empty: one port)', group='antenna',
            cli=dict(metavar='PORT[=AMP][@DEG],...')),
+    Option('grid', None, "antenna mode: the ports' places in a 2D array, for --steer and the GUI's beam steering: "
+           "COLSxROWS (the ports in order fill the rows, top row first: 4x4 for P1..P16) or PORT:COL,ROW items "
+           "separated by spaces (e.g. 'P1:0,0 P2:1,0 P3:0,1 P4:1,1'); empty: the ports in a line",
+           gui='Antenna: array grid (4x4, or P1:0,0 P2:1,0 ...)', group='antenna', cli=dict(metavar='SPEC')),
+    Option('steer', None, "antenna mode: phase steps (deg) added to --drive: X[,Y], X per column and Y per row of "
+           "--grid (without a grid: X from each driven port to the next), e.g. 30,-45", list,
+           conv=_steer, gui='Antenna: phase step X, Y (deg)', group='antenna', cli=dict(metavar='X[,Y]')),
     Option('board', None, ".kicad_pcb, .gbrjob (Gerber job file; ports from --pos), the <name>_board.json of an "
            "earlier run, or a .toml config that names one", path=True, gui='Board (.kicad_pcb)', group='board',
            cli=dict(flags=['board'], nargs='?')),

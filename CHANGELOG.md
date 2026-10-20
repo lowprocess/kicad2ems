@@ -6,6 +6,23 @@ example `261013-r1`, the first release on 13 October 2026).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-10-20
+
+Release `261020-r1`.
+
+### Added
+- Phased arrays in two dimensions. `grid` places each port in a 2D array: `4x4` puts the ports in order row
+  by row (P1–P4 the top row), or `PORT:COL,ROW` per port (fractional places for an offset lattice).
+  `steer = [X, Y]` (`--steer X,Y`) adds X degrees per column and Y per row on top of `drive`'s phases; without
+  a grid, `steer X` adds X from each driven port to the next. mom25d applies it, and its antenna JSON records
+  the grid.
+- GUI Beam steering in 2D, on the Results page and in the 3D view's *Far field* section: a *Grid* field (the
+  run's to start with), an X step per column and a Y step per row, and a phase map of the elements, each
+  coloured by its phase with its active reflection. Animate sweeps X, Y, or both round a circle (a conical
+  scan). For more than four driven ports the readout gives the active reflections' range and the worst port.
+- Example `array4x4_phased` (`make_antennas.py`, `antenna_array4x4_phased.toml`): sixteen patches 65 mm
+  apart, each with its own feed line and port.
+
 ## 2026-10-19
 
 Releases `261019-r1` (everything up to the KiCad plugin's net runs, with 2026-10-18 and before),

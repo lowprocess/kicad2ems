@@ -77,3 +77,59 @@ def test_save_load(tmp_path):
     d = phased.load(p)
     assert d['ports'] == ['P1', 'P2'] and d['f_pattern'] == data['f_pattern']
     assert np.allclose(d['Eth'], data['Eth'], atol=1e-6)
+
+
+def grid_sources(cols=4, rows=4, d=0.06, f=2.45e9, z0=50.0):
+    """cols x rows isotropic sources d apart, P1..P(cols*rows) row by row: a column along +x, a row along +y."""
+    th, ph = np.arange(0, 91, 1.0), np.arange(0, 361, 2.0)
+    k0 = 2 * np.pi * f / 299792458.0
+    TH, PH = np.meshgrid(np.radians(th), np.radians(ph))
+    u, v = np.sin(TH) * np.cos(PH), np.sin(TH) * np.sin(PH)
+    E = np.array([np.exp(1j * k0 * d * (c * u + r * v)) for r in range(rows) for c in range(cols)])
+    n = cols * rows
+    names = [f'P{i + 1}' for i in range(n)]
+    data = dict(theta=th, phi=ph, theta_sphere=np.arange(0, 181, 1.0), freq=np.array([f]), ports=names,
+                zc=np.full(n, z0), Y=(np.eye(n) / z0)[None].astype(complex), Eth=E[None],
+                Eph=np.zeros_like(E)[None], drive=np.ones(n, complex), f_pattern=f)
+    return data, k0, d
+
+
+def test_parse_and_format_grid():
+    names = [f'P{i + 1}' for i in range(16)]
+    g = phased.parse_grid('4x4', names)
+    assert g['P1'] == (0, 0) and g['P4'] == (3, 0) and g['P5'] == (0, 1) and g['P16'] == (3, 3)
+    assert phased.format_grid(g, names) == '4x4'
+    assert phased.parse_grid('2 x 3', names)['P6'] == (1, 2) and len(phased.parse_grid('2x3', names)) == 6
+    assert phased.parse_grid('', names) is None and phased.parse_grid(None, names) is None
+    e = phased.parse_grid('P1:0,0; P2:1,0  P3:0.5,1', names)                # an offset (triangular) lattice
+    assert e == {'P1': (0, 0), 'P2': (1, 0), 'P3': (0.5, 1)}
+    assert phased.parse_grid(phased.format_grid(e, names), names) == e
+    assert phased.format_grid(phased.parse_grid('P2:0,0 P1:1,0', names), names) == 'P2:0,0 P1:1,0'
+    with pytest.raises(ValueError, match='no port'):
+        phased.parse_grid('P99:0,0', names)
+    with pytest.raises(ValueError, match='expected'):
+        phased.parse_grid('P1:0', names)
+
+
+def test_steer2d_steps_per_column_and_row():
+    names = ['P1', 'P2', 'P3', 'P4', 'P5']
+    g = phased.parse_grid('2x2', names)                              # P5 off the grid: kept as it is
+    a = phased.steer2d([1, 1, 1, 0, 1j], names, g, 30, -45)         # P4 not driven
+    assert np.allclose(np.degrees(np.angle(a[:3])), [0, 30, -45]) and a[3] == 0 and np.isclose(a[4], 1j)
+    assert np.allclose(phased.steer2d([1, 1, 1], names[:3], None, 20, 99), phased.steer([1, 1, 1], 20))
+    a, g = phased.settings_drive(['P1', 'P2', 'P3', 'P4'], names, '2x2', [10, 20])
+    assert np.allclose(np.degrees(np.angle(a[:4])), [0, 10, 20, 30]) and g['P4'] == (1, 1)
+    with pytest.raises(ValueError, match='needs --grid'):
+        phased.settings_drive(['P1', 'P2'], names, None, [10, 20])
+
+
+def test_beam_follows_both_steps_of_a_4x4_array():
+    data, k0, d = grid_sources()
+    g = phased.parse_grid('4x4', data['ports'])
+    assert phased.combine(data, data['drive'])['peak']['theta'] == 0
+    for sx, sy in ((60, 0), (0, -50), (40, 40), (-70, 30)):
+        pk = phased.combine(data, phased.steer2d(data['drive'], data['ports'], g, sx, sy))['peak']
+        th, ph = np.radians(pk['theta']), np.radians(pk['phi'])
+        u, v = np.sin(th) * np.cos(ph), np.sin(th) * np.sin(ph)
+        assert abs(u + np.radians(sx) / (k0 * d)) < 0.04, (sx, sy, pk)   # later columns ahead: the beam to -x
+        assert abs(v + np.radians(sy) / (k0 * d)) < 0.04, (sx, sy, pk)

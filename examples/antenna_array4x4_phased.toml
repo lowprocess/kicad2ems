@@ -1,0 +1,22 @@
+# kicad2ems antenna example: 4 x 4 patch array, a feed line and port per patch, steered in two planes, 2.45 GHz
+# (1.6 mm FR4)
+#   python examples/make_antennas.py array4x4_phased examples/antenna_array4x4_phased
+#   kicad2ems examples/antenna_array4x4_phased.toml       # mom25d: each port's far field, then the drive below
+# grid = "4x4": P1..P16 fill the rows from the top left (or PORT:COL,ROW per port). steer = [X, Y] adds X deg per
+# column and Y deg per row to the drive's phases. The GUI's Results page and 3D view steer it afterwards (Beam
+# steering: X and Y steps, a phase map of the elements, Animate X / Y / Circle), without solving again.
+board   = "antenna_array4x4_phased.kicad_pcb"   # paths are relative to this file
+mode    = "antenna"     # far field: gain, efficiency, patterns
+drive   = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11", "P12", "P13", "P14", "P15", "P16"]
+grid    = "4x4"
+steer   = [30, 0]       # deg per column, per row
+solvers = ["mom25d"]
+fmin    = 2.2           # GHz
+fmax    = 2.7
+points  = 201
+nets    = ["RF", "GND"]
+ground  = "B.Cu"
+out     = "out"
+
+[solver.mom25d]
+dmax    = 3.0           # mm: coarser than the single patch's, 16 patches

@@ -14,6 +14,8 @@ Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad neede
           and quarter-wave transformers), the bottom row's branch half a guided wavelength longer
   array2x2_phased  four of the patch, 70 mm apart, a feed per row (P1 the top row, P2 the bottom one): driven
           with a phase difference (drive = ["P1@0", "P2@60"]) the beam tilts in the yz plane
+  array4x4_phased  sixteen of the patch, 65 mm apart, each with its own feed line and port (P1..P16 row by
+          row): grid = "4x4" and steer = [X, Y] (deg per column, per row) tilt the beam in both planes
 
     python examples/make_antennas.py patch examples/antenna_patch
     python examples/make_antennas.py ifa /tmp/ifa arm=20 s=2.5      # dimensions (mm) as parameters
@@ -220,7 +222,33 @@ def array2x2_phased(path, pw=37.2, pl=28.8, inset=8.8, gap=1.0, wf=3.0, d=70.0, 
     b.write(path, W, H)
 
 
-KINDS = dict(patch=patch, ifa=ifa, dipole=dipole, slot=slot, array2x2=array2x2, array2x2_phased=array2x2_phased)
+def array4x4_phased(path, pw=37.2, pl=28.8, inset=8.8, gap=1.0, wf=3.0, d=65.0, a=8.0, margin=25.0):
+    """4 x 4 array of the inset-fed patch, d mm apart both ways (0.53 lambda0), each patch with a feed line of its
+    own: a 50 ohm line a mm down from its inset and a port at its end (to the ground below), P1..P16 row by row
+    from the top left (grid = "4x4"). Driven all in phase the beam points up; an X step per column and a Y step
+    per row (--steer, or the GUI's Beam steering) tilt it in both planes."""
+    W = H = 3 * d + pw + 2 * margin
+    b = Board(1.6)
+    h = wf / 2
+    x00, y00 = margin + pw / 2, margin + pl / 2                    # the top-left patch's centre (KiCad, y down)
+    for r in range(4):
+        for c in range(4):
+            px, py = x00 + c * d, y00 + r * d
+            x0, y0 = px - pw / 2, py - pl / 2
+            y1 = y0 + pl
+            b.poly([(x0, y0), (x0 + pw, y0), (x0 + pw, y1), (px + h + gap, y1), (px + h + gap, y1 - inset),
+                    (px - h - gap, y1 - inset), (px - h - gap, y1), (x0, y1)])
+            b.rect(px - h, y1 - inset, px + h, y1 + a)               # the feed line, its own port at the end
+            k = 4 * r + c + 1
+            b.port(f'TP{k}', f'P{k}', px, y1 + a - 0.1, 90)
+    if pl + a + 3 > d:
+        raise ValueError("array4x4_phased: a feed line runs into the next row's patch: a larger d or shorter a")
+    b.rect(0, 0, W, H, layer='B.Cu', net=1)
+    b.write(path, W, H)
+
+
+KINDS = dict(patch=patch, ifa=ifa, dipole=dipole, slot=slot, array2x2=array2x2, array2x2_phased=array2x2_phased,
+             array4x4_phased=array4x4_phased)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in KINDS:
