@@ -34,7 +34,7 @@ def boards(tmp_path_factory):
         subprocess.check_call([sys.executable, GEN, str(d / name)] + ([variant] if variant else []),
                               stdout=subprocess.DEVNULL)
         out[name] = str(d / name)
-    for kind in ('patch', 'ifa', 'dipole', 'slot'):
+    for kind in ('patch', 'ifa', 'dipole', 'slot', 'vivaldi'):
         subprocess.check_call([sys.executable, ANT, kind, str(d / kind)], stdout=subprocess.DEVNULL)
         out[kind] = str(d / kind)
     return out

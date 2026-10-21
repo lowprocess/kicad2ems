@@ -1,0 +1,17 @@
+# kicad2ems antenna example: Vivaldi (exponentially tapered slot), microstrip-to-slotline feed, 0.8 mm FR4,
+# endfire off the board's top edge (-y in KiCad), about 3.5-10 GHz
+#   python examples/make_antennas.py vivaldi examples/antenna_vivaldi
+#   kicad2ems examples/antenna_vivaldi.toml --preview
+#   kicad2ems examples/antenna_vivaldi.toml
+board   = "antenna_vivaldi.kicad_pcb"   # paths are relative to this file
+mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+fmin    = 3.0           # GHz
+fmax    = 10.0
+points  = 401
+out     = "out"
+res     = 15            # cells per wavelength at fmax
+curve_res = 2           # the taper is a long curve: the default 6 makes ~9 M cells
+solvers = ["gfdtd"]     # FDTD: the board's outline and edges matter here (mom25d ignores them)
+ff_freq = [4, 6, 8]     # GHz: the pattern is drawn at the first; all three get rows in the gain table
+dump    = ["E@box=-10,-10,0.4,60,72,0.4@4,6,8"]  # mid-substrate plane, out into the air past the aperture
+dump_animate = "gif"

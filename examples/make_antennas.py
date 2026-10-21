@@ -1,5 +1,5 @@
 """
-Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad needed), all for
+Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad needed), all but the vivaldi for
 2.45 GHz on FR4 (er 4.4, tan d 0.02):
 
   patch   inset-fed rectangular patch (37.2 x 28.8 mm) on 1.6 mm FR4, 50 ohm microstrip feed from the
@@ -10,6 +10,8 @@ Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad neede
           port.z0 = 73 ohm)
   slot    52 mm slot in the B.Cu ground plane, fed off-centre by a microstrip crossing it with an
           open quarter-wave stub
+  vivaldi exponentially tapered slot in a B.Cu ground on 0.8 mm FR4 (50 x 70 mm), endfire off the top edge,
+          microstrip-to-slotline feed with a radial stub and a circular slot cavity; wideband, 3-10 GHz
   array2x2  four of the patch, 100 mm apart, from one 50 ohm feed through a corporate network (T junctions
           and quarter-wave transformers), the bottom row's branch half a guided wavelength longer
   array2x2_phased  four of the patch, 70 mm apart, a feed per row (P1 the top row, P2 the bottom one): driven
@@ -247,8 +249,41 @@ def array4x4_phased(path, pw=37.2, pl=28.8, inset=8.8, gap=1.0, wf=3.0, d=65.0, 
     b.write(path, W, H)
 
 
+def vivaldi(path, ap=44.0, lt=40.0, ws=0.3, ls=2.0, rc=3.0, wf=1.5, xf=10.0, rs=4.0, fan=90.0, n=48):
+    """Tapered-slot (Vivaldi) antenna, 50 x 70 mm on 0.8 mm FR4, endfire towards -y (the board's top edge).
+    The slot is cut in the B.Cu ground: an exponential taper lt mm long opening from ws to an ap mm wide
+    aperture at the top edge, then ls mm of ws slotline down to the feed crossing and a circular cavity of
+    radius rc (the slot's open end) below it. A 50 ohm (wf) microstrip on F.Cu comes up from the bottom edge
+    at x = xf, turns and crosses the slot, and ends past it in a radial stub of radius rs, fan degrees wide:
+    the stub and the cavity make the crossing a wideband microstrip-to-slotline balun."""
+    import math
+    W, H = 50.0, 70.0
+    b = Board(0.8)
+    xc, hs = W / 2, ws / 2
+    ys, yx = lt, lt + ls                                         # taper start, feed crossing (KiCad, y down)
+    ycav = yx + rc + 0.5                                         # cavity centre: just below the crossing
+    if ap / 2 > xc - 1 or ycav + rc > H - 10:
+        raise ValueError("vivaldi: keep the aperture and the cavity inside the board")
+    R = math.log((ap / 2) / hs) / lt                             # half-width hs * exp(R * (ys - y))
+    left = [(xc - hs * math.exp(R * (ys - ys * i / n)), ys * i / n) for i in range(n + 1)]   # y 0 -> ys
+    a0 = math.asin(hs / rc)                                       # where the slotline meets the cavity
+    arc = [(xc - rc * math.sin(a), ycav - rc * math.cos(a))      # around the cavity, left side first
+           for a in (a0 + (2 * math.pi - 2 * a0) * k / n for k in range(n + 1))]
+    right = [(2 * xc - x, y) for x, y in reversed(left)]
+    b.poly([(0, 0)] + left + arc + right + [(W, 0), (W, H), (0, H)], layer='B.Cu', net=1)
+    h = wf / 2
+    b.rect(xf - h, yx - h, xf + h, H)                            # up from the bottom edge
+    b.rect(xf - h, yx - h, xc + hs + 0.6, yx + h)                # across the slot
+    xa = xc + hs + 0.6                                           # radial stub apex, just past the slot
+    t = math.radians(fan / 2)
+    b.poly([(xa, yx - h), (xa, yx + h)] +
+           [(xa + rs * math.cos(a), yx + rs * math.sin(a)) for a in (t - 2 * t * k / 24 for k in range(25))])
+    b.port('TP1', 'P1', xf, H - 0.5, 90)
+    b.write(path, W, H)
+
+
 KINDS = dict(patch=patch, ifa=ifa, dipole=dipole, slot=slot, array2x2=array2x2, array2x2_phased=array2x2_phased,
-             array4x4_phased=array4x4_phased)
+             array4x4_phased=array4x4_phased, vivaldi=vivaldi)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in KINDS:

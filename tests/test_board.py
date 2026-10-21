@@ -17,9 +17,10 @@ quiet = lambda *a: None
 # session fixture writes (the config's settings, the fixture's file)
 CONFIGS = ['filter', 'hairpin', 'rf_branchline', 'rf_coupler', 'rf_gcpw', 'rf_steplpf', 'rf_stubnotch', 'rf_wilkinson',
            'sma_launch', 'demo_transition', 'demo_lowpass', 'demo_highpass', 'demo_bandpass', 'antenna_dipole',
-           'antenna_ifa', 'antenna_patch', 'antenna_slot']
+           'antenna_ifa', 'antenna_patch', 'antenna_slot', 'antenna_vivaldi']
 GENERATED = dict(demo_transition='demo', demo_lowpass='lowpass', demo_highpass='highpass', demo_bandpass='bandpass',
-                 antenna_dipole='dipole', antenna_ifa='ifa', antenna_patch='patch', antenna_slot='slot')
+                 antenna_dipole='dipole', antenna_ifa='ifa', antenna_patch='patch', antenna_slot='slot',
+                 antenna_vivaldi='vivaldi')
 EXTRA = dict(diff=dict(ground='B.Cu'), rlc=dict(nets=['RF1', 'RF2', 'GND']),
              launch=dict(nets=['RF', 'GND'], edge_walls='all'))
 
