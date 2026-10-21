@@ -121,6 +121,26 @@ this is exact at every frequency and includes the coupling between the elements.
 accepted by all the driven ports. The log and the JSON give the beam's direction and each driven port's
 *active reflection*: what it sees with its neighbours driven too, which changes as the beam is steered.
 
+For a 2D array, `grid` says where each port sits and `steer` adds a phase step per column and per row:
+
+```bash
+kicad2ems examples/antenna_array4x4_phased.toml                     # grid = "4x4", steer = [30, 0]
+kicad2ems examples/antenna_array4x4_phased.toml --steer 30,-45      # 30 deg per column, -45 deg per row
+kicad2ems board.toml --grid "P1:0,0 P2:1,0 P3:0,1 P4:1,1" --steer 0,60
+```
+
+`grid` is `COLSxROWS` (the ports in order fill the rows, top row first: `4x4` for P1..P16) or
+`PORT:COL,ROW` per port, separated by spaces (fractional places for an offset lattice). An element at
+column *c*, row *r* gets *c*·X + *r*·Y more phase on top of its `drive` phase. Without a grid, `steer X`
+adds X from each driven port to the next.
+
+`taper` multiplies an amplitude taper into the drive for lower sidelobes: `taylor`, `chebyshev` or
+`cosine`, with `:SLL` for the level in dB (Taylor and Chebyshev; default 25), e.g. `--taper taylor:25`.
+On a grid it is a column weight times a row weight. On the 4×4 example at 2.45 GHz, uniform drive gives
+sidelobes of −14 dB (xz) and −13 dB (yz) at 14.3 dBi. With `taylor:25` they drop to −28 and −25 dB at
+13.4 dBi. With `chebyshev:25` they reach −30 and −27 dB at 13.3 dBi. On only four elements a sampled
+Taylor falls a dB or two short of its level, where Chebyshev holds it exactly.
+
 Each port's far field is kept in `<name>_mom25d_array.npz`. The GUI's Results page uses it to steer the
 beam without solving again ([Beam steering](gui.md#beam-steering)).
 

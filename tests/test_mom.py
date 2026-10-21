@@ -139,6 +139,29 @@ def test_phased_array(run_cli, tmp_path):
     assert phased.combine(data, [1, 1])['peak']['theta'] <= 5
 
 
+def test_phased_array_grid_steer_taper(run_cli, tmp_path):
+    """The same array placed as a 1 x 2 grid (--grid), steered by a Y step (--steer 0,60) with a taper (--taper:
+    two rows, so uniform): the drive P2 60 deg behind P1 again, and the run's base drive, grid, taper and steps
+    recorded for the GUI's Reset (the grid in its short form, 1x2)."""
+    pytest.importorskip('triangle')
+    import subprocess, sys
+    ex = os.path.join(os.path.dirname(FILTER), 'make_antennas.py')
+    subprocess.check_call([sys.executable, ex, 'array2x2_phased', str(tmp_path / 'arr')], stdout=subprocess.DEVNULL)
+    out = tmp_path / 'out'
+    code, so, err = run_cli(tmp_path / 'arr.kicad_pcb', '--mode', 'antenna', '--drive', 'P1,P2', '--grid',
+                            'P1:0,0 P2:0,1', '--steer', '0,60', '--taper', 'taylor:30', '--fmin', '2.3', '--fmax',
+                            '2.6', '--points', '61', '--solvers', 'mom', '--mom-dmax', '3', '--mom-solves', '12',
+                            '--out', out)
+    assert code == 0, so + err
+    res = json.loads((out / 'arr_mom25d_antenna.json').read_text())
+    assert res['drive'] == ['P1@0', 'P2@60'] and res['drive_base'] == ['P1@0', 'P2@0']
+    assert res['grid'] == '1x2' and res['taper'] == 'taylor:30' and res['steer'] == [0.0, 60.0]
+    assert 5 <= res['peak']['theta'] <= 25 and res['peak']['phi'] == 90
+    code, so, err = run_cli(tmp_path / 'arr.kicad_pcb', '--mode', 'antenna', '--drive', 'P1,P2', '--steer', '0,60',
+                            '--solvers', 'mom', '--preview', '--out', tmp_path / 'bad')
+    assert code != 0 and 'needs grid' in so + err
+
+
 def test_stop_ends_mom25d_after_its_current_solve(run_cli, tmp_path, monkeypatch):
     """The GUI's Stop (a STOP file, kicad2ems.stop): mom25d ends after the frequency it is solving, with no
     result; the line model (the --fast reference) still gives its. ABORT alone had left mom25d running."""

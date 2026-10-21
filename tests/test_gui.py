@@ -927,3 +927,77 @@ def test_new_page_docks_into_an_older_layout(monkeypatch, tmp_path):
     w.setup.dirty = False
     w.close()
     QSettings('kicad2ems', 'gui').clear()
+
+
+def test_beam_steering_bar_2d(tmp_path, monkeypatch):
+    """A 4 x 4 array with a feed per element: the run's grid fills the Grid field, an X step per column and a Y step
+    per row steer the beam in two planes, the phase map shows each element, Circle animates both, the 3D view's
+    bar follows; a bad grid is shown, an empty one goes back to a line of ports."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
+    from kicad2ems import phased
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
+    from test_phased import grid_sources
+    app = application()
+    data, k0, d = grid_sources()
+    phased.save(tmp_path / 'a_mom25d_array.npz', **data)
+    c = phased.combine(data, data['drive'])
+    np.savez_compressed(tmp_path / 'a_mom25d_sphere.npz', **c['sphere'])
+    drive = phased.format_drive(data['drive'], data['ports'])
+    res = dict(match=dict(f_res=2.45e9, s11_db=-20.0, zin=[50.0, 0.0], bw10=None), rows=c['rows'],
+               f_pattern=2.45e9, port=', '.join(drive), solver='mom25d', sphere_file='a_mom25d_sphere.npz',
+               array_file='a_mom25d_array.npz', drive=drive, grid='4x4', peak=c['peak'])
+    (tmp_path / 'a_mom25d_antenna.json').write_text(json.dumps(res))
+    w = MainWindow()
+    assert w.results.load_antenna(str(tmp_path))
+    bar = w.results.steer
+    assert bar.grid.text() == '4x4' and bar.spin_y.isVisibleTo(bar) and bar.map.isVisibleTo(bar)
+    assert len(bar.map.cells) == 16 and bar.map.cells[5][:3] == (1, 1, 'P6')
+    got = []
+    bar.steered.connect(lambda r, s: got.append(r))
+    bar.spin.setValue(40)
+    bar.spin_y.setValue(-40)
+    r = got[-1]
+    assert r['grid'] == '4x4' and 'P6@0' in r['drive'] and 'P2@40' in r['drive'] and 'P5@-40' in r['drive']
+    th, ph = np.radians(r['peak']['theta']), np.radians(r['peak']['phi'])
+    assert abs(np.sin(th) * np.cos(ph) + np.radians(40) / (k0 * d)) < 0.05
+    assert abs(np.sin(th) * np.sin(ph) - np.radians(40) / (k0 * d)) < 0.05
+    assert abs({c[2]: c[3] for c in bar.map.cells}['P16']) < 1e-6   # 3 x 40 - 3 x 40
+    assert 'worst' in bar.readout.text()                             # 16 active reflections: the range
+    vb = getattr(w.volume, 'steer', None)
+    if vb is not None:
+        assert vb.grid.text() == '4x4' and vb.spin_y.value() == -40
+        vb.spin_y.setValue(20)
+        assert bar.spin_y.value() == 20
+    bar.anim_mode.setCurrentIndex(2)                                 # Circle: both steps round
+    bar.anim.setChecked(True)
+    x0, y0 = bar.spin.value(), bar.spin_y.value()
+    for _ in range(10):
+        bar._frame()
+    assert (bar.spin.value(), bar.spin_y.value()) != (x0, y0)
+    assert abs(np.hypot(bar.spin.value(), bar.spin_y.value()) - np.hypot(x0, y0)) < 2
+    bar.anim.setChecked(False)
+    bar.grid.setText('P1:0')
+    bar.update()
+    assert 'expected' in bar.readout.text()
+    bar.grid.setText('')
+    bar.update()
+    assert not bar.spin_y.isVisibleTo(bar) and bar.label_x.text() == 'Phase step' and 'grid' not in got[-1]
+    bar.reset.click()
+    assert bar.grid.text() == '4x4' and bar.spin.value() == 0 and bar.spin_y.value() == 0
+    bar.taper.setCurrentIndex(1)                                     # Taylor: the corners weakest
+    assert bar.sll.isEnabled() and bar.taper_spec() == 'taylor:25'
+    r = got[-1]
+    amps = {c[2]: c[5] for c in bar.map.cells}
+    assert amps['P1'] < amps['P2'] < 1 and amps['P6'] == pytest.approx(1) and 'Taylor' in bar.readout.text()
+    assert 'P1=0.' in ', '.join(r['drive']) and r['peak']['gain_dbi'] < res['peak']['gain_dbi']
+    if vb is not None:
+        assert vb.taper_spec() == 'taylor:25'
+    bar.taper.setCurrentIndex(3)                                     # cosine: no level to set
+    assert not bar.sll.isEnabled() and bar.taper_spec() == 'cosine'
+    bar.set_data(dict(res, drive_base=drive, taper='chebyshev:30', steer=[20.0, -10.0]), bar.data)
+    assert bar.taper_spec() == 'chebyshev:30' and (bar.spin.value(), bar.spin_y.value()) == (20, -10)
+    assert bar.drive.text() == ', '.join(drive)                      # the run's untapered drive, not tapered twice

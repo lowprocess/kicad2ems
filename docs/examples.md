@@ -25,7 +25,7 @@ kicad2ems examples/demo_transition.toml
 | `launch` | a 4-layer edge launch with a grounded-CPW feed | none: `--nets RF,GND --fmin 1 --fmax 6` |
 
 `make_antennas.py KIND OUT [param=mm …]` makes antennas for 2.45 GHz: `patch`, `ifa`, `dipole`, `slot`,
-`array2x2` and `array2x2_phased`, each with a config `antenna_<kind>.toml`. Dimensions can be changed on the command line,
+`array2x2`, `array2x2_phased` and `array4x4_phased`, each with a config `antenna_<kind>.toml`. Dimensions can be changed on the command line,
 for example `make_antennas.py ifa out arm=19`.
 
 <a id="rf-structures"></a>

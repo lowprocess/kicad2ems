@@ -208,12 +208,25 @@ then a sum of those fields, recombined at once without solving again:
 
 - **Drive**: `PORT[=amplitude][@phase]` per driven port, the run's to start with. Ports not named are
   terminated.
-- **Phase step**: added from each driven port to the next, on top of the drive's phases. The beam tilts
-  across the ports.
-- **Animate** sweeps the phase step back and forth over ±180°; **Reset** goes back to the run's drive.
+- **Grid**: where each port sits in a 2D array, the run's `grid` to start with. `4x4` places the ports
+  in order row by row (P1–P4 the top row); `P1:0,0 P2:1,0 P3:0,1 ...` places each one (fractional places
+  for an offset lattice). Empty: the ports form a line.
+- **Phase step** (no grid): added from each driven port to the next, on top of the drive's phases. The beam
+  tilts across the ports.
+- **X step**, **Y step** (with a grid): X added per column, Y per row, so an element at column *c*, row *r*
+  gets *c*·X + *r*·Y more phase. The beam tilts in both planes. A **phase map** shows the elements as the
+  grid lays them out, each coloured by its phase, with its port, phase and active reflection.
+- **Taper**: an amplitude taper multiplied into the drive, for lower sidelobes at the cost of a wider beam
+  and some gain. **Taylor** keeps the sidelobes next to the main beam near the level set; **Chebyshev**
+  holds all of them at it; **cosine** has no level to set. With a grid it is a column weight times a row
+  weight; without one, it runs across the driven ports. With a taper, the phase map adds each element's
+  amplitude (×, relative to the largest; paler for weaker ones).
+- **Animate** sweeps the phase step back and forth over ±180°; with a grid it sweeps **X**, **Y**, or
+  both round a **Circle** (a conical scan at the steps' current size, 90° when they are zero). **Reset**
+  goes back to the run's drive, grid, taper and steps.
 
 The line below gives the beam's direction, its gain and realized gain, and each driven port's active
-reflection. The gain and efficiency plots, the far-field cuts and the Viewer's 3D pattern follow the
+reflection (for more than four ports, their range and the worst). The gain and efficiency plots, the far-field cuts and the Viewer's 3D pattern follow the
 steering. The Viewer's 3D view has the same controls in its *Far field* section; the two stay in step, so
 the beam can be steered or animated from either.
 
