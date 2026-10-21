@@ -1,0 +1,206 @@
+"""
+Validation with kicad2ems: runs the written board through its solvers, reads the Touchstone results,
+measures the band edges and compares them with the spec and the line model. em_tune() feeds the
+measured centre / bandwidth error back into the design's kf / kb and re-runs.
+"""
+import json
+import math
+import os
+import shutil
+import subprocess
+import sys
+
+import numpy as np
+
+from .calibrate import edges, errors, targets, band, model_response
+from .circuit import db
+
+
+def read_touchstone(path):
+    """(f Hz, S (nf, n, n) complex) from a .sNp file."""
+    n = int(os.path.splitext(path)[1][2:-1])
+    unit, fmt, vals = 1e9, 'MA', []
+    mult = {'HZ': 1, 'KHZ': 1e3, 'MHZ': 1e6, 'GHZ': 1e9}
+    with open(path) as fh:
+        for line in fh:
+            line = line.split('!')[0].strip()
+            if not line:
+                continue
+            if line.startswith('#'):
+                tok = line[1:].upper().split()
+                for t in tok:
+                    if t in mult:
+                        unit = mult[t]
+                    if t in ('MA', 'DB', 'RI'):
+                        fmt = t
+                continue
+            vals += [float(v) for v in line.split()]
+    rec = 1 + 2 * n * n
+    a = np.array(vals).reshape(-1, rec)
+    f = a[:, 0] * unit
+    p, q = a[:, 1::2], a[:, 2::2]
+    if fmt == 'RI':
+        s = p + 1j * q
+    elif fmt == 'DB':
+        s = 10 ** (p / 20) * np.exp(1j * np.radians(q))
+    else:
+        s = p * np.exp(1j * np.radians(q))
+    s = s.reshape(-1, n, n)
+    if n == 2:                                   # 2-port files list S11 S21 S12 S22
+        s = s.transpose(0, 2, 1)
+    return f, s
+
+
+def kicad2ems_exe():
+    exe = shutil.which('kicad2ems')
+    if exe:
+        return [exe]
+    try:
+        import kicad2ems  # noqa: F401
+        return [sys.executable, '-m', 'kicad2ems.cli']
+    except ImportError:
+        return None
+
+
+def run_kicad2ems(toml, outdir, solvers='mom,lines', extra=(), log=print):
+    """Runs kicad2ems; returns {solver name: .s2p path}."""
+    exe = kicad2ems_exe()
+    if exe is None:
+        raise RuntimeError("kicad2ems is not installed in this Python (pip install -e <kicad2ems checkout>)")
+    cmd = exe + [toml, '--solvers', solvers, '--out', outdir, '--no-report'] + list(extra)
+    log('  $ ' + ' '.join(cmd))
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if p.returncode:
+        raise RuntimeError(f"kicad2ems failed ({p.returncode}):\n{p.stdout[-3000:]}\n{p.stderr[-3000:]}")
+    for line in p.stdout.splitlines():
+        if '->' in line or line.startswith(('mom25d:', 'estimate')):
+            log('  ' + line.strip())
+    base = os.path.splitext(os.path.basename(toml))[0]
+    out = {}
+    for name in sorted(os.listdir(outdir)):
+        if name.startswith(base + '_') and name.endswith('.s2p'):
+            out[name[len(base) + 1:-4]] = os.path.join(outdir, name)
+    return out
+
+
+def metrics(design, f, s21, s11=None, relative=True):
+    """Band edges, centre and bandwidth errors, pass-band loss / match of a response."""
+    spec = design.spec
+    y = db(s21)
+    e = edges(spec, f, y, relative=relative)
+    ef, eb = errors(spec, e)
+    kind, f0, fbw = band(spec)
+    m = {'edges_GHz': {k: (float(v) / 1e9 if v else None) for k, v in e.items()},
+         'centre_error_pct': None if ef is None else float(100 * (ef - 1)),
+         'bandwidth_error_pct': None if eb is None else float(100 * (eb - 1))}
+    if kind == 'lowpass':
+        pb = f <= f0
+    elif kind == 'bandpass':
+        pb = abs(f / f0 - 1) <= fbw / 2
+    else:
+        pb = (f <= f0 * (1 - fbw)) | (f >= f0 * (1 + fbw))
+    if np.any(pb):
+        m['passband_IL_dB'] = float(-y[pb].max())
+        m['passband_IL_worst_dB'] = float(-y[pb].min())
+        if s11 is not None:
+            m['passband_RL_worst_dB'] = float(-db(s11)[pb].max())
+    if kind == 'bandstop':
+        sb = abs(f / f0 - 1) <= fbw / 4
+        if np.any(sb):
+            m['stopband_rejection_dB'] = float(-y[sb].max())
+    return m
+
+
+def plot(design, results, path, title=''):
+    """S21 / S11 of the line model and of each EM result, with the target edges."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(10, 5.6))
+    t = targets(design.spec)
+    colors = ['#1f77b4', '#d62728', '#2ca02c', '#9467bd', '#ff7f0e']
+    for i, (name, (f, s21, s11)) in enumerate(results.items()):
+        c = colors[i % len(colors)]
+        ls = '--' if name.startswith('model') else '-'
+        ax.plot(f / 1e9, db(s21), ls, color=c, lw=1.6, label=f'{name} S21')
+        if s11 is not None:
+            ax.plot(f / 1e9, db(s11), ls, color=c, lw=0.9, alpha=0.6, label=f'{name} S11')
+    for k, v in t.items():
+        ax.axvline(v / 1e9, color='k', lw=0.8, ls=':')
+    ax.axhline(-3, color='k', lw=0.6, ls=':')
+    ax.set_ylim(-60, 2)
+    ax.set_xlabel('frequency (GHz)')
+    ax.set_ylabel('dB')
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=8, ncol=2, loc='lower left')
+    ax.set_title(title or f'{design.spec.kind} / {design.spec.topology}: dotted lines = target -3 dB edges')
+    fig.tight_layout()
+    fig.savefig(path, dpi=120)
+    plt.close(fig)
+
+
+def validate(design, base, solvers='mom,lines', extra=(), log=print, tag=''):
+    """Runs kicad2ems on <base>.toml; returns ({name: metrics}, {name: (f, s21, s11)})."""
+    outdir = base + '_em' + tag
+    os.makedirs(outdir, exist_ok=True)
+    files = run_kicad2ems(base + '.toml', outdir, solvers, extra, log)
+    results, mets = {}, {}
+    f_em = None
+    for name, path in files.items():
+        f, s = read_touchstone(path)
+        f_em = f
+        results[name] = (f, s[:, 1, 0], s[:, 0, 0])
+    if f_em is None:
+        raise RuntimeError(f"kicad2ems wrote no S-parameters in {outdir}")
+    s11, s21 = model_response(design, f_em)
+    model = {'model (dfsynth)': (f_em, s21, s11)}
+    if design.sub.t > 0:
+        # kicad2ems's solvers treat the copper as infinitely thin: this is the model of what they solve
+        s11, s21 = model_response(design, f_em, sub=design.sub.with_(t=0.0))
+        model[MODEL0] = (f_em, s21, s11)
+    results = {**model, **results}
+    for name, (f, s21, s11) in results.items():
+        mets[name] = metrics(design, f, s21, s11)
+    return mets, results
+
+
+MODEL0 = 'model (t=0)'
+
+
+def tune_ratios(mets, fw):
+    """(centre ratio, bandwidth ratio) of the full-wave result fw over the zero-thickness line model (the
+    model of what the solver sees): the part of the error the line model does not explain."""
+    ref = mets.get(MODEL0) or mets['model (dfsynth)']
+    a, b = mets[fw]['edges_GHz'], ref['edges_GHz']
+    if 'fc' in a:
+        return (a['fc'] / b['fc'] if a['fc'] and b['fc'] else None), None
+    if not all((a['f1'], a['f2'], b['f1'], b['f2'])):
+        return None, None
+    return math.sqrt(a['f1'] * a['f2'] / (b['f1'] * b['f2'])), (a['f2'] - a['f1']) / (b['f2'] - b['f1'])
+
+
+def predicted(mets, fw):
+    """(centre %, bandwidth %) error vs the spec expected of the real board: the line model's own error (with
+    the copper thickness) times the full-wave result's ratio over the zero-thickness model."""
+    rc, rb = tune_ratios(mets, fw)
+    m = mets['model (dfsynth)']
+    if rc is None or m['centre_error_pct'] is None:
+        return None
+    c = 100 * ((1 + m['centre_error_pct'] / 100) * rc - 1)
+    b = None
+    if rb is not None and m['bandwidth_error_pct'] is not None:
+        b = 100 * ((1 + m['bandwidth_error_pct'] / 100) * rb - 1)
+    return c, b
+
+
+def full_wave(mets):
+    """The first full-wave result's name (mom25d / openems / gfdtd / emerge / mixed), else None."""
+    for k in mets:
+        if k in ('mom25d', 'openems', 'gfdtd', 'emerge', 'mixed'):
+            return k
+    return None
+
+
+def save_json(path, obj):
+    with open(path, 'w') as fh:
+        json.dump(obj, fh, indent=2, default=lambda o: float(o) if isinstance(o, np.floating) else str(o))
