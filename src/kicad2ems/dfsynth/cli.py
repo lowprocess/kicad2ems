@@ -20,7 +20,7 @@ import numpy as np
 from . import __version__
 from .microstrip import Substrate, PRESETS
 from .prototype import estimate_order, RESPONSES
-from .topologies import FabViolation, violations, Spec, KINDS, build, prepare
+from .topologies import FabViolation, violations, Spec, KINDS, build, prepare, VIA_DRILL, VIA_SIZE
 from .calibrate import calibrate, targets, sweep, model_response, band, edges, errors, space_map
 from .circuit import db, sparams
 from . import kicad, validate as val
@@ -139,7 +139,11 @@ def design_json(design, extra=None):
         'spec': asdict(sp), 'substrate': asdict(design.sub), 'kf': design.kf, 'kb': design.kb,
         'g': design.g, 'targets_GHz': {k: v / 1e9 for k, v in targets(sp).items()},
         'elements': [dict(zip(('name', 'z_ohm', 'width_mm', 'length_mm', 'gap_mm'), r)) for r in design.rows],
-        'board_mm': [design.geometry.W, design.geometry.H], 'notes': design.notes, **(extra or {}),
+        'board_mm': [design.geometry.W, design.geometry.H], 'notes': design.notes,
+        # the layout as drawn (mm, KiCad's y down): copper polygons, ground vias, port markers
+        'geometry': {'polys': design.geometry.polys, 'vias': design.geometry.vias, 'ports': design.geometry.ports,
+                     'via_mm': [VIA_DRILL, VIA_SIZE]},
+        **(extra or {}),
     }
 
 

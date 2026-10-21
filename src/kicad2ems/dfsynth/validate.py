@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 import numpy as np
 
@@ -67,14 +68,27 @@ def run_kicad2ems(toml, outdir, solvers='mom,lines', extra=(), log=print):
     exe = kicad2ems_exe()
     if exe is None:
         raise RuntimeError("kicad2ems is not installed in this Python (pip install -e <kicad2ems checkout>)")
-    cmd = exe + [toml, '--solvers', solvers, '--out', outdir, '--no-report'] + list(extra)
+    events = os.path.join(outdir, 'kicad2ems_events.jsonl')
+    out_log = os.path.join(outdir, 'kicad2ems_output.log')
+    cmd = exe + [toml, '--solvers', solvers, '--out', outdir, '--no-report', '--events', events] + list(extra)
     log('  $ ' + ' '.join(cmd))
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    if os.path.exists(events):
+        os.remove(events)
+    follow = Follow(events, log)
+    with open(out_log, 'w') as fh:                     # its output to a file (no pipe to fill), its events followed
+        p = subprocess.Popen(cmd, stdout=fh, stderr=subprocess.STDOUT, text=True)
+        try:
+            while p.poll() is None:
+                follow.read()
+                time.sleep(0.5)
+        except BaseException:                          # dfsynth stopped: the solver too
+            p.kill()
+            raise
+    follow.read()
     if p.returncode:
-        raise RuntimeError(f"kicad2ems failed ({p.returncode}):\n{p.stdout[-3000:]}\n{p.stderr[-3000:]}")
-    for line in p.stdout.splitlines():
-        if '->' in line or line.startswith(('mom25d:', 'estimate')):
-            log('  ' + line.strip())
+        with open(out_log, errors='replace') as fh:
+            tail = fh.read()[-3000:]
+        raise RuntimeError(f"kicad2ems failed ({p.returncode}):\n{tail}")
     base = os.path.splitext(os.path.basename(toml))[0]
     out = {}
     for name in sorted(os.listdir(outdir)):
@@ -156,6 +170,62 @@ def plot(design, results, path, title=''):
     fig.tight_layout()
     fig.savefig(path, dpi=120)
     plt.close(fig)
+
+
+class Follow:
+    """Follows a kicad2ems run's events (--events, JSON lines) into the log as it runs: its messages, and its
+    progress every few seconds (an FDTD run: the timestep and the energy left; a frequency sweep: the
+    frequencies done)."""
+
+    EVERY = 10.0                                       # s between progress lines of a run
+
+    def __init__(self, path, log=print):
+        self.path, self.log, self.pos, self.last = path, log, 0, {}
+
+    def read(self):
+        try:
+            with open(self.path, 'rb') as fh:
+                fh.seek(self.pos)
+                chunk = fh.read()
+        except OSError:
+            return
+        cut = chunk.rfind(b'\n') + 1
+        self.pos += cut
+        for line in chunk[:cut].decode('utf-8', 'replace').splitlines():
+            try:
+                self.event(json.loads(line))
+            except ValueError:
+                pass
+
+    def event(self, e):
+        kind = e.get('kind')
+        if kind == 'log':
+            for line in str(e.get('text', '')).splitlines():
+                self.log('    ' + line)
+        elif kind == 'stage' and e.get('name') == 'solve':
+            self.log('    solving...')
+        elif kind == 'status':
+            text = self.progress(e)
+            run = e.get('run', '')
+            if text and (e.get('fraction') == 1.0 or e['t'] - self.last.get(run, -1e9) >= self.EVERY):
+                self.last[run] = e['t']
+                self.log(f"    {run}: {text}")
+
+    @staticmethod
+    def progress(e):
+        t = f"{e['t']:.0f} s"
+        if e.get('solves') is not None and e.get('fraction') is not None:      # a frequency sweep
+            s = f"{100 * e['fraction']:.0f}% ({e['solves']} frequencies"
+            s += f", {e['f_ghz']:.3f} GHz)" if e.get('f_ghz') is not None else ')'
+            if e.get('eta'):
+                s += f", about {e['eta']:.0f} s left"
+            return s + f", {t}"
+        if e.get('step') is not None:                                          # FDTD: the energy decaying
+            s = f"step {e['step']}"
+            if e.get('db') is not None:
+                s += f", energy {e['db']:.1f} dB"
+            return s + f", {t}"
+        return None
 
 
 def validate(design, base, solvers='mom,lines', extra=(), log=print, tag=''):

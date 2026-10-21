@@ -208,3 +208,26 @@ def test_toml_uses_pml(tmp_path):
     d = build(Spec('bandpass', 'coupled', 5e9, 0.5e9), Substrate.preset('RO4003C-0.813'))
     _, cfg = kicad.write(d, str(tmp_path / 'c'))
     assert 'bc      = "PML_8"' in open(cfg).read()
+
+
+def test_validation_follows_the_run(tmp_path):
+    """A kicad2ems run's events reach the log as it runs: its messages, its progress every few seconds."""
+    import json
+    from dfsynth.validate import Follow
+    path = tmp_path / 'events.jsonl'
+    ev = [dict(t=0.1, kind='log', text='gfdtd: 1.6 M cells\n  two lines'), dict(t=0.2, kind='stage', name='solve'),
+          dict(t=1.0, kind='status', run='P1', step=100, db=-0.0),
+          dict(t=5.0, kind='status', run='P1', step=500, db=-2.0),            # within 10 s of the last: quiet
+          dict(t=12.0, kind='status', run='P1', step=1200, db=-21.3),
+          dict(t=13.0, kind='status', run='mom25d', fraction=0.4, solves=24, f_ghz=2.4, eta=30),
+          dict(t=14.0, kind='file', label='x', path='y')]
+    out = []
+    f = Follow(str(path), out.append)
+    path.write_text(''.join(json.dumps(e) + '\n' for e in ev[:3]) + '{"t": 4, "kind": "lo')   # half a line
+    f.read()
+    assert out == ['    gfdtd: 1.6 M cells', '      two lines', '    solving...', '    P1: step 100, energy -0.0 dB, 1 s']
+    path.write_text(''.join(json.dumps(e) + '\n' for e in ev[:3]) + ''.join(json.dumps(e) + '\n' for e in ev[3:]))
+    f.pos = len(''.join(json.dumps(e) + '\n' for e in ev[:3]))
+    f.read()
+    assert out[4:] == ['    P1: step 1200, energy -21.3 dB, 12 s',
+                       '    mom25d: 40% (24 frequencies, 2.400 GHz), about 30 s left, 13 s']
