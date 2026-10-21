@@ -96,7 +96,7 @@ def main():
                        peak_gb=int(m.group(2)) / 1e6 if m else None, **parse(log, name))
             if p.returncode:
                 row['error'] = next((l.strip() for l in reversed(log.splitlines()) if l.strip() and not l.startswith('TIME')), '')[-160:]
-            results.setdefault(cfg, {})[name] = row
+            results.setdefault(cfg, {})[name] = row                # ('suspect': a note added by hand, plotted)
             json.dump(results, open(path, 'w'), indent=1)
             print(f"{cfg:22s} {name:11s} {row['seconds']:7.1f} s {row['peak_gb'] or 0:5.2f} GB "
                   f"{'' if not p.returncode else 'FAILED: ' + row.get('error', '')}", flush=True)
@@ -110,7 +110,7 @@ COLOURS = {'openems': '#1f77b4', 'gfdtd GPU': '#d62728', 'gfdtd CPU': '#ff9896',
 
 
 def plot(results, configs=None, path=os.path.join(OUT, 'results.png')):
-    """Run time (log scale) and peak RAM of each solver on each example: grouped bars, n/a where a solver
+    """Run time and peak RAM of each solver on each example: grouped bars, n/a where a solver
     can't model the board."""
     import matplotlib
     matplotlib.use('Agg')
@@ -121,6 +121,9 @@ def plot(results, configs=None, path=os.path.join(OUT, 'results.png')):
     fig, (ax_t, ax_m) = plt.subplots(2, 1, figsize=(max(9, 1.5 * len(cfgs)), 9), sharex=True)
     x = np.arange(len(cfgs))
     w = 0.8 / len(names)
+    t_cap, tmax = _cut(results, cfgs, 'seconds')
+    cap, _ = _cut(results, cfgs, 'peak_gb')
+    t_top = t_cap or 1.1 * tmax
     for i, n in enumerate(names):
         xs = x - 0.4 + w * (i + 0.5)
         for j, c in enumerate(cfgs):
@@ -128,30 +131,61 @@ def plot(results, configs=None, path=os.path.join(OUT, 'results.png')):
             if r is None:
                 continue
             if r['code']:
-                ax_t.text(xs[j], 0.35, 'n/a', rotation=90, ha='center', va='bottom', fontsize=7, color='#888')
+                ax_t.text(xs[j], t_top * 0.01, 'n/a', rotation=90, ha='center', va='bottom', fontsize=7, color='#888')
                 continue
-            ax_t.bar(xs[j], r['seconds'], w, color=COLOURS[n], label=n if j == 0 or n not in
-                     ax_t.get_legend_handles_labels()[1] else None)
-            ax_t.text(xs[j], r['seconds'] * 1.08, f"{r['seconds']:.0f}", ha='center', va='bottom', fontsize=6,
-                      rotation=90)
+            odd = bool(r.get('suspect'))                                 # a result not to take at face value
+            t = r['seconds']
+            ax_t.bar(xs[j], min(t, t_cap) if t_cap else t, w, color=COLOURS[n], hatch='///' if odd else None,
+                     edgecolor='k' if odd else None, label=n if n not in ax_t.get_legend_handles_labels()[1] else None)
+            if t_cap and t > t_cap:
+                _cut_off(ax_t, xs[j], w, t_cap, f"{t:.0f} s" + ('*' if odd else ''))
+            else:
+                ax_t.text(xs[j], t + t_top * 0.01, f"{t:.0f}" + ('*' if odd else ''), ha='center', va='bottom',
+                          fontsize=6, rotation=90)
             if r.get('peak_gb') is not None:
-                ax_m.bar(xs[j], r['peak_gb'], w, color=COLOURS[n])
-    ax_t.set_yscale('log')
-    ax_t.set_ylim(0.3, 4 * max(r['seconds'] for c in cfgs for r in results[c].values() if not r['code']))
-    ax_t.set_ylabel('wall time (s, log scale)')
+                gb = r['peak_gb']
+                ax_m.bar(xs[j], min(gb, cap) if cap else gb, w, color=COLOURS[n])
+                if cap and gb > cap:
+                    _cut_off(ax_m, xs[j], w, cap, f"{gb:.1f} GB")
+    ax_t.set_ylim(0, t_top)
+    ax_t.set_ylabel('wall time (s)' + (', the tallest cut off' if t_cap else ''))
     ax_t.set_title('kicad2ems solvers: run time and peak memory per example', pad=24)
-    ax_t.grid(axis='y', which='both', alpha=0.25)
+    ax_t.grid(axis='y', alpha=0.25)
     h, l = ax_t.get_legend_handles_labels()
     order = sorted(range(len(l)), key=lambda k: NAMES.index(l[k]))
     ax_t.legend([h[k] for k in order], [l[k] for k in order], ncol=len(names), fontsize=8, loc='lower center',
                 bbox_to_anchor=(0.5, 1.0), frameon=False)
-    ax_m.set_ylabel('peak RAM (GB)')
+    ax_m.set_ylabel('peak RAM (GB)' + (', the tallest cut off' if cap else ''))
+    if cap:
+        ax_m.set_ylim(0, cap)
     ax_m.grid(axis='y', alpha=0.25)
     ax_m.set_xticks(x, cfgs, rotation=30, ha='right')
-    fig.tight_layout()
+    odd = {}                                                         # note -> the bars it is about
+    for c in cfgs:
+        for n in names:
+            if results[c].get(n, {}).get('suspect'):
+                odd.setdefault((c, results[c][n]['suspect']), []).append(n)
+    notes = [f"{', '.join(ns)} on {c}: {note}" for (c, note), ns in sorted(odd.items())]
+    if notes:
+        fig.text(0.01, 0.005, '* hatched: ' + '; '.join(notes), fontsize=7, va='bottom')
+    fig.tight_layout(rect=(0, 0.03 if notes else 0, 1, 1))
     fig.savefig(path, dpi=130)
     plt.close(fig)
     return path
+
+
+def _cut(results, cfgs, key):
+    """(where to cut the axis, the largest value): an example far above the rest (mom25d on a board with ground
+    planes) is cut off at the top and its value written instead, so the others stay readable; None: no cut."""
+    top = sorted(max([r[key] for r in results[c].values() if r.get(key) is not None and not r['code']] or [0])
+                 for c in cfgs)
+    return (1.25 * top[-2] if len(top) > 1 and top[-1] > 2.5 * top[-2] else None), top[-1]
+
+
+def _cut_off(ax, x, w, cap, label):
+    """A bar cut off at the top of the axis: a break across it and its value written on it."""
+    ax.text(x, cap * 0.97, label, rotation=90, ha='center', va='top', fontsize=7, color='white', fontweight='bold')
+    ax.plot([x - w / 2, x + w / 2], [cap * 0.985, cap * 1.015], color='white', lw=2.5, clip_on=False)
 
 
 def write_md(results):
