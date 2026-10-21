@@ -20,8 +20,8 @@ import numpy as np
 from . import __version__
 from .microstrip import Substrate, PRESETS
 from .prototype import estimate_order, RESPONSES
-from .topologies import Spec, KINDS, build, prepare
-from .calibrate import calibrate, targets, sweep, model_response, band, edges, errors
+from .topologies import FabViolation, violations, Spec, KINDS, build, prepare
+from .calibrate import calibrate, targets, sweep, model_response, band, edges, errors, space_map
 from .circuit import db, sparams
 from . import kicad, validate as val
 
@@ -57,7 +57,8 @@ def parser():
     g.add_argument('--z0', type=float, default=50.0, help='port impedance (default 50)')
     g.add_argument('--zhigh', type=float, default=0.0, help='lowpass: high-impedance line (ohm)')
     g.add_argument('--zlow', type=float, default=0.0, help='lowpass stepped: low-impedance section (ohm)')
-    g.add_argument('--zstub', type=float, default=0.0, help='lowpass stub: stub impedance (ohm)')
+    g.add_argument('--zstub', type=float, default=0.0, help='lowpass stub: stub impedance; interdigital: rod impedance (ohm)')
+    g.add_argument('--stub-angle', type=float, default=60.0, help='lowpass radial: the fans\' apex angle (degrees, default 60)')
     g.add_argument('--feed', type=float, default=0.0, help='mm of 50 ohm feed line at each port')
     s = p.add_argument_group('substrate')
     s.add_argument('--substrate', default='RO4003C-0.508', help='preset (see --list); default RO4003C-0.508')
@@ -65,14 +66,18 @@ def parser():
     s.add_argument('--er', type=float, help='relative permittivity (overrides the preset)')
     s.add_argument('--tand', type=float, help='loss tangent (overrides the preset)')
     s.add_argument('--copper', type=float, default=0.035, help='copper thickness, mm (default 0.035)')
-    s.add_argument('--min-width', type=float, default=0.15, help='fabrication minimum trace, mm (warnings)')
-    s.add_argument('--min-gap', type=float, default=0.15, help='fabrication minimum gap, mm (warnings)')
+    s.add_argument('--min-width', type=float, default=0.1,
+                   help='fabrication minimum trace, mm (default 0.1, about the best PCB vendors do)')
+    s.add_argument('--min-gap', type=float, default=0.1, help='fabrication minimum gap, mm (default 0.1)')
+    s.add_argument('--allow-fab-violations', action='store_true',
+                   help='write designs with traces or gaps below --min-width / --min-gap (refused by default)')
     o = p.add_argument_group('output and validation')
     o.add_argument('-o', '--out', default='filter', help='output base path: <out>.kicad_pcb, <out>.toml, ...')
     o.add_argument('--no-calibrate', action='store_true', help='skip the line-model calibration')
     o.add_argument('--validate', metavar='SOLVERS', help='run kicad2ems with these solvers (e.g. mom,lines)')
     o.add_argument('--em-tune', type=int, default=0, metavar='N',
-                   help='with --validate: N rounds of correcting centre / bandwidth from the full-wave result')
+                   help='with --validate: N rounds of correcting the design from the full-wave result (centre / '
+                        'bandwidth; interdigital: every gap, tap and rod, by space mapping)')
     o.add_argument('--k2e-args', default='', help='extra kicad2ems arguments, quoted (e.g. "--mom-dmax 0.5")')
     return p
 
@@ -157,7 +162,7 @@ def main(argv=None):
     topo = a.topology or KINDS[a.type][0]
     sub = make_substrate(a)
     spec = Spec(a.type, topo, a.f0, a.bw, a.response, a.order or 5, a.ripple, a.z0,
-                a.zhigh, a.zlow, a.zstub, a.feed)
+                a.zhigh, a.zlow, a.zstub, a.feed, stub_angle=a.stub_angle)
     try:
         spec.check()
         if a.atten and not a.order:
@@ -173,6 +178,9 @@ def main(argv=None):
         print(f"dfsynth: {e}", file=sys.stderr)
         return 2
     describe(design)
+    if violations(design) and not a.allow_fab_violations:
+        _refuse(design, sub)
+        return 2
 
     base = a.out
     title = f"{spec.kind} {spec.topology} {_fmt(spec.f0)}"
@@ -190,6 +198,7 @@ def main(argv=None):
     if a.validate:
         extra = a.k2e_args.split() if a.k2e_args else []
         rounds = []
+        target = spec                                         # the design the line model puts on the spec
         for r in range(a.em_tune + 1):
             tag = '' if r == 0 else f'_tune{r}'
             print(f"\nkicad2ems ({a.validate}){' round ' + str(r) if a.em_tune else ''}:")
@@ -202,7 +211,8 @@ def main(argv=None):
             for name, m in mets.items():
                 print(f"  {name:16s} edges {_edges(m)}  centre {_pct(m['centre_error_pct'])}  "
                       f"bw {_pct(m['bandwidth_error_pct'])}  IL {m.get('passband_IL_dB', float('nan')):.2f} dB  "
-                      f"RL {m.get('passband_RL_worst_dB', float('nan')):.1f} dB")
+                      f"RL {m.get('passband_RL_worst_dB', float('nan')):.1f} dB "
+                      f"(own band {m.get('own_passband_RL_worst_dB', float('nan')):.1f})")
             fw = val.full_wave(mets)
             pred = val.predicted(mets, fw) if fw else None
             if pred:
@@ -212,6 +222,23 @@ def main(argv=None):
                            'predicted_real_copper_pct': pred})
             if r == a.em_tune or fw is None:
                 break
+            if spec.topology == 'interdigital':
+                # each resonator's frequency, each coupling and the taps can be off on their own: a
+                # centre / bandwidth correction cannot move them back into line
+                fe, s21e, s11e = results[fw]
+                new = space_map(target, design.spec, sub, design.kf, design.kb, fe, s21e, s11e, log=print)
+                if new is None:
+                    print(f"  the line model does not reproduce the {fw} result: stopping the tuning")
+                    break
+                notes = [n for n in design.notes if not isinstance(n, FabViolation)]
+                design = build(new, sub, design.kf, design.kb)
+                design.notes = notes + violations(design)
+                describe(design)
+                if violations(design) and not a.allow_fab_violations:
+                    print("  the corrected design is below the fabrication limits: stopping the tuning")
+                    break
+                kicad.write(design, base, title)
+                continue
             if pred is None:
                 print("  no band edges in the full-wave result: stopping the tuning")
                 break
@@ -227,16 +254,55 @@ def main(argv=None):
             kf = design.kf / rc
             kb = design.kb / rb ** 0.8 if rb and spec.kind != 'lowpass' else design.kb
             print(f"  tuning from {fw}: kf {design.kf:.4f} -> {kf:.4f}, kb {design.kb:.4f} -> {kb:.4f}")
-            notes = design.notes
+            notes = [n for n in design.notes if not isinstance(n, FabViolation)]
             design = build(spec, sub, kf, kb)
-            design.notes = notes
-            kicad.write(design, base, title)
+            design.notes = notes + violations(design)
             describe(design)
+            if violations(design) and not a.allow_fab_violations:
+                print("  the corrected design is below the fabrication limits: stopping the tuning")
+                break
+            kicad.write(design, base, title)
         summary['em'] = rounds
         print(f"wrote {base}_validation*.png")
     val.save_json(base + '_design.json', design_json(design, summary))
     print(f"wrote {base}_design.json")
     return 0
+
+
+def reachable_bw(spec, sub, kf=1.0, kb=1.0):
+    """The bandwidth nearest the spec's whose synthesis meets the fabrication limits (None if none in
+    0.05 to 3 x the spec's, or for a type without one)."""
+    if spec.kind not in ('bandpass', 'bandstop'):
+        return None
+    from dataclasses import replace
+
+    def ok(k):
+        try:
+            return not violations(build(replace(spec, bw=spec.bw * k), sub, kf, kb))
+        except ValueError:
+            return False
+    ks = sorted(np.geomspace(0.05, 3.0, 61), key=lambda k: abs(math.log(k)))
+    good = next((k for k in ks if ok(k)), None)
+    if good is None:
+        return None
+    bad = 1.0                                              # bisect between the spec (fails) and the first fit
+    for _ in range(30):
+        mid = math.sqrt(good * bad)
+        good, bad = (mid, bad) if ok(mid) else (good, mid)
+    return spec.bw * good
+
+
+def _refuse(design, sub):
+    print("\ndfsynth: the design cannot be made as asked "
+          f"(fabrication limits --min-width {sub.min_width}, --min-gap {sub.min_gap} mm):", file=sys.stderr)
+    for v in violations(design):
+        print(f"  {v}", file=sys.stderr)
+    bw = reachable_bw(design.spec, sub, design.kf, design.kb)
+    if bw:
+        print(f"  the nearest bandwidth that meets them is about {_fmt(bw)} (asked {_fmt(design.spec.bw)})",
+              file=sys.stderr)
+    print("  other ways out: another topology or substrate, or --allow-fab-violations to write it anyway",
+          file=sys.stderr)
 
 
 def _pct(v):

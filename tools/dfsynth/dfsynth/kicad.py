@@ -75,6 +75,10 @@ def sweep_range(design):
     kind, f0, fbw = band(design.spec)
     if kind == 'lowpass':
         return 0.05 * f0 / 1e9, 3.0 * f0 / 1e9
+    if kind == 'bandstop' and design.spec.topology == 'radial':
+        from .calibrate import sweep
+        f = sweep(design.spec, 2)
+        return f[0] / 1e9, f[-1] / 1e9
     if design.spec.topology == 'stub':
         return 0.1 * f0 / 1e9, 1.9 * f0 / 1e9
     span = max(2.5 * fbw, 0.3)
@@ -91,11 +95,14 @@ def toml_text(design, board_name, points=401):
         'ground  = "B.Cu"',
         'nets    = ["RF", "GND"]',
         'no_mask = true',
+        *([f'sigma   = {design.sub.sigma:.4g}   # S/m: conductor loss (mom25d, the line model)']
+          if design.sub.sigma and math.isfinite(design.sub.sigma) else []),
         f'fmin    = {fmin:.4f}       # GHz',
         f'fmax    = {fmax:.4f}',
         f'points  = {points}',
         'out     = "out"',
         'fast    = "auto"',
+        'bc      = "PML_8"   # FDTD boundaries: the default Mur, 5 mm from a resonant filter, absorbs its near field',
         '',
         '[solver.openems]',
         'excite  = ["P1"]',
