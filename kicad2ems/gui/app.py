@@ -1,11 +1,13 @@
 """
 kicad2ems GUI (PySide6 + pyqtgraph): set up a run, preview it, watch it, see the results. The window has the
-settings on the left and three pages:
+settings on the left and four pages:
 
     Viewer   the board in 3D or from above, a solver's mesh, the line model coloured by Z0 (pick a section to read
              it), field dumps in place or as cuts (live while the run goes), the far field, the run's plots
     Run      progress, openEMS's energy decay and mom25d's adaptive sweep, the log
     Results  S-parameters and antenna results as Cartesian, Smith and polar plots you add and remove
+    Filter Synthesis
+             design a microstrip filter with dfsynth, validate and tune it on the solvers, open its board here
 
 Every run is the command-line tool started as a separate process with --events; the GUI follows its event
 stream, so a closed window never kills a simulation's results and the GUI needs no openEMS of its own. The
@@ -15,7 +17,7 @@ window's size, its docks and splitters, and the Results plots are remembered bet
 """
 import json, os, sys
 from PySide6.QtCore import Qt, QProcess, QTimer, QUrl, QSettings
-from PySide6.QtGui import QDesktopServices, QAction, QKeySequence
+from PySide6.QtGui import QDesktopServices, QAction, QKeySequence, QIcon
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout,
                                QLineEdit, QCheckBox, QComboBox, QPushButton, QLabel, QPlainTextEdit, QProgressBar,
                                QFileDialog, QScrollArea, QMessageBox, QDockWidget, QToolBar, QStyle, QToolButton,
@@ -29,12 +31,15 @@ from .systempanel import SystemPanel
 from .viewer import Viewer, VIEWS
 from .statusbar import MemoryMeters, EstimateButton
 from .meters import duration
+from .filtertab import FilterTab
 
 pg.setConfigOptions(antialias=True, background='w', foreground='k')
 EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
 DOCS = 'https://github.com/lowprocess/kicad2ems/blob/main/docs/index.md'
 MAX_RECENT = 8
-PANELS = ('Viewer', 'Run', 'Results')
+PANELS = ('Viewer', 'Run', 'Results', 'Filter')
+TITLES = {'Filter': 'Filter Synthesis'}                           # a page's tab title, when not its name
+WAND = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wand.svg')
 STATE_VERSION = 2                                                   # saved dock layouts of older windows: ignored
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
 
@@ -717,6 +722,7 @@ class MainWindow(QMainWindow):
         self._traceback = self._stopping = False
         self.setup, self.runtab, self.results = SetupTab(self), RunTab(self), ResultsTab(self)
         self.viewer = Viewer(self)
+        self.filter = FilterTab(self)
         self.fields, self.volume = self.viewer.cuts, self.viewer.volume      # the field views, inside the viewer
         if getattr(self.volume, 'steer', None) is not None:          # its Far field section steers too
             self.results.link_steering(self.volume.steer)
@@ -742,8 +748,8 @@ class MainWindow(QMainWindow):
         hidden.hide()
         self.work.setCentralWidget(hidden)                          # the pages take the whole workspace
         self.docks = {}
-        for name, w in zip(PANELS, (self.viewer, self.runtab, self.results)):
-            d = QDockWidget(name, self.work)
+        for name, w in zip(PANELS, (self.viewer, self.runtab, self.results, self.filter)):
+            d = QDockWidget(TITLES.get(name, name), self.work)
             d.setObjectName(name)
             d.setWidget(w)
             # closable: a page can be hidden and shown again (View menu); not closable, a floated page the window
@@ -769,7 +775,7 @@ class MainWindow(QMainWindow):
 
     # ---- the window's shape: remembered between sessions ----
     def _splitters(self):
-        return {'viewer': self.viewer.split, 'results': self.results.splot.split,
+        return {'viewer': self.viewer.split, 'results': self.results.splot.split, 'filter': self.filter.split,
                 **({'viewer3d': self.volume.split} if getattr(self.volume, 'split', None) is not None else {})}
 
     def _restore_shape(self):
@@ -792,14 +798,22 @@ class MainWindow(QMainWindow):
             st = q.value(f"splitter/{name}")
             if st is not None:
                 sp.restoreState(st)
-        for d in self.docks.values():                               # a page closed last time: back
-            d.show()
+        saved = q.value('work/pages')
+        saved = [saved] if isinstance(saved, str) else list(saved or PANELS[:3])    # before the Filter page: 3
+        for name, d in self.docks.items():
+            if name not in saved:                                   # a page newer than the saved layout: Qt would
+                d.setFloating(False)                                # leave it floating; tabbed with the others
+                self.work.addDockWidget(Qt.TopDockWidgetArea, d)
+                self.work.tabifyDockWidget(self.docks[PANELS[0]], d)
+            d.show()                                                # a page closed last time: back
+        self.docks[PANELS[0]].raise_()
 
     def _save_shape(self):
         q = self.qsettings
         q.setValue('window/geometry', self.saveGeometry())
         q.setValue('window/state', self.saveState(STATE_VERSION))
         q.setValue('work/state', self.work.saveState(STATE_VERSION))
+        q.setValue('work/pages', list(PANELS))
         for name, sp in self._splitters().items():
             q.setValue(f"splitter/{name}", sp.saveState())
 
@@ -838,11 +852,15 @@ class MainWindow(QMainWindow):
                 ('Stop', 'SP_MediaStop', 'Stop the run (Ctrl+.)', self.stop),
                 (None, None, None, None),
                 ('Results', 'SP_DirOpenIcon', 'Open a results folder', self.results._load),
-                ('Report', 'SP_FileDialogInfoView', 'Open the HTML report of the results', self.results.open_report)):
+                ('Report', 'SP_FileDialogInfoView', 'Open the HTML report of the results', self.results.open_report),
+                (None, None, None, None),
+                ('Filter', WAND, 'Filter Synthesis: design a microstrip filter with dfsynth',
+                 lambda: self.show_panel('Filter'))):
             if name is None:
                 tb.addSeparator()
                 continue
-            a = QAction(st.standardIcon(getattr(QStyle.StandardPixmap, icon)), name, self)
+            a = QAction(QIcon(icon) if os.path.isfile(icon) else st.standardIcon(getattr(QStyle.StandardPixmap, icon)),
+                        name, self)
             a.setToolTip(tip)
             a.triggered.connect(slot)
             tb.addAction(a)
@@ -904,6 +922,10 @@ class MainWindow(QMainWindow):
             a.triggered.connect(slot)
             fm.addAction(a)
         fm.addSeparator()
+        a = QAction(QIcon(WAND), 'New &filter (Filter Synthesis)…', self)
+        a.setToolTip('design a microstrip filter with dfsynth')
+        a.triggered.connect(lambda: self.show_panel('Filter'))
+        fm.addAction(a)
         a = QAction('Open &results folder…', self)
         a.triggered.connect(self.results._load)
         fm.addAction(a)

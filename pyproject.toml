@@ -51,18 +51,20 @@ kicad2ems-gui = "kicad2ems.gui:main"
 kicad2openems = "kicad2ems.cli:main_openems"     # the old name: openEMS unless --solvers says otherwise
 kicad2openems-gui = "kicad2ems.gui:main"
 gfdtd = "gfdtd.fdtd:main"                      # run an openEMS XML file on gfdtd (GPU FDTD)
+dfsynth = "dfsynth.cli:main"                    # distributed-element filter synthesis -> KiCad board (tools/dfsynth)
 kicad2ems-kicad = "kicad2ems.kicadplugin.__main__:main"   # the KiCad plugin's window; install / uninstall it
 
 [tool.setuptools.dynamic]
 version = {attr = "kicad2ems.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["kicad2ems*", "mom25d*", "gfdtd*"]
+where = [".", "tools/dfsynth"]               # tools/dfsynth: the filter synthesis (the GUI's Filter page, dfsynth)
+include = ["kicad2ems*", "mom25d*", "gfdtd*", "dfsynth*"]
 
 [tool.setuptools.package-data]
 mom25d = ["core/*.cpp", "*.so", "*.pyd"]
 gfdtd = ["core/*.cpp", "core/*.h", "*.so", "*.pyd"]     # the update code (GPU kernels and CPU core), the built core
-"kicad2ems.gui" = ["*.svg"]                 # the window's and the application launcher's icon
+"kicad2ems.gui" = ["*.svg"]                 # the window's and the application launcher's icon, the wand
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
