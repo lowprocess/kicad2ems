@@ -190,7 +190,7 @@ class Nodal:
 
         def y(f):
             f = np.asarray(f, float)
-            ee = np.array([sub.disperse(ee0, w, fi) for fi in f])
+            ee = sub.disperse(ee0, w, f)
             return 1j * np.tan(2 * np.pi * f * np.sqrt(ee) / C0 * dl) / z0
         self.shunt(node, y)
 

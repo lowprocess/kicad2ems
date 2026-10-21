@@ -237,14 +237,14 @@ class Substrate:
 
     # ---------------------------------------------------------------- loss
     def alpha(self, w, z0, ee, f):
-        """Attenuation (Np/m) of a mode of impedance z0, eeff ee on a strip of width w: dielectric plus a
+        """Attenuation (Np/m, f scalar or array) of a mode of impedance z0, eeff ee on a strip of width w: dielectric plus a
         simple conductor term (strip resistance Rs / w, ground plane neglected, roughness ignored)."""
         k0 = 2 * math.pi * f / C0
         er = self.er
-        ad = k0 * er * (ee - 1) * self.tand / (2 * math.sqrt(ee) * (er - 1)) if er > 1 else 0.0
+        ad = k0 * er * (ee - 1) * self.tand / (2 * np.sqrt(ee) * (er - 1)) if er > 1 else 0.0
         ac = 0.0
         if self.sigma and math.isfinite(self.sigma):
-            rs = math.sqrt(math.pi * f * MU0 / self.sigma)
+            rs = np.sqrt(math.pi * f * MU0 / self.sigma)
             ac = rs / (z0 * w * 1e-3)
         return ad + ac
 
