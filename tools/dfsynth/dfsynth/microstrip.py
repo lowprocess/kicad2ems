@@ -23,6 +23,7 @@ MU0 = 4e-7 * math.pi
 
 # name: (h mm, er, tan d, material)  er / tan d are the design values near a few GHz
 PRESETS = {
+    'FR4': (1.6, 4.3, 0.02, 'FR4'),            # the usual 1.6 mm two-layer board (FR4-1.6)
     'FR4-0.8': (0.8, 4.3, 0.02, 'FR4'),
     'FR4-1.6': (1.6, 4.3, 0.02, 'FR4'),
     'FR4-0.2': (0.2, 4.2, 0.02, 'FR4'),

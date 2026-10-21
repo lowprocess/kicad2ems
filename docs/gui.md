@@ -13,7 +13,7 @@ window never loses a run, and the GUI itself doesn't need openEMS.
 ## The window
 
 - **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, the run's estimate, open a results folder, open
-  the report, and *Results of*: whose results the pages show, this board's preview or one of its runs
+  the report, *Filter* (the wand: the [Filter Synthesis](#filter) page), and *Results of*: whose results the pages show, this board's preview or one of its runs
   ([below](#run-folders)). The estimate (after a preview) is the time and memory of the full-wave solvers ticked, or the one
   *auto* would pick, for example `~4 min · 1.3 GB` over `mom25d (auto)`. It is grey once other settings change
   (preview again), red when it won't fit in the memory available, and opens the Solvers window.
@@ -27,7 +27,7 @@ window never loses a run, and the GUI itself doesn't need openEMS.
   the antenna settings outside antenna mode. Each header shows how many settings in it are set, for
   example `Band (3 set)`. Empty fields use the default, shown as a hint. In a narrow dock a field moves
   under its label.
-- **Pages** (right): **Viewer**, **Run** and **Results**, tabbed. Drag a tab out to see two side by side
+- **Pages** (right): **Viewer**, **Run**, **Results** and **Filter Synthesis** ([below](#filter)), tabbed. Drag a tab out to see two side by side
   (the Run page next to the Viewer's live field, say), or float it. A page can be closed and shown again
   from the *View* menu (back in the window if it had floated). *View > Reset layout* puts them all back.
 
@@ -216,6 +216,37 @@ The line below gives the beam's direction, its gain and realized gain, and each 
 reflection. The gain and efficiency plots, the far-field cuts and the Viewer's 3D pattern follow the
 steering. The Viewer's 3D view has the same controls in its *Far field* section; the two stay in step, so
 the beam can be steered or animated from either.
+
+<a id="filter"></a>
+## The Filter Synthesis page
+
+Designs a microstrip filter with [dfsynth](../tools/dfsynth/README.md) and writes its board and kicad2ems
+config (*Filter* in the toolbar, the wand, or *File > New filter*, brings the page to the front). dfsynth is
+installed with kicad2ems (it lives in `tools/dfsynth`); without it the page says so and stays disabled.
+
+- **Settings** (left): *Filter* (type, topology, f0, bandwidth, response, order or an attenuation spec such
+  as `40@6G`, ripple, Z0), *Topology details* (only those the topology uses are enabled), *Substrate and
+  fabrication* (a preset, its height, εr and tan δ overridden when given, the copper, the minimum trace and
+  space: 0.1 mm each by default; a design below them is refused unless *allow below the limits* is
+  ticked), *Output* (the base path of the files) and *Validation* (the kicad2ems solvers, the tuning rounds,
+  extra kicad2ems arguments such as `--fine 0.03`).
+- **Design** synthesises the filter, calibrates it on dfsynth's line model and writes the board.
+  **Design + validate** then solves the board with the solvers chosen and tunes it for the rounds asked
+  (centre and bandwidth; an interdigital filter by space mapping). gfdtd suits interdigital filters, mom25d
+  the other planar ones. dfsynth runs as a separate process, its output in the *Log*; **Stop** ends it.
+  While it runs a busy bar shows under the buttons, and where it is up to in the status bar; a validation
+  follows the kicad2ems run into the *Log* as it goes (its messages, and every 10 s the solver's progress:
+  an FDTD run's timestep and the field energy left, a frequency sweep's frequencies done).
+- **Log**: dfsynth's output. Its warnings (⚠: the design's notes, a tuning stopped early) and errors (✖: a
+  design refused for the fabrication limits or the spec, a solver failing) are in bold red, and the tab
+  counts them (*Log (1 error, 3 warnings)*, in red); an error brings the log to the front. The design's
+  notes are in red on the *Summary* too.
+- **Layout**: the copper, the ground vias and the ports as drawn on the board. **Response**: S21 (solid) and
+  S11 (dashed) of the line model and of each solver of the last validation round, with the target band
+  edges dotted. **Dimensions**: every element's impedance, width, length and gap. **Summary**: the spec,
+  the line model's figures and each validation round's (centre and bandwidth error, loss, return loss).
+- **Open the board in kicad2ems** loads the config dfsynth wrote into the settings on the left, which
+  previews it: from there any solver, mesh or field dump runs as for any other board.
 
 ---
 [← Usage](usage.md) · [Index](index.md) · [Next: Examples →](examples.md)

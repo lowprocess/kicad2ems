@@ -67,7 +67,7 @@ def test_dump_lists_and_extra_settings(tmp_path):
 
 
 def test_window_tabs(tmp_path):
-    """Three pages (Viewer, Run, Results), the settings collapsed, the Solvers window behind ? and Help."""
+    """Four pages (Viewer, Run, Results, Filter), the settings collapsed, the Solvers window behind ? and Help."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -80,7 +80,7 @@ def test_window_tabs(tmp_path):
     assert v['dump'] == ['E@F.Cu@2,6', 'H@volume'] and v['mode'] == 'antenna'
     w.setup.extra = dict(air=3.0)
     assert w.setup.values()['air'] == 3.0
-    assert list(w.docks) == ['Viewer', 'Run', 'Results']
+    assert list(w.docks) == ['Viewer', 'Run', 'Results', 'Filter']
     assert w.viewer.view() in ('3D', 'Plan')                         # 3D when OpenGL can be had
     w.viewer.set_view('Plan')
     assert w.viewer.view() == 'Plan' and w.viewer.buttons['Plan'].isChecked()
@@ -827,4 +827,103 @@ def test_trace_colours_and_styles(tmp_path, monkeypatch):
     assert sp2.look(sp2.traces[0]) == ('#000000', 'dot', 3)
     sp2.set_look([sp2.traces[0]], color=None, style=None, width=None)
     assert sp2.look(sp2.traces[0]) == looks[0]
+    QSettings('kicad2ems', 'gui').clear()
+
+
+def test_filter_command_line():
+    """The Filter page's settings as dfsynth's command line: empty fields left to dfsynth, flags only when set,
+    the validation only when asked for."""
+    from kicad2ems.gui.filtertab import filter_argv
+    vals = dict(type='bandpass', topology='interdigital', f0='5G', bw='500M', order=None, ripple=None, h=0.8,
+                allow_fab_violations=True, no_calibrate=False, out='/x/idg', validate='gfdtd', em_tune=3,
+                k2e_args='--fine 0.03')
+    a = filter_argv(vals)
+    assert a[:3] == ['-u', '-m', 'dfsynth'] and a[a.index('--f0') + 1] == '5G' and a[a.index('--h') + 1] == '0.8'
+    assert '--allow-fab-violations' in a and '--no-calibrate' not in a and '--order' not in a
+    assert a[a.index('--em-tune') + 1] == '3' and a[a.index('--k2e-args') + 1] == '--fine 0.03'
+    b = filter_argv(vals, validate=False)
+    assert '--validate' not in b and '--em-tune' not in b and '--k2e-args' not in b
+
+
+def test_filter_page(tmp_path):
+    """dfsynth (the checkout's) designs a filter; the page reads what it wrote (design, layout, model response)
+    and shows it; the main window has the page."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from kicad2ems.gui import filtertab as ft
+    ds = ft.dfsynth_module()
+    if ds is None:
+        pytest.skip('no dfsynth')
+    from dfsynth.cli import main as dfsynth
+    base = str(tmp_path / 'lpf')
+    assert dfsynth(['--type', 'lowpass', '--topology', 'stepped', '--f0', '2G', '--substrate', 'RO4003C-0.813',
+                    '-o', base]) == 0
+    res = ft.load_design(base)
+    assert res and res['model'][1].shape[1:] == (2, 2) and res['em'] == [] and os.path.exists(res['toml'])
+    geo = res['design']['geometry']
+    assert geo['polys'] and len(geo['ports']) == 2
+    from PySide6.QtWidgets import QApplication
+    from kicad2ems.gui.app import MainWindow
+    app = QApplication.instance() or QApplication([])
+    w = MainWindow()
+    assert 'Filter' in w.docks and w.filter.ds is not None
+    page = w.filter
+    page.set_values(dict(type='lowpass', topology='radial', f0='2G', out=base))
+    v = page.values()
+    assert v['topology'] == 'radial' and v['bw'] is None and v['f0'] == '2G'
+    assert page.w['stub_angle'].isEnabled() and not page.w['zlow'].isEnabled()
+    page.show_result(res)
+    assert page.table.rowCount() == len(res['design']['elements']) and page.open_btn.isEnabled()
+    assert 'lowpass / stepped' in page.summary.toPlainText()
+    # problems go to the log, in red, counted on its tab; the rest plain
+    lv, last = [], None
+    for line in ['g = 1.0', '  note: order 3 Chebyshev needs unequal terminations', '',
+                 'dfsynth: the design cannot be made as asked:', '  gap 0.05 mm is below the 0.1 mm minimum',
+                 'wrote x.kicad_pcb', 'Traceback (most recent call last):', '  File "x.py", line 1',
+                 'ValueError: no', 'usage: dfsynth', 'dfsynth: error: unrecognized arguments: --x',
+                 'kicad2ems (gfdtd):', '    note: P2 not excited', '    WARNING: the run stopped at --max-steps']:
+        last = line_level = ft.line_level(line, last)
+        lv.append(line_level)
+    assert lv == [None, 'warn', None, 'error', 'error', None, 'error', 'error', 'error', None, 'error', None, None, 'warn']
+    assert ft.PROGRESS.match('    P1: step 36600, energy -3.2 dB, 14 s') and ft.PROGRESS.match('    mom25d: 40% (24 f')
+    page.clear_log()
+    page.say('fine')
+    page.say('a warning', 'warn')
+    assert page.tabs.tabText(page.tabs.indexOf(page.log)) == 'Log (1 warning)'
+    page.say('broken', 'error')
+    assert page.tabs.tabText(page.tabs.indexOf(page.log)) == 'Log (1 error, 1 warning)'
+    assert page.tabs.currentWidget() is page.log and '⚠ a warning' in page.log.toPlainText()
+    page.clear_log()
+    assert page.tabs.tabText(page.tabs.indexOf(page.log)) == 'Log'
+    w.setup.dirty = False
+    w.close()
+
+
+def test_new_page_docks_into_an_older_layout(monkeypatch, tmp_path):
+    """A layout saved before a page existed (the Filter page): the page comes up tabbed with the others, not
+    floating; and the toolbar opens it."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QApplication
+    from kicad2ems.gui.app import MainWindow
+    app = QApplication.instance() or QApplication([])
+    QSettings('kicad2ems', 'gui').clear()
+    w = MainWindow()
+    w.docks['Filter'].setFloating(True)                             # as Qt leaves a dock the saved state lacks
+    w.setup.dirty = False
+    w.close()                                                       # saves the layout, the page floating
+    QSettings('kicad2ems', 'gui').setValue('work/pages', ['Viewer', 'Run', 'Results'])   # saved before it existed
+    w = MainWindow()
+    assert not w.docks['Filter'].isFloating()
+    assert w.docks['Filter'] in w.work.tabifiedDockWidgets(w.docks['Viewer'])
+    w.acts['Filter'].trigger()
+    assert w.docks['Filter'].isVisibleTo(w)
+    if w.filter.ds is not None:
+        assert w.filter.w['substrate'].findText('FR4-1.6') >= 0 and w.filter.design_btn.isEnabled()
+    w.setup.dirty = False
+    w.close()
     QSettings('kicad2ems', 'gui').clear()

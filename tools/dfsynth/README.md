@@ -6,8 +6,8 @@ bandwidth, substrate) and writes the layout as a KiCad board. It can then run th
 design from the result.
 
 ```bash
-pip install -e tools/dfsynth                      # from the kicad2ems checkout; numpy + matplotlib
-pip install -e .                                  # kicad2ems itself, for --validate (scipy: lowpass refinement)
+pip install .                                     # kicad2ems, which installs dfsynth with it (and its GUI page)
+pip install tools/dfsynth                         # or dfsynth alone (numpy + matplotlib; no --validate)
 
 dfsynth --type bandpass --topology coupled --f0 5G --bw 500M --order 5 \
         --substrate RO4003C-0.813 -o out/bpf --validate mom,lines --em-tune 1
@@ -20,9 +20,12 @@ That writes:
 | `out/bpf.kicad_pcb` | the layout: KiCad 8 format, 2 layers, opens in KiCad 8 and later |
 | `out/bpf.toml` | a kicad2ems run configuration for it (`kicad2ems out/bpf.toml --solvers mom,lines`) |
 | `out/bpf_model.s2p`, `_model.png` | dfsynth's own circuit model of the layout |
-| `out/bpf_design.json` | spec, substrate, every dimension, the targets and the validation metrics |
-| `out/bpf_em/`, `_validation.png` | with `--validate`: kicad2ems's results, overlaid on the model |
+| `out/bpf_design.json` | spec, substrate, every dimension, the layout, the targets and the validation metrics |
+| `out/bpf_em/`, `_validation.png` | with `--validate`: kicad2ems's results, overlaid on the model (and its output, `kicad2ems_output.log`, `kicad2ems_events.jsonl`) |
 | `out/bpf_em_tune1/`, `_validation_tune1.png` | with `--em-tune N`: each corrected round |
+
+The same from a window: the **Filter Synthesis** page of `kicad2ems-gui` ([GUI](../../docs/gui.md#filter)) sets these
+options, runs dfsynth, draws the layout and the responses, and opens the board it wrote in kicad2ems.
 
 ## Filters
 
@@ -47,8 +50,8 @@ The bandwidth is the ripple bandwidth for Chebyshev, the -3 dB bandwidth for But
 (stub band-pass, high-pass, band-stop) map the prototype through Richards' transformation, so their bands
 are arithmetically symmetric about f0 rather than geometrically.
 
-Substrates: `dfsynth --list` shows the presets (FR4, RO4003C, RO4350B, RT5880, RO3010, alumina in
-common thicknesses); `--h`, `--er`, `--tand`, `--copper` override them.
+Substrates: `dfsynth --list` shows the presets (`FR4`, the usual 1.6 mm board; FR4, RO4003C, RO4350B, RT5880,
+RO3010 and alumina in common thicknesses); `--h`, `--er`, `--tand`, `--copper` override them.
 
 Fabrication limits: `--min-width` and `--min-gap` (default 0.1 mm trace and 0.1 mm space, about the best
 PCB vendors do; raise them for a cheaper process) are enforced. A design with a narrower trace or gap is refused, with the dimensions at fault and the
@@ -92,7 +95,8 @@ gaps: 97 MHz).
 4. **Validation** (`--validate`): kicad2ems solves the written board with the solvers named (`mom` is
    the usual choice for these planar filters; `gfdtd` runs well on a CPU too; `lines` is kicad2ems's own
    line model). dfsynth measures each result's band edges (3 dB below the pass-band peak, so loss does
-   not move them) and reports centre and bandwidth error against the spec, pass-band loss and match.
+   not move them) and reports centre and bandwidth error against the spec, pass-band loss and match. The
+   run is followed as it goes: kicad2ems's messages, and every 10 s the solver's progress.
 5. **EM tuning** (`--em-tune N`): the full-wave result's centre / bandwidth error is folded back into `kf` /
    `kb`, the board is rewritten and solved again. The interdigital is tuned by space mapping instead: the
    trims (and the port reference planes) with which the zero-thickness model reproduces the full-wave
