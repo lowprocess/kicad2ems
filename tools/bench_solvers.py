@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
 Run time and peak memory of every solver on every example config, each solver in a process of its own:
-openEMS, mom25d with the GPU, mom25d on the CPU only (MOM25D_GPU=off) and the line model.
+openEMS, gfdtd on the GPU and on the CPU, mom25d with the GPU, mom25d on the CPU only (MOM25D_GPU=off) and
+the line model.
 
     python tools/bench_solvers.py --openems-python /opt/openems/venv/bin/python
     python tools/bench_solvers.py --only filter hairpin --skip openems
+    python tools/bench_solvers.py --plot-only --only filter hairpin     # the graph of what was measured
 
-Writes build/bench/results.json and results.md. Run it alone: the timings are wall time, and other work on
+Writes build/bench/results.json, results.md and results.png (time and memory per solver, per example). Run it alone: the timings are wall time, and other work on
 the machine slows them. A solver that cannot model a board (mom25d and a gap-fed antenna) is listed as such.
 """
 import argparse, glob, json, os, re, subprocess, sys, time
@@ -26,6 +28,8 @@ for kind in ('patch', 'ifa', 'dipole', 'slot', 'array2x2'):
 def solvers(openems_py):
     me = sys.executable
     return {'openems': (openems_py, ['--solvers', 'openems'], {}),
+            'gfdtd GPU': (me, ['--solvers', 'gfdtd', '--gfdtd-backend', 'gpu'], {}),
+            'gfdtd CPU': (me, ['--solvers', 'gfdtd', '--gfdtd-backend', 'cpu'], {}),
             'mom25d GPU': (me, ['--solvers', 'mom25d'], {}),
             'mom25d CPU': (me, ['--solvers', 'mom25d'], {'MOM25D_GPU': 'off'}),
             'line model': (me, ['--solvers', 'lines'], {})}
@@ -36,6 +40,9 @@ def parse(log, name):
     info = {}
     m = re.search(r'mesh: \d+ x \d+ x \d+ = ([0-9.]+) M cells', log)
     if m and name == 'openems':
+        info['cells'] = f"{m.group(1)} M"
+    m = re.search(r'gfdtd: ([0-9.]+) M cells', log)
+    if m and name.startswith('gfdtd'):
         info['cells'] = f"{m.group(1)} M"
     steps = re.findall(r'done in [0-9.]+ s, ~(\d+) timesteps', log)
     if steps:
@@ -59,8 +66,14 @@ def main():
     ap.add_argument('--openems-python', default=sys.executable)
     ap.add_argument('--only', nargs='*', help="these configs (names without .toml)")
     ap.add_argument('--skip', nargs='*', default=[], help="solvers to leave out: openems, 'mom25d GPU', ...")
+    ap.add_argument('--plot-only', action='store_true', help="no runs: the graph (and table) of the results so far")
     a = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
+    if a.plot_only:
+        results = json.load(open(os.path.join(OUT, 'results.json')))
+        write_md(results)
+        print('wrote', plot(results, a.only))
+        return
     env0 = dict(os.environ, PYTHONPATH=REPO + os.pathsep + os.environ.get('PYTHONPATH', ''))
     configs = sorted(os.path.splitext(os.path.basename(p))[0] for p in glob.glob(os.path.join(REPO, 'examples', '*.toml')))
     configs = [c for c in configs if not a.only or c in a.only]
@@ -88,11 +101,62 @@ def main():
             print(f"{cfg:22s} {name:11s} {row['seconds']:7.1f} s {row['peak_gb'] or 0:5.2f} GB "
                   f"{'' if not p.returncode else 'FAILED: ' + row.get('error', '')}", flush=True)
     write_md(results)
+    print('wrote', plot(results, configs))
+
+
+NAMES = ['openems', 'gfdtd GPU', 'gfdtd CPU', 'mom25d GPU', 'mom25d CPU', 'line model']
+COLOURS = {'openems': '#1f77b4', 'gfdtd GPU': '#d62728', 'gfdtd CPU': '#ff9896', 'mom25d GPU': '#2ca02c',
+           'mom25d CPU': '#98df8a', 'line model': '#7f7f7f'}
+
+
+def plot(results, configs=None, path=os.path.join(OUT, 'results.png')):
+    """Run time (log scale) and peak RAM of each solver on each example: grouped bars, n/a where a solver
+    can't model the board."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import numpy as np
+    cfgs = [c for c in sorted(results) if not configs or c in configs]
+    names = [n for n in NAMES if any(n in results[c] for c in cfgs)]
+    fig, (ax_t, ax_m) = plt.subplots(2, 1, figsize=(max(9, 1.5 * len(cfgs)), 9), sharex=True)
+    x = np.arange(len(cfgs))
+    w = 0.8 / len(names)
+    for i, n in enumerate(names):
+        xs = x - 0.4 + w * (i + 0.5)
+        for j, c in enumerate(cfgs):
+            r = results[c].get(n)
+            if r is None:
+                continue
+            if r['code']:
+                ax_t.text(xs[j], 0.35, 'n/a', rotation=90, ha='center', va='bottom', fontsize=7, color='#888')
+                continue
+            ax_t.bar(xs[j], r['seconds'], w, color=COLOURS[n], label=n if j == 0 or n not in
+                     ax_t.get_legend_handles_labels()[1] else None)
+            ax_t.text(xs[j], r['seconds'] * 1.08, f"{r['seconds']:.0f}", ha='center', va='bottom', fontsize=6,
+                      rotation=90)
+            if r.get('peak_gb') is not None:
+                ax_m.bar(xs[j], r['peak_gb'], w, color=COLOURS[n])
+    ax_t.set_yscale('log')
+    ax_t.set_ylim(0.3, 4 * max(r['seconds'] for c in cfgs for r in results[c].values() if not r['code']))
+    ax_t.set_ylabel('wall time (s, log scale)')
+    ax_t.set_title('kicad2ems solvers: run time and peak memory per example', pad=24)
+    ax_t.grid(axis='y', which='both', alpha=0.25)
+    h, l = ax_t.get_legend_handles_labels()
+    order = sorted(range(len(l)), key=lambda k: NAMES.index(l[k]))
+    ax_t.legend([h[k] for k in order], [l[k] for k in order], ncol=len(names), fontsize=8, loc='lower center',
+                bbox_to_anchor=(0.5, 1.0), frameon=False)
+    ax_m.set_ylabel('peak RAM (GB)')
+    ax_m.grid(axis='y', alpha=0.25)
+    ax_m.set_xticks(x, cfgs, rotation=30, ha='right')
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+    return path
 
 
 def write_md(results):
-    names = ['openems', 'mom25d GPU', 'mom25d CPU', 'line model']
-    L = ['| Example | ' + ' | '.join(names) + ' | openEMS model | mom25d model |', '|---' * (len(names) + 3) + '|']
+    names = NAMES
+    L = ['| Example | ' + ' | '.join(names) + ' | FDTD model | mom25d model |', '|---' * (len(names) + 3) + '|']
     for cfg, rows in sorted(results.items()):
         cells = []
         for n in names:
@@ -104,7 +168,7 @@ def write_md(results):
             else:
                 gpu = f" (+{r['gpu_gb']:.1f} GPU)" if n == 'mom25d GPU' and r.get('gpu_gb') else ''
                 cells.append(f"{r['seconds']:.0f} s, {r['peak_gb']:.1f} GB{gpu}")
-        o, mo = rows.get('openems', {}), rows.get('mom25d GPU', {})
+        o, mo = rows.get('openems') or rows.get('gfdtd GPU') or {}, rows.get('mom25d GPU', {})
         cells.append(f"{o.get('cells', '')} cells, {o.get('steps', '')} steps" if o.get('cells') else '')
         cells.append(f"{mo.get('unknowns', '')} unknowns, {mo.get('solves', '')} solves, {mo.get('path', '')}" if mo.get('unknowns') else '')
         L.append(f"| {cfg} | " + ' | '.join(cells) + ' |')
