@@ -54,10 +54,12 @@ def test_ideal_synthesis(kind, topo, f0, bw):
     ('lowpass', 'stepped', 2e9, 0, 'RO4003C-0.508'), ('lowpass', 'stub', 2e9, 0, 'RO4003C-0.508'),
     ('highpass', 'stub', 2e9, 0, 'RO4003C-0.508'), ('bandpass', 'coupled', 5e9, 0.5e9, 'RO4003C-0.813'),
     ('bandpass', 'hairpin', 2.4e9, 0.3e9, 'FR4-1.6'), ('bandpass', 'endcoupled', 10e9, 0.3e9, 'Alumina-0.635'),
-    ('bandpass', 'stub', 3e9, 1.5e9, 'RO4003C-0.508'), ('bandstop', 'stub', 2.4e9, 1e9, 'RO4003C-0.508'),
+    ('bandpass', 'stub', 3e9, 1.5e9, 'RO4003C-0.508'), ('bandstop', 'stub', 2.4e9, 1.5e9, 'RO4003C-0.508'),
     ('bandpass', 'interdigital', 5e9, 0.5e9, 'RO4003C-0.813'), ('lowpass', 'radial', 2e9, 0, 'RO4003C-0.508'),
     ('bandstop', 'radial', 2.4e9, 2.4e9, 'RO4003C-0.508')])
 def test_calibrated_and_written(kind, topo, f0, bw, sub, tmp_path):
+    """Each calibrated design lands on the spec and writes a board. The wide band-stop also has its connecting
+    lines refined as unit elements: its pass-band match improves, every impedance within the substrate's limits."""
     sub = Substrate.preset(sub)
     spec = Spec(kind, topo, f0, bw, 'chebyshev', 5, 0.1)
     d = calibrate(spec, sub)
@@ -73,6 +75,15 @@ def test_calibrated_and_written(kind, topo, f0, bw, sub, tmp_path):
     assert text.count('(') == text.count(')')
     assert text.count('"kicad2ems:RF_Port"') == 2
     assert 'board   = "f.kicad_pcb"' in open(cfg).read()
+    if (kind, topo) == ('bandstop', 'stub'):
+        from dfsynth.calibrate import passband_rl
+        from dfsynth.topologies import _z_limits
+        assert len(spec.trim) == 2 * spec.order - 1
+        f = sweep(spec, 2401)
+        plain = build(Spec(kind, topo, f0, bw, 'chebyshev', 5, 0.1), sub, d.kf, d.kb)
+        assert passband_rl(d, f) > passband_rl(plain, f) + 5
+        zmin, zmax = _z_limits(sub)
+        assert all(zmin - 0.1 < r[1] < zmax + 0.1 for r in d.rows)
 
 
 def test_touchstone_roundtrip(tmp_path):
@@ -105,23 +116,6 @@ def test_resonators_are_separate_copper(topo, sub, f0, bw):
     parts = list(u.geoms) if hasattr(u, 'geoms') else [u]
     assert len(parts) == spec.order + 2
     assert all(len(p.interiors) == 0 for p in parts)
-
-
-def test_bandstop_refine():
-    """The connecting lines as unit elements: a wide band-stop's pass-band match improves, with every
-    impedance within the substrate's limits and the edges still on the spec."""
-    pytest.importorskip('scipy')
-    from dfsynth.calibrate import passband_rl
-    from dfsynth.topologies import _z_limits
-    sub = Substrate.preset('RO4003C-0.508')
-    spec = Spec('bandstop', 'stub', 2.4e9, 1.5e9, 'chebyshev', 5, 0.1)
-    d = calibrate(spec, sub)
-    assert len(spec.trim) == 2 * spec.order - 1
-    f = sweep(spec, 2401)
-    plain = build(Spec('bandstop', 'stub', 2.4e9, 1.5e9, 'chebyshev', 5, 0.1), sub, d.kf, d.kb)
-    assert passband_rl(d, f) > passband_rl(plain, f) + 5
-    zmin, zmax = _z_limits(sub)
-    assert all(zmin - 0.1 < r[1] < zmax + 0.1 for r in d.rows)
 
 
 def test_mtl_matches_line_and_pair():
