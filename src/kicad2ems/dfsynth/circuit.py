@@ -148,3 +148,41 @@ def sparams(net, f, z0=50.0):
 
 def db(x):
     return 20 * np.log10(np.maximum(np.abs(x), 1e-15))
+
+
+def radial_admittance(sub, r1, r2, angle, f):
+    """Input admittance (S, array over f) at radius r1 (mm) of an open radial stub of angle (degrees) and
+    outer radius r2 (mm), as a radial line: E_z ~ J0(kr) + c Y0(kr), H_phi ~ j / eta (J1(kr) + c Y1(kr)),
+    c from H_phi = 0 at the rim (moved out by the open-end extension of a strip as wide as the rim's arc).
+    The sector's wave impedance eta h / (theta r) uses an effective angle: that of a microstrip as wide
+    as the arc at the mean radius (its Z0 and eeff, so fringing is in), the same eeff in k."""
+    from scipy.special import j0, j1, y0, y1
+    th = math.radians(angle)
+    rm = 0.5 * (r1 + r2)
+    wm = th * rm
+    z0, ee0 = sub.line(wm)
+    f = np.asarray(f, float)
+    ee = sub.disperse(ee0, wm, f)
+    eta = 376.730313668 / np.sqrt(ee)
+    th_eff = eta * sub.h / (z0 * np.sqrt(ee0 / ee) * rm)       # eta h / (theta_eff rm) = Z0 of the arc width
+    r2e = r2 + sub.open_end(th * r2)
+    k = 2 * np.pi * f * np.sqrt(ee) / C0 * 1e-3                # rad / mm
+    x1, x2 = k * r1, k * r2e
+    c = -j1(x2) / y1(x2)
+    # the top strip is at -E_z h: I / V = -(theta r1 H_phi) / (E_z h)
+    return -(th_eff * r1 / (eta * sub.h)) * 1j * (j1(x1) + c * y1(x1)) / (j0(x1) + c * y0(x1))
+
+
+RADIAL_RI_LINE = 0.5     # the radial line starts this many line widths beyond the line's edge (kicad2ems's
+                         # fit of qucsator's MRSTUB against mom25d: a fan from the line's centre carries no
+                         # radial wave yet where it leaves the line; at the edge its notch is 17-20 % low)
+
+
+def MRadial(sub, w_line, r2, angle, count=1):
+    """`count` radial open stubs (1, or 2 for a butterfly) in shunt at a line of width w_line, each a fan of
+    apex angle (degrees) and radius r2 (mm) about the line's centre."""
+    r1 = w_line / 2 + RADIAL_RI_LINE * w_line
+
+    def ab(f):
+        return _shunt(count * radial_admittance(sub, r1, r2, angle, f))
+    return ab

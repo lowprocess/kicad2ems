@@ -13,6 +13,8 @@ Garg & Bahl (1978). Dimensions are in mm, frequencies in Hz.
     w, s = sub.coupled_synth(ze, zo)
 """
 import math
+
+import numpy as np
 from dataclasses import dataclass, replace
 
 C0 = 299792458.0
@@ -72,8 +74,8 @@ class Substrate:
     sigma: float = 5.8e7     # S/m conductor
     name: str = 'custom'
     material: str = 'custom'
-    min_width: float = 0.15  # mm fabrication limits (warnings only)
-    min_gap: float = 0.15
+    min_width: float = 0.1   # mm fabrication limits (the CLI refuses designs below them)
+    min_gap: float = 0.1
 
     @classmethod
     def preset(cls, name, **kw):
@@ -101,12 +103,13 @@ class Substrate:
         return _hj_z01(ur) / math.sqrt(ee), ee * (_hj_z01(u1) / _hj_z01(ur)) ** 2
 
     def disperse(self, ee0, w, f):
-        """eeff at f (Hz) of a mode with quasi-static eeff ee0 on a strip of width w (Kirschning-Jansen)."""
+        """eeff at f (Hz, scalar or array) of a mode with quasi-static eeff ee0 on a strip of width w
+        (Kirschning-Jansen)."""
         er, u = self.er, w / self.h
         fn = f * 1e-9 * self.h                                 # GHz mm
         p1 = 0.27488 + (0.6315 + 0.525 / (1 + 0.0157 * fn) ** 20) * u - 0.065683 * math.exp(-8.7513 * u)
         p2 = 0.33622 * (1 - math.exp(-0.03442 * er))
-        p3 = 0.0363 * math.exp(-4.6 * u) * (1 - math.exp(-(fn / 38.7) ** 4.97))
+        p3 = 0.0363 * math.exp(-4.6 * u) * (1 - np.exp(-(fn / 38.7) ** 4.97))
         p4 = 1 + 2.751 * (1 - math.exp(-(er / 15.916) ** 8))
         p = p1 * p2 * ((0.1844 + p3 * p4) * fn) ** 1.5763
         return er - (er - ee0) / (1 + p)

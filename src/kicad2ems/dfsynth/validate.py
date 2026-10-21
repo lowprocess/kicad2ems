@@ -83,6 +83,18 @@ def run_kicad2ems(toml, outdir, solvers='mom,lines', extra=(), log=print):
     return out
 
 
+def _own_passband(kind, f, e):
+    """Mask of the pass band between (or beyond) the measured -3 dB edges, a tenth of the band inside them."""
+    if kind == 'lowpass':
+        return f <= 0.8 * e['fc'] if e.get('fc') else None
+    if not e.get('f1') or not e.get('f2'):
+        return None
+    g = 0.1 * (e['f2'] - e['f1'])
+    if kind == 'bandpass':
+        return (f >= e['f1'] + g) & (f <= e['f2'] - g)
+    return (f <= e['f1'] - g) | (f >= e['f2'] + g)
+
+
 def metrics(design, f, s21, s11=None, relative=True):
     """Band edges, centre and bandwidth errors, pass-band loss / match of a response."""
     spec = design.spec
@@ -97,13 +109,20 @@ def metrics(design, f, s21, s11=None, relative=True):
         pb = f <= f0
     elif kind == 'bandpass':
         pb = abs(f / f0 - 1) <= fbw / 2
-    else:
-        pb = (f <= f0 * (1 - fbw)) | (f >= f0 * (1 + fbw))
+    else:                                                     # outside the target edges, a tenth of the band out
+        t = targets(spec)
+        g = 0.1 * (t['f2'] - t['f1'])
+        pb = (f <= t['f1'] - g) | (f >= t['f2'] + g)
     if np.any(pb):
         m['passband_IL_dB'] = float(-y[pb].max())
         m['passband_IL_worst_dB'] = float(-y[pb].min())
         if s11 is not None:
             m['passband_RL_worst_dB'] = float(-db(s11)[pb].max())
+    own = _own_passband(kind, f, e)
+    if s11 is not None and own is not None and np.any(own):
+        # the match over the response's own pass band: a mistuned filter's mismatch at the spec's band is its
+        # skirt, not its match
+        m['own_passband_RL_worst_dB'] = float(-db(s11)[own].max())
     if kind == 'bandstop':
         sb = abs(f / f0 - 1) <= fbw / 4
         if np.any(sb):
