@@ -105,7 +105,7 @@ def _solvers(v):
 # the settings of every run (each solver's own are in its plugin): (key, default, help, type, ...)
 CORE = [
     Option('solvers', None, "solvers to run, comma-separated: auto (the default: the full-wave solver estimated "
-           "cheapest for this board, plus the line model; kicad2openems: openems), openems (3D FDTD), mom25d (alias mom; 2.5D "
+           "cheapest for this board, plus the line model; kicad2openems: openems), openems (3D FDTD), gfdtd (3D FDTD on the GPU or the CPU, openEMS's model; not in all), mom25d (alias mom; 2.5D "
            "MoM: planar boards over a ground plane, no openEMS needed), mixed (mom25d with long straight runs as transmission lines; not in all), qucs or scikit (the transmission-line model as "
            "a circuit, solved by qucsator or scikit-rf: milliseconds), lines (qucs when qucsator is installed, else "
            "scikit) or all. A "

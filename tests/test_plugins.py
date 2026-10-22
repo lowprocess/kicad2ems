@@ -123,25 +123,34 @@ def test_assess_named_and_reference(boards, run_cli, tmp_path, monkeypatch):
 
 
 def test_auto_picks_the_cheaper_full_wave_solver(run_cli, tmp_path, monkeypatch):
-    from kicad2ems.solvers import mom
+    from kicad2ems.solvers import mom, gfdtd
     from kicad2ems.solvers.openems import plugin as fdtd
     from kicad2ems.solvers.openems import simulation
     monkeypatch.setattr(mom, 'solve', _canned_mom)
     monkeypatch.setattr(mom, 'mom25d_status', lambda: (True, '0.0 (test)'))
     monkeypatch.setattr(simulation, 'check_openems', lambda: (True, ['  ok      openEMS  /x/openEMS/__init__.py']))
-    cost = dict(openems=100.0, mom25d=10.0)
+    monkeypatch.setattr(gfdtd.GFDTD, 'check', lambda self, s=None: (True, 'GPU: test'))
+    cost = dict(openems=100.0, mom25d=10.0, gfdtd=50.0)
     monkeypatch.setattr(fdtd.OpenEMS, 'estimate', lambda self, run: dict(seconds=cost['openems'], gb=0.1, what='0.4 M cells'))
+    monkeypatch.setattr(gfdtd.GFDTD, 'estimate', lambda self, run: dict(seconds=cost['gfdtd'], gb=0.1, what='on the GPU'))
     monkeypatch.setattr(mom.MoM25D, 'estimate', lambda self, run: dict(seconds=cost['mom25d'], gb=0.1, what='4,400 unknowns'))
     out = tmp_path / 'out'
     code, so, err = run_cli(FILTER, '--solvers', 'auto', '--points', '21', '--out', out)
     assert code == 0, so + err
     assert 'solvers auto: mom25d + ' in so and 'openems not chosen (0.4 M cells, ~100 s)' in so
+    assert 'gfdtd not chosen (on the GPU, ~50 s)' in so
     sm = json.loads((out / 'filter_run.json').read_text())
     assert sm['solvers'][0] == 'mom25d' and sm['auto']['chosen'][0] == 'mom25d' and 'openems' in sm['auto']['estimates']
     assert '--solvers auto: mom25d' in (out / 'filter_report.html').read_text()
-    cost.update(openems=5.0)                                        # now openEMS is cheaper: --preview prepares it
+    cost.update(gfdtd=5.0)                                          # now gfdtd is cheaper: --preview prepares openEMS's mesh
     code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview', '--points', '21', '--out', out)
-    assert code == 0 and 'solvers auto: openems + ' in so and (out / 'filter_mesh.png').exists(), so + err
+    assert code == 0 and 'solvers auto: gfdtd + ' in so and (out / 'filter_mesh.png').exists(), so + err
+    code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview', '--sigma', '5.8e7', '--points', '21', '--out', out)
+    assert code == 0 and 'solvers auto: mom25d + ' in so, so + err        # copper loss: not gfdtd's
+    assert "gfdtd not used: --sigma (gfdtd's copper is PEC): openEMS's" in so
+    cost.update(mom25d=50.0, openems=20.0)
+    code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview', '--sigma', '5.8e7', '--points', '21', '--out', out)
+    assert code == 0 and 'solvers auto: openems + ' in so, so + err
     assert settings_plan('auto') == (['auto'], ['auto'])
 
 
@@ -157,4 +166,5 @@ def test_auto_leaves_out_what_cannot_model_the_board(boards, run_cli, tmp_path, 
     code, so, err = run_cli(boards['dipole'] + '.kicad_pcb', '--solvers', 'auto', '--preview', '--fmin', '1', '--fmax', '3',
                             '--out', out)
     assert code == 0, so + err
-    assert 'solvers auto: openems' in so and 'mom25d not used: gap port(s) P1: no planar equivalent' in so
+    assert ('solvers auto: openems' in so or 'solvers auto: gfdtd' in so)            # FDTD, whichever is cheaper
+    assert 'mom25d not used: gap port(s) P1: no planar equivalent' in so

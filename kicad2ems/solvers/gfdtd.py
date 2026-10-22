@@ -14,15 +14,19 @@ Not yet: the --converge levels, conductor loss (conducting sheets are PEC), phas
 import os
 from types import SimpleNamespace
 
-from . import Result, Option
+from . import Result, Option, AUTO
 from .openems.plugin import OpenEMS, mesh_zone
 
 G = 'gfdtd (GPU FDTD)'
+# gfdtd's speed over openEMS's estimate (24 threads), per backend: the examples' runs on an RX 7800 XT and an
+# i7-13700K, 8-70x on the GPU and 2-2.3x on the core (docs/gfdtd.md#speed); numpy ~10x slower than openEMS.
+# START: seconds of setup a run (CuPy's kernels, the core's threads)
+SPEEDUP, START = dict(cupy=8.0, core=2.0, numpy=0.1), 2.0
 
 
 class GFDTD(OpenEMS):
     name, aliases, label = 'gfdtd', ('gpu-fdtd',), 'gfdtd (GPU FDTD)'
-    in_auto = False                 # auto picks openEMS for this model; gfdtd runs when named (or ticked)
+    in_auto = True                  # auto: picked over openEMS where it can (no --sigma, --converge, --drive)
     in_all = False                  # --solvers all: openEMS's model again, named on its own
     previewed = False
     capabilities = dict(OpenEMS.capabilities,
@@ -56,10 +60,20 @@ class GFDTD(OpenEMS):
         return None
 
     def assess(self, run):
-        return []
+        """Named, gfdtd runs without what it lacks (with a note, prepare); for auto, those runs are openEMS's."""
+        if AUTO not in run.plan:
+            return []
+        s = run.s
+        return [f"{what}: openEMS's" for what, on in (("--sigma (gfdtd's copper is PEC)", s.sigma),
+                                                    ("--converge", s.converge), ("--drive", s.drive)) if on]
 
     def estimate(self, run):
-        return None
+        """openEMS's estimate (the same mesh and timesteps), at gfdtd's speed on the backend it would use."""
+        from gfdtd.engine import resolve_backend
+        e = OpenEMS.estimate(self, run)
+        where = resolve_backend(self._engine(run.s).partition(':')[2])
+        return dict(e, seconds=e['seconds'] / SPEEDUP[where] + START,
+                    what=e['what'] + {'cupy': ' on the GPU', 'core': ' on the CPU core'}.get(where, ' in numpy'))
 
     def _jobs(self, s, p):
         """Runs at once: --jobs when given; on the GPU as many as its cache holds (engine.concurrent_runs), on the

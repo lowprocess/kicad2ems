@@ -26,7 +26,9 @@ is invalid or a named solver cannot run. Settings and solvers are checked before
 | Name | Solver | Needs |
 |---|---|---|
 | `openems` (or `fdtd`) | openEMS, 3D FDTD | openEMS |
+| `gfdtd` | gfdtd, 3D FDTD on the GPU or the CPU: openEMS's model, its own engine ([details](gfdtd.md)) | CuPy for the GPU, or its compiled core |
 | `mom25d` (or `mom`) | mom25d, 2.5D method of moments ([details](mom.md)) | nothing extra |
+| `mixed` | mom25d with long straight runs as transmission lines ([details](mom.md#mixed)) | nothing extra |
 | `qucs` | the [line model](transmission-lines.md), solved by qucsator | qucsator on PATH |
 | `scikit` | the line model, solved by scikit-rf | scikit-rf |
 | `lines` | `qucs` if qucsator is installed, otherwise `scikit` | |
@@ -46,18 +48,83 @@ are drawn over it and compared with it in the report.
 get a warning and the run continues. If a solver named in `--solvers` can't run or can't model the
 board, the run stops before starting.
 
-Antenna mode (`mode = "antenna"`) needs openEMS or mom25d. mom25d models antennas over an infinite
+Antenna mode (`mode = "antenna"`) needs openEMS, gfdtd or mom25d. mom25d models antennas over an infinite
 ground plane, so it suits patches and arrays but not antennas that use the board edge.
+
+<a id="which"></a>
+### Which solver
+
+gfdtd and mom25d are the working solvers, and the line model is for tuning. openEMS is the slower reference,
+for what the other two lack and for checking gfdtd's engine.
+
+Here is how close each solver came to openEMS, and how long it took. The difference is the largest |ΔS|
+from openEMS over S11 and S21 (openEMS drove P1 only). The times are wall times from the
+[benchmarks](benchmarks.md): 24 CPU threads, and an RX 7800 XT for gfdtd and mom25d. gfdtd ran on 8 of the
+examples.
+
+| Example | openEMS | gfdtd (GPU) | mom25d (GPU) | Line model |
+|---|---|---|---|---|
+| sma_launch | 21.5 s | 0.001, 2.8 s | 0.066, 108 s | 0.47, 0.0 s |
+| hairpin | 45 s | 0.002, 5.5 s | 0.106, 7.0 s | 0.65, 0.3 s |
+| rf_wilkinson | 33 s | 0.006, 4.2 s | 0.040, 4.5 s | 0.09, 0.3 s |
+| rf_coupler | 26 s | 0.006, 2.9 s | 0.045, 10.1 s | 0.09, 0.1 s |
+| filter | 118 s | 0.012, 10.2 s | 0.267, 14.7 s | 0.82, 0.4 s |
+| rf_branchline | 8.2 s | 0.012, 0.7 s | 0.052, 23.0 s | 0.06, 0.2 s |
+| antenna_patch | 25 s | 0.020, 2.6 s | 0.224, 9.3 s | – |
+| demo_bandpass | 84 s | 0.126, 2.4 s | 0.093, 36.3 s | 0.47, 0.2 s |
+
+**gfdtd** solves openEMS's model (the same mesh, ports, parts and end criteria) with its own engine.
+- It was the fastest full-wave solver on every example: 3–35 times faster than openEMS on the GPU, and its
+  CPU core was faster than openEMS on all 8 of them.
+- It agrees with openEMS to 0.02 or better on 7 of the 8.
+- It handles what FDTD handles: board edges, enclosures and cavities, antennas with a finite ground, and gap
+  ports.
+- Its copper is lossless, so `--sigma` is ignored.
+- It drives one port at a time, so there is no phased drive (`--drive`), and it has no `--converge` levels.
+- Its lumped parts are modelled differently from openEMS's. That is where demo_bandpass's 0.126 comes from.
+- It shares openEMS's mesh and its simplifications: vias snapped to mesh lines, and copper as zero-thickness
+  sheets. Agreeing with openEMS checks gfdtd's engine, not the model.
+
+**mom25d** is a different method and doesn't use the FDTD mesh, so it is the independent cross-check.
+- It has no air box and no enclosure resonances. Radiation and surface waves are in.
+- It includes conductor loss (`--sigma`), and it de-embeds wave ports on straight feed lines.
+- On thin trace filters it is quick: on the CPU it beat gfdtd's core 3.5 times on hairpin and 1.4 times on
+  filter.
+- Boards with large planes and many vias are slow and memory-hungry. Memory grows with the square of the
+  unknowns and time with their cube: sma_launch took 108 s against gfdtd's 2.8 s.
+- It ignores the board outline, because the dielectric extends sideways forever. Antennas that use the board
+  edge or a finite ground come out wrong (antenna_ifa and antenna_slot are 1.4 from openEMS).
+- It can't model gap ports (the dipole), and its loss tangent doesn't vary with frequency.
+- On most boards it lands 0.04–0.3 from openEMS, and further on a few (rf_ratrace 0.62, rf_gcpw 0.51). Part of
+  that is the different physics.
+
+**openEMS** is the reference.
+- It is the most widely used and does the most: conductor loss, phased drive and `--converge`.
+- It runs on the CPU only, and it was the slowest full-wave solver on all but the smallest boards (8 s on
+  rf_branchline and rf_ratrace).
+
+**mixed** is mom25d with the middle of each long, lone, straight run put back as a transmission line.
+- It needs fewer unknowns than mom25d on boards of long traces, and it has mom25d's limits.
+- Coupled stretches are never cut, and it isn't part of `all`.
+
+**The line model** is a circuit of line sections, solved in milliseconds. It's right for topology and tuning.
+- It is close on plain distributed circuits: branchline 0.06, coupler and wilkinson 0.09.
+- It misses coupling, radiation and parasitics, so it is 0.4–0.8 off on filters and transitions.
+- It can't do antennas.
 
 <a id="auto"></a>
 ### `auto`
 
 `auto` drops the solvers that can't run here or can't model the board, estimates how long each remaining
-full-wave solver would take, runs the faster one and adds the line model. The log says what it chose:
+full-wave solver would take (gfdtd, mom25d, openEMS), runs the fastest and adds the line model. gfdtd's estimate
+is openEMS's mesh and timesteps at gfdtd's measured speed: about 8 times openEMS's on the GPU and 2 times on
+its CPU core. With `--sigma`, `--converge` or `--drive`, auto leaves gfdtd out, because it would ignore them.
+openEMS then runs where mom25d can't. The log says what it chose:
 
 ```
-solvers auto: mom25d + qucs (4,400 unknowns, ~16 EM solves, ~21 s); openems not chosen
-(0.40 M cells, 1 run(s) of ~502,493 timesteps, ~7 min); force one with --solvers <name>
+solvers auto: gfdtd + qucs (0.31 M cells, 1 run(s) of ~146,729 timesteps on the GPU, ~13 s); openems not chosen
+(0.31 M cells, 1 run(s) of ~146,729 timesteps, ~89 s); mom25d not chosen (4,763 unknowns, ~16 EM solves, ~19 s);
+force one with --solvers <name>
 ```
 
 The estimates are rough. The mom25d estimate accounts for a GPU if there is one. With `--preview`, auto

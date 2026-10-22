@@ -22,6 +22,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   of 10.7 GB and 270 s instead of 313 s, on the GPU in 9.7 GB instead of 13.2 GB, with the same result.
 
 ### Changed
+- `--solvers auto` considers gfdtd. Its estimate is openEMS's mesh and timesteps at gfdtd's speed: about 8x
+  openEMS's on the GPU, 2x on the CPU core. So auto now picks gfdtd or mom25d, and openEMS only where neither
+  applies. With `--sigma`, `--converge` or `--drive`, gfdtd is left out of auto, because it would ignore them.
+  docs/usage.md#which compares the solvers' strengths and weaknesses.
+- mom25d's near-field correction keeps its sparse structure from one frequency to the next: a CPU solve on the
+  SMA launch in 13.7 s instead of 16.2 s, the run 246 s instead of 270 s.
 - dfsynth computes its line models over the whole sweep at once, and the interdigital design curves in one
   batched scan: an interdigital design in 0.3 s instead of 3 s, the same designs bit for bit.
 - The test suite runs in about two thirds of the time (314 s to 218 s), every check kept.

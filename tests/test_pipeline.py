@@ -69,7 +69,7 @@ def test_antenna_run(boards, run_cli, tmp_path, monkeypatch):
     monkeypatch.setattr(antenna, 'run_antenna', fake_antenna)
     out = tmp_path / 'ant'
     code, so, err = run_cli(boards['patch'] + '.kicad_pcb', '--mode', 'antenna', '--fmin', '2', '--fmax', '3',
-                            '--points', '41', '--out', out)
+                            '--points', '41', '--out', out, '--solvers', 'openems')
     assert code == 0, err
     for f in ('patch_antenna.png', 'patch_pattern.png', 'patch_antenna.json', 'patch_report.html'):
         assert (out / f).exists(), f
@@ -88,7 +88,7 @@ def test_touchstone_says_what_was_not_computed(demo_files, run_cli, tmp_path, no
     base, _ = demo_files
     out = tmp_path / 'out'
     code, so, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'RF,GND', '--ground', 'B.Cu',
-                            '--fmin', '1', '--fmax', '8', '--points', '21', '--out', out, '--excite', 'P1')
+                            '--fmin', '1', '--fmax', '8', '--points', '21', '--out', out, '--excite', 'P1', '--solvers', 'openems')
     assert code == 0, err
     head = (out / 'demo_openems.s2p').read_text().splitlines()[0]
     assert head.endswith('not computed (written as 0): S(P2,P2)'), head
