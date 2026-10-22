@@ -17,8 +17,8 @@ import time
 
 import numpy as np
 
-from . import Solver, Result, Option
-from .mom import MoM25D, _metal, G as MOM_G
+from . import Result, Option
+from .mom import MoM25D, _metal
 from .. import stop
 
 G = 'mixed (mom25d + lines)'
@@ -61,7 +61,6 @@ def plan_cuts(model, data, dmax, fmin, cut_min=CUT_MIN * 1e-3, keep_out=None, lo
                 sig_k[k] = affinity.scale(unary_union(g), MM, MM, origin=(0, 0)).buffer(0)
     geoms = {k: unary_union(gs) for k, gs in model.shapes.items()}
     runs = find_runs(geoms, {k: dmax for k in geoms}, signal=model.signal, w_max=3e-3, min_len=1.0, margin=1.0)
-    H = float(model.stack.z[-1])
     vias = [Point(v.x, v.y) for v in model.vias]
     ports = [Point(*sp['c']) for sp in model.port_specs if 'c' in sp] + \
             [Point(*leg['c']) for sp in model.port_specs if 'legs' in sp for leg in sp['legs'].values()]
@@ -128,7 +127,7 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, max_solves=60, cut_min=CUT_MIN, k
     mom25d's model and put back as lines. mom_kw: the mom25d mesh options (quads, zone, lines, signal_vias, ...)."""
     from mom25d.board import BoardModel
     from mom25d.geo import LinePort
-    from mom25d.run import solve_band, _zc
+    from mom25d.run import solve_band
     from mom25d.api import ZONE_OUT, LINE_STEP
     from ..sparams import mixed_mode
     t0 = time.time()
@@ -231,7 +230,7 @@ def dump_fields(h):
     waves = []                                    # per call (frequency): {column: (a, b)}
 
     def currents(f):
-        S = sim.sparams(f, keep=True)
+        sim.sparams(f, keep=True)                                  # its currents and waves: sim.last
         I, A, B = sim.last['I'], sim.last['A'], sim.last['B']
         L = np.zeros((len(c), len(c)), complex)
         for j, (cut, _) in enumerate(cuts):
@@ -333,7 +332,6 @@ class Mixed(MoM25D):
 
     def solve(self, run, prep):
         s = run.s
-        self._held = {}
         self._held = {}
         S, names, zref, info = solve_mixed(
             run.m, run.freq, dmax=s.mom_dmax, sigma=s.sigma, max_solves=s.mom_solves, cut_min=s.mixed_cut, log=run.log,
