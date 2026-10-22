@@ -236,10 +236,11 @@ class Nodal:
         from scipy.optimize import brentq
         f = np.linspace(f_lo, f_hi, n)
 
-        def d(x):
-            B = self._ymat([x])[0].imag
-            return np.linalg.det(B / np.abs(B).max())
-        v = np.array([d(x) for x in f])
+        def dets(x):
+            B = self._ymat(x).imag
+            return np.linalg.det(B / np.abs(B).max((1, 2), keepdims=True))
+        d = lambda x: dets([x])[0]
+        v = dets(f)                                               # the scan in one go, the roots one by one
         out = []
         for k in range(n - 1):
             if v[k] == 0 or np.sign(v[k]) != np.sign(v[k + 1]):
@@ -253,16 +254,16 @@ class Nodal:
         from scipy.optimize import brentq
         others = [k for k in range(self.n) if k != node]
 
-        def b(x):
-            Y = self._ymat([x])[0]
+        def bs(x):
+            Y = self._ymat(x)
+            y = Y[:, node, node]
             if others:
-                yo = Y[np.ix_([node], others)]
-                y = Y[node, node] - (yo @ np.linalg.solve(Y[np.ix_(others, others)], Y[np.ix_(others, [node])]))[0, 0]
-            else:
-                y = Y[node, node]
+                yo, yoo, yon = Y[:, [node]][:, :, others], Y[:, others][:, :, others], Y[:, others][:, :, [node]]
+                y = y - (yo @ np.linalg.solve(yoo, yon))[:, 0, 0]
             return y.imag
+        b = lambda x: bs([x])[0]
         f = np.linspace(f_lo, f_hi, 200)
-        v = np.array([b(x) for x in f])
+        v = bs(f)                                                 # the scan in one go, the roots one by one
         for k in range(len(f) - 1):
             if v[k] < 0 <= v[k + 1]:                          # a parallel resonance: B rising through zero
                 f0 = brentq(b, f[k], f[k + 1], xtol=1e-6 * f[k])
