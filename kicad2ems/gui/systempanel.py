@@ -228,10 +228,7 @@ class SystemPanel(QWidget):
         g = (self.info or {}).get('gpu')
         gfree = g['free'] if g else None
         usable = {s['name']: s['ok'] for s in (self.info or {}).get('solvers', [])}
-        from ..solvers import shown
         for n, e in est['solvers'].items():
-            if n not in shown():                                    # an experimental solver, hidden
-                continue
             sec = e.get('seconds', 0)
             t = f"~{sec:.0f} s" if sec < 120 else (f"~{sec / 60:.0f} min" if sec < 7200 else f"~{sec / 3600:.1f} h")
             mem = f"{e['gb']:.1f} GB" + (f" ({fit_note(e['gb'], ram)})" if ram else '')

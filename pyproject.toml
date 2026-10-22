@@ -27,7 +27,6 @@ dependencies = [
 [project.optional-dependencies]
 fast = ["scikit-rf>=1.0"]          # --fast skrf: the line model as S-parameters (qucsator: a separate program)
 dumps = ["h5py>=3"]                # frequency-domain field dumps (openEMS's own Python package needs it too)
-emerge = ["emerge>=2.8; python_version < '3.14'"]   # --solvers emerge (PyPI's needs Python <= 3.13; 3.14: tools/emerge)
 gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "h5py>=3", "PyOpenGL>=3.1"]   # kicad2ems-gui (h5py: FD dumps,
                                                                                    # far field; PyOpenGL: 3D fields)
 gmsh = ["gmsh>=4.11"]              # mom25d's mesher = "gmsh"

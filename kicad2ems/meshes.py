@@ -3,8 +3,7 @@ Each solver's discretisation of the board, for the GUI's 3D view: <name>_mesh_<s
 model mm (y up, z = 0 the bottom copper), written when the solver prepares (a preview too) or solves.
 
     kind 'grid': x, y, z     openEMS's mesh lines
-    kind 'tris': nodes (n, 3), tris (m, 3)    a surface mesh: mom25d's triangles on each layer, EMerge's element
-                                              faces on the copper, ports and parts
+    kind 'tris': nodes (n, 3), tris (m, 3)    a surface mesh: mom25d's triangles on each layer
 
     save(run, 'openems', 'grid', x=..., y=..., z=...)
     find(out_dir) -> {solver: path}; segments(path, box) -> (2 k, 3) line segment end points, for drawing
@@ -12,7 +11,7 @@ model mm (y up, z = 0 the bottom copper), written when the solver prepares (a pr
 import glob, os
 import numpy as np
 
-LABELS = {'openems': 'openEMS grid', 'mom25d': 'mom25d mesh (MoM)', 'emerge': 'EMerge mesh (FEM)'}
+LABELS = {'openems': 'openEMS grid', 'mom25d': 'mom25d mesh (MoM)'}
 
 
 def save(run, solver, kind, **arrays):
@@ -22,15 +21,11 @@ def save(run, solver, kind, **arrays):
 
 
 def find(out_dir):
-    """{solver: path} of the mesh files of a results folder (the newest run's name first); an experimental
-    solver's only when they are shown (solvers.shown: the GUI's --experimental)."""
-    from .solvers import registry, shown
-    hidden = set(registry()) - set(shown())
+    """{solver: path} of the mesh files of a results folder (the newest run's name first)."""
     out = {}
     for p in sorted(glob.glob(os.path.join(out_dir, '*_mesh_*.npz')), key=os.path.getmtime, reverse=True):
         solver = os.path.basename(p)[:-4].rsplit('_mesh_', 1)[1]
-        if solver not in hidden:
-            out.setdefault(solver, p)
+        out.setdefault(solver, p)
     return out
 
 

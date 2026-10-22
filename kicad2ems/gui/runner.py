@@ -11,13 +11,12 @@ import glob, json, os, sys
 
 # the option groups (options.Option.group) as the form's group boxes; others under their own name
 GUI_GROUPS = {'board': 'Board', 'band': 'Frequency', 'solvers': 'Solvers', 'output': 'Output', 'mom25d': 'mom25d',
-              'antenna': 'Output', 'field dumps': 'Output', 'EMerge (experimental)': 'EMerge (experimental)',
+              'antenna': 'Output', 'field dumps': 'Output',
               'gfdtd (GPU FDTD)': 'gfdtd'}
 # a section per solver, greyed while none of its solvers is ticked (auto: openEMS, mom25d and the line model may
 # run); 'openEMS/Mesh': the Mesh sub-section of openEMS's. gfdtd runs openEMS's model: its mesh and run settings
-SECTION_SOLVERS = {'openEMS': {'openems', 'gfdtd'}, 'gfdtd': {'gfdtd'}, 'mom25d': {'mom25d'},
-                   'EMerge (experimental)': {'emerge'}}
-SECTION_ORDER = ['Board', 'Frequency', 'Solvers', 'openEMS', 'gfdtd', 'mom25d', 'EMerge (experimental)', 'Output']
+SECTION_SOLVERS = {'openEMS': {'openems', 'gfdtd'}, 'gfdtd': {'gfdtd'}, 'mom25d': {'mom25d'}}
+SECTION_ORDER = ['Board', 'Frequency', 'Solvers', 'openEMS', 'gfdtd', 'mom25d', 'Output']
 # single settings greyed unless their case holds: the antenna's in antenna mode, with a solver that has one
 ANTENNA_FIELDS = ('ff_freq', 'drive', 'grid', 'steer', 'taper')
 # the line model's qucsator is a setting of the machine, not of a board: the Solvers and hardware window
@@ -40,12 +39,10 @@ def make_fields():
     label (config.CORE, then each solver's) and a tick box per solver (key solver:<name>) heading the Solvers
     group; Board and Band first, Output last."""
     from ..config import all_options
-    from ..solvers import shown, registry, AUTO
-    vis = shown()                                                   # experimental solvers: --experimental only
-    rows = [(o.key, o.gui, _kind(o), GUI_GROUPS.get(o.group, o.group)) for name, o in all_options()
-            if o.gui and (name is None or name in vis or name not in registry())]
+    from ..solvers import registry, AUTO
+    rows = [(o.key, o.gui, _kind(o), GUI_GROUPS.get(o.group, o.group)) for name, o in all_options() if o.gui]
     rows = [(TICK + AUTO, 'auto: fastest full-wave + line model', 'bool', 'Solvers')] + \
-           [(TICK + n, sv.label, 'bool', 'Solvers') for n, sv in vis.items()] + rows
+           [(TICK + n, sv.label, 'bool', 'Solvers') for n, sv in registry().items()] + rows
     rank = {g: i for i, g in enumerate(SECTION_ORDER)}
     return sorted(rows, key=lambda r: (rank.get(r[3].split('/')[0], len(rank) - 1), r[0] != 'out'))   # the folder
     # first in Output; otherwise stable: the option order within a section
@@ -62,14 +59,14 @@ def solver_ticks(vals):
     """{solver:<name>: ticked} for a settings dict: the solvers its plan runs (openEMS by default; solvers, mom =
     true and fast name the others; 'lines' as resolved here). solvers = [] ticks none."""
     from ..config import build_settings
-    from ..solvers import shown, resolve_lines, LINES, AUTO
+    from ..solvers import registry, resolve_lines, LINES, AUTO
     if vals.get('solvers') == []:
         run = []
     else:
         s = build_settings({k: vals.get(k) for k in ('solvers', 'mom', 'fast') if vals.get(k) not in (None, '')})
         run = s.solver_plan(preview=False)[0]
         run = [resolve_lines(s) if x == LINES else x for x in run]
-    return {TICK + n: n in run for n in [AUTO] + list(shown())}
+    return {TICK + n: n in run for n in [AUTO] + list(registry())}
 
 
 def solvers_from_form(vals):

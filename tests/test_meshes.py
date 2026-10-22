@@ -1,5 +1,5 @@
 """Each solver's mesh for the GUI's 3D view (kicad2ems.meshes): a preview writes openEMS's grid and mom25d's
-triangles (EMerge's when it is installed), and the board's geometry comes from <name>_board.json."""
+triangles, and the board's geometry comes from <name>_board.json."""
 import os
 import numpy as np
 import pytest

@@ -1,6 +1,6 @@
 """
 The solvers, as plugins: each one a Solver subclass registered under its name. Built in: openems (openEMS,
-3D FDTD), mom25d (2.5D Method of Moments), emerge (EMerge, 3D FEM, optional), gfdtd (openEMS's model on
+3D FDTD), mom25d (2.5D Method of Moments), gfdtd (openEMS's model on
 gfdtd's GPU FDTD engine) and the line model solved as a circuit by qucs (qucsator) or scikit
 (scikit-rf). Another solver installs as a package that declares an entry point in the group
 'kicad2ems.solvers' (`mysolver = "mypackage.plugin:MySolver"`) and then appears in --solvers, --check, the
@@ -38,7 +38,7 @@ and implements
 run.freq (Hz), run.lm (the line model), run.name, run.log(), run.status(run_name, dict) (progress events),
 run.path(suffix), run.wrote(label, path), run.figure(fig, suffix, key, label) and run.summary.
 """
-import importlib, os
+import importlib
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -47,7 +47,7 @@ from ..options import Option                    # noqa: F401  (plugins import it
 
 GROUP = 'kicad2ems.solvers'                 # the entry-point group of solvers installed as packages
 BUILTIN = ('kicad2ems.solvers.openems.plugin:OpenEMS', 'kicad2ems.solvers.mom:MoM25D',
-           'kicad2ems.solvers.emerge.plugin:EMerge', 'kicad2ems.solvers.mixed:Mixed',
+           'kicad2ems.solvers.mixed:Mixed',
            'kicad2ems.solvers.gfdtd:GFDTD',
            'kicad2ems.solvers.lines.plugin:Qucs', 'kicad2ems.solvers.lines.plugin:Scikit')
 LINES = 'lines'                             # the line model: qucs when qucsator is installed, else scikit
@@ -90,28 +90,11 @@ class Deviation:
     area: float = None
 
 
-EXPERIMENTAL = 'KICAD2EMS_EXPERIMENTAL'      # set (kicad2ems-gui --experimental): experimental solvers shown
-
-
-def experimental_on():
-    """Are experimental solvers shown? (The GUI's --experimental sets KICAD2EMS_EXPERIMENTAL for itself and the
-    runs it starts; the command line always has them.)"""
-    return os.environ.get(EXPERIMENTAL, '') not in ('', '0')
-
-
-def shown():
-    """{name: Solver}: the registry without the experimental solvers unless experimental_on(): what the GUI
-    lists, ticks, estimates and plots."""
-    on = experimental_on()
-    return {n: sv for n, sv in registry().items() if on or not sv.experimental}
-
-
 class Solver:
     name = ''
     aliases = ()
     label = ''
-    experimental = False        # a solver still being tried: hidden in the GUI without --experimental
-    in_auto = True              # --solvers auto may pick it (never an experimental one)
+    in_auto = True              # --solvers auto may pick it
     consumes = 'board'
     previewed = False
     rank = 1

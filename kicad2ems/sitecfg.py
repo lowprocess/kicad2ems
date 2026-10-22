@@ -5,7 +5,6 @@ window writes it), then kicad2ems-site.toml in the environment (sys.prefix: the 
 first.
 
     qucsator = "/usr/bin/qucsator_rf"           # the line model's circuit solver
-    emerge_python = "/opt/emerge/bin/python"    # a Python with EMerge (--emerge-python)
     openems_venv = "/opt/openems/venv"          # a venv with openEMS (solvers/openems/venv.py)
 
     sitecfg.get('qucsator') -> the path, or None

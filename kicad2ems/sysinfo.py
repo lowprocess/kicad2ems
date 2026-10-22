@@ -36,9 +36,9 @@ def gpu():
 
 
 def solvers():
-    from .solvers import shown
+    from .solvers import registry
     out = []
-    for n, sv in shown().items():                                   # the GUI's: experimental with --experimental
+    for n, sv in registry().items():
         try:
             ok, what = sv.check()
         except Exception as e:                                       # a check never stops the listing

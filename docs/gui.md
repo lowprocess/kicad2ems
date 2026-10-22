@@ -60,8 +60,6 @@ environment**: a venv with openEMS, when it isn't in kicad2ems's own Python (its
 These are settings of the machine rather than of a board: they go into `~/.config/kicad2ems/site.toml`.
 Empty finds qucsator on the PATH or where `setup.sh` recorded it, and openEMS in kicad2ems's own Python.
 
-Experimental solvers (EMerge) appear only when the GUI is started with `kicad2ems-gui --experimental`.
-
 **Stop** asks the run to stop: openEMS ends at once and keeps what it has computed, mom25d ends after the
 frequency it is solving (with no result), and solvers that haven't started are skipped. Press Stop again to
 end the process at once.
@@ -115,8 +113,8 @@ shown: *Field* with a dump, *Far field* with antenna results.
   0603, 0805, …; without a size in the name, the pads' extent): resistors green, capacitors cyan, inductors
   pink, a 0 Ω link grey, with metal end caps and a label with the reference and value. A part on the bottom
   layer hangs below the board. The plan view outlines them in the same colours.
-- **Mesh:** a solver's discretisation: openEMS's grid lines, mom25d's triangles or EMerge's element faces on
-  the copper, ports and parts. A preview writes all three in seconds.
+- **Mesh:** a solver's discretisation: openEMS's grid lines or mom25d's triangles. A preview writes both in
+  seconds.
 - **a dump:** a volume dump, for example `--dump E@volume+5@2.4` (the board plus 5 mm of air above and
   below), as a translucent cloud; a plane dump (an openEMS cut, mom25d's surface currents) as a coloured sheet
   in place, just above the copper when it lies on a copper layer.

@@ -23,7 +23,6 @@ moments) or a transmission-line model, and writes S-parameters, antenna results,
 | [openEMS: simulation](simulation.md) | Materials, excitation, when a run stops, parallel and antenna runs |
 | [mom25d](mom.md) | The method-of-moments solver: what it models, ports, antennas, speed, GPU |
 | [gfdtd](gfdtd.md) | The GPU FDTD solver: openEMS's model on a GPU, CSXCAD / openEMS compatibility, what it models |
-| [EMerge](emerge.md) | The optional 3D finite-element solver: installing it, how the board is modelled, how it compares |
 | [Transmission-line model](transmission-lines.md) | Line sections, impedance formulas, the circuit solvers |
 
 ## Working on kicad2ems

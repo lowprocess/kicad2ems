@@ -283,9 +283,9 @@ def predicted(mets, fw):
 
 
 def full_wave(mets):
-    """The first full-wave result's name (mom25d / openems / gfdtd / emerge / mixed), else None."""
+    """The first full-wave result's name (mom25d / openems / gfdtd / mixed), else None."""
     for k in mets:
-        if k in ('mom25d', 'openems', 'gfdtd', 'emerge', 'mixed'):
+        if k in ('mom25d', 'openems', 'gfdtd', 'mixed'):
             return k
     return None
 

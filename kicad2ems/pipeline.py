@@ -348,7 +348,7 @@ class Job:
         est, not_used = {}, {}
         named_fw = any(n in reg and reg[n].consumes == 'board' for n in self.named)    # one named: auto adds the line model
         for n, sv in reg.items():
-            if sv.consumes != 'board' or named_fw or sv.experimental or not sv.in_auto:  # nor an experimental one
+            if sv.consumes != 'board' or named_fw or not sv.in_auto:
                 continue
             ok, what = sv.check(s) if not (s.preview and sv.previewed) else (True, '')   # a preview only prepares it
             why = [] if ok else [f"cannot run: {what}"]

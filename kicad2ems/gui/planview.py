@@ -189,7 +189,7 @@ class PlanView(QWidget):
         if solver in self.meshes and self.box is not None and self.z_of(lay) is not None:
             seg = ov.plan_segments(self.meshes[solver], self.box, self.z_of(lay))
             if len(seg):
-                colour = dict(openems='#1f4fa0', mom25d='#1d7a3a', emerge='#7a2a7a').get(solver, '#333')
+                colour = dict(openems='#1f4fa0', mom25d='#1d7a3a').get(solver, '#333')
                 c = pg.PlotCurveItem(seg[:, 0], seg[:, 1], connect='pairs', pen=pg.mkPen(colour, width=1))
                 c.setOpacity(0.55)
                 c.setZValue(0)

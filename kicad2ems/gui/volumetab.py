@@ -228,10 +228,8 @@ class VolumeTab(QWidget):
         from .steering import SteeringBar
         self.steer = SteeringBar(compact=True)                      # the Results page's, linked (app.py)
         self.steer.steered.connect(lambda *_: self._far_on())
-        from ..solvers import shown
         self.mesh.setToolTip("a solver's discretisation of the board (written by a preview or a run): openEMS's "
-                             "grid lines, mom25d's triangles" + (", EMerge's element faces on the copper and ports"
-                                                                 if 'emerge' in shown() else ''))
+                             "grid lines, mom25d's triangles")
         # the controls: one folding section per subject, shown when the folder has something for it (a field
         # dump, a far field), in a side panel the splitter can narrow or close
         from .panels import Section
@@ -660,8 +658,7 @@ class VolumeTab(QWidget):
             if len(seg):
                 seg = seg.copy()
                 seg[:, 2] *= zs
-                colour = dict(openems=(0.1, 0.3, 0.7, 0.55), mom25d=(0.1, 0.5, 0.2, 0.7),
-                              emerge=(0.55, 0.15, 0.55, 0.7)).get(solver, (0.2, 0.2, 0.2, 0.6))
+                colour = dict(openems=(0.1, 0.3, 0.7, 0.55), mom25d=(0.1, 0.5, 0.2, 0.7)).get(solver, (0.2, 0.2, 0.2, 0.6))
                 ln = gl.GLLinePlotItem(pos=seg.astype(np.float32), mode='lines', color=colour, width=1, antialias=True)
                 ln.setDepthValue(-1)
                 self.view.addItem(ln)
