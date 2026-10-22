@@ -6,6 +6,34 @@ example `261013-r1`, the first release on 13 October 2026).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+- gfdtd: the end criterion counts the energy in lumped parts (L I²/2 in an inductor, q²/2C in a series
+  capacitor) as well as the field's. A filter of lumped parts rings in them, and its runs had ended early:
+  demo_bandpass after 53k timesteps instead of 67k, demo_lowpass 21.8k instead of 26.9k (now within 0.03 of
+  openEMS).
+- The `mixed` solver put a line's delay 27 % short between the adaptive sweep's samples. Its cut network has
+  entries that are zero but for the solver's noise, and the sweep's rational fit let them decide the poles of
+  every entry. Entries below 1e-4 of the largest are now fitted apart; the thru converges in 12 solves to 0.35 %.
+- mom25d's port characterisation meshed reference planes at their full width: on the SMA launch it was bigger
+  than the board (22.7k unknowns against 15.7k). The planes now reach 3 stack heights past the line (the same
+  Zc and gamma), and the near-field correction is built in pieces: the SMA launch on the CPU in 6.6 GB instead
+  of 10.7 GB and 270 s instead of 313 s, on the GPU in 9.7 GB instead of 13.2 GB, with the same result.
+
+### Changed
+- dfsynth computes its line models over the whole sweep at once, and the interdigital design curves in one
+  batched scan: an interdigital design in 0.3 s instead of 3 s, the same designs bit for bit.
+- The test suite runs in about two thirds of the time (314 s to 218 s), every check kept.
+
+### Removed
+- EMerge (`--solvers emerge`) and the GUI's `--experimental` switch, which only it used. An old config's
+  EMerge settings are ignored with a note.
+- The gmsh mesher (`--mom-mesher`, the `gmsh` extra). On six example boards it needed 5–15 % more unknowns
+  than Triangle and was never more accurate, and it could not mesh boards with via ports.
+- mom25d's first two solvers (the single-layer `PlanarMoM` and `MultiLayerMoM`), their demos in
+  examples/mom25d and `mom25d.viz`: `sim.Simulation` has long been the solver.
+
 ## 2026-10-20
 
 Release `261020-r1`.
