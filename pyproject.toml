@@ -17,10 +17,10 @@ classifiers = [
 authors = [{ name = "Claude", email = "noreply@anthropic.com" }]
 dependencies = [
     "numpy>=1.24",
-    "scipy>=1.10",                 # mom25d
+    "scipy>=1.10",
     "shapely>=2.0",
     "matplotlib>=3.7",
-    "triangle>=20230923",          # mom25d's surface mesher
+    "mom25d @ git+https://github.com/lowprocess/mom25d",   # the MoM solver, its own repository (it brings triangle, its mesher)
     "tomli>=2; python_version < '3.11'",
 ]
 
@@ -57,10 +57,9 @@ version = {attr = "kicad2ems.__version__"}
 
 [tool.setuptools.packages.find]
 where = [".", "tools/dfsynth"]               # tools/dfsynth: the filter synthesis (the GUI's Filter page, dfsynth)
-include = ["kicad2ems*", "mom25d*", "dfsynth*"]
+include = ["kicad2ems*", "dfsynth*"]
 
 [tool.setuptools.package-data]
-mom25d = ["core/*.cpp", "*.so", "*.pyd"]
 "kicad2ems.gui" = ["*.svg"]                 # the window's and the application launcher's icon, the wand
 
 [tool.pytest.ini_options]

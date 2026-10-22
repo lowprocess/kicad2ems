@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to kicad2ems (formerly kicad2openems) and its bundled
-mom25d solver, by day. Releases are named by datecode, `YYMMDD-rN` (for
+All notable changes to kicad2ems (formerly kicad2openems), and to the mom25d and gfdtd solvers while they
+were bundled with it, by day. Releases are named by datecode, `YYMMDD-rN` (for
 example `261013-r1`, the first release on 13 October 2026).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
@@ -13,6 +13,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   tests, benchmark and README. kicad2ems takes it as an optional dependency (the `gfdtd` extra) and its solver
   plugin stays here; without it installed, gfdtd is listed as not installed. The `gfdtd` command comes with
   the gfdtd package.
+- mom25d is back in its own repository (https://github.com/lowprocess/mom25d), with its history since the import and its tests,
+  which now read saved board files instead of building them with kicad2ems. kicad2ems depends on it; the
+  board-file contract test (tests/test_mom25d_board.py) stays here.
 
 ### Fixed
 - gfdtd: a current probe normal to y ran its loop the wrong way round, so a lumped port along y measured its

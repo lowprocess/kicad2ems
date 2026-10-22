@@ -34,7 +34,11 @@ def mom25d_status():
     try:
         import mom25d
         import triangle                                             # noqa: F401  (mom25d's default mesher)
-    except Exception as e:                                          # ImportError, or a broken dependency
+    except ModuleNotFoundError as e:
+        if e.name == 'mom25d':
+            return False, "mom25d is not installed: python -m pip install 'mom25d @ git+https://github.com/lowprocess/mom25d'"
+        return False, f"{type(e).__name__}: {e}"
+    except Exception as e:                                          # a broken dependency
         return False, f"{type(e).__name__}: {e}"
     try:
         from mom25d import _core                                    # noqa: F401

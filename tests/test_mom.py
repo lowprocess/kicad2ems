@@ -191,3 +191,15 @@ def test_short_differential_feed_falls_back_to_single_ended_legs(monkeypatch):
     S, out_names, zref, info = solve(m, np.array([1e9, 2e9]), port='auto', log=log.append)
     assert calls == [True, False] and out_names == ['P1d', 'P1c', 'P2d', 'P2c'] and S.shape == (2, 4, 4)
     assert any('single-ended' in line for line in log)
+
+
+def test_mixed_connect_cascades_lines():
+    """kicad2ems.solvers.mixed.connect: two line pieces joined by a third through their inner ports equal one
+    line of the total length (mismatched Zc, so reflections are in play)."""
+    from kicad2ems.solvers.mixed import connect, line_S
+    g, zc, z0 = 0.5 + 180j, 37.0, 50.0
+    A, B, C = line_S(g, zc, 3e-3, z0), line_S(g, zc, 5e-3, z0), line_S(g, zc, 7e-3, z0)
+    S = np.zeros((4, 4), complex)
+    S[:2, :2], S[2:, 2:] = A, B
+    out = connect(S, [(1, 2)], [C])
+    assert np.allclose(out, line_S(g, zc, 15e-3, z0), atol=1e-12)

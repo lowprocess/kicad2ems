@@ -2,8 +2,8 @@
 
 [← openEMS simulation](simulation.md) · [Index](index.md) · [Next: Transmission-line model →](transmission-lines.md)
 
-mom25d is a 2.5D method-of-moments solver for circuit boards. It lives in this repository as the package
-`mom25d/` and doesn't need openEMS.
+mom25d is a 2.5D method-of-moments solver for circuit boards. It is its own package, in its own
+repository ([mom25d](https://github.com/lowprocess/mom25d)), which kicad2ems installs with itself; it doesn't need openEMS.
 
 ```bash
 kicad2ems examples/rf_interdig.toml --solvers mom        # mom25d alone
@@ -168,7 +168,7 @@ so what matters most is thin cells along the edges: the mesher adds offset rings
 
 A study on a coupled-line filter found that edge resolution sets the accuracy, not the cell size along
 the copper. Thin edge cells gave 2–4 times smaller errors than evenly shaped cells, with a third of the
-unknowns. The study is in `tools/mom25d/mesher_study.py`.
+unknowns. The study is in `tools/mesher_study.py` in mom25d.
 
 A gmsh mesher was tried and dropped. On six example boards it needed 5–15 % more unknowns than Triangle for
 the same cell size and was never more accurate: as good on three, worse on the coupled-line filter and the
@@ -203,7 +203,7 @@ fan: about 130 unknowns, against 4 now.
 
 Layers made only of signal copper are left as they are. The differential via shows the limit: at 8 GHz the
 via transition excites the space between its ground planes, and the coarser mesh away from the signal costs
-about 0.02 there. Studies: `tools/mom25d/zone_study.py`.
+about 0.02 there. Studies: `tools/zone_study.py` in mom25d.
 
 <a id="vias"></a>
 ### Via meshing
@@ -251,7 +251,7 @@ return current, and the error at 8 GHz grows from 0.002 to 0.006.
 ### Line functions (experimental)
 
 `--mom-lines on` finds straight runs of signal trace and, inside each, replaces the triangles' unknowns with a few
-functions per column along the run (`mom25d/line.py`). Each one carries current along the line with a fixed shape
+functions per column along the run (mom25d's `line.py`). Each one carries current along the line with a fixed shape
 across it: peaked at both edges, as 1/√(distance to the edge), plus an odd shape that pushes the current to one
 side (coupled lines need it). The runs stop short of bends, tees, pads, ports and vias, and the matrix is reduced
 the same way as for quads. `even` keeps only the symmetric shape (isolated lines), `full` adds a flat one.
@@ -318,7 +318,7 @@ stay as close to a fine reference as the triangles (0.015 / 0.014 / 0.015 at 8 G
 
 On the demo transition the factorisation went from 8.3 s to 4.1 s a frequency, plus 1.4 s to reduce the
 matrix (2 cores). On the fine reference mesh itself, quads stay within 0.006 of the triangles. Quads work
-with the direct solver on the CPU (double and mixed precision); the GPU and compressed solvers ignore them. Studies: `tools/mom25d/quad_study.py`.
+with the direct solver on the CPU (double and mixed precision); the GPU and compressed solvers ignore them. Studies: `tools/quad_study.py` in mom25d.
 
 <a id="gpu"></a>
 ## GPU
@@ -379,7 +379,7 @@ Measured on every example, CPU and GPU: [benchmarks](benchmarks.md). A few of th
 <a id="core"></a>
 ## The compiled core
 
-The core (`mom25d/core/mom25d_core.cpp`, pybind11 and OpenMP) fills the matrix, evaluates the near-pair
+The core (`core/mom25d_core.cpp` in mom25d, pybind11 and OpenMP) fills the matrix, evaluates the near-pair
 corrections, finds the near pairs, sums the Green's function tables' Sommerfeld integrals, builds the via
 fans' columns and prepares the GPU's complex64 copy of the matrix. NumPy versions of all of them remain as
 the fallback. `mom_core` chooses:
@@ -427,7 +427,7 @@ refinement), and most of the rest is NumPy on large arrays rather than interpret
 The formulation is a mixed-potential integral equation with RWG basis functions. Layered-media kernels
 come from a spectral transmission-line network. The singular terms are integrated analytically.
 
-The tests (`tests/test_mom25d_*.py`) check it against exact solutions and textbook formulas: layered
+mom25d's tests (in [its repository](https://github.com/lowprocess/mom25d)) check it against exact solutions and textbook formulas: layered
 Green's functions to about 1e-5, stripline impedance to 0.6 %, coupled-line couplers to 0.1 dB, plane
 cavity resonances to 0.7 %.
 

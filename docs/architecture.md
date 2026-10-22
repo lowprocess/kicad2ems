@@ -132,7 +132,6 @@ kicad2ems/
   overlay.py      the line model over the board (<name>_lines.json): colours by Z0, picking a section
   gui/            kicad2ems-gui
   kicadplugin/    the KiCad plugin (IPC API): the open board's impedance map, region and ports (kicad-plugin.md)
-mom25d/           the MoM solver (see mom.md)
 ```
 
 openEMS, CSXCAD, scikit-rf, h5py and mom25d are imported **inside the functions that need them**. A plugin

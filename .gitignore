@@ -23,9 +23,7 @@ htmlcov/
 # KiCad local history
 .history/
 
-# mom25d: the compiled core (python -m mom25d.core.build) and benchmark outputs
+# compiled cores
 *.so
 *.pyd
-examples/mom25d/out*/
-tools/mom25d/*.npy
 .emerge/
