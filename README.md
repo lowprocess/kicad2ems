@@ -9,7 +9,7 @@ report that compares the solvers.
 |---|---|---|---|
 | [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS |
 | [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | cuPy for GPU acceleration |
-| [gfdtd](docs/gfdtd.md) (3D FDTD on the GPU) | `gfdtd` | openEMS's model, 8–20x faster on a GPU, ~2x on the CPU: the same boards and antennas as openEMS, without conductor loss | CuPy and a GPU, or its CPU core (`python -m gfdtd.core.build`) |
+| [gfdtd](docs/gfdtd.md) (3D FDTD on the GPU) | `gfdtd` | openEMS's model, 8–20x faster on a GPU, ~2x on the CPU: the same boards and antennas as openEMS, without conductor loss | the [gfdtd](https://github.com/lowprocess/gfdtd) package (`pip install '.[gfdtd]'`), and CuPy and a GPU or its CPU core (`python -m gfdtd.core.build`) |
 | Transmission-line model | `lines` | a quick estimate: impedance steps, delays, layout mistakes | scikit-rf or qucsator |
 
 By default kicad2ems picks the full-wave solver it expects to be fastest for your board and adds the

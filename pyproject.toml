@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kicad2ems"
 dynamic = ["version"]
-description = "KiCad board -> S-parameters from openEMS (3D FDTD), mom25d (2.5D MoM) and a transmission-line model"
+description = "KiCad board -> S-parameters from openEMS (3D FDTD), gfdtd (GPU FDTD), mom25d (2.5D MoM) and a transmission-line model"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "GPL-3.0-or-later"}
@@ -32,7 +32,8 @@ gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "h5py>=3", "PyOpenGL>=3.1"]
 kicad = ["kicad-python>=0.5", "PySide6-Essentials>=6.5", "pyqtgraph>=0.13"]   # the KiCad plugin (IPC API, KiCad 9+)
 core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster);
                                    # python -m gfdtd.core.build: gfdtd's CPU core (~15x numpy)
-# mom25d's GPU solvers (docs/mom.md#gpu): the CuPy wheel built for your
+gfdtd = ["gfdtd @ git+https://github.com/lowprocess/gfdtd"]   # the GPU FDTD solver, its own repository
+# mom25d's and gfdtd's GPU solvers (docs/mom.md#gpu): the CuPy wheel built for your
 # GPU stack, one of these extras (pip install '.[gpu-rocm7]'), or the wheel itself (pip install cupy-rocm-7-0);
 # they conflict: install one. The CUDA wheels need the NVIDIA driver; the ROCm wheel the
 # ROCm 7 runtime (rocminfo shows the card). PyTorch is the other backend: its ROCm / CUDA build from pytorch.org.
@@ -48,7 +49,6 @@ kicad2ems = "kicad2ems.cli:main"
 kicad2ems-gui = "kicad2ems.gui:main"
 kicad2openems = "kicad2ems.cli:main_openems"     # the old name: openEMS unless --solvers says otherwise
 kicad2openems-gui = "kicad2ems.gui:main"
-gfdtd = "gfdtd.fdtd:main"                      # run an openEMS XML file on gfdtd (GPU FDTD)
 dfsynth = "dfsynth.cli:main"                    # distributed-element filter synthesis -> KiCad board (tools/dfsynth)
 kicad2ems-kicad = "kicad2ems.kicadplugin.__main__:main"   # the KiCad plugin's window; install / uninstall it
 
@@ -57,11 +57,10 @@ version = {attr = "kicad2ems.__version__"}
 
 [tool.setuptools.packages.find]
 where = [".", "tools/dfsynth"]               # tools/dfsynth: the filter synthesis (the GUI's Filter page, dfsynth)
-include = ["kicad2ems*", "mom25d*", "gfdtd*", "dfsynth*"]
+include = ["kicad2ems*", "mom25d*", "dfsynth*"]
 
 [tool.setuptools.package-data]
 mom25d = ["core/*.cpp", "*.so", "*.pyd"]
-gfdtd = ["core/*.cpp", "core/*.h", "*.so", "*.pyd"]     # the update code (GPU kernels and CPU core), the built core
 "kicad2ems.gui" = ["*.svg"]                 # the window's and the application launcher's icon, the wand
 
 [tool.pytest.ini_options]

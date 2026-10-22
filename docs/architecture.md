@@ -133,8 +133,6 @@ kicad2ems/
   gui/            kicad2ems-gui
   kicadplugin/    the KiCad plugin (IPC API): the open board's impedance map, region and ports (kicad-plugin.md)
 mom25d/           the MoM solver (see mom.md)
-gfdtd/            the GPU FDTD solver, CSXCAD / openEMS compatible (see gfdtd.md); core/: its update code
-                  (GPU and CPU) and the compiled CPU core
 ```
 
 openEMS, CSXCAD, scikit-rf, h5py and mom25d are imported **inside the functions that need them**. A plugin

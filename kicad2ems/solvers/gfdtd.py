@@ -18,6 +18,8 @@ from . import Result, Option, AUTO
 from .openems.plugin import OpenEMS, mesh_zone
 from .openems.mesh import air_text
 
+GFDTD_PIP = 'gfdtd @ git+https://github.com/lowprocess/gfdtd'   # its own repository, not on PyPI
+
 G = 'gfdtd (GPU FDTD)'
 # gfdtd's speed over openEMS's estimate (24 threads), per backend: the examples' runs on an RX 7800 XT and an
 # i7-13700K, 8-70x on the GPU and 2-2.3x on the core (docs/gfdtd.md#speed); numpy ~10x slower than openEMS.
@@ -41,7 +43,10 @@ class GFDTD(OpenEMS):
     ]
 
     def check(self, s=None):
-        from gfdtd.engine import gpu_info, core_info
+        try:
+            from gfdtd.engine import gpu_info, core_info
+        except ImportError:
+            return False, f"gfdtd is not installed: python -m pip install '{GFDTD_PIP}'"
         gpu, what = gpu_info()
         want = getattr(s, 'gfdtd_backend', 'auto') if s is not None else 'auto'
         if want == 'gpu' and not gpu:
@@ -54,6 +59,8 @@ class GFDTD(OpenEMS):
 
     def details(self):
         ok, what = self.check()
+        if not ok:
+            return ok, [what]
         import gfdtd
         return ok, [f"gfdtd {gfdtd.__version__} ({os.path.dirname(gfdtd.__file__)})", what]
 

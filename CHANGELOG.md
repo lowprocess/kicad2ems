@@ -8,6 +8,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+- gfdtd is its own package, in its own repository (https://github.com/lowprocess/gfdtd), with its history,
+  tests, benchmark and README. kicad2ems takes it as an optional dependency (the `gfdtd` extra) and its solver
+  plugin stays here; without it installed, gfdtd is listed as not installed. The `gfdtd` command comes with
+  the gfdtd package.
+
 ### Fixed
 - gfdtd: a current probe normal to y ran its loop the wrong way round, so a lumped port along y measured its
   current negated (|S11| near 95). Ports along x and z were right, so no example had shown it.
