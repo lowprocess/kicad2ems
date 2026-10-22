@@ -170,9 +170,10 @@ A study on a coupled-line filter found that edge resolution sets the accuracy, n
 the copper. Thin edge cells gave 2–4 times smaller errors than evenly shaped cells, with a third of the
 unknowns. The study is in `tools/mom25d/mesher_study.py`.
 
-A gmsh mesher was tried and dropped. On four example boards it gave the same S-parameters (within 0.002 on the
-filter) with 5–15 % more unknowns for the same cell size, its mesh did not converge on the coupled-line
-filter, and it could not mesh boards with via ports (the Wilkinson divider).
+A gmsh mesher was tried and dropped. On six example boards it needed 5–15 % more unknowns than Triangle for
+the same cell size and was never more accurate: as good on three, worse on the coupled-line filter and the
+differential via pair (at 0.3 mm cells 0.26 from a fine reference in |S|, Triangle 0.015), and it could not
+mesh the Wilkinson divider's via ports at all.
 
 ![mesher study](img/mesher_study.png)
 
