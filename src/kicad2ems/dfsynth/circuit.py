@@ -73,6 +73,7 @@ class Ideal:
 
 # ------------------------------------------------------------------------------- microstrip elements
 def _gamma(sub, w, z0, ee0, f):
+    f = np.asarray(f, float)
     ee = sub.disperse(ee0, w, f)
     a = sub.alpha(w, z0, ee, f)
     return a + 1j * 2 * np.pi * f * np.sqrt(ee) / C0           # per metre
