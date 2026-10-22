@@ -83,3 +83,17 @@ def test_vivaldi_antipodal_options(tmp_path, run_cli):
     bad = subprocess.run([sys.executable, ANT, 'vivaldi_antipodal', str(base), 'dext=5', 'dl=24'],
                          capture_output=True, text=True)
     assert bad.returncode != 0 and 'runs off the board' in bad.stderr
+
+
+@pytest.mark.parametrize('kind, args, outline, vias', [
+    ('vivaldi_antipodal', ['sym=1', 'fr=15', 'vias=1', 'ap=34', 'nd=7'], '50.00 x 70.00', 22),
+    ('vivaldi_antipodal_array', ['N=2', 'P=40', 'ap=34'], '80.00 x ', 0)])
+def test_vivaldi_antipodal_variants(tmp_path, run_cli, kind, args, outline, vias):
+    """The symmetric curved form with corner via walls and striped directors; two elements from one port."""
+    import subprocess, sys
+    from conftest import ANT
+    base = tmp_path / 'v'
+    subprocess.check_call([sys.executable, ANT, kind, str(base)] + args, stdout=subprocess.DEVNULL)
+    code, out, err = run_cli(str(base) + '.kicad_pcb', '--mode', 'antenna', '--fmin', '3', '--fmax', '10', '--out',
+                             tmp_path, '--preview', '--no-report')
+    assert code == 0 and f'outline {outline}' in out and f'vias {vias} ' in out, out + err

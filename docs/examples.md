@@ -25,7 +25,7 @@ kicad2ems examples/demo_transition.toml
 | `launch` | a 4-layer edge launch with a grounded-CPW feed | none: `--nets RF,GND --fmin 1 --fmax 6` |
 
 `make_antennas.py KIND OUT [param=mm …]` makes antennas for 2.45 GHz: `patch`, `ifa`, `dipole`, `slot`,
-`vivaldi`, `vivaldi_antipodal`, `array2x2`, `array2x2_phased` and `array4x4_phased`, each with a config `antenna_<kind>.toml`. Dimensions can be changed on the command line,
+`vivaldi`, `vivaldi_antipodal`, `vivaldi_antipodal_array`, `array2x2`, `array2x2_phased` and `array4x4_phased`, each with a config `antenna_<kind>.toml`. Dimensions can be changed on the command line,
 for example `make_antennas.py ifa out arm=19`.
 
 <a id="rf-structures"></a>
@@ -149,6 +149,28 @@ most 0.1 dB.
 ```bash
 python examples/make_antennas.py vivaldi_antipodal examples/antenna_vivaldi_antipodal cd=5 dext=15 dl=24
 ```
+
+More variants, after published antipodal Vivaldi designs (gfdtd, 4 / 6 / 8 GHz; G gain, D directivity):
+
+| Variant | Board | G, dBi | D, dBi | Front-to-back, dB | \|S11\| < −10 dB |
+|---|---|---|---|---|---|
+| `sym=1 fr=15`: symmetric, curved halves | 50 × 70 | 2.4 / 6.3 / 7.3 | 3.6 / 7.5 / 8.6 | 3.5 / 11.7 / 7.7 | all |
+| … with `nd=7` striped directors, 14 mm | 50 × 70 | 2.6 / 6.9 / 4.2 | 3.8 / 8.2 / 7.2 | 3.0 / 12.6 / 3.3 | 54 % (−4.8 dB) |
+| … with `vias=1 ap=34` corner via walls | 50 × 70 | 2.3 / 5.9 / 7.1 | 3.5 / 7.1 / 8.3 | 3.2 / 10.0 / 8.9 | all |
+| `nd=7 ld=8 dx=0.5`: short striped directors | 50 × 70 | 4.4 / 6.4 / 8.0 | 5.6 / 7.6 / 9.3 | 6.7 / 9.8 / 9.9 | 96 % (−9.5 dB) |
+| `vivaldi_antipodal_array N=2 P=40 ap=34` | 80 × 77 | 3.7 / 6.7 / 8.5 | 5.6 / 8.4 / 10.4 | 10.8 / 9.7 / 9.6 | 96 % (−9.6 dB) |
+| `vivaldi_antipodal_array` (4, curved halves) | 120 × 92 | 4.9 / 7.9 / 10.4 | 7.8 / 10.5 / 13.0 | 10.3 / 12.4 / 17.7 | 90 % (−8.2 dB) |
+| `vivaldi_antipodal_array sym=0 fr=0` (4, filled halves) | 120 × 92 | 6.0 / 8.9 / 10.8 | 8.9 / 11.5 / 13.5 | 10.1 / 15.7 / 17.0 | 86 % (−8.6 dB) |
+
+- The symmetric, curved form (`sym=1`, the ground cut from both sides to a waist under the strip) has less
+  copper in its halves than the filled antipodal Vivaldi and loses 1.9 dB at 4 GHz.
+- Striped directors 14 mm long resonate in the band: the match fails near 8.5 GHz and the gain at 8 GHz drops
+  3 dB. At 8 mm (resonant above 10 GHz) they add 0.1–0.4 dB, less than the elliptical director.
+- The corner via walls change little here (within 0.3 dB).
+- The array, `vivaldi_antipodal_array`, feeds N elements from one port through a corporate microstrip network
+  (T-junctions into 100 Ω lines, quarter-wave 70.7 Ω transformers back to 50 Ω, in phase). Four filled
+  elements 30 mm apart reach 10.8 dBi at 8 GHz. The feed on FR-4 costs about 1.4 dB (efficiency 54 % against
+  the single element's 75 %), and the single-section transformers leave the match at −8.6 dB near 3.4 GHz.
 
 The dipole's 2.1 dBi matches an ideal half-wave dipole (2.15 dBi). The patch's low efficiency is FR-4
 loss.

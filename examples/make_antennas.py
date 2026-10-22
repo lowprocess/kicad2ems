@@ -284,8 +284,82 @@ def vivaldi(path, ap=44.0, lt=40.0, ws=0.3, ls=2.0, rc=3.0, wf=1.5, xf=15.0, rs=
     b.write(path, W, H)
 
 
-def vivaldi_antipodal(path, ap=44.0, lt=40.0, rate=4.0, ov=0.5, wf=1.5, lg=15.0, n=48, W=50.0, H=70.0, fr=0.0,
-                      cd=0.0, cw=1.0, cp=3.0, dext=0.0, dl=0.0, dw=6.0, dy=0.0):
+def _ava(b, x0, W, y0, ybot, ap=44.0, lt=40.0, rate=4.0, ov=0.5, wf=1.5, lg=15.0, n=48, fr=0.0, cd=0.0, cw=1.0,
+         cp=3.0, sym=0.0, wb=3.0, vias=0.0, vb=2.0, vp=2.5, nd=0, ld=14.0, wd=1.0, d3=2.5, dx=1.0, sd=2.0):
+    """One antipodal Vivaldi element of vivaldi_antipodal, W mm wide from x0, its aperture on y = y0 (the edge
+    it fires off, y down) and its ground down to ybot; its 50 ohm strip's left edge and the throat are returned
+    (the caller draws the strip below the throat). The options are vivaldi_antipodal's."""
+    import math
+    xc, yt = x0 + W / 2, y0 + lt                                 # aperture centre, throat
+    yg = yt + lg                                                 # the ground's full width
+    if ap / 2 > W / 2 - 1 or yg > ybot:
+        raise ValueError("vivaldi_antipodal: keep the aperture and the ground's taper inside the element")
+    xs = xc + ov / 2 - wf / 2                                    # the strip: its right edge ov past the centre
+    k = math.expm1(rate)
+    gap = lambda y: -ov + (ap + ov) * math.expm1(rate * (yt - y) / lt) / k    # the inner edges' gap at y
+    ys = [yt - lt * i / n for i in range(n + 1)]
+    f_in = [(xc - gap(y) / 2, y) for y in ys]                    # F.Cu inner edge, throat -> aperture
+    b_in = [(xc + gap(y) / 2, y) for y in ys]                    # B.Cu inner edge
+    quarter = [math.pi / 2 * i / n for i in range(n + 1)]
+    xr, xR = xc - ov / 2 + wb, x0 + W                            # sym: the ground's waist, right edge; the element's
+
+    def comb(xe, inward, ya, yb, width):
+        """The outer edge x = xe from ya to yb with slots cd deep (inward: +1 into +x) where width(y) allows."""
+        pts, step = [(xe, ya)], 1 if yb > ya else -1
+        if cd > 0:
+            y = ya + step * (cp - cw) / 2
+            while (yb - (y + step * cw)) * step > 0:
+                a, c = y, y + step * cw
+                if min(width(a), width(c)) > cd + 1.5:
+                    pts += [(xe, a), (xe + inward * cd, a), (xe + inward * cd, c), (xe, c)]
+                y += step * cp
+        return pts + [(xe, yb)]
+
+    # the F.Cu half: from the strip at the throat up its inner edge, down the outer edge, (fr) round the corner
+    corner = [(x0 + (xs - wf / 2 - x0) * math.sin(a), yt - fr * math.cos(a)) for a in quarter] if fr > 0 else \
+        [(x0, yt)]
+    b.poly([(xs - wf / 2, yt)] + f_in + comb(x0, 1, y0, yt - fr, lambda y: xc - gap(y) / 2 - x0) + corner)
+    # the B.Cu half and its ground: the left edge curves away from under the strip (a quarter ellipse, along the
+    # strip at the throat, square at the edge); sym: the right edge too, from a waist wb wide, and the half's
+    # outer edge rounds (fr) into it like the F.Cu half's
+    xb = xc - ov / 2
+    left = [(x0 + (xb - x0) * math.sin(a), yg - lg * (1 - math.cos(a))) for a in reversed(quarter)]
+    if sym:
+        right = [(xR - (xR - xr) * math.sin(a), yg - lg * (1 - math.cos(a))) for a in quarter] + \
+                ([(xR - (xR - xr) * math.sin(a), yt - fr * math.cos(a)) for a in reversed(quarter)] if fr > 0 else
+                 [(xR, yt)])
+        if xr >= xR - 1:
+            raise ValueError("vivaldi_antipodal: the ground's waist (wb) is wider than the element")
+    else:
+        right = []
+    b.poly(list(reversed(b_in)) + left + [(x0, ybot), (xR, ybot), (xR, yg)] + right +
+           comb(xR, -1, yt - (fr if sym else 0), y0, lambda y: xR - xc - gap(y) / 2), layer='B.Cu', net=1)
+    if vias:
+        # the outer top corners of both halves as two-layer walls: a band vb wide along the edges on the other
+        # layer, vias every vp mm through it (down to where the half's outer edge leaves the board's edge)
+        top = xc - gap(y0) / 2 - x0 - 0.5                           # the flat top of a half, beside the aperture
+        if top < vb:
+            raise ValueError("vivaldi_antipodal: no flat top beside the aperture for the vias: a smaller ap")
+        down = yt - fr - 1 - y0
+        for side, xe, net, lay in ((1, x0, 2, 'B.Cu'), (-1, xR, 1, 'F.Cu')):
+            xa, xt = xe + side * vb, xe + side * top
+            b.rect(min(xe, xt), y0, max(xe, xt), y0 + vb, layer=lay, net=net)
+            b.rect(min(xe, xa), y0, max(xe, xa), y0 + down, layer=lay, net=net)
+            for k_ in range(int((top - vb) // vp) + 1):
+                b.via(xe + side * (vb / 2 + k_ * vp), y0 + vb / 2, net=net)
+            for k_ in range(1, int((down - vb) // vp) + 1):
+                b.via(xe + side * vb / 2, y0 + vb / 2 + k_ * vp, net=net)
+    for k_ in range(int(nd)):
+        # striped directors (F.Cu, floating): nd strips ld x wd across the aperture from sd mm inside it, d3 apart,
+        # each 2 dx shorter towards the throat
+        y, L = y0 + sd + k_ * d3, ld - 2 * k_ * dx
+        if L <= 0 or gap(y + wd) / 2 < L / 2 + 0.3:
+            raise ValueError("vivaldi_antipodal: a director strip reaches the halves: shorter ld or fewer nd")
+        b.rect(xc - L / 2, y, xc + L / 2, y + wd, net=1)
+    return xs - wf / 2, yt
+
+
+def vivaldi_antipodal(path, W=50.0, H=70.0, dext=0.0, dl=0.0, dw=6.0, dy=0.0, **opt):
     """Antipodal Vivaldi, W x H mm (50 x 70) on 0.8 mm FR4, endfire towards -y (the board's top edge). The flare
     is split between the layers: the F.Cu half, on the 50 ohm (wf) microstrip, opens to the left, the B.Cu half,
     out of the ground, to the right. Their inner edges cross the board's centre line at the throat, lt mm below
@@ -293,62 +367,91 @@ def vivaldi_antipodal(path, ap=44.0, lt=40.0, rate=4.0, ov=0.5, wf=1.5, lg=15.0,
     the throat the ground's left edge curves away (a quarter ellipse, lg mm tall) from under the strip into the
     full ground: the microstrip turns into the two-layer line between the halves.
 
-    Options for directivity (0: off): fr rounds the F.Cu half's lower outer corner (a quarter ellipse fr mm
-    tall); cd cuts slots cd mm deep, cw wide, every cp mm into the halves' outer edges, above the throat where
-    the half is wide enough (edge corrugations); dext continues the bare substrate dext mm past the aperture,
-    and dl puts a floating elliptical director (dl x dw mm, F.Cu) on the centre line, its centre dy mm in front
-    of the aperture."""
+    Options (0: off): fr rounds the halves' lower outer corners (a quarter ellipse fr mm tall); sym=1 cuts the
+    ground's right edge too, to a waist wb mm wide, and rounds the B.Cu half like the F.Cu one: the symmetric,
+    curved form; cd cuts slots cd mm deep, cw wide, every cp mm into the halves' outer edges, above the throat
+    where the half is wide enough (edge corrugations); vias=1 makes the outer top corners two-layer walls (a band
+    vb wide on the other layer, vias every vp mm); nd puts nd striped directors (ld x wd, d3 apart, each 2 dx
+    shorter, from sd mm inside the aperture) across the aperture; dext continues the bare substrate dext mm past
+    the aperture, and dl puts a floating elliptical director (dl x dw mm, F.Cu) on the centre line, its centre
+    dy mm in front of the aperture."""
     import math
+    opt = {k: v for k, v in opt.items()}
     b = Board(0.8)
-    xc, yt, yg = W / 2, lt, lt + lg                              # aperture centre, throat, full ground (y down)
-    if ap / 2 > xc - 1 or yg > H - 5:
-        raise ValueError("vivaldi_antipodal: keep the aperture and the ground's taper inside the board")
-    xs = xc + ov / 2 - wf / 2                                    # the strip: its right edge ov past the centre
-    k = math.expm1(rate)
-    gap = lambda y: -ov + (ap + ov) * math.expm1(rate * (yt - y) / lt) / k    # the inner edges' gap at y
-    ys = [yt - lt * i / n for i in range(n + 1)]
-    f_in = [(xc - gap(y) / 2, y) for y in ys]                    # F.Cu inner edge, throat -> top
-    b_in = [(xc + gap(y) / 2, y) for y in ys]                    # B.Cu inner edge
-
-    def comb(x0, inward, y0, y1, width):
-        """The outer edge x = x0 from y0 to y1 with slots cd deep (inward: +1 into +x) where width(y) allows."""
-        pts, step = [(x0, y0)], 1 if y1 > y0 else -1
-        if cd > 0:
-            y = y0 + step * (cp - cw) / 2
-            while (y1 - (y + step * cw)) * step > 0:
-                a, c = y, y + step * cw
-                if min(width(a), width(c)) > cd + 1.5:
-                    pts += [(x0, a), (x0 + inward * cd, a), (x0 + inward * cd, c), (x0, c)]
-                y += step * cp
-        return pts + [(x0, y1)]
-
-    yf = yt - fr                                                 # where the F.Cu half's outer edge ends
-    corner = [((xs - wf / 2) * math.sin(a), yt - fr * math.cos(a))            # (0, yf) -> the strip at the throat
-              for a in (math.pi / 2 * i / n for i in range(n + 1))] if fr > 0 else [(0, yt)]
-    f_half = [(xs - wf / 2, yt)] + f_in + comb(0, 1, 0, yf, lambda y: xc - gap(y) / 2) + corner
-    xb = xc - ov / 2                                             # the ground's edge at the throat
-    taper = [(xb * math.sin(a), yg - lg * (1 - math.cos(a)))     # (xb, yt) -> (0, yg): a quarter ellipse, along
-             for a in (math.pi / 2 * (n - i) / n for i in range(n + 1))]   # the strip at the throat, square at the edge
-    b_half = list(reversed(b_in)) + taper + [(0, H), (W, H)] + comb(W, -1, yt, 0, lambda y: W - xc - gap(y) / 2)
+    xl, yt = _ava(b, 0.0, W, dext, H + dext, **opt)
+    wf = opt.get('wf', 1.5)
+    b.rect(xl, yt, xl + wf, H + dext)                            # the microstrip, up from the bottom edge
     if dl > 0:
+        lt, ap, ov, rate = (opt.get(k, d) for k, d in (('lt', 40.0), ('ap', 44.0), ('ov', 0.5), ('rate', 4.0)))
+        gap = lambda y: -ov + (ap + ov) * math.expm1(rate * (lt - y) / lt) / math.expm1(rate)
         y_end = dl / 2 - dy                                      # the director's end inside the aperture
         if y_end > 0 and gap(y_end) / 2 < dw / 2 + 0.5:
             raise ValueError("vivaldi_antipodal: the director reaches between the halves: shorter dl or larger dy")
         if dl / 2 + dy > dext:
             raise ValueError("vivaldi_antipodal: the director runs off the board: a larger dext")
-    sh = lambda pts: [(x, y + dext) for x, y in pts]             # dext of substrate in front: everything moves down
-    b.rect(xs - wf / 2, yt + dext, xs + wf / 2, H + dext)       # the microstrip, up from the bottom edge
-    b.poly(sh(f_half))                                           # the F.Cu half, on the strip
-    b.poly(sh(b_half), layer='B.Cu', net=1)
-    if dl > 0:
-        b.poly(sh([(xc + dw / 2 * math.sin(2 * math.pi * i / n), -dy + dl / 2 * math.cos(2 * math.pi * i / n))
-                   for i in range(n)]), net=1)
-    b.port('TP1', 'P1', xs, H + dext - 0.5, 90)
+        b.poly([(W / 2 + dw / 2 * math.sin(2 * math.pi * i / 48), dext - dy + dl / 2 * math.cos(2 * math.pi * i / 48))
+                for i in range(48)], net=1)
+    b.port('TP1', 'P1', xl + wf / 2, H + dext - 0.5, 90)
     b.write(path, W, H + dext)
+
+
+def _ms_width(z0, er=4.4, h=0.8):
+    """Microstrip width (mm) for z0 ohm on h mm of er (Hammerstad's synthesis)."""
+    import math
+    A = z0 / 60 * math.sqrt((er + 1) / 2) + (er - 1) / (er + 1) * (0.23 + 0.11 / er)
+    w = 8 * math.exp(A) / (math.exp(2 * A) - 2)
+    if w > 2:
+        B = 377 * math.pi / (2 * z0 * math.sqrt(er))
+        w = 2 / math.pi * (B - 1 - math.log(2 * B - 1) + (er - 1) / (2 * er) * (math.log(B - 1) + 0.39 - 0.61 / er))
+    return w * h
+
+
+def vivaldi_antipodal_array(path, N=4.0, P=30.0, ap=26.0, sym=1.0, fr=15.0, f0=6.5, **opt):
+    """N (2, 4, 8) antipodal Vivaldi elements (vivaldi_antipodal's, symmetric and curved by default: sym, fr) P mm
+    apart side by side, endfire off the top edge, from one port at the bottom: a corporate microstrip feed, each
+    T-junction into two 100 ohm lines, each turned back into 50 ohm by a quarter-wave (at f0 GHz) 70.7 ohm
+    section, so every element is fed in phase."""
+    N = int(N)
+    m = N.bit_length() - 1
+    if N < 2 or N != 1 << m:
+        raise ValueError("vivaldi_antipodal_array: N = 2, 4, 8, ...")
+    lt, lg, wf = opt.get('lt', 40.0), opt.get('lg', 15.0), opt.get('wf', 1.5)
+    w70, w100 = _ms_width(70.7), _ms_width(100.0)
+    er_eff = 2.7 + 1.7 / (1 + 12 * 0.8 / w70) ** 0.5
+    lq = 299.79 / f0 / er_eff ** 0.5 / 4                         # mm: a quarter wavelength of the 70.7 ohm line
+    step = lq + 8.0                                              # each level's height: transformer, 100 ohm, 50 ohm
+    ye = lt + lg + 2.0                                           # the elements' ground (and strips) end here
+    H = ye + m * step + 6.0
+    W = N * P
+    b = Board(0.8)
+    ends = []
+    for k in range(N):
+        xl, yt = _ava(b, k * P, P, 0.0, ye, ap=ap, sym=sym, fr=fr, **opt)
+        b.rect(xl, yt, xl + wf, ye)
+        ends.append(xl + wf / 2)
+    b.rect(0, ye - 0.5, W, H, layer='B.Cu', net=1)               # the ground under the feed
+    y = ye
+    while len(ends) > 1:                                         # a level: pairs joined, a 50 ohm line from each T
+        nxt = []
+        for xa, xb in zip(ends[::2], ends[1::2]):
+            xm = (xa + xb) / 2
+            for x in (xa, xb):
+                b.rect(x - wf / 2, y, x + wf / 2, y + 1.0)                       # 50 ohm stub
+                b.rect(x - w70 / 2, y + 1.0, x + w70 / 2, y + 1.0 + lq)          # the quarter-wave transformer
+                b.rect(x - w100 / 2, y + 1.0 + lq, x + w100 / 2, y + lq + 4.0)   # 100 ohm down to the T's arm
+            yj = y + lq + 4.0
+            b.rect(min(xa, xb) - w100 / 2, yj - w100 / 2, max(xa, xb) + w100 / 2, yj + w100 / 2)
+            b.rect(xm - wf / 2, yj - w100 / 2, xm + wf / 2, y + step)            # 50 ohm on from the T
+            nxt.append(xm)
+        ends, y = nxt, y + step
+    b.rect(ends[0] - wf / 2, y, ends[0] + wf / 2, H)
+    b.port('TP1', 'P1', ends[0], H - 0.5, 90)
+    b.write(path, W, H)
+
 
 KINDS = dict(patch=patch, ifa=ifa, dipole=dipole, slot=slot, array2x2=array2x2, array2x2_phased=array2x2_phased,
              array4x4_phased=array4x4_phased, vivaldi=vivaldi,
-             vivaldi_antipodal=vivaldi_antipodal)
+             vivaldi_antipodal=vivaldi_antipodal, vivaldi_antipodal_array=vivaldi_antipodal_array)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in KINDS:
