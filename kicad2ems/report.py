@@ -315,7 +315,7 @@ def build(sm, base):
 
     # ---- mesh (openEMS) --------------------------------------------------------------------------------
     if g:
-        section('mesh', 'Mesh (openEMS)', _mesh_section(sm, g, st))
+        section('mesh', 'Mesh (FDTD: openEMS, gfdtd)', _mesh_section(sm, g, st))
 
     # ---- results -------------------------------------------------------------------------------------
     res = sm.get('results')

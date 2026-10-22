@@ -11,7 +11,7 @@ model mm (y up, z = 0 the bottom copper), written when the solver prepares (a pr
 import glob, os
 import numpy as np
 
-LABELS = {'openems': 'openEMS grid', 'mom25d': 'mom25d mesh (MoM)'}
+LABELS = {'openems': 'openEMS grid', 'gfdtd': 'gfdtd grid (openEMS settings)', 'mom25d': 'mom25d mesh (MoM)'}
 
 
 def save(run, solver, kind, **arrays):

@@ -85,7 +85,7 @@ def preview(m, mesh, title=''):
                      f"dt {inf['dt_ps']:.3f} ps)", fontsize=10)
     else:
         ax.set_title("side view", fontsize=10)
-    fig.suptitle(f"{title} - " + ("openEMS model and mesh" if mesh else "model"), x=0.02, ha='left', weight='bold')
+    fig.suptitle(f"{title} - " + ("model and FDTD mesh" if mesh else "model"), x=0.02, ha='left', weight='bold')
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     return fig
 

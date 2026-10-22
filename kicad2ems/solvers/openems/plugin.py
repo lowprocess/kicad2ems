@@ -93,7 +93,7 @@ class OpenEMS(Solver):
                group=G_MESH),
         Option('air', None, "mm of air between the board and the boundary (default 5; antenna mode: a quarter "
                "wavelength at the band centre, at least 5), or six values xmin,xmax,ymin,ymax,zmin,zmax (ymax: the "
-               "board's top edge in KiCad)", conv=_air, group=G_MESH),
+               "board's top edge in KiCad)", conv=_air, gui='Air margin, mm (1 or 6 values)', group=G_MESH),
         Option('ratio', 1.4, "max growth between neighbouring cells (default {default})", float, group=G_MESH),
         Option('mesh_zone', 'on', "mesh lines at the ground copper's edges only near the signal copper: on (default: "
                "within 1 mm or 3x the thickest dielectric; never in antenna mode), a distance in mm, or off (every "

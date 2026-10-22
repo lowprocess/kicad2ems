@@ -23,8 +23,8 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, Q
                                QFileDialog, QScrollArea, QMessageBox, QDockWidget, QToolBar, QStyle, QToolButton,
                                QDialog, QTabWidget)
 import pyqtgraph as pg
-from .runner import (FIELDS, SEMICOLON_LISTS, TICK, Run, EventTail, stop_runs, settings_values, extra_values,
-                     find_results, save_config, solvers_from_form, solver_ticks)
+from .runner import (FIELDS, SEMICOLON_LISTS, SECTION_TITLES, TICK, Run, EventTail, stop_runs, settings_values,
+                     extra_values, find_results, save_config, solvers_from_form, solver_ticks)
 from .splot import SPlot, default_layout
 from .panels import Section, FlowLayout
 from .systempanel import SystemPanel
@@ -68,7 +68,7 @@ class SetupTab(QWidget):
                 sub = QVBoxLayout(holder)
                 sub.setContentsMargins(0, 0, 0, 0)
                 sub.setSpacing(2)
-                self.parents[top] = (Section(top, holder), sub)
+                self.parents[top] = (Section(SECTION_TITLES.get(top, top), holder), sub)
                 left.addWidget(self.parents[top][0])
             if group not in groups:
                 box = QWidget()
@@ -122,6 +122,11 @@ class SetupTab(QWidget):
             self.field_labels[key] = groups[group].labelForField(w)
             self.edits[key] = (w, kind)
         groups['openEMS/Field dumps'].addRow('Add a dump', self._dump_builder())
+        note = QLabel("gfdtd runs openEMS's model: its mesh, run and dump settings are those under\n"
+                      f"{SECTION_TITLES['openEMS']} above")
+        note.setWordWrap(True)
+        note.setEnabled(False)                                      # greyed: a note, not a setting
+        groups['gfdtd'].insertRow(0, note)
         left.addStretch(1)
         lw = QWidget()
         lw.setLayout(left)

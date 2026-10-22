@@ -120,6 +120,13 @@ class GFDTD(OpenEMS):
         ps = pulse_steps(run.fmin, run.fmax, p.grid['info']['dt_ps'],
                          exc_fmax(run.fmin, run.fmax) if s.antenna else None)
         run.summary['gfdtd'] = dict(mesh=p.grid['info'], pulse_steps=ps, backend=s.gfdtd_backend)
+        if 'openems' not in run.plan + run.previewed:                # else openEMS draws the same mesh
+            from ..plots import preview
+            from ..meshes import save
+            run.summary['mesh'] = p.grid['info']
+            run.wrote('FDTD grid (3D view)', save(run, 'gfdtd', 'grid', x=p.grid['x'], y=p.grid['y'], z=p.grid['z']))
+            run.figure(preview(m, p.grid, run.name), '_mesh.png', 'mesh', 'model and mesh')
+            run.log(f"wrote {run.path('_mesh.png')}")
         info = p.grid['info']
         run.log(f"gfdtd: {info['cells'] / 1e6:.2f} M cells, boundaries {','.join(p.bc)}, {self.check(s)[1]}")
         return p

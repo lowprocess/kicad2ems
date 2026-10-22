@@ -17,6 +17,8 @@ GUI_GROUPS = {'board': 'Board', 'band': 'Frequency', 'solvers': 'Solvers', 'outp
 # run); 'openEMS/Mesh': the Mesh sub-section of openEMS's. gfdtd runs openEMS's model: its mesh and run settings
 SECTION_SOLVERS = {'openEMS': {'openems', 'gfdtd'}, 'gfdtd': {'gfdtd'}, 'mom25d': {'mom25d'}}
 SECTION_ORDER = ['Board', 'Frequency', 'Solvers', 'openEMS', 'gfdtd', 'mom25d', 'Output']
+# the headings shown, where they differ from the section's key: openEMS's settings are gfdtd's too
+SECTION_TITLES = {'openEMS': 'openEMS + gfdtd (FDTD)'}
 # single settings greyed unless their case holds: the antenna's in antenna mode, with a solver that has one
 ANTENNA_FIELDS = ('ff_freq', 'drive', 'grid', 'steer', 'taper')
 # the line model's qucsator is a setting of the machine, not of a board: the Solvers and hardware window

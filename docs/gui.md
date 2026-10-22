@@ -21,8 +21,9 @@ window never loses a run, and the GUI itself doesn't need openEMS.
   the Solvers window found it), and while a run goes the run's own memory (kicad2ems, its workers, openEMS).
   A bar turns amber above 80 % and red above 95 %.
 - **Settings** (left): collapsible sections: *Board*, *Frequency*, *Solvers* (the tick boxes, the mode and
-  the driven ports), then one per solver, *openEMS* (with *Mesh*, *Run* and *Field dumps* inside) and
-  *mom25d*, and *Output* (the folder, the dump settings both solvers use, the antenna's pattern
+  the driven ports), then one per solver, *openEMS + gfdtd (FDTD)* (with *Mesh*, *Run* and *Field dumps*
+  inside: gfdtd runs openEMS's model, so these settings are both solvers'; *Mesh* has the air margin, one value
+  or six, one per side), *gfdtd* (where it runs) and *mom25d*, and *Output* (the folder, the dump settings both solvers use, the antenna's pattern
   frequencies). A solver's section is greyed while that solver isn't ticked (*auto* may run either), and
   the antenna settings outside antenna mode. Each header shows how many settings in it are set, for
   example `Band (3 set)`. Empty fields use the default, shown as a hint. In a narrow dock a field moves
@@ -113,8 +114,8 @@ shown: *Field* with a dump, *Far field* with antenna results.
   0603, 0805, …; without a size in the name, the pads' extent): resistors green, capacitors cyan, inductors
   pink, a 0 Ω link grey, with metal end caps and a label with the reference and value. A part on the bottom
   layer hangs below the board. The plan view outlines them in the same colours.
-- **Mesh:** a solver's discretisation: openEMS's grid lines or mom25d's triangles. A preview writes both in
-  seconds.
+- **Mesh:** a solver's discretisation: the FDTD grid lines (openEMS's, or gfdtd's when openEMS isn't ticked:
+  the same grid) or mom25d's triangles. A preview writes them in seconds.
 - **a dump:** a volume dump, for example `--dump E@volume+5@2.4` (the board plus 5 mm of air above and
   below), as a translucent cloud; a plane dump (an openEMS cut, mom25d's surface currents) as a coloured sheet
   in place, just above the copper when it lies on a copper layer.
