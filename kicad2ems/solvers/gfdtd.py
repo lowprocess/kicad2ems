@@ -16,6 +16,7 @@ from types import SimpleNamespace
 
 from . import Result, Option, AUTO
 from .openems.plugin import OpenEMS, mesh_zone
+from .openems.mesh import air_text
 
 G = 'gfdtd (GPU FDTD)'
 # gfdtd's speed over openEMS's estimate (24 threads), per backend: the examples' runs on an RX 7800 XT and an
@@ -99,7 +100,7 @@ class GFDTD(OpenEMS):
         air, bc = s.air, s.bc
         if s.antenna:                                               # as openEMS's: PML, lambda / 4 of air
             air, bc = antenna_air(run.fmin, run.fmax, s.air), ('PML_8' if bc == 'auto' else bc)
-            run.log(f"gfdtd antenna mode: boundaries {bc}, air margin {air:.1f} mm")
+            run.log(f"gfdtd antenna mode: boundaries {bc}, air margin {air_text(air)}")
         p.bc = resolve_bc(bc, m)
         p.grid = auto_mesh(m, run.fmin, run.fmax, res=s.res, fine=s.fine, air=air, ratio=s.ratio, nz_min=s.nz,
                            bc=p.bc, curves=s.curves, vias=s.vias, via_snap=s.via_snap, z_sheet=s.z_sheet,

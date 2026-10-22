@@ -90,7 +90,10 @@ for all sides or six values (`xmin,xmax,ymin,ymax,zmin,zmax`), each `PEC`, `PMC`
 PEC side walls form a closed box. kicad2ems warns when that box resonates below `fmax`, since that adds
 false resonances. Use them only when the real board sits in a shield can of that size.
 
-There's `--air` (5 mm) of air on every side. Antenna mode uses at least a quarter wavelength, with `PML_8`.
+There's `--air` (5 mm) of air on every side. Antenna mode uses at least a quarter wavelength, with `PML_8`. Six
+values set each side on its own, in the order of `--bc` (xmin,xmax,ymin,ymax,zmin,zmax; ymax is the board's top
+edge in KiCad): `--air 11.5,11.5,11.5,140,11.5,11.5` puts 140 mm in front of an antenna that fires off its top
+edge. The NF2FF box follows the mesh, so it grows with the margin.
 
 <a id="edge-walls"></a>
 ## Edge walls

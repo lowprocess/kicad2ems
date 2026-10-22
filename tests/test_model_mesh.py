@@ -98,6 +98,13 @@ def test_boundaries_and_air_margin(demo):
     assert mesh['x'][0] == pytest.approx(ob[0] - 5.0) and mesh['y'][-1] == pytest.approx(ob[3] + 5.0)
     pml = auto_mesh(m, 1e9, 8e9, bc=['PML_8'] * 6, log=lambda *a: None)
     assert pml['x'][0] < mesh['x'][0] - 8 * 0.9 * pml['info']['maxres_air_mm'] / 2   # PML cells added outside
+    front = auto_mesh(m, 1e9, 8e9, bc=bc, air=(5, 5, 5, 40, 0, 5), log=lambda *a: None)   # per side: 40 mm at ymax
+    assert front['y'][-1] == pytest.approx(ob[3] + 40.0) and front['y'][0] == pytest.approx(mesh['y'][0])
+    assert front['info']['air_mm'] == 0 and front['info']['air_sides_mm'][3] == 40
+    from kicad2ems.solvers.openems.plugin import _air
+    assert _air('7') == 7.0 and _air('1,2,3,4,5,6') == (1, 2, 3, 4, 5, 6) and _air(None) is None
+    with pytest.raises(ValueError):
+        _air('1,2')
     assert resolve_bc('PEC', m) == ['PEC'] * 6
     msgs = []
     f = cavity_check(m, mesh, ['PEC'] * 6, 20e9, log=msgs.append)

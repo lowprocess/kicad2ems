@@ -346,6 +346,13 @@ def signal_gaps(m, near=2.0):
     return out
 
 
+def air_text(air):
+    """The air margin as the log says it: '11.5 mm', or per side when they differ."""
+    if not isinstance(air, (tuple, list)):
+        return f"{air:.1f} mm"
+    return " ".join(f"{n}={a:g}" for n, a in zip(SIDES, air)) + " mm"
+
+
 def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) * 6, nz_min=4,
               curves='extremes', vias='auto', via_snap=0.2, refine=(), z_sheet=1.0, curve_res=6.0, zone=False,
               log=print):
@@ -378,8 +385,9 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
         # signal copper (the coupler's 0.14 mm gap between 1.5 mm lines had had a cell of 0.38 mm)
         fine = float(np.clip(min(widths + [h_min * 2] + signal_gaps(m)) / 4, 0.01, M_die / 4))
     air = 5.0 if air is None else air
+    sides = list(air) if isinstance(air, (tuple, list)) else [air] * 6
     npml = [int(b.split('_')[1]) if b.startswith('PML_') else 0 for b in bc]
-    ext = [air + npml[i] * M_air for i in range(6)]                 # per side: air margin (+ PML cells)
+    ext = [sides[i] + npml[i] * M_air for i in range(6)]            # per side: air margin (+ PML cells)
     bottom_pec = bc[4] == 'PEC' and bottom_is_plane(m)
     if bottom_pec:
         ext[4] = 0.0                                                # PEC wall = the bottom plane itself
@@ -426,11 +434,11 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
     dmin = [np.diff(mesh[k]).min() * 1e-3 for k in range(3)]
     dt = 1 / (C0 * np.sqrt(sum(1 / d ** 2 for d in dmin)))
     info = dict(nx=nx, ny=ny, nz=nz, cells=nx * ny * nz, fine_mm=fine, maxres_die_mm=M_die, maxres_air_mm=M_air,
-                air_mm=air, bc=list(bc), curves=curves, vias=vias, vias_snapped=nsnap,
+                air_mm=min(sides), air_sides_mm=sides, bc=list(bc), curves=curves, vias=vias, vias_snapped=nsnap,
                 via_max_move_mm=float(max(moved, default=0.0)), dt_ps=dt * 1e12, min_cell_mm=[d * 1e3 for d in dmin],
                 mem_gb=nx * ny * nz * 150e-9)
     log(f"mesh: {nx} x {ny} x {nz} = {nx * ny * nz / 1e6:.2f} M cells (fine {fine:.3f} mm, max {M_die:.2f} mm in "
-        f"dielectric / {M_air:.2f} mm in air, air margin {air:.1f} mm), boundaries "
+        f"dielectric / {M_air:.2f} mm in air, air margin {air_text(air)}), boundaries "
         f"{' '.join(f'{n}={b}' for n, b in zip(SIDES, bc))}" + (" (PEC on the bottom plane)" if bottom_pec else "") +
         f", time step {dt * 1e12:.3f} ps, ~{info['mem_gb']:.1f} GB")
     _check(m, mesh, info, log)

@@ -180,7 +180,7 @@ dmax    = 0.4
 | `--points` | 401 | frequency points |
 | `--res` | 20 | cells per wavelength at fmax |
 | `--fine` | automatic | cell size at copper edges, mm ([details](meshing.md#cell-sizes)) |
-| `--air` | 5 | air between the board and the boundary, mm (antenna mode: at least λ/4) |
+| `--air` | 5 | air between the board and the boundary, mm (antenna mode: at least λ/4); or six values xmin,xmax,ymin,ymax,zmin,zmax, ymax being the board's top edge in KiCad |
 | `--ratio` | 1.4 | largest size ratio of neighbouring cells |
 | `--nz` | 4 | fewest cells through each dielectric layer |
 | `--curves extremes\|vertices` | extremes | mesh lines for curved copper |

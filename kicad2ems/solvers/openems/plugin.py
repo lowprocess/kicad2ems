@@ -24,6 +24,14 @@ def _bc(v):
     return ",".join(strlist(v) or ['auto'])
 
 
+def _air(v):
+    """--air: one margin (mm) for every side, or six (xmin,xmax,ymin,ymax,zmin,zmax) as a tuple."""
+    vals = floatlist(v) if v is not None else []
+    if len(vals) not in (0, 1, 6):
+        raise ValueError("one value or six (xmin,xmax,ymin,ymax,zmin,zmax)")
+    return None if not vals else vals[0] if len(vals) == 1 else tuple(vals)
+
+
 G_MESH, G_RUN, G_DUMP = 'openEMS/Mesh', 'openEMS/Run', 'openEMS/Field dumps'   # the GUI's openEMS sub-sections
 G_ANT, G_SHARED_DUMP = 'antenna', 'field dumps'           # shared with mom25d: the GUI's Antenna and Field dumps
 # --solvers auto (docs/architecture.md#choosing-solvers), fitted on openEMS runs of the 13 examples (24 cores):
@@ -84,7 +92,8 @@ class OpenEMS(Solver):
                "dielectric, whichever is smaller, / 4)", float, gui='Fine cell at copper edges (mm, empty: auto)',
                group=G_MESH),
         Option('air', None, "mm of air between the board and the boundary (default 5; antenna mode: a quarter "
-               "wavelength at the band centre, at least 5)", float, group=G_MESH),
+               "wavelength at the band centre, at least 5), or six values xmin,xmax,ymin,ymax,zmin,zmax (ymax: the "
+               "board's top edge in KiCad)", conv=_air, group=G_MESH),
         Option('ratio', 1.4, "max growth between neighbouring cells (default {default})", float, group=G_MESH),
         Option('mesh_zone', 'on', "mesh lines at the ground copper's edges only near the signal copper: on (default: "
                "within 1 mm or 3x the thickest dielectric; never in antenna mode), a distance in mm, or off (every "
@@ -221,9 +230,10 @@ class OpenEMS(Solver):
         air, bc = s.air, s.bc
         if s.antenna:
             from .antenna import antenna_air
+            from .mesh import air_text
             air = antenna_air(run.fmin, run.fmax, s.air)
             bc = 'PML_8' if bc == 'auto' else bc
-            run.log(f"antenna mode: boundaries {bc}, air margin {air:.1f} mm")
+            run.log(f"antenna mode: boundaries {bc}, air margin {air_text(air)}")
         p.bc = resolve_bc(bc, m)
         kw = dict(air=air, ratio=s.ratio, nz_min=s.nz, bc=p.bc, curves=s.curves, vias=s.vias, via_snap=s.via_snap,
                   z_sheet=s.z_sheet, curve_res=s.curve_res, zone=mesh_zone(s), log=run.log)
