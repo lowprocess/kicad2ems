@@ -25,7 +25,7 @@ kicad2ems examples/demo_transition.toml
 | `launch` | a 4-layer edge launch with a grounded-CPW feed | none: `--nets RF,GND --fmin 1 --fmax 6` |
 
 `make_antennas.py KIND OUT [param=mm …]` makes antennas for 2.45 GHz: `patch`, `ifa`, `dipole`, `slot`,
-`vivaldi`, `array2x2`, `array2x2_phased` and `array4x4_phased`, each with a config `antenna_<kind>.toml`. Dimensions can be changed on the command line,
+`vivaldi`, `vivaldi_antipodal`, `array2x2`, `array2x2_phased` and `array4x4_phased`, each with a config `antenna_<kind>.toml`. Dimensions can be changed on the command line,
 for example `make_antennas.py ifa out arm=19`.
 
 <a id="rf-structures"></a>
@@ -108,6 +108,19 @@ band (worst −8.3 dB near 6.7 GHz), gain 3.0 dBi at 3 GHz, 6.0 dBi at 6 GHz, 6.
 6 and 8 GHz (`dump_animate = "gif"`): the wave leaves the taper further out at low frequencies and nearer the
 throat at high ones. The run's headline −10 dB band is only the contiguous band around the deepest dip, which
 for a wideband antenna is the narrow 8.5–10 GHz one; read the S11 plot.
+
+The **antipodal Vivaldi** (`antenna_vivaldi_antipodal.toml`, same board size and band) splits the flare between
+the layers: the F.Cu half grows out of the 50 Ω microstrip and opens to the left, the B.Cu half grows out of the
+ground and opens to the right, and they overlap by 0.5 mm at the throat. Below the throat the ground's edge curves
+away from under the strip, so there's no slotline balun to tune. It matches better and gains more than the slot
+Vivaldi above:
+
+| | \|S11\| < −10 dB | Worst \|S11\| | Gain at 4 / 6 / 8 GHz | Front-to-back at 4 / 6 / 8 GHz | Efficiency |
+|---|---|---|---|---|---|
+| Vivaldi | 83 % of 3–10 GHz | −8.3 dB (6.7 GHz) | 3.0 / 6.0 / 6.4 dBi | 5.2 / 9.0 / 9.3 dB | 67–73 % |
+| Antipodal | all of 3–10 GHz | −11.2 dB (6.3 GHz) | 4.3 / 6.3 / 7.6 dBi | 6.6 / 9.4 / 9.4 dB | 73–79 % |
+
+Front-to-back is the gain off the aperture against the strongest in the rear half of the board's plane.
 
 The dipole's 2.1 dBi matches an ideal half-wave dipole (2.15 dBi). The patch's low efficiency is FR-4
 loss.

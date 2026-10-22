@@ -12,6 +12,8 @@ Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad neede
           open quarter-wave stub
   vivaldi exponentially tapered slot in a B.Cu ground on 0.8 mm FR4 (50 x 70 mm, W= H=), endfire off the top edge,
           microstrip-to-slotline feed with a radial stub and a circular slot cavity; wideband, 3-10 GHz
+  vivaldi_antipodal  the flare split between the layers: one half on F.Cu, on the microstrip, the other on
+          B.Cu, out of the ground, overlapping by ov (0.5 mm) at the throat; same size and band as the vivaldi
   array2x2  four of the patch, 100 mm apart, from one 50 ohm feed through a corporate network (T junctions
           and quarter-wave transformers), the bottom row's branch half a guided wavelength longer
   array2x2_phased  four of the patch, 70 mm apart, a feed per row (P1 the top row, P2 the bottom one): driven
@@ -282,8 +284,37 @@ def vivaldi(path, ap=44.0, lt=40.0, ws=0.3, ls=2.0, rc=3.0, wf=1.5, xf=15.0, rs=
     b.write(path, W, H)
 
 
+def vivaldi_antipodal(path, ap=44.0, lt=40.0, rate=4.0, ov=0.5, wf=1.5, lg=15.0, n=48, W=50.0, H=70.0):
+    """Antipodal Vivaldi, W x H mm (50 x 70) on 0.8 mm FR4, endfire towards -y (the board's top edge). The flare
+    is split between the layers: the F.Cu half, on the 50 ohm (wf) microstrip, opens to the left, the B.Cu half,
+    out of the ground, to the right. Their inner edges cross the board's centre line at the throat, lt mm below
+    the top edge, overlapping by ov mm, and part exponentially (rate) to an ap mm aperture at the top edge. Below
+    the throat the ground's left edge curves away (a quarter ellipse, lg mm tall) from under the strip into the
+    full ground: the microstrip turns into the two-layer line between the halves."""
+    import math
+    b = Board(0.8)
+    xc, yt, yg = W / 2, lt, lt + lg                              # aperture centre, throat, full ground (y down)
+    if ap / 2 > xc - 1 or yg > H - 5:
+        raise ValueError("vivaldi_antipodal: keep the aperture and the ground's taper inside the board")
+    xs = xc + ov / 2 - wf / 2                                    # the strip: its right edge ov past the centre
+    k = math.expm1(rate)
+    sep = [-ov + (ap + ov) * math.expm1(rate * i / n) / k for i in range(n + 1)]   # inner edges' gap, throat up
+    ys = [yt - lt * i / n for i in range(n + 1)]
+    f_in = [(xc - d / 2, y) for d, y in zip(sep, ys)]             # F.Cu inner edge, throat -> top
+    b_in = [(xc + d / 2, y) for d, y in zip(sep, ys)]             # B.Cu inner edge
+    b.rect(xs - wf / 2, yt, xs + wf / 2, H)                      # the microstrip, up from the bottom edge
+    b.poly([(xs - wf / 2, yt)] + f_in + [(0, 0), (0, yt)])         # the F.Cu half, on the strip
+    xb = xc - ov / 2                                             # the ground's edge at the throat
+    taper = [(xb * math.sin(a), yg - lg * (1 - math.cos(a)))     # (xb, yt) -> (0, yg): a quarter ellipse, along
+             for a in (math.pi / 2 * (n - i) / n for i in range(n + 1))]   # the strip at the throat, square at the edge
+    b.poly(list(reversed(b_in)) + taper + [(0, H), (W, H), (W, 0)], layer='B.Cu', net=1)
+    b.port('TP1', 'P1', xs, H - 0.5, 90)
+    b.write(path, W, H)
+
+
 KINDS = dict(patch=patch, ifa=ifa, dipole=dipole, slot=slot, array2x2=array2x2, array2x2_phased=array2x2_phased,
-             array4x4_phased=array4x4_phased, vivaldi=vivaldi)
+             array4x4_phased=array4x4_phased, vivaldi=vivaldi,
+             vivaldi_antipodal=vivaldi_antipodal)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in KINDS:

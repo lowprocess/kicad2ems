@@ -61,7 +61,7 @@ def test_gap_port_direction_in_fdtd(boards, fake_openems, monkeypatch):
     assert seen == ['x']
 
 
-@pytest.mark.parametrize('kind', ['patch', 'ifa', 'dipole', 'slot', 'vivaldi'])
+@pytest.mark.parametrize('kind', ['patch', 'ifa', 'dipole', 'slot', 'vivaldi', 'vivaldi_antipodal'])
 def test_antenna_preview(boards, kind, tmp_path, run_cli):
     code, out, err = run_cli(boards[kind] + '.kicad_pcb', '--mode', 'antenna', '--fmin', '2', '--fmax', '3',
                              '--out', tmp_path, '--preview', '--no-report')

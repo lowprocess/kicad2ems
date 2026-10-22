@@ -1,0 +1,18 @@
+# kicad2ems antenna example: antipodal Vivaldi, the flare split between the layers (F.Cu half on the 50 ohm
+# microstrip, B.Cu half out of the ground, 0.5 mm overlap at the throat), 0.8 mm FR4, endfire off the board's
+# top edge (-y in KiCad), 3-10 GHz
+#   python examples/make_antennas.py vivaldi_antipodal examples/antenna_vivaldi_antipodal
+#   kicad2ems examples/antenna_vivaldi_antipodal.toml --preview
+#   kicad2ems examples/antenna_vivaldi_antipodal.toml
+board   = "antenna_vivaldi_antipodal.kicad_pcb"   # paths are relative to this file
+mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+fmin    = 3.0           # GHz
+fmax    = 10.0
+points  = 401
+out     = "out"
+res     = 15            # cells per wavelength at fmax
+curve_res = 2           # the taper is a long curve: the default 6 makes ~9 M cells
+solvers = ["gfdtd"]     # FDTD: the board's outline and edges matter here (mom25d ignores them)
+ff_freq = [4, 6, 8]     # GHz: the pattern is drawn at the first; all three get rows in the gain table
+dump    = ["E@box=-10,-10,0.4,60,72,0.4@4,6,8"]  # mid-substrate plane, out into the air past the aperture
+dump_animate = "gif"
