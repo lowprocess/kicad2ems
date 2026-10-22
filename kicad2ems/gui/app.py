@@ -1127,8 +1127,8 @@ class MainWindow(QMainWindow):
         self.tail = EventTail(self.current.events)
         self.proc = QProcess(self)
         self.proc.setProcessChannelMode(QProcess.MergedChannels)
-        # in the output folder: started where the GUI was (examples/, say) the run could import a folder of
-        # that name (examples/mom25d) in place of the package
+        # in the output folder: started where the GUI was, the run could import a folder there named like one
+        # of its packages (a mom25d/ of the user's) in place of the package
         self.proc.setWorkingDirectory(self.current.out)
         self.proc.readyReadStandardOutput.connect(self._stdout)
         self.proc.finished.connect(self._finished)

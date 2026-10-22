@@ -411,6 +411,7 @@ refinement), and most of the rest is NumPy on large arrays rather than interpret
 | `model.py` | stack, metal, vias, ports, port characterisation |
 | `sim.py` | `Simulation`: mesh, ports, parts, solver choice (`memory_plan`) |
 | `multilayer.py` | layered-media Green's functions |
+| `base.py` | RWG basis functions, the 1/R moment integrals, the port wave fits |
 | `via.py` | via kernels |
 | `geo.py`, `mesh_gmsh.py` | the meshers |
 | `fast.py` | the matrix fill and the solvers |
