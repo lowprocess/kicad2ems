@@ -100,7 +100,7 @@ source .venv/bin/activate
 
 `setup.sh` asks where to install (a venv in this checkout, the default; for your user, with the commands on
 your PATH; system-wide; or into the Python itself) and which optional parts you want: the GUI, field dumps,
-the line model, the gmsh mesher, mom25d's compiled core, the CuPy package for your GPU, openEMS (one you
+the line model, mom25d's compiled core, the CuPy package for your GPU, openEMS (one you
 have, one in another venv linked in, a local build, or none), qucsator, and a launcher entry and desktop
 icon for the GUI. `./setup.sh --yes` takes the defaults; `./setup.sh --target user` installs for your user.
 The options and installing by hand are in [Getting started](docs/getting-started.md).

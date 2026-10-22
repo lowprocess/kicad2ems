@@ -11,7 +11,7 @@
 #   ./setup.sh --python python3.12 --venv /path/to/venv  another Python, another venv (checkout target)
 #   ./setup.sh --uninstall --target user                 remove what an install of that target added
 #
-# Asks about: the GUI, field dumps, the scikit-rf line model, the gmsh mesher, mom25d's compiled core, the test
+# Asks about: the GUI, field dumps, the scikit-rf line model, mom25d's compiled core, the test
 # tools, the CuPy wheel for your GPU
 # (detected: NVIDIA CUDA 12 / 13, AMD ROCm 7), openEMS (one this Python has, one in another venv linked in,
 # build one with tools/build_openems.sh, or none), qucsator, and a launcher entry and desktop icon for the GUI.
@@ -219,7 +219,6 @@ EXTRAS=()
 ask "GUI (kicad2ems-gui: PySide6, pyqtgraph, PyOpenGL for the 3D field view)?" y && EXTRAS+=(gui)
 ask "frequency-domain field dumps and far fields (h5py)?" y && EXTRAS+=(dumps)
 ask "line model with scikit-rf (--fast skrf; qucsator is a separate program)?" y && EXTRAS+=(fast)
-ask "gmsh mesher for mom25d (mom_mesher = \"gmsh\")?" n && EXTRAS+=(gmsh)
 CORE=0
 if command -v g++ >/dev/null || command -v c++ >/dev/null; then
     ask "build mom25d's compiled core (C++ / OpenMP, ~5x faster MoM)?" y && { CORE=1; EXTRAS+=(core); }

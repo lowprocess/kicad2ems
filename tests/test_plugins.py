@@ -58,11 +58,11 @@ def test_entry_point_plugins(monkeypatch):
 
 def test_solver_tables(tmp_path):
     p = tmp_path / 'c.toml'
-    p.write_text('board = "b.kicad_pcb"\nsolvers = ["fdtd", "mom"]\n[solver.mom25d]\ndmax = 0.5\nmesher = "gmsh"\n'
+    p.write_text('board = "b.kicad_pcb"\nsolvers = ["fdtd", "mom"]\n[solver.mom25d]\ndmax = 0.5\nport = "wave"\n'
                  'dmx = 1\nfmin = 2\n[solver.openems]\nend-db = -30\nexcite = "P1"\n[solver.hfss]\nx = 1\n'
                  '[othertool]\nfoo = 1\n')
     s = build_settings({}, str(p))
-    assert s.mom_dmax == 0.5 and s.mom_mesher == 'gmsh' and s.end_db == -30 and s.excite == ['P1'] and s.fmin == 0.5
+    assert s.mom_dmax == 0.5 and s.mom_port == 'wave' and s.end_db == -30 and s.excite == ['P1'] and s.fmin == 0.5
     note = next(n for n in s.notes if n.startswith('ignoring'))
     assert 'solver.mom25d.dmx (did you mean dmax?)' in note and 'solver.mom25d.fmin (a top-level setting)' in note
     assert '[solver.hfss]' in note and 'foo' not in note            # another tool's table: not ours to judge
@@ -84,7 +84,7 @@ def _canned_mom(m, freq, **kw):
     S = np.zeros((len(freq), n, n), complex)
     S[:, 1, 0] = S[:, 0, 1] = 0.9 * np.exp(-2j * np.pi * freq * 100e-12)
     S[:, 0, 0] = S[:, 1, 1] = 0.1
-    info = dict(seconds=1.5, solves=7, unknowns=1234, triangles=800, solver='dense', mesher='triangle', dmax_mm=0.3,
+    info = dict(seconds=1.5, solves=7, unknowns=1234, triangles=800, solver='dense', dmax_mm=0.3,
                 ports=[dict(name=p.name, kind='lumped', zc=0.0) for p in m.ports], notes=['canned'])
     return S, [p.name for p in m.ports], [50.0] * n, info
 

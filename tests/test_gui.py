@@ -297,15 +297,15 @@ def test_save_config_in_solver_tables(tmp_path):
     """A [solver.<name>] table: its short names are its settings; another tool's table is left alone."""
     from kicad2ems.gui.runner import settings_values, save_config, extra_values
     p = tmp_path / 'c.toml'
-    p.write_text('board = "b.kicad_pcb"\n[solver.mom25d]\nmesher = "triangle"  # MoM\ndmax = 0.4\n'
-                 '[other]\nmom_mesher = "x"\n')
+    p.write_text('board = "b.kicad_pcb"\n[solver.mom25d]\nport = "auto"  # MoM\ndmax = 0.4\n'
+                 '[other]\nmom_port = "x"\n')
     vals = dict(settings_values(str(p)), **extra_values(str(p)))
-    assert vals['mom_mesher'] == 'triangle' and vals['mom_dmax'] == 0.4
-    save_config(str(p), dict(vals, mom_mesher='gmsh'), template=str(p))
+    assert vals['mom_port'] == 'auto' and vals['mom_dmax'] == 0.4
+    save_config(str(p), dict(vals, mom_port='lumped'), template=str(p))
     text = p.read_text()
-    assert 'mesher = "gmsh"' in text and '# MoM' in text and 'dmax = 0.4' in text and 'mom_mesher = "x"' in text
+    assert 'port = "lumped"' in text and '# MoM' in text and 'dmax = 0.4' in text and 'mom_port = "x"' in text
     s = build_settings({}, str(p))
-    assert s.mom_mesher == 'gmsh' and s.mom_dmax == 0.4
+    assert s.mom_port == 'lumped' and s.mom_dmax == 0.4
 
 
 def test_system_panel(tmp_path):

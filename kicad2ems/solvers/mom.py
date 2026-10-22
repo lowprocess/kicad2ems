@@ -63,7 +63,7 @@ def _via_sides(v, words):
     raise ValueError(f"{v!r}: {', '.join(words)} or a number of sides (3 or more)")
 
 
-def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigma=None, log=print, progress=None,
+def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, log=print, progress=None,
           hold=None, tiled='auto', on_step=None, core='auto', quads=False, zone=None,
           signal_vias='round', stitching_vias='auto', lines=None):
     """S-parameters of the board m on `freq` (Hz) from mom25d, as kicad2ems reports them: (S (nf, n, n) in
@@ -79,7 +79,7 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
     if metal is not None:
         log(f"  mom25d: conductor loss sigma {sigma:g} S/m, {t_mm * 1e3:g} um copper")
     kw = dict(dmax=dmax * 1e-3, port=kind, metal=metal, max_solves=max_solves,
-              mesher='gmsh' if mesher == 'gmsh' else 'auto', log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
+              log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
               progress=progress, tiled=tiled, on_step=on_step, core=core, quads=quads, zone=zone,
               signal_vias=signal_vias, stitching_vias=stitching_vias, lines=lines)
     try:
@@ -107,7 +107,7 @@ def solve(m, freq, dmax=0.3, port='auto', mesher='triangle', max_solves=60, sigm
         order = [res.names.index(p.name) for p in m.ports]
         S, names, zref = mixed_mode(S[:, order][:, :, order], m)
     info = dict(seconds=res.seconds, solves=res.solves, unknowns=res.unknowns, triangles=res.triangles,
-                solver=res.solver, mesher=mesher, dmax_mm=dmax, ports=res.ports, notes=res.notes,
+                solver=res.solver, dmax_mm=dmax, ports=res.ports, notes=res.notes,
                 samples_ghz=[round(f / 1e9, 6) for f in sorted(res.solved)], afs=res.afs, afs_tol=res.afs_tol)
     log(f"  mom25d: solved at {', '.join(f'{f:g}' for f in info['samples_ghz'])} GHz")
     return S, names, zref, info
@@ -166,8 +166,6 @@ class MoM25D(Solver):
                "traces)", float, name='dmax', gui='Largest cell along the copper (mm)', group=G, cli=dict(metavar='MM')),
         Option('mom_port', 'auto', "auto (default): de-embedded wave ports where a straight feed allows, else lumped",
                choices=('auto', 'wave', 'lumped'), name='port', gui='Ports', group=G),
-        Option('mom_mesher', 'triangle', "MoM surface mesher (default triangle)", choices=('triangle', 'gmsh'),
-               name='mesher', gui='MoM mesher', group=G),
         Option('mom_quads', 'off', "experimental: merge near-rectangular triangle pairs into quad cells, a "
                "constant-divergence subspace with fewer unknowns and a cheaper LU (docs/mom.md#quads): off (default), "
                "on (wherever they pair up) or centre (only in the middle of signal lines, away from the copper edges)",
@@ -319,8 +317,7 @@ class MoM25D(Solver):
             dmax = s.mom_dmax * 1e-3
             planes = {k: 3 * dmax for k, gs in bm.shapes.items() if sum(g.area for g in gs) > 0.5 * bm.outline_area}
             sim = bm.simulation(dmax=dmax, dmax_layer=planes, fmin=run.fmin, fmax=run.fmax, characterize=False,
-                                verbose=False, wave_down_to=run.fmin, mesh_only=True,
-                                mesher='gmsh' if s.mom_mesher == 'gmsh' else 'auto')
+                                verbose=False, wave_down_to=run.fmin, mesh_only=True)
             save_mesh(run, sim, bm)
 
     def solve(self, run, prep):
@@ -333,7 +330,7 @@ class MoM25D(Solver):
         if run.antenna and port == 'auto':                          # the gap source the antenna's power is taken from
             port = 'lumped'
             run.log("mom25d: antenna mode: lumped ports (--mom-port wave for de-embedded ones)")
-        S, names, zref, info = solve(run.m, run.freq, dmax=s.mom_dmax, port=port, mesher=s.mom_mesher,
+        S, names, zref, info = solve(run.m, run.freq, dmax=s.mom_dmax, port=port,
                                      max_solves=s.mom_solves, sigma=s.sigma, log=run.log, hold=self._held, tiled=s.mom_tiled,
                                      core=s.mom_core, quads={'off': False, 'on': True}.get(s.mom_quads, s.mom_quads),
                                      zone='auto' if s.mom_zone == 'on' else None,
@@ -347,7 +344,7 @@ class MoM25D(Solver):
         kinds = ", ".join(f"{p['name']} {p['kind']}" for p in info['ports'])
         info.update(kpi=f"{info['unknowns']:,} unknowns, {info['seconds']:.0f} s",
                     about=f"mom25d, a 2.5D Method-of-Moments solver: {info['unknowns']:,} unknowns ({info['triangles']:,} "
-                          f"triangles, {info['mesher']} mesher, cells up to {info['dmax_mm']:g} mm), {info['solves']} EM "
+                          f"triangles, cells up to {info['dmax_mm']:g} mm), {info['solves']} EM "
                           f"solves of an adaptive sweep in {info['seconds']:.0f} s; ports: {kinds}. MoM sees laterally "
                           f"infinite dielectrics over an infinite ground plane: no board edge, no air box, no box "
                           f"resonances; radiation and surface waves are in.")

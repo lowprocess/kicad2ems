@@ -11,7 +11,7 @@ kicad2ems examples/filter.toml --solvers mom,lines  # with the line model
 kicad2ems examples/filter.toml --mom                # next to openEMS, as a reference
 ```
 
-Its settings are the `--mom-*` options, or `dmax`, `port`, `mesher`, `solves`, `tiled`, `dump` and `near`
+Its settings are the `--mom-*` options, or `dmax`, `port`, `solves`, `tiled`, `dump` and `near`
 under `[solver.mom25d]` ([options](usage.md#options)). Build the compiled core for about a fivefold
 speed-up: `python -m mom25d.core.build` (needs g++ with OpenMP and pybind11).
 
@@ -161,16 +161,18 @@ kicad2ems examples/rf_stubnotch.toml --solvers mom --mom-dump 2.4,1.2 --dump-ani
 one mesh cell (`--mom-dmax`) above the copper.
 
 <a id="meshers"></a>
-## Meshers
+## The mesh
 
-mom25d meshes each copper layer into triangles. The current peaks sharply at conductor edges, so what
-matters most is thin cells along the edges. The default mesher (Triangle) adds offset rings inside each
-edge. `--mom-mesher gmsh` uses gmsh instead (`pip install gmsh`).
+mom25d meshes each copper layer into triangles (Triangle). The current peaks sharply at conductor edges,
+so what matters most is thin cells along the edges: the mesher adds offset rings inside each edge.
 
 A study on a coupled-line filter found that edge resolution sets the accuracy, not the cell size along
 the copper. Thin edge cells gave 2–4 times smaller errors than evenly shaped cells, with a third of the
-unknowns. gmsh made nicer triangles but wasn't more accurate. The study is in
-`tools/mom25d/mesher_study.py`.
+unknowns. The study is in `tools/mom25d/mesher_study.py`.
+
+A gmsh mesher was tried and dropped. On four example boards it gave the same S-parameters (within 0.002 on the
+filter) with 5–15 % more unknowns for the same cell size, its mesh did not converge on the coupled-line
+filter, and it could not mesh boards with via ports (the Wilkinson divider).
 
 ![mesher study](img/mesher_study.png)
 
@@ -413,7 +415,7 @@ refinement), and most of the rest is NumPy on large arrays rather than interpret
 | `multilayer.py` | layered-media Green's functions |
 | `base.py` | RWG basis functions, the 1/R moment integrals, the port wave fits |
 | `via.py` | via kernels |
-| `geo.py`, `mesh_gmsh.py` | the meshers |
+| `geo.py` | the mesher (Triangle, with offset rings along the copper edges) |
 | `fast.py` | the matrix fill and the solvers |
 | `gpu.py`, `ldlt.py` | the GPU backends and the tiled solver |
 | `blr.py` | the block low-rank solver |

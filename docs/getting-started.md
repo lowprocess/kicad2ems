@@ -24,7 +24,7 @@ It first asks where kicad2ems goes (`--target`):
 The checkout and user installs follow this checkout (editable: a `git pull` updates them); the system install
 is a copy. It then installs kicad2ems and offers:
 
-- the GUI, field-dump support (h5py), the scikit-rf line model and the gmsh mesher;
+- the GUI, field-dump support (h5py) and the scikit-rf line model;
 - mom25d's compiled core, which makes the MoM solver about five times faster (needs a C++ compiler);
 - the CuPy package that matches your GPU (detected: CUDA 12, CUDA 13 or ROCm 7);
 - openEMS: one the Python already has; one installed in another venv, linked in (its CSXCAD and openEMS
