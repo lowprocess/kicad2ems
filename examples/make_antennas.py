@@ -284,13 +284,20 @@ def vivaldi(path, ap=44.0, lt=40.0, ws=0.3, ls=2.0, rc=3.0, wf=1.5, xf=15.0, rs=
     b.write(path, W, H)
 
 
-def vivaldi_antipodal(path, ap=44.0, lt=40.0, rate=4.0, ov=0.5, wf=1.5, lg=15.0, n=48, W=50.0, H=70.0):
+def vivaldi_antipodal(path, ap=44.0, lt=40.0, rate=4.0, ov=0.5, wf=1.5, lg=15.0, n=48, W=50.0, H=70.0, fr=0.0,
+                      cd=0.0, cw=1.0, cp=3.0, dext=0.0, dl=0.0, dw=6.0, dy=0.0):
     """Antipodal Vivaldi, W x H mm (50 x 70) on 0.8 mm FR4, endfire towards -y (the board's top edge). The flare
     is split between the layers: the F.Cu half, on the 50 ohm (wf) microstrip, opens to the left, the B.Cu half,
     out of the ground, to the right. Their inner edges cross the board's centre line at the throat, lt mm below
     the top edge, overlapping by ov mm, and part exponentially (rate) to an ap mm aperture at the top edge. Below
     the throat the ground's left edge curves away (a quarter ellipse, lg mm tall) from under the strip into the
-    full ground: the microstrip turns into the two-layer line between the halves."""
+    full ground: the microstrip turns into the two-layer line between the halves.
+
+    Options for directivity (0: off): fr rounds the F.Cu half's lower outer corner (a quarter ellipse fr mm
+    tall); cd cuts slots cd mm deep, cw wide, every cp mm into the halves' outer edges, above the throat where
+    the half is wide enough (edge corrugations); dext continues the bare substrate dext mm past the aperture,
+    and dl puts a floating elliptical director (dl x dw mm, F.Cu) on the centre line, its centre dy mm in front
+    of the aperture."""
     import math
     b = Board(0.8)
     xc, yt, yg = W / 2, lt, lt + lg                              # aperture centre, throat, full ground (y down)
@@ -298,19 +305,46 @@ def vivaldi_antipodal(path, ap=44.0, lt=40.0, rate=4.0, ov=0.5, wf=1.5, lg=15.0,
         raise ValueError("vivaldi_antipodal: keep the aperture and the ground's taper inside the board")
     xs = xc + ov / 2 - wf / 2                                    # the strip: its right edge ov past the centre
     k = math.expm1(rate)
-    sep = [-ov + (ap + ov) * math.expm1(rate * i / n) / k for i in range(n + 1)]   # inner edges' gap, throat up
+    gap = lambda y: -ov + (ap + ov) * math.expm1(rate * (yt - y) / lt) / k    # the inner edges' gap at y
     ys = [yt - lt * i / n for i in range(n + 1)]
-    f_in = [(xc - d / 2, y) for d, y in zip(sep, ys)]             # F.Cu inner edge, throat -> top
-    b_in = [(xc + d / 2, y) for d, y in zip(sep, ys)]             # B.Cu inner edge
-    b.rect(xs - wf / 2, yt, xs + wf / 2, H)                      # the microstrip, up from the bottom edge
-    b.poly([(xs - wf / 2, yt)] + f_in + [(0, 0), (0, yt)])         # the F.Cu half, on the strip
+    f_in = [(xc - gap(y) / 2, y) for y in ys]                    # F.Cu inner edge, throat -> top
+    b_in = [(xc + gap(y) / 2, y) for y in ys]                    # B.Cu inner edge
+
+    def comb(x0, inward, y0, y1, width):
+        """The outer edge x = x0 from y0 to y1 with slots cd deep (inward: +1 into +x) where width(y) allows."""
+        pts, step = [(x0, y0)], 1 if y1 > y0 else -1
+        if cd > 0:
+            y = y0 + step * (cp - cw) / 2
+            while (y1 - (y + step * cw)) * step > 0:
+                a, c = y, y + step * cw
+                if min(width(a), width(c)) > cd + 1.5:
+                    pts += [(x0, a), (x0 + inward * cd, a), (x0 + inward * cd, c), (x0, c)]
+                y += step * cp
+        return pts + [(x0, y1)]
+
+    yf = yt - fr                                                 # where the F.Cu half's outer edge ends
+    corner = [((xs - wf / 2) * math.sin(a), yt - fr * math.cos(a))            # (0, yf) -> the strip at the throat
+              for a in (math.pi / 2 * i / n for i in range(n + 1))] if fr > 0 else [(0, yt)]
+    f_half = [(xs - wf / 2, yt)] + f_in + comb(0, 1, 0, yf, lambda y: xc - gap(y) / 2) + corner
     xb = xc - ov / 2                                             # the ground's edge at the throat
     taper = [(xb * math.sin(a), yg - lg * (1 - math.cos(a)))     # (xb, yt) -> (0, yg): a quarter ellipse, along
              for a in (math.pi / 2 * (n - i) / n for i in range(n + 1))]   # the strip at the throat, square at the edge
-    b.poly(list(reversed(b_in)) + taper + [(0, H), (W, H), (W, 0)], layer='B.Cu', net=1)
-    b.port('TP1', 'P1', xs, H - 0.5, 90)
-    b.write(path, W, H)
-
+    b_half = list(reversed(b_in)) + taper + [(0, H), (W, H)] + comb(W, -1, yt, 0, lambda y: W - xc - gap(y) / 2)
+    if dl > 0:
+        y_end = dl / 2 - dy                                      # the director's end inside the aperture
+        if y_end > 0 and gap(y_end) / 2 < dw / 2 + 0.5:
+            raise ValueError("vivaldi_antipodal: the director reaches between the halves: shorter dl or larger dy")
+        if dl / 2 + dy > dext:
+            raise ValueError("vivaldi_antipodal: the director runs off the board: a larger dext")
+    sh = lambda pts: [(x, y + dext) for x, y in pts]             # dext of substrate in front: everything moves down
+    b.rect(xs - wf / 2, yt + dext, xs + wf / 2, H + dext)       # the microstrip, up from the bottom edge
+    b.poly(sh(f_half))                                           # the F.Cu half, on the strip
+    b.poly(sh(b_half), layer='B.Cu', net=1)
+    if dl > 0:
+        b.poly(sh([(xc + dw / 2 * math.sin(2 * math.pi * i / n), -dy + dl / 2 * math.cos(2 * math.pi * i / n))
+                   for i in range(n)]), net=1)
+    b.port('TP1', 'P1', xs, H + dext - 0.5, 90)
+    b.write(path, W, H + dext)
 
 KINDS = dict(patch=patch, ifa=ifa, dipole=dipole, slot=slot, array2x2=array2x2, array2x2_phased=array2x2_phased,
              array4x4_phased=array4x4_phased, vivaldi=vivaldi,

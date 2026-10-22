@@ -68,3 +68,18 @@ def test_antenna_preview(boards, kind, tmp_path, run_cli):
     assert code == 0, err
     assert 'antenna mode: boundaries PML_8' in out and 'zmin=PML_8' in out
     assert ('gap port' in out) == (kind == 'dipole')
+
+
+def test_vivaldi_antipodal_options(tmp_path, run_cli):
+    """Edge slots and a director past the aperture: the board grows by dext, the outline and the model build."""
+    import subprocess, sys
+    from conftest import ANT
+    base = tmp_path / 'v'
+    subprocess.check_call([sys.executable, ANT, 'vivaldi_antipodal', str(base), 'cd=5', 'dext=15', 'dl=24', 'fr=5'],
+                          stdout=subprocess.DEVNULL)
+    code, out, err = run_cli(str(base) + '.kicad_pcb', '--mode', 'antenna', '--fmin', '3', '--fmax', '10', '--out',
+                             tmp_path, '--preview', '--no-report')
+    assert code == 0 and 'outline 50.00 x 85.00 mm' in out, err
+    bad = subprocess.run([sys.executable, ANT, 'vivaldi_antipodal', str(base), 'dext=5', 'dl=24'],
+                         capture_output=True, text=True)
+    assert bad.returncode != 0 and 'runs off the board' in bad.stderr

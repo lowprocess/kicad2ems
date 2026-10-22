@@ -122,6 +122,34 @@ Vivaldi above:
 
 Front-to-back is the gain off the aperture against the strongest in the rear half of the board's plane.
 
+Three options of `make_antennas.py vivaldi_antipodal` raise its directivity (all off by default, gfdtd at
+4 / 6 / 8 GHz):
+
+| Options | Board | Gain | Front-to-back | \|S11\| < −10 dB |
+|---|---|---|---|---|
+| none | 50 × 70 mm | 4.3 / 6.3 / 7.6 dBi | 6.6 / 9.4 / 9.4 dB | all of 3–10 GHz |
+| `cd=5` (edge slots 5 mm deep) | 50 × 70 mm | 5.7 / 8.1 / 8.1 dBi | 8.5 / 15.7 / 12.4 dB | all |
+| `cd=12` | 50 × 70 mm | 6.3 / 7.0 / 7.5 dBi | 18.9 / 15.2 / 10.6 dB | all |
+| `dext=15 dl=24` (a director) | 50 × 85 mm | 4.6 / 7.0 / 8.2 dBi | 7.4 / 11.2 / 9.7 dB | 96 % (−9.8 dB worst) |
+| `cd=5 dext=15 dl=24` | 50 × 85 mm | 6.0 / 8.6 / 8.8 dBi | 9.2 / 15.2 / 12.3 dB | all |
+| `fr=15` (rounded corner) | 50 × 70 mm | 2.6 / 6.4 / 7.4 dBi | 3.6 / 10.7 / 7.8 dB | all |
+
+- `cd` cuts slots 1 mm wide every 3 mm into the outer edges of both halves, above the throat. They stop the
+  current running down the board's edges toward the feed, which had made the back lobe. Deeper slots suppress
+  the back lobe at 4 GHz better (12 mm: 18.9 dB front-to-back) but cost gain higher up. 5 mm is the best all
+  round.
+- `dext` continues the bare substrate past the aperture, and `dl` puts a floating elliptical patch (dl × dw,
+  6 mm wide) on the centre line in it. It adds 0.3–0.7 dB, most at the top of the band.
+- `fr` rounds the F.Cu half's lower corner. It shrinks that half and costs 1.6 dB at 4 GHz.
+
+Slots and the director together gain 1.2–2.3 dB over the plain antipodal Vivaldi across the band, matched over
+all of it. A finer mesh (`--res 20 --curve-res 4`, 6.5 M cells) moved the `cd=8 dext=15 dl=24` results by at
+most 0.1 dB.
+
+```bash
+python examples/make_antennas.py vivaldi_antipodal examples/antenna_vivaldi_antipodal cd=5 dext=15 dl=24
+```
+
 The dipole's 2.1 dBi matches an ideal half-wave dipole (2.15 dBi). The patch's low efficiency is FR-4
 loss.
 
