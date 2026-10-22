@@ -131,7 +131,7 @@ def _db(x):
 from PySide6.QtCore import Qt, QProcess, QProcessEnvironment
 from PySide6.QtGui import QPainterPath, QPen, QBrush, QColor, QFontDatabase, QTextCursor, QTextCharFormat, QIcon
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox, QCheckBox,
-                               QPushButton, QLabel, QPlainTextEdit, QSplitter, QTabWidget, QTableWidget,
+                               QPushButton, QPlainTextEdit, QSplitter, QTabWidget, QTableWidget,
                                QTableWidgetItem, QScrollArea, QFileDialog, QSpinBox, QHeaderView,
                                QGraphicsPathItem, QGraphicsEllipseItem, QStyle, QProgressBar)
 import pyqtgraph as pg

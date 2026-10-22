@@ -111,7 +111,7 @@ class PlanView(QWidget):
     def load(self, out_dir, lines=None):
         """A results folder's board (<name>_board.json), meshes and line model; False when there is no board."""
         import glob
-        from .. import meshes, volume3d as v3
+        from .. import meshes
         boards = sorted(glob.glob(os.path.join(out_dir, '*_board.json')), key=os.path.getmtime) if out_dir else []
         try:
             with open(boards[-1]) as fh:

@@ -6,8 +6,8 @@ import pytest
 
 from dfsynth.microstrip import Substrate
 from dfsynth.prototype import gvalues, estimate_order
-from dfsynth.topologies import Spec, build, KINDS
-from dfsynth.calibrate import calibrate, targets, edges, errors, sweep
+from dfsynth.topologies import Spec, build
+from dfsynth.calibrate import calibrate, edges, errors, sweep
 from dfsynth.circuit import sparams, db
 from dfsynth import kicad
 from dfsynth.validate import read_touchstone
@@ -109,7 +109,7 @@ def test_touchstone_roundtrip(tmp_path):
                                             ('endcoupled', 'Alumina-0.635', 10e9, 0.3e9)])
 def test_resonators_are_separate_copper(topo, sub, f0, bw):
     """Feeds and resonators must not touch across a coupling gap: order N gives N + 2 copper pieces."""
-    shapely = pytest.importorskip('shapely')
+    pytest.importorskip('shapely')
     from shapely.geometry import Polygon
     from shapely.ops import unary_union
     spec = Spec('bandpass', topo, f0, bw, 'chebyshev', 5, 0.1)

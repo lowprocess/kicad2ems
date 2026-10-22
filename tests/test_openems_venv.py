@@ -1,6 +1,5 @@
 """openems_venv: an openEMS in another Python environment, its site-packages put last on sys.path."""
 import sys
-import pytest
 from kicad2ems.solvers.openems import venv
 
 

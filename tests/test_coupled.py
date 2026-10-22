@@ -7,7 +7,7 @@ from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
 from kicad2ems.solvers.lines.coupled import coupled_microstrip, coupled_stripline, coupled_offset_stripline, group_lc, mtl_s
 from kicad2ems.solvers.lines.strips import shape_strips, rectilinear
-from kicad2ems.solvers.lines.tlines import microstrip, stripline, offset_stripline, build
+from kicad2ems.solvers.lines.tlines import microstrip, stripline, build
 from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.board import Board
 from kicad2ems.solvers.lines.fastsolve import solve, qucs_netlist, find_qucsator, read_qucs_dataset
