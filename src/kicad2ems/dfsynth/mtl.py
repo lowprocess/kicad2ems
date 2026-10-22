@@ -125,7 +125,7 @@ class Array:
     def y(self, f, length):
         """Admittance matrices (F, 2N, 2N) of a length (mm) of the array: ports 0..N-1 at one end,
         N..2N-1 at the other, currents into the lines."""
-        sub, n = self.sub, self.n
+        sub = self.sub
         f = np.atleast_1d(np.asarray(f, float))
         C, Ca = self._caps(f)
         L = np.linalg.inv(Ca) / C0 ** 2

@@ -385,9 +385,7 @@ def lowpass_radial(spec, sub, kf=1.0, kb=1.0):
     th = dict(enumerate(_trimmed(spec, [th[k] for k in range(n)])))
     wh = sub.width(zh)
     w50, feed = sub.width(z0), _feed(spec, sub)
-    om = 2 * math.pi * fd
     rad = {k: _radial_for_b(sub, wh, ang, math.tan(th[k]) / zst, fd, 2) for k in range(1, n, 2)}
-    fres = {}
     lser = {k: th[k] / _beta(sub, wh, fd) for k in range(0, n, 2)}
     rows = []
     for k in range(n):

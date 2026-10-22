@@ -8,9 +8,7 @@ dfsynth: distributed-element microstrip filter synthesis -> KiCad layout (+ kica
     dfsynth --list
 """
 import argparse
-import json
 import math
-import os
 import re
 import sys
 from dataclasses import asdict
@@ -21,8 +19,7 @@ from . import __version__
 from .microstrip import Substrate, PRESETS
 from .prototype import estimate_order, RESPONSES
 from .topologies import FabViolation, violations, Spec, KINDS, build, prepare, VIA_DRILL, VIA_SIZE
-from .calibrate import calibrate, targets, sweep, model_response, band, edges, errors, space_map
-from .circuit import db, sparams
+from .calibrate import calibrate, targets, sweep, model_response, band, space_map
 from . import kicad, validate as val
 
 

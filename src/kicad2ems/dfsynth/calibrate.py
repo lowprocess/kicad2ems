@@ -80,7 +80,6 @@ def edges(spec, f, s21db, relative=False):
     if kind == 'lowpass':
         ref = y[f <= f0].max() if relative and np.any(f <= f0) else 0.0
         lvl = ref - 3
-        i0 = 0
         for k in range(len(f) - 1):
             if y[k] >= lvl > y[k + 1] and f[k] > 0.2 * f0:
                 return {'fc': _cross(f, y, k, k + 1, lvl)}
