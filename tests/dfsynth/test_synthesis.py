@@ -54,7 +54,8 @@ def test_ideal_synthesis(kind, topo, f0, bw):
     ('lowpass', 'stepped', 2e9, 0, 'RO4003C-0.508'), ('lowpass', 'stub', 2e9, 0, 'RO4003C-0.508'),
     ('highpass', 'stub', 2e9, 0, 'RO4003C-0.508'), ('bandpass', 'coupled', 5e9, 0.5e9, 'RO4003C-0.813'),
     ('bandpass', 'hairpin', 2.4e9, 0.3e9, 'FR4-1.6'), ('bandpass', 'endcoupled', 10e9, 0.3e9, 'Alumina-0.635'),
-    ('bandpass', 'stub', 3e9, 1.5e9, 'RO4003C-0.508'), ('bandstop', 'stub', 2.4e9, 1.5e9, 'RO4003C-0.508'),
+    ('bandpass', 'stub', 3e9, 1.5e9, 'RO4003C-0.508'), ('bandstop', 'stub', 2.4e9, 1e9, 'RO4003C-0.508'),
+    ('bandstop', 'stub', 2.4e9, 1.5e9, 'RO4003C-0.508'),
     ('bandpass', 'interdigital', 5e9, 0.5e9, 'RO4003C-0.813'), ('lowpass', 'radial', 2e9, 0, 'RO4003C-0.508'),
     ('bandstop', 'radial', 2.4e9, 2.4e9, 'RO4003C-0.508')])
 def test_calibrated_and_written(kind, topo, f0, bw, sub, tmp_path):
@@ -75,7 +76,7 @@ def test_calibrated_and_written(kind, topo, f0, bw, sub, tmp_path):
     assert text.count('(') == text.count(')')
     assert text.count('"kicad2ems:RF_Port"') == 2
     assert 'board   = "f.kicad_pcb"' in open(cfg).read()
-    if (kind, topo) == ('bandstop', 'stub'):
+    if (kind, topo, bw) == ('bandstop', 'stub', 1.5e9):
         pytest.importorskip('scipy')                                # the refine needs it
         from dfsynth.calibrate import passband_rl
         from dfsynth.topologies import _z_limits
