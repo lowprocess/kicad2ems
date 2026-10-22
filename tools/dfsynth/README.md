@@ -36,7 +36,7 @@ options, runs dfsynth, draws the layout and the responses, and opens the board i
 | lowpass | `radial` | the same with each stub a butterfly of radial stubs (`--stub-angle`, default 60 degrees): each fan's resonance puts a transmission zero in the stop band |
 | highpass | `stub` | shunt short-circuited quarter-wave stubs: a wide band-pass from the cut-off to `--bw` above it (default up to 3x the cut-off), as any distributed high-pass is |
 | bandpass | `coupled` | edge-coupled (parallel-coupled) half-wave resonators |
-| bandpass | `hairpin` | the same, folded into alternating U resonators, coupled-line feeds |
+| bandpass | `hairpin` | the same, folded into alternating U resonators, coupled-line feeds; `--hairpin-gap` sets the gap between a U's own arms (default: the wider of the strip width and twice the largest coupling gap) |
 | bandpass | `interdigital` | quarter-wave rods grounded at alternate ends, tapped feeds; wide gaps for the bandwidth (1.8 mm at 10 % on RO4003C-0.813, against 0.13 mm edge-coupled); tune it with `--validate gfdtd --em-tune 3` |
 | bandpass | `endcoupled` | gap-coupled half-wave resonators; narrow bands only (the end gaps get small fast) |
 | bandpass | `stub` | Matthaei short-circuited stub band-pass, wide bands (30 to 100 %) |
@@ -91,7 +91,9 @@ gaps: 97 MHz).
    takes the pass-band return loss from 5.4 to 8.2 dB (1 GHz stop band) and from 3.8 to 11.4 dB (1.5 GHz);
    narrower stop bands whose stubs are already at the minimum width gain nothing. The interdigital's gaps,
    taps and rod lengths are trimmed for the prototype's match over the band with the edges on target (5
-   GHz / 500 MHz on RO4003C-0.813: 2.2 to 12.2 dB return loss on the lossless model).
+   GHz / 500 MHz on RO4003C-0.813: 2.2 to 12.2 dB return loss on the lossless model). The refinement stops
+   after `--refine-time` seconds (default 10) with the best trims it has reached: past that it was making
+   changes too small to matter, for minutes.
 4. **Validation** (`--validate`): kicad2ems solves the written board with the solvers named (`mom` is
    the usual choice for these planar filters; `gfdtd` runs well on a CPU too; `lines` is kicad2ems's own
    line model). dfsynth measures each result's band edges (3 dB below the pass-band peak, so loss does
@@ -139,7 +141,7 @@ without.
 | lowpass stub, 2 GHz, N5 | RO4003C-0.508 | -1.6 % | +0.0 % | 11.7 / 12.0 dB | model 16.5 dB |
 | bandstop stub, 2.4 GHz, 1 GHz | RO4003C-0.508 | +1.9 % / +5.2 % | +0.1 % / +0.6 % | 9.2 / 9.5 dB | 5.5 dB before the impedance refinement; 37 dB rejection |
 | bandpass coupled, 5 GHz, 500 MHz | RO4003C-0.813 | +0.4 % / -6.7 % | -0.0 % / -1.5 % | 12.0 / 12.3 dB | |
-| bandpass hairpin, 2.4 GHz, 300 MHz | FR4-1.6 | +13.3 % / -18.2 % | -1.2 % / -6.2 % | 16.4 / 16.4 dB | the line model is off, see below; gfdtd agrees with mom25d |
+| bandpass hairpin, 2.4 GHz, 300 MHz | FR4-1.6 | +13.3 % / -18.2 % | -1.2 % / -6.2 % | 16.4 / 16.4 dB | the line model before its corner model, see below |
 | bandpass endcoupled, 10 GHz, 300 MHz, N3 | Alumina-0.635 | +0.5 % / -57 % | +0.0 % / -57 % | 2.5 / 2.5 dB | not validated: see below |
 | bandpass stub, 3 GHz, 1.5 GHz | RO4003C-0.508 | -3.8 % / -5.7 % | -0.2 % / +2.9 % | 12.7 / 15.1 dB | |
 | highpass stub, 2 GHz | RO4003C-0.508 | +4.5 % / +5.8 % | +1.5 % / -4.1 % | 12.1 / 12.9 dB | not yet tried with `--em-tune 2` |
@@ -147,10 +149,16 @@ without.
 Cross-checks: on the stepped lowpass gfdtd (CPU) and mom25d agree within 1 % on the cut-off. On the tuned
 hairpin gfdtd (GPU, 5.3 M cells, 4 min) and mom25d agree within 0.1 % on the centre (-1.55 % / -1.43 %).
 
-- **Hairpin**: dfsynth's line model puts the hairpin 11-13 % low (wide arms on FR4-1.6). It couples only
-  adjacent arms and runs the bars along their centrelines; kicad2ems's own line model of the same layout
-  (all 12 arms as one multi-line coupled section, 12 corners) is within 4 % of the field solvers. One tune
-  round brings the centre to -1.2 %, the bandwidth to -6.2 % (`--em-tune 2` not yet tried).
+- **Hairpin** (2026-10-22): the line model is now the multiconductor array of all the arms (each coupled to
+  every other, a U's own arms too), and a U's square corners are shorter than its centre line: by 0.17 h +
+  0.33 w each, fitted to gfdtd on single U resonators (w / h 0.5-1.8 on FR4-1.6, checked within 5 % on
+  RO4003C-0.508; openEMS agrees with gfdtd on them to 0.1 %). The default gap between a U's own arms is the
+  wider of the strip width and twice the largest coupling gap (it was the largest of 2 w, 3 h and 4 times
+  that gap): the 2.4 GHz / 240 MHz N5 filter on FR4-1.6 is 66 mm long instead of 85, on RO4003C-0.508 29
+  instead of 37. Round 0 on gfdtd, no tuning: centre -0.7 %, bandwidth -14 % on FR4-1.6 (the model's own
+  -15.6 %: FR-4's loss), centre -0.2 %, bandwidth +1.1 % on RO4003C-0.813 (both 2.4 GHz / 240 MHz, N5).
+  Before, the line model put it 11-13 % low: it coupled only adjacent arms and ran the bars along their
+  centrelines.
 - **End-coupled**: the 0.03 mm end gaps make the response depend on the copper thickness (the zero-
   thickness model of the same layout has 1.2 dB RL against 16 dB with 35 um), and kicad2ems's solvers
   treat copper as infinitely thin, so they cannot validate this design. Thicker gaps (lower er, wider
@@ -179,8 +187,6 @@ hairpin gfdtd (GPU, 5.3 M cells, 4 min) and mom25d agree within 0.1 % on the cen
 
 To do next:
 
-- a multi-line coupled model for the hairpin (each arm coupled to its own resonator's other arm and to the
-  next-but-one arms) and corner models, so round 0 lands within a few percent;
 - the kicad2ems line extractor: coupled sections across width-step jogs (or dfsynth drawing the steps
   without them);
 - band-stop: the impedance refinement is limited by the narrowest strip on thin substrates (the outer

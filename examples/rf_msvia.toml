@@ -1,0 +1,16 @@
+# kicad2ems example: 4-layer: 50 ohm microstrip on F.Cu through one via to 50 ohm microstrip on B.Cu, antipads in the In1 /
+# In2 planes, four return vias 1 mm round the signal via
+#   python examples/make_rf_examples.py msvia examples/rf_msvia     # regenerate the board (already in the repository)
+#   kicad2ems examples/rf_msvia.toml --preview
+#   kicad2ems examples/rf_msvia.toml
+board   = "rf_msvia.kicad_pcb"   # paths are relative to this file
+nets    = ["RF", "GND"]
+fmin    = 1           # GHz
+fmax    = 10
+points  = 401
+out     = "out"
+fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+
+[solver.openems]
+excite  = ["P1"]
+diel    = "wideband"   # Debye FR-4: the default fixed conductivity overstates the loss far below the band centre

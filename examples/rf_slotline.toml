@@ -1,0 +1,16 @@
+# kicad2ems example: two microstrip-to-slotline transitions back to back: a 0.3 mm slot in the B.Cu ground, 20 mm between
+# the crossings, radial stubs on the strips and round cavities at the slot's ends
+#   python examples/make_rf_examples.py slotline examples/rf_slotline     # regenerate the board (already in the repository)
+#   kicad2ems examples/rf_slotline.toml --preview
+#   kicad2ems examples/rf_slotline.toml
+board   = "rf_slotline.kicad_pcb"   # paths are relative to this file
+nets    = ["RF", "GND"]
+fmin    = 1           # GHz
+fmax    = 8
+points  = 401
+out     = "out"
+fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+
+[solver.openems]
+excite  = ["P1"]
+diel    = "wideband"   # Debye FR-4: the default fixed conductivity overstates the loss far below the band centre

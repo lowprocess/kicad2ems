@@ -1,0 +1,16 @@
+# kicad2ems example: microstrip to grounded CPW and back on 0.8 mm FR-4: the same 1.5 mm strip, F.Cu pours closing in to a
+# 1.25 mm gap over 4 mm tapers, via fences
+#   python examples/make_rf_examples.py ms2cpw examples/rf_ms2cpw     # regenerate the board (already in the repository)
+#   kicad2ems examples/rf_ms2cpw.toml --preview
+#   kicad2ems examples/rf_ms2cpw.toml
+board   = "rf_ms2cpw.kicad_pcb"   # paths are relative to this file
+ground  = "B.Cu"
+fmin    = 1           # GHz
+fmax    = 10
+points  = 401
+out     = "out"
+fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+
+[solver.openems]
+excite  = ["P1"]
+diel    = "wideband"   # Debye FR-4: the default fixed conductivity overstates the loss far below the band centre

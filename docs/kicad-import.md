@@ -46,6 +46,7 @@ fields:
 | `port.layer` | F.Cu or B.Cu, by footprint side | the copper layer of the port, e.g. `In2.Cu` for a stripline |
 | `port.z0` | 50 | the reference impedance, Ω |
 | `port.type` | | `z` forces a vertical port where a gap port would otherwise be detected |
+| `port.width` | the trace's width | mm: a vertical port this wide, centred on the footprint, e.g. a probe feed inside a patch |
 
 How a port becomes a solver port is on [the next page](model.md#ports).
 

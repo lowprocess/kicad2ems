@@ -1,0 +1,12 @@
+# kicad2ems antenna example: aperture-coupled patch, 2.45 GHz, 4 layers of 0.8 mm FR4: patch on F.Cu, slotted ground on In2.Cu,
+# 50 ohm feed on B.Cu
+#   python examples/make_antennas.py aperture examples/antenna_aperture
+#   kicad2ems examples/antenna_aperture.toml --preview
+#   kicad2ems examples/antenna_aperture.toml
+board   = "antenna_aperture.kicad_pcb"   # paths are relative to this file
+mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+fmin    = 2           # GHz
+fmax    = 3
+points  = 401
+out     = "out"
+solvers = ["gfdtd"]     # a slotted plane between two signal layers: FDTD

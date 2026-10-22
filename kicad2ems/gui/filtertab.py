@@ -10,7 +10,7 @@ S-parameters in <out>_em/, <out>_em_tune1/, ...).
     load_design(base)          what a dfsynth run wrote under <base>: design, model and EM responses
     line_level(line)           'error', 'warn' or None: how the page's log shows a line of dfsynth's output
 """
-import glob, html, json, os, re, sys
+import glob, html, json, os, re, shutil, sys
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -47,10 +47,10 @@ OPTIONS = [
     ('response', '--response', 'str'), ('order', '--order', 'int'), ('atten', '--atten', 'str'),
     ('ripple', '--ripple', 'float'), ('z0', '--z0', 'float'), ('zhigh', '--zhigh', 'float'),
     ('zlow', '--zlow', 'float'), ('zstub', '--zstub', 'float'), ('stub_angle', '--stub-angle', 'float'),
-    ('feed', '--feed', 'float'), ('substrate', '--substrate', 'str'), ('h', '--h', 'float'), ('er', '--er', 'float'),
+    ('hairpin_gap', '--hairpin-gap', 'float'), ('feed', '--feed', 'float'), ('substrate', '--substrate', 'str'), ('h', '--h', 'float'), ('er', '--er', 'float'),
     ('tand', '--tand', 'float'), ('copper', '--copper', 'float'), ('min_width', '--min-width', 'float'),
     ('min_gap', '--min-gap', 'float'), ('allow_fab_violations', '--allow-fab-violations', 'flag'),
-    ('no_calibrate', '--no-calibrate', 'flag'), ('out', '--out', 'str'), ('validate', '--validate', 'str'),
+    ('no_calibrate', '--no-calibrate', 'flag'), ('refine_time', '--refine-time', 'float'), ('out', '--out', 'str'), ('validate', '--validate', 'str'),
     ('em_tune', '--em-tune', 'int'), ('k2e_args', '--k2e-args', 'str'),
 ]
 
@@ -97,7 +97,9 @@ def load_design(base):
     with open(path) as fh:
         design = json.load(fh)
     model = read_touchstone(base + '_model.s2p') if os.path.exists(base + '_model.s2p') else None
-    em = [(lab, {k: read_touchstone(p) for k, p in files.items()}) for lab, files in _em_rounds(base)]
+    # only this run's rounds (the design JSON lists them): a folder of an earlier run with more rounds is not one
+    rounds = _em_rounds(base)[:len(design.get('em') or [])]
+    em = [(lab, {k: read_touchstone(p) for k, p in files.items()}) for lab, files in rounds]
     return {'design': design, 'model': model, 'em': em, 'pcb': base + '.kicad_pcb', 'toml': base + '.toml'}
 
 
@@ -215,6 +217,7 @@ class FilterTab(QWidget):
             ('Low Z (Ω)', 'zlow', self._line('chosen', 'stepped low-pass: the low-impedance sections')),
             ('Stub / rod Z (Ω)', 'zstub', self._line('chosen', 'stub low-pass: the stubs; interdigital: the rods')),
             ('Fan angle (°)', 'stub_angle', self._line('60', 'radial low-pass: the fans\' apex angle')),
+            ('Hairpin gap (mm)', 'hairpin_gap', self._line('chosen', "hairpin: the gap between a resonator's own arms")),
             ('Feed (mm)', 'feed', self._line('chosen', '50 Ω feed line at each port'))])
         sub = QComboBox()
         sub.addItems(presets)
@@ -240,7 +243,10 @@ class FilterTab(QWidget):
         self.w['out'] = out
         nocal = QCheckBox('no calibration')
         nocal.setToolTip('skip the line-model calibration: the textbook synthesis as it is')
-        section('Output', [('Base path', '_out_row', row), ('', 'no_calibrate', nocal)], expanded=True)
+        section('Output', [('Base path', '_out_row', row), ('', 'no_calibrate', nocal),
+                           ('Refine limit (s)', 'refine_time',
+                            self._line('10', "time limit of the calibration's final refinement (low-pass, band-stop, "
+                                             "interdigital): past it the best so far is kept"))], expanded=True)
         self.w.pop('_out_row')
         solv = QComboBox()
         solv.setEditable(True)
@@ -311,6 +317,7 @@ class FilterTab(QWidget):
         self.w['zlow'].setEnabled(t == 'lowpass' and p == 'stepped')
         self.w['zstub'].setEnabled((t == 'lowpass' and p == 'stub') or p == 'interdigital')
         self.w['stub_angle'].setEnabled(t == 'lowpass' and p == 'radial')
+        self.w['hairpin_gap'].setEnabled(t == 'bandpass' and p == 'hairpin')
         self.w['bw'].setPlaceholderText('2 x f0' if t == 'highpass' else ('' if t == 'lowpass' else 'e.g. 500M'))
         self.w['bw'].setEnabled(t != 'lowpass')
 
@@ -532,8 +539,11 @@ class FilterTab(QWidget):
             return
         self.base = os.path.abspath(vals['out'])
         os.makedirs(os.path.dirname(self.base), exist_ok=True)
-        for p in [self.base + '_design.json'] + glob.glob(self.base + '_em*'):   # no stale results on the page
-            if os.path.isfile(p):
+        stale = [p for p in glob.glob(self.base + '_em*') if re.fullmatch(r'_em(_tune\d+)?', p[len(self.base):])]
+        for p in [self.base + '_design.json'] + stale:               # no stale results on the page
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
+            elif os.path.isfile(p):
                 os.remove(p)
         self.clear_log()
         self.tabs.setCurrentWidget(self.log)

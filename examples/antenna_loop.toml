@@ -1,0 +1,11 @@
+# kicad2ems antenna example: full-wave square loop, 2.45 GHz, 0.8 mm FR4, no ground, gap-fed (100 ohm reference)
+#   python examples/make_antennas.py loop examples/antenna_loop
+#   kicad2ems examples/antenna_loop.toml --preview
+#   kicad2ems examples/antenna_loop.toml
+board   = "antenna_loop.kicad_pcb"   # paths are relative to this file
+mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+fmin    = 1.8           # GHz
+fmax    = 3.4
+points  = 401
+out     = "out"
+solvers = ["gfdtd"]     # no ground: FDTD

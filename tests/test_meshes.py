@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from kicad2ems import meshes, volume3d as v3
 
-FILTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples', 'filter.toml')
+FILTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples', 'rf_interdig.toml')
 
 
 def test_preview_writes_the_meshes(run_cli, tmp_path):
@@ -16,7 +16,7 @@ def test_preview_writes_the_meshes(run_cli, tmp_path):
     assert code == 0, so + se
     found = meshes.find(str(out))
     assert {'openems', 'mom25d'} <= set(found)
-    g = v3.geometry_from_board(str(out / 'filter_board.json'))
+    g = v3.geometry_from_board(str(out / 'rf_interdig_board.json'))
     box = v3.board_box(g)
     planes = sorted(set(g['cu_z'].values()))
     grid = meshes.segments(found['openems'], box, planes)

@@ -1,12 +1,12 @@
 {
- "name": "filter",
+ "name": "rf_interdig",
  "version": "0.2.0",
  "mode": "S-parameters",
- "command": "kicad2openems filter.toml --out out",
+ "command": "kicad2openems rf_interdig.toml --out out",
  "created": "2026-10-10 11:53",
  "settings": {
-  "board": "examples/filter.kicad_pcb",
-  "pos": "examples/filter-all.pos",
+  "board": "examples/rf_interdig.kicad_pcb",
+  "pos": "examples/rf_interdig-all.pos",
   "nets": [
    "RF",
    "GND"
@@ -62,47 +62,47 @@
   "out": "out"
  },
  "images": {
-  "lines": "filter_tlines.png",
-  "mesh": "filter_mesh.png",
-  "sparams": "filter_openems.png"
+  "lines": "rf_interdig_tlines.png",
+  "mesh": "rf_interdig_mesh.png",
+  "sparams": "rf_interdig_openems.png"
  },
  "files": [
   [
    "transmission-line sections",
-   "filter_tlines.png"
+   "rf_interdig_tlines.png"
   ],
   [
    "S-parameters, fast line model (qucsator)",
-   "filter_fast.s2p"
+   "rf_interdig_fast.s2p"
   ],
   [
    "model and mesh",
-   "filter_mesh.png"
+   "rf_interdig_mesh.png"
   ],
   [
    "CSX geometry (AppCSXCAD)",
-   "filter.xml"
+   "rf_interdig.xml"
   ],
   [
    "S-parameters (Touchstone)",
-   "filter_openems.s2p"
+   "rf_interdig_openems.s2p"
   ],
   [
    "S-parameter plot",
-   "filter_openems.png"
+   "rf_interdig_openems.png"
   ],
   [
    "run summary (JSON)",
-   "filter_openems.json"
+   "rf_interdig_openems.json"
   ],
   [
    "report",
-   "filter_report.html"
+   "rf_interdig_report.html"
   ]
  ],
  "dumps": [],
  "model": {
-  "board": "examples/filter.kicad_pcb",
+  "board": "examples/rf_interdig.kicad_pcb",
   "outline_mm": [
    20.0,
    20.0
@@ -702,7 +702,7 @@
  "fast": {
   "backend": "qucsator",
   "seconds": 0.37716031074523926,
-  "touchstone": "filter_fast.s2p",
+  "touchstone": "rf_interdig_fast.s2p",
   "table": [
    {
     "param": "S(P1,P1)",
@@ -816,8 +816,8 @@
   "mesh: 181 x 129 x 17 = 0.40 M cells (fine 0.050 mm, max 0.89 mm in dielectric / 1.87 mm in air, air margin 5.0 mm), boundaries xmin=MUR xmax=MUR ymin=MUR ymax=MUR zmin=PEC zmax=MUR (PEC on the bottom plane), time step 0.070 ps, ~0.1 GB",
   "transmission line P1 -> P2: 8 sections, 13.77 mm, Z0 50.0..50.2 ohm, 10 branch(es)",
   "  2 coupled section(s) (5 lines 1.57 mm, 5 lines 10.76 mm); discontinuities: 7 open, 2 tee",
-  "fast line model (qucsator): 377 ms -> out/filter_fast.s2p",
-  "wrote out/filter_mesh.png",
+  "fast line model (qucsator): 377 ms -> out/rf_interdig_fast.s2p",
+  "wrote out/rf_interdig_mesh.png",
   "excitation pulse ~11118 timesteps (estimate); --max-steps 1000000 allows 90 pulse lengths",
   "openEMS: exciting P1 -> examples/out/openems/exc_P1",
   "  P1 done in 491 s, ~195157 timesteps",

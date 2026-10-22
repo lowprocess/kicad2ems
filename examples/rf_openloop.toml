@@ -1,0 +1,15 @@
+# kicad2ems example: two square open-loop resonators (9.3 mm, 1.0 mm strip), their gaps facing, 0.6 mm apart: electric
+# coupling; tapped 50 ohm feeds
+#   python examples/make_rf_examples.py openloop examples/rf_openloop     # regenerate the board (already in the repository)
+#   kicad2ems examples/rf_openloop.toml --preview
+#   kicad2ems examples/rf_openloop.toml
+board   = "rf_openloop.kicad_pcb"   # paths are relative to this file
+ground  = "B.Cu"
+fmin    = 1.5           # GHz
+fmax    = 3.5
+points  = 401
+out     = "out"
+fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+
+[solver.openems]
+excite  = ["P1"]

@@ -9,6 +9,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Fixed
+- gfdtd: a current probe normal to y ran its loop the wrong way round, so a lumped port along y measured its
+  current negated (|S11| near 95). Ports along x and z were right, so no example had shown it.
+- `bc = auto` put a PEC wall on a bottom plane with holes in it: a slot, a defected ground or an antipad there
+  was shorted (`rf_dgs` came out a plain line). The bottom copper must now be one piece, bare only within 1 mm
+  of the board edge.
+- The Filter Synthesis page kept showing an earlier run's validation rounds when a later run had fewer (or
+  none): it now shows only the rounds the run's design JSON lists, and clears the old `_em*` folders.
+- dfsynth's hairpin came out 11-14 % high in frequency on the field solvers. Its line model now has every arm
+  in one multiconductor array, a U's own arms coupled too, and a U's square corners shorter than its centre line
+  (0.17 h + 0.33 w each, fitted to gfdtd and openEMS on single hairpins). Round 0 on gfdtd: centre -0.7 % on
+  FR4-1.6, -0.2 % on RO4003C-0.813.
 - gfdtd: the end criterion counts the energy in lumped parts (L I²/2 in an inductor, q²/2C in a series
   capacitor) as well as the field's. A filter of lumped parts rings in them, and its runs had ended early:
   demo_bandpass after 53k timesteps instead of 67k, demo_lowpass 21.8k instead of 26.9k (now within 0.03 of
@@ -22,6 +33,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   of 10.7 GB and 270 s instead of 313 s, on the GPU in 9.7 GB instead of 13.2 GB, with the same result.
 
 ### Added
+- gfdtd: openEMS's other ports, with their `Add...Port` methods: microstrip (MSL), stripline, CPW, coaxial,
+  rectangular and circular waveguide, any waveguide mode (functions or a mode file), and curve ports. Behind
+  them: weighted, hard, H-field and delayed excitations; mode-matching probes; cylindrical shells and curves;
+  current probes snapped to the dual mesh as openEMS snaps them. Against openEMS on small models: within 0.03 in
+  |S| (`docs/gfdtd.md`, Ports).
+- Antenna results give the polarisation at the gain maximum: axial ratio, hand (RHCP / LHCP or linear) and the
+  gain in each hand, for openEMS, gfdtd and mom25d.
+- `port.width`: a vertical port of that width centred on its footprint, for a probe feed inside a patch.
+- RF examples (`make_rf_examples.py`): SIW, microstrip-to-microstrip through-via, microstrip to grounded CPW,
+  microstrip-slotline transitions, broadside Marchand balun, bends, serpentine, crosstalk with and without a
+  guard trace, parallel-coupled and combline band-pass, open-loop resonators, defected ground, mushroom EBG,
+  interdigital capacitor, meander and spiral inductors.
+- Antenna examples (`make_antennas.py`): circularly polarised patch, aperture-coupled patch, meander monopole on
+  a finite ground, printed Yagi, log-periodic, bowtie, UWB disc monopole and full-wave loop, run on gfdtd.
+- dfsynth: `--hairpin-gap` (the gap between a hairpin's own arms; its default is now about half what it was, so
+  the 2.4 GHz FR4-1.6 filter is 66 mm long instead of 85) and `--refine-time` (the final refinement's time
+  limit, 10 s: it had run for minutes on changes too small to matter). Both are on the Filter Synthesis page.
+
 - `--air` takes six values (xmin,xmax,ymin,ymax,zmin,zmax) as well as one, like `--bc`: more air on one side,
   in front of an endfire antenna for instance. The GUI has it: *Air margin* under Mesh.
 - A gfdtd preview (without openEMS) draws the mesh, `<name>_mesh.png`, and writes the grid for the Viewer.
@@ -39,6 +68,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   worst match from −5.1 to −8.7 dB.
 
 ### Changed
+- The interdigital filter example is `rf_interdig` (`examples/rf_interdig.toml`, `.kicad_pcb`, and its reference
+  results), formerly `filter`.
 - `--solvers auto` considers gfdtd. Its estimate is openEMS's mesh and timesteps at gfdtd's speed: about 8x
   openEMS's on the GPU, 2x on the CPU core. So auto now picks gfdtd or mom25d, and openEMS only where neither
   applies. With `--sigma`, `--converge` or `--drive`, gfdtd is left out of auto, because it would ignore them.

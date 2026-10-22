@@ -1,6 +1,6 @@
 """
-Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad needed), all but the vivaldi for
-2.45 GHz on FR4 (er 4.4, tan d 0.02):
+Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad needed), most for 2.45 GHz on FR4
+(er 4.4, tan d 0.02):
 
   patch   inset-fed rectangular patch (37.2 x 28.8 mm) on 1.6 mm FR4, 50 ohm microstrip feed from the
           board edge, B.Cu ground
@@ -20,6 +20,14 @@ Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad neede
           with a phase difference (drive = ["P1@0", "P2@60"]) the beam tilts in the yz plane
   array4x4_phased  sixteen of the patch, 65 mm apart, each with its own feed line and port (P1..P16 row by
           row): grid = "4x4" and steer = [X, Y] (deg per column, per row) tilt the beam in both planes
+  cp_patch  circularly polarised patch: corners cut, probe-fed (a port.width 1.3 mm vertical port inside it)
+  aperture  aperture-coupled patch, 4 layers: patch on F.Cu, slotted ground on In2.Cu, feed on B.Cu
+  monopole  meander monopole above a finite ground (the ground radiates too)
+  yagi      printed Yagi-Uda: gap-fed dipole, reflector, two directors, no ground
+  lpda      printed log-periodic dipole array, about 1.6-4.5 GHz, feeders on F.Cu and B.Cu
+  bowtie    printed bowtie, gap-fed, no ground
+  uwb       UWB disc monopole on a partial ground, 3-10 GHz
+  loop      full-wave square loop, gap-fed, no ground
 
     python examples/make_antennas.py patch examples/antenna_patch
     python examples/make_antennas.py ifa /tmp/ifa arm=20 s=2.5      # dimensions (mm) as parameters
@@ -28,7 +36,7 @@ Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad neede
 Dimensions are keyword parameters (mm) of each function, also on the command line (param=value).
 The defaults were tuned with kicad2ems to resonate at 2.43-2.45 GHz with S11 below -19 dB.
 """
-import sys, uuid
+import math, sys, uuid
 
 
 def u():
@@ -36,9 +44,11 @@ def u():
 
 
 class Board:
-    def __init__(self, thickness, ground_layer=True, er=4.4, tand=0.02, material='FR4'):
+    def __init__(self, thickness, ground_layer=True, er=4.4, tand=0.02, material='FR4', stack=None):
+        """stack: three dielectric thicknesses (mm) for a 4-layer board (F.Cu, In1.Cu, In2.Cu, B.Cu) instead of one
+        `thickness` between F.Cu and B.Cu."""
         self.t, self.items, self.nets = thickness, [], ["", "GND", "RF"]
-        self.er, self.tand, self.material = er, tand, material
+        self.er, self.tand, self.material, self.stack = er, tand, material, stack
 
     def rect(self, x0, y0, x1, y1, layer='F.Cu', net=2):
         self.items.append(f'  (gr_rect (start {x0:.4f} {y0:.4f}) (end {x1:.4f} {y1:.4f}) (stroke (width 0) (type solid)) '
@@ -53,27 +63,38 @@ class Board:
         self.items.append(f'  (segment (start {x0:.4f} {y0:.4f}) (end {x1:.4f} {y1:.4f}) (width {w}) (layer "{layer}") '
                           f'(net {net}) (uuid "{u()}"))')
 
-    def via(self, x, y, net=1, size=0.6, drill=0.3):
-        self.items.append(f'  (via (at {x:.4f} {y:.4f}) (size {size}) (drill {drill}) (layers "F.Cu" "B.Cu") (net {net}) '
-                          f'(uuid "{u()}"))')
+    def via(self, x, y, net=1, size=0.6, drill=0.3, layers=('F.Cu', 'B.Cu')):
+        kind = '' if layers == ('F.Cu', 'B.Cu') else ' blind'
+        self.items.append(f'  (via{kind} (at {x:.4f} {y:.4f}) (size {size}) (drill {drill}) (layers "{layers[0]}" '
+                          f'"{layers[1]}") (net {net}) (uuid "{u()}"))')
 
-    def port(self, ref, text, x, y, rot, z0=None):
+    def port(self, ref, text, x, y, rot, z0=None, layer=None, width=None):
+        """A port footprint; z0, layer, width: its port.z0, port.layer, port.width fields."""
         L = [f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x:.4f} {y:.4f} {rot})',
              f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))',
              f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))']
-        if z0:
-            L.append(f'    (property "port.z0" "{z0:g}" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "{u()}"))')
+        for key, v in (('z0', z0), ('layer', layer), ('width', width)):
+            if v:
+                v = f"{v:g}" if isinstance(v, (int, float)) else v
+                L.append(f'    (property "port.{key}" "{v}" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "{u()}"))')
         L.append(f'    (fp_text user "{text}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )')
         self.items += L
 
     def write(self, path, W, H):
+        cu = ['F.Cu', 'In1.Cu', 'In2.Cu', 'B.Cu'] if self.stack else ['F.Cu', 'B.Cu']
+        hs = list(self.stack) if self.stack else [self.t]
+        ids = {'F.Cu': 0, 'In1.Cu': 1, 'In2.Cu': 2, 'B.Cu': 31}
+        st = []
+        for i, c in enumerate(cu):
+            st.append(f'    (layer "{c}" (type "copper") (thickness 0.035))')
+            if i < len(hs):
+                st.append(f'    (layer "dielectric {i + 1}" (type "core") (thickness {hs[i]}) (material "{self.material}") '
+                          f'(epsilon_r {self.er:g}) (loss_tangent {self.tand:g}))')
         L = ['(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")',
-             f'  (general (thickness {self.t}))\n  (paper "A4")',
-             '  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (37 "F.SilkS" user) (44 "Edge.Cuts" user) (49 "F.Fab" user))',
-             '  (setup (stackup',
-             '    (layer "F.Cu" (type "copper") (thickness 0.035))',
-             f'    (layer "dielectric 1" (type "core") (thickness {self.t}) (material "{self.material}") (epsilon_r {self.er:g}) (loss_tangent {self.tand:g}))',
-             '    (layer "B.Cu" (type "copper") (thickness 0.035))',
+             f'  (general (thickness {sum(hs):g}))\n  (paper "A4")',
+             '  (layers ' + ' '.join(f'({ids[c]} "{c}" signal)' for c in cu) +
+             ' (37 "F.SilkS" user) (44 "Edge.Cuts" user) (49 "F.Fab" user))',
+             '  (setup (stackup'] + st + [
              '    (copper_finish "None") (dielectric_constraints no))\n    (pad_to_mask_clearance 0))',
              '  ' + ' '.join(f'(net {i} "{n}")' for i, n in enumerate(self.nets))]
         L += self.items
@@ -499,9 +520,156 @@ def vivaldi_antipodal_array(path, N=4.0, P=30.0, ap=26.0, sym=1.0, fr=15.0, f0=6
     b.write(path, W, H)
 
 
+def cp_patch(path, L=28.6, c=4.0, xf=8.0, pin=1.3, W=70.0):
+    """Circularly polarised patch, 2.45 GHz, 1.6 mm FR4: a square L x L patch with two opposite corners cut off
+    (legs c mm), probe-fed xf mm from the centre along x (a pin-wide vertical port from the ground to the patch: a
+    coax probe from below). The cut splits the two orthogonal modes; between them they are 90 deg apart and the
+    field turns: right-handed for the cut at the top left and bottom right, as drawn (KiCad, y down)."""
+    b = Board(1.6)
+    xc = yc = W / 2
+    x0, y0, x1, y1 = xc - L / 2, yc - L / 2, xc + L / 2, yc + L / 2
+    b.poly([(x0 + c, y0), (x1, y0), (x1, y1 - c), (x1 - c, y1), (x0, y1), (x0, y0 + c)])
+    b.rect(0, 0, W, W, layer='B.Cu', net=1)
+    b.port('TP1', 'P1', xc + xf, yc, 0, width=pin)
+    b.write(path, W, W)
+
+
+def aperture(path, pw=37.0, pl=25.8, sl=14.0, sw=1.2, stub=15.0, wf=1.5, W=70.0):
+    """Aperture-coupled patch, 2.45 GHz, 4 layers of 0.8 mm FR4: the pw x pl patch on F.Cu, 1.6 mm over the ground on
+    In2.Cu (In1.Cu empty), fed through an sl x sw slot in that ground by a 50 ohm microstrip on B.Cu, 0.8 mm below
+    it, running from the bottom edge across the slot's middle and stub mm beyond. No via, the feed shielded from
+    the patch by the ground: the textbook check of a slotted plane between two signal layers."""
+    b = Board(0.8, stack=(0.8, 0.8, 0.8))
+    xc = yc = W / 2
+    b.rect(xc - pw / 2, yc - pl / 2, xc + pw / 2, yc + pl / 2)
+    for r in ((0, 0, W, yc - sw / 2), (0, yc + sw / 2, W, W), (0, yc - sw / 2, xc - sl / 2, yc + sw / 2),
+              (xc + sl / 2, yc - sw / 2, W, yc + sw / 2)):
+        b.rect(*r, layer='In2.Cu', net=1)                        # the ground minus the slot
+    b.rect(xc - wf / 2, yc - stub, xc + wf / 2, W, layer='B.Cu')
+    b.port('TP1', 'P1', xc, W - 0.5, 90, layer='B.Cu')
+    b.write(path, W, W)
+
+
+def monopole(path, wm=0.8, run=6.0, pitch=4.0, n=4, top=2.0, gnd=60.0, W=40.0, wf=1.5):
+    """Meander monopole above a finite ground, 2.45 GHz, 0.8 mm FR4: a 50 ohm microstrip from the bottom edge to the
+    top of a gnd mm B.Cu ground, then a wm mm strip meandering n times across `run` mm (pitch mm apart) in the
+    clearance above it. The ground is half the antenna (no infinite plane here: gfdtd / openEMS)."""
+    n = int(n)
+    H = gnd + top + n * pitch + 4.0
+    yg = H - gnd                                                 # the ground's top edge
+    b = Board(0.8)
+    xc = W / 2
+    b.rect(xc - wf / 2, yg, xc + wf / 2, H)
+    b.rect(0, yg, W, H, layer='B.Cu', net=1)
+    y = yg - top
+    b.track(xc, yg, xc, y, wm)
+    x = xc
+    for k in range(n):
+        xe = xc + (run / 2 if k % 2 == 0 else -run / 2)
+        b.track(x, y, xe, y, wm)
+        if k < n - 1:
+            b.track(xe, y, xe, y - pitch, wm)
+        x, y = xe, y - pitch
+    b.port('TP1', 'P1', xc, H - 0.5, 90)
+    b.write(path, W, H)
+
+
+def yagi(path, drv=22.0, gap=1.0, refl=52.0, d1=40.0, d2=38.0, sr=24.0, s1=18.0, s2=18.0, w=2.0, W=70.0):
+    """Printed Yagi-Uda, 2.45 GHz, 0.8 mm FR4, no ground: a gap-fed half-wave dipole (arms drv mm), a reflector
+    (refl mm) sr behind it and two directors (d1, d2 mm) s1 and s1 + s2 ahead, endfire off the top edge (-y)."""
+    H = 8.0 + s2 + s1 + sr + 8.0
+    xc = W / 2
+    b = Board(0.8)
+    y = 8.0
+    for ld, sp in ((d2, s2), (d1, s1)):                          # the furthest director first, from the top
+        b.rect(xc - ld / 2, y - w / 2, xc + ld / 2, y + w / 2)
+        y += sp
+    b.rect(xc - gap / 2 - drv, y - w / 2, xc - gap / 2, y + w / 2)
+    b.rect(xc + gap / 2, y - w / 2, xc + gap / 2 + drv, y + w / 2)
+    b.port('TP1', 'P1', xc, y, 0, z0=50)
+    y += sr
+    b.rect(xc - refl / 2, y - w / 2, xc + refl / 2, y + w / 2)
+    b.write(path, W, H)
+
+
+def lpda(path, l0=36.0, tau=0.88, sigma=0.06, n=12, wf=0.6, we=1.5, margin=6.0):
+    """Printed log-periodic dipole array, about 1.6-3.6 GHz, 0.8 mm FR4: two feeder strips wf mm wide, one on F.Cu
+    and one under it on B.Cu (a parallel-plate line along the board's centre), dipole halves l_k = l0 tau^k long
+    alternating from the top feeder to the right and the bottom one to the left (and the other way for the next),
+    4 sigma l_k apart. Fed at the short end (the top edge, endfire): a vertical port from the B.Cu feeder up."""
+    n = int(n)
+    ls = [l0 * tau ** k for k in range(n)]
+    ds = [4 * sigma * l for l in ls[:-1]]
+    W = 2 * l0 + 2 * margin
+    H = margin + sum(ds) + 2 * margin
+    xc = W / 2
+    b = Board(0.8)
+    y = H - margin                                               # the longest element at the bottom
+    ys = []
+    for k in range(n):
+        ys.append(y)
+        if k < n - 1:
+            y -= ds[k]
+    ytop = ys[-1] - 2.0
+    b.rect(xc - wf / 2, ytop, xc + wf / 2, ys[0] + we / 2)
+    b.rect(xc - wf / 2, ytop, xc + wf / 2, ys[0] + we / 2, layer='B.Cu', net=1)
+    for k, (l, yk) in enumerate(zip(ls, ys)):
+        sgn = 1 if k % 2 == 0 else -1
+        b.rect(xc, yk - we / 2, xc + sgn * (wf / 2 + l), yk + we / 2)                   # F.Cu half
+        b.rect(xc, yk - we / 2, xc - sgn * (wf / 2 + l), yk + we / 2, layer='B.Cu', net=1)  # B.Cu half
+    b.port('TP1', 'P1', xc, ytop + 0.5, 90)
+    b.write(path, W, H)
+
+
+def bowtie(path, arm=16.0, flare=60.0, gap=1.0, z0=50.0, W=60.0, H=40.0):
+    """Printed bowtie, 2.45 GHz, 0.8 mm FR4, no ground: two triangles arm mm long, flare degrees wide, apexes gap mm
+    apart, gap-fed (port.z0 z0 ohm); a fat dipole: its series resonance's resistance (36 ohm at 24 mm arms) changes
+    more slowly with frequency than the thin dipole's."""
+    b = Board(0.8)
+    xc, yc = W / 2, H / 2
+    t = math.tan(math.radians(flare / 2))
+    for sg in (-1, 1):
+        xa, xe = xc + sg * gap / 2, xc + sg * (gap / 2 + arm)
+        b.poly([(xa, yc - 0.3), (xe, yc - arm * t), (xe, yc + arm * t), (xa, yc + 0.3)])
+    b.port('TP1', 'P1', xc, yc, 0, z0=z0)
+    b.write(path, W, H)
+
+
+def uwb(path, r=12.0, gp=1.0, gnd=24.0, wf=1.5, W=40.0):
+    """UWB disc monopole, 0.8 mm FR4: a radius-r disc on a 50 ohm microstrip, gp mm above the top of a gnd mm partial
+    B.Cu ground; the disc and the ground's edge radiate together from about 3 to past 10 GHz."""
+    H = gnd + gp + 2 * r + 5.0
+    yg = H - gnd
+    b = Board(0.8)
+    xc = W / 2
+    cy = yg - gp - r
+    b.poly([(xc + r * math.sin(2 * math.pi * k / 64), cy + r * math.cos(2 * math.pi * k / 64)) for k in range(64)])
+    b.rect(xc - wf / 2, cy + r - 0.3, xc + wf / 2, H)
+    b.rect(0, yg, W, H, layer='B.Cu', net=1)
+    b.port('TP1', 'P1', xc, H - 0.5, 90)
+    b.write(path, W, H)
+
+
+def loop(path, side=28.0, w=1.0, gap=1.0, W=50.0):
+    """Full-wave square loop, 2.45 GHz, 0.8 mm FR4, no ground: side mm (about a wavelength round on the board),
+    gap-fed in the middle of its bottom side (port.z0 100 ohm). Its beam is broadside to the loop."""
+    b = Board(0.8)
+    xc = yc = W / 2
+    x0, y0, x1, y1 = xc - side / 2, yc - side / 2, xc + side / 2, yc + side / 2
+    h = w / 2
+    b.rect(x0 - h, y0 - h, x1 + h, y0 + h)
+    b.rect(x0 - h, y0 - h, x0 + h, y1 + h)
+    b.rect(x1 - h, y0 - h, x1 + h, y1 + h)
+    b.rect(x0 - h, y1 - h, xc - gap / 2, y1 + h)
+    b.rect(xc + gap / 2, y1 - h, x1 + h, y1 + h)
+    b.port('TP1', 'P1', xc, y1, 0, z0=100)
+    b.write(path, W, W)
+
+
 KINDS = dict(patch=patch, ifa=ifa, dipole=dipole, slot=slot, array2x2=array2x2, array2x2_phased=array2x2_phased,
              array4x4_phased=array4x4_phased, vivaldi=vivaldi,
-             vivaldi_antipodal=vivaldi_antipodal, vivaldi_antipodal_array=vivaldi_antipodal_array)
+             vivaldi_antipodal=vivaldi_antipodal, vivaldi_antipodal_array=vivaldi_antipodal_array, cp_patch=cp_patch,
+             aperture=aperture, monopole=monopole, yagi=yagi, lpda=lpda, bowtie=bowtie, uwb=uwb, loop=loop)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in KINDS:

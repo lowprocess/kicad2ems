@@ -7,7 +7,7 @@ from kicad2ems.cli import settings_from_argv
 from kicad2ems.config import build_settings, ConfigError
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FILTER = os.path.join(ROOT, 'examples', 'filter.toml')
+FILTER = os.path.join(ROOT, 'examples', 'rf_interdig.toml')
 
 
 def plan(**kw):
@@ -69,7 +69,7 @@ def test_missing_openems_stops_before_any_work(run_cli, tmp_path, monkeypatch):
     assert code == 2 and '--solvers mom,lines' in so
     events = [json.loads(l) for l in ev.read_text().splitlines()]
     assert not [e for e in events if e['kind'] == 'stage'] and (events[-1]['kind'], events[-1]['code']) == ('done', 2)
-    assert not (out / 'filter_mesh.png').exists()                  # nothing built: it stopped at once
+    assert not (out / 'rf_interdig_mesh.png').exists()                  # nothing built: it stopped at once
 
 
 def test_line_model_only(run_cli, tmp_path, monkeypatch):
@@ -78,12 +78,12 @@ def test_line_model_only(run_cli, tmp_path, monkeypatch):
     out = tmp_path / 'out'
     code, so, err = run_cli(FILTER, '--solvers', 'lines', '--fast', 'skrf', '--points', '51', '--out', out)
     assert code == 0, so + err
-    sm = json.loads((out / 'filter_run.json').read_text())
+    sm = json.loads((out / 'rf_interdig_run.json').read_text())
     assert sm['solvers'] == ['scikit'] and sm['mode'] == 'S-parameters' and sm['results']['reference'] == 'scikit'
     assert 'pulse_steps' not in sm and not any('max-steps' in w for w in sm['warnings'])   # no openEMS talk
-    assert 'mesh' not in sm and (out / 'filter_model.png').exists() and not (out / 'filter_mesh.png').exists()
-    assert (out / 'filter_scikit.s2p').exists() and (out / 'filter_scikit.png').exists()
-    page = (out / 'filter_report.html').read_text()
+    assert 'mesh' not in sm and (out / 'rf_interdig_model.png').exists() and not (out / 'rf_interdig_mesh.png').exists()
+    assert (out / 'rf_interdig_scikit.s2p').exists() and (out / 'rf_interdig_scikit.png').exists()
+    page = (out / 'rf_interdig_report.html').read_text()
     assert 'line model' in page and "<div class='l'>mesh</div>" not in page    # no FDTD mesh tile without openEMS
 
 
@@ -98,7 +98,7 @@ def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatc
     out = tmp_path / 'out'
     code, so, _ = run_cli(FILTER, '--solvers', 'mom', '--out', out)
     assert code == 1 and 'WARNING: mom25d failed: RuntimeError: singular matrix' in so and 'failed: mom25d' in so
-    assert (out / 'filter_report.html').exists()                    # the report still says what happened
+    assert (out / 'rf_interdig_report.html').exists()                    # the report still says what happened
     code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--mom', '--out', out)   # a reference: a warning
     assert code == 0 and 'WARNING: mom25d failed' in so
 

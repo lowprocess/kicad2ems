@@ -52,6 +52,7 @@ class Spec:
     trim: tuple = ()            # lowpass: per-element electrical-length factors; bandstop: impedance factors
                                 # (set by calibrate.refine / refine_bandstop)
     stub_angle: float = 60.0    # degrees: radial stubs' apex angle (lowpass radial)
+    hairpin_gap: float = 0.0    # mm: hairpin, the gap between a resonator's own arms (0: chosen)
 
     @property
     def fbw(self):
@@ -683,7 +684,9 @@ def bandpass_hairpin(spec, sub, kf=1.0, kb=1.0):
     wbar = []
     ws = [w for _, _, w, _ in secs]
     wavg = sum(ws) / len(ws)
-    inner = max(2.0 * wavg, 3 * sub.h, 4 * max(s for _, _, _, s in secs))   # gap between a hairpin's own arms
+    # gap between a hairpin's own arms: twice the widest coupling gap keeps each resonator's self-coupling below
+    # its couplings to the neighbours (the line model has it, as it has every arm's coupling to every other)
+    inner = spec.hairpin_gap or max(wavg, 2 * max(s for _, _, _, s in secs), sub.min_gap)
     d = [ws[j] / 2 + inner + ws[j + 1] / 2 for j in range(n)]                # arm centre spacing of resonator j+1
     beta = sum(_coupled_beta(sub, w, s, fd) for _, _, w, s in secs) / len(secs)
     A = [(math.pi / beta - d[j]) / 2 - sub.open_end((ws[j] + ws[j + 1]) / 2) for j in range(n)]
@@ -736,16 +739,32 @@ def bandpass_hairpin(spec, sub, kf=1.0, kb=1.0):
     geo.finish(x_end, _margin(sub), -w50 / 2, yout)
 
     ideal = None
+    strip_w = [ws[0]] + [w for j in range(n) for w in (ws[j], ws[j + 1])] + [ws[n]]   # feed, arms, feed (left to right)
+    strip_s = [secs[0][3]] + [g for j in range(n) for g in (inner, secs[j + 1][3])]
 
     def model(s_):
-        net = [MLine(s_, w50, xf - 0.5)]
-        for j, (_, _, w, s) in enumerate(secs):
-            net.append(MCoupled(s_, w, s, arm))
-            if j < n:
-                net.append(MLine(s_, wbar[j], d[j]))
-        return net + [MLine(s_, w50, x_end - xo - 0.5)]
-    notes.append("hairpin: arm spacing and bends are not in the synthesis; the calibration corrects the "
-                 "centre frequency and bandwidth on the line model")
+        # every arm (the feeds' coupled strips and both arms of each U) as one multiconductor array, the bars as
+        # lines between their arms' ends, the other ends open. A U's square corners are electrically shorter than
+        # its centre line, by 0.17 h + 0.33 w each (fitted to gfdtd / openEMS on single hairpins, w / h 0.5 to 2.2,
+        # FR-4 1.6 mm and RO4003C 0.508 mm, within 5 %): each arm ends that much short at its open end, and the bar
+        # is twice that shorter than the arms' spacing
+        corner = 0.17 * s_.h + 0.33 * sum(wbar) / n
+        arr = mtl.Array(s_, strip_w, strip_s)
+        net = mtl.Nodal()
+        top, bot = net.nodes(2 * n + 2), net.nodes(2 * n + 2)    # the strips' ends at y = 0 and y = arm
+        net.mtl(arr, top, bot, arm)
+        for j in range(n):
+            l, r = 1 + 2 * j, 2 + 2 * j
+            barred, opened = (bot, top) if j % 2 == 0 else (top, bot)
+            net.line(barred[l], barred[r], s_, wbar[j], max(d[j] - 2 * corner, 0.1 * d[j]))
+            net.open(opened[l], s_, strip_w[l], -corner)
+            net.open(opened[r], s_, strip_w[r], -corner)
+        net.open(bot[0], s_, strip_w[0])
+        pout = top[-1] if out_top else bot[-1]
+        net.open(bot[-1] if out_top else top[-1], s_, strip_w[-1])
+        return [MLine(s_, w50, xf - 0.5), net.two_port(top[0], pout), MLine(s_, w50, x_end - xo - 0.5)]
+    notes.append(f"hairpin: {inner:.2f} mm between a resonator's own arms; their self-coupling and the arms' "
+                 "couplings past their neighbours are in the multiconductor line model, the bends are not")
     return Design(spec, sub, kf, kb, geo, ideal, model, rows, g, notes)
 
 

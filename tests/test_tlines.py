@@ -79,7 +79,7 @@ def test_lowpass_pads_parts_and_branch(boards):
 
 
 def test_filter_feeds_and_gap_ports(boards):
-    m = Board(KiCadBoard(os.path.join(ROOT, 'examples', 'filter.kicad_pcb')), nets=['RF', 'GND'], log=lambda *a: None)
+    m = Board(KiCadBoard(os.path.join(ROOT, 'examples', 'rf_interdig.kicad_pcb')), nets=['RF', 'GND'], log=lambda *a: None)
     lm = build(m)
     assert set(lm.ports) == {'P1', 'P2'}
     assert all(secs for _, _, secs, _ in lm.paths)

@@ -9,12 +9,17 @@ from ...constants import C0
 SIDES = ('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax')
 
 
-def bottom_is_plane(m, frac=0.85):
-    """True when the lowest copper layer is the bottom of the model (z = 0) and covers the outline
-    (>= 85 %: pours stop short of the board edge)."""
+def bottom_is_plane(m, frac=0.85, edge=1.0):
+    """True when the lowest copper layer is the bottom of the model (z = 0) and one solid plane over the outline:
+    >= 85 % of it, one piece, and bare only within `edge` mm of the board edge (pours stop short of it). A PEC wall
+    there would short anything cut out of the plane (a slot, a defected ground, an antipad) or set in it."""
     if not m.cu_order or m.cu_z[m.cu_order[0]] != 0.0 or m.cu_order[0] not in m.copper:
         return False
-    return unary_union(m.copper[m.cu_order[0]]).area >= frac * m.outline.area
+    u = unary_union(m.copper[m.cu_order[0]])
+    if u.area < frac * m.outline.area or u.geom_type != 'Polygon':
+        return False
+    bare = m.outline.difference(u).difference(m.outline.exterior.buffer(edge))
+    return bare.area < 1e-3
 
 
 def resolve_bc(spec, m):

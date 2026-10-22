@@ -1,0 +1,12 @@
+# kicad2ems antenna example: printed Yagi-Uda, 2.45 GHz, 0.8 mm FR4, no ground: dipole, reflector, two directors, endfire off the
+# top edge
+#   python examples/make_antennas.py yagi examples/antenna_yagi
+#   kicad2ems examples/antenna_yagi.toml --preview
+#   kicad2ems examples/antenna_yagi.toml
+board   = "antenna_yagi.kicad_pcb"   # paths are relative to this file
+mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+fmin    = 2           # GHz
+fmax    = 3
+points  = 401
+out     = "out"
+solvers = ["gfdtd"]     # no ground: FDTD

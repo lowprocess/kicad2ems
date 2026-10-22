@@ -35,6 +35,7 @@ With `mode = "antenna"`, kicad2ems computes the far field after the run:
 | efficiency | radiated power / accepted power (dielectric and copper loss) |
 | gain | directivity × efficiency |
 | realized gain | gain including the mismatch loss |
+| polarisation | at the gain maximum: the axial ratio, the hand (RHCP / LHCP, IEEE: seen from behind the wave, clockwise is right-handed; *linear* above 20 dB) and the gain in each hand (`G_rhcp_dbi`, `G_lhcp_dbi`) |
 | patterns | the xz, yz and xy cuts, and a 3D pattern |
 
 θ is measured from +z (the board's top normal) and φ from +x.

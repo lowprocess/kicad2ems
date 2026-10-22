@@ -1,0 +1,16 @@
+# kicad2ems example: dumbbell defected ground structure under a 50 ohm line: two 5 x 5 mm squares cut from the B.Cu ground,
+# joined by a 0.4 mm slot across under the line
+#   python examples/make_rf_examples.py dgs examples/rf_dgs     # regenerate the board (already in the repository)
+#   kicad2ems examples/rf_dgs.toml --preview
+#   kicad2ems examples/rf_dgs.toml
+board   = "rf_dgs.kicad_pcb"   # paths are relative to this file
+nets    = ["RF", "GND"]
+fmin    = 1           # GHz
+fmax    = 10
+points  = 401
+out     = "out"
+fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+
+[solver.openems]
+excite  = ["P1"]
+diel    = "wideband"   # Debye FR-4: the default fixed conductivity overstates the loss far below the band centre

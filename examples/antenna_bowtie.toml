@@ -1,0 +1,11 @@
+# kicad2ems antenna example: printed bowtie, 2.45 GHz, 0.8 mm FR4, no ground, gap-fed (50 ohm reference)
+#   python examples/make_antennas.py bowtie examples/antenna_bowtie
+#   kicad2ems examples/antenna_bowtie.toml --preview
+#   kicad2ems examples/antenna_bowtie.toml
+board   = "antenna_bowtie.kicad_pcb"   # paths are relative to this file
+mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+fmin    = 1.5           # GHz
+fmax    = 4
+points  = 401
+out     = "out"
+solvers = ["gfdtd"]     # no ground: FDTD

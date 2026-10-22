@@ -4,7 +4,7 @@ import json, os
 import numpy as np
 import pytest
 
-FILTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples', 'filter.toml')
+FILTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples', 'rf_interdig.toml')
 
 
 def test_import():
@@ -19,7 +19,7 @@ def test_preview_solves_no_full_wave_solver(tmp_path, run_cli):
     out = tmp_path / 'out'
     code, so, se = run_cli(FILTER, '--preview', '--solvers', 'mom25d', '--mom', '--points', '41', '--out', str(out))
     assert code == 0, so + se
-    assert not (out / 'filter_mom25d.s2p').exists() and list(out.glob('filter_*.s2p'))      # the line model's
+    assert not (out / 'rf_interdig_mom25d.s2p').exists() and list(out.glob('rf_interdig_*.s2p'))      # the line model's
 
 
 def test_mom_run(tmp_path, run_cli, no_csxcad):
@@ -30,9 +30,9 @@ def test_mom_run(tmp_path, run_cli, no_csxcad):
     code, so, se = run_cli(FILTER, '--solvers', 'mom25d', '--mom-dmax', '1.6', '--mom-solves', '8', '--points', '41',
                            '--out', str(out))
     assert code == 0, so + se
-    sm = json.load(open(out / 'filter_run.json'))
+    sm = json.load(open(out / 'rf_interdig_run.json'))
     line = next(n for n in sm['solved'] if n != 'mom25d')          # qucs or scikit, whichever is installed
-    for f in ('filter_mom25d.s2p', 'filter_mom25d.png', f'filter_{line}.s2p', 'filter_report.html', 'filter_board.json'):
+    for f in ('rf_interdig_mom25d.s2p', 'rf_interdig_mom25d.png', f'rf_interdig_{line}.s2p', 'rf_interdig_report.html', 'rf_interdig_board.json'):
         assert (out / f).exists(), f
     mo = sm['solved']['mom25d']
     assert mo['solves'] <= 8 and mo['unknowns'] > 100 and {p['kind'] for p in mo['ports']} == {'lumped'}
@@ -157,9 +157,9 @@ def test_stop_ends_mom25d_after_its_current_solve(run_cli, tmp_path, monkeypatch
     code, so, se = run_cli(FILTER, '--solvers', 'mom25d', '--fast', 'auto', '--mom-dmax', '2.4', '--points', '41',
                            '--no-report', '--out', out)
     assert code == 1 and seen == [1, 2], so + se
-    assert not (out / 'filter.xml').exists()                        # openEMS importable: still no CSX file
+    assert not (out / 'rf_interdig.xml').exists()                        # openEMS importable: still no CSX file
     assert 'stopped: mom25d (MoM) ended early, no result' in so + se
-    assert not (out / 'filter_mom25d.s2p').exists() and list(out.glob('filter_*.s2p'))
+    assert not (out / 'rf_interdig_mom25d.s2p').exists() and list(out.glob('rf_interdig_*.s2p'))
 
 
 def test_short_differential_feed_falls_back_to_single_ended_legs(monkeypatch):

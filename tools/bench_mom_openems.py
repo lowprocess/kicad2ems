@@ -14,7 +14,7 @@ import argparse, json, os, subprocess, sys, time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EX = os.path.join(ROOT, 'examples')
 BOARDS = {
-    'filter': ('filter.toml', None),
+    'rf_interdig': ('rf_interdig.toml', None),
     'hairpin': ('hairpin.toml', None),
     'demo_transition': ('demo_transition.toml', ['demo_transition']),
     'demo_lowpass': ('demo_lowpass.toml', ['demo_lowpass', 'lowpass']),

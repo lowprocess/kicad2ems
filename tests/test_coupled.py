@@ -107,8 +107,8 @@ def test_strips_of_a_hairpin_and_a_tee():
 @pytest.fixture(scope='module')
 def filters():
     out = {}
-    m = Board(KiCadBoard(os.path.join(EX, 'filter.kicad_pcb')), nets=['RF', 'GND'],
-              pos_file=os.path.join(EX, 'filter-all.pos'), log=lambda *a: None)
+    m = Board(KiCadBoard(os.path.join(EX, 'rf_interdig.kicad_pcb')), nets=['RF', 'GND'],
+              pos_file=os.path.join(EX, 'rf_interdig-all.pos'), log=lambda *a: None)
     out['interdigital'] = (m, build(m))
     m = Board(KiCadBoard(os.path.join(EX, 'hairpin.kicad_pcb')), pos_file=os.path.join(EX, 'hairpin-top.pos'),
               log=lambda *a: None)
@@ -149,7 +149,7 @@ def test_filters_against_openems(filters, backend):
         pytest.importorskip('skrf')
     elif _qucsator() is None:
         pytest.skip('qucsator not installed')
-    for name, ref, tol in (('hairpin', 'hairpin_openems.s2p', 0.04), ('interdigital', 'filter_openems.s2p', 0.02)):
+    for name, ref, tol in (('hairpin', 'hairpin_openems.s2p', 0.04), ('interdigital', 'rf_interdig_openems.s2p', 0.02)):
         m, lm = filters[name]
         fr, Sr = _reference(ref)
         band = (fr > 2.8e9) & (fr < 3.9e9)

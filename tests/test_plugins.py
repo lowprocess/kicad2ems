@@ -9,7 +9,7 @@ from kicad2ems.config import build_settings, settings_class
 from kicad2ems.cli import parser
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FILTER = os.path.join(ROOT, 'examples', 'filter.toml')
+FILTER = os.path.join(ROOT, 'examples', 'rf_interdig.toml')
 
 
 def test_registry_and_aliases():
@@ -98,12 +98,12 @@ def test_mom_alone_builds_no_openems_mesh(run_cli, tmp_path, monkeypatch):
     out = tmp_path / 'out'
     code, so, err = run_cli(FILTER, '--solvers', 'mom', '--points', '21', '--out', out)
     assert code == 0, so + err
-    sm = json.loads((out / 'filter_run.json').read_text())
+    sm = json.loads((out / 'rf_interdig_run.json').read_text())
     assert sm['solvers'][0] == 'mom25d' and 'mesh' not in sm and sm['solved']['mom25d']['unknowns'] == 1234
     assert sm['results']['reference'] == 'mom25d' and sm['zref'] == [50.0, 50.0]
-    for f in ('filter_mom25d.s2p', 'filter_mom25d.png', 'filter_model.png', 'filter_report.html'):
+    for f in ('rf_interdig_mom25d.s2p', 'rf_interdig_mom25d.png', 'rf_interdig_model.png', 'rf_interdig_report.html'):
         assert (out / f).exists(), f
-    page = (out / 'filter_report.html').read_text()
+    page = (out / 'rf_interdig_report.html').read_text()
     assert "id='mom25d'" in page and "id='mesh'" not in page and 'canned' in page
     assert "id='saw'" in page and 'What each solver saw' in page                    # mom25d and the line model
     assert sm['saw']['solvers'][0] == 'mom25d (MoM)' and any(d['item'] == 'outline' for d in sm['deviations']['mom25d'])
@@ -139,12 +139,12 @@ def test_auto_picks_the_cheaper_full_wave_solver(run_cli, tmp_path, monkeypatch)
     assert code == 0, so + err
     assert 'solvers auto: mom25d + ' in so and 'openems not chosen (0.4 M cells, ~100 s)' in so
     assert 'gfdtd not chosen (on the GPU, ~50 s)' in so
-    sm = json.loads((out / 'filter_run.json').read_text())
+    sm = json.loads((out / 'rf_interdig_run.json').read_text())
     assert sm['solvers'][0] == 'mom25d' and sm['auto']['chosen'][0] == 'mom25d' and 'openems' in sm['auto']['estimates']
-    assert '--solvers auto: mom25d' in (out / 'filter_report.html').read_text()
+    assert '--solvers auto: mom25d' in (out / 'rf_interdig_report.html').read_text()
     cost.update(gfdtd=5.0)                                          # now gfdtd is cheaper: --preview prepares openEMS's mesh
     code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview', '--points', '21', '--out', out)
-    assert code == 0 and 'solvers auto: gfdtd + ' in so and (out / 'filter_mesh.png').exists(), so + err
+    assert code == 0 and 'solvers auto: gfdtd + ' in so and (out / 'rf_interdig_mesh.png').exists(), so + err
     code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview', '--sigma', '5.8e7', '--points', '21', '--out', out)
     assert code == 0 and 'solvers auto: mom25d + ' in so, so + err        # copper loss: not gfdtd's
     assert "gfdtd not used: --sigma (gfdtd's copper is PEC): openEMS's" in so

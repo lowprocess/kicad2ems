@@ -5,6 +5,8 @@ far-field (NF2FF) box recorded at a set of frequencies, and after the run:
   input match     S11, input impedance, resonance (minimum |S11|), -10 dB bandwidth
   over frequency  directivity, radiation efficiency (Prad / accepted power), gain, realized gain
                   (Prad / incident power) at the recorded frequencies
+  polarisation    at each recorded frequency's gain maximum: the axial ratio, the sense (RHCP / LHCP, IEEE:
+                  seen from behind, the field turning clockwise is right-handed) and the gain in each hand
   patterns        gain in the xz (phi = 0) and yz (phi = 90 deg) planes and the xy plane (theta = 90),
                   and a 3D pattern, at the pattern frequency (default: the resonance)
 
@@ -61,6 +63,35 @@ def gain_table(ff_freq, dmax, prad, p_acc, p_inc):
     return rows
 
 
+def polarisation(E_theta, E_phi, theta, phi, phi_first=False):
+    """Axial ratio (dB), sense and the right- / left-hand shares of the power at the far field's maximum (E_theta,
+    E_phi complex on the theta x phi grid, or phi x theta with phi_first; theta, phi in degrees):
+    E = E_R (t - j p) / sqrt 2 + E_L (t + j p) / sqrt 2 for exp(j w t). Linear polarisation has an infinite axial ratio (capped at 60 dB)."""
+    et, ep = np.asarray(E_theta), np.asarray(E_phi)
+    er, el = np.abs(et + 1j * ep) / np.sqrt(2), np.abs(et - 1j * ep) / np.sqrt(2)
+    p = er ** 2 + el ** 2
+    i = np.unravel_index(int(np.argmax(p)), p.shape)
+    a, b = float(er[i]), float(el[i])
+    ar = 60.0 if abs(a - b) < 1e-3 * (a + b) else min(60.0, float(20 * np.log10((a + b) / abs(a - b))))
+    th, ph = np.asarray(theta, float).ravel(), np.asarray(phi, float).ravel()
+    ang = (th[i[1]], ph[i[0]]) if phi_first else (th[i[0]], ph[i[1]])
+    return dict(AR_db=ar, sense='RHCP' if a > b else 'LHCP', rhcp=a * a / (a * a + b * b), lhcp=b * b / (a * a + b * b),
+                theta=float(ang[0]), phi=float(ang[1]))
+
+
+def add_polarisation(rows, E_theta, E_phi, theta, phi, phi_first=False):
+    """Each gain_table row with its polarisation at the maximum: AR_db, sense (RHCP, LHCP, or linear above 20 dB),
+    G_rhcp_dbi, G_lhcp_dbi, peak direction (theta, phi deg)."""
+    for r, et, ep in zip(rows, E_theta, E_phi):
+        pol = polarisation(et, ep, theta, phi, phi_first)
+        g = 10 ** (r['G_dbi'] / 10) if r['G_dbi'] is not None else None
+        dbi = lambda v: float(10 * np.log10(v)) if g and v > 0 else None
+        r.update(AR_db=pol['AR_db'], sense=pol['sense'] if pol['AR_db'] < 20 else 'linear',
+                 G_rhcp_dbi=dbi(g * pol['rhcp']) if g else None, G_lhcp_dbi=dbi(g * pol['lhcp']) if g else None,
+                 peak_theta=pol['theta'], peak_phi=pol['phi'])
+    return rows
+
+
 def pattern_gain(E_norm, dmax, eff):
     """Gain (linear) over a pattern grid from the far-field magnitude: D = (|E| / |E|max)^2 Dmax."""
     e = np.asarray(E_norm, float)
@@ -72,12 +103,15 @@ def describe(match, rows, f_pat):
            f"Zin {match['zin'][0]:.1f} {'+' if match['zin'][1] >= 0 else '-'} j{abs(match['zin'][1]):.1f} ohm" +
            (f", -10 dB band {match['bw10_lo'] / 1e9:.3f}-{match['bw10_hi'] / 1e9:.3f} GHz "
             f"({match['bw10'] / match['f_res'] * 100:.1f} %)" if match['bw10'] else ", S11 never below -10 dB")]
-    out.append("   f GHz   D dBi   eff %   G dBi   realized G dBi")
+    pol = any('AR_db' in r for r in rows)
+    out.append("   f GHz   D dBi   eff %   G dBi   realized G dBi" + ("   AR dB  sense" if pol else ''))
     for r in rows:
         fmt = lambda v: f"{v:7.2f}" if v is not None else "      -"
-        mark = '  <- pattern' if abs(r['f'] - f_pat) < 1 else ''
-        out.append(f"  {r['f'] / 1e9:6.3f} {fmt(r['D_dbi'])} {r['eff'] * 100:7.1f} {fmt(r['G_dbi'])} "
-                   f"{fmt(r['Grealized_dbi'])}{mark}")
+        line = (f"  {r['f'] / 1e9:6.3f} {fmt(r['D_dbi'])} {r['eff'] * 100:7.1f} {fmt(r['G_dbi'])} "
+                f"{fmt(r['Grealized_dbi'])}")
+        if pol and 'AR_db' in r:
+            line += f"          {r['AR_db']:6.1f}  {r['sense']}"
+        out.append(line + ('  <- pattern' if abs(r['f'] - f_pat) < 1 else ''))
     return out
 
 
@@ -103,6 +137,7 @@ def analyse(m, freq, ffr, ff_pattern=None, step=2.0, log=print, *, path, ports, 
     th, ph = np.arange(0, 181, 5.0), np.arange(0, 361, 5.0)
     full = nf2ff.CalcNF2FF(path, list(ffr), th, ph, center=centre, outfile='nf2ff_sphere.h5')
     rows = gain_table(ffr, np.atleast_1d(full.Dmax), np.atleast_1d(full.Prad), p_acc, p_inc)
+    add_polarisation(rows, full.E_theta, full.E_phi, th, ph)
     ip = int(np.argmin(np.abs(ffr - (ff_pattern if ff_pattern else match['f_res']))))
     f_pat, eff, dmax = float(ffr[ip]), rows[ip]['eff'], float(np.atleast_1d(full.Dmax)[ip])
     e_max = float(np.max(full.E_norm[ip]))                       # one normalisation for all cuts

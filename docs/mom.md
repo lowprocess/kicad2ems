@@ -6,9 +6,9 @@ mom25d is a 2.5D method-of-moments solver for circuit boards. It lives in this r
 `mom25d/` and doesn't need openEMS.
 
 ```bash
-kicad2ems examples/filter.toml --solvers mom        # mom25d alone
-kicad2ems examples/filter.toml --solvers mom,lines  # with the line model
-kicad2ems examples/filter.toml --mom                # next to openEMS, as a reference
+kicad2ems examples/rf_interdig.toml --solvers mom        # mom25d alone
+kicad2ems examples/rf_interdig.toml --solvers mom,lines  # with the line model
+kicad2ems examples/rf_interdig.toml --mom                # next to openEMS, as a reference
 ```
 
 Its settings are the `--mom-*` options, or `dmax`, `port`, `solves`, `tiled`, `dump` and `near`
@@ -96,7 +96,7 @@ openEMS: match, directivity, efficiency, gain and patterns (`<name>_mom25d_anten
 
 The ground is infinite, so nothing radiates below the board and there's no board edge. That suits
 patches and arrays on a ground larger than themselves. It doesn't suit antennas whose radiation comes
-from a finite ground, such as an inverted-F or a monopole at the board edge; use openEMS for those.
+from a finite ground, such as an inverted-F or a monopole at the board edge; use openEMS or gfdtd for those.
 
 | Patch (`antenna_patch.toml`) | Resonance | S11 | Efficiency | Directivity | Gain | Time |
 |---|---|---|---|---|---|---|

@@ -1,0 +1,15 @@
+# kicad2ems example: three 50 ohm right-angle bends on 0.8 mm FR-4: square (P1 / P2), mitred (P3 / P4), curved (P5 / P6)
+#   python examples/make_rf_examples.py bends examples/rf_bends     # regenerate the board (already in the repository)
+#   kicad2ems examples/rf_bends.toml --preview
+#   kicad2ems examples/rf_bends.toml
+board   = "rf_bends.kicad_pcb"   # paths are relative to this file
+ground  = "B.Cu"
+fmin    = 1           # GHz
+fmax    = 12
+points  = 401
+out     = "out"
+fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+
+[solver.openems]
+excite  = ["P1", "P3", "P5"]
+diel    = "wideband"   # Debye FR-4: the default fixed conductivity overstates the loss far below the band centre

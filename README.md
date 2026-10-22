@@ -115,9 +115,9 @@ kicad2ems --check
 ## Quick start
 
 ```bash
-kicad2ems examples/filter.toml --preview            # model, mesh and line model only: seconds
-kicad2ems examples/filter.toml --solvers mom,lines  # MoM and the line model: about a minute
-kicad2ems examples/filter.toml --solvers all        # openEMS too, all three compared
+kicad2ems examples/rf_interdig.toml --preview            # model, mesh and line model only: seconds
+kicad2ems examples/rf_interdig.toml --solvers mom,lines  # MoM and the line model: about a minute
+kicad2ems examples/rf_interdig.toml --solvers all        # openEMS too, all three compared
 ```
 
 Results go to `examples/out/`: `filter_<solver>.s2p` for each solver, plots, `filter_run.json` and

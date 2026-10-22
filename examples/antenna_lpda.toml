@@ -1,0 +1,13 @@
+# kicad2ems antenna example: printed log-periodic dipole array, about 1.6-3.6 GHz, 0.8 mm FR4: 0.6 mm feeders on F.Cu and B.Cu, 12 dipoles,
+# fed at the short end (top edge), endfire
+#   python examples/make_antennas.py lpda examples/antenna_lpda
+#   kicad2ems examples/antenna_lpda.toml --preview
+#   kicad2ems examples/antenna_lpda.toml
+board   = "antenna_lpda.kicad_pcb"   # paths are relative to this file
+mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+fmin    = 1.5           # GHz
+fmax    = 4.5
+points  = 401
+out     = "out"
+solvers = ["gfdtd"]     # no ground plane: FDTD
+ff_freq = [2, 3, 4]     # GHz

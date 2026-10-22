@@ -1,0 +1,12 @@
+# kicad2ems antenna example: circularly polarised patch, 2.45 GHz, 1.6 mm FR4: corners cut, probe-fed (port.width 1.3 mm);
+# the gain table gives the axial ratio and the hand
+#   python examples/make_antennas.py cp_patch examples/antenna_cp_patch
+#   kicad2ems examples/antenna_cp_patch.toml --preview
+#   kicad2ems examples/antenna_cp_patch.toml
+board   = "antenna_cp_patch.kicad_pcb"   # paths are relative to this file
+mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+fmin    = 2.2           # GHz
+fmax    = 2.7
+points  = 401
+out     = "out"
+ff_freq = [2.45]     # GHz

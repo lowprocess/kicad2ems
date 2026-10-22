@@ -1,9 +1,9 @@
-# kicad2ems run configuration for the microstrip filter board
-#   kicad2ems examples/filter.toml --preview
-#   kicad2ems examples/filter.toml
-# Reference result: examples/reference/filter_openems.s2p (use with --compare)
-board   = "filter.kicad_pcb"   # paths are relative to this file
-pos     = "filter-all.pos"
+# kicad2ems run configuration for the interdigital band-pass filter board (rf_interdig)
+#   kicad2ems examples/rf_interdig.toml --preview
+#   kicad2ems examples/rf_interdig.toml
+# Reference result: examples/reference/rf_interdig_openems.s2p (use with --compare)
+board   = "rf_interdig.kicad_pcb"   # paths are relative to this file
+pos     = "rf_interdig-all.pos"
 nets    = ["RF", "GND"]
 no_mask = true
 fmin    = 1.0           # GHz

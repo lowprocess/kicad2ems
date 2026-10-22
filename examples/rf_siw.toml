@@ -1,0 +1,16 @@
+# kicad2ems example: substrate-integrated waveguide on 0.508 mm RO4003C: two via rows (0.6 mm, 1.0 mm pitch) 13.6 mm apart,
+# TE10 cut-off 6 GHz, 50 ohm microstrip in through 10 mm tapers to 6 mm
+#   python examples/make_rf_examples.py siw examples/rf_siw     # regenerate the board (already in the repository)
+#   kicad2ems examples/rf_siw.toml --preview
+#   kicad2ems examples/rf_siw.toml
+board   = "rf_siw.kicad_pcb"   # paths are relative to this file
+ground  = "B.Cu"
+fmin    = 5           # GHz
+fmax    = 13
+points  = 401
+out     = "out"
+fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+
+[solver.openems]
+fine    = 0.1     # mm at the copper edges: the 1.14 mm feeds
+excite  = ["P1"]

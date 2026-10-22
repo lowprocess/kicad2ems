@@ -19,7 +19,7 @@ from . import __version__
 from .microstrip import Substrate, PRESETS
 from .prototype import estimate_order, RESPONSES
 from .topologies import FabViolation, violations, Spec, KINDS, build, prepare, VIA_DRILL, VIA_SIZE
-from .calibrate import calibrate, targets, sweep, model_response, band, space_map
+from .calibrate import calibrate, targets, sweep, model_response, band, space_map, REFINE_SECONDS
 from . import kicad, validate as val
 
 
@@ -56,6 +56,9 @@ def parser():
     g.add_argument('--zlow', type=float, default=0.0, help='lowpass stepped: low-impedance section (ohm)')
     g.add_argument('--zstub', type=float, default=0.0, help='lowpass stub: stub impedance; interdigital: rod impedance (ohm)')
     g.add_argument('--stub-angle', type=float, default=60.0, help='lowpass radial: the fans\' apex angle (degrees, default 60)')
+    g.add_argument('--hairpin-gap', type=float, default=0.0,
+                   help="hairpin: gap between a resonator's own arms, mm (default: the wider of the strip width and "
+                        "twice the largest coupling gap)")
     g.add_argument('--feed', type=float, default=0.0, help='mm of 50 ohm feed line at each port')
     s = p.add_argument_group('substrate')
     s.add_argument('--substrate', default='RO4003C-0.508', help='preset (see --list); default RO4003C-0.508')
@@ -71,6 +74,9 @@ def parser():
     o = p.add_argument_group('output and validation')
     o.add_argument('-o', '--out', default='filter', help='output base path: <out>.kicad_pcb, <out>.toml, ...')
     o.add_argument('--no-calibrate', action='store_true', help='skip the line-model calibration')
+    o.add_argument('--refine-time', type=float, default=REFINE_SECONDS, metavar='S',
+                   help=f'time limit of the calibration\'s final refinement (low-pass, band-stop, interdigital), '
+                        f'seconds; past it the best trims so far are kept (default {REFINE_SECONDS:g})')
     o.add_argument('--validate', metavar='SOLVERS', help='run kicad2ems with these solvers (e.g. mom,lines)')
     o.add_argument('--em-tune', type=int, default=0, metavar='N',
                    help='with --validate: N rounds of correcting the design from the full-wave result (centre / '
@@ -163,7 +169,7 @@ def main(argv=None):
     topo = a.topology or KINDS[a.type][0]
     sub = make_substrate(a)
     spec = Spec(a.type, topo, a.f0, a.bw, a.response, a.order or 5, a.ripple, a.z0,
-                a.zhigh, a.zlow, a.zstub, a.feed, stub_angle=a.stub_angle)
+                a.zhigh, a.zlow, a.zstub, a.feed, stub_angle=a.stub_angle, hairpin_gap=a.hairpin_gap)
     try:
         spec.check()
         if a.atten and not a.order:
@@ -174,7 +180,7 @@ def main(argv=None):
             design = build(spec, sub)
             design.notes = notes + design.notes
         else:
-            design = calibrate(spec, sub, log=print)
+            design = calibrate(spec, sub, log=print, refine_time=a.refine_time)
     except ValueError as e:
         print(f"dfsynth: {e}", file=sys.stderr)
         return 2

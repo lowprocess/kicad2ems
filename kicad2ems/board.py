@@ -458,10 +458,15 @@ class Board:
             raise ValueError(f"{name} ({fp['ref']}) at ({fp['x']:.3f}, {fp['y']:.3f}) mm is not on {lay} copper of the "
                              f"selected nets" + (f"; copper there on {here} - check the footprint field port.layer / "
                                                  f"mom.layer" if here else ''))
-        # width across the feed at a point just inside the trace; centre the port on the trace
-        w, mid = cross_section(cu, c + d * 0.05, np.array([-d[1], d[0]]))
-        pc = c + d * min(0.25 * w, 0.1)                               # port plane just inside the trace end
-        pc[1 - axis] = mid[1 - axis]
+        # width across the feed at a point just inside the trace; centre the port on the trace. port.width: a port
+        # that wide centred on the footprint instead (a probe feed inside a patch, where the copper is no trace)
+        pw = port_field(props, 'width')
+        if pw not in (None, ''):
+            w, pc = float(pw), c.copy()
+        else:
+            w, mid = cross_section(cu, c + d * 0.05, np.array([-d[1], d[0]]))
+            pc = c + d * min(0.25 * w, 0.1)                           # port plane just inside the trace end
+            pc[1 - axis] = mid[1 - axis]
         # reference: nearest copper below (top side) / above (bottom side) under the port
         zs = self.cu_z[lay]
         below = fp['side'] != 'B'

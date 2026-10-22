@@ -15,9 +15,11 @@ quiet = lambda *a: None
 
 # example configs: the committed boards as they are; the generated ones (demo_*, antenna_*) with the board the
 # session fixture writes (the config's settings, the fixture's file)
-CONFIGS = ['filter', 'hairpin', 'rf_branchline', 'rf_coupler', 'rf_gcpw', 'rf_steplpf', 'rf_stubnotch', 'rf_wilkinson',
+CONFIGS = ['rf_interdig', 'hairpin', 'rf_branchline', 'rf_coupler', 'rf_gcpw', 'rf_steplpf', 'rf_stubnotch', 'rf_wilkinson',
            'sma_launch', 'demo_transition', 'demo_lowpass', 'demo_highpass', 'demo_bandpass', 'antenna_dipole',
-           'antenna_ifa', 'antenna_patch', 'antenna_slot', 'antenna_vivaldi']
+           'antenna_ifa', 'antenna_patch', 'antenna_slot', 'antenna_vivaldi', 'rf_siw', 'rf_msvia', 'rf_ms2cpw',
+           'rf_slotline', 'rf_marchand', 'rf_bends', 'rf_serpentine', 'rf_crosstalk', 'rf_crosstalk_guard', 'rf_pcoupled',
+           'rf_combline', 'rf_openloop', 'rf_dgs', 'rf_ebg', 'rf_idc', 'rf_meander', 'rf_spiral']
 GENERATED = dict(demo_transition='demo', demo_lowpass='lowpass', demo_highpass='highpass', demo_bandpass='bandpass',
                  antenna_dipole='dipole', antenna_ifa='ifa', antenna_patch='patch', antenna_slot='slot',
                  antenna_vivaldi='vivaldi')

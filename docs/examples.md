@@ -24,16 +24,18 @@ kicad2ems examples/demo_transition.toml
 | `lowpass`, `highpass`, `bandpass` | lumped filters of 0402 parts, plus the ideal circuit for comparison | `demo_lowpass.toml`, … |
 | `launch` | a 4-layer edge launch with a grounded-CPW feed | none: `--nets RF,GND --fmin 1 --fmax 6` |
 
-`make_antennas.py KIND OUT [param=mm …]` makes antennas for 2.45 GHz: `patch`, `ifa`, `dipole`, `slot`,
-`vivaldi`, `vivaldi_antipodal`, `vivaldi_antipodal_array`, `array2x2`, `array2x2_phased` and `array4x4_phased`, each with a config `antenna_<kind>.toml`. Dimensions can be changed on the command line,
-for example `make_antennas.py ifa out arm=19`.
+`make_antennas.py KIND OUT [param=mm …]` makes antennas, most for 2.45 GHz: `patch`, `ifa`, `dipole`, `slot`,
+`vivaldi`, `vivaldi_antipodal`, `vivaldi_antipodal_array`, `array2x2`, `array2x2_phased`, `array4x4_phased`,
+`cp_patch`, `aperture`, `monopole`, `yagi`, `lpda`, `bowtie`, `uwb` and `loop`, each with a config
+`antenna_<kind>.toml`. Dimensions can be changed on the command line, for example `make_antennas.py ifa out
+arm=19`.
 
 <a id="rf-structures"></a>
 ## RF structures
 
-`make_rf_examples.py` makes classic microwave structures on 0.8 mm FR-4 over a ground plane, and two
-4-layer ones (`stripline`, `diffvia`) on 0.2 mm layers. The boards
-and their configs (`rf_<name>.toml`) are in the repository, with openEMS results in
+`make_rf_examples.py` makes classic microwave structures, most on 0.8 mm FR-4 over a ground plane, some on
+4 layers (`stripline`, `diffvia`, `msvia`, `marchand`, `ebg`, `spiral`) or RO4003C (`shielded`, `siw`). The boards
+and their configs (`rf_<name>.toml`) are in the repository, the first eleven with openEMS results in
 `examples/reference/`. They are useful for comparing the solvers:
 
 | Board | Result | openEMS | mom25d | line model |
@@ -49,6 +51,29 @@ and their configs (`rf_<name>.toml`) are in the repository, with openEMS results
 | `rf_stripline`: 4 layers, via-fenced stripline | worst S11, S21 at 10 GHz | −17.5, −0.59 dB | −24.8, −0.87 dB | −13.5, −0.63 dB |
 | `rf_diffvia`: 100 Ω pair through two vias | Sdd21 at 5 / 10 GHz, worst Sdd11 | −0.44 / −0.60, −15.4 dB | −0.41 / −0.87, −16.3 dB | −0.46 / −1.34, −9.4 dB |
 | `rf_shielded`: resonator filter in a metal can; 4.621 GHz from a converged 3D FEM run (EMerge) | peak | 4.626 GHz (4× mesh; 4.555 by default) | 4.647 GHz (no can) | 4.878 GHz |
+
+More structures (`make_rf_examples.py <name>`, boards and configs in the repository), on gfdtd:
+
+| Board | What it shows | gfdtd |
+|---|---|---|
+| `rf_siw`: substrate-integrated waveguide, 0.508 mm RO4003C, 6 mm tapers | TE10 cut-off (6.0 GHz by design), pass band | cut-off 6.34 GHz; 7.5-11 GHz S21 −0.7 to −1.1 dB, S11 below −7.9 dB (the two tapers' standing wave) |
+| `rf_msvia`: F.Cu microstrip through one via to B.Cu microstrip, 4 layers | worst S11 to 10 GHz, S21 at 5 / 10 GHz | −12.9 dB, −0.38 / −1.02 dB |
+| `rf_ms2cpw`: microstrip to grounded CPW and back | worst S11 to 10 GHz, S21 at 5 / 10 GHz | −19.0 dB, −0.66 / −1.34 dB |
+| `rf_slotline`: microstrip-slotline transitions back to back | −3 dB pass band | 1.1-8 GHz, 0.75 dB at best |
+| `rf_marchand`: broadside Marchand balun, 2.4 GHz, 4 layers | S11, differential / common-mode transmission at 2.4 GHz | −43.6 dB, −0.47 / −22.1 dB (S11 below −22 dB, Sc1 below −21 dB from 1.8 to 3 GHz) |
+| `rf_bends`: square, mitred, curved 90° bends | S11 at 10 GHz | −12.3, −26.2, −20.9 dB |
+| `rf_serpentine`: 80.5 mm of 50 Ω meander | group delay below 3 GHz | 437 ps, 53 ps short of its centre line's (coupled turns cut corners) |
+| `rf_crosstalk` / `rf_crosstalk_guard`: lines 3 mm apart, 40 mm | worst NEXT, FEXT at 5 GHz | −26.1 / −29.4 dB, −18.3 / −22.2 dB: the grounded guard trace takes 3-4 dB off |
+| `rf_pcoupled`: 3-pole parallel-coupled band-pass, 2.4 GHz, 5 % | −3 dB band, loss, mid-band match | 2.288-2.452 GHz, 5.5 dB (FR-4 at 5 %), −15 dB |
+| `rf_combline`: 3-pole combline, 0603 loading capacitors | −3 dB band, loss, mid-band match | 2.237-2.560 GHz, 0.95 dB, −10.8 dB (0.4 pF on the middle rod, 0.6 pF on the outer ones) |
+| `rf_openloop`: two open-loop resonators | −3 dB band, loss, mid-band match | 2.290-2.510 GHz, 3.3 dB, −10.3 dB; qucsator's line model follows it closely |
+| `rf_dgs`: dumbbell defected ground under a 50 Ω line | stop band | below −10 dB 3.8-7.6 GHz, −19 dB at 5.7 GHz |
+| `rf_ebg`: microstrip over a mushroom EBG, 4 layers | stop band | below −10 dB 3.8-5.1 GHz, −42 dB at 4.1 GHz |
+| `rf_idc` / `rf_meander` / `rf_spiral`: series C / L in a 50 Ω line | C or L at 1 GHz, self-resonance (mom25d alongside) | 0.61 pF (mom25d 0.54, Alley's formula 0.52) / 10.7 nH (11.5), 5.1 GHz / 28.3 nH (29.2), 1.83 GHz |
+
+The wide-band ones take `diel = "wideband"`: with the default fixed conductivity, FR-4's loss grows as 1/f below
+the band centre, and at 1 GHz on a 0.5-10 GHz run it took 20 % of the power (openEMS the same). The DGS and the
+slotline also needed a fix in `bc = auto`: their ground has holes, and auto had put a PEC wall on it.
 
 Where the solvers disagree:
 
@@ -76,7 +101,7 @@ Where the solvers disagree:
 - **SMA launch** (`sma_launch.kicad_pcb`): an edge-launch SMA connector onto a 50 Ω line on a 4-layer
   board. The ground planes end at the board edge without stitching vias, so the config adds
   [edge walls](meshing.md#edge-walls); without them, the planes resonate near 4.7 GHz.
-- **Microstrip filter** (`filter.kicad_pcb`): an interdigital filter on 0.2 mm FR-4, 1 to 8 GHz. Its
+- **Microstrip filter** (`rf_interdig.kicad_pcb`): an interdigital filter on 0.2 mm FR-4, 1 to 8 GHz. Its
   five fingers form a five-line [coupled section](transmission-lines.md#coupled) in the line model.
 
 ## Verified results
@@ -209,6 +234,22 @@ python examples/make_antennas.py vivaldi_antipodal_array out sym=0 fr=0 er=3.55 
 The dipole's 2.1 dBi matches an ideal half-wave dipole (2.15 dBi). The patch's low efficiency is FR-4
 loss.
 
+More antennas, on gfdtd (the ground plane finite or absent: mom25d's infinite ground does not suit them):
+
+| Antenna | S11 | −10 dB band | Gain | Efficiency | Notes |
+|---|---|---|---|---|---|
+| `cp_patch`: corners cut, probe-fed (`port.width` 1.3 mm) | −25.9 dB | 2.400-2.526 GHz | 3.2 dBi | 44 % | axial ratio 0.5 dB at 2.45 GHz, RHCP |
+| `aperture`: aperture-coupled patch, 4 layers | −14.3 dB | 2.410-2.485 GHz | 3.3 dBi | 44 % | fed through a slot in the In2.Cu ground |
+| `monopole`: meander monopole, 60 mm ground | −12.1 dB | 2.344-2.544 GHz | 3.6 dBi | 81 % | 4 mm between the turns: at 2.6 mm they cancel and the match fails |
+| `yagi`: printed Yagi-Uda | −13.6 dB | 2.357-2.533 GHz | 7.8 dBi | 90 % | endfire, D 8.2 dBi |
+| `lpda`: printed log-periodic, 12 dipoles | −37.6 dB | 1.605-3.638 GHz | 4.8 / 5.6 / 5.9 dBi at 2 / 3 / 4 GHz | 69-81 % | 79 % of 1.5-4.5 GHz below −10 dB |
+| `bowtie`: printed bowtie | −16.0 dB | 2.288-2.688 GHz | 1.9 dBi | 97 % | |
+| `uwb`: disc monopole, partial ground | −32.2 dB | 91 % of 2-11 GHz | 2.3 / 3.5 / 5.1 dBi at 3 / 6 / 9 GHz | 83-85 % | |
+| `loop`: full-wave square loop | −23.0 dB | 2.336-2.648 GHz | 2.7 dBi | 95 % | 100 Ω reference |
+
+The antenna results now give the polarisation at the gain maximum: the axial ratio and the hand (RHCP / LHCP,
+or linear above 20 dB), and the gain in each hand ([Results](postprocessing.md#antenna-mode)).
+
 The **2×2 patch array** is four patches fed from one line. mom25d: 2.438 GHz, S11 −25.6 dB,
 directivity 13.0 dBi, gain 7.0 dBi, 53 s. openEMS: 2.430 GHz, −22.0 dB, 13.3 dBi, gain 7.5 dBi, 271 s.
 
@@ -221,7 +262,7 @@ phase difference: P2 60° behind P1 tilts the beam to θ 15°, with 7.7 dBi gain
 `examples/reference/` holds results for the demo transition and the microstrip filter. To check a change:
 
 ```bash
-kicad2ems examples/filter.toml --compare examples/reference/filter_openems.s2p
+kicad2ems examples/rf_interdig.toml --compare examples/reference/rf_interdig_openems.s2p
 ```
 
 ---

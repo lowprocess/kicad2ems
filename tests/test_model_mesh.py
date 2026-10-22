@@ -161,17 +161,17 @@ def test_curves_extremes_and_via_snapping(demo):
 
 
 def test_near_manhattan_edges_keep_thirds_lines():
-    """filter.kicad_pcb: the 0.35 mm feeds meet 0.353 mm resonator rectangles; simplify() turns the
+    """rf_interdig.kicad_pcb: the 0.35 mm feeds meet 0.353 mm resonator rectangles; simplify() turns the
     1.5 um step into slightly oblique 6.8 mm edges, which must still get the thirds rule."""
-    m = Board(KiCadBoard(os.path.join(ROOT, 'examples', 'filter.kicad_pcb')), nets=['RF', 'GND'],
+    m = Board(KiCadBoard(os.path.join(ROOT, 'examples', 'rf_interdig.kicad_pcb')), nets=['RF', 'GND'],
                 log=lambda *a: None)
     mesh = auto_mesh(m, 1e9, 8e9, fine=0.05, log=lambda *a: None)
     assert all(n >= 3 for n in mesh['info']['lines_across_ports'].values()), mesh['info']['lines_across_ports']
 
 
 def test_region_leaves_out_ports_outside():
-    b = KiCadBoard(os.path.join(ROOT, 'examples', 'filter.kicad_pcb'))
-    pos = os.path.join(ROOT, 'examples', 'filter-all.pos')
+    b = KiCadBoard(os.path.join(ROOT, 'examples', 'rf_interdig.kicad_pcb'))
+    pos = os.path.join(ROOT, 'examples', 'rf_interdig-all.pos')
     m = Board(b, nets=['RF', 'GND'], pos_file=pos, region=(0, 0, 12, 20), log=lambda *a: None)
     assert [p.name for p in m.ports] == ['P1'] and any('P2 (TP2) is outside the region' in n for n in m.notes)
     assert m.outline.bounds == pytest.approx((0, -20, 12, 0))
@@ -213,3 +213,12 @@ def test_mesh_zone_keeps_the_signal_detail():
     near = lambda g: [round(v, 6) for v in g['y'] if y0 - 0.3 <= v <= y1 + 0.3]
     assert near(on) == near(off)
     assert auto_mesh(m, 1e9, 6e9, zone=0.0, log=lambda *a: None)['info']['cells'] <= on['info']['cells']
+
+
+@pytest.mark.parametrize('name, plane', [('rf_dgs', False), ('rf_slotline', False), ('rf_gcpw', True), ('rf_siw', True)])
+def test_bottom_pec_only_on_an_unbroken_plane(name, plane):
+    """bc auto puts a PEC wall on the bottom plane only where nothing is cut out of it: a PEC under the defected
+    ground's dumbbell or the slotline's slot shorted them (the DGS came out a plain line)."""
+    from kicad2ems.solvers.openems.boundaries import bottom_is_plane
+    m = Board(KiCadBoard(os.path.join(ROOT, 'examples', name + '.kicad_pcb')), nets=['RF', 'GND'], log=lambda *a: None)
+    assert bottom_is_plane(m) is plane

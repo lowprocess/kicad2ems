@@ -225,16 +225,18 @@ def combine(data, a, f_pattern=None):
     """The antenna of drive a from the per-port far fields: sphere (as load_sphere's: theta, phi, freq, dmax,
     prad, e_norm), rows (gain_table's), active ((nf, n) b / a of the driven ports, nan elsewhere) and the beam's
     peak at f_pattern (default the data's): dict(theta, phi, gain_dbi)."""
-    from .solvers.openems.antenna import gain_table
+    from .solvers.openems.antenna import gain_table, add_polarisation
     th, ph, freq = data['theta'], data['phi'], data['freq']
     th_s = data.get('theta_sphere', th)
     a = np.asarray(a, complex)
     driven = np.abs(a) > 0
-    dmax, prad, pacc, pinc, e_norm, active = [], [], [], [], [], []
+    dmax, prad, pacc, pinc, e_norm, active, eth, eph = [], [], [], [], [], [], [], []
     for i in range(len(freq)):
         V, b = waves(data['Y'][i], data['zc'], a)
         Et = np.tensordot(V, data['Eth'][i], 1)
         Ep = np.tensordot(V, data['Eph'][i], 1)
+        eth.append(Et)
+        eph.append(Ep)
         U, pr = radiated(Et, Ep, th, ph)
         dmax.append(4 * np.pi * U.max() / pr if pr > 0 else np.nan)
         prad.append(pr)
@@ -246,7 +248,7 @@ def combine(data, a, f_pattern=None):
         act = np.full(len(a), np.nan + 0j)
         act[driven] = b[driven] / a[driven]
         active.append(act)
-    rows = gain_table(freq, dmax, prad, pacc, pinc)
+    rows = add_polarisation(gain_table(freq, dmax, prad, pacc, pinc), eth, eph, th, ph, phi_first=True)
     f0 = float(data.get('f_pattern', freq[0]) if f_pattern is None else f_pattern)
     ip = int(np.argmin(np.abs(freq - f0)))
     e = e_norm[ip]

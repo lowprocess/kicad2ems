@@ -1,0 +1,12 @@
+# kicad2ems antenna example: UWB disc monopole, 0.8 mm FR4: 12 mm disc on 50 ohm microstrip, partial 24 mm ground, 3-10 GHz
+#   python examples/make_antennas.py uwb examples/antenna_uwb
+#   kicad2ems examples/antenna_uwb.toml --preview
+#   kicad2ems examples/antenna_uwb.toml
+board   = "antenna_uwb.kicad_pcb"   # paths are relative to this file
+mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+fmin    = 2           # GHz
+fmax    = 11
+points  = 401
+out     = "out"
+solvers = ["gfdtd"]     # the partial ground radiates too: FDTD
+ff_freq = [3, 6, 9]     # GHz

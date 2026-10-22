@@ -236,12 +236,13 @@ Designs a microstrip filter with [dfsynth](../tools/dfsynth/README.md) and write
 config (*Filter* in the toolbar, the wand, or *File > New filter*, brings the page to the front). dfsynth is
 installed with kicad2ems (it lives in `tools/dfsynth`); without it the page says so and stays disabled.
 
-- **Settings** (left): *Filter* (type, topology, f0, bandwidth, response, order or an attenuation spec such
-  as `40@6G`, ripple, Z0), *Topology details* (only those the topology uses are enabled), *Substrate and
-  fabrication* (a preset, its height, εr and tan δ overridden when given, the copper, the minimum trace and
-  space: 0.1 mm each by default; a design below them is refused unless *allow below the limits* is
-  ticked), *Output* (the base path of the files) and *Validation* (the kicad2ems solvers, the tuning rounds,
-  extra kicad2ems arguments such as `--fine 0.03`).
+- **Settings** (left): *Filter* (type, topology, f0, bandwidth, response, order or an attenuation spec such as
+  `40@6G`, ripple, Z0), *Topology details* (only those the topology uses are enabled; the hairpin's includes
+  the gap between a U's own arms), *Substrate and fabrication* (a preset, its height, εr and tan δ overridden
+  when given, the copper, the minimum trace and space: 0.1 mm each by default; a design below them is refused
+  unless *allow below the limits* is ticked), *Output* (the base path of the files, and the time limit of the
+  calibration's final refinement: 10 s by default, past it the best result so far is kept) and *Validation*
+  (the kicad2ems solvers, the tuning rounds, extra kicad2ems arguments such as `--fine 0.03`).
 - **Design** synthesises the filter, calibrates it on dfsynth's line model and writes the board.
   **Design + validate** then solves the board with the solvers chosen and tunes it for the rounds asked
   (centre and bandwidth; an interdigital filter by space mapping). gfdtd suits interdigital filters, mom25d
@@ -254,9 +255,10 @@ installed with kicad2ems (it lives in `tools/dfsynth`); without it the page says
   counts them (*Log (1 error, 3 warnings)*, in red); an error brings the log to the front. The design's
   notes are in red on the *Summary* too.
 - **Layout**: the copper, the ground vias and the ports as drawn on the board. **Response**: S21 (solid) and
-  S11 (dashed) of the line model and of each solver of the last validation round, with the target band
-  edges dotted. **Dimensions**: every element's impedance, width, length and gap. **Summary**: the spec,
-  the line model's figures and each validation round's (centre and bandwidth error, loss, return loss).
+  S11 (dashed) of the line model and of each solver of the last validation round of this run (a later run with
+  fewer tuning rounds, or none, shows only its own), with the target band edges dotted. **Dimensions**: every
+  element's impedance, width, length and gap. **Summary**: the spec, the line model's figures and each
+  validation round's (centre and bandwidth error, loss, return loss).
 - **Open the board in kicad2ems** loads the config dfsynth wrote into the settings on the left, which
   previews it: from there any solver, mesh or field dump runs as for any other board.
 

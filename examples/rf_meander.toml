@@ -1,0 +1,15 @@
+# kicad2ems example: meander inductor in series with a 50 ohm line: a 0.3 mm strip, 5 runs 4 mm long, 0.9 mm apart
+#   python examples/make_rf_examples.py meander examples/rf_meander     # regenerate the board (already in the repository)
+#   kicad2ems examples/rf_meander.toml --preview
+#   kicad2ems examples/rf_meander.toml
+board   = "rf_meander.kicad_pcb"   # paths are relative to this file
+ground  = "B.Cu"
+fmin    = 0.5           # GHz
+fmax    = 10
+points  = 401
+out     = "out"
+fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+
+[solver.openems]
+excite  = ["P1"]
+diel    = "wideband"   # Debye FR-4: the default fixed conductivity overstates the loss far below the band centre
