@@ -416,22 +416,57 @@ def _ms_width(z0, er=4.4, h=0.8):
     return w * h
 
 
+def _ms_eeff(w, er, h):
+    """Effective permittivity of a microstrip w mm wide on h mm of er (Hammerstad, w/h >= 1 form)."""
+    return (er + 1) / 2 + (er - 1) / 2 / (1 + 12 * h / w) ** 0.5
+
+
+def _chebyshev(z0, zl, n, f1, f2):
+    """The impedances of an n-section (1, 2 or 3) Chebyshev quarter-wave transformer from z0 to zl, equal ripple
+    over f1..f2 (one section: the quarter-wave sqrt(z0 zl))."""
+    import math
+    if n == 1:
+        return [round(math.sqrt(z0 * zl), 1)]                    # 70.7 for 50 -> 100
+    x = 1 / math.cos(math.pi / 2 * (1 - (f2 - f1) / (f2 + f1)))      # sec(theta_m)
+    lnr = math.log(zl / z0)
+    if n == 2:
+        A = lnr / (2 * (2 * x * x - 1))
+        g = [A * x * x / 2, A * (x * x - 1) / 2]                  # Gamma_0, Gamma_1 / 2 (the middle step's half)
+        steps = [2 * g[0], 2 * g[1] * 2]
+    elif n == 3:
+        A = lnr / (2 * (4 * x ** 3 - 3 * x))
+        g0, g1 = A * x ** 3 / 2, 1.5 * A * (x ** 3 - x)
+        steps = [2 * g0, 2 * g1, 2 * g1]
+    else:
+        raise ValueError("vivaldi_antipodal_array: ns = 1, 2 or 3")
+    out, z = [], z0
+    for st in steps:
+        z *= math.exp(st)
+        out.append(z)
+    return out
+
+
 def vivaldi_antipodal_array(path, N=4.0, P=30.0, ap=26.0, sym=1.0, fr=15.0, f0=6.5, er=4.4, tand=0.02, h=0.8,
-                            **opt):
+                            ns=1.0, fl=3.0, fh=10.0, **opt):
     """N (2, 4, 8) antipodal Vivaldi elements (vivaldi_antipodal's, symmetric and curved by default: sym, fr) P mm
     apart side by side, endfire off the top edge, from one port at the bottom: a corporate microstrip feed, each
-    T-junction into two 100 ohm lines, each turned back into 50 ohm by a quarter-wave (at f0 GHz) 70.7 ohm
-    section, so every element is fed in phase. er, tand, h: the substrate, as vivaldi_antipodal's; the feed's
-    widths and the quarter wave follow it."""
+    T-junction into two 100 ohm lines, each turned back into 50 ohm, so every element is fed in phase: by one
+    quarter-wave (at f0 GHz) 70.7 ohm section (ns=1), or ns = 2 or 3 Chebyshev sections, equal ripple over
+    fl..fh GHz (each a quarter wave at their centre). er, tand, h: the substrate, as vivaldi_antipodal's; the
+    feed's widths and the quarter waves follow it."""
     N = int(N)
     m = N.bit_length() - 1
     if N < 2 or N != 1 << m:
         raise ValueError("vivaldi_antipodal_array: N = 2, 4, 8, ...")
     b = _substrate(er, tand, h, opt)
     lt, lg, wf = opt.get('lt', 40.0), opt.get('lg', 15.0), opt.get('wf', 1.5)
-    w70, w100 = _ms_width(70.7, er, h), _ms_width(100.0, er, h)
-    er_eff = (er + 1) / 2 + (er - 1) / 2 / (1 + 12 * h / w70) ** 0.5
-    lq = 299.79 / f0 / er_eff ** 0.5 / 4                         # mm: a quarter wavelength of the 70.7 ohm line
+    w100 = _ms_width(100.0, er, h)
+    fq = f0 if int(ns) == 1 else (fl + fh) / 2
+    secs = []                                                    # (width, quarter-wave length), from the 50 ohm end
+    for z in _chebyshev(50.0, 100.0, int(ns), fl, fh):
+        w = _ms_width(z, er, h)
+        secs.append((w, 299.79 / fq / _ms_eeff(w, er, h) ** 0.5 / 4))
+    lq = sum(L for _, L in secs)
     step = lq + 8.0                                              # each level's height: transformer, 100 ohm, 50 ohm
     ye = lt + lg + 2.0                                           # the elements' ground (and strips) end here
     H = ye + m * step + 6.0
@@ -449,7 +484,10 @@ def vivaldi_antipodal_array(path, N=4.0, P=30.0, ap=26.0, sym=1.0, fr=15.0, f0=6
             xm = (xa + xb) / 2
             for x in (xa, xb):
                 b.rect(x - wf / 2, y, x + wf / 2, y + 1.0)                       # 50 ohm stub
-                b.rect(x - w70 / 2, y + 1.0, x + w70 / 2, y + 1.0 + lq)          # the quarter-wave transformer
+                yy = y + 1.0
+                for w, L in secs:                                                # the transformer, 50 -> 100 ohm
+                    b.rect(x - w / 2, yy, x + w / 2, yy + L)
+                    yy += L
                 b.rect(x - w100 / 2, y + 1.0 + lq, x + w100 / 2, y + lq + 4.0)   # 100 ohm down to the T's arm
             yj = y + lq + 4.0
             b.rect(min(xa, xb) - w100 / 2, yj - w100 / 2, max(xa, xb) + w100 / 2, yj + w100 / 2)

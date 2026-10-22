@@ -1,5 +1,6 @@
 """Antenna mode: defaults, match / gain post-processing, gap ports (centre-fed dipole) and an end-to-end
 --mode antenna --preview of the example boards (no openEMS needed)."""
+import os
 import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
@@ -88,7 +89,9 @@ def test_vivaldi_antipodal_options(tmp_path, run_cli):
 @pytest.mark.parametrize('kind, args, outline, vias', [
     ('vivaldi_antipodal', ['sym=1', 'fr=15', 'vias=1', 'ap=34', 'nd=7'], '50.00 x 70.00', 22),
     ('vivaldi_antipodal_array', ['N=2', 'P=40', 'ap=34'], '80.00 x ', 0),
-    ('vivaldi_antipodal_array', ['N=2', 'P=40', 'ap=34', 'er=3.55', 'tand=0.0027', 'h=0.813'], '80.00 x ', 0)])
+    ('vivaldi_antipodal_array', ['N=2', 'P=40', 'ap=34', 'er=3.55', 'tand=0.0027', 'h=0.813', 'ns=3'], '80.00 x ',
+     0)])
+
 def test_vivaldi_antipodal_variants(tmp_path, run_cli, kind, args, outline, vias):
     """The symmetric curved form with corner via walls and striped directors; two elements from one port."""
     import subprocess, sys
@@ -98,3 +101,22 @@ def test_vivaldi_antipodal_variants(tmp_path, run_cli, kind, args, outline, vias
     code, out, err = run_cli(str(base) + '.kicad_pcb', '--mode', 'antenna', '--fmin', '3', '--fmax', '10', '--out',
                              tmp_path, '--preview', '--no-report')
     assert code == 0 and f'outline {outline}' in out and f'vias {vias} ' in out, out + err
+
+
+def test_chebyshev_transformer():
+    """The array feed's 50 -> 100 ohm transformers: the sections' impedances and their ripple over 3-10 GHz."""
+    import sys
+    from conftest import ANT
+    sys.path.insert(0, os.path.dirname(ANT))
+    import make_antennas as ma
+    assert ma._chebyshev(50, 100, 1, 3, 10) == [70.7]
+    assert [round(z, 1) for z in ma._chebyshev(50, 100, 3, 3, 10)] == [58.1, 70.7, 86.1]
+    f = np.linspace(3, 10, 141)
+    for n, worst in ((2, 0.14), (3, 0.066)):
+        zs, G = ma._chebyshev(50, 100, n, 3, 10), []
+        for fi in f:
+            t, z_in = np.tan(np.pi / 2 * fi / 6.5), 100.0
+            for z in reversed(zs):
+                z_in = z * (z_in + 1j * z * t) / (z + 1j * z_in * t)
+            G.append(abs((z_in - 50) / (z_in + 50)))
+        assert max(G) < worst

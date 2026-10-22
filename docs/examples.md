@@ -186,6 +186,26 @@ The directivity hardly changes; the gain is the efficiency. The low-loss board a
 that FR-4's loss had damped: the array's match is worst at 3.2–4.2 GHz, where its single-section quarter-wave
 transformers (tuned at 6.5 GHz) are furthest off, and the geometry, tuned on FR-4, would want retuning.
 
+`ns=2` or `ns=3` replaces each branch's quarter-wave section with a 2- or 3-section Chebyshev transformer
+(50 → 100 Ω, equal ripple over `fl`..`fh`, 3–10 GHz: 63.6 / 78.6 Ω, or 58.1 / 70.7 / 86.1 Ω). On its own the
+3-section one reflects at most −23.7 dB over the band, the single section −11.8 dB. The 4-element array on
+RO4003C:
+
+| Feed | G, dBi | Front-to-back, dB | \|S11\| < −10 dB | Worse than −10 dB |
+|---|---|---|---|---|
+| `ns=1` | 8.0 / 11.3 / 13.4 | 12.3 / 16.9 / 17.5 | 71 % | 3.0–4.2 GHz (−5.1 dB), 5.8–6.1, 8.9–9.4, 9.9–10 GHz |
+| `ns=2` | 8.5 / 11.4 / 13.1 | 11.3 / 16.9 / 15.6 | 78 % | six bands, none worse than −8.7 dB |
+| `ns=3` | 8.6 / 11.3 / 13.0 | 12.2 / 17.9 / 15.8 | 83 % | 3.6–4.5 GHz (−8.7 dB), 5.8–6.1 GHz (−8.8 dB) |
+
+What's left is the elements': coupled side by side, their impedance is not the single element's. On Rogers
+the single element matches best with a shorter ground taper (`lg=6`: below −10 dB over 97 % of the band, worst
+−9.9 dB, against 83 % with the default 15 mm), but in the array `lg=6` leaves the match at 83 % (worst
+−7.7 dB near 6.4 GHz) and costs front-to-back.
+
+```bash
+python examples/make_antennas.py vivaldi_antipodal_array out sym=0 fr=0 er=3.55 tand=0.0027 h=0.813 ns=3
+```
+
 The dipole's 2.1 dBi matches an ideal half-wave dipole (2.15 dBi). The patch's low efficiency is FR-4
 loss.
 
