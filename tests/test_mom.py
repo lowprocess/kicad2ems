@@ -23,22 +23,21 @@ def test_preview_solves_no_full_wave_solver(tmp_path, run_cli):
 
 
 def test_mom_run(tmp_path, run_cli, no_csxcad):
-    """--solvers mom25d end to end, and with no openEMS: MoM reads the board (no CSX file) and the line model is
-    compared against it."""
+    """--solvers mom25d end to end with no openEMS (MoM reads the board), and the line model the config's
+    fast = "auto" picks compared against it."""
     pytest.importorskip('triangle')
-    pytest.importorskip('skrf')
     out = tmp_path / 'out'
-    code, so, se = run_cli(FILTER, '--solvers', 'mom25d', '--fast', 'skrf', '--mom-dmax', '1.6', '--mom-solves', '8',
-                           '--points', '41', '--out', str(out))
+    code, so, se = run_cli(FILTER, '--solvers', 'mom25d', '--mom-dmax', '1.6', '--mom-solves', '8', '--points', '41',
+                           '--out', str(out))
     assert code == 0, so + se
-    assert not (out / 'filter.xml').exists()                        # no CSX file: MoM reads the board
-    for f in ('filter_mom25d.s2p', 'filter_mom25d.png', 'filter_scikit.s2p', 'filter_report.html', 'filter_board.json'):
-        assert (out / f).exists(), f
     sm = json.load(open(out / 'filter_run.json'))
+    line = next(n for n in sm['solved'] if n != 'mom25d')          # qucs or scikit, whichever is installed
+    for f in ('filter_mom25d.s2p', 'filter_mom25d.png', f'filter_{line}.s2p', 'filter_report.html', 'filter_board.json'):
+        assert (out / f).exists(), f
     mo = sm['solved']['mom25d']
     assert mo['solves'] <= 8 and mo['unknowns'] > 100 and {p['kind'] for p in mo['ports']} == {'lumped'}
     assert mo['table'][0]['param'] == 'S(P1,P1)' and sm['results']['reference'] == 'mom25d'
-    assert sm['solved']['scikit']['reference'] == 'mom25d' and sm['solved']['scikit']['compare']
+    assert sm['solved'][line]['reference'] == 'mom25d' and sm['solved'][line]['compare']
     samples = mo['samples_ghz']                                     # the adaptive sweep's frequencies
     assert len(samples) == mo['solves'] and samples == sorted(samples)
     assert 'mom25d' in so
@@ -106,9 +105,10 @@ def test_antenna_mode(run_cli, tmp_path):
 
 
 def test_phased_array(run_cli, tmp_path):
-    """The 2 x 2 array with a feed per row placed as a 1 x 2 grid (--grid), steered by a Y step (--steer 0,60) with
-    a taper (--taper: two rows, so uniform): P2 60 deg behind P1, the beam tilted in the yz plane, the run's base
-    drive, grid, taper and steps recorded for the GUI's Reset (the grid in its short form, 1x2), the per-port
+    """The 2 x 2 array with a feed per row placed as a 1 x 2 grid (--grid), driven with P2 20 deg behind P1
+    (--drive) and steered by a Y step of 40 deg on top (--steer 0,40) with a taper (--taper: two rows, so uniform):
+    P2 60 deg behind P1, the beam tilted in the yz plane, the run's base drive, grid, taper and steps recorded for
+    the GUI's Reset (the grid in its short form, 1x2), the per-port
     fields kept, and recombining them (phased.combine) gives the run's result back and broadside for the drive
     in phase."""
     pytest.importorskip('triangle')
@@ -117,14 +117,14 @@ def test_phased_array(run_cli, tmp_path):
     ex = os.path.join(os.path.dirname(FILTER), 'make_antennas.py')
     subprocess.check_call([sys.executable, ex, 'array2x2_phased', str(tmp_path / 'arr')], stdout=subprocess.DEVNULL)
     out = tmp_path / 'out'
-    code, so, err = run_cli(tmp_path / 'arr.kicad_pcb', '--mode', 'antenna', '--drive', 'P1,P2', '--grid',
-                            'P1:0,0 P2:0,1', '--steer', '0,60', '--taper', 'taylor:30', '--fmin', '2.3', '--fmax',
+    code, so, err = run_cli(tmp_path / 'arr.kicad_pcb', '--mode', 'antenna', '--drive', 'P1@0,P2@20', '--grid',
+                            'P1:0,0 P2:0,1', '--steer', '0,40', '--taper', 'taylor:30', '--fmin', '2.3', '--fmax',
                             '2.6', '--points', '61', '--solvers', 'mom', '--mom-dmax', '3', '--mom-solves', '12',
                             '--out', out)
     assert code == 0, so + err
     res = json.loads((out / 'arr_mom25d_antenna.json').read_text())
-    assert res['drive'] == ['P1@0', 'P2@60'] and res['drive_base'] == ['P1@0', 'P2@0']
-    assert res['grid'] == '1x2' and res['taper'] == 'taylor:30' and res['steer'] == [0.0, 60.0]
+    assert res['drive'] == ['P1@0', 'P2@60'] and res['drive_base'] == ['P1@0', 'P2@20']
+    assert res['grid'] == '1x2' and res['taper'] == 'taylor:30' and res['steer'] == [0.0, 40.0]
     assert 5 <= res['peak']['theta'] <= 25 and res['peak']['phi'] == 90
     assert res['port'] == 'P1@0, P2@60' and set(res['active_db']) == {'P1', 'P2'}
     data = phased.load(out / res['array_file'])
@@ -151,12 +151,13 @@ def test_stop_ends_mom25d_after_its_current_solve(run_cli, tmp_path, monkeypatch
         status(self, run, st)
         if run == 'mom25d':
             seen.append(st['solves'])
-            if st['solves'] == 1:
+            if st['solves'] == 2:
                 stop_runs(str(out))
     monkeypatch.setattr(pipeline.Job, 'status', stop_at_second)
     code, so, se = run_cli(FILTER, '--solvers', 'mom25d', '--fast', 'auto', '--mom-dmax', '2.4', '--points', '41',
                            '--no-report', '--out', out)
-    assert code == 1 and seen == [1], so + se
+    assert code == 1 and seen == [1, 2], so + se
+    assert not (out / 'filter.xml').exists()                        # openEMS importable: still no CSX file
     assert 'stopped: mom25d (MoM) ended early, no result' in so + se
     assert not (out / 'filter_mom25d.s2p').exists() and list(out.glob('filter_*.s2p'))
 

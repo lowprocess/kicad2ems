@@ -76,6 +76,7 @@ def test_calibrated_and_written(kind, topo, f0, bw, sub, tmp_path):
     assert text.count('"kicad2ems:RF_Port"') == 2
     assert 'board   = "f.kicad_pcb"' in open(cfg).read()
     if (kind, topo) == ('bandstop', 'stub'):
+        pytest.importorskip('scipy')                                # the refine needs it
         from dfsynth.calibrate import passband_rl
         from dfsynth.topologies import _z_limits
         assert len(spec.trim) == 2 * spec.order - 1

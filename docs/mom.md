@@ -15,8 +15,6 @@ Its settings are the `--mom-*` options, or `dmax`, `port`, `mesher`, `solves`, `
 under `[solver.mom25d]` ([options](usage.md#options)). Build the compiled core for about a fivefold
 speed-up: `python -m mom25d.core.build` (needs g++ with OpenMP and pybind11).
 
-![Coupler dashboard](img/coupler_dashboard.png)
-
 ## What mom25d models
 
 - Copper is zero-thickness sheets on the layer interfaces.
