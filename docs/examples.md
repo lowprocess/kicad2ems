@@ -172,6 +172,20 @@ More variants, after published antipodal Vivaldi designs (gfdtd, 4 / 6 / 8 GHz; 
   elements 30 mm apart reach 10.8 dBi at 8 GHz. The feed on FR-4 costs about 1.4 dB (efficiency 54 % against
   the single element's 75 %), and the single-section transformers leave the match at −8.6 dB near 3.4 GHz.
 
+Both take the substrate as `er`, `tand` and `h` (default FR-4, 0.8 mm); the strip and feed widths and the
+quarter waves follow it. On RO4003C (`er=3.55 tand=0.0027 h=0.813`):
+
+| Design | Substrate | G, dBi | Efficiency | Front-to-back, dB | \|S11\| < −10 dB |
+|---|---|---|---|---|---|
+| single, plain | FR-4 | 4.3 / 6.3 / 7.6 | 73–79 % | 6.6 / 9.4 / 9.4 | all |
+| single, plain | RO4003C | 5.2 / 7.4 / 8.9 | 95–98 % | 6.8 / 9.0 / 9.7 | 83 % (−8.7 dB, 8.5 GHz) |
+| 4 elements, filled | FR-4 | 6.0 / 8.9 / 10.8 | 45–55 % | 10.1 / 15.7 / 17.0 | 86 % (−8.6 dB, 3.4 GHz) |
+| 4 elements, filled | RO4003C | 8.0 / 11.3 / 13.4 | 90–93 % | 12.3 / 16.9 / 17.5 | 71 % (−5.1 dB, 3.5 GHz) |
+
+The directivity hardly changes; the gain is the efficiency. The low-loss board also stops hiding reflections
+that FR-4's loss had damped: the array's match is worst at 3.2–4.2 GHz, where its single-section quarter-wave
+transformers (tuned at 6.5 GHz) are furthest off, and the geometry, tuned on FR-4, would want retuning.
+
 The dipole's 2.1 dBi matches an ideal half-wave dipole (2.15 dBi). The patch's low efficiency is FR-4
 loss.
 

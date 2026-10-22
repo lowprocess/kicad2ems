@@ -36,8 +36,9 @@ def u():
 
 
 class Board:
-    def __init__(self, thickness, ground_layer=True):
+    def __init__(self, thickness, ground_layer=True, er=4.4, tand=0.02, material='FR4'):
         self.t, self.items, self.nets = thickness, [], ["", "GND", "RF"]
+        self.er, self.tand, self.material = er, tand, material
 
     def rect(self, x0, y0, x1, y1, layer='F.Cu', net=2):
         self.items.append(f'  (gr_rect (start {x0:.4f} {y0:.4f}) (end {x1:.4f} {y1:.4f}) (stroke (width 0) (type solid)) '
@@ -71,7 +72,7 @@ class Board:
              '  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (37 "F.SilkS" user) (44 "Edge.Cuts" user) (49 "F.Fab" user))',
              '  (setup (stackup',
              '    (layer "F.Cu" (type "copper") (thickness 0.035))',
-             f'    (layer "dielectric 1" (type "core") (thickness {self.t}) (material "FR4") (epsilon_r 4.4) (loss_tangent 0.02))',
+             f'    (layer "dielectric 1" (type "core") (thickness {self.t}) (material "{self.material}") (epsilon_r {self.er:g}) (loss_tangent {self.tand:g}))',
              '    (layer "B.Cu" (type "copper") (thickness 0.035))',
              '    (copper_finish "None") (dielectric_constraints no))\n    (pad_to_mask_clearance 0))',
              '  ' + ' '.join(f'(net {i} "{n}")' for i, n in enumerate(self.nets))]
@@ -359,7 +360,15 @@ def _ava(b, x0, W, y0, ybot, ap=44.0, lt=40.0, rate=4.0, ov=0.5, wf=1.5, lg=15.0
     return xs - wf / 2, yt
 
 
-def vivaldi_antipodal(path, W=50.0, H=70.0, dext=0.0, dl=0.0, dw=6.0, dy=0.0, **opt):
+def _substrate(er, tand, h, opt):
+    """The board of the antipodal designs: FR4 (er 4.4, tan d 0.02, 0.8 mm) or another substrate, its 50 ohm
+    strip (wf) sized for it unless given."""
+    if (er, h) != (4.4, 0.8):
+        opt.setdefault('wf', round(_ms_width(50.0, er, h), 3))
+    return Board(h, er=er, tand=tand, material='FR4' if (er, tand) == (4.4, 0.02) else f'er {er:g}')
+
+
+def vivaldi_antipodal(path, W=50.0, H=70.0, dext=0.0, dl=0.0, dw=6.0, dy=0.0, er=4.4, tand=0.02, h=0.8, **opt):
     """Antipodal Vivaldi, W x H mm (50 x 70) on 0.8 mm FR4, endfire towards -y (the board's top edge). The flare
     is split between the layers: the F.Cu half, on the 50 ohm (wf) microstrip, opens to the left, the B.Cu half,
     out of the ground, to the right. Their inner edges cross the board's centre line at the throat, lt mm below
@@ -374,10 +383,11 @@ def vivaldi_antipodal(path, W=50.0, H=70.0, dext=0.0, dl=0.0, dw=6.0, dy=0.0, **
     vb wide on the other layer, vias every vp mm); nd puts nd striped directors (ld x wd, d3 apart, each 2 dx
     shorter, from sd mm inside the aperture) across the aperture; dext continues the bare substrate dext mm past
     the aperture, and dl puts a floating elliptical director (dl x dw mm, F.Cu) on the centre line, its centre
-    dy mm in front of the aperture."""
+    dy mm in front of the aperture. er, tand, h: the substrate (FR4, 0.8 mm; RO4003C: er=3.55 tand=0.0027
+    h=0.813), the strip's width following it."""
     import math
     opt = {k: v for k, v in opt.items()}
-    b = Board(0.8)
+    b = _substrate(er, tand, h, opt)
     xl, yt = _ava(b, 0.0, W, dext, H + dext, **opt)
     wf = opt.get('wf', 1.5)
     b.rect(xl, yt, xl + wf, H + dext)                            # the microstrip, up from the bottom edge
@@ -406,24 +416,26 @@ def _ms_width(z0, er=4.4, h=0.8):
     return w * h
 
 
-def vivaldi_antipodal_array(path, N=4.0, P=30.0, ap=26.0, sym=1.0, fr=15.0, f0=6.5, **opt):
+def vivaldi_antipodal_array(path, N=4.0, P=30.0, ap=26.0, sym=1.0, fr=15.0, f0=6.5, er=4.4, tand=0.02, h=0.8,
+                            **opt):
     """N (2, 4, 8) antipodal Vivaldi elements (vivaldi_antipodal's, symmetric and curved by default: sym, fr) P mm
     apart side by side, endfire off the top edge, from one port at the bottom: a corporate microstrip feed, each
     T-junction into two 100 ohm lines, each turned back into 50 ohm by a quarter-wave (at f0 GHz) 70.7 ohm
-    section, so every element is fed in phase."""
+    section, so every element is fed in phase. er, tand, h: the substrate, as vivaldi_antipodal's; the feed's
+    widths and the quarter wave follow it."""
     N = int(N)
     m = N.bit_length() - 1
     if N < 2 or N != 1 << m:
         raise ValueError("vivaldi_antipodal_array: N = 2, 4, 8, ...")
+    b = _substrate(er, tand, h, opt)
     lt, lg, wf = opt.get('lt', 40.0), opt.get('lg', 15.0), opt.get('wf', 1.5)
-    w70, w100 = _ms_width(70.7), _ms_width(100.0)
-    er_eff = 2.7 + 1.7 / (1 + 12 * 0.8 / w70) ** 0.5
+    w70, w100 = _ms_width(70.7, er, h), _ms_width(100.0, er, h)
+    er_eff = (er + 1) / 2 + (er - 1) / 2 / (1 + 12 * h / w70) ** 0.5
     lq = 299.79 / f0 / er_eff ** 0.5 / 4                         # mm: a quarter wavelength of the 70.7 ohm line
     step = lq + 8.0                                              # each level's height: transformer, 100 ohm, 50 ohm
     ye = lt + lg + 2.0                                           # the elements' ground (and strips) end here
     H = ye + m * step + 6.0
     W = N * P
-    b = Board(0.8)
     ends = []
     for k in range(N):
         xl, yt = _ava(b, k * P, P, 0.0, ye, ap=ap, sym=sym, fr=fr, **opt)

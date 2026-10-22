@@ -87,7 +87,8 @@ def test_vivaldi_antipodal_options(tmp_path, run_cli):
 
 @pytest.mark.parametrize('kind, args, outline, vias', [
     ('vivaldi_antipodal', ['sym=1', 'fr=15', 'vias=1', 'ap=34', 'nd=7'], '50.00 x 70.00', 22),
-    ('vivaldi_antipodal_array', ['N=2', 'P=40', 'ap=34'], '80.00 x ', 0)])
+    ('vivaldi_antipodal_array', ['N=2', 'P=40', 'ap=34'], '80.00 x ', 0),
+    ('vivaldi_antipodal_array', ['N=2', 'P=40', 'ap=34', 'er=3.55', 'tand=0.0027', 'h=0.813'], '80.00 x ', 0)])
 def test_vivaldi_antipodal_variants(tmp_path, run_cli, kind, args, outline, vias):
     """The symmetric curved form with corner via walls and striped directors; two elements from one port."""
     import subprocess, sys
