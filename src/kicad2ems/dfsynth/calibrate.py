@@ -7,6 +7,7 @@ are the -3 dB edges of the ideal response: for a Chebyshev prototype those lie o
 edge, at Omega_3 = cosh(acosh(1 / eps) / n).
 """
 import math
+import time
 import numpy as np
 
 from .circuit import sparams, db, MLine
@@ -134,8 +135,41 @@ def model_response(design, f, lossless=False, sub=None):
     return s11, s21
 
 
-def calibrate(spec, sub, kf=1.0, kb=1.0, iters=12, tol=1e-4, log=None, refine_lp=True):
-    """Iterate kf / kb until the lossless line model's -3 dB edges match the targets."""
+REFINE_SECONDS = 10.0          # the refinement's time limit: past it the best trims so far are kept
+
+
+class _OutOfTime(Exception):
+    pass
+
+
+def _nelder_mead(cost, x0, seconds, log=None, **kw):
+    """scipy's Nelder-Mead on cost from x0, stopped after `seconds` (None: no limit) with the best point it had
+    reached. Returns (x, cost)."""
+    from scipy.optimize import minimize
+    t0 = time.monotonic()
+    best = [float(cost(x0)), np.array(x0, float)]
+    calls = [0]
+
+    def timed(x):
+        if seconds is not None and time.monotonic() - t0 > seconds:
+            raise _OutOfTime
+        v = cost(x)
+        calls[0] += 1
+        if v < best[0]:
+            best[0], best[1] = float(v), np.array(x, float)
+        return v
+    try:
+        r = minimize(timed, x0, method='Nelder-Mead', **kw)
+        return r.x, float(r.fun)
+    except _OutOfTime:
+        if log:
+            log(f"  refine: stopped at the {seconds:g} s time limit ({calls[0]} evaluations), keeping the best so far")
+        return best[1], best[0]
+
+
+def calibrate(spec, sub, kf=1.0, kb=1.0, iters=12, tol=1e-4, log=None, refine_lp=True, refine_time=REFINE_SECONDS):
+    """Iterate kf / kb until the lossless line model's -3 dB edges match the targets; then, for the low-pass,
+    band-stop and interdigital designs, refine the trims (for at most refine_time seconds)."""
     notes = prepare(spec)
     tune_bw = spec.kind != 'lowpass'
     f = sweep(spec, 2401)
@@ -167,7 +201,7 @@ def calibrate(spec, sub, kf=1.0, kb=1.0, iters=12, tol=1e-4, log=None, refine_lp
     if spec.topology == 'interdigital':
         fine = refine_coupled
     if fine and refine_lp and not spec.trim:
-        fine(spec, sub, d.kf, d.kb, log)
+        fine(spec, sub, d.kf, d.kb, log, seconds=refine_time)
         if spec.trim:
             d2 = calibrate(spec, sub, d.kf, d.kb, iters, tol, log, refine_lp=False)
             d2.notes = notes + [x for x in d2.notes if x not in notes]
@@ -180,7 +214,7 @@ def _copy(spec):
     return replace(spec)
 
 
-def refine(spec, sub, kf, kb=1.0, log=None, iters=400):
+def refine(spec, sub, kf, kb=1.0, log=None, iters=400, seconds=REFINE_SECONDS):
     """Low-pass only: trim the sections' electrical lengths (symmetrically) so the lossless line model
     follows the prototype's response up to 1.3 x the cut-off: the distributed sections' departures from
     lumped L and C (the pass-band ripple growing, the edge softening) are taken out. Sets spec.trim."""
@@ -210,11 +244,11 @@ def refine(spec, sub, kf, kb=1.0, log=None, iters=400):
 
     x0 = np.ones(half)
     c0 = cost(x0)
-    r = minimize(cost, x0, method='Nelder-Mead', options={'maxiter': iters, 'xatol': 1e-4, 'fatol': 1e-6})
-    if r.fun < c0:
-        spec.trim = tuple(float(v) for v in np.r_[r.x, r.x[:n - half][::-1]])
+    rx, rf = _nelder_mead(cost, x0, seconds, log, options={'maxiter': iters, 'xatol': 1e-4, 'fatol': 1e-6})
+    if rf < c0:
+        spec.trim = tuple(float(v) for v in np.r_[rx, rx[:n - half][::-1]])
         if log:
-            log(f"  refine: rms error {math.sqrt(c0):.2f} -> {math.sqrt(r.fun):.2f} dB, trims "
+            log(f"  refine: rms error {math.sqrt(c0):.2f} -> {math.sqrt(rf):.2f} dB, trims "
                 + ', '.join(f'{t:.3f}' for t in spec.trim))
 
 
@@ -228,7 +262,7 @@ def passband_rl(design, f, sub=None):
     return float(-db(s11[out]).max())
 
 
-def refine_bandstop(spec, sub, kf, kb, log=None, iters=3000):
+def refine_bandstop(spec, sub, kf, kb, log=None, iters=3000, seconds=REFINE_SECONDS):
     """Band-stop only: the connecting lines are unit elements, not just spacers. Sets the stub and line
     impedances (symmetric factors on the synthesis, within what the substrate can make) so the lossless
     line model follows the Chebyshev response in Richards' variable, |S21|^2 = 1 / (1 + eps^2
@@ -276,16 +310,16 @@ def refine_bandstop(spec, sub, kf, kb, log=None, iters=3000):
         bounds[:h] = [(math.log(lo / z), math.log(hi / z)) for z in zs]
     x0 = np.array([min(max(0.0, lo), hi) for lo, hi in bounds])
     c0 = cost(np.zeros(h + hl))
-    r = minimize(cost, x0, method='Nelder-Mead', bounds=bounds,
-                 options={'maxiter': iters, 'xatol': 1e-5, 'fatol': 1e-8})
-    s = make(r.x)
+    rx, rf = _nelder_mead(cost, x0, seconds, log, bounds=bounds, options={'maxiter': iters, 'xatol': 1e-5,
+                                                                         'fatol': 1e-8})
+    s = make(rx)
     fr = sweep(spec, 1201)
     rl0 = passband_rl(build(_copy(spec), sub, kf, kb), fr)
     rl1 = passband_rl(build(s, sub, kf, kb), fr)
-    if r.fun < c0 and rl1 > rl0 + 0.5:
+    if rf < c0 and rl1 > rl0 + 0.5:
         spec.trim = s.trim
         if log:
-            log(f"  refine: rms error {math.sqrt(c0):.2f} -> {math.sqrt(r.fun):.2f} dB, pass-band RL "
+            log(f"  refine: rms error {math.sqrt(c0):.2f} -> {math.sqrt(rf):.2f} dB, pass-band RL "
                 f"{rl0:.1f} -> {rl1:.1f} dB, impedance factors " + ', '.join(f'{v:.3f}' for v in spec.trim))
     elif log:
         log(f"  refine: no improvement (pass-band RL {rl0:.1f} -> {rl1:.1f} dB), kept the synthesis")
@@ -314,7 +348,7 @@ def _coupled_spec(spec, x):
     return s
 
 
-def refine_coupled(spec, sub, kf, kb, log=None, iters=3000):
+def refine_coupled(spec, sub, kf, kb, log=None, iters=3000, seconds=REFINE_SECONDS):
     """Coupled-resonator band-pass (interdigital): the closed-form couplings and taps assume synchronous,
     nearest-neighbour resonators; on the multiconductor model the end rods (one neighbour, a tap) and the
     inner ones (two neighbours, and the next-but-one) are neither. Sets the gaps, the taps and each rod's
@@ -358,7 +392,7 @@ def refine_coupled(spec, sub, kf, kb, log=None, iters=3000):
 
     x0 = np.zeros(len(_coupled_free(spec)))
     c0 = cost(x0)
-    r = minimize(cost, x0, method='Nelder-Mead', options={'maxiter': iters, 'xatol': 1e-5, 'fatol': 1e-8,
+    rx, rf = _nelder_mead(cost, x0, seconds, log, options={'maxiter': iters, 'xatol': 1e-5, 'fatol': 1e-8,
                                                            'adaptive': True})
     fr = sweep(spec, 1201)
 
@@ -371,9 +405,9 @@ def refine_coupled(spec, sub, kf, kb, log=None, iters=3000):
         g = 0.1 * (e['f2'] - e['f1'])
         m = (fr > e['f1'] + g) & (fr < e['f2'] - g)
         return float(-db(s11[m]).max()) if m.any() else 0.0
-    s = make(r.x)
+    s = make(rx)
     rl0, rl1 = rl(_copy(spec)), rl(s)
-    if r.fun < c0 and rl1 > rl0 + 0.5:
+    if rf < c0 and rl1 > rl0 + 0.5:
         spec.trim = s.trim
         if log:
             log(f"  refine: pass-band RL {rl0:.1f} -> {rl1:.1f} dB, factors "
