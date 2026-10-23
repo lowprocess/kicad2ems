@@ -28,13 +28,12 @@ fast = ["scikit-rf>=1.0"]          # --fast skrf: the line model as S-parameters
 dumps = ["h5py>=3"]                # frequency-domain field dumps (openEMS's own Python package needs it too)
 gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "h5py>=3", "PyOpenGL>=3.1"]   # kicad2ems-gui (h5py: FD dumps,
                                                                                    # far field; PyOpenGL: 3D fields)
-kicad = ["kicad-python>=0.5", "PySide6-Essentials>=6.5", "pyqtgraph>=0.13"]   # the KiCad plugin (IPC API, KiCad 9+)
 core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster);
                                    # python -m gfdtd.core.build: gfdtd's CPU core (~15x numpy)
 mom = ["mom25d @ git+https://github.com/lowprocess/mom25d"]     # the MoM solver, its own repository (it brings
                                                                 # triangle, its mesher)
 gfdtd = ["gfdtd @ git+https://github.com/lowprocess/gfdtd"]   # the GPU FDTD solver, its own repository
-all = ["kicad2ems[fast,dumps,gui,kicad,core,mom,gfdtd]"]       # everything but a GPU wheel (one of the gpu-* extras)
+all = ["kicad2ems[fast,dumps,gui,core,mom,gfdtd]"]       # everything but a GPU wheel (one of the gpu-* extras)
 # mom25d's and gfdtd's GPU solvers (docs/mom.md#gpu): the CuPy wheel built for your
 # GPU stack, one of these extras (pip install '.[gpu-rocm7]'), or the wheel itself (pip install cupy-rocm-7-0);
 # they conflict: install one. The CUDA wheels need the NVIDIA driver; the ROCm wheel the
@@ -52,7 +51,6 @@ kicad2ems-gui = "kicad2ems.gui:main"
 kicad2openems = "kicad2ems.cli:main_openems"     # the old name: openEMS unless --solvers says otherwise
 kicad2openems-gui = "kicad2ems.gui:main"
 dfsynth = "dfsynth.cli:main"                    # distributed-element filter synthesis -> KiCad board (tools/dfsynth)
-kicad2ems-kicad = "kicad2ems.kicadplugin.__main__:main"   # the KiCad plugin's window; install / uninstall it
 
 [tool.setuptools.dynamic]
 version = {attr = "kicad2ems.__version__"}

@@ -18,6 +18,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the `mom` extra (`all` for every extra but a GPU wheel), and `setup.sh` asks for each. Without it,
   `--check` lists mom25d and the mixed solver as not installed, auto leaves them out, and the tests that need
   it are skipped (marker `mom25d`). The board-file contract test (tests/test_mom25d_board.py) stays here.
+- The KiCad plugin is its own repository, kicad2ems-ipc (https://github.com/lowprocess/kicad2ems-ipc), with its
+  history, and installs from KiCad's Plugin and Content Manager: KiCad builds it a Python environment with
+  kicad2ems in it. The `kicad` extra and the `kicad2ems-kicad` command are gone; docs/kicad-plugin.md lists
+  what the plugin uses from kicad2ems.
 - The line model's analysis (tlines, strips, coupled) moved from `kicad2ems/solvers/lines/` to
   `kicad2ems/lines/`: it is used in every run, not only by the line solvers, which stay in `solvers/lines/`
   (fastsolve, the qucs and scikit plugins). Code that imported `kicad2ems.solvers.lines.tlines` imports
