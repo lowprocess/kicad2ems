@@ -6,8 +6,8 @@ bandwidth, substrate) and writes the layout as a KiCad board. It can then run th
 design from the result.
 
 ```bash
-pip install .                                     # kicad2ems, which installs dfsynth with it (and its GUI page)
-pip install tools/dfsynth                         # or dfsynth alone (numpy + matplotlib; no --validate)
+pip install .                                     # dfsynth (numpy, scipy, matplotlib)
+pip install '.[validate]'                         # with kicad2ems, for --validate
 
 dfsynth --type bandpass --topology coupled --f0 5G --bw 500M --order 5 \
         --substrate RO4003C-0.813 -o out/bpf --validate mom,lines --em-tune 1
@@ -24,7 +24,7 @@ That writes:
 | `out/bpf_em/`, `_validation.png` | with `--validate`: kicad2ems's results, overlaid on the model (and its output, `kicad2ems_output.log`, `kicad2ems_events.jsonl`) |
 | `out/bpf_em_tune1/`, `_validation_tune1.png` | with `--em-tune N`: each corrected round |
 
-The same from a window: the **Filter Synthesis** page of `kicad2ems-gui` ([GUI](../../docs/gui.md#filter)) sets these
+The same from a window: the **Filter Synthesis** page of `kicad2ems-gui` ([GUI](https://github.com/lowprocess/kicad2ems/blob/main/docs/gui.md#filter); its `filter` extra installs dfsynth) sets these
 options, runs dfsynth, draws the layout and the responses, and opens the board it wrote in kicad2ems.
 
 ## Filters

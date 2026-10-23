@@ -1,6 +1,6 @@
 #!/bin/bash
 # Runs every topology through kicad2ems (mom25d + line model) with one EM tuning round.
-#   tools/dfsynth/validate_all.sh [outdir] [solvers]      default: dfsynth_validation, mom,lines
+#   ./validate_all.sh [outdir] [solvers]      default: dfsynth_validation, mom,lines
 out=${1:-dfsynth_validation}; solvers=${2:-mom,lines}
 mkdir -p "$out"
 run() { name=$1; shift; echo "=== $name: $*"

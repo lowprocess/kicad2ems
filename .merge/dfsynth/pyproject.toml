@@ -8,11 +8,11 @@ dynamic = ["version"]
 description = "Distributed-element microstrip filter synthesis -> KiCad layout, validated with kicad2ems"
 requires-python = ">=3.10"
 license = {text = "GPL-3.0-or-later"}
-dependencies = ["numpy>=1.24", "matplotlib>=3.7"]
+dependencies = ["numpy>=1.24", "scipy>=1.10", "matplotlib>=3.7"]
 
 [project.optional-dependencies]
-validate = ["kicad2ems"]     # from a kicad2ems checkout: pip install -e /path/to/kicad2ems
-test = ["pytest>=7"]
+validate = ["kicad2ems @ git+https://github.com/lowprocess/kicad2ems"]   # --validate: kicad2ems runs the board
+test = ["pytest>=7", "shapely>=2.0"]
 
 [project.scripts]
 dfsynth = "dfsynth.cli:main"
@@ -21,4 +21,7 @@ dfsynth = "dfsynth.cli:main"
 version = {attr = "dfsynth.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["dfsynth*"]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
