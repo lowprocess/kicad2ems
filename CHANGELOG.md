@@ -18,6 +18,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the `mom` extra (`all` for every extra but a GPU wheel), and `setup.sh` asks for each. Without it,
   `--check` lists mom25d and the mixed solver as not installed, auto leaves them out, and the tests that need
   it are skipped (marker `mom25d`). The board-file contract test (tests/test_mom25d_board.py) stays here.
+- dfsynth is its own repository (https://github.com/lowprocess/dfsynth), with its history: the `filter` extra
+  installs it for the GUI's Filter page, which no longer falls back to a checkout's tools/dfsynth.
 - The package moved to `src/kicad2ems` (the src layout, as mom25d's): a checkout no longer imports by accident
   from its root. Run from a checkout without installing with `PYTHONPATH=src`; `setup.sh`'s editable install
   points there.

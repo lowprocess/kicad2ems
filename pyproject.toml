@@ -33,7 +33,8 @@ core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ /
 mom = ["mom25d @ git+https://github.com/lowprocess/mom25d"]     # the MoM solver, its own repository (it brings
                                                                 # triangle, its mesher)
 gfdtd = ["gfdtd @ git+https://github.com/lowprocess/gfdtd"]   # the GPU FDTD solver, its own repository
-all = ["kicad2ems[fast,dumps,gui,core,mom,gfdtd]"]       # everything but a GPU wheel (one of the gpu-* extras)
+filter = ["dfsynth @ git+https://github.com/lowprocess/dfsynth"]   # the GUI's Filter page: dfsynth, its own repository
+all = ["kicad2ems[fast,dumps,gui,core,mom,gfdtd,filter]"]       # everything but a GPU wheel (one of the gpu-* extras)
 # mom25d's and gfdtd's GPU solvers (docs/mom.md#gpu): the CuPy wheel built for your
 # GPU stack, one of these extras (pip install '.[gpu-rocm7]'), or the wheel itself (pip install cupy-rocm-7-0);
 # they conflict: install one. The CUDA wheels need the NVIDIA driver; the ROCm wheel the
@@ -50,14 +51,13 @@ kicad2ems = "kicad2ems.cli:main"
 kicad2ems-gui = "kicad2ems.gui:main"
 kicad2openems = "kicad2ems.cli:main_openems"     # the old name: openEMS unless --solvers says otherwise
 kicad2openems-gui = "kicad2ems.gui:main"
-dfsynth = "dfsynth.cli:main"                    # distributed-element filter synthesis -> KiCad board (tools/dfsynth)
 
 [tool.setuptools.dynamic]
 version = {attr = "kicad2ems.__version__"}
 
 [tool.setuptools.packages.find]
-where = ["src", "tools/dfsynth"]             # src/kicad2ems; tools/dfsynth: the filter synthesis (the GUI's Filter page, dfsynth)
-include = ["kicad2ems*", "dfsynth*"]
+where = ["src"]
+include = ["kicad2ems*"]
 
 [tool.setuptools.package-data]
 "kicad2ems.gui" = ["*.svg"]                 # the window's and the application launcher's icon, the wand

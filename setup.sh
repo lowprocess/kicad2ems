@@ -11,7 +11,7 @@
 #   ./setup.sh --python python3.12 --venv /path/to/venv  another Python, another venv (checkout target)
 #   ./setup.sh --uninstall --target user                 remove what an install of that target added
 #
-# Asks about: the GUI, field dumps, the scikit-rf line model, mom25d and gfdtd (and their compiled cores), the test
+# Asks about: the GUI, field dumps, the scikit-rf line model, mom25d and gfdtd (and their compiled cores), dfsynth, the test
 # tools, the CuPy wheel for your GPU
 # (detected: NVIDIA CUDA 12 / 13, AMD ROCm 7), openEMS (one this Python has, one in another venv linked in,
 # build one with tools/build_openems.sh, or none), qucsator, and a launcher entry and desktop icon for the GUI.
@@ -222,6 +222,7 @@ ask "line model with scikit-rf (--fast skrf; qucsator is a separate program)?" y
 MOM=0 GFDTD=0
 ask "mom25d (2.5D MoM: planar circuits and antennas, no openEMS needed; from github.com/lowprocess/mom25d)?" y && { MOM=1; EXTRAS+=(mom); }
 ask "gfdtd (3D FDTD on the GPU or a CPU core, openEMS's model; from github.com/lowprocess/gfdtd)?" y && { GFDTD=1; EXTRAS+=(gfdtd); }
+ask "dfsynth (filter synthesis: the GUI's Filter page; from github.com/lowprocess/dfsynth)?" y && EXTRAS+=(filter)
 CORE=0
 if [ $MOM = 0 ] && [ $GFDTD = 0 ]; then
     :

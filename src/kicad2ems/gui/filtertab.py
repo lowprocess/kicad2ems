@@ -1,5 +1,5 @@
 """
-The Filter page: design a microstrip filter with dfsynth (tools/dfsynth), see its layout, dimensions and line-model
+The Filter page: design a microstrip filter with dfsynth (its own package: the filter extra), see its layout, dimensions and line-model
 response, validate it on the solvers and tune it from them, and open the board it wrote as a kicad2ems config.
 
 dfsynth runs as a separate process, as kicad2ems runs do: the page follows its output, and reads what it wrote when
@@ -13,27 +13,11 @@ S-parameters in <out>_em/, <out>_em_tune1/, ...).
 import glob, html, json, os, re, shutil, sys
 import numpy as np
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))   # the checkout
-DFSYNTH_DIR = os.path.join(ROOT, 'tools', 'dfsynth')               # the checkout's copy, when not installed
-
-
-def dfsynth_path():
-    """(folder to put on PYTHONPATH or '' when dfsynth is installed, None when there is no dfsynth)."""
-    import importlib.util
-    spec = importlib.util.find_spec('dfsynth')
-    here = os.path.isfile(os.path.join(DFSYNTH_DIR, 'dfsynth', 'cli.py'))
-    if spec is not None and not (here and os.path.abspath(spec.origin or '').startswith(DFSYNTH_DIR + os.sep)):
-        return ''                                                   # installed (not only on this process's path)
-    return DFSYNTH_DIR if here else None
+DFSYNTH_PIP = "python -m pip install 'kicad2ems[filter]' (or 'dfsynth @ git+https://github.com/lowprocess/dfsynth')"
 
 
 def dfsynth_module():
-    """The dfsynth package (for its topologies and substrate presets), or None."""
-    path = dfsynth_path()
-    if path is None:
-        return None
-    if path and path not in sys.path:
-        sys.path.insert(0, path)
+    """The dfsynth package (for its topologies and substrate presets), or None when it is not installed."""
     try:
         import dfsynth.topologies, dfsynth.microstrip, dfsynth.prototype
         return dfsynth
@@ -130,7 +114,7 @@ def _db(x):
 
 
 # ------------------------------------------------------------------------------------------- the page (Qt)
-from PySide6.QtCore import Qt, QProcess, QProcessEnvironment
+from PySide6.QtCore import Qt, QProcess
 from PySide6.QtGui import QPainterPath, QPen, QBrush, QColor, QFontDatabase, QTextCursor, QTextCharFormat, QIcon
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox, QCheckBox,
                                QPushButton, QPlainTextEdit, QSplitter, QTabWidget, QTableWidget,
@@ -163,9 +147,7 @@ class FilterTab(QWidget):
         self._type_changed()
         if self.ds is None:                                         # nothing to design with: say so, up front
             self.split.widget(0).setEnabled(False)
-            self.say("dfsynth was not found, so filters cannot be designed here. It comes with kicad2ems "
-                     "(reinstall it from the checkout: python -m pip install --user .), or install it alone: "
-                     "python -m pip install --user tools/dfsynth", 'error')
+            self.say(f"dfsynth is not installed, so filters cannot be designed here: {DFSYNTH_PIP}", 'error')
 
     # ---- the settings ----
     def _line(self, hint='', tip=''):
@@ -549,11 +531,6 @@ class FilterTab(QWidget):
         self.tabs.setCurrentWidget(self.log)
         self.proc = QProcess(self)
         self.proc.setProcessChannelMode(QProcess.MergedChannels)
-        env = QProcessEnvironment.systemEnvironment()
-        path = dfsynth_path()
-        if path:
-            env.insert('PYTHONPATH', os.pathsep.join(x for x in (path, env.value('PYTHONPATH', '')) if x))
-        self.proc.setProcessEnvironment(env)
         self.proc.setWorkingDirectory(os.path.dirname(self.base))
         self.proc.readyReadStandardOutput.connect(self._stdout)
         self.proc.finished.connect(self._finished)

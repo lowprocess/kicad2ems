@@ -111,7 +111,7 @@ here, and openEMS is still built in. In order:
    `run.solve_band`, `api.ZONE_OUT`), so these must become mom25d's public API, with a version range pinned.
 4. **No solver names in core code.** The GUI's solver sections (`gui/runner.py`: `SECTION_SOLVERS`,
    `SECTION_ORDER`), the KiCad plugin's solver menu (kicad2ems-ipc's `window.py`), the Filter page's solver
-   choices (`gui/filtertab.py`) and dfsynth's validation (`validate.py`) name openEMS, gfdtd and mom25d.
+   choices (`gui/filtertab.py`) and dfsynth's validation (its `validate.py`) name openEMS, gfdtd and mom25d.
    Build them from the registry: each plugin's label, options and GUI group.
 5. **Tests move with their plugins**; core's own tests run against a stand-in solver plugin, and a CI job
    installs every solver package and runs them together.
