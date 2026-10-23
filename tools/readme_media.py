@@ -8,7 +8,7 @@ dumps), then takes the GUI's panels and renders the 3D field views.
 
 Writes docs/img/readme/*.png and *.gif (the runs go to build/readme/). The GUI part needs PySide6, pyqtgraph and
 PyOpenGL in this Python and a display (OpenGL); openEMS may live in another Python (--openems-python), which also
-needs kicad2ems importable (run from the checkout: PYTHONPATH is set to it).
+needs kicad2ems importable (run from the checkout: PYTHONPATH is set to its src/).
 """
 import argparse, glob, os, shutil, subprocess, sys, time
 
@@ -26,7 +26,7 @@ CASES = {
 
 
 def run_cases(py, only):
-    env = dict(os.environ, PYTHONPATH=REPO + os.pathsep + os.environ.get('PYTHONPATH', ''))
+    env = dict(os.environ, PYTHONPATH=os.path.join(REPO, 'src') + os.pathsep + os.environ.get('PYTHONPATH', ''))
     for name, (ex, args) in CASES.items():
         if only and name not in only:
             continue

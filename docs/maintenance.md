@@ -90,7 +90,7 @@ model with `consumes = 'network'`, and returns a `solvers.Result` with S-paramet
 - Import openEMS, CSXCAD, scikit-rf, h5py and other heavy packages inside the functions that use them.
 - Send messages through `log`. Warnings contain `WARNING`, so the report lists them.
 - Plots return matplotlib `Figure` objects without pyplot. The report reads only `Job.summary`.
-- The version lives only in `kicad2ems/__init__.py`.
+- The version lives only in `src/kicad2ems/__init__.py`.
 - Comments explain *why*, often with a measured number.
 - Generated example boards aren't committed; their generators and configs are.
 
@@ -108,7 +108,7 @@ Planned work is in [ROADMAP.md](../ROADMAP.md).
 
 GPL-3.0-or-later, because openEMS's Python bindings (GPL-3.0-or-later) run in the same process. New
 dependencies must be GPL-compatible. No third-party code is copied into the repository; the impedance
-formulas are implemented from the papers cited in `kicad2ems/lines/tlines.py`.
+formulas are implemented from the papers cited in `src/kicad2ems/lines/tlines.py`.
 
 ---
 [← Testing](testing.md) · [Index](index.md)

@@ -13,7 +13,7 @@ S-parameters in <out>_em/, <out>_em_tune1/, ...).
 import glob, html, json, os, re, shutil, sys
 import numpy as np
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))   # the checkout
 DFSYNTH_DIR = os.path.join(ROOT, 'tools', 'dfsynth')               # the checkout's copy, when not installed
 
 

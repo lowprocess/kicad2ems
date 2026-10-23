@@ -52,7 +52,7 @@ def set_user(key, value):
         kept.pop(key, None)
     os.makedirs(os.path.dirname(p), exist_ok=True)
     with open(p, 'w') as fh:
-        fh.write("# kicad2ems: where its external programs are (kicad2ems/sitecfg.py)\n")
+        fh.write("# kicad2ems: where its external programs are (src/kicad2ems/sitecfg.py)\n")
         for k, v in kept.items():
             fh.write(f"{k} = {json.dumps(str(v))}\n")
     _cache = None

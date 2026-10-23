@@ -101,7 +101,7 @@ here, and openEMS is still built in. In order:
    `check_openems`, `venv.py`, `converge.py` and `readback.py`. The rest is shared: the mesh and boundaries
    (gfdtd and the preview), the model build, run folders, progress and port watch (gfdtd), antenna analysis
    (mom25d and gfdtd), and the dump formats and readers (mom25d, gfdtd, the GUI). Move it into neutral
-   packages, for example `kicad2ems/fdtd/` (mesh, boundaries, model, run) and `kicad2ems/fields/` (dumps,
+   packages, for example `src/kicad2ems/fdtd/` (mesh, boundaries, model, run) and `src/kicad2ems/fields/` (dumps,
    readers, antenna), and update the ~15 importers (GUI, report, phased, volume3d, the plugins).
 2. **The openEMS adapter as its own package** (`kicad2ems-openems`), registered through the
    `kicad2ems.solvers` entry point like any other plugin.
@@ -116,7 +116,7 @@ here, and openEMS is still built in. In order:
 5. **Tests move with their plugins**; core's own tests run against a stand-in solver plugin, and a CI job
    installs every solver package and runs them together.
 
-The line model stays in core. Its analysis (`kicad2ems/lines/`: sections, Z0, coupled lines) is not a
+The line model stays in core. Its analysis (`src/kicad2ems/lines/`: sections, Z0, coupled lines) is not a
 solver: every run builds it, and the report, the GUI's overlay, the KiCad plugin's impedance map and the
 example generator use it. Its circuit solvers (`solvers/lines/`: qucsator, scikit-rf) could be split out like
 the others, but they need nothing compiled, they are the one solver that runs with nothing else installed, and

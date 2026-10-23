@@ -56,7 +56,7 @@ dfsynth = "dfsynth.cli:main"                    # distributed-element filter syn
 version = {attr = "kicad2ems.__version__"}
 
 [tool.setuptools.packages.find]
-where = [".", "tools/dfsynth"]               # tools/dfsynth: the filter synthesis (the GUI's Filter page, dfsynth)
+where = ["src", "tools/dfsynth"]             # src/kicad2ems; tools/dfsynth: the filter synthesis (the GUI's Filter page, dfsynth)
 include = ["kicad2ems*", "dfsynth*"]
 
 [tool.setuptools.package-data]

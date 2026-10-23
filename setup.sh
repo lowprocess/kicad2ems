@@ -317,7 +317,7 @@ else
     pipi "$SPEC"
 fi
 WHERE=$(cd / && "$VPY" -c 'import kicad2ems, os; print(os.path.dirname(os.path.dirname(kicad2ems.__file__)))')
-if [ $EDITABLE = 1 ] && [ "$WHERE" != "$REPO" ]; then
+if [ $EDITABLE = 1 ] && [ "$WHERE" != "$REPO/src" ]; then
     note "WARNING: kicad2ems is imported from $WHERE, not this checkout: remove that copy"
     note "(e.g. $PY -m pip uninstall kicad2ems, outside the venv) and run ./setup.sh again"
 fi
@@ -398,9 +398,9 @@ if [ "$OEMS" = build ]; then
     fi
 fi
 
-# ---- where the external programs are: kicad2ems-site.toml (kicad2ems/sitecfg.py) ------------------------
+# ---- where the external programs are: kicad2ems-site.toml (src/kicad2ems/sitecfg.py) ------------------------
 if [ -n "$QUCS" ]; then
-    { echo "# written by setup.sh: where kicad2ems finds its external programs (kicad2ems/sitecfg.py)"
+    { echo "# written by setup.sh: where kicad2ems finds its external programs (src/kicad2ems/sitecfg.py)"
       echo "qucsator = \"$QUCS\""; } | $SUDO tee "$SITECFG" >/dev/null
     note "qucsator: $QUCS (in $SITECFG)"
     record "$SITECFG"

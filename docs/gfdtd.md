@@ -57,5 +57,5 @@ gfdtd writes openEMS's probe files, field dumps and status lines, so kicad2ems's
 gfdtd's own README covers the rest: [CSXCAD and openEMS compatibility](https://github.com/lowprocess/gfdtd#csxcad-and-openems-compatibility),
 [what it models](https://github.com/lowprocess/gfdtd#what-it-models) (and what not yet: conductor loss, phased drives, `--converge`),
 [its ports](https://github.com/lowprocess/gfdtd#ports), [how it works](https://github.com/lowprocess/gfdtd#how-it-works) and [accuracy and speed against
-openEMS](https://github.com/lowprocess/gfdtd#accuracy-and-speed) on these examples. The plugin is `kicad2ems/solvers/gfdtd.py`: openEMS's
+openEMS](https://github.com/lowprocess/gfdtd#accuracy-and-speed) on these examples. The plugin is `src/kicad2ems/solvers/gfdtd.py`: openEMS's
 plugin, run on gfdtd; its tests are `tests/test_gfdtd.py`.

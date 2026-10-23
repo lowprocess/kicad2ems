@@ -74,7 +74,7 @@ def main():
         write_md(results)
         print('wrote', plot(results, a.only))
         return
-    env0 = dict(os.environ, PYTHONPATH=REPO + os.pathsep + os.environ.get('PYTHONPATH', ''))
+    env0 = dict(os.environ, PYTHONPATH=os.path.join(REPO, 'src') + os.pathsep + os.environ.get('PYTHONPATH', ''))
     configs = sorted(os.path.splitext(os.path.basename(p))[0] for p in glob.glob(os.path.join(REPO, 'examples', '*.toml')))
     configs = [c for c in configs if not a.only or c in a.only]
     path = os.path.join(OUT, 'results.json')

@@ -106,7 +106,7 @@ other three the choice was at most 1.6 times slower.
 ## Module map
 
 ```
-kicad2ems/
+src/kicad2ems/
   cli.py          the command line
   config.py       the run's options, Settings, config files
   options.py      Option and value converters

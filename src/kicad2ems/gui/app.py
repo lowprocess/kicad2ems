@@ -34,7 +34,8 @@ from .meters import duration
 from .filtertab import FilterTab
 
 pg.setConfigOptions(antialias=True, background='w', foreground='k')
-EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
+EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+                        'examples')                                  # the checkout's (src/kicad2ems/gui/app.py)
 DOCS = 'https://github.com/lowprocess/kicad2ems/blob/main/docs/index.md'
 MAX_RECENT = 8
 PANELS = ('Viewer', 'Run', 'Results', 'Filter')

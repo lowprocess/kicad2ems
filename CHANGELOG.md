@@ -18,6 +18,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the `mom` extra (`all` for every extra but a GPU wheel), and `setup.sh` asks for each. Without it,
   `--check` lists mom25d and the mixed solver as not installed, auto leaves them out, and the tests that need
   it are skipped (marker `mom25d`). The board-file contract test (tests/test_mom25d_board.py) stays here.
+- The package moved to `src/kicad2ems` (the src layout, as mom25d's): a checkout no longer imports by accident
+  from its root. Run from a checkout without installing with `PYTHONPATH=src`; `setup.sh`'s editable install
+  points there.
 - The KiCad plugin is its own repository, kicad2ems-ipc (https://github.com/lowprocess/kicad2ems-ipc), with its
   history, and installs from KiCad's Plugin and Content Manager: KiCad builds it a Python environment with
   kicad2ems in it. The `kicad` extra and the `kicad2ems-kicad` command are gone; docs/kicad-plugin.md lists

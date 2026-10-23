@@ -5,7 +5,10 @@ import numpy as np
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+SRC = os.path.join(ROOT, 'src')
+sys.path.insert(0, SRC)
+# the kicad2ems runs the tests start (python -m kicad2ems) import this checkout too
+os.environ['PYTHONPATH'] = os.pathsep.join(x for x in (SRC, os.environ.get('PYTHONPATH')) if x)
 try:                                    # GUI tests: shared OpenGL contexts, as kicad2ems.gui.application makes them
     from PySide6.QtCore import QCoreApplication, Qt
     QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
