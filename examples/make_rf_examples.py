@@ -45,8 +45,8 @@ edge where the feed lines end.
 import math, os, sys, uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from kicad2ems.solvers.lines.tlines import microstrip, cpwg, stripline as strip_z   # noqa: E402
-from kicad2ems.solvers.lines.coupled import coupled_microstrip, coupled_stripline   # noqa: E402
+from kicad2ems.lines.tlines import microstrip, cpwg, stripline as strip_z   # noqa: E402
+from kicad2ems.lines.coupled import coupled_microstrip, coupled_stripline   # noqa: E402
 
 H_SUB, ER, TAND, F0 = 0.8, 4.4, 0.02, 2.4e9
 H4 = 0.2                                # mm of FR-4 between the layers of the 4-layer boards

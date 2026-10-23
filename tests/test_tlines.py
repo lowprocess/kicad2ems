@@ -4,7 +4,7 @@ import os
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.board import Board
-from kicad2ems.solvers.lines.tlines import (build, microstrip, stripline, offset_stripline, cpwg, coax, ellipk,
+from kicad2ems.lines.tlines import (build, microstrip, stripline, offset_stripline, cpwg, coax, ellipk,
                                   embedded_microstrip)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -145,7 +145,7 @@ def test_sma_launch_example_line_model():
     rf = pytest.importorskip('skrf')
     from kicad2ems.importers.kicad import KiCadBoard
     from kicad2ems.board import Board
-    from kicad2ems.solvers.lines.tlines import build
+    from kicad2ems.lines.tlines import build
     from kicad2ems.solvers.lines.fastsolve import solve
     ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
     m = Board(KiCadBoard(os.path.join(ex, 'sma_launch.kicad_pcb')), nets=['REF_SMA_N', 'GND'],
@@ -214,7 +214,7 @@ def test_radial_stub_in_qucsator_is_mrstub(tmp_path):
     import numpy as np
     from shapely.geometry import Polygon
     from kicad2ems.solvers.lines import fastsolve
-    from kicad2ems.solvers.lines.strips import radial_sector
+    from kicad2ems.lines.strips import radial_sector
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples'))
     import make_rf_examples as rf
     a = np.radians(np.linspace(60, 120, 25))

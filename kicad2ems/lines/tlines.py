@@ -25,7 +25,7 @@ import heapq, math
 import numpy as np
 from shapely.geometry import LineString, Point
 from shapely.ops import substring
-from ...constants import C0
+from ..constants import C0
 
 ETA0 = 376.730313668
 MU0 = 4e-7 * math.pi

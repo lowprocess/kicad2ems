@@ -130,7 +130,7 @@ def _group_network(skrf, fr, g, sheet, name):
 
 def group_s(g, freq):
     """S-parameters (nf, 2N, 2N) of a coupled section of the line model (coupled.py)."""
-    from .coupled import group_lc, mtl_s
+    from ...lines.coupled import group_lc, mtl_s
     widths = [e.w for e, _, _ in g['members']]
     C, Ca = group_lc(widths, g['gaps'], g['h'], g['er'], g.get('xs', 'microstrip'))
     return mtl_s(C, Ca, g['er'], g['tand'] or 0.0, g['length'], freq)

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.board import Board
-from kicad2ems.solvers.lines.tlines import build
+from kicad2ems.lines.tlines import build
 from kicad2ems.solvers.lines.fastsolve import solve, qucs_netlist, read_qucs_dataset, part_impedance, find_qucsator
 from kicad2ems.parts import Part
 

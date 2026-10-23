@@ -78,7 +78,7 @@ def test_golden_summary(case, boards):
 def test_round_trip(case, boards, tmp_path):
     """board.json holds everything a solver uses: the board read back gives the same summary, the same line
     model and the same openEMS mesh."""
-    from kicad2ems.solvers.lines.tlines import build
+    from kicad2ems.lines.tlines import build
     from kicad2ems.solvers.openems.mesh import auto_mesh
     b = board_of(case, boards)
     b2 = Board.load(b.save(str(tmp_path / 'b.json')), log=quiet)

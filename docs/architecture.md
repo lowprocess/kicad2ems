@@ -123,7 +123,8 @@ kicad2ems/
     openems/        the openEMS plugin: mesh, boundaries, simulation, antenna, dumps, field reading
     mom.py          the mom25d plugin
     gfdtd.py        the gfdtd plugin: openEMS's plugin run on gfdtd's engine
-    lines/          the line model and its two circuit solvers
+    lines/          the line solvers: the line model as a circuit (qucsator, scikit-rf)
+  lines/          the transmission-line model: sections, Z0, coupled lines (every run, the KiCad plugin's map)
   sparams.py      reciprocity and mixed-mode conversion
   touchstone.py   .sNp files
   plots.py        figures

@@ -116,8 +116,11 @@ here, and openEMS is still built in. In order:
 5. **Tests move with their plugins**; core's own tests run against a stand-in solver plugin, and a CI job
    installs every solver package and runs them together.
 
-Open: whether the line model also becomes a package. It is the one solver that runs with nothing else
-installed, which makes it the natural default.
+The line model stays in core. Its analysis (`kicad2ems/lines/`: sections, Z0, coupled lines) is not a
+solver: every run builds it, and the report, the GUI's overlay, the KiCad plugin's impedance map and the
+example generator use it. Its circuit solvers (`solvers/lines/`: qucsator, scikit-rf) could be split out like
+the others, but they need nothing compiled, they are the one solver that runs with nothing else installed, and
+openEMS's and gfdtd's run-time estimates use them.
 
 ## Shelved
 

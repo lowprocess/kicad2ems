@@ -108,7 +108,7 @@ Planned work is in [ROADMAP.md](../ROADMAP.md).
 
 GPL-3.0-or-later, because openEMS's Python bindings (GPL-3.0-or-later) run in the same process. New
 dependencies must be GPL-compatible. No third-party code is copied into the repository; the impedance
-formulas are implemented from the papers cited in `tlines.py`.
+formulas are implemented from the papers cited in `kicad2ems/lines/tlines.py`.
 
 ---
 [← Testing](testing.md) · [Index](index.md)

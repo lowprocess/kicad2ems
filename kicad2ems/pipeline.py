@@ -6,7 +6,7 @@ One run of kicad2ems as a sequence of stages, driven by a config.Settings, over 
                     checked before any work: one named in `solvers` that cannot run stops the run here
         model()     the board file -> Board (stack, copper, vias, ports, lumped parts, edge walls), written
                     as <name>_board.json: what every solver gets
-        lines()     the transmission-line model (tlines.py): sections, Z0, coupled groups, discontinuities;
+        lines()     the transmission-line model (lines/tlines.py): sections, Z0, coupled groups, discontinuities;
                     what the line solvers (qucs, scikit) solve
         choose()    --solvers auto: the full-wave solver estimated cheapest for this board (Solver.estimate) among
                     those that can run and model it, plus the line model; why, in the log and the summary
@@ -312,7 +312,7 @@ class Job:
             self.summary.pop('lines', None)
 
     def _lines(self):
-        from .solvers.lines.tlines import build
+        from .lines.tlines import build
         self.lm = build(self.m)
         if not self.lm.paths:
             self.log("transmission lines: no routed path from the ports" +
