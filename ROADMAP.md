@@ -1,7 +1,7 @@
 # Roadmap
 
 What is worth doing next, in priority order within each section. Each item comes from something the
-examples or benchmarks showed. Last updated 2026-10-19.
+examples or benchmarks showed. Last updated 2026-10-23.
 
 ## 1. Open questions (correctness)
 
@@ -87,6 +87,37 @@ examples or benchmarks showed. Last updated 2026-10-19.
 ## 6. Examples and validation
 
 - A script that regenerates the solver comparison over every example before a release.
+
+## 7. Solvers as separate packages
+
+The aim is full mix and match: kicad2ems as the board model, the line model and the results, with each
+full-wave solver a package that is installed or not. gfdtd and mom25d are their own repositories now and are
+optional (the `gfdtd` and `mom` extras). Their adapters (`solvers/gfdtd.py`, `mom.py`, `mixed.py`) are still
+here, and openEMS is still built in. In order:
+
+1. **Shared FDTD and results code out of `solvers/openems/`.** With openEMS blocked, a trace of typical runs
+   (preview, auto, mom25d and gfdtd on a board and an antenna) ran most of the package. Only ~400 of its
+   ~3,000 lines need openEMS: `OpenEMS.solve` / `outputs` / `_antenna` / `_convergence` / `readback`,
+   `check_openems`, `venv.py`, `converge.py` and `readback.py`. The rest is shared: the mesh and boundaries
+   (gfdtd and the preview), the model build, run folders, progress and port watch (gfdtd), antenna analysis
+   (mom25d and gfdtd), and the dump formats and readers (mom25d, gfdtd, the GUI). Move it into neutral
+   packages, for example `kicad2ems/fdtd/` (mesh, boundaries, model, run) and `kicad2ems/fields/` (dumps,
+   readers, antenna), and update the ~15 importers (GUI, report, phased, volume3d, the plugins).
+2. **The openEMS adapter as its own package** (`kicad2ems-openems`), registered through the
+   `kicad2ems.solvers` entry point like any other plugin.
+3. **Each adapter goes to its solver's package**, or a thin `kicad2ems-<solver>` package: `mom.py` and
+   `mixed.py` with mom25d, `gfdtd.py` with gfdtd. `BUILTIN` in `solvers/__init__.py` then holds only the
+   line model. `mixed.py` reaches into mom25d's internals (`line.find_runs`, `model.KNOWN_SPAN`,
+   `run.solve_band`, `api.ZONE_OUT`), so these must become mom25d's public API, with a version range pinned.
+4. **No solver names in core code.** The GUI's solver sections (`gui/runner.py`: `SECTION_SOLVERS`,
+   `SECTION_ORDER`), the KiCad plugin's solver menu (`kicadplugin/window.py`), the Filter page's solver
+   choices (`gui/filtertab.py`) and dfsynth's validation (`validate.py`) name openEMS, gfdtd and mom25d.
+   Build them from the registry: each plugin's label, options and GUI group.
+5. **Tests move with their plugins**; core's own tests run against a stand-in solver plugin, and a CI job
+   installs every solver package and runs them together.
+
+Open: whether the line model also becomes a package. It is the one solver that runs with nothing else
+installed, which makes it the natural default.
 
 ## Shelved
 
