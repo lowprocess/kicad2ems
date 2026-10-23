@@ -30,3 +30,4 @@ htmlcov/
 *.so
 *.pyd
 .emerge/
+examples/filter_test/
