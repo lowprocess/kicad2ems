@@ -31,3 +31,5 @@ htmlcov/
 *.pyd
 .emerge/
 examples/filter_test/
+# the KiCad plugin demo video: too large for the repository (kept locally)
+docs/img/readme/*.mp4
