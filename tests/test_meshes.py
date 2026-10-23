@@ -8,6 +8,7 @@ from kicad2ems import meshes, volume3d as v3
 FILTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples', 'rf_interdig.toml')
 
 
+@pytest.mark.mom25d
 def test_preview_writes_the_meshes(run_cli, tmp_path):
     pytest.importorskip('triangle')
     out = tmp_path / 'out'

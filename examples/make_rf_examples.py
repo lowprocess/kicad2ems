@@ -46,7 +46,7 @@ import math, os, sys, uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from kicad2ems.solvers.lines.tlines import microstrip, cpwg, stripline as strip_z   # noqa: E402
-from kicad2ems.solvers.lines.coupled import coupled_microstrip           # noqa: E402
+from kicad2ems.solvers.lines.coupled import coupled_microstrip, coupled_stripline   # noqa: E402
 
 H_SUB, ER, TAND, F0 = 0.8, 4.4, 0.02, 2.4e9
 H4 = 0.2                                # mm of FR-4 between the layers of the 4-layer boards
@@ -393,9 +393,8 @@ def diffvia(path, length=24.0, s=0.2, pitch=1.0, antipad=0.55):
     """A 100 ohm differential pair from F.Cu microstrip (over the In1.Cu plane) through two blind vias to In2.Cu
     stripline (between In1.Cu and B.Cu), the pair fanned out to the via pitch, antipads round the vias in In1.Cu
     and four return vias beside them. Ports P1+ / P1- on F.Cu, P2+ / P2- on In2.Cu."""
-    from mom25d.sim import coupled_stripline_cohn
     wm = round(solve(lambda w: -coupled_microstrip(w, s, H4, ER)[1], -50.0, 0.05, 2.0), 3)
-    ws = round(solve(lambda w: -coupled_stripline_cohn(w * 1e-3, s * 1e-3, 2 * H4 * 1e-3, ER)[1], -50.0, 0.03, 2.0), 3)
+    ws = round(solve(lambda w: -coupled_stripline(w, s, 2 * H4, ER)[1], -50.0, 0.03, 2.0), 3)
     H, yc, xv = 8.0, 4.0, length / 2
     bd = Board(nets=("", "GND", "D_P", "D_N"))
     for sgn, net in ((-1, 2), (1, 3)):

@@ -11,7 +11,7 @@
 #   ./setup.sh --python python3.12 --venv /path/to/venv  another Python, another venv (checkout target)
 #   ./setup.sh --uninstall --target user                 remove what an install of that target added
 #
-# Asks about: the GUI, field dumps, the scikit-rf line model, mom25d's compiled core, the test
+# Asks about: the GUI, field dumps, the scikit-rf line model, mom25d and gfdtd (and their compiled cores), the test
 # tools, the CuPy wheel for your GPU
 # (detected: NVIDIA CUDA 12 / 13, AMD ROCm 7), openEMS (one this Python has, one in another venv linked in,
 # build one with tools/build_openems.sh, or none), qucsator, and a launcher entry and desktop icon for the GUI.
@@ -219,17 +219,22 @@ EXTRAS=()
 ask "GUI (kicad2ems-gui: PySide6, pyqtgraph, PyOpenGL for the 3D field view)?" y && EXTRAS+=(gui)
 ask "frequency-domain field dumps and far fields (h5py)?" y && EXTRAS+=(dumps)
 ask "line model with scikit-rf (--fast skrf; qucsator is a separate program)?" y && EXTRAS+=(fast)
+MOM=0 GFDTD=0
+ask "mom25d (2.5D MoM: planar circuits and antennas, no openEMS needed; from github.com/lowprocess/mom25d)?" y && { MOM=1; EXTRAS+=(mom); }
+ask "gfdtd (3D FDTD on the GPU or a CPU core, openEMS's model; from github.com/lowprocess/gfdtd)?" y && { GFDTD=1; EXTRAS+=(gfdtd); }
 CORE=0
-if command -v g++ >/dev/null || command -v c++ >/dev/null; then
-    ask "build mom25d's compiled core (C++ / OpenMP, ~5x faster MoM)?" y && { CORE=1; EXTRAS+=(core); }
+if [ $MOM = 0 ] && [ $GFDTD = 0 ]; then
+    :
+elif command -v g++ >/dev/null || command -v c++ >/dev/null; then
+    ask "build the compiled cores (C++ / OpenMP: mom25d ~5x, gfdtd ~15x faster on the CPU)?" y && { CORE=1; EXTRAS+=(core); }
 else
-    note "no C++ compiler (g++): mom25d's compiled core is skipped (NumPy kernels, ~5x slower)"
+    note "no C++ compiler (g++): the compiled cores are skipped (NumPy kernels: mom25d ~5x, gfdtd ~15x slower)"
 fi
 ask "test tools (pytest)?" n && EXTRAS+=(test)
 [ "$OEMS" = elsewhere ] && [[ " ${EXTRAS[*]-} " != *" dumps "* ]] && EXTRAS+=(dumps)   # openEMS's ports need h5py
 
 # ---- the GPU: CuPy for mom25d's direct solver -------------------------------------------------------
-bold "GPU (mom25d's LU in complex64: CuPy)"
+bold "GPU (CuPy: mom25d's LU in complex64, gfdtd's engine)"
 GPU_DEF=0 GPU_WHAT="no GPU stack found"
 if command -v nvidia-smi >/dev/null && nvidia-smi >/dev/null 2>&1; then
     CUDA=$(nvidia-smi | sed -n 's/.*CUDA Version: *\([0-9]*\)\..*/\1/p' | head -1) || true
@@ -299,7 +304,7 @@ SPEC=$REPO
 [ ${#EXTRAS[@]} -gt 0 ] && SPEC="$REPO[$(IFS=,; echo "${EXTRAS[*]}")]"
 bold "Installing kicad2ems${EXTRAS:+ [$(IFS=,; echo "${EXTRAS[*]}")]}$([ $EDITABLE = 1 ] && echo ' (editable: this checkout'"'"'s code is what runs)' || echo ' (a copy of this checkout)')"
 # mom25d's mesher: PyPI has no triangle >= 20230923 for every Python (none for 3.14): build it from its repository
-if ! "$VPY" -c 'import triangle' 2>/dev/null && ! pipi -q "triangle>=20230923" 2>/dev/null; then
+if [ $MOM = 1 ] && ! "$VPY" -c 'import triangle' 2>/dev/null && ! pipi -q "triangle>=20230923" 2>/dev/null; then
     note "no triangle wheel for $("$VPY" -V): building it from github.com/drufat/triangle (needs a C compiler)"
     pipi "triangle @ git+https://github.com/drufat/triangle.git@$TRIANGLE_COMMIT"
 fi
@@ -328,9 +333,13 @@ if [ -n "$CUPY" ]; then
 elif [ $DROP_CUPY = 1 ]; then
     $SUDO "$VPY" -m pip uninstall -y cupy-rocm-7-0 cupy-cuda12x cupy-cuda13x 2>/dev/null || true
 fi
-if [ $CORE = 1 ]; then
+if [ $CORE = 1 ] && [ $MOM = 1 ]; then
     bold "Building mom25d's compiled core"
     (cd / && $SUDO "$VPY" -m mom25d.core.build) || note "the core did not build: mom25d runs on NumPy (see the error above)"
+fi
+if [ $CORE = 1 ] && [ $GFDTD = 1 ]; then
+    bold "Building gfdtd's compiled core"
+    (cd / && $SUDO "$VPY" -m gfdtd.core.build) || note "the core did not build: gfdtd runs on NumPy on the CPU (see the error above)"
 fi
 
 # ---- openEMS: linked in from another venv, or built from source ---------------------------------------

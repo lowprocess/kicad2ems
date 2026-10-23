@@ -3,7 +3,9 @@
 [← openEMS simulation](simulation.md) · [Index](index.md) · [Next: Transmission-line model →](transmission-lines.md)
 
 mom25d is a 2.5D method-of-moments solver for circuit boards. It is its own package, in its own
-repository ([mom25d](https://github.com/lowprocess/mom25d)), which kicad2ems installs with itself; it doesn't need openEMS.
+repository ([mom25d](https://github.com/lowprocess/mom25d)): the `mom` extra (`pip install '.[mom]'`), or
+`./setup.sh`, installs it. It doesn't need openEMS. Without it, `kicad2ems --check` lists mom25d (and the mixed
+solver, which is built on it) as not installed, and `--solvers auto` leaves them out.
 
 ```bash
 kicad2ems examples/rf_interdig.toml --solvers mom        # mom25d alone

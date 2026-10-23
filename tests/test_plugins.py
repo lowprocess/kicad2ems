@@ -89,6 +89,7 @@ def _canned_mom(m, freq, **kw):
     return S, [p.name for p in m.ports], [50.0] * n, info
 
 
+@pytest.mark.mom25d
 def test_mom_alone_builds_no_openems_mesh(run_cli, tmp_path, monkeypatch):
     from kicad2ems.solvers import mom
     from kicad2ems.solvers.openems import mesh as fdtd_mesh
@@ -122,6 +123,7 @@ def test_assess_named_and_reference(boards, run_cli, tmp_path, monkeypatch):
     assert code == 0 and 'WARNING: mom25d cannot model this board, left out' in so
 
 
+@pytest.mark.mom25d
 def test_auto_picks_the_cheaper_full_wave_solver(run_cli, tmp_path, monkeypatch):
     from kicad2ems.solvers import mom, gfdtd
     from kicad2ems.solvers.openems import plugin as fdtd

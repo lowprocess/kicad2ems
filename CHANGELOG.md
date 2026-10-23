@@ -14,8 +14,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   plugin stays here; without it installed, gfdtd is listed as not installed. The `gfdtd` command comes with
   the gfdtd package.
 - mom25d is back in its own repository (https://github.com/lowprocess/mom25d), with its history since the import and its tests,
-  which now read saved board files instead of building them with kicad2ems. kicad2ems depends on it; the
-  board-file contract test (tests/test_mom25d_board.py) stays here.
+  which now read saved board files instead of building them with kicad2ems. It is optional, as gfdtd is:
+  the `mom` extra (`all` for every extra but a GPU wheel), and `setup.sh` asks for each. Without it,
+  `--check` lists mom25d and the mixed solver as not installed, auto leaves them out, and the tests that need
+  it are skipped (marker `mom25d`). The board-file contract test (tests/test_mom25d_board.py) stays here.
+- examples/make_rf_examples.py sizes the differential via's stripline pair with the line model's
+  `coupled_stripline` (Cohn) instead of mom25d's copy of the same formula.
 
 ### Fixed
 - gfdtd: a current probe normal to y ran its loop the wrong way round, so a lumped port along y measured its

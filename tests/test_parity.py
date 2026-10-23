@@ -24,6 +24,7 @@ CASES = dict(transition=('demo', ['--nets', 'RF,GND', '--ground', 'B.Cu']),     
              launch=('launch', ['--edge-walls', 'all']))                             # edge walls, inner planes
 
 
+@pytest.mark.mom25d
 @pytest.mark.parametrize('case', list(CASES))
 def test_every_difference_is_declared(case, boards, tmp_path):
     pytest.importorskip('triangle')
@@ -40,6 +41,7 @@ def test_every_difference_is_declared(case, boards, tmp_path):
         assert 'parts' in seen                                      # and splits the parts with ESR
 
 
+@pytest.mark.mom25d
 def test_undeclared_changes_fail(boards, tmp_path, monkeypatch):
     pytest.importorskip('triangle')
     name, args = CASES['transition']
@@ -60,6 +62,7 @@ def test_undeclared_changes_fail(boards, tmp_path, monkeypatch):
     assert problems and all(p.startswith('via:') for p in problems)
 
 
+@pytest.mark.mom25d
 def test_a_dropped_declaration_fails(boards, tmp_path):
     pytest.importorskip('triangle')
     j, prep = _prepared(tmp_path, boards['lowpass'])

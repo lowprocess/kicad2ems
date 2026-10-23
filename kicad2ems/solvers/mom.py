@@ -36,7 +36,7 @@ def mom25d_status():
         import triangle                                             # noqa: F401  (mom25d's default mesher)
     except ModuleNotFoundError as e:
         if e.name == 'mom25d':
-            return False, "mom25d is not installed: python -m pip install 'mom25d @ git+https://github.com/lowprocess/mom25d'"
+            return False, "mom25d is not installed: python -m pip install 'kicad2ems[mom]' (or 'mom25d @ git+https://github.com/lowprocess/mom25d')"
         return False, f"{type(e).__name__}: {e}"
     except Exception as e:                                          # a broken dependency
         return False, f"{type(e).__name__}: {e}"

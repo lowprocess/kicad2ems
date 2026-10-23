@@ -1,6 +1,6 @@
 """Shared fixtures: the generated example boards, a strict stand-in for CSXCAD / openEMS, and an
-in-process command-line runner."""
-import os, subprocess, sys, types
+in-process command-line runner. Tests marked mom25d are skipped without mom25d (the mom extra)."""
+import importlib.util, os, subprocess, sys, types
 import numpy as np
 import pytest
 
@@ -13,6 +13,18 @@ except ImportError:
     pass
 GEN = os.path.join(ROOT, 'examples', 'make_demo_board.py')
 ANT = os.path.join(ROOT, 'examples', 'make_antennas.py')
+
+
+def pytest_configure(config):
+    config.addinivalue_line('markers', 'mom25d: needs mom25d installed (the mom extra); skipped without it')
+
+
+def pytest_collection_modifyitems(config, items):
+    if importlib.util.find_spec('mom25d') is None:
+        skip = pytest.mark.skip(reason='mom25d is not installed (the mom extra)')
+        for item in items:
+            if 'mom25d' in item.keywords:
+                item.add_marker(skip)
 
 
 @pytest.fixture(autouse=True)

@@ -5,7 +5,9 @@ import numpy as np
 import pytest
 from kicad2ems.board import Board
 from kicad2ems.importers.kicad import KiCadBoard
-from mom25d.board import BoardModel, WALL_GAP, wall_points
+
+pytest.importorskip('mom25d')                                       # an optional dependency (the mom extra)
+from mom25d.board import BoardModel, WALL_GAP, wall_points          # noqa: E402
 
 quiet = lambda *a: None
 

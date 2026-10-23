@@ -87,6 +87,7 @@ def test_line_model_only(run_cli, tmp_path, monkeypatch):
     assert 'line model' in page and "<div class='l'>mesh</div>" not in page    # no FDTD mesh tile without openEMS
 
 
+@pytest.mark.mom25d
 def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatch):
     pytest.importorskip('skrf')
     from kicad2ems.solvers import mom

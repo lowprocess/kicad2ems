@@ -7,6 +7,7 @@ import pytest
 FILTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples', 'rf_interdig.toml')
 
 
+@pytest.mark.mom25d
 def test_import():
     import mom25d
     from mom25d.board import BoardModel                             # noqa: F401
@@ -22,6 +23,7 @@ def test_preview_solves_no_full_wave_solver(tmp_path, run_cli):
     assert not (out / 'rf_interdig_mom25d.s2p').exists() and list(out.glob('rf_interdig_*.s2p'))      # the line model's
 
 
+@pytest.mark.mom25d
 def test_mom_run(tmp_path, run_cli, no_csxcad):
     """--solvers mom25d end to end with no openEMS (MoM reads the board), and the line model the config's
     fast = "auto" picks compared against it."""
@@ -43,6 +45,7 @@ def test_mom_run(tmp_path, run_cli, no_csxcad):
     assert 'mom25d' in so
 
 
+@pytest.mark.mom25d
 def test_sigma_reaches_mom(demo_files):
     """--sigma is conductor loss in openEMS's conducting sheets; MoM gets the same, with the copper thickness
     of the ports' layer."""
@@ -59,6 +62,7 @@ def test_sigma_reaches_mom(demo_files):
     assert zs.real[0] > 0                                           # a lossy surface impedance
 
 
+@pytest.mark.mom25d
 def test_current_dumps(boards, run_cli, tmp_path, monkeypatch):
     """--mom-dump: mom25d's surface currents at the frequencies asked, a |J| map each, with --dump-animate one
     period of Re(J e^j phase), and the dumps where the GUI's Fields tab finds them."""
@@ -84,6 +88,7 @@ def test_current_dumps(boards, run_cli, tmp_path, monkeypatch):
     assert any(d['label'].startswith('mom25d dump_J_F_Cu_fd') for d in sm['dumps'])
 
 
+@pytest.mark.mom25d
 def test_antenna_mode(run_cli, tmp_path):
     """mom25d in antenna mode on the patch example: the resonance, efficiency below 1, and openEMS's antenna
     outputs (JSON, plots, the sphere the GUI reads)."""
@@ -104,6 +109,7 @@ def test_antenna_mode(run_cli, tmp_path):
         assert (out / f).exists(), f
 
 
+@pytest.mark.mom25d
 def test_phased_array(run_cli, tmp_path):
     """The 2 x 2 array with a feed per row placed as a 1 x 2 grid (--grid), driven with P2 20 deg behind P1
     (--drive) and steered by a Y step of 40 deg on top (--steer 0,40) with a taper (--taper: two rows, so uniform):
@@ -137,6 +143,7 @@ def test_phased_array(run_cli, tmp_path):
     assert code != 0 and 'needs grid' in so + err
 
 
+@pytest.mark.mom25d
 def test_stop_ends_mom25d_after_its_current_solve(run_cli, tmp_path, monkeypatch):
     """The GUI's Stop (a STOP file, kicad2ems.stop): mom25d ends after the frequency it is solving, with no
     result; the line model (the --fast reference) still gives its. ABORT alone had left mom25d running."""
@@ -162,6 +169,7 @@ def test_stop_ends_mom25d_after_its_current_solve(run_cli, tmp_path, monkeypatch
     assert not (out / 'rf_interdig_mom25d.s2p').exists() and list(out.glob('rf_interdig_*.s2p'))
 
 
+@pytest.mark.mom25d
 def test_short_differential_feed_falls_back_to_single_ended_legs(monkeypatch):
     """--mom-port auto: a pair whose coupled feed is too short for a differential wave port (ports on pads) is
     solved with its legs as single-ended ports and the modes taken from them, instead of failing."""

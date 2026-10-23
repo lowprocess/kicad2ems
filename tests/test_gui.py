@@ -352,6 +352,7 @@ def wilkinson_preview(tmp_path_factory):
     return str(out)
 
 
+@pytest.mark.mom25d
 def test_line_model_drawing(wilkinson_preview):
     """<name>_lines.json: every section with its points, layer height and Z0; paths as ids; the overlay's
     colours, hit test and description."""
@@ -377,6 +378,7 @@ def test_line_model_drawing(wilkinson_preview):
     assert seg.shape[1] == 2 and len(seg) % 2 == 0 and len(seg) > 0
 
 
+@pytest.mark.mom25d
 def test_viewer_sections_and_views(wilkinson_preview):
     """The viewer on a preview: the plan and the section list, one selection in every view; the views a folder
     has nothing for disabled."""

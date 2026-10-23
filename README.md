@@ -8,7 +8,7 @@ report that compares the solvers.
 | Solver | Name | Best for | Needs |
 |---|---|---|---|
 | [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS |
-| [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | cuPy for GPU acceleration |
+| [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | the [mom25d](https://github.com/lowprocess/mom25d) package (`pip install '.[mom]'`); CuPy for GPU acceleration |
 | [gfdtd](docs/gfdtd.md) (3D FDTD on the GPU) | `gfdtd` | openEMS's model, 8–20x faster on a GPU, ~2x on the CPU: the same boards and antennas as openEMS, without conductor loss | the [gfdtd](https://github.com/lowprocess/gfdtd) package (`pip install '.[gfdtd]'`), and CuPy and a GPU or its CPU core (`python -m gfdtd.core.build`) |
 | Transmission-line model | `lines` | a quick estimate: impedance steps, delays, layout mistakes | scikit-rf or qucsator |
 
@@ -100,12 +100,14 @@ source .venv/bin/activate
 
 `setup.sh` asks where to install (a venv in this checkout, the default; for your user, with the commands on
 your PATH; system-wide; or into the Python itself) and which optional parts you want: the GUI, field dumps,
-the line model, mom25d's compiled core, the CuPy package for your GPU, openEMS (one you
+the line model, the mom25d and gfdtd solvers and their compiled cores, the CuPy package for your GPU, openEMS (one you
 have, one in another venv linked in, a local build, or none), qucsator, and a launcher entry and desktop
 icon for the GUI. `./setup.sh --yes` takes the defaults; `./setup.sh --target user` installs for your user.
 The options and installing by hand are in [Getting started](docs/getting-started.md).
 
-openEMS is only needed for the FDTD solver. Everything else works without it. To see what your setup
+openEMS is only needed for the FDTD solver. Everything else works without it. mom25d and gfdtd are optional
+packages from their own repositories (the `mom` and `gfdtd` extras; `pip install '.[all]'` for everything but a
+GPU wheel). Without any of the three, kicad2ems runs the line model alone. To see what your setup
 can run:
 
 ```bash
