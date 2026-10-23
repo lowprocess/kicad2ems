@@ -13,6 +13,9 @@ examples/diff*-top.pos
 fp-info-cache
 examples/demo_*_ideal.s2p
 examples/antenna_*.kicad_pcb
+# made by examples/make_rf_examples.py (rf_interdig is drawn in KiCad, and kept)
+examples/rf_*.kicad_pcb
+!examples/rf_interdig.kicad_pcb
 dist/
 .coverage
 htmlcov/

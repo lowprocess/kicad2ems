@@ -1,6 +1,6 @@
 # kicad2ems example: square spiral inductor, 3 turns of 0.25 mm strip 0.25 mm apart, 5 mm across, an underpass on In1.Cu;
 # ground on B.Cu 0.6 mm below, in series between 50 ohm lines
-#   python examples/make_rf_examples.py spiral examples/rf_spiral     # regenerate the board (already in the repository)
+#   python examples/make_rf_examples.py spiral examples/rf_spiral     # make the board first (it is not in the repository)
 #   kicad2ems examples/rf_spiral.toml --preview
 #   kicad2ems examples/rf_spiral.toml
 board   = "rf_spiral.kicad_pcb"   # paths are relative to this file

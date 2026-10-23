@@ -18,6 +18,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the `mom` extra (`all` for every extra but a GPU wheel), and `setup.sh` asks for each. Without it,
   `--check` lists mom25d and the mixed solver as not installed, auto leaves them out, and the tests that need
   it are skipped (marker `mom25d`). The board-file contract test (tests/test_mom25d_board.py) stays here.
+- The rf_<name>.kicad_pcb example boards are no longer in the repository: `python examples/make_rf_examples.py
+  all` writes them (their configs stay), and the tests make them when they are missing. Only the boards no
+  script makes are kept: rf_interdig, hairpin and sma_launch.
 - examples/make_rf_examples.py sizes the differential via's stripline pair with the line model's
   `coupled_stripline` (Cohn) instead of mom25d's copy of the same formula.
 

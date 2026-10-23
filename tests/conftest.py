@@ -13,6 +13,7 @@ except ImportError:
     pass
 GEN = os.path.join(ROOT, 'examples', 'make_demo_board.py')
 ANT = os.path.join(ROOT, 'examples', 'make_antennas.py')
+RF = os.path.join(ROOT, 'examples', 'make_rf_examples.py')
 
 
 def pytest_configure(config):
@@ -33,6 +34,19 @@ def _scratch_settings(tmp_path_factory, monkeypatch):
     never writes the user's own."""
     if 'XDG_CONFIG_HOME' not in os.environ or not os.environ['XDG_CONFIG_HOME'].startswith(str(tmp_path_factory.getbasetemp())):
         monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path_factory.getbasetemp() / 'xdg'))
+
+
+@pytest.fixture(scope='session', autouse=True)
+def rf_examples():
+    """examples/rf_<kind>.kicad_pcb, which the configs and several tests read where they are: made by
+    make_rf_examples.py (not in the repository) when any is missing."""
+    sys.path.insert(0, os.path.dirname(RF))
+    try:
+        from make_rf_examples import KINDS
+    finally:
+        sys.path.remove(os.path.dirname(RF))
+    if not all(os.path.exists(os.path.join(ROOT, 'examples', f'rf_{k}.kicad_pcb')) for k in KINDS):
+        subprocess.check_call([sys.executable, RF, 'all'], stdout=subprocess.DEVNULL)
 
 
 @pytest.fixture(scope='session')

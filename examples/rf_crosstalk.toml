@@ -1,5 +1,5 @@
 # kicad2ems example: two parallel 50 ohm lines 3 mm apart, 40 mm long: P1 driven, P2 through, P3 near end, P4 far end
-#   python examples/make_rf_examples.py crosstalk examples/rf_crosstalk     # regenerate the board (already in the repository)
+#   python examples/make_rf_examples.py crosstalk examples/rf_crosstalk     # make the board first (it is not in the repository)
 #   kicad2ems examples/rf_crosstalk.toml --preview
 #   kicad2ems examples/rf_crosstalk.toml
 board   = "rf_crosstalk.kicad_pcb"   # paths are relative to this file

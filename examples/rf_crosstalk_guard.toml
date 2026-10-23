@@ -1,5 +1,5 @@
 # kicad2ems example: the crosstalk pair with a grounded 0.8 mm guard trace between the lines, stitched every 4 mm
-#   python examples/make_rf_examples.py crosstalk_guard examples/rf_crosstalk_guard     # regenerate the board (already in the repository)
+#   python examples/make_rf_examples.py crosstalk_guard examples/rf_crosstalk_guard     # make the board first (it is not in the repository)
 #   kicad2ems examples/rf_crosstalk_guard.toml --preview
 #   kicad2ems examples/rf_crosstalk_guard.toml
 board   = "rf_crosstalk_guard.kicad_pcb"   # paths are relative to this file

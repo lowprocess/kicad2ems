@@ -1,5 +1,5 @@
 # kicad2ems example: parallel-coupled-line band-pass, 3 poles, 0.1 dB Chebyshev, 2.4 GHz, 5 % bandwidth, 0.8 mm FR-4
-#   python examples/make_rf_examples.py pcoupled examples/rf_pcoupled     # regenerate the board (already in the repository)
+#   python examples/make_rf_examples.py pcoupled examples/rf_pcoupled     # make the board first (it is not in the repository)
 #   kicad2ems examples/rf_pcoupled.toml --preview
 #   kicad2ems examples/rf_pcoupled.toml
 board   = "rf_pcoupled.kicad_pcb"   # paths are relative to this file

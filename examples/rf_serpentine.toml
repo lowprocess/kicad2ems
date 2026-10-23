@@ -1,5 +1,5 @@
 # kicad2ems example: a 50 ohm serpentine delay line, 6 runs 8 mm long 4.5 mm apart, 80.5 mm along its centre line
-#   python examples/make_rf_examples.py serpentine examples/rf_serpentine     # regenerate the board (already in the repository)
+#   python examples/make_rf_examples.py serpentine examples/rf_serpentine     # make the board first (it is not in the repository)
 #   kicad2ems examples/rf_serpentine.toml --preview
 #   kicad2ems examples/rf_serpentine.toml
 board   = "rf_serpentine.kicad_pcb"   # paths are relative to this file

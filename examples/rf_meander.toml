@@ -1,5 +1,5 @@
 # kicad2ems example: meander inductor in series with a 50 ohm line: a 0.3 mm strip, 5 runs 4 mm long, 0.9 mm apart
-#   python examples/make_rf_examples.py meander examples/rf_meander     # regenerate the board (already in the repository)
+#   python examples/make_rf_examples.py meander examples/rf_meander     # make the board first (it is not in the repository)
 #   kicad2ems examples/rf_meander.toml --preview
 #   kicad2ems examples/rf_meander.toml
 board   = "rf_meander.kicad_pcb"   # paths are relative to this file

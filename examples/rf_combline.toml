@@ -1,6 +1,6 @@
 # kicad2ems example: combline band-pass, 3 rods 45 degrees long at 2.4 GHz, shorted by vias, loaded by 0603 capacitors to
 # ground (0.6 pF on the outer rods, 0.4 pF on the middle one: two neighbours load it more), tapped 50 ohm feeds
-#   python examples/make_rf_examples.py combline examples/rf_combline     # regenerate the board (already in the repository)
+#   python examples/make_rf_examples.py combline examples/rf_combline     # make the board first (it is not in the repository)
 #   kicad2ems examples/rf_combline.toml --preview
 #   kicad2ems examples/rf_combline.toml
 board   = "rf_combline.kicad_pcb"   # paths are relative to this file

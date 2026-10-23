@@ -1,6 +1,6 @@
 # kicad2ems example: broadside-coupled Marchand balun, 2.4 GHz, 4 layers: P1 the 50 ohm input on F.Cu, P2+ / P2- the
 # balanced output on In1.Cu (100 ohm differential)
-#   python examples/make_rf_examples.py marchand examples/rf_marchand     # regenerate the board (already in the repository)
+#   python examples/make_rf_examples.py marchand examples/rf_marchand     # make the board first (it is not in the repository)
 #   kicad2ems examples/rf_marchand.toml --preview
 #   kicad2ems examples/rf_marchand.toml
 board   = "rf_marchand.kicad_pcb"   # paths are relative to this file

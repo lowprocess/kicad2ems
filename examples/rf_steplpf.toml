@@ -1,5 +1,5 @@
 # kicad2ems example: 5-pole Butterworth stepped-impedance low-pass, 2 GHz cut-off, 0.8 mm FR-4
-#   python examples/make_rf_examples.py steplpf examples/rf_steplpf     # regenerate the board (already in the repository)
+#   python examples/make_rf_examples.py steplpf examples/rf_steplpf     # make the board first (it is not in the repository)
 #   kicad2ems examples/rf_steplpf.toml --preview
 #   kicad2ems examples/rf_steplpf.toml
 # 100 ohm / 20 ohm sections (L-C-L-C-L); the spurious pass band of the stepped lines starts above ~5 GHz

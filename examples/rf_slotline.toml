@@ -1,6 +1,6 @@
 # kicad2ems example: two microstrip-to-slotline transitions back to back: a 0.3 mm slot in the B.Cu ground, 20 mm between
 # the crossings, radial stubs on the strips and round cavities at the slot's ends
-#   python examples/make_rf_examples.py slotline examples/rf_slotline     # regenerate the board (already in the repository)
+#   python examples/make_rf_examples.py slotline examples/rf_slotline     # make the board first (it is not in the repository)
 #   kicad2ems examples/rf_slotline.toml --preview
 #   kicad2ems examples/rf_slotline.toml
 board   = "rf_slotline.kicad_pcb"   # paths are relative to this file
