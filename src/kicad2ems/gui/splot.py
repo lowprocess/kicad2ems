@@ -542,7 +542,7 @@ class SPlot(QWidget):
             sp.dot.setData([], [])
 
     def _draw_cuts(self, sp):
-        from ..solvers.openems.antenna import sphere_cuts, sphere_gain
+        from ..fields.antenna import sphere_cuts, sphere_gain
         pw, sph, res = sp.pw, self.sphere, self.antenna
         if sph is None or res is None or sp.freq.currentIndex() < 0:
             return

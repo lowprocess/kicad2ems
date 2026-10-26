@@ -2,7 +2,7 @@
 runs without openEMS, exit codes."""
 import json, os
 import pytest
-from kicad2ems.solvers.openems import simulation
+from kicad2ems.solvers.openems import engine
 from kicad2ems.cli import settings_from_argv
 from kicad2ems.config import build_settings, ConfigError
 
@@ -62,7 +62,7 @@ def test_resolve_backend(monkeypatch):
 
 
 def test_missing_openems_stops_before_any_work(run_cli, tmp_path, monkeypatch):
-    monkeypatch.setattr(simulation, 'check_openems', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
+    monkeypatch.setattr(engine, 'check', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
     out = tmp_path / 'out'
     ev = tmp_path / 'ev.jsonl'
     code, so, _ = run_cli(FILTER, '--solvers', 'openems', '--out', out, '--events', ev)
@@ -74,7 +74,7 @@ def test_missing_openems_stops_before_any_work(run_cli, tmp_path, monkeypatch):
 
 def test_line_model_only(run_cli, tmp_path, monkeypatch):
     pytest.importorskip('skrf')
-    monkeypatch.setattr(simulation, 'check_openems', lambda: pytest.fail('openEMS must not be needed'))
+    monkeypatch.setattr(engine, 'check', lambda: pytest.fail('openEMS must not be needed'))
     out = tmp_path / 'out'
     code, so, err = run_cli(FILTER, '--solvers', 'lines', '--fast', 'skrf', '--points', '51', '--out', out)
     assert code == 0, so + err
@@ -116,6 +116,6 @@ def test_unavailable_reference_is_left_out(run_cli, tmp_path, monkeypatch):
 
 def test_kicad2openems_keeps_openems_as_its_default(tmp_path, monkeypatch, capsys):
     from kicad2ems.cli import main_openems
-    monkeypatch.setattr(simulation, 'check_openems', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
+    monkeypatch.setattr(engine, 'check', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
     assert main_openems([FILTER, '--out', str(tmp_path / 'out')]) == 2         # openEMS named by default: stops
     assert 'openEMS cannot be imported' in capsys.readouterr().out

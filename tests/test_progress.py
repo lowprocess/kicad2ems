@@ -2,7 +2,7 @@
 (no openEMS needed)."""
 import os
 import pytest
-from kicad2ems.solvers.openems.progress import parse_line, fmt_time, Tracker, Monitor, redirect_output
+from kicad2ems.fdtd.progress import parse_line, fmt_time, Tracker, Monitor, redirect_output
 
 LINE = "[@     1m32s] Timestep:       265424 || Speed:  377.2 MC/s (3.435e-04 s/TS) || Energy: ~1.56e-19 (-36.27dB)"
 

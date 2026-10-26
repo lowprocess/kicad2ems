@@ -2,9 +2,10 @@
 
 [← openEMS meshing](meshing.md) · [Index](index.md) · [Next: mom25d →](mom.md)
 
-`solvers/openems/simulation.py` turns the board and its mesh into an openEMS model and runs it.
-`antenna.py` adds the far field in antenna mode. openEMS is imported only inside these functions, so the
-rest of kicad2ems works without it.
+`fdtd/model.py` turns the board and its mesh into an openEMS model and `fdtd/run.py` runs it, on openEMS or
+on any engine with its Python interface (`fdtd/engines.py`: gfdtd). `fdtd/antenna.py` adds the far field in
+antenna mode. openEMS is imported only by its engine (`solvers/openems/engine.py`), so the rest of kicad2ems works
+without it.
 
 ## The model
 

@@ -5,8 +5,9 @@ import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.board import Board
-from kicad2ems.solvers.openems.mesh import auto_mesh
-from kicad2ems.solvers.openems.antenna import antenna_air, record_freqs, match_summary, gain_table, pattern_gain
+from kicad2ems.fdtd.mesh import auto_mesh
+from kicad2ems.fdtd.antenna import antenna_air, record_freqs
+from kicad2ems.fields.antenna import match_summary, gain_table, pattern_gain
 
 
 
@@ -50,7 +51,7 @@ def test_dipole_gap_port(boards):
 
 
 def test_gap_port_direction_in_fdtd(boards, fake_openems, monkeypatch):
-    from kicad2ems.solvers.openems import simulation
+    from kicad2ems.fdtd import model
     m = Board(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
     mesh = auto_mesh(m, 1.5e9, 3.5e9, bc=('PML_8',) * 6, air=30, log=lambda *a: None)
     seen = []
@@ -58,7 +59,7 @@ def test_gap_port_direction_in_fdtd(boards, fake_openems, monkeypatch):
     orig = openEMS.openEMS.AddLumpedPort
     monkeypatch.setattr(openEMS.openEMS, 'AddLumpedPort',
                         lambda self, nr, R, s, e, d, **kw: seen.append(d) or orig(self, nr, R, s, e, d, **kw))
-    simulation.build_fdtd(m, mesh, 1.5e9, 3.5e9, 0, bc=('PML_8',) * 6)
+    model.build_fdtd(m, mesh, 1.5e9, 3.5e9, 0, bc=('PML_8',) * 6)
     assert seen == ['x']
 
 

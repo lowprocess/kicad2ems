@@ -2,7 +2,8 @@
 warning and the CLI / TOML option (no openEMS needed)."""
 import pytest
 from kicad2ems.cli import settings_from_argv
-from kicad2ems.solvers.openems.simulation import pulse_steps, steps_taken, step_limit_warning
+from kicad2ems.fdtd.model import pulse_steps
+from kicad2ems.fdtd.run import steps_taken, step_limit_warning
 
 
 def test_pulse_steps():

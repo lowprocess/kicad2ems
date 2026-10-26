@@ -55,6 +55,12 @@ mysolver = "mypackage.plugin:MySolver"
 It then appears in `--solvers`, `--check`, the config (`[solver.mysolver]`) and the GUI. A plugin that
 fails to load is left out and listed by `--check`.
 
+An FDTD solver subclasses `fdtd.plugin.FDTD`, which builds the mesh and the model, runs the excitations and
+writes the dumps and antenna results. It names its engine (`engine(s)`: a key of `fdtd.engines.ENGINES`, whose
+module's `api(option)` returns its `ContinuousStructure` and `openEMS` classes) and lists the shared settings
+(`MESH + RUN`) before its own. Solvers share a setting by listing the same `Option` object; a plugin that defines
+another setting of the same name is refused.
+
 A solver declares:
 
 | Attribute | Meaning |
@@ -119,10 +125,13 @@ src/kicad2ems/
   parts.py        lumped R/L/C parts
   edges.py        edge walls
   geometry.py     coordinate and polygon helpers
+  fdtd/           shared by the FDTD solvers: boundaries, mesh, the CSX model, engines, runs, antenna runs,
+                  and FDTD, their common plugin class with the shared settings
+  fields/         field results of any solver: dump specs and readers, frames and animations, far-field analysis
   solvers/        the Solver base class and registry
-    openems/        the openEMS plugin: mesh, boundaries, simulation, antenna, dumps, field reading
+    openems/        the openEMS plugin: its engine and import check, --converge
     mom.py          the mom25d plugin
-    gfdtd.py        the gfdtd plugin: openEMS's plugin run on gfdtd's engine
+    gfdtd.py        the gfdtd plugin: the FDTD plugin on gfdtd's engine
     lines/          the line solvers: the line model as a circuit (qucsator, scikit-rf)
   lines/          the transmission-line model: sections, Z0, coupled lines (every run, the KiCad plugin's map)
   sparams.py      reciprocity and mixed-mode conversion

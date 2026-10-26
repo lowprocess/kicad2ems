@@ -1,236 +1,12 @@
 """
-openEMS setup and runs: CSX geometry (dielectrics, copper sheets, via cylinders), lumped ports,
-excitation, boundaries; one FDTD run per excited port. Needs the openEMS / CSXCAD Python
-packages (imported lazily, so everything else works without them).
+FDTD runs: one run per excited port (in parallel with --jobs), each in its own folder
+<out>/<engine>/exc_<port>; the end criteria (PortWatch), progress, and the S-parameter columns from the
+port probes. Any engine with openEMS's interface (engines.py) runs the same way.
 """
 import glob, json, math, os, threading, time
 import numpy as np
-from ...constants import EPS0
-from ...geometry import split_holes
-
-
-def _f(v):
-    """Plain Python float: older CSXCAD / openEMS releases reject numpy scalars (type checks)."""
-    return float(v)
-
-
-def _fl(v):
-    """List of plain floats (coordinates)."""
-    return [float(x) for x in v]
-
-
-def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=None, max_steps=1_000_000,
-               dumps=(), diel='fixed', diel_fref=1e9, exc_fmax=None, api=None):
-    """diel: 'fixed' (loss as a conductivity fitted at the band centre) or 'wideband' (Djordjevic-Sarkar
-    model matched at diel_fref Hz, as Debye poles; see dielectric.py). exc_fmax: upper edge of the
-    Gaussian excitation (default fmax; antenna runs extend it, see antenna.py). api: (ContinuousStructure,
-    openEMS) classes to build with instead of CSXCAD's and openEMS's (readback.py records the calls)."""
-    if api is None:
-        from .venv import activate
-        activate()                                              # an openEMS in another venv (openems_venv)
-        from CSXCAD import ContinuousStructure
-        from openEMS import openEMS
-    else:
-        ContinuousStructure, openEMS = api
-    FDTD = openEMS(NrTS=int(max_steps), EndCriteria=_f(10 ** (end_db / 10)))
-    fe = fmax if exc_fmax is None else exc_fmax
-    f0, fc = _f(0.5 * (fmin + fe)), _f(0.5 * (fe - fmin) * 1.05)
-    FDTD.SetGaussExcite(f0, fc)
-    FDTD.SetBoundaryCond([str(b) for b in bc])
-    CSX = ContinuousStructure()
-    FDTD.SetCSX(CSX)
-    grid = CSX.GetGrid()
-    grid.SetDeltaUnit(1e-3)
-    grid.SetLines('x', np.asarray(mesh['x'], float)); grid.SetLines('y', np.asarray(mesh['y'], float))
-    grid.SetLines('z', np.asarray(mesh['z'], float))
-    lines = [np.asarray(mesh[a], float) for a in 'xyz']
-
-    def on_mesh(s, e, tol=1e-5):
-        """A box's flat sides (start = stop on an axis) moved exactly onto the nearest mesh line: openEMS
-        drops a zero-thickness port or element that misses its line. Two differential legs whose port planes
-        differed by 1e-12 mm got one merged line, and the second leg's excitation found no edges."""
-        s, e = list(s), list(e)
-        for a in range(3):
-            if abs(s[a] - e[a]) < 1e-9 and len(lines[a]):
-                near = lines[a][np.argmin(np.abs(lines[a] - s[a]))]
-                if abs(near - s[a]) < tol:
-                    s[a] = e[a] = float(near)
-        return s, e
-    ox, oy = m.outline.exterior.xy
-    pts = [np.asarray(ox[:-1], float), np.asarray(oy[:-1], float)]
-    for l in m.layers:
-        name = l['name'].replace(' ', '_')
-        if diel == 'wideband' and l['tand'] > 0:
-            mat = _debye_material(CSX, name, l, diel_fref, fmin, fmax, mesh['info']['dt_ps'] * 1e-12)
-        else:                                                       # loss at the centre frequency
-            kappa = _f(2 * np.pi * f0 * EPS0 * l['er'] * l['tand'])
-            mat = CSX.AddMaterial(name, epsilon=_f(l['er']), kappa=kappa)
-        mat.AddLinPoly(pts, 'z', _f(l['z0']), _f(l['z1'] - l['z0']), priority=1)
-    for lay, ps in m.copper.items():
-        if sigma:
-            metal = CSX.AddConductingSheet(f"cu_{lay}", conductivity=_f(sigma), thickness=_f(m.cu_t[lay] * 1e-3))
-        else:
-            metal = CSX.AddMetal(f"cu_{lay}")
-        for p in ps:
-            for q in split_holes(p):
-                x, y = q.exterior.xy
-                metal.AddPolygon([np.asarray(x[:-1], float), np.asarray(y[:-1], float)], 'z', _f(m.cu_z[lay]),
-                                 priority=10)
-    vias = mesh.get('vias', m.vias)                                 # as placed by the mesher (snapped)
-    if vias:
-        vm = CSX.AddMetal('vias')
-        for (x, y, r, z0, z1) in vias:
-            vm.AddCylinder(_fl([x, y, z0]), _fl([x, y, z1]), _f(r), priority=11)
-    walls = mesh.get('walls') or []                                # --edge-walls: PEC sheets where the planes end
-    if walls:
-        wm = CSX.AddMetal('edge_walls')
-        for axis, c, t0, t1, z0, z1 in walls:
-            s, e = ([c, t0, z0], [c, t1, z1]) if axis == 'x' else ([t0, c, z0], [t1, c, z1])
-            wm.AddBox(_fl(s), _fl(e), priority=11)
-    for pt in getattr(m, 'parts', []):                              # lumped R / L / C between two pads
-        s, e = pt.box()
-        if pt.short:
-            CSX.AddMetal(f"part_{pt.ref}").AddBox(_fl(s), _fl(e), priority=12)
-            continue
-        for suffix, vals, series, ps, pe in pt.pieces():
-            ps, pe = on_mesh(ps, pe)
-            kw = {k: _f(v) for k, v in vals.items()}
-            if series:
-                kw['LEtype'] = 1
-            try:
-                el = CSX.AddLumpedElement(f"part_{pt.ref}{suffix}", ny=int(pt.axis), caps=True, **kw)
-            except Exception as ex:                                 # older CSXCAD: no L / LEtype
-                raise RuntimeError(f"{pt.ref}: this CSXCAD cannot make a lumped element with {sorted(kw)} ({ex}) - "
-                                   f"update openEMS, or skip the part (--parts none / Sim.Enable = 0)") from ex
-            el.AddBox(_fl(ps), _fl(pe), priority=12)
-    ports = []
-    for i, p in enumerate(m.ports):
-        s, e = on_mesh(*p.box())
-        ports.append(FDTD.AddLumpedPort(i + 1, _f(p.z0), _fl(s), _fl(e), getattr(p, 'direction', 'z'),
-                                        excite=1.0 if i == excite else 0.0, priority=12))
-    if dumps:
-        from .dumps import add_dumps
-        add_dumps(CSX, dumps)
-    return FDTD, CSX, ports
-
-
-def _debye_material(CSX, name, layer, fref, fmin, fmax, dt):
-    """Debye-pole material for one dielectric (openEMS skips relaxation times below 2 time steps, so
-    the fit only uses poles above 2.5 dt). An engine's own CSXCAD interface (gfdtd's) makes it with
-    AddDebyeMaterial."""
-    from .dielectric import fit_debye
-    e_inf, poles, kappa = fit_debye(layer['er'], layer['tand'], fref, fmin, fmax, tau_min=2.5 * dt)
-    if not poles:
-        return CSX.AddMaterial(name, epsilon=_f(e_inf), kappa=_f(kappa))
-    if hasattr(CSX, 'AddDebyeMaterial'):
-        mat = CSX.AddDebyeMaterial(name, order=len(poles), epsilon=_f(e_inf), kappa=_f(kappa))
-    else:
-        from CSXCAD.CSProperties import CSPropDebyeMaterial
-        mat = CSPropDebyeMaterial(CSX.GetParameterSet(), order=len(poles), name=name, epsilon=_f(e_inf),
-                                  kappa=_f(kappa))
-        CSX.AddProperty(mat)
-    for i, (d, tau) in enumerate(poles):
-        mat.SetDispersiveMaterialProperty(order=i, eps_delta=_f(d), eps_relax=_f(tau))
-    return mat
-
-
-def engine_api(engine):
-    """(ContinuousStructure, openEMS) of an FDTD engine with openEMS's interface: None for openEMS itself,
-    'gfdtd' / 'gfdtd:<backend>' (cupy, numpy, auto) for gfdtd. Picklable, for runs in worker processes."""
-    if not engine or engine == 'openems':
-        return None
-    name, _, backend = engine.partition(':')
-    if name != 'gfdtd':
-        raise ValueError(f"unknown FDTD engine {engine!r}")
-    import functools
-    import gfdtd
-    return gfdtd.ContinuousStructure, functools.partial(gfdtd.openEMS, backend=backend or 'auto')
-
-
-def engine_name(engine):
-    """The engine's folder under the output folder and its name in the log: ('openems', 'openEMS') or
-    ('gfdtd', 'gfdtd')."""
-    name = (engine or 'openems').partition(':')[0]
-    return name, {'openems': 'openEMS'}.get(name, name)
-
-
-def check_openems():
-    """Can this Python import openEMS? Returns (ok, report lines) with the real errors and hints."""
-    import importlib, shutil, sys
-    from .venv import activate
-    from ... import sitecfg
-    why = activate()
-    lines = [f"python      {sys.executable}",
-             f"environment {sys.prefix}" + ("  (virtual env)" if sys.prefix != getattr(sys, 'base_prefix', sys.prefix) else "  (no virtual env active)"),
-             f"LD_LIBRARY_PATH={os.environ.get('LD_LIBRARY_PATH', '')}"]
-    if sitecfg.get('openems_venv'):
-        lines.append(f"openems_venv {sitecfg.get('openems_venv')}" + (f"  (not used: {why})" if why else ''))
-    ok, hints = True, [why] if why else []
-    for mod in ('numpy', 'h5py', 'CSXCAD', 'openEMS'):
-        try:
-            m = importlib.import_module(mod)
-            lines.append(f"  ok      {mod:8s} {getattr(m, '__file__', '')}")
-        except Exception as e:                                  # ImportError, OSError from the .so, ...
-            ok = False
-            msg = f"{type(e).__name__}: {e}"
-            lines.append(f"  FAILED  {mod:8s} {msg}")
-            if isinstance(e, ModuleNotFoundError) and e.name == mod and mod in ('CSXCAD', 'openEMS'):
-                hints.append(f"{mod} is not installed for THIS python ({sys.executable}). If you installed it in a "
-                             f"venv, run kicad2ems from that venv (python -m kicad2ems ...), or pip-install "
-                             f"the {mod} python package (openEMS-Project/{mod}/python) with this python.")
-            elif isinstance(e, ModuleNotFoundError):
-                hints.append(f"missing dependency '{e.name}': python -m pip install {e.name}")
-            elif '.so' in str(e) or 'shared object' in str(e) or isinstance(e, OSError):
-                hints.append(f"{mod} is installed but cannot load the compiled openEMS/CSXCAD libraries: add the "
-                             f"openEMS install's lib folder to LD_LIBRARY_PATH (e.g. export LD_LIBRARY_PATH="
-                             f"$HOME/opt/openEMS/lib:$LD_LIBRARY_PATH)")
-    exe = shutil.which('kicad2ems')
-    if exe:
-        try:
-            with open(exe) as fh:
-                first = fh.readline().strip()
-        except (OSError, UnicodeDecodeError):
-            first = ''
-        launcher = first[2:].strip() if first.startswith('#!') else ''
-        lines.append(f"command     {exe} -> {launcher or '?'}")
-        # compare the bin folders, not resolved files: a venv's python is a symlink to the system one
-        if launcher and os.path.dirname(os.path.abspath(launcher.split()[0])) != os.path.dirname(os.path.abspath(sys.executable)):
-            hints.append(f"the 'kicad2ems' command on PATH runs {launcher}, not this python - reinstall it here "
-                         f"(python -m pip install <kicad2ems folder>) or use: python -m kicad2ems ...")
-    in_venv = sys.prefix != getattr(sys, 'base_prefix', sys.prefix)
-    if not ok and in_venv:
-        cfg = os.path.join(sys.prefix, 'pyvenv.cfg')
-        try:
-            sysite = 'include-system-site-packages = true' in open(cfg).read().replace('True', 'true')
-        except OSError:
-            sysite = True
-        if not sysite:
-            hints.append("this venv does not see system packages: if openEMS came from your distribution "
-                         "(dnf / apt), recreate the venv with  python3 -m venv --system-site-packages <dir>")
-    if hints:
-        lines.append("hints:")
-        lines += [f"  - {h}" for h in dict.fromkeys(hints)]
-    return ok, lines
-
-
-def port_index(m, names):
-    """Indices of single-ended ports to excite: names may be legs (P1+) or whole ports (P1)."""
-    if not names:
-        return list(range(len(m.ports)))
-    want = [s.strip() for s in (names.split(',') if isinstance(names, str) else names)]
-    idx = [i for i, p in enumerate(m.ports) if p.name in want or p.pair in want]
-    if not idx:
-        raise ValueError(f"no port matches {want}; ports: {[p.name for p in m.ports]}")
-    return idx
-
-
-def pulse_steps(fmin, fmax, dt_ps, exc_fmax=None):
-    """Length of openEMS's Gaussian excitation in timesteps (2 * 9 / (2 pi fc) / dt, fc as set in build_fdtd),
-    with the mesher's time step estimate (openEMS's own step is often ~10 % smaller, so the true count is a
-    little higher). The fields must ring down after it: allow --max-steps well above this."""
-    fe = fmax if exc_fmax is None else exc_fmax
-    fc = 0.5 * (fe - fmin) * 1.05
-    return int(np.ceil(2 * 9 / (2 * np.pi * fc) / (dt_ps * 1e-12)))
+from .engines import engine_api, engine_name
+from .model import build_fdtd, pulse_time
 
 
 def _times(fn, n=None):
@@ -243,6 +19,7 @@ def _times(fn, n=None):
                 if n and len(out) >= n:
                     break
     return out
+
 
 
 def steps_taken(path, dt_ps=None):
@@ -265,6 +42,7 @@ def steps_taken(path, dt_ps=None):
     return None
 
 
+
 def step_limit_warning(name, steps, max_steps, end_db):
     """Warning text when a run stopped at --max-steps instead of decaying to --end-db (None otherwise)."""
     if steps is None or steps < 0.97 * max_steps:
@@ -273,7 +51,9 @@ def step_limit_warning(name, steps, max_steps, end_db):
             f"{-end_db:g} dB - the fields may still be ringing; raise --max-steps (or accept a higher --end-db)")
 
 
+
 DEAD_DB = -120.0         # PortWatch: port signals this far below their peak end a run at once
+
 
 
 class PortWatch:
@@ -338,7 +118,7 @@ class PortWatch:
         return port_decay(self.path, self.window, self.z)
 
     def _loop(self):
-        from ... import stop
+        from .. import stop
         while not self._stop.wait(self.interval):
             if stop.requested():                                # the GUI's Stop (stop.py)
                 self.fired = dict(reason='stop')
@@ -358,12 +138,13 @@ class PortWatch:
                 return
 
 
+
 def watch_window(m, fmin):
     """PortWatch's window (s): two periods of the slowest ringing the ports can see. That is fmin's, except on a
     board without lumped parts on its signal nets: nothing there rings below its lowest cavity mode, c0 / (2 D sqrt(er)) over the
     outline's diagonal D, so a band reaching far below it (fmin 0.1 GHz: a 20 ns window, longer than a whole
     run on a 6-layer board) waits no longer than that mode's two periods. At least 1 ns."""
-    from ...constants import C0
+    from ..constants import C0
     w = 2.0 / fmin
     gnd = set(getattr(m, 'ground_nets', ()) or ())
     signal_parts = [pt for pt in getattr(m, 'parts', []) or [] if any(n and n not in gnd for n in _part_nets(m, pt))]
@@ -373,6 +154,7 @@ def watch_window(m, fmin):
         f_low = C0 / (2 * np.hypot(x1 - x0, y1 - y0) * 1e-3 * np.sqrt(er))
         w = min(w, 2.0 / f_low)
     return max(w, 1e-9)
+
 
 
 def _part_nets(m, pt, reach=0.1):
@@ -385,6 +167,7 @@ def _part_nets(m, pt, reach=0.1):
         hit = [(g.distance(q), n) for g, n in zip(ps, nets) if g.distance(q) <= reach]
         out.append(min(hit)[1] if hit else None)
     return out
+
 
 
 def port_decay(path, window, z=50.0):
@@ -408,11 +191,6 @@ def port_decay(path, window, z=50.0):
     return float(tmax), 10 * math.log10(max(last, 1e-300) / peak)
 
 
-def pulse_time(fmin, fmax):
-    """Length (s) of openEMS's Gaussian excitation for the band (as set in build_fdtd)."""
-    fc = 0.5 * (fmax - fmin) * 1.05
-    return 2 * 9 / (2 * math.pi * fc)
-
 
 def execute(FDTD, path, threads=0, verbose=1, progress=None, watch=None):
     """FDTD.Run in `path`, restoring the working directory (openEMS changes it). Returns seconds taken.
@@ -421,7 +199,7 @@ def execute(FDTD, path, threads=0, verbose=1, progress=None, watch=None):
     lines to the terminal ('file': the log only - parallel workers, monitored by the main process);
     on_status(label, status dict) is called for every openEMS status line."""
     from .progress import Monitor, Tracker, redirect_output
-    from ... import stop
+    from .. import stop
     stop.check()                                                # stopped: no further excitation or level
     os.makedirs(path, exist_ok=True)
     for f in ('ABORT', 'run_end.json'):                         # leftovers of an earlier run in this folder
@@ -468,9 +246,11 @@ def execute(FDTD, path, threads=0, verbose=1, progress=None, watch=None):
     return time.time() - t1
 
 
+
 def log_path(path):
     """openEMS's output of a run (written when the run has a progress setting)."""
     return os.path.join(path, 'openems.log')
+
 
 
 class RunResult:
@@ -483,11 +263,13 @@ class RunResult:
         self.ended = {}                             # {port: dict(reason='ports', t_ns, level_db)} when PortWatch ended it
 
 
+
 def run_dir(m, k, out_dir, engine=None):
     """Folder of the run that excites port k: <out>/openems/exc_<port> (P1+ / P1- -> exc_P1p / exc_P1n); another
     engine's under <out>/<engine>/."""
     tag = m.ports[k].name.replace('+', 'p').replace('-', 'n')
     return os.path.abspath(os.path.join(out_dir, engine_name(engine)[0], f"exc_{tag}"))
+
 
 
 def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, xml_path=None, dumps=(),
@@ -506,7 +288,7 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
     token = setup(FDTD, CSX) if setup else None
     os.makedirs(path, exist_ok=True)
     if dumps:
-        from .dumps import write_info
+        from ..fields.dumps import write_info
         write_info(path, dumps, m, mesh['info'].get('dt_ps'))
     else:                                                       # an earlier run's dumps are gone (openEMS cleans up)
         for f in ('dump_info.json', 'dump_norm.json'):
@@ -529,7 +311,7 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
     if fd:                                                      # incident wave at the dump frequencies
         ports[k].CalcPort(path, np.array(fd))
         norm = dict(zip(fd, np.atleast_1d(ports[k].uf_inc)))
-        from .dumps import write_norm
+        from ..fields.dumps import write_norm
         write_norm(path, norm)
     for p in ports:
         p.CalcPort(path, freq)
@@ -539,6 +321,7 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, threads=0, 
     col = np.array([p.uf_ref / ports[k].uf_inc for p in ports]).T
     extra = analyse(path=path, ports=ports, token=token, k=k, col=col) if analyse else None
     return k, col, files, norm, seconds, steps_taken(path, mesh['info']['dt_ps']), extra
+
 
 
 def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, threads=0, xml_path=None,

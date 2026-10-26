@@ -1,7 +1,7 @@
 """Wideband dielectric: Djordjevic-Sarkar model and its Debye-pole fit."""
 import numpy as np
 import pytest
-from kicad2ems.solvers.openems.dielectric import djordjevic_sarkar, fit_debye, debye_eps
+from kicad2ems.fdtd.dielectric import djordjevic_sarkar, fit_debye, debye_eps
 
 
 @pytest.mark.parametrize('er,tand', [(4.3, 0.02), (3.48, 0.0037)])

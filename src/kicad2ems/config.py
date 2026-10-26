@@ -215,9 +215,13 @@ class _Settings:
 
 
 def all_options(reg=None):
-    """CORE, then every solver's options: [(solver name or None, Option)]."""
+    """CORE, then every solver's options: [(solver name or None, Option)]; a setting solvers share, under the first."""
     reg = _solvers_pkg.registry() if reg is None else reg
-    return [(None, o) for o in CORE] + [(sv.name, o) for sv in reg.values() for o in sv.options]
+    out = {o.key: (None, o) for o in CORE}
+    for sv in reg.values():
+        for o in sv.options:
+            out.setdefault(o.key, (sv.name, o))
+    return list(out.values())
 
 
 def settings_class(reg=None):

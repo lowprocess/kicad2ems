@@ -1,1 +1,2 @@
-"""openEMS (3D FDTD): mesh, boundaries, the CSXCAD / openEMS setup and runs, antenna mode, field dumps."""
+"""openEMS (3D FDTD) as a solver plugin: its engine and import check, and --converge. The FDTD model, mesh and runs
+it shares with gfdtd are in kicad2ems.fdtd, the field results in kicad2ems.fields."""

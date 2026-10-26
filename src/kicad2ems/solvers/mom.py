@@ -372,7 +372,7 @@ class MoM25D(Solver):
         loss; nothing radiates below the infinite ground."""
         from mom25d.farfield import far_field, radiated
         from .. import phased
-        from .openems.antenna import match_summary, describe, save as save_antenna
+        from ..fields.antenna import match_summary, describe, save as save_antenna
         from ..plots import plot_antenna, plot_pattern
         s, m, sim = run.s, run.m, held.sim
         names = [p.name for p in sim.ports]
@@ -482,7 +482,7 @@ class MoM25D(Solver):
         currents / extra / unit (the mixed solver's)."""
         if not run.s.mom_dump or held is None:
             return
-        from .openems.fields import DumpSource, save_fd_outputs
+        from ..fields.frames import DumpSource, save_fd_outputs
         tag = self.name
         for port, d in current_dumps(run, held, [f * 1e9 for f in run.s.mom_dump], run.s.dump_port, run.s.mom_near,
                                      tag=tag, **kw):
@@ -513,8 +513,8 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d', currents=N
     RWG currents of each port driven (default: sim.currents of the excitations); extra(k, f_index, column, gx, gy, Jx,
     Jy) -> (Jx, Jy): layer k's grid with what the solver adds (mixed: the stretches put back as lines)."""
     from mom25d.farfield import current_on_grid, near_field
-    from .openems.dumps import Dump, write_info
-    from .openems.fields import write_npz
+    from ..fields.dumps import Dump, write_info
+    from ..fields.frames import write_npz
     sim, model = res.sim, res.model
     names = [p.name for p in sim.ports]
     want = [n.strip() for n in (ports.split(',') if isinstance(ports, str) else ports or [])]

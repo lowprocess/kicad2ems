@@ -17,10 +17,13 @@ Modules
     parts         lumped R / L / C parts from two-pad footprints
     edges         edge walls where the ground planes end at chosen board sides
     options       Option (one setting, declared once) and the value converters
+    fdtd/         shared by the FDTD solvers: boundaries, mesh, model (build_fdtd), engines, run, progress,
+                  dielectric, antenna runs, readback, plugin (FDTD: the common plugin and settings)
+    fields/       field results of any solver: dumps, frames (DumpSource), antenna (far-field analysis)
     solvers/      the solver plugins: Solver, Result, the registry (entry points 'kicad2ems.solvers'),
                   capabilities
-      openems/      openEMS (3D FDTD): plugin, boundaries, mesh, converge, simulation, progress, dielectric,
-                    antenna, dumps, fields
+      openems/      openEMS (3D FDTD): plugin, engine (import and check), venv, converge
+      gfdtd         gfdtd (GPU FDTD): the FDTD plugin on gfdtd's engine
       mom           mom25d (2.5D MoM): the board solved through mom25d.api.solve_board
       lines/        the line model: tlines (sections, Z0, coupled sections, discontinuities), strips, coupled,
                     fastsolve (the sections as a circuit); plugin (qucs, scikit)
@@ -39,7 +42,7 @@ __version__ = '261020-r1'
 
 from .importers.kicad import KiCadBoard, read_pos
 from .board import Board, Port
-from .solvers.openems.boundaries import resolve_bc, cavity_check
-from .solvers.openems.mesh import auto_mesh, smooth_lines
+from .fdtd.boundaries import resolve_bc, cavity_check
+from .fdtd.mesh import auto_mesh, smooth_lines
 from .sparams import mixed_mode
 from .touchstone import write_touchstone, read_touchstone

@@ -14,12 +14,17 @@ def test_plugin_registered():
     assert get('gpu-fdtd') is sv and sv.in_auto and not sv.in_all
     assert sv.check()[0]                                              # numpy at worst
     assert sv.capabilities['antenna'].startswith('yes')
-    assert [o.key for o in sv.options] == ['gfdtd_backend']
+    assert sv.options[-1].key == 'gfdtd_backend'                    # its own, after the shared FDTD settings
+    shared = {o.key: o for o in registry()['openems'].options}
+    assert all(shared[o.key] is o for o in sv.options[:-1])
 
 
 def test_engine_api_and_run_dir():
-    from kicad2ems.solvers.openems.simulation import engine_api, run_dir
-    assert engine_api(None) is None and engine_api('openems') is None
+    from kicad2ems.fdtd.engines import engine_api, engine_name
+    from kicad2ems.fdtd.run import run_dir
+    assert engine_name(None) == ('openems', 'openEMS') and engine_name('gfdtd:cupy') == ('gfdtd', 'gfdtd')
+    with pytest.raises(ValueError, match='unknown FDTD engine'):
+        engine_api('hfss')
     cs, fd = engine_api('gfdtd:numpy')
     assert cs is gfdtd.ContinuousStructure and fd().backend == 'numpy'
 
@@ -36,9 +41,10 @@ def test_build_fdtd_builds_the_board_on_gfdtd(demo_files):
     """kicad2ems's openEMS model, built through gfdtd's API, lowers to an operator: ports, copper, vias."""
     from kicad2ems.importers.kicad import KiCadBoard
     from kicad2ems.board import Board
-    from kicad2ems.solvers.openems.boundaries import resolve_bc
-    from kicad2ems.solvers.openems.simulation import build_fdtd, engine_api
-    from kicad2ems.solvers.openems.mesh import auto_mesh
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.model import build_fdtd
+    from kicad2ems.fdtd.engines import engine_api
+    from kicad2ems.fdtd.mesh import auto_mesh
     base, _ = demo_files
     m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
     bc = resolve_bc('auto', m)

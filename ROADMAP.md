@@ -1,7 +1,7 @@
 # Roadmap
 
 What is worth doing next, in priority order within each section. Each item comes from something the
-examples or benchmarks showed. Last updated 2026-10-23.
+examples or benchmarks showed. Last updated 2026-10-26.
 
 ## 1. Open questions (correctness)
 
@@ -95,14 +95,13 @@ full-wave solver a package that is installed or not. gfdtd and mom25d are their 
 optional (the `gfdtd` and `mom` extras). Their adapters (`solvers/gfdtd.py`, `mom.py`, `mixed.py`) are still
 here, and openEMS is still built in. In order:
 
-1. **Shared FDTD and results code out of `solvers/openems/`.** With openEMS blocked, a trace of typical runs
-   (preview, auto, mom25d and gfdtd on a board and an antenna) ran most of the package. Only ~400 of its
-   ~3,000 lines need openEMS: `OpenEMS.solve` / `outputs` / `_antenna` / `_convergence` / `readback`,
-   `check_openems`, `venv.py`, `converge.py` and `readback.py`. The rest is shared: the mesh and boundaries
-   (gfdtd and the preview), the model build, run folders, progress and port watch (gfdtd), antenna analysis
-   (mom25d and gfdtd), and the dump formats and readers (mom25d, gfdtd, the GUI). Move it into neutral
-   packages, for example `src/kicad2ems/fdtd/` (mesh, boundaries, model, run) and `src/kicad2ems/fields/` (dumps,
-   readers, antenna), and update the ~15 importers (GUI, report, phased, volume3d, the plugins).
+1. ~~**Shared FDTD and results code out of `solvers/openems/`.**~~ Done (2026-10-26): `src/kicad2ems/fdtd/`
+   (boundaries, mesh, dielectric, model, engines, run, progress, antenna runs, readback, and `FDTD`, the plugin
+   class with the shared settings that openEMS and gfdtd both subclass) and `src/kicad2ems/fields/` (dumps,
+   frames, far-field analysis). `solvers/openems/` keeps its engine and import check, venv and `--converge`.
+   Left for the steps below: `fdtd/engines.py` lists the two engines by module (`ENGINES`), and
+   `build_fdtd` falls back to `CSXCAD.CSProperties` for a CSXCAD without `AddDebyeMaterial`; both move to the
+   engines' own packages. The shared settings' GUI sections are still named `openEMS/...` (step 4).
 2. **The openEMS adapter as its own package** (`kicad2ems-openems`), registered through the
    `kicad2ems.solvers` entry point like any other plugin.
 3. **Each adapter goes to its solver's package**, or a thin `kicad2ems-<solver>` package: `mom.py` and

@@ -3,7 +3,7 @@
 as a coloured sheet in place, and the far-field pattern as a surface over it, for the GUI's field panel
 (gui/volumetab.py) and its GIF / MP4 export. No Qt here: the arrays the OpenGL items take.
 
-    vol = Volume(src, frame)                     # one frame of a volume dump (solvers.openems.fields.DumpSource)
+    vol = Volume(src, frame)                     # one frame of a volume dump (fields.frames.DumpSource)
     v, (origin, step) = vol.scalar('mag', phase)  # uniform grid (mm): |F| or |Re(F e^jphi)| or a component
     rgba = colour(v, lo, hi, log=True)           # (nx, ny, nz, 4) uint8: low values transparent
     tris = copper_triangles(geometry)            # [(layer, z mm, vertices (n, 3), faces (m, 3))]
@@ -276,7 +276,7 @@ def pattern_mesh(sph, i, scale, centre, radius, range_db=30.0, cmap='jet'):
     times scale) as the distance from `centre` (mm) in each direction, `radius` mm at the peak and 0 at
     range_db below it. Returns (vertices (n, 3), faces (m, 3), colours (n, 4) floats, peak dBi)."""
     import matplotlib
-    from .solvers.openems.antenna import sphere_gain
+    from .fields.antenna import sphere_gain
     g = sphere_gain(sph, i, scale)                                    # (nphi, ntheta)
     gdb = 10 * np.log10(np.maximum(g, 1e-12))
     peak = float(gdb.max())

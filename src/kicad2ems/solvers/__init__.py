@@ -150,22 +150,23 @@ def _entry_points():
 
 def registry():
     """{name: Solver}: the built-in solvers, then those installed through entry points (in their order). A
-    plugin that fails to load, or reuses a name or a setting, is left out and listed in `broken`."""
+    plugin that fails to load, or reuses a name or a setting, is left out and listed in `broken`. Solvers may share
+    a setting by listing the same Option object (the FDTD solvers' mesh and run settings)."""
     global _registry
     if _registry is None:
-        reg, keys = {}, set()
+        reg, keys = {}, {}
         for spec in BUILTIN:
             sv = _load(spec)()
             reg[sv.name] = sv
-            keys |= {o.key for o in sv.options}
+            keys |= {o.key: o for o in sv.options}
         names = set(reg) | {a for sv in reg.values() for a in sv.aliases} | {LINES, 'all'}
         from ..config import CORE
-        keys |= {o.key for o in CORE}
+        keys |= {o.key: o for o in CORE}
         for ep in _entry_points():
             try:
                 sv = ep.load()()
                 clash = ([sv.name] if sv.name in names else []) + [a for a in sv.aliases if a in names] + \
-                        [o.key for o in sv.options if o.key in keys]
+                        [o.key for o in sv.options if keys.get(o.key, o) is not o]
                 if not sv.name or clash:
                     raise ValueError(f"name or settings already taken: {', '.join(clash) or 'no name'}")
             except Exception as e:                                  # a broken plugin never stops kicad2ems
@@ -173,7 +174,7 @@ def registry():
                 continue
             reg[sv.name] = sv
             names |= {sv.name, *sv.aliases}
-            keys |= {o.key for o in sv.options}
+            keys |= {o.key: o for o in sv.options}
         _registry = reg
     return _registry
 

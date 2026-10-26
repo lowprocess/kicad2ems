@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QComboBox, QPushButton, QLa
                                QSlider, QSpinBox, QFileDialog, QMessageBox, QProgressDialog, QApplication)
 import pyqtgraph as pg
 from .panels import FlowLayout
-from ..solvers.openems import fields as F
+from ..fields import frames as F
 
 COMPONENTS = [('|F|', 'mag'), ('x', 'x'), ('y', 'y'), ('z', 'z')]
 

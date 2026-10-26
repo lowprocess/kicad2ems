@@ -9,6 +9,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Changed
+- The FDTD code openEMS and gfdtd share left `solvers/openems/` (ROADMAP 7.1): `kicad2ems.fdtd` holds the
+  boundaries, mesh, model (`build_fdtd`), engines, runs, progress, antenna runs and `FDTD`, the plugin class both
+  solvers subclass; `kicad2ems.fields` the field results any solver writes (dumps, frames, far-field
+  analysis). gfdtd no longer subclasses openEMS's plugin and lists the shared mesh and run settings itself (the
+  same settings, under `[solver.gfdtd]` too). `solvers/openems/` keeps openEMS's engine and import check and
+  `--converge`. Code importing `kicad2ems.solvers.openems.<module>` needs the new paths.
 - gfdtd is its own package, in its own repository (https://github.com/lowprocess/gfdtd), with its history,
   tests, benchmark and README. kicad2ems takes it as an optional dependency (the `gfdtd` extra) and its solver
   plugin stays here; without it installed, gfdtd is listed as not installed. The `gfdtd` command comes with

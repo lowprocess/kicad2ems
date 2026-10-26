@@ -225,7 +225,7 @@ def combine(data, a, f_pattern=None):
     """The antenna of drive a from the per-port far fields: sphere (as load_sphere's: theta, phi, freq, dmax,
     prad, e_norm), rows (gain_table's), active ((nf, n) b / a of the driven ports, nan elsewhere) and the beam's
     peak at f_pattern (default the data's): dict(theta, phi, gain_dbi)."""
-    from .solvers.openems.antenna import gain_table, add_polarisation
+    from .fields.antenna import gain_table, add_polarisation
     th, ph, freq = data['theta'], data['phi'], data['freq']
     th_s = data.get('theta_sphere', th)
     a = np.asarray(a, complex)

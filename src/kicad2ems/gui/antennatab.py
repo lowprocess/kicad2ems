@@ -5,7 +5,7 @@ them (match, gain, efficiency, pattern cuts); the Viewer draws the pattern in 3D
 """
 import glob, json, os
 import numpy as np
-from ..solvers.openems.antenna import read_sphere
+from ..fields.antenna import read_sphere
 
 
 def antenna_files(out_dir):

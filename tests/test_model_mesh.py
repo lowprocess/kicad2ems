@@ -6,7 +6,7 @@ from shapely.geometry import box, Point
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from kicad2ems.geometry import split_holes
-from kicad2ems.solvers.openems.mesh import smooth_lines, auto_mesh
+from kicad2ems.fdtd.mesh import smooth_lines, auto_mesh
 from kicad2ems.board import Board
 from kicad2ems.sparams import mixed_mode
 from kicad2ems.touchstone import read_touchstone, write_touchstone
@@ -52,7 +52,7 @@ def test_model_ports_and_mesh(demo):
     for p in m.ports:                                               # port plane is a mesh line
         assert np.min(np.abs(mesh['xy'[p.axis]] - p.c[p.axis])) < 1e-9
     # trace edges: thirds rule -> a line 1/3 of the edge cell inside each edge of the 0.35 mm trace
-    from kicad2ems.solvers.openems.mesh import THIRDS_CELL
+    from kicad2ems.fdtd.mesh import THIRDS_CELL
     yc, w, f = p1.c[1], p1.w, mesh['info']['fine_mm'] * THIRDS_CELL
     for e, s in ((yc - w / 2, 1), (yc + w / 2, -1)):
         assert np.min(np.abs(mesh['y'] - (e + s * f / 3))) < 1e-6
@@ -87,7 +87,7 @@ def test_touchstone_roundtrip(tmp_path):
 
 
 def test_boundaries_and_air_margin(demo):
-    from kicad2ems.solvers.openems.boundaries import resolve_bc, cavity_check
+    from kicad2ems.fdtd.boundaries import resolve_bc, cavity_check
     m = Board(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu')
     bc = resolve_bc('auto', m)
     assert bc == ['MUR'] * 4 + ['PEC', 'MUR']                       # solid ground -> PEC bottom
@@ -101,7 +101,7 @@ def test_boundaries_and_air_margin(demo):
     front = auto_mesh(m, 1e9, 8e9, bc=bc, air=(5, 5, 5, 40, 0, 5), log=lambda *a: None)   # per side: 40 mm at ymax
     assert front['y'][-1] == pytest.approx(ob[3] + 40.0) and front['y'][0] == pytest.approx(mesh['y'][0])
     assert front['info']['air_mm'] == 0 and front['info']['air_sides_mm'][3] == 40
-    from kicad2ems.solvers.openems.plugin import _air
+    from kicad2ems.fdtd.plugin import _air
     assert _air('7') == 7.0 and _air('1,2,3,4,5,6') == (1, 2, 3, 4, 5, 6) and _air(None) is None
     with pytest.raises(ValueError):
         _air('1,2')
@@ -131,7 +131,7 @@ def test_mixed_mode_keeps_known_entries_when_some_are_unknown():
 
 def test_merge_keeps_inside_line_of_narrow_trace():
     """Regression: chained clusters + averaging pushed the line inside a 0.15 mm trace outside it."""
-    from kicad2ems.solvers.openems.mesh import _merge
+    from kicad2ems.fdtd.mesh import _merge
     fine = 0.0375
     edge = -5.075                                                   # lower edge of a trace, metal above
     lines = [edge - 2 * fine / 3, -5.081, edge + fine / 3]          # outside third, a curve vertex, inside third
@@ -141,8 +141,8 @@ def test_merge_keeps_inside_line_of_narrow_trace():
 
 
 def test_curves_extremes_and_via_snapping(demo):
-    from kicad2ems.solvers.openems.mesh import curve_lines
-    from kicad2ems.solvers.openems.boundaries import resolve_bc
+    from kicad2ems.fdtd.mesh import curve_lines
+    from kicad2ems.fdtd.boundaries import resolve_bc
     circle = np.array(Point(1, 2).buffer(0.5, quad_segs=8).exterior.coords)
     xs, ys = curve_lines(circle, 0.05)
     assert set(np.round(xs, 6)) == {0.5, 1.5} and set(np.round(ys, 6)) == {1.5, 2.5}   # 2 lines per axis, not 32
@@ -185,7 +185,7 @@ def test_curve_lines_follow_a_thin_curved_track():
     """Along a curved run, 'extremes' adds a line every `step` mm (the copper's width), so a thin curved
     track stays connected on the mesh; without a step only the run's ends and extremes."""
     import numpy as np
-    from kicad2ems.solvers.openems.mesh import curve_lines
+    from kicad2ems.fdtd.mesh import curve_lines
     a = np.linspace(0, np.pi, 60)
     arc = np.column_stack([10 * np.cos(a), 10 * np.sin(a)])
     ring = np.vstack([arc, arc[::-1] * 0.92, arc[:1]])            # a half annulus 0.8 mm wide, closed
@@ -199,7 +199,7 @@ def test_curve_lines_follow_a_thin_curved_track():
 def test_mesh_zone_keeps_the_signal_detail():
     """--mesh-zone: the ground copper's edges get lines only near the signal copper. On sma_launch the planes'
     cut-outs far from the line no longer set the y mesh; every line near the signal trace stays."""
-    from kicad2ems.solvers.openems.mesh import signal_zone
+    from kicad2ems.fdtd.mesh import signal_zone
     ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
     m = Board(KiCadBoard(os.path.join(ex, 'sma_launch.kicad_pcb')), nets=['REF_SMA_N', 'GND'],
               pos_file=os.path.join(ex, 'sma_launch-all.pos'), log=lambda *a: None)
@@ -219,6 +219,6 @@ def test_mesh_zone_keeps_the_signal_detail():
 def test_bottom_pec_only_on_an_unbroken_plane(name, plane):
     """bc auto puts a PEC wall on the bottom plane only where nothing is cut out of it: a PEC under the defected
     ground's dumbbell or the slotline's slot shorted them (the DGS came out a plain line)."""
-    from kicad2ems.solvers.openems.boundaries import bottom_is_plane
+    from kicad2ems.fdtd.boundaries import bottom_is_plane
     m = Board(KiCadBoard(os.path.join(ROOT, 'examples', name + '.kicad_pcb')), nets=['RF', 'GND'], log=lambda *a: None)
     assert bottom_is_plane(m) is plane

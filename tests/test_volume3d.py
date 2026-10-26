@@ -4,8 +4,8 @@ import os
 import numpy as np
 import pytest
 from kicad2ems import volume3d as v3
-from kicad2ems.solvers.openems import fields as F
-from kicad2ems.solvers.openems.dumps import write_info, parse_dump
+from kicad2ems.fields import frames as F
+from kicad2ems.fields.dumps import write_info, parse_dump
 
 
 @pytest.fixture(scope='module')

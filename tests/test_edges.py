@@ -44,9 +44,9 @@ def test_walls_follow_the_planes_and_clear_the_launch(launch):
 
 
 def test_build_fdtd_adds_the_walls(launch, fake_openems):
-    from kicad2ems.solvers.openems.simulation import build_fdtd
-    from kicad2ems.solvers.openems.boundaries import resolve_bc
-    from kicad2ems.solvers.openems.mesh import auto_mesh
+    from kicad2ems.fdtd.model import build_fdtd
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.mesh import auto_mesh
     m = launch
     bc = resolve_bc('auto', m)
     mesh = auto_mesh(m, 1e9, 6e9, bc=bc, log=lambda *a: None)
@@ -69,8 +69,8 @@ def test_walls_and_vias_sit_on_mesh_lines(launch, boards):
     """openEMS drops a zero-thickness sheet or a thin cylinder that misses every mesh line (an 'unused
     primitive'): walls are snapped onto lines, and vias whose own lines were merged away are snapped
     even beyond --via-snap."""
-    from kicad2ems.solvers.openems.boundaries import resolve_bc
-    from kicad2ems.solvers.openems.mesh import auto_mesh
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.mesh import auto_mesh
     from kicad2ems.edges import snap
     for m in (launch, Board(KiCadBoard(boards['demo'] + '.kicad_pcb'), nets=['RF', 'GND'],
                             pos_file=boards['demo'] + '-top.pos', ground='B.Cu', log=lambda *a: None)):

@@ -361,7 +361,7 @@ class VolumeTab(QWidget):
         if self.gl is None:
             return False
         import glob
-        from ..solvers.openems.fields import find_dumps
+        from ..fields.frames import find_dumps
         from .. import meshes
         self.srcs = [s for s in find_dumps(out_dir) if v3.is_volume(s) or v3.is_plane(s)]
         boards = sorted(glob.glob(os.path.join(out_dir, '*_board.json')), key=os.path.getmtime)
@@ -885,7 +885,7 @@ class VolumeTab(QWidget):
         return imgs
 
     def save(self, path, fps=None, orbit=0.0):
-        from ..solvers.openems.fields import write_frames
+        from ..fields.frames import write_frames
         return write_frames(self.render_frames(orbit), path, fps or self.fps.value())
 
     def save_dialog(self, ext):

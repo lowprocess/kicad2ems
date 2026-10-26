@@ -67,7 +67,7 @@ def test_current_dumps(boards, run_cli, tmp_path, monkeypatch):
     """--mom-dump: mom25d's surface currents at the frequencies asked, a |J| map each, with --dump-animate one
     period of Re(J e^j phase), and the dumps where the GUI's Fields tab finds them."""
     pytest.importorskip('triangle')
-    from kicad2ems.solvers.openems import fields as F
+    from kicad2ems.fields import frames as F
     save = F.save_fd_outputs
     monkeypatch.setattr(F, 'save_fd_outputs', lambda *a, **kw: save(*a, n_phase=4, **kw))     # 4 frames, not 24
     base, out = boards['lowpass'], tmp_path / 'out'

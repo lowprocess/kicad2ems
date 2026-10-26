@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.board import Board
-from kicad2ems.solvers.openems.dumps import parse_dump, add_dumps, read_fd, plot_fd_dumps
+from kicad2ems.fields.dumps import parse_dump, add_dumps, read_fd, plot_fd_dumps
 
 
 @pytest.fixture(scope='module')

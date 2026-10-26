@@ -193,7 +193,7 @@ def _saw_section(saw):
 
 def _mesh_section(sm, g, st):
     """openEMS's mesh: cells, cell sizes, time step, boundaries, the preview, the convergence levels."""
-    from .solvers.openems.mesh import air_text
+    from .fdtd.mesh import air_text
     rows = [['cells', f"{g['nx']} × {g['ny']} × {g['nz']} = {g['cells']:,}"],
             ['fine cell (copper edges)', f"{g['fine_mm']:.4f} mm"],
             ['largest cell (dielectric / air)', f"{g['maxres_die_mm']:.3f} / {g['maxres_air_mm']:.3f} mm"],

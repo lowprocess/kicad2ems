@@ -1,7 +1,7 @@
 """--jobs: excitations run in worker processes fill the same S columns as the serial loop (stub runs,
 no openEMS needed)."""
 import numpy as np
-from kicad2ems.solvers.openems import simulation
+from kicad2ems.fdtd import run
 from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.board import Board
 
@@ -17,12 +17,12 @@ def test_parallel_matches_serial(demo_files, tmp_path, monkeypatch):
     base, _ = demo_files
     m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
               log=lambda *a: None)
-    monkeypatch.setattr(simulation, '_run_port', fake_run_port)
+    monkeypatch.setattr(run, '_run_port', fake_run_port)
     freq = np.linspace(1e9, 2e9, 3)
     excite = list(range(len(m.ports)))
     log = []
-    r1 = simulation.run_excitations(m, {}, freq, excite, None, str(tmp_path), jobs=1, log=log.append)
-    r2 = simulation.run_excitations(m, {}, freq, excite, None, str(tmp_path), jobs=2, log=log.append)
+    r1 = run.run_excitations(m, {}, freq, excite, None, str(tmp_path), jobs=1, log=log.append)
+    r2 = run.run_excitations(m, {}, freq, excite, None, str(tmp_path), jobs=2, log=log.append)
     assert np.array_equal(r1.S, r2.S) and not np.isnan(r1.S).any()
     assert r1.steps == r2.steps == {p.name: 100 for p in m.ports}
     assert any('2 at a time' in l for l in log)

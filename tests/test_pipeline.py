@@ -3,8 +3,9 @@ plots, line-model comparison, convergence, antenna outputs, JSON summary and rep
 import json
 import numpy as np
 import pytest
-from kicad2ems.solvers.openems import simulation, antenna
-from kicad2ems.solvers.openems.simulation import RunResult
+from kicad2ems.fdtd import run, antenna
+from kicad2ems.fdtd.run import RunResult
+from kicad2ems.solvers.openems import engine
 
 
 def _canned(m, mesh, freq, excite, bc, out_dir, **kw):
@@ -23,8 +24,8 @@ def _canned(m, mesh, freq, excite, bc, out_dir, **kw):
 
 @pytest.fixture
 def no_openems(monkeypatch):
-    monkeypatch.setattr(simulation, 'check_openems', lambda: (True, []))
-    monkeypatch.setattr(simulation, 'run_excitations', _canned)
+    monkeypatch.setattr(engine, 'check', lambda: (True, []))
+    monkeypatch.setattr(run, 'run_excitations', _canned)
 
 
 def test_sparams_run_with_fast_model_and_convergence(demo_files, run_cli, tmp_path, no_openems):
@@ -49,7 +50,7 @@ def test_sparams_run_with_fast_model_and_convergence(demo_files, run_cli, tmp_pa
 
 
 def test_antenna_run(boards, run_cli, tmp_path, monkeypatch):
-    monkeypatch.setattr(simulation, 'check_openems', lambda: (True, []))
+    monkeypatch.setattr(engine, 'check', lambda: (True, []))
 
     def fake_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, step=2.0, log=print, **kw):
         r = _canned(m, mesh, freq, [k], bc, out_dir)
