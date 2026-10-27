@@ -53,6 +53,13 @@ python -m gfdtd.core.build      # optional: gfdtd's compiled CPU core
 pip install cupy-rocm-7-0       # optional, AMD GPU (ROCm 7); NVIDIA: cupy-cuda12x or cupy-cuda13x
 ```
 
+mom25d's mesher, triangle, has no wheel on PyPI for every Python (none for 3.14). If the `mom` extra fails on
+`triangle>=20230923`, build it from its repository first (needs a C compiler; `setup.sh` does this for you):
+
+```bash
+pip install "triangle @ git+https://github.com/drufat/triangle.git@595b43eb6682992a0b1012b9671bf860c0e6ae56"
+```
+
 openEMS is not on PyPI. Install it from your distribution if it has it, or build it:
 
 ```bash
