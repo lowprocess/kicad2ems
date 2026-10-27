@@ -88,7 +88,7 @@ def _solvers(v):
     """Solver names (aliases allowed; 'lines' for the line model, 'all' for every solver but the variants of another, as mixed) in
     registry order, or
     None for an empty list."""
-    from .solvers import registry, aliases, ordered, LINES, AUTO
+    from .solvers import registry, aliases, ordered, missing, LINES, AUTO
     names = dict(aliases(), line=LINES, lines=LINES, fast=LINES, auto=AUTO)
     out = set()
     for x in strlist(v) or []:
@@ -97,6 +97,8 @@ def _solvers(v):
             out |= {n for n, sv in registry().items() if sv.consumes != 'network' and getattr(sv, 'in_all', True)} | {LINES}
         elif x in names:
             out.add(names[x])
+        elif missing(x):
+            raise ValueError(missing(x))
         else:
             raise ValueError(f"no solver {x!r}: choose from {', '.join(list(registry()) + [LINES, AUTO, 'all'])}")
     return ordered(out) or None
@@ -197,12 +199,12 @@ class _Settings:
         (openEMS prepares its mesh preview; preview=False: the plan as without --preview).
         A solver named in `solvers` is a result the run is for: if it cannot run, the run stops before it starts.
         One added by --mom / --fast is a reference next to the others: if it cannot run, that is a warning."""
-        from .solvers import ordered, registry, LINES, AUTO
+        from .solvers import ordered, registry, LINES, AUTO, MOM
         line = {'skrf': 'scikit', 'qucsator': 'qucs'}.get(self.fast, LINES)
         named = [line if x == LINES else x for x in self.solvers] if self.solvers is not None else [AUTO]
         run = set(named)
         if self.mom:
-            run.add('mom25d')
+            run.add(MOM)
         if self.fast:
             run.add(line)
         if self.preview if preview is None else preview:                    # no full-wave solve: the line model

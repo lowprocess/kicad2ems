@@ -117,19 +117,13 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
 
 def _debye_material(CSX, name, layer, fref, fmin, fmax, dt):
     """Debye-pole material for one dielectric (openEMS skips relaxation times below 2 time steps, so
-    the fit only uses poles above 2.5 dt). An engine's own CSXCAD interface (gfdtd's) makes it with
-    AddDebyeMaterial."""
+    the fit only uses poles above 2.5 dt). Every engine's structure has AddDebyeMaterial (kicad2ems-openems adds it to
+    a CSXCAD without it)."""
     from .dielectric import fit_debye
     e_inf, poles, kappa = fit_debye(layer['er'], layer['tand'], fref, fmin, fmax, tau_min=2.5 * dt)
     if not poles:
         return CSX.AddMaterial(name, epsilon=_f(e_inf), kappa=_f(kappa))
-    if hasattr(CSX, 'AddDebyeMaterial'):
-        mat = CSX.AddDebyeMaterial(name, order=len(poles), epsilon=_f(e_inf), kappa=_f(kappa))
-    else:
-        from CSXCAD.CSProperties import CSPropDebyeMaterial
-        mat = CSPropDebyeMaterial(CSX.GetParameterSet(), order=len(poles), name=name, epsilon=_f(e_inf),
-                                  kappa=_f(kappa))
-        CSX.AddProperty(mat)
+    mat = CSX.AddDebyeMaterial(name, order=len(poles), epsilon=_f(e_inf), kappa=_f(kappa))
     for i, (d, tau) in enumerate(poles):
         mat.SetDispersiveMaterialProperty(order=i, eps_delta=_f(d), eps_relax=_f(tau))
     return mat

@@ -5,20 +5,43 @@ event stream (--events, JSON lines). No Qt here, so it is testable without a dis
     run = Run(settings_dict, out_dir, preview=False)
     run.argv()                     # [python, -m, kicad2ems, <out>/gui_run.toml, --events, ...]
     tail = EventTail(path); tail.read() -> [event dicts]
-    stop_runs(out_dir)             # STOP for the run (stop.py), ABORT into every openEMS run folder
+    stop_runs(out_dir)             # STOP for the run (stop.py), ABORT into every FDTD run folder
 """
 import glob, json, os, sys
 
-# the option groups (options.Option.group) as the form's group boxes; others under their own name
-GUI_GROUPS = {'board': 'Board', 'band': 'Frequency', 'solvers': 'Solvers', 'output': 'Output', 'mom25d': 'mom25d',
-              'antenna': 'Output', 'field dumps': 'Output',
-              'gfdtd (GPU FDTD)': 'gfdtd'}
-# a section per solver, greyed while none of its solvers is ticked (auto: openEMS, mom25d and the line model may
-# run); 'openEMS/Mesh': the Mesh sub-section of openEMS's. gfdtd runs openEMS's model: its mesh and run settings
-SECTION_SOLVERS = {'openEMS': {'openems', 'gfdtd'}, 'gfdtd': {'gfdtd'}, 'mom25d': {'mom25d'}}
-SECTION_ORDER = ['Board', 'Frequency', 'Solvers', 'openEMS', 'gfdtd', 'mom25d', 'Output']
-# the headings shown, where they differ from the section's key: openEMS's settings are gfdtd's too
-SECTION_TITLES = {'openEMS': 'openEMS + gfdtd (FDTD)'}
+# the core option groups (options.Option.group) as the form's group boxes; a solver's under their own name, its
+# section ('FDTD/Mesh': the Mesh sub-section of the FDTD section)
+GUI_GROUPS = {'board': 'Board', 'band': 'Frequency', 'solvers': 'Solvers', 'output': 'Output',
+              'antenna': 'Output', 'field dumps': 'Output'}
+FIRST, LAST = ['Board', 'Frequency', 'Solvers'], ['Output']
+
+
+def solver_sections(reg=None):
+    """{section: [solver names]}, in registry order: the sections of the solvers' settings, each greyed while none
+    of its solvers is ticked. A section several solvers list (the FDTD one: openEMS's and gfdtd's mesh and run
+    settings) has them all."""
+    from ..solvers import registry
+    out = {}
+    for name, sv in (registry() if reg is None else reg).items():
+        for o in sv.options:
+            top = GUI_GROUPS.get(o.group, o.group).split('/')[0]
+            if o.gui and top not in FIRST + LAST and name not in out.setdefault(top, []):
+                out[top].append(name)
+    return out
+
+
+def section_title(top, names):
+    """A section's heading: its name, and the solvers sharing it unless it is one of theirs ('FDTD (openEMS,
+    gfdtd)')."""
+    from ..solvers import registry
+    if len(names) < 2 or top in names:
+        return top
+    return f"{top} ({', '.join(registry()[n].label.split(' (')[0] for n in names)})"
+
+
+SECTION_SOLVERS = {top: set(names) for top, names in solver_sections().items()}
+SECTION_ORDER = FIRST + list(SECTION_SOLVERS) + LAST
+SECTION_TITLES = {top: section_title(top, names) for top, names in solver_sections().items()}
 # single settings greyed unless their case holds: the antenna's in antenna mode, with a solver that has one
 ANTENNA_FIELDS = ('ff_freq', 'drive', 'grid', 'steer', 'taper')
 # the line model's qucsator is a setting of the machine, not of a board: the Solvers and hardware window
@@ -303,11 +326,11 @@ class EventTail:
 
 def stop_runs(out_dir):
     """Ask the run writing to out_dir to stop: its STOP file (every solver checks it, stop.py), and ABORT into
-    every openEMS run folder under out_dir (openEMS stops and finishes normally); returns those folders."""
+    every FDTD run folder under out_dir (<out>/<engine>/exc_<port>: the engine stops and finishes normally); returns
+    those folders."""
     from .. import stop
     stop.request(out_dir)
-    dirs = glob.glob(os.path.join(out_dir, 'openems', 'exc_*')) + glob.glob(os.path.join(out_dir, 'gfdtd', 'exc_*')) + \
-        glob.glob(os.path.join(out_dir, 'converge', '*', 'openems', 'exc_*'))
+    dirs = glob.glob(os.path.join(out_dir, '*', 'exc_*')) + glob.glob(os.path.join(out_dir, 'converge', '*', '*', 'exc_*'))
     for d in dirs:
         open(os.path.join(d, 'ABORT'), 'w').close()
     return dirs

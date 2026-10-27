@@ -5,7 +5,7 @@ port probes. Any engine with openEMS's interface (engines.py) runs the same way.
 """
 import glob, json, math, os, threading, time
 import numpy as np
-from .engines import engine_api, engine_name
+from .engines import engine_api, engine_name, engine_module
 from .model import build_fdtd, pulse_time
 
 
@@ -379,7 +379,7 @@ def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, 
     import multiprocessing
     from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
     from .progress import Monitor, Tracker
-    in_threads = folder == 'gfdtd'                                  # one process: the runs share the GPU (a stream each)
+    in_threads = getattr(engine_module(engine), 'IN_THREADS', False)   # one process: the runs share it (gfdtd: the GPU)
     log(f"{who}: {len(tasks)} excitation(s), {jobs} at a time" + ('' if in_threads else f", {threads} thread(s) each") +
         f" ({who} output in openems.log of each run under {os.path.join(out_dir, folder)})")
     mon = None

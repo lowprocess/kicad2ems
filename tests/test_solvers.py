@@ -2,7 +2,7 @@
 runs without openEMS, exit codes."""
 import json, os
 import pytest
-from kicad2ems.solvers.openems import engine
+from kicad2ems_openems import engine
 from kicad2ems.cli import settings_from_argv
 from kicad2ems.config import build_settings, ConfigError
 
@@ -66,7 +66,7 @@ def test_missing_openems_stops_before_any_work(run_cli, tmp_path, monkeypatch):
     out = tmp_path / 'out'
     ev = tmp_path / 'ev.jsonl'
     code, so, _ = run_cli(FILTER, '--solvers', 'openems', '--out', out, '--events', ev)
-    assert code == 2 and '--solvers mom,lines' in so
+    assert code == 2 and 'openEMS (FDTD) cannot run - details' in so and 'another solver' in so
     events = [json.loads(l) for l in ev.read_text().splitlines()]
     assert not [e for e in events if e['kind'] == 'stage'] and (events[-1]['kind'], events[-1]['code']) == ('done', 2)
     assert not (out / 'rf_interdig_mesh.png').exists()                  # nothing built: it stopped at once
@@ -90,7 +90,7 @@ def test_line_model_only(run_cli, tmp_path, monkeypatch):
 @pytest.mark.mom25d
 def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatch):
     pytest.importorskip('skrf')
-    from kicad2ems.solvers import mom
+    from mom25d.kicad2ems import mom
     monkeypatch.setattr(mom, 'mom25d_status', lambda: (True, '0.0 (test)'))
 
     def broken(*a, **kw):
@@ -105,7 +105,7 @@ def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatc
 
 
 def test_unavailable_reference_is_left_out(run_cli, tmp_path, monkeypatch):
-    from kicad2ems.solvers import mom
+    from mom25d.kicad2ems import mom
     monkeypatch.setattr(mom, 'mom25d_status', lambda: (False, 'ImportError: no mom25d'))
     out = tmp_path / 'out'
     code, so, _ = run_cli(FILTER, '--preview', '--mom', '--out', out)
@@ -118,4 +118,4 @@ def test_kicad2openems_keeps_openems_as_its_default(tmp_path, monkeypatch, capsy
     from kicad2ems.cli import main_openems
     monkeypatch.setattr(engine, 'check', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
     assert main_openems([FILTER, '--out', str(tmp_path / 'out')]) == 2         # openEMS named by default: stops
-    assert 'openEMS cannot be imported' in capsys.readouterr().out
+    assert 'openEMS (FDTD) cannot run - details' in capsys.readouterr().out

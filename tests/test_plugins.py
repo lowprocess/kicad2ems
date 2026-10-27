@@ -13,6 +13,7 @@ FILTER = os.path.join(ROOT, 'examples', 'rf_interdig.toml')
 
 
 def test_registry_and_aliases():
+    """The line solvers built in, the others from their packages (kicad2ems-openems, mom25d, gfdtd), by order."""
     reg = solvers.registry()
     assert list(reg) == ['openems', 'mom25d', 'mixed', 'gfdtd', 'qucs', 'scikit']
     assert [solvers.get(a).name for a in ('fdtd', 'MOM', 'qucsator', 'skrf')] == ['openems', 'mom25d', 'qucs', 'scikit']
@@ -45,10 +46,11 @@ def test_entry_point_plugins(monkeypatch):
         options = [solvers.Option('fmin', 1.0)]                     # a core setting: refused
     monkeypatch.setattr(solvers, '_registry', None)
     monkeypatch.setattr(solvers, 'broken', [])
-    monkeypatch.setattr(solvers, '_entry_points', lambda: [_EP('fake', _Fake), _EP('bad', ImportError('no numpy')),
-                                                           _EP('clash', Clash)])
+    installed = solvers._entry_points()                             # the solver packages: openEMS, mom25d, gfdtd
+    monkeypatch.setattr(solvers, '_entry_points', lambda: installed + [_EP('fake', _Fake), _EP('bad', ImportError('no numpy')),
+                                                                       _EP('clash', Clash)])
     reg = solvers.registry()
-    assert list(reg) == ['openems', 'mom25d', 'mixed', 'gfdtd', 'qucs', 'scikit', 'fake'] and solvers.get('fk') is reg['fake']
+    assert list(reg) == ['openems', 'mom25d', 'mixed', 'gfdtd', 'fake', 'qucs', 'scikit'] and solvers.get('fk') is reg['fake']
     assert [b[0].split(' =')[0] for b in solvers.broken] == ['bad', 'clash']
     assert 'ImportError: no numpy' in solvers.broken[0][1] and 'fmin' in solvers.broken[1][1]
     S = settings_class(reg)                                         # its options become settings
@@ -71,7 +73,8 @@ def test_shared_fdtd_settings(monkeypatch):
         options = [solvers.Option('res', 10.0)]                     # the shared setting, redefined: refused
     monkeypatch.setattr(solvers, '_registry', None)
     monkeypatch.setattr(solvers, 'broken', [])
-    monkeypatch.setattr(solvers, '_entry_points', lambda: [_EP('fdtd2', Engine), _EP('clash', Clash)])
+    installed = solvers._entry_points()
+    monkeypatch.setattr(solvers, '_entry_points', lambda: installed + [_EP('fdtd2', Engine), _EP('clash', Clash)])
     reg = solvers.registry()
     assert 'fdtd2' in reg and [b[0].split(' =')[0] for b in solvers.broken] == ['clash']
     owner = [(o.key, n) for n, o in all_options(reg)]
@@ -115,7 +118,7 @@ def _canned_mom(m, freq, **kw):
 
 @pytest.mark.mom25d
 def test_mom_alone_builds_no_openems_mesh(run_cli, tmp_path, monkeypatch):
-    from kicad2ems.solvers import mom
+    from mom25d.kicad2ems import mom
     from kicad2ems.fdtd import mesh as fdtd_mesh
     monkeypatch.setattr(mom, 'solve', _canned_mom)
     monkeypatch.setattr(mom, 'mom25d_status', lambda: (True, '0.0 (test)'))
@@ -137,7 +140,7 @@ def test_mom_alone_builds_no_openems_mesh(run_cli, tmp_path, monkeypatch):
 def test_assess_named_and_reference(boards, run_cli, tmp_path, monkeypatch):
     """A gap-fed dipole: mom25d cannot model it. Named, the run stops before any solver; added with --mom, it is
     left out with a warning."""
-    from kicad2ems.solvers import mom
+    from mom25d.kicad2ems import mom
     monkeypatch.setattr(mom, 'mom25d_status', lambda: (True, '0.0 (test)'))
     monkeypatch.setattr(mom, 'solve', lambda *a, **k: pytest.fail('mom25d must not run'))
     out = tmp_path / 'out'
@@ -149,9 +152,10 @@ def test_assess_named_and_reference(boards, run_cli, tmp_path, monkeypatch):
 
 @pytest.mark.mom25d
 def test_auto_picks_the_cheaper_full_wave_solver(run_cli, tmp_path, monkeypatch):
-    from kicad2ems.solvers import mom, gfdtd
-    from kicad2ems.solvers.openems import plugin as fdtd
-    from kicad2ems.solvers.openems import engine
+    from mom25d.kicad2ems import mom
+    from gfdtd import kicad2ems as gfdtd
+    from kicad2ems_openems import plugin as fdtd
+    from kicad2ems_openems import engine
     monkeypatch.setattr(mom, 'solve', _canned_mom)
     monkeypatch.setattr(mom, 'mom25d_status', lambda: (True, '0.0 (test)'))
     monkeypatch.setattr(engine, 'check', lambda: (True, ['  ok      openEMS  /x/openEMS/__init__.py']))
@@ -185,7 +189,7 @@ def settings_plan(v):
 
 
 def test_auto_leaves_out_what_cannot_model_the_board(boards, run_cli, tmp_path, monkeypatch):
-    from kicad2ems.solvers import mom
+    from mom25d.kicad2ems import mom
     monkeypatch.setattr(mom, 'mom25d_status', lambda: (True, '0.0 (test)'))
     monkeypatch.setattr(mom.MoM25D, 'estimate', lambda self, run: pytest.fail('a dipole is not for mom25d'))
     out = tmp_path / 'out'

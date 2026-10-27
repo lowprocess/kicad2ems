@@ -33,7 +33,7 @@ from . import __version__, stop
 from .board import Board
 from .plots import save, preview, plot_results, plot_lines
 from .touchstone import write_touchstone, read_touchstone
-from .solvers import registry, label, resolve_lines, LINES, AUTO, FEATURES
+from .solvers import registry, label, resolve_lines, missing, LINES, AUTO, MOM, FEATURES
 from .parity import describe
 
 
@@ -267,13 +267,15 @@ class Job:
             ok, what = reg[name].check(s)
             if ok:
                 continue
-            if name == 'openems' and name in self.named:
-                self.log("openEMS cannot be imported - details:\n" + "\n".join(reg[name].details()[1]) + "\n"
-                         "Without openEMS: --preview (model, mesh, line sections), or the solvers that need no "
-                         "openEMS: --solvers mom,lines")
+            details = reg[name].details()[1] if name in self.named else [what]
+            if details != [what]:                                   # a longer check: say all of it (openEMS's import)
+                self.log(f"{label(name)} cannot run - details:\n" + "\n".join(details) + "\n"
+                         f"Without it: --preview (model, mesh, line sections), or another solver (--check lists them)")
                 return False
             if not self._drop(name, what):
                 return False
+        if s.mom and MOM not in reg:                                # --mom's reference, not installed
+            self.log(f"WARNING: --mom: {missing(MOM)}")
         for name in list(self.previewed):                           # a preview prepares them, solves none: warn
             sv = reg[name]
             ok, what = (True, '') if sv.previewed else sv.check(s)  # (openEMS's mesh preview needs no openEMS)
@@ -290,7 +292,7 @@ class Job:
         self.wrote('board (what every solver gets)', m.save(self.path('_board.json')))
         ob = m.outline.bounds
         self.summary['model'] = dict(
-            board=s.board, outline_mm=[ob[2] - ob[0], ob[3] - ob[1]], nets=s.nets or 'all', diel=s.diel,
+            board=s.board, outline_mm=[ob[2] - ob[0], ob[3] - ob[1]], nets=s.nets or 'all', diel=getattr(s, 'diel', None),
             vias=len(m.vias), vias_signal=int(sum(m.via_signal)), signal_nets=sorted(m.signal_nets),
             stack=[dict(name=l['name'], z0=l['z0'], z1=l['z1'], er=l['er'], tand=l['tand']) for l in m.layers[::-1]],
             copper=[dict(layer=n, z=m.cu_z[n], modelled=n in m.copper) for n in m.cu_order[::-1]],
@@ -380,7 +382,7 @@ class Job:
                 self.log(f"--preview: {pick[0]} would run (without --preview); the preview has the line model and "
                          f"openEMS's mesh")
             pick = [p for p in pick if reg[p].consumes != 'board']
-            self.previewed += ['openems'] if 'openems' in reg and 'openems' not in not_used else []
+            self.previewed += [n for n, sv in reg.items() if sv.previewed and n not in not_used][:1]
         swap = lambda xs: [x for x in xs if x != AUTO] + [p for p in pick if p not in xs] if AUTO in xs else xs
         self.plan, self.named = swap(self.plan), swap(self.named)
         self.plan = [n for n in reg if n in self.plan]
@@ -502,7 +504,7 @@ class Job:
         sm.update(warnings=self.warnings, log=list(self.messages), runtime_s=time.time() - self.t0)
         if 'results' in sm:                                          # the keys older readers use
             sm.update(ports=sm['results']['names'], zref=sm['results']['zref'], excited=sm['results']['excited'],
-                      parts=sm['model']['parts'], diel=self.s.diel)
+                      parts=sm['model']['parts'], diel=getattr(self.s, 'diel', None))
         with open(js, 'w') as fh:
             json.dump(sm, fh, indent=1, default=_plain)
         if not self.s.no_report:

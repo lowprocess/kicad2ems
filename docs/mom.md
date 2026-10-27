@@ -274,7 +274,7 @@ at least two cells long.
 <a id="mixed"></a>
 ## The mixed solver: long lines as transmission lines
 
-`--solvers mixed` (`src/kicad2ems/solvers/mixed.py`) is mom25d with the middle of each long, lone, straight run of
+`--solvers mixed` (`mom25d/kicad2ems/mixed.py` in mom25d's repository) is mom25d with the middle of each long, lone, straight run of
 signal trace cut out of the board and put back as a transmission line. mom25d solves the rest with a de-embedded
 wave port on each face of each cut. Each port's line is characterised on its own cross-section: the planes over
 it and coplanar ground beside it. Each cut then becomes a line of that γ and Zc, and the lines are joined into

@@ -7,7 +7,7 @@ report that compares the solvers.
 
 | Solver | Name | Best for | Needs |
 |---|---|---|---|
-| [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS |
+| [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS, and its plugin [kicad2ems-openems](https://github.com/lowprocess/kicad2ems-openems) (`pip install '.[openems]'`) |
 | [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | the [mom25d](https://github.com/lowprocess/mom25d) package (`pip install '.[mom]'`); CuPy for GPU acceleration |
 | [gfdtd](docs/gfdtd.md) (3D FDTD on the GPU) | `gfdtd` | openEMS's model, 8–20x faster on a GPU, ~2x on the CPU: the same boards and antennas as openEMS, without conductor loss | the [gfdtd](https://github.com/lowprocess/gfdtd) package (`pip install '.[gfdtd]'`), and CuPy and a GPU or its CPU core (`python -m gfdtd.core.build`) |
 | Transmission-line model | `lines` | a quick estimate: impedance steps, delays, layout mistakes | scikit-rf or qucsator |
@@ -106,9 +106,9 @@ have, one in another venv linked in, a local build, or none), qucsator, and a la
 icon for the GUI. `./setup.sh --yes` takes the defaults; `./setup.sh --target user` installs for your user.
 The options and installing by hand are in [Getting started](docs/getting-started.md).
 
-openEMS is only needed for the FDTD solver. Everything else works without it. mom25d and gfdtd are optional
-packages from their own repositories (the `mom` and `gfdtd` extras; `pip install '.[all]'` for everything but a
-GPU wheel). Without any of the three, kicad2ems runs the line model alone. To see what your setup
+The full-wave solvers are optional packages from their own repositories, each with its kicad2ems plugin: the
+`openems` extra (kicad2ems-openems; openEMS itself is needed only for it), `mom` and `gfdtd` (`pip install
+'.[all]'` for everything but a GPU wheel). Without any of the three, kicad2ems runs the line model alone. To see what your setup
 can run:
 
 ```bash

@@ -43,8 +43,9 @@ desktop icon, the link to openEMS, and the venv if you say so.
 kicad2ems needs Python 3.10 or newer.
 
 ```bash
-pip install .                   # kicad2ems: the line model, openEMS's model and mesh
-pip install '.[mom,gfdtd]'      # the mom25d and gfdtd solvers, from their own repositories
+pip install .                   # kicad2ems: the line model, the FDTD model and mesh
+pip install '.[openems,mom,gfdtd]'   # the full-wave solvers and their plugins, from their own repositories
+                                     # (openems: the plugin; openEMS itself as below)
 pip install '.[gui,dumps,fast]' # the GUI, field dumps, the scikit-rf line model
 pip install '.[all]'            # or all of the above
 python -m mom25d.core.build     # optional: mom25d's compiled core

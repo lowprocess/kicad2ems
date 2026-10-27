@@ -84,15 +84,23 @@ def settings_from_argv(argv=None, default_solvers=None):
 
 
 def check_report():
-    """--check: (openEMS usable, lines): openEMS's import check, every solver, the GUI, what each solver models."""
+    """--check: (a full-wave solver usable, lines): each solver's check (the longer ones in full: openEMS's import),
+    the solver packages not installed, the GUI, what each solver models."""
     import importlib
-    from .solvers import registry, broken, capability_table
+    from .solvers import registry, broken, capability_table, missing, EXTRAS
     reg = registry()
-    ok_fdtd, lines = reg['openems'].details()
-    lines += ['', 'solvers:']
+    lines, ready = [], []
+    for name, sv in reg.items():
+        ok, what = sv.details()
+        if len(what) > 1:
+            lines += [f"{sv.label}:"] + what + ['']
+        if ok and sv.consumes == 'board':
+            ready.append(name)
+    lines.append('solvers:')
     for name, sv in reg.items():
         ok, what = sv.check()
         lines.append(f"  {'ok' if ok else 'missing':7s} {name:<8s} {sv.label}: {what}")
+    lines += [f"  missing {names[0]:<8s} {missing(names[0])}" for names in EXTRAS.values() if missing(names[0])]
     lines += [f"  BROKEN  {ep}: {err}" for ep, err in broken]
     try:
         importlib.import_module('PySide6')
@@ -101,9 +109,9 @@ def check_report():
     except ImportError:
         lines.append("  missing GUI      python -m pip install 'kicad2ems[gui]' (PySide6, pyqtgraph)")
     lines += ['', 'what each solver models (docs/architecture.md):'] + capability_table() + ['']
-    lines.append("openEMS: ready" if ok_fdtd else "openEMS: NOT usable from this python (without it: --preview, "
-                                                  "--solvers mom,lines)")
-    return ok_fdtd, lines
+    lines.append(f"full-wave solvers ready: {', '.join(ready)}" if ready else
+                 "no full-wave solver usable from this python (without one: --preview, --solvers lines)")
+    return bool(ready), lines
 
 
 def init(argv):

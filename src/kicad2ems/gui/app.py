@@ -23,8 +23,9 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, Q
                                QFileDialog, QScrollArea, QMessageBox, QDockWidget, QToolBar, QStyle, QToolButton,
                                QDialog, QTabWidget)
 import pyqtgraph as pg
-from .runner import (FIELDS, SEMICOLON_LISTS, SECTION_TITLES, TICK, Run, EventTail, stop_runs, settings_values,
+from .runner import (FIELDS, SEMICOLON_LISTS, SECTION_SOLVERS, SECTION_TITLES, TICK, Run, EventTail, stop_runs, settings_values,
                      extra_values, find_results, save_config, solvers_from_form, solver_ticks)
+from ..fdtd.plugin import G_DUMP
 from .splot import SPlot, default_layout
 from .panels import Section, FlowLayout
 from .systempanel import SystemPanel
@@ -122,12 +123,15 @@ class SetupTab(QWidget):
                 groups[group].addRow(label, w)
             self.field_labels[key] = groups[group].labelForField(w)
             self.edits[key] = (w, kind)
-        groups['openEMS/Field dumps'].addRow('Add a dump', self._dump_builder())
-        note = QLabel("gfdtd runs openEMS's model: its mesh, run and dump settings are those under\n"
-                      f"{SECTION_TITLES['openEMS']} above")
-        note.setWordWrap(True)
-        note.setEnabled(False)                                      # greyed: a note, not a setting
-        groups['gfdtd'].insertRow(0, note)
+        if G_DUMP in groups:                                        # an FDTD solver installed
+            groups[G_DUMP].addRow('Add a dump', self._dump_builder())
+        for top, need in SECTION_SOLVERS.items():                   # a solver's own section, when it also shares
+            shared = [t for t, n in SECTION_SOLVERS.items() if t != top and len(n) > 1 and need <= n]   # another
+            if len(need) == 1 and shared and top in groups:
+                note = QLabel(f"{top} also uses the settings under {SECTION_TITLES[shared[0]]} above")
+                note.setWordWrap(True)
+                note.setEnabled(False)                              # greyed: a note, not a setting
+                groups[top].insertRow(0, note)
         left.addStretch(1)
         lw = QWidget()
         lw.setLayout(left)
@@ -186,11 +190,11 @@ class SetupTab(QWidget):
     def _update_sections(self):
         """A solver's section (and the shared ones) greyed while none of its solvers is ticked: auto may run
         openEMS, mom25d and the line model."""
-        from .runner import SECTION_SOLVERS
+        from ..solvers import registry
         ticked = {n for n, w in self.solver_boxes.items() if w.isChecked()}
         auto = self.edits.get(f"{TICK}auto", (None,))[0]
-        if auto is not None and auto.isChecked():
-            ticked |= {'openems', 'mom25d', 'qucs', 'scikit'}
+        if auto is not None and auto.isChecked():                   # the solvers auto may run, the line model's
+            ticked |= {n for n, sv in registry().items() if sv.in_auto or sv.consumes == 'network'}
         tops = {g.split('/')[0]: sec for g, sec in self.sections.items() if '/' not in g}
         tops.update({t: sec for t, (sec, _) in self.parents.items()})
         for top, sec in tops.items():
@@ -203,7 +207,8 @@ class SetupTab(QWidget):
             sec.setToolTip('' if on else f"for {names}: tick it under Solvers to use these settings")
         from .runner import ANTENNA_FIELDS
         mode = self.edits.get('mode', (None,))[0]
-        antenna = mode is not None and mode.currentText() == 'antenna' and bool({'openems', 'gfdtd', 'mom25d'} & ticked)
+        radiating = [n for n, sv in registry().items() if sv.capabilities.get('antenna', 'no').split(':')[0] != 'no']
+        antenna = mode is not None and mode.currentText() == 'antenna' and bool(set(radiating) & ticked)
         for key in ANTENNA_FIELDS:                                  # antenna settings: antenna mode only
             if key not in self.edits:
                 continue
@@ -212,8 +217,8 @@ class SetupTab(QWidget):
             lab = self.field_labels.get(key)
             if lab is not None:
                 lab.setEnabled(antenna)
-            w.setToolTip('' if antenna else "antenna mode only (Solvers: Mode = antenna, with openEMS, gfdtd or "
-                                            "mom25d)")
+            w.setToolTip('' if antenna else "antenna mode only (Solvers: Mode = antenna, with " +
+                         " or ".join(self.solver_labels.get(n, n) for n in radiating) + ")")
 
     def _dump_builder(self):
         """FIELD, where (a layer, an x / y / z plane, the volume), GHz -> a spec appended to the dumps."""

@@ -1,10 +1,10 @@
 """
-The solvers, as plugins: each one a Solver subclass registered under its name. Built in: openems (openEMS,
-3D FDTD), mom25d (2.5D Method of Moments), gfdtd (openEMS's model on
-gfdtd's GPU FDTD engine) and the line model solved as a circuit by qucs (qucsator) or scikit
-(scikit-rf). Another solver installs as a package that declares an entry point in the group
-'kicad2ems.solvers' (`mysolver = "mypackage.plugin:MySolver"`) and then appears in --solvers, --check, the
-config tables and the GUI with no change here.
+The solvers, as plugins: each one a Solver subclass registered under its name. Built in: the line model solved as
+a circuit by qucs (qucsator) or scikit (scikit-rf). The full-wave solvers install as packages that declare an
+entry point in the group 'kicad2ems.solvers' (`mysolver = "mypackage.plugin:MySolver"`): openems (openEMS, 3D
+FDTD: kicad2ems-openems, the openems extra), mom25d and mixed (2.5D Method of Moments: mom25d, the mom extra) and
+gfdtd (the FDTD model on gfdtd's GPU engine: gfdtd, the gfdtd extra). Each then appears in --solvers, --check,
+the config tables and the GUI with no change here.
 
     from kicad2ems.solvers import registry, get
     get('mom').name                         # 'mom25d' (aliases: fdtd, mom, qucsator, skrf)
@@ -15,6 +15,7 @@ A solver declares (class attributes)
   consumes                'board' (the geometry) or 'network' (the line model, tlines.LineModel)
   previewed               True: --preview prepares it without solving (openEMS: the mesh preview)
   rank                    rough cost: 0 circuit, 1 planar, 2 3D; the cheap solvers run first
+  order                   its place in the registry (lists, the GUI, the order of results): lowest first, then by name
   capabilities            {feature: 'yes' | 'no' | 'ignored' | 'approximated: how'}, features in FEATURES
   options                 [Option]: its settings. The command-line options, the config keys (top level, or
                           under [solver.<name>] by their short names), the GUI fields and the Settings fields
@@ -46,10 +47,11 @@ import numpy as np
 from ..options import Option                    # noqa: F401  (plugins import it from here)
 
 GROUP = 'kicad2ems.solvers'                 # the entry-point group of solvers installed as packages
-BUILTIN = ('kicad2ems.solvers.openems.plugin:OpenEMS', 'kicad2ems.solvers.mom:MoM25D',
-           'kicad2ems.solvers.mixed:Mixed',
-           'kicad2ems.solvers.gfdtd:GFDTD',
-           'kicad2ems.solvers.lines.plugin:Qucs', 'kicad2ems.solvers.lines.plugin:Scikit')
+BUILTIN = ('kicad2ems.solvers.lines.plugin:Qucs', 'kicad2ems.solvers.lines.plugin:Scikit')
+# the solver packages kicad2ems has extras for (pyproject): {extra: the names and aliases of its solvers, its first
+# solver first}. A name of one not installed says how to get it. MOM: the solver --mom adds as a reference.
+EXTRAS = {'openems': ('openems', 'fdtd'), 'mom': ('mom25d', 'mom', 'mixed', 'segmented'), 'gfdtd': ('gfdtd', 'gpu-fdtd')}
+MOM = 'mom25d'
 LINES = 'lines'                             # the line model: qucs when qucsator is installed, else scikit
 AUTO = 'auto'                               # the cheapest full-wave solver that can model the board, + the line model
 # what a solver models, the rows of the capabilities table (--check, docs/architecture.md)
@@ -98,6 +100,7 @@ class Solver:
     consumes = 'board'
     previewed = False
     rank = 1
+    order = 50
     capabilities = {}
     options = []
 
@@ -149,9 +152,9 @@ def _entry_points():
 
 
 def registry():
-    """{name: Solver}: the built-in solvers, then those installed through entry points (in their order). A
-    plugin that fails to load, or reuses a name or a setting, is left out and listed in `broken`. Solvers may share
-    a setting by listing the same Option object (the FDTD solvers' mesh and run settings)."""
+    """{name: Solver}: the built-in solvers and those installed through entry points, by their `order`. A plugin
+    that fails to load, or reuses a name or a setting, is left out and listed in `broken`. Solvers may share a
+    setting by listing the same Option object (the FDTD solvers' mesh and run settings)."""
     global _registry
     if _registry is None:
         reg, keys = {}, {}
@@ -175,7 +178,7 @@ def registry():
             reg[sv.name] = sv
             names |= {sv.name, *sv.aliases}
             keys |= {o.key: o for o in sv.options}
-        _registry = reg
+        _registry = dict(sorted(reg.items(), key=lambda kv: (kv[1].order, kv[0])))
     return _registry
 
 
@@ -187,11 +190,23 @@ def aliases():
     return out
 
 
+def missing(name):
+    """Why a solver kicad2ems knows of cannot be found, and how to install it; None for any other name, or one
+    installed."""
+    name = str(name).lower()
+    extra = next((e for e, names in EXTRAS.items() if name in names), None)
+    if extra is None or name in aliases():
+        return None
+    if any(ep.split(' =')[0] in EXTRAS[extra] for ep, _ in broken):
+        return f"solver {name!r} is installed but failed to load (kicad2ems --check)"
+    return f"solver {name!r} is not installed: python -m pip install 'kicad2ems[{extra}]'"
+
+
 def get(name):
     """The solver of a name or alias (any case)."""
     n = aliases().get(str(name).lower())
     if n is None:
-        raise ValueError(f"no solver {name!r}: choose from {', '.join(registry())}")
+        raise ValueError(missing(name) or f"no solver {name!r}: choose from {', '.join(registry())}")
     return registry()[n]
 
 

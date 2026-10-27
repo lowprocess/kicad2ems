@@ -21,10 +21,8 @@ Modules
                   dielectric, antenna runs, readback, plugin (FDTD: the common plugin and settings)
     fields/       field results of any solver: dumps, frames (DumpSource), antenna (far-field analysis)
     solvers/      the solver plugins: Solver, Result, the registry (entry points 'kicad2ems.solvers'),
-                  capabilities
-      openems/      openEMS (3D FDTD): plugin, engine (import and check), venv, converge
-      gfdtd         gfdtd (GPU FDTD): the FDTD plugin on gfdtd's engine
-      mom           mom25d (2.5D MoM): the board solved through mom25d.api.solve_board
+                  capabilities. The full-wave solvers are packages of their own: openEMS (kicad2ems-openems),
+                  mom25d and mixed (mom25d.kicad2ems), gfdtd (gfdtd.kicad2ems)
       lines/        the line model: tlines (sections, Z0, coupled sections, discontinuities), strips, coupled,
                     fastsolve (the sections as a circuit); plugin (qucs, scikit)
     sparams       mixed-mode conversion, reciprocity fill
@@ -38,7 +36,7 @@ Modules
 
 Documentation: docs/index.md in the repository.
 """
-__version__ = '261020-r1'
+__version__ = '261027-r1'
 
 from .importers.kicad import KiCadBoard, read_pos
 from .board import Board, Port

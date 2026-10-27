@@ -15,7 +15,7 @@ _CAPS = dict(ports='yes, at the network node', gap_ports='no', diff_pairs='yes',
 
 
 class LineSolver(Solver):
-    consumes, previewed, rank = 'network', False, 0
+    consumes, previewed, rank, order = 'network', False, 0, 90
     backend = None                              # fastsolve's backend name
     capabilities = _CAPS
 

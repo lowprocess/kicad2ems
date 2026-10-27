@@ -295,7 +295,7 @@ def build(sm, base):
     nets = model['nets'] if isinstance(model['nets'], str) else ", ".join(model['nets'])
     content = (f"<p>Board <code>{_e(model['board'])}</code>: outline {model['outline_mm'][0]:.2f} × "
                f"{model['outline_mm'][1]:.2f} mm, {model['vias']} vias ({model['vias_signal']} on signal nets), nets "
-               f"{_e(nets)}, dielectric loss {_e(model['diel'])}.</p>"
+               f"{_e(nets)}" + (f", dielectric loss {_e(model['diel'])}" if model.get('diel') else '') + ".</p>"
                "<h3>Dielectrics (top to bottom)</h3>" +
                _table(['layer', 'z (mm)', 'thickness (mm)', 'εr', 'tan δ'], stack) +
                (_img(sm['images']['model'], 'model') if sm['images'].get('model') else '') +

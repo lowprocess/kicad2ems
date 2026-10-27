@@ -88,8 +88,8 @@ def test_window_tabs(tmp_path):
     w.viewer.set_view('Plan')
     assert w.viewer.view() == 'Plan' and w.viewer.buttons['Plan'].isChecked()
     assert all(not s.expanded for s in w.setup.sections.values())  # settings collapsed when the window opens
-    assert 'set)' in w.setup.sections['openEMS/Field dumps'].head.text()   # the dumps given above count
-    assert 'set)' in w.setup.parents['openEMS'][0].head.text()            # and in openEMS's own section
+    assert 'set)' in w.setup.sections['FDTD/Field dumps'].head.text()   # the dumps given above count
+    assert 'set)' in w.setup.parents['FDTD'][0].head.text()               # and in the FDTD section
     assert {'Open', 'Save', 'Preview', 'Run', 'Stop'} <= set(w.acts)
     assert w.setup.help_btn.text() == '?' and not w.solvers_dialog.isVisible()
     w.setup.help_btn.click()                                        # ? beside Solvers: the Solvers window
@@ -631,17 +631,19 @@ def test_solver_sections(tmp_path):
     w = MainWindow()
     st = w.setup
     if not any(b.isChecked() for b in st.solver_boxes.values()) and not st.edits['solver:auto'][0].isChecked():
-        assert not st.parents['openEMS'][0].isEnabled() and not st.sections['mom25d'].isEnabled()   # first launch
+        assert not st.parents['FDTD'][0].isEnabled() and not st.sections['mom25d'].isEnabled()   # first launch
         assert not st.edits['ff_freq'][0].isEnabled()
-    assert st.group_of['res'] == 'openEMS/Mesh' and st.group_of['mom_dmax'] == 'mom25d'
+    assert st.group_of['res'] == 'FDTD/Mesh' and st.group_of['mom_dmax'] == 'mom25d'
     assert st.group_of['excite'] == 'Solvers' and st.group_of['ff_freq'] == 'Output' and 'Antenna' not in st.sections
     assert st.group_of['dump_port'] == st.group_of['dump_animate'] == 'Output'
     assert 'qucsator' not in st.group_of and 'Line model' not in st.sections and 'Field dumps' not in st.sections
     assert 'mom_dmax' not in [k for k, g in st.group_of.items() if g == 'Solvers']
     assert w.system.qucsator.text() == ''                           # the Solvers window's, empty: the PATH's
     st.set_values(dict(board='b.kicad_pcb', solvers=['mom25d']))
-    oems, mom = st.parents['openEMS'][0], st.sections['mom25d']
-    assert not oems.isEnabled() and mom.isEnabled() and 'openEMS' in oems.toolTip()
+    oems, mom = st.parents['FDTD'][0], st.sections['mom25d']
+    assert not oems.isEnabled() and mom.isEnabled() and 'openEMS' in oems.toolTip() and 'gfdtd' in oems.toolTip()
+    from kicad2ems.gui.runner import SECTION_TITLES, SECTION_ORDER    # built from the plugins installed
+    assert SECTION_TITLES['FDTD'] == 'FDTD (openEMS, gfdtd)' and SECTION_ORDER[3:5] == ['FDTD', 'mom25d']
     assert st.sections['Output'].isEnabled() and not st.edits['ff_freq'][0].isEnabled()    # S-parameters: no pattern
     st.edits['mode'][0].setCurrentText('antenna')
     assert st.edits['ff_freq'][0].isEnabled() and st.field_labels['ff_freq'].isEnabled()

@@ -232,7 +232,7 @@ else
     note "no C++ compiler (g++): the compiled cores are skipped (NumPy kernels: mom25d ~5x, gfdtd ~15x slower)"
 fi
 ask "test tools (pytest)?" n && EXTRAS+=(test)
-[ "$OEMS" = elsewhere ] && [[ " ${EXTRAS[*]-} " != *" dumps "* ]] && EXTRAS+=(dumps)   # openEMS's ports need h5py
+[ "$OEMS" != none ] && EXTRAS+=(openems)        # openEMS's solver plugin (kicad2ems-openems; it brings h5py)
 
 # ---- the GPU: CuPy for mom25d's direct solver -------------------------------------------------------
 bold "GPU (CuPy: mom25d's LU in complex64, gfdtd's engine)"

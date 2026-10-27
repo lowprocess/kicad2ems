@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from kicad2ems.fdtd import run, antenna
 from kicad2ems.fdtd.run import RunResult
-from kicad2ems.solvers.openems import engine
+from kicad2ems_openems import engine
 
 
 def _canned(m, mesh, freq, excite, bc, out_dir, **kw):

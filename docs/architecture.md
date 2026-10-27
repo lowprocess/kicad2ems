@@ -43,8 +43,11 @@ Plots are matplotlib `Figure` objects without pyplot, so the GUI can embed them.
 <a id="solver-plugins"></a>
 ## Solver plugins
 
-A solver is a subclass of `solvers.Solver`. The built-in ones are in `solvers.BUILTIN`. A separate package
-can add one through an entry point:
+A solver is a subclass of `solvers.Solver`. Only the line solvers are built in (`solvers.BUILTIN`); the
+full-wave ones are packages that add theirs through an entry point: openEMS's is
+[kicad2ems-openems](https://github.com/lowprocess/kicad2ems-openems) (the `openems` extra), mom25d's and mixed's are
+in mom25d (`mom25d.kicad2ems`, the `mom` extra), gfdtd's in gfdtd (`gfdtd.kicad2ems`, the `gfdtd` extra). Any
+other package works the same way:
 
 ```toml
 # the plugin package's pyproject.toml
@@ -52,13 +55,16 @@ can add one through an entry point:
 mysolver = "mypackage.plugin:MySolver"
 ```
 
-It then appears in `--solvers`, `--check`, the config (`[solver.mysolver]`) and the GUI. A plugin that
-fails to load is left out and listed by `--check`.
+It then appears in `--solvers`, `--check`, the config (`[solver.mysolver]`), the GUI (a section per option
+group, greyed until one of its solvers is ticked), the Filter page and the KiCad plugin's menu. Its `order`
+places it in those lists. A plugin that fails to load is left out and listed by `--check`; a solver kicad2ems has
+an extra for (`solvers.EXTRAS`) but finds no package for says how to install it.
 
 An FDTD solver subclasses `fdtd.plugin.FDTD`, which builds the mesh and the model, runs the excitations and
-writes the dumps and antenna results. It names its engine (`engine(s)`: a key of `fdtd.engines.ENGINES`, whose
-module's `api(option)` returns its `ContinuousStructure` and `openEMS` classes) and lists the shared settings
-(`MESH + RUN`) before its own. Solvers share a setting by listing the same `Option` object; a plugin that defines
+writes the dumps and antenna results. It names its engine (`engine(s)`: `'<name>'` or `'<name>:<option>'`, a
+module registered under the entry-point group `kicad2ems.engines`, whose `api(option)` returns its
+`ContinuousStructure` and `openEMS` classes and whose `LABEL` names it in the log) and lists the shared settings
+(`MESH + RUN`, the GUI's FDTD section) before its own. Solvers share a setting by listing the same `Option` object; a plugin that defines
 another setting of the same name is refused.
 
 A solver declares:
@@ -128,10 +134,7 @@ src/kicad2ems/
   fdtd/           shared by the FDTD solvers: boundaries, mesh, the CSX model, engines, runs, antenna runs,
                   and FDTD, their common plugin class with the shared settings
   fields/         field results of any solver: dump specs and readers, frames and animations, far-field analysis
-  solvers/        the Solver base class and registry
-    openems/        the openEMS plugin: its engine and import check, --converge
-    mom.py          the mom25d plugin
-    gfdtd.py        the gfdtd plugin: the FDTD plugin on gfdtd's engine
+  solvers/        the Solver base class and registry (the full-wave solvers: their own packages)
     lines/          the line solvers: the line model as a circuit (qucsator, scikit-rf)
   lines/          the transmission-line model: sections, Z0, coupled lines (every run, the KiCad plugin's map)
   sparams.py      reciprocity and mixed-mode conversion

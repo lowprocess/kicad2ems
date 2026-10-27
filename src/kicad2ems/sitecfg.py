@@ -5,7 +5,7 @@ window writes it), then kicad2ems-site.toml in the environment (sys.prefix: the 
 first.
 
     qucsator = "/usr/bin/qucsator_rf"           # the line model's circuit solver
-    openems_venv = "/opt/openems/venv"          # a venv with openEMS (solvers/openems/venv.py)
+    openems_venv = "/opt/openems/venv"          # a venv with openEMS (kicad2ems-openems: venv.py)
 
     sitecfg.get('qucsator') -> the path, or None
     sitecfg.set_user('qucsator', path)          # into the user's file (None / '': removed)

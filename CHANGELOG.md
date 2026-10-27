@@ -9,6 +9,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Changed
+- Every full-wave solver is a package of its own, found through the `kicad2ems.solvers` entry points (ROADMAP
+  7.2-7.3); only the line solvers are built in. openEMS's plugin is
+  [kicad2ems-openems](https://github.com/lowprocess/kicad2ems-openems) (the new `openems` extra: its engine and
+  import check, `openems_venv`, `--converge`); mom25d's and mixed's are in mom25d (`mom25d.kicad2ems`), gfdtd's in
+  gfdtd (`gfdtd.kicad2ems`). Installing kicad2ems alone gives the line model; `pip install '.[all]'` everything as
+  before. A solver named but not installed says which extra brings it; `--check` lists the missing ones and exits 0
+  when any full-wave solver is ready (it was: openEMS). FDTD engines register under `kicad2ems.engines` (each its
+  `api()`, `LABEL` and optionally `IN_THREADS`), so `fdtd/engines.py` names none; openEMS's engine gives a CSXCAD
+  without `AddDebyeMaterial` the method. A solver's `order` places it in lists (openEMS, mom25d, mixed, gfdtd, then
+  the line solvers, as before).
+- No solver names in core code (ROADMAP 7.4): the GUI's sections come from the solvers' option groups (the FDTD
+  settings openEMS and gfdtd share are the "FDTD (openEMS, gfdtd)" section, `FDTD/Mesh` and so on, formerly
+  `openEMS/...`), the sections auto enables are those of the solvers auto may pick, the antenna settings those of
+  the solvers with an antenna mode, and the Filter page's solver choices are the full-wave solvers installed.
+  The KiCad plugin's solver menu and dfsynth's validation do the same (their own repositories). Stop asks every
+  FDTD run folder to abort, whichever engine wrote it.
+- The tests of each plugin moved to its package (ROADMAP 7.5, in part): `test_converge` and `test_openems_venv` to
+  kicad2ems-openems, `test_mom` and `test_mom25d_board` to mom25d (`test_kicad2ems*.py`), `test_gfdtd` to gfdtd.
+  They use kicad2ems's fixtures from a checkout (`tests/k2e_fixtures.py`, formerly `conftest.py`; `KICAD2EMS_SRC`,
+  default `../kicad2ems`). kicad2ems's own tests still need the solver packages installed.
+- Version 261027-r1 (kicad2ems, mom25d, gfdtd, kicad2ems-openems); the plugins require kicad2ems 261027 or later.
 - The FDTD code openEMS and gfdtd share left `solvers/openems/` (ROADMAP 7.1): `kicad2ems.fdtd` holds the
   boundaries, mesh, model (`build_fdtd`), engines, runs, progress, antenna runs and `FDTD`, the plugin class both
   solvers subclass; `kicad2ems.fields` the field results any solver writes (dumps, frames, far-field

@@ -126,8 +126,15 @@ from .panels import Section
 COPPER = QColor(214, 140, 64)
 VIA = QColor(90, 90, 90)
 LEVELS = {'error': ('#d00000', '✖ '), 'warn': ('#d00000', '⚠ ')}       # red, both: the log's problems
-SOLVERS = ('gfdtd', 'mom', 'openems', 'mom,lines', 'gfdtd,mom')
 COLORS = ['#1f77b4', '#d62728', '#2ca02c', '#9467bd', '#8c564b', '#e377c2']
+
+
+def validation_solvers():
+    """The Filter page's solver choices: each full-wave solver installed (kicad2ems's registry), then each with
+    the line model."""
+    from ..solvers import registry
+    full = [n for n, sv in registry().items() if sv.consumes == 'board']
+    return full + [f"{n},lines" for n in full]
 
 
 class FilterTab(QWidget):
@@ -232,9 +239,9 @@ class FilterTab(QWidget):
         self.w.pop('_out_row')
         solv = QComboBox()
         solv.setEditable(True)
-        solv.addItems(SOLVERS)
-        solv.setToolTip("kicad2ems solvers for the validation: gfdtd (GPU FDTD) suits interdigital filters, "
-                        "mom (mom25d) the other planar ones")
+        solv.addItems(validation_solvers())
+        solv.setToolTip("kicad2ems solvers for the validation, comma-separated (the full-wave ones installed here, "
+                        "alone or with the line model)")
         tune = QSpinBox()
         tune.setRange(0, 6)
         tune.setToolTip('rounds of correcting the design from the full-wave result (interdigital: space mapping)')

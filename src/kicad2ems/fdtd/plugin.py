@@ -47,7 +47,7 @@ def mesh_zone(s):
 
 
 # the GUI's sections for these settings (gui/runner.py); still named after openEMS (ROADMAP 7.4)
-G_MESH, G_RUN, G_DUMP = 'openEMS/Mesh', 'openEMS/Run', 'openEMS/Field dumps'
+G_MESH, G_RUN, G_DUMP = 'FDTD/Mesh', 'FDTD/Run', 'FDTD/Field dumps'   # the GUI's FDTD section
 G_ANT, G_SHARED_DUMP = 'antenna', 'field dumps'           # shared with mom25d: the GUI's Antenna and Field dumps
 
 MESH = [
