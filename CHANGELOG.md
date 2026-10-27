@@ -65,6 +65,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `coupled_stripline` (Cohn) instead of mom25d's copy of the same formula.
 
 ### Fixed
+- The tests read the environment's `kicad2ems-site.toml` (setup.sh's record of this machine's qucsator), so four
+  of them failed where qucsator was installed. They now see only a scratch user file.
+- Since the shared fixtures moved to `tests/k2e_fixtures.py`, the fixture that keeps the tests out of the user's
+  settings was not applied (a `_` name, which `import *` leaves out): the GUI tests wrote
+  `~/.config/kicad2ems/gui.conf`. Renamed `scratch_settings`.
 - gfdtd: a current probe normal to y ran its loop the wrong way round, so a lumped port along y measured its
   current negated (|S11| near 95). Ports along x and z were right, so no example had shown it.
 - `bc = auto` put a PEC wall on a bottom plane with holes in it: a slot, a defected ground or an antipad there

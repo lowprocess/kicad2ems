@@ -3,6 +3,9 @@ conftest imports this file from a kicad2ems checkout, KICAD2EMS_SRC): the genera
 stand-in for CSXCAD / openEMS, a machine without openEMS, and an in-process command-line runner.
 
     from k2e_fixtures import *              # noqa: F401,F403  (in a conftest.py)
+
+A fixture's name must not start with '_': the star import leaves those out, and an autouse one (scratch_settings,
+which keeps the tests out of the user's settings) would silently stop applying.
 """
 import importlib.util, os, subprocess, sys, types
 import numpy as np
@@ -24,11 +27,15 @@ RF = os.path.join(ROOT, 'examples', 'make_rf_examples.py')
 
 
 @pytest.fixture(autouse=True)
-def _scratch_settings(tmp_path_factory, monkeypatch):
+def scratch_settings(tmp_path_factory, monkeypatch):
     """The GUI's QSettings (recent files, the window's shape, the Results plots) in a scratch folder: a test
-    never writes the user's own."""
+    never writes the user's own. The site settings (sitecfg) from that scratch user file alone: not the
+    environment's kicad2ems-site.toml, where setup.sh records this machine's qucsator and openEMS."""
     if 'XDG_CONFIG_HOME' not in os.environ or not os.environ['XDG_CONFIG_HOME'].startswith(str(tmp_path_factory.getbasetemp())):
         monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path_factory.getbasetemp() / 'xdg'))
+    from kicad2ems import sitecfg
+    monkeypatch.setattr(sitecfg, 'paths', lambda: [sitecfg.user_file()])
+    monkeypatch.setattr(sitecfg, '_cache', None)
 
 
 @pytest.fixture(scope='session', autouse=True)
