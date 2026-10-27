@@ -1,5 +1,5 @@
 """Settings (defaults <- TOML <- command line), clean errors and end-to-end previews (in process)."""
-import json, sys
+import json
 import pytest
 from kicad2ems.cli import settings_from_argv
 from kicad2ems.config import build_settings, ConfigError, Settings
@@ -24,14 +24,13 @@ def test_shortened_options_beat_the_toml(tmp_path):
 def test_toml_lists_and_strings(tmp_path):
     p = tmp_path / 'c.toml'
     p.write_text('board = "b.kicad_pcb"\nbc = ["MUR", "MUR", "PEC", "PEC", "PEC", "MUR"]\nff_freq = [2.4, 2.5]\n'
-                 'converge = "1,1.5"\nconverge_tol = [0.2, 3]\nregion = "0,0,10,5"\n')
+                 'region = "0,0,10,5"\n')
     s, _ = settings_from_argv([str(p)])
-    assert s.bc == 'MUR,MUR,PEC,PEC,PEC,MUR' and s.ff_freq == [2.4, 2.5]
-    assert s.converge == [1.0, 1.5] and s.converge_tol == (0.2, 3.0) and s.region == (0, 0, 10, 5)
+    assert s.bc == 'MUR,MUR,PEC,PEC,PEC,MUR' and s.ff_freq == [2.4, 2.5] and s.region == (0, 0, 10, 5)
 
 
 @pytest.mark.parametrize('values,match', [
-    (dict(fmin=5, fmax=2), 'below fmax'), (dict(region='1,2,3'), 'region'), (dict(converge='1'), 'converge'),
+    (dict(fmin=5, fmax=2), 'below fmax'), (dict(region='1,2,3'), 'region'),
     (dict(points='many'), 'points'), (dict(curves='round'), 'choose one of'), (dict(max_steps=2.5), 'whole number')])
 def test_bad_settings_are_explained(values, match):
     with pytest.raises(ConfigError, match=match):
@@ -68,15 +67,6 @@ def test_check_is_command_line_only(tmp_path):
     p.write_text('board = "b.kicad_pcb"\ncheck = true\n')
     s = build_settings({}, str(p))
     assert any('check' in n for n in s.notes)                       # reported as not used, never silently
-
-
-def test_check_reports_python_and_modules():
-    from kicad2ems_openems.engine import check as check_openems
-    ok, lines = check_openems()
-    text = "\n".join(lines)
-    assert sys.executable in text and 'numpy' in text
-    if not ok:
-        assert 'FAILED' in text and 'hints:' in text                # the real error and a hint are shown
 
 
 def test_input_errors_are_messages_not_tracebacks(demo_files, run_cli, tmp_path):
@@ -137,12 +127,6 @@ def test_events_in_a_new_output_folder(demo_files, run_cli, tmp_path):
                            '--out', out, '--events', out / 'run.jsonl', '--preview', '--no-report')
     assert code == 0, err
     assert (out / 'run.jsonl').read_text().strip().endswith('"kind": "done", "code": 0}')
-
-
-def test_empty_converge_means_off(tmp_path):
-    p = tmp_path / 'c.toml'
-    p.write_text('board = "b.kicad_pcb"\nconverge = []\n')
-    assert build_settings({}, str(p)).converge is None
 
 
 def test_config_typos_are_named(tmp_path):

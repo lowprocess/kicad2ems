@@ -6,18 +6,20 @@ openEMS), LABEL, its name in the log, and optionally IN_THREADS (True: the runs 
 as threads, gfdtd's on the GPU). It is named by a string, so runs in worker processes can find it:
 '<name>' or '<name>:<option>' (gfdtd:cupy).
 """
-import importlib
-
 GROUP = 'kicad2ems.engines'
 DEFAULT = 'openems'
 
 
+def _entry_points():
+    from importlib.metadata import entry_points
+    return list(entry_points(group=GROUP))
+
+
 def engine_module(engine):
     """The module of an engine ('gfdtd:cupy'; None: the default), or None when none is installed under its name."""
-    from importlib.metadata import entry_points
     name = (engine or DEFAULT).partition(':')[0]
-    ep = next((ep for ep in entry_points(group=GROUP) if ep.name == name), None)
-    return None if ep is None else importlib.import_module(ep.value)
+    ep = next((ep for ep in _entry_points() if ep.name == name), None)
+    return None if ep is None else ep.load()
 
 
 def engine_api(engine):

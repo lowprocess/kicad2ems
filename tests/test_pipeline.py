@@ -1,11 +1,12 @@
 """The whole run without openEMS: the solver is replaced by canned results, so the post-processing,
-plots, line-model comparison, convergence, antenna outputs, JSON summary and report are all exercised."""
+plots, line-model comparison, antenna outputs, JSON summary and report are all exercised (openEMS's --converge:
+in kicad2ems-openems)."""
 import json
 import numpy as np
 import pytest
 from kicad2ems.fdtd import run, antenna
 from kicad2ems.fdtd.run import RunResult
-from kicad2ems_openems import engine
+import standins
 
 
 def _canned(m, mesh, freq, excite, bc, out_dir, **kw):
@@ -24,33 +25,32 @@ def _canned(m, mesh, freq, excite, bc, out_dir, **kw):
 
 @pytest.fixture
 def no_openems(monkeypatch):
-    monkeypatch.setattr(engine, 'check', lambda: (True, []))
+    monkeypatch.setattr(standins, 'engine_check', lambda: (True, []))
     monkeypatch.setattr(run, 'run_excitations', _canned)
 
 
-def test_sparams_run_with_fast_model_and_convergence(demo_files, run_cli, tmp_path, no_openems):
+def test_sparams_run_with_fast_model(demo_files, run_cli, tmp_path, no_openems):
     pytest.importorskip('skrf')
     base, _ = demo_files
     out = tmp_path / 'out'
     code, so, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'RF,GND', '--ground', 'B.Cu',
                             '--fmin', '1', '--fmax', '8', '--points', '51', '--out', out, '--fast', 'skrf',
-                            '--converge', '1,1.2', '--solvers', 'openems')     # not auto: a GPU makes mom25d cheaper
+                            '--solvers', 'openems')
     assert code == 0, err
-    for f in ('demo_openems.s2p', 'demo_scikit.s2p', 'demo_openems.png', 'demo_tlines.png', 'demo_converge.png',
-              'demo_report.html', 'demo_run.json'):
+    for f in ('demo_openems.s2p', 'demo_scikit.s2p', 'demo_openems.png', 'demo_tlines.png', 'demo_report.html',
+              'demo_run.json'):
         assert (out / f).exists(), f
     sm = json.loads((out / 'demo_run.json').read_text())
     assert sm['mode'] == 'S-parameters' and sm['ports'] == ['P1', 'P2'] and sm['excited'] == ['P1', 'P2']
     cmp = {r['param']: r for r in sm['solved']['scikit']['compare']}
     assert abs(cmp['S(P2,P1)']['max_ddb']) < 1.5 and cmp['S(P2,P1)']['ddelay_ps'] is not None
-    assert sm['convergence']['converged']                                    # identical canned levels
     page = (out / 'demo_report.html').read_text()
-    for part in ("id='results'", "id='scikit'", "id='tlines'", "id='convergence'", 'line model', 'Δ delay'):
+    for part in ("id='results'", "id='scikit'", "id='tlines'", 'line model', 'Δ delay'):
         assert part in page, part
 
 
 def test_antenna_run(boards, run_cli, tmp_path, monkeypatch):
-    monkeypatch.setattr(engine, 'check', lambda: (True, []))
+    monkeypatch.setattr(standins, 'engine_check', lambda: (True, []))
 
     def fake_antenna(m, mesh, freq, k, bc, out_dir, ff_extra=(), ff_pattern=None, step=2.0, log=print, **kw):
         r = _canned(m, mesh, freq, [k], bc, out_dir)

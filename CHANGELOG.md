@@ -25,10 +25,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the solvers with an antenna mode, and the Filter page's solver choices are the full-wave solvers installed.
   The KiCad plugin's solver menu and dfsynth's validation do the same (their own repositories). Stop asks every
   FDTD run folder to abort, whichever engine wrote it.
-- The tests of each plugin moved to its package (ROADMAP 7.5, in part): `test_converge` and `test_openems_venv` to
-  kicad2ems-openems, `test_mom` and `test_mom25d_board` to mom25d (`test_kicad2ems*.py`), `test_gfdtd` to gfdtd.
-  They use kicad2ems's fixtures from a checkout (`tests/k2e_fixtures.py`, formerly `conftest.py`; `KICAD2EMS_SRC`,
-  default `../kicad2ems`). kicad2ems's own tests still need the solver packages installed.
+- The tests of each plugin moved to its package (ROADMAP 7.5): `test_converge`, `test_openems_venv`, the openEMS
+  import check and the `--converge` settings and run to kicad2ems-openems; `test_mom`, `test_mom25d_board` and
+  mom25d's halves of the parity and mesh-file tests to mom25d (`test_kicad2ems*.py`); `test_gfdtd` to gfdtd. They use
+  kicad2ems's fixtures from a checkout (`tests/k2e_fixtures.py`, formerly `conftest.py`; `KICAD2EMS_SRC`, default
+  `../kicad2ems`). kicad2ems's own tests run on stand-in solvers (`tests/standins.py`: the FDTD plugin on a stand-in
+  engine, a planar solver with a canned answer) and need no solver package; `test_conformance.py` runs the real
+  ones, each in a process of its own. `tools/test_all.sh` runs all four suites, isolated from your settings.
 - Version 261027-r1 (kicad2ems, mom25d, gfdtd, kicad2ems-openems); the plugins require kicad2ems 261027 or later.
 - The FDTD code openEMS and gfdtd share left `solvers/openems/` (ROADMAP 7.1): `kicad2ems.fdtd` holds the
   boundaries, mesh, model (`build_fdtd`), engines, runs, progress, antenna runs and `FDTD`, the plugin class both

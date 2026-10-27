@@ -111,12 +111,18 @@ full-wave solver a package that is installed or not. In order:
    with a fallback for any other solver: the trace styles and file suffixes (`gui/traces.py`), the mesh labels
    (`meshes.py`), `--mom` (adds mom25d; warns when it is not installed), `solvers.EXTRAS` (the install hints),
    the `[openems]` config table of old files and the `kicad2openems` command.
-5. **Tests move with their plugins.** Done: each plugin's own tests are in its package and use kicad2ems's
-   fixtures (`tests/k2e_fixtures.py`) from a checkout. Left: about 50 of core's tests still run openEMS's or
-   mom25d's plugin (`test_cli`, `test_antenna`, `test_plugins`, `test_gui`, `test_simulation_setup`, ...), so
-   core's suite needs the solver packages installed (`pip install -e '.[all]'`). Next: a stand-in FDTD plugin and
-   a stand-in planar plugin in `k2e_fixtures.py` for those, and a CI job that installs every solver package and
-   runs all four suites (kicad2ems, kicad2ems-openems, mom25d, gfdtd) together.
+5. ~~**Tests move with their plugins.**~~ Done (2026-10-27): each plugin's tests are in its package, on kicad2ems's
+   fixtures (`tests/k2e_fixtures.py`) from a checkout; kicad2ems's own run on stand-in solvers
+   (`tests/standins.py`) and pass with no solver package installed. `test_conformance.py` runs the real ones, each
+   in a process of its own. `tools/test_all.sh` runs all four suites locally.
+6. **CI on GitHub Actions** (to consider). Nothing runs the suites but `tools/test_all.sh` today. The cheapest
+   useful job: check out kicad2ems and the three solver repositories side by side, `pip install -e` all four, run
+   `tools/test_all.sh`. It needs no openEMS or qucsator (the tests use stand-ins), a Python matrix (3.10 to 3.14;
+   triangle from source on 3.14), and runs on every push and nightly, so a change in any repository that breaks
+   another shows within a day (or the solver repositories trigger it with `repository_dispatch`). Options to
+   weigh: the container on the `docker` branch as the job's image (real openEMS and qucsator, a prebuilt image on
+   GHCR), and a self-hosted runner with the AMD GPU for the GPU tests (hosted runners have none; never for pull
+   requests from forks).
 
 The line model stays in core. Its analysis (`src/kicad2ems/lines/`: sections, Z0, coupled lines) is not a
 solver: every run builds it, and the report, the GUI's overlay, the KiCad plugin's impedance map and the

@@ -270,8 +270,7 @@ def test_gui_solver_boxes(tmp_path, monkeypatch):
     from kicad2ems.solvers.lines import fastsolve
     monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)    # no qucsator: lines is scikit
     assert [k for k, *_ in FIELDS if k.startswith('solver:')] == ['solver:auto', 'solver:openems', 'solver:mom25d',
-                                                                    'solver:mixed', 'solver:gfdtd', 'solver:qucs',
-                                                                    'solver:scikit']
+                                                                    'solver:gfdtd', 'solver:qucs', 'solver:scikit']
     p = tmp_path / 'c.toml'
     p.write_text('board = "b.kicad_pcb"\nsolvers = ["mom", "lines"]\n')
     vals = settings_values(str(p))
@@ -348,11 +347,10 @@ def wilkinson_preview(tmp_path_factory):
     out = tmp_path_factory.mktemp('wilk')
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     assert main([os.path.join(root, 'examples', 'rf_wilkinson.toml'), '--preview', '--out', str(out),
-                 '--solvers', 'mom,lines', '--no-report']) == 0
+                 '--solvers', 'openems,lines', '--no-report']) == 0
     return str(out)
 
 
-@pytest.mark.mom25d
 def test_line_model_drawing(wilkinson_preview):
     """<name>_lines.json: every section with its points, layer height and Z0; paths as ids; the overlay's
     colours, hit test and description."""
@@ -378,7 +376,6 @@ def test_line_model_drawing(wilkinson_preview):
     assert seg.shape[1] == 2 and len(seg) % 2 == 0 and len(seg) > 0
 
 
-@pytest.mark.mom25d
 def test_viewer_sections_and_views(wilkinson_preview):
     """The viewer on a preview: the plan and the section list, one selection in every view; the views a folder
     has nothing for disabled."""

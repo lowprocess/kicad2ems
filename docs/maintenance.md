@@ -96,7 +96,8 @@ model with `consumes = 'network'`, and returns a `solvers.Result` with S-paramet
 
 ## Before committing
 
-1. `python -m pytest -q`
+1. `tools/test_all.sh` (or `python -m pytest -q` for kicad2ems alone; the solver packages' suites test their
+   plugins against this checkout)
 2. `kicad2ems examples/<config>.toml --preview` for the examples your change touches.
 3. A real run of an affected example when the solver setup, model or mesh changed
    ([testing](testing.md#checking-against-openems)).

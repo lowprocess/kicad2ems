@@ -1,7 +1,10 @@
 """Conformance: boards with a known answer, each capable solver within stated tolerances of it, with fast
 settings. The lossless microstrip thru (make_demo_board.py thru): |S21| ~ 1, |S11| small, and the delay of a
 line of Hammerstad-Jensen's effective permittivity (mixed: with the middle of the line cut out and put back as
-a line). openEMS runs when KICAD2EMS_CONFORMANCE_OPENEMS=1 (slow: for a nightly run, not every test run)."""
+a line). openEMS runs when KICAD2EMS_CONFORMANCE_OPENEMS=1 (slow: for a nightly run, not every test run).
+
+The one test of kicad2ems's that runs the real solver packages (the others run on the stand-ins, standins.py): each
+run is `python -m kicad2ems` in a process of its own, and a solver not installed, or not usable here, is skipped."""
 import math, os, subprocess, sys
 import numpy as np
 import pytest
@@ -38,18 +41,27 @@ def thru(tmp_path_factory):
     return str(d / 'thru')
 
 
+def installed(solver):
+    """(usable, what) of a real solver, asked of a kicad2ems in a process of its own (this one has the stand-ins)."""
+    code = ("from kicad2ems.solvers import registry, missing; r = registry(); n = %r\n"
+            "print('ok' if n in r and r[n].check()[0] else (r[n].check()[1] if n in r else missing(n)))" % solver)
+    p = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
+    out = p.stdout.strip().splitlines()[-1] if p.stdout.strip() else p.stderr.strip()[-200:]
+    return out == 'ok', out
+
+
 @pytest.mark.parametrize('solver', list(FAST))
-def test_microstrip_thru(solver, thru, run_cli, tmp_path):
-    from kicad2ems.solvers import registry
+def test_microstrip_thru(solver, thru, tmp_path):
     if solver == 'openems' and not os.environ.get('KICAD2EMS_CONFORMANCE_OPENEMS'):
         pytest.skip('openEMS conformance: set KICAD2EMS_CONFORMANCE_OPENEMS=1')
-    ok, what = registry()[solver].check()
+    ok, what = installed(solver)
     if not ok:
         pytest.skip(what)
     out = tmp_path / 'out'
-    code, so, err = run_cli(thru + '.kicad_pcb', '--pos', thru + '-top.pos', '--fmin', '1', '--fmax', '6', '--points', '21',
-                            '--solvers', solver, '--no-report', '--out', out, *FAST[solver])
-    assert code == 0, so + err
+    args = [thru + '.kicad_pcb', '--pos', thru + '-top.pos', '--fmin', '1', '--fmax', '6', '--points', '21',
+            '--solvers', solver, '--no-report', '--out', str(out), *FAST[solver]]
+    p = subprocess.run([sys.executable, '-m', 'kicad2ems', *args], capture_output=True, text=True)
+    assert p.returncode == 0, p.stdout + p.stderr
     f, S = read_touchstone(str(out / f"thru_{solver}.s2p"))
     s21_min, s11_max, delay_tol = TOL[solver]
     s21 = S[:, 1, 0]

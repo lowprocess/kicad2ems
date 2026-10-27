@@ -2,7 +2,7 @@
 runs without openEMS, exit codes."""
 import json, os
 import pytest
-from kicad2ems_openems import engine
+import standins
 from kicad2ems.cli import settings_from_argv
 from kicad2ems.config import build_settings, ConfigError
 
@@ -62,7 +62,7 @@ def test_resolve_backend(monkeypatch):
 
 
 def test_missing_openems_stops_before_any_work(run_cli, tmp_path, monkeypatch):
-    monkeypatch.setattr(engine, 'check', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
+    monkeypatch.setattr(standins, 'engine_check', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
     out = tmp_path / 'out'
     ev = tmp_path / 'ev.jsonl'
     code, so, _ = run_cli(FILTER, '--solvers', 'openems', '--out', out, '--events', ev)
@@ -74,7 +74,7 @@ def test_missing_openems_stops_before_any_work(run_cli, tmp_path, monkeypatch):
 
 def test_line_model_only(run_cli, tmp_path, monkeypatch):
     pytest.importorskip('skrf')
-    monkeypatch.setattr(engine, 'check', lambda: pytest.fail('openEMS must not be needed'))
+    monkeypatch.setattr(standins, 'engine_check', lambda: pytest.fail('openEMS must not be needed'))
     out = tmp_path / 'out'
     code, so, err = run_cli(FILTER, '--solvers', 'lines', '--fast', 'skrf', '--points', '51', '--out', out)
     assert code == 0, so + err
@@ -87,15 +87,11 @@ def test_line_model_only(run_cli, tmp_path, monkeypatch):
     assert 'line model' in page and "<div class='l'>mesh</div>" not in page    # no FDTD mesh tile without openEMS
 
 
-@pytest.mark.mom25d
 def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatch):
     pytest.importorskip('skrf')
-    from mom25d.kicad2ems import mom
-    monkeypatch.setattr(mom, 'mom25d_status', lambda: (True, '0.0 (test)'))
-
     def broken(*a, **kw):
         raise RuntimeError('singular matrix')
-    monkeypatch.setattr(mom, 'solve', broken)
+    monkeypatch.setattr(standins, 'solve', broken)
     out = tmp_path / 'out'
     code, so, _ = run_cli(FILTER, '--solvers', 'mom', '--out', out)
     assert code == 1 and 'WARNING: mom25d failed: RuntimeError: singular matrix' in so and 'failed: mom25d' in so
@@ -105,8 +101,7 @@ def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatc
 
 
 def test_unavailable_reference_is_left_out(run_cli, tmp_path, monkeypatch):
-    from mom25d.kicad2ems import mom
-    monkeypatch.setattr(mom, 'mom25d_status', lambda: (False, 'ImportError: no mom25d'))
+    monkeypatch.setattr(standins, 'status', lambda: (False, 'ImportError: no mom25d'))
     out = tmp_path / 'out'
     code, so, _ = run_cli(FILTER, '--preview', '--mom', '--out', out)
     assert code == 0 and 'WARNING: mom25d cannot run' in so
@@ -116,6 +111,6 @@ def test_unavailable_reference_is_left_out(run_cli, tmp_path, monkeypatch):
 
 def test_kicad2openems_keeps_openems_as_its_default(tmp_path, monkeypatch, capsys):
     from kicad2ems.cli import main_openems
-    monkeypatch.setattr(engine, 'check', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
+    monkeypatch.setattr(standins, 'engine_check', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
     assert main_openems([FILTER, '--out', str(tmp_path / 'out')]) == 2         # openEMS named by default: stops
     assert 'openEMS (FDTD) cannot run - details' in capsys.readouterr().out
