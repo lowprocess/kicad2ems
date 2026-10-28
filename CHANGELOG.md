@@ -51,6 +51,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   requirements from the checkouts.
 
 ### Changed
+- gfdtd's engine interface is versioned: `gfdtd.API_VERSION` (1.0: `ContinuousStructure`, `openEMS(backend=)`,
+  `engine.gpu_info`, `core_info`, `resolve_backend`, `concurrent_runs`), and kicad2ems-fdtd's gfdtd solver
+  checks it (`ENGINE_API`): a gfdtd of another major version, or an older minor one, is not usable and
+  `kicad2ems --check` says which package to update.
 - The examples install with kicad2ems, as the package `kicad2ems.examples` (the configs, the board generators,
   the three boards in the repository; not `reference/`). `api.frontend` adds `examples()`, `prepare_example(name,
   folder)` (the config copied, the board copied or generated) and `examples_folder()`. The GUI's *File →
