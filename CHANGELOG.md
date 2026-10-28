@@ -149,6 +149,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Zc and gamma), and the near-field correction is built in pieces: the SMA launch on the CPU in 6.6 GB instead
   of 10.7 GB and 270 s instead of 313 s, on the GPU in 9.7 GB instead of 13.2 GB, with the same result.
 
+### Decided
+- mom25d slot layers (Momentum-style magnetic currents on a plane's openings): not pursued. On CM5 the whole
+  stack is 125,525 unknowns and 77 % of them are on layers that can't be slot layers; the two planes that can
+  only drop from 14,499 to 8,658 each. About 1.5x at best for some two months' work with research risk; gfdtd
+  solves the CM5 HDMI pair in 47 s. Worth reopening only for a large board dominated by solid planes.
+- The rat-race's isolation null in openEMS was mesh convergence, not a missing conformal option: on gfdtd it moves
+  from 2.18 GHz to 2.30 GHz (EMerge 2.31) as `--curve-res` rises. No conformal option added.
+- `rf_diffvia`: modelling the two via barrels as a coupled pair in a shared antipad moved the worst Sdd11 by
+  0.3 dB the wrong way. Not kept.
+- The line model stays in core: every run builds it, the report, overlay, KiCad plugin and example generator use
+  it, and its circuit solvers need nothing compiled.
+- No Elmer FEM solver plugin: second-order elements needed over 21 GB on a simple microstrip line, and
+  first-order ones weren't accurate enough.
+
 ### Added
 - gfdtd: openEMS's other ports, with their `Add...Port` methods: microstrip (MSL), stripline, CPW, coaxial,
   rectangular and circular waveguide, any waveguide mode (functions or a mode file), and curve ports. Behind
