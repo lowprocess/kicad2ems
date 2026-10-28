@@ -460,7 +460,7 @@ bold "Check"
 [ $OEMS = built ] && export LD_LIBRARY_PATH="$OEMS_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 K2E=$([ -n "$VENV" ] && echo "$VENV/bin/kicad2ems" || "$VPY" -c 'import site, os; print(os.path.join(site.getuserbase(), "bin", "kicad2ems"))')
 (cd / && ${VENV:+env PATH="$VENV/bin:$PATH" VIRTUAL_ENV="$VENV"} "$K2E" --check) || true
-[ -n "$CUPY" ] && "$VPY" -c "from mom25d.gpu import describe; print('  ' + describe())" || true
+[ -n "$CUPY" ] && "$VPY" -m emdev | sed 's/^/  /' || true
 echo
 echo "Done ($TARGET install). Use it with:"
 case $TARGET in

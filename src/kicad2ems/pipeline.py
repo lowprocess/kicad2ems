@@ -39,10 +39,9 @@ from .parity import describe
 
 def ram_gb():
     """Installed RAM in GB (None where sysconf cannot tell)."""
-    try:
-        return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / 1e9
-    except (ValueError, OSError, AttributeError):
-        return None
+    from emdev.memory import total
+    t = total()
+    return t / 1e9 if t else None
 
 
 def _db(v):
@@ -314,7 +313,7 @@ class Job:
             self.summary.pop('lines', None)
 
     def _lines(self):
-        from .lines.tlines import build
+        from .lines.builder import build
         self.lm = build(self.m)
         if not self.lm.paths:
             self.log("transmission lines: no routed path from the ports" +

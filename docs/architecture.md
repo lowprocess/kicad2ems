@@ -55,6 +55,14 @@ other package works the same way:
 mysolver = "mypackage.plugin:MySolver"
 ```
 
+**The API.** A plugin imports from `kicad2ems.api.solver` only (the Solver interface, `Result`, `Option`, and
+what a solver needs to write its results as the others do: `mixed_mode`, the antenna and field writers, the FDTD
+plugin class); a program that drives kicad2ems (the GUI, the KiCad plugin, dfsynth) from `kicad2ems.api.frontend`.
+The rest of kicad2ems is private and may change in any release. `kicad2ems.api.API_VERSION` is (major, minor): a
+minor release adds names, a major one removes or changes one. A solver says which version it was written for
+(`api = (1, 0)` on its class); the registry refuses one of another major version, or of a newer minor one, and
+`--check` lists it as broken with what to update. A plugin that declares none counts as 1.0.
+
 It then appears in `--solvers`, `--check`, the config (`[solver.mysolver]`), the GUI (a section per option
 group, greyed until one of its solvers is ticked), the Filter page and the KiCad plugin's menu. Its `order`
 places it in those lists. A plugin that fails to load is left out and listed by `--check`; a solver kicad2ems has
@@ -91,6 +99,7 @@ and implements:
 | `deviations(job, prep)` | what it models differently from the board |
 | `readback(job, prep)` | what its own model holds, in board terms |
 | `estimate(job)` | its expected time and memory on this board |
+| `resources()` | the GPUs it would run on here and why there are none (`sysinfo`, the GUI's System panel), or `None`: the CPU only |
 
 **Parity.** A solver may approximate the board, but it must say so. `parity.check` compares the board
 with each solver's readback and lists any difference the solver didn't declare. `tests/test_parity.py`
@@ -124,7 +133,9 @@ src/kicad2ems/
   options.py      Option and value converters
   pipeline.py     Job: the stages above
   events.py       --events
-  sysinfo.py      what this machine can run (the GUI's Solvers window, as `python -m kicad2ems.sysinfo`)
+  api/            the public API: solver (for solver plugins), frontend (for the GUI, the KiCad plugin, dfsynth)
+  sysinfo.py      what this machine can run (the GUI's Solvers window, as `python -m kicad2ems.sysinfo`): each
+                  solver's check and resources(), the memory and CPU threads (emdev)
   importers/      KiCad (kicad/) and Gerber readers
   board.py        Board: the converted board, board.json
   region.py       cropping, nets = auto, extra and cut ports
@@ -136,7 +147,9 @@ src/kicad2ems/
   fields/         field results of any solver: dump specs and readers, frames and animations, far-field analysis
   solvers/        the Solver base class and registry (the full-wave solvers: their own packages)
     lines/          the line solvers: the line model as a circuit (qucsator, scikit-rf)
-  lines/          the transmission-line model: sections, Z0, coupled lines (every run, the KiCad plugin's map)
+  lines/          the transmission-line model (every run, the KiCad plugin's map): formulas (closed-form Z0),
+                  reference (reference copper, cross-sections), builder (board -> sections), topology (paths,
+                  coupled lines, discontinuities), elements (the model's data); tlines re-exports them
   sparams.py      reciprocity and mixed-mode conversion
   touchstone.py   .sNp files
   plots.py        figures

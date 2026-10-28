@@ -11,6 +11,8 @@ the config tables and the GUI with no change here.
     [sv.label for sv in registry().values()]
 
 A solver declares (class attributes)
+  api                     the kicad2ems.api version it is written against, (major, minor): (1, 0); a plugin
+                          imports what it needs from kicad2ems.api.solver, the rest of kicad2ems is private
   name, aliases, label    'mom25d', ('mom',), 'mom25d (MoM)'; name is also its table [solver.mom25d]
   consumes                'board' (the geometry) or 'network' (the line model, tlines.LineModel)
   previewed               True: --preview prepares it without solving (openEMS: the mesh preview)
@@ -34,6 +36,8 @@ and implements
   readback(run, prep)     what its native model holds, read back (parity.py: vias, copper area per layer,
                           parts, ports), or None
   estimate(run)           dict(seconds, gb, what): its rough cost on this board (--solvers auto), or None
+  resources()             dict(gpus=[dict(device, backend, api, free, total): GB], why): the GPUs it would run on
+                          here and why there are none (sysinfo, the GUI's System panel), or None: the CPU only
 
 `run` is the pipeline's Job. A solver may use run.m (the board), run.s (Settings: its options are fields),
 run.freq (Hz), run.lm (the line model), run.name, run.log(), run.status(run_name, dict) (progress events),
@@ -137,6 +141,9 @@ class Solver:
     def estimate(self, run):
         return None
 
+    def resources(self):
+        return None
+
 
 _registry, broken = None, []                # broken: (entry point, error) of plugins that failed to load
 
@@ -153,7 +160,8 @@ def _entry_points():
 
 def registry():
     """{name: Solver}: the built-in solvers and those installed through entry points, by their `order`. A plugin
-    that fails to load, or reuses a name or a setting, is left out and listed in `broken`. Solvers may share a
+    that fails to load, is written for another kicad2ems API (its `api`: kicad2ems.api), or reuses a name or a
+    setting, is left out and listed in `broken`. Solvers may share a
     setting by listing the same Option object (the FDTD solvers' mesh and run settings)."""
     global _registry
     if _registry is None:
@@ -165,9 +173,13 @@ def registry():
         names = set(reg) | {a for sv in reg.values() for a in sv.aliases} | {LINES, 'all'}
         from ..config import CORE
         keys |= {o.key: o for o in CORE}
+        from ..api import compatible
         for ep in _entry_points():
             try:
                 sv = ep.load()()
+                why = compatible(getattr(sv, 'api', None))
+                if why:
+                    raise ImportError(why)
                 clash = ([sv.name] if sv.name in names else []) + [a for a in sv.aliases if a in names] + \
                         [o.key for o in sv.options if keys.get(o.key, o) is not o]
                 if not sv.name or clash:

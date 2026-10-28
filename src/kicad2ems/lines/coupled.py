@@ -20,7 +20,7 @@ Coupled lines for the line model: parallel microstrip or stripline sections clos
 import math
 import numpy as np
 from ..constants import C0
-from .tlines import microstrip, stripline, offset_stripline, ellipk, _hj_eeff, _hj_z01
+from .formulas import microstrip, stripline, offset_stripline, ellipk, _hj_eeff, _hj_z01
 
 ETA0 = 376.730313668
 

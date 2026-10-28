@@ -8,7 +8,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- `kicad2ems.api`: the public API, `kicad2ems.api.solver` for solver plugins and `kicad2ems.api.frontend` for
+  programs that drive kicad2ems (the GUI, the KiCad plugin, dfsynth); everything else is private. Its names load
+  on first use. `API_VERSION` is 1.0; a solver declares the version it was written for (`api = (1, 0)`) and the
+  registry refuses one of another major version or a newer minor one (`--check` lists it). mom25d, gfdtd,
+  kicad2ems-openems, kicad2ems-gui, kicad2ems-ipc and dfsynth import only from it. `parts.kind_value` (was
+  `_kind_value`, kept as an alias) is public.
+- `Solver.resources()`: the GPUs a solver would run on and why there are none. `sysinfo` asks each solver
+  (`resources` in its JSON; `gpu` stays mom25d's GPU, else any solver's) and no longer imports mom25d.
+- [emdev](https://github.com/lowprocess/emdev), a dependency: the GPUs (CuPy, PyTorch), the CPU's thread count
+  (one per fast physical core), the memory available and the compiled cores' build, shared by mom25d and gfdtd
+  (`mom25d.gpu`, `gfdtd.engine`, both `core/build.py`). `sysinfo.core_threads` is the KiCad plugin's map workers
+  (it imported gfdtd's engine for them). `setup.sh` reports the GPU with `python -m emdev`.
+- CI: `.github/workflows/stack.yml` installs every repository of the stack from its main branch next to this one
+  and runs all their tests (the golden summaries, parity, mom25d's and gfdtd's plugins, the GUI, the KiCad plugin,
+  dfsynth's line-model cross-check), on every push, pull request, a dispatch from another repository and nightly;
+  and the KiCad plugin with the commits its requirements pin. `tools/ci_deps.py` lists the stack's third-party
+  requirements from the checkouts.
+
 ### Changed
+- `lines/tlines.py` (1,350 lines) is split by job: `formulas` (the closed-form cross-sections), `reference` (the
+  reference copper and the cross-section it gives), `builder` (`build`: board to sections), `topology` (paths,
+  coupled lines, discontinuities) and `elements` (`Element`, `LineModel`). `tlines` re-exports them; module settings
+  (`TILE`, `ADAPTIVE`, `COUPLE_H`) are set on the module that defines them (`reference.TILE`).
 - The window is its own package, [kicad2ems-gui](https://github.com/lowprocess/kicad2ems-gui) (the `gui` extra
   installs it; `filter` installs it with dfsynth): `kicad2ems.gui` is now `kicad2ems_gui`, with `volume3d` (the 3D
   view's arrays), the `kicad2ems-gui` and `kicad2openems-gui` commands and the GUI's tests. kicad2ems has no Qt

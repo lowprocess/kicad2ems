@@ -134,7 +134,7 @@ class Part:
                 f"width {self.e[1 - self.axis] - self.s[1 - self.axis]:.3f} mm")
 
 
-def _kind_value(fp):
+def kind_value(fp):
     """('R'|'L'|'C', value) of a footprint, or (None, reason)."""
     props = fp['props']
     dev = (_field(props, 'Sim.Device') or '').strip().upper()
@@ -150,6 +150,9 @@ def _kind_value(fp):
         return None, None
     v = parse_value(fp['value'])
     return (mt.group(1), v) if v is not None else (None, f"value '{fp['value']}' not understood")
+
+
+_kind_value = kind_value                     # its name before kicad2ems.api (the KiCad plugin's older releases)
 
 
 def _copper_gap(board, layer, axis, e1, e2, cb, w):
@@ -189,7 +192,7 @@ def find_parts(board):
             continue
         if not any(inside.intersects(p['geom']) for p in fp['pads']):
             continue                                                # outside the board / region: not a note
-        kind, val = _kind_value(fp)
+        kind, val = kind_value(fp)
         if kind is None:
             if val:
                 notes.append(f"part {fp['ref']} skipped: {val}")

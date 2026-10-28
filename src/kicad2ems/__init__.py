@@ -23,8 +23,9 @@ Modules
     solvers/      the solver plugins: Solver, Result, the registry (entry points 'kicad2ems.solvers'),
                   capabilities. The full-wave solvers are packages of their own: openEMS (kicad2ems-openems),
                   mom25d and mixed (mom25d.kicad2ems), gfdtd (gfdtd.kicad2ems)
-      lines/        the line model: tlines (sections, Z0, coupled sections, discontinuities), strips, coupled,
-                    fastsolve (the sections as a circuit); plugin (qucs, scikit)
+      lines/        the line model: tlines (sections, Z0, coupled sections, discontinuities: formulas,
+                    reference, builder, topology), strips, coupled, fastsolve (the sections as a
+                    circuit); plugin (qucs, scikit)
     sparams       mixed-mode conversion, reciprocity fill
     touchstone    .sNp read / write
     plots         figures: model / mesh preview, line sections, S-parameters, convergence, antenna

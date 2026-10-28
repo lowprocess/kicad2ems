@@ -1,0 +1,107 @@
+# The whole stack at once: kicad2ems with every package that builds on it, each from its main branch (or the ref a
+# repository_dispatch names), checked out side by side as the tests expect (../kicad2ems next to each repository).
+# A change to kicad2ems that breaks a plugin, the GUI or the KiCad plugin fails here, not on someone's machine.
+#
+# The other repositories can run it for their own changes:
+#   gh api repos/lowprocess/kicad2ems/dispatches -f event_type=stack -F 'client_payload[mom25d]=my-branch'
+name: stack
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [stack]
+  schedule:
+    - cron: '17 3 * * *'            # nightly: the other repositories' main moves without a push here
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  MOM25D_GPU: 'off'
+  GFDTD_BACKEND: cpu
+
+jobs:
+  stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: kicad2ems }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/emdev, path: emdev, ref: "${{ github.event.client_payload.emdev || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/mom25d, path: mom25d, ref: "${{ github.event.client_payload.mom25d || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/gfdtd, path: gfdtd, ref: "${{ github.event.client_payload.gfdtd || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/kicad2ems-openems, path: kicad2ems-openems,
+                ref: "${{ github.event.client_payload['kicad2ems-openems'] || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/kicad2ems-gui, path: kicad2ems-gui,
+                ref: "${{ github.event.client_payload['kicad2ems-gui'] || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/kicad2ems-ipc, path: kicad2ems-ipc,
+                ref: "${{ github.event.client_payload['kicad2ems-ipc'] || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/dfsynth, path: dfsynth, ref: "${{ github.event.client_payload.dfsynth || 'main' }}" }
+
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }    # triangle (mom25d's mesher) has wheels up to 3.13
+      - name: System libraries (Qt offscreen, OpenGL)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - name: Install the stack from the checkouts
+        run: |
+          python kicad2ems/tools/ci_deps.py emdev 'kicad2ems[test,fast,dumps]' 'mom25d[test,core]' 'gfdtd[test,core]' \
+            'kicad2ems-openems[test]' 'kicad2ems-gui[test]' 'dfsynth[test]' > requirements-ci.txt
+          echo 'kicad-python>=0.5' >> requirements-ci.txt                # the KiCad plugin's IPC client
+          cat requirements-ci.txt
+          python -m pip install -r requirements-ci.txt
+          python -m pip install --no-deps -e emdev -e kicad2ems -e mom25d -e gfdtd -e kicad2ems-openems -e kicad2ems-gui -e dfsynth
+          python -m pip check || true
+      - name: Build the compiled cores
+        run: |
+          MOM25D_ARCH=-march=x86-64-v2 python -m mom25d.core.build
+          GFDTD_ARCH=-march=x86-64-v2 python -m gfdtd.core.build
+      - name: The machine, the solvers
+        run: python -m emdev && kicad2ems --check
+
+      # every suite runs even when one before it failed; the job fails if any did
+      - name: emdev
+        run: cd emdev && python -m pytest -q
+      - name: kicad2ems (golden summaries, parity, the API)
+        if: success() || failure()
+        run: cd kicad2ems && python -m pytest -q
+      - name: mom25d (with its kicad2ems plugin's parity)
+        if: success() || failure()
+        run: cd mom25d && python -m pytest -q
+      - name: gfdtd
+        if: success() || failure()
+        run: cd gfdtd && python -m pytest -q
+      - name: kicad2ems-openems
+        if: success() || failure()
+        run: cd kicad2ems-openems && python -m pytest -q
+      - name: kicad2ems-gui
+        if: success() || failure()
+        run: cd kicad2ems-gui && python -m pytest -q
+      - name: kicad2ems-ipc
+        if: success() || failure()
+        run: cd kicad2ems-ipc && python -m pytest -q
+      - name: dfsynth (with the line-model cross-check)
+        if: success() || failure()
+        run: cd dfsynth && python -m pytest -q
+
+  # What KiCad installs: the KiCad plugin on main with the commits its requirements.txt pins. Fails when the plugin
+  # needs a kicad2ems newer than the pins (bump plugin/requirements.txt).
+  ipc-pinned:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/kicad2ems-ipc, path: kicad2ems-ipc }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: System libraries (Qt offscreen, OpenGL)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - run: python -m pip install -r kicad2ems-ipc/plugin/requirements.txt pytest
+      - run: cd kicad2ems-ipc && python -m pytest -q
