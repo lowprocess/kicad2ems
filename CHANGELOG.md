@@ -9,6 +9,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- `--aim THETA,PHI`: points a phased array's beam at an angle, each driven port's phase from its place
+  (−k₀(x sin θ cos φ + y sin θ sin φ) at the pattern frequency) on top of `--drive` and `--steer`: any layout of
+  feeds, no grid. The array file keeps the ports' places (`pos`), and the GUI's Beam steering bar has *Aim at*
+  θ, φ, with Animate sweeping θ or turning φ.
+- A phased drive on openEMS and gfdtd (`--drive`): one run per driven port, the others terminated, each run's far
+  field per unit incident wave and their sum for the drive (`fdtd.antenna.run_phased`, `combine_phased`), exact
+  at every recorded frequency. The same antenna results and array file as mom25d's (`phased.py`'s incident-wave
+  basis: S and the fields per unit wave), so the GUI steers it. Auto no longer leaves gfdtd out for `--drive`.
+- The report's S-parameters as an interactive plot (inline SVG and script, nothing loaded from the network):
+  every solver's Touchstone file, hover for the values, a box per solver and S, |S| or phase, drag to zoom.
+- The GUI (kicad2ems-gui): difference plots between two solvers (Δ|S| and |ΔS| in dB, against a solver chosen
+  on the plot), traces of differential pairs named by mode (Sdd21, Scd21, Sds31), and the run's warnings and
+  notes in a fold on the Results page.
+- mom25d's current dumps (`--mom-dump`) cost no solve of their own inside the band: the adaptive sweep solves at
+  the dump frequencies among its first samples and keeps their currents.
+- `tools/compare_solvers.py`: the solver comparison of docs/examples.md regenerated from runs on every RF
+  example with an openEMS reference, its figures measured from the Touchstone files, and the openEMS ones
+  checked against `examples/reference/` (exit 1 when one moved beyond `--tol`).
 - `kicad2ems.api`: the public API, `kicad2ems.api.solver` for solver plugins and `kicad2ems.api.frontend` for
   programs that drive kicad2ems (the GUI, the KiCad plugin, dfsynth); everything else is private. Its names load
   on first use. `API_VERSION` is 1.0; a solver declares the version it was written for (`api = (1, 0)`) and the

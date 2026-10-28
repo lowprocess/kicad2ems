@@ -83,7 +83,7 @@ class GFDTD(FDTD):
     name, aliases, label = 'gfdtd', ('gpu-fdtd',), 'gfdtd (GPU FDTD)'
     in_all, order, tag, conductor_loss = False, 40, '_gfdtd', False
     capabilities = dict(FDTD.capabilities, conductor_loss='ignored: copper is PEC (conducting sheets as PEC)',
-                        antenna='yes: one driven port (no phased drive)')
+                        antenna='yes (a phased drive: a run per driven port)')
     options = MESH + RUN + [
         Option('gfdtd_backend', 'auto', "gfdtd: where it runs (stand-in)", choices=('auto', 'gpu', 'cpu'),
                name='backend', gui='Runs on', group='gfdtd'),
@@ -100,8 +100,7 @@ class GFDTD(FDTD):
         if AUTO not in run.plan:
             return []
         s = run.s
-        return [f"{what}: openEMS's" for what, on in (("--sigma (gfdtd's copper is PEC)", s.sigma),
-                                                    ("--drive", s.drive)) if on]
+        return [f"{what}: openEMS's" for what, on in (("--sigma (gfdtd's copper is PEC)", s.sigma),) if on]
 
     def estimate(self, run):
         """openEMS's estimate, twice as long: auto keeps openEMS unless a test says otherwise."""

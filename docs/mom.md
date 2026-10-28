@@ -134,6 +134,20 @@ kicad2ems board.toml --grid "P1:0,0 P2:1,0 P3:0,1 P4:1,1" --steer 0,60
 column *c*, row *r* gets *c*·X + *r*·Y more phase on top of its `drive` phase. Without a grid, `steer X`
 adds X from each driven port to the next.
 
+`aim` points the beam at an angle instead of a phase step: `--aim THETA,PHI` (degrees) gives each driven
+port −k₀(x sin θ cos φ + y sin θ sin φ) more phase from its place (the port's centre), at the pattern
+frequency, on top of `drive` and `steer`. It needs no grid, so any layout of feeds works: rows and columns, a
+triangle, an offset lattice. The phases are those of phase shifters set at that frequency, so the beam squints
+off it. A feed well off its element's centre still needs the drive's own phases to make up the difference.
+
+```bash
+kicad2ems examples/antenna_array2x2_phased.toml --drive P1,P2 --aim 20,90     # 70.5 deg between the rows
+```
+
+The peak lands where the array factor times the element's own pattern is largest, which on a few elements is
+short of the target: the 2×2 example aimed at θ 20° peaks at 15°, where its two rows give a broad array factor
+and the patch's pattern falls away from broadside. On isotropic elements it is on target within a degree.
+
 `taper` multiplies an amplitude taper into the drive for lower sidelobes: `taylor`, `chebyshev` or
 `cosine`, with `:SLL` for the level in dB (Taylor and Chebyshev; default 25), e.g. `--taper taylor:25`.
 On a grid it is a column weight times a row weight. On the 4×4 example at 2.45 GHz, uniform drive gives
@@ -145,14 +159,22 @@ Each port's far field is kept in `<name>_mom25d_array.npz`. The GUI's Results pa
 beam without solving again ([Beam steering](gui.md#beam-steering)).
 
 The example is a 2×2 patch array, 70 mm (0.57 λ) apart, with a feed per row. With P2 60° behind P1 the
-beam tilts to θ 15° in the yz plane, with both ports matched (active S11 −29 and −23 dB); 45 s. openEMS
-has no phased drive yet: with `drive` it drives the first port alone.
+beam tilts to θ 15° in the yz plane, with both ports matched (active S11 −29 and −23 dB); 45 s.
+
+openEMS and gfdtd take `drive` too: one run per driven port, the others terminated, so each run is an incident
+wave on its port alone. Each run's far field divided by that wave is the field per unit wave, and the drive is
+their sum: exact at every recorded frequency, with the coupling between the elements, and steered afterwards in
+the GUI like mom25d's. `aim`'s phases are applied at the pattern frequency after the runs. On the 2×2 example,
+gfdtd (two runs, 46 s on the GPU) puts the beam at θ 10° (mom25d 15°: its infinite ground has no board edge),
+and P1 driven alone this way gives what its single antenna run gives, to 0.01 dB.
 
 <a id="current-dumps"></a>
 ## Current dumps
 
 `--mom-dump 2.4,5` saves the surface current on each layer at those frequencies, driven from the port
-named by `--dump-port` (default: the first). Each frequency costs one extra solve. The dumps are drawn as
+named by `--dump-port` (default: the first). The adaptive sweep solves at those frequencies among its first
+samples and keeps their currents, so a dump inside the band costs no solve of its own (one outside it still
+does). The dumps are drawn as
 |J| maps, animated with `--dump-animate`, and shown in the GUI's Viewer.
 
 ```bash

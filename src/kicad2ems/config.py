@@ -75,6 +75,16 @@ def _steer(v):
     return vals or None
 
 
+def _aim(v):
+    """--aim: the beam's direction, THETA,PHI (deg), as a list; None for an empty one."""
+    vals = floatlist(v)
+    if vals and len(vals) != 2:
+        raise ValueError("expected THETA,PHI (the beam's direction in degrees)")
+    if vals and not 0 <= vals[0] <= 90:
+        raise ValueError("theta is 0..90 degrees (the upper half space)")
+    return vals or None
+
+
 def _taper(v):
     """--taper: KIND[:SLL] (phased.parse_taper checks it); None for an empty one."""
     from .phased import parse_taper
@@ -122,8 +132,8 @@ CORE = [
            "--drive), far field (gain, efficiency, patterns); openEMS and mom25d", choices=('sparams', 'antenna'),
            gui='Mode', group='solvers'),
     Option('drive', [], "antenna mode: drive several ports at once, each PORT[=amplitude][@phase in deg] (the "
-           "incident waves; the other ports terminated), e.g. P1@0,P2@60: a phased array (mom25d; openEMS drives "
-           "the first). The GUI's Results page steers the beam afterwards", list, conv=strlist,
+           "incident waves; the other ports terminated), e.g. P1@0,P2@60: a phased array (mom25d; openEMS and "
+           "gfdtd: a run per driven port). The GUI's Results page steers the beam afterwards", list, conv=strlist,
            gui='Antenna: phased drive (P1@0, P2@60 ...; empty: one port)', group='antenna',
            cli=dict(metavar='PORT[=AMP][@DEG],...')),
     Option('grid', None, "antenna mode: the ports' places in a 2D array, for --steer and the GUI's beam steering: "
@@ -133,6 +143,10 @@ CORE = [
     Option('steer', None, "antenna mode: phase steps (deg) added to --drive: X[,Y], X per column and Y per row of "
            "--grid (without a grid: X from each driven port to the next), e.g. 30,-45", list,
            conv=_steer, gui='Antenna: phase step X, Y (deg)', group='antenna', cli=dict(metavar='X[,Y]')),
+    Option('aim', None, "antenna mode: point the beam at THETA,PHI (deg): each driven port's phase from its place, "
+           "-k0 (x sin theta cos phi + y sin theta sin phi) at the pattern frequency, on top of --drive and --steer "
+           "(any layout of feeds), e.g. 20,0", list, conv=_aim,
+           gui='Antenna: aim the beam at theta, phi (deg)', group='antenna', cli=dict(metavar='THETA,PHI')),
     Option('taper', None, "antenna mode: an amplitude taper multiplied into --drive, for lower sidelobes: uniform, "
            "taylor, chebyshev or cosine, with :SLL for the sidelobe level in dB (taylor and chebyshev; default "
            "25), e.g. taylor:30. Across --grid's columns times its rows, else across the driven ports",

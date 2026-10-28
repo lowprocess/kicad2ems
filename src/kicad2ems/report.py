@@ -2,10 +2,11 @@
 HTML report of a run (<name>_report.html): one self-contained page (the plots embedded) rendered from
 the run summary (pipeline.Job.summary, also written as <name>_run.json) and nothing else - so a GUI,
 or a later run, can rebuild it from the JSON file. Sections: summary, model, transmission-line
-sections, mesh (openEMS), results (the first solver, the others overlaid), one per solver (each compared
-with the first), antenna, convergence, field maps, the openEMS runs, output files, settings and the full log.
+sections, mesh (openEMS), results (an interactive plot of every solver's Touchstone file, inline SVG and script,
+over the static image of the first solver with the others overlaid), one per solver (each compared with the
+first), antenna, convergence, field maps, the openEMS runs, output files, settings and the full log.
 """
-import base64, html, os
+import base64, html, json, os
 
 CSS = """
 :root { --bg:#fbfbfa; --fg:#1f2328; --muted:#5f6670; --line:#d8dbe0; --card:#ffffff; --accent:#1f5f99;
@@ -42,6 +43,73 @@ pre { white-space:pre-wrap; word-break:break-word; font-size:12.5px; background:
       border-radius:6px; padding:10px; max-height:520px; overflow:auto; }
 code { font-size:12.5px; }
 a { color:var(--accent); }
+.iplot { border:1px solid var(--line); border-radius:6px; padding:8px; margin:6px 0; }
+.iplot svg { width:100%; height:auto; display:block; user-select:none; touch-action:none; }
+.iplot .bar { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:13px; align-items:center; margin:0 0 6px; }
+.iplot .bar label { white-space:nowrap; cursor:pointer; }
+.iplot .read { font-size:12.5px; color:var(--muted); min-height:1.5em; font-variant-numeric:tabular-nums; }
+.iplot .read b { font-weight:600; }
+"""
+
+PLOT_POINTS = 600       # the interactive plot's points per trace at most (every n-th sample beyond)
+# the interactive S-parameter plot: data in a JSON script tag, drawn as SVG, no library (the page stays one file)
+PLOT_JS = r"""
+(function(){
+const box=document.currentScript.parentElement, D=JSON.parse(box.querySelector('script.data').textContent);
+const C=['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf'];
+const DASH=['','6 4','2 3','8 3 2 3','1 2'];
+const svg=box.querySelector('svg'), read=box.querySelector('.read'), NS='http://www.w3.org/2000/svg';
+const W=900,H=380,L=58,R=12,T=10,B=36;
+let mode='db', on={}, xr=null;
+D.solvers.forEach((s,si)=>s.params.forEach((p,pi)=>{on[si+'|'+p]=(si===0||D.solvers.length<4)&&s.first.includes(p);}));
+const params=[...new Set(D.solvers.flatMap(s=>s.params))];
+function nice(lo,hi,n){const r=(hi-lo)/n,m=Math.pow(10,Math.floor(Math.log10(r))),st=[1,2,2.5,5,10].map(x=>x*m).find(x=>x>=r);
+  const out=[];for(let v=Math.ceil(lo/st)*st;v<=hi+st*1e-9;v+=st)out.push(+v.toFixed(10));return out;}
+function el(t,a,parent){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);(parent||svg).appendChild(e);return e;}
+function val(s,p,i){const re=s.re[p][i],im=s.im[p][i];return mode==='db'?20*Math.log10(Math.hypot(re,im)+1e-15):Math.atan2(im,re)*180/Math.PI;}
+function bar(){const b=box.querySelector('.bar');b.innerHTML='';
+  const m=document.createElement('label');m.innerHTML="<select><option value='db'>|S| (dB)</option><option value='ph'>phase (°)</option></select>";
+  m.firstChild.value=mode;m.firstChild.onchange=e=>{mode=e.target.value;draw();};b.appendChild(m);
+  D.solvers.forEach((s,si)=>{const g=document.createElement('span');g.innerHTML='<b>'+s.label+'</b> ';
+    s.params.forEach((p,pi)=>{const k=si+'|'+p,l=document.createElement('label');
+      l.innerHTML="<input type='checkbox'"+(on[k]?' checked':'')+"> <span style='color:"+C[params.indexOf(p)%10]+"'>"+p+'</span> ';
+      l.firstChild.onchange=e=>{on[k]=e.target.checked;draw();};g.appendChild(l);});b.appendChild(g);});}
+function draw(){svg.innerHTML='';svg.setAttribute('viewBox','0 0 '+W+' '+H);
+  const f=D.solvers.flatMap(s=>s.f), x0=xr?xr[0]:Math.min(...f), x1=xr?xr[1]:Math.max(...f);
+  let lo=Infinity,hi=-Infinity;
+  D.solvers.forEach((s,si)=>s.params.forEach(p=>{if(!on[si+'|'+p])return;s.f.forEach((fv,i)=>{if(fv<x0||fv>x1)return;const v=val(s,p,i);if(isFinite(v)){lo=Math.min(lo,v);hi=Math.max(hi,v);}});}));
+  if(!isFinite(lo)){lo=-40;hi=0;} if(mode==='db'){lo=Math.max(lo,hi-80);} if(hi-lo<1){lo-=0.5;hi+=0.5;}
+  const pad=(hi-lo)*0.05;lo-=pad;hi+=pad;
+  const X=v=>L+(v-x0)/(x1-x0||1)*(W-L-R), Y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
+  const ax=el('g',{stroke:'currentColor','stroke-opacity':0.18,'font-size':12,fill:'currentColor'});
+  nice(x0,x1,8).forEach(xv=>{el('line',{x1:X(xv),x2:X(xv),y1:T,y2:H-B},ax);
+    const a=X(xv)<L+20?'start':X(xv)>W-R-20?'end':'middle';
+    el('text',{x:X(xv),y:H-B+16,'text-anchor':a,stroke:'none','fill-opacity':0.75},ax).textContent=+xv.toPrecision(6);});
+  nice(lo,hi,6).forEach(yv=>{el('line',{x1:L,x2:W-R,y1:Y(yv),y2:Y(yv)},ax);
+    el('text',{x:L-6,y:Y(yv)+4,'text-anchor':'end',stroke:'none','fill-opacity':0.75},ax).textContent=+yv.toPrecision(6);});
+  el('text',{x:(L+W-R)/2,y:H-4,'text-anchor':'middle','font-size':12,fill:'currentColor','fill-opacity':0.75}).textContent='frequency (GHz)';
+  el('text',{x:12,y:(T+H-B)/2,'text-anchor':'middle','font-size':12,fill:'currentColor','fill-opacity':0.75,transform:'rotate(-90 12 '+(T+H-B)/2+')'}).textContent=mode==='db'?'|S| (dB)':'phase (°)';
+  const clip=el('clipPath',{id:box.id+'c'});el('rect',{x:L,y:T,width:W-L-R,height:H-T-B},clip);
+  D.solvers.forEach((s,si)=>s.params.forEach(p=>{if(!on[si+'|'+p])return;let d='';
+    s.f.forEach((fv,i)=>{const v=val(s,p,i);if(!isFinite(v))return;d+=(d?'L':'M')+X(fv).toFixed(1)+' '+Y(v).toFixed(1);});
+    el('path',{d:d,fill:'none',stroke:C[params.indexOf(p)%10],'stroke-width':1.8,'stroke-dasharray':DASH[si%5],'clip-path':'url(#'+box.id+'c)'});}));
+  const cur=el('line',{y1:T,y2:H-B,stroke:'currentColor','stroke-opacity':0.5,'stroke-dasharray':'3 3',visibility:'hidden'});
+  const sel=el('rect',{y:T,height:H-T-B,fill:'currentColor','fill-opacity':0.08,visibility:'hidden'});
+  const pt=e=>{const r=svg.getBoundingClientRect();return x0+((e.clientX-r.left)*W/r.width-L)/(W-L-R)*(x1-x0);};
+  let drag=null;
+  svg.onpointerdown=e=>{drag=pt(e);svg.setPointerCapture(e.pointerId);};
+  svg.onpointermove=e=>{const fv=pt(e);if(fv<x0||fv>x1){cur.setAttribute('visibility','hidden');return;}
+    cur.setAttribute('x1',X(fv));cur.setAttribute('x2',X(fv));cur.setAttribute('visibility','visible');
+    if(drag!==null){sel.setAttribute('x',X(Math.min(drag,fv)));sel.setAttribute('width',Math.abs(X(fv)-X(drag)));sel.setAttribute('visibility','visible');}
+    let out=[];D.solvers.forEach((s,si)=>s.params.forEach(p=>{if(!on[si+'|'+p])return;
+      let i=0;while(i<s.f.length-1&&s.f[i+1]<fv)i++;const j=Math.min(i+1,s.f.length-1),t=s.f[j]>s.f[i]?(fv-s.f[i])/(s.f[j]-s.f[i]):0;
+      const v=val(s,p,i)*(1-t)+val(s,p,j)*t;out.push("<span style='color:"+C[params.indexOf(p)%10]+"'>"+p+'</span> '+s.label+' '+(isFinite(v)?v.toFixed(2):'–'));}));
+    read.innerHTML='<b>'+fv.toFixed(4)+' GHz</b> &nbsp; '+out.join(' &nbsp; ');};
+  svg.onpointerup=e=>{const fv=pt(e);if(drag!==null&&Math.abs(X(fv)-X(drag))>8){xr=[Math.min(drag,fv),Math.max(drag,fv)];drag=null;draw();}else{drag=null;sel.setAttribute('visibility','hidden');}};
+  svg.ondblclick=()=>{xr=null;draw();};
+  svg.onpointerleave=()=>{cur.setAttribute('visibility','hidden');};}
+bar();draw();
+})();
 """
 
 
@@ -97,6 +165,43 @@ def _zcell(z, zref, fmt='.1f'):
         return ('–', '')
     d = abs(z - zref) / zref
     return (format(z, fmt), 'zb' if d > 0.25 else ('zw' if d > 0.10 else ''))
+
+
+def _sparam_data(sm, base):
+    """The interactive plot's data: per solver with a Touchstone file, its label, ports, frequencies (GHz) and each
+    S as real and imaginary parts (at most PLOT_POINTS samples), the first port's column marked to show at first;
+    None when no file can be read."""
+    from .touchstone import read_touchstone
+    out = []
+    for n, so in (sm.get('solved') or {}).items():
+        ts = so.get('touchstone')
+        path = ts if ts and os.path.isabs(ts) else os.path.join(base, ts or '')
+        if not ts or not os.path.exists(path):
+            continue
+        try:
+            f, S = read_touchstone(path)
+        except (OSError, ValueError):
+            continue
+        k = slice(None, None, max(1, -(-len(f) // PLOT_POINTS)))
+        f, S = f[k], S[k]
+        nports = S.shape[1]
+        names = so.get('names') or [f"P{i + 1}" for i in range(nports)]
+        params = [f"S{i + 1}{j + 1}" for j in range(nports) for i in range(nports)]
+        rnd = lambda a: [None if not (x == x) else round(float(x), 6) for x in a]     # NaN (not computed): null
+        out.append(dict(label=so.get('label', n), names=names, f=[round(float(x) / 1e9, 6) for x in f],
+                        params=params, first=[f"S{i + 1}1" for i in range(nports)],
+                        re={p: rnd(S[:, i, j].real) for p, (i, j) in zip(params, [(i, j) for j in range(nports) for i in range(nports)])},
+                        im={p: rnd(S[:, i, j].imag) for p, (i, j) in zip(params, [(i, j) for j in range(nports) for i in range(nports)])}))
+    return dict(solvers=out) if out else None
+
+
+def _iplot(data, pid='iplot'):
+    """The interactive S-parameter plot of _sparam_data's data: a toolbar (|S| dB or phase, a box per solver and S),
+    the plot (hover: every trace at a frequency; drag: zoom; double-click: all) and the readout."""
+    blob = json.dumps(data, separators=(',', ':')).replace('</', '<\\/')
+    return (f"<div class='iplot' id='{pid}'><div class='bar'></div><svg role='img' aria-label='S-parameters'></svg>"
+            f"<div class='read'>hover over the plot for the values; drag to zoom, double-click for the whole band</div>"
+            f"<script type='application/json' class='data'>{blob}</script><script>{PLOT_JS}</script></div>")
 
 
 def _lines_section(sm):
@@ -326,7 +431,11 @@ def build(sm, base):
                 for r in res['table']]
         ref = solved.get(res.get('reference'), {}).get('label', '')
         others = [so['label'] for n, so in solved.items() if so.get('compare')]
-        content = (_img(sm['images'].get('sparams'), 'S-parameters') +
+        data = _sparam_data(sm, base)
+        still = _img(sm['images'].get('sparams'), 'S-parameters')
+        plot = (_iplot(data) + (f"<details><summary>static image</summary>{still}</details>" if still else '')
+                if data else still)
+        content = (plot +
                    (f"<p class='meta'>Solid: {_e(ref)}; overlaid: {_e(', '.join(others))}.</p>" if others else '') +
                    f"<h3>|S| in dB ({_e(ref)})</h3>" +
                    _table(['', f"{fq[0]:g} GHz", f"{fq[1]:g} GHz", f"{fq[2]:g} GHz", 'minimum', 'maximum'], rows,

@@ -111,6 +111,11 @@ fields.save_animation(src, 'ez.gif', axis=2, index=0, component='z')
 sections, the mesh, the S-parameters with a table at key frequencies, a section per solver, what each
 solver saw of the board, antenna and convergence results, field maps, warnings and the full log.
 
+The S-parameters are an interactive plot, drawn in the page itself (no library, nothing loaded from the
+network), from each solver's Touchstone file next to the report: hover for every trace's value at a
+frequency, tick the solvers and S-parameters to show, switch between |S| in dB and the phase, drag across
+the plot to zoom and double-click for the whole band. The static image is folded below it.
+
 The report can be rebuilt from the summary, for example after changing `report.py`:
 
 ```python

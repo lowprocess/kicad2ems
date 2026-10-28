@@ -13,12 +13,19 @@ reflection of each driven port b_k / a_k (what it sees with its neighbours drive
     a2 = steer(a, 30)                                   # a phase step of 30 deg from each driven port to the next
     g = parse_grid('4x4', names)                        # a 2D array: {port: (column, row)}, P1..P4 the top row
     a3 = steer2d(a, names, g, 30, -45)                  # +30 deg per column, -45 deg per row
+    a5 = aim(a, names, pos, 20, 0, 2.4e9)               # the beam to theta 20, phi 0 at 2.4 GHz, from the ports' places
     a4 = taper(a, names, g, 'taylor:30')                # amplitudes: a Taylor taper per column x per row
     data = load(path)                                   # mom25d's <name>_mom25d_array.npz
     out = combine(data, a)                              # dict(sphere, rows, active, peak)
 
-The .npz: theta, phi (deg; the upper hemisphere), freq (Hz), ports, zc (ohm), Y (nf, n, n), Eth, Eph (nf, n,
-nphi, ntheta: r E per port column), drive (the run's a), and the sphere's theta (0..180, the lower half 0).
+The .npz: theta, phi (deg; mom25d: the upper hemisphere), freq (Hz), ports, zc (ohm), Y (nf, n, n), Eth, Eph
+(nf, n, nphi, ntheta: r E per port column), drive (the run's a), the sphere's theta (0..180, the lower half 0) and
+pos (n, 2: each port's centre, model mm; files written before it have none, and cannot be aimed).
+
+An FDTD solver (openEMS, gfdtd) runs each driven port once with the others terminated, which is an incident wave
+on that port alone: its file holds S (nf, n, n) in place of Y, Eth / Eph per unit incident wave (r E / a_k), and
+excited (n: the ports that were run). Then b = S a and the far field is sum_k a_k E_k; a drive of a port that was
+not run is refused.
 """
 import cmath, math, re
 import numpy as np
@@ -127,6 +134,25 @@ def steer2d(a, names, grid, step_x, step_y):
     return out
 
 
+def aim(a, names, pos, theta, phi, f):
+    """The drive a with the phases that point the beam at (theta, phi) (deg) at frequency f (Hz): a driven port at
+    pos[name] = (x, y) (model mm) gets -k0 (x sin(theta) cos(phi) + y sin(theta) sin(phi)) more, on top of its own
+    phase (the far field of a current at r is e^{+j k.r}). Any layout of feeds: rows and columns, a triangle. The
+    phases are those of phase shifters set at f, the same at every frequency (the beam squints off f). A feed well
+    off its element's centre still needs the drive's own phases to make up the difference. ValueError for a driven
+    port without a place."""
+    out = np.array(a, complex)
+    k0 = 2 * math.pi * f / 299792458.0 * 1e-3                       # rad / mm
+    st, ph = math.sin(math.radians(theta)), math.radians(phi)
+    for i, n in enumerate(names):
+        if abs(out[i]) > 0:
+            if n not in pos:
+                raise ValueError(f"aim: port {n} has no place")
+            x, y = pos[n]
+            out[i] *= cmath.exp(-1j * k0 * st * (x * math.cos(ph) + y * math.sin(ph)))
+    return out
+
+
 TAPERS = ('uniform', 'taylor', 'chebyshev', 'cosine')
 TAPER_SLL = 25.0        # dB: Taylor's and Chebyshev's sidelobe level when none is given
 TAYLOR_NBAR = 4         # Taylor's nearly equal sidelobes next to the main beam
@@ -189,10 +215,10 @@ def taper(a, names, grid, spec):
     return out
 
 
-def settings_drive(drive, names, grid_spec=None, steps=None, taper_spec=None):
+def settings_drive(drive, names, grid_spec=None, steps=None, taper_spec=None, target=None, pos=None, f=None):
     """The incident waves of a run's settings: --drive (parse_drive), --taper's amplitudes, --steer's phase
-    steps (X[,Y]) across --grid (steer2d), and the grid itself (None without one). ValueError for one that does
-    not parse."""
+    steps (X[,Y]) across --grid (steer2d), --aim's (target: theta, phi) phases from the ports' places pos at f
+    (aim), and the grid itself (None without one). ValueError for one that does not parse."""
     a = parse_drive(drive, names)
     g = parse_grid(grid_spec, names)
     a = taper(a, names, g, taper_spec)
@@ -202,6 +228,8 @@ def settings_drive(drive, names, grid_spec=None, steps=None, taper_spec=None):
         if sy and not g:
             raise ValueError("steer: a Y step needs --grid (the ports' rows)")
         a = steer2d(a, names, g, sx, sy)
+    if target:
+        a = aim(a, names, pos or {}, target[0], target[1], f)
     return a, g
 
 
@@ -230,11 +258,20 @@ def combine(data, a, f_pattern=None):
     th_s = data.get('theta_sphere', th)
     a = np.asarray(a, complex)
     driven = np.abs(a) > 0
+    incident = 'S' in data and data.get('Y') is None                # an FDTD solver's: per unit incident wave
+    if incident and 'excited' in data:
+        off = [n for n, d, x in zip(data['ports'], driven, np.asarray(data['excited'], bool)) if d and not x]
+        if off:
+            raise ValueError(f"drive: {', '.join(off)} {'was' if len(off) == 1 else 'were'} not run (no far field "
+                             f"recorded): drive the ports of the run's --drive")
     dmax, prad, pacc, pinc, e_norm, active, eth, eph = [], [], [], [], [], [], [], []
     for i in range(len(freq)):
-        V, b = waves(data['Y'][i], data['zc'], a)
-        Et = np.tensordot(V, data['Eth'][i], 1)
-        Ep = np.tensordot(V, data['Eph'][i], 1)
+        if incident:
+            b, w = data['S'][i] @ a, a
+        else:
+            w, b = waves(data['Y'][i], data['zc'], a)
+        Et = np.tensordot(w, data['Eth'][i], 1)
+        Ep = np.tensordot(w, data['Eph'][i], 1)
         eth.append(Et)
         eph.append(Ep)
         U, pr = radiated(Et, Ep, th, ph)
@@ -261,10 +298,17 @@ def combine(data, a, f_pattern=None):
     return dict(sphere=sphere, rows=rows, active=np.array(active), peak=peak)
 
 
-def save(path, *, theta, phi, theta_sphere, freq, ports, zc, Y, Eth, Eph, drive, f_pattern):
+def save(path, *, theta, phi, theta_sphere, freq, ports, zc, Eth, Eph, drive, f_pattern, Y=None, S=None,
+         excited=None, pos=None):
+    """The array file: Y (mom25d: E per unit port voltage) or S and excited (an FDTD solver: E per unit incident
+    wave); pos optional."""
+    if (Y is None) == (S is None):
+        raise ValueError("phased.save: Y (per unit voltage) or S (per unit incident wave)")
+    extra = {k: np.asarray(v, complex if k in ('Y', 'S') else bool if k == 'excited' else float)
+             for k, v in dict(Y=Y, S=S, excited=excited, pos=pos).items() if v is not None}
     np.savez_compressed(path, theta=theta, phi=phi, theta_sphere=theta_sphere, freq=freq, ports=np.array(ports),
-                        zc=np.asarray(zc, float), Y=np.asarray(Y), Eth=np.asarray(Eth, np.complex64),
-                        Eph=np.asarray(Eph, np.complex64), drive=np.asarray(drive, complex), f_pattern=f_pattern)
+                        zc=np.asarray(zc, float), Eth=np.asarray(Eth, np.complex64), Eph=np.asarray(Eph, np.complex64),
+                        drive=np.asarray(drive, complex), f_pattern=f_pattern, **extra)
 
 
 def load(path):

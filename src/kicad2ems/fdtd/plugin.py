@@ -285,10 +285,11 @@ class FDTD(Solver):
         s, m = run.s, run.m
         who = engine_name(self.engine(s))[1]
         p.excite = port_index(m, s.excite)
-        if s.antenna and s.drive:                                   # a phased drive: mom25d's for now
-            first = s.drive[0].partition('@')[0].partition('=')[0].strip()
-            p.excite = port_index(m, [first])
-            run.log(f"note: {who} has no phased drive yet (--drive: mom25d): driving {first} alone")
+        p.drive = None
+        if s.antenna and s.drive:                                   # a phased drive: a run per driven port
+            from .. import phased
+            p.drive, _ = phased.settings_drive(s.drive, [q.name for q in m.ports], s.grid, s.steer, s.taper)
+            p.excite = [j for j, v in enumerate(p.drive) if abs(v) > 0]
         elif s.antenna and len(p.excite) > 1:
             run.log(f"{who} antenna mode: driving {m.ports[p.excite[0]].name} only (one port per antenna run; "
                     f"--excite to choose)")
@@ -305,7 +306,12 @@ class FDTD(Solver):
                       progress=progress, log=run.log, engine=self.engine(s))
         self.coarse(run, p, jobs, run_kw)
         p.xml = run.path(f"{self.tag}.xml")
-        if s.antenna:
+        if s.antenna and p.drive is not None:
+            from . import antenna
+            p.result = antenna.run_phased(m, p.grid, run.freq, p.excite, p.bc, s.out,
+                                          ff_extra=[v * 1e9 for v in s.ff_freq], step=s.ff_step, xml_path=p.xml,
+                                          dumps=p.dumps, jobs=jobs, **run_kw)
+        elif s.antenna:
             from . import antenna
             k = p.excite[0]
             p.result = antenna.run_antenna(m, p.grid, run.freq, k, p.bc, s.out, ff_extra=[v * 1e9 for v in s.ff_freq],
@@ -320,6 +326,8 @@ class FDTD(Solver):
         if missing:
             run.log(f"note: {', '.join(m.ports[k].name for k in missing)} not excited - their reflection and the "
                     f"terms between unexcited ports are unknown (written as 0)")
+        if p.drive is not None:
+            self.phased(run, p)
         S, names, zref = mixed_mode(r.S, m)
         seconds = sum(v or 0 for v in r.seconds.values())
         cells, steps = p.grid['info']['cells'], sum(v or 0 for v in r.steps.values())
@@ -328,6 +336,29 @@ class FDTD(Solver):
                       info=dict(excited=[m.ports[k].name for k in p.excite], kpi=f"{seconds:.0f} s solver",
                                 about=f"{self.about(s)}: {len(r.seconds)} run(s) on {cells / 1e6:.2f} M cells"
                                       + (f", ~{steps:,} timesteps" if steps else '') + f", {seconds:.0f} s{rate}."))
+
+    def phased(self, run, p):
+        """The phased drive's antenna from its runs (fdtd.antenna.combine_phased); --aim's phases at the pattern
+        frequency the drive gives, then combined again."""
+        from . import antenna
+        from .. import phased
+        s, m = run.s, run.m
+        names = [q.name for q in m.ports]
+        pos = {q.name: (float(q.c[0]), float(q.c[1])) for q in m.ports}
+        kw = dict(ff_pattern=s.ff_freq[0] * 1e9 if s.ff_freq else None, step=s.ff_step, pos=pos)
+        a = p.drive
+        if s.aim:
+            ant, _, _ = antenna.combine_phased(m, run.freq, p.result, a, p.excite, log=lambda *_: None, **kw)
+            a = phased.aim(a, names, pos, s.aim[0], s.aim[1], ant['f_pattern'])
+        p.ant, p.array, p.sphere = antenna.combine_phased(m, run.freq, p.result, a, p.excite, log=run.log, **kw)
+        if s.grid:
+            p.ant['grid'] = phased.format_grid(phased.parse_grid(s.grid, names), names)
+        if s.taper or s.steer or s.aim:                              # the GUI's Reset: these settings again
+            p.ant['drive_base'] = phased.format_drive(phased.parse_drive(s.drive, names), names)
+            p.ant['taper'] = s.taper or 'uniform'
+            p.ant['steer'] = [float(x) for x in (list(s.steer or []) + [0.0, 0.0])[:2]]
+            if s.aim:
+                p.ant['aim'] = [float(x) for x in s.aim]
 
     def about(self, s):
         return f"{engine_name(self.engine(s))[1]}, 3D FDTD"
@@ -379,11 +410,23 @@ class FDTD(Solver):
         from ..plots import plot_antenna, plot_pattern
         k, m, s = p.excite[0], run.m, run.s
         who = engine_name(self.engine(s))[1]
-        sph = os.path.join(run_dir(m, k, s.out, self.engine(s)), 'nf2ff_sphere.h5')
-        ant = dict(p.ant, solver=self.name, sphere_file=os.path.relpath(sph, s.out))
+        tag = self.tag or '_' + self.name
+        if p.drive is not None:                                     # phased: the combined sphere and the array
+            from .. import phased
+            sph = run.path(f"{tag}_sphere.npz")
+            np.savez_compressed(sph, **p.sphere)
+            arr = run.path(f"{tag}_array.npz")
+            phased.save(arr, **{k_: v for k_, v in p.array.items() if v is not None})
+            run.wrote(f"antenna, each port's far field, {who} (beam steering)", arr)
+            s11 = p.ant.pop('s11')
+            ant = dict(p.ant, solver=self.name, sphere_file=os.path.basename(sph), array_file=os.path.basename(arr))
+        else:
+            sph = os.path.join(run_dir(m, k, s.out, self.engine(s)), 'nf2ff_sphere.h5')
+            s11 = p.result.S[:, k, k]
+            ant = dict(p.ant, solver=self.name, sphere_file=os.path.relpath(sph, s.out))
         key = '' if 'antenna' not in run.summary else self.tag          # the first solver's results come first
         by = f" ({who})" if self.tag else ''
-        run.figure(plot_antenna(run.freq, p.result.S[:, k, k], m.ports[k].z0, ant, f"{run.name} - antenna{by}"),
+        run.figure(plot_antenna(run.freq, s11, m.ports[k].z0, ant, f"{run.name} - antenna{by}"),
                    f"{self.tag}_antenna.png", f"antenna{key}", f"antenna{by}: match, gain, efficiency")
         run.figure(plot_pattern(ant, f"{run.name} - gain pattern{by}"), f"{self.tag}_pattern.png", f"pattern{key}",
                    f"antenna{by}: patterns")

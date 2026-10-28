@@ -1,18 +1,23 @@
 # Roadmap
 
 What is worth doing next, in priority order within each section. Each item comes from something the
-examples or benchmarks showed. Last updated 2026-10-27.
+examples or benchmarks showed. Last updated 2026-10-28.
 
 ## 1. Open questions (correctness)
 
-- **Rat-race isolation in openEMS** converges to a null at 2.24 GHz, against mom25d's 2.33, EMerge's 2.31 and
-  the line model's 2.40 (the design): the staircased ring is electrically long, and refining doesn't remove it. Worth
-  trying: openEMS's conformal or diagonal-edge options for curved copper, if they apply to sheets.
+- ~~**Rat-race isolation in openEMS**~~ Settled (2026-10-28): it wasn't converged. On gfdtd (the same FDTD
+  model) the null moves from 2.18 GHz at the default `--curve-res` to 2.25 at 12 (the reference's), 2.28 at 24
+  and 2.294 / 2.296 / 2.299 GHz at 36 / 48 / 64 (up to 22 M cells): 2.30 GHz, against EMerge's 2.31 and mom25d's
+  2.33. No conformal option needed; the ring needs small cells along the curve (docs/examples.md).
 
 ## 2. Line model
 
-- **Vias** are the weak part of `rf_diffvia` above 5 GHz (worst Sdd11 −9.4 dB against openEMS's −15.4 dB):
-  a coupled via pair in its antipads.
+- **`rf_diffvia` above 5 GHz** (worst Sdd11 −9.4 dB against openEMS's −15.4 dB). Not the via barrels, it turns
+  out: they are 0.4 mm long (0.03 λ at 10 GHz), and modelling the two as a coupled pair in a shared antipad (two
+  line charges and their images in a grounded cylinder; odd mode 46 Ω against each barrel's 42 Ω coax) moved the
+  worst Sdd11 by 0.3 dB, the wrong way (tried 2026-10-28, not kept). The line model's reflection rises evenly from
+  3 GHz on both sides of the board. Next suspects: the fan-out to the 1 mm via pitch (its diagonal legs aren't a
+  coupled section) and the via pads.
 
 ## 3. mom25d
 
@@ -56,37 +61,51 @@ examples or benchmarks showed. Last updated 2026-10-27.
   via-through-antipad junction, low-frequency stability with mixed unknowns), any of which could add weeks.
   Even then mom25d stays a planar solver without board edges. Against it: gfdtd already solves the CM5 HDMI
   pair in 47 s at `--fine 0.1` (3.6 M cells), and in about 31 minutes for all six legs on the default mesh.
-  Plan: step 1, then decide on the rest after step 2. Also open: the GPU solve returned NaN on the 22,700-
-  unknown CM5 region (reported, not fixed), and the adaptive sweep didn't converge there in 15 solves.
-- **Current dumps** cost one extra solve per frequency; the sweep's own solves rarely land on the dump
-  frequencies.
+  Plan: step 1, then decide on the rest after step 2. Not started: the 2–2.5 months are a decision to make, not a
+  task to pick up. Also open: the GPU solve returned NaN on the 22,700-unknown CM5 region (reported, not fixed;
+  not reproduced on 2026-10-28: which F.Cu pads the ports were moved to isn't recorded, and the saved region
+  config has the original B.Cu ports), and the adaptive sweep didn't converge there in 15 solves.
+- ~~**Current dumps** cost one extra solve per frequency.~~ Done (2026-10-28): the adaptive sweep solves at the
+  dump frequencies among its first samples and keeps their currents (`solve_band(keep_at=...)`); a dump inside the
+  band costs no solve of its own.
 - **Antenna mode** assumes an infinite ground, so antennas that use the board edge are out of reach (step 1 of
-  multilayer boards, above, opens them), and via currents are left out of the far field.
-- **Beam steering to an angle** for phased arrays (`--drive`): today the phase step is added from each
-  driven port to the next in the order the ports are listed, which only steers cleanly for a line of equally
-  spaced elements numbered along it. A target θ, φ instead would give each port −k₀(xₖ sin θ cos φ +
-  yₖ sin θ sin φ) from its position, on top of the drive's phases: any number of feeds in any layout
-  (rows and columns, a triangle), and Animate sweeping the angle. Test it on a 1×3 row of patches. Feed
-  points well off their element's centre still need the drive's phases to make up the difference.
-- **Phased drive in openEMS**: one run per port, then the near-to-far-field results combined with the
-  drive's weights (exact at every frequency). It drives the first port alone today.
+  multilayer boards, above, opens them), and via currents are left out of the far field. The via currents belong
+  with step 1 too: a vertical current radiates through the stack's TM response to a series source, a kernel
+  `far_field` doesn't have, from the via-chain ends that step 1 rewrites; and next to a patch's edges a 0.8–1.6 mm
+  via is a small term.
+- ~~**Beam steering to an angle**~~ Done (2026-10-28): `--aim THETA,PHI` gives each driven port
+  −k₀(x sin θ cos φ + y sin θ sin φ) from its place at the pattern frequency, on top of `--drive` and `--steer`
+  (any layout; tested on a 1×3 row and a triangle of feeds), and the GUI's Beam steering bar has *Aim at* with
+  Animate sweeping θ or turning φ. On a few elements the peak falls short of the target where the element's
+  pattern pulls it to broadside (the 2×2 example aimed at θ 20° peaks at 15°).
+- ~~**Phased drive in openEMS**~~ Done (2026-10-28), for gfdtd too: one run per driven port, each run's far field
+  per unit incident wave, summed with the drive's weights; P1 alone this way matches its single antenna run to
+  0.01 dB. The GUI steers it like mom25d's.
 
 ## 4. openEMS
 
-- Other structures may still need a `--converge` check: the mesh now grades z cells at signal copper and
-  refines over curves, which settled the coupler, the grounded CPW and the radial stub, but only those were
-  studied. The other references (`examples/reference/`) were made before these mesh changes.
+- **The references (`examples/reference/`) are partly stale.** `tools/compare_solvers.py` ran every board on
+  today's openEMS (2026-10-28): branchline, stub notch, coupler, radial stub, stripline and diff-via match their
+  references; four moved. The rat-race and the grounded CPW: their references were made with `--curve-res 12` and
+  `--z-sheet 0.25`, which the configs don't set. The Wilkinson and the step low-pass moved with the newer mesh, and
+  `--converge 1,1.5,2` says neither is converged on its default mesh (×1.5 to ×2: 1.8 and 0.9 dB at most). Their
+  main figures hold (Wilkinson S21 −3.34 dB at every level); the deep ones move: S22 −20.2 / −20.7 dB and
+  isolation −35.3 / −33.6 dB at ×1 / ×2 (reference −19.4, −33.2), the step low-pass −3 dB point 1.736 / 1.730 GHz
+  (reference 1.757). To do: put the references' settings in the configs, regenerate the references on a converged
+  mesh, and the examples.md table with `tools/compare_solvers.py`.
 
 ## 5. GUI
 
-- A difference plot between two solvers (dB or |ΔS|).
-- Mixed-mode traces in the trace list.
-- The run's notes and warnings in the results.
-- Interactive plots in the HTML report.
+All done (2026-10-28): ~~a difference plot between two solvers~~ (Δ|S| and |ΔS| in dB against a solver chosen
+on the plot), ~~mixed-mode traces in the trace list~~ (Sdd21, Scd21, Sds31), ~~the run's notes and warnings in
+the results~~ (a fold on the Results page), ~~interactive plots in the HTML report~~ (inline SVG and script:
+hover, a box per solver and S, |S| or phase, drag to zoom).
 
 ## 6. Examples and validation
 
-- A script that regenerates the solver comparison over every example before a release.
+- ~~A script that regenerates the solver comparison over every example before a release.~~ Done (2026-10-28):
+  `tools/compare_solvers.py` runs openEMS, mom25d and the line model on the eleven boards, measures the table's
+  figures and checks openEMS's against the references (exit 1 when one moved): 5–160 s a board on openEMS.
 
 ## 7. Solvers as separate packages
 
@@ -115,7 +134,10 @@ full-wave solver a package that is installed or not. In order:
    fixtures (`tests/k2e_fixtures.py`) from a checkout; kicad2ems's own run on stand-in solvers
    (`tests/standins.py`) and pass with no solver package installed. `test_conformance.py` runs the real ones, each
    in a process of its own. `tools/test_all.sh` runs all four suites locally.
-6. **CI on GitHub Actions** (to consider). Nothing runs the suites but `tools/test_all.sh` today. The cheapest
+6. ~~**CI on GitHub Actions**~~ Done (2026-10-28): `.github/workflows/stack.yml` checks out every repository
+   side by side and runs all their tests on every push, pull request, dispatch and nightly, and the KiCad plugin
+   with its pinned requirements. Still to weigh, from the plan below: the Python matrix, the `docker` image with
+   real openEMS and qucsator, a self-hosted GPU runner. The plan was: nothing runs the suites but `tools/test_all.sh` today. The cheapest
    useful job: check out kicad2ems and the three solver repositories side by side, `pip install -e` all four, run
    `tools/test_all.sh`. It needs no openEMS or qucsator (the tests use stand-ins), a Python matrix (3.10 to 3.14;
    triangle from source on 3.14), and runs on every push and nightly, so a change in any repository that breaks
@@ -126,9 +148,9 @@ full-wave solver a package that is installed or not. In order:
 
 7. ~~**The window as its own package.**~~ Done (2026-10-27): [kicad2ems-gui](https://github.com/lowprocess/kicad2ems-gui)
    (`kicad2ems_gui`), with its tests on kicad2ems's stand-in solvers. Core keeps what starts and follows a run
-   (`kicad2ems.runs`) and the modules the KiCad plugin also uses (`overlay`, `meshes`). The GUI reaches into
-   `config`, `solvers`, `fields`, `phased`, `sitecfg`, `stop`, `touchstone` and `fdtd.plugin.G_DUMP`: kicad2ems's
-   API for it, pinned by version (`kicad2ems>=261027.post2`).
+   (`kicad2ems.runs`) and the modules the KiCad plugin also uses (`overlay`, `meshes`). Since 2026-10-28 the GUI,
+   the KiCad plugin and dfsynth import only `kicad2ems.api.frontend`, and the solver plugins `kicad2ems.api.solver`
+   (versioned: `API_VERSION`).
 
 The line model stays in core. Its analysis (`src/kicad2ems/lines/`: sections, Z0, coupled lines) is not a
 solver: every run builds it, and the report, the GUI's overlay, the KiCad plugin's impedance map and the

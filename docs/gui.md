@@ -174,7 +174,7 @@ it. The plots fill as many columns as the page's width allows.
 
 | Plot | Shows |
 |---|---|
-| Cartesian | over frequency: \|S\| in dB or linear, phase, group delay or VSWR; with antenna results also directivity, gain and realized gain, or the radiation efficiency |
+| Cartesian | over frequency: \|S\| in dB or linear, phase, group delay or VSWR; with two solvers or more also their difference; with antenna results also directivity, gain and realized gain, or the radiation efficiency |
 | Smith | the reflections (S11, S22, …) with an impedance readout |
 | Polar | S in polar form, or with antenna results the far-field cuts (xz, yz, xy) at a recorded frequency, as gain, realized gain or directivity |
 
@@ -183,6 +183,17 @@ computed (ports that weren't driven) are greyed out. Each trace has its own colo
 (a solver, the compare file, an added folder) its own line style, shown beside the trace's name.
 Right-click a trace to change its colour, line style or width, or a source to set the style of all its
 traces; *Automatic colour and style* undoes it. Your choices are remembered from one session to the next.
+With differential pairs the traces are named by mode and pair (the run's ports P1d and P1c are pair 1's
+differential and common modes): Sdd21, Scd21, Scc11, and *s* for a single-ended port among them (Sds31).
+
+**Difference plots.** With results from two solvers or more (or an added folder), a Cartesian plot can show
+**Δ|S| (dB)**, the difference of the magnitudes in dB, or **|ΔS| (dB)**, the magnitude of the complex
+difference (the error vector, which counts the phase too), *against* a solver chosen beside it. Each ticked
+trace of another solver is drawn as its difference from the reference's same S.
+
+**Notes and warnings.** Under the line at the top, a fold lists the run's warnings (in red; it opens when
+there is one) and its notes: how the board was read (the ground plane, the ports, the parts), the line model's
+notes and the log's (a setting that was ignored, an assumption made).
 
 - **Cursor**: hover over any plot to read every trace at that frequency.
 - **Markers**: click to add, drag to move, Delete to remove. A marker is on every plot. The table lists each
@@ -201,8 +212,9 @@ In antenna mode the line above the plots gives the resonance, the input impedanc
 both openEMS and mom25d ran, a selector beside it switches between them. The pattern in 3D is in the Viewer.
 
 <a id="beam-steering"></a>
-**Beam steering.** For an antenna with several ports, mom25d keeps each port's far field
-([Phased arrays](mom.md#phased-drive)), and a *Beam steering* bar appears above the plots. Any drive is
+**Beam steering.** For an antenna driven at several ports, the solver keeps each port's far field (mom25d,
+and openEMS or gfdtd with `drive`: [Phased arrays](mom.md#phased-drive)), and a *Beam steering* bar appears
+above the plots. Any drive is
 then a sum of those fields, recombined at once without solving again:
 
 - **Drive**: `PORT[=amplitude][@phase]` per driven port, the run's to start with. Ports not named are
@@ -220,9 +232,13 @@ then a sum of those fields, recombined at once without solving again:
   holds all of them at it; **cosine** has no level to set. With a grid it is a column weight times a row
   weight; without one, it runs across the driven ports. With a taper, the phase map adds each element's
   amplitude (×, relative to the largest; paler for weaker ones).
+- **Aim at** θ, φ (results from runs that kept the ports' places): each driven port's phase from its place,
+  as `--aim` gives it ([Phased arrays](mom.md#phased-drive)), on top of the drive and the steps. Any layout
+  of feeds; no grid needed.
 - **Animate** sweeps the phase step back and forth over ±180°; with a grid it sweeps **X**, **Y**, or
-  both round a **Circle** (a conical scan at the steps' current size, 90° when they are zero). **Reset**
-  goes back to the run's drive, grid, taper and steps.
+  both round a **Circle** (a conical scan at the steps' current size, 90° when they are zero). With Aim it
+  sweeps the angle: **θ** back and forth over 0–60°, or **φ** round at the θ set. **Reset** goes back to
+  the run's drive, grid, taper, steps and aim.
 
 The line below gives the beam's direction, its gain and realized gain, and each driven port's active
 reflection (for more than four ports, their range and the worst). The gain and efficiency plots, the far-field cuts and the Viewer's 3D pattern follow the

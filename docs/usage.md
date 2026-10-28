@@ -80,7 +80,7 @@ examples.
 - It handles what FDTD handles: board edges, enclosures and cavities, antennas with a finite ground, and gap
   ports.
 - Its copper is lossless, so `--sigma` is ignored.
-- It drives one port at a time, so there is no phased drive (`--drive`), and it has no `--converge` levels.
+- It has no `--converge` levels.
 - Its lumped parts are modelled differently from openEMS's. That is where demo_bandpass's 0.126 comes from.
 - It shares openEMS's mesh and its simplifications: vias snapped to mesh lines, and copper as zero-thickness
   sheets. Agreeing with openEMS checks gfdtd's engine, not the model.
@@ -118,7 +118,7 @@ examples.
 `auto` drops the solvers that can't run here or can't model the board, estimates how long each remaining
 full-wave solver would take (gfdtd, mom25d, openEMS), runs the fastest and adds the line model. gfdtd's estimate
 is openEMS's mesh and timesteps at gfdtd's measured speed: about 8 times openEMS's on the GPU and 2 times on
-its CPU core. With `--sigma`, `--converge` or `--drive`, auto leaves gfdtd out, because it would ignore them.
+its CPU core. With `--sigma` or `--converge`, auto leaves gfdtd out, because it would ignore them.
 openEMS then runs where mom25d can't. The log says what it chose:
 
 ```
@@ -216,6 +216,7 @@ dmax    = 0.4
 | `--drive` | one port | drive several ports, `PORT[=amplitude][@phase]` each: a phased array (mom25d; [details](mom.md#phased-drive)) |
 | `--grid` | a line | the ports' places in a 2D array: `COLSxROWS` (ports in order, row by row) or `PORT:COL,ROW ...` ([details](mom.md#phased-drive)) |
 | `--steer` | none | phase steps added to `--drive`: `X[,Y]`, X per column and Y per row of `--grid` (no grid: X from port to port) |
+| `--aim` | none | point the beam at `THETA,PHI` (deg): each driven port's phase from its place at the pattern frequency, on top of `--drive` and `--steer` |
 | `--taper` | uniform | amplitude taper for lower sidelobes: `taylor`, `chebyshev` or `cosine`, `:SLL` in dB (e.g. `taylor:25`) |
 | `--ff-freq` | the resonance | the frequencies of the radiation patterns, GHz |
 | `--ff-step` | 2 | the angle step of the pattern cuts, degrees |

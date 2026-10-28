@@ -192,3 +192,94 @@ def test_taper_lowers_the_4x4_sidelobes():
     uni = sidelobe(data['drive'])
     tay = sidelobe(phased.taper(data['drive'], names, g, 'taylor:25'))
     assert uni == pytest.approx(-11.3, abs=1.0) and tay < -21
+
+
+def placed_sources(pos_mm, f=2.45e9, z0=50.0):
+    """Isotropic sources at pos_mm ({port: (x, y)}, model mm), uncoupled and matched."""
+    th, ph = np.arange(0, 91, 1.0), np.arange(0, 361, 2.0)
+    k0 = 2 * np.pi * f / 299792458.0 * 1e-3                             # rad / mm
+    TH, PH = np.meshgrid(np.radians(th), np.radians(ph))
+    u, v = np.sin(TH) * np.cos(PH), np.sin(TH) * np.sin(PH)
+    names = list(pos_mm)
+    E = np.array([np.exp(1j * k0 * (x * u + y * v)) for x, y in pos_mm.values()])
+    n = len(names)
+    return dict(theta=th, phi=ph, theta_sphere=np.arange(0, 181, 1.0), freq=np.array([f]), ports=names,
+                zc=np.full(n, z0), Y=(np.eye(n) / z0)[None].astype(complex), Eth=E[None],
+                Eph=np.zeros_like(E)[None], drive=np.ones(n, complex), f_pattern=f, pos=np.array(list(pos_mm.values())))
+
+
+@pytest.mark.parametrize('layout', ['row', 'triangle'])
+@pytest.mark.parametrize('theta, phi', [(20, 0), (30, 90), (25, 225), (0, 0)])
+def test_aim_points_the_beam(layout, theta, phi):
+    """--aim from the ports' places: a 1 x 3 row of elements half a wavelength apart along x, and three feeds in a
+    triangle (no rows or columns); the beam lands within a degree or two of the target (the row cannot tell phi
+    from -phi off its axis, so only theta and the side are checked there)."""
+    pos = {'row': {'P1': (0.0, 0.0), 'P2': (61.2, 0.0), 'P3': (122.4, 0.0)},
+           'triangle': {'P1': (0.0, 0.0), 'P2': (61.2, 0.0), 'P3': (30.6, 53.0)}}[layout]
+    data = placed_sources(pos)
+    a = phased.aim(data['drive'], data['ports'], pos, theta, phi, data['f_pattern'])
+    pk = phased.combine(data, a)['peak']
+    if layout == 'row':                                                # along x: sin(theta) cos(phi) is what it sets
+        want = np.sin(np.radians(theta)) * np.cos(np.radians(phi))
+        got = np.sin(np.radians(pk['theta'])) * np.cos(np.radians(pk['phi']))
+        assert abs(got - want) < 0.03, pk
+    else:
+        assert abs(pk['theta'] - theta) <= 2, pk
+        if theta:
+            assert min(abs(pk['phi'] - phi), 360 - abs(pk['phi'] - phi)) <= 4, pk
+
+
+def test_aim_in_the_settings_and_the_file(tmp_path):
+    pos = {'P1': (0.0, 0.0), 'P2': (10.0, 0.0)}
+    a, _ = phased.settings_drive(['P1', 'P2'], ['P1', 'P2'], target=[30, 0], pos=pos, f=3e9)
+    k0 = 2 * np.pi * 3e9 / 299792458.0 * 1e-3
+    assert np.isclose(np.angle(a[1] / a[0]), np.angle(np.exp(-1j * k0 * 10 * 0.5)))
+    with pytest.raises(ValueError, match='no place'):
+        phased.aim([1, 1], ['P1', 'P3'], pos, 10, 0, 3e9)
+    data = placed_sources(pos)
+    phased.save(tmp_path / 'a.npz', **data)
+    assert np.allclose(phased.load(tmp_path / 'a.npz')['pos'], data['pos'])
+    del data['pos']
+    phased.save(tmp_path / 'b.npz', **data)                              # files from before: no places
+    assert 'pos' not in phased.load(tmp_path / 'b.npz')
+
+
+def incident_basis(data):
+    """The same array per unit incident wave (an FDTD solver's file): S, and E_k = sum_j V_j(e_k) E_j."""
+    n, out = len(data['ports']), dict(data)
+    S, Eth, Eph = [], [], []
+    for i in range(len(data['freq'])):
+        cols = [phased.waves(data['Y'][i], data['zc'], np.eye(n)[k]) for k in range(n)]
+        S.append(np.array([b for _, b in cols]).T)
+        Vm = np.array([V for V, _ in cols])                            # (k, j): port j's voltage, wave on k
+        Eth.append(np.tensordot(Vm, data['Eth'][i], 1))
+        Eph.append(np.tensordot(Vm, data['Eph'][i], 1))
+    del out['Y']
+    out.update(S=np.array(S), Eth=np.array(Eth), Eph=np.array(Eph), excited=np.ones(n, bool))
+    return out
+
+
+def test_incident_wave_basis_gives_the_same_antenna(tmp_path):
+    """An FDTD solver's file (S, fields per unit incident wave) and mom25d's (Y, per unit voltage) of the same
+    coupled pair give the same gain, active reflection and beam for any drive; a port that was not run is
+    refused; the file keeps the basis."""
+    data, _ = two_sources(coupling=0.004 - 0.003j)
+    inc = incident_basis(data)
+    for a in ([1, 1], [1, np.exp(1j * np.radians(70))], [0.5, -1j]):
+        c1, c2 = phased.combine(data, a), phased.combine(inc, a)
+        same = lambda p, q: (p['theta'], p['phi'], p['f']) == (q['theta'], q['phi'], q['f']) and \
+            np.isclose(p['gain_dbi'], q['gain_dbi'])
+        assert same(c1['peak'], c2['peak'])
+        assert np.allclose(c1['active'], c2['active'], equal_nan=True)
+        assert all(np.isclose(r1['G_dbi'], r2['G_dbi']) and np.isclose(r1['eff'], r2['eff'])
+                   for r1, r2 in zip(c1['rows'], c2['rows']))
+    one = dict(inc, excited=np.array([True, False]))
+    with pytest.raises(ValueError, match='P2 was not run'):
+        phased.combine(one, [1, 1])
+    phased.combine(one, [1, 0])
+    phased.save(tmp_path / 'f.npz', **inc)
+    d = phased.load(tmp_path / 'f.npz')
+    assert 'Y' not in d and d['S'].shape == (1, 2, 2) and list(d['excited']) == [True, True]
+    assert same(phased.combine(d, [1, 1])['peak'], phased.combine(data, [1, 1])['peak'])
+    with pytest.raises(ValueError, match='Y .* or S'):
+        phased.save(tmp_path / 'g.npz', **dict(inc, Y=data['Y']))
