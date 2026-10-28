@@ -43,6 +43,13 @@ Each section is classified by the copper around it. Only copper of other nets co
 | coax | a via inside antipads | the coaxial formula |
 | lumped | a via without a plane, or a part | an inductance or the part's value |
 
+A trace is split where its reference planes change: a plane's edge, a split, a slot it crosses. One
+exception: where a trace ends at a via, the last stretch over that via's own antipad (up to 3 reference
+heights long) keeps the line's cross-section. It is part of the via transition, with the plane's edge as
+close all round as the plane under the line, not a line over the next plane down. Giving it the next
+plane's impedance (92 Ω instead of 55 Ω on `rf_diffvia`) put the worst Sdd11 at −9.4 dB against openEMS's
+−15.4; the rule gives −11.9, and the demo transition's S11 moved from 7.4 dB rms off openEMS to 3.0.
+
 Each section gets two impedances: **Z0** with the stackup's copper thickness (the design value), and
 **Z0 sheet** with zero thickness, which is how openEMS and mom25d model copper. For example, the 0.35 mm
 microstrip of the demo transition is 50.7 Ω with 35 µm copper and 53.3 Ω as a sheet.
@@ -105,6 +112,9 @@ ports, or to a mesh problem.
 - qucsator has no stripline model, so single striplines are RLCG lines whose dielectric loss is set at the
   band centre (too high below it, too low above). Coupled sections' loss grows with frequency, as it should.
 - No radiation, no plane resonances, no return-path breaks.
+- Via transitions: the barrel is a coaxial line and the pads aren't modelled. On `rf_diffvia` the worst Sdd11 is
+  −11.9 dB against openEMS's −15.4 (5.2 dB rms): the ripple's peaks fall at other frequencies. Adding a pad
+  capacitance or a return-path inductance didn't bring it closer.
 - Solder mask counts only with `--mask`.
 
 ---

@@ -13,4 +13,5 @@ fast    = "auto"        # line model (qucsator if installed, else scikit-rf), co
 
 [solver.openems]
 fine    = 0.08    # mm at the copper edges: the 0.35 mm high-impedance sections
+# examples/reference: --converge 2,3,4, the x4 mesh (fine 0.02 mm): -3 dB at 1.729 GHz (x2 1.730; this mesh 1.736)
 excite  = ["P1"]

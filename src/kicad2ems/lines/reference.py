@@ -310,6 +310,7 @@ def _split_by_reference(model, ref, e, netcu=None, step=0.25, max_samples=400):
         near = pos[i + 1] - pos[i - 1] <= 2.02 * L / max(1, min(max_samples, math.ceil(L / step)))
         if near and gaps[i - 1] == gaps[i + 1] != gaps[i] and refs[i - 1] == refs[i] == refs[i + 1]:
             gaps[i] = gaps[i - 1]
+    antipad = _via_antipads(model, e, pos, refs, L)
     sig = list(zip(refs, gaps, widths))
     cuts = [0.0] + [0.5 * (pos[i] + pos[i + 1]) for i in range(n - 1) if sig[i] != sig[i + 1]] + [L]
     if len(cuts) == 2 and not any(widths):
@@ -325,6 +326,40 @@ def _split_by_reference(model, ref, e, netcu=None, step=0.25, max_samples=400):
                      region=e.region, radial=e.radial)
         el.offset = off
         out.append(el)
+    for k, s in antipad.items():
+        if len(out) > 1:
+            out[k].classify_at = np.asarray(line.interpolate(s).coords[0])
+    return out
+
+
+VIA_ANTIPAD = 3.0       # x the line's reference height: the end run over its own via's antipad that keeps the line's
+                        # reference (None: none does)
+
+
+def _via_antipads(model, e, pos, refs, L):
+    """A trace that ends at a via crosses that via's antipad last: a short run there whose reference differs from
+    the line's is part of the via transition, the plane's edge round it as close as the plane under the line, not
+    a line over the next plane down (rf_diffvia: 0.5 mm at 92 ohm instead of 55, worst Sdd11 -9.4 dB against
+    openEMS's -15.4). Up to VIA_ANTIPAD x the line's reference height. {0 or -1 (the end piece): the distance
+    along the trace to classify it at instead, the line's nearest sample}. A slot the trace crosses (a defected
+    ground) is not at a via and keeps its own cross-section."""
+    out = {}
+    if not VIA_ANTIPAD or len(refs) < 2:
+        return out
+    zs = model.cu_z[e.layer]
+    for end, node in ((0, e.a), (len(refs) - 1, e.b)):
+        if not str(node).startswith('via'):
+            continue
+        step = 1 if end == 0 else -1
+        k = end
+        while 0 <= k < len(refs) and refs[k] == refs[end]:
+            k += step
+        if not 0 <= k < len(refs):
+            continue                                     # one reference all along: nothing to keep
+        hs = [abs(model.cu_z[l] - zs) for l in refs[k] if l is not None]
+        cut = 0.5 * (pos[k] + pos[k - step])
+        if hs and (cut if end == 0 else L - cut) <= VIA_ANTIPAD * min(hs):
+            out[0 if end == 0 else -1] = pos[k]
     return out
 
 

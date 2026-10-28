@@ -53,9 +53,18 @@ def test_transition_sections(demo_files):
     ms, sl = secs[0][0], secs[-1][0]
     assert ms.z0_sheet == pytest.approx(53.27, abs=0.05) and ms.z0 < ms.z0_sheet          # 35 um copper: lower
     assert sl.z0_sheet == pytest.approx(56.2, abs=0.1) and sl.layer == 'In2.Cu'
-    # the In1 antipad under the trace next to the via: sections of their own, higher Z0
+    # the In1 antipad under the trace next to the via: sections of their own, with their line's cross-section
+    # (part of the via transition, not a line over the next plane down: reference._via_antipads)
     near = [e for e, _, _ in secs if e.kind == 'trace' and e.length < 1]
-    assert near and all(e.z0 > ms.z0 for e in near)
+    assert len(near) == 2 and [e.xs for e in near] == ['microstrip', 'stripline']
+    assert near[0].z0 == pytest.approx(ms.z0) and near[1].z0 == pytest.approx(sl.z0)
+    from kicad2ems.lines import reference
+    old, reference.VIA_ANTIPAD = reference.VIA_ANTIPAD, None
+    try:                                                     # without the rule: the antipad's higher Z0
+        (_, _, secs0, _), = build(m).paths
+    finally:
+        reference.VIA_ANTIPAD = old
+    assert all(e.z0 > ms.z0 for e, _, _ in secs0 if e.kind == 'trace' and e.length < 1)
     total = sum(e.length for e, _, _ in secs)
     assert total == pytest.approx(19.875 + 0.4, abs=0.02)                              # port to port + barrel
     assert all(s0 == pytest.approx(sum(e.length for e, _, _ in secs[:i])) for i, (_, s0, _) in enumerate(secs))

@@ -13,4 +13,6 @@ fast    = "auto"        # line model (qucsator if installed, else scikit-rf), co
 
 [solver.openems]
 fine    = 0.1     # mm at the copper edges: the 0.81 mm arms and the resistor pads
+# examples/reference: this mesh, S21 / S22 / S32 at 2.4 GHz -3.34 / -20.2 / -35.3 dB. Not converged on the deep
+# figures: --converge 2,4,6 gives -3.35 / -21.2 / -32.2 dB (x4 and x6 within 0.1 dB; x6 3.1 M cells, 16 min)
 excite  = ["P1", "P2"]

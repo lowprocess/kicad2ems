@@ -14,4 +14,5 @@ fast    = "auto"        # line model (qucsator if installed, else scikit-rf), co
 [solver.openems]
 # The default mesh grades the z cells at the strip (--z-sheet): S11 at 5 GHz -31.5 dB in 21 s, converged about
 # -33 dB (examples/reference: --z-sheet 0.25, -32.7 dB); mom25d -31.4 dB. Uniform z cells gave -19.3 dB
+z_sheet = 0.25    # the reference's
 excite  = ["P1"]

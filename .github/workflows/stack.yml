@@ -25,6 +25,11 @@ jobs:
   stack:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false              # a failure on one Python shows whether the others pass too
+      matrix:
+        python: ['3.13', '3.14']    # triangle (mom25d's mesher) has wheels for both
+    name: stack (Python ${{ matrix.python }})
     steps:
       - uses: actions/checkout@v4
         with: { path: kicad2ems }
@@ -47,7 +52,7 @@ jobs:
         with: { repository: lowprocess/dfsynth, path: dfsynth, ref: "${{ github.event.client_payload.dfsynth || 'main' }}" }
 
       - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }    # triangle (mom25d's mesher) has wheels up to 3.13
+        with: { python-version: '${{ matrix.python }}' }
       - name: System libraries (Qt offscreen, OpenGL)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
       - name: Install the stack from the checkouts

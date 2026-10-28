@@ -83,9 +83,10 @@ KiCad's CM5 demo (HDMI D0 pair, 6 layers):
   drops to 22,700 unknowns, but the copper below the ground is left out.
 - **Ports below the ground**: the module's pads sit on B.Cu, under that ground, so they can't be ports. On
   that board every high-speed pair starts there.
-- **Results**: with the ports moved to F.Cu, the GPU solver returned NaN (now reported as such; on the CPU,
-  `MOM25D_GPU=off`, it solves, about 3 minutes a frequency). The adaptive sweep did not converge in 15
-  solves, and a lumped port in the middle of a trace reflected almost everything (|S| 0.99, gfdtd 0.29).
+- **Results**: with the ports moved to F.Cu, the GPU solver returned NaN (a solve that isn't finite is now
+  redone on the CPU; there, `MOM25D_GPU=off`, it solves, about 3 minutes a frequency). The adaptive sweep did not
+  converge in 15 solves, and a lumped port in the middle of a trace reflected almost everything (|S| 0.99, gfdtd
+  0.29).
 
 For such boards use openEMS or gfdtd, or mom25d's whole stack (below) where the board is small enough.
 

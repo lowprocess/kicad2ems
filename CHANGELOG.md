@@ -51,6 +51,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   requirements from the checkouts.
 
 ### Changed
+- The line model: a trace's last stretch over the antipad of the via it ends at keeps the line's cross-section
+  instead of the next plane down's (up to 3 reference heights; `reference.VIA_ANTIPAD`). `rf_diffvia`'s worst Sdd11
+  -9.4 -> -11.9 dB (openEMS -15.4), the demo transition's S11 7.4 -> 3.0 dB rms from openEMS; no other example
+  with an openEMS reference changes.
+- `examples/reference/rf_steplpf_openems.s2p` from a converged mesh (`--converge 2,3,4`, x4): -3 dB at 1.729 GHz
+  (was 1.757). `rf_ratrace.toml` and `rf_gcpw.toml` set the mesh their references were made with
+  (`curve_res = 12`, `z_sheet = 0.25`). `examples/reference/rf_wilkinson_openems.s3p` from today's default mesh
+  (S21 / S22 / S32 at 2.4 GHz -3.34 / -20.2 / -35.3 dB): the converged figures (x4 and x6 agree within 0.1 dB:
+  -3.35 / -21.2 / -32.2 dB) are noted in its config, and a reference on that mesh would fail every default run.
+- CI runs on Python 3.13 and 3.14 (was 3.12).
 - `lines/tlines.py` (1,350 lines) is split by job: `formulas` (the closed-form cross-sections), `reference` (the
   reference copper and the cross-section it gives), `builder` (`build`: board to sections), `topology` (paths,
   coupled lines, discontinuities) and `elements` (`Element`, `LineModel`). `tlines` re-exports them; module settings
@@ -121,6 +131,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `coupled_stripline` (Cohn) instead of mom25d's copy of the same formula.
 
 ### Fixed
+- mom25d: a solve whose currents aren't finite is solved again on the CPU, and raises FloatingPointError if it
+  still isn't, instead of returning NaN S-parameters (the GPU solve once gave NaN on the CM5 region).
+- `test_radial_stub_in_qucsator_is_mrstub` failed where qucsator isn't installed (CI) instead of skipping.
 - The tests read the environment's `kicad2ems-site.toml` (setup.sh's record of this machine's qucsator), so four
   of them failed where qucsator was installed. They now see only a scratch user file.
 - Since the shared fixtures moved to `tests/k2e_fixtures.py`, the fixture that keeps the tests out of the user's
@@ -157,7 +170,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The rat-race's isolation null in openEMS was mesh convergence, not a missing conformal option: on gfdtd it moves
   from 2.18 GHz to 2.30 GHz (EMerge 2.31) as `--curve-res` rises. No conformal option added.
 - `rf_diffvia`: modelling the two via barrels as a coupled pair in a shared antipad moved the worst Sdd11 by
-  0.3 dB the wrong way. Not kept.
+  0.3 dB the wrong way. Not kept. After the antipad rule the line model is -11.9 dB worst against openEMS's -15.4,
+  5.2 dB rms: the error is where the two transitions' reflections combine (the ripple's peaks), not a missing
+  element. A pad capacitance, a return-path inductance and the two together (0-0.08 pF, 0-0.3 nH) only made the
+  rms worse. Left as a limit of the line model.
 - The line model stays in core: every run builds it, the report, overlay, KiCad plugin and example generator use
   it, and its circuit solvers need nothing compiled.
 - No Elmer FEM solver plugin: second-order elements needed over 21 GB on a simple microstrip line, and

@@ -7,4 +7,5 @@ out     = "out"
 fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
 
 [solver.openems]
+curve_res = 12   # cells along the ring: the reference's (the isolation null converges near 2.30 GHz by 36)
 excite  = ["P1"]

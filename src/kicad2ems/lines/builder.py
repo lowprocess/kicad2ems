@@ -316,7 +316,8 @@ def build(model, nets=None, refcu=None):
                 a = np.asarray(line.interpolate(max(0.0, line.length / 2 - 1e-3)).coords[0])
                 b = np.asarray(line.interpolate(min(line.length, line.length / 2 + 1e-3)).coords[0])
                 d = (b - a) / (np.linalg.norm(b - a) or 1.0)
-            classify(model, refcu, e, mid + np.array([-d[1], d[0]]) * e.offset, d)
+            at = getattr(e, 'classify_at', None)               # over its via's antipad: the line's cross-section
+            classify(model, refcu, e, (mid if at is None else at) + np.array([-d[1], d[0]]) * e.offset, d)
         elif e.kind == 'pad':
             d = e.pts[1] - e.pts[0]
             classify(model, refcu, e, 0.5 * (e.pts[0] + e.pts[1]), d / (np.linalg.norm(d) or 1.0))
