@@ -6,6 +6,7 @@ dfsynth: distributed-element microstrip filter synthesis -> KiCad layout (+ kica
     dfsynth --type lowpass --topology stepped --f0 1.5G --atten 40@3G --substrate FR4-1.6 -o out/lpf
     dfsynth --type bandstop --topology stub --f0 2.4G --bw 1G -o out/bsf --validate mom --em-tune 2
     dfsynth --list
+    dfsynth --describe --json           # the types, topologies, presets and options, for a front end (the GUI)
 """
 import argparse
 import math
@@ -39,6 +40,10 @@ def parser():
     p = argparse.ArgumentParser(prog='dfsynth', description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--list', action='store_true', help='list filter types, topologies and substrate presets')
+    p.add_argument('--describe', action='store_true',
+                   help='with --json: the filter types, topologies, substrate presets and every option, as JSON '
+                        '(what a front end builds its form from)')
+    p.add_argument('--json', action='store_true', help='with --describe: as JSON (the only form it has)')
     p.add_argument('--version', action='version', version=__version__)
     g = p.add_argument_group('filter')
     g.add_argument('--type', choices=list(KINDS), help='filter type')
@@ -92,6 +97,31 @@ def list_all():
     print("\nsubstrate presets (h mm, er, tan d):")
     for name, (h, er, td, _) in PRESETS.items():
         print(f"  {name:16s} {h:6.3f}  {er:5.2f}  {td:.4f}")
+
+
+DESCRIBE_FORMAT = 1                 # --describe --json's format: a new key is a minor change, a changed one bumps this
+_META = ('help', 'version', 'list', 'describe', 'json')
+
+
+def description():
+    """What --describe --json prints: the filter types and their topologies, the substrate presets, and each
+    option as {key, flag, kind ('str' / 'float' / 'int' / 'flag'), default, choices, help, group}."""
+    opts = []
+    for g in parser()._action_groups:
+        for act in g._group_actions:
+            if act.dest in _META or not act.option_strings:
+                continue
+            flag = max(act.option_strings, key=len)
+            if isinstance(act, argparse._StoreTrueAction):
+                kind = 'flag'
+            else:
+                kind = {int: 'int', float: 'float'}.get(act.type, 'str')    # freq: a string with its unit
+            opts.append(dict(key=act.dest, flag=flag, kind=kind, default=act.default,
+                             choices=list(act.choices) if act.choices else None, help=act.help or '',
+                             group=g.title))
+    return dict(format=DESCRIBE_FORMAT, version=__version__, kinds={k: list(v) for k, v in KINDS.items()},
+                presets={n: dict(h=h, er=er, tand=td, material=m) for n, (h, er, td, m) in PRESETS.items()},
+                options=opts)
 
 
 def make_substrate(a):
@@ -163,6 +193,12 @@ def main(argv=None):
     a = parser().parse_args(argv)
     if a.list:
         list_all()
+        return 0
+    if a.describe or a.json:
+        if not (a.describe and a.json):
+            parser().error("--describe and --json go together")
+        import json
+        print(json.dumps(description(), indent=1))
         return 0
     if not a.type or not a.f0:
         parser().error("--type and --f0 are required (or --list)")

@@ -227,3 +227,16 @@ def test_validation_follows_the_run(tmp_path):
     f.read()
     assert out[4:] == ['    P1: step 1200, energy -21.3 dB, 12 s',
                        '    mom25d: 40% (24 frequencies, 2.400 GHz), about 30 s left, 13 s']
+
+
+def test_describe_json(capsys):
+    """--describe --json: the types, presets and every option, as a front end builds its form from them."""
+    import json
+    from dfsynth.cli import main
+    assert main(['--describe', '--json']) == 0
+    d = json.loads(capsys.readouterr().out)
+    assert d['format'] == 1 and 'coupled' in d['kinds']['bandpass'] and d['presets']['FR4']['er'] == 4.3
+    opts = {o['key']: o for o in d['options']}
+    assert opts['type']['choices'] == list(d['kinds']) and opts['allow_fab_violations']['kind'] == 'flag'
+    assert opts['order']['kind'] == 'int' and opts['f0']['kind'] == 'str' and opts['out']['flag'] == '--out'
+    assert not {'help', 'list', 'describe', 'json', 'version'} & set(opts)
