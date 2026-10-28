@@ -31,6 +31,8 @@ G_DUMP = 'FDTD/Field dumps'                                        # the GUI's s
 
 
 class Dump:
+    """A field dump, as parse_dump makes it from a --dump spec: the field (E, H, J), its box (start, stop: mm), its
+    frequencies (Hz; None: time domain), the normal axis of a plane (None: a volume) and its file name (name)."""
     def __init__(self, spec, field, start, stop, freqs, normal=None, label=''):
         self.spec, self.field, self.start, self.stop = spec, field, np.asarray(start, float), np.asarray(stop, float)
         self.freqs = freqs                                          # Hz list, or None for time domain
@@ -45,6 +47,7 @@ class Dump:
         return 'FD' if self.freqs else 'TD'
 
     def cells(self, mesh):
+        """The mesh points it records on a grid (mesh: the x, y, z lines, mm)."""
         n = 1
         for k, ax in enumerate('xyz'):
             lines = mesh[ax]
@@ -52,6 +55,7 @@ class Dump:
         return n
 
     def describe(self, mesh):
+        """One line for the log: its name, the field, plane or volume, its points on this grid, the domain."""
         dom = (f"at {', '.join(f'{f / 1e9:g}' for f in self.freqs)} GHz (HDF5)" if self.freqs
                else 'time domain (VTK)')
         kind = f"plane {self.label}" if self.normal is not None else (self.label if self.label.startswith('volume') else f"volume {self.label}")

@@ -311,6 +311,7 @@ def save(path, *, theta, phi, theta_sphere, freq, ports, zc, Eth, Eph, drive, f_
 
 
 def load(path):
+    """An array file save() wrote (each port's far field, the drive, the ports), as numpy arrays: save's inverse."""
     with np.load(path) as z:
         d = {k: np.asarray(z[k]) for k in z.files}
     d['ports'] = [str(p) for p in d['ports']]

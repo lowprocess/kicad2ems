@@ -60,6 +60,7 @@ def items(v):
 
 
 def floatlist(v):
+    """Floats from a list or a comma-separated string ('1,1.5' or [1, 1.5]); None or '' give []."""
     return [float(x) for x in (strlist(v) or [])]
 
 

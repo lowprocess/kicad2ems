@@ -15,6 +15,8 @@ LABELS = {'openems': 'openEMS grid', 'gfdtd': 'gfdtd grid (openEMS settings)', '
 
 
 def save(run, solver, kind, **arrays):
+    """A solver's mesh for the 3D view, as <name>_mesh_<solver>.npz (kind 'grid': x, y, z; 'tris': nodes, tris);
+    returns its path."""
     path = run.path(f'_mesh_{solver}.npz')
     np.savez_compressed(path, kind=kind, **{k: np.asarray(v) for k, v in arrays.items()})
     return path

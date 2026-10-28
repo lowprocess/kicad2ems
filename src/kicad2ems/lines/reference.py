@@ -86,6 +86,7 @@ class RefCopper:
         return best
 
     def covers(self, layer, pt):
+        """True when the reference copper of `layer` covers the point pt (x, y: mm)."""
         p = self._prep.get(layer)
         return bool(p is not None and p.covers(Point(*pt)))
 

@@ -88,6 +88,8 @@ def pattern_gain(E_norm, dmax, eff):
 
 
 def describe(match, rows, f_pat):
+    """The log lines of an antenna result: the match (match_summary), then a row per recorded frequency (gain_table,
+    with add_polarisation's columns when they are there), the pattern frequency f_pat marked."""
     out = [f"antenna: resonance {match['f_res'] / 1e9:.4f} GHz, S11 {match['s11_db']:.1f} dB, "
            f"Zin {match['zin'][0]:.1f} {'+' if match['zin'][1] >= 0 else '-'} j{abs(match['zin'][1]):.1f} ohm" +
            (f", -10 dB band {match['bw10_lo'] / 1e9:.3f}-{match['bw10_hi'] / 1e9:.3f} GHz "

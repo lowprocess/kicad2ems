@@ -27,6 +27,7 @@ def paths():
 
 
 def user_file():
+    """The user's site settings file: $XDG_CONFIG_HOME/kicad2ems/site.toml (~/.config/kicad2ems/site.toml)."""
     base = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
     return os.path.join(base, 'kicad2ems', 'site.toml')
 
@@ -59,6 +60,7 @@ def set_user(key, value):
 
 
 def get(key):
+    """A site setting (openems_venv, qucsator, ...), from the first of paths() that sets it, or None. Read once."""
     global _cache
     if _cache is None:
         _cache = {}

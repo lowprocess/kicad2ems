@@ -150,6 +150,8 @@ class DumpSource:
         return len(self.frames) if self.domain == 'TD' else len(self.freqs)
 
     def frame_label(self, i, phase=None):
+        """Frame i's label: its timestep and time (time domain), or its frequency and the phase shown (frequency
+        domain)."""
         if self.domain == 'TD':
             step = self.frames[i][0]
             return f"step {step:,}" + (f", t = {step * self.dt_ps / 1e3:.3f} ns" if self.dt_ps else '')

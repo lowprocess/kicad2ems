@@ -11,7 +11,7 @@ the config tables and the GUI with no change here.
     [sv.label for sv in registry().values()]
 
 A solver declares (class attributes)
-  api                     the kicad2ems.api version it is written against, (major, minor): (1, 0); a plugin
+  api                     the kicad2ems.api version it is written against, (major, minor): (2, 1); a plugin
                           imports what it needs from kicad2ems.api.solver, the rest of kicad2ems is private
   name, aliases, label    'mom25d', ('mom',), 'mom25d (MoM)'; name is also its table [solver.mom25d]
   consumes                'board' (the geometry) or 'network' (the line model, tlines.LineModel)
@@ -97,6 +97,9 @@ class Deviation:
 
 
 class Solver:
+    """A solver plugin. A subclass sets the declarations (class attributes: the module docstring lists them) and
+    overrides the steps it does differently; the pipeline calls them in the order check, validate, assess,
+    estimate (for auto), prepare, solve, deviations and readback (the parity checks), outputs."""
     name = ''
     aliases = ()
     label = ''
@@ -109,6 +112,8 @@ class Solver:
     options = []
 
     def check(self, s=None):
+        """(usable, one line): its version and origin, or what is missing and how to get it. s: the run's settings,
+        where one says where the solver is (--qucsator); None for --check."""
         return True, ''
 
     def details(self):
@@ -121,27 +126,40 @@ class Solver:
         return None
 
     def assess(self, run):
+        """Why it cannot model this board in this run, a list of reasons ([]: it can). Called after the board and the
+        line model are built, before any solver prepares."""
         return []
 
     def prepare(self, run):
+        """Its own form of the board (openEMS: the boundaries and the mesh), handed to solve() and the later steps;
+        None when it needs none. A preview stops here."""
         return None
 
     def solve(self, run, prep):
+        """The Result: S-parameters over the board's ports as reported (differential pairs as mixed-mode ports)."""
         raise NotImplementedError(f"{self.name}: solve")
 
     def outputs(self, run, prep, res):
+        """Its own outputs after the solve (plots, files, summary entries); optional."""
         pass
 
     def deviations(self, run, prep):
+        """[Deviation]: what it models differently from the board, by its own rules (vias moved onto a mesh, parts
+        split, walls as via rows), for the report and the parity checks."""
         return []
 
     def readback(self, run, prep):
+        """What its native model holds, read back in the board's terms (parity.py: vias, copper area per layer,
+        parts, ports), or None."""
         return None
 
     def estimate(self, run):
+        """dict(seconds, gb, what): its rough cost on this board, for --solvers auto, or None."""
         return None
 
     def resources(self):
+        """dict(gpus=[dict(device, backend, api, free, total)], why): the GPUs it would run on here (memory in GB)
+        and why there are none (sysinfo, the GUI's System panel), or None: the CPU only."""
         return None
 
 

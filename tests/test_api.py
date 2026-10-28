@@ -105,3 +105,17 @@ def test_examples_prepared(tmp_path):
     assert (tmp_path / 'sma_launch-all.pos').exists() and (tmp_path / 'demo_lowpass-top.pos').exists()
     s = frontend.build_settings({}, str(tmp_path / 'rf_gcpw.toml'))
     assert os.path.dirname(s.board) == str(tmp_path)
+
+
+def test_every_api_name_is_documented():
+    """docs/api.md names every name of api.solver and api.frontend, and each class and function has a docstring:
+    a name added to the API without its documentation fails here."""
+    import inspect, re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    page = open(os.path.join(root, 'docs', 'api.md')).read()
+    for mod in (solver_api, frontend):
+        for name in mod.NAMES:
+            assert re.search(rf'`{re.escape(name)}[`(.]', page), f"{mod.__name__}.{name} is not in docs/api.md"
+            obj = getattr(mod, name)
+            if inspect.isclass(obj) or inspect.isfunction(obj):
+                assert inspect.getdoc(obj), f"{mod.__name__}.{name} has no docstring"

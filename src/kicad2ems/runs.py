@@ -15,6 +15,7 @@ import glob, json, os, sys
 
 
 def toml_value(v):
+    """A value as TOML text: booleans, numbers and lists of them as they are, anything else a quoted string."""
     if isinstance(v, bool):
         return 'true' if v else 'false'
     if isinstance(v, (int, float)):
@@ -47,6 +48,7 @@ class Run:
             os.remove(self.events)
 
     def argv(self):
+        """The run's command line: this Python, -m kicad2ems, its TOML file and events file, --preview for a preview."""
         return [sys.executable, '-m', 'kicad2ems', self.toml, '--events', self.events] + \
                (['--preview'] if self.preview else [])
 
@@ -64,6 +66,7 @@ class EventTail:
         self.path, self.pos = path, 0
 
     def read(self):
+        """The events written since the last call (whole lines only), as dicts; [] while the file is not there."""
         try:
             with open(self.path, 'rb') as fh:
                 fh.seek(self.pos)

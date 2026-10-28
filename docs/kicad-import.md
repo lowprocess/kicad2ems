@@ -1,6 +1,6 @@
 # KiCad import
 
-[← Architecture](architecture.md) · [Index](index.md) · [Next: The board model →](model.md)
+[← APIs](api.md) · [Index](index.md) · [Next: The board model →](model.md)
 
 `importers/kicad/` reads a `.kicad_pcb` (KiCad 5 to 10) into plain data, in KiCad coordinates (mm, y down).
 It makes no modelling decisions; `Board` does that ([next page](model.md)). Boards can also come from
@@ -75,4 +75,4 @@ impedance, must be given as a setting: `--port P2@x,y,In2.Cu,rotation`. Importin
 own Gerber export gives the same board as the KiCad import (`tests/test_importers.py`).
 
 ---
-[← Architecture](architecture.md) · [Index](index.md) · [Next: The board model →](model.md)
+[← APIs](api.md) · [Index](index.md) · [Next: The board model →](model.md)

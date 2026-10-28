@@ -305,6 +305,7 @@ is further. `energy flat` means the field isn't decaying (see
 `--events FILE` writes the run as JSON lines as it goes. `t` is seconds since the start.
 
 ```
+{"t": 0.0, "kind": "format", "format": "kicad2ems-events", "format_version": 1}
 {"t": 0.0, "kind": "stage", "name": "model"}
 {"t": 0.4, "kind": "log", "text": "mesh: 188 x 115 x 25 = 0.54 M cells ..."}
 {"t": 9.8, "kind": "status", "run": "P1", "step": 6118, "db": -3.2, "fraction": 0.08, "eta": 95.0}

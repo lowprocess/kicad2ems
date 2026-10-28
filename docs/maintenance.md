@@ -101,9 +101,24 @@ model with `consumes = 'network'`, and returns a `solvers.Result` with S-paramet
 2. `kicad2ems examples/<config>.toml --preview` for the examples your change touches.
 3. A real run of an affected example when the solver setup, model or mesh changed
    ([testing](testing.md#checking-against-openems)).
-4. Update the docs.
+4. Update the docs. A new API name goes on [APIs](api.md) (`tests/test_api.py` checks every name is there and
+   has a docstring).
 
-Planned work is in [ROADMAP.md](../ROADMAP.md).
+<a id="documentation-site"></a>
+## The documentation site
+
+The pages here are also a Sphinx site (Read the Docs: `.readthedocs.yaml`), with a code reference of the whole
+stack made from the installed packages' docstrings and, through Doxygen, the compiled cores:
+
+```bash
+python -m pip install -r docs/requirements.txt         # Sphinx, MyST, Furo, Breathe (and the stack's packages)
+sphinx-build -b html docs docs/_build/html             # doxygen on PATH; about 20 s, warnings are errors to fix
+```
+
+`docs/conf.py` explains the build: the pages stay plain Markdown for GitHub, docstrings are shown as written,
+and every link between the built pages is checked.
+
+Planned work is in [ROADMAP.md](https://github.com/lowprocess/kicad2ems/blob/main/ROADMAP.md).
 
 ## License
 

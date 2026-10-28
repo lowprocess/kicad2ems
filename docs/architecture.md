@@ -1,6 +1,6 @@
 # Architecture
 
-[← Transmission-line model](transmission-lines.md) · [Index](index.md) · [Next: KiCad import →](kicad-import.md)
+[← Transmission-line model](transmission-lines.md) · [Index](index.md) · [Next: APIs →](api.md)
 
 ## The run pipeline
 
@@ -54,7 +54,7 @@ are in mom25d (`mom25d.kicad2ems`, the `mom` extra). Any other package works the
 mysolver = "mypackage.plugin:MySolver"
 ```
 
-**The API.** A plugin imports from `kicad2ems.api.solver` only (the Solver interface, `Result`, `Option`, and
+**The API** ([APIs](api.md) lists every name). A plugin imports from `kicad2ems.api.solver` only (the Solver interface, `Result`, `Option`, and
 what a solver needs to write its results as the others do: `mixed_mode`, the antenna and field writers, and what
 an FDTD layer uses of the core); a program that drives kicad2ems (the GUI, the KiCad plugin, dfsynth) from `kicad2ems.api.frontend`.
 The rest of kicad2ems is private and may change in any release. `kicad2ems.api.API_VERSION` is (major, minor): a
@@ -110,8 +110,8 @@ and implements:
 | `resources()` | the GPUs it would run on here and why there are none (`sysinfo`, the GUI's System panel), or `None`: the CPU only |
 
 **Parity.** A solver may approximate the board, but it must say so. `parity.check` compares the board
-with each solver's readback and lists any difference the solver didn't declare. `tests/test_parity.py`
-requires none on the examples. The declarations also produce the report's *What each solver saw* table.
+with each solver's readback and lists any difference the solver didn't declare. The parity tests (kicad2ems-fdtd's
+`test_parity.py`, mom25d's `test_kicad2ems_parity.py`) require none on the examples. The declarations also produce the report's *What each solver saw* table.
 
 **Settings as data.** Every setting is declared once, as an `options.Option`: the run's own in
 `config.CORE`, each solver's in its plugin. The settings class, the command-line options, the config
@@ -199,4 +199,4 @@ its plugin.
 - The GUI runs kicad2ems as a separate process, in the output folder, and reads its `--events` file.
 
 ---
-[← Transmission-line model](transmission-lines.md) · [Index](index.md) · [Next: KiCad import →](kicad-import.md)
+[← Transmission-line model](transmission-lines.md) · [Index](index.md) · [Next: APIs →](api.md)

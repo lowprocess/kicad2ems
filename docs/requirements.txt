@@ -1,0 +1,16 @@
+# The documentation site's build (docs/conf.py; Read the Docs: .readthedocs.yaml).
+sphinx==8.2.3
+myst-parser==4.0.1
+furo==2024.8.6
+breathe==4.36.0
+sphinxcontrib-mermaid==1.0.0
+# the code reference imports the stack: on Read the Docs, its packages' main branches (a checkout: its own installs)
+emsdev @ https://github.com/lowprocess/emsdev/archive/refs/heads/main.zip
+mom25d @ https://github.com/lowprocess/mom25d/archive/refs/heads/main.zip
+gfdtd @ https://github.com/lowprocess/gfdtd/archive/refs/heads/main.zip
+kicad2ems-fdtd @ https://github.com/lowprocess/kicad2ems-fdtd/archive/refs/heads/main.zip
+kicad2ems-gui @ https://github.com/lowprocess/kicad2ems-gui/archive/refs/heads/main.zip
+dfsynth @ https://github.com/lowprocess/dfsynth/archive/refs/heads/main.zip
+kicad-python>=0.5                     # the KiCad plugin's IPC client (kipy)
+scikit-rf>=1.0
+h5py>=3

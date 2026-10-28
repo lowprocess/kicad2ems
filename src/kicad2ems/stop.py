@@ -20,6 +20,7 @@ class Stopped(Exception):
 
 
 def arm(out):
+    """At the start of a run: an old STOP in `out` removed, its path in KICAD2EMS_STOP (child processes inherit it)."""
     path = os.path.join(os.path.abspath(out), NAME)
     if os.path.exists(path):
         os.remove(path)
@@ -27,21 +28,25 @@ def arm(out):
 
 
 def disarm():
+    """At the end of a run: the STOP file and the variable gone."""
     path = os.environ.pop(ENV, None)
     if path and os.path.exists(path):
         os.remove(path)
 
 
 def request(out):
+    """From another process: asks the run writing to `out` to stop (its STOP file)."""
     os.makedirs(out, exist_ok=True)
     open(os.path.join(out, NAME), 'w').close()
 
 
 def requested():
+    """True once a stop was requested for this run."""
     path = os.environ.get(ENV)
     return bool(path) and os.path.exists(path)
 
 
 def check():
+    """Between a solver's steps: raises Stopped once a stop was requested."""
     if requested():
         raise Stopped('stop requested')

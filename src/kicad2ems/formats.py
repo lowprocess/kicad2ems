@@ -20,10 +20,13 @@ FORMATS = {'kicad2ems-run': 1, 'kicad2ems-events': 1, 'kicad2ems-sysinfo': 1, 'k
 
 
 def stamp(d, name):
+    """d with its format's name and version (format, format_version)."""
     return dict(d, format=name, format_version=FORMATS[name])
 
 
 def check(d, name):
+    """None when this kicad2ems reads d as format `name` (a version up to its own, or no stamp: written before
+    them), else why not."""
     f, v = d.get('format'), d.get('format_version', 1)
     if f is None:
         return None
@@ -35,6 +38,7 @@ def check(d, name):
 
 
 def read(path, name):
+    """A JSON file of format `name`, checked: ValueError when this kicad2ems cannot read it."""
     with open(path) as fh:
         d = json.load(fh)
     why = check(d, name)

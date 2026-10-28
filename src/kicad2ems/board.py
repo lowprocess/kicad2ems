@@ -510,6 +510,7 @@ class Board:
                     kind='gap', gap=(min(ends), max(ends)), source=source)
 
     def describe(self):
+        """The board as the log shows it: the stack, the copper, the outline and vias, each port and part, the notes."""
         L = ["stack (bottom to top):"]
         for l in self.layers:
             L.append(f"  {l['name']:<14s} z {l['z0']:.3f}..{l['z1']:.3f} mm  er {l['er']:.2f}  tand {l['tand']:.4f}")
@@ -549,6 +550,7 @@ class Board:
                     prims=self.prims.to_dict(), notes=self.notes)
 
     def save(self, path):
+        """Writes the board file (to_dict as JSON: <name>_board.json); returns path."""
         with open(path, 'w') as fh:
             json.dump(self.to_dict(), fh, default=_plain)
         return path

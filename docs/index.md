@@ -31,6 +31,7 @@ moments) or a transmission-line model, and writes S-parameters, antenna results,
 | Page | Contents |
 |---|---|
 | [Architecture](architecture.md) | The run pipeline, solver plugins, the module map |
+| [APIs](api.md) | Every interface between the packages: the Python APIs, the plugin contract, the files and their versions |
 | [KiCad import](kicad-import.md) | What is read from a `.kicad_pcb` |
 | [The board model](model.md) | The board every solver gets: stack, copper, vias, ports, parts |
 | [Testing](testing.md) | Running and extending the tests |
