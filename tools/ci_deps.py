@@ -2,7 +2,7 @@
 each repository's dependencies and the extras named, without the stack's own packages (they are installed from
 the checkouts next to each other, --no-deps, so a git URL in one never replaces another's checkout).
 
-    python tools/ci_deps.py ../emdev ../kicad2ems[test,fast,dumps] ../mom25d[test,core] ... > requirements-ci.txt
+    python tools/ci_deps.py ../emsdev ../kicad2ems[test,fast,dumps] ../mom25d[test,core] ... > requirements-ci.txt
 """
 import os, re, sys
 
@@ -11,7 +11,7 @@ try:
 except ImportError:                                                 # Python 3.10
     import tomli as tomllib
 
-STACK = {'emdev', 'kicad2ems', 'mom25d', 'gfdtd', 'dfsynth', 'kicad2ems-gui', 'kicad2ems-openems'}
+STACK = {'emsdev', 'kicad2ems', 'mom25d', 'gfdtd', 'dfsynth', 'kicad2ems-gui', 'kicad2ems-openems'}
 
 
 def name(req):

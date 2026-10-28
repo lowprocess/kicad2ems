@@ -34,7 +34,7 @@ NAMES = dict(
     find_dumps='.fields.frames:find_dumps', write_frames='.fields.frames:write_frames',
     read_sphere='.fields.antenna:read_sphere', sphere_cuts='.fields.antenna:sphere_cuts',
     sphere_gain='.fields.antenna:sphere_gain',
-    core_threads='emdev.cpu:core_threads',
+    core_threads='emsdev.cpu:core_threads',
 )
 __all__ = ['API_VERSION', *NAMES]
 __getattr__, __dir__ = lazy(__name__, NAMES)

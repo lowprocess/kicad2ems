@@ -5,18 +5,18 @@ kicad2ems.sysinfo: JSON on stdout), so the GUI never holds a GPU context or impo
 
     info()      dict(solvers=[dict(name, label, ok, what)], resources={solver: dict(gpus, why)},
                      gpu=dict(...) | None, gpu_why, ram=dict(total, available), cpus, threads)
-    core_threads()  the worker count of a parallel map: one per fast physical core (emdev)
+    core_threads()  the worker count of a parallel map: one per fast physical core (emsdev)
 """
 import json
 import os
 import sys
 
-from emdev.cpu import core_threads                              # noqa: F401  (the KiCad plugin's map workers)
+from emsdev.cpu import core_threads                              # noqa: F401  (the KiCad plugin's map workers)
 
 
 def memory():
     """System memory in GB: installed, and available to this process now (cgroup aware, as the solvers see it)."""
-    from emdev import memory as mem
+    from emsdev import memory as mem
     total = mem.total()
     return dict(total=total / 1e9 if total else None, available=mem.available() / 1e9)
 

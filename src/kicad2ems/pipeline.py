@@ -39,7 +39,7 @@ from .parity import describe
 
 def ram_gb():
     """Installed RAM in GB (None where sysconf cannot tell)."""
-    from emdev.memory import total
+    from emsdev.memory import total
     t = total()
     return t / 1e9 if t else None
 

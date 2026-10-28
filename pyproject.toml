@@ -20,7 +20,7 @@ dependencies = [
     "scipy>=1.10",
     "shapely>=2.0",
     "matplotlib>=3.7",
-    "emdev @ git+https://github.com/lowprocess/emdev",   # the machine: GPUs, CPU threads, memory (sysinfo)
+    "emsdev @ git+https://github.com/lowprocess/emsdev",   # the machine: GPUs, CPU threads, memory (sysinfo)
     "tomli>=2; python_version < '3.11'",
 ]
 

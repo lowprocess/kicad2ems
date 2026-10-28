@@ -37,7 +37,7 @@ NAMES = dict(
     phased='.phased', settings_drive='.phased:settings_drive',
     FDTD='.fdtd.plugin:FDTD', MESH='.fdtd.plugin:MESH', RUN='.fdtd.plugin:RUN', G_MESH='.fdtd.plugin:G_MESH',
     run_excitations='.fdtd.run:run_excitations', auto_mesh='.fdtd.mesh:auto_mesh',
-    sitecfg='.sitecfg', core_threads='emdev.cpu:core_threads',
+    sitecfg='.sitecfg', core_threads='emsdev.cpu:core_threads',
 )
 __all__ = ['API_VERSION', *NAMES]
 __getattr__, __dir__ = lazy(__name__, NAMES)

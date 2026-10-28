@@ -135,7 +135,7 @@ src/kicad2ems/
   events.py       --events
   api/            the public API: solver (for solver plugins), frontend (for the GUI, the KiCad plugin, dfsynth)
   sysinfo.py      what this machine can run (the GUI's Solvers window, as `python -m kicad2ems.sysinfo`): each
-                  solver's check and resources(), the memory and CPU threads (emdev)
+                  solver's check and resources(), the memory and CPU threads (emsdev)
   importers/      KiCad (kicad/) and Gerber readers
   board.py        Board: the converted board, board.json
   region.py       cropping, nets = auto, extra and cut ports

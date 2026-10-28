@@ -17,10 +17,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `_kind_value`, kept as an alias) is public.
 - `Solver.resources()`: the GPUs a solver would run on and why there are none. `sysinfo` asks each solver
   (`resources` in its JSON; `gpu` stays mom25d's GPU, else any solver's) and no longer imports mom25d.
-- [emdev](https://github.com/lowprocess/emdev), a dependency: the GPUs (CuPy, PyTorch), the CPU's thread count
+- [emsdev](https://github.com/lowprocess/emsdev), a dependency: the GPUs (CuPy, PyTorch), the CPU's thread count
   (one per fast physical core), the memory available and the compiled cores' build, shared by mom25d and gfdtd
   (`mom25d.gpu`, `gfdtd.engine`, both `core/build.py`). `sysinfo.core_threads` is the KiCad plugin's map workers
-  (it imported gfdtd's engine for them). `setup.sh` reports the GPU with `python -m emdev`.
+  (it imported gfdtd's engine for them). `setup.sh` reports the GPU with `python -m emsdev`.
 - CI: `.github/workflows/stack.yml` installs every repository of the stack from its main branch next to this one
   and runs all their tests (the golden summaries, parity, mom25d's and gfdtd's plugins, the GUI, the KiCad plugin,
   dfsynth's line-model cross-check), on every push, pull request, a dispatch from another repository and nightly;
