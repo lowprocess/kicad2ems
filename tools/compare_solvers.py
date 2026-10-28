@@ -4,7 +4,7 @@ The solver comparison of docs/examples.md, regenerated: each RF example with an 
 (examples/reference/) run on every solver, the table's figures measured from their Touchstone files, and each
 solver's openEMS figure checked against the reference's. Run it before a release; it takes hours with openEMS.
 
-    python tools/compare_solvers.py                                   # every board, openEMS, mom25d, the line model
+    python tools/compare_solvers.py                                   # every board, openEMS, gfdtd, mom25d, the line model
     python tools/compare_solvers.py --only steplpf stubnotch --solvers mom25d lines
     python tools/compare_solvers.py --reference-only                  # the references' figures alone (no runs)
     python tools/compare_solvers.py --table-only                      # the table again from build/compare
@@ -23,9 +23,9 @@ import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(REPO, 'build', 'compare')
-SOLVERS = ('openems', 'mom25d', 'lines')
-LABELS = dict(openems='openEMS', mom25d='mom25d', lines='line model')
-SUFFIX = dict(openems=('openems',), mom25d=('mom25d',), lines=('qucs', 'scikit'))   # <name>_<suffix>.sNp
+SOLVERS = ('openems', 'gfdtd', 'mom25d', 'lines')
+LABELS = dict(openems='openEMS', gfdtd='gfdtd', mom25d='mom25d', lines='line model')
+SUFFIX = dict(openems=('openems',), gfdtd=('gfdtd',), mom25d=('mom25d',), lines=('qucs', 'scikit'))   # <name>_<suffix>.sNp
 
 # per board: what the table shows, and the figures. A figure is (kind, S, argument):
 #   at     |S| in dB at a frequency (GHz)            min   the frequency (GHz) of |S|'s minimum (a notch)

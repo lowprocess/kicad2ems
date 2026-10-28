@@ -65,6 +65,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The comparison table in docs/examples.md regenerated with `tools/compare_solvers.py` (every openEMS figure
   within its reference's tolerance). mom25d's worst stripline S11 is now −34.3 dB (was −24.8; stable with
   more adaptive-sweep solves), the line model's rf_diffvia worst Sdd11 −11.9 dB (was −9.4).
+- `tools/compare_solvers.py` runs gfdtd too: a gfdtd column in docs/examples.md's comparison.
 - The README's diagram of the repositories (`docs/img/architecture.svg`, from `architecture.dot`).
 - `lines/tlines.py` (1,350 lines) is split by job: `formulas` (the closed-form cross-sections), `reference` (the
   reference copper and the cross-section it gives), `builder` (`build`: board to sections), `topology` (paths,
