@@ -285,7 +285,7 @@ def predicted(mets, fw):
 def full_wave(mets):
     """The first full-wave result's name (a solver of kicad2ems's that takes the board: mom25d, openems, gfdtd,
     ...), else None."""
-    from kicad2ems.solvers import registry
+    from kicad2ems.api.frontend import registry
     reg = registry()
     return next((k for k in mets if k in reg and reg[k].consumes == 'board'), None)
 
