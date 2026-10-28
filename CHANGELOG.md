@@ -60,7 +60,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`curve_res = 12`, `z_sheet = 0.25`). `examples/reference/rf_wilkinson_openems.s3p` from today's default mesh
   (S21 / S22 / S32 at 2.4 GHz -3.34 / -20.2 / -35.3 dB): the converged figures (x4 and x6 agree within 0.1 dB:
   -3.35 / -21.2 / -32.2 dB) are noted in its config, and a reference on that mesh would fail every default run.
-- CI runs on Python 3.13 and 3.14 (was 3.12).
+- CI runs on Python 3.13 and 3.14 (was 3.12); on 3.14 it builds triangle from setup.sh's pinned commit, as PyPI
+  has no wheel for it.
+- The comparison table in docs/examples.md regenerated with `tools/compare_solvers.py` (every openEMS figure
+  within its reference's tolerance). mom25d's worst stripline S11 is now −34.3 dB (was −24.8; stable with
+  more adaptive-sweep solves), the line model's rf_diffvia worst Sdd11 −11.9 dB (was −9.4).
+- The README's diagram of the repositories (`docs/img/architecture.svg`, from `architecture.dot`).
 - `lines/tlines.py` (1,350 lines) is split by job: `formulas` (the closed-form cross-sections), `reference` (the
   reference copper and the cross-section it gives), `builder` (`build`: board to sections), `topology` (paths,
   coupled lines, discontinuities) and `elements` (`Element`, `LineModel`). `tlines` re-exports them; module settings

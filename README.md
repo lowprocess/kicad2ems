@@ -17,6 +17,16 @@ packages of their own, each in its repository:
 | [gfdtd](https://github.com/lowprocess/gfdtd) | a 3D FDTD engine for the GPU or the CPU, with its kicad2ems plugin | `pip install '.[gfdtd]'` |
 | [dfsynth](https://github.com/lowprocess/dfsynth) | distributed filter synthesis (the GUI's Filter page) | `pip install '.[filter]'` |
 
+How they fit together: front ends drive kicad2ems through `kicad2ems.api.frontend`, solvers plug in through
+`kicad2ems.api.solver` (the `kicad2ems.solvers` entry point), and the solvers share emsdev's view of the machine.
+An arrow points from a package to what it uses: solid when required, dashed when optional.
+
+<p align="center">
+  <img src="docs/img/architecture.svg" width="100%" alt="The repositories and how they connect: front ends, the kicad2ems core, solver plugins, emsdev">
+</p>
+
+*Made from `docs/img/architecture.dot`: `dot -Tsvg docs/img/architecture.dot -o docs/img/architecture.svg`.*
+
 | Solver | Name | Best for | Needs |
 |---|---|---|---|
 | [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS, and its plugin [kicad2ems-openems](https://github.com/lowprocess/kicad2ems-openems) (`pip install '.[openems]'`) |

@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false              # a failure on one Python shows whether the others pass too
       matrix:
-        python: ['3.13', '3.14']    # triangle (mom25d's mesher) has wheels for both
+        python: ['3.13', '3.14']    # triangle (mom25d's mesher): a PyPI wheel on 3.13, built from source on 3.14
     name: stack (Python ${{ matrix.python }})
     steps:
       - uses: actions/checkout@v4
@@ -61,6 +61,10 @@ jobs:
             'kicad2ems-openems[test]' 'kicad2ems-gui[test]' 'dfsynth[test]' > requirements-ci.txt
           echo 'kicad-python>=0.5' >> requirements-ci.txt                # the KiCad plugin's IPC client
           cat requirements-ci.txt
+          # PyPI has no triangle >= 20230923 for 3.14: build setup.sh's pinned commit first (its TRIANGLE_COMMIT)
+          if [ '${{ matrix.python }}' = '3.14' ]; then
+            python -m pip install "triangle @ git+https://github.com/drufat/triangle.git@$(sed -n 's/^TRIANGLE_COMMIT=\([0-9a-f]*\).*/\1/p' kicad2ems/setup.sh)"
+          fi
           python -m pip install -r requirements-ci.txt
           python -m pip install --no-deps -e emsdev -e kicad2ems -e mom25d -e gfdtd -e kicad2ems-openems -e kicad2ems-gui -e dfsynth
           python -m pip check || true

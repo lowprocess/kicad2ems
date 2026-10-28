@@ -39,21 +39,21 @@ arm=19`.
 4 layers (`stripline`, `diffvia`, `msvia`, `marchand`, `ebg`, `spiral`) or RO4003C (`shielded`, `siw`). Their configs
 (`rf_<name>.toml`) are in the repository and the boards are not: `python examples/make_rf_examples.py all`
 writes them (or `make_rf_examples.py NAME` one). The first eleven have openEMS results in
-`examples/reference/`. They are useful for comparing the solvers:
+`examples/reference/`. They are useful for comparing the solvers (`tools/compare_solvers.py`, 2026-10-28):
 
 | Board | Result | openEMS | mom25d | line model |
 |---|---|---|---|---|
-| `rf_branchline`: 3 dB hybrid, 2.4 GHz | S21 / S31 | −3.77 / −3.34 dB | −3.57 / −3.39 dB | −3.46 / −3.38 dB |
-| `rf_wilkinson`: power divider with a 100 Ω resistor | S21, S22, S32 | −3.35, −19.4, −33.2 dB | −3.31, −20.1, −38.7 dB | −3.30, −18.4, −35.7 dB |
-| `rf_steplpf`: stepped-impedance low-pass, 2 GHz | −3 dB frequency | 1.765 GHz | 1.765 GHz | 1.806 GHz |
-| `rf_stubnotch`: two open λ/4 stubs, 2.4 GHz | notch | 2.384 GHz | 2.411 GHz | 2.494 GHz |
-| `rf_gcpw`: grounded CPW with via fences | S11, S21 at 5 GHz | −32.6, −0.39 dB | −31.4, −0.31 dB | −21.0, −0.35 dB |
-| `rf_coupler`: 10 dB coupler, 0.14 mm gap | S31, S21 | −10.5, −0.75 dB | −10.9, −0.67 dB | −10.4, −0.72 dB |
+| `rf_branchline`: 3 dB hybrid, 2.4 GHz | S21 / S31 | −3.73 / −3.36 dB | −3.57 / −3.39 dB | −3.46 / −3.38 dB |
+| `rf_wilkinson`: power divider with a 100 Ω resistor | S21, S22, S32 | −3.34, −20.2, −35.3 dB (−3.35, −21.2, −32.2 converged) | −3.31, −20.1, −38.7 dB | −3.30, −18.4, −35.7 dB |
+| `rf_steplpf`: stepped-impedance low-pass, 2 GHz | −3 dB frequency | 1.736 GHz (1.729 converged) | 1.756 GHz | 1.800 GHz |
+| `rf_stubnotch`: two open λ/4 stubs, 2.4 GHz | notch | 2.383 GHz | 2.410 GHz | 2.493 GHz |
+| `rf_gcpw`: grounded CPW with via fences | S11, S21 at 5 GHz | −32.6, −0.39 dB | −31.5, −0.32 dB | −20.9, −0.35 dB |
+| `rf_coupler`: 10 dB coupler, 0.14 mm gap | S31, S21 | −10.3, −0.77 dB | −10.9, −0.67 dB | −10.4, −0.72 dB |
 | `rf_ratrace`: 180° hybrid ring, 2.4 GHz | S21, S41, S31 | −3.38, −3.54, −28.2 dB | −3.34, −3.45, −35.8 dB | −3.34, −3.43, −46.7 dB |
 | `rf_radialstub`: one 60° radial stub | notch | 2.13 GHz | 2.18 GHz | 2.18 GHz (qucsator's radial stub; scikit-rf slices the fan: 1.99 GHz) |
-| `rf_stripline`: 4 layers, via-fenced stripline | worst S11, S21 at 10 GHz | −17.5, −0.59 dB | −24.8, −0.87 dB | −13.5, −0.63 dB |
-| `rf_diffvia`: 100 Ω pair through two vias | Sdd21 at 5 / 10 GHz, worst Sdd11 | −0.44 / −0.60, −15.4 dB | −0.41 / −0.87, −16.3 dB | −0.46 / −1.34, −9.4 dB |
-| `rf_shielded`: resonator filter in a metal can; 4.621 GHz from a converged 3D FEM run (EMerge) | peak | 4.626 GHz (4× mesh; 4.555 by default) | 4.647 GHz (no can) | 4.878 GHz |
+| `rf_stripline`: 4 layers, via-fenced stripline | worst S11, S21 at 10 GHz | −17.5, −0.59 dB | −34.3, −0.87 dB | −13.5, −0.63 dB |
+| `rf_diffvia`: 100 Ω pair through two vias | Sdd21 at 5 / 10 GHz, worst Sdd11 | −0.44 / −0.60, −15.4 dB | −0.49 / −0.88, −15.7 dB | −0.41 / −1.06, −11.9 dB |
+| `rf_shielded`: resonator filter in a metal can; 4.621 GHz from a converged 3D FEM run (EMerge) | peak | 4.625 GHz (4× mesh; 4.555 by default) | 4.646 GHz (no can) | 4.877 GHz |
 
 More structures (`make_rf_examples.py <name>`, boards and configs in the repository), on gfdtd:
 
@@ -94,8 +94,8 @@ Where the solvers disagree:
   12 (the reference's), 2.28 at 24 and 2.294, 2.296, 2.299 GHz at 36, 48 and 64 (22 M cells): converged at
   2.30 GHz, against mom25d's 2.33, EMerge's 2.31 and the line model's 2.40 (the design). The staircased ring
   is electrically long until its cells are small along the curve.
-- **Differential via**: the line model's via is the weak part above 5 GHz (worst Sdd11 −9.4 dB). Its
-  stripline pair is a coupled section at the design's odd-mode 50 Ω.
+- **Differential via**: the line model's via transition is the weak part above 5 GHz (worst Sdd11 −11.9 dB,
+  [limits](transmission-lines.md#limits)). Its stripline pair is a coupled section at the design's odd-mode 50 Ω.
 - **Filter loss**: openEMS's default dielectric model overstates the loss of the microstrip filter by
   about 1.3 dB. With `--diel wideband` its pass band matches mom25d's to 0.05 dB.
 

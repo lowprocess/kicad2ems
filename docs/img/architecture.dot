@@ -1,0 +1,78 @@
+// The repositories and how they connect: the README's diagram.
+//   dot -Tsvg docs/img/architecture.dot -o docs/img/architecture.svg
+// An arrow points from a package to what it uses: solid when required, dashed when optional.
+digraph kicad2ems {
+    graph [rankdir=TB, bgcolor="white", fontname="Helvetica", fontsize=13, nodesep=0.35, ranksep=0.55,
+           newrank=true, compound=true, pad=0.3];
+    node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, margin="0.15,0.07",
+           color="#5f6b7a", fillcolor="white", penwidth=1.2];
+    edge  [color="#5f6b7a", arrowsize=0.7, penwidth=1.1];
+
+    subgraph cluster_fe {
+        label=<<b>Front ends</b>>; style="rounded,filled"; fillcolor="#eef4fb"; color="#9db8d9";
+        cli [label=<<b>kicad2ems CLI</b><br/><font point-size="9">cli, config</font>>];
+        ipc [label=<<b>kicad2ems-ipc</b><br/><font point-size="9">KiCad PCB editor plugin (IPC API)</font>>];
+        gui [label=<<b>kicad2ems-gui</b><br/><font point-size="9">settings, runs, results, Filter page</font>>];
+        dfs [label=<<b>dfsynth</b><br/><font point-size="9">filter synthesis to a KiCad layout</font>>];
+    }
+
+    subgraph cluster_core {
+        label=<<b>kicad2ems core</b>>; style="rounded,filled"; fillcolor="#f3f0fa"; color="#b3a6d6";
+        apif [label="api.frontend", fillcolor="#e4ddf5"];
+
+        job [shape=plain, style="", label=<<table border="1" style="rounded,dashed" color="#b3a6d6" cellspacing="4" cellborder="0">
+            <tr><td colspan="15" border="0"><font point-size="11">pipeline.Job</font></td></tr>
+            <tr><td port="preflight" border="1" style="rounded" bgcolor="white" cellpadding="5">preflight</td><td border="0">&#8594;</td><td port="model" border="1" style="rounded" bgcolor="white" cellpadding="5">model</td><td border="0">&#8594;</td><td port="lines" border="1" style="rounded" bgcolor="white" cellpadding="5">lines</td><td border="0">&#8594;</td><td port="assess" border="1" style="rounded" bgcolor="white" cellpadding="5">assess</td><td border="0">&#8594;</td><td port="prepare" border="1" style="rounded" bgcolor="white" cellpadding="5">prepare</td><td border="0">&#8594;</td><td port="solve" border="1" style="rounded" bgcolor="white" cellpadding="5">solve</td><td border="0">&#8594;</td><td port="outputs" border="1" style="rounded" bgcolor="white" cellpadding="5">outputs</td><td border="0">&#8594;</td><td port="report" border="1" style="rounded" bgcolor="white" cellpadding="5">report</td></tr></table>>, fontsize=10];
+
+        imp   [label=<importers<br/><font point-size="9">KiCad, Gerber</font>>];
+        brd   [label=<Board<br/><font point-size="9">stackup, copper, ports, parts</font>>];
+        lm    [label=<lines/<br/><font point-size="9">the line model</font>>];
+        res   [label=<sparams, fields,<br/>plots, report>];
+        apis  [label=<api.solver<br/><font point-size="9">Solver, Result, Option</font>>, fillcolor="#e4ddf5"];
+        fdtd  [label=<fdtd/<br/><font point-size="9">mesh, model, engines</font>>];
+        lsol  [label=<solvers.lines<br/><font point-size="9">built in</font>>];
+    }
+
+    subgraph cluster_solv {
+        label=<<b>Solver plugins</b> <font point-size="10">(entry point kicad2ems.solvers)</font>>;
+        style="rounded,filled"; fillcolor="#eef8f0"; color="#9fcfaa";
+        oep [label=<<b>kicad2ems-openems</b><br/><font point-size="9">openEMS (3D FDTD)</font>>];
+        mom [label=<<b>mom25d</b><br/><font point-size="9">2.5D MoM, and mixed</font>>];
+        gf  [label=<<b>gfdtd</b><br/><font point-size="9">3D FDTD, GPU or CPU</font>>];
+    }
+
+    subgraph cluster_ext {
+        label=<<b>External programs</b>>; style="rounded,filled"; fillcolor="#f6f6f6"; color="#c4c4c4";
+        oems [label="openEMS"];
+        qucs [label="qucsator / scikit-rf"];
+    }
+
+    dev [label=<<b>emsdev</b><br/><font point-size="9">GPUs, CPU threads, memory, compiled-core builds</font>>,
+         fillcolor="#fdf3e4", color="#d9b27c"];
+
+    // front ends
+    ipc -> apif; gui -> ipc [dir=back]; ipc -> gf [style=dashed];   // dir=back: drawn as ipc uses gui, laid out left to right
+    gui -> apif; dfs -> gui [dir=back, style=dashed];
+    dfs -> apif [style=dashed, label=" validate", fontsize=9, fontcolor="#5f6b7a"];
+    cli -> job:preflight:n;
+    apif -> job:n;
+
+    // the stages and the modules they run
+    job:model:s -> imp; imp -> brd; job:lines:s -> lm;
+    job:outputs:s -> res; job:solve:s -> apis;
+
+    // solvers
+    lsol -> apis; lsol -> qucs;
+    apis -> fdtd;
+    oep -> apis; mom -> apis; gf -> apis;
+    oep -> oems;
+
+    // the machine
+    apis -> dev [ltail=cluster_core];
+    mom -> dev; gf -> dev;
+
+    { rank=same; cli; dfs; gui; ipc; }
+    { rank=same; imp; brd; lm; res; }
+    { rank=same; lsol; apis; }
+    { rank=same; oep; mom; gf; }
+}
