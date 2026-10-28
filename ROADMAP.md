@@ -49,6 +49,27 @@ copper carries 8,483 of them, mostly 38 isolated stitching-via pads, and its two
    - optionally, a ground pour on a signal layer cut to a distance from the signal copper (F.Cu above): the
      stitching vias hold it at ground, and beyond a few dielectric heights it carries next to no current;
    - check against openEMS on a cropped section of a real board, filled and not (openEMS meshes both).
+   A long diff pair through vias is the harder case. Measured on a second real board (a 6-layer CM5 carrier,
+   not in the repository: the PCIe RX pair, 0.14 mm traces 0.15 mm apart, ~55 mm on F.Cu, then two vias through
+   all four inner planes to B.Cu; a 30 × 29 mm region; `--mom-stack whole`, since a port is on B.Cu):
+
+   | | unknowns |
+   |---|---|
+   | as imported | 167,849 |
+   | lone pads dropped | 152,331 |
+   | voids filled (far from the signal) | 119,644 |
+   | filled + zone (+ quads) | 54,885 (55,168): each inner plane still ~7.5k, F.Cu 15k |
+   | filled, GND copper cut 1.5 mm from the pair on every layer, zone | 58,645: cutting does not help |
+   | F.Cu alone over In1.Cu (what item 5 would leave of the top), filled, zone + quads | 10,593 |
+   | the same with no F.Cu pour at all: the pair alone | 7,112 |
+
+   The planes cannot be PEC here (the pair's vias pass through them all), so filling alone leaves ~55k: item 5
+   is what brings this board to ~12k (F.Cu ~10.6k plus B.Cu's pads and pour), which a dense GPU LU still
+   handles (complex64: ~1.2 GB). What remains scales with the pair's length (the pair alone ~7k for 55 mm).
+   That is the job of the mixed solver (long runs as lines), which today cuts only lone traces (a pair's legs
+   are each other's neighbours) and needs wave ports (the whole stack has only lumped ones). Extending it to
+   coupled runs (4-port coupled lines, `line_char_pair` exists) would cut the pair's straight runs: 9, 5–7, 5
+   and 3.5 mm here, ~40 % of its length.
 5. **Planes with antipads: an internal PEC plane with magnetic frills.** A plane a signal via passes through
    (demo_transition's In1.Cu) cannot be a plain PEC cover or ground. Plan (2026-10-28, not started):
    - the stack's TL network (`multilayer.LayerStack._network`, `via.TMNetwork`) gets internal PEC interfaces:
@@ -74,7 +95,7 @@ copper carries 8,483 of them, mostly 38 isolated stitching-via pads, and its two
    whose iteration count the MPIE's conditioning leaves unbounded. An H-LU or HODLR factorisation built with
    ACA would make large boards N log² N. After items 1–5 the plane-heavy examples are 1–4k unknowns, where the
    dense GPU LU takes well under a second: there, the fill and the Green's tables dominate a solve, not the LU.
-   Do this once a real board (a large array, a whole-board run) stays above ~15k unknowns after 1–5 (the real board above, unfilled: 31k), and
+   Do this once a real board (a large array, a whole-board run) stays above ~15k unknowns after 1–5 (unfilled: 31k on the synthesizer carrier; without item 5: 55k on the CM5 carrier), and
    measure first the off-diagonal ranks of Z on it (plane-plane blocks, trace-plane blocks) at the top
    frequency.
 
