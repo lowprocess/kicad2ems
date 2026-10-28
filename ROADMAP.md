@@ -22,7 +22,34 @@ copper carries 8,483 of them, mostly 38 isolated stitching-via pads, and its two
 3. **`--mom-zone` with quads.** Zone and quads together give more unknowns than zone alone (rf_stripline 5,647
    against 4,985, demo_transition 3,788 against 3,563): the structured runs' grid ignores the zone's coarse
    cells outside it. The grid should stay inside the zone. Zone is the largest single cut on these boards (3–4×).
-4. **Planes with antipads: an internal PEC plane with magnetic frills.** A plane a signal via passes through
+4. **Pours from real boards: fill the voids of nets that are not simulated.** A board imported from KiCad with
+   only a few nets selected keeps every clearance void its pours have around the other nets' pads, traces and
+   vias. Then no plane is solid (item 1 never applies), and each void has edge rings. Measured 2026-10-28 on a
+   real 4-layer board (a synthesizer carrier, not in the repository; 55 × 50 mm, only `/RF_A_P`, `/RF_A_N` and
+   GND kept: each layer 86–97 % GND pour, 17–59 voids per layer, 761 vias), with mom25d's mesh at 0.3 mm:
+
+   | | unknowns |
+   |---|---|
+   | as imported | 157,459 (a dense matrix: ~400 GB) |
+   | lone pads dropped (item 2) | 147,370 |
+   | the 154 voids with no selected copper or via in them filled | 142,070 |
+   | filled + planes PEC + pads dropped (In2.Cu and B.Cu now solid: ground In1.Cu) | 44,071 (all on F.Cu's pour) |
+   | as imported + PEC + pads dropped + `--mom-zone on` | 30,948 |
+   | filled + PEC + pads dropped + zone (+ quads) | 8,952 (8,534) |
+   | filled + PEC + pads dropped, F.Cu's pour cut 3 mm / 1.5 mm from the signal copper, quads | 6,572 / 4,489 |
+
+   Without filling, this board needs item 6 (31k–157k unknowns). With it, a dense GPU LU is enough. To do:
+   - the rule: fill a void unless it holds copper or a via of a selected non-ground net (an antipad), or lies
+     within the zone distance of the signal copper projected from any layer (a void under the trace changes
+     its return path: keep it). Small voids anywhere (thermal-relief gaps, under ~0.5 mm²) are filled unless
+     they are an antipad;
+   - where: at import, in kicad2ems (`Board`), as an option every solver gets (`--fill-voids off | far | all`),
+     so the solvers still compare on the same copper; declared like `--ground` (area added per layer). The
+     KiCad plugin's selected-net runs could default to `far`;
+   - optionally, a ground pour on a signal layer cut to a distance from the signal copper (F.Cu above): the
+     stitching vias hold it at ground, and beyond a few dielectric heights it carries next to no current;
+   - check against openEMS on a cropped section of a real board, filled and not (openEMS meshes both).
+5. **Planes with antipads: an internal PEC plane with magnetic frills.** A plane a signal via passes through
    (demo_transition's In1.Cu) cannot be a plain PEC cover or ground. Plan (2026-10-28, not started):
    - the stack's TL network (`multilayer.LayerStack._network`, `via.TMNetwork`) gets internal PEC interfaces:
      Yd / Yu restart shorted there, the voltage is zero across it. Every existing kernel then decouples the
@@ -42,12 +69,12 @@ copper carries 8,483 of them, mostly 38 isolated stitching-via pads, and its two
    1,500 with frills (~18x less LU work; with the zone and quads 2,701 to ~1,100). It applies to every board
    whose signal vias pass through a plane. Effort: ~500 lines in `multilayer.py`, `via.py` and `sim.py`, and
    validation (a via through a plane against openEMS, demo_transition, rf_msvia).
-5. **A hierarchical direct solver.** The compressed solvers are not N log N: `blr` fills every tile densely and
+6. **A hierarchical direct solver.** The compressed solvers are not N log N: `blr` fills every tile densely and
    factors them in a flat tile LU (O(N²) fill, O(N³) with a fixed tile), and `aca` is an H-matrix under GMRES
    whose iteration count the MPIE's conditioning leaves unbounded. An H-LU or HODLR factorisation built with
-   ACA would make large boards N log² N. After items 1–4 the plane-heavy examples are 1–4k unknowns, where the
+   ACA would make large boards N log² N. After items 1–5 the plane-heavy examples are 1–4k unknowns, where the
    dense GPU LU takes well under a second: there, the fill and the Green's tables dominate a solve, not the LU.
-   Do this once a real board (a large array, a whole-board run) stays above ~15k unknowns after 1–4, and
+   Do this once a real board (a large array, a whole-board run) stays above ~15k unknowns after 1–5 (the real board above, unfilled: 31k), and
    measure first the off-diagonal ranks of Z on it (plane-plane blocks, trace-plane blocks) at the top
    frequency.
 
