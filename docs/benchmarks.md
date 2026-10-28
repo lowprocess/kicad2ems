@@ -2,57 +2,55 @@
 
 [Index](index.md)
 
-Run time and peak memory of each solver on each example, measured with `tools/bench_solvers.py`. Each
-solver ran alone, in a process of its own, on one machine: 24 CPU threads, 31 GB RAM, an AMD Radeon RX 7800
-XT (16 GB) through CuPy and ROCm 7. Times are wall time for the whole run: model, mesh, port
-characterisation and the solve. RAM is the process's peak. GPU memory is what mom25d planned for its matrix.
-The mom25d rows of the via transition, the filter, the differential via and the radial stub were measured
-again after its wave ports took the characterised propagation constant everywhere: the filter's sweep went
-from 60 solves to 21, the transition's from 42 to 21, the radial stub's from 43 to 18.
+Run time and peak memory of each solver on a representative subset of the examples, one board per regime:
+single-layer microstrip (hairpin, coupler), grounded coplanar waveguide with a via fence (rf_gcpw), a
+stripline between meshed planes (rf_stripline), a via transition through an inner plane (demo_transition) and
+an antenna (antenna_patch). Measured with `tools/bench_solvers.py` (`--all` runs every example) on one machine:
+an Intel i7-13700K (8 performance and 8 efficiency cores, 24 threads), 31 GB RAM, an AMD Radeon RX 7800 XT
+(16 GB) through CuPy and ROCm 7.
 
-| Example | openEMS cells | openEMS | RAM | mom25d unknowns | mom25d GPU | RAM | GPU mem | mom25d CPU | RAM | GPU speed-up | Line model |
+Each solver ran alone, in a process of its own, three times. The table gives the median, with the range of the
+three runs in brackets where they differ by a second or more. Times are wall time for the whole run: model,
+mesh, port characterisation and the solve. RAM is the process's peak. GPU memory is what mom25d planned for
+its matrix. The fastest field solver on each board is in bold (the line model is not a field solver).
+*mom25d fast* is `--mom-quads on --mom-quad-tol 60 --mom-coarsen 2` ([quad cells](mom.md#quads),
+[coarsening](mom.md#coarsen)).
+
+| Example | openems | gfdtd GPU | gfdtd CPU | mom25d GPU | mom25d CPU | mom25d fast | line model | Fastest | FDTD model | mom25d model | mom25d fast model |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| antenna_array2x2 | 2.39 M | 253 s | 0.5 GB | 7,328 | 49 s | 1.9 GB | 0.8 GB | 96 s | 1.3 GB | 2.0× | n/a |
-| antenna_dipole | 0.26 M | 16 s | 0.2 GB |  | n/a |  |  | n/a |  |  | n/a |
-| antenna_ifa | 0.46 M | 26 s | 0.2 GB | 1,990 | 24 s | 1.1 GB | – | 24 s | 1.1 GB | 1.0× | n/a |
-| antenna_patch | 0.42 M | 30 s | 0.2 GB | 1,391 | 20 s | 0.7 GB | – | 20 s | 0.7 GB | 1.0× | n/a |
-| antenna_slot | 0.34 M | 17 s | 0.2 GB | 8,096 | 30 s | 2.2 GB | 0.9 GB | 69 s | 1.4 GB | 2.3× | n/a |
-| demo_bandpass | 0.23 M | 81 s | 0.2 GB | 2,333 | 38 s | 1.5 GB | – | 38 s | 1.5 GB | 1.0× | 1 s |
-| demo_highpass | 0.19 M | 69 s | 0.2 GB | 1,875 | 19 s | 1.2 GB | – | 19 s | 1.2 GB | 1.0× | 1 s |
-| demo_lowpass | 0.19 M | 69 s | 0.2 GB | 1,875 | 19 s | 1.2 GB | – | 19 s | 1.2 GB | 1.0× | 1 s |
-| demo_transition | 0.53 M | 55 s | 0.2 GB | 13,670 | 188 s | 5.7 GB | 1.9 GB | 436 s | 4.1 GB | 2.3× | 1 s |
-| filter | 0.40 M | 119 s | 0.2 GB | 4,641 | 18 s | 1.1 GB | 0.6 GB | 22 s | 0.6 GB | 1.2× | 1 s |
-| hairpin | 0.31 M | 50 s | 0.2 GB | 4,763 | 9 s | 1.0 GB | 0.6 GB | 10 s | 0.6 GB | 1.2× | 1 s |
-| rf_branchline | 0.12 M | 6 s | 0.2 GB | 9,011 | 34 s | 2.5 GB | 1.0 GB | 46 s | 1.6 GB | 1.4× | 1 s |
-| rf_coupler | 1.21 M | 92 s | 0.3 GB | 5,864 | 16 s | 1.3 GB | 0.7 GB | 20 s | 0.8 GB | 1.2× | 1 s |
-| rf_diffvia | 0.36 M | 126 s | 0.2 GB | 7,688 | 109 s | 2.3 GB | 0.9 GB | 168 s | 1.7 GB | 1.5× | 1 s |
-| rf_gcpw | 0.23 M | 54 s | 0.2 GB | 3,526 | 30 s | 2.6 GB | 0.5 GB | 32 s | 2.6 GB | 1.1× | 1 s |
-| rf_radialstub | 0.14 M | 35 s | 0.2 GB | 6,888 | 18 s | 1.7 GB | 0.8 GB | 31 s | 1.0 GB | 1.7× | 1 s |
-| rf_ratrace | 0.24 M | 11 s | 0.2 GB | 8,707 | 34 s | 2.4 GB | 1.0 GB | 55 s | 1.5 GB | 1.6× | 2 s |
-| rf_steplpf | 0.17 M | 35 s | 0.2 GB | 6,129 | 16 s | 1.4 GB | 0.7 GB | 25 s | 0.9 GB | 1.6× | 1 s |
-| rf_stripline | 0.28 M | 18 s | 0.2 GB | 15,563 | 185 s | 6.9 GB | 2.3 GB | 418 s | 5.1 GB | 2.3× | 1 s |
-| rf_stubnotch | 0.06 M | 35 s | 0.2 GB | 5,090 | 11 s | 1.1 GB | 0.6 GB | 17 s | 0.7 GB | 1.5× | 1 s |
-| rf_wilkinson | 0.25 M | 26 s | 0.2 GB | 4,657 | 8 s | 1.0 GB | 0.6 GB | 9 s | 0.6 GB | 1.1× | 1 s |
-| sma_launch | 1.09 M | 33 s | 0.3 GB | 16,137 | 171 s | 7.6 GB | 2.5 GB | 417 s | 5.8 GB | 2.4× | 1 s |
+| antenna_patch | 30 s (30–34), 0.3 GB | 9 s, 0.6 GB | 18 s (17–18), 0.4 GB | 5 s, 0.2 GB · *on the CPU* | 5 s, 0.2 GB | **3 s, 0.2 GB** · *on the CPU* | n/a | mom25d fast | 0.42 M cells, 17920 steps | 1,391 unknowns, 11 solves, double | 466 unknowns, 9 solves, double |
+| demo_transition | 43 s (39–55), 0.2 GB | **6 s, 0.5 GB** | 20 s (20–22), 0.4 GB | 107 s (106–109), 7.3 GB (+1.9 GPU) · *2 of 19 on the CPU* | 179 s (176–180), 7.9 GB | 101 s (86–104), 7.6 GB (+1.8 GPU) · *4 of 19 on the CPU* | 1 s, 0.1 GB | gfdtd GPU | 0.51 M cells, 86099 steps | 13,670 unknowns, 18 solves, hybrid | 11,032 unknowns, 16 solves, hybrid |
+| hairpin | 46 s (42–50), 0.2 GB | 7 s, 0.4 GB | 36 s (35–36), 0.3 GB | 7 s, 2.8 GB (+0.6 GPU) | 9 s (9–10), 0.7 GB | **4 s, 0.4 GB** · *on the CPU* | 1 s, 0.1 GB | mom25d fast | 0.31 M cells, 108458 steps | 4,763 unknowns, 13 solves, hybrid | 1,992 unknowns, 11 solves, double |
+| rf_coupler | 27 s (27–28), 0.2 GB | **5 s, 0.5 GB** | 16 s (15–16), 0.4 GB | 11 s, 3.1 GB (+0.7 GPU) | 19 s (19–20), 0.9 GB | 5 s, 0.4 GB · *on the CPU* | 1 s, 0.1 GB | gfdtd GPU | 0.59 M cells, 33184 steps | 5,864 unknowns, 20 solves, hybrid | 2,360 unknowns, 14 solves, double |
+| rf_gcpw | 67 s (55–67), 0.2 GB | **6 s, 0.4 GB** | 35 s (34–46), 0.3 GB | 8 s, 3.0 GB (+0.5 GPU) | 13 s (13–14), 1.0 GB | 9 s (9–10), 3.0 GB · *on the CPU* | 1 s, 0.1 GB | gfdtd GPU | 0.20 M cells, 161086 steps | 3,526 unknowns, 18 solves, hybrid | 1,941 unknowns, 22 solves, double |
+| rf_stripline | 14 s, 0.2 GB | **3 s, 0.5 GB** | 7 s, 0.4 GB | 98 s (98–100), 8.6 GB (+2.3 GPU) | 234 s (231–238), 8.4 GB | 82 s (81–83), 8.6 GB (+2.2 GPU) | 1 s, 0.1 GB | gfdtd GPU | 0.43 M cells, 16405 steps | 15,563 unknowns, 18 solves, hybrid | 11,813 unknowns, 18 solves, hybrid |
 
-*n/a*: the solver can't model that board. mom25d can't model the dipole's gap feed, and the line model has no
-antenna mode. mom25d's result for the inverted-F is computed over an infinite ground, which that antenna
-doesn't have, so its time is shown but its answer shouldn't be trusted.
+*on the CPU*: a GPU run of mom25d that factored on the CPU (the board below its GPU threshold, sim.GPU_MIN_N, or too large for the GPU); *n of m on the CPU*: solves that fell back to double precision on the CPU after the complex64 LU failed to precondition (the worst of the runs).
+
+![Run time and peak memory per example](img/benchmarks.png)
 
 ## Reading the table
 
-- **openEMS** is fast and needs little memory: 0.2–0.5 GB even for 2.4 M cells. Its time follows cells ×
-  timesteps, so high-Q circuits (the lumped filters, about 200k timesteps) and fine meshes (the coupler,
-  1.2 M cells) are its slow cases.
-- **mom25d** wins on single-layer microstrip (the filters, couplers, the Wilkinson, the patch): 2 to 6 times
-  faster than openEMS. It loses once ground planes have to be meshed (the via transition, the stripline,
-  the SMA launch: 14k unknowns or more), and on structures where openEMS has very few cells (the
-  branch-line, the rat-race).
-- **The GPU** helps mom25d in proportion to its matrix size: no gain below about 3,500 unknowns (a small
-  dense solve), 1.1–1.6× around 5,000–9,000, and 2.3–2.4× at 15,000–16,000. It costs RAM: the host keeps the
-  double-precision matrix for the refinement next to the single-precision copy the GPU factors. Up to about
-  2.5 GB of GPU memory was used here.
-- **The line model** takes about a second on every board, in under 0.1 GB.
+- **gfdtd on the GPU** is the fastest field solver on four of the six boards (3–6 s; 3–9 s on all six), and never more
+  than 0.6 GB. On its CPU it is 2–6× slower, still faster than openEMS everywhere.
+- **openEMS** needs the least memory (0.2–0.3 GB). Its time follows cells × timesteps: high-Q circuits
+  (hairpin, 108k steps) and the fence of rf_gcpw (161k steps) are its slow cases.
+- **mom25d** is fastest on the antenna (*mom25d fast*: 3 s) and the hairpin (4 s), and within 1–2× of gfdtd's
+  GPU on the other single-layer boards. It loses by 17–33× wherever planes are meshed: the stripline (15,563
+  unknowns) and the transition (13,670) take 80–230 s and 7–9 GB. The [roadmap](https://github.com/lowprocess/kicad2ems/blob/main/ROADMAP.md) has the plan:
+  solid planes as PEC and lone stitching-via pads dropped take rf_stripline to 1,227 unknowns.
+- **The fast setting** halves mom25d's time on the microstrip boards (hairpin, coupler) and costs at most 0.02
+  in |S| ([quad cells](mom.md#quads)). It gains little on the plane-heavy boards: their planes, not the traces,
+  hold the unknowns.
+- **The runs repeat**: the three runs of each solver differ by under 10 % on most boards. openEMS and gfdtd's CPU
+  vary most (up to 37 % and 35 %: the transition, rf_gcpw); mom25d's GPU runs by under 3 %, its fast setting
+  up to 18 % on the transition, where solves fell back to the CPU.
+- **mom25d's GPU** helps above about 3,000 unknowns (after the quad cells), 1.3–2.4× over its CPU. Small boards
+  stay on the CPU (marked *on the CPU*: below `sim.GPU_MIN_N`, where the GPU's start-up costs more than it
+  saves). On the transition, 2–4 of 19 solves fell back to the CPU: the complex64 LU failed to precondition
+  there, and the solve was redone in double precision.
+- **The line model** takes about a second on every board, in under 0.15 GB.
 
-To run it again: `python tools/bench_solvers.py --openems-python <python with openEMS>`. Run nothing else
-meanwhile, since the times are wall time.
+To run it again: `python tools/bench_solvers.py --openems-python <python with openEMS>` (`--repeat N`, default 3;
+`--all` for every example). Run nothing else meanwhile, a video playing on the GPU included: the times are wall
+time.
