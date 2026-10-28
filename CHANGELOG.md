@@ -8,7 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## 2026-10-28 (261028-r1)
+
+Released together: kicad2ems, kicad2ems-fdtd (first release), mom25d, gfdtd, kicad2ems-gui, kicad2ems-ipc, dfsynth
+and emsdev, each 261028-r1 (the KiCad plugin keeps its own version for the plugin manager, 0.1.0).
+
 ### Added
+- The APIs documented: `docs/api.md`, every interface between the packages (the Python APIs, the solver plugin
+  contract, the files and the event stream with their format versions, gfdtd's engine, `kicad2ems_gui.api`,
+  `dfsynth --describe`), checked by `tests/test_api.py`; every public API object has a docstring.
+- A documentation site (Sphinx, for Read the Docs: `.readthedocs.yaml`): the pages, and a code reference of the
+  whole stack from its docstrings, the compiled cores through Doxygen (`docs/maintenance.md#documentation-site`).
 - mom25d's whole stack (`--mom-stack whole`): every copper layer meshed instead of an infinite ground, the lowest
   on the bottom interface with air below as well as above, so copper and ports on any layer (each port lumped to
   the nearest plane under or over it) and, in antenna mode, radiation over the full sphere from the board's own
