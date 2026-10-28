@@ -162,6 +162,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   it, and its circuit solvers need nothing compiled.
 - No Elmer FEM solver plugin: second-order elements needed over 21 GB on a simple microstrip line, and
   first-order ones weren't accurate enough.
+- mom25d stays slow on boards with planes (8–23x openEMS on the CPU): with slot layers ruled out there is no
+  cheap fix, and gfdtd covers those boards. Its adaptive sweep not converging on the CM5 region is left for the
+  same reason.
+- The whole stack keeps lumped ports only (they match gfdtd; wave ports would need its own line
+  characterisation) and a laterally infinite dielectric (built into the layered Green's function; a finite board
+  edge is research-scale). Edge-radiating antennas stay with openEMS and gfdtd.
+- CI stays on hosted runners with stand-in solvers: no openEMS/qucsator image unless the stand-ins start missing
+  real breakage, and no self-hosted GPU runner (upkeep and exposure; `tools/test_all.sh` runs the GPU tests
+  locally).
 
 ### Added
 - gfdtd: openEMS's other ports, with their `Add...Port` methods: microstrip (MSL), stripline, CPW, coaxial,
