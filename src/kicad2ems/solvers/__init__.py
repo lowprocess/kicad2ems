@@ -1,9 +1,9 @@
 """
 The solvers, as plugins: each one a Solver subclass registered under its name. Built in: the line model solved as
 a circuit by qucs (qucsator) or scikit (scikit-rf). The full-wave solvers install as packages that declare an
-entry point in the group 'kicad2ems.solvers' (`mysolver = "mypackage.plugin:MySolver"`): openems (openEMS, 3D
-FDTD: kicad2ems-openems, the openems extra), mom25d and mixed (2.5D Method of Moments: mom25d, the mom extra) and
-gfdtd (the FDTD model on gfdtd's GPU engine: gfdtd, the gfdtd extra). Each then appears in --solvers, --check,
+entry point in the group 'kicad2ems.solvers' (`mysolver = "mypackage.plugin:MySolver"`): openems and gfdtd (3D
+FDTD, the one FDTD model on openEMS's engine or gfdtd's: kicad2ems-fdtd, the openems and gfdtd extras), mom25d
+and mixed (2.5D Method of Moments: mom25d, the mom extra). Each then appears in --solvers, --check,
 the config tables and the GUI with no change here.
 
     from kicad2ems.solvers import registry, get

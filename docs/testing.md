@@ -7,14 +7,14 @@
 ```bash
 pip install '.[test]'      # pytest, scikit-rf, h5py
 python -m pytest -q        # about 320 tests, about a minute: no solver package or openEMS needed
-tools/test_all.sh          # this suite, then kicad2ems-gui's, kicad2ems-openems', mom25d's, gfdtd's (checkouts beside it)
+tools/test_all.sh          # this suite, then kicad2ems-gui's, kicad2ems-fdtd's, mom25d's, gfdtd's (checkouts beside it)
 ```
 
 kicad2ems's own tests run on stand-in solvers (`tests/standins.py`), whatever is installed: they need none of
 the solver packages and give the same result on every machine. Tests that need an optional package are skipped
 without it: scikit-rf, h5py, qucsator, PySide6 for the GUI, PyOpenGL for the 3D view.
 
-`tools/test_all.sh` runs every suite, each package's from its checkout (`../kicad2ems-gui`, `../kicad2ems-openems`,
+`tools/test_all.sh` runs every suite, each package's from its checkout (`../kicad2ems-gui`, `../kicad2ems-fdtd`,
 `../mom25d`, `../gfdtd`, or `KICAD2EMS_GUI_SRC`, `KICAD2EMS_OPENEMS_SRC`, `MOM25D_SRC`, `GFDTD_SRC`). Those test the GUI
 and the real plugins against this checkout. It uses `$PYTHON`, the active venv or this checkout's `.venv`, and warns when that Python imports
 a package from somewhere other than its checkout. The runs never see your settings: a scratch
@@ -34,12 +34,12 @@ conformance test, and arguments after `--` go to every pytest (`tools/test_all.s
 | settings, the command line, solver choice, plugins | `test_cli.py`, `test_solvers.py`, `test_plugins.py` |
 | what the FDTD model saw against the board | `test_parity.py` |
 | boards with a known answer, on the real solvers | `test_conformance.py` |
-| the whole pipeline, with canned solver results | `test_pipeline.py` |
 | starting a run from another program | `test_runs.py` |
 
-The solver plugins' own tests are in their packages: openEMS's import check, `openems_venv` and `--converge` in
-kicad2ems-openems; the mom25d and mixed plugins, mom25d's parity and mesh file in mom25d (`test_kicad2ems*.py`);
-gfdtd's plugin and engine in gfdtd. The window's tests (the form, the panels offscreen, the 3D view's arrays) are
+The solver plugins' own tests are in their packages: the FDTD layer (mesh, model, runs, dielectrics, antenna
+runs, progress, the parity checks, the whole pipeline with canned runs, the preview), openEMS's import check,
+`openems_venv` and `--converge`, and gfdtd's connection in kicad2ems-fdtd; the mom25d and mixed plugins, mom25d's
+parity and mesh file in mom25d (`test_kicad2ems*.py`); gfdtd's engine in gfdtd. The window's tests (the form, the panels offscreen, the 3D view's arrays) are
 in kicad2ems-gui, on the same stand-in solvers.
 
 `test_conformance.py` is the one test that runs the real solver packages. Each run is `python -m kicad2ems` in a

@@ -1,4 +1,4 @@
-"""kicad2ems's test fixtures, shared with the solver packages' tests (kicad2ems-openems, mom25d, gfdtd: their
+"""kicad2ems's test fixtures, shared with the solver packages' tests (kicad2ems-fdtd, mom25d: their
 conftest imports this file from a kicad2ems checkout, KICAD2EMS_SRC): the generated example boards, a strict
 stand-in for CSXCAD / openEMS, a machine without openEMS, and an in-process command-line runner.
 

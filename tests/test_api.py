@@ -30,7 +30,8 @@ def test_a_surface_loads_on_first_use():
 
 def test_compatible():
     major, minor = API_VERSION
-    assert compatible(None) is None and compatible((major, 0)) is None and compatible(API_VERSION) is None
+    assert compatible((major, 0)) is None and compatible(API_VERSION) is None
+    assert 'update the plugin' in compatible(None)                  # unversioned: 1.0, from before 2.0
     assert 'update kicad2ems' in compatible((major, minor + 1))
     assert 'update the plugin' in compatible((major - 1, 0)) and 'update kicad2ems' in compatible((major + 1, 0))
 

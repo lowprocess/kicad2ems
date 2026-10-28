@@ -1,5 +1,4 @@
 """Settings (defaults <- TOML <- command line), clean errors and end-to-end previews (in process)."""
-import json
 import pytest
 from kicad2ems.cli import settings_from_argv
 from kicad2ems.config import build_settings, ConfigError, Settings
@@ -79,30 +78,6 @@ def test_input_errors_are_messages_not_tracebacks(demo_files, run_cli, tmp_path)
     assert code == 2 and 'no reference copper' in err and 'include the ground net in nets' in err
     code, _, err = run_cli(tmp_path / 'missing.kicad_pcb', '--preview')
     assert code == 2 and 'No such file' in err
-
-
-def test_preview_report_and_summary(demo_files, run_cli, tmp_path):
-    base, _ = demo_files
-    out = tmp_path / 'out'
-    code, so, err = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'RF,GND', '--ground', 'B.Cu',
-                            '--fmin', '1', '--fmax', '8', '--out', out, '--preview', '--events', tmp_path / 'ev.jsonl')
-    assert code == 0, err
-    assert 'mesh:' in so and 'zmin=PEC' in so and 'transmission line P1 -> P2' in so
-    assert (out / 'demo_mesh.png').stat().st_size > 10000 and (out / 'demo_tlines.png').exists()
-    page = (out / 'demo_report.html').read_text()
-    for part in ("id='summary'", "id='model'", "id='tlines'", "id='mesh'", 'data:image/png;base64,', 'P1',
-                 'dielectric 1', 'microstrip', 'stripline'):
-        assert part in page, part
-    assert "id='openems'" not in page and "id='mom25d'" not in page   # no full-wave solve in a preview (auto: the line model)
-    sm = json.loads((out / 'demo_run.json').read_text())
-    assert sm['mode'] == 'preview' and sm['lines']['paths'][0]['port'] == 'P1'
-    from kicad2ems.report import build                         # the report rebuilds from the JSON alone
-    assert "id='tlines'" in build(sm, str(out))
-    kinds = [json.loads(l)['kind'] for l in (tmp_path / 'ev.jsonl').read_text().splitlines()]
-    assert 'stage' in kinds and 'log' in kinds and 'file' in kinds and kinds[-1] == 'done'
-    code, _, _ = run_cli(base + '.kicad_pcb', '--pos', base + '-top.pos', '--nets', 'RF,GND', '--ground', 'B.Cu',
-                         '--out', tmp_path / 'o2', '--preview', '--no-report')
-    assert code == 0 and not (tmp_path / 'o2' / 'demo_report.html').exists()
 
 
 def test_toml_as_the_only_argument(demo_files, run_cli, tmp_path):

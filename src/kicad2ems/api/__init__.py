@@ -2,11 +2,11 @@
 kicad2ems's public API: what other packages may import. Everything else in kicad2ems is private to it and may
 change in any release.
 
-    kicad2ems.api.solver      for solver plugins (the 'kicad2ems.solvers' entry points: mom25d, gfdtd, openEMS)
+    kicad2ems.api.solver      for solver plugins (the 'kicad2ems.solvers' entry points: mom25d, kicad2ems-fdtd)
     kicad2ems.api.frontend    for programs that drive kicad2ems (the GUI, the KiCad plugin, dfsynth)
 
 API_VERSION is (major, minor). A minor release adds names; a major one removes or changes one. A solver plugin
-says which version it was written against with a class attribute `api = (1, 0)` on its Solver; the registry
+says which version it was written against with a class attribute `api = (2, 0)` on its Solver; the registry
 leaves out (kicad2ems --check lists it as broken) a plugin of another major version, or of a newer minor one than
 this kicad2ems has. A plugin that declares nothing was written before the API had a version: it counts as 1.0.
 
@@ -15,7 +15,7 @@ plugin that imports plot_antenna does not import matplotlib until it draws.
 """
 import importlib
 
-API_VERSION = (1, 0)
+API_VERSION = (2, 0)
 UNVERSIONED = (1, 0)                # what a plugin that declares no `api` is taken to be
 
 

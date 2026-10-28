@@ -27,6 +27,7 @@ def test_registry_and_aliases():
 
 class _Fake(solvers.Solver):
     name, aliases, label, rank = 'fake', ('fk',), 'fake solver', 0
+    api = (2, 0)
     capabilities = {k: 'yes' for k in solvers.FEATURES}
     options = [solvers.Option('fake_level', 3, "level", int, name='level', gui='Fake level', group='fake')]
 
@@ -57,31 +58,6 @@ def test_entry_point_plugins(monkeypatch):
     S = settings_class(reg)                                         # its options become settings
     assert S(board='b').fake_level == 3
     monkeypatch.setattr(solvers, '_registry', None)                 # back to the built-in ones for the others
-
-
-def test_shared_fdtd_settings(monkeypatch):
-    """FDTD solvers share the mesh and run settings (the same Option objects): one setting each, in either solver's
-    table; another plugin may list them too, but not define its own of the same name."""
-    from kicad2ems.config import all_options
-    from kicad2ems.fdtd.plugin import FDTD, MESH, RUN
-
-    class Engine(FDTD):
-        name, aliases, label = 'fdtd2', (), 'another FDTD engine'
-        options = MESH + RUN
-
-    class Clash(_Fake):
-        name, aliases = 'clash', ()
-        options = [solvers.Option('res', 10.0)]                     # the shared setting, redefined: refused
-    monkeypatch.setattr(solvers, '_registry', None)
-    monkeypatch.setattr(solvers, 'broken', [])
-    installed = solvers._entry_points()
-    monkeypatch.setattr(solvers, '_entry_points', lambda: installed + [_EP('fdtd2', Engine), _EP('clash', Clash)])
-    reg = solvers.registry()
-    assert 'fdtd2' in reg and [b[0].split(' =')[0] for b in solvers.broken] == ['clash']
-    owner = [(o.key, n) for n, o in all_options(reg)]
-    assert len(owner) == len(dict(owner)) and dict(owner)['res'] == 'openems'      # once, under the first
-    assert reg['gfdtd'].options[0] is reg['openems'].options[0]
-    monkeypatch.setattr(solvers, '_registry', None)
 
 
 def test_solver_tables(tmp_path):
@@ -117,10 +93,9 @@ def _canned_mom(m, freq, **kw):
     return S, [p.name for p in m.ports], [50.0] * n, info
 
 
-def test_mom_alone_builds_no_openems_mesh(run_cli, tmp_path, monkeypatch):
-    from kicad2ems.fdtd import mesh as fdtd_mesh
+def test_mom_alone_prepares_no_openems(run_cli, tmp_path, monkeypatch):
     monkeypatch.setattr(standins, 'solve', _canned_mom)
-    monkeypatch.setattr(fdtd_mesh, 'auto_mesh', lambda *a, **k: pytest.fail('no openEMS mesh for MoM alone'))
+    monkeypatch.setattr(standins.OpenEMS, 'prepare', lambda self, run: pytest.fail('no openEMS mesh for MoM alone'))
     out = tmp_path / 'out'
     code, so, err = run_cli(FILTER, '--solvers', 'mom', '--points', '21', '--out', out)
     assert code == 0, so + err

@@ -44,10 +44,9 @@ Plots are matplotlib `Figure` objects without pyplot, so the GUI can embed them.
 ## Solver plugins
 
 A solver is a subclass of `solvers.Solver`. Only the line solvers are built in (`solvers.BUILTIN`); the
-full-wave ones are packages that add theirs through an entry point: openEMS's is
-[kicad2ems-openems](https://github.com/lowprocess/kicad2ems-openems) (the `openems` extra), mom25d's and mixed's are
-in mom25d (`mom25d.kicad2ems`, the `mom` extra), gfdtd's in gfdtd (`gfdtd.kicad2ems`, the `gfdtd` extra). Any
-other package works the same way:
+full-wave ones are packages that add theirs through an entry point: openEMS's and gfdtd's are in
+[kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) (the `openems` and `gfdtd` extras), on the FDTD layer they share; mom25d's and mixed's
+are in mom25d (`mom25d.kicad2ems`, the `mom` extra). Any other package works the same way:
 
 ```toml
 # the plugin package's pyproject.toml
@@ -56,23 +55,25 @@ mysolver = "mypackage.plugin:MySolver"
 ```
 
 **The API.** A plugin imports from `kicad2ems.api.solver` only (the Solver interface, `Result`, `Option`, and
-what a solver needs to write its results as the others do: `mixed_mode`, the antenna and field writers, the FDTD
-plugin class); a program that drives kicad2ems (the GUI, the KiCad plugin, dfsynth) from `kicad2ems.api.frontend`.
+what a solver needs to write its results as the others do: `mixed_mode`, the antenna and field writers, and what
+an FDTD layer uses of the core); a program that drives kicad2ems (the GUI, the KiCad plugin, dfsynth) from `kicad2ems.api.frontend`.
 The rest of kicad2ems is private and may change in any release. `kicad2ems.api.API_VERSION` is (major, minor): a
 minor release adds names, a major one removes or changes one. A solver says which version it was written for
-(`api = (1, 0)` on its class); the registry refuses one of another major version, or of a newer minor one, and
-`--check` lists it as broken with what to update. A plugin that declares none counts as 1.0.
+(`api = (2, 0)` on its class); the registry refuses one of another major version, or of a newer minor one, and
+`--check` lists it as broken with what to update. A plugin that declares none counts as 1.0. 2.0 took the FDTD
+layer out of the API (`FDTD`, `MESH`, `RUN`, `G_MESH`, `run_excitations`, `auto_mesh`): it lives in kicad2ems-fdtd.
 
 It then appears in `--solvers`, `--check`, the config (`[solver.mysolver]`), the GUI (a section per option
 group, greyed until one of its solvers is ticked), the Filter page and the KiCad plugin's menu. Its `order`
 places it in those lists. A plugin that fails to load is left out and listed by `--check`; a solver kicad2ems has
 an extra for (`solvers.EXTRAS`) but finds no package for says how to install it.
 
-An FDTD solver subclasses `fdtd.plugin.FDTD`, which builds the mesh and the model, runs the excitations and
-writes the dumps and antenna results. It names its engine (`engine(s)`: `'<name>'` or `'<name>:<option>'`, a
-module registered under the entry-point group `kicad2ems.engines`, whose `api(option)` returns its
-`ContinuousStructure` and `openEMS` classes and whose `LABEL` names it in the log) and lists the shared settings
-(`MESH + RUN`, the GUI's FDTD section) before its own. Solvers share a setting by listing the same `Option` object; a plugin that defines
+The FDTD solvers live in [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd): its `plugin.FDTD` builds the mesh and the model, runs the
+excitations and writes the dumps and antenna results; `openems` and `gfdtd` subclass it, each naming its engine
+(`engine(s)`: `'<name>'` or `'<name>:<option>'`, a module of that package's `engines.ENGINES`, whose
+`api(option)` returns its `ContinuousStructure` and `openEMS` classes and whose `LABEL` names it in the log) and
+listing the shared settings (`MESH + RUN`, the GUI's FDTD section) before its own. The engines ship with the
+FDTD layer that drives them, so there is no engine entry point. Solvers share a setting by listing the same `Option` object; a plugin that defines
 another setting of the same name is refused.
 
 A solver declares:

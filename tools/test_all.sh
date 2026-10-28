@@ -1,7 +1,7 @@
 #!/bin/bash
 # Every test suite, locally: kicad2ems's own (on the stand-in solvers, tests/standins.py: it needs no solver
 # package), then kicad2ems-gui's and each solver package's from its checkout beside this one (kicad2ems-gui,
-# kicad2ems-openems, mom25d, gfdtd), which test the window and the kicad2ems plugins against this checkout. A package without a checkout is skipped and said so.
+# kicad2ems-fdtd, mom25d, gfdtd), which test the window and the kicad2ems plugins against this checkout. A package without a checkout is skipped and said so.
 #
 #   tools/test_all.sh                       everything that is here
 #   tools/test_all.sh --core                kicad2ems's own suite only
@@ -9,7 +9,7 @@
 #   tools/test_all.sh -- -x -k antenna      pytest arguments, to every suite
 #
 # Python: $PYTHON, else the active venv's, else this checkout's .venv, else python3. Checkouts: KICAD2EMS_GUI_SRC,
-# KICAD2EMS_OPENEMS_SRC, MOM25D_SRC, GFDTD_SRC (default ../<name>). The runs never see your settings: a scratch XDG_CONFIG_HOME (the GUI's
+# KICAD2EMS_FDTD_SRC, MOM25D_SRC, GFDTD_SRC (default ../<name>). The runs never see your settings: a scratch XDG_CONFIG_HOME (the GUI's
 # QSettings, site.toml), the GUI offscreen, matplotlib without a display. Exit status: 1 when any suite fails.
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -53,7 +53,7 @@ run_suite() {   # name, folder
 run_suite kicad2ems "$ROOT"
 
 if [ $CORE_ONLY = 0 ]; then
-    for spec in kicad2ems-gui:kicad2ems_gui:KICAD2EMS_GUI_SRC kicad2ems-openems:kicad2ems_openems:KICAD2EMS_OPENEMS_SRC \
+    for spec in kicad2ems-gui:kicad2ems_gui:KICAD2EMS_GUI_SRC kicad2ems-fdtd:kicad2ems_fdtd:KICAD2EMS_FDTD_SRC \
                 mom25d:mom25d:MOM25D_SRC gfdtd:gfdtd:GFDTD_SRC; do
         IFS=: read -r name module var <<< "$spec"
         dir=${!var:-$(dirname "$ROOT")/$name}

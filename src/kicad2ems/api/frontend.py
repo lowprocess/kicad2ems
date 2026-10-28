@@ -25,7 +25,7 @@ NAMES = dict(
     build_lines='.lines.builder:build', RefCopper='.lines.reference:RefCopper', overlay='.overlay',
     Settings='.config:Settings', build_settings='.config:build_settings', read_toml='.config:read_toml',
     all_options='.config:all_options', default_out='.config:default_out', PATH_KEYS='.config:PATH_KEYS',
-    sitecfg='.sitecfg', G_DUMP='.fdtd.plugin:G_DUMP',
+    sitecfg='.sitecfg', G_DUMP='.fields.dumps:G_DUMP',
     registry='.solvers:registry', get_solver='.solvers:get', resolve_lines='.solvers:resolve_lines',
     AUTO='.solvers:AUTO', LINES='.solvers:LINES',
     Run='.runs:Run', EventTail='.runs:EventTail', stop_runs='.runs:stop_runs', find_results='.runs:find_results',

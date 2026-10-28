@@ -2,7 +2,6 @@
 trip, and the golden summaries of the example boards in tests/golden/: a change to the conversion shows
 up as a reviewable diff there before any solver runs (KICAD2EMS_UPDATE_GOLDEN=1 rewrites them)."""
 import json, os, re
-import numpy as np
 import pytest
 from kicad2ems.board import Board, FORMAT, VERSION, _plain
 from kicad2ems.config import build_settings
@@ -76,10 +75,9 @@ def test_golden_summary(case, boards):
 
 @pytest.mark.parametrize('case', ['launch', 'demo_lowpass', 'diff'])
 def test_round_trip(case, boards, tmp_path):
-    """board.json holds everything a solver uses: the board read back gives the same summary, the same line
-    model and the same openEMS mesh."""
+    """board.json holds everything a solver uses: the board read back gives the same summary and the same line
+    model (and the same FDTD mesh: kicad2ems-fdtd's test_board_json.py)."""
     from kicad2ems.lines.tlines import build
-    from kicad2ems.fdtd.mesh import auto_mesh
     b = board_of(case, boards)
     b2 = Board.load(b.save(str(tmp_path / 'b.json')), log=quiet)
     assert b2.summary() == b.summary()
@@ -87,8 +85,6 @@ def test_round_trip(case, boards, tmp_path):
     assert (len(b2.prims.items), len(b2.prims.shapes), len(b2.prims.tracks), len(b2.prims.footprints)) == \
         (len(b.prims.items), len(b.prims.shapes), len(b.prims.tracks), len(b.prims.footprints))
     assert build(b2).summary() == build(b).summary()
-    m1, m2 = (auto_mesh(x, 1e9, 6e9, log=quiet) for x in (b, b2))
-    assert all(np.array_equal(m1[k], m2[k]) for k in ('x', 'y', 'z')) and m1['vias'] == m2['vias']
 
 
 def test_reader_checks_format_and_version(tmp_path):

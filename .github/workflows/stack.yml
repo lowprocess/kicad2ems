@@ -40,8 +40,8 @@ jobs:
       - uses: actions/checkout@v4
         with: { repository: lowprocess/gfdtd, path: gfdtd, ref: "${{ github.event.client_payload.gfdtd || 'main' }}" }
       - uses: actions/checkout@v4
-        with: { repository: lowprocess/kicad2ems-openems, path: kicad2ems-openems,
-                ref: "${{ github.event.client_payload['kicad2ems-openems'] || 'main' }}" }
+        with: { repository: lowprocess/kicad2ems-fdtd, path: kicad2ems-fdtd,
+                ref: "${{ github.event.client_payload['kicad2ems-fdtd'] || 'main' }}" }
       - uses: actions/checkout@v4
         with: { repository: lowprocess/kicad2ems-gui, path: kicad2ems-gui,
                 ref: "${{ github.event.client_payload['kicad2ems-gui'] || 'main' }}" }
@@ -58,7 +58,7 @@ jobs:
       - name: Install the stack from the checkouts
         run: |
           python kicad2ems/tools/ci_deps.py emsdev 'kicad2ems[test,fast,dumps]' 'mom25d[test,core]' 'gfdtd[test,core]' \
-            'kicad2ems-openems[test]' 'kicad2ems-gui[test]' 'dfsynth[test]' > requirements-ci.txt
+            'kicad2ems-fdtd[test,openems]' 'kicad2ems-gui[test]' 'dfsynth[test]' > requirements-ci.txt
           echo 'kicad-python>=0.5' >> requirements-ci.txt                # the KiCad plugin's IPC client
           cat requirements-ci.txt
           # PyPI has no triangle >= 20230923 for 3.14: build setup.sh's pinned commit first (its TRIANGLE_COMMIT)
@@ -66,7 +66,7 @@ jobs:
             python -m pip install "triangle @ git+https://github.com/drufat/triangle.git@$(sed -n 's/^TRIANGLE_COMMIT=\([0-9a-f]*\).*/\1/p' kicad2ems/setup.sh)"
           fi
           python -m pip install -r requirements-ci.txt
-          python -m pip install --no-deps -e emsdev -e kicad2ems -e mom25d -e gfdtd -e kicad2ems-openems -e kicad2ems-gui -e dfsynth
+          python -m pip install --no-deps -e emsdev -e kicad2ems -e mom25d -e gfdtd -e kicad2ems-fdtd -e kicad2ems-gui -e dfsynth
           python -m pip check || true
       - name: Build the compiled cores
         run: |
@@ -87,9 +87,9 @@ jobs:
       - name: gfdtd
         if: success() || failure()
         run: cd gfdtd && python -m pytest -q
-      - name: kicad2ems-openems
+      - name: kicad2ems-fdtd (the FDTD layer, openEMS's and gfdtd's connections)
         if: success() || failure()
-        run: cd kicad2ems-openems && python -m pytest -q
+        run: cd kicad2ems-fdtd && python -m pytest -q
       - name: kicad2ems-gui
         if: success() || failure()
         run: cd kicad2ems-gui && python -m pytest -q

@@ -4,9 +4,7 @@ import numpy as np
 import pytest
 from kicad2ems.importers.kicad import KiCadBoard
 from kicad2ems.board import Board
-from kicad2ems.fdtd.mesh import auto_mesh
 from kicad2ems.parts import parse_value, Part
-
 
 
 @pytest.fixture(scope='module')
@@ -39,15 +37,6 @@ def test_parts_detected_and_skipped(rlc):
     assert not m3.parts
 
 
-def test_part_ends_on_mesh_lines(rlc):
-    m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
-    mesh = auto_mesh(m, 0.5e9, 6e9, log=lambda *a: None)
-    c1 = m.parts[0]
-    for v in (c1.s[0], c1.e[0]):
-        assert np.min(np.abs(mesh['x'] - v)) < 1e-9
-    assert np.sum((mesh['x'] > c1.s[0]) & (mesh['x'] < c1.e[0])) >= 1            # cells across the gap
-
-
 def test_part_topologies():
     s, e = [0, 0, 0], [1, 1, 0]
     assert not Part('L1', None, 1e-9, None, 'F.Cu', 0, 0, s, e).series
@@ -65,23 +54,6 @@ def test_part_pieces():
     assert rv == {'R': 0.1} and not rser and xv == {'L': 5e-10, 'C': 6.8e-12} and xser
     assert rs[0] == 1.0 and re_[0] == pytest.approx(1.2) and xs[0] == pytest.approx(1.2) and xe[0] == 1.4
     assert Part('L1', None, 8e-9, None, 'F.Cu', 0.2, 0, s, e).pieces()[0][1:3] == ({'L': 8e-9}, False)
-
-
-def test_build_fdtd_adds_lumped_elements(rlc, fake_openems):
-    from kicad2ems.fdtd.model import build_fdtd
-    from kicad2ems.fdtd.boundaries import resolve_bc
-    m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
-    m.parts.append(Part('L7', 0.2, np.float64(2e-9), None, 'F.Cu', m.cu_z['F.Cu'], 1, [3, 3, 0.2], [3.2, 3.5, 0.2]))
-    m.parts.append(Part('R5', 0.0, None, None, 'F.Cu', m.cu_z['F.Cu'], 0, [4, 3, 0.2], [4.4, 3.5, 0.2]))
-    bc = resolve_bc('auto', m)
-    mesh = auto_mesh(m, 0.5e9, 6e9, bc=bc, log=lambda *a: None)
-    build_fdtd(m, mesh, 0.5e9, 6e9, 0, bc=bc)
-    lumped = [x for x in fake_openems if isinstance(x, tuple) and x[0] == 'lumped']
-    assert lumped[0] == ('lumped', 'part_C1', {'C': 1.5e-12})
-    # series R + L: a resistive piece and an inductor piece (openEMS's series R-L update is unstable)
-    assert lumped[1] == ('lumped', 'part_L7_R', {'R': 0.2})
-    assert lumped[2] == ('lumped', 'part_L7_X', {'L': 2e-9})                     # L without C: parallel type
-    assert len(lumped) == 3 and fake_openems.count('box') == 4                    # C1, L7 (2) + the 0 ohm strap
 
 
 def test_lowpass_demo(boards):

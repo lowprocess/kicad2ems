@@ -32,11 +32,13 @@ gui = ["kicad2ems-gui @ git+https://github.com/lowprocess/kicad2ems-gui"]   # th
 core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster);
                                    # python -m gfdtd.core.build: gfdtd's CPU core (~15x numpy)
 # the full-wave solvers, each a package with its kicad2ems plugin (the 'kicad2ems.solvers' entry points)
-openems = ["kicad2ems-openems @ git+https://github.com/lowprocess/kicad2ems-openems"]   # openEMS's plugin; openEMS
-                                                                # and CSXCAD themselves come from elsewhere (README)
+openems = ["kicad2ems-fdtd[openems] @ git+https://github.com/lowprocess/kicad2ems-fdtd"]   # the FDTD solvers' package,
+                                                                # openEMS's side; openEMS and CSXCAD themselves come
+                                                                # from elsewhere (README)
 mom = ["mom25d @ git+https://github.com/lowprocess/mom25d"]     # the MoM solver and its plugins, mom25d and mixed
                                                                 # (it brings triangle, its mesher)
-gfdtd = ["gfdtd @ git+https://github.com/lowprocess/gfdtd"]   # the GPU FDTD solver and its plugin
+gfdtd = ["kicad2ems-fdtd[gfdtd] @ git+https://github.com/lowprocess/kicad2ems-fdtd"]   # the FDTD solvers' package
+                                                                # with gfdtd, the GPU / CPU-core FDTD engine
 filter = ["kicad2ems-gui[filter] @ git+https://github.com/lowprocess/kicad2ems-gui"]   # the GUI's Filter page (dfsynth)
 all = ["kicad2ems[fast,dumps,gui,core,openems,mom,gfdtd,filter]"]       # everything but a GPU wheel (one of the gpu-* extras)
 # mom25d's and gfdtd's GPU solvers (docs/mom.md#gpu): the CuPy wheel built for your

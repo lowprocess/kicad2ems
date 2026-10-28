@@ -17,12 +17,10 @@ Modules
     parts         lumped R / L / C parts from two-pad footprints
     edges         edge walls where the ground planes end at chosen board sides
     options       Option (one setting, declared once) and the value converters
-    fdtd/         shared by the FDTD solvers: boundaries, mesh, model (build_fdtd), engines, run, progress,
-                  dielectric, antenna runs, readback, plugin (FDTD: the common plugin and settings)
     fields/       field results of any solver: dumps, frames (DumpSource), antenna (far-field analysis)
     solvers/      the solver plugins: Solver, Result, the registry (entry points 'kicad2ems.solvers'),
-                  capabilities. The full-wave solvers are packages of their own: openEMS (kicad2ems-openems),
-                  mom25d and mixed (mom25d.kicad2ems), gfdtd (gfdtd.kicad2ems)
+                  capabilities. The full-wave solvers are packages of their own: openEMS and gfdtd
+                  (kicad2ems-fdtd, on its shared FDTD model), mom25d and mixed (mom25d.kicad2ems)
       lines/        the line model: tlines (sections, Z0, coupled sections, discontinuities: formulas,
                     reference, builder, topology), strips, coupled, fastsolve (the sections as a
                     circuit); plugin (qucs, scikit)
@@ -40,11 +38,9 @@ The window is its own package, kicad2ems-gui (the gui extra), as are the full-wa
 
 Documentation: docs/index.md in the repository.
 """
-__version__ = '261027-r2'
+__version__ = '261028'
 
 from .importers.kicad import KiCadBoard, read_pos
 from .board import Board, Port
-from .fdtd.boundaries import resolve_bc, cavity_check
-from .fdtd.mesh import auto_mesh, smooth_lines
 from .sparams import mixed_mode
 from .touchstone import write_touchstone, read_touchstone

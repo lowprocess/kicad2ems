@@ -12,9 +12,9 @@ packages of their own, each in its repository:
 |---|---|---|
 | [kicad2ems-gui](https://github.com/lowprocess/kicad2ems-gui) | the window: settings, runs, plots, fields, antennas, the Filter page | `pip install '.[gui]'` |
 | [kicad2ems-ipc](https://github.com/lowprocess/kicad2ems-ipc) | the KiCad plugin: the impedance map, and simulations set up from the PCB editor | KiCad's Plugin and Content Manager |
-| [kicad2ems-openems](https://github.com/lowprocess/kicad2ems-openems) | openEMS (3D FDTD) as a kicad2ems solver | `pip install '.[openems]'` |
+| [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) | the FDTD solvers, openEMS and gfdtd, on one shared FDTD model | `pip install '.[openems]'`, `'.[gfdtd]'` |
 | [mom25d](https://github.com/lowprocess/mom25d) | the 2.5D Method-of-Moments solver, with its kicad2ems plugins | `pip install '.[mom]'` |
-| [gfdtd](https://github.com/lowprocess/gfdtd) | a 3D FDTD engine for the GPU or the CPU, with its kicad2ems plugin | `pip install '.[gfdtd]'` |
+| [gfdtd](https://github.com/lowprocess/gfdtd) | a 3D FDTD engine for the GPU or the CPU (kicad2ems-fdtd runs it) | `pip install '.[gfdtd]'` |
 | [dfsynth](https://github.com/lowprocess/dfsynth) | distributed filter synthesis (the GUI's Filter page) | `pip install '.[filter]'` |
 
 How they fit together: front ends drive kicad2ems through `kicad2ems.api.frontend`, solvers plug in through
@@ -29,9 +29,9 @@ An arrow points from a package to what it uses: solid when required, dashed when
 
 | Solver | Name | Best for | Needs |
 |---|---|---|---|
-| [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS, and its plugin [kicad2ems-openems](https://github.com/lowprocess/kicad2ems-openems) (`pip install '.[openems]'`) |
+| [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS, and [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) (`pip install '.[openems]'`) |
 | [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | the [mom25d](https://github.com/lowprocess/mom25d) package (`pip install '.[mom]'`); CuPy for GPU acceleration |
-| [gfdtd](docs/gfdtd.md) (3D FDTD on the GPU) | `gfdtd` | openEMS's model, 8–20x faster on a GPU, ~2x on the CPU: the same boards and antennas as openEMS, without conductor loss | the [gfdtd](https://github.com/lowprocess/gfdtd) package (`pip install '.[gfdtd]'`), and CuPy and a GPU or its CPU core (`python -m gfdtd.core.build`) |
+| [gfdtd](docs/gfdtd.md) (3D FDTD on the GPU) | `gfdtd` | openEMS's model, 8–20x faster on a GPU, ~2x on the CPU: the same boards and antennas as openEMS, without conductor loss | the [gfdtd](https://github.com/lowprocess/gfdtd) engine and [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) (`pip install '.[gfdtd]'`), and CuPy and a GPU or its CPU core (`python -m gfdtd.core.build`) |
 | Transmission-line model | `lines` | a quick estimate: impedance steps, delays, layout mistakes | scikit-rf or qucsator |
 
 By default kicad2ems picks the full-wave solver it expects to be fastest for your board and adds the
@@ -128,8 +128,8 @@ have, one in another venv linked in, a local build, or none), qucsator, and a la
 icon for the GUI. `./setup.sh --yes` takes the defaults; `./setup.sh --target user` installs for your user.
 The options and installing by hand are in [Getting started](docs/getting-started.md).
 
-The full-wave solvers are optional packages from their own repositories, each with its kicad2ems plugin: the
-`openems` extra (kicad2ems-openems; openEMS itself is needed only for it), `mom` and `gfdtd` (`pip install
+The full-wave solvers are optional packages from their own repositories: the `openems` and `gfdtd` extras
+(kicad2ems-fdtd, with openEMS's connection or gfdtd; openEMS itself is needed only for the first), and `mom` (`pip install
 '.[all]'` for everything but a GPU wheel). Without any of the three, kicad2ems runs the line model alone. To see what your setup
 can run:
 

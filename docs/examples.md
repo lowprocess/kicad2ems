@@ -39,7 +39,8 @@ arm=19`.
 4 layers (`stripline`, `diffvia`, `msvia`, `marchand`, `ebg`, `spiral`) or RO4003C (`shielded`, `siw`). Their configs
 (`rf_<name>.toml`) are in the repository and the boards are not: `python examples/make_rf_examples.py all`
 writes them (or `make_rf_examples.py NAME` one). The first eleven have openEMS results in
-`examples/reference/`. They are useful for comparing the solvers (`tools/compare_solvers.py`, 2026-10-28):
+`examples/reference/`. They are useful for comparing the solvers (`tools/compare_solvers.py`, 2026-10-28; mom25d with lumped ports, the
+FDTD solvers' kind, so the columns compare like for like):
 
 | Board | Result | openEMS | gfdtd | mom25d | line model |
 |---|---|---|---|---|---|
@@ -47,13 +48,13 @@ writes them (or `make_rf_examples.py NAME` one). The first eleven have openEMS r
 | `rf_wilkinson`: power divider with a 100 Ω resistor | S21, S22, S32 | −3.34, −20.2, −35.3 dB (−3.35, −21.2, −32.2 converged) | −3.35, −20.3, −34.6 dB | −3.31, −20.1, −38.7 dB | −3.30, −18.4, −35.7 dB |
 | `rf_steplpf`: stepped-impedance low-pass, 2 GHz | −3 dB frequency | 1.736 GHz (1.729 converged) | 1.737 GHz | 1.756 GHz | 1.800 GHz |
 | `rf_stubnotch`: two open λ/4 stubs, 2.4 GHz | notch | 2.383 GHz | 2.398 GHz | 2.410 GHz | 2.493 GHz |
-| `rf_gcpw`: grounded CPW with via fences | S11, S21 at 5 GHz | −32.6, −0.39 dB | −33.1, −0.39 dB | −31.5, −0.32 dB | −20.9, −0.35 dB |
+| `rf_gcpw`: grounded CPW with via fences | S11, S21 at 5 GHz | −32.6, −0.39 dB | −33.1, −0.39 dB | −40.1, −0.33 dB | −20.9, −0.35 dB |
 | `rf_coupler`: 10 dB coupler, 0.14 mm gap | S31, S21 | −10.3, −0.77 dB | −10.3, −0.77 dB | −10.9, −0.67 dB | −10.4, −0.72 dB |
 | `rf_ratrace`: 180° hybrid ring, 2.4 GHz | S21, S41, S31 | −3.38, −3.54, −28.2 dB | −3.38, −3.52, −28.0 dB | −3.34, −3.45, −35.8 dB | −3.34, −3.43, −46.7 dB |
-| `rf_radialstub`: one 60° radial stub | notch | 2.13 GHz | 2.13 GHz | 2.18 GHz | 2.18 GHz (qucsator's radial stub; scikit-rf slices the fan: 1.99 GHz) |
-| `rf_stripline`: 4 layers, via-fenced stripline | worst S11, S21 at 10 GHz | −17.5, −0.59 dB | −16.5, −0.58 dB | −34.3, −0.87 dB | −13.5, −0.63 dB |
-| `rf_diffvia`: 100 Ω pair through two vias | Sdd21 at 5 / 10 GHz, worst Sdd11 | −0.44 / −0.60, −15.4 dB | −0.43 / −0.59, −15.4 dB | −0.49 / −0.88, −15.7 dB | −0.41 / −1.06, −11.9 dB |
-| `rf_shielded`: resonator filter in a metal can; 4.621 GHz from a converged 3D FEM run (EMerge) | peak | 4.625 GHz (4× mesh; 4.555 by default) | 4.625 GHz | 4.646 GHz (no can) | 4.877 GHz |
+| `rf_radialstub`: one 60° radial stub | notch | 2.13 GHz | 2.13 GHz | 2.17 GHz | 2.18 GHz (qucsator's radial stub; scikit-rf slices the fan: 1.99 GHz) |
+| `rf_stripline`: 4 layers, via-fenced stripline | worst S11, S21 at 10 GHz | −17.5, −0.59 dB | −16.5, −0.58 dB | −19.9, −1.01 dB | −13.5, −0.63 dB |
+| `rf_diffvia`: 100 Ω pair through two vias | Sdd21 at 5 / 10 GHz, worst Sdd11 | −0.44 / −0.60, −15.4 dB | −0.43 / −0.59, −15.4 dB | −0.38 / −0.95, −14.7 dB | −0.41 / −1.06, −11.9 dB |
+| `rf_shielded`: resonator filter in a metal can; 4.621 GHz from a converged 3D FEM run (EMerge) | peak | 4.625 GHz (4× mesh; 4.555 by default) | 4.625 GHz | 4.648 GHz (no can) | 4.877 GHz |
 
 More structures (`make_rf_examples.py <name>`, boards and configs in the repository), on gfdtd:
 
@@ -96,6 +97,12 @@ Where the solvers disagree:
   is electrically long until its cells are small along the curve.
 - **Differential via**: the line model's via transition is the weak part above 5 GHz (worst Sdd11 −11.9 dB,
   [limits](transmission-lines.md#limits)). Its stripline pair is a coupled section at the design's odd-mode 50 Ω.
+- **Ports**: the table's mom25d column uses lumped ports, as openEMS and gfdtd do. With its default wave ports,
+  de-embedded onto the line, mom25d measures the line itself instead: the stripline's worst S11 is then −34.3 dB
+  (a 51 Ω line in a 50 Ω system) against −19.9 dB lumped, and the GCPW's S11 at 5 GHz −31.5 dB against −40.1 dB.
+  The lumped ports' own reflection is part of what the FDTD solvers measure, so only lumped compares. (An
+  earlier −24.8 dB on the stripline was a de-embedding error, fixed when mom25d began characterising its port
+  lines at the board's cell size.)
 - **gfdtd** runs openEMS's model on the GPU (all eleven boards in 78 s) and matches openEMS within 0.05 dB
   and 10 MHz on most figures. The largest differences: the stub notch 15 MHz higher, the stripline's worst S11
   1 dB higher, the Wilkinson's isolation 0.7 dB (a deep figure that moves with the mesh). gfdtd has no

@@ -27,6 +27,7 @@ import numpy as np
 
 FIELDS = {'E': (0, 10), 'H': (1, 11), 'J': (3, 13)}                 # (time-domain, frequency-domain) types
 UNITS = {'E': 'V/m', 'H': 'A/m', 'J': 'A/m²'}
+G_DUMP = 'FDTD/Field dumps'                                        # the GUI's settings group of --dump
 
 
 class Dump:

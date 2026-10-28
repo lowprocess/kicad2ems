@@ -29,20 +29,19 @@ digraph kicad2ems {
         lm    [label=<lines/<br/><font point-size="9">the line model</font>>];
         res   [label=<sparams, fields,<br/>plots, report>];
         apis  [label=<api.solver<br/><font point-size="9">Solver, Result, Option</font>>, fillcolor="#e4ddf5"];
-        fdtd  [label=<fdtd/<br/><font point-size="9">mesh, model, engines</font>>];
         lsol  [label=<solvers.lines<br/><font point-size="9">built in</font>>];
     }
 
     subgraph cluster_solv {
         label=<<b>Solver plugins</b> <font point-size="10">(entry point kicad2ems.solvers)</font>>;
         style="rounded,filled"; fillcolor="#eef8f0"; color="#9fcfaa";
-        oep [label=<<b>kicad2ems-openems</b><br/><font point-size="9">openEMS (3D FDTD)</font>>];
+        fd  [label=<<b>kicad2ems-fdtd</b><br/><font point-size="9">openems and gfdtd: one FDTD mesh, model, runs</font>>];
         mom [label=<<b>mom25d</b><br/><font point-size="9">2.5D MoM, and mixed</font>>];
-        gf  [label=<<b>gfdtd</b><br/><font point-size="9">3D FDTD, GPU or CPU</font>>];
     }
 
     subgraph cluster_ext {
-        label=<<b>External programs</b>>; style="rounded,filled"; fillcolor="#f6f6f6"; color="#c4c4c4";
+        label=<<b>Engines and external programs</b>>; style="rounded,filled"; fillcolor="#f6f6f6"; color="#c4c4c4";
+        gf   [label=<<b>gfdtd</b><br/><font point-size="9">3D FDTD engine, GPU or CPU</font>>, fillcolor="#eef8f0", color="#9fcfaa"];
         oems [label="openEMS"];
         qucs [label="qucsator / scikit-rf"];
     }
@@ -63,9 +62,8 @@ digraph kicad2ems {
 
     // solvers
     lsol -> apis; lsol -> qucs;
-    apis -> fdtd;
-    oep -> apis; mom -> apis; gf -> apis;
-    oep -> oems;
+    fd -> apis; mom -> apis;
+    fd -> oems [style=dashed]; fd -> gf [style=dashed];
 
     // the machine
     apis -> dev [ltail=cluster_core];
@@ -74,5 +72,6 @@ digraph kicad2ems {
     { rank=same; cli; dfs; gui; ipc; }
     { rank=same; imp; brd; lm; res; }
     { rank=same; lsol; apis; }
-    { rank=same; oep; mom; gf; }
+    { rank=same; fd; mom; }
+    { rank=same; gf; oems; qucs; }
 }

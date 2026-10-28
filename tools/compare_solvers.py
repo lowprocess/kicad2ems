@@ -10,7 +10,8 @@ solver's openEMS figure checked against the reference's. Run it before a release
     python tools/compare_solvers.py --table-only                      # the table again from build/compare
 
 The table is measured from the Touchstone files under build/compare/<board>/<solver>/, this run's and earlier
-ones' (a solver run again replaces its own), and written with results.json. openEMS needs its libraries: run
+ones' (a solver run again replaces its own), and written with results.json. mom25d runs with lumped ports
+(--mom-port lumped), the FDTD solvers' kind, so its figures compare with theirs. openEMS needs its libraries: run
 it from an activated environment (setup.sh's activate sets LD_LIBRARY_PATH).
 
 Writes build/compare/results.json and results.md (the table, in examples.md's columns). A board's boards are made
@@ -148,6 +149,8 @@ def run(board, solver, python, timeout):
     out = os.path.join(OUT, board, solver)
     os.makedirs(out, exist_ok=True)
     cmd = [python, '-m', 'kicad2ems.cli', cfg, '--solvers', solver, '--out', out, '--no-report']
+    if solver == 'mom25d':
+        cmd += ['--mom-port', 'lumped']     # the FDTD solvers' lumped ports, not wave ports de-embedded onto the line
     with open(os.path.join(out, 'log.txt'), 'w') as log:
         try:
             p = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, timeout=timeout, cwd=REPO)
