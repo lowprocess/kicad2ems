@@ -9,6 +9,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- mom25d's whole stack (`--mom-stack whole`): every copper layer meshed instead of an infinite ground, the lowest
+  on the bottom interface with air below as well as above, so copper and ports on any layer (each port lumped to
+  the nearest plane under or over it) and, in antenna mode, radiation over the full sphere from the board's own
+  ground. `rf_msvia`, whose B.Cu port the ground stack cannot take, matches gfdtd's S21 to 0.05 dB up to 7 GHz.
+- mom25d's far field includes the vias' vertical currents (a probe feed, a shorting via), on either stack.
 - `--aim THETA,PHI`: points a phased array's beam at an angle, each driven port's phase from its place
   (−k₀(x sin θ cos φ + y sin θ sin φ) at the pattern frequency) on top of `--drive` and `--steer`: any layout of
   feeds, no grid. The array file keeps the ports' places (`pos`), and the GUI's Beam steering bar has *Aim at*

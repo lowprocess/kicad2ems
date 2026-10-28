@@ -22,57 +22,47 @@ examples or benchmarks showed. Last updated 2026-10-28.
 ## 3. mom25d
 
 - **Boards with planes are slow**: 8–23 times slower than openEMS on the CPU once inner planes and via rows
-  must be meshed. The GPU solvers help (SMA launch 417 s → 171 s). Left: the slot layers below, which
-  replace the earlier idea of modelling enclosed plane pairs as a parallel-plate stack.
+  must be meshed. The GPU solvers help (SMA launch 417 s → 171 s). The slot layers below were the plan for it;
+  their count (step 2) says they would gain about 1.5x, so this stays as it is.
 - **Multilayer boards** (KiCad's CM5 demo, an HDMI pair, [mom.md](docs/mom.md#on-real-boards)): one infinite
   ground at z = 0 leaves out the copper below it, so ports below it are impossible (every high-speed pair on that
-  board starts on B.Cu), while every plane above it is meshed (128,000 unknowns with B.Cu as the ground;
-  22,700 with In1.Cu, without B.Cu). Keysight's Momentum gets round both by modelling the whole stack (air,
-  ground or cover top and bottom, metal on any interface) and by meshing a solid plane as its openings only
-  ("slot" layers: magnetic currents on the antipads). The two belong together: the whole stack alone means
-  meshing every plane, which makes the CM5 case worse; slot layers are what make it affordable. In order:
-  1. **The whole stack** (about 2 weeks, low risk). The ground is assumed in a handful of places: the short
-     at the bottom of `LayerStack._network`, the copy of the network in `via.py` and its via-chain ends
-     (`k == 0`), `board.py`'s ground choice (z = 0, copper below dropped), the ports' default reference
-     (`kref = 0`) and their characterisation, the singular terms at the bottom interface (`eps_sum`,
-     `nearest_discontinuity`) and `farfield.py`'s upper half-space. Checks: a dielectric slab in air against
-     exact results, a meshed finite ground converging to the infinite one, B.Cu microstrip against its F.Cu
-     mirror image. Worth doing on its own: bottom copper and ports, and antennas on a finite ground
-     (an inverted-F, a monopole at the board edge), today sent to openEMS (see Antenna mode below).
-  2. **Count the unknowns** on CM5 with In1.Cu and In4.Cu as slot layers (about a day): go or no-go for the
-     rest.
-  3. **Slot layers without vias through them** (2–3 weeks): a solid plane is a perfect conductor at its
-     interface, splitting the stack in two halves coupled through magnetic currents on its openings. New
-     kernels: the magnetic-current counterparts of the present ones (the same network with a series source),
-     and the cross terms between electric and magnetic currents, nearly singular where a signal layer sits
-     close to a plane (0.1 mm prepreg on CM5 against a 0.2–0.3 mm mesh). Only a layer that is one solid plane
-     with holes qualifies: copper islands in its openings would be shorted to it, so layers with signal copper
-     stay meshed. Checks: an aperture-coupled patch (textbook), and the same board with the plane meshed
-     (step 1) and as a slot layer.
-  4. **Vias through antipads** (2–3 weeks; the hardest part): the via ends on the closed plane from both
-     sides with its current carried through, and new via kernels against the antipad's magnetic current
-     (`via.py`). Vias ending on the plane get easier. Check: a stripline-to-microstrip via transition against
-     gfdtd and openEMS.
-  5. **Assembly and solvers** (1–2 weeks): the new blocks in `fast.py`, the compiled core and the GPU path.
-     Mixed electric and magnetic unknowns make the matrix indefinite, which `ldlt.py` and `blr.py` don't
-     expect: a sign convention, and perhaps pivoting.
-
-  Roughly 2–2.5 months in all, with research risk in steps 3–5 (cross terms across thin layers, the
-  via-through-antipad junction, low-frequency stability with mixed unknowns), any of which could add weeks.
-  Even then mom25d stays a planar solver without board edges. Against it: gfdtd already solves the CM5 HDMI
-  pair in 47 s at `--fine 0.1` (3.6 M cells), and in about 31 minutes for all six legs on the default mesh.
-  Plan: step 1, then decide on the rest after step 2. Not started: the 2–2.5 months are a decision to make, not a
-  task to pick up. Also open: the GPU solve returned NaN on the 22,700-unknown CM5 region (reported, not fixed;
-  not reproduced on 2026-10-28: which F.Cu pads the ports were moved to isn't recorded, and the saved region
-  config has the original B.Cu ports), and the adaptive sweep didn't converge there in 15 solves.
+  board starts on B.Cu), while every plane above it is meshed. Keysight's Momentum models the whole stack and
+  meshes a solid plane as its openings only ("slot" layers: magnetic currents on the antipads). In order:
+  1. ~~**The whole stack**~~ Done (2026-10-28): `LayerStack(bottom='open')` (a half-space below, metal on
+     interface 0, `is_pec`), the via network and chain ends on it, `BoardModel(ground='none')` (every copper layer,
+     the planes meshed; each port lumped to the nearest plane under or over it, `ViaPort(sign=)` for one above), and
+     kicad2ems's `--mom-stack whole`. Checked: in a homogeneous stack the network is free space's to 1e-15 on every
+     pair of interfaces; a meshed ground converges to the infinite one (S21 0.011 -> 0.0004 as it widens); the
+     board upside down (B.Cu microstrip under its plane) gives the same S to 1e-4; `rf_msvia`, which the ground stack
+     cannot solve (a B.Cu port), matches gfdtd's S21 to 0.05 dB up to 7 GHz (5,219 unknowns, 25 s). Antenna mode
+     radiates over the full sphere: the patch over its meshed 80 mm ground has a back lobe (-17.5 dBi; gfdtd -13.1)
+     and 2.9 dBi gain (gfdtd 3.1; the infinite ground 1.9). Wave ports still need the ground stack (they assume its
+     line characterisation), and the dielectric is still laterally infinite.
+  2. ~~**Count the unknowns** on CM5 with In1.Cu and In4.Cu as slot layers~~ Done (2026-10-28): **no-go** for steps
+     3-5. The whole stack is 125,525 unknowns at 0.3 mm (planes at 0.9 mm), and 77 % of them are on layers that
+     cannot be slot layers: F.Cu 30,382, In3.Cu 29,627, B.Cu 20,552, In2.Cu 15,966 (signal copper, split pours). In1.Cu
+     and In4.Cu do qualify (one plane with 35 holes, their islands the pads of vias passing through), but their
+     openings are narrow and need fine cells: 8,658 unknowns each as slot layers against 14,499 meshed, so 113,800
+     in all, and 96,500 even if those two planes cost nothing. On `rf_msvia`, a board whose cost is its planes, slot
+     layers save a third (3,864 -> 2,582). A factor of about 1.5 at best, against the order of magnitude CM5 needs.
+  3. **Slot layers without vias through them**, 4. **vias through antipads**, 5. **assembly and solvers**: not
+     pursued, on step 2's count. About two months with research risk (the electric-magnetic cross terms across thin
+     prepreg, the via-through-antipad junction, an indefinite matrix for `ldlt.py` and `blr.py`) for 1.5x on the
+     boards that need it, where gfdtd solves the CM5 HDMI pair in 47 s at `--fine 0.1`. What would change it: a
+     board class dominated by solid planes and large enough to need it, or a cheaper mesh of the signal layers.
+  Also open: the GPU solve returned NaN on the 22,700-unknown CM5 region (reported, not fixed; not reproduced on
+  2026-10-28: which F.Cu pads the ports were moved to isn't recorded, and the saved region config has the original
+  B.Cu ports), and the adaptive sweep didn't converge there in 15 solves.
 - ~~**Current dumps** cost one extra solve per frequency.~~ Done (2026-10-28): the adaptive sweep solves at the
   dump frequencies among its first samples and keeps their currents (`solve_band(keep_at=...)`); a dump inside the
   band costs no solve of its own.
-- **Antenna mode** assumes an infinite ground, so antennas that use the board edge are out of reach (step 1 of
-  multilayer boards, above, opens them), and via currents are left out of the far field. The via currents belong
-  with step 1 too: a vertical current radiates through the stack's TM response to a series source, a kernel
-  `far_field` doesn't have, from the via-chain ends that step 1 rewrites; and next to a patch's edges a 0.8–1.6 mm
-  via is a small term.
+- ~~**Antenna mode** assumes an infinite ground, and via currents are left out of the far field.~~ Done
+  (2026-10-28): with the whole stack (above) the board's own ground is meshed and the far field covers the full
+  sphere (the lower half-space from the tangential field on interface 0), and the via chains' vertical currents
+  radiate on either stack (E_u = -j k_rho S~ through the TM network, the via kernels' S~). Checked against free-space
+  dipoles above and below the board, the via against a horizontal element in sign and phase, and a via over the
+  ground with its image. Left: the laterally infinite dielectric, so an antenna whose radiation comes from the
+  board's edge (an inverted-F, a monopole at the edge) is still openEMS's or gfdtd's.
 - ~~**Beam steering to an angle**~~ Done (2026-10-28): `--aim THETA,PHI` gives each driven port
   −k₀(x sin θ cos φ + y sin θ sin φ) from its place at the pattern frequency, on top of `--drive` and `--steer`
   (any layout; tested on a 1×3 row and a triangle of feeds), and the GUI's Beam steering bar has *Aim at* with

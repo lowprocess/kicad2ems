@@ -87,7 +87,33 @@ KiCad's CM5 demo (HDMI D0 pair, 6 layers):
   `MOM25D_GPU=off`, it solves, about 3 minutes a frequency). The adaptive sweep did not converge in 15
   solves, and a lumped port in the middle of a trace reflected almost everything (|S| 0.99, gfdtd 0.29).
 
-For such boards use openEMS or gfdtd.
+For such boards use openEMS or gfdtd, or mom25d's whole stack (below) where the board is small enough.
+
+<a id="whole-stack"></a>
+### The whole stack
+
+`mom_stack = "whole"` (`--mom-stack whole`) models every copper layer instead of an infinite ground: the
+lowest copper layer is the bottom of the stack, with air below as well as above, and the planes are meshed
+like any other copper (three times the cell size, as for planes above the ground). That lifts the first two
+limits: copper below the old ground is in the model, ports can sit on any layer, and each port is a lumped
+port to the nearest plane under or over it (or its `ref_layer`). Wave ports need the infinite ground, so the
+ports are lumped. `mixed` stays on the ground stack.
+
+On `rf_msvia` (F.Cu microstrip through a via to B.Cu, two inner planes), which the ground stack cannot solve
+(its B.Cu port is below every plane), the whole stack has 5,219 unknowns at `--mom-dmax 0.6` and takes 25 s:
+
+| `rf_msvia` | S21 1 GHz | 3 GHz | 5 GHz | 7 GHz | 10 GHz | worst S11 |
+|---|---|---|---|---|---|---|
+| mom25d, whole stack | −0.09 dB | −0.27 | −0.38 | −0.60 | −0.77 | −18.3 dB |
+| gfdtd | −0.07 dB | −0.24 | −0.38 | −0.55 | −1.02 | −12.9 dB |
+
+They agree to 0.05 dB up to 7 GHz. Above it the planes' 1.8 mm cells are about eight per wavelength, and the
+dielectric is still laterally infinite (FDTD's ends at the board edge).
+
+The cost is the planes. On the CM5 region the whole stack is about 125,000 unknowns at 0.3 mm (the signal and
+pour layers F.Cu, In3.Cu, B.Cu and In2.Cu are 77 % of them), which is why openEMS or gfdtd remain the tools for
+boards of that size. Slot layers (meshing a solid plane's openings rather than its copper) would cut In1.Cu
+and In4.Cu from 14,500 to 8,700 unknowns each there: not enough to change that (ROADMAP).
 
 <a id="antenna-mode"></a>
 ## Antenna mode
@@ -96,14 +122,21 @@ With `mode = "antenna"`, mom25d computes the far field of the currents and write
 openEMS: match, directivity, efficiency, gain and patterns (`<name>_mom25d_antenna.json`, `_antenna.png`,
 `_pattern.png`). The GUI's Results page plots them, and its Viewer draws the pattern in 3D.
 
-The ground is infinite, so nothing radiates below the board and there's no board edge. That suits
-patches and arrays on a ground larger than themselves. It doesn't suit antennas whose radiation comes
-from a finite ground, such as an inverted-F or a monopole at the board edge; use openEMS or gfdtd for those.
+On the ground stack the ground is infinite, so nothing radiates below the board and there's no board edge.
+That suits patches and arrays on a ground larger than themselves. With the [whole stack](#whole-stack) the
+board's own ground is meshed and the pattern covers the full sphere: behind the board too. The vias' vertical
+currents radiate in both (a probe feed, a shorting via), through the stack's TM response. The dielectric is
+still laterally infinite, so an antenna whose radiation comes from the board's edge (an inverted-F, a monopole
+at the edge) is still openEMS's or gfdtd's.
 
 | Patch (`antenna_patch.toml`) | Resonance | S11 | Efficiency | Directivity | Gain | Time |
 |---|---|---|---|---|---|---|
 | mom25d | 2.450 GHz | −31.4 dB | 36 % | 6.4 dBi | 2.0 dBi | 20 s |
+| mom25d, whole stack (its 80 mm ground meshed) | 2.470 GHz | | 36 % | 7.3 dBi | 2.9 dBi | 47 s |
 | openEMS | 2.438 GHz | −32.3 dB | 38 % | 7.0 dBi | 2.9 dBi | 81 s |
+
+With the whole stack the back lobe at θ 180° is −17.5 dBi (gfdtd, which ends the substrate at the board's
+edge: −13.1 dBi); on the ground stack there is none.
 
 <a id="phased-drive"></a>
 ### Phased arrays
