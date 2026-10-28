@@ -33,10 +33,13 @@ Modules
     config        Settings (made from the option tables): defaults <- TOML <- command line
     pipeline      Job: the stages of a run, over the solver plugins
     cli           command line (kicad2ems / python -m kicad2ems)
+    runs          a run started by another program (kicad2ems-gui, the KiCad plugin): its TOML, events, stopping it
+
+The window is its own package, kicad2ems-gui (the gui extra), as are the full-wave solvers.
 
 Documentation: docs/index.md in the repository.
 """
-__version__ = '261027-r1'
+__version__ = '261027-r2'
 
 from .importers.kicad import KiCadBoard, read_pos
 from .board import Board, Port

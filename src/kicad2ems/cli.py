@@ -37,7 +37,7 @@ def parser():
     ap = argparse.ArgumentParser(prog='kicad2ems', description=__doc__, argument_default=S,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--check', action='store_true',
-                    help='check which solvers this python can run (openEMS, mom25d, the line model) and the GUI, '
+                    help='check which solvers this python can run and the GUI, '
                          'then exit')
     ap.add_argument('--init', action='store_true',
                     help='write a commented starter config next to the board (<board>.toml) with the ports found on '
@@ -103,11 +103,12 @@ def check_report():
     lines += [f"  missing {names[0]:<8s} {missing(names[0])}" for names in EXTRAS.values() if missing(names[0])]
     lines += [f"  BROKEN  {ep}: {err}" for ep, err in broken]
     try:
+        gui = importlib.import_module('kicad2ems_gui')
         importlib.import_module('PySide6')
         importlib.import_module('pyqtgraph')
-        lines.append("  ok      GUI      kicad2ems-gui")
-    except ImportError:
-        lines.append("  missing GUI      python -m pip install 'kicad2ems[gui]' (PySide6, pyqtgraph)")
+        lines.append(f"  ok      GUI      kicad2ems-gui {gui.__version__}")
+    except ImportError as e:
+        lines.append(f"  missing GUI      python -m pip install 'kicad2ems[gui]' ({e})")
     lines += ['', 'what each solver models (docs/architecture.md):'] + capability_table() + ['']
     lines.append(f"full-wave solvers ready: {', '.join(ready)}" if ready else
                  "no full-wave solver usable from this python (without one: --preview, --solvers lines)")

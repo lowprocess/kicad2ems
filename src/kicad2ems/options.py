@@ -7,7 +7,7 @@ converters that turn a config or command-line value into a setting.
 
 From the option lists come the Settings fields (config.Settings), the command-line options (cli.parser), the
 config keys (config.read_toml: the key at the top level, the short name under [solver.<name>]) and the GUI
-fields (gui.runner.FIELDS).
+fields (kicad2ems-gui: runner.FIELDS).
 """
 from dataclasses import dataclass
 

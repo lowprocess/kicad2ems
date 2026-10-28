@@ -3,8 +3,8 @@
 [← Usage](usage.md) · [Index](index.md) · [Next: Examples →](examples.md)
 
 ```bash
-pip install '.[gui]'          # PySide6, pyqtgraph, h5py, PyOpenGL
-kicad2ems-gui [config.toml]   # or: python -m kicad2ems.gui
+pip install '.[gui]'          # kicad2ems-gui, its own package: PySide6, pyqtgraph, h5py, PyOpenGL
+kicad2ems-gui [config.toml]   # or: python -m kicad2ems_gui
 ```
 
 The GUI edits a run's settings and starts the command-line tool as a separate process. Closing the

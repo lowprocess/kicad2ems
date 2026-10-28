@@ -26,8 +26,8 @@ dependencies = [
 [project.optional-dependencies]
 fast = ["scikit-rf>=1.0"]          # --fast skrf: the line model as S-parameters (qucsator: a separate program)
 dumps = ["h5py>=3"]                # frequency-domain field dumps (openEMS's own Python package needs it too)
-gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "h5py>=3", "PyOpenGL>=3.1"]   # kicad2ems-gui (h5py: FD dumps,
-                                                                                   # far field; PyOpenGL: 3D fields)
+gui = ["kicad2ems-gui @ git+https://github.com/lowprocess/kicad2ems-gui"]   # the window (kicad2ems-gui), its own
+                                                                             # repository: PySide6, pyqtgraph, PyOpenGL
 core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster);
                                    # python -m gfdtd.core.build: gfdtd's CPU core (~15x numpy)
 # the full-wave solvers, each a package with its kicad2ems plugin (the 'kicad2ems.solvers' entry points)
@@ -36,7 +36,7 @@ openems = ["kicad2ems-openems @ git+https://github.com/lowprocess/kicad2ems-open
 mom = ["mom25d @ git+https://github.com/lowprocess/mom25d"]     # the MoM solver and its plugins, mom25d and mixed
                                                                 # (it brings triangle, its mesher)
 gfdtd = ["gfdtd @ git+https://github.com/lowprocess/gfdtd"]   # the GPU FDTD solver and its plugin
-filter = ["dfsynth @ git+https://github.com/lowprocess/dfsynth"]   # the GUI's Filter page: dfsynth, its own repository
+filter = ["kicad2ems-gui[filter] @ git+https://github.com/lowprocess/kicad2ems-gui"]   # the GUI's Filter page (dfsynth)
 all = ["kicad2ems[fast,dumps,gui,core,openems,mom,gfdtd,filter]"]       # everything but a GPU wheel (one of the gpu-* extras)
 # mom25d's and gfdtd's GPU solvers (docs/mom.md#gpu): the CuPy wheel built for your
 # GPU stack, one of these extras (pip install '.[gpu-rocm7]'), or the wheel itself (pip install cupy-rocm-7-0);
@@ -51,9 +51,7 @@ test = ["pytest>=7", "scikit-rf>=1.0", "h5py>=3"]
 
 [project.scripts]
 kicad2ems = "kicad2ems.cli:main"
-kicad2ems-gui = "kicad2ems.gui:main"
 kicad2openems = "kicad2ems.cli:main_openems"     # the old name: openEMS unless --solvers says otherwise
-kicad2openems-gui = "kicad2ems.gui:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "kicad2ems.__version__"}
@@ -61,9 +59,6 @@ version = {attr = "kicad2ems.__version__"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["kicad2ems*"]
-
-[tool.setuptools.package-data]
-"kicad2ems.gui" = ["*.svg"]                 # the window's and the application launcher's icon, the wand
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

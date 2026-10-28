@@ -6,7 +6,7 @@ found on it, nets = "auto", the band and the options typed with --init.
 """
 import glob, os
 
-from .gui.runner import toml_value
+from .runs import toml_value
 
 
 def _pos_file(board):

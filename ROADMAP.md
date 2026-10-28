@@ -124,6 +124,12 @@ full-wave solver a package that is installed or not. In order:
    GHCR), and a self-hosted runner with the AMD GPU for the GPU tests (hosted runners have none; never for pull
    requests from forks).
 
+7. ~~**The window as its own package.**~~ Done (2026-10-27): [kicad2ems-gui](https://github.com/lowprocess/kicad2ems-gui)
+   (`kicad2ems_gui`), with its tests on kicad2ems's stand-in solvers. Core keeps what starts and follows a run
+   (`kicad2ems.runs`) and the modules the KiCad plugin also uses (`overlay`, `meshes`). The GUI reaches into
+   `config`, `solvers`, `fields`, `phased`, `sitecfg`, `stop`, `touchstone` and `fdtd.plugin.G_DUMP`: kicad2ems's
+   API for it, pinned by version (`kicad2ems>=261027.post2`).
+
 The line model stays in core. Its analysis (`src/kicad2ems/lines/`: sections, Z0, coupled lines) is not a
 solver: every run builds it, and the report, the GUI's overlay, the KiCad plugin's impedance map and the
 example generator use it. Its circuit solvers (`solvers/lines/`: qucsator, scikit-rf) could be split out like

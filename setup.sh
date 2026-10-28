@@ -216,7 +216,7 @@ pipi() { $SUDO "$VPY" -m pip install ${USERFLAG[@]+"${USERFLAG[@]}"} "$@"; }
 # ---- optional parts ---------------------------------------------------------------------------------
 bold "Optional parts"
 EXTRAS=()
-ask "GUI (kicad2ems-gui: PySide6, pyqtgraph, PyOpenGL for the 3D field view)?" y && EXTRAS+=(gui)
+ask "GUI (kicad2ems-gui, from github.com/lowprocess/kicad2ems-gui: PySide6, pyqtgraph, PyOpenGL)?" y && EXTRAS+=(gui)
 ask "frequency-domain field dumps and far fields (h5py)?" y && EXTRAS+=(dumps)
 ask "line model with scikit-rf (--fast skrf; qucsator is a separate program)?" y && EXTRAS+=(fast)
 MOM=0 GFDTD=0
@@ -424,7 +424,8 @@ if [[ " ${EXTRAS[*]-} " == *" gui "* ]] && [ -x "$GUI_CMD" ]; then
     bold "The GUI in the application launcher"
     if ask "a launcher entry for kicad2ems-gui (runs $GUI_CMD)?" y; then
         $SUDO mkdir -p "$APPS" "$ICONS"
-        $SUDO cp "$REPO/kicad2ems/gui/kicad2ems.svg" "$ICONS/kicad2ems.svg"
+        SVG=$("$VPY" -c 'import kicad2ems_gui, os; print(os.path.join(os.path.dirname(kicad2ems_gui.__file__), "kicad2ems.svg"))')
+        $SUDO cp "$SVG" "$ICONS/kicad2ems.svg"          # the icon kicad2ems-gui installs
         record "$ICONS/kicad2ems.svg"
         ENTRY=$(cat <<EOF
 [Desktop Entry]

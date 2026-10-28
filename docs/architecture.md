@@ -124,7 +124,7 @@ src/kicad2ems/
   options.py      Option and value converters
   pipeline.py     Job: the stages above
   events.py       --events
-  sysinfo.py      what this machine can run (the GUI's Solvers window)
+  sysinfo.py      what this machine can run (the GUI's Solvers window, as `python -m kicad2ems.sysinfo`)
   importers/      KiCad (kicad/) and Gerber readers
   board.py        Board: the converted board, board.json
   region.py       cropping, nets = auto, extra and cut ports
@@ -141,10 +141,15 @@ src/kicad2ems/
   touchstone.py   .sNp files
   plots.py        figures
   report.py       the HTML report
-  volume3d.py     3D field views: resampling, colouring, the board as meshes
   overlay.py      the line model over the board (<name>_lines.json): colours by Z0, picking a section
-  gui/            kicad2ems-gui
+  meshes.py       each solver's mesh as a file, for the 3D view
+  runs.py         a run started by another program (the GUI, the KiCad plugin): TOML, command line, events, stop
 ```
+
+The window is [kicad2ems-gui](https://github.com/lowprocess/kicad2ems-gui), a package of its own (the `gui`
+extra): its settings form is made from the option tables and the solver registry, and it starts each run as a
+`kicad2ems` process (`runs.py`), so it needs nothing of a solver's. The full-wave solvers are packages too
+([Solver plugins](#solver-plugins)).
 
 openEMS, CSXCAD, scikit-rf, h5py and mom25d are imported **inside the functions that need them**. A plugin
 imports nothing heavy at module level, because the registry loads every plugin to build the settings.
