@@ -359,24 +359,81 @@ mom25d's shape about 20% low, with small spikes at the cut faces.
 <a id="quads"></a>
 ### Quad cells (experimental)
 
-`--mom-quads on` merges pairs of triangles that together make a near-rectangle (the strips along straight
-traces) into one quad cell. The current on a quad is kept at the same charge density on both triangles, so
-the shared diagonal stops being an unknown. Quads have the unknowns of rooftop cells, one per side. The
-matrix is still filled on the triangles and then reduced before the factorisation.
+`--mom-quads on` merges pairs of triangles that together make a near-rectangle into one quad cell. The current on
+a quad is kept at the same charge density on both triangles, so the shared diagonal stops being an unknown. Quads
+have the unknowns of rooftop cells, one per side. The matrix is still filled on the triangles, then reduced to
+the quads before the factorisation (in the compiled core: about 0.1 s for 6,000 unknowns).
 
-| Board | Unknowns | Change in S from quads |
-|---|---|---|
-| Stepped microstrip, tensor mesh | 795 → 511 | 0.014 from a fine reference, triangles 0.015 |
-| Hairpin filter | 4,763 → 3,974 | 0.006; S21 within 0.1 dB through the passband |
-| Demo transition (cropped, via ports) | 8,334 → 6,509 | 0.017 from a fine reference, triangles 0.015 |
+What `on` does:
 
-`--mom-quads centre` merges only in the middle of signal lines: no triangle with a corner on the copper outline,
-none off the signal copper. It merges fewer (rf_coupler: 5,864 → 5,173 unknowns, against 4,725 with `on`); both
-stay as close to a fine reference as the triangles (0.015 / 0.014 / 0.015 at 8 GHz).
+- **Pairs** triangles whose quad has every corner within `--mom-quad-tol` degrees (default 35) of a right angle.
+  The pairing is a matching: after a greedy pass, augmenting paths pair the triangles it left stranded.
+- **Structured runs.** Straight traces and rectangular pads are meshed as a grid of rectangles: lines across
+  the run at stations along it, and along its middle inside the edge rings. Every cell is then a quad of 0°.
+  Port and cut lines on a run are stations of it. Square vias join the grid (see below); around round vias
+  the run is left unstructured.
+- **Keeps the edge strip as triangles.** No quad touches the copper outline, where the current crowds. Quads
+  there cost accuracy on narrow gaps: rf_gcpw 0.015 from a fine reference at 9 GHz instead of 0.002, the
+  hairpin 0.033 at 3.35 GHz instead of 0.009. `--mom-quads all` merges them anyway.
 
-On the demo transition the factorisation went from 8.3 s to 4.1 s a frequency, plus 1.4 s to reduce the
-matrix (2 cores). On the fine reference mesh itself, quads stay within 0.006 of the triangles. Quads work
-with the direct solver on the CPU (double and mixed precision); the GPU and compressed solvers ignore them. Studies: `tools/quad_study.py` in mom25d.
+`--mom-quads centre` also merges only on the signal copper, with no quads in pours or pads.
+
+![mesh configurations on the stepped low-pass](img/mom_mesh_steplpf.png)
+
+![mesh configurations on the coupler](img/mom_mesh_coupler.png)
+
+Each configuration against a fine triangle reference (0.2 mm cells), dmax 0.3 mm, lumped ports. The error is the
+largest |ΔS| at three frequencies in the band; the time is one solve in double precision on the CPU (8 cores).
+
+| Board | Triangles | Quads 25°, greedy (before) | `--mom-quads on` | Fast: `on`, `--mom-quad-tol 60 --mom-coarsen 2` |
+|---|---|---|---|---|
+| hairpin | 4,763: 0.0069, 0.90 s | 3,974: 0.0053, 0.57 s | 3,965: 0.0092, 0.60 s | 1,992: 0.0037, 0.22 s |
+| rf_steplpf | 6,129: 0.0062, 1.46 s | 5,359: 0.0064, 1.13 s | 4,143: 0.0068, 0.69 s | 1,920: 0.0158, 0.20 s |
+| rf_stubnotch | 5,090: 0.0059, 0.99 s | 4,353: 0.0032, 0.87 s | 3,682: 0.0057, 0.78 s | 1,802: 0.0207, 0.16 s |
+| rf_coupler | 5,864: 0.0049, 1.23 s | 4,725: 0.0060, 0.80 s | 4,570: 0.0050, 0.70 s | 2,360: 0.0146, 0.25 s |
+| rf_branchline | 9,011: 0.0007, 3.97 s | 7,533: 0.0027, 2.55 s | 6,527: 0.0012, 1.77 s | 2,342: 0.0211, 0.23 s |
+| rf_gcpw | 3,416: 0.0015, 0.44 s | 3,141: 0.0187, 0.43 s | 2,967: 0.0027, 0.39 s | 1,923: 0.0069, 0.26 s |
+
+![error and speed of each configuration](img/mom_mesh_effect.png)
+
+- **`--mom-quads on` is as accurate as the triangles** (within 0.003 of their error on every board) with
+  13–32 % fewer unknowns, and solves 1.1–2.2× faster.
+- **The fast setting** solves 4–17× faster with 2.4–3.8× fewer unknowns (rf_gcpw, whose via fences stay fine:
+  1.7× and 1.8×), at up to 0.021 from the reference. That is below how far mom25d and the FDTD solvers already
+  differ on these boards ([benchmarks](benchmarks.md)).
+- The old quads (25°, greedy, no structured runs) merged 24–56 % of the triangles; `on` merges 40–73 %, the edge
+  strip left as triangles.
+
+Quads work with the direct solver, on the CPU and the GPU (double and mixed precision: the matrix is reduced on the
+host, then factored). The tiled GPU solver and the compressed solvers ignore them. The studies are
+`tools/quad_configs_study.py` and `tools/mesh_configs.py` (these figures) in mom25d.
+
+<a id="coarsen"></a>
+### Coarsening (experimental)
+
+`--mom-coarsen X` lets the cells grow away from the features: the outline's corners and bends, vias, and port
+and cut lines. A cell is dmax at a feature and grows by half the distance to the nearest one, up to X × dmax,
+along the outline and the edge rings and over the copper inside them. The spacing across an edge (the edge
+rings) is kept. On structured runs it makes the grid's columns longer and the cells in wide copper larger.
+
+Coarser spacing along the outline costs almost nothing. The error comes from the larger cells inside wide copper:
+on the stepped low-pass, cells along the edges alone at 2 × dmax stay within 0.006 of the reference at 5 GHz,
+while the pads at 2 × dmax are 0.014 off. X = 2 and X = 3 give nearly the same error, so 2 is the useful setting.
+
+<a id="stitching"></a>
+#### Square stitching vias on a structured mesh
+
+Round vias leave a gap in a structured run, and with coarsening the via fences then leave long spiky triangles
+between each via and the pour. With `--mom-stitching-vias square`, each fence via snaps to a whole cell of the
+grid instead. The cell is centred on the via, or bounded by an edge ring where one is close, and its four
+triangles are the via's fan.
+
+![round against square stitching vias](img/mom_mesh_gcpw_stitching.png)
+
+On rf_gcpw it merges more (61 % of the triangles instead of 42 % with the fast setting; 2,367 unknowns instead of
+2,967 with `on`). The fan is then the cell, larger than the via, and the error at 9 GHz grows: 0.0096 instead of
+0.0027 with `on`, 0.014 instead of 0.0069 with the fast setting. Keep `auto` (round, with `--mom-zone` off) unless
+the unknowns matter more.
 
 <a id="gpu"></a>
 ## GPU
@@ -444,7 +501,7 @@ the fallback. `mom_core` chooses:
 
 | `mom_core` | Kernels |
 |---|---|
-| `auto` (default) | the core where it's built; boards up to 3,500 unknowns use NumPy's dense solver |
+| `auto` (default) | the core where it's built, for every board (NumPy's dense solver without it) |
 | `compiled` | the core for every board, small ones through its direct solver; stops if the core isn't built |
 | `python` | NumPy only: slower, for checking the core |
 
