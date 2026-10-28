@@ -40,6 +40,14 @@ Documentation: docs/index.md in the repository.
 """
 __version__ = '261028-r1'
 
+import os as _os
+# kicad2ems.examples is the checkout's examples/ (pyproject's package-dir). A compat editable install (setup.sh's
+# checkout and user targets) puts only src/ on sys.path, where it isn't: look in the checkout too
+_checkout = _os.path.dirname(_os.path.dirname(__path__[0]))
+if not _os.path.isdir(_os.path.join(__path__[0], 'examples')) and \
+        _os.path.isfile(_os.path.join(_checkout, 'examples', '__init__.py')):
+    __path__.append(_checkout)
+
 from .importers.kicad import KiCadBoard, read_pos
 from .board import Board, Port
 from .sparams import mixed_mode
