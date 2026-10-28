@@ -106,10 +106,17 @@ def describe(match, rows, f_pat):
 
 
 def save(res, path):
-    """JSON summary (without the 3D sphere)."""
+    """JSON summary (without the 3D sphere), stamped kicad2ems-antenna (formats.py)."""
+    from ..formats import stamp
     out = {k: v for k, v in res.items() if k != 'sphere'}
     with open(path, 'w') as fh:
-        json.dump(out, fh, indent=1)
+        json.dump(stamp(out, 'kicad2ems-antenna'), fh, indent=1)
+
+
+def read(path):
+    """An antenna run's results (save's file), checked: ValueError when this kicad2ems cannot read it."""
+    from ..formats import read as read_format
+    return read_format(path, 'kicad2ems-antenna')
 
 
 

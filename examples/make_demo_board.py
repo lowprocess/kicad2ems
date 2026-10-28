@@ -19,10 +19,10 @@ Writes small KiCad 8 test boards (no KiCad needed) and their pick-and-place file
 
 Port footprints 'kicad2ems:RF_Port' carry the Fab text P1 / P2.
 """
-import math, sys, uuid
+import math, sys
 import numpy as np
 
-def u(): return str(uuid.uuid4())
+from _pcb import u                                                  # noqa: E402
 
 def circle_pts(cx, cy, r, n=32):
     return [(cx + r * math.cos(2 * math.pi * i / n), cy + r * math.sin(2 * math.pi * i / n)) for i in range(n)]

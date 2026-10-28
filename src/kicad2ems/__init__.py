@@ -38,7 +38,7 @@ The window is its own package, kicad2ems-gui (the gui extra), as are the full-wa
 
 Documentation: docs/index.md in the repository.
 """
-__version__ = '261028'
+__version__ = '261028-r1'
 
 from .importers.kicad import KiCadBoard, read_pos
 from .board import Board, Port

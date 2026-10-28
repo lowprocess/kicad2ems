@@ -6,6 +6,7 @@ wrote. No Qt here.
     run = Run(settings_dict, out_dir, preview=False)
     run.argv()                     # [python, -m, kicad2ems, <out>/gui_run.toml, --events, ...]
     tail = EventTail(path); tail.read() -> [event dicts]
+    read_summary(path)             # a <name>_run.json, its format checked (formats.py)
     stop_runs(out_dir)             # STOP for the run (stop.py), ABORT into every FDTD run folder
     find_results(out_dir)          # [(label, path)] of the newest finished run's files
     write_toml(path, settings); toml_value(v)
@@ -50,8 +51,15 @@ class Run:
                (['--preview'] if self.preview else [])
 
 
+def read_summary(path):
+    """A run summary (<name>_run.json), checked: ValueError when this kicad2ems cannot read its format."""
+    from .formats import read
+    return read(path, 'kicad2ems-run')
+
+
 class EventTail:
-    """Reads the new complete lines of an events file on each call."""
+    """Reads the new complete lines of an events file on each call. The stream's first line names its format
+    (formats.py): it is not passed on, and a format this kicad2ems cannot read comes out as a log line saying so."""
     def __init__(self, path):
         self.path, self.pos = path, 0
 
@@ -67,9 +75,16 @@ class EventTail:
         out = []
         for line in chunk[:cut].decode('utf-8', 'replace').splitlines():
             try:
-                out.append(json.loads(line))
+                e = json.loads(line)
             except ValueError:
-                pass
+                continue
+            if e.get('kind') == 'format':
+                from .formats import check
+                why = check(e, 'kicad2ems-events')
+                if why:
+                    out.append(dict(t=e.get('t', 0.0), kind='log', text=f"WARNING: the run's events: {why}"))
+                continue
+            out.append(e)
         return out
 
 

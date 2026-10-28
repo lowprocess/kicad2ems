@@ -19,7 +19,7 @@ its results as kicad2ems's other solvers do.
   phased arrays       phased (the module: parse_grid, settings_drive, combine, waves, format_drive, save), settings_drive
   the machine         sitecfg (where external programs are), core_threads, ram_gb
   for an FDTD layer (kicad2ems-fdtd's: the FDTD solvers' shared model, mesh and runs):
-    constants         C0, EPS0
+    constants         C0, EPS0; ETA0, MU0 (2.1)
     settings          strlist, items (Option value parsers), G_DUMP (the field-dump settings group), registry
     geometry          split_holes (a polygon with holes -> simple polygons), describe_edges, snap_edges (the
                       board-edge walls: their log line, snapped onto a grid)
@@ -44,7 +44,7 @@ NAMES = dict(
     save_mesh='.meshes:save',
     phased='.phased', settings_drive='.phased:settings_drive',
     sitecfg='.sitecfg', core_threads='emsdev.cpu:core_threads', ram_gb='.pipeline:ram_gb',
-    C0='.constants:C0', EPS0='.constants:EPS0', strlist='.options:strlist', items='.options:items',
+    C0='.constants:C0', EPS0='.constants:EPS0', ETA0='.constants:ETA0', MU0='.constants:MU0', strlist='.options:strlist', items='.options:items',
     G_DUMP='.fields.dumps:G_DUMP', registry='.solvers:registry', split_holes='.geometry:split_holes',
     describe_edges='.edges:describe', snap_edges='.edges:snap',
     parse_dump='.fields.dumps:parse_dump', add_dumps='.fields.dumps:add_dumps',

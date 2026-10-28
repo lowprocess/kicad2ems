@@ -1,6 +1,7 @@
 """
 Run events as JSON lines (--events FILE): one object per line, for a GUI or a script following a run.
 
+    {"t": 0.0, "kind": "format", "format": "kicad2ems-events", "format_version": 1}      (formats.py)
     {"t": 0.12, "kind": "stage", "name": "model"}
     {"t": 0.40, "kind": "log", "text": "mesh: 188 x 115 x 25 = 0.54 M cells ..."}
     {"t": 9.80, "kind": "status", "run": "P1", "run_time": 8.0, "step": 6118, "db": -3.2, "speed": 138.0,
@@ -19,6 +20,8 @@ class EventSink:
         self.t0 = time.time()
         self._fh = open(path, 'w', buffering=1, encoding='utf-8')
         self._lock = threading.Lock()                      # the progress monitor writes from its own thread
+        from .formats import stamp
+        self.emit('format', **stamp({}, 'kicad2ems-events'))
 
     def emit(self, kind, **data):
         data = {k: (None if isinstance(v, float) and not math.isfinite(v) else v) for k, v in data.items()}

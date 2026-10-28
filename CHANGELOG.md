@@ -51,6 +51,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   requirements from the checkouts.
 
 ### Changed
+- **What crosses the repositories is versioned and read once.** kicad2ems.api 2.1 (`261028-r1`; kicad2ems-gui
+  and kicad2ems-fdtd require it). The run summary, the event stream, sysinfo's JSON and the antenna results carry
+  `format` and `format_version` (`formats.py`), read through `api.frontend`'s `read_summary`, `read_antenna`,
+  `EventTail` and `check_format` by kicad2ems-gui, the KiCad plugin and dfsynth (whose own copy of the events
+  reader went). Touchstone port names: `api.frontend.port_names`, in place of the GUI's and `compare_solvers`'
+  copies. The GUI finds an antenna's sphere by its `sphere_file`, not by openEMS's run folder; its Filter page
+  tells a dfsynth too old for `--describe` from a missing one.
+- One definition of each physical constant per package: the core's `ETA0` (three) and `MU0` in `constants`;
+  kicad2ems-fdtd's through `api.solver`; mom25d's `base.C0` where it was written out; gfdtd's in a new
+  `constants.py` (its `ports.py` had 4e-7π for `MU0`, the rest CODATA 2018: now CODATA 2018 throughout, a
+  5e-10 change); dfsynth's `ETA0`. mom25d's antenna pattern through `pattern_gain`; the report's air margin from
+  the FDTD mesh summary (`air_text`), not a copy of its formatting.
+- Direct dependencies declared: kicad2ems-gui numpy, shapely, matplotlib and Pillow; kicad2ems-fdtd emsdev;
+  mom25d matplotlib. mom25d's tools import through `api.frontend`.
+- Tests without copies: mom25d's six board tests run once (on its frozen boards), and a new check holds
+  `tests/boards/*.json` to what kicad2ems writes (the suite 313 -> 266 s); the field-dump helpers and the parity
+  helper (`prepared_job`) are in `k2e_fixtures.py`; kicad2ems-fdtd's canned runs in its conftest. The board
+  generators share `examples/_pcb.py` (uuid, filled rectangles and polygons, vias): every generated board is
+  byte-identical to before.
+- kicad2ems-gui's tests delete their standalone widgets (`FilterTab`, `PlanView`): left to the interpreter's exit,
+  their plots crashed it after the tests had passed (CI's exit code 139, about one run in three).
 - gfdtd's engine interface is versioned: `gfdtd.API_VERSION` (1.0: `ContinuousStructure`, `openEMS(backend=)`,
   `engine.gpu_info`, `core_info`, `resolve_backend`, `concurrent_runs`), and kicad2ems-fdtd's gfdtd solver
   checks it (`ENGINE_API`): a gfdtd of another major version, or an older minor one, is not usable and

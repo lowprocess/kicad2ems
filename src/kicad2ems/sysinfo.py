@@ -62,8 +62,9 @@ def solvers():
 def info():
     res = resources()
     g, why = gpu(res)
-    return dict(solvers=solvers(), resources=res, gpu=g, gpu_why=why, ram=memory(), cpus=os.cpu_count(),
-                threads=core_threads())
+    from .formats import stamp
+    return stamp(dict(solvers=solvers(), resources=res, gpu=g, gpu_why=why, ram=memory(), cpus=os.cpu_count(),
+                      threads=core_threads()), 'kicad2ems-sysinfo')
 
 
 if __name__ == '__main__':

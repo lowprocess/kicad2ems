@@ -12,7 +12,9 @@ results (the GUI, the KiCad plugin, dfsynth's --validate).
                       module: the user's settings file), G_DUMP (the field-dump settings group)
   solvers             registry, get_solver, resolve_lines, AUTO, LINES
   runs                Run, EventTail, stop_runs, find_results, toml_value, write_toml
-  results             read_touchstone; meshes (the module: the solvers' saved meshes); phased (the module: drives,
+  files it writes     read_summary (<name>_run.json), read_antenna (<name>_antenna.json), check_format (a JSON of
+                      kicad2ems's, e.g. python -m kicad2ems.sysinfo's: None, or why this kicad2ems cannot read it)
+  results             read_touchstone, port_names (a kicad2ems Touchstone file's port names); meshes (the module: the solvers' saved meshes); phased (the module: drives,
                       grids, tapers); frames (the module: field frames), find_dumps, write_frames; read_sphere,
                       sphere_cuts, sphere_gain (far fields)
   the machine         core_threads (one per fast physical core: worker processes of a parallel map)
@@ -33,7 +35,8 @@ NAMES = dict(
     AUTO='.solvers:AUTO', LINES='.solvers:LINES',
     Run='.runs:Run', EventTail='.runs:EventTail', stop_runs='.runs:stop_runs', find_results='.runs:find_results',
     toml_value='.runs:toml_value', write_toml='.runs:write_toml',
-    read_touchstone='.touchstone:read_touchstone', meshes='.meshes', phased='.phased', frames='.fields.frames',
+    read_summary='.runs:read_summary', read_antenna='.fields.antenna:read', check_format='.formats:check',
+    read_touchstone='.touchstone:read_touchstone', port_names='.touchstone:port_names', meshes='.meshes', phased='.phased', frames='.fields.frames',
     find_dumps='.fields.frames:find_dumps', write_frames='.fields.frames:write_frames',
     read_sphere='.fields.antenna:read_sphere', sphere_cuts='.fields.antenna:sphere_cuts',
     sphere_gain='.fields.antenna:sphere_gain',

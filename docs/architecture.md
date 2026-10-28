@@ -62,6 +62,13 @@ minor release adds names, a major one removes or changes one. A solver says whic
 (`api = (2, 0)` on its class); the registry refuses one of another major version, or of a newer minor one, and
 `--check` lists it as broken with what to update. A plugin that declares none counts as 1.0. 2.0 took the FDTD
 layer out of the API (`FDTD`, `MESH`, `RUN`, `G_MESH`, `run_excitations`, `auto_mesh`): it lives in kicad2ems-fdtd.
+2.1 added the examples and the checked file readers to `api.frontend`, and `ETA0`, `MU0` to `api.solver`.
+
+**The files between programs.** What kicad2ems writes for another program to read carries its format's name and
+version (`formats.py`): the run summary (`<name>_run.json`), the event stream (its first line), `python -m
+kicad2ems.sysinfo`'s JSON and the antenna results; the board file has its own (`board.FORMAT`, `VERSION`). The
+readers (`api.frontend.read_summary`, `read_antenna`, `EventTail`, `check_format`) take a version up to their
+own and say to update kicad2ems for a newer one. A version goes up only when a key is removed or changes meaning.
 
 It then appears in `--solvers`, `--check`, the config (`[solver.mysolver]`), the GUI (a section per option
 group, greyed until one of its solvers is ticked), the Filter page and the KiCad plugin's menu. Its `order`

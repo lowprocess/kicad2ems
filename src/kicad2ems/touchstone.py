@@ -1,8 +1,24 @@
 """
-Touchstone files: v1 when all reference impedances are equal, v2.0 with [Reference] otherwise.
+Touchstone files: v1 when all reference impedances are equal, v2.0 with [Reference] otherwise. kicad2ems names
+the ports in a comment, `! ports: 1=P1, 2=P2d, ...` (port_names reads it back).
 """
-import os
+import os, re
 import numpy as np
+
+
+def port_names(path):
+    """The port names of the `! ports:` comment kicad2ems writes, or None (another program's file, or none)."""
+    try:
+        with open(path) as fh:
+            for line in fh:
+                if not line.startswith('!'):
+                    break
+                m = re.match(r'!\s*ports:\s*(.*)', line)
+                if m:
+                    return [p.split('=', 1)[1].strip() for p in m.group(1).split(',') if '=' in p]
+    except OSError:
+        pass
+    return None
 
 
 def write_touchstone(path, f, S, zref, comment='', names=None):

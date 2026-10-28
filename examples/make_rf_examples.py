@@ -42,19 +42,16 @@ package's own line formulas for 0.8 mm FR-4 (er 4.4, tan d 0.02), B.Cu ground:
 Ports are kicad2ems:RF_Port footprints (rotation = direction into the circuit), 0.5 mm inside the board
 edge where the feed lines end.
 """
-import math, os, sys, uuid
+import math, os, sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
 from kicad2ems.lines.tlines import microstrip, cpwg, stripline as strip_z   # noqa: E402
 from kicad2ems.lines.coupled import coupled_microstrip, coupled_stripline   # noqa: E402
+from _pcb import u, Items                                            # noqa: E402  (the generators' shared items)
 
 H_SUB, ER, TAND, F0 = 0.8, 4.4, 0.02, 2.4e9
 H4 = 0.2                                # mm of FR-4 between the layers of the 4-layer boards
 C0 = 299792458.0
-
-
-def u():
-    return str(uuid.uuid4())
 
 
 def solve(fn, target, lo, hi, n=80):
@@ -87,7 +84,7 @@ def _signed_area(pts):
     return 0.5 * sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1]))
 
 
-class Board:
+class Board(Items):
     def __init__(self, nets=("", "GND", "RF")):
         self.items, self.nets = [], list(nets)
 
@@ -95,20 +92,6 @@ class Board:
         for (x0, y0), (x1, y1) in zip(pts[:-1], pts[1:]):
             self.items.append(f'  (segment (start {x0:.4f} {y0:.4f}) (end {x1:.4f} {y1:.4f}) (width {w}) '
                               f'(layer "{layer}") (net {net}) (uuid "{u()}"))')
-
-    def rect(self, x0, y0, x1, y1, layer='F.Cu', net=2):
-        self.items.append(f'  (gr_rect (start {x0:.4f} {y0:.4f}) (end {x1:.4f} {y1:.4f}) (stroke (width 0) (type solid)) '
-                          f'(fill yes) (layer "{layer}") (net {net}) (uuid "{u()}"))')
-
-    def via(self, x, y, net=1, size=0.6, drill=0.3, layers=('F.Cu', 'B.Cu')):
-        kind = '' if layers == ('F.Cu', 'B.Cu') else ' blind'
-        self.items.append(f'  (via{kind} (at {x:.4f} {y:.4f}) (size {size}) (drill {drill}) (layers "{layers[0]}" "{layers[1]}") '
-                          f'(net {net}) (uuid "{u()}"))')
-
-    def poly(self, pts, layer='F.Cu', net=2):
-        xy = ' '.join(f'(xy {x:.4f} {y:.4f})' for x, y in pts)
-        self.items.append(f'  (gr_poly (pts {xy}) (stroke (width 0) (type solid)) (fill yes) (layer "{layer}") (net {net}) '
-                          f'(uuid "{u()}"))')
 
     def plane(self, layer, W, H, net=1, holes=(), outer=None):
         """A filled ground zone over the board (or the polygon `outer`) with holes: round antipads (x, y, r) or

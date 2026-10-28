@@ -296,13 +296,6 @@ def _saw_section(saw):
             "so).</p>" + _table([''] + saw['solvers'], rows))
 
 
-def _air_text(air):
-    """The air margin: '11.5 mm', or per side when they differ."""
-    if not isinstance(air, (tuple, list)):
-        return f"{air:.1f} mm"
-    return " ".join(f"{n}={a:g}" for n, a in zip(('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'), air)) + " mm"
-
-
 def _mesh_section(sm, g, st):
     """openEMS's mesh: cells, cell sizes, time step, boundaries, the preview, the convergence levels."""
     rows = [['cells', f"{g['nx']} × {g['ny']} × {g['nz']} = {g['cells']:,}"],
@@ -310,7 +303,7 @@ def _mesh_section(sm, g, st):
             ['largest cell (dielectric / air)', f"{g['maxres_die_mm']:.3f} / {g['maxres_air_mm']:.3f} mm"],
             ['smallest cell x / y / z', " / ".join(f"{v:.4f}" for v in g['min_cell_mm']) + " mm"],
             ['time step (estimate)', f"{g['dt_ps']:.4f} ps"], ['memory (estimate)', f"{g['mem_gb']:.2f} GB"],
-            ['air margin', _air_text(g.get('air_sides_mm') or g['air_mm'])],
+            ['air margin', _e(g.get('air_text') or f"{g['air_mm']:.1f} mm")],     # the solver's text (older: the least)
             ['boundaries', _e(" ".join(f"{s}={b}" for s, b in zip(('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'), g['bc'])))],
             ['curves / vias', f"{_e(g['curves'])} / {_e(g['vias'])} ({g['vias_snapped']} snapped)"],
             *([['edge walls (PEC)', _e(g['edge_walls'])]] if g.get('edge_walls') else []),

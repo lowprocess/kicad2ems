@@ -504,8 +504,9 @@ class Job:
         if 'results' in sm:                                          # the keys older readers use
             sm.update(ports=sm['results']['names'], zref=sm['results']['zref'], excited=sm['results']['excited'],
                       parts=sm['model']['parts'], diel=getattr(self.s, 'diel', None))
+        from .formats import stamp
         with open(js, 'w') as fh:
-            json.dump(sm, fh, indent=1, default=_plain)
+            json.dump(stamp(sm, 'kicad2ems-run'), fh, indent=1, default=_plain)
         if not self.s.no_report:
             from .report import write_report
             write_report(sm, self.path('_report.html'))

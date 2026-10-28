@@ -7,9 +7,7 @@ Units: mm, Ohm.
 """
 import math
 
-
-ETA0 = 376.730313668
-MU0 = 4e-7 * math.pi
+from ..constants import ETA0, MU0                                   # noqa: F401  (formulas.ETA0, MU0: tlines, dfsynth's tests)
 
 
 # ---- closed-form line impedances -------------------------------------------------------------------

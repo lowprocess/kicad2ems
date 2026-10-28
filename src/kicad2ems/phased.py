@@ -29,8 +29,7 @@ not run is refused.
 """
 import cmath, math, re
 import numpy as np
-
-ETA0 = 376.730313668
+from .constants import C0, ETA0
 
 
 def parse_drive(spec, names):
@@ -142,7 +141,7 @@ def aim(a, names, pos, theta, phi, f):
     off its element's centre still needs the drive's own phases to make up the difference. ValueError for a driven
     port without a place."""
     out = np.array(a, complex)
-    k0 = 2 * math.pi * f / 299792458.0 * 1e-3                       # rad / mm
+    k0 = 2 * math.pi * f / C0 * 1e-3                                # rad / mm
     st, ph = math.sin(math.radians(theta)), math.radians(phi)
     for i, n in enumerate(names):
         if abs(out[i]) > 0:

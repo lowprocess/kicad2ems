@@ -36,37 +36,21 @@ Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad neede
 Dimensions are keyword parameters (mm) of each function, also on the command line (param=value).
 The defaults were tuned with kicad2ems to resonate at 2.43-2.45 GHz with S11 below -19 dB.
 """
-import math, sys, uuid
+import math, sys
+
+from _pcb import u, Items                                            # the generators' shared items
 
 
-def u():
-    return str(uuid.uuid4())
-
-
-class Board:
+class Board(Items):
     def __init__(self, thickness, ground_layer=True, er=4.4, tand=0.02, material='FR4', stack=None):
         """stack: three dielectric thicknesses (mm) for a 4-layer board (F.Cu, In1.Cu, In2.Cu, B.Cu) instead of one
         `thickness` between F.Cu and B.Cu."""
         self.t, self.items, self.nets = thickness, [], ["", "GND", "RF"]
         self.er, self.tand, self.material, self.stack = er, tand, material, stack
 
-    def rect(self, x0, y0, x1, y1, layer='F.Cu', net=2):
-        self.items.append(f'  (gr_rect (start {x0:.4f} {y0:.4f}) (end {x1:.4f} {y1:.4f}) (stroke (width 0) (type solid)) '
-                          f'(fill yes) (layer "{layer}") (net {net}) (uuid "{u()}"))')
-
-    def poly(self, pts, layer='F.Cu', net=2):
-        p = " ".join(f"(xy {x:.4f} {y:.4f})" for x, y in pts)
-        self.items.append(f'  (gr_poly (pts {p}) (stroke (width 0) (type solid)) (fill yes) (layer "{layer}") '
-                          f'(net {net}) (uuid "{u()}"))')
-
     def track(self, x0, y0, x1, y1, w, layer='F.Cu', net=2):
         self.items.append(f'  (segment (start {x0:.4f} {y0:.4f}) (end {x1:.4f} {y1:.4f}) (width {w}) (layer "{layer}") '
                           f'(net {net}) (uuid "{u()}"))')
-
-    def via(self, x, y, net=1, size=0.6, drill=0.3, layers=('F.Cu', 'B.Cu')):
-        kind = '' if layers == ('F.Cu', 'B.Cu') else ' blind'
-        self.items.append(f'  (via{kind} (at {x:.4f} {y:.4f}) (size {size}) (drill {drill}) (layers "{layers[0]}" '
-                          f'"{layers[1]}") (net {net}) (uuid "{u()}"))')
 
     def port(self, ref, text, x, y, rot, z0=None, layer=None, width=None):
         """A port footprint; z0, layer, width: its port.z0, port.layer, port.width fields."""

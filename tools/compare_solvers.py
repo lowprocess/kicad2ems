@@ -57,20 +57,10 @@ BOARDS = {
 TERMS = dict(diffvia=('P1d<P1d', 'P2d<P1d'))
 
 
-def port_names(path):
-    with open(path) as fh:
-        for line in fh:
-            if not line.startswith('!'):
-                break
-            if line.startswith('! ports:'):
-                return [p.split('=', 1)[1].strip() for p in line[8:].split(',') if '=' in p]
-    return None
-
-
 def column(path, spec, complex_=False):
     """(f in Hz, |S| in dB) of S spec ('S21', or 'P2d<P1d' by port name) in a Touchstone file; complex_: S itself."""
     sys.path.insert(0, os.path.join(REPO, 'src'))
-    from kicad2ems.touchstone import read_touchstone
+    from kicad2ems.touchstone import read_touchstone, port_names
     f, S = read_touchstone(path)
     if '<' in spec:
         names = port_names(path) or []
