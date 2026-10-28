@@ -116,7 +116,9 @@ sphinx-build -b html docs docs/_build/html             # doxygen on PATH; about 
 ```
 
 `docs/conf.py` explains the build: the pages stay plain Markdown for GitHub, docstrings are shown as written,
-and every link between the built pages is checked.
+and every link between the built pages is checked. CI builds it on every push and pull request (`.github/workflows/docs.yml`, a
+warning fails it) and publishes it to GitHub Pages from main; nightly too, as the code reference follows the other
+repositories' main branches.
 
 Planned work is in [ROADMAP.md](https://github.com/lowprocess/kicad2ems/blob/main/ROADMAP.md).
 

@@ -17,7 +17,8 @@ import importlib.util, io, os, shutil, subprocess, sys, urllib.request, zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 BUILD = os.path.join(HERE, '_build')
-sys.path.insert(0, os.path.join(ROOT, 'src'))                       # this checkout's kicad2ems
+if importlib.util.find_spec('kicad2ems') is None:                    # not installed: this checkout's (its examples
+    sys.path.insert(0, os.path.join(ROOT, 'src'))                   # package exists only installed: pip install .)
 sys.path.insert(0, os.path.join(ROOT, 'examples'))                  # the generators import _pcb as a sibling
 
 import kicad2ems                                                    # noqa: E402
