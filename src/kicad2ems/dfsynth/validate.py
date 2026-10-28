@@ -180,22 +180,12 @@ class Follow:
     EVERY = 10.0                                       # s between progress lines of a run
 
     def __init__(self, path, log=print):
-        self.path, self.log, self.pos, self.last = path, log, 0, {}
+        from kicad2ems.api.frontend import EventTail              # kicad2ems's reader: the stream's format checked
+        self.tail, self.log, self.last = EventTail(path), log, {}
 
     def read(self):
-        try:
-            with open(self.path, 'rb') as fh:
-                fh.seek(self.pos)
-                chunk = fh.read()
-        except OSError:
-            return
-        cut = chunk.rfind(b'\n') + 1
-        self.pos += cut
-        for line in chunk[:cut].decode('utf-8', 'replace').splitlines():
-            try:
-                self.event(json.loads(line))
-            except ValueError:
-                pass
+        for e in self.tail.read():
+            self.event(e)
 
     def event(self, e):
         kind = e.get('kind')

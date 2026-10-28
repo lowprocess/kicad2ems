@@ -9,7 +9,7 @@ of a layout.
 import math
 import numpy as np
 
-from .microstrip import C0
+from .microstrip import C0, ETA0
 
 
 def _line_abcd(z, gl):
@@ -164,7 +164,7 @@ def radial_admittance(sub, r1, r2, angle, f):
     z0, ee0 = sub.line(wm)
     f = np.asarray(f, float)
     ee = sub.disperse(ee0, wm, f)
-    eta = 376.730313668 / np.sqrt(ee)
+    eta = ETA0 / np.sqrt(ee)
     th_eff = eta * sub.h / (z0 * np.sqrt(ee0 / ee) * rm)       # eta h / (theta_eff rm) = Z0 of the arc width
     r2e = r2 + sub.open_end(th * r2)
     k = 2 * np.pi * f * np.sqrt(ee) / C0 * 1e-3                # rad / mm
