@@ -234,7 +234,9 @@ def test_radial_stub_in_qucsator_is_mrstub(tmp_path):
     (line,) = [x for x in text.splitlines() if x.startswith('MRSTUB')]
     assert 'alpha="60' in line and f'ro="{r * 1e-3:.4g}' in line
     assert 'MSTEP' not in text and text.count('MOPEN') == 2          # the two port ends, not the stub's
-    if not fastsolve.find_qucsator(None):
+    try:
+        fastsolve.find_qucsator(None)
+    except ValueError:
         pytest.skip('no qucsator')
     S, _ = fastsolve.solve(lm, m.ports, f, backend='qucsator')
     assert 2.12e9 < f[np.argmin(np.abs(S[:, 1, 0]))] < 2.24e9
