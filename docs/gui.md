@@ -251,7 +251,9 @@ the beam can be steered or animated from either.
 Designs a microstrip filter with [dfsynth](https://github.com/lowprocess/dfsynth) and writes its board and kicad2ems
 config (*Filter* in the toolbar, the wand, or *File > New filter*, brings the page to the front). dfsynth is
 its own package, installed with the `filter` extra (`pip install '.[filter]'`) or by `setup.sh`; without it the
-page says so and stays disabled.
+page says so and stays disabled. The page never imports dfsynth: its types, topologies, substrate presets and options
+come from `dfsynth --describe --json`, so a dfsynth option the page has no field for appears under *More
+options*, and a field this dfsynth has no option for is disabled.
 
 - **Settings** (left): *Filter* (type, topology, f0, bandwidth, response, order or an attenuation spec such as
   `40@6G`, ripple, Z0), *Topology details* (only those the topology uses are enabled; the hairpin's includes

@@ -59,9 +59,18 @@ kicad2openems = "kicad2ems.cli:main_openems"     # the old name: openEMS unless 
 [tool.setuptools.dynamic]
 version = {attr = "kicad2ems.__version__"}
 
-[tool.setuptools.packages.find]
-where = ["src"]
-include = ["kicad2ems*"]
+# the examples ship as kicad2ems.examples (examples/ here: the configs, the generators, the boards in the repository;
+# not reference/). Listed, not found, for that mapping: tests/test_api.py checks the list against src/.
+[tool.setuptools]
+package-dir = {"" = "src", "kicad2ems.examples" = "examples"}
+include-package-data = false                                    # only what package-data names (not every file here)
+packages = ["kicad2ems", "kicad2ems.api", "kicad2ems.fields", "kicad2ems.importers", "kicad2ems.importers.kicad",
+            "kicad2ems.lines", "kicad2ems.solvers", "kicad2ems.solvers.lines", "kicad2ems.examples"]
+
+[tool.setuptools.package-data]
+"kicad2ems.examples" = ["*.toml", "hairpin.kicad_pcb", "hairpin-top.pos", "rf_interdig.kicad_pcb",       # the boards
+                        "rf_interdig.kicad_pro", "rf_interdig-all.pos", "sma_launch.kicad_pcb",       # in the repository:
+                        "sma_launch.kicad_pro", "sma_launch-all.pos"]                                 # the others are made
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

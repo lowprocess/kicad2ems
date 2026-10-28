@@ -16,6 +16,8 @@ results (the GUI, the KiCad plugin, dfsynth's --validate).
                       grids, tapers); frames (the module: field frames), find_dumps, write_frames; read_sphere,
                       sphere_cuts, sphere_gain (far fields)
   the machine         core_threads (one per fast physical core: worker processes of a parallel map)
+  examples            examples ({name: config path}), prepare_example (an example's config and board, copied or
+                      generated into a folder of the user's: open it from there), examples_folder (that folder)
 """
 from . import API_VERSION, lazy                                            # noqa: F401
 
@@ -26,6 +28,7 @@ NAMES = dict(
     Settings='.config:Settings', build_settings='.config:build_settings', read_toml='.config:read_toml',
     all_options='.config:all_options', default_out='.config:default_out', PATH_KEYS='.config:PATH_KEYS',
     sitecfg='.sitecfg', G_DUMP='.fields.dumps:G_DUMP',
+    examples='.examples:examples', prepare_example='.examples:prepare_example', examples_folder='.examples:user_folder',
     registry='.solvers:registry', get_solver='.solvers:get', resolve_lines='.solvers:resolve_lines',
     AUTO='.solvers:AUTO', LINES='.solvers:LINES',
     Run='.runs:Run', EventTail='.runs:EventTail', stop_runs='.runs:stop_runs', find_results='.runs:find_results',

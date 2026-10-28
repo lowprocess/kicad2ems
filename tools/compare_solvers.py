@@ -14,7 +14,8 @@ ones' (a solver run again replaces its own), and written with results.json. mom2
 (--mom-port lumped), the FDTD solvers' kind, so its figures compare with theirs. openEMS needs its libraries: run
 it from an activated environment (setup.sh's activate sets LD_LIBRARY_PATH).
 
-Writes build/compare/results.json and results.md (the table, in examples.md's columns). A board's boards are made
+Writes build/compare/results.json and results.md (the table, in examples.md's columns, and the agreement
+table: each solver against openEMS's reference over the whole band). A board's boards are made
 first (examples/make_rf_examples.py). Exit status 1 when an openEMS figure moved from its reference's by more
 than --tol (dB) or --tol-ghz: the mesh or the model changed what the references were made with.
 """
@@ -39,7 +40,8 @@ BOARDS = {
                   [('at', 'S21', 2.4), ('at', 'S22', 2.4), ('at', 'S32', 2.4)], ', '),
     'steplpf': ('stepped-impedance low-pass, 2 GHz', '−3 dB frequency', [('cut', 'S21', -3.0)], ''),
     'stubnotch': ('two open λ/4 stubs, 2.4 GHz', 'notch', [('min', 'S21', None)], ''),
-    'gcpw': ('grounded CPW with via fences', 'S11, S21 at 5 GHz', [('at', 'S11', 5.0), ('at', 'S21', 5.0)], ', '),
+    'gcpw': ('grounded CPW with via fences', 'worst S11, S21 at 5 GHz', [('worst', 'S11', None), ('at', 'S21', 5.0)],
+             ', '),
     'coupler': ('10 dB coupler, 0.14 mm gap', 'S31, S21', [('at', 'S31', 2.4), ('at', 'S21', 2.4)], ', '),
     'ratrace': ('180° hybrid ring, 2.4 GHz', 'S21, S41, S31; S31 null',
                 [('at', 'S21', 2.4), ('at', 'S41', 2.4), ('at', 'S31', 2.4), ('min', 'S31', None)], ', '),
@@ -50,6 +52,9 @@ BOARDS = {
                 [('at', 'P2d<P1d', 5.0), ('at', 'P2d<P1d', 10.0), ('worst', 'P1d<P1d', None)], [' / ', ', ']),
     'shielded': ('resonator filter in a metal can', 'peak', [('peak', 'S21', None)], ''),
 }
+# the agreement table: each solver against openEMS's reference over the whole band, on the input reflection and
+# the main transmission (S11 and S21 unless named here)
+TERMS = dict(diffvia=('P1d<P1d', 'P2d<P1d'))
 
 
 def port_names(path):
@@ -62,8 +67,8 @@ def port_names(path):
     return None
 
 
-def column(path, spec):
-    """(f in Hz, |S| in dB) of S spec ('S21', or 'P2d<P1d' by port name) in a Touchstone file."""
+def column(path, spec, complex_=False):
+    """(f in Hz, |S| in dB) of S spec ('S21', or 'P2d<P1d' by port name) in a Touchstone file; complex_: S itself."""
     sys.path.insert(0, os.path.join(REPO, 'src'))
     from kicad2ems.touchstone import read_touchstone
     f, S = read_touchstone(path)
@@ -75,7 +80,7 @@ def column(path, spec):
         i, j = names.index(out), names.index(into)
     else:
         i, j = int(spec[1]) - 1, int(spec[2]) - 1
-    return f, 20 * np.log10(np.abs(S[:, i, j]) + 1e-15)
+    return f, S[:, i, j] if complex_ else 20 * np.log10(np.abs(S[:, i, j]) + 1e-15)
 
 
 def figure(path, kind, spec, arg):
@@ -104,6 +109,40 @@ def figure(path, kind, spec, arg):
         k = below[0]
         return float(np.interp(arg, [db[k], db[k - 1]], [f[k], f[k - 1]]) / 1e9)
     raise ValueError(kind)
+
+
+def agreement(path, ref, board):
+    """(reflection, transmission) of a solver's Touchstone file against openEMS's over the band they share: the rms
+    of the complex difference of the input reflection, dB re 1 (where the reflection is small, where its ripple
+    falls matters less than at one frequency), and the rms difference of the transmission's |S| in dB."""
+    refl, thru = TERMS.get(board, ('S11', 'S21'))
+    out = []
+    for spec in (refl, thru):
+        f0, r = column(ref, spec, complex_=True)
+        f1, s = column(path, spec, complex_=True)
+        keep = (f0 >= f1[0]) & (f0 <= f1[-1]) & np.isfinite(r)
+        f0, r = f0[keep], r[keep]
+        s = np.interp(f0, f1, s.real) + 1j * np.interp(f0, f1, s.imag)
+        if spec == refl:
+            out.append(float(20 * np.log10(np.sqrt(np.mean(np.abs(s - r) ** 2)) + 1e-15)))
+        else:
+            db = lambda x: 20 * np.log10(np.abs(x) + 1e-15)
+            out.append(float(np.sqrt(np.mean((db(s) - db(r)) ** 2))))
+    return out
+
+
+def agreement_table(results, solvers):
+    others = [s for s in solvers if s != 'openems']
+    rows = ['| Board | ' + ' | '.join(LABELS[s] for s in others) + ' |', '|' + '---|' * (len(others) + 1)]
+    for board, r in results.items():
+        if not r.get('agreement'):
+            continue
+        cells = [(lambda v: f"{v[0]:.1f} dB / {v[1]:.2f} dB".replace('-', '−') if v else '–')(r['agreement'].get(s))
+                 for s in others]
+        refl, thru = TERMS.get(board, ('S11', 'S21'))
+        name = lambda t: t if '<' not in t else 'S' + t.replace('<', '').replace('P', '')
+        rows.append(f"| `rf_{board}` ({name(refl)} / {name(thru)}) | " + ' | '.join(cells) + ' |')
+    return '\n'.join(rows)
 
 
 def figures(path, board):
@@ -218,11 +257,16 @@ def main():
             ts = touchstone(os.path.join(OUT, b, s), f"rf_{b}", s)
             if ts:
                 r['solvers'][s] = figures(ts, b)
+                if ref and s != 'openems':
+                    r.setdefault('agreement', {})[s] = agreement(ts, ref, b)
     if a.reference_only:
         return 0
     json.dump(results, open(os.path.join(OUT, 'results.json'), 'w'), indent=1)
     shown = [s for s in SOLVERS if s in a.solvers or any(r['solvers'].get(s) for r in results.values())]
     md = table({b: results[b] for b in boards if b in results}, shown)
+    md += ('\n\nAgreement with openEMS over the band (the reference): the input reflection\'s rms complex '
+           'difference / the transmission\'s rms difference in |S|\n\n' +
+           agreement_table({b: results[b] for b in boards if b in results}, shown))
     bad = []
     for b in boards:
         r = results.get(b) or {}

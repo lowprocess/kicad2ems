@@ -51,6 +51,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   requirements from the checkouts.
 
 ### Changed
+- The examples install with kicad2ems, as the package `kicad2ems.examples` (the configs, the board generators,
+  the three boards in the repository; not `reference/`). `api.frontend` adds `examples()`, `prepare_example(name,
+  folder)` (the config copied, the board copied or generated) and `examples_folder()`. The GUI's *File →
+  Examples* opens them from `~/.local/share/kicad2ems/examples/`, so it works from a pip or setup.sh copy install,
+  not only a checkout.
+- The GUI's Filter page runs dfsynth only as a process: its types, topologies, presets and options from
+  `dfsynth --describe --json` (new), not dfsynth's modules and a copy of its options; an option the page has no
+  field for appears under *More options*.
+- `kicad2ems_gui.api`: kicad2ems-gui's public surface (PlanView, and what a subclass may use), which the KiCad
+  plugin imports instead of `kicad2ems_gui.planview`.
 - **The FDTD layer moved out of kicad2ems into kicad2ems-fdtd** (the repository kicad2ems-openems was): the mesh,
   model, runs, readback and the `FDTD` plugin class, with both solvers on it, openEMS's (from kicad2ems-openems)
   and gfdtd's (from `gfdtd.kicad2ems`). gfdtd is now an engine alone, with no kicad2ems code. The engines are the
@@ -66,6 +76,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `tools/compare_solvers.py` runs mom25d with lumped ports (`--mom-port lumped`), the FDTD solvers' kind, and
   docs/examples.md's mom25d column is from those runs (stripline worst S11 −34.3 -> −19.9 dB, openEMS −17.5; GCPW
   S11 −31.5 -> −40.1 dB; diffvia worst Sdd11 −15.7 -> −14.7 dB).
+- `tools/compare_solvers.py` also writes an agreement table, each solver against openEMS's reference over the
+  whole band (input reflection: rms complex difference; transmission: rms |S| difference), in docs/examples.md.
+  GCPW's row gives its worst S11 (a 7.7 GHz resonance mom25d damps: −22.5 dB, openEMS −14.8) instead of S11 at
+  5 GHz, a ripple point.
 - The line model: a trace's last stretch over the antipad of the via it ends at keeps the line's cross-section
   instead of the next plane down's (up to 3 reference heights; `reference.VIA_ANTIPAD`). `rf_diffvia`'s worst Sdd11
   -9.4 -> -11.9 dB (openEMS -15.4), the demo transition's S11 7.4 -> 3.0 dB rms from openEMS; no other example
