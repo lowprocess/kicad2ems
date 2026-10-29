@@ -30,8 +30,38 @@ speed-up: `python -m mom25d.core.build` (needs g++ with OpenMP and pybind11).
   no box resonances and no edge effects.
 - Loss uses the stackup's tan δ, constant over frequency. `--sigma` adds copper loss.
 
-Other copper layers, including inner planes and pours, are meshed. Large planes add many unknowns and
-slow mom25d down (see [speed](#runtime)).
+Other copper layers, including inner planes and pours, are meshed, except solid planes and lone
+stitching-via pads (below). Large meshed planes add many unknowns and slow mom25d down (see [speed](#runtime)).
+
+<a id="planes"></a>
+### Solid planes and stitching pads
+
+Two rules, both on by default, take the copper that carries next to no current of its own out of the mesh:
+
+- **Solid planes as PEC** (`--mom-planes pec`). A plane in one piece over the board, with no holes, on a ground
+  net only, is a perfect conductor of the stack itself rather than meshed copper: the highest one under every
+  other copper layer becomes the ground (the copper below it is left out: the plane shields it), and the
+  lowest one over them becomes a PEC cover (the copper above it is left out). A stripline's two planes are the
+  typical case. A plane with antipads (a signal via through it) is not solid and stays meshed.
+- **Lone stitching-via pads dropped** (`--mom-stitching-pads drop`). The pad of a ground via with nothing else
+  on its layer (a stitching via passing a signal layer) is left out; the via stays, as its barrel. A pad that
+  a part or a port lands on is kept (a shunt part's ground pad), and the via under it is meshed as a signal
+  via is, its pad as drawn.
+
+`--mom-planes mesh --mom-stitching-pads keep` meshes everything, as before 2026-10-29. Of the 52 examples, 7
+change; against that fully meshed model and openEMS (`tools/mom_planes_study.py`):
+
+| board | unknowns | time | max \|ΔS\| from meshed | openEMS: reflection / transmission (dB) |
+|---|---|---|---|---|
+| rf_stripline | 15,563 → 1,337 | 100 → 3 s | 0.003 | −23.0 / 0.21 → −23.1 / 0.21 |
+| demo_transition | 13,670 → 4,043 | 107 → 14 s | 0.009 | −30.6 / 0.15 → −31.2 / 0.15 |
+| rf_marchand | 14,789 → 6,603 | 482 → 51 s | 0.085 | −28.1 / 0.12 → −28.0 / 0.11 |
+| rf_diffvia | 7,688 → 5,925 | 56 → 40 s | 0.030 | −21.3 / 12.8 → −21.3 / 10.9 |
+| demo_bandpass, demo_highpass, demo_lowpass | unchanged | | 0 | |
+
+(The agreement columns are rms differences: of the complex reflection, in dB re 1, and of the transmission, in
+dB; rf_diffvia's transmission is dominated by its deep crosstalk entries.) The planes study notes the times of
+single runs, before the factorisations were kept across the sweep.
 
 <a id="sweep"></a>
 **The adaptive sweep.** mom25d solves only some frequencies. It fits one rational model through all of
@@ -359,24 +389,81 @@ mom25d's shape about 20% low, with small spikes at the cut faces.
 <a id="quads"></a>
 ### Quad cells (experimental)
 
-`--mom-quads on` merges pairs of triangles that together make a near-rectangle (the strips along straight
-traces) into one quad cell. The current on a quad is kept at the same charge density on both triangles, so
-the shared diagonal stops being an unknown. Quads have the unknowns of rooftop cells, one per side. The
-matrix is still filled on the triangles and then reduced before the factorisation.
+`--mom-quads on` merges pairs of triangles that together make a near-rectangle into one quad cell. The current on
+a quad is kept at the same charge density on both triangles, so the shared diagonal stops being an unknown. Quads
+have the unknowns of rooftop cells, one per side. The matrix is still filled on the triangles, then reduced to
+the quads before the factorisation (in the compiled core: about 0.1 s for 6,000 unknowns).
 
-| Board | Unknowns | Change in S from quads |
-|---|---|---|
-| Stepped microstrip, tensor mesh | 795 → 511 | 0.014 from a fine reference, triangles 0.015 |
-| Hairpin filter | 4,763 → 3,974 | 0.006; S21 within 0.1 dB through the passband |
-| Demo transition (cropped, via ports) | 8,334 → 6,509 | 0.017 from a fine reference, triangles 0.015 |
+What `on` does:
 
-`--mom-quads centre` merges only in the middle of signal lines: no triangle with a corner on the copper outline,
-none off the signal copper. It merges fewer (rf_coupler: 5,864 → 5,173 unknowns, against 4,725 with `on`); both
-stay as close to a fine reference as the triangles (0.015 / 0.014 / 0.015 at 8 GHz).
+- **Pairs** triangles whose quad has every corner within `--mom-quad-tol` degrees (default 35) of a right angle.
+  The pairing is a matching: after a greedy pass, augmenting paths pair the triangles it left stranded.
+- **Structured runs.** Straight traces and rectangular pads are meshed as a grid of rectangles: lines across
+  the run at stations along it, and along its middle inside the edge rings. Every cell is then a quad of 0°.
+  Port and cut lines on a run are stations of it. Square vias join the grid (see below); around round vias
+  the run is left unstructured.
+- **Keeps the edge strip as triangles.** No quad touches the copper outline, where the current crowds. Quads
+  there cost accuracy on narrow gaps: rf_gcpw 0.015 from a fine reference at 9 GHz instead of 0.002, the
+  hairpin 0.033 at 3.35 GHz instead of 0.009. `--mom-quads all` merges them anyway.
 
-On the demo transition the factorisation went from 8.3 s to 4.1 s a frequency, plus 1.4 s to reduce the
-matrix (2 cores). On the fine reference mesh itself, quads stay within 0.006 of the triangles. Quads work
-with the direct solver on the CPU (double and mixed precision); the GPU and compressed solvers ignore them. Studies: `tools/quad_study.py` in mom25d.
+`--mom-quads centre` also merges only on the signal copper, with no quads in pours or pads.
+
+![mesh configurations on the stepped low-pass](img/mom_mesh_steplpf.png)
+
+![mesh configurations on the coupler](img/mom_mesh_coupler.png)
+
+Each configuration against a fine triangle reference (0.2 mm cells), dmax 0.3 mm, lumped ports. The error is the
+largest |ΔS| at three frequencies in the band; the time is one solve in double precision on the CPU (8 cores).
+
+| Board | Triangles | Quads 25°, greedy (before) | `--mom-quads on` | Fast: `on`, `--mom-quad-tol 60 --mom-coarsen 2` |
+|---|---|---|---|---|
+| hairpin | 4,763: 0.0069, 0.90 s | 3,974: 0.0053, 0.57 s | 3,965: 0.0092, 0.60 s | 1,992: 0.0037, 0.22 s |
+| rf_steplpf | 6,129: 0.0062, 1.46 s | 5,359: 0.0064, 1.13 s | 4,143: 0.0068, 0.69 s | 1,920: 0.0158, 0.20 s |
+| rf_stubnotch | 5,090: 0.0059, 0.99 s | 4,353: 0.0032, 0.87 s | 3,682: 0.0057, 0.78 s | 1,802: 0.0207, 0.16 s |
+| rf_coupler | 5,864: 0.0049, 1.23 s | 4,725: 0.0060, 0.80 s | 4,570: 0.0050, 0.70 s | 2,360: 0.0146, 0.25 s |
+| rf_branchline | 9,011: 0.0007, 3.97 s | 7,533: 0.0027, 2.55 s | 6,527: 0.0012, 1.77 s | 2,342: 0.0211, 0.23 s |
+| rf_gcpw | 3,416: 0.0015, 0.44 s | 3,141: 0.0187, 0.43 s | 2,967: 0.0027, 0.39 s | 1,923: 0.0069, 0.26 s |
+
+![error and speed of each configuration](img/mom_mesh_effect.png)
+
+- **`--mom-quads on` is as accurate as the triangles** (within 0.003 of their error on every board) with
+  13–32 % fewer unknowns, and solves 1.1–2.2× faster.
+- **The fast setting** solves 4–17× faster with 2.4–3.8× fewer unknowns (rf_gcpw, whose via fences stay fine:
+  1.7× and 1.8×), at up to 0.021 from the reference. That is below how far mom25d and the FDTD solvers already
+  differ on these boards ([benchmarks](benchmarks.md)).
+- The old quads (25°, greedy, no structured runs) merged 24–56 % of the triangles; `on` merges 40–73 %, the edge
+  strip left as triangles.
+
+Quads work with the direct solver, on the CPU and the GPU (double and mixed precision: the matrix is reduced on the
+host, then factored). The tiled GPU solver and the compressed solvers ignore them. The studies are
+`tools/quad_configs_study.py` and `tools/mesh_configs.py` (these figures) in mom25d.
+
+<a id="coarsen"></a>
+### Coarsening (experimental)
+
+`--mom-coarsen X` lets the cells grow away from the features: the outline's corners and bends, vias, and port
+and cut lines. A cell is dmax at a feature and grows by half the distance to the nearest one, up to X × dmax,
+along the outline and the edge rings and over the copper inside them. The spacing across an edge (the edge
+rings) is kept. On structured runs it makes the grid's columns longer and the cells in wide copper larger.
+
+Coarser spacing along the outline costs almost nothing. The error comes from the larger cells inside wide copper:
+on the stepped low-pass, cells along the edges alone at 2 × dmax stay within 0.006 of the reference at 5 GHz,
+while the pads at 2 × dmax are 0.014 off. X = 2 and X = 3 give nearly the same error, so 2 is the useful setting.
+
+<a id="stitching"></a>
+#### Square stitching vias on a structured mesh
+
+Round vias leave a gap in a structured run, and with coarsening the via fences then leave long spiky triangles
+between each via and the pour. With `--mom-stitching-vias square`, each fence via snaps to a whole cell of the
+grid instead. The cell is centred on the via, or bounded by an edge ring where one is close, and its four
+triangles are the via's fan.
+
+![round against square stitching vias](img/mom_mesh_gcpw_stitching.png)
+
+On rf_gcpw it merges more (61 % of the triangles instead of 42 % with the fast setting; 2,367 unknowns instead of
+2,967 with `on`). The fan is then the cell, larger than the via, and the error at 9 GHz grows: 0.0096 instead of
+0.0027 with `on`, 0.014 instead of 0.0069 with the fast setting. Keep `auto` (round, with `--mom-zone` off) unless
+the unknowns matter more.
 
 <a id="gpu"></a>
 ## GPU
@@ -399,7 +486,7 @@ solver needs ...`):
 | Path | When | Memory for N unknowns |
 |---|---|---|
 | double precision on the CPU | up to 3,500 unknowns (or no compiled core), and it fits in half the free RAM | 18 N² bytes |
-| mixed precision on the CPU | above 3,500 unknowns, no GPU: single-precision LU refined to double (about 1.3× faster) | 10 N² bytes |
+| mixed precision on the CPU | above 3,500 unknowns, no GPU: single-precision LU refined to double (about 1.3× faster); LUs kept across the sweep where they fit (below) | 24 N² bytes, plus 8 N² for each LU kept; 10 N² where that doesn't fit |
 | GPU LU | the single-precision matrix fits on the GPU | 24 N² bytes RAM, 8 N² bytes GPU |
 | tiled | the GPU LU doesn't fit (`--mom-tiled`) | little RAM, 4 N² bytes GPU, the rest streamed from RAM |
 | compressed (BLR / ACA) | nothing else fits | much less, but slower |
@@ -409,6 +496,18 @@ a time. It solves the matrix's symmetric part, which changes S by at most about 
 fits, that is faster, so `--mom-tiled auto` uses tiling only for larger boards. With it, the coupler at
 0.1 mm cells (45,850 unknowns) solves in 62 s on a 16 GB card, where the CPU took over an hour.
 
+<a id="reuse"></a>
+**Across a sweep**, the matrix changes smoothly with frequency, so one frequency's LU preconditions the
+next ones: GMRES on the new matrix, with the old LU, converges in 8–30 iterations across a 1–10 GHz band. On
+the CPU, mom25d keeps up to four single-precision LUs (as memory allows) and solves each new frequency with
+the nearest one (with a GPU, up to four on the GPU, as its memory allows). It factors anew only where that
+would take more iterations than a fresh LU costs. The answer is refined to the same tolerance as a fresh solve
+(S agrees to about 1e-6). On demo_transition (13.5k unknowns, 17 solves) three LUs served the whole sweep on
+the CPU: 84 s against 176 s. With the GPU, where an LU is cheap, about half the solves reuse one. The
+compressed solvers (BLR, HODLR) keep their factorisation in the same way.
+The log says which solves reused one (`reused LU (… GHz): GMRES iterations …`); in mom25d's Python API,
+`sim.reuse = 'off'` turns it off.
+
 <a id="runtime"></a>
 ## Speed against openEMS
 
@@ -416,23 +515,24 @@ Measured on every example, CPU and GPU: [benchmarks](benchmarks.md). A few of th
 
 | Board | openEMS | mom25d GPU | mom25d CPU |
 |---|---|---|---|
-| filter (single-layer microstrip) | 119 s | 18 s | 22 s |
-| hairpin (single-layer microstrip) | 50 s | 9 s | 10 s |
-| rf_coupler (0.14 mm gap) | 92 s | 16 s | 20 s |
-| demo_transition (2 inner planes) | 55 s | 188 s | 436 s |
-| sma_launch (3 planes, 185 vias) | 33 s | 171 s | 417 s |
+| hairpin (single-layer microstrip) | 46 s | 6 s | 7 s |
+| rf_coupler (0.14 mm gap) | 27 s | 10 s | 14 s |
+| rf_stripline (two solid planes: PEC) | 14 s | 3 s | 3 s |
+| demo_transition (an inner plane with a signal via through it, meshed) | 43 s | 12 s | 12 s |
 
 - **mom25d is faster on single-layer microstrip**: filters, couplers and matching networks. It has no
   time-step or ring-down problem with high-Q circuits.
-- **openEMS is faster once planes must be meshed.** mom25d's cost grows with the copper area, openEMS's
-  with the volume.
+- **openEMS can be faster once planes must be meshed** (a plane a signal via passes through; solid planes
+  are PEC, [planes](#planes)). mom25d's cost grows with the meshed copper area, openEMS's with the volume.
 - **Agreement**: where both resolve the structure, |S| agrees to about 0.05, and transmission to 0.2 dB
   and 1–3 ps. Larger dB differences appear only deep in stop bands and on steep filter skirts.
-- **On the GPU**, mixed precision can fail to converge at the bottom of a band, where the matrix is worst
-  conditioned. That frequency, and those up to 1.25 times it, are then solved in double precision on the
-  CPU, and the GPU is tried again above that. On the SMA launch, whether that happens at a given frequency
-  depends on rounding in the last digit of the matrix: relative noise of 1e-15 moved the fallbacks from
-  run to run, and with them the run time, between about 195 and 410 s.
+- **On the GPU**, at the bottom of a band (where the matrix is worst conditioned), ROCm's single-precision
+  triangular solves can lose the accuracy of a good LU: on demo_transition at 1 GHz they left an error of 6e3
+  where the same factor, solved on the CPU, gives 0.13. Where the GPU's solves stall, mom25d downloads the
+  factor and solves with it on the CPU, at that frequency and up to 1.25 times it; the GPU still factors.
+  Only where the factor itself is too weak is the frequency solved in double precision on the CPU. Before
+  this (and a GMRES fix of the same release), 2–4 of the transition's 19 solves fell back to double precision,
+  and on the SMA launch the fallbacks moved from run to run with the run time.
 
 <a id="core"></a>
 ## The compiled core
@@ -444,7 +544,7 @@ the fallback. `mom_core` chooses:
 
 | `mom_core` | Kernels |
 |---|---|
-| `auto` (default) | the core where it's built; boards up to 3,500 unknowns use NumPy's dense solver |
+| `auto` (default) | the core where it's built, for every board (NumPy's dense solver without it) |
 | `compiled` | the core for every board, small ones through its direct solver; stops if the core isn't built |
 | `python` | NumPy only: slower, for checking the core |
 
