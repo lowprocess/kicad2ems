@@ -9,14 +9,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
-- mom25d: `--mom-planes pec` (solid ground planes as the PEC ground or a PEC cover over the stack, not meshed)
-  and `--mom-stitching-pads drop` (stitching-via pads with nothing else on their layer left out); experimental,
-  off by default. rf_stripline 100 s → 3 s (15,563 → 1,337 unknowns), demo_transition 107 s → 11 s, S within
-  0.003 / 0.012 of the meshed model and the same agreement with openEMS (ROADMAP.md, `tools/mom_planes_study.py`).
+- mom25d: `--mom-planes pec|mesh` and `--mom-stitching-pads drop|keep` (both the first by default: below).
 - mom25d: `solver='hodlr'`, a hierarchical direct solver (experimental): 3–4× less memory than the dense LU at
   the same accuracy, not faster below ~30k unknowns (ROADMAP.md item 6).
 
 ### Changed
+- mom25d by default models solid planes (one piece over the board, no holes, ground nets) as PEC, the ground or a
+  cover over the stack, not meshed, and leaves out lone stitching-via pads (a ground via's pad with nothing else
+  on its layer; not a part's or a port's), the via kept (docs/mom.md#planes). Of the 52 examples 7 change, all
+  checked against the fully meshed model and openEMS (`tools/mom_planes_study.py`): rf_stripline 15,563 → 1,337
+  unknowns (|ΔS| 0.003), demo_transition 13,670 → 4,043 (0.009), rf_marchand 14,789 → 6,603 (0.085), rf_diffvia
+  7,688 → 5,925 (0.030), the same agreement with openEMS; the benchmarks' transition 72 → 12 s and stripline
+  85 → 3 s with the GPU. `--mom-planes mesh --mom-stitching-pads keep` meshes everything as before.
 - mom25d keeps factorisations across a sweep and solves each new frequency by GMRES preconditioned with the
   nearest kept one (up to four complex64 LUs on the CPU, memory allowing; BLR's and HODLR's too), factoring
   anew only where that would cost more (docs/mom.md#reuse). demo_transition on the CPU: 176 s → 84 s.
@@ -28,6 +32,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   that is under a tenth of the free memory).
 
 ### Fixed
+- mom25d's lone stitching-via pads: a shunt part's ground pad (a pad with a via to the ground, a part landing on
+  it) counted as lone, since only one corner of the part was checked, and was dropped, cutting the part off
+  (demo_bandpass: |ΔS| 1.98).
+- mom25d's `--mom-zone`: a shunt part's ground via, outside the zone, was squared like a stitching via and its
+  pad no longer reached the part (demo_bandpass: |ΔS| 1.98; now 0.006). Such a via is meshed as a signal via.
 - mom25d's batched GMRES (the mixed-precision refinement) used unconjugated Givens rotations, so on complex
   matrices it reported convergence early (a true residual of 1.5e-4 at a reported 1e-6) and the refinement was
   judged failed and redone in double precision.

@@ -2,26 +2,16 @@
 
 What is worth doing next, in priority order. Each item comes from something the examples or benchmarks
 showed. Finished items leave this file; what was done is in CHANGELOG.md, and the decisions not to do
-something are under its *Decided* headings. Last updated 2026-10-28.
+something are under its *Decided* headings. Last updated 2026-10-29.
 
 ## mom25d on multi-layer boards
 
-mom25d is slowest where planes have to be meshed (rf_stripline 15,458 unknowns, demo_transition 13,543; the
-filters are 4–6k). Most of those unknowns are not the traces: on rf_stripline the signal layer's 12 mm² of
-copper carries 8,483 of them, mostly 38 isolated stitching-via pads, and its two solid planes 6,859.
+mom25d is slowest where planes have to be meshed. Solid planes are now PEC and lone stitching-via pads left out by
+default (done 2026-10-29: CHANGELOG.md, docs/mom.md#planes; rf_stripline 15,563 → 1,337 unknowns, 100 → 3 s;
+demo_transition 13,670 → 4,043). What still meshes planes: pours with voids around other nets (item 4) and planes
+a signal via passes through (item 5: demo_transition's In1.Cu holds 2,408 of its 4,043 unknowns). Items 1–3 (the
+PEC planes, the lone pads, the zone's grid inside the zone) are done; the numbering is kept for the references below.
 
-1. **Solid planes as PEC, not meshed.** A plane that covers the board with no holes, and only stitching vias
-   through it, can be the solver's ground (the plane under the signal copper: `BoardModel(ground=)` already
-   leaves the copper below it out) or a PEC cover over it (`LayerStack(top='pec')` exists; `BoardModel` never
-   uses it). rf_stripline: 15,458 → 8,561 unknowns, about 5× less LU work. To do: choose both automatically
-   in `BoardModel` (solid, no antipads, nothing meshed beyond it); check against openEMS on rf_stripline.
-2. **Stitching-via pads on signal layers.** Each round pad is meshed with its own edge rings. Square stitching
-   vias alone take rf_stripline to 8,823 unknowns, with item 1 to 3,393 (4.6× fewer, ~95× less LU work). A
-   pad whose via connects to nothing else on that layer could be dropped, the via kept as its barrel. Check
-   accuracy (square stitching vias cost rf_gcpw 0.002 → 0.006–0.010 at 9 GHz).
-3. **`--mom-zone` with quads.** Zone and quads together give more unknowns than zone alone (rf_stripline 5,647
-   against 4,985, demo_transition 3,788 against 3,563): the structured runs' grid ignores the zone's coarse
-   cells outside it. The grid should stay inside the zone. Zone is the largest single cut on these boards (3–4×).
 4. **Pours from real boards: fill the voids of nets that are not simulated.** A board imported from KiCad with
    only a few nets selected keeps every clearance void its pours have around the other nets' pads, traces and
    vias. Then no plane is solid (item 1 never applies), and each void has edge rings. Measured 2026-10-28 on a
@@ -31,7 +21,7 @@ copper carries 8,483 of them, mostly 38 isolated stitching-via pads, and its two
    | | unknowns |
    |---|---|
    | as imported | 157,459 (a dense matrix: ~400 GB) |
-   | lone pads dropped (item 2) | 147,370 |
+   | lone pads dropped (item 2, now the default) | 147,370 |
    | the 154 voids with no selected copper or via in them filled | 142,070 |
    | filled + planes PEC + pads dropped (In2.Cu and B.Cu now solid: ground In1.Cu) | 44,071 (all on F.Cu's pour) |
    | as imported + PEC + pads dropped + `--mom-zone on` | 30,948 |
@@ -143,16 +133,26 @@ copper carries 8,483 of them, mostly 38 isolated stitching-via pads, and its two
    - the GPU for the compression's products and the leaves' factorisations; symmetry (Zᵀ = Z: half the
      compression, `symmetric=True`, to be checked).
 
-Items 1–3 are implemented (`--mom-planes pec`, `--mom-stitching-pads drop`, the zone's grid; experimental, off by
-default) and checked against the meshed model and openEMS (`tools/mom_planes_study.py`, 2026-10-29):
+### What the rest is worth (estimated 2026-10-29)
 
-| | unknowns | time | max \|ΔS\| from meshed | openEMS: reflection / transmission (dB) |
+Where the time goes after the reuse (demo_transition on the CPU, 83 s, 17 solves): 3 fresh LUs, ~5.5 s each
+(~16 s); 14 reused solves, ~4.8 s each (~67 s), of which ~3.4 s GMRES iterations (memory-bandwidth bound:
+Z·V in double 0.11 s, the complex64 triangular solves 0.11 s) and ~1.4 s fill, near field and vias. So
+only what makes an iteration cheaper or removes iterations helps much at these sizes:
+
+| item | what it speeds | benchmark boards | boards of 30k+ unknowns | confidence |
 |---|---|---|---|---|
-| rf_stripline, meshed | 15,563 | 100 s | | −23.0 / 0.21 |
-| rf_stripline, planes PEC + pads dropped | 1,337 | 3 s | 0.003 | −23.1 / 0.21 |
-| rf_stripline, all (+ zone, quads) | 1,076 | 3 s | 0.003 | −23.1 / 0.21 |
-| demo_transition, meshed | 13,670 | 107 s | | −30.6 / 0.15 |
-| demo_transition, pads dropped | 4,043 | 14 s | 0.009 | −31.2 / 0.15 |
-| demo_transition, all | 2,805 | 11 s | 0.012 | −31.1 / 0.15 |
+| Z·V on the GPU in the reuse path | each GMRES iteration (0.11 s on the host, ~20× the bandwidth on the card; Z, 2.9 GB, fits beside the kept LUs) | GPU column ~72 → 40–45 s on the transition and stripline | while Z fits on the card (~25k) | medium: uploading Z each frequency eats into it |
+| loop–star basis | fewer iterations (low-frequency conditioning) | perhaps 10–30 % | the same, and more robust compressed / iterative paths | low, and a sizeable change |
+| `near_fac` 3 | half the near field's cost and memory | ~5 % (the dense path's near field is 0.3 s a solve now) | halves the matrix-free paths' 2.3 s a frequency and 450 MB of CSR | high (\|ΔS\| ≤ 1.3e-3) |
+| HODLR symmetry | half HODLR's compression | 0 (not used by default) | up to 2× on HODLR's build | medium, untested |
+| H-LU (bounded ranks) | a factorisation without the full matrix | 0 (HODLR was slower than dense at 13.5k) | makes 50k+ fit; maybe N^1.5–2 time | low until built |
+| pFFT | O(N log N) products, O(N) memory | 0: the dense product is already fast | the route to 100k+, still short of a cheap preconditioner | medium in principle, large effort |
 
-Left: making them the default, docs/mom.md#planes, and a column in the benchmarks.
+Against that, the model items are an order of magnitude more: items 1–3 took rf_stripline 100 s → 3 s and
+demo_transition 107 s → 11 s; item 4 a real board 157k → 9–44k unknowns; item 5 (projected) the CM5 pair 55k →
+~11k. Order: (1) items 1–3 the default (done 2026-10-29: the benchmarks' transition 72 → 12 s, stripline 85 →
+3 s with the GPU); (2) Z·V on the GPU in the reuse path; (3) `near_fac` 3 the default; (4) items 4–5; (5) pFFT and
+H-LU only if boards above ~30k unknowns remain after (1) and (4). After (1), the benchmark boards are 3–12 s, so
+(2) and (3) now matter mainly for real boards past ~10k unknowns.
+

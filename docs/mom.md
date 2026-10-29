@@ -30,8 +30,38 @@ speed-up: `python -m mom25d.core.build` (needs g++ with OpenMP and pybind11).
   no box resonances and no edge effects.
 - Loss uses the stackup's tan δ, constant over frequency. `--sigma` adds copper loss.
 
-Other copper layers, including inner planes and pours, are meshed. Large planes add many unknowns and
-slow mom25d down (see [speed](#runtime)).
+Other copper layers, including inner planes and pours, are meshed, except solid planes and lone
+stitching-via pads (below). Large meshed planes add many unknowns and slow mom25d down (see [speed](#runtime)).
+
+<a id="planes"></a>
+### Solid planes and stitching pads
+
+Two rules, both on by default, take the copper that carries next to no current of its own out of the mesh:
+
+- **Solid planes as PEC** (`--mom-planes pec`). A plane in one piece over the board, with no holes, on a ground
+  net only, is a perfect conductor of the stack itself rather than meshed copper: the highest one under every
+  other copper layer becomes the ground (the copper below it is left out: the plane shields it), and the
+  lowest one over them becomes a PEC cover (the copper above it is left out). A stripline's two planes are the
+  typical case. A plane with antipads (a signal via through it) is not solid and stays meshed.
+- **Lone stitching-via pads dropped** (`--mom-stitching-pads drop`). The pad of a ground via with nothing else
+  on its layer (a stitching via passing a signal layer) is left out; the via stays, as its barrel. A pad that
+  a part or a port lands on is kept (a shunt part's ground pad), and the via under it is meshed as a signal
+  via is, its pad as drawn.
+
+`--mom-planes mesh --mom-stitching-pads keep` meshes everything, as before 2026-10-29. Of the 52 examples, 7
+change; against that fully meshed model and openEMS (`tools/mom_planes_study.py`):
+
+| board | unknowns | time | max \|ΔS\| from meshed | openEMS: reflection / transmission (dB) |
+|---|---|---|---|---|
+| rf_stripline | 15,563 → 1,337 | 100 → 3 s | 0.003 | −23.0 / 0.21 → −23.1 / 0.21 |
+| demo_transition | 13,670 → 4,043 | 107 → 14 s | 0.009 | −30.6 / 0.15 → −31.2 / 0.15 |
+| rf_marchand | 14,789 → 6,603 | 482 → 51 s | 0.085 | −28.1 / 0.12 → −28.0 / 0.11 |
+| rf_diffvia | 7,688 → 5,925 | 56 → 40 s | 0.030 | −21.3 / 12.8 → −21.3 / 10.9 |
+| demo_bandpass, demo_highpass, demo_lowpass | unchanged | | 0 | |
+
+(The agreement columns are rms differences: of the complex reflection, in dB re 1, and of the transmission, in
+dB; rf_diffvia's transmission is dominated by its deep crosstalk entries.) The planes study notes the times of
+single runs, before the factorisations were kept across the sweep.
 
 <a id="sweep"></a>
 **The adaptive sweep.** mom25d solves only some frequencies. It fits one rational model through all of
@@ -485,16 +515,15 @@ Measured on every example, CPU and GPU: [benchmarks](benchmarks.md). A few of th
 
 | Board | openEMS | mom25d GPU | mom25d CPU |
 |---|---|---|---|
-| filter (single-layer microstrip) | 119 s | 18 s | 22 s |
-| hairpin (single-layer microstrip) | 50 s | 9 s | 10 s |
-| rf_coupler (0.14 mm gap) | 92 s | 16 s | 20 s |
-| demo_transition (2 inner planes) | 55 s | 188 s | 436 s |
-| sma_launch (3 planes, 185 vias) | 33 s | 171 s | 417 s |
+| hairpin (single-layer microstrip) | 46 s | 6 s | 7 s |
+| rf_coupler (0.14 mm gap) | 27 s | 10 s | 14 s |
+| rf_stripline (two solid planes: PEC) | 14 s | 3 s | 3 s |
+| demo_transition (an inner plane with a signal via through it, meshed) | 43 s | 12 s | 12 s |
 
 - **mom25d is faster on single-layer microstrip**: filters, couplers and matching networks. It has no
   time-step or ring-down problem with high-Q circuits.
-- **openEMS is faster once planes must be meshed.** mom25d's cost grows with the copper area, openEMS's
-  with the volume.
+- **openEMS can be faster once planes must be meshed** (a plane a signal via passes through; solid planes
+  are PEC, [planes](#planes)). mom25d's cost grows with the meshed copper area, openEMS's with the volume.
 - **Agreement**: where both resolve the structure, |S| agrees to about 0.05, and transmission to 0.2 dB
   and 1–3 ps. Larger dB differences appear only deep in stop bands and on steep filter skirts.
 - **On the GPU**, at the bottom of a band (where the matrix is worst conditioned), ROCm's single-precision
