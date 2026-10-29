@@ -90,14 +90,56 @@ copper carries 8,483 of them, mostly 38 isolated stitching-via pads, and its two
    1,500 with frills (~18x less LU work; with the zone and quads 2,701 to ~1,100). It applies to every board
    whose signal vias pass through a plane. Effort: ~500 lines in `multilayer.py`, `via.py` and `sim.py`, and
    validation (a via through a plane against openEMS, demo_transition, rf_msvia).
-6. **A hierarchical direct solver.** The compressed solvers are not N log N: `blr` fills every tile densely and
-   factors them in a flat tile LU (O(N²) fill, O(N³) with a fixed tile), and `aca` is an H-matrix under GMRES
-   whose iteration count the MPIE's conditioning leaves unbounded. An H-LU or HODLR factorisation built with
-   ACA would make large boards N log² N. After items 1–5 the plane-heavy examples are 1–4k unknowns, where the
-   dense GPU LU takes well under a second: there, the fill and the Green's tables dominate a solve, not the LU.
-   Do this once a real board (a large array, a whole-board run) stays above ~15k unknowns after 1–5 (unfilled: 31k on the synthesizer carrier; without item 5: 55k on the CM5 carrier), and
-   measure first the off-diagonal ranks of Z on it (plane-plane blocks, trace-plane blocks) at the top
-   frequency.
+6. **A hierarchical direct solver.** `solver='hodlr'` (`mom25d/hodlr.py`, 2026-10-29, experimental): a binary
+   geometric tree; each node's two off-diagonal blocks low rank (ACA with a check of the rows holding significant
+   near-field entries, where partial-pivoting ACA alone ended early and left blocks 4–7 % off; or the exact block
+   by an adaptive randomized range finder, in row panels past 512 MB); Sherman–Morrison–Woodbury factorisation;
+   optionally the preconditioner of GMRES on the exact operator, factored again 100× tighter if that stalls.
+   Measured (CPU, 8 P-cores, one solve at 5 GHz):
 
-Items 1–3 are small and stack; each needs the accuracy check the quad cells had (a fine reference, and openEMS
-on rf_stripline and demo_transition), and a column in the benchmarks.
+   | | per solve | memory | \|ΔS\| from dense |
+   |---|---|---|---|
+   | hairpin, 4,763 unknowns: dense | 0.7 s | 0.35 GB | |
+   | HODLR 1e-4 / 1e-6, compressing the filled matrix (build + factor) | 1.1 s / 7.6 s | 51 / 112 MB | ranks at the top 32 / 212 |
+   | demo_transition (meshed), 13,543: dense | 13.7 s | 2.8 GB | |
+   | HODLR 1e-4 | 24.5 s | 0.77 GB | 2.2e-3 |
+   | HODLR 1e-6 | 160 s | 1.9 GB | 7.7e-6 |
+   | HODLR 1e-4 + GMRES (11 iterations) | 26.5 s | 0.77 GB | the exact operator's, to 1e-6 |
+
+   What it shows: the ranks are low (the hairpin's top block: 16 at 1e-4 and 73 at 1e-6 of 2,381), the
+   memory falls 3–4×, but it is not faster at these sizes, for two reasons. (1) The entries: on boards with
+   coarse planes the near-field correction reaches 5 cells (15 mm under 3 mm plane cells; 15 % of the matrix,
+   ~2,100 entries a row), so most rows of a block hold significant near entries and every block is compressed
+   from its exact entries: N² entries and ~N² r flops, about the dense LU's work at 13k. (2) Weak admissibility
+   on a 2D board: the top blocks' ranks grow like √N (241 / 670 at 13.5k against 32 / 212 at 4.8k). So it is
+   ~N^2.5, not N log N; it wins by memory first (a 55k board, 48 GB dense, fits), by time only well above
+   ~30k. The 55k CM5 run (filled, whole stack, zone: 54,885 unknowns) was stopped by the system for memory
+   before it finished: the near-field CSR and its scaled copy at 55k are the suspects, to be measured.
+
+   To reach N log N, in order:
+   - **the near field's reach**: cap it at a distance (not 5 × the cell: 15 mm under plane cells), so ACA can
+     compress from O(N r) entries and most blocks are not "hot";
+   - **strong admissibility** (H-LU, or HODLR with a nested-dissection order) so ranks stay bounded;
+   - **an FFT-based operator (pFFT / AIM)**: a planar board's layered Green's function depends on the lateral
+     distance only, so its far field is a 2D convolution per pair of interfaces: O(N log N) products, O(N)
+     memory, with the near correction mom25d already has and a loose HODLR (1e-3–1e-4) as GMRES's
+     preconditioner (11 iterations at 1e-4 on demo_transition). This is the route to boards of 100k+;
+   - **reuse across the sweep**: one factorisation preconditions the next frequencies (~18 a sweep);
+   - **loop–star (or loop–tree) basis**: the MPIE matrix's low-frequency conditioning sets both the GMRES
+     iterations and how much a compressed factorisation's error is amplified (10³–10⁴ here);
+   - the GPU for the compression's products and the leaves' factorisations; symmetry (Zᵀ = Z: half the
+     compression, `symmetric=True`, to be checked).
+
+Items 1–3 are implemented (`--mom-planes pec`, `--mom-stitching-pads drop`, the zone's grid; experimental, off by
+default) and checked against the meshed model and openEMS (`tools/mom_planes_study.py`, 2026-10-29):
+
+| | unknowns | time | max \|ΔS\| from meshed | openEMS: reflection / transmission (dB) |
+|---|---|---|---|---|
+| rf_stripline, meshed | 15,563 | 100 s | | −23.0 / 0.21 |
+| rf_stripline, planes PEC + pads dropped | 1,337 | 3 s | 0.003 | −23.1 / 0.21 |
+| rf_stripline, all (+ zone, quads) | 1,076 | 3 s | 0.003 | −23.1 / 0.21 |
+| demo_transition, meshed | 13,670 | 107 s | | −30.6 / 0.15 |
+| demo_transition, pads dropped | 4,043 | 14 s | 0.009 | −31.2 / 0.15 |
+| demo_transition, all | 2,805 | 11 s | 0.012 | −31.1 / 0.15 |
+
+Left: making them the default, docs/mom.md#planes, and a column in the benchmarks.
