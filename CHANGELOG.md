@@ -8,6 +8,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- mom25d: `--mom-planes pec` (solid ground planes as the PEC ground or a PEC cover over the stack, not meshed)
+  and `--mom-stitching-pads drop` (stitching-via pads with nothing else on their layer left out); experimental,
+  off by default. rf_stripline 100 s → 3 s (15,563 → 1,337 unknowns), demo_transition 107 s → 11 s, S within
+  0.003 / 0.012 of the meshed model and the same agreement with openEMS (ROADMAP.md, `tools/mom_planes_study.py`).
+- mom25d: `solver='hodlr'`, a hierarchical direct solver (experimental): 3–4× less memory than the dense LU at
+  the same accuracy, not faster below ~30k unknowns (ROADMAP.md item 6).
+
+### Changed
+- mom25d keeps factorisations across a sweep and solves each new frequency by GMRES preconditioned with the
+  nearest kept one (up to four complex64 LUs on the CPU, memory allowing; BLR's and HODLR's too), factoring
+  anew only where that would cost more (docs/mom.md#reuse). demo_transition on the CPU: 176 s → 84 s.
+- mom25d with a GPU: the GPU factors, and where its single-precision triangular solves lose the factor's
+  accuracy (ROCm, at the bottom of a band) the factor is solved on the CPU instead of the frequency being solved
+  again in double precision; the LUs are kept on the GPU for the next frequencies. demo_transition 107 s → 76 s.
+- mom25d's compiled core keeps the near triangle pairs' analytic parts (geometry only) across frequencies: the
+  near field into the dense matrix 1.10 s → 0.29 s a frequency on demo_transition (96 bytes a pair, only where
+  that is under a tenth of the free memory).
+
+### Fixed
+- mom25d's batched GMRES (the mixed-precision refinement) used unconjugated Givens rotations, so on complex
+  matrices it reported convergence early (a true residual of 1.5e-4 at a reported 1e-6) and the refinement was
+  judged failed and redone in double precision.
+
 ## 2026-10-28 (261028-r1)
 
 Released together: kicad2ems, kicad2ems-fdtd (first release), mom25d, gfdtd, kicad2ems-gui, kicad2ems-ipc, dfsynth

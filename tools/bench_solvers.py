@@ -68,6 +68,9 @@ def parse(log, name):
     m = re.search(r'mom25d: factorisations: (\d+) on the GPU, (\d+) on the CPU', log)
     if m:                                         # where the solves ran: a GPU run that fell back is marked
         info['lu_gpu'], info['lu_cpu'] = int(m.group(1)), int(m.group(2))
+    m = re.search(r'mom25d: factorisations: .*; (\d+) solves reused one', log)
+    if m:                                         # solves preconditioned by another frequency's kept LU
+        info['reused'] = int(m.group(1))
     m = re.search(r'memory: direct solver needs ~[0-9.]+ GB \(\w+ precision, ([\w-]+)(?:, ([0-9.]+) GB on the GPU)?', log)
     if m:
         info['path'] = m.group(1)

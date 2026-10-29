@@ -118,13 +118,26 @@ copper carries 8,483 of them, mostly 38 isolated stitching-via pads, and its two
 
    To reach N log N, in order:
    - **the near field's reach**: cap it at a distance (not 5 × the cell: 15 mm under plane cells), so ACA can
-     compress from O(N r) entries and most blocks are not "hot";
+     compress from O(N r) entries and most blocks are not "hot". Measured (2026-10-29): on demo_transition
+     `near_fac` 5 gives 1,199 near triangle pairs a triangle (11.3 M, 2,100 entries a row, 75 % of them
+     between layers: every layer is within reach through thin dielectrics); 3 gives 548 and moves S by
+     ≤ 1.3e-3 from the converged reach (8), 5 by ≤ 2.3e-4; the hairpin the same. A candidate default once
+     checked on the other benchmark boards: half the near field's cost and memory in every path;
    - **strong admissibility** (H-LU, or HODLR with a nested-dissection order) so ranks stay bounded;
    - **an FFT-based operator (pFFT / AIM)**: a planar board's layered Green's function depends on the lateral
      distance only, so its far field is a 2D convolution per pair of interfaces: O(N log N) products, O(N)
      memory, with the near correction mom25d already has and a loose HODLR (1e-3–1e-4) as GMRES's
      preconditioner (11 iterations at 1e-4 on demo_transition). This is the route to boards of 100k+;
-   - **reuse across the sweep**: one factorisation preconditions the next frequencies (~18 a sweep);
+   - **reuse across the sweep**: done (2026-10-29, `fast._solve_kept`, `_solve_reused`). One frequency's LU
+     preconditions the band (the 5 GHz LU of demo_transition: 6–30 GMRES iterations from 1 to 10 GHz). The
+     CPU keeps up to 4 complex64 LUs where memory allows, the dense double Z for GMRES's products; one LU and
+     the matrix-free products where not; the GPU on the GPU; BLR and HODLR their factorisation.
+     demo_transition's CPU sweep 176 s → 84 s (3 LUs for 17 solves), GPU 107 s → 76 s. Found on the way:
+     ROCm's complex64 triangular solves lose ill-conditioned factors' accuracy (where the GPU's solves stall,
+     the factor is now solved on the CPU), and the batched GMRES's Givens rotations were not
+     conjugated, so on complex Hessenberg entries it stopped early (a true residual 1.5e-4 where it reported
+     1e-6) and the refinement was judged failed: fixed. The near pairs' analytic parts are now kept across
+     frequencies too (the near field into the dense Z 1.10 s → 0.29 s a frequency on demo_transition);
    - **loop–star (or loop–tree) basis**: the MPIE matrix's low-frequency conditioning sets both the GMRES
      iterations and how much a compressed factorisation's error is amplified (10³–10⁴ here);
    - the GPU for the compression's products and the leaves' factorisations; symmetry (Zᵀ = Z: half the

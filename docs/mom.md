@@ -456,7 +456,7 @@ solver needs ...`):
 | Path | When | Memory for N unknowns |
 |---|---|---|
 | double precision on the CPU | up to 3,500 unknowns (or no compiled core), and it fits in half the free RAM | 18 N² bytes |
-| mixed precision on the CPU | above 3,500 unknowns, no GPU: single-precision LU refined to double (about 1.3× faster) | 10 N² bytes |
+| mixed precision on the CPU | above 3,500 unknowns, no GPU: single-precision LU refined to double (about 1.3× faster); LUs kept across the sweep where they fit (below) | 24 N² bytes, plus 8 N² for each LU kept; 10 N² where that doesn't fit |
 | GPU LU | the single-precision matrix fits on the GPU | 24 N² bytes RAM, 8 N² bytes GPU |
 | tiled | the GPU LU doesn't fit (`--mom-tiled`) | little RAM, 4 N² bytes GPU, the rest streamed from RAM |
 | compressed (BLR / ACA) | nothing else fits | much less, but slower |
@@ -465,6 +465,18 @@ The **tiled** solver keeps only half the matrix on the GPU (it is symmetric) and
 a time. It solves the matrix's symmetric part, which changes S by at most about 1e-3. Where the GPU LU
 fits, that is faster, so `--mom-tiled auto` uses tiling only for larger boards. With it, the coupler at
 0.1 mm cells (45,850 unknowns) solves in 62 s on a 16 GB card, where the CPU took over an hour.
+
+<a id="reuse"></a>
+**Across a sweep**, the matrix changes smoothly with frequency, so one frequency's LU preconditions the
+next ones: GMRES on the new matrix, with the old LU, converges in 8–30 iterations across a 1–10 GHz band. On
+the CPU, mom25d keeps up to four single-precision LUs (as memory allows) and solves each new frequency with
+the nearest one (with a GPU, up to four on the GPU, as its memory allows). It factors anew only where that
+would take more iterations than a fresh LU costs. The answer is refined to the same tolerance as a fresh solve
+(S agrees to about 1e-6). On demo_transition (13.5k unknowns, 17 solves) three LUs served the whole sweep on
+the CPU: 84 s against 176 s. With the GPU, where an LU is cheap, about half the solves reuse one. The
+compressed solvers (BLR, HODLR) keep their factorisation in the same way.
+The log says which solves reused one (`reused LU (… GHz): GMRES iterations …`); in mom25d's Python API,
+`sim.reuse = 'off'` turns it off.
 
 <a id="runtime"></a>
 ## Speed against openEMS
@@ -485,11 +497,13 @@ Measured on every example, CPU and GPU: [benchmarks](benchmarks.md). A few of th
   with the volume.
 - **Agreement**: where both resolve the structure, |S| agrees to about 0.05, and transmission to 0.2 dB
   and 1–3 ps. Larger dB differences appear only deep in stop bands and on steep filter skirts.
-- **On the GPU**, mixed precision can fail to converge at the bottom of a band, where the matrix is worst
-  conditioned. That frequency, and those up to 1.25 times it, are then solved in double precision on the
-  CPU, and the GPU is tried again above that. On the SMA launch, whether that happens at a given frequency
-  depends on rounding in the last digit of the matrix: relative noise of 1e-15 moved the fallbacks from
-  run to run, and with them the run time, between about 195 and 410 s.
+- **On the GPU**, at the bottom of a band (where the matrix is worst conditioned), ROCm's single-precision
+  triangular solves can lose the accuracy of a good LU: on demo_transition at 1 GHz they left an error of 6e3
+  where the same factor, solved on the CPU, gives 0.13. Where the GPU's solves stall, mom25d downloads the
+  factor and solves with it on the CPU, at that frequency and up to 1.25 times it; the GPU still factors.
+  Only where the factor itself is too weak is the frequency solved in double precision on the CPU. Before
+  this (and a GMRES fix of the same release), 2–4 of the transition's 19 solves fell back to double precision,
+  and on the SMA launch the fallbacks moved from run to run with the run time.
 
 <a id="core"></a>
 ## The compiled core
