@@ -166,3 +166,35 @@ def test_coupled_pairs_with_the_copper():
     assert 2 * p['zo_sheet'] == pytest.approx(2 * km(0.13, 0.25, 0.0994, 4.45)[1], rel=1e-2)
     assert 2 * p['zo'] == pytest.approx(104.9, abs=0.5) and p['ze'] < p['ze_sheet']
     assert g['C'].shape == (2, 2)
+
+
+def test_similar_cross_sections_share_a_solve():
+    from kicad2ems.lines.reference import _distance_bins, _snap_distance
+    assert X.snap(0.1300) == X.snap(0.1302) and X.snap(0.13) != X.snap(0.135)   # 1 % steps
+    assert X.snap(0.0) == 0.0 and X.snap(-0.2) == -X.snap(0.2) and X.snap(math.inf) == math.inf
+    assert abs(X.snap(0.2) / 0.2 - 1) <= X.SIMILAR / 2
+    edges = _distance_bins(X.SIMILAR)
+    w = np.diff(edges)
+    assert (w > 0).all() and w[-1] > 50 * w[np.searchsorted(edges, 0.5)]        # far copper: wide bins
+    assert _snap_distance(0.7001, X.SIMILAR) == _snap_distance(0.7002, X.SIMILAR)
+    assert _snap_distance(0.7, 0.0) == 0.7
+
+
+def test_a_group_and_its_mirror_image():
+    from kicad2ems.lines import topology
+    a = dict(xs='microstrip', h=0.2, er=4.4, gaps=[0.2, 0.4], pairs=[dict(gap=0.2), dict(gap=0.4)])
+    b = dict(xs='microstrip', h=0.2, er=4.4, gaps=[0.4, 0.2], pairs=[dict(gap=0.4), dict(gap=0.2)])
+    topology._field_group(a, [0.3, 0.3, 0.5])
+    hits = topology._group_c.cache_info().hits
+    topology._field_group(b, [0.5, 0.3, 0.3])
+    assert topology._group_c.cache_info().hits == hits + 1                      # one solve for both
+    assert np.allclose(b['C'], a['C'][::-1, ::-1])
+    assert b['pairs'][1]['zo'] == pytest.approx(a['pairs'][0]['zo'])
+
+
+def test_the_potential():
+    x, z, phi, er = X.potential(X.coupled_microstrip(0.15, 0.15, 0.2, 4.4), [1, -1])
+    assert phi.shape == (len(x), len(z)) and er.shape == (len(x) - 1, len(z) - 1)
+    assert phi.max() == pytest.approx(1) and phi.min() == pytest.approx(-1)
+    mid = np.argmin(np.abs(x))
+    assert np.allclose(phi[mid], 0, atol=1e-6)                                  # the odd mode's electric wall

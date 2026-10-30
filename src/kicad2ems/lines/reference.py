@@ -216,23 +216,37 @@ def _field(model, ref, e, pt, n, found):
     """Z0 and eeff of a section (with its copper's thickness and as a sheet) from the field solver, on the copper
     the cut across it finds: every layer's, out to FIELD_REACH reference heights either side, up to the nearest
     plane that spans the cut on either side. The formulas' values are kept where the solve fails."""
+    from . import xsection as X
     R = e.w / 2 + max(3 * e.w, FIELD_REACH * max(h for _, h, _ in found.values()))
     pieces = cut(ref, pt, n, R)
     zs = model.cu_z[e.layer]
     up = 'below' in found                                    # copper thickness grows away from the plane under it
+    w = X.snap(e.w)                                          # similar cross-sections: one solve (xsection.SIMILAR)
+
+    h0 = X.snap(min(h for _, h, _ in found.values()))
+
+    def at(u):
+        """A position along the cut, its distance d from the strip's nearer edge snapped (_snap_distance)."""
+        if not math.isfinite(u):
+            return u
+        d = u - (e.w if u >= 0 else -e.w) / 2
+        return round((w if u >= 0 else -w) / 2 + math.copysign(_snap_distance(abs(d) / h0, X.SIMILAR) * h0, d), 6)
     layers = []
     for side in ('below', 'above'):
         order = sorted((l for l in pieces if l != e.layer and (model.cu_z[l] < zs) == (side == 'below')),
                        key=lambda l: abs(model.cu_z[l] - zs))
         for l in order:
             full = pieces[l] == [(-math.inf, math.inf)]
-            layers.append((round(model.cu_z[l], 6), full, tuple((round(a, 4), round(b, 4)) for a, b in pieces[l])))
+            layers.append((round(model.cu_z[l], 6), full, tuple((at(a), at(b)) for a, b in pieces[l])))
             if full:
                 break                                        # nothing beyond a plane across the whole cut counts
     diel = tuple((round(l['z0'], 6), round(l['z1'], 6), l['er'], l['tand']) for l in model.layers)
-    side = tuple((round(a, 4), round(b, 4)) for a, b in pieces.get(e.layer, ()) if b < -e.w / 2 or a > e.w / 2)
+    side = tuple((at(a), at(b)) for a, b in pieces.get(e.layer, ()) if b < -e.w / 2 or a > e.w / 2)
+    flip = lambda ps: tuple(sorted((-b, -a) for a, b in ps))
+    mirror = (flip(side), tuple((z, full, flip(ps)) for z, full, ps in layers))
+    side, layers = min((side, tuple(layers)), mirror)        # a cut and its mirror image: one solve
     try:
-        got = [_solve_cut(round(e.w, 4), round(zs, 6), round(tt, 6), up, side, tuple(layers), diel)
+        got = [_solve_cut(round(w, 6), round(zs, 6), round(tt, 6), up, side, layers, diel)
                for tt in (model.cu_t.get(e.layer, 0.0), 0.0)]
     except Exception as ex:                                  # noqa: BLE001 (a cross-section it cannot grid)
         e.notes.append(f"field solver failed ({ex}): formula impedance")
@@ -241,11 +255,40 @@ def _field(model, ref, e, pt, n, found):
     (e.z0, e.eeff), (e.z0_sheet, e.eeff_sheet) = got
 
 
+@functools.lru_cache(maxsize=8)
+def _distance_bins(rel):
+    """The edges of _snap_distance's bins, in reference heights from the strip's edge (x), out to FIELD_REACH + 5:
+    each bin rel (x + 0.2) e^(1.4 (x - 1/2)) wide beyond half a height. Ground beside a microstrip moves Z0 by
+    about that much less per height further away, so a bin is worth about rel / 4 of Z0 wherever it is (0.1-0.3 %
+    for rel 1 %; ground at 2 heights moves Z0 by 0.9 %, at 4 by less than 0.1 %)."""
+    edges = [0.0]
+    while edges[-1] < FIELD_REACH + 5:
+        x = edges[-1]
+        edges.append(x + rel * (x + 0.2) * math.exp(1.4 * max(x - 0.5, 0.0)))
+    return np.asarray(edges)
+
+
+def _snap_distance(x, rel):
+    """x (reference heights from the strip's edge) at the middle of its bin (_distance_bins); x itself when rel is 0
+    or x lies beyond the bins."""
+    if not rel:
+        return x
+    edges = _distance_bins(rel)
+    i = int(np.searchsorted(edges, x, side='right')) - 1
+    return x if i >= len(edges) - 1 else 0.5 * (edges[i] + edges[i + 1])
+
+
 @functools.lru_cache(maxsize=4096)
 def _solve_cut(w, zs, t, up, side, layers, diel):
-    """(Z0, eeff) of a strip w wide and t thick on the copper level zs (thickness growing up when up, else down,
-    the stack above or below moved by t: the dielectrics' thicknesses are between the copper), the same layer's
-    copper `side` beside it, the other layers' copper (z, spans the cut, pieces) as sheets, in the dielectrics."""
+    """(Z0, eeff) of the cross-section _cut_section builds from a cut (cached: one solve per distinct cut)."""
+    return _cut_section(w, zs, t, up, side, layers, diel).solve().single()
+
+
+def _cut_section(w, zs, t, up, side, layers, diel):
+    """The xsection.CrossSection of a strip w wide and t thick on the copper level zs (thickness growing up when up,
+    else down, the stack above or below moved by t: the dielectrics' thicknesses are between the copper), the same
+    layer's copper `side` beside it, the other layers' copper (z, spans the cut, pieces) as sheets, in the
+    dielectrics."""
     from . import xsection as X
     zmap = (lambda z: z + t if z > zs + 1e-9 else z) if up else (lambda z: z - t if z < zs - 1e-9 else z)
     z0, z1 = (zs, zs + t) if up else (zs - t, zs)
@@ -261,7 +304,7 @@ def _solve_cut(w, zs, t, up, side, layers, diel):
         else:
             for a, b in ps:
                 xs.conductor(a, b, zmap(z), ground=True)
-    return xs.solve().single()
+    return xs
 
 
 def _references(model, ref, layer, pt):

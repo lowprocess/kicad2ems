@@ -15,6 +15,7 @@ Dielectric loss is the perturbation G / w = eps0 Phi^T A_tand Phi of the lossles
     xs.conductor(-0.175, 0.175, 0.2, 0.235)                     # a 0.35 mm strip, 35 um copper
     r = xs.solve()
     z0, eeff = r.single()                                       # one conductor
+    x, z, phi, er = potential(xs)                               # the field, to look at
     C, Ca = r.C, r.Ca                                           # F/m, N x N (coupled.mtl_s takes them)
 
     microstrip(0.35, 0.2, 4.3, t=0.035).solve().single()        # the common cross-sections, built
@@ -33,6 +34,8 @@ GROW = 1.3              # grid cells grow by at most this factor away from an ed
 FINE = 1 / 16           # the smallest cell, as a fraction of the smallest feature (width, gap, layer, copper)
 REACH = 12.0            # the box reaches this many times the structure's height beyond it (open sides, open top)
 REFINE = True           # extrapolate from the grid and the grid halved (solve)
+SIMILAR = 0.01          # snap(): sizes within this fraction of each other share one value, so that the line model's
+                        # caches solve cross-sections this similar once (Z0 moves by less than about a third of it)
 
 
 @dataclass
@@ -110,6 +113,16 @@ class Result:
     def tand_eff(self, i=0):
         """Effective loss tangent of conductor i's line: G / (w C)."""
         return self.G_w[i, i] / self.C[i, i]
+
+
+def snap(v, rel=None):
+    """v on a log scale of steps 1 + rel (SIMILAR by default), at the middle of its step: values within rel / 2 of
+    a step's middle become it. 0 and infinities are kept, the sign too."""
+    rel = SIMILAR if rel is None else rel
+    if not rel or not v or not math.isfinite(v):
+        return v
+    k = math.log1p(rel)
+    return math.copysign(math.exp(round(math.log(abs(v)) / k) * k), v)
 
 
 # ---- the grid ---------------------------------------------------------------------------------------
@@ -258,6 +271,25 @@ def _solve_grid(xs, x, z):
     (C, phi), (Ca, _) = out
     G_w = EPS0 * (phi.T @ (_laplacian(x, z, et) @ phi))
     return C, Ca, 0.5 * (G_w + G_w.T), own.size
+
+
+def potential(xs, volts=None, air=False):
+    """(x, z, phi, er): the grid lines (mm), the potential on its nodes (len(x), len(z)) with the signal conductors at
+    `volts` (default 1 V on the first, 0 on the others; [1, -1]: a pair's odd mode) and every ground at 0, and er per
+    cell; air: without the dielectric. One solve on the grid (no extrapolation): for looking at the field."""
+    from scipy.sparse.linalg import spsolve
+    x, z = _grid(xs)
+    er, _ = _paint(xs, x, z)
+    own = _owners(xs, x, z)
+    n = int(own.max())
+    volts = [1.0] + [0.0] * (n - 1) if volts is None else list(volts)
+    A = _laplacian(x, z, np.ones_like(er) if air else er)
+    phi = np.zeros(own.size)
+    for k, v in enumerate(volts):
+        phi[own == k + 1] = v
+    free, fixed = np.flatnonzero(own < 0), np.flatnonzero(own >= 0)
+    phi[free] = spsolve(A[free][:, free].tocsc(), -(A[free][:, fixed] @ phi[fixed]))
+    return x, z, phi.reshape(len(x), len(z)), er
 
 
 def _bisect(a):

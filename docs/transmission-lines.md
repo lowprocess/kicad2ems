@@ -149,10 +149,22 @@ moves the single-ended Z0 by at most 2.7 %: 1–2.7 % on 8 % of the length, wher
 2 heights past the trace or ground copper lies to one side. The differential impedance is what the copper's
 thickness moves ([coupled sections](#coupled)).
 
-Each distinct cross-section is solved once (cached by its cut or its widths and gaps), but each takes 0.05–1 s,
-so the time grows with the number of distinct ones: `rf_radialstub`'s fan, sliced into widening sections, takes
-47 s with `--lines-field`; the CM5 Minima's 94 signal nets (104 distinct coupled sections, one of 16 lines) take
-75 s to build, against 10 s with the formulas.
+<a id="similar"></a>
+**Similar cross-sections share a solve.** Each cross-section is cached, and a cross-section and its mirror image
+are one. Widths and gaps are snapped to steps of 1 % (`xsection.SIMILAR`, `xsection.snap`), and the copper a cut
+finds to bins that widen away from the strip (`reference._distance_bins`): ground beside a microstrip moves its Z0
+by 12 % at half a reference height, by 0.9 % at 2 and by less than 0.1 % at 4, so a bin 2 heights out is 30
+times wider than one at half a height, and snapping to a bin's middle moves Z0 by 0.1–0.2 % wherever it is. On the
+CM5 Minima's HDMI nets this solves 158 cuts instead of 254, the impedances within 0.33 % (0.11 % rms) of
+solving each. Coupled sections gain less (206 solves instead of 228 on the board's 94 nets): their gaps set
+the coupling and keep their 1 % steps. Each solve takes 0.05–1 s, so the time still grows with the number of
+distinct cross-sections: `rf_radialstub`'s fan, sliced into widening sections, takes 47 s with `--lines-field`;
+the CM5 Minima's 94 signal nets (104 distinct coupled sections, one of 16 lines) take 75 s to build, against 10 s
+with the formulas.
+
+`python tools/xsection_figures.py` draws the solver at work: a pair's grid and its odd- and even-mode fields,
+the cases the formulas leave out, the grid's convergence and the extrapolation, the cache's bins, a five-line
+section's coupling, and (`--board`, the CM5 Minima) a cut across a real board.
 
 ## Paths
 

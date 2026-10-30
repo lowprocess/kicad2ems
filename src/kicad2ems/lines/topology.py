@@ -270,12 +270,17 @@ def _field_group(g, widths, t=0.0):
     odd modes with the copper's thickness t (ze_sheet, zo_sheet: as sheets), in place of the zero-thickness
     formulas'."""
     h = g['h'] if g['xs'] == 'microstrip' else tuple(g['h'])
-    key = (g['xs'], tuple(round(w, 4) for w in widths), tuple(round(s, 4) for s in g['gaps']), h, g['er'])
+    from .xsection import snap                               # similar sections: one solve (xsection.SIMILAR)
+    ws, gs = tuple(round(snap(w), 6) for w in widths), tuple(round(snap(s), 6) for s in g['gaps'])
+    flip = (ws[::-1], gs[::-1]) < (ws, gs)                   # a group and its mirror image: one solve
+    key = (g['xs'],) + ((ws[::-1], gs[::-1]) if flip else (ws, gs)) + (h, g['er'])
     try:
         C, Ca = _group_c(*key)
         Ct, Cat = _group_c(*key, round(t, 6)) if t else (C, Ca)
     except Exception:                                        # noqa: BLE001 (the formulas' pairs stay)
         return
+    if flip:                                                 # the matrices of the lines in their own order
+        C, Ca, Ct, Cat = (M[::-1, ::-1] for M in (C, Ca, Ct, Cat))
     g['C'], g['Ca'] = C.copy(), Ca.copy()
     for k, p in enumerate(g['pairs']):
         p['ze_sheet'], p['zo_sheet'] = _pair_modes(C, Ca, k)[:2]

@@ -13,6 +13,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   capacitance matrices, Z0, εeff, even / odd modes and dielectric loss of any cross-section of rectangular
   conductors over planes in layered dielectrics (solder mask, coplanar ground beside striplines, copper
   thickness on coupled lines), within 0.5 % of the exact and closed-form results.
+- `tools/xsection_figures.py`: the field solver at work (a pair's grid and fields, the cases the formulas leave
+  out, convergence, the cache's bins, a five-line section's coupling, a cut across a real board).
+- `xsection.potential`: the potential on the solver's grid, to draw the field.
 - `--lines-field`: the line model on the field solver (docs/transmission-lines.md#lines-field): every section's
   cross-section from the board's copper cut across it (plane edges beside a trace, partial references, ground on
   one side, coplanar ground beside striplines). The examples with openEMS references are unchanged; on the CM5
@@ -29,6 +32,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   keeps the formulas. Building the line model of every net of a large board takes longer (the CM5 Minima's 94
   nets: 10 → 75 s).
 - The field solver's grid is coarser and its box smaller (4x faster, Z0 within 0.1–0.6 % of the references).
+- Similar cross-sections share a field solve (docs/transmission-lines.md#similar): mirror images are one, widths
+  and gaps snap to 1 % steps, and a cut's copper to bins that widen away from the strip (each worth 0.1–0.2 % of
+  Z0). The CM5 Minima's HDMI nets with `--lines-field`: 254 → 158 solves, within 0.33 % of solving each.
 - mom25d by default models solid planes (one piece over the board, no holes, ground nets) as PEC, the ground or a
   cover over the stack, not meshed, and leaves out lone stitching-via pads (a ground via's pad with nothing else
   on its layer; not a part's or a port's), the via kept (docs/mom.md#planes). Of the 52 examples 7 change, all
