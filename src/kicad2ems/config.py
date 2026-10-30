@@ -128,6 +128,10 @@ CORE = [
     Option('fast', None, "also solve the transmission-line model as a circuit, as a reference: skrf (scikit-rf), "
            "qucsator, or auto (qucsator if installed, else scikit-rf)", choices=('auto', 'skrf', 'qucsator'),
            group='solvers'),
+    Option('lines_field', False, "the line model's cross-sections from the 2D field solver: each section on the "
+           "board's copper cut across it, and coupled sections with every line coupled to every other (qucsator's "
+           "coupled microstrip pairs keep its own model). Slower: seconds to minutes; the formulas otherwise", bool,
+           gui="Line model: cross-sections by the field solver", group='solvers'),
     Option('mode', 'sparams', "sparams (default): S-parameters of all ports; antenna: a driven port (several with "
            "--drive), far field (gain, efficiency, patterns); openEMS and mom25d", choices=('sparams', 'antenna'),
            gui='Mode', group='solvers'),

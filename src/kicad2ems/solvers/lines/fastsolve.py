@@ -132,7 +132,10 @@ def group_s(g, freq):
     """S-parameters (nf, 2N, 2N) of a coupled section of the line model (coupled.py)."""
     from ...lines.coupled import group_lc, mtl_s
     widths = [e.w for e, _, _ in g['members']]
-    C, Ca = group_lc(widths, g['gaps'], g['h'], g['er'], g.get('xs', 'microstrip'))
+    if g.get('C') is not None:                              # the field solver's (lines.reference.FIELD)
+        C, Ca = g['C'], g['Ca']
+    else:
+        C, Ca = group_lc(widths, g['gaps'], g['h'], g['er'], g.get('xs', 'microstrip'))
     return mtl_s(C, Ca, g['er'], g['tand'] or 0.0, g['length'], freq)
 
 

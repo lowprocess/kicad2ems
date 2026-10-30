@@ -155,7 +155,10 @@ def _grid(xs):
     xl, xr = xa - REACH * H, xb + REACH * H
     feats = [c.x1 - c.x0 for c in cs] + [c.z1 - c.z0 for c in cs]
     edges = sorted(v for v in set(fin) if xl < v < xr)
-    feats += list(np.diff(edges))                       # the gaps between conductors
+    for a in cs:                                        # the gaps between conductors side by side (edges of
+        for b in cs:                                    # copper on other levels only add grid lines)
+            if a is not b and a.z0 <= b.z1 + 1e-9 and b.z0 <= a.z1 + 1e-9 and b.x0 >= a.x1:
+                feats.append(b.x0 - a.x1)
     zk = [zb, zt] + zs + [p for p in xs.planes if zb < p < zt]
     for d in xs.dielectrics:
         zk += [min(max(d.z0, zb), zt), min(max(d.z1, zb), zt)]

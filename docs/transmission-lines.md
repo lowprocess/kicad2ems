@@ -65,7 +65,8 @@ within 2 % of openEMS in a fraction of a second.
 conductors over planes, in any stack of dielectrics, with and without them, and from these L, Z0, εeff, the even
 and odd modes of a pair and the dielectric loss. It covers what the formulas above can't: coplanar ground under
 solder mask or between two planes, mask that follows the copper, coupled lines with copper thickness, coupling
-beyond the nearest neighbour, and layers of different εr. The line model doesn't use it yet.
+beyond the nearest neighbour, and layers of different εr. The line model uses it with
+[`--lines-field`](#lines-field).
 
 ```python
 from kicad2ems.lines import xsection as X
@@ -97,6 +98,45 @@ no approximation there beyond its grid's.
 A cross-section takes 0.1–0.5 s (about 1 s with copper thickness, which needs finer cells at the corners).
 It's quasi-static: no dispersion and no conductor loss. `xsection.REFINE = False` skips the extrapolation:
 5–10 times faster, Z0 about 2 % low.
+
+<a id="lines-field"></a>
+### The line model on the field solver
+
+`--lines-field` (`lines_field = true`) takes two things from the field solver instead of the formulas:
+
+- **Every section's cross-section, from the board.** At the point where a section is classified, the board's
+  reference copper is cut across the strip, out to 5 reference heights either side, on every layer up to the
+  nearest plane that spans the whole cut. The pieces the cut crosses become the solver's conductors, and the
+  stackup its dielectrics. A plane that ends beside the trace, a reference under part of it, ground on one side
+  or ground beside a stripline are solved as they are. A microstrip 0.35 mm wide on 0.2 mm FR-4 is 53.3 Ω over
+  a whole plane, 54.7 Ω where the plane ends 0.125 mm past its edge, and 67.9 Ω where the plane ends under its
+  centre. Copper thickness grows away from the plane under the strip, and the stack beyond it moves up by it (the
+  dielectrics' thicknesses are between the copper), as the formulas assume. The section's cross-section name
+  and its formula Z0 stay in the report, with the field solver's Z0 in its notes.
+- **Coupled sections with every line coupled to every other.** The formulas couple each line to its nearest
+  neighbours only (`group_lc`). qucsator's model for a coupled microstrip pair (MCOUPLED) is kept.
+
+On the examples with openEMS references (scikit-rf; agreement as in [Examples](examples.md): the rms of the
+complex difference of S11, and the rms difference of |S21|), the formulas against the field solver:
+
+| Board | Formulas | Field solver |
+|---|---|---|
+| `rf_interdig`: five coupled fingers | −23.0 dB / 51.21 dB | −24.7 dB / 8.47 dB |
+| `rf_stripline`, `rf_diffvia`, `rf_coupler`, `rf_wilkinson`, `demo_transition`, `rf_shielded`, `hairpin` | | within 0.2 dB / 0.1 dB of the formulas |
+| `rf_branchline`, `rf_steplpf`, `rf_stubnotch`, `rf_gcpw`, `rf_ratrace`, `rf_radialstub`, `sma_launch` | | the same |
+
+A run took 1.4–7.5 s with the formulas and 2.5–157 s with the field solver.
+
+The interdigital filter's stop bands were 40–60 dB too deep with the formulas: they are set by the coupling
+between fingers that aren't neighbours, which `group_lc` leaves out. With the field solver's matrix cut back to
+the nearest neighbours, the 51 dB comes back. On the other boards the sections are the idealised
+cross-sections the formulas were made for: the remaining differences there come from what the line model leaves
+out (discontinuities with scikit-rf, vias, radiation, the can). `sma_launch`'s grounded CPW with 35 µm copper
+is 50.3 Ω against the formula's 54.7 Ω, which has no thickness, but the solvers use the sheet values (54.4 Ω
+against 54.7 Ω).
+
+Each distinct cross-section is solved once (sections are cached by their cut), but each takes 0.1–1 s, so the time
+grows with the number of distinct sections: `rf_radialstub`'s fan, sliced into widening sections, takes 157 s.
 
 ## Paths
 

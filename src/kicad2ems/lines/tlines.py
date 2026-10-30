@@ -28,7 +28,7 @@ The model lives in four modules, re-exported here (kicad2ems.lines.tlines is wha
   builder       the board to sections and nodes (build)
   topology      the ports' paths, coupled lines and discontinuities
   elements      the model's data: Element and LineModel
-  xsection      a 2D field solver for cross-sections the formulas don't cover (not used by build yet)
+  xsection      a 2D field solver for cross-sections (reference.FIELD, --lines-field: in place of the formulas)
 
 Module settings (reference.TILE, reference.ADAPTIVE, topology.COUPLE_H, ...) are read where they are
 defined: set them on that module, not on this one.

@@ -77,3 +77,73 @@ def test_conductors_must_not_touch():
     xs.conductor(0, 0.2, 0.2).conductor(0.2, 0.4, 0.2)
     with pytest.raises(ValueError):
         xs.solve()
+
+
+# ---- the line model on the field solver (lines.reference.FIELD) --------------------------------------------
+class _Copper:
+    """Reference copper as RefCopper has it (geom per layer), without tiles."""
+    def __init__(self, geom):
+        self.geom = geom
+
+
+def test_the_cut_across_a_strip():
+    from shapely.geometry import box
+    from kicad2ems.lines.reference import cut
+    ref = _Copper({'B.Cu': box(-50, -50, 50, 50), 'F.Cu': box(0.4, -50, 0.9, 50).union(box(-50, -50, -0.6, 50))})
+    got = cut(ref, np.array([0.0, 0.0]), np.array([1.0, 0.0]), 5.0)
+    assert got['B.Cu'] == [(-math.inf, math.inf)]                           # a plane across the whole cut
+    assert got['F.Cu'] == [(-math.inf, -0.6), (pytest.approx(0.4), pytest.approx(0.9))]
+
+
+def test_a_plane_edge_beside_the_strip():
+    from kicad2ems.lines.reference import _solve_cut
+    diel = ((0.0, 0.2, 4.3, 0.0),)
+    full = _solve_cut(0.35, 0.2, 0.0, True, (), ((0.0, True, ((-math.inf, math.inf),)),), diel)
+    edge = _solve_cut(0.35, 0.2, 0.0, True, (), ((0.0, False, ((-math.inf, 0.3),)),), diel)
+    half = _solve_cut(0.35, 0.2, 0.0, True, (), ((0.0, False, ((-math.inf, 0.0),)),), diel)
+    assert full[0] == pytest.approx(microstrip(0.35, 0.2, 4.3)[0], rel=4e-3)
+    assert 1.015 * full[0] < edge[0] < 1.04 * full[0]                        # the plane ends 0.125 mm past the edge
+    assert half[0] > 1.15 * full[0]                                          # it ends under the strip's centre
+
+
+@pytest.fixture(scope='module')
+def field_interdig():
+    import os
+    from kicad2ems.board import Board
+    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems.lines import reference
+    from kicad2ems.lines.builder import build
+    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
+    m = Board(KiCadBoard(os.path.join(ex, 'rf_interdig.kicad_pcb')), nets=['RF', 'GND'],
+              pos_file=os.path.join(ex, 'rf_interdig-all.pos'), log=lambda *a: None)
+    was, reference.FIELD = reference.FIELD, True
+    try:
+        lm = build(m)
+    finally:
+        reference.FIELD = was
+    return m, lm, build(m), os.path.join(ex, 'reference', 'rf_interdig_openems.s2p')
+
+
+def test_field_sections_and_groups(field_interdig):
+    m, lm, plain, _ = field_interdig
+    traces = [e for e in lm.elements if e.kind == 'trace' and e.group is None and e.z0]
+    assert traces and all(any(n.startswith('field solver') for n in e.notes) for e in traces)
+    by_id = {(e.a, e.b): e for e in plain.elements}
+    for e in traces:                                                         # microstrip on one plane: the formulas'
+        assert e.z0_sheet == pytest.approx(by_id[(e.a, e.b)].z0_sheet, rel=1e-2)
+    g = lm.groups[0]
+    assert g['C'].shape == (5, 5) and g['C'][0, 2] < 0                       # coupled beyond the nearest neighbour
+    assert 'C' not in plain.groups[0]
+
+
+def test_field_groups_against_openems(field_interdig):
+    """The five-finger filter's stop bands: the formulas' nearest-neighbour coupling puts them 40-60 dB too deep."""
+    pytest.importorskip('skrf')
+    from kicad2ems.solvers.lines.fastsolve import solve
+    from kicad2ems.touchstone import read_touchstone
+    m, lm, plain, ref = field_interdig
+    f, Sr = read_touchstone(ref)
+    db = lambda x: 20 * np.log10(np.abs(x) + 1e-15)
+    rms = [float(np.sqrt(np.mean((db(solve(x, m.ports, f, 'skrf')[0][:, 1, 0]) - db(Sr[:, 1, 0])) ** 2)))
+           for x in (lm, plain)]
+    assert rms[0] < 12 < 40 < rms[1]

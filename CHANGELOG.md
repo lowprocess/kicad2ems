@@ -12,7 +12,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The line model's 2D field solver, `kicad2ems.lines.xsection` (docs/transmission-lines.md#field-solver): the
   capacitance matrices, Z0, εeff, even / odd modes and dielectric loss of any cross-section of rectangular
   conductors over planes in layered dielectrics (solder mask, coplanar ground beside striplines, copper
-  thickness on coupled lines), within 0.5 % of the exact and closed-form results. Not used by the line model yet.
+  thickness on coupled lines), within 0.5 % of the exact and closed-form results.
+- `--lines-field`: the line model on the field solver (docs/transmission-lines.md#lines-field): every section's
+  cross-section from the board's copper cut across it (plane edges beside a trace, partial references, ground on
+  one side, coplanar ground beside striplines), and coupled sections with every line coupled to every other.
+  rf_interdig's |S21| against openEMS: 51.2 → 8.5 dB rms (its stop bands); the other examples unchanged.
 - mom25d: `--mom-planes pec|mesh` and `--mom-stitching-pads drop|keep` (both the first by default: below).
 - mom25d: `solver='hodlr'`, a hierarchical direct solver (experimental): 3–4× less memory than the dense LU at
   the same accuracy, not faster below ~30k unknowns (ROADMAP.md item 6).

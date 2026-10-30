@@ -242,7 +242,25 @@ def _add_group(lm, chain, u, t0):
         cp.xs, cp.group = 'coupled', gid
         cp.notes.append(f"Ze {ze:.1f} / Zo {zo:.1f} ohm over {e0.length:.2f} mm")
         lm.elements.append(cp)
+    from . import reference
+    if reference.FIELD:
+        _field_group(g, [m[0].w for m in members])
     lm.groups.append(g)
+
+
+def _field_group(g, widths):
+    """The group's per-unit-length C and C_air (sheets, every line coupled to every other) from the field solver,
+    in place of group_lc's nearest-neighbour pairs (fastsolve.group_s uses them when present)."""
+    from . import xsection as X
+    try:
+        if g['xs'] == 'microstrip':
+            xs = X.microstrip(widths, g['h'], g['er'], gap=g['gaps'])
+        else:
+            xs = X.stripline(widths, g['h'][0], g['h'][1], g['er'], gap=g['gaps'])
+        r = xs.solve()
+    except Exception:                                        # noqa: BLE001 (the formulas' pairs stay)
+        return
+    g['C'], g['Ca'] = r.C, r.Ca
 
 
 # ---- discontinuities -----------------------------------------------------------------------------
