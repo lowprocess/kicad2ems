@@ -29,6 +29,7 @@ stable, or change kicad2ems-ipc with them.
 
 A coupled section's pairs (`LineModel.groups[...]['pairs']`) give their even- and odd-mode impedances with the
 copper's thickness (`ze`, `zo`), from the [field solver](transmission-lines.md#coupled), and as sheets
-(`ze_sheet`, `zo_sheet`). Each distinct coupled section takes 0.5–6 s to solve, once per process: a plugin that
-builds the line model of every net can set `lines.topology.FIELD_GROUPS = False` for a first look from the
-formulas (zero-thickness, nearest neighbours only).
+(`ze_sheet`, `zo_sheet`); grounded CPW sections too (`lines.reference.FIELD_CPW`). Each distinct one takes
+0.02–0.5 s to solve, once per process (the CM5 Minima's 94 nets: 60 s, against 10 s with the formulas): a plugin
+that builds the line model of every net can set `lines.topology.FIELD_GROUPS = False` and
+`lines.reference.FIELD_CPW = False` for a first look from the formulas.

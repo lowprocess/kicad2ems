@@ -30,7 +30,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   even / odd impedances with the copper's thickness (`ze`, `zo`; `ze_sheet`, `zo_sheet` as sheets). The CM5
   Minima demo board's HDMI pairs: 117.8 → 104.9 Ω differential (100 Ω class). `topology.FIELD_GROUPS = False`
   keeps the formulas. Building the line model of every net of a large board takes longer (the CM5 Minima's 94
-  nets: 10 → 75 s).
+  nets: 10 → 60 s, with grounded CPW below).
 - The field solver's grid is coarser and its box smaller, and its cells at copper far from the signal coarser
   (`xsection.FAR`): 10x faster (a real board's cut of 33 conductors: 8 s → 0.35 s, Z0 within 0.07 %).
 - Grounded CPW sections come from the field solver (`reference.FIELD_CPW`): the formula has no copper thickness

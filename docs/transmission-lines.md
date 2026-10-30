@@ -191,8 +191,8 @@ CM5 Minima's HDMI nets this solves 158 cuts instead of 254, the impedances withi
 solving each. Coupled sections gain less (206 solves instead of 228 on the board's 94 nets): their gaps set
 the coupling and keep their 1 % steps. Each solve takes 0.05–1 s, so the time still grows with the number of
 distinct cross-sections: `rf_radialstub`'s fan, sliced into widening sections, takes 47 s with `--lines-field`;
-the CM5 Minima's 94 signal nets (104 distinct coupled sections, one of 16 lines) take 75 s to build, against 10 s
-with the formulas.
+the CM5 Minima's 94 signal nets take 60 s to build by default (146 grounded-CPW and 206 coupled-section solves),
+456 s with `--lines-field` (1,763 cuts), against 10 s with the formulas.
 
 `python tools/xsection_figures.py` draws the solver at work: a pair's grid and its odd- and even-mode fields,
 the cases the formulas leave out, the grid's convergence and the extrapolation, the cache's bins, a five-line
