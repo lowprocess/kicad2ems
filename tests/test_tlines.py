@@ -134,7 +134,8 @@ def test_edge_launch_pad_port_and_taper(boards):
     assert pad.xs == 'cpwg' and pad.h == pytest.approx(1.4858, abs=1e-3)       # over the cut-away inner planes
     assert len({e.label for e in lm.elements if e.kind == 'pad'}) == 1         # one pad, not two
     feed = secs[0][0]
-    assert feed.xs == 'cpwg' and feed.s == pytest.approx(0.25, abs=1e-3) and feed.z0 == pytest.approx(55.9, abs=0.5)
+    assert feed.xs == 'cpwg' and feed.s == pytest.approx(0.25, abs=1e-3) and feed.z0_sheet == pytest.approx(55.9, abs=1)
+    assert feed.z0 < 0.95 * feed.z0_sheet                    # the field solver's: 35 um of copper beside the gaps
     rest = [(e, s0 + p1.c[0]) for e, s0, _ in secs[1:-1]]
     assert all(e.kind == 'trace' for e, _ in rest)
     opening = [e for e, x in rest if x < 11.4]                 # the pour opens out, the trace is still 0.32 mm

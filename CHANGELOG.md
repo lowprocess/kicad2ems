@@ -31,7 +31,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Minima demo board's HDMI pairs: 117.8 → 104.9 Ω differential (100 Ω class). `topology.FIELD_GROUPS = False`
   keeps the formulas. Building the line model of every net of a large board takes longer (the CM5 Minima's 94
   nets: 10 → 75 s).
-- The field solver's grid is coarser and its box smaller (4x faster, Z0 within 0.1–0.6 % of the references).
+- The field solver's grid is coarser and its box smaller, and its cells at copper far from the signal coarser
+  (`xsection.FAR`): 10x faster (a real board's cut of 33 conductors: 8 s → 0.35 s, Z0 within 0.07 %).
+- Grounded CPW sections come from the field solver (`reference.FIELD_CPW`): the formula has no copper thickness
+  (35 µm beside 0.15 mm gaps: 10–12 % lower Z0). Field-solved microstrip and CPW sections reach the circuit
+  solvers as lines of their own Z0 where it is more than 2 % from the formula's (`Element.field`); scikit-rf's and
+  qucsator's own models, with dispersion, otherwise. With `--lines-field`, the CM5 Minima's planes with via
+  clearances now reach the S-parameters, not only the reported impedances.
 - Similar cross-sections share a field solve (docs/transmission-lines.md#similar): mirror images are one, widths
   and gaps snap to 1 % steps, and a cut's copper to bins that widen away from the strip (each worth 0.1–0.2 % of
   Z0). The CM5 Minima's HDMI nets with `--lines-field`: 254 → 158 solves, within 0.33 % of solving each.

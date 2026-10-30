@@ -174,10 +174,16 @@ def classify(model, ref, e, pt, d):
     e.z0_sheet, e.eeff_sheet = calc(0.0)                     # zero thickness, as openEMS models copper
     if FIELD:
         _field(model, ref, e, pt, n, found)
+    elif FIELD_CPW and e.xs == 'cpwg':
+        _field_cpwg(e)
 
 
 FIELD = False           # solve each section's cross-section (the board's copper cut across it) with the 2D field
                         # solver (xsection.py) instead of the formulas
+FIELD_CPW = True        # grounded CPW sections by the field solver even without FIELD, as the classified cross-section
+                        # (strip, gaps, plane): the formula has no copper thickness (10-12 % at 35 um, 0.15 mm gaps)
+FIELD_DIFFERS = 0.02    # a field-solved section is a line of its own Z0 in the circuit solvers (Element.field) where
+                        # its sheet Z0 is this far from the formula's; else their own models (with dispersion) stay
 FIELD_REACH = 5.0       # x the farthest reference height: how far either side of the strip the cut takes copper
 SNAP = 0.002            # mm: copper closer than this along a cut is one piece; pieces shorter are dropped
 
@@ -251,8 +257,34 @@ def _field(model, ref, e, pt, n, found):
     except Exception as ex:                                  # noqa: BLE001 (a cross-section it cannot grid)
         e.notes.append(f"field solver failed ({ex}): formula impedance")
         return
+    _take(e, got)
+
+
+def _take(e, got):
+    """The field solver's [(Z0, eeff) with the copper's thickness, as a sheet] for section e, noted."""
     e.notes.append(f"field solver: Z0 {got[0][0]:.1f} ohm (formula {e.z0:.1f})")
+    e.field = abs(got[1][0] / e.z0_sheet - 1) > FIELD_DIFFERS if e.z0_sheet else True
     (e.z0, e.eeff), (e.z0_sheet, e.eeff_sheet) = got
+
+
+def _field_cpwg(e):
+    """A grounded CPW section by the field solver as classify found it: the strip, gaps e.s either side (ground to
+    the side of the cut), the plane e.h under it, one dielectric (cached by the snapped sizes)."""
+    from . import xsection as X
+    s = _snap_distance(e.s / e.h, X.SIMILAR) * e.h            # the gaps, as the cut's copper is (_distance_bins)
+    key = (round(X.snap(e.w), 6), round(s, 6), round(e.h, 6), e.er, round(e.t, 6))
+    try:
+        got = [_solve_cpwg(*key[:4], t) for t in (key[4], 0.0)]
+    except Exception as ex:                                  # noqa: BLE001 (a cross-section it cannot grid)
+        e.notes.append(f"field solver failed ({ex}): formula impedance")
+        return
+    _take(e, got)
+
+
+@functools.lru_cache(maxsize=1024)
+def _solve_cpwg(w, s, h, er, t):
+    from . import xsection as X
+    return X.microstrip(w, h, er, t, s=s).solve().single()
 
 
 @functools.lru_cache(maxsize=8)

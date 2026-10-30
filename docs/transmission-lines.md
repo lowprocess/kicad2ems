@@ -86,7 +86,11 @@ r = X.coupled_stripline(0.1, 0.1, 0.2, 0.2, 4.3).solve(); r.C, r.Ca             
 ```
 
 It solves Laplace's equation by finite volumes on a grid graded towards every conductor edge, inside a grounded
-box 12 structure heights beyond the copper. Planes are sheets at the heights given, and conductors are rectangles.
+box 12 structure heights beyond the copper. The cells at an edge are 1/16 of the smallest feature near the
+signal copper, and at least a tenth of their distance from it (`xsection.FAR`): a tensor grid carries each
+edge's fine cells across the whole cross-section, and a real board's cut, with pour and the plane between via
+clearances on several layers, has 11–33 conductors (the CM5 Minima's worst cuts: 171,000 nodes and 8 s, now
+17,700 nodes and 0.35 s, Z0 within 0.07 %). Planes are sheets at the heights given, and conductors are rectangles.
 The charge on each conductor is the net flux out of its nodes. The edges' field singularity makes the grid's
 error first order in the cell size, so each cross-section is solved on the grid and on the grid with every cell
 halved, and the two are extrapolated.
@@ -104,16 +108,18 @@ The offset stripline formula above (two centred striplines combined) comes out 3
 strip 0.1 mm over one plane and 0.3 mm under the other. The formula is an approximation, and the solver has
 no approximation there beyond its grid's.
 
-A cross-section takes 0.05–0.3 s (more with copper thickness, which needs finer cells at the corners, and with
-more lines: 0.5 s for a pair as a sheet and with its copper, 6 s for 16 lines side by side).
+A cross-section takes 0.02–0.1 s (more with copper thickness, which needs finer cells at the corners, and with
+more lines or copper around it: 0.1 s for a pair as a sheet and with its copper, 0.35 s for a real board's cut of
+33 conductors).
 It's quasi-static: no dispersion and no conductor loss. `xsection.REFINE = False` skips the extrapolation:
 5–10 times faster, Z0 about 2 % low.
 
 <a id="lines-field"></a>
 ### The line model on the field solver
 
-Coupled sections come from the field solver by default ([above](#coupled)). `--lines-field`
-(`lines_field = true`) also takes the single sections' cross-sections from it, from the board:
+Coupled sections and grounded CPW come from the field solver by default ([above](#coupled), and
+[below](#cpw-thickness)). `--lines-field` (`lines_field = true`) takes every section's cross-section from it, from
+the board:
 
 - **Every section's cross-section, from the board.** At the point where a section is classified, the board's
   reference copper is cut across the strip, out to 5 reference heights either side, on every layer up to the
@@ -124,6 +130,12 @@ Coupled sections come from the field solver by default ([above](#coupled)). `--l
   centre. Copper thickness grows away from the plane under the strip, and the stack beyond it moves up by it (the
   dielectrics' thicknesses are between the copper), as the formulas assume. The section's cross-section name
   and its formula Z0 stay in the report, with the field solver's Z0 in its notes.
+
+In the circuit solvers, a microstrip or grounded CPW section keeps scikit-rf's and qucsator's own models (with
+their dispersion) unless the field solver's zero-thickness Z0 is more than 2 % from the formula's
+(`reference.FIELD_DIFFERS`): then it is a line of the solver's Z0 and εeff (`Element.field`), quasi-static. Used
+for every field-solved section, the lost dispersion moved `rf_steplpf`'s |S21| from 2.35 to 2.60 dB rms off
+openEMS.
 
 On the examples with openEMS references (scikit-rf; agreement as in [Examples](examples.md): the rms of the
 complex difference of S11, and the rms difference of |S21|):
@@ -149,6 +161,7 @@ moves the single-ended Z0 by at most 2.7 %: 1–2.7 % on 8 % of the length, wher
 2 heights past the trace or ground copper lies to one side. The differential impedance is what the copper's
 thickness moves ([coupled sections](#coupled)).
 
+<a id="cpw-thickness"></a>
 Its other nets show what the cut is for. The HDMI side-band lines (DDC SDA and SCL, CEC, HOTPLUG) and the
 board's other control lines run as grounded CPW, pour 0.15 mm from the trace, and the field solver differs from
 the formulas in two ways:
@@ -161,7 +174,9 @@ the formulas in two ways:
 | 0.15 mm line, the same, 0.65 mm | 104.9 Ω | 60.5 Ω | 55.1 Ω |
 
 - **Copper thickness in grounded CPW**: the formula (Ghione & Naldi) has none, so its "Z0 with the copper's
-  thickness" is the sheet value. 35 µm of copper beside a 0.15 mm gap takes 10–12 % off.
+  thickness" is the sheet value. 35 µm of copper beside a 0.15 mm gap takes 10–12 % off. Gupta's thickness
+  correction (wider strip, narrower gaps) finds a third to a half of it (0.2 mm line: 46.8 Ω). So grounded CPW
+  sections come from the field solver by default, as classified (strip, gaps, plane: `reference.FIELD_CPW`).
 - **A plane with holes**: where the plane under a trace doesn't cover the points `classify` tests, it takes the
   next plane down as the reference, and Z0 comes out 30–75 % too high. The copper left between the holes still
   carries most of the return: the cut solves it as it is (the board-cut figure below).

@@ -26,6 +26,7 @@ class Element:
         self.part = kw.get('part')                  # parts.Part for 'part'
         self.xs, self.z0, self.eeff, self.er, self.h, self.s, self.t = 'no reference', None, None, None, None, None, 0.0
         self.z0_sheet = self.eeff_sheet = None      # zero-thickness copper (openEMS sheets)
+        self.field = False                          # Z0 and eeff from the field solver (reference._field)
         self.tand, self.L = 0.0, None               # dielectric loss, via inductance (H) when no antipad
         self.offset = 0.0                           # centre of a widened trace's copper off its centre line (mm)
         self.group = None                           # index into LineModel.groups for a coupled line

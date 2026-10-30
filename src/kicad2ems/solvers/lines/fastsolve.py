@@ -5,9 +5,10 @@ milliseconds by scikit-rf (in-process) or qucsator (Qucs-S's simulator, run as a
 
 Each backend uses its own models where it has them: scikit-rf MLine (Hammerstad-Jensen with
 Kirschning-Jansen dispersion) and CPW, qucsator MLIN and CLIN; every other section (stripline,
-offset stripline, embedded microstrip, via barrels) is a line of the section's Z0 and effective
-permittivity. By default the copper is zero-thickness, as openEMS models it (conducting sheets), so the
-result is comparable with openEMS; sheet=False uses the stackup's copper thickness.
+offset stripline, embedded microstrip, via barrels, and any section the field solver solved: Element.field) is a
+line of the section's Z0 and effective permittivity. By default the copper is zero-thickness, as openEMS models
+it (conducting sheets), so the result is comparable with openEMS; sheet=False uses the stackup's copper
+thickness.
 
     S, names = solve(line_model, model.ports, freq, backend='skrf')      # S (nf, n, n), single-ended
 
@@ -90,7 +91,7 @@ def _skrf(lm, ports, freq, sheet, sigma):
                 ntw = shunt_z(z, name) if e.b == 'gnd' else series_z(z, name)
             elif e.xs == 'lumped' and e.L:
                 ntw = series_z(1j * w * e.L, name)
-            elif e.xs in ('microstrip', 'cpwg') and e.er:
+            elif e.xs in ('microstrip', 'cpwg') and e.er and not e.field:    # field-solved: its own Z0 below
                 t = 1e-9 if sheet else max(e.t, 1e-6) * 1e-3
                 if e.xs == 'microstrip':
                     med = skrf.media.MLine(frequency=fr, w=e.w * 1e-3, h=e.h * 1e-3, t=t, ep_r=e.er, tand=e.tand,
@@ -309,10 +310,10 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
                 L.append(f'L:{name} {a} gnd L="{e.L:.9g} H"')
         elif e.xs == 'lumped' and e.L:
             L.append(f'L:{name} {a} {b} L="{e.L:.9g} H"')
-        elif e.xs == 'microstrip' and e.er:
+        elif e.xs == 'microstrip' and e.er and not e.field:
             L.append(f'MLIN:{name} {a} {b} Subst="{sub(e)}" W="{e.w * 1e-3:.6g}" L="{length * 1e-3:.6g}" '
                      f'Model="Hammerstad" DispModel="Kirschning"')
-        elif e.xs == 'cpwg' and e.er:
+        elif e.xs == 'cpwg' and e.er and not e.field:
             L.append(f'CLIN:{name} {a} {b} Subst="{sub(e)}" W="{e.w * 1e-3:.6g}" S="{e.s * 1e-3:.6g}" '
                      f'L="{length * 1e-3:.6g}" Backside="Metal" Approx="no"')
         elif e.xs == 'coax' and e.er and e.h:

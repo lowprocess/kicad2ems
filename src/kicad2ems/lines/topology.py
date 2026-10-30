@@ -92,7 +92,7 @@ COUPLE_H = 5.0          # parallel lines couple when their edge gap is at most t
 COUPLED_XS = ('microstrip', 'stripline', 'offset stripline')   # the heights to the two planes)
 FIELD_GROUPS = True     # coupled sections' C from the field solver, every line coupled to every other (False:
                         # group_lc's nearest-neighbour pairs of the formulas)
-_COPY = ('xs', 'z0', 'eeff', 'z0_sheet', 'eeff_sheet', 'er', 'h', 's', 't', 'tand', 'offset')
+_COPY = ('xs', 'z0', 'eeff', 'z0_sheet', 'eeff_sheet', 'er', 'h', 's', 't', 'tand', 'offset', 'field')
 
 
 def _couple_h(e):

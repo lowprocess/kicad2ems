@@ -33,6 +33,7 @@ from ..constants import C0, EPS0
 GROW = 1.3              # grid cells grow by at most this factor away from an edge
 FINE = 1 / 16           # the smallest cell, as a fraction of the smallest feature (width, gap, layer, copper)
 REACH = 12.0            # the box reaches this many times the structure's height beyond it (open sides, open top)
+FAR = 0.1               # the cells at a copper edge or a layer d from the signal copper: at least FAR x d
 REFINE = True           # extrapolate from the grid and the grid halved (solve)
 SIMILAR = 0.01          # snap(): sizes within this fraction of each other share one value, so that the line model's
                         # caches solve cross-sections this similar once (Z0 moves by less than about a third of it)
@@ -126,27 +127,41 @@ def snap(v, rel=None):
 
 
 # ---- the grid ---------------------------------------------------------------------------------------
-def _fill(a, b, h0, hmax):
-    """Grid lines strictly between a and b: cells from h0 at both ends, growing by GROW up to hmax."""
+def _fill(a, b, ha, hb, hmax):
+    """Grid lines strictly between a and b: cells from ha at a and hb at b, growing by GROW up to hmax."""
     L = b - a
-    if L <= 1.5 * h0:
+    if L <= 0.75 * (ha + hb):
         return []
-    steps, s, h = [], 0.0, h0
-    while s < L / 2:
-        steps.append(h)
-        s += h
-        h = min(h * GROW, hmax)
-    steps = steps + steps[::-1]
-    steps = np.asarray(steps) * (L / sum(steps))
+    left, right, sl, sr = [], [], 0.0, 0.0
+    while sl + sr < L:                                  # the smaller side grows first: they meet in between
+        if sl <= sr or (right and right[-1] >= hmax and left and left[-1] < right[-1]):
+            h = min(left[-1] * GROW if left else ha, hmax)
+            left.append(h)
+            sl += h
+        else:
+            h = min(right[-1] * GROW if right else hb, hmax)
+            right.append(h)
+            sr += h
+    steps = np.asarray(left + right[::-1]) * (L / (sl + sr))
     return list(a + np.cumsum(steps)[:-1])
 
 
-def _axis(keys, h0, hmax):
-    """Sorted grid lines through every key coordinate, graded between them."""
-    keys = np.unique(np.round(np.asarray(keys, float), 9))
-    out = [keys[0]]
-    for a, b in zip(keys[:-1], keys[1:]):
-        out += _fill(a, b, h0, hmax) + [b]
+def _axis(keys, sizes, hmax):
+    """Sorted grid lines through every key coordinate, graded between them from each key's cell size."""
+    keys, sizes = np.asarray(keys, float), np.asarray(sizes, float)
+    order = np.argsort(keys)
+    keys, sizes = keys[order], sizes[order]
+    keep = np.concatenate([[True], np.diff(np.round(keys, 9)) > 0])
+    ks, hs = [], []
+    for k, h, new in zip(keys, sizes, keep):
+        if new:
+            ks.append(k)
+            hs.append(h)
+        else:
+            hs[-1] = min(hs[-1], h)
+    out = [ks[0]]
+    for i in range(len(ks) - 1):
+        out += _fill(ks[i], ks[i + 1], hs[i], hs[i + 1], hmax) + [ks[i + 1]]
     return np.asarray(out)
 
 
@@ -181,9 +196,14 @@ def _grid(xs):
     xk = [xl, xr] + edges
     for d in xs.dielectrics:
         xk += [x for x in (d.x0, d.x1) if xl < x < xr]
+    sig = xs.signals
+    sx = (min(c.x0 for c in sig), max(c.x1 for c in sig))
+    sz = (min(c.z0 for c in sig), max(c.z1 for c in sig))
+    near = lambda v, span: max(span[0] - v, v - span[1], 0.0)          # distance from the signal copper
     h0 = FINE * min(f for f in feats if f > 1e-9)
     hmax = max(H, h0)
-    return _axis(xk, h0, hmax), _axis(zk, h0, hmax)
+    size = lambda v, span: min(max(h0, FAR * near(v, span)), hmax)      # cells coarser away from the signal
+    return _axis(xk, [size(v, sx) for v in xk], hmax), _axis(zk, [size(v, sz) for v in zk], hmax)
 
 
 # ---- the solve --------------------------------------------------------------------------------------

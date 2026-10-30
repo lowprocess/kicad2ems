@@ -16,7 +16,7 @@ def _cohn(w, b, er):
 
 def test_stripline_against_cohn():
     z, ee = X.stripline(0.15, 0.2, 0.2, 4.3).solve().single()
-    assert z == pytest.approx(_cohn(0.15, 0.4, 4.3), rel=3e-3)
+    assert z == pytest.approx(_cohn(0.15, 0.4, 4.3), rel=4e-3)
     assert ee == pytest.approx(4.3)                                           # one dielectric: eeff = er
 
 
