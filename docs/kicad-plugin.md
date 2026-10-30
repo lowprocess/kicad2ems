@@ -26,3 +26,9 @@ stable, or change kicad2ems-ipc with them.
 | `overlay` | the line model's drawing |
 | `touchstone.read_touchstone` | the results |
 | `gui.planview.PlanView`, `gui.runner` (`Run`, `EventTail`, `stop_runs`, `toml_value`) | the plan view, runs and their settings |
+
+A coupled section's pairs (`LineModel.groups[...]['pairs']`) give their even- and odd-mode impedances with the
+copper's thickness (`ze`, `zo`), from the [field solver](transmission-lines.md#coupled), and as sheets
+(`ze_sheet`, `zo_sheet`). Each distinct coupled section takes 0.5–6 s to solve, once per process: a plugin that
+builds the line model of every net can set `lines.topology.FIELD_GROUPS = False` for a first look from the
+formulas (zero-thickness, nearest neighbours only).

@@ -23,9 +23,18 @@ net.
 <a id="coupled"></a>
 **Coupled sections.** Straight, parallel sections of one cross-section on one layer within 5 substrate
 heights of each other become a coupled section: hairpin and interdigital filter fingers, differential
-pairs. Each neighbouring pair gets even- and odd-mode impedances: Kirschning & Jansen for microstrip,
-Cohn's exact zero-thickness formula for stripline (an offset stripline combines the two halves as for a
-single line). Lines further apart than the nearest neighbour aren't coupled.
+pairs. The [field solver](#field-solver) gives each coupled section its capacitance matrix, every line coupled to
+every other, and each neighbouring pair its even- and odd-mode impedances with the copper's thickness (`ze`,
+`zo`; as sheets, `ze_sheet`, `zo_sheet`). `topology.FIELD_GROUPS = False` uses the formulas instead: Kirschning
+& Jansen for microstrip, Cohn's exact zero-thickness formula for stripline (an offset stripline combines the two
+halves as for a single line), zero thickness, and no coupling beyond the nearest neighbour. With qucsator, a
+coupled microstrip pair is still qucsator's own MCOUPLED.
+
+Copper thickness matters most here. The CM5 Minima demo board's HDMI pairs (KiCad's `demos/cm5_minima`, the
+board of the [KiCad plugin](kicad-plugin.md)'s pictures: 0.13 mm lines 0.25 mm apart, 0.099 mm over In4.Cu,
+35 µm outer copper, in a 100 Ω class) are 117.8 Ω differential with the zero-thickness formula and 104.9 Ω with
+the copper's thickness; with the board's 10 µm solder mask (εr 3.8), 101.3 Ω. Its USB and PCIe pairs (90 Ω
+class) are 108.3 Ω with the formula and 95.3 Ω with the copper.
 
 **Discontinuities** are listed where sections meet: open ends, corners, bends, steps, tees, crosses and
 end gaps.
@@ -77,32 +86,34 @@ r = X.coupled_stripline(0.1, 0.1, 0.2, 0.2, 4.3).solve(); r.C, r.Ca             
 ```
 
 It solves Laplace's equation by finite volumes on a grid graded towards every conductor edge, inside a grounded
-box 25 structure heights beyond the copper. Planes are sheets at the heights given, and conductors are rectangles.
+box 12 structure heights beyond the copper. Planes are sheets at the heights given, and conductors are rectangles.
 The charge on each conductor is the net flux out of its nodes. The edges' field singularity makes the grid's
 error first order in the cell size, so each cross-section is solved on the grid and on the grid with every cell
 halved, and the two are extrapolated.
 
 | Against | Case | Difference |
 |---|---|---|
-| Cohn (exact) | stripline, w 0.15, b 0.4 mm | +0.15 % |
-| Cohn (exact) | coupled stripline, w 0.1, s 0.1, b 0.4 mm: Ze, Zo | +0.1 %, +0.2 % |
-| Hammerstad & Jensen | microstrip 0.35 / 0.2 mm, 3.0 / 1.6 mm, 0.4 / 0.21 mm with 35 µm | +0.1 to +0.15 % |
-| Wheeler | stripline with 35 µm copper | +0.1 % |
-| Ghione & Naldi | grounded CPW 0.5 / 0.5 / 1.6 mm, 0.3 / 0.15 / 0.2 mm | +0.2 %, −0.4 % |
-| Kirschning & Jansen | coupled microstrip 0.15 / 0.15 / 0.2 mm: Ze, Zo | +0.0 %, +0.5 % |
+| Cohn (exact) | stripline, w 0.15, b 0.4 mm | +0.25 % |
+| Cohn (exact) | coupled stripline, w 0.1, s 0.1, b 0.4 mm: Ze, Zo | +0.16 %, +0.34 % |
+| Hammerstad & Jensen | microstrip 0.35 / 0.2 mm, 3.0 / 1.6 mm, 0.4 / 0.21 mm with 35 µm | +0.08 to +0.13 % |
+| Wheeler | stripline with 35 µm copper | +0.19 % |
+| Ghione & Naldi | grounded CPW 0.5 / 0.5 / 1.6 mm, 0.3 / 0.15 / 0.2 mm | +0.32 %, −0.29 % |
+| Kirschning & Jansen | coupled microstrip 0.15 / 0.15 / 0.2 mm: Ze, Zo | +0.02 %, +0.59 % |
 
-The offset stripline formula above (two centred striplines combined) comes out 3 % above the solver for a
+The offset stripline formula above (two centred striplines combined) comes out 3 % (48.7 against 47.3 Ω) above the solver for a
 strip 0.1 mm over one plane and 0.3 mm under the other. The formula is an approximation, and the solver has
 no approximation there beyond its grid's.
 
-A cross-section takes 0.1–0.5 s (about 1 s with copper thickness, which needs finer cells at the corners).
+A cross-section takes 0.05–0.3 s (more with copper thickness, which needs finer cells at the corners, and with
+more lines: 0.5 s for a pair as a sheet and with its copper, 6 s for 16 lines side by side).
 It's quasi-static: no dispersion and no conductor loss. `xsection.REFINE = False` skips the extrapolation:
 5–10 times faster, Z0 about 2 % low.
 
 <a id="lines-field"></a>
 ### The line model on the field solver
 
-`--lines-field` (`lines_field = true`) takes two things from the field solver instead of the formulas:
+Coupled sections come from the field solver by default ([above](#coupled)). `--lines-field`
+(`lines_field = true`) also takes the single sections' cross-sections from it, from the board:
 
 - **Every section's cross-section, from the board.** At the point where a section is classified, the board's
   reference copper is cut across the strip, out to 5 reference heights either side, on every layer up to the
@@ -113,19 +124,17 @@ It's quasi-static: no dispersion and no conductor loss. `xsection.REFINE = False
   centre. Copper thickness grows away from the plane under the strip, and the stack beyond it moves up by it (the
   dielectrics' thicknesses are between the copper), as the formulas assume. The section's cross-section name
   and its formula Z0 stay in the report, with the field solver's Z0 in its notes.
-- **Coupled sections with every line coupled to every other.** The formulas couple each line to its nearest
-  neighbours only (`group_lc`). qucsator's model for a coupled microstrip pair (MCOUPLED) is kept.
 
 On the examples with openEMS references (scikit-rf; agreement as in [Examples](examples.md): the rms of the
-complex difference of S11, and the rms difference of |S21|), the formulas against the field solver:
+complex difference of S11, and the rms difference of |S21|):
 
-| Board | Formulas | Field solver |
-|---|---|---|
-| `rf_interdig`: five coupled fingers | −23.0 dB / 51.21 dB | −24.7 dB / 8.47 dB |
-| `rf_stripline`, `rf_diffvia`, `rf_coupler`, `rf_wilkinson`, `demo_transition`, `rf_shielded`, `hairpin` | | within 0.2 dB / 0.1 dB of the formulas |
-| `rf_branchline`, `rf_steplpf`, `rf_stubnotch`, `rf_gcpw`, `rf_ratrace`, `rf_radialstub`, `sma_launch` | | the same |
+| Board | Formulas throughout | Coupled sections by the field solver (default) | and `--lines-field` |
+|---|---|---|---|
+| `rf_interdig`: five coupled fingers | −23.0 dB / 51.21 dB | −24.7 dB / 8.48 dB | −24.7 dB / 8.48 dB |
+| `rf_stripline`, `rf_diffvia`, `rf_coupler`, `rf_wilkinson`, `demo_transition`, `rf_shielded`, `hairpin` | | within 0.1 dB / 0.06 dB of the formulas | within 0.3 dB / 0.1 dB |
+| `rf_branchline`, `rf_steplpf`, `rf_stubnotch`, `rf_gcpw`, `rf_ratrace`, `rf_radialstub`, `sma_launch` | | the same | the same |
 
-A run took 1.4–7.5 s with the formulas and 2.5–157 s with the field solver.
+A run takes 1.4–8 s either way, and 2–47 s with `--lines-field`.
 
 The interdigital filter's stop bands were 40–60 dB too deep with the formulas: they are set by the coupling
 between fingers that aren't neighbours, which `group_lc` leaves out. With the field solver's matrix cut back to
@@ -135,8 +144,15 @@ out (discontinuities with scikit-rf, vias, radiation, the can). `sma_launch`'s g
 is 50.3 Ω against the formula's 54.7 Ω, which has no thickness, but the solvers use the sheet values (54.4 Ω
 against 54.7 Ω).
 
-Each distinct cross-section is solved once (sections are cached by their cut), but each takes 0.1–1 s, so the time
-grows with the number of distinct sections: `rf_radialstub`'s fan, sliced into widening sections, takes 157 s.
+On a real board, the CM5 Minima's eight HDMI pairs (119 mm of microstrip over solid planes), `--lines-field`
+moves the single-ended Z0 by at most 2.7 %: 1–2.7 % on 8 % of the length, where a plane under B.Cu doesn't reach
+2 heights past the trace or ground copper lies to one side. The differential impedance is what the copper's
+thickness moves ([coupled sections](#coupled)).
+
+Each distinct cross-section is solved once (cached by its cut or its widths and gaps), but each takes 0.05–1 s,
+so the time grows with the number of distinct ones: `rf_radialstub`'s fan, sliced into widening sections, takes
+47 s with `--lines-field`; the CM5 Minima's 94 signal nets (104 distinct coupled sections, one of 16 lines) take
+75 s to build, against 10 s with the formulas.
 
 ## Paths
 

@@ -15,13 +15,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   thickness on coupled lines), within 0.5 % of the exact and closed-form results.
 - `--lines-field`: the line model on the field solver (docs/transmission-lines.md#lines-field): every section's
   cross-section from the board's copper cut across it (plane edges beside a trace, partial references, ground on
-  one side, coplanar ground beside striplines), and coupled sections with every line coupled to every other.
-  rf_interdig's |S21| against openEMS: 51.2 → 8.5 dB rms (its stop bands); the other examples unchanged.
+  one side, coplanar ground beside striplines). The examples with openEMS references are unchanged; on the CM5
+  Minima demo board's HDMI pairs, the single-ended Z0 moves by at most 2.7 %.
 - mom25d: `--mom-planes pec|mesh` and `--mom-stitching-pads drop|keep` (both the first by default: below).
 - mom25d: `solver='hodlr'`, a hierarchical direct solver (experimental): 3–4× less memory than the dense LU at
   the same accuracy, not faster below ~30k unknowns (ROADMAP.md item 6).
 
 ### Changed
+- The line model's coupled sections come from the field solver (docs/transmission-lines.md#coupled): every line
+  coupled to every other (rf_interdig's |S21| against openEMS: 51.2 → 8.5 dB rms, its stop bands), and the pairs'
+  even / odd impedances with the copper's thickness (`ze`, `zo`; `ze_sheet`, `zo_sheet` as sheets). The CM5
+  Minima demo board's HDMI pairs: 117.8 → 104.9 Ω differential (100 Ω class). `topology.FIELD_GROUPS = False`
+  keeps the formulas. Building the line model of every net of a large board takes longer (the CM5 Minima's 94
+  nets: 10 → 75 s).
+- The field solver's grid is coarser and its box smaller (4x faster, Z0 within 0.1–0.6 % of the references).
 - mom25d by default models solid planes (one piece over the board, no holes, ground nets) as PEC, the ground or a
   cover over the stack, not meshed, and leaves out lone stitching-via pads (a ground via's pad with nothing else
   on its layer; not a part's or a port's), the via kept (docs/mom.md#planes). Of the 52 examples 7 change, all

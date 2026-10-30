@@ -116,12 +116,18 @@ def field_interdig():
     ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
     m = Board(KiCadBoard(os.path.join(ex, 'rf_interdig.kicad_pcb')), nets=['RF', 'GND'],
               pos_file=os.path.join(ex, 'rf_interdig-all.pos'), log=lambda *a: None)
+    from kicad2ems.lines import topology
     was, reference.FIELD = reference.FIELD, True
     try:
         lm = build(m)
     finally:
         reference.FIELD = was
-    return m, lm, build(m), os.path.join(ex, 'reference', 'rf_interdig_openems.s2p')
+    was, topology.FIELD_GROUPS = topology.FIELD_GROUPS, False                 # the formulas throughout
+    try:
+        plain = build(m)
+    finally:
+        topology.FIELD_GROUPS = was
+    return m, lm, plain, os.path.join(ex, 'reference', 'rf_interdig_openems.s2p')
 
 
 def test_field_sections_and_groups(field_interdig):
@@ -147,3 +153,16 @@ def test_field_groups_against_openems(field_interdig):
     rms = [float(np.sqrt(np.mean((db(solve(x, m.ports, f, 'skrf')[0][:, 1, 0]) - db(Sr[:, 1, 0])) ** 2)))
            for x in (lm, plain)]
     assert rms[0] < 12 < 40 < rms[1]
+
+
+def test_coupled_pairs_with_the_copper():
+    """A coupled pair's modes by the field solver: as sheets, the formula's; with the copper, the CM5 Minima's HDMI
+    pair (0.13 / 0.25 mm, 0.0994 mm over its plane, 35 um): 13 ohm below the zero-thickness 118 ohm."""
+    from kicad2ems.lines import topology
+    from kicad2ems.lines.coupled import coupled_microstrip as km
+    g = dict(xs='microstrip', h=0.0994, er=4.45, gaps=[0.25], pairs=[dict(gap=0.25)])
+    topology._field_group(g, [0.13, 0.13], 0.035)
+    p = g['pairs'][0]
+    assert 2 * p['zo_sheet'] == pytest.approx(2 * km(0.13, 0.25, 0.0994, 4.45)[1], rel=1e-2)
+    assert 2 * p['zo'] == pytest.approx(104.9, abs=0.5) and p['ze'] < p['ze_sheet']
+    assert g['C'].shape == (2, 2)

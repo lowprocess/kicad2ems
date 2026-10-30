@@ -29,9 +29,9 @@ from dataclasses import dataclass, field
 import numpy as np
 from ..constants import C0, EPS0
 
-GROW = 1.25             # grid cells grow by at most this factor away from an edge
-FINE = 1 / 24           # the smallest cell, as a fraction of the smallest feature (width, gap, layer, copper)
-REACH = 25.0            # the box reaches this many times the structure's height beyond it (open sides, open top)
+GROW = 1.3              # grid cells grow by at most this factor away from an edge
+FINE = 1 / 16           # the smallest cell, as a fraction of the smallest feature (width, gap, layer, copper)
+REACH = 12.0            # the box reaches this many times the structure's height beyond it (open sides, open top)
 REFINE = True           # extrapolate from the grid and the grid halved (solve)
 
 
@@ -248,7 +248,8 @@ def _solve_grid(xs, x, z):
     out = []
     for eps in (er, np.ones_like(er)):
         A = _laplacian(x, z, eps)
-        lu = splu(A[free][:, free].tocsc())
+        lu = splu(A[free][:, free].tocsc(), permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.0,
+                  options=dict(SymmetricMode=True))           # symmetric positive definite: no pivoting
         phi = V.copy()
         phi[free] = lu.solve(-(A[free][:, fixed] @ V[fixed]))
         Q = A @ phi                                      # net flux out of each node: its charge / eps0
