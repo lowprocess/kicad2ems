@@ -58,6 +58,46 @@ microstrip of the demo transition is 50.7 Ω with 35 µm copper and 53.3 Ω as a
 Cohn's exact result within 0.2 %. On the two example filters, the qucsator line model finds the pass band
 within 2 % of openEMS in a fraction of a second.
 
+<a id="field-solver"></a>
+## Field solver
+
+`kicad2ems.lines.xsection` solves a cross-section numerically: the per-unit-length capacitance matrix of N
+conductors over planes, in any stack of dielectrics, with and without them, and from these L, Z0, εeff, the even
+and odd modes of a pair and the dielectric loss. It covers what the formulas above can't: coplanar ground under
+solder mask or between two planes, mask that follows the copper, coupled lines with copper thickness, coupling
+beyond the nearest neighbour, and layers of different εr. The line model doesn't use it yet.
+
+```python
+from kicad2ems.lines import xsection as X
+X.microstrip(0.35, 0.2, 4.3, t=0.035, mask=0.02, er_mask=3.8).solve().single()   # (Z0, eeff)
+X.coupled_microstrip(0.15, 0.15, 0.2, 4.4).solve().pair()                         # (Ze, Zo, eeff_e, eeff_o)
+X.stripline(0.15, 0.2, 0.2, 4.3, s=0.15).solve().single()                         # coplanar ground beside it
+r = X.coupled_stripline(0.1, 0.1, 0.2, 0.2, 4.3).solve(); r.C, r.Ca               # F/m: coupled.mtl_s takes them
+```
+
+It solves Laplace's equation by finite volumes on a grid graded towards every conductor edge, inside a grounded
+box 25 structure heights beyond the copper. Planes are sheets at the heights given, and conductors are rectangles.
+The charge on each conductor is the net flux out of its nodes. The edges' field singularity makes the grid's
+error first order in the cell size, so each cross-section is solved on the grid and on the grid with every cell
+halved, and the two are extrapolated.
+
+| Against | Case | Difference |
+|---|---|---|
+| Cohn (exact) | stripline, w 0.15, b 0.4 mm | +0.15 % |
+| Cohn (exact) | coupled stripline, w 0.1, s 0.1, b 0.4 mm: Ze, Zo | +0.1 %, +0.2 % |
+| Hammerstad & Jensen | microstrip 0.35 / 0.2 mm, 3.0 / 1.6 mm, 0.4 / 0.21 mm with 35 µm | +0.1 to +0.15 % |
+| Wheeler | stripline with 35 µm copper | +0.1 % |
+| Ghione & Naldi | grounded CPW 0.5 / 0.5 / 1.6 mm, 0.3 / 0.15 / 0.2 mm | +0.2 %, −0.4 % |
+| Kirschning & Jansen | coupled microstrip 0.15 / 0.15 / 0.2 mm: Ze, Zo | +0.0 %, +0.5 % |
+
+The offset stripline formula above (two centred striplines combined) comes out 3 % above the solver for a
+strip 0.1 mm over one plane and 0.3 mm under the other. The formula is an approximation, and the solver has
+no approximation there beyond its grid's.
+
+A cross-section takes 0.1–0.5 s (about 1 s with copper thickness, which needs finer cells at the corners).
+It's quasi-static: no dispersion and no conductor loss. `xsection.REFINE = False` skips the extrapolation:
+5–10 times faster, Z0 about 2 % low.
+
 ## Paths
 
 For each pair of ports the model finds the shortest path through the sections. Branches off the path,
