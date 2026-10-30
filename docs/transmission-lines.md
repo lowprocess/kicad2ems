@@ -149,6 +149,23 @@ moves the single-ended Z0 by at most 2.7 %: 1–2.7 % on 8 % of the length, wher
 2 heights past the trace or ground copper lies to one side. The differential impedance is what the copper's
 thickness moves ([coupled sections](#coupled)).
 
+Its other nets show what the cut is for. The HDMI side-band lines (DDC SDA and SCL, CEC, HOTPLUG) and the
+board's other control lines run as grounded CPW, pour 0.15 mm from the trace, and the field solver differs from
+the formulas in two ways:
+
+| Where | Formula | Field solver, as a sheet | with 35 µm copper |
+|---|---|---|---|
+| 0.2 mm line, its plane 0.099 mm under it | 48.2 Ω | 47.5 Ω | 43.2 Ω |
+| 0.13 mm line, plane 0.099 mm under it | 61.5 Ω | 60.5 Ω | 53.6 Ω |
+| 0.2 mm line, the plane under it full of via clearances: classified over the next plane down, 0.73 mm | 79.4 Ω | 58.3 Ω | 52.3 Ω |
+| 0.15 mm line, the same, 0.65 mm | 104.9 Ω | 60.5 Ω | 55.1 Ω |
+
+- **Copper thickness in grounded CPW**: the formula (Ghione & Naldi) has none, so its "Z0 with the copper's
+  thickness" is the sheet value. 35 µm of copper beside a 0.15 mm gap takes 10–12 % off.
+- **A plane with holes**: where the plane under a trace doesn't cover the points `classify` tests, it takes the
+  next plane down as the reference, and Z0 comes out 30–75 % too high. The copper left between the holes still
+  carries most of the return: the cut solves it as it is (the board-cut figure below).
+
 <a id="similar"></a>
 **Similar cross-sections share a solve.** Each cross-section is cached, and a cross-section and its mirror image
 are one. Widths and gaps are snapped to steps of 1 % (`xsection.SIMILAR`, `xsection.snap`), and the copper a cut
