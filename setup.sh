@@ -10,17 +10,20 @@
 #   ./setup.sh --qucsator /usr/bin/qucsator_rf           the line model's circuit solver (or: none)
 #   ./setup.sh --python python3.12 --venv /path/to/venv  another Python, another venv (checkout target)
 #   ./setup.sh --uninstall --target user                 remove what an install of that target added
+#   ./setup.sh --update [--target user]                  only kicad2ems and its stack in an existing install: asks
+#                                 nothing, leaves openEMS, the other dependencies and the GPU wheel as they are
 #
 # Asks about: the GUI, field dumps, the scikit-rf line model, mom25d and gfdtd (and their compiled cores), dfsynth, the test
 # tools, the CuPy wheel for your GPU
 # (detected: NVIDIA CUDA 12 / 13, AMD ROCm 7), openEMS (one this Python has, one in another venv linked in,
 # build one with tools/build_openems.sh, or none), qucsator, and a launcher entry and desktop icon for the GUI.
+# Makes the example boards that are not in the repository (examples/make_boards.py), next to their configs.
 # Run it again to change anything: an existing venv is kept and added to (or made anew if you say so).
 set -euo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PY=${PYTHON:-python3}
-YES=0 TARGET= VENV_ARG= OEMS_ARG= QUCS_ARG= UNINSTALL=0
+YES=0 TARGET= VENV_ARG= OEMS_ARG= QUCS_ARG= UNINSTALL=0 UPDATE=0
 TRIANGLE_COMMIT=595b43eb6682992a0b1012b9671bf860c0e6ae56    # triangle 20250106, builds on Python 3.14
 SYSROOT=${KICAD2EMS_SYSROOT:-}                              # tests: the system target under a scratch root, no sudo
 while [ $# -gt 0 ]; do
@@ -32,11 +35,16 @@ while [ $# -gt 0 ]; do
         --openems) OEMS_ARG=$2; shift ;;
         --qucsator) QUCS_ARG=$2; shift ;;
         --uninstall) UNINSTALL=1 ;;
-        -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --update) UPDATE=1 ;;
+        -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option: $1 (--help)"; exit 2 ;;
     esac
     shift
 done
+
+if [ $UPDATE = 1 ] && { [ $UNINSTALL = 1 ] || [ -n "$OEMS_ARG" ] || [ -n "$QUCS_ARG" ]; }; then
+    echo "--update changes neither openEMS nor qucsator, and doesn't go with --uninstall: --target and --venv only"; exit 2
+fi
 
 bold() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 note() { printf '  %s\n' "$*"; }
@@ -83,6 +91,12 @@ CONF=${XDG_CONFIG_HOME:-$HOME/.config}
 if [ -z "$TARGET" ]; then
     if [ -n "$VENV_ARG" ]; then
         TARGET=checkout
+    elif [ $UPDATE = 1 ]; then                      # the install there is, in the order --target lists them
+        for t in "checkout $REPO/.venv/bin/python" "user $DATA/kicad2ems/venv/bin/python" \
+                 "system ${SYSROOT}/opt/kicad2ems/venv/bin/python" "python $PY"; do
+            "${t#* }" -m pip show -q kicad2ems >/dev/null 2>&1 && { TARGET=${t%% *}; break; }
+        done
+        [ -n "$TARGET" ] || { echo "no kicad2ems install to update: run ./setup.sh"; exit 1; }
     elif [ $UNINSTALL = 1 ]; then
         echo "--uninstall needs --target (checkout, user, system or python)"; exit 2
     else
@@ -113,6 +127,102 @@ record() {  # a file or link this install made: removed again by --uninstall
     $SUDO mkdir -p "$(dirname "$RECORD")"
     echo "$1" | $SUDO tee -a "$RECORD" >/dev/null
 }
+
+pipi() { $SUDO "$VPY" -m pip install ${USERFLAG[@]+"${USERFLAG[@]}"} "$@"; }
+
+make_examples() {
+    # most examples' boards are not in the repository (rf_*, antenna_*, demo_*: .gitignore) but made by their
+    # generators (examples/make_*.py, which import kicad2ems): made here, next to their configs, and again on each
+    # run (a generator may have changed), so `kicad2ems examples/<name>.toml` works in this checkout
+    bold "Example boards (examples/make_boards.py)"
+    (cd "$REPO" && "$VPY" examples/make_boards.py --quiet) \
+        || note "WARNING: some example boards could not be made (above): python examples/make_boards.py tries again"
+}
+
+run_check() {
+    bold "Check"
+    K2E=$([ -n "$VENV" ] && echo "$VENV/bin/kicad2ems" || "$VPY" -c 'import site, os; print(os.path.join(site.getuserbase(), "bin", "kicad2ems"))')
+    (cd / && ${VENV:+env PATH="$VENV/bin:$PATH" VIRTUAL_ENV="$VENV"} "$K2E" --check) || true
+}
+
+core_dir() {    # the folder of an installed package with a compiled core; nothing if it isn't installed
+    (cd / && "$VPY" -c "import importlib.util as u, os; s = u.find_spec('$1'); print(os.path.dirname(s.origin) if s else '')" 2>/dev/null)
+}
+
+core_file() {   # the compiled core of the package in folder $1
+    echo "$1/_core$("$VPY" -c 'import sysconfig; print(sysconfig.get_config_var("EXT_SUFFIX"))')"
+}
+
+# ---- update: only the code, in an install that exists ---------------------------------------------------
+if [ $UPDATE = 1 ]; then
+    VPY=$([ -n "$VENV" ] && echo "$VENV/bin/python" || command -v "$PY")
+    if [ ! -x "$VPY" ] || ! "$VPY" -m pip show -q kicad2ems >/dev/null 2>&1; then
+        echo "no kicad2ems in the $TARGET install ($VPY): run ./setup.sh"; exit 1
+    fi
+    bold "Updating the $TARGET install ($VPY)"
+    had_core=()
+    for pkg in mom25d gfdtd; do
+        dir=$(core_dir $pkg)
+        [ -n "$dir" ] && [ -f "$(core_file "$dir")" ] && had_core+=("$pkg")
+    done
+    FAILED=0
+    # no deps: a requirement that is new shows in pip check below. Editable packages build without isolation: nothing
+    # to download, and it doesn't need the network
+    if [ $EDITABLE = 1 ]; then
+        note "kicad2ems: this checkout (editable)"
+        pipi -q --no-deps --no-build-isolation -e "$REPO" --config-settings editable_mode=compat || FAILED=1
+    else
+        note "kicad2ems: a copy of this checkout"
+        pipi -q --no-deps --force-reinstall "$REPO" || FAILED=1
+    fi
+    # the others as they were installed: a checkout stays that checkout, a URL is fetched again
+    while IFS=$'\t' read -r kind name spec; do
+        case $kind in
+            editable) note "$name: its checkout $spec (editable)"
+                      pipi -q --no-deps --no-build-isolation -e "$spec" --config-settings editable_mode=compat || FAILED=1 ;;
+            url)      note "$name: $spec"
+                      pipi -q --no-deps --force-reinstall "$name @ $spec" || FAILED=1 ;;
+            index)    note "$name: the package index"
+                      pipi -q --no-deps --upgrade "$name" || FAILED=1 ;;
+        esac
+    done < <(cd / && "$VPY" - <<'EOF'
+import importlib.metadata as md, json
+for name in ('emsdev', 'kicad2ems-gui', 'kicad2ems-fdtd', 'mom25d', 'gfdtd', 'dfsynth'):
+    try:
+        text = md.distribution(name).read_text('direct_url.json')
+    except md.PackageNotFoundError:
+        continue
+    d = json.loads(text) if text else {}
+    url = d.get('url', '')
+    if d.get('dir_info', {}).get('editable'):
+        print('editable', name, url.removeprefix('file://'), sep='\t')
+    elif 'vcs_info' in d:
+        rev = d['vcs_info'].get('requested_revision')
+        print('url', name, f"{d['vcs_info']['vcs']}+{url}" + (f"@{rev}" if rev else ''), sep='\t')
+    elif url:
+        print('url', name, url, sep='\t')
+    else:
+        print('index', name, '', sep='\t')
+EOF
+)
+    # a compiled core that was built is built again where its source is newer (a package installed anew is)
+    for pkg in ${had_core[@]+"${had_core[@]}"}; do
+        dir=$(core_dir $pkg)
+        so=$(core_file "$dir")
+        if [ ! -f "$so" ] || [ -n "$(find "$dir/core" -type f \( -name '*.cpp' -o -name '*.h' \) -newer "$so" 2>/dev/null)" ]; then
+            bold "Building $pkg's compiled core"
+            (cd / && $SUDO "$VPY" -m $pkg.core.build) || { note "WARNING: the core did not build: $pkg runs on NumPy"; FAILED=1; }
+        fi
+    done
+    bold "Requirements"
+    "$VPY" -m pip check | sed 's/^/  /' || note "above: what is missing or at the wrong version: ./setup.sh installs it"
+    make_examples
+    [ -d "$OEMS_PREFIX/lib" ] && export LD_LIBRARY_PATH="$OEMS_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    run_check
+    echo
+    [ $FAILED = 0 ] && echo "Updated." || { echo "Updated, with the failures above."; exit 1; }
+    exit 0
+fi
 
 # ---- uninstall ----------------------------------------------------------------------------------------
 if [ $UNINSTALL = 1 ]; then
@@ -210,7 +320,6 @@ if [ -n "$VENV" ]; then
 else
     VPY=$(command -v "$PY")
 fi
-pipi() { $SUDO "$VPY" -m pip install ${USERFLAG[@]+"${USERFLAG[@]}"} "$@"; }
 [ -n "$VENV" ] && pipi -q --upgrade pip setuptools wheel
 
 # ---- optional parts ---------------------------------------------------------------------------------
@@ -455,11 +564,12 @@ EOF
     fi
 fi
 
+# ---- the example boards -----------------------------------------------------------------------------
+make_examples
+
 # ---- what this install can run ----------------------------------------------------------------------
-bold "Check"
 [ $OEMS = built ] && export LD_LIBRARY_PATH="$OEMS_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-K2E=$([ -n "$VENV" ] && echo "$VENV/bin/kicad2ems" || "$VPY" -c 'import site, os; print(os.path.join(site.getuserbase(), "bin", "kicad2ems"))')
-(cd / && ${VENV:+env PATH="$VENV/bin:$PATH" VIRTUAL_ENV="$VENV"} "$K2E" --check) || true
+run_check
 [ -n "$CUPY" ] && "$VPY" -m emsdev | sed 's/^/  /' || true
 echo
 echo "Done ($TARGET install). Use it with:"

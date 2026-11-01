@@ -7,6 +7,8 @@ kicad2ems.api.frontend:
     examples()                  {name: config path} of every example, in this installed folder
     prepare_example(name, dest) the example in a folder of the user's (default: user_folder()): its config, and its
                                 board, copied or generated there; returns the config's path there
+    make_boards(folder)         every generated example board made in folder (default: this one; setup.sh runs it,
+                                through make_boards.py, so a checkout's configs run as they are)
 
 The installed folder may not be writable (a system install) and a run writes next to its config, so a front end
 opens an example from the folder prepare_example made.
@@ -76,3 +78,27 @@ def prepare_example(name, dest=None, log=None):
         subprocess.run([sys.executable, os.path.join(HERE, script), *before, os.path.join(dest, stem), *after],
                        check=True, cwd=dest, stdout=subprocess.DEVNULL)
     return cfg
+
+
+def make_boards(folder=HERE, names=None, log=print):
+    """Every example board that is not in the repository (rf_*, antenna_*, demo_*: .gitignore), made by its
+    generator in `folder` next to the configs, made again if there (a generator may have changed since). names:
+    only these examples. Returns the boards that failed, {board: the generator's last line of output}."""
+    boards = {}
+    for name, cfg in examples().items():
+        if names and name not in names:
+            continue
+        stem = board_of(cfg)[:-len('.kicad_pcb')]
+        if generator(stem) is not None:
+            boards.setdefault(stem, name)
+    failed = {}
+    for i, stem in enumerate(sorted(boards)):
+        script, before, after = generator(stem)
+        p = subprocess.run([sys.executable, os.path.join(HERE, script), *before, os.path.join(folder, stem), *after],
+                           cwd=folder, capture_output=True, text=True)
+        if p.returncode:
+            failed[stem + '.kicad_pcb'] = ((p.stderr or p.stdout).strip().splitlines() or ['?'])[-1]
+        if log:
+            log(f"  [{i + 1}/{len(boards)}] {stem}.kicad_pcb" + (f": FAILED ({failed[stem + '.kicad_pcb']})"
+                                                                if p.returncode else ''))
+    return failed
