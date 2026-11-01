@@ -75,10 +75,20 @@ def _footprint_pads(fp, nets, model, inside):
     return out
 
 
-def build(model, nets=None, refcu=None):
+def build(model, nets=None, refcu=None, field=False):
     """The line model of the nets the ports sit on (and the nets reached through series parts); `nets`: these
     nets instead (the KiCad plugin's impedance map of a board before it has ports), refcu: their reference
-    copper (RefCopper) when it is built once for several calls (every signal net excluded, not only these)."""
+    copper (RefCopper) when it is built once for several calls (every signal net excluded, not only these); field:
+    every section by the field solver on the board's cut across it (--lines-field), not the formulas."""
+    from . import reference
+    keep, reference.FIELD = reference.FIELD, bool(field) or reference.FIELD
+    try:
+        return _build(model, nets, refcu)
+    finally:
+        reference.FIELD = keep
+
+
+def _build(model, nets, refcu):
     pr = model.prims
     lm = LineModel()
     inside = model.outline.buffer(1e-6)

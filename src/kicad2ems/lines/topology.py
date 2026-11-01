@@ -4,8 +4,9 @@ branches off them as stubs), coupled lines (parallel sections within COUPLE_H h 
 their overlaps start and end) and discontinuities where sections meet (open end, corner, bend, step,
 tee, cross, gap).
 """
-import heapq, math
+import functools, heapq, math
 import numpy as np
+from ..constants import C0
 from .elements import Element
 
 
@@ -89,7 +90,10 @@ def _branch(lm, adj, j, start, on_path):
 # ---- coupled lines -------------------------------------------------------------------------------
 COUPLE_H = 5.0          # parallel lines couple when their edge gap is at most this many h (striplines: the mean of
 COUPLED_XS = ('microstrip', 'stripline', 'offset stripline')   # the heights to the two planes)
-_COPY = ('xs', 'z0', 'eeff', 'z0_sheet', 'eeff_sheet', 'er', 'h', 's', 't', 'tand', 'offset')
+FIELD_GROUPS = True     # coupled sections' C from the field solver, every line coupled to every other (False:
+                        # group_lc's nearest-neighbour pairs of the formulas)
+_COPY = ('xs', 'z0', 'eeff', 'z0_sheet', 'eeff_sheet', 'er', 'h', 's', 't', 'tand', 'offset', 'field', 'z0_formula',
+         'source', 'cut', 'classified')
 
 
 def _couple_h(e):
@@ -236,13 +240,71 @@ def _add_group(lm, chain, u, t0):
         wa, wb = members[k][0].w, members[k + 1][0].w
         ze, zo, ee, eo = coupled(e0.xs, 0.5 * (wa + wb), gap, e0.h, e0.er)
         g['pairs'].append(dict(gap=gap, ze=ze, zo=zo, eeff_e=ee, eeff_o=eo))
-        cp = Element('coupling', members[k][1], members[k + 1][1], 0.0, layer=e0.layer, w=gap, net=e0.net,
-                     label=f"coupled to the next line, gap {gap:.3g} mm",
+    from . import reference
+    if FIELD_GROUPS or reference.FIELD:
+        _field_group(g, [m[0].w for m in members], e0.t)
+    for k, p in enumerate(g['pairs']):
+        cp = Element('coupling', members[k][1], members[k + 1][1], 0.0, layer=e0.layer, w=p['gap'], net=e0.net,
+                     label=f"coupled to the next line, gap {p['gap']:.3g} mm",
                      pts=np.array([np.asarray(members[k][0].pts).mean(0), np.asarray(members[k + 1][0].pts).mean(0)]))
         cp.xs, cp.group = 'coupled', gid
-        cp.notes.append(f"Ze {ze:.1f} / Zo {zo:.1f} ohm over {e0.length:.2f} mm")
+        cp.notes.append(f"Ze {p['ze']:.1f} / Zo {p['zo']:.1f} ohm over {e0.length:.2f} mm")
         lm.elements.append(cp)
     lm.groups.append(g)
+
+
+def _pair_modes(C, Ca, k):
+    """(Ze, Zo, eeff_e, eeff_o) of lines k and k + 1 of N, the others held at ground (their mean self terms: a pair
+    of slightly unequal widths taken as symmetric)."""
+    c11, ca11 = 0.5 * (C[k, k] + C[k + 1, k + 1]), 0.5 * (Ca[k, k] + Ca[k + 1, k + 1])
+    out = []
+    for s in (1, -1):
+        c, ca = c11 + s * C[k, k + 1], ca11 + s * Ca[k, k + 1]
+        out.append((1 / (C0 * math.sqrt(c * ca)), c / ca))
+    (ze, ee), (zo, eo) = out
+    return ze, zo, ee, eo
+
+
+def _field_group(g, widths, t=0.0):
+    """The group's per-unit-length C and C_air (sheets, every line coupled to every other) from the field solver,
+    in place of group_lc's nearest-neighbour pairs (fastsolve.group_s uses them when present), and its pairs' even /
+    odd modes with the copper's thickness t (ze_sheet, zo_sheet: as sheets), in place of the zero-thickness
+    formulas'."""
+    h = g['h'] if g['xs'] == 'microstrip' else tuple(g['h'])
+    from .xsection import snap                               # similar sections: one solve (xsection.SIMILAR)
+    ws, gs = tuple(round(snap(w), 6) for w in widths), tuple(round(snap(s), 6) for s in g['gaps'])
+    flip = (ws[::-1], gs[::-1]) < (ws, gs)                   # a group and its mirror image: one solve
+    key = (g['xs'],) + ((ws[::-1], gs[::-1]) if flip else (ws, gs)) + (h, g['er'])
+    try:
+        C, Ca = _group_c(*key)
+        Ct, Cat = _group_c(*key, round(t, 6)) if t else (C, Ca)
+    except Exception:                                        # noqa: BLE001 (the formulas' pairs stay)
+        return
+    if flip:                                                 # the matrices of the lines in their own order
+        C, Ca, Ct, Cat = (M[::-1, ::-1] for M in (C, Ca, Ct, Cat))
+    g['C'], g['Ca'] = C.copy(), Ca.copy()
+    section = _group_section(g['xs'], ws, gs, h, g['er'], round(t, 6))
+    for k, (leg, *_) in enumerate(g.get('members', ())):
+        leg.coupled = dict(section=section, index=k)
+    for k, p in enumerate(g['pairs']):
+        p['ze_sheet'], p['zo_sheet'] = _pair_modes(C, Ca, k)[:2]
+        p['ze'], p['zo'], p['eeff_e'], p['eeff_o'] = _pair_modes(Ct, Cat, k)
+
+
+@functools.lru_cache(maxsize=1024)
+def _group_c(xs_name, widths, gaps, h, er, t=0.0):
+    """(C, C_air) of side-by-side strips t thick (sheets by default; a board's diff pairs are mostly the same few:
+    solved once each)."""
+    r = _group_section(xs_name, widths, gaps, h, er, t).solve()
+    return r.C, r.Ca
+
+
+def _group_section(xs_name, widths, gaps, h, er, t=0.0):
+    """The xsection.CrossSection of side-by-side strips."""
+    from . import xsection as X
+    if xs_name == 'microstrip':
+        return X.microstrip(list(widths), h, er, t, gap=list(gaps))
+    return X.stripline(list(widths), h[0], h[1], er, t, gap=list(gaps))
 
 
 # ---- discontinuities -----------------------------------------------------------------------------

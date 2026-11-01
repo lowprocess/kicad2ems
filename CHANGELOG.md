@@ -9,6 +9,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- The line model's 2D field solver, `kicad2ems.lines.xsection` (docs/transmission-lines.md#field-solver): the
+  capacitance matrices, Z0, εeff, even / odd modes and dielectric loss of any cross-section of rectangular
+  conductors over planes in layered dielectrics (solder mask, coplanar ground beside striplines, copper
+  thickness on coupled lines), within 0.5 % of the exact and closed-form results.
+- The GUI's **Section** view (docs/gui.md#section): the field across any line-model section, solved when it is
+  picked: strength or potential, equipotentials, arrows, the copper, the dielectrics, the mesh, a pair's odd and even
+  modes, and its impedance beside the line model's. `kicad2ems.api.frontend.sections`, `xsection.field`,
+  `CrossSection.to_dict`; each section of `<name>_lines.json` says where its Z0 came from (`source`, `z0_formula`,
+  in the viewer's list and in its description) and holds its cross-sections (`section`). API 2.2.
+- `build_lines(..., field=True)`, the KiCad plugin's *Every section by the field solver*.
+- `tools/lines_crop_check.py`: a cropped trace's total C and L, openEMS against the line model.
+- `tools/xsection_figures.py`: the field solver at work (a pair's mesh and fields, the cases the formulas leave
+  out, convergence, the cache's bins, a five-line section's coupling, a cut across a real board).
+  `tools/xsection_study.py`: its accuracy and time, on references and on every cross-section of a board.
+  `tools/lines_vs_openems.py`: the line model against openEMS, by scikit-rf and qucsator, in each mode.
+  `tools/cm5_line_model.py`: build times and the sections that move most on a real board.
+  `tools/xsection_fullwave.py`: copper thickness on a pair by 3D FDTD, against the field solver.
+- `xsection.potential`: the potential on the solver's grid, to draw the field.
+- `--lines-field`: the line model on the field solver (docs/transmission-lines.md#lines-field): every section's
+  cross-section from the board's copper cut across it (plane edges beside a trace, partial references, ground on
+  one side, coplanar ground beside striplines). The examples with openEMS references are unchanged; on the CM5
+  Minima demo board's HDMI pairs, the single-ended Z0 moves by at most 2.7 %.
 - `setup.sh --update`: only kicad2ems and its stack in an existing install, without asking; openEMS, qucsator, the GPU
   wheel and other dependencies stay as they are (docs/getting-started.md).
 - `setup.sh` makes every generated example board (rf_*, antenna_*, demo_*: 49 boards, a few seconds) in
@@ -18,7 +40,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - mom25d: `solver='hodlr'`, a hierarchical direct solver (experimental): 3–4× less memory than the dense LU at
   the same accuracy, not faster below ~30k unknowns (ROADMAP.md item 6).
 
+### Fixed
+- The field solver's cache moved copper too far: bins grew without limit away from a strip, so an edge a few heights
+  off snapped hundreds of mm (a third of the CM5 Minima's cuts), and on wide traces reversed a conductor, the section
+  falling back to the formula (27 of them). No bin is wider than one reference height now (`reference.BIN_MAX`).
+- `formulas.cpwg` on wide strips: past w / h = 24 tanh rounded to 1 and Z0 came out 1e-16 ohm (a 3 mm trace on 0.1 mm:
+  now 5.5 ohm), the CM5 Minima's wide traces among them. Narrower strips are unchanged.
+
 ### Changed
+- The line model's coupled sections come from the field solver (docs/transmission-lines.md#coupled): every line
+  coupled to every other (rf_interdig's |S21| against openEMS: 51.2 → 8.5 dB rms, its stop bands), and the pairs'
+  even / odd impedances with the copper's thickness (`ze`, `zo`; `ze_sheet`, `zo_sheet` as sheets). The CM5
+  Minima demo board's HDMI pairs: 117.8 → 104.8 Ω differential (100 Ω class); by 3D FDTD, thickness takes 7–14 % off
+  `rf_diffvia`'s pairs against the solver's 8–16 %. `topology.FIELD_GROUPS = False` keeps the formulas. Building the
+  line model of every net of a large board takes longer (the CM5 Minima's 94 nets: 6.4 → 13 s, with grounded CPW
+  below). A board whose pairs were designed with zero-thickness formulas now reads low: `rf_diffvia`'s 100 Ω pair
+  is 92 and 84 Ω, which is what a map against a net class's target shows.
+- The field solver works on a mesh of rectangles (docs/transmission-lines.md#field-solver), mom25d's methods in 2D:
+  cells growing from the copper's corners, hanging nodes reduced out. On all 2,200 cross-sections of the CM5 Minima's
+  94 nets: 4x faster than the tensor grid it replaces, and closer to a converged solve (worst 0.54 → 0.31 %, median
+  0.22 → 0.04 %). The grid stays as a check (`xsection.MESH = False`).
+- Grounded CPW sections come from the field solver (`reference.FIELD_CPW`): the formula has no copper thickness
+  (35 µm beside 0.15 mm gaps: 10–12 % lower Z0). Field-solved microstrip and CPW sections reach the circuit
+  solvers as lines of their own Z0 where it is more than 2 % from the formula's (`Element.field`); scikit-rf's and
+  qucsator's own models, with dispersion, otherwise. With `--lines-field`, the CM5 Minima's planes with via
+  clearances now reach the S-parameters, not only the reported impedances.
+- Similar cross-sections share a field solve (docs/transmission-lines.md#similar): mirror images are one, widths
+  and gaps snap to 1 % steps, and a cut's copper to bins that widen away from the strip (each worth 0.1–0.2 % of
+  Z0, none wider than one height). The CM5 Minima's HDMI nets with `--lines-field`: 254 → 158 solves, within 0.33 %
+  of solving each.
 - mom25d by default models solid planes (one piece over the board, no holes, ground nets) as PEC, the ground or a
   cover over the stack, not meshed, and leaves out lone stitching-via pads (a ground via's pad with nothing else
   on its layer; not a part's or a port's), the via kept (docs/mom.md#planes). Of the 52 examples 7 change, all

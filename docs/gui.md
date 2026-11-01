@@ -81,14 +81,35 @@ Each run writes `gui_run.toml` into its folder, so you can repeat it from a term
 <a id="viewer"></a>
 ## The Viewer
 
-Everything about the board and its fields, in four views. A view the folder has nothing for is greyed out.
+Everything about the board and its fields, in five views. A view the folder has nothing for is greyed out.
 
 | View | Shows |
 |---|---|
 | 3D | the board with its copper as shaded slabs, a solver's mesh, the line model, dumps in place, the far field |
 | Plan | the board from above: one layer's copper (the others faint), a solver's mesh on it, the ports, the line model |
 | Cut | a cut through a field dump, with its values ([below](#fields)) |
+| Section | the field across the line-model section picked ([below](#section)) |
 | Images | the plots a run wrote: openEMS's mesh with its side views, the model, the line model |
+
+<a id="section"></a>
+### Section: the field across a trace
+
+Pick a section in the list, or on the plan, and open **Section**: the [field solver](transmission-lines.md#field-solver)
+solves that one cross-section, in about 0.1 s (2 s at worst on a real board), and draws it. No run is needed: a preview's line model
+is enough.
+
+| Setting | What it does |
+|---|---|
+| View | what is solved: the board's copper across the trace (every layer's, up to the plane that closes it), a grounded CPW as it was classified (the strip, its gaps, the plane), or, on a coupled section, the pair in its odd or even mode, or this line alone |
+| Colour | the field's strength (log scale, at 1 V; the copper's corners saturate) or the potential |
+| equipotentials, arrows, mesh | lines of equal potential, the field's direction (every arrow the same length), the solver's cells |
+
+Under the plot: the impedance of what is shown, the line model's own Z0, and where that came from. The two can differ,
+and that is the point of the view: a trace the formula takes as stripline can show ground beside it, or a plane
+with a hole under it. The field is drawn on a mesh four times as finely graded as the one the numbers come from, and sampled
+again as you zoom. It is the quasi-static field: no dispersion and no current crowding.
+
+The section list's *by* column says where each Z0 came from: the formula, or the field solver.
 
 <a id="line-model"></a>
 ### The line model over the board

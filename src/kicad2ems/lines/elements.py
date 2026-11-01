@@ -26,6 +26,12 @@ class Element:
         self.part = kw.get('part')                  # parts.Part for 'part'
         self.xs, self.z0, self.eeff, self.er, self.h, self.s, self.t = 'no reference', None, None, None, None, None, 0.0
         self.z0_sheet = self.eeff_sheet = None      # zero-thickness copper (openEMS sheets)
+        self.field = False                          # Z0 and eeff from the field solver (reference._field)
+        self.z0_formula = None                      # the formula's Z0, whatever z0 ended up as
+        self.source = None                          # where z0 came from: 'formula', 'cut', 'cpwg' (reference._take)
+        self.cut = None                             # the board's copper across it (reference._cut_section's arguments)
+        self.classified = None                      # the xsection.CrossSection a grounded CPW's z0 was solved on
+        self.coupled = None                         # a coupled leg: dict(section=its group's CrossSection, index=its line)
         self.tand, self.L = 0.0, None               # dielectric loss, via inductance (H) when no antipad
         self.offset = 0.0                           # centre of a widened trace's copper off its centre line (mm)
         self.group = None                           # index into LineModel.groups for a coupled line
@@ -94,6 +100,7 @@ class LineModel:
                                  z=rnd(cu_z.get(e.layer)), w=rnd(e.w), xs=e.xs, z0=rnd(e.z0), eeff=rnd(e.eeff),
                                  length=rnd(e.length), delay_ps=rnd(r['delay_ps']), group=e.group,
                                  zdiff=rnd(getattr(e, 'zdiff', None)), outline=_outline(e),
+                                 z0_formula=rnd(e.z0_formula), source=e.source, section=_section(e),
                                  value=r['value'], notes=list(e.notes),
                                  pts=[[round(float(x), 5), round(float(y), 5)] for x, y in pts]))
         paths = [dict(port=p, to=q, ids=[index[id(e)] for e, _, _ in secs if id(e) in index])
@@ -101,6 +108,19 @@ class LineModel:
         z0s = [e['z0'] for e in elements if e['z0']]
         return dict(format='kicad2ems-lines', version=1, elements=elements, paths=paths,
                     port_z0=dict(self.port_z0), z0_range=[min(z0s), max(z0s)] if z0s else None)
+
+
+def _section(e):
+    """What lines.sections needs to solve and draw this section's field, as plain numbers, or None (vias, parts)."""
+    from .reference import _cut_section
+    d = {}
+    if e.cut is not None:
+        d['cut'] = _cut_section(*e.cut).to_dict()
+    if e.classified is not None:
+        d['classified'] = e.classified.to_dict()
+    if e.coupled is not None:
+        d['coupled'] = dict(section=e.coupled['section'].to_dict(), index=e.coupled['index'])
+    return d or None
 
 
 def _outline(e):

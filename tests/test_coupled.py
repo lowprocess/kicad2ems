@@ -52,8 +52,8 @@ def test_differential_via_couples_both_halves():
     lm = build(Board(KiCadBoard(os.path.join(EX, 'rf_diffvia.kicad_pcb')), ground='B.Cu', log=lambda *a: None))
     xs = {g['layer']: g['xs'] for g in lm.groups}
     assert xs == {'F.Cu': 'microstrip', 'In2.Cu': 'stripline'}
-    zo = [p['zo'] for g in lm.groups if g['xs'] == 'stripline' for p in g['pairs']]
-    assert zo and all(abs(z - 50) < 1 for z in zo)
+    zo = [p.get('zo_sheet', p['zo']) for g in lm.groups if g['xs'] == 'stripline' for p in g['pairs']]
+    assert zo and all(abs(z - 50) < 1 for z in zo)                          # designed as sheets, as openEMS has it
 
 
 def test_mtl_single_line_and_block_properties():
