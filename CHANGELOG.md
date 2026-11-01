@@ -31,6 +31,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cross-section from the board's copper cut across it (plane edges beside a trace, partial references, ground on
   one side, coplanar ground beside striplines). The examples with openEMS references are unchanged; on the CM5
   Minima demo board's HDMI pairs, the single-ended Z0 moves by at most 2.7 %.
+- `setup.sh --update`: only kicad2ems and its stack in an existing install, without asking; openEMS, qucsator, the GPU
+  wheel and other dependencies stay as they are (docs/getting-started.md).
+- `setup.sh` makes every generated example board (rf_*, antenna_*, demo_*: 49 boards, a few seconds) in
+  `examples/` on each run, so `kicad2ems examples/<name>.toml` works straight after it; `python
+  examples/make_boards.py [NAME ...]` makes them again (`kicad2ems.examples.make_boards`).
 - mom25d: `--mom-planes pec|mesh` and `--mom-stitching-pads drop|keep` (both the first by default: below).
 - mom25d: `solver='hodlr'`, a hierarchical direct solver (experimental): 3–4× less memory than the dense LU at
   the same accuracy, not faster below ~30k unknowns (ROADMAP.md item 6).

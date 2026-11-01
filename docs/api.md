@@ -28,7 +28,7 @@ in it. A user takes a provider of the same major version and at least the minor 
   and `kicad2ems --check` lists it as broken with what to update (`kicad2ems.api.compatible(api)` gives the
   reason). A plugin that declares none counts as 1.0.
 - **Front ends** need a kicad2ems of the minor version they use; their `pyproject.toml` asks for the release
-  (kicad2ems-gui: `kicad2ems>=261028.post1`, API 2.1).
+  (kicad2ems-gui: `kicad2ems>=261101.post1`, API 2.2).
 - 2.0 took the FDTD layer out of `api.solver` (it is in kicad2ems-fdtd). 2.1 added the examples and the checked
   file readers to `api.frontend`, and `ETA0`, `MU0` to `api.solver`.
 

@@ -107,6 +107,30 @@ def test_examples_prepared(tmp_path):
     assert os.path.dirname(s.board) == str(tmp_path)
 
 
+def test_example_boards_made_in_a_folder(tmp_path, monkeypatch):
+    """make_boards (setup.sh, through examples/make_boards.py): each generated board made in the folder, those in
+    the repository left alone; a generator that fails is reported, the others still made."""
+    import kicad2ems.examples as ex
+    assert ex.make_boards(str(tmp_path), names=['demo_lowpass', 'rf_gcpw', 'hairpin'], log=None) == {}
+    assert {p.name for p in tmp_path.glob('*.kicad_pcb')} == {'demo_lowpass.kicad_pcb', 'rf_gcpw.kicad_pcb'}
+    real = ex.generator
+    monkeypatch.setattr(ex, 'generator', lambda stem: ('no_such_generator.py', [], []) if stem == 'rf_gcpw'
+                        else real(stem))
+    failed = ex.make_boards(str(tmp_path), names=['rf_gcpw', 'antenna_patch'], log=None)
+    assert list(failed) == ['rf_gcpw.kicad_pcb'] and (tmp_path / 'antenna_patch.kicad_pcb').exists()
+
+
+def test_setup_update_needs_an_install(tmp_path):
+    """setup.sh --update: nothing to update says so, before anything is installed; it takes no solver choices."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    run = lambda *a: subprocess.run(['bash', os.path.join(root, 'setup.sh'), *a], capture_output=True, text=True)
+    r = run('--update', '--venv', str(tmp_path / 'none'))
+    assert r.returncode == 1 and 'run ./setup.sh' in r.stdout and not (tmp_path / 'none').exists()
+    for other in (['--uninstall'], ['--openems', 'build'], ['--qucsator', 'none']):
+        r = run('--update', '--target', 'user', *other)
+        assert r.returncode == 2 and '--update' in r.stdout
+
+
 def test_every_api_name_is_documented():
     """docs/api.md names every name of api.solver and api.frontend, and each class and function has a docstring:
     a name added to the API without its documentation fails here."""
