@@ -9,7 +9,7 @@ lists every module, class and function.
 
 | Interface | Provided by | Used by | Version |
 |---|---|---|---|
-| [`kicad2ems.api.solver`](#kicad2emsapisolver) | kicad2ems | kicad2ems-fdtd, mom25d | `kicad2ems.api.API_VERSION` (2, 1) |
+| [`kicad2ems.api.solver`](#kicad2emsapisolver) | kicad2ems | kicad2ems-fdtd, mom25d | `kicad2ems.api.API_VERSION` (2, 2) |
 | [`kicad2ems.api.frontend`](#kicad2emsapifrontend) | kicad2ems | kicad2ems-gui, kicad2ems-ipc, dfsynth | the same |
 | [The `kicad2ems.solvers` entry point](#solver-plugins) | each solver package | kicad2ems | the plugin's `api` |
 | [The command line and its files](#files) | kicad2ems | kicad2ems-gui, kicad2ems-ipc, dfsynth | `format_version` in each file |
@@ -105,7 +105,7 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 | Group | Names |
 |---|---|
 | boards | `KiCadBoard` (a `.kicad_pcb`, or KiCad's board text), `Board` (the canonical model), `kind_value` (a footprint's lumped part), `extra_port_fps` (the footprints a region adds as ports) |
-| the line model | `build_lines` (Board → LineModel), `RefCopper` (its reference copper), `overlay` (the module: the line model drawn on the board) |
+| the line model | `build_lines` (Board → LineModel; `field=True`: every section by the field solver), `RefCopper` (its reference copper), `overlay` (the module: the line model drawn on the board), `sections` (the module: one section's field: `modes`, `solve`) |
 | settings | `Settings`, `build_settings`, `read_toml`, `all_options`, `default_out`, `PATH_KEYS`, `sitecfg` (the module), `G_DUMP` |
 | solvers | `registry`, `get_solver`, `resolve_lines`, `AUTO`, `LINES` |
 | runs | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml` |

@@ -7,7 +7,7 @@ results (the GUI, the KiCad plugin, dfsynth's --validate).
   boards              KiCadBoard (a .kicad_pcb, or KiCad's board text), Board (the canonical model), kind_value
                       (a footprint's lumped part), extra_port_fps (the footprints a region adds as ports)
   the line model      build_lines (Board -> LineModel), RefCopper (its reference copper, built once), overlay (the
-                      module: the line model drawn on the board)
+                      module: the line model drawn on the board), sections (the module: one section's field)
   settings            Settings, build_settings, read_toml, all_options, default_out, PATH_KEYS, sitecfg (the
                       module: the user's settings file), G_DUMP (the field-dump settings group)
   solvers             registry, get_solver, resolve_lines, AUTO, LINES
@@ -27,6 +27,7 @@ NAMES = dict(
     KiCadBoard='.importers.kicad:KiCadBoard', Board='.board:Board', kind_value='.parts:kind_value',
     extra_port_fps='.region:extra_port_fps',
     build_lines='.lines.builder:build', RefCopper='.lines.reference:RefCopper', overlay='.overlay',
+    sections='.lines.sections',
     Settings='.config:Settings', build_settings='.config:build_settings', read_toml='.config:read_toml',
     all_options='.config:all_options', default_out='.config:default_out', PATH_KEYS='.config:PATH_KEYS',
     sitecfg='.sitecfg', G_DUMP='.fields.dumps:G_DUMP',

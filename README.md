@@ -45,7 +45,8 @@ and the region and ports the plugin set up around it.*
 </p>
 
 *Left: the impedance map of the board's 94 signal nets filling in, in real time. Middle: the HDMI pairs against their
-100 ohm class; the section read out at the bottom is 117.8 ohm differential (+18 %). Right: the D0 pair's
+100 ohm class; the section read out at the bottom is 117.8 ohm differential (+18 %), the zero-thickness formula
+this picture was taken with: with the copper's thickness the line model now gives 104.8 ohm (+5 %). Right: the D0 pair's
 mixed-mode S-parameters from gfdtd (solid) and the line model (dashed), with the largest differences.*
 
 <p align="center">

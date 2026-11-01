@@ -121,13 +121,26 @@ def nearest(elements, x, y, tol, layer=None):
     return bid
 
 
+SOURCES = dict(cut="field solver, the board's cut", cpwg='field solver, grounded CPW', formula='formula')
+
+
+def source_note(e):
+    """Where a section's Z0 came from, as text after the value: ' (formula)', ' (field solver, the board's cut;
+    formula 48.2 Ω)'; '' for one that doesn't say."""
+    s = SOURCES.get(e.get('source'))
+    if not s:
+        return ''
+    other = e.get('z0_formula')
+    return f" ({s}; formula {other:.1f} Ω)" if e['source'] != 'formula' and other else f" ({s})"
+
+
 def describe(e):
     """One line about a section: what it is, Z0, eeff, length and delay."""
     parts = [e.get('label') or e.get('kind', '')]
     if e.get('value'):
         parts.append(str(e['value']))
     if e.get('z0'):
-        parts.append(f"Z0 {e['z0']:.1f} Ω")
+        parts.append(f"Z0 {e['z0']:.1f} Ω{source_note(e)}")
     if e.get('netclass') is not None:
         if e.get('target'):
             v, t, what = against_target(e)

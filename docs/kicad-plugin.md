@@ -30,6 +30,9 @@ stable, or change kicad2ems-ipc with them.
 A coupled section's pairs (`LineModel.groups[...]['pairs']`) give their even- and odd-mode impedances with the
 copper's thickness (`ze`, `zo`), from the [field solver](transmission-lines.md#coupled), and as sheets
 (`ze_sheet`, `zo_sheet`); grounded CPW sections too (`lines.reference.FIELD_CPW`). Each distinct one takes
-0.02–0.5 s to solve, once per process (the CM5 Minima's 94 nets: 60 s, against 10 s with the formulas): a plugin
+about 20 ms to solve, up to 0.2 s, once per process (the CM5 Minima's 94 nets: 13 s, against 6.4 s with the formulas): a plugin
 that builds the line model of every net can set `lines.topology.FIELD_GROUPS = False` and
-`lines.reference.FIELD_CPW = False` for a first look from the formulas.
+`lines.reference.FIELD_CPW = False` for a first look from the formulas. `build_lines(..., field=True)` takes every
+section from the board's cut across it, as the map's *Every section by the field solver* does. Each drawing element says
+where its Z0 came from (`source`, `z0_formula`) and carries its cross-sections (`section`), which `sections.solve` and
+kicad2ems-gui's `SectionView` draw.

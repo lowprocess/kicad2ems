@@ -92,7 +92,8 @@ COUPLE_H = 5.0          # parallel lines couple when their edge gap is at most t
 COUPLED_XS = ('microstrip', 'stripline', 'offset stripline')   # the heights to the two planes)
 FIELD_GROUPS = True     # coupled sections' C from the field solver, every line coupled to every other (False:
                         # group_lc's nearest-neighbour pairs of the formulas)
-_COPY = ('xs', 'z0', 'eeff', 'z0_sheet', 'eeff_sheet', 'er', 'h', 's', 't', 'tand', 'offset', 'field')
+_COPY = ('xs', 'z0', 'eeff', 'z0_sheet', 'eeff_sheet', 'er', 'h', 's', 't', 'tand', 'offset', 'field', 'z0_formula',
+         'source', 'cut', 'classified')
 
 
 def _couple_h(e):
@@ -282,6 +283,9 @@ def _field_group(g, widths, t=0.0):
     if flip:                                                 # the matrices of the lines in their own order
         C, Ca, Ct, Cat = (M[::-1, ::-1] for M in (C, Ca, Ct, Cat))
     g['C'], g['Ca'] = C.copy(), Ca.copy()
+    section = _group_section(g['xs'], ws, gs, h, g['er'], round(t, 6))
+    for k, (leg, *_) in enumerate(g.get('members', ())):
+        leg.coupled = dict(section=section, index=k)
     for k, p in enumerate(g['pairs']):
         p['ze_sheet'], p['zo_sheet'] = _pair_modes(C, Ca, k)[:2]
         p['ze'], p['zo'], p['eeff_e'], p['eeff_o'] = _pair_modes(Ct, Cat, k)
@@ -291,13 +295,16 @@ def _field_group(g, widths, t=0.0):
 def _group_c(xs_name, widths, gaps, h, er, t=0.0):
     """(C, C_air) of side-by-side strips t thick (sheets by default; a board's diff pairs are mostly the same few:
     solved once each)."""
+    r = _group_section(xs_name, widths, gaps, h, er, t).solve()
+    return r.C, r.Ca
+
+
+def _group_section(xs_name, widths, gaps, h, er, t=0.0):
+    """The xsection.CrossSection of side-by-side strips."""
     from . import xsection as X
     if xs_name == 'microstrip':
-        xs = X.microstrip(list(widths), h, er, t, gap=list(gaps))
-    else:
-        xs = X.stripline(list(widths), h[0], h[1], er, t, gap=list(gaps))
-    r = xs.solve()
-    return r.C, r.Ca
+        return X.microstrip(list(widths), h, er, t, gap=list(gaps))
+    return X.stripline(list(widths), h[0], h[1], er, t, gap=list(gaps))
 
 
 # ---- discontinuities -----------------------------------------------------------------------------

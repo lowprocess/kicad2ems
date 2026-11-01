@@ -11,9 +11,10 @@ from ..constants import ETA0, MU0                                   # noqa: F401
 
 
 # ---- closed-form line impedances -------------------------------------------------------------------
-def ellipk(k):
-    """Complete elliptic integral of the first kind K(k), modulus k in [0, 1) (arithmetic-geometric mean)."""
-    a, b = 1.0, math.sqrt(max(1.0 - k * k, 0.0))
+def ellipk(k, kp=None):
+    """Complete elliptic integral of the first kind K(k), modulus k in [0, 1) (arithmetic-geometric mean); kp: the
+    complementary modulus, sqrt(1 - k^2), where it is known better than k is (k rounding to 1)."""
+    a, b = 1.0, math.sqrt(max(1.0 - k * k, 0.0)) if kp is None else kp
     for _ in range(60):
         if abs(a - b) <= 1e-15 * a:
             break
@@ -76,11 +77,15 @@ def offset_stripline(w, h1, h2, er, t=0.0):
 def cpwg(w, s, h, er):
     """(Z0, eeff) of a grounded (conductor-backed) coplanar waveguide: strip w, gaps s, substrate h."""
     k = w / (w + 2 * s)
-    k3 = math.tanh(math.pi * w / (4 * h)) / math.tanh(math.pi * (w + 2 * s) / (4 * h))
-    kp, k3p = math.sqrt(1 - k * k), math.sqrt(1 - k3 * k3)
-    q = ellipk(kp) * ellipk(k3) / (ellipk(k) * ellipk(k3p))
+    kp = math.sqrt(1 - k * k)
+    a = min(math.pi * w / (4 * h), 300.0)                # past w / h = 24 tanh rounds to 1: k3p from sech^2 = 1 - tanh^2
+    c = a + math.pi * s / (2 * h)
+    sech2 = lambda u: 0.0 if u > 300 else 1 / math.cosh(u) ** 2
+    k3, k3p = math.tanh(a) / math.tanh(c), math.sqrt(sech2(a) - sech2(c)) / math.tanh(c)
+    K3 = ellipk(k3, k3p)
+    q = ellipk(kp) * K3 / (ellipk(k) * ellipk(k3p))
     ee = (1 + er * q) / (1 + q)
-    return 60 * math.pi / math.sqrt(ee) / (ellipk(k) / ellipk(kp) + ellipk(k3) / ellipk(k3p)), ee
+    return 60 * math.pi / math.sqrt(ee) / (ellipk(k) / ellipk(kp) + K3 / ellipk(k3p)), ee
 
 
 def coax(d, D, er):

@@ -314,12 +314,7 @@ class Job:
 
     def _lines(self):
         from .lines.builder import build
-        from .lines import reference
-        field, reference.FIELD = reference.FIELD, bool(getattr(self.s, 'lines_field', False)) or reference.FIELD
-        try:
-            self.lm = build(self.m)
-        finally:
-            reference.FIELD = field
+        self.lm = build(self.m, field=getattr(self.s, 'lines_field', False))
         if not self.lm.paths:
             self.log("transmission lines: no routed path from the ports" +
                      (f" ({'; '.join(self.lm.notes)})" if self.lm.notes else ''))

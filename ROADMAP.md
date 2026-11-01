@@ -2,7 +2,31 @@
 
 What is worth doing next, in priority order. Each item comes from something the examples or benchmarks
 showed. Finished items leave this file; what was done is in CHANGELOG.md, and the decisions not to do
-something are under its *Decided* headings. Last updated 2026-10-29.
+something are under its *Decided* headings. Last updated 2026-11-01.
+
+## The line model's field solver
+
+The mesh made it fast enough for a whole board (the CM5 Minima's 94 nets: 13 s, 71 s with `--lines-field`). What's
+left, in order:
+
+1. **Take the sections the formulas get wrong from the board's cut, by default.** On the CM5 Minima (1,089 mm of
+   single-ended trace, every signal net), 763 mm is within 3 % of its cut, 277 mm is 3-10 % off and 48 mm over 10 %. The
+   largest piece is ground beside a stripline, which the offset-stripline formula ignores: `PCIE_PI.nRST`, 10.7 mm on
+   In2.Cu with ground 0.2 mm beside it, is 71.9 Ω by formula and 58.8 Ω by its cut. openEMS on that trace cropped gives
+   a total C of 1.07 pF, the cut 1.05 pF and the formula 0.89 pF (`tools/lines_crop_check.py`; one trace, 0.05 mm cells,
+   L not separable from the ports'). Short sections over via clearances are the extreme ones (SDA, 0.24 mm: 90.7 Ω by
+   formula, 78.6 Ω by default, 63.1 Ω by its cut), but too short to matter much. `--lines-field` costs 70 s for this
+   board against 13 s; a test that sends only the sections with copper close beside them to the solver would cost less.
+2. **Stack-up impedance calculator.** Width, gap, stack and copper in, Z0, Zdiff and εeff out, with the field drawn:
+   the field solver and the [Section view](docs/gui.md#section) without a board, in the GUI and on the command line
+   (`CrossSection`, `xsection.field` and `SectionView` are all there). Solving for the width that hits a target needs
+   a root search around `solve()`; the 1 % snapping (`xsection.SIMILAR`) doesn't apply.
+3. **The mesh's remaining cost: key lines.** Every copper edge and mask step runs across the whole box as a key line, so
+   a thin column of cells runs the box's full height. That is what keeps the sides nested. Merging cells away from
+   the corners would break it, and needs constraints for sides that overlap without nesting.
+4. **Boundary elements with a layered Green's function**, for the largest cuts: 300–2,000 unknowns and no box.
+   `mom25d/multilayer.py` has the stack but a dynamic spectral kernel; the static 2D one needs deriving. Worth it only
+   if the mesh's 0.2 s at worst becomes the limit.
 
 ## mom25d on multi-layer boards
 

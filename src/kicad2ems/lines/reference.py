@@ -172,8 +172,10 @@ def classify(model, ref, e, pt, d):
                 e.xs, calc = 'microstrip', lambda tt: microstrip(w, h, er, tt)
     e.z0, e.eeff = calc(t)                                   # the real copper thickness
     e.z0_sheet, e.eeff_sheet = calc(0.0)                     # zero thickness, as openEMS models copper
+    e.z0_formula, e.source = e.z0, 'formula'
+    e.cut = _cut_args(model, ref, e, pt, n, found)           # 1 s for a board's 2,500: kept for looking at the field
     if FIELD:
-        _field(model, ref, e, pt, n, found)
+        _field(e)
     elif FIELD_CPW and e.xs == 'cpwg':
         _field_cpwg(e)
 
@@ -186,6 +188,7 @@ FIELD_DIFFERS = 0.02    # a field-solved section is a line of its own Z0 in the 
                         # its sheet Z0 is this far from the formula's; else their own models (with dispersion) stay
 FIELD_REACH = 5.0       # x the farthest reference height: how far either side of the strip the cut takes copper
 SNAP = 0.002            # mm: copper closer than this along a cut is one piece; pieces shorter are dropped
+BIN_MAX = 1.0           # reference heights: the widest of _snap_distance's bins
 
 
 def cut(ref, pt, n, R):
@@ -218,10 +221,9 @@ def cut(ref, pt, n, R):
     return out
 
 
-def _field(model, ref, e, pt, n, found):
-    """Z0 and eeff of a section (with its copper's thickness and as a sheet) from the field solver, on the copper
-    the cut across it finds: every layer's, out to FIELD_REACH reference heights either side, up to the nearest
-    plane that spans the cut on either side. The formulas' values are kept where the solve fails."""
+def _cut_args(model, ref, e, pt, n, found):
+    """_cut_section's arguments for a section: the copper a cut across it finds, every layer's, out to FIELD_REACH
+    reference heights either side, up to the nearest plane that spans the cut on either side."""
     from . import xsection as X
     R = e.w / 2 + max(3 * e.w, FIELD_REACH * max(h for _, h, _ in found.values()))
     pieces = cut(ref, pt, n, R)
@@ -237,31 +239,45 @@ def _field(model, ref, e, pt, n, found):
             return u
         d = u - (e.w if u >= 0 else -e.w) / 2
         return round((w if u >= 0 else -w) / 2 + math.copysign(_snap_distance(abs(d) / h0, X.SIMILAR) * h0, d), 6)
+
+    def snapped(ps):
+        """The pieces with their ends snapped; as they are if that would disorder them (ends snapped across the middle
+        of a wide strip, from either side)."""
+        got = tuple((at(a), at(b)) for a, b in ps)
+        ends = [v for piece in got for v in piece]
+        return got if all(p < q for p, q in zip(ends, ends[1:])) else tuple((round(a, 6), round(b, 6)) for a, b in ps)
     layers = []
     for side in ('below', 'above'):
         order = sorted((l for l in pieces if l != e.layer and (model.cu_z[l] < zs) == (side == 'below')),
                        key=lambda l: abs(model.cu_z[l] - zs))
         for l in order:
             full = pieces[l] == [(-math.inf, math.inf)]
-            layers.append((round(model.cu_z[l], 6), full, tuple((at(a), at(b)) for a, b in pieces[l])))
+            layers.append((round(model.cu_z[l], 6), full, snapped(pieces[l])))
             if full:
                 break                                        # nothing beyond a plane across the whole cut counts
     diel = tuple((round(l['z0'], 6), round(l['z1'], 6), l['er'], l['tand']) for l in model.layers)
-    side = tuple((at(a), at(b)) for a, b in pieces.get(e.layer, ()) if b < -e.w / 2 or a > e.w / 2)
+    side = snapped([(a, b) for a, b in pieces.get(e.layer, ()) if b < -e.w / 2 or a > e.w / 2])
+    return round(w, 6), round(zs, 6), round(model.cu_t.get(e.layer, 0.0), 6), up, side, tuple(layers), diel
+
+
+def _field(e):
+    """Z0 and eeff of a section (with its copper's thickness and as a sheet) from the field solver, on its cut. The
+    formulas' values are kept where the solve fails."""
+    w, zs, t, up, side, layers, diel = e.cut
     flip = lambda ps: tuple(sorted((-b, -a) for a, b in ps))
     mirror = (flip(side), tuple((z, full, flip(ps)) for z, full, ps in layers))
-    side, layers = min((side, tuple(layers)), mirror)        # a cut and its mirror image: one solve
+    side, layers = min((side, layers), mirror)               # a cut and its mirror image: one solve
     try:
-        got = [_solve_cut(round(w, 6), round(zs, 6), round(tt, 6), up, side, layers, diel)
-               for tt in (model.cu_t.get(e.layer, 0.0), 0.0)]
+        got = [_solve_cut(w, zs, tt, up, side, layers, diel) for tt in (t, 0.0)]
     except Exception as ex:                                  # noqa: BLE001 (a cross-section it cannot grid)
         e.notes.append(f"field solver failed ({ex}): formula impedance")
         return
-    _take(e, got)
+    _take(e, got, 'cut')
 
 
-def _take(e, got):
+def _take(e, got, source):
     """The field solver's [(Z0, eeff) with the copper's thickness, as a sheet] for section e, noted."""
+    e.source = source
     e.notes.append(f"field solver: Z0 {got[0][0]:.1f} ohm (formula {e.z0:.1f})")
     e.field = abs(got[1][0] / e.z0_sheet - 1) > FIELD_DIFFERS if e.z0_sheet else True
     (e.z0, e.eeff), (e.z0_sheet, e.eeff_sheet) = got
@@ -278,7 +294,8 @@ def _field_cpwg(e):
     except Exception as ex:                                  # noqa: BLE001 (a cross-section it cannot grid)
         e.notes.append(f"field solver failed ({ex}): formula impedance")
         return
-    _take(e, got)
+    e.classified = X.microstrip(key[0], key[2], key[3], key[4], s=key[1])
+    _take(e, got, 'cpwg')
 
 
 @functools.lru_cache(maxsize=1024)
@@ -290,13 +307,14 @@ def _solve_cpwg(w, s, h, er, t):
 @functools.lru_cache(maxsize=8)
 def _distance_bins(rel):
     """The edges of _snap_distance's bins, in reference heights from the strip's edge (x), out to FIELD_REACH + 5:
-    each bin rel (x + 0.2) e^(1.4 (x - 1/2)) wide beyond half a height. Ground beside a microstrip moves Z0 by
-    about that much less per height further away, so a bin is worth about rel / 4 of Z0 wherever it is (0.1-0.3 %
-    for rel 1 %; ground at 2 heights moves Z0 by 0.9 %, at 4 by less than 0.1 %)."""
+    each bin rel (x + 0.2) e^(1.4 (x - 1/2)) wide beyond half a height, and at most BIN_MAX. Ground beside a microstrip
+    moves Z0 by about that much less per height further away, so a bin is worth about rel / 4 of Z0 wherever it is
+    (0.1-0.3 % for rel 1 %; ground at 2 heights moves Z0 by 0.9 %, at 4 by less than 0.1 %). The limit is for what the
+    rule doesn't cover: a plane's edge that far under a wide strip counts wherever it is."""
     edges = [0.0]
     while edges[-1] < FIELD_REACH + 5:
         x = edges[-1]
-        edges.append(x + rel * (x + 0.2) * math.exp(1.4 * max(x - 0.5, 0.0)))
+        edges.append(x + min(rel * (x + 0.2) * math.exp(1.4 * max(x - 0.5, 0.0)), BIN_MAX))
     return np.asarray(edges)
 
 

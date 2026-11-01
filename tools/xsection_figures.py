@@ -4,12 +4,12 @@ Figures of the line model's 2D field solver (kicad2ems.lines.xsection) at work:
 
     python tools/xsection_figures.py [OUT] [--board CM5_MINIMA_3.kicad_pcb]
 
-  xsection_anatomy.png      a coupled pair (the CM5 Minima's HDMI pair): the cross-section and its graded grid, the
+  xsection_anatomy.png      a coupled pair (the CM5 Minima's HDMI pair): the cross-section and its mesh, the
                             odd- and even-mode potentials and their field lines
   xsection_cases.png        what the formulas leave out: a plane ending beside or under a microstrip, grounded CPW
                             with and without solder mask, coplanar ground beside a stripline
-  xsection_convergence.png  why each cross-section is solved twice: the grid's first-order error, and the
-                            extrapolation from the grid and the grid halved
+  xsection_convergence.png  the mesh against the tensor grid: the error for the nodes solved, one solve and
+                            extrapolated
   xsection_cache.png        which cross-sections share a solve: Z0 against the distance to coplanar ground, and the
                             cache's bins, wider where the distance matters less
   xsection_coupling.png     a five-line coupled section: the coupling of the first line to the others, the
@@ -108,13 +108,13 @@ def anatomy(out):
     fig, axs = plt.subplots(3, 1, figsize=(8.2, 9.6))
     ax = axs[0]
     draw_section(ax, xs, window)
+    cell = X._mesh(xs)
+    shown = cell[(cell[:, 1] > window[0]) & (cell[:, 0] < window[1]) & (cell[:, 3] > window[2]) & (cell[:, 2] < window[3])]
+    for c in shown:
+        ax.add_patch(Rectangle((c[0], c[2]), c[1] - c[0], c[3] - c[2], fc='none', ec=BLUE, lw=0.25, alpha=0.6, zorder=5))
     x, z = X._grid(xs)
-    for v in x[(x > window[0]) & (x < window[1])]:
-        ax.plot([v, v], [window[2], window[3]], color=BLUE, lw=0.3, alpha=0.55, zorder=5)
-    for v in z[(z > window[2]) & (z < window[3])]:
-        ax.plot([window[0], window[1]], [v, v], color=BLUE, lw=0.3, alpha=0.55, zorder=5)
-    ax.set_title(f"The cross-section and its grid: {len(x)} x {len(z)} lines, graded towards every edge "
-                 f"(solved again with every cell halved)", fontsize=9.5)
+    ax.set_title(f"Its mesh: {len(cell)} cells, fine at the copper's corners (a tensor grid: {len(x) * len(z)} nodes)",
+                 fontsize=9.5)
     ax.text(-0.5, 0.045, 'FR-4 prepreg, 0.099 mm, er 4.45', color=INK2, fontsize=8, zorder=6,
             bbox=dict(fc=DIEL, ec='none', pad=1))
     ax.text(-0.5, 0.012, 'In4.Cu: the reference plane', color=INK2, fontsize=8, zorder=6,
@@ -122,14 +122,14 @@ def anatomy(out):
     ax.text(0.28, 0.16, '10 um solder mask over it', color=INK2, fontsize=8, zorder=6,
             bbox=dict(fc=SURFACE, ec='none', pad=1))
     im = field_panel(axs[1], xs, window, [1, -1], DIVERGE, -1, 1)
-    axs[1].set_title(f"Odd mode (+1 V / -1 V): Zo {zo:.1f} ohm, Zdiff {2 * zo:.1f} ohm, eeff {eo:.2f}   "
-                     f"(zero-thickness formula, no mask: Zdiff {2 * kj[1]:.1f} ohm)", fontsize=9.5)
+    axs[1].set_title(f"Odd mode: Zo {zo:.1f} ohm, Zdiff {2 * zo:.1f} ohm, eeff {eo:.2f} "
+                     f"(zero-thickness formula, no mask: Zdiff {2 * kj[1]:.1f})", fontsize=9.5)
     fig.colorbar(im, ax=axs[1], shrink=0.75, label='V')
     im = field_panel(axs[2], xs, window, [1, 1], SEQ, 0, 1)
     axs[2].set_title(f"Even mode (+1 V / +1 V): Ze {ze:.1f} ohm, common mode {ze / 2:.1f} ohm, eeff {ee:.2f}",
                      fontsize=9.5)
     fig.colorbar(im, ax=axs[2], shrink=0.75, label='V')
-    fig.suptitle("A coupled pair, solved: the CM5 Minima's HDMI pair (0.13 mm lines 0.25 mm apart, 35 um copper)",
+    fig.suptitle("The CM5 Minima's HDMI pair: 0.13 mm lines 0.25 mm apart, 35 um copper",
                  x=0.02, ha='left', fontsize=11, fontweight='bold')
     fig.tight_layout()
     fig.savefig(os.path.join(out, 'xsection_anatomy.png'), dpi=150)
@@ -170,34 +170,37 @@ def cases(out):
 
 def convergence(out):
     k = 1 / math.cosh(math.pi * 0.15 / 0.8)
-    exact = 30 * math.pi / math.sqrt(4.3) * F.ellipk(k) / F.ellipk(math.sqrt(1 - k * k))
+    exact = F.ellipk(k) / F.ellipk(math.sqrt(1 - k * k)) / (4 * X.C0 * X.EPS0 * math.sqrt(4.3))     # eta0 / 4, not 30 pi
     xs = X.stripline(0.15, 0.2, 0.2, 4.3)
+    err = lambda c, ca: abs(1 / (X.C0 * math.sqrt(c * ca)) / exact - 1) * 100
+    grid, grid2 = [], []
     x, z = X._grid(xs)
-    single, extra = [], []
     prev = None
     for level in range(4):
         C, Ca, _, n = X._solve_grid(xs, x, z)
-        zc = 1 / (X.C0 * math.sqrt(C[0, 0] * Ca[0, 0]))
-        single.append((n, abs(zc / exact - 1) * 100))
+        grid.append((n, err(C[0, 0], Ca[0, 0])))
         if prev is not None:
-            c2, ca2 = 2 * C[0, 0] - prev[0], 2 * Ca[0, 0] - prev[1]
-            extra.append((n + prev[2], abs(1 / (X.C0 * math.sqrt(c2 * ca2)) / exact - 1) * 100))
+            grid2.append((n + prev[2], err(2 * C[0, 0] - prev[0], 2 * Ca[0, 0] - prev[1])))
         prev = (C[0, 0], Ca[0, 0], n)
         x, z = X._bisect(x), X._bisect(z)
+    mesh, mesh2 = [], []
+    prev = None
+    for grow, fine in ((1.6, 1 / 32), (0.8, 1 / 64), (0.4, 1 / 128), (0.2, 1 / 256), (0.1, 1 / 512)):
+        C, Ca, _, n = X._solve_mesh(xs, X._mesh(xs, grow, fine))
+        mesh.append((n, err(C[0, 0], Ca[0, 0])))
+        if prev is not None:
+            m = X.MESH_MIX
+            mesh2.append((n + prev[2], err(C[0, 0] + m * (C[0, 0] - prev[0]), Ca[0, 0] + m * (Ca[0, 0] - prev[1]))))
+        prev = (C[0, 0], Ca[0, 0], n)
     fig, ax = plt.subplots(figsize=(7.2, 4.4))
-    n1, e1 = zip(*single)
-    n2, e2 = zip(*extra)
-    ax.loglog(n1, e1, 'o-', color=BLUE, lw=2, ms=8, label='one grid')
-    ax.loglog(n2, e2, 's-', color=ORANGE, lw=2, ms=8, label='extrapolated: 2 x (grid halved) - grid')
-    slope = lambda n: e1[0] * math.sqrt(n1[0] / n)
-    ax.loglog([n1[0], n1[-1]], [slope(n1[0]) * 1.35, slope(n1[-1]) * 1.35], color=MUTED, lw=1, ls=':')
-    ax.text(n1[-1], slope(n1[-1]) * 1.6, 'error ~ cell size ~ 1 / sqrt(nodes)', color=INK2, fontsize=8,
-            ha='right', va='bottom')
-    ax.annotate('the default: a grid and its halving', (n2[0], e2[0]), (n2[0] * 0.45, e2[0] * 0.25),
-                arrowprops=dict(arrowstyle='-', color=MUTED, lw=0.8), color=INK2, fontsize=8, ha='left')
-    ax.set_xlabel('grid nodes solved')
+    for data, col, mark, ls, label in ((grid, MUTED, 'o', '--', 'tensor grid'), (grid2, MUTED, 's', '-', 'tensor grid, extrapolated'),
+                                       (mesh, BLUE, 'o', '--', 'mesh'), (mesh2, ORANGE, 's', '-', 'mesh, extrapolated')):
+        ax.loglog(*zip(*data), marker=mark, ls=ls, color=col, lw=2, ms=7, label=label)
+    ax.annotate('the default', mesh2[1], (mesh2[1][0] * 1.5, mesh2[1][1] * 3), arrowprops=dict(arrowstyle='-', color=MUTED, lw=0.8),
+                color=INK2, fontsize=8)
+    ax.set_xlabel('nodes solved')
     ax.set_ylabel('|Z0 - exact| / exact, %')
-    ax.set_title(f"Stripline 0.15 mm between planes 0.4 mm apart against Cohn's exact {exact:.2f} ohm")
+    ax.set_title(f"Stripline 0.15 mm between planes 0.4 mm apart against the exact {exact:.2f} ohm")
     ax.grid(True, which='major', color=GRID, lw=0.6)
     ax.legend(loc='lower left')
     fig.tight_layout()
