@@ -60,7 +60,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Text files are read and written as UTF-8 everywhere (boards, configs, reports, Touchstone): Windows' default
   code page broke non-ASCII net names and labels.
-- The line model's coupled sections come from the field solver (docs/transmission-lines.md#coupled): every line
+- The line model's coupled sections come from the field solver (docs/transmission-lines.md#coupled-sections): every line
   coupled to every other (rf_interdig's |S21| against openEMS: 51.2 → 8.5 dB rms, its stop bands), and the pairs'
   even / odd impedances with the copper's thickness (`ze`, `zo`; `ze_sheet`, `zo_sheet` as sheets). The CM5
   Minima demo board's HDMI pairs: 117.8 → 104.8 Ω differential (100 Ω class); by 3D FDTD, thickness takes 7–14 % off

@@ -72,7 +72,7 @@ def test_sysinfo_asks_the_solvers(monkeypatch):
 
 def test_sysinfo_imports_no_solver():
     """The core reports the machine without importing a solver package (mom25d, gfdtd) itself."""
-    src = open(sysinfo.__file__).read()
+    src = open(sysinfo.__file__, encoding='utf-8').read()
     assert 'mom25d' not in src.replace("mom25d's", '') and 'gfdtd' not in src
 
 
@@ -138,7 +138,7 @@ def test_every_api_name_is_documented():
     a name added to the API without its documentation fails here."""
     import inspect, re
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    page = open(os.path.join(root, 'docs', 'api.md')).read()
+    page = open(os.path.join(root, 'docs', 'api.md'), encoding='utf-8').read()
     for mod in (solver_api, frontend):
         for name in mod.NAMES:
             assert re.search(rf'`{re.escape(name)}[`(.]', page), f"{mod.__name__}.{name} is not in docs/api.md"

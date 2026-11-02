@@ -134,6 +134,6 @@ def test_dumps_of_both_solvers_are_listed(tmp_path):
     for solver, name in (('openems', 'dump_E_F_Cu_fd'), ('mom25d', 'dump_J_F_Cu_fd')):
         d = tmp_path / solver / 'exc_P1'
         d.mkdir(parents=True)
-        json.dump(dict(dumps=[dict(name=name, freqs=[2.4e9])]), open(d / 'dump_info.json', 'w'))
+        json.dump(dict(dumps=[dict(name=name, freqs=[2.4e9])]), open(d / 'dump_info.json', 'w', encoding='utf-8'))
     labels = [s.label for s in find_dumps(str(tmp_path))]
     assert len(labels) == 2 and labels[0].startswith('openEMS P1: ') and labels[1].startswith('mom25d P1: ')

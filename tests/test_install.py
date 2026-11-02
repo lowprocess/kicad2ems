@@ -50,6 +50,7 @@ def test_targets_on_linux(inst, monkeypatch, tmp_path):
     monkeypatch.setattr(inst, 'WINDOWS', False)
     monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'share'))
     monkeypatch.setenv('HOME', str(tmp_path))
+    monkeypatch.setenv('USERPROFILE', str(tmp_path))                 # expanduser's home on Windows
     u = inst.Target('user')
     assert u.venv == str(tmp_path / 'share' / 'kicad2ems' / 'venv') and u.bin == str(tmp_path / '.local' / 'bin')
     assert u.apps == str(tmp_path / 'share' / 'applications') and u.start is None
@@ -71,10 +72,10 @@ def test_openems_folder_wheels(windows, tmp_path):
     """Windows' unpacked openEMS: found by its DLL; its CSXCAD and openEMS wheels for the Python kicad2ems runs on."""
     d = tmp_path / 'openEMS'
     (d / 'python').mkdir(parents=True)
-    (d / 'openEMS.dll').write_text('')
+    (d / 'openEMS.dll').write_text('', encoding='utf-8')
     for w in ('CSXCAD-0.6.3-cp313-cp313-win_amd64.whl', 'openEMS-0.0.36-cp313-cp313-win_amd64.whl',
               'CSXCAD-0.6.3-cp312-cp312-win_amd64.whl'):
-        (d / 'python' / w).write_text('')
+        (d / 'python' / w).write_text('', encoding='utf-8')
     os.environ['OPENEMS_INSTALL_PATH'] = str(d)
     try:
         i = windows.Installer(windows.parse([]))
@@ -93,7 +94,7 @@ def test_uninstall_takes_back_the_path(windows, tmp_path, monkeypatch):
     os.makedirs(t.venv)
     shim = tmp_path / 'Local' / 'kicad2ems' / 'bin' / 'kicad2ems.cmd'
     shim.parent.mkdir(parents=True)
-    shim.write_text('x')
+    shim.write_text('x', encoding='utf-8')
     t.remember(str(shim))
     t.remember(f"@path\tuser\t{shim.parent}")
     changes = []
@@ -115,7 +116,7 @@ def test_options(inst, tmp_path):
     assert r.returncode == 2 and 'unknown option' in r.stdout
     assert run('--help').stdout.startswith('kicad2ems setup')
     a = inst.parse(['--venv', '~/v', '-y'])
-    assert a.yes and a.venv == os.path.expanduser('~/v') and a.python
+    assert a.yes and a.venv == os.path.abspath(os.path.expanduser('~/v')) and a.python
 
 
 def test_choose_and_ask(inst, monkeypatch):
@@ -133,10 +134,10 @@ def test_choose_and_ask(inst, monkeypatch):
 def test_core_stale(inst, tmp_path):
     (tmp_path / 'core').mkdir()
     src = tmp_path / 'core' / 'x.cpp'
-    src.write_text('')
+    src.write_text('', encoding='utf-8')
     built = tmp_path / '_core.so'
     assert inst.core_stale(str(tmp_path), str(built))
-    built.write_text('')
+    built.write_text('', encoding='utf-8')
     os.utime(src, (1, 1))
     assert not inst.core_stale(str(tmp_path), str(built))
     os.utime(src, None)

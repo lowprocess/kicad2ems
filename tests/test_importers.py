@@ -66,7 +66,7 @@ def test_macros_and_clear_polarity(tmp_path):
                       'X4000000Y2000000D01*', 'X2000000Y2000000D01*', 'X2000000Y0D01*', 'G37*', '%LPC*%', 'G36*',
                       'X2500000Y500000D02*', 'G01X3500000Y500000D01*', 'X3500000Y1500000D01*', 'X2500000Y1500000D01*',
                       'X2500000Y500000D01*', 'G37*', 'M02*'])
-    p.write_text(text)
+    p.write_text(text, encoding='utf-8')
     copper, draws, _ = parse_gerber(str(p))
     assert set(copper) == {'A', 'B'} and not draws
     assert copper['A'].area == pytest.approx(1.0 - (4 - 3.14159) * 0.1 ** 2, rel=2e-2)      # 1 mm square, r 0.1

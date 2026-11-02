@@ -145,7 +145,7 @@ Where the solvers disagree:
   board. The ground planes end at the board edge without stitching vias, so the config adds
   [edge walls](meshing.md#edge-walls); without them, the planes resonate near 4.7 GHz.
 - **Microstrip filter** (`rf_interdig.kicad_pcb`): an interdigital filter on 0.2 mm FR-4, 1 to 8 GHz. Its
-  five fingers form a five-line [coupled section](transmission-lines.md#coupled) in the line model.
+  five fingers form a five-line [coupled section](transmission-lines.md#coupled-sections) in the line model.
 
 ## Verified results
 

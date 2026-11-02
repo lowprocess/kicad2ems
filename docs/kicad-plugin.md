@@ -28,7 +28,7 @@ stable, or change kicad2ems-ipc with them.
 | `gui.planview.PlanView`, `gui.runner` (`Run`, `EventTail`, `stop_runs`, `toml_value`) | the plan view, runs and their settings |
 
 A coupled section's pairs (`LineModel.groups[...]['pairs']`) give their even- and odd-mode impedances with the
-copper's thickness (`ze`, `zo`), from the [field solver](transmission-lines.md#coupled), and as sheets
+copper's thickness (`ze`, `zo`), from the [field solver](transmission-lines.md#coupled-sections), and as sheets
 (`ze_sheet`, `zo_sheet`); grounded CPW sections too (`lines.reference.FIELD_CPW`). Each distinct one takes
 about 20 ms to solve, up to 0.2 s, once per process (the CM5 Minima's 94 nets: 13 s, against 6.4 s with the formulas): a plugin
 that builds the line model of every net can set `lines.topology.FIELD_GROUPS = False` and

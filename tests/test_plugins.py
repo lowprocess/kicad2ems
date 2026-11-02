@@ -64,13 +64,13 @@ def test_solver_tables(tmp_path):
     p = tmp_path / 'c.toml'
     p.write_text('board = "b.kicad_pcb"\nsolvers = ["fdtd", "mom"]\n[solver.mom25d]\ndmax = 0.5\nport = "wave"\n'
                  'dmx = 1\nfmin = 2\n[solver.openems]\nend-db = -30\nexcite = "P1"\n[solver.hfss]\nx = 1\n'
-                 '[othertool]\nfoo = 1\n')
+                 '[othertool]\nfoo = 1\n', encoding='utf-8')
     s = build_settings({}, str(p))
     assert s.mom_dmax == 0.5 and s.mom_port == 'wave' and s.end_db == -30 and s.excite == ['P1'] and s.fmin == 0.5
     note = next(n for n in s.notes if n.startswith('ignoring'))
     assert 'solver.mom25d.dmx (did you mean dmax?)' in note and 'solver.mom25d.fmin (a top-level setting)' in note
     assert '[solver.hfss]' in note and 'foo' not in note            # another tool's table: not ours to judge
-    p.write_text('board = "b.kicad_pcb"\n[openems]\nair = 3\nfast = "auto"\n')     # the older form, with a note
+    p.write_text('board = "b.kicad_pcb"\n[openems]\nair = 3\nfast = "auto"\n', encoding='utf-8')     # the older form, with a note
     s = build_settings({}, str(p))
     assert s.air == 3 and s.fast == 'auto' and any('[solver.openems]' in n for n in s.notes)
 
@@ -99,12 +99,12 @@ def test_mom_alone_prepares_no_openems(run_cli, tmp_path, monkeypatch):
     out = tmp_path / 'out'
     code, so, err = run_cli(FILTER, '--solvers', 'mom', '--points', '21', '--out', out)
     assert code == 0, so + err
-    sm = json.loads((out / 'rf_interdig_run.json').read_text())
+    sm = json.loads((out / 'rf_interdig_run.json').read_text(encoding='utf-8'))
     assert sm['solvers'][0] == 'mom25d' and 'mesh' not in sm and sm['solved']['mom25d']['unknowns'] == 1234
     assert sm['results']['reference'] == 'mom25d' and sm['zref'] == [50.0, 50.0]
     for f in ('rf_interdig_mom25d.s2p', 'rf_interdig_mom25d.png', 'rf_interdig_model.png', 'rf_interdig_report.html'):
         assert (out / f).exists(), f
-    page = (out / 'rf_interdig_report.html').read_text()
+    page = (out / 'rf_interdig_report.html').read_text(encoding='utf-8')
     assert "id='mom25d'" in page and "id='mesh'" not in page and 'canned' in page
     assert "id='saw'" in page and 'What each solver saw' in page                    # mom25d and the line model
     assert sm['saw']['solvers'][0] == 'mom25d (MoM)' and any(d['item'] == 'outline' for d in sm['deviations']['mom25d'])
@@ -133,9 +133,9 @@ def test_auto_picks_the_cheaper_full_wave_solver(run_cli, tmp_path, monkeypatch)
     assert code == 0, so + err
     assert 'solvers auto: mom25d + ' in so and 'openems not chosen (0.4 M cells, ~100 s)' in so
     assert 'gfdtd not chosen (on the GPU, ~50 s)' in so
-    sm = json.loads((out / 'rf_interdig_run.json').read_text())
+    sm = json.loads((out / 'rf_interdig_run.json').read_text(encoding='utf-8'))
     assert sm['solvers'][0] == 'mom25d' and sm['auto']['chosen'][0] == 'mom25d' and 'openems' in sm['auto']['estimates']
-    assert '--solvers auto: mom25d' in (out / 'rf_interdig_report.html').read_text()
+    assert '--solvers auto: mom25d' in (out / 'rf_interdig_report.html').read_text(encoding='utf-8')
     cost.update(gfdtd=5.0)                                          # now gfdtd is cheaper: --preview prepares openEMS's mesh
     code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview', '--points', '21', '--out', out)
     assert code == 0 and 'solvers auto: gfdtd + ' in so and (out / 'rf_interdig_mesh.png').exists(), so + err

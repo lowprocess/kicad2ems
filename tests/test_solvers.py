@@ -41,7 +41,7 @@ def test_bad_solver_settings(values, match):
 
 def test_solvers_from_toml_and_command_line(tmp_path):
     p = tmp_path / 'c.toml'
-    p.write_text('board = "b.kicad_pcb"\nsolvers = ["openems", "mom"]\n')
+    p.write_text('board = "b.kicad_pcb"\nsolvers = ["openems", "mom"]\n', encoding='utf-8')
     s, _ = settings_from_argv([str(p)])
     assert s.solver_plan()[0] == ['openems', 'mom25d']
     s, _ = settings_from_argv([str(p), '--solvers', 'lines'])       # the command line wins
@@ -67,7 +67,7 @@ def test_missing_openems_stops_before_any_work(run_cli, tmp_path, monkeypatch):
     ev = tmp_path / 'ev.jsonl'
     code, so, _ = run_cli(FILTER, '--solvers', 'openems', '--out', out, '--events', ev)
     assert code == 2 and 'openEMS (FDTD) cannot run - details' in so and 'another solver' in so
-    events = [json.loads(l) for l in ev.read_text().splitlines()]
+    events = [json.loads(l) for l in ev.read_text(encoding='utf-8').splitlines()]
     assert not [e for e in events if e['kind'] == 'stage'] and (events[-1]['kind'], events[-1]['code']) == ('done', 2)
     assert not (out / 'rf_interdig_mesh.png').exists()                  # nothing built: it stopped at once
 
@@ -78,12 +78,12 @@ def test_line_model_only(run_cli, tmp_path, monkeypatch):
     out = tmp_path / 'out'
     code, so, err = run_cli(FILTER, '--solvers', 'lines', '--fast', 'skrf', '--points', '51', '--out', out)
     assert code == 0, so + err
-    sm = json.loads((out / 'rf_interdig_run.json').read_text())
+    sm = json.loads((out / 'rf_interdig_run.json').read_text(encoding='utf-8'))
     assert sm['solvers'] == ['scikit'] and sm['mode'] == 'S-parameters' and sm['results']['reference'] == 'scikit'
     assert 'pulse_steps' not in sm and not any('max-steps' in w for w in sm['warnings'])   # no openEMS talk
     assert 'mesh' not in sm and (out / 'rf_interdig_model.png').exists() and not (out / 'rf_interdig_mesh.png').exists()
     assert (out / 'rf_interdig_scikit.s2p').exists() and (out / 'rf_interdig_scikit.png').exists()
-    page = (out / 'rf_interdig_report.html').read_text()
+    page = (out / 'rf_interdig_report.html').read_text(encoding='utf-8')
     assert 'line model' in page and "<div class='l'>mesh</div>" not in page    # no FDTD mesh tile without openEMS
 
 

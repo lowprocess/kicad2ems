@@ -65,11 +65,11 @@ def test_golden_summary(case, boards):
         os.makedirs(GOLDEN, exist_ok=True)
         text = json.dumps(got, indent=1)                    # lists of plain values on one line each
         text = re.sub(r'\[\s+([^\[\]{}]*?)\s+\]', lambda m: '[' + ' '.join(m.group(1).split()) + ']', text)
-        with open(path, 'w') as fh:
+        with open(path, 'w', encoding='utf-8') as fh:
             fh.write(text + '\n')
         if not os.environ.get('KICAD2EMS_UPDATE_GOLDEN'):
             pytest.fail(f"no golden summary for {case}: written to {path}, check it and commit it")
-    with open(path) as fh:
+    with open(path, encoding='utf-8') as fh:
         _close(got, json.load(fh))
 
 
@@ -102,7 +102,7 @@ def test_a_board_json_is_an_input(boards, run_cli, tmp_path):
                             '--no-report')
     assert code == 0, err
     bj = tmp_path / 'a' / 'lowpass_board.json'
-    assert json.loads(bj.read_text())['format'] == FORMAT
+    assert json.loads(bj.read_text(encoding='utf-8'))['format'] == FORMAT
     code, so, err = run_cli(bj, '--nets', 'GND', '--out', tmp_path / 'b', '--preview', '--no-report')
     assert code == 0, err
     assert 'is a resolved board: its own selection holds, not nets' in so

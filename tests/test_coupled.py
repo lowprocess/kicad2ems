@@ -80,10 +80,10 @@ def test_pair_block_matches_mcoupled(tmp_path):
                    'MCOUPLED:C1 n1 n2 n3 n4 Subst="S1" W="0.00035" S="0.00058" L="0.0123" Model="Kirschning" '
                    'DispModel="Kirschning"\n' +
                    "".join(f'Pac:P{k} n{k} gnd Num="{k}" Z="50 Ohm" P="0 dBm" f="1 GHz"\n' for k in (1, 2, 3, 4)) +
-                   f'.SP:SP1 Type="lin" Start="{f[0]:g}" Stop="{f[-1]:g}" Points="{len(f)}" Noise="no"\n')
+                   f'.SP:SP1 Type="lin" Start="{f[0]:g}" Stop="{f[-1]:g}" Points="{len(f)}" Noise="no"\n', encoding='utf-8')
     import subprocess
     subprocess.run([_qucsator(), '-i', str(net), '-o', str(tmp_path / 't.dat')], capture_output=True, check=True)
-    _, Sq = read_qucs_dataset((tmp_path / 't.dat').read_text(), 4)
+    _, Sq = read_qucs_dataset((tmp_path / 't.dat').read_text(encoding='utf-8'), 4)
     C, Ca = group_lc([0.35, 0.35], [0.58], 0.2, 4.4)
     S = mtl_s(C, Ca, 4.4, 0.0, 12.3, f)
     m = [0, 3, 1, 2]                                                       # MCOUPLED: 1-2 line A, 4-3 line B

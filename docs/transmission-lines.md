@@ -20,7 +20,7 @@ net.
 | via | a via barrel: a coaxial line through the planes it passes, or an inductance where there's no plane |
 | part | a lumped R/L/C part, in series or to ground ([details](model.md#lumped-parts)) |
 
-<a id="coupled"></a>
+<a id="coupled-sections"></a>
 **Coupled sections.** Straight, parallel sections of one cross-section on one layer within 5 substrate
 heights of each other become a coupled section: hairpin and interdigital filter fingers, differential
 pairs. The [field solver](#field-solver) gives each coupled section its capacitance matrix, every line coupled to
@@ -156,7 +156,7 @@ total C is 1.07 pF, against 1.05 pF for the cut and 0.89 pF for the formula (`to
 <a id="lines-field"></a>
 ### The line model on the field solver
 
-Coupled sections and grounded CPW come from the field solver by default ([above](#coupled), and
+Coupled sections and grounded CPW come from the field solver by default ([above](#coupled-sections), and
 [below](#cpw-thickness)). `--lines-field` (`lines_field = true`) takes every section's cross-section from it, from
 the board:
 
@@ -202,7 +202,7 @@ against 54.7 Ω).
 On a real board, the CM5 Minima's eight HDMI pairs (119 mm of microstrip over solid planes), `--lines-field`
 moves the single-ended Z0 by at most 2.7 %: 1–2.7 % on 8 % of the length, where a plane under B.Cu doesn't reach
 2 heights past the trace or ground copper lies to one side. The differential impedance is what the copper's
-thickness moves ([coupled sections](#coupled)).
+thickness moves ([coupled sections](#coupled-sections)).
 
 <a id="cpw-thickness"></a>
 Its other nets show what the cut is for. The HDMI side-band lines (DDC SDA and SCL, CEC, HOTPLUG) and the

@@ -191,7 +191,7 @@ def write_vtr(path, x, y, z, field, compress=True):
     coords = ''.join(f'<DataArray type="Float64" format="binary">{_b64_block((np.asarray(c, "<f8") * 1e-3).tobytes(), compress)}</DataArray>'
                      for c in (x, y, z))
     ext = f"0 {len(x) - 1} 0 {len(y) - 1} 0 {len(z) - 1}"
-    with open(path, 'w') as fh:
+    with open(path, 'w', encoding='utf-8') as fh:
         fh.write(f'<?xml version="1.0"?><VTKFile type="RectilinearGrid" version="0.1" byte_order="LittleEndian" '
                  f'header_type="UInt32"{hdr}><RectilinearGrid WholeExtent="{ext}"><Piece Extent="{ext}"><PointData>'
                  f'<DataArray type="Float32" Name="E-Field" NumberOfComponents="3" format="binary">'
