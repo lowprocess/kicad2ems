@@ -671,8 +671,8 @@ class Installer:
             self.pip('--upgrade', 'pip', 'setuptools', 'wheel', quiet=True)
 
     def has_compiler(self):
-        """A C++ compiler for the cores: g++ / c++; on Windows Visual Studio's C++ tools (emsdev.build finds them),
-        cl on the PATH, or MinGW-w64's g++."""
+        """A C++ compiler for the cores: g++ / c++; on Windows Visual Studio's C++ tools (emsdev.build finds them:
+        vswhere, else their vcvars64.bat under Program Files), cl on the PATH, or MinGW-w64's g++."""
         if WINDOWS:
             base = os.environ.get('ProgramFiles(x86)') or os.environ.get('ProgramFiles') or ''
             vswhere = os.path.join(base, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe')
@@ -681,6 +681,10 @@ class Installer:
                                       'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property',
                                       'installationPath'], capture_output=True, text=True).stdout
                 if out.strip():
+                    return 'Visual Studio'
+            for pf in filter(None, (os.environ.get('ProgramFiles'), os.environ.get('ProgramFiles(x86)'))):
+                if glob.glob(os.path.join(pf, 'Microsoft Visual Studio', '*', '*', 'VC', 'Auxiliary', 'Build',
+                                          'vcvars64.bat')):
                     return 'Visual Studio'
             if shutil.which('cl'):
                 return 'cl'
