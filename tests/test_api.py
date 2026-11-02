@@ -108,7 +108,7 @@ def test_examples_prepared(tmp_path):
 
 
 def test_example_boards_made_in_a_folder(tmp_path, monkeypatch):
-    """make_boards (setup.sh, through examples/make_boards.py): each generated board made in the folder, those in
+    """make_boards (install.py, through examples/make_boards.py): each generated board made in the folder, those in
     the repository left alone; a generator that fails is reported, the others still made."""
     import kicad2ems.examples as ex
     assert ex.make_boards(str(tmp_path), names=['demo_lowpass', 'rf_gcpw', 'hairpin'], log=None) == {}
@@ -121,11 +121,13 @@ def test_example_boards_made_in_a_folder(tmp_path, monkeypatch):
 
 
 def test_setup_update_needs_an_install(tmp_path):
-    """setup.sh --update: nothing to update says so, before anything is installed; it takes no solver choices."""
+    """install.py --update: nothing to update says so, before anything is installed; it takes no solver choices."""
+    import sys
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    run = lambda *a: subprocess.run(['bash', os.path.join(root, 'setup.sh'), *a], capture_output=True, text=True)
+    run = lambda *a: subprocess.run([sys.executable, os.path.join(root, 'install.py'), *a], capture_output=True,
+                                    text=True)
     r = run('--update', '--venv', str(tmp_path / 'none'))
-    assert r.returncode == 1 and 'run ./setup.sh' in r.stdout and not (tmp_path / 'none').exists()
+    assert r.returncode == 1 and 'run the installer' in r.stdout and not (tmp_path / 'none').exists()
     for other in (['--uninstall'], ['--openems', 'build'], ['--qucsator', 'none']):
         r = run('--update', '--target', 'user', *other)
         assert r.returncode == 2 and '--update' in r.stdout

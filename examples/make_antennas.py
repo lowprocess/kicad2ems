@@ -84,7 +84,7 @@ class Board(Items):
         L += self.items
         L.append(f'  (gr_rect (start 0 0) (end {W} {H}) (stroke (width 0.1) (type default)) (fill none) '
                  f'(layer "Edge.Cuts") (uuid "{u()}"))\n)')
-        open(path, 'w').write("\n".join(L) + "\n")
+        open(path, 'w', encoding='utf-8').write("\n".join(L) + "\n")
 
 
 def patch(path, pw=37.2, pl=28.8, inset=8.8, gap=1.0, wf=3.0):

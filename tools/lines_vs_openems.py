@@ -5,7 +5,7 @@ The line model against openEMS on the examples with references: |S21| rms differ
 
     python tools/lines_vs_openems.py [BOARD ...]         # default: every board with an openEMS reference
 
-`setup.sh` makes the generated examples' boards (examples/make_boards.py), or demo_transition is skipped.
+`install.py` makes the generated examples' boards (examples/make_boards.py), or demo_transition is skipped.
 """
 import os, subprocess, sys
 

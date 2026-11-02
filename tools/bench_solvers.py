@@ -91,7 +91,7 @@ def main():
     a = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
     if a.plot_only:
-        results = json.load(open(os.path.join(OUT, 'results.json')))
+        results = json.load(open(os.path.join(OUT, 'results.json'), encoding='utf-8'))
         write_md(results)
         print('wrote', plot(results, a.only))
         summary(results, [c for c in sorted(results) if not a.only or c in a.only])
@@ -100,7 +100,7 @@ def main():
     configs = sorted(os.path.splitext(os.path.basename(p))[0] for p in glob.glob(os.path.join(REPO, 'examples', '*.toml')))
     configs = [c for c in configs if (c in a.only if a.only else a.all or c in CRITICAL)]
     path = os.path.join(OUT, 'results.json')
-    results = json.load(open(path)) if os.path.exists(path) else {}
+    results = json.load(open(path, encoding='utf-8')) if os.path.exists(path) else {}
     for cfg in configs:
         if cfg in GENERATED and not glob.glob(os.path.join(REPO, 'examples', cfg + '*.kicad_pcb')):
             subprocess.run([sys.executable] + GENERATED[cfg], cwd=REPO, env=env0, capture_output=True)
@@ -116,7 +116,7 @@ def main():
                 p = subprocess.run(cmd, cwd=REPO, env=dict(env0, **env), capture_output=True, text=True)
                 log = p.stdout + p.stderr
                 os.makedirs(out, exist_ok=True)
-                open(os.path.join(out, f'log{len(runs) + 1}.txt'), 'w').write(log)
+                open(os.path.join(out, f'log{len(runs) + 1}.txt'), 'w', encoding='utf-8').write(log)
                 m = re.search(r'TIME ([0-9.]+) (\d+)', log)
                 runs.append(float(m.group(1)) if m else time.time() - t)
                 lus.append(parse(log, name))
@@ -133,7 +133,7 @@ def main():
             if p.returncode:
                 row['error'] = next((l.strip() for l in reversed(log.splitlines()) if l.strip() and not l.startswith('TIME')), '')[-160:]
             results.setdefault(cfg, {})[name] = row                # ('suspect': a note added by hand, plotted)
-            json.dump(results, open(path, 'w'), indent=1)
+            json.dump(results, open(path, 'w', encoding='utf-8'), indent=1)
             spread = f" ({min(runs):.1f}-{max(runs):.1f})" if len(runs) > 1 else ''
             print(f"{cfg:16s} {name:11s} median {row['seconds']:7.1f} s{spread}, peak {row['peak_gb'] or 0:5.2f} GB"
                   f"{_where(name, row).replace('*', '')} "
@@ -292,7 +292,7 @@ def write_md(results):
     L += ['', '*on the CPU*: a GPU run of mom25d that factored on the CPU (the board below its GPU threshold, '
           'sim.GPU_MIN_N, or too large for the GPU); *n of m on the CPU*: solves that fell back to double precision on '
           'the CPU after the complex64 LU failed to precondition (the worst of the runs).']
-    open(os.path.join(OUT, 'results.md'), 'w').write('\n'.join(L) + '\n')
+    open(os.path.join(OUT, 'results.md'), 'w', encoding='utf-8').write('\n'.join(L) + '\n')
 
 
 def _where(n, r):

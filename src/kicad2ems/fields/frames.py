@@ -78,7 +78,7 @@ def read_vtr(path):
 # ---- the dumps of a run folder -------------------------------------------------------------------
 def _info(run_path):
     try:
-        with open(os.path.join(run_path, 'dump_info.json')) as fh:
+        with open(os.path.join(run_path, 'dump_info.json'), encoding='utf-8') as fh:
             return json.load(fh)
     except (OSError, ValueError):
         return {}
@@ -87,7 +87,7 @@ def _info(run_path):
 def _dt_ps(run_path, info):
     """openEMS's timestep: its log, else the mesh estimate in dump_info.json."""
     try:
-        with open(os.path.join(run_path, 'openems.log'), errors='replace') as fh:
+        with open(os.path.join(run_path, 'openems.log'), errors='replace', encoding='utf-8') as fh:
             m = re.search(r'FDTD timestep is:\s*([0-9.eE+-]+)\s*s', fh.read(200_000))
         if m:
             return float(m.group(1)) * 1e12
@@ -140,7 +140,7 @@ class DumpSource:
                 self._fd = read_npz(npz)
                 self.freqs = [f for f, _ in self._fd[1]]
             try:
-                with open(os.path.join(self.path, 'dump_norm.json')) as fh:
+                with open(os.path.join(self.path, 'dump_norm.json'), encoding='utf-8') as fh:
                     self.norm = {f: complex(a, b) for f, a, b in json.load(fh)}
             except (OSError, ValueError):
                 self.norm = {}

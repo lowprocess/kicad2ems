@@ -4,7 +4,7 @@
 
 mom25d is a 2.5D method-of-moments solver for circuit boards. It is its own package, in its own
 repository ([mom25d](https://github.com/lowprocess/mom25d)): the `mom` extra (`pip install '.[mom]'`), or
-`./setup.sh`, installs it. It doesn't need openEMS. Without it, `kicad2ems --check` lists mom25d (and the mixed
+`./setup.sh` (`py install.py` on Windows), installs it. It doesn't need openEMS. Without it, `kicad2ems --check` lists mom25d (and the mixed
 solver, which is built on it) as not installed, and `--solvers auto` leaves them out.
 
 ```bash

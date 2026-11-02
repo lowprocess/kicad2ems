@@ -32,7 +32,7 @@ def write_toml(path, values):
         if v is None or v == '' or (v == [] and k != 'solvers') or (k in ('cut_ports', 'mom') and v is False):
             continue
         lines.append(f"{k} = {toml_value(v)}")
-    with open(path, 'w') as fh:
+    with open(path, 'w', encoding='utf-8') as fh:
         fh.write("\n".join(lines) + "\n")
 
 
@@ -99,7 +99,7 @@ def stop_runs(out_dir):
     stop.request(out_dir)
     dirs = glob.glob(os.path.join(out_dir, '*', 'exc_*')) + glob.glob(os.path.join(out_dir, 'converge', '*', '*', 'exc_*'))
     for d in dirs:
-        open(os.path.join(d, 'ABORT'), 'w').close()
+        open(os.path.join(d, 'ABORT'), 'w', encoding='utf-8').close()
     return dirs
 
 
@@ -110,6 +110,6 @@ def find_results(out_dir):
                   key=os.path.getmtime)
     if not sums:
         return []
-    with open(sums[-1]) as fh:
+    with open(sums[-1], encoding='utf-8') as fh:
         files = json.load(fh).get('files', [])
     return [(lab, p if os.path.isabs(p) else os.path.join(out_dir, p)) for lab, p in files]

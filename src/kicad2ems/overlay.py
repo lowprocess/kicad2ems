@@ -19,7 +19,7 @@ def load_lines(out_dir):
     files = sorted(glob.glob(os.path.join(out_dir, '*_lines.json')), key=os.path.getmtime) if out_dir else []
     for p in reversed(files):
         try:
-            with open(p) as fh:
+            with open(p, encoding='utf-8') as fh:
                 d = json.load(fh)
         except (OSError, ValueError):
             continue

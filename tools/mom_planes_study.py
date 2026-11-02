@@ -54,7 +54,7 @@ def run(board, label, args):
     p = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
     log = p.stdout + p.stderr
     os.makedirs(out, exist_ok=True)
-    open(os.path.join(out, 'log.txt'), 'w').write(log)
+    open(os.path.join(out, 'log.txt'), 'w', encoding='utf-8').write(log)
     m = re.search(r'mom25d: ([0-9,]+) unknowns', log)
     return dict(dir=out, code=p.returncode, seconds=time.time() - t,
                 unknowns=int(m.group(1).replace(',', '')) if m else None,
@@ -87,7 +87,7 @@ def main():
     a = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
     path = os.path.join(OUT, 'results.json')
-    res = json.load(open(path)) if os.path.exists(path) else {}
+    res = json.load(open(path, encoding='utf-8')) if os.path.exists(path) else {}
 
     def score(b, r, ref):
         s2p = touchstone(r['dir'], b, 'mom25d')
@@ -105,7 +105,7 @@ def main():
             for r in res.get(b, {}).values():
                 if not r.get('code'):
                     score(b, r, ref)
-        json.dump(res, open(path, 'w'), indent=1)
+        json.dump(res, open(path, 'w', encoding='utf-8'), indent=1)
     elif not a.table_only:
         for b in a.only:
             ref = touchstone(os.path.join(a.ref, f"{b}_openems"), b, 'openems')
@@ -116,9 +116,9 @@ def main():
                 print(f"{b:16s} {label:28s} {r.get('unknowns') or 0:7,d} unknowns {r['seconds']:6.0f} s  "
                       f"dS {r.get('dS', float('nan')):.3f}  openEMS {r.get('agreement')}"
                       + (f"  FAILED: {r['error']}" if r['code'] else ''), flush=True)
-                json.dump(res, open(path, 'w'), indent=1)
+                json.dump(res, open(path, 'w', encoding='utf-8'), indent=1)
     md = table(res)
-    open(os.path.join(OUT, 'results.md'), 'w').write(md + '\n')
+    open(os.path.join(OUT, 'results.md'), 'w', encoding='utf-8').write(md + '\n')
     print(md)
 
 

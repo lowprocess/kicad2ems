@@ -80,8 +80,8 @@ def make(path, pos_path):
         L.append('  )')
     L.append(f'  (gr_rect (start 0 0) (end {W} {H}) (stroke (width 0.1) (type default)) (fill none) (layer "Edge.Cuts") (uuid "{u()}"))')
     L.append(')')
-    open(path, 'w').write("\n".join(L) + "\n")
-    with open(pos_path, 'w') as fh:
+    open(path, 'w', encoding='utf-8').write("\n".join(L) + "\n")
+    with open(pos_path, 'w', encoding='utf-8') as fh:
         fh.write("### Footprint positions - created by kicad2ems demo ###\n## Unit = mm, Angle = deg.\n## Side : top\n")
         fh.write("# Ref     Val       Package                PosX       PosY       Rot  Side\n")
         fh.write(f"TP1       P1        RF_Port              2.0000    -{yc:.4f}     0.0000  top\n")
@@ -149,8 +149,8 @@ def make_diff(path, pos_path):
         L.append(f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))')
         L.append(f'    (fp_text user "{txt}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )')
     L.append(f'  (gr_rect (start 0 0) (end 24 10) (stroke (width 0.1) (type default)) (fill none) (layer "Edge.Cuts") (uuid "{u()}"))\n)')
-    open(path, 'w').write("\n".join(L) + "\n")
-    with open(pos_path, 'w') as fh:
+    open(path, 'w', encoding='utf-8').write("\n".join(L) + "\n")
+    with open(pos_path, 'w', encoding='utf-8') as fh:
         fh.write("### Footprint positions ###\n## Unit = mm, Angle = deg.\n# Ref Val Package PosX PosY Rot Side\n")
         for ref, txt, (x, y), rot in ports:
             fh.write(f"{ref} {txt} RF_Port {x:.4f} {-y:.4f} {rot:.4f} top\n")
@@ -198,8 +198,8 @@ def make_rlc(path, pos_path):
         L.append(f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))')
         L.append(f'    (fp_text user "{txt}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )')
     L.append(f'  (gr_rect (start 0 0) (end {W} {H}) (stroke (width 0.1) (type default)) (fill none) (layer "Edge.Cuts") (uuid "{u()}"))\n)')
-    open(path, 'w').write("\n".join(L) + "\n")
-    with open(pos_path, 'w') as fh:
+    open(path, 'w', encoding='utf-8').write("\n".join(L) + "\n")
+    with open(pos_path, 'w', encoding='utf-8') as fh:
         fh.write("### Footprint positions ###\n## Unit = mm, Angle = deg.\n# Ref Val Package PosX PosY Rot Side\n")
         for ref, txt, x, rot in ports:
             fh.write(f"{ref} {txt} RF_Port {x:.4f} {-yc:.4f} {rot:.4f} top\n")
@@ -318,14 +318,14 @@ def make_ladder(name, path, pos_path, ideal_path):
         L.append(f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))')
         L.append(f'    (fp_text user "{txt}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )')
     L.append(f'  (gr_rect (start 0 0) (end {W:.3f} {H}) (stroke (width 0.1) (type default)) (fill none) (layer "Edge.Cuts") (uuid "{u()}"))\n)')
-    open(path, 'w').write("\n".join(L) + "\n")
-    with open(pos_path, 'w') as fh:
+    open(path, 'w', encoding='utf-8').write("\n".join(L) + "\n")
+    with open(pos_path, 'w', encoding='utf-8') as fh:
         fh.write("### Footprint positions ###\n## Unit = mm, Angle = deg.\n# Ref Val Package PosX PosY Rot Side\n")
         for ref, txt, px, rot in ports:
             fh.write(f"{ref} {txt} RF_Port {px:.4f} {-yc:.4f} {rot:.4f} top\n")
     f = np.linspace(0.1e9, 4e9, 391)
     S = ladder_ideal(ladder, f)
-    with open(ideal_path, 'w') as fh:
+    with open(ideal_path, 'w', encoding='utf-8') as fh:
         fh.write(f"! ideal lumped circuit of the demo {name} filter (with ESR / ESL)\n# Hz S RI R 50\n")
         for fi, s_ in zip(f, S):
             fh.write(f"{fi:.6e} " + " ".join(f"{v.real:.9e} {v.imag:.9e}" for v in (s_[0, 0], s_[1, 0], s_[0, 1], s_[1, 1])) + "\n")
@@ -409,8 +409,8 @@ def make_launch(path, pos_path):
         L.append('  )')
     L.append(f'  (gr_rect (start 0 0) (end {W} {H}) (stroke (width 0.1) (type default)) (fill none) (layer "Edge.Cuts") (uuid "{u()}"))')
     L.append(')')
-    open(path, 'w').write("\n".join(L) + "\n")
-    with open(pos_path, 'w') as fh:
+    open(path, 'w', encoding='utf-8').write("\n".join(L) + "\n")
+    with open(pos_path, 'w', encoding='utf-8') as fh:
         fh.write("### Footprint positions - created by kicad2ems demo ###\n## Unit = mm, Angle = deg.\n## Side : top\n")
         fh.write("# Ref     Val       Package                PosX       PosY       Rot  Side\n")
         fh.write(f"J1        Edge_SMA  Edge_SMA            15.5000    -{yc:.4f}     0.0000  top\n")
@@ -453,8 +453,8 @@ def make_thru(path, pos_path):
               f'    (fp_text user "{txt}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )']
     s.append(f'  (gr_rect (start 0 0) (end {W} {H}) (stroke (width 0.1) (type default)) (fill none) (layer "Edge.Cuts") '
              f'(uuid "{u()}"))\n)')
-    open(path, 'w').write("\n".join(s) + "\n")
-    with open(pos_path, 'w') as fh:
+    open(path, 'w', encoding='utf-8').write("\n".join(s) + "\n")
+    with open(pos_path, 'w', encoding='utf-8') as fh:
         fh.write("### Footprint positions ###\n## Unit = mm, Angle = deg.\n# Ref Val Package PosX PosY Rot Side\n")
         for ref, txt, x, rot in ports:
             fh.write(f"{ref} {txt} RF_Port {x:.4f} {-yc:.4f} {rot:.4f} top\n")

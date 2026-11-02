@@ -321,7 +321,7 @@ class Job:
             return
         self.summary['lines'] = self.lm.summary()
         out = self.path('_lines.json')                              # the sections' geometry: the GUI's overlay
-        with open(out, 'w') as fh:
+        with open(out, 'w', encoding='utf-8') as fh:
             json.dump(self.lm.drawing(getattr(self.m, 'cu_z', None)), fh)
         self.wrote('line model sections (JSON)', out)
         for p, q, secs, branches in self.lm.paths:
@@ -505,7 +505,7 @@ class Job:
             sm.update(ports=sm['results']['names'], zref=sm['results']['zref'], excited=sm['results']['excited'],
                       parts=sm['model']['parts'], diel=getattr(self.s, 'diel', None))
         from .formats import stamp
-        with open(js, 'w') as fh:
+        with open(js, 'w', encoding='utf-8') as fh:
             json.dump(stamp(sm, 'kicad2ems-run'), fh, indent=1, default=_plain)
         if not self.s.no_report:
             from .report import write_report

@@ -107,18 +107,29 @@ plugin's media were recorded from KiCad 10 on a virtual display, the plugin driv
 
 ## Install
 
+Linux and macOS:
+
 ```bash
 git clone https://github.com/lowprocess/kicad2ems.git && cd kicad2ems
 ./setup.sh
 source .venv/bin/activate
 ```
 
-`setup.sh` asks where to install (a venv in this checkout, the default; for your user, with the commands on
-your PATH; system-wide; or into the Python itself) and which optional parts you want: the GUI, field dumps,
-the line model, the mom25d and gfdtd solvers and their compiled cores, the CuPy package for your GPU, openEMS (one you
-have, one in another venv linked in, a local build, or none), qucsator, and a launcher entry and desktop
-icon for the GUI. `./setup.sh --yes` takes the defaults; `./setup.sh --target user` installs for your user.
-The options and installing by hand are in [Getting started](docs/getting-started.md).
+Windows (Python 3.10 or newer from python.org, and Git):
+
+```bat
+git clone https://github.com/lowprocess/kicad2ems.git && cd kicad2ems
+py install.py
+.venv\Scripts\activate
+```
+
+The installer, `install.py` (`./setup.sh` runs it), asks where to install (a venv in this checkout, the default; for
+your user, with the commands on your PATH; system-wide; or into the Python itself) and which optional parts you want:
+the GUI, field dumps, the line model, the mom25d and gfdtd solvers and their compiled cores, the CuPy package for your
+GPU, openEMS (one you have, one in another venv linked in, a local build on Linux, Windows' unpacked release, or none),
+qucsator, and a launcher entry (a Start-menu shortcut on Windows) and desktop icon for the GUI. `--yes` takes the
+defaults; `--target user` installs for your user. The options, Windows' specifics and installing by hand are in
+[Getting started](docs/getting-started.md).
 
 The full-wave solvers are optional packages from their own repositories: the `openems` and `gfdtd` extras
 (kicad2ems-fdtd, with openEMS's connection or gfdtd; openEMS itself is needed only for the first), and `mom` (`pip install

@@ -59,7 +59,7 @@ estimates against what is available. Its *Programs* box sets where qucsator is, 
 environment**: a venv with openEMS, when it isn't in kicad2ems's own Python (its folder or its
 `bin/python`; it must be the same Python version, since openEMS's compiled modules load only in their own).
 These are settings of the machine rather than of a board: they go into `~/.config/kicad2ems/site.toml`.
-Empty finds qucsator on the PATH or where `setup.sh` recorded it, and openEMS in kicad2ems's own Python.
+Empty finds qucsator on the PATH or where the installer recorded it, and openEMS in kicad2ems's own Python.
 
 **Stop** asks the run to stop: openEMS ends at once and keeps what it has computed, mom25d ends after the
 frequency it is solving (with no result), and solvers that haven't started are skipped. Press Stop again to
@@ -271,7 +271,7 @@ the beam can be steered or animated from either.
 
 Designs a microstrip filter with [dfsynth](https://github.com/lowprocess/dfsynth) and writes its board and kicad2ems
 config (*Filter* in the toolbar, the wand, or *File > New filter*, brings the page to the front). dfsynth is
-its own package, installed with the `filter` extra (`pip install '.[filter]'`) or by `setup.sh`; without it the
+its own package, installed with the `filter` extra (`pip install '.[filter]'`) or by the installer; without it the
 page says so and stays disabled. The page never imports dfsynth: its types, topologies, substrate presets and options
 come from `dfsynth --describe --json`, so a dfsynth option the page has no field for appears under *More
 options*, and a field this dfsynth has no option for is disabled.

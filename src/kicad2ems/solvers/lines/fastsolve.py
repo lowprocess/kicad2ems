@@ -14,7 +14,7 @@ thickness.
 
 A ballpark: no coupling between sections, no radiation, no plane resonances, quasi-static impedances.
 """
-import math, os, re, shutil, subprocess, tempfile, warnings
+import math, os, re, shutil, subprocess, sys, tempfile, warnings
 import numpy as np
 from ...constants import C0
 from ...touchstone import write_touchstone
@@ -142,8 +142,8 @@ def group_s(g, freq):
 
 # ---- qucsator ---------------------------------------------------------------------------------------
 def find_qucsator(path=None):
-    """The qucsator executable: the given path, else the one setup.sh recorded (sitecfg), else qucsator_rf
-    (Qucs-S) or qucsator on PATH."""
+    """The qucsator executable: the given path, else the one the installer recorded (sitecfg), else qucsator_rf
+    (Qucs-S) or qucsator on PATH, else (Windows) the one in Qucs-S's install folder."""
     if not path:
         from ...sitecfg import get
         path = get('qucsator')
@@ -155,7 +155,23 @@ def find_qucsator(path=None):
         exe = shutil.which(name)
         if exe:
             return exe
+    for exe in windows_qucsators():
+        return exe
     raise ValueError("--fast qucsator: no qucsator_rf / qucsator on PATH (install Qucs-S, or give --qucsator PATH)")
+
+
+def windows_qucsators():
+    """Windows: qucsator_rf.exe / qucsator.exe in Qucs-S's (or Qucs's) install folders under Program Files, newest
+    first; [] elsewhere. Qucs-S's installer does not put its bin folder on the PATH."""
+    if sys.platform != 'win32':
+        return []
+    import glob
+    found = []
+    for base in dict.fromkeys(filter(None, (os.environ.get('ProgramFiles'), os.environ.get('ProgramW6432'),
+                                            os.environ.get('ProgramFiles(x86)')))):
+        for name in ('qucsator_rf.exe', 'qucsator.exe'):
+            found += sorted(glob.glob(os.path.join(base, 'Qucs*', 'bin', name)), reverse=True)
+    return found
 
 
 def resolve_backend(backend='auto', qucsator=None):
@@ -380,7 +396,7 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
                 raise ValueError("a coupled section of more than two lines needs a working folder for its Touchstone")
             path = os.path.join(workdir, f"group{gid}.s{2 * len(mem)}p")
             write_touchstone(path, freq, group_s(g, freq), [50.0] * (2 * len(mem)), comment='coupled section')
-            L.append(f'SPfile:G{gid} {" ".join(nodes_near + nodes_far)} gnd File="{{{path}}}" Data="rectangular" '
+            L.append(f'SPfile:G{gid} {" ".join(nodes_near + nodes_far)} gnd File="{{{path.replace(os.sep, '/')}}}" Data="rectangular" '
                      f'Interpolator="linear" duringDC="open"')
     num = 0
     order = []
@@ -413,7 +429,7 @@ def _qucsator(lm, ports, freq, sheet, sigma, exe, timeout=120.0):
     with tempfile.TemporaryDirectory() as d:
         inp, out = os.path.join(d, 'line_model.net'), os.path.join(d, 'line_model.dat')
         text, order = qucs_netlist(lm, ports, freq, sheet, sigma, workdir=d)
-        with open(inp, 'w') as fh:
+        with open(inp, 'w', encoding='utf-8') as fh:
             fh.write(text)
         try:
             r = subprocess.run([exe, '-i', inp, '-o', out], capture_output=True, text=True, timeout=timeout)
@@ -421,7 +437,7 @@ def _qucsator(lm, ports, freq, sheet, sigma, exe, timeout=120.0):
             raise RuntimeError(f"qucsator ({exe}) did not finish within {timeout:g} s") from None
         if r.returncode or not os.path.exists(out):
             raise RuntimeError(f"qucsator failed ({exe}):\n{(r.stdout + r.stderr)[-2000:]}")
-        with open(out) as fh:
+        with open(out, encoding='utf-8') as fh:
             _, S = read_qucs_dataset(fh.read(), len(order))
     return S, order
 

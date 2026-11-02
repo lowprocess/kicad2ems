@@ -1,5 +1,5 @@
 """Where the external programs are (kicad2ems.sitecfg): the user's file (the GUI's Solvers and hardware window)
-wins over the environment's (setup.sh's kicad2ems-site.toml), and qucsator and openEMS's venv are taken from
+wins over the environment's (install.py's kicad2ems-site.toml), and qucsator and openEMS's venv are taken from
 them when nothing else names them."""
 from kicad2ems import sitecfg
 
@@ -31,3 +31,14 @@ def test_set_user(tmp_path, monkeypatch):
     sitecfg.set_user('qucsator', '')
     assert sitecfg.get('qucsator') is None and sitecfg.get('openems_venv') == '/opt/o/venv'
     monkeypatch.setattr(sitecfg, '_cache', None)
+
+
+def test_user_file_on_windows(tmp_path, monkeypatch):
+    """Windows: %APPDATA%\\kicad2ems\\site.toml (XDG_CONFIG_HOME still wins where it is set)."""
+    import os
+    monkeypatch.delenv('XDG_CONFIG_HOME', raising=False)
+    monkeypatch.setenv('APPDATA', str(tmp_path / 'Roaming'))
+    monkeypatch.setattr(sitecfg.sys, 'platform', 'win32')
+    assert sitecfg.user_file() == os.path.join(str(tmp_path / 'Roaming'), 'kicad2ems', 'site.toml')
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
+    assert sitecfg.user_file() == os.path.join(str(tmp_path / 'xdg'), 'kicad2ems', 'site.toml')

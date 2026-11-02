@@ -170,7 +170,7 @@ class Board(Items):
         L += self.items
         L.append(f'  (gr_rect (start 0 0) (end {W:.4f} {H:.4f}) (stroke (width 0.1) (type default)) (fill none) '
                  f'(layer "Edge.Cuts") (uuid "{u()}"))\n)')
-        with open(path, 'w') as fh:
+        with open(path, 'w', encoding='utf-8') as fh:
             fh.write("\n".join(L) + "\n")
 
 

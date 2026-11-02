@@ -37,7 +37,7 @@ def disarm():
 def request(out):
     """From another process: asks the run writing to `out` to stop (its STOP file)."""
     os.makedirs(out, exist_ok=True)
-    open(os.path.join(out, NAME), 'w').close()
+    open(os.path.join(out, NAME), 'w', encoding='utf-8').close()
 
 
 def requested():

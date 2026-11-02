@@ -1,0 +1,124 @@
+# The stack on Windows: kicad2ems with every package that builds on it, each from its main branch (or the ref a
+# repository_dispatch names), checked out side by side as on Linux (stack.yml), the compiled cores built with
+# MSVC (Visual Studio 2022 is on the runner), every suite run; and the installer, install.py, run end to end on
+# Windows and Linux.
+#
+# The other repositories can run it for their own changes, as stack.yml:
+#   gh api repos/lowprocess/kicad2ems/dispatches -f event_type=windows -F 'client_payload[mom25d]=my-branch'
+name: windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [windows]
+  schedule:
+    - cron: '37 3 * * *'            # nightly: the other repositories' main moves without a push here
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  MOM25D_GPU: 'off'
+  GFDTD_BACKEND: cpu
+  PYTHONUTF8: '0'                   # the code must work with Windows' default text encoding, not UTF-8 mode
+
+defaults:
+  run:
+    shell: bash                     # Git Bash; the Python is Windows' own
+
+jobs:
+  stack:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.13']            # triangle (mom25d's mesher) has a Windows wheel for 3.13
+    name: stack on Windows (Python ${{ matrix.python }})
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: kicad2ems }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/emsdev, path: emsdev, ref: "${{ github.event.client_payload.emsdev || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/mom25d, path: mom25d, ref: "${{ github.event.client_payload.mom25d || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/gfdtd, path: gfdtd, ref: "${{ github.event.client_payload.gfdtd || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/kicad2ems-fdtd, path: kicad2ems-fdtd,
+                ref: "${{ github.event.client_payload['kicad2ems-fdtd'] || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/kicad2ems-gui, path: kicad2ems-gui,
+                ref: "${{ github.event.client_payload['kicad2ems-gui'] || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/dfsynth, path: dfsynth, ref: "${{ github.event.client_payload.dfsynth || 'main' }}" }
+
+      - uses: actions/setup-python@v5
+        with: { python-version: '${{ matrix.python }}' }
+      - name: Install the stack from the checkouts
+        run: |
+          python kicad2ems/tools/ci_deps.py emsdev 'kicad2ems[test,fast,dumps]' 'mom25d[test,core]' 'gfdtd[test,core]' \
+            'kicad2ems-fdtd[test,openems]' 'kicad2ems-gui[test]' 'dfsynth[test]' > requirements-ci.txt
+          echo 'setuptools>=61' >> requirements-ci.txt                    # emsdev.build finds MSVC through it
+          cat requirements-ci.txt
+          python -m pip install -r requirements-ci.txt
+          python -m pip install --no-deps -e emsdev -e kicad2ems -e mom25d -e gfdtd -e kicad2ems-fdtd -e kicad2ems-gui -e dfsynth
+      - name: Build the compiled cores (MSVC, /openmp:llvm)
+        run: |
+          MOM25D_ARCH=-march=x86-64-v2 python -m mom25d.core.build
+          GFDTD_ARCH=-march=x86-64-v2 python -m gfdtd.core.build
+          python -c "import mom25d._core, gfdtd._core; print('cores import')"
+      - name: The machine, the solvers
+        run: python -m emsdev && kicad2ems --check
+
+      # every suite runs even when one before it failed; the job fails if any did
+      - name: emsdev
+        run: cd emsdev && python -m pytest -q
+      - name: kicad2ems
+        if: success() || failure()
+        run: cd kicad2ems && python -m pytest -q
+      - name: mom25d
+        if: success() || failure()
+        run: cd mom25d && python -m pytest -q
+      - name: gfdtd
+        if: success() || failure()
+        run: cd gfdtd && python -m pytest -q
+      - name: kicad2ems-fdtd
+        if: success() || failure()
+        run: cd kicad2ems-fdtd && python -m pytest -q
+      - name: kicad2ems-gui
+        if: success() || failure()
+        run: cd kicad2ems-gui && python -m pytest -q
+      - name: dfsynth
+        if: success() || failure()
+        run: cd dfsynth && python -m pytest -q
+
+  # install.py as a user runs it: every default (the GUI, mom25d, gfdtd and their cores, dfsynth), no openEMS, no
+  # qucsator, into a venv, then the update and the uninstall
+  installer:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    name: install.py on ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.13' }
+      - name: System libraries (Qt offscreen, OpenGL)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - name: Install (checkout target, every default)
+        run: python install.py --yes --target checkout --openems none --qucsator none
+      - name: Run an example on mom25d (the compiled core)
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then K2E=.venv/Scripts/kicad2ems; else K2E=.venv/bin/kicad2ems; fi
+          "$K2E" --check
+          "$K2E" examples/demo_transition.toml --solvers mom
+      - name: Update
+        run: python install.py --update --target checkout
+      - name: Uninstall
+        run: python install.py --uninstall --target checkout --yes && test ! -d .venv

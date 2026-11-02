@@ -69,6 +69,6 @@ def write_starter(board, typed):
           "[solver.openems]", "# excite = [\"P1\"]                # the ports to drive (default: all)",
           "# fine   = 0.05                  # mm at the copper edges (default: from the narrowest port trace)", "",
           "[solver.mom25d]", "# dmax   = 0.3                   # largest MoM cell along the copper, mm"]
-    with open(path, 'w') as fh:
+    with open(path, 'w', encoding='utf-8') as fh:
         fh.write("\n".join(L) + "\n")
     return path, ports

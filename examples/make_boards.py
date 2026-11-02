@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Make every example board that is not in the repository (rf_*, antenna_*, demo_*) here, next to its config, with
-its generator: setup.sh runs this, so kicad2ems examples/<name>.toml works in a fresh checkout.
+its generator: install.py runs this, so kicad2ems examples/<name>.toml works in a fresh checkout.
 
     python examples/make_boards.py [--quiet] [name ...]    # every generated example, or only these (config names)
 

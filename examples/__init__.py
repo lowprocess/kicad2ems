@@ -7,7 +7,7 @@ kicad2ems.api.frontend:
     examples()                  {name: config path} of every example, in this installed folder
     prepare_example(name, dest) the example in a folder of the user's (default: user_folder()): its config, and its
                                 board, copied or generated there; returns the config's path there
-    make_boards(folder)         every generated example board made in folder (default: this one; setup.sh runs it,
+    make_boards(folder)         every generated example board made in folder (default: this one; install.py runs it,
                                 through make_boards.py, so a checkout's configs run as they are)
 
 The installed folder may not be writable (a system install) and a run writes next to its config, so a front end
@@ -33,7 +33,7 @@ def user_folder():
 
 def board_of(config):
     """The board file a config names (relative to it)."""
-    m = re.search(r'^board\s*=\s*"([^"]+)"', open(config).read(), re.M)
+    m = re.search(r'^board\s*=\s*"([^"]+)"', open(config, encoding='utf-8').read(), re.M)
     if not m:
         raise ValueError(f"{config}: no board")
     return m.group(1)

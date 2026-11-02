@@ -12,7 +12,7 @@ solver's openEMS figure checked against the reference's. Run it before a release
 The table is measured from the Touchstone files under build/compare/<board>/<solver>/, this run's and earlier
 ones' (a solver run again replaces its own), and written with results.json. mom25d runs with lumped ports
 (--mom-port lumped), the FDTD solvers' kind, so its figures compare with theirs. openEMS needs its libraries: run
-it from an activated environment (setup.sh's activate sets LD_LIBRARY_PATH).
+it from an activated environment (the venv's activate script, as the installer wrote it, sets LD_LIBRARY_PATH).
 
 Writes build/compare/results.json and results.md (the table, in examples.md's columns, and the agreement
 table: each solver against openEMS's reference over the whole band). A board's boards are made
@@ -180,7 +180,7 @@ def run(board, solver, python, timeout):
     cmd = [python, '-m', 'kicad2ems.cli', cfg, '--solvers', solver, '--out', out, '--no-report']
     if solver == 'mom25d':
         cmd += ['--mom-port', 'lumped']     # the FDTD solvers' lumped ports, not wave ports de-embedded onto the line
-    with open(os.path.join(out, 'log.txt'), 'w') as log:
+    with open(os.path.join(out, 'log.txt'), 'w', encoding='utf-8') as log:
         try:
             p = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, timeout=timeout, cwd=REPO)
         except subprocess.TimeoutExpired:
@@ -251,7 +251,7 @@ def main():
                     r.setdefault('agreement', {})[s] = agreement(ts, ref, b)
     if a.reference_only:
         return 0
-    json.dump(results, open(os.path.join(OUT, 'results.json'), 'w'), indent=1)
+    json.dump(results, open(os.path.join(OUT, 'results.json'), 'w', encoding='utf-8'), indent=1)
     shown = [s for s in SOLVERS if s in a.solvers or any(r['solvers'].get(s) for r in results.values())]
     md = table({b: results[b] for b in boards if b in results}, shown)
     md += ('\n\nAgreement with openEMS over the band (the reference): the input reflection\'s rms complex '
@@ -265,7 +265,7 @@ def main():
     if bad:
         md += '\n\nopenEMS figures that moved from examples/reference/:\n\n' + '\n'.join(
             f"- `rf_{b}` figure {k + 1}: {x} -> {y}" for b, k, x, y in bad)
-    open(os.path.join(OUT, 'results.md'), 'w').write(md + '\n')
+    open(os.path.join(OUT, 'results.md'), 'w', encoding='utf-8').write(md + '\n')
     print(md)
     return 1 if bad else 0
 

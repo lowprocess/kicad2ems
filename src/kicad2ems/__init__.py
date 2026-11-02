@@ -38,10 +38,10 @@ The window is its own package, kicad2ems-gui (the gui extra), as are the full-wa
 
 Documentation: docs/index.md in the repository.
 """
-__version__ = '261101-r1'
+__version__ = '261102-r1'
 
 import os as _os
-# kicad2ems.examples is the checkout's examples/ (pyproject's package-dir). A compat editable install (setup.sh's
+# kicad2ems.examples is the checkout's examples/ (pyproject's package-dir). A compat editable install (install.py's
 # checkout and user targets) puts only src/ on sys.path, where it isn't: look in the checkout too
 _checkout = _os.path.dirname(_os.path.dirname(__path__[0]))
 if not _os.path.isdir(_os.path.join(__path__[0], 'examples')) and \

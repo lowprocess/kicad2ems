@@ -9,7 +9,7 @@ import numpy as np
 def port_names(path):
     """The port names of the `! ports:` comment kicad2ems writes, or None (another program's file, or none)."""
     try:
-        with open(path) as fh:
+        with open(path, encoding='utf-8') as fh:
             for line in fh:
                 if not line.startswith('!'):
                     break
@@ -26,7 +26,7 @@ def write_touchstone(path, f, S, zref, comment='', names=None):
     n = S.shape[1]
     zref = np.asarray(zref, float)
     v2 = not np.allclose(zref, zref[0])
-    with open(path, 'w') as fh:
+    with open(path, 'w', encoding='utf-8') as fh:
         fh.write(f"! kicad2ems {comment}\n")
         if names:
             fh.write("! ports: " + ", ".join(f"{i + 1}={nm}" for i, nm in enumerate(names)) + "\n")
@@ -57,7 +57,7 @@ def read_touchstone(path):
     fmt, funit, data = 'MA', 1e9, []
     mult = {'HZ': 1, 'KHZ': 1e3, 'MHZ': 1e6, 'GHZ': 1e9}
     order21 = n == 2
-    for line in open(path):
+    for line in open(path, encoding='utf-8'):
         line = line.split('!')[0].strip()
         if not line:
             continue

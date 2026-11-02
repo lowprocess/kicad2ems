@@ -4,15 +4,22 @@
 
 ## Install
 
-The simplest way is the setup script in the repository:
+The simplest way is the installer in the repository, `install.py` (Python's standard library only; it runs before
+anything is installed):
 
 ```bash
-./setup.sh               # asks about each optional part
+./setup.sh               # Linux, macOS: asks about each optional part (setup.sh runs install.py)
 ./setup.sh --yes         # takes the defaults
 source .venv/bin/activate
 ```
 
-It first asks where kicad2ems goes (`--target`):
+```bat
+py install.py            :: Windows (setup.cmd does the same)
+py install.py --yes
+.venv\Scripts\activate
+```
+
+It first asks where kicad2ems goes (`--target`). On Linux and macOS:
 
 | Target | The environment | The commands | The GUI's launcher entry |
 |---|---|---|---|
@@ -21,28 +28,45 @@ It first asks where kicad2ems goes (`--target`):
 | `system` | a venv in `/opt/kicad2ems/` (runs sudo) | linked into `/usr/local/bin` | `/usr/share/applications` |
 | `python` | the Python itself (`pip install --user`) | `~/.local/bin` | `~/.local/share/applications` |
 
+On Windows:
+
+| Target | The environment | The commands | The GUI's Start-menu shortcut |
+|---|---|---|---|
+| `checkout` (default) | a venv in `.venv\` | `.venv\Scripts\` (activate it) | your Start menu |
+| `user` | a venv in `%LOCALAPPDATA%\kicad2ems\` | `%LOCALAPPDATA%\kicad2ems\bin`, put on your PATH | your Start menu |
+| `system` | a venv in `Program Files\kicad2ems\` (an Administrator prompt) | its `bin`, put on every user's PATH | every user's Start menu |
+| `python` | the Python itself (`pip install --user`) | the user scripts folder | your Start menu |
+
 The checkout and user installs follow this checkout (editable: a `git pull` updates them); the system install
-is a copy. After a `git pull`, `./setup.sh --update` brings an existing install up to date without asking anything: it
-reinstalls kicad2ems, and the stack's other packages as they were installed (a checkout stays that checkout, a URL is
-fetched again), rebuilds a compiled core whose source changed, and remakes the example boards. It doesn't touch openEMS,
-qucsator, the GPU wheel or other dependencies, and it doesn't pull; `pip check` reports a requirement that has become
-missing, which a plain `./setup.sh` then installs.
+is a copy. After a `git pull`, `./setup.sh --update` (`py install.py --update`) brings an existing install up to date
+without asking anything: it reinstalls kicad2ems, and the stack's other packages as they were installed (a checkout
+stays that checkout, a URL is fetched again), rebuilds a compiled core whose source changed, and remakes the example
+boards. It doesn't touch openEMS, qucsator, the GPU wheel or other dependencies, and it doesn't pull; `pip check`
+reports a requirement that has become missing, which a plain run of the installer then installs.
 
 It then installs kicad2ems and offers:
 
 - the GUI, field-dump support (h5py) and the scikit-rf line model;
-- mom25d's compiled core, which makes the MoM solver about five times faster (needs a C++ compiler);
-- the CuPy package that matches your GPU (detected: CUDA 12, CUDA 13 or ROCm 7);
+- the compiled cores of mom25d (about five times faster) and gfdtd (about fifteen times, on the CPU), which need a C++
+  compiler: g++ on Linux and macOS; on Windows Visual Studio 2022 or its Build Tools (*Desktop development with C++*),
+  or MinGW-w64's g++ (MSYS2's UCRT64 toolchain) where Visual Studio isn't installed (`EMSDEV_COMPILER=msvc` or `gcc`
+  chooses);
+- the CuPy package that matches your GPU (detected: CUDA 12, CUDA 13, or ROCm 7 on Linux; CuPy has no ROCm wheel for
+  Windows, so an AMD card there runs nothing on the GPU);
 - openEMS: one the Python already has; one installed in another venv, linked in (its CSXCAD and openEMS
-  packages; it must be built for the same Python version); a copy built with `tools/build_openems.sh`; or none.
-  `--openems /opt/openems/venv/bin/python` names the other venv's Python;
-- qucsator: found on the PATH, a path you give (`--qucsator PATH`), installed from your distribution, or none.
-  Its path goes into `kicad2ems-site.toml` in the environment, which kicad2ems reads;
-- a launcher entry for the GUI, and an icon on the desktop. Both run the environment's own `kicad2ems-gui`,
-  so nothing needs activating.
+  packages; it must be built for the same Python version); on Linux and macOS a copy built with
+  `tools/build_openems.sh`; on Windows the unpacked openEMS release (its Python wheels go into kicad2ems's environment
+  and its folder is recorded as `openems_dir`, which puts its DLLs on the DLL search); or none.
+  `--openems /opt/openems/venv/bin/python` names the other venv's Python, `--openems C:\opt\openEMS` Windows' folder;
+- qucsator: found on the PATH (on Windows also in Qucs-S's install folder), a path you give (`--qucsator PATH`),
+  installed from your distribution, or none. Its path goes into `kicad2ems-site.toml` in the environment, which
+  kicad2ems reads;
+- a launcher entry for the GUI (a Start-menu shortcut on Windows, which runs it without a console window), and an
+  icon on the desktop. Both run the environment's own `kicad2ems-gui`, so nothing needs activating.
 
-`./setup.sh --uninstall --target user` removes what that install added: the commands, the launcher entry and
-desktop icon, the link to openEMS, and the venv if you say so.
+`./setup.sh --uninstall --target user` (`py install.py --uninstall --target user`) removes what that install added:
+the commands, the PATH entry it made on Windows, the launcher entry and desktop icon, the link to openEMS, and the
+venv if you say so.
 
 ### By hand
 
@@ -60,13 +84,13 @@ pip install cupy-rocm-7-0       # optional, AMD GPU (ROCm 7); NVIDIA: cupy-cuda1
 ```
 
 mom25d's mesher, triangle, has no wheel on PyPI for every Python (none for 3.14). If the `mom` extra fails on
-`triangle>=20230923`, build it from its repository first (needs a C compiler; `setup.sh` does this for you):
+`triangle>=20230923`, build it from its repository first (needs a C compiler; the installer does this for you):
 
 ```bash
 pip install "triangle @ git+https://github.com/drufat/triangle.git@595b43eb6682992a0b1012b9671bf860c0e6ae56"
 ```
 
-openEMS is not on PyPI. Install it from your distribution if it has it, or build it:
+openEMS is not on PyPI. On Linux, install it from your distribution if it has it, or build it:
 
 ```bash
 tools/build_openems.sh [prefix]   # default prefix ~/opt/openEMS
@@ -74,10 +98,16 @@ tools/build_openems.sh [prefix]   # default prefix ~/opt/openEMS
 
 The script's header lists the build dependencies for Debian/Ubuntu and Fedora. It installs openEMS's
 Python packages into the active virtual environment. kicad2ems must be installed in the **same**
-Python environment as openEMS, or point it at openEMS's: `setup.sh --openems PATH`, the GUI's *Solvers and
-hardware* window (*openEMS environment*), or `openems_venv = "/path/to/venv"` in
-`~/.config/kicad2ems/site.toml`. The two must be the same Python version. If `import openEMS` can't find
-its libraries, add `<prefix>/lib` to `LD_LIBRARY_PATH`.
+Python environment as openEMS, or point it at openEMS's: `install.py --openems PATH`, the GUI's *Solvers and
+hardware* window (*openEMS environment*), or `openems_venv = "/path/to/venv"` in the user's `site.toml`
+(`~/.config/kicad2ems/site.toml`; `%APPDATA%\kicad2ems\site.toml` on Windows). The two must be the same Python
+version. If `import openEMS` can't find its libraries, add `<prefix>/lib` to `LD_LIBRARY_PATH`.
+
+On Windows, unpack openEMS's release for Windows (the MSVC build, from [docs.openems.de](https://docs.openems.de)),
+for example to `C:\opt\openEMS`. Its `python` folder has CSXCAD and openEMS wheels for some Python versions:
+install the pair for kicad2ems's Python into its environment (`pip install C:\opt\openEMS\python\*cp313*.whl`, or
+let the installer do it) and set `openems_dir = "C:/opt/openEMS"` (the GUI's *openEMS folder*), which puts its DLLs on
+the DLL search; `OPENEMS_INSTALL_PATH` works too.
 
 ## Checking the install
 
@@ -93,11 +123,12 @@ GPU mom25d will use. If openEMS is missing it explains why. The common causes:
 - **openEMS came from your distribution but you're in a virtual environment.** Recreate it with
   `python3 -m venv --system-site-packages <dir>`.
 - **A missing dependency**, often h5py: `pip install h5py`.
-- **A shared library is not found**: add openEMS's `lib` folder to `LD_LIBRARY_PATH`.
+- **A shared library is not found**: add openEMS's `lib` folder to `LD_LIBRARY_PATH` (on Windows: set
+  `openems_dir` to the openEMS folder, the one with its DLLs).
 
 ## A first run
 
-The example boards are generated by scripts, so you don't need KiCad; `setup.sh` has made them in
+The example boards are generated by scripts, so you don't need KiCad; the installer has made them in
 `examples/` (`python examples/make_boards.py` makes them again):
 
 ```bash
