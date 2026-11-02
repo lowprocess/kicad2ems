@@ -27,6 +27,9 @@ added to (or made anew if you say so)."""
 import argparse, glob, json, os, re, shutil, subprocess, sys, sysconfig, tempfile
 
 TRIANGLE_COMMIT = '595b43eb6682992a0b1012b9671bf860c0e6ae56'    # triangle 20250106, builds on Python 3.14
+# triangle's exact-arithmetic predicates need every product rounded on its own: a fused multiply-add (GCC fuses them
+# at -O2 where the target has FMA; clang on ARM always) breaks them, and the mesher then never finishes
+TRIANGLE_CFLAGS = '-O2 -ffp-contract=off'
 CUPY_WHEELS = ('cupy-rocm-7-0', 'cupy-cuda12x', 'cupy-cuda13x')
 STACK = ('emsdev', 'kicad2ems-gui', 'kicad2ems-fdtd', 'mom25d', 'gfdtd', 'dfsynth')
 REPO = os.path.dirname(os.path.abspath(__file__))
@@ -440,9 +443,9 @@ class Installer:
         self.py = which_python(a.python)
         self.failed = False
 
-    def pip(self, *args, check=True, quiet=False):
+    def pip(self, *args, check=True, quiet=False, env=None):
         cmd = [self.vpy, '-m', 'pip', 'install', *(['--user'] if self.t.user else []), *(['-q'] if quiet else []), *args]
-        ok = run(cmd)
+        ok = run(cmd, env={**os.environ, **env} if env else None)
         if check and not ok:
             raise Abort(f"pip failed: {' '.join(cmd)}")
         return ok
@@ -843,7 +846,8 @@ class Installer:
                                                                             quiet=True):
             note(f"no triangle wheel for Python {self.pyver}: building it from github.com/drufat/triangle (needs a C "
                  f"compiler)")
-            self.pip(f"triangle @ git+https://github.com/drufat/triangle.git@{TRIANGLE_COMMIT}")
+            self.pip('--no-cache-dir', f"triangle @ git+https://github.com/drufat/triangle.git@{TRIANGLE_COMMIT}",
+                     env=None if WINDOWS else {'CFLAGS': TRIANGLE_CFLAGS})    # MSVC: /fp:precise doesn't fuse
         if self.oems == 'folder':
             bold(f"openEMS's Python packages from {self.oems_dir}")
             self.pip(*self.openems_wheels(self.pyver))

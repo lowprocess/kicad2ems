@@ -84,10 +84,13 @@ pip install cupy-rocm-7-0       # optional, AMD GPU (ROCm 7); NVIDIA: cupy-cuda1
 ```
 
 mom25d's mesher, triangle, has no wheel on PyPI for every Python (none for 3.14). If the `mom` extra fails on
-`triangle>=20230923`, build it from its repository first (needs a C compiler; the installer does this for you):
+`triangle>=20230923`, build it from its repository first (needs a C compiler; the installer does this for you).
+Build it without fused multiply-adds: they break triangle's exact arithmetic, and the mesher then never finishes
+(GCC fuses them at `-O2` on CPUs with FMA, clang on ARM always):
 
 ```bash
-pip install "triangle @ git+https://github.com/drufat/triangle.git@595b43eb6682992a0b1012b9671bf860c0e6ae56"
+CFLAGS="-O2 -ffp-contract=off" pip install --no-cache-dir \
+    "triangle @ git+https://github.com/drufat/triangle.git@595b43eb6682992a0b1012b9671bf860c0e6ae56"
 ```
 
 openEMS is not on PyPI. On Linux, install it from your distribution if it has it, or build it:

@@ -51,6 +51,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the same accuracy, not faster below ~30k unknowns (ROADMAP.md item 6).
 
 ### Fixed
+- triangle (mom25d's mesher) built from source without fused multiply-adds (`-ffp-contract=off`, install.py and CI):
+  where the compiler fused them, its exact arithmetic broke and meshing a board never finished (CI's Python 3.14
+  stack job, out of time in mom25d's suite since 1 November).
+- The docs' `#coupled` anchor, which since dfsynth's `Substrate.coupled` also named two Python objects and failed the
+  docs build: `#coupled-sections`.
 - The field solver's cache moved copper too far: bins grew without limit away from a strip, so an edge a few heights
   off snapped hundreds of mm (a third of the CM5 Minima's cuts), and on wide traces reversed a conductor, the section
   falling back to the formula (27 of them). No bin is wider than one reference height now (`reference.BIN_MAX`).
