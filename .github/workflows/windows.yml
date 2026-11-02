@@ -35,7 +35,10 @@ jobs:
       fail-fast: false
       matrix:
         python: ['3.13']            # triangle (mom25d's mesher) has a Windows wheel for 3.13
-    name: stack on Windows (Python ${{ matrix.python }})
+        compiler: [msvc, gcc]       # the compiled cores: Visual Studio's cl, and MinGW-w64's g++ (emsdev.build)
+    name: stack on Windows (Python ${{ matrix.python }}, ${{ matrix.compiler }})
+    env:
+      EMSDEV_COMPILER: ${{ matrix.compiler }}
     steps:
       - uses: actions/checkout@v4
         with: { path: kicad2ems }
@@ -64,13 +67,26 @@ jobs:
           cat requirements-ci.txt
           python -m pip install -r requirements-ci.txt
           python -m pip install --no-deps -e emsdev -e kicad2ems -e mom25d -e gfdtd -e kicad2ems-fdtd -e kicad2ems-gui -e dfsynth
-      - name: Build the compiled cores (MSVC, /openmp:llvm)
+      - name: MinGW-w64 on the PATH (the runner's C:\mingw64)
+        if: matrix.compiler == 'gcc'
+        run: |
+          echo 'C:\mingw64\bin' >> "$GITHUB_PATH"
+          C:/mingw64/bin/g++ --version | head -1
+      - name: Build the compiled cores (${{ matrix.compiler }})
         run: |
           MOM25D_ARCH=-march=x86-64-v2 python -m mom25d.core.build
           GFDTD_ARCH=-march=x86-64-v2 python -m gfdtd.core.build
-          python -c "import mom25d._core, gfdtd._core; print('cores import')"
-      - name: The machine, the solvers
-        run: python -m emsdev && kicad2ems --check
+          ls mom25d/src/mom25d/ gfdtd/src/gfdtd/ | grep -iE '\.pyd$|\.dll$'
+      - name: The cores import without the compiler on the PATH (only the DLLs beside them)
+        shell: pwsh
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'mingw|Microsoft Visual Studio' }) -join ';'
+          python -c "import mom25d._core, gfdtd._core; print('cores import:', mom25d._core.__file__, gfdtd._core.__file__)"
+      - name: The machine, the solvers (each with its compiled core)
+        run: |
+          python -m emsdev
+          kicad2ems --check | tee check.txt
+          ! grep -q 'no compiled core' check.txt
 
       # every suite runs even when one before it failed; the job fails if any did
       - name: emsdev
