@@ -80,7 +80,8 @@ jobs:
         run: cd kicad2ems && python -m pytest -q
       - name: mom25d
         if: success() || failure()
-        run: cd mom25d && python -m pytest -q
+        timeout-minutes: 40
+        run: cd mom25d && python -m pytest -v -o faulthandler_timeout=600 --durations=10
       - name: gfdtd
         if: success() || failure()
         run: cd gfdtd && python -m pytest -q

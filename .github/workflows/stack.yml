@@ -83,7 +83,8 @@ jobs:
         run: cd kicad2ems && python -m pytest -q
       - name: mom25d (with its kicad2ems plugin's parity)
         if: success() || failure()
-        run: cd mom25d && python -m pytest -q
+        timeout-minutes: 30         # a hang fails the step with its traceback (faulthandler) instead of the job's cancel
+        run: cd mom25d && python -m pytest -v -o faulthandler_timeout=600 --durations=10
       - name: gfdtd
         if: success() || failure()
         run: cd gfdtd && python -m pytest -q
