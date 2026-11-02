@@ -45,7 +45,7 @@ def write_gerber(path, function, tracks=(), flashes=(), regions=()):
         for piece in split_holes(poly):
             pts = list(piece.exterior.coords)
             L += ['G36*', f'X{_c(pts[0][0])}Y{_c(pts[0][1])}D02*'] + [f'G01X{_c(x)}Y{_c(y)}D01*' for x, y in pts[1:]] + ['G37*']
-    with open(path, 'w') as fh:
+    with open(path, 'w', encoding='utf-8') as fh:
         fh.write("\n".join(L + ['M02*']) + "\n")
 
 
@@ -93,10 +93,10 @@ def export(raw, outdir, base=None):
         for k, d in enumerate(tools):
             L.append(f'T{k + 1}')
             L += [f"X{v['x']:.4f}Y{-v['y']:.4f}" for v in vs if v['drill'] == d]
-        with open(os.path.join(outdir, f"{base}-{i0}-{i1}.drl"), 'w') as fh:
+        with open(os.path.join(outdir, f"{base}-{i0}-{i1}.drl"), 'w', encoding='utf-8') as fh:
             fh.write("\n".join(L + ['M30']) + "\n")
     job = os.path.join(outdir, base + '-job.gbrjob')
-    with open(job, 'w') as fh:
+    with open(job, 'w', encoding='utf-8') as fh:
         json.dump(dict(Header=dict(GenerationSoftware=dict(Application='kicad2ems tests')), FilesAttributes=files,
                        MaterialStackup=stack), fh, indent=1)
     return job

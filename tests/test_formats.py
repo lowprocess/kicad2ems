@@ -18,9 +18,9 @@ def test_stamp_and_check():
 
 def test_readers_check(tmp_path):
     p = tmp_path / 'b_run.json'
-    p.write_text(json.dumps(formats.stamp({'solvers': ['mom25d']}, 'kicad2ems-run')))
+    p.write_text(json.dumps(formats.stamp({'solvers': ['mom25d']}, 'kicad2ems-run')), encoding='utf-8')
     assert frontend.read_summary(str(p))['solvers'] == ['mom25d']
-    p.write_text(json.dumps(dict(formats.stamp({}, 'kicad2ems-run'), format_version=99)))
+    p.write_text(json.dumps(dict(formats.stamp({}, 'kicad2ems-run'), format_version=99)), encoding='utf-8')
     with pytest.raises(ValueError, match='newer'):
         frontend.read_summary(str(p))
     from kicad2ems.fields.antenna import save
@@ -37,11 +37,11 @@ def test_events_name_their_format(tmp_path):
     sink = EventSink(str(p))
     sink.emit('stage', name='model')
     sink.close()
-    first = json.loads(p.read_text().splitlines()[0])
+    first = json.loads(p.read_text(encoding='utf-8').splitlines()[0])
     assert first['kind'] == 'format' and first['format'] == 'kicad2ems-events'
     assert [e['kind'] for e in frontend.EventTail(str(p)).read()] == ['stage']
-    lines = p.read_text().splitlines()
+    lines = p.read_text(encoding='utf-8').splitlines()
     lines[0] = json.dumps(dict(first, format_version=99))
-    p.write_text('\n'.join(lines) + '\n')
+    p.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     ev = frontend.EventTail(str(p)).read()
     assert ev[0]['kind'] == 'log' and 'newer' in ev[0]['text'] and ev[1]['kind'] == 'stage'

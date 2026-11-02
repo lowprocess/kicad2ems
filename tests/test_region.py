@@ -8,7 +8,7 @@ from kicad2ems.region import parse_port_spec, region_polygon
 
 
 def _with_drawing(base, rect):
-    text = open(base + '.kicad_pcb').read().rstrip().rstrip(')')
+    text = open(base + '.kicad_pcb', encoding='utf-8').read().rstrip().rstrip(')')
     x0, y0, x1, y1 = rect
     text += (f'  (gr_rect (start {x0} {y0}) (end {x1} {y1}) (stroke (width 0.1) (type default)) (fill none) '
              f'(layer "User.1") (uuid "00000000-0000-0000-0000-000000000001"))\n)\n')

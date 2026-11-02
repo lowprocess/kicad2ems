@@ -39,7 +39,7 @@ def check(d, name):
 
 def read(path, name):
     """A JSON file of format `name`, checked: ValueError when this kicad2ems cannot read it."""
-    with open(path) as fh:
+    with open(path, encoding='utf-8') as fh:
         d = json.load(fh)
     why = check(d, name)
     if why:

@@ -9,6 +9,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Windows.** The stack installs and runs on Windows (docs/getting-started.md): `install.py`, the installer, in
+  Python (standard library only) for Linux, macOS and Windows, with the options setup.sh had; `setup.sh` (and
+  `setup.cmd` on Windows) runs it. On Windows: venvs with `Scripts\`, `.cmd` commands on the user's or the
+  machine's PATH, a Start-menu shortcut that runs the GUI without a console, the CUDA CuPy wheels (CuPy has no ROCm
+  wheel for Windows), openEMS's unpacked Windows release (its wheels installed, its DLL folder recorded as
+  `openems_dir`), qucsator found in Qucs-S's install folder, and the compiled cores built with MSVC or MinGW-w64
+  (emsdev). The user's `site.toml` is in `%APPDATA%\kicad2ems` there.
+- `tools/test_all.py`, every suite on any system (`tools/test_all.sh` runs it).
+- CI on Windows (`.github/workflows/windows.yml`): the stack's suites with MSVC-built cores, and the installer end
+  to end on Windows and Linux.
 - The line model's 2D field solver, `kicad2ems.lines.xsection` (docs/transmission-lines.md#field-solver): the
   capacitance matrices, Z0, εeff, even / odd modes and dielectric loss of any cross-section of rectangular
   conductors over planes in layered dielectrics (solder mask, coplanar ground beside striplines, copper
@@ -41,6 +51,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the same accuracy, not faster below ~30k unknowns (ROADMAP.md item 6).
 
 ### Fixed
+- triangle (mom25d's mesher) built from source without fused multiply-adds (`-ffp-contract=off`, install.py and CI):
+  where the compiler fused them, its exact arithmetic broke and meshing a board never finished (CI's Python 3.14
+  stack job, out of time in mom25d's suite since 1 November).
+- The docs' `#coupled` anchor, which since dfsynth's `Substrate.coupled` also named two Python objects and failed the
+  docs build: `#coupled-sections`.
 - The field solver's cache moved copper too far: bins grew without limit away from a strip, so an edge a few heights
   off snapped hundreds of mm (a third of the CM5 Minima's cuts), and on wide traces reversed a conductor, the section
   falling back to the formula (27 of them). No bin is wider than one reference height now (`reference.BIN_MAX`).
@@ -48,7 +63,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   now 5.5 ohm), the CM5 Minima's wide traces among them. Narrower strips are unchanged.
 
 ### Changed
-- The line model's coupled sections come from the field solver (docs/transmission-lines.md#coupled): every line
+- Text files are read and written as UTF-8 everywhere (boards, configs, reports, Touchstone): Windows' default
+  code page broke non-ASCII net names and labels.
+- The line model's coupled sections come from the field solver (docs/transmission-lines.md#coupled-sections): every line
   coupled to every other (rf_interdig's |S21| against openEMS: 51.2 → 8.5 dB rms, its stop bands), and the pairs'
   even / odd impedances with the copper's thickness (`ze`, `zo`; `ze_sheet`, `zo_sheet` as sheets). The CM5
   Minima demo board's HDMI pairs: 117.8 → 104.8 Ω differential (100 Ω class); by 3D FDTD, thickness takes 7–14 % off

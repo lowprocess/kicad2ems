@@ -30,7 +30,7 @@ RF = os.path.join(ROOT, 'examples', 'make_rf_examples.py')
 def scratch_settings(tmp_path_factory, monkeypatch):
     """The GUI's QSettings (recent files, the window's shape, the Results plots) in a scratch folder: a test
     never writes the user's own. The site settings (sitecfg) from that scratch user file alone: not the
-    environment's kicad2ems-site.toml, where setup.sh records this machine's qucsator and openEMS."""
+    environment's kicad2ems-site.toml, where install.py records this machine's qucsator and openEMS."""
     if 'XDG_CONFIG_HOME' not in os.environ or not os.environ['XDG_CONFIG_HOME'].startswith(str(tmp_path_factory.getbasetemp())):
         monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path_factory.getbasetemp() / 'xdg'))
     from kicad2ems import sitecfg
@@ -191,7 +191,7 @@ def write_vtr(path, x, y, z, field, compress=True):
     coords = ''.join(f'<DataArray type="Float64" format="binary">{_b64_block((np.asarray(c, "<f8") * 1e-3).tobytes(), compress)}</DataArray>'
                      for c in (x, y, z))
     ext = f"0 {len(x) - 1} 0 {len(y) - 1} 0 {len(z) - 1}"
-    with open(path, 'w') as fh:
+    with open(path, 'w', encoding='utf-8') as fh:
         fh.write(f'<?xml version="1.0"?><VTKFile type="RectilinearGrid" version="0.1" byte_order="LittleEndian" '
                  f'header_type="UInt32"{hdr}><RectilinearGrid WholeExtent="{ext}"><Piece Extent="{ext}"><PointData>'
                  f'<DataArray type="Float32" Name="E-Field" NumberOfComponents="3" format="binary">'

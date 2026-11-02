@@ -73,6 +73,6 @@ def test_microstrip_thru(solver, thru, tmp_path):
     assert abs(delay / ref - 1) < delay_tol, f"{solver}: delay {delay * 1e12:.1f} ps, expected {ref * 1e12:.1f} ps"
     if solver == 'mixed':                                         # the middle of the line as a line, and the
         import json                                               # joined solution's currents
-        info = json.loads((out / 'thru_run.json').read_text())['solved']['mixed']
+        info = json.loads((out / 'thru_run.json').read_text(encoding='utf-8'))['solved']['mixed']
         assert info['cuts'] == 1 and info['cut_mm'] > 10 and info['solves'] < 16
         assert (out / 'thru_mixed_P1_dump_J_F_Cu_fd_3.5GHz.png').exists()

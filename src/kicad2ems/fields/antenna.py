@@ -111,7 +111,7 @@ def save(res, path):
     """JSON summary (without the 3D sphere), stamped kicad2ems-antenna (formats.py)."""
     from ..formats import stamp
     out = {k: v for k, v in res.items() if k != 'sphere'}
-    with open(path, 'w') as fh:
+    with open(path, 'w', encoding='utf-8') as fh:
         json.dump(stamp(out, 'kicad2ems-antenna'), fh, indent=1)
 
 

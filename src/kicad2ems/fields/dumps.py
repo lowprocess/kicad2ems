@@ -143,13 +143,13 @@ def write_info(path, dumps, m, dt_ps=None):
                 vias=[[round(float(v), 4) for v in via] for via in m.vias],        # x, y, r, z0, z1 (the 3D view)
                 thickness=float(m.thickness))
     os.makedirs(path, exist_ok=True)
-    with open(os.path.join(path, 'dump_info.json'), 'w') as fh:
+    with open(os.path.join(path, 'dump_info.json'), 'w', encoding='utf-8') as fh:
         json.dump(info, fh)
 
 
 def write_norm(path, norm):
     """<run>/dump_norm.json: the incident port voltage at each frequency-domain dump frequency."""
-    with open(os.path.join(path, 'dump_norm.json'), 'w') as fh:
+    with open(os.path.join(path, 'dump_norm.json'), 'w', encoding='utf-8') as fh:
         json.dump([[float(f), float(np.real(v)), float(np.imag(v))] for f, v in norm.items()], fh)
 
 

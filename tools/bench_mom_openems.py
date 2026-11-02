@@ -31,13 +31,13 @@ def run_board(name, out, mesher, extra):
     cmd = [sys.executable, '-m', 'kicad2ems', os.path.join(EX, toml), '--mom', '--mom-mesher', mesher, '--out', od,
            '--no-report'] + extra
     t0 = time.time()
-    with open(os.path.join(out, f"{name}.log"), 'w') as log:
+    with open(os.path.join(out, f"{name}.log"), 'w', encoding='utf-8') as log:
         code = subprocess.call(cmd, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
     wall = time.time() - t0
     sm_path = next((os.path.join(od, f) for f in os.listdir(od) if f.endswith('_run.json')), None) if os.path.isdir(od) else None
     if code or not sm_path:
         return dict(board=name, error=f"exit {code}, see {name}.log", wall_s=wall)
-    sm = json.load(open(sm_path))
+    sm = json.load(open(sm_path, encoding='utf-8'))
     runs, mo = sm.get('runs', {}), sm['solved'].get('mom25d', {})          # compared with openEMS, the first solver
     cmp_ = mo.get('compare', [])
     tx = [r for r in cmp_ if r['max_ddb'] is not None]
@@ -65,7 +65,7 @@ def main():
         print(f"{b} ...", flush=True)
         res.append(run_board(b, a.out, a.mesher, a.extra))
         print("  " + json.dumps(res[-1]), flush=True)
-        json.dump(res, open(os.path.join(a.out, 'bench.json'), 'w'), indent=1)
+        json.dump(res, open(os.path.join(a.out, 'bench.json'), 'w', encoding='utf-8'), indent=1)
     f = lambda v, fmt: '–' if v is None else format(v, fmt)
     lines = ["| board | FDTD cells | openEMS (s) | runs × steps | MoM unknowns | MoM (s) | EM solves | MoM ports | "
              "speed-up | max \\|ΔS\\| | max Δ dB (S21) | Δ delay (ps) |", "|" + "---|" * 12]
@@ -79,7 +79,7 @@ def main():
                      f"{f(r['mom_solves'], 'd')} | {r['mom_ports']} | {f(sp, '.1f')}× | {f(r['max_dS'], '.3f')} | "
                      f"{f(r['max_ddb_tx'], '.2f')} | {f(r['ddelay_ps'], '.1f')} |")
     md = "\n".join(lines)
-    open(os.path.join(a.out, 'bench.md'), 'w').write(md + "\n")
+    open(os.path.join(a.out, 'bench.md'), 'w', encoding='utf-8').write(md + "\n")
     print(md)
 
 

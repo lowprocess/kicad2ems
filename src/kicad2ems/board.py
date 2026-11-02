@@ -551,7 +551,7 @@ class Board:
 
     def save(self, path):
         """Writes the board file (to_dict as JSON: <name>_board.json); returns path."""
-        with open(path, 'w') as fh:
+        with open(path, 'w', encoding='utf-8') as fh:
             json.dump(self.to_dict(), fh, default=_plain)
         return path
 
@@ -584,7 +584,7 @@ class Board:
 
     @classmethod
     def load(cls, path, log=print):
-        with open(path) as fh:
+        with open(path, encoding='utf-8') as fh:
             return cls.from_dict(json.load(fh), log=log)
 
     def summary(self, nd=4):
