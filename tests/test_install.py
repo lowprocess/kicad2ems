@@ -46,6 +46,7 @@ def test_targets_on_windows(windows, tmp_path):
         windows.Target('elsewhere')
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason="Linux's folders: tested on Linux")
 def test_targets_on_linux(inst, monkeypatch, tmp_path):
     monkeypatch.setattr(inst, 'WINDOWS', False)
     monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'share'))
