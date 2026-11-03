@@ -2,15 +2,14 @@
 
 [← mom25d](mom.md) · [Index](index.md) · [Next: Architecture →](architecture.md)
 
-Every run, including previews, breaks the port nets into uniform line sections. Each gets an impedance
-from closed-form formulas. This takes milliseconds and needs no openEMS. It's a quick estimate that shows
-where a routed line departs from the port impedance. The sections can also be solved as a circuit
+Every run, including previews, breaks the port nets into uniform line sections, each with an impedance from
+closed-form formulas or a 2D field solve. On the examples this takes about a second and needs no full-wave
+solver: a quick estimate that shows where a routed line departs from the port impedance. The sections can also be solved as a circuit
 ([below](#fast)).
 
 ## Sections
 
-The model starts from the port nets and follows series parts into the next net, but never into a ground
-net.
+The model starts from the port nets and follows series parts into the next net, but never into a ground net.
 
 | Section | What it is |
 |---|---|
@@ -21,23 +20,19 @@ net.
 | part | a lumped R/L/C part, in series or to ground ([details](model.md#lumped-parts)) |
 
 <a id="coupled-sections"></a>
-**Coupled sections.** Straight, parallel sections of one cross-section on one layer within 5 substrate
-heights of each other become a coupled section: hairpin and interdigital filter fingers, differential
-pairs. The [field solver](#field-solver) gives each coupled section its capacitance matrix, every line coupled to
-every other, and each neighbouring pair its even- and odd-mode impedances with the copper's thickness (`ze`,
-`zo`; as sheets, `ze_sheet`, `zo_sheet`). `topology.FIELD_GROUPS = False` uses the formulas instead: Kirschning
-& Jansen for microstrip, Cohn's exact zero-thickness formula for stripline (an offset stripline combines the two
-halves as for a single line), zero thickness, and no coupling beyond the nearest neighbour. With qucsator, a
-coupled microstrip pair is still qucsator's own MCOUPLED.
+**Coupled sections.** Straight, parallel sections of one cross-section on one layer within 5 substrate heights of
+each other become a coupled section: hairpin and interdigital filter fingers, differential pairs. The
+[field solver](#field-solver) gives each its capacitance matrix, every line coupled to every other, and each
+neighbouring pair its even- and odd-mode impedances with the copper's thickness (`ze`, `zo`; as sheets, `ze_sheet`,
+`zo_sheet`). `topology.FIELD_GROUPS = False` uses the formulas instead (Kirschning & Jansen for microstrip, Cohn for
+stripline: zero thickness, nearest neighbours only). With qucsator, a coupled microstrip pair is still qucsator's
+own MCOUPLED.
 
-Copper thickness matters most here. The CM5 Minima demo board's HDMI pairs (KiCad's `demos/cm5_minima`, the
-board of the [KiCad plugin](kicad-plugin.md)'s pictures: 0.13 mm lines 0.25 mm apart, 0.099 mm over In4.Cu,
-35 µm outer copper, in a 100 Ω class) are 117.8 Ω differential with the zero-thickness formula and 104.8 Ω with
-the copper's thickness; with the board's 10 µm solder mask (εr 3.8), 101.2 Ω. Its USB and PCIe pairs (90 Ω
-class) are 108.3 Ω with the formula and 95.2 Ω with the copper.
+Copper thickness matters most here: the CM5 Minima demo board's HDMI pairs (0.13 mm lines 0.25 mm apart, 0.099 mm
+over In4.Cu, 35 µm copper, in a 100 Ω class) are 117.8 Ω differential by the zero-thickness formula, 104.8 Ω with
+the copper's thickness, and 101.2 Ω with the board's 10 µm solder mask too.
 
-**Discontinuities** are listed where sections meet: open ends, corners, bends, steps, tees, crosses and
-end gaps.
+**Discontinuities** are listed where sections meet: open ends, corners, bends, steps, tees, crosses and end gaps.
 
 ## Impedances
 
@@ -52,30 +47,27 @@ Each section is classified by the copper around it. Only copper of other nets co
 | coax | a via inside antipads | the coaxial formula |
 | lumped | a via without a plane, or a part | an inductance or the part's value |
 
-A trace is split where its reference planes change: a plane's edge, a split, a slot it crosses. One
-exception: where a trace ends at a via, the last stretch over that via's own antipad (up to 3 reference
-heights long) keeps the line's cross-section. It is part of the via transition, with the plane's edge as
-close all round as the plane under the line, not a line over the next plane down. Giving it the next
-plane's impedance (92 Ω instead of 55 Ω on `rf_diffvia`) put the worst Sdd11 at −9.4 dB against openEMS's
-−15.4; the rule gives −11.9, and the demo transition's S11 moved from 7.4 dB rms off openEMS to 3.0.
+A trace is split where its reference planes change: a plane's edge, a split, a slot it crosses. Where a trace ends
+at a via, the last stretch over that via's own antipad (up to 3 reference heights) keeps the line's cross-section:
+it is part of the via transition, not a line over the next plane down (which on `rf_diffvia` put the worst Sdd11 at
+−9.4 dB against openEMS's −15.4; the rule gives −11.9).
 
-Each section gets two impedances: **Z0** with the stackup's copper thickness (the design value), and
-**Z0 sheet** with zero thickness, which is how openEMS and mom25d model copper. For example, the 0.35 mm
-microstrip of the demo transition is 50.7 Ω with 35 µm copper and 53.3 Ω as a sheet.
-
-**Accuracy.** The formulas match scikit-rf's reference values within 0.3 %, and the stripline matches
-Cohn's exact result within 0.2 %. On the two example filters, the qucsator line model finds the pass band
-within 2 % of openEMS in a fraction of a second.
+Each section gets two impedances: **Z0** with the stackup's copper thickness (the design value), and **Z0 sheet**
+with zero thickness, as the field solvers model copper (the demo transition's 0.35 mm microstrip: 50.7 Ω and
+53.3 Ω). The formulas match scikit-rf's reference values within 0.3 %, and the stripline matches Cohn's exact result
+within 0.2 %.
 
 <a id="field-solver"></a>
 ## Field solver
 
 `kicad2ems.lines.xsection` solves a cross-section numerically: the per-unit-length capacitance matrix of N
-conductors over planes, in any stack of dielectrics, with and without them, and from these L, Z0, εeff, the even
-and odd modes of a pair and the dielectric loss. It covers what the formulas above can't: coplanar ground under
-solder mask or between two planes, mask that follows the copper, coupled lines with copper thickness, coupling
-beyond the nearest neighbour, and layers of different εr. The line model uses it [by default](#lines-field) for coupled
-sections and grounded CPW, and with [`--lines-field`](#lines-field) for every section.
+conductors over planes, in any stack of dielectrics, and from it L, Z0, εeff, the even and odd modes of a pair and
+the dielectric loss. It covers what the formulas can't: coplanar ground under solder mask or between two planes,
+mask that follows the copper, coupled lines with copper thickness, coupling beyond the nearest neighbour, layers of
+different εr. The line model uses it [by default](#lines-field) for coupled sections and grounded CPW, and with
+`--lines-field` for every section.
+
+![A coupled pair's mesh and its odd- and even-mode fields](img/xsection_anatomy.png)
 
 ```python
 from kicad2ems.lines import xsection as X
@@ -85,26 +77,20 @@ X.stripline(0.15, 0.2, 0.2, 4.3, s=0.15).solve().single()                       
 r = X.coupled_stripline(0.1, 0.1, 0.2, 0.2, 4.3).solve(); r.C, r.Ca               # F/m: coupled.mtl_s takes them
 ```
 
-It solves Laplace's equation with bilinear finite elements on a mesh of rectangles, inside a grounded box 24 structure
-heights beyond the copper. The mesh takes its methods from [mom25d's](mom.md#coarsen):
+It solves Laplace's equation with bilinear finite elements on a mesh of rectangles, inside a grounded box 24
+structure heights beyond the copper, with mom25d's methods ([coarsening](mom.md#coarsen)):
 
-- **Cells grow from the corners.** They start on the key lines (copper edges, layers, planes) and are halved in x or z
-  only where they are larger than 0.4 × their distance from the nearest corner of copper (`xsection.MESH_GROW`), so a
-  corner's fine cells stay around it and long thin cells fill the layers. A tensor grid carries each edge's fine cells
-  across the whole cross-section; here halving the cells at a corner costs about 100 nodes.
-- **Each corner's own scale.** The cell at a corner is 1/128 of the feature there, the nearest other corner or layer
-  (`MESH_FINE`), and at least 1 % of its distance from the signal copper (`MESH_FAR`).
-- **Hanging nodes tied, the matrix reduced.** Where a cell meets two smaller ones, the node between them is tied to the
-  ends of the longest side it lies on, and the matrix reduced to the nodes left, T^T K T, as mom25d reduces its matrix
-  to quads. Every side comes from halving the key lines' intervals, so sides on a line are nested and their nodes
-  exactly equal: no tolerances, and a linear potential solves it exactly at machine precision (the patch test,
+- **Cells grow from the corners**: halved in x or z only where larger than 0.4 × their distance from the nearest
+  corner of copper (`xsection.MESH_GROW`), so a corner's fine cells stay around it.
+- **Each corner's own scale**: 1/128 of the feature there (`MESH_FINE`), and at least 1 % of its distance from the
+  signal copper (`MESH_FAR`).
+- **Hanging nodes tied** to the ends of the side they lie on, the matrix reduced to the nodes left (T^T K T, as mom25d
+  reduces to quads). The sides are nested, so a linear potential solves exactly (the patch test,
   `tests/test_xsection.py`).
 
-The charge on each conductor is the net flux out of its nodes. Each cross-section is solved on this mesh and on one with
-`MESH_GROW` and `MESH_FINE` doubled, and the two extrapolated, X + 0.5 (X − X_coarse) (`MESH_MIX`): the corners' error is
-first order in their cells and wants a weight of 1, the grading's second order in `MESH_GROW` and wants ⅓. One
-dielectric throughout (a stripline) needs one factorisation fewer: C_air is C / εr. `MESH = False` uses the tensor grid
-the solver began on, kept as the independent check of the mesh and to draw the field on.
+Each cross-section is solved on this mesh and on one twice as coarse, and the two extrapolated (`MESH_MIX`);
+`REFINE = False` skips the coarse solve (30 % faster, Z0 up to 0.7 % low). `MESH = False` uses the tensor grid the
+solver began on, kept as the independent check.
 
 | Against | Case | Mesh | Tensor grid | Nodes, mesh / grid |
 |---|---|---|---|---|
@@ -117,67 +103,40 @@ the solver began on, kept as the independent check of the mesh and to draw the f
 | Kirschning & Jansen | coupled microstrip 0.15 / 0.15 / 0.2 mm: Ze, Zo | −0.15 %, +0.14 % | +0.11 %, +0.65 % | 1,796 / 18,655 |
 | Cohn | coupled stripline, w 0.1, s 0.1, b 0.4 mm: Ze, Zo | −0.15 %, −0.31 % | +0.19 %, +0.38 % | 1,341 / 9,405 |
 
-Closed forms are not exact: on the second CPW the mesh is within 0.02 % of a converged solve, and the formula 0.56 %
-above it. The usual "30π" of the stripline formulas is itself 0.07 % high (c = 3 × 10⁸), which the coupled stripline's
-row includes. As the cells are refined, the mesh converges on the exact stripline to within 0.003 %.
+Closed forms are not exact either: on the second CPW the mesh is within 0.02 % of a converged solve and the formula
+0.56 % above it. On a real board, the 2,200 cross-sections of the CM5 Minima's 94 nets (up to 75 conductors), the
+mesh's worst error against the same one converged is 0.31 % (median 0.04 %, at most 30,800 nodes); the tensor grid's
+0.54 % (603,000 nodes). A cross-section takes about 20 ms (up to 0.2 s); it is quasi-static: no dispersion, no
+conductor loss. `tools/xsection_study.py` makes these tables, `tools/xsection_figures.py` the figures here.
 
-On a real board (`tools/xsection_study.py --board`), every one of the 2,200 cross-sections the CM5 Minima's 94 nets ask
-for, up to 75 conductors, against the same one converged:
+**Copper thickness on a pair, by full-wave simulation** (`tools/xsection_fullwave.py`, openEMS): on `rf_diffvia`'s
+two pairs, thickness takes 7.1 % off the microstrip pair's Zdiff and 14.2 % off the stripline pair's; the field
+solver gives 8.4 % and 15.7 %, and with the copper FDTD's Zdiff is 91.9 and 83.4 Ω against the solver's 91.6 and
+84.2 Ω.
 
-| | Error: worst | 99th percentile | median | Nodes, up to |
-|---|---|---|---|---|
-| Mesh | 0.31 % | 0.11 % | 0.04 % | 30,800 |
-| Tensor grid | 0.54 % | 0.38 % | 0.22 % | 603,000 |
+![What the formulas leave out: a plane ending beside or under a microstrip, grounded CPW with and without mask, ground beside a stripline](img/xsection_cases.png)
 
-The solver's time on those nets, on one core, was 6 s by default and 49 s with `--lines-field`; on the grid, with its box
-half the size (277,000 nodes at most), 25 s and 222 s.
-
-The error is the largest of each cross-section's Z0, εeff and pairs' modes. A cross-section takes about 20 ms (median; up
-to 0.2 s for a real board's largest cuts). It's quasi-static: no dispersion and no conductor loss. `xsection.REFINE =
-False` skips the coarser solve: 30 % faster, Z0 up to 0.7 % low. `tools/xsection_study.py` makes these tables.
-
-**Copper thickness on a pair, by full-wave simulation.** Both solvers are Laplace solvers, so the thickness effect was
-also checked in 3D FDTD (`tools/xsection_fullwave.py`, openEMS): `rf_diffvia`'s two pairs, odd mode, as sheets and with
-35 µm copper. Thickness takes 7.1 % off the microstrip pair's Zdiff and 14.2 % off the stripline pair's; the field
-solver gives 8.4 % and 15.7 %. With the copper, FDTD's Zdiff is 91.9 and 83.4 Ω against the solver's 91.6 and 84.2 Ω.
-
-The offset stripline formula above (two centred striplines combined) comes out 3 % (48.7 against 47.1 Ω) above the solver
-for a strip 0.1 mm over one plane and 0.3 mm under the other. The formula is an approximation, and the solver has no
-approximation there beyond its mesh's.
-
-To see one, pick its section in the GUI: its [Section view](gui.md#section) draws the field on the board's cut, and the
-line model's sections each carry what that takes (`LineModel.drawing`, `lines/sections.py`). A cut costs nothing
-beside the build, about 1 s for a board's 2,500; only solving it does.
-
-The formulas miss what lies beside a stripline. On the CM5 Minima, `PCIE_PI.nRST` runs 10.7 mm on In2.Cu with ground 0.2 mm
-beside it: 71.9 Ω by the offset-stripline formula, 58.8 Ω by its cut. Cropped and solved by openEMS (0.05 mm cells), its
-total C is 1.07 pF, against 1.05 pF for the cut and 0.89 pF for the formula (`tools/lines_crop_check.py`).
+The formulas also miss what lies beside a stripline: on the CM5 Minima, `PCIE_PI.nRST` runs on In2.Cu with ground
+0.2 mm beside it, 71.9 Ω by the offset-stripline formula and 58.8 Ω by its cut; cropped and solved by openEMS, its
+total C is 1.07 pF, against 1.05 pF for the cut and 0.89 pF for the formula (`tools/lines_crop_check.py`). In the GUI,
+the [Section view](gui.md#section) draws any section's cut.
 
 <a id="lines-field"></a>
 ### The line model on the field solver
 
-Coupled sections and grounded CPW come from the field solver by default ([above](#coupled-sections), and
-[below](#cpw-thickness)). `--lines-field` (`lines_field = true`) takes every section's cross-section from it, from
-the board:
+Coupled sections and grounded CPW come from the field solver by default. `--lines-field` (`lines_field = true`)
+takes every section's cross-section from the board: at the point where a section is classified, the reference
+copper is cut across the strip, out to 5 reference heights either side, on every layer up to the nearest plane that
+spans the cut; the pieces it crosses become the solver's conductors. A plane that ends beside the trace, ground on
+one side or beside a stripline are solved as they are (the microstrip above: 53.3 Ω over a whole plane, 54.6 Ω where
+the plane ends 0.125 mm past its edge, 67.7 Ω where it ends under its centre).
 
-- **Every section's cross-section, from the board.** At the point where a section is classified, the board's
-  reference copper is cut across the strip, out to 5 reference heights either side, on every layer up to the
-  nearest plane that spans the whole cut. The pieces the cut crosses become the solver's conductors, and the
-  stackup its dielectrics. A plane that ends beside the trace, a reference under part of it, ground on one side
-  or ground beside a stripline are solved as they are. A microstrip 0.35 mm wide on 0.2 mm FR-4 is 53.3 Ω over
-  a whole plane, 54.6 Ω where the plane ends 0.125 mm past its edge, and 67.7 Ω where the plane ends under its
-  centre. Copper thickness grows away from the plane under the strip, and the stack beyond it moves up by it (the
-  dielectrics' thicknesses are between the copper), as the formulas assume. The section's cross-section name
-  and its formula Z0 stay in the report, with the field solver's Z0 in its notes.
+In the circuit solvers, a microstrip or grounded CPW section keeps scikit-rf's and qucsator's own models (with their
+dispersion) unless the field solver's sheet Z0 is more than 2 % from the formula's (`reference.FIELD_DIFFERS`); then
+it is a quasi-static line of the solver's Z0 and εeff (`Element.field`).
 
-In the circuit solvers, a microstrip or grounded CPW section keeps scikit-rf's and qucsator's own models (with
-their dispersion) unless the field solver's zero-thickness Z0 is more than 2 % from the formula's
-(`reference.FIELD_DIFFERS`): then it is a line of the solver's Z0 and εeff (`Element.field`), quasi-static. Used
-for every field-solved section, the lost dispersion moved `rf_steplpf`'s |S21| from 2.35 to 2.60 dB rms off
-openEMS.
-
-On the examples with openEMS references (scikit-rf; agreement as in [Examples](examples.md): the rms of the
-complex difference of S11, and the rms difference of |S21|):
+On the examples with openEMS references (scikit-rf; the rms of the complex difference of S11, and the rms difference
+of |S21|, as in [Examples](examples.md)):
 
 | Board | Formulas throughout | Coupled sections by the field solver (default) | and `--lines-field` |
 |---|---|---|---|
@@ -185,29 +144,17 @@ complex difference of S11, and the rms difference of |S21|):
 | `rf_stripline`, `rf_diffvia`, `rf_coupler`, `rf_wilkinson`, `demo_transition`, `rf_shielded`, `hairpin` | | within 0.1 dB / 0.06 dB of the formulas | within 0.3 dB / 0.1 dB |
 | `rf_branchline`, `rf_steplpf`, `rf_stubnotch`, `rf_gcpw`, `rf_ratrace`, `rf_radialstub`, `sma_launch` | | the same | the same |
 
-`tools/lines_vs_openems.py` makes this comparison, with qucsator too: it gives the same picture (`rf_interdig` 50.91 →
-8.94 dB; the others within 0.01 dB of the formulas). Its coupled microstrip pairs stay qucsator's own MCOUPLED, so
-the thickness in a pair's reported `ze` and `zo` doesn't reach its S-parameters, and neither reaches scikit-rf's, which
-uses the sheets as openEMS does. A run takes seconds in any of these modes (`rf_radialstub`'s fan, its many widening
-sections with `--lines-field`: 1.8 s).
+The interdigital filter's stop bands are set by the coupling between fingers that aren't neighbours, which the
+formulas leave out (`tools/lines_vs_openems.py` makes this comparison; qucsator's gives the same picture):
 
-The interdigital filter's stop bands were 40–60 dB too deep with the formulas: they are set by the coupling
-between fingers that aren't neighbours, which `group_lc` leaves out. With the field solver's matrix cut back to
-the nearest neighbours, the 51 dB comes back. On the other boards the sections are the idealised
-cross-sections the formulas were made for: the remaining differences there come from what the line model leaves
-out (discontinuities with scikit-rf, vias, radiation, the can). `sma_launch`'s grounded CPW with 35 µm copper
-is 50.3 Ω against the formula's 54.7 Ω, which has no thickness, but the solvers use the sheet values (54.4 Ω
-against 54.7 Ω).
+![The coupling of rf_interdig's first finger to the others: the formulas' nearest neighbour against the field solver's matrix](img/xsection_coupling.png)
 
-On a real board, the CM5 Minima's eight HDMI pairs (119 mm of microstrip over solid planes), `--lines-field`
-moves the single-ended Z0 by at most 2.7 %: 1–2.7 % on 8 % of the length, where a plane under B.Cu doesn't reach
-2 heights past the trace or ground copper lies to one side. The differential impedance is what the copper's
-thickness moves ([coupled sections](#coupled-sections)).
+On the other boards the sections are the idealised cross-sections the formulas were made for, and what remains
+comes from what the line model leaves out: discontinuities (scikit-rf), vias, radiation, the can.
 
 <a id="cpw-thickness"></a>
-Its other nets show what the cut is for. The HDMI side-band lines (DDC SDA and SCL, CEC, HOTPLUG) and the
-board's other control lines run as grounded CPW, pour 0.15 mm from the trace, and the field solver differs from
-the formulas in two ways:
+On the CM5 Minima's control lines (grounded CPW, pour 0.15 mm from the trace) the field solver differs from the
+formulas in two ways:
 
 | Where | Formula | Field solver, as a sheet | with 35 µm copper |
 |---|---|---|---|
@@ -216,36 +163,27 @@ the formulas in two ways:
 | 0.2 mm line, the plane under it full of via clearances: classified over the next plane down, 0.73 mm | 79.4 Ω | 58.0 Ω | 52.1 Ω |
 | 0.15 mm line, the same, 0.65 mm | 104.9 Ω | 60.5 Ω | 55.1 Ω |
 
-- **Copper thickness in grounded CPW**: the formula (Ghione & Naldi) has none, so its "Z0 with the copper's
-  thickness" is the sheet value. 35 µm of copper beside a 0.15 mm gap takes 10–12 % off. Gupta's thickness
-  correction (wider strip, narrower gaps) finds a third to a half of it (0.2 mm line: 46.8 Ω). So grounded CPW
-  sections come from the field solver by default, as classified (strip, gaps, plane: `reference.FIELD_CPW`).
-- **A plane with holes**: where the plane under a trace doesn't cover the points `classify` tests, it takes the
-  next plane down as the reference, and Z0 comes out 30–75 % too high. The copper left between the holes still
-  carries most of the return: the cut solves it as it is (the board-cut figure below).
+- **Copper thickness in grounded CPW**: the formula has none; 35 µm of copper beside a 0.15 mm gap takes 10–12 % off
+  (Gupta's correction finds a third to a half of it). So grounded CPW comes from the field solver by default, as
+  classified (`reference.FIELD_CPW`).
+- **A plane with holes**: where the plane under a trace doesn't cover the points `classify` tests, the formula takes
+  the next plane down as the reference and comes out 30–75 % too high; the copper between the holes still carries
+  most of the return, and the cut solves it as it is:
+
+![A cut across the CM5 Minima, where the plane under a trace has holes, and the cross-section solved there](img/xsection_board_cut.png)
 
 <a id="similar"></a>
-**Similar cross-sections share a solve.** Each cross-section is cached, and a cross-section and its mirror image
-are one. Widths and gaps are snapped to steps of 1 % (`xsection.SIMILAR`, `xsection.snap`), and the copper a cut
-finds to bins that widen away from the strip (`reference._distance_bins`): ground beside a microstrip moves its Z0
-by 12 % at half a reference height, by 0.9 % at 2 and by less than 0.1 % at 4, so a bin 2 heights out is 30
-times wider than one at half a height, and snapping to a bin's middle moves Z0 by 0.1–0.2 % wherever it is. No bin is
-wider than one height (`reference.BIN_MAX`): the rule is for ground beside a strip, and a plane's edge under a wide strip
-counts wherever it is. On the
-CM5 Minima's HDMI nets this solves 158 cuts instead of 254, the impedances within 0.33 % (0.11 % rms) of
-solving each. Coupled sections gain less (206 solves instead of 228 on the board's 94 nets): their gaps set
-the coupling and keep their 1 % steps. The time still grows with the number of distinct cross-sections: the CM5
-Minima's 94 signal nets take 13 s to build by default (146 grounded-CPW and 206 coupled-section solves), 71 s with
-`--lines-field` (1,848 cuts), against 6.4 s with the formulas (`tools/cm5_line_model.py`, on one core).
-
-`python tools/xsection_figures.py` draws the solver at work: a pair's mesh and its odd- and even-mode fields,
-the cases the formulas leave out, the mesh's convergence against the grid's, the cache's bins, a five-line
-section's coupling, and (`--board`, the CM5 Minima) a cut across a real board.
+**Similar cross-sections share a solve.** Each is cached, a cross-section and its mirror image are one, widths and
+gaps are snapped to 1 % steps (`xsection.SIMILAR`), and the copper a cut finds to bins that widen away from the
+strip (`reference._distance_bins`, at most a height wide: `reference.BIN_MAX`), where it matters less: snapping moves
+Z0 by 0.1–0.2 %. On the CM5 Minima's HDMI nets that is 158 solves instead of 254, within 0.33 % (0.11 % rms) of
+solving each. Its 94 signal nets take 13 s to build by default, 71 s with `--lines-field`, 6.4 s with the formulas
+(`tools/cm5_line_model.py`, one core).
 
 ## Paths
 
-For each pair of ports the model finds the shortest path through the sections. Branches off the path,
-such as stubs and shunt parts, are listed with their position, length and what they end in.
+For each pair of ports the model finds the shortest path through the sections. Branches off the path, such as
+stubs and shunt parts, are listed with their position, length and what they end in.
 
 <a id="outputs"></a>
 ## Outputs
@@ -271,34 +209,26 @@ The sections become a circuit, solved in milliseconds by one of two programs:
 | coupled lines | a multiconductor line block | `MCOUPLED` for a microstrip pair, otherwise the same block |
 | discontinuities | not modelled | open ends, corners, steps, tees, crosses and gaps |
 
-`--solvers lines` uses qucsator when it's installed, otherwise scikit-rf. `--fast` adds the line model
-next to the other solvers as a reference. The copper is zero-thickness, as in the other solvers, and
-`--sigma` adds copper loss.
-
-The result is `<name>_qucs.sNp` or `<name>_scikit.sNp`. In the plot and report it is compared with the
-first solver: the largest difference in |S|, in dB for transmissions, and in delay. Large differences
-point to something one model leaves out, such as coupling, radiation, plane resonances or the lumped
-ports, or to a mesh problem.
+`--solvers lines` uses qucsator when it's installed, otherwise scikit-rf; `--fast` adds the line model next to the
+other solvers as a reference. The copper is zero-thickness, as in the other solvers, and `--sigma` adds copper loss.
+The result is `<name>_qucs.sNp` or `<name>_scikit.sNp`, compared in the plot and report with the first solver. Large
+differences point to something one model leaves out (coupling, radiation, plane resonances, the lumped ports) or to
+a mesh problem.
 
 ## Limits
 
 - Impedances are quasi-static. qucsator's microstrip models add dispersion.
 - Coupled sections must be straight, parallel microstrip or stripline. Coupling across layers isn't modelled.
-- Shapes other than rectangles become strips only as stubs across a track; tapers and teardrops widen the
-  track instead.
-- **Radial stubs**: with qucsator, a fan that is a circular sector (its point on the track, or cut off at
-  the track's edge) is qucsator's radial stub (MRSTUB, March's model with Chew and Kong's effective size).
-  Its radial line is taken to start half the track's width beyond the track's edge: at the edge itself,
-  the notches came out 17–20 % low. That offset is fitted against mom25d on 60°, 90° and 40° fans on
-  0.8 mm FR-4, where the notches then agree within 0 to −2.4 %. scikit-rf has no radial stub: there the
-  fan is sliced into widening sections, which ignores its radial field (notches 5–8 % high with qucsator's
-  step models).
-- qucsator has no stripline model, so single striplines are RLCG lines whose dielectric loss is set at the
-  band centre (too high below it, too low above). Coupled sections' loss grows with frequency, as it should.
+- Shapes other than rectangles become strips only as stubs across a track; tapers and teardrops widen the track.
+- **Radial stubs**: with qucsator, a fan that is a circular sector is qucsator's radial stub (MRSTUB), its radial line
+  taken to start half the track's width beyond the track's edge (fitted against mom25d on 60°, 90° and 40° fans:
+  the notches agree within 0 to −2.4 %). scikit-rf has no radial stub: the fan is sliced into widening sections,
+  which ignores its radial field (notches 5–8 % high).
+- qucsator has no stripline model, so single striplines are RLCG lines whose dielectric loss is set at the band
+  centre. Coupled sections' loss grows with frequency, as it should.
 - No radiation, no plane resonances, no return-path breaks.
 - Via transitions: the barrel is a coaxial line and the pads aren't modelled. On `rf_diffvia` the worst Sdd11 is
-  −11.9 dB against openEMS's −15.4 (5.2 dB rms): the ripple's peaks fall at other frequencies. Adding a pad
-  capacitance or a return-path inductance didn't bring it closer.
+  −11.9 dB against openEMS's −15.4 (5.2 dB rms).
 - Solder mask counts only with `--mask`.
 
 ---

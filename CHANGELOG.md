@@ -54,6 +54,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the same accuracy, not faster below ~30k unknowns (ROADMAP.md item 6).
 
 ### Fixed
+- The GUI page's `#fields` anchor, which also named Python objects (gfdtd's backends' `fields`) and failed the docs
+  build: `#cut-view`.
+- `tools/xsection_figures.py --board` followed the line model's old internals (`reference._field`'s arguments) and
+  stopped with a TypeError; it reads the cut where the line model makes it now (`reference._cut_args`).
 - mom25d's preview mesh is the one the run meshes: it ignored `--mom-quads` (the structured runs),
   `--mom-coarsen`, `--mom-zone` and the via options, so the views showed a different mesh from the run's.
 - triangle (mom25d's mesher) built from source without fused multiply-adds (`-ffp-contract=off`, install.py and CI):
@@ -68,6 +72,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   now 5.5 ohm), the CM5 Minima's wide traces among them. Narrower strips are unchanged.
 
 ### Changed
+- The docs are shorter, with pictures where words were: a gallery of every example board (docs/examples.md), each
+  solver's distance from openEMS against its time (docs/usage.md#which), the field solver's figures
+  (docs/transmission-lines.md), the GUI's pages, and the mesh in docs/meshing.md (`tools/doc_figures.py` draws the
+  first two). The study tables of mom25d's experimental mesh options, the Vivaldi variants and the benchmarks keep
+  their findings; how a default or a figure used to be is left to this changelog. Fixed on the way: the module map's
+  `fdtd/` (in kicad2ems-fdtd since 2.0), the test table's files that moved with it, `KICAD2EMS_FDTD_SRC`, gfdtd's
+  plugin (kicad2ems-fdtd's, not gfdtd's) and the KiCad plugin's interface (`api.frontend` and `kicad2ems_gui.api`).
+- The example generators share the board file around their items (`_pcb.Items.write_board`, `port_footprint`,
+  `segment`): the antenna boards list the F.Mask layer and write the outline to 0.1 µm, the same boards otherwise.
+- `tools/bench_mom_openems.py` is gone: `tools/bench_solvers.py` measures every solver, and its `--mesher` option was
+  the dropped gmsh one's.
 - Text files are read and written as UTF-8 everywhere (boards, configs, reports, Touchstone): Windows' default
   code page broke non-ASCII net names and labels.
 - The line model's coupled sections come from the field solver (docs/transmission-lines.md#coupled-sections): every line

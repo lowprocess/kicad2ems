@@ -1,7 +1,7 @@
 # kicad2ems documentation
 
-kicad2ems converts a KiCad board into a model, solves it with openEMS (3D FDTD), mom25d (2.5D method of
-moments) or a transmission-line model, and writes S-parameters, antenna results, field images and a report.
+kicad2ems converts a KiCad board into a model, solves it with gfdtd or openEMS (3D FDTD), mom25d (2.5D method
+of moments) or a transmission-line model, and writes S-parameters, antenna results, field images and a report.
 
 ## Using kicad2ems
 

@@ -2,9 +2,14 @@
 
 [← Results](postprocessing.md) · [Index](index.md) · [Next: openEMS simulation →](simulation.md)
 
-openEMS needs a rectilinear mesh: lists of x, y and z lines. `mesh.auto_mesh` builds it. Accuracy depends
-on resolving the copper edges and the wavelength. The time step depends on the smallest cell, so every
-extra line costs run time.
+openEMS and gfdtd need a rectilinear mesh: lists of x, y and z lines, which kicad2ems-fdtd's `mesh.auto_mesh`
+builds. Accuracy depends on resolving the copper edges and the wavelength; the time step depends on the smallest
+cell, so every extra line costs run time.
+
+![The demo transition's mesh: each copper layer from above and the side view, lines dense at the trace and vias, graded in z](../examples/reference/demo_transition_mesh.png)
+
+*The demo transition's preview (`--preview`): the lines crowd at the trace's edges and the vias, grow away from
+them, and grade in z away from each copper layer.*
 
 <a id="cell-sizes"></a>
 ## Cell sizes
@@ -23,11 +28,10 @@ extra line costs run time.
   counts as straight if it stays within `fine/10` of an axis.
 - **Curves** (arcs, round ends, oblique edges) get lines at their ends and their x/y extremes, plus one
   wherever the curve has run on by the copper's own width (`--curves extremes`, the default), or a line at
-  every vertex (`vertices`). The width rule keeps a thin curved track connected: without it a rat-race
-  ring broke apart on the coarse mesh.
+  every vertex (`vertices`). The width rule keeps a thin curved track, such as a rat-race ring, connected.
 - **Over curved copper** (arcs, rings and fans longer than twice the copper's width, not round track ends)
-  the largest cell is the dielectric's divided by `--curve-res` (6). A radial stub's fan had sat on 1.8 mm
-  cells, and its notch came out at 2.03 GHz instead of 2.13.
+  the largest cell is the dielectric's divided by `--curve-res` (6): a radial stub's notch otherwise moves from
+  2.13 to 2.03 GHz.
 - **Vias** on the port nets get lines at their centre and edges. Other vias, such as stitching and
   fences, move onto the nearest existing line within `--via-snap` (0.2 mm). Every move is logged.
 - The board outline, the port planes and the ends of each lumped part are kept exactly.
@@ -55,7 +59,7 @@ since there the ground copper is often the radiator.
 | `filter` | 0.40 M → 0.34 M | 0.0033 |
 | `demo_transition` | 0.53 M → 0.51 M | 0.0003 |
 
-The other examples lie within their zones and mesh as before.
+The other examples lie within their zones, and mesh the same either way.
 
 <a id="z-lines"></a>
 ## z lines
@@ -137,11 +141,9 @@ plot shows whether it's a shift (refine further) or a level change.
 <a id="validation-the-transition-demo"></a>
 ## Validation: the transition demo
 
-On the via transition demo, the default mesh used to give a delay 4 ps (3 %) too long. Around the via,
-the trace end, the via pad and the antipad sit within about 1.5 fine cells of each other. Their
-thirds-rule pairs were merged away, so the end of the microstrip landed a cell off. The pairs are now
-narrower (2/3 of a fine cell), and the default mesh is within 0.5 ps of the converged delay with fewer
-cells.
+Around the demo transition's via, the trace end, the via pad and the antipad sit within about 1.5 fine cells of each
+other, which is why the thirds rule's pairs are 2/3 of a fine cell wide: the default mesh is then within 0.5 ps of
+the converged delay.
 
 | Mesh | Cells | Worst S11 | Delay |
 |---|---|---|---|
@@ -150,9 +152,8 @@ cells.
 | 1.5× finer | 0.71 M | −22.5 dB | 134.6 ps |
 | line model | – | −18.0 dB | 132.2 ps |
 
-Return loss still wants more cells through the dielectric, which is why the example sets `nz = 6`. Run
-`--converge 1,1.5` once on each new kind of structure, and treat return loss below about −20 dB from an
-unconverged mesh as uncertain.
+Return loss wants more cells through the dielectric, which is why the example sets `nz = 6`. Run `--converge 1,1.5`
+once on each new kind of structure, and treat return loss below about −20 dB from an unconverged mesh as uncertain.
 
 ---
 [← Results](postprocessing.md) · [Index](index.md) · [Next: openEMS simulation →](simulation.md)

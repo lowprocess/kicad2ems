@@ -14,7 +14,7 @@ flowchart LR
     B --> C["Board<br/>&rarr; &lt;name&gt;_board.json"]
     C --> L["lines<br/>the line model"]
     L --> S["assess<br/>can each solver model it?"]
-    S --> E["prepare<br/>(openEMS: mesh)"]
+    S --> E["prepare<br/>(FDTD: mesh)"]
     E --> F["solve"]
     F --> G["outputs<br/>.sNp, plots, comparisons"]
     G --> R["report<br/>_run.json, _report.html"]
@@ -26,111 +26,54 @@ flowchart LR
 | model | builds the `Board` and writes `<name>_board.json` |
 | lines | builds the line model, `<name>_tlines.png` and `<name>_lines.json` (its sections, for the GUI) |
 | assess | asks each solver whether it can model this board (mom25d can't model gap ports) |
-| prepare | each solver builds its own form of the board (openEMS: the mesh). With `--preview`, openEMS stops here |
+| prepare | each solver builds its own form of the board (FDTD: the mesh). With `--preview`, it stops here |
 | solve | runs each solver, cheapest first. A failure is a warning (exit 1 for a named solver) |
 | outputs | writes each solver's Touchstone file, the comparison plot, and each solver's extra outputs |
 | report | writes `<name>_run.json` and `<name>_report.html` |
 
-Each stage adds its results to `Job.summary`, a JSON-friendly dict ([keys](postprocessing.md#json-summary)).
-The report is rendered from that dict alone, so it can be rebuilt from the JSON file.
-
-All messages go through `Job.log`. It prints them, keeps them for the report, and sends them to
-`--events`. Lines containing `WARNING` go into the report's warning list. Lower-level functions take a
-`log` callable, so they can be used without a `Job`.
-
-Plots are matplotlib `Figure` objects without pyplot, so the GUI can embed them.
+Each stage adds its results to `Job.summary`, a JSON-friendly dict ([keys](postprocessing.md#json-summary)). The
+report is rendered from that dict alone, so it can be rebuilt from the JSON file. All messages go through `Job.log`,
+which prints them, keeps them for the report and sends them to `--events`; lines containing `WARNING` go into the
+report's warning list. Lower-level functions take a `log` callable, so they can be used without a `Job`. Plots are
+matplotlib `Figure` objects without pyplot, so the GUI can embed them.
 
 <a id="solver-plugins"></a>
 ## Solver plugins
 
-A solver is a subclass of `solvers.Solver`. Only the line solvers are built in (`solvers.BUILTIN`); the
-full-wave ones are packages that add theirs through an entry point: openEMS's and gfdtd's are in
-[kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) (the `openems` and `gfdtd` extras), on the FDTD layer they share; mom25d's and mixed's
-are in mom25d (`mom25d.kicad2ems`, the `mom` extra). Any other package works the same way:
+A solver is a subclass of `solvers.Solver`. Only the line solvers are built in (`solvers.BUILTIN`); the full-wave
+ones are packages that add theirs through the `kicad2ems.solvers` entry point: openEMS's and gfdtd's in
+[kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd), on the FDTD layer they share; mom25d's and
+mixed's in mom25d. [APIs](api.md#solver-plugins) lists what a solver declares and implements, and the versions.
 
-```toml
-# the plugin package's pyproject.toml
-[project.entry-points."kicad2ems.solvers"]
-mysolver = "mypackage.plugin:MySolver"
-```
+A plugin imports from `kicad2ems.api.solver` only; a program that drives kicad2ems (the GUI, the KiCad plugin,
+dfsynth) from `kicad2ems.api.frontend`. The rest of kicad2ems is private. A registered solver then appears in
+`--solvers`, `--check`, the config (`[solver.mysolver]`), the GUI (a section per option group), the Filter page and
+the KiCad plugin's menu. A plugin that fails to load is left out and listed by `--check`; a solver kicad2ems has an
+extra for (`solvers.EXTRAS`) but no package for says how to install it.
 
-**The API** ([APIs](api.md) lists every name). A plugin imports from `kicad2ems.api.solver` only (the Solver interface, `Result`, `Option`, and
-what a solver needs to write its results as the others do: `mixed_mode`, the antenna and field writers, and what
-an FDTD layer uses of the core); a program that drives kicad2ems (the GUI, the KiCad plugin, dfsynth) from `kicad2ems.api.frontend`.
-The rest of kicad2ems is private and may change in any release. `kicad2ems.api.API_VERSION` is (major, minor): a
-minor release adds names, a major one removes or changes one. A solver says which version it was written for
-(`api = (2, 0)` on its class); the registry refuses one of another major version, or of a newer minor one, and
-`--check` lists it as broken with what to update. A plugin that declares none counts as 1.0. 2.0 took the FDTD
-layer out of the API (`FDTD`, `MESH`, `RUN`, `G_MESH`, `run_excitations`, `auto_mesh`): it lives in kicad2ems-fdtd.
-2.1 added the examples and the checked file readers to `api.frontend`, and `ETA0`, `MU0` to `api.solver`.
+In kicad2ems-fdtd, `plugin.FDTD` builds the mesh and the model, runs the excitations and writes the dumps and
+antenna results; `openems` and `gfdtd` subclass it, each naming its engine (`'<name>'` or `'<name>:<option>'` of
+`engines.ENGINES`, whose `api(option)` returns its `ContinuousStructure` and `openEMS` classes) and listing the shared
+settings (`MESH + RUN`) before its own. Solvers share a setting by listing the same `Option` object; a plugin that
+defines another of the same name is refused.
 
-**The files between programs.** What kicad2ems writes for another program to read carries its format's name and
-version (`formats.py`): the run summary (`<name>_run.json`), the event stream (its first line), `python -m
-kicad2ems.sysinfo`'s JSON and the antenna results; the board file has its own (`board.FORMAT`, `VERSION`). The
-readers (`api.frontend.read_summary`, `read_antenna`, `EventTail`, `check_format`) take a version up to their
-own and say to update kicad2ems for a newer one. A version goes up only when a key is removed or changes meaning.
+**Parity.** A solver may approximate the board, but it must say so. `parity.check` compares the board with each
+solver's readback and lists any difference the solver didn't declare. The parity tests (kicad2ems-fdtd's
+`test_parity.py`, mom25d's `test_kicad2ems_parity.py`) require none on the examples. The declarations also make the
+report's *What each solver saw* table.
 
-It then appears in `--solvers`, `--check`, the config (`[solver.mysolver]`), the GUI (a section per option
-group, greyed until one of its solvers is ticked), the Filter page and the KiCad plugin's menu. Its `order`
-places it in those lists. A plugin that fails to load is left out and listed by `--check`; a solver kicad2ems has
-an extra for (`solvers.EXTRAS`) but finds no package for says how to install it.
-
-The FDTD solvers live in [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd): its `plugin.FDTD` builds the mesh and the model, runs the
-excitations and writes the dumps and antenna results; `openems` and `gfdtd` subclass it, each naming its engine
-(`engine(s)`: `'<name>'` or `'<name>:<option>'`, a module of that package's `engines.ENGINES`, whose
-`api(option)` returns its `ContinuousStructure` and `openEMS` classes and whose `LABEL` names it in the log) and
-listing the shared settings (`MESH + RUN`, the GUI's FDTD section) before its own. The engines ship with the
-FDTD layer that drives them, so there is no engine entry point. Solvers share a setting by listing the same `Option` object; a plugin that defines
-another setting of the same name is refused.
-
-A solver declares:
-
-| Attribute | Meaning |
-|---|---|
-| `name`, `aliases`, `label` | e.g. `'mom25d'`, `('mom',)`, `'mom25d (MoM)'` |
-| `consumes` | `'board'` (the geometry) or `'network'` (the line model) |
-| `previewed` | `--preview` prepares it without solving |
-| `rank` | rough cost; cheap solvers run first |
-| `capabilities` | what it models, per feature (`yes`, `no`, `ignored`, or `approximated: how`) |
-| `options` | its settings |
-
-and implements:
-
-| Method | Returns |
-|---|---|
-| `check()` | whether it can run here, and a one-line reason |
-| `validate(s)` | a message if its settings can't be used together |
-| `assess(job)` | why it can't model this board (empty: it can) |
-| `prepare(job)` | its own form of the board |
-| `solve(job, prep)` | a `Result`: S-parameters, port names, reference impedances |
-| `outputs(job, prep, result)` | extra outputs (optional) |
-| `deviations(job, prep)` | what it models differently from the board |
-| `readback(job, prep)` | what its own model holds, in board terms |
-| `estimate(job)` | its expected time and memory on this board |
-| `resources()` | the GPUs it would run on here and why there are none (`sysinfo`, the GUI's System panel), or `None`: the CPU only |
-
-**Parity.** A solver may approximate the board, but it must say so. `parity.check` compares the board
-with each solver's readback and lists any difference the solver didn't declare. The parity tests (kicad2ems-fdtd's
-`test_parity.py`, mom25d's `test_kicad2ems_parity.py`) require none on the examples. The declarations also produce the report's *What each solver saw* table.
-
-**Settings as data.** Every setting is declared once, as an `options.Option`: the run's own in
-`config.CORE`, each solver's in its plugin. The settings class, the command-line options, the config
-reader and the GUI form are all built from these declarations.
+**Settings as data.** Every setting is declared once, as an `options.Option`: the run's own in `config.CORE`, each
+solver's in its plugin. The settings class, the command-line options, the config reader and the GUI form are all
+built from these declarations.
 
 <a id="choosing-solvers"></a>
 ## Choosing solvers (`auto`)
 
-`Job.choose()` replaces `auto` once the board and line model exist:
-
-1. Drop the solvers that can't run or can't model the board.
-2. Estimate the rest. openEMS: mesh cells × timesteps × runs. The timesteps come from the pulse length
-   and the line model's longest delay. mom25d: the unknowns of its mesh, the matrix work for that size on
-   the CPU or GPU, and the via count. A solver that needs more than 80 % of the RAM is dropped.
-3. Run the faster one, plus the line model.
-4. Log the reason.
-
-The estimates are calibrated on the examples. On 10 of 13 they picked the faster solver, and in the
-other three the choice was at most 1.6 times slower.
+`Job.choose()` replaces `auto` once the board and line model exist: it drops the solvers that can't run or can't
+model the board, asks the rest for their `estimate` (FDTD: mesh cells × timesteps × runs, the timesteps from the
+pulse length and the line model's longest delay; mom25d: its unknowns' matrix work on the CPU or GPU and the via
+count), drops any that needs more than 80 % of the RAM, runs the fastest with the line model, and logs why
+([`auto`](usage.md#auto)).
 
 ## Module map
 
@@ -141,25 +84,29 @@ src/kicad2ems/
   options.py      Option and value converters
   pipeline.py     Job: the stages above
   events.py       --events
+  starter.py      --init: a commented starter config with the ports found
+  stop.py         stopping a run from outside it (the GUI's Stop): a STOP file in its folder
   api/            the public API: solver (for solver plugins), frontend (for the GUI, the KiCad plugin, dfsynth)
-  sysinfo.py      what this machine can run (the GUI's Solvers window, as `python -m kicad2ems.sysinfo`): each
-                  solver's check and resources(), the memory and CPU threads (emsdev)
+  sysinfo.py      what this machine can run (the GUI's Solvers window; python -m kicad2ems.sysinfo)
+  sitecfg.py      where the external programs are: site.toml
   importers/      KiCad (kicad/) and Gerber readers
   board.py        Board: the converted board, board.json
   region.py       cropping, nets = auto, extra and cut ports
   parts.py        lumped R/L/C parts
   edges.py        edge walls
   geometry.py     coordinate and polygon helpers
-  fdtd/           shared by the FDTD solvers: boundaries, mesh, the CSX model, engines, runs, antenna runs,
-                  and FDTD, their common plugin class with the shared settings
+  parity.py       a solver's readback against the board, less what it declared
   fields/         field results of any solver: dump specs and readers, frames and animations, far-field analysis
-  solvers/        the Solver base class and registry (the full-wave solvers: their own packages)
+  phased.py       phased drives: grids, steering, tapers, combining the ports' far fields
+  solvers/        the Solver base class and registry
     lines/          the line solvers: the line model as a circuit (qucsator, scikit-rf)
-  lines/          the transmission-line model (every run, the KiCad plugin's map): formulas (closed-form Z0),
-                  reference (reference copper, cross-sections), builder (board -> sections), topology (paths,
-                  coupled lines, discontinuities), elements (the model's data); tlines re-exports them
+  lines/          the transmission-line model: formulas (closed-form Z0), reference (reference copper, cuts),
+                  xsection (the 2D field solver), builder (board -> sections), strips (shapes as strips),
+                  topology (paths, coupled lines, discontinuities), coupled (coupled-line formulas), elements (the
+                  model's data), sections (one section's field); tlines re-exports them
   sparams.py      reciprocity and mixed-mode conversion
   touchstone.py   .sNp files
+  formats.py      the files' format names and versions
   plots.py        figures
   report.py       the HTML report
   overlay.py      the line model over the board (<name>_lines.json): colours by Z0, picking a section
@@ -168,17 +115,16 @@ src/kicad2ems/
 ```
 
 The window is [kicad2ems-gui](https://github.com/lowprocess/kicad2ems-gui), a package of its own (the `gui`
-extra): its settings form is made from the option tables and the solver registry, and it starts each run as a
-`kicad2ems` process (`runs.py`), so it needs nothing of a solver's. The full-wave solvers are packages too
-([Solver plugins](#solver-plugins)).
+extra): its form is made from the option tables and the solver registry, and it starts each run as a `kicad2ems`
+process (`runs.py`), so it needs nothing of a solver's.
 
-openEMS, CSXCAD, scikit-rf, h5py and mom25d are imported **inside the functions that need them**. A plugin
-imports nothing heavy at module level, because the registry loads every plugin to build the settings.
-Keep it that way: the tests rely on it, and so do runs without openEMS.
+openEMS, CSXCAD, scikit-rf, h5py and the solver packages are imported **inside the functions that need them**. A
+plugin imports nothing heavy at module level, because the registry loads every plugin to build the settings; the
+tests rely on it, and so do runs without openEMS.
 
 **One board for every solver.** No solver reads KiCad files. Each gets the `Board`, and mom25d reads
-`<name>_board.json` itself. Changes a solver makes, such as openEMS snapping vias to its mesh, stay in
-its plugin.
+`<name>_board.json` itself. Changes a solver makes, such as the FDTD mesh snapping vias to its lines, stay in its
+plugin.
 
 ## Main data structures
 
@@ -187,15 +133,14 @@ its plugin.
   outline as read.
 - **`Board`** (model coordinates, y up, mm): dielectric layers, copper heights and polygons per layer,
   outline, vias `(x, y, r, z0, z1)`, ports, parts, edge walls. `to_dict()` is board.json.
-- **The mesh** (`auto_mesh`): x, y and z line positions, the vias as placed, and mesh statistics.
 - **`LineModel`**: sections, port nodes, paths, coupled groups and discontinuities.
-- **`RunResult`**: openEMS's S-matrix (NaN for ports not driven), dump files, and per-run times.
+- **`Result`**: a solver's S-matrix (NaN for ports not driven), port names and reference impedances.
 
 ## Processes and threads
 
 - A run is one process. `--jobs N` starts N worker processes, one per driven port.
-- openEMS uses its own threads (`--threads`).
-- A monitor thread follows the `openems.log` files for the progress line and `--events`.
+- openEMS uses its own threads (`--threads`); gfdtd runs its excitations side by side on the GPU.
+- A monitor thread follows the FDTD runs' log files for the progress line and `--events`.
 - The GUI runs kicad2ems as a separate process, in the output folder, and reads its `--events` file.
 
 ---

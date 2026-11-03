@@ -83,7 +83,8 @@ def _doxygen():
                      'FILE_PATTERNS = *.cpp *.h', f'OUTPUT_DIRECTORY = {out}', 'GENERATE_XML = YES',
                      'GENERATE_HTML = NO', 'GENERATE_LATEX = NO', 'EXTRACT_ALL = YES', 'EXTRACT_STATIC = YES',
                      'QUIET = YES', 'WARN_IF_UNDOCUMENTED = NO', 'ENABLE_PREPROCESSING = YES', 'MACRO_EXPANSION = YES',
-                     'EXPAND_ONLY_PREDEF = YES', 'PREDEFINED = GF_DEV=inline'])     # gfdtd's device qualifier
+                     'EXPAND_ONLY_PREDEF = YES',             # gfdtd's device qualifier and template
+                     'PREDEFINED = GF_DEV=inline "GF_TEMPLATE=template<typename C>"'])
     subprocess.run(['doxygen', '-'], input=cfg, text=True, check=True)
     return os.path.join(out, 'xml')
 

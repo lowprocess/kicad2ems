@@ -17,16 +17,15 @@ packages of their own, each in its repository:
 | [gfdtd](https://github.com/lowprocess/gfdtd) | a 3D FDTD engine for the GPU or the CPU (kicad2ems-fdtd runs it) | `pip install '.[gfdtd]'` |
 | [dfsynth](https://github.com/lowprocess/dfsynth) | distributed filter synthesis (the GUI's Filter page) | `pip install '.[filter]'` |
 
-
 | Solver | Name | Best for | Needs |
 |---|---|---|---|
-| [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS, and [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) (`pip install '.[openems]'`) |
-| [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | the [mom25d](https://github.com/lowprocess/mom25d) package (`pip install '.[mom]'`); CuPy for GPU acceleration |
-| [gfdtd](docs/gfdtd.md) (3D FDTD on the GPU) | `gfdtd` | openEMS's model, 8–20x faster on a GPU, ~2x on the CPU: the same boards and antennas as openEMS, without conductor loss | the [gfdtd](https://github.com/lowprocess/gfdtd) engine and [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) (`pip install '.[gfdtd]'`), and CuPy and a GPU or its CPU core (`python -m gfdtd.core.build`) |
+| [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS, and the `openems` extra |
+| [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | the `mom` extra; a GPU optional |
+| [gfdtd](docs/gfdtd.md) (3D FDTD on the GPU) | `gfdtd` | openEMS's model, 8–20x faster on a GPU, ~2x on the CPU, without conductor loss | the `gfdtd` extra; a GPU, or its compiled CPU core |
 | Transmission-line model | `lines` | a quick estimate: impedance steps, delays, layout mistakes | scikit-rf or qucsator |
 
 By default kicad2ems picks the full-wave solver it expects to be fastest for your board and adds the
-line model.
+line model ([which solver](docs/usage.md#which)).
 
 ## Gallery
 
@@ -44,32 +43,30 @@ and the region and ports the plugin set up around it.*
   <img src="docs/img/readme/plugin_results.png" width="32%" alt="The pair's S-parameters against the line model">
 </p>
 
-*Left: the impedance map of the board's 94 signal nets filling in, in real time. Middle: the HDMI pairs against their
-100 ohm class; the section read out at the bottom is 117.8 ohm differential (+18 %), the zero-thickness formula
-this picture was taken with: with the copper's thickness the line model now gives 104.8 ohm (+5 %). Right: the D0 pair's
-mixed-mode S-parameters from gfdtd (solid) and the line model (dashed), with the largest differences.*
+*The impedance map of the board's 94 signal nets filling in; the HDMI pairs against their 100 ohm class, a section
+read out at the bottom; the D0 pair's mixed-mode S-parameters from gfdtd (solid) and the line model (dashed).*
 
 <p align="center">
   <img src="docs/img/readme/hdmi_field.gif" width="80%" alt="Differential E field of the HDMI pair">
 </p>
 
 *The same pair driven differentially from the module: its E field just inside the F.Cu and B.Cu dielectrics,
-in dB re the peak (30 dB range). gfdtd field dumps of the two legs' runs, combined as (E+ - E-) / sqrt(2).*
+in dB re the peak (30 dB range), from gfdtd's field dumps of the two legs' runs.*
 
 <p align="center">
   <img src="docs/img/readme/patch_3d.gif" width="49%" alt="3D field of a patch antenna">
   <img src="docs/img/readme/stub_3d.gif" width="49%" alt="3D field of a stub notch filter">
 </p>
 
-*The E field of a 2.45 GHz patch antenna (openEMS, `--dump E@volume+12@2.45`) and of a stub notch filter at its
-2.4 GHz notch, over one period: the GUI's 3D field view, translucent over the copper.*
+*The E field of a 2.45 GHz patch antenna (`--dump E@volume+12@2.45`) and of a stub notch filter at its 2.4 GHz
+notch, over one period: the GUI's 3D field view, translucent over the copper.*
 
 <p align="center">
   <img src="docs/img/readme/gui_sparams.png" width="100%" alt="S-parameters of a hairpin filter from three solvers">
 </p>
 
-*A hairpin band-pass filter solved by openEMS (FDTD), mom25d (MoM) and the transmission-line model (qucsator),
-overlaid in the GUI with a Smith chart of the return loss.*
+*A hairpin band-pass filter solved by gfdtd (FDTD), mom25d (MoM) and the line model (qucsator), overlaid in the GUI
+with a Smith chart.*
 
 <p align="center">
   <img src="docs/img/readme/stub_current.gif" width="49%" alt="Surface current standing wave">
@@ -78,16 +75,16 @@ overlaid in the GUI with a Smith chart of the return loss.*
 
 *Left: mom25d's surface current on the stub notch at 2.4 GHz (`--mom-dump 2.4 --dump-animate gif`): the
 quarter-wave stub holds the standing wave and nothing passes it. Right: the patch in antenna mode: match, gain and
-efficiency over frequency, polar cuts and the 3D pattern.*
+efficiency over frequency, polar cuts.*
 
 <p align="center">
-  <img src="docs/img/readme/gui_mesh.png" width="49%" alt="openEMS model and mesh">
+  <img src="docs/img/readme/gui_mesh.png" width="49%" alt="mom25d's mesh in the GUI's plan view">
   <img src="docs/img/readme/hairpin_tlines.png" width="40%" alt="Transmission-line sections">
 </p>
 
-*The openEMS mesh preview (`--preview`) and the transmission-line sections the line model finds.*
-`python tools/readme_media.py --openems-python <python with openEMS>` makes these again from the examples. The
-plugin's media were recorded from KiCad 10 on a virtual display, the plugin driven by a script.
+*The hairpin's mom25d mesh in the Viewer's plan (rings of thin cells along the copper's edges), and the line
+sections the line model finds. kicad2ems-gui's `tools/readme_media.py` makes these pictures again from the
+examples; the plugin's were recorded from KiCad 10, driven by a script.*
 
 ## Features
 
@@ -96,13 +93,12 @@ plugin's media were recorded from KiCad 10 on a virtual display, the plugin driv
 - **Ports** from footprints with a Fab text `P1`, `P2`, …, including differential pairs (`P1+` / `P1-`)
   and gap ports for antennas.
 - **Lumped parts** from two-pad R/L/C footprints.
-- **Antenna mode**: gain, efficiency and radiation patterns.
+- **Antenna mode**: gain, efficiency and radiation patterns; phased arrays steered after the run.
 - **Field dumps** of E, H or current density: images, animations, and a 3D view.
 - **GUI** (`kicad2ems-gui`) for setup, preview, progress and results.
 - **KiCad plugin** (KiCad 9+, IPC API): the open board's trace impedances in the PCB editor, and a region with
-  ports to simulate: [kicad2ems-ipc](https://github.com/lowprocess/kicad2ems-ipc), in KiCad's Plugin and Content
-  Manager ([KiCad plugin](docs/kicad-plugin.md)).
-- **GPU acceleration** for mom25d (AMD ROCm or NVIDIA CUDA).
+  ports to simulate ([KiCad plugin](docs/kicad-plugin.md)).
+- **GPU acceleration** for gfdtd and mom25d: any GPU through Vulkan, or CuPy on CUDA or ROCm.
 - **Solver plugins**: other solvers can be added as packages.
 
 ## Install
@@ -123,29 +119,18 @@ py install.py
 .venv\Scripts\activate
 ```
 
-The installer, `install.py` (`./setup.sh` runs it), asks where to install (a venv in this checkout, the default; for
-your user, with the commands on your PATH; system-wide; or into the Python itself) and which optional parts you want:
-the GUI, field dumps, the line model, the mom25d and gfdtd solvers and their compiled cores, the CuPy package for your
-GPU, openEMS (one you have, one in another venv linked in, a local build on Linux, Windows' unpacked release, or none),
-qucsator, and a launcher entry (a Start-menu shortcut on Windows) and desktop icon for the GUI. `--yes` takes the
-defaults; `--target user` installs for your user. The options, Windows' specifics and installing by hand are in
-[Getting started](docs/getting-started.md).
-
-The full-wave solvers are optional packages from their own repositories: the `openems` and `gfdtd` extras
-(kicad2ems-fdtd, with openEMS's connection or gfdtd; openEMS itself is needed only for the first), and `mom` (`pip install
-'.[all]'` for everything but a GPU wheel). Without any of the three, kicad2ems runs the line model alone. To see what your setup
-can run:
-
-```bash
-kicad2ems --check
-```
+The installer (`install.py`; `./setup.sh` runs it) asks where to install (a venv in this checkout by default, or
+for your user, system-wide, or into the Python itself) and which optional parts you want: the GUI, the solvers and
+their compiled cores, a GPU package, openEMS, qucsator and a launcher entry. `--yes` takes the defaults.
+[Getting started](docs/getting-started.md) has the options and installing by hand. Without any full-wave solver,
+kicad2ems runs the line model alone; `kicad2ems --check` shows what your setup can run.
 
 ## Quick start
 
 ```bash
 kicad2ems examples/rf_interdig.toml --preview            # model, mesh and line model only: seconds
 kicad2ems examples/rf_interdig.toml --solvers mom,lines  # MoM and the line model: about a minute
-kicad2ems examples/rf_interdig.toml --solvers all        # openEMS too, all three compared
+kicad2ems examples/rf_interdig.toml --solvers all        # every solver, compared
 ```
 
 Results go to `examples/out/`: `filter_<solver>.s2p` for each solver, plots, `filter_run.json` and

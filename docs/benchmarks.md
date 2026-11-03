@@ -29,7 +29,7 @@ its matrix. The fastest field solver on each board is in bold (the line model is
 
 ![Run time and peak memory per example](img/benchmarks.png)
 
-### Vulkan
+## Vulkan
 
 The same boards with each GPU solver through Vulkan as well (`--out build/bench-vulkan --skip openems "line model"
 "mom25d fast"`; `GFDTD_BACKEND=vulkan`, `MOM25D_GPU=vulkan`): the path for AMD cards on Windows, where CuPy has no
@@ -45,38 +45,27 @@ ROCm wheel. Same machine, RADV (Mesa 26.2) against ROCm 7, medians of three runs
 | rf_stripline | 3 s, 0.5 GB | 3 s, 0.6 GB | 6 s | 3 s · *on the CPU* | 3 s · *on the CPU* | 3 s |
 
 - **mom25d through Vulkan is the faster GPU path**: 8–18 % under CuPy's wherever the GPU factors, in half the
-  RAM (the ROCm runtime's own 1.7 GB). Its LU (`gpu_vk.py`) beats rocSOLVER from 4,096 unknowns up: 0.31 s
-  against 0.36 s at 8,192, 1.64 s against 2.11 s at 16,384 ([GPU](mom.md#gpu)).
-- **gfdtd through Vulkan** runs within 0–9 % of CuPy (the hairpin, a small model run for 116k steps, is the
-  worst), 2–4× its CPU core; slangpy adds 0.1–0.2 GB of RAM.
+  RAM; its LU beats rocSOLVER from 4,096 unknowns up ([GPU](mom.md#gpu)).
+- **gfdtd through Vulkan** runs within 0–9 % of CuPy, 2–4× its CPU core.
 
 ![Run time and peak memory, with the Vulkan solvers](img/benchmarks-vulkan.png)
 
-## Reading the table
+## Reading the tables
 
 - **gfdtd on the GPU** is the fastest field solver on two of the six boards (the transition and rf_gcpw, 6 s;
-  3–9 s on all six), and never more than 0.6 GB. On its CPU it is 2–6× slower, still faster than openEMS everywhere.
-- **openEMS** needs the least memory (0.2–0.3 GB). Its time follows cells × timesteps: high-Q circuits
-  (hairpin, 108k steps) and the fence of rf_gcpw (161k steps) are its slow cases.
-- **mom25d** is fastest on four: the antenna (*mom25d fast*: 3 s), the hairpin (3 s), the coupler (4 s) and
-  the stripline (3 s), and within 1.4× of gfdtd's GPU on rf_gcpw. On the transition it takes 11–12 s, 1.8× gfdtd's
-  GPU. Its solid planes are PEC and its lone stitching-via pads left out ([planes](mom.md#planes)): the
-  stripline 15,563 unknowns to 1,337, the transition 13,670 to 4,043. Where a plane has a signal via through it
-  (the transition's inner plane), the plane is still meshed: the [roadmap](https://github.com/lowprocess/kicad2ems/blob/main/ROADMAP.md) has the next step.
-- **The fast setting** halves mom25d's time on the microstrip boards (hairpin, coupler) and costs at most 0.02
-  in |S| ([quad cells](mom.md#quads)). It gains less on the transition, whose meshed inner plane holds most of the
-  unknowns.
-- **The runs repeat**: the three runs of each solver differ by under 10 % on most boards. openEMS and gfdtd's CPU
-  vary most (up to 37 % and 35 %: the transition, rf_gcpw); mom25d by up to 10 % on the transition, where how
-  many solves reuse a kept LU varies with the sweep's samples.
-- **mom25d's GPU** helps above about 3,000 unknowns (after the quad cells), up to 1.4× over its CPU (the coupler);
-  with its LUs kept across the sweep, the CPU nearly matches it on the transition. Small boards
-  stay on the CPU (marked *on the CPU*: below `sim.GPU_MIN_N`, where the GPU's start-up costs more than it
-  saves). No solve falls back to double precision any more.
-- **mom25d keeps its LUs across the sweep** ([reuse](mom.md#reuse)): most frequencies are solved by GMRES with
-  a nearby frequency's LU instead of a new one. With every plane meshed, that took the transition from 179 s
-  to 83 s on the CPU and from 107 s to 72 s on the GPU, and the stripline from 234 s to 117 s and from 98 s to
-  85 s; the small boards gain 10–30 %. With the planes as PEC as well: 12 s and 3 s.
+  3–9 s on all six), in at most 0.6 GB; its CPU core is 2–6× slower, still faster than openEMS everywhere.
+- **openEMS** needs the least memory (0.2–0.3 GB). Its time follows cells × timesteps: high-Q circuits (hairpin,
+  108k steps) and rf_gcpw's fence (161k steps) are its slow cases.
+- **mom25d** is fastest on four (the antenna, the hairpin, the coupler and the stripline, 3–4 s with the fast
+  setting), and within 1.4× of gfdtd's GPU on rf_gcpw. Its solid planes are PEC and its lone stitching-via pads
+  left out ([planes](mom.md#planes)); where a plane has a signal via through it (the transition's inner plane), the
+  plane is still meshed: 11–12 s, 1.8× gfdtd's GPU.
+- **The fast setting** halves mom25d's time on the microstrip boards at a cost of at most 0.02 in |S|
+  ([quad cells](mom.md#quads)); it gains less on the transition, whose meshed plane holds most of the unknowns.
+- **mom25d's GPU** helps above about 3,000 unknowns, up to 1.4× over its CPU; small boards stay on the CPU (*on the
+  CPU*: below `sim.GPU_MIN_N`, where the GPU's start-up costs more than it saves). With its LUs kept across the
+  sweep ([reuse](mom.md#reuse)), the CPU nearly matches it on the transition.
+- **The runs repeat** within 10 % on most boards; openEMS and gfdtd's CPU vary most (up to 37 % and 35 %).
 - **The line model** takes about a second on every board, in under 0.15 GB.
 
 To run it again: `python tools/bench_solvers.py --openems-python <python with openEMS>` (`--repeat N`, default 3;

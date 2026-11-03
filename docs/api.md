@@ -30,7 +30,8 @@ in it. A user takes a provider of the same major version and at least the minor 
 - **Front ends** need a kicad2ems of the minor version they use; their `pyproject.toml` asks for the release
   (kicad2ems-gui: `kicad2ems>=261101.post1`, API 2.2).
 - 2.0 took the FDTD layer out of `api.solver` (it is in kicad2ems-fdtd). 2.1 added the examples and the checked
-  file readers to `api.frontend`, and `ETA0`, `MU0` to `api.solver`.
+  file readers to `api.frontend`, and `ETA0`, `MU0` to `api.solver`. [CHANGELOG.md](https://github.com/lowprocess/kicad2ems/blob/main/CHANGELOG.md)
+  has each release's.
 
 Both API modules load their names on first use: importing one costs nothing until a name is used.
 
@@ -148,9 +149,9 @@ own. kicad2ems-fdtd connects it (`kicad2ems_fdtd.gfdtd`) and is written against 
 
 | Name | What |
 |---|---|
-| `ContinuousStructure`, `openEMS(..., backend=)` | openEMS's and CSXCAD's Python interface, as openEMS scripts use it; `backend`: `'auto'`, `'cupy'`, `'core'`, `'numpy'` |
+| `ContinuousStructure`, `openEMS(..., backend=)` | openEMS's and CSXCAD's Python interface, as openEMS scripts use it; `backend`: `'auto'`, `'gpu'`, `'cupy'`, `'vulkan'`, `'core'`, `'numpy'` |
 | `engine.gpu_info()`, `engine.core_info()` | `(usable, one line)` of the GPU and the compiled CPU core |
-| `engine.resolve_backend(name)` | `'cupy'`, `'core'` or `'numpy'` for `'auto'`, `'gpu'`, `'cpu'`, ... |
+| `engine.resolve_backend(name)` | `'cupy'`, `'vulkan'`, `'core'` or `'numpy'` for `'auto'`, `'gpu'`, `'cpu'`, ... |
 | `engine.concurrent_runs(cells, runs)` | how many runs to keep on the GPU at once |
 | `__version__` | the release |
 

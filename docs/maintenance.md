@@ -35,8 +35,8 @@ efficiency), while S11 looked fine. Antenna runs therefore extend the excitation
 <a id="other-quirks"></a>
 ### Other quirks
 
-- **numpy scalars.** Older CSXCAD rejects them. Pass every number through `simulation._f` / `_fl`.
-- **Working directory.** `FDTD.Run` changes it; `simulation.execute` restores it.
+- **numpy scalars.** Older CSXCAD rejects them. Pass every number through kicad2ems-fdtd's `model._f` / `_fl`.
+- **Working directory.** `FDTD.Run` changes it; kicad2ems-fdtd's `run.execute` restores it.
 - **When a run stops.** openEMS checks the energy on a wall-clock interval, so the stopping step varies
   slightly between runs.
 - **Time step.** openEMS's is about 10 % smaller than kicad2ems's estimate. The real one is in the run
@@ -47,7 +47,7 @@ efficiency), while S11 looked fine. Antenna runs therefore extend the excitation
   `CSX.AddProperty`, then call `SetDispersiveMaterialProperty`. Poles faster than 2 time steps are ignored.
 - **Far-field frequencies** must be chosen before the run.
 - **openEMS's output** is C++ `std::cout`, so redirecting `sys.stdout` doesn't catch it.
-  `progress.redirect_output` redirects the file descriptors instead.
+  kicad2ems-fdtd's `progress.redirect_output` redirects the file descriptors instead.
 
 ### KiCad gotchas
 
@@ -77,16 +77,16 @@ model with `consumes = 'network'`, and returns a `solvers.Result` with S-paramet
 1. Declare `name`, `aliases`, `label`, `consumes`, `rank`, `capabilities` and `options`. Implement
    `check()`, which should say how to fix a problem, and `solve()`. Implement `validate()`, `assess()`,
    `prepare()`, `outputs()` and `estimate()` where they apply.
-2. Declare what it changes from the board in `deviations()`, read its model back in `readback()`, and add
-   it to `tests/test_parity.py`.
+2. Declare what it changes from the board in `deviations()`, read its model back in `readback()`, and test
+   it with `parity.check` as kicad2ems-fdtd's and mom25d's parity tests do.
 3. Register it in `solvers.BUILTIN`, or as an entry point in its own package. Nothing else needs to
    change; the pipeline, report and GUI pick it up.
 4. Add it to the solver table in `docs/usage.md`.
 
 ## Conventions
 
-- Lengths in mm, frequencies in Hz inside the code and GHz on the command line. Messages give KiCad
-  coordinates.
+As on the [index](index.md#conventions), and:
+
 - Import openEMS, CSXCAD, scikit-rf, h5py and other heavy packages inside the functions that use them.
 - Send messages through `log`. Warnings contain `WARNING`, so the report lists them.
 - Plots return matplotlib `Figure` objects without pyplot. The report reads only `Job.summary`.
@@ -126,7 +126,7 @@ Planned work is in [ROADMAP.md](https://github.com/lowprocess/kicad2ems/blob/mai
 
 GPL-3.0-or-later, because openEMS's Python bindings (GPL-3.0-or-later) run in the same process. New
 dependencies must be GPL-compatible. No third-party code is copied into the repository; the impedance
-formulas are implemented from the papers cited in `src/kicad2ems/lines/tlines.py`.
+formulas are implemented from the papers cited in `src/kicad2ems/lines/formulas.py`.
 
 ---
 [← Testing](testing.md) · [Index](index.md)

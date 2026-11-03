@@ -7,302 +7,222 @@ pip install '.[gui]'          # kicad2ems-gui, its own package: PySide6, pyqtgra
 kicad2ems-gui [config.toml]   # or: python -m kicad2ems_gui
 ```
 
-The GUI edits a run's settings and starts the command-line tool as a separate process. Closing the
-window never loses a run, and the GUI itself doesn't need openEMS.
+The GUI edits a run's settings and starts the command-line tool as a separate process: closing the window never
+loses a run, and the GUI itself doesn't need openEMS.
+
+![The window: the settings on the left, the Results page with a hairpin filter's S-parameters from three solvers](img/readme/gui_sparams.png)
 
 ## The window
 
-- **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, the run's estimate, open a results folder, open
-  the report, *Filter* (the wand: the [Filter Synthesis](#filter) page), and *Results of*: whose results the pages show, this board's preview or one of its runs
-  ([below](#run-folders)). The estimate (after a preview) is the time and memory of the full-wave solvers ticked, or the one
-  *auto* would pick, for example `~4 min · 1.3 GB` over `mom25d (auto)`. It is grey once other settings change
-  (preview again), red when it won't fit in the memory available, and opens the Solvers window.
-- **Status bar**: the system's memory in use, the GPU's (through `nvidia-smi` or `rocm-smi`; without them, as
-  the Solvers window found it), and while a run goes the run's own memory (kicad2ems, its workers, openEMS).
-  A bar turns amber above 80 % and red above 95 %.
-- **Settings** (left): collapsible sections: *Board*, *Frequency*, *Solvers* (the tick boxes, the mode and
-  the driven ports), then one per solver, *openEMS + gfdtd (FDTD)* (with *Mesh*, *Run* and *Field dumps*
-  inside: gfdtd runs openEMS's model, so these settings are both solvers'; *Mesh* has the air margin, one value
-  or six, one per side), *gfdtd* (where it runs) and *mom25d*, and *Output* (the folder, the dump settings both solvers use, the antenna's pattern
-  frequencies). A solver's section is greyed while that solver isn't ticked (*auto* may run either), and
-  the antenna settings outside antenna mode. Each header shows how many settings in it are set, for
-  example `Band (3 set)`. Empty fields use the default, shown as a hint. In a narrow dock a field moves
-  under its label.
-- **Pages** (right): **Viewer**, **Run**, **Results** and **Filter Synthesis** ([below](#filter)), tabbed. Drag a tab out to see two side by side
-  (the Run page next to the Viewer's live field, say), or float it. A page can be closed and shown again
-  from the *View* menu (back in the window if it had floated). *View > Reset layout* puts them all back.
+- **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, the run's estimate, the results folder, the report,
+  *Filter* (the wand: the [Filter Synthesis](#filter) page), and *Results of*: this board's preview or one of its
+  runs ([below](#run-folders)). The estimate (after a preview) is the time and memory of the full-wave solvers
+  ticked, or of the one *auto* would pick (`~4 min · 1.3 GB`); grey once the settings change, red when it won't
+  fit in the memory available. It opens the Solvers window.
+- **Status bar**: the memory in use, the GPU's (through `nvidia-smi` or `rocm-smi`), and a running run's own;
+  amber above 80 %, red above 95 %.
+- **Settings** (left): collapsible sections: *Board*, *Frequency*, *Solvers* (the tick boxes, the mode and the
+  driven ports), one per solver (*FDTD (openEMS, gfdtd)*: the mesh, run and field-dump settings both share;
+  *gfdtd*; *mom25d*; ...), and *Output*. A solver's section is greyed while that solver isn't ticked. Each
+  header counts its settings that are set (`Frequency (3 set)`); empty fields use the default, shown as a hint.
+- **Pages** (right): **Viewer**, **Run**, **Results** and **Filter Synthesis**, tabbed. Drag a tab out to see two
+  side by side, or float it; the *View* menu shows a closed page again, and *View > Reset layout* puts them all
+  back. A page comes to the front when it has something new: the Run page when a run starts, the Viewer when a
+  preview ends, the Results page when a run ends.
 
-The pages come to the front when they have something new: the Run page when a run starts, the Viewer when a
-preview ends, the Results page when a run ends.
+The window remembers its size, its docks, pages and splitters, and the Results page's plots between sessions.
 
 <a id="run-folders"></a>
-**Where results go.** Each run from the GUI gets a folder of its own under the output folder, named after the
-board and when it started: `<out>/<board>_20261013_104514/`. A preview goes to `<out>/<board>_preview/`, which
-each preview refreshes. A folder so only ever holds one board's results. Opening a config shows its newest
-run on the Results page and starts a preview, so the Viewer shows the board as it is now; *Results of* picks
-an earlier run instead.
-
-The window remembers its size and position, where the docks and pages are, the splitters, and the plots of
-the Results page, from one session to the next.
+**Where results go.** Each run gets a folder of its own under the output folder, named after the board and when it
+started (`<out>/<board>_20261013_104514/`); a preview goes to `<out>/<board>_preview/`, which each preview
+refreshes. Opening a config shows its newest run on the Results page and starts a preview, so the Viewer shows the
+board as it is now; *Results of* picks an earlier run.
 
 <a id="solvers"></a>
 ## Solvers
 
-**Solvers** in the settings has one tick box per solver, plus *auto*. Plugin solvers appear too, with
-their own settings. After a preview, each full-wave solver's box shows its estimated time and memory on
-that board, for example `mom25d (MoM) · ~4 min, 1.3 GB`. A solver that can't run here is grey, and its
-tooltip says why.
+**Solvers** in the settings has one tick box per solver, plus *auto*; plugin solvers appear too, with their own
+settings. After a preview, each full-wave solver's box shows its estimate (`mom25d (MoM) · ~4 min, 1.3 GB`). A
+solver that can't run here is grey, and its tooltip says why.
 
-**?** beside *Solvers* (or *Help > Solvers and hardware*) opens the Solvers window: every solver with ✔
-or ✖ and what it found, the CPU, the memory and the GPU mom25d would use, and the last preview's
-estimates against what is available. Its *Programs* box sets where qucsator is, and the **openEMS
-environment**: a venv with openEMS, when it isn't in kicad2ems's own Python (its folder or its
-`bin/python`; it must be the same Python version, since openEMS's compiled modules load only in their own).
-These are settings of the machine rather than of a board: they go into `~/.config/kicad2ems/site.toml`.
-Empty finds qucsator on the PATH or where the installer recorded it, and openEMS in kicad2ems's own Python.
+**?** beside *Solvers* (or *Help > Solvers and hardware*) opens the Solvers window: every solver with ✔ or ✖ and
+what it found, the CPU, the memory and the GPU, and the last preview's estimates. Its *Programs* box sets where
+qucsator is and the **openEMS environment**: a venv with openEMS, when it isn't in kicad2ems's own Python (of the
+same Python version). These are the machine's settings, not a board's: they go into
+`~/.config/kicad2ems/site.toml`.
 
-**Stop** asks the run to stop: openEMS ends at once and keeps what it has computed, mom25d ends after the
-frequency it is solving (with no result), and solvers that haven't started are skipped. Press Stop again to
-end the process at once.
+**Stop** asks the run to stop: openEMS and gfdtd end at once and keep what they computed, mom25d ends after the
+frequency it is solving, and solvers that haven't started are skipped. Press Stop again to end the process at once.
 
 <a id="configs"></a>
 ## Configs
 
-The *File* menu has New, Open, recent files, the examples, Save and Save as. The title shows `*` while
-there are unsaved changes.
-
-Saving over an existing config **keeps the file as it was**: comments, key order, tables and keys the
-GUI doesn't know all stay. Only the changed values are rewritten. Paths are saved relative to the
-config. Settings that have no field in the form are kept and passed on to runs.
-
-Each run writes `gui_run.toml` into its folder, so you can repeat it from a terminal with
-`kicad2ems <folder>/gui_run.toml`. Runs start in their folder.
+The *File* menu has New, Open, recent files, the examples, Save and Save as; the title shows `*` while there are
+unsaved changes. Saving over an existing config **keeps the file as it was**: comments, key order, tables and keys
+the GUI doesn't know all stay, and only the changed values are rewritten. Each run writes `gui_run.toml` into its
+folder, so `kicad2ems <folder>/gui_run.toml` repeats it from a terminal.
 
 <a id="viewer"></a>
 ## The Viewer
 
-Everything about the board and its fields, in five views. A view the folder has nothing for is greyed out.
+The board and its fields, in five views (a view the folder has nothing for is greyed out):
 
 | View | Shows |
 |---|---|
 | 3D | the board with its copper as shaded slabs, a solver's mesh, the line model, dumps in place, the far field |
-| Plan | the board from above: one layer's copper (the others faint), a solver's mesh on it, the ports, the line model |
-| Cut | a cut through a field dump, with its values ([below](#fields)) |
+| Plan | one layer's copper from above (the others faint), a solver's mesh on it, the ports, the line model |
+| Cut | a cut through a field dump, with its values ([below](#cut-view)) |
 | Section | the field across the line-model section picked ([below](#section)) |
 | Images | the plots a run wrote: openEMS's mesh with its side views, the model, the line model |
+
+![The Plan view: the hairpin's copper on F.Cu with mom25d's mesh, close up](img/readme/gui_mesh.png)
+
+*The Plan view with mom25d's mesh: rings of thin cells along each copper edge, where the current crowds. A run of
+mom25d also writes the mesh it solved on; **solved** draws it in pink over the preview's, its quad cells
+(`--mom-quads`) without their diagonal.*
+
+<a id="line-model"></a>
+**The line model over the board.** With *Line model* ticked, the 3D and Plan views draw the
+[line model](transmission-lines.md)'s sections on their copper, coloured by Z0: grey at the ports' impedance, blue
+below, red above. In 3D each section also stands as tall as its Z0 (*Z0 relief*), so every step in impedance shows
+as a step in height. The list beside the view has every section by path (`P1 → P2`, …) with its Z0, length,
+delay, εeff and where its Z0 came from (*by*: the formula or the field solver); pick one there or on the plan.
 
 <a id="section"></a>
 ### Section: the field across a trace
 
-Pick a section in the list, or on the plan, and open **Section**: the [field solver](transmission-lines.md#field-solver)
-solves that one cross-section, in about 0.1 s (2 s at worst on a real board), and draws it. No run is needed: a preview's line model
-is enough.
+Pick a section and open **Section**: the [field solver](transmission-lines.md#field-solver) solves that one
+cross-section (about 0.1 s, 2 s at worst on a real board) and draws it. A preview's line model is enough.
+
+![The Section view: a coupled pair of the hairpin in its odd mode, the field strength with equipotentials and field arrows](img/gui/section.png)
 
 | Setting | What it does |
 |---|---|
-| View | what is solved: the board's copper across the trace (every layer's, up to the plane that closes it), a grounded CPW as it was classified (the strip, its gaps, the plane), or, on a coupled section, the pair in its odd or even mode, or this line alone |
-| Colour | the field's strength (log scale, at 1 V; the copper's corners saturate) or the potential |
-| equipotentials, arrows, mesh | lines of equal potential, the field's direction (every arrow the same length), the solver's cells |
+| View | what is solved: the board's copper across the trace (up to the plane that closes it), a grounded CPW as it was classified, or on a coupled section the pair in its odd or even mode, or this line alone |
+| Colour | the field's strength (log scale, at 1 V) or the potential |
+| equipotentials, arrows, mesh | lines of equal potential, the field's direction, the solver's cells |
 
-Under the plot: the impedance of what is shown, the line model's own Z0, and where that came from. The two can differ,
-and that is the point of the view: a trace the formula takes as stripline can show ground beside it, or a plane
-with a hole under it. The field is drawn on a mesh four times as finely graded as the one the numbers come from, and sampled
-again as you zoom. It is the quasi-static field: no dispersion and no current crowding.
-
-The section list's *by* column says where each Z0 came from: the formula, or the field solver.
-
-<a id="line-model"></a>
-### The line model over the board
-
-With *Line model* ticked, the 3D and Plan views draw the [line model](transmission-lines.md)'s sections on
-their copper at their width, coloured by Z0: grey at the ports' impedance, blue below it, red above. The colour
-bar beside the view gives the scale. In 3D each section also stands as tall as its Z0 is high (*Z0 relief*: the
-highest Z0 that tall, the lowest a quarter of it), so every change of impedance, a step, a tee, a pad, shows as
-a step in height.
-
-The list beside the view has every section by path (`P1 → P2`, …) with its Z0, length, delay and εeff.
-Pick a section in the list, or click it in the plan, and both views mark it. Hovering over a section in
-the plan shows its values. A preview writes the sections as `<name>_lines.json`.
+Under the plot: the impedance of what is shown, the line model's own Z0, and where that came from. The two can
+differ, and that is the point: a trace the formula takes as stripline can show ground beside it, or a plane with a
+hole under it. It is the quasi-static field: no dispersion, no current crowding.
 
 <a id="fields3d"></a>
 ### 3D
 
-Drag to orbit, scroll to zoom, Ctrl+drag to pan. This needs PyOpenGL, which is in the `gui` extra. The
-controls are in folding sections beside the view, and only the ones the folder has something for are
-shown: *Field* with a dump, *Far field* with antenna results.
+Drag to orbit, scroll to zoom, Ctrl+drag to pan (PyOpenGL, in the `gui` extra). The controls fold beside the view,
+those the folder has nothing for hidden:
 
-- **Parts:** the lumped R / C / L parts as their chips at true size, from the footprint's name (0201, 0402,
-  0603, 0805, …; without a size in the name, the pads' extent): resistors green, capacitors cyan, inductors
-  pink, a 0 Ω link grey, with metal end caps and a label with the reference and value. A part on the bottom
-  layer hangs below the board. The plan view outlines them in the same colours.
-- **Mesh:** a solver's discretisation: the FDTD grid lines (openEMS's, or gfdtd's when openEMS isn't ticked:
-  the same grid) or mom25d's triangles. A preview writes them in seconds, with the run's mesh options. A run of
-  mom25d also writes the mesh it solved on: **solved mesh** (in the Plan view, **solved**) draws it in pink over
-  the preview's, its quad cells (`--mom-quads`) without their diagonal ([quad cells](mom.md#quads)).
-- **a dump:** a volume dump, for example `--dump E@volume+5@2.4` (the board plus 5 mm of air above and
-  below), as a translucent cloud; a plane dump (an openEMS cut, mom25d's surface currents) as a coloured sheet
-  in place, just above the copper when it lies on a copper layer.
-- **Far field:** in antenna mode, the gain pattern at a recorded frequency over the board's centre: its
-  distance from the centre is the gain, over 30 dB. *Size* scales it against the board, and *Height* lifts
-  it off the board's surface.
+- **Parts:** the lumped R / C / L parts as chips at true size, from the footprint's name (0201, 0402, …):
+  resistors green, capacitors cyan, inductors pink; one on the bottom layer hangs below the board.
+- **Mesh:** the FDTD grid lines (openEMS's, which gfdtd shares) or mom25d's triangles, written by a preview.
+- **A dump:** a volume dump (`--dump E@volume+5@2.4`: the board plus 5 mm of air) as a translucent cloud; a plane
+  dump (an FDTD cut, mom25d's surface currents) as a coloured sheet in place.
+- **Far field:** in antenna mode, the gain pattern at a recorded frequency over the board's centre.
 
 | Control | |
 |---|---|
 | Show, Colours | \|F\| or one component; the colour map |
 | envelope | the peak over a cycle instead of an animation |
-| one colour range for every frame | the range over the whole dump (every time step, or every frequency), so a pulse is seen passing and dying away; off, each time step is scaled on its own |
+| one colour range for every frame | the range over the whole dump, so a pulse is seen passing and dying away |
 | log scale, Decades, Range top | the colour range; *Range top* ignores the strongest few voxels, such as a port gap |
 | Opacity, Fade | how solid the strongest field looks, and how fast the weak field fades out |
-| Height scale | stretches z, since boards are thin |
-| Resolution | voxels along the longest side |
-| copper, Copper shown | show the copper, and how thick it is drawn (0 is flat) |
-| line model, Z0 relief | the sections, and how tall the highest Z0 stands (0 is flat) |
-| parts at true size | the lumped parts as chips |
-| Mesh, solved mesh | none, or a solver's mesh; and the mesh a run solved on over it, in pink (mom25d's quad cells) |
-| Far field: Pattern, Size, Height | the pattern at a frequency, its size against the board, and how far above the board's surface it is drawn |
-| fps, Every n-th frame | the speed of Play and of saved animations, and for a time-domain dump which time steps they use (a long dump starts at about 120 frames), as in the Cut view |
-| Save GIF / MP4 | the animation from the current camera: a period of a frequency-domain dump, or the time steps of a time-domain one |
+| Height scale, Resolution | stretches z (boards are thin); voxels along the longest side |
+| copper, line model, Z0 relief, parts at true size | what is drawn with the field, and how thick or tall |
+| Mesh, solved mesh | a solver's mesh, and the one a run solved on over it |
+| Far field: Pattern, Size, Height | the pattern at a frequency, its size against the board, its height above it |
+| fps, Every n-th frame, Save GIF / MP4 | the animation's speed and frames, saved from the current camera |
 
-![patch 3D](img/readme/patch_3d.gif)
+![The 3D view: a patch antenna's near field over one period](img/readme/patch_3d.gif)
 
-<a id="fields"></a>
+<a id="cut-view"></a>
 ### Cut: field dumps in 2D
 
-Add dumps under *Field dumps* in the settings; *Add a dump* builds the spec for you
-([syntax](postprocessing.md#field-dumps)). A dump without frequencies is recorded over time, and the
-Cut view can follow it live while openEMS runs. A dump with frequencies is written at the end.
+Add dumps under *Field dumps* in the settings (*Add a dump* builds the spec: [syntax](postprocessing.md#field-dumps)).
+A dump without frequencies is recorded over time, and the Cut view can follow it live while the run goes; one with
+frequencies is written at the end.
 
 | Control | |
 |---|---|
-| Component | \|F\| or the x, y or z component |
-| Cut normal to | for a volume, the plane to show |
+| Component, Cut normal to | \|F\| or the x, y or z component; for a volume, the plane to show |
 | log scale, auto range | the colour scale |
-| Frame (a slider), Play | step through time frames or frequencies |
+| Frame, Play | step through time frames or frequencies |
 | instantaneous, phase | for a frequency dump: the field at a phase of the cycle; *Play* turns it |
 | Live | follow a running simulation |
 | Save PNG / GIF / MP4 | the view or an animation (MP4 needs ffmpeg) |
 
-Copper is outlined on the plots.
-
 ## The Run page
 
-Progress per driven port, openEMS's energy decay, mom25d's adaptive sweep (its model change and prediction
+Progress per driven port, the FDTD runs' energy decay, mom25d's adaptive sweep (its model change and prediction
 error per solve, in dB, against its tolerance), the log, and *Stop*.
 
 <a id="plots"></a>
 ## The Results page
 
-S-parameters and antenna results on one page, as a grid of plots. *Add plot* adds one; ✕ on a plot removes
-it. The plots fill as many columns as the page's width allows.
+S-parameters and antenna results as a grid of plots (the picture at the top). *Add plot* adds one, ✕ removes it.
 
 | Plot | Shows |
 |---|---|
-| Cartesian | over frequency: \|S\| in dB or linear, phase, group delay or VSWR; with two solvers or more also their difference; with antenna results also directivity, gain and realized gain, or the radiation efficiency |
+| Cartesian | over frequency: \|S\| in dB or linear, phase, group delay or VSWR; the difference between solvers; with antenna results directivity, gain, realized gain or efficiency |
 | Smith | the reflections (S11, S22, …) with an impedance readout |
-| Polar | S in polar form, or with antenna results the far-field cuts (xz, yz, xy) at a recorded frequency, as gain, realized gain or directivity |
+| Polar | S in polar form, or the far-field cuts (xz, yz, xy) at a recorded frequency |
 
-The traces are listed on the left, grouped by solver; tick the ones to show. Traces that weren't
-computed (ports that weren't driven) are greyed out. Each trace has its own colour and each source
-(a solver, the compare file, an added folder) its own line style, shown beside the trace's name.
-Right-click a trace to change its colour, line style or width, or a source to set the style of all its
-traces; *Automatic colour and style* undoes it. Your choices are remembered from one session to the next.
-With differential pairs the traces are named by mode and pair (the run's ports P1d and P1c are pair 1's
-differential and common modes): Sdd21, Scd21, Scc11, and *s* for a single-ended port among them (Sds31).
+The traces are listed on the left by solver; tick the ones to show (those not computed are grey). Each source (a
+solver, the compare file, an added folder) has its own line style; right-click a trace or a source to change its
+colour, style or width. Differential pairs are named by mode and pair: Sdd21, Scd21, Scc11, and *s* for a
+single-ended port among them (Sds31).
 
-**Difference plots.** With results from two solvers or more (or an added folder), a Cartesian plot can show
-**Δ|S| (dB)**, the difference of the magnitudes in dB, or **|ΔS| (dB)**, the magnitude of the complex
-difference (the error vector, which counts the phase too), *against* a solver chosen beside it. Each ticked
-trace of another solver is drawn as its difference from the reference's same S.
+- **Difference plots**: with two solvers or more, a Cartesian plot shows **Δ|S| (dB)** or **|ΔS| (dB)** (the
+  complex difference, phase included) of each trace against a reference solver.
+- **Notes and warnings**: a fold at the top lists the run's warnings (open when there is one) and its notes.
+- **Cursor, markers, zoom**: hover to read every trace; click to add a marker (drag to move, Delete to remove),
+  listed in a table; wheel and drag to zoom, *Fit* for everything.
+- **Add results folder…** overlays another run; **Export CSV…** and **Save image…**.
 
-**Notes and warnings.** Under the line at the top, a fold lists the run's warnings (in red; it opens when
-there is one) and its notes: how the board was read (the ground plane, the ports, the parts), the line model's
-notes and the log's (a setting that was ignored, an assumption made).
-
-- **Cursor**: hover over any plot to read every trace at that frequency.
-- **Markers**: click to add, drag to move, Delete to remove. A marker is on every plot. The table lists each
-  trace at each marker, and the gain and efficiency when a plot shows them.
-- **Zoom**: mouse wheel and drag; *Fit* shows everything.
-- **Add results folder…**: overlay another run, for comparison.
-- **Export CSV…** and **Save image…**.
-
-The page starts with |S| and a Smith chart, or for an antenna with |S|, the gain, the far-field cuts and a
-Smith chart. Your plots are remembered, one set for S-parameters and one for antennas. A plot of the gain
-stays one while a folder without antenna results is open, and shows the gain again when one with antenna
-results is.
+![The Results page in antenna mode: match, gain and efficiency over frequency, and the polar cuts](img/readme/gui_antenna.png)
 
 <a id="antenna"></a>
-In antenna mode the line above the plots gives the resonance, the input impedance and the −10 dB band. When
-both openEMS and mom25d ran, a selector beside it switches between them. The pattern in 3D is in the Viewer.
+In antenna mode the line above the plots gives the resonance, the input impedance and the −10 dB band, with a
+selector between the solvers that ran; the 3D pattern is in the Viewer.
 
 <a id="beam-steering"></a>
-**Beam steering.** For an antenna driven at several ports, the solver keeps each port's far field (mom25d,
-and openEMS or gfdtd with `drive`: [Phased arrays](mom.md#phased-drive)), and a *Beam steering* bar appears
-above the plots. Any drive is
-then a sum of those fields, recombined at once without solving again:
+**Beam steering.** For an antenna driven at several ports (mom25d, or the FDTD solvers with `drive`:
+[Phased arrays](mom.md#phased-drive)), a *Beam steering* bar recombines the ports' far fields for any drive,
+without solving again:
 
-- **Drive**: `PORT[=amplitude][@phase]` per driven port, the run's to start with. Ports not named are
-  terminated.
-- **Grid**: where each port sits in a 2D array, the run's `grid` to start with. `4x4` places the ports
-  in order row by row (P1–P4 the top row); `P1:0,0 P2:1,0 P3:0,1 ...` places each one (fractional places
-  for an offset lattice). Empty: the ports form a line.
-- **Phase step** (no grid): added from each driven port to the next, on top of the drive's phases. The beam
-  tilts across the ports.
-- **X step**, **Y step** (with a grid): X added per column, Y per row, so an element at column *c*, row *r*
-  gets *c*·X + *r*·Y more phase. The beam tilts in both planes. A **phase map** shows the elements as the
-  grid lays them out, each coloured by its phase, with its port, phase and active reflection.
-- **Taper**: an amplitude taper multiplied into the drive, for lower sidelobes at the cost of a wider beam
-  and some gain. **Taylor** keeps the sidelobes next to the main beam near the level set; **Chebyshev**
-  holds all of them at it; **cosine** has no level to set. With a grid it is a column weight times a row
-  weight; without one, it runs across the driven ports. With a taper, the phase map adds each element's
-  amplitude (×, relative to the largest; paler for weaker ones).
-- **Aim at** θ, φ (results from runs that kept the ports' places): each driven port's phase from its place,
-  as `--aim` gives it ([Phased arrays](mom.md#phased-drive)), on top of the drive and the steps. Any layout
-  of feeds; no grid needed.
-- **Animate** sweeps the phase step back and forth over ±180°; with a grid it sweeps **X**, **Y**, or
-  both round a **Circle** (a conical scan at the steps' current size, 90° when they are zero). With Aim it
-  sweeps the angle: **θ** back and forth over 0–60°, or **φ** round at the θ set. **Reset** goes back to
-  the run's drive, grid, taper, steps and aim.
+- **Drive**: `PORT[=amplitude][@phase]` per driven port; ports not named are terminated.
+- **Grid**: where each port sits in a 2D array (`4x4`: the ports in order, row by row; or `P1:0,0 P2:1,0 ...`).
+- **Phase step** (no grid), or **X step** and **Y step** (with a grid: an element at column *c*, row *r* gets
+  *c*·X + *r*·Y more phase); a **phase map** shows each element's phase, amplitude and active reflection.
+- **Taper**: **Taylor**, **Chebyshev** or **cosine** amplitudes, for lower sidelobes at the cost of a wider beam.
+- **Aim at** θ, φ: each port's phase from its place, as `--aim` gives it; any layout of feeds.
+- **Animate** sweeps the phase step, X, Y, a **Circle**, or the aim's θ or φ; **Reset** goes back to the run's.
 
-The line below gives the beam's direction, its gain and realized gain, and each driven port's active
-reflection (for more than four ports, their range and the worst). The gain and efficiency plots, the far-field cuts and the Viewer's 3D pattern follow the
-steering. The Viewer's 3D view has the same controls in its *Far field* section; the two stay in step, so
-the beam can be steered or animated from either.
+The line below gives the beam's direction, its gain and realized gain, and each driven port's active reflection.
+The gain plots, the far-field cuts and the Viewer's 3D pattern follow the steering, and the Viewer's *Far field*
+section has the same controls.
 
 <a id="filter"></a>
 ## The Filter Synthesis page
 
 Designs a microstrip filter with [dfsynth](https://github.com/lowprocess/dfsynth) and writes its board and kicad2ems
-config (*Filter* in the toolbar, the wand, or *File > New filter*, brings the page to the front). dfsynth is
-its own package, installed with the `filter` extra (`pip install '.[filter]'`) or by the installer; without it the
-page says so and stays disabled. The page never imports dfsynth: its types, topologies, substrate presets and options
-come from `dfsynth --describe --json`, so a dfsynth option the page has no field for appears under *More
-options*, and a field this dfsynth has no option for is disabled.
+config (*Filter* in the toolbar, or *File > New filter*). dfsynth is its own package (the `filter` extra, or the
+installer); the page builds its form from `dfsynth --describe --json` and runs dfsynth as a process, so a dfsynth
+option it has no field for appears under *More options*.
+
+![The Filter Synthesis page: a 2.4 GHz hairpin band-pass, its layout, response and dimensions](img/gui/filter.png)
 
 - **Settings** (left): *Filter* (type, topology, f0, bandwidth, response, order or an attenuation spec such as
-  `40@6G`, ripple, Z0), *Topology details* (only those the topology uses are enabled; the hairpin's includes
-  the gap between a U's own arms), *Substrate and fabrication* (a preset, its height, εr and tan δ overridden
-  when given, the copper, the minimum trace and space: 0.1 mm each by default; a design below them is refused
-  unless *allow below the limits* is ticked), *Output* (the base path of the files, and the time limit of the
-  calibration's final refinement: 10 s by default, past it the best result so far is kept) and *Validation*
-  (the kicad2ems solvers, the tuning rounds, extra kicad2ems arguments such as `--fine 0.03`).
-- **Design** synthesises the filter, calibrates it on dfsynth's line model and writes the board.
-  **Design + validate** then solves the board with the solvers chosen and tunes it for the rounds asked
-  (centre and bandwidth; an interdigital filter by space mapping). gfdtd suits interdigital filters, mom25d
-  the other planar ones. dfsynth runs as a separate process, its output in the *Log*; **Stop** ends it.
-  While it runs a busy bar shows under the buttons, and where it is up to in the status bar; a validation
-  follows the kicad2ems run into the *Log* as it goes (its messages, and every 10 s the solver's progress:
-  an FDTD run's timestep and the field energy left, a frequency sweep's frequencies done).
-- **Log**: dfsynth's output. Its warnings (⚠: the design's notes, a tuning stopped early) and errors (✖: a
-  design refused for the fabrication limits or the spec, a solver failing) are in bold red, and the tab
-  counts them (*Log (1 error, 3 warnings)*, in red); an error brings the log to the front. The design's
-  notes are in red on the *Summary* too.
-- **Layout**: the copper, the ground vias and the ports as drawn on the board. **Response**: S21 (solid) and
-  S11 (dashed) of the line model and of each solver of the last validation round of this run (a later run with
-  fewer tuning rounds, or none, shows only its own), with the target band edges dotted. **Dimensions**: every
-  element's impedance, width, length and gap. **Summary**: the spec, the line model's figures and each
-  validation round's (centre and bandwidth error, loss, return loss).
-- **Open the board in kicad2ems** loads the config dfsynth wrote into the settings on the left, which
-  previews it: from there any solver, mesh or field dump runs as for any other board.
+  `40@6G`, ripple, Z0), *Topology details*, *Substrate and fabrication* (a preset, overrides, the copper, the
+  minimum trace and space: a design below them is refused unless *allow below the limits* is ticked), *Output*
+  and *Validation* (the kicad2ems solvers, the tuning rounds, extra kicad2ems arguments).
+- **Design** synthesises the filter, calibrates it on dfsynth's line model and writes the board. **Design +
+  validate** then solves the board with the solvers chosen and tunes it for the rounds asked (gfdtd suits
+  interdigital filters, mom25d the other planar ones); the *Log* follows the run, **Stop** ends it.
+- **Log** (warnings ⚠ and errors ✖ in bold red, counted on its tab), **Layout** (the copper, ground vias and
+  ports), **Response** (S21 solid and S11 dashed of the line model and each solver of the last validation, the
+  band edges dotted), **Dimensions** and **Summary** (the spec and each round's figures).
+- **Open the board in kicad2ems** loads the config dfsynth wrote into the settings and previews it: from there any
+  solver, mesh or field dump runs as for any other board.
 
 ---
 [← Usage](usage.md) · [Index](index.md) · [Next: Examples →](examples.md)

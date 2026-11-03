@@ -2,10 +2,10 @@
 
 [← openEMS meshing](meshing.md) · [Index](index.md) · [Next: mom25d →](mom.md)
 
-In the [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) package, `model.py` turns the board and its mesh into an openEMS model and
-`run.py` runs it, on openEMS or on any engine with its Python interface (`engines.py`: gfdtd). `antenna.py`
-adds the far field in antenna mode. openEMS is imported only by its engine (`openems/engine.py`), so the rest
-works without it.
+In the [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) package, `model.py` turns the board and its
+mesh into an openEMS model and `run.py` runs it, on openEMS or on gfdtd, which has openEMS's Python interface
+(`engines.py`); `antenna.py` adds the far field. openEMS is imported only by its engine (`openems/engine.py`).
+What follows holds for gfdtd too, except conductor loss ([gfdtd](gfdtd.md)).
 
 ## The model
 
@@ -59,9 +59,7 @@ criterion only.
 The port signals are judged over a window of two periods of the slowest ringing they can carry: two
 periods at `fmin`. A board without lumped parts on its signal nets can't ring below its lowest cavity mode,
 c0 / (2 D √εr) over the outline's diagonal D, so there the window is at most two periods of that mode (at
-least 1 ns). Before this, a band from 0.1 GHz meant a 20 ns window: on a 16 × 21 mm region of KiCad's CM5
-demo the criterion could not fire before 21 ns, and a run went on for 23 minutes (3.4 ns) with its port
-signals already 68 dB down.
+least 1 ns): a band from 0.1 GHz would otherwise wait 20 ns before the criterion could fire.
 
 `--end-db -30` is usually enough for S-parameters, and faster. You can also stop a run by hand: writing
 a file called `ABORT` into its run folder makes openEMS finish cleanly. The GUI's *Stop* does this.
