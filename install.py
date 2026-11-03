@@ -18,7 +18,8 @@ Linux, macOS and Windows; only the Python standard library (it runs before anyth
                                        nothing, leaves openEMS, the other dependencies and the GPU wheel as they are
 
 Asks about: the GUI, field dumps, the scikit-rf line model, mom25d and gfdtd (and their compiled cores), dfsynth,
-the test tools, the CuPy wheel for your GPU (detected: NVIDIA CUDA 12 / 13, AMD ROCm 7 on Linux), openEMS (one
+the test tools, slangpy (the GPU through Vulkan, the default) and optionally a CuPy wheel for your GPU (detected:
+NVIDIA CUDA 12 / 13, AMD ROCm 7 on Linux), openEMS (one
 this Python has, one in another venv linked in, Windows' unpacked release, build one with tools/build_openems.sh
 on Linux, or none), qucsator, and a launcher entry and desktop icon for the GUI (a .desktop file on Linux, a
 Start-menu shortcut on Windows). Makes the example boards that are not in the repository
@@ -727,7 +728,30 @@ class Installer:
         if self.oems != 'none':
             self.extras.append('openems')        # openEMS's solver (kicad2ems-fdtd[openems]; it brings h5py)
 
-    # ---- the GPU: CuPy for mom25d's direct solver and gfdtd -----------------------------------------------
+    # ---- the GPU through Vulkan: slangpy, the primary GPU path (AMD, Intel, NVIDIA; Windows and Linux) ------
+    @staticmethod
+    def find_vulkan():
+        """Whether the system has a Vulkan loader (it comes with the GPU's driver)."""
+        if WINDOWS:
+            return os.path.isfile(os.path.join(os.environ.get('SYSTEMROOT', r'C:\Windows'), 'System32', 'vulkan-1.dll'))
+        if sys.platform == 'darwin':
+            return False
+        if shutil.which('ldconfig') or os.path.isfile('/sbin/ldconfig'):
+            r = subprocess.run([shutil.which('ldconfig') or '/sbin/ldconfig', '-p'], capture_output=True, text=True)
+            if 'libvulkan.so.1' in r.stdout:
+                return True
+        return bool(glob.glob('/usr/lib*/libvulkan.so.1') or glob.glob('/usr/lib/*/libvulkan.so.1'))
+
+    def choose_vulkan(self):
+        bold("GPU through Vulkan (slangpy: gfdtd's kernels and mom25d's LU on any Vulkan GPU)")
+        self.slang = False
+        if self.find_vulkan():
+            note("found: a Vulkan loader (the GPU's driver)")
+            self.slang = ask("slangpy (the solvers on the GPU through Vulkan)?", 'y')
+        else:
+            note("no Vulkan loader found (install the GPU driver for Vulkan)")
+
+    # ---- the GPU through CuPy: optional, for NVIDIA (CUDA, used before Vulkan there) or ROCm -----------------
     def detect_gpu(self):
         """(what was found, the default option index, the ROCm major version or None, an AMD card's name)."""
         what, default, rocm, amd = 'no GPU stack found', 0, None, None
@@ -768,27 +792,28 @@ class Installer:
                         card = name
                         break
             what = f"AMD: {card or 'a ROCm GPU'}, ROCm {rocm}"
-            if rocm == '7':
+            if rocm == '7' and not self.slang:     # AMD with slangpy: Vulkan, no CuPy needed
                 default = 1
         return what, default, rocm, amd
 
     def choose_gpu(self):
-        bold("GPU (CuPy: mom25d's LU in complex64, gfdtd's engine)")
+        self.choose_vulkan()
+        bold("GPU through CuPy (optional: NVIDIA CUDA is used before Vulkan; on AMD, Vulkan is as fast without ROCm)")
         what, default, rocm, amd = self.detect_gpu()
         note(f"found: {what}")
         if rocm and rocm != '7':
             note("CuPy 14 has a ROCm wheel for ROCm 7 only (cupy-rocm-7-0); older ROCm: none here")
         if amd:
-            note(f"{amd}: CuPy has no ROCm wheel for Windows, so an AMD card is not used here (Linux with ROCm 7 is)")
+            note(f"{amd}: CuPy has no ROCm wheel for Windows; the card runs through Vulkan (slangpy)")
         opts = ["cupy-rocm-7-0   AMD, ROCm 7", "cupy-cuda12x    NVIDIA, CUDA 12", "cupy-cuda13x    NVIDIA, CUDA 13",
-                "none            mom25d on the CPU"]
+                "none            Vulkan (slangpy) or the CPU"]
         if WINDOWS:
             opts, default = opts[1:], max(default - 1, 0)
         self.cupy = first_word(choose("CuPy wheel:", default or len(opts), opts))
         self.cupy = None if self.cupy == 'none' else self.cupy
         self.drop_cupy = False
         if not self.cupy and self.t.venv and os.path.isfile(self.vpy) and self.has_dist(*CUPY_WHEELS):
-            self.drop_cupy = ask("the venv has a CuPy wheel already: remove it (mom25d on the CPU)?", 'n')
+            self.drop_cupy = ask("the venv has a CuPy wheel already: remove it (Vulkan or the CPU)?", 'n')
 
     # ---- qucsator: the line model's circuit solver, a separate program --------------------------------------
     def find_qucsator(self):
@@ -879,6 +904,9 @@ class Installer:
             self.pip(f"{self.cupy}>=14")
         elif self.drop_cupy:
             self.pip_uninstall(*CUPY_WHEELS)
+        if self.slang:
+            bold("Installing slangpy")
+            self.pip("slangpy>=0.43")
         for pkg, on in (('mom25d', self.mom), ('gfdtd', self.gfdtd)):
             if self.core and on:
                 bold(f"Building {pkg}'s compiled core")
@@ -1092,7 +1120,7 @@ class Installer:
         run([self.k2e(), '--check'], env=env)
 
     def done(self):
-        if self.cupy:
+        if self.cupy or self.slang:
             run([self.vpy, '-m', 'emsdev'])
         t = self.t
         print(f"\nDone ({t.name} install). Use it with:")

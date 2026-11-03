@@ -20,7 +20,7 @@ mid-range GPU gfdtd runs 8–20 times faster than openEMS on a 24-thread CPU; it
 twice as fast, and five times with PML and wideband dielectrics (see its [Speed](https://github.com/lowprocess/gfdtd#speed)).
 
 ```bash
-kicad2ems examples/rf_coupler.toml --solvers gfdtd              # the GPU when CuPy finds one, else the CPU
+kicad2ems examples/rf_coupler.toml --solvers gfdtd              # the GPU when Vulkan or CuPy finds one, else the CPU
 kicad2ems examples/rf_coupler.toml --solvers openems,gfdtd      # both, compared in the report
 kicad2ems board.toml --solvers gfdtd --gfdtd-backend cpu        # the CPU core (numpy without it: slow)
 kicad2ems board.toml --solvers gfdtd --bc PML_8 --diel wideband --dump "E@F.Cu-0.05@2,4"
@@ -29,7 +29,7 @@ kicad2ems examples/antenna_dipole.toml --solvers gfdtd          # antenna mode: 
 
 | Setting | Meaning |
 |---|---|
-| `--gfdtd-backend auto\|gpu\|cpu` (`[solver.gfdtd] backend`) | `auto` (default): the GPU when CuPy finds one, else the CPU. `gpu`: CuPy (CUDA or ROCm), or the run stops. `cpu`: the compiled core, else numpy |
+| `--gfdtd-backend auto\|gpu\|cpu` (`[solver.gfdtd] backend`) | `auto` (default): the GPU when Vulkan or CuPy finds one, else the CPU. `gpu`: Vulkan (slangpy: any GPU), else CuPy (CUDA, used first on NVIDIA, or ROCm), or the run stops. `cpu`: the compiled core, else numpy. `GFDTD_BACKEND=cupy\|vulkan` picks the GPU's |
 
 Install it with the `gfdtd` extra, or from its repository:
 
@@ -39,8 +39,9 @@ python -m pip install -e ../gfdtd                               # or a clone of 
 ```
 
 Without it, `kicad2ems --check` lists gfdtd as not installed and `--solvers auto` leaves it out.
-The GPU needs CuPy for your stack: one of the `gpu-*` extras (`pip install '.[gpu-rocm7]'`), as for mom25d
-([GPU](mom.md#gpu)). The CPU core is built once, as mom25d's (g++ with OpenMP, and pybind11: the `core`
+The GPU needs slangpy (`pip install '.[gpu-vulkan]'`: any GPU with a Vulkan driver, Windows or Linux) or,
+optionally, CuPy for your stack (one of the other `gpu-*` extras; used before Vulkan on NVIDIA CUDA), as for
+mom25d ([GPU](mom.md#gpu)). The CPU core is built once, as mom25d's (g++ with OpenMP, and pybind11: the `core`
 extra):
 
 ```bash
@@ -48,7 +49,7 @@ python -m gfdtd.core.build          # gfdtd/_core*.so, in the installed package;
 ```
 
 Without it the CPU runs on numpy, some 15 times slower. `kicad2ems --check` shows which one gfdtd will use.
-`GFDTD_BACKEND=cupy|core|numpy` overrides the choice for every run.
+`GFDTD_BACKEND=vulkan|cupy|core|numpy` overrides the choice for every run.
 
 Each run writes `<name>_gfdtd.xml`, the model as an openEMS XML file that both `gfdtd` and `openEMS` can run.
 gfdtd writes openEMS's probe files, field dumps and status lines, so kicad2ems's progress lines, port watch

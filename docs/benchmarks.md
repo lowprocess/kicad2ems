@@ -29,6 +29,29 @@ its matrix. The fastest field solver on each board is in bold (the line model is
 
 ![Run time and peak memory per example](img/benchmarks.png)
 
+### Vulkan
+
+The same boards with each GPU solver through Vulkan as well (`--out build/bench-vulkan --skip openems "line model"
+"mom25d fast"`; `GFDTD_BACKEND=vulkan`, `MOM25D_GPU=vulkan`): the path for AMD cards on Windows, where CuPy has no
+ROCm wheel. Same machine, RADV (Mesa 26.2) against ROCm 7, medians of three runs:
+
+| Example | gfdtd CuPy | gfdtd Vulkan | gfdtd CPU | mom25d CuPy | mom25d Vulkan | mom25d CPU |
+|---|---|---|---|---|---|---|
+| antenna_patch | 9 s, 0.6 GB | 9 s, 0.8 GB | 16 s | 4 s · *on the CPU* | 4 s · *on the CPU* | 4 s |
+| demo_transition | **6 s**, 0.5 GB | 6 s, 0.7 GB | 17 s | 12 s, 3.1 GB | 10 s, 1.4 GB | 12 s |
+| hairpin | 7.0 s, 0.5 GB | 7.6 s, 0.6 GB | 28 s | 6 s, 2.8 GB | **5 s**, 1.1 GB | 7 s |
+| rf_coupler | 4.7 s, 0.5 GB | **4.6 s**, 0.7 GB | 14 s | 10 s, 3.1 GB | 9 s, 1.4 GB | 14 s |
+| rf_gcpw | **6 s**, 0.4 GB | 7 s, 0.5 GB | 26 s | 9 s, 3.1 GB | 8 s, 1.4 GB | 10 s |
+| rf_stripline | 3 s, 0.5 GB | 3 s, 0.6 GB | 6 s | 3 s · *on the CPU* | 3 s · *on the CPU* | 3 s |
+
+- **mom25d through Vulkan is the faster GPU path**: 8–18 % under CuPy's wherever the GPU factors, in half the
+  RAM (the ROCm runtime's own 1.7 GB). Its LU (`gpu_vk.py`) beats rocSOLVER from 4,096 unknowns up: 0.31 s
+  against 0.36 s at 8,192, 1.64 s against 2.11 s at 16,384 ([GPU](mom.md#gpu)).
+- **gfdtd through Vulkan** runs within 0–9 % of CuPy (the hairpin, a small model run for 116k steps, is the
+  worst), 2–4× its CPU core; slangpy adds 0.1–0.2 GB of RAM.
+
+![Run time and peak memory, with the Vulkan solvers](img/benchmarks-vulkan.png)
+
 ## Reading the table
 
 - **gfdtd on the GPU** is the fastest field solver on two of the six boards (the transition and rf_gcpw, 6 s;
