@@ -275,17 +275,17 @@ def board_cut(out, path):
     m = Board(KiCadBoard(path), log=lambda *a: None, need_ports=False)
     nets = sorted(n for n in {t['net'] for t in m.prims.tracks} if 'HDMI' in n)
     seen = []
-    orig = reference._field
+    orig = reference._cut_args
 
     def spy(model, ref, e, pt, n, found):
-        orig(model, ref, e, pt, n, found)
-        if any('does not extend' in s for s in e.notes):
-            seen.append((ref, e, np.array(pt), np.array(n), dict(found)))
-    reference._field, reference.FIELD = spy, True
+        seen.append((ref, e, np.array(pt), np.array(n), dict(found)))
+        return orig(model, ref, e, pt, n, found)
+    reference._cut_args, reference.FIELD = spy, True
     try:
         builder.build(m, nets=nets)
     finally:
-        reference._field, reference.FIELD = orig, False
+        reference._cut_args, reference.FIELD = orig, False
+    seen = [x for x in seen if any('does not extend' in s for s in x[1].notes)]
     if not seen:
         print('board cut: no section where the plane ends found')
         return
@@ -298,7 +298,7 @@ def board_cut(out, path):
     solve = reference._solve_cut
     reference._solve_cut = lambda *a: (keys.append(a), solve(*a))[1]
     try:
-        reference._field(m, ref, e, pt, n, found)
+        reference._field(e)
     finally:
         reference._solve_cut = solve
     xs = reference._cut_section(*keys[0])
