@@ -136,7 +136,9 @@ shown: *Field* with a dump, *Far field* with antenna results.
   pink, a 0 Ω link grey, with metal end caps and a label with the reference and value. A part on the bottom
   layer hangs below the board. The plan view outlines them in the same colours.
 - **Mesh:** a solver's discretisation: the FDTD grid lines (openEMS's, or gfdtd's when openEMS isn't ticked:
-  the same grid) or mom25d's triangles. A preview writes them in seconds.
+  the same grid) or mom25d's triangles. A preview writes them in seconds, with the run's mesh options. A run of
+  mom25d also writes the mesh it solved on: **solved mesh** (in the Plan view, **solved**) draws it in pink over
+  the preview's, its quad cells (`--mom-quads`) without their diagonal ([quad cells](mom.md#quads)).
 - **a dump:** a volume dump, for example `--dump E@volume+5@2.4` (the board plus 5 mm of air above and
   below), as a translucent cloud; a plane dump (an openEMS cut, mom25d's surface currents) as a coloured sheet
   in place, just above the copper when it lies on a copper layer.
@@ -156,7 +158,7 @@ shown: *Field* with a dump, *Far field* with antenna results.
 | copper, Copper shown | show the copper, and how thick it is drawn (0 is flat) |
 | line model, Z0 relief | the sections, and how tall the highest Z0 stands (0 is flat) |
 | parts at true size | the lumped parts as chips |
-| Mesh | none, or a solver's mesh |
+| Mesh, solved mesh | none, or a solver's mesh; and the mesh a run solved on over it, in pink (mom25d's quad cells) |
 | Far field: Pattern, Size, Height | the pattern at a frequency, its size against the board, and how far above the board's surface it is drawn |
 | fps, Every n-th frame | the speed of Play and of saved animations, and for a time-domain dump which time steps they use (a long dump starts at about 120 frames), as in the Cut view |
 | Save GIF / MP4 | the animation from the current camera: a period of a frequency-domain dump, or the time steps of a time-domain one |

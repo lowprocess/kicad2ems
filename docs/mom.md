@@ -434,6 +434,10 @@ largest |ΔS| at three frequencies in the band; the time is one solve in double 
 - The old quads (25°, greedy, no structured runs) merged 24–56 % of the triangles; `on` merges 40–73 %, the edge
   strip left as triangles.
 
+The preview's mesh (the GUI's 3D and Plan views) has the structured runs but no quads yet: they are paired when
+the run starts. The run writes the mesh it solved on beside it, and the views' **solved mesh** tick box draws
+that in pink over the preview's, each quad cell without its diagonal.
+
 Quads work with the direct solver, on the CPU and the GPU (double and mixed precision: the matrix is reduced on the
 host, then factored). The tiled GPU solver and the compressed solvers ignore them. The studies are
 `tools/quad_configs_study.py` and `tools/mesh_configs.py` (these figures) in mom25d.
