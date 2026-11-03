@@ -153,3 +153,13 @@ def test_stdlib_only():
     names = {n.name.split('.')[0] for node in ast.walk(tree) if isinstance(node, ast.Import) for n in node.names}
     names |= {node.module.split('.')[0] for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module}
     assert names <= set(sys.stdlib_module_names), names - set(sys.stdlib_module_names)
+
+
+def test_visual_studio_without_vswhere(windows, tmp_path, monkeypatch):
+    """Windows: Build Tools found by their vcvars64.bat where vswhere is missing."""
+    b = tmp_path / 'Program Files' / 'Microsoft Visual Studio' / '18' / 'BuildTools' / 'VC' / 'Auxiliary' / 'Build'
+    b.mkdir(parents=True)
+    (b / 'vcvars64.bat').write_text('', encoding='utf-8')
+    monkeypatch.setenv('ProgramFiles(x86)', str(tmp_path / 'none'))
+    monkeypatch.setattr(windows.shutil, 'which', lambda name: None)
+    assert windows.Installer(windows.parse([])).has_compiler() == 'Visual Studio'
