@@ -41,13 +41,15 @@ gfdtd = ["kicad2ems-fdtd[gfdtd] @ git+https://github.com/lowprocess/kicad2ems-fd
                                                                 # with gfdtd, the GPU / CPU-core FDTD engine
 filter = ["kicad2ems-gui[filter] @ git+https://github.com/lowprocess/kicad2ems-gui"]   # the GUI's Filter page (dfsynth)
 all = ["kicad2ems[fast,dumps,gui,core,openems,mom,gfdtd,filter]"]       # everything but a GPU wheel (one of the gpu-* extras)
-# mom25d's and gfdtd's GPU solvers (docs/mom.md#gpu): the CuPy wheel built for your
-# GPU stack, one of these extras (pip install '.[gpu-rocm7]'), or the wheel itself (pip install cupy-rocm-7-0);
-# they conflict: install one. The CUDA wheels need the NVIDIA driver; the ROCm wheel the
-# ROCm 7 runtime (rocminfo shows the card). PyTorch is the other backend: its ROCm / CUDA build from pytorch.org.
+# mom25d's and gfdtd's GPU solvers (docs/mom.md#gpu): slangpy (gpu-vulkan), the default on any GPU, or optionally
+# the CuPy wheel built for your GPU stack, one of the other extras (pip install '.[gpu-cuda12]'); the CuPy wheels
+# conflict: install one. The CUDA wheels need the NVIDIA driver (CuPy is used before Vulkan there); the ROCm wheel
+# the ROCm 7 runtime.
 gpu-cuda12 = ["cupy-cuda12x>=14"]   # NVIDIA, CUDA 12.x driver
 gpu-cuda13 = ["cupy-cuda13x>=14"]   # NVIDIA, CUDA 13.x driver
 gpu-rocm7 = ["cupy-rocm-7-0>=14"]   # AMD, ROCm 7.0
+gpu-vulkan = ["slangpy>=0.43"]      # any GPU with a Vulkan driver, Windows or Linux: gfdtd's kernels and
+                                    # mom25d's LU through Vulkan; alongside a CuPy wheel or alone
 test = ["pytest>=7", "scikit-rf>=1.0", "h5py>=3"]
 # openEMS and CSXCAD are not on PyPI: install them from your distribution or build them from source
 # (see README); the openems extra is the plugin that runs them.

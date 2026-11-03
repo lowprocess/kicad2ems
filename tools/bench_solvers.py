@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
 Run time and peak memory of every solver on every example config, each solver in a process of its own:
-openEMS, gfdtd on the GPU and on the CPU, mom25d with the GPU, mom25d on the CPU only (MOM25D_GPU=off), mom25d
-fast (quads on a coarsened mesh) and the line model.
+openEMS, gfdtd on the GPU (CuPy, and Vulkan: GFDTD_BACKEND=vulkan) and on the CPU, mom25d with the GPU (CuPy, and
+Vulkan: MOM25D_GPU=vulkan), mom25d on the CPU only (MOM25D_GPU=off), mom25d fast (quads on a coarsened mesh) and the
+line model.
 
     python tools/bench_solvers.py --openems-python /opt/openems/venv/bin/python     # the critical boards (CRITICAL)
     python tools/bench_solvers.py --all                                             # every example config
     python tools/bench_solvers.py --only filter hairpin --skip openems
     python tools/bench_solvers.py --plot-only --only filter hairpin     # the graph of what was measured
+    python tools/bench_solvers.py --out build/bench-vulkan --skip openems "line model" "mom25d fast"
 
 Writes build/bench/results.json, results.md and results.png (time and memory per solver, per example; the median of
 --repeat runs, with their range). Run it alone: the timings are wall time, and other work on
@@ -37,9 +39,11 @@ CRITICAL = ['hairpin', 'rf_coupler', 'rf_gcpw', 'rf_stripline', 'demo_transition
 def solvers(openems_py):
     me = sys.executable
     return {'openems': (openems_py, ['--solvers', 'openems'], {}),
-            'gfdtd GPU': (me, ['--solvers', 'gfdtd', '--gfdtd-backend', 'gpu'], {}),
+            'gfdtd GPU': (me, ['--solvers', 'gfdtd', '--gfdtd-backend', 'gpu'], {'GFDTD_BACKEND': 'cupy'}),
+            'gfdtd Vulkan': (me, ['--solvers', 'gfdtd', '--gfdtd-backend', 'gpu'], {'GFDTD_BACKEND': 'vulkan'}),
             'gfdtd CPU': (me, ['--solvers', 'gfdtd', '--gfdtd-backend', 'cpu'], {}),
-            'mom25d GPU': (me, ['--solvers', 'mom25d'], {}),
+            'mom25d GPU': (me, ['--solvers', 'mom25d'], {'MOM25D_GPU': 'cupy'}),
+            'mom25d Vulkan': (me, ['--solvers', 'mom25d'], {'MOM25D_GPU': 'vulkan'}),
             'mom25d CPU': (me, ['--solvers', 'mom25d'], {'MOM25D_GPU': 'off'}),
             # quad cells at 60 degrees on a coarsened, structured mesh (docs/mom.md#coarsen), the GPU where it pays
             'mom25d fast': (me, ['--solvers', 'mom25d', '--mom-quads', 'on', '--mom-quad-tol', '60',
@@ -88,7 +92,11 @@ def main():
                     "with the range (default 3)")
     ap.add_argument('--skip', nargs='*', default=[], help="solvers to leave out: openems, 'mom25d GPU', ...")
     ap.add_argument('--plot-only', action='store_true', help="no runs: the graph (and table) of the results so far")
+    ap.add_argument('--out', help="the results' folder (default build/bench)")
     a = ap.parse_args()
+    global OUT
+    if a.out:
+        OUT = os.path.abspath(a.out)
     os.makedirs(OUT, exist_ok=True)
     if a.plot_only:
         results = json.load(open(os.path.join(OUT, 'results.json')))
@@ -164,14 +172,18 @@ def summary(results, configs):
     print("(c: a mom25d GPU run that factored on the CPU, all or some of its solves)")
 
 
-NAMES = ['openems', 'gfdtd GPU', 'gfdtd CPU', 'mom25d GPU', 'mom25d CPU', 'mom25d fast', 'line model']
-COLOURS = {'openems': '#1f77b4', 'gfdtd GPU': '#d62728', 'gfdtd CPU': '#ff9896', 'mom25d GPU': '#2ca02c',
-           'mom25d CPU': '#98df8a', 'mom25d fast': '#9467bd', 'line model': '#7f7f7f'}
+NAMES = ['openems', 'gfdtd GPU', 'gfdtd Vulkan', 'gfdtd CPU', 'mom25d GPU', 'mom25d Vulkan', 'mom25d CPU',
+         'mom25d fast', 'line model']
+COLOURS = {'openems': '#1f77b4', 'gfdtd GPU': '#d62728', 'gfdtd Vulkan': '#e377c2', 'gfdtd CPU': '#ff9896',
+           'mom25d GPU': '#2ca02c', 'mom25d Vulkan': '#17becf', 'mom25d CPU': '#98df8a', 'mom25d fast': '#9467bd',
+           'line model': '#7f7f7f'}
+GPU_MOM = ('mom25d GPU', 'mom25d Vulkan', 'mom25d fast')    # mom25d runs that factor on a GPU (or fall back)
 
 
-def plot(results, configs=None, path=os.path.join(OUT, 'results.png')):
+def plot(results, configs=None, path=None):
     """Run time and peak RAM of each solver on each example: grouped bars, n/a where a solver
     can't model the board."""
+    path = path or os.path.join(OUT, 'results.png')
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -276,14 +288,15 @@ def write_md(results):
             elif r['code']:
                 cells.append('n/a')
             else:
-                gpu = f" (+{r['gpu_gb']:.1f} GPU)" if n in ('mom25d GPU', 'mom25d fast') and r.get('gpu_gb') else ''
+                gpu = f" (+{r['gpu_gb']:.1f} GPU)" if n in GPU_MOM and r.get('gpu_gb') else ''
                 rr = r.get('runs') or [r['seconds']]
                 span = f" ({min(rr):.0f}–{max(rr):.0f})" if len(rr) > 1 and round(min(rr)) != round(max(rr)) else ''
                 cell = f"{r['seconds']:.0f} s{span}, {r['peak_gb']:.1f} GB{gpu}"
                 cell = f"**{cell}**" if n == best else cell
                 cells.append(cell + _where(n, r))
         cells.append(best or '')
-        o, mo = rows.get('openems') or rows.get('gfdtd GPU') or {}, rows.get('mom25d GPU', {})
+        o, mo = rows.get('openems') or rows.get('gfdtd GPU') or rows.get('gfdtd Vulkan') or {}, \
+            rows.get('mom25d GPU') or rows.get('mom25d Vulkan') or {}
         cells.append(f"{o.get('cells', '')} cells, {o.get('steps', '')} steps" if o.get('cells') else '')
         for mo in (mo, rows.get('mom25d fast', {})):
             cells.append(f"{mo.get('unknowns', '')} unknowns, {mo.get('solves', '')} solves, {mo.get('path', '')}"
@@ -297,7 +310,7 @@ def write_md(results):
 
 def _where(n, r):
     """A GPU run of mom25d that did not (all) run on the GPU, marked: ' · on the CPU' or ' · n of m on the CPU'."""
-    if n not in ('mom25d GPU', 'mom25d fast') or 'lu_cpu' not in r:
+    if n not in GPU_MOM or 'lu_cpu' not in r:
         return ''
     if not r.get('lu_gpu'):
         return ' · *on the CPU*'

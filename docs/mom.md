@@ -469,14 +469,20 @@ the unknowns matter more.
 ## GPU
 
 mom25d can factor its matrix on a GPU, in single precision, and then refine the answer to full precision on
-the CPU. Install the CuPy package for your GPU stack:
+the CPU. Install slangpy, which runs it on any GPU with a Vulkan driver; a CuPy package is optional:
 
 | GPU | Package |
 |---|---|
-| AMD, ROCm 7 | `pip install cupy-rocm-7-0` |
-| NVIDIA, CUDA 12 / 13 | `pip install cupy-cuda12x` / `cupy-cuda13x` |
+| any, through Vulkan (AMD, Intel, NVIDIA; Windows and Linux) | `pip install slangpy` (the `gpu-vulkan` extra) |
+| NVIDIA, CUDA 12 / 13 (optional) | `pip install cupy-cuda12x` / `cupy-cuda13x` |
+| AMD, ROCm 7, Linux (optional) | `pip install cupy-rocm-7-0` |
 
-PyTorch also works as a backend. `kicad2ems --check` shows the GPU mom25d will use, and so does the GUI's
+`auto` tries Vulkan first, and CuPy first only where it runs on CUDA (NVIDIA's cuSOLVER, not yet measured
+against Vulkan); `MOM25D_GPU=cupy` or `vulkan` picks one. Vulkan has no LAPACK, so its LU is mom25d's own (`gpu_vk.py`): the CPU factors each panel of 256 columns
+with LAPACK while the GPU applies it to the rest of the matrix, the next panel's columns first so that the two
+overlap. On an RX 7800 XT it factors 4,096 unknowns in 0.074 s and 16,384 in 1.64 s, against 0.080 s and 2.11 s
+for CuPy's rocSOLVER on the same card (a mid-range CPU: 3 s for 8,192). Its accuracy is LAPACK's in single
+precision: the same pivots, and solves as close to the exact answer. `kicad2ems --check` shows the GPU mom25d will use, and so does the GUI's
 Solvers window (Help > Solvers and hardware). `MOM25D_GPU=off` turns it off. Consumer AMD cards outside ROCm's support list may need
 `HSA_OVERRIDE_GFX_VERSION=11.0.0` (RDNA3) or `10.3.0` (RDNA2).
 

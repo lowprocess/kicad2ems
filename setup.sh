@@ -14,7 +14,7 @@
 #                                 nothing, leaves openEMS, the other dependencies and the GPU wheel as they are
 #
 # Asks about: the GUI, field dumps, the scikit-rf line model, mom25d and gfdtd (and their compiled cores), dfsynth, the test
-# tools, the CuPy wheel for your GPU
+# tools, slangpy (the GPU through Vulkan, the default) and optionally a CuPy wheel for your GPU
 # (detected: NVIDIA CUDA 12 / 13, AMD ROCm 7), openEMS (one this Python has, one in another venv linked in,
 # build one with tools/build_openems.sh, or none), qucsator, and a launcher entry and desktop icon for the GUI.
 # Makes the example boards that are not in the repository (examples/make_boards.py), next to their configs.
@@ -343,8 +343,24 @@ fi
 ask "test tools (pytest)?" n && EXTRAS+=(test)
 [ "$OEMS" != none ] && EXTRAS+=(openems)        # openEMS's solver (kicad2ems-fdtd[openems]; it brings h5py)
 
-# ---- the GPU: CuPy for mom25d's direct solver -------------------------------------------------------
-bold "GPU (CuPy: mom25d's LU in complex64, gfdtd's engine)"
+# ---- the GPU through Vulkan: slangpy, the primary GPU path (AMD, Intel, NVIDIA; Windows and Linux) ----------
+bold "GPU through Vulkan (slangpy: gfdtd's kernels and mom25d's LU on any Vulkan GPU)"
+VK_FOUND=0
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) [ -f "${SYSTEMROOT:-C:/Windows}/System32/vulkan-1.dll" ] && VK_FOUND=1 ;;
+    *) { command -v ldconfig >/dev/null && ldconfig -p 2>/dev/null | grep -q 'libvulkan\.so\.1'; } && VK_FOUND=1
+       [ $VK_FOUND = 0 ] && ls /usr/lib*/libvulkan.so.1 /usr/lib/*/libvulkan.so.1 >/dev/null 2>&1 && VK_FOUND=1 ;;
+esac
+SLANG=0
+if [ $VK_FOUND = 1 ]; then
+    note "found: a Vulkan loader (the GPU's driver)"
+    ask "slangpy (the solvers on the GPU through Vulkan)?" y && SLANG=1
+else
+    note "no Vulkan loader found (install the GPU driver for Vulkan)"
+fi
+
+# ---- the GPU through CuPy: optional, for NVIDIA (CUDA, used before Vulkan there) or ROCm ------------------
+bold "GPU through CuPy (optional: NVIDIA CUDA is used before Vulkan; on AMD, Vulkan is as fast without ROCm)"
 GPU_DEF=0 GPU_WHAT="no GPU stack found"
 if command -v nvidia-smi >/dev/null && nvidia-smi >/dev/null 2>&1; then
     CUDA=$(nvidia-smi | sed -n 's/.*CUDA Version: *\([0-9]*\)\..*/\1/p' | head -1) || true
@@ -367,18 +383,18 @@ if [ -n "$ROCM" ]; then
     CARD=$(command -v rocminfo >/dev/null && rocminfo 2>/dev/null | awk -F': *' '
         /Marketing Name:/ {name = $2} /Device Type:/ && $2 ~ /GPU/ {sub(/ +$/, "", name); print name; exit}') || true
     GPU_WHAT="AMD: ${CARD:-a ROCm GPU}, ROCm $ROCM"
-    [ "$ROCM" = 7 ] && GPU_DEF=1
+    [ "$ROCM" = 7 ] && [ $SLANG = 0 ] && GPU_DEF=1     # AMD with slangpy: Vulkan, no CuPy needed
 fi
 note "found: $GPU_WHAT"
 [ -n "$ROCM" ] && [ "$ROCM" != 7 ] && note "CuPy 14 has a ROCm wheel for ROCm 7 only (cupy-rocm-7-0); older ROCm: none here"
 choose "CuPy wheel:" $((GPU_DEF == 0 ? 4 : GPU_DEF)) \
     "cupy-rocm-7-0   AMD, ROCm 7" "cupy-cuda12x    NVIDIA, CUDA 12" "cupy-cuda13x    NVIDIA, CUDA 13" \
-    "none            mom25d on the CPU"
+    "none            Vulkan (slangpy) or the CPU"
 CUPY=${CHOICE%% *}
 [ "$CUPY" = none ] && CUPY=
 DROP_CUPY=0
 if [ -z "$CUPY" ] && [ -n "$VENV" ] && [ -x "$VPY" ] && "$VPY" -m pip show -q cupy-rocm-7-0 cupy-cuda12x cupy-cuda13x >/dev/null 2>&1; then
-    ask "the venv has a CuPy wheel already: remove it (mom25d on the CPU)?" n && DROP_CUPY=1
+    ask "the venv has a CuPy wheel already: remove it (Vulkan or the CPU)?" n && DROP_CUPY=1
 fi
 
 # ---- qucsator: the line model's circuit solver, a separate program ---------------------------------------
@@ -442,6 +458,10 @@ if [ -n "$CUPY" ]; then
     pipi "$CUPY>=14"
 elif [ $DROP_CUPY = 1 ]; then
     $SUDO "$VPY" -m pip uninstall -y cupy-rocm-7-0 cupy-cuda12x cupy-cuda13x 2>/dev/null || true
+fi
+if [ $SLANG = 1 ]; then
+    bold "Installing slangpy"
+    pipi "slangpy>=0.43"
 fi
 if [ $CORE = 1 ] && [ $MOM = 1 ]; then
     bold "Building mom25d's compiled core"
@@ -570,7 +590,7 @@ make_examples
 # ---- what this install can run ----------------------------------------------------------------------
 [ $OEMS = built ] && export LD_LIBRARY_PATH="$OEMS_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 run_check
-[ -n "$CUPY" ] && "$VPY" -m emsdev | sed 's/^/  /' || true
+{ [ -n "$CUPY" ] || [ $SLANG = 1 ]; } && "$VPY" -m emsdev | sed 's/^/  /' || true
 echo
 echo "Done ($TARGET install). Use it with:"
 case $TARGET in
