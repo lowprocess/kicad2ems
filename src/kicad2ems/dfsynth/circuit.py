@@ -66,10 +66,6 @@ class Ideal:
     def series_c(c):
         return lambda f: _series(1 / (2j * np.pi * f * c))
 
-    @staticmethod
-    def shunt_c(c):
-        return lambda f: _shunt(2j * np.pi * f * c)
-
 
 # ------------------------------------------------------------------------------- microstrip elements
 def _gamma(sub, w, z0, ee0, f):

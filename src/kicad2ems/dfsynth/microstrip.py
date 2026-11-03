@@ -122,9 +122,6 @@ class Substrate:
         """Strip width (mm) for impedance z0."""
         return _bisect(lambda w: -self.line(w)[0], -z0, 1e-3 * self.h, 60 * self.h)
 
-    def guided_wavelength(self, w, f):
-        return C0 / (f * math.sqrt(self.eeff(w, f))) * 1e3
-
     # ---------------------------------------------------------------- coupled pair
     def coupled(self, w, s):
         """(Ze, Zo, eeff_even, eeff_odd) of a symmetric edge-coupled pair (Kirschning-Jansen 1984)."""
