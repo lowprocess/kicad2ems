@@ -16,6 +16,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   wheel for Windows), openEMS's unpacked Windows release (its wheels installed, its DLL folder recorded as
   `openems_dir`), qucsator found in Qucs-S's install folder, and the compiled cores built with MSVC or MinGW-w64
   (emsdev). The user's `site.toml` is in `%APPDATA%\kicad2ems` there.
+- **The mesh a run solved on**, in the GUI's 3D and Plan views: a run of mom25d writes it as
+  `<name>_mesh_mom25d-run.npz` beside the preview's mesh, with the diagonals it merged into quad cells
+  (`hidden`, left out when drawn); the views' *solved mesh* tick box draws it in pink over the preview's.
 - `tools/test_all.py`, every suite on any system (`tools/test_all.sh` runs it).
 - CI on Windows (`.github/workflows/windows.yml`): the stack's suites with MSVC-built cores, and the installer end
   to end on Windows and Linux.
@@ -51,6 +54,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the same accuracy, not faster below ~30k unknowns (ROADMAP.md item 6).
 
 ### Fixed
+- mom25d's preview mesh is the one the run meshes: it ignored `--mom-quads` (the structured runs),
+  `--mom-coarsen`, `--mom-zone` and the via options, so the views showed a different mesh from the run's.
 - triangle (mom25d's mesher) built from source without fused multiply-adds (`-ffp-contract=off`, install.py and CI):
   where the compiler fused them, its exact arithmetic broke and meshing a board never finished (CI's Python 3.14
   stack job, out of time in mom25d's suite since 1 November).
