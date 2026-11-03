@@ -48,43 +48,10 @@ class Board(Items):
         self.t, self.items, self.nets = thickness, [], ["", "GND", "RF"]
         self.er, self.tand, self.material, self.stack = er, tand, material, stack
 
-    def track(self, x0, y0, x1, y1, w, layer='F.Cu', net=2):
-        self.items.append(f'  (segment (start {x0:.4f} {y0:.4f}) (end {x1:.4f} {y1:.4f}) (width {w}) (layer "{layer}") '
-                          f'(net {net}) (uuid "{u()}"))')
-
-    def port(self, ref, text, x, y, rot, z0=None, layer=None, width=None):
-        """A port footprint; z0, layer, width: its port.z0, port.layer, port.width fields."""
-        L = [f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x:.4f} {y:.4f} {rot})',
-             f'    (property "Reference" "{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))',
-             f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))']
-        for key, v in (('z0', z0), ('layer', layer), ('width', width)):
-            if v:
-                v = f"{v:g}" if isinstance(v, (int, float)) else v
-                L.append(f'    (property "port.{key}" "{v}" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "{u()}"))')
-        L.append(f'    (fp_text user "{text}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )')
-        self.items += L
+    track, port = Items.segment, Items.port_footprint
 
     def write(self, path, W, H):
-        cu = ['F.Cu', 'In1.Cu', 'In2.Cu', 'B.Cu'] if self.stack else ['F.Cu', 'B.Cu']
-        hs = list(self.stack) if self.stack else [self.t]
-        ids = {'F.Cu': 0, 'In1.Cu': 1, 'In2.Cu': 2, 'B.Cu': 31}
-        st = []
-        for i, c in enumerate(cu):
-            st.append(f'    (layer "{c}" (type "copper") (thickness 0.035))')
-            if i < len(hs):
-                st.append(f'    (layer "dielectric {i + 1}" (type "core") (thickness {hs[i]}) (material "{self.material}") '
-                          f'(epsilon_r {self.er:g}) (loss_tangent {self.tand:g}))')
-        L = ['(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")',
-             f'  (general (thickness {sum(hs):g}))\n  (paper "A4")',
-             '  (layers ' + ' '.join(f'({ids[c]} "{c}" signal)' for c in cu) +
-             ' (37 "F.SilkS" user) (44 "Edge.Cuts" user) (49 "F.Fab" user))',
-             '  (setup (stackup'] + st + [
-             '    (copper_finish "None") (dielectric_constraints no))\n    (pad_to_mask_clearance 0))',
-             '  ' + ' '.join(f'(net {i} "{n}")' for i, n in enumerate(self.nets))]
-        L += self.items
-        L.append(f'  (gr_rect (start 0 0) (end {W} {H}) (stroke (width 0.1) (type default)) (fill none) '
-                 f'(layer "Edge.Cuts") (uuid "{u()}"))\n)')
-        open(path, 'w', encoding='utf-8').write("\n".join(L) + "\n")
+        self.write_board(path, W, H, list(self.stack) if self.stack else [self.t], self.er, self.tand, self.material)
 
 
 def patch(path, pw=37.2, pl=28.8, inset=8.8, gap=1.0, wf=3.0):

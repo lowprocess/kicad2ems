@@ -90,8 +90,7 @@ class Board(Items):
 
     def track(self, pts, w, layer='F.Cu', net=2):
         for (x0, y0), (x1, y1) in zip(pts[:-1], pts[1:]):
-            self.items.append(f'  (segment (start {x0:.4f} {y0:.4f}) (end {x1:.4f} {y1:.4f}) (width {w}) '
-                              f'(layer "{layer}") (net {net}) (uuid "{u()}"))')
+            self.segment(x0, y0, x1, y1, w, layer, net)
 
     def plane(self, layer, W, H, net=1, holes=(), outer=None):
         """A filled ground zone over the board (or the polygon `outer`) with holes: round antipads (x, y, r) or
@@ -115,13 +114,7 @@ class Board(Items):
 
     def port(self, n, x, y, rot, layer=None):
         """A port footprint: n is 1, 2, ... or a name such as '1+' (a differential leg); layer: port.layer."""
-        ref = str(n).replace('+', 'P').replace('-', 'N')
-        L = [f'  (footprint "kicad2ems:RF_Port" (layer "F.Cu") (uuid "{u()}") (at {x:.4f} {y:.4f} {rot})',
-             f'    (property "Reference" "TP{ref}" (at 0 -1.5 {rot}) (layer "F.SilkS") (uuid "{u()}"))',
-             f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{u()}"))']
-        if layer:
-            L.append(f'    (property "port.layer" "{layer}" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "{u()}"))')
-        self.items += L + [f'    (fp_text user "P{n}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{u()}"))\n  )']
+        self.port_footprint('TP' + str(n).replace('+', 'P').replace('-', 'N'), f'P{n}', x, y, rot, layer=layer)
 
     def resistor(self, ref, value, x, y, rot, net=2, pitch=2.0, pad=(1.0, 1.25)):
         """A two-pad SMD resistor (0805-like) centred at x, y, pads `pitch` mm apart along its rotation."""
@@ -147,31 +140,8 @@ class Board(Items):
         if ground:
             self.rect(0, 0, W, H, layer='B.Cu', net=1)
         four = four or stack is not None
-        cu = ['F.Cu', 'In1.Cu', 'In2.Cu', 'B.Cu'] if four else ['F.Cu', 'B.Cu']
-        h = H4 if four else H_SUB
-        er, tand, mat = ER, TAND, 'FR4'
-        if sub:
-            h, er, tand, mat = sub
-        hs = list(stack) if stack is not None else [h] * (len(cu) - 1)
-        ids = {'F.Cu': 0, 'In1.Cu': 1, 'In2.Cu': 2, 'B.Cu': 31}
-        stack = []
-        for i, c in enumerate(cu):
-            stack.append(f'    (layer "{c}" (type "copper") (thickness 0.035))')
-            if i < len(cu) - 1:
-                stack.append(f'    (layer "dielectric {i + 1}" (type "core") (thickness {hs[i]}) (material "{mat}") '
-                             f'(epsilon_r {er}) (loss_tangent {tand}))')
-        L = ['(kicad_pcb (version 20240108) (generator "kicad2ems") (generator_version "8.0")',
-             f'  (general (thickness {sum(hs):g}))\n  (paper "A4")',
-             '  (layers ' + ' '.join(f'({ids[c]} "{c}" signal)' for c in cu) +
-             ' (37 "F.SilkS" user) (39 "F.Mask" user) (44 "Edge.Cuts" user) (49 "F.Fab" user))',
-             '  (setup (stackup'] + stack + [
-             '    (copper_finish "None") (dielectric_constraints no))\n    (pad_to_mask_clearance 0))',
-             '  ' + ' '.join(f'(net {i} "{n}")' for i, n in enumerate(self.nets))]
-        L += self.items
-        L.append(f'  (gr_rect (start 0 0) (end {W:.4f} {H:.4f}) (stroke (width 0.1) (type default)) (fill none) '
-                 f'(layer "Edge.Cuts") (uuid "{u()}"))\n)')
-        with open(path, 'w', encoding='utf-8') as fh:
-            fh.write("\n".join(L) + "\n")
+        h, er, tand, mat = sub or (H4 if four else H_SUB, ER, TAND, 'FR4')
+        self.write_board(path, W, H, list(stack) if stack is not None else [h] * (3 if four else 1), er, tand, mat)
 
 
 def branchline(path, feed=6.0):
