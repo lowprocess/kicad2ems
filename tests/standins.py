@@ -89,7 +89,7 @@ class FDTD(Solver):
     rank, previewed, tag, conductor_loss = 2, False, '', True
     capabilities = dict(ports='yes', gap_ports='yes', diff_pairs='yes', parts='yes', vias='yes', outline='yes',
                         planes='yes', edge_walls='yes', thickness='ignored: sheets', conductor_loss='yes',
-                        roughness='approximated: at the band centre', dispersion='yes', radiation='yes', cavity='yes',
+                        roughness='approximated: at the band centre', finish='approximated: at the band centre', dispersion='yes', radiation='yes', cavity='yes',
                         antenna='yes')
     options = MESH + RUN
 
@@ -182,7 +182,7 @@ class MoM25D(Solver):
     capabilities = dict(ports='yes', gap_ports='no', diff_pairs='yes', parts='yes', vias='yes',
                         outline='ignored: laterally infinite dielectric', planes='yes',
                         edge_walls='approximated: via rows', thickness='ignored: sheets', conductor_loss='yes',
-                        roughness='yes', dispersion='no: constant tan d', radiation='yes', cavity='no',
+                        roughness='yes', finish='approximated: weighted', dispersion='no: constant tan d', radiation='yes', cavity='no',
                         antenna='approximated: over an infinite ground plane')
     options = [
         Option('mom_dmax', 0.3, "largest MoM cell along the copper, mm (stand-in)", float, name='dmax',

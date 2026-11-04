@@ -28,6 +28,8 @@ its results as kicad2ems's other solvers do.
     figures           plot_preview (the model and its mesh)
     the line model    solve_lines, lines_backend (its fast solve: a first look before a long run)
   copper roughness    hammerstad, rough_sigma, band_sigma (2.3; kicad2ems.roughness)
+  surface finish      resolve_finish (a run's Finish: layers, faces, shares), finish_factor, finish_weighted,
+                      finish_band_sigma, finish_face_z (2.4; kicad2ems.finish)
 """
 from . import API_VERSION, lazy                                            # noqa: F401
 
@@ -55,6 +57,8 @@ NAMES = dict(
     pattern_gain='.fields.antenna:pattern_gain', plot_preview='.plots:preview',
     solve_lines='.solvers.lines.fastsolve:solve', lines_backend='.solvers.lines.fastsolve:resolve_backend',
     hammerstad='.roughness:hammerstad', rough_sigma='.roughness:rough_sigma', band_sigma='.roughness:band_sigma',
+    resolve_finish='.finish:resolve', finish_factor='.finish:factor', finish_weighted='.finish:weighted',
+    finish_band_sigma='.finish:band_sigma', finish_face_z='.finish:face_z',
 )
 __all__ = ['API_VERSION', *NAMES]
 __getattr__, __dir__ = lazy(__name__, NAMES)

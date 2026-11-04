@@ -12,7 +12,24 @@ _CAPS = dict(ports='yes, at the network node', gap_ports='no', diff_pairs='yes',
              outline='ignored', planes='approximated: as section references only', edge_walls='ignored',
              thickness='ignored: zero-thickness sections, as openEMS', conductor_loss='yes',
              roughness='approximated: its conductivity at the band centre (Hammerstad)',
+             finish='approximated: its conductivity at the band centre, by the finished faces\' share of the loss',
              dispersion='no: constant tan d', radiation='no', cavity='no', antenna='no')
+
+
+def line_sigma(run):
+    """The line model's one conductivity: --sigma, with --rough and --finish as the loss they give at the band centre
+    (the finish weighted by the ports' layer's share of the line's loss). None without --sigma."""
+    from kicad2ems.roughness import band_sigma
+    from kicad2ems import finish as F
+    sigma = band_sigma(run.s, run.freq[0], run.freq[-1])
+    fin = F.resolve(run.s, run.m) if sigma else None
+    if not fin:
+        return sigma
+    lays = [p.layer for p in run.m.ports if getattr(p, 'layer', None) in fin.faces]
+    if not lays:
+        return sigma
+    return F.band_sigma(sigma, fin.layers, fin.share(lays[0], line=True), run.freq[0], run.freq[-1],
+                        t=fin.thickness(lays[0]))
 
 
 class LineSolver(Solver):
@@ -32,9 +49,7 @@ class LineSolver(Solver):
     def solve(self, run, prep):
         from .fastsolve import solve
         from ...sparams import mixed_mode
-        from kicad2ems.roughness import band_sigma
-        S, seconds = solve(run.lm, run.m.ports, run.freq, backend=self.backend,
-                           sigma=band_sigma(run.s, run.freq[0], run.freq[-1]),
+        S, seconds = solve(run.lm, run.m.ports, run.freq, backend=self.backend, sigma=line_sigma(run),
                            qucsator=getattr(run.s, 'qucsator', None))
         Smm, names, zref = mixed_mode(S, run.m)
         run.log(f"{self.label}: {seconds * 1e3:.0f} ms")

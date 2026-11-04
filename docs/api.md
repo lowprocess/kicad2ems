@@ -31,7 +31,8 @@ in it. A user takes a provider of the same major version and at least the minor 
   (kicad2ems-gui: `kicad2ems>=261101.post1`, API 2.2).
 - 2.0 took the FDTD layer out of `api.solver` (it is in kicad2ems-fdtd). 2.1 added the examples and the checked
   file readers to `api.frontend`, and `ETA0`, `MU0` to `api.solver`. 2.3 added the copper roughness (`--rough`):
-  `hammerstad`, `rough_sigma`, `band_sigma`, and the `roughness` row of `FEATURES`.
+  `hammerstad`, `rough_sigma`, `band_sigma`, and the `roughness` row of `FEATURES`. 2.4 the surface finish (`--finish`): `resolve_finish`,
+  `finish_factor`, `finish_weighted`, `finish_band_sigma`, `finish_face_z`, and the `finish` row.
   [CHANGELOG.md](https://github.com/lowprocess/kicad2ems/blob/main/CHANGELOG.md) has each release's.
 
 Both API modules load their names on first use: importing one costs nothing until a name is used.
@@ -54,6 +55,7 @@ For solver plugins: the solver interface and what a solver needs to write its re
 | phased arrays | `phased` (the module: `parse_grid`, `settings_drive`, `combine`, `waves`, `format_drive`, `save`), `settings_drive` |
 | geometry | `split_holes` (a polygon with holes as simple polygons), `describe_edges`, `snap_edges` (the board-edge walls) |
 | the line model | `solve_lines`, `lines_backend` (its fast solve: a first look before a long run) |
+| surface finish | `resolve_finish(s, m)` (a run's `Finish`: its metal layers, the outer layers it covers and each one's share of the loss; None without `--sigma` or a finish), `finish_factor(f, finish)` (the finished face's impedance over bare copper's), `finish_weighted(f, finish, share)`, `finish_band_sigma(sigma, finish, share, fmin, fmax)` (the one conductivity of the same loss at the band centre), `finish_face_z(f, sigma, t, finish)` |
 | copper roughness | `hammerstad(f, rms_um, sigma)` (Hammerstad's loss factor), `rough_sigma(sigma, rms_um, f)` (the conductivity of the same loss at f), `band_sigma(s, fmin, fmax)` (a solver's one conductivity: `--sigma`, or with `--rough` that at the band centre) |
 | constants | `C0`, `EPS0`, `ETA0`, `MU0` |
 | the machine | `sitecfg` (the module: where external programs are), `core_threads`, `ram_gb` |

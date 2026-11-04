@@ -70,6 +70,7 @@ class KiCadBoard(Imported):
                              if isinstance(l, list) and len(l) > 1 and str(l[1]).endswith('.Cu')]
         if su is None:
             return
+        self.copper_finish = sx.val(su, 'copper_finish', None)      # KiCad's name ('ENIG', 'HAL lead-free', ...)
         for l in sx.items(su, 'layer'):
             name, typ = l[1], (sx.val(l, 'type', '') or '').lower()
             if typ == 'copper':

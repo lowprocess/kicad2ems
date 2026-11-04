@@ -9,6 +9,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Surface finish (`--finish`).** ENIG, ENEPIG, HASL (lead-free and SnPb), immersion silver and tin, or none / OSP;
+  `auto` (the default) reads the KiCad stackup's copper finish. It covers the outer copper's outer face and sides where
+  no mask is (left out, with a note, under `--mask`). Each finish layer loads the copper face as a line section; a
+  line's share of the loss on those faces comes from the 2D field solver (45 % of the strip's on hairpin's line).
+  mom25d weights its surface impedance per layer at each frequency, gfdtd fits it in its sheets (engine API 1.3), and
+  with `--thickness on` the outer face is a sheet of its own; openEMS and the line model take the conductivity of the
+  same loss at the band centre. ENIG cost hairpin 2.5–3.4 dB at its peak. API 2.4: `resolve_finish` and the finish
+  helpers, the `finish` row. `--sigma` has a GUI field (Copper conductivity), so roughness and finish are usable there.
+- **`--nz-mask`**: the solder mask's own number of z cells (default: `--nz`); `--mask` is in the GUI.
+
+### Fixed
+- `--thickness on` with `--rough` on gfdtd: the faces' roughness took the skin depth of the face sheets' σ / 4, twice
+  the copper's; gfdtd 1.3 knows them as faces.
+- A one-cell layer slightly thicker than the first graded z cell left a 0.25 µm sliver line (411 z lines instead of 25).
 - **Conductor loss on gfdtd.** gfdtd 261104 models conducting sheets as openEMS does (its engine API 1.1), so
   `--sigma` is conductor loss on it too and `--solvers auto` no longer gives `--sigma` runs to openEMS
   (kicad2ems-fdtd decides from the installed gfdtd). Against openEMS on a 40 mm copper microstrip, |ΔS21| ≤ 0.009

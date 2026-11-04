@@ -183,10 +183,16 @@ CORE = [
            gui='Edge walls (xmin,xmax,ymin,ymax or all)', group='board', cli=dict(metavar='SIDES')),
     Option('edge_keepout', 0.5, "mm between edge walls and signal copper (default {default})", float, group='board'),
     Option('sigma', None, "copper conductivity S/m (default: lossless; openEMS and gfdtd: conducting sheets, mom25d "
-           "and the line model: conductor loss)", float, group='board'),
+           "and the line model: conductor loss)", float, gui='Copper conductivity (S/m, empty: lossless)', group='board'),
     Option('rough', None, "copper surface roughness, um RMS (default: smooth; with --sigma): Hammerstad's factor of "
            "the conductor loss, over the band in mom25d and gfdtd, at the band centre in openEMS and the line model",
            float, gui='Copper roughness (um RMS)', group='board'),
+    Option('finish', 'auto', "surface finish of the outer copper where there is no solder mask, with --sigma: auto "
+           "(default: the stackup's copper finish), none / osp (bare copper), enig, enepig, hasl (lead-free), hasl-snpb, "
+           "imag (immersion silver), imsn (immersion tin). On the outer face and sides only: FDTD with --thickness on "
+           "as those faces' own sheets, else (mom25d, the line model, zero-thickness sheets) weighted by their share of "
+           "the loss", choices=('auto', 'none', 'osp', 'enig', 'enepig', 'hasl', 'hasl-snpb', 'imag', 'imsn'),
+           gui='Surface finish', group='board'),
     Option('fmin', 0.5, "GHz (default {default})", float, gui='f min (GHz)', group='band'),
     Option('fmax', 10.0, "GHz (default {default})", float, gui='f max (GHz)', group='band'),
     Option('points', 401, "frequency points (default {default})", int, gui='Frequency points', group='band'),

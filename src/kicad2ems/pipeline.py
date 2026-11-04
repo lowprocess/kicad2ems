@@ -110,6 +110,7 @@ def saw_table(m, s, names, deviations):
     applies = dict(gap_ports=any(p.kind == 'gap' for p in m.ports), diff_pairs=any(p.pair for p in m.ports),
                    parts=bool(m.parts), vias=bool(m.vias), edge_walls=bool(m.walls), conductor_loss=bool(s.sigma),
                    roughness=bool(s.sigma and getattr(s, 'rough', None)),
+                   finish=bool(s.sigma and getattr(m, '_finish', None) and any(v for v in m._finish.values())),
                    planes=any(sum(p.area for p in ps) >= half for ps in m.copper.values()), antenna=s.antenna)
     rows = [dict(feature=text, cells=[dict(cap=reg[n].capabilities.get(k, '?'),
                                            deviations=describe([d for d in deviations.get(n, []) if d.feature == k]))
@@ -149,7 +150,7 @@ class Job:
         self.freq = np.linspace(self.fmin, self.fmax, settings.points)
         self.antenna = settings.antenna
         self.t0 = time.time()
-        self.lm = self.m = None
+        self.lm = self.m = self.finish = None
         self.events = None
         self.plan, self.named = settings.solver_plan()              # the solvers of this run; those named in solvers
         # solvers --preview prepares without solving them (openEMS: the mesh preview)
@@ -289,6 +290,10 @@ class Job:
         s = self.s
         self.m = m = board_from_settings(s, log=self.log)
         self.log(m.describe())
+        from . import finish
+        self.finish = fin = finish.resolve(s, m)
+        for n in (fin.notes if fin is not None else []):
+            self.log(n)
         self.wrote('board (what every solver gets)', m.save(self.path('_board.json')))
         ob = m.outline.bounds
         self.summary['model'] = dict(
@@ -301,7 +306,7 @@ class Job:
                         gap=(p.gap[1] - p.gap[0]) if p.kind == 'gap' else None) for p in m.ports],
             parts=[dict(ref=p.ref, value=p.value_str(), layer=p.layer, gap=p.gap, elements=len(p.pieces()))
                    for p in m.parts],
-            notes=list(m.notes))
+            notes=list(m.notes), finish=fin.name if fin else None)
 
     def lines(self):
         """The transmission-line model: sections, coupled groups, discontinuities (and their plot). A ballpark aid

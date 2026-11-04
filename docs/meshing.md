@@ -68,7 +68,9 @@ The other examples lie within their zones, and mesh the same either way.
 layer moves up by it, so every dielectric keeps its own thickness between the copper, as the line model's
 cross-sections do. The bottom copper grows down; every other layer grows up (an inner layer into the dielectric
 above it, which fills between its copper). The copper is solid metal; with `--sigma` its two faces are conducting
-sheets, each one side of a conductor half as thick (σ / 4 and twice the thickness in openEMS's sheet model). Vias and
+sheets, each one side of a conductor half as thick (σ / 4 and twice the thickness in openEMS's sheet model; gfdtd
+1.3 knows them as faces, so `--rough` takes the copper's skin depth). The slab's sides are PEC: their loss, about a
+quarter of a microstrip's (more with a [finish](simulation.md#finish)), is left out. Vias and
 edge walls cover the copper they end on, a port runs from the reference copper's face to the trace's, and parts and
 gap ports span the copper. The mesh has a line at both faces and one cell through the copper.
 

@@ -44,6 +44,34 @@ conductivity, the rough copper's at the band centre (σ / K²), as `--diel fixed
 loss is right there and off by K(f) / K(centre) elsewhere. On a 40 mm microstrip with 1 µm, gfdtd's conductor loss
 rose by 1.43× at 2.5 GHz and 1.84× at 18.5 GHz (Hammerstad: 1.43, 1.89).
 
+<a id="finish"></a>
+## Surface finish
+
+`--finish` (with `--sigma`; default `auto`, the stackup's copper finish in KiCad's Board Setup) puts the plating of
+the outer copper on its outer face and sides, where no solder mask covers it. The face against the dielectric stays
+bare copper, and so do the inner layers and copper under mask (with `--mask` the finish is left out, with a note: mask
+openings aren't modelled). Each finish layer loads the copper face as a section of line, Z = γ / σ:
+
+| `--finish` | layers (typical; a fab's own figures are better) | face resistance / bare copper's, 1 / 3 / 10 GHz |
+|---|---|---|
+| `enig` | 5 µm electroless Ni-P (1.45 MS/m, non-magnetic as plated), 0.08 µm Au | 2.2 / 4.4 / 5.3 |
+| `enepig` | 5 µm Ni-P, 0.1 µm Pd, 0.05 µm Au | 2.2 / 4.4 / 5.5 |
+| `hasl` | 5 µm lead-free SnCu (HASL varies 1–25 µm) | 2.3 / 2.9 / 2.8 |
+| `hasl-snpb` | 5 µm Sn63Pb37 | 2.3 / 3.0 / 2.9 |
+| `imsn` | 1 µm immersion tin | 1.07 / 1.2 / 1.7 |
+| `imag` | 0.2 µm immersion silver | 1.0 |
+| `none`, `osp` | bare copper | 1 |
+
+What a line sees is that times the share of its loss on the finished faces: from the 2D field solver for the narrowest
+port trace on each outer layer, 45 % of the strip's own loss on hairpin's 0.37 mm line (20 % on the outer face, 25 %
+on the sides, where the edge current runs), less of the line's with the plane's. mom25d weights its surface impedance
+by that share at each frequency, gfdtd's zero-thickness sheets over the band, and the line model and openEMS take the
+conductivity of the same loss at the band centre. With `--thickness on` the outer face is a sheet of its own (gfdtd:
+the finished face's wideband fit; openEMS: its conductivity at the band centre), but the slab's sides are lossless
+there, so that model leaves out the sides' share, finished or bare. On hairpin with ENIG (`--sigma 5.8e7`) the peak
+S21 fell by 3.4 dB in mom25d, 2.6 dB in gfdtd's sheets, 2.5 dB in the line model, 1.5 dB with `--thickness on` (the
+outer face only), and the pass band moved down 8–24 MHz with the nickel's internal inductance.
+
 ## Excitation
 
 openEMS is driven with a Gaussian pulse covering the band. A narrow band means a long pulse, so low

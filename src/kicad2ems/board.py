@@ -184,6 +184,7 @@ class Board:
                             ports=list(ports or []), cut_ports=cut_ports, edge_walls=list(edge_walls or []),
                             edge_keepout=edge_keepout)
         self._stack(raw, include_mask)
+        self.copper_finish = getattr(raw, 'copper_finish', None)    # the stackup's (--finish auto reads it)
         # ---- outline / region (KiCad coordinates until flipped) ----
         full = board_outline(raw)
         rpoly = region_polygon(raw, region)
@@ -538,7 +539,7 @@ class Board:
         req = json.loads(json.dumps(self.request, default=list))
         return dict(format=FORMAT, version=VERSION, units='mm', source=self.source, request=req,
                     stack=dict(layers=self.layers, copper=[dict(name=n, z=self.cu_z[n], t=self.cu_t[n]) for n in self.cu_order],
-                               thickness=self.thickness),
+                               thickness=self.thickness, copper_finish=self.copper_finish),
                     outline=geo(self.outline), ground=self.ground, region=req['region'], cut_sides=self.cut_sides,
                     nets=None if self.sel is None else sorted(self.sel), ground_nets=sorted(self.ground_nets),
                     copper={l: [dict(net=n, polygon=geo(p)) for p, n in zip(ps, self.copper_nets.get(l, []))]
@@ -566,6 +567,7 @@ class Board:
         b.log, b.source, b.request, b.notes = log, d.get('source', {}), d.get('request', {}), list(d.get('notes', []))
         st = d['stack']
         b.layers, b.thickness = [dict(l) for l in st['layers']], st['thickness']
+        b.copper_finish = st.get('copper_finish')
         b.cu_z = {c['name']: c['z'] for c in st['copper']}
         b.cu_t = {c['name']: c['t'] for c in st['copper']}
         b.outline, b.ground, b.region, b.cut_sides = shape(d['outline']), d.get('ground'), d.get('region'), d.get('cut_sides', [])

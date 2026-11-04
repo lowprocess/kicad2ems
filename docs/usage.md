@@ -174,6 +174,7 @@ dmax    = 0.4
 | `--max-steps` | 1 000 000 | the timestep limit per run |
 | `--sigma` | perfect conductor | copper conductivity, S/m |
 | `--rough` | smooth | copper roughness, µm RMS, with `--sigma` ([details](simulation.md#roughness)) |
+| `--finish` | auto | surface finish of the outer copper, with `--sigma`: the stackup's, or none, osp, enig, enepig, hasl, hasl-snpb, imag, imsn ([details](simulation.md#finish)) |
 | `--diel fixed\|wideband` | fixed | the dielectric loss model ([details](simulation.md#dielectrics)) |
 | `--diel-fref` | 1 | the frequency at which the stackup's εr and tan δ apply, GHz |
 | `--excite` | all ports | the ports to drive |
