@@ -13,7 +13,8 @@ Coordinates are mm, with **y up** (`y = -y_kicad`) and z = 0 at the bottom coppe
 
 Each dielectric (and the solder mask with `--mask`) becomes a slab with its height, εr and tan δ. Each
 copper layer gets a height. Copper is a **zero-thickness sheet** at that height. Its real thickness is
-used only for `--sigma` and for the line model's impedances.
+used for `--sigma`, for the line model's impedances and, with `--thickness on`, by openEMS and gfdtd
+([details](meshing.md#thickness)).
 
 ## Copper
 
@@ -91,7 +92,7 @@ series element.
 ## What isn't modelled
 
 - Ports must point along x or y.
-- Copper has no thickness in the field solvers.
+- Copper has no thickness in mom25d, nor in openEMS and gfdtd unless `--thickness on`.
 - Only two-pad R/L/C parts are modelled. Connectors aren't; a port on the connector pad stands in for one.
 
 ---

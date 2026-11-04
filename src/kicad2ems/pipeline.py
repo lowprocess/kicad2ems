@@ -109,6 +109,7 @@ def saw_table(m, s, names, deviations):
     half = 0.5 * m.outline.area
     applies = dict(gap_ports=any(p.kind == 'gap' for p in m.ports), diff_pairs=any(p.pair for p in m.ports),
                    parts=bool(m.parts), vias=bool(m.vias), edge_walls=bool(m.walls), conductor_loss=bool(s.sigma),
+                   roughness=bool(s.sigma and getattr(s, 'rough', None)),
                    planes=any(sum(p.area for p in ps) >= half for ps in m.copper.values()), antenna=s.antenna)
     rows = [dict(feature=text, cells=[dict(cap=reg[n].capabilities.get(k, '?'),
                                            deviations=describe([d for d in deviations.get(n, []) if d.feature == k]))

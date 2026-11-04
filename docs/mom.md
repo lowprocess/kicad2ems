@@ -350,7 +350,7 @@ a spectral transmission-line network, and the singular terms are integrated anal
 and textbook formulas: layered Green's functions to about 1e-5, stripline impedance to 0.6 %, coupled-line couplers
 to 0.1 dB, plane cavity resonances to 0.7 %.
 
-**Limits**: copper is zero-thickness, there is no surface-roughness model, and wave ports need a straight
+**Limits**: copper is zero-thickness (`--rough` scales its loss: [roughness](simulation.md#roughness)), and wave ports need a straight
 feed line.
 
 ---

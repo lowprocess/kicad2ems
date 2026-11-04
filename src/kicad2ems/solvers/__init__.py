@@ -63,7 +63,8 @@ FEATURES = dict(ports='ports on a trace over a plane', gap_ports='gap ports (dip
                 diff_pairs='differential pairs', parts='lumped R / L / C parts', vias='vias',
                 outline='board outline and edges',
                 planes='inner planes and pours', edge_walls='edge walls', thickness='copper thickness',
-                conductor_loss='conductor loss (sigma)', dispersion='dielectric dispersion',
+                conductor_loss='conductor loss (sigma)', roughness='copper roughness (rough)',
+                dispersion='dielectric dispersion',
                 radiation='radiation, surface waves', cavity='box and cavity effects', antenna='antenna mode, far field')
 
 

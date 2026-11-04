@@ -11,6 +11,7 @@ _CAPS = dict(ports='yes, at the network node', gap_ports='no', diff_pairs='yes',
              vias='approximated: barrels as line sections, vias to ground as inductances',
              outline='ignored', planes='approximated: as section references only', edge_walls='ignored',
              thickness='ignored: zero-thickness sections, as openEMS', conductor_loss='yes',
+             roughness='approximated: its conductivity at the band centre (Hammerstad)',
              dispersion='no: constant tan d', radiation='no', cavity='no', antenna='no')
 
 
@@ -31,7 +32,9 @@ class LineSolver(Solver):
     def solve(self, run, prep):
         from .fastsolve import solve
         from ...sparams import mixed_mode
-        S, seconds = solve(run.lm, run.m.ports, run.freq, backend=self.backend, sigma=run.s.sigma,
+        from kicad2ems.roughness import band_sigma
+        S, seconds = solve(run.lm, run.m.ports, run.freq, backend=self.backend,
+                           sigma=band_sigma(run.s, run.freq[0], run.freq[-1]),
                            qucsator=getattr(run.s, 'qucsator', None))
         Smm, names, zref = mixed_mode(S, run.m)
         run.log(f"{self.label}: {seconds * 1e3:.0f} ms")

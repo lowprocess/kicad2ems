@@ -5,14 +5,14 @@
 In the [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) package, `model.py` turns the board and its
 mesh into an openEMS model and `run.py` runs it, on openEMS or on gfdtd, which has openEMS's Python interface
 (`engines.py`); `antenna.py` adds the far field. openEMS is imported only by its engine (`openems/engine.py`).
-What follows holds for gfdtd too, except conductor loss ([gfdtd](gfdtd.md)).
+What follows holds for gfdtd too, except that it fits `--rough` over the band ([gfdtd](gfdtd.md)).
 
 ## The model
 
 | Part | openEMS / CSXCAD |
 |---|---|
 | dielectrics | materials extruded over the board outline |
-| copper | perfect conductors, or conducting sheets with `--sigma` |
+| copper | perfect conductors, or conducting sheets with `--sigma` (`--rough`: roughness); with `--thickness on` solid, with lossy faces |
 | vias | metal cylinders |
 | edge walls | thin metal boxes where the planes end |
 | lumped parts | lumped R/L/C elements across their gaps |
@@ -32,6 +32,17 @@ numpy values.
   built from a sum of Debye poles. Each pole costs run time: on the microstrip filter the run took about
   four times as long, and its pass band then matched mom25d's within 0.05 dB (the fixed model had 1.3 dB
   more loss). Use it for narrowband filters and wherever the loss matters.
+
+<a id="roughness"></a>
+## Copper roughness
+
+`--rough` (µm RMS, with `--sigma`) multiplies the copper's surface resistance by Hammerstad and Jensen's factor
+1 + 2/π atan(1.4 (rms / δ)²): 1 where the skin depth δ is much larger than the roughness, 2 where it is much
+smaller. With 1 µm on copper that is 1.20 at 1 GHz, 1.65 at 5 GHz and 1.81 at 10 GHz. mom25d applies it at each
+frequency and gfdtd over the band (a wideband fit of its conducting sheets). openEMS and the line model take one
+conductivity, the rough copper's at the band centre (σ / K²), as `--diel fixed` does with the dielectric's loss: the
+loss is right there and off by K(f) / K(centre) elsewhere. On a 40 mm microstrip with 1 µm, gfdtd's conductor loss
+rose by 1.43× at 2.5 GHz and 1.84× at 18.5 GHz (Hammerstad: 1.43, 1.89).
 
 ## Excitation
 

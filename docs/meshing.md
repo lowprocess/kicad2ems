@@ -61,6 +61,22 @@ since there the ground copper is often the radiator.
 
 The other examples lie within their zones, and mesh the same either way.
 
+<a id="thickness"></a>
+## Copper thickness
+
+`--thickness on` gives each copper layer its stackup thickness in openEMS's and gfdtd's model. The stack above a
+layer moves up by it, so every dielectric keeps its own thickness between the copper, as the line model's
+cross-sections do. The bottom copper grows down; every other layer grows up (an inner layer into the dielectric
+above it, which fills between its copper). The copper is solid metal; with `--sigma` its two faces are conducting
+sheets, each one side of a conductor half as thick (σ / 4 and twice the thickness in openEMS's sheet model). Vias and
+edge walls cover the copper they end on, a port runs from the reference copper's face to the trace's, and parts and
+gap ports span the copper. The mesh has a line at both faces and one cell through the copper.
+
+On rf_coupler (1.28 mm lines, 0.14 mm gap, 35 µm copper) S31 at 2.4 GHz rose 0.50 dB on both engines (−10.35 to
+−9.85 dB; openEMS and gfdtd within 0.007 in |S|), against 0.65 dB from the line model's field solver, for 1.15× the
+cells and 1.45× the run time. Thickness matters most where copper edges face each other across narrow gaps: tightly
+coupled pairs and couplers.
+
 <a id="z-lines"></a>
 ## z lines
 

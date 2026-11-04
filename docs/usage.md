@@ -65,12 +65,13 @@ for what the other two lack and for checking gfdtd's engine.
 - **gfdtd** solves openEMS's model (the same mesh, ports, parts and end criteria) with its own engine: the fastest
   full-wave solver on every example, 3–35 times faster than openEMS on the GPU (its CPU core faster too), and
   within 0.02 of it on 7 of the 8. It handles what FDTD handles: board edges, enclosures, antennas with a finite
-  ground, gap ports. Its copper is lossless (`--sigma` is ignored), it has no `--converge`, and its lumped parts
-  are modelled differently (demo_bandpass's 0.126). Agreeing with openEMS checks its engine, not the model.
+  ground, gap ports. Its copper takes `--sigma` as openEMS's does (gfdtd 261104 or later; lossless before) and
+  `--rough` over the band (openEMS takes it at the band centre). It has no `--converge`, and its lumped parts are
+  modelled differently (demo_bandpass's 0.126). Agreeing with openEMS checks its engine, not the model.
 - **mom25d** is a different method, so it is the independent cross-check: no air box or enclosure resonances,
-  radiation and surface waves in, conductor loss (`--sigma`) and de-embedded wave ports. It is quick on thin
-  trace filters and slow on large planes with many vias (memory grows with the square of the unknowns, time with
-  their cube: sma_launch 108 s against gfdtd's 2.8 s). Its dielectric extends sideways forever, so antennas
+  radiation and surface waves in, conductor loss (`--sigma`, `--rough`) and de-embedded wave ports. It is quick on
+  thin trace filters and slow on large planes with many vias (memory grows with the square of the unknowns, time
+  with their cube: sma_launch 108 s against gfdtd's 2.8 s). Its dielectric extends sideways forever, so antennas
   that use the board edge come out wrong (antenna_ifa and antenna_slot: 1.4 from openEMS); it can't model gap
   ports, and its loss tangent doesn't vary with frequency. It lands 0.04–0.3 from openEMS on most boards.
 - **openEMS** does the most (conductor loss, phased drive, `--converge`) on the CPU only, and was the slowest
@@ -85,9 +86,10 @@ for what the other two lack and for checking gfdtd's engine.
 
 `auto` drops the solvers that can't run here or can't model the board, estimates how long each remaining
 full-wave solver would take, runs the fastest and adds the line model. gfdtd's estimate is openEMS's mesh and
-timesteps at gfdtd's measured speed (about 8 times openEMS's on the GPU, 2 times on its CPU core); with `--sigma`
-or `--converge` auto leaves gfdtd out, as it would ignore them. mom25d's is the matrix work for its unknowns on the
-CPU or GPU; a solver that needs more than 80 % of the RAM is dropped. The log says what it chose:
+timesteps at gfdtd's measured speed (about 8 times openEMS's on the GPU, 2 times on its CPU core); with `--converge`
+auto leaves gfdtd out, as it would ignore it (and with `--sigma` on a gfdtd older than 261104, whose copper is
+lossless). mom25d's is the matrix work for its unknowns on the CPU or GPU; a solver that needs more than 80 % of
+the RAM is dropped. The log says what it chose:
 
 ```
 solvers auto: gfdtd + qucs (0.31 M cells, 1 run(s) of ~146,729 timesteps on the GPU, ~13 s); openems not chosen
@@ -156,6 +158,7 @@ dmax    = 0.4
 | `--curve-res` | 6 | over arcs and fans the largest cell is the dielectric's ÷ this; 1: off |
 | `--vias auto\|exact\|centre\|snap` | auto | mesh lines for vias |
 | `--via-snap` | 0.2 | how far a snapped via may move, mm |
+| `--thickness off\|on` | off | copper with its stackup thickness, the stack moved to make room ([details](meshing.md#thickness)) |
 | `--edge-walls SIDES` | off | metal walls at the board edge, standing in for stitching vias (`xmin,xmax,ymin,ymax` or `all`; [details](meshing.md#edge-walls)) |
 | `--edge-keepout` | 0.5 | gap between edge walls and signal copper, mm |
 | `--converge F1,F2,...` | | also run coarser meshes and check the result has converged ([details](meshing.md#convergence-levels)) |
@@ -170,6 +173,7 @@ dmax    = 0.4
 | `--end-on ports\|energy` | ports | what the decay is measured on |
 | `--max-steps` | 1 000 000 | the timestep limit per run |
 | `--sigma` | perfect conductor | copper conductivity, S/m |
+| `--rough` | smooth | copper roughness, µm RMS, with `--sigma` ([details](simulation.md#roughness)) |
 | `--diel fixed\|wideband` | fixed | the dielectric loss model ([details](simulation.md#dielectrics)) |
 | `--diel-fref` | 1 | the frequency at which the stackup's εr and tan δ apply, GHz |
 | `--excite` | all ports | the ports to drive |

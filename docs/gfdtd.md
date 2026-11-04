@@ -5,7 +5,8 @@
 gfdtd is a 3D FDTD solver in the manner of openEMS that runs on a GPU, or on the CPU through a compiled core. It
 is its own package ([gfdtd](https://github.com/lowprocess/gfdtd)) and runs openEMS models without kicad2ems; this
 page is about using it from kicad2ems, through [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd)'s
-`gfdtd` plugin (`kicad2ems_fdtd/gfdtd.py`).
+`gfdtd` plugin (`kicad2ems_fdtd/gfdtd.py`). `--sigma` is conductor loss on gfdtd 261104 or later, as openEMS's
+conducting sheets, and `--rough` its own wideband fit (Hammerstad); an older gfdtd's copper is lossless.
 
 It gets **openEMS's model**: kicad2ems-fdtd builds the same CSXCAD geometry (`build_fdtd`) through gfdtd's copy of
 CSXCAD's and openEMS's Python interface, so the mesh, boundaries, ports, parts, excitation and end criteria are
@@ -13,7 +14,8 @@ openEMS's and take openEMS's settings (`--res`, `--fine`, `--nz`, `--bc`, `--end
 `--excite`, `--diel`, `--dump`, `--ff-freq`, ...: the GUI's *FDTD (openEMS, gfdtd)* section). Only the engine
 differs: on the examples the two agree to within 0.004–0.05 in |S|, and on one mid-range GPU gfdtd runs 8–20 times
 faster than openEMS on a 24-thread CPU (its CPU core about twice as fast). `--solvers auto` picks it over openEMS
-whenever it can run: not with `--sigma` or `--converge`, which it would ignore ([Which solver](usage.md#which)).
+whenever it can run: not with `--converge`, which it would ignore, nor `--sigma` on a gfdtd older than 261104
+([Which solver](usage.md#which)).
 
 ```bash
 kicad2ems examples/rf_coupler.toml --solvers gfdtd              # the GPU when Vulkan or CuPy finds one, else the CPU
@@ -38,7 +40,7 @@ writes openEMS's probe files, field dumps and status lines, so kicad2ems's progr
 S-parameter code work on it unchanged. A preview with gfdtd and without openEMS draws the mesh (`<name>_mesh.png`).
 
 gfdtd's README covers the rest: [CSXCAD and openEMS compatibility](https://github.com/lowprocess/gfdtd#csxcad-and-openems-compatibility),
-[what it models](https://github.com/lowprocess/gfdtd#what-it-models) (and what not yet: conductor loss,
-`--converge`), [its ports](https://github.com/lowprocess/gfdtd#ports), [how it works](https://github.com/lowprocess/gfdtd#how-it-works)
+[what it models](https://github.com/lowprocess/gfdtd#what-it-models) (and what not yet: `--converge`),
+[its ports](https://github.com/lowprocess/gfdtd#ports), [how it works](https://github.com/lowprocess/gfdtd#how-it-works)
 and [accuracy and speed](https://github.com/lowprocess/gfdtd#accuracy-and-speed) against openEMS. The plugin's tests
 are kicad2ems-fdtd's `tests/test_gfdtd_plugin.py`; the engine's, gfdtd's.
