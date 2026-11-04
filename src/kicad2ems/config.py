@@ -173,7 +173,8 @@ CORE = [
            gui='Ports where tracks cross the region edge', group='board'),
     Option('ground', None, "copper layer to model as a solid plane over the whole outline", gui='Solid ground layer',
            group='board'),
-    Option('mask', False, "include solder mask layers (thin: smaller time step)", bool, group='board'),
+    Option('mask', False, "include solder mask layers (FDTD: its cells set the time step, see --nz-mask; mom25d: one "
+           "more layer, no more unknowns)", bool, gui='Include solder mask', group='board'),
     Option('parts', 'auto', "lumped R / L / C parts between two pads on the modelled copper (default auto)",
            choices=('auto', 'none'), group='board'),
     Option('edge_walls', [], "walls where the ground planes end at these board sides, standing in for stitching vias "
