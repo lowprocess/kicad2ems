@@ -181,8 +181,11 @@ CORE = [
            "ymin = top) or all; kept --edge-keepout clear of signal copper", list, conv=_sides,
            gui='Edge walls (xmin,xmax,ymin,ymax or all)', group='board', cli=dict(metavar='SIDES')),
     Option('edge_keepout', 0.5, "mm between edge walls and signal copper (default {default})", float, group='board'),
-    Option('sigma', None, "copper conductivity S/m (default: lossless; openEMS: conducting sheets, mom25d and the "
-           "line model: conductor loss)", float, group='board'),
+    Option('sigma', None, "copper conductivity S/m (default: lossless; openEMS and gfdtd: conducting sheets, mom25d "
+           "and the line model: conductor loss)", float, group='board'),
+    Option('rough', None, "copper surface roughness, um RMS (default: smooth; with --sigma): Hammerstad's factor of "
+           "the conductor loss, over the band in mom25d and gfdtd, at the band centre in openEMS and the line model",
+           float, gui='Copper roughness (um RMS)', group='board'),
     Option('fmin', 0.5, "GHz (default {default})", float, gui='f min (GHz)', group='band'),
     Option('fmax', 10.0, "GHz (default {default})", float, gui='f max (GHz)', group='band'),
     Option('points', 401, "frequency points (default {default})", int, gui='Frequency points', group='band'),
@@ -380,6 +383,10 @@ def build_settings(cli=None, config=None, default_solvers=None):
         raise ConfigError(f"fmin ({s.fmin:g} GHz) must be below fmax ({s.fmax:g} GHz)")
     if s.points < 2:
         raise ConfigError("points must be at least 2")
+    if s.rough is not None and s.rough < 0:
+        raise ConfigError(f"rough = {s.rough:g}: um RMS, at least 0")
+    if s.rough and not s.sigma:
+        s.notes.append("--rough without --sigma: lossless copper has no roughness loss (ignored)")
     reg = _solvers_pkg.registry()
     for sv in reg.values():
         msg = sv.validate(s)

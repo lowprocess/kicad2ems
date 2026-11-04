@@ -27,6 +27,7 @@ its results as kicad2ems's other solvers do.
     antennas          gain_table, add_polarisation, pattern_gain
     figures           plot_preview (the model and its mesh)
     the line model    solve_lines, lines_backend (its fast solve: a first look before a long run)
+  copper roughness    hammerstad, rough_sigma, band_sigma (2.3; kicad2ems.roughness)
 """
 from . import API_VERSION, lazy                                            # noqa: F401
 
@@ -53,6 +54,7 @@ NAMES = dict(
     gain_table='.fields.antenna:gain_table', add_polarisation='.fields.antenna:add_polarisation',
     pattern_gain='.fields.antenna:pattern_gain', plot_preview='.plots:preview',
     solve_lines='.solvers.lines.fastsolve:solve', lines_backend='.solvers.lines.fastsolve:resolve_backend',
+    hammerstad='.roughness:hammerstad', rough_sigma='.roughness:rough_sigma', band_sigma='.roughness:band_sigma',
 )
 __all__ = ['API_VERSION', *NAMES]
 __getattr__, __dir__ = lazy(__name__, NAMES)

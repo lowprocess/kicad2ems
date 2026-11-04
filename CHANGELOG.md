@@ -9,6 +9,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Conductor loss on gfdtd.** gfdtd 261104 models conducting sheets as openEMS does (its engine API 1.1), so
+  `--sigma` is conductor loss on it too and `--solvers auto` no longer gives `--sigma` runs to openEMS
+  (kicad2ems-fdtd decides from the installed gfdtd). Against openEMS on a 40 mm copper microstrip, |ΔS21| ≤ 0.009
+  over 0.5–20 GHz.
+- **`--thickness on`** (openEMS and gfdtd; docs/meshing.md#thickness): copper with its stackup thickness, the stack
+  moved up to make room for it; with `--sigma` its faces carry the loss. rf_coupler's coupling rises 0.50 dB on
+  both engines (the field solver: 0.65 dB).
+- **`--rough`** (µm RMS; docs/simulation.md#roughness): copper roughness as Hammerstad's factor of the conductor
+  loss, at each frequency in mom25d, over the band in gfdtd (a wideband fit of its sheets), as the rough copper's
+  conductivity at the band centre in openEMS and the line model. The capabilities table's `roughness` row; API 2.3
+  (`hammerstad`, `rough_sigma`, `band_sigma`).
 - **Windows.** The stack installs and runs on Windows (docs/getting-started.md): `install.py`, the installer, in
   Python (standard library only) for Linux, macOS and Windows, with the options setup.sh had; `setup.sh` (and
   `setup.cmd` on Windows) runs it. On Windows: venvs with `Scripts\`, `.cmd` commands on the user's or the

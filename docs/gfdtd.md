@@ -7,7 +7,9 @@ through a compiled core. It is its own package, in its own repository ([gfdtd](h
 models without kicad2ems; this page is about using it from kicad2ems. Name it
 (`--solvers gfdtd`) or tick it under Solvers in the GUI, where its section (Runs on: auto, gpu, cpu) follows
 openEMS's: it uses openEMS's mesh and run settings. `--solvers auto` picks it over openEMS whenever it can run:
-not with `--sigma`, `--converge` or `--drive`, which it would ignore (see [Which solver](usage.md#which)). In
+not with `--converge` or `--drive`, which it would ignore (see [Which solver](usage.md#which)). `--sigma` is
+conductor loss on gfdtd 261104 or later, as openEMS's conducting sheets, and `--rough` its own wideband fit
+(Hammerstad); an older gfdtd's copper is lossless, and auto then gives `--sigma` runs to openEMS. In
 the GUI those settings are in the *openEMS + gfdtd (FDTD)* section. A preview with gfdtd and without openEMS
 draws the mesh (`<name>_mesh.png`, and the grid in the Viewer's 3D view).
 
@@ -56,7 +58,7 @@ gfdtd writes openEMS's probe files, field dumps and status lines, so kicad2ems's
 (`--end-on ports`), Stop and S-parameter code work on it unchanged.
 
 gfdtd's own README covers the rest: [CSXCAD and openEMS compatibility](https://github.com/lowprocess/gfdtd#csxcad-and-openems-compatibility),
-[what it models](https://github.com/lowprocess/gfdtd#what-it-models) (and what not yet: conductor loss, phased drives, `--converge`),
+[what it models](https://github.com/lowprocess/gfdtd#what-it-models) (and what not yet: phased drives, `--converge`),
 [its ports](https://github.com/lowprocess/gfdtd#ports), [how it works](https://github.com/lowprocess/gfdtd#how-it-works) and [accuracy and speed against
 openEMS](https://github.com/lowprocess/gfdtd#accuracy-and-speed) on these examples. The plugin is `src/gfdtd/kicad2ems.py` in gfdtd's repository: openEMS's
 plugin, run on gfdtd; its tests are `tests/test_gfdtd.py`.

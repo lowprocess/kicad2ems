@@ -79,7 +79,8 @@ examples.
 - It agrees with openEMS to 0.02 or better on 7 of the 8.
 - It handles what FDTD handles: board edges, enclosures and cavities, antennas with a finite ground, and gap
   ports.
-- Its copper is lossless, so `--sigma` is ignored.
+- Its copper takes `--sigma` as openEMS's does (conducting sheets; gfdtd 261104 or later, lossless before), and
+  `--rough` over the band (gfdtd's wideband fit; openEMS takes it at the band centre).
 - It has no `--converge` levels.
 - Its lumped parts are modelled differently from openEMS's. That is where demo_bandpass's 0.126 comes from.
 - It shares openEMS's mesh and its simplifications: vias snapped to mesh lines, and copper as zero-thickness
@@ -118,7 +119,8 @@ examples.
 `auto` drops the solvers that can't run here or can't model the board, estimates how long each remaining
 full-wave solver would take (gfdtd, mom25d, openEMS), runs the fastest and adds the line model. gfdtd's estimate
 is openEMS's mesh and timesteps at gfdtd's measured speed: about 8 times openEMS's on the GPU and 2 times on
-its CPU core. With `--sigma` or `--converge`, auto leaves gfdtd out, because it would ignore them.
+its CPU core. With `--converge`, auto leaves gfdtd out, because it would ignore it (and with `--sigma` when
+the installed gfdtd is older than 261104, whose copper is lossless).
 openEMS then runs where mom25d can't. The log says what it chose:
 
 ```
@@ -188,6 +190,7 @@ dmax    = 0.4
 | `--curve-res` | 6 | over arcs and fans the largest cell is the dielectric's ÷ this; 1: off |
 | `--vias auto\|exact\|centre\|snap` | auto | mesh lines for vias |
 | `--via-snap` | 0.2 | how far a snapped via may move, mm |
+| `--thickness off\|on` | off | copper with its stackup thickness, the stack moved to make room ([details](meshing.md#thickness)) |
 | `--edge-walls SIDES` | off | metal walls at the board edge, standing in for stitching vias (`xmin,xmax,ymin,ymax` or `all`; [details](meshing.md#edge-walls)) |
 | `--edge-keepout` | 0.5 | gap between edge walls and signal copper, mm |
 | `--converge F1,F2,...` | | also run coarser meshes and check the result has converged ([details](meshing.md#convergence-levels)) |
@@ -202,6 +205,7 @@ dmax    = 0.4
 | `--end-on ports\|energy` | ports | what the decay is measured on |
 | `--max-steps` | 1 000 000 | the timestep limit per run |
 | `--sigma` | perfect conductor | copper conductivity, S/m |
+| `--rough` | smooth | copper roughness, µm RMS, with `--sigma` ([details](simulation.md#roughness)) |
 | `--diel fixed\|wideband` | fixed | the dielectric loss model ([details](simulation.md#dielectrics)) |
 | `--diel-fref` | 1 | the frequency at which the stackup's εr and tan δ apply, GHz |
 | `--excite` | all ports | the ports to drive |
