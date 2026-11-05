@@ -181,6 +181,15 @@ times smaller errors than evenly shaped cells, with a third of the unknowns. gms
 
 ![mesher study](img/mesher_study.png)
 
+The rings follow the narrowest trace on the layer, so on a coupler they are coarse beside its gap: the first sits
+0.067 widths in, 86 µm on rf_coupler's 1.28 mm lines against its 0.14 mm gap, and the charge facing the gap crowds
+well inside that. Where copper faces other copper across a gap of under about a quarter of a width, the mesher adds
+rings at a quarter, an eighth and a sixteenth of that gap, along those edges only (a ray out of each edge finds the
+gap; a wedge where a round track end meets a pad is not one). rf_coupler's lossless S31 at 2.4 GHz went from
+−10.64 to −10.35 dB (refined FDTD: −10.24 to −10.29) for 22 % more unknowns; 16 cells across every strip did no
+better at twice the unknowns. Of 17 example boards three have such gaps: rf_coupler, rf_gcpw (+20 % unknowns) and
+rf_pcoupled (+12 %, its passband unchanged against refined FDTD); the rest mesh as before.
+
 The options below are experimental: each saves unknowns at some cost in accuracy, measured against a fine reference
 mesh (`tools/zone_study.py`, `tools/quad_configs_study.py` in mom25d).
 
