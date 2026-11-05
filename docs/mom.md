@@ -89,10 +89,24 @@ limits on a multilayer board:
 - **Results**: with the ports moved to F.Cu, the sweep did not converge in 15 solves, and a lumped port in the
   middle of a trace reflected almost everything (|S| 0.99, gfdtd 0.29).
 
-For such boards use gfdtd or openEMS, or the whole stack (below) where the board is small enough.
+For such boards use gfdtd or openEMS, or the [whole stack](#whole-stack) where the board is small enough.
 
 <a id="whole-stack"></a>
 ### The whole stack
+
+The ground stack fills in any hole in the ground layer, so a slot, a defected ground structure or a ground that
+stops short of the trace isn't modelled. `mom_stack = "auto"` (the default) looks for them: where the ground's copper
+is missing within three substrate heights of the signal copper, leaving out via antipads, a pour's pullback within
+1 mm of the board edge, and pieces under 0.25 mm², it chooses the whole stack and logs why. Otherwise it keeps the
+ground stack. Of the examples, it chooses the whole stack for rf_dgs, rf_slotline and five antennas (the slot,
+aperture, inverted-F, monopole and Vivaldi). With `--mom-stack ground` on such a board, the log warns and lists the
+apertures as deviations. `mixed` cuts its lines over the infinite ground, so it declines these boards under `auto`.
+
+| Board, against gfdtd (rms \|ΔS\|) | Ground stack | Whole stack |
+|---|---|---|
+| rf_dgs | 0.74 | 0.12 |
+| rf_slotline | 0.93 | 0.14 |
+| antenna_slot | 0.95 | 0.06 |
 
 `mom_stack = "whole"` (`--mom-stack whole`) models every copper layer instead of an infinite ground: the lowest
 copper layer is the bottom of the stack, with air below as well as above, and the planes are meshed like any other

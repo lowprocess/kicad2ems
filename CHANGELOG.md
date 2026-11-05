@@ -18,6 +18,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   same loss at the band centre. ENIG cost hairpin 2.5–3.4 dB at its peak. API 2.4: `resolve_finish` and the finish
   helpers, the `finish` row. `--sigma` has a GUI field (Copper conductivity), so roughness and finish are usable there.
 - **`--nz-mask`**: the solder mask's own number of z cells (default: `--nz`); `--mask` is in the GUI.
+- **mom25d: `--mom-stack auto`, the new default.** The whole stack where the ground layer has apertures under the
+  signal copper (a slot, a defected or partial ground), which the infinite ground plane would fill in, else the
+  ground stack as before. The log says which, and why. `--mom-stack ground` on such a board warns and lists the
+  apertures as deviations. `mixed` declines them. Against gfdtd: rf_dgs rms |ΔS| 0.74 to 0.12, rf_slotline 0.93 to
+  0.14, antenna_slot 0.95 to 0.06; the other 45 examples are unchanged.
 - **mom25d: rings along narrow gaps.** Copper edges facing other copper across a gap of under about a quarter
   of the narrowest trace's width get edge rings at 1/4, 1/8 and 1/16 of the gap. rf_coupler's lossless S31 −10.64 to
   −10.35 dB (refined FDTD −10.24 to −10.29), +22 % unknowns; boards without such gaps mesh as before.
