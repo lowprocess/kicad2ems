@@ -33,6 +33,10 @@ numpy values.
   four times as long, and its pass band then matched mom25d's within 0.05 dB (the fixed model had 1.3 dB
   more loss). Use it for narrowband filters and wherever the loss matters.
 
+mom25d takes the same option. With `fixed`, εr and tan δ stay constant, not the conductivity the FDTD solvers
+use. With `wideband`, it evaluates the Djordjevic-Sarkar model exactly at each frequency it solves, at no extra
+cost. The line model and `mixed` keep the stackup's values.
+
 <a id="roughness"></a>
 ## Copper roughness
 

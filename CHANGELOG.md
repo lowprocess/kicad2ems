@@ -18,11 +18,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   same loss at the band centre. ENIG cost hairpin 2.5–3.4 dB at its peak. API 2.4: `resolve_finish` and the finish
   helpers, the `finish` row. `--sigma` has a GUI field (Copper conductivity), so roughness and finish are usable there.
 - **`--nz-mask`**: the solder mask's own number of z cells (default: `--nz`); `--mask` is in the GUI.
+- **mom25d: the wideband dielectric.** `--diel wideband` (`diel = "wideband"`, as twelve examples set) now applies to
+  mom25d too: the Djordjevic-Sarkar εr and tan δ, evaluated exactly at each frequency it solves, at no extra cost.
+  Before, it kept the stackup's constant values, so comparisons with the FDTD solvers on these boards were mostly a
+  dielectric difference. rms |ΔS| against gfdtd, constant to wideband: rf_bends 0.107 to 0.035, rf_spiral 0.129 to
+  0.043, rf_ms2cpw 0.136 to 0.078, rf_meander 0.180 to 0.124, rf_dgs 0.121 to 0.088, rf_msvia 0.063 to 0.024
+  (rf_ebg 0.295 to 0.319, rf_slotline unchanged). mixed and the line model keep the constant values.
 - **mom25d: `--mom-stack auto`, the new default.** The whole stack where the ground layer has apertures under the
-  signal copper (a slot, a defected or partial ground), which the infinite ground plane would fill in, else the
-  ground stack as before. The log says which, and why. `--mom-stack ground` on such a board warns and lists the
+  signal copper (a slot, a defected or partial ground), which the infinite ground plane would fill in, or where a port
+  is below the ground (rf_msvia, which failed before), else the ground stack as before. The log says which, and why. `--mom-stack ground` on such a board warns and lists the
   apertures as deviations. `mixed` declines them. Against gfdtd: rf_dgs rms |ΔS| 0.74 to 0.12, rf_slotline 0.93 to
-  0.14, antenna_slot 0.95 to 0.06; the other 45 examples are unchanged.
+  0.14, antenna_slot 0.95 to 0.06; the other 44 examples are unchanged.
 - **mom25d: rings along narrow gaps.** Copper edges facing other copper across a gap of under about a quarter
   of the narrowest trace's width get edge rings at 1/4, 1/8 and 1/16 of the gap. rf_coupler's lossless S31 −10.64 to
   −10.35 dB (refined FDTD −10.24 to −10.29), +22 % unknowns; boards without such gaps mesh as before.

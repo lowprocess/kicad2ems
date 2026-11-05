@@ -25,7 +25,10 @@ five times faster.
 - A lumped part is one series R-L-C element across its gap.
 - Radiation and surface waves are included. The board edge and an air box aren't: no box resonances, no edge
   effects.
-- Loss uses the stackup's tan δ, constant over frequency; `--sigma` adds copper loss.
+- The dielectric is the stackup's εr and tan δ, constant over frequency. With `--diel wideband` (or
+  `diel = "wideband"`), it follows the Djordjevic-Sarkar model, as on the FDTD solvers
+  ([dielectrics](simulation.md#dielectrics)). mom25d evaluates that model exactly at each frequency it solves, where the FDTD
+  solvers fit it with Debye poles, and it costs no extra run time. `--sigma` adds copper loss.
 
 Other copper layers, inner planes and pours included, are meshed, except solid planes and lone stitching-via pads
 (below). Large meshed planes add many unknowns and slow mom25d down ([speed](#runtime)).
@@ -97,9 +100,10 @@ For such boards use gfdtd or openEMS, or the [whole stack](#whole-stack) where t
 The ground stack fills in any hole in the ground layer, so a slot, a defected ground structure or a ground that
 stops short of the trace isn't modelled. `mom_stack = "auto"` (the default) looks for them: where the ground's copper
 is missing within three substrate heights of the signal copper, leaving out via antipads, a pour's pullback within
-1 mm of the board edge, and pieces under 0.25 mm², it chooses the whole stack and logs why. Otherwise it keeps the
-ground stack. Of the examples, it chooses the whole stack for rf_dgs, rf_slotline and five antennas (the slot,
-aperture, inverted-F, monopole and Vivaldi). With `--mom-stack ground` on such a board, the log warns and lists the
+1 mm of the board edge, and pieces under 0.25 mm², it chooses the whole stack and logs why. It does the same when a
+port is below the ground, which the ground stack can't model. Otherwise it keeps the ground stack. Of the examples,
+it chooses the whole stack for rf_dgs, rf_slotline, rf_msvia (its P2 is on B.Cu, under the In2.Cu ground) and five
+antennas (the slot, aperture, inverted-F, monopole and Vivaldi). With `--mom-stack ground` on such a board, the log warns and lists the
 apertures as deviations. `mixed` cuts its lines over the infinite ground, so it declines these boards under `auto`.
 
 | Board, against gfdtd (rms \|ΔS\|) | Ground stack | Whole stack |
@@ -113,7 +117,7 @@ copper layer is the bottom of the stack, with air below as well as above, and th
 copper. Copper below the old ground is in the model, ports can sit on any layer, and each is a lumped port to the
 nearest plane under or over it (or its `ref_layer`). `mixed` stays on the ground stack.
 
-On `rf_msvia` (F.Cu microstrip through a via to B.Cu, two inner planes), which the ground stack cannot solve, the
+On `rf_msvia` (F.Cu microstrip through a via to B.Cu, two inner planes), which the ground stack can't solve, the
 whole stack has 5,219 unknowns at `--mom-dmax 0.6` and takes 25 s:
 
 | `rf_msvia` | S21 1 GHz | 3 GHz | 5 GHz | 7 GHz | 10 GHz | worst S11 |
