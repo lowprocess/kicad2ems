@@ -9,6 +9,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **mom25d: rings along narrow gaps.** Copper edges facing other copper across a gap of under about a quarter
+  of the narrowest trace's width get edge rings at 1/4, 1/8 and 1/16 of the gap. rf_coupler's lossless S31 −10.64 to
+  −10.35 dB (refined FDTD −10.24 to −10.29), +22 % unknowns; boards without such gaps mesh as before.
 - **Conductor loss on gfdtd.** gfdtd 261104 models conducting sheets as openEMS does (its engine API 1.1), so
   `--sigma` is conductor loss on it too and `--solvers auto` no longer gives `--sigma` runs to openEMS
   (kicad2ems-fdtd decides from the installed gfdtd). Against openEMS on a 40 mm copper microstrip, |ΔS21| ≤ 0.009

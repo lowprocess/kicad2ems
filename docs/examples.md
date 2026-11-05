@@ -51,7 +51,7 @@ the FDTD solvers have):
 | `rf_steplpf`: stepped-impedance low-pass, 2 GHz | −3 dB frequency | 1.736 GHz (1.729 converged) | 1.737 GHz | 1.756 GHz | 1.800 GHz |
 | `rf_stubnotch`: two open λ/4 stubs, 2.4 GHz | notch | 2.383 GHz | 2.398 GHz | 2.410 GHz | 2.493 GHz |
 | `rf_gcpw`: grounded CPW with via fences | worst S11, S21 at 5 GHz | −14.8, −0.39 dB | −14.5, −0.39 dB | −22.5, −0.33 dB | −12.1, −0.35 dB |
-| `rf_coupler`: 10 dB coupler, 0.14 mm gap | S31, S21 | −10.3, −0.77 dB | −10.3, −0.77 dB | −10.9, −0.67 dB | −10.4, −0.72 dB |
+| `rf_coupler`: 10 dB coupler, 0.14 mm gap | S31, S21 | −10.3, −0.77 dB | −10.3, −0.77 dB | −10.6, −0.70 dB (−10.9, −0.67 before gap rings, [mesh](mom.md#meshers)) | −10.4, −0.72 dB |
 | `rf_ratrace`: 180° hybrid ring, 2.4 GHz | S21, S41, S31 | −3.38, −3.54, −28.2 dB | −3.38, −3.52, −28.0 dB | −3.34, −3.45, −35.8 dB | −3.34, −3.43, −46.7 dB |
 | `rf_radialstub`: one 60° radial stub | notch | 2.13 GHz | 2.13 GHz | 2.17 GHz | 2.18 GHz (qucsator's radial stub; scikit-rf slices the fan: 1.99 GHz) |
 | `rf_stripline`: 4 layers, via-fenced stripline | worst S11, S21 at 10 GHz | −17.5, −0.59 dB | −16.5, −0.58 dB | −19.9, −1.01 dB | −13.5, −0.63 dB |
