@@ -160,7 +160,10 @@ kicad2ems examples/antenna_array2x2_phased.toml --drive P1,P2 --aim 20,90 --tape
 
 mom25d solves each port driven alone and adds their far fields for the drive: exact at every frequency, the
 coupling between the elements included. The gain uses the power all the driven ports accept; the log and the JSON
-give the beam's direction and each port's *active reflection* (with its neighbours driven too).
+give the beam's direction and each port's *active reflection* (with its neighbours driven too). The far field's 11
+frequencies across the band are solved as part of the adaptive sweep, not again after it (only the pattern
+frequency, the resonance, may need a solve of its own), and every port's far field comes from one set of phases:
+antenna_vivaldi 257 s to 140 s, antenna_array2x2_phased 28 s to 18 s.
 
 - `grid` places the ports in a 2D array: `COLSxROWS` (the ports in order, row by row from the top) or
   `PORT:COL,ROW` each; `steer X,Y` adds X per column and Y per row (without a grid, X from port to port).
@@ -313,9 +316,19 @@ mom25d chooses how to solve from the memory available, and the log says which (`
 |---|---|---|
 | double precision on the CPU | up to 3,500 unknowns (or no compiled core), and it fits in half the free RAM | 18 N² bytes |
 | mixed precision on the CPU | above 3,500 unknowns, no GPU: single-precision LU refined to double (about 1.3× faster); LUs kept across the sweep where they fit | 24 N² bytes, plus 8 N² for each LU kept; 10 N² where that doesn't fit |
-| GPU LU | the single-precision matrix fits on the GPU | 24 N² bytes RAM, 8 N² bytes GPU |
-| tiled | the GPU LU doesn't fit (`--mom-tiled`) | little RAM, 4 N² bytes GPU, the rest streamed from RAM |
-| compressed (BLR / ACA) | nothing else fits | much less, but slower |
+| GPU LU, hybrid | up to 25,000 unknowns: the single-precision matrix fits on the GPU, and its double-precision copy in RAM (the refinement's) | 24 N² bytes RAM, 8 N² bytes GPU |
+| GPU LU | above 25,000 unknowns, or where the hybrid's RAM doesn't fit: the refinement is matrix-free | 10 N² bytes RAM, 8 N² bytes GPU |
+| GPU LU, streamed | Vulkan, and RAM short even of that: the matrix is filled straight into the GPU a block of rows at a time | about 1 GB RAM, 8 N² bytes GPU |
+| tiled | CuPy, the GPU LU doesn't fit (`--mom-tiled`) | little RAM, 4 N² bytes GPU, the rest streamed from RAM |
+| compressed (BLR / ACA) | nothing else fits | much less, but far slower on large boards |
+
+Past 25,000 unknowns the hybrid's double-precision matrix costs more in memory traffic than its cheaper refinement
+saves (`MOM25D_HYBRID_MAX_N` moves the limit): rf_siw (28.7k unknowns) takes 296 s on the GPU LU against 456 s
+hybrid, antenna_vivaldi (21.9k) 148 s hybrid against 171 s. The GPU takes an LU up to its own estimate of the memory it needs (the matrix and its work arrays) with 0.5 GB or 3 %
+to spare: on a 16 GB card about 41,000 unknowns. antenna_cp_patch's 40,827 factor there in 19 s. The streamed path
+is about 1.3× slower a solve than the GPU LU (its fill can't use the matrix's symmetry), but it solves that board
+in 5.8 GB of RAM, where the compressed solvers took more than 30 minutes a frequency. The free memory is a cgroup's
+where one limits the process (a container, or `systemd-run --scope -p MemoryMax=`).
 
 The **tiled** solver keeps half the (symmetric) matrix on the GPU and builds it a block at a time; it solves the
 matrix's symmetric part, which changes S by at most about 1e-3. The coupler at 0.1 mm cells (45,850 unknowns)

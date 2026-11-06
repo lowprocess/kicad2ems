@@ -109,6 +109,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   now 5.5 ohm), the CM5 Minima's wide traces among them. Narrower strips are unchanged.
 
 ### Changed
+- **Faster solvers: the examples' suite 1.40× faster on gfdtd and mom25d together** (64.0 to 45.6 min, every board
+  both versions solve; i7-13700K, RX 7800 XT through Vulkan). gfdtd 1.50× (19.6 to 13.1 min: the antennas 1.69×, the
+  circuits unchanged); mom25d 1.37× (44.4 to 32.5 min; antenna_slot 2.8×, antenna_cp_patch 2.2×, antenna_monopole
+  2.0×, antenna_vivaldi 1.8×), and rf_siw, the one board it slowed, 383 s to 296 s with the hybrid limit below.
+  Results unchanged: S within the adaptive sweep's own tolerance, the far fields to 1e-13.
+  - gfdtd's far field (NF2FF): each face's normal axis as a phase and its two tangential axes in one matrix product,
+    the exponentials once per distinct direction component: antenna_lpda's sphere 27 s to 3.7 s. Its operator's
+    node codes sorted through one 64-bit key: 6.4 s to 0.4 s at 5.6 M cells.
+  - mom25d's compiled core (the matrix fill) on the fast physical cores, as its BLAS already was: 1.5–3.1 s a
+    frequency to 0.8 s on a hybrid CPU's 24 threads. `MOM25D_OMP_THREADS` sets it.
+  - mom25d on the GPU: each backend's own memory estimate decides what fits (antenna_cp_patch's 40.8k unknowns
+    factor on the GPU in 19 s, where the CPU took minutes); the GPU LU path keeps its factor for the next
+    frequencies (antenna_slot 15 LUs to 1); the hybrid path up to 25,000 unknowns (`MOM25D_HYBRID_MAX_N`); the
+    matrix sent up at 16 GB/s, not 6.5; a streamed path that fills the GPU's LU a block of rows at a time where RAM
+    is short (5.8 GB for cp_patch, where the compressed fallback took over 30 minutes a frequency).
+  - mom25d's antenna mode solves the far field's frequencies within the adaptive sweep, and every port's far field
+    from one set of phases.
+  - emsdev: the free memory is the process's own cgroup's (a container, or `systemd-run --scope -p MemoryMax=`), not
+    only the root's: under a 4 GB scope it said 11.2 GB.
 - The docs are shorter, with pictures where words were: a gallery of every example board (docs/examples.md), each
   solver's distance from openEMS against its time (docs/usage.md#which), the field solver's figures
   (docs/transmission-lines.md), the GUI's pages, and the mesh in docs/meshing.md (`tools/doc_figures.py` draws the
