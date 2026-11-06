@@ -2,7 +2,7 @@
 
 What is worth doing next, in priority order. Each item comes from something the examples or benchmarks
 showed. Finished items leave this file; what was done is in CHANGELOG.md, and the decisions not to do
-something are under its *Decided* headings. Last updated 2026-11-01.
+something are under its *Decided* headings. Last updated 2026-11-07.
 
 ## The line model's field solver
 
@@ -180,3 +180,53 @@ demo_transition 107 s → 11 s; item 4 a real board 157k → 9–44k unknowns; i
 H-LU only if boards above ~30k unknowns remain after (1) and (4). After (1), the benchmark boards are 3–12 s, so
 (2) and (3) now matter mainly for real boards past ~10k unknowns.
 
+
+## Power integrity and the near field (mom25d.pdn, mom25d.mqs)
+
+What exists, its validation and its limits are in the project's `NOTES-pi-nearfield.md`. In brief:
+- **`python -m mom25d.pdn`:** a rail's DC drop and its PDN impedance. It finds the rail tree through sense
+  resistors and beads, treats pads as terminals and connects decaps through their copper, solves the plane pairs
+  together, and drives the GUI's Power Integrity page.
+- **`mom25d.mqs`:** the quasi-static currents, loop R and L, dipole moment and near H of a converter's copper.
+  It's validated against image theory and Wheeler's formula; the buck demo gives the hot loop as 0.39 / 3.7 /
+  9.8 nH for the good / far / slot layouts.
+
+Estimates of 2026-11-07, in order:
+
+1. **Speed up the quasi-static solver (1–1.5 days, about 10× overall).**
+   - The inductance matrix (45–80 s for 4–6k triangles) does the exact analytic integral for every pair of
+     triangles. Doing it only for pairs within a few triangle sizes (a KD-tree), with a 3-point rule for the rest,
+     should make the fill 10–20× faster.
+   - Mom25d's vectorised `singular_moments` can take the same-layer blocks, with threads across blocks.
+   - Plane and volume fields (about 100 s for three planes and a volume at 9 harmonics) can go by FFT: the
+     magnetostatic spectral H of `farfield.near_fields`, without the image, since the plane is meshed. Biot–Savart
+     stays for single points.
+2. **`python -m mom25d.mqs`, a command like the PDN tool's (about 1 day).**
+   - `--describe --json` for the GUI and KiCad import through kicad2ems.
+   - Outputs: standard kicad2ems field dumps (the GUI's Fields and 3D views read them), a summary (L, R, dipole
+     moment and peak H per harmonic) and figures.
+3. **Find the converter from the board (about 1 day).**
+   - The switch node is the net between a power inductor and an IC.
+   - Cin is the capacitors from VIN to ground near that IC.
+   - The source goes between the IC's VIN and PGND pins.
+   - The scan region is the parts' extent plus a margin.
+   - The operating point (fsw, Vin/Vout or duty, load current, edge time) and the scan heights are settings; any
+     part can be overridden.
+4. **Real boards (about 1 day):** CM5's buck (U702/L701) and the Jetson baseboard's eight bucks. Expect trouble
+   with thermal pads, real copper detail and mesh size.
+5. **A Near-field page in the GUI (1–1.5 days)**, or a mode of the Power Integrity page.
+   - The converter, operating point and scan settings.
+   - Results: the loop's L, dipole moment and peak H per harmonic, the spectrum, and the H maps.
+   - A button to open the dumps in the Fields and 3D views. That needs the window to take a results folder that
+     isn't a kicad2ems run, a small change.
+6. **Whole-board scale (3–5 days, research-like; only if a board needs it).** A full ground plane is 50k+
+   triangles, and a dense inductance matrix at that size is about 20 GB. It needs compression (mom25d's BLR or
+   HODLR) and an iterative solve in the loop basis. Cropping to a region around the converter, as now, is enough
+   for DC-DC loops.
+
+After those:
+- `kicad2ems pdn` from a config table, with several rails per run and the DC maps as a Viewer overlay.
+- Load currents from part fields.
+- Decap and via mounting inductance from the quasi-static solver, replacing the formula.
+- The switch node's E field from the capacitive kernel.
+- Capacitance added to the quasi-static solver, for a full partial-element (PEEC) model up to about λ/10.
