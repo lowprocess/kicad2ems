@@ -2,6 +2,8 @@
 
 [Index](index.md)
 
+How close each solver comes to openEMS on every example is in the [solver matrix](solver-matrix.md).
+
 Run time and peak memory of each solver on a representative subset of the examples, one board per regime:
 single-layer microstrip (hairpin, coupler), grounded coplanar waveguide with a via fence (rf_gcpw), a
 stripline between meshed planes (rf_stripline), a via transition through an inner plane (demo_transition) and

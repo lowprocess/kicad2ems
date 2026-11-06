@@ -94,7 +94,8 @@ breathe_default_project = 'cores'
 
 
 # the site's navigation, in index.md's order (its tables are the same pages, for GitHub)
-NAV = [('Using kicad2ems', ['getting-started', 'usage', 'gui', 'kicad-plugin', 'examples', 'postprocessing', 'benchmarks']),
+NAV = [('Using kicad2ems', ['getting-started', 'usage', 'gui', 'kicad-plugin', 'examples', 'postprocessing', 'benchmarks',
+                            'solver-matrix']),
        ('The solvers', ['meshing', 'simulation', 'mom', 'gfdtd', 'transmission-lines']),
        ('Working on kicad2ems', ['architecture', 'api', 'kicad-import', 'model', 'testing', 'maintenance']),
        ('Code reference', ['reference/index'])]
@@ -150,6 +151,9 @@ def _check_links(app, exception):
         return
     out, ids, links = app.outdir, {}, []
     for path in glob.glob(os.path.join(out, '**', '*.html'), recursive=True):
+        if os.path.relpath(path, out).startswith('_static'):
+            continue                                                # pages copied as they are (the solver matrix:
+                                                                    # its ids are made by its script)
         page = open(path, encoding='utf-8').read()
         ids[os.path.normpath(path)] = set(re.findall(r'\bid="([^"]+)"', page))
         links += [(path, h) for h in re.findall(r'<a [^>]*href="([^"]+)"', page)]

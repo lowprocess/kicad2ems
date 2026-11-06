@@ -14,6 +14,7 @@ of moments) or a transmission-line model, and writes S-parameters, antenna resul
 | [Examples](examples.md) | The example boards and how the solvers compare on them |
 | [Results](postprocessing.md) | S-parameters, antenna results, field dumps, the run summary and report |
 | [Benchmarks](benchmarks.md) | Each solver's run time and memory on each example, CPU and GPU |
+| [Solver matrix](solver-matrix.md) | Every example on every solver, scored against openEMS: curves, layouts, deviations |
 
 ## The solvers
 
