@@ -14,6 +14,7 @@ packages of their own, each in its repository:
 | [kicad2ems-ipc](https://github.com/lowprocess/kicad2ems-ipc) | the KiCad plugin: the impedance map, and simulations set up from the PCB editor | KiCad's Plugin and Content Manager |
 | [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) | the FDTD solvers, openEMS and gfdtd, on one shared FDTD model | `pip install '.[openems]'`, `'.[gfdtd]'` |
 | [mom25d](https://github.com/lowprocess/mom25d) | the 2.5D Method-of-Moments solver, with its kicad2ems plugins | `pip install '.[mom]'` |
+| [pcbqs](https://github.com/lowprocess/pcbqs) | DC/PDN, quasistatic fields and ngspice operational circuits | `pip install '.[qs]'` |
 | [gfdtd](https://github.com/lowprocess/gfdtd) | a 3D FDTD engine for the GPU or the CPU (kicad2ems-fdtd runs it) | `pip install '.[gfdtd]'` |
 | [dfsynth](https://github.com/lowprocess/dfsynth) | distributed filter synthesis (the GUI's Filter page) | `pip install '.[filter]'` |
 

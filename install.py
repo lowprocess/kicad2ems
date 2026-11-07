@@ -32,7 +32,7 @@ TRIANGLE_COMMIT = '595b43eb6682992a0b1012b9671bf860c0e6ae56'    # triangle 20250
 # at -O2 where the target has FMA; clang on ARM always) breaks them, and the mesher then never finishes
 TRIANGLE_CFLAGS = '-O2 -ffp-contract=off'
 CUPY_WHEELS = ('cupy-rocm-7-0', 'cupy-cuda12x', 'cupy-cuda13x')
-STACK = ('emsdev', 'kicad2ems-gui', 'kicad2ems-fdtd', 'mom25d', 'gfdtd', 'dfsynth')
+STACK = ('emsdev', 'kicad2ems-gui', 'kicad2ems-fdtd', 'mom25d', 'pcbqs', 'gfdtd', 'dfsynth')
 REPO = os.path.dirname(os.path.abspath(__file__))
 WINDOWS = sys.platform == 'win32'
 LINUX = sys.platform.startswith('linux')
@@ -707,22 +707,25 @@ class Installer:
                        "github.com/lowprocess/mom25d)?", 'y')
         if self.mom:
             self.extras.append('mom')
+        self.qs = ask("pcbqs (power integrity, quasistatic fields and ngspice circuits; from github.com/lowprocess/pcbqs)?", 'y')
+        if self.qs:
+            self.extras.append('qs')
         self.gfdtd = ask("gfdtd (3D FDTD on the GPU or a CPU core, openEMS's model; from github.com/lowprocess/gfdtd)?", 'y')
         if self.gfdtd:
             self.extras.append('gfdtd')
         if ask("dfsynth (filter synthesis: the GUI's Filter page; from github.com/lowprocess/dfsynth)?", 'y'):
             self.extras.append('filter')
         self.core = False
-        if self.mom or self.gfdtd:
+        if self.mom or self.qs or self.gfdtd:
             cc = self.has_compiler()
             if cc:
-                self.core = ask(f"build the compiled cores (C++ / OpenMP with {cc}: mom25d ~5x, gfdtd ~15x faster on "
+                self.core = ask(f"build the compiled cores (C++ / OpenMP with {cc}: mom25d ~5x, pcbqs QS fill ~5x, gfdtd ~15x faster on "
                                 f"the CPU)?", 'y')
                 if self.core:
                     self.extras.append('core')
             else:
                 note("no C++ compiler (" + ("Visual Studio 2022's C++ tools, or MinGW-w64's g++" if WINDOWS else 'g++')
-                     + "): the compiled cores are skipped (NumPy kernels: mom25d ~5x, gfdtd ~15x slower)")
+                     + "): the compiled cores are skipped (NumPy kernels: mom25d ~5x, pcbqs QS fill ~5x, gfdtd ~15x slower)")
         if ask("test tools (pytest)?", 'n'):
             self.extras.append('test')
         if self.oems != 'none':
@@ -863,20 +866,23 @@ class Installer:
             note(f"{self.qucs} is not an executable: going on without qucsator")
             self.qucs = None
 
+    def ensure_triangle(self):
+        # MoM and QS meshing: PyPI has no triangle >= 20230923 for every Python (none for 3.14): build it from its
+        # repository
+        if (self.mom or self.qs) and not py_ok(self.vpy, 'import triangle') and not self.pip('triangle>=20230923', check=False,
+                                                                            quiet=True):
+            note(f"no triangle wheel for Python {self.pyver}: building it from github.com/drufat/triangle (needs a C "
+                 f"compiler)")
+            self.pip('--no-cache-dir', f"triangle @ git+https://github.com/drufat/triangle.git@{TRIANGLE_COMMIT}",
+                     env=None if WINDOWS else {'CFLAGS': TRIANGLE_CFLAGS})    # MSVC: /fp:precise doesn't fuse
+
     # ---- install ----
     def install(self):
         t = self.t
         spec = REPO + (f"[{','.join(self.extras)}]" if self.extras else '')
         how = " (editable: this checkout's code is what runs)" if t.editable else ' (a copy of this checkout)'
         bold(f"Installing kicad2ems{' [' + ','.join(self.extras) + ']' if self.extras else ''}{how}")
-        # mom25d's mesher: PyPI has no triangle >= 20230923 for every Python (none for 3.14): build it from its
-        # repository
-        if self.mom and not py_ok(self.vpy, 'import triangle') and not self.pip('triangle>=20230923', check=False,
-                                                                            quiet=True):
-            note(f"no triangle wheel for Python {self.pyver}: building it from github.com/drufat/triangle (needs a C "
-                 f"compiler)")
-            self.pip('--no-cache-dir', f"triangle @ git+https://github.com/drufat/triangle.git@{TRIANGLE_COMMIT}",
-                     env=None if WINDOWS else {'CFLAGS': TRIANGLE_CFLAGS})    # MSVC: /fp:precise doesn't fuse
+        self.ensure_triangle()
         if self.oems == 'folder':
             bold(f"openEMS's Python packages from {self.oems_dir}")
             self.pip(*self.openems_wheels(self.pyver))
@@ -907,7 +913,7 @@ class Installer:
         if self.slang:
             bold("Installing slangpy")
             self.pip("slangpy>=0.43")
-        for pkg, on in (('mom25d', self.mom), ('gfdtd', self.gfdtd)):
+        for pkg, on in (('mom25d', self.mom), ('pcbqs', self.qs), ('gfdtd', self.gfdtd)):
             if self.core and on:
                 bold(f"Building {pkg}'s compiled core")
                 if not run([self.vpy, '-m', f'{pkg}.core.build']):
@@ -1145,7 +1151,7 @@ class Installer:
         self.need_privileges()
         bold(f"Updating the {t.name} install ({self.vpy})")
         had_core = []
-        for pkg in ('mom25d', 'gfdtd'):
+        for pkg in ('mom25d', 'pcbqs', 'gfdtd'):
             d = core_dir(self.vpy, pkg)
             if d and os.path.isfile(core_file(self.vpy, d)):
                 had_core.append(pkg)

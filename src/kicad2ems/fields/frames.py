@@ -337,7 +337,33 @@ def ffmpeg_exe():
         return None
 
 
-def render(pl, lo, hi, log, title, geometry=None, cbar='', size=(9, 5), dpi=110):
+def layout_patches(ax, geometry, layer, components=True):
+    """A horizontal layout projection in KiCad axes, independent of the sampled field z."""
+    from matplotlib.path import Path
+    from matplotlib.patches import PathPatch
+    from shapely.geometry import Polygon
+    from shapely.geometry.polygon import orient
+    def add(rings, face, edge, z, alpha=1.):
+        poly=orient(Polygon(rings[0],rings[1:]),sign=1.)
+        vertices=[];codes=[]
+        for ring in [poly.exterior,*poly.interiors]:
+            a=np.asarray(ring.coords)*[1,-1]
+            vertices.extend(a);codes.extend([Path.MOVETO]+[Path.LINETO]*(len(a)-2)+[Path.CLOSEPOLY])
+        ax.add_patch(PathPatch(Path(vertices,codes),facecolor=face,edgecolor=edge,lw=.8,zorder=z,alpha=alpha))
+    context=geometry.get('inactive_copper',geometry.get('copper',{}))
+    for rings in context.get(layer,[]):add(rings,'#a8adb3','#737b82',1)
+    for rings in geometry.get('active_copper',{}).get(layer,[]):add(rings,'#46c6d2','#007c88',1)
+    if components:
+        for c in geometry.get('components',[]):
+            if c['layer']!=layer:continue
+            p=c['polygon'];polys=[p['coordinates']] if p['type']=='Polygon' else p['coordinates']
+            for rings in polys:add(rings,'#ffd166' if c.get('active') else '#a7a9ad','#282828',4,.7)
+            if c.get('active'):
+                poly=Polygon(polys[0][0]);p=poly.centroid
+                ax.text(p.x,-p.y,c['ref'],ha='center',va='center',fontsize=8,zorder=5)
+
+
+def render(pl, lo, hi, log, title, geometry=None, cbar='', size=(9, 5), dpi=110, layout=None):
     """One view as an RGB image (h, w, 3) uint8, drawn with matplotlib (copper outlined)."""
     import matplotlib
     from matplotlib.figure import Figure
@@ -354,7 +380,13 @@ def render(pl, lo, hi, log, title, geometry=None, cbar='', size=(9, 5), dpi=110)
         cmap = base.with_extremes(bad=base(0.0), under=base(0.0))
         norm = LogNorm(lo, hi) if log else Normalize(lo, hi)
         img = np.ma.masked_less_equal(pl.img, 0) if log else pl.img
-    im = ax.pcolormesh(pl.u, pl.v, img.T, shading='nearest', cmap=cmap, norm=norm)
+    style=layout or {}
+    enabled=pl.axis==2 and style.get('enabled',bool((geometry or {}).get('active_copper')))
+    if enabled and geometry:
+        layer=style.get('layer') or max(geometry.get('cu_z',{}),key=geometry['cu_z'].get,default='')
+        layout_patches(ax,geometry,layer,style.get('components',True))
+    im = ax.pcolormesh(pl.u, pl.v, img.T, shading='nearest', cmap=cmap, norm=norm,
+                       alpha=style.get('opacity',.65) if enabled else 1.,zorder=2)
     for us, vs in outlines(geometry, pl.axis, pl.pos):
         ax.plot(us, vs, color='#7fd1ff' if not pl.signed else '#333333', lw=0.6 if pl.axis == 2 else 2.0, alpha=0.85)
     ax.set_xlim(pl.u[0], pl.u[-1])
@@ -391,7 +423,7 @@ def frame_views(src, axis, index, component, frames=None, n_phase=24, log=True):
 
 
 def save_animation(src, path, axis, index, component='mag', frames=None, fps=12, log=True, n_phase=24,
-                   lim=None, progress=None):
+                   lim=None, progress=None, layout=None):
     """Write an animation of a dump cut (see frame_views) to .gif (Pillow) or .mp4 (ffmpeg, H.264), one
     colour range for all frames (lim = (lo, hi), else from all the frames). progress(i, n) is called per
     frame; returns the path."""
@@ -405,7 +437,7 @@ def save_animation(src, path, axis, index, component='mag', frames=None, fps=12,
     where = f"{AXES[axis]} = {views[0][0].pos if axis != 1 else -views[0][0].pos:.3f} mm"
     imgs = []
     for k, (pl, lab) in enumerate(views):
-        imgs.append(render(pl, lo, hi, use_log, f"{what}, {where}, {lab} ({src.run} driven)", src.geometry, cbar))
+        imgs.append(render(pl, lo, hi, use_log, f"{what}, {where}, {lab} ({src.run} driven)", src.geometry, cbar, layout=layout))
         if progress:
             progress(k + 1, len(views))
     return write_frames(imgs, path, fps)

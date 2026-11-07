@@ -163,3 +163,24 @@ def test_visual_studio_without_vswhere(windows, tmp_path, monkeypatch):
     monkeypatch.setenv('ProgramFiles(x86)', str(tmp_path / 'none'))
     monkeypatch.setattr(windows.shutil, 'which', lambda name: None)
     assert windows.Installer(windows.parse([])).has_compiler() == 'Visual Studio'
+
+
+def test_qs_can_be_selected_without_mom_or_fdtd(inst,monkeypatch):
+    setup=inst.Installer.__new__(inst.Installer);setup.oems='none'
+    monkeypatch.setattr(inst,'ask',lambda prompt,default:prompt.startswith(('pcbqs (','build the compiled cores')))
+    monkeypatch.setattr(setup,'has_compiler',lambda:'g++')
+    setup.choose_parts()
+    assert setup.qs and setup.core and not setup.mom and not setup.gfdtd
+    assert setup.extras==['qs','core'] and 'pcbqs' in inst.STACK
+
+
+def test_qs_only_mesher_source_fallback(inst,monkeypatch):
+    setup=inst.Installer.__new__(inst.Installer);setup.mom=False;setup.qs=True;setup.vpy='python';setup.pyver='3.14'
+    calls=[]
+    def pip(*args,**kwargs):
+        calls.append((args,kwargs));return len(calls)>1
+    monkeypatch.setattr(setup,'pip',pip);monkeypatch.setattr(inst,'py_ok',lambda *_:False);monkeypatch.setattr(inst,'WINDOWS',False)
+    setup.ensure_triangle()
+    assert calls[0][0]==('triangle>=20230923',)
+    assert calls[1][0][1].endswith('@'+inst.TRIANGLE_COMMIT)
+    assert calls[1][1]['env']=={'CFLAGS':'-O2 -ffp-contract=off'}

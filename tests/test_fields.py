@@ -137,3 +137,18 @@ def test_dumps_of_both_solvers_are_listed(tmp_path):
         json.dump(dict(dumps=[dict(name=name, freqs=[2.4e9])]), open(d / 'dump_info.json', 'w', encoding='utf-8'))
     labels = [s.label for s in find_dumps(str(tmp_path))]
     assert len(labels) == 2 and labels[0].startswith('openEMS P1: ') and labels[1].startswith('mom25d P1: ')
+
+
+def test_export_layout_is_projected_above_copper_and_can_be_disabled():
+    mesh=dict(x=np.linspace(0,5,6),y=np.linspace(-5,0,6),z=np.array([3.]))
+    pl=F.plane(mesh,np.ones((6,6,1,3)),2,0)
+    ring=[[1,-1],[4,-1],[4,-4],[1,-4],[1,-1]]
+    g=dict(cu_z={'F':0},active_copper={'F':[[ring]]},inactive_copper={},copper={'F':[[ring]]},
+           outline=[],components=[dict(ref='U1',layer='F',polygon=dict(type='Polygon',coordinates=[ring]),active=True)])
+    plain=F.render(pl,.1,2,False,'field',g,size=(4,4),dpi=60,layout=dict(enabled=False))
+    over=F.render(pl,.1,2,False,'field',g,size=(4,4),dpi=60,layout=dict(enabled=True,layer='F',opacity=.5))
+    assert plain.shape==over.shape and np.any(plain!=over)
+    # The copper is at z=0 but projected under the scan at z=3, not omitted by proximity.
+    from matplotlib.figure import Figure
+    ax=Figure().subplots();F.layout_patches(ax,g,'F')
+    assert len(ax.patches)==2 and ax.texts[0].get_position()==(2.5,2.5)

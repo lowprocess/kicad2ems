@@ -8,9 +8,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+- **Independent PCB quasistatics package.** PDN/DC, MQS/PEEC and operational
+  circuits move to `pcbqs`, with privately maintained numerical copies and its
+  own optional native backend. MoM shared numerics/native sources and emsdev
+  are unchanged. Install `kicad2ems[qs]`; GUI pages use the new namespace.
+  Old QS/PDN commands are removed without compatibility shims. This release's
+  GUI, MoM and QS extras pin the coordinated source revisions.
+
 ### Added
+- **Operational switching circuits (companion pcbqs / GUI).** A new Circuit page and
+  `python -m pcbqs.power_circuit` support ngspice transient simulation, selectable switch/NMOS/VDMOS/vendor
+  subcircuits, per-part ESR/ESL/DCR and coil loss/SRF models, the wpthb input filter, and an explicitly
+  matched coupled receiver. A passive broadband copper-terminal equivalent feeds the circuit, with
+  reported fit errors; periodic terminal-current spectra drive actual MQS copper fields and time-domain
+  Viewer frames. Power targeting, cycle repeatability and adaptive-grid terminal power checks are recorded.
+  Receiver hardware and unmeasured parasitics remain assumptions; external-coil fields and full startup
+  field inference are not included. See mom25d `docs/power-circuit.md`.
+- **Quasi-static mesh preview and layout context.** The companion MQS command's `--preview`
+  exports the actual copper-layer mesh without filling or solving. The GUI offers Preview mesh,
+  a layer-selectable layout/mesh view, field overlays with opacity and component controls, and
+  display-only package silhouettes in 2D/3D. Simulated copper and selected parts are highlighted;
+  PNG/animation exports retain the overlay settings. Board/rail context can be handed to Power
+  Integrity for separately specified DC source/voltage/loads. A validation guide covers independent
+  static references and convergence where low-frequency full-wave runs are impractical.
 - **Local quasi-static workflow (2026-11-07, companion mom25d and GUI checkouts).**
-  `python -m mom25d.mqs` reads KiCad or board JSON, describes its options as JSON, discovers
+  `python -m pcbqs.mqs` reads KiCad or board JSON, describes its options as JSON, discovers
   buck input-loop candidates and supports explicit converter/net/capacitor selection. Operating
   spectrum, mesh, crop, backend and scan controls produce R/L, dipole/peak-H summaries, figures
   and standard plane/volume H dumps. The GUI Near field page runs the command and opens the

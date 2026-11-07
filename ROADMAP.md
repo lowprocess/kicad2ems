@@ -181,13 +181,17 @@ H-LU only if boards above ~30k unknowns remain after (1) and (4). After (1), the
 (2) and (3) now matter mainly for real boards past ~10k unknowns.
 
 
-## Power integrity and the near field (mom25d.pdn, mom25d.mqs)
+## Power integrity and the near field (pcbqs.pdn, pcbqs.mqs)
+
+These workflows now live in the independent pcbqs package. It owns private
+numerical copies and its QS native backend; there is no runtime dependency on
+mom25d. emsdev remains a hardware/build utility package.
 
 What exists, its validation and its limits are in the project's `NOTES-pi-nearfield.md`. In brief:
-- **`python -m mom25d.pdn`:** a rail's DC drop and its PDN impedance. It finds the rail tree through sense
+- **`python -m pcbqs.pdn`:** a rail's DC drop and its PDN impedance. It finds the rail tree through sense
   resistors and beads, treats pads as terminals and connects decaps through their copper, solves the plane pairs
   together, and drives the GUI's Power Integrity page.
-- **`mom25d.mqs`:** the quasi-static currents, loop R and L, dipole moment and near H of a converter's copper.
+- **`pcbqs.mqs`:** the quasi-static currents, loop R and L, dipole moment and near H of a converter's copper.
   It's validated against image theory and Wheeler's formula; the buck demo gives the hot loop as 0.39 / 3.7 /
   9.8 nH for the good / far / slot layouts.
 
@@ -214,11 +218,26 @@ Estimates of 2026-11-07, in order:
      ground-plane GPU fill from 3.06 to 1.55 s, still slower than eight-worker OpenMP at 0.75 s. See mom25d's `docs/static-backends.md` and
      `tools/benchmark_static_fill.py`. Compression and larger-machine scaling remain future work.
      Biot–Savart remains the reference for single points; FFT grid convergence needs checking for each scan.
-2. **Converter workflow: implemented locally 2026-11-07.** The general `python -m mom25d.mqs`
+2. **Converter workflow: implemented locally 2026-11-07.** The general `python -m pcbqs.mqs`
    command now reads KiCad/board JSON, exposes `--describe --json`, discovers converter candidates,
    accepts part/net/operating-point/scan overrides, and writes summaries, figures and standard H dumps.
-   The GUI Near field page runs it and opens the outputs in the Viewer. Details and assumptions are in
-   mom25d's `docs/quasistatic.md`; completed features are recorded in CHANGELOG.md.
+   The GUI Near field page runs it and opens the outputs in the Viewer. It now also previews
+   the actual layer meshes without filling/solving, projects fields over a selected copper layer,
+   highlights simulated nets/selected components, and shows approximate package bodies in 2D/3D.
+   Board/rail context can be transferred to Power Integrity; source, voltage and DC loads remain
+   explicit per-analysis settings. Details and assumptions are in
+   pcbqs's `docs/quasistatic.md`; completed features are recorded in CHANGELOG.md.
+   Validation should start from mesh/crop/quadrature convergence, independent DC/analytic static
+   cases, conservation/passivity checks and calibrated measurements. Whole-board time-domain
+   runs at the same low frequencies are not a prerequisite for each check; see mom25d's
+   `docs/quasistatic-validation.md`.
+   Operational circuits now have a separate `pcbqs.power_circuit` / GUI Circuit workflow:
+   ngspice switch/NMOS/VDMOS/vendor-subcircuit transients, component parasitics, the input filter,
+   coupled receiver tuning/matching and phase-targeted load-power sweeps. A positive-real matrix
+   Foster copper equivalent replaces a single-frequency R/L approximation; periodic fields use the
+   original copper-current response. Fit/holdout, settling and terminal power checks remain explicit.
+   Next accuracy work: calibrated device/coil/material models, package/gate geometry and coupling,
+   receiver/lead field geometry, common-mode/environment capacitance and full startup field inference.
    Follow-up: broaden the buck-input-loop discovery heuristic, resolve ambiguous bias/enable/supply nets
    with explicit part metadata, and add switch-node E/output-inductor models. Operating waveforms and
    part parasitics are assumptions, not automatically extracted device behavior.
@@ -253,5 +272,5 @@ After those:
   charge, displacement current and Maxwell capacitance in a homogeneous dielectric, using a scaled loop/tree
   PEEC solve. `dielectric='stack'` now adds planar dielectric interfaces and constant dielectric loss;
   `conductor_loss='slab'` adds finite-thickness sheet skin impedance and internal L (one/two-face approximation).
-  See mom25d's `docs/quasistatic.md`. Resolved proximity currents, via skin loss, part/copper mutuals,
+  See pcbqs's `docs/quasistatic.md`. Resolved proximity currents, via skin loss, part/copper mutuals,
   material dispersion and validation of a complete PEEC model up to about λ/10 remain.

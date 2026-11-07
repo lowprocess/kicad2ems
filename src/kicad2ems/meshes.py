@@ -15,7 +15,7 @@ preview's <solver> file; the GUI draws it over the other.
 import glob, os
 import numpy as np
 
-LABELS = {'openems': 'openEMS grid', 'gfdtd': 'gfdtd grid (openEMS settings)', 'mom25d': 'mom25d mesh (MoM)',
+LABELS = {'mqs': 'quasi-static copper mesh', 'openems': 'openEMS grid', 'gfdtd': 'gfdtd grid (openEMS settings)', 'mom25d': 'mom25d mesh (MoM)',
           'mom25d-run': 'mom25d mesh solved (quad cells)'}
 
 
