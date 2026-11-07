@@ -209,32 +209,36 @@ Estimates of 2026-11-07, in order:
      optional CuPy integrator. Bounded pair tiles, thread/device controls and a backend registration/entry-point
      interface are shared by magnetic and capacitance filling. The CM5 case now takes 22.4 s assembly/sweep
      (previously 66.8 s); the moment fill is 12.65 / 9.56 s on one / two OpenMP threads, with R/L unchanged to
-     roundoff. GPU execution awaits hardware validation. See mom25d's `docs/static-backends.md` and
+     roundoff. Real RX 7800 XT/CuPy hardware tests now pass, including all three close-quadrature levels
+     and MQS/PEEC/electrostatic solver regressions. Fused pair integration cuts the fine CM5
+     ground-plane GPU fill from 3.06 to 1.55 s, still slower than eight-worker OpenMP at 0.75 s. See mom25d's `docs/static-backends.md` and
      `tools/benchmark_static_fill.py`. Compression and larger-machine scaling remain future work.
      Biot–Savart remains the reference for single points; FFT grid convergence needs checking for each scan.
-2. **`python -m mom25d.mqs`, a command like the PDN tool's (about 1 day).**
-   - `--describe --json` for the GUI and KiCad import through kicad2ems.
-   - Outputs: standard kicad2ems field dumps (the GUI's Fields and 3D views read them), a summary (L, R, dipole
-     moment and peak H per harmonic) and figures.
-3. **Find the converter from the board (about 1 day).**
-   - The switch node is the net between a power inductor and an IC.
-   - Cin is the capacitors from VIN to ground near that IC.
-   - The source goes between the IC's VIN and PGND pins.
-   - The scan region is the parts' extent plus a margin.
-   - The operating point (fsw, Vin/Vout or duty, load current, edge time) and the scan heights are settings; any
-     part can be overridden.
-4. **Real boards (about 1 day):** CM5's buck (U702/L701) and the Jetson baseboard's eight bucks. Expect trouble
+2. **Converter workflow: implemented locally 2026-11-07.** The general `python -m mom25d.mqs`
+   command now reads KiCad/board JSON, exposes `--describe --json`, discovers converter candidates,
+   accepts part/net/operating-point/scan overrides, and writes summaries, figures and standard H dumps.
+   The GUI Near field page runs it and opens the outputs in the Viewer. Details and assumptions are in
+   mom25d's `docs/quasistatic.md`; completed features are recorded in CHANGELOG.md.
+   Follow-up: broaden the buck-input-loop discovery heuristic, resolve ambiguous bias/enable/supply nets
+   with explicit part metadata, and add switch-node E/output-inductor models. Operating waveforms and
+   part parasitics are assumptions, not automatically extracted device behavior.
+3. **Real boards (about 1 day):** CM5's buck (U702/L701) and the Jetson baseboard's eight bucks. Expect trouble
    with thermal pads, real copper detail and mesh size.
    - CM5 U702's input loop is now reproducibly benchmarked with `tools/benchmark_converter.py`: 9,736
-     triangles on six layers, 85 via segments, 67 s assembly/sweep, 0.35 s converged FFT scan and 1.10 GB
-     retained copper matrices. Two meshes differ by up to 3.8% in L; crop/hardware validation and Jetson remain.
+     triangles on six layers, 85 via segments, 22.4 s assembly/sweep in the upstream two-worker
+     OpenMP follow-up (previously 66.8 s), 0.35 s converged FFT scan and 1.10 GB
+     retained copper matrices. Two meshes differ by up to 3.8% in L; further convergence and hardware validation remain.
      Settings, source hash and results are in mom25d's `docs/benchmarks/cm5-u702.md`.
-5. **A Near-field page in the GUI (1–1.5 days)**, or a mode of the Power Integrity page.
-   - The converter, operating point and scan settings.
-   - Results: the loop's L, dipole moment and peak H per harmonic, the spectrum, and the H maps.
-   - A button to open the dumps in the Fields and 3D views. That needs the window to take a results folder that
-     isn't a kicad2ems run, a small change.
-6. **Whole-board scale (3–5 days, research-like; only if a board needs it).** A full ground plane is 50k+
+     Local CLI checks at 0.5/1 MHz: changing fine spacing 0.8 to 0.6 mm moves R/L by about 2%;
+     increasing the crop margin 3 to 4 mm moves them by about 0.5%. These are sensitivity checks,
+     not demonstrated mesh/crop convergence. Uniform 0.6 mm quality meshing expands the six-layer crop
+     from 9,736 to 33,442 triangles; prefer measured local refinement before whole-board compression.
+   - Jetson AGX Thor: discovery finds all eight regulator/inductor pairs. Cropped input-loop
+     smoke tests now complete for U11/U12/U13/U65/U69/U7/U75/U8, 3,720–10,045 triangles on
+     ten layers, at 500 kHz with a converged FFT plane. Input supplies were explicitly overridden
+     where bias/enable nets make inference ambiguous. These coarse, local-capacitor tests establish
+     execution, not mesh/crop convergence, device waveforms or physical EMC accuracy.
+4. **Whole-board scale (3–5 days, research-like; only if a board needs it).** A full ground plane is 50k+
    triangles, and a dense inductance matrix at that size is about 20 GB. It needs compression (mom25d's BLR or
    HODLR) and an iterative solve in the loop basis. Cropping to a region around the converter, as now, is enough
    for DC-DC loops.

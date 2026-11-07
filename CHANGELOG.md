@@ -9,6 +9,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Local quasi-static workflow (2026-11-07, companion mom25d and GUI checkouts).**
+  `python -m mom25d.mqs` reads KiCad or board JSON, describes its options as JSON, discovers
+  buck input-loop candidates and supports explicit converter/net/capacitor selection. Operating
+  spectrum, mesh, crop, backend and scan controls produce R/L, dipole/peak-H summaries, figures
+  and standard plane/volume H dumps. The GUI Near field page runs the command and opens the
+  results in the Viewer. This is an input-loop magnetic model with explicit waveform/parasitic
+  assumptions; it does not model switch-node E or inductor leakage.
+- **Local GPU static-fill optimization.** A fused CUDA/HIP pair kernel replaces CuPy operation
+  chains. On RX 7800 XT, fine CM5 In3.Cu filling drops from 3.06 to 1.55 s; eight-worker OpenMP
+  remains faster at 0.75 s. Device tests cover all three quadrature levels and scalar/magnetic
+  fills, plus MQS, PEEC and electrostatic solver regressions.
 - **Surface finish (`--finish`).** ENIG, ENEPIG, HASL (lead-free and SnPb), immersion silver and tin, or none / OSP;
   `auto` (the default) reads the KiCad stackup's copper finish. It covers the outer copper's outer face and sides where
   no mask is (left out, with a note, under `--mask`). Each finish layer loads the copper face as a line section; a
