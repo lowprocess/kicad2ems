@@ -194,13 +194,24 @@ What exists, its validation and its limits are in the project's `NOTES-pi-nearfi
 Estimates of 2026-11-07, in order:
 
 1. **Speed up the quasi-static solver (1–1.5 days, about 10× overall).**
-   - The inductance matrix (45–80 s for 4–6k triangles) does the exact analytic integral for every pair of
-     triangles. Doing it only for pairs within a few triangle sizes (a KD-tree), with a 3-point rule for the rest,
-     should make the fill 10–20× faster.
-   - Mom25d's vectorised `singular_moments` can take the same-layer blocks, with threads across blocks.
-   - Plane and volume fields (about 100 s for three planes and a volume at 9 harmonics) can go by FFT: the
-     magnetostatic spectral H of `farfield.near_fields`, without the image, since the plane is meshed. Biot–Savart
-     stays for single points.
+   - Implemented in the local mom25d update of 2026-11-07: reciprocal near/far integration, refined
+     close terms, sparse resistance/loop projection and copper-matrix reuse. A 2,474-triangle synthetic sheet
+     fills 3.1× faster than `6be2bc3`; the hybrid inductance differs from the refined analytic reference by
+     0.005% in matrix norm. The 10× overall target is not yet demonstrated on real boards.
+   - `MQS.h_grid` now uses conservative current deposition and open-boundary FFT convolution, with explicit
+     return copper and no image. A 974-triangle, three-frequency benchmark is 35× faster than direct fields,
+     with 0.38% peak-relative error. `tools/benchmark_mqs.py` reproduces the reference comparisons.
+   - Follow-up: resistance remains sparse, duplicate dense branch L storage is removed, PEEC preparation and
+     bounded LU factors are reused, and capacitance-only extraction skips magnetic matrices. The demo now
+     uses FFT with per-height/per-frequency convergence checks. Its good layout's planes and volume take
+     1.3 s; the 9-harmonic solve takes 18.5 s on this environment.
+   - Matrix-fill backends now include OpenMP, threaded NumPy fallback, serial reference and an experimental
+     optional CuPy integrator. Bounded pair tiles, thread/device controls and a backend registration/entry-point
+     interface are shared by magnetic and capacitance filling. The CM5 case now takes 22.4 s assembly/sweep
+     (previously 66.8 s); the moment fill is 12.65 / 9.56 s on one / two OpenMP threads, with R/L unchanged to
+     roundoff. GPU execution awaits hardware validation. See mom25d's `docs/static-backends.md` and
+     `tools/benchmark_static_fill.py`. Compression and larger-machine scaling remain future work.
+     Biot–Savart remains the reference for single points; FFT grid convergence needs checking for each scan.
 2. **`python -m mom25d.mqs`, a command like the PDN tool's (about 1 day).**
    - `--describe --json` for the GUI and KiCad import through kicad2ems.
    - Outputs: standard kicad2ems field dumps (the GUI's Fields and 3D views read them), a summary (L, R, dipole
@@ -214,6 +225,10 @@ Estimates of 2026-11-07, in order:
      part can be overridden.
 4. **Real boards (about 1 day):** CM5's buck (U702/L701) and the Jetson baseboard's eight bucks. Expect trouble
    with thermal pads, real copper detail and mesh size.
+   - CM5 U702's input loop is now reproducibly benchmarked with `tools/benchmark_converter.py`: 9,736
+     triangles on six layers, 85 via segments, 67 s assembly/sweep, 0.35 s converged FFT scan and 1.10 GB
+     retained copper matrices. Two meshes differ by up to 3.8% in L; crop/hardware validation and Jetson remain.
+     Settings, source hash and results are in mom25d's `docs/benchmarks/cm5-u702.md`.
 5. **A Near-field page in the GUI (1–1.5 days)**, or a mode of the Power Integrity page.
    - The converter, operating point and scan settings.
    - Results: the loop's L, dipole moment and peak H per harmonic, the spectrum, and the H maps.
@@ -228,5 +243,11 @@ After those:
 - `kicad2ems pdn` from a config table, with several rails per run and the DC maps as a Viewer overlay.
 - Load currents from part fields.
 - Decap and via mounting inductance from the quasi-static solver, replacing the formula.
-- The switch node's E field from the capacitive kernel.
-- Capacitance added to the quasi-static solver, for a full partial-element (PEEC) model up to about λ/10.
+- The switch node's E field from the capacitive kernel: `MQS.e_field` now evaluates Coulomb E from surface
+  charges, including layered dielectric images; inductive E and converter/GUI integration remain.
+- Capacitance added to the quasi-static solver: optional `MQS(capacitance=True, er=...)` now supplies surface
+  charge, displacement current and Maxwell capacitance in a homogeneous dielectric, using a scaled loop/tree
+  PEEC solve. `dielectric='stack'` now adds planar dielectric interfaces and constant dielectric loss;
+  `conductor_loss='slab'` adds finite-thickness sheet skin impedance and internal L (one/two-face approximation).
+  See mom25d's `docs/quasistatic.md`. Resolved proximity currents, via skin loss, part/copper mutuals,
+  material dispersion and validation of a complete PEEC model up to about λ/10 remain.
