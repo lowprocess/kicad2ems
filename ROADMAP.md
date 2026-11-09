@@ -183,6 +183,9 @@ H-LU only if boards above ~30k unknowns remain after (1) and (4). After (1), the
 
 ## Power integrity and the near field (pcbqs.pdn, pcbqs.mqs)
 
+The focused, current plan for these tools and the switching-circuit workflow is pcbqs's
+`ROADMAP.md`, with a review of their GUI integration in pcbqs's `docs/power-tools-review.md`.
+
 These workflows now live in the independent pcbqs package. It owns private
 numerical copies and its QS native backend; there is no runtime dependency on
 mom25d. emsdev remains a hardware/build utility package.
