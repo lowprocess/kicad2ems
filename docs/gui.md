@@ -10,28 +10,42 @@ kicad2ems-gui [config.toml]   # or: python -m kicad2ems_gui
 The GUI edits a run's settings and starts the command-line tool as a separate process: closing the window never
 loses a run, and the GUI itself doesn't need openEMS.
 
-![The window: the settings on the left, the Results page with a hairpin filter's S-parameters from three solvers](img/readme/gui_sparams.png)
+![The window: the questions on the left, a hairpin filter's board with its S-parameters from three solvers in the drawer under it, the settings on the right](img/readme/gui_sparams.png)
 
 ## The window
 
+One layout, in three columns: what is asked on the left, the board in the middle with the results that are not
+maps in a drawer under it, the settings of the question selected on the right.
+
 - **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, the run's estimate, the results folder, the report,
-  *Filter* (the wand: the [Filter Synthesis](#filter) page), and *Results of*: this board's preview or one of its
-  runs ([below](#run-folders)). The estimate (after a preview) is the time and memory of the full-wave solvers
-  ticked, or of the one *auto* would pick (`~4 min · 1.3 GB`); grey once the settings change, red when it won't
-  fit in the memory available. It opens the Solvers window.
+  *Filter* (the wand: [Filter Synthesis](#filter), a window of its own), and *Results of*: this board's preview
+  or one of its runs ([below](#run-folders)). The estimate (after a preview) is the time and memory of the
+  full-wave solvers ticked, or of the one *auto* would pick (`~4 min · 1.3 GB`); grey once the settings change,
+  red when it won't fit in the memory available. It opens the Solvers window. **Run says what it will do**
+  (*Run 2*: its tooltip names them in order) or, while something is missing, what that is (*Choose the board*):
+  clicking it then goes to where it is set ([Still needed](#needed)).
 - **Status bar**: the memory in use, the GPU's (through `nvidia-smi` or `rocm-smi`), and a running run's own;
   amber above 80 %, red above 95 %.
-- **Study** (left): the *Board*, then the **Questions** asked of it ([below](#study)), then the settings of the
-  question selected. For S-parameters these are collapsible sections: *Frequency*, *Solvers* (the driven ports),
-  one per solver (*FDTD (openEMS, gfdtd)*: the mesh, run and field-dump settings both share; *gfdtd*; *mom25d*;
-  ...), and *Output*. A solver's section is greyed while that solver isn't chosen. Each header counts its
-  settings that are set (`Frequency (3 set)`); empty fields use the default, shown as a hint.
-- **Pages** (right): **Viewer**, **Run**, **Results** and **Filter Synthesis**, tabbed. Drag a tab out to see two
-  side by side, or float it; the *View* menu shows a closed page again, and *View > Reset layout* puts them all
-  back. A page comes to the front when it has something new: the Run page when a run starts, the Viewer when a
-  preview ends, the Results page when a run ends.
+- **Left: the board and the questions.** The *Board* (its file and extra ports; the rest under *More about the
+  board*), then the **Questions** asked of it ([below](#study)).
+- **Middle: the board**, in the [Viewer](#viewer), always there. While *Circuit* is asked its schematic is a tab
+  beside it. Under it the **drawer**: the [Results](#plots) page and the [Run](#the-run-page) page as tabs. It
+  folds to its tab bar (the arrow at its right, or *View*), and a page comes to the front when it has something
+  new: Run when a run starts, Results when one ends.
+- **Right: the settings of the question selected.** For S-parameters, the few a run is set up with: the frequency
+  range and points, and the main cell size of each solver chosen. The rest are under **More settings**: the
+  sections *Frequency*, *Solvers* (the driven ports), one per solver (*FDTD (openEMS, gfdtd)*: the mesh, run and
+  field-dump settings both share; *gfdtd*; *mom25d*; ...) and *Output*, each counting its settings that are set,
+  a solver's greyed while it isn't chosen. *Find a setting* at its top shows only those whose name, key or
+  section holds what you type. Empty fields use the default, shown as a hint.
+- <a id="needed"></a>**Still needed**, under the settings: what a run of the selected question lacks, a line each
+  (*the board has no port*, *name the rail*, *Q1 has no pad on ground: name the part its current returns
+  through*); a click goes to where it is set. Kicad2ems checks its own run (the board, its ports, the band); an
+  analysis says its own. *Run > Run the selected question alone* runs one whatever the others still need.
 
-The window remembers its size, its docks, pages and splitters, and the Results page's plots between sessions.
+The columns and the drawer fold from *View* (Ctrl+1, 2, 3) and stay as they were left; *View > Reset layout*
+shows them all. Nothing floats or docks. The window remembers its size, what is folded, its splitters and the
+Results page's plots between sessions.
 
 <a id="run-folders"></a>
 **Where results go.** Each run gets a folder of its own under the output folder, named after the board and when it
@@ -90,7 +104,7 @@ circuit and thermal; `kicad2ems[fem]`: Elmer for a rail's drop and the temperatu
 capacitance), found through kicad2ems's [registry](api.md#study); the window knows none by name. A question
 nobody installed answers is greyed, and its tooltip says how to install an engine.
 
-Selecting a row shows its engines' settings under the list, each a panel made from the plugin's options (two
+Selecting a row shows its engines' settings in the right column, each a panel made from the plugin's options (two
 engines: each under its name). **Run** makes the runs the questions take, in order: the solvers', then each
 analysis (the temperature after the circuit whose losses it takes); an engine that answers two questions
 answers them in one run. What a run leaves is shown where every result is: its maps in the Viewer (a rail's
@@ -257,7 +271,7 @@ section has the same controls.
 ## The Filter Synthesis page
 
 Designs a microstrip filter with [dfsynth](https://github.com/lowprocess/dfsynth) and writes its board and kicad2ems
-config (*Filter* in the toolbar, or *File > New filter*). dfsynth is its own package (the `filter` extra, or the
+config (*Filter* in the toolbar, or *File > New filter*: a window of its own, not about the open board). dfsynth is its own package (the `filter` extra, or the
 installer); the page builds its form from `dfsynth --describe --json` and runs dfsynth as a process, so a dfsynth
 option it has no field for appears under *More options*.
 

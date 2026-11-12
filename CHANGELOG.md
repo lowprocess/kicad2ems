@@ -9,6 +9,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The window in one fixed layout, with the few settings first and what a run still needs (kicad2ems-gui; API
+  2.9).** Steps 3 to 5 of its redesign (`kicad2ems-gui/docs/redesign.md`), as the user chose them from a
+  prototype. *Layout*: the board and the questions on the left, the board itself always in the middle (the
+  Viewer; the circuit's schematic a tab beside it while Circuit is asked) with the Results and Run pages in a
+  drawer under it, the selected question's settings on the right. The columns and the drawer fold from View and
+  stay folded; nothing docks or floats, and a dock layout an older window saved is not read; Filter Synthesis
+  is a window of its own. *Settings by level*: an option has a `level`, and a solver names the options a run is
+  set up with (`basic`): the frequency range and points and each chosen solver's main cell size are in view,
+  the rest under "More settings" in their sections, with a box that finds a setting by a word of its name, key
+  or section; the board's file and extra ports first, the rest under "More about the board". *Still needed*:
+  under the settings, what a run of the selected question lacks, each line leading to where it is set, and the
+  Run button says what it will run ("Run 2") or the first thing missing ("Choose the board") and goes there
+  instead of starting. `rf_needs(values)` is kicad2ems's own check (no board, a KiCad board without a port, a
+  band the wrong way round: the footprints are read, no model made); an analysis says its own with
+  `missing(values, board, results)`, by default what its command raises, and `uses` names the analyses whose
+  result it can start from, so that what the circuit will give the temperature in the same run is not missing.
+  pcbqs's rail tool says a load with no pad on ground there (below).
 - **mom25d: a plane a via runs through as a perfect conductor (`--mom-planes holes`, experimental).** A plane
   with an antipad had to be meshed, and was most of the unknowns of a via transition. `LayerStack(pec=)` puts PEC
   planes inside the stack (the network shorted there: the copper above and below in one model, decoupled), and

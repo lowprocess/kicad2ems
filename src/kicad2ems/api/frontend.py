@@ -52,7 +52,7 @@ NAMES = dict(
     mark_run='.study:mark', run_mark='.study:marked',
     Study='.study:Study', read_study='.study:read_config', write_study='.study:write_config',
     study_plan='.study:plan', engine_named='.study:engine_named', latest_results='.study:latest_results',
-    default_fields='.study:default_fields', compare_engines='.study:compare',
+    default_fields='.study:default_fields', compare_engines='.study:compare', rf_needs='.study:rf_needs',
     run_dir='.runs:run_dir', preview_dir='.runs:preview_dir', tool_dir='.runs:tool_dir',
     tool_preview_dir='.runs:tool_preview_dir', board_name='.runs:board_name',
     registry='.solvers:registry', get_solver='.solvers:get', resolve_lines='.solvers:resolve_lines',

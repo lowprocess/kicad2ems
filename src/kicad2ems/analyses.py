@@ -58,6 +58,12 @@ and, since 2.6 (kicad2ems.study: questions and engines),
                           run: (); then it is one question of its own name
   engine                  the program's name as a list shows it beside a question ('pcbqs', 'Elmer'); '': its label
   questions               study.Question objects of its own, for what kicad2ems has no question for
+and, since 2.9,
+  missing(values, board, results=None)
+                          what a run still needs, [dict(text, key)]: the default is what command() raises
+  uses                    the analyses whose latest result it can start from, when there is one (the temperature
+                          from a circuit's losses): not required, as `needs` are
+  an option's 'level'     'basic' in an options() row: one of the few a run is set up with (Option.level)
   fields                  the bool option that makes it write field dumps too ('fields'); '': none
   for_questions(values, asked)
                           its settings for a run that is asked only some of its questions (the rail's drop without
@@ -104,6 +110,7 @@ class Analysis:
     engine = ''
     questions = ()
     fields = ''
+    uses = ()
 
     def for_questions(self, values, asked):
         """The settings for a run asked only the questions `asked` of those it provides."""
@@ -129,6 +136,23 @@ class Analysis:
     def command(self, values, board, out, preview=False, results=None):
         """[program, argument ...] that runs it into folder `out`; ValueError: what is missing."""
         raise NotImplementedError(f"{self.name}: command")
+
+    def missing(self, values, board, results=None):
+        """What a run of these settings still needs, before it is started: [dict(text, key)], key the option it is
+        set by (None: not one option). A front end lists them and does not start the run (2.9). The default is
+        what command() raises; an analysis that can tell more from the board (a load with no pad on ground) adds
+        it here, cheaply: it is asked on every change. results: as command's, and None for an analysis that is
+        asked with this one and has no result yet: what one of `uses` will give is not missing."""
+        results = dict(results or {})
+        to_come = [k for k in self.uses if k in results and results[k] is None]
+        try:
+            self.command(values, board, os.path.join(os.sep, 'nowhere'),
+                         results={k: v for k, v in results.items() if v is not None})
+        except ValueError as e:
+            return [] if to_come else [dict(text=str(e), key=None)]
+        except Exception:                                    # noqa: BLE001 (not a thing to ask of the user)
+            return []
+        return []
 
     def status(self, line):
         """The progress a line of its output states, or None."""

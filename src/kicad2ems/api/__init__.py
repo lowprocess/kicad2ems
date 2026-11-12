@@ -17,7 +17,7 @@ plugin that imports plot_antenna does not import matplotlib until it draws.
 """
 import importlib
 
-API_VERSION = (2, 8)
+API_VERSION = (2, 9)
 UNVERSIONED = (1, 0)                # what a plugin that declares no `api` is taken to be
 
 

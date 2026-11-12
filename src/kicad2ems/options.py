@@ -26,6 +26,8 @@ class Option:
     group: str = None           # command-line and GUI group
     path: bool = False          # a path: relative to the config file it is read from
     cli: dict = None            # argparse extras: flags, dest, metavar, action
+    level: str = None           # 'basic': one of the few a run is set up with (a window shows those first, the
+                                # rest under "More settings"); None or 'more': the rest
 
     @property
     def short(self):

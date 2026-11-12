@@ -370,3 +370,50 @@ def test_two_engines_answers_side_by_side(plugins, tmp_path):
     assert study.default_fields('openems', 1e-5, 1e-2, sweep='log') == dict(dump=['E@F.Cu@0.000316'])
     assert study.default_fields('mom25d', 1.0, 6.0) == dict(mom_dump=[3.5])           # its current maps: the frequency
     assert study.default_fields('qucs', 1, 2) == {} and study.default_fields('nobody', 1, 2) == {}
+
+
+def test_what_a_run_still_needs_and_what_is_shown_first(plugins, tmp_path, demo_files):
+    """API 2.9. rf_needs: what an S-parameter run of a form's values lacks, with the setting it is set by (cheap:
+    the board's footprints, no model). An analysis's missing(): what its command raises, unless what it uses is
+    to come in the same run. An option's level: kicad2ems's few, and those a solver names in `basic`."""
+    from kicad2ems.study import rf_needs
+    from kicad2ems.config import all_options, CORE
+    from kicad2ems.analyses import Analysis
+    assert rf_needs({}) == [dict(text='choose the board', key='board')]
+    assert rf_needs(dict(board=str(tmp_path / 'no.kicad_pcb'))) == [dict(text='the board is not there: no.kicad_pcb', key='board')]
+    board = demo_files[0] + '.kicad_pcb'
+    assert rf_needs(dict(board=board, fmin='1', fmax='8')) == []                 # (its ports: from its pos file)
+    assert rf_needs(dict(board=board, pos=demo_files[0] + '-top.pos')) == []
+    assert [m['key'] for m in rf_needs(dict(board=board, fmin='8', fmax='2'))] == ['fmax']
+    assert [m['key'] for m in rf_needs(dict(board=board, fmin='x'))] == ['fmin']
+    bare = tmp_path / 'bare.kicad_pcb'
+    bare.write_text('(kicad_pcb (version 20240108) (generator "pcbnew") (layers (0 "F.Cu" signal) (31 "B.Cu" signal)))')
+    got = rf_needs(dict(board=str(bare)))
+    assert [m['key'] for m in got] == ['ports'] and got[0]['text'].startswith('the board has no port')
+    assert rf_needs(dict(board=str(bare), ports=['P1@1,2'])) == [] and rf_needs(dict(board=str(bare), pos='b.pos')) == []
+
+    class Rail(Analysis):
+        name = 'rail'
+
+        def command(self, values, board, out, preview=False, results=None):
+            if not values.get('rail'):
+                raise ValueError('name the rail')
+            return ['x']
+
+    class Heat(Analysis):
+        name, uses = 'heat', ('circuit',)
+
+        def command(self, values, board, out, preview=False, results=None):
+            if not values.get('loss') and not (results or {}).get('circuit'):
+                raise ValueError('give the losses, or run the circuit first')
+            return ['x']
+    assert Rail().missing({}, None) == [dict(text='name the rail', key=None)] and Rail().missing(dict(rail='3V3'), None) == []
+    assert Heat().missing({}, None)[0]['text'].startswith('give the losses')
+    assert Heat().missing({}, None, dict(circuit=None)) == []                    # asked with it: to come
+    assert Heat().missing({}, None, dict(circuit='out/c')) == [] and Rail().missing({}, None, dict(circuit=None)) != []
+    from kicad2ems.solvers import registry
+    basic = {o.key for _, o in all_options() if o.level == 'basic'}
+    assert {o.key for o in CORE if o.level == 'basic'} == {'board', 'ports', 'fmin', 'fmax', 'points'}
+    for sv in registry().values():                              # a solver's own: those it names
+        assert set(sv.basic) & {o.key for o in sv.options} <= basic
+    assert 'sweep' not in basic and 'out' not in basic

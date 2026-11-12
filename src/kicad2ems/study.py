@@ -620,3 +620,42 @@ def main(argv=None, prog='kicad2ems study'):
         print('\n'.join(describe(steps)))
         return 0
     return run(a.config, only=a.only, preview=a.preview, out=a.out)
+
+
+def rf_needs(values):
+    """What an S-parameter run of these settings still needs before it can start: [dict(text, key)], key the
+    setting it is set by. Cheap (the board file's footprints are read, no model is made): a front end asks on
+    every change, lists the answers and does not start the run."""
+    import os
+    out = []
+    board = str(values.get('board') or '').strip()
+    if not board:
+        return [dict(text='choose the board', key='board')]
+    if not os.path.exists(board):
+        return [dict(text=f"the board is not there: {os.path.basename(board)}", key='board')]
+    if board.lower().endswith('.kicad_pcb') and not any(values.get(k) for k in ('ports', 'region', 'pos')):
+        try:
+            from .importers.kicad import KiCadBoard
+            if not _ports_of(board, os.path.getmtime(board)):
+                out.append(dict(text="the board has no port: a footprint with P1, P2 ... on its Fab layer at a "
+                                     "trace's end, or Extra ports", key='ports'))
+        except Exception:                                    # noqa: BLE001 (the run will say what is wrong with it)
+            pass
+    try:
+        lo, hi = float(values.get('fmin') or 0), float(values.get('fmax') or 0)
+        if lo and hi and hi <= lo:
+            out.append(dict(text='f max is not above f min', key='fmax'))
+    except (TypeError, ValueError):
+        out.append(dict(text='the frequencies are not numbers', key='fmin'))
+    return out
+
+
+_PORTS = {}
+
+
+def _ports_of(board, stamp):
+    """How many port footprints a KiCad board file has (kept until the file changes)."""
+    if _PORTS.get(board, (None,))[0] != stamp:
+        from .importers.kicad import KiCadBoard
+        _PORTS[board] = (stamp, len(KiCadBoard(board).port_footprints()))
+    return _PORTS[board][1]

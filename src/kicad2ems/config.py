@@ -168,7 +168,7 @@ CORE = [
            cli=dict(metavar='KIND[:SLL]')),
     Option('board', None, ".kicad_pcb, .gbrjob (Gerber job file; ports from --pos), the <name>_board.json of an "
            "earlier run, or a .toml config that names one", path=True, gui='Board (.kicad_pcb)', group='board',
-           cli=dict(flags=['board'], nargs='?')),
+           cli=dict(flags=['board'], nargs='?'), level='basic'),
     Option('pos', None, "pick-and-place file listing the port components", path=True, gui='Pick-and-place file',
            group='board'),
     Option('nets', None, "comma-separated nets to include, or auto (the nets under the ports plus the ground nets; "
@@ -178,7 +178,7 @@ CORE = [
            gui='Region (x0,y0,x1,y1 or a drawing layer)', group='board'),
     Option('ports', [], "an extra port: P3=J1.1 (on pad 1 of J1) or P3@x,y[,layer[,rotation]] (KiCad mm); "
            "repeatable", list, conv=items, gui='Extra ports (P3=J1.1, P4@x,y ...)', group='board',
-           cli=dict(flags=['--port'], dest='ports', action='append', metavar='SPEC')),
+           cli=dict(flags=['--port'], dest='ports', action='append', metavar='SPEC'), level='basic'),
     Option('cut_ports', False, "a port wherever a signal track crosses the region edge", bool,
            gui='Ports where tracks cross the region edge', group='board'),
     Option('ground', None, "copper layer to model as a solid plane over the whole outline", gui='Solid ground layer',
@@ -208,9 +208,9 @@ CORE = [
            "as those faces' own sheets, else (mom25d, the line model, zero-thickness sheets) weighted by their share of "
            "the loss", choices=('auto', 'none', 'osp', 'enig', 'enepig', 'hasl', 'hasl-snpb', 'imag', 'imsn'),
            gui='Surface finish', group='board'),
-    Option('fmin', 0.5, "GHz (default {default})", float, gui='f min (GHz)', group='band'),
-    Option('fmax', 10.0, "GHz (default {default})", float, gui='f max (GHz)', group='band'),
-    Option('points', 401, "frequency points (default {default})", int, gui='Frequency points', group='band'),
+    Option('fmin', 0.5, "GHz (default {default})", float, gui='f min (GHz)', group='band', level='basic'),
+    Option('fmax', 10.0, "GHz (default {default})", float, gui='f max (GHz)', group='band', level='basic'),
+    Option('points', 401, "frequency points (default {default})", int, gui='Frequency points', group='band', level='basic'),
     Option('sweep', 'linear', "how the points are spaced: linear (default) or log (evenly on a log scale: a band of "
            "several decades, as the low-frequency solver's; fmin above 0)", choices=('linear', 'log'),
            gui='Frequency spacing', group='band'),
@@ -269,6 +269,8 @@ def all_options(reg=None):
     for sv in reg.values():
         for o in sv.options:
             out.setdefault(o.key, (sv.name, o))
+            if o.key in getattr(sv, 'basic', ()) and getattr(o, 'level', None) is None:
+                o.level = 'basic'                            # (a plugin names them: Solver.basic, since API 2.9)
     return list(out.values())
 
 

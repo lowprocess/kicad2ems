@@ -113,6 +113,8 @@ class Solver:
     order = 50
     capabilities = {}
     options = []
+    basic = ()                  # the keys of its options a run is set up with (its main cell size): a window shows
+                                # them first, the rest under "More settings" (Option.level; API 2.9)
 
     def check(self, s=None):
         """(usable, one line): its version and origin, or what is missing and how to get it. s: the run's settings,

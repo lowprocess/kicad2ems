@@ -24,12 +24,18 @@ the window lists the questions, with the engine chosen on each row, and compares
 
 ## The window, from a clean slate
 
-kicad2ems-gui's `docs/redesign.md` (not started; about three weeks; it needs step 2 above). One fixed layout
-around the board: the questions on the left, the board in the middle, the selected question's few settings on the
-right, plots and reports in a drawer under it. The steps Board, Questions, Set up, Run, Results in the header with
-one primary action; settings split into the few that matter and the rest; a list of what is still missing instead
-of disabled buttons; a start page with the examples as a gallery; tools that are not about a board under Tools
-(the impedance calculator is there already).
+kicad2ems-gui's `docs/redesign.md`. The fixed layout, the few settings first and the list of what a run still
+needs are built (its steps 2 to 5). Left, about two weeks:
+
+1. **The study as a model without Qt** (its step 1): the widgets still hold the state, and `app.py` is 2,500
+   lines. Nothing visible changes; it is what makes the rest cheap, and what kicad2ems-ipc could drive.
+2. **The header**: the study's name as the file menu, the steps Board, Questions, Set up, Run, Results, one
+   primary action. The toolbar is still the old one, with Run's wording.
+3. **The drawer by kind**: Plots, Report, Tables and Log as its tabs (they are the Results and Run pages whole),
+   with the run they are of and the compare switch; an analysis's panel with its few settings first, as the
+   solvers' are (an options row may say `level`; pcbqs's tables do not yet).
+4. **A start page** with the examples as a gallery; **picking on the board** (an option declares what it is
+   picked from: a net, a part, a pad); the Circuit page's own file buttons go.
 
 ## The line model
 
@@ -100,11 +106,12 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    (a bridge's high-side switch: wpthb's Q1 and Q2 on VIN) has its return left out: the rail drop is then the
    power side alone (`ground_rise` 0: 49.7 mV for Q1 where the ground's share is missing) and only a note in
    the result says so, with the way round it (`--load Q1=0.67@Q4`, the part its current returns through). The
-   user met it on wpthb (2026-11-12) and asked for it to be kept in view. To do: find the return by itself (from
-   the load's other pads through the parts on those nets to one with a pad on ground: the low-side switch of
-   its half bridge, a sense resistor), say in the report's headline when a return was left out, and have the
-   window list it under "Still needed" for the Rail drop question ("Q1 has no pad on ground: name the part its
-   current returns through") instead of running without it.
+   user met it on wpthb (2026-11-12) and asked for it to be kept in view. Done since: the window lists it under
+   "Still needed" for Rail drop and does not start the run ("Q1 has no pad on ground: name the part its current
+   returns through, Q1=AMPS@Q3": pcbqs's `PowerIntegrity.missing` names the part where the board has one of the
+   load's kind on its switch node and on ground). Left: the command line still runs with the note alone, so
+   take the return found by itself there too (and a sense resistor in the path, which that search does not
+   follow), and say in the report's headline when a return was left out.
 2. **Cross-tool flows (U4, I3; 2.5 days).** A near-field converter as a circuit template (its parts, its loop's
    copper); a circuit's input-current spectrum as PDN loads; `pcbqs.mqs`'s assumed-pulse fields against the
    circuit's `--fields`.
