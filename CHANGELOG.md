@@ -237,6 +237,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (7 s of it the one solve at 1 GHz whose factor has to be solved on the host), the rest ports and tables.
 
 ### Fixed
+- **The example boards are made in a checkout again, and every CI workflow passes.** `examples/make_boards.py`
+  stopped at its first line in a checkout since the analyses' examples were added (a relative import that only
+  works installed), so `install.py` made no example board and its CI's demo run found none. The stack's CI
+  installs and tests pcbqs, which the window's tests use; a dock test and the OpenGL start test hold on Qt 6.12
+  and on a machine without a GL driver; the study tests write Windows paths as TOML literal strings.
 - **The documentation site builds again.** It had failed on every push since the morning of 2026-11-12 (82
   warnings, the build run with `-W`): the API modules re-export (`kicad2ems.api.analysis`: `Analysis`, `Question`,
   `Dump` ...), and viewcode, following those names to their source, filed whole modules' source pages under the

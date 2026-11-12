@@ -188,7 +188,7 @@ class Heat3D(Heat):
 
 def _config(tmp_path, text, board='b.kicad_pcb', name='c.toml'):
     p = tmp_path / name
-    p.write_text(f'board = "{board}"\n' + text, encoding='utf-8')
+    p.write_text(f"board = '{board}'\n" + text, encoding='utf-8')   # (a literal string: a Windows path's \\)
     return str(p)
 
 
@@ -285,7 +285,7 @@ def test_the_study_command_runs_them(plugins, tmp_path, capsys, demo_files):
     plugins(Drop, Circuit, Heat, Heat3D)
     base, _ = demo_files
     out = tmp_path / 'runs'
-    cfg = _config(tmp_path, f'''out = "{out}"
+    cfg = _config(tmp_path, f'''out = '{out}'
 solvers = ["mom25d"]
 fmin = 1.0
 fmax = 2.0
@@ -331,7 +331,7 @@ fail = true
     # only one question; its engine starts from the circuit's result of before; a setting missing: not started
     assert main(['study', cfg, '--only', 'thermal']) == 1 and len(list(out.iterdir())) == 6
     assert 'Circuit' not in capsys.readouterr().out.split('study:')[-1]
-    bare = _config(tmp_path, f'out = "{tmp_path / "bare"}"\n[study]\nrun = ["circuit", "thermal"]\n[study.thermal]\nengine = "fake"\n',
+    bare = _config(tmp_path, f"out = '{tmp_path / 'bare'}'\n" + '[study]\nrun = ["circuit", "thermal"]\n[study.thermal]\nengine = "fake"\n',
                    board=base + '.kicad_pcb', name='bare.toml')
     assert main(['study', bare]) == 1
     text = capsys.readouterr().out
@@ -370,7 +370,7 @@ def test_an_analysis_given_several_tables_is_a_run_for_each(plugins, tmp_path, c
     plugins(Rails, Circuit)
     assert analyses.registry()['pdn'].several == 'rail' and analyses.registry()['circuit'].several == ''
     out = tmp_path / 'runs'
-    cfg = _config(tmp_path, f'''out = "{out}"
+    cfg = _config(tmp_path, f'''out = '{out}'
 [study]
 run = ["dc"]
 
@@ -400,7 +400,7 @@ volts = 3.3
     assert [re.sub(r', \d+ s: .*$', '', t) for t in tail[1:]] == [
         '  Rail drop (fake: +5V)                    done', '  Rail drop (fake: +3V3)                   done']
     # one that fails, one that cannot start: said by name, the third still run
-    bad = _config(tmp_path, f'''out = "{tmp_path / "more"}"
+    bad = _config(tmp_path, f'''out = '{tmp_path / "more"}'
 [study]
 run = ["dc", "pdn"]
 [[analysis.pdn]]

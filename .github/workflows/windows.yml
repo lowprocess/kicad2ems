@@ -56,17 +56,21 @@ jobs:
                 ref: "${{ github.event.client_payload['kicad2ems-gui'] || 'main' }}" }
       - uses: actions/checkout@v4
         with: { repository: lowprocess/dfsynth, path: dfsynth, ref: "${{ github.event.client_payload.dfsynth || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/pcbqs, path: pcbqs, ref: "${{ github.event.client_payload.pcbqs || 'main' }}" }
 
       - uses: actions/setup-python@v5
         with: { python-version: '${{ matrix.python }}' }
       - name: Install the stack from the checkouts
         run: |
           python kicad2ems/tools/ci_deps.py emsdev 'kicad2ems[test,fast,dumps]' 'mom25d[test,core]' 'gfdtd[test,core]' \
-            'kicad2ems-fdtd[test,openems]' 'kicad2ems-gui[test]' 'dfsynth[test]' > requirements-ci.txt
+            'kicad2ems-fdtd[test,openems]' 'kicad2ems-gui[test]' 'dfsynth[test]' \
+            'pcbqs[test]' > requirements-ci.txt
           echo 'setuptools>=61' >> requirements-ci.txt                    # emsdev.build finds MSVC through it
           cat requirements-ci.txt
           python -m pip install -r requirements-ci.txt
-          python -m pip install --no-deps -e emsdev -e kicad2ems -e mom25d -e gfdtd -e kicad2ems-fdtd -e kicad2ems-gui -e dfsynth
+          python -m pip install --no-deps -e emsdev -e kicad2ems -e mom25d -e gfdtd -e kicad2ems-fdtd -e kicad2ems-gui -e dfsynth \
+            -e pcbqs
       - name: MinGW-w64 on the PATH (the runner's C:\mingw64)
         if: matrix.compiler == 'gcc'
         run: |

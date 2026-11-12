@@ -51,7 +51,8 @@ def own():
 def shipped():
     """{name: its entry} of the examples the installed analyses ship (Analysis.examples: dict(name, config, group,
     title, files)), each with source = its analysis; one that reuses a name is left out."""
-    from ..analyses import registry
+    from kicad2ems.analyses import registry                       # (absolute: a checkout runs examples/ as a
+                                                                    # package of its own, make_boards.py)
     out, taken = {}, set(own())
     for a in registry().values():
         try:
