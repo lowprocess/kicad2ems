@@ -340,3 +340,33 @@ fail = true
     assert main(['study', str(tmp_path / 'none.toml')]) == 2 and 'No such file' in capsys.readouterr().out
     assert main(['study', cfg, '--preview', '--only', 'sparams']) == 0     # the solvers' preview: no analysis has one
     assert any(d.name == name + '_preview' and study.marked(str(d))['preview'] for d in out.iterdir())
+
+
+def test_two_engines_answers_side_by_side(plugins, tmp_path):
+    """compare: the figures engines name alike in one row each, an engine's own where only it has them; the
+    spread between those that give one. default_fields: what an engine is asked when its dumps are wanted."""
+    class A(Heat):
+        def figures(self, folder):
+            return [dict(name='hottest', value=77.4, unit='C'), dict(name='D1', value=76.2, unit='C'),
+                    dict(name='film', value=10, unit='W/m2K'), dict(name='', value=1.0), dict(name='bad', value='x')]
+
+    class B(Heat3D):
+        def figures(self, folder):
+            if folder.endswith('broken'):
+                raise OSError('no file')
+            return [dict(name='D1', value=76.8, unit='C'), dict(name='hottest', value=79.1, unit='C'),
+                    dict(name='coolest', value=59.6, unit='C')]
+    plugins(Circuit, A, B)
+    c = study.compare(dict(thermal='x', elmer_thermal='y', rf='z'))
+    assert c['engines'] == ['thermal', 'elmer_thermal'] and c['labels'] == ['fake', 'Elmer']
+    assert [(r['name'], r['unit'], r['values']) for r in c['rows']] == [
+        ('hottest', 'C', [77.4, 79.1]), ('D1', 'C', [76.2, 76.8]), ('film', 'W/m2K', [10.0, None]), ('coolest', 'C', [None, 59.6])]
+    assert [None if r['spread'] is None else round(r['spread'], 2) for r in c['rows']] == [1.7, 0.6, None, None]
+    assert study.compare(dict(thermal='x', elmer_thermal='broken'))['rows'][0]['values'] == [77.4, None]
+    assert 'hottest' in study.questions()['thermal'].figures and study.questions()['sparams'].figures == ''
+    assert Analysis().figures('anywhere') == []
+    assert study.default_fields('circuit', 1.0, 3.0) == dict(fields=True) and study.default_fields('thermal', 1, 3) == {}
+    assert study.default_fields('openems', 1.0, 6.0, 'In1.Cu') == dict(dump=['E@In1.Cu@3.5'])
+    assert study.default_fields('openems', 1e-5, 1e-2, sweep='log') == dict(dump=['E@F.Cu@0.000316'])
+    assert study.default_fields('mom25d', 1.0, 6.0) == dict(mom_dump=[3.5])           # its current maps: the frequency
+    assert study.default_fields('qucs', 1, 2) == {} and study.default_fields('nobody', 1, 2) == {}

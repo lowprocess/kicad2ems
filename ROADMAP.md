@@ -10,18 +10,16 @@ window and mom25d; pcbqs's for the power tools). C, I and U numbers are findings
 
 The registry is there (API 2.6, `kicad2ems.study`, docs/api.md#study): a study asks questions, engines answer
 them, and a rail's drop, the temperature and capacitance each have two (pcbqs; Elmer or Palace through
-kicad2ems-fem). A config holds a study (`[study]`) and `kicad2ems study` runs it (API 2.7, docs/usage.md#study).
-The window still lists one row per analysis plugin and one for all of S-parameters. Left:
+kicad2ems-fem). A config holds a study (`[study]`) and `kicad2ems study` runs it (API 2.7, docs/usage.md#study);
+the window lists the questions, with the engine chosen on each row, and compares two engines' named figures
+(API 2.8, docs/gui.md#study). Left:
 
-1. **The window (1.5 days).** A grouped tree, one row per question, the engine a choice on the row ("auto", one, or
-   several to compare). The antenna is a row of its own; field dumps are an output ticked on the rows whose
-   engine can write them. The Solvers section goes into the S-parameters row; Results compares engines for any
-   question. The window reads and writes `[study]` and takes its run order from `study_plan`.
-2. **Two engines' answers side by side.** A rail's drop is the rail's own copper for Elmer and the rail with its
-   ground return for pcbqs (1.08 mV against 0.057 mV on the buck example, where like for like is 0.0579 against
-   0.0573): each engine's report is right, but nothing says which of their numbers are the same quantity. An
-   engine could give its answer's figures by name (`drop: C2, rail`, `hottest`, `part: D1`), per question, for
-   a table of engines against figures.
+1. **S-parameters compared per engine in the same way.** Two solvers' S-parameters are overlaid on the Results
+   page as before (and scored in the report); the *Engines compared* table is for the analyses' named figures.
+   A solver could give figures too (|S21| at the band's centre, a resonance, a line's delay).
+2. **Engines with different settings for one thing.** pcbqs's rail tool takes `rail`, Elmer's `net`: asked both,
+   the same rail is typed twice. A question could say what it needs (the net, the source, the loads) and each
+   engine take it from there.
 3. **The KiCad plugin** (kicad2ems-ipc) starts `kicad2ems study` for a board whose config has one.
 
 ## The window, from a clean slate

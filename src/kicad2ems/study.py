@@ -48,6 +48,7 @@ class Question:
                             # (a far field), 'report' (text, tables, curves and maps: Analysis.report / .curves)
     order: int = 50         # its place in its group
     extra: str = ''         # the kicad2ems extra that installs an engine for it ('' built in, or none)
+    figures: str = ''       # the figures its engines name alike (Analysis.figures), so their answers can be compared
 
 
 QUESTIONS = {q.name: q for q in (
@@ -56,16 +57,20 @@ QUESTIONS = {q.name: q for q in (
     Question('antenna', 'Antenna pattern', 'RF', "a driven port's far field: pattern, gain, efficiency",
              answer='antenna', order=20, extra='mom'),
     Question('lines', 'Trace impedances', 'RF', "every trace's impedance and delay, from the line model", order=30),
-    Question('dc', 'Rail drop', 'Power', "a rail's DC drop, its current density and its loss", order=10, extra='qs'),
+    Question('dc', 'Rail drop', 'Power', "a rail's DC drop, its current density and its loss", order=10, extra='qs',
+             figures="drop <load>: the rail's own copper from the source to the load's pads, mV (no ground return, "
+                     "no series part); loss: in that copper, mW"),
     Question('pdn', 'Rail impedance', 'Power', "the impedance a rail's loads see over frequency", shares='dc',
              order=20, extra='qs'),
     Question('nearfield', 'Converter near field', 'Power', "a converter's input loop and the magnetic field over it",
              order=30, extra='qs'),
     Question('circuit', 'Circuit', 'Power', "a switching circuit on the board's copper: waveforms, losses, stress",
              order=40, extra='qs'),
-    Question('capacitance', 'Capacitance', 'Power', "the capacitance between nets", order=50, extra='fem'),
+    Question('capacitance', 'Capacitance', 'Power', "the capacitance between nets", order=50, extra='fem',
+             figures="C <net>,<net>: between two nets, pF; C <net>: a net to all the others, pF"),
     Question('thermal', 'Temperature', 'Thermal', "the board's steady temperature from what its parts dissipate",
-             order=10, extra='qs'),
+             order=10, extra='qs', figures="hottest: the copper's highest temperature, C; <part>: the board at "
+                                           "the part's pads, C"),
 )}
 
 
@@ -109,7 +114,6 @@ def engines():
     'lines') and the analyses, in the order lists show them."""
     from .analyses import registry
     from .solvers import registry as solvers
-    from .fields.dumps import G_DUMP
     out = {}
     for name, sv in solvers().items():
         what = ('sparams',) + (('lines',) if sv.consumes == 'network' else ())
@@ -117,13 +121,35 @@ def engines():
             what += ('antenna',)
         dumps = getattr(sv, 'dumps', None)
         if dumps is None:
-            dumps = any(getattr(o, 'group', None) == G_DUMP for o in sv.options)
+            dumps = bool(dump_options(sv))
         out[name] = Engine(name, sv.label, 'solver', what, sv, fields='dump' if dumps else '',
                            previewed=bool(sv.previewed), order=sv.order)
     for name, a in registry().items():
         out[name] = Engine(name, getattr(a, 'engine', '') or a.label, 'analysis', provided(a), a,
                            fields=getattr(a, 'fields', '') or '', previewed=bool(a.previewed), order=a.order)
     return out
+
+
+def dump_options(sv):
+    """The options that ask a solver for field dumps: its `dump` (the FDTD solvers': FIELD@REGION@GHz specs) or
+    one named <its own>_dump (mom25d's mom_dump: the frequencies of its current maps)."""
+    from .fields.dumps import G_DUMP
+    return [o for o in sv.options if o.type is list and
+            ((o.key == 'dump' and getattr(o, 'group', None) == G_DUMP) or o.key.endswith('_dump'))]
+
+
+def default_fields(engine, fmin, fmax, layer='F.Cu', sweep='linear'):
+    """What an engine is asked for when its field dumps are wanted and none is set: {option key: value}. A
+    solver's dump: the E field on `layer` (the first port's, a front end knows) at the band's centre; a list of
+    frequencies (mom25d's current maps): that centre; an analysis: its `fields` switch. fmin, fmax in GHz."""
+    e = engines().get(engine)
+    if e is None or not e.fields:
+        return {}
+    if e.kind == 'analysis':
+        return {e.fields: True}
+    fc = (fmin * fmax) ** 0.5 if sweep == 'log' and fmin > 0 else 0.5 * (fmin + fmax)
+    fc = float(f"{fc:.3g}")
+    return {o.key: [f"E@{layer}@{fc:g}"] if o.key == 'dump' else [fc] for o in dump_options(e.plugin)}
 
 
 def engines_of(question):
@@ -166,6 +192,37 @@ def runs_for(asked):
             if q not in out[name]:
                 out[name].append(q)
     return {k: tuple(v) for k, v in out.items()}
+
+
+def compare(results):
+    """Engines' answers side by side: dict(engines=[names], labels=[as a list shows them], rows=[dict(name, unit,
+    values=[a number or None per engine], spread)]) from {engine: its result's folder}. A figure is a row when at
+    least one engine gives it, in the first engine's order and then the others' own; spread: the largest
+    difference between engines that give it (None with fewer than two)."""
+    es = engines()
+    names = [n for n in results if n in es and es[n].kind == 'analysis']
+    got, order, units = {}, [], {}
+    for n in names:
+        try:
+            figs = es[n].plugin.figures(results[n]) or []
+        except Exception:                                           # noqa: BLE001 (a plugin's own reader)
+            figs = []
+        got[n] = {}
+        for f in figs:
+            name = str(f.get('name', ''))
+            if not name or not isinstance(f.get('value'), (int, float)):
+                continue
+            got[n][name] = float(f['value'])
+            units.setdefault(name, str(f.get('unit', '')))
+            if name not in order:
+                order.append(name)
+    rows = []
+    for name in order:
+        vals = [got[n].get(name) for n in names]
+        have = [v for v in vals if v is not None]
+        rows.append(dict(name=name, unit=units[name], values=vals,
+                         spread=(max(have) - min(have)) if len(have) > 1 else None))
+    return dict(engines=names, labels=[es[n].label for n in names], rows=rows)
 
 
 def mark(folder, engine, asked=(), preview=False):
@@ -410,10 +467,9 @@ def describe(steps):
 
 
 def _dump_keys():
-    """The settings that ask a solver for field dumps: {key: its default}."""
+    """The settings that ask a solver for field dumps, with nothing asked: {key: its default}."""
     from .solvers import registry
-    from .fields.dumps import G_DUMP
-    return {o.key: o.default for sv in registry().values() for o in sv.options if getattr(o, 'group', None) == G_DUMP}
+    return {o.key: o.default for sv in registry().values() for o in dump_options(sv)}
 
 
 def _fresh(folder_at):

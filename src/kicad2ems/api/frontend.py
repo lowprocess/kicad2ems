@@ -19,7 +19,9 @@ results (the GUI, the KiCad plugin, dfsynth's --validate).
                       questions asked of it}), mark_run and run_mark (a run folder's mark: who made it) (2.6);
                       a config's study: Study, read_study, write_study (its [study] tables), study_plan (the runs
                       it takes, in order: [Step]), engine_named (an engine by what a config calls it),
-                      latest_results ({analysis: its newest result's folder}) (2.7)
+                      latest_results ({analysis: its newest result's folder}) (2.7); default_fields (what an
+                      engine is asked when its field dumps are wanted and none is set), compare_engines (two
+                      engines' named figures side by side: Analysis.figures) (2.8)
   runs                Run, EventTail, stop_runs, find_results, toml_value, write_toml; where a front end's runs go
                       (a folder each under the output folder): run_dir, preview_dir, tool_dir, tool_preview_dir,
                       board_name (2.7)
@@ -50,6 +52,7 @@ NAMES = dict(
     mark_run='.study:mark', run_mark='.study:marked',
     Study='.study:Study', read_study='.study:read_config', write_study='.study:write_config',
     study_plan='.study:plan', engine_named='.study:engine_named', latest_results='.study:latest_results',
+    default_fields='.study:default_fields', compare_engines='.study:compare',
     run_dir='.runs:run_dir', preview_dir='.runs:preview_dir', tool_dir='.runs:tool_dir',
     tool_preview_dir='.runs:tool_preview_dir', board_name='.runs:board_name',
     registry='.solvers:registry', get_solver='.solvers:get', resolve_lines='.solvers:resolve_lines',

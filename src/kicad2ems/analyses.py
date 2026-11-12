@@ -64,6 +64,10 @@ and, since 2.6 (kicad2ems.study: questions and engines),
                           its impedance): the values, changed where that matters
   owns(folder, preview)   whether the folder holds its result (its preview): by default, that its result file is
                           there. An engine whose file another engine also writes looks inside it
+and, since 2.8,
+  figures(folder)         the figures of its answer by name, [dict(name, value, unit)], for a table of engines
+                          against figures: two engines that answer one question give the same quantity the same
+                          name (the question says which: study.Question.figures), and may add their own
 
 The fields of a result (the maps a Viewer turns and cuts) need nothing here: an analysis writes them as field dumps
 (kicad2ems.api.solver: Dump, write_info, write_npz) under <out>/<name>/exc_<what>/ with its board as
@@ -144,6 +148,10 @@ class Analysis:
 
     def curves(self, folder):
         """What the result in `folder` holds, to plot: a list of curve sets."""
+        return []
+
+    def figures(self, folder):
+        """The figures of the answer in `folder`, by name: [dict(name, value, unit)], or []."""
         return []
 
     def suggest(self, folder):

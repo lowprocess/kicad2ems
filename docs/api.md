@@ -9,7 +9,7 @@ lists every module, class and function.
 
 | Interface | Provided by | Used by | Version |
 |---|---|---|---|
-| [`kicad2ems.api.solver`](#kicad2emsapisolver) | kicad2ems | kicad2ems-fdtd, mom25d, pcbqs | `kicad2ems.api.API_VERSION` (2, 7) |
+| [`kicad2ems.api.solver`](#kicad2emsapisolver) | kicad2ems | kicad2ems-fdtd, mom25d, pcbqs | `kicad2ems.api.API_VERSION` (2, 8) |
 | [`kicad2ems.api.analysis`](#kicad2emsapianalysis) | kicad2ems | pcbqs | the same |
 | [`kicad2ems.api.frontend`](#kicad2emsapifrontend) | kicad2ems | kicad2ems-gui, kicad2ems-ipc, dfsynth | the same |
 | [The `kicad2ems.solvers` entry point](#solver-plugins) | each solver package | kicad2ems | the plugin's `api` |
@@ -42,6 +42,7 @@ in it. A user takes a provider of the same major version and at least the minor 
   `for_questions`, `owns`; `study_tree`, `questions`, `engines`, `runs_for`, `mark_run`, `run_mark` in `api.frontend`.
   2.7 a config's study and its runs: `Study`, `read_study`, `write_study`, `study_plan`, `engine_named`,
   `latest_results`, and the run folders' names `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name`.
+  2.8 engines compared: an analysis's `figures(folder)`, a `Question`'s `figures`, `compare_engines`; `default_fields`.
   [CHANGELOG.md](https://github.com/lowprocess/kicad2ems/blob/main/CHANGELOG.md) has each release's.
 
 Both API modules load their names on first use: importing one costs nothing until a name is used.
@@ -172,6 +173,7 @@ and implements:
 | `examples()` | the examples it ships: `[dict(name, config, group, title, files)]` |
 | `for_questions(values, asked)` | its settings for a run asked only some of its questions (a rail's drop without its impedance) |
 | `owns(folder, preview=False)` | whether the folder holds its result: by default, that its result file is there. An engine whose file another also writes looks inside it |
+| `figures(folder)` | the figures of its answer by name, `[dict(name, value, unit)]`, for a table of engines against figures ([below](#study); 2.8) |
 
 Its maps need no method: an analysis writes them as field dumps under `<out>/<name>/exc_<what>/` with its board
 as `<out>/<name>_board.json`, and a viewer of a run's dumps shows them. A dump's entry in `dump_info.json` may give
@@ -227,6 +229,17 @@ that starts each itself puts it in `run_dir(base, board)` or `tool_dir(base, boa
 in `preview_dir`, `tool_preview_dir`), marks the folder, and gives an analysis the results it may start from
 (`latest_results(base, board)`: `{analysis: its newest result's folder}`).
 
+**Two engines' answers side by side (2.8).** An engine's report is its own, and two engines' headline numbers
+need not be the same quantity (a rail's drop with its ground return, or the rail's own copper). So an analysis
+gives the figures of its answer by name, `figures(folder)` → `[dict(name, value, unit)]`, and engines that answer
+one question name the same quantity alike; the question says which (`Question.figures`): `drop <load>` and `loss`
+for a rail's own copper, `hottest` and `<part>` for the temperature, `C <net>,<net>` for capacitance. An engine may
+add figures of its own (`drop with return <load>`). `compare_engines({engine: folder})` lays them side by side:
+`dict(engines, labels, rows=[dict(name, unit, values, spread)])`, a value `None` where an engine does not give the
+figure. `default_fields(engine, fmin, fmax, layer, sweep)` is what an engine is asked when its field dumps are
+wanted and none is set: `{option: value}` (an FDTD solver's `dump`: E on the layer at the band's centre; mom25d's
+`mom_dump`: that frequency; an analysis's `fields` switch).
+
 <a id="kicad2emsapifrontend"></a>
 ## `kicad2ems.api.frontend`
 
@@ -239,7 +252,7 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 | settings | `Settings`, `build_settings`, `read_toml`, `all_options`, `default_out`, `PATH_KEYS`, `sitecfg` (the module), `G_DUMP` |
 | solvers | `registry`, `get_solver`, `resolve_lines`, `AUTO`, `LINES` |
 | analyses | `analyses` (`{name: Analysis}`: the analysis plugins installed), `analysis_of(folder)`, `read_analyses(config)` (`(run, {name: {key: value}})` of a config's `[analysis]` tables) |
-| the study | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `runs_for(asked)`, `mark_run(folder, engine, asked, preview)`, `run_mark(folder)`; a config's: `Study`, `read_study`, `write_study`, `study_plan`, `engine_named`, `latest_results` (2.7) ([Questions and engines](#study)) |
+| the study | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `runs_for(asked)`, `mark_run(folder, engine, asked, preview)`, `run_mark(folder)`; a config's: `Study`, `read_study`, `write_study`, `study_plan`, `engine_named`, `latest_results` (2.7), `default_fields`, `compare_engines` (2.8) ([Questions and engines](#study)) |
 | runs | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml`; where a front end's runs go: `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name` (2.7) |
 | files kicad2ems writes | `read_summary`, `read_antenna`, `check_format`, `read_touchstone`, `port_names` |
 | results | `meshes`, `phased`, `frames` (modules), `find_dumps`, `write_frames`, `read_sphere`, `sphere_cuts`, `sphere_gain` |

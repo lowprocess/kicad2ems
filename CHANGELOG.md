@@ -9,6 +9,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The window asks questions (kicad2ems-gui).** The Study's list is the questions that can be asked of the
+  board, by group (RF, Power, Thermal), instead of one row per analysis plugin and one for all of S-parameters.
+  A row has a tick (it is asked), who answers it (click the cell: a menu of its engines with *auto* first;
+  several ticked all run and are compared), a Fields tick where an engine can write field dumps, and its state
+  per engine. The solvers are chosen on the S-parameters row (the Solvers section's tick boxes are gone, the
+  preview's estimates are in the menu); *Antenna pattern* is a row of its own, the run's antenna mode; *Trace
+  impedances* is the line model. Fields ticked with nothing set fills a default into the settings (an FDTD
+  solver: E on the first port's layer at the band's centre; mom25d: its currents there; a circuit: its field
+  maps); unticked, the run leaves the dumps out and the settings stay. A window without a config starts with
+  the solvers at *auto*, as the command line does. A config is read and saved with its `[study]` tables, and
+  one that only has `[analysis] run` opens as before.
+- **Two engines' answers side by side (API 2.8).** An analysis gives the figures of its answer by name
+  (`figures(folder)`), and engines that answer one question name the same quantity alike (`Question.figures`
+  says which): a rail's own copper drop per load, the hottest point and each part's temperature, the capacitance
+  between two nets. `compare_engines` lays them side by side, and the window's Results page adds them to the
+  report as a section and table, *Engines compared*, whenever another engine has answered the same question on
+  the board. pcbqs's rail tool, its thermal tool and kicad2ems-fem's four give theirs. On pcbqs's buck example:
+  hottest 77.4 °C (pcbqs) and 79.1 °C (Elmer), parts within 0.7 K; a rail's own copper 0.0579 and 0.0573 mV,
+  with pcbqs's drop including the ground return (1.08 mV) beside it as its own figure. `default_fields` is what
+  an engine is asked when its field dumps are wanted and none is set.
 - **A study in a config, and `kicad2ems study` (API 2.7).** A config's `[study]` tables say which questions are
   asked of the board and who answers each: `run = ["sparams", "dc", "thermal"]`, `[study.thermal] engine =
   ["pcbqs", "Elmer"]` (one engine, or several to compare; by name or as a list shows it), `fields = true` for an
