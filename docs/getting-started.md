@@ -29,7 +29,7 @@ It first asks where kicad2ems goes (`--target`):
 The checkout and user installs are editable, so a `git pull` updates them; the system install is a copy. After a
 pull, `./setup.sh --update` (`py install.py --update`) brings an install up to date without asking: kicad2ems and
 the stack's other packages as they were installed, the compiled cores whose sources changed, and the example
-boards. It leaves openEMS, qucsator and the GPU wheel alone. `--uninstall --target user` removes what that install
+boards. It leaves openEMS, qucsator, Elmer, Palace and the GPU wheel alone. `--uninstall --target user` removes what that install
 added (the commands, the PATH entry, the launcher entry, the link to openEMS, the venv if you say so).
 
 It then offers, each optional:
@@ -44,6 +44,19 @@ It then offers, each optional:
   the unpacked release (`--openems C:\opt\openEMS`); or none;
 - qucsator: on the PATH (on Windows also in Qucs-S's folder), a path you give (`--qucsator PATH`), your
   distribution's, or none. Its path goes into the environment's `kicad2ems-site.toml`;
+- kicad2ems-fem, the finite-element second opinions (experimental; asked for by default only when Elmer or Palace
+  is found), with
+  - Elmer: one found (`K2E_ELMER`, the PATH, `/usr/local`, `/opt/elmer`, `~/opt/elmer`, Windows' Program Files),
+    a folder you give (`--elmer PATH`), on Linux and macOS a build from source by `tools/build_elmer.sh` (serial
+    with OpenMP and UMFPACK, no GUI: a few minutes; `--elmer build`), or none;
+  - Palace: one found (`K2E_PALACE`, the PATH, an unpacked Palace image run in podman), an executable or image
+    you give (`--palace PATH`), on Linux and macOS a build with Spack by `tools/build_palace.sh` (`--palace spack`:
+    never the default, several hours and about 10 GB), or none. The build takes Palace's newest release and
+    builds it as Palace's own CI does: its own Spack packages, its patches to Spack's and Spack's packages at the
+    commit it names (`PALACE_TAG=v0.18.1` another release, `PALACE_TAG=main` the newest code);
+
+  where each is goes into `kicad2ems-site.toml` (`elmer`, `palace`, `palace_rootfs`), which kicad2ems-fem reads
+  after the environment's `K2E_*`;
 - a launcher entry (a Start-menu shortcut on Windows) and a desktop icon for the GUI, which run the environment's
   own `kicad2ems-gui`, so nothing needs activating.
 

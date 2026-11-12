@@ -18,6 +18,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **The installer offers the finite-element tools (kicad2ems-fem) with Elmer and Palace.** It was the one package
+  of the stack `install.py` never mentioned. Asked for by default only where Elmer or Palace is found. Elmer: one
+  found, a folder given (`--elmer PATH`), or built from source on Linux and macOS (`--elmer build`,
+  `tools/build_elmer.sh`: serial with OpenMP and UMFPACK, no GUI; two minutes on the development machine at -j8).
+  Palace: one found (an executable, or an unpacked image run in podman), one given (`--palace PATH`), or built
+  with Spack (`--palace spack`, `tools/build_palace.sh`: never the default, several hours): Palace's newest
+  release (0.19.0), from Palace's own Spack packages with its patches to Spack's, Spack's packages at the commit
+  Palace's CI names and its requirements (OpenMPI 5, OpenBLAS, MFEM with exceptions), since Spack's own package
+  list stops at 0.16.0. What was chosen goes into `kicad2ems-site.toml` (`elmer`, `palace`, `palace_rootfs`), which
+  kicad2ems-fem now reads after the `K2E_*` variables; `--update` brings kicad2ems-fem up to date with the rest.
 - **Several rails in one study (API 2.10).** A config's `[analysis.pdn]` was one rail, so a board's rails took
   as many configs. An analysis may now be given several tables, as an array (`[[analysis.pdn]]`), and
   `kicad2ems study` runs it once for each, into a folder of its own named by the run's tag (the rail), with

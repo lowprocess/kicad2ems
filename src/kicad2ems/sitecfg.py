@@ -7,6 +7,8 @@ recorded them. A setting given on the command line or in a config still comes fi
     qucsator = "/usr/bin/qucsator_rf"           # the line model's circuit solver
     openems_venv = "/opt/openems/venv"          # a venv with openEMS (kicad2ems-fdtd: openems/venv.py)
     openems_dir = "C:/openEMS"                  # Windows: the folder of openEMS's DLLs (kicad2ems-fdtd)
+    elmer = "/usr/local/bin"                    # kicad2ems-fem: the folder of ElmerSolver and ElmerGrid
+    palace = "~/opt/palace/bin/palace"          # kicad2ems-fem: Palace's launcher (or palace_rootfs: an image)
 
     sitecfg.get('qucsator') -> the path, or None
     sitecfg.set_user('qucsator', path)          # into the user's file (None / '': removed)

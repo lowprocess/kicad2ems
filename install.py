@@ -12,6 +12,9 @@ Linux, macOS and Windows; only the Python standard library (it runs before anyth
   python install.py --openems PATH     an openEMS installed elsewhere: another venv's python, or on Windows the
                                        unpacked openEMS folder (or: build, none)
   python install.py --qucsator PATH    the line model's circuit solver (or: none)
+  python install.py --elmer PATH       Elmer for kicad2ems-fem: the folder with ElmerSolver (or: build, none)
+  python install.py --palace PATH      Palace for kicad2ems-fem: its palace executable, or an unpacked Palace image
+                                       (or: spack, a build with Spack: hours; none)
   python install.py --python python3.12 --venv /path/to/venv   another Python, another venv (checkout target)
   python install.py --uninstall --target user                  remove what an install of that target added
   python install.py --update [--target user]   only kicad2ems and its stack in an existing install: asks
@@ -21,7 +24,8 @@ Asks about: the GUI, field dumps, the scikit-rf line model, mom25d and gfdtd (an
 the test tools, slangpy (the GPU through Vulkan, the default) and optionally a CuPy wheel for your GPU (detected:
 NVIDIA CUDA 12 / 13, AMD ROCm 7 on Linux), openEMS (one
 this Python has, one in another venv linked in, Windows' unpacked release, build one with tools/build_openems.sh
-on Linux, or none), qucsator, and a launcher entry and desktop icon for the GUI (a .desktop file on Linux, a
+on Linux, or none), qucsator, kicad2ems-fem with Elmer (one you have, or built from source) and Palace (one
+you have, or built with Spack; never by default), and a launcher entry and desktop icon for the GUI (a .desktop file on Linux, a
 Start-menu shortcut on Windows). Makes the example boards that are not in the repository
 (examples/make_boards.py), next to their configs. Run it again to change anything: an existing venv is kept and
 added to (or made anew if you say so)."""
@@ -32,7 +36,7 @@ TRIANGLE_COMMIT = '595b43eb6682992a0b1012b9671bf860c0e6ae56'    # triangle 20250
 # at -O2 where the target has FMA; clang on ARM always) breaks them, and the mesher then never finishes
 TRIANGLE_CFLAGS = '-O2 -ffp-contract=off'
 CUPY_WHEELS = ('cupy-rocm-7-0', 'cupy-cuda12x', 'cupy-cuda13x')
-STACK = ('emsdev', 'kicad2ems-gui', 'kicad2ems-fdtd', 'mom25d', 'pcbqs', 'gfdtd', 'dfsynth')
+STACK = ('emsdev', 'kicad2ems-gui', 'kicad2ems-fdtd', 'mom25d', 'pcbqs', 'gfdtd', 'dfsynth', 'kicad2ems-fem')
 REPO = os.path.dirname(os.path.abspath(__file__))
 WINDOWS = sys.platform == 'win32'
 LINUX = sys.platform.startswith('linux')
@@ -332,12 +336,14 @@ class Target:
         if name == 'checkout':
             self.venv = venv_arg or os.path.join(REPO, '.venv')
             self.oems_prefix = os.path.join(REPO, '.openems')
+            self.fem_prefix = os.path.join(REPO, '.fem')
             self.record = os.path.join(self.venv, 'kicad2ems-installed')
         elif name == 'user':
             self.venv = os.path.join(data, 'kicad2ems', 'venv')
             self.bin = os.path.join(data, 'kicad2ems', 'bin') if WINDOWS else \
                 os.path.join(os.path.expanduser('~'), '.local', 'bin')
             self.oems_prefix = os.path.join(data, 'kicad2ems', 'openems')
+            self.fem_prefix = os.path.join(data, 'kicad2ems', 'fem')
             self.record = os.path.join(data, 'kicad2ems', 'installed')
         elif name == 'system':
             root = os.path.join(os.environ.get('ProgramFiles', r'C:\Program Files'), 'kicad2ems') if WINDOWS else \
@@ -345,6 +351,7 @@ class Target:
             self.venv = os.path.join(root, 'venv')
             self.bin = os.path.join(root, 'bin') if WINDOWS else SYSROOT + '/usr/local/bin'
             self.oems_prefix = os.path.join(root, 'openems')
+            self.fem_prefix = os.path.join(root, 'fem')
             self.record = os.path.join(root, 'installed')
             self.editable = False
             if not WINDOWS:
@@ -353,6 +360,7 @@ class Target:
         elif name == 'python':
             self.venv, self.user = None, True
             self.oems_prefix = os.path.join(data, 'kicad2ems', 'openems')
+            self.fem_prefix = os.path.join(data, 'kicad2ems', 'fem')
             self.record = os.path.join(data, 'kicad2ems', 'installed-python')
         else:
             raise Abort(f"unknown --target {name}: checkout, user, system or python", 2)
@@ -510,9 +518,9 @@ class Installer:
     # ---- the steps ----
     def main(self):
         a = self.a
-        if a.update and (a.uninstall or a.openems or a.qucsator):
-            raise Abort("--update changes neither openEMS nor qucsator, and doesn't go with --uninstall: "
-                        "--target and --venv only", 2)
+        if a.update and (a.uninstall or a.openems or a.qucsator or a.elmer or a.palace):
+            raise Abort("--update changes neither openEMS, qucsator, Elmer nor Palace, and doesn't go with "
+                        "--uninstall: --target and --venv only", 2)
         self.t = self.pick_target()
         if a.update:
             return self.update()
@@ -525,9 +533,11 @@ class Installer:
         self.choose_parts()
         self.choose_gpu()
         self.choose_qucsator()
+        self.choose_fem()
         self.install()
         self.link_openems()
         self.build_openems()
+        self.build_fem()
         self.write_site()
         self.commands()
         self.launcher()
@@ -866,6 +876,145 @@ class Installer:
             note(f"{self.qucs} is not an executable: going on without qucsator")
             self.qucs = None
 
+    # ---- kicad2ems-fem: Elmer and Palace, programs of their own (neither a Python dependency) ------------------
+    @staticmethod
+    def elmer_dir(folder):
+        """The folder itself when ElmerSolver and ElmerGrid are in it (or in its bin), else None."""
+        for d in (folder, os.path.join(folder or '', 'bin')):
+            exe = '.exe' if WINDOWS else ''
+            if d and all(os.path.isfile(os.path.join(d, n + exe)) for n in ('ElmerSolver', 'ElmerGrid')):
+                return os.path.abspath(d)
+        return None
+
+    def find_elmer(self):
+        """An Elmer there is: K2E_ELMER, the PATH, a build of an earlier run, the usual places."""
+        cands = [os.environ.get('K2E_ELMER'), os.path.dirname(shutil.which('ElmerSolver') or ''),
+                 os.path.join(self.t.fem_prefix, 'elmer')]
+        if WINDOWS:
+            for base in filter(None, (os.environ.get('ProgramFiles'), os.environ.get('ProgramFiles(x86)'))):
+                cands += sorted(glob.glob(os.path.join(base, 'Elmer*')), reverse=True)
+        else:
+            cands += ['/usr/local', '/opt/elmer', os.path.expanduser('~/opt/elmer')]
+        return next(filter(None, (self.elmer_dir(c) for c in cands if c)), None)
+
+    def palace_image(self, folder):
+        """An unpacked Palace image (its Spack view in opt/views/view) that rootless podman can run, or None."""
+        ok = folder and os.path.isdir(os.path.join(folder, 'opt', 'views', 'view', 'bin')) and shutil.which('podman')
+        return os.path.abspath(folder) if ok else None
+
+    def find_palace(self):
+        """('exe', path) or ('image', folder) of a Palace there is, or None."""
+        for exe in (os.environ.get('K2E_PALACE'), shutil.which('palace'),
+                    os.path.join(self.t.fem_prefix, 'palace', 'bin', 'palace')):
+            if exe and os.path.isfile(exe):
+                return 'exe', os.path.abspath(exe)
+        for img in (os.environ.get('K2E_PALACE_ROOTFS'), os.path.expanduser('~/opt/palace/rootfs')):
+            if self.palace_image(img):
+                return 'image', self.palace_image(img)
+        return None
+
+    def choose_fem(self):
+        bold("Finite elements (kicad2ems-fem, experimental: Palace and Elmer, a second opinion that takes minutes)")
+        a = self.a
+        self.fem, self.elmer, self.palace, self.build_elmer, self.build_palace = False, None, None, False, False
+        elmer, palace = self.find_elmer(), self.find_palace()
+        if elmer:
+            note(f"found Elmer: {elmer}")
+        if palace:
+            note(f"found Palace: {palace[1]}" + (' (an image, run in podman)' if palace[0] == 'image' else ''))
+        given = any(x and x != 'none' for x in (a.elmer, a.palace))
+        if not (given or ask("kicad2ems-fem (Elmer: DC drop, temperature, coils with ferrite, capacitance; Palace: "
+                             "S-parameters, antennas, capacitance)?", 'y' if elmer or palace else 'n')):
+            return
+        self.fem = True
+        self.extras.append('fem')
+        # Elmer: one there is (default), one elsewhere, built from source, or none
+        pick = a.elmer
+        if not pick:
+            opts = ([f"found    {elmer}"] if elmer else []) + ["path     an Elmer you have: the folder with ElmerSolver"]
+            if not WINDOWS:
+                opts.append(f"build    from source (tools/build_elmer.sh, 15-30 min) into {os.path.join(self.t.fem_prefix, 'elmer')}")
+            else:
+                note("Elmer for Windows: the installer of elmerfem.org; then give its bin folder")
+            opts.append("none     no Elmer: its tools say how to add one")
+            pick = first_word(choose("Elmer:", 1 if elmer else len(opts), opts))
+        if pick == 'found':
+            self.elmer = elmer
+        elif pick == 'build':
+            if WINDOWS:
+                raise Abort("--elmer build: Elmer builds on Linux and macOS here; on Windows install its release "
+                            "(elmerfem.org) and give its bin folder: --elmer C:\\...\\Elmer\\bin", 2)
+            self.build_elmer = True
+        elif pick == 'path':
+            self.elmer = self.elmer_dir(askpath("the folder with ElmerSolver (or its bin):", elmer or ''))
+        elif pick != 'none':                                        # --elmer PATH
+            self.elmer = self.elmer_dir(pick)
+        if pick not in ('found', 'build', 'none') and not self.elmer:
+            note("no ElmerSolver and ElmerGrid there: going on without Elmer")
+        # Palace: one there is (default), one elsewhere, built with Spack (hours: never the default), or none
+        pick = a.palace
+        if not pick:
+            opts = ([f"found    {palace[1]}"] if palace else []) + \
+                   ["path     a Palace you have: its palace executable, or an unpacked Palace image (podman)"]
+            if not WINDOWS:
+                opts.append(f"spack    build it with Spack (tools/build_palace.sh: several hours, ~10 GB) into "
+                            f"{os.path.join(self.t.fem_prefix, 'palace')}")
+            else:
+                note("Palace has no Windows build: a Linux machine, or WSL")
+            opts.append("none     no Palace: its tools say how to add one")
+            pick = first_word(choose("Palace:", 1 if palace else len(opts), opts))
+        if pick == 'found':
+            self.palace = palace
+        elif pick == 'spack':
+            if WINDOWS:
+                raise Abort("--palace spack: Palace builds on Linux and macOS (or WSL)", 2)
+            self.build_palace = True
+        elif pick != 'none':
+            where = askpath("palace's path, or the folder of an unpacked Palace image:",
+                            palace[1] if palace else '') if pick == 'path' else pick
+            if where and os.path.isfile(where):
+                self.palace = ('exe', os.path.abspath(where))
+            elif self.palace_image(where):
+                self.palace = ('image', self.palace_image(where))
+            else:
+                note(f"no palace executable or Palace image at {where or '(none given)'}"
+                     + (" (an image needs podman)" if where and os.path.isdir(where) else '') + ": going on without Palace")
+
+    def build_deps(self, dnf, apt):
+        """The distribution's build dependencies, offered (not by default)."""
+        deps = ['dnf', 'install', *dnf] if shutil.which('dnf') else ['apt', 'install', *apt] if shutil.which('apt-get') else None
+        if deps:
+            deps = deps if is_admin() else ['sudo', *deps]
+            note(f"build dependencies: {' '.join(deps)}")
+            if ask("install them now" + ('' if is_admin() else ' (runs sudo)') + "?", 'n'):
+                run(deps)
+
+    def build_fem(self):
+        if self.build_elmer:
+            prefix = os.path.join(self.t.fem_prefix, 'elmer')
+            bold(f"Building Elmer into {prefix}")
+            self.build_deps(['gcc-c++', 'gcc-gfortran', 'cmake', 'git', 'blas-devel', 'lapack-devel'],
+                            ['build-essential', 'gfortran', 'cmake', 'git', 'libblas-dev', 'liblapack-dev'])
+            if ask(f"build Elmer now (15-30 min; sources in {prefix}/src)?", 'y'):
+                if run(['bash', os.path.join(REPO, 'tools', 'build_elmer.sh'), prefix]) and self.elmer_dir(prefix):
+                    self.elmer = self.elmer_dir(prefix)
+                else:
+                    note("the Elmer build failed (see above): kicad2ems-fem is installed without it; fix and run the "
+                         "installer again, or: bash tools/build_elmer.sh " + prefix)
+        if self.build_palace:
+            prefix = os.path.join(self.t.fem_prefix, 'palace')
+            bold(f"Building Palace with Spack into {prefix}")
+            self.build_deps(['gcc-c++', 'gcc-gfortran', 'git', 'make', 'patch', 'bzip2', 'xz', 'unzip', 'python3'],
+                            ['build-essential', 'gfortran', 'git', 'patch', 'bzip2', 'xz-utils', 'unzip', 'python3'])
+            if ask("build Palace now (several hours, ~10 GB; it can also be run later: bash tools/build_palace.sh "
+                   f"{prefix})?", 'y'):
+                exe = os.path.join(prefix, 'bin', 'palace')
+                if run(['bash', os.path.join(REPO, 'tools', 'build_palace.sh'), prefix]) and os.path.isfile(exe):
+                    self.palace = ('exe', exe)
+                else:
+                    note("the Palace build failed or was not finished (see above): kicad2ems-fem is installed without "
+                         "it; run bash tools/build_palace.sh " + prefix + " again (Spack goes on where it stopped)")
+
     def ensure_triangle(self):
         # MoM and QS meshing: PyPI has no triangle >= 20230923 for every Python (none for 3.14): build it from its
         # repository
@@ -989,6 +1138,10 @@ class Installer:
             keys['qucsator'] = self.qucs
         if self.oems == 'folder':
             keys['openems_dir'] = self.oems_dir
+        if getattr(self, 'elmer', None):
+            keys['elmer'] = self.elmer                              # kicad2ems-fem: the folder of ElmerSolver
+        if getattr(self, 'palace', None):
+            keys['palace' if self.palace[0] == 'exe' else 'palace_rootfs'] = self.palace[1]
         if not keys:
             return
         os.makedirs(os.path.dirname(self.sitecfg), exist_ok=True)
@@ -1242,6 +1395,8 @@ def parse(argv):
     p.add_argument('--target')
     p.add_argument('--openems')
     p.add_argument('--qucsator')
+    p.add_argument('--elmer')
+    p.add_argument('--palace')
     p.add_argument('--uninstall', action='store_true')
     p.add_argument('--update', action='store_true')
     p.add_argument('-h', '--help', action='store_true')

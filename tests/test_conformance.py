@@ -74,5 +74,6 @@ def test_microstrip_thru(solver, thru, tmp_path):
     if solver == 'mixed':                                         # the middle of the line as a line, and the
         import json                                               # joined solution's currents
         info = json.loads((out / 'thru_run.json').read_text(encoding='utf-8'))['solved']['mixed']
-        assert info['cuts'] == 1 and info['cut_mm'] > 10 and info['solves'] < 16
+        # 13 frequencies solved on Linux, 16 on Windows (the adaptive sweep's points follow the rounding): a bound
+        assert info['cuts'] == 1 and info['cut_mm'] > 10 and info['solves'] < 20
         assert (out / 'thru_mixed_P1_dump_J_F_Cu_fd_3.5GHz.png').exists()

@@ -123,7 +123,8 @@ py install.py
 
 The installer (`install.py`; `./setup.sh` runs it) asks where to install (a venv in this checkout by default, or
 for your user, system-wide, or into the Python itself) and which optional parts you want: the GUI, the solvers and
-their compiled cores, a GPU package, openEMS, qucsator and a launcher entry. `--yes` takes the defaults.
+their compiled cores, a GPU package, openEMS, qucsator, the finite-element tools with Elmer and Palace (one you
+have, or built: Palace with Spack, never by default) and a launcher entry. `--yes` takes the defaults.
 [Getting started](docs/getting-started.md) has the options and installing by hand. Without any full-wave solver,
 kicad2ems runs the line model alone; `kicad2ems --check` shows what your setup can run.
 
