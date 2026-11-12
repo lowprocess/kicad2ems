@@ -33,16 +33,17 @@ of disabled buttons; a start page with the examples as a gallery; tools that are
 
 ## The line model
 
-1. **Coupled sections on the board's cut.** A coupled group is solved over ideal planes, without the copper beside
-   it. In a trial on the CM5 Minima, stripline pairs moved by 3–10 % over 134 of their 258 mm; microstrip pairs
-   did not (520 of 522 mm within 3 %). It needs one cut per group: `reference.cut` at the group's middle, out to
-   the reach beyond both outer legs, snapped from the group's outer edges, its legs as the strips. `_couple` has
-   to be given the reference copper for it. The legs' own cuts cannot be put together: each is snapped from its
-   own leg's edges, so copper far from it lands on the other legs.
-2. **The mesh's key lines.** Every copper edge and mask step runs across the whole box as a key line, so a thin
+1. **Nets reached only through the field.** A net is in the model when a port sits on it or a series part leads
+   to it. A combline filter's inner rods are neither: the line model has no pass band on `rf_combline`, and a
+   coupled section's cut takes such copper as ground. Copper that lies between or beside coupled lines and is
+   not a ground net should join the model as a line of its own (its ends: vias and parts to ground, or open).
+2. **A coupled section's cut along its length.** It is cut once, across its middle. Copper beside it for part
+   of its length (a via's pad, a pour that ends) counts for all of it or not at all: cut at a few places and
+   split the section where the cuts differ, as single sections are split where their reference changes.
+3. **The mesh's key lines.** Every copper edge and mask step runs across the whole box as a key line, so a thin
    column of cells runs the box's full height (it keeps the sides nested). Merging cells away from the corners
    needs constraints for sides that overlap without nesting.
-3. **Boundary elements with a layered Green's function**, for the largest cuts (300–2,000 unknowns, no box), only
+4. **Boundary elements with a layered Green's function**, for the largest cuts (300–2,000 unknowns, no box), only
    if the mesh's 0.2 s at worst becomes the limit. `mom25d/multilayer.py` has the stack but a dynamic kernel; the
    static 2D one needs deriving.
 
@@ -104,18 +105,15 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
 
 ### Correctness and workflow
 
-1. **Settling that sees slow filter modes (C8; 1 day).** Track the cycle-mean drift of the supply current; average
-   the input power over whole slow-mode periods, or extrapolate the decaying mode (vector extrapolation of the
-   per-cycle state) instead of simulating it out.
-2. **Cross-tool flows (U4, I3; 2.5 days).** A near-field converter as a circuit template (its parts, its loop's
+1. **Cross-tool flows (U4, I3; 2.5 days).** A near-field converter as a circuit template (its parts, its loop's
    copper); a circuit's input-current spectrum as PDN loads; `pcbqs.mqs`'s assumed-pulse fields against the
    circuit's `--fields`.
-3. **Several rails in one power-integrity run** (a config's `[analysis.pdn]` is one rail).
-4. **Converters.** A broader buck input-loop discovery; ambiguous bias, enable and supply nets resolved by part
+2. **Several rails in one power-integrity run** (a config's `[analysis.pdn]` is one rail).
+3. **Converters.** A broader buck input-loop discovery; ambiguous bias, enable and supply nets resolved by part
    metadata; the switch node's E in the converter workflow (the Coulomb E of the surface charges is there, the
    inductive E is not) and output-inductor models; decap and via mounting inductance from the quasi-static solver
    instead of the formula.
-5. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`). Left: the
+4. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`). Left: the
    run's lumped parts between their pads (the quasi-static solver takes elements already, so a decoupled rail or
    a lumped filter would have its low end too; today they are left out and listed as deviations); gap ports; the
    two-face copper with the charge is slow on a stack of several dielectrics (25 s a frequency at
@@ -131,7 +129,6 @@ refactorisation (pcbqs's `docs/power-circuit.md`).
 
 | Option | Gain | Effort | Notes |
 |---|---|---|---|
-| Slow-mode extrapolation (item 1 above) | 1.5–3× on lightly damped filters | 1 day | as-built wpthb settles slowest |
 | A piecewise-linear switched state-space engine | 10–100× for ideal-switch studies | 1–2 weeks | the copper model and passives are linear: exact matrix exponentials per switch state; device effects need ngspice |
 | Xyce backend | robustness, not speed | 2 days | it ran behavioural switches ngspice could not; 2–7× slower on the benchmark converter; harmonic balance could suit resonant tanks |
 | Two faces in the circuit: a local loop basis | fewer iterations, no dense setup | | iterations grow with frequency (217 at DC, 575 at 20 MHz); the dense common-mode setup is 19 s |

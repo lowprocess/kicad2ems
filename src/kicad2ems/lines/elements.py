@@ -54,7 +54,8 @@ class LineModel:
     paths [(port, other port or None, [(Element, start mm, reversed)], branches)]; notes."""
     def __init__(self):
         self.elements, self.ports, self.port_z0, self.paths, self.notes = [], {}, {}, [], []
-        self.groups = []            # coupled sections: dict(members=[(Element, near node, far node)], gaps, length, ...)
+        self.groups = []            # coupled sections: dict(members=[(Element, near node, far node)], gaps, length, ...;
+                                    # C, Ca: the field solver's matrices; source='cut': from the board's cut)
         self.junctions = []         # discontinuities at nodes: dict(node, kind, arms=[(Element, end)], widths, ...)
 
     def adjacency(self):
@@ -77,6 +78,7 @@ class LineModel:
         groups = [dict(lines=len(g['members']), length=g['length'], layer=g['layer'],
                        widths=[e.w for e, _, _ in g['members']], gaps=list(g['gaps']), h=g['h'], er=g['er'],
                        labels=[e.label for e, _, _ in g['members']],
+                       source='cut' if g.get('source') == 'cut' else 'planes' if g.get('C') is not None else 'formula',
                        pairs=[dict(p) for p in g['pairs']]) for g in self.groups]
         junctions = [dict(kind=j['kind'], node=j['node'], xs=j['xs'], layer=j['layer'], widths=list(j['widths']),
                           at=[float(j['xy'][0]), float(-j['xy'][1])], angle=j.get('angle'), gap=j.get('gap'))

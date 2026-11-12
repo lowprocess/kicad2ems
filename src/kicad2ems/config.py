@@ -134,11 +134,12 @@ CORE = [
     Option('fast', None, "also solve the transmission-line model as a circuit, as a reference: skrf (scikit-rf), "
            "qucsator, or auto (qucsator if installed, else scikit-rf)", choices=('auto', 'skrf', 'qucsator'),
            group='solvers'),
-    Option('lines_field', 'auto', "which of the line model's single sections the 2D field solver solves, each on "
-           "the board's copper cut across it: auto (default), those whose cut holds what the formulas leave out "
-           "(ground beside a stripline, a plane that ends near the trace, copper on a layer in between); all, every "
-           "one (--lines-field alone; seconds to minutes); off, none: the formulas. Its coupled sections and "
-           "grounded CPW come from the field solver in any case", choices=('auto', 'all', 'off'), conv=_lines_field,
+    Option('lines_field', 'auto', "which of the line model's sections the 2D field solver solves on the board's "
+           "copper cut across them: auto (default), those whose cut holds what the formulas leave out (ground "
+           "beside a stripline, a plane that ends near the trace, copper on a layer in between, a guard trace "
+           "between coupled lines); all, every one (--lines-field alone; seconds to minutes); off, none: the "
+           "formulas. Its coupled sections and grounded CPW come from the field solver in any case, over ideal "
+           "planes where not on their cut", choices=('auto', 'all', 'off'), conv=_lines_field,
            gui="Line model: sections by the field solver", group='solvers',
            cli=dict(nargs='?', const='all', metavar='auto|all|off')),
     Option('mode', 'sparams', "sparams (default): S-parameters of all ports; antenna: a driven port (several with "

@@ -327,7 +327,7 @@ def _build(model, nets, refcu):
     finally:
         reference.DEFER = keep
     reference.solve_deferred(jobs)
-    _couple(lm, model)
+    _couple(lm, model, refcu)
     _junctions(lm, model)
     _paths(lm)
     return lm

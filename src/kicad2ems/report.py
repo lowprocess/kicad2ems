@@ -236,18 +236,21 @@ def _lines_section(sm):
                              'Z0 sheet (Ω)', 'εeff', 'delay (ps)', 'from (mm)', 'notes'], rows,
                             num=(4, 5, 6, 7, 8, 9, 10)))
     if ln.get('groups'):
-        parts.append("<h3>Coupled sections</h3><p>Parallel microstrip lines within 5 h of each other, side by side "
-                     "over the same stretch. A pair is qucsator's MCOUPLED; three or more lines (or a pair of unequal "
-                     "widths) are a multiconductor block from neighbour-pair even / odd impedances (Kirschning &amp; "
-                     "Jansen), coupling beyond the nearest neighbour left out. scikit-rf uses the block for all.</p>")
+        parts.append("<h3>Coupled sections</h3><p>Parallel lines of one cross-section within 5 h of each other, side "
+                     "by side over the same stretch: a multiconductor block from the field solver's capacitance "
+                     "matrix, every line coupled to every other, over ideal planes or, where the board's copper "
+                     "around the lines is more than that, on the board's cut across them. From the formulas "
+                     "(Kirschning &amp; Jansen, Cohn) it is neighbour pairs only. With qucsator a microstrip pair "
+                     "is its MCOUPLED.</p>")
+        solved = dict(cut="the board's cut", planes='ideal planes', formula='formulas')
         rows = []
         for k, g in enumerate(ln['groups'], 1):
             pairs = ", ".join(f"{p['ze']:.1f} / {p['zo']:.1f}" for p in g['pairs'])
             rows.append([str(k), str(g['lines']), _e(g['layer']), _f(g['length'], '.3f'),
                          ", ".join(f"{w:.3f}" for w in g['widths']), ", ".join(f"{x:.3f}" for x in g['gaps']),
-                         _e(pairs)])
+                         _e(pairs), _e(solved.get(g.get('source'), ''))])
         parts.append(_table(['#', 'lines', 'layer', 'length (mm)', 'widths (mm)', 'gaps (mm)',
-                             'Ze / Zo per neighbour pair (Ω)'], rows, num=(1, 3)))
+                             'Ze / Zo per neighbour pair (Ω)', 'solved on'], rows, num=(1, 3)))
     if ln.get('junctions'):
         from collections import Counter
         cnt = Counter(j['kind'] for j in ln['junctions'])

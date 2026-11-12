@@ -16,6 +16,8 @@ Figures of the line model's 2D field solver (kicad2ems.lines.xsection) at work:
                             formulas' nearest neighbours against the field solver's matrix
   xsection_board_cut.png    with --board: a cut across a trace of a real board, where its reference plane ends,
                             and the cross-section solved there
+  xsection_group_cut.png    with --board: a coupled section of a real board over ideal planes and on the board's
+                            cut across it, where a ground pour fills in between its lines
 
 OUT: the folder to write to (default build/xsection_figures).
 """
@@ -341,6 +343,55 @@ def board_cut(out, path):
     plt.close(fig)
 
 
+def group_cut(out, path):
+    """A coupled section of a real board whose cut holds copper between its lines: over ideal planes, and on the cut."""
+    from kicad2ems.board import Board
+    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems.lines import builder, reference, topology
+    m = Board(KiCadBoard(path), log=lambda *a: None, need_ports=False)
+    nets = sorted({t['net'] for t in m.prims.tracks} - set(m.ground_nets))
+    ideal = builder.build(m, nets=nets, field='off').groups
+    groups = builder.build(m, nets=nets).groups
+
+    def between(g):
+        strips, side = g['cut'][0], g['cut'][4]
+        return [q for q in side if q[0] > strips[0][0] and q[1] < strips[-1][1]]
+    moved = lambda g, g0: max(abs(a['zo'] / b['zo'] - 1) for a, b in zip(g0['pairs'], g['pairs']))
+    found = [(g, g0) for g, g0 in zip(groups, ideal) if g.get('source') == 'cut' and between(g) and g['length'] > 2.0]
+    if not found:
+        print('group cut: no coupled section over 2 mm with copper between its lines found')
+        return
+    g, g0 = max(found, key=lambda x: moved(*x))                          # the one its cut moves most
+    k = int(np.argmax([abs(a['zo'] / b['zo'] - 1) for a, b in zip(g0['pairs'], g['pairs'])]))
+    widths = [e.w for e, _, _ in g['members']]
+    h = g['h'] if g['xs'] == 'microstrip' else tuple(g['h'])
+    plain = topology._group_section(g['xs'], tuple(round(X.snap(w), 6) for w in widths),
+                                    tuple(round(X.snap(x), 6) for x in g['gaps']), h, g['er'], round(g['cut'][2], 6))
+    cut = reference._strips_section(*g['cut'])
+    volts = [0.0] * len(widths)
+    volts[k], volts[k + 1] = 1.0, -1.0
+    half = 0.5 * (g['cut'][0][-1][1] - g['cut'][0][0][0]) + 3 * max(np.atleast_1d(h))
+    zs = g['cut'][1]
+    hs = np.atleast_1d(h)
+    fig, axes = plt.subplots(2, 1, figsize=(10, 4.6), sharex=True, layout='constrained')
+    z0 = min(c.z0 for c in plain.conductors if not c.ground)             # the ideal section's own heights
+    lo, hi = (hs[0], hs[-1]) if len(hs) == 2 else (hs[0], 3 * hs[0])
+    for ax, xs, zc, title in ((axes[0], plain, z0, f"over ideal planes: Zodd {g0['pairs'][k]['zo']:.1f} Ω, "
+                                                    f"Zeven {g0['pairs'][k]['ze']:.1f} Ω"),
+                              (axes[1], cut, zs, f"on the board's cut: Zodd {g['pairs'][k]['zo']:.1f} Ω, "
+                                                 f"Zeven {g['pairs'][k]['ze']:.1f} Ω")):
+        im = field_panel(ax, xs, (-half, half, zc - 1.15 * lo, zc + 1.15 * hi + g['cut'][2]), volts, DIVERGE, -1, 1)
+        ax.set_title(title, fontsize=9)
+    axes[0].set_xlabel('')
+    names = ' and '.join(g['members'][i][0].net.split('/')[-1] for i in (k, k + 1))
+    fig.suptitle(f"A coupled section of a real board over ideal planes and on its cut, the odd mode of two "
+                 f"neighbours\n(KiCad's CM5 Minima demo: {names}, {g['length']:.1f} mm on {g['layer']})",
+                 x=0.02, ha='left', fontsize=11, fontweight='bold')
+    fig.colorbar(im, ax=axes, shrink=0.7, pad=0.02, label='potential (V)')
+    fig.savefig(os.path.join(out, 'xsection_group_cut.png'), dpi=150)
+    plt.close(fig)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     ap.add_argument('out', nargs='?', default=os.path.join(REPO, 'build', 'xsection_figures'))
@@ -353,6 +404,8 @@ def main():
     if a.board:
         board_cut(a.out, a.board)
         print('wrote board_cut')
+        group_cut(a.out, a.board)
+        print('wrote group_cut')
 
 
 if __name__ == '__main__':

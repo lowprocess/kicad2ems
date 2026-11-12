@@ -24,7 +24,10 @@ The model starts from the port nets and follows series parts into the next net, 
 each other become a coupled section: hairpin and interdigital filter fingers, differential pairs. The
 [field solver](#field-solver) gives each its capacitance matrix, every line coupled to every other, and each
 neighbouring pair its even- and odd-mode impedances with the copper's thickness (`ze`, `zo`; as sheets, `ze_sheet`,
-`zo_sheet`). `topology.FIELD_GROUPS = False` uses the formulas instead (Kirschning & Jansen for microstrip, Cohn for
+`zo_sheet`). It is solved over ideal planes, or on [the board's cut](#groups-on-the-cut) across it where the copper
+around it is more than that (a plane that ends beside it, ground beside a stripline pair, a guard trace between
+two lines).
+`topology.FIELD_GROUPS = False` uses the formulas instead (Kirschning & Jansen for microstrip, Cohn for
 stripline: zero thickness, nearest neighbours only). With qucsator, a coupled microstrip pair is still qucsator's
 own MCOUPLED.
 
@@ -193,14 +196,57 @@ own cut (`tools/cm5_line_model.py`):
 | `all`: every section | | | | 23 s | 74 s |
 
 A build classifies its sections first and then solves their distinct cross-sections together, in worker processes
-when there are 48 or more (`reference.solve_deferred`; one per fast core, each a `python -m
-kicad2ems.lines.cutworker`): the 684 solves of `auto` take 5 s instead of 29 s.
+when there are 48 or more (`reference.solve_deferred`, and `solve_groups` for the coupled sections' cuts; one per
+fast core, each a `python -m kicad2ems.lines.cutworker`): the 684 solves of `auto` take 5 s instead of 29 s.
 
 Most of what `auto` corrects is striplines with ground beside them (297 of their 325 mm were 3–33 % high); the
 largest errors were a plane that ends under the trace and pads classified as coplanar with ground that was not
 there. A microstrip over a whole plane is within 4 % with or without copper beside it and keeps its formula. On the
 examples below `auto` solves two sections (the demo transition's, at its via's antipads) and costs nothing
 measurable.
+
+<a id="groups-on-the-cut"></a>
+**Coupled sections** are cut the same way: one cut across the group's middle, out to 5 reference heights beyond its
+outer lines, with its lines as the strips (`reference.group_cut`; widths and gaps snapped as over ideal planes,
+the other copper's distances from the group's outer edges, and a cut and its mirror image are one solve). `auto`
+solves a group on its cut when the cut holds what ideal planes leave out: the rules above, with the group as one
+strip between its outer edges, and any copper of its own layer between two of its lines (`reference.group_beyond`;
+its lines' notes say what was found). `all` solves every group on its cut, `off` none. The run's report says which
+each was solved on, and the Viewer's section view draws the cut. A pair solved on its cut is the multiconductor
+block in qucsator too: its own MCOUPLED knows nothing of the copper around the lines.
+
+A guard trace is the plainest case. `rf_crosstalk_guard` (two 50 Ω lines 3 mm apart for 39 mm, a grounded 0.8 mm
+trace between them), the line model against gfdtd from 0.5 to 6 GHz:
+
+| | near-end crosstalk at worst | far-end at worst | rms difference from gfdtd, near / far |
+|---|---|---|---|
+| gfdtd | −29.4 dB | −20.7 dB | |
+| line model, the pair over ideal planes (qucsator) | −25.6 dB | −17.3 dB | 4.2 / 3.6 dB |
+| the pair on its cut (qucsator) | −30.4 dB | −21.7 dB | 1.5 / 1.0 dB |
+| the pair on its cut (scikit-rf) | −32.0 dB | −21.6 dB | 2.1 / 1.0 dB |
+
+On the CM5 Minima (295 coupled sections, 780 mm of neighbouring pairs), each pair's modes against its group's own
+cut (`tools/cm5_line_model.py`):
+
+| | odd mode within 1 % | 1–3 % off | over 3 % off | even mode within 3 % | over 3 % off |
+|---|---|---|---|---|---|
+| over ideal planes (`off`) | 486 mm | 139 mm | 154 mm, up to 29 % | 604 mm | 176 mm, up to 62 % |
+| `auto`: 86 groups on their cuts | 749 mm | 31 mm | none (2.1 % at most) | 777 mm | 3 mm (3.1 % at most) |
+
+Of the 86, 67 have copper between their lines: an inner layer's ground pour fills in between the traces of a bus,
+and over ideal planes their odd mode is 3–10 % high on 146 mm (29 % at most). 14 have a plane that ends under or
+beside them (short stretches at vias and connectors, the odd mode 24 % low where the plane ends under a microstrip
+pair), and 5 are stripline pairs with ground beside them. What `auto` leaves is microstrip pairs with ground one
+to three heights away on both sides: 1–2 % high in the odd mode, 2–3 % in the even. The default build takes the
+20 s it took (172 solves of groups' cuts in place of 126 over ideal planes), 23 s with `all`.
+
+![A coupled section of the CM5 Minima over ideal planes and on the board's cut: ground pour beside and between its lines, planes that end near them](img/xsection_group_cut.png) On the examples below no group's cut holds anything but its planes: `auto` leaves them
+all, and `all` gives their impedances within 0.02 Ω of the ideal planes'.
+
+Copper of a net the model does not hold is ground in a cut, as it is for a single section. Between two coupled
+lines that is right for a guard trace and wrong for a resonator: `rf_combline`'s middle rod is reached only
+through the field, is not in the line model, and the outer rods' cut takes it as ground (the line model had no
+pass band there before either).
 
 In the circuit solvers, a microstrip or grounded CPW section keeps scikit-rf's and qucsator's own models (with their
 dispersion) unless the field solver's sheet Z0 is more than 2 % from the formula's (`reference.FIELD_DIFFERS`); then
@@ -289,6 +335,10 @@ a mesh problem.
 
 - Impedances are quasi-static. qucsator's microstrip models add dispersion.
 - Coupled sections must be straight, parallel microstrip or stripline. Coupling across layers isn't modelled.
+- A net is in the model when a port sits on it or a series part leads to it. Copper coupled to the lines only
+  through the field (a combline filter's inner rods) is left out, and taken as ground where a cut crosses it.
+- A coupled section's cut is taken once, across its middle: copper beside it for part of its length (a via's pad)
+  counts for all of it or not at all.
 - Shapes other than rectangles become strips only as stubs across a track; tapers and teardrops widen the track.
 - **Radial stubs**: with qucsator, a fan that is a circular sector is qucsator's radial stub (MRSTUB), its radial line
   taken to start half the track's width beyond the track's edge (fitted against mom25d on 60°, 90° and 40° fans:

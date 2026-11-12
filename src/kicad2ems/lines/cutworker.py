@@ -1,8 +1,9 @@
 """
 A worker process of the line model's field solves (reference.solve_deferred starts them: python -m
-kicad2ems.lines.cutworker). On its stdin, pickled lists of cross-sections, each ('cut' | 'cpwg', the arguments of
-reference._solve_cut or _solve_cpwg); on its stdout, for each list, the pickled [(item, (Z0, eeff))], None for one
-the solver could not solve. It ends when its stdin closes.
+kicad2ems.lines.cutworker). On its stdin, pickled lists of cross-sections, each ('cut' | 'cpwg' | 'group', the
+arguments of reference._solve_cut, _solve_cpwg or _solve_group); on its stdout, for each list, the pickled [(item,
+(Z0, eeff))] ((C, C_air) for a coupled group), None for one the solver could not solve. It ends when its stdin
+closes.
 """
 import pickle
 import sys

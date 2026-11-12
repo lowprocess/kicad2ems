@@ -2,6 +2,7 @@
 whose cut holds what their formula leaves out (_beyond_formula), and the setting that chooses (--lines-field)."""
 import math, os
 from types import SimpleNamespace as NS
+import numpy as np
 import pytest
 from kicad2ems.lines import reference as R
 
@@ -152,3 +153,195 @@ def test_a_worker_answers_until_its_input_closes():
     assert got[0][1] is None
     p.stdin.close()
     assert p.wait(timeout=20) == 0
+
+
+# ---- coupled groups on the board's cut (topology._group_on_cut) ---------------------------------------------
+class _Copper:
+    """Reference copper as RefCopper has it (geom per layer), without tiles."""
+    def __init__(self, geom):
+        self.geom = geom
+
+
+STACK = NS(cu_z={'F.Cu': 0.2, 'B.Cu': 0.0}, cu_t={'F.Cu': 0.035}, layers=[dict(z0=0.0, z1=0.2, er=4.3, tand=0.02)])
+PAIR = [(-0.2, 0.2), (0.2, 0.2)]                        # two 0.2 mm lines 0.2 mm apart: outer edges at +-0.3 mm
+
+
+def _group(front=(), back=None, legs=PAIR):
+    """group_cut's arguments for legs along y over B.Cu (`back`: its copper, the whole plane by default) with
+    the F.Cu copper `front` beside them (boxes' x0, x1)."""
+    from shapely.geometry import box
+    from shapely.ops import unary_union
+    geom = {'B.Cu': box(-50, -50, 50, 50) if back is None else unary_union([box(a, -50, b, 50) for a, b in back])}
+    if front:
+        geom['F.Cu'] = unary_union([box(a, -50, b, 50) for a, b in front])
+    return R.group_cut(STACK, _Copper(geom), 'F.Cu', legs, np.zeros(2), np.array([1.0, 0.0]), (0.2,), True)
+
+
+def test_a_group_s_cut_has_its_legs_and_the_copper_around_them():
+    strips, zs, t, up, side, layers, diel = _group(front=[(0.45, 1.0)])
+    assert np.allclose(strips, [(-0.3, -0.1), (0.1, 0.3)], atol=3e-3) and strips[0][0] == -strips[1][1]
+    assert (zs, t, up) == (0.2, 0.035, True) and diel == ((0.0, 0.2, 4.3, 0.02),)
+    assert layers == ((0.0, True, ((-INF, INF),)),)
+    assert len(side) == 1 and side[0] == pytest.approx((0.45, 1.0), abs=0.02)   # 0.15 mm from its outer edge
+    assert _group(front=[(0.45, 2.0)])[4][0][1] == INF                           # beyond the cut's reach, 1 mm
+    three = _group(legs=[(-0.5, 0.2), (0.0, 0.3), (0.45, 0.2)])[0]               # gaps 0.25 and 0.2 mm
+    assert np.allclose(three, [(-0.575, -0.375), (-0.125, 0.175), (0.375, 0.575)], atol=5e-3)
+    a, b = _group(front=[(0.4501, 2.0)]), _group(front=[(0.4502, 2.0)])          # similar cuts: one solve
+    assert R.group_keys(a)[0] == R.group_keys(b)[0]
+
+
+def test_a_cut_and_its_mirror_image_are_one_solve():
+    right, left = _group(front=[(0.45, 2.0)]), _group(front=[(-2.0, -0.45)])
+    (k1, f1), (k2, f2) = R.group_keys(right), R.group_keys(left)
+    assert k1 == k2 and f1 != f2 and [k[2] for k in k1] == [0.035, 0.0]          # with its thickness, and as sheets
+    whole = R.group_keys(_group())
+    assert whole[1] is False and whole[0][0][0] == _group()[0]
+    assert (f1, f2) == (True, False) and k1[1][4][0][1] < 0                      # as solved: the ground on the left
+    C, _ = R._solve_group(*k1[1])
+    assert C[0, 0] > 1.02 * C[1, 1] and C[0, 1] == pytest.approx(C[1, 0], rel=1e-6)   # more to ground beside it
+
+
+def test_which_groups_ideal_planes_are_not_enough_for():
+    why = lambda xs='microstrip', hs=(0.2,), **k: R.group_beyond(_group(**k), xs, hs)
+    assert why() is None and why(front=[(0.55, 2.0)]) is None                    # copper 0.25 mm beside: 1.25 h
+    assert why(front=[(0.45, 2.0)]) == 'copper 0.15 mm beside it'
+    assert why(back=[(-50, 0.5)]) == 'the plane 0.2 mm from it ends 0.20 mm beyond its edge'
+    assert why(back=[(-50, 0.8)]) is None                                        # 0.5 mm beyond: 2.5 h
+    assert why(back=[(-50, -0.05), (0.05, 50)]) == 'the plane 0.2 mm from it ends under it'
+
+
+WIDE = [(-0.6, 0.2), (0.6, 0.2)]                        # two 0.2 mm lines 1 mm apart
+
+
+def test_a_guard_trace_between_two_lines_is_in_their_cut():
+    plain, guarded = _group(legs=WIDE), _group(front=[(-0.2, 0.2)], legs=WIDE)
+    assert plain[4] == () and R.group_beyond(plain, 'microstrip', (0.2,)) is None
+    (a, b), = guarded[4]
+    assert (a, b) == pytest.approx((-0.2, 0.2), abs=5e-3) and guarded[0] == plain[0]
+    assert R.group_beyond(guarded, 'microstrip', (0.2,)) == 'copper 0.40 mm wide between its lines'
+    both = _group(front=[(-0.2, 0.2), (0.85, 1.5)], legs=WIDE)             # and ground beside it: the guard is said
+    assert len(both[4]) == 2 and R.group_beyond(both, 'microstrip', (0.2,)).endswith('between its lines')
+    touching = _group(front=[(-0.5, 0.5)], legs=WIDE)[4]                   # never onto a line: 2 um from each
+    assert touching[0][0] > plain[0][0][1] and touching[0][1] < plain[0][1][0]
+    k = lambda args: R._solve_group(*R.group_keys(args)[0][1])
+    (C0, Ca0), (C, Ca) = k(plain), k(_group(front=[(-0.4, 0.4)], legs=WIDE))   # 0.8 mm of guard, 0.1 mm from each
+    assert abs(C[0, 1]) < 0.55 * abs(C0[0, 1]) and abs(Ca[0, 1]) < 0.45 * abs(Ca0[0, 1])   # half the coupling, and less
+    assert 1.04 * C0[0, 0] < C[0, 0] < 1.08 * C0[0, 0]
+
+
+@pytest.fixture(scope='module')
+def diffvia():
+    """rf_diffvia's pair (a microstrip and a stripline coupled section either side of its vias), as drawn and with
+    ground 0.15 mm beside the stripline pair and the plane under the microstrip pair ending 0.1 mm past it."""
+    from shapely.geometry import box
+    from kicad2ems.board import Board
+    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems.lines import builder
+    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
+    m = Board(KiCadBoard(os.path.join(ex, 'rf_diffvia.kicad_pcb')), log=lambda *a: None, need_ports=False)
+    nets = sorted({t['net'] for t in m.prims.tracks} - set(m.ground_nets))
+
+    def changed():
+        ref = R.RefCopper(m, nets)
+        ref.geom['In2.Cu'] = ref.geom['In2.Cu'].union(box(15.0, -5.4065, 22.0, -4.4065))    # beside the stripline pair
+        ref.geom['In1.Cu'] = ref.geom['In1.Cu'].difference(box(2.0, -3.5035, 9.0, -1.0))    # under the microstrip pair
+        return ref
+
+    def guarded():
+        ref = R.RefCopper(m, nets)
+        ref.geom['F.Cu'] = ref.geom['F.Cu'].union(box(2.0, -4.04, 9.0, -3.96))              # between the microstrip pair
+        return ref
+    out = {mode: builder.build(m, nets=nets, field=mode) for mode in ('off', 'auto', 'all')}
+    out.update({mode + ' changed': builder.build(m, nets=nets, refcu=changed(), field=mode) for mode in ('off', 'auto', 'all')})
+    out['guarded'] = builder.build(m, nets=nets, refcu=guarded())
+    out['board'] = m
+    return out
+
+
+def test_a_group_over_whole_planes_stays_on_ideal_planes(diffvia):
+    off, auto, every = (diffvia[k].groups for k in ('off', 'auto', 'all'))
+    assert len(auto) == 4 and not any(g.get('source') for g in off + auto)
+    assert all(g.get('source') == 'cut' for g in every)
+    for a, b, c in zip(off, auto, every):                       # the cut's solve of the same section: the same pair
+        for p, q, r in zip(a['pairs'], b['pairs'], c['pairs']):
+            assert (p['ze'], p['zo']) == (q['ze'], q['zo'])
+            assert (r['ze'], r['zo'], r['ze_sheet']) == pytest.approx((p['ze'], p['zo'], p['ze_sheet']), rel=2e-3)
+        assert c['C'] == pytest.approx(a['C'], rel=2e-3) and 'cut_keys' not in c and 'cut_keys' not in b
+    assert not any('coupled group' in n for g in auto for e, *_ in g['members'] for n in e.notes)
+
+
+def test_the_default_solves_a_group_on_its_cut_where_the_planes_are_not_ideal(diffvia):
+    plain, off, auto, every = (diffvia[k].groups for k in ('auto', 'off changed', 'auto changed', 'all changed'))
+    assert [g.get('source') for g in auto] == [None, 'cut', 'cut', None] and not any(g.get('source') for g in off)
+    notes = lambda g: sorted({n for e, *_ in g['members'] for n in e.notes if n.startswith('coupled group')})
+    assert notes(auto[1]) == ["coupled group solved on the board's cut: copper 0.15 mm beside it (between two planes)"]
+    assert notes(auto[2]) == ["coupled group solved on the board's cut: the plane 0.2 mm from it ends 0.10 mm beyond its edge"]
+    assert not notes(auto[0]) and not notes(every[1])           # 'all' gives no reason
+    strip, micro = auto[1], auto[2]
+    C = strip['C']                                              # ground beside one leg: more to ground there
+    assert max(C[0, 0], C[1, 1]) > 1.01 * min(C[0, 0], C[1, 1]) and C[0, 1] < 0
+    p, q = strip['pairs'][0], plain[1]['pairs'][0]
+    assert 0.97 * q['ze'] < p['ze'] < 0.985 * q['ze'] and 0.975 * q['zo'] < p['zo'] < 0.99 * q['zo']   # -2.0, -1.6 %
+    p, q = micro['pairs'][0], plain[2]['pairs'][0]              # less plane under it: both modes higher
+    assert 1.01 * q['ze'] < p['ze'] < 1.02 * q['ze'] and 1.003 * q['zo'] < p['zo'] < 1.01 * q['zo']    # +1.3, +0.6 %
+    for a, b in zip(auto, every):                               # a group is its cut's, or as without the cuts
+        ref = b if a.get('source') == 'cut' else off[auto.index(a)]
+        assert [(x['ze'], x['zo']) for x in a['pairs']] == [(x['ze'], x['zo']) for x in ref['pairs']]
+    legs = [e for e, *_ in strip['members']]                    # the section the GUI draws: the board's cut
+    assert [e.coupled['index'] for e in legs] == [0, 1]
+    drawn = legs[0].coupled['section'].to_dict()
+    assert [c[4] for c in drawn['conductors']] == [False, False, True] and len(drawn['planes']) == 2
+    assert drawn['conductors'][2][1] == pytest.approx(drawn['conductors'][0][0] - 0.15, abs=5e-3)
+    from kicad2ems.lines import sections
+    lm = diffvia['auto changed']
+    leg = next(e for e in lm.drawing({})['elements'] if e['kind'] == 'trace' and e['group'] == 1)
+    assert sections.solve(leg, 'odd').z0 == pytest.approx(strip['pairs'][0]['zo'], rel=1e-6)
+    assert [g['source'] for g in lm.summary()['groups']] == ['planes', 'cut', 'cut', 'planes']
+    assert {g['source'] for g in diffvia['all'].summary()['groups']} == {'cut'}
+
+
+def test_the_line_model_s_answer_follows_the_group_s_cut(diffvia):
+    pytest.importorskip('skrf')
+    from kicad2ems.solvers.lines.fastsolve import group_s
+    f = np.array([1e9, 5e9])
+    plain, cut = (group_s(diffvia[k].groups[1], f) for k in ('auto', 'auto changed'))
+    assert plain.shape == cut.shape == (2, 4, 4) and np.abs(plain - cut).max() > 0.01
+
+
+def test_a_guarded_pair_is_a_block_of_its_cut_in_both_circuit_solvers(diffvia, tmp_path):
+    """qucsator's own coupled microstrip (MCOUPLED) knows nothing of the copper between the lines: a pair solved on
+    the board's cut is the multiconductor block there too."""
+    from kicad2ems.solvers.lines.fastsolve import group_s, qucs_netlist
+    plain, guarded = diffvia['auto'], diffvia['guarded']
+    g, g0 = guarded.groups[2], plain.groups[2]
+    assert g.get('source') == 'cut' and [x.get('source') for x in guarded.groups] == [None, None, 'cut', None]
+    assert any(n.endswith('copper 0.08 mm wide between its lines') for n in g['members'][0][0].notes)
+    assert abs(g['C'][0, 1]) < 0.5 * abs(g0['C'][0, 1])
+    f = np.linspace(1e9, 5e9, 5)
+    far = lambda S: np.abs(S[:, 3, 0]).max()                    # into the other line's far end
+    assert far(group_s(g, f)) < 0.6 * far(group_s(g0, f))
+    text = lambda lm: qucs_netlist(lm, diffvia['board'].ports, f, workdir=str(tmp_path))[0]
+    assert 'MCOUPLED:G2 ' in text(plain) and 'SPfile:G2 ' not in text(plain)
+    assert 'SPfile:G2 ' in text(guarded) and 'MCOUPLED:G2 ' not in text(guarded) and 'MCOUPLED:G0 ' in text(guarded)
+
+
+def test_many_group_cuts_are_solved_in_worker_processes(monkeypatch):
+    import subprocess
+    keys = [k for d in np.linspace(0.35, 1.2, 9) for k in R.group_keys(_group(front=[(d, 2.0)]))[0]]
+    keys = list(dict.fromkeys(keys))
+    assert len(keys) >= 16
+    started, real = [], subprocess.Popen
+    monkeypatch.setattr(subprocess, 'Popen', lambda argv, **kw: started.append(argv[1:]) or real(argv, **kw))
+    monkeypatch.setattr(R, 'PARALLEL', 8)
+    R._solve_group.cache_clear()
+    R.solve_groups(keys[:6], workers=4)                         # too few for a worker: left to the groups
+    assert not started and not R._solve_group.got
+    R.solve_groups(keys, workers=2)
+    assert started == [['-m', 'kicad2ems.lines.cutworker']] * 2 and len(R._solve_group.got) == len(keys)
+    there = {k: R._solve_group.got[k] for k in keys[:4]}
+    R._solve_group.cache_clear()
+    for k, (C, Ca) in there.items():
+        here = R._solve_group(*k)
+        assert np.array_equal(here[0], C) and np.array_equal(here[1], Ca)
+    R.solve_groups(keys[:4], workers=2)                         # solved already: nothing to start
+    assert len(started) == 2

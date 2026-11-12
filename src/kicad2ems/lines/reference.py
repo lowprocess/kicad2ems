@@ -336,6 +336,92 @@ def _cut_args(model, ref, e, pt, n, found):
     return round(w, 6), round(zs, 6), round(model.cu_t.get(e.layer, 0.0), 6), up, side, tuple(layers), diel
 
 
+def group_cut(model, ref, layer, legs, pt, n, hs, up):
+    """_strips_section's arguments for a coupled group, cut across its middle: its legs as the strips, and the copper
+    the cut finds on every layer, out to FIELD_REACH reference heights beyond its outer edges, as a single
+    section's cut has it (_cut_args). legs: [(centre along n from pt, width)], in order, pt on the middle between
+    the group's outer edges; hs: its reference heights; up: the copper's thickness grows upward. Widths and gaps
+    are snapped as the groups over ideal planes are (xsection.SIMILAR), and the other copper's distances from the
+    group's outer edges as a single strip's from its own (_snap_distance): similar groups are one solve. Copper
+    of its own layer between two of its lines (a guard trace) is in the cut too, at its place in the gap."""
+    from . import xsection as X
+    ws = [X.snap(w) for _, w in legs]
+    gaps = [X.snap((c1 - w1 / 2) - (c0 + w0 / 2)) for (c0, w0), (c1, w1) in zip(legs, legs[1:])]
+    W0 = (legs[-1][0] + legs[-1][1] / 2) - (legs[0][0] - legs[0][1] / 2)      # between its outer edges, as it is
+    W = sum(ws) + sum(gaps)                                                   # and snapped
+    R = W0 / 2 + max(3 * max(w for _, w in legs), FIELD_REACH * max(hs))
+    pieces = cut(ref, pt, n, R)
+    zs = model.cu_z[layer]
+    h0 = X.snap(min(hs))
+
+    def at(u):
+        if not math.isfinite(u):
+            return u
+        d = u - math.copysign(W0 / 2, u)
+        return round(math.copysign(W / 2, u) + math.copysign(_snap_distance(abs(d) / h0, X.SIMILAR) * h0, d), 6)
+
+    def snapped(ps):
+        got = tuple((at(a), at(b)) for a, b in ps)
+        ends = [v for piece in got for v in piece]
+        return got if all(p < q for p, q in zip(ends, ends[1:])) else tuple((round(a, 6), round(b, 6)) for a, b in ps)
+    x, strips = -W / 2, []
+    for k, w in enumerate(ws):
+        strips.append((round(x, 6), round(x + w, 6)))
+        x += w + (gaps[k] if k < len(gaps) else 0.0)
+    layers = []
+    for where in ('below', 'above'):
+        order = sorted((l for l in pieces if l != layer and (model.cu_z[l] < zs) == (where == 'below')),
+                       key=lambda l: abs(model.cu_z[l] - zs))
+        for l in order:
+            full = pieces[l] == [(-math.inf, math.inf)]
+            layers.append((round(model.cu_z[l], 6), full, snapped(pieces[l])))
+            if full:
+                break
+    diel = tuple((round(l['z0'], 6), round(l['z1'], 6), l['er'], l['tand']) for l in model.layers)
+    own = pieces.get(layer, ())
+    side = snapped([(a, b) for a, b in own if b < -W0 / 2 or a > W0 / 2])
+    between = []
+    for k in range(len(legs) - 1):                           # copper between two lines: a guard trace
+        lo, hi = legs[k][0] + legs[k][1] / 2, legs[k + 1][0] - legs[k + 1][1] / 2       # the gap as it is
+        s_lo, s_hi = strips[k][1], strips[k + 1][0]                                     # and snapped
+        for a, b in own:
+            a, b = max(a, lo + SNAP), min(b, hi - SNAP)
+            if b - a >= SNAP:
+                a = s_lo + X.snap(a - lo)                    # from the line before it, its width: both snapped
+                b = min(a + X.snap(b - a), s_hi - SNAP)
+                between.append((round(a, 6), round(b, 6)))
+    side = tuple(sorted(side + tuple(between)))
+    return tuple(strips), round(zs, 6), round(model.cu_t.get(layer, 0.0), 6), up, side, tuple(layers), diel
+
+
+def group_keys(args):
+    """(_solve_group's arguments for a group's cut with its copper's thickness and as sheets, flipped): a cut and its
+    mirror image are one solve, and flipped says the lines' order in it is the reverse of the group's."""
+    strips, zs, t, up, side, layers, diel = args
+    flip = lambda ps: tuple(sorted((-b, -a) for a, b in ps))
+    mirror = (flip(strips), flip(side), tuple((z, full, flip(ps)) for z, full, ps in layers))
+    flipped = mirror < (strips, side, layers)
+    if flipped:
+        strips, side, layers = mirror
+    return [(strips, zs, tt, up, side, layers, diel) for tt in (t, 0.0)], flipped
+
+
+def group_beyond(args, xs, hs):
+    """What a coupled group's cut holds that ideal planes leave out (None: nothing that matters), as _beyond_formula
+    says it of a single section: the group as one strip between its outer edges. Copper between two of its lines
+    always matters."""
+    from types import SimpleNamespace
+    strips, zs, t, up, side, layers, diel = args
+    w = strips[-1][1] - strips[0][0]
+    outer = tuple(p for p in side if p[1] <= strips[0][0] or p[0] >= strips[-1][1])
+    if len(outer) < len(side):
+        a, b = next(p for p in side if p not in outer)
+        return f"copper {b - a:.2f} mm wide between its lines"
+    probe = SimpleNamespace(cut=(w, zs, t, up, outer, layers, diel), xs=xs, s=None)
+    found = {k: (None, h, True) for k, h in zip(('below', 'above'), hs)}
+    return _beyond_formula(probe, found)
+
+
 def _field(e):
     """Z0 and eeff of a section (with its copper's thickness and as a sheet) from the field solver, on its cut. The
     formulas' values are kept where the solve fails."""
@@ -433,7 +519,7 @@ def _job(item):
     that asked then solves it again, for what went wrong)."""
     kind, args = item
     try:
-        return item, (_solve_cut if kind == 'cut' else _solve_cpwg).f(*args)
+        return item, dict(cut=_solve_cut, cpwg=_solve_cpwg, group=_solve_group)[kind].f(*args)
     except Exception:                                        # noqa: BLE001
         return item, None
 
@@ -560,18 +646,50 @@ def _solve_cut(w, zs, t, up, side, layers, diel):
     return _cut_section(w, zs, t, up, side, layers, diel).solve().single()
 
 
+@_cached(4096)
+def _solve_group(strips, zs, t, up, side, layers, diel):
+    """(C, C_air), the per-unit-length Maxwell capacitance matrices of a coupled group's lines on its cut (cached:
+    one solve per distinct cut)."""
+    r = _strips_section(strips, zs, t, up, side, layers, diel).solve()
+    return r.C, r.Ca
+
+
+def solve_groups(keys, workers=None):
+    """The cuts of coupled groups (group_keys' arguments, any number) solved, those no earlier group solved in
+    worker processes when there are PARALLEL or more: _solve_group then has them."""
+    todo = [('group', k) for k in dict.fromkeys(keys) if k not in _solve_group.got]
+    if workers is None:
+        try:
+            from emsdev.cpu import core_threads
+            workers = core_threads()
+        except Exception:                                    # noqa: BLE001
+            workers = 1
+    workers = min(workers, len(todo) // 8)
+    if len(todo) >= PARALLEL and workers > 1:
+        for item, got in _in_workers(todo, workers):
+            if got is not None and item[1] not in _solve_group.got:
+                _solve_group.put(item[1], got)
+
+
 def _cut_section(w, zs, t, up, side, layers, diel):
     """The xsection.CrossSection of a strip w wide and t thick on the copper level zs (thickness growing up when up,
     else down, the stack above or below moved by t: the dielectrics' thicknesses are between the copper), the same
     layer's copper `side` beside it, the other layers' copper (z, spans the cut, pieces) as sheets, in the
     dielectrics."""
+    return _strips_section(((-w / 2, w / 2),), zs, t, up, side, layers, diel)
+
+
+def _strips_section(strips, zs, t, up, side, layers, diel):
+    """_cut_section's cross-section with the strips ((x0, x1), in order) as its lines: one, or a coupled group's
+    legs."""
     from . import xsection as X
     zmap = (lambda z: z + t if z > zs + 1e-9 else z) if up else (lambda z: z - t if z < zs - 1e-9 else z)
     z0, z1 = (zs, zs + t) if up else (zs - t, zs)
     xs = X.CrossSection()
     for a, b, er, tand in diel:
         xs.dielectrics.append(X.Dielectric(zmap(a), zmap(b), er, tand))
-    xs.conductor(-w / 2, w / 2, z0, z1)
+    for a, b in strips:
+        xs.conductor(a, b, z0, z1)
     for a, b in side:
         xs.conductor(a, b, z0, z1, ground=True)
     for z, full, ps in layers:

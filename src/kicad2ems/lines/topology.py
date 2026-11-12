@@ -136,10 +136,22 @@ def _split_at(e, ts, u):
     return [_piece(e, nodes[k], nodes[k + 1], pts[k], pts[k + 1], k) for k in range(len(pts) - 1)]
 
 
-def _couple(lm, model):
+def _couple(lm, model, ref=None):
     """Parallel straight sections of one cross-section (microstrip or stripline) on one layer within
     COUPLE_H * h of each other: cut where their overlaps start and end, and group the pieces side by side
-    into coupled sections."""
+    into coupled sections. ref: the board's reference copper (RefCopper): a group is then solved on the board's
+    cut across it where the line model's field setting says (_group_on_cut), over ideal planes otherwise."""
+    start = len(lm.groups)
+    _find_groups(lm, model, ref)
+    from . import reference
+    reference.solve_groups([k for g in lm.groups[start:] for k in (g.get('cut_keys') or ())])
+    for g in lm.groups[start:]:
+        _finish_group(lm, g)
+
+
+def _find_groups(lm, model, ref):
+    """_couple's groups, each with its formulas' pairs and, where it is to be solved on the board's cut, the keys
+    of that cut (cut_keys)."""
     cand = [e for e in lm.elements if e.kind == 'trace' and e.xs in COUPLED_XS and e.length > 1e-3 and _straight(e)]
     if len(cand) < 2:
         return
@@ -217,11 +229,47 @@ def _couple(lm, model):
                     chain.append((c, pc))
                     continue
                 if len(chain) >= 2:
-                    _add_group(lm, chain, u, t0)
+                    _add_group(lm, chain, u, 0.5 * (t0 + t1), model, ref)
                 chain = [(c, pc)] if pc is not None else []
 
 
-def _add_group(lm, chain, u, t0):
+def _group_on_cut(g, chain, u, tm, model, ref):
+    """Whether a coupled group is solved on the board's cut across its middle, and if so its cut (g['cut'],
+    g['cut_keys'], g['cut_flipped']). With the line model's field setting 'all', every group; 'auto', a group
+    whose cut holds what ideal planes leave out (reference.group_beyond: a plane that ends near it, copper on
+    another layer in front of a plane, ground beside a stripline pair or between two of its lines), said in its
+    legs' notes; 'off', none."""
+    from . import reference
+    mode = reference.field_mode()
+    if ref is None or mode == 'off':
+        return False
+    n = np.array([-u[1], u[0]])
+    legs = [(c, e.w) for c, e in chain]
+    mid = 0.5 * ((legs[0][0] - legs[0][1] / 2) + (legs[-1][0] + legs[-1][1] / 2))
+    e0 = chain[0][1]
+    if not getattr(e0, 'cut', None):                         # not a section classify cut: nothing says which way up
+        return False
+    hs = (e0.h,) if isinstance(e0.h, float) else tuple(e0.h)
+    try:
+        args = reference.group_cut(model, ref, e0.layer, [(c - mid, w) for c, w in legs], u * tm + n * mid, n, hs,
+                                   e0.cut[3])
+        why = reference.group_beyond(args, e0.xs, hs) if mode == 'auto' else None
+    except Exception:                                        # noqa: BLE001 (a cut it cannot take: ideal planes)
+        return False
+    if mode == 'auto' and not why:
+        return False
+    g['cut'] = args
+    g['cut_keys'], g['cut_flipped'] = reference.group_keys(args)
+    if why:
+        for _, e in chain:
+            e.notes.append(f"coupled group solved on the board's cut: {why}")
+    return True
+
+
+def _add_group(lm, chain, u, tm, model=None, ref=None):
+    """A coupled group of the legs in chain ([(centre across the lines, element)], side by side), tm their middle
+    along the lines: its formulas' pairs now; the field solver's and its coupling elements when _couple finishes
+    it."""
     from .coupled import coupled
     gid = len(lm.groups)
     members, gaps = [], []
@@ -240,9 +288,22 @@ def _add_group(lm, chain, u, t0):
         wa, wb = members[k][0].w, members[k + 1][0].w
         ze, zo, ee, eo = coupled(e0.xs, 0.5 * (wa + wb), gap, e0.h, e0.er)
         g['pairs'].append(dict(gap=gap, ze=ze, zo=zo, eeff_e=ee, eeff_o=eo))
+    g['t'] = e0.t
+    _group_on_cut(g, chain, u, tm, model, ref)
+    lm.groups.append(g)
+
+
+def _finish_group(lm, g):
+    """A group's pairs from the field solver (on the board's cut where _group_on_cut chose it; over ideal planes
+    otherwise, or where the cut does not solve) and its coupling elements."""
     from . import reference
-    if FIELD_GROUPS or reference.field_mode() == 'all':
-        _field_group(g, [m[0].w for m in members], e0.t)
+    members, gid = g['members'], lm.groups.index(g)
+    e0 = members[0][0]
+    if not (g.get('cut_keys') and _field_group_cut(g)):
+        if FIELD_GROUPS or reference.field_mode() == 'all':
+            _field_group(g, [m[0].w for m in members], g.get('t', e0.t))
+    for key in ('cut_keys', 'cut_flipped', 't'):
+        g.pop(key, None)
     for k, p in enumerate(g['pairs']):
         cp = Element('coupling', members[k][1], members[k + 1][1], 0.0, layer=e0.layer, w=p['gap'], net=e0.net,
                      label=f"coupled to the next line, gap {p['gap']:.3g} mm",
@@ -250,7 +311,30 @@ def _add_group(lm, chain, u, t0):
         cp.xs, cp.group = 'coupled', gid
         cp.notes.append(f"Ze {p['ze']:.1f} / Zo {p['zo']:.1f} ohm over {e0.length:.2f} mm")
         lm.elements.append(cp)
-    lm.groups.append(g)
+
+
+def _field_group_cut(g):
+    """The group's C and C_air from the field solver on the board's cut across it (g['cut_keys']: with its copper's
+    thickness, and as sheets), as _field_group sets them from ideal planes. False where the cut does not solve."""
+    from . import reference
+    (thick, sheet), flipped = g['cut_keys'], g['cut_flipped']
+    try:
+        C, Ca = reference._solve_group(*sheet)
+        Ct, Cat = reference._solve_group(*thick) if thick[2] else (C, Ca)
+    except Exception:                                        # noqa: BLE001 (ideal planes stay)
+        del g['cut']
+        return False
+    if flipped:                                              # the matrices of the lines in their own order
+        C, Ca, Ct, Cat = (M[::-1, ::-1] for M in (C, Ca, Ct, Cat))
+    g['C'], g['Ca'] = C.copy(), Ca.copy()
+    section = reference._strips_section(*g['cut'])
+    for k, (leg, *_) in enumerate(g.get('members', ())):
+        leg.coupled = dict(section=section, index=k)
+    for k, p in enumerate(g['pairs']):
+        p['ze_sheet'], p['zo_sheet'] = _pair_modes(C, Ca, k)[:2]
+        p['ze'], p['zo'], p['eeff_e'], p['eeff_o'] = _pair_modes(Ct, Cat, k)
+    g['source'] = 'cut'                                      # (else: ideal planes, or the formulas' pairs)
+    return True
 
 
 def _pair_modes(C, Ca, k):

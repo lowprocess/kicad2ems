@@ -386,7 +386,8 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
         nodes_far = [end(e, 0 if far == e.a else 1) for e, near, far in mem]
         e0 = mem[0][0]
         ws = [e.w for e, _, _ in mem]
-        if g.get('xs', 'microstrip') == 'microstrip' and len(mem) == 2 and abs(ws[0] - ws[1]) <= 0.05 * max(ws):
+        if g.get('xs', 'microstrip') == 'microstrip' and len(mem) == 2 and abs(ws[0] - ws[1]) <= 0.05 * max(ws) \
+                and g.get('source') != 'cut':               # (its own model knows nothing of the board's cut)
             L.append(f'MCOUPLED:G{gid} {nodes_near[0]} {nodes_far[0]} {nodes_far[1]} {nodes_near[1]} Subst="{sub(e0)}" '
                      f'W="{0.5 * (ws[0] + ws[1]) * 1e-3:.6g}" S="{g["gaps"][0] * 1e-3:.6g}" L="{g["length"] * 1e-3:.6g}" '
                      f'Model="Kirschning" DispModel="Kirschning"')

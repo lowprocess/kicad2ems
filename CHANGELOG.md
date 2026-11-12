@@ -9,6 +9,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Coupled sections on the board's cut.** A coupled group was solved over ideal planes, without the copper
+  beside it. It is now cut as a single section is: one cut across the group's middle, out to 5 reference heights
+  beyond its outer lines, its lines as the strips and the copper found on every layer as ground
+  (`reference.group_cut`, `_solve_group`; similar cuts and mirror images share a solve, many go to the worker
+  processes). `--lines-field auto` (the default) solves a group on its cut where the cut holds what ideal planes
+  leave out, by the single sections' rules with the group as one strip (`reference.group_beyond`; the lines'
+  notes say what), `all` every group, `off` none. The report's coupled-sections table says which each was solved
+  on, and the section view draws the cut. On the CM5 Minima (295 groups, 780 mm of pairs), against every group
+  on its cut: over ideal planes the odd mode is over 3 % off on 154 mm (up to 29 % high where an inner
+  layer's ground pour fills in between a bus's traces, 24 % low where a plane ends under a pair) and the even
+  mode on 176 mm; with `auto` (86 groups on their cuts) the odd mode is within 2.1 % everywhere and the even
+  within 3.1 %, in the same 20 s. Copper between two lines of a group (a guard trace, a pour) is in its cut
+  and always has it solved there, and a pair solved on its cut is the multiconductor block in qucsator too (its
+  MCOUPLED knows nothing of the copper around the lines): `rf_crosstalk_guard`'s far-end crosstalk is −21.7 dB
+  at worst instead of −17.3 dB (gfdtd −20.7 dB), 1.0 dB rms from gfdtd instead of 3.6 dB. The other examples'
+  groups hold nothing but their planes and are unchanged (their cuts solve within 0.02 Ω), but for
+  `rf_combline`, whose middle rod is not in the line model and is now ground between the outer two (no pass
+  band either way).
 - **The Circuit page is the model's editor; its settings are generated (kicad2ems-gui).** The page keeps the
   schematic and the model's JSON. Its settings are a panel in the Study dock made from the circuit plugin's
   options, as every analysis's are (the two tools' own tables; the options of the other kind of model hidden;
