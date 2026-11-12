@@ -8,6 +8,89 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- **Analysis plugins (API 2.5).** Tools that work on a run's board but give something other than S-parameters
+  register as `kicad2ems.analyses` entry points, as solvers do as `kicad2ems.solvers`: an `Analysis`
+  (`kicad2ems.api.analysis`) declares its options, the command that runs it, the file a finished run leaves, and
+  what a result holds to read (a report of text and tables) and to plot (curve sets). pcbqs's power integrity, near
+  field, circuit and thermal analyses are the first; `kicad2ems --check` lists them, and a config keeps a study's
+  under `[analysis]` (`run = [...]`, a table per analysis), which kicad2ems itself leaves alone
+  (`api.frontend.read_analyses`). The GUI builds its Study from the registry and has no page per analysis.
+- **The line model solves the sections its formulas get wrong, by default.** `--lines-field` is now `auto`
+  (default), `all` (the option alone, as before; `lines_field = true`) or `off` (`false`). With `auto`, a single
+  section is solved by the field solver on the board's cut across it when the cut holds what its formula leaves
+  out: a reference plane that ends near the trace or under it, copper on a layer in between, ground beside a
+  stripline, a grounded CPW whose gaps are not the gap classified (`reference._beyond_formula`; the section's
+  notes say which). On the CM5 Minima's 1,230 mm of single sections, 324 mm were more than 3 % from their cuts
+  and 43 mm more than 10 %; now 0.7 mm and none, with 361 of 2,309 sections solved. The examples' models are
+  unchanged but for the demo transition's two sections at its via's antipads. `build(field=)` takes the three
+  values too (docs/transmission-lines.md#lines-field).
+- **The line model's cross-sections are solved together, in worker processes.** A build classifies every section,
+  then solves the distinct cross-sections (cuts and grounded CPW) in one go: in worker processes, one per fast core,
+  when there are 48 or more (`reference.solve_deferred`, `reference.PARALLEL`), one after another otherwise or
+  where processes cannot start. The workers are commands (`python -m kicad2ems.lines.cutworker`), not
+  multiprocessing's: a program that builds a line model without guarding its main module is not run again. The CM5 Minima's 94 nets on eight cores: 20 s by default (46 s one after another;
+  17 s before the cuts above), 23 s with `--lines-field all` (was 74 s). The numbers are the same.
+- **`--fill-voids off | far | all`: the ground copper's voids left by the nets not selected, filled.** A pour
+  imported with a few nets selected keeps the clearance of every other net (the CM5 Minima with one net and GND:
+  903 holes), so no plane is solid and mom25d meshes them all. `far` fills the voids away from the signal copper
+  of any layer and the small ones, `all` every one; a void that holds a selected net's copper or via is never
+  filled, and a clearance that crosses a region's edge counts as one. Every solver gets the same copper
+  (`Board(fill_voids=)`, `filled` in `<name>_board.json`, a note per run). On a CM5 Minima crop mom25d goes from
+  7,938 to 4,651 unknowns (its planes become PEC) and gfdtd, which meshes the voids, moves by 0.1 dB in |S21| with
+  `far`; `all` moved a plane resonance there, so `far` is the one to use (docs/model.md#fill-voids). Off by default.
+  What it was built on (2026-10-28, mom25d's mesh at 0.3 mm, boards not in the repository). A 4-layer synthesizer
+  carrier, 55 × 50 mm, a pair and GND kept (each layer 86–97 % pour, 17–59 voids a layer, 761 vias):
+
+  | | unknowns |
+  |---|---|
+  | as imported | 157,459 (a dense matrix: ~400 GB) |
+  | lone pads dropped | 147,370 |
+  | the 154 voids with no selected copper or via in them filled | 142,070 |
+  | filled + planes PEC + pads dropped (In2.Cu and B.Cu solid) | 44,071 (all on F.Cu's pour) |
+  | as imported + PEC + pads dropped + `--mom-zone on` | 30,948 |
+  | filled + PEC + pads dropped + zone (+ quads) | 8,952 (8,534) |
+  | filled + PEC + pads dropped, F.Cu's pour cut 3 mm / 1.5 mm from the signal copper, quads | 6,572 / 4,489 |
+
+  A 6-layer CM5 carrier's PCIe RX pair (0.14 mm traces, ~55 mm on F.Cu, two vias through four planes to B.Cu; a
+  30 × 29 mm region, the whole stack meshed since a port is on B.Cu), where filling is not enough:
+
+  | | unknowns |
+  |---|---|
+  | as imported | 167,849 |
+  | lone pads dropped | 152,331 |
+  | voids filled (far from the signal) | 119,644 |
+  | filled + zone (+ quads) | 54,885 (55,168): each inner plane still ~7.5k, F.Cu 15k |
+  | filled, GND copper cut 1.5 mm from the pair on every layer, zone | 58,645: cutting does not help |
+  | F.Cu alone over In1.Cu, filled, zone + quads | 10,593 |
+  | the same with no F.Cu pour at all: the pair alone | 7,112 |
+- **A stack-up impedance calculator.** `kicad2ems-z0` (`python -m kicad2ems.lines.calc`, `api.frontend.impedance`):
+  the 2D field solver without a board. A line's width, a pair's gap, the copper and any stack of dielectrics (typed,
+  or a board's own around a copper layer: `--board`, `--layer`) give Z0, Zdiff, Zcommon, εeff, the delay and the
+  dielectric's loss, with the closed form beside it where one applies; `--target` finds the width or gap of an
+  impedance by a root search around the solver (0.1 %, about a second; not snapped to the line model's 1 % steps);
+  `--plot` draws the field. See docs/transmission-lines.md#calculator.
+- **Examples in groups, and from plugins.** `api.frontend.example_index()` gives every example with its group and
+  title (Antennas, RF structures, Lumped-element demos, with subgroups); an installed analysis ships its own, which
+  `examples()` and `prepare_example()` now cover (pcbqs's circuits, each a config beside its model and board).
+- **Dumps of steady quantities.** A dump at 0 Hz alone is labelled static, and one whose `dump_info.json` entry says
+  `"range": "data"` (a temperature) is coloured over its own values instead of from zero
+  (`DumpSource.static`, `.spans`; `frames.levels(span=True)`).
+
+### Decided
+- mom25d's near-field reach stays 5 cells (`near_fac`); 3 was a candidate default for half the near field's cost.
+  Checked on eleven examples, CPU, whole sweeps (2026-11-12): eight move by 0.5e-3 to 7.5e-3 in |S| at most, but
+  rf_interdig by 0.038 and rf_diffvia by 0.18. Against a reach of 8, rf_diffvia at 1.0 GHz is 0.146 off with 3,
+  0.047 with 4 and 0.060 with 5; rf_interdig at its band edge 0.024, 0.012 and 0.040. So 3 is no worse on the
+  filter and 2.4 times worse on the pair's vias, for about 5 % of these boards' time. The reach's own convergence
+  on those two is in ROADMAP.md.
+
+### Fixed
+- **The qs, gui and filter extras installed stale packages.** They pin pcbqs and kicad2ems-gui by revision, and
+  the pins had stayed at 7 November while both moved on (pcbqs by 68 commits: no circuit engine, no thermal). They
+  name the current revisions again; the kicad2ems-project checkout's `sync_pins.py` checks them against its
+  submodules and rewrites them.
+
 ### Changed
 - **Independent PCB quasistatics package.** PDN/DC, MQS/PEEC and operational
   circuits move to `pcbqs`, with privately maintained numerical copies and its
@@ -118,8 +201,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `examples/` on each run, so `kicad2ems examples/<name>.toml` works straight after it; `python
   examples/make_boards.py [NAME ...]` makes them again (`kicad2ems.examples.make_boards`).
 - mom25d: `--mom-planes pec|mesh` and `--mom-stitching-pads drop|keep` (both the first by default: below).
-- mom25d: `solver='hodlr'`, a hierarchical direct solver (experimental): 3–4× less memory than the dense LU at
-  the same accuracy, not faster below ~30k unknowns (ROADMAP.md item 6).
+- mom25d: `solver='hodlr'`, a hierarchical direct solver (experimental, `mom25d/hodlr.py`): a binary geometric
+  tree, each node's two off-diagonal blocks low rank (ACA with a check of the rows holding significant near-field
+  entries, or the exact block by an adaptive randomized range finder), a Sherman–Morrison–Woodbury factorisation,
+  optionally the preconditioner of GMRES on the exact operator. 3–4× less memory than the dense LU at the same
+  accuracy, not faster below ~30k unknowns. Measured (CPU, 8 P-cores, one solve at 5 GHz):
+
+  | | per solve | memory | \|ΔS\| from dense |
+  |---|---|---|---|
+  | hairpin, 4,763 unknowns: dense | 0.7 s | 0.35 GB | |
+  | HODLR 1e-4 / 1e-6 | 1.1 s / 7.6 s | 51 / 112 MB | ranks at the top 32 / 212 |
+  | demo_transition (meshed), 13,543: dense | 13.7 s | 2.8 GB | |
+  | HODLR 1e-4 | 24.5 s | 0.77 GB | 2.2e-3 |
+  | HODLR 1e-6 | 160 s | 1.9 GB | 7.7e-6 |
+  | HODLR 1e-4 + GMRES (11 iterations) | 26.5 s | 0.77 GB | the exact operator's, to 1e-6 |
+
+  The ranks are low and the memory falls, but it is about N^2.5, not N log N, for two reasons. On boards with
+  coarse planes the near-field correction reaches 5 cells (15 mm under 3 mm plane cells: 15 % of the matrix), so
+  most rows of a block hold near entries and every block is compressed from its exact entries. And admissibility
+  is weak on a 2D board: the top blocks' ranks grow like √N (241 / 670 at 13.5k against 32 / 212 at 4.8k). A 55k
+  board (the CM5 pair, 48 GB dense) was stopped for memory before it finished; the near-field CSR and its scaled
+  copy are the suspects. What would make it N log N is in ROADMAP.md (mom25d: boards past 30k unknowns).
 
 ### Fixed
 - `--thickness on` with `--rough` on gfdtd: the faces' roughness took the skin depth of the face sheets' σ / 4, twice

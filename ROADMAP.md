@@ -1,279 +1,189 @@
 # Roadmap
 
-What is worth doing next, in priority order. Each item comes from something the examples or benchmarks
-showed. Finished items leave this file; what was done is in CHANGELOG.md, and the decisions not to do
-something are under its *Decided* headings. Last updated 2026-11-07.
+What is worth doing next across the stack (kicad2ems, its window, mom25d and pcbqs), in priority order within each
+part. Each item comes from something the examples, the benchmarks or a validation showed. Finished items leave
+this file: what was done, measured and decided against is in a CHANGELOG.md (this repository's for kicad2ems, its
+window and mom25d; pcbqs's for the power tools). C, I and U numbers are findings of pcbqs's
+`docs/power-tools-review.md`; estimates are working days. Last updated 2026-11-12.
 
-## The line model's field solver
+## The study: questions and engines
 
-The mesh made it fast enough for a whole board (the CM5 Minima's 94 nets: 13 s, 71 s with `--lines-field`). What's
-left, in order:
+The window's Study lists five things to run. Four are pcbqs tools, each one question about the board; the fifth,
+"S-parameters", is everything else: seven solvers chosen in another section, and several answers from one run. So
+the list cannot say "the same question, another program" (Elmer's DC and thermal tools and Palace's capacitance in
+kicad2ems-fem answer what pcbqs's do, and have no place in it), and only the RF row compares solvers.
 
-1. **Take the sections the formulas get wrong from the board's cut, by default.** On the CM5 Minima (1,089 mm of
-   single-ended trace, every signal net), 763 mm is within 3 % of its cut, 277 mm is 3-10 % off and 48 mm over 10 %. The
-   largest piece is ground beside a stripline, which the offset-stripline formula ignores: `PCIE_PI.nRST`, 10.7 mm on
-   In2.Cu with ground 0.2 mm beside it, is 71.9 Ω by formula and 58.8 Ω by its cut. openEMS on that trace cropped gives
-   a total C of 1.07 pF, the cut 1.05 pF and the formula 0.89 pF (`tools/lines_crop_check.py`; one trace, 0.05 mm cells,
-   L not separable from the ports'). Short sections over via clearances are the extreme ones (SDA, 0.24 mm: 90.7 Ω by
-   formula, 78.6 Ω by default, 63.1 Ω by its cut), but too short to matter much. `--lines-field` costs 70 s for this
-   board against 13 s; a test that sends only the sections with copper close beside them to the solver would cost less.
-2. **Stack-up impedance calculator.** Width, gap, stack and copper in, Z0, Zdiff and εeff out, with the field drawn:
-   the field solver and the [Section view](docs/gui.md#section) without a board, in the GUI and on the command line
-   (`CrossSection`, `xsection.field` and `SectionView` are all there). Solving for the width that hits a target needs
-   a root search around `solve()`; the 1 % snapping (`xsection.SIMILAR`) doesn't apply.
-3. **The mesh's remaining cost: key lines.** Every copper edge and mask step runs across the whole box as a key line, so
-   a thin column of cells runs the box's full height. That is what keeps the sides nested. Merging cells away from
-   the corners would break it, and needs constraints for sides that overlap without nesting.
-4. **Boundary elements with a layered Green's function**, for the largest cuts: 300–2,000 unknowns and no box.
-   `mom25d/multilayer.py` has the stack but a dynamic spectral kernel; the static 2D one needs deriving. Worth it only
-   if the mesh's 0.2 s at worst becomes the limit.
+The plan: an *analysis* is a question with a known kind of answer, an *engine* a program that answers it. The
+registry holds engines, each declaring the analyses it provides.
+
+| Group | Analysis (the question) | Engines today |
+|---|---|---|
+| RF | `sparams`: the ports' S-parameters | openEMS, gfdtd, mom25d, mixed, Palace |
+| RF | `antenna`, `fields`: from the same solve as `sparams` | those with the capability |
+| RF | `lines`: every trace's impedance and delay | the line model |
+| Power | `dc`, `pdn`: a rail's drop and its impedance, one solve | pcbqs.pdn; Elmer for `dc` |
+| Power | `nearfield`, `circuit` | pcbqs.mqs, pcbqs.circuit |
+| Power | `capacitance`: between nets | Palace, Elmer, pcbqs |
+| Thermal | `thermal`: the board's temperature | pcbqs.thermal; Elmer |
+
+1. **Kinds and engines in the registry (API 2.6, additive; 1 day).** `kicad2ems.analyses.KINDS`: each kind's name,
+   label, group, what it shares a solve with and the form of its answer. `Analysis` gains `provides` and `engine`;
+   the solver plugins appear in the same view through an adapter. A front end asks one function, `study_tree()`,
+   and has no RF special case.
+2. **Engines registered where they exist (1 day).** pcbqs.pdn provides `dc` and `pdn` from one run. kicad2ems-fem
+   registers its Elmer and Palace tools: optional, in its own package, so pcbqs still needs neither.
+3. **The config and the command line (1 day).** `[study] run = [...]`, `[study.thermal] engine = "pcbqs"`;
+   `[analysis] run` and `--solvers` are read as before. `kicad2ems study board.toml` runs a study in order, which
+   only the window can do today: the run order moves into kicad2ems, and kicad2ems-ipc gets it too.
+4. **The window (1.5 days).** A grouped tree, one row per question, the engine a choice on the row ("auto", one, or
+   several to compare); the Solvers section goes into the S-parameters row; Results compares engines for any kind.
+5. **Check (0.5 day).** The temperature and the DC drop by pcbqs and by Elmer from one study.
+
+Not decided: whether `antenna` and `fields` are rows, or outputs ticked on the S-parameters row.
+
+## The window, from a clean slate
+
+kicad2ems-gui's `docs/redesign.md` (not started; about three weeks; it needs steps 1 and 4 above). One fixed layout
+around the board: the questions on the left, the board in the middle, the selected question's few settings on the
+right, plots and reports in a drawer under it. The steps Board, Questions, Set up, Run, Results in the header with
+one primary action; settings split into the few that matter and the rest; a list of what is still missing instead
+of disabled buttons; a start page with the examples as a gallery; tools that are not about a board under Tools
+(the impedance calculator is there already).
+
+## The line model
+
+1. **Coupled sections on the board's cut.** A coupled group is solved over ideal planes, without the copper beside
+   it. In a trial on the CM5 Minima, stripline pairs moved by 3–10 % over 134 of their 258 mm; microstrip pairs
+   did not (520 of 522 mm within 3 %). It needs one cut per group: `reference.cut` at the group's middle, out to
+   the reach beyond both outer legs, snapped from the group's outer edges, its legs as the strips. `_couple` has
+   to be given the reference copper for it. The legs' own cuts cannot be put together: each is snapped from its
+   own leg's edges, so copper far from it lands on the other legs.
+2. **The mesh's key lines.** Every copper edge and mask step runs across the whole box as a key line, so a thin
+   column of cells runs the box's full height (it keeps the sides nested). Merging cells away from the corners
+   needs constraints for sides that overlap without nesting.
+3. **Boundary elements with a layered Green's function**, for the largest cuts (300–2,000 unknowns, no box), only
+   if the mesh's 0.2 s at worst becomes the limit. `mom25d/multilayer.py` has the stack but a dynamic kernel; the
+   static 2D one needs deriving.
 
 ## mom25d on multi-layer boards
 
-mom25d is slowest where planes have to be meshed. Solid planes are now PEC and lone stitching-via pads left out by
-default (done 2026-10-29: CHANGELOG.md, docs/mom.md#planes; rf_stripline 15,563 → 1,337 unknowns, 100 → 3 s;
-demo_transition 13,670 → 4,043). What still meshes planes: pours with voids around other nets (item 4) and planes
-a signal via passes through (item 5: demo_transition's In1.Cu holds 2,408 of its 4,043 unknowns). Items 1–3 (the
-PEC planes, the lone pads, the zone's grid inside the zone) are done; the numbering is kept for the references below.
+mom25d is slowest where planes have to be meshed. Solid planes are PEC, lone stitching pads are left out and a
+board imported with a few nets can have its pours' voids filled (`--fill-voids`). The model items below are worth
+an order of magnitude more than the solver's: taking planes out brought rf_stripline from 100 s to 3 s.
 
-4. **Pours from real boards: fill the voids of nets that are not simulated.** A board imported from KiCad with
-   only a few nets selected keeps every clearance void its pours have around the other nets' pads, traces and
-   vias. Then no plane is solid (item 1 never applies), and each void has edge rings. Measured 2026-10-28 on a
-   real 4-layer board (a synthesizer carrier, not in the repository; 55 × 50 mm, only `/RF_A_P`, `/RF_A_N` and
-   GND kept: each layer 86–97 % GND pour, 17–59 voids per layer, 761 vias), with mom25d's mesh at 0.3 mm:
+1. **Z·V on the GPU in the reuse path** (small; medium confidence). After the LU reuse, demo_transition's CPU sweep
+   is 83 s: 14 reused solves of 4.8 s each, 3.4 s of that GMRES products bound by the host's memory bandwidth.
+   On the card the GPU column would go from about 72 s to 40–45 s, while Z fits there (~25k unknowns); uploading
+   Z each frequency eats into it. It matters for real boards past ~10k unknowns.
+2. **Planes a signal via passes through: an internal PEC plane with magnetic frills** (about 500 lines in
+   `multilayer.py`, `via.py` and `sim.py`, and validation against openEMS: a via through a plane,
+   demo_transition, rf_msvia).
+   - The stack's TL network gets internal PEC interfaces. Every existing kernel then decouples the copper above
+     from the copper below: no new horizontal kernels, and two blocks coupled only through the vias.
+   - Each round antipad gets one unknown, the voltage across it: a magnetic frill, M_φ = V / (ρ ln(b/a)),
+     radiating TM only (in the TM network a series voltage source at the shorted interface, its radial profile
+     (J0(k_r a) − J0(k_r b)) / ln(b/a)). The via through the hole stays one chain. New kernels: frill to
+     horizontal currents (order-1 Hankel), to via chains and to frills (order 0; the self term's coaxial part
+     analytic). One more equation per frill: H_φ continuous across the annulus, tested with the frill's profile.
+   - A plane qualifies when every hole is one via's antipad (a hole that is not round: the annulus of its area);
+     slots and cutouts stay meshed.
+   - Gain: demo_transition's 3,910 unknowns, 2,408 of them the plane, become about 1,500 (~18× less LU work;
+     with the zone and quads 2,701 to ~1,100); a CM5 carrier's PCIe pair, 54,885 after filling its voids, about
+     12k.
+3. **Coupled runs in the mixed solver.** It cuts only lone traces into lines, and needs wave ports. 4-port coupled
+   lines (`line_char_pair` exists) would take a pair's straight runs: about 40 % of that PCIe pair's length, whose
+   unknowns scale with it (the pair alone: ~7k for 55 mm).
+4. **What `--fill-voids` leaves.** `far` keeps a void near the signal copper on every layer, also behind a solid
+   plane (14 × 32 mm of the CM5 Minima: 33,088 unknowns, 25,662 with `all`, 42,689 as imported). Whether those
+   can go is not settled: on a crop, `all` moved a resonance of the planes the region cut (gfdtd's |S21| at
+   10 GHz from −1.6 to −4.0 dB). It needs a board whose planes are not cut. The KiCad plugin's selected-net runs
+   could default to `far`. Optionally, a ground pour on a signal layer cut a few heights from the signal copper.
+5. **Boards past ~30k unknowns**, only if they remain after 2–4. `solver='hodlr'` is about N^2.5 and wins by
+   memory first (its measurements: CHANGELOG.md). Towards N log N, in order:
+   - **the near field's reach.** 5 cells is not converged everywhere: against 8, rf_diffvia moves by 0.060 in |S|
+     at 1.0 GHz and rf_interdig by 0.040 at 3.36 GHz, not monotonically in the reach. Find what is sensitive
+     there (the low-frequency conditioning is the suspect for rf_diffvia), then cap the reach at a distance, so
+     ACA compresses from O(N r) entries;
+   - **a loop–star (or loop–tree) basis:** the low-frequency conditioning sets GMRES's iterations and amplifies a
+     compressed factorisation's error (10³–10⁴); perhaps 10–30 % on today's boards; a sizeable change;
+   - **strong admissibility** (H-LU, or HODLR in a nested-dissection order), so the ranks stay bounded: 50k+
+     fits, perhaps N^1.5–2 in time;
+   - **an FFT-based operator (pFFT / AIM):** a planar board's Green's function depends on the lateral distance
+     only, so its far field is a 2D convolution per pair of interfaces, with the near correction mom25d has and a
+     loose HODLR as GMRES's preconditioner (11 iterations at 1e-4 on demo_transition). The route to 100k+: a
+     large effort, and still short of a cheap preconditioner;
+   - HODLR's symmetry (Zᵀ = Z: half the compression, untested); the GPU for its products and its leaves.
 
-   | | unknowns |
-   |---|---|
-   | as imported | 157,459 (a dense matrix: ~400 GB) |
-   | lone pads dropped (item 2, now the default) | 147,370 |
-   | the 154 voids with no selected copper or via in them filled | 142,070 |
-   | filled + planes PEC + pads dropped (In2.Cu and B.Cu now solid: ground In1.Cu) | 44,071 (all on F.Cu's pour) |
-   | as imported + PEC + pads dropped + `--mom-zone on` | 30,948 |
-   | filled + PEC + pads dropped + zone (+ quads) | 8,952 (8,534) |
-   | filled + PEC + pads dropped, F.Cu's pour cut 3 mm / 1.5 mm from the signal copper, quads | 6,572 / 4,489 |
+## Power tools (pcbqs)
 
-   Without filling, this board needs item 6 (31k–157k unknowns). With it, a dense GPU LU is enough. To do:
-   - the rule: fill a void unless it holds copper or a via of a selected non-ground net (an antipad), or lies
-     within the zone distance of the signal copper projected from any layer (a void under the trace changes
-     its return path: keep it). Small voids anywhere (thermal-relief gaps, under ~0.5 mm²) are filled unless
-     they are an antipad;
-   - where: at import, in kicad2ems (`Board`), as an option every solver gets (`--fill-voids off | far | all`),
-     so the solvers still compare on the same copper; declared like `--ground` (area added per layer). The
-     KiCad plugin's selected-net runs could default to `far`;
-   - optionally, a ground pour on a signal layer cut to a distance from the signal copper (F.Cu above): the
-     stitching vias hold it at ground, and beyond a few dielectric heights it carries next to no current;
-   - check against openEMS on a cropped section of a real board, filled and not (openEMS meshes both).
-   A long diff pair through vias is the harder case. Measured on a second real board (a 6-layer CM5 carrier,
-   not in the repository: the PCIe RX pair, 0.14 mm traces 0.15 mm apart, ~55 mm on F.Cu, then two vias through
-   all four inner planes to B.Cu; a 30 × 29 mm region; `--mom-stack whole`, since a port is on B.Cu):
+`pcbqs.pdn` (a rail's DC drop and impedance), `pcbqs.mqs` (a converter's near field), `pcbqs.circuit` and
+`pcbqs.power_circuit` (switching circuits on the board's copper) and `pcbqs.thermal`. What exists and how it was
+validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.md`.
 
-   | | unknowns |
-   |---|---|
-   | as imported | 167,849 |
-   | lone pads dropped | 152,331 |
-   | voids filled (far from the signal) | 119,644 |
-   | filled + zone (+ quads) | 54,885 (55,168): each inner plane still ~7.5k, F.Cu 15k |
-   | filled, GND copper cut 1.5 mm from the pair on every layer, zone | 58,645: cutting does not help |
-   | F.Cu alone over In1.Cu (what item 5 would leave of the top), filled, zone + quads | 10,593 |
-   | the same with no F.Cu pour at all: the pair alone | 7,112 |
+### Correctness and workflow
 
-   The planes cannot be PEC here (the pair's vias pass through them all), so filling alone leaves ~55k: item 5
-   is what brings this board to ~12k (F.Cu ~10.6k plus B.Cu's pads and pour), which a dense GPU LU still
-   handles (complex64: ~1.2 GB). What remains scales with the pair's length (the pair alone ~7k for 55 mm).
-   That is the job of the mixed solver (long runs as lines), which today cuts only lone traces (a pair's legs
-   are each other's neighbours) and needs wave ports (the whole stack has only lumped ones). Extending it to
-   coupled runs (4-port coupled lines, `line_char_pair` exists) would cut the pair's straight runs: 9, 5–7, 5
-   and 3.5 mm here, ~40 % of its length.
-5. **Planes with antipads: an internal PEC plane with magnetic frills.** A plane a signal via passes through
-   (demo_transition's In1.Cu) cannot be a plain PEC cover or ground. Plan (2026-10-28, not started):
-   - the stack's TL network (`multilayer.LayerStack._network`, `via.TMNetwork`) gets internal PEC interfaces:
-     Yd / Yu restart shorted there, the voltage is zero across it. Every existing kernel then decouples the
-     copper above from the copper below by itself: no new horizontal kernels, and the matrix splits into two
-     blocks coupled only through the vias that pass the plane;
-   - each antipad (a round hole around one via) gets one unknown, the voltage across it: a magnetic frill,
-     M_phi = V / (rho ln(b/a)), the annulus' TEM-like field (antipads are far below a wavelength). It radiates TM
-     only: in the TM network a series voltage source at the shorted interface, its radial profile
-     (J0(kr a) - J0(kr b)) / ln(b/a). The via through the hole stays one chain (current continuous); with V = 0
-     it would be shorted to the plane, which is the limit of a zero antipad;
-   - new kernels: frill to horizontal currents (order-1 Hankel, E_rho), frill to via chains (order 0), frill
-     to frill, self and mutual (order 0; the self term's coaxial part 1 / (rho ln(b/a)) analytically). The
-     extra equation per frill: H_phi continuous across the annulus, tested with the frill's profile;
-   - a plane qualifies when every hole is one via's antipad (an equivalent annulus of the same area for a
-     non-round one). Slots and cutouts stay meshed.
-   Gain: demo_transition with lone pads dropped (item 2) has 3,910 unknowns, 2,408 of them the plane: about
-   1,500 with frills (~18x less LU work; with the zone and quads 2,701 to ~1,100). It applies to every board
-   whose signal vias pass through a plane. Effort: ~500 lines in `multilayer.py`, `via.py` and `sim.py`, and
-   validation (a via through a plane against openEMS, demo_transition, rf_msvia).
-6. **A hierarchical direct solver.** `solver='hodlr'` (`mom25d/hodlr.py`, 2026-10-29, experimental): a binary
-   geometric tree; each node's two off-diagonal blocks low rank (ACA with a check of the rows holding significant
-   near-field entries, where partial-pivoting ACA alone ended early and left blocks 4–7 % off; or the exact block
-   by an adaptive randomized range finder, in row panels past 512 MB); Sherman–Morrison–Woodbury factorisation;
-   optionally the preconditioner of GMRES on the exact operator, factored again 100× tighter if that stalls.
-   Measured (CPU, 8 P-cores, one solve at 5 GHz):
+1. **Settling that sees slow filter modes (C8; 1 day).** Track the cycle-mean drift of the supply current; average
+   the input power over whole slow-mode periods, or extrapolate the decaying mode (vector extrapolation of the
+   per-cycle state) instead of simulating it out.
+2. **The bridge model without wpthb in the code (the rest of C7, U1; 0.5 day).** The precharge goes by what the
+   parts join, but wpthb's own branches and resistances are still in `power_bridge`: move them into the
+   template's data, or take the start from a DC operating point of the actual input network.
+3. **The Circuit page from `--describe` (I4, U2, U5; 1.5 days).** Generate its form from the tool, as the other
+   analyses' are; per-group parasitic overrides; default to the template's switch model and warn on `switch`
+   with ngspice. Its own result tabs repeat the Results page, and a bridge run's `power-circuit.json` is not yet
+   an analysis's result.
+4. **Cross-tool flows (U4, I3; 2.5 days).** A near-field converter as a circuit template (its parts, its loop's
+   copper); a circuit's input-current spectrum as PDN loads; `pcbqs.mqs`'s assumed-pulse fields against the
+   circuit's `--fields`.
+5. **Several rails in one power-integrity run** (a config's `[analysis.pdn]` is one rail).
+6. **Converters.** A broader buck input-loop discovery; ambiguous bias, enable and supply nets resolved by part
+   metadata; the switch node's E in the converter workflow (the Coulomb E of the surface charges is there, the
+   inductive E is not) and output-inductor models; decap and via mounting inductance from the quasi-static solver
+   instead of the formula.
 
-   | | per solve | memory | \|ΔS\| from dense |
-   |---|---|---|---|
-   | hairpin, 4,763 unknowns: dense | 0.7 s | 0.35 GB | |
-   | HODLR 1e-4 / 1e-6, compressing the filled matrix (build + factor) | 1.1 s / 7.6 s | 51 / 112 MB | ranks at the top 32 / 212 |
-   | demo_transition (meshed), 13,543: dense | 13.7 s | 2.8 GB | |
-   | HODLR 1e-4 | 24.5 s | 0.77 GB | 2.2e-3 |
-   | HODLR 1e-6 | 160 s | 1.9 GB | 7.7e-6 |
-   | HODLR 1e-4 + GMRES (11 iterations) | 26.5 s | 0.77 GB | the exact operator's, to 1e-6 |
+### Speed
 
-   What it shows: the ranks are low (the hairpin's top block: 16 at 1e-4 and 73 at 1e-6 of 2,381), the
-   memory falls 3–4×, but it is not faster at these sizes, for two reasons. (1) The entries: on boards with
-   coarse planes the near-field correction reaches 5 cells (15 mm under 3 mm plane cells; 15 % of the matrix,
-   ~2,100 entries a row), so most rows of a block hold significant near entries and every block is compressed
-   from its exact entries: N² entries and ~N² r flops, about the dense LU's work at 13k. (2) Weak admissibility
-   on a 2D board: the top blocks' ranks grow like √N (241 / 670 at 13.5k against 32 / 212 at 4.8k). So it is
-   ~N^2.5, not N log N; it wins by memory first (a 55k board, 48 GB dense, fits), by time only well above
-   ~30k. The 55k CM5 run (filled, whole stack, zone: 54,885 unknowns) was stopped by the system for memory
-   before it finished: the near-field CSR and its scaled copy at 55k are the suspects, to be measured.
+A 30 W wpthb case is about 56 s: two strict transients of a 369-equation circuit, 81 % of ngspice's time in
+refactorisation (pcbqs's `docs/power-circuit.md`).
 
-   To reach N log N, in order:
-   - **the near field's reach**: cap it at a distance (not 5 × the cell: 15 mm under plane cells), so ACA can
-     compress from O(N r) entries and most blocks are not "hot". Measured (2026-10-29): on demo_transition
-     `near_fac` 5 gives 1,199 near triangle pairs a triangle (11.3 M, 2,100 entries a row, 75 % of them
-     between layers: every layer is within reach through thin dielectrics); 3 gives 548 and moves S by
-     ≤ 1.3e-3 from the converged reach (8), 5 by ≤ 2.3e-4; the hairpin the same. A candidate default once
-     checked on the other benchmark boards: half the near field's cost and memory in every path;
-   - **strong admissibility** (H-LU, or HODLR with a nested-dissection order) so ranks stay bounded;
-   - **an FFT-based operator (pFFT / AIM)**: a planar board's layered Green's function depends on the lateral
-     distance only, so its far field is a 2D convolution per pair of interfaces: O(N log N) products, O(N)
-     memory, with the near correction mom25d already has and a loose HODLR (1e-3–1e-4) as GMRES's
-     preconditioner (11 iterations at 1e-4 on demo_transition). This is the route to boards of 100k+;
-   - **reuse across the sweep**: done (2026-10-29, `fast._solve_kept`, `_solve_reused`). One frequency's LU
-     preconditions the band (the 5 GHz LU of demo_transition: 6–30 GMRES iterations from 1 to 10 GHz). The
-     CPU keeps up to 4 complex64 LUs where memory allows, the dense double Z for GMRES's products; one LU and
-     the matrix-free products where not; the GPU on the GPU; BLR and HODLR their factorisation.
-     demo_transition's CPU sweep 176 s → 84 s (3 LUs for 17 solves), GPU 107 s → 76 s. Found on the way:
-     ROCm's complex64 triangular solves lose ill-conditioned factors' accuracy (where the GPU's solves stall,
-     the factor is now solved on the CPU), and the batched GMRES's Givens rotations were not
-     conjugated, so on complex Hessenberg entries it stopped early (a true residual 1.5e-4 where it reported
-     1e-6) and the refinement was judged failed: fixed. The near pairs' analytic parts are now kept across
-     frequencies too (the near field into the dense Z 1.10 s → 0.29 s a frequency on demo_transition);
-   - **loop–star (or loop–tree) basis**: the MPIE matrix's low-frequency conditioning sets both the GMRES
-     iterations and how much a compressed factorisation's error is amplified (10³–10⁴ here);
-   - the GPU for the compression's products and the leaves' factorisations; symmetry (Zᵀ = Z: half the
-     compression, `symmetric=True`, to be checked).
+| Option | Gain | Effort | Notes |
+|---|---|---|---|
+| Slow-mode extrapolation (item 1 above) | 1.5–3× on lightly damped filters | 1 day | as-built wpthb settles slowest |
+| A piecewise-linear switched state-space engine | 10–100× for ideal-switch studies | 1–2 weeks | the copper model and passives are linear: exact matrix exponentials per switch state; device effects need ngspice |
+| Xyce backend | robustness, not speed | 2 days | it ran behavioural switches ngspice could not; 2–7× slower on the benchmark converter; harmonic balance could suit resonant tanks |
+| Two faces in the circuit: a local loop basis | fewer iterations, no dense setup | | iterations grow with frequency (217 at DC, 575 at 20 MHz); the dense common-mode setup is 19 s |
+| Whole-board near field | | 3–5 days, only if a board needs it | a full ground plane is 50k+ triangles (a dense L: ~20 GB): compression and an iterative solve in the loop basis. A crop around the converter is enough for DC-DC loops |
 
-### What the rest is worth (estimated 2026-10-29)
+The quasi-static solver's 10× target is not yet shown on real boards, and an FFT field grid's convergence has to
+be checked for each scan.
 
-Where the time goes after the reuse (demo_transition on the CPU, 83 s, 17 solves): 3 fresh LUs, ~5.5 s each
-(~16 s); 14 reused solves, ~4.8 s each (~67 s), of which ~3.4 s GMRES iterations (memory-bandwidth bound:
-Z·V in double 0.11 s, the complex64 triangular solves 0.11 s) and ~1.4 s fill, near field and vias. So
-only what makes an iteration cheaper or removes iterations helps much at these sizes:
+### Accuracy and validation
 
-| item | what it speeds | benchmark boards | boards of 30k+ unknowns | confidence |
-|---|---|---|---|---|
-| Z·V on the GPU in the reuse path | each GMRES iteration (0.11 s on the host, ~20× the bandwidth on the card; Z, 2.9 GB, fits beside the kept LUs) | GPU column ~72 → 40–45 s on the transition and stripline | while Z fits on the card (~25k) | medium: uploading Z each frequency eats into it |
-| loop–star basis | fewer iterations (low-frequency conditioning) | perhaps 10–30 % | the same, and more robust compressed / iterative paths | low, and a sizeable change |
-| `near_fac` 3 | half the near field's cost and memory | ~5 % (the dense path's near field is 0.3 s a solve now) | halves the matrix-free paths' 2.3 s a frequency and 450 MB of CSR | high (\|ΔS\| ≤ 1.3e-3) |
-| HODLR symmetry | half HODLR's compression | 0 (not used by default) | up to 2× on HODLR's build | medium, untested |
-| H-LU (bounded ranks) | a factorisation without the full matrix | 0 (HODLR was slower than dense at 13.5k) | makes 50k+ fit; maybe N^1.5–2 time | low until built |
-| pFFT | O(N log N) products, O(N) memory | 0: the dense product is already fast | the route to 100k+, still short of a cheap preconditioner | medium in principle, large effort |
+In order:
 
-Against that, the model items are an order of magnitude more: items 1–3 took rf_stripline 100 s → 3 s and
-demo_transition 107 s → 11 s; item 4 a real board 157k → 9–44k unknowns; item 5 (projected) the CM5 pair 55k →
-~11k. Order: (1) items 1–3 the default (done 2026-10-29: the benchmarks' transition 72 → 12 s, stripline 85 →
-3 s with the GPU); (2) Z·V on the GPU in the reuse path; (3) `near_fac` 3 the default; (4) items 4–5; (5) pFFT and
-H-LU only if boards above ~30k unknowns remain after (1) and (4). After (1), the benchmark boards are 3–12 s, so
-(2) and (3) now matter mainly for real boards past ~10k unknowns.
-
-
-## Power integrity and the near field (pcbqs.pdn, pcbqs.mqs)
-
-The focused, current plan for these tools and the switching-circuit workflow is pcbqs's
-`ROADMAP.md`, with a review of their GUI integration in pcbqs's `docs/power-tools-review.md`.
-
-These workflows now live in the independent pcbqs package. It owns private
-numerical copies and its QS native backend; there is no runtime dependency on
-mom25d. emsdev remains a hardware/build utility package.
-
-What exists, its validation and its limits are in the project's `NOTES-pi-nearfield.md`. In brief:
-- **`python -m pcbqs.pdn`:** a rail's DC drop and its PDN impedance. It finds the rail tree through sense
-  resistors and beads, treats pads as terminals and connects decaps through their copper, solves the plane pairs
-  together, and drives the GUI's Power Integrity page.
-- **`pcbqs.mqs`:** the quasi-static currents, loop R and L, dipole moment and near H of a converter's copper.
-  It's validated against image theory and Wheeler's formula; the buck demo gives the hot loop as 0.39 / 3.7 /
-  9.8 nH for the good / far / slot layouts.
-
-Estimates of 2026-11-07, in order:
-
-1. **Speed up the quasi-static solver (1–1.5 days, about 10× overall).**
-   - Implemented in the local mom25d update of 2026-11-07: reciprocal near/far integration, refined
-     close terms, sparse resistance/loop projection and copper-matrix reuse. A 2,474-triangle synthetic sheet
-     fills 3.1× faster than `6be2bc3`; the hybrid inductance differs from the refined analytic reference by
-     0.005% in matrix norm. The 10× overall target is not yet demonstrated on real boards.
-   - `MQS.h_grid` now uses conservative current deposition and open-boundary FFT convolution, with explicit
-     return copper and no image. A 974-triangle, three-frequency benchmark is 35× faster than direct fields,
-     with 0.38% peak-relative error. `tools/benchmark_mqs.py` reproduces the reference comparisons.
-   - Follow-up: resistance remains sparse, duplicate dense branch L storage is removed, PEEC preparation and
-     bounded LU factors are reused, and capacitance-only extraction skips magnetic matrices. The demo now
-     uses FFT with per-height/per-frequency convergence checks. Its good layout's planes and volume take
-     1.3 s; the 9-harmonic solve takes 18.5 s on this environment.
-   - Matrix-fill backends now include OpenMP, threaded NumPy fallback, serial reference and an experimental
-     optional CuPy integrator. Bounded pair tiles, thread/device controls and a backend registration/entry-point
-     interface are shared by magnetic and capacitance filling. The CM5 case now takes 22.4 s assembly/sweep
-     (previously 66.8 s); the moment fill is 12.65 / 9.56 s on one / two OpenMP threads, with R/L unchanged to
-     roundoff. Real RX 7800 XT/CuPy hardware tests now pass, including all three close-quadrature levels
-     and MQS/PEEC/electrostatic solver regressions. Fused pair integration cuts the fine CM5
-     ground-plane GPU fill from 3.06 to 1.55 s, still slower than eight-worker OpenMP at 0.75 s. See mom25d's `docs/static-backends.md` and
-     `tools/benchmark_static_fill.py`. Compression and larger-machine scaling remain future work.
-     Biot–Savart remains the reference for single points; FFT grid convergence needs checking for each scan.
-2. **Converter workflow: implemented locally 2026-11-07.** The general `python -m pcbqs.mqs`
-   command now reads KiCad/board JSON, exposes `--describe --json`, discovers converter candidates,
-   accepts part/net/operating-point/scan overrides, and writes summaries, figures and standard H dumps.
-   The GUI Near field page runs it and opens the outputs in the Viewer. It now also previews
-   the actual layer meshes without filling/solving, projects fields over a selected copper layer,
-   highlights simulated nets/selected components, and shows approximate package bodies in 2D/3D.
-   Board/rail context can be transferred to Power Integrity; source, voltage and DC loads remain
-   explicit per-analysis settings. Details and assumptions are in
-   pcbqs's `docs/quasistatic.md`; completed features are recorded in CHANGELOG.md.
-   Validation should start from mesh/crop/quadrature convergence, independent DC/analytic static
-   cases, conservation/passivity checks and calibrated measurements. Whole-board time-domain
-   runs at the same low frequencies are not a prerequisite for each check; see mom25d's
-   `docs/quasistatic-validation.md`.
-   Operational circuits now have a separate `pcbqs.power_circuit` / GUI Circuit workflow:
-   ngspice switch/NMOS/VDMOS/vendor-subcircuit transients, component parasitics, the input filter,
-   coupled receiver tuning/matching and phase-targeted load-power sweeps. A positive-real matrix
-   Foster copper equivalent replaces a single-frequency R/L approximation; periodic fields use the
-   original copper-current response. Fit/holdout, settling and terminal power checks remain explicit.
-   Next accuracy work: calibrated device/coil/material models, package/gate geometry and coupling,
-   receiver/lead field geometry, common-mode/environment capacitance and full startup field inference.
-   Follow-up: broaden the buck-input-loop discovery heuristic, resolve ambiguous bias/enable/supply nets
-   with explicit part metadata, and add switch-node E/output-inductor models. Operating waveforms and
-   part parasitics are assumptions, not automatically extracted device behavior.
-3. **Real boards (about 1 day):** CM5's buck (U702/L701) and the Jetson baseboard's eight bucks. Expect trouble
-   with thermal pads, real copper detail and mesh size.
-   - CM5 U702's input loop is now reproducibly benchmarked with `tools/benchmark_converter.py`: 9,736
-     triangles on six layers, 85 via segments, 22.4 s assembly/sweep in the upstream two-worker
-     OpenMP follow-up (previously 66.8 s), 0.35 s converged FFT scan and 1.10 GB
-     retained copper matrices. Two meshes differ by up to 3.8% in L; further convergence and hardware validation remain.
-     Settings, source hash and results are in mom25d's `docs/benchmarks/cm5-u702.md`.
-     Local CLI checks at 0.5/1 MHz: changing fine spacing 0.8 to 0.6 mm moves R/L by about 2%;
-     increasing the crop margin 3 to 4 mm moves them by about 0.5%. These are sensitivity checks,
-     not demonstrated mesh/crop convergence. Uniform 0.6 mm quality meshing expands the six-layer crop
-     from 9,736 to 33,442 triangles; prefer measured local refinement before whole-board compression.
-   - Jetson AGX Thor: discovery finds all eight regulator/inductor pairs. Cropped input-loop
-     smoke tests now complete for U11/U12/U13/U65/U69/U7/U75/U8, 3,720–10,045 triangles on
-     ten layers, at 500 kHz with a converged FFT plane. Input supplies were explicitly overridden
-     where bias/enable nets make inference ambiguous. These coarse, local-capacitor tests establish
-     execution, not mesh/crop convergence, device waveforms or physical EMC accuracy.
-4. **Whole-board scale (3–5 days, research-like; only if a board needs it).** A full ground plane is 50k+
-   triangles, and a dense inductance matrix at that size is about 20 GB. It needs compression (mom25d's BLR or
-   HODLR) and an iterative solve in the loop basis. Cropping to a region around the converter, as now, is enough
-   for DC-DC loops.
-
-After those:
-- `kicad2ems pdn` from a config table, with several rails per run and the DC maps as a Viewer overlay.
-- Load currents from part fields.
-- Decap and via mounting inductance from the quasi-static solver, replacing the formula.
-- The switch node's E field from the capacitive kernel: `MQS.e_field` now evaluates Coulomb E from surface
-  charges, including layered dielectric images; inductive E and converter/GUI integration remain.
-- Capacitance added to the quasi-static solver: optional `MQS(capacitance=True, er=...)` now supplies surface
-  charge, displacement current and Maxwell capacitance in a homogeneous dielectric, using a scaled loop/tree
-  PEEC solve. `dielectric='stack'` now adds planar dielectric interfaces and constant dielectric loss;
-  `conductor_loss='slab'` adds finite-thickness sheet skin impedance and internal L (one/two-face approximation).
-  See pcbqs's `docs/quasistatic.md`. Resolved proximity currents, via skin loss, part/copper mutuals,
-  material dispersion and validation of a complete PEEC model up to about λ/10 remain.
+1. **Thick copper and AC resistance (C14).** `conductor_loss='slab'` is two face sheets; stacked sheets with the
+   thick kernel are the reference. Open:
+   - a trace close over a plane, the largest error: one sheet is 19–30 % low in R, two faces were 12.5 % low when
+     last compared, the reference is within 5 %. The validation board's second structure decides;
+   - the 2–3 % drop in inductance with face sheets;
+   - side charge in a layered dielectric (it is homogeneous only), and the tree preconditioner with face sheets;
+   - the compressed backend as the default for `slab`, once the CM5 loop agrees;
+   - one sheet or two in the circuit: two move wpthb's settled ripple by 6 % at 2.6 times the time, which the
+     powered ripple cannot resolve until the parts are vendor models. It needs a measurement that isolates the
+     copper (item 4's jumper variant, or the validation board).
+2. **Capacitance in narrow gaps (0.5 day).** Two traces 0.1 mm apart are −4 % self and −11 % mutual as sheets,
+   −5.5..−7.5 % and −10..−13 % with thickness: the edge charge's resolution within memory (the compressed backend,
+   or graded edge rings).
+3. **A real converter loop, converged.** CM5 U702 (`validation/mqs_cm5.py`): one sheet is within 4 % of Palace's
+   PEC sheets at the finest meshes, both still converging; two meshes differ by up to 3.8 % in L. The Jetson's
+   eight bucks run, no more. Mesh and crop convergence per board, with measured local refinement before any
+   whole-board compression.
+4. **Measurements (the plan is ready; waiting on a VNA).** `validation/measurements.md`: shunt-through at TP7 / TP6
+   unpowered (as built, and with one 1206 jumper for the ceramics), VHB ripple at the regression operating point,
+   the near field at 1–3 mm; predictions in `validation/wpthb_vhb_port.py`. A purpose-made validation board:
+   `validation/test-board.md` lists its structures (no layout or predictions yet).
+5. **Models.** Vendor or fitted MOSFET models (MCG8D2N06YL), datasheet capacitor ESR and ESL, measured coil Q;
+   switch internal capacitances as explicit elements, so a warm start can initialise them; package and gate
+   geometry, the receiver's and the leads' field geometry, capacitance to the environment, the fields at startup.
+6. **A complete PEEC model up to about λ/10:** resolved proximity currents, via skin loss, mutuals between parts
+   and copper, material dispersion.
