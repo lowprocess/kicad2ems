@@ -136,6 +136,10 @@ def init(argv):
 
 def main(argv=None, prog='kicad2ems', default_solvers=None):
     try:
+        args = sys.argv[1:] if argv is None else list(argv)
+        if args and args[0] == 'study':                             # kicad2ems study board.toml: a config's study
+            from .study import main as study
+            return study(args[1:], prog=f"{prog} study")
         if '--init' in (sys.argv[1:] if argv is None else argv):
             return init(sys.argv[1:] if argv is None else argv)
         s, check = settings_from_argv(argv, default_solvers)

@@ -16,8 +16,13 @@ results (the GUI, the KiCad plugin, dfsynth's --validate).
                       (whose result a folder holds), read_analyses (a config's [analysis] tables) (2.5)
   the study           study_tree (what to list: by group, each question with the engines that answer it),
                       questions, engines ({name: Engine}: solvers and analyses alike), runs_for ({engine: the
-                      questions asked of it}), mark_run and run_mark (a run folder's mark: who made it) (2.6)
-  runs                Run, EventTail, stop_runs, find_results, toml_value, write_toml
+                      questions asked of it}), mark_run and run_mark (a run folder's mark: who made it) (2.6);
+                      a config's study: Study, read_study, write_study (its [study] tables), study_plan (the runs
+                      it takes, in order: [Step]), engine_named (an engine by what a config calls it),
+                      latest_results ({analysis: its newest result's folder}) (2.7)
+  runs                Run, EventTail, stop_runs, find_results, toml_value, write_toml; where a front end's runs go
+                      (a folder each under the output folder): run_dir, preview_dir, tool_dir, tool_preview_dir,
+                      board_name (2.7)
   files it writes     read_summary (<name>_run.json), read_antenna (<name>_antenna.json), check_format (a JSON of
                       kicad2ems's, e.g. python -m kicad2ems.sysinfo's: None, or why this kicad2ems cannot read it)
   results             read_touchstone, port_names (a kicad2ems Touchstone file's port names); meshes (the module: the solvers' saved meshes); phased (the module: drives,
@@ -43,6 +48,10 @@ NAMES = dict(
     analyses='.analyses:registry', analysis_of='.analyses:analysis_of', read_analyses='.analyses:read_config',
     study_tree='.study:study_tree', questions='.study:questions', engines='.study:engines', runs_for='.study:runs_for',
     mark_run='.study:mark', run_mark='.study:marked',
+    Study='.study:Study', read_study='.study:read_config', write_study='.study:write_config',
+    study_plan='.study:plan', engine_named='.study:engine_named', latest_results='.study:latest_results',
+    run_dir='.runs:run_dir', preview_dir='.runs:preview_dir', tool_dir='.runs:tool_dir',
+    tool_preview_dir='.runs:tool_preview_dir', board_name='.runs:board_name',
     registry='.solvers:registry', get_solver='.solvers:get', resolve_lines='.solvers:resolve_lines',
     AUTO='.solvers:AUTO', LINES='.solvers:LINES',
     Run='.runs:Run', EventTail='.runs:EventTail', stop_runs='.runs:stop_runs', find_results='.runs:find_results',

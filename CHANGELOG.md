@@ -9,6 +9,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **A study in a config, and `kicad2ems study` (API 2.7).** A config's `[study]` tables say which questions are
+  asked of the board and who answers each: `run = ["sparams", "dc", "thermal"]`, `[study.thermal] engine =
+  ["pcbqs", "Elmer"]` (one engine, or several to compare; by name or as a list shows it), `fields = true` for an
+  engine's field dumps. `kicad2ems study board.toml` runs them in order, which only the window could do: the
+  solvers together as kicad2ems's own run, then each analysis as the command its plugin gives, with its
+  settings from `[analysis.<name>]`, each into a folder of its own that says who made it; `--list`, `--only`,
+  `--preview`. An engine that answers two questions answers them in one run; one that fails or cannot start
+  says why and the rest go on. `[analysis] run` is read as before. `api.frontend` has the study (`Study`,
+  `read_study`, `write_study`, `study_plan`) and the run folders' names (`run_dir`, `tool_dir`, ...), which
+  were the window's. Checked on pcbqs's buck example, both engines from one study: the temperature by pcbqs
+  and by Elmer (hottest 77.4 and 79.1 °C, the parts within 0.7 K) and a rail's own copper drop (0.0579 and
+  0.0573 mV). docs/usage.md#study.
 - **A low-frequency solver: `--solvers pcbqs`.** pcbqs's quasi-static solve of the copper as an S-parameter
   solver (`qs` extra; also `qs`, `quasistatic`), for the low end of a band, from DC to about a tenth of a
   wavelength: the copper's resistance, the loop inductance with the return current where it flows, and the
@@ -113,6 +125,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   did not, and on rf_diffvia's 10 mm feeds from 0.05 to 1 GHz every term was wrong (|Sdd21| −48 dB at 50 MHz,
   0.59 rms |ΔS| from gfdtd). A pair is now refused the same way and its legs are solved as lumped ports, the
   modes taken from them: 0.004 to 0.009 from gfdtd. Found by the check of the new low-frequency solver.
+- **`palace` was not known as the fem extra's solver**: named without kicad2ems-fem installed, it was "no
+  solver 'palace'" instead of how to install it.
 - **A run of four or more solvers ended at its result plot.** The third solver drawn over the reference has a
   dash pattern for its line, a tuple that was passed as matplotlib's format: the Touchstone files were written,
   the plot, the summary and the report were not. Seen once pcbqs made a fourth.

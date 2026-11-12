@@ -9,6 +9,8 @@ wrote. No Qt here.
     read_summary(path)             # a <name>_run.json, its format checked (formats.py)
     stop_runs(out_dir)             # STOP for the run (stop.py), ABORT into every FDTD run folder
     find_results(out_dir)          # [(label, path)] of the newest finished run's files
+    run_dir(base, board), preview_dir(base, board), tool_dir(base, board, analysis, what), tool_preview_dir(...)
+                                   # where a front end's runs go: a folder each under the output folder
     write_toml(path, settings); toml_value(v)
 """
 import glob, json, os, sys
@@ -101,6 +103,43 @@ def stop_runs(out_dir):
     for d in dirs:
         open(os.path.join(d, 'ABORT'), 'w', encoding='utf-8').close()
     return dirs
+
+
+STAMP = '%Y%m%d_%H%M%S'                     # a run folder's date and time
+
+
+def board_name(board):
+    """The name a board's run folders take: its file name without the extension (and a resolved board's _board)."""
+    name = os.path.splitext(os.path.basename(board or 'board'))[0]
+    return name[:-len('_board')] if name.endswith('_board') else name
+
+
+def _tag(text):
+    return ''.join(c if c.isalnum() else '_' for c in str(text or '')).strip('_') or 'run'
+
+
+def run_dir(base, board, now=None):
+    """The folder of an S-parameter run started now: <base>/<board>_20261013_141502."""
+    import datetime
+    return os.path.join(base, f"{board_name(board)}_{(now or datetime.datetime.now()).strftime(STAMP)}")
+
+
+def preview_dir(base, board):
+    """The folder a board's previews share (each refreshes it): <base>/<board>_preview."""
+    return os.path.join(base, f"{board_name(board)}_preview")
+
+
+def tool_dir(base, board, kind, name, now=None):
+    """The folder of an analysis's run started now: <base>/<board>_<analysis>_<what>_20261013_141502 (what: the
+    rail, the converter: Analysis.tag)."""
+    import datetime
+    return os.path.join(base, f"{board_name(board)}_{kind}_{_tag(name)}_"
+                              f"{(now or datetime.datetime.now()).strftime(STAMP)}")
+
+
+def tool_preview_dir(base, board, kind):
+    """The folder an analysis's previews of a board share: <base>/<board>_<analysis>_preview."""
+    return os.path.join(base, f"{board_name(board)}_{kind}_preview")
 
 
 def find_results(out_dir):

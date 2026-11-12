@@ -11,6 +11,7 @@ kicad2ems board.kicad_pcb --config run.toml  # the board on the command line, op
 kicad2ems board.toml --preview               # build the model and mesh, don't solve
 kicad2ems --init board.kicad_pcb             # write a starter config with the ports found
 kicad2ems --check                            # what this Python can run
+kicad2ems study board.toml                   # every question the config's study asks, one run after the other
 ```
 
 `python -m kicad2ems` does the same with a particular Python.
@@ -133,6 +134,49 @@ dmax    = 0.4
 - Unknown keys are reported, with the option they are probably a typo of.
 - Settings are applied in this order: defaults, then the config file, then the command line.
 - An invalid value stops the run with a one-line error. Set `KICAD2EMS_TRACEBACK=1` for the traceback.
+
+<a id="study"></a>
+## A study: several questions of one board
+
+A run of kicad2ems answers one thing, the ports' S-parameters. A study asks more of the same board: a rail's
+drop, the temperature, a circuit on the copper, each by an engine installed for it (`kicad2ems --check` lists
+the questions and who answers them). The config says which, and `kicad2ems study` runs them in order:
+
+```toml
+board = "board.kicad_pcb"
+
+[study]
+run = ["sparams", "dc", "thermal"]      # the questions
+
+[study.sparams]
+engine = ["mom25d", "pcbqs"]            # who answers: one engine, or several to compare; none: the default
+
+[study.thermal]
+engine = ["pcbqs", "Elmer"]             # by its name (elmer_thermal) or as a list shows it
+fields = true                           # its field dumps too, where the engine can write them
+
+[analysis.pdn]                          # an engine's own settings: an analysis's under [analysis.<name>],
+rail = "+5V"                            # a solver's under [solver.<name>] or at the top level, as before
+```
+
+```bash
+kicad2ems study board.toml                    # all of it
+kicad2ems study board.toml --list             # the runs it takes, without making them
+kicad2ems study board.toml --only thermal     # some of its questions (or engines)
+kicad2ems study board.toml --preview          # the runs that have a preview, without solving
+```
+
+The solvers named for S-parameters, an antenna and the line model run first, together, as kicad2ems's own run
+(without an `engine`, the solvers the settings name, `auto` by default); then each analysis in its order, so
+that the temperature follows the circuit whose losses it takes. An engine that answers two questions answers
+them in one run (a rail's drop and its impedance). Each run goes into a folder of its own under the output
+folder, `<board>_<date>_<time>` for the solvers and `<board>_<engine>_<what>_<date>_<time>` for an analysis,
+with a `kicad2ems-study.json` that says who made it and what was asked; the window lists them under Results of.
+A run that fails or cannot start says why and the rest go on. The exit code is 0 when every run finished, 1 when
+one did not, 2 when the study cannot be read.
+
+A config without `[study]` is read as before: `[analysis] run = [...]` names analyses (`"rf"`: S-parameters),
+and with neither the study is S-parameters alone, which `kicad2ems board.toml` runs just the same.
 
 <a id="options"></a>
 ## Options

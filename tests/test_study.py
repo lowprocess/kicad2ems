@@ -140,3 +140,203 @@ def test_check_lists_the_questions(plugins):
     assert 'Rail drop             pdn' in text and 'Temperature           thermal' in text
     assert "Circuit               none (python -m pip install 'kicad2ems[qs]')" in text
     assert 'S-parameters' in text and 'qucs' in text
+
+
+# ---- a config's study, its plan, and the command that runs it --------------------------------------------
+class Circuit(Analysis):
+    """Writes its losses, as a tool would: python -c."""
+    api, name, label, tool, engine = (2, 6), 'circuit', 'Circuit', 'fake.circuit', 'fake'
+    about, result, order, provides, fields = 'a circuit', 'circuit.json', 40, ('circuit',), 'fields'
+
+    def tag(self, values):
+        return 'buck'
+
+    def command(self, values, board, out, preview=False, results=None):
+        import sys
+        if not values.get('model'):
+            raise ValueError('name the circuit model')
+        code = ("import json, os, sys; out = sys.argv[1]; os.makedirs(out, exist_ok=True); print('circuit: solved'); "
+                "json.dump(dict(loss=float(sys.argv[2]), fields=sys.argv[3]), open(os.path.join(out, 'circuit.json'), 'w'))")
+        return [sys.executable, '-c', code, out, str(values.get('loss', 1.0)), str(bool(values.get('fields')))]
+
+
+class Heat(Analysis):
+    """Starts from the circuit's result; `fail` makes its tool exit 3."""
+    api, name, label, tool, engine = (2, 6), 'thermal', 'Thermal', 'fake.thermal', 'fake'
+    about, result, order, provides = 'the temperature', 'thermal.json', 50, ('thermal',)
+    key = 'grid'
+
+    def owns(self, folder, preview=False):
+        f = os.path.join(folder, 'thermal.json')
+        return not preview and os.path.isfile(f) and self.key in open(f).read()
+
+    def command(self, values, board, out, preview=False, results=None):
+        import sys
+        src = (results or {}).get('circuit')
+        if not src:
+            raise ValueError('run the circuit first')
+        code = ("import json, os, sys; out, src, key, fail = sys.argv[1:5]; os.makedirs(out, exist_ok=True); "
+                "loss = json.load(open(os.path.join(src, 'circuit.json')))['loss']; "
+                "sys.exit(3) if fail == 'True' else "
+                "json.dump(dict(tool=key, T=25 + 10 * loss, board=sys.argv[5]), open(os.path.join(out, 'thermal.json'), 'w'))")
+        return [sys.executable, '-c', code, out, src, self.key, str(bool(values.get('fail'))), os.path.basename(board)]
+
+
+class Heat3D(Heat):
+    name, label, engine, order, key = 'elmer_thermal', 'Temperature (Elmer)', 'Elmer', 60, 'elmer'
+
+
+def _config(tmp_path, text, board='b.kicad_pcb', name='c.toml'):
+    p = tmp_path / name
+    p.write_text(f'board = "{board}"\n' + text, encoding='utf-8')
+    return str(p)
+
+
+def test_a_config_says_what_its_study_asks(plugins, tmp_path):
+    plugins(Drop, Circuit, Heat, Heat3D)
+    cfg = _config(tmp_path, '''
+[study]
+run = ["sparams", "antenna", "lines", "dc", "thermal"]
+[study.sparams]
+engine = ["mom", "OPENEMS"]         # an alias, a name in capitals
+fields = false
+[study.lines]
+engine = "auto"
+[study.thermal]
+engine = ["fake", "Elmer"]          # as a list shows them
+fields = true
+[analysis.circuit]
+model = "m.json"
+''')
+    st = study.read_config(cfg)
+    assert st.said == 'study' and list(st.asked) == ['sparams', 'antenna', 'lines', 'dc', 'thermal']
+    assert st.asked == dict(sparams=['mom25d', 'openems'], antenna=[], lines=[], dc=[], thermal=['thermal', 'elmer_thermal'])
+    assert st.fields == dict(sparams=False, thermal=True)
+    # [analysis] run, as before the questions: rf is S-parameters, an analysis the questions it answers
+    old = _config(tmp_path, '[analysis]\nrun = ["rf", "pdn", "thermal"]\n')
+    st = study.read_config(old)
+    assert st.said == 'analysis' and st.asked == dict(sparams=[], dc=['pdn'], pdn=['pdn'], thermal=['thermal'])
+    assert study.read_config(_config(tmp_path, '')).asked == dict(sparams=[]) and study.read_config(old).fields == {}
+    # no run: the questions that have a table
+    assert list(study.read_config(_config(tmp_path, '[study.dc]\n[study.thermal]\nengine = "elmer_thermal"\n')).asked) == \
+        ['dc', 'thermal']
+    for text, why in (('[study]\nrun = ["warmth"]\n', "no question 'warmth': one of sparams"),
+                      ('[study]\nrun = ["thermal"]\n[study.thermal]\nengine = "pdn"\n', "no engine 'pdn' for 'thermal': one of thermal, elmer_thermal"),
+                      ('[study]\nrun = ["dc"]\n[study.dc]\nengine = "elmer_dc"\n', r"analysis 'elmer_dc' is not installed: python -m pip install 'kicad2ems\[fem\]'"),
+                      ('[study]\nrun = ["sparams"]\n[study.sparams]\nengine = "palace"\n', r"python -m pip install 'kicad2ems\[fem\]'"),
+                      ('[analysis]\nrun = ["mqs"]\n', r"analysis 'mqs' is not installed: python -m pip install 'kicad2ems\[qs\]'")):
+        with pytest.raises(ValueError, match=why):
+            study.read_config(_config(tmp_path, text))
+    lax = study.read_config(_config(tmp_path, '[study]\nrun = ["warmth", "dc"]\n[study.dc]\nengine = "elmer_dc"\n'), strict=False)
+    assert lax.asked == dict(warmth=[], dc=['elmer_dc'])                    # kept as written: a front end greys them
+    assert study.engine_named('lines', 'lines') == 'lines' and study.engine_named('sparams', 'Auto') is None
+    assert study.engine_named('thermal', 'ELMER_THERMAL') == 'elmer_thermal'
+
+
+def test_a_study_is_written_into_its_config(plugins, tmp_path):
+    plugins(Drop, Circuit, Heat, Heat3D)
+    cfg = _config(tmp_path, 'fmin = 1.0\n\n[study]\nrun = ["dc"]\n[study.dc]\nengine = "pdn"\n\n[analysis.pdn]\nrail = "5V"\n')
+    st = study.Study(dict(sparams=[], thermal=['thermal', 'elmer_thermal'], circuit=['circuit']), dict(circuit=True, sparams=False))
+    study.write_config(cfg, st)
+    text = open(cfg).read()
+    assert text.count('[study]') == 1 and '[study.dc]' not in text and 'fmin = 1.0' in text and 'rail = "5V"' in text
+    assert 'run = ["sparams", "thermal", "circuit"]' in text and 'engine = ["thermal", "elmer_thermal"]' in text
+    assert '[study.circuit]\nengine = "circuit"\nfields = true' in text and '[study.sparams]\nfields = false' in text
+    back = study.read_config(cfg)
+    assert back.asked == st.asked and back.fields == st.fields and back.said == 'study'
+    study.write_config(cfg, None)
+    assert '[study' not in open(cfg).read() and 'rail = "5V"' in open(cfg).read()
+    assert study.read_config(cfg).asked == dict(sparams=[])
+
+
+def test_the_runs_a_study_takes_in_order(plugins):
+    plugins(Drop, Circuit, Heat, Heat3D)
+    S, plan = study.Study, study.plan
+    step = lambda st: (st.name, st.engines, st.questions, st.mode, st.fields)
+    assert [step(s) for s in plan(S(dict(sparams=[])))] == [('rf', (), ('sparams',), '', None)]     # as the settings say
+    assert [step(s) for s in plan(S(dict(sparams=[]), said='study'))] == [('rf', (), ('sparams',), 'sparams', None)]
+    # the analyses in the registry's order, whatever the order asked: the temperature after the circuit
+    steps = plan(S(dict(thermal=['elmer_thermal', 'thermal'], circuit=[], dc=[], sparams=['mom25d'], lines=[]),
+                   dict(circuit=True, sparams=False, lines=False), 'study'))
+    assert [step(s) for s in steps] == [
+        ('rf', ('mom25d', 'lines'), ('sparams', 'lines'), 'sparams', False), ('pdn', ('pdn',), ('dc',), '', None),
+        ('circuit', ('circuit',), ('circuit',), '', True), ('thermal', ('thermal',), ('thermal',), '', None),
+        ('elmer_thermal', ('elmer_thermal',), ('thermal',), '', None)]
+    # an antenna: its run answers S-parameters for the same solvers; other solvers' S-parameters are a second run
+    assert [step(s) for s in plan(S(dict(antenna=['openems'], sparams=[]), said='study'))] == \
+        [('rf', ('openems',), ('antenna', 'sparams'), 'antenna', None)]
+    assert [step(s) for s in plan(S(dict(antenna=['openems'], sparams=['openems', 'mom25d', 'qucs']), said='study'))] == \
+        [('rf', ('openems',), ('antenna',), 'antenna', None), ('rf', ('openems', 'mom25d', 'qucs'), ('sparams',), 'sparams', None)]
+    assert [step(s) for s in plan(S(dict(lines=[])))] == [('rf', ('lines',), ('lines',), '', None)]
+    for asked, why in ((dict(antenna=['qucs']), "'qucs' does not answer 'antenna'"), (dict(sparams=['pdn']), "'pdn' does not answer 'sparams'"),
+                       (dict(nearfield=[]), "no engine installed answers 'nearfield'")):
+        with pytest.raises(ValueError, match=why):
+            plan(S(asked))
+    lines = study.describe(steps)
+    assert lines[0] == '  S-parameters, Trace impedances: mom25d (MoM), lines, without field dumps'
+    assert lines[2] == '  Circuit: fake (fake.circuit), with field dumps' and lines[4] == '  Temperature: Elmer (fake.thermal)'
+
+
+def test_the_study_command_runs_them(plugins, tmp_path, capsys, demo_files):
+    """kicad2ems study: each run into a folder of its own with its mark, an analysis's settings from its table, one
+    that starts from another's result given it, one that fails or cannot start not stopping the rest."""
+    import json
+    from kicad2ems.cli import main
+    plugins(Drop, Circuit, Heat, Heat3D)
+    base, _ = demo_files
+    out = tmp_path / 'runs'
+    cfg = _config(tmp_path, f'''out = "{out}"
+solvers = ["mom25d"]
+fmin = 1.0
+fmax = 2.0
+points = 5
+no_report = true
+
+[study]
+run = ["sparams", "circuit", "thermal"]
+[study.thermal]
+engine = ["fake", "Elmer"]
+[study.circuit]
+fields = true
+
+[analysis.circuit]
+model = "m.json"
+loss = 2.5
+[analysis.elmer_thermal]
+fail = true
+''', board=base + '.kicad_pcb')
+    assert main(['study', cfg, '--list']) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "  S-parameters: the settings' solvers", '  Circuit: fake (fake.circuit), with field dumps',
+        '  Temperature: fake (fake.thermal)', '  Temperature: Elmer (fake.thermal)']
+    assert main(['study', cfg]) == 1                                       # Elmer's tool exits 3
+    text = capsys.readouterr().out
+    name = os.path.basename(base)
+    made = {d.name: d for d in out.iterdir()}
+    import re
+    kinds = sorted(re.sub(r'_?\d{8}_\d{6}$', '', n[len(name) + 1:]) for n in made)
+    assert kinds == ['', 'circuit_buck', 'elmer_thermal_run', 'thermal_run'], list(made)
+    by = {study.marked(str(d))['engine']: d for d in made.values()}
+    assert study.marked(str(by['rf'])) == dict(engine='rf', questions=('sparams',), preview=False)
+    assert (by['rf'] / f"{name}_mom25d.s2p").exists() and (by['rf'] / f"{name}_run.json").exists()
+    assert json.load(open(by['circuit'] / 'circuit.json')) == dict(loss=2.5, fields='True')      # its table, the fields asked
+    assert json.load(open(by['thermal'] / 'thermal.json')) == dict(tool='grid', T=50.0, board=name + '.kicad_pcb')
+    assert not (by['elmer_thermal'] / 'thermal.json').exists()
+    assert analyses.analysis_of(str(by['thermal'])) == ('thermal', False)
+    assert 'study of ' + name in text and '  circuit: solved' in text
+    tail = text[text.rindex('study:'):].splitlines()
+    assert [re.sub(r', \d+ s: .*$', '', t) for t in tail[1:]] == [
+        '  S-parameters (the solvers)               done', '  Circuit (fake)                           done',
+        '  Temperature (fake)                       done', '  Temperature (Elmer)                      failed (exit 3)']
+    # only one question; its engine starts from the circuit's result of before; a setting missing: not started
+    assert main(['study', cfg, '--only', 'thermal']) == 1 and len(list(out.iterdir())) == 6
+    assert 'Circuit' not in capsys.readouterr().out.split('study:')[-1]
+    bare = _config(tmp_path, f'out = "{tmp_path / "bare"}"\n[study]\nrun = ["circuit", "thermal"]\n[study.thermal]\nengine = "fake"\n',
+                   board=base + '.kicad_pcb', name='bare.toml')
+    assert main(['study', bare]) == 1
+    text = capsys.readouterr().out
+    assert 'study: Circuit: not started: name the circuit model' in text and 'study: Thermal: not started: run the circuit first' in text
+    assert main(['study', cfg, '--only', 'pdn']) == 2 and 'nothing of that in this study' in capsys.readouterr().out
+    assert main(['study', str(tmp_path / 'none.toml')]) == 2 and 'No such file' in capsys.readouterr().out
+    assert main(['study', cfg, '--preview', '--only', 'sparams']) == 0     # the solvers' preview: no analysis has one
+    assert any(d.name == name + '_preview' and study.marked(str(d))['preview'] for d in out.iterdir())

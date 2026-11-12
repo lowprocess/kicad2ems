@@ -9,7 +9,7 @@ lists every module, class and function.
 
 | Interface | Provided by | Used by | Version |
 |---|---|---|---|
-| [`kicad2ems.api.solver`](#kicad2emsapisolver) | kicad2ems | kicad2ems-fdtd, mom25d | `kicad2ems.api.API_VERSION` (2, 6) |
+| [`kicad2ems.api.solver`](#kicad2emsapisolver) | kicad2ems | kicad2ems-fdtd, mom25d, pcbqs | `kicad2ems.api.API_VERSION` (2, 7) |
 | [`kicad2ems.api.analysis`](#kicad2emsapianalysis) | kicad2ems | pcbqs | the same |
 | [`kicad2ems.api.frontend`](#kicad2emsapifrontend) | kicad2ems | kicad2ems-gui, kicad2ems-ipc, dfsynth | the same |
 | [The `kicad2ems.solvers` entry point](#solver-plugins) | each solver package | kicad2ems | the plugin's `api` |
@@ -40,6 +40,8 @@ in it. A user takes a provider of the same major version and at least the minor 
   plugins: `kicad2ems.api.analysis`, and `analyses`, `analysis_of`, `read_analyses`, `example_index`, `impedance` in `api.frontend`.
   2.6 the study's questions and engines: `Question`, `QUESTIONS` and an analysis's `provides`, `engine`, `questions`, `fields`,
   `for_questions`, `owns`; `study_tree`, `questions`, `engines`, `runs_for`, `mark_run`, `run_mark` in `api.frontend`.
+  2.7 a config's study and its runs: `Study`, `read_study`, `write_study`, `study_plan`, `engine_named`,
+  `latest_results`, and the run folders' names `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name`.
   [CHANGELOG.md](https://github.com/lowprocess/kicad2ems/blob/main/CHANGELOG.md) has each release's.
 
 Both API modules load their names on first use: importing one costs nothing until a name is used.
@@ -213,6 +215,18 @@ engine answers together. A front end passes an analysis engine's settings throug
 engine, asked, preview)`; `run_mark(folder)` reads it), by which `analysis_of` knows a result's engine even where
 two engines write a file of the same name. `kicad2ems --check` lists the questions with their engines.
 
+A config holds a study as its `[study]` tables ([usage](usage.md#study)). `read_study(config, strict=True)` gives
+it as a `Study`: `asked` `{question: [engine names]}` in the order written (`[]`: the default engine; for
+S-parameters, the solvers the settings name), `fields` `{question: True | False}` and `said` (`'study'`,
+`'analysis'` for a config that only has `[analysis] run`, `''`); `strict=False` keeps a question or an engine it
+does not know as written, for a front end to grey. `write_study(config, study)` writes the tables anew and keeps
+the rest of the file. `study_plan(study)` is the runs it takes, in order, `[Step]`: `kind` (`'solvers'`: one
+kicad2ems run, or `'analysis'`), `engines`, `questions`, `mode` (`'antenna'`, `'sparams'` or `''`: as the settings
+say), `fields`, `name` (`'rf'` or the analysis). `kicad2ems study` runs them (`kicad2ems.study.run`); a front end
+that starts each itself puts it in `run_dir(base, board)` or `tool_dir(base, board, analysis, what)` (a preview
+in `preview_dir`, `tool_preview_dir`), marks the folder, and gives an analysis the results it may start from
+(`latest_results(base, board)`: `{analysis: its newest result's folder}`).
+
 <a id="kicad2emsapifrontend"></a>
 ## `kicad2ems.api.frontend`
 
@@ -225,8 +239,8 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 | settings | `Settings`, `build_settings`, `read_toml`, `all_options`, `default_out`, `PATH_KEYS`, `sitecfg` (the module), `G_DUMP` |
 | solvers | `registry`, `get_solver`, `resolve_lines`, `AUTO`, `LINES` |
 | analyses | `analyses` (`{name: Analysis}`: the analysis plugins installed), `analysis_of(folder)`, `read_analyses(config)` (`(run, {name: {key: value}})` of a config's `[analysis]` tables) |
-| the study | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `runs_for(asked)`, `mark_run(folder, engine, asked, preview)`, `run_mark(folder)` ([Questions and engines](#study)) |
-| runs | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml` |
+| the study | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `runs_for(asked)`, `mark_run(folder, engine, asked, preview)`, `run_mark(folder)`; a config's: `Study`, `read_study`, `write_study`, `study_plan`, `engine_named`, `latest_results` (2.7) ([Questions and engines](#study)) |
+| runs | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml`; where a front end's runs go: `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name` (2.7) |
 | files kicad2ems writes | `read_summary`, `read_antenna`, `check_format`, `read_touchstone`, `port_names` |
 | results | `meshes`, `phased`, `frames` (modules), `find_dumps`, `write_frames`, `read_sphere`, `sphere_cuts`, `sphere_gain` |
 | examples | `examples` (`{name: config path}`), `example_index` (every example as a menu's entry: `[dict(name, config, group, title, source)]`, the installed analyses' own after kicad2ems's), `prepare_example` (an example copied, its board made, into a folder of the user's), `examples_folder` |
