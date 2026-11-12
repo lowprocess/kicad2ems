@@ -49,8 +49,9 @@ and implements
   curves(folder)          what a result holds, to plot: [dict(title, xlabel, ylabel, logx, logy, info, curves=
                           [dict(name, x, y, role='data' | 'reference' | 'limit', unit)])], or []
   suggest(folder)         settings a result proposes for other analyses: [dict(to, label, values, note, need)]
-                          (a converter's input rail, for the power-integrity analysis), or []; need: the options
-                          it could not give a value, to set before a run
+                          (a converter's input rail, for the power-integrity analysis; the converter as a model,
+                          for the circuit's), or []; need: the options it could not give a value, to set before
+                          a run. A front end offers each on the result, and asks the other's questions with it
   examples()              the examples it ships: [dict(name, config, group, title, files)] (kicad2ems.examples)
   env                     environment variables its command runs with (a thread cap), or {}
 and, since 2.6 (kicad2ems.study: questions and engines),

@@ -108,9 +108,13 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    headline says the return was left out and the window asks for it before the run (pcbqs's CHANGELOG). Left:
    a return that is not that direct, a low-side switch on ground through a sense resistor (the search stops at
    the switch's own pads, so such a bridge is asked about), and two parts in parallel as one return.
-2. **Cross-tool flows (U4, I3; 2.5 days).** A near-field converter as a circuit template (its parts, its loop's
-   copper); a circuit's input-current spectrum as PDN loads; `pcbqs.mqs`'s assumed-pulse fields against the
-   circuit's `--fields`.
+2. **Cross-tool flows, the rest.** A near field's converter opens as a circuit, and a circuit's supply
+   current goes to its rail (the ripple it makes) and to the near field, each a button on the result (pcbqs's
+   `docs/power-workflow.md`). Left: the full bridge's runs (`pcbqs.power_circuit`) do not say what they draw,
+   so wpthb's bridge current does not reach its rail this way; a controller with its two switches as separate
+   parts is not made into a circuit (the regulator's own footprint is taken for both); a rail's ripple at a
+   converter's pin needs the input loop's own inductance, which the near field solves and the rail's planes do
+   not have (the two could share it); an example study that walks through the three steps.
 3. **Several rails in one power-integrity run** (a config's `[analysis.pdn]` is one rail).
 4. **Converters.** A broader buck input-loop discovery; ambiguous bias, enable and supply nets resolved by part
    metadata; the switch node's E in the converter workflow (the Coulomb E of the surface charges is there, the

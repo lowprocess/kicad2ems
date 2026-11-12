@@ -43,6 +43,14 @@ maps in a drawer under it, the settings of the question selected on the right.
   kind to return through*); a click goes to where it is set. Kicad2ems checks its own run (the board, its
   ports, the band); an analysis says its own. *Run > Run the selected question alone* runs one whatever the
   others still need.
+- <a id="proposals"></a>**What a result proposes**, as buttons under a finished question's settings: a
+  converter's near field offers *Copy the input rail to Power integrity* and *Open U702 as a circuit* (the
+  converter with its capacitors and inductor from the board, in the Circuit editor); a circuit's result offers
+  *Copy the rail +5V and what is drawn from it to Power integrity* (the rail, its loads' average currents and
+  their spectra, for the ripple they make) and *Copy U702's input current to Near field* (in place of the
+  assumed pulse). A click fills the other question's settings, ticks it so that Run includes it and shows it;
+  what the proposal could not say (a rail's source) is listed under Still needed
+  ([the steps on a board](https://github.com/lowprocess/pcbqs/blob/main/docs/power-workflow.md#4-from-one-tool-to-the-next)).
 
 The columns and the drawer fold from *View* (Ctrl+1, 2, 3) and stay as they were left; *View > Reset layout*
 shows them all. Nothing floats or docks. The window remembers its size, what is folded, its splitters and the

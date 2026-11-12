@@ -172,7 +172,7 @@ and implements:
 | `discover(values, board)`, `choices(text)` | a command that proposes settings from the board, and its output as `[(label, values)]` to pick from; `None` when it has none |
 | `report(folder)` | what a result holds, to read: `dict(title, summary, sections=[dict(title, text, table=dict(columns, rows, formats), notes)], notes, images, footer)`, or `None`. A cell is a number or a string. `show=dict(field, run)` and `mesh` say where a viewer starts: on the dump of that field with the largest values, on that mesh |
 | `curves(folder)` | what a result holds, to plot: `[dict(title, xlabel, ylabel, logx, logy, info, curves=[dict(name, x, y, role, unit)])]`; `role` is `'data'`, `'reference'` or `'limit'` |
-| `suggest(folder)` | settings a result proposes for other analyses: `[dict(to, label, values, note, need)]`; `need`: the options it has no value for, to set before a run |
+| `suggest(folder)` | settings a result proposes for other analyses: `[dict(to, label, values, note, need)]`; `need`: the options it has no value for, to set before a run. A front end shows each as a button on the result, puts the values into the other analysis's settings and asks its questions; an analysis with an editor of its own (`page`) is given them as its config table is, so a `model` it names is opened there |
 | `examples()` | the examples it ships: `[dict(name, config, group, title, files)]` |
 | `for_questions(values, asked)` | its settings for a run asked only some of its questions (a rail's drop without its impedance) |
 | `owns(folder, preview=False)` | whether the folder holds its result: by default, that its result file is there. An engine whose file another also writes looks inside it |

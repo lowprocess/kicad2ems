@@ -9,6 +9,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **What a result proposes goes on to the next question, asked (kicad2ems-gui; pcbqs).** A finished question's
+  proposals were buttons that filled another's settings; they now tick that question too, so that Run includes
+  it, and bring its page to the front. An analysis with an editor of its own takes a proposal as it takes its
+  config table, so a model the proposal names is opened there, as the study's own (a config writes it beside
+  itself, not into the result it came from). With pcbqs's new proposals that is a chain through the power
+  questions: a converter's near field offers the converter as a circuit (its capacitors and inductor from the
+  board), and the circuit's result offers its supply rail with what is drawn from it to the power integrity
+  (the ripple the current's harmonics make on the rail) and its input current to the near field (in place of
+  the assumed pulse). On CM5 Minima's U702: 94 % at a duty of 0.72, 140 mV peak to peak on +5V at the
+  regulator (pcbqs's CHANGELOG and `docs/power-workflow.md`; `docs/gui.md#proposals`).
 - **The window in one fixed layout, with the few settings first and what a run still needs (kicad2ems-gui; API
   2.9).** Steps 3 to 5 of its redesign (`kicad2ems-gui/docs/redesign.md`), as the user chose them from a
   prototype. *Layout*: the board and the questions on the left, the board itself always in the middle (the
