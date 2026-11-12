@@ -9,6 +9,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **mom25d: a plane a via runs through as a perfect conductor (`--mom-planes holes`, experimental).** A plane
+  with an antipad had to be meshed, and was most of the unknowns of a via transition. `LayerStack(pec=)` puts PEC
+  planes inside the stack (the network shorted there: the copper above and below in one model, decoupled), and
+  `mom25d/frill.py` joins the two sides at a via's hole: the via's current runs through, and the voltage across
+  the hole is an unknown with one equation, the magnetic field continuous across it, whose row is the transpose
+  of the column the hole's field makes in the other equations (symmetric, in the via rows' border). A board's
+  planes qualify when their only holes are those of vias through them (`board.plane_holes`). Checked against
+  the plane meshed: two pads joined through a 0.45 mm hole, 202.0 fF meshed, 203.2 fF as a hole, 280.6 fF with
+  the hole closed; a trace-to-trace transition through it, 1,656 unknowns for 4,978 and nine times faster,
+  within 0.03 in |S| to 5 GHz and 0.065 at 10 GHz; demo_transition 1,504 for 3,910, |S21| within 0.02 dB and S
+  within 0.08. What is left of that difference is the trace over the hole, which the axisymmetric field does not
+  have (roadmap), so it is an option, not the default.
 - **Coupled sections on the board's cut.** A coupled group was solved over ideal planes, without the copper
   beside it. It is now cut as a single section is: one cut across the group's middle, out to 5 reference heights
   beyond its outer lines, its lines as the strips and the copper found on every layer as ground

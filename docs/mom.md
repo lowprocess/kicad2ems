@@ -52,6 +52,25 @@ A board imported with a few nets selected has no solid plane: its pours keep the
 15,563 unknowns to 1,337 (100 s to 3 s), demo_transition from 13,670 to 4,043 (107 s to 14 s), within 0.01 in |S|
 of the fully meshed model (rf_marchand 0.085), with the same agreement with openEMS (`tools/mom_planes_study.py`).
 
+<a id="plane-holes"></a>
+**A plane a via runs through** (`--mom-planes holes`, experimental). A plane between the copper layers whose only
+holes are those of vias through it (round or nearly, one via each, the via near the middle) is a perfect conductor
+of the stack too: what is above it sees it as its ground, what is below as its cover, and neither sees the other.
+The via's current runs on through the hole, and the hole carries the voltage across it as an unknown (two field
+shapes by default, `mom25d/frill.py`): the hole's capacitance into both sides, charged by what the pads and traces
+near it induce. A via that lands on the plane ends there; a plane with a slot, a cut-out or a hole two vias share
+stays meshed.
+
+![The mesh of a via through a plane: the plane meshed with its hole, and the plane as PEC with the hole as an unknown](img/mom_plane_holes.png)
+
+The hole's field is taken as axisymmetric. That is exact for what the pads do: two pads joined by a via through a
+0.45 mm hole have 202.0 fF with the plane meshed and 203.2 fF this way (280.6 fF with the hole closed). It leaves
+out what a trace crossing the hole's rim adds, which sees the plane closed under it. On the structure above
+(0.3 mm pads, 0.45 mm hole) |S| is within 0.03 of the meshed plane's to 5 GHz and 0.065 at 10 GHz, 0.02 with a
+hole no wider than the pads; on demo_transition (a 0.6 mm hole) within 0.08, |S21| within 0.02 dB, for 1,504
+unknowns in place of 3,910, and the agreement of S11 with openEMS goes from −32.3 to −27.7 dB. The hole's own
+field is not in the current dumps, the near field or the far field.
+
 <a id="sweep"></a>
 **The adaptive sweep.** mom25d solves only some frequencies. It fits one rational model through all of S (AAA)
 and adds a solve where two successive models disagree most, until the model changes by less than the tolerance

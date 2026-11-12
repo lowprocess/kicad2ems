@@ -53,21 +53,16 @@ mom25d is slowest where planes have to be meshed. Solid planes are PEC, lone sti
 board imported with a few nets can have its pours' voids filled (`--fill-voids`). The model items below are worth
 an order of magnitude more than the solver's: taking planes out brought rf_stripline from 100 s to 3 s.
 
-1. **Planes a signal via passes through: an internal PEC plane with magnetic frills** (about 500 lines in
-   `multilayer.py`, `via.py` and `sim.py`, and validation against openEMS: a via through a plane,
-   demo_transition, rf_msvia).
-   - The stack's TL network gets internal PEC interfaces. Every existing kernel then decouples the copper above
-     from the copper below: no new horizontal kernels, and two blocks coupled only through the vias.
-   - Each round antipad gets one unknown, the voltage across it: a magnetic frill, M_φ = V / (ρ ln(b/a)),
-     radiating TM only (in the TM network a series voltage source at the shorted interface, its radial profile
-     (J0(k_r a) − J0(k_r b)) / ln(b/a)). The via through the hole stays one chain. New kernels: frill to
-     horizontal currents (order-1 Hankel), to via chains and to frills (order 0; the self term's coaxial part
-     analytic). One more equation per frill: H_φ continuous across the annulus, tested with the frill's profile.
-   - A plane qualifies when every hole is one via's antipad (a hole that is not round: the annulus of its area);
-     slots and cutouts stay meshed.
-   - Gain: demo_transition's 3,910 unknowns, 2,408 of them the plane, become about 1,500 (~18× less LU work;
-     with the zone and quads 2,701 to ~1,100); a CM5 carrier's PCIe pair, 54,885 after filling its voids, about
-     12k.
+1. **A plane a via runs through: the trace over the hole.** `--mom-planes holes` has the plane as PEC and the
+   hole's voltage as an unknown (`mom25d/frill.py`; docs/mom.md#plane-holes), with an axisymmetric field in the
+   hole: exact for the pads (their capacitance within 0.6 % of the meshed plane's), but a trace crossing the
+   hole's rim sees the plane closed under it (0.03 in |S| at 5 GHz, 0.065 at 10 GHz for a 0.45 mm hole and 0.3 mm
+   pads; demo_transition's S11 against openEMS −27.7 dB for −32.3). What it needs is the hole's first azimuthal
+   order: field shapes in cos φ and sin φ, which are TE as well as TM (the network's other mode, tested on the
+   edges as a field, not a potential). Then it can be the default, and holes that are not round (their area's
+   circle today) and a plane on the top interface can follow. Gain as measured: demo_transition 3,910 unknowns to
+   1,504, a transition alone 4,978 to 1,656 (nine times faster); a CM5 carrier's PCIe pair, 54,885 after filling
+   its voids, about 12k.
 2. **Coupled runs in the mixed solver.** It cuts only lone traces into lines, and needs wave ports. 4-port coupled
    lines (`line_char_pair` exists) would take a pair's straight runs: about 40 % of that PCIe pair's length, whose
    unknowns scale with it (the pair alone: ~7k for 55 mm).
