@@ -62,6 +62,27 @@ unsaved changes. Saving over an existing config **keeps the file as it was**: co
 the GUI doesn't know all stay, and only the changed values are rewritten. Each run writes `gui_run.toml` into its
 folder, so `kicad2ems <folder>/gui_run.toml` repeats it from a terminal.
 
+*File → Examples* lists the examples in their groups: Antennas, RF structures and Lumped-element demos, each with
+its subgroups, and after them those the installed analyses ship (pcbqs's Circuits). An entry's tooltip says what
+it is.
+
+<a id="analyses"></a>
+## Other analyses
+
+With an analysis package installed (`kicad2ems[qs]`: pcbqs's power integrity, near field, circuit and thermal),
+the Study's **Analyses** list has them under S-parameters. kicad2ems finds them through its
+[analysis registry](api.md#analysis-plugins) and the window knows none by name: each one's settings are a panel
+made from its options, **Run** starts the ticked ones in turn, and what a run leaves is shown where every result
+is: its maps in the Viewer (a rail's drop and current per layer, a board's temperature), its curves, its report
+and its tables on the Results page. A config keeps them under `[analysis]`:
+
+```toml
+[analysis]
+run = ["circuit", "thermal"]        # what a Run does ("rf": S-parameters)
+[analysis.circuit]
+model = "buck.json"                 # each analysis's settings, by its options' names
+```
+
 <a id="viewer"></a>
 ## The Viewer
 

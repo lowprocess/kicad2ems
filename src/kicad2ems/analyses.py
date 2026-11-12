@@ -1,0 +1,247 @@
+"""
+The analyses, as plugins: tools that work on the same board as a run but are not S-parameter solvers (a rail's DC
+drop and impedance, a converter's near field, a circuit on the board's copper, the board's temperature). Each is an
+Analysis subclass registered under its name by a package that declares an entry point in the group
+'kicad2ems.analyses' (`pdn = "pcbqs.analyses:PowerIntegrity"`): pcbqs's four (the qs extra). kicad2ems has none of
+its own; a front end lists what the registry holds, builds each one's settings from its options, starts it as the
+command it gives and shows what its result folder holds.
+
+    from kicad2ems.analyses import registry, analysis_of
+    [a.label for a in registry().values()]
+    analysis_of('out/board_pdn_3V3_20261111_120000')        # ('pdn', False): whose result, and whether a preview
+
+An analysis declares (class attributes)
+  api                     the kicad2ems.api version it is written against, (major, minor): (2, 5); a plugin
+                          imports what it needs from kicad2ems.api.analysis, the rest of kicad2ems is private
+  name, label, tool       'pdn', 'Power integrity', 'pcbqs.pdn' (what runs it, as lists show it); name is also its
+                          config table [analysis.pdn] and the tag of its run folders
+  about                   one line: what it gives
+  order                   its place in lists and in a run of several: lowest first, then by name
+  previewed               True: it has a preview (the model and its mesh, no solve)
+  needs                   the analyses it cannot run without the results of (a front end runs those first)
+  result, preview_result  the file a finished run (a preview) leaves in its folder ('pdn.json'): how a folder is
+                          known as its result
+  paths                   the options whose values are paths: relative to the config file they are read from
+  page                    False: its settings and its results are all a front end needs to show; True: it has an
+                          editor of its own in the GUI (the circuit's schematic)
+and implements
+  check()                 (usable, one line): its version and origin, or what is missing and how to get it
+  options()               its settings: [dict(key, flag, kind, default, help, group, choices)], kind one of 'str',
+                          'int', 'float', 'bool' (a switch) or 'list' (repeatable); the form of its tool's
+                          `--describe --json`
+  tag(values)             a short name for a run of these settings (the rail, the converter): its folder's
+  command(values, board, out, preview=False, results=None)
+                          the command line that runs it, [program, argument ...], writing into folder `out`;
+                          values: {option key: text, bool or list}; board: the study's board file or None;
+                          results: {analysis: the folder of its latest result on this board}, for an analysis that
+                          can start from another's (the temperature from a circuit's losses). ValueError says what
+                          is missing ("name the rail")
+  status(line)            the progress a line of its output states, or None (most lines)
+  finds, discover(values, board), choices(text)
+                          what the board can propose settings for ('converters': a front end's "Find converters"),
+                          the command that lists them ([program, argument ...]) and its output as
+                          [(label, {option key: value})] to pick from; finds '': none
+  report(folder)          what a result holds, to read: dict(title, summary, sections=[dict(title, text, table=
+                          dict(columns=[...], rows=[[...]], formats=[...]), notes=[...])], notes, images, footer),
+                          or None; a cell is a number or a string, formats give a number's format per column
+                          ('.3g'; None: '.4g'). It may say where a viewer starts: show=dict(field, run) (the dump
+                          of that field, and run, with the largest values) and mesh (the plan's mesh)
+  curves(folder)          what a result holds, to plot: [dict(title, xlabel, ylabel, logx, logy, info, curves=
+                          [dict(name, x, y, role='data' | 'reference' | 'limit', unit)])], or []
+  suggest(folder)         settings a result proposes for other analyses: [dict(to, label, values, note, need)]
+                          (a converter's input rail, for the power-integrity analysis), or []; need: the options
+                          it could not give a value, to set before a run
+  examples()              the examples it ships: [dict(name, config, group, title, files)] (kicad2ems.examples)
+  env                     environment variables its command runs with (a thread cap), or {}
+
+The fields of a result (the maps a Viewer turns and cuts) need nothing here: an analysis writes them as field dumps
+(kicad2ems.api.solver: Dump, write_info, write_npz) under <out>/<name>/exc_<what>/ with its board as
+<out>/<name>_board.json, and every front end that shows a run's dumps shows them.
+"""
+import os
+
+GROUP = 'kicad2ems.analyses'                # the entry-point group of analyses installed as packages
+RF = 'rf'                                   # the S-parameter run's own key in a front end's lists: not a plugin's
+# the analysis packages kicad2ems has extras for (pyproject): {extra: the analyses it brings}
+EXTRAS = {'qs': ('pdn', 'mqs', 'circuit', 'thermal')}
+KINDS = ('str', 'int', 'float', 'bool', 'list')
+
+
+class Analysis:
+    """An analysis plugin. A subclass sets the declarations (class attributes: the module docstring lists them) and
+    overrides what it does differently; a front end calls check, options and examples when it starts, tag and
+    command to run it, status while it runs, and report, curves and suggest on a folder that holds its result."""
+    api = None
+    name = ''
+    label = ''
+    tool = ''
+    about = ''
+    order = 50
+    previewed = False
+    needs = ()
+    result = ''
+    preview_result = ''
+    paths = ()
+    page = False
+    finds = ''
+    env = {}
+
+    def check(self):
+        """(usable, one line): its version and origin, or what is missing and how to get it."""
+        return True, ''
+
+    def options(self):
+        """Its settings, [dict(key, flag, kind, default, help, group, choices)]."""
+        return []
+
+    def tag(self, values):
+        """A short name for a run of these settings (its folder's)."""
+        return 'run'
+
+    def command(self, values, board, out, preview=False, results=None):
+        """[program, argument ...] that runs it into folder `out`; ValueError: what is missing."""
+        raise NotImplementedError(f"{self.name}: command")
+
+    def status(self, line):
+        """The progress a line of its output states, or None."""
+        return None
+
+    def discover(self, values, board):
+        """A command that proposes settings from the board, or None: it has none."""
+        return None
+
+    def choices(self, text):
+        """discover's output as [(label, {option key: value})]."""
+        return []
+
+    def report(self, folder):
+        """What the result in `folder` holds, to read (the module docstring has the form), or None."""
+        return None
+
+    def curves(self, folder):
+        """What the result in `folder` holds, to plot: a list of curve sets."""
+        return []
+
+    def suggest(self, folder):
+        """Settings the result in `folder` proposes for other analyses."""
+        return []
+
+    def examples(self):
+        """The examples it ships: [dict(name, config, group, title, files)]."""
+        return []
+
+
+_registry, broken = None, []                # broken: (entry point, error) of plugins that failed to load
+
+
+def _entry_points():
+    from importlib.metadata import entry_points
+    return list(entry_points(group=GROUP))
+
+
+def registry():
+    """{name: Analysis}: the analyses installed through entry points, by their `order`. A plugin that fails to
+    load, is written for another kicad2ems API (its `api`: kicad2ems.api), has no name or reuses one (or 'rf',
+    the S-parameter run's) or declares an option of an unknown kind is left out and listed in `broken`."""
+    global _registry
+    if _registry is None:
+        from .api import compatible
+        reg = {}
+        for ep in _entry_points():
+            try:
+                a = ep.load()()
+                why = compatible(getattr(a, 'api', None))
+                if why:
+                    raise ImportError(why)
+                if not a.name or a.name == RF or a.name in reg:
+                    raise ValueError(f"name already taken: {a.name!r}" if a.name else 'no name')
+                bad = [o.get('key', '?') for o in a.options() if o.get('kind') not in KINDS or not o.get('key')]
+                if bad:
+                    raise ValueError(f"options of an unknown kind: {', '.join(bad)} (one of {', '.join(KINDS)})")
+            except Exception as e:                                  # a broken plugin never stops kicad2ems
+                broken.append((f"{ep.name} = {ep.value}", f"{type(e).__name__}: {e}"))
+                continue
+            reg[a.name] = a
+        _registry = dict(sorted(reg.items(), key=lambda kv: (kv[1].order, kv[0])))
+    return _registry
+
+
+def get(name):
+    """The analysis of a name."""
+    a = registry().get(str(name).lower())
+    if a is None:
+        raise ValueError(missing(name) or f"no analysis {name!r}: choose from {', '.join(registry()) or 'none installed'}")
+    return a
+
+
+def missing(name):
+    """Why an analysis kicad2ems knows of cannot be found, and how to install it; None for any other name, or one
+    installed."""
+    name = str(name).lower()
+    extra = next((e for e, names in EXTRAS.items() if name in names), None)
+    if extra is None or name in registry():
+        return None
+    if any(ep.split(' =')[0] in EXTRAS[extra] for ep, _ in broken):
+        return f"analysis {name!r} is installed but failed to load (kicad2ems --check)"
+    return f"analysis {name!r} is not installed: python -m pip install 'kicad2ems[{extra}]'"
+
+
+def analysis_of(folder):
+    """(name, preview) of the analysis whose result (or preview) the folder holds, or None: not an analysis's."""
+    for name, a in registry().items():
+        for f, preview in ((a.result, False), (a.preview_result, True)):
+            if f and os.path.isfile(os.path.join(folder or '', f)):
+                return name, preview
+    return None
+
+
+def read_config(path):
+    """The analyses' part of a TOML config: (run, {name: {option key: value}}).
+
+        [analysis]
+        run = ["circuit", "thermal"]        # the analyses a study of this config runs ("rf": S-parameters)
+        [analysis.circuit]
+        model = "buck.json"                 # its options, by key; a path (Analysis.paths) relative to the file
+
+    run: None when the config does not say. A table of an analysis that is not installed is kept as it is (so a
+    front end can write it back); its paths are not known, and stay as written."""
+    import sys
+    if sys.version_info >= (3, 11):
+        import tomllib
+    else:                                                           # pragma: no cover
+        import tomli as tomllib
+    with open(path, 'rb') as fh:
+        cfg = tomllib.load(fh)
+    table = cfg.get('analysis')
+    if not isinstance(table, dict):
+        return None, {}
+    base = os.path.dirname(os.path.abspath(path))
+    run = table.get('run')
+    if run is not None:
+        run = [str(x).strip().lower() for x in (run if isinstance(run, (list, tuple)) else str(run).split(','))
+               if str(x).strip()]
+    out, reg = {}, registry()
+    for name, tab in table.items():
+        if not isinstance(tab, dict):
+            continue
+        vals = {k.replace('-', '_'): v for k, v in tab.items()}
+        for k in getattr(reg.get(name.lower()), 'paths', ()):
+            v = vals.get(k)
+            if isinstance(v, str) and v and not os.path.isabs(os.path.expanduser(v)):
+                vals[k] = os.path.normpath(os.path.join(base, os.path.expanduser(v)))
+        out[name.lower()] = vals
+    return run, out
+
+
+def check_lines():
+    """--check's lines about the analyses: each one's check, the known ones not installed, the broken plugins."""
+    lines = []
+    for name, a in registry().items():
+        ok, what = a.check()
+        lines.append(f"  {'ok' if ok else 'missing':7s} {name:<8s} {a.label}: {what}")
+    for extra, names in EXTRAS.items():
+        gone = [n for n in names if n not in registry()]
+        if gone and missing(gone[0]):
+            lines.append(f"  missing {', '.join(gone)}: python -m pip install 'kicad2ems[{extra}]'")
+    lines += [f"  BROKEN  {ep}: {err}" for ep, err in broken]
+    return lines

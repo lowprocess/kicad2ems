@@ -114,10 +114,23 @@ class DumpSource:
         self.refresh()
 
     @property
+    def static(self):
+        """A steady quantity (a DC drop, a temperature): a frequency-domain dump at 0 Hz alone."""
+        f = self.meta.get('freqs')
+        return self.domain == 'FD' and bool(f) and not any(f)
+
+    @property
+    def spans(self):
+        """Its colours span its own values (dump_info.json's "range": "data": a temperature), not zero to its
+        largest."""
+        return self.meta.get('range') == 'data'
+
+    @property
     def label(self):
         lab = self.meta.get('label') or self.name
         who = {'openems': 'openEMS'}.get(self.solver, self.solver)   # which solver: both can have dumps in a folder
-        return f"{who} {self.run}: {self.field} {lab} ({'time' if self.domain == 'TD' else 'frequency'} domain)"
+        how = 'static' if self.static else f"{'time' if self.domain == 'TD' else 'frequency'} domain"
+        return f"{who} {self.run}: {self.field} {lab} ({how})"
 
     def refresh(self):
         """Pick up new frames (time domain: during a run, the newest file may still be being written)."""
@@ -155,6 +168,8 @@ class DumpSource:
         if self.domain == 'TD':
             step = self.frames[i][0]
             return f"step {step:,}" + (f", t = {step * self.dt_ps / 1e3:.3f} ns" if self.dt_ps else '')
+        if self.static:
+            return 'steady'
         return f"{self.freqs[i] / 1e9:g} GHz" + (f", phase {np.degrees(phase) % 360:.0f}°" if phase is not None else '')
 
     def scale(self, i):
@@ -315,9 +330,13 @@ def outlines(geometry, axis, pos, near=0.3):
     return lines
 
 
-def levels(values, signed, log, decades=3):
+def levels(values, signed, log, decades=3, span=False):
     """Colour range (lo, hi) of a set of images: symmetric for signed components, `decades` below the
-    maximum for log magnitude."""
+    maximum for log magnitude; span (DumpSource.spans): the values' own smallest to largest."""
+    if span:
+        fin = [v[np.isfinite(v)] for v in values if v.size and np.isfinite(v).any()]
+        lo, hi = (min(float(v.min()) for v in fin), max(float(v.max()) for v in fin)) if fin else (0.0, 1.0)
+        return (lo, hi) if hi > lo else (lo - 0.5, lo + 0.5)
     vmax = max((float(np.nanmax(np.abs(v))) for v in values if v.size and np.isfinite(v).any()), default=0.0) or 1.0
     if signed:
         return -vmax, vmax

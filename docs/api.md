@@ -9,9 +9,11 @@ lists every module, class and function.
 
 | Interface | Provided by | Used by | Version |
 |---|---|---|---|
-| [`kicad2ems.api.solver`](#kicad2emsapisolver) | kicad2ems | kicad2ems-fdtd, mom25d | `kicad2ems.api.API_VERSION` (2, 2) |
+| [`kicad2ems.api.solver`](#kicad2emsapisolver) | kicad2ems | kicad2ems-fdtd, mom25d | `kicad2ems.api.API_VERSION` (2, 5) |
+| [`kicad2ems.api.analysis`](#kicad2emsapianalysis) | kicad2ems | pcbqs | the same |
 | [`kicad2ems.api.frontend`](#kicad2emsapifrontend) | kicad2ems | kicad2ems-gui, kicad2ems-ipc, dfsynth | the same |
 | [The `kicad2ems.solvers` entry point](#solver-plugins) | each solver package | kicad2ems | the plugin's `api` |
+| [The `kicad2ems.analyses` entry point](#analysis-plugins) | each analysis package | kicad2ems, kicad2ems-gui | the plugin's `api` |
 | [The command line and its files](#files) | kicad2ems | kicad2ems-gui, kicad2ems-ipc, dfsynth | `format_version` in each file |
 | [gfdtd's engine](#gfdtd-engine) | gfdtd | kicad2ems-fdtd | `gfdtd.API_VERSION` (1, 0) |
 | [`kicad2ems_gui.api`](#kicad2ems_guiapi) | kicad2ems-gui | kicad2ems-ipc | `kicad2ems_gui.api.API_VERSION` (1, 0) |
@@ -27,12 +29,15 @@ in it. A user takes a provider of the same major version and at least the minor 
   The registry leaves out a plugin of another major version, or of a newer minor one than this kicad2ems has,
   and `kicad2ems --check` lists it as broken with what to update (`kicad2ems.api.compatible(api)` gives the
   reason). A plugin that declares none counts as 1.0.
+- **Analysis plugins** declare it the same way (`api = (2, 5)` on their `Analysis`), and are left out and listed
+  as broken on the same terms.
 - **Front ends** need a kicad2ems of the minor version they use; their `pyproject.toml` asks for the release
   (kicad2ems-gui: `kicad2ems>=261101.post1`, API 2.2).
 - 2.0 took the FDTD layer out of `api.solver` (it is in kicad2ems-fdtd). 2.1 added the examples and the checked
   file readers to `api.frontend`, and `ETA0`, `MU0` to `api.solver`. 2.3 added the copper roughness (`--rough`):
   `hammerstad`, `rough_sigma`, `band_sigma`, and the `roughness` row of `FEATURES`. 2.4 the surface finish (`--finish`): `resolve_finish`,
-  `finish_factor`, `finish_weighted`, `finish_band_sigma`, `finish_face_z`, and the `finish` row.
+  `finish_factor`, `finish_weighted`, `finish_band_sigma`, `finish_face_z`, and the `finish` row. 2.5 the analysis
+  plugins: `kicad2ems.api.analysis`, and `analyses`, `analysis_of`, `read_analyses`, `example_index`, `impedance` in `api.frontend`.
   [CHANGELOG.md](https://github.com/lowprocess/kicad2ems/blob/main/CHANGELOG.md) has each release's.
 
 Both API modules load their names on first use: importing one costs nothing until a name is used.
@@ -102,6 +107,74 @@ them), `run.freq` (Hz), `run.lm` (the line model), `run.name`, `run.log()`, `run
 events), `run.path(suffix)`, `run.wrote(label, path)`, `run.figure(fig, suffix, key, label)` and `run.summary`.
 [Architecture](architecture.md#solver-plugins) has the rest: parity, and settings as data.
 
+<a id="kicad2emsapianalysis"></a>
+## `kicad2ems.api.analysis`
+
+For analysis plugins: tools that work on the board a run is made of but give something other than S-parameters
+(pcbqs's power integrity, near field, circuit and thermal analyses).
+
+| Group | Names |
+|---|---|
+| the interface | `Analysis`, `KINDS` (the kinds of an option), `RF` (the S-parameter run's key in a front end's lists: a plugin may not take it), `API_VERSION` |
+| the registry | `registry` (`{name: Analysis}`), `analysis_of(folder)` (`(name, preview)` of the analysis whose result a folder holds, or `None`) |
+| maps for a viewer | `Dump`, `write_info`, `write_npz` (field dumps, as a solver's), `save_mesh` |
+
+<a id="analysis-plugins"></a>
+### Analysis plugins
+
+An analysis is a subclass of `Analysis`, registered under the entry-point group `kicad2ems.analyses`:
+
+```toml
+[project.entry-points."kicad2ems.analyses"]
+thermal = "mypackage.analyses:Thermal"
+```
+
+It runs as a command of its own, so the tool behind it works without kicad2ems; the plugin class is the only
+part that imports `kicad2ems.api.analysis`. It declares, as class attributes:
+
+| Attribute | Meaning |
+|---|---|
+| `api` | the `kicad2ems.api` version it is written for: `(2, 5)` |
+| `name`, `label`, `tool` | `'pdn'`, `'Power integrity'`, `'pcbqs.pdn'` (what runs it, as lists show it); `name` is also its config table `[analysis.pdn]` and the tag of its run folders |
+| `about` | one line: what it gives |
+| `order` | its place in lists, and in a run of several |
+| `previewed` | it has a preview (the model and its mesh, no solve) |
+| `needs` | the analyses it cannot run without the results of |
+| `result`, `preview_result` | the file a finished run (a preview) leaves in its folder (`'pdn.json'`): how a folder is known as its result |
+| `paths` | the options whose values are paths: relative to the config file they are read from |
+| `page` | `True`: the GUI has an editor of its own for it (the circuit's schematic) |
+| `finds` | what the board can propose settings for (`'converters'`: the GUI's "Find converters"), with `discover` and `choices` below; `''`: nothing |
+| `env` | environment variables its command runs with |
+
+and implements:
+
+| Method | Returns |
+|---|---|
+| `check()` | `(usable, one line)`: its version and origin, or what is missing and how to get it |
+| `options()` | its settings, `[dict(key, flag, kind, default, help, group, choices)]`; `kind` one of `KINDS`: `'str'`, `'int'`, `'float'`, `'bool'` (a switch), `'list'` (repeatable) |
+| `tag(values)` | a short name for a run of these settings (the rail, the converter): its folder's |
+| `command(values, board, out, preview=False, results=None)` | the command line that runs it into folder `out`; `results`: `{analysis: the folder of its latest result on this board}`, for one that can start from another's. `ValueError` says what is missing |
+| `status(line)` | the progress a line of its output states, or `None` |
+| `discover(values, board)`, `choices(text)` | a command that proposes settings from the board, and its output as `[(label, values)]` to pick from; `None` when it has none |
+| `report(folder)` | what a result holds, to read: `dict(title, summary, sections=[dict(title, text, table=dict(columns, rows, formats), notes)], notes, images, footer)`, or `None`. A cell is a number or a string. `show=dict(field, run)` and `mesh` say where a viewer starts: on the dump of that field with the largest values, on that mesh |
+| `curves(folder)` | what a result holds, to plot: `[dict(title, xlabel, ylabel, logx, logy, info, curves=[dict(name, x, y, role, unit)])]`; `role` is `'data'`, `'reference'` or `'limit'` |
+| `suggest(folder)` | settings a result proposes for other analyses: `[dict(to, label, values, note, need)]`; `need`: the options it has no value for, to set before a run |
+| `examples()` | the examples it ships: `[dict(name, config, group, title, files)]` |
+
+Its maps need no method: an analysis writes them as field dumps under `<out>/<name>/exc_<what>/` with its board
+as `<out>/<name>_board.json`, and a viewer of a run's dumps shows them. A dump's entry in `dump_info.json` may give
+its `unit`, and `"range": "data"` for a quantity whose colours should span its own values (a temperature) instead
+of starting at zero.
+
+A config holds the analyses' settings under `[analysis]`, which kicad2ems itself leaves alone:
+
+```toml
+[analysis]
+run = ["circuit", "thermal"]        # the analyses a study of this config runs ("rf": S-parameters)
+[analysis.circuit]
+model = "buck.json"                 # an analysis's options by key; a path (its `paths`) relative to the file
+```
+
 <a id="kicad2emsapifrontend"></a>
 ## `kicad2ems.api.frontend`
 
@@ -113,10 +186,11 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 | the line model | `build_lines` (Board → LineModel; `field=True`: every section by the field solver), `RefCopper` (its reference copper), `overlay` (the module: the line model drawn on the board), `sections` (the module: one section's field: `modes`, `solve`) |
 | settings | `Settings`, `build_settings`, `read_toml`, `all_options`, `default_out`, `PATH_KEYS`, `sitecfg` (the module), `G_DUMP` |
 | solvers | `registry`, `get_solver`, `resolve_lines`, `AUTO`, `LINES` |
+| analyses | `analyses` (`{name: Analysis}`: the analysis plugins installed), `analysis_of(folder)`, `read_analyses(config)` (`(run, {name: {key: value}})` of a config's `[analysis]` tables) |
 | runs | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml` |
 | files kicad2ems writes | `read_summary`, `read_antenna`, `check_format`, `read_touchstone`, `port_names` |
 | results | `meshes`, `phased`, `frames` (modules), `find_dumps`, `write_frames`, `read_sphere`, `sphere_cuts`, `sphere_gain` |
-| examples | `examples` (`{name: config path}`), `prepare_example` (an example copied, its board made, into a folder of the user's), `examples_folder` |
+| examples | `examples` (`{name: config path}`), `example_index` (every example as a menu's entry: `[dict(name, config, group, title, source)]`, the installed analyses' own after kicad2ems's), `prepare_example` (an example copied, its board made, into a folder of the user's), `examples_folder` |
 | the machine | `core_threads` |
 
 <a id="files"></a>

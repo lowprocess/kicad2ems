@@ -3,19 +3,21 @@ kicad2ems's public API: what other packages may import. Everything else in kicad
 change in any release.
 
     kicad2ems.api.solver      for solver plugins (the 'kicad2ems.solvers' entry points: mom25d, kicad2ems-fdtd)
+    kicad2ems.api.analysis    for analysis plugins (the 'kicad2ems.analyses' entry points: pcbqs)
     kicad2ems.api.frontend    for programs that drive kicad2ems (the GUI, the KiCad plugin, dfsynth)
 
 API_VERSION is (major, minor). A minor release adds names; a major one removes or changes one. A solver plugin
 says which version it was written against with a class attribute `api = (2, 0)` on its Solver; the registry
 leaves out (kicad2ems --check lists it as broken) a plugin of another major version, or of a newer minor one than
 this kicad2ems has. A plugin that declares nothing was written before the API had a version: it counts as 1.0.
+An analysis plugin says it the same way, on its Analysis.
 
 Both modules load their names on first use (PEP 562), so importing one costs nothing until a name is used: a
 plugin that imports plot_antenna does not import matplotlib until it draws.
 """
 import importlib
 
-API_VERSION = (2, 4)
+API_VERSION = (2, 5)
 UNVERSIONED = (1, 0)                # what a plugin that declares no `api` is taken to be
 
 

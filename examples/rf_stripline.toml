@@ -1,3 +1,4 @@
+# kicad2ems example: via-fenced stripline through line, 50 ohm, 4 layers
 board   = "rf_stripline.kicad_pcb"   # paths are relative to this file (python examples/make_rf_examples.py stripline)
 ground  = "B.Cu"
 fmin    = 1.0           # GHz

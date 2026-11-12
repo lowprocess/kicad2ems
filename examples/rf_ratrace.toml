@@ -1,3 +1,4 @@
+# kicad2ems example: 180 degree hybrid ring (rat-race), 2.4 GHz, 0.8 mm FR-4
 board   = "rf_ratrace.kicad_pcb"   # paths are relative to this file (python examples/make_rf_examples.py ratrace)
 ground  = "B.Cu"
 fmin    = 1.0           # GHz

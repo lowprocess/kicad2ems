@@ -6,12 +6,12 @@ import sys
 
 import pytest
 from kicad2ems import solvers, sysinfo
-from kicad2ems.api import API_VERSION, compatible, solver as solver_api, frontend
+from kicad2ems.api import API_VERSION, compatible, solver as solver_api, frontend, analysis as analysis_api
 
 from test_plugins import _EP, _Fake
 
 
-@pytest.mark.parametrize('surface', [solver_api, frontend])
+@pytest.mark.parametrize('surface', [solver_api, frontend, analysis_api])
 def test_every_name_resolves(surface):
     for name in surface.NAMES:
         assert getattr(surface, name) is not None, name
@@ -90,7 +90,8 @@ def test_examples_prepared(tmp_path):
     """api.frontend's examples: every config, each copied into a folder with its board, made by its generator or
     copied with its project and placement files."""
     import kicad2ems.examples as ex
-    names = frontend.examples()
+    names = ex.own()                                                # kicad2ems's own (an analysis may ship more)
+    assert set(names) <= set(frontend.examples())
     assert len(names) > 40 and {'rf_gcpw', 'sma_launch', 'demo_lowpass', 'antenna_patch'} <= set(names)
     for p in names.values():                                        # each board: made, or one of those shipped
         stem = ex.board_of(p)[:-len('.kicad_pcb')]
@@ -134,12 +135,12 @@ def test_setup_update_needs_an_install(tmp_path):
 
 
 def test_every_api_name_is_documented():
-    """docs/api.md names every name of api.solver and api.frontend, and each class and function has a docstring:
+    """docs/api.md names every name of api.solver, api.frontend and api.analysis, and each class and function has a docstring:
     a name added to the API without its documentation fails here."""
     import inspect, re
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     page = open(os.path.join(root, 'docs', 'api.md'), encoding='utf-8').read()
-    for mod in (solver_api, frontend):
+    for mod in (solver_api, frontend, analysis_api):
         for name in mod.NAMES:
             assert re.search(rf'`{re.escape(name)}[`(.]', page), f"{mod.__name__}.{name} is not in docs/api.md"
             obj = getattr(mod, name)

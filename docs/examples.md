@@ -5,7 +5,11 @@
 Each example has a config in `examples/`; run them from the repository root, and the results go to
 `examples/out/`. They are installed with kicad2ems (the package `kicad2ems.examples`), so they also open from the
 GUI's *File → Examples* in any install (copied, with their boards made, to `~/.local/share/kicad2ems/examples/`), and
-a program reaches them through `kicad2ems.api.frontend` (`examples()`, `prepare_example(name, folder)`).
+a program reaches them through `kicad2ems.api.frontend` (`examples()`, `prepare_example(name, folder)`, and
+`example_index()`: each with its group and what it is). The menu's groups are `GROUPS` in `examples/__init__.py`
+(Antennas, RF structures, Lumped-element demos, with subgroups), and what an example is comes from its config's
+first comment line. An installed analysis adds its own after them: pcbqs's circuits (`circuit_buck`, ...), each a
+config beside its model and its board.
 
 Only three boards are stored (`rf_interdig`, `hairpin`, `sma_launch`); the others are made by scripts, which the
 installer runs. After pulling a change to a generator, make them again:

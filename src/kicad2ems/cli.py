@@ -102,6 +102,10 @@ def check_report():
         lines.append(f"  {'ok' if ok else 'missing':7s} {name:<8s} {sv.label}: {what}")
     lines += [f"  missing {names[0]:<8s} {missing(names[0])}" for names in EXTRAS.values() if missing(names[0])]
     lines += [f"  BROKEN  {ep}: {err}" for ep, err in broken]
+    from .analyses import check_lines
+    also = check_lines()
+    if also:
+        lines += ['analyses:'] + also
     try:
         gui = importlib.import_module('kicad2ems_gui')
         importlib.import_module('PySide6')

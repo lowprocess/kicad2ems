@@ -1,3 +1,4 @@
+# kicad2ems example: one 60 degree radial stub on a 50 ohm line: a notch, 0.8 mm FR-4
 board   = "rf_radialstub.kicad_pcb"   # paths are relative to this file (python examples/make_rf_examples.py radialstub)
 ground  = "B.Cu"
 fmin    = 1.0           # GHz
