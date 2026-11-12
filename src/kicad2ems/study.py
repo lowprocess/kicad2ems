@@ -449,8 +449,9 @@ def plan(study):
     return steps
 
 
-def describe(steps):
-    """A plan as lines to print: each run, what it is asked, by whom."""
+def describe(steps, sets=None):
+    """A plan as lines to print: each run, what it is asked, by whom. sets: the analyses' tables of the config
+    (analyses.read_sets): an analysis given several is as many runs, named by their tags."""
     qs, es = questions(), engines()
     lines = []
     for st in steps:
@@ -461,6 +462,9 @@ def describe(steps):
         else:
             a = es[st.engines[0]]
             who, extra = f"{a.label} ({a.plugin.tool})", ''
+            many = (sets or {}).get(a.name) or []
+            if len(many) > 1:
+                extra = f", {len(many)} runs: {', '.join(a.plugin.tag(dict(v)) for v in many)}"
         lines.append(f"  {what}: {who}{extra}" + (', with field dumps' if st.fields else
                                                  ', without field dumps' if st.fields is False else ''))
     return lines
@@ -501,21 +505,22 @@ def latest_results(base, board):
 def run(config, only=None, preview=False, out=None, echo=print, extra=None):
     """Run the study a config asks, one run after the other (plan), each into a folder of its own under the output
     folder: the solvers' as kicad2ems's own run, an analysis as the command its plugin gives, with its settings
-    from [analysis.<name>]. only: the questions (or engines) to run of those it asks; preview: the runs that have
-    one, without solving; extra: settings typed on the command line, for the solvers' run. A run that cannot
-    start or fails says why and the rest go on, except an analysis that needs its result. Returns 0 when every
-    run finished, 1 when one did not, 2 when the study cannot be read."""
+    from [analysis.<name>] (given several tables, [[analysis.<name>]]: a run for each, a board's rails). only:
+    the questions (or engines) to run of those it asks; preview: the runs that have one, without solving; extra:
+    settings typed on the command line, for the solvers' run. A run that cannot start or fails says why and the
+    rest go on, except an analysis that needs its result. Returns 0 when every run finished, 1 when one did not,
+    2 when the study cannot be read."""
     import subprocess
     import sys
     import time
-    from .analyses import read_config as read_analyses, registry
+    from .analyses import read_sets, registry
     from .config import ConfigError, build_settings, default_out
     from .runs import preview_dir, run_dir, tool_dir, tool_preview_dir
     try:
         study = read_config(config)
         steps = plan(study)
         base_s = build_settings(dict(extra or {}), config)
-        _, tables = read_analyses(config)
+        tables = read_sets(config)
     except (ConfigError, ValueError, OSError) as e:
         echo(f"study: error: {e}")
         return 2
@@ -531,8 +536,9 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
         steps = [st for st in steps if st.kind == 'solvers' or reg[st.engines[0]].previewed]
     board = base_s.board
     base = os.path.abspath(out or base_s.out or default_out(board))
-    echo(f"study of {os.path.basename(board or config)}: {len(steps)} run(s)")
-    for line in describe(steps):
+    count = sum(1 if st.kind == 'solvers' else len(tables.get(st.engines[0]) or [1]) for st in steps)
+    echo(f"study of {os.path.basename(board or config)}: {count} run(s)")
+    for line in describe(steps, tables):
         echo(line)
     results, state, failed = latest_results(base, board), [], set()
     for st in steps:
@@ -559,44 +565,53 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
             need = [n for n in a.needs if n in failed]
             if need:
                 echo(f"study: {a.label}: not run: {', '.join(need)} did not finish")
-                state.append((st, 'not run', '', 0.0))
+                state.append((st, 'not run', '', 0.0, ''))
                 failed.add(a.name)
                 continue
-            values = dict(tables.get(a.name) or {})
-            own, named = values.pop('board', None), values.pop('out', None)
-            values = a.for_questions(values, st.questions)
-            if st.fields is not None and a.fields:
-                values[a.fields] = bool(st.fields)
-            try:
-                folder = os.path.abspath(named) if named else (
-                    tool_preview_dir(base, own or board, a.name) if preview else
-                    _fresh(lambda: tool_dir(base, own or board, a.name, a.tag(values))))
-                argv = a.command(values, own or board, folder, preview=preview, results=results)
-            except ValueError as e:
-                echo(f"study: {a.label}: not started: {e}")
-                state.append((st, f"not started: {e}", '', 0.0))
-                failed.add(a.name)
-                continue
-            mark(folder, a.name, st.questions, preview)
-            echo(f"study: {a.label}: {' '.join(['python', *argv[1:]] if argv[0] == sys.executable else argv)}")
-            proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                                    env=dict(os.environ, **(a.env or {})))
-            for line in proc.stdout:
-                echo('  ' + line.rstrip('\n'))
-            code = proc.wait()
-            if code == 0 and not preview:
-                results[a.name] = folder
+            many = tables.get(a.name) or [{}]                       # its tables: a run each (a board's rails)
+            for table in many:
+                t0 = time.time()
+                values = dict(table)
+                own, named = values.pop('board', None), values.pop('out', None)
+                tag = a.tag(values) if len(many) > 1 else ''
+                who = a.label + (f": {tag}" if tag else '')
+                values = a.for_questions(values, st.questions)
+                if st.fields is not None and a.fields:
+                    values[a.fields] = bool(st.fields)
+                try:
+                    folder = os.path.abspath(named) if named else (
+                        tool_preview_dir(base, own or board, a.name) if preview else
+                        _fresh(lambda: tool_dir(base, own or board, a.name, a.tag(values))))
+                    argv = a.command(values, own or board, folder, preview=preview, results=results)
+                except ValueError as e:
+                    echo(f"study: {who}: not started: {e}")
+                    state.append((st, f"not started: {e}", '', 0.0, tag))
+                    failed.add(a.name)
+                    continue
+                mark(folder, a.name, st.questions, preview)
+                echo(f"study: {who}: {' '.join(['python', *argv[1:]] if argv[0] == sys.executable else argv)}")
+                proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                        env=dict(os.environ, **(a.env or {})))
+                for line in proc.stdout:
+                    echo('  ' + line.rstrip('\n'))
+                code = proc.wait()
+                if code == 0 and not preview:
+                    results[a.name] = folder
+                if code != 0:
+                    failed.add(a.name)
+                state.append((st, 'done' if code == 0 else f"failed (exit {code})", folder, time.time() - t0, tag))
+            continue
         took = time.time() - t0
         if code != 0:
             failed.add(st.name)
-        state.append((st, 'done' if code == 0 else f"failed (exit {code})", folder, took))
+        state.append((st, 'done' if code == 0 else f"failed (exit {code})", folder, took, ''))
     echo('study:')
     qs, es = questions(), engines()
-    for st, text, folder, took in state:
+    for st, text, folder, took, tag in state:
         what = ', '.join(qs[q].label if q in qs else q for q in st.questions)
-        who = 'the solvers' if st.kind == 'solvers' else es[st.engines[0]].label
+        who = 'the solvers' if st.kind == 'solvers' else es[st.engines[0]].label + (f": {tag}" if tag else '')
         echo(f"  {what + ' (' + who + ')':<40s} {text}" + (f", {took:.0f} s: {folder}" if folder else ''))
-    return 0 if all(text == 'done' for _, text, _, _ in state) else 1
+    return 0 if all(text == 'done' for _, text, *_ in state) else 1
 
 
 def main(argv=None, prog='kicad2ems study'):
@@ -612,12 +627,13 @@ def main(argv=None, prog='kicad2ems study'):
     a = ap.parse_args(argv)
     if a.list:
         try:
-            steps = plan(read_config(a.config))
+            from .analyses import read_sets
+            steps, sets = plan(read_config(a.config)), read_sets(a.config)
         except (ValueError, OSError) as e:
             import sys
             print(f"{prog}: error: {e}", file=sys.stderr)
             return 2
-        print('\n'.join(describe(steps)))
+        print('\n'.join(describe(steps, sets)))
         return 0
     return run(a.config, only=a.only, preview=a.preview, out=a.out)
 

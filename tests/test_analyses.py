@@ -113,8 +113,15 @@ def test_a_config_s_analysis_tables(plugins, tmp_path):
     assert tables['other'] == dict(model_file='m.json')            # not installed: kept as written
     assert frontend.build_settings({}, str(cfg)).notes == []       # kicad2ems itself: another tool's tables
     cfg.write_text('board = "b.kicad_pcb"\n')
-    assert analyses.read_config(str(cfg)) == (None, {})
+    assert analyses.read_config(str(cfg)) == (None, {}) and analyses.read_sets(str(cfg)) == {}
     assert frontend.read_analyses is analyses.read_config
+    # several tables of one analysis (2.10): each with its paths; read_config gives the first
+    cfg.write_text('[[analysis.heat]]\nlosses = "a.json"\n[[analysis.heat]]\nlosses = "b.json"\nfilm = 3\n'
+                   '[analysis.other]\nx = 1\n[analysis.odd]\n')
+    assert analyses.read_sets(str(cfg)) == dict(
+        heat=[dict(losses=str(tmp_path / 'a.json')), dict(losses=str(tmp_path / 'b.json'), film=3)], other=[dict(x=1)],
+        odd=[{}])
+    assert analyses.read_config(str(cfg))[1]['heat'] == dict(losses=str(tmp_path / 'a.json'))
 
 
 def test_an_analysis_ships_examples(plugins, tmp_path):

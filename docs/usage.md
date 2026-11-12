@@ -175,6 +175,28 @@ with a `kicad2ems-study.json` that says who made it and what was asked; the wind
 A run that fails or cannot start says why and the rest go on. The exit code is 0 when every run finished, 1 when
 one did not, 2 when the study cannot be read.
 
+<a id="several"></a>An analysis may be given several tables, as an array, and is then run once for each: a
+board's rails, one after the other, each into its own folder (named by the rail) with its own result.
+
+```toml
+[study]
+run = ["dc", "pdn"]
+
+[[analysis.pdn]]
+rail = "+5V"
+volts = 5
+source = "J101"
+load = ["U702=1.4"]
+
+[[analysis.pdn]]
+rail = "+3V3"
+volts = 3.3
+load = ["U1=0.8", "U4=0.2"]
+```
+
+`kicad2ems study board.toml --list` then reads `Rail drop, Rail impedance: Power integrity (pcbqs.pdn), 2 runs:
++5V, +3V3`. An analysis that starts from another's result takes the last of them.
+
 A config without `[study]` is read as before: `[analysis] run = [...]` names analyses (`"rf"`: S-parameters),
 and with neither the study is S-parameters alone, which `kicad2ems board.toml` runs just the same.
 

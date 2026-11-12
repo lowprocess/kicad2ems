@@ -13,7 +13,8 @@ results (the GUI, the KiCad plugin, dfsynth's --validate).
                       module: the user's settings file), G_DUMP (the field-dump settings group)
   solvers             registry, get_solver, resolve_lines, AUTO, LINES
   analyses            analyses ({name: Analysis}: the analysis plugins installed, kicad2ems.analyses), analysis_of
-                      (whose result a folder holds), read_analyses (a config's [analysis] tables) (2.5)
+                      (whose result a folder holds), read_analyses (a config's [analysis] tables) (2.5),
+                      read_analysis_sets (every table of each: an analysis given several, a run each) (2.10)
   the study           study_tree (what to list: by group, each question with the engines that answer it),
                       questions, engines ({name: Engine}: solvers and analyses alike), runs_for ({engine: the
                       questions asked of it}), mark_run and run_mark (a run folder's mark: who made it) (2.6);
@@ -48,6 +49,7 @@ NAMES = dict(
     examples='.examples:examples', prepare_example='.examples:prepare_example', examples_folder='.examples:user_folder',
     example_index='.examples:index',
     analyses='.analyses:registry', analysis_of='.analyses:analysis_of', read_analyses='.analyses:read_config',
+    read_analysis_sets='.analyses:read_sets',
     study_tree='.study:study_tree', questions='.study:questions', engines='.study:engines', runs_for='.study:runs_for',
     mark_run='.study:mark', run_mark='.study:marked',
     Study='.study:Study', read_study='.study:read_config', write_study='.study:write_config',

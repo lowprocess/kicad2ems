@@ -342,6 +342,86 @@ fail = true
     assert any(d.name == name + '_preview' and study.marked(str(d))['preview'] for d in out.iterdir())
 
 
+class Rails(Drop):
+    """A rail's tool, as a study runs it for each of a board's rails: writes what it was given; a rail named
+    'bad' exits 4, one with no name does not start."""
+    api, several = (2, 10), 'rail'
+
+    def tag(self, values):
+        return str(values.get('rail') or 'rail')
+
+    def command(self, values, board, out, preview=False, results=None):
+        import sys
+        if not values.get('rail'):
+            raise ValueError('name the rail')
+        code = ("import json, os, sys; out, rail, volts, no_pdn = sys.argv[1:5]; os.makedirs(out, exist_ok=True); "
+                "print('pdn: rail', rail); sys.exit(4) if rail == 'bad' else "
+                "json.dump(dict(rail=rail, volts=float(volts), no_pdn=no_pdn), open(os.path.join(out, 'pdn.json'), 'w'))")
+        return [sys.executable, '-c', code, out, values['rail'], str(values.get('volts', 0)), str(values.get('no_pdn'))]
+
+
+def test_an_analysis_given_several_tables_is_a_run_for_each(plugins, tmp_path, capsys):
+    """API 2.10. [[analysis.pdn]]: a board's rails, each a run of its own in its own folder, named by its tag;
+    one that fails or cannot start does not stop the others, and the study says which."""
+    import json
+    import re
+    from kicad2ems.cli import main
+    from kicad2ems.api import frontend
+    plugins(Rails, Circuit)
+    assert analyses.registry()['pdn'].several == 'rail' and analyses.registry()['circuit'].several == ''
+    out = tmp_path / 'runs'
+    cfg = _config(tmp_path, f'''out = "{out}"
+[study]
+run = ["dc"]
+
+[[analysis.pdn]]
+rail = "+5V"
+volts = 5
+[[analysis.pdn]]
+rail = "+3V3"
+volts = 3.3
+''')
+    (tmp_path / 'b.kicad_pcb').write_text('')
+    sets = analyses.read_sets(cfg)
+    assert sets == dict(pdn=[dict(rail='+5V', volts=5), dict(rail='+3V3', volts=3.3)])
+    assert analyses.read_config(cfg) == (None, dict(pdn=dict(rail='+5V', volts=5)))      # the first, as before
+    assert frontend.read_analysis_sets is analyses.read_sets
+    assert main(['study', cfg, '--list']) == 0
+    assert capsys.readouterr().out.splitlines() == ['  Rail drop: fake (fake.pdn), 2 runs: +5V, +3V3']
+    assert main(['study', cfg]) == 0
+    text = capsys.readouterr().out
+    assert 'study of b.kicad_pcb: 2 run(s)' in text and '  pdn: rail +5V' in text and '  pdn: rail +3V3' in text
+    made = sorted(d.name for d in out.iterdir())
+    assert [re.sub(r'_\d{8}_\d{6}$', '', n) for n in made] == ['b_pdn_3V3', 'b_pdn_5V']
+    got = {json.load(open(out / n / 'pdn.json'))['rail']: json.load(open(out / n / 'pdn.json')) for n in made}
+    assert got == {'+5V': dict(rail='+5V', volts=5.0, no_pdn='True'), '+3V3': dict(rail='+3V3', volts=3.3, no_pdn='True')}
+    assert all(study.marked(str(out / n)) == dict(engine='pdn', questions=('dc',), preview=False) for n in made)
+    tail = text[text.rindex('study:'):].splitlines()
+    assert [re.sub(r', \d+ s: .*$', '', t) for t in tail[1:]] == [
+        '  Rail drop (fake: +5V)                    done', '  Rail drop (fake: +3V3)                   done']
+    # one that fails, one that cannot start: said by name, the third still run
+    bad = _config(tmp_path, f'''out = "{tmp_path / "more"}"
+[study]
+run = ["dc", "pdn"]
+[[analysis.pdn]]
+rail = "bad"
+[[analysis.pdn]]
+volts = 1.8
+[[analysis.pdn]]
+rail = "+1V8"
+volts = 1.8
+''', name='bad.toml')
+    assert main(['study', bad]) == 1
+    text = capsys.readouterr().out
+    assert 'study: Power integrity: rail: not started: name the rail' in text
+    tail = text[text.rindex('study:'):].splitlines()
+    assert [re.sub(r', \d+ s: .*$', '', t) for t in tail[1:]] == [
+        '  Rail drop, Rail impedance (fake: bad)    failed (exit 4)',
+        '  Rail drop, Rail impedance (fake: rail)   not started: name the rail',
+        '  Rail drop, Rail impedance (fake: +1V8)   done']
+    assert json.load(open(next((tmp_path / 'more').glob('b_pdn_1V8_*')) / 'pdn.json'))['no_pdn'] == 'False'
+
+
 def test_two_engines_answers_side_by_side(plugins, tmp_path):
     """compare: the figures engines name alike in one row each, an engine's own where only it has them; the
     spread between those that give one. default_fields: what an engine is asked when its dumps are wanted."""

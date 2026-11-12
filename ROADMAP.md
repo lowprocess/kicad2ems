@@ -115,7 +115,10 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    parts is not made into a circuit (the regulator's own footprint is taken for both); a rail's ripple at a
    converter's pin needs the input loop's own inductance, which the near field solves and the rail's planes do
    not have (the two could share it); an example study that walks through the three steps.
-3. **Several rails in one power-integrity run** (a config's `[analysis.pdn]` is one rail).
+3. **Several rails, in the window.** A config holds them (`[[analysis.pdn]]`) and `kicad2ems study` runs
+   them all; the window shows and runs the first and keeps the rest. Left: the rails in the window (a selector
+   above the Rail drop settings, or a table of them: to be chosen), each with its state and result, and their
+   drops side by side in one report.
 4. **Converters.** A broader buck input-loop discovery; ambiguous bias, enable and supply nets resolved by part
    metadata; the switch node's E in the converter workflow (the Coulomb E of the surface charges is there, the
    inductive E is not) and output-inductor models; decap and via mounting inductance from the quasi-static solver

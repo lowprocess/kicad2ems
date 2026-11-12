@@ -59,6 +59,10 @@ and, since 2.6 (kicad2ems.study: questions and engines),
                           run: (); then it is one question of its own name
   engine                  the program's name as a list shows it beside a question ('pcbqs', 'Elmer'); '': its label
   questions               study.Question objects of its own, for what kicad2ems has no question for
+and, since 2.10,
+  several                 what a study may hold several settings of it by, each a run of its own, as a front end
+                          names them ('rail': a board's rails; a config's [[analysis.<name>]] tables, read_sets);
+                          '': one. A run's tag(values) tells them apart
 and, since 2.9,
   missing(values, board, results=None)
                           what a run still needs, [dict(text, key)]: the default is what command() raises
@@ -112,6 +116,7 @@ class Analysis:
     questions = ()
     fields = ''
     uses = ()
+    several = ''
 
     def for_questions(self, values, asked):
         """The settings for a run asked only the questions `asked` of those it provides."""
@@ -264,16 +269,9 @@ def analysis_of(folder):
     return None
 
 
-def read_config(path):
-    """The analyses' part of a TOML config: (run, {name: {option key: value}}).
-
-        [analysis]
-        run = ["circuit", "thermal"]        # the analyses a study of this config runs ("rf": S-parameters)
-        [analysis.circuit]
-        model = "buck.json"                 # its options, by key; a path (Analysis.paths) relative to the file
-
-    run: None when the config does not say. A table of an analysis that is not installed is kept as it is (so a
-    front end can write it back); its paths are not known, and stay as written."""
+def _tables(path):
+    """(run, {name: [{option key: value}, ...]}) of a config's [analysis] part: every table of each analysis, in the
+    order written (one table: a list of one)."""
     import sys
     if sys.version_info >= (3, 11):
         import tomllib
@@ -290,16 +288,50 @@ def read_config(path):
         run = [str(x).strip().lower() for x in (run if isinstance(run, (list, tuple)) else str(run).split(','))
                if str(x).strip()]
     out, reg = {}, registry()
-    for name, tab in table.items():
-        if not isinstance(tab, dict):
+    for name, tabs in table.items():
+        tabs = [tabs] if isinstance(tabs, dict) else tabs
+        if not isinstance(tabs, list) or not tabs or not all(isinstance(t, dict) for t in tabs):
             continue
-        vals = {k.replace('-', '_'): v for k, v in tab.items()}
-        for k in getattr(reg.get(name.lower()), 'paths', ()):
-            v = vals.get(k)
-            if isinstance(v, str) and v and not os.path.isabs(os.path.expanduser(v)):
-                vals[k] = os.path.normpath(os.path.join(base, os.path.expanduser(v)))
-        out[name.lower()] = vals
+        sets = []
+        for tab in tabs:
+            vals = {k.replace('-', '_'): v for k, v in tab.items()}
+            for k in getattr(reg.get(name.lower()), 'paths', ()):
+                v = vals.get(k)
+                if isinstance(v, str) and v and not os.path.isabs(os.path.expanduser(v)):
+                    vals[k] = os.path.normpath(os.path.join(base, os.path.expanduser(v)))
+            sets.append(vals)
+        out[name.lower()] = sets
     return run, out
+
+
+def read_config(path):
+    """The analyses' part of a TOML config: (run, {name: {option key: value}}).
+
+        [analysis]
+        run = ["circuit", "thermal"]        # the analyses a study of this config runs ("rf": S-parameters)
+        [analysis.circuit]
+        model = "buck.json"                 # its options, by key; a path (Analysis.paths) relative to the file
+
+    run: None when the config does not say. A table of an analysis that is not installed is kept as it is (so a
+    front end can write it back); its paths are not known, and stay as written. An analysis given several tables
+    (read_sets): its first."""
+    run, sets = _tables(path)
+    return run, {name: tabs[0] for name, tabs in sets.items()}
+
+
+def read_sets(path):
+    """Every table of each analysis of a config: {name: [{option key: value}, ...]}. An analysis may be given
+    several, each a run of its own in a study (a board's rails, one after the other), as an array of tables:
+
+        [[analysis.pdn]]
+        rail = "+5V"
+        volts = 5
+        [[analysis.pdn]]
+        rail = "+3V3"
+        volts = 3.3
+
+    One table ([analysis.pdn]) is a list of one. Paths as read_config gives them."""
+    return _tables(path)[1]
 
 
 def check_lines():

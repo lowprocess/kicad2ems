@@ -9,6 +9,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Several rails in one study (API 2.10).** A config's `[analysis.pdn]` was one rail, so a board's rails took
+  as many configs. An analysis may now be given several tables, as an array (`[[analysis.pdn]]`), and
+  `kicad2ems study` runs it once for each, into a folder of its own named by the run's tag (the rail), with
+  its own lines in the plan (`2 runs: +5V, +3V3`) and in the study's summary; one that fails or cannot start
+  does not stop the others. `analyses.read_sets` (`read_analysis_sets` for a front end) gives every table;
+  `read_config` gives the first, as before. A plugin says what a study may hold several of it by with
+  `several` (`'rail'` for pcbqs's power integrity, `'converter'` for its near field). The window shows and runs
+  the first, says how many more the config has, and keeps them when it saves (`docs/usage.md#several`).
 - **What a result proposes goes on to the next question, asked (kicad2ems-gui; pcbqs).** A finished question's
   proposals were buttons that filled another's settings; they now tick that question too, so that Run includes
   it, and bring its page to the front. An analysis with an editor of its own takes a proposal as it takes its

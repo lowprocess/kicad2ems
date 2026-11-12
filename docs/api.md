@@ -45,6 +45,7 @@ in it. A user takes a provider of the same major version and at least the minor 
   2.8 engines compared: an analysis's `figures(folder)`, a `Question`'s `figures`, `compare_engines`; `default_fields`.
   2.9 what a window shows first and what a run still needs: an option's `level`, a solver's `basic`, an analysis's
   `missing(values, board, results)` and `uses`, `rf_needs`.
+  2.10 several runs of one analysis in a study (a board's rails): an analysis's `several`, `read_analysis_sets`.
   [CHANGELOG.md](https://github.com/lowprocess/kicad2ems/blob/main/CHANGELOG.md) has each release's.
 
 Both API modules load their names on first use: importing one costs nothing until a name is used.
@@ -179,6 +180,7 @@ and implements:
 | `figures(folder)` | the figures of its answer by name, `[dict(name, value, unit)]`, for a table of engines against figures ([below](#study); 2.8) |
 | `missing(values, board, results=None)` | what a run of these settings still needs before it is started: `[dict(text, key)]`, `key` the option it is set by. By default what `command` raises; an analysis that can tell more from the board cheaply says it here (pcbqs's rail: a load with no pad on ground). `results` holds `None` for an analysis asked with it that has no result yet (2.9) |
 | `uses` | the analyses whose latest result it can start from when there is one (the temperature, from a circuit's losses): not required, as `needs` are. What one of them will give in the same run is not missing (2.9) |
+| `several` | what a study may hold several settings of it by, each a run of its own, as a front end names them (`'rail'`: a board's rails, a config's `[[analysis.<name>]]` tables); `''`: one. `tag(values)` tells the runs apart: it names their folders and the study's lines (2.10) |
 
 Its maps need no method: an analysis writes them as field dumps under `<out>/<name>/exc_<what>/` with its board
 as `<out>/<name>_board.json`, and a viewer of a run's dumps shows them. A dump's entry in `dump_info.json` may give
@@ -264,7 +266,7 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 | the line model | `build_lines` (Board → LineModel; `field=True`: every section by the field solver), `RefCopper` (its reference copper), `overlay` (the module: the line model drawn on the board), `sections` (the module: one section's field: `modes`, `solve`), `impedance` (the module: a stack-up's impedance without a board, `kicad2ems.lines.calc`: `Line`, `calculate`, `fit`, `element`, `describe`, `report`; 2.5) |
 | settings | `Settings`, `build_settings`, `read_toml`, `all_options`, `default_out`, `PATH_KEYS`, `sitecfg` (the module), `G_DUMP` |
 | solvers | `registry`, `get_solver`, `resolve_lines`, `AUTO`, `LINES` |
-| analyses | `analyses` (`{name: Analysis}`: the analysis plugins installed), `analysis_of(folder)`, `read_analyses(config)` (`(run, {name: {key: value}})` of a config's `[analysis]` tables) |
+| analyses | `analyses` (`{name: Analysis}`: the analysis plugins installed), `analysis_of(folder)`, `read_analyses(config)` (`(run, {name: {key: value}})` of a config's `[analysis]` tables; an analysis given several: its first), `read_analysis_sets(config)` (`{name: [{key: value}, ...]}`: every table of each, [a run for each](usage.md#several); 2.10) |
 | the study | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `runs_for(asked)`, `mark_run(folder, engine, asked, preview)`, `run_mark(folder)`; a config's: `Study`, `read_study`, `write_study`, `study_plan`, `engine_named`, `latest_results` (2.7), `default_fields`, `compare_engines` (2.8), `rf_needs` (2.9) ([Questions and engines](#study)) |
 | runs | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml`; where a front end's runs go: `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name` (2.7) |
 | files kicad2ems writes | `read_summary`, `read_antenna`, `check_format`, `read_touchstone`, `port_names` |
