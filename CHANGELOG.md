@@ -165,10 +165,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Checked on eleven examples, CPU, whole sweeps (2026-11-12): eight move by 0.5e-3 to 7.5e-3 in |S| at most, but
   rf_interdig by 0.038 and rf_diffvia by 0.18. Against a reach of 8, rf_diffvia at 1.0 GHz is 0.146 off with 3,
   0.047 with 4 and 0.060 with 5; rf_interdig at its band edge 0.024, 0.012 and 0.040. So 3 is no worse on the
-  filter and 2.4 times worse on the pair's vias, for about 5 % of these boards' time. The reach's own convergence
-  on those two is in ROADMAP.md.
+  filter and 2.4 times worse on the pair's vias, for about 5 % of these boards' time. What made those sweeps move
+  so much was not the reach: the pair's modes fitted their gamma on the feed (Fixed, below), and two sweeps
+  sample different frequencies. Solved at fixed frequencies with that fixed, against a reach of 12: rf_diffvia
+  at 1 GHz 0.0085 with 3 and 0.0046 with 5; rf_interdig's band edge 0.013 and 0.0024. 5 stays.
+- mom25d's GMRES products on the GPU (the roadmap's "Z·V on the GPU in the reuse path"): not done. It was
+  written when a reused solve made its products matrix-free on the host; they are dense double products now, and
+  the card is no faster at those: at the via transition's 13.9k unknowns (its planes meshed) a complex128 Z·V
+  takes 94 ms on the RX 7800 XT through ROCm, whatever the number of columns, and 46 to 114 ms on the host
+  (1 to 8 columns). A double-precision LU there takes 13.7 s against 1.3 s in single, so that is no way round
+  the low-frequency solves either. Where that sweep's 70 s go (15 solves): 25 s filling Z on the host (the far
+  field 1.0 s, the near field 0.3 s and the vias 0.3 s a frequency), 8.5 s in six LUs on the card, 28 s refining
+  (7 s of it the one solve at 1 GHz whose factor has to be solved on the host), the rest ports and tables.
 
 ### Fixed
+- **mom25d spent 30 iterations on a GPU factor that could not be solved with.** ROCm's complex64 triangular
+  solves lose an ill-conditioned factor (the lowest frequencies of a fine mesh), and the refinement then stays at
+  a residual of 1 until its cap before the factor is taken to the host. It is given up after 4 iterations above
+  0.1 (`fast.FRESH_STALL`): 0.6 s for 3.8 s at 1 GHz on the via transition with its planes meshed (13.9k
+  unknowns).
 - **mom25d fitted a differential pair's propagation constants on its feed.** A single wave port takes its
   gamma from the line's characterisation; a pair's two modes did not, though the characterisation has them, and
   fitted on a feed that spans a quarter of a radian they were unreliable. On rf_diffvia at 1 GHz, the low end

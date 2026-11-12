@@ -53,11 +53,7 @@ mom25d is slowest where planes have to be meshed. Solid planes are PEC, lone sti
 board imported with a few nets can have its pours' voids filled (`--fill-voids`). The model items below are worth
 an order of magnitude more than the solver's: taking planes out brought rf_stripline from 100 s to 3 s.
 
-1. **Z·V on the GPU in the reuse path** (small; medium confidence). After the LU reuse, demo_transition's CPU sweep
-   is 83 s: 14 reused solves of 4.8 s each, 3.4 s of that GMRES products bound by the host's memory bandwidth.
-   On the card the GPU column would go from about 72 s to 40–45 s, while Z fits there (~25k unknowns); uploading
-   Z each frequency eats into it. It matters for real boards past ~10k unknowns.
-2. **Planes a signal via passes through: an internal PEC plane with magnetic frills** (about 500 lines in
+1. **Planes a signal via passes through: an internal PEC plane with magnetic frills** (about 500 lines in
    `multilayer.py`, `via.py` and `sim.py`, and validation against openEMS: a via through a plane,
    demo_transition, rf_msvia).
    - The stack's TL network gets internal PEC interfaces. Every existing kernel then decouples the copper above
@@ -72,15 +68,15 @@ an order of magnitude more than the solver's: taking planes out brought rf_strip
    - Gain: demo_transition's 3,910 unknowns, 2,408 of them the plane, become about 1,500 (~18× less LU work;
      with the zone and quads 2,701 to ~1,100); a CM5 carrier's PCIe pair, 54,885 after filling its voids, about
      12k.
-3. **Coupled runs in the mixed solver.** It cuts only lone traces into lines, and needs wave ports. 4-port coupled
+2. **Coupled runs in the mixed solver.** It cuts only lone traces into lines, and needs wave ports. 4-port coupled
    lines (`line_char_pair` exists) would take a pair's straight runs: about 40 % of that PCIe pair's length, whose
    unknowns scale with it (the pair alone: ~7k for 55 mm).
-4. **What `--fill-voids` leaves.** `far` keeps a void near the signal copper on every layer, also behind a solid
+3. **What `--fill-voids` leaves.** `far` keeps a void near the signal copper on every layer, also behind a solid
    plane (14 × 32 mm of the CM5 Minima: 33,088 unknowns, 25,662 with `all`, 42,689 as imported). Whether those
    can go is not settled: on a crop, `all` moved a resonance of the planes the region cut (gfdtd's |S21| at
    10 GHz from −1.6 to −4.0 dB). It needs a board whose planes are not cut. The KiCad plugin's selected-net runs
    could default to `far`. Optionally, a ground pour on a signal layer cut a few heights from the signal copper.
-5. **Boards past ~30k unknowns**, only if they remain after 2–4. `solver='hodlr'` is about N^2.5 and wins by
+4. **Boards past ~30k unknowns**, only if they remain after 1–3. `solver='hodlr'` is about N^2.5 and wins by
    memory first (its measurements: CHANGELOG.md). Towards N log N, in order:
    - **the near field's reach, capped at a distance.** The correction's pattern reaches 5 cells, 15 mm under
      3 mm plane cells, but beyond about 3 mm it is under 5e-4 of its largest: capped there, ACA would compress
