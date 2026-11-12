@@ -107,22 +107,15 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
 1. **Settling that sees slow filter modes (C8; 1 day).** Track the cycle-mean drift of the supply current; average
    the input power over whole slow-mode periods, or extrapolate the decaying mode (vector extrapolation of the
    per-cycle state) instead of simulating it out.
-2. **The bridge model without wpthb in the code (the rest of C7, U1; 0.5 day).** The precharge goes by what the
-   parts join, but wpthb's own branches and resistances are still in `power_bridge`: move them into the
-   template's data, or take the start from a DC operating point of the actual input network.
-3. **The Circuit page from `--describe` (I4, U2, U5; 1.5 days).** Generate its form from the tool, as the other
-   analyses' are; per-group parasitic overrides; default to the template's switch model and warn on `switch`
-   with ngspice. Its own result tabs repeat the Results page, and a bridge run's `power-circuit.json` is not yet
-   an analysis's result.
-4. **Cross-tool flows (U4, I3; 2.5 days).** A near-field converter as a circuit template (its parts, its loop's
+2. **Cross-tool flows (U4, I3; 2.5 days).** A near-field converter as a circuit template (its parts, its loop's
    copper); a circuit's input-current spectrum as PDN loads; `pcbqs.mqs`'s assumed-pulse fields against the
    circuit's `--fields`.
-5. **Several rails in one power-integrity run** (a config's `[analysis.pdn]` is one rail).
-6. **Converters.** A broader buck input-loop discovery; ambiguous bias, enable and supply nets resolved by part
+3. **Several rails in one power-integrity run** (a config's `[analysis.pdn]` is one rail).
+4. **Converters.** A broader buck input-loop discovery; ambiguous bias, enable and supply nets resolved by part
    metadata; the switch node's E in the converter workflow (the Coulomb E of the surface charges is there, the
    inductive E is not) and output-inductor models; decap and via mounting inductance from the quasi-static solver
    instead of the formula.
-7. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`). Left: the
+5. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`). Left: the
    run's lumped parts between their pads (the quasi-static solver takes elements already, so a decoupled rail or
    a lumped filter would have its low end too; today they are left out and listed as deviations); gap ports; the
    two-face copper with the charge is slow on a stack of several dielectrics (25 s a frequency at

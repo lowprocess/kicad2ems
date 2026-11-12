@@ -9,6 +9,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The Circuit page is the model's editor; its settings are generated (kicad2ems-gui).** The page keeps the
+  schematic and the model's JSON. Its settings are a panel in the Study dock made from the circuit plugin's
+  options, as every analysis's are (the two tools' own tables; the options of the other kind of model hidden;
+  an option with choices is a drop-down), with a *Model* section for a general model's parameters and sweep.
+  The full bridge's operating points and switch model show the model's values, and what is typed goes into the
+  model; the switch model is the model's own instead of the first in a list, and the behavioural `switch` is
+  warned of (U5). Overrides are by group (the tank, each rail's capacitors, the filter) and are the run's, so
+  the model keeps each part's value (U2); nothing names wpthb's parts (U1). The page's own Results, waveform
+  and Log tabs are gone: a circuit's report, tables and waveforms are on the Results page (the full bridge's
+  too, which the registry did not know), its fields in the Viewer, its log on the Run page. A run is the
+  plugin's command on the model as edited.
 - **The window asks questions (kicad2ems-gui).** The Study's list is the questions that can be asked of the
   board, by group (RF, Power, Thermal), instead of one row per analysis plugin and one for all of S-parameters.
   A row has a tick (it is asked), who answers it (click the cell: a menu of its engines with *auto* first;
