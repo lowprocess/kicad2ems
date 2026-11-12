@@ -25,7 +25,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   band the wrong way round: the footprints are read, no model made); an analysis says its own with
   `missing(values, board, results)`, by default what its command raises, and `uses` names the analyses whose
   result it can start from, so that what the circuit will give the temperature in the same run is not missing.
-  pcbqs's rail tool says a load with no pad on ground there (below).
+  pcbqs's rail tool says there a load with no pad on ground whose return the board does not show; where it
+  shows it (a half bridge's low-side switch) the rail takes it, and the drop has the ground's share (pcbqs's
+  CHANGELOG).
 - **mom25d: a plane a via runs through as a perfect conductor (`--mom-planes holes`, experimental).** A plane
   with an antipad had to be meshed, and was most of the unknowns of a via transition. `LayerStack(pec=)` puts PEC
   planes inside the stack (the network shorted there: the copper above and below in one model, decoupled), and

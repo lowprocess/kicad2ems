@@ -102,16 +102,12 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
 
 ### Correctness and workflow
 
-1. **A load with no pad on ground ("Q1: no ground pad").** A rail's load that sits on the rail and not on ground
-   (a bridge's high-side switch: wpthb's Q1 and Q2 on VIN) has its return left out: the rail drop is then the
-   power side alone (`ground_rise` 0: 49.7 mV for Q1 where the ground's share is missing) and only a note in
-   the result says so, with the way round it (`--load Q1=0.67@Q4`, the part its current returns through). The
-   user met it on wpthb (2026-11-12) and asked for it to be kept in view. Done since: the window lists it under
-   "Still needed" for Rail drop and does not start the run ("Q1 has no pad on ground: name the part its current
-   returns through, Q1=AMPS@Q3": pcbqs's `PowerIntegrity.missing` names the part where the board has one of the
-   load's kind on its switch node and on ground). Left: the command line still runs with the note alone, so
-   take the return found by itself there too (and a sense resistor in the path, which that search does not
-   follow), and say in the report's headline when a return was left out.
+1. **A load with no pad on ground, the rest.** The rail takes the return of a load that is on the rail and not
+   on ground (a bridge's high-side switch: wpthb's Q1 and Q2, flagged by the user on 2026-11-12) through the
+   one part of its kind on its other net and on ground, and says so; where the board shows none, the report's
+   headline says the return was left out and the window asks for it before the run (pcbqs's CHANGELOG). Left:
+   a return that is not that direct, a low-side switch on ground through a sense resistor (the search stops at
+   the switch's own pads, so such a bridge is asked about), and two parts in parallel as one return.
 2. **Cross-tool flows (U4, I3; 2.5 days).** A near-field converter as a circuit template (its parts, its loop's
    copper); a circuit's input-current spectrum as PDN loads; `pcbqs.mqs`'s assumed-pulse fields against the
    circuit's `--fields`.

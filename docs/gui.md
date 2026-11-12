@@ -39,9 +39,10 @@ maps in a drawer under it, the settings of the question selected on the right.
   a solver's greyed while it isn't chosen. *Find a setting* at its top shows only those whose name, key or
   section holds what you type. Empty fields use the default, shown as a hint.
 - <a id="needed"></a>**Still needed**, under the settings: what a run of the selected question lacks, a line each
-  (*the board has no port*, *name the rail*, *Q1 has no pad on ground: name the part its current returns
-  through*); a click goes to where it is set. Kicad2ems checks its own run (the board, its ports, the band); an
-  analysis says its own. *Run > Run the selected question alone* runs one whatever the others still need.
+  (*the board has no port*, *name the rail*, *Q1 has no pad on ground, and the board has no one part of its
+  kind to return through*); a click goes to where it is set. Kicad2ems checks its own run (the board, its
+  ports, the band); an analysis says its own. *Run > Run the selected question alone* runs one whatever the
+  others still need.
 
 The columns and the drawer fold from *View* (Ctrl+1, 2, 3) and stay as they were left; *View > Reset layout*
 shows them all. Nothing floats or docks. The window remembers its size, what is folded, its splitters and the
