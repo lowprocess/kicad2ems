@@ -80,8 +80,14 @@ A wave port fits the incoming and outgoing waves along its feed line, with the p
 characterisation of the line's cross-section, so the feed only has to be long enough for the two amplitudes (about
 0.1 rad at the lowest frequency). Lumped ports are closest to the FDTD solvers' ports, both including the port's
 own parasitics; wave ports are closest to the line model's ideal reference plane. A differential pair is one
-mixed-mode port (`P1d`, `P1c`); with `auto`, a pair whose coupled feed is too short is solved as single-ended legs
-and the modes taken from them, as for openEMS.
+mixed-mode port (`P1d`, `P1c`), each mode with the propagation constant of the pair's characterisation; with
+`auto`, a pair whose coupled feed is too short is solved as single-ended legs and the modes taken from them, as
+for openEMS.
+
+A wave port's two waves both carry the error of its characterised impedance (1–2 %), which makes transmission into
+it a little large and out of it as much too small. Reflections and the product of the two transmissions do not
+depend on it, so the ports' scales are fitted from the two directions and taken out (`sim.balance`): S between
+wave ports is reciprocal, and a run says when the scales were more than 2 % apart. Lumped ports need none.
 
 <a id="real-boards"></a>
 ### On real boards
@@ -388,7 +394,11 @@ differently) and the same resonances.
 ## Inside mom25d
 
 The formulation is a mixed-potential integral equation with RWG basis functions; the layered-media kernels come from
-a spectral transmission-line network, and the singular terms are integrated analytically. The modules are listed in
+a spectral transmission-line network, and the singular terms are integrated analytically: over the larger triangle
+of a pair, with a 6-point rule over the smaller, whichever of the two is the observation, so the matrix is symmetric
+and S with lumped ports reciprocal (the rule over a 0.9 mm plane cell above a 0.3 mm trace cell was 1.3 % off). The
+near field is corrected out to 5 cells: against 12, |S| moves by 0.0025 at most on the examples' sharpest features
+(3 cells: 0.013). The modules are listed in
 [mom25d's README](https://github.com/lowprocess/mom25d#inside-mom25d). Its tests check it against exact solutions
 and textbook formulas: layered Green's functions to about 1e-5, stripline impedance to 0.6 %, coupled-line couplers
 to 0.1 dB, plane cavity resonances to 0.7 %.

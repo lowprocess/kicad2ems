@@ -169,6 +169,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   on those two is in ROADMAP.md.
 
 ### Fixed
+- **mom25d fitted a differential pair's propagation constants on its feed.** A single wave port takes its
+  gamma from the line's characterisation; a pair's two modes did not, though the characterisation has them, and
+  fitted on a feed that spans a quarter of a radian they were unreliable. On rf_diffvia at 1 GHz, the low end
+  of its band: |Sdd11| 0.19 where it is 0.01, |Sdd21| 1.21 one way and 0.79 the other (largest singular value
+  1.30), S moving by 0.06 with the near field's reach, and the adaptive sweep chasing it for 54 solves. The
+  modes now use the characterised constants: 27 solves, 0.993, and the reach moves S by 0.005 there. This was
+  what the roadmap had as the near field's reach not being converged: with lumped ports, or away from the low
+  end, 5 cells against 12 move |S| by 0.0025 at most (rf_diffvia, rf_interdig).
+- **mom25d's matrix was not symmetric where cells of two sizes are close.** The near-singular part of a pair
+  of triangles is integrated analytically over one and by a 6-point rule over the other; the rule ran over the
+  observation triangle, so a pair had two values, and with the rule over a 0.9 mm plane cell above a 0.3 mm
+  trace cell the worse one was 1.3 % off. Transmission through a via differed by 0.4 % between its two
+  directions with lumped ports. The rule now runs over the smaller triangle whichever is the observation
+  (`sing.rule_over`, the compiled core's too): reciprocal to 1e-6, and the multi-layer examples moved onto
+  openEMS's figures (rf_stripline's worst S11 −19.9 to −17.3 dB, openEMS −17.5; rf_diffvia's worst Sdd11 −14.7
+  to −15.4 dB, openEMS −15.4); the single-layer ones did not move. The core's `offplane_pairs` could not be
+  called from Python (it built its result without the interpreter's lock).
+- **Transmission between mom25d's wave ports depended on the direction.** A wave port's waves carry the error
+  of its characterised impedance, 1–2 %: |Sdd21| of rf_diffvia's pair, on a microstrip at one end and a
+  stripline at the other, was 0.962 one way and 0.985 the other at every frequency. Reflections and the
+  product of the two directions do not depend on those scales, so they are fitted and taken out
+  (`sim.balance`; lumped ports are held exact, ports coupled by less than −20 dB keep theirs, and a run says
+  when they were more than 2 % apart).
 - **mom25d kept a differential pair's wave ports below the band their feed supports.** With `--mom-port auto` a
   single port falls back to a lumped one when its feed's cuts span under 0.1 rad at the lowest frequency; a pair
   did not, and on rf_diffvia's 10 mm feeds from 0.05 to 1 GHz every term was wrong (|Sdd21| −48 dB at 50 MHz,

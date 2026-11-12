@@ -82,10 +82,10 @@ an order of magnitude more than the solver's: taking planes out brought rf_strip
    could default to `far`. Optionally, a ground pour on a signal layer cut a few heights from the signal copper.
 5. **Boards past ~30k unknowns**, only if they remain after 2–4. `solver='hodlr'` is about N^2.5 and wins by
    memory first (its measurements: CHANGELOG.md). Towards N log N, in order:
-   - **the near field's reach.** 5 cells is not converged everywhere: against 8, rf_diffvia moves by 0.060 in |S|
-     at 1.0 GHz and rf_interdig by 0.040 at 3.36 GHz, not monotonically in the reach. Find what is sensitive
-     there (the low-frequency conditioning is the suspect for rf_diffvia), then cap the reach at a distance, so
-     ACA compresses from O(N r) entries;
+   - **the near field's reach, capped at a distance.** The correction's pattern reaches 5 cells, 15 mm under
+     3 mm plane cells, but beyond about 3 mm it is under 5e-4 of its largest: capped there, ACA would compress
+     from O(N r) entries (the reach itself is converged: 5 cells against 12 move |S| by 0.0025 at most on
+     rf_diffvia and rf_interdig);
    - **a loop–star (or loop–tree) basis:** the low-frequency conditioning sets GMRES's iterations and amplifies a
      compressed factorisation's error (10³–10⁴); perhaps 10–30 % on today's boards; a sizeable change;
    - **strong admissibility** (H-LU, or HODLR in a nested-dissection order), so the ranks stay bounded: 50k+

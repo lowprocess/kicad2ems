@@ -45,21 +45,21 @@ ports pink (`python tools/doc_figures.py gallery`).*
 
 `make_rf_examples.py` makes classic microwave structures, most on 0.8 mm FR-4 over a ground plane, some on 4 layers
 or RO4003C (`make_rf_examples.py all`, or `NAME` for one). The first eleven have openEMS results in
-`examples/reference/` and compare the solvers (`tools/compare_solvers.py`, 2026-10-28; mom25d with lumped ports, as
-the FDTD solvers have):
+`examples/reference/` and compare the solvers (`tools/compare_solvers.py`, 2026-10-28, mom25d's again on
+2026-11-12; mom25d with lumped ports, as the FDTD solvers have):
 
 | Board | Result | openEMS | gfdtd | mom25d | line model |
 |---|---|---|---|---|---|
 | `rf_branchline`: 3 dB hybrid, 2.4 GHz | S21 / S31 | −3.73 / −3.36 dB | −3.77 / −3.36 dB | −3.57 / −3.39 dB | −3.46 / −3.38 dB |
 | `rf_wilkinson`: power divider with a 100 Ω resistor | S21, S22, S32 | −3.34, −20.2, −35.3 dB (−3.35, −21.2, −32.2 converged) | −3.35, −20.3, −34.6 dB | −3.31, −20.1, −38.7 dB | −3.30, −18.4, −35.7 dB |
 | `rf_steplpf`: stepped-impedance low-pass, 2 GHz | −3 dB frequency | 1.736 GHz (1.729 converged) | 1.737 GHz | 1.756 GHz | 1.800 GHz |
-| `rf_stubnotch`: two open λ/4 stubs, 2.4 GHz | notch | 2.383 GHz | 2.398 GHz | 2.410 GHz | 2.493 GHz |
+| `rf_stubnotch`: two open λ/4 stubs, 2.4 GHz | notch | 2.383 GHz | 2.398 GHz | 2.411 GHz | 2.493 GHz |
 | `rf_gcpw`: grounded CPW with via fences | worst S11, S21 at 5 GHz | −14.8, −0.39 dB | −14.5, −0.39 dB | −22.5, −0.33 dB | −12.1, −0.35 dB |
-| `rf_coupler`: 10 dB coupler, 0.14 mm gap | S31, S21 | −10.3, −0.77 dB | −10.3, −0.77 dB | −10.6, −0.70 dB (−10.9, −0.67 before gap rings, [mesh](mom.md#meshers)) | −10.4, −0.72 dB |
+| `rf_coupler`: 10 dB coupler, 0.14 mm gap | S31, S21 | −10.3, −0.77 dB | −10.3, −0.77 dB | −10.6, −0.69 dB (−10.9, −0.67 before gap rings, [mesh](mom.md#meshers)) | −10.4, −0.72 dB |
 | `rf_ratrace`: 180° hybrid ring, 2.4 GHz | S21, S41, S31 | −3.38, −3.54, −28.2 dB | −3.38, −3.52, −28.0 dB | −3.34, −3.45, −35.8 dB | −3.34, −3.43, −46.7 dB |
 | `rf_radialstub`: one 60° radial stub | notch | 2.13 GHz | 2.13 GHz | 2.17 GHz | 2.18 GHz (qucsator's radial stub; scikit-rf slices the fan: 1.99 GHz) |
-| `rf_stripline`: 4 layers, via-fenced stripline | worst S11, S21 at 10 GHz | −17.5, −0.59 dB | −16.5, −0.58 dB | −19.9, −1.01 dB | −13.5, −0.63 dB |
-| `rf_diffvia`: 100 Ω pair through two vias | Sdd21 at 5 / 10 GHz, worst Sdd11 | −0.44 / −0.60, −15.4 dB | −0.43 / −0.59, −15.4 dB | −0.38 / −0.95, −14.7 dB | −0.41 / −1.06, −11.9 dB |
+| `rf_stripline`: 4 layers, via-fenced stripline | worst S11, S21 at 10 GHz | −17.5, −0.59 dB | −16.5, −0.58 dB | −17.3, −1.04 dB | −13.5, −0.63 dB |
+| `rf_diffvia`: 100 Ω pair through two vias | Sdd21 at 5 / 10 GHz, worst Sdd11 | −0.44 / −0.60, −15.4 dB | −0.43 / −0.59, −15.4 dB | −0.40 / −0.94, −15.4 dB | −0.41 / −1.06, −11.9 dB |
 | `rf_shielded`: resonator filter in a metal can; 4.621 GHz from a converged 3D FEM run (EMerge) | peak | 4.625 GHz (4× mesh; 4.555 by default) | 4.625 GHz | 4.648 GHz (no can) | 4.877 GHz |
 
 The figures above sit at single frequencies; a small reflection there mostly says where its ripple falls. Over the whole band, each solver's agreement with openEMS's reference (the rms of the complex difference of the input reflection, dB, and the rms difference of the transmission's |S|):
@@ -68,14 +68,14 @@ The figures above sit at single frequencies; a small reflection there mostly say
 |---|---|---|---|
 | `rf_branchline` (S11 / S21) | −43.1 dB / 0.08 dB | −30.7 dB / 0.23 dB | −28.8 dB / 0.38 dB |
 | `rf_wilkinson` (S11 / S21) | −54.6 dB / 0.02 dB | −30.6 dB / 0.09 dB | −24.4 dB / 0.11 dB |
-| `rf_steplpf` (S11 / S21) | −34.7 dB / 0.24 dB | −25.9 dB / 0.71 dB | −19.9 dB / 1.52 dB |
-| `rf_stubnotch` (S11 / S21) | −40.1 dB / 0.77 dB | −23.8 dB / 1.91 dB | −15.1 dB / 5.34 dB |
-| `rf_gcpw` (S11 / S21) | −46.5 dB / 0.03 dB | −25.4 dB / 0.26 dB | −16.5 dB / 0.24 dB |
-| `rf_coupler` (S11 / S21) | −45.5 dB / 0.02 dB | −36.0 dB / 0.11 dB | −28.1 dB / 0.14 dB |
+| `rf_steplpf` (S11 / S21) | −34.7 dB / 0.24 dB | −25.9 dB / 0.72 dB | −19.9 dB / 1.52 dB |
+| `rf_stubnotch` (S11 / S21) | −40.1 dB / 0.77 dB | −23.8 dB / 1.90 dB | −15.1 dB / 5.34 dB |
+| `rf_gcpw` (S11 / S21) | −46.5 dB / 0.03 dB | −26.1 dB / 0.26 dB | −16.5 dB / 0.24 dB |
+| `rf_coupler` (S11 / S21) | −45.5 dB / 0.02 dB | −38.3 dB / 0.10 dB | −28.1 dB / 0.14 dB |
 | `rf_ratrace` (S11 / S21) | −45.4 dB / 0.08 dB | −22.6 dB / 1.06 dB | −18.1 dB / 1.26 dB |
 | `rf_radialstub` (S11 / S21) | −46.6 dB / 0.16 dB | −26.9 dB / 1.84 dB | −18.6 dB / 2.89 dB |
-| `rf_stripline` (S11 / S21) | −42.2 dB / 0.02 dB | −30.0 dB / 0.23 dB | −25.8 dB / 0.05 dB |
-| `rf_diffvia` (S1d1d / S2d1d) | −68.4 dB / 0.01 dB | −30.5 dB / 0.21 dB | −26.3 dB / 0.21 dB |
+| `rf_stripline` (S11 / S21) | −42.2 dB / 0.02 dB | −31.5 dB / 0.25 dB | −25.8 dB / 0.05 dB |
+| `rf_diffvia` (S1d1d / S2d1d) | −68.4 dB / 0.01 dB | −29.6 dB / 0.21 dB | −26.3 dB / 0.21 dB |
 | `rf_shielded` (S11 / S21) | −49.1 dB / 0.13 dB | −16.2 dB / 2.87 dB | −9.9 dB / 11.21 dB |
 
 More structures (`make_rf_examples.py <name>`, boards and configs in the repository), on gfdtd:
