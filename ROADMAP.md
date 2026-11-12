@@ -8,11 +8,11 @@ window and mom25d; pcbqs's for the power tools). C, I and U numbers are findings
 
 ## The study: questions and engines
 
-The registry is there (API 2.6, `kicad2ems.study`, docs/api.md#study): a study asks questions, engines answer
+The registry is there (API 2.6, `kicad2ems.study`, docs/api.md#study-api): a study asks questions, engines answer
 them, and a rail's drop, the temperature and capacitance each have two (pcbqs; Elmer or Palace through
 kicad2ems-fem). A config holds a study (`[study]`) and `kicad2ems study` runs it (API 2.7, docs/usage.md#study);
 the window lists the questions, with the engine chosen on each row, and compares two engines' named figures
-(API 2.8, docs/gui.md#study). Left:
+(API 2.8, docs/gui.md#the-study). Left:
 
 1. **S-parameters compared per engine in the same way.** Two solvers' S-parameters are overlaid on the Results
    page as before (and scored in the report); the *Engines compared* table is for the analyses' named figures.
@@ -31,13 +31,13 @@ that: nothing in it may fix a panel in place. Left:
 
 1. **The study as a model without Qt** (its step 1): the widgets still hold the state, and `app.py` is 2,500
    lines. Nothing visible changes; it is what makes the rest cheap, and what kicad2ems-ipc could drive.
-2. **The header**: the study's name as the file menu, the steps Board, Questions, Set up, Run, Results, one
-   primary action. The toolbar is still the old one, with Run's wording.
-3. **The drawer by kind**: Plots, Report, Tables and Log as its tabs (they are the Results and Run pages whole),
-   with the run they are of and the compare switch; an analysis's panel with its few settings first, as the
-   solvers' are (an options row may say `level`; pcbqs's tables do not yet).
-4. **A start page** with the examples as a gallery; **picking on the board** (an option declares what it is
-   picked from: a net, a part, a pad); the Circuit page's own file buttons go.
+2. **An analysis's panel with its few settings first**, as the solvers' are (an options row may say `level`;
+   pcbqs's tables do not yet).
+3. **Picking on the board** (an option declares what it is picked from: a net, a part, a pad); the Circuit
+   page's own file buttons go.
+4. **To be asked before building** (designed for the fixed layout, so they may not fit docks): a header with
+   the steps Board, Questions, Set up, Run, Results in place of the toolbar; Plots, Report, Tables and Log as
+   docks of their own instead of the Results and Run pages; a start page with the examples as a gallery.
 
 ## The line model
 
@@ -116,16 +116,25 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    bridge current reaches its rail. Left: a controller with its two switches as separate parts is not made into
    a circuit (the regulator's own footprint is taken for both); a rail's ripple at a converter's pin needs the
    input loop's own inductance, which the near field solves and the rail's planes do not have (the two could
-   share it); an example study that walks through the three steps.
+   share it); an example study that walks through the three steps (drafted, not applied: a regulator's board
+   from `pcbqs.circuit.boards`, its connectors taken as the supply and the load, so the circuit's proposal names
+   the rail's source and nothing is typed between the three runs).
 3. **Several rails, in the window.** A config holds them (`[[analysis.pdn]]`) and `kicad2ems study` runs
-   them all; the window shows and runs the first and keeps the rest. Left: the rails in the window (a selector
-   above the Rail drop settings, or a table of them: to be chosen), each with its state and result, and their
-   drops side by side in one report.
-4. **Converters.** A broader buck input-loop discovery; ambiguous bias, enable and supply nets resolved by part
+   them all; the window shows and runs the first and keeps the rest. Left: the rails in the window, each with
+   its state and result, and their drops side by side in one report. Two mock-ups were shown to the user
+   (2026-11-12): A, a selector above the Rail drop settings (Rail, Add, Remove), recommended; B, a table of the
+   rails over the settings they share. Not built until one is chosen.
+4. **The full bridge as a general circuit.** `pcbqs.power_circuit` (format 1, the wpthb bridge and its coupled
+   receiver) is a second circuit tool beside `pcbqs.circuit` (format 2), with its own deck, settling and results,
+   and wpthb's net names (VIN, VBUS, VHB) in its code. The general model has a phase-shifted bridge example
+   already; it would need the bridge tool's power targeting by phase, the receiver's matching per frequency,
+   the coils' AC-resistance and self-resonance model and the slow-mode averaging before the bridge tool could
+   go. Not asked for; a candidate, to keep one circuit path.
+5. **Converters.** A broader buck input-loop discovery; ambiguous bias, enable and supply nets resolved by part
    metadata; the switch node's E in the converter workflow (the Coulomb E of the surface charges is there, the
    inductive E is not) and output-inductor models; decap and via mounting inductance from the quasi-static solver
    instead of the formula.
-5. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`). Left: the
+6. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`). Left: the
    run's lumped parts between their pads (the quasi-static solver takes elements already, so a decoupled rail or
    a lumped filter would have its low end too; today they are left out and listed as deviations); gap ports; the
    two-face copper with the charge is slow on a stack of several dielectrics (25 s a frequency at

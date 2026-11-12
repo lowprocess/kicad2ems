@@ -156,7 +156,7 @@ part that imports `kicad2ems.api.analysis`. It declares, as class attributes:
 | `page` | `True`: the GUI has an editor of its own for it (the circuit's schematic) |
 | `finds` | what the board can propose settings for (`'converters'`: the GUI's "Find converters"), with `discover` and `choices` below; `''`: nothing |
 | `env` | environment variables its command runs with |
-| `provides` | the [questions](#study) it answers, from one run: `('dc', 'pdn')`. None: one question of its own name |
+| `provides` | the [questions](#study-api) it answers, from one run: `('dc', 'pdn')`. None: one question of its own name |
 | `engine` | the program's name as a list shows it beside a question: `'pcbqs'`, `'Elmer'` |
 | `questions` | `Question` objects of its own, for what kicad2ems has no question for |
 | `fields` | the bool option that makes it write field dumps too (`'fields'`), or `''` |
@@ -177,7 +177,7 @@ and implements:
 | `examples()` | the examples it ships: `[dict(name, config, group, title, files)]` |
 | `for_questions(values, asked)` | its settings for a run asked only some of its questions (a rail's drop without its impedance) |
 | `owns(folder, preview=False)` | whether the folder holds its result: by default, that its result file is there. An engine whose file another also writes looks inside it |
-| `figures(folder)` | the figures of its answer by name, `[dict(name, value, unit)]`, for a table of engines against figures ([below](#study); 2.8) |
+| `figures(folder)` | the figures of its answer by name, `[dict(name, value, unit)]`, for a table of engines against figures ([below](#study-api); 2.8) |
 | `missing(values, board, results=None)` | what a run of these settings still needs before it is started: `[dict(text, key)]`, `key` the option it is set by. By default what `command` raises; an analysis that can tell more from the board cheaply says it here (pcbqs's rail: a load with no pad on ground). `results` holds `None` for an analysis asked with it that has no result yet (2.9) |
 | `uses` | the analyses whose latest result it can start from when there is one (the temperature, from a circuit's losses): not required, as `needs` are. What one of them will give in the same run is not missing (2.9) |
 | `several` | what a study may hold several settings of it by, each a run of its own, as a front end names them (`'rail'`: a board's rails, a config's `[[analysis.<name>]]` tables); `''`: one. `tag(values)` tells the runs apart: it names their folders and the study's lines (2.10) |
@@ -196,7 +196,7 @@ run = ["circuit", "thermal"]        # the analyses a study of this config runs (
 model = "buck.json"                 # an analysis's options by key; a path (its `paths`) relative to the file
 ```
 
-<a id="study"></a>
+<a id="study-api"></a>
 ### Questions and engines
 
 A study asks questions of a board; engines answer them (`kicad2ems.study`). A question is something to find out
@@ -267,7 +267,7 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 | settings | `Settings`, `build_settings`, `read_toml`, `all_options`, `default_out`, `PATH_KEYS`, `sitecfg` (the module), `G_DUMP` |
 | solvers | `registry`, `get_solver`, `resolve_lines`, `AUTO`, `LINES` |
 | analyses | `analyses` (`{name: Analysis}`: the analysis plugins installed), `analysis_of(folder)`, `read_analyses(config)` (`(run, {name: {key: value}})` of a config's `[analysis]` tables; an analysis given several: its first), `read_analysis_sets(config)` (`{name: [{key: value}, ...]}`: every table of each, [a run for each](usage.md#several); 2.10) |
-| the study | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `runs_for(asked)`, `mark_run(folder, engine, asked, preview)`, `run_mark(folder)`; a config's: `Study`, `read_study`, `write_study`, `study_plan`, `engine_named`, `latest_results` (2.7), `default_fields`, `compare_engines` (2.8), `rf_needs` (2.9) ([Questions and engines](#study)) |
+| the study | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `runs_for(asked)`, `mark_run(folder, engine, asked, preview)`, `run_mark(folder)`; a config's: `Study`, `read_study`, `write_study`, `study_plan`, `engine_named`, `latest_results` (2.7), `default_fields`, `compare_engines` (2.8), `rf_needs` (2.9) ([Questions and engines](#study-api)) |
 | runs | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml`; where a front end's runs go: `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name` (2.7) |
 | files kicad2ems writes | `read_summary`, `read_antenna`, `check_format`, `read_touchstone`, `port_names` |
 | results | `meshes`, `phased`, `frames` (modules), `find_dumps`, `write_frames`, `read_sphere`, `sphere_cuts`, `sphere_gain` |

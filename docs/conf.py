@@ -45,6 +45,9 @@ myst_fence_as_directive = ['mermaid']                               # ```mermaid
 suppress_warnings = ['myst.xref_missing', 'duplicate_declaration.cpp']
 
 autosummary_generate = True
+# the API modules re-export (kicad2ems.api.analysis: Analysis, Question, Dump ...): followed to their source,
+# viewcode files a whole module's source page under the re-exporting name, and every link back from it misses
+viewcode_follow_imported_members = False
 autodoc_default_options = dict(members=True, undoc_members=True, show_inheritance=True, member_order='bysource')
 # what a machine may lack (GPU stacks, openEMS, KiCad's IPC client): stand-ins, so their importers still import
 autodoc_mock_imports = [m for m in ('cupy', 'cupyx', 'torch', 'CSXCAD', 'openEMS', 'kipy')

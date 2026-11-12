@@ -28,7 +28,7 @@ with another, floated or closed.
 - **Status bar**: the memory in use, the GPU's (through `nvidia-smi` or `rocm-smi`), and a running run's own;
   amber above 80 %, red above 95 %.
 - **Left: the board and the questions.** The *Board* (its file and extra ports; the rest under *More about the
-  board*), then the **Questions** asked of it ([below](#study)).
+  board*), then the **Questions** asked of it ([below](#the-study)).
 - **The workspace: the board**, in the [Viewer](#viewer). While *Circuit* is asked its schematic is a tab beside
   it, as Filter Synthesis is when opened. Under it the [Results](#plots) page and the [Run](#the-run-page) page,
   tabbed; a page comes to the front when it has something new: Run when a run starts, Results when one ends.
@@ -91,7 +91,7 @@ folder, so `kicad2ems <folder>/gui_run.toml` repeats it from a terminal.
 its subgroups, and after them those the installed analyses ship (pcbqs's Circuits). An entry's tooltip says what
 it is.
 
-<a id="study"></a>
+<a id="the-study"></a>
 <a id="analyses"></a>
 ## The questions, and who answers them
 
@@ -110,7 +110,7 @@ The three RF questions are answered by the solvers, in one kicad2ems run: their 
 (*Antenna pattern* lists those that model one, and its tick is the run's antenna mode; *Trace impedances* the
 line model's). Every other engine is an analysis plugin (`kicad2ems[qs]`: pcbqs's power integrity, near field,
 circuit and thermal; `kicad2ems[fem]`: Elmer for a rail's drop and the temperature, Elmer and Palace for
-capacitance), found through kicad2ems's [registry](api.md#study); the window knows none by name. A question
+capacitance), found through kicad2ems's [registry](api.md#study-api); the window knows none by name. A question
 nobody installed answers is greyed, and its tooltip says how to install an engine.
 
 Selecting a row shows its engines' settings in the Settings dock, each a panel made from the plugin's options (two

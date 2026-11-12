@@ -149,7 +149,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `runs_for` the runs a set of questions takes; `mark_run` the mark a run's folder bears. `kicad2ems --check`
   lists the questions with their engines. pcbqs's rail tool answers the drop and the impedance; kicad2ems-fem
   (the new `fem` extra) adds Elmer for the drop and the temperature and Elmer and Palace for capacitance, so
-  those have two engines each. Nothing in a front end changes yet: docs/api.md#study.
+  those have two engines each. Nothing in a front end changes yet: docs/api.md#study-api.
 - **Analysis plugins (API 2.5).** Tools that work on a run's board but give something other than S-parameters
   register as `kicad2ems.analyses` entry points, as solvers do as `kicad2ems.solvers`: an `Analysis`
   (`kicad2ems.api.analysis`) declares its options, the command that runs it, the file a finished run leaves, and
@@ -237,6 +237,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (7 s of it the one solve at 1 GHz whose factor has to be solved on the host), the rest ports and tables.
 
 ### Fixed
+- **The documentation site builds again.** It had failed on every push since the morning of 2026-11-12 (82
+  warnings, the build run with `-W`): the API modules re-export (`kicad2ems.api.analysis`: `Analysis`, `Question`,
+  `Dump` ...), and viewcode, following those names to their source, filed whole modules' source pages under the
+  re-exporting name, so every link back from `_modules/kicad2ems/study.html`, `fields/frames.html`,
+  `fields/dumps.html` and `analyses.html` missed (`viewcode_follow_imported_members = False`); and the pages'
+  `#study` anchors had become ambiguous once the window grew a module of that name (`kicad2ems_gui.study`):
+  `docs/api.md#study-api`, `docs/gui.md#the-study`.
 - **mom25d spent 30 iterations on a GPU factor that could not be solved with.** ROCm's complex64 triangular
   solves lose an ill-conditioned factor (the lowest frequencies of a fine mesh), and the refinement then stays at
   a residual of 1 until its cap before the factor is taken to the host. It is given up after 4 iterations above
