@@ -241,7 +241,7 @@ def _add_group(lm, chain, u, t0):
         ze, zo, ee, eo = coupled(e0.xs, 0.5 * (wa + wb), gap, e0.h, e0.er)
         g['pairs'].append(dict(gap=gap, ze=ze, zo=zo, eeff_e=ee, eeff_o=eo))
     from . import reference
-    if FIELD_GROUPS or reference.FIELD:
+    if FIELD_GROUPS or reference.field_mode() == 'all':
         _field_group(g, [m[0].w for m in members], e0.t)
     for k, p in enumerate(g['pairs']):
         cp = Element('coupling', members[k][1], members[k + 1][1], 0.0, layer=e0.layer, w=p['gap'], net=e0.net,

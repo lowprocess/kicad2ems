@@ -79,9 +79,13 @@ def build(model, nets=None, refcu=None, field=False):
     """The line model of the nets the ports sit on (and the nets reached through series parts); `nets`: these
     nets instead (the KiCad plugin's impedance map of a board before it has ports), refcu: their reference
     copper (RefCopper) when it is built once for several calls (every signal net excluded, not only these); field:
-    every section by the field solver on the board's cut across it (--lines-field), not the formulas."""
+    which sections the field solver solves on the board's cut across them (--lines-field): 'auto' (those whose cut
+    holds what the formulas leave out), 'all' or True (every one), 'off' (none: the formulas); False or None: as
+    lines.reference.FIELD is, 'auto' unless it was changed."""
     from . import reference
-    keep, reference.FIELD = reference.FIELD, bool(field) or reference.FIELD
+    keep = reference.FIELD
+    if field or isinstance(field, str):
+        reference.FIELD = reference.field_mode(field)
     try:
         return _build(model, nets, refcu)
     finally:
@@ -315,6 +319,22 @@ def _build(model, nets, refcu):
     for e in lm.elements:
         split += _split_by_reference(model, refcu, e, netcu) if e.kind == 'trace' and e.length > 0 else [e]
     lm.elements = split
+    from . import reference
+    keep, reference.DEFER = reference.DEFER, []                 # the field solver's sections: together, below
+    try:
+        _classify_all(model, refcu, lm)
+        jobs = reference.DEFER
+    finally:
+        reference.DEFER = keep
+    reference.solve_deferred(jobs)
+    _couple(lm, model)
+    _junctions(lm, model)
+    _paths(lm)
+    return lm
+
+
+def _classify_all(model, refcu, lm):
+    """Each trace and pad section's cross-section, at its middle (reference.classify)."""
     for e in lm.elements:
         if e.kind == 'trace':
             pts = np.asarray(e.pts)
@@ -331,10 +351,6 @@ def _build(model, nets, refcu):
         elif e.kind == 'pad':
             d = e.pts[1] - e.pts[0]
             classify(model, refcu, e, 0.5 * (e.pts[0] + e.pts[1]), d / (np.linalg.norm(d) or 1.0))
-    _couple(lm, model)
-    _junctions(lm, model)
-    _paths(lm)
-    return lm
 
 
 def _shape_strips(model, nets, inside, lm, tracks=()):

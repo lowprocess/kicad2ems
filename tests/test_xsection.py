@@ -445,7 +445,7 @@ def test_each_section_carries_what_shows_its_field():
     assert sections.modes(dict(kind='via')) == [] and ov.source_note(dict(kind='via')) == ''
 
     field = builder.build(m, nets=nets, field=True)
-    assert reference.FIELD is False
+    assert reference.FIELD == 'auto'
     by_cut = field.drawing(m.cu_z)['elements']
     traces = [e for e in by_cut if e['kind'] == 'trace' and e['source'] == 'cut']
     assert traces and all(sections.solve(e, 'cut').z0 == pytest.approx(e['z0'], rel=1e-5) for e in traces[:5])

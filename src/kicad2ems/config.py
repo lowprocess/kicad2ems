@@ -94,6 +94,12 @@ def _taper(v):
     return v or None
 
 
+def _lines_field(v):
+    """auto, all or off; a config's true and false (the setting was a switch) are all and off."""
+    from .lines.reference import field_mode
+    return field_mode(v)
+
+
 def _solvers(v):
     """Solver names (aliases allowed; 'lines' for the line model, 'all' for every solver but the variants of another, as mixed) in
     registry order, or
@@ -128,10 +134,13 @@ CORE = [
     Option('fast', None, "also solve the transmission-line model as a circuit, as a reference: skrf (scikit-rf), "
            "qucsator, or auto (qucsator if installed, else scikit-rf)", choices=('auto', 'skrf', 'qucsator'),
            group='solvers'),
-    Option('lines_field', False, "the line model's single sections from the 2D field solver, each on the board's "
-           "copper cut across it (its coupled sections come from the field solver anyway). Slower: seconds to "
-           "minutes; the formulas otherwise", bool,
-           gui="Line model: cross-sections by the field solver", group='solvers'),
+    Option('lines_field', 'auto', "which of the line model's single sections the 2D field solver solves, each on "
+           "the board's copper cut across it: auto (default), those whose cut holds what the formulas leave out "
+           "(ground beside a stripline, a plane that ends near the trace, copper on a layer in between); all, every "
+           "one (--lines-field alone; seconds to minutes); off, none: the formulas. Its coupled sections and "
+           "grounded CPW come from the field solver in any case", choices=('auto', 'all', 'off'), conv=_lines_field,
+           gui="Line model: sections by the field solver", group='solvers',
+           cli=dict(nargs='?', const='all', metavar='auto|all|off')),
     Option('mode', 'sparams', "sparams (default): S-parameters of all ports; antenna: a driven port (several with "
            "--drive), far field (gain, efficiency, patterns); openEMS and mom25d", choices=('sparams', 'antenna'),
            gui='Mode', group='solvers'),

@@ -174,21 +174,97 @@ def classify(model, ref, e, pt, d):
     e.z0_sheet, e.eeff_sheet = calc(0.0)                     # zero thickness, as openEMS models copper
     e.z0_formula, e.source = e.z0, 'formula'
     e.cut = _cut_args(model, ref, e, pt, n, found)           # 1 s for a board's 2,500: kept for looking at the field
-    if FIELD:
-        _field(e)
-    elif FIELD_CPW and e.xs == 'cpwg':
-        _field_cpwg(e)
+    mode = field_mode()
+    why = _beyond_formula(e, found) if mode == 'auto' else None
+    if why:
+        e.notes.append(f"solved on the board's cut: {why}")
+    on_cut = mode == 'all' or bool(why)
+    if on_cut or (FIELD_CPW and e.xs == 'cpwg'):
+        if DEFER is None:
+            _solve_section(e, on_cut)
+        else:
+            DEFER.append((e, on_cut))                         # the build solves them together (solve_deferred)
 
 
-FIELD = False           # solve each section's cross-section (the board's copper cut across it) with the 2D field
-                        # solver (xsection.py) instead of the formulas
+FIELD = 'auto'          # the sections whose cross-section (the board's copper cut across them) the 2D field solver
+                        # (xsection.py) solves instead of the formulas: 'auto', those whose cut holds what their
+                        # formula leaves out (_beyond_formula); 'all' (or True), every one; 'off' (or False), none
+FIELD_PLANE = 2.0       # auto: a reference plane has to reach this many times its distance beyond the strip's edges
+FIELD_OTHER = 2.0       # auto: copper on another layer counts when it is nearer, sideways, than this x its distance
+                        # in z (and not behind a plane that reaches FIELD_PLANE)
+FIELD_SIDE = (1.0, 2.0)  # auto: copper beside the strip on its own layer counts when nearer than this x the nearest
+                        # plane's distance: over one plane (the formula holds to 4 % nearer still; both sides near
+                        # is grounded CPW), between two planes (the stripline formulas know no ground beside them)
 FIELD_CPW = True        # grounded CPW sections by the field solver even without FIELD, as the classified cross-section
                         # (strip, gaps, plane): the formula has no copper thickness (10-12 % at 35 um, 0.15 mm gaps)
 FIELD_DIFFERS = 0.02    # a field-solved section is a line of its own Z0 in the circuit solvers (Element.field) where
                         # its sheet Z0 is this far from the formula's; else their own models (with dispersion) stay
 FIELD_REACH = 5.0       # x the farthest reference height: how far either side of the strip the cut takes copper
+DEFER = None            # a list while a build collects the sections for the field solver (builder._build): classify
+                        # adds to it instead of solving, and solve_deferred solves them together. None: as they come
+PARALLEL = 48           # this many cross-sections or more are solved in worker processes (their start costs about
+                        # half a second; a solve 0.03 s)
 SNAP = 0.002            # mm: copper closer than this along a cut is one piece; pieces shorter are dropped
 BIN_MAX = 1.0           # reference heights: the widest of _snap_distance's bins
+
+
+def field_mode(v=None):
+    """'auto', 'all' or 'off': FIELD (or v: a setting, a flag) as one of its three values."""
+    v = FIELD if v is None else v
+    if isinstance(v, str):
+        v = v.strip().lower()
+        if v in ('auto', 'all', 'off'):
+            return v
+        if v in ('true', 'yes', 'on', '1', 'field'):
+            return 'all'
+        if v in ('false', 'no', '0', 'formulas', 'none'):
+            return 'off'
+        raise ValueError(f"the line model's field solver: auto, all or off, not {v!r}")
+    return 'all' if v else 'off'
+
+
+def _beyond_formula(e, found):
+    """What the cut across section e holds that its formula leaves out, as a few words (None: nothing that matters,
+    the formula can be kept). The formula assumes its reference planes (found: classify's) run on to either side,
+    nothing on the other layers in front of them, and nothing beside the strip but a grounded CPW's ground at the gap
+    classified. Measured on a real six-layer board's 2,309 single sections (1,230 mm) against every cut solved: the
+    sections kept on their formulas are within 3.8 % (0.7 mm of them over 3 %), with 16 % of the sections solved;
+    without it 324 mm are over 3 % and 43 mm over 10 %, most of them striplines with ground beside them."""
+    w, zs, t, up, side, layers, diel = e.cut
+    hs = [h for _, h, _ in found.values()]
+    is_ref = lambda dz: any(abs(dz - h) < 1e-4 for h in hs)
+    seen, shield = 0, {}
+    for z, full, ps in layers:                              # the planes it was classified on
+        dz = abs(z - zs)
+        if is_ref(dz):
+            seen += 1
+            reach = max((min(-a, b) - w / 2 for a, b in ps if a <= 0 <= b), default=-w / 2)
+            if reach < FIELD_PLANE * dz:
+                return (f"the plane {dz:.3g} mm from it ends {reach:.2f} mm beyond its edge" if reach > 0 else
+                        f"the plane {dz:.3g} mm from it ends under it")
+            shield[z > zs] = dz
+    if seen < len(hs):
+        return "a plane it was classified on is not across its cut"
+    for z, full, ps in layers:                              # copper on other layers, in front of those planes
+        dz = abs(z - zs)
+        if is_ref(dz) or dz > shield.get(z > zs, math.inf):
+            continue
+        for a, b in ps:
+            g = 0.0 if a < w / 2 and b > -w / 2 else (a - w / 2 if a > 0 else -w / 2 - b)
+            if g < FIELD_OTHER * dz:
+                return f"copper {dz:.3g} mm {'above' if z > zs else 'below'} it" + \
+                       (f", {g:.2f} mm to the side" if g > 0 else '')
+    left = min((-w / 2 - b for a, b in side if b < 0), default=math.inf)
+    right = min((a - w / 2 for a, b in side if a > 0), default=math.inf)
+    if e.xs == 'cpwg':                                      # solved as classified (_field_cpwg), if that is its cut
+        s = getattr(e, 's', None) or 0.0
+        if not (s > 0 and all(g / GAP_STEP <= s <= g * GAP_STEP for g in (left, right))):
+            return f"its ground is {left:.2f} and {right:.2f} mm away, not {s:.2f} mm either side"
+        return None
+    near = min(left, right)
+    if near < FIELD_SIDE[len(hs) == 2] * min(hs):
+        return f"copper {near:.2f} mm beside it" + (' (between two planes)' if len(hs) == 2 else '')
+    return None
 
 
 def cut(ref, pt, n, R):
@@ -263,16 +339,21 @@ def _cut_args(model, ref, e, pt, n, found):
 def _field(e):
     """Z0 and eeff of a section (with its copper's thickness and as a sheet) from the field solver, on its cut. The
     formulas' values are kept where the solve fails."""
-    w, zs, t, up, side, layers, diel = e.cut
-    flip = lambda ps: tuple(sorted((-b, -a) for a, b in ps))
-    mirror = (flip(side), tuple((z, full, flip(ps)) for z, full, ps in layers))
-    side, layers = min((side, layers), mirror)               # a cut and its mirror image: one solve
     try:
-        got = [_solve_cut(w, zs, tt, up, side, layers, diel) for tt in (t, 0.0)]
+        got = [_solve_cut(*k) for k in _cut_keys(e)]
     except Exception as ex:                                  # noqa: BLE001 (a cross-section it cannot grid)
         e.notes.append(f"field solver failed ({ex}): formula impedance")
         return
     _take(e, got, 'cut')
+
+
+def _cut_keys(e):
+    """_solve_cut's arguments for section e's cut: with its copper's thickness, and as a sheet."""
+    w, zs, t, up, side, layers, diel = e.cut
+    flip = lambda ps: tuple(sorted((-b, -a) for a, b in ps))
+    mirror = (flip(side), tuple((z, full, flip(ps)) for z, full, ps in layers))
+    side, layers = min((side, layers), mirror)               # a cut and its mirror image: one solve
+    return [(w, zs, tt, up, side, layers, diel) for tt in (t, 0.0)]
 
 
 def _take(e, got, source):
@@ -287,18 +368,163 @@ def _field_cpwg(e):
     """A grounded CPW section by the field solver as classify found it: the strip, gaps e.s either side (ground to
     the side of the cut), the plane e.h under it, one dielectric (cached by the snapped sizes)."""
     from . import xsection as X
-    s = _snap_distance(e.s / e.h, X.SIMILAR) * e.h            # the gaps, as the cut's copper is (_distance_bins)
-    key = (round(X.snap(e.w), 6), round(s, 6), round(e.h, 6), e.er, round(e.t, 6))
+    keys = _cpwg_keys(e)
     try:
-        got = [_solve_cpwg(*key[:4], t) for t in (key[4], 0.0)]
+        got = [_solve_cpwg(*k) for k in keys]
     except Exception as ex:                                  # noqa: BLE001 (a cross-section it cannot grid)
         e.notes.append(f"field solver failed ({ex}): formula impedance")
         return
-    e.classified = X.microstrip(key[0], key[2], key[3], key[4], s=key[1])
+    w, s, h, er, t = keys[0]
+    e.classified = X.microstrip(w, h, er, t, s=s)
     _take(e, got, 'cpwg')
 
 
-@functools.lru_cache(maxsize=1024)
+def _cpwg_keys(e):
+    """_solve_cpwg's arguments for a grounded CPW section as classified: with its copper's thickness, and as a
+    sheet."""
+    from . import xsection as X
+    s = _snap_distance(e.s / e.h, X.SIMILAR) * e.h            # the gaps, as the cut's copper is (_distance_bins)
+    key = (round(X.snap(e.w), 6), round(s, 6), round(e.h, 6), e.er)
+    return [key + (t,) for t in (round(e.t, 6), 0.0)]
+
+
+def _solve_section(e, on_cut):
+    """Section e from the field solver: on its cut; a grounded CPW not on its cut (or whose cut would not solve) as
+    it was classified."""
+    if on_cut:
+        _field(e)
+    if e.source == 'formula' and FIELD_CPW and e.xs == 'cpwg':
+        _field_cpwg(e)
+
+
+class _Cached:
+    """A function's results by its arguments, as functools.lru_cache keeps them (cache_clear(), cache_info().misses:
+    the solves made), which can also be told results found elsewhere: solve_deferred's worker processes."""
+    def __init__(self, f, maxsize):
+        self.f, self.maxsize, self.got, self.misses = f, maxsize, {}, 0
+        functools.update_wrapper(self, f)
+
+    def __call__(self, *args):
+        if args not in self.got:
+            self.put(args, self.f(*args))
+        return self.got[args]
+
+    def put(self, args, result):
+        if len(self.got) >= self.maxsize:
+            del self.got[next(iter(self.got))]                # the oldest
+        self.got[args] = result
+        self.misses += 1
+
+    def cache_clear(self):
+        self.got.clear()
+        self.misses = 0
+
+    def cache_info(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(misses=self.misses, currsize=len(self.got), maxsize=self.maxsize)
+
+
+def _cached(maxsize):
+    return lambda f: _Cached(f, maxsize)
+
+
+def _job(item):
+    """In a worker process: (item, the (Z0, eeff) of one cross-section), None where the solver fails (the section
+    that asked then solves it again, for what went wrong)."""
+    kind, args = item
+    try:
+        return item, (_solve_cut if kind == 'cut' else _solve_cpwg).f(*args)
+    except Exception:                                        # noqa: BLE001
+        return item, None
+
+
+def solve_deferred(jobs, workers=None):
+    """Solve the sections classify left in DEFER, in the order it met them. Their distinct cross-sections that no
+    earlier section solved go to worker processes first when there are PARALLEL or more (workers: how many; None:
+    one per fast core, emsdev's core_threads): a real board's hundreds of cuts take a few seconds instead of half
+    a minute. Where worker processes cannot start, they are solved one after another, as before."""
+    cache = dict(cut=_solve_cut, cpwg=_solve_cpwg)
+    want = {}
+    for e, on_cut in jobs:
+        if on_cut:
+            want.update((('cut', k), None) for k in _cut_keys(e))
+        elif e.xs == 'cpwg':
+            want.update((('cpwg', k), None) for k in _cpwg_keys(e))
+    todo = [item for item in want if item[1] not in cache[item[0]].got]
+    if workers is None:
+        try:
+            from emsdev.cpu import core_threads
+            workers = core_threads()
+        except Exception:                                    # noqa: BLE001
+            workers = 1
+    workers = min(workers, len(todo) // 8)                   # a worker is worth starting for 8 solves or more
+    if len(todo) >= PARALLEL and workers > 1:
+        for item, got in _in_workers(todo, workers):
+            if got is not None and item[1] not in cache[item[0]].got:
+                cache[item[0]].put(item[1], got)
+    for e, on_cut in jobs:
+        _solve_section(e, on_cut)
+
+
+def _in_workers(todo, workers):
+    """[(item, result or None)] of the cross-sections `todo`, solved by `workers` python processes (python -m
+    kicad2ems.lines.cutworker: pickled lists of items on its stdin, their results on its stdout). What a worker
+    did not return (it could not start, or died) is left out: the caller solves it itself.
+
+    They are started as commands, not through multiprocessing: that imports the program's main module again in
+    every worker, and a program whose main module does not guard itself (a script, a GUI's __main__) would start
+    itself again in each. Only a python can be asked to run a module: an embedded interpreter's executable is its
+    host program, and gets no workers."""
+    import os
+    import pickle
+    import subprocess
+    import sys
+    import threading
+    exe = sys.executable or ''
+    if not os.path.basename(exe).lower().startswith('python'):
+        return []
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join(p for p in sys.path if p),
+               OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', MKL_NUM_THREADS='1')     # a solve is one thread's work
+    size = max(1, min(16, len(todo) // (4 * workers)))
+    chunks = iter([todo[i:i + size] for i in range(0, len(todo), size)])
+    lock, out = threading.Lock(), []
+
+    def serve():
+        try:
+            p = subprocess.Popen([exe, '-m', 'kicad2ems.lines.cutworker'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                 stderr=subprocess.DEVNULL, env=env,
+                                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        except OSError:
+            return
+        try:
+            while True:
+                with lock:
+                    chunk = next(chunks, None)
+                if chunk is None:
+                    break
+                pickle.dump(chunk, p.stdin)
+                p.stdin.flush()
+                got = pickle.load(p.stdout)
+                with lock:
+                    out.extend(got)
+        except Exception:                                    # noqa: BLE001 (a worker that died: its chunk is the caller's)
+            pass
+        finally:
+            try:
+                p.stdin.close()
+                p.wait(timeout=10)
+            except Exception:                                # noqa: BLE001
+                p.kill()
+
+    threads = [threading.Thread(target=serve, daemon=True) for _ in range(workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return out
+
+
+@_cached(1024)
 def _solve_cpwg(w, s, h, er, t):
     from . import xsection as X
     return X.microstrip(w, h, er, t, s=s).solve().single()
@@ -328,7 +554,7 @@ def _snap_distance(x, rel):
     return x if i >= len(edges) - 1 else 0.5 * (edges[i] + edges[i + 1])
 
 
-@functools.lru_cache(maxsize=4096)
+@_cached(8192)
 def _solve_cut(w, zs, t, up, side, layers, diel):
     """(Z0, eeff) of the cross-section _cut_section builds from a cut (cached: one solve per distinct cut)."""
     return _cut_section(w, zs, t, up, side, layers, diel).solve().single()

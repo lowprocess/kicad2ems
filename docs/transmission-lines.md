@@ -64,8 +64,8 @@ within 0.2 %.
 conductors over planes, in any stack of dielectrics, and from it L, Z0, εeff, the even and odd modes of a pair and
 the dielectric loss. It covers what the formulas can't: coplanar ground under solder mask or between two planes,
 mask that follows the copper, coupled lines with copper thickness, coupling beyond the nearest neighbour, layers of
-different εr. The line model uses it [by default](#lines-field) for coupled sections and grounded CPW, and with
-`--lines-field` for every section.
+different εr. The line model uses it [by default](#lines-field) for coupled sections, grounded CPW and the sections whose cut
+holds what their formula leaves out, and with `--lines-field` for every section.
 
 ![A coupled pair's mesh and its odd- and even-mode fields](img/xsection_anatomy.png)
 
@@ -160,12 +160,47 @@ From Python, `kicad2ems.lines.calc`: `Line`, `calculate`, `fit`, `Line.on_board`
 <a id="lines-field"></a>
 ### The line model on the field solver
 
-Coupled sections and grounded CPW come from the field solver by default. `--lines-field` (`lines_field = true`)
-takes every section's cross-section from the board: at the point where a section is classified, the reference
-copper is cut across the strip, out to 5 reference heights either side, on every layer up to the nearest plane that
-spans the cut; the pieces it crosses become the solver's conductors. A plane that ends beside the trace, ground on
-one side or beside a stripline are solved as they are (the microstrip above: 53.3 Ω over a whole plane, 54.6 Ω where
-the plane ends 0.125 mm past its edge, 67.7 Ω where it ends under its centre).
+Coupled sections and grounded CPW come from the field solver by default. A single section's cross-section can
+be taken from the board: at the point where a section is classified, the reference copper is cut across the strip,
+out to 5 reference heights either side, on every layer up to the nearest plane that spans the cut; the pieces it
+crosses become the solver's conductors. A plane that ends beside the trace, ground on one side or beside a stripline
+are solved as they are (the microstrip above: 53.3 Ω over a whole plane, 54.6 Ω where the plane ends 0.125 mm past
+its edge, 67.7 Ω where it ends under its centre). `--lines-field` (`lines_field` in a config) says which sections:
+
+| `--lines-field` | Sections solved on their cut |
+|---|---|
+| `auto` (default) | those whose cut holds what their formula leaves out |
+| `all` (or the option alone; `lines_field = true`) | every one |
+| `off` (`lines_field = false`) | none: the formulas |
+
+What a formula leaves out (`reference._beyond_formula`; a section solved for one of these says which in its notes):
+
+- a reference plane that ends less than twice its distance beyond the trace's edge (a via's antipad, a split, the
+  plane's edge), or is not under the trace at all;
+- copper on a layer between the trace and that plane, nearer to the side than twice its distance in height;
+- copper beside the trace on its own layer: nearer than twice the nearest plane's distance for a stripline (its
+  formulas know no ground beside it), nearer than once for a microstrip (both sides near is grounded CPW, solved as
+  classified unless the two gaps are not the gap classified).
+
+Measured on the CM5 Minima (six layers, 94 signal nets; 2,309 single sections, 1,230 mm), each section against its
+own cut (`tools/cm5_line_model.py`):
+
+| | within 3 % | 3–10 % off | over 10 % off | build (8 cores) | one core |
+|---|---|---|---|---|---|
+| the formulas | 585 mm | 351 mm | 294 mm | 10 s | 10 s |
+| `off`: coupled sections and grounded CPW solved | 906 mm | 281 mm | 43 mm | 15 s | 17 s |
+| `auto`: and 361 sections on their cuts | 1,230 mm | 0.7 mm | none | 20 s | 46 s |
+| `all`: every section | | | | 23 s | 74 s |
+
+A build classifies its sections first and then solves their distinct cross-sections together, in worker processes
+when there are 48 or more (`reference.solve_deferred`; one per fast core, each a `python -m
+kicad2ems.lines.cutworker`): the 684 solves of `auto` take 5 s instead of 29 s.
+
+Most of what `auto` corrects is striplines with ground beside them (297 of their 325 mm were 3–33 % high); the
+largest errors were a plane that ends under the trace and pads classified as coplanar with ground that was not
+there. A microstrip over a whole plane is within 4 % with or without copper beside it and keeps its formula. On the
+examples below `auto` solves two sections (the demo transition's, at its via's antipads) and costs nothing
+measurable.
 
 In the circuit solvers, a microstrip or grounded CPW section keeps scikit-rf's and qucsator's own models (with their
 dispersion) unless the field solver's sheet Z0 is more than 2 % from the formula's (`reference.FIELD_DIFFERS`); then
@@ -174,7 +209,7 @@ it is a quasi-static line of the solver's Z0 and εeff (`Element.field`).
 On the examples with openEMS references (scikit-rf; the rms of the complex difference of S11, and the rms difference
 of |S21|, as in [Examples](examples.md)):
 
-| Board | Formulas throughout | Coupled sections by the field solver (default) | and `--lines-field` |
+| Board | Formulas throughout | Coupled sections by the field solver (`off`) | and every section (`all`) |
 |---|---|---|---|
 | `rf_interdig`: five coupled fingers | −23.0 dB / 51.21 dB | −24.7 dB / 8.47 dB | −24.7 dB / 8.47 dB |
 | `rf_stripline`, `rf_diffvia`, `rf_coupler`, `rf_wilkinson`, `demo_transition`, `rf_shielded`, `hairpin` | | within 0.1 dB / 0.06 dB of the formulas | within 0.3 dB / 0.1 dB |
@@ -213,8 +248,7 @@ formulas in two ways:
 gaps are snapped to 1 % steps (`xsection.SIMILAR`), and the copper a cut finds to bins that widen away from the
 strip (`reference._distance_bins`, at most a height wide: `reference.BIN_MAX`), where it matters less: snapping moves
 Z0 by 0.1–0.2 %. On the CM5 Minima's HDMI nets that is 158 solves instead of 254, within 0.33 % (0.11 % rms) of
-solving each. Its 94 signal nets take 13 s to build by default, 71 s with `--lines-field`, 6.4 s with the formulas
-(`tools/cm5_line_model.py`, one core).
+solving each (`tools/cm5_line_model.py`, one core; the table above has its build times).
 
 ## Paths
 
