@@ -183,7 +183,7 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 | Group | Names |
 |---|---|
 | boards | `KiCadBoard` (a `.kicad_pcb`, or KiCad's board text), `Board` (the canonical model), `kind_value` (a footprint's lumped part), `extra_port_fps` (the footprints a region adds as ports) |
-| the line model | `build_lines` (Board → LineModel; `field=True`: every section by the field solver), `RefCopper` (its reference copper), `overlay` (the module: the line model drawn on the board), `sections` (the module: one section's field: `modes`, `solve`) |
+| the line model | `build_lines` (Board → LineModel; `field=True`: every section by the field solver), `RefCopper` (its reference copper), `overlay` (the module: the line model drawn on the board), `sections` (the module: one section's field: `modes`, `solve`), `impedance` (the module: a stack-up's impedance without a board, `kicad2ems.lines.calc`: `Line`, `calculate`, `fit`, `element`, `describe`, `report`; 2.5) |
 | settings | `Settings`, `build_settings`, `read_toml`, `all_options`, `default_out`, `PATH_KEYS`, `sitecfg` (the module), `G_DUMP` |
 | solvers | `registry`, `get_solver`, `resolve_lines`, `AUTO`, `LINES` |
 | analyses | `analyses` (`{name: Analysis}`: the analysis plugins installed), `analysis_of(folder)`, `read_analyses(config)` (`(run, {name: {key: value}})` of a config's `[analysis]` tables) |

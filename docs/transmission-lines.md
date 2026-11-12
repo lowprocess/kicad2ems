@@ -121,6 +121,42 @@ The formulas also miss what lies beside a stripline: on the CM5 Minima, `PCIE_PI
 total C is 1.07 pF, against 1.05 pF for the cut and 0.89 pF for the formula (`tools/lines_crop_check.py`). In the GUI,
 the [Section view](gui.md#section) draws any section's cut.
 
+<a id="calculator"></a>
+### Stack-up calculator
+
+`kicad2ems-z0` (`python -m kicad2ems.lines.calc`) is the field solver without a board: a width, a pair's gap, the
+copper and the dielectrics in; Z0, a pair's Zdiff and Zcommon, εeff, the delay and the dielectric's loss out, with
+the closed form beside it where one applies. `--target` finds the width (or `--vary gap`, `ground_gap`) that
+gives an impedance, to 0.1 %; nothing is snapped to the line model's 1 % steps. A solve takes about 0.1 s, a fit
+about a second.
+
+```
+kicad2ems-z0 --w 0.35 --h 0.2 --er 4.3                     # a microstrip, 35 um copper: 50.8 Ω
+kicad2ems-z0 --h 0.2 --er 4.3 --target 50                  # its width for 50 Ω: 0.360 mm
+kicad2ems-z0 --w 0.15 --gap 0.15 --h 0.1 --er 4.1 --target 100 --vary gap --plot pair.png
+kicad2ems-z0 --w 0.2 --h 0.2 --er 4.3 --above 0.2          # a stripline: a plane 0.2 mm over the copper
+kicad2ems-z0 --w 0.3 --ground-gap 0.2 --h 0.2 --er 4.3     # grounded coplanar
+kicad2ems-z0 --board board.kicad_pcb --layer In2.Cu --target 100 --w 0.14 --gap 0.15 --vary w
+kicad2ems-z0 --w 0.35 --below 0.1:4.1:0.02,0.1:3.6 --mask 0.02 --f 5 --json
+```
+
+| The stack | |
+|---|---|
+| `--h`, `--er`, `--tand` | one dielectric between the plane below and the copper |
+| `--above`, `--er-above`, `--open` | one over the copper, closed by a plane (a stripline) unless `--open` (an embedded microstrip) |
+| `--below`, `--over` | several, as `thickness:er[:tand], ...`: the plane's first below, the copper's first over it |
+| `--mask`, `--er-mask` | a solder mask that follows the copper (outer layer) |
+| `--board`, `--layer` | the board's own stack-up around that copper layer, the copper layers next to it as planes |
+
+Thicknesses are between copper faces, as a board's stack-up gives them: an inner layer's copper is pressed into the
+dielectric over it. The planes are solid and wide; what the board's copper does beside a real trace is what the
+line model's cuts are for. `--plot` writes the field (a pair's odd mode, or `--mode even`):
+
+![A 100 Ω pair's odd-mode field, from kicad2ems-z0 --plot](img/z0_calculator.png)
+
+From Python, `kicad2ems.lines.calc`: `Line`, `calculate`, `fit`, `Line.on_board`, and `element` for the
+[Section view](gui.md#section). The GUI has it under Tools > Impedance calculator.
+
 <a id="lines-field"></a>
 ### The line model on the field solver
 

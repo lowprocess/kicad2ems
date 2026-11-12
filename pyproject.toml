@@ -58,6 +58,7 @@ test = ["pytest>=7", "scikit-rf>=1.0", "h5py>=3"]
 [project.scripts]
 kicad2ems = "kicad2ems.cli:main"
 kicad2openems = "kicad2ems.cli:main_openems"     # the old name: openEMS unless --solvers says otherwise
+kicad2ems-z0 = "kicad2ems.lines.calc:main"       # a stack-up's impedance, without a board
 
 [tool.setuptools.dynamic]
 version = {attr = "kicad2ems.__version__"}

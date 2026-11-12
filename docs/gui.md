@@ -245,5 +245,23 @@ option it has no field for appears under *More options*.
 - **Open the board in kicad2ems** loads the config dfsynth wrote into the settings and previews it: from there any
   solver, mesh or field dump runs as for any other board.
 
+<a id="impedance"></a>
+## Tools > Impedance calculator
+
+A line's impedance in a stack-up, without a board: kicad2ems's 2D field solver
+([`kicad2ems-z0`](transmission-lines.md#calculator)) in a window of its own.
+
+![The impedance calculator: a 100 Ω pair, its width fitted](img/gui/impedance.png)
+
+- **Stack**: the dielectric under the copper and what is over it (air, a solder mask, a dielectric closed by a plane:
+  a stripline, or left open), typed; or, with a board open, *From* one of its copper layers: its own stack-up, the
+  copper layers next to that one taken as planes.
+- **Line**: the width and the copper's thickness; *A pair* adds the gap and gives Zdiff and Zcommon; *Ground beside
+  it* a grounded coplanar line.
+- Every change is solved as it is typed (about 0.1 s). The numbers are on the left, with the closed form where
+  one applies; the field is on the right, as the Viewer's [Section](#section) draws a board's.
+- **Fit** changes the width, the gap or the ground's distance until the impedance chosen is the target, to 0.1 %.
+  A target no size reaches says what the range is. **Copy** takes the line and its numbers as text.
+
 ---
 [← Usage](usage.md) · [Index](index.md) · [Next: Examples →](examples.md)
