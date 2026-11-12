@@ -21,6 +21,39 @@ used for `--sigma`, for the line model's impedances and, with `--thickness on`, 
 On each layer, the copper of the selected nets is merged, clipped to the outline, and simplified to
 2 µm. `--ground LAYER` replaces that layer with a solid plane over the whole board.
 
+<a id="fill-voids"></a>
+### Voids of the nets left out
+
+A pour imported with only some nets selected keeps the clearance around every other net's pads, traces and vias:
+holes with nothing in them. The CM5 Minima with one net and GND selected has 903 of them. Every solver models
+them, and mom25d pays most: no plane is solid, so none can be a PEC plane of the stack, and each hole has its ring
+of edges. `--fill-voids` (`fill_voids` in a config) fills them, for every solver alike:
+
+| | Filled |
+|---|---|
+| `off` (default) | nothing: the copper as imported |
+| `far` | the voids farther from the signal copper of any layer than 1 mm or 3 times the widest gap between copper layers, whichever is more; and every void under 0.5 mm² (thermal-relief gaps, a lone via's clearance) |
+| `all` | every void |
+
+A void is a hole of a ground net's copper as the whole board has it, so a clearance that crosses a region's edge
+counts. One that holds copper or a via of a selected net that is not ground (an antipad, a trace's own clearance)
+is the model, and is never filled. Ground copper that stood alone in a filled void joins the pour. The run's notes
+say how many voids were filled on each layer and the area added, and `<name>_board.json` keeps it (`filled`).
+
+On a crop of the CM5 Minima (a 9.3 mm stripline on In2.Cu, 0.1 to 10 GHz, `/CM5/PCIE_PI.nRST` and GND):
+
+| | mom25d unknowns | gfdtd against `off` (it meshes every void) |
+|---|---|---|
+| `off` | 7,938 (every layer meshed) | |
+| `far` | 4,651 (the planes solid: PEC) | \|S21\| within 0.1 dB; \|ΔS\| 0.02 median, 0.07 at most, at a resonance of the cut planes |
+| `all` | 4,651 | \|ΔS\| 0.03 median; a resonance moved: \|S21\| at 10 GHz −1.6 → −4.0 dB |
+
+With `all`, a channel on B.Cu 1.1 mm to the side of the trace was filled, which `far` keeps: a void near the signal
+is part of the board. `far` is the one to use; `all` only where the planes are known not to matter. On larger
+regions around the same trace mom25d's unknowns go from 24,073 to 22,125 (`far`) and 13,100 (`all`) for
+14 × 16 mm, and from 42,689 to 33,088 and 25,662 for 14 × 32 mm: `far` keeps the voids on every layer within
+its distance of the trace, also those behind a solid plane, where they no longer matter.
+
 <a id="region"></a>
 ## Region
 

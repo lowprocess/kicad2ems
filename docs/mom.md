@@ -45,6 +45,9 @@ Two rules, both on by default, take out of the mesh the copper that carries next
 - **Lone stitching-via pads dropped** (`--mom-stitching-pads drop`): the pad of a ground via with nothing else on
   its layer is left out, the via staying as its barrel. A pad that a part or a port lands on is kept.
 
+A board imported with a few nets selected has no solid plane: its pours keep the clearances of the nets left out.
+[`--fill-voids far`](model.md#fill-voids) fills those away from the signal copper, after which these rules apply.
+
 `--mom-planes mesh --mom-stitching-pads keep` meshes everything. Of the 52 examples 7 change: rf_stripline from
 15,563 unknowns to 1,337 (100 s to 3 s), demo_transition from 13,670 to 4,043 (107 s to 14 s), within 0.01 in |S|
 of the fully meshed model (rf_marchand 0.085), with the same agreement with openEMS (`tools/mom_planes_study.py`).

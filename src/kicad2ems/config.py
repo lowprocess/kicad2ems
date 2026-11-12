@@ -182,6 +182,11 @@ CORE = [
            gui='Ports where tracks cross the region edge', group='board'),
     Option('ground', None, "copper layer to model as a solid plane over the whole outline", gui='Solid ground layer',
            group='board'),
+    Option('fill_voids', 'off', "fill the ground copper's voids that the nets left out made (the clearances around "
+           "their pads, traces and vias): off (default: the copper as imported), far (those away from the signal "
+           "copper, and the small ones), all (every one without a selected net's copper or via in it). Every solver "
+           "gets the filled copper; mom25d's unknowns fall most", choices=('off', 'far', 'all'), gui='Fill pour voids',
+           group='board'),
     Option('mask', False, "include solder mask layers (FDTD: its cells set the time step, see --nz-mask; mom25d: one "
            "more layer, no more unknowns)", bool, gui='Include solder mask', group='board'),
     Option('parts', 'auto', "lumped R / L / C parts between two pads on the modelled copper (default auto)",

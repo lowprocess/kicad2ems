@@ -133,7 +133,7 @@ def board_from_settings(s, log=print):
     from .importers import open_board
     return Board(open_board(s.board, pos=s.pos), nets=s.nets, pos_file=s.pos, include_mask=s.mask, region=s.region, ports=s.ports,
                  cut_ports=s.cut_ports, ground=s.ground, parts=s.parts, edge_walls=s.edge_walls,
-                 edge_keepout=s.edge_keepout, log=log)
+                 edge_keepout=s.edge_keepout, fill_voids=getattr(s, 'fill_voids', 'off'), log=log)
 
 
 class Job:

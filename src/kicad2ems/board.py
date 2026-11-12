@@ -36,6 +36,12 @@ from .parts import Part, find_parts
 
 FORMAT, VERSION = 'kicad2ems-board', 1
 CUT_KEEPOUT = 2.0      # mm: edge walls on a region cut stay this far from the signal copper (docs/model.md)
+FILL_VOIDS = ('off', 'far', 'all')
+FILL_SMALL = 0.5       # mm2: fill_voids = far fills a void smaller than this wherever it is (thermal-relief gaps)
+FILL_FAR = 1.0         # mm: ... and a larger one farther than this from the signal copper of any layer,
+FILL_HEIGHTS = 3.0     # or than this many times the widest gap between two copper layers, if that is more
+FILL_LAP = 0.01        # mm: a fill reaches this far into the copper around its void (the copper's outline is
+                       # simplified to 2 um: without it a sliver stays between the two)
 
 
 def port_field(props, key, default=None):
@@ -176,13 +182,14 @@ class Board:
     ports is fine (the KiCad plugin's impedance map, before any are placed)."""
 
     def __init__(self, raw, nets=None, pos_file=None, include_mask=False, region=None, ground=None, parts='auto',
-                 log=print, ports=None, cut_ports=False, edge_walls=(), edge_keepout=0.5, need_ports=True):
+                 log=print, ports=None, cut_ports=False, edge_walls=(), edge_keepout=0.5, need_ports=True,
+                 fill_voids='off'):
         from .region import region_polygon, auto_nets, extra_port_fps, ground_nets
         self.log, self.notes, self.need_ports = log, [], need_ports
         self.source = dict(importer=getattr(raw, 'importer', 'kicad'), file=getattr(raw, 'path', ''))
         self.request = dict(nets=nets, pos=pos_file, mask=include_mask, region=region, ground=ground, parts=parts,
                             ports=list(ports or []), cut_ports=cut_ports, edge_walls=list(edge_walls or []),
-                            edge_keepout=edge_keepout)
+                            edge_keepout=edge_keepout, fill_voids=fill_voids)
         self._stack(raw, include_mask)
         self.copper_finish = getattr(raw, 'copper_finish', None)    # the stackup's (--finish auto reads it)
         # ---- outline / region (KiCad coordinates until flipped) ----
@@ -245,6 +252,11 @@ class Board:
             self.copper[ground] = [orient(self.outline, 1.0)]       # union of its copper and the outline = outline
             self.notes.append(f"{ground}: solid ground plane over the board outline (ground = {ground})")
         self.ground = ground
+        self.filled = {}
+        if fill_voids not in FILL_VOIDS:
+            raise ValueError(f"fill_voids: one of {', '.join(FILL_VOIDS)}, not {fill_voids!r}")
+        if fill_voids != 'off':
+            self._fill_voids(fill_voids, keep)
         self._nets_of_copper()
         self._vias()
         self._ports(raw, pos_file, ports or [], cut_ports, rpoly)
@@ -281,6 +293,64 @@ class Board:
     def cu_order(self):
         """Copper layers, bottom to top."""
         return sorted(self.cu_z, key=lambda n: self.cu_z[n])
+
+    def _fill_voids(self, mode, keep):
+        """Fill the ground copper's voids that the nets left out made: a pour imported with only some nets selected
+        keeps the clearance around every other net's pads, traces and vias, holes with nothing in them, and every
+        one costs a solver its edge. A void is a hole of a ground net's copper as the board has it (keep: the items
+        that reach the region, whole: a clearance that crosses a region's edge is still a hole). It is kept when
+        it holds copper or a via of a selected net that is not ground (an antipad, a trace's clearance: the model).
+        Of the others, mode 'all' fills every one; 'far' those smaller than FILL_SMALL, and those farther than
+        FILL_FAR mm (or FILL_HEIGHTS x the widest gap between copper layers) from the signal copper of any layer,
+        since a void under or beside a trace changes its return path. Ground copper that stood alone in a filled
+        void joins the pour. self.filled: {layer: (voids filled, mm2 added)}; a note says it."""
+        ground = set(self.ground_nets)
+        chosen = lambda n: n and n not in ground and (self.sel is None or n in self.sel)
+        signal = {}
+        for l, n, g in self.prims.items:
+            if chosen(n):
+                signal.setdefault(l, []).append(g)
+        every = unary_union([g for gs in signal.values() for g in gs]) if signal else None
+        zs = sorted(self.cu_z.values())
+        far = max(FILL_FAR, FILL_HEIGHTS * max((b - a for a, b in zip(zs, zs[1:])), default=0.0))
+        vias = [(Point(v['x'], v['y']), set(v['layers'])) for v in self.prims.vias if chosen(v['net'])]
+        via_tree = shapely.STRtree([p for p, _ in vias]) if vias else None
+        for lay in list(self.copper):
+            if lay == self.ground:
+                continue                                        # already the whole outline
+            on = [flip_y(g) for l, n, g in keep if l == lay and n in ground and (self.sel is None or n in self.sel)]
+            if not on:
+                continue
+            s_tree = shapely.STRtree(signal[lay]) if lay in signal else None
+            fills = []
+            for p in polygons(unary_union(on)):
+                for ring in p.interiors:
+                    hole = Polygon(ring)
+                    if not hole.intersects(self.outline):
+                        continue                                # beyond the region
+                    if s_tree is not None and len(s_tree.query(hole, predicate='intersects')):
+                        continue                                # a trace or a pad of the model in it
+                    if via_tree is not None and any(lay in vias[i][1] for i in via_tree.query(hole, predicate='intersects')):
+                        continue                                # a signal via through it: its antipad
+                    if mode == 'far' and hole.area >= FILL_SMALL and every is not None and hole.distance(every) <= far:
+                        continue                                # near the signal: part of its return path
+                    fills.append(hole)
+            if not fills:
+                continue
+            ps = self.copper[lay]
+            before = sum(p.area for p in ps)
+            lap = [h.buffer(FILL_LAP, join_style=2) for h in fills]     # into the ground around it: no slivers left
+            g = unary_union(list(ps) + lap).intersection(self.outline).simplify(2e-3, preserve_topology=True)
+            new = [orient(p, 1.0) for p in polygons(g) if p.area > 1e-6]
+            added = sum(p.area for p in new) - before
+            if added > 1e-6:
+                self.copper[lay] = new
+                self.filled[lay] = (len(fills), added)
+        if self.filled:
+            what = ', '.join(f"{l} {n} void{'s' if n != 1 else ''} (+{a:.1f} mm2)" for l, (n, a) in self.filled.items())
+            why = ("clearances of nets left out, away from the signal copper" if mode == 'far' else
+                   "every one without a selected net's copper or via in it")
+            self.notes.append(f"fill_voids = {mode}: {what} of the ground copper filled: {why}")
 
     def _nets_of_copper(self):
         """copper_nets: per layer, the net of each copper polygon (the selected net covering most of it)."""
@@ -541,6 +611,7 @@ class Board:
                     stack=dict(layers=self.layers, copper=[dict(name=n, z=self.cu_z[n], t=self.cu_t[n]) for n in self.cu_order],
                                thickness=self.thickness, copper_finish=self.copper_finish),
                     outline=geo(self.outline), ground=self.ground, region=req['region'], cut_sides=self.cut_sides,
+                    filled={l: list(v) for l, v in self.filled.items()},
                     nets=None if self.sel is None else sorted(self.sel), ground_nets=sorted(self.ground_nets),
                     copper={l: [dict(net=n, polygon=geo(p)) for p, n in zip(ps, self.copper_nets.get(l, []))]
                             for l, ps in self.copper.items()},
@@ -572,6 +643,7 @@ class Board:
         b.cu_t = {c['name']: c['t'] for c in st['copper']}
         b.outline, b.ground, b.region, b.cut_sides = shape(d['outline']), d.get('ground'), d.get('region'), d.get('cut_sides', [])
         b.sel = None if d.get('nets') is None else set(d['nets'])
+        b.filled = {l: tuple(v) for l, v in d.get('filled', {}).items()}
         b.ground_nets = set(d.get('ground_nets', []))
         b.copper = {l: [shape(p['polygon']) for p in ps] for l, ps in d.get('copper', {}).items()}
         b.copper_nets = {l: [p.get('net', '') for p in ps] for l, ps in d.get('copper', {}).items()}

@@ -139,6 +139,7 @@ dmax    = 0.4
 | `--cut-ports` | off | add a port where a signal track crosses the region edge |
 | `--port SPEC` | | an extra port: `P3=J1.1` (a pad) or `P3@x,y[,layer[,rotation]]` ([details](model.md#extra-ports)) |
 | `--ground LAYER` | | treat this copper layer as a solid plane |
+| `--fill-voids off\|far\|all` | off | fill the ground copper's voids left by the nets not selected ([details](model.md#fill-voids)) |
 | `--mask` | off | include the solder mask |
 | `--parts auto\|none` | auto | lumped R/L/C parts from two-pad footprints ([details](model.md#lumped-parts)) |
 
