@@ -96,15 +96,24 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
 
 ### Correctness and workflow
 
-1. **Cross-tool flows (U4, I3; 2.5 days).** A near-field converter as a circuit template (its parts, its loop's
+1. **A load with no pad on ground ("Q1: no ground pad").** A rail's load that sits on the rail and not on ground
+   (a bridge's high-side switch: wpthb's Q1 and Q2 on VIN) has its return left out: the rail drop is then the
+   power side alone (`ground_rise` 0: 49.7 mV for Q1 where the ground's share is missing) and only a note in
+   the result says so, with the way round it (`--load Q1=0.67@Q4`, the part its current returns through). The
+   user met it on wpthb (2026-11-12) and asked for it to be kept in view. To do: find the return by itself (from
+   the load's other pads through the parts on those nets to one with a pad on ground: the low-side switch of
+   its half bridge, a sense resistor), say in the report's headline when a return was left out, and have the
+   window list it under "Still needed" for the Rail drop question ("Q1 has no pad on ground: name the part its
+   current returns through") instead of running without it.
+2. **Cross-tool flows (U4, I3; 2.5 days).** A near-field converter as a circuit template (its parts, its loop's
    copper); a circuit's input-current spectrum as PDN loads; `pcbqs.mqs`'s assumed-pulse fields against the
    circuit's `--fields`.
-2. **Several rails in one power-integrity run** (a config's `[analysis.pdn]` is one rail).
-3. **Converters.** A broader buck input-loop discovery; ambiguous bias, enable and supply nets resolved by part
+3. **Several rails in one power-integrity run** (a config's `[analysis.pdn]` is one rail).
+4. **Converters.** A broader buck input-loop discovery; ambiguous bias, enable and supply nets resolved by part
    metadata; the switch node's E in the converter workflow (the Coulomb E of the surface charges is there, the
    inductive E is not) and output-inductor models; decap and via mounting inductance from the quasi-static solver
    instead of the formula.
-4. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`). Left: the
+5. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`). Left: the
    run's lumped parts between their pads (the quasi-static solver takes elements already, so a decoupled rail or
    a lumped filter would have its low end too; today they are left out and listed as deviations); gap ports; the
    two-face copper with the charge is slow on a stack of several dielectrics (25 s a frequency at
