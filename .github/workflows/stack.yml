@@ -50,6 +50,8 @@ jobs:
                 ref: "${{ github.event.client_payload['kicad2ems-ipc'] || 'main' }}" }
       - uses: actions/checkout@v4
         with: { repository: lowprocess/dfsynth, path: dfsynth, ref: "${{ github.event.client_payload.dfsynth || 'main' }}" }
+      - uses: actions/checkout@v4
+        with: { repository: lowprocess/pcbqs, path: pcbqs, ref: "${{ github.event.client_payload.pcbqs || 'main' }}" }
 
       - uses: actions/setup-python@v5
         with: { python-version: '${{ matrix.python }}' }
@@ -58,7 +60,8 @@ jobs:
       - name: Install the stack from the checkouts
         run: |
           python kicad2ems/tools/ci_deps.py emsdev 'kicad2ems[test,fast,dumps]' 'mom25d[test,core]' 'gfdtd[test,core]' \
-            'kicad2ems-fdtd[test,openems]' 'kicad2ems-gui[test]' 'dfsynth[test]' > requirements-ci.txt
+            'kicad2ems-fdtd[test,openems]' 'kicad2ems-gui[test]' 'dfsynth[test]' \
+            'pcbqs[test]' > requirements-ci.txt
           echo 'kicad-python>=0.5' >> requirements-ci.txt                # the KiCad plugin's IPC client
           cat requirements-ci.txt
           # PyPI has no triangle >= 20230923 for 3.14: build install.py's pinned commit first (its TRIANGLE_COMMIT)
@@ -68,7 +71,8 @@ jobs:
               python -m pip install --no-cache-dir "triangle @ git+https://github.com/drufat/triangle.git@$(sed -n "s/^TRIANGLE_COMMIT = '\([0-9a-f]*\)'.*/\1/p" kicad2ems/install.py)"
           fi
           python -m pip install -r requirements-ci.txt
-          python -m pip install --no-deps -e emsdev -e kicad2ems -e mom25d -e gfdtd -e kicad2ems-fdtd -e kicad2ems-gui -e dfsynth
+          python -m pip install --no-deps -e emsdev -e kicad2ems -e mom25d -e gfdtd -e kicad2ems-fdtd -e kicad2ems-gui -e dfsynth \
+            -e pcbqs
           python -m pip check || true
       - name: Build the compiled cores
         run: |
@@ -93,6 +97,10 @@ jobs:
       - name: kicad2ems-fdtd (the FDTD layer, openEMS's and gfdtd's connections)
         if: success() || failure()
         run: cd kicad2ems-fdtd && python -m pytest -q
+      - name: "pcbqs (the power tools, kicad2ems's analysis plugins; no ngspice here: its circuit runs skip)"
+        if: success() || failure()
+        timeout-minutes: 30
+        run: cd pcbqs && python -m pytest -q --durations=10
       - name: kicad2ems-gui
         if: success() || failure()
         run: cd kicad2ems-gui && python -m pytest -q
