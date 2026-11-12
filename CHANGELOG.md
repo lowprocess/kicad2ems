@@ -9,6 +9,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Questions and engines (API 2.6).** A study asks questions of a board and engines answer them
+  (`kicad2ems.study`): the ports' S-parameters, an antenna's pattern, the traces' impedances, a rail's drop, its
+  impedance, a converter's near field, a circuit, capacitance, the temperature. An engine is a solver plugin or
+  an analysis plugin; an analysis says which questions it `provides` from one run, under which name a list shows
+  it (`engine`), how its settings change when only some are asked (`for_questions`), and whether a folder is its
+  result (`owns`, for two engines that write a file of the same name). `api.frontend.study_tree()` is what a
+  front end lists: each question by group with the engines installed that answer it, or how to get one;
+  `runs_for` the runs a set of questions takes; `mark_run` the mark a run's folder bears. `kicad2ems --check`
+  lists the questions with their engines. pcbqs's rail tool answers the drop and the impedance; kicad2ems-fem
+  (the new `fem` extra) adds Elmer for the drop and the temperature and Elmer and Palace for capacitance, so
+  those have two engines each. Nothing in a front end changes yet: docs/api.md#study.
 - **Analysis plugins (API 2.5).** Tools that work on a run's board but give something other than S-parameters
   register as `kicad2ems.analyses` entry points, as solvers do as `kicad2ems.solvers`: an `Analysis`
   (`kicad2ems.api.analysis`) declares its options, the command that runs it, the file a finished run leaves, and

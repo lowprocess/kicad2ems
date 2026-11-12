@@ -8,42 +8,22 @@ window and mom25d; pcbqs's for the power tools). C, I and U numbers are findings
 
 ## The study: questions and engines
 
-The window's Study lists five things to run. Four are pcbqs tools, each one question about the board; the fifth,
-"S-parameters", is everything else: seven solvers chosen in another section, and several answers from one run. So
-the list cannot say "the same question, another program" (Elmer's DC and thermal tools and Palace's capacitance in
-kicad2ems-fem answer what pcbqs's do, and have no place in it), and only the RF row compares solvers.
+The registry is there (API 2.6, `kicad2ems.study`, docs/api.md#study): a study asks questions, engines answer
+them, and a rail's drop, the temperature and capacitance each have two (pcbqs; Elmer or Palace through
+kicad2ems-fem). The window still lists one row per analysis plugin and one for all of S-parameters. Left:
 
-The plan: an *analysis* is a question with a known kind of answer, an *engine* a program that answers it. The
-registry holds engines, each declaring the analyses it provides.
-
-| Group | Analysis (the question) | Engines today |
-|---|---|---|
-| RF | `sparams`: the ports' S-parameters | openEMS, gfdtd, mom25d, mixed, Palace |
-| RF | `antenna`, `fields`: from the same solve as `sparams` | those with the capability |
-| RF | `lines`: every trace's impedance and delay | the line model |
-| Power | `dc`, `pdn`: a rail's drop and its impedance, one solve | pcbqs.pdn; Elmer for `dc` |
-| Power | `nearfield`, `circuit` | pcbqs.mqs, pcbqs.circuit |
-| Power | `capacitance`: between nets | Palace, Elmer, pcbqs |
-| Thermal | `thermal`: the board's temperature | pcbqs.thermal; Elmer |
-
-1. **Kinds and engines in the registry (API 2.6, additive; 1 day).** `kicad2ems.analyses.KINDS`: each kind's name,
-   label, group, what it shares a solve with and the form of its answer. `Analysis` gains `provides` and `engine`;
-   the solver plugins appear in the same view through an adapter. A front end asks one function, `study_tree()`,
-   and has no RF special case.
-2. **Engines registered where they exist (1 day).** pcbqs.pdn provides `dc` and `pdn` from one run. kicad2ems-fem
-   registers its Elmer and Palace tools: optional, in its own package, so pcbqs still needs neither.
-3. **The config and the command line (1 day).** `[study] run = [...]`, `[study.thermal] engine = "pcbqs"`;
+1. **The config and the command line (1 day).** `[study] run = [...]`, `[study.thermal] engine = "pcbqs"`;
    `[analysis] run` and `--solvers` are read as before. `kicad2ems study board.toml` runs a study in order, which
    only the window can do today: the run order moves into kicad2ems, and kicad2ems-ipc gets it too.
-4. **The window (1.5 days).** A grouped tree, one row per question, the engine a choice on the row ("auto", one, or
-   several to compare); the Solvers section goes into the S-parameters row; Results compares engines for any kind.
-5. **Check (0.5 day).** The temperature and the DC drop by pcbqs and by Elmer from one study.
-
-Not decided: whether `antenna` and `fields` are rows, or outputs ticked on the S-parameters row.
+2. **The window (1.5 days).** A grouped tree, one row per question, the engine a choice on the row ("auto", one, or
+   several to compare). The antenna is a row of its own; field dumps are an output ticked on the rows whose
+   engine can write them. The Solvers section goes into the S-parameters row; Results compares engines for any
+   question.
+3. **Check (0.5 day).** The temperature and the DC drop by pcbqs and by Elmer from one study.
 
 ## The window, from a clean slate
 
-kicad2ems-gui's `docs/redesign.md` (not started; about three weeks; it needs steps 1 and 4 above). One fixed layout
+kicad2ems-gui's `docs/redesign.md` (not started; about three weeks; it needs step 2 above). One fixed layout
 around the board: the questions on the left, the board in the middle, the selected question's few settings on the
 right, plots and reports in a drawer under it. The steps Board, Questions, Set up, Run, Results in the header with
 one primary action; settings split into the few that matter and the rest; a list of what is still missing instead
@@ -140,6 +120,15 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    metadata; the switch node's E in the converter workflow (the Coulomb E of the surface charges is there, the
    inductive E is not) and output-inductor models; decap and via mounting inductance from the quasi-static solver
    instead of the formula.
+7. **Low-frequency S-parameters: pcbqs as a `sparams` engine.** The quasi-static solver already gives the
+   impedance matrix between copper terminals (`CopperPorts.extract`: R and L, and C with `capacitance=True`),
+   which is what a board's ports see from DC to about λ/10: S = (Z − Z0)(Z + Z0)⁻¹ at the run's ports, written as
+   the other solvers write theirs. It covers what the full-wave solvers do worst, the low end of a sweep
+   (mom25d's low-frequency conditioning: rf_diffvia at 1 GHz; FDTD's step count), and it resolves where the
+   return current goes: ground vias missing or in the wrong place show as extra loop inductance and as common
+   impedance between ports. It needs the board's P<n> ports as terminal pairs, the frequency where it stops
+   being valid stated for each run (the board's size against λ/10), and a check against mom25d and gfdtd where
+   both hold: demo_transition, rf_diffvia, and the same board with a stitching via taken out.
 
 ### Speed
 

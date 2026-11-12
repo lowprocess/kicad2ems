@@ -37,7 +37,11 @@ openems = ["kicad2ems-fdtd[openems] @ git+https://github.com/lowprocess/kicad2em
                                                                 # from elsewhere (README)
 mom = ["mom25d @ git+https://github.com/lowprocess/mom25d@77509a598561e79c292e65369cec10c1816fc25a"]     # the MoM solver and its plugins, mom25d and mixed
                                                                 # (it brings triangle, its mesher)
-qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@68d5060a25665542c1d62a88405eea9f258fb285"]  # PDN, MQS/PEEC and ngspice operational circuits
+qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@ebc693c8dd5edb38faf664918bd206a8e3f334af"]  # PDN, MQS/PEEC and ngspice operational circuits
+fem = ["kicad2ems-fem @ git+https://github.com/lowprocess/kicad2ems-fem@5ca96a24b65defc90e922131a41bf79d0c94673c"]   # Palace and Elmer behind kicad2ems: a
+                                                                # solver (palace) and second engines for a rail's drop,
+                                                                # the temperature and capacitance; the programs
+                                                                # themselves come from elsewhere (its README)
 gfdtd = ["kicad2ems-fdtd[gfdtd] @ git+https://github.com/lowprocess/kicad2ems-fdtd"]   # the FDTD solvers' package
                                                                 # with gfdtd, the GPU / CPU-core FDTD engine
 filter = ["kicad2ems-gui[filter] @ git+https://github.com/lowprocess/kicad2ems-gui@50c65b6cd13d58d9a029957b0019dc813cd0e14e"]   # the GUI's Filter page (dfsynth)

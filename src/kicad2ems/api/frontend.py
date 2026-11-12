@@ -14,6 +14,9 @@ results (the GUI, the KiCad plugin, dfsynth's --validate).
   solvers             registry, get_solver, resolve_lines, AUTO, LINES
   analyses            analyses ({name: Analysis}: the analysis plugins installed, kicad2ems.analyses), analysis_of
                       (whose result a folder holds), read_analyses (a config's [analysis] tables) (2.5)
+  the study           study_tree (what to list: by group, each question with the engines that answer it),
+                      questions, engines ({name: Engine}: solvers and analyses alike), runs_for ({engine: the
+                      questions asked of it}), mark_run and run_mark (a run folder's mark: who made it) (2.6)
   runs                Run, EventTail, stop_runs, find_results, toml_value, write_toml
   files it writes     read_summary (<name>_run.json), read_antenna (<name>_antenna.json), check_format (a JSON of
                       kicad2ems's, e.g. python -m kicad2ems.sysinfo's: None, or why this kicad2ems cannot read it)
@@ -38,6 +41,8 @@ NAMES = dict(
     examples='.examples:examples', prepare_example='.examples:prepare_example', examples_folder='.examples:user_folder',
     example_index='.examples:index',
     analyses='.analyses:registry', analysis_of='.analyses:analysis_of', read_analyses='.analyses:read_config',
+    study_tree='.study:study_tree', questions='.study:questions', engines='.study:engines', runs_for='.study:runs_for',
+    mark_run='.study:mark', run_mark='.study:marked',
     registry='.solvers:registry', get_solver='.solvers:get', resolve_lines='.solvers:resolve_lines',
     AUTO='.solvers:AUTO', LINES='.solvers:LINES',
     Run='.runs:Run', EventTail='.runs:EventTail', stop_runs='.runs:stop_runs', find_results='.runs:find_results',

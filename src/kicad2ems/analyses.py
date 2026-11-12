@@ -53,6 +53,17 @@ and implements
                           it could not give a value, to set before a run
   examples()              the examples it ships: [dict(name, config, group, title, files)] (kicad2ems.examples)
   env                     environment variables its command runs with (a thread cap), or {}
+and, since 2.6 (kicad2ems.study: questions and engines),
+  provides                the questions it answers (kicad2ems.study.QUESTIONS: 'dc', 'pdn', 'thermal' ...), from one
+                          run: (); then it is one question of its own name
+  engine                  the program's name as a list shows it beside a question ('pcbqs', 'Elmer'); '': its label
+  questions               study.Question objects of its own, for what kicad2ems has no question for
+  fields                  the bool option that makes it write field dumps too ('fields'); '': none
+  for_questions(values, asked)
+                          its settings for a run that is asked only some of its questions (the rail's drop without
+                          its impedance): the values, changed where that matters
+  owns(folder, preview)   whether the folder holds its result (its preview): by default, that its result file is
+                          there. An engine whose file another engine also writes looks inside it
 
 The fields of a result (the maps a Viewer turns and cuts) need nothing here: an analysis writes them as field dumps
 (kicad2ems.api.solver: Dump, write_info, write_npz) under <out>/<name>/exc_<what>/ with its board as
@@ -63,7 +74,7 @@ import os
 GROUP = 'kicad2ems.analyses'                # the entry-point group of analyses installed as packages
 RF = 'rf'                                   # the S-parameter run's own key in a front end's lists: not a plugin's
 # the analysis packages kicad2ems has extras for (pyproject): {extra: the analyses it brings}
-EXTRAS = {'qs': ('pdn', 'mqs', 'circuit', 'thermal')}
+EXTRAS = {'qs': ('pdn', 'mqs', 'circuit', 'thermal'), 'fem': ('elmer_dc', 'elmer_thermal', 'elmer_cap', 'palace_cap')}
 KINDS = ('str', 'int', 'float', 'bool', 'list')
 
 
@@ -85,6 +96,19 @@ class Analysis:
     page = False
     finds = ''
     env = {}
+    provides = ()
+    engine = ''
+    questions = ()
+    fields = ''
+
+    def for_questions(self, values, asked):
+        """The settings for a run asked only the questions `asked` of those it provides."""
+        return values
+
+    def owns(self, folder, preview=False):
+        """Whether the folder holds its result (preview: its preview)."""
+        f = self.preview_result if preview else self.result
+        return bool(f) and os.path.isfile(os.path.join(folder or '', f))
 
     def check(self):
         """(usable, one line): its version and origin, or what is missing and how to get it."""
@@ -158,6 +182,12 @@ def registry():
                 bad = [o.get('key', '?') for o in a.options() if o.get('kind') not in KINDS or not o.get('key')]
                 if bad:
                     raise ValueError(f"options of an unknown kind: {', '.join(bad)} (one of {', '.join(KINDS)})")
+                from .study import QUESTIONS
+                own = {q.name for q in getattr(a, 'questions', ()) or ()}
+                unknown = [q for q in getattr(a, 'provides', ()) or () if q not in QUESTIONS and q not in own]
+                if unknown:
+                    raise ValueError(f"provides questions nobody declares: {', '.join(unknown)} "
+                                     f"(kicad2ems's: {', '.join(QUESTIONS)}; or its own `questions`)")
             except Exception as e:                                  # a broken plugin never stops kicad2ems
                 broken.append((f"{ep.name} = {ep.value}", f"{type(e).__name__}: {e}"))
                 continue
@@ -187,10 +217,16 @@ def missing(name):
 
 
 def analysis_of(folder):
-    """(name, preview) of the analysis whose result (or preview) the folder holds, or None: not an analysis's."""
-    for name, a in registry().items():
-        for f, preview in ((a.result, False), (a.preview_result, True)):
-            if f and os.path.isfile(os.path.join(folder or '', f)):
+    """(name, preview) of the analysis whose result (or preview) the folder holds, or None: not an analysis's. The
+    mark whoever started the run left says (study.mark); without one, the first analysis that owns the folder."""
+    from .study import marked
+    reg = registry()
+    m = marked(folder)
+    if m and m['engine'] in reg and reg[m['engine']].owns(folder, m['preview']):
+        return m['engine'], m['preview']
+    for name, a in reg.items():
+        for preview in (False, True):
+            if a.owns(folder, preview):
                 return name, preview
     return None
 

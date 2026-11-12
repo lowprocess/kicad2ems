@@ -106,6 +106,8 @@ def check_report():
     also = check_lines()
     if also:
         lines += ['analyses:'] + also
+    from .study import check_lines as question_lines
+    lines += ['questions, and the engines that answer them:'] + question_lines()
     try:
         gui = importlib.import_module('kicad2ems_gui')
         importlib.import_module('PySide6')
