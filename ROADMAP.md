@@ -24,8 +24,10 @@ the window lists the questions, with the engine chosen on each row, and compares
 
 ## The window, from a clean slate
 
-kicad2ems-gui's `docs/redesign.md`. The fixed layout, the few settings first and the list of what a run still
-needs are built (its steps 2 to 5). Left, about two weeks:
+kicad2ems-gui's `docs/redesign.md`. The few settings first and the list of what a run still needs are built.
+Its fixed layout was built and taken back (2026-11-12, the user's word): the settings belong on the left, under
+the questions, and the window keeps its docks, as a studio application's. What follows is to be read with
+that: nothing in it may fix a panel in place. Left:
 
 1. **The study as a model without Qt** (its step 1): the widgets still hold the state, and `app.py` is 2,500
    lines. Nothing visible changes; it is what makes the rest cheap, and what kicad2ems-ipc could drive.
@@ -110,11 +112,11 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    the switch's own pads, so such a bridge is asked about), and two parts in parallel as one return.
 2. **Cross-tool flows, the rest.** A near field's converter opens as a circuit, and a circuit's supply
    current goes to its rail (the ripple it makes) and to the near field, each a button on the result (pcbqs's
-   `docs/power-workflow.md`). Left: the full bridge's runs (`pcbqs.power_circuit`) do not say what they draw,
-   so wpthb's bridge current does not reach its rail this way; a controller with its two switches as separate
-   parts is not made into a circuit (the regulator's own footprint is taken for both); a rail's ripple at a
-   converter's pin needs the input loop's own inductance, which the near field solves and the rail's planes do
-   not have (the two could share it); an example study that walks through the three steps.
+   `docs/power-workflow.md`); the full bridge's runs say what their high-side switches draw too, so wpthb's
+   bridge current reaches its rail. Left: a controller with its two switches as separate parts is not made into
+   a circuit (the regulator's own footprint is taken for both); a rail's ripple at a converter's pin needs the
+   input loop's own inductance, which the near field solves and the rail's planes do not have (the two could
+   share it); an example study that walks through the three steps.
 3. **Several rails, in the window.** A config holds them (`[[analysis.pdn]]`) and `kicad2ems study` runs
    them all; the window shows and runs the first and keeps the rest. Left: the rails in the window (a selector
    above the Rail drop settings, or a table of them: to be chosen), each with its state and result, and their

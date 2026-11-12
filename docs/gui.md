@@ -10,12 +10,13 @@ kicad2ems-gui [config.toml]   # or: python -m kicad2ems_gui
 The GUI edits a run's settings and starts the command-line tool as a separate process: closing the window never
 loses a run, and the GUI itself doesn't need openEMS.
 
-![The window: the questions on the left, a hairpin filter's board with its S-parameters from three solvers in the drawer under it, the settings on the right](img/readme/gui_sparams.png)
+![The window: the questions on the left, a hairpin filter's board with its S-parameters from three solvers in the page under it](img/readme/gui_sparams.png)
 
 ## The window
 
-One layout, in three columns: what is asked on the left, the board in the middle with the results that are not
-maps in a drawer under it, the settings of the question selected on the right.
+Docks: what is asked and the settings of the question selected on the left, one over the other; the board with
+the results that are not maps under it in the rest of the window. Each dock can be dragged elsewhere, tabbed
+with another, floated or closed.
 
 - **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, the run's estimate, the results folder, the report,
   *Filter* (the wand: [Filter Synthesis](#filter), a window of its own), and *Results of*: this board's preview
@@ -28,11 +29,10 @@ maps in a drawer under it, the settings of the question selected on the right.
   amber above 80 %, red above 95 %.
 - **Left: the board and the questions.** The *Board* (its file and extra ports; the rest under *More about the
   board*), then the **Questions** asked of it ([below](#study)).
-- **Middle: the board**, in the [Viewer](#viewer), always there. While *Circuit* is asked its schematic is a tab
-  beside it. Under it the **drawer**: the [Results](#plots) page and the [Run](#the-run-page) page as tabs. It
-  folds to its tab bar (the arrow at its right, or *View*), and a page comes to the front when it has something
-  new: Run when a run starts, Results when one ends.
-- **Right: the settings of the question selected.** For S-parameters, the few a run is set up with: the frequency
+- **The workspace: the board**, in the [Viewer](#viewer). While *Circuit* is asked its schematic is a tab beside
+  it, as Filter Synthesis is when opened. Under it the [Results](#plots) page and the [Run](#the-run-page) page,
+  tabbed; a page comes to the front when it has something new: Run when a run starts, Results when one ends.
+- **Left, under the questions: the settings of the question selected.** For S-parameters, the few a run is set up with: the frequency
   range and points, and the main cell size of each solver chosen. The rest are under **More settings**: the
   sections *Frequency*, *Solvers* (the driven ports), one per solver (*FDTD (openEMS, gfdtd)*: the mesh, run and
   field-dump settings both share; *gfdtd*; *mom25d*; ...) and *Output*, each counting its settings that are set,
@@ -52,9 +52,9 @@ maps in a drawer under it, the settings of the question selected on the right.
   what the proposal could not say (a rail's source) is listed under Still needed
   ([the steps on a board](https://github.com/lowprocess/pcbqs/blob/main/docs/power-workflow.md#4-from-one-tool-to-the-next)).
 
-The columns and the drawer fold from *View* (Ctrl+1, 2, 3) and stay as they were left; *View > Reset layout*
-shows them all. Nothing floats or docks. The window remembers its size, what is folded, its splitters and the
-Results page's plots between sessions.
+*View* shows and closes each dock (the study and the settings: Ctrl+1, 2), and *View > Reset layout* puts them
+all back where a new window has them. The window remembers its size, where its docks are, its splitters and the
+Results page's plots between sessions; the first time it opens over the whole screen.
 
 <a id="run-folders"></a>
 **Where results go.** Each run gets a folder of its own under the output folder, named after the board and when it
@@ -113,7 +113,7 @@ circuit and thermal; `kicad2ems[fem]`: Elmer for a rail's drop and the temperatu
 capacitance), found through kicad2ems's [registry](api.md#study); the window knows none by name. A question
 nobody installed answers is greyed, and its tooltip says how to install an engine.
 
-Selecting a row shows its engines' settings in the right column, each a panel made from the plugin's options (two
+Selecting a row shows its engines' settings in the Settings dock, each a panel made from the plugin's options (two
 engines: each under its name). **Run** makes the runs the questions take, in order: the solvers', then each
 analysis (the temperature after the circuit whose losses it takes); an engine that answers two questions
 answers them in one run. What a run leaves is shown where every result is: its maps in the Viewer (a rail's

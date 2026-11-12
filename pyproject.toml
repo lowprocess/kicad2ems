@@ -27,7 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 fast = ["scikit-rf>=1.0"]          # --fast skrf: the line model as S-parameters (qucsator: a separate program)
 dumps = ["h5py>=3"]                # frequency-domain field dumps (openEMS's own Python package needs it too)
-gui = ["kicad2ems-gui @ git+https://github.com/lowprocess/kicad2ems-gui@71b7472f7f1ff5c0b9d36bd161363ead7bda262a"]   # the window (kicad2ems-gui), its own
+gui = ["kicad2ems-gui @ git+https://github.com/lowprocess/kicad2ems-gui@18e33850a14545d8c6117744055082517ec6d8ba"]   # the window (kicad2ems-gui), its own
                                                                              # repository: PySide6, pyqtgraph, PyOpenGL
 core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster);
                                    # python -m gfdtd.core.build: gfdtd's CPU core (~15x numpy)
@@ -37,14 +37,14 @@ openems = ["kicad2ems-fdtd[openems] @ git+https://github.com/lowprocess/kicad2em
                                                                 # from elsewhere (README)
 mom = ["mom25d @ git+https://github.com/lowprocess/mom25d@580dc6b603a5e55e6653f8dc1de6860f7dd09b12"]     # the MoM solver and its plugins, mom25d and mixed
                                                                 # (it brings triangle, its mesher)
-qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@92a01583dad8d0644ca9c51e716123680a77359d"]  # PDN, MQS/PEEC and ngspice operational circuits
+qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@402ffd0e935478ebe2329a5bf9151c3ccfd90619"]  # PDN, MQS/PEEC and ngspice operational circuits
 fem = ["kicad2ems-fem @ git+https://github.com/lowprocess/kicad2ems-fem@9cd75355cbf9745086efcfc184bb877edd15c8c3"]   # Palace and Elmer behind kicad2ems: a
                                                                 # solver (palace) and second engines for a rail's drop,
                                                                 # the temperature and capacitance; the programs
                                                                 # themselves come from elsewhere (its README)
 gfdtd = ["kicad2ems-fdtd[gfdtd] @ git+https://github.com/lowprocess/kicad2ems-fdtd"]   # the FDTD solvers' package
                                                                 # with gfdtd, the GPU / CPU-core FDTD engine
-filter = ["kicad2ems-gui[filter] @ git+https://github.com/lowprocess/kicad2ems-gui@71b7472f7f1ff5c0b9d36bd161363ead7bda262a"]   # the GUI's Filter page (dfsynth)
+filter = ["kicad2ems-gui[filter] @ git+https://github.com/lowprocess/kicad2ems-gui@18e33850a14545d8c6117744055082517ec6d8ba"]   # the GUI's Filter page (dfsynth)
 all = ["kicad2ems[fast,dumps,gui,core,openems,mom,qs,gfdtd,filter]"]       # everything but a GPU wheel (one of the gpu-* extras)
 # mom25d's and gfdtd's GPU solvers (docs/mom.md#gpu): slangpy (gpu-vulkan), the default on any GPU, or optionally
 # the CuPy wheel built for your GPU stack, one of the other extras (pip install '.[gpu-cuda12]'); the CuPy wheels

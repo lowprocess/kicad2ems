@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+- **The window is docks again, with the settings on the left (kicad2ems-gui).** The fixed three-column layout
+  (the settings in a column on the right, a drawer under the board, nothing movable) is taken back, on the
+  user's word: the selected question's settings are a dock on the left under the study's, the Viewer, the
+  editors, Results, Run and Filter Synthesis are docks of the workspace, and each moves, tabs, floats and
+  closes as before; a new window has the board over the Results and Run pages and opens over the whole screen,
+  later ones as the last was left. What came with that layout and is not about it stays: the few settings
+  first, "Still needed", Run's wording, what a result proposes.
+
 ### Added
 - **Several rails in one study (API 2.10).** A config's `[analysis.pdn]` was one rail, so a board's rails took
   as many configs. An analysis may now be given several tables, as an array (`[[analysis.pdn]]`), and
