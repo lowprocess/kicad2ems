@@ -54,7 +54,8 @@ GROUP = 'kicad2ems.solvers'                 # the entry-point group of solvers i
 BUILTIN = ('kicad2ems.solvers.lines.plugin:Qucs', 'kicad2ems.solvers.lines.plugin:Scikit')
 # the solver packages kicad2ems has extras for (pyproject): {extra: the names and aliases of its solvers, its first
 # solver first}. A name of one not installed says how to get it. MOM: the solver --mom adds as a reference.
-EXTRAS = {'openems': ('openems', 'fdtd'), 'mom': ('mom25d', 'mom', 'mixed', 'segmented'), 'gfdtd': ('gfdtd', 'gpu-fdtd')}
+EXTRAS = {'openems': ('openems', 'fdtd'), 'mom': ('mom25d', 'mom', 'mixed', 'segmented'), 'gfdtd': ('gfdtd', 'gpu-fdtd'),
+          'qs': ('pcbqs', 'qs', 'quasistatic')}
 MOM = 'mom25d'
 LINES = 'lines'                             # the line model: qucs when qucsator is installed, else scikit
 AUTO = 'auto'                               # the cheapest full-wave solver that can model the board, + the line model

@@ -68,6 +68,39 @@ def test_qucsator_netlist(transition, boards):
     assert 'gnd C="6.8e-12 F"' in text and ' L="8.2e-09 H"' in text              # C2 shunt to ground, L1 / L3
 
 
+def test_a_log_sweep(transition, tmp_path):
+    """sweep = log: the run's frequencies evenly on a log scale, qucsator's sweep the same, the plot's axis in the
+    band's own unit and logarithmic; the line model's two backends agree on them as on a linear sweep."""
+    from kicad2ems.config import ConfigError, build_settings
+    from kicad2ems.pipeline import Job
+    from kicad2ems.plots import plot_results
+    from kicad2ems.touchstone import band_unit, log_spaced
+    f = np.geomspace(1e4, 1e7, 13)
+    assert log_spaced(f) and not log_spaced(FREQ) and not log_spaced(f[:2]) and not log_spaced([0.0, 1.0, 2.0])
+    assert [band_unit(v)[1] for v in ([1e3, 9e5], [1e4, 1e7], FREQ)] == ['kHz', 'MHz', 'GHz']
+    m, lm = transition
+    text, _ = qucs_netlist(lm, m.ports, f)
+    assert '.SP:SP1 Type="log" Start="10000" Stop="10000000" Points="13"' in text
+    cfg = tmp_path / 'b.toml'
+    cfg.write_text('board = "b.kicad_pcb"\nfmin = 0.00001\nfmax = 0.01\npoints = 13\nsweep = "log"\n')
+    s = build_settings(config=str(cfg))
+    assert s.sweep == 'log' and np.allclose(Job(s, echo=lambda *a: None).freq, f)
+    lin = build_settings(dict(sweep='linear'), str(cfg))
+    assert lin.sweep == 'linear' and np.allclose(Job(lin, echo=lambda *a: None).freq, np.linspace(1e4, 1e7, 13))
+    cfg.write_text('board = "b.kicad_pcb"\nfmin = 0\nfmax = 0.01\nsweep = "log"\n')
+    with pytest.raises(ConfigError, match='sweep = log: fmin .* must be above 0'):
+        build_settings(config=str(cfg))
+    S = np.zeros((13, 2, 2), complex) + 0.1
+    ax = plot_results(f, S, ['P1', 'P2'], 't').axes[0]
+    assert ax.get_xscale() == 'log' and ax.get_xlabel() == 'Frequency (MHz)' and ax.lines[0].get_xdata()[-1] == 10.0
+    ax = plot_results(FREQ, np.zeros((15, 2, 2), complex) + 0.1, ['P1', 'P2'], 't').axes[0]
+    assert ax.get_xscale() == 'linear' and ax.get_xlabel() == 'Frequency (GHz)'
+    if _qucsator() is not None and pytest.importorskip('skrf'):
+        Sq, _ = solve(lm, m.ports, f, 'qucsator')
+        Ss, _ = solve(lm, m.ports, f, 'skrf')
+        assert np.max(np.abs(Sq - Ss)) < 1e-3
+
+
 def test_read_qucs_dataset():
     text = ('<Qucs Dataset 1.0>\n<indep frequency 2>\n  +1.0e+09\n  +2.0e+09\n</indep>\n'
             + "".join(f'<dep S[{i},{j}] frequency>\n  +{0.1 * i}e+00-j{0.01 * j}e+00\n  +1e-01+j2e-02\n</dep>\n'

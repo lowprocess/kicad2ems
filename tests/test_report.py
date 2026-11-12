@@ -34,3 +34,18 @@ def test_report_embeds_the_plot(tmp_path):
     assert html.count('<script') == 2 and 'a<\\/script>b' in html             # no early end of the data's script
     blob = re.search(r"<script type='application/json' class='data'>(.*?)</script>", html, re.S).group(1)
     assert json.loads(blob)['solvers'][0]['label'] == 'a</script>b'
+
+
+def test_the_plot_takes_as_many_solvers_as_ran():
+    """The static plot with a reference and more others than there are dash names: the third other's style is a
+    dash pattern (a tuple), which is a line style and not a format (a run of four solvers ended here)."""
+    from kicad2ems.pipeline import OVERLAY_STYLES
+    from kicad2ems.plots import plot_results
+    f = np.linspace(1e9, 3e9, 5)
+    S = np.zeros((5, 2, 2), complex) + 0.5
+    overlays = [(f, S * (0.9 - 0.1 * i), f"solver {i}", st) for i, st in enumerate(OVERLAY_STYLES)]
+    assert any(isinstance(st, tuple) for st in OVERLAY_STYLES)
+    fig = plot_results(f, S, ['P1', 'P2'], 'four and more', overlays + [(f, S, 'file.s2p', '--')], label='reference')
+    ax, smith = fig.axes
+    assert len(ax.lines) == 3 * (2 + len(OVERLAY_STYLES))                     # S11, S21, S22 of each
+    assert len(ax.get_legend_handles_labels()[1]) == len(ax.lines)

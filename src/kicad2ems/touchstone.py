@@ -6,6 +6,19 @@ import os, re
 import numpy as np
 
 
+def log_spaced(freq):
+    """The frequencies are evenly spaced on a log scale (a run's sweep = log), not linearly."""
+    f = np.asarray(freq, float)
+    return bool(len(f) > 2 and f[0] > 0 and not np.allclose(np.diff(f), (f[-1] - f[0]) / (len(f) - 1), rtol=1e-6)
+                and np.allclose(f, np.geomspace(f[0], f[-1], len(f)), rtol=1e-9))
+
+
+def band_unit(freq):
+    """(Hz per unit, its name) to read a band's frequencies in: GHz from 1 GHz up, MHz from 1 MHz, else kHz."""
+    top = float(np.max(freq))
+    return (1e9, 'GHz') if top >= 1e9 else (1e6, 'MHz') if top >= 1e6 else (1e3, 'kHz')
+
+
 def port_names(path):
     """The port names of the `! ports:` comment kicad2ems writes, or None (another program's file, or none)."""
     try:

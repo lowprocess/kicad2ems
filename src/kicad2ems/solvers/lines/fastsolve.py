@@ -17,7 +17,7 @@ A ballpark: no coupling between sections, no radiation, no plane resonances, qua
 import math, os, re, shutil, subprocess, sys, tempfile, warnings
 import numpy as np
 from ...constants import C0
-from ...touchstone import write_touchstone
+from ...touchstone import log_spaced, write_touchstone
 
 BACKENDS = ('skrf', 'qucsator')
 
@@ -405,7 +405,8 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
             num += 1
             order.append(p.name)
             L.append(f'Pac:P{num} {node(lm.ports[p.name])} gnd Num="{num}" Z="{p.z0:g} Ohm" P="0 dBm" f="1 GHz"')
-    L.append(f'.SP:SP1 Type="lin" Start="{freq[0]:.9g}" Stop="{freq[-1]:.9g}" Points="{len(freq)}" Noise="no"')
+    kind = 'log' if log_spaced(freq) else 'lin'
+    L.append(f'.SP:SP1 Type="{kind}" Start="{freq[0]:.9g}" Stop="{freq[-1]:.9g}" Points="{len(freq)}" Noise="no"')
     return "\n".join(L) + "\n", order
 
 

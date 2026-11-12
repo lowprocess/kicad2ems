@@ -84,6 +84,7 @@ It declares, as class attributes:
 | `api` | the `kicad2ems.api` version it is written for: `(2, 1)` |
 | `name`, `aliases`, `label` | `'mom25d'`, `('mom',)`, `'mom25d (MoM)'`; `name` is also its config table `[solver.mom25d]` |
 | `consumes` | `'board'` (the geometry) or `'network'` (the line model) |
+| `in_auto`, `in_all` | whether `--solvers auto` may pick it, and whether `all` includes it (default True; False for a variant of another solver or one for part of a band: mixed, pcbqs) |
 | `previewed` | `--preview` prepares it without solving |
 | `rank`, `order` | rough cost (cheap solvers run first); its place in lists |
 | `capabilities` | `{feature: 'yes' \| 'no' \| 'ignored' \| 'approximated: how'}` over `FEATURES` |

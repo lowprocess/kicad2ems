@@ -261,12 +261,16 @@ def _draw_smith_grid(ax, r_vals=(0.2, 0.5, 1, 2, 5), x_vals=(0.2, 0.5, 1, 2, 5))
 def plot_results(f, S, names, title, overlays=(), label='openEMS'):
     """|S| in dB (all parameters) and the reflections on a Smith chart. overlays: [(f, S, label, style)]
     drawn in the same colours (e.g. a Touchstone file to compare, the fast line model)."""
+    from .touchstone import band_unit, log_spaced
     n = S.shape[1]
     fig = Figure(figsize=(14, 5.8))
     gs = fig.add_gridspec(1, 2, width_ratios=[1.45, 1])
     ax = fig.add_subplot(gs[0])
     sax = fig.add_subplot(gs[1])
     _draw_smith_grid(sax)
+    hz, unit = band_unit(f)                                 # a band below 1 GHz in MHz or kHz
+    if log_spaced(f):                                       # a log sweep: its decades evenly
+        ax.set_xscale('log')
     k = 0
     for j in range(n):
         for i in range(j, n):                               # lower triangle incl. diagonal (reciprocal network)
@@ -275,12 +279,12 @@ def plot_results(f, S, names, title, overlays=(), label='openEMS'):
             k += 1
             if not np.isfinite(S[:, i, j]).any():                   # not excited: nothing to show or compare
                 continue
-            ax.plot(f / 1e9, 20 * np.log10(np.abs(S[:, i, j]) + 1e-15), color=c, lw=2.0 if i == j else 1.6,
+            ax.plot(f / hz, 20 * np.log10(np.abs(S[:, i, j]) + 1e-15), color=c, lw=2.0 if i == j else 1.6,
                     label=f"{lab} {label}")
             for fo, So, olab, style in overlays:
                 if i < So.shape[1] and j < So.shape[1] and np.isfinite(So[:, i, j]).any():
-                    ax.plot(fo / 1e9, 20 * np.log10(np.abs(So[:, i, j]) + 1e-15), style, color=c, lw=1.3,
-                            label=f"{lab} {olab}")
+                    ax.plot(fo / hz, 20 * np.log10(np.abs(So[:, i, j]) + 1e-15), ls=style, color=c, lw=1.3,
+                            label=f"{lab} {olab}")              # ls: a dash pattern is a tuple, not a format
             if i == j:
                 g = S[:, i, i]
                 sax.plot(g.real, g.imag, color=c, lw=1.8, label=f"{lab} {label}")
@@ -288,8 +292,8 @@ def plot_results(f, S, names, title, overlays=(), label='openEMS'):
                 sax.plot(g.real[-1], g.imag[-1], 's', color=c, ms=5)
                 for fo, So, olab, style in overlays:
                     if i < So.shape[1] and np.isfinite(So[:, i, i]).any():
-                        sax.plot(So[:, i, i].real, So[:, i, i].imag, style, color=c, lw=1.3, label=f"{lab} {olab}")
-    ax.set_xlabel('Frequency (GHz)')
+                        sax.plot(So[:, i, i].real, So[:, i, i].imag, ls=style, color=c, lw=1.3, label=f"{lab} {olab}")
+    ax.set_xlabel(f"Frequency ({unit})")
     ax.set_ylabel('|S| (dB)')
     ax.set_title('S-parameters (reflection: thick, transmission/coupling: thin)', fontsize=10)
     ax.grid(alpha=0.3)
@@ -297,7 +301,7 @@ def plot_results(f, S, names, title, overlays=(), label='openEMS'):
     ax.legend(fontsize=8, ncol=2 if n_entries > 8 else 1)
     h, l = sax.get_legend_handles_labels()
     h += [Line2D([], [], ls='none', marker='o', color='0.3', ms=5), Line2D([], [], ls='none', marker='s', color='0.3', ms=5)]
-    l += [f"{f[0] / 1e9:g} GHz", f"{f[-1] / 1e9:g} GHz"]
+    l += [f"{f[0] / hz:g} {unit}", f"{f[-1] / hz:g} {unit}"]
     sax.legend(h, l, fontsize=7.5, loc='upper left', bbox_to_anchor=(-0.02, 1.02), framealpha=0.85)
     sax.set_title('Reflection (Smith chart)', fontsize=10)
     fig.suptitle(title, x=0.02, ha='left', weight='bold')

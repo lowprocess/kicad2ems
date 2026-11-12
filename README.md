@@ -14,7 +14,7 @@ packages of their own, each in its repository:
 | [kicad2ems-ipc](https://github.com/lowprocess/kicad2ems-ipc) | the KiCad plugin: the impedance map, and simulations set up from the PCB editor | KiCad's Plugin and Content Manager |
 | [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) | the FDTD solvers, openEMS and gfdtd, on one shared FDTD model | `pip install '.[openems]'`, `'.[gfdtd]'` |
 | [mom25d](https://github.com/lowprocess/mom25d) | the 2.5D Method-of-Moments solver, with its kicad2ems plugins | `pip install '.[mom]'` |
-| [pcbqs](https://github.com/lowprocess/pcbqs) | DC/PDN, quasistatic fields and ngspice operational circuits | `pip install '.[qs]'` |
+| [pcbqs](https://github.com/lowprocess/pcbqs) | DC/PDN, quasistatic fields, low-frequency S-parameters, ngspice circuits and temperature | `pip install '.[qs]'` |
 | [gfdtd](https://github.com/lowprocess/gfdtd) | a 3D FDTD engine for the GPU or the CPU (kicad2ems-fdtd runs it) | `pip install '.[gfdtd]'` |
 | [dfsynth](https://github.com/lowprocess/dfsynth) | distributed filter synthesis (the GUI's Filter page) | `pip install '.[filter]'` |
 
@@ -24,6 +24,7 @@ packages of their own, each in its repository:
 | [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | the `mom` extra; a GPU optional |
 | [gfdtd](docs/gfdtd.md) (3D FDTD on the GPU) | `gfdtd` | openEMS's model, 8–20x faster on a GPU, ~2x on the CPU, without conductor loss | the `gfdtd` extra; a GPU, or its compiled CPU core |
 | Transmission-line model | `lines` | a quick estimate: impedance steps, delays, layout mistakes | scikit-rf or qucsator |
+| [pcbqs](https://github.com/lowprocess/pcbqs/blob/main/docs/sparams.md) (quasi-static) | `pcbqs` | the low end, DC to about a tenth of a wavelength: copper resistance, loop inductance, where the return current goes | the `qs` extra; run only when named |
 
 By default kicad2ems picks the full-wave solver it expects to be fastest for your board and adds the
 line model ([which solver](docs/usage.md#which)).

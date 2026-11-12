@@ -210,6 +210,9 @@ CORE = [
     Option('fmin', 0.5, "GHz (default {default})", float, gui='f min (GHz)', group='band'),
     Option('fmax', 10.0, "GHz (default {default})", float, gui='f max (GHz)', group='band'),
     Option('points', 401, "frequency points (default {default})", int, gui='Frequency points', group='band'),
+    Option('sweep', 'linear', "how the points are spaced: linear (default) or log (evenly on a log scale: a band of "
+           "several decades, as the low-frequency solver's; fmin above 0)", choices=('linear', 'log'),
+           gui='Frequency spacing', group='band'),
     Option('compare', None, "Touchstone file to overlay on the result plot", path=True, group='output'),
     Option('preview', False, "write the model (and openEMS's mesh) preview, the line sections and the report, run "
            "the solvers other than openEMS, then exit", bool, group='output'),
@@ -404,6 +407,8 @@ def build_settings(cli=None, config=None, default_solvers=None):
         raise ConfigError(f"fmin ({s.fmin:g} GHz) must be below fmax ({s.fmax:g} GHz)")
     if s.points < 2:
         raise ConfigError("points must be at least 2")
+    if s.sweep == 'log' and s.fmin <= 0:
+        raise ConfigError(f"sweep = log: fmin ({s.fmin:g} GHz) must be above 0")
     if s.rough is not None and s.rough < 0:
         raise ConfigError(f"rough = {s.rough:g}: um RMS, at least 0")
     if s.rough and not s.sigma:

@@ -32,6 +32,7 @@ is invalid or a named solver cannot run. Settings and solvers are checked before
 | `qucs` | the [line model](transmission-lines.md), solved by qucsator | qucsator on PATH |
 | `scikit` | the line model, solved by scikit-rf | scikit-rf |
 | `lines` | `qucs` if qucsator is installed, otherwise `scikit` | |
+| `pcbqs` (or `qs`) | pcbqs, quasi-static: the low end of a band, from DC to about a tenth of a wavelength, with the return current where it flows ([details](https://github.com/lowprocess/pcbqs/blob/main/docs/sparams.md)) | the `qs` extra; run only when named |
 | `auto` | the default: the full-wave solver expected to be fastest, plus the line model | |
 | `all` | every solver | |
 
@@ -47,6 +48,14 @@ are drawn over it and compared with it in the report.
 `--mom` and `--fast` add mom25d or the line model as an extra reference. If a reference can't run, you
 get a warning and the run continues. If a solver named in `--solvers` can't run or can't model the
 board, the run stops before starting.
+
+Below a few hundred MHz on a board of a few centimetres the full-wave solvers are slow and lose accuracy (an FDTD
+run of 100,000 steps or more; mom25d's mixed-precision solves falling back to double precision), and the line
+model has no DC resistance and no return path. `--solvers pcbqs` solves the copper's currents there instead,
+and its charge where the band asks for it: `--fmin 0.00001 --fmax 0.1 --sweep log` is 10 kHz to 100 MHz, evenly
+spaced on a log scale. Its run says to
+what frequency it holds on the board, and two ports whose return is not joined (a ground via missing between
+two planes) are reported as such.
 
 Antenna mode (`mode = "antenna"`) needs openEMS, gfdtd or mom25d. mom25d models antennas over an infinite
 ground plane, so it suits patches and arrays but not antennas that use the board edge.
@@ -149,6 +158,7 @@ dmax    = 0.4
 |---|---|---|
 | `--fmin`, `--fmax` | 0.5, 10 | the band, GHz |
 | `--points` | 401 | frequency points |
+| `--sweep` | `linear` | their spacing: `linear`, or `log` (evenly on a log scale, for a band of several decades; `fmin` above 0). The result plot's axis is then logarithmic, in MHz or kHz below 1 GHz |
 | `--res` | 20 | cells per wavelength at fmax |
 | `--fine` | automatic | cell size at copper edges, mm ([details](meshing.md#cell-sizes)) |
 | `--air` | 5 | air between the board and the boundary, mm (antenna mode: at least λ/4); or six values xmin,xmax,ymin,ymax,zmin,zmax, ymax being the board's top edge in KiCad |

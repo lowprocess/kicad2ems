@@ -97,7 +97,8 @@ an order of magnitude more than the solver's: taking planes out brought rf_strip
 ## Power tools (pcbqs)
 
 `pcbqs.pdn` (a rail's DC drop and impedance), `pcbqs.mqs` (a converter's near field), `pcbqs.circuit` and
-`pcbqs.power_circuit` (switching circuits on the board's copper) and `pcbqs.thermal`. What exists and how it was
+`pcbqs.power_circuit` (switching circuits on the board's copper), `pcbqs.thermal` and `pcbqs.sparams` (the
+ports' S-parameters at the low end, a solver of kicad2ems). What exists and how it was
 validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.md`.
 
 ### Correctness and workflow
@@ -120,15 +121,14 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    metadata; the switch node's E in the converter workflow (the Coulomb E of the surface charges is there, the
    inductive E is not) and output-inductor models; decap and via mounting inductance from the quasi-static solver
    instead of the formula.
-7. **Low-frequency S-parameters: pcbqs as a `sparams` engine.** The quasi-static solver already gives the
-   impedance matrix between copper terminals (`CopperPorts.extract`: R and L, and C with `capacitance=True`),
-   which is what a board's ports see from DC to about λ/10: S = (Z − Z0)(Z + Z0)⁻¹ at the run's ports, written as
-   the other solvers write theirs. It covers what the full-wave solvers do worst, the low end of a sweep
-   (mom25d's low-frequency conditioning: rf_diffvia at 1 GHz; FDTD's step count), and it resolves where the
-   return current goes: ground vias missing or in the wrong place show as extra loop inductance and as common
-   impedance between ports. It needs the board's P<n> ports as terminal pairs, the frequency where it stops
-   being valid stated for each run (the board's size against λ/10), and a check against mom25d and gfdtd where
-   both hold: demo_transition, rf_diffvia, and the same board with a stitching via taken out.
+7. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`). Left: the
+   run's lumped parts between their pads (the quasi-static solver takes elements already, so a decoupled rail or
+   a lumped filter would have its low end too; today they are left out and listed as deviations); gap ports; the
+   two-face copper with the charge is slow on a stack of several dielectrics (25 s a frequency at
+   15,000 triangles on demo_transition, 77 s at 9,000 on pcbqs's return-path example), and a narrow trace's
+   capacitance as one sheet is what keeps a matched line's S11 a few dB high at the top of the band. In the
+   window, the Results plot draws a log sweep (`sweep = "log"`) on a linear axis in GHz: a log axis and the
+   band's own unit, as the report's plot has.
 
 ### Speed
 

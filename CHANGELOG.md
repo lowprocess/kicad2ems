@@ -9,6 +9,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **A low-frequency solver: `--solvers pcbqs`.** pcbqs's quasi-static solve of the copper as an S-parameter
+  solver (`qs` extra; also `qs`, `quasistatic`), for the low end of a band, from DC to about a tenth of a
+  wavelength: the copper's resistance, the loop inductance with the return current where it flows, and the
+  copper's capacitance where the band reaches it. It is run only when named (`auto` and `all` leave it out),
+  says to what frequency it holds on the board, reports two ports whose return is not joined, and writes each
+  layer's current for the Viewer. `--sweep log` (`sweep = "log"`) spaces a run's frequencies evenly on a log
+  scale, for such a band of several decades: every solver takes them, and the result plot's axis is then
+  logarithmic, in MHz or kHz below 1 GHz. On `demo_transition` and `rf_diffvia` from 0.05 to 1 GHz it is
+  within 0.008 rms |ΔS| of gfdtd up to 200 MHz and 0.03 up to 1 GHz, in 33 s; with `rf_diffvia`'s return vias
+  taken out it gives the common mode's −11.0 dB at 50 MHz (gfdtd −11.1 dB), which the line model does not see.
+  See docs/usage.md#solvers and pcbqs's docs/sparams.md.
 - **Questions and engines (API 2.6).** A study asks questions of a board and engines answer them
   (`kicad2ems.study`): the ports' S-parameters, an antenna's pattern, the traces' impedances, a rail's drop, its
   impedance, a converter's near field, a circuit, capacitance, the temperature. An engine is a solver plugin or
@@ -97,6 +108,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   on those two is in ROADMAP.md.
 
 ### Fixed
+- **mom25d kept a differential pair's wave ports below the band their feed supports.** With `--mom-port auto` a
+  single port falls back to a lumped one when its feed's cuts span under 0.1 rad at the lowest frequency; a pair
+  did not, and on rf_diffvia's 10 mm feeds from 0.05 to 1 GHz every term was wrong (|Sdd21| −48 dB at 50 MHz,
+  0.59 rms |ΔS| from gfdtd). A pair is now refused the same way and its legs are solved as lumped ports, the
+  modes taken from them: 0.004 to 0.009 from gfdtd. Found by the check of the new low-frequency solver.
+- **A run of four or more solvers ended at its result plot.** The third solver drawn over the reference has a
+  dash pattern for its line, a tuple that was passed as matplotlib's format: the Touchstone files were written,
+  the plot, the summary and the report were not. Seen once pcbqs made a fourth.
 - **The qs, gui and filter extras installed stale packages.** They pin pcbqs and kicad2ems-gui by revision, and
   the pins had stayed at 7 November while both moved on (pcbqs by 68 commits: no circuit engine, no thermal). They
   name the current revisions again; the kicad2ems-project checkout's `sync_pins.py` checks them against its

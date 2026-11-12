@@ -147,7 +147,8 @@ class Job:
         if settings.board.lower().endswith('.json') and self.name.endswith('_board'):
             self.name = self.name[:-len('_board')]                 # <name>_board.json of an earlier run
         self.fmin, self.fmax = settings.fmin * 1e9, settings.fmax * 1e9
-        self.freq = np.linspace(self.fmin, self.fmax, settings.points)
+        self.freq = (np.geomspace if getattr(settings, 'sweep', 'linear') == 'log' else np.linspace)(
+            self.fmin, self.fmax, settings.points)
         self.antenna = settings.antenna
         self.t0 = time.time()
         self.lm = self.m = self.finish = None
