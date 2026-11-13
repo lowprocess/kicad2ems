@@ -176,15 +176,16 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
 5. **Converters.** The near field finds a regulator IC and, since 2026-11-13, a discrete switching cell (a
    buck's, a boost's, a bridge's legs: pcbqs's CHANGELOG). Left: a flyback (its loop runs through the
    transformer) and an inverting buck-boost (through both capacitors), which are not found; a circuit made of a
-   boost or a bridge found that way (only a buck is made into one); ambiguous bias, enable and supply nets
+   bridge found that way (a buck and, since 2026-11-13, a boost are made into one; a bridge's leg has no one
+   inductor on its node: its tank or its transformer is the model's to draw); ambiguous bias, enable and supply nets
    resolved by part metadata; the switch node's E in the converter workflow (the Coulomb E of the surface
    charges is there, the inductive E is not) and output-inductor models; decap and via mounting inductance from
    the quasi-static solver instead of the formula.
 6. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`), with the
    run's lumped parts between their pads since 2026-11-13 (a lumped filter has its low end). Left: gap ports; the
    two-face copper with the charge is slow on a stack of several dielectrics (25 s a frequency at
-   15,000 triangles on demo_transition, 77 s at 9,000 on pcbqs's return-path example), and a narrow trace's
-   capacitance as one sheet is what keeps a matched line's S11 a few dB high at the top of the band. In the
+   15,000 triangles on demo_transition, 77 s at 9,000 on pcbqs's return-path example). (A matched line's S11
+   was high for want of the edge charge, which is solved on graded edge cells since 2026-11-13.) In the
    window, the Results plot draws a log sweep (`sweep = "log"`) on a linear axis in GHz: a log axis and the
    band's own unit, as the report's plot has.
 
@@ -217,9 +218,11 @@ In order:
    - one sheet or two in the circuit: two move wpthb's settled ripple by 6 % at 2.6 times the time, which the
      powered ripple cannot resolve until the parts are vendor models. It needs a measurement that isolates the
      copper (item 4's jumper variant, or the validation board).
-2. **Capacitance in narrow gaps (0.5 day).** Two traces 0.1 mm apart are −4 % self and −11 % mutual as sheets,
-   −5.5..−7.5 % and −10..−13 % with thickness: the edge charge's resolution within memory (the compressed backend,
-   or graded edge rings).
+2. **Capacitance in narrow gaps, with thickness.** Graded edge rings resolve the edge charge (2026-11-13:
+   two sheets 0.1 mm apart −2.5 % self and −3.6 % mutual against FasterCap, from −10 % and −23 %, on a third of
+   the triangles; `pcbqs.sparams` uses them with the charge). Left: the same with the copper's thickness (face
+   sheets and side charge were −5.5..−7.5 % and −10..−13 % against FasterCap's boxes, on plain cells), and
+   whether the rings should be `MQS(capacitance=True)`'s default.
 3. **A real converter loop, converged.** CM5 U702 (`validation/mqs_cm5.py`): one sheet is within 4 % of Palace's
    PEC sheets at the finest meshes, both still converging; two meshes differ by up to 3.8 % in L. The Jetson's
    eight bucks run, no more. Mesh and crop convergence per board, with measured local refinement before any
