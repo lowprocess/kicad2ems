@@ -125,11 +125,10 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    rail), and a converter's circuit has its supply and load on the board's connectors; what is left of the
    example is the circuit's proposal naming the connector as the rail's source, so that nothing is typed between
    the runs (drafted with a regulator's board of its own, not applied).
-3. **Several rails, in the window.** A config holds them (`[[analysis.pdn]]`) and `kicad2ems study` runs
-   them all; the window shows and runs the first and keeps the rest. Left: the rails in the window, each with
-   its state and result, and their drops side by side in one report. Two mock-ups were shown to the user
-   (2026-11-12): A, a selector above the Rail drop settings (Rail, Add, Remove), recommended; B, a table of the
-   rails over the settings they share. Not built until one is chosen.
+3. **Several rails, the rest.** A config holds them, `kicad2ems study` runs them, and the window has them as a
+   table (the user's choice, 2026-11-13). Left: their drops side by side in one report (each run's is its own
+   today), each row's state in the questions' list (the study's is the last run's), and a rail's own board or
+   output folder (the table's rows share the panel's).
 4. **The full bridge as a general circuit.** `pcbqs.power_circuit` (format 1, the wpthb bridge and its coupled
    receiver) is a second circuit tool beside `pcbqs.circuit` (format 2), with its own deck, settling and results,
    and wpthb's net names (VIN, VBUS, VHB) in its code. The general model has a phase-shifted bridge example

@@ -18,6 +18,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **Several rails in the window, as a table (kicad2ems-gui; API 2.10's `several_keys`).** The user chose the table of
+  the two mock-ups. An analysis that says what differs between its runs (`several_keys`: pcbqs's rail tool, the
+  rail, its volts, source, ground source, loads and load spectra) has those as a table at the top of its
+  settings, a row a run, *Add a rail* and *Remove the rail* under it, and the rest of its settings below, shared.
+  Run makes each row's run in turn, a folder each, as one job of the study (the panel's `ended` signal, after
+  the last row); "Still needed" names the row; a config's `[[analysis.pdn]]` tables open as the rows and are
+  saved as them. On CM5 Minima: +5V and M2_3V3 in one Run, 13.4 and 26.2 mV of drop.
 - **The installer offers the finite-element tools (kicad2ems-fem) with Elmer and Palace.** It was the one package
   of the stack `install.py` never mentioned. Asked for by default only where Elmer or Palace is found. Elmer: one
   found, a folder given (`--elmer PATH`), or built from source on Linux and macOS (`--elmer build`,

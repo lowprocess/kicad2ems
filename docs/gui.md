@@ -43,6 +43,11 @@ with another, floated or closed.
   kind to return through*); a click goes to where it is set. Kicad2ems checks its own run (the board, its
   ports, the band); an analysis says its own. *Run > Run the selected question alone* runs one whatever the
   others still need.
+- <a id="several"></a>**Several rails**: *Rail drop*'s settings start with a table of the board's rails, a row
+  each (rail, volts, source, ground source, loads, load spectra), *Add a rail* and *Remove the rail* under it,
+  and the settings they share below. Run makes each row's run in turn, a folder each (*Results of* lists them),
+  and the study's state is the last one's; a config's `[[analysis.pdn]]` tables
+  ([usage](usage.md#several)) are the rows.
 - <a id="proposals"></a>**What a result proposes**, as buttons under a finished question's settings: a
   converter's near field offers *Copy the input rail to Power integrity* and *Open U702 as a circuit* (the
   converter with its capacitors and inductor from the board, in the Circuit editor); a circuit's result offers

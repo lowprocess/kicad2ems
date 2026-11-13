@@ -45,7 +45,7 @@ in it. A user takes a provider of the same major version and at least the minor 
   2.8 engines compared: an analysis's `figures(folder)`, a `Question`'s `figures`, `compare_engines`; `default_fields`.
   2.9 what a window shows first and what a run still needs: an option's `level`, a solver's `basic`, an analysis's
   `missing(values, board, results)` and `uses`, `rf_needs`.
-  2.10 several runs of one analysis in a study (a board's rails): an analysis's `several`, `read_analysis_sets`.
+  2.10 several runs of one analysis in a study (a board's rails): an analysis's `several` and `several_keys`, `read_analysis_sets`.
   [CHANGELOG.md](https://github.com/lowprocess/kicad2ems/blob/main/CHANGELOG.md) has each release's.
 
 Both API modules load their names on first use: importing one costs nothing until a name is used.
@@ -181,6 +181,7 @@ and implements:
 | `missing(values, board, results=None)` | what a run of these settings still needs before it is started: `[dict(text, key)]`, `key` the option it is set by. By default what `command` raises; an analysis that can tell more from the board cheaply says it here (pcbqs's rail: a load with no pad on ground). `results` holds `None` for an analysis asked with it that has no result yet (2.9) |
 | `uses` | the analyses whose latest result it can start from when there is one (the temperature, from a circuit's losses): not required, as `needs` are. What one of them will give in the same run is not missing (2.9) |
 | `several` | what a study may hold several settings of it by, each a run of its own, as a front end names them (`'rail'`: a board's rails, a config's `[[analysis.<name>]]` tables); `''`: one. `tag(values)` tells the runs apart: it names their folders and the study's lines (2.10) |
+| `several_keys` | the options that differ from one of those runs to the next (`('rail', 'volts', 'source', ...)`): a front end shows them as a table, a row a run, and the others once, shared (2.10) |
 
 Its maps need no method: an analysis writes them as field dumps under `<out>/<name>/exc_<what>/` with its board
 as `<out>/<name>_board.json`, and a viewer of a run's dumps shows them. A dump's entry in `dump_info.json` may give

@@ -63,6 +63,8 @@ and, since 2.10,
   several                 what a study may hold several settings of it by, each a run of its own, as a front end
                           names them ('rail': a board's rails; a config's [[analysis.<name>]] tables, read_sets);
                           '': one. A run's tag(values) tells them apart
+  several_keys            the options that differ from one of them to the next (a rail's net, its voltage, its
+                          loads): a front end shows them as a table, a row a run, the others shared
 and, since 2.9,
   missing(values, board, results=None)
                           what a run still needs, [dict(text, key)]: the default is what command() raises
@@ -117,6 +119,7 @@ class Analysis:
     fields = ''
     uses = ()
     several = ''
+    several_keys = ()
 
     def for_questions(self, values, asked):
         """The settings for a run asked only the questions `asked` of those it provides."""
