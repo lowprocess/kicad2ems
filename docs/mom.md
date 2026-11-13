@@ -348,14 +348,16 @@ mom25d chooses how to solve from the memory available, and the log says which (`
 | GPU LU | above 25,000 unknowns, or where the hybrid's RAM doesn't fit: the refinement is matrix-free | 10 N² bytes RAM, 8 N² bytes GPU |
 | GPU LU, streamed | Vulkan, and RAM short even of that: the matrix is filled straight into the GPU a block of rows at a time | about 1 GB RAM, 8 N² bytes GPU |
 | tiled | CuPy, the GPU LU doesn't fit (`--mom-tiled`) | little RAM, 4 N² bytes GPU, the rest streamed from RAM |
-| compressed (BLR / ACA) | nothing else fits | much less, but far slower on large boards |
+| block low-rank (BLR), compiled | from 20,000 unknowns where the hybrid does not hold the matrix (any GPU path past it, or no GPU), and wherever nothing else fits | about 3 N² bytes at most: a fifth of a single-precision matrix |
+| compressed (ACA, HODLR) | without the compiled core, nothing else fits | much less, but far slower on large boards |
 
 Past 25,000 unknowns the hybrid's double-precision matrix costs more in memory traffic than its cheaper refinement
 saves (`MOM25D_HYBRID_MAX_N` moves the limit): rf_siw (28.7k unknowns) takes 296 s on the GPU LU against 456 s
 hybrid, antenna_vivaldi (21.9k) 148 s hybrid against 171 s. The GPU takes an LU up to its own estimate of the memory it needs (the matrix and its work arrays) with 0.5 GB or 3 %
 to spare: on a 16 GB card about 41,000 unknowns. antenna_cp_patch's 40,827 factor there in 19 s. The streamed path
 is about 1.3× slower a solve than the GPU LU (its fill can't use the matrix's symmetry), but it solves that board
-in 5.8 GB of RAM, where the compressed solvers took more than 30 minutes a frequency. The free memory is a cgroup's
+in 5.8 GB of RAM, where the compressed solvers took more than 30 minutes a frequency (the compiled
+[block low-rank solver](#blr) now takes 22.5 s, in 2.4 GB). The free memory is a cgroup's
 where one limits the process (a container, or `systemd-run --scope -p MemoryMax=`).
 
 The **tiled** solver keeps half the (symmetric) matrix on the GPU and builds it a block at a time; it solves the
@@ -374,6 +376,28 @@ Where the GPU's single-precision triangular solves stall at the bottom of a band
 mom25d solves with the GPU's factor on the CPU instead; only where the factor itself is too weak is a frequency
 solved in double precision on the CPU. Below a few hundred MHz the [loop/tree basis](#loop-tree) keeps that from
 happening.
+
+<a id="blr"></a>
+**The block low-rank solver** (`fast.solve_blr`, the compiled core's `BLRFactor`) never holds the matrix. The
+unknowns are cut into tiles of about 500 by a geometric cluster tree. A pair of tiles whose clusters are further
+apart than a third of the larger one's size is compressed to a low-rank product (adaptive cross approximation,
+then QR and SVD); the rest are dense. The tiles are factored in single precision, the low-rank updates
+recompressed as they go, on every core (BLAS and LAPACK are SciPy's). The factor preconditions GMRES on the exact
+operator, so S is the direct solver's to about 1e-6, and across a sweep one frequency's factor serves the next as
+the LU's does. From 20,000 unknowns mom25d takes it wherever the GPU's hybrid does not hold the matrix:
+
+| Board, unknowns | BLR | the path it replaces |
+|---|---|---|
+| rf_siw, 28.7k: the sweep (28 solves) | 272 s, 1.2 GB | 520 s, tiled on the GPU |
+| antenna_cp_patch, 40.8k: a solve | 22.5 s, 2.4 GB | 30.3 s, GPU LU (13 GB on the host and the GPU) |
+| antenna_vivaldi, 21.9k, no GPU: the sweep (25 solves) | 202 s, 1.2 GB | 243 s, the CPU's single-precision LU (11.5 GB) |
+| antenna_vivaldi with the GPU: the sweep | 202 s | 169 s, hybrid (kept: it holds the matrix) |
+
+The compression's tolerance is 1e-5 of the equilibrated matrix. At 1e-3 a fine mesh's matrix was not
+preconditioned at all (antenna_cp_patch: GMRES still at a residual of 0.6 after 500 iterations); where a factor
+stalls GMRES, mom25d factors again at a hundredth of the tolerance and keeps that for the rest of the sweep.
+`MOM25D_BLR_MIN_N` moves the threshold; in the Python API, `sim.solver = 'blr'`, `sim.blr_tol`, `sim.blr_tile`
+and `sim.blr_eta` (the admissibility: 0.3) choose.
 
 <a id="loop-tree"></a>
 ## Low frequency: the loop/tree basis

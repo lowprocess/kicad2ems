@@ -35,7 +35,7 @@ core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ /
 openems = ["kicad2ems-fdtd[openems] @ git+https://github.com/lowprocess/kicad2ems-fdtd"]   # the FDTD solvers' package,
                                                                 # openEMS's side; openEMS and CSXCAD themselves come
                                                                 # from elsewhere (README)
-mom = ["mom25d @ git+https://github.com/lowprocess/mom25d@91db9c74f2252f165cf5516079adc04246d6676f"]     # the MoM solver and its plugins, mom25d and mixed
+mom = ["mom25d @ git+https://github.com/lowprocess/mom25d@0c2fabca053ef7ec1288f3f7d596f1042da5511e"]     # the MoM solver and its plugins, mom25d and mixed
                                                                 # (it brings triangle, its mesher)
 qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@5bd54b26cf983d30242dcf3982de552f6d6056a9"]  # PDN, MQS/PEEC and ngspice operational circuits
 fem = ["kicad2ems-fem @ git+https://github.com/lowprocess/kicad2ems-fem@b29de59fc945e5236ca06e32b7de38559cf6369b"]   # Palace and Elmer behind kicad2ems: a

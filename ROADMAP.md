@@ -95,11 +95,14 @@ that does not need N² memory. In this order:
    direct solver's loop/tree basis. Left: the paths that do not take it (the compressed and tiled solvers, quad
    cells and line functions, holes of PEC planes); the S extraction's floor below ~10 Hz (currents a million
    times the ports': S from the loop and tree amplitudes, not from the summed currents).
-2. **A compressed direct solver in the compiled core.** HODLR's weak admissibility lets the ranks grow on 2D
-   sheets, and HODLR and BLR are Python today. A strong-admissibility H-matrix LU, or a C++/OpenMP block low-rank
-   LU, removes the N² memory wall the GPU paths work around. What the earlier notes listed with it: the near
-   field's reach capped at a distance (ACA from O(N r) entries), HODLR in a nested-dissection order, its symmetry,
-   and an FFT operator (pFFT / AIM) as the route past 100k.
+2. **A compressed direct solver in the compiled core.** Done as a block low-rank LU (CHANGELOG.md;
+   docs/mom.md#blr): compiled, OpenMP, SciPy's BLAS and LAPACK, the GMRES preconditioner of the exact operator;
+   from 20,000 unknowns wherever the GPU's hybrid does not hold the matrix (rf_siw's sweep 272 s against 520 s,
+   antenna_cp_patch 22.5 s a solve in 2.4 GB). Left: GMRES's matrix-free product is now most of a BLR solve (its far
+   field one kernel pass over every triangle pair: a compressed operator at a tight tolerance instead); the
+   near-field correction's sparse build (3-4 s at 22-41k); pivoting only inside the diagonal tiles; a
+   strong-admissibility H-LU for 100k+ (BLR's dense near band grows as N), the near field's reach capped (ACA from
+   O(N r) entries), and an FFT operator (pFFT / AIM) past that.
 3. **The band divided between the two solvers.** Done (`<name>_joined.sNp`: pcbqs to its `valid_to_Hz`, mom25d
    above; CHANGELOG.md). Left: a crossover chosen where the two agree best, not only pcbqs's own estimate.
 4. **A quasi-static mode in mom25d, ranked low.** Building the matrix once saves time only if building it is

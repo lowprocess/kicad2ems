@@ -18,6 +18,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **mom25d's block low-rank solver is compiled, and the large boards' path.** The compressed solvers were Python
+  (an SVD of every tile, the tile LU in Python loops): more than 30 minutes a frequency on antenna_cp_patch
+  (40.8k unknowns), so the GPU paths had to hold the whole matrix. The core now has the block low-rank LU
+  (`BLRFactor`): tiles of a geometric cluster tree, the separated pairs compressed (adaptive cross approximation,
+  QR and SVD), a right-looking tile LU in single precision with the low-rank updates recompressed, on OpenMP's
+  threads with SciPy's BLAS and LAPACK (nothing to link); the factor preconditions GMRES on the exact operator,
+  the ports' columns together. mom25d takes it from 20,000 unknowns wherever the GPU's hybrid does not hold the
+  matrix: rf_siw's sweep (28.7k) 272 s against 520 s tiled on the GPU, antenna_cp_patch 22.5 s a solve in 2.4 GB
+  against 30.3 s on the GPU LU, antenna_vivaldi (21.9k) without a GPU 202 s against 243 s, in 1.2 GB against 11.5.
+  Its tolerance is 1e-5 (1e-3 left antenna_cp_patch unsolved); a factor that stalls GMRES is made again at a
+  hundredth of it. docs/mom.md#blr.
 - **mom25d solves low frequencies in a loop/tree basis (pcbqs's).** Below a few hundred MHz the MPIE's charge part
   (1/jω) swamps its current part (jω) in the matrix mom25d formed, and the loops' currents were lost to rounding:
   the single-precision LU stopped preconditioning (demo_transition below ~100 MHz: each solve again in double)

@@ -80,6 +80,8 @@ def parse(log, name):
         info['path'] = m.group(1)
         if m.group(2):
             info['gpu_gb'] = float(m.group(2))
+    elif 'memory: the block low-rank solver needs' in log:      # (mom25d from sim.BLR_MIN_N unknowns)
+        info['path'] = 'blr'
     return info
 
 
