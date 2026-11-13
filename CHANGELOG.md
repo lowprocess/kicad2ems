@@ -18,6 +18,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **mom25d solves low frequencies in a loop/tree basis (pcbqs's).** Below a few hundred MHz the MPIE's charge part
+  (1/jω) swamps its current part (jω) in the matrix mom25d formed, and the loops' currents were lost to rounding:
+  the single-precision LU stopped preconditioning (demo_transition below ~100 MHz: each solve again in double)
+  and double precision itself drifted below ~10 kHz (S11 3 % off at 10 kHz, its sign wrong at 1 kHz). Below
+  (k h)² = 10⁻⁵ the direct solver now works in the loop/tree basis pcbqs uses (`mom25d/looptree.py`): the mesh as a
+  graph, a node per triangle and one for the ground, a branch per edge and per via chain (its fan's charge moved
+  onto one triangle), a breadth-first tree that carries the charge, and loops that carry none. The current's part
+  is filled with the tables' charge side zeroed, the charge's as potentials between triangles added on the tree
+  alone (the compiled core's new `near_q`, `tree_cols`, `tree_rows` and `charge_into`), so nothing cancels.
+  demo_transition from 100 kHz to 100 MHz: 37 s to 7 s, the same S to 1e-6; with copper loss at 10 Hz S11 is the
+  copper's DC resistance (4.806e-4; the RWG basis 5.34e-4, pcbqs 4.9e-4); at 1 and 6 GHz the two bases agree to
+  1e-12. Each basis keeps its own LUs across a sweep. `sim.loop_tree` (or `MOM25D_LOOP_TREE`) chooses; the
+  compressed and tiled solvers, quad cells, line functions and `--mom-planes holes` stay in the RWG basis.
 - **One band from pcbqs and a full-wave solver (`<name>_joined.sNp`).** A run with both wrote their Touchstone files
   side by side and left the user to know which to believe where. It now also joins them (`join.py`): pcbqs
   below the frequency it says it holds to (its `valid_to_Hz`), mom25d (else the other full-wave solver) above,

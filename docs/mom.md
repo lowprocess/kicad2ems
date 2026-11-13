@@ -372,7 +372,37 @@ against 176 s. The log says which solves reused one; in mom25d's Python API, `si
 
 Where the GPU's single-precision triangular solves stall at the bottom of a band (the matrix worst conditioned),
 mom25d solves with the GPU's factor on the CPU instead; only where the factor itself is too weak is a frequency
-solved in double precision on the CPU.
+solved in double precision on the CPU. Below a few hundred MHz the [loop/tree basis](#loop-tree) keeps that from
+happening.
+
+<a id="loop-tree"></a>
+## Low frequency: the loop/tree basis
+
+mom25d's matrix has two parts: the currents' magnetic coupling, which goes as jω, and their charges', which goes
+as 1/(jω). On a loop of current the charge part is zero, but in the usual basis (RWG: a current across each mesh
+edge) that zero is two large numbers cancelling. Once the current part is smaller than their rounding, the loops'
+currents are lost: about (k h)² of the charge part, h a cell's size. On demo_transition that was below ~100 MHz
+for the single-precision LU (each solve fell back to double) and ~10 kHz in double (S11 3 % off at 10 kHz, its
+sign wrong at 1 kHz).
+
+Below (k h)² = 10⁻⁵ (240 MHz on demo_transition) mom25d solves in a loop/tree basis instead, pcbqs's. The mesh is
+a graph: a node per triangle and one for the ground, a branch per edge and per via. A tree spanning it carries the
+charge, and every other branch with the tree's path back is a loop, which carries none. The two parts are filled
+apart (the current's into the matrix, the charge's as potentials between triangles, added on the tree alone), so
+nothing cancels, and the single-precision LU preconditions it as well at 10 Hz as at 1 GHz:
+
+| demo_transition, 3.9k unknowns | RWG basis | loop/tree basis |
+|---|---|---|
+| 100 kHz–100 MHz, 13 points (kicad2ems, GPU) | 37 s: 6 of 7 solves in double | 7 s |
+| copper loss, S11 at 10 Hz (the copper's DC resistance: 4.807e-4; pcbqs: 4.9e-4) | 5.34e-4 (double) | 4.806e-4 (double and mixed) |
+| lossless, \|S - S(RWG, double)\| at 1 GHz / 6 GHz | | 6e-13 / 1e-13 (double) |
+
+It costs a transform and a table of the triangles' potentials, 0.12 s against the LU's 0.28 s at 3.9k unknowns,
+and the hybrid's memory (24 N² bytes). Each basis keeps its own LUs across a sweep. The compressed and tiled
+solvers, quad cells and line functions, and `--mom-planes holes` solve in the RWG basis at every frequency; so
+does mom25d without its compiled core. In mom25d's Python API `sim.loop_tree` (`auto`, `on`, `off`; or
+`MOM25D_LOOP_TREE`) chooses. Below about 10 Hz the S-parameters' own extraction (from currents a million times
+the ports') sets the floor: about 1e-6 in |S|.
 
 <a id="runtime"></a>
 ## Speed against openEMS

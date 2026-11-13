@@ -91,13 +91,10 @@ solver's own items (large boards, the low end) are in the next section.
 Against Momentum, what mom25d lacks is not a quasi-static mode but a well-conditioned low end and a direct solver
 that does not need N² memory. In this order:
 
-1. **pcbqs's loop/tree basis, ported.** Below a few hundred MHz the MPIE's charge term (1/jω) swamps its current
-   term (jω) in the sum mom25d forms, and the mixed-precision solve stops converging (demo_transition at 10 MHz:
-   residual 0.99, solved again in double). pcbqs already solves this with a sparse loop/tree basis over the
-   triangles' adjacency, the tree's currents scaled by jω and its charge part kept out of the loops' rows
-   (`pcbqs/peec.py`); pcbqs keeps snapshots of mom25d's numerics (`_numerics`), so the two share conventions.
-   mom25d's impedance has to keep its two parts apart until they are projected (today `impedance` adds them), and
-   its via chains and plane holes need their own branches in the tree.
+1. **pcbqs's loop/tree basis, ported.** Done (CHANGELOG.md; docs/mom.md#loop-tree): below (k h)² = 10⁻⁵ the
+   direct solver's loop/tree basis. Left: the paths that do not take it (the compressed and tiled solvers, quad
+   cells and line functions, holes of PEC planes); the S extraction's floor below ~10 Hz (currents a million
+   times the ports': S from the loop and tree amplitudes, not from the summed currents).
 2. **A compressed direct solver in the compiled core.** HODLR's weak admissibility lets the ranks grow on 2D
    sheets, and HODLR and BLR are Python today. A strong-admissibility H-matrix LU, or a C++/OpenMP block low-rank
    LU, removes the N² memory wall the GPU paths work around. What the earlier notes listed with it: the near
@@ -106,11 +103,13 @@ that does not need N² memory. In this order:
 3. **The band divided between the two solvers.** Done (`<name>_joined.sNp`: pcbqs to its `valid_to_Hz`, mom25d
    above; CHANGELOG.md). Left: a crossover chosen where the two agree best, not only pcbqs's own estimate.
 4. **A quasi-static mode in mom25d, ranked low.** Building the matrix once saves time only if building it is
-   what costs: pcbqs builds once and is still slower in the overlap band, because each frequency's dense LU
-   dominates, and mom25d already keeps its frequency-independent singular parts and reuses its LUs across a sweep.
-   First profile how much of a sweep the per-frequency Green tables and fill take. If it is built, it belongs in
-   mom25d, on a static version of its layered Green's function with the PEC ground (`GreenTableML`): that, not a
-   mode, is what lets Momentum's RF mode go past λ/10 without meshing the planes.
+   what costs. Profiled 2026-11-13 (kicad2ems's defaults, GPU): the per-frequency build (Green tables, fill, near
+   correction, via kernels) is 39-50 % of a sweep on the mid-size examples (4-9k unknowns: demo_transition 3.9 s
+   of 10.3, rf_diffvia 10.5 of 20.8), 36 % on antenna_vivaldi (21.9k: 66 s of 184; LU and refinement 92 s) and
+   6 % on rf_siw (28.7k: the tiled factor 417 s of 520). The larger the board, the more the factorisation
+   dominates: the compressed direct solver (item 2) is the bigger gain. If a quasi-static mode is built, it belongs
+   in mom25d, on a static version of its layered Green's function with the PEC ground (`GreenTableML`): that, not
+   a mode, is what lets Momentum's RF mode go past λ/10 without meshing the planes.
 
 ## Power tools (pcbqs)
 
