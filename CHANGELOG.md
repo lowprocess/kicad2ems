@@ -18,6 +18,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **mom25d: a trace over a plane's hole (`--mom-planes holes`).** A plane that only vias run through is a
+  perfect conductor with each hole a few unknowns; the hole's field was taken as axisymmetric, so a trace
+  crossing its rim saw the plane closed under it (0.065 in |S| from the meshed plane at 10 GHz on a microstrip
+  to stripline transition, 0.08 on demo_transition). The hole now also carries its first azimuthal order: two
+  shapes that go as cos φ and sin φ about the via, each a part along k (TM, a potential as before) and a part
+  across it (TE, tested on the edges as a field), with the holes of one plane coupled. Against the plane meshed
+  finely enough to have settled: 0.004 on the transition (1,661 unknowns for 11,256, 0.3 s a frequency for 16 s),
+  0.005 on two transitions 1.2 mm apart and on demo_transition (1,508 unknowns for 14,220; 3,910 with the
+  plane's usual cells, which are 0.01 from the fine mesh themselves). demo_transition's S11 agrees with openEMS
+  to −31.3 dB, as the meshed plane's does (−25.9 dB before). The hole's kernels are also five times faster (the real Bessel functions on
+  the real part of the contour). docs/mom.md#plane-holes has the table and what keeps it from being the default.
 - **A setting is picked on the board (kicad2ems-gui; `kicad2ems.layout`, API 2.11).** The Viewer's plan shows
   the board as drawn as soon as one is chosen, before any preview or run: every net's copper and the parts'
   outlines, read off the event loop (`board_layout`: CM5's in 3.7 s). A setting that names a net or a part has

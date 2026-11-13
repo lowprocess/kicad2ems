@@ -77,16 +77,17 @@ board imported with a few nets can have its pours' voids filled (`--fill-voids`)
 an order of magnitude more than the solver's: taking planes out brought rf_stripline from 100 s to 3 s. The
 solver's own items (large boards, the low end) are in the next section.
 
-1. **A plane a via runs through: the trace over the hole.** `--mom-planes holes` has the plane as PEC and the
-   hole's voltage as an unknown (`mom25d/frill.py`; docs/mom.md#plane-holes), with an axisymmetric field in the
-   hole: exact for the pads (their capacitance within 0.6 % of the meshed plane's), but a trace crossing the
-   hole's rim sees the plane closed under it (0.03 in |S| at 5 GHz, 0.065 at 10 GHz for a 0.45 mm hole and 0.3 mm
-   pads; demo_transition's S11 against openEMS −27.7 dB for −32.3). What it needs is the hole's first azimuthal
-   order: field shapes in cos φ and sin φ, which are TE as well as TM (the network's other mode, tested on the
-   edges as a field, not a potential). Then it can be the default, and holes that are not round (their area's
-   circle today) and a plane on the top interface can follow. Gain as measured: demo_transition 3,910 unknowns to
-   1,504, a transition alone 4,978 to 1,656 (nine times faster); a CM5 carrier's PCIe pair, 54,885 after filling
-   its voids, about 12k.
+1. **A plane a via runs through, as the default.** `--mom-planes holes` has the plane as PEC and each hole a
+   few unknowns (`mom25d/frill.py`; docs/mom.md#plane-holes): its axisymmetric field and, since 2026-11-13, its
+   first azimuthal order, which a trace over the hole drives. It is within 0.005 in |S| of the plane meshed
+   finely on the transitions tried (closer than the plane meshed with kicad2ems's usual cells is), and as close
+   to openEMS as the meshed plane on demo_transition, for a third of the unknowns or fewer (3,910 to 1,508; a
+   transition alone 11,256 to 1,661; two side by side 11,972 to 2,938; a CM5 carrier's PCIe pair, 54,885 after
+   filling its voids, about 12k). Before it can be the default: the loop/tree
+   basis with the holes (the low end is the RWG basis's on such a board today); a hole two vias share (a
+   differential pair's antipad: most pairs on real boards) and holes that are not round (their area's circle
+   today); the second azimuthal order where holes nearly touch (0.012 at 10 GHz with 0.1 mm between them); a
+   plane on the top interface; the hole's field in the dumps, the near field and the far field.
 2. **Coupled runs in the mixed solver.** It cuts only lone traces into lines, and needs wave ports. 4-port coupled
    lines (`line_char_pair` exists) would take a pair's straight runs: about 40 % of that PCIe pair's length, whose
    unknowns scale with it (the pair alone: ~7k for 55 mm).
@@ -113,9 +114,12 @@ that does not need N² memory. In this order:
 2. **A compressed direct solver in the compiled core.** Done as a block low-rank LU (CHANGELOG.md;
    docs/mom.md#blr): compiled, OpenMP, SciPy's BLAS and LAPACK, the GMRES preconditioner of the exact operator;
    from 20,000 unknowns wherever the GPU's hybrid does not hold the matrix (rf_siw's sweep 272 s against 520 s,
-   antenna_cp_patch 22.5 s a solve in 2.4 GB). Left: GMRES's matrix-free product is now most of a BLR solve (its far
-   field one kernel pass over every triangle pair: a compressed operator at a tight tolerance instead); the
-   near-field correction's sparse build (3-4 s at 22-41k); pivoting only inside the diagonal tiles; a
+   antenna_cp_patch 22.5 s a solve in 2.4 GB). Left: GMRES's matrix-free product (its far field one kernel pass
+   over every triangle pair), for which a compressed operator at a tight tolerance was looked at on 2026-11-13
+   and not built: with a factor made at the frequency GMRES takes 3 to 7 exact products, so the product is not
+   what a fresh solve costs; it would pay only where a factor is kept across frequencies and the iterations
+   grow, which the path does not do yet (that reuse first, then the operator). The near-field correction's
+   sparse build (3-4 s at 22-41k); pivoting only inside the diagonal tiles; a
    strong-admissibility H-LU for 100k+ (BLR's dense near band grows as N), the near field's reach capped (ACA from
    O(N r) entries), and an FFT operator (pFFT / AIM) past that.
 3. **The band divided between the two solvers.** Done (`<name>_joined.sNp`: pcbqs below the crossover, mom25d

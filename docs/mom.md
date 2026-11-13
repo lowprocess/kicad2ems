@@ -56,20 +56,33 @@ of the fully meshed model (rf_marchand 0.085), with the same agreement with open
 **A plane a via runs through** (`--mom-planes holes`, experimental). A plane between the copper layers whose only
 holes are those of vias through it (round or nearly, one via each, the via near the middle) is a perfect conductor
 of the stack too: what is above it sees it as its ground, what is below as its cover, and neither sees the other.
-The via's current runs on through the hole, and the hole carries the voltage across it as an unknown (two field
-shapes by default, `mom25d/frill.py`): the hole's capacitance into both sides, charged by what the pads and traces
-near it induce. A via that lands on the plane ends there; a plane with a slot, a cut-out or a hole two vias share
-stays meshed.
+The via's current runs on through the hole, and the hole's field is a few unknowns (`mom25d/frill.py`): two
+shapes of the voltage across it, which is the hole's capacitance into both sides, charged by what the pads near
+it induce; and two shapes that go as cos φ and sin φ about the via, the field a trace puts there when it crosses
+the hole's rim (its return current has to go round the hole, and its charge finds no plane under it). A via that
+lands on the plane ends there; a plane with a slot, a cut-out or a hole two vias share stays meshed.
 
 ![The mesh of a via through a plane: the plane meshed with its hole, and the plane as PEC with the hole as an unknown](img/mom_plane_holes.png)
 
-The hole's field is taken as axisymmetric. That is exact for what the pads do: two pads joined by a via through a
-0.45 mm hole have 202.0 fF with the plane meshed and 203.2 fF this way (280.6 fF with the hole closed). It leaves
-out what a trace crossing the hole's rim adds, which sees the plane closed under it. On the structure above
-(0.3 mm pads, 0.45 mm hole) |S| is within 0.03 of the meshed plane's to 5 GHz and 0.065 at 10 GHz, 0.02 with a
-hole no wider than the pads; on demo_transition (a 0.6 mm hole) within 0.08, |S21| within 0.02 dB, for 1,504
-unknowns in place of 3,910, and the agreement of S11 with openEMS goes from −32.3 to −27.7 dB. The hole's own
-field is not in the current dumps, the near field or the far field.
+Against the same plane meshed, with cells fine enough on the plane for its answer to have settled (0.3 mm; at
+0.6 mm the meshed plane itself is 0.012 from that on one transition and 0.06 on a pair):
+
+| | Unknowns: meshed finely, as a hole | max \|ΔS\| to the meshed plane (axisymmetric shapes alone) |
+|---|---|---|
+| a microstrip to a stripline through a 0.45 mm hole, 1 to 10 GHz | 11,256 → 1,661 | 0.004 (0.057) |
+| two such transitions 1.2 mm apart, the holes 0.3 mm from each other | 11,972 → 2,938 | 0.005 (0.062) |
+| demo_transition (a 0.6 mm hole), 1 to 8 GHz | 14,220 → 1,508 | 0.005 (0.077) |
+
+Two pads joined by a via through a 0.45 mm hole have 202.0 fF with the plane meshed and 203.2 fF this way
+(280.6 fF with the hole closed). The single transition takes 0.3 s a frequency in place of 16 s.
+demo_transition with its plane meshed as kicad2ems does by default (cells of 0.9 mm on a plane: 3,910 unknowns)
+is 0.013 from the hole model and 0.01 from the fine mesh; its S11 agrees with openEMS to −31.3 dB with the hole
+model and −31.1 dB with that mesh (−25.9 dB before the hole had its first azimuthal order). Holes of one plane see each other (the admittance between their unknowns),
+which matters only when they nearly touch: two 0.55 mm holes with 0.1 mm of plane between them are 0.012 off at
+10 GHz, where the next azimuthal order would be wanted. What keeps this from being the default: the low end
+(the loop/tree basis does not take the holes yet, so such a board's lowest frequencies are solved in the RWG
+basis), holes that are not round or that two vias share (a differential pair's antipad stays meshed), and
+the hole's own field, which is not in the current dumps, the near field or the far field.
 
 <a id="sweep"></a>
 **The adaptive sweep.** mom25d solves only some frequencies. It fits one rational model through all of S (AAA)
