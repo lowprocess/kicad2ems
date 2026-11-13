@@ -101,9 +101,14 @@ Against Momentum, what mom25d lacks is not a quasi-static mode but a well-condit
 that does not need N² memory. In this order:
 
 1. **pcbqs's loop/tree basis, ported.** Done (CHANGELOG.md; docs/mom.md#loop-tree): below (k h)² = 10⁻⁵ the
-   direct solver's loop/tree basis. Left: the paths that do not take it (the compressed and tiled solvers, quad
-   cells and line functions, holes of PEC planes); the S extraction's floor below ~10 Hz (currents a million
-   times the ports': S from the loop and tree amplitudes, not from the summed currents).
+   direct solver's loop/tree basis, which the block low-rank path hands these frequencies to where its dense
+   matrix fits, with a double-precision factor where it does not. Left: **a large board at low frequency in
+   compressed form.** The loop/tree basis's paths are not local, so its matrix does not compress by tiles; the
+   double factor is right but nearly dense. The way is the current-and-charge form (the augmented EFIE:
+   unknowns I and q, blocks jωA, DᵀP, D, jω: each compresses at an ordinary tolerance and none cancels), its
+   tiles holding the currents and charges of one place. Also left: the tiled solver, quad cells and line
+   functions, holes of PEC planes; the S extraction's floor below ~10 Hz (currents a million times the ports':
+   S from the loop and tree amplitudes, not from the summed currents).
 2. **A compressed direct solver in the compiled core.** Done as a block low-rank LU (CHANGELOG.md;
    docs/mom.md#blr): compiled, OpenMP, SciPy's BLAS and LAPACK, the GMRES preconditioner of the exact operator;
    from 20,000 unknowns wherever the GPU's hybrid does not hold the matrix (rf_siw's sweep 272 s against 520 s,

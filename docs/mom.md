@@ -422,9 +422,14 @@ nothing cancels, and the single-precision LU preconditions it as well at 10 Hz a
 | lossless, \|S - S(RWG, double)\| at 1 GHz / 6 GHz | | 6e-13 / 1e-13 (double) |
 
 It costs a transform and a table of the triangles' potentials, 0.12 s against the LU's 0.28 s at 3.9k unknowns,
-and the hybrid's memory (24 N² bytes). Each basis keeps its own LUs across a sweep. The compressed and tiled
-solvers, quad cells and line functions, and `--mom-planes holes` solve in the RWG basis at every frequency; so
-does mom25d without its compiled core. In mom25d's Python API `sim.loop_tree` (`auto`, `on`, `off`; or
+and the hybrid's memory (24 N² bytes). Each basis keeps its own LUs across a sweep. A large board on the block
+low-rank solver is handed to it too for these frequencies, where its dense matrix fits (antenna_vivaldi, 21.9k
+unknowns, at 50 MHz: 29 s; the single-precision low-rank factor gave S11 = 1.000 there, where it is
+0.978 − 0.193j). Where it doesn't fit, the low-rank factor is made in double precision, compressed to a
+hundredth of (k h)²: right (the same S11, 50 s), but nearly dense at these frequencies, so it wants 16 N² bytes
+at worst. A block low-rank solve that does not converge is an error, not an answer. The tiled solver, quad
+cells and line functions, and `--mom-planes holes` solve in the RWG basis at every frequency; so does mom25d
+without its compiled core. In mom25d's Python API `sim.loop_tree` (`auto`, `on`, `off`; or
 `MOM25D_LOOP_TREE`) chooses. Below about 10 Hz the S-parameters' own extraction (from currents a million times
 the ports') sets the floor: about 1e-6 in |S|.
 

@@ -312,6 +312,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (7 s of it the one solve at 1 GHz whose factor has to be solved on the host), the rest ports and tables.
 
 ### Fixed
+- **mom25d's block low-rank solver gave wrong S-parameters at low frequency.** A large board (20,000 unknowns
+  up, where the GPU's hybrid does not hold the matrix) at a frequency below (k h)² = 10⁻⁵ went through a
+  single-precision low-rank factor of the RWG matrix, which cannot hold the loops' currents at any compression:
+  antenna_vivaldi (21.9k) at 50 MHz made the factor three times, GMRES stayed at a residual of 0.95, and the run
+  wrote S11 = 1.000 with a warning in the log (it is 0.978 − 0.193j). Such a frequency now goes to the loop/tree
+  basis's dense solve where that fits (29 s), else to a low-rank factor in double precision compressed to a
+  hundredth of (k h)² (`BLRFactor128`: the same S11 in 50 s, nearly dense), and a block low-rank solve whose
+  GMRES ends above a residual of 0.01 raises an error instead of returning its currents.
 - **mom25d read crosstalk 20 dB low through wave ports.** On `rf_crosstalk` (two lines 3 mm apart, ports at their
   ends) `--mom-port auto` took de-embedded wave ports, whose fit of one line's two waves takes out what the
   neighbour couples in along the feed: NEXT −52 dB at 1 GHz and FEXT −34 dB at 6 GHz, against −31.7 and −17.5 dB
