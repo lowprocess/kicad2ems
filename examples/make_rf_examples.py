@@ -24,6 +24,7 @@ package's own line formulas for 0.8 mm FR-4 (er 4.4, tan d 0.02), B.Cu ground:
   marchand     4-layer broadside-coupled Marchand balun, 2.4 GHz: P1 in, P2+ / P2- the balanced output
   bends        square, mitred and curved right-angle bends (P1 / P2, P3 / P4, P5 / P6)
   serpentine   a serpentine delay line
+  bus          three traces side by side, no ports: the crosstalk question's example (examples/si_bus.toml)
   crosstalk    two parallel lines, P1 driven (P3 near end, P4 far end); crosstalk_guard: a grounded guard
                trace between them
   pcoupled     3-pole parallel-coupled-line band-pass, 2.4 GHz, 5 %
@@ -627,6 +628,24 @@ def crosstalk_guard(path):
     return crosstalk(path, guard=True)
 
 
+def si_bus(path, n=3, length=30.0, gap=0.2, fan=4.0, spread=2.0):
+    """A signal-integrity example: n traces (nets D0, D1, ...) on F.Cu of a 4-layer board, 50 ohm over the In1.Cu
+    plane, side by side `gap` mm apart for `length` mm and fanned out to `spread` mm apart at both ends. No ports:
+    the crosstalk question (kicad2ems.si) puts them at the traces' ends."""
+    w = w_on(50.0, H4)
+    pitch = w + gap
+    H = max((n - 1) * spread, (n - 1) * pitch) + 8.0
+    yc = H / 2
+    L = length + 2 * fan + 2.0
+    bd = Board(nets=("", "GND") + tuple(f"D{k}" for k in range(n)))
+    for k in range(n):
+        y, ye = yc + (k - (n - 1) / 2) * pitch, yc + (k - (n - 1) / 2) * spread
+        bd.track([(1.0, ye), (1.0 + fan, y), (1.0 + fan + length, y), (L - 1.0, ye)], w, net=2 + k)
+    bd.plane('In1.Cu', L, H)
+    bd.write(path, L, H, ground=False, four=True)
+    return w
+
+
 def pcoupled(path, f0=2.4e9, fbw=0.05, feed=6.0):
     """Parallel-coupled-line band-pass, 3 poles, 0.1 dB Chebyshev, f0, fbw: four quarter-wave coupled sections
     (even / odd impedances from the admittance inverters, gaps and widths from the coupled-line formulas), each
@@ -879,7 +898,7 @@ def spiral(path, turns=3, ws=0.25, ss=0.25, dout=5.0, feed=8.0):
 KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf, stubnotch=stubnotch, gcpw=gcpw,
              coupler=coupler, ratrace=ratrace, radialstub=radialstub, stripline=stripline, diffvia=diffvia,
              shielded=shielded, siw=siw, msvia=msvia, ms2cpw=ms2cpw, slotline=slotline, marchand=marchand, bends=bends,
-             serpentine=serpentine, crosstalk=crosstalk, crosstalk_guard=crosstalk_guard, pcoupled=pcoupled,
+             serpentine=serpentine, crosstalk=crosstalk, crosstalk_guard=crosstalk_guard, bus=si_bus, pcoupled=pcoupled,
              combline=combline, openloop=openloop, dgs=dgs, ebg=ebg, idc=idc, meander=meander, spiral=spiral)
 
 if __name__ == '__main__':

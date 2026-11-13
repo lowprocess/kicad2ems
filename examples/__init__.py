@@ -37,6 +37,7 @@ GROUPS = (
                                                 'rf_msvia', 'rf_diffvia', 'rf_bends', 'rf_serpentine', 'rf_crosstalk',
                                                 'rf_crosstalk_guard', 'sma_launch')),
     ('RF structures', 'Printed components', ('rf_idc', 'rf_meander', 'rf_spiral')),
+    ('Signal integrity', '', ('si_bus',)),
     ('Lumped-element demos', '', ('demo_lowpass', 'demo_highpass', 'demo_bandpass', 'demo_transition')),
 )
 OTHER = 'Other'

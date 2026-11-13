@@ -79,9 +79,11 @@ def test_engines_are_solvers_and_analyses_by_what_they_answer(plugins):
 def test_the_tree_lists_every_question_with_its_engines(plugins):
     plugins(Drop, Warm, Elmer)
     tree = study.study_tree()
-    assert [g['group'] for g in tree] == ['RF', 'Power', 'Thermal']
+    assert [g['group'] for g in tree] == ['RF', 'Signal integrity', 'Power', 'Thermal']
     rows = {r['question'].name: r for g in tree for r in g['questions']}
-    assert list(rows) == ['sparams', 'antenna', 'lines', 'dc', 'pdn', 'nearfield', 'circuit', 'capacitance', 'thermal']
+    assert list(rows) == ['sparams', 'antenna', 'lines', 'crosstalk', 'dc', 'pdn', 'nearfield', 'circuit', 'coils',
+                          'capacitance', 'thermal']
+    assert rows['crosstalk']['engines'] == []                       # kicad2ems's own (analyses.BUILTIN): not these fakes'
     assert [e.name for e in rows['dc']['engines']] == ['pdn'] == [e.name for e in rows['pdn']['engines']]
     assert rows['pdn']['question'].shares == 'dc' and rows['sparams']['question'].answer == 'touchstone'
     assert [e.name for e in rows['thermal']['engines']] == ['thermal', 'elmer_thermal'] and not rows['thermal']['missing']
@@ -136,7 +138,7 @@ def test_check_lists_the_questions(plugins):
     plugins(Drop, Warm)
     _, lines = check_report()
     i = lines.index('questions, and the engines that answer them:')
-    text = '\n'.join(lines[i:i + 11])
+    text = '\n'.join(lines[i:i + 13])
     assert 'Rail drop             pdn' in text and 'Temperature           thermal' in text
     assert "Circuit               none (python -m pip install 'kicad2ems[qs]')" in text
     assert 'S-parameters' in text and 'qucs' in text

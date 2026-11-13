@@ -141,7 +141,8 @@ thermal = "mypackage.analyses:Thermal"
 ```
 
 It runs as a command of its own, so the tool behind it works without kicad2ems; the plugin class is the only
-part that imports `kicad2ems.api.analysis`. It declares, as class attributes:
+part that imports `kicad2ems.api.analysis`. kicad2ems's own analysis, the [crosstalk between traces](si.md), is
+listed with the plugins' without an entry point (`analyses.BUILTIN`). It declares, as class attributes:
 
 | Attribute | Meaning |
 |---|---|

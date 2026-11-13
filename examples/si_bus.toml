@@ -1,0 +1,19 @@
+# kicad2ems example: three traces side by side on a 4-layer board: the crosstalk between them (kicad2ems.si)
+#   python examples/make_rf_examples.py bus examples/rf_bus     # make the board first (it is not in the repository)
+#   kicad2ems study examples/si_bus.toml
+# D0, D1, D2: 50 ohm over the In1.Cu plane, 0.2 mm apart for 30 mm, fanned out at both ends. The question puts a
+# port at each trace's two ends itself. For a 100 ps edge: NEXT 6.0 %, FEXT -6.5 % from a neighbour (mom25d beside
+# the line model: 5.9 % and -7.1 %), 12 % and 13 % at the middle trace with both its neighbours switching.
+board   = "rf_bus.kicad_pcb"   # paths are relative to this file
+ground  = "In1.Cu"
+out     = "out"
+
+[study]
+run = ["crosstalk"]
+
+[analysis.crosstalk]
+nets   = ["D0", "D1", "D2"]     # the traces, by net; each is the aggressor in turn
+ground = "In1.Cu"
+rise   = 100                    # ps, 10 to 90 %
+limit  = 3                      # % of the swing
+# check = "mom25d"              # a full-wave solver beside the line model

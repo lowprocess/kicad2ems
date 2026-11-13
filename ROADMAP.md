@@ -22,6 +22,20 @@ the window lists the questions, with the engine chosen on each row, and compares
    engine take it from there.
 3. **The KiCad plugin** (kicad2ems-ipc) starts `kicad2ems study` for a board whose config has one.
 
+## Signal integrity
+
+The crosstalk question (`kicad2ems.si`, docs/si.md) is the first. Left, in the order a board would want them:
+
+1. **Differential pairs as pairs.** Crosstalk between pairs in their differential and common modes (mixed-mode
+   S of the pairs' four ends), a pair's own skew and mode conversion; the proposals then name pairs, not legs.
+2. **Drivers and receivers.** A source impedance and a receiver's load in place of `z0` at every end (an
+   unterminated receiver doubles what arrives; NEXT reflected at the driver arrives at the far end), and an eye
+   for a bit pattern (the edge response is there: superposed).
+3. **A trace's own quality:** its impedance along its length (the line model has it: *Trace impedances*), the
+   reflections of its discontinuities for the edge (TDR from S11), its loss at the data rate.
+4. **Picking the traces on the board** (the window's picking item), and the coupled stretches drawn on the plan
+   coloured by their share.
+
 ## The window, from a clean slate
 
 kicad2ems-gui's `docs/redesign.md`. The few settings first and the list of what a run still needs are built.
@@ -205,7 +219,6 @@ In order:
    geometry, the receiver's and the leads' field geometry, capacitance to the environment, the fields at startup.
 6. **A complete PEEC model up to about λ/10:** resolved proximity currents, via skin loss, mutuals between parts
    and copper, material dispersion.
-7. **Palace 0.19 through Spack, run.** `install.py --palace spack` builds Palace's newest release the way its
-   CI does; only Spack's plan of it was run (72 packages), not the build (several hours), and kicad2ems-fem's
-   tools were validated on 0.18.1 (the container image). Build it once, run kicad2ems-fem's suite and the
-   Palace validations of pcbqs against it.
+7. **Palace 0.19, the rest.** It is built with Spack here and kicad2ems-fem's plugin runs with it (CHANGELOG.md).
+   Left: kicad2ems-fem's capacitance tool and pcbqs's Palace validations (`validation/`) run against 0.19, which
+   were made on 0.18.1.

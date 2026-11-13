@@ -97,8 +97,8 @@ breathe_default_project = 'cores'
 
 
 # the site's navigation, in index.md's order (its tables are the same pages, for GitHub)
-NAV = [('Using kicad2ems', ['getting-started', 'usage', 'gui', 'kicad-plugin', 'examples', 'postprocessing', 'benchmarks',
-                            'solver-matrix']),
+NAV = [('Using kicad2ems', ['getting-started', 'usage', 'gui', 'si', 'kicad-plugin', 'examples', 'postprocessing',
+                            'benchmarks', 'solver-matrix']),
        ('The solvers', ['meshing', 'simulation', 'mom', 'gfdtd', 'transmission-lines']),
        ('Working on kicad2ems', ['architecture', 'api', 'kicad-import', 'model', 'testing', 'maintenance']),
        ('Code reference', ['reference/index'])]

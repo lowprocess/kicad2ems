@@ -68,7 +68,11 @@ spack install -j "$JOBS" --fail-fast "$SPEC"
 rm -rf "$PREFIX/view"
 spack view symlink -i "$PREFIX/view" "$SPEC"        # Palace and its MPI's mpirun side by side
 mkdir -p "$PREFIX/bin"
-ln -sf "$PREFIX/view/bin/palace" "$PREFIX/bin/palace"
+# a wrapper, not a link: Palace's launcher looks for its binary beside itself and for mpirun on the PATH (a link in
+# another folder found neither: "Could not locate Palace executable", then "Could not locate MPI launcher")
+rm -f "$PREFIX/bin/palace"
+printf '#!/bin/sh\nPATH="%s/view/bin:$PATH" exec "%s/view/bin/palace" "$@"\n' "$PREFIX" "$PREFIX" > "$PREFIX/bin/palace"
+chmod +x "$PREFIX/bin/palace"
 echo
 echo "Palace installed: $PREFIX/bin/palace. kicad2ems-fem finds it with K2E_PALACE=$PREFIX/bin/palace"
 echo "(install.py records it)"

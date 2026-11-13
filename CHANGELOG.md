@@ -18,6 +18,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **A signal-integrity question: the crosstalk between traces (`kicad2ems.si`; docs/si.md).** Asked by the user.
+  The traces are named by their nets; each gets a port at its two ends (found along its tracks: on a pad, or
+  just in from a free end), the S-parameters between them are solved by the line model (its coupled sections
+  from the 2D field solver; a full-wave solver beside it on request), and the answer is NEXT and FEXT over
+  frequency and for an edge of a given rise time (percent of the swing), one aggressor at a time and every
+  victim with all its aggressors (the worst case in time, the power sum in frequency), against a limit where one
+  is given (`mode`: next, fext or both). The layout's part: every stretch where two of the traces run side by
+  side, with its length, gap, Kc and Kl, the estimates they give ((Kc + Kl) / 4 saturated or by length;
+  (Kc − Kl) / 2 × Td / ramp), which case each is in, and what a gap 1.5, 2 and 3 times as wide would give.
+  *Find traces side by side* proposes the board's close pairs (a differential pair's own legs left out). It is
+  kicad2ems's first own analysis (`analyses.BUILTIN`: in the registry without an entry point), a new group
+  *Signal integrity* in the study, and needs no window code. `examples/si_bus.toml` (three traces 0.2 mm apart
+  for 30 mm, 100 ps): NEXT 6.0 %, FEXT −6.5 % by the line model in 2 s; mom25d 5.9 % and −7.1 % in 30 s.
+- **Coils with ferrite as a question (*Coils and ferrite*, kicad2ems-fem's `elmer_mag`).** The user asked how a
+  wireless-power coil with its ferrite gets into the software: it was a command of kicad2ems-fem alone, its L and
+  k copied into a circuit by hand. It is now a question under *Power* that needs no board: each coil and each
+  ferrite plate a line of the settings, Elmer's static field (two coils and a plate: 2 minutes), a report with
+  the inductances, the coupling and the same coils in air, and a proposal on the result, *Use these coils in the
+  circuit*: the full bridge's primary and secondary inductance and their coupling (pcbqs's new `--primary-l` and
+  `--secondary-l`, bound to the model in the bridge's page). The README example: 6.45 and 6.80 µH, k 0.567 (in air
+  3.74, 5.77, 0.474).
 - **mom25d's block low-rank solver is compiled, and the large boards' path.** The compressed solvers were Python
   (an SVD of every tile, the tile LU in Python loops): more than 30 minutes a frequency on antenna_cp_patch
   (40.8k unknowns), so the GPU paths had to hold the whole matrix. The core now has the block low-rank LU
@@ -286,6 +307,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (7 s of it the one solve at 1 GHz whose factor has to be solved on the host), the rest ports and tables.
 
 ### Fixed
+- **mom25d read crosstalk 20 dB low through wave ports.** On `rf_crosstalk` (two lines 3 mm apart, ports at their
+  ends) `--mom-port auto` took de-embedded wave ports, whose fit of one line's two waves takes out what the
+  neighbour couples in along the feed: NEXT −52 dB at 1 GHz and FEXT −34 dB at 6 GHz, against −31.7 and −17.5 dB
+  with lumped ports (the line model −31.0 and −17.3 dB; Palace 0.19 −31.0 and −17.2 dB). An automatic port is
+  now lumped where other signal copper runs beside its feed within 8 heights, with a note; `--mom-port wave`
+  keeps the wave port. Found by running the example through Palace 0.19.
+- **Palace's Spack build finished with a launcher that found neither its binary nor its MPI.**
+  `tools/build_palace.sh` linked `bin/palace` to the view's launcher, which looks for `palace-x86_64.bin` beside
+  itself and for `mpirun` on the PATH; it is now a wrapper that puts the view's `bin` first. The build itself was
+  run for the first time: Palace 0.19.0, 72 packages, about an hour at 8 jobs, 2.3 GB, and kicad2ems-fem's plugin
+  solves `rf_crosstalk` with it in 6 minutes (the figures above).
 - **The window's tests no longer crash the process after passing (kicad2ems-gui).** CI's stack jobs were red on
   Linux (exit 139) and Windows (127) with every test passed: PySide 6.12 tearing down the QApplication at exit
   walked every widget the tests left (110k) and crashed in a pyqtgraph scene's items, whose C++ destructors call

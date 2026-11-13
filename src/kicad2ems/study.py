@@ -32,7 +32,7 @@ import json
 import os
 from dataclasses import dataclass, field
 
-GROUPS = ('RF', 'Power', 'Thermal', 'Other')
+GROUPS = ('RF', 'Signal integrity', 'Power', 'Thermal', 'Other')
 MARK = 'kicad2ems-study.json'               # in a run's folder: the engine that made it and what was asked of it
 
 
@@ -57,6 +57,9 @@ QUESTIONS = {q.name: q for q in (
     Question('antenna', 'Antenna pattern', 'RF', "a driven port's far field: pattern, gain, efficiency",
              answer='antenna', order=20, extra='mom'),
     Question('lines', 'Trace impedances', 'RF', "every trace's impedance and delay, from the line model", order=30),
+    Question('crosstalk', 'Crosstalk', 'Signal integrity', "near- and far-end crosstalk between traces for an edge, "
+             "and what in the layout makes it", order=10,
+             figures="NEXT <victim>, FEXT <victim>: all its aggressors together, % of the swing"),
     Question('dc', 'Rail drop', 'Power', "a rail's DC drop, its current density and its loss", order=10, extra='qs',
              figures="drop <load>: the rail's own copper from the source to the load's pads, mV (no ground return, "
                      "no series part); loss: in that copper, mW"),
@@ -66,6 +69,9 @@ QUESTIONS = {q.name: q for q in (
              order=30, extra='qs'),
     Question('circuit', 'Circuit', 'Power', "a switching circuit on the board's copper: waveforms, losses, stress",
              order=40, extra='qs'),
+    Question('coils', 'Coils and ferrite', 'Power', "wound coils beside ferrite plates: their inductances and "
+             "coupling (a wireless-power link's coil model)", order=45, extra='fem',
+             figures="L <coil>: its inductance, uH; k <coil>,<coil>: two coils' coupling"),
     Question('capacitance', 'Capacitance', 'Power', "the capacitance between nets", order=50, extra='fem',
              figures="C <net>,<net>: between two nets, pF; C <net>: a net to all the others, pF"),
     Question('thermal', 'Temperature', 'Thermal', "the board's steady temperature from what its parts dissipate",
@@ -254,8 +260,8 @@ def check_lines():
     for g in study_tree():
         for row in g['questions']:
             q = row['question']
-            who = ', '.join(e.name for e in row['engines']) or f"none ({row['missing']})"
-            lines.append(f"  {g['group']:<8s}{q.label:<22s}{who}")
+            who = ', '.join(e.name for e in row['engines']) or (f"none ({row['missing']})" if row['missing'] else 'none')
+            lines.append(f"  {g['group']:<18s}{q.label:<22s}{who}")
     return lines
 
 

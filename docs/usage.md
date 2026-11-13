@@ -146,9 +146,9 @@ dmax    = 0.4
 <a id="study"></a>
 ## A study: several questions of one board
 
-A run of kicad2ems answers one thing, the ports' S-parameters. A study asks more of the same board: a rail's
-drop, the temperature, a circuit on the copper, each by an engine installed for it (`kicad2ems --check` lists
-the questions and who answers them). The config says which, and `kicad2ems study` runs them in order:
+A run of kicad2ems answers one thing, the ports' S-parameters. A study asks more of the same board: the
+[crosstalk between traces](si.md) (kicad2ems's own), a rail's drop, the temperature, a circuit on the copper,
+each by an engine installed for it (`kicad2ems --check` lists the questions and who answers them). The config says which, and `kicad2ems study` runs them in order:
 
 ```toml
 board = "board.kicad_pcb"

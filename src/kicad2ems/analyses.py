@@ -2,9 +2,10 @@
 The analyses, as plugins: tools that work on the same board as a run but are not S-parameter solvers (a rail's DC
 drop and impedance, a converter's near field, a circuit on the board's copper, the board's temperature). Each is an
 Analysis subclass registered under its name by a package that declares an entry point in the group
-'kicad2ems.analyses' (`pdn = "pcbqs.analyses:PowerIntegrity"`): pcbqs's four (the qs extra). kicad2ems has none of
-its own; a front end lists what the registry holds, builds each one's settings from its options, starts it as the
-command it gives and shows what its result folder holds.
+'kicad2ems.analyses' (`pdn = "pcbqs.analyses:PowerIntegrity"`): pcbqs's four (the qs extra), kicad2ems-fem's
+(the fem extra). kicad2ems has one of its own, the crosstalk between traces (kicad2ems.si: BUILTIN, listed with
+the plugins'). A front end lists what the registry holds, builds each one's settings from its options, starts it
+as the command it gives and shows what its result folder holds.
 
     from kicad2ems.analyses import registry, analysis_of
     [a.label for a in registry().values()]
@@ -91,7 +92,7 @@ import os
 GROUP = 'kicad2ems.analyses'                # the entry-point group of analyses installed as packages
 RF = 'rf'                                   # the S-parameter run's own key in a front end's lists: not a plugin's
 # the analysis packages kicad2ems has extras for (pyproject): {extra: the analyses it brings}
-EXTRAS = {'qs': ('pdn', 'mqs', 'circuit', 'thermal'), 'fem': ('elmer_dc', 'elmer_thermal', 'elmer_cap', 'palace_cap')}
+EXTRAS = {'qs': ('pdn', 'mqs', 'circuit', 'thermal'), 'fem': ('elmer_dc', 'elmer_thermal', 'elmer_cap', 'palace_cap', 'elmer_mag')}
 KINDS = ('str', 'int', 'float', 'bool', 'list')
 
 
@@ -199,9 +200,25 @@ class Analysis:
 _registry, broken = None, []                # broken: (entry point, error) of plugins that failed to load
 
 
+BUILTIN = (('crosstalk', 'kicad2ems.si:Crosstalk'),)     # kicad2ems's own analyses: listed with the plugins'
+
+
+class _BuiltIn:
+    """kicad2ems's own analysis as the registry reads an entry point (name, value, load): no package metadata, so
+    a checkout that was installed before it was added has it too."""
+    def __init__(self, name, value):
+        self.name, self.value = name, value
+
+    def load(self):
+        import importlib
+        module, _, attr = self.value.partition(':')
+        return getattr(importlib.import_module(module), attr)
+
+
 def _entry_points():
     from importlib.metadata import entry_points
-    return list(entry_points(group=GROUP))
+    return [_BuiltIn(*b) for b in BUILTIN] + [ep for ep in entry_points(group=GROUP)
+                                              if ep.name not in dict(BUILTIN)]
 
 
 def registry():
