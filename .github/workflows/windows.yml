@@ -116,14 +116,15 @@ jobs:
           cd kicad2ems-gui
           python -m pytest -q --junitxml=gui-junit.xml || true
           python -c "import sys, xml.etree.ElementTree as E; r = E.parse('gui-junit.xml').getroot(); s = r if r.tag == 'testsuite' else r[0]; bad = int(s.get('failures', 0)) + int(s.get('errors', 0)); n = int(s.get('tests', 0)); print(f'{n} tests, {bad} failed or in error'); sys.exit(1 if bad or not n else 0)"
-      - name: Reset layout on the native platform (to tell the offscreen plugin's abort from Qt's)
+      # Qt's offscreen plugin on Windows aborts when a floated dock is docked again (Reset layout); the native
+      # platform does not, so the docks' test floats one only here
+      - name: kicad2ems-gui, the window's docks on the native platform
         if: success() || failure()
-        continue-on-error: true
         env: { QT_QPA_PLATFORM: windows }
         run: |
           cd kicad2ems-gui
           python -m pytest -q tests/test_gui.py -k window_is_docks --junitxml=dock-junit.xml || true
-          python -c "import os, xml.etree.ElementTree as E; print('no report: the process died' if not os.path.exists('dock-junit.xml') else E.tostring(E.parse('dock-junit.xml').getroot(), 'unicode')[:400])"
+          python -c "import sys, xml.etree.ElementTree as E; r = E.parse('dock-junit.xml').getroot(); s = r if r.tag == 'testsuite' else r[0]; bad = int(s.get('failures', 0)) + int(s.get('errors', 0)); n = int(s.get('tests', 0)); print(f'{n} tests, {bad} failed or in error'); sys.exit(1 if bad or not n else 0)"
       - name: dfsynth
         if: success() || failure()
         run: cd dfsynth && python -m pytest -q
