@@ -240,7 +240,8 @@ def test_finite_elements_are_offered_and_nothing_built_by_default(inst, monkeypa
     setup.qucs, setup.oems = None, 'none'
     setup.write_site()
     text = open(setup.sitecfg).read()
-    assert f'elmer = "{found}"' in text and 'palace_rootfs = ' in text and 'palace = ' not in text
+    import json
+    assert f'elmer = {json.dumps(str(found))}' in text and 'palace_rootfs = ' in text and 'palace = ' not in text
 
 
 def test_finite_elements_from_the_command_line(inst, monkeypatch, tmp_path):
@@ -286,6 +287,7 @@ def test_the_builds_run_their_scripts_and_record_what_they_made(inst, monkeypatc
     assert 'kicad2ems-fem' in inst.STACK
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason='the builds are for Linux and macOS')
 def test_the_build_scripts_are_shell_that_parses():
     for name in ('build_elmer.sh', 'build_palace.sh'):
         r = subprocess.run(['bash', '-n', os.path.join(ROOT, 'tools', name)], capture_output=True, text=True)
