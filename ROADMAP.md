@@ -112,8 +112,8 @@ that does not need N² memory. In this order:
    near-field correction's sparse build (3-4 s at 22-41k); pivoting only inside the diagonal tiles; a
    strong-admissibility H-LU for 100k+ (BLR's dense near band grows as N), the near field's reach capped (ACA from
    O(N r) entries), and an FFT operator (pFFT / AIM) past that.
-3. **The band divided between the two solvers.** Done (`<name>_joined.sNp`: pcbqs to its `valid_to_Hz`, mom25d
-   above; CHANGELOG.md). Left: a crossover chosen where the two agree best, not only pcbqs's own estimate.
+3. **The band divided between the two solvers.** Done (`<name>_joined.sNp`: pcbqs below the crossover, mom25d
+   above, the crossover where they agree best at or below pcbqs's `valid_to_Hz`; CHANGELOG.md).
 4. **A quasi-static mode in mom25d, ranked low.** Building the matrix once saves time only if building it is
    what costs. Profiled 2026-11-13 (kicad2ems's defaults, GPU): the per-frequency build (Green tables, fill, near
    correction, via kernels) is 39-50 % of a sweep on the mid-size examples (4-9k unknowns: demo_transition 3.9 s

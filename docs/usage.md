@@ -59,12 +59,13 @@ what frequency it holds on the board, and two ports whose return is not joined (
 two planes) are reported as such.
 
 <a id="joined"></a>**One band from both.** With pcbqs and a full-wave solver in one run (`--solvers pcbqs,mom25d
---fmin 0.01 --fmax 6 --sweep log`), the run also writes `<name>_joined.sNp`: pcbqs's answer up to the frequency
-it says it holds to, mom25d's (else the other full-wave solver's) above it, and across a fifth of a decade each
-side of that crossover a raised-cosine blend in log f, so the joined curve has no step. The log says how far the
-two disagree there, and warns above 0.1 in |S|. On `demo_transition` the crossover is 714 MHz and they differ by
-up to 0.043: pcbqs's one-sheet copper reads the matched line's |S11| about 3.5 dB high, as its docs say, and the
-joined band takes mom25d's from there up.
+--fmin 0.01 --fmax 6 --sweep log`), the run also writes `<name>_joined.sNp`: pcbqs's answer below a crossover,
+mom25d's (else the other full-wave solver's) above it, and across a fifth of a decade each side of it a
+raised-cosine blend in log f, so the joined curve has no step. The crossover is where the two agree best, at or
+below the frequency pcbqs says it holds to (a rule of thumb: a tenth of a wavelength of the ports' copper). The
+log says how far the two disagree there, and warns above 0.1 in |S|. On `demo_transition` pcbqs's estimate is
+714 MHz, where they differ by 0.043 (its one-sheet copper reads the matched line's |S11| about 3.5 dB high, as
+its docs say); the crossover goes to 17 MHz, where they differ by 0.0012.
 
 Antenna mode (`mode = "antenna"`) needs openEMS, gfdtd or mom25d. mom25d models antennas over an infinite
 ground plane, so it suits patches and arrays but not antennas that use the board edge.

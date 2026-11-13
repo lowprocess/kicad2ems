@@ -44,3 +44,20 @@ def test_which_two_are_joined():
     assert pick(dict(openems=r(), mom25d=r(), pcbqs=r(valid_to_Hz=2e8)), plugins) == ('pcbqs', 'mom25d', 2e8)
     assert pick(dict(openems=r(), pcbqs=r(valid_to_Hz=2e8)), plugins) == ('pcbqs', 'openems', 2e8)
     assert pick(dict(mom25d=r(names=('P1d', 'P1c')), pcbqs=r(valid_to_Hz=2e8)), plugins) is None    # other ports
+
+
+def test_the_crossover_goes_where_the_two_agree_best_at_or_below_the_estimate():
+    """The quasi-static solver drifts off as its estimate nears and the full-wave one is off at its own low end:
+    the join is made between, where they differ least; where they agree as well everywhere, at the estimate."""
+    from kicad2ems.join import best_crossover
+    f = np.geomspace(1e6, 1e10, 401)
+    true = np.full((len(f), 1, 1), 0.2 + 0j)
+    lo = true + (0.3 * (f / 1e9) ** 2)[:, None, None]              # the quasi-static one: off towards 1 GHz
+    hi = true + (0.3 * (3e6 / f) ** 2)[:, None, None]              # the full-wave one: off towards 3 MHz
+    fc, mis = best_crossover(f, lo, hi, 1e9)
+    assert 2e7 < fc < 2e8 and mis < 0.02                            # between the two, far below the estimate
+    _, at_estimate = best_crossover(f, lo, hi, 1e9, lowest=1e9)
+    assert at_estimate > 10 * mis
+    fc, mis = best_crossover(f, true, true + 0.05, 1e9)             # the same everywhere: the estimate stands
+    assert fc == 1e9 and mis == pytest.approx(0.05)
+    assert best_crossover(f, lo, hi, 5e5) == (5e5, None)            # no point in the estimate's band, none below

@@ -11,6 +11,7 @@ the join is seamless; where they do not, one of them is wrong there, and the rep
 
     S, info = join(freq, S_low, S_high, crossover)
     pick(results, solvers)          # (low, high, crossover) of a run's results, or None
+    best_crossover(freq, S_low, S_high, crossover)      # (where they agree best at or below it, the mismatch there)
 """
 import numpy as np
 
@@ -44,6 +45,34 @@ def join(freq, S_low, S_high, crossover, decades=BLEND_DECADES):
     mismatch = float(np.nanmax(diff)) if diff.size and np.isfinite(diff).any() else None
     return S, dict(crossover_Hz=float(crossover), blend_Hz=[float(crossover / 10 ** decades), float(crossover * 10 ** decades)],
                    low_points=int((w == 0).sum()), high_points=int((w == 1).sum()), mismatch=mismatch)
+
+
+def best_crossover(freq, S_low, S_high, upper, decades=BLEND_DECADES, lowest=None):
+    """(crossover, its mismatch): the frequency at or below `upper` (the quasi-static solver's own estimate of
+    where it stops holding) whose blend band the two answers differ least in, by the largest |S_low - S_high| over
+    that band. The estimate is a rule of thumb (a tenth of a wavelength of the ports' copper) and the full-wave
+    solver has a low end of its own, so the best place to hand over is where they agree, not where one of them
+    says. Tried: the band's frequencies from `lowest` (default: the first whose blend band is inside the band) up
+    to `upper`; a later one must be better by a tenth to be taken over the estimate's, so that `upper` stands
+    where they agree as well everywhere. (upper, None) where no frequency's blend band holds a point."""
+    freq = np.asarray(freq, float)
+    lo, hi = np.asarray(S_low), np.asarray(S_high)
+    diff = np.abs(lo - hi).reshape(len(freq), -1)
+    diff = np.where(np.isfinite(diff), diff, 0.0).max(axis=1)
+    span = 10 ** decades
+    first = lowest if lowest is not None else freq[0] * span
+    cand = [f for f in freq if first <= f <= upper] + [upper]
+
+    def mismatch(fc):
+        band = (freq > fc / span) & (freq < fc * span)
+        return float(diff[band].max()) if band.any() else None
+    at = mismatch(upper)
+    best, value = upper, at
+    for fc in cand:
+        m = mismatch(fc)
+        if m is not None and (value is None or m < 0.9 * value):
+            best, value = float(fc), m
+    return best, value
 
 
 def pick(results, plugins):

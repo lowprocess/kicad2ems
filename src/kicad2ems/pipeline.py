@@ -506,11 +506,12 @@ class Job:
     def join_bands(self):
         """A quasi-static solver's answer and a full-wave one's, joined into one band at the frequency the first is
         valid to (join.py): <name>_joined.sNp, and summary['joined']."""
-        from .join import pick, join
+        from .join import pick, join, best_crossover
         got = pick(self.results, registry())
         if got is None:
             return
-        low, high, fc = got
+        low, high, said = got
+        fc = said
         a, b = self.results[low], self.results[high]
         if not np.allclose(np.asarray(a.zref, float), np.asarray(b.zref, float), rtol=1e-6):
             self.log(f"not joined: {label(low)} and {label(high)} have different reference impedances")
@@ -520,7 +521,9 @@ class Job:
             self.log(f"not joined: {label(low)} is valid to about {fc / 1e6:.3g} MHz, "
                      + ("above the whole band" if fc >= freq[-1] else "below the whole band"))
             return
+        fc, _ = best_crossover(freq, a.S, b.S, said)            # where the two agree best, at or below its estimate
         S, info = join(freq, a.S, b.S, fc)
+        info['estimate_Hz'] = float(said)                       # the quasi-static solver's own valid_to_Hz
         out = self.path(f"_joined.s{len(a.names)}p")
         write_touchstone(out, freq, np.nan_to_num(S), a.zref, names=a.names,
                          comment=f"joined: {label(low)} to {fc / 1e6:.4g} MHz, {label(high)} above "
@@ -532,6 +535,7 @@ class Job:
                                       table=sparam_table(freq, S, a.names))
         self._joined = S
         self.log(f"joined: {label(low)} to {fc / 1e6:.3g} MHz, {label(high)} above"
+                 + (f" (where they agree best: {label(low)} says it holds to {said / 1e6:.3g} MHz)" if fc < said else '')
                  + (f"; they differ by up to {mis:.3f} in |S| across the crossover" if mis is not None else '')
                  + f" -> {out}")
         if mis is not None and mis > 0.1:

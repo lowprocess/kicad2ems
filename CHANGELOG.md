@@ -18,6 +18,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **The joined band's crossover goes where the two solvers agree best** (`join.best_crossover`), at or below the
+  frequency pcbqs says it holds to, which is a rule of thumb and often generous: `demo_transition` from 10 MHz to
+  6 GHz was joined at 714 MHz with the two 0.043 apart, and is now joined at 17 MHz, 0.0012 apart (mom25d's low
+  end holds since its loop/tree basis). The estimate stands where they agree as well everywhere; the summary's
+  `joined` has both (`crossover_Hz`, `estimate_Hz`).
 - **A signal-integrity question: the crosstalk between traces (`kicad2ems.si`; docs/si.md).** Asked by the user.
   The traces are named by their nets; each gets a port at its two ends (found along its tracks: on a pad, or
   just in from a free end), the S-parameters between them are solved by the line model (its coupled sections
