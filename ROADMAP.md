@@ -196,7 +196,7 @@ refactorisation (pcbqs's `docs/power-circuit.md`).
 
 | Option | Gain | Effort | Notes |
 |---|---|---|---|
-| A piecewise-linear switched state-space engine | 10–100× for ideal-switch studies | 1–2 weeks | the copper model and passives are linear: exact matrix exponentials per switch state; device effects need ngspice |
+| A piecewise-linear switched state-space engine: the rest | 10–100× for ideal-switch studies | | Built for `pcbqs.circuit` (2026-11-13: `--engine pwl`, 0.3–0.8 s for ngspice's 4–40 s on the examples). Left: the board's copper in it (its R-L model is linear: the same matrices), the full bridge tool (`pcbqs.power_circuit`, where the 56 s case is), wave sources (a rectifier's mains: a sine is a pair of states), switch and junction capacitance as states where the edges' loss is wanted |
 | Xyce backend | robustness, not speed | 2 days | it ran behavioural switches ngspice could not; 2–7× slower on the benchmark converter; harmonic balance could suit resonant tanks |
 | Two faces in the circuit: a local loop basis | fewer iterations, no dense setup | | iterations grow with frequency (217 at DC, 575 at 20 MHz); the dense common-mode setup is 19 s |
 | Whole-board near field | | 3–5 days, only if a board needs it | a full ground plane is 50k+ triangles (a dense L: ~20 GB): compression and an iterative solve in the loop basis. A crop around the converter is enough for DC-DC loops |
