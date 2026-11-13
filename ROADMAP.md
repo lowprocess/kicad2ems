@@ -4,7 +4,7 @@ What is worth doing next across the stack (kicad2ems, its window, mom25d and pcb
 part. Each item comes from something the examples, the benchmarks or a validation showed. Finished items leave
 this file: what was done, measured and decided against is in a CHANGELOG.md (this repository's for kicad2ems, its
 window and mom25d; pcbqs's for the power tools). C, I and U numbers are findings of pcbqs's
-`docs/power-tools-review.md`; estimates are working days. Last updated 2026-11-12.
+`docs/power-tools-review.md`; estimates are working days. Last updated 2026-11-13.
 
 ## The study: questions and engines
 
@@ -38,6 +38,11 @@ that: nothing in it may fix a panel in place. Left:
 4. **To be asked before building** (designed for the fixed layout, so they may not fit docks): a header with
    the steps Board, Questions, Set up, Run, Results in place of the toolbar; Plots, Report, Tables and Log as
    docks of their own instead of the Results and Run pages; a start page with the examples as a gallery.
+
+5. **The tests' crash at exit on Linux CI.** The window's suite passes every test on CI's Ubuntu runners and
+   then segfaults as Python exits (exit 139), on Qt 6.12 and without a GL driver; neither this machine nor its
+   Qt 6.12 reproduces it. A run with a native traceback there (`python -X faulthandler`, or gdb's) says where.
+   Until then the stack workflow's Linux jobs are red for that alone.
 
 ## The line model
 
@@ -116,9 +121,10 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    bridge current reaches its rail. Left: a controller with its two switches as separate parts is not made into
    a circuit (the regulator's own footprint is taken for both); a rail's ripple at a converter's pin needs the
    input loop's own inductance, which the near field solves and the rail's planes do not have (the two could
-   share it); an example study that walks through the three steps (drafted, not applied: a regulator's board
-   from `pcbqs.circuit.boards`, its connectors taken as the supply and the load, so the circuit's proposal names
-   the rail's source and nothing is typed between the three runs).
+   share it). The circuit examples walk the steps now (the buck: its near field, *Open Q1 as a circuit*, its
+   rail), and a converter's circuit has its supply and load on the board's connectors; what is left of the
+   example is the circuit's proposal naming the connector as the rail's source, so that nothing is typed between
+   the runs (drafted with a regulator's board of its own, not applied).
 3. **Several rails, in the window.** A config holds them (`[[analysis.pdn]]`) and `kicad2ems study` runs
    them all; the window shows and runs the first and keeps the rest. Left: the rails in the window, each with
    its state and result, and their drops side by side in one report. Two mock-ups were shown to the user
@@ -130,10 +136,13 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    already; it would need the bridge tool's power targeting by phase, the receiver's matching per frequency,
    the coils' AC-resistance and self-resonance model and the slow-mode averaging before the bridge tool could
    go. Not asked for; a candidate, to keep one circuit path.
-5. **Converters.** A broader buck input-loop discovery; ambiguous bias, enable and supply nets resolved by part
-   metadata; the switch node's E in the converter workflow (the Coulomb E of the surface charges is there, the
-   inductive E is not) and output-inductor models; decap and via mounting inductance from the quasi-static solver
-   instead of the formula.
+5. **Converters.** The near field finds a regulator IC and, since 2026-11-13, a discrete switching cell (a
+   buck's, a boost's, a bridge's legs: pcbqs's CHANGELOG). Left: a flyback (its loop runs through the
+   transformer) and an inverting buck-boost (through both capacitors), which are not found; a circuit made of a
+   boost or a bridge found that way (only a buck is made into one); ambiguous bias, enable and supply nets
+   resolved by part metadata; the switch node's E in the converter workflow (the Coulomb E of the surface
+   charges is there, the inductive E is not) and output-inductor models; decap and via mounting inductance from
+   the quasi-static solver instead of the formula.
 6. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`). Left: the
    run's lumped parts between their pads (the quasi-static solver takes elements already, so a decoupled rail or
    a lumped filter would have its low end too; today they are left out and listed as deviations); gap ports; the
@@ -188,3 +197,7 @@ In order:
    geometry, the receiver's and the leads' field geometry, capacitance to the environment, the fields at startup.
 6. **A complete PEEC model up to about λ/10:** resolved proximity currents, via skin loss, mutuals between parts
    and copper, material dispersion.
+7. **Palace 0.19 through Spack, run.** `install.py --palace spack` builds Palace's newest release the way its
+   CI does; only Spack's plan of it was run (72 packages), not the build (several hours), and kicad2ems-fem's
+   tools were validated on 0.18.1 (the container image). Build it once, run kicad2ems-fem's suite and the
+   Palace validations of pcbqs against it.
