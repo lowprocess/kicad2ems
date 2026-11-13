@@ -88,9 +88,14 @@ solver's own items (large boards, the low end) are in the next section.
    differential pair's antipad: most pairs on real boards) and holes that are not round (their area's circle
    today); the second azimuthal order where holes nearly touch (0.012 at 10 GHz with 0.1 mm between them); a
    plane on the top interface; the hole's field in the dumps, the near field and the far field.
-2. **Coupled runs in the mixed solver.** It cuts only lone traces into lines, and needs wave ports. 4-port coupled
-   lines (`line_char_pair` exists) would take a pair's straight runs: about 40 % of that PCIe pair's length, whose
-   unknowns scale with it (the pair alone: ~7k for 55 mm).
+2. **Coupled runs in the mixed solver, the rest.** Two traces of one width side by side are cut as a coupled
+   line since 2026-11-13 (their differential and common modes, a mixed-mode wave port on each face:
+   docs/mom.md): 3,926 unknowns to 1,892 on a 40 mm pair, within 0.006 of mom25d. Left: a pair's faces need
+   0.4 rad of feed at the lowest frequency, so a short pair or a low band leaves nothing to cut (rf_crosstalk,
+   40 mm from 0.5 GHz); lumped ports on the faces in place of wave ports would lift that, as they
+   would the lone lines' (the solver needs wave ports there today); three or more traces together (a bus: one
+   line a mode, from the field solver's modes) and pairs of unequal widths; a pair that bends (the cut stops at
+   each bend, and a serpentine has many).
 3. **What `--fill-voids` leaves.** `far` keeps a void near the signal copper on every layer, also behind a solid
    plane (14 × 32 mm of the CM5 Minima: 33,088 unknowns, 25,662 with `all`, 42,689 as imported). Whether those
    can go is not settled: on a crop, `all` moved a resonance of the planes the region cut (gfdtd's |S21| at
@@ -175,9 +180,8 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    resolved by part metadata; the switch node's E in the converter workflow (the Coulomb E of the surface
    charges is there, the inductive E is not) and output-inductor models; decap and via mounting inductance from
    the quasi-static solver instead of the formula.
-6. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`). Left: the
-   run's lumped parts between their pads (the quasi-static solver takes elements already, so a decoupled rail or
-   a lumped filter would have its low end too; today they are left out and listed as deviations); gap ports; the
+6. **Low-frequency S-parameters, the rest.** `--solvers pcbqs` is there (pcbqs's `docs/sparams.md`), with the
+   run's lumped parts between their pads since 2026-11-13 (a lumped filter has its low end). Left: gap ports; the
    two-face copper with the charge is slow on a stack of several dielectrics (25 s a frequency at
    15,000 triangles on demo_transition, 77 s at 9,000 on pcbqs's return-path example), and a narrow trace's
    capacitance as one sheet is what keeps a matched line's S11 a few dB high at the top of the band. In the

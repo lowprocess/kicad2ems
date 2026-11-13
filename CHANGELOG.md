@@ -18,6 +18,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **The mixed solver cuts two traces side by side as a coupled line.** It cut only lone traces: anything with
+  other signal copper within 3 widths or 4 heights stayed in mom25d, so a differential pair or two signals
+  routed together kept all their unknowns. Two parallel traces of one width with nothing else near are now cut
+  together: a mixed-mode wave port on each face (mom25d's `DiffPort`), the stretch put back as the pair's
+  differential and common mode lines, each with its own γ and impedance. Two 0.38 mm traces 0.3 mm apart over
+  40 mm, 2 to 10 GHz: 3,926 unknowns to 1,892 and every term within 0.006 of mom25d's, the far-end crosstalk
+  (the two modes' different speeds) within 4 % at the band's low end; the current dumps draw both traces from
+  the two modes. A pair's faces keep 0.4 rad of feed at the lowest frequency (a lone line's 0.1), so a pair
+  that is short for its band is left to mom25d (rf_crosstalk, 40 mm from 0.5 GHz). docs/mom.md has why.
 - **mom25d: a trace over a plane's hole (`--mom-planes holes`).** A plane that only vias run through is a
   perfect conductor with each hole a few unknowns; the hole's field was taken as axisymmetric, so a trace
   crossing its rim saw the plane closed under it (0.065 in |S| from the meshed plane at 10 GHz on a microstrip

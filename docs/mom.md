@@ -277,16 +277,26 @@ mesh (`tools/zone_study.py`, `tools/quad_configs_study.py` in mom25d).
 <a id="mixed"></a>
 ## The mixed solver: long lines as transmission lines
 
-`--solvers mixed` (`mom25d/kicad2ems/mixed.py` in mom25d) is mom25d with the middle of each long, lone, straight run
-of signal trace cut out of the board and put back as a transmission line. mom25d solves the rest with a
-de-embedded wave port on each face of each cut; each cut becomes a line of its own cross-section's γ and Zc, joined
-into mom25d's network. A stretch is cut only where no other signal copper comes within 3 widths or 4 heights of it,
+`--solvers mixed` (`mom25d/kicad2ems/mixed.py` in mom25d) is mom25d with the middle of each long straight run of
+signal trace cut out of the board and put back as a transmission line. mom25d solves the rest with a de-embedded
+wave port on each face of each cut; each cut becomes a line of its own cross-section's γ and Zc, joined into
+mom25d's network. A stretch is cut only where no other signal copper comes within 3 widths or 4 heights of it,
 not through vias, parts or ports, keeping the straight feed each wave port needs down to `fmin`; a cut is at least
 `--mixed-cut` mm long (3). It uses mom25d's mesh options.
 
 On rf_stripline (with `--mom-zone on`) one 12.5 mm stretch is cut, 5,069 unknowns to 4,335, and S21 matches
 mom25d's within 0.5° to 10 GHz. **Current dumps** work: on the cut stretch the trace current comes from the line's
 waves (within 5 % of mom25d's on rf_stripline at 5 GHz), and the planes carry the line's image as return current.
+
+**Two traces side by side** (of one width, within that distance of each other, nothing else near) are cut
+together as a coupled line: each face of the cut is a mixed-mode wave port (the pair's differential and common
+modes, each with its own γ and impedance from the pair's cross-section), and the stretch is two lines, one a
+mode. They need not be a differential pair of the board's: two signals routed together are cut the same way, and
+their near- and far-end crosstalk comes out of the two modes' different speeds. That difference is a few percent
+of either speed, so a pair's faces keep more feed than a lone line's (their cuts span 0.4 rad at `fmin`, not
+0.1) and its modes are characterised on a longer line. Two 0.38 mm traces 0.3 mm apart over 40 mm, 2 to 10 GHz:
+3,926 unknowns to 1,892, every term within 0.006 of mom25d's, the far-end coupling within 4 % at 2 GHz and 1 %
+above 4 GHz. Three or more traces side by side, and two of different widths, are not cut.
 
 <a id="quads"></a>
 ### Quad cells (experimental)
