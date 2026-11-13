@@ -242,6 +242,7 @@ In order:
    geometry, the receiver's and the leads' field geometry, capacitance to the environment, the fields at startup.
 6. **A complete PEEC model up to about λ/10:** resolved proximity currents, via skin loss, mutuals between parts
    and copper, material dispersion.
-7. **Palace 0.19, the rest.** It is built with Spack here and kicad2ems-fem's plugin runs with it (CHANGELOG.md).
-   Left: kicad2ems-fem's capacitance tool and pcbqs's Palace validations (`validation/`) run against 0.19, which
-   were made on 0.18.1.
+7. **Palace 0.19, the rest.** It is built with Spack here, kicad2ems-fem's plugin runs with it (CHANGELOG.md),
+   and kicad2ems-fem's own Palace runs pass on it (2026-11-13: the capacitance tool's microstrip against
+   Hammerstad-Jensen, a grounded box, the driven runs with a series part). Left: pcbqs's Palace validations
+   (`validation/`), which were made on 0.18.1.
