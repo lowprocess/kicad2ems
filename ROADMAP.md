@@ -209,7 +209,10 @@ be checked for each scan.
 In order:
 
 1. **Thick copper and AC resistance (C14).** `conductor_loss='slab'` is two face sheets; stacked sheets with the
-   thick kernel are the reference. Open:
+   thick kernel are the reference. Graded cells at the copper's edges are most of the error away from a plane
+   (two faces 1.6 mm over one: −9 % at 10 MHz against FastHenry, from −26 %) and a third of it close over one
+   (0.1 mm: −14 %, from −18 %); `pcbqs.sparams --thickness` has them since 2026-11-13, the circuit's copper and
+   the near field not yet (their meshes are the pads' and the loop's: to be measured there first). Open:
    - a trace close over a plane, the largest error: one sheet is 19–30 % low in R, two faces were 12.5 % low when
      last compared, the reference is within 5 %. The validation board's second structure decides;
    - the 2–3 % drop in inductance with face sheets;
