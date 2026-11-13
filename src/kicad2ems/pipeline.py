@@ -484,6 +484,7 @@ class Job:
                 entry.update(reference=done[0], compare=compare_table(freq, ref.S, r.S, r.names))
             self.summary['solved'][n] = entry
             self.log(f"{reg[n].label}: -> {out}")
+        self.join_bands()
         overlays = []
         if s.compare:
             fc, Sc = read_touchstone(s.compare)
@@ -491,6 +492,8 @@ class Job:
         others = [n for n in done[1:] if self.results[n].names == ref.names]
         overlays += [(freq, self.results[n].S, reg[n].label, OVERLAY_STYLES[i % len(OVERLAY_STYLES)])
                      for i, n in enumerate(others)]
+        if getattr(self, '_joined', None) is not None and ref.names == self.results[self.summary['joined']['low']].names:
+            overlays.append((freq, self._joined, 'joined', OVERLAY_STYLES[len(others) % len(OVERLAY_STYLES)]))
         self.figure(plot_results(freq, ref.S, ref.names, f"{self.name} - {reg[done[0]].label}", overlays,
                                  label=reg[done[0]].label), f"_{done[0]}.png", 'sparams', 'S-parameter plot')
         self.summary['results'] = dict(reference=done[0], names=ref.names, zref=ref.zref,
@@ -499,6 +502,41 @@ class Job:
                                        table=self.summary['solved'][done[0]]['table'], compare_file=s.compare)
         for n in done:
             reg[n].outputs(self, self.prep.get(n), self.results[n])
+
+    def join_bands(self):
+        """A quasi-static solver's answer and a full-wave one's, joined into one band at the frequency the first is
+        valid to (join.py): <name>_joined.sNp, and summary['joined']."""
+        from .join import pick, join
+        got = pick(self.results, registry())
+        if got is None:
+            return
+        low, high, fc = got
+        a, b = self.results[low], self.results[high]
+        if not np.allclose(np.asarray(a.zref, float), np.asarray(b.zref, float), rtol=1e-6):
+            self.log(f"not joined: {label(low)} and {label(high)} have different reference impedances")
+            return
+        freq = self.freq
+        if fc >= freq[-1] or fc <= freq[0]:
+            self.log(f"not joined: {label(low)} is valid to about {fc / 1e6:.3g} MHz, "
+                     + ("above the whole band" if fc >= freq[-1] else "below the whole band"))
+            return
+        S, info = join(freq, a.S, b.S, fc)
+        out = self.path(f"_joined.s{len(a.names)}p")
+        write_touchstone(out, freq, np.nan_to_num(S), a.zref, names=a.names,
+                         comment=f"joined: {label(low)} to {fc / 1e6:.4g} MHz, {label(high)} above "
+                                 f"(a raised-cosine blend from {info['blend_Hz'][0] / 1e6:.4g} to "
+                                 f"{info['blend_Hz'][1] / 1e6:.4g} MHz)")
+        self.wrote(f"S-parameters, {label(low)} below {fc / 1e6:.3g} MHz and {label(high)} above", out)
+        mis = info['mismatch']
+        self.summary['joined'] = dict(info, low=low, high=high, touchstone=self.rel(out),
+                                      table=sparam_table(freq, S, a.names))
+        self._joined = S
+        self.log(f"joined: {label(low)} to {fc / 1e6:.3g} MHz, {label(high)} above"
+                 + (f"; they differ by up to {mis:.3f} in |S| across the crossover" if mis is not None else '')
+                 + f" -> {out}")
+        if mis is not None and mis > 0.1:
+            self.log(f"WARNING: {label(low)} and {label(high)} differ by {mis:.2f} in |S| where they are joined: "
+                     f"one of them is off there (the mesh, a port), and the joined band is no better than the worse")
 
     def report(self):
         """<name>_run.json (the run summary) and <name>_report.html (unless --no-report)."""

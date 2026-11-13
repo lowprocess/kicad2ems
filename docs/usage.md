@@ -58,6 +58,14 @@ spaced on a log scale. Its run says to
 what frequency it holds on the board, and two ports whose return is not joined (a ground via missing between
 two planes) are reported as such.
 
+<a id="joined"></a>**One band from both.** With pcbqs and a full-wave solver in one run (`--solvers pcbqs,mom25d
+--fmin 0.01 --fmax 6 --sweep log`), the run also writes `<name>_joined.sNp`: pcbqs's answer up to the frequency
+it says it holds to, mom25d's (else the other full-wave solver's) above it, and across a fifth of a decade each
+side of that crossover a raised-cosine blend in log f, so the joined curve has no step. The log says how far the
+two disagree there, and warns above 0.1 in |S|. On `demo_transition` the crossover is 714 MHz and they differ by
+up to 0.043: pcbqs's one-sheet copper reads the matched line's |S11| about 3.5 dB high, as its docs say, and the
+joined band takes mom25d's from there up.
+
 Antenna mode (`mode = "antenna"`) needs openEMS, gfdtd or mom25d. mom25d models antennas over an infinite
 ground plane, so it suits patches and arrays but not antennas that use the board edge.
 
@@ -321,6 +329,7 @@ and with neither the study is S-parameters alone, which `kicad2ems board.toml` r
 | File | Contents |
 |---|---|
 | `<name>_<solver>.sNp` | each solver's S-parameters (terms that weren't computed are 0 and listed in the header) |
+| `<name>_joined.sNp` | pcbqs below the frequency it holds to and a full-wave solver above, in one band ([details](#joined)) |
 | `<name>_<solver>.png` | the S-parameter plot and Smith chart, the other solvers overlaid |
 | `<name>_report.html` | everything on one page ([details](postprocessing.md#the-report)) |
 | `<name>_run.json` | the run summary ([details](postprocessing.md#json-summary)) |

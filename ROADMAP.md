@@ -64,7 +64,8 @@ that: nothing in it may fix a panel in place. Left:
 
 mom25d is slowest where planes have to be meshed. Solid planes are PEC, lone stitching pads are left out and a
 board imported with a few nets can have its pours' voids filled (`--fill-voids`). The model items below are worth
-an order of magnitude more than the solver's: taking planes out brought rf_stripline from 100 s to 3 s.
+an order of magnitude more than the solver's: taking planes out brought rf_stripline from 100 s to 3 s. The
+solver's own items (large boards, the low end) are in the next section.
 
 1. **A plane a via runs through: the trace over the hole.** `--mom-planes holes` has the plane as PEC and the
    hole's voltage as an unknown (`mom25d/frill.py`; docs/mom.md#plane-holes), with an axisymmetric field in the
@@ -84,21 +85,32 @@ an order of magnitude more than the solver's: taking planes out brought rf_strip
    can go is not settled: on a crop, `all` moved a resonance of the planes the region cut (gfdtd's |S21| at
    10 GHz from −1.6 to −4.0 dB). It needs a board whose planes are not cut. The KiCad plugin's selected-net runs
    could default to `far`. Optionally, a ground pour on a signal layer cut a few heights from the signal copper.
-4. **Boards past ~30k unknowns**, only if they remain after 1–3. `solver='hodlr'` is about N^2.5 and wins by
-   memory first (its measurements: CHANGELOG.md). Towards N log N, in order:
-   - **the near field's reach, capped at a distance.** The correction's pattern reaches 5 cells, 15 mm under
-     3 mm plane cells, but beyond about 3 mm it is under 5e-4 of its largest: capped there, ACA would compress
-     from O(N r) entries (the reach itself is converged: 5 cells against 12 move |S| by 0.0025 at most on
-     rf_diffvia and rf_interdig);
-   - **a loop–star (or loop–tree) basis:** the low-frequency conditioning sets GMRES's iterations and amplifies a
-     compressed factorisation's error (10³–10⁴); perhaps 10–30 % on today's boards; a sizeable change;
-   - **strong admissibility** (H-LU, or HODLR in a nested-dissection order), so the ranks stay bounded: 50k+
-     fits, perhaps N^1.5–2 in time;
-   - **an FFT-based operator (pFFT / AIM):** a planar board's Green's function depends on the lateral distance
-     only, so its far field is a 2D convolution per pair of interfaces, with the near correction mom25d has and a
-     loose HODLR as GMRES's preconditioner (11 iterations at 1e-4 on demo_transition). The route to 100k+: a
-     large effort, and still short of a cheap preconditioner;
-   - HODLR's symmetry (Zᵀ = Z: half the compression, untested); the GPU for its products and its leaves.
+
+## mom25d: low frequency, large boards (the user's plan, 2026-11-13)
+
+Against Momentum, what mom25d lacks is not a quasi-static mode but a well-conditioned low end and a direct solver
+that does not need N² memory. In this order:
+
+1. **pcbqs's loop/tree basis, ported.** Below a few hundred MHz the MPIE's charge term (1/jω) swamps its current
+   term (jω) in the sum mom25d forms, and the mixed-precision solve stops converging (demo_transition at 10 MHz:
+   residual 0.99, solved again in double). pcbqs already solves this with a sparse loop/tree basis over the
+   triangles' adjacency, the tree's currents scaled by jω and its charge part kept out of the loops' rows
+   (`pcbqs/peec.py`); pcbqs keeps snapshots of mom25d's numerics (`_numerics`), so the two share conventions.
+   mom25d's impedance has to keep its two parts apart until they are projected (today `impedance` adds them), and
+   its via chains and plane holes need their own branches in the tree.
+2. **A compressed direct solver in the compiled core.** HODLR's weak admissibility lets the ranks grow on 2D
+   sheets, and HODLR and BLR are Python today. A strong-admissibility H-matrix LU, or a C++/OpenMP block low-rank
+   LU, removes the N² memory wall the GPU paths work around. What the earlier notes listed with it: the near
+   field's reach capped at a distance (ACA from O(N r) entries), HODLR in a nested-dissection order, its symmetry,
+   and an FFT operator (pFFT / AIM) as the route past 100k.
+3. **The band divided between the two solvers.** Done (`<name>_joined.sNp`: pcbqs to its `valid_to_Hz`, mom25d
+   above; CHANGELOG.md). Left: a crossover chosen where the two agree best, not only pcbqs's own estimate.
+4. **A quasi-static mode in mom25d, ranked low.** Building the matrix once saves time only if building it is
+   what costs: pcbqs builds once and is still slower in the overlap band, because each frequency's dense LU
+   dominates, and mom25d already keeps its frequency-independent singular parts and reuses its LUs across a sweep.
+   First profile how much of a sweep the per-frequency Green tables and fill take. If it is built, it belongs in
+   mom25d, on a static version of its layered Green's function with the PEC ground (`GreenTableML`): that, not a
+   mode, is what lets Momentum's RF mode go past λ/10 without meshing the planes.
 
 ## Power tools (pcbqs)
 

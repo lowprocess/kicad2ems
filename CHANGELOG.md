@@ -18,6 +18,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **One band from pcbqs and a full-wave solver (`<name>_joined.sNp`).** A run with both wrote their Touchstone files
+  side by side and left the user to know which to believe where. It now also joins them (`join.py`): pcbqs
+  below the frequency it says it holds to (its `valid_to_Hz`), mom25d (else the other full-wave solver) above,
+  a raised-cosine blend in log f across a fifth of a decade each side, and how far the two disagree there in the
+  log (a warning above 0.1 in |S|) and in the summary (`joined`). The window lists it as its own source, first,
+  and the run's plot overlays it. `demo_transition` from 10 MHz to 6 GHz: crossover 714 MHz, the two within
+  0.043; mom25d's own run there fell back to double precision at 10 MHz (its mixed precision did not converge:
+  the low-frequency breakdown the roadmap's loop/tree basis is for).
 - **Several rails in the window, as a table (kicad2ems-gui; API 2.10's `several_keys`).** The user chose the table of
   the two mock-ups. An analysis that says what differs between its runs (`several_keys`: pcbqs's rail tool, the
   rail, its volts, source, ground source, loads and load spectra) has those as a table at the top of its
