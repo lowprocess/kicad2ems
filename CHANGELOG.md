@@ -286,6 +286,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (7 s of it the one solve at 1 GHz whose factor has to be solved on the host), the rest ports and tables.
 
 ### Fixed
+- **The window's tests no longer crash the process after passing (kicad2ems-gui).** CI's stack jobs were red on
+  Linux (exit 139) and Windows (127) with every test passed: PySide 6.12 tearing down the QApplication at exit
+  walked every widget the tests left (110k) and crashed in a pyqtgraph scene's items, whose C++ destructors call
+  their Python overrides after the wrappers are gone (gdb). Reproduced here on Qt 6.12, two runs in three; the
+  tests' session now ends with pytest's own status once it has reported. On the way: a removed plot of the
+  Results grid is hidden and deleted with the event loop, not made a window of its own.
 - **The example boards are made in a checkout again, and every CI workflow passes.** `examples/make_boards.py`
   stopped at its first line in a checkout since the analyses' examples were added (a relative import that only
   works installed), so `install.py` made no example board and its CI's demo run found none. The stack's CI

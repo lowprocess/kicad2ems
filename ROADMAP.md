@@ -39,11 +39,6 @@ that: nothing in it may fix a panel in place. Left:
    the steps Board, Questions, Set up, Run, Results in place of the toolbar; Plots, Report, Tables and Log as
    docks of their own instead of the Results and Run pages; a start page with the examples as a gallery.
 
-5. **The tests' crash at exit on Linux CI.** The window's suite passes every test on CI's Ubuntu runners and
-   then segfaults as Python exits (exit 139), on Qt 6.12 and without a GL driver; neither this machine nor its
-   Qt 6.12 reproduces it. A run with a native traceback there (`python -X faulthandler`, or gdb's) says where.
-   Until then the stack workflow's Linux jobs are red for that alone.
-
 ## The line model
 
 1. **Nets reached only through the field.** A net is in the model when a port sits on it or a series part leads
