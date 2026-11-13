@@ -18,6 +18,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **The study as a model with no window (kicad2ems-gui: `study.StudyModel`).** What is asked of a board, who
+  answers each question, the Fields ticks, what cannot run here and why, each run's state and the runs a Run
+  takes were the Study dock's list's own, inside a Qt widget. They are an object that imports no Qt, with
+  listeners for its changes; the list (`studytree.py`) draws it and passes on the user's hand. Nothing in the
+  window changes; a program that drives a study without the window (kicad2ems-ipc, a test) uses the same
+  object. The settings' panels still hold their own values (the roadmap's next step).
 - **The mixed solver cuts two traces side by side as a coupled line.** It cut only lone traces: anything with
   other signal copper within 3 widths or 4 heights stayed in mom25d, so a differential pair or two signals
   routed together kept all their unknowns. Two parallel traces of one width with nothing else near are now cut

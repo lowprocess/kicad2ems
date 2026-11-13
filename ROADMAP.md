@@ -43,8 +43,11 @@ Its fixed layout was built and taken back (2026-11-12, the user's word): the set
 the questions, and the window keeps its docks, as a studio application's. What follows is to be read with
 that: nothing in it may fix a panel in place. Left:
 
-1. **The study as a model without Qt** (its step 1): the widgets still hold the state, and `app.py` is 2,500
-   lines. Nothing visible changes; it is what makes the rest cheap, and what kicad2ems-ipc could drive.
+1. **The study as a model without Qt, the rest** (its step 1). `study.StudyModel` has the questions' side
+   since 2026-11-13 (what is asked, who answers, the Fields ticks, availability, the runs' states; the Study
+   dock's list is its view, and it imports no Qt). Left: the settings (each analysis's panel and the solvers'
+   still hold their values), the board and the runs in progress, which are `app.py`'s 2,800 lines. Nothing
+   visible changes; it is what makes the rest cheap, and what kicad2ems-ipc could drive.
 2. **An analysis's panel with its few settings first**, as the solvers' are (an options row may say `level`;
    pcbqs's tables do not yet).
 3. **Picking on the board: what is left.** Nets and parts are picked (an option's `pick`, API 2.11). Not yet:
