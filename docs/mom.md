@@ -216,7 +216,7 @@ antenna_vivaldi 257 s to 140 s, antenna_array2x2_phased 28 s to 18 s.
   sidelobes −14 / −13 dB uniform, −28 / −25 dB with `taylor:25`, −30 / −27 dB with `chebyshev:25`, for about 1 dB of
   gain.
 
-Each port's far field is kept in `<name>_mom25d_array.npz`, which the GUI's Results page steers without solving
+Each port's far field is kept in `<name>_mom25d_array.npz`, which the GUI's Plots page steers without solving
 again ([Beam steering](gui.md#beam-steering)). openEMS and gfdtd take `drive` too: a run per driven port, each run's
 far field per unit incident wave summed for the drive, steered in the GUI likewise. On the 2×2 example gfdtd puts
 the beam at θ 10° (mom25d 15°: its infinite ground has no board edge).

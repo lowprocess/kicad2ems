@@ -122,7 +122,7 @@ solver gives 8.4 % and 15.7 %, and with the copper FDTD's Zdiff is 91.9 and 83.4
 The formulas also miss what lies beside a stripline: on the CM5 Minima, `PCIE_PI.nRST` runs on In2.Cu with ground
 0.2 mm beside it, 71.9 Ω by the offset-stripline formula and 58.8 Ω by its cut; cropped and solved by openEMS, its
 total C is 1.07 pF, against 1.05 pF for the cut and 0.89 pF for the formula (`tools/lines_crop_check.py`). In the GUI,
-the [Section view](gui.md#section) draws any section's cut.
+the [Section page](gui.md#section) draws any section's cut.
 
 <a id="calculator"></a>
 ### Stack-up calculator
@@ -158,7 +158,7 @@ line model's cuts are for. `--plot` writes the field (a pair's odd mode, or `--m
 ![A 100 Ω pair's odd-mode field, from kicad2ems-z0 --plot](img/z0_calculator.png)
 
 From Python, `kicad2ems.lines.calc`: `Line`, `calculate`, `fit`, `Line.on_board`, and `element` for the
-[Section view](gui.md#section). The GUI has it under Tools > Impedance calculator.
+[Section page](gui.md#section). The GUI has it under Tools > Impedance calculator.
 
 <a id="lines-field"></a>
 ### The line model on the field solver

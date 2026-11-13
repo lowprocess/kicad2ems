@@ -10,7 +10,7 @@ kicad2ems study examples/si_bus.toml          # the same from a config: [analysi
 ```
 
 In the window it is **Crosstalk** under *Signal integrity* in the study's questions. *Find traces side by side*
-lists the pairs of nets that run close together on the board, to pick from; **pick** beside *Nets* takes them
+lists the pairs of nets that run close together on the board, to pick from; **Pick** beside *Nets* takes them
 from clicks on the board ([picking](gui.md#pick)).
 
 ![The crosstalk question's result in the window](img/gui/crosstalk.png)

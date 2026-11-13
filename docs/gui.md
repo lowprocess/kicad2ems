@@ -15,8 +15,17 @@ loses a run, and the GUI itself doesn't need openEMS.
 ## The window
 
 Docks: what is asked and the settings of the question selected on the left, one over the other; the board with
-the results that are not maps under it in the rest of the window. Each dock can be dragged elsewhere, tabbed
-with another, floated or closed.
+the result's pages (its plots, its report, its tables, the log) beside and under it in the rest of the window.
+Each dock can be dragged elsewhere, tabbed with another, floated or closed.
+
+<a id="start"></a>
+**A window with no board begins on the Start page**: *Open a KiCad board…*, *Open a config…*, *Open a results
+folder…*, the configs opened lately, and the examples as tiles by group, each with its board drawn from above
+(a group shows its first five; *all* the rest; *Find an example* keeps those with every word typed in their
+name, title or group). A click on a tile opens the example as a study of its own. The page has the workspace to
+itself until a board is chosen or a result opened; *View > Start* brings it back.
+
+![The Start page: open a board, a config or a results folder, or begin from an example](img/gui/start.png)
 
 - **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, the run's estimate, the results folder, the report,
   *Filter* (the wand: [Filter Synthesis](#filter), a window of its own), and *Results of*: this board's preview
@@ -25,13 +34,21 @@ with another, floated or closed.
   red when it won't fit in the memory available. It opens the Solvers window. **Run says what it will do**
   (*Run 2*: its tooltip names them in order) or, while something is missing, what that is (*Choose the board*):
   clicking it then goes to where it is set ([Still needed](#needed)).
+- <a id="steps"></a>**Steps**, a bar under the toolbar: *Board*, *Questions*, *Set up*, *Run*, *Results*, each
+  with where it stands in a line (the board's layers and nets; what is asked; what is still needed; the
+  estimate, or the run's state; what the result is). Those done have a tick, the first that is not is marked;
+  a click goes to where a step is done. It says where the study is, and the toolbar stays what acts. Drag it by
+  its handle to the bottom of the window (or back), and *View > Steps* hides it.
 - **Status bar**: the memory in use, the GPU's (through `nvidia-smi` or `rocm-smi`), and a running run's own;
   amber above 80 %, red above 95 %.
 - **Left: the board and the questions.** The *Board* (its file and extra ports; the rest under *More about the
   board*), then the **Questions** asked of it ([below](#the-study)).
 - **The workspace: the board**, in the [Viewer](#viewer). While *Circuit* is asked its schematic is a tab beside
-  it, as Filter Synthesis is when opened. Under it the [Results](#plots) page and the [Run](#the-run-page) page,
-  tabbed; a page comes to the front when it has something new: Run when a run starts, Results when one ends.
+  it, as Filter Synthesis is when opened. A result has a page for each thing it is: its [Plots](#plots), beside
+  the board where the window has the width (1,400 px of workspace; else the first tab under it), and under the
+  board, tabbed, its [Report, its Tables](#report-page), the [Log](#the-log-page) and, with a line model, the
+  [Section](#section) picked. A page comes to the front when it has something new: the Log when a run starts,
+  the Report (or, for S-parameters, the Plots) when one ends.
 - **Left, under the questions: the settings of the question selected.** For S-parameters, the few a run is set up with: the frequency
   range and points, and the main cell size of each solver chosen. The rest are under **More settings**: the
   sections *Frequency*, *Solvers* (the driven ports), one per solver (*FDTD (openEMS, gfdtd)*: the mesh, run and
@@ -57,14 +74,15 @@ with another, floated or closed.
   what the proposal could not say (a rail's source) is listed under Still needed
   ([the steps on a board](https://github.com/lowprocess/pcbqs/blob/main/docs/power-workflow.md#4-from-one-tool-to-the-next)).
 
-*View* shows and closes each dock (the study and the settings: Ctrl+1, 2), and *View > Reset layout* puts them
-all back where a new window has them. The window remembers its size, where its docks are, its splitters and the
-Results page's plots between sessions; the first time it opens over the whole screen.
+*View* shows and closes each dock (the study and the settings: Ctrl+1, 2) and the steps bar, and *View > Reset
+layout* puts them all back where a new window has them. The window remembers its size, where its docks and the
+steps bar are, its splitters and the Plots page's plots between sessions; the first time it opens over the
+whole screen.
 
 <a id="run-folders"></a>
 **Where results go.** Each run gets a folder of its own under the output folder, named after the board and when it
 started (`<out>/<board>_20261013_104514/`); a preview goes to `<out>/<board>_preview/`, which each preview
-refreshes. Opening a config shows its newest run on the Results page and starts a preview, so the Viewer shows the
+refreshes. Opening a config shows its newest run on the result's pages and starts a preview, so the Viewer shows the
 board as it is now; *Results of* picks an earlier run.
 
 <a id="solvers"></a>
@@ -122,10 +140,11 @@ Selecting a row shows its engines' settings in the Settings dock, each a panel m
 engines: each under its name). **Run** makes the runs the questions take, in order: the solvers', then each
 analysis (the temperature after the circuit whose losses it takes); an engine that answers two questions
 answers them in one run. What a run leaves is shown where every result is: its maps in the Viewer (a rail's
-drop and current per layer, a board's temperature), its curves, its report and its tables on the Results page.
+drop and current per layer, a board's temperature), its curves on the Plots page, its report and its tables on
+theirs.
 
 <a id="pick"></a>
-**A setting picked on the board.** A setting that names a net or a part has a **pick** button beside it. With
+**A setting picked on the board.** A setting that names a net or a part has a **Pick** button beside it. With
 it down, the Viewer's plan is in front and a click there puts what is under the cursor into the setting: a
 trace's or a pour's net, or the part whose pads are there (the line under the plan says which, as the cursor
 moves). A setting that takes several adds each one clicked, and takes it out when it is clicked again; what
@@ -138,10 +157,10 @@ back when the pick ends. An engine says which of its settings can be picked ([an
 
 ![Two traces picked on the board for the crosstalk question](img/gui/pick.png)
 
-*CM5's HDMI control traces picked for the crosstalk question: **pick** beside *Nets*, then a click on each.*
+*CM5's HDMI control traces picked for the crosstalk question: **Pick** beside *Nets*, then a click on each.*
 
-**Two engines compared.** When another engine has answered the same question on this board, the report on the
-Results page gains a section *Engines compared*: the figures the engines name alike (a rail's own copper drop
+**Two engines compared.** When another engine has answered the same question on this board, the Report
+page gains a section *Engines compared*: the figures the engines name alike (a rail's own copper drop
 per load; the hottest point and each part's temperature) against the engines, with the difference. It is one of
 the report's tables, so it sorts, copies and exports as they do. A figure only one engine has is its own (pcbqs's
 drop with the ground return), and stays beside it.
@@ -161,15 +180,16 @@ model = "buck.json"                 # each analysis's settings, by its options' 
 <a id="viewer"></a>
 ## The Viewer
 
-The board and its fields, in five views (a view the folder has nothing for is greyed out):
+The board and its fields, in four views (a view the folder has nothing for is greyed out):
 
 | View | Shows |
 |---|---|
-| 3D | the board with its copper as shaded slabs, a solver's mesh, the line model, dumps in place, the far field |
 | Plan | one layer's copper from above (the others faint), a solver's mesh on it, the ports, the line model |
-| Cut | a cut through a field dump, with its values ([below](#cut-view)) |
-| Section | the field across the line-model section picked ([below](#section)) |
-| Images | the plots a run wrote: openEMS's mesh with its side views, the model, the line model |
+| 2D | a field dump in a cut, with its values ([below](#cut-view)) |
+| 3D | the board with its copper as shaded slabs, a solver's mesh, the line model, dumps in place, the far field |
+| Images | the pictures a preview or a run wrote as files: openEMS's mesh with its side views, the model, the line model |
+
+The field across one trace is a page of its own, [Section](#section), under the board.
 
 ![The Plan view: the hairpin's copper on F.Cu with mom25d's mesh, close up](img/readme/gui_mesh.png)
 
@@ -185,12 +205,15 @@ as a step in height. The list beside the view has every section by path (`P1 →
 delay, εeff and where its Z0 came from (*by*: the formula or the field solver); pick one there or on the plan.
 
 <a id="section"></a>
-### Section: the field across a trace
+### The Section page: the field across a trace
 
-Pick a section and open **Section**: the [field solver](transmission-lines.md#field-solver) solves that one
-cross-section (about 0.1 s, 2 s at worst on a real board) and draws it. A preview's line model is enough.
+Pick a section (in the list, or on the plan) and bring the **Section** page to the front: the
+[field solver](transmission-lines.md#field-solver) solves that one cross-section (about 0.1 s, 2 s at worst on a
+real board) and draws it. A preview's line model is enough. The page is under the board, so the plan stays in
+view: pick another section there and its field follows. It is there while the folder shown has a line model,
+and a section is solved only while the page is in view.
 
-![The Section view: a coupled pair of the hairpin in its odd mode, the field strength with equipotentials and field arrows](img/gui/section.png)
+![The Section page under the plan: a coupled pair of the hairpin in its odd mode, the field strength with equipotentials and field arrows](img/gui/section.png)
 
 | Setting | What it does |
 |---|---|
@@ -231,10 +254,10 @@ those the folder has nothing for hidden:
 ![The 3D view: a patch antenna's near field over one period](img/readme/patch_3d.gif)
 
 <a id="cut-view"></a>
-### Cut: field dumps in 2D
+### 2D: field dumps in a cut
 
 Add dumps under *Field dumps* in the settings (*Add a dump* builds the spec: [syntax](postprocessing.md#field-dumps)).
-A dump without frequencies is recorded over time, and the Cut view can follow it live while the run goes; one with
+A dump without frequencies is recorded over time, and the 2D view can follow it live while the run goes; one with
 frequencies is written at the end.
 
 | Control | |
@@ -246,15 +269,24 @@ frequencies is written at the end.
 | Live | follow a running simulation |
 | Save PNG / GIF / MP4 | the view or an animation (MP4 needs ffmpeg) |
 
-## The Run page
+<a id="the-run-page"></a>
+## The Log page
 
 Progress per driven port, the FDTD runs' energy decay, mom25d's adaptive sweep (its model change and prediction
 error per solve, in dB, against its tolerance), the log, and *Stop*.
 
-<a id="plots"></a>
-## The Results page
+<a id="report-page"></a>
+## The Report and Tables pages
 
-S-parameters and antenna results as a grid of plots (the picture at the top). *Add plot* adds one, ✕ removes it.
+What an analysis found, as it wrote it: the **Report** is the page to read (the figures that matter first, then
+what was assumed and what was left out), **Tables** its tables alone, each to sort, copy and export as CSV.
+An S-parameter run's report is an HTML file: *Report* in the toolbar opens it.
+
+<a id="plots"></a>
+## The Plots page
+
+S-parameters and antenna results as a grid of plots (the picture at the top), and an analysis's curves (a
+rail's impedance, a near field's spectrum, a circuit's waveforms). *Add plot* adds one, ✕ removes it.
 
 | Plot | Shows |
 |---|---|
@@ -274,7 +306,7 @@ single-ended port among them (Sds31).
   listed in a table; wheel and drag to zoom, *Fit* for everything.
 - **Add results folder…** overlays another run; **Export CSV…** and **Save image…**.
 
-![The Results page in antenna mode: match, gain and efficiency over frequency, and the polar cuts](img/readme/gui_antenna.png)
+![The Plots page in antenna mode: match, gain and efficiency over frequency, and the polar cuts](img/readme/gui_antenna.png)
 
 <a id="antenna"></a>
 In antenna mode the line above the plots gives the resonance, the input impedance and the −10 dB band, with a
@@ -334,7 +366,7 @@ A line's impedance in a stack-up, without a board: kicad2ems's 2D field solver
 - **Line**: the width and the copper's thickness; *A pair* adds the gap and gives Zdiff and Zcommon; *Ground beside
   it* a grounded coplanar line.
 - Every change is solved as it is typed (about 0.1 s). The numbers are on the left, with the closed form where
-  one applies; the field is on the right, as the Viewer's [Section](#section) draws a board's.
+  one applies; the field is on the right, as the [Section](#section) page draws a board's.
 - **Fit** changes the width, the gap or the ground's distance until the impedance chosen is the target, to 0.1 %.
   A target no size reaches says what the range is. **Copy** takes the line and its numbers as text.
 

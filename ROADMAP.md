@@ -53,9 +53,12 @@ that: nothing in it may fix a panel in place. Left:
 3. **Picking on the board: what is left.** Nets and parts are picked (an option's `pick`, API 2.11). Not yet:
    a pad (a port: `REF.PAD`, or a point), a `REF=VALUE` list's part (a rail's loads, a part's loss), a region
    dragged as a box, and the pick in the 3D view. The Circuit page's own file buttons go.
-4. **To be asked before building** (designed for the fixed layout, so they may not fit docks): a header with
-   the steps Board, Questions, Set up, Run, Results in place of the toolbar; Plots, Report, Tables and Log as
-   docks of their own instead of the Results and Run pages; a start page with the examples as a gallery.
+4. **The window's pages, the rest.** Built 2026-11-13, as docks (the user's choice among three mock-ups): the
+   Start page with the examples as tiles, Plots, Report, Tables and Log as pages of their own, Section as one
+   too (the Viewer's buttons are Plan, 2D, 3D, Images), and the steps as a bar under the toolbar that moves to
+   the bottom and hides. Left: *Images* may belong on a page of its own as Section does (asked, not decided);
+   a tile says nothing of what its example takes (the engine, the time: the index has neither); *Reset layout*
+   still aborts Qt on Windows when a dock was floating (the CI's native-platform step is there to find where).
 
 ## The line model
 

@@ -27,7 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 fast = ["scikit-rf>=1.0"]          # --fast skrf: the line model as S-parameters (qucsator: a separate program)
 dumps = ["h5py>=3"]                # frequency-domain field dumps (openEMS's own Python package needs it too)
-gui = ["kicad2ems-gui @ git+https://github.com/lowprocess/kicad2ems-gui@e2ffa67e09dfa59402c21c730e010532223dee6a"]   # the window (kicad2ems-gui), its own
+gui = ["kicad2ems-gui @ git+https://github.com/lowprocess/kicad2ems-gui@6828ec15a36d5277da48da7ef602f0565c83842e"]   # the window (kicad2ems-gui), its own
                                                                              # repository: PySide6, pyqtgraph, PyOpenGL
 core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ / OpenMP kernels (~5x faster);
                                    # python -m gfdtd.core.build: gfdtd's CPU core (~15x numpy)
@@ -44,7 +44,7 @@ fem = ["kicad2ems-fem @ git+https://github.com/lowprocess/kicad2ems-fem@e967bfc9
                                                                 # themselves come from elsewhere (its README)
 gfdtd = ["kicad2ems-fdtd[gfdtd] @ git+https://github.com/lowprocess/kicad2ems-fdtd"]   # the FDTD solvers' package
                                                                 # with gfdtd, the GPU / CPU-core FDTD engine
-filter = ["kicad2ems-gui[filter] @ git+https://github.com/lowprocess/kicad2ems-gui@e2ffa67e09dfa59402c21c730e010532223dee6a"]   # the GUI's Filter page (dfsynth)
+filter = ["kicad2ems-gui[filter] @ git+https://github.com/lowprocess/kicad2ems-gui@6828ec15a36d5277da48da7ef602f0565c83842e"]   # the GUI's Filter page (dfsynth)
 all = ["kicad2ems[fast,dumps,gui,core,openems,mom,qs,gfdtd,filter]"]       # everything but a GPU wheel (one of the gpu-* extras)
 # mom25d's and gfdtd's GPU solvers (docs/mom.md#gpu): slangpy (gpu-vulkan), the default on any GPU, or optionally
 # the CuPy wheel built for your GPU stack, one of the other extras (pip install '.[gpu-cuda12]'); the CuPy wheels

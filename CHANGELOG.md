@@ -9,6 +9,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Changed
+- **The Viewer's views are Plan, 2D, 3D, Images (kicad2ems-gui).** In that order, the board flat first; *Cut*
+  is named *2D* (a field dump in a cut), and *Section* left for a page of its own. A setting's **Pick** button
+  is capitalised.
 - **The window is docks again, with the settings on the left (kicad2ems-gui).** The fixed three-column layout
   (the settings in a column on the right, a drawer under the board, nothing movable) is taken back, on the
   user's word: the selected question's settings are a dock on the left under the study's, the Viewer, the
@@ -18,6 +21,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **The window begins on a Start page (kicad2ems-gui).** A window with no board showed an empty Viewer over
+  empty Results. It opens on *Start*: *Open a KiCad board…*, *Open a config…*, *Open a results folder…*, the
+  configs opened lately, and every example as a tile by group with its board drawn from above (drawn in a
+  thread the first time and kept in the cache folder; *Find an example* filters by word). The page is a dock,
+  tabbed with the Viewer, and has the workspace to itself: the result pages step aside while there is no board
+  and nothing to show, and come back where they were when a board is chosen or a result opened. *View > Start*
+  brings it back.
+- **A result's pages are docks of their own (kicad2ems-gui).** The Results page held three modes behind
+  buttons (Plots, Report, Tables) and the Run page the log. They are four pages, *Plots*, *Report*, *Tables*
+  and *Log*, each a dock that moves, tabs, floats and closes: Plots beside the board where the workspace has
+  1,400 px (else the first tab under it), the others tabbed under the board. A run's end brings the Report to
+  the front (the Plots for S-parameters), so a report and its curves, or a table and the board, are seen
+  together.
+- **Section is a page under the board (kicad2ems-gui).** The field across a line-model section was a view of
+  the Viewer, so opening it hid the plan the section is picked on. It is a page of its own, tabbed with the
+  Report under the board: pick a section on the plan or in the list and its field follows. It is there while
+  the folder shown has a line model, and solves only while it is in view.
+- **The steps of a study, as a bar (kicad2ems-gui).** Under the toolbar: Board, Questions, Set up, Run,
+  Results, each with where it stands in a line (the board's layers and nets, what is asked, what is still
+  needed, the estimate or the run's state, what the result is), those done ticked and the next one marked; a
+  click goes to where the step is done. The toolbar stays what acts. The bar is a toolbar of its own: it drags
+  to the bottom of the window and *View > Steps* hides it, both kept with the layout.
 - **The study as a model with no window (kicad2ems-gui: `study.StudyModel`).** What is asked of a board, who
   answers each question, the Fields ticks, what cannot run here and why, each run's state and the runs a Run
   takes were the Study dock's list's own, inside a Qt widget. They are an object that imports no Qt, with
