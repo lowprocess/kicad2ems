@@ -124,6 +124,22 @@ analysis (the temperature after the circuit whose losses it takes); an engine th
 answers them in one run. What a run leaves is shown where every result is: its maps in the Viewer (a rail's
 drop and current per layer, a board's temperature), its curves, its report and its tables on the Results page.
 
+<a id="pick"></a>
+**A setting picked on the board.** A setting that names a net or a part has a **pick** button beside it. With
+it down, the Viewer's plan is in front and a click there puts what is under the cursor into the setting: a
+trace's or a pour's net, or the part whose pads are there (the line under the plan says which, as the cursor
+moves). A setting that takes several adds each one clicked, and takes it out when it is clicked again; what
+the setting holds is drawn in blue. The button again ends it, as does another setting's. Where the settings
+are a table (a board's rails), one button picks the selected cell: a net in the *Rail* column, a part in
+*Source*. The plan shows the board as drawn for this (all its nets, and the parts' outlines), which is also
+what it shows from the moment a board is chosen, before any preview or run; a run's result that was there is
+back when the pick ends. An engine says which of its settings can be picked ([an option's
+`pick`](api.md#kicad2emsapianalysis)), so the window knows none by name.
+
+![Two traces picked on the board for the crosstalk question](img/gui/pick.png)
+
+*CM5's HDMI control traces picked for the crosstalk question: **pick** beside *Nets*, then a click on each.*
+
 **Two engines compared.** When another engine has answered the same question on this board, the report on the
 Results page gains a section *Engines compared*: the figures the engines name alike (a rail's own copper drop
 per load; the hottest point and each part's temperature) against the engines, with the difference. It is one of

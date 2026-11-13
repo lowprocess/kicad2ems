@@ -546,10 +546,12 @@ class Crosstalk(Analysis):
                                                                         kind=kind, default=default, help=help,
                                                                         group=group, **kw)
         return [
-            o('nets', 'list', [], "the traces, by net: two or more (one a line, or comma-separated)", level='basic'),
-            o('aggressor', 'str', '', "the driven traces, comma-separated (empty: each in turn)", level='basic'),
+            o('nets', 'list', [], "the traces, by net: two or more (one a line, or comma-separated)", level='basic',
+              pick='nets'),
+            o('aggressor', 'str', '', "the driven traces, comma-separated (empty: each in turn)", level='basic',
+              pick='nets'),
             o('near', 'str', '', "the parts at the near (driven) ends, comma-separated: U1 (empty: the ends nearest "
-              "the first trace's first end)"),
+              "the first trace's first end)", pick='parts'),
             o('mode', 'str', 'both', "what the headline and the limit are about: both (the larger), next (near end) "
               "or fext (far end)", 'Edge', choices=['both', 'next', 'fext'], level='basic'),
             o('rise', 'float', 100.0, "the aggressor's edge, ps (10 to 90 %)", 'Edge', level='basic'),

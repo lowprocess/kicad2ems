@@ -6,6 +6,9 @@ results (the GUI, the KiCad plugin, dfsynth's --validate).
 
   boards              KiCadBoard (a .kicad_pcb, or KiCad's board text), Board (the canonical model), kind_value
                       (a footprint's lumped part), extra_port_fps (the footprints a region adds as ports)
+  the board as drawn  board_layout (a .kicad_pcb as the model board's dict with every net's copper and the
+                      footprints, no ports asked for: to show before a run), net_at, part_at (the net and the
+                      part under a point: a setting picked on the board, an option's `pick`) (2.11)
   the line model      build_lines (Board -> LineModel), RefCopper (its reference copper, built once), overlay (the
                       module: the line model drawn on the board), sections (the module: one section's field),
                       impedance (the module: a stack-up's Z0 without a board: Line, calculate, fit, element) (2.5)
@@ -41,6 +44,7 @@ from . import API_VERSION, lazy                                            # noq
 NAMES = dict(
     KiCadBoard='.importers.kicad:KiCadBoard', Board='.board:Board', kind_value='.parts:kind_value',
     extra_port_fps='.region:extra_port_fps',
+    board_layout='.layout:board_layout', net_at='.layout:net_at', part_at='.layout:part_at',
     build_lines='.lines.builder:build', RefCopper='.lines.reference:RefCopper', overlay='.overlay',
     sections='.lines.sections', impedance='.lines.calc',
     Settings='.config:Settings', build_settings='.config:build_settings', read_toml='.config:read_toml',

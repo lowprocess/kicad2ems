@@ -18,6 +18,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **A setting is picked on the board (kicad2ems-gui; `kicad2ems.layout`, API 2.11).** The Viewer's plan shows
+  the board as drawn as soon as one is chosen, before any preview or run: every net's copper and the parts'
+  outlines, read off the event loop (`board_layout`: CM5's in 3.7 s). A setting that names a net or a part has
+  a **pick** button beside it: with it down, a click on the plan puts the trace's net or the part under it into
+  the setting (one that takes several adds it, and takes it out when clicked again), and what the setting holds
+  is drawn in blue. A rail's table has one button for the selected cell, which picks a net or a part by its
+  column. While a run's result is in the plan, the pick is on the board as drawn (a run's board has only the
+  nets it simulated and no parts), and the result is back when the button is let go. What may be picked is the
+  option's own word (`pick`: `'net'`, `'nets'`, `'part'`, `'parts'`), so the window knows no setting by name:
+  the crosstalk question's traces, aggressor and near parts; pcbqs's rail, ground, source, converter, inductor
+  and capacitors; kicad2ems-fem's nets and source. `net_at` and `part_at` say what is under a point.
 - **The joined band's crossover goes where the two solvers agree best** (`join.best_crossover`), at or below the
   frequency pcbqs says it holds to, which is a rule of thumb and often generous: `demo_transition` from 10 MHz to
   6 GHz was joined at 714 MHz with the two 0.043 apart, and is now joined at 17 MHz, 0.0012 apart (mom25d's low

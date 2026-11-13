@@ -33,8 +33,8 @@ The crosstalk question (`kicad2ems.si`, docs/si.md) is the first. Left, in the o
    for a bit pattern (the edge response is there: superposed).
 3. **A trace's own quality:** its impedance along its length (the line model has it: *Trace impedances*), the
    reflections of its discontinuities for the edge (TDR from S11), its loss at the data rate.
-4. **Picking the traces on the board** (the window's picking item), and the coupled stretches drawn on the plan
-   coloured by their share.
+4. **The coupled stretches drawn on the plan**, coloured by their share (the traces are picked on the board
+   since API 2.11).
 
 ## The window, from a clean slate
 
@@ -47,8 +47,9 @@ that: nothing in it may fix a panel in place. Left:
    lines. Nothing visible changes; it is what makes the rest cheap, and what kicad2ems-ipc could drive.
 2. **An analysis's panel with its few settings first**, as the solvers' are (an options row may say `level`;
    pcbqs's tables do not yet).
-3. **Picking on the board** (an option declares what it is picked from: a net, a part, a pad); the Circuit
-   page's own file buttons go.
+3. **Picking on the board: what is left.** Nets and parts are picked (an option's `pick`, API 2.11). Not yet:
+   a pad (a port: `REF.PAD`, or a point), a `REF=VALUE` list's part (a rail's loads, a part's loss), a region
+   dragged as a box, and the pick in the 3D view. The Circuit page's own file buttons go.
 4. **To be asked before building** (designed for the fixed layout, so they may not fit docks): a header with
    the steps Board, Questions, Set up, Run, Results in place of the toolbar; Plots, Report, Tables and Log as
    docks of their own instead of the Results and Run pages; a start page with the examples as a gallery.

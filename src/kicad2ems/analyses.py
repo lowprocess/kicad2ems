@@ -72,6 +72,9 @@ and, since 2.9,
   uses                    the analyses whose latest result it can start from, when there is one (the temperature
                           from a circuit's losses): not required, as `needs` are
   an option's 'level'     'basic' in an options() row: one of the few a run is set up with (Option.level)
+and, since 2.11,
+  an option's 'pick'      what the setting names on the board, for a front end to pick there (kicad2ems.layout):
+                          'net', 'part', or 'nets', 'parts' where it takes several; absent: typed
   fields                  the bool option that makes it write field dumps too ('fields'); '': none
   for_questions(values, asked)
                           its settings for a run that is asked only some of its questions (the rail's drop without

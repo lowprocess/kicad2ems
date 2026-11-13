@@ -46,6 +46,7 @@ in it. A user takes a provider of the same major version and at least the minor 
   2.9 what a window shows first and what a run still needs: an option's `level`, a solver's `basic`, an analysis's
   `missing(values, board, results)` and `uses`, `rf_needs`.
   2.10 several runs of one analysis in a study (a board's rails): an analysis's `several` and `several_keys`, `read_analysis_sets`.
+  2.11 a setting picked on the board: an option's `pick`, and `board_layout`, `net_at`, `part_at` in `api.frontend`.
   [CHANGELOG.md](https://github.com/lowprocess/kicad2ems/blob/main/CHANGELOG.md) has each release's.
 
 Both API modules load their names on first use: importing one costs nothing until a name is used.
@@ -167,7 +168,7 @@ and implements:
 | Method | Returns |
 |---|---|
 | `check()` | `(usable, one line)`: its version and origin, or what is missing and how to get it |
-| `options()` | its settings, `[dict(key, flag, kind, default, help, group, choices)]`; `kind` one of `KINDS`: `'str'`, `'int'`, `'float'`, `'bool'` (a switch), `'list'` (repeatable) |
+| `options()` | its settings, `[dict(key, flag, kind, default, help, group, choices)]`; `kind` one of `KINDS`: `'str'`, `'int'`, `'float'`, `'bool'` (a switch), `'list'` (repeatable). A row may say `level` (`'basic'`: one of the few a run is set up with; 2.9) and `pick` (what the setting names on the board, for a front end to pick there: `'net'`, `'part'`, or `'nets'`, `'parts'` where it takes several; 2.11) |
 | `tag(values)` | a short name for a run of these settings (the rail, the converter): its folder's |
 | `command(values, board, out, preview=False, results=None)` | the command line that runs it into folder `out`; `results`: `{analysis: the folder of its latest result on this board}`, for one that can start from another's. `ValueError` says what is missing |
 | `status(line)` | the progress a line of its output states, or `None` |
@@ -265,6 +266,7 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 | Group | Names |
 |---|---|
 | boards | `KiCadBoard` (a `.kicad_pcb`, or KiCad's board text), `Board` (the canonical model), `kind_value` (a footprint's lumped part), `extra_port_fps` (the footprints a region adds as ports) |
+| the board as drawn | `board_layout(path)`: a `.kicad_pcb` as the model board's dict (`Board.to_dict()`: every net's copper by layer, no ports asked for) with `footprints` (`[dict(ref, value, layer, through, box, pads=[dict(name, net)])]`, model mm) and `layout_of` (the file), to show before anything is run; `net_at(layout, layer, x, y)` and `part_at(layout, layer, x, y)`: the net whose copper, and the part whose pads' box, is under a point, or `None` (2.11) |
 | the line model | `build_lines` (Board → LineModel; `field=True`: every section by the field solver), `RefCopper` (its reference copper), `overlay` (the module: the line model drawn on the board), `sections` (the module: one section's field: `modes`, `solve`), `impedance` (the module: a stack-up's impedance without a board, `kicad2ems.lines.calc`: `Line`, `calculate`, `fit`, `element`, `describe`, `report`; 2.5) |
 | settings | `Settings`, `build_settings`, `read_toml`, `all_options`, `default_out`, `PATH_KEYS`, `sitecfg` (the module), `G_DUMP` |
 | solvers | `registry`, `get_solver`, `resolve_lines`, `AUTO`, `LINES` |
