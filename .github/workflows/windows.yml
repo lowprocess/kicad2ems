@@ -110,7 +110,12 @@ jobs:
         run: cd kicad2ems-fdtd && python -m pytest -q
       - name: kicad2ems-gui
         if: success() || failure()
-        run: cd kicad2ems-gui && python -m pytest -q
+        # PySide 6.12's process ends in an access violation on Windows after every test has passed (Qt's DLLs torn
+        # down: os._exit and TerminateProcess alike), so the step goes by pytest's own report, written before that
+        run: |
+          cd kicad2ems-gui
+          python -m pytest -q --junitxml=gui-junit.xml || true
+          python -c "import sys, xml.etree.ElementTree as E; r = E.parse('gui-junit.xml').getroot(); s = r if r.tag == 'testsuite' else r[0]; bad = int(s.get('failures', 0)) + int(s.get('errors', 0)); n = int(s.get('tests', 0)); print(f'{n} tests, {bad} failed or in error'); sys.exit(1 if bad or not n else 0)"
       - name: dfsynth
         if: success() || failure()
         run: cd dfsynth && python -m pytest -q
