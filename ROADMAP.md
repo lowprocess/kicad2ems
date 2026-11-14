@@ -198,13 +198,13 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
 ### Speed
 
 The wpthb bridge (`data/wpthb_bridge.json`) at 90 kHz and 10 W: 40 s on ngspice alone, 1 min 47 s with its copper;
-7 s on the piecewise-linear engine (29 s before 2026-11-14's fixes: the reported run started cold and kept every
-one of its 2^18 samples a period), half of it the reported run sampled as finely as its switches' packages ring
-(hundreds of MHz).
+20 s on the piecewise-linear engine with its diodes' recovery (7 s without; 29 s before 2026-11-14's fixes: the
+reported run started cold and kept every one of its 2^18 samples a period), most of it the reported run sampled as
+finely as its switches' packages ring (hundreds of MHz).
 
 | Option | Gain | Effort | Notes |
 |---|---|---|---|
-| A piecewise-linear switched state-space engine: the rest | 10–100× for ideal-switch studies | | Built for `pcbqs.circuit` (2026-11-13, `--engine pwl`), with the board's copper, switch capacitance and the edges' energy (2026-11-14; pcbqs's `docs/circuit.md` has both tables against ngspice). Left: the reported run's fine sampling (a run of a period by block powers of one step's matrix, not a loop a sample: half of the bridge's 7 s); the body diodes' reverse recovery (a charge-control state; ngspice's switches lose 16 % more on the bridge for it); a diode's junction capacitance as a function of its reverse voltage (a constant one made a bridge rectifier's steady state ambiguous); gate edges, for the switching loss of the V-I overlap |
+| A piecewise-linear switched state-space engine: the rest | 10–100× for ideal-switch studies | | Built for `pcbqs.circuit` (2026-11-13, `--engine pwl`), with the board's copper, switch capacitance and the edges' energy (2026-11-14; pcbqs's `docs/circuit.md` has both tables against ngspice). Reverse recovery (a diode's stored charge, SPICE's TT) is in it (2026-11-14): ngspice's where the circuit sets di/dt. Left: gate edges, for the switching loss of the V-I overlap, which is now most of what is between the two on a hard-switched leg (the wpthb bridge's Q2 and Q4: 52 mW for ngspice's 96, its settled VHB ripple 3.6 V for 0.10 V from the instant edges' ringing); the reported run's fine sampling (a run of a period by block powers of one step's matrix, not a loop a sample: most of the bridge's 20 s); a diode's junction capacitance as a function of its reverse voltage (a constant one made a bridge rectifier's steady state ambiguous) |
 | Xyce backend | robustness, not speed | 2 days | it ran behavioural switches ngspice could not; 2–7× slower on the benchmark converter; harmonic balance could suit resonant tanks |
 | Two faces in the circuit: a local loop basis | fewer iterations, no dense setup | | iterations grow with frequency (217 at DC, 575 at 20 MHz); the dense common-mode setup is 19 s |
 | The dense solves, after their assembly | the LU is what is left: 90 % of a two-face S-parameter solve (147 s at 17,700 unknowns) | | The assembly, the thermal maps' sampling and the potential's solve are in the compiled core or on Cholesky since 2026-11-13 (pcbqs's CHANGELOG; `tools/perf/README.md` has where each tool's time goes). Left, none of it pcbqs's own Python: a compressed or block low-rank LU as mom25d has; ngspice's text output read by `np.loadtxt` (a binary raw file); the compression of field dumps; shapely's unions in the near field's mesh |

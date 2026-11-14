@@ -32,6 +32,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **Reverse recovery in pcbqs's piecewise-linear circuit engine.** A diode's transit time, a body diode's among
+  them, is its stored charge, as SPICE's: where the circuit sets how fast its current reverses, the recovery
+  current and its losses are ngspice's to a few per cent. A hard-switched leg's recovery loss is still under
+  ngspice's (the wpthb bridge's Q2 and Q4: 52 mW for 96): the ideal gate closes at once.
 - **The window begins on a Start page (kicad2ems-gui).** A window with no board showed an empty Viewer over
   empty Results. It opens on *Start*: *Open a KiCad board…*, *Open a config…*, *Open a results folder…*, the
   configs opened lately, and every example as a tile by group with its board drawn from above (drawn in a
