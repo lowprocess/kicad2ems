@@ -31,7 +31,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - the near field can choose its compressed solve (`--backend hierarchical`);
   - the crosstalk's layout estimates solve each cut once and the wider gaps for the three worst stretches only,
     which the report shows (a synthetic 12-trace bus: 1.8 s, where widening every pair took 34 s); a stretch whose
-    cut cannot be solved is said in the warnings (it had been dropped silently).
+    cut cannot be solved is said in the warnings (it had been dropped silently);
+  - the window reads the run folders once while they are unchanged (kicad2ems-gui): what each analysis still
+    needs had listed and read every run once per analysis and per row of its table at each settings change (20 ms
+    a time at 200 runs);
+  - pcbqs's S-parameters sweep where a rational model is least sure (emsdev.afs, mom25d's sweep), at most 31
+    solves, where 31 log-spaced points had been interpolated linearly across a filter's resonance; its via matrix
+    from arrays (2,500 segments: 0.35 s for 19.5) and its loop tree breadth first (loops a third shorter).
 - **The Viewer's views are Plan, 2D, 3D, Images (kicad2ems-gui).** In that order, the board flat first; *Cut*
   is named *2D* (a field dump in a cut), and *Section* left for a page of its own. A setting's **Pick** button
   is capitalised.

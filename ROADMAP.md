@@ -128,8 +128,7 @@ that: nothing in it may fix a panel in place. Left:
    - Failed and stopped runs should stay listed with their log (it lives only in the page today); a run can be
      deleted.
    - The 3D view recolours all 24 phases on the GUI thread at each step of a control (3.2 s and 1.4 GB at 256).
-   - The runs are re-read from disk on every settings change (20 ms for 200 runs, per analysis and rail), and
-     `prepare_example` and dfsynth's `--describe` run on the GUI thread.
+   - `prepare_example` and dfsynth's `--describe` run on the GUI thread.
    - Desktop basics:
      - a dropped board, config or results folder;
      - a dialog for an exception in a slot;
@@ -354,8 +353,6 @@ engine.
 | Whole-board near field | | convergence | `--backend hierarchical` (since 2026-11-14) is GMRES in the loop basis (47,548 triangles in 13 s, docs/quasistatic.md). Left: mesh and crop convergence on a whole board. A crop around the converter is enough for DC-DC loops |
 | A trial's waveforms (R-D2, the rest) | ~0.5 s of each run | S | 98 MB of text a wpthb run read by `loadtxt` (0.5 s; `fromstring` is no faster: a binary raw file), the spectrum computed twice with copper. Trials are saved uncompressed since 2026-11-14 |
 | A fresh complex128 LU each frequency (R-D13) | 2× (complex64 with refinement: 0.19 s for 0.38 at n = 4,000) | M | with `dc` loss `Rl + jωLl` is a pencil: one eigendecomposition and Woodbury for the parts |
-| sparams' 31 points (R-D15) | | S | interpolated linearly in log f, across a filter's resonance: AAA as mom25d's |
-| The dense via matrix and the loop tree (R-D16) | ~15 s at 2,500 segments | S | a Python double loop; the tree in branch order (loops of 35-45 branches): breadth first |
 
 The quasi-static solver's 10× target is not yet shown on real boards, and an FFT field grid's convergence has to
 be checked for each scan.
