@@ -251,10 +251,6 @@ that does not need N² memory. In this order:
 5. **The copies shared with pcbqs** (R-F4) drift both ways: mom25d's singular-rule fix (the moment up to 1.3 % off)
    is not in pcbqs, pcbqs's mesh-quality cap is not in mom25d. A shared numerics package beside emsdev, or a CI
    report of the drift.
-6. **Integrated GPUs and other CPUs** (R-B19, B20): emsdev's `auto` takes an iGPU and counts its memory twice; the
-   fast cores are found by two rules (0.9 and 0.95 of the top clock, an i9-13900K's 0.948), and mom25d's ignores
-   affinity.
-
 ## Power tools (pcbqs)
 
 `pcbqs.pdn` (a rail's DC drop and impedance), `pcbqs.mqs` (a converter's near field), `pcbqs.circuit` (switching
