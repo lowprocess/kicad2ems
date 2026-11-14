@@ -11,7 +11,8 @@ try:
 except ImportError:                                                 # Python 3.10
     import tomli as tomllib
 
-STACK = {'emsdev', 'kicad2ems', 'mom25d', 'gfdtd', 'dfsynth', 'kicad2ems-gui', 'kicad2ems-fdtd', 'pcbqs'}
+STACK = {'emsdev', 'kicad2ems', 'mom25d', 'gfdtd', 'dfsynth', 'kicad2ems-gui', 'kicad2ems-fdtd', 'pcbqs',
+         'kicad2ems-fem'}
 
 
 def name(req):

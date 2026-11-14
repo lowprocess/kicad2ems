@@ -410,7 +410,8 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
                 raise ValueError("a coupled section of more than two lines needs a working folder for its Touchstone")
             path = os.path.join(workdir, f"group{gid}.s{2 * len(mem)}p")
             write_touchstone(path, freq, group_s(g, freq), [50.0] * (2 * len(mem)), comment='coupled section')
-            L.append(f'SPfile:G{gid} {" ".join(nodes_near + nodes_far)} gnd File="{{{path.replace(os.sep, '/')}}}" Data="rectangular" '
+            unix = path.replace(os.sep, '/')                         # (outside the f-string: Python 3.10 and 3.11)
+            L.append(f'SPfile:G{gid} {" ".join(nodes_near + nodes_far)} gnd File="{{{unix}}}" Data="rectangular" '
                      f'Interpolator="linear" duringDC="open"')
     num = 0
     order = []

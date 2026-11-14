@@ -7,8 +7,9 @@ pip install '.[gui]'          # kicad2ems-gui, its own package: PySide6, pyqtgra
 kicad2ems-gui [config.toml]   # or: python -m kicad2ems_gui
 ```
 
-The GUI edits a run's settings and starts the command-line tool as a separate process: closing the window never
-loses a run, and the GUI itself doesn't need openEMS.
+The GUI edits a run's settings and starts the command-line tool as a separate process: a solver's crash never takes
+the window with it, and the GUI itself doesn't need openEMS. Closing the window stops a run that is going (it asks
+first); Stop asks a run to end and lets each tool stop what it started (ngspice, Elmer, Palace).
 
 ![The window: the questions on the left, a hairpin filter's board with its S-parameters from three solvers in the page under it](img/readme/gui_sparams.png)
 

@@ -13,28 +13,24 @@ window and mom25d; pcbqs's for the power tools). C, I and U numbers are findings
 Answers that are wrong with nothing to say so, and a workflow that does not run. Each is under a day unless it says
 otherwise; the review has the file and line of each.
 
-1. **mom25d's log sweep on a linear grid** (R-A6: |ΔS| up to 1.8 below the first linear step), and
-   `OPENBLAS_NUM_THREADS` switching off its OpenMP cap (R-B1).
-2. **Stop** (R-A5, R-A19). The tools' children (ngspice, Elmer, Palace) outlive it, Stop on several rails starts the
-   next one, and closing the window kills a running S-parameter run, which its docs say never happens.
-3. **An unstable FDTD run** reads as "port not excited" (R-A12); gfdtd's lumped branches have no stability check
+1. **An unstable FDTD run** reads as "port not excited" (R-A12); gfdtd's lumped branches have no stability check
    (R-B17: parallel L under ~200 pH at 0.5 mm cells, any series R+C without L).
-4. **The coil proposal** is wpthb's (R-A13: PRIMARY, SECONDARY and the bridge's c2 in its note), and Elmer's thermal
+2. **The coil proposal** is wpthb's (R-A13: PRIMARY, SECONDARY and the bridge's c2 in its note), and Elmer's thermal
    reads the removed bridge tool's `component_power_W`.
-5. **The PDN's low end and its domains** (R-A14, R-A15, R-B10, R-B11). Mounts and barrels have no resistance (Re Z
+3. **The PDN's low end and its domains** (R-A14, R-A15, R-B10, R-B11). Mounts and barrels have no resistance (Re Z
    at 1 kHz 22-38 % under the DC network on the Jetson), a plane domain with no source is written as an impedance
    (838 MΩ), cavities pair through other rails' planes, a rail with no plane pair loses its DC answer too, and a
    failed mount solve reads as no access inductance.
-6. **Two-face copper** (R-A16): `conductor_faces` does nothing with face sheets, and kernels shared between models
+4. **Two-face copper** (R-A16): `conductor_faces` does nothing with face sheets, and kernels shared between models
     leave out the faces' skin loss (the PEEC PDN's bare curve).
-7. **Touchstone** (R-A20): the reader takes Z and Y files as S and ignores `R`; pcbqs writes one reference for ports
+5. **Touchstone** (R-A20): the reader takes Z and Y files as S and ignores `R`; pcbqs writes one reference for ports
     of several.
-8. **`install.py --update`** (R-A21) reinstalls the commits it installed before, not the ones kicad2ems now pins.
-9. **KiCad import, the rest** (R-A22): copper text, KiCad 9's per-layer padstacks and `remove_unused_layers` (inferred:
+6. **`install.py --update`** (R-A21) reinstalls the commits it installed before, not the ones kicad2ems now pins.
+7. **KiCad import, the rest** (R-A22): copper text, KiCad 9's per-layer padstacks and `remove_unused_layers` (inferred:
    not checked on a board that has them).
-10. **The line model's losses** (R-A17, M): `--sigma` is felt by microstrip only, the worst layer's tan δ is taken
+8. **The line model's losses** (R-A17, M): `--sigma` is felt by microstrip only, the worst layer's tan δ is taken
     where the field solver has the right one, a stripline between core and prepreg keeps the averaged εr.
-11. **The default switch's edges** (R-A18, M): a board's circuit and 9 of the 10 examples switch with a fixed ramp and
+9. **The default switch's edges** (R-A18, M): a board's circuit and 9 of the 10 examples switch with a fixed ramp and
     no gate charge, so their switching loss is the ramp's, not a device's.
 
 Then the errors that say nothing (R-B):
@@ -60,24 +56,20 @@ Then the errors that say nothing (R-B):
 
 What the CI leaves out is where most of the list above came from.
 
-1. **The runs CI skips** (R-C1, C2, C4, C6, C8):
-   - no ngspice, so pcbqs's 84 circuit tests skip;
-   - kicad2ems-fem is not installed at all (about 70 of its tests need only gmsh; Elmer builds in about 2 min);
-   - pcbqs's compiled core is never built;
-   - no real FDTD engine runs through kicad2ems-fdtd;
-   - nothing starts the window's own run.
-2. **Python versions** (R-C3). `requires-python >=3.10`, but the line model's solver and emsdev's build use 3.12's
-   f-strings; CI runs 3.13 and 3.14 only.
-3. **Pins** (R-C5). emsdev is taken from main everywhere; kicad2ems-fdtd, gfdtd and dfsynth have no commit in
+1. **The runs CI skips, the rest** (R-C6, C8, and Elmer for C2). CI installs ngspice, kicad2ems-fem and pcbqs's
+   compiled core since 2026-11-14. Left: Elmer built once and cached (about 2 min), so kicad2ems-fem's Elmer runs
+   are tested too; a real FDTD engine through kicad2ems-fdtd (a small board on `gfdtd:cpu`); the window's run
+   against a stand-in is tested since 2026-11-14 (`test_the_window_s_own_run_starts_and_ends`).
+2. **Pins** (R-C5). emsdev is taken from main everywhere; kicad2ems-fdtd, gfdtd and dfsynth have no commit in
    kicad2ems's extras; `sync_pins.py` sees only `git+...@sha`; the KiCad plugin's `requirements.txt` is 78 commits
    behind and checked by nothing.
-4. **The GPUs** (R-C7). No GPU path runs in CI (Vulkan on lavapipe could), and no NVIDIA run is recorded, though the
+3. **The GPUs** (R-C7). No GPU path runs in CI (Vulkan on lavapipe could), and no NVIDIA run is recorded, though the
    docs name any GPU.
-5. **References** (R-C9, C10):
+4. **References** (R-C9, C10):
    - no stored S-parameters to regress against, and mom25d's README figures are tighter than its tests;
    - pcbqs's real-board regressions need `~/Desktop/wpthb`;
    - the edge-ring validation scripts live outside the repository.
-6. **A release** (R-C12-C17, M):
+5. **A release** (R-C12-C17, M):
    - one version scheme and tags across the ten repositories;
    - the plugins' declared API versions;
    - a LICENSE for kicad2ems-fem and the superproject, and a notice for Triangle's terms (not for commercial use);

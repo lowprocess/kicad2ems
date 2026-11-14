@@ -405,6 +405,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - **KiCad import** (R-A22): KiCad 5's zones (their fills have no layer: the zone's), a pad's drill offset, NPTH
     pads (a hole, not copper of no net on every layer), a plated slot (a via of its perimeter, not of its long
     side), and a zone never filled (left out as before, now said in the board's notes).
+  - **mom25d's log sweep** (R-A6): its adaptive sweep seeded and checked a log sweep on a linear grid and the
+    result was interpolated linearly onto the log points (|dS| up to 1.8 on a 100 kHz pole over 10 Hz to 1 GHz, one
+    solve below 1 MHz). It takes the frequencies asked for: first samples and gaps in log f, the model given there;
+    a sweep that stops at its solve cap says so. `OPENBLAS_NUM_THREADS` no longer switches off its OpenMP cap
+    (R-B1: 24 threads on the i7-13700K, `MOM25D_OMP_THREADS` ignored).
+  - **Stop** (R-A5, R-A19). A page's tool was killed at once, so what it had started ran on (pcbqs's ngspice runs,
+    kicad2ems-fem's Elmer and Palace, 8 ranks for half an hour) and a table's next row started. The tool is asked
+    to end (SIGTERM, killed 5 s later if not), the queue is cleared; kicad2ems-fem's solvers run in process groups
+    of their own, stopped with the tool and on the run's STOP file. Closing the window asks before it stops
+    kicad2ems's own run (the docs had said a run was never lost), and waits for the solve threads.
+  - **Python 3.10 and 3.11** (R-C3): the line model's solver and emsdev's build used 3.12's f-strings and did not
+    compile there, while every package says `>=3.10`. The stack's CI compiles every package on 3.10.
+  - **The stack's CI** (R-C1, C2, C4) installs ngspice (pcbqs's 84 circuit tests had skipped), kicad2ems-fem (not
+    installed at all: its meshes, configs, readers and registry; Elmer's and Palace's runs skip there) and builds
+    pcbqs's compiled core (its kernels had run as their NumPy twins only).
   - **Coupled lines under solder mask** (R-A10): embedded microstrip forms coupled sections, its field solve with
     the mask over the copper (with `--mask` a hairpin had no coupled section and no path between its ports).
 - **What a review of the full-bridge removal found (pcbqs, kicad2ems-gui, kicad2ems-fem).** pcbqs: thermal takes the
