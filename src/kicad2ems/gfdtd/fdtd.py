@@ -44,6 +44,15 @@ class openEMS:                                                       # noqa: N80
         self.op = None
         if kw.get('MaxTime'):
             raise NotImplementedError("gfdtd: MaxTime")
+        if int(kw.get('CoordSystem', 0) or 0):                       # (these had been dropped without a word)
+            raise NotImplementedError("gfdtd: CoordSystem 1 (cylindrical grids)")
+        if kw.get('MultiGrid'):
+            raise NotImplementedError("gfdtd: MultiGrid (cylindrical subgrids)")
+        self.timestep_factor = float(kw.get('TimeStepFactor', 1.0) or 1.0)
+        self.timestep = float(kw['TimeStep']) if kw.get('TimeStep') else None
+        if self.timestep_factor > 1:
+            raise ValueError(f"gfdtd: TimeStepFactor {self.timestep_factor:g}: above 1 the step is past its limit")
+        self.ignored = [k for k in kw if k in ('CellConstantMaterial',)]
 
     # ---- settings --------------------------------------------------------------------------------------------
     def SetNumberOfTimeSteps(self, val):
@@ -109,7 +118,9 @@ class openEMS:                                                       # noqa: N80
         if self.excitation is None:
             raise ValueError("gfdtd: no excitation (SetGaussExcite)")
         return dict(bc=self.bc, f0=self.excitation['f0'], fc=self.excitation['fc'], nr_ts=self.nr_ts,
-                    end_crit=self.end_crit, oversampling=self.oversampling)
+                    end_crit=self.end_crit, oversampling=self.oversampling,
+                    timestep_factor=getattr(self, 'timestep_factor', 1.0), timestep=getattr(self, 'timestep', None),
+                    ignored=list(getattr(self, 'ignored', ())))
 
     def CreateNF2FFBox(self, name='nf2ff', start=None, stop=None, **kw):
         """A near-field to far-field box (gfdtd.nf2ff.nf2ff), placed as openEMS places it: inside the absorbing

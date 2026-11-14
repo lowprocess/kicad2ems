@@ -387,7 +387,14 @@ def build(csx, fdtd, log=None):
     sh = grid.shape
     op = Operator()
     op.grid, op.shape = grid, sh
-    op.dt = timestep(grid)
+    op.dt = timestep(grid) * float(fdtd.get('timestep_factor', 1.0) or 1.0)     # openEMS's TimeStepFactor
+    if fdtd.get('timestep'):                                        # and its TimeStep: no longer than the limit
+        limit = op.dt
+        op.dt = min(float(fdtd['timestep']), limit)
+        if float(fdtd['timestep']) > limit:
+            op.notes.append(f"TimeStep {fdtd['timestep']:.4g} s is past this grid's limit: {limit:.4g} s taken")
+    for k in fdtd.get('ignored', ()):
+        op.notes.append(f"openEMS's {k}: not used by gfdtd (ignored)")
     ncell = tuple(n - 1 for n in sh)
     bg = csx.background if hasattr(csx, 'background') else dict(Epsilon=1.0, Kappa=0.0)
     eps = np.full(ncell, float(bg.get('Epsilon', 1.0)))
@@ -593,8 +600,15 @@ def build(csx, fdtd, log=None):
     # excitations: E (types 0 soft, 1 hard) on the edges, H (2 soft, 3 hard) on the dual edges, weighted, delayed
     op.exc, op.exc_more = _excitations(props, grid, sh, vv, vi, lE, lH, dt, op.notes)
     # probes
-    op.probes = [pr for p in props if isinstance(p, C.ProbeBox) and p.primitives
-                 if (pr := _probe(p, p.primitives[0], grid, sh)) is not None]
+    op.probes = []
+    for p in props:
+        if isinstance(p, C.ProbeBox) and p.primitives:
+            pr = _probe(p, p.primitives[0], grid, sh)
+            if pr is None:                                          # (a field probe had been dropped, nothing said)
+                op.notes.append(f"probe {p.name} (type {p.p_type}): not a kind gfdtd measures (voltage, current, "
+                                f"mode-matching): left out")
+            else:
+                op.probes.append(pr)
     op.dumps = [d for p in props if isinstance(p, C.DumpBox) and p.primitives for d in _dump(p, grid, op.notes)]
     if op.dumps:                                                    # the geometry the dumps need, kept
         op.lE, op.aE, op.lH = lE, aE, lH

@@ -913,3 +913,19 @@ def test_fields_that_grow_once_the_excitation_ends_are_unstable(tmp_path, monkey
     monkeypatch.setattr(E.NumpyBackend, 'energy', growing)
     F.Run(path, cleanup=True, verbose=0, backend='numpy', log=path + '.log')
     assert F.result['reason'] == 'unstable'
+
+
+def test_openems_options_gfdtd_does_not_have_are_said(tmp_path):
+    """TimeStepFactor and TimeStep are honoured, a cylindrical grid refused, CellConstantMaterial noted (they had all
+    been dropped without a word)."""
+    from gfdtd import openEMS
+    with pytest.raises(NotImplementedError, match='cylindrical'):
+        openEMS(CoordSystem=1)
+    F, path = _plates(tmp_path, L=1e-9)
+    F.timestep_factor = 0.5
+    F.Run(path, cleanup=True, verbose=0, backend='numpy', log=path + '.log', setup_only=True)
+    half = F.op.dt
+    F2, path2 = _plates(tmp_path, L=1e-9)
+    F2.ignored = ['CellConstantMaterial']
+    F2.Run(path2, cleanup=True, verbose=0, backend='numpy', log=path2 + '.log', setup_only=True)
+    assert half == pytest.approx(0.5 * F2.op.dt) and any('CellConstantMaterial' in n for n in F2.op.notes)
