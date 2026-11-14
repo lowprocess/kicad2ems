@@ -385,6 +385,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (7 s of it the one solve at 1 GHz whose factor has to be solved on the host), the rest ports and tables.
 
 ### Fixed
+- **What a review of the full-bridge removal found (pcbqs, kicad2ems-gui, kicad2ems-fem).** pcbqs's piecewise-linear
+  engine: a switch's cut current is its loss whatever the island hold, an edge on the period's start is the
+  period's, a current source into open parts finds its diode, the reported run keeps 8192 samples a period (492 MB
+  a point before; the wpthb bridge in 7 s for 29), the body diodes' recovery it leaves out is said; thermal takes
+  the bridge's per-pin and null `board.parts`; a boost's rail stays its source's node; the bridge's `bus_ripple_V`
+  is the settled ripple again (a measure's `samples`). The window: a study whose circuit model will not load (the
+  old tool's format) keeps naming it, and saving writes nothing over it (it wrote the boost template over the
+  file, or another study's model); a proposal with no model of its own (kicad2ems-fem's coils) sets the one on
+  the page instead of replacing it with the template. kicad2ems-fem's coils say which receiver capacitor would be
+  resonant with the new secondary, since the bridge's is not retuned.
 - **mom25d's block low-rank solver gave wrong S-parameters at low frequency.** A large board (20,000 unknowns
   up, where the GPU's hybrid does not hold the matrix) at a frequency below (k h)² = 10⁻⁵ went through a
   single-precision low-rank factor of the RWG matrix, which cannot hold the loops' currents at any compression:
