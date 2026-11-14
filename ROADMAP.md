@@ -4,7 +4,98 @@ What is worth doing next across the stack (kicad2ems, its window, mom25d and pcb
 part. Each item comes from something the examples, the benchmarks or a validation showed. Finished items leave
 this file: what was done, measured and decided against is in a CHANGELOG.md (this repository's for kicad2ems, its
 window and mom25d; pcbqs's for the power tools). C, I and U numbers are findings of pcbqs's
-`docs/power-tools-review.md`; estimates are working days. Last updated 2026-11-13.
+`docs/power-tools-review.md`; R numbers (R-A1, R-D12, ...) are the whole stack's review of 2026-11-14,
+`REVIEW-2026-11-14.md` in kicad2ems-project, which has each one's evidence; estimates are working days. Last updated
+2026-11-14.
+
+## Fix first (the review of 2026-11-14)
+
+Answers that are wrong with nothing to say so, and a workflow that does not run. Each is under a day unless it says
+otherwise; the review has the file and line of each.
+
+1. **The window's Run and Preview** (R-A1): the Start page's attribute hides `MainWindow.start` (since 2026-11-13),
+   and a run that fails to start leaves the window busy until it is closed.
+2. **Thermal's losses from a circuit** (R-A2, R-A3). A coupled winding's V·I goes to its footprint as heat
+   (wpthb's primary on a footprint of its own: 10.47 W for the pair's 0.45 W); the loss table subtracts the gate
+   drives the engine adds, and the gate power reaches no footprint.
+3. **The line model's ground vias, gaps and mask** (R-A4, R-A11, R-A10). A via of another net at a line's end is
+   left out, so a shorted stub is open (dfsynth's stub band-pass is a band-stop on the line model); an end gap
+   leaves its ports unconnected (NaN although MGAP is written); with `--mask` no microstrip is coupled.
+4. **Crosstalk not computed reads as met** (R-A8), and ground and power nets are proposed as pairs (R-A9: the
+   poured nets are looked for as dicts, the board holds tuples).
+5. **Blind and micro vias** keep only their end layers (R-A7): `--fill-voids` fills their antipads between.
+6. **mom25d's log sweep on a linear grid** (R-A6: |ΔS| up to 1.8 below the first linear step), and
+   `OPENBLAS_NUM_THREADS` switching off its OpenMP cap (R-B1).
+7. **Stop** (R-A5, R-A19). The tools' children (ngspice, Elmer, Palace) outlive it, Stop on several rails starts the
+   next one, and closing the window kills a running S-parameter run, which its docs say never happens.
+8. **An unstable FDTD run** reads as "port not excited" (R-A12); gfdtd's lumped branches have no stability check
+   (R-B17: parallel L under ~200 pH at 0.5 mm cells, any series R+C without L).
+9. **The coil proposal** is wpthb's (R-A13: PRIMARY, SECONDARY and the bridge's c2 in its note), and Elmer's thermal
+   reads the removed bridge tool's `component_power_W`.
+10. **The PDN's low end and its domains** (R-A14, R-A15, R-B10, R-B11). Mounts and barrels have no resistance (Re Z
+   at 1 kHz 22-38 % under the DC network on the Jetson), a plane domain with no source is written as an impedance
+   (838 MΩ), cavities pair through other rails' planes, a rail with no plane pair loses its DC answer too, and a
+   failed mount solve reads as no access inductance.
+11. **Two-face copper** (R-A16): `conductor_faces` does nothing with face sheets, and kernels shared between models
+    leave out the faces' skin loss (the PEEC PDN's bare curve).
+12. **Touchstone** (R-A20): the reader takes Z and Y files as S and ignores `R`; pcbqs writes one reference for ports
+    of several.
+13. **`install.py --update`** (R-A21) reinstalls the commits it installed before, not the ones kicad2ems now pins.
+14. **KiCad import** (R-A22): KiCad 5's zones, pads' drill offsets, NPTH pads (copper of no net on every layer),
+    unfilled zones and oval drills, each without a note.
+15. **The line model's losses** (R-A17, M): `--sigma` is felt by microstrip only, the worst layer's tan δ is taken
+    where the field solver has the right one, a stripline between core and prepreg keeps the averaged εr.
+16. **The default switch's edges** (R-A18, M): a board's circuit and 9 of the 10 examples switch with a fixed ramp and
+    no gate charge, so their switching loss is the ramp's, not a device's.
+
+Then the errors that say nothing (R-B):
+- the mixed solver ignores most mom25d options (B2);
+- one solver's `prepare` or outputs failing loses the run (B3);
+- unknown config tables and keys, and values out of range, are taken silently, and the notes never reach the window
+  (B4);
+- the window freezes on a half-typed number (B5), takes JSON edits as unchanged (B6), and keeps the previous board's
+  runs after New (B7);
+- an ngspice timeout loses the whole sweep, and a missing ngspice passes the check (B8);
+- the circuit cache ignores a vendor library's contents (B9);
+- sparams coarsens its mesh without a note (B12);
+- unconverged ACA and HODLR solves are returned, and input checks are asserts (B13);
+- kicad2ems-fem has loose timeouts, convergence and versions (B14);
+- a port's reference can be a signal trace (B15);
+- P1, P2... connectors become ports from a .pos file (B16);
+- gfdtd ignores openEMS options it does not have (B18);
+- emsdev takes an integrated GPU (B19);
+- the fast cores are found twice, two ways (B20);
+- Palace has no cost estimate (B21).
+
+## CI and release
+
+What the CI leaves out is where most of the list above came from.
+
+1. **The runs CI skips** (R-C1, C2, C4, C6, C8):
+   - no ngspice, so pcbqs's 84 circuit tests skip;
+   - kicad2ems-fem is not installed at all (about 70 of its tests need only gmsh; Elmer builds in about 2 min);
+   - pcbqs's compiled core is never built;
+   - no real FDTD engine runs through kicad2ems-fdtd;
+   - nothing starts the window's own run.
+2. **Python versions** (R-C3). `requires-python >=3.10`, but the line model's solver and emsdev's build use 3.12's
+   f-strings; CI runs 3.13 and 3.14 only.
+3. **Pins** (R-C5). emsdev is taken from main everywhere; kicad2ems-fdtd, gfdtd and dfsynth have no commit in
+   kicad2ems's extras; `sync_pins.py` sees only `git+...@sha`; the KiCad plugin's `requirements.txt` is 78 commits
+   behind and checked by nothing.
+4. **The GPUs** (R-C7). No GPU path runs in CI (Vulkan on lavapipe could), and no NVIDIA run is recorded, though the
+   docs name any GPU.
+5. **References** (R-C9, C10):
+   - no stored S-parameters to regress against, and mom25d's README figures are tighter than its tests;
+   - pcbqs's real-board regressions need `~/Desktop/wpthb`;
+   - the edge-ring validation scripts live outside the repository.
+6. **A release** (R-C12-C17, M):
+   - one version scheme and tags across the ten repositories;
+   - the plugins' declared API versions;
+   - a LICENSE for kicad2ems-fem and the superproject, and a notice for Triangle's terms (not for commercial use);
+   - `authors` in every pyproject;
+   - PyPI, which refuses direct-URL dependencies;
+   - the KiCad plugin's PCM entry and its v0.1.0 tag;
+   - a benchmark that runs today's stack (benchmark-results is from 2026-11-08 and imports modules that are gone).
 
 ## The study: questions and engines
 
@@ -21,6 +112,23 @@ the window lists the questions, with the engine chosen on each row, and compares
    the same rail is typed twice. A question could say what it needs (the net, the source, the loads) and each
    engine take it from there.
 3. **The KiCad plugin** (kicad2ems-ipc) starts `kicad2ems study` for a board whose config has one.
+4. **Ports and parts the solvers share** (R-E1, R-E5).
+   - De-embedding and a reference plane: lumped ports carry their feed (about 0.1 nH, docs/model.md), the FDTD
+     model has lumped ports only though gfdtd has line ports, and mom25d's lumped ports carry their via.
+   - Ports and parts at angles other than x and y.
+   - Internal ports at the parts' pads, with the parts embedded after the solve: value sweeps and vendor
+     S-parameter parts without a new solve, then a `[sweep]` table. There is no sweep or batch driver today.
+5. **Results the solvers give** (R-E2). Nothing checks passivity or causality: an AAA model of a lossless two-port
+   reached σmax 1.0018, and a sweep that hit its solve cap says nothing.
+6. **Mesh convergence on every solver** (R-E3). openEMS has `--converge`; gfdtd ignores it though the code drives any
+   engine (it sits in the openEMS subclass); mom25d has none (demo.json's mesh has a 0.08° angle); Palace's adaptive
+   refinement is unused.
+7. **Materials** (R-E4). KiCad's stackup `material` names are not read and a missing value defaults without a note: a
+   small library (RO4350B, FR4 grades) with each one's dispersion and the frequency its εr is given at.
+8. **A run done again** (R-D20): no result is reused (a hash of board.json, the frequencies and the solver's
+   options), and the solvers of one run go one after another.
+9. **Board cutouts** (R-E6) stay dielectric, and a region that splits the board keeps its largest piece without a
+   note.
 
 ## Signal integrity
 
@@ -35,6 +143,13 @@ The crosstalk question (`kicad2ems.si`, docs/si.md) is the first. Left, in the o
    reflections of its discontinuities for the edge (TDR from S11), its loss at the data rate.
 4. **The coupled stretches drawn on the plan**, coloured by their share (the traces are picked on the board
    since API 2.11).
+5. **The time grid** (R-E16). The edge response comes from 401 points at fmax/400 steps, linearly interpolated: a
+   5 % coupler reads 3.3 % at 1 m and 25 ps. Its step from the longest trace's delay, H interpolated with the delay
+   taken out, fmax 2-3 times 1/rise, S11 to DC (for TDR), before items 2 and 3 build on it.
+6. **Each pair's section solved once** (R-D18): a 12-net bus is ~264 cross-section solves (each pair, then three
+   wider), and a failed one drops a stretch from the report without a note.
+7. **Broadside pairs** on adjacent layers: the groups are of one layer, so such a pair is not coupled at all (it
+   reads "not modelled" once Fix first's item 3 is done).
 
 ## The window, from a clean slate
 
@@ -60,6 +175,25 @@ that: nothing in it may fix a panel in place. Left:
    a tile says nothing of what its example takes (the engine, the time: the index has neither). (*Reset layout*
    with a floated dock aborted only under Qt's offscreen plugin on Windows; on the native platform it works,
    and the CI checks it there.)
+5. **What the review found** (R-B5-B7, D21, D22, E23-E25, F2).
+   - The RF form needs validation and tooltips: 80 of its 85 settings have none, though every `Option` has help.
+   - Failed and stopped runs should stay listed with their log (it lives only in the page today); a run can be
+     deleted.
+   - The 3D view recolours all 24 phases on the GUI thread at each step of a control (3.2 s and 1.4 GB at 256).
+   - The runs are re-read from disk on every settings change (20 ms for 200 runs, per analysis and rail), and
+     `prepare_example` and dfsynth's `--describe` run on the GUI thread.
+   - Desktop basics:
+     - a dropped board, config or results folder;
+     - a dialog for an exception in a slot;
+     - the run's whole log;
+     - its exit signal named;
+     - the settings' undo;
+     - dark plots;
+     - the Report saved or printed;
+     - a Touchstone export.
+   - Left from the removed bridge: the schematic's format-1 layout code.
+   - The Circuit page imports pcbqs into the window, against `toolprocess.py`'s rule.
+   - `ResultsTab.show(files)` overrides `QWidget.show`, the same kind of clash as the Start page's.
 
 ## The line model
 
@@ -76,6 +210,16 @@ that: nothing in it may fix a panel in place. Left:
 4. **Boundary elements with a layered Green's function**, for the largest cuts (300–2,000 unknowns, no box), only
    if the mesh's 0.2 s at worst becomes the limit. `mom25d/multilayer.py` has the stack but a dynamic kernel; the
    static 2D one needs deriving.
+5. **Coupled lines with a jog** (R-E17). The legs are paired per element, so a polyline's sub-segments are not, and
+   dfsynth's edge-coupled band-pass is open on the line model.
+6. **Discontinuities** (R-E15). The scikit-rf backend (qucsator's absence: often Windows) has none, so open stubs are
+   short by their end's extension; qucsator has nothing for a 45° bend or a junction of five arms. dfsynth has
+   Kirschning-Jansen-Koster open ends, Garg-Bahl gaps and Edwards steps to port.
+7. **Dispersion**: a Djordjevic-Sarkar εr(f) for each layer before the solve.
+8. **The builder's quadratic loops** (R-D17): 5 s of the CM5's 11.6 s (all 94 nets) is `_split_at_junctions`
+   restarting its scan, a via search per via and layer, and the coupled pairing over all pairs.
+9. **One multiconductor model** (R-F5). dfsynth's (vectorised, with conductor loss) and `coupled.mtl_s` (looped,
+   lossless) are two; so are the Touchstone readers.
 
 ## mom25d on multi-layer boards
 
@@ -145,12 +289,32 @@ that does not need N² memory. In this order:
    in mom25d, on a static version of its layered Green's function with the PEC ground (`GreenTableML`): that, not
    a mode, is what lets Momentum's RF mode go past λ/10 without meshing the planes.
 
+## mom25d: what the review found (2026-11-14)
+
+1. **Wave-port set-up** (R-D10). A port's line is a 3D model of its own, its planes at dmax rather than the board's
+   cells: on `tests/boards/launch.json` 19,698 unknowns for a board of 6,635, 81 s against a 3 s solve, done again
+   every run. The board's cells, one LU for its three frequencies, a cache by cross-section (or a 2D cut).
+2. **The via and hole blocks** (R-D11): Python loops rebuilt at every frequency (0.32 s of a 1.2 s solve; the plugin's
+   own model gives ~76 s a solve for 1,000 vias). Compiled, and the fill overlapped with the GPU's factor.
+3. **Copper thickness**, ignored (sheets) while the other solvers model it; the loss takes the port layer's
+   thickness for every layer. Per interface first; two sheets with side currents later (`sing.py` names the
+   kernels).
+4. **Fewer solver paths** (R-F3). About twelve, each with its own failure flag: HODLR is never chosen, the Python
+   BLR only with an old core, the tiled path lost to BLR. Retire those and split `fast.py`; dead tools and
+   `biot.h_grid` (pcbqs's API) go.
+5. **The copies shared with pcbqs** (R-F4) drift both ways: mom25d's singular-rule fix (the moment up to 1.3 % off)
+   is not in pcbqs, pcbqs's mesh-quality cap is not in mom25d. A shared numerics package beside emsdev, or a CI
+   report of the drift.
+6. **Integrated GPUs and other CPUs** (R-B19, B20): emsdev's `auto` takes an iGPU and counts its memory twice; the
+   fast cores are found by two rules (0.9 and 0.95 of the top clock, an i9-13900K's 0.948), and mom25d's ignores
+   affinity.
+
 ## Power tools (pcbqs)
 
 `pcbqs.pdn` (a rail's DC drop and impedance), `pcbqs.mqs` (a converter's near field), `pcbqs.circuit` (switching
 circuits on the board's copper), `pcbqs.thermal` and `pcbqs.sparams` (the
 ports' S-parameters at the low end, a solver of kicad2ems). What exists and how it was
-validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.md`.
+validated: pcbqs's docs and CHANGELOG.md (the project's `NOTES-pi-nearfield.md` is its history, stale since).
 
 ### Correctness and workflow
 
@@ -193,7 +357,35 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    15,000 triangles on demo_transition, 77 s at 9,000 on pcbqs's return-path example). (A matched line's S11
    was high for want of the edge charge, which is solved on graded edge cells since 2026-11-13.) In the
    window, the Results plot draws a log sweep (`sweep = "log"`) on a linear axis in GHz: a log axis and the
-   band's own unit, as the report's plot has.
+   band's own unit; the report's interactive plot is linear in GHz too (its PNG is right), and its table reads
+   "0.000 GHz" for a run in kHz (R-G).
+7. **What a PI user takes away** (R-E14):
+   - the port matrix (loads and decap sites) as Touchstone or a SPICE subcircuit;
+   - the droop of a load step in time;
+   - vendor decap models and MLCC DC-bias derating;
+   - a VRM beyond R + L;
+   - the near field's input capacitors from their own fields, as the PDN reads them (one `--esr`/`--esl` for all
+     today);
+   - an impedance for a rail with no planes (the PEEC route is the trial's only: one source, one ground, no beads).
+
+### Losses and thermal
+
+The circuit is there for its parts' losses; what thermal makes of them (R-E7-E13, D3):
+
+1. **Junction temperature and limits.** "Part °C" is the copper under the pads; θ comes from `--theta` only; there is
+   no Tmax. Rth and Tmax from a footprint's or the model's fields, Tj and its margin in the headline.
+2. **The copper's loss to thermal**: the circuit's (28.8 mW of the buck's 0.80 W, which `circuit/fields.py`
+   already solves per harmonic) and the DC drop's per-triangle loss.
+3. **Temperature back into the losses**: ngspice at 27 °C, σ a constant 5.8e7. Thermal, R scaled by its
+   temperature, the circuit again from its end state: two or three passes, no change to the engine.
+4. **Inductor loss**: DCR and one constant core resistor. iGSE core loss and Rac at each harmonic, after the run.
+5. **A sweep's thermal**: one map, of the point with the most loss, off-board parts included. A map per point and a
+   table of part × point.
+6. **Vendor models**: `pin_order` D, G, S only (no Kelvin source or thermal pins), no diode `.model`, KiCad's
+   `Sim.*` fields not read.
+7. **The surroundings**: one film coefficient. A film that grows with the rise, fixed-temperature regions
+   (heatsinks), a body-to-air path for tall parts.
+8. **`--fields` solves the copper again** (37.6 s of the buck's 62 s) where `prepare()` has it.
 
 ### Speed
 
@@ -207,7 +399,13 @@ engine.
 | Xyce backend | robustness, not speed | 2 days | it ran behavioural switches ngspice could not; 2–7× slower on the benchmark converter; harmonic balance could suit resonant tanks |
 | Two faces in the circuit: a local loop basis | fewer iterations, no dense setup | | iterations grow with frequency (217 at DC, 575 at 20 MHz); the dense common-mode setup is 19 s |
 | The dense solves, after their assembly | the LU is what is left: 90 % of a two-face S-parameter solve (147 s at 17,700 unknowns) | | The assembly, the thermal maps' sampling and the potential's solve are in the compiled core or on Cholesky since 2026-11-13 (pcbqs's CHANGELOG; `tools/perf/README.md` has where each tool's time goes). Left, none of it pcbqs's own Python: a compressed or block low-rank LU as mom25d has; ngspice's text output read by `np.loadtxt` (a binary raw file); the compression of field dumps; shapely's unions in the near field's mesh |
-| Whole-board near field | | 3–5 days, only if a board needs it | a full ground plane is 50k+ triangles (a dense L: ~20 GB): compression and an iterative solve in the loop basis. A crop around the converter is enough for DC-DC loops |
+| Whole-board near field | | 1 day to offer, then convergence | `MQS(matrix_backend='hierarchical')` is already GMRES in the loop basis (47,548 triangles in 13 s, docs/quasistatic.md); the near-field CLI cannot choose it (R-D14). Left: the option, and mesh and crop convergence. A crop around the converter is enough for DC-DC loops |
+| The circuit's knob runs at 200 periods (R-D1) | wpthb 40.9 s → 26.5 s, the same answer to 5 digits | S | once a run has settled, the next knob's starts at `cycles // 4` and doubles only if it has not |
+| A trial's waveforms (R-D2) | ~1 s of each 9.7 s run | S | 98 MB of text a wpthb run, `loadtxt` 0.55 s and `savez_compressed` 0.55 s on files deleted after; the spectrum computed twice with copper |
+| The PDN's factorisations (R-D12) | 5.9 s of 22.3 s on the CM5's +5V | S | loaded, bare and transfer each factor every frequency: the bare one once, the parts as right-hand sides, and decap what-ifs come almost free; an AAA sweep for the 160 points; the Viewer's dumps 6.3 s through `json.dump` |
+| A fresh complex128 LU each frequency (R-D13) | 2× (complex64 with refinement: 0.19 s for 0.38 at n = 4,000) | M | with `dc` loss `Rl + jωLl` is a pencil: one eigendecomposition and Woodbury for the parts |
+| sparams' 31 points (R-D15) | | S | interpolated linearly in log f, across a filter's resonance: AAA as mom25d's |
+| The dense via matrix and the loop tree (R-D16) | ~15 s at 2,500 segments | S | a Python double loop; the tree in branch order (loops of 35-45 branches): breadth first |
 
 The quasi-static solver's 10× target is not yet shown on real boards, and an FFT field grid's convergence has to
 be checked for each scan.
@@ -251,3 +449,104 @@ In order:
    and kicad2ems-fem's own Palace runs pass on it (2026-11-13: the capacitance tool's microstrip against
    Hammerstad-Jensen, a grounded box, the driven runs with a series part). Left: pcbqs's Palace validations
    (`validation/`), which were made on 0.18.1.
+
+## FDTD (gfdtd, kicad2ems-fdtd)
+
+The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4-D9, C6, C7):
+
+1. **The guards.** An unstable run is checked only for a finite energy every 100 steps, and kicad2ems-fdtd never
+   reads the engine's reason: a run that blew up reads as "port not excited", one that grows within bounds as a
+   result. gfdtd's lumped branches need a stability check and the trapezoidal update its poles have (an R+C
+   without L diverges at any R), after which gfdtd can take a part's ESR in one series RLC, not split.
+2. **`--converge` on gfdtd**: its code runs any engine but sits in the openEMS subclass.
+3. **Speed without new physics.**
+   - One operator and device session per solve, not per excitation: 8-51 % of a GPU run on the examples.
+   - A node-local time step: gfdtd's is up to 15 % shorter than openEMS's on the same mesh (hairpin 105.9 fs
+     against 124.9).
+   - `nz_mask` at 1: 4 cells through a 10 µm mask made hairpin 17× longer for "within 1 MHz". Then εr averaged
+     inside a cell, so a thin layer needs no lines of its own.
+   - The energy read a check late, the ports' decay judged in the engine, dumps written by a thread.
+4. **Memory.** The build peaks at ~470 B a node on the host (float64 arrays kept through the run), 16× what the GPU
+   needs, and nothing checks free VRAM before a run or caps the concurrent runs by it.
+5. **Line ports** (MSL, stripline, CPW: gfdtd has them) with a de-embedded plane where a straight trace meets the
+   port.
+6. **Excitations batched** in one launch, and every GPU emsdev finds used.
+7. **Tests**: a small board on `gfdtd:cpu` end to end, openEMS's S-parameters stored as references; Vulkan on lavapipe
+   in CI; one NVIDIA run before the docs name CUDA.
+8. **Boundaries**: first-order Mur is the default on five sides (6 % reflection against 5e-5 for an 8-cell PML), and
+   the PML is CPML with κ = 1, α = 0, at λ/res cells: CFS-CPML, and thinner graded cells.
+9. **Larger boards**: every copper edge is a line across the box. Subgridding or local refinement, temporal
+   blocking, conformal PEC for curved copper.
+10. **Materials**: Lorentz and Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
+    material (which is right is not checked).
+11. **openEMS's interface** (R-B18): options gfdtd does not have are dropped without a word (`TimeStepFactor`,
+    `TimeStep`, `CoordSystem`, field probes, magnetic σ); Gaussian is the only excitation; time-domain NF2FF,
+    `MaxTime`, `SetAbort` and a coax `Feed_R` are not there.
+
+## kicad2ems-fem
+
+1. **Palace's eigenmode** (R-E19): the resonances of a can or a high-Q filter, the one use the notes give Palace;
+   `rf_shielded`'s reference is EMerge's today.
+2. **Palace's own accuracy** (R-E20):
+   - its adaptive refinement from `feature = 1`;
+   - a second-order absorbing boundary or a PML for antennas (efficiency reads up to 100.5 %);
+   - wave ports;
+   - copper as solids in the driven model (as the cap tool's `--thick`): its sheets' loss holds only to ~10 MHz.
+3. **Elmer's harmonic and transient solvers** (R-E21): a coil's AC resistance, its ferrite's loss and Q at the
+   operating frequency; a transient temperature.
+4. **pcbqs's Palace validations as engines** (R-E22): `pdn_palace.py` and `mqs_palace.py` as `palace_pdn` and
+   `palace_loop`, a second engine for the two questions whose accuracy is open; Palace stays out of pcbqs's
+   runtime.
+5. **Real boards** (R-B21, B14, D23). Palace's `feature_size` looks at 60 polygons a layer and nothing is simplified:
+   the Elmer builder's fragmenting, a gap per edge, and an `estimate()` (demo_lowpass at the default feature: 19 GB,
+   30 min). `elmer_dc` in tetrahedra where the layered wedges solve the same drop (1.1 M tetrahedra against 40 s and
+   1.3 GB for the whole wpthb board); `tag_terminals` rewrites the mesh file in Python; `mag` runs n(n+1)/2 solves.
+   Elmer's timeout is not caught, Palace's non-convergence not read, the versions not recorded, the MPI ranks fixed
+   at 8.
+
+## The KiCad plugin (kicad2ems-ipc)
+
+Besides the study (the study's item 3), R-E26 and C16:
+- only S-parameters, though the analyses and the picking are there;
+- nothing goes back into KiCad (a map on a user layer, the region and the ports as items, markers at the worst
+  places);
+- an edited board needs Reload;
+- its environment builds gfdtd without its core or a GPU (~15× slower) while the README quotes a GPU's time;
+- the Plugin and Content Manager route its README gives does not exist yet (no entry, `"VERSION"` in its metadata, no
+  v0.1.0 tag).
+
+## dfsynth
+
+R-E18:
+- The calibration looks at the band's edges only. On dfsynth's own lossless model the hairpin's worst return loss is
+  5.5 dB (FR4) and the interdigital's 9.0 dB, where the README still gives 16.4. The interdigital's match-aware
+  refinement should go to the hairpin, coupled and band-stop designs, with a return-loss test for each.
+- Then, in order:
+  - a `.kicad_mod` to place in one's own board;
+  - the tapped hairpin feed;
+  - combline;
+  - elliptic and cross-coupled designs.
+
+## Docs that do not say what the code does
+
+The review's section G lists them. The ones a user meets first:
+- **The window:**
+  - "closing it never loses a run";
+  - "Results > Compare with" (there is no Results menu);
+  - its README's stale tail (Preview mesh, *Use board and rail*).
+- **kicad2ems:**
+  - "KiCad 5 to 10";
+  - "the Gerber import gives the same board" (it drops every lumped part);
+  - `api.md`'s API (2, 8);
+  - `filter_*` for `rf_interdig_*`.
+- **The line model:** `conductor_loss = yes`.
+- **mom25d:**
+  - "mixed uses mom25d's mesh options";
+  - HODLR "without the core";
+  - "any GPU".
+- **pcbqs:**
+  - `circuit.md`'s missing analysis keys;
+  - "the fields not in the Viewer yet" (they are);
+  - `quasistatic.md`'s two-face section.
+- **kicad2ems-fem:** "four tools" (five).
+- **The superproject:** its README and stack map have no kicad2ems-fem.
