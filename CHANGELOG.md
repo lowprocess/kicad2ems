@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Fixed
+- **Which Elmer or Palace it was (R-B14).** kicad2ems-fem's tools (dc, thermal, mag, cap) and Palace's S-parameter
+  solver record the program, its version and revision, and kicad2ems-fem's version in their results.
+- **The window's leftovers (R-F2).** The removed bridge's schematic layout, unused functions and the unused
+  `planned` flag are gone; `ResultsTab.show(files)`, which overrode `QWidget.show` (the kind of bug behind A1), is
+  `show_files`; the study form, the Log page and the Plots page are modules of their own (app.py 3,033 to 1,700
+  lines).
 - **Board cut-outs are air (R-E6).** A closed Edge.Cuts shape inside the outline is a hole in the board's outline
   (it had been dropped: the dielectric ran through every slot and cut-out), so openEMS and gfdtd fill it with air,
   Palace and Elmer mesh around it and thermal cools its edge; the notes give the cut-outs' count and area. A region
