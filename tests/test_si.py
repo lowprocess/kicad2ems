@@ -111,6 +111,25 @@ def test_the_layout_s_coupled_stretches_explain_it(result):
     assert secs[('D0', 'D2')]['gap_mm'] > 3 * s['gap_mm']
 
 
+def test_the_sections_solve_each_cut_once_and_widen_the_worst(result, monkeypatch):
+    """A bus's pairs share their cut's one solve, and only the worst stretches are solved at the wider gaps (each
+    pair had been solved four times); a cut the solver cannot take is said, not dropped silently."""
+    import glob
+    from kicad2ems.lines import xsection as X
+    d, out = result
+    lines = json.load(open(glob.glob(os.path.join(out, '*_lines.json'))[0], encoding='utf-8'))
+    calls, solve = [], X.CrossSection.solve
+    monkeypatch.setattr(X.CrossSection, 'solve', lambda self: calls.append(1) or solve(self))
+    secs = si.sections(lines, d['nets'], d['rise_ps'] * 1e-12, widen=1)
+    assert len(secs) == 3 and len(calls) == 1 + len(si.GAPS)        # the three pairs' one cut, the worst widened
+    assert len(secs[0]['wider']) == len(si.GAPS) and not secs[1]['wider'] and not secs[2]['wider']
+    assert secs[0]['next_pct'] == pytest.approx(d['sections'][0]['next_pct'])
+    monkeypatch.setattr(X.CrossSection, 'solve', lambda self: 1 / 0)
+    notes = []
+    assert si.sections(lines, d['nets'], d['rise_ps'] * 1e-12, notes=notes) == []
+    assert len(notes) == 3 and all('left out' in n and 'could not be solved' in n for n in notes)
+
+
 def test_the_question_as_the_study_has_it(result):
     from kicad2ems.analyses import registry
     from kicad2ems.study import study_tree, QUESTIONS

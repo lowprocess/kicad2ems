@@ -28,7 +28,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - one cell through the solder mask in FDTD by default (4 had made the hairpin 17 times longer);
   - the line model's junction split as one indexed pass (the CM5's 94 nets: 8.3 s for 11.6);
   - the parts' gap search through a spatial index (a 105-footprint board's `Board`: 0.27 s for 0.95);
-  - the near field can choose its compressed solve (`--backend hierarchical`).
+  - the near field can choose its compressed solve (`--backend hierarchical`);
+  - the crosstalk's layout estimates solve each cut once and the wider gaps for the three worst stretches only,
+    which the report shows (a synthetic 12-trace bus: 1.8 s, where widening every pair took 34 s); a stretch whose
+    cut cannot be solved is said in the warnings (it had been dropped silently).
 - **The Viewer's views are Plan, 2D, 3D, Images (kicad2ems-gui).** In that order, the board flat first; *Cut*
   is named *2D* (a field dump in a cut), and *Section* left for a page of its own. A setting's **Pick** button
   is capitalised.

@@ -41,6 +41,7 @@ import numpy as np
 RESULT = 'crosstalk.json'
 INSET = 0.3                 # mm: a port at a track's free end sits this far in from it
 GAPS = (1.5, 2.0, 3.0)      # the wider gaps a section is solved again with, as multiples of its own
+WIDEN = 3                   # the stretches solved at those gaps: the worst so many side by side on one layer
 C0 = 299792458.0
 
 
@@ -248,10 +249,17 @@ def victims(rows, f):
 
 
 # ---- the layout: where two traces run side by side ----------------------------------------------------------
-def _coupling(xs_dict, i, j):
-    """(Kc, Kl, Z0 of line i, the delay per metre) of lines i and j of a coupled cross-section (its dict)."""
+def _coupling(xs_dict, i, j, solved=None):
+    """(Kc, Kl, Z0 of line i, the delay per metre) of lines i and j of a coupled cross-section (its dict).
+    `solved`: a dict of the cuts already solved, by their drawing (each pair of a group, and each stretch drawn
+    alike, shares one solve)."""
     from .lines import xsection as X
-    r = X.CrossSection.from_dict(xs_dict).solve()
+    key = json.dumps(xs_dict, sort_keys=True)
+    r = (solved or {}).get(key)
+    if r is None:
+        r = X.CrossSection.from_dict(xs_dict).solve()
+        if solved is not None:
+            solved[key] = r
     L = r.L
     kc = -r.C[i, j] / math.sqrt(r.C[i, i] * r.C[j, j])
     kl = L[i, j] / math.sqrt(L[i, i] * L[j, j])
@@ -274,18 +282,26 @@ def _moved(xs_dict, i, j, factor):
     return dict(xs_dict, conductors=c)
 
 
-def sections(lines, nets, rise_s, widen=True):
+def _estimate(kc, kl, td, ramp):
+    """(NEXT for this edge, NEXT saturated, FEXT), in %, of a stretch of delay td for an edge's ramp."""
+    kb, kf = (kc + kl) / 4, (kc - kl) / 2
+    return 100 * kb * min(1.0, 2 * td / ramp), 100 * kb, 100 * kf * td / ramp
+
+
+def sections(lines, nets, rise_s, widen=WIDEN, notes=None):
     """The stretches where two of `nets` run side by side, from a line model's drawing (<name>_lines.json's
     dict): [dict(nets (the two), layer, length_mm, gap_mm (edge to edge; None: on different layers), dz_mm,
     delay_ps, z0, kc, kl, next_pct (the estimate for this edge), next_sat_pct (saturated), saturated, fext_pct,
-    wider=[dict(gap_mm, next_pct, fext_pct)])], the longest first."""
+    wider=[dict(gap_mm, next_pct, fext_pct)])], the worst first. The `widen` worst stretches on one layer are
+    solved again at the GAPS (the report shows those; each is three solves, which every pair of a bus had had).
+    A stretch whose cut the solver cannot take is left out, said in `notes` (a list) when given."""
     groups = {}
     for e in lines.get('elements', []):
         c = (e.get('section') or {}).get('coupled')
         if e.get('kind') == 'trace' and e.get('group') is not None and c and e.get('net') in nets:
             groups.setdefault(e['group'], []).append(e)
     ramp = rise_s / 0.8
-    out = []
+    out, solved = [], {}
     for g, es in groups.items():
         for n, ea in enumerate(es):
             for eb in es[n + 1:]:
@@ -294,37 +310,45 @@ def sections(lines, nets, rise_s, widen=True):
                 xs = ea['section']['coupled']['section']
                 i, j = ea['section']['coupled']['index'], eb['section']['coupled']['index']
                 try:
-                    kc, kl, z0, tpm = _coupling(xs, i, j)
-                except Exception:                                   # noqa: BLE001 (a section the solver cannot take)
+                    kc, kl, z0, tpm = _coupling(xs, i, j, solved)
+                except Exception as e:                              # noqa: BLE001 (a section the solver cannot take)
+                    if notes is not None:
+                        notes.append(f"crosstalk: the stretch of {ea['net']} and {eb['net']} on {ea['layer']} "
+                                     f"({min(ea['length'], eb['length']):.1f} mm) is left out of the layout's "
+                                     f"estimates: its cut could not be solved ({e})")
                     continue
                 ci, cj = xs['conductors'][i], xs['conductors'][j]
                 same = abs(ci[2] - cj[2]) < 1e-9
                 gap = max(ci[0], cj[0]) - min(ci[1], cj[1])
                 length = min(ea['length'], eb['length'])
                 td = tpm * length * 1e-3
-
-                def est(kc, kl):
-                    kb, kf = (kc + kl) / 4, (kc - kl) / 2
-                    return 100 * kb * min(1.0, 2 * td / ramp), 100 * kb, 100 * kf * td / ramp
-                nx, sat, fx = est(kc, kl)
+                nx, sat, fx = _estimate(kc, kl, td, ramp)
                 row = dict(nets=[ea['net'], eb['net']], layer=ea['layer'] if ea['layer'] == eb['layer'] else
                            f"{ea['layer']} / {eb['layer']}", length_mm=float(length),
                            gap_mm=float(gap) if same else None, dz_mm=float(abs(ci[2] - cj[2])),
                            delay_ps=float(td * 1e12), z0=z0, kc=kc, kl=kl, next_pct=float(nx), next_sat_pct=float(sat),
                            saturated=bool(2 * td >= ramp), fext_pct=float(fx), wider=[], pts=ea.get('pts'))
-                if widen and same:
-                    for fac in GAPS:
-                        m = _moved(xs, i, j, fac)
-                        if m is None:
-                            break
-                        try:
-                            k2c, k2l, _, _ = _coupling(m, i, j)
-                        except Exception:                           # noqa: BLE001
-                            break
-                        n2, _, f2 = est(k2c, k2l)
-                        row['wider'].append(dict(gap_mm=float(fac * gap), next_pct=float(n2), fext_pct=float(f2)))
-                out.append(row)
-    return sorted(out, key=lambda r: -abs(r['next_sat_pct']) * 1e3 - r['length_mm'])
+                out.append((row, (xs, i, j, gap, td) if same else None))
+    out.sort(key=lambda o: -abs(o[0]['next_sat_pct']) * 1e3 - o[0]['length_mm'])
+    left = widen
+    for row, cut in out:
+        if left <= 0:
+            break
+        if cut is None:
+            continue
+        xs, i, j, gap, td = cut
+        for fac in GAPS:
+            m = _moved(xs, i, j, fac)
+            if m is None:
+                break
+            try:
+                k2c, k2l, _, _ = _coupling(m, i, j, solved)
+            except Exception:                                       # noqa: BLE001 (the wider gaps stop there)
+                break
+            n2, _, f2 = _estimate(k2c, k2l, td, ramp)
+            row['wider'].append(dict(gap_mm=float(fac * gap), next_pct=float(n2), fext_pct=float(f2)))
+        left -= bool(row['wider'])
+    return [row for row, _ in out]
 
 
 # ---- the run ------------------------------------------------------------------------------------------------
@@ -408,17 +432,17 @@ def run(a, echo=print):
     if not solved:
         raise ValueError("no solver gave S-parameters")
     lines_path = os.path.join(out, f"{name}_lines.json")
-    secs = []
+    secs, left_out = [], []
     if os.path.isfile(lines_path):
         with open(lines_path, encoding='utf-8') as fh:
-            secs = sections(json.load(fh), nets, rise)
+            secs = sections(json.load(fh), nets, rise, notes=left_out)
     first = next((k for k in solved if 'line model' in solved[k]['label']), next(iter(solved)))
     ref = next((k for k in solved if k != first), first)            # a full-wave solver's, when there is one
     res = dict(format='kicad2ems-crosstalk', version=1, board=os.path.abspath(a.board), name=name, nets=nets,
                aggressors=aggressors or nets, mode=a.mode, rise_ps=a.rise, limit_pct=a.limit, z0=a.z0,
                ports={p: dict(net=n, end=e) for p, (n, e) in names.items()},
                ends={net: dict(near=_end(n), far=_end(fr), length_mm=n['length']) for net, (n, fr) in ordered.items()},
-               solved=solved, answer=ref, sections=secs, warnings=summary.get('warnings', []))
+               solved=solved, answer=ref, sections=secs, warnings=summary.get('warnings', []) + left_out)
     res['worst'] = worst(res)
     with open(os.path.join(out, RESULT), 'w', encoding='utf-8') as fh:
         json.dump(res, fh, indent=1)

@@ -96,9 +96,7 @@ The crosstalk question (`kicad2ems.si`, docs/si.md) is the first. Left, in the o
 5. **The time grid** (R-E16). The edge response comes from 401 points at fmax/400 steps, linearly interpolated: a
    5 % coupler reads 3.3 % at 1 m and 25 ps. Its step from the longest trace's delay, H interpolated with the delay
    taken out, fmax 2-3 times 1/rise, S11 to DC (for TDR), before items 2 and 3 build on it.
-6. **Each pair's section solved once** (R-D18): a 12-net bus is ~264 cross-section solves (each pair, then three
-   wider), and a failed one drops a stretch from the report without a note.
-7. **Broadside pairs** on adjacent layers: the groups are of one layer, so such a pair is not coupled at all (it
+6. **Broadside pairs** on adjacent layers: the groups are of one layer, so such a pair is not coupled at all (it
    reads "not modelled" once Fix first's item 3 is done).
 
 ## The window, from a clean slate
