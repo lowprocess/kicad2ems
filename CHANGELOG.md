@@ -9,6 +9,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Removed
+- **pcbqs's piecewise-linear circuit engine.** The circuit run is for its parts' losses (thermal) and its
+  copper's currents (fields), and on the wpthb bridge's copper the piecewise-linear engine was either no faster
+  than ngspice and wrong on the switches' losses, or right and hours a run. ngspice is the one engine; the
+  window's Circuit settings lose *Engine*.
 - **The full-bridge circuit tool (pcbqs, kicad2ems-gui).** `pcbqs.power_circuit` was a second circuit tool beside
   `pcbqs.circuit`, for the wpthb bridge alone. The bridge is a general circuit model now (pcbqs's
   `data/wpthb_bridge.json`, under Examples > Circuits > Bridges), with the same answers on its board (93.11 % for
@@ -17,9 +21,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   kicad2ems-fem's *Use these coils in the circuit* sets the model's coils (`--set PRIMARY.value=...`).
 
 ### Changed
-- **The piecewise-linear circuit engine on the board's copper (pcbqs).** `--engine pwl --copper` runs: on the
-  nine examples' boards it agrees with ngspice to 0.2 points of efficiency in 0.3 to 6 s a point, for ngspice's
-  0.5 to 50 s; a switch's Cds is in it, and the energy each switching edge puts in it.
 - **The Viewer's views are Plan, 2D, 3D, Images (kicad2ems-gui).** In that order, the board flat first; *Cut*
   is named *2D* (a field dump in a cut), and *Section* left for a page of its own. A setting's **Pick** button
   is capitalised.
@@ -32,10 +33,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
-- **Reverse recovery in pcbqs's piecewise-linear circuit engine.** A diode's transit time, a body diode's among
-  them, is its stored charge, as SPICE's: where the circuit sets how fast its current reverses, the recovery
-  current and its losses are ngspice's to a few per cent. A hard-switched leg's recovery loss is still under
-  ngspice's (the wpthb bridge's Q2 and Q4: 52 mW for 96): the ideal gate closes at once.
 - **The window begins on a Start page (kicad2ems-gui).** A window with no board showed an empty Viewer over
   empty Results. It opens on *Start*: *Open a KiCad board…*, *Open a config…*, *Open a results folder…*, the
   configs opened lately, and every example as a tile by group with its board drawn from above (drawn in a
@@ -389,16 +386,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (7 s of it the one solve at 1 GHz whose factor has to be solved on the host), the rest ports and tables.
 
 ### Fixed
-- **What a review of the full-bridge removal found (pcbqs, kicad2ems-gui, kicad2ems-fem).** pcbqs's piecewise-linear
-  engine: a switch's cut current is its loss whatever the island hold, an edge on the period's start is the
-  period's, a current source into open parts finds its diode, the reported run keeps 8192 samples a period (492 MB
-  a point before; the wpthb bridge in 7 s for 29), the body diodes' recovery it leaves out is said; thermal takes
-  the bridge's per-pin and null `board.parts`; a boost's rail stays its source's node; the bridge's `bus_ripple_V`
-  is the settled ripple again (a measure's `samples`). The window: a study whose circuit model will not load (the
-  old tool's format) keeps naming it, and saving writes nothing over it (it wrote the boost template over the
-  file, or another study's model); a proposal with no model of its own (kicad2ems-fem's coils) sets the one on
-  the page instead of replacing it with the template. kicad2ems-fem's coils say which receiver capacitor would be
-  resonant with the new secondary, since the bridge's is not retuned.
+- **What a review of the full-bridge removal found (pcbqs, kicad2ems-gui, kicad2ems-fem).** pcbqs: thermal takes the
+  bridge's per-pin and null `board.parts`; a boost's rail stays its source's node; the bridge's `bus_ripple_V` is
+  the settled ripple again (a measure's `samples`); `<ref>.cap_V` for every capacitor. The window: a study whose
+  circuit model will not load (the old tool's format) keeps naming it, and saving writes nothing over it; a
+  proposal with no model of its own (kicad2ems-fem's coils) sets the one on the page. kicad2ems-fem's coils say
+  which receiver capacitor would be resonant with the new secondary, since the bridge's is not retuned.
 - **mom25d's block low-rank solver gave wrong S-parameters at low frequency.** A large board (20,000 unknowns
   up, where the GPU's hybrid does not hold the matrix) at a frequency below (k h)² = 10⁻⁵ went through a
   single-precision low-rank factor of the RWG matrix, which cannot hold the loops' currents at any compression:
