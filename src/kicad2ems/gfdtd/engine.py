@@ -23,6 +23,11 @@ from .dumps import Dumps
 
 STATUS_S = 1.0          # wall seconds between status lines
 CONCURRENT_CELLS = 1.2e6    # GPU runs at once: up to this many cells in all (GFDTD_CONCURRENT_CELLS sets it)
+GROWTH = 10.0                   # energy this many times its peak once the excitation has ended: unstable (a passive
+                                # model's cannot pass its peak then; the measure swings with a resonance, E to H and
+                                # back, 30 times on a small box: not against its least since)
+LUMPED_X = 2.0                  # dt^2 / (L C) of a lumped inductance and its edge's capacitance: at or above it the
+                                # explicit branch update diverges (0.5 mm cells: 1.89 held, 2.52 grew without bound)
 CHECK_STEPS = 100       # timesteps between energy / ABORT checks (one host sync each)
 CHUNK = 512             # probe samples kept on the device before they are written out
 
@@ -107,6 +112,21 @@ def resolve_backend(name='auto'):
     return name
 
 
+def _lumped_stable(op, idx, L, kind):
+    """ValueError where a lumped inductance is too small for its edge and the time step (dt^2 / (L C_edge) at or
+    above LUMPED_X: its explicit update grows without bound, which the run had shown only as a port not excited)."""
+    if not len(idx):
+        return
+    x = (op.dt / L) * np.asarray(op.vi.reshape(-1)[idx], float)    # vi: dt / C of the edge
+    bad = x >= LUMPED_X
+    if bad.any():
+        k = int(np.argmax(x))
+        need = L[k] * x[k] / LUMPED_X
+        raise ValueError(f"gfdtd: {kind} lumped inductance of {L[k] * 1e12:.3g} pH on one edge is too small for its "
+                         f"cell and the time step (dt^2 / (L C) = {x[k]:.2f}, at least {LUMPED_X:g} diverges): "
+                         f"{need * 1e12:.3g} pH or more on that edge, larger cells there, or openEMS")
+
+
 class NumpyBackend:
     """The dense reference: coefficient arrays vv, vi, iv, numpy slices."""
     name = 'numpy'
@@ -134,6 +154,7 @@ class NumpyBackend:
         if op.par_L:
             idx, L = zip(*op.par_L)
             idx = np.array(idx, np.int64)
+            _lumped_stable(op, idx, np.array(L, float), 'a parallel')
             self.pl_idx, self.pl_k = xp.asarray(idx), xp.asarray(op.dt / np.array(L), dt)
             self.pl_vi = vi_at(idx)
             self.pl_I = xp.zeros(len(idx), dt)
@@ -146,6 +167,10 @@ class NumpyBackend:
             den = L / op.dt + R / 2
             if np.any(den <= 0):
                 raise ValueError("gfdtd: a series lumped element needs R or L")
+            if np.any((L <= 0) & (Cinv > 0)):                       # (it diverged at any R)
+                raise ValueError("gfdtd: a series R and C without L is not stable in its update: give it L (a part's "
+                                 "ESL), or make the R and the C two elements")
+            _lumped_stable(op, idx[L > 0], L[L > 0], 'a series')
             self.se_idx, self.se_vi = xp.asarray(idx), vi_at(idx)
             self.se_a, self.se_b, self.se_c = (xp.asarray(v, dt) for v in ((L / op.dt - R / 2) / den, 1 / den,
                                                                             Cinv / den))
@@ -1069,6 +1094,7 @@ class Engine:
         abort = os.path.join(path, 'ABORT')
         t0 = last = time.time()
         emax, e, reason, s, last_s = 0.0, 0.0, 'steps', 0, 0
+        emax_driven = float('inf')
         nexc = len(sig)
         nr_ts = int(nr_ts)
         try:
@@ -1085,6 +1111,8 @@ class Engine:
                 if s % CHECK_STEPS == 0 or s == nr_ts:
                     e = be.energy()
                     emax = max(emax, e)
+                    if s <= nexc + getattr(op, 'delay_max', 0):
+                        emax_driven = emax                  # the peak while the excitation drives it
                     now = time.time()
                     if verbose and now - last >= STATUS_S:
                         flush()
@@ -1093,10 +1121,11 @@ class Engine:
                         out(f"[@{_fmt_t(now - t0):>10}] Timestep: {s:>12d} || Speed: {rate:6.1f} MC/s "
                             f"({(now - last) / max(s - last_s, 1):.3e} s/TS) || Energy: ~{e:.2e} ({db:.2f}dB)")
                         last, last_s = now, s
-                    if not np.isfinite(e):
+                    after = s > nexc + getattr(op, 'delay_max', 0)
+                    if not np.isfinite(e) or (after and e > GROWTH * emax_driven):     # growing, not yet infinite
                         reason = 'unstable'
                         break
-                    if s > nexc + getattr(op, 'delay_max', 0) and emax > 0 and e < end_crit * emax:
+                    if after and emax > 0 and e < end_crit * emax:
                         reason = 'end'
                         break
                     if os.path.exists(abort):

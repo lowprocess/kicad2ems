@@ -863,3 +863,53 @@ def test_unique_rows_is_numpys():
         n0, c0 = np.unique(t, axis=0, return_inverse=True)
         n1, c1 = _unique_rows(t)
         assert np.array_equal(n0, n1) and np.array_equal(c0.ravel(), c1)
+
+
+def _plates(tmp_path, **el):
+    """Two plates, a lumped port at one side and a lumped element at the other (0.5 mm cells)."""
+    from gfdtd import ContinuousStructure, openEMS
+    F = openEMS(NrTS=4000, EndCriteria=1e-5)
+    F.SetGaussExcite(1e9, 1e9)
+    F.SetBoundaryCond(['PEC'] * 6)
+    csx = ContinuousStructure()
+    F.SetCSX(csx)
+    g = csx.GetGrid()
+    g.SetDeltaUnit(1e-3)
+    for ax in 'xy':
+        g.SetLines(ax, np.arange(-3, 3.01, 0.5))
+    g.SetLines('z', np.arange(0, 3.01, 0.5))
+    m = csx.AddMetal('plate')
+    m.AddBox([-1, -1, 1], [1, 1, 1], priority=10)
+    m.AddBox([-1, -1, 2], [1, 1, 2], priority=10)
+    F.AddLumpedPort(1, 50, [-1, 0, 1], [-1, 0, 2], 'z', excite=1, priority=12)
+    csx.AddLumpedElement('load', ny='z', caps=True, **el).AddBox([1, 0, 1], [1, 0, 2], priority=12)
+    return F, str(tmp_path / 'run')
+
+
+def test_a_lumped_part_its_update_cannot_hold_is_refused(tmp_path):
+    """A lumped inductance too small for its edge and the time step, and a series R and C without L, diverged (the
+    run then read as a port not excited): refused, saying what would hold."""
+    F, path = _plates(tmp_path, L=150e-12)
+    with pytest.raises(ValueError, match=r'too small for its cell and the time step .* 94.5 pH or more'):
+        F.Run(path, cleanup=True, verbose=0, backend='numpy', log=path + '.log')
+    F, path = _plates(tmp_path, R=1.0, C=100e-9, LEtype=1)
+    with pytest.raises(ValueError, match='series R and C without L'):
+        F.Run(path, cleanup=True, verbose=0, backend='numpy', log=path + '.log')
+    F, path = _plates(tmp_path, L=200e-12)                          # (held: dt^2 / (L C) 1.89)
+    F.Run(path, cleanup=True, verbose=0, backend='numpy', log=path + '.log')
+    assert F.result['reason'] == 'end'
+
+
+def test_fields_that_grow_once_the_excitation_ends_are_unstable(tmp_path, monkeypatch):
+    """Energy over GROWTH times its peak once nothing drives the model: unstable (only infinity was, so a run that
+    grew within bounds came back as a result)."""
+    from gfdtd import engine as E
+    F, path = _plates(tmp_path, L=1e-9)
+    real, n = E.NumpyBackend.energy, [0]
+
+    def growing(self):
+        n[0] += 1
+        return real(self) * (1.0 if n[0] < 15 else 10.0 ** (3 * (n[0] - 14)))     # growing a thousandfold a check
+    monkeypatch.setattr(E.NumpyBackend, 'energy', growing)
+    F.Run(path, cleanup=True, verbose=0, backend='numpy', log=path + '.log')
+    assert F.result['reason'] == 'unstable'
