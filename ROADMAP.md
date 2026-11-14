@@ -27,9 +27,9 @@ What the CI leaves out is where most of the list above came from.
    compiled core since 2026-11-14. Left: Elmer built once and cached (about 2 min), so kicad2ems-fem's Elmer runs
    are tested too; a real FDTD engine through kicad2ems-fdtd (a small board on `gfdtd:cpu`); the window's run
    against a stand-in is tested since 2026-11-14 (`test_the_window_s_own_run_starts_and_ends`).
-2. **Pins** (R-C5). emsdev is taken from main everywhere; kicad2ems-fdtd, gfdtd and dfsynth have no commit in
-   kicad2ems's extras; `sync_pins.py` sees only `git+...@sha`; the KiCad plugin's `requirements.txt` is 78 commits
-   behind and checked by nothing.
+2. **Pins, the rest** (R-C5: emsdev is pinned by its release tag in all five pyprojects since 2026-11-14, and
+   `sync_pins.py` checks it). kicad2ems-fdtd, gfdtd and dfsynth have no commit in the extras that name them; the KiCad
+   plugin's `requirements.txt` is behind and checked by nothing.
 3. **The GPUs** (R-C7). No GPU path runs in CI (Vulkan on lavapipe could), and no NVIDIA run is recorded, though the
    docs name any GPU.
 4. **References** (R-C9, C10):

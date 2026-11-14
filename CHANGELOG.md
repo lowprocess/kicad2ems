@@ -10,6 +10,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Changed
+- **emsdev is pinned (R-C5).** Every package that needs it names its release tag, `v0.3.0`, the same URL in
+  all five pyprojects (it was main's archive), and `sync_pins.py` checks that and says when main is past the tag.
 - **pcbqs's switches are vdmos by default (R-A18).** A board's circuit, the KiCad import and the examples switch
   with ngspice's VDMOS and a generic MOSFET's capacitances (Cgs 1 nF, Cgd 50 pF, Cds 500 pF) unless the part's are
   given, so a switching loss is a device's, not the drive ramp's; pcbqs's CHANGELOG has the figures.
