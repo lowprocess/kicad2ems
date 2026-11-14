@@ -241,11 +241,12 @@ that does not need N² memory. In this order:
 
 ## mom25d: what the review found (2026-11-14)
 
-1. **Wave-port set-up** (R-D10). A port's line is a 3D model of its own, its planes at dmax rather than the board's
-   cells: on `tests/boards/launch.json` 19,698 unknowns for a board of 6,635, 81 s against a 3 s solve, done again
-   every run. The board's cells, one LU for its three frequencies, a cache by cross-section (or a 2D cut).
-2. **The via and hole blocks** (R-D11): Python loops rebuilt at every frequency (0.32 s of a 1.2 s solve; the plugin's
-   own model gives ~76 s a solve for 1,000 vias). Compiled, and the fill overlapped with the GPU's factor.
+1. **Wave-port set-up, the first run** (R-D10). A port's line is a 3D model of its own: on
+   `tests/boards/launch.json` 14.4 s of a 14.6 s set-up. It is kept on disk by cross-section since 2026-11-14 (a run
+   again: 0.5 s); the first run's cost is left, for a 2D cut of the feed (Zc and gamma) to take.
+2. **The via blocks, what is left** (R-D11): since 2026-11-14 the chains' kernel is in the compiled core, the fans'
+   product sparse and the pairs' geometry made once (317 vias: 1.36 s a solve for 3.43). Left: the holes' blocks
+   (`_frill_blocks`) are still a Python loop a hole, and the fill is not overlapped with the GPU's factor.
 3. **Copper thickness**, ignored (sheets) while the other solvers model it; the loss takes the port layer's
    thickness for every layer. Per interface first; two sheets with side currents later (`sing.py` names the
    kernels).

@@ -37,7 +37,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     a time at 200 runs);
   - pcbqs's S-parameters sweep where a rational model is least sure (emsdev.afs, mom25d's sweep), at most 31
     solves, where 31 log-spaced points had been interpolated linearly across a filter's resonance; its via matrix
-    from arrays (2,500 segments: 0.35 s for 19.5) and its loop tree breadth first (loops a third shorter).
+    from arrays (2,500 segments: 0.35 s for 19.5) and its loop tree breadth first (loops a third shorter);
+  - mom25d keeps its wave ports' line characterisations on disk by cross-section (`MOM25D_CACHE`; `off` keeps
+    none): the launch board's set-up run again 0.5 s for 14.5;
+  - mom25d's via blocks: the chains' kernel on the triangles in its compiled core, the fans' charge product sparse
+    and the pairs' geometry made once (317 vias on the launch board: 1.36 s a solve for 3.43, S within 4e-7).
 - **The Viewer's views are Plan, 2D, 3D, Images (kicad2ems-gui).** In that order, the board flat first; *Cut*
   is named *2D* (a field dump in a cut), and *Section* left for a page of its own. A setting's **Pick** button
   is capitalised.
