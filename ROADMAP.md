@@ -344,7 +344,7 @@ engine.
 | The dense solves, after their assembly | the LU is what is left: 90 % of a two-face S-parameter solve (147 s at 17,700 unknowns) | | The assembly, the thermal maps' sampling and the potential's solve are in the compiled core or on Cholesky since 2026-11-13 (pcbqs's CHANGELOG; `tools/perf/README.md` has where each tool's time goes). Left, none of it pcbqs's own Python: a compressed or block low-rank LU as mom25d has; ngspice's text output read by `np.loadtxt` (a binary raw file); the compression of field dumps; shapely's unions in the near field's mesh |
 | Whole-board near field | | convergence | `--backend hierarchical` (since 2026-11-14) is GMRES in the loop basis (47,548 triangles in 13 s, docs/quasistatic.md). Left: mesh and crop convergence on a whole board. A crop around the converter is enough for DC-DC loops |
 | A trial's waveforms (R-D2, the rest) | ~0.5 s of each run | S | 98 MB of text a wpthb run read by `loadtxt` (0.5 s; `fromstring` is no faster: a binary raw file), the spectrum computed twice with copper. Trials are saved uncompressed since 2026-11-14 |
-| A fresh complex128 LU each frequency (R-D13) | 2× (complex64 with refinement: 0.19 s for 0.38 at n = 4,000) | M | with `dc` loss `Rl + jωLl` is a pencil: one eigendecomposition and Woodbury for the parts |
+| The pencil, with `dc` loss (R-D13, the rest) | one factor a sweep | M | `Rl + jωLl` is a pencil: one eigendecomposition and Woodbury for the parts. The single-precision LU with refinement is done (2026-11-14) |
 
 The quasi-static solver's 10× target is not yet shown on real boards, and an FFT field grid's convergence has to
 be checked for each scan.
@@ -397,7 +397,9 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
    engines' runs, and lumped parts gfdtd's update cannot hold are refused (2026-11-14). Left: gfdtd taking a part's
    ESR in one series RLC (an implicit update for R and C without L), so kicad2ems need not split such parts for it.
 2. **Speed without new physics.**
-   - One operator and device session per solve, not per excitation: 8-51 % of a GPU run on the examples.
+   - Excitations that start together each make their GPU device and pipelines (about 0.3 s a thread, 22 % of
+     demo_lowpass's 2 s runs); one device with a queue per run would share them. The operator's core and its
+     compressed form are made once a model, and the worker threads (with their devices) kept, since 2026-11-14.
    - A node-local time step: gfdtd's is up to 15 % shorter than openEMS's on the same mesh (hairpin 105.9 fs
      against 124.9).
    - εr averaged inside a cell, so a thin layer needs no lines of its own (`nz_mask` is 1 since 2026-11-14: 4 cells

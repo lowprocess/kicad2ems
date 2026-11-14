@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Changed
+- **gfdtd's excitations share their set-up (R-D4).** The operator's core (grid, materials, metal, sheets, lumped
+  parts, coefficients, boundaries) and its compressed GPU form are made once for a model and kept for its other
+  excitations, which differ only in their excitation, probes and dumps; kicad2ems-fdtd keeps the worker threads
+  between solves, and with them each thread's GPU device. On the coupler a later excitation's set-up is 0.04 s for
+  0.3-0.65 s; a second solve in the same process (a `--converge` level, a study's next run) 0.02 s for 0.46 s a
+  run (demo_lowpass: 1.74 s a run for 2.21). S is unchanged (8e-8). Excitations that start together still make a
+  device each.
 - **emsdev is pinned (R-C5).** Every package that needs it names its release tag, `v0.3.0`, the same URL in
   all five pyprojects (it was main's archive), and `sync_pins.py` checks that and says when main is past the tag.
 - **pcbqs's switches are vdmos by default (R-A18).** A board's circuit, the KiCad import and the examples switch
