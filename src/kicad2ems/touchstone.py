@@ -64,32 +64,98 @@ def write_touchstone(path, f, S, zref, comment='', names=None):
             fh.write("[End]\n")
 
 
-def read_touchstone(path):
-    """Minimal Touchstone reader (v1 / v2, RI / MA / DB). Returns f (Hz), S (nf, n, n)."""
+def read_touchstone(path, with_zref=False):
+    """Touchstone v1 / v2 (RI / MA / DB; S, Y, Z, H or G) as S-parameters at the file's own reference: f (Hz), S (nf, n,
+    n), and with with_zref its reference impedances (n,). Y and Z (and a two-port's H and G) are converted to S at
+    `R` (v1) or [Reference] (v2); a noise block (v1: a frequency not above the last; v2: [Noise Data]) ends the
+    network data; v2's [Number of Ports] and [Matrix Format] Lower / Upper are honoured. (It had taken any file as
+    S, ignored R, read the port count from the extension only, and failed on a noise block.)"""
     n = int(''.join(ch for ch in os.path.splitext(path)[1] if ch.isdigit()) or 2)
-    fmt, funit, data = 'MA', 1e9, []
+    fmt, funit, param, r_ref, data = 'MA', 1e9, 'S', 50.0, []
     mult = {'HZ': 1, 'KHZ': 1e3, 'MHZ': 1e6, 'GHZ': 1e9}
-    order21 = n == 2
-    for line in open(path, encoding='utf-8'):
-        line = line.split('!')[0].strip()
+    order21, matrix, refs, v2, reading_ref, last_f = None, 'FULL', None, False, False, -np.inf
+    with open(path, encoding='utf-8') as fh:
+        lines = fh.read().splitlines()
+    pending = []                                                    # the numbers of the frequency being read
+    for raw in lines:
+        line = raw.split('!')[0].strip()
         if not line:
             continue
         if line.startswith('#'):
-            t = line[1:].upper().split()
-            funit = next((mult[x] for x in t if x in mult), 1e9)
-            fmt = next((x for x in t if x in ('RI', 'MA', 'DB')), 'MA')
+            tok = line[1:].upper().split()
+            funit = next((mult[x] for x in tok if x in mult), 1e9)
+            fmt = next((x for x in tok if x in ('RI', 'MA', 'DB')), 'MA')
+            param = next((x for x in tok if x in ('S', 'Y', 'Z', 'H', 'G')), 'S')
+            if 'R' in tok and tok.index('R') + 1 < len(tok):
+                r_ref = float(tok[tok.index('R') + 1])
             continue
         if line.startswith('['):
-            if 'Two-Port Data Order' in line and '12_21' in line:
-                order21 = False
+            key, _, rest = line[1:].partition(']')
+            key, rest = key.strip().upper(), rest.strip()
+            reading_ref = key == 'REFERENCE'
+            if key == 'VERSION':
+                v2 = True
+            elif key == 'NUMBER OF PORTS':
+                n = int(rest)
+            elif key == 'TWO-PORT DATA ORDER':
+                order21 = '21_12' in rest
+            elif key == 'MATRIX FORMAT':
+                matrix = rest.upper()
+            elif key == 'REFERENCE':
+                refs = [float(x) for x in rest.split()]
+            elif key in ('NOISE DATA', 'END'):
+                break
             continue
-        data += [float(v) for v in line.split()]
-    per = 1 + 2 * n * n
-    a = np.array(data).reshape(-1, per)
+        if reading_ref and refs is not None and len(refs) < n:      # [Reference] may run onto the next lines
+            refs += [float(x) for x in line.split()]
+            continue
+        nums = [float(x) for x in line.split()]
+        if not pending and not v2 and n == 2 and data and nums[0] <= last_f:
+            break                                                   # v1's noise block: the frequency starts over
+        pending += nums
+        per = 1 + 2 * (n * (n + 1) // 2 if matrix in ('LOWER', 'UPPER') else n * n)
+        while len(pending) >= per:
+            data.append(pending[:per])
+            last_f, pending = pending[0], pending[per:]
+    a = np.array(data, float).reshape(-1, 1 + 2 * (n * (n + 1) // 2 if matrix in ('LOWER', 'UPPER') else n * n))
     f = a[:, 0] * funit
     v = a[:, 1::2] + 1j * a[:, 2::2] if fmt == 'RI' else (
         (a[:, 1::2] if fmt == 'MA' else 10 ** (a[:, 1::2] / 20)) * np.exp(1j * np.radians(a[:, 2::2])))
-    S = v.reshape(-1, n, n)
-    if order21:                                                     # v1 2-port order: S11 S21 S12 S22
-        S = S.transpose(0, 2, 1)
-    return f, S
+    if matrix in ('LOWER', 'UPPER'):                                # one triangle, row by row: the other its mirror
+        X = np.zeros((len(f), n, n), complex)
+        idx = [(i, j) for i in range(n) for j in (range(i + 1) if matrix == 'LOWER' else range(i, n))]
+        for k, (i, j) in enumerate(idx):
+            X[:, i, j] = X[:, j, i] = v[:, k]
+    else:
+        X = v.reshape(-1, n, n)
+        if (order21 if order21 is not None else n == 2 and not v2) and n == 2:     # S11 S21 S12 S22
+            X = X.transpose(0, 2, 1)
+    zref = np.array(refs[:n] if refs else [r_ref] * n, float)
+    if v2 and refs is None:
+        zref = np.full(n, r_ref)
+    S = _to_s(X, param, zref, normalised=not v2)
+    return (f, S, zref) if with_zref else (f, S)
+
+
+def _to_s(X, param, zref, normalised=False):
+    """S at the reference impedances zref from S, Y, Z (any number of ports) or a two-port's H or G: normalised to the
+    reference (a v1 file's, to R) or in ohms and siemens (v2)."""
+    if param == 'S':
+        return X
+    n = X.shape[1]
+    I = np.eye(n)
+    if param in ('H', 'G'):
+        if n != 2:
+            raise ValueError(f"Touchstone {param}-parameters: two-ports only")
+        if param == 'G':
+            X = np.linalg.inv(X)                                    # G is H's inverse
+        h11, h12, h21, h22 = X[:, 0, 0], X[:, 0, 1], X[:, 1, 0], X[:, 1, 1]
+        det = h11 * h22 - h12 * h21
+        Z = np.stack([np.stack([det / h22, h12 / h22], -1), np.stack([-h21 / h22, 1 / h22], -1)], -2)
+        param, X = 'Z', Z
+    sq = np.ones(n) if normalised else np.sqrt(zref)
+    if param == 'Z':
+        Zn = X / np.outer(sq, sq)                                   # normalised: z_ij / sqrt(r_i r_j)
+        return np.linalg.solve((Zn + I).transpose(0, 2, 1), (Zn - I).transpose(0, 2, 1)).transpose(0, 2, 1)
+    Yn = X * np.outer(sq, sq)                                       # Y: y_ij sqrt(r_i r_j)
+    return np.linalg.solve((I + Yn).transpose(0, 2, 1), (I - Yn).transpose(0, 2, 1)).transpose(0, 2, 1)

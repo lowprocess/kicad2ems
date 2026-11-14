@@ -13,24 +13,11 @@ window and mom25d; pcbqs's for the power tools). C, I and U numbers are findings
 Answers that are wrong with nothing to say so, and a workflow that does not run. Each is under a day unless it says
 otherwise; the review has the file and line of each.
 
-1. **An unstable FDTD run** reads as "port not excited" (R-A12); gfdtd's lumped branches have no stability check
-   (R-B17: parallel L under ~200 pH at 0.5 mm cells, any series R+C without L).
-2. **The coil proposal** is wpthb's (R-A13: PRIMARY, SECONDARY and the bridge's c2 in its note), and Elmer's thermal
-   reads the removed bridge tool's `component_power_W`.
-3. **The PDN's low end and its domains** (R-A14, R-A15, R-B10, R-B11). Mounts and barrels have no resistance (Re Z
-   at 1 kHz 22-38 % under the DC network on the Jetson), a plane domain with no source is written as an impedance
-   (838 MΩ), cavities pair through other rails' planes, a rail with no plane pair loses its DC answer too, and a
-   failed mount solve reads as no access inductance.
-4. **Two-face copper** (R-A16): `conductor_faces` does nothing with face sheets, and kernels shared between models
-    leave out the faces' skin loss (the PEEC PDN's bare curve).
-5. **Touchstone** (R-A20): the reader takes Z and Y files as S and ignores `R`; pcbqs writes one reference for ports
-    of several.
-6. **`install.py --update`** (R-A21) reinstalls the commits it installed before, not the ones kicad2ems now pins.
-7. **KiCad import, the rest** (R-A22): copper text, KiCad 9's per-layer padstacks and `remove_unused_layers` (inferred:
+1. **KiCad import, the rest** (R-A22): copper text, KiCad 9's per-layer padstacks and `remove_unused_layers` (inferred:
    not checked on a board that has them).
-8. **The line model's losses** (R-A17, M): `--sigma` is felt by microstrip only, the worst layer's tan δ is taken
+2. **The line model's losses** (R-A17, M): `--sigma` is felt by microstrip only, the worst layer's tan δ is taken
     where the field solver has the right one, a stripline between core and prepreg keeps the averaged εr.
-9. **The default switch's edges** (R-A18, M): a board's circuit and 9 of the 10 examples switch with a fixed ramp and
+3. **The default switch's edges** (R-A18, M): a board's circuit and 9 of the 10 examples switch with a fixed ramp and
     no gate charge, so their switching loss is the ramp's, not a device's.
 
 Then the errors that say nothing (R-B):
@@ -101,9 +88,8 @@ the window lists the questions, with the engine chosen on each row, and compares
      S-parameter parts without a new solve, then a `[sweep]` table. There is no sweep or batch driver today.
 5. **Results the solvers give** (R-E2). Nothing checks passivity or causality: an AAA model of a lossless two-port
    reached σmax 1.0018, and a sweep that hit its solve cap says nothing.
-6. **Mesh convergence on every solver** (R-E3). openEMS has `--converge`; gfdtd ignores it though the code drives any
-   engine (it sits in the openEMS subclass); mom25d has none (demo.json's mesh has a 0.08° angle); Palace's adaptive
-   refinement is unused.
+6. **Mesh convergence on every solver** (R-E3). openEMS and gfdtd have `--converge` (gfdtd since 2026-11-14); mom25d
+   has none (demo.json's mesh has a 0.08° angle); Palace's adaptive refinement is unused.
 7. **Materials** (R-E4). KiCad's stackup `material` names are not read and a missing value defaults without a note: a
    small library (RO4350B, FR4 grades) with each one's dispersion and the frequency its εr is given at.
 8. **A run done again** (R-D20): no result is reused (a hash of board.json, the frequencies and the solver's
@@ -435,32 +421,30 @@ In order:
 
 The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4-D9, C6, C7):
 
-1. **The guards.** An unstable run is checked only for a finite energy every 100 steps, and kicad2ems-fdtd never
-   reads the engine's reason: a run that blew up reads as "port not excited", one that grows within bounds as a
-   result. gfdtd's lumped branches need a stability check and the trapezoidal update its poles have (an R+C
-   without L diverges at any R), after which gfdtd can take a part's ESR in one series RLC, not split.
-2. **`--converge` on gfdtd**: its code runs any engine but sits in the openEMS subclass.
-3. **Speed without new physics.**
+1. **The guards, the rest.** An unstable run is caught (energy over 10 times its driven peak) and said by both
+   engines' runs, and lumped parts gfdtd's update cannot hold are refused (2026-11-14). Left: gfdtd taking a part's
+   ESR in one series RLC (an implicit update for R and C without L), so kicad2ems need not split such parts for it.
+2. **Speed without new physics.**
    - One operator and device session per solve, not per excitation: 8-51 % of a GPU run on the examples.
    - A node-local time step: gfdtd's is up to 15 % shorter than openEMS's on the same mesh (hairpin 105.9 fs
      against 124.9).
    - `nz_mask` at 1: 4 cells through a 10 µm mask made hairpin 17× longer for "within 1 MHz". Then εr averaged
      inside a cell, so a thin layer needs no lines of its own.
    - The energy read a check late, the ports' decay judged in the engine, dumps written by a thread.
-4. **Memory.** The build peaks at ~470 B a node on the host (float64 arrays kept through the run), 16× what the GPU
+3. **Memory.** The build peaks at ~470 B a node on the host (float64 arrays kept through the run), 16× what the GPU
    needs, and nothing checks free VRAM before a run or caps the concurrent runs by it.
-5. **Line ports** (MSL, stripline, CPW: gfdtd has them) with a de-embedded plane where a straight trace meets the
+4. **Line ports** (MSL, stripline, CPW: gfdtd has them) with a de-embedded plane where a straight trace meets the
    port.
-6. **Excitations batched** in one launch, and every GPU emsdev finds used.
-7. **Tests**: a small board on `gfdtd:cpu` end to end, openEMS's S-parameters stored as references; Vulkan on lavapipe
+5. **Excitations batched** in one launch, and every GPU emsdev finds used.
+6. **Tests**: a small board on `gfdtd:cpu` end to end, openEMS's S-parameters stored as references; Vulkan on lavapipe
    in CI; one NVIDIA run before the docs name CUDA.
-8. **Boundaries**: first-order Mur is the default on five sides (6 % reflection against 5e-5 for an 8-cell PML), and
+7. **Boundaries**: first-order Mur is the default on five sides (6 % reflection against 5e-5 for an 8-cell PML), and
    the PML is CPML with κ = 1, α = 0, at λ/res cells: CFS-CPML, and thinner graded cells.
-9. **Larger boards**: every copper edge is a line across the box. Subgridding or local refinement, temporal
+8. **Larger boards**: every copper edge is a line across the box. Subgridding or local refinement, temporal
    blocking, conformal PEC for curved copper.
-10. **Materials**: Lorentz and Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
+9. **Materials**: Lorentz and Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
     material (which is right is not checked).
-11. **openEMS's interface** (R-B18): options gfdtd does not have are dropped without a word (`TimeStepFactor`,
+10. **openEMS's interface** (R-B18): options gfdtd does not have are dropped without a word (`TimeStepFactor`,
     `TimeStep`, `CoordSystem`, field probes, magnetic σ); Gaussian is the only excitation; time-domain NF2FF,
     `MaxTime`, `SetAbort` and a coax `Feed_R` are not there.
 

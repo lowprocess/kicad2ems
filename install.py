@@ -417,6 +417,19 @@ for name in %r:
 ''' % (STACK,)
 
 
+def pinned_specs(repo):
+    """{package: 'git+https://...@sha'}: the commits this checkout's pyproject.toml pins for the stack's packages
+    (its extras). --update installs those, not the ones installed before (re-installing a package's recorded
+    revision had kept the stack at its old commits however far kicad2ems had moved)."""
+    try:
+        with open(os.path.join(repo, 'pyproject.toml'), encoding='utf-8') as fh:
+            text = fh.read()
+    except OSError:
+        return {}
+    return {m.group(1): m.group(2) for m in
+            re.finditer(r'"([A-Za-z0-9_.-]+)\s*(?:\[[^\]]*\])?\s*@\s*(git\+https://[^"@\s]+@[0-9a-f]{7,40})', text)}
+
+
 def core_dir(vpy, pkg):
     """The folder of an installed package with a compiled core ('' when it isn't installed)."""
     return py_out(vpy, f"import importlib.util as u, os; s = u.find_spec('{pkg}'); "
@@ -1318,9 +1331,14 @@ class Installer:
         else:
             note("kicad2ems: a copy of this checkout")
             ok.append(self.pip('-q', '--no-deps', '--force-reinstall', REPO, check=False))
-        # the others as they were installed: a checkout stays that checkout, a URL is fetched again
+        # the others as they were installed: a checkout stays that checkout, a URL is fetched again (a stack package
+        # at the commit this checkout pins)
+        pins = pinned_specs(REPO)
         for line in py_out(self.vpy, INSTALLED_FROM).splitlines():
             kind, name, spec = (line.split('\t') + ['', ''])[:3]
+            if kind == 'url' and name in pins and spec != pins[name]:
+                note(f"{name}: kicad2ems pins {pins[name].rsplit('@', 1)[1][:7]} (was {spec.rsplit('@', 1)[-1][:7]})")
+                spec = pins[name]
             if kind == 'editable':
                 note(f"{name}: its checkout {spec} (editable)")
                 ok.append(self.pip('-q', '--no-deps', '--no-build-isolation', '-e', spec, '--config-settings',

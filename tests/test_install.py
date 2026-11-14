@@ -292,3 +292,16 @@ def test_the_build_scripts_are_shell_that_parses():
     for name in ('build_elmer.sh', 'build_palace.sh'):
         r = subprocess.run(['bash', '-n', os.path.join(ROOT, 'tools', name)], capture_output=True, text=True)
         assert r.returncode == 0, r.stderr
+
+
+def test_update_takes_the_commits_this_checkout_pins(inst, tmp_path):
+    """--update installs a stack package at the commit this checkout's pyproject.toml pins: it had re-installed the
+    revision recorded at its last install, so the stack stayed at its old commits however far kicad2ems moved."""
+    pins = inst.pinned_specs(inst.REPO)
+    assert {'mom25d', 'pcbqs', 'kicad2ems-gui'} <= set(pins)
+    assert all(v.startswith('git+https://github.com/lowprocess/') and len(v.rsplit('@', 1)[1]) == 40 for v in pins.values())
+    (tmp_path / 'pyproject.toml').write_text('qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@' + 'a' * 40 + '"]\n'
+                                             'gui = ["kicad2ems-gui[filter] @ git+https://github.com/x/y@' + 'b' * 7 + '"]\n')
+    assert inst.pinned_specs(str(tmp_path)) == {'pcbqs': 'git+https://github.com/lowprocess/pcbqs@' + 'a' * 40,
+                                                'kicad2ems-gui': 'git+https://github.com/x/y@bbbbbbb'}
+    assert inst.pinned_specs(str(tmp_path / 'none')) == {}

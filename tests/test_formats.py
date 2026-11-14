@@ -45,3 +45,28 @@ def test_events_name_their_format(tmp_path):
     p.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     ev = frontend.EventTail(str(p)).read()
     assert ev[0]['kind'] == 'log' and 'newer' in ev[0]['text'] and ev[1]['kind'] == 'stage'
+
+
+def test_touchstone_from_other_programs(tmp_path):
+    """Another program's files: Y and Z (normalised to R in v1, in ohms in v2) are converted to S at their
+    reference, a v1 noise block ends the data, v2's [Number of Ports] and a lower triangle are read (any file had
+    been taken as S, R ignored, the port count taken from the extension, and a noise block failed)."""
+    import numpy as np
+    from kicad2ems.touchstone import read_touchstone, write_touchstone
+    (tmp_path / 'z.s2p').write_text("# GHz Z RI R 75\n1 1.3333333 0 1.3333333 0 1.3333333 0 1.3333333 0\n")
+    f, S, zr = read_touchstone(str(tmp_path / 'z.s2p'), with_zref=True)          # a shunt 100 ohm, at 75 ohm
+    assert f[0] == 1e9 and list(zr) == [75, 75] and S[0, 0, 0] == pytest.approx(-0.75 / 2.75, rel=1e-6)
+    (tmp_path / 'y.ts').write_text("[Version] 2.0\n# GHz Y RI R 50\n[Number of Ports] 2\n[Two-Port Data Order] 12_21\n"
+                                   "[Number of Frequencies] 1\n[Network Data]\n1 0.01 0 -0.01 0 -0.01 0 0.01 0\n[End]\n")
+    assert np.allclose(read_touchstone(str(tmp_path / 'y.ts'))[1][0], 0.5)       # a series 100 ohm
+    (tmp_path / 'n.s2p').write_text("# GHz S MA R 50\n1 .5 0 .1 0 .1 0 .5 0\n2 .5 0 .2 0 .1 0 .5 0\n"
+                                    "1 1.2 .3 20 .2\n2 1.3 .3 25 .2\n")           # its noise parameters after
+    f, S = read_touchstone(str(tmp_path / 'n.s2p'))
+    assert len(f) == 2 and S[1, 1, 0] == pytest.approx(0.2)                       # v1: S11 S21 S12 S22
+    (tmp_path / 'l.s3p').write_text("[Version] 2.0\n# GHz S RI R 50\n[Number of Ports] 3\n[Number of Frequencies] 1\n"
+                                    "[Matrix Format] Lower\n[Network Data]\n1 0.1 0 0.2 0 0.3 0 0.4 0 0.5 0 0.6 0\n[End]\n")
+    assert np.allclose(read_touchstone(str(tmp_path / 'l.s3p'))[1][0].real, [[.1, .2, .4], [.2, .3, .5], [.4, .5, .6]])
+    S = np.array([[[0.1 + 0.2j, 0.5], [0.4, -0.3j]]] * 2)
+    write_touchstone(str(tmp_path / 'own.s2p'), [1e9, 2e9], S, [50, 75])         # kicad2ems's own, v2
+    f, back, zr = read_touchstone(str(tmp_path / 'own.s2p'), with_zref=True)
+    assert np.allclose(back, S) and list(zr) == [50, 75]

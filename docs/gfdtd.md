@@ -14,7 +14,8 @@ openEMS's and take openEMS's settings (`--res`, `--fine`, `--nz`, `--bc`, `--end
 `--excite`, `--diel`, `--dump`, `--ff-freq`, ...: the GUI's *FDTD (openEMS, gfdtd)* section). Only the engine
 differs: on the examples the two agree to within 0.004–0.05 in |S|, and on one mid-range GPU gfdtd runs 8–20 times
 faster than openEMS on a 24-thread CPU (its CPU core about twice as fast). `--solvers auto` picks it over openEMS
-whenever it can run: not with `--converge`, which it would ignore, nor `--sigma` on a gfdtd older than 261104
+whenever it can run: not with `--sigma` on a gfdtd older than 261104 (`--converge`'s mesh levels run on it as on
+openEMS)
 ([Which solver](usage.md#which)).
 
 ```bash
@@ -40,7 +41,7 @@ writes openEMS's probe files, field dumps and status lines, so kicad2ems's progr
 S-parameter code work on it unchanged. A preview with gfdtd and without openEMS draws the mesh (`<name>_mesh.png`).
 
 gfdtd's README covers the rest: [CSXCAD and openEMS compatibility](https://github.com/lowprocess/gfdtd#csxcad-and-openems-compatibility),
-[what it models](https://github.com/lowprocess/gfdtd#what-it-models) (and what not yet: `--converge`),
+[what it models](https://github.com/lowprocess/gfdtd#what-it-models),
 [its ports](https://github.com/lowprocess/gfdtd#ports), [how it works](https://github.com/lowprocess/gfdtd#how-it-works)
 and [accuracy and speed](https://github.com/lowprocess/gfdtd#accuracy-and-speed) against openEMS. The plugin's tests
 are kicad2ems-fdtd's `tests/test_gfdtd_plugin.py`; the engine's, gfdtd's.

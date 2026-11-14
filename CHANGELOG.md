@@ -420,6 +420,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - **The stack's CI** (R-C1, C2, C4) installs ngspice (pcbqs's 84 circuit tests had skipped), kicad2ems-fem (not
     installed at all: its meshes, configs, readers and registry; Elmer's and Palace's runs skip there) and builds
     pcbqs's compiled core (its kernels had run as their NumPy twins only).
+  - **An unstable FDTD run** (R-A12, B17): gfdtd took only an infinite energy as unstable and kicad2ems-fdtd never
+    read why a run ended, so a run that blew up read as "port not excited" and one that grew within bounds as a
+    result. Energy over 10 times its driven peak once the excitation ends is unstable, and either engine's run that
+    is (or whose port voltages are not finite) says so. A lumped inductance too small for its edge and the time step
+    (dt²/(LC) of 2 or more: 0.5 mm cells, 1.89 held and 2.52 diverged) and a series R and C without L are refused.
+  - **`--converge` on gfdtd** (R-E3, its first part): the mesh convergence check is the FDTD layer's, not the openEMS
+    subclass's, so gfdtd runs it (it said "not supported yet - ignored", and auto gave such runs to openEMS).
+  - **kicad2ems-fem's coils** (R-A13) propose each coil for the circuit's inductor of its name and each pair for the
+    coupling of those two (pcbqs's `couplings.A+B.k`), not wpthb's PRIMARY, SECONDARY and 130 nF; Elmer's thermal
+    takes a coupled winding's own loss, as pcbqs's does.
+  - **The PDN** (pcbqs, R-A14, A15, B10, B11): a mount's resistance; a load on a domain no source reaches; a rail
+    with no plane pair keeps its DC drop; a failed pad-to-via solve said. **Two-face copper** (R-A16):
+    `conductor_faces=1` is the one-sheet slab again, and `MQS.share_kernels` takes every kernel.
+  - **Touchstone** (R-A20): the reader (`--compare`, the report, the window) took any file as S, ignored its `R`,
+    read the port count from the extension and failed on a noise block. Y, Z, H and G are converted to S at the
+    file's reference, a v1 noise block ends the data, v2's [Number of Ports], [Reference] and a lower or upper
+    [Matrix Format] are read, and `with_zref=True` gives the references. pcbqs writes v2.0 with [Reference] where
+    its ports' references differ (one in a v1 header had been right for the first port only).
+  - **`install.py --update`** (R-A21) installs a stack package at the commit this checkout pins: it had re-installed
+    the revision recorded at the last install, keeping the stack at its old commits.
   - **Coupled lines under solder mask** (R-A10): embedded microstrip forms coupled sections, its field solve with
     the mask over the copper (with `--mask` a hairpin had no coupled section and no path between its ports).
 - **What a review of the full-bridge removal found (pcbqs, kicad2ems-gui, kicad2ems-fem).** pcbqs: thermal takes the
