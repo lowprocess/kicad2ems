@@ -20,16 +20,8 @@ otherwise; the review has the file and line of each.
 3. **The default switch's edges** (R-A18, M): a board's circuit and 9 of the 10 examples switch with a fixed ramp and
     no gate charge, so their switching loss is the ramp's, not a device's.
 
-Then the errors that say nothing (R-B), what is left of them (B2-B4, B8, B9, B12, B15 and B16 done 2026-11-14):
-- the window freezes on a half-typed number (B5), takes JSON edits as unchanged (B6), and keeps the previous board's
-  runs after New (B7);
-- unconverged ACA and HODLR solves are returned, and input checks are asserts (B13);
-- kicad2ems-fem: Palace's non-convergence is not read, the solvers' versions are not recorded, the MPI ranks are
-  fixed at 8 (B14; its timeouts are said since 2026-11-14);
-- gfdtd ignores openEMS options it does not have (B18);
-- emsdev takes an integrated GPU (B19);
-- the fast cores are found twice, two ways (B20);
-- Palace has no cost estimate (B21).
+The errors that said nothing (R-B) are done (2026-11-14) but for: Palace's cost estimate before a run (B21), and
+the Elmer and Palace versions in each tool's result JSON (B14: Palace's changeset is beside its log).
 
 ## CI and release
 

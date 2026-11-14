@@ -466,6 +466,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     - a port's reference is the nearest ground copper under it, a nearer signal trace passed over (it had been taken
       without a word), and said when it is not ground;
     - a placement file's reference P1, P2 alone is a plug, not a port (every connector of a full .pos had been one).
+  - **The window** (R-B5, B6, B7): a field that is not a number is marked and listed as still needed, and Run says
+    why (it had raised from a timer: the list and Run froze); a Model JSON edit is a change (a save prompt) and an
+    undo step (the schematic's history had been wiped by each); another board chosen lists its own runs, and the last
+    board's run leaves the pages.
+  - **mom25d** (R-B13): an unconverged ACA or HODLR solve is an error, as the block low-rank solve's (it had been
+    returned with a warning); its input checks are ValueErrors (asserts: gone under `python -O`). Its fast cores are
+    emsdev's (R-B20).
+  - **gfdtd** (R-B18): openEMS's `TimeStepFactor` and `TimeStep` are honoured, a cylindrical grid refused, field
+    probes and `CellConstantMaterial` noted (all dropped silently before).
+  - **emsdev** (R-B19, B20): an Intel hybrid's P-cores from the kernel's list, else the clocks within 0.85 of the
+    top (0.95 had split an i9-13900K's P-cores and an X3D's dies), for every solver; `auto` does not take a lone
+    integrated GPU (its memory is the system's).
+  - **kicad2ems-fem** (R-B14): Palace's unconverged solves are warnings and kept with its changeset; its MPI ranks
+    one per fast core (8 had been fixed).
   - **Coupled lines under solder mask** (R-A10): embedded microstrip forms coupled sections, its field solve with
     the mask over the copper (with `--mask` a hairpin had no coupled section and no path between its ports).
 - **What a review of the full-bridge removal found (pcbqs, kicad2ems-gui, kicad2ems-fem).** pcbqs: thermal takes the
