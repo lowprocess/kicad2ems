@@ -282,7 +282,8 @@ signal trace cut out of the board and put back as a transmission line. mom25d so
 wave port on each face of each cut; each cut becomes a line of its own cross-section's γ and Zc, joined into
 mom25d's network. A stretch is cut only where no other signal copper comes within 3 widths or 4 heights of it,
 not through vias, parts or ports, keeping the straight feed each wave port needs down to `fmin`; a cut is at least
-`--mixed-cut` mm long (3). It uses mom25d's mesh options.
+`--mixed-cut` mm long (3). It uses mom25d's mesh and board options (`--mom-planes`, `--mom-stitching-pads`,
+`--mom-coarsen`, `--mom-quad-tol`, `--diel`; since 2026-11-14: before, the board as mom25d's defaults have it).
 
 On rf_stripline (with `--mom-zone on`) one 12.5 mm stretch is cut, 5,069 unknowns to 4,335, and S21 matches
 mom25d's within 0.5° to 10 GHz. **Current dumps** work: on the cut stretch the trace current comes from the line's
@@ -350,7 +351,7 @@ slangpy runs it on any GPU with a Vulkan driver; a CuPy package is optional:
 
 | GPU | Package |
 |---|---|
-| any, through Vulkan (AMD, Intel, NVIDIA; Windows and Linux) | `pip install slangpy` (the `gpu-vulkan` extra) |
+| any with Vulkan, in principle (AMD, Intel, NVIDIA; Windows and Linux); run on an AMD RX 7800 XT under Linux only so far (`tools/gpu_selfcheck.py` checks another) | `pip install slangpy` (the `gpu-vulkan` extra) |
 | NVIDIA, CUDA 12 / 13 (optional) | `pip install cupy-cuda12x` / `cupy-cuda13x` |
 | AMD, ROCm 7, Linux (optional) | `pip install cupy-rocm-7-0` |
 
@@ -372,7 +373,7 @@ mom25d chooses how to solve from the memory available, and the log says which (`
 | GPU LU, streamed | Vulkan, and RAM short even of that: the matrix is filled straight into the GPU a block of rows at a time | about 1 GB RAM, 8 N² bytes GPU |
 | tiled | CuPy, the GPU LU doesn't fit (`--mom-tiled`) | little RAM, 4 N² bytes GPU, the rest streamed from RAM |
 | block low-rank (BLR), compiled | from 20,000 unknowns where the hybrid does not hold the matrix (any GPU path past it, or no GPU), and wherever nothing else fits | about 3 N² bytes at most: a fifth of a single-precision matrix |
-| compressed (ACA, HODLR) | without the compiled core, nothing else fits | much less, but far slower on large boards |
+| compressed (ACA) | without the compiled core, nothing else fits | much less, but far slower on large boards (HODLR needs the compiled core and is chosen only by name) |
 
 Past 25,000 unknowns the hybrid's double-precision matrix costs more in memory traffic than its cheaper refinement
 saves (`MOM25D_HYBRID_MAX_N` moves the limit): rf_siw (28.7k unknowns) takes 296 s on the GPU LU against 456 s

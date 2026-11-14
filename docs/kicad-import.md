@@ -75,7 +75,8 @@ and Excellon drill files it lists, and a pick-and-place file for the ports.
 
 Gerber files have no footprint fields, so a port on an inner layer, or with a different rotation or
 impedance, must be given as a setting: `--port P2@x,y,In2.Cu,rotation`. Importing the demo board from its
-own Gerber export gives the same board as the KiCad import (`tests/test_importers.py`).
+own Gerber export gives the same board's copper as the KiCad import (`tests/test_importers.py`). Not its lumped
+parts: footprints from the placement file have no pads, so a board from Gerbers has no R, L or C between pads.
 
 ---
 [← APIs](api.md) · [Index](index.md) · [Next: The board model →](model.md)

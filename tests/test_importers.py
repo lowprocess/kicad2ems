@@ -82,3 +82,15 @@ def test_writer_round_trip(tmp_path):
     assert attrs['FileFunction'][0] == 'Copper' and draws == [([(0.0, 0.0), (1.0, 0.0)], 0.2, 'N1')]
     assert copper['N3'].area == pytest.approx(4 - 0.25)
     assert copper['N2'].area == pytest.approx(3.14159 * 0.25 ** 2, rel=2e-2)
+
+
+def test_a_gerber_board_says_its_lumped_parts_are_left_out(boards, tmp_path):
+    """The placement file's parts have no pads in a Gerber import: the lumped parts are not in the model, and the
+    import says so (it had said nothing; the docs said the board was the same)."""
+    base = boards['lowpass']
+    job = export(open_board(base + '.kicad_pcb'), str(tmp_path), 'lowpass')
+    pos = tmp_path / 'all.pos'                                      # a full placement file: the ports and the parts
+    pos.write_text(open(base + '-top.pos').read() + "L1 3.3n L_0402 8.0 -5.0 0 top\nC2 1p C_0402 10.5 -6.0 90 top\n")
+    g = open_board(job, pos=str(pos))
+    assert any('2 lumped part(s) (L1, C2)' in n for n in g.notes)
+    assert any('lumped part(s)' in n for n in Board(g, pos_file=str(pos), log=quiet).notes)

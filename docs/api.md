@@ -9,7 +9,7 @@ lists every module, class and function.
 
 | Interface | Provided by | Used by | Version |
 |---|---|---|---|
-| [`kicad2ems.api.solver`](#kicad2emsapisolver) | kicad2ems | kicad2ems-fdtd, mom25d, pcbqs | `kicad2ems.api.API_VERSION` (2, 8) |
+| [`kicad2ems.api.solver`](#kicad2emsapisolver) | kicad2ems | kicad2ems-fdtd, mom25d, pcbqs | `kicad2ems.api.API_VERSION` (2, 11) |
 | [`kicad2ems.api.analysis`](#kicad2emsapianalysis) | kicad2ems | pcbqs | the same |
 | [`kicad2ems.api.frontend`](#kicad2emsapifrontend) | kicad2ems | kicad2ems-gui, kicad2ems-ipc, dfsynth | the same |
 | [The `kicad2ems.solvers` entry point](#solver-plugins) | each solver package | kicad2ems | the plugin's `api` |

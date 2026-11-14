@@ -305,7 +305,7 @@ single-ended port among them (Sds31).
 - **Notes and warnings**: a fold at the top lists the run's warnings (open when there is one) and its notes.
 - **Cursor, markers, zoom**: hover to read every trace; click to add a marker (drag to move, Delete to remove),
   listed in a table; wheel and drag to zoom, *Fit* for everything.
-- **Add results folder…** overlays another run; **Export CSV…** and **Save image…**.
+- **Compare with > Another folder…** overlays another run; **Export CSV…** and **Save image…**.
 
 ![The Plots page in antenna mode: match, gain and efficiency over frequency, and the polar cuts](img/readme/gui_antenna.png)
 

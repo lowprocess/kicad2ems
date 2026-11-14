@@ -290,6 +290,11 @@ class GerberBoard(Imported):
             self.footprints.append(dict(ref=r['ref'], value=r['val'], fab=[], props={}, x=r['x'], y=-r['y'],
                                         rot=r['rot'], side='B' if r['side'].lower().startswith('b') else 'F',
                                         lib=r['package'], pads=[], dnp=False, exclude_from_sim=False))
+        passives = [f['ref'] for f in self.footprints if f['ref'][:1].upper() in 'RLC' and f['ref'][1:2].isdigit()]
+        if passives:                                                # (they had been left out with nothing said)
+            self.notes.append(f"Gerber import: the placement file's parts have no pads, so {len(passives)} lumped "
+                              f"part(s) ({', '.join(passives[:6])}{', ...' if len(passives) > 6 else ''}) are left out "
+                              f"of the model: import the .kicad_pcb for them")
 
     def _net_at(self, layers, x, y):
         """The net of the copper a drill hole goes through (a Gerber's drill files carry none)."""

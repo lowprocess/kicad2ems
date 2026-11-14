@@ -6,7 +6,7 @@
 
 ```bash
 pip install '.[test]'      # pytest, scikit-rf, h5py
-python -m pytest -q        # about 360 tests, under a minute: no solver package or openEMS needed
+python -m pytest -q        # about 460 tests, under a minute: no solver package or openEMS needed
 tools/test_all.sh          # this suite, then kicad2ems-gui's, kicad2ems-fdtd's, mom25d's, gfdtd's (checkouts beside it)
 ```
 

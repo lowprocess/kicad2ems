@@ -448,6 +448,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     its ports' references differ (one in a v1 header had been right for the first port only).
   - **`install.py --update`** (R-A21) installs a stack package at the commit this checkout pins: it had re-installed
     the revision recorded at the last install, keeping the stack at its old commits.
+  - **The mixed solver** (mom25d, R-B2) models the board with mom25d's options (`--mom-planes`, stitching pads,
+    `--diel`, coarsen, quad tolerance): it had taken mom25d's defaults, so `--solvers mom,mixed` compared two models.
+  - **A Gerber import says its lumped parts are left out** (the placement file's parts have no pads; it had said
+    nothing, and the docs called it the same board).
+  - **The plugins' API versions** (R-C15): pcbqs and kicad2ems-fem declare 2.11 (they use `several` and `pick`),
+    kicad2ems-fdtd and mom25d 2.9 (`basic`); kicad2ems-fem has its LICENSE. **Docs** (R-G): the window's README,
+    `api.md`'s version, the README's results, `testing.md`, the Gerber import, mom.md's mixed, HODLR and GPUs,
+    pcbqs's circuit keys, kicad2ems-fem's five engines, gfdtd's backends, the superproject's table.
   - **Coupled lines under solder mask** (R-A10): embedded microstrip forms coupled sections, its field solve with
     the mask over the copper (with `--mask` a hairpin had no coupled section and no path between its ports).
 - **What a review of the full-bridge removal found (pcbqs, kicad2ems-gui, kicad2ems-fem).** pcbqs: thermal takes the

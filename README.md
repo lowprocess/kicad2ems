@@ -136,8 +136,8 @@ kicad2ems examples/rf_interdig.toml --solvers mom,lines  # MoM and the line mode
 kicad2ems examples/rf_interdig.toml --solvers all        # every solver, compared
 ```
 
-Results go to `examples/out/`: `filter_<solver>.s2p` for each solver, plots, `filter_run.json` and
-`filter_report.html`. To simulate your own board, see
+Results go to `examples/out/`: `rf_interdig_<solver>.s2p` for each solver, plots, `rf_interdig_run.json` and
+`rf_interdig_report.html`. To simulate your own board, see
 [Getting started](docs/getting-started.md#your-own-board).
 
 ## Documentation

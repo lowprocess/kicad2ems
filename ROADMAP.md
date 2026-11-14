@@ -494,24 +494,7 @@ R-E18:
 
 ## Docs that do not say what the code does
 
-The review's section G lists them. The ones a user meets first:
-- **The window:**
-  - "closing it never loses a run";
-  - "Results > Compare with" (there is no Results menu);
-  - its README's stale tail (Preview mesh, *Use board and rail*).
-- **kicad2ems:**
-  - "KiCad 5 to 10";
-  - "the Gerber import gives the same board" (it drops every lumped part);
-  - `api.md`'s API (2, 8);
-  - `filter_*` for `rf_interdig_*`.
-- **The line model:** `conductor_loss = yes`.
-- **mom25d:**
-  - "mixed uses mom25d's mesh options";
-  - HODLR "without the core";
-  - "any GPU".
-- **pcbqs:**
-  - `circuit.md`'s missing analysis keys;
-  - "the fields not in the Viewer yet" (they are);
-  - `quasistatic.md`'s two-face section.
-- **kicad2ems-fem:** "four tools" (five).
-- **The superproject:** its README and stack map have no kicad2ems-fem.
+The review's section G, corrected on 2026-11-14 but for these:
+- the line model's `conductor_loss = yes` (with Fix first's item on its losses);
+- the superproject's stack map (`img/kicad2ems-stack-map.svg`), which has neither pcbqs nor kicad2ems-fem;
+- mom25d's README validation figures, tighter than its tests check (CI and release, item 4).
