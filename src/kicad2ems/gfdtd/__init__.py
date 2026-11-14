@@ -32,7 +32,7 @@ kicad2ems's models here): a minor release adds to it, a major one removes or cha
     1.3: ConductingSheet(finish=, finish_share=, face=): a surface finish (metal layers on the copper, on a share of
          the sheet's loss), and a sheet that is one face of thick copper (its roughness on that copper's skin depth)
 """
-__version__ = '261104-r2'
+__version__ = '0.3.0'
 API_VERSION = (1, 3)
 
 from .csx import ContinuousStructure                                # noqa: E402,F401
