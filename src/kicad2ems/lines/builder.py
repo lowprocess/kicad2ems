@@ -23,26 +23,35 @@ def _chord(poly, c, d, reach=50.0):
 
 def _split_at_junctions(tracks, tol=1e-4):
     """Split tracks where another track of the same layer and net ends on their interior (a T-junction
-    KiCad does not break), so that the branch gets a node of its own."""
-    out = list(tracks)
-    changed = True
-    while changed:
-        changed = False
-        ends = [(t['layer'], t['net'], Point(*q)) for t in out for q in (t['pts'][0], t['pts'][-1])]
-        for i, t in enumerate(out):
-            line = LineString(t['pts'])
-            for lay, net, q in ends:
-                if lay != t['layer'] or net != t['net'] or line.distance(q) > tol:
-                    continue
-                s = line.project(q)
-                if tol < s < line.length - tol:
-                    a = [tuple(c) for c in line.coords if line.project(Point(c)) < s] + [(q.x, q.y)]
-                    b = [(q.x, q.y)] + [tuple(c) for c in line.coords if line.project(Point(c)) > s]
-                    out[i:i + 1] = [dict(t, pts=np.array(a)), dict(t, pts=np.array(b))]
-                    changed = True
-                    break
-            if changed:
-                break
+    KiCad does not break), so that the branch gets a node of its own: each track cut at every such end at once,
+    the ends found through a spatial index (it had rescanned every end of the board after each split: 3.1 s of the
+    CM5's 11.6 s build). A cut is at the branch's end itself, so their nodes are one."""
+    from shapely.strtree import STRtree
+    ends = {}
+    for t in tracks:
+        for q in (t['pts'][0], t['pts'][-1]):
+            ends.setdefault((t['layer'], t['net']), []).append((float(q[0]), float(q[1])))
+    index = {k: (STRtree([Point(q) for q in v]), v) for k, v in ends.items()}
+    out = []
+    for t in tracks:
+        tree, pts = index[(t['layer'], t['net'])]
+        line = LineString(t['pts'])
+        cuts = []
+        for i in tree.query(line, predicate='dwithin', distance=tol):
+            q = pts[int(i)]
+            s = line.project(Point(q))
+            if tol < s < line.length - tol and all(abs(s - c) > tol for c, _ in cuts):
+                cuts.append((s, q))
+        if not cuts:
+            out.append(t)
+            continue
+        coords = [(tuple(c), line.project(Point(c))) for c in line.coords]
+        cuts.sort()
+        edges = [(0.0, None)] + cuts + [(line.length, None)]
+        for (s0, q0), (s1, q1) in zip(edges[:-1], edges[1:]):
+            inner = [c for c, s in coords[1:-1] if s0 < s < s1]
+            piece = [q0 or coords[0][0]] + inner + [q1 or coords[-1][0]]
+            out.append(dict(t, pts=np.array(piece)))
     return out
 
 
@@ -143,7 +152,7 @@ def _build(model, nets, refcu):
     ground_via = np.array([v['net'] not in nets for v in vias], bool)
     parallel = {}                                          # a ground via's node -> the vias in parallel there
 
-    def attach(layer, xy, w=0.0, toward=None):
+    def attach(layer, xy, w=0.0, toward=None, net=None):
         """The pad (first in order) or via a trace end at xy lies on, through spatial indexes (a scan of every pad
         and via per trace end took a second on a board of 4000 ends). A ground via counts where its pad reaches the
         end: across the trace within its width w, along it (toward: the trace's next point) within the pad's
@@ -163,7 +172,8 @@ def _build(model, nets, refcu):
                 u = u / np.hypot(*u)
                 along, across = r @ u, np.abs(r[:, 0] * u[1] - r[:, 1] * u[0])
                 near |= ground_via & (np.abs(along) <= via_r + 1e-6) & (across <= w / 2 + via_r + 1e-6)
-            hit = [i for i in np.nonzero(near)[0] if layer in vias[i]['layers']]
+            hit = [i for i in np.nonzero(near)[0] if layer in vias[i]['layers'] and
+                   (not ground_via[i] or net is None or covers(layer, net, Point(*via_xy[i])))]
             own = [i for i in hit if not ground_via[i]]
             if own:
                 return f"via{vias[own[0]]['i']}:{layer}", None
@@ -184,11 +194,12 @@ def _build(model, nets, refcu):
                 clipped.append(dict(t, pts=np.asarray(piece.coords)))
     strip_tracks = _shape_strips(model, nets, inside, lm, clipped)   # resonators, feeds, stubs drawn as shapes
     clipped = _attach_to_strips(clipped, strip_tracks) + strip_tracks
-    clipped = _split_at_vias(clipped, via_xy[ground_via], via_r[ground_via])
+    covers = _copper_of(pr, nets)
+    clipped = _split_at_vias(clipped, via_xy[ground_via], via_r[ground_via], covers)
     for t in _split_at_junctions(clipped):
         line = LineString(t['pts'])
-        a, qa = attach(t['layer'], t['pts'][0], t['width'], _toward(t['pts']))
-        b, qb = attach(t['layer'], t['pts'][-1], t['width'], _toward(t['pts'][::-1]))
+        a, qa = attach(t['layer'], t['pts'][0], t['width'], _toward(t['pts']), t['net'])
+        b, qb = attach(t['layer'], t['pts'][-1], t['width'], _toward(t['pts'][::-1]), t['net'])
         geom = line
         for q in (qa, qb):
             if q is not None:
@@ -400,10 +411,28 @@ def _toward(pts):
     return next((q for q in pts[1:] if np.hypot(*(np.asarray(q, float) - p0)) > 1e-9), None)
 
 
-def _split_at_vias(tracks, xy, r):
+def _copper_of(pr, nets):
+    """covers(layer, net, point): whether the net's own copper on that layer (tracks, pads, zones, shapes as
+    imported) holds the point; each layer and net's union made once, when first asked."""
+    from shapely.ops import unary_union
+    from shapely.prepared import prep
+    cache = {}
+
+    def covers(layer, net, pt):
+        key = (layer, net)
+        if key not in cache:
+            g = unary_union([geom for l, n, geom in pr.items if l == layer and n == net])
+            cache[key] = prep(g) if not g.is_empty else None
+        return cache[key] is not None and cache[key].covers(pt)
+    return covers
+
+
+def _split_at_vias(tracks, xy, r, covers=None):
     """Tracks cut where a ground via inside their copper meets the centreline: the trace is shorted there (a row
     of vias across a stub, a pad's width in from its end, as dfsynth draws a short), and attach() finds the vias
-    at the cut. A via the copper does not reach leaves a track whole."""
+    at the cut. A via the copper does not reach leaves a track whole; covers(layer, net, point), when given, is the
+    net's copper as imported, so a strip taken from a shape does not reach a via in that shape's hole (the CM5's LX
+    pour round a ground via had shorted it)."""
     if not len(xy):
         return tracks
     from shapely.geometry import Point
@@ -416,7 +445,7 @@ def _split_at_vias(tracks, xy, r):
         line = LineString(t['pts'])
         cuts = []
         for i in tree.query(line.buffer(t['width'] / 2 + float(np.max(r)))):
-            if line.distance(pts[i]) <= t['width'] / 2 + 1e-9:
+            if line.distance(pts[i]) <= t['width'] / 2 + 1e-9 and (covers is None or covers(t['layer'], t['net'], pts[i])):
                 s = line.project(pts[i])
                 if 1e-6 < s < line.length - 1e-6 and all(abs(s - c) > 1e-6 for c in cuts):
                     cuts.append(s)

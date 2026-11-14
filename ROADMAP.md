@@ -183,8 +183,9 @@ that: nothing in it may fix a panel in place. Left:
    short by their end's extension; qucsator has nothing for a 45° bend or a junction of five arms. dfsynth has
    Kirschning-Jansen-Koster open ends, Garg-Bahl gaps and Edwards steps to port.
 7. **Dispersion**: a Djordjevic-Sarkar εr(f) for each layer before the solve.
-8. **The builder's quadratic loops** (R-D17): 5 s of the CM5's 11.6 s (all 94 nets) is `_split_at_junctions`
-   restarting its scan, a via search per via and layer, and the coupled pairing over all pairs.
+8. **The builder's quadratic loops, the rest** (R-D17): the junction split and the via search are indexed since
+   2026-11-14 (the CM5's 94 nets 8.3 s for 11.6); left, the coupled pairing over all pairs (1.4 s) and the cuts'
+   intersections (2.2 s).
 9. **One multiconductor model** (R-F5). dfsynth's (vectorised, with conductor loss) and `coupled.mtl_s` (looped,
    lossless) are two; so are the Touchstone readers.
 
@@ -356,7 +357,8 @@ The circuit is there for its parts' losses; what thermal makes of them (R-E7-E13
 
 ### Speed
 
-The wpthb bridge (`data/wpthb_bridge.json`) at 90 kHz and 10 W: 40 s on ngspice alone, 1 min 47 s with its copper.
+The wpthb bridge (`data/wpthb_bridge.json`) at 90 kHz and 10 W: 25 s on ngspice alone (40 s before the knob runs were
+shortened, 2026-11-14), 1 min 47 s with its copper before that.
 The circuit run is there for its parts' losses (thermal) and its copper's currents (fields); ngspice is its one
 engine.
 
@@ -366,10 +368,8 @@ engine.
 | Xyce backend | robustness, not speed | 2 days | it ran behavioural switches ngspice could not; 2–7× slower on the benchmark converter; harmonic balance could suit resonant tanks |
 | Two faces in the circuit: a local loop basis | fewer iterations, no dense setup | | iterations grow with frequency (217 at DC, 575 at 20 MHz); the dense common-mode setup is 19 s |
 | The dense solves, after their assembly | the LU is what is left: 90 % of a two-face S-parameter solve (147 s at 17,700 unknowns) | | The assembly, the thermal maps' sampling and the potential's solve are in the compiled core or on Cholesky since 2026-11-13 (pcbqs's CHANGELOG; `tools/perf/README.md` has where each tool's time goes). Left, none of it pcbqs's own Python: a compressed or block low-rank LU as mom25d has; ngspice's text output read by `np.loadtxt` (a binary raw file); the compression of field dumps; shapely's unions in the near field's mesh |
-| Whole-board near field | | 1 day to offer, then convergence | `MQS(matrix_backend='hierarchical')` is already GMRES in the loop basis (47,548 triangles in 13 s, docs/quasistatic.md); the near-field CLI cannot choose it (R-D14). Left: the option, and mesh and crop convergence. A crop around the converter is enough for DC-DC loops |
-| The circuit's knob runs at 200 periods (R-D1) | wpthb 40.9 s → 26.5 s, the same answer to 5 digits | S | once a run has settled, the next knob's starts at `cycles // 4` and doubles only if it has not |
-| A trial's waveforms (R-D2) | ~1 s of each 9.7 s run | S | 98 MB of text a wpthb run, `loadtxt` 0.55 s and `savez_compressed` 0.55 s on files deleted after; the spectrum computed twice with copper |
-| The PDN's factorisations (R-D12) | 5.9 s of 22.3 s on the CM5's +5V | S | loaded, bare and transfer each factor every frequency: the bare one once, the parts as right-hand sides, and decap what-ifs come almost free; an AAA sweep for the 160 points; the Viewer's dumps 6.3 s through `json.dump` |
+| Whole-board near field | | convergence | `--backend hierarchical` (since 2026-11-14) is GMRES in the loop basis (47,548 triangles in 13 s, docs/quasistatic.md). Left: mesh and crop convergence on a whole board. A crop around the converter is enough for DC-DC loops |
+| A trial's waveforms (R-D2, the rest) | ~0.5 s of each run | S | 98 MB of text a wpthb run read by `loadtxt` (0.5 s; `fromstring` is no faster: a binary raw file), the spectrum computed twice with copper. Trials are saved uncompressed since 2026-11-14 |
 | A fresh complex128 LU each frequency (R-D13) | 2× (complex64 with refinement: 0.19 s for 0.38 at n = 4,000) | M | with `dc` loss `Rl + jωLl` is a pencil: one eigendecomposition and Woodbury for the parts |
 | sparams' 31 points (R-D15) | | S | interpolated linearly in log f, across a filter's resonance: AAA as mom25d's |
 | The dense via matrix and the loop tree (R-D16) | ~15 s at 2,500 segments | S | a Python double loop; the tree in branch order (loops of 35-45 branches): breadth first |
@@ -428,8 +428,8 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
    - One operator and device session per solve, not per excitation: 8-51 % of a GPU run on the examples.
    - A node-local time step: gfdtd's is up to 15 % shorter than openEMS's on the same mesh (hairpin 105.9 fs
      against 124.9).
-   - `nz_mask` at 1: 4 cells through a 10 µm mask made hairpin 17× longer for "within 1 MHz". Then εr averaged
-     inside a cell, so a thin layer needs no lines of its own.
+   - εr averaged inside a cell, so a thin layer needs no lines of its own (`nz_mask` is 1 since 2026-11-14: 4 cells
+     through a 10 µm mask had made hairpin 17× longer for "within 1 MHz").
    - The energy read a check late, the ports' decay judged in the engine, dumps written by a thread.
 3. **Memory.** The build peaks at ~470 B a node on the host (float64 arrays kept through the run), 16× what the GPU
    needs, and nothing checks free VRAM before a run or caps the concurrent runs by it.

@@ -202,3 +202,23 @@ def test_an_end_gap_joins_its_ports(tmp_path):
     if _qucsator() is not None:
         Sq, _ = solve(lm, m.ports, f, 'qucsator')
         assert np.max(np.abs(db(Sq[:, 1, 0]) - db(S[:, 1, 0]))) < 3.0       # (scikit-rf: no open-end extension)
+
+
+def test_a_ground_via_in_a_hole_of_the_line_s_copper_does_not_short_it(tmp_path):
+    """A strip taken from a pour of the line's net is solid across the pour's hole round a ground via: the via is
+    no short (it had been, three times on the CM5 board's switching-node pour); in the copper, it is."""
+    E = _rf_examples()
+    yc, W, H = 5.0, 20.0, 10.0
+    for hole, shorts in ((True, 0), (False, 1)):
+        bd = E.Board()
+        bd.track([(0, yc), (6, yc)], E.W50)
+        bd.track([(14, yc), (W, yc)], E.W50)
+        outer = [(6, yc - 1.5), (14, yc - 1.5), (14, yc + 1.5), (6, yc + 1.5)]
+        bd.plane('F.Cu', W, H, net=2, holes=[(10, yc, 0.6)] if hole else [], outer=outer)   # a pour of the line's net
+        bd.via(10, yc, net=1)
+        bd.port(1, 0.5, yc, 0)
+        bd.port(2, W - 0.5, yc, 180)
+        bd.write(str(tmp_path / 'h.kicad_pcb'), W, H)
+        m = Board(KiCadBoard(str(tmp_path / 'h.kicad_pcb')), nets=['RF', 'GND'], ground='B.Cu', log=lambda *a: None)
+        lm = build(m)
+        assert len([e for e in lm.elements if e.kind == 'via' and e.b == 'gnd']) == shorts, hole

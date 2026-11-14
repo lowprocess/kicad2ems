@@ -21,6 +21,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   kicad2ems-fem's *Use these coils in the circuit* sets the model's coils (`--set PRIMARY.value=...`).
 
 ### Changed
+- **Speed, from the review of 2026-11-14 (R-D):**
+  - pcbqs's circuit knob runs at a quarter of the periods once one has settled (wpthb 25.1 s for 40.9, the same
+    answer);
+  - the PDN's loaded and bare impedance from one factorisation a frequency (3.7 times faster on its test board);
+  - one cell through the solder mask in FDTD by default (4 had made the hairpin 17 times longer);
+  - the line model's junction split as one indexed pass (the CM5's 94 nets: 8.3 s for 11.6);
+  - the parts' gap search through a spatial index (a 105-footprint board's `Board`: 0.27 s for 0.95);
+  - the near field can choose its compressed solve (`--backend hierarchical`).
 - **The Viewer's views are Plan, 2D, 3D, Images (kicad2ems-gui).** In that order, the board flat first; *Cut*
   is named *2D* (a field dump in a cut), and *Section* left for a page of its own. A setting's **Pick** button
   is capitalised.
