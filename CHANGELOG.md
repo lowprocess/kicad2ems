@@ -9,6 +9,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+- **pcbqs's switches are vdmos by default (R-A18).** A board's circuit, the KiCad import and the examples switch
+  with ngspice's VDMOS and a generic MOSFET's capacitances (Cgs 1 nF, Cgd 50 pF, Cds 500 pF) unless the part's are
+  given, so a switching loss is a device's, not the drive ramp's; pcbqs's CHANGELOG has the figures.
+
 ## 2026-11-14 (0.3.0)
 
 ### Changed

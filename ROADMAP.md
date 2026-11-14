@@ -15,8 +15,6 @@ otherwise; the review has the file and line of each.
 
 1. **KiCad import, the rest** (R-A22): copper text, KiCad 9's per-layer padstacks and `remove_unused_layers` (inferred:
    not checked on a board that has them).
-2. **The default switch's edges** (R-A18, M): a board's circuit and 9 of the 10 examples switch with a fixed ramp and
-    no gate charge, so their switching loss is the ramp's, not a device's.
 
 The errors that said nothing (R-B) are done (2026-11-14) but for: Palace's cost estimate before a run (B21), and
 the Elmer and Palace versions in each tool's result JSON (B14: Palace's changeset is beside its log).
