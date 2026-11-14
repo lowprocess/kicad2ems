@@ -237,3 +237,31 @@ def test_lumped_port_matched_along_every_axis(tmp_path, axis):
     F.Run(path, backend='numpy', verbose=0)
     port.CalcPort(path, [0.5e9, 1e9])
     assert np.abs(port.uf_ref / port.uf_inc).max() < 0.2
+
+
+def test_a_model_s_other_excitations_share_its_core():
+    """Two excitations of one model (kicad2ems runs one per port) share the operator's core and its compressed
+    form, and get their own excitations; a change to the model's materials builds a core of its own (R-D4)."""
+    from gfdtd.operator import compress
+
+    def model(port, eps=4.0):
+        F, csx = _fdtd(1e9, 1e9, ['PEC'] * 6)
+        g = csx.GetGrid()
+        for a in 'xyz':
+            g.SetLines(a, np.arange(0, 6.0))
+        csx.AddMaterial('sub', epsilon=eps).AddBox([0, 0, 0], [5, 5, 2])
+        for k, x in enumerate((1, 4)):
+            csx.AddExcitation(f'p{k}', exc_type=0, exc_val=[0, 0, 1 if k == port else 0]).AddBox([x, 2, 1], [x, 2, 2])
+        return F, csx
+
+    F0, c0 = model(0)
+    F1, c1 = model(1)
+    a, b = build(c0, F0.settings()), build(c1, F1.settings())
+    assert a.vv is b.vv and a._core_key == b._core_key and compress(a) is compress(b)
+    assert a.notes is not b.notes
+    assert sorted(a.exc[0].tolist()) != sorted(b.exc[0].tolist())       # each its own port's edges
+    F2, c2 = model(0, eps=4.4)
+    c = build(c2, F2.settings())
+    assert c._core_key != a._core_key and not np.array_equal(c.vi, a.vi)
+    fresh = __import__('gfdtd.operator', fromlist=['_core'])._core(c0, F0.settings())[1]
+    np.testing.assert_array_equal(fresh['vi'], a.vi)                     # the kept core is what a build makes

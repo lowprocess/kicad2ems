@@ -29,6 +29,9 @@ centres (openEMS's dump mode 2), worked out by the engine.
 """
 from collections import defaultdict
 
+import copy
+import threading
+
 import numpy as np
 
 from . import csx as C
@@ -380,9 +383,124 @@ def _sheet_edges(sheets, sheet_of, sheet_m, grid, lE, dt, f_max, notes):
     return cat(idx).astype(np.int64), cat(cap), cat(cond), branches
 
 
+_CORES = {}                     # {key: (op, ctx)}: the last model's core, for its other excitations (R-D4)
+_CORES_LOCK = threading.Lock()
+_BUILDING = threading.Lock()              # held while a core or its compressed form is made
+
+
+def _digest(h, o, seen):
+    """Feed what an object of the CSX holds into hash h (its class, its fields, recursively; arrays by value)."""
+    if isinstance(o, (str, int, float, bool, type(None))):
+        h.update(repr(o).encode())
+    elif isinstance(o, np.ndarray):
+        h.update(str(o.dtype).encode() + str(o.shape).encode() + np.ascontiguousarray(o).tobytes())
+    elif isinstance(o, (list, tuple)):
+        h.update(b'[')
+        for x in o:
+            _digest(h, x, seen)
+        h.update(b']')
+    elif isinstance(o, dict):
+        h.update(b'{')
+        for k in sorted(o, key=repr):
+            _digest(h, k, seen)
+            _digest(h, o[k], seen)
+        h.update(b'}')
+    elif hasattr(o, '__dict__'):
+        if id(o) in seen:                                           # (a primitive's prop: its property, met before)
+            h.update(b'<ref>')
+            return
+        seen.add(id(o))
+        h.update(type(o).__name__.encode())
+        _digest(h, {k: v for k, v in vars(o).items() if not k.startswith('_')}, seen)
+    else:
+        h.update(repr(o).encode())
+
+
+def _core_key(csx, fdtd):
+    """What the core depends on: the grid, every property but the excitations, probes and dumps (with their
+    primitives), the background and the settings. None when the structure cannot be read for it."""
+    import hashlib
+    try:
+        h = hashlib.sha256()
+        g = csx.GetGrid()
+        _digest(h, [np.asarray(x, float) for x in g.lines] + [getattr(g, 'delta_unit', 1.0)], set())
+        _digest(h, getattr(csx, 'background', None), set())
+        props = [p for p in csx.GetAllProperties() if not isinstance(p, (C.Excitation, C.ProbeBox, C.DumpBox))]
+        _digest(h, props, set())
+        _digest(h, {k: v for k, v in fdtd.items() if k not in ('nr_ts', 'end_crit')}, set())
+        return h.hexdigest()
+    except Exception:                                               # noqa: BLE001  (no key: built anew)
+        return None
+
+
 def build(csx, fdtd, log=None):
     """The Operator of a ContinuousStructure (gfdtd.csx, or anything with the same attributes) and the FDTD
-    settings dict(bc, f0, fc, nr_ts, end_crit, oversampling)."""
+    settings dict(bc, f0, fc, nr_ts, end_crit, oversampling). The core (everything but the excitations, probes,
+    dumps and the pulse) is kept for the model's next excitation, which differs only in those: kicad2ems runs
+    one per port (the coupler: 0.15 s a run, and compress's 0.2 s on the GPU)."""
+    key = _core_key(csx, fdtd)
+    if key is None:
+        core, ctx = _core(csx, fdtd)
+        core._core_key = None
+    else:
+        with _BUILDING:                                             # excitations started together: one builds it
+            with _CORES_LOCK:
+                kept = _CORES.get(key)
+            if kept is None:
+                core, ctx = _core(csx, fdtd)
+                core._core_key = key
+                with _CORES_LOCK:
+                    _CORES.clear()                                  # one model's at a time: its arrays are large
+                    _CORES[key] = (core, ctx)
+            else:
+                core, ctx = kept
+    op = copy.copy(core)                                            # its arrays shared (read only), the rest its own
+    op.notes = list(core.notes)
+    props = [p for p in csx.GetAllProperties() if getattr(p, 'enabled', True)]
+    return _finish(op, props, fdtd, log, **ctx)
+
+
+def _finish(op, props, fdtd, log, grid, sh, vv, vi, iv, lE, lH, aE, kap, dt, ncell):
+    """build's part of one excitation: its excitations, probes, dumps and the pulse."""
+    # excitations: E (types 0 soft, 1 hard) on the edges, H (2 soft, 3 hard) on the dual edges, weighted, delayed
+    op.exc, op.exc_more = _excitations(props, grid, sh, vv, vi, lE, lH, dt, op.notes)
+    # probes
+    op.probes = []
+    for p in props:
+        if isinstance(p, C.ProbeBox) and p.primitives:
+            pr = _probe(p, p.primitives[0], grid, sh)
+            if pr is None:                                          # (a field probe had been dropped, nothing said)
+                op.notes.append(f"probe {p.name} (type {p.p_type}): not a kind gfdtd measures (voltage, current, "
+                                f"mode-matching): left out")
+            else:
+                op.probes.append(pr)
+    op.dumps = [d for p in props if isinstance(p, C.DumpBox) and p.primitives for d in _dump(p, grid, op.notes)]
+    if op.dumps:                                                    # the geometry the dumps need, kept
+        op.lE, op.aE, op.lH = lE, aE, lH
+        if any(d['field'] == 'Jc' for d in op.dumps):
+            op.kappa_E = np.stack([_edge_average(kap, a, grid) for a in range(3)])
+    op.vv, op.vi, op.iv = vv, vi, iv
+    op.cells = int(np.prod(ncell))
+    # excitation signal: openEMS's Gaussian pulse
+    f0, fc = float(fdtd['f0']), float(fdtd['fc'])
+    op.f0, op.fc = f0, fc
+    n = int(2 * 9.0 / (2 * np.pi * fc) / dt)
+    t = np.arange(n + 1) * dt
+    gauss = lambda t: np.cos(2 * np.pi * f0 * (t - 9.0 / (2 * np.pi * fc))) * np.exp(-(2 * np.pi * fc * t / 3 - 3) ** 2)
+    op.signal = gauss(t)
+    op.signal_h = gauss(t + dt / 2)                                # the H excitations' signal: half a step later
+    op.delay_max = max([g['delay'] for g in op.exc_more], default=0)
+    op.nyquist = nyq = max(1, int(1.0 / (2 * (f0 + fc) * dt)))
+    op.sub = max(1, nyq // int(fdtd.get('oversampling', 4) or 4))
+    if log:
+        for line in describe(op):
+            log(line)
+    return op
+
+
+def _core(csx, fdtd):
+    """build's part that every excitation of a model shares: the grid, the materials, the metal, the sheets, the
+    lumped parts, the update coefficients and the boundaries. (op, what the rest of build reads)."""
     grid = Grid(csx.GetGrid())
     sh = grid.shape
     op = Operator()
@@ -597,40 +715,7 @@ def build(csx, fdtd, log=None):
                 raise ValueError(f"gfdtd: boundary {b} not supported (PEC, PMC, MUR, PML_n)")
     op.mur = (np.concatenate(mur0).astype(np.int64), np.concatenate(mur1).astype(np.int64),
               np.concatenate(murk)) if mur0 else None
-    # excitations: E (types 0 soft, 1 hard) on the edges, H (2 soft, 3 hard) on the dual edges, weighted, delayed
-    op.exc, op.exc_more = _excitations(props, grid, sh, vv, vi, lE, lH, dt, op.notes)
-    # probes
-    op.probes = []
-    for p in props:
-        if isinstance(p, C.ProbeBox) and p.primitives:
-            pr = _probe(p, p.primitives[0], grid, sh)
-            if pr is None:                                          # (a field probe had been dropped, nothing said)
-                op.notes.append(f"probe {p.name} (type {p.p_type}): not a kind gfdtd measures (voltage, current, "
-                                f"mode-matching): left out")
-            else:
-                op.probes.append(pr)
-    op.dumps = [d for p in props if isinstance(p, C.DumpBox) and p.primitives for d in _dump(p, grid, op.notes)]
-    if op.dumps:                                                    # the geometry the dumps need, kept
-        op.lE, op.aE, op.lH = lE, aE, lH
-        if any(d['field'] == 'Jc' for d in op.dumps):
-            op.kappa_E = np.stack([_edge_average(kap, a, grid) for a in range(3)])
-    op.vv, op.vi, op.iv = vv, vi, iv
-    op.cells = int(np.prod(ncell))
-    # excitation signal: openEMS's Gaussian pulse
-    f0, fc = float(fdtd['f0']), float(fdtd['fc'])
-    op.f0, op.fc = f0, fc
-    n = int(2 * 9.0 / (2 * np.pi * fc) / dt)
-    t = np.arange(n + 1) * dt
-    gauss = lambda t: np.cos(2 * np.pi * f0 * (t - 9.0 / (2 * np.pi * fc))) * np.exp(-(2 * np.pi * fc * t / 3 - 3) ** 2)
-    op.signal = gauss(t)
-    op.signal_h = gauss(t + dt / 2)                                # the H excitations' signal: half a step later
-    op.delay_max = max([g['delay'] for g in op.exc_more], default=0)
-    op.nyquist = nyq = max(1, int(1.0 / (2 * (f0 + fc) * dt)))
-    op.sub = max(1, nyq // int(fdtd.get('oversampling', 4) or 4))
-    if log:
-        for line in describe(op):
-            log(line)
-    return op
+    return op, dict(grid=grid, sh=sh, vv=vv, vi=vi, iv=iv, lE=lE, lH=lH, aE=aE, kap=kap, dt=dt, ncell=ncell)
 
 
 def _excitations(props, grid, sh, vv, vi, lE, lH, dt, notes):
@@ -747,8 +832,27 @@ def _unique_rows(trip):
     return nodes, code.ravel()
 
 
+_COMPRESSED = {}                # {core key: Compressed}: the GPU's form of the core, for its other excitations
+
+
 def compress(op):
-    """op.vv / op.vi / op.iv / op.debye as a Compressed operator (exact to 2^-20 in vv and s)."""
+    """op.vv / op.vi / op.iv / op.debye as a Compressed operator (exact to 2^-20 in vv and s), the same object
+    for every excitation of one model (it reads only the core): read only."""
+    key = getattr(op, '_core_key', None)
+    if key is None:
+        return _compress(op)
+    with _BUILDING:
+        with _CORES_LOCK:
+            kept = _COMPRESSED.get(key)
+        if kept is None:
+            kept = _compress(op)
+            with _CORES_LOCK:
+                _COMPRESSED.clear()
+                _COMPRESSED[key] = kept
+    return kept
+
+
+def _compress(op):
     g, sh, dt = op.grid, op.shape, op.dt
     cp = Compressed()
     pad0 = lambda d: np.concatenate([d, [0.0]])
