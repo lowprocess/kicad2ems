@@ -16,12 +16,13 @@ The model starts from the port nets and follows series parts into the next net, 
 | trace | tracks of one width on one layer. A trace is split at junctions, and where its surroundings change: the reference planes, the gap to coplanar ground, or extra copper widening it (a taper or teardrop) |
 | pad | a component pad. A trace ending in a pad is shortened by the part inside it |
 | strip | copper drawn as a shape: rectangular shapes (resonators, hairpins, tapped feeds, stubs drawn as rectangles), and other shapes that sit across a track as a stub (a radial stub). A strip is sliced into sections that follow its width, so a fan becomes a stub that widens step by step; with qucsator, a fan that is a circular sector is one radial stub (MRSTUB) instead |
-| via | a via barrel: a coaxial line through the planes it passes, or an inductance where there's no plane |
+| via | a via barrel: a coaxial line through the planes it passes, or an inductance where there's no plane. A ground via inside a trace's copper shorts the trace there (a stub's short, a row of vias across its end in parallel): an inductance to the nearest plane it reaches |
 | part | a lumped R/L/C part, in series or to ground ([details](model.md#lumped-parts)) |
 
 <a id="coupled-sections"></a>
 **Coupled sections.** Straight, parallel sections of one cross-section on one layer within 5 substrate heights of
-each other become a coupled section: hairpin and interdigital filter fingers, differential pairs. The
+each other become a coupled section (embedded microstrip, the outer layers under `--mask`, too: its field solve has
+the mask over the copper, its formulas are microstrip's): hairpin and interdigital filter fingers, differential pairs. The
 [field solver](#field-solver) gives each its capacitance matrix, every line coupled to every other, and each
 neighbouring pair its even- and odd-mode impedances with the copper's thickness (`ze`, `zo`; as sheets, `ze_sheet`,
 `zo_sheet`). It is solved over ideal planes, or on [the board's cut](#groups-on-the-cut) across it where the copper
@@ -323,7 +324,7 @@ The sections become a circuit, solved in milliseconds by one of two programs:
 | microstrip | `MLine` | `MLIN` |
 | grounded CPW | `CPW` | `CLIN` |
 | coupled lines | a multiconductor line block | `MCOUPLED` for a microstrip pair, otherwise the same block |
-| discontinuities | not modelled | open ends, corners, steps, tees, crosses and gaps |
+| discontinuities | end gaps only (a pi of Garg and Bahl's capacitances) | open ends, corners, steps, tees, crosses and gaps |
 
 `--solvers lines` uses qucsator when it's installed, otherwise scikit-rf; `--fast` adds the line model next to the
 other solvers as a reference. The copper is zero-thickness, as in the other solvers, and `--sigma` adds copper loss.

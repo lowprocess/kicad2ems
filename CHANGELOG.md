@@ -386,6 +386,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (7 s of it the one solve at 1 GHz whose factor has to be solved on the host), the rest ports and tables.
 
 ### Fixed
+- **The stack review of 2026-11-14, Fix first** (kicad2ems-project's REVIEW-2026-11-14.md, its R numbers):
+  - **The window's Run and Preview** (R-A1). The Start page (2026-11-13) took the name of `MainWindow.start`, so
+    neither started kicad2ems's run and the window stayed busy until closed. A start that raises says why on its
+    row, its traceback in the log, and the queue goes on; a test runs the window's own run against a stand-in.
+  - **The line model's ground vias** (R-A4). A ground via inside a trace's copper shorts it there (a row across a
+    stub's end in parallel, their mutual inductance left out); only the line's own vias were taken, so a shorted
+    stub was open. dfsynth's stub band-pass was a band-stop (-80 dB at 3 GHz on qucsator) and is a band-pass;
+    its interdigital peaks at 4.906 GHz for its own model's 4.891 (-47 dB before).
+  - **End gaps** (R-A11) join their ports: the gap's two sides were taken as unconnected (S21 NaN although qucsator
+    had its MGAP), and scikit-rf has a gap too (Garg and Bahl's capacitances). dfsynth's end-coupled filter passes
+    at 9.96 GHz for 10.0.
+  - **Coupled lines under solder mask** (R-A10): embedded microstrip forms coupled sections, its field solve with
+    the mask over the copper (with `--mask` a hairpin had no coupled section and no path between its ports).
 - **What a review of the full-bridge removal found (pcbqs, kicad2ems-gui, kicad2ems-fem).** pcbqs: thermal takes the
   bridge's per-pin and null `board.parts`; a boost's rail stays its source's node; the bridge's `bus_ripple_V` is
   the settled ripple again (a measure's `samples`); `<ref>.cap_V` for every capacitor. The window: a study whose

@@ -167,6 +167,7 @@ def classify(model, ref, e, pt, d):
                 e.notes.append(f"ground {min(close):.2f} mm beside it on one side: Z0 somewhat lower")
             if cover > 1e-9:
                 er_c, _ = _dielectric(model, *far)
+                e.cover, e.er_cover = cover, er_c                    # (a coupled group's field solve has it too)
                 e.xs, calc = 'embedded microstrip', lambda tt: embedded_microstrip(w, h, er, tt, cover, er_c)
             else:
                 e.xs, calc = 'microstrip', lambda tt: microstrip(w, h, er, tt)

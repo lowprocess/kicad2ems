@@ -250,3 +250,22 @@ def test_radial_stub_in_qucsator_is_mrstub(tmp_path):
         pytest.skip('no qucsator')
     S, _ = fastsolve.solve(lm, m.ports, f, backend='qucsator')
     assert 2.12e9 < f[np.argmin(np.abs(S[:, 1, 0]))] < 2.24e9
+
+
+def test_coupled_lines_under_solder_mask_stay_coupled():
+    """With the mask modelled, outer traces are embedded microstrip, and they are coupled too (no group at all
+    before: a hairpin filter's ports unconnected); the group's field solve has the mask over its copper."""
+    from kicad2ems.config import build_settings
+    from kicad2ems.pipeline import board_from_settings
+    import os
+    root = os.path.join(os.path.dirname(__file__), '..')
+    groups = {}
+    for mask in (False, True):
+        s = build_settings(dict(mask=mask), config=os.path.join(root, 'examples', 'hairpin.toml'))
+        m = board_from_settings(s, log=lambda *a: None)
+        lm = build(m)
+        groups[mask] = lm.groups
+    assert len(groups[True]) == len(groups[False]) >= 2
+    assert all(g['xs'] == 'embedded microstrip' and g.get('cover', 0) > 0 for g in groups[True])
+    plain, masked = groups[False][0]['pairs'][0], groups[True][0]['pairs'][0]
+    assert masked['eeff_o'] > plain['eeff_o']                       # the mask over the gap slows the odd mode

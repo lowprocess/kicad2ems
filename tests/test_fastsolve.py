@@ -143,3 +143,62 @@ def test_qucsator_matches_skrf_coplanar(launch):
     Ss, _ = solve(lm, m.ports, FREQ, 'skrf')
     assert np.max(np.abs(db(Sq[:, 1, 0]) - db(Ss[:, 1, 0]))) < 0.3
     assert np.max(np.abs(Sq[:, 0, 0] - Ss[:, 0, 0])) < 0.1        # qucsator adds the steps and open ends
+
+
+def _rf_examples():
+    import importlib.util, os
+    spec = importlib.util.spec_from_file_location(
+        'make_rf_examples', os.path.join(os.path.dirname(__file__), '..', 'examples', 'make_rf_examples.py'))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_a_stub_shorted_by_ground_vias_is_shorted(tmp_path):
+    """A stub that ends in a row of ground vias, a pad's width in from its end (as dfsynth draws a short), is a
+    short circuit there: a quarter wave shorted stub passes F0 and stops DC. The line model took only the line's
+    own vias, so it was an open stub (dfsynth's stub band-pass a band-stop: -80 dB at its centre)."""
+    pytest.importorskip('skrf')
+    E = _rf_examples()
+    q, yc = E.quarter(E.W50), E.quarter(E.W50) + 4.0
+    W, H = 2 * 8.0 + E.W50, yc + E.W50 / 2 + 3.0
+    bd = E.Board()
+    bd.track([(0, yc), (W, yc)], E.W50)
+    bd.track([(W / 2, yc), (W / 2, yc - q)], E.W50)
+    for dx in (-0.4, 0.4):                                         # two vias across the stub's end, inside it
+        bd.via(W / 2 + dx, yc - q + 0.4)
+    bd.port(1, 0.5, yc, 0)
+    bd.port(2, W - 0.5, yc, 180)
+    bd.write(str(tmp_path / 'short.kicad_pcb'), W, H)
+    m = Board(KiCadBoard(str(tmp_path / 'short.kicad_pcb')), nets=['RF', 'GND'], ground='B.Cu', log=lambda *a: None)
+    lm = build(m)
+    vias = [e for e in lm.elements if e.kind == 'via']
+    assert len(vias) == 1 and vias[0].b == 'gnd' and '2 in parallel' in vias[0].notes[0]
+    f = np.array([0.05e9, E.F0])
+    S, _ = solve(lm, m.ports, f, 'skrf')
+    assert db(S[0, 1, 0]) < -15 and db(S[1, 1, 0]) > -1.0          # shorted near DC, a pass at its quarter wave
+
+
+def test_an_end_gap_joins_its_ports(tmp_path):
+    """Two lines end to end across a gap: the gap's series capacitance joins them (NaN before: the ports were
+    taken as unconnected), on scikit-rf as a pi of Garg and Bahl's capacitances."""
+    pytest.importorskip('skrf')
+    E = _rf_examples()
+    yc, L, g = 5.0, 12.0, 0.2
+    W, H = 2 * L + g, 10.0
+    bd = E.Board()
+    bd.track([(0, yc), (L, yc)], E.W50)
+    bd.track([(L + g, yc), (W, yc)], E.W50)
+    bd.port(1, 0.5, yc, 0)
+    bd.port(2, W - 0.5, yc, 180)
+    bd.write(str(tmp_path / 'gap.kicad_pcb'), W, H)
+    m = Board(KiCadBoard(str(tmp_path / 'gap.kicad_pcb')), nets=['RF', 'GND'], ground='B.Cu', log=lambda *a: None)
+    lm = build(m)
+    assert [j['kind'] for j in lm.junctions].count('gap') == 1
+    f = np.array([1e9, 4e9, 8e9])
+    S, _ = solve(lm, m.ports, f, 'skrf')
+    s21 = np.abs(S[:, 1, 0])
+    assert np.isfinite(S).all() and (np.diff(s21) > 0).all() and s21[0] < 0.5      # a series capacitance: a high-pass
+    if _qucsator() is not None:
+        Sq, _ = solve(lm, m.ports, f, 'qucsator')
+        assert np.max(np.abs(db(Sq[:, 1, 0]) - db(S[:, 1, 0]))) < 3.0       # (scikit-rf: no open-end extension)

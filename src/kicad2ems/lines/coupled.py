@@ -71,8 +71,8 @@ def coupled_offset_stripline(w, s, h1, h2, er):
 def coupled(xs, w, s, h, er):
     """(Ze, Zo, eeff_even, eeff_odd) of a coupled pair of cross-section xs ('microstrip', 'stripline' or
     'offset stripline'; h: the height, or (h1, h2) to the planes below and above for striplines)."""
-    if xs == 'microstrip':
-        return coupled_microstrip(w, s, h, er)
+    if xs in ('microstrip', 'embedded microstrip'):        # under a cover: the bare formula (the field solver
+        return coupled_microstrip(w, s, h, er)                 # has the cover: topology._field_group)
     if xs == 'stripline':
         return coupled_stripline(w, s, h[0] + h[1], er)
     return coupled_offset_stripline(w, s, h[0], h[1], er)
@@ -80,7 +80,7 @@ def coupled(xs, w, s, h, er):
 
 def single(xs, w, h, er):
     """(Z0, eeff) of one zero-thickness line of cross-section xs (as coupled)."""
-    if xs == 'microstrip':
+    if xs in ('microstrip', 'embedded microstrip'):
         return microstrip(w, h, er)
     if xs == 'stripline':
         return stripline(w, h[0] + h[1], er)

@@ -33,6 +33,7 @@ class Element:
         self.classified = None                      # the xsection.CrossSection a grounded CPW's z0 was solved on
         self.coupled = None                         # a coupled leg: dict(section=its group's CrossSection, index=its line)
         self.tand, self.L = 0.0, None               # dielectric loss, via inductance (H) when no antipad
+        self.cover, self.er_cover = 0.0, 1.0        # embedded microstrip: the dielectric over it (mm, its er)
         self.offset = 0.0                           # centre of a widened trace's copper off its centre line (mm)
         self.group = None                           # index into LineModel.groups for a coupled line
         self.notes = []

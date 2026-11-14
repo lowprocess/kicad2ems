@@ -112,6 +112,19 @@ def _skrf(lm, ports, freq, sheet, sigma):
             nodes.setdefault(e.a, []).append((ntw, 0))
             if ntw.nports == 2:
                 nodes.setdefault(e.b, []).append((ntw, 1))
+        for k, j in enumerate(lm.junctions):                # end gaps: a pi of capacitances (Garg and Bahl)
+            if j['kind'] != 'gap':
+                continue
+            from ...lines.formulas import gap_capacitance
+            (ea, _), (eb, _) = j['arms'][0], j['other']['arms'][0]
+            cp, cg = gap_capacitance(0.5 * (ea.w + eb.w), j['gap'], ea.h, ea.er) if ea.er and ea.h else (0.0, 0.0)
+            yp, yg = 1j * w * cp, 1j * w * cg
+            Y = np.zeros((len(w), 2, 2), complex)
+            Y[:, 0, 0] = Y[:, 1, 1] = yp + yg
+            Y[:, 0, 1] = Y[:, 1, 0] = -yg
+            ntw = skrf.Network(frequency=fr, s=skrf.network.y2s(Y, z0=50.0), z0=50.0, name=f"gap{k}")
+            nodes.setdefault(j['node'], []).append((ntw, 0))
+            nodes.setdefault(j['other']['node'], []).append((ntw, 1))
         for p in ports:
             if p.name in lm.ports:
                 nodes.setdefault(lm.ports[p.name], []).append((Circuit.Port(fr, p.name, z0=p.z0), 0))
@@ -472,7 +485,8 @@ def solve(lm, ports, freq, backend='skrf', sheet=True, sigma=None, qucsator=None
 
 
 def _components(lm):
-    """Connected part of the line model each node belongs to (through any element except ground)."""
+    """Connected part of the line model each node belongs to (through any element except ground, and across an
+    end gap: its series capacitance joins the two sides)."""
     parent = {}
 
     def find(n):
@@ -485,4 +499,7 @@ def _components(lm):
             parent[find(e.a)] = find(e.b)
         else:
             find(e.a)
+    for j in lm.junctions:
+        if j['kind'] == 'gap':
+            parent[find(j['node'])] = find(j['other']['node'])
     return {n: find(n) for n in list(parent)}

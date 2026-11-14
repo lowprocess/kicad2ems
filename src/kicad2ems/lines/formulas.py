@@ -93,6 +93,20 @@ def coax(d, D, er):
     return ETA0 / (2 * math.pi * math.sqrt(er)) * math.log(D / d)
 
 
+def gap_capacitance(w, s, h, er):
+    """(Cp, Cg) in F of an end gap s (mm) in a microstrip of width w (mm) over h (mm) of er: the shunt capacitance
+    at each side and the series one across (Garg and Bahl, fitted for 0.5 <= w/h <= 2 and 0.1 <= s/w <= 1;
+    clamped to that range outside it). As dfsynth's microstrip.gap."""
+    r = min(max(w / h, 0.5), 2.0)
+    sw = min(max(s / w, 0.1), 1.0)
+    mo = r * (0.619 * math.log10(r) - 0.3853)
+    ko = 4.26 - 1.453 * math.log10(r)
+    me, ke = (0.8675, 2.043 * r ** 0.12) if sw <= 0.3 else (1.565 / r ** 0.16 - 1, 1.97 - 0.03 / r)
+    co = sw ** mo * math.exp(ko) * (er / 9.6) ** 0.8 * w * 1e-15
+    ce = 12 * sw ** me * math.exp(ke) * (er / 9.6) ** 0.9 * w * 1e-15
+    return 0.5 * ce, 0.5 * co - 0.25 * ce
+
+
 def via_inductance(h, r):
     """Partial self-inductance (H) of a via barrel of length h and radius r (mm), Goldfarb & Pucel."""
     h, r = h * 1e-3, r * 1e-3

@@ -131,17 +131,23 @@ def _build(model, nets, refcu):
     for fp in pr.footprints:
         if fp['ref'] not in model.port_refs:
             pads += _footprint_pads(fp, nets, model, inside)
+    # the lines' own vias, and the ground's: a trace that ends on a ground via is shorted there (a stub's short, as
+    # dfsynth draws it); a ground via no trace ends on stays out (the barrel loop below takes attached ones only)
     vias = [dict(v, xy=np.array([v['x'], v['y']]), i=i) for i, v in enumerate(pr.vias)
-            if v['net'] in nets and not v.get('pth') and inside.contains(Point(v['x'], v['y']))]
+            if (v['net'] in nets or v['net'] in grounds) and not v.get('pth') and inside.contains(Point(v['x'], v['y']))]
 
     import shapely
     pad_tree = shapely.STRtree([q['geom'] for _, q, _ in pads]) if pads else None
     via_xy = np.array([v['xy'] for v in vias], float).reshape(-1, 2)
     via_r = np.array([max(v['size'], v['drill']) / 2 for v in vias], float)
+    ground_via = np.array([v['net'] not in nets for v in vias], bool)
+    parallel = {}                                          # a ground via's node -> the vias in parallel there
 
-    def attach(layer, xy):
+    def attach(layer, xy, w=0.0, toward=None):
         """The pad (first in order) or via a trace end at xy lies on, through spatial indexes (a scan of every pad
-        and via per trace end took a second on a board of 4000 ends)."""
+        and via per trace end took a second on a board of 4000 ends). A ground via counts where its pad reaches the
+        end: across the trace within its width w, along it (toward: the trace's next point) within the pad's
+        radius, so a row of vias across a stub's end shorts it, the row in parallel, and a tap beside them does not."""
         pt = Point(*xy)
         if pad_tree is not None:
             for i in sorted(pad_tree.query(pt, predicate='dwithin', distance=1e-6)):
@@ -149,9 +155,22 @@ def _build(model, nets, refcu):
                 if layer in q['layers'] and q['geom'].distance(pt) < 1e-6:
                     return node + ':in', q
         if len(vias):
-            for i in np.nonzero(np.hypot(*(via_xy - np.asarray(xy, float)).T) <= via_r + 1e-6)[0]:
-                if layer in vias[i]['layers']:
-                    return f"via{vias[i]['i']}:{layer}", None
+            r = via_xy - np.asarray(xy, float)
+            d = np.hypot(*r.T)
+            near = d <= via_r + 1e-6
+            u = None if toward is None else np.asarray(toward, float) - xy
+            if u is not None and w > 0 and np.hypot(*u) > 1e-9:
+                u = u / np.hypot(*u)
+                along, across = r @ u, np.abs(r[:, 0] * u[1] - r[:, 1] * u[0])
+                near |= ground_via & (np.abs(along) <= via_r + 1e-6) & (across <= w / 2 + via_r + 1e-6)
+            hit = [i for i in np.nonzero(near)[0] if layer in vias[i]['layers']]
+            own = [i for i in hit if not ground_via[i]]
+            if own:
+                return f"via{vias[own[0]]['i']}:{layer}", None
+            if hit:
+                node = f"via{vias[hit[0]]['i']}:{layer}"
+                parallel[node] = len(hit)
+                return node, None
         return _key(layer, *xy), None
 
     # ---- traces (split at T-junctions, shortened by the pads they end in) ----
@@ -165,10 +184,11 @@ def _build(model, nets, refcu):
                 clipped.append(dict(t, pts=np.asarray(piece.coords)))
     strip_tracks = _shape_strips(model, nets, inside, lm, clipped)   # resonators, feeds, stubs drawn as shapes
     clipped = _attach_to_strips(clipped, strip_tracks) + strip_tracks
+    clipped = _split_at_vias(clipped, via_xy[ground_via], via_r[ground_via])
     for t in _split_at_junctions(clipped):
         line = LineString(t['pts'])
-        a, qa = attach(t['layer'], t['pts'][0])
-        b, qb = attach(t['layer'], t['pts'][-1])
+        a, qa = attach(t['layer'], t['pts'][0], t['width'], _toward(t['pts']))
+        b, qb = attach(t['layer'], t['pts'][-1], t['width'], _toward(t['pts'][::-1]))
         geom = line
         for q in (qa, qb):
             if q is not None:
@@ -266,13 +286,34 @@ def _build(model, nets, refcu):
         e.xs = 'lumped'
         lm.elements.append(e)
     # ---- via barrels: between the layers tracks attach to, open stubs beyond ----
+    ends = {n for e in lm.elements for n in (e.a, e.b)}
     for v in vias:
         zl = [model.cu_z[l] for l in v['layers'] if l in model.cu_z]
         if len(zl) < 2:
             continue
         lys = [l for l in model.cu_order if min(zl) <= model.cu_z[l] <= max(zl)]   # every layer it passes
-        att = [l for l in lys if any(f"via{v['i']}:{l}" in (e.a, e.b) for e in lm.elements)]
+        att = [l for l in lys if f"via{v['i']}:{l}" in ends]
         if not att:
+            continue
+        if v['net'] in grounds and v['net'] not in nets:            # a ground via a trace ends on: to its plane,
+            planes = [l for l in lys if l not in att and refcu.covers(l, v['xy'])]   # else to its far end
+            far = max(lys, key=lambda l: min(abs(model.cu_z[l] - model.cu_z[a]) for a in att))
+            for la in att:
+                lg = min(planes or [far], key=lambda l: abs(model.cu_z[l] - model.cu_z[la]))
+                h = abs(model.cu_z[lg] - model.cu_z[la])
+                if h <= 0:
+                    continue
+                e = Element('via', f"via{v['i']}:{la}", 'gnd', h, layer=f"{la}-{lg}", w=v['drill'],
+                            label=f"via {la} - {lg} ({v['net']})", net=v['net'], pts=np.array([v['xy'], v['xy']]))
+                e.er, e.tand = _dielectric(model, *sorted((model.cu_z[la], model.cu_z[lg])))
+                e.eeff, e.h = e.er, h
+                n = parallel.get(f"via{v['i']}:{la}", 1)
+                e.xs, e.L = 'via to ground', via_inductance(h, v['drill'] / 2) / n
+                e.notes.append(f"{v['net']} via{'s' if n > 1 else ''} to "
+                               f"{'the ' + lg + ' plane' if planes else 'its ' + lg + ' end (no plane)'}"
+                               f"{f', {n} in parallel (their mutual inductance left out)' if n > 1 else ''}: "
+                               f"{e.L * 1e9:.3f} nH")
+                lm.elements.append(e)
             continue
         z = [model.cu_z[l] for l in lys]
         er, tand = _dielectric(model, min(z), max(z))
@@ -351,6 +392,41 @@ def _classify_all(model, refcu, lm):
         elif e.kind == 'pad':
             d = e.pts[1] - e.pts[0]
             classify(model, refcu, e, 0.5 * (e.pts[0] + e.pts[1]), d / (np.linalg.norm(d) or 1.0))
+
+
+def _toward(pts):
+    """The first point of a polyline apart from its first (its direction there; a strip's ends repeat points)."""
+    p0 = np.asarray(pts[0], float)
+    return next((q for q in pts[1:] if np.hypot(*(np.asarray(q, float) - p0)) > 1e-9), None)
+
+
+def _split_at_vias(tracks, xy, r):
+    """Tracks cut where a ground via inside their copper meets the centreline: the trace is shorted there (a row
+    of vias across a stub, a pad's width in from its end, as dfsynth draws a short), and attach() finds the vias
+    at the cut. A via the copper does not reach leaves a track whole."""
+    if not len(xy):
+        return tracks
+    from shapely.geometry import Point
+    from shapely.ops import substring
+    from shapely.strtree import STRtree
+    pts = [Point(*p) for p in xy]
+    tree = STRtree(pts)
+    out = []
+    for t in tracks:
+        line = LineString(t['pts'])
+        cuts = []
+        for i in tree.query(line.buffer(t['width'] / 2 + float(np.max(r)))):
+            if line.distance(pts[i]) <= t['width'] / 2 + 1e-9:
+                s = line.project(pts[i])
+                if 1e-6 < s < line.length - 1e-6 and all(abs(s - c) > 1e-6 for c in cuts):
+                    cuts.append(s)
+        if not cuts:
+            out.append(t)
+            continue
+        edges = [0.0, *sorted(cuts), line.length]
+        for s0, s1 in zip(edges[:-1], edges[1:]):
+            out.append(dict(t, pts=np.asarray(substring(line, s0, s1).coords)))
+    return out
 
 
 def _shape_strips(model, nets, inside, lm, tracks=()):

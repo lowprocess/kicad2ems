@@ -36,7 +36,11 @@ def _paths(lm):
         if not targets and not any(p in pair for pair in done):
             far = max((n for n in dist if n != 'gnd'), key=lambda n: dist[n], default=None)
             targets = [(None, far)] if far is not None and far != src else []
-            if targets:
+            gaps = [j for j in lm.junctions if j['kind'] == 'gap' and (j['node'] in dist or j['other']['node'] in dist)]
+            if targets and gaps:
+                lm.notes.append(f"{p}: its path stops at an end gap ({len(gaps)} on its side): the S-parameters "
+                                f"go across it, the path's table stops there")
+            elif targets:
                 lm.notes.append(f"{p} reaches no other port through traces, pads and parts: its path ends "
                                 f"{dist[far]:.2f} mm from it (copper drawn as shapes or zones is not followed: it only widens the tracks it overlaps)")
         for q, dst in targets:
@@ -89,11 +93,11 @@ def _branch(lm, adj, j, start, on_path):
 
 # ---- coupled lines -------------------------------------------------------------------------------
 COUPLE_H = 5.0          # parallel lines couple when their edge gap is at most this many h (striplines: the mean of
-COUPLED_XS = ('microstrip', 'stripline', 'offset stripline')   # the heights to the two planes)
+COUPLED_XS = ('microstrip', 'embedded microstrip', 'stripline', 'offset stripline')   # the heights to the two planes)
 FIELD_GROUPS = True     # coupled sections' C from the field solver, every line coupled to every other (False:
                         # group_lc's nearest-neighbour pairs of the formulas)
 _COPY = ('xs', 'z0', 'eeff', 'z0_sheet', 'eeff_sheet', 'er', 'h', 's', 't', 'tand', 'offset', 'field', 'z0_formula',
-         'source', 'cut', 'classified')
+         'source', 'cut', 'classified', 'cover', 'er_cover')
 
 
 def _couple_h(e):
@@ -284,6 +288,8 @@ def _add_group(lm, chain, u, tm, model=None, ref=None):
     e0 = chain[0][1]
     g = dict(members=members, gaps=gaps, length=e0.length, h=e0.h, er=e0.er, tand=e0.tand, layer=e0.layer, xs=e0.xs,
              pairs=[])
+    if getattr(e0, 'cover', 0.0):                              # embedded microstrip: its cover, for the field solve
+        g['cover'], g['er_cover'] = e0.cover, e0.er_cover
     for k, gap in enumerate(gaps):
         wa, wb = members[k][0].w, members[k + 1][0].w
         ze, zo, ee, eo = coupled(e0.xs, 0.5 * (wa + wb), gap, e0.h, e0.er)
@@ -354,20 +360,21 @@ def _field_group(g, widths, t=0.0):
     in place of group_lc's nearest-neighbour pairs (fastsolve.group_s uses them when present), and its pairs' even /
     odd modes with the copper's thickness t (ze_sheet, zo_sheet: as sheets), in place of the zero-thickness
     formulas'."""
-    h = g['h'] if g['xs'] == 'microstrip' else tuple(g['h'])
+    h = g['h'] if g['xs'] in ('microstrip', 'embedded microstrip') else tuple(g['h'])
     from .xsection import snap                               # similar sections: one solve (xsection.SIMILAR)
     ws, gs = tuple(round(snap(w), 6) for w in widths), tuple(round(snap(s), 6) for s in g['gaps'])
     flip = (ws[::-1], gs[::-1]) < (ws, gs)                   # a group and its mirror image: one solve
+    cover = (round(g.get('cover', 0.0), 6), round(g.get('er_cover', 1.0), 6))
     key = (g['xs'],) + ((ws[::-1], gs[::-1]) if flip else (ws, gs)) + (h, g['er'])
     try:
-        C, Ca = _group_c(*key)
-        Ct, Cat = _group_c(*key, round(t, 6)) if t else (C, Ca)
+        C, Ca = _group_c(*key, 0.0, cover)
+        Ct, Cat = _group_c(*key, round(t, 6), cover) if t else (C, Ca)
     except Exception:                                        # noqa: BLE001 (the formulas' pairs stay)
         return
     if flip:                                                 # the matrices of the lines in their own order
         C, Ca, Ct, Cat = (M[::-1, ::-1] for M in (C, Ca, Ct, Cat))
     g['C'], g['Ca'] = C.copy(), Ca.copy()
-    section = _group_section(g['xs'], ws, gs, h, g['er'], round(t, 6))
+    section = _group_section(g['xs'], ws, gs, h, g['er'], round(t, 6), cover)
     for k, (leg, *_) in enumerate(g.get('members', ())):
         leg.coupled = dict(section=section, index=k)
     for k, p in enumerate(g['pairs']):
@@ -376,16 +383,19 @@ def _field_group(g, widths, t=0.0):
 
 
 @functools.lru_cache(maxsize=1024)
-def _group_c(xs_name, widths, gaps, h, er, t=0.0):
+def _group_c(xs_name, widths, gaps, h, er, t=0.0, cover=(0.0, 1.0)):
     """(C, C_air) of side-by-side strips t thick (sheets by default; a board's diff pairs are mostly the same few:
     solved once each)."""
-    r = _group_section(xs_name, widths, gaps, h, er, t).solve()
+    r = _group_section(xs_name, widths, gaps, h, er, t, cover).solve()
     return r.C, r.Ca
 
 
-def _group_section(xs_name, widths, gaps, h, er, t=0.0):
-    """The xsection.CrossSection of side-by-side strips."""
+def _group_section(xs_name, widths, gaps, h, er, t=0.0, cover=(0.0, 1.0)):
+    """The xsection.CrossSection of side-by-side strips; cover: (thickness, er) of the dielectric over embedded
+    microstrip (solder mask: it follows the copper)."""
     from . import xsection as X
+    if xs_name == 'embedded microstrip':
+        return X.microstrip(list(widths), h, er, t, mask=cover[0], er_mask=cover[1], gap=list(gaps))
     if xs_name == 'microstrip':
         return X.microstrip(list(widths), h, er, t, gap=list(gaps))
     return X.stripline(list(widths), h[0], h[1], er, t, gap=list(gaps))
