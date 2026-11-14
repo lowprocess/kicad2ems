@@ -133,3 +133,18 @@ def test_a_solver_s_set_up_or_outputs_failing_leaves_the_run_and_its_report(run_
     monkeypatch.setattr(standins.MoM25D, 'outputs', broken, raising=False)
     code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--mom', '--out', tmp_path / 'out2')
     assert code == 0 and "WARNING: mom25d's outputs failed" in so and (tmp_path / 'out2' / 'rf_interdig_report.html').exists()
+
+
+def test_a_result_that_is_not_passive_is_said():
+    """S's largest singular value over 1 (more power out than in): the run warns, and run.json has it (nothing had
+    checked: an AAA fit of a lossless two-port had reached 1.0018)."""
+    import numpy as np
+    from kicad2ems.pipeline import passivity
+    f = np.linspace(1e9, 2e9, 5)
+    thru = np.zeros((5, 2, 2), complex); thru[:, 0, 1] = thru[:, 1, 0] = 1.0
+    assert passivity(f, thru)['max'] == pytest.approx(1.0) and passivity(f, thru)['count'] == 0
+    thru[2, 0, 1] *= 1.05
+    p = passivity(f, thru)
+    assert p['count'] == 1 and p['f'] == pytest.approx(1.5e9) and p['max'] == pytest.approx(1.05)
+    thru[:] = np.nan
+    assert passivity(f, thru) is None

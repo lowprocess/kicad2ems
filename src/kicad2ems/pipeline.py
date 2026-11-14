@@ -65,6 +65,22 @@ def sparam_table(freq, S, names):
     return rows
 
 
+PASSIVE_TOL = 2e-3              # S's largest singular value above 1 + this: not passive (a solver's noise sits below)
+
+
+def passivity(freq, S):
+    """dict(max, f, count) of S's largest singular value over the band (a passive network's is at most 1), its
+    frequency and how many frequencies pass 1 + PASSIVE_TOL; None when no frequency has every term."""
+    S = np.asarray(S)
+    ok = np.isfinite(S).all(axis=(1, 2))
+    if not ok.any():
+        return None
+    sv = np.full(len(freq), np.nan)
+    sv[ok] = np.linalg.svd(S[ok], compute_uv=False)[:, 0]
+    k = int(np.nanargmax(sv))
+    return dict(max=float(sv[k]), f=float(freq[k]), count=int((sv > 1 + PASSIVE_TOL).sum()))
+
+
 def unknown_note(S, names):
     """'; not computed (written as 0): S(P2,P2), ...' for the Touchstone header: the terms that are NaN (ports
     not driven, or no path between two ports in the line model), which a Touchstone file cannot leave out."""
@@ -496,6 +512,12 @@ class Job:
                          zref=r.zref, table=sparam_table(freq, r.S, r.names))
             if n != done[0] and r.names == ref.names:
                 entry.update(reference=done[0], compare=compare_table(freq, ref.S, r.S, r.names))
+            entry['passivity'] = pas = passivity(freq, r.S)
+            if pas and pas['max'] > 1 + PASSIVE_TOL:                # (nothing had checked it)
+                self.log(f"WARNING: {reg[n].label}: not passive at {pas['count']} of {len(freq)} frequencies: its S "
+                         f"gives out up to {100 * (pas['max'] ** 2 - 1):.2g} % more power than goes in (largest singular "
+                         f"value {pas['max']:.4f} at {pas['f'] / 1e9:.4g} GHz): the mesh, the ports or the sweep's fit "
+                         f"there; a circuit or time-domain use of it needs it passive")
             self.summary['solved'][n] = entry
             self.log(f"{reg[n].label}: -> {out}")
         self.join_bands()

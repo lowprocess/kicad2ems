@@ -41,6 +41,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first, "Still needed", Run's wording, what a result proposes.
 
 ### Added
+- **Passivity** (the review of 2026-11-14, R-E2, its first part): each solver's S-parameters are checked for passivity
+  (their largest singular value against 1 over the band): a warning where they give out more power than goes in,
+  and run.json's `passivity` (largest, where, at how many frequencies). Nothing had checked it; enforcing it is
+  left.
 - **The window begins on a Start page (kicad2ems-gui).** A window with no board showed an empty Viewer over
   empty Results. It opens on *Start*: *Open a KiCad board…*, *Open a config…*, *Open a results folder…*, the
   configs opened lately, and every example as a tile by group with its board drawn from above (drawn in a
