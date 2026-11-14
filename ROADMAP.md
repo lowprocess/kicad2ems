@@ -147,8 +147,8 @@ that does not need N² memory. In this order:
 
 ## Power tools (pcbqs)
 
-`pcbqs.pdn` (a rail's DC drop and impedance), `pcbqs.mqs` (a converter's near field), `pcbqs.circuit` and
-`pcbqs.power_circuit` (switching circuits on the board's copper), `pcbqs.thermal` and `pcbqs.sparams` (the
+`pcbqs.pdn` (a rail's DC drop and impedance), `pcbqs.mqs` (a converter's near field), `pcbqs.circuit` (switching
+circuits on the board's copper), `pcbqs.thermal` and `pcbqs.sparams` (the
 ports' S-parameters at the low end, a solver of kicad2ems). What exists and how it was
 validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.md`.
 
@@ -174,12 +174,11 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
    table (the user's choice, 2026-11-13). Left: their drops side by side in one report (each run's is its own
    today), each row's state in the questions' list (the study's is the last run's), and a rail's own board or
    output folder (the table's rows share the panel's).
-4. **The full bridge as a general circuit.** `pcbqs.power_circuit` (format 1, the wpthb bridge and its coupled
-   receiver) is a second circuit tool beside `pcbqs.circuit` (format 2), with its own deck, settling and results,
-   and wpthb's net names (VIN, VBUS, VHB) in its code. The general model has a phase-shifted bridge example
-   already; it would need the bridge tool's power targeting by phase, the receiver's matching per frequency,
-   the coils' AC-resistance and self-resonance model and the slow-mode averaging before the bridge tool could
-   go. Not asked for; a candidate, to keep one circuit path.
+4. **The full bridge as a general circuit.** Done 2026-11-14: `pcbqs.power_circuit` and `power_bridge` are gone, the
+   wpthb bridge is a circuit model (pcbqs's `data/wpthb_bridge.json`: leg B's phase a target for the load's power,
+   the receiver fixed at its 90 kHz values; the per-frequency tuning was dropped on the user's word). On the board
+   with copper it gives the old tool's answer (93.11 % for 93.13 %, phase 55.66° for 55.77°). Left: its speed on
+   ngspice (40 s alone, 1 min 47 s with copper, for the old tool's 6 s and its precharged, warm-started runs).
 5. **Converters.** The near field finds a regulator IC and, since 2026-11-13, a discrete switching cell (a
    buck's, a boost's, a bridge's legs: pcbqs's CHANGELOG). Left: a flyback (its loop runs through the
    transformer) and an inverting buck-boost (through both capacitors), which are not found; a circuit made of a
@@ -198,12 +197,13 @@ validated: pcbqs's docs and CHANGELOG.md, and the project's `NOTES-pi-nearfield.
 
 ### Speed
 
-A 30 W wpthb case is about 56 s: two strict transients of a 369-equation circuit, 81 % of ngspice's time in
-refactorisation (pcbqs's `docs/power-circuit.md`).
+The wpthb bridge (`data/wpthb_bridge.json`) at 90 kHz and 10 W: 40 s on ngspice alone, 1 min 47 s with its copper;
+29 s on the piecewise-linear engine, most of it the reported run sampled as finely as its switches' packages ring
+(hundreds of MHz).
 
 | Option | Gain | Effort | Notes |
 |---|---|---|---|
-| A piecewise-linear switched state-space engine: the rest | 10–100× for ideal-switch studies | | Built for `pcbqs.circuit` (2026-11-13: `--engine pwl`, 0.3–0.8 s for ngspice's 4–40 s on the examples). Left: the board's copper in it (its R-L model is linear: the same matrices), the full bridge tool (`pcbqs.power_circuit`, where the 56 s case is), switch and junction capacitance as states where the edges' loss is wanted |
+| A piecewise-linear switched state-space engine: the rest | 10–100× for ideal-switch studies | | Built for `pcbqs.circuit` (2026-11-13, `--engine pwl`), with the board's copper, switch capacitance and the edges' energy (2026-11-14; pcbqs's `docs/circuit.md` has both tables against ngspice). Left: the reported run's fine sampling (a run of a period by block powers of one step's matrix, not a loop a sample: most of the bridge's 29 s); a diode's junction capacitance as a function of its reverse voltage (a constant one made a bridge rectifier's steady state ambiguous); gate edges, for the switching loss of the V-I overlap |
 | Xyce backend | robustness, not speed | 2 days | it ran behavioural switches ngspice could not; 2–7× slower on the benchmark converter; harmonic balance could suit resonant tanks |
 | Two faces in the circuit: a local loop basis | fewer iterations, no dense setup | | iterations grow with frequency (217 at DC, 575 at 20 MHz); the dense common-mode setup is 19 s |
 | The dense solves, after their assembly | the LU is what is left: 90 % of a two-face S-parameter solve (147 s at 17,700 unknowns) | | The assembly, the thermal maps' sampling and the potential's solve are in the compiled core or on Cholesky since 2026-11-13 (pcbqs's CHANGELOG; `tools/perf/README.md` has where each tool's time goes). Left, none of it pcbqs's own Python: a compressed or block low-rank LU as mom25d has; ngspice's text output read by `np.loadtxt` (a binary raw file); the compression of field dumps; shapely's unions in the near field's mesh |

@@ -8,7 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Removed
+- **The full-bridge circuit tool (pcbqs, kicad2ems-gui).** `pcbqs.power_circuit` was a second circuit tool beside
+  `pcbqs.circuit`, for the wpthb bridge alone. The bridge is a general circuit model now (pcbqs's
+  `data/wpthb_bridge.json`, under Examples > Circuits > Bridges), with the same answers on its board (93.11 % for
+  93.13 %); its receiver is fixed rather than tuned at each frequency. The window's Circuit page and schematic
+  editor are the general model's alone, and a format 1 model is refused with where its bridge went.
+  kicad2ems-fem's *Use these coils in the circuit* sets the model's coils (`--set PRIMARY.value=...`).
+
 ### Changed
+- **The piecewise-linear circuit engine on the board's copper (pcbqs).** `--engine pwl --copper` runs: on the
+  nine examples' boards it agrees with ngspice to 0.2 points of efficiency in 0.3 to 6 s a point, for ngspice's
+  0.5 to 50 s; a switch's Cds is in it, and the energy each switching edge puts in it.
 - **The Viewer's views are Plan, 2D, 3D, Images (kicad2ems-gui).** In that order, the board flat first; *Cut*
   is named *2D* (a field dump in a cut), and *Section* left for a page of its own. A setting's **Pick** button
   is capitalised.

@@ -38,7 +38,7 @@ The window is its own package, kicad2ems-gui (the gui extra), as are the full-wa
 
 Documentation: docs/index.md in the repository.
 """
-__version__ = '261112.post17'
+__version__ = '261112.post18'
 
 import os as _os
 # kicad2ems.examples is the checkout's examples/ (pyproject's package-dir). A compat editable install (install.py's
