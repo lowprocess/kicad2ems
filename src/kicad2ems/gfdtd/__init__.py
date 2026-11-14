@@ -1,6 +1,6 @@
 """
-gfdtd: an FDTD solver in the manner of openEMS, built to run on a GPU (CuPy: NVIDIA CUDA or AMD ROCm), with
-numpy on the CPU as the fallback and the reference. Models come in through CSXCAD's Python API or its XML
+gfdtd: an FDTD solver in the manner of openEMS, built to run on a GPU (Vulkan through slangpy, or CuPy: NVIDIA
+CUDA or AMD ROCm), with its compiled CPU core and numpy (the reference) on the CPU. Models come in through CSXCAD's Python API or its XML
 files, so a model made for openEMS runs here unchanged:
 
     from gfdtd import ContinuousStructure, openEMS          # instead of CSXCAD's / openEMS's
@@ -16,15 +16,15 @@ energy end criterion; ABORT files.
     fdtd.py      openEMS's interface: settings, LumpedPort, Run, XML; the command line
     ports.py     openEMS's other ports: MSL, stripline, CPW, coax, waveguides, curve
     operator.py  the model on the grid: coefficients, lumped elements, excitations, boundaries, probes
-    engine.py    the time loop, the numpy and CuPy backends, status lines and probe files
-    kernels.py   the GPU kernels
+    engine.py    the time loop, the numpy, core, CuPy and Vulkan backends, status lines and probe files
+    kernels.py   the CuPy kernels (kernels_vk.py: Vulkan's, from the same update in core/fdtd_core.h)
 
 API_VERSION is (major, minor), the version of what another package may rely on (kicad2ems-fdtd, which runs
 kicad2ems's models here): a minor release adds to it, a major one removes or changes something in it.
 
     ContinuousStructure, openEMS(..., backend=)   openEMS's / CSXCAD's Python interface, as openEMS scripts use it
     engine.gpu_info(), engine.core_info()        (usable, one line) of the GPU and the compiled CPU core
-    engine.resolve_backend(name)                 'cupy', 'core' or 'numpy' for 'auto', 'gpu', 'cpu', ...
+    engine.resolve_backend(name)                 'vulkan', 'cupy', 'core' or 'numpy' for 'auto', 'gpu', 'cpu', ...
     engine.concurrent_runs(cells, runs)          how many runs to have on the GPU at once
     __version__
     1.1: conducting sheets are lossy (openEMS's model), no longer PEC

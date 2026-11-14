@@ -171,7 +171,7 @@ class openEMS:                                                       # noqa: N80
     def Run(self, sim_path, cleanup=False, setup_only=False, verbose=None, backend=None, log=None, **kw):
         """Run in sim_path (made if missing; cleanup: remove openEMS's own outputs there first). Returns 0.
         numThreads: the CPU core's threads (0: all); openEMS's debug options are accepted and ignored; backend:
-        'auto', 'cupy', 'core', 'numpy'; log: a file for the output (appended) in place of stdout. On the GPU a run
+        'auto', 'gpu', 'vulkan', 'cupy', 'cpu', 'core', 'numpy' (engine.resolve_backend); log: a file for the output (appended) in place of stdout. On the GPU a run
         has a stream of its own, so that runs in several threads overlap."""
         from . import __version__
         from .operator import build
