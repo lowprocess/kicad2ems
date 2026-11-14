@@ -221,22 +221,37 @@ def parse_excellon(path):
         span = (int(m.group(1)), int(m.group(2)))
     plated = 'NonPlated' not in text and 'NPTH' not in os.path.basename(path).upper()
     tools, holes, tool = {}, [], None
+    zeros, digits = 'TZ', None                      # (TZ: leading zeros left out; LZ: trailing; KiCad writes decimals)
+    last = [0.0, 0.0]
     for line in text.splitlines():
         line = line.strip()
-        if line.startswith('INCH'):
-            unit = 25.4
-        elif line.startswith('METRIC'):
-            unit = 1.0
-        mt = re.match(r'T(\d+)C([\d.]+)', line)
+        mu = re.match(r'(INCH|METRIC)(?:,(LZ|TZ))?(?:,(0+)\.(0+))?', line)
+        if mu:
+            unit = 25.4 if mu.group(1) == 'INCH' else 1.0
+            zeros = mu.group(2) or zeros
+            digits = (len(mu.group(3)), len(mu.group(4))) if mu.group(3) else digits
+            continue
+        mt = re.match(r'T(\d+)(?:[FSBHZ][\d.]*)*C([\d.]+)', line)     # T1C0.3, or T1F00S00C0.300 (fields first)
         if mt:
             tools[int(mt.group(1))] = float(mt.group(2)) * unit; continue
         ms = re.fullmatch(r'T(\d+)', line)
         if ms:
             tool = int(ms.group(1)); continue
-        mx = re.match(r'X([+-]?[\d.]+)Y([+-]?[\d.]+)', line)
-        if mx and tool is not None:
-            num = lambda v: float(v) if '.' in v else int(v) / (1000.0 if unit == 1.0 else 10000.0)
-            holes.append((num(mx.group(1)) * unit, num(mx.group(2)) * unit, tools.get(tool, 0.3)))
+        mx = re.match(r'(?:X([+-]?[\d.]+))?(?:Y([+-]?[\d.]+))?$', line)
+        if mx and (mx.group(1) or mx.group(2)) and tool is not None:
+            whole, frac = digits or ((2, 4) if unit != 1.0 else (3, 3))
+            def num(v):
+                if '.' in v:
+                    return float(v)
+                sign = -1.0 if v.startswith('-') else 1.0
+                v = v.lstrip('+-')
+                if zeros == 'LZ':                   # leading zeros kept: the trailing ones were left out
+                    v = v.ljust(whole + frac, '0')
+                return sign * int(v) / 10 ** frac
+            for k, v in enumerate((mx.group(1), mx.group(2))):
+                if v:
+                    last[k] = num(v) * unit            # (a coordinate left out keeps its last value)
+            holes.append((last[0], last[1], tools.get(tool, 0.3)))
     return holes, span, plated
 
 

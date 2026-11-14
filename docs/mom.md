@@ -96,7 +96,7 @@ mom25d reads the board file every solver gets, `<name>_board.json`, and runs on 
 ```python
 import numpy as np
 from mom25d.api import solve_board
-res = solve_board('out/filter_board.json', np.linspace(1e9, 8e9, 401), dmax=0.3e-3)
+res = solve_board('examples/out/rf_interdig_board.json', np.linspace(1e9, 8e9, 401), dmax=0.3e-3)
 res.S, res.names, res.zref, res.notes
 ```
 
@@ -502,8 +502,8 @@ and S with lumped ports reciprocal (the rule over a 0.9 mm plane cell above a 0.
 near field is corrected out to 5 cells: against 12, |S| moves by 0.0025 at most on the examples' sharpest features
 (3 cells: 0.013). The modules are listed in
 [mom25d's README](https://github.com/lowprocess/mom25d#inside-mom25d). Its tests check it against exact solutions
-and textbook formulas: layered Green's functions to about 1e-5, stripline impedance to 0.6 %, coupled-line couplers
-to 0.1 dB, plane cavity resonances to 0.7 %.
+and textbook formulas: layered Green's functions to about 1e-5, stripline impedance to 0.6 % (Cohn's), coupled
+striplines' even and odd modes to 2.5 %. Couplers in dB and plane cavity resonances have no test yet.
 
 **Limits**: copper is zero-thickness (`--rough` scales its loss: [roughness](simulation.md#roughness)), and wave ports need a straight
 feed line.
