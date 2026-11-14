@@ -84,7 +84,7 @@ for what the other two lack and for checking gfdtd's engine.
 - **gfdtd** solves openEMS's model (the same mesh, ports, parts and end criteria) with its own engine: the fastest
   full-wave solver on every example, 3–35 times faster than openEMS on the GPU (its CPU core faster too), and
   within 0.02 of it on 7 of the 8. It handles what FDTD handles: board edges, enclosures, antennas with a finite
-  ground, gap ports. Its copper takes `--sigma` as openEMS's does (gfdtd 261104 or later; lossless before) and
+  ground, gap ports. Its copper takes `--sigma` as openEMS's does (gfdtd's engine API 1.1 or later; lossless before) and
   `--rough` over the band (openEMS takes it at the band centre). It has no `--converge`, and its lumped parts are
   modelled differently (demo_bandpass's 0.126). Agreeing with openEMS checks its engine, not the model.
 - **mom25d** is a different method, so it is the independent cross-check: no air box or enclosure resonances,
@@ -106,7 +106,7 @@ for what the other two lack and for checking gfdtd's engine.
 `auto` drops the solvers that can't run here or can't model the board, estimates how long each remaining
 full-wave solver would take, runs the fastest and adds the line model. gfdtd's estimate is openEMS's mesh and
 timesteps at gfdtd's measured speed (about 8 times openEMS's on the GPU, 2 times on its CPU core); with `--converge`
-auto leaves gfdtd out, as it would ignore it (and with `--sigma` on a gfdtd older than 261104, whose copper is
+auto leaves gfdtd out, as it would ignore it (and with `--sigma` on a gfdtd before engine API 1.1, whose copper is
 lossless). mom25d's is the matrix work for its unknowns on the CPU or GPU; a solver that needs more than 80 % of
 the RAM is dropped. The log says what it chose:
 

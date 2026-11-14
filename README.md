@@ -150,3 +150,8 @@ Start with [Getting started](docs/getting-started.md), then [Usage](docs/usage.m
 GPL-3.0-or-later (see [LICENSE](LICENSE)). kicad2ems uses openEMS (GPL-3.0-or-later) and CSXCAD
 (LGPL-3.0-or-later) as Python packages and runs qucsator (GPL-2.0-or-later) as a separate program. No
 third-party code is copied into the repository.
+
+mom25d and pcbqs (the `mom` and `qs` extras) mesh with the `triangle` package (LGPL-3.0), which compiles in
+Jonathan Shewchuk's Triangle. Triangle keeps its own terms, which are not the GPL's: it "may not be sold or
+included in commercial products without a license" from its author
+([Triangle's page](https://www.cs.cmu.edu/~quake/triangle.html)).

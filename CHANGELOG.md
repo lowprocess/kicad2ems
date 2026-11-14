@@ -1,12 +1,25 @@
 # Changelog
 
 All notable changes to kicad2ems (formerly kicad2openems), and to the mom25d and gfdtd solvers while they
-were bundled with it, by day. Releases are named by datecode, `YYMMDD-rN` (for
-example `261013-r1`, the first release on 13 October 2026).
+were bundled with it, by day. Releases are versioned `MAJOR.MINOR.PATCH` (semantic versioning) from 0.3.0
+(2026-11-14), and tagged `vX.Y.Z`; before that they were named by datecode, `YYMMDD-rN` (for example
+`261013-r1`, the first release on 13 October 2026).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
+
+## 2026-11-14 (0.3.0)
+
+### Changed
+- **Semantic versions.** Every package of the stack is 0.3.0 (the KiCad plugin keeps 0.1.0), in place of
+  the four schemes before (`261112.postN`, `261102-r1`, `0.2.6`, `0.1.0`); the floors between them are
+  `>=0.3.0`, and each repository is tagged `v0.3.0` (R-C13). gfdtd's features are named by its engine API
+  (1.1 lossy sheets, 1.2 roughness, 1.3 finish), not by version. The superproject's README has the rules.
+- **Authors and licences.** `authors` in every pyproject is Claude and lowprocess (it was the assistant's
+  address alone, and pcbqs and dfsynth had none). The superproject has a LICENSE (GPL-3.0), and the
+  READMEs of kicad2ems, mom25d, pcbqs and the superproject say that Triangle, which the `triangle` mesher
+  compiles in, keeps its own terms: not for commercial products without its author's licence (R-C14).
 
 ### Removed
 - **pcbqs's piecewise-linear circuit engine.** The circuit run is for its parts' losses (thermal) and its

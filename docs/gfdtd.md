@@ -5,7 +5,7 @@
 gfdtd is a 3D FDTD solver in the manner of openEMS that runs on a GPU, or on the CPU through a compiled core. It
 is its own package ([gfdtd](https://github.com/lowprocess/gfdtd)) and runs openEMS models without kicad2ems; this
 page is about using it from kicad2ems, through [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd)'s
-`gfdtd` plugin (`kicad2ems_fdtd/gfdtd.py`). `--sigma` is conductor loss on gfdtd 261104 or later, as openEMS's
+`gfdtd` plugin (`kicad2ems_fdtd/gfdtd.py`). `--sigma` is conductor loss on gfdtd's engine API 1.1 or later (gfdtd 261104 on, and every 0.x), as openEMS's
 conducting sheets, and `--rough` its own wideband fit (Hammerstad); an older gfdtd's copper is lossless.
 
 It gets **openEMS's model**: kicad2ems-fdtd builds the same CSXCAD geometry (`build_fdtd`) through gfdtd's copy of
@@ -14,7 +14,7 @@ openEMS's and take openEMS's settings (`--res`, `--fine`, `--nz`, `--bc`, `--end
 `--excite`, `--diel`, `--dump`, `--ff-freq`, ...: the GUI's *FDTD (openEMS, gfdtd)* section). Only the engine
 differs: on the examples the two agree to within 0.004–0.05 in |S|, and on one mid-range GPU gfdtd runs 8–20 times
 faster than openEMS on a 24-thread CPU (its CPU core about twice as fast). `--solvers auto` picks it over openEMS
-whenever it can run: not with `--sigma` on a gfdtd older than 261104 (`--converge`'s mesh levels run on it as on
+whenever it can run: not with `--sigma` on a gfdtd before engine API 1.1 (`--converge`'s mesh levels run on it as on
 openEMS)
 ([Which solver](usage.md#which)).
 

@@ -32,7 +32,7 @@ in it. A user takes a provider of the same major version and at least the minor 
 - **Analysis plugins** declare it the same way (`api = (2, 6)` on their `Analysis`), and are left out and listed
   as broken on the same terms.
 - **Front ends** need a kicad2ems of the minor version they use; their `pyproject.toml` asks for the release
-  (kicad2ems-gui: `kicad2ems>=261101.post1`, API 2.2).
+  (kicad2ems-gui: `kicad2ems>=0.3.0`, API 2.11).
 - 2.0 took the FDTD layer out of `api.solver` (it is in kicad2ems-fdtd). 2.1 added the examples and the checked
   file readers to `api.frontend`, and `ETA0`, `MU0` to `api.solver`. 2.3 added the copper roughness (`--rough`):
   `hammerstad`, `rough_sigma`, `band_sigma`, and the `roughness` row of `FEATURES`. 2.4 the surface finish (`--finish`): `resolve_finish`,
