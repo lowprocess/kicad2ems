@@ -18,13 +18,16 @@ thickness, εr and loss tangent. Dielectric sub-layers become separate layers. M
 | KiCad item | Read as |
 |---|---|
 | tracks and arcs | the track's shape, plus the track itself for the line model |
-| vias | a pad on each layer it connects, and a via |
+| vias | a via over every copper layer from one end to the other (a blind or micro via's too), its pad on each layer for a through via, at its two ends for a blind or micro one |
 | zones | the **filled** copper as KiCad last filled it. Refill zones before simulating |
 | graphics on copper layers | lines, arcs, curves, rectangles, circles and polygons |
 | footprint pads and graphics | placed and rotated; graphics take the net of the pad they touch |
 
 All pad shapes are supported, including custom pads. Plated through-holes become vias. Zones defined
 inside footprints aren't read.
+A pad's drill offset puts its copper beside its hole; an NPTH pad no larger than its hole is a hole, no copper; a
+plated slot is a via of its perimeter. A zone that was never filled is left out, and the board's notes say so (KiCad
+5's zones, whose fills have no layer of their own, take the zone's).
 
 ## Board outline
 

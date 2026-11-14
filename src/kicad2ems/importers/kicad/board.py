@@ -15,6 +15,7 @@ The board is the raw form of importers/ (Imported): KiCad coordinates (mm, y dow
 items (layer, net, geometry), tracks (for transmission-line sections), vias, footprints. Not read: zones
 defined inside footprints.
 """
+import math
 import numpy as np
 from shapely.geometry import Polygon, LineString, Point
 from .. import Imported
@@ -117,17 +118,26 @@ class KiCadBoard(Imported):
             x, y = sx.xy(v, 'at')
             lys = self._expand(sx.layers(v))
             kind = 'micro' if 'micro' in v else ('blind' if 'blind' in v else 'through')
-            if kind == 'through' and len(lys) == 2 and all_cu:
-                i0, i1 = sorted(all_cu.index(l) for l in lys)
-                lys = all_cu[i0:i1 + 1]
+            ends = lys
+            if len(lys) == 2 and all_cu and all(l in all_cu for l in lys):     # every copper layer from one end
+                i0, i1 = sorted(all_cu.index(l) for l in lys)                  # to the other, a blind or micro via's
+                lys = all_cu[i0:i1 + 1]                                        # too: its barrel passes them
+            pads = lys if kind == 'through' else ends                          # (its rings: at its ends, as HDI
+                                                                               # boards' unused layers are removed)
             size = sx.val(v, 'size', 0.6, float); drill = sx.val(v, 'drill', 0.3, float)
-            self.vias.append(dict(x=x, y=y, size=size, drill=drill, layers=lys, net=self._net_of(v)))
-            for l in lys:
+            self.vias.append(dict(x=x, y=y, size=size, drill=drill, layers=lys, net=self._net_of(v), kind=kind))
+            for l in pads:
                 self.items.append((l, self._net_of(v), Point(x, y).buffer(size / 2, quad_segs=6)))
         for z in sx.items(self.root, 'zone'):
             net = sx.val(z, 'net_name', '') or self._net_of(z)
-            for fp in sx.items(z, 'filled_polygon'):
-                lay = sx.val(fp, 'layer')
+            if net:
+                self.zone_nets.add(net)
+            fills = sx.items(z, 'filled_polygon')
+            if not fills and sx.item(z, 'polygon') is not None and not sx.item(z, 'keepout'):
+                self.notes.append(f"a zone of {net or 'no net'} on {', '.join(sx.layers(z)) or sx.val(z, 'layer', '?')} "
+                                  f"is not filled: left out (fill the zones in KiCad, B, and save)")
+            for fp in fills:
+                lay = sx.val(fp, 'layer') or sx.val(z, 'layer')    # (KiCad 5: the zone's own layer)
                 pts = sx.pts(fp)
                 if len(pts) >= 3:
                     self.items.append((lay, net, Polygon(pts).buffer(0)))
@@ -188,14 +198,27 @@ class KiCadBoard(Imported):
             if fp[0] == 'module':                         # KiCad 5: pad angle relative
                 prot += rot
             centre = np.array(org) + shp.rot(pxy, rot)
-            geom = shp.place(shp.pad_shape(pad), centre, prot)
+            drill = sx.item(pad, 'drill')
+            off = sx.xy(drill, 'offset') if drill else None            # the copper's offset from the hole
+            local = shp.pad_shape(pad)
+            if off and any(off):
+                from shapely import affinity
+                local = affinity.translate(local, *off)
+            geom = shp.place(local, centre, prot)
             lys = self._expand(sx.layers(pad))
             net = self._net_of(pad)
-            for l in lys:
+            sz = sx.xy(pad, 'size') or (0.0, 0.0)
+            hole = [float(x) for x in drill[1:] if isinstance(x, (int, float)) or str(x).replace('.', '', 1).isdigit()] if drill else []
+            if pad[2] == 'np_thru_hole' and hole and max(sz) <= max(hole) + 1e-9:
+                lys = []                                            # a hole, no copper (it had been copper of no
+            for l in lys:                                           # net on every layer)
                 self.items.append((l, net, geom))
-            drill = sx.item(pad, 'drill')
             if pad[2] == 'thru_hole' and drill and len(lys) > 1:
-                d = float(drill[1]) if len(drill) > 1 and drill[1] != 'oval' else float(drill[2])
+                if len(drill) > 3 and drill[1] == 'oval':              # a slot: the barrel of its perimeter (its
+                    a, b = sorted((float(drill[2]), float(drill[3])))  # long side as the diameter had overstated
+                    d = (2 * (b - a) + math.pi * a) / math.pi          # it)
+                else:
+                    d = float(drill[1]) if drill[1] != 'oval' else float(drill[2])
                 self.vias.append(dict(x=centre[0], y=centre[1], size=0, drill=d, layers=lys, net=net, pth=True))
             pads.append(dict(name=pad[1], xy=centre, layers=lys, net=net, geom=geom, rot=prot, ref=ref))
         # graphics: copper shapes (net of the pad they touch on that layer) and Edge.Cuts pieces

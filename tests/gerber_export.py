@@ -58,7 +58,8 @@ def export(raw, outdir, base=None):
     files = []
     for i, lay in enumerate(raw.copper_order):
         tracks = [(t['net'], t['width'], up(t['pts'])) for t in raw.tracks if t['layer'] == lay]
-        flashes = [(v['net'], v['size'], v['x'], -v['y']) for v in raw.vias if lay in v['layers'] and v['size'] > 0]
+        rings = lambda v: v['layers'] if v.get('kind', 'through') == 'through' else (v['layers'][0], v['layers'][-1])
+        flashes = [(v['net'], v['size'], v['x'], -v['y']) for v in raw.vias if lay in rings(v) and v['size'] > 0]
         # the rest of the layer as regions merged per net: zones and drawn copper, pads
         by = {}
         for n, g in [(n, g) for l, n, g in raw.shapes if l == lay] + \

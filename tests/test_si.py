@@ -154,3 +154,27 @@ def test_the_example_config_is_a_study_of_the_question():
     from kicad2ems.study import read_config, plan
     st = read_config(os.path.join(ROOT, 'examples', 'si_bus.toml'))
     assert [s.name for s in plan(st)] == ['crosstalk']
+
+
+def test_a_net_with_a_zone_is_not_proposed_as_a_trace():
+    """A ground or power net with a pour is not a trace to pair, even where a track of it runs beside a signal (the
+    zones were looked for as dicts in the board's shapes, which are tuples: none was ever left out)."""
+    trk = lambda net, y: dict(net=net, layer='F.Cu', width=0.2, pts=[(0.0, y), (20.0, y)])
+    kb = types.SimpleNamespace(tracks=[trk('D0', 0.0), trk('GND', 0.4), trk('D1', 0.8)], zone_nets=set())
+    assert ['D0', 'GND'] in [r['nets'] for r in si.find_pairs(kb)]
+    kb.zone_nets = {'GND'}
+    assert all('GND' not in r['nets'] for r in si.find_pairs(kb))
+    from kicad2ems.importers.kicad import KiCadBoard
+    assert KiCadBoard(BUS).zone_nets == {'GND'}
+
+
+def test_a_pair_the_line_model_did_not_couple_is_not_judged(tmp_path, monkeypatch):
+    """Traces the line model puts in no coupled section have no path between them: their S terms are not computed
+    (the Touchstone file says so and holds 0). Their crosstalk is not 0 % and "met": it is not judged."""
+    from kicad2ems.lines import topology
+    monkeypatch.setattr(topology, 'COUPLE_H', 0.01)                 # (as traces on two layers, or far apart)
+    a = si.parser().parse_args([BUS, '--nets', 'D0,D1', '--ground', 'In1.Cu', '--limit', '3', '--out', str(tmp_path)])
+    d = si.run(a, echo=lambda *x: None)
+    w = d['worst']
+    assert w['ok'] is None and w['not_modelled'] == ['D0 to D1', 'D1 to D0']
+    assert si.verdict(w).startswith('not judged') and 'not judged' in si.Crosstalk().report(str(tmp_path))['summary']

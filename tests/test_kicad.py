@@ -50,3 +50,46 @@ def test_port_fields_both_prefixes():
     assert port_field({'mom.layer': 'In2.Cu'}, 'layer') == 'In2.Cu'
     assert port_field({'port.layer': 'B.Cu', 'mom.layer': 'In2.Cu'}, 'layer') == 'B.Cu'
     assert port_field({}, 'z0', 50) == 50
+
+
+_HEAD4 = '''(kicad_pcb (version 20240108) (generator "test")
+  (layers (0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user))
+  (setup (stackup (layer "F.Cu" (type "copper") (thickness 0.035))
+    (layer "dielectric 1" (type "prepreg") (thickness 0.2) (epsilon_r 4.3) (loss_tangent 0.02))
+    (layer "In1.Cu" (type "copper") (thickness 0.035))
+    (layer "dielectric 2" (type "core") (thickness 1.0) (epsilon_r 4.3) (loss_tangent 0.02))
+    (layer "In2.Cu" (type "copper") (thickness 0.035))
+    (layer "dielectric 3" (type "prepreg") (thickness 0.2) (epsilon_r 4.3) (loss_tangent 0.02))
+    (layer "B.Cu" (type "copper") (thickness 0.035))))
+  (net 0 "") (net 1 "GND") (net 2 "RF")
+  (gr_rect (start 0 0) (end 20 20) (stroke (width 0.05)) (fill no) (layer "Edge.Cuts"))
+'''
+
+
+def _text_board(body):
+    return KiCadBoard.from_text(_HEAD4 + body + ')\n')
+
+
+def test_blind_and_micro_vias_pass_the_layers_between_their_ends():
+    """A blind via F.Cu to In2.Cu passes In1.Cu, as a through via passes them all (only through vias were spread
+    over the stack: fill_voids then filled a blind via's antipad on In1.Cu, its barrel shorted to the plane)."""
+    for kind in ('blind', 'micro', ''):
+        b = _text_board(f'(via {kind} (at 10 10) (size 0.6) (drill 0.3) (layers "F.Cu" "In2.Cu") (net 2))')
+        assert b.vias[0]['layers'] == ['F.Cu', 'In1.Cu', 'In2.Cu'], kind
+
+
+def test_what_the_import_read_wrong_before():
+    """KiCad 5's zones (filled_polygon without a layer: the zone's), a pad's drill offset (its copper beside its
+    hole), an NPTH pad (a hole: no copper), and a zone never filled (left out, and said)."""
+    b = _text_board('''(zone (net 1) (net_name GND) (layer In1.Cu) (tstamp 0) (hatch edge 0.508)
+      (polygon (pts (xy 0 0) (xy 20 0) (xy 20 20) (xy 0 20)))
+      (filled_polygon (pts (xy 0 0) (xy 20 0) (xy 20 20) (xy 0 20))))''')
+    assert [(l, n, round(g.area)) for l, n, g in b.items] == [('In1.Cu', 'GND', 400)]
+    b = _text_board('''(footprint "p" (layer "F.Cu") (at 5 5 0)
+      (pad "1" thru_hole oval (at 0 0) (size 3 1) (drill 0.6 (offset 1 0)) (layers "*.Cu") (net 2 "RF"))
+      (pad "" np_thru_hole circle (at 3 3) (size 3.2 3.2) (drill 3.2) (layers "*.Cu" "*.Mask")))''')
+    pads = b.footprints[0]['pads']
+    assert [round(v, 6) for v in pads[0]['geom'].bounds] == [4.5, 4.5, 7.5, 5.5]
+    assert pads[1]['layers'] == [] and all(n == 'RF' for _, n, _ in b.items)
+    b = _text_board('(zone (net 1) (net_name "GND") (layers "In1.Cu") (polygon (pts (xy 0 0) (xy 20 0) (xy 20 20))))')
+    assert not b.items and len(b.notes) == 1 and 'not filled' in b.notes[0]

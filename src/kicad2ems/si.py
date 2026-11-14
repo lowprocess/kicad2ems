@@ -33,6 +33,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 
 import numpy as np
@@ -179,7 +180,20 @@ def edge_response(f, H, rise_s, taper=0.2):
     return t[keep], y[keep]
 
 
-def crosstalk(f, S, names, rise_s, aggressors=None):
+def unknown_terms(path):
+    """The S terms a Touchstone file of kicad2ems's says it did not compute (written as 0: the line model's ports
+    with no path between them), as {(row port, column port)}."""
+    out = set()
+    for line in open(path, encoding='utf-8'):
+        if line.startswith('!') and 'not computed (written as 0):' in line:
+            body = line.split('not computed (written as 0):', 1)[1]
+            out |= {(a.strip(), b.strip()) for a, b in re.findall(r'S\(([^,()]+),([^,()]+)\)', body)}
+        elif line.strip() and not line.startswith(('!', '#', '[')):
+            break
+    return out
+
+
+def crosstalk(f, S, names, rise_s, aggressors=None, unknown=()):
     """The crosstalk of S (nf x n x n, ports `names`: {port: (net, 'near' | 'far')} in order): [dict(aggressor,
     victim, next_db, fext_db (lists over f), next_peak_db, next_peak_Hz, fext_peak_db, fext_peak_Hz, next_pct,
     fext_pct (the edge's largest share of the swing, %), next_t / next_v, fext_t / fext_v (the edge's waveforms,
@@ -195,6 +209,7 @@ def crosstalk(f, S, names, rise_s, aggressors=None):
             if v == a:
                 continue
             row = dict(aggressor=a, victim=v, driven=ports[src])
+            row['modelled'] = not any((ports[idx[(v, end)]], ports[src]) in unknown for end in ('near', 'far'))
             for what, end in (('next', 'near'), ('fext', 'far')):
                 h = S[:, idx[(v, end)], src]
                 d = db(h)
@@ -387,7 +402,7 @@ def run(a, echo=print):
             continue
         f, S = read_touchstone(os.path.join(out, r["touchstone"]))[:2]
         S = renormalised(S, summary.get('zref') or 50.0, a.z0)
-        rows = crosstalk(f, S, names, rise, aggressors)
+        rows = crosstalk(f, S, names, rise, aggressors, unknown_terms(os.path.join(out, r['touchstone'])))
         solved[key] = dict(label=r.get('label', key), touchstone=r['touchstone'], f_Hz=[float(x) for x in f],
                            pairs=rows, victims=victims(rows, f))
     if not solved:
@@ -410,7 +425,7 @@ def run(a, echo=print):
     w = res['worst']
     echo(f"crosstalk: NEXT {w['next_pct']:.2f} % ({w['next_victim']} from {w['next_aggressor']}), FEXT "
          f"{w['fext_pct']:.2f} % ({w['fext_victim']} from {w['fext_aggressor']}) for a {a.rise:g} ps edge"
-         + (f"; limit {a.limit:g} %: {'met' if w['ok'] else 'NOT met'}" if a.limit is not None else ''))
+         + (f"; limit {a.limit:g} %: {verdict(w)}" if a.limit is not None else ''))
     echo(f"-> {os.path.join(out, RESULT)}")
     return res
 
@@ -419,17 +434,26 @@ def _end(e):
     return dict(x=e['x'], y=e['y'], layer=e['layer'], pad=list(e['pad']) if e['pad'] else None)
 
 
+def verdict(w):
+    """The limit's word for worst()'s result."""
+    if w.get('not_modelled'):
+        return f"not judged: {', '.join(w['not_modelled'])} not modelled (check with a full-wave solver)"
+    return 'met' if w['ok'] else 'NOT met'
+
+
 def worst(res):
     """The largest NEXT and FEXT of the answer's pairs (one aggressor at a time), and whether the limit is met
-    for the mode asked."""
+    for the mode asked: None (not judged) where a pair's coupling was not computed (the line model with no coupled
+    section between them: its 0 is no answer), listed in not_modelled."""
     rows = res['solved'][res['answer']]['pairs']
+    blind = [f"{r['aggressor']} to {r['victim']}" for r in rows if r.get('modelled') is False]
     n = max(rows, key=lambda r: r['next_pct'])
     f = max(rows, key=lambda r: r['fext_pct'])
     val = dict(next=n['next_pct'], fext=f['fext_pct'], both=max(n['next_pct'], f['fext_pct']))[res['mode']]
     lim = res.get('limit_pct')
     return dict(next_pct=n['next_pct'], next_aggressor=n['aggressor'], next_victim=n['victim'], next_peak_db=n['next_peak_db'],
                 fext_pct=f['fext_pct'], fext_aggressor=f['aggressor'], fext_victim=f['victim'], fext_peak_db=f['fext_peak_db'],
-                value_pct=val, ok=None if lim is None else bool(val <= lim))
+                value_pct=val, ok=None if lim is None or blind else bool(val <= lim), not_modelled=blind)
 
 
 # ---- what the board proposes: the traces that run side by side ------------------------------------------------
@@ -440,7 +464,8 @@ def find_pairs(kb, reach=3.0, min_length=3.0, most=12):
     zones (planes, pours) are not traces."""
     from shapely.geometry import LineString
     from shapely.strtree import STRtree
-    poured = {z.get('net') for z in getattr(kb, 'shapes', []) if isinstance(z, dict) and z.get('kind') == 'zone'}
+    poured = set(getattr(kb, 'zone_nets', ()))             # (they were looked for as dicts in kb.shapes, which
+                                                            # holds (layer, net, polygon): none was ever left out)
     segs = []
     for t in kb.tracks:
         if not t['net'] or t['net'] in poured:
@@ -616,7 +641,7 @@ class Crosstalk(Analysis):
         head = (f"NEXT {w['next_pct']:.2f} % ({w['next_victim']} from {w['next_aggressor']}), FEXT {w['fext_pct']:.2f} % "
                 f"({w['fext_victim']} from {w['fext_aggressor']}) of the swing, for a {d['rise_ps']:g} ps edge")
         if d.get('limit_pct') is not None:
-            head += f"; limit {d['limit_pct']:g} %: {'met' if w['ok'] else 'NOT met'}"
+            head += f"; limit {d['limit_pct']:g} %: {verdict(w)}"
         sec = [dict(title=f"Crosstalk, one aggressor at a time ({ans['label']})",
                     text=f"Each trace terminated in {d['z0']:g} ohm at both ends; the aggressor driven at its near "
                          f"end. In time: the largest voltage at the victim's end for the edge, as a share of the "
@@ -676,7 +701,7 @@ class Crosstalk(Analysis):
                               f"{x['gap_mm'] / s['gap_mm']:.1f} x"] for x in s['wider']]
                 lim = d.get('limit_pct')
                 note = []
-                if lim is not None and not w['ok']:
+                if lim is not None and w['ok'] is False:
                     s = wide[0]
                     val = lambda x: dict(next=abs(x['next_pct']), fext=abs(x['fext_pct']),
                                          both=max(abs(x['next_pct']), abs(x['fext_pct'])))[d['mode']]

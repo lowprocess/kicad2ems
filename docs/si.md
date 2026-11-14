@@ -43,7 +43,9 @@ from clicks on the board ([picking](gui.md#pick)).
    The report says which case each stretch is in, the length below which NEXT would start to fall, and what a
    gap 1.5, 2 and 3 times as wide would give (the same cross-section solved again with the victim moved away).
    With a limit (`--limit`, percent of the swing; `--mode next`, `fext` or `both` says of what), it says whether
-   the limit is met and the gap that would meet it.
+   the limit is met and the gap that would meet it. A pair the line model puts in no coupled section (traces on
+   two layers, or further apart than it couples) has no path between its ends there: its crosstalk was not
+   computed, and the limit is not judged ("not modelled": a full-wave solver beside it answers).
 
 ## The example
 

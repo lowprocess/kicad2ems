@@ -185,7 +185,7 @@ class Board:
                  log=print, ports=None, cut_ports=False, edge_walls=(), edge_keepout=0.5, need_ports=True,
                  fill_voids='off'):
         from .region import region_polygon, auto_nets, extra_port_fps, ground_nets
-        self.log, self.notes, self.need_ports = log, [], need_ports
+        self.log, self.notes, self.need_ports = log, list(getattr(raw, 'notes', ())), need_ports
         self.source = dict(importer=getattr(raw, 'importer', 'kicad'), file=getattr(raw, 'path', ''))
         self.request = dict(nets=nets, pos=pos_file, mask=include_mask, region=region, ground=ground, parts=parts,
                             ports=list(ports or []), cut_ports=cut_ports, edge_walls=list(edge_walls or []),

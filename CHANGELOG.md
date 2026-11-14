@@ -397,6 +397,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - **End gaps** (R-A11) join their ports: the gap's two sides were taken as unconnected (S21 NaN although qucsator
     had its MGAP), and scikit-rf has a gap too (Garg and Bahl's capacitances). dfsynth's end-coupled filter passes
     at 9.96 GHz for 10.0.
+  - **Crosstalk not computed reads as not judged** (R-A8): a pair the line model puts in no coupled section had
+    its S terms written as 0, read back as 0 % and "limit met"; it is "not modelled" and the limit not judged.
+    The pairs the board proposes leave out nets with a zone (R-A9: looked for as dicts among tuples, none was).
+  - **Blind and micro vias** (R-A7) span every copper layer between their ends (their rings at their ends): only
+    through vias were spread, so `--fill-voids` filled a blind via's antipad on the layers between.
+  - **KiCad import** (R-A22): KiCad 5's zones (their fills have no layer: the zone's), a pad's drill offset, NPTH
+    pads (a hole, not copper of no net on every layer), a plated slot (a via of its perimeter, not of its long
+    side), and a zone never filled (left out as before, now said in the board's notes).
   - **Coupled lines under solder mask** (R-A10): embedded microstrip forms coupled sections, its field solve with
     the mask over the copper (with `--mask` a hairpin had no coupled section and no path between its ports).
 - **What a review of the full-bridge removal found (pcbqs, kicad2ems-gui, kicad2ems-fem).** pcbqs: thermal takes the

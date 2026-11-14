@@ -13,31 +13,28 @@ window and mom25d; pcbqs's for the power tools). C, I and U numbers are findings
 Answers that are wrong with nothing to say so, and a workflow that does not run. Each is under a day unless it says
 otherwise; the review has the file and line of each.
 
-1. **Crosstalk not computed reads as met** (R-A8), and ground and power nets are proposed as pairs (R-A9: the
-   poured nets are looked for as dicts, the board holds tuples).
-2. **Blind and micro vias** keep only their end layers (R-A7): `--fill-voids` fills their antipads between.
-3. **mom25d's log sweep on a linear grid** (R-A6: |ΔS| up to 1.8 below the first linear step), and
+1. **mom25d's log sweep on a linear grid** (R-A6: |ΔS| up to 1.8 below the first linear step), and
    `OPENBLAS_NUM_THREADS` switching off its OpenMP cap (R-B1).
-4. **Stop** (R-A5, R-A19). The tools' children (ngspice, Elmer, Palace) outlive it, Stop on several rails starts the
+2. **Stop** (R-A5, R-A19). The tools' children (ngspice, Elmer, Palace) outlive it, Stop on several rails starts the
    next one, and closing the window kills a running S-parameter run, which its docs say never happens.
-5. **An unstable FDTD run** reads as "port not excited" (R-A12); gfdtd's lumped branches have no stability check
+3. **An unstable FDTD run** reads as "port not excited" (R-A12); gfdtd's lumped branches have no stability check
    (R-B17: parallel L under ~200 pH at 0.5 mm cells, any series R+C without L).
-6. **The coil proposal** is wpthb's (R-A13: PRIMARY, SECONDARY and the bridge's c2 in its note), and Elmer's thermal
+4. **The coil proposal** is wpthb's (R-A13: PRIMARY, SECONDARY and the bridge's c2 in its note), and Elmer's thermal
    reads the removed bridge tool's `component_power_W`.
-7. **The PDN's low end and its domains** (R-A14, R-A15, R-B10, R-B11). Mounts and barrels have no resistance (Re Z
+5. **The PDN's low end and its domains** (R-A14, R-A15, R-B10, R-B11). Mounts and barrels have no resistance (Re Z
    at 1 kHz 22-38 % under the DC network on the Jetson), a plane domain with no source is written as an impedance
    (838 MΩ), cavities pair through other rails' planes, a rail with no plane pair loses its DC answer too, and a
    failed mount solve reads as no access inductance.
-8. **Two-face copper** (R-A16): `conductor_faces` does nothing with face sheets, and kernels shared between models
+6. **Two-face copper** (R-A16): `conductor_faces` does nothing with face sheets, and kernels shared between models
     leave out the faces' skin loss (the PEEC PDN's bare curve).
-9. **Touchstone** (R-A20): the reader takes Z and Y files as S and ignores `R`; pcbqs writes one reference for ports
+7. **Touchstone** (R-A20): the reader takes Z and Y files as S and ignores `R`; pcbqs writes one reference for ports
     of several.
-10. **`install.py --update`** (R-A21) reinstalls the commits it installed before, not the ones kicad2ems now pins.
-11. **KiCad import** (R-A22): KiCad 5's zones, pads' drill offsets, NPTH pads (copper of no net on every layer),
-    unfilled zones and oval drills, each without a note.
-12. **The line model's losses** (R-A17, M): `--sigma` is felt by microstrip only, the worst layer's tan δ is taken
+8. **`install.py --update`** (R-A21) reinstalls the commits it installed before, not the ones kicad2ems now pins.
+9. **KiCad import, the rest** (R-A22): copper text, KiCad 9's per-layer padstacks and `remove_unused_layers` (inferred:
+   not checked on a board that has them).
+10. **The line model's losses** (R-A17, M): `--sigma` is felt by microstrip only, the worst layer's tan δ is taken
     where the field solver has the right one, a stripline between core and prepreg keeps the averaged εr.
-13. **The default switch's edges** (R-A18, M): a board's circuit and 9 of the 10 examples switch with a fixed ramp and
+11. **The default switch's edges** (R-A18, M): a board's circuit and 9 of the 10 examples switch with a fixed ramp and
     no gate charge, so their switching loss is the ramp's, not a device's.
 
 Then the errors that say nothing (R-B):
