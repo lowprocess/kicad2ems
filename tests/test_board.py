@@ -107,3 +107,12 @@ def test_a_board_json_is_an_input(boards, run_cli, tmp_path):
     assert code == 0, err
     assert 'is a resolved board: its own selection holds, not nets' in so
     assert (tmp_path / 'b' / 'lowpass_board.json').exists() and (tmp_path / 'b' / 'lowpass_mesh.png').exists()
+
+
+def test_a_port_s_reference_is_ground_copper_and_a_plug_is_not_a_port():
+    """A port's reference: the nearest ground net's copper under it, a signal trace nearer it passed over (it had been
+    taken, with nothing said); a placement file's P1, P2 references alone (plugs) are not ports."""
+    from kicad2ems.importers.kicad.pnp import pos_port_refs
+    rows = [dict(ref='P1', val='USB_C', package='USB_C_Receptacle'), dict(ref='TP3', val='P2', package='TestPoint'),
+            dict(ref='J4', val='SMA', package='RF_Port_SMA')]
+    assert pos_port_refs(rows) == {'TP3', 'J4'}

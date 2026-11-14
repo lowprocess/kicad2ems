@@ -225,6 +225,8 @@ class Job:
         return code
 
     def _run(self):
+        for note in getattr(self.s, 'notes', None) or []:          # the config's notes in the run's own log (the
+            self.log(f"config: {note}")                              # window and a study's runs had not had them)
         if not self.preflight():
             return 2
         for st in (self.model, self.lines):
@@ -438,10 +440,20 @@ class Job:
         if self.s.preview:
             self.estimate()
         names = [n for n in registry() if n in self.plan + self.previewed]
+        self._unprepared = set()
         for name in names:
             sv = registry()[name]
-            self.prep[name] = sv.prepare(self)
-            self.deviations[name] = devs = sv.deviations(self, self.prep[name])
+            try:                                                    # one solver's set-up failing is a warning, as
+                self.prep[name] = sv.prepare(self)                  # its solve's is (it had lost the whole run:
+                self.deviations[name] = devs = sv.deviations(self, self.prep[name])     # no run.json, no report)
+            except stop.Stopped:
+                raise
+            except Exception as e:
+                if os.environ.get('KICAD2EMS_TRACEBACK'):
+                    raise
+                self.log(f"WARNING: {name} failed in its set-up: {type(e).__name__}: {e}")
+                self._unprepared.add(name)
+                continue
             if devs:
                 self.log(f"{name} changes: " + "; ".join(describe(devs)))
         self.summary['deviations'] = {n: [dataclasses.asdict(d) for d in ds] for n, ds in self.deviations.items()}
@@ -457,6 +469,8 @@ class Job:
             if stop.requested():
                 self.log(f"stopped: {', '.join(label(n) for n in order[i:])} not run")
                 break
+            if name in getattr(self, '_unprepared', ()):
+                continue
             try:
                 self.results[name] = registry()[name].solve(self, self.prep.get(name))
             except stop.Stopped:
@@ -501,7 +515,14 @@ class Job:
                                        freq_ghz=[freq[0] / 1e9, freq[len(freq) // 2] / 1e9, freq[-1] / 1e9],
                                        table=self.summary['solved'][done[0]]['table'], compare_file=s.compare)
         for n in done:
-            reg[n].outputs(self, self.prep.get(n), self.results[n])
+            try:                                                    # a solver's extra outputs (maps, dumps): a
+                reg[n].outputs(self, self.prep.get(n), self.results[n])     # warning, the S-parameters stand
+            except stop.Stopped:
+                raise
+            except Exception as e:
+                if os.environ.get('KICAD2EMS_TRACEBACK'):
+                    raise
+                self.log(f"WARNING: {n}'s outputs failed: {type(e).__name__}: {e}")
 
     def join_bands(self):
         """A quasi-static solver's answer and a full-wave one's, joined into one band at the frequency the first is

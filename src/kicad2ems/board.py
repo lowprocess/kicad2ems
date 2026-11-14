@@ -545,8 +545,15 @@ class Board:
         for side in (below, not below):                         # preferred side first, then the other
             cand = [l for l in self.cu_order if (self.cu_z[l] < zs if side else self.cu_z[l] > zs)]
             cand.sort(key=lambda l: abs(self.cu_z[l] - zs))
-            ref = next((l for l in cand if self.copper_at(l, Point(*pc)) is not None), None)
+            under = [l for l in cand if self.copper_at(l, Point(*pc)) is not None]
+            # a ground net's copper first: the nearest of any net had been taken, a signal trace crossing under
+            # the port as its reference with nothing said
+            grounded = lambda l: l == self.ground or self.net_at(l, *pc) in self.ground_nets     # (ground = L: a
+            ref = next((l for l in under if grounded(l)), under[0] if under else None)           # solid plane)
             if ref:
+                if not grounded(ref):
+                    self.notes.append(f"{name}: its reference is {self.net_at(ref, *pc) or 'copper of no net'} on "
+                                      f"{ref}, not a ground net (none under it on that side)")
                 break
         if ref is None:
             raise ValueError(f"{name}: no reference copper {'below' if below else 'above'} the port at "

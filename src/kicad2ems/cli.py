@@ -147,9 +147,7 @@ def main(argv=None, prog='kicad2ems', default_solvers=None):
             ok, lines = check_report()
             print("\n".join(lines))
             return 0 if ok else 2
-        for note in s.notes:
-            print(f"config: {note}")
-        from .pipeline import Job
+        from .pipeline import Job                                   # (the run logs the config's notes)
         return Job(s, command=" ".join([prog] + list(sys.argv[1:] if argv is None else argv))).run()
     except (ConfigError, ValueError, FileNotFoundError, FileExistsError, IsADirectoryError) as e:
         if os.environ.get('KICAD2EMS_TRACEBACK'):              # for debugging: the full traceback

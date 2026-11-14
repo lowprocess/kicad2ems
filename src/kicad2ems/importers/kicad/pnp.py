@@ -26,7 +26,8 @@ def read_pos(path):
 
 
 def pos_port_refs(rows, pattern=r'^P\d+[+\-PN]?$', package_hint='PORT'):
-    """References of port components: Value or Reference P<n>, or package containing the hint."""
+    """References of port components: Value P<n>, or package containing the hint (a Reference P<n> alone is a
+    plug's designator: it had made every connector of a full placement file a port)."""
     pat = re.compile(pattern, re.I)
-    return {r['ref'] for r in rows if pat.match(r['val']) or pat.match(r['ref'])
+    return {r['ref'] for r in rows if pat.match(r['val'])
             or (package_hint and package_hint.lower() in r['package'].lower())}

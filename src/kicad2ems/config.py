@@ -349,8 +349,13 @@ def _table_items(cfg, notes, ignored):
                         out.append((by_name[k], x))
                     else:
                         ignored.append(f"solver.{name}.{k}")
-        # any other table belongs to another tool
+        elif t.lower() not in TABLES:                              # (a misspelt [solver.x] had been taken silently)
+            notes.append(f"[{t}] is not a table kicad2ems reads ({', '.join(f'[{x}]' for x in sorted(TABLES))}, "
+                         f"[solver.<name>]): ignored")
     return out
+
+
+TABLES = {'openems', 'solver', 'study', 'analysis'}               # the tables a config of the stack holds
 
 
 def read_toml(path):
@@ -414,6 +419,10 @@ def build_settings(cli=None, config=None, default_solvers=None):
         raise ConfigError(f"sweep = log: fmin ({s.fmin:g} GHz) must be above 0")
     if s.rough is not None and s.rough < 0:
         raise ConfigError(f"rough = {s.rough:g}: um RMS, at least 0")
+    if s.sigma is not None and s.sigma <= 0:                        # (accepted before: a negative conductivity)
+        raise ConfigError(f"sigma = {s.sigma:g}: S/m, above 0")
+    if s.points > 100_000:
+        raise ConfigError(f"points = {s.points}: at most 100,000 frequencies")
     if s.rough and not s.sigma:
         s.notes.append("--rough without --sigma: lossless copper has no roughness loss (ignored)")
     reg = _solvers_pkg.registry()

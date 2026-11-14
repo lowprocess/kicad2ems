@@ -456,6 +456,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     kicad2ems-fdtd and mom25d 2.9 (`basic`); kicad2ems-fem has its LICENSE. **Docs** (R-G): the window's README,
     `api.md`'s version, the README's results, `testing.md`, the Gerber import, mom.md's mixed, HODLR and GPUs,
     pcbqs's circuit keys, kicad2ems-fem's five engines, gfdtd's backends, the superproject's table.
+  - **Errors that said nothing** (R-B3, B4, B15, B16, and pcbqs's B8, B9, B12):
+    - a solver's set-up or outputs that raises is a warning as its solve's is: the others' results, run.json and the
+      report are written (an exception there had ended the run with nothing written);
+    - a table kicad2ems does not read is said (a misspelt `[solver.openems]` had been ignored), `sigma` at or below 0
+      and over 100,000 `points` are refused, a study question's unknown key is an error (`engines` for `engine` had
+      run the default engine), and the config's notes are in the run's log (only the command line had printed them:
+      the window and a study's runs never saw them);
+    - a port's reference is the nearest ground copper under it, a nearer signal trace passed over (it had been taken
+      without a word), and said when it is not ground;
+    - a placement file's reference P1, P2 alone is a plug, not a port (every connector of a full .pos had been one).
   - **Coupled lines under solder mask** (R-A10): embedded microstrip forms coupled sections, its field solve with
     the mask over the copper (with `--mask` a hairpin had no coupled section and no path between its ports).
 - **What a review of the full-bridge removal found (pcbqs, kicad2ems-gui, kicad2ems-fem).** pcbqs: thermal takes the

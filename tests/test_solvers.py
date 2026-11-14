@@ -114,3 +114,22 @@ def test_kicad2openems_keeps_openems_as_its_default(tmp_path, monkeypatch, capsy
     monkeypatch.setattr(standins, 'engine_check', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
     assert main_openems([FILTER, '--out', str(tmp_path / 'out')]) == 2         # openEMS named by default: stops
     assert 'openEMS (FDTD) cannot run - details' in capsys.readouterr().out
+
+
+def test_a_solver_s_set_up_or_outputs_failing_leaves_the_run_and_its_report(run_cli, tmp_path, monkeypatch):
+    """A solver's prepare or outputs that raises is a warning as its solve's is: the other solvers' results, run.json
+    and the report are written (an exception there had ended the whole run with nothing written)."""
+    pytest.importorskip('skrf')
+
+    def broken(self, run, *a):
+        raise RuntimeError('no mesh for you')
+    monkeypatch.setattr(standins.MoM25D, 'prepare', broken)
+    out = tmp_path / 'out'
+    code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--mom', '--out', out)
+    assert code == 0 and 'WARNING: mom25d failed in its set-up: RuntimeError: no mesh for you' in so
+    assert (out / 'rf_interdig_scikit.s2p').exists() and (out / 'rf_interdig_run.json').exists()
+    monkeypatch.undo()
+    pytest.importorskip('skrf')
+    monkeypatch.setattr(standins.MoM25D, 'outputs', broken, raising=False)
+    code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--mom', '--out', tmp_path / 'out2')
+    assert code == 0 and "WARNING: mom25d's outputs failed" in so and (tmp_path / 'out2' / 'rf_interdig_report.html').exists()

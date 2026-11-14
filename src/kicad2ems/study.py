@@ -354,6 +354,9 @@ def read_config(path, strict=True):
             if q not in known and strict:
                 raise ValueError(f"[study] run: no question {q!r}: one of {', '.join(known)}")
             tab = tabs.get(q, {})
+            odd = sorted(set(tab) - {'engine', 'fields'})            # ('engines' for 'engine' had run the default
+            if odd and strict:                                       # engine without a word)
+                raise ValueError(f"[study.{q}]: {', '.join(odd)}: not a key of a question (engine, fields)")
             names = []
             for text in _names(tab.get('engine', [])):
                 try:

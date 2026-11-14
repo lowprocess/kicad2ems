@@ -133,3 +133,23 @@ def test_init_writes_a_starter_config(demo_files, run_cli, tmp_path):
     (tmp_path / 'c.kicad_pcb').write_text(text, encoding='utf-8')                      # no port footprints: none found, and why
     code, so, _ = run_cli('--init', tmp_path / 'c.kicad_pcb')
     assert code == 0 and 'no ports found' in so and 'Fab text P1' in (tmp_path / 'c.toml').read_text(encoding='utf-8')
+
+
+def test_config_mistakes_are_said(tmp_path, run_cli):
+    """A table kicad2ems does not read is said (a misspelt [solver.openems] had been ignored silently), a negative
+    conductivity is refused, and a study question's unknown key is an error ('engines' for 'engine' had run the
+    default engine); the config's notes are in the run's log, where the window and a study's runs read them."""
+    import shutil
+    from kicad2ems.config import build_settings, ConfigError
+    from kicad2ems.study import read_config
+    from k2e_fixtures import ROOT
+    board = os.path.join(ROOT, 'examples', 'rf_interdig.kicad_pcb')
+    cfg = tmp_path / 'c.toml'
+    cfg.write_text(f'board = "{board}"\n[sovler.openems]\nexcite = ["P1"]\n')
+    s = build_settings({}, config=str(cfg))
+    assert any('[sovler] is not a table kicad2ems reads' in n for n in s.notes)
+    with pytest.raises(ConfigError, match='sigma'):
+        build_settings(dict(board=board, sigma=-5))
+    cfg.write_text(f'board = "{board}"\n[study]\nrun = ["sparams"]\n[study.sparams]\nengines = ["lines"]\n')
+    with pytest.raises(ValueError, match='engines: not a key of a question'):
+        read_config(str(cfg))
