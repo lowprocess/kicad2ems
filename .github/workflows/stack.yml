@@ -120,9 +120,28 @@ jobs:
       - name: dfsynth (with the line-model cross-check)
         if: success() || failure()
         run: cd dfsynth && python -m pytest -q
-      - name: "kicad2ems-fem (its meshes, configs, readers and registry: gmsh; no Elmer or Palace here: their runs skip)"
+      # Elmer for kicad2ems-fem's Elmer runs (R-C2): built once by the installer's script, then from the cache
+      - name: Elmer (cached build)
+        id: elmer-cache
         if: success() || failure()
-        run: cd kicad2ems-fem && python -m pytest -q
+        uses: actions/cache@v4
+        with:
+          path: ~/opt/elmer
+          key: elmer-release-26.2.1-${{ runner.os }}-${{ hashFiles('kicad2ems/tools/build_elmer.sh') }}
+      - name: Elmer (build)
+        if: (success() || failure()) && steps.elmer-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 40
+        run: |
+          sudo apt-get install -y --no-install-recommends gfortran cmake libblas-dev liblapack-dev
+          bash kicad2ems/tools/build_elmer.sh "$HOME/opt/elmer"
+          rm -rf "$HOME/opt/elmer/src"                                  # the cache keeps the install, not the sources
+      - name: "kicad2ems-fem (meshes, configs, readers, registry; Elmer's runs on the cached build; no Palace: its runs skip)"
+        if: success() || failure()
+        run: |
+          sudo apt-get install -y --no-install-recommends libgfortran5 libblas3 liblapack3 libgomp1   # Elmer's own
+          export K2E_ELMER="$HOME/opt/elmer/bin"
+          "$K2E_ELMER/ElmerSolver" -v </dev/null | head -1 || true
+          cd kicad2ems-fem && python -m pytest -q -rs
 
   # What KiCad installs: the KiCad plugin on main with the commits its requirements.txt pins. Fails when the plugin
   # needs a kicad2ems newer than the pins (bump plugin/requirements.txt).
