@@ -50,6 +50,31 @@ def _check_model(lm, ports):
 
 
 # ---- scikit-rf --------------------------------------------------------------------------------------
+MU0 = 4e-7 * math.pi
+
+
+def conductor_r(w_mm, t_mm, f, sigma):
+    """A line's series resistance per metre at f: the strip's surface resistance over its width (its DC sheet
+    resistance where the skin is deeper than the copper) and its return's, about as much (2 Rs / w, as dfsynth's
+    multiconductor model has it). A first cut: --sigma had reached only microstrip sections, and a stripline, a
+    field-solved section or a coupled one was lossless whatever it said."""
+    rs = np.sqrt(np.pi * np.asarray(f, float) * MU0 / sigma)
+    rdc = 1.0 / (sigma * max(t_mm, 1e-4) * 1e-3)
+    return (np.maximum(rs, rdc) + rs) / (w_mm * 1e-3)
+
+
+def mode_tand(e):
+    """The loss tangent of a section's mode, for a model of it as one effective medium (eeff, Z0): the field
+    solver's (G / w C) where it solved it, else the substrate's scaled by its filling factor on a microstrip-like
+    section (the substrate's own, taken whole, had been ~15 % high on a plain microstrip)."""
+    if getattr(e, 'tand_eff', None):
+        return float(e.tand_eff)
+    tand, er, ee = e.tand or 0.0, e.er, e.eeff
+    if e.xs in ('microstrip', 'embedded microstrip', 'cpwg') and er and ee and er > 1 and 1 < ee < er:
+        return tand * er / ee * (ee - 1) / (er - 1)
+    return tand
+
+
 def _skrf(lm, ports, freq, sheet, sigma):
     try:
         import skrf
@@ -73,7 +98,7 @@ def _skrf(lm, ports, freq, sheet, sigma):
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         for gid, g in enumerate(lm.groups):                 # coupled sections: one multiconductor block each
-            ntw = _group_network(skrf, fr, g, sheet, f"group{gid}")
+            ntw = _group_network(skrf, fr, g, sheet, f"group{gid}", sigma)
             n = len(g['members'])
             for k, (e, near, far) in enumerate(g['members']):
                 nodes.setdefault(near, []).append((ntw, k))
@@ -99,12 +124,18 @@ def _skrf(lm, ports, freq, sheet, sigma):
                                            diel='frequencyinvariant', z0_port=50.0)
                 else:
                     med = skrf.media.CPW(frequency=fr, w=e.w * 1e-3, s=e.s * 1e-3, h=e.h * 1e-3, ep_r=e.er,
-                                         t=None if sheet else max(e.t, 1e-9) * 1e-3, has_metal_backside=True,
+                                         t=None if sheet and not sigma else max(e.t or 0.035, 1e-9) * 1e-3,
+                                         has_metal_backside=True,                   # (a thickness: its loss needs one)
                                          rho=rho if sigma else None, tand=e.tand, diel='frequencyinvariant', z0_port=50.0)
                 ntw = med.line(e.length * 1e-3, 'm', name=name)
             elif e.z0:
                 z0, ee = _line_params(e, sheet)
-                med = skrf.media.DefinedAEpTandZ0(frequency=fr, ep_r=ee, tanD=e.tand, z0=z0, z0_port=50.0)
+                if sigma:                                   # the copper's loss too: gamma of R, L, G, C
+                    beta = w * np.sqrt(ee) / C0
+                    gamma = 1j * beta * np.sqrt(1 - 1j * mode_tand(e)) + conductor_r(e.w, e.t or 0.035, fr.f, sigma) / (2 * z0)
+                    med = skrf.media.DefinedGammaZ0(frequency=fr, z0=z0, gamma=gamma, z0_port=50.0)
+                else:
+                    med = skrf.media.DefinedAEpTandZ0(frequency=fr, ep_r=ee, tanD=mode_tand(e), z0=z0, z0_port=50.0)
                 ntw = med.line(e.length * 1e-3, 'm', name=name)
             else:                                           # no reference plane: a plain connection
                 ntw = series_z(np.full_like(w, 1e-6, dtype=complex), name)
@@ -136,21 +167,23 @@ def _skrf(lm, ports, freq, sheet, sigma):
         return res.s, list(cir.port_names)
 
 
-def _group_network(skrf, fr, g, sheet, name):
+def _group_network(skrf, fr, g, sheet, name, sigma=None):
     """A coupled section as a 2N-port skrf Network (ports: near ends, then far ends)."""
-    S = group_s(g, fr.f)
+    S = group_s(g, fr.f, sigma)
     return skrf.Network(frequency=fr, s=S, z0=50.0, name=name)
 
 
-def group_s(g, freq):
-    """S-parameters (nf, 2N, 2N) of a coupled section of the line model (coupled.py)."""
+def group_s(g, freq, sigma=None):
+    """S-parameters (nf, 2N, 2N) of a coupled section of the line model (coupled.py); sigma: its copper's loss."""
     from ...lines.coupled import group_lc, mtl_s
     widths = [e.w for e, _, _ in g['members']]
     if g.get('C') is not None:                              # the field solver's (lines.reference.FIELD)
         C, Ca = g['C'], g['Ca']
     else:
         C, Ca = group_lc(widths, g['gaps'], g['h'], g['er'], g.get('xs', 'microstrip'))
-    return mtl_s(C, Ca, g['er'], g['tand'] or 0.0, g['length'], freq)
+    members = [e for e, _, _ in g['members']]
+    R = (lambda f: np.array([conductor_r(e.w, e.t or 0.035, f, sigma) for e in members])) if sigma else None
+    return mtl_s(C, Ca, g['er'], g['tand'] or 0.0, g['length'], freq, R=R)
 
 
 # ---- qucsator ---------------------------------------------------------------------------------------
@@ -351,8 +384,9 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
         elif e.z0:
             z0, ee = _line_params(e, sheet)
             lp, cp = z0 * math.sqrt(ee) / C0, math.sqrt(ee) / (z0 * C0)
-            g = 2 * math.pi * f0 * cp * (e.tand or 0.0)          # dielectric loss matched at the band centre
-            L.append(f'RLCG:{name} {a} {b} R="0" L="{lp:.9g}" C="{cp:.9g}" G="{g:.9g}" Length="{length * 1e-3:.9g}"')
+            g = 2 * math.pi * f0 * cp * mode_tand(e)             # dielectric loss matched at the band centre
+            r = float(conductor_r(e.w, e.t or 0.035, f0, sigma)) if sigma else 0.0      # (at the band centre, as G)
+            L.append(f'RLCG:{name} {a} {b} R="{r:.9g}" L="{lp:.9g}" C="{cp:.9g}" G="{g:.9g}" Length="{length * 1e-3:.9g}"')
         else:
             L.append(f'R:{name} {a} {b} R="1e-6 Ohm"')
     # discontinuities
@@ -409,7 +443,7 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
             if workdir is None:
                 raise ValueError("a coupled section of more than two lines needs a working folder for its Touchstone")
             path = os.path.join(workdir, f"group{gid}.s{2 * len(mem)}p")
-            write_touchstone(path, freq, group_s(g, freq), [50.0] * (2 * len(mem)), comment='coupled section')
+            write_touchstone(path, freq, group_s(g, freq, sigma), [50.0] * (2 * len(mem)), comment='coupled section')
             unix = path.replace(os.sep, '/')                         # (outside the f-string: Python 3.10 and 3.11)
             L.append(f'SPfile:G{gid} {" ".join(nodes_near + nodes_far)} gnd File="{{{unix}}}" Data="rectangular" '
                      f'Interpolator="linear" duringDC="open"')

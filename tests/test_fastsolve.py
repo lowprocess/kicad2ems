@@ -222,3 +222,25 @@ def test_a_ground_via_in_a_hole_of_the_line_s_copper_does_not_short_it(tmp_path)
         m = Board(KiCadBoard(str(tmp_path / 'h.kicad_pcb')), nets=['RF', 'GND'], ground='B.Cu', log=lambda *a: None)
         lm = build(m)
         assert len([e for e in lm.elements if e.kind == 'via' and e.b == 'gnd']) == shorts, hole
+
+
+def test_sigma_is_felt_beyond_microstrip():
+    """--sigma reaches a stripline and a coupled section (only microstrip sections had felt it); 2 Rs / w per metre,
+    never below the strip's DC resistance."""
+    pytest.importorskip('skrf')
+    from kicad2ems.config import build_settings
+    from kicad2ems.pipeline import board_from_settings
+    from kicad2ems.solvers.lines.fastsolve import conductor_r
+    import os
+    assert conductor_r(0.2, 0.035, 0.0, 5.8e7) == pytest.approx(1 / (5.8e7 * 35e-6 * 0.2e-3))
+    rs = np.sqrt(np.pi * 10e9 * 4e-7 * np.pi / 5.8e7)
+    assert conductor_r(0.2, 0.035, 10e9, 5.8e7) == pytest.approx(2 * rs / 0.2e-3)
+    root = os.path.join(os.path.dirname(__file__), '..', 'examples')
+    for name in ('rf_stripline', 'rf_coupler'):
+        s = build_settings({}, config=os.path.join(root, name + '.toml'))
+        m = board_from_settings(s, log=lambda *a: None)
+        lm = build(m)
+        f = np.array([5e9])
+        lossless, _ = solve(lm, m.ports, f, 'skrf')
+        lossy, _ = solve(lm, m.ports, f, 'skrf', sigma=5.8e7)
+        assert db(lossy[0, 1, 0]) < db(lossless[0, 1, 0]) - 0.03, name

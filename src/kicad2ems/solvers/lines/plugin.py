@@ -10,7 +10,8 @@ from .. import Solver, Result
 _CAPS = dict(ports='yes, at the network node', gap_ports='no', diff_pairs='yes', parts='yes',
              vias='approximated: barrels as line sections, vias to ground as inductances',
              outline='ignored', planes='approximated: as section references only', edge_walls='ignored',
-             thickness='ignored: zero-thickness sections, as openEMS', conductor_loss='yes',
+             thickness='ignored: zero-thickness sections, as openEMS', conductor_loss="approximated: microstrip's by its formula, the other sections' as 2 Rs / w (strip and "
+                                                                "return; qucsator: at the band centre)",
              roughness='approximated: its conductivity at the band centre (Hammerstad)',
              finish='approximated: its conductivity at the band centre, by the finished faces\' share of the loss',
              dispersion='no: constant tan d', radiation='no', cavity='no', antenna='no')

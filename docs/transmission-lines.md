@@ -327,7 +327,11 @@ The sections become a circuit, solved in milliseconds by one of two programs:
 | discontinuities | end gaps only (a pi of Garg and Bahl's capacitances) | open ends, corners, steps, tees, crosses and gaps |
 
 `--solvers lines` uses qucsator when it's installed, otherwise scikit-rf; `--fast` adds the line model next to the
-other solvers as a reference. The copper is zero-thickness, as in the other solvers, and `--sigma` adds copper loss.
+other solvers as a reference. The copper is zero-thickness, as in the other solvers, and `--sigma` adds copper loss:
+microstrip's by its formula, every other section's (stripline, a field-solved or a coupled one) as about 2 Rs / w
+per metre, the strip's and its return's (qucsator's RLCG holds it at the band centre, as its dielectric loss).
+Dielectric loss is the mode's own tan δ: the field solver's where it solved a section, the formulas' filling
+factor elsewhere, and a stack's layers weighted as the field crosses them.
 The result is `<name>_qucs.sNp` or `<name>_scikit.sNp`, compared in the plot and report with the first solver. Large
 differences point to something one model leaves out (coupling, radiation, plane resonances, the lumped ports) or to
 a mesh problem.

@@ -117,9 +117,10 @@ def group_lc(widths, gaps, h, er, xs='microstrip'):
     return out[0], out[1]
 
 
-def mtl_s(C, Ca, er, tand, length_mm, freq, z0=50.0):
+def mtl_s(C, Ca, er, tand, length_mm, freq, z0=50.0, R=None):
     """S-parameters (nf, 2N, 2N) of a uniform N-line section of length length_mm: ports 1..N at the
-    near ends, N+1..2N at the far ends (line i: port i -> port N + i), reference z0."""
+    near ends, N+1..2N at the far ends (line i: port i -> port N + i), reference z0. R(f): each line's series
+    resistance per metre, (N,) (its copper and its return's; None: lossless conductors)."""
     C, Ca = np.asarray(C, float), np.asarray(Ca, float)
     n = len(C)
     L = np.linalg.inv(Ca) / C0 ** 2                            # mu0 eps0 Ca^-1
@@ -129,7 +130,7 @@ def mtl_s(C, Ca, er, tand, length_mm, freq, z0=50.0):
     eye = np.eye(2 * n)
     for k, f in enumerate(np.asarray(freq, float)):
         w = 2 * np.pi * f
-        Z = 1j * w * L
+        Z = 1j * w * L + (np.diag(R(f)) if R is not None else 0.0)
         Y = 1j * w * C + w * tand * Cd
         g2, T = np.linalg.eig(Z @ Y)
         g = np.sqrt(g2)

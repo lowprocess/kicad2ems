@@ -97,7 +97,7 @@ COUPLED_XS = ('microstrip', 'embedded microstrip', 'stripline', 'offset striplin
 FIELD_GROUPS = True     # coupled sections' C from the field solver, every line coupled to every other (False:
                         # group_lc's nearest-neighbour pairs of the formulas)
 _COPY = ('xs', 'z0', 'eeff', 'z0_sheet', 'eeff_sheet', 'er', 'h', 's', 't', 'tand', 'offset', 'field', 'z0_formula',
-         'source', 'cut', 'classified', 'cover', 'er_cover')
+         'source', 'cut', 'classified', 'cover', 'er_cover', 'tand_eff')
 
 
 def _couple_h(e):

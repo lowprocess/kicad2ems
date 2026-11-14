@@ -12,16 +12,21 @@ from .formulas import cpwg, embedded_microstrip, microstrip, offset_stripline, s
 from .elements import Element
 
 
+MIXED_ER = 1.03             # dielectrics between a stripline's planes differing by more: solved on its cut
+
 def _dielectric(model, z_lo, z_hi):
-    """Thickness-weighted er and the largest tan d of the dielectrics between two heights."""
-    tot, acc, tand = 0.0, 0.0, 0.0
+    """Thickness-weighted er and the tan d of the dielectrics between two heights, as a field across them in series
+    weighs them (each layer's thickness over its er: the largest had been taken, 15 % high on a plain microstrip and
+    the worst layer's on a mixed stack)."""
+    tot, acc, wsum, tsum = 0.0, 0.0, 0.0, 0.0
     for l in model.layers:
         a, b = max(l['z0'], z_lo), min(l['z1'], z_hi)
         if b > a:
             tot += b - a
             acc += (b - a) * l['er']
-            tand = max(tand, l['tand'])
-    return (acc / tot if tot > 0 else 1.0), tand
+            wsum += (b - a) / l['er']
+            tsum += (b - a) / l['er'] * l['tand']
+    return (acc / tot if tot > 0 else 1.0), (tsum / wsum if wsum > 0 else 0.0)
 
 
 class RefCopper:
@@ -246,6 +251,10 @@ def _beyond_formula(e, found):
             shield[z > zs] = dz
     if seen < len(hs):
         return "a plane it was classified on is not across its cut"
+    lo, hi = zs - (shield.get(False) or 0.0), zs + (shield.get(True) or 0.0)
+    ers = {er for z0, z1, er, _ in diel if min(z1, hi) - max(z0, lo) > 1e-6} if len(hs) == 2 else set()
+    if ers and max(ers) > MIXED_ER * min(ers):              # (a formula on the averaged er: Z0 4 % low, the delay
+        return f"dielectrics of er {min(ers):.3g} and {max(ers):.3g} between its planes"   # 5.6 % long)
     for z, full, ps in layers:                              # copper on other layers, in front of those planes
         dz = abs(z - zs)
         if is_ref(dz) or dz > shield.get(z > zs, math.inf):
@@ -448,7 +457,9 @@ def _take(e, got, source):
     e.source = source
     e.notes.append(f"field solver: Z0 {got[0][0]:.1f} ohm (formula {e.z0:.1f})")
     e.field = abs(got[1][0] / e.z0_sheet - 1) > FIELD_DIFFERS if e.z0_sheet else True
-    (e.z0, e.eeff), (e.z0_sheet, e.eeff_sheet) = got
+    (e.z0, e.eeff, *loss), (e.z0_sheet, e.eeff_sheet, *_) = got
+    if loss and loss[0] > 0:                                # the mode's own tan d, which the solve gives
+        e.tand_eff = loss[0]
 
 
 def _field_cpwg(e):
@@ -614,7 +625,7 @@ def _in_workers(todo, workers):
 @_cached(1024)
 def _solve_cpwg(w, s, h, er, t):
     from . import xsection as X
-    return X.microstrip(w, h, er, t, s=s).solve().single()
+    return X.microstrip(w, h, er, t, s=s).solve().single()           # (one dielectric: its tan d is the layer's)
 
 
 @functools.lru_cache(maxsize=8)
@@ -643,8 +654,10 @@ def _snap_distance(x, rel):
 
 @_cached(8192)
 def _solve_cut(w, zs, t, up, side, layers, diel):
-    """(Z0, eeff) of the cross-section _cut_section builds from a cut (cached: one solve per distinct cut)."""
-    return _cut_section(w, zs, t, up, side, layers, diel).solve().single()
+    """(Z0, eeff, tan d) of the cross-section _cut_section builds from a cut (cached: one solve per distinct cut); tan d
+    the mode's own, G / (w C)."""
+    r = _cut_section(w, zs, t, up, side, layers, diel).solve()
+    return (*r.single(), float(r.tand_eff()))
 
 
 @_cached(4096)

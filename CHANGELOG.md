@@ -484,6 +484,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     integrated GPU (its memory is the system's).
   - **kicad2ems-fem** (R-B14): Palace's unconverged solves are warnings and kept with its changeset; its MPI ranks
     one per fast core (8 had been fixed).
+  - **The line model's losses** (R-A17): `--sigma` reaches every section (a stripline, a field-solved or a coupled
+    one had been lossless whatever it said): microstrip's by its formula, the others' as 2 Rs / w per metre, the
+    strip's and its return's. Dielectric loss is the mode's own tan δ: the field solver's where it solved a section,
+    the filling factor elsewhere, a stack's layers weighted as the field crosses them (the largest had been taken:
+    15 % high on a plain microstrip). A stripline between dielectrics of different er is solved on its cut (its
+    formula on the averaged er had Z0 4 % low and the delay 5.6 % long).
   - **Coupled lines under solder mask** (R-A10): embedded microstrip forms coupled sections, its field solve with
     the mask over the copper (with `--mask` a hairpin had no coupled section and no path between its ports).
 - **What a review of the full-bridge removal found (pcbqs, kicad2ems-gui, kicad2ems-fem).** pcbqs: thermal takes the

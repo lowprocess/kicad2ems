@@ -15,9 +15,7 @@ otherwise; the review has the file and line of each.
 
 1. **KiCad import, the rest** (R-A22): copper text, KiCad 9's per-layer padstacks and `remove_unused_layers` (inferred:
    not checked on a board that has them).
-2. **The line model's losses** (R-A17, M): `--sigma` is felt by microstrip only, the worst layer's tan δ is taken
-    where the field solver has the right one, a stripline between core and prepreg keeps the averaged εr.
-3. **The default switch's edges** (R-A18, M): a board's circuit and 9 of the 10 examples switch with a fixed ramp and
+2. **The default switch's edges** (R-A18, M): a board's circuit and 9 of the 10 examples switch with a fixed ramp and
     no gate charge, so their switching loss is the ramp's, not a device's.
 
 The errors that said nothing (R-B) are done (2026-11-14) but for: Palace's cost estimate before a run (B21), and
@@ -167,7 +165,9 @@ that: nothing in it may fix a panel in place. Left:
 6. **Discontinuities** (R-E15). The scikit-rf backend (qucsator's absence: often Windows) has none, so open stubs are
    short by their end's extension; qucsator has nothing for a 45° bend or a junction of five arms. dfsynth has
    Kirschning-Jansen-Koster open ends, Garg-Bahl gaps and Edwards steps to port.
-7. **Dispersion**: a Djordjevic-Sarkar εr(f) for each layer before the solve.
+7. **Dispersion and the losses' next step**: a Djordjevic-Sarkar εr(f) for each layer before the solve; the
+   conductor loss from the cross-section (Wheeler's rule: two solves with the copper set back by half a skin
+   depth) in place of 2 Rs / w, and each harmonic's in qucsator (its RLCG holds R and G at the band centre).
 8. **The builder's quadratic loops, the rest** (R-D17): the junction split and the via search are indexed since
    2026-11-14 (the CM5's 94 nets 8.3 s for 11.6); left, the coupled pairing over all pairs (1.4 s) and the cuts'
    intersections (2.2 s).

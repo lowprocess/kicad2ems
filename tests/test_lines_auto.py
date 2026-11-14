@@ -345,3 +345,27 @@ def test_many_group_cuts_are_solved_in_worker_processes(monkeypatch):
         assert np.array_equal(here[0], C) and np.array_equal(here[1], Ca)
     R.solve_groups(keys[:4], workers=2)                         # solved already: nothing to start
     assert len(started) == 2
+
+
+def test_losses_and_a_mixed_stripline():
+    """tan d through a stack in series (thickness over er; the largest had been taken), the mode's own for an
+    effective-medium model, and a stripline between core and prepreg of different er sent to its cut (its formula on
+    the averaged er: Z0 4 % low, the delay 5.6 % long)."""
+    from types import SimpleNamespace as NS
+    from kicad2ems.lines import reference as R
+    from kicad2ems.solvers.lines.fastsolve import mode_tand
+    m = NS(layers=[dict(z0=0.0, z1=0.1, er=3.0, tand=0.002), dict(z0=0.1, z1=0.3, er=4.6, tand=0.02)])
+    er, tand = R._dielectric(m, 0.0, 0.3)
+    assert er == pytest.approx((0.1 * 3.0 + 0.2 * 4.6) / 0.3)
+    assert tand == pytest.approx((0.1 / 3 * 0.002 + 0.2 / 4.6 * 0.02) / (0.1 / 3 + 0.2 / 4.6)) and tand < 0.02
+    e = NS(tand_eff=None, tand=0.02, er=4.3, eeff=3.24, xs='microstrip')
+    assert mode_tand(e) == pytest.approx(0.02 * 4.3 / 3.24 * 2.24 / 3.3)
+    e.tand_eff = 0.0179
+    assert mode_tand(e) == 0.0179
+    plane = ((-100.0, 100.0),)
+    e = NS(cut=(0.15, 0.1, 0.0, True, (), ((0.0, True, plane), (0.335, True, plane)),
+                ((0.0, 0.1, 3.0, 0.0), (0.1, 0.335, 4.6, 0.0))), xs='offset stripline', s=None)
+    found = {'below': (None, 0.1, True), 'above': (None, 0.235, True)}
+    assert 'dielectrics of er 3 and 4.6' in R._beyond_formula(e, found)
+    e.cut = e.cut[:6] + (((0.0, 0.1, 4.6, 0.0), (0.1, 0.335, 4.6, 0.0)),)
+    assert R._beyond_formula(e, found) is None
