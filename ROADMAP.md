@@ -10,11 +10,8 @@ window and mom25d; pcbqs's for the power tools). C, I and U numbers are findings
 
 ## Fix first (the review of 2026-11-14)
 
-Answers that are wrong with nothing to say so, and a workflow that does not run. Each is under a day unless it says
-otherwise; the review has the file and line of each.
-
-1. **KiCad import, the rest** (R-A22): copper text, KiCad 9's per-layer padstacks and `remove_unused_layers` (inferred:
-   not checked on a board that has them).
+Answers that are wrong with nothing to say so, and a workflow that does not run: all done (2026-11-14). The
+review's items are tracked, in the order they are worked through, in the review tracker sheet.
 
 The errors that said nothing (R-B) are done (2026-11-14) but for: Palace's cost estimate before a run (B21), and
 the Elmer and Palace versions in each tool's result JSON (B14: Palace's changeset is beside its log).

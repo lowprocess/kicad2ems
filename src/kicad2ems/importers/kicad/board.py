@@ -6,7 +6,10 @@ KiCadBoard: reads a .kicad_pcb file (KiCad 5 to 10).
   copper      tracks, arcs, vias (through / blind / micro), filled zones (the real copper,
               antipads included), footprint pads (incl. custom, chamfered, trapezoid), copper
               graphics on the board (gr_line / gr_arc / gr_rect / gr_circle / gr_poly / gr_curve)
-              and inside footprints (fp_*), plated through-holes (as vias)
+              and inside footprints (fp_*), plated through-holes (as vias), copper text (outlined by KiCad:
+              exact; in its stroke font: a stand-in font in the text's box, said in the notes), KiCad 9+
+              padstacks (a pad's or via's shape on each copper layer), and pads and vias that remove their
+              unused layers (their copper only where something connects, or at their ends if kept)
   outline     every Edge.Cuts item, on the board and in footprints (board.edges)
   ports       footprints marked P<n> (Fab text, or Reference / Value when listed in a pick-and-place
               file); P<n>+ / P<n>- (or P<n>P / P<n>N) mark the legs of a differential port
@@ -109,6 +112,7 @@ class KiCadBoard(Imported):
         """Collect copper items as (layer, net, geometry-in-KiCad-mm) plus tracks, vias, footprints and
         the Edge.Cuts outline pieces (and the outlines drawn on other layers: regions on User.1 ...)."""
         all_cu = self.copper_order
+        self._removable, self._stroke_text = [], 0
         for s in sx.items(self.root, 'segment'):
             pts = [sx.xy(s, 'start'), sx.xy(s, 'end')]
             self._track(s, pts)
@@ -127,7 +131,10 @@ class KiCadBoard(Imported):
             size = sx.val(v, 'size', 0.6, float); drill = sx.val(v, 'drill', 0.3, float)
             self.vias.append(dict(x=x, y=y, size=size, drill=drill, layers=lys, net=self._net_of(v), kind=kind))
             for l in pads:
-                self.items.append((l, self._net_of(v), Point(x, y).buffer(size / 2, quad_segs=6)))
+                e = self._stack_entry(v, l)                                    # (KiCad 9+: its size on l)
+                d = sx.val(e, 'size', size, float) if e is not None else size
+                self.items.append((l, self._net_of(v), Point(x, y).buffer(d / 2, quad_segs=6)))
+                self._unused(len(self.items) - 1, v, ends)
         for z in sx.items(self.root, 'zone'):
             net = sx.val(z, 'net_name', '') or self._net_of(z)
             if net:
@@ -160,8 +167,91 @@ class KiCadBoard(Imported):
                     for l in cu:
                         self.items.append((l, self._net_of(g), geom))
                         self.shapes.append(self.items[-1])
+        for g in sx.items(self.root, 'gr_text'):
+            self._text(g, g[1] if len(g) > 1 else '')
+        for g in sx.items(self.root, 'gr_text_box') + sx.items(self.root, 'gr_textbox'):
+            if any(str(l).endswith('.Cu') for l in sx.layers(g)):
+                self.notes.append(f"a text box on {', '.join(l for l in sx.layers(g) if l.endswith('.Cu'))}: left out")
         for fp in sx.items(self.root, 'footprint') + sx.items(self.root, 'module'):
             self._footprint(fp)
+        if self._stroke_text:
+            self.notes.append(f"{self._stroke_text} copper text(s) in KiCad's stroke font: drawn from a stand-in "
+                              f"font in each text's box, so their copper is approximate (outlined text is exact)")
+        self._drop_unused()
+
+    def _stack_entry(self, node, layer):
+        """The padstack entry (KiCad 9+) that sets node's shape on `layer`, or None (the pad's own: F.Cu, and
+        every layer in the normal mode). front_inner_back: 'Inner' for the inner layers and 'B.Cu'; custom: each
+        layer by name."""
+        stack = sx.item(node, 'padstack')
+        if stack is None:
+            return None
+        mode = sx.val(stack, 'mode', 'normal')
+        want = layer if mode == 'custom' else ('B.Cu' if layer == 'B.Cu' else
+                                               ('Inner' if layer != 'F.Cu' and mode == 'front_inner_back' else None))
+        if want is None:
+            return None
+        return next((e for e in sx.items(stack, 'layer') if len(e) > 1 and e[1] == want), None)
+
+    @staticmethod
+    def _flag(node, name):
+        """A yes/no flag: (name yes) in KiCad 8+, a bare (name) before."""
+        it = sx.item(node, name)
+        return it is not None and (len(it) < 2 or str(it[1]) == 'yes')
+
+    def _unused(self, idx, node, ends):
+        """Mark self.items[idx] (a pad's or via's copper on one layer) as removable where it connects nothing:
+        remove_unused_layers; its end layers kept with keep_end_layers, the zone_layer_connections' kept."""
+        if not self._flag(node, 'remove_unused_layers'):
+            return
+        lay = self.items[idx][0]
+        zones = [str(x) for x in (sx.item(node, 'zone_layer_connections') or [])[1:]]
+        if (self._flag(node, 'keep_end_layers') and lay in ends) or lay in zones:
+            return
+        self._removable.append(idx)
+
+    def _drop_unused(self):
+        """Take out the removable pad and via copper (_unused) that no other copper of its net touches on
+        its layer: KiCad draws none there."""
+        if not self._removable:
+            return
+        from shapely.strtree import STRtree
+        cand = set(self._removable)
+        layers = {}
+        for i in self._removable:
+            layers.setdefault(self.items[i][0], []).append(i)
+        touched = set()
+        for lay, rings in layers.items():                       # the rings in a tree, each other piece of copper of
+            tree = STRtree([self.items[i][2] for i in rings])   # the layer asked once (a fill prepared once: it
+            others = [j for j, it in enumerate(self.items)      # had been asked of each ring, 16 s on vme-wren)
+                      if it[0] == lay and j not in cand and it[1]]
+            if not others:
+                continue
+            src, hit = tree.query([self.items[j][2] for j in others], predicate='intersects')
+            for s, h in zip(src, hit):
+                i = rings[h]
+                if self.items[others[s]][1] == self.items[i][1]:
+                    touched.add(i)
+        drop = cand - touched
+        if drop:
+            self.items = [it for i, it in enumerate(self.items) if i not in drop]
+            self.shapes = [s for s in self.shapes if any(s is it for it in self.items)]
+            self.notes.append(f"{len(drop)} pad and via rings left off the layers they connect nothing on "
+                              f"(remove_unused_layers)")
+
+    def _text(self, node, text, origin=(0.0, 0.0), deg=0.0, net=''):
+        """A text on copper: its outline into self.items (layer, net, geometry); hidden text is none."""
+        cu = [l for l in self._expand([x for x in sx.layers(node) if x != 'knockout'])]
+        if not cu or not str(text).strip() or shp.text_hidden(node):
+            return
+        geom, exact = shp.text_shape(node, text, origin, deg)
+        if geom.is_empty:
+            return
+        for l in cu:
+            self.items.append((l, net, geom))
+            self.shapes.append(self.items[-1])
+        if not exact:
+            self._stroke_text += 1
 
     def _track(self, node, pts):
         w = sx.val(node, 'width', 0.2, float)
@@ -180,7 +270,12 @@ class KiCadBoard(Imported):
             props[p[1]] = p[2] if len(p) > 2 else ''
             if any(str(l).endswith('.Fab') for l in sx.layers(p)) and len(p) > 2:
                 fab_texts.append(p[2])
+        for p in sx.items(fp, 'property'):                                  # (on copper: copper)
+            if len(p) > 2:
+                self._text(p, p[2], org, rot)
         for t in sx.items(fp, 'fp_text'):
+            if len(t) > 2:
+                self._text(t, t[2], org, rot)
             kind, txt = t[1], t[2]
             if kind == 'reference':
                 ref = txt
@@ -211,8 +306,19 @@ class KiCadBoard(Imported):
             hole = [float(x) for x in drill[1:] if isinstance(x, (int, float)) or str(x).replace('.', '', 1).isdigit()] if drill else []
             if pad[2] == 'np_thru_hole' and hole and max(sz) <= max(hole) + 1e-9:
                 lys = []                                            # a hole, no copper (it had been copper of no
+            ends = [l for l in lys if l in ('F.Cu', 'B.Cu')]
             for l in lys:                                           # net on every layer)
-                self.items.append((l, net, geom))
+                e = self._stack_entry(pad, l)
+                g_l = geom
+                if e is not None:                                   # KiCad 9+: its own shape on this layer
+                    shape = sx.val(e, 'shape', pad[3] if len(pad) > 3 else 'rect')
+                    local_l = shp.pad_shape(['pad', pad[1], pad[2], shape] + list(e[2:]) + list(pad[4:]))
+                    if off and any(off):
+                        from shapely import affinity
+                        local_l = affinity.translate(local_l, *off)
+                    g_l = shp.place(local_l, centre, prot)
+                self.items.append((l, net, g_l))
+                self._unused(len(self.items) - 1, pad, ends)
             if pad[2] == 'thru_hole' and drill and len(lys) > 1:
                 if len(drill) > 3 and drill[1] == 'oval':              # a slot: the barrel of its perimeter (its
                     a, b = sorted((float(drill[2]), float(drill[3])))  # long side as the diameter had overstated

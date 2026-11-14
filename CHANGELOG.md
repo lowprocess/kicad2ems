@@ -9,6 +9,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Fixed
+- **KiCad import, the rest (R-A22).** KiCad 9+ padstacks give a pad or via its own shape on each copper layer
+  (`front_inner_back` and `custom`; it had the front's on all). Pads and vias that remove their unused layers
+  keep copper only where copper of their net touches them, at the layers KiCad lists as zone connections, and at
+  their ends with `keep_end_layers` (vme-wren: 35,219 rings KiCad does not draw were inside the planes'
+  clearances; the import 4.7 s to 5.5 s). Copper text is copper: outlined text (`render_cache`) exactly, stroke-font
+  text from a stand-in font in its box (KiCad's own glyphs are not in the file: area within about 15 %, place
+  within 0.15 mm of KiCad's, on a KiCad 10 board made with pcbnew in tests/data), knockout text as its box less the
+  glyphs; the notes say which. It had all been read as nothing, with nothing said.
+
 ### Changed
 - **gfdtd's excitations share their set-up (R-D4).** The operator's core (grid, materials, metal, sheets, lumped
   parts, coefficients, boundaries) and its compressed GPU form are made once for a model and kept for its other

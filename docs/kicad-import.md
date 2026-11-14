@@ -22,6 +22,9 @@ thickness, εr and loss tangent. Dielectric sub-layers become separate layers. M
 | zones | the **filled** copper as KiCad last filled it. Refill zones before simulating |
 | graphics on copper layers | lines, arcs, curves, rectangles, circles and polygons |
 | footprint pads and graphics | placed and rotated; graphics take the net of the pad they touch |
+| padstacks (KiCad 9+) | a pad's or via's own shape and size on each copper layer (`front_inner_back`: the inner layers' and B.Cu's; `custom`: each layer's) |
+| pads and vias that remove unused layers | their copper only on the layers where copper of their net touches them, the layers `zone_layer_connections` names, and their two ends with `keep_end_layers`; the board's notes give the count |
+| copper text | text outlined by KiCad (TrueType faces: its `render_cache`) exactly; text in KiCad's stroke font, whose glyphs are not in the file, from a stand-in font in the text's size, thickness, justification and angle (copper area within about 15 %, position within 0.15 mm), said in the notes; knockout text as its box less the glyphs; hidden text not at all. Text boxes on copper are left out and said |
 
 All pad shapes are supported, including custom pads. Plated through-holes become vias. Zones defined
 inside footprints aren't read.

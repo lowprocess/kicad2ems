@@ -93,3 +93,38 @@ def test_what_the_import_read_wrong_before():
     assert pads[1]['layers'] == [] and all(n == 'RF' for _, n, _ in b.items)
     b = _text_board('(zone (net 1) (net_name "GND") (layers "In1.Cu") (polygon (pts (xy 0 0) (xy 20 0) (xy 20 20))))')
     assert not b.items and len(b.notes) == 1 and 'not filled' in b.notes[0]
+
+
+def test_kicad10_padstacks_unused_layers_and_copper_text():
+    """A board saved by KiCad 10 (tests/data/kicad10_padstacks.kicad_pcb, made with pcbnew): pads with a padstack
+    (front_inner_back and custom: their shape on each copper layer), vias that remove their unused layers (one
+    with a track on In1.Cu keeps its ring there), and copper text in a footprint turned 90 degrees. The areas are
+    KiCad's own (TransformShapeToPolygon per layer, TransformTextToPolySet for the text), R-A22."""
+    import os
+    from shapely.ops import unary_union
+    b = KiCadBoard(os.path.join(os.path.dirname(__file__), 'data', 'kicad10_padstacks.kicad_pcb'))
+    on = lambda lay, net: unary_union([g for l, n, g in b.items if l == lay and n == net])
+    assert on('B.Cu', 'GND').area == pytest.approx(2 * 3.14159 * 0.9 ** 2, rel=0.01)      # both pads round on B.Cu
+    assert on('In1.Cu', 'GND').area == pytest.approx(2 * 3.14159 * 0.7 ** 2, rel=0.01)    # 1.4 mm on In1.Cu
+    assert on('In2.Cu', 'GND').area == pytest.approx(3.128, rel=0.01)                     # an oval on In2 (custom)
+    assert on('F.Cu', 'GND').area == pytest.approx(8.0, rel=0.01)                         # two 2 mm squares
+    rings = lambda lay: [g for l, n, g in b.items if l == lay and n == 'SIG' and g.area < 0.3]
+    assert len(rings('In1.Cu')) == 1 and rings('In2.Cu') == [] and len(rings('F.Cu')) == 2
+    assert any('3 pad and via rings left off' in n for n in b.notes)
+    text = [g for l, n, g in b.items if l == 'F.Cu' and n == '' and g.area > 0.3]
+    assert len(text) == 1 and text[0].area == pytest.approx(0.938, rel=0.2)                # KiCad's: 0.938 mm2
+    assert text[0].centroid.x == pytest.approx(12.799, abs=0.15) and text[0].centroid.y == pytest.approx(7.967, abs=0.15)  # KiCad's
+    assert any('stroke font' in n for n in b.notes)
+
+
+def test_outlined_and_hidden_and_knockout_text():
+    """Outlined text (render_cache) is KiCad's polygons, exact; hidden text no copper; knockout text its box less
+    the glyphs."""
+    b = _text_board('''(gr_text "A" (at 5 5 0) (layer "F.Cu") (effects (font (face "X") (size 1 1)))
+      (render_cache "A" 0 (polygon (pts (xy 4 4) (xy 6 4) (xy 6 6) (xy 4 6)) (pts (xy 4.5 4.5) (xy 5.5 4.5) (xy 5.5 5.5) (xy 4.5 5.5)))))
+      (gr_text "H" (at 20 5 0) (layer "F.Cu") (hide yes) (effects (font (size 1 1))))
+      (gr_text "K" (at 30 5 0) (layer "B.Cu" knockout) (effects (font (size 1 1))))''')
+    exact = [g for l, n, g in b.items if l == 'F.Cu']
+    assert len(exact) == 1 and exact[0].area == pytest.approx(3.0)                         # 4 - 1: its hole kept
+    ko = [g for l, n, g in b.items if l == 'B.Cu']
+    assert len(ko) == 1 and ko[0].envelope.contains(ko[0].centroid) and ko[0].area > 0.5

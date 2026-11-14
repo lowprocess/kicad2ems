@@ -181,3 +181,84 @@ def place(geom, origin, deg):
     """Rotate a local KiCad-mm geometry by a KiCad angle and translate to origin."""
     g = affinity.rotate(geom, -deg, origin=(0, 0))        # KiCad CCW-on-screen == CW in y-down maths
     return affinity.translate(g, *origin)
+
+
+_GLYPHS = {}
+
+
+def _glyphs(text):
+    """The text's outline at cap height 1 (y up, the first glyph's baseline start at the origin), even-odd filled,
+    with the font's stem width: matplotlib's DejaVu Sans, standing in for KiCad's stroke font, whose glyphs are
+    not in the file (its area within 5 % of KiCad's on most strings, 16 % on the worst; its width within 20 %)."""
+    if text not in _GLYPHS:
+        from matplotlib.font_manager import FontProperties
+        from matplotlib.textpath import TextPath
+        font = FontProperties(family='DejaVu Sans')
+        geom = Polygon()
+        for lineno, line in enumerate(text.split('\n')):
+            for ring in TextPath((0, -1.6 * lineno), line, size=1.0, prop=font).to_polygons(closed_only=True):
+                if len(ring) >= 3:
+                    geom = geom.symmetric_difference(Polygon(ring).buffer(0))
+        cap = TextPath((0, 0), 'H', size=1.0, prop=font).get_extents().height
+        bar = TextPath((0, 0), 'l', size=1.0, prop=font)
+        stem = Polygon(bar.to_polygons()[0]).area / bar.get_extents().height
+        _GLYPHS[text] = (affinity.scale(geom, 1 / cap, 1 / cap, origin=(0, 0)), stem / cap)
+    return _GLYPHS[text]
+
+
+def text_hidden(node):
+    """KiCad's hidden text: (hide yes) (KiCad 8+), or a bare hide token on the text or in its effects."""
+    eff = sx.item(node, 'effects')
+    for n in (node, eff):
+        if n is None:
+            continue
+        if 'hide' in [x for x in n[1:] if isinstance(x, str)] or sx.val(n, 'hide') == 'yes':
+            return True
+    return False
+
+
+def text_shape(node, text, origin=(0.0, 0.0), deg=0.0, absolute_angle=True):
+    """The copper of a text (gr_text, fp_text, a footprint property), KiCad mm, y down, and whether it is exact.
+    A text KiCad has outlined (its render_cache: TrueType faces) is those polygons, exact; one in the stroke font
+    is drawn from a stand-in font (_glyphs) in the text's size, thickness, justification and angle. A knockout
+    text is its box less the glyphs. origin, deg: a footprint's (the text's at is then its own frame)."""
+    cache = sx.item(node, 'render_cache')
+    knockout = 'knockout' in [x for x in (sx.item(node, 'layer') or [])[1:] if isinstance(x, str)]
+    if cache is not None:
+        geom = Polygon()
+        for poly in sx.items(cache, 'polygon'):
+            for p in sx.items(poly, 'pts'):
+                ring = sx.pts(['polygon', p])
+                if len(ring) >= 3:
+                    geom = geom.symmetric_difference(Polygon(ring).buffer(0))
+        if not geom.is_empty:
+            return (geom.envelope.buffer(0.1, join_style=2).difference(geom) if knockout else geom), True
+    at = sx.item(node, 'at') or ['at', 0, 0]
+    x, y = float(at[1]), float(at[2])
+    ang = float(at[3]) if len(at) > 3 else 0.0
+    eff = sx.item(node, 'effects') or ['effects']
+    font = sx.item(eff, 'font') or ['font']
+    sh, sw = sx.xy(font, "size") or (1.0, 1.0)                     # (KiCad writes height, width)
+    bold = sx.val(font, 'bold') == 'yes' or 'bold' in [v for v in font[1:] if isinstance(v, str)]
+    t = sx.val(font, 'thickness', None, float) or (sh * (0.2 if bold else 0.15))
+    just = [str(v) for v in (sx.item(eff, 'justify') or [])[1:]]
+    g, stem = _glyphs(str(text).replace('\\n', '\n'))
+    if g.is_empty:
+        return g, False
+    g = affinity.scale(g, sw, -sh, origin=(0, 0))                      # cap height sh, y down
+    g = g.buffer((t - stem * sh) / 2, quad_segs=4)                     # its strokes as thick as the text's
+    x0, y0, x1, y1 = g.bounds
+    side = 0.275 * sw                                                  # (KiCad's side bearing, measured)
+    dx = side - x0 if 'left' in just else (-x1 - side if 'right' in just else -(x0 + x1) / 2)
+    dy = (-t / 2 if 'bottom' in just else (sh + t / 2 if 'top' in just else sh / 2)) - 0.047 * sh
+    g = affinity.translate(g, dx, dy)                                  # its anchor at the origin, as KiCad's
+    if 'mirror' in just:
+        g = affinity.scale(g, -1, 1, origin=(0, 0))
+    if knockout:
+        g = g.envelope.buffer(t, join_style=2).difference(g)
+    if origin != (0.0, 0.0) or deg:
+        p = rot(np.array([x, y]), deg) + np.asarray(origin, float)
+        a = ang if absolute_angle else ang + deg
+    else:
+        p, a = np.array([x, y]), ang
+    return place(g, tuple(p), a), False
