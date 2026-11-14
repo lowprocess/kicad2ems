@@ -35,7 +35,10 @@ plated slot is a via of its perimeter. A zone that was never filled is left out,
 ## Board outline
 
 The outline is built from every Edge.Cuts item, on the board and inside footprints. The largest closed
-shape is the board. Cutouts inside it aren't removed from the dielectric. A board without an outline
+shape is the board, and the closed shapes inside it are its cut-outs: holes in the outline, so there is no
+dielectric there (openEMS and gfdtd fill them with air, Palace and Elmer mesh around them, thermal cools their
+edges; mom25d's dielectric is laterally infinite and has none). The board's notes give their count and area. A
+region that splits the board keeps its largest piece and says how much was left out. A board without an outline
 uses the copper's bounding box plus 1 mm.
 
 <a id="ports"></a>

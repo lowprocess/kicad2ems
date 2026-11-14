@@ -128,3 +128,19 @@ def test_outlined_and_hidden_and_knockout_text():
     assert len(exact) == 1 and exact[0].area == pytest.approx(3.0)                         # 4 - 1: its hole kept
     ko = [g for l, n, g in b.items if l == 'B.Cu']
     assert len(ko) == 1 and ko[0].envelope.contains(ko[0].centroid) and ko[0].area > 0.5
+
+
+def test_cutouts_are_air_and_a_split_region_says_so():
+    """A cut-out inside the outline (Edge.Cuts) is a hole in the board's outline, so the dielectric has none there
+    and the FDTD model fills it with air; a region that splits the board keeps its largest piece and says how
+    much is left out (R-E6: both had been silent, the cut-out substrate)."""
+    raw = _text_board('''(gr_circle (center 10 10) (end 12 10) (stroke (width 0.05)) (fill no) (layer "Edge.Cuts"))
+      (gr_rect (start 2 14) (end 18 15) (stroke (width 0.05)) (fill no) (layer "Edge.Cuts"))
+      (segment (start 1 5) (end 19 5) (width 0.3) (layer "F.Cu") (net 2))
+      (zone (net 1) (net_name "GND") (layer "B.Cu") (polygon (pts (xy 0 0) (xy 20 0) (xy 20 20) (xy 0 20)))
+        (filled_polygon (layer "B.Cu") (pts (xy 0 0) (xy 20 0) (xy 20 20) (xy 0 20))))''')
+    b = Board(raw, nets=['RF', 'GND'], need_ports=False, log=lambda *a: None)
+    assert len(b.outline.interiors) == 2 and b.outline.area == pytest.approx(400 - 3.14159 * 4 - 16, rel=1e-3)
+    assert any('2 cut-out(s)' in n for n in b.notes)
+    split = Board(raw, nets=['RF', 'GND'], need_ports=False, region=[3, 12, 17, 16], log=lambda *a: None)
+    assert any('splits the board into 2 pieces' in n for n in split.notes) and split.outline.area == pytest.approx(28)

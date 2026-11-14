@@ -193,7 +193,7 @@ class Board:
         self._stack(raw, include_mask)
         self.copper_finish = getattr(raw, 'copper_finish', None)    # the stackup's (--finish auto reads it)
         # ---- outline / region (KiCad coordinates until flipped) ----
-        full = board_outline(raw)
+        full = board_outline(raw, with_holes=True)                   # its cut-outs too: no dielectric there
         rpoly = region_polygon(raw, region)
         if full is None:
             cop = [g for l, n, g in raw.items if l in self.cu_z]
@@ -229,9 +229,16 @@ class Board:
             if self.cut_sides:
                 self.notes.append(f"region cuts the board on {', '.join(self.cut_sides)}")
         self.outline = flip_y(ol)
-        if isinstance(self.outline, MultiPolygon):
-            self.outline = max(self.outline.geoms, key=lambda p: p.area)
-        self.outline = Polygon(self.outline.exterior)                         # dielectric: outer edge only
+        if isinstance(self.outline, MultiPolygon):                  # the region splits the board: the largest
+            pieces = sorted(self.outline.geoms, key=lambda p: -p.area)   # piece kept, and said (R-E6)
+            self.outline = pieces[0]
+            self.notes.append(f"the region splits the board into {len(pieces)} pieces: the largest kept "
+                              f"({pieces[0].area:.0f} mm2; {sum(q.area for q in pieces[1:]):.0f} mm2 left out)")
+        self.outline = Polygon(self.outline.exterior, [h for h in self.outline.interiors
+                                                       if Polygon(h).area > 1e-4])
+        if self.outline.interiors:                                  # the cut-outs: air in the dielectric
+            self.notes.append(f"{len(self.outline.interiors)} cut-out(s) in the board outline: no dielectric there "
+                              f"({sum(Polygon(h).area for h in self.outline.interiors):.1f} mm2)")
         keep = inside_items(raw, set(self.cu_z), self.outline)
         self.prims = Prims.from_raw(raw, keep, set(self.cu_z), self.outline)
         self.ground_nets = ground_nets(self.prims.items, self.prims.shapes, self.outline)

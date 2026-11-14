@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Fixed
+- **Board cut-outs are air (R-E6).** A closed Edge.Cuts shape inside the outline is a hole in the board's outline
+  (it had been dropped: the dielectric ran through every slot and cut-out), so openEMS and gfdtd fill it with air,
+  Palace and Elmer mesh around it and thermal cools its edge; the notes give the cut-outs' count and area. A region
+  that splits the board keeps its largest piece, as before, and now says how much is left out.
 - **KiCad import, the rest (R-A22).** KiCad 9+ padstacks give a pad or via its own shape on each copper layer
   (`front_inner_back` and `custom`; it had the front's on all). Pads and vias that remove their unused layers
   keep copper only where copper of their net touches them, at the layers KiCad lists as zone connections, and at
