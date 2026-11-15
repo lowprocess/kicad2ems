@@ -189,18 +189,18 @@ On a microstrip over a narrow slot in a 24 mm ground the slot plane and the grou
 
 | Board | Whole stack: unknowns, time, \|ΔS\| | Slot planes |
 |---|---|---|
-| antenna_aperture (1 mm cells) | 8,384, 19 s, 0.192 | 5,580, 148 s, **0.057** |
-| rf_dgs | 7,879, 18 s, 0.088 | 3,668, 34 s, 0.110 |
+| antenna_aperture (1 mm cells) | 8,384, 19 s, 0.192 | 5,580, 15 s, **0.057** |
+| rf_dgs | 7,879, 18 s, 0.088 | 3,668, 12 s, 0.110 |
 | rf_dgs, its ground grown to 50 × 50 mm (against gfdtd) | 0.066 | 0.084 |
-| rf_slotline | 14,022, 55 s, 0.156 | 6,766, 338 s, 0.182 |
-| antenna_slot | 28,571, 149 s, 0.058 | 9,115, 64 s, 0.257 |
+| rf_slotline | 14,022, 55 s, 0.156 | 6,766, 73 s, 0.182 |
+| antenna_slot | 28,571, 149 s, 0.058 | 9,115, 35 s, 0.257 |
 
 On antenna_aperture the infinite plane under the laterally infinite dielectric is one consistent layered model
 where the whole stack's finite meshed ground under it is not, and that was its 0.19 at any cell size. Where the
 board's own ground edge is part of the answer, as in a slot antenna on a ground half a wavelength across
 (antenna_slot), the infinite plane is another antenna: the whole stack stays what `--mom-stack auto` chooses. The
-openings' coupling to the traces is NumPy's, so on a small board it costs more than the whole stack's compiled
-fill saves. Not taken yet: the loop/tree basis, frill holes in the same stack, a via through an opening, and the
+openings' coupling to the traces is the compiled core's (`slot_coupling`); their own matrix is NumPy's (about a
+third of a solve on rf_slotline's long slot). Not taken yet: the loop/tree basis, frill holes in the same stack, a via through an opening, and the
 openings' field in the current dumps and the near field (it is in the far field).
 
 <a id="antenna-mode"></a>

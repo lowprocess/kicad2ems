@@ -15,8 +15,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   coupled to the traces and vias on either side through the stack's networks (`mom25d/slots.py`; docs/mom.md#slot-planes).
   antenna_aperture comes to 0.057 from openEMS (the whole stack 0.19 at any cell size); on boards whose ground edge
   matters (antenna_slot, 0.257 against 0.058) the whole stack stays the choice. Checked by Babinet's principle, the
-  frill holes' kernels and the ground meshed on a slot under a line (within 0.03). Its coupling is NumPy's: slower
-  than the whole stack on small boards for now.
+  frill holes' kernels and the ground meshed on a slot under a line (within 0.03). Its coupling to the traces is in
+  the compiled core: rf_dgs 12 s (the whole stack 18 s), antenna_slot 35 s (149 s), antenna_aperture 15 s, rf_slotline
+  73 s (55 s).
 - **Parts as ports, closed after the solve (R-E5).** `--part-ports all` (or `C1,L2`) solves each part as an internal
   gap port and closes it by its value afterwards (`kicad2ems.embed`): the result is the board with its parts,
   `<name>_<solver>_ports.sMp` the full matrix, and `--part-value C2=3.3p,6.8p,10p` (every combination, at most 64)

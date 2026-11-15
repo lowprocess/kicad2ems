@@ -200,10 +200,9 @@ solver's own items (large boards, the low end) are in the next section.
    10 GHz from −1.6 to −4.0 dB). It needs a board whose planes are not cut. The KiCad plugin's selected-net runs
    could default to `far`. Optionally, a ground pour on a signal layer cut a few heights from the signal copper.
 
-4. **Slot planes, what is left** (`--mom-planes slots`, since 2026-11-15; docs/mom.md#slot-planes). The coupling of
-   an opening to the traces (slots.coupling: its near pairs' quadrature, 1.5 s of a 1.8 s solve on rf_dgs, 19 s on
-   rf_slotline's long thin slot) into the compiled core, as the strips' fill is: until then the whole stack is faster
-   on small boards. Then: the loop/tree basis with openings; frill holes and openings in one stack; a via through an
+4. **Slot planes, what is left** (`--mom-planes slots`, since 2026-11-15; docs/mom.md#slot-planes). The coupling to
+   the traces is the compiled core's since 2026-11-15 (rf_slotline 21 s a solve to 3 s); the openings' own matrix
+   (slots.self_block, ~1 s a solve on rf_slotline) could follow. Then: the loop/tree basis with openings; frill holes and openings in one stack; a via through an
    opening; the openings' field in the dumps and the near field; and when `--mom-stack auto` should choose them (on
    antenna_aperture they are 0.057 from openEMS against 0.19, on antenna_slot 0.257 against 0.058: a ground that is
    large against the wavelength, or a radiator above the plane rather than in it). Found with them: a frill hole's
