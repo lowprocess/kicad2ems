@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **gfdtd on several GPUs (R-D9, the GPUs).** `--gfdtd-gpus all` (or `0,1`) shares a run's excitations out to the
+  Vulkan GPUs, a process each taking the next as it comes free (threads cannot: two drove two GPUs at a fifth of
+  their speed, the interpreter's lock between them). On a 1.1 M-cell board each GPU runs at its own speed, the
+  S-parameters as one GPU's within 8e-7. Off by default: here the second GPU is 4.7x slower.
 - **A converter's loop on Palace (R-E22, the loop).** kicad2ems-fem's `palace_loop` is a second engine of the near
   field's question: the loop of the board's newest pcbqs near-field run, solved again in 3D, its inductance at each
   harmonic beside pcbqs's (both name it `loop L at F MHz`). On the Jetson's U69 Palace reads 0.22-0.20 nH against

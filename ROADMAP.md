@@ -409,7 +409,9 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
    runs by the VRAM (each excitation's fields are its own).
 4. **Line ports** (MSL, stripline, CPW: gfdtd has them) with a de-embedded plane where a straight trace meets the
    port.
-5. **Excitations batched** in one launch, and every GPU emsdev finds used.
+5. **Excitations batched** in one launch (a batch dimension in the three backends' kernels: the coefficients read
+   once for several fields). Several GPUs are there since 2026-11-15 (`--gfdtd-gpus`, a process each; now in the
+   CHANGELOG): left, sharing the excitations by each GPU's speed, so a much slower one is not given the last.
 6. **Tests**: a small board on `gfdtd:cpu` end to end, openEMS's S-parameters stored as references; Vulkan on lavapipe
    in CI; one NVIDIA run before the docs name CUDA.
 7. **Boundaries**: first-order Mur is the default on five sides (6 % reflection against 5e-5 for an 8-cell PML), and
