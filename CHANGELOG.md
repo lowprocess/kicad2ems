@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Materials by name (R-E4).** The stackup's `material` is read; a dielectric whose εr or tan δ the file does not
+  give takes its material's from a small library (`kicad2ems.materials`, with the frequency each maker quotes) or
+  FR-4's, and a note says which; the board's log shows each layer's material. With `--diel wideband`, a named
+  laminate's layer holds its values at its own reference frequency (RO4350B's 10 GHz) instead of `--diel-fref`,
+  in mom25d and the FDTD layer; a generic FR4 keeps `--diel-fref`.
 - **Coupled lines with a jog (R-E17).** Only whole straight elements were paired, so a trace with a jog (one
   polyline element) coupled with nothing: dfsynth's edge-coupled band-pass came out open on the line model. A
   polyline whose straight run lies beside another line closely enough is now cut at its corners and that run

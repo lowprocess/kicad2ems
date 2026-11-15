@@ -82,7 +82,9 @@ class KiCadBoard(Imported):
             elif 'mask' in typ:
                 self.stack_items.append(dict(kind='mask', name=name, t=sx.val(l, 'thickness', 0.01, float) * MM,
                                              er=sx.val(l, 'epsilon_r', 3.3, float),
-                                             tand=sx.val(l, 'loss_tangent', 0.0, float)))
+                                             tand=sx.val(l, 'loss_tangent', 0.0, float),
+                                             material=sx.val(l, 'material', None),
+                                             given=[k for k in ('epsilon_r', 'loss_tangent') if sx.item(l, k)]))
             elif typ in ('core', 'prepreg') or 'dielectric' in str(name).lower():
                 # split sub-layers: a flat list (thickness, material, epsilon_r, loss_tangent)*
                 subs, cur = [], {}
@@ -93,10 +95,13 @@ class KiCadBoard(Imported):
                         subs.append(cur); cur = {}
                     elif c[0] in ('thickness', 'epsilon_r', 'loss_tangent'):
                         cur[c[0]] = float(c[1])
+                    elif c[0] == 'material' and len(c) > 1:
+                        cur['material'] = str(c[1])
                 subs.append(cur)
-                for s in subs:
+                for s in subs:                              # (er / tand None: not in the file, Board fills them)
                     self.stack_items.append(dict(kind='diel', name=name, t=s.get('thickness', 0.1) * MM,
-                                                 er=s.get('epsilon_r', 4.5), tand=s.get('loss_tangent', 0.02)))
+                                                 er=s.get('epsilon_r'), tand=s.get('loss_tangent'),
+                                                 material=s.get('material')))
 
     # ---- copper -----------------------------------------------------------------------------
     def _expand(self, lys):

@@ -291,10 +291,33 @@ class Board:
                 self.cu_t[it['name']] = it['t'] * 1e3
             else:
                 t = it['t'] * 1e3
-                self.layers.append(dict(name=it['name'], z0=rz(z), z1=rz(z + t), er=it.get('er', 4.5),
-                                        tand=it.get('tand', 0.02), kind=it['kind']))
+                self.layers.append(dict(name=it['name'], z0=rz(z), z1=rz(z + t), kind=it['kind'],
+                                        **self._material(it)))
                 z = rz(z + t)
         self.thickness = z
+
+    def _material(self, it):
+        """A dielectric's er, tand, material and fref (R-E4): er and tand as the file gives them, else from its
+        material's name (materials.py), else FR-4's, said in a note; fref the frequency the library quotes a known
+        material at (the wideband model holds the layer's values there), else None (--diel-fref)."""
+        from . import materials
+        lib = materials.lookup(it.get('material'))
+        out = dict(er=it.get('er'), tand=it.get('tand'), material=it.get('material') or None,
+                   fref=lib['fref'] if lib else None)
+        if it['kind'] == 'mask':
+            return dict(out, er=3.3 if out['er'] is None else out['er'], tand=out['tand'] or 0.0)
+        missing = [k for k in ('er', 'tand') if out[k] is None]
+        if missing:
+            src = lib or materials.lookup(materials.DEFAULT)
+            for k in missing:
+                out[k] = src[k]
+            what = ' and '.join({'er': 'no er', 'tand': 'no loss tangent'}[k] for k in missing)
+            self.notes.append(f"dielectric {it['name']}" + (f" ({it['material']})" if it.get('material') else '') +
+                              f": the stackup gives {what}; " +
+                              (f"{src['name']}'s from the material library ({src['source']})" if lib else
+                               f"FR-4's taken (er {src['er']:g}, tan d {src['tand']:g}): set them in Board Setup > "
+                               f"Physical Stackup"))
+        return out
 
     @property
     def cu_order(self):
@@ -598,7 +621,9 @@ class Board:
         """The board as the log shows it: the stack, the copper, the outline and vias, each port and part, the notes."""
         L = ["stack (bottom to top):"]
         for l in self.layers:
-            L.append(f"  {l['name']:<14s} z {l['z0']:.3f}..{l['z1']:.3f} mm  er {l['er']:.2f}  tand {l['tand']:.4f}")
+            L.append(f"  {l['name']:<14s} z {l['z0']:.3f}..{l['z1']:.3f} mm  er {l['er']:.2f}  tand {l['tand']:.4f}"
+                     + (f"  {l['material']}" if l.get('material') else '')
+                     + (f" (at {l['fref'] / 1e9:g} GHz)" if l.get('fref') else ''))
         for n in self.cu_order[::-1]:
             L.append(f"  copper {n:<8s} z {self.cu_z[n]:.3f} mm" + ("" if n in self.copper else "  (nothing selected)"))
         b = self.outline.bounds

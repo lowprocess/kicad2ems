@@ -66,8 +66,10 @@ the window lists the questions, with the engine chosen on each row, and compares
    impulse response's energy before t = 0 does not tell it on band-limited data (from 1 GHz): causal openEMS answers
    read up to 53 % there (the rat-race's S11), time-reversed ones as little as 35 %; it needs a band-limited
    Kramers-Kronig check.
-7. **Materials** (R-E4). KiCad's stackup `material` names are not read and a missing value defaults without a note: a
-   small library (RO4350B, FR4 grades) with each one's dispersion and the frequency its εr is given at.
+7. **Materials** (R-E4). *Done 2026-11-15*: KiCad's stackup `material` is read, a missing εr or tan δ is filled
+   from a small library by the material's name (`kicad2ems.materials`: RO4350B, RO4003C, 370HR, FR408HR, Megtron 6
+   ...) or FR-4's with a note, and a named laminate's reference frequency is the wideband model's for its layer
+   (mom25d, the FDTD layer). Left: the line model's dispersion (its sections' εr at each frequency).
 8. **A run done again** (R-D20): since 2026-11-15 a result is reused where the board, the frequencies, the settings
    and the code are the same (`kicad2ems.reuse`, `--no-reuse`), except where a solver's outputs need its solve
    (dumps, the far field). Left: the solvers of one run go one after another; a CPU solver beside a GPU one is
