@@ -224,6 +224,21 @@ def timestep(grid, factor=SAFETY):
     return factor / (C0 * np.sqrt(s))
 
 
+def _hedge_average(cell, a, grid):
+    """A cell quantity (N-1 each axis) along each dual a-edge (an H_a node: line i of axis a, the cell centre in the
+    other two): the two cells it runs through, weighted by their half lengths along a (one at the first and last
+    lines); on the (Nx, Ny, Nz) node array, zero past the last cell in the other two axes."""
+    b, c = [x for x in range(3) if x != a]
+    P = np.moveaxis(cell, (a, b, c), (0, 1, 2))
+    d = grid.d[a]
+    lo = np.concatenate([[0.0], d / 2])[:, None, None]             # the cell below line i
+    hi = np.concatenate([d / 2, [0.0]])[:, None, None]              # the cell above it
+    Pp = np.pad(P, ((1, 1), (0, 0), (0, 0)), mode='edge')
+    s = (Pp[:-1] * lo + Pp[1:] * hi) / (lo + hi)
+    s = np.pad(s, ((0, 0), (0, 1), (0, 1)))
+    return np.moveaxis(s, (0, 1, 2), (a, b, c))
+
+
 def _edge_average(cell, a, grid):
     """A cell quantity (N-1 each axis) averaged over the four quarter cells around each a-edge (weights: the
     quarter areas); returned on the (Nx, Ny, Nz) node array, zero past the last a-edge."""
@@ -487,10 +502,16 @@ def _finish(op, props, fdtd, log, grid, sh, vv, vi, iv, lE, lH, aE, kap, dt, nce
     op.probes = []
     for p in props:
         if isinstance(p, C.ProbeBox) and p.primitives:
-            pr = _probe(p, p.primitives[0], grid, sh)
+            pr = _field_probe(p, p.primitives[0], grid, sh) if p.p_type in (2, 3) else \
+                _probe(p, p.primitives[0], grid, sh)
             if pr is None:                                          # (a field probe had been dropped, nothing said)
                 op.notes.append(f"probe {p.name} (type {p.p_type}): not a kind gfdtd measures (voltage, current, "
-                                f"mode-matching): left out")
+                                f"E or H field, mode-matching): left out")
+            elif isinstance(pr, list):                              # a field probe: its three components
+                op.probes.extend(pr)
+                if getattr(p, 'frequency', None):
+                    op.notes.append(f"probe {p.name}: a field probe in the time domain only (its FD_Samples: the "
+                                    f"DFT of its file)")
             else:
                 op.probes.append(pr)
     op.dumps = [d for p in props if isinstance(p, C.DumpBox) and p.primitives for d in _dump(p, grid, op.notes)]
@@ -564,6 +585,8 @@ def _core(csx, fdtd):
     bg = csx.background if hasattr(csx, 'background') else dict(Epsilon=1.0, Kappa=0.0)
     eps = np.full(ncell, float(bg.get('Epsilon', 1.0)))
     kap = np.full(ncell, float(bg.get('Kappa', 0.0)))
+    mue = np.full(ncell, float(bg.get('Mue', 1.0)))                 # (R-B18: openEMS's Mue and Sigma, the
+    sig = np.full(ncell, float(bg.get('Sigma', 0.0)))               # magnetic loss, had been dropped)
     prio = np.full(ncell, -np.inf)
     owner = np.full(ncell, -1, np.int32)                            # the Debye material of each cell (index)
     props = [p for p in csx.GetAllProperties() if getattr(p, 'enabled', True)]
@@ -574,10 +597,8 @@ def _core(csx, fdtd):
             continue                                                # flat: no cell volume
         m = inside(q, grid.mid, grid) & (pr >= prio)
         eps[m], kap[m], prio[m] = p.epsilon, p.kappa, pr
+        mue[m], sig[m] = getattr(p, 'mue', 1.0), getattr(p, 'sigma', 0.0)
         owner[m] = debye.index(p) if p in debye else -1
-        if getattr(p, 'mue', 1.0) != 1.0 and not getattr(op, '_mue_noted', False):
-            op.notes.append(f"material {p.name}: mue {p.mue:g} not modelled (1)")
-            op._mue_noted = True
     lE, aE, lH, aH = _geometry(grid)
     with np.errstate(divide='ignore', invalid='ignore'):
         cap, cond, epsE = (np.zeros((3,) + sh) for _ in range(3))
@@ -722,6 +743,14 @@ def _core(csx, fdtd):
     else:
         op.debye = None
     vv, vi, iv = (np.zeros((3,) + sh) for _ in range(3))
+    # magnetic materials (Mue, Sigma): I' = ii I - iv curl V, ii = (1 - g) / (1 + g), iv / (1 + g) with mu,
+    # g = sigma dt / (2 mu); the compiled kernels' H update is geometry alone, so such a model runs on NumPy's
+    op.magnetic = bool(np.any(mue != 1.0) or np.any(sig != 0.0))
+    op.ii = np.ones((3,) + sh) if np.any(sig != 0.0) else None
+    if op.magnetic:
+        names = sorted({p.name for _, p, _ in mats if getattr(p, 'mue', 1.0) != 1.0 or getattr(p, 'sigma', 0.0)})
+        op.notes.append(f"magnetic materials ({', '.join(names) or 'the background'}: Mue / Sigma): the NumPy backend "
+                        f"runs them (the compiled kernels' H update is geometry alone)")
     with np.errstate(divide='ignore', invalid='ignore'):             # a component at a time (its temporaries)
         for a in range(3):
             den = cap[a] + cond[a] * (dt / 2)
@@ -734,7 +763,14 @@ def _core(csx, fdtd):
             np.divide(dt, den, out=vi[a], where=ok)
             del den, num, ok
             h = aH[a] > 0
-            np.divide(dt * lH[a], MU0 * aH[a], out=iv[a], where=h)
+            if op.magnetic:
+                mu = MU0 * _hedge_average(mue, a, grid)
+                g = _hedge_average(sig, a, grid) * dt / (2 * np.where(mu > 0, mu, MU0))
+                np.divide(dt * lH[a], mu * aH[a] * (1 + g), out=iv[a], where=h & (mu > 0))
+                if op.ii is not None:
+                    op.ii[a] = (1 - g) / (1 + g)
+            else:
+                np.divide(dt * lH[a], MU0 * aH[a], out=iv[a], where=h)
     vv[pec_m], vi[pec_m] = 0.0, 0.0
     # boundaries
     op.bc = bc = [str(b).upper() for b in fdtd['bc']]
@@ -1140,6 +1176,40 @@ def _probe(p, q, grid, sh):
     hi = [grid.lines[a][e[a]] for a in range(3)]
     return dict(name=p.name, type=p.p_type, field=field, idx=np.array(list(terms), np.int64),
                 w=np.array(list(terms.values()), float), start=(lo, s), stop=(hi, e), unit=grid.unit)
+
+
+def _field_probe(p, q, grid, sh):
+    """openEMS's field probes (R-B18: they had been left out): type 2 E, type 3 H at the node nearest the box's
+    centre, as three probes of one group (x, y, z; the engine writes them as one file, t Ex Ey Ez): E_a the mean of
+    the node's two a-edges' V / l, H_a the mean of the four dual a-edges round it, I / l'."""
+    c = 0.5 * (np.asarray(q.start, float) + np.asarray(q.stop, float))
+    n = [int(np.argmin(np.abs(grid.lines[a] - c[a]))) for a in range(3)]
+    out = []
+    for a in range(3):
+        b, cc = [x for x in range(3) if x != a]
+        terms = defaultdict(float)
+        if p.p_type == 2:                                           # E: the edges from n - e_a and from n
+            cand = [i for i in (n[a] - 1, n[a]) if 0 <= i < sh[a] - 1]
+            for i in cand:
+                idx = list(n)
+                idx[a] = i
+                terms[_flat(sh, a, *idx)] += p.weight / (len(cand) * grid.d[a][i])
+            field = 'V'
+        else:                                                       # H: the four dual edges round the node
+            cand = [(j, k) for j in (n[b] - 1, n[b]) for k in (n[cc] - 1, n[cc])
+                    if 0 <= j < sh[b] - 1 and 0 <= k < sh[cc] - 1]
+            for j, k in cand:
+                idx = [0, 0, 0]
+                idx[a], idx[b], idx[cc] = n[a], j, k
+                terms[_flat(sh, a, *idx)] += p.weight / (len(cand) * grid.dual[a][n[a]])
+            field = 'I'
+        if not terms:
+            return None
+        xyz = [grid.lines[x][n[x]] for x in range(3)]
+        out.append(dict(name=p.name, type=p.p_type, field=field, idx=np.array(list(terms), np.int64),
+                        w=np.array(list(terms.values()), float), start=(xyz, n), stop=(xyz, n), unit=grid.unit,
+                        group=p.name, comp=a))
+    return out
 
 
 def _mode_match(p, grid, sh, s, e):

@@ -28,19 +28,22 @@ from .constants import C0, MU0, ETA0                              # noqa: F401
 
 class nf2ff:                                                         # noqa: N801  (openEMS's name)
     """openEMS's nf2ff recording box: directions (6 bools: xmin, xmax, ...), mirror (6: 0 off, 1 PEC, 2 PMC),
-    frequency (Hz: frequency-domain recording; gfdtd has no time-domain NF2FF)."""
+    frequency (Hz: frequency-domain recording), or None: the faces recorded in the time domain (HDF5, every sample
+    step), any frequency of the run's band then taken by CalcNF2FF (a DFT, as openEMS's)."""
     def __init__(self, CSX, name, start, stop, directions=None, mirror=None, frequency=None, **kw):
         self.CSX, self.name = CSX, name
         self.start, self.stop = np.asarray(start, float), np.asarray(stop, float)
         self.directions = list(directions) if directions is not None else [True] * 6
         self.mirror = list(mirror) if mirror is not None else [0] * 6
-        if frequency is None:
-            raise NotImplementedError("gfdtd: NF2FF records in the frequency domain only (frequency=...)")
-        self.freq = list(np.atleast_1d(np.asarray(frequency, float)))
+        self.freq = None if frequency is None else list(np.atleast_1d(np.asarray(frequency, float)))
         self.e_file, self.h_file = f"{name}_E", f"{name}_H"
         kw = {k: v for k, v in kw.items() if k not in ('dump_type', 'dump_mode', 'file_type')}
-        self.e_dump = CSX.AddDump(self.e_file, dump_type=10, dump_mode=1, file_type=1, frequency=self.freq, **kw)
-        self.h_dump = CSX.AddDump(self.h_file, dump_type=11, dump_mode=1, file_type=1, frequency=self.freq, **kw)
+        if self.freq is None:                                       # time domain (R-B18: it had been refused)
+            self.e_dump = CSX.AddDump(self.e_file, dump_type=0, dump_mode=1, file_type=1, **kw)
+            self.h_dump = CSX.AddDump(self.h_file, dump_type=1, dump_mode=1, file_type=1, **kw)
+        else:
+            self.e_dump = CSX.AddDump(self.e_file, dump_type=10, dump_mode=1, file_type=1, frequency=self.freq, **kw)
+            self.h_dump = CSX.AddDump(self.h_file, dump_type=11, dump_mode=1, file_type=1, frequency=self.freq, **kw)
         self.faces = []                                             # (axis, +1 / -1) of each box, in dump order
         for a in range(3):
             for side in (0, 1):
@@ -87,10 +90,22 @@ class nf2ff:                                                         # noqa: N80
 
 
 def _read_fd(path, freq):
-    """(coords m [x, y, z], [field (nx, ny, nz, 3) complex per freq]) of one of gfdtd's HDF5 dumps."""
+    """(coords m [x, y, z], [field (nx, ny, nz, 3) complex per freq]) of one of gfdtd's HDF5 dumps: a frequency-domain
+    one's recorded frequencies, or a time-domain one's samples transformed, 2 dt sum F(t) exp(-j w t) (openEMS's)."""
     import h5py
     with h5py.File(path, 'r') as h:
         coords = [np.asarray(h['Mesh'][ax], float) for ax in 'xyz']
+        if 'TD' in h['FieldData']:
+            td = h['FieldData/TD']
+            names = sorted(td)
+            t = np.array([float(td[n].attrs['time']) for n in names])
+            dts = float(np.median(np.diff(t))) if len(t) > 1 else 0.0
+            w = 2 * np.pi * np.asarray(freq, float)
+            acc = np.zeros((len(freq),) + tuple(len(c) for c in coords) + (3,), np.complex128)
+            for n, tn in zip(names, t):
+                F = np.transpose(np.asarray(td[n], np.float64), (1, 2, 3, 0))
+                acc += F[None] * np.exp(-1j * w * tn).reshape((-1, 1, 1, 1, 1))
+            return coords, list(2 * dts * acc)
         fd = h['FieldData/FD']
         have = np.atleast_1d(fd.attrs['frequency'])
         out = []

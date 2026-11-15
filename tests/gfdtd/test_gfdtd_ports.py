@@ -350,3 +350,30 @@ def test_openems_other_excitations_and_its_max_time(tmp_path):
     lines = []
     r = Engine(op, 'numpy').run(str(tmp_path / 'short'), 10 ** 6, 0, verbose=0, out=lines.append, max_time=1e-9)
     assert r['reason'] == 'max_time' and r['steps'] < 10 ** 6 and any('max. simulation time' in l for l in lines)
+
+
+def test_coax_port_with_a_feed_resistance(tmp_path):
+    """A coaxial port's finite Feed_R (R-B18; openEMS has none): a resistive annulus at the feed plane. The line's
+    far end open (PMC), port 2 there with Feed_R = Z0 absorbs what comes to it; with Feed_R = inf it all comes
+    back."""
+    ri, ro, ros, L, er = 1.0, 2.3, 2.8, 40.0, 2.1
+    z = 60 / np.sqrt(er) * np.log(ro / ri)
+    out = {}
+    for name, R in (('matched', z), ('open', np.inf)):
+        F, csx = _fdtd(5e9, 4e9, ['PEC'] * 5 + ['PMC'])
+        g = csx.GetGrid()
+        xs = smooth([-3.2, -ros, -ro, -ri, ri, ro, ros, 3.2], 0.15)
+        g.SetLines('x', xs)
+        g.SetLines('y', xs)
+        g.SetLines('z', smooth([0, L], 0.5))
+        pec, fill = csx.AddMetal('pec'), csx.AddMaterial('fill', epsilon=er)
+        p1 = F.AddCoaxialPort(1, pec, fill, [0, 0, 0], [0, 0, 20], 'z', ri, ro, ros, excite=1, FeedShift=3,
+                              MeasPlaneShift=12, Feed_R=z)
+        p2 = F.AddCoaxialPort(2, pec, fill, [0, 0, L], [0, 0, 20], 'z', ri, ro, ros, MeasPlaneShift=12, Feed_R=R)
+        path = str(tmp_path / name)
+        F.Run(path, verbose=0)
+        f = np.linspace(3e9, 7e9, 9)
+        for p in (p1, p2):
+            p.CalcPort(path, f, ref_impedance=z)
+        out[name] = np.abs(p2.uf_inc / p2.uf_ref)       # (port 2 faces -z: what reaches it is its 'reflected' wave)
+    assert out['matched'].max() < 0.08 and out['open'].min() > 0.9, out

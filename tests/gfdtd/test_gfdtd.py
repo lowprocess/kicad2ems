@@ -630,7 +630,7 @@ def test_core_matches_numpy_with_pml_debye_and_dumps(tmp_path):
         np.testing.assert_allclose(fa, fb, atol=1e-4 * np.abs(fa).max())
 
 
-def _dipole(tmp_path, mirror=False):
+def _dipole(tmp_path, mirror=False, td=False):
     """A z dipole (or, mirror: a monopole on a PEC ground at z = 0) for 3 GHz, gap fed, PML; the NF2FF box placed
     by CreateNF2FFBox. Returns (nf2ff results, P_acc at the recorded frequency, the NF2FF box)."""
     F = openEMS(NrTS=20000, EndCriteria=1e-5)
@@ -649,8 +649,8 @@ def _dipole(tmp_path, mirror=False):
         m.AddBox([0, 0, -23], [0, 0, -1], priority=10)
     port = F.AddLumpedPort(1, 36.5 if mirror else 73, [0, 0, 0 if mirror else -1], [0, 0, 1], 'z', excite=1,
                            priority=5)
-    nf = F.CreateNF2FFBox(frequency=[3e9])
-    path = str(tmp_path / ('mono' if mirror else 'dipole'))
+    nf = F.CreateNF2FFBox(frequency=None if td else [3e9])
+    path = str(tmp_path / (('mono' if mirror else 'dipole') + ('_td' if td else '')))
     F.Run(path, cleanup=True, verbose=0, backend='cpu')
     port.CalcPort(path, [3e9])
     r = nf.CalcNF2FF(path, [3e9], np.arange(0, 181, 5.0), np.arange(0, 361, 5.0))
@@ -929,3 +929,98 @@ def test_openems_options_gfdtd_does_not_have_are_said(tmp_path):
     F2.ignored = ['CellConstantMaterial']
     F2.Run(path2, cleanup=True, verbose=0, backend='numpy', log=path2 + '.log', setup_only=True)
     assert half == pytest.approx(0.5 * F2.op.dt) and any('CellConstantMaterial' in n for n in F2.op.notes)
+
+
+def _plate_fill(tmp_path, tag, **mat):
+    """The radial plate wave of _plate_wave (60 x 60 cells, PEC sides) in a medium filling the domain (Mue, Sigma:
+    gfdtd's magnetic materials); (t, u) at 15 mm."""
+    F = openEMS(NrTS=330, EndCriteria=1e-9)
+    F.SetGaussExcite(10e9, 10e9)
+    F.SetBoundaryCond(['PEC'] * 6)
+    csx = ContinuousStructure()
+    F.SetCSX(csx)
+    g = csx.GetGrid()
+    g.SetDeltaUnit(1e-3)
+    g.SetLines('x', np.arange(-30, 30.01, 1.0))
+    g.SetLines('y', np.arange(-30, 30.01, 1.0))
+    g.SetLines('z', [0, 1, 2])
+    csx.AddExcitation('src', exc_type=0, exc_val=[0, 0, 1]).AddBox([0, 0, 0], [0, 0, 2])
+    csx.AddProbe('ut', p_type=0).AddBox([15, 0, 0], [15, 0, 2])
+    if mat:
+        csx.AddMaterial('fill', **mat).AddBox([-30, -30, 0], [30, 30, 2], priority=1)
+    path = str(tmp_path / tag)
+    F.Run(path, cleanup=True, verbose=0, backend='auto')
+    from gfdtd.fdtd import read_probe
+    t, u = read_probe(os.path.join(path, 'ut'))
+    return t, u, F
+
+
+def test_magnetic_materials_mue_and_sigma(tmp_path):
+    """openEMS's Mue and Sigma (R-B18; they had been dropped): mu_r 4 slows the wave as eps_r 4 does (its peak at
+    15 mm at the same time, 15 mm at c / 2 after air's), and a magnetic loss matched to an electric one (sigma_m = kappa eta0^2)
+    damps the wave about as much; such a model runs on NumPy's backend, said."""
+    t, air, _ = _plate_fill(tmp_path, 'air')
+    _, mu4, F = _plate_fill(tmp_path, 'mu4', mue=4.0)
+    _, eps4, _ = _plate_fill(tmp_path, 'eps4', epsilon=4.0)
+    early = t < 0.28e-9                                               # before the walls' echo (at c / 2)
+    peak = lambda u: t[early][np.argmax(np.abs(u[early]))]
+    dt = t[1] - t[0]
+    late = peak(mu4) - peak(air)                                      # 15 mm at c / 2 against c: 50 ps more
+    assert abs(peak(mu4) - peak(eps4)) <= 2 * dt and abs(late - 0.015 / 299792458.0) <= 2 * dt, late
+    assert F.op.magnetic and any('magnetic materials' in n for n in F.op.notes)
+    kappa = 0.05
+    _, el, _ = _plate_fill(tmp_path, 'el', kappa=kappa)
+    _, ma, F2 = _plate_fill(tmp_path, 'ma', sigma=kappa * (4e-7 * np.pi / 8.8541878128e-12))
+    a_air, a_el, a_ma = (np.abs(u[early]).max() for u in (air, el, ma))
+    assert a_el < 0.9 * a_air and a_ma < 0.9 * a_air and abs(a_ma - a_el) < 0.1 * a_el, (a_air, a_el, a_ma)
+    assert F2.op.ii is not None
+
+
+def test_set_abort_ends_a_run(tmp_path):
+    """openEMS's SetAbort (R-B18; it had raised): set before the run, the run stops at its first check."""
+    F, path = _plates(tmp_path, R=50.0)
+    F.SetAbort(True)
+    F.Run(path, cleanup=True, verbose=0, backend='numpy', log=path + '.log')
+    assert F.result['reason'] == 'abort' and F.result['steps'] == 100
+
+
+def test_field_probes(tmp_path):
+    """openEMS's E- and H-field probes (types 2 and 3, R-B18; they had been left out): one file each, t Ex Ey Ez.
+    Between the plates E is all z, and at the middle node E_z is the gap voltage over the 2 mm gap; H is across the
+    radial line (y at a point on x), and none along it."""
+    F = openEMS(NrTS=330, EndCriteria=1e-9)
+    F.SetGaussExcite(10e9, 10e9)
+    F.SetBoundaryCond(['PEC'] * 6)
+    csx = ContinuousStructure()
+    F.SetCSX(csx)
+    g = csx.GetGrid()
+    g.SetDeltaUnit(1e-3)
+    g.SetLines('x', np.arange(-30, 30.01, 1.0))
+    g.SetLines('y', np.arange(-30, 30.01, 1.0))
+    g.SetLines('z', [0, 1, 2])
+    csx.AddExcitation('src', exc_type=0, exc_val=[0, 0, 1]).AddBox([0, 0, 0], [0, 0, 2])
+    csx.AddProbe('ut', p_type=0).AddBox([15, 0, 0], [15, 0, 2])
+    csx.AddProbe('Ep', p_type=2).AddBox([15, 0, 1], [15, 0, 1])
+    csx.AddProbe('Hp', p_type=3).AddBox([15, 0, 1], [15, 0, 1])
+    path = str(tmp_path / 'fp')
+    F.Run(path, cleanup=True, verbose=0, backend='numpy')
+    from gfdtd.fdtd import read_probe
+    _, u = read_probe(os.path.join(path, 'ut'))
+    head = open(os.path.join(path, 'Ep'), encoding='utf-8').read().splitlines()
+    assert head[0].startswith('% time-domain E-field probe') and head[2].split()[1:] == ['t/s', 'Ex', 'Ey', 'Ez']
+    E = np.loadtxt(os.path.join(path, 'Ep'), comments='%')
+    H = np.loadtxt(os.path.join(path, 'Hp'), comments='%')
+    assert E.shape[1] == 4 and H.shape[1] == 4 and len(E) == len(u)
+    assert np.allclose(E[:, 3], u / 2e-3, rtol=1e-5, atol=1e-9 * np.abs(u).max() / 2e-3)
+    assert np.abs(E[:, 1:3]).max() < 1e-6 * np.abs(E[:, 3]).max()
+    assert np.abs(H[:, 2]).max() > 0 and np.abs(H[:, 1]).max() < 1e-3 * np.abs(H[:, 2]).max()
+
+
+def test_time_domain_nf2ff(tmp_path):
+    """The NF2FF box recorded in the time domain (frequency=None, R-B18; it had been refused): the faces as HDF5
+    samples, CalcNF2FF's DFT at any frequency of the band; the half-wave dipole as the frequency-domain box gives."""
+    r_fd, p_acc, _ = _dipole(tmp_path)
+    r_td, _, nf = _dipole(tmp_path, td=True)
+    assert nf.e_dump.dump_type == 0 and nf.e_dump.file_type == 1
+    assert 10 * np.log10(r_td.Dmax[0]) == pytest.approx(10 * np.log10(r_fd.Dmax[0]), abs=0.05)
+    assert r_td.Prad[0] == pytest.approx(r_fd.Prad[0], rel=0.02)

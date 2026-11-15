@@ -61,22 +61,22 @@ among them) work on gfdtd unchanged.
 | | gfdtd |
 |---|---|
 | Grid | rectilinear, Cartesian |
-| Materials | isotropic epsilon and conductivity (kappa), averaged over the four cells around each edge |
+| Materials | isotropic epsilon and conductivity (kappa), averaged over the four cells around each edge; mue and magnetic loss (sigma) along each dual edge (such a model runs on the NumPy backend: the compiled kernels' H update is geometry alone) |
 | Dispersion | Debye materials (`DebyeMaterial`, any number of poles): `--diel wideband` |
 | Metal | `Metal` as PEC; `ConductingSheet` (conductivity, thickness: kicad2ems's `--sigma`) with openEMS's conductor-loss model on flat primitives, PEC on others and next to the boundaries, as openEMS's; with `roughness` (m RMS, gfdtd's own) rough copper |
 | Primitives | Box, Polygon, LinPoly, Cylinder, CylindricalShell, Curve (a wire along the mesh edges nearest to it, as openEMS's) |
 | Lumped elements | R, L, C: parallel, or series RLC (`LEtype=1`), with metal caps |
-| Ports | all of openEMS's Python ports: lumped, curve, microstrip (MSL), stripline, CPW, coaxial, rectangular and circular waveguide, any waveguide mode by functions or mode file ([Ports](#ports)) |
+| Ports | all of openEMS's Python ports: lumped, curve, microstrip (MSL), stripline, CPW, coaxial (with a finite `Feed_R` too, which openEMS's has not: a resistive annulus at the feed plane), rectangular and circular waveguide, any waveguide mode by functions or mode file ([Ports](#ports)) |
 | Excitations | soft and hard, E and H field (types 0-3), weighted by functions of x, y, z, rho, a, r, t or a mode file, delayed |
-| Probes | voltage, current, voltage and current mode matching (types 10, 11) |
+| Probes | voltage, current, E and H field at a point (types 2, 3: one file, t Ex Ey Ez), voltage and current mode matching (types 10, 11) |
 | Excitation | openEMS's Gaussian pulse, sinus, Dirac, step and custom function of t (`SetGaussExcite`, `SetSinusExcite`, `SetDiracExcite`, `SetStepExcite`, `SetCustomExcite`, and their XML types 0, 1, 2, 3, 10); a sinus, step or custom one lasts the run |
 | Boundaries | PEC, PMC, first-order Mur, PML_n (convolutional PML over the n outermost cells, PEC behind it) |
-| Field dumps | `DumpBox` E, H, J (rot H), Jc (kappa E); time domain (.vtr) and frequency domain (HDF5); at the cell centres (dump mode 2) or the nodes (modes 0, 1); one file per box |
-| Far field | openEMS's NF2FF box (`CreateNF2FFBox`, `CalcNF2FF`), frequency domain, PEC / PMC mirrors: antenna mode |
-| End | the energy in the field and in the lumped parts (`EndCriteria`), timestep limit, `MaxTime` (the run's own seconds), `ABORT` |
+| Field dumps | `DumpBox` E, H, J (rot H), Jc (kappa E); time domain (.vtr, or HDF5 with file_type 1) and frequency domain (HDF5); at the cell centres (dump mode 2) or the nodes (modes 0, 1); one file per box |
+| Far field | openEMS's NF2FF box (`CreateNF2FFBox`, `CalcNF2FF`), frequency domain or time domain (`frequency=None`: the faces as HDF5 samples, any frequency of the band at CalcNF2FF), PEC / PMC mirrors: antenna mode |
+| End | the energy in the field and in the lumped parts (`EndCriteria`), timestep limit, `MaxTime` (the run's own seconds), `ABORT`, `SetAbort` |
 
-Not yet: Lorentz materials, time-domain NF2FF, the mode-purity column of mode-matching probes,
-field probes (types 2, 3), and cylindrical grids. A file that holds these is still read: what gfdtd doesn't
+Not yet: Lorentz materials, the mode-purity column of mode-matching probes, frequency-domain field probes (the
+time-domain file's DFT does it), and cylindrical grids. A file that holds these is still read: what gfdtd doesn't
 model is listed as a note.
 
 <a id="ports"></a>

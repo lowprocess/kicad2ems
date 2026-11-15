@@ -186,6 +186,30 @@ def write_h5(path, d, freqs, data):
     replace(tmp, path)
 
 
+def open_h5_td(path, d):
+    """openEMS's time-domain HDF5 dump (file_type 1), opened: /Mesh, and /FieldData/TD to take a dataset per sample
+    (add_h5_td). Returns (file, its group, the temporary name, the final name)."""
+    import h5py
+    tmp = path + '.part'
+    h = h5py.File(tmp, 'w')
+    h.attrs['openEMS_HDF5_version'] = np.float64(0.3)
+    h.attrs['dump_type'] = np.int32(d['type'] % 10)
+    g = h.create_group('Mesh')
+    g.attrs['mesh_scaling'] = np.float64(d['unit'])
+    g.attrs['mesh_type'] = np.int32(0)
+    h.attrs['dual_mesh'] = np.uint8(d.get('mode') != 'node')
+    for ax, c in zip('xyz', d['coords']):
+        g.create_dataset(ax, data=np.asarray(c, np.float64))
+    return h, h.create_group('FieldData').create_group('TD'), tmp, path
+
+
+def add_h5_td(group, step, t, data):
+    """One sample (nx, ny, nz, 3) of a time-domain HDF5 dump: dataset <step>, d_order NXYZ, its time."""
+    ds = group.create_dataset(f'{step:010d}', data=np.ascontiguousarray(np.transpose(data, (3, 0, 1, 2)), np.float32))
+    ds.attrs['d_order'] = 'NXYZ'
+    ds.attrs['time'] = np.float64(t)
+
+
 class Dumps:
     """The dumps of a run: sample(step) at every sample step (time domain: a frame every `sub` of them; frequency
     domain: one DFT term), close() writes the frequency-domain files."""
@@ -194,12 +218,14 @@ class Dumps:
         self.regions = [Region(d, op, be) for d in op.dumps]
         self.acc, self.n = [], 0
         self.h5 = True
-        if any(d['fd'] for d in op.dumps):
+        self.td = {}                                                # region index: an open time-domain HDF5 dump
+        if any(d['fd'] or d.get('file_type') == 1 for d in op.dumps):
             try:
                 import h5py                                         # noqa: F401
             except ImportError:
                 self.h5 = False
-                (notes if notes is not None else []).append("h5py is not installed: frequency-domain dumps skipped")
+                (notes if notes is not None else []).append("h5py is not installed: HDF5 dumps (frequency domain, "
+                                                            "and time domain with file_type 1) skipped")
         for r in self.regions:
             fd = r.d['fd']
             if not (fd and self.h5):
@@ -215,20 +241,33 @@ class Dumps:
     def sample(self, step):
         """The fields after timestep `step` (E at step dt, H half a step before)."""
         xp, be = self.xp, self.be
-        for r, acc in zip(self.regions, self.acc):
+        for k, (r, acc) in enumerate(zip(self.regions, self.acc)):
             d = r.d
             if d['fd'] is None:
                 if (step // self.op.sub) % d['sub'] == 0:
                     F = be.to_host(r.field(*((be.V, be.I) if r.gpu else be.fields())))
-                    write_vtr(os.path.join(self.path, f"{d['name']}_{step:010d}.vtr"), d['coords'], F,
-                              VTK_NAME[d['field']])
+                    if d.get('file_type') == 1:                     # HDF5 (R-B18: time-domain NF2FF reads it)
+                        if not self.h5:
+                            continue
+                        if k not in self.td:
+                            self.td[k] = open_h5_td(os.path.join(self.path, d['name'] + '.h5'), d)
+                        t = (step - (0.5 if d['field'] == 'H' else 0.0)) * self.op.dt
+                        add_h5_td(self.td[k][1], step, max(t, 0.0), F)
+                    else:
+                        write_vtr(os.path.join(self.path, f"{d['name']}_{step:010d}.vtr"), d['coords'], F,
+                                  VTK_NAME[d['field']])
             elif acc is not None:
                 t = (step - (0.5 if d['field'] == 'H' else 0.0)) * self.op.dt
                 r.accumulate(acc, max(t, 0.0), *((be.V, be.I) if r.gpu else be.fields()))
 
     def close(self):
-        """Write the frequency-domain dumps; returns the files written."""
+        """Write the frequency-domain dumps and close the time-domain HDF5 ones; returns the files written."""
         out = []
+        for k, (h, _, tmp, final) in sorted(self.td.items()):
+            h.close()
+            replace(tmp, final)
+            out.append(final)
+        self.td = {}
         for r, acc in zip(self.regions, self.acc):
             if acc is None:
                 continue

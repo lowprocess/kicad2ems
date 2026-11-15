@@ -152,6 +152,7 @@ class NumpyBackend:
         self.V = np.zeros((3,) + op.shape, dtype)
         self.I = np.zeros((3,) + op.shape, dtype)
         self.vv, self.vi, self.iv = (np.ascontiguousarray(a, dtype) for a in (op.vv, op.vi, op.iv))
+        self.ii = np.ascontiguousarray(op.ii, dtype) if getattr(op, 'ii', None) is not None else None
         self._sparse()
 
     def _sparse(self):
@@ -264,6 +265,8 @@ class NumpyBackend:
 
     def update_H(self):
         (Vx, Vy, Vz), (Ix, Iy, Iz), (ax, ay, az) = self.V, self.I, self.iv
+        if getattr(self, 'ii', None) is not None:                   # magnetic loss: I' = ii I - iv curl V
+            self.I *= self.ii
         Ix[:, :-1, :-1] -= ax[:, :-1, :-1] * (Vz[:, 1:, :-1] - Vz[:, :-1, :-1] - Vy[:, :-1, 1:] + Vy[:, :-1, :-1])
         Iy[:-1, :, :-1] -= ay[:-1, :, :-1] * (Vx[:-1, :, 1:] - Vx[:-1, :, :-1] - Vz[1:, :, :-1] + Vz[:-1, :, :-1])
         Iz[:-1, :-1, :] -= az[:-1, :-1, :] * (Vy[1:, :-1, :] - Vy[:-1, :-1, :] - Vx[:-1, 1:, :] + Vx[:-1, :-1, :])
@@ -1089,6 +1092,10 @@ def make_backend(op, backend='auto', dtype=np.float32):
     little memory for the model runs on the CPU instead, its reason in the backend's `fallback`."""
     name = resolve_backend(backend)
     kinds = {'cupy': CupyBackend, 'vulkan': VulkanBackend, 'core': CoreBackend, 'numpy': NumpyBackend}
+    if getattr(op, 'magnetic', False) and name != 'numpy':          # (the compiled H update is geometry alone)
+        be = NumpyBackend(op, dtype)
+        be.fallback = f"magnetic materials (Mue / Sigma): running on NumPy's backend, not {name}"
+        return be
     chosen = devices.preference(backend, 'GFDTD_BACKEND', dict(cuda='cupy', rocm='cupy', hip='cupy', vk='vulkan'))
     try:
         return kinds[name](op, dtype)
@@ -1112,7 +1119,7 @@ class Engine:
         self.op = op
         self.be = make_backend(op, backend, dtype)
 
-    def run(self, path, nr_ts, end_crit, verbose=1, out=print, max_time=None):
+    def run(self, path, nr_ts, end_crit, verbose=1, out=print, max_time=None, stop=None):
         """Run up to nr_ts timesteps in folder `path` (probe files written there), ending when the energy (the
         field's and the lumped branches', backend.energy) falls below end_crit times its peak after the excitation. Returns dict(steps, seconds, reason, db)."""
         op, be = self.op, self.be
@@ -1121,15 +1128,30 @@ class Engine:
         with open(os.path.join(path, 'et'), 'w', encoding='utf-8') as fh:
             fh.write("% time-domain excitation signal by gfdtd\n% t/s\tvoltage\n")
             fh.writelines(f"{n * dt:.12g}\t{v:.12g}\n" for n, v in enumerate(sig))
-        files = []
-        for p in be.order:                                          # the probe files, with openEMS's headers
+        # the probe files, with openEMS's headers: one per probe, a field probe's three components in one (t Ex Ey Ez)
+        outs = []                                                   # (file, [buffer columns], half-step offset)
+        groups = {}
+        for c, p in enumerate(be.order):
+            if p.get('group') is not None and p['group'] in groups:
+                outs[groups[p['group']]][1].append(c)
+                continue
             fh = open(os.path.join(path, p['name']), 'w', encoding='utf-8')
-            files.append(fh)
-            what, u = 'voltage' if p['field'] == 'V' else 'current', p['unit']
-            fh.write(f"% time-domain {what} integration by gfdtd @{time.ctime()}\n")
-            for end, (xyz, ijk) in (('start', p['start']), ('stop', p['stop'])):
-                fh.write(f"% {end}-coordinates: ({','.join(f'{v * u:g}' for v in xyz)}) m -> [{','.join(map(str, ijk))}]\n")
-            fh.write(f"% t/s\t{what}\n")
+            u = p['unit']
+            if p.get('group') is not None:
+                groups[p['group']] = len(outs)
+                f = 'E' if p['field'] == 'V' else 'H'
+                fh.write(f"% time-domain {f}-field probe by gfdtd @{time.ctime()}\n")
+                xyz, ijk = p['start']
+                fh.write(f"% coordinates: ({','.join(f'{v * u:g}' for v in xyz)}) m -> [{','.join(map(str, ijk))}]\n")
+                fh.write(f"% t/s\t{f}x\t{f}y\t{f}z\n")
+            else:
+                what = 'voltage' if p['field'] == 'V' else 'current'
+                fh.write(f"% time-domain {what} integration by gfdtd @{time.ctime()}\n")
+                for end, (xyz, ijk) in (('start', p['start']), ('stop', p['stop'])):
+                    fh.write(f"% {end}-coordinates: ({','.join(f'{v * u:g}' for v in xyz)}) m -> [{','.join(map(str, ijk))}]\n")
+                fh.write(f"% t/s\t{what}\n")
+            outs.append((fh, [c], 0.5 if p['field'] == 'I' else 0.0))
+        files = [o[0] for o in outs]
         dumps = Dumps(op, be, path, op.notes)
         pending = []                                                # (step, slot) samples in the device buffer
 
@@ -1137,10 +1159,10 @@ class Engine:
             if not pending:
                 return
             rows = be.fetch(len(pending))
-            for c, (p, fh) in enumerate(zip(be.order, files)):
-                half = 0.5 if p['field'] == 'I' else 0.0            # I sits half a step before V (its first
+            for fh, cols, half in outs:                             # I sits half a step before V (its first
                                                                     # sample at -dt / 2: readers take dt from t1 - t0)
-                fh.writelines(f"{(st - half) * dt:.12g}\t{rows[r, c]:.12g}\n" for r, st in enumerate(pending))
+                fh.writelines(f"{(st - half) * dt:.12g}\t" + "\t".join(f"{rows[r, c]:.12g}" for c in cols) + "\n"
+                              for r, st in enumerate(pending))
                 fh.flush()
             pending.clear()
 
@@ -1185,7 +1207,7 @@ class Engine:
                     if after and emax > 0 and e < end_crit * emax:
                         reason = 'end'
                         break
-                    if os.path.exists(abort):
+                    if os.path.exists(abort) or (stop is not None and stop()):    # (stop: SetAbort's flag)
                         reason = 'abort'
                         break
                     if max_time and now - t0 >= max_time:             # openEMS's MaxTime: the run's own time
@@ -1202,7 +1224,7 @@ class Engine:
         if reason == 'end':
             out(f"RunFDTD: end-criteria of {10 * np.log10(end_crit):.2f}dB reached after {s} timesteps ({db:.2f}dB)")
         elif reason == 'abort':
-            out(f"RunFDTD: aborted (ABORT file) after {s} timesteps ({db:.2f}dB)")
+            out(f"RunFDTD: aborted (ABORT file or SetAbort) after {s} timesteps ({db:.2f}dB)")
         elif reason == 'max_time':
             out(f"RunFDTD: max. simulation time ({max_time:g} s) reached after {s} timesteps ({db:.2f}dB)")
         elif reason == 'unstable':

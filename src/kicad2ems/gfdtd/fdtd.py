@@ -251,12 +251,16 @@ class openEMS:                                                       # noqa: N80
                 out(f"Note: {eng.be.fallback}")
             if not setup_only:
                 self.result = eng.run(sim_path, self.nr_ts, self.end_crit, verbose=1 if verbose is None else verbose,
-                                      out=out, max_time=getattr(self, 'max_time', None))
+                                      out=out, max_time=getattr(self, 'max_time', None),
+                                      stop=lambda: getattr(self, '_abort', False))
             eng.be.sync()
         return 0
 
-    def SetAbort(self, val):
-        raise NotImplementedError("gfdtd: write a file ABORT into the run folder")
+    def SetAbort(self, val=True):
+        """End a run at its next check (every engine.CHECK_STEPS timesteps), as a file ABORT in the run folder does:
+        from another thread while Run runs, or before Run (that run then stops at its first check). False clears it
+        (R-B18: it had raised)."""
+        self._abort = bool(val)
 
 
 def read_probe(path):

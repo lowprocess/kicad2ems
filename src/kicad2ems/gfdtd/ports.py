@@ -370,7 +370,7 @@ class CircWGPort(WaveguidePort):
 class CoaxialPort(_TLPort):
     """A coaxial line along prop_dir from start to stop (its axis): inner radius r_i, outer conductor r_o .. r_os
     (drawing units), pec_prop for the conductors, mat_prop (or None) for the filling. FeedShift, MeasPlaneShift,
-    Feed_R (0 or inf)."""
+    Feed_R (0, inf, or a resistance: a resistive annulus at the feed plane)."""
     def __init__(self, CSX, port_nr, pec_prop, mat_prop, start, stop, prop_dir, r_i, r_o, r_os, excite=0, **kw):
         super().__init__(CSX, port_nr=port_nr, start=start, stop=stop, excite=excite, **kw)
         start, stop = self.start, self.stop
@@ -418,9 +418,21 @@ class CoaxialPort(_TLPort):
         if feed_R == 0:
             pec_prop.AddBox(t0, t1, priority=self.priority)
             pec_prop.AddCylindricalShell(t0, t1, 0.5 * (r_i + r_o), r_o - r_i, priority=self.priority)
+        elif feed_R < 0:
+            raise Exception('CoaxialPort: Feed_R <= 0 is not allowed')
         elif not np.isinf(feed_R):
-            raise NotImplementedError('CoaxialPort: finite Feed_R > 0 is not yet supported; use Feed_R=0 or '
-                                      'Feed_R=inf') if feed_R > 0 else Exception('CoaxialPort: Feed_R <= 0 is not allowed')
+            # a finite source resistance (R-B18; openEMS has none for this port): a resistive annulus one cell thick
+            # at the feed plane, its radial resistance Feed_R: sigma = ln(r_o / r_i) / (2 pi t R)
+            lines = np.asarray(CSX.GetGrid().GetLines(p), float)
+            feed = self._feed(kw)
+            k = int(np.clip(np.searchsorted(lines, feed) - 1, 0, len(lines) - 2))
+            t = (lines[k + 1] - lines[k]) * CSX.GetGrid().GetDeltaUnit()
+            sigma = np.log(r_o / r_i) / (2 * np.pi * t * feed_R)
+            a0, a1 = start.copy(), start.copy()
+            a0[p], a1[p] = lines[k], lines[k + 1]
+            res = CSX.AddMaterial(self.lbl_temp.format('resist'), kappa=sigma)
+            res.AddCylindricalShell(a0, a1, 0.5 * (r_i + r_o), r_o - r_i, priority=self.priority + 1)
+            self.port_props.append(res)
 
 
 class StripLinePort(_TLPort):
