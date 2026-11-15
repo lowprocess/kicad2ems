@@ -481,10 +481,9 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
 ## The KiCad plugin (kicad2ems-ipc)
 
 Besides the study (the study's item 3), R-E26 and C16:
-- only S-parameters, though the analyses and the picking are there;
-- nothing goes back into KiCad (a map on a user layer, the region and the ports as items, markers at the worst
-  places);
-- an edited board needs Reload;
+- the analyses beyond the DC drop and the temperature (the near field, the circuit, crosstalk) are the window's
+  (the plugin's power box runs pcbqs's pdn and thermal and draws their maps in KiCad since 2026-11-15; the
+  region, the ports and the worst sections since 2026-11-13: the CHANGELOG);
 - its environment builds gfdtd without its core or a GPU (~15× slower) while the README quotes a GPU's time;
 - the Plugin and Content Manager route its README gives does not exist yet (no entry, `"VERSION"` in its metadata, no
   v0.1.0 tag).

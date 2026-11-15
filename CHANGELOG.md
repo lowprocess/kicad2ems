@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The KiCad plugin runs the DC drop and the temperature, and draws their maps on the board (R-E26).**
+  kicad2ems-ipc f43f5ca: a power box (rail, voltage, loads or losses) runs pcbqs's pdn and thermal through
+  kicad2ems's analysis registry; *Map on the board* draws a result's map as six bands of filled polygons, a band a
+  user layer, with a legend, in one undoable commit.
 - **A rail's PDN in Palace (R-E22).** kicad2ems-fem acffc2c: `palace_pdn`, the power-integrity question's 3D
   engine: the rail of pcbqs's PDN run, each part a lumped port at its copper's gap, the bare copper solved in Palace
   and closed by the run's parts after the solve; each load's |Z| and the bare matrix beside pcbqs's. On the buck
