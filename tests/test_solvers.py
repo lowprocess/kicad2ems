@@ -148,3 +148,24 @@ def test_a_result_that_is_not_passive_is_said():
     assert p['count'] == 1 and p['f'] == pytest.approx(1.5e9) and p['max'] == pytest.approx(1.05)
     thru[:] = np.nan
     assert passivity(f, thru) is None
+
+
+def test_a_passive_copy_clips_only_what_passes_one():
+    """make_passive (--passive, R-E2): each frequency's singular values above 1 clipped to 1, the rest of S as it
+    was; a passive frequency, and a term not computed, untouched."""
+    import numpy as np
+    from kicad2ems.pipeline import make_passive, passivity
+    f = np.linspace(1e9, 2e9, 4)
+    rng = np.random.default_rng(1)
+    S = 0.4 * (rng.standard_normal((4, 3, 3)) + 1j * rng.standard_normal((4, 3, 3)))
+    S[1] *= 3.0                                                     # one frequency far from passive
+    P, k = make_passive(S)
+    sv = np.linalg.svd(P, compute_uv=False)
+    assert k == sum(np.linalg.svd(S, compute_uv=False)[:, 0] > 1) and (sv <= 1 + 1e-12).all()
+    for i in range(4):
+        if np.linalg.svd(S[i], compute_uv=False)[0] <= 1:
+            np.testing.assert_array_equal(P[i], S[i])
+    assert passivity(f, P)['count'] == 0
+    S[2, 0, 1] = np.nan
+    P, _ = make_passive(S)
+    assert np.isnan(P[2, 0, 1]) and np.isfinite(P[1]).all()

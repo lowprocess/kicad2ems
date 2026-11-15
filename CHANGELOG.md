@@ -43,6 +43,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **A passive copy of S (R-E2).** `--passive` (the window's *Write a passive copy of S*) writes
+  `<name>_<solver>_passive.sNp` where a solver's S is not passive: each frequency's singular values above 1 clipped
+  to 1, the least change that makes it passive, the solver's own file kept. Causality is not checked: tried on the
+  impulse response, it cannot tell causal from not on a band from 1 GHz (the roadmap has the figures).
 - **The window waits on nothing it can do in a thread (R-D22).** An example is made in a thread and loaded when it
   is ready; dfsynth's description for the Filter page is asked in a thread, the page's form made when it comes (the
   window's start had waited on `dfsynth --describe`).

@@ -81,6 +81,21 @@ def passivity(freq, S):
     return dict(max=float(sv[k]), f=float(freq[k]), count=int((sv > 1 + PASSIVE_TOL).sum()))
 
 
+def make_passive(S):
+    """S (nf x n x n) with each frequency's singular values above 1 clipped to 1 (S = U diag(sv) V^H): the least
+    change, in the 2-norm, that makes it passive there; (that S, how many frequencies it changed). Terms not
+    computed (NaN) are left as they are, and so are their frequencies."""
+    S = np.array(S, complex)
+    ok = np.isfinite(S).all(axis=(1, 2))
+    changed = 0
+    for k in np.nonzero(ok)[0]:
+        U, sv, Vh = np.linalg.svd(S[k])
+        if sv[0] > 1.0:
+            S[k] = (U * np.minimum(sv, 1.0)) @ Vh
+            changed += 1
+    return S, changed
+
+
 def unknown_note(S, names):
     """'; not computed (written as 0): S(P2,P2), ...' for the Touchstone header: the terms that are NaN (ports
     not driven, or no path between two ports in the line model), which a Touchstone file cannot leave out."""
@@ -517,7 +532,16 @@ class Job:
                 self.log(f"WARNING: {reg[n].label}: not passive at {pas['count']} of {len(freq)} frequencies: its S "
                          f"gives out up to {100 * (pas['max'] ** 2 - 1):.2g} % more power than goes in (largest singular "
                          f"value {pas['max']:.4f} at {pas['f'] / 1e9:.4g} GHz): the mesh, the ports or the sweep's fit "
-                         f"there; a circuit or time-domain use of it needs it passive")
+                         f"there; a circuit or time-domain use of it needs it passive" +
+                         ("" if s.passive else " (--passive writes a passive copy)"))
+                if s.passive:                                       # (R-E2: nothing had made one)
+                    P, k = make_passive(r.S)
+                    pout = self.path(f"_{n}_passive.s{len(r.names)}p")
+                    write_touchstone(pout, freq, np.nan_to_num(P), r.zref, names=r.names,
+                                     comment=r.comment + f"; made passive: singular values clipped to 1 at {k} "
+                                             f"frequencies" + unknown_note(r.S, r.names))
+                    self.wrote(f"S-parameters made passive, {reg[n].label}", pout)
+                    entry['passive_touchstone'] = self.rel(pout)
             self.summary['solved'][n] = entry
             self.log(f"{reg[n].label}: -> {out}")
         self.join_bands()

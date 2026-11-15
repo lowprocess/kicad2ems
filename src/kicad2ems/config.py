@@ -218,6 +218,9 @@ CORE = [
     Option('preview', False, "write the model (and openEMS's mesh) preview, the line sections and the report, run "
            "the solvers other than openEMS, then exit", bool, group='output'),
     Option('no_report', False, "do not write <name>_report.html", bool, group='output'),
+    Option('passive', False, "also write <name>_<solver>_passive.sNp where a solver's S is not passive: its singular "
+           "values clipped to 1 at each frequency they pass it (a circuit or time-domain use needs it passive); the "
+           "solver's own S is kept", bool, gui='Write a passive copy of S', group='output'),
     Option('dump_animate', None, "frequency-domain dumps (openEMS --dump ...@GHz, mom25d --mom-dump): also write one "
            "period of Re(F e^jphi) at each frequency, the standing waves: gif or mp4 (mp4 needs ffmpeg)",
            choices=('gif', 'mp4'), gui='Animate frequency-domain dumps (gif / mp4; empty: no)', group='field dumps'),
