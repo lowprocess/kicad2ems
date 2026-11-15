@@ -347,7 +347,8 @@ On rf_gcpw it merges more (61 % of the triangles instead of 42 % with the fast s
 ## GPU
 
 mom25d can factor its matrix on a GPU in single precision and refine the answer to full precision on the CPU.
-slangpy runs it on any GPU with a Vulkan driver; a CuPy package is optional:
+slangpy runs it on a GPU with a Vulkan driver (run on an AMD RX 7800 XT and an NVIDIA GTX 980 Ti, and on Mesa's
+llvmpipe in CI); a CuPy package is optional:
 
 | GPU | Package |
 |---|---|

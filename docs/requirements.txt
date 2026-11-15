@@ -5,7 +5,7 @@ furo==2024.8.6
 breathe==4.36.0
 sphinxcontrib-mermaid==1.0.0
 # the code reference imports the stack: on Read the Docs, its packages' main branches (a checkout: its own installs)
-emsdev @ https://github.com/lowprocess/emsdev/archive/refs/tags/v0.3.0.zip
+emsdev @ https://github.com/lowprocess/emsdev/archive/refs/tags/v0.3.1.zip
 mom25d @ https://github.com/lowprocess/mom25d/archive/refs/heads/main.zip
 gfdtd @ https://github.com/lowprocess/gfdtd/archive/refs/heads/main.zip
 kicad2ems-fdtd @ https://github.com/lowprocess/kicad2ems-fdtd/archive/refs/heads/main.zip

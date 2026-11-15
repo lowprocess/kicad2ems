@@ -10,6 +10,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Fixed
+- **The GPUs, as run (R-C7).** mom25d's LU and gfdtd ran on an NVIDIA GTX 980 Ti through Vulkan as well as the AMD
+  RX 7800 XT (gfdtd on the demo transition within 0.008 of openEMS's stored answer; mom25d's S within 1.2e-6 of the
+  CPU's), and CI runs mom25d's Vulkan LU on Mesa's lavapipe (emsdev 0.3.1: `EMSDEV_VULKAN_CPU=1`, and host buffers
+  on devices whose memory is all host-visible). The docs name those GPUs rather than any GPU. gfdtd's energy kernel
+  crashes llvmpipe, so its Vulkan path is not in CI yet.
+- **CI tests more.** A real FDTD engine runs through kicad2ems-fdtd against openEMS's stored answer (R-C6); Elmer is
+  built once and cached so kicad2ems-fem's Elmer runs are tested (R-C2); pcbqs's real-board regressions on the
+  examples' boards run there (R-C10); mom25d checks a plane cavity, the 10 dB coupler against openEMS and stored
+  S-parameters (R-C9); the window's tests wait in an event loop and test Stop's two presses (R-C8).
 - **Which Elmer or Palace it was (R-B14).** kicad2ems-fem's tools (dc, thermal, mag, cap) and Palace's S-parameter
   solver record the program, its version and revision, and kicad2ems-fem's version in their results.
 - **The window's leftovers (R-F2).** The removed bridge's schematic layout, unused functions and the unused

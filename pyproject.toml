@@ -20,7 +20,7 @@ dependencies = [
     "scipy>=1.10",
     "shapely>=2.0",
     "matplotlib>=3.7",
-    "emsdev @ https://github.com/lowprocess/emsdev/archive/refs/tags/v0.3.0.zip", # the machine: GPUs, CPU threads, memory (sysinfo)
+    "emsdev @ https://github.com/lowprocess/emsdev/archive/refs/tags/v0.3.1.zip", # the machine: GPUs, CPU threads, memory (sysinfo)
     "tomli>=2; python_version < '3.11'",
 ]
 
@@ -35,9 +35,9 @@ core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ /
 openems = ["kicad2ems-fdtd[openems] @ git+https://github.com/lowprocess/kicad2ems-fdtd"]   # the FDTD solvers' package,
                                                                 # openEMS's side; openEMS and CSXCAD themselves come
                                                                 # from elsewhere (README)
-mom = ["mom25d @ git+https://github.com/lowprocess/mom25d@b6be5e714c419443e508acb7b1fe06b52c98e625"]     # the MoM solver and its plugins, mom25d and mixed
+mom = ["mom25d @ git+https://github.com/lowprocess/mom25d@a1ffc09e2e4a47a11771ffee4ba91ce4985ba7ba"]     # the MoM solver and its plugins, mom25d and mixed
                                                                 # (it brings triangle, its mesher)
-qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@1f8c40500b34b9e31966cf5b3a4f547934029283"]  # PDN, MQS/PEEC and ngspice operational circuits
+qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@90465296038bf9989dc3ca947d7e175585a938c1"]  # PDN, MQS/PEEC and ngspice operational circuits
 fem = ["kicad2ems-fem @ git+https://github.com/lowprocess/kicad2ems-fem@0bf08a1c5f27198386132e02898802af809e2e2e"]   # Palace and Elmer behind kicad2ems: a
                                                                 # solver (palace) and second engines for a rail's drop,
                                                                 # the temperature and capacitance; the programs

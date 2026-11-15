@@ -101,6 +101,14 @@ jobs:
         if: success() || failure()
         timeout-minutes: 30         # a hang fails the step with its traceback (faulthandler) instead of the job's cancel
         run: cd mom25d && python -m pytest -v -o faulthandler_timeout=600 --durations=10
+      - name: "mom25d's Vulkan LU on lavapipe (Mesa's CPU Vulkan: no GPU here; R-C7)"
+        if: success() || failure()
+        timeout-minutes: 15
+        run: |
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
+          python -m pip install slangpy
+          EMSDEV_VULKAN_CPU=1 python -m emsdev
+          EMSDEV_VULKAN_CPU=1 python mom25d/tools/gpu_selfcheck.py --backend vulkan --n 1024
       - name: gfdtd
         if: success() || failure()
         run: cd gfdtd && python -m pytest -q
