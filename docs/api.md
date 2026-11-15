@@ -32,7 +32,7 @@ in it. A user takes a provider of the same major version and at least the minor 
 - **Analysis plugins** declare it the same way (`api = (2, 6)` on their `Analysis`), and are left out and listed
   as broken on the same terms.
 - **Front ends** need a kicad2ems of the minor version they use; their `pyproject.toml` asks for the release
-  (kicad2ems-gui: `kicad2ems>=0.3.0`, API 2.11).
+  (kicad2ems-gui: `kicad2ems>=0.3.0`, API 2.12).
 - 2.0 took the FDTD layer out of `api.solver` (it is in kicad2ems-fdtd). 2.1 added the examples and the checked
   file readers to `api.frontend`, and `ETA0`, `MU0` to `api.solver`. 2.3 added the copper roughness (`--rough`):
   `hammerstad`, `rough_sigma`, `band_sigma`, and the `roughness` row of `FEATURES`. 2.4 the surface finish (`--finish`): `resolve_finish`,
@@ -47,6 +47,7 @@ in it. A user takes a provider of the same major version and at least the minor 
   `missing(values, board, results)` and `uses`, `rf_needs`.
   2.10 several runs of one analysis in a study (a board's rails): an analysis's `several` and `several_keys`, `read_analysis_sets`.
   2.11 a setting picked on the board: an option's `pick`, and `board_layout`, `net_at`, `part_at` in `api.frontend`.
+  2.12 a run done again: a solver's `reusable(run)`, whether an earlier run's result may stand for its solve.
   [CHANGELOG.md](https://github.com/lowprocess/kicad2ems/blob/main/CHANGELOG.md) has each release's.
 
 Both API modules load their names on first use: importing one costs nothing until a name is used.
@@ -110,6 +111,7 @@ and implements, in the order the pipeline calls them:
 | `solve(run, prep)` | a `Result`: S-parameters, port names, reference impedances, facts for the summary |
 | `deviations(run, prep)` | `[Deviation]`: what it models differently from the board |
 | `readback(run, prep)` | what its own model holds, in the board's terms, for the parity checks; or `None` |
+| `reusable(run)` | whether an earlier run's result may stand for its solve in this run (`kicad2ems.reuse`: the same board, frequencies, settings and code); its `outputs` is not called for one. Default: only a solver with no `outputs` of its own (2.12) |
 | `outputs(run, prep, result)` | its own extra outputs (optional) |
 | `resources()` | the GPUs it would run on here and why there are none, or `None`: the CPU only |
 

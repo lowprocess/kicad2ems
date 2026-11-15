@@ -66,8 +66,10 @@ the window lists the questions, with the engine chosen on each row, and compares
    Kramers-Kronig check.
 7. **Materials** (R-E4). KiCad's stackup `material` names are not read and a missing value defaults without a note: a
    small library (RO4350B, FR4 grades) with each one's dispersion and the frequency its εr is given at.
-8. **A run done again** (R-D20): no result is reused (a hash of board.json, the frequencies and the solver's
-   options), and the solvers of one run go one after another.
+8. **A run done again** (R-D20): since 2026-11-15 a result is reused where the board, the frequencies, the settings
+   and the code are the same (`kicad2ems.reuse`, `--no-reuse`), except where a solver's outputs need its solve
+   (dumps, the far field). Left: the solvers of one run go one after another; a CPU solver beside a GPU one is
+   the case that would gain (each uses all of its device already).
 9. **Board cutouts** (R-E6) stay dielectric, and a region that splits the board keeps its largest piece without a
    note.
 

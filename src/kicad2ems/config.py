@@ -218,6 +218,9 @@ CORE = [
     Option('preview', False, "write the model (and openEMS's mesh) preview, the line sections and the report, run "
            "the solvers other than openEMS, then exit", bool, group='output'),
     Option('no_report', False, "do not write <name>_report.html", bool, group='output'),
+    Option('no_reuse', False, "solve every solver again: by default a result an earlier run left in the output folder "
+           "is taken where the board, the frequencies, the settings and the code are the same (<name>_<solver>.result.*)",
+           bool, group='output'),
     Option('passive', False, "also write <name>_<solver>_passive.sNp where a solver's S is not passive: its singular "
            "values clipped to 1 at each frequency they pass it (a circuit or time-domain use needs it passive); the "
            "solver's own S is kept", bool, gui='Write a passive copy of S', group='output'),

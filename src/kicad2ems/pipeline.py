@@ -495,6 +495,7 @@ class Job:
     def solve(self):
         """Each solver of the plan, the cheap ones first. A failure is a warning here; when the solver was
         named in `solvers`, the run ends with exit code 1 (see _run)."""
+        from . import reuse
         order = sorted(self.plan, key=lambda n: registry()[n].rank)
         for i, name in enumerate(order):
             if stop.requested():
@@ -502,8 +503,18 @@ class Job:
                 break
             if name in getattr(self, '_unprepared', ()):
                 continue
+            sv = registry()[name]                                           # (R-D20: a run done again)
+            key = None if self.s.no_reuse or not sv.reusable(self) else reuse.key(self, name)
+            kept = reuse.load(self, name, key) if key else None
+            if kept is not None:
+                self.log(f"{label(name)}: the result of an earlier run here, solved {kept.info['reused']['solved']} "
+                         f"(the same board, frequencies, settings and code; --no-reuse solves it again)")
+                self.results[name] = kept
+                continue
             try:
                 self.results[name] = registry()[name].solve(self, self.prep.get(name))
+                if key:
+                    reuse.keep(self, name, key, self.results[name])
             except stop.Stopped:
                 self.log(f"stopped: {label(name)} ended early, no result")
             except Exception as e:
@@ -561,6 +572,8 @@ class Job:
                                        freq_ghz=[freq[0] / 1e9, freq[len(freq) // 2] / 1e9, freq[-1] / 1e9],
                                        table=self.summary['solved'][done[0]]['table'], compare_file=s.compare)
         for n in done:
+            if 'reused' in self.results[n].info:                    # (its solve's own state is not there)
+                continue
             try:                                                    # a solver's extra outputs (maps, dumps): a
                 reg[n].outputs(self, self.prep.get(n), self.results[n])     # warning, the S-parameters stand
             except stop.Stopped:

@@ -87,6 +87,34 @@ def test_line_model_only(run_cli, tmp_path, monkeypatch):
     assert 'line model' in page and "<div class='l'>mesh</div>" not in page    # no FDTD mesh tile without openEMS
 
 
+def test_a_run_done_again_takes_its_earlier_result(run_cli, tmp_path, monkeypatch):
+    """R-D20: the second run in the folder, with the same board, frequencies, settings and code, takes the first's
+    S (kicad2ems.reuse); another setting or --no-reuse solves again."""
+    pytest.importorskip('skrf')
+    import numpy as np
+    from kicad2ems import reuse
+    from kicad2ems.touchstone import read_touchstone
+    out = tmp_path / 'out'
+    args = (FILTER, '--solvers', 'scikit', '--points', '51', '--out', out)
+    code, so, err = run_cli(*args)
+    assert code == 0 and 'the result of an earlier run here' not in so, so + err
+    f0, S0 = read_touchstone(str(out / 'rf_interdig_scikit.s2p'))
+    assert (out / 'rf_interdig_scikit.result.npz').exists() and (out / 'rf_interdig_scikit.result.json').exists()
+    code, so, err = run_cli(*args)
+    assert code == 0 and 'the result of an earlier run here' in so, so
+    f1, S1 = read_touchstone(str(out / 'rf_interdig_scikit.s2p'))
+    assert np.array_equal(f0, f1) and np.allclose(S0, S1, atol=1e-12)
+    sm = json.loads((out / 'rf_interdig_run.json').read_text(encoding='utf-8'))
+    assert 'reused' in sm['solved']['scikit']
+    code, so, _ = run_cli(*args[:-2], '--points', '41', '--out', out)                # another sweep: solved
+    assert code == 0 and 'the result of an earlier run here' not in so
+    code, so, _ = run_cli(*args[:-2], '--points', '41', '--no-reuse', '--out', out)
+    assert code == 0 and 'the result of an earlier run here' not in so
+    monkeypatch.setattr(reuse, 'code_digest', lambda: 'changed')                    # other code: solved again
+    code, so, _ = run_cli(*args[:-2], '--points', '41', '--out', out)
+    assert code == 0 and 'the result of an earlier run here' not in so
+
+
 def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatch):
     pytest.importorskip('skrf')
     def broken(*a, **kw):

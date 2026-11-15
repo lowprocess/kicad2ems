@@ -31,6 +31,8 @@ and implements
   prepare(run)            its own form of the board (openEMS: boundaries, mesh), handed to solve()
   solve(run, prep)        Result: S-parameters over the board's ports, as reported
   outputs(run, prep, res) its own extra outputs (plots, files, summary entries); optional
+  reusable(run)           whether an earlier run's result may stand for its solve (no outputs() then): by default
+                          only where it has no outputs() (API 2.12, kicad2ems.reuse)
   deviations(run, prep)   [Deviation]: what it models differently from the board, by its own rules (vias moved
                           onto a mesh, parts split, walls as via rows), for the report and the parity checks
   readback(run, prep)     what its native model holds, read back (parity.py: vias, copper area per layer,
@@ -147,6 +149,12 @@ class Solver:
     def outputs(self, run, prep, res):
         """Its own outputs after the solve (plots, files, summary entries); optional."""
         pass
+
+    def reusable(self, run):
+        """Whether an earlier run's result may stand for its solve in this run (kicad2ems.reuse; API 2.12): its
+        outputs() is not called for one, so a solver whose outputs need what its solve keeps says no where this
+        run asks for them. By default: only a solver with no outputs() of its own."""
+        return type(self).outputs is Solver.outputs
 
     def deviations(self, run, prep):
         """[Deviation]: what it models differently from the board, by its own rules (vias moved onto a mesh, parts

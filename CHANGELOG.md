@@ -9,6 +9,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- **A run done again takes its earlier result (R-D20).** Each solver's result is kept beside the run's outputs
+  (`<name>_<solver>.result.npz` and `.json`), and a later run in the same folder takes it in place of a solve when
+  the board every solver gets, the frequencies, every setting but the output ones, the solver's version line and
+  a digest of the stack's loaded code are the same (`kicad2ems.reuse`); `--no-reuse` solves again. A solver says
+  whether its outputs need its own solve (`Solver.reusable(run)`, API 2.12): mom25d and the FDTD solvers take an
+  earlier result unless the run asks for field or current dumps, the far field or `--converge`; a solver with no
+  outputs of its own (the line model) always may. The solvers of a run still go one after another: each uses
+  the machine's cores or its GPU already.
+
 ### Fixed
 - **Crosstalk in time on a grid that holds the trace (R-E16).** The crosstalk question solved 401 linear points to
   1 / rise whatever the traces' length, so a long trace's edge response read low (an ideal 1 m coupler under a 25 ps
