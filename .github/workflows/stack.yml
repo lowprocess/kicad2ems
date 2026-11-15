@@ -118,7 +118,15 @@ jobs:
       - name: "pcbqs (the power tools, kicad2ems's analysis plugins, the circuit runs on ngspice)"
         if: success() || failure()
         timeout-minutes: 30
-        run: cd pcbqs && python -m pytest -q --durations=10
+        run: cd pcbqs && python -m pytest -q --durations=10 --basetemp="$RUNNER_TEMP/pcbqs-tests"
+      - name: pcbqs's ngspice logs (kept when a run fails)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pcbqs-ngspice-logs
+          path: ${{ runner.temp }}/pcbqs-tests/**/ngspice.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: kicad2ems-gui
         if: success() || failure()
         run: cd kicad2ems-gui && python -m pytest -q
