@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **A rail's PDN in Palace (R-E22).** kicad2ems-fem acffc2c: `palace_pdn`, the power-integrity question's 3D
+  engine: the rail of pcbqs's PDN run, each part a lumped port at its copper's gap, the bare copper solved in Palace
+  and closed by the run's parts after the solve; each load's |Z| and the bare matrix beside pcbqs's. On the buck
+  example it found that a ground pour beside the rail on its own layer is not in pcbqs's PDN (Palace's bare |Z| 0.68
+  of pcbqs's, the loaded inductance 0.45).
 - **The PDN for a PI user (R-E14).** pcbqs 09cd9db: `--cap-file` (a capacitor's vendor model: a .s2p measured
   through it, shunt or series told by its |S21|, a .s1p / .z1p or a CSV), `--cap-derate` (an MLCC's C at its DC
   bias), `--vrm-file` (the regulator's output impedance in place of R + L), `--ports-touchstone` (the bare PDN
