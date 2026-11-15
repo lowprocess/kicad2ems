@@ -88,6 +88,28 @@ def test_calibrated_and_written(kind, topo, f0, bw, sub, tmp_path):
         assert all(zmin - 0.1 < r[1] < zmax + 0.1 for r in d.rows)
 
 
+@pytest.mark.parametrize('topo,sub,f0,bw,rl_min', [('coupled', 'RO4003C-0.813', 5e9, 0.5e9, 12.5),
+                                                  ('hairpin', 'FR4-1.6', 2.4e9, 0.3e9, 10.0),
+                                                  ('hairpin', 'RO4003C-0.813', 2.4e9, 0.3e9, 10.5)])
+def test_coupled_gaps_refined_for_the_match(topo, sub, f0, bw, rl_min):
+    """R-E18: the coupling gaps (and a hairpin's bars) are refined for the pass band's match on the lossless
+    model, not only its edges: the FR4 hairpin had 5.5 dB of return loss on its own model. (No time limit: the
+    fit's ~100 evaluations take 7 s alone, more on a loaded machine.)"""
+    pytest.importorskip('scipy')
+    sub = Substrate.preset(sub)
+    spec = Spec('bandpass', topo, f0, bw, 'chebyshev', 5, 0.1)
+    d = calibrate(spec, sub, refine_time=600)
+    f = sweep(spec, 2001)
+    s11, s21 = sparams(d.model(sub.lossless()), f, spec.z0)
+    e = edges(spec, f, db(s21))
+    g = 0.1 * (e['f2'] - e['f1'])
+    m = (f > e['f1'] + g) & (f < e['f2'] - g)
+    assert -db(s11[m]).max() > rl_min
+    ef, eb = errors(spec, e)
+    assert abs(ef - 1) < 2e-3 and abs(eb - 1) < 2e-2
+    assert len(spec.trim) == (2 * spec.order + 1 if topo == 'hairpin' else spec.order + 1)
+
+
 def test_touchstone_roundtrip(tmp_path):
     from dfsynth.cli import write_model_s2p
     sub = Substrate.preset('RO4003C-0.508')

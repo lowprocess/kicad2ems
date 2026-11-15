@@ -77,8 +77,11 @@ wider).
    stubs as radial lines; arrays of coupled strips as a multiconductor line whose capacitance matrix comes from a
    quasi-static moment-method solution of the cross-section). Two factors, `kf` (all lengths) and `kb` (the
    design bandwidth), are iterated until the model's -3 dB edges land on the spec's. The low-pass section lengths,
-   the band-stop's stub and line impedances, and the interdigital's gaps, taps and rod lengths are then refined
-   on the lossless model, for at most `--refine-time` seconds (default 10).
+   the band-stop's stub and line impedances, the edge-coupled and hairpin filters' coupling gaps (and each
+   hairpin U's bar), and the interdigital's gaps, taps and rod lengths are then refined on the lossless model for
+   the pass band's match, the edges held on target, for at most `--refine-time` seconds (default 10). A
+   refinement stopped by the limit keeps its best so far (the log says so), so a slower machine can come out a
+   little differently; the FR4 hairpin's fit takes about 5 s.
 4. **Validation** (`--validate`): kicad2ems solves the written board with the solvers named (`mom` for most of
    these planar filters, `gfdtd` for the interdigital, `lines` for kicad2ems's line model). dfsynth measures each
    result's band edges (3 dB below the pass-band peak, so loss does not move them) and reports centre and
@@ -123,7 +126,11 @@ worst return loss over the response's own pass band. The lowpass and band-stop r
 | highpass stub, 2 GHz | RO4003C-0.508 | +4.5 % / +5.8 % | +1.5 % / -4.1 % | 12.1 / 12.9 dB |
 
 - **Hairpin**: the table's run predates the hairpin's present line model (all its arms coupled, square corners
-  fitted to gfdtd). With it, round 0 on gfdtd is centre -0.7 %, bandwidth -14 % on FR4-1.6 (the model's own
+  fitted to gfdtd), and its 16.4 dB return loss with it: on that model the synthesis alone matched to 5.5 dB
+  (FR4-1.6) and 8.1 dB (RO4003C-0.813, 300 MHz). With the gaps and bars refined (2026-11-15) both reach 11.0 dB
+  on the lossless model. On gfdtd the refined FR4 design (round 0) has its centre -1.1 % and bandwidth -10.9 % (the
+  lossy model's own -10.8 %: FR-4's loss) and a worst return loss of 11.7 dB over its own pass band (the model's
+  13.8), 7.0 dB over the spec's; 9 min. With it, round 0 on gfdtd is centre -0.7 %, bandwidth -14 % on FR4-1.6 (the model's own
   -15.6 %: FR-4's loss), and -0.2 % / +1.1 % on RO4003C-0.813 (2.4 GHz / 240 MHz, N5).
 - **Cross-checks**: gfdtd and mom25d agree within 1 % on the stepped low-pass's cut-off, and within 0.1 % on the
   tuned hairpin's centre.

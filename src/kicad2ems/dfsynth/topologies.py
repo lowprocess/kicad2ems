@@ -628,12 +628,18 @@ def _inverters(g, fbw):
 
 
 def _coupled_sections(spec, sub, kb, notes):
+    """The n + 1 coupled sections' (Ze, Zo, w, s). spec.trim (calibrate.refine_gaps: n + 1 factors) scales each
+    section's gap: the closed-form couplings assume synchronous, nearest-neighbour resonators, which a hairpin's
+    folded arms (all coupled to all) and an edge-coupled filter's end sections are not."""
     g = gvalues(spec.response, spec.order, spec.ripple)
     z0 = spec.z0
+    n = spec.order
+    tr = list(spec.trim[:n + 1]) if spec.trim and len(spec.trim) in (n + 1, 2 * n + 1) else [1.0] * (n + 1)
     secs = []
     for i, jj in enumerate(_inverters(g, spec.fbw * kb)):
         ze, zo = z0 * (1 + jj + jj * jj), z0 * (1 - jj + jj * jj)
         w, s = sub.coupled_synth(ze, zo)
+        s *= tr[i]
         secs.append((ze, zo, w, s))
         _check_w(sub, notes, f"section {i}", w)
         _check_s(sub, notes, f"section {i}", s)
@@ -688,6 +694,8 @@ def bandpass_hairpin(spec, sub, kf=1.0, kb=1.0):
     # its couplings to the neighbours (the line model has it, as it has every arm's coupling to every other)
     inner = spec.hairpin_gap or max(wavg, 2 * max(s for _, _, _, s in secs), sub.min_gap)
     d = [ws[j] / 2 + inner + ws[j + 1] / 2 for j in range(n)]                # arm centre spacing of resonator j+1
+    if spec.trim and len(spec.trim) == 2 * n + 1:                 # calibrate.refine_gaps: each U's bar (its length)
+        d = [x * t for x, t in zip(d, spec.trim[n + 1:])]
     beta = sum(_coupled_beta(sub, w, s, fd) for _, _, w, s in secs) / len(secs)
     A = [(math.pi / beta - d[j]) / 2 - sub.open_end((ws[j] + ws[j + 1]) / 2) for j in range(n)]
     arm = sum(A) / n                                          # one arm length for all: the arms overlap fully

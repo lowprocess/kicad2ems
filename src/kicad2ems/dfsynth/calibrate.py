@@ -200,13 +200,28 @@ def calibrate(spec, sub, kf=1.0, kb=1.0, iters=12, tol=1e-4, log=None, refine_lp
     fine = {'lowpass': refine, 'bandstop': refine_bandstop}.get(spec.kind)
     if spec.topology == 'interdigital':
         fine = refine_coupled
+    elif spec.kind == 'bandpass' and spec.topology in ('coupled', 'hairpin'):
+        fine = refine_gaps
     if fine and refine_lp and not spec.trim:
-        fine(spec, sub, d.kf, d.kb, log, seconds=refine_time)
+        with _one_thread():
+            fine(spec, sub, d.kf, d.kb, log, seconds=refine_time)
         if spec.trim:
             d2 = calibrate(spec, sub, d.kf, d.kb, iters, tol, log, refine_lp=False)
             d2.notes = notes + [x for x in d2.notes if x not in notes]
             return d2
     return d
+
+
+def _one_thread():
+    """BLAS on one thread while a refinement runs (threadpoolctl, where installed): its solves are of a few
+    hundred unknowns, which threads slow down (the FR4 hairpin's fit: 9.6 s on the default threads, 5.1 s on
+    one), and parallel runs (pytest -n) oversubscribe the cores."""
+    try:
+        from threadpoolctl import threadpool_limits
+    except ImportError:
+        from contextlib import nullcontext
+        return nullcontext()
+    return threadpool_limits(1, user_api='blas')
 
 
 def _copy(spec):
@@ -411,6 +426,98 @@ def refine_coupled(spec, sub, kf, kb, log=None, iters=3000, seconds=REFINE_SECON
         spec.trim = s.trim
         if log:
             log(f"  refine: pass-band RL {rl0:.1f} -> {rl1:.1f} dB, factors "
+                + ', '.join(f'{v:.3f}' for v in spec.trim))
+    elif log:
+        log(f"  refine: no improvement (pass-band RL {rl0:.1f} -> {rl1:.1f} dB), kept the synthesis")
+
+
+def refine_gaps(spec, sub, kf, kb, log=None, seconds=REFINE_SECONDS):
+    """Edge-coupled and hairpin band-pass (R-E18: only their band edges had been calibrated; the hairpin's match was
+    5.5 dB on its own lossless model): the n + 1 coupling gaps and a hairpin's n bars (symmetric factors, spec.trim)
+    for the prototype's match over the band, the edges kept on target (calibrate runs again after). A least-squares
+    fit, stopped at `seconds` with the best so far. Kept only if the pass-band return loss improves."""
+    n = spec.order
+    t = targets(spec)
+    bw = t['f2'] - t['f1']
+    f = np.linspace(t['f1'] - 0.3 * bw, t['f2'] + 0.3 * bw, 160)
+    om = (f / spec.f0 - spec.f0 / f) / spec.fbw
+    ref21 = np.array([lowpass_s21_db(spec.response, n, spec.ripple, abs(o)) for o in om])
+    ref11 = 10 * np.log10(np.maximum(1 - 10 ** (ref21 / 10), 1e-6))
+    inband = (f > spec.f0 - spec.bw / 2) & (f < spec.f0 + spec.bw / 2)
+    limit = np.full(inband.sum(), ref11[inband].max()) if spec.response == 'chebyshev' else \
+        np.maximum(ref11[inband], -30)
+    lsub = sub.lossless()
+    ng = (n + 2) // 2                                               # the n + 1 gaps, symmetric; a hairpin's n Us'
+    free = ng + ((n + 1) // 2 if spec.topology == 'hairpin' else 0)  # bars too (each resonator's own tuning)
+
+    def make(x):
+        s = _copy(spec)
+        x = np.asarray(x)
+        tr = _sym(x[:ng], n + 1) + (_sym(x[ng:], n) if spec.topology == 'hairpin' else [])
+        s.trim = tuple(float(v) for v in np.exp(tr))
+        return s
+
+    def residuals(x):
+        """In the band, |S11| above the prototype's ripple level (dB); the edges, held loosely (calibrate centres
+        the band again after); a gap under the fab's minimum."""
+        try:
+            d = build(make(x), sub, kf, kb)
+        except ValueError:
+            return np.full(inband.sum() + 3, 30.0)
+        s11, s21 = sparams(d.model(lsub), f, spec.z0)
+        ef, eb = errors(spec, edges(spec, f, db(s21)))
+        if ef is None or eb is None:
+            return np.full(inband.sum() + 3, 30.0)
+        small = sum(max(0.0, sub.min_gap - row[4]) for row in d.rows if row[0].startswith('section') and row[4])
+        return np.r_[np.maximum(db(s11[inband]) - limit, 0) / np.sqrt(inband.sum()), 15 * math.log(ef),
+                     8 * math.log(eb), 100 * small]
+
+    from scipy.optimize import least_squares
+    x0 = np.zeros(free)
+    c0 = float(np.sum(residuals(x0) ** 2))
+    started = time.time()
+    best = [x0, c0]
+
+    class _Out(Exception):
+        pass
+
+    def timed(x):                                                 # the best so far kept; past the time limit, out
+        r = residuals(x)
+        c = float(np.sum(r ** 2))
+        if c < best[1]:
+            best[:] = [np.array(x), c]
+        if time.time() - started > seconds:
+            raise _Out
+        return r
+    try:                                                          # (least squares' few evaluations: a simplex had
+        least_squares(timed, x0, diff_step=1e-3, max_nfev=40 * (free + 1), xtol=1e-6, ftol=1e-3,   # 127 in 10 s)
+                      bounds=(np.full(free, -0.7), np.full(free, 0.7)))
+    except _Out:
+        if log:
+            log(f"  refine: stopped at the {seconds:g} s time limit, keeping the best so far")
+    except Exception as e:                                        # noqa: BLE001  (no trims: the synthesis stands)
+        if log:
+            log(f"  refine: {type(e).__name__}: {e}")
+    rx, rf = best
+    if log:
+        log(f"  refine: {time.time() - started:.1f} s, cost {c0:.3g} -> {rf:.3g}")
+    fr = sweep(spec, 1201)
+
+    def rl(s):
+        d = build(s, sub, kf, kb)
+        s11, s21 = sparams(d.model(lsub), fr, spec.z0)
+        e = edges(spec, fr, db(s21))
+        if not e.get('f1') or not e.get('f2'):
+            return 0.0
+        g = 0.1 * (e['f2'] - e['f1'])
+        m = (fr > e['f1'] + g) & (fr < e['f2'] - g)
+        return float(-db(s11[m]).max()) if m.any() else 0.0
+    s = make(rx)
+    rl0, rl1 = rl(_copy(spec)), rl(s)
+    if rf < c0 and rl1 > rl0 + 0.5:
+        spec.trim = s.trim
+        if log:
+            log(f"  refine: pass-band RL {rl0:.1f} -> {rl1:.1f} dB, factors (gaps, then the Us' bars) "
                 + ', '.join(f'{v:.3f}' for v in spec.trim))
     elif log:
         log(f"  refine: no improvement (pass-band RL {rl0:.1f} -> {rl1:.1f} dB), kept the synthesis")
