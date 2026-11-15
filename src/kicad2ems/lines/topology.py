@@ -178,8 +178,19 @@ def _find_groups(lm, model, ref):
         t = sorted((float(p[0] @ u), float(p[-1] @ u)))
         return t[0], t[1], float(p[0] @ n)
     pairs = []
-    for i, e in enumerate(cand):
-        for f in cand[i + 1:]:
+    # the pairs near enough to couple, from a tree of the sections (each grown by the farthest it couples); every
+    # pair of the 480-odd sections on CM5 had been tried, 1.4 s of its build (R-D17); the same pairs, in order
+    from shapely.geometry import LineString
+    from shapely.strtree import STRtree
+    lines = [LineString(e.pts) for e in cand]
+    tree = STRtree(lines)
+    wmax = max(e.w for e in cand)                                  # (the gap is between edges: either width)
+    grown = [ln.buffer(COUPLE_H * _couple_h(e) + 0.5 * (e.w + wmax) + 1e-6, cap_style=2) for ln, e in zip(lines, cand)]
+    src, hit = tree.query(grown, predicate='intersects')
+    near = sorted({(min(i, j), max(i, j)) for i, j in zip(src.tolist(), hit.tolist()) if i != j})
+    for i, j in near:
+        e, f = cand[i], cand[j]
+        if True:                                                    # (the loop's body as it was)
             if e.layer != f.layer or e.xs != f.xs or e.h != f.h:
                 continue
             da = abs(info[id(e)] - info[id(f)])

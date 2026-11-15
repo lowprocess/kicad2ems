@@ -156,9 +156,6 @@ that: nothing in it may fix a panel in place. Left:
 7. **Dispersion and the losses' next step**: a Djordjevic-Sarkar εr(f) for each layer before the solve; the
    conductor loss from the cross-section (Wheeler's rule: two solves with the copper set back by half a skin
    depth) in place of 2 Rs / w, and each harmonic's in qucsator (its RLCG holds R and G at the band centre).
-8. **The builder's quadratic loops, the rest** (R-D17): the junction split and the via search are indexed since
-   2026-11-14 (the CM5's 94 nets 8.3 s for 11.6); left, the coupled pairing over all pairs (1.4 s) and the cuts'
-   intersections (2.2 s).
 9. **One multiconductor model** (R-F5). dfsynth's (vectorised, with conductor loss) and `coupled.mtl_s` (looped,
    lossless) are two; so are the Touchstone readers.
 
@@ -339,7 +336,6 @@ engine.
 | Two faces in the circuit: a local loop basis | fewer iterations, no dense setup | | iterations grow with frequency (217 at DC, 575 at 20 MHz); the dense common-mode setup is 19 s |
 | The dense solves, after their assembly | the LU is what is left: 90 % of a two-face S-parameter solve (147 s at 17,700 unknowns) | | The assembly, the thermal maps' sampling and the potential's solve are in the compiled core or on Cholesky since 2026-11-13 (pcbqs's CHANGELOG; `tools/perf/README.md` has where each tool's time goes). Left, none of it pcbqs's own Python: a compressed or block low-rank LU as mom25d has; ngspice's text output read by `np.loadtxt` (a binary raw file); the compression of field dumps; shapely's unions in the near field's mesh |
 | Whole-board near field | | convergence | `--backend hierarchical` (since 2026-11-14) is GMRES in the loop basis (47,548 triangles in 13 s, docs/quasistatic.md). Left: mesh and crop convergence on a whole board. A crop around the converter is enough for DC-DC loops |
-| A trial's waveforms (R-D2, the rest) | ~0.5 s of each run | S | 98 MB of text a wpthb run read by `loadtxt` (0.5 s; `fromstring` is no faster: a binary raw file), the spectrum computed twice with copper. Trials are saved uncompressed since 2026-11-14 |
 | The pencil, with `dc` loss (R-D13, the rest) | one factor a sweep | M | `Rl + jωLl` is a pencil: one eigendecomposition and Woodbury for the parts. The single-precision LU with refinement is done (2026-11-14) |
 
 The quasi-static solver's 10× target is not yet shown on real boards, and an FFT field grid's convergence has to
