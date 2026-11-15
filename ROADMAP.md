@@ -304,22 +304,18 @@ validated: pcbqs's docs and CHANGELOG.md (the project's `NOTES-pi-nearfield.md` 
 
 ### Losses and thermal
 
-The circuit is there for its parts' losses; what thermal makes of them (R-E7-E13, D3):
+The circuit is there for its parts' losses; what thermal makes of them (R-E9-E13; junction temperatures and limits,
+E7, and the copper's loss into thermal, E8, are done, as is the fields' reuse of the circuit's copper, D3):
 
-1. **Junction temperature and limits.** "Part °C" is the copper under the pads; θ comes from `--theta` only; there is
-   no Tmax. Rth and Tmax from a footprint's or the model's fields, Tj and its margin in the headline.
-2. **The copper's loss to thermal**: the circuit's (28.8 mW of the buck's 0.80 W, which `circuit/fields.py`
-   already solves per harmonic) and the DC drop's per-triangle loss.
-3. **Temperature back into the losses**: ngspice at 27 °C, σ a constant 5.8e7. Thermal, R scaled by its
+1. **Temperature back into the losses**: ngspice at 27 °C, σ a constant 5.8e7. Thermal, R scaled by its
    temperature, the circuit again from its end state: two or three passes, no change to the engine.
-4. **Inductor loss**: DCR and one constant core resistor. iGSE core loss and Rac at each harmonic, after the run.
-5. **A sweep's thermal**: one map, of the point with the most loss, off-board parts included. A map per point and a
+2. **Inductor loss**: DCR and one constant core resistor. iGSE core loss and Rac at each harmonic, after the run.
+3. **A sweep's thermal**: one map, of the point with the most loss, off-board parts included. A map per point and a
    table of part × point.
-6. **Vendor models**: `pin_order` D, G, S only (no Kelvin source or thermal pins), no diode `.model`, KiCad's
+4. **Vendor models**: `pin_order` D, G, S only (no Kelvin source or thermal pins), no diode `.model`, KiCad's
    `Sim.*` fields not read.
-7. **The surroundings**: one film coefficient. A film that grows with the rise, fixed-temperature regions
+5. **The surroundings**: one film coefficient. A film that grows with the rise, fixed-temperature regions
    (heatsinks), a body-to-air path for tall parts.
-8. **`--fields` solves the copper again** (37.6 s of the buck's 62 s) where `prepare()` has it.
 
 ### Speed
 
