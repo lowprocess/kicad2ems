@@ -197,3 +197,22 @@ def test_a_pair_the_line_model_did_not_couple_is_not_judged(tmp_path, monkeypatc
     w = d['worst']
     assert w['ok'] is None and w['not_modelled'] == ['D0 to D1', 'D1 to D0']
     assert si.verdict(w).startswith('not judged') and 'not judged' in si.Crosstalk().report(str(tmp_path))['summary']
+
+
+def test_the_time_grid_holds_a_long_coupler():
+    """A 1 m TEM coupler (C = 0.05, matched: its near-end crosstalk settles at C / 2) under a 25 ps edge: on the
+    grid time_grid gives, the edge response reaches its 2.5 % plateau; on the fixed 401 points it read 1.92 %
+    (R-E16). A short trace keeps 401 points."""
+    import numpy as np
+    from kicad2ems.si import edge_response, time_grid
+    C0 = 299792458.0
+
+    def next_peak(fmin, points, L=1.0, er=4.0, C=0.05):
+        f = np.linspace(fmin, fmin * (points - 1), points)
+        th = 2 * np.pi * f * L * np.sqrt(er) / C0
+        S31 = 1j * C * np.sin(th) / (np.sqrt(1 - C * C) * np.cos(th) + 1j * np.sin(th))
+        return 100 * np.max(np.abs(edge_response(f, S31, 25e-12)[1]))
+    fmin, points = time_grid(40e9, 1000.0, 4.0)
+    assert points > 8000 and next_peak(fmin, points) == pytest.approx(2.5, rel=0.02)
+    assert next_peak(40e9 / 400, 401) < 2.0                              # the old grid, short
+    assert time_grid(40e9, 30.0, 4.0)[1] == 401 and time_grid(40e9, 1e5, 4.0)[1] == 16001

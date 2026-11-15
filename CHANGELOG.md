@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Fixed
+- **Crosstalk in time on a grid that holds the trace (R-E16).** The crosstalk question solved 401 linear points to
+  1 / rise whatever the traces' length, so a long trace's edge response read low (an ideal 1 m coupler under a 25 ps
+  edge: 1.92 % of its 2.5 % plateau). Its grid is now 16 samples a ripple of S for the longest trace (`si.time_grid`,
+  401 to 16,001 points): 2.51 %.
 - **The GPUs, as run (R-C7).** mom25d's LU and gfdtd ran on an NVIDIA GTX 980 Ti through Vulkan as well as the AMD
   RX 7800 XT (gfdtd on the demo transition within 0.008 of openEMS's stored answer; mom25d's S within 1.2e-6 of the
   CPU's), and CI runs mom25d's Vulkan LU on Mesa's lavapipe (emsdev 0.3.1: `EMSDEV_VULKAN_CPU=1`, and host buffers

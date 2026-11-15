@@ -282,6 +282,16 @@ def _moved(xs_dict, i, j, factor):
     return dict(xs_dict, conductors=c)
 
 
+def time_grid(fmax_hz, length_mm, er, base=401, cap=16001):
+    """(fmin, points) of the linear grid the crosstalk's edge responses are made on, to fmax_hz: fine enough for
+    the longest trace (length_mm, its delay td at sqrt(er)): S ripples in frequency with a period of 1 / (2 td),
+    and edge_response interpolates S linearly, so 16 samples a ripple (a 5 % coupler 1 m long under a 25 ps edge
+    read 1.92 % of its 2.5 % plateau on the fixed 401 points, 2.51 % on this grid: R-E16)."""
+    td = max(float(length_mm), 0.0) * 1e-3 * math.sqrt(max(float(er), 1.0)) / 299792458.0
+    points = int(min(max(base, math.ceil(32 * td * fmax_hz) + 1), cap))
+    return fmax_hz / (points - 1), points
+
+
 def _estimate(kc, kl, td, ramp):
     """(NEXT for this edge, NEXT saturated, FEXT), in %, of a stretch of delay td for an edge's ramp."""
     kb, kf = (kc + kl) / 4, (kc - kl) / 2
@@ -401,7 +411,11 @@ def run(a, echo=print):
     for net, (n, fr) in ordered.items():
         where = lambda e: f"{e['pad'][0]}.{e['pad'][1]}" if e['pad'] else f"({e['x']:.2f}, {e['y']:.2f}) {e['layer']}"
         echo(f"trace {net}: near end {where(n)}, far end {where(fr)}, {n['length']:.1f} mm")
-    cli = dict(board=a.board, ports=specs, nets=['auto'], fmin=fmax / 400, fmax=fmax, points=401, out=out,
+    longest = max((max(n['length'], fr['length']) for n, fr in ordered.values()), default=0.0)
+    er = max([it.get('er', 1.0) for it in kb.stack_items if it.get('kind') == 'diel'] or [4.5])
+    fmin, points = time_grid(fmax * 1e9, longest, er)
+    fmin /= 1e9
+    cli = dict(board=a.board, ports=specs, nets=['auto'], fmin=fmin, fmax=fmax, points=points, out=out,
                solvers=a.solvers, no_report=True)
     if a.ground:
         cli['ground'] = a.ground
@@ -410,7 +424,8 @@ def run(a, echo=print):
     if 'mom25d' in a.solvers:                                       # a wave port's fit takes the coupling of a
         cli['mom_port'] = 'lumped'                                  # neighbour out (mom25d.model.COUPLED_REACH)
     s = build_settings(cli)
-    echo(f"solving {len(names)} ports, {fmax / 400:.3g} to {fmax:g} GHz: {a.solvers}")
+    echo(f"solving {len(names)} ports, {fmin:.3g} to {fmax:g} GHz in {points} points (the longest trace, "
+         f"{longest:.0f} mm): {a.solvers}")
     job = Job(s, echo=echo)
     job.run()
     name = job.name if hasattr(job, 'name') else os.path.splitext(os.path.basename(a.board))[0]
