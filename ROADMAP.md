@@ -231,8 +231,11 @@ that does not need N² memory. In this order:
    `tests/boards/launch.json` 14.4 s of a 14.6 s set-up. It is kept on disk by cross-section since 2026-11-14 (a run
    again: 0.5 s); the first run's cost is left, for a 2D cut of the feed (Zc and gamma) to take.
 2. **The via blocks, what is left** (R-D11): since 2026-11-14 the chains' kernel is in the compiled core, the fans'
-   product sparse and the pairs' geometry made once (317 vias: 1.36 s a solve for 3.43). Left: the holes' blocks
-   (`_frill_blocks`) are still a Python loop a hole, and the fill is not overlapped with the GPU's factor.
+   product sparse and the pairs' geometry made once (317 vias: 1.36 s a solve for 3.43); since 2026-11-15 the
+   holes' kernels are the core's J0/J1/J2 contour sums (the demo with `planes='holes'`: 0.78 s to 0.52 s of its
+   hole blocks). Left: the holes' tables are made again at every frequency (their Sommerfeld integrals; 87 ms a
+   hole's frequency on the demo), and the fill is not overlapped with the GPU's factor, which would hold two
+   dense Z at once (the memory plan has one).
 3. **Copper thickness**, ignored (sheets) while the other solvers model it; the loss takes the port layer's
    thickness for every layer. Per interface first; two sheets with side currents later (`sing.py` names the
    kernels).
