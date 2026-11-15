@@ -1,0 +1,39 @@
+# The installer, install.py, end to end on Linux: install every default into a checkout's .venv, run an example on
+# mom25d's compiled core, update, uninstall. Its own workflow (R-C11): it had been a job of windows.yml, which is set
+# aside for now, so the one Linux check of the installer went unseen (that is how A21 got through).
+name: install
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * *'            # nightly: what it installs moves without a push here
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  MOM25D_GPU: 'off'
+  GFDTD_BACKEND: cpu
+
+jobs:
+  installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    name: install.py on Linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.13' }
+      - name: System libraries (Qt offscreen, OpenGL)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - name: Install (checkout target, every default)
+        run: python install.py --yes --target checkout --openems none --qucsator none
+      - name: Run an example on mom25d (the compiled core)
+        run: |
+          .venv/bin/kicad2ems --check
+          .venv/bin/kicad2ems examples/demo_transition.toml --solvers mom
+      - name: Update
+        run: python install.py --update --target checkout
+      - name: Uninstall
+        run: python install.py --uninstall --target checkout --yes && test ! -d .venv
