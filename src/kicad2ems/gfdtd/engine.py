@@ -86,6 +86,20 @@ def core_info():
         return False, f"no compiled CPU core (python -m gfdtd.core.build): {e}"
 
 
+def vulkan_gpus():
+    """[(index, name)] of the Vulkan GPUs runs may be shared out to (EMSDEV_VULKAN_DEVICE=index in each run's
+    process): the discrete ones with the kernels' features (an integrated GPU's memory is the system's); [] where
+    Vulkan is not there. Threads cannot share them out: two driving two GPUs from one process ran each at a fifth of
+    its speed, the interpreter's lock between them (R-D9)."""
+    try:
+        from emsdev import vulkan
+        ads = vulkan.adapters()
+    except Exception:                                               # noqa: BLE001  (no Vulkan: no GPUs to share)
+        return []
+    return [(a.index, a.name) for a in ads if a.kind == 'discrete' and
+            (a.features is None or all(a.features.get(f) for f in VULKAN_NEEDS))]
+
+
 def concurrent_runs(cells, runs):
     """How many runs of a model of `cells` to have on the GPU at once. Small models leave it idle between kernel
     launches, and two to four runs side by side fill it. That holds while their fields fit in its cache together:

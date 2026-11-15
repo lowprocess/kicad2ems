@@ -171,7 +171,13 @@ branches) are folded into the E update, their currents stored only where there a
   to SPIR-V when a run starts (cached by slangpy). Each kernel reaches the model through one struct of buffer
   device addresses; 32-bit indices, 64 threads a workgroup; the same three launches and PML trial, recorded into
   command buffers of 96 launches the GPU runs while the host records the next. The energy is summed in double per
-  workgroup on the GPU and the partial sums on the host. Runs in threads get a Vulkan device each.
+  workgroup on the GPU and the partial sums on the host. Runs in threads get a Vulkan device each. Several GPUs
+  (kicad2ems's `--gfdtd-gpus all` or `0,1`, `vulkan_gpus()`): the excitations go out to a process a GPU
+  (`EMSDEV_VULKAN_DEVICE` in each), each taking the next as it comes free. Not threads: two threads driving an
+  RX 7800 XT and a GTX 980 Ti each ran at a fifth of its speed (the host records every launch, one interpreter
+  lock between them); as processes each runs at its own, 9,300 and 1,970 MC/s on a 1.1 M-cell board, the
+  S-parameters within 8e-7 of one GPU's. The default stays one GPU: a second one 4.7× slower finishes its one
+  excitation of four after the first has done the other three (30 s against 26).
 - **core** (`src/gfdtd/core/gfdtd_core.cpp`, pybind11 and OpenMP): rows along z with the boundary tests outside the
   loops, so the compiler vectorises them, and denormals flushed to zero. It runs one thread per physical core of
   the fastest kind (8 on an i7-13700K): every barrier waits for the slowest thread, and with the desktop busy, 24
