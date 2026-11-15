@@ -323,7 +323,9 @@ validated: pcbqs's docs and CHANGELOG.md (the project's `NOTES-pi-nearfield.md` 
    derating, a VRM's impedance, the decap sites as ports with a SPICE subcircuit, the near field's capacitors'
    own values: in the CHANGELOG. Left: an impedance for a rail with no planes (the PEEC route is the trial's only:
    one source, one ground, no beads); DC-bias derating from a curve by dielectric and voltage (a vendor's file at
-   the bias, or a share, today).
+   the bias, or a share, today); a ground pour beside the rail on its own layer, which the plane pairs (a rail on
+   one layer over ground on another) leave out: Palace's PDN engine read the buck example's bare |Z| 0.68 of
+   pcbqs's and its loaded inductance 0.45 (2026-11-15, R-E22).
 
 ### Losses and thermal
 
@@ -463,10 +465,8 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
    (its `circuits_harmonic_*_homogenization` cases) would give it. Elmer's transient with a net's own current.
 3. **The PDN as a Palace engine** (R-E22; done 2026-11-15, in the CHANGELOG): left, the loop's 40 % on the
    Jetson's U69 (Palace 0.20 nH, pcbqs 0.34 nH at 12 MHz) to explain: zero-thickness PEC against 35 µm copper, the
-   capacitors as straps against filaments, one port against all the converter's pads. And what the PDN engine
-   found in pcbqs (pcbqs's ROADMAP): a ground pour beside the rail on its own layer is not in pcbqs's PDN, whose
-   plane pairs are a rail on one layer over ground on another (the buck example: Palace's bare |Z| 0.68 of
-   pcbqs's, the loaded inductance 0.45 of it).
+   capacitors as straps against filaments, one port against all the converter's pads. What the PDN engine found
+   in pcbqs (a ground pour beside the rail on its layer) is under Power tools, 7.
 4. **Real boards** (R-B21, B14, D23). Since 2026-11-15 Palace's `feature_size` takes every piece's nearest gap
    (a tree, not the first 60 a layer), its copper's outlines are straightened (to a twentieth of the feature, at
    most 10 µm), and its `estimate()` builds the mesh and scales it by the examples' runs (demo_lowpass at the
