@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Slot planes in mom25d (`--mom-planes slots`, experimental).** Every copper layer as the whole stack has them,
+  but the ground a perfect conductor of the stack, infinite, and only its openings meshed: their field the unknowns,
+  coupled to the traces and vias on either side through the stack's networks (`mom25d/slots.py`; docs/mom.md#slot-planes).
+  antenna_aperture comes to 0.057 from openEMS (the whole stack 0.19 at any cell size); on boards whose ground edge
+  matters (antenna_slot, 0.257 against 0.058) the whole stack stays the choice. Checked by Babinet's principle, the
+  frill holes' kernels and the ground meshed on a slot under a line (within 0.03). Its coupling is NumPy's: slower
+  than the whole stack on small boards for now.
 - **Parts as ports, closed after the solve (R-E5).** `--part-ports all` (or `C1,L2`) solves each part as an internal
   gap port and closes it by its value afterwards (`kicad2ems.embed`): the result is the board with its parts,
   `<name>_<solver>_ports.sMp` the full matrix, and `--part-value C2=3.3p,6.8p,10p` (every combination, at most 64)
@@ -80,6 +87,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **mom25d says so where its sparse near field cannot fit**, instead of the system killing it: the block low-rank
+  solver's near-field correction was not in the memory plan, and on a fine mesh of several layers it is the larger
+  (antenna_aperture's whole stack, 78,458 unknowns: 37 M near pairs, ~15 GB, killed 7 s into a 16 GB scope without
+  a word). It is estimated before it is built (400 bytes a near pair) and the run stops with what to change.
+  antenna_aperture's config now sets mom25d's cell to 1 mm: 8,384 unknowns, 19 s, 0.19 from openEMS, as with any
+  finer mesh (the Solver Matrix of 2026-11-15).
 - **Part values in a library's form.** A value written `C_22u_16V_0603` or `R_45k3_0402` (the kind's letter, then
   the value) was not understood, and the part was left out: all 788 R, L and C of the Jetson baseboard. The value
   after the kind's letter is read now.

@@ -169,6 +169,40 @@ whole stack has 5,219 unknowns at `--mom-dmax 0.6` and takes 25 s:
 They agree to 0.05 dB up to 7 GHz; above it the planes' 1.8 mm cells are about eight per wavelength, and the
 dielectric is still laterally infinite. The cost is the planes: the CM5 region is about 125,000 unknowns at 0.3 mm.
 
+<a id="slot-planes"></a>
+### Slot planes (experimental)
+
+`--mom-planes slots` keeps every copper layer as the whole stack has them, but the ground stays a perfect conductor,
+infinite, and only its openings are meshed (`mom25d/slots.py`): the field in each opening is its unknowns (RWG
+functions of the magnetic current E × z), coupled to the traces and vias on either side through the stack's TM
+and TE networks, so the plane costs its openings' area, not its own. Its kernels are the frill holes' (above)
+generalised; the tests check them against the frill's, superposed from point elements, the openings' own matrix
+against Babinet's principle (in a homogeneous medium it is 4/η² times the impedance matrix of a strip of the same
+shape, to 1e-5), and the coupling's assembly against brute force. An opening is meshed as a plane is (cells of
+3 × dmax, 2 × dmax near the copper of the other layers) with edge rings at its rim. The ground must be one piece
+over 90 % of the board with no other net's copper and no via in an opening (the run says why not); its edge is not
+modelled, the plane running on past the board.
+
+On a microstrip over a narrow slot in a 24 mm ground the slot plane and the ground meshed at 0.3 mm agree within
+0.03 in S from 2 to 10 GHz (1,743 + 491 unknowns against 30,435). On the examples (rms |ΔS| from openEMS, with
+`--mom-port lumped` as on the Solver Matrix):
+
+| Board | Whole stack: unknowns, time, \|ΔS\| | Slot planes |
+|---|---|---|
+| antenna_aperture (1 mm cells) | 8,384, 19 s, 0.192 | 5,580, 148 s, **0.057** |
+| rf_dgs | 7,879, 18 s, 0.088 | 3,668, 34 s, 0.110 |
+| rf_dgs, its ground grown to 50 × 50 mm (against gfdtd) | 0.066 | 0.084 |
+| rf_slotline | 14,022, 55 s, 0.156 | 6,766, 338 s, 0.182 |
+| antenna_slot | 28,571, 149 s, 0.058 | 9,115, 64 s, 0.257 |
+
+On antenna_aperture the infinite plane under the laterally infinite dielectric is one consistent layered model
+where the whole stack's finite meshed ground under it is not, and that was its 0.19 at any cell size. Where the
+board's own ground edge is part of the answer, as in a slot antenna on a ground half a wavelength across
+(antenna_slot), the infinite plane is another antenna: the whole stack stays what `--mom-stack auto` chooses. The
+openings' coupling to the traces is NumPy's, so on a small board it costs more than the whole stack's compiled
+fill saves. Not taken yet: the loop/tree basis, frill holes in the same stack, a via through an opening, and the
+openings' field in the current dumps and the near field (it is in the far field).
+
 <a id="antenna-mode"></a>
 ## Antenna mode
 

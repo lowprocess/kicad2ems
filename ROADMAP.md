@@ -158,7 +158,10 @@ that: nothing in it may fix a panel in place. Left:
    steps (Edwards) and corners and bends (Gupta-Garg-Bahl, scaled by tan(θ/2) for an angle other than 90°, their
    arms to the corner square's edges as qucsator's), and qucsator a bend of another angle the same way
    (`lines/formulas.py`; the hairpin's pass band on scikit-rf 3.25 to 3.30 GHz, qucsator 3.31, openEMS 3.37).
-   Left: tees and crosses on scikit-rf, a junction of five arms on either.
+   Left: tees and crosses on scikit-rf, a junction of five arms on either. The 45° bends' estimate is to check against
+   openEMS: on the Solver Matrix of 2026-11-15 it moved `rf_coupler` (eight 45° bends) from 0.029 to 0.060 from
+   openEMS (its S21 phase 9° behind at 4 GHz, 3.6° before), while `rf_crosstalk_guard` (0.040 → 0.030) and
+   `demo_transition` (0.071 → 0.066) came closer.
 7. **Dispersion and the losses' next step**: a Djordjevic-Sarkar εr(f) for each layer before the solve; the
    conductor loss from the cross-section (Wheeler's rule: two solves with the copper set back by half a skin
    depth) in place of 2 Rs / w, and each harmonic's in qucsator (its RLCG holds R and G at the band centre).
@@ -196,6 +199,17 @@ solver's own items (large boards, the low end) are in the next section.
    can go is not settled: on a crop, `all` moved a resonance of the planes the region cut (gfdtd's |S21| at
    10 GHz from −1.6 to −4.0 dB). It needs a board whose planes are not cut. The KiCad plugin's selected-net runs
    could default to `far`. Optionally, a ground pour on a signal layer cut a few heights from the signal copper.
+
+4. **Slot planes, what is left** (`--mom-planes slots`, since 2026-11-15; docs/mom.md#slot-planes). The coupling of
+   an opening to the traces (slots.coupling: its near pairs' quadrature, 1.5 s of a 1.8 s solve on rf_dgs, 19 s on
+   rf_slotline's long thin slot) into the compiled core, as the strips' fill is: until then the whole stack is faster
+   on small boards. Then: the loop/tree basis with openings; frill holes and openings in one stack; a via through an
+   opening; the openings' field in the dumps and the near field; and when `--mom-stack auto` should choose them (on
+   antenna_aperture they are 0.057 from openEMS against 0.19, on antenna_slot 0.257 against 0.058: a ground that is
+   large against the wavelength, or a radiator above the plane rather than in it). Found with them: a frill hole's
+   first-order shapes leave a potential on the plane outside the hole which a via ending there should see (the
+   slots' term, slots.py's doc); added to frill it moved demo_transition from 0.003 to 0.011 at 8 GHz against the
+   finely meshed plane, so it is left out until that is understood.
 
 ## mom25d: low frequency, large boards (the user's plan, 2026-11-13)
 
@@ -253,6 +267,11 @@ that does not need N² memory. In this order:
    compiled static, compressed and layered kernels and its CuPy kernel (they integrate over p too; ported in Python
    alone, fourteen of pcbqs's tests held them apart); pcbqs's mesh-quality option into mom25d. Then a shared
    numerics package beside emsdev.
+6. **mixed's band fit at its cap, unconverged, says nothing.** On `rf_bends` (14 ports after four cuts) the
+   adaptive sweep stops at its 60 solves with its models still apart and the curve between the solved frequencies
+   wrong (0.507 from openEMS on the Solver Matrix of 2026-11-15, as on 2026-11-06); mom25d's own runs warn nowhere
+   either. Warn when the last model's prediction error is above the sweep's tolerance.
+
 ## Power tools (pcbqs)
 
 `pcbqs.pdn` (a rail's DC drop and impedance), `pcbqs.mqs` (a converter's near field), `pcbqs.circuit` (switching

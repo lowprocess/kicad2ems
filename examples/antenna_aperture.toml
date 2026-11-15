@@ -10,3 +10,7 @@ fmax    = 3
 points  = 401
 out     = "out"
 solvers = ["gfdtd"]     # a slotted plane between two signal layers: FDTD
+
+[solver.mom25d]
+dmax    = 1.0           # mm (--solvers mom25d): at the 0.3 mm default the patch makes the whole stack 78,458 unknowns,
+                        # past 16 GB; 1 mm 8,384 in 19 s, 2 mm 2,568 in 8 s, both 0.19 from openEMS (2026-11-15)
