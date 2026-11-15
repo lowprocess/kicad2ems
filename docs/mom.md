@@ -12,7 +12,7 @@ kicad2ems examples/rf_interdig.toml --solvers mom,lines  # with the line model
 kicad2ems examples/rf_interdig.toml --mom                # next to openEMS, as a reference
 ```
 
-Its settings are the `--mom-*` options, or `dmax`, `port`, `solves`, `tiled`, `dump` and `near` under
+Its settings are the `--mom-*` options, or `dmax`, `port`, `solves`, `dump` and `near` under
 `[solver.mom25d]` ([options](usage.md#options)). Its compiled core, `python -m mom25d.core.build`, makes it about
 five times faster.
 
@@ -323,8 +323,7 @@ in double precision on the CPU (8 cores).*
   at up to 0.021 from the reference: less than mom25d and the FDTD solvers already differ by on these boards.
 
 The preview's mesh has the structured runs but no quads: they are paired when the run starts, and the run writes
-the mesh it solved on. Quads work with the direct solver on the CPU and the GPU; the tiled GPU solver and the
-compressed solvers ignore them.
+the mesh it solved on. Quads work with the direct solver on the CPU and the GPU; the compressed solvers ignore them.
 
 <a id="coarsen"></a>
 ### Coarsening (experimental)
@@ -372,9 +371,8 @@ mom25d chooses how to solve from the memory available, and the log says which (`
 | GPU LU, hybrid | up to 25,000 unknowns: the single-precision matrix fits on the GPU, and its double-precision copy in RAM (the refinement's) | 24 N² bytes RAM, 8 N² bytes GPU |
 | GPU LU | above 25,000 unknowns, or where the hybrid's RAM doesn't fit: the refinement is matrix-free | 10 N² bytes RAM, 8 N² bytes GPU |
 | GPU LU, streamed | Vulkan, and RAM short even of that: the matrix is filled straight into the GPU a block of rows at a time | about 1 GB RAM, 8 N² bytes GPU |
-| tiled | CuPy, the GPU LU doesn't fit (`--mom-tiled`) | little RAM, 4 N² bytes GPU, the rest streamed from RAM |
 | block low-rank (BLR), compiled | from 20,000 unknowns where the hybrid does not hold the matrix (any GPU path past it, or no GPU), and wherever nothing else fits | about 3 N² bytes at most: a fifth of a single-precision matrix |
-| compressed (ACA) | without the compiled core, nothing else fits | much less, but far slower on large boards (HODLR needs the compiled core and is chosen only by name) |
+| compressed (ACA) | without the compiled core (or one without its block low-rank factor), nothing else fits | much less, but far slower on large boards |
 
 Past 25,000 unknowns the hybrid's double-precision matrix costs more in memory traffic than its cheaper refinement
 saves (`MOM25D_HYBRID_MAX_N` moves the limit): rf_siw (28.7k unknowns) takes 296 s on the GPU LU against 456 s
@@ -385,9 +383,9 @@ in 5.8 GB of RAM, where the compressed solvers took more than 30 minutes a frequ
 [block low-rank solver](#blr) now takes 22.5 s, in 2.4 GB). The free memory is a cgroup's
 where one limits the process (a container, or `systemd-run --scope -p MemoryMax=`).
 
-The **tiled** solver keeps half the (symmetric) matrix on the GPU and builds it a block at a time; it solves the
-matrix's symmetric part, which changes S by at most about 1e-3. The coupler at 0.1 mm cells (45,850 unknowns)
-solves in 62 s on a 16 GB card, where the CPU took over an hour.
+Retired on 2026-11-15 (R-F3): the **tiled** GPU solver (half the symmetric matrix on a CuPy GPU; the block
+low-rank solver took its boards, rf_siw's sweep 272 s against its 520 s), the **HODLR** solver (never chosen
+automatically) and the Python block low-rank factor (reached only with an older core; ACA instead now).
 
 <a id="reuse"></a>
 **Across a sweep** the matrix changes smoothly with frequency, so one frequency's LU preconditions the next ones:
@@ -452,7 +450,7 @@ low-rank solver is handed to it too for these frequencies, where its dense matri
 unknowns, at 50 MHz: 29 s; the single-precision low-rank factor gave S11 = 1.000 there, where it is
 0.978 − 0.193j). Where it doesn't fit, the low-rank factor is made in double precision, compressed to a
 hundredth of (k h)²: right (the same S11, 50 s), but nearly dense at these frequencies, so it wants 16 N² bytes
-at worst. A block low-rank solve that does not converge is an error, not an answer. The tiled solver, quad
+at worst. A block low-rank solve that does not converge is an error, not an answer. Quad
 cells and line functions, and `--mom-planes holes` solve in the RWG basis at every frequency; so does mom25d
 without its compiled core. In mom25d's Python API `sim.loop_tree` (`auto`, `on`, `off`; or
 `MOM25D_LOOP_TREE`) chooses. Below about 10 Hz the S-parameters' own extraction (from currents a million times

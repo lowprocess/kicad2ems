@@ -118,6 +118,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d's retired solver paths (R-F3).** The tiled GPU solver (`--mom-tiled`; the block low-rank solver took its
+  boards), the HODLR solver (never chosen automatically) and the Python block low-rank factor (reached only with an
+  older core: such a core falls to ACA, the compiled factor named otherwise) are gone, with their modules (`ldlt.py`,
+  `hodlr.py`), the core's unused `static_pairs`, `biot.h_grid` and three tools importing the removed `mom25d.mqs` and
+  `mom25d.pdn`. mom25d's stored board files written again (they predated the layers' `material` and `fref`).
 - **Mesh convergence on every solver (R-E3).** mom25d's `--mom-converge 1,1.5` solves with cells of `--mom-dmax / f`
   for each factor, gives the finest and says how far the second-finest is (worst term, dB and degrees, against
   0.1 dB / 2 deg, as the FDTD layer's `--converge`; run.json's `converge`). Palace's adaptive mesh refinement is
