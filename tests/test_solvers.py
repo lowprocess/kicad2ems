@@ -115,6 +115,28 @@ def test_a_run_done_again_takes_its_earlier_result(run_cli, tmp_path, monkeypatc
     assert code == 0 and 'the result of an earlier run here' not in so
 
 
+def test_solvers_side_by_side(run_cli, tmp_path, monkeypatch):
+    """R-D20: --solver-jobs 2 runs the solvers at the same time, in threads of their own; each writes its result and
+    a failing one is a warning as one after another."""
+    pytest.importorskip('skrf')
+    import threading
+    seen = {}
+    canned = standins.solve
+    def solve(m, freq, **kw):
+        seen['thread'] = threading.current_thread().name
+        return canned(m, freq, **kw)
+    monkeypatch.setattr(standins, 'solve', solve)
+    out = tmp_path / 'out'
+    code, so, err = run_cli(FILTER, '--solvers', 'scikit,mom25d', '--points', '21', '--solver-jobs', '2', '--out', out)
+    assert code == 0, so + err
+    assert 'solvers side by side, 2 at a time' in so and seen['thread'].startswith('solver')
+    assert (out / 'rf_interdig_scikit.s2p').exists() and (out / 'rf_interdig_mom25d.s2p').exists()
+    monkeypatch.setattr(standins, 'solve', lambda *a, **k: 1 / 0)
+    code, so, _ = run_cli(FILTER, '--solvers', 'scikit,mom25d', '--points', '21', '--solver-jobs', '2', '--no-reuse',
+                          '--out', tmp_path / 'out2')
+    assert 'WARNING: mom25d failed: ZeroDivisionError' in so and (tmp_path / 'out2' / 'rf_interdig_scikit.s2p').exists()
+
+
 def test_deembedding_moves_the_planes_beside_the_solvers_own(run_cli, tmp_path):
     """R-E1: --deembed writes <name>_<solver>_deembedded.sNp, the line model's sections taken off each port (the
     exact cascades: test_deembed.py); a lossy trace of 50.0-50.2 ohm moves |S21| a little."""

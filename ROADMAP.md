@@ -70,8 +70,10 @@ the window lists the questions, with the engine chosen on each row, and compares
    (mom25d, the FDTD layer). Left: the line model's dispersion (its sections' εr at each frequency).
 8. **A run done again** (R-D20): since 2026-11-15 a result is reused where the board, the frequencies, the settings
    and the code are the same (`kicad2ems.reuse`, `--no-reuse`), except where a solver's outputs need its solve
-   (dumps, the far field). Left: the solvers of one run go one after another; a CPU solver beside a GPU one is
-   the case that would gain (each uses all of its device already).
+   (dumps, the far field). Since 2026-11-15 `--solver-jobs N` runs the solvers side by side, as threads: it
+   gained 1.14 times on rf_ebg and lost elsewhere (docs/benchmarks.md#side-by-side). Left: gfdtd's GPU stepping
+   records its kernels from Python and holds the GIL, so a solver beside it waits; processes of their own, or
+   gfdtd recording many steps for each Python call, would let them overlap.
 9. **Board cutouts** (R-E6) stay dielectric, and a region that splits the board keeps its largest piece without a
    note.
 

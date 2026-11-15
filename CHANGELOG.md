@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Solvers side by side (R-D20).** `--solver-jobs N` (the window: Solvers at a time) runs a board's solvers N at
+  a time, as threads; the log goes to the terminal through a copy of its descriptor, which openEMS's in-process
+  redirection to its own log would otherwise have taken. Measured (docs/benchmarks.md#side-by-side): 1.14 times
+  on rf_ebg, where gfdtd's 24 s hid under mom25d's 5 minutes; even on small boards; slower where two solvers share
+  the CPU (openEMS beside mom25d: 26 → 52 s) or beside gfdtd's GPU stepping, which holds the GIL while it records
+  each step's kernels (mom25d on hairpin 3.8 → 9.6 s). Default 1, one after another. mom25d ce06a82: its OpenMP
+  cap is set in each thread (libgomp keeps it per thread: a solve in a second thread had run on every CPU).
 - **A GPU report before each release (R-C7).** CI has no GPU, so the superproject's `tools/gpu_report.py` runs
   the GPU tests of gfdtd, mom25d, pcbqs, emsdev and kicad2ems-fdtd and two boards on each backend against the CPU on
   a machine with GPUs, and commits what it found in `gpu-report/`; `sync_pins.py` ends with whether the latest

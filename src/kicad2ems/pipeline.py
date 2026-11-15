@@ -26,7 +26,7 @@ Everything the report shows is collected in Job.summary, a JSON-friendly dict wr
 report.py renders that dict and nothing else. Every message goes through Job.log (printed, kept for the
 report, and sent to --events as JSON lines).
 """
-import dataclasses, datetime, json, os, time
+import dataclasses, datetime, json, os, sys, threading, time
 import numpy as np
 
 from . import __version__, stop
@@ -186,6 +186,18 @@ def board_from_settings(s, log=print):
                  cut_ports=s.cut_ports, ground=s.ground, parts=s.parts, edge_walls=s.edge_walls,
                  edge_keepout=s.edge_keepout, fill_voids=getattr(s, 'fill_voids', 'off'), log=log,
                  part_ports=getattr(s, 'part_ports', None) or ())
+
+
+def _terminal_copy():
+    """A copy of this process's stdout descriptor, as a text stream (None where stdout has none, as under pytest):
+    what the log writes to while solvers run side by side, so that openEMS's redirection of descriptor 1 to its own
+    log (kicad2ems_fdtd.progress.redirect_output) does not take the other solvers' lines."""
+    try:
+        sys.stdout.flush()
+        return os.fdopen(os.dup(sys.stdout.fileno()), 'w', buffering=1, encoding=sys.stdout.encoding or 'utf-8',
+                         errors='replace')
+    except (OSError, ValueError, AttributeError):
+        return None
 
 
 class Job:
@@ -548,14 +560,13 @@ class Job:
             self.figure(preview(self.m, None, self.name), '_model.png', 'model', 'model')
 
     def solve(self):
-        """Each solver of the plan, the cheap ones first. A failure is a warning here; when the solver was
-        named in `solvers`, the run ends with exit code 1 (see _run)."""
+        """Each solver of the plan, the cheap ones first; --solver-jobs N runs N at a time (threads: each solver's
+        files are its own, the log is shared). A failure is a warning here; when the solver was named in `solvers`,
+        the run ends with exit code 1 (see _run)."""
         from . import reuse
         order = sorted(self.plan, key=lambda n: registry()[n].rank)
-        for i, name in enumerate(order):
-            if stop.requested():
-                self.log(f"stopped: {', '.join(label(n) for n in order[i:])} not run")
-                break
+        todo = []
+        for name in order:
             if name in getattr(self, '_unprepared', ()):
                 continue
             sv = registry()[name]                                           # (R-D20: a run done again)
@@ -566,17 +577,46 @@ class Job:
                          f"(the same board, frequencies, settings and code; --no-reuse solves it again)")
                 self.results[name] = self._close_parts(name, kept)
                 continue
+            todo.append((name, key))
+
+        def one(name, key):
+            if stop.requested():
+                self.log(f"stopped: {label(name)} not run")
+                return
             try:
-                self.results[name] = registry()[name].solve(self, self.prep.get(name))
+                r = registry()[name].solve(self, self.prep.get(name))
                 if key:
-                    reuse.keep(self, name, key, self.results[name])
-                self.results[name] = self._close_parts(name, self.results[name])
+                    reuse.keep(self, name, key, r)
+                self.results[name] = self._close_parts(name, r)
             except stop.Stopped:
                 self.log(f"stopped: {label(name)} ended early, no result")
             except Exception as e:
                 if os.environ.get('KICAD2EMS_TRACEBACK'):
                     raise
                 self.log(f"WARNING: {name} failed: {type(e).__name__}: {e}")
+
+        jobs = min(max(1, int(getattr(self.s, 'solver_jobs', 1) or 1)), len(todo))
+        if jobs <= 1:
+            for name, key in todo:
+                one(name, key)
+            return
+        self.log(f"solvers side by side, {jobs} at a time: {', '.join(label(n) for n, _ in todo)}")
+        from concurrent.futures import ThreadPoolExecutor
+        echo, term = self.echo, _terminal_copy() if self.echo is print else None
+        if term:                                    # openEMS (in this process) sends descriptors 1 and 2 to its own
+            lock = threading.Lock()                 # log while it steps: the others' lines would go there too
+            def to_term(text):
+                with lock:
+                    print(text, file=term, flush=True)
+            self.echo = to_term
+        try:
+            with ThreadPoolExecutor(jobs, thread_name_prefix='solver') as ex:
+                for f in [ex.submit(one, n, k) for n, k in todo]:
+                    f.result()
+        finally:
+            self.echo = echo
+            if term:
+                term.close()
 
     def _part_outputs(self, n, entry):
         """<name>_<n>_ports.sMp (over the external and part ports) and each value sweep's closed result."""

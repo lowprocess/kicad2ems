@@ -237,6 +237,9 @@ CORE = [
     Option('no_reuse', False, "solve every solver again: by default a result an earlier run left in the output folder "
            "is taken where the board, the frequencies, the settings and the code are the same (<name>_<solver>.result.*)",
            bool, group='output'),
+    Option('solver_jobs', 1, "solvers run side by side, this many at a time (threads; default 1: one after another): a "
+           "CPU solver beside a GPU one gains most, two that both fill the CPU's memory bandwidth little (R-D20)",
+           int, group='output', gui='Solvers at a time'),
     Option('passive', False, "also write <name>_<solver>_passive.sNp where a solver's S is not passive: its singular "
            "values clipped to 1 at each frequency they pass it (a circuit or time-domain use needs it passive); the "
            "solver's own S is kept", bool, gui='Write a passive copy of S', group='output'),

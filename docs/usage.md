@@ -321,6 +321,7 @@ and with neither the study is S-parameters alone, which `kicad2ems board.toml` r
 | `--compare FILE.sNp` | | draw another result on the S-parameter plot |
 | `--preview` | off | build the model and mesh, don't solve |
 | `--no-report` | off | skip the HTML report |
+| `--solver-jobs N` | 1 | run the solvers N at a time (threads), not one after another: it pays only where one solver's run hides beneath a much longer one's ([measured](benchmarks.md#side-by-side)) |
 | `--openems-output` | off | show openEMS's own output instead of the progress line |
 | `--events FILE` | | also write progress as JSON lines ([below](#events)) |
 

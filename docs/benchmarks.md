@@ -52,6 +52,39 @@ ROCm wheel. Same machine, RADV (Mesa 26.2) against ROCm 7, medians of three runs
 
 ![Run time and peak memory, with the Vulkan solvers](img/benchmarks-vulkan.png)
 
+<a id="side-by-side"></a>
+## Solvers side by side
+
+`--solver-jobs N` runs a board's solvers N at a time, as threads of the one process (the default, 1, runs them one
+after another). Measured on the same machine, 2026-11-15: each case once with `--solver-jobs 1`, once with 3
+(`--no-reuse --mom-port lumped`; the line model, 0.1 s, runs in every case). Wall time for the whole run, then each
+solver's own time, one after another → side by side:
+
+| Example | Solvers | One after another | Side by side | Each solver |
+|---|---|---|---|---|
+| demo_lowpass | gfdtd, mom25d | 4.7 s | 4.6 s | mom25d 1.7 → 2.8 s, gfdtd 1.1 → 1.3 s |
+| rf_coupler | gfdtd, mom25d | 15.8 s | 15.9 s | mom25d 10.8 → 13.5 s, gfdtd 2.4 → 2.9 s |
+| hairpin | gfdtd, mom25d | 12.3 s | 11.8 s | mom25d 3.8 → 9.6 s, gfdtd 5.8 → 6.1 s |
+| sma_launch | gfdtd, mom25d | 48.0 s | 58.7 s | mom25d 43.6 → 56.3 s, gfdtd 2.2 → 2.8 s |
+| rf_coupler | openEMS, gfdtd, mom25d | 42.2 s | 54.1 s | openEMS 25.9 → 51.6 s, mom25d 11.1 → 16.4 s, gfdtd 2.4 → 3.1 s |
+| rf_ebg | gfdtd, mom25d | 331.8 s | **290.0 s** | mom25d 305.7 → 287.7 s, gfdtd 23.9 → 27.9 s |
+
+- **It gains where one solver's run hides beneath a much longer one's**: rf_ebg, 1.14 times (gfdtd's 24 s under
+  mom25d's 5 minutes). Elsewhere it is even or slower, so one after another stays the default.
+- **Two solvers that both work the CPU share its cores and memory bandwidth**: openEMS beside mom25d took twice
+  its time alone (26 → 52 s).
+- **gfdtd's GPU run and mom25d share the process's one Python interpreter lock (GIL)**. gfdtd records each
+  timestep's three kernel launches from Python (some ten slangpy calls each), so it holds the GIL almost all of the
+  time it runs, and mom25d's own Python, between its compiled calls, waits. mom25d lost about gfdtd's whole run time
+  (hairpin: +5.8 s beside gfdtd's 6 s) on the GPU and on the CPU alike (on the CPU, hairpin's 5.1-5.6 s became
+  10.6-11.5 s), while gfdtd lost little. It is not the GPU (mom25d on the CPU loses as much) nor the memory
+  bandwidth. It is not mom25d being in a thread either: alone in a worker thread it took 44 s as in the main
+  thread (sma_launch). A 10 times shorter GIL switch interval saved 0.6 s. The other way round, a pure-Python
+  loop beside gfdtd made gfdtd 30 times slower (hairpin: 6 → 184 s). A gain there needs solvers in processes of
+  their own, or gfdtd recording many steps for each Python call.
+- **mom25d's thread caps**: a solve in a thread other than the first had run its OpenMP fill on every CPU (libgomp
+  keeps the cap per thread); since mom25d ce06a82 each thread is capped to the performance cores.
+
 ## Reading the tables
 
 - **gfdtd on the GPU** is the fastest field solver on two of the six boards (the transition and rf_gcpw, 6 s;
