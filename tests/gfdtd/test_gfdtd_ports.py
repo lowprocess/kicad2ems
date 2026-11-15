@@ -265,3 +265,51 @@ def test_a_model_s_other_excitations_share_its_core():
     assert c._core_key != a._core_key and not np.array_equal(c.vi, a.vi)
     fresh = __import__('gfdtd.operator', fromlist=['_core'])._core(c0, F0.settings())[1]
     np.testing.assert_array_equal(fresh['vi'], a.vi)                     # the kept core is what a build makes
+
+
+def test_the_build_holds_less_than_a_quarter_kilobyte_a_node():
+    """R-D7: the build's and the compression's peak host memory a node (443 B before: the geometry per node, the
+    compression's arrays all alive to its end), and what the core keeps (152 B before)."""
+    import tracemalloc
+    from gfdtd.operator import compress, _CORES, _COMPRESSED
+    F, csx = _fdtd(1e9, 5e9, ['PML_8'] * 6)
+    g = csx.GetGrid()
+    for a in 'xyz':
+        g.SetLines(a, np.linspace(0, 100.0, 50))
+    csx.AddMaterial('sub', epsilon=4.0, kappa=0.01).AddBox([0, 0, 0], [100, 100, 30])
+    csx.AddExcitation('p', exc_type=0, exc_val=[0, 0, 1]).AddBox([50, 50, 0], [50, 50, 30])
+    _CORES.clear(); _COMPRESSED.clear()
+    tracemalloc.start()
+    op = build(csx, F.settings())
+    compress(op)
+    held, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    n = 50 ** 3
+    assert peak / n < 260 and held / n < 100
+
+
+def test_auto_runs_on_the_cpu_where_the_gpu_is_too_small(monkeypatch):
+    """R-D7: a model past the GPU's free memory: auto runs it on the CPU and says why; a GPU named outright says
+    it cannot."""
+    from gfdtd import engine as E
+    F, csx = _fdtd(1e9, 1e9, ['PEC'] * 6)
+    g = csx.GetGrid()
+    for a in 'xyz':
+        g.SetLines(a, np.arange(0, 8.0))
+    csx.AddExcitation('p', exc_type=0, exc_val=[0, 0, 1]).AddBox([3, 3, 1], [3, 3, 2])
+    op = build(csx, F.settings())
+    assert 24 * op.shape[0] * op.shape[1] * op.shape[2] < E.gpu_bytes(op) < 1e8
+    with pytest.raises(MemoryError, match='needs about'):
+        E.fits(op, 1e6, 'a small GPU')
+    E.fits(op, None)                                                 # not known: not checked
+
+    class Small:
+        def __init__(self, op, dtype):
+            E.fits(op, 1e6, 'a small GPU')
+    monkeypatch.setattr(E, 'resolve_backend', lambda name='auto': 'vulkan' if name in ('auto', 'vulkan') else 'numpy')
+    monkeypatch.setattr(E, 'VulkanBackend', Small)
+    monkeypatch.delenv('GFDTD_BACKEND', raising=False)
+    be = E.make_backend(op, 'auto')
+    assert be.name == 'numpy' and 'a small GPU' in be.fallback and 'running on the CPU' in be.fallback
+    with pytest.raises(MemoryError):
+        E.make_backend(op, 'vulkan')

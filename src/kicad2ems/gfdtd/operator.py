@@ -240,21 +240,39 @@ def _edge_average(cell, a, grid):
     return np.moveaxis(s, (0, 1, 2), (a, b, c))
 
 
+class _Axes:
+    """A geometry quantity per component, each a broadcast view of shape sh made of 1D spacings: read as an
+    (3, Nx, Ny, Nz) array by component ([a]), at no memory per node (R-D7: the four had been 96 B a node of the
+    build, and three of them kept with the core)."""
+
+    def __init__(self, parts, sh):
+        self.parts, self.sh = parts, tuple(sh)
+
+    def __getitem__(self, a):
+        if isinstance(a, tuple):                                    # [a, i, j, k] and the like
+            return self[a[0]][a[1:]]
+        return np.broadcast_to(self.parts[a], self.sh)
+
+    def __len__(self):
+        return 3
+
+
 def _geometry(grid):
-    """Per component: edge length l, dual area A' (E) and dual length l', face area A (H), on (Nx, Ny, Nz)."""
+    """Per component: edge length l, dual area A' (E) and dual length l', face area A (H), on (Nx, Ny, Nz)
+    (_Axes: views of the grid's spacings)."""
     sh = grid.shape
-    lE, aE, lH, aH = (np.zeros((3,) + sh) for _ in range(4))
+    lE, aE, lH, aH = ([None] * 3 for _ in range(4))
     for a in range(3):
         b, c = [x for x in range(3) if x != a]
         d_a = np.concatenate([grid.d[a], [0]])
         d_b = np.concatenate([grid.d[b], [0]])
         d_c = np.concatenate([grid.d[c], [0]])
-        r = lambda v, ax: v.reshape([-1 if x == ax else 1 for x in range(3)])
-        lE[a] = np.broadcast_to(r(d_a, a), sh)
-        aE[a] = np.broadcast_to(r(grid.dual[b], b) * r(grid.dual[c], c), sh)
-        lH[a] = np.broadcast_to(r(grid.dual[a], a), sh)
-        aH[a] = np.broadcast_to(r(d_b, b) * r(d_c, c), sh)
-    return lE, aE, lH, aH
+        r = lambda v, ax: np.asarray(v, float).reshape([-1 if x == ax else 1 for x in range(3)])
+        lE[a] = r(d_a, a)
+        aE[a] = r(grid.dual[b], b) * r(grid.dual[c], c)
+        lH[a] = r(grid.dual[a], a)
+        aH[a] = r(d_b, b) * r(d_c, c)
+    return tuple(_Axes(q, sh) for q in (lE, aE, lH, aH))
 
 
 def _box_ranges(q, grid, a):
@@ -540,7 +558,7 @@ def _core(csx, fdtd):
             cond[a] = np.where(lE[a] > 0, _edge_average(kap, a, grid) * aE[a] / lE[a], 0.0)
     # metals: edges whose midpoint is in a primitive, by priority. sheet_of: the conducting sheet (an index into
     # sheets: (property, normal axis)) that owns the edge, -1 for PEC
-    pec = np.full((3,) + sh, -np.inf)
+    pec = np.full((3,) + sh, -np.inf, np.float32)                   # (priorities: whole numbers)
     sheet_of = np.full((3,) + sh, -1, np.int32)
     sheets = []
     for p in props:
@@ -643,8 +661,10 @@ def _core(csx, fdtd):
     # poles: i' = ka i + kb (V' - sg V). Debye (sg 1): tau di/dt + i = C_p dV/dt; a sheet's R-L branch (sg -1):
     # L di/dt + R i = V. Both by the trapezoidal rule; the E update sees (i + i') / 2, so kb / 2 joins the edge's
     # C / dt in the denominator and sg kb / 2 in the numerator
-    kb_sum, kbs_sum = np.zeros((3,) + sh), np.zeros((3,) + sh)
+    kb_sum = kbs_sum = None                                         # (made where there is a pole: 48 B a node)
     op.debye = []                                                   # (flat edge, ka, kb, sg) of every pole on every edge
+    if debye or rl is not None:
+        kb_sum, kbs_sum = np.zeros((3,) + sh), np.zeros((3,) + sh)
     for n, p in enumerate(debye):
         mine = owner == n
         for d_eps, tau in p.pole_list():
@@ -672,11 +692,20 @@ def _core(csx, fdtd):
         op.debye = (idx.astype(np.int64), ka, kb, sg)
     else:
         op.debye = None
-    with np.errstate(divide='ignore', invalid='ignore'):
-        den = cap + cond * dt / 2 + kb_sum * dt / 2
-        vv = np.where(den > 0, (cap - cond * dt / 2 + kbs_sum * dt / 2) / den, 0.0)
-        vi = np.where(den > 0, dt / den, 0.0)
-        iv = np.where(aH > 0, dt * lH / (MU0 * aH), 0.0)
+    vv, vi, iv = (np.zeros((3,) + sh) for _ in range(3))
+    with np.errstate(divide='ignore', invalid='ignore'):             # a component at a time (its temporaries)
+        for a in range(3):
+            den = cap[a] + cond[a] * (dt / 2)
+            num = cap[a] - cond[a] * (dt / 2)
+            if kb_sum is not None:
+                den += kb_sum[a] * (dt / 2)
+                num += kbs_sum[a] * (dt / 2)
+            ok = den > 0
+            np.divide(num, den, out=vv[a], where=ok)
+            np.divide(dt, den, out=vi[a], where=ok)
+            del den, num, ok
+            h = aH[a] > 0
+            np.divide(dt * lH[a], MU0 * aH[a], out=iv[a], where=h)
     vv[pec_m], vi[pec_m] = 0.0, 0.0
     # boundaries
     op.bc = bc = [str(b).upper() for b in fdtd['bc']]
@@ -861,17 +890,20 @@ def _compress(op):
     cp.G = np.concatenate([np.concatenate(v) for v in (d, idd, g.dual, [1.0 / x for x in g.dual])]).astype(np.float32)
     cp.ke, cp.kh = dt / EPS0, dt / MU0
     r = lambda v, ax: v.reshape([-1 if x == ax else 1 for x in range(3)])
-    geo = np.zeros((3,) + sh)
+    geo = [None] * 3                                                # (separable: a 1-D product per component)
+    s_ = np.zeros((3,) + sh, np.float32)
     for a in range(3):
         b, c = [x for x in range(3) if x != a]
         geo[a] = cp.ke * r(d[a], a) * r(1.0 / g.dual[b], b) * r(1.0 / g.dual[c], c)
-    with np.errstate(divide='ignore', invalid='ignore'):
-        s_ = np.where(geo > 0, op.vi / geo, 0.0)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            np.divide(op.vi[a], geo[a], out=s_[a], where=np.broadcast_to(geo[a] > 0, sh), casting='unsafe')
+    # every per-edge array below is let go once used (R-D7: they had all lived to the end, 290 B a node)
     vv_q, vv_b = _q32(op.vv.ravel())
     s_q, s_b = _q32(s_.ravel())
+    del s_
     # Debye: the poles by relaxation (ka), each edge's kb~ per pole, and the distinct pole rows
     N = vv_b.size
-    pid = np.zeros(N, np.int64)                                    # 0: no poles, else row + 1
+    pid = np.zeros(N, np.int32)                                    # 0: no poles, else row + 1
     cp.P, cp.ka, cp.h, cp.kbt = 0, np.zeros(0, np.float32), np.zeros(0, np.float32), np.zeros((0, 0), np.float32)
     if op.debye is not None:
         idx, ka, kb, sg = op.debye
@@ -880,8 +912,13 @@ def _compress(op):
         kas, sgs = pairs[:, 0], pairs[:, 1]
         cp.P = len(kas)
         kbt = np.zeros((N, cp.P))
+        a_of, rest = np.divmod(idx, int(np.prod(sh)))
+        at = np.empty(len(idx))
+        for a in range(3):                                          # geo at each pole's edge
+            m = a_of == a
+            at[m] = np.broadcast_to(geo[a], sh).reshape(-1)[rest[m]]
         with np.errstate(divide='ignore', invalid='ignore'):
-            np.add.at(kbt, (idx, col), kb * geo.ravel()[idx] / dt)        # kb~ = kb l / (eps0 A') = kb geo / dt
+            np.add.at(kbt, (idx, col), kb * at / dt)                # kb~ = kb l / (eps0 A') = kb geo / dt
         rows_e = np.unique(idx)
         kq, kbits = _q32(kbt[rows_e])
         rows, inv = np.unique(kbits, axis=0, return_inverse=True)
@@ -889,20 +926,54 @@ def _compress(op):
         cp.kbt = rows.view(np.float32).reshape(len(rows), cp.P).copy()
         cp.ka = kas.astype(np.float32)
         cp.h = np.concatenate([0.5 * (1 + kas), sgs]).astype(np.float32)          # [h | sg]
-    key = (vv_b.astype(np.uint64) << np.uint64(32)) | s_b.astype(np.uint64)
-    k1, inv1 = np.unique(key, return_inverse=True)
-    both = inv1.astype(np.int64) * (int(pid.max()) + 1) + pid
-    uniq, ecode = np.unique(both, return_inverse=True)              # per edge
-    first = np.zeros(len(uniq), np.int64)
-    first[ecode[::-1]] = np.arange(N)[::-1]                         # one edge of each edge code
-    evv, es, epole = vv_q[first].astype(np.float32), s_q[first].astype(np.float32), (pid[first] - 1).astype(np.int32)
-    trip = ecode.reshape(3, -1).T                                   # per node: its three edge codes
-    nodes, code = _unique_rows(trip)
+    # the edge codes: the distinct (vv, s, pole row) of the edges, in that sort order, found a component at a
+    # time (np.unique of all 3N edges at once had held its sort and inverse of 3N: 96 B a node) and joined
+    n1, P1 = N // 3, int(pid.max()) + 1
+    local, tabs = [], []
+    for a in range(3):
+        sl = slice(a * n1, (a + 1) * n1)
+        k = (vv_b[sl].astype(np.uint64) << np.uint64(32)) | s_b[sl].astype(np.uint64)
+        u, inv = np.unique(k, return_inverse=True)
+        del k
+        w = inv.ravel().astype(np.int64) * P1 + pid[sl]
+        del inv
+        u2, code_a = np.unique(w, return_inverse=True)
+        del w
+        tabs.append((u[u2 // P1], u2 % P1))                          # (key, pole row + 1) of each local code
+        local.append(code_a.ravel().astype(np.int32))
+    del vv_b, s_b, vv_q, s_q
+    keys = np.concatenate([t[0] for t in tabs])
+    prow = np.concatenate([t[1] for t in tabs])
+    order = np.lexsort((prow, keys))                                # by key, then pole row: the old codes' order
+    keys, prow = keys[order], prow[order]
+    new_ = np.r_[True, (keys[1:] != keys[:-1]) | (prow[1:] != prow[:-1])]
+    gid = np.empty(len(order), np.int64)
+    gid[order] = np.cumsum(new_) - 1
+    ukeys, uprow = keys[new_], prow[new_]
+    evv = (ukeys >> np.uint64(32)).astype(np.uint32).view(np.float32)
+    es = (ukeys & np.uint64(0xFFFFFFFF)).astype(np.uint32).view(np.float32)
+    epole = (uprow - 1).astype(np.int32)
+    has = (pid.reshape((3,) + sh) > 0).any(0)
+    del pid
+    offs = np.cumsum([0] + [len(t[0]) for t in tabs])
+    for a in range(3):                                              # each component's codes, the joined table's
+        local[a] = gid[offs[a]:offs[a + 1]][local[a]].astype(np.int32)
+    if len(ukeys) < 1 << 21:                                        # per node: its three edge codes (_unique_rows)
+        key = (local[0].astype(np.int64) << 42) | (local[1].astype(np.int64) << 21) | local[2]
+        del local
+        u, code = np.unique(key, return_inverse=True)
+        del key
+        m = (1 << 21) - 1
+        nodes = np.stack([u >> 42, (u >> 21) & m, u & m], 1)
+        code = code.ravel()
+    else:
+        nodes, code = _unique_rows(np.stack(local, 1))
+        del local
     cp.vv, cp.s, cp.pole = evv[nodes], es[nodes], epole[nodes]      # (ncode, 3)
     cp.ncode = len(nodes)
     dtype = np.uint8 if cp.ncode <= 255 else (np.uint16 if cp.ncode <= 65535 else np.uint32)
     cp.code = code.ravel().astype(dtype).reshape(sh)
-    has = (pid.reshape((3,) + sh) > 0).any(0)
+    del code
     cp.slot = np.full(sh, -1, np.int32)
     cp.nslot = int(has.sum())
     cp.slot[has] = np.arange(cp.nslot, dtype=np.int32)

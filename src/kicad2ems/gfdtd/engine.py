@@ -476,6 +476,11 @@ class CupyBackend(_Compressed, NumpyBackend):
         if dtype != np.float32:
             raise ValueError("gfdtd: the GPU kernels are float32")
         self.op, self.dt, self.xp, self.cp = op, dtype, cp, cp
+        try:
+            free = float(cp.cuda.runtime.memGetInfo()[0])
+        except Exception:                                           # noqa: BLE001  (not known: no check)
+            free = None
+        fits(op, free, 'CuPy')
         self.V = cp.zeros((3,) + op.shape, dtype)
         self.I = cp.zeros((3,) + op.shape, dtype)
         self._tables()
@@ -720,10 +725,15 @@ class VulkanBackend(_Compressed, NumpyBackend):
         if dtype != np.float32:
             raise ValueError("gfdtd: the GPU kernels are float32")
         try:
-            vulkan.device(need=VULKAN_NEEDS)
+            info = vulkan.device(need=VULKAN_NEEDS)
             self.dev = vulkan.slang_device()
         except vulkan.Unavailable as e:
             raise RuntimeError(f"gfdtd: no Vulkan GPU: {e}")
+        try:
+            free = info.free()
+        except Exception:                                           # noqa: BLE001  (not known: no check)
+            free = None
+        fits(op, free, info.name)
         import slangpy as spy
         self.spy, self.op, self.dt, self.xp = spy, op, dtype, np
         nx, ny, nz = op.shape
@@ -1039,9 +1049,42 @@ def _post_disjoint(op):
     return not dup
 
 
+def gpu_bytes(op):
+    """About what the GPU holds of operator op (R-D7): the two fields (24 B a node, float32), the node codes and slots,
+    the PML's auxiliary fields, and 64 MB for the tables, the kernels and the rest."""
+    n = int(np.prod(op.shape))
+    code = 1 if n < 2 ** 8 else 2                                   # (its codes' type: a guess before compress)
+    sh = tuple(op.shape)
+    pml = sum(16 * int(sl['n']) * int(np.prod([sh[b] for b in range(3) if b != sl['axis']]))   # psi: E and H, two
+              for sl in (op.pml or []))                                                        # components, float32
+    return 24 * n + code * n + 4 * n + pml + 64e6
+
+
+def fits(op, free, where='the GPU'):
+    """MemoryError where operator op will not fit in `free` bytes of GPU memory (None: not known, not checked)."""
+    if free is None:
+        return
+    need = gpu_bytes(op)
+    if need > 0.92 * free:
+        raise MemoryError(f"gfdtd: the model needs about {need / 1e9:.2f} GB on {where}, which has {free / 1e9:.2f} GB "
+                          f"free: a coarser mesh, a smaller region, or the CPU (GFDTD_BACKEND=cpu)")
+
+
 def make_backend(op, backend='auto', dtype=np.float32):
+    """The backend for op: `backend` as resolve_backend names it. auto (or gpu not named outright) whose GPU has too
+    little memory for the model runs on the CPU instead, its reason in the backend's `fallback`."""
     name = resolve_backend(backend)
-    return {'cupy': CupyBackend, 'vulkan': VulkanBackend, 'core': CoreBackend, 'numpy': NumpyBackend}[name](op, dtype)
+    kinds = {'cupy': CupyBackend, 'vulkan': VulkanBackend, 'core': CoreBackend, 'numpy': NumpyBackend}
+    chosen = devices.preference(backend, 'GFDTD_BACKEND', dict(cuda='cupy', rocm='cupy', hip='cupy', vk='vulkan'))
+    try:
+        return kinds[name](op, dtype)
+    except MemoryError as e:
+        if chosen != 'auto' or name not in ('cupy', 'vulkan'):
+            raise
+        cpu = resolve_backend('cpu')
+        be = kinds[cpu](op, dtype)
+        be.fallback = f"{e}: running on the CPU ({cpu})"
+        return be
 
 
 def _fmt_t(s):

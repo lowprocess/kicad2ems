@@ -213,6 +213,8 @@ class openEMS:                                                       # noqa: N80
             if eng.be.name == 'core' and int(kw.get('numThreads') or 0) > 0:
                 eng.be.core.set_threads(int(kw['numThreads']))
             out(f"Engine: {eng.be.name}" + (f" ({backend_info(eng.be.name)})" if eng.be.name != 'numpy' else ''))
+            if getattr(eng.be, 'fallback', None):                    # (auto: the GPU too small for the model)
+                out(f"Note: {eng.be.fallback}")
             if not setup_only:
                 self.result = eng.run(sim_path, self.nr_ts, self.end_crit, verbose=1 if verbose is None else verbose,
                                       out=out)
