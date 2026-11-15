@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- The file-graph animation: every file of the kicad2ems stack as a node sized by its lines, over time.
+     tools/code_growth.py --html puts its filegraph.json in place of FILEGRAPH_DATA and writes code_growth/filegraph.html. -->
+<title>kicad2ems File Graph</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<style>
+  /* Layout: one full-screen canvas, the stack's file tree drifting in space; a quiet instrument-panel HUD at the edges. */
+  :root {
+    --void: #0b0e14;        /* background, the field */
+    --panel: rgba(16, 21, 31, 0.78);
+    --ink: #e6ebf2;         /* primary text */
+    --ink-dim: #8b95a7;     /* secondary text */
+    --rule: rgba(139, 149, 167, 0.22);
+    --signal: #7cc4ff;      /* controls, focus */
+    --k-src: #5fb3ff;       /* library Python */
+    --k-native: #ff9b52;    /* C++ / shaders */
+    --k-tests: #6fdc8c;     /* tests */
+    --k-tools: #c792ff;     /* tools and scripts */
+    --k-docs: #9aa7b8;      /* documentation */
+    --font-ui: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+    --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; margin: 0; }
+  [hidden] { display: none !important; }
+  body { background: var(--void); color: var(--ink); font-family: var(--font-ui); overflow: hidden; }
+  .fg { position: relative; height: 100%; width: 100%; overflow: hidden; }
+  .fg canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  .fg canvas.dragging { cursor: grabbing; }
+  .hud { position: absolute; pointer-events: none; display: flex; flex-direction: column; gap: 4px; }
+  .hud-tl { top: 14px; left: max(16px, env(safe-area-inset-left, 0px)); max-width: calc(100% - 32px); }
+  .hud-tr { top: 14px; right: max(16px, env(safe-area-inset-right, 0px)); align-items: flex-end; text-align: right; }
+  .eyebrow { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); }
+  .date { font-family: var(--font-data); font-size: clamp(22px, 4vw, 34px); font-weight: 500; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .time { font-family: var(--font-data); font-size: 13px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+  .stat { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-dim); }
+  .stat b { color: var(--ink); font-weight: 500; font-size: clamp(18px, 3vw, 24px); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-dim); margin-top: 6px; justify-content: flex-end; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .feed { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); pointer-events: none; display: flex; flex-direction: column; gap: 3px; max-width: min(560px, calc(100% - 32px)); }
+  .feed div { font-size: 13px; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .6s; }
+  .feed div b { color: var(--ink); font-weight: 500; margin-right: 6px; }
+  .feed div:first-child { color: var(--ink); }
+  .bar { position: absolute; left: 0; right: 0; bottom: 0; padding-block: 10px calc(12px + env(safe-area-inset-bottom, 0px)); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: linear-gradient(to top, rgba(11,14,20,0.95), rgba(11,14,20,0)); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+  .bar button, .bar select { font: 500 13px var(--font-ui); color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  .bar button:hover, .bar select:hover { border-color: var(--signal); }
+  .bar button:focus-visible, .bar select:focus-visible, .bar input:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+  #play { min-width: 92px; }
+  .scrub { flex: 1 1 220px; display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .scrub input { flex: 1; min-width: 0; accent-color: var(--signal); }
+  .scrub span { font-family: var(--font-data); font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
+  .bar label { font-size: 13px; color: var(--ink-dim); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .bar label input { accent-color: var(--signal); }
+  .tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 9px; font-family: var(--font-data); font-size: 12px; color: var(--ink); max-width: min(420px, calc(100% - 32px)); backdrop-filter: blur(4px); }
+  .tip div + div { color: var(--ink-dim); margin-top: 2px; }
+  @media (max-width: 560px) { .legend { max-width: 180px; } .feed { bottom: calc(118px + env(safe-area-inset-bottom, 0px)); } .feed div:nth-child(n+3) { display: none; } }
+</style>
+</head>
+<body>
+<div class="fg" id="fg">
+  <canvas id="cv" aria-label="Animated graph of every file in the kicad2ems repositories, sized by lines of code, growing over time"></canvas>
+  <div class="hud hud-tl">
+    <span class="eyebrow">kicad2ems stack · every file, sized by its lines</span>
+    <span class="date" id="date">—</span>
+    <span class="time" id="clock">—</span>
+  </div>
+  <div class="hud hud-tr">
+    <span class="stat"><b id="lines">—</b> lines</span>
+    <span class="stat"><span id="files">—</span> files · <span id="repos">—</span> repositories</span>
+    <div class="legend">
+      <span><i style="background:var(--k-src)"></i>Library</span>
+      <span><i style="background:var(--k-native)"></i>Native</span>
+      <span><i style="background:var(--k-tests)"></i>Tests</span>
+      <span><i style="background:var(--k-tools)"></i>Tools</span>
+      <span><i style="background:var(--k-docs)"></i>Docs</span>
+    </div>
+  </div>
+  <div class="feed" id="feed" aria-live="off"></div>
+  <div class="tip" id="tip" hidden></div>
+  <div class="bar">
+    <button id="play" type="button">Play</button>
+    <div class="scrub">
+      <span id="t0">8 Oct</span>
+      <input id="scrub" type="range" min="0" max="1000" step="1" value="1000" aria-label="Point in time">
+      <span id="t1">15 Nov</span>
+    </div>
+    <select id="speed" aria-label="Playback speed">
+      <option value="0.5">Slow</option>
+      <option value="1" selected>Normal</option>
+      <option value="2">Fast</option>
+      <option value="4">Fastest</option>
+    </select>
+    <label><input id="labels" type="checkbox" checked>Folder names</label>
+    <button id="fit" type="button" hidden>Fit to screen</button>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script type="application/json" id="fg-data">FILEGRAPH_DATA</script>
+<script>
+(() => {
+  const DATA = JSON.parse(document.getElementById('fg-data').textContent);
+  const { repos: REPOS, files: FILES, events: EVENTS } = DATA;
+  const KIND = ['Library', 'Native', 'Tests', 'Tools', 'Docs'];
+  const css = getComputedStyle(document.documentElement);
+  const KCOL = ['--k-src', '--k-native', '--k-tests', '--k-tools', '--k-docs'].map((v) => css.getPropertyValue(v).trim());
+  const RCOL = ['#7cc4ff', '#ffb86b', '#ff7aa8', '#7ee0c3', '#c9a6ff', '#ffd76a', '#8fd0ff', '#f39b7f', '#a6e37a', '#d0d6e0', '#ffffff'];
+  const T = EVENTS.map((e) => Date.parse(e[0]));
+  const T0 = T[0], T1 = T[T.length - 1];
+  const BASE_SECONDS = 90;                 // the whole history at Normal speed
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // files' paths split once
+  const fileDirs = FILES.map(([r, p]) => {
+    const parts = p.split('/'); const dirs = [];
+    for (let i = 1; i < parts.length; i++) dirs.push('D:' + r + ':' + parts.slice(0, i).join('/'));
+    return dirs;
+  });
+
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  let W = 0, H = 0, DPR = 1;
+  const resize = () => {
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  };
+  resize(); addEventListener('resize', resize);
+
+  // --- state ---
+  const lines = new Float64Array(FILES.length);   // target lines per file
+  const flash = new Float64Array(FILES.length);   // wall time of last change
+  let idx = 0;           // next event to apply
+  let now = T1;          // current time shown
+  let playing = false;
+  let speed = 1;
+  const nodes = new Map();  // id -> node
+  const feed = [];
+
+  const radiusOf = (n) => 1.6 + Math.sqrt(n) * 0.42;
+  const fmtDate = d3.utcFormat('%-d %b %Y');
+  const fmtClock = d3.utcFormat('%H:%M UTC');
+  const fmtShort = d3.utcFormat('%-d %b');
+  document.getElementById('t0').textContent = fmtShort(new Date(T0));
+  document.getElementById('t1').textContent = fmtShort(new Date(T1));
+
+  const sim = d3.forceSimulation([])
+    .alphaDecay(0.02).velocityDecay(0.38)
+    .force('link', d3.forceLink([]).id((d) => d.id).distance((l) => l.dist).strength((l) => l.str))
+    .force('charge', d3.forceManyBody().strength((d) => d.charge).theta(0.9).distanceMax(900))
+    .force('collide', d3.forceCollide((d) => d.tr + 1.2).strength(0.7).iterations(1))
+    .force('x', d3.forceX(0).strength(0.012))
+    .force('y', d3.forceY(0).strength(0.012))
+    .stop();
+
+  const ROOT = { id: 'root', type: 'root', x: 0, y: 0, r: 3, tr: 3, charge: -60, parent: null };
+  nodes.set('root', ROOT);
+
+  function ensure(id, make) {
+    let n = nodes.get(id);
+    if (!n) { n = make(); nodes.set(id, n); }
+    n.dying = false;
+    return n;
+  }
+  function spawnNear(p, spread) {
+    const a = Math.random() * Math.PI * 2, d = spread * (0.5 + Math.random());
+    return { x: (p ? p.x : 0) + Math.cos(a) * d, y: (p ? p.y : 0) + Math.sin(a) * d, vx: 0, vy: 0 };
+  }
+
+  // Rebuild which nodes should exist from the files' line counts.
+  function reconcile() {
+    const need = new Set(['root']);
+    for (let f = 0; f < FILES.length; f++) {
+      if (lines[f] <= 0) continue;
+      const r = FILES[f][0];
+      need.add('R:' + r);
+      for (const d of fileDirs[f]) need.add(d);
+      need.add('F:' + f);
+    }
+    // create in order: repos, dirs (shallow first), files
+    for (const id of need) {
+      if (id[0] !== 'R') continue;
+      const r = +id.slice(2);
+      ensure(id, () => {
+        const k = nodes.get('R:0');
+        const from = k && !k.dying && r !== 0 ? k : ROOT;
+        return { id, type: 'repo', repo: r, label: REPOS[r], parent: 'root', r: 0, tr: 7, charge: -520, ...spawnNear(from, r === 0 ? 10 : 60) };
+      });
+    }
+    const dirIds = [...need].filter((id) => id[0] === 'D').sort((a, b) => a.split('/').length - b.split('/').length);
+    for (const id of dirIds) {
+      const [, r, path] = id.split(':');
+      const parts = path.split('/');
+      const parent = parts.length > 1 ? 'D:' + r + ':' + parts.slice(0, -1).join('/') : 'R:' + r;
+      ensure(id, () => ({ id, type: 'dir', repo: +r, label: parts[parts.length - 1], depth: parts.length, parent, r: 0, tr: 2.2, charge: -45, ...spawnNear(nodes.get(parent), 12) }));
+    }
+    for (const id of need) {
+      if (id[0] !== 'F') continue;
+      const f = +id.slice(2);
+      const n = ensure(id, () => {
+        const ds = fileDirs[f];
+        const parent = ds.length ? ds[ds.length - 1] : 'R:' + FILES[f][0];
+        return { id, type: 'file', f, repo: FILES[f][0], kind: FILES[f][2], parent, r: 0, tr: 0, charge: -12, ...spawnNear(nodes.get(parent), 8) };
+      });
+      n.tr = radiusOf(lines[f]);
+      n.charge = -10 - n.tr * 2.2;
+    }
+    for (const [id, n] of nodes) if (!need.has(id)) { n.dying = true; n.tr = 0; }
+    rebuildSim();
+  }
+
+  function rebuildSim() {
+    const arr = [...nodes.values()];
+    const links = [];
+    for (const n of arr) {
+      if (!n.parent || !nodes.has(n.parent)) continue;
+      const p = nodes.get(n.parent);
+      let dist, str;
+      if (n.type === 'repo') { dist = 170; str = 0.08; }            // repositories held to the stack
+      else if (n.type === 'dir') { dist = p.type === 'repo' ? 34 : 24; str = 0.9; }
+      else { dist = 6 + n.tr + (p.type === 'repo' ? 10 : 2); str = 0.7; }
+      links.push({ source: n, target: p, dist, str });
+    }
+    sim.nodes(arr);
+    sim.force('link').links(links);
+    sim.force('charge').strength((d) => d.charge);
+    sim.force('collide').radius((d) => d.tr + 1.2);
+    sim.alpha(Math.max(sim.alpha(), 0.35));
+  }
+
+  function applyEvent(e, wall) {
+    for (const [f, n] of e[3]) { lines[f] = n; if (wall) flash[f] = wall; }
+    feed.unshift({ repo: e[2], msg: e[1] });
+    if (feed.length > 5) feed.length = 5;
+  }
+
+  function seek(t) {
+    lines.fill(0); flash.fill(0); feed.length = 0;
+    idx = 0;
+    while (idx < EVENTS.length && T[idx] <= t) applyEvent(EVENTS[idx++], 0);
+    now = t;
+    reconcile();
+    renderFeed();
+  }
+
+  // --- view: auto-fit with manual pan/zoom ---
+  let view = { k: 1, x: 0, y: 0 };
+  let autofit = true;
+  const fitBtn = document.getElementById('fit');
+  function fitTarget() {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const n of nodes.values()) {
+      if (n.dying && n.r < 0.5) continue;
+      const pad = n.type === 'repo' ? 40 : n.r + 4;
+      x0 = Math.min(x0, n.x - pad); x1 = Math.max(x1, n.x + pad);
+      y0 = Math.min(y0, n.y - pad); y1 = Math.max(y1, n.y + pad);
+    }
+    if (!isFinite(x0)) return { k: 1, x: W / 2, y: H / 2 };
+    const top = 92, bottom = 128, side = 24;
+    const aw = Math.max(80, W - side * 2), ah = Math.max(80, H - top - bottom);
+    const k = Math.min(4, aw / Math.max(60, x1 - x0), ah / Math.max(60, y1 - y0));
+    return { k, x: side + aw / 2 - k * (x0 + x1) / 2, y: top + ah / 2 - k * (y0 + y1) / 2 };
+  }
+  let drag = null;
+  cv.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y }; cv.setPointerCapture(e.pointerId); cv.classList.add('dragging'); });
+  cv.addEventListener('pointerup', () => { drag = null; cv.classList.remove('dragging'); });
+  cv.addEventListener('pointermove', (e) => {
+    if (drag) {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) { autofit = false; fitBtn.hidden = false; }
+      if (!autofit) { view.x = drag.vx + dx; view.y = drag.vy + dy; }
+    }
+    hover(e);
+  });
+  cv.addEventListener('pointerleave', () => { tip.hidden = true; hovered = null; });
+  cv.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    autofit = false; fitBtn.hidden = false;
+    const rect = cv.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const k = Math.max(0.05, Math.min(12, view.k * Math.exp(-e.deltaY * 0.0015)));
+    view.x = mx - (mx - view.x) * k / view.k; view.y = my - (my - view.y) * k / view.k; view.k = k;
+  }, { passive: false });
+  fitBtn.addEventListener('click', () => { autofit = true; fitBtn.hidden = true; });
+
+  // --- hover readout ---
+  const tip = document.getElementById('tip');
+  let hovered = null;
+  function hover(e) {
+    const rect = cv.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const wx = (mx - view.x) / view.k, wy = (my - view.y) / view.k;
+    let best = null, bd = Infinity;
+    for (const n of nodes.values()) {
+      if (n.type === 'root' || n.dying) continue;
+      const d = Math.hypot(n.x - wx, n.y - wy) - Math.max(n.r, 4 / view.k);
+      if (d < bd) { bd = d; best = n; }
+    }
+    if (!best || bd > 6 / view.k) { tip.hidden = true; hovered = null; return; }
+    hovered = best;
+    tip.replaceChildren();
+    const a = document.createElement('div'), b = document.createElement('div');
+    if (best.type === 'file') {
+      a.textContent = REPOS[best.repo] + '/' + FILES[best.f][1];
+      b.textContent = d3.format(',')(lines[best.f]) + ' lines · ' + KIND[best.kind];
+    } else if (best.type === 'dir') {
+      a.textContent = REPOS[best.repo] + '/' + best.id.split(':')[2] + '/';
+      b.textContent = d3.format(',')(dirLines(best.id)) + ' lines in this folder';
+    } else {
+      a.textContent = best.label;
+      b.textContent = d3.format(',')(repoLines(best.repo)) + ' lines';
+    }
+    tip.append(a, b);
+    tip.hidden = false;
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = Math.min(W - tw - 8, mx + 14) + 'px';
+    tip.style.top = Math.max(8, Math.min(H - th - 8, my + 14)) + 'px';
+  }
+  function dirLines(id) {
+    let s = 0; for (let f = 0; f < FILES.length; f++) if (lines[f] > 0 && fileDirs[f].includes(id)) s += lines[f]; return s;
+  }
+  function repoLines(r) { let s = 0; for (let f = 0; f < FILES.length; f++) if (FILES[f][0] === r) s += lines[f]; return s; }
+
+  // --- HUD ---
+  const elDate = document.getElementById('date'), elClock = document.getElementById('clock');
+  const elLines = document.getElementById('lines'), elFiles = document.getElementById('files'), elRepos = document.getElementById('repos');
+  const elFeed = document.getElementById('feed');
+  const scrub = document.getElementById('scrub');
+  function renderHud() {
+    elDate.textContent = fmtDate(new Date(now));
+    elClock.textContent = fmtClock(new Date(now));
+    let s = 0, nf = 0; const rs = new Set();
+    for (let f = 0; f < FILES.length; f++) if (lines[f] > 0) { s += lines[f]; nf++; rs.add(FILES[f][0]); }
+    elLines.textContent = d3.format(',')(s);
+    elFiles.textContent = d3.format(',')(nf);
+    elRepos.textContent = rs.size;
+    if (!scrubbing) scrub.value = Math.round(1000 * (now - T0) / (T1 - T0));
+  }
+  function renderFeed() {
+    elFeed.replaceChildren(...feed.map((c) => {
+      const d = document.createElement('div');
+      const b = document.createElement('b'); b.textContent = REPOS.indexOf(c.repo) >= 0 ? c.repo : c.repo;
+      b.style.color = RCOL[REPOS.indexOf(c.repo)] || 'inherit';
+      d.append(b, document.createTextNode(c.msg));
+      return d;
+    }));
+  }
+
+  // --- controls ---
+  const playBtn = document.getElementById('play');
+  const setPlaying = (p) => { playing = p; playBtn.textContent = p ? 'Pause' : (now >= T1 ? 'Replay' : 'Play'); };
+  playBtn.addEventListener('click', () => {
+    if (!playing && now >= T1) seek(T0 - 1);
+    setPlaying(!playing);
+  });
+  document.getElementById('speed').addEventListener('change', (e) => { speed = +e.target.value; });
+  let showLabels = true;
+  document.getElementById('labels').addEventListener('change', (e) => { showLabels = e.target.checked; });
+  let scrubbing = false;
+  scrub.addEventListener('input', () => { scrubbing = true; seek(T0 + (T1 - T0) * scrub.value / 1000); });
+  scrub.addEventListener('change', () => { scrubbing = false; });
+  addEventListener('keydown', (e) => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); playBtn.click(); } });
+
+  // --- loop ---
+  let last = performance.now();
+  function frame(wall) {
+    const dt = Math.min(0.1, (wall - last) / 1000); last = wall;
+    if (playing) {
+      now = Math.min(T1, now + dt * speed * (T1 - T0) / BASE_SECONDS);
+      let changed = false;
+      while (idx < EVENTS.length && T[idx] <= now) { applyEvent(EVENTS[idx++], wall); changed = true; }
+      if (changed) { reconcile(); renderFeed(); }
+      if (now >= T1) setPlaying(false);
+    }
+    // grow and shrink radii, drop the vanished
+    let removed = false;
+    for (const [id, n] of nodes) {
+      n.r += (n.tr - n.r) * Math.min(1, dt * 6);
+      if (n.dying && n.r < 0.3) { nodes.delete(id); removed = true; }
+    }
+    if (removed) rebuildSim();
+    sim.alphaTarget(playing ? 0.06 : 0);
+    if (sim.alpha() > 0.002) sim.tick();
+    if (autofit) {
+      const t = fitTarget(), a = Math.min(1, dt * 3);
+      view.k += (t.k - view.k) * a; view.x += (t.x - view.x) * a; view.y += (t.y - view.y) * a;
+    }
+    draw(wall);
+    renderHud();
+    requestAnimationFrame(frame);
+  }
+
+  function draw(wall) {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = css.getPropertyValue('--void').trim() || '#0b0e14';
+    ctx.fillRect(0, 0, W, H);
+    ctx.setTransform(DPR * view.k, 0, 0, DPR * view.k, DPR * view.x, DPR * view.y);
+    const px = 1 / view.k;
+    // edges
+    ctx.lineWidth = px;
+    for (const r of [0, 1]) { /* two passes: repos to stack, then the trees */
+      ctx.beginPath();
+      for (const n of nodes.values()) {
+        if (!n.parent) continue;
+        if ((n.type === 'repo') !== (r === 0)) continue;
+        const p = nodes.get(n.parent); if (!p) continue;
+        ctx.moveTo(n.x, n.y); ctx.lineTo(p.x, p.y);
+      }
+      ctx.strokeStyle = r === 0 ? 'rgba(124,196,255,0.16)' : 'rgba(170,185,210,0.20)';
+      if (r === 0) ctx.setLineDash([4 * px, 4 * px]); else ctx.setLineDash([]);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // flashes for files that just changed
+    ctx.globalCompositeOperation = 'lighter';
+    for (const n of nodes.values()) {
+      if (n.type !== 'file' || !flash[n.f]) continue;
+      const age = (wall - flash[n.f]) / 1000;
+      if (age > 1.4) continue;
+      const a = 1 - age / 1.4;
+      ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 3 + 10 * (1 - a), 0, Math.PI * 2);
+      ctx.fillStyle = KCOL[n.kind]; ctx.globalAlpha = 0.35 * a; ctx.fill();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    // files by kind
+    for (let k = 0; k < 5; k++) {
+      ctx.beginPath();
+      for (const n of nodes.values()) {
+        if (n.type !== 'file' || n.kind !== k || n.r < 0.2) continue;
+        ctx.moveTo(n.x + n.r, n.y); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      }
+      ctx.fillStyle = KCOL[k]; ctx.globalAlpha = 0.86; ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // folders
+    ctx.beginPath();
+    for (const n of nodes.values()) { if (n.type !== 'dir' || n.r < 0.2) continue; ctx.moveTo(n.x + n.r, n.y); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); }
+    ctx.fillStyle = 'rgba(214,222,235,0.7)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(ROOT.x, ROOT.y, 2.5 * px + 1, 0, Math.PI * 2); ctx.fillStyle = 'rgba(124,196,255,0.5)'; ctx.fill();
+    // repositories
+    for (const n of nodes.values()) {
+      if (n.type !== 'repo' || n.r < 0.2) continue;
+      ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.fillStyle = RCOL[n.repo]; ctx.fill();
+      ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 3 * px + 2, 0, Math.PI * 2);
+      ctx.strokeStyle = RCOL[n.repo]; ctx.globalAlpha = 0.4; ctx.lineWidth = 1.5 * px; ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    if (hovered && nodes.has(hovered.id)) {
+      ctx.beginPath(); ctx.arc(hovered.x, hovered.y, Math.max(hovered.r, 3) + 3 * px, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5 * px; ctx.stroke();
+    }
+    // labels in screen space
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.lineJoin = 'round';
+    const placed = [];
+    const label = (text, n, font, color, dy) => {
+      const sx = n.x * view.k + view.x, sy = n.y * view.k + view.y - dy;
+      if (sx < -100 || sx > W + 100 || sy < -20 || sy > H + 20) return;
+      ctx.font = font;
+      const w = ctx.measureText(text).width, h = 13;
+      const box = [sx - w / 2 - 2, sy - h, sx + w / 2 + 2, sy + 1];
+      for (const b of placed) if (box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]) return;
+      placed.push(box);
+      ctx.strokeStyle = 'rgba(11,14,20,0.85)'; ctx.lineWidth = 3; ctx.strokeText(text, sx, sy);
+      ctx.fillStyle = color; ctx.fillText(text, sx, sy);
+    };
+    for (const n of nodes.values()) {
+      if (n.type !== 'repo' || n.dying) continue;
+      label(n.label, n, '600 14px "IBM Plex Sans Condensed", sans-serif', RCOL[n.repo], n.r * view.k + 6);
+    }
+    if (showLabels) {
+      for (const n of nodes.values()) {
+        if (n.type !== 'dir' || n.dying || n.depth > 2) continue;
+        label(n.label + '/', n, '400 11px "IBM Plex Mono", monospace', 'rgba(170,182,200,0.85)', 4);
+      }
+    }
+  }
+
+  // Open on today's tree; Play starts from the first commit.
+  seek(T1);
+  for (const n of nodes.values()) n.r = n.tr;
+  for (let i = 0; i < 260; i++) sim.tick();
+  setPlaying(false);
+  if (!reduce && location.hash === '#play') { seek(T0 - 1); setPlaying(true); }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

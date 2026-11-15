@@ -5,6 +5,7 @@ and the file-graph animation.
     python tools/code_growth.py                 # the checkouts side by side (../pcbqs, ../mom25d, ...); writes ./code_growth/
     python tools/code_growth.py --out DIR       # somewhere else
     python tools/code_growth.py --rev HEAD      # each checkout's HEAD instead of origin/main
+    python tools/code_growth.py --html          # also the file-graph animation, code_growth/filegraph.html
 
 It writes three files:
 - loc_by_commit.json: {rows, meta}, a row per commit per repository (repo, t, sha, msg, src, native, tests, tools,
@@ -13,6 +14,9 @@ It writes three files:
   (insideFrom, insideUntil).
 - filegraph.json: {repos, files, events}, each file's lines over time: files are [repo index, path, kind] and events
   [t, message, repo, [[file index, lines], ...]] in time order.
+With --html, also filegraph.html: tools/filegraph_template.html with filegraph.json in it, one file to open in a
+browser (it loads d3 from cdnjs). Every file is a node sized by its lines, held to its folder, the folders to their
+repository and the repositories to the stack by springs, and the history plays from the first commit.
 
 How it counts:
 - Every commit on the revision's first-parent history, with git's per-file line counts (--numstat, --no-renames)
@@ -99,6 +103,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('--out', type=Path, default=Path('code_growth'), help='folder for the three files')
     ap.add_argument('--rev', default='origin/main', help="each repository's revision (default origin/main)")
+    ap.add_argument('--html', action='store_true', help='also write the file-graph animation, filegraph.html')
     a = ap.parse_args()
     history = {r: commits(r, a.rev) for r in REPOS}
 
@@ -158,6 +163,11 @@ def main():
     dump('loc_by_commit.json', {'rows': rows, 'meta': meta})
     dump('extractions.json', {'rows': extractions, 'meta': meta})
     dump('filegraph.json', {'repos': REPOS, 'files': files, 'events': events})
+    if a.html:
+        template = (Path(__file__).parent / 'filegraph_template.html').read_text(encoding='utf-8')
+        data = json.dumps({'repos': REPOS, 'files': files, 'events': events}, separators=(',', ':'))
+        (a.out / 'filegraph.html').write_text(template.replace('>FILEGRAPH_DATA</script>',
+                                              '>' + data.replace('</', '<\\/') + '</script>'), encoding='utf-8')
     last = {r: history[r][-1][4] for r in REPOS}
     code = sum(n for s in last.values() for p, n in s.items() if kind(p) != 'docs')
     print(f'{len(rows)} commits, {len(files)} files, {code:,} lines of code now; written to {a.out}/')
