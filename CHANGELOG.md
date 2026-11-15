@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **De-embedding (R-E1, its first part).** `--deembed P1=2.5` moves a port's reference plane along its own trace,
+  the line model's sections from the port taken off (their Z0, εeff, the mode's tan δ and, with `--sigma`, the
+  copper's loss; a negative length moves it out), and `--deembed-file P1=fixture.s2p` removes a fixture there:
+  `<name>_<solver>_deembedded.sNp` beside each solver's own S, from any solver (`kicad2ems.deembed`: the fixture's
+  inverse connected at the port). Checked against exact cascades of matched and unmatched, lossy lines. Left: the
+  FDTD layer's own line ports, mom25d's ports without their via, ports at an angle.
 - **A run done again takes its earlier result (R-D20).** Each solver's result is kept beside the run's outputs
   (`<name>_<solver>.result.npz` and `.json`), and a later run in the same folder takes it in place of a solve when
   the board every solver gets, the frequencies, every setting but the output ones, the solver's version line and

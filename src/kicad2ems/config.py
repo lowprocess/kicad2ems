@@ -218,6 +218,12 @@ CORE = [
     Option('preview', False, "write the model (and openEMS's mesh) preview, the line sections and the report, run "
            "the solvers other than openEMS, then exit", bool, group='output'),
     Option('no_report', False, "do not write <name>_report.html", bool, group='output'),
+    Option('deembed', [], "move a port's reference plane along its own trace, PORT=MM (repeatable; negative: outwards): "
+           "<name>_<solver>_deembedded.sNp beside the solver's own, the line model's sections removed (R-E1)", list,
+           conv=items, group='output', gui='De-embed (PORT=mm)', cli=dict(action='append', metavar='PORT=MM')),
+    Option('deembed_file', [], "remove a fixture at a port, PORT=FILE.s2p (repeatable; its port 1 at the port, its port 2 "
+           "the device's side)", list, conv=items, group='output', gui='De-embed fixture (PORT=file.s2p)',
+           cli=dict(action='append', metavar='PORT=FILE')),
     Option('no_reuse', False, "solve every solver again: by default a result an earlier run left in the output folder "
            "is taken where the board, the frequencies, the settings and the code are the same (<name>_<solver>.result.*)",
            bool, group='output'),

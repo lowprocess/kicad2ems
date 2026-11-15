@@ -54,8 +54,10 @@ the window lists the questions, with the engine chosen on each row, and compares
    engine take it from there.
 3. **The KiCad plugin** (kicad2ems-ipc) starts `kicad2ems study` for a board whose config has one.
 4. **Ports and parts the solvers share** (R-E1, R-E5).
-   - De-embedding and a reference plane: lumped ports carry their feed (about 0.1 nH, docs/model.md), the FDTD
-     model has lumped ports only though gfdtd has line ports, and mom25d's lumped ports carry their via.
+   - A reference plane moved along the port's trace and a fixture removed, for any solver's S: `--deembed`,
+     `--deembed-file` since 2026-11-15 (`kicad2ems.deembed`). Left: lumped ports still carry their feed (about
+     0.1 nH, docs/model.md), the FDTD model has lumped ports only though gfdtd has line ports, and mom25d's
+     lumped ports carry their via.
    - Ports and parts at angles other than x and y.
    - Internal ports at the parts' pads, with the parts embedded after the solve: value sweeps and vendor
      S-parameter parts without a new solve, then a `[sweep]` table. There is no sweep or batch driver today.

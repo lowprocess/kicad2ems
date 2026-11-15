@@ -522,6 +522,26 @@ class Job:
                     raise
                 self.log(f"WARNING: {name} failed: {type(e).__name__}: {e}")
 
+    def _deembed(self, n, r, entry):
+        """<name>_<n>_deembedded.sNp of solver n's result r, its ports' planes moved and fixtures removed
+        (deembed.py); a warning where it cannot be done, the solver's own S standing."""
+        from . import deembed
+        pairs = lambda items: dict(x.split('=', 1) for x in (items or []) if '=' in x)
+        try:
+            lines = {k.strip(): float(v) for k, v in pairs(self.s.deembed).items()}
+            files = {k.strip(): os.path.abspath(v.strip()) for k, v in pairs(self.s.deembed_file).items()}
+            S, done = deembed.apply(r.S, r.names, r.zref, self.freq, lines, files, getattr(self, 'lm', None),
+                                    sigma=getattr(self.s, 'sigma', None))
+        except (ValueError, OSError) as e:
+            self.log(f"WARNING: {label(n)}: not de-embedded: {e}")
+            return
+        out = self.path(f"_{n}_deembedded.s{len(r.names)}p")
+        write_touchstone(out, self.freq, np.nan_to_num(S), r.zref, names=r.names,
+                         comment=r.comment + '; de-embedded: ' + '; '.join(done))
+        self.wrote(f"S-parameters de-embedded, {registry()[n].label}", out)
+        entry['deembedded'] = dict(touchstone=self.rel(out), done=done, table=sparam_table(self.freq, S, r.names))
+        self.log(f"{label(n)}: de-embedded ({'; '.join(done)}) -> {out}")
+
     def outputs(self):
         s, freq, reg = self.s, self.freq, registry()
         done = [n for n in self.plan if n in self.results]          # registry order: the first is the reference
@@ -553,6 +573,8 @@ class Job:
                                              f"frequencies" + unknown_note(r.S, r.names))
                     self.wrote(f"S-parameters made passive, {reg[n].label}", pout)
                     entry['passive_touchstone'] = self.rel(pout)
+            if s.deembed or s.deembed_file:                         # (R-E1: lumped ports had no de-embedding)
+                self._deembed(n, r, entry)
             self.summary['solved'][n] = entry
             self.log(f"{reg[n].label}: -> {out}")
         self.join_bands()

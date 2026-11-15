@@ -115,6 +115,26 @@ def test_a_run_done_again_takes_its_earlier_result(run_cli, tmp_path, monkeypatc
     assert code == 0 and 'the result of an earlier run here' not in so
 
 
+def test_deembedding_moves_the_planes_beside_the_solvers_own(run_cli, tmp_path):
+    """R-E1: --deembed writes <name>_<solver>_deembedded.sNp, the line model's sections taken off each port (the
+    exact cascades: test_deembed.py); a lossy trace of 50.0-50.2 ohm moves |S21| a little."""
+    pytest.importorskip('skrf')
+    import numpy as np
+    from kicad2ems.touchstone import read_touchstone
+    out = tmp_path / 'out'
+    code, so, err = run_cli(FILTER, '--solvers', 'scikit', '--points', '21', '--deembed', 'P1=1', '--deembed', 'P2=1',
+                            '--out', out)
+    assert code == 0 and 'de-embedded (P1: its reference +1 mm' in so, so + err
+    f, S = read_touchstone(str(out / 'rf_interdig_scikit.s2p'))
+    f2, D = read_touchstone(str(out / 'rf_interdig_scikit_deembedded.s2p'))
+    assert np.array_equal(f, f2) and np.allclose(np.abs(D[:, 1, 0]), np.abs(S[:, 1, 0]), rtol=0.05)
+    assert not np.allclose(D, S)
+    sm = json.loads((out / 'rf_interdig_run.json').read_text(encoding='utf-8'))
+    assert sm['solved']['scikit']['deembedded']['touchstone'] == 'rf_interdig_scikit_deembedded.s2p'
+    code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--points', '21', '--deembed', 'P1=500', '--out', out)
+    assert code == 0 and 'WARNING' in so and 'not de-embedded' in so        # past its trace: said, S stands
+
+
 def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatch):
     pytest.importorskip('skrf')
     def broken(*a, **kw):

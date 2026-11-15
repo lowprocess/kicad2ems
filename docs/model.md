@@ -97,7 +97,11 @@ Each port is one of two kinds:
   feed across a slot. The port spans the gap in the copper plane.
 
 The reference impedance is `port.z0` (50 Ω). Differential legs are two ports, combined into modes
-afterwards. Lumped ports aren't de-embedded: on a 0.2 mm dielectric the vertical port adds about 0.1 nH.
+afterwards. Lumped ports aren't de-embedded by the solvers: on a 0.2 mm dielectric the vertical port adds about
+0.1 nH. `--deembed P1=2.5` moves P1's reference plane 2.5 mm in along its own trace (negative: out), the line
+model's sections from the port taken off (their Z0, εeff, the mode's tan δ and, with `--sigma`, the copper's
+loss), and `--deembed-file P1=fixture.s2p` removes a fixture there (its port 1 at the port); either writes
+`<name>_<solver>_deembedded.sNp` beside the solver's own (`kicad2ems.deembed`). Single-ended ports only.
 
 <a id="lumped-parts"></a>
 ## Lumped parts
