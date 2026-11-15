@@ -303,16 +303,16 @@ validated: pcbqs's docs and CHANGELOG.md (the project's `NOTES-pi-nearfield.md` 
 
 ### Losses and thermal
 
-The circuit is there for its parts' losses; what thermal makes of them (R-E9-E13; junction temperatures and limits,
-E7, and the copper's loss into thermal, E8, are done, as is the fields' reuse of the circuit's copper, D3):
+The circuit is there for its parts' losses; what thermal makes of them. Done: junction temperatures and limits
+(E7), the copper's loss into thermal (E8), the fields' reuse of the circuit's copper (D3), and on 2026-11-15 the
+electro-thermal runs (`--warm`, E9), an inductor's AC and iGSE core losses (E10), a map per sweep point (E11),
+vendor models with any pins and KiCad's `Sim.*` fields (E12), and the surroundings: a part's own path to the air,
+held footprints, moving air and the heating from cold (E13). Left of them:
 
-1. **Temperature back into the losses**: ngspice at 27 °C, σ a constant 5.8e7. Thermal, R scaled by its
-   temperature, the circuit again from its end state: two or three passes, no change to the engine.
-2. **Inductor loss**: DCR and one constant core resistor. iGSE core loss and Rac at each harmonic, after the run.
-4. **Vendor models**: `pin_order` D, G, S only (no Kelvin source or thermal pins), no diode `.model`, KiCad's
-   `Sim.*` fields not read.
-5. **The surroundings**: one film coefficient. A film that grows with the rise, fixed-temperature regions
-   (heatsinks), a body-to-air path for tall parts.
+- a film that grows with the rise (natural convection and radiation), and air warmed by one part reaching the next;
+- the heating from cold on the mesh, and a transient of changing losses (a load step);
+- the iGSE's DC-bias and relaxation terms, and minor loops;
+- the DC drop's copper at its temperature (the circuit's is, with `--warm`).
 
 ### Speed
 
