@@ -160,10 +160,21 @@ value costs no solve:
 - `--part-file C2=grm155.s2p` closes a part port by a vendor's model, measured in series through the part
   (Z = 2 z0 (1 − S21) / S21).
 
-The solvers with gap ports take it: openEMS, gfdtd and Palace; mom25d and the line model are left out of such
-a run, with the reason. On `demo_lowpass` (L1, C2, L3) on gfdtd, the closed result is the lumped run's within
-0.011 in S21 and 0.054 in S11 (−8.20 dB at 1 GHz against −8.05, −43.7 dB at 2 GHz against −40.8), for one more
-excitation a part.
+Every solver takes it. openEMS, gfdtd and Palace put a gap port where the part's sheet would be; mom25d a delta
+gap across the strip it bridges the pads with; the line model a floating port in the part's place (a series tee
+on scikit-rf, a port across the gap on qucsator). On `demo_lowpass` (L1, C2, L3) the closed result is the parts'
+own to 1e-15 on the line model and 1.5e-5 on mom25d (its sweep's own differences); on gfdtd within 0.011 in S21
+and 0.054 in S11 (−8.20 dB at 1 GHz against −8.05, −43.7 dB at 2 GHz against −40.8), for one more excitation a
+part.
+
+<a id="vary"></a>
+### Other settings varied
+
+What a part's value is to `--part-value`, any other setting is to `--vary`, at the cost of a solve each:
+`--vary fine=0.1,0.05 --vary diel=fixed,wideband` (or a config's `[vary]` table, `fine = [0.1, 0.05]`) runs the
+whole job for every combination (at most 32), each in `<out>/vary/<tag>/` (`fine=0.1_diel=fixed`), an earlier
+result reused where nothing changed, and lists them in `<out>/<name>_vary.json`. The window shows the first run of
+such a folder, with the others, and a run's part-value combinations, under *Compare with* (*This run varied*).
 
 ## What isn't modelled
 

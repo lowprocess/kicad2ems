@@ -194,8 +194,12 @@ CORE = [
            choices=('auto', 'none'), group='board'),
     Option('part_ports', [], "parts as internal ports, closed by their values after the solve: all, or references "
            "(C1,L2); with --part-value and --part-file a value is swept or replaced without solving again (solvers "
-           "with gap ports: openEMS, gfdtd, Palace)", list, conv=strlist, gui='Parts as ports (all or C1,L2)',
+           "with part ports: openEMS, gfdtd, Palace, mom25d, the line model)", list, conv=strlist, gui='Parts as ports (all or C1,L2)',
            group='board', cli=dict(metavar='REFS')),
+    Option('vary', [], "other settings varied, the run solved again for each combination: KEY=V1,V2,... (repeat: every "
+           "combination, at most 32; each in <out>/vary/<tag>/, listed in <name>_vary.json); a config's [vary] table: "
+           "key = [v1, v2]", list, conv=items, gui='Vary settings (fine=0.1,0.05)', group='output',
+           cli=dict(metavar='KEY=V1,V2', action='append')),
     Option('part_value', [], "a part port's values to sweep: REF=V1,V2,... (repeat: every combination); each written "
            "as <name>_<solver>_REF=V.sNp", list, conv=items, gui='Part value sweeps (C1=1p,2p)', group='board',
            cli=dict(metavar='REF=VALUES', action='append')),
@@ -357,6 +361,9 @@ def _table_items(cfg, notes, ignored):
             notes.append(f"[{t}]: read like the top level (the older form); openEMS's own settings now go under "
                          f"[solver.openems]")
             out += [(k.replace('-', '_'), x) for k, x in v.items() if not isinstance(x, dict)]
+        elif t.lower() == 'vary':                                   # [vary] key = [v1, v2]: --vary key=v1,v2
+            out.append(('vary', [f"{k.replace('-', '_')}=" + ','.join(str(x) for x in (vals if isinstance(vals, list)
+                                                                                  else [vals])) for k, vals in v.items()]))
         elif t.lower() == 'solver':
             for name, tab in v.items():
                 try:
@@ -380,7 +387,7 @@ def _table_items(cfg, notes, ignored):
     return out
 
 
-TABLES = {'openems', 'solver', 'study', 'analysis'}               # the tables a config of the stack holds
+TABLES = {'openems', 'solver', 'study', 'analysis', 'vary'}               # the tables a config of the stack holds
 
 
 def read_toml(path):
@@ -440,6 +447,12 @@ def build_settings(cli=None, config=None, default_solvers=None):
         raise ConfigError(f"fmin ({s.fmin:g} GHz) must be below fmax ({s.fmax:g} GHz)")
     if s.points < 2:
         raise ConfigError("points must be at least 2")
+    if getattr(s, 'vary', None):
+        from .vary import parse
+        try:
+            parse(s.vary, OPTIONS)
+        except ValueError as e:
+            raise ConfigError(str(e)) from None
     if s.sweep == 'log' and s.fmin <= 0:
         raise ConfigError(f"sweep = log: fmin ({s.fmin:g} GHz) must be above 0")
     if s.rough is not None and s.rough < 0:

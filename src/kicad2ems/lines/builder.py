@@ -110,15 +110,17 @@ def _build(model, nets, refcu):
     fps = {fp['ref']: fp for fp in pr.footprints}
     # ---- nets: the ports' nets, extended through series parts ----
     nets = set(nets) if nets is not None else {p.net for p in model.ports if p.net}
+    port_parts = dict(getattr(model, 'part_of', None) or {})     # parts made ports (R-E5): a floating port each
     for p in model.ports:
-        if p.kind == 'gap':
+        if p.kind == 'gap' and not (p.internal and p.name in port_parts):
             lm.notes.append(f"{p.name}: gap port - no line model")
     for name, legs in model.user_ports:
         if len(legs) == 2:
             lm.notes.append(f"{name}: differential pair - each leg is a single-ended line; where the legs run "
                             f"parallel they are a coupled section (even / odd impedances in its table)")
     part_pads = {}
-    for pt in model.parts:
+    all_parts = list(model.parts) + list(port_parts.values())
+    for pt in all_parts:
         pads = [q for q in fps.get(pt.ref, {}).get('pads', []) if q['layers']]
         if len(pads) == 2:
             part_pads[pt.ref] = pads
@@ -279,8 +281,8 @@ def _build(model, nets, refcu):
         lm.elements.append(Element('pad', node + ':in', node + ':core', L if full else L / 2, layer=lay, w=w,
                                    geom=q['geom'], label=f"pad {node[4:]}", net=q['net'],
                                    pts=np.array([c - d * L / 2, c + d * L / 2])))
-    # ---- parts: series between two pad cores, or shunt to ground ----
-    for pt in model.parts:
+    # ---- parts: series between two pad cores, or shunt to ground; a part port in the part's place ----
+    for pt in all_parts:
         pp = part_pads.get(pt.ref)
         if not pp:
             continue
@@ -295,6 +297,10 @@ def _build(model, nets, refcu):
         c0[b_] = c1[b_] = 0.5 * (pt.s[b_] + pt.e[b_])
         e = Element('part', ends[0], ends[1], pt.gap, layer=pt.layer, part=pt, label=pt.ref, pts=np.array([c0, c1]))
         e.xs = 'lumped'
+        if pt.ref in port_parts and port_parts[pt.ref] is pt:      # its port across the gap: the two nodes
+            e.port = pt.ref
+            lm.ports[pt.ref] = (ends[0], ends[1])
+            lm.port_z0[pt.ref] = next((p.z0 for p in model.ports if p.name == pt.ref), 50.0)
         lm.elements.append(e)
     # ---- via barrels: between the layers tracks attach to, open stubs beyond ----
     ends = {n for e in lm.elements for n in (e.a, e.b)}

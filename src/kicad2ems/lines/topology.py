@@ -27,7 +27,7 @@ def _shortest(lm, adj, src):
 
 def _paths(lm):
     adj = lm.adjacency()
-    names = list(lm.ports)
+    names = [n for n, v in lm.ports.items() if not isinstance(v, tuple)]    # (a part port: two nodes, no path)
     done = set()
     for p in names:
         src = lm.ports[p]

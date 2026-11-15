@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Part ports on every solver, other settings varied, and the window's view (R-E5).** mom25d's part port is a
+  delta gap across the part's strip (mom25d d6e51ed; its pads kept: a shunt part's ground pad and vias had gone as a
+  lone stitching pad), the line model's a floating port in the part's place (a series tee on scikit-rf, a Pac across
+  the gap on qucsator): closed by the parts' values, demo_lowpass is the parts' own to 1.5e-5 and 1e-15. `--vary
+  KEY=V1,V2` (or a `[vary]` table) solves the whole job for every combination of other settings (at most 32), each in
+  `<out>/vary/<tag>/`, listed in `<name>_vary.json` (`kicad2ems.vary`). The window shows a variation's first run with
+  the others, and a run's part-value combinations, under *Compare with* (kicad2ems-gui dfc62b7).
 - **Line ports for the FDTD solvers, and ports at any angle (R-E1).** `--port-kind line | auto` (default `lumped`):
   probes on each port's straight feed behind its lumped port, S = B A⁻¹ from every run's waves, each reference moved
   back to the port along the FDTD's own line (kicad2ems-fdtd 3eb00f7; docs/model.md#line-ports). Against mom25d's

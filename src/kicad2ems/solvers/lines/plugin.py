@@ -7,7 +7,7 @@ models, not from what they were given (fastsolve.py).
 from ...options import Option
 from .. import Solver, Result
 
-_CAPS = dict(ports='yes, at the network node', gap_ports='no', diff_pairs='yes', parts='yes',
+_CAPS = dict(ports='yes, at the network node', gap_ports="part ports only (a floating port in the part's place; no dipole or slot feeds)", diff_pairs='yes', parts='yes',
              vias='approximated: barrels as line sections, vias to ground as inductances',
              outline='ignored', planes='approximated: as section references only', edge_walls='ignored',
              thickness="yes: each section's copper thickness (the formulas' correction, the cross-section's rectangles)", conductor_loss="approximated: microstrip's by its formula, the other sections' as 2 Rs / w (strip and "

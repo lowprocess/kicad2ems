@@ -105,6 +105,12 @@ def _skrf(lm, ports, freq, sheet, sigma):
     def shunt_z(z, name):
         return skrf.Network(frequency=fr, s=((z - 50) / (z + 50))[:, None, None], z0=50.0, name=name)
 
+    def series_port(name):
+        """A floating port across a series gap (a part port, R-E5): the ideal series tee, ports 1 and 2 the gap's
+        nodes, port 3 the port (its voltage between them)."""
+        S = np.array([[1, 2, 2], [2, 1, -2], [2, -2, 1]], float) / 3.0
+        return skrf.Network(frequency=fr, s=np.broadcast_to(S, (len(fr.f), 3, 3)).astype(complex), z0=50.0, name=name)
+
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         for gid, g in enumerate(lm.groups):                 # coupled sections: one multiconductor block each
@@ -119,6 +125,16 @@ def _skrf(lm, ports, freq, sheet, sigma):
                 continue
             if e.kind == 'via' and e.b == 'gnd':
                 ntw = shunt_z(1j * w * (e.L or 0.0) + 1e-6, name)
+            elif e.kind == 'part' and getattr(e, 'port', None):    # a part port: the port in the part's place
+                zp = lm.port_z0.get(e.port, 50.0)
+                if e.b == 'gnd':
+                    nodes.setdefault(e.a, []).append((Circuit.Port(fr, e.port, z0=zp), 0))
+                else:
+                    tee = series_port(name)
+                    nodes.setdefault(e.a, []).append((tee, 0))
+                    nodes.setdefault(e.b, []).append((tee, 1))
+                    nodes.setdefault(f"partport:{e.port}", []).extend([(tee, 2), (Circuit.Port(fr, e.port, z0=zp), 0)])
+                continue
             elif e.kind == 'part':
                 z = part_impedance(e.part, w)
                 if e.part.short:
@@ -171,7 +187,7 @@ def _skrf(lm, ports, freq, sheet, sigma):
             if c:
                 nodes.setdefault(j['node'], []).append((shunt_z(1 / (1j * w * c), f"disc{k}"), 0))
         for p in ports:
-            if p.name in lm.ports:
+            if p.name in lm.ports and not isinstance(lm.ports[p.name], tuple):
                 nodes.setdefault(lm.ports[p.name], []).append((Circuit.Port(fr, p.name, z0=p.z0), 0))
         for k, (node, conn) in enumerate(list(nodes.items())):
             if len(conn) == 1:
@@ -394,7 +410,7 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
         return ids.setdefault(n, f"n{len(ids)}")
     rho = 1 / sigma if sigma else 1e-15
     f0 = 0.5 * (freq[0] + freq[-1])
-    L, subst = [], {}
+    L, subst, pac = [], {}, {}               # (pac: a part port's two nodes)
     endnode, short = _junction_plan(lm)
 
     def end(e, k):
@@ -438,7 +454,9 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
         a, b = end(e, 0), end(e, 1)
         name = f"E{i}"
         length = max(e.length - short.get((id(e), 0), 0.0) - short.get((id(e), 1), 0.0), 1e-6)
-        if e.kind == 'part':
+        if e.kind == 'part' and getattr(e, 'port', None):       # a part port: a Pac across it (below)
+            pac[e.port] = (a, b)
+        elif e.kind == 'part':
             rlc(name, a, b, e.part)
         elif e.kind == 'via' and b == 'gnd':
             if e.er and e.h:
@@ -532,7 +550,8 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
         if p.name in lm.ports:
             num += 1
             order.append(p.name)
-            L.append(f'Pac:P{num} {node(lm.ports[p.name])} gnd Num="{num}" Z="{p.z0:g} Ohm" P="0 dBm" f="1 GHz"')
+            a, b = pac.get(p.name) or (node(lm.ports[p.name]), 'gnd')
+            L.append(f'Pac:P{num} {a} {b} Num="{num}" Z="{p.z0:g} Ohm" P="0 dBm" f="1 GHz"')
     kind = 'log' if log_spaced(freq) else 'lin'
     L.append(f'.SP:SP1 Type="{kind}" Start="{freq[0]:.9g}" Stop="{freq[-1]:.9g}" Points="{len(freq)}" Noise="no"')
     return "\n".join(L) + "\n", order
@@ -601,9 +620,10 @@ def solve(lm, ports, freq, backend='skrf', sheet=True, sigma=None, qucsator=None
     full = np.full((len(freq), len(names), len(names)), np.nan + 0j)
     idx = [names.index(n) for n in order]
     comp = _components(lm)
+    at = lambda n: lm.ports[n][0] if isinstance(lm.ports[n], tuple) else lm.ports[n]   # (a part port: its first node)
     for a, i in enumerate(idx):
         for b, j in enumerate(idx):
-            if comp.get(lm.ports[order[a]]) == comp.get(lm.ports[order[b]]):     # no path between them: unknown
+            if comp.get(at(order[a])) == comp.get(at(order[b])):              # no path between them: unknown
                 full[:, i, j] = S[:, a, b]
     return full, seconds
 

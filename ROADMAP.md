@@ -65,9 +65,9 @@ the window lists the questions, with the engine chosen on each row, and compares
      where the FDTD's probes stood 3 mm in; FDTD line ports on pairs and oblique traces (FDTD 4).
    - Parts at angles other than x and y (`parts.py` leaves them out with a note): the lumped piece along the
      dominant axis and a strap along the other.
-   - Internal ports at the parts' pads, embedded after the solve: done 2026-11-15 for openEMS, gfdtd and Palace
-     (`--part-ports`, `--part-value`, `--part-file`; in the CHANGELOG). Left: mom25d's and the line model's (no gap
-     ports), a `[sweep]` table over other settings than parts, and the window's view of a sweep.
+   - Internal ports at the parts' pads, embedded after the solve (`--part-ports`, `--part-value`, `--part-file`),
+     on every solver, other settings varied (`--vary`, `[vary]`) and the window's view of both: in the CHANGELOG.
+     Left: a variation's figures side by side (the report: one line a combination).
 7. **Materials** (R-E4). *Done 2026-11-15*: KiCad's stackup `material` is read, a missing εr or tan δ is filled
    from a small library by the material's name (`kicad2ems.materials`: RO4350B, RO4003C, 370HR, FR408HR, Megtron 6
    ...) or FR-4's with a note, and a named laminate's reference frequency is the wideband model's for its layer

@@ -82,3 +82,32 @@ def test_a_part_becomes_a_gap_port_across_its_gap(boards):
     with pytest.raises(ValueError, match='not a two-pad'):
         Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos',
               log=lambda *a: None, part_ports=['C7'])
+
+
+@pytest.mark.parametrize('backend', ['skrf', 'qucsator'])
+def test_the_line_model_s_part_ports_close_to_its_parts(boards, backend):
+    """R-E5: the line model's part ports, a floating port in each part's place (a series tee on scikit-rf, a Pac
+    across the gap on qucsator), closed by the parts' values: the board with its parts, to rounding."""
+    from kicad2ems.board import Board
+    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems.lines.tlines import build
+    from kicad2ems.solvers.lines.fastsolve import solve, find_qucsator
+    if backend == 'skrf':
+        pytest.importorskip('skrf')
+    else:
+        try:
+            find_qucsator()
+        except ValueError:
+            pytest.skip('qucsator not installed')
+    base = boards['lowpass']
+    plain = Board(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
+    m = Board(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None, part_ports=['all'])
+    f = np.linspace(0.1e9, 4e9, 40)
+    S0, _ = solve(build(plain), plain.ports, f, backend)
+    lm = build(m)
+    assert set(m.part_of) and all(isinstance(lm.ports[r], tuple) for r in m.part_of)
+    S, _ = solve(lm, m.ports, f, backend)
+    names = [p.name for p in m.ports]
+    loads = embed.loads_of(m.part_of, f)
+    Sc, kept, _ = embed.close(S, names, [p.z0 for p in m.ports], loads)
+    assert list(kept) == [p.name for p in plain.ports] and np.nanmax(np.abs(Sc - S0)) < 1e-9
