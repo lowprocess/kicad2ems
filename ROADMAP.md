@@ -432,9 +432,11 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
 4. **pcbqs's Palace validations as engines** (R-E22): `pdn_palace.py` and `mqs_palace.py` as `palace_pdn` and
    `palace_loop`, a second engine for the two questions whose accuracy is open; Palace stays out of pcbqs's
    runtime.
-5. **Real boards** (R-B21, B14, D23). Palace's `feature_size` looks at 60 polygons a layer and nothing is simplified:
-   the Elmer builder's fragmenting, a gap per edge, and an `estimate()` (demo_lowpass at the default feature: 19 GB,
-   30 min). `elmer_dc` is on the layered wedges since 2026-11-15 (R-D23: wpthb VHB in 0.8 s and 120 MB, within
+5. **Real boards** (R-B21, B14, D23). Since 2026-11-15 Palace's `feature_size` takes every piece's nearest gap
+   (a tree, not the first 60 a layer), its copper's outlines are straightened (to a twentieth of the feature, at
+   most 10 µm), and its `estimate()` builds the mesh and scales it by the examples' runs (demo_lowpass at the
+   default feature: 16 min and 13.5 GB estimated, 30 min and 19.3 GB as run). Left: the Elmer builder's
+   fragmenting, a gap per edge. `elmer_dc` is on the layered wedges since 2026-11-15 (R-D23: wpthb VHB in 0.8 s and 120 MB, within
    0.2 % of 1.1 M tetrahedra's drop; `--mesh tet` keeps them, and their `tag_terminals` rewriting the mesh file
    in Python). *Decided*: `mag` keeps its n(n+1)/2 energy solves (three for a coil pair, where flux linkage
    would take two and each coil's flux integral).
