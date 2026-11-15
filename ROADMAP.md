@@ -121,15 +121,12 @@ that: nothing in it may fix a panel in place. Left:
    with a floated dock aborted only under Qt's offscreen plugin on Windows; on the native platform it works,
    and the CI checks it there.)
 5. **What the review found** (R-D21, E24, E25).
-   - Failed and stopped runs should stay listed with their log (it lives only in the page today); a run can be
-     deleted.
+   - *Done 2026-11-15* (R-E24): failed and stopped runs stay listed (how each ended, its log when picked, its
+     process's whole output in stdout.log), and Delete run removes one.
    - *Done 2026-11-15* (R-D21): the 3D view colours a frame when it is shown and takes its range from a
      subsample (a control's step at 256 voxels: 12.1 s and 4.8 GB to 0.5 s and 0.7 GB).
-   - Desktop basics:
-     - a dropped board, config or results folder;
-     - a dialog for an exception in a slot;
-     - the run's whole log;
-     - its exit signal named;
+   - Desktop basics (R-E25): *done 2026-11-15*: a dropped board, config or results folder; a dialog for an
+     exception in a slot; the run's whole output kept; a crash and a run that cannot start said. Left:
      - the settings' undo;
      - dark plots;
      - the Report saved or printed;
