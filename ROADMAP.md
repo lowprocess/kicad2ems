@@ -247,12 +247,12 @@ that does not need N² memory. In this order:
 3. **Copper thickness**, ignored (sheets) while the other solvers model it; the loss takes the port layer's
    thickness for every layer. Per interface first; two sheets with side currents later (`sing.py` names the
    kernels).
-4. **Fewer solver paths** (R-F3). About twelve, each with its own failure flag: HODLR is never chosen, the Python
-   BLR only with an old core, the tiled path lost to BLR. Retire those and split `fast.py`; dead tools and
-   `biot.h_grid` (pcbqs's API) go.
-5. **The copies shared with pcbqs** (R-F4) drift both ways: mom25d's singular-rule fix (the moment up to 1.3 % off)
-   is not in pcbqs, pcbqs's mesh-quality cap is not in mom25d. A shared numerics package beside emsdev, or a CI
-   report of the drift.
+4. **`fast.py` split** (the rest of R-F3; the three paths are retired, now in the CHANGELOG).
+5. **The copies shared with pcbqs** (R-F4) drift both ways, and `tools/numerics_drift.py` reports how (a stack CI
+   step since 2026-11-15). Left to port: mom25d's singular rule over the smaller triangle into pcbqs, with its
+   compiled static, compressed and layered kernels and its CuPy kernel (they integrate over p too; ported in Python
+   alone, fourteen of pcbqs's tests held them apart); pcbqs's mesh-quality option into mom25d. Then a shared
+   numerics package beside emsdev.
 ## Power tools (pcbqs)
 
 `pcbqs.pdn` (a rail's DC drop and impedance), `pcbqs.mqs` (a converter's near field), `pcbqs.circuit` (switching

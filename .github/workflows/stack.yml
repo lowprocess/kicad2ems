@@ -115,6 +115,8 @@ jobs:
       - name: kicad2ems-fdtd (the FDTD layer, openEMS's and gfdtd's connections)
         if: success() || failure()
         run: cd kicad2ems-fdtd && python -m pytest -q
+      - name: "pcbqs and mom25d's numerics, how far they have drifted (a report: R-F4)"
+        run: python kicad2ems/tools/numerics_drift.py
       - name: "pcbqs (the power tools, kicad2ems's analysis plugins, the circuit runs on ngspice)"
         if: success() || failure()
         timeout-minutes: 30
