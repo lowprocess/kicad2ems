@@ -309,8 +309,6 @@ E7, and the copper's loss into thermal, E8, are done, as is the fields' reuse of
 1. **Temperature back into the losses**: ngspice at 27 °C, σ a constant 5.8e7. Thermal, R scaled by its
    temperature, the circuit again from its end state: two or three passes, no change to the engine.
 2. **Inductor loss**: DCR and one constant core resistor. iGSE core loss and Rac at each harmonic, after the run.
-3. **A sweep's thermal**: one map, of the point with the most loss, off-board parts included. A map per point and a
-   table of part × point.
 4. **Vendor models**: `pin_order` D, G, S only (no Kelvin source or thermal pins), no diode `.model`, KiCad's
    `Sim.*` fields not read.
 5. **The surroundings**: one film coefficient. A film that grows with the rise, fixed-temperature regions
