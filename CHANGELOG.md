@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The window's desktop basics, the rest (R-E25).** *Edit → Undo / Redo* through the settings' changes (a tick
+  or a choice a step, a field's typing a step once it pauses; the menu names the field), *View → Plot colours*
+  (as the desktop, light or dark: every plot restyled at once, the Smith grid and markers too), *Save…* (HTML with
+  its pictures inside, or PDF) and *Print…* on an analysis's Report, and *Export Touchstone* on the Plots page
+  (kicad2ems-gui 9f67717).
 - **The line model's wideband dielectric (R-E4).** With `--diel wideband` each layer's εr and tan δ follow its
   Djordjevic-Sarkar curve in the line model too, as in mom25d and the FDTD layer (`kicad2ems.lines.dispersion`):
   the network solved with its materials frozen at 3-12 frequencies across the band and S interpolated between the

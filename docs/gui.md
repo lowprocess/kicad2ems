@@ -111,6 +111,10 @@ unsaved changes. Saving over an existing config **keeps the file as it was**: co
 the GUI doesn't know all stay, and only the changed values are rewritten. Each run writes `gui_run.toml` into its
 folder, so `kicad2ems <folder>/gui_run.toml` repeats it from a terminal.
 
+*Edit → Undo* and *Redo* step back and forth through the changes to the settings: a tick or a choice is one step,
+a field's typing one step once it pauses. The menu names what the step changes (*Undo fmax*). In a field being
+typed in, Ctrl+Z is that field's own undo. Opening a config starts afresh.
+
 *File → Examples* lists the examples in their groups: Antennas, RF structures and Lumped-element demos, each with
 its subgroups, and after them those the installed analyses ship (pcbqs's Circuits). An entry's tooltip says what
 it is.
@@ -281,7 +285,8 @@ error per solve, in dB, against its tolerance), the log, and *Stop*.
 
 What an analysis found, as it wrote it: the **Report** is the page to read (the figures that matter first, then
 what was assumed and what was left out), **Tables** its tables alone, each to sort, copy and export as CSV.
-An S-parameter run's report is an HTML file: *Report* in the toolbar opens it.
+*Save…* writes the report as HTML (its pictures inside the file, so it opens anywhere) or PDF, and *Print…* sends it
+to a printer. An S-parameter run's report is an HTML file: *Report* in the toolbar opens it.
 
 <a id="plots"></a>
 ## The Plots page
@@ -294,6 +299,9 @@ rail's impedance, a near field's spectrum, a circuit's waveforms). *Add plot* ad
 | Cartesian | over frequency: \|S\| in dB or linear, phase, group delay or VSWR; the difference between solvers; with antenna results directivity, gain, realized gain or efficiency |
 | Smith | the reflections (S11, S22, …) with an impedance readout |
 | Polar | S in polar form, or the far-field cuts (xz, yz, xy) at a recorded frequency |
+
+*Export Touchstone* saves one of the run's S-parameter files (each solver's, a de-embedded one, the part ports')
+where you choose. *View → Plot colours* makes the plots light or dark, or follows the desktop (the default).
 
 The traces are listed on the left by solver; tick the ones to show (those not computed are grey). Each source (a
 solver, the compare file, an added folder) has its own line style; right-click a trace or a source to change its

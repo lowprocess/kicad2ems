@@ -127,11 +127,9 @@ that: nothing in it may fix a panel in place. Left:
    - *Done 2026-11-15* (R-D21): the 3D view colours a frame when it is shown and takes its range from a
      subsample (a control's step at 256 voxels: 12.1 s and 4.8 GB to 0.5 s and 0.7 GB).
    - Desktop basics (R-E25): *done 2026-11-15*: a dropped board, config or results folder; a dialog for an
-     exception in a slot; the run's whole output kept; a crash and a run that cannot start said. Left:
-     - the settings' undo;
-     - dark plots;
-     - the Report saved or printed;
-     - a Touchstone export.
+     exception in a slot; the run's whole output kept; a crash and a run that cannot start said; then the
+     settings' undo and redo, the plots light or dark (or as the desktop), the Report saved (HTML, PDF) or
+     printed, and a run's Touchstone files exported (in the CHANGELOG).
    - Left from the removed bridge: the schematic's format-1 layout code.
    - The Circuit page imports pcbqs into the window, against `toolprocess.py`'s rule.
    - `ResultsTab.show(files)` overrides `QWidget.show`, the same kind of clash as the Start page's.
