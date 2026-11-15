@@ -119,7 +119,8 @@ that: nothing in it may fix a panel in place. Left:
 5. **What the review found** (R-D21, E24, E25).
    - Failed and stopped runs should stay listed with their log (it lives only in the page today); a run can be
      deleted.
-   - The 3D view recolours all 24 phases on the GUI thread at each step of a control (3.2 s and 1.4 GB at 256).
+   - *Done 2026-11-15* (R-D21): the 3D view colours a frame when it is shown and takes its range from a
+     subsample (a control's step at 256 voxels: 12.1 s and 4.8 GB to 0.5 s and 0.7 GB).
    - Desktop basics:
      - a dropped board, config or results folder;
      - a dialog for an exception in a slot;
@@ -396,8 +397,10 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
    - εr averaged inside a cell, so a thin layer needs no lines of its own (`nz_mask` is 1 since 2026-11-14: 4 cells
      through a 10 µm mask had made hairpin 17× longer for "within 1 MHz").
    - The energy read a check late, the ports' decay judged in the engine, dumps written by a thread.
-3. **Memory.** The build peaks at ~470 B a node on the host (float64 arrays kept through the run), 16× what the GPU
-   needs, and nothing checks free VRAM before a run or caps the concurrent runs by it.
+3. **Memory.** *Done 2026-11-15* (R-D7): the build's host peak 443 to 229 B a node (the geometry as views of the
+   grid's spacings, compress's arrays let go once used), what the core keeps 152 to 86, and the GPU backends check
+   the model against the free VRAM, auto running one that does not fit on the CPU. Left: capping the concurrent
+   runs by the VRAM (each excitation's fields are its own).
 4. **Line ports** (MSL, stripline, CPW: gfdtd has them) with a de-embedded plane where a straight trace meets the
    port.
 5. **Excitations batched** in one launch, and every GPU emsdev finds used.
@@ -429,8 +432,10 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
    runtime.
 5. **Real boards** (R-B21, B14, D23). Palace's `feature_size` looks at 60 polygons a layer and nothing is simplified:
    the Elmer builder's fragmenting, a gap per edge, and an `estimate()` (demo_lowpass at the default feature: 19 GB,
-   30 min). `elmer_dc` in tetrahedra where the layered wedges solve the same drop (1.1 M tetrahedra against 40 s and
-   1.3 GB for the whole wpthb board); `tag_terminals` rewrites the mesh file in Python; `mag` runs n(n+1)/2 solves.
+   30 min). `elmer_dc` is on the layered wedges since 2026-11-15 (R-D23: wpthb VHB in 0.8 s and 120 MB, within
+   0.2 % of 1.1 M tetrahedra's drop; `--mesh tet` keeps them, and their `tag_terminals` rewriting the mesh file
+   in Python). *Decided*: `mag` keeps its n(n+1)/2 energy solves (three for a coil pair, where flux linkage
+   would take two and each coil's flux integral).
    Elmer's timeout is not caught, Palace's non-convergence not read, the versions not recorded, the MPI ranks fixed
    at 8.
 
