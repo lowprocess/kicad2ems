@@ -396,7 +396,9 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
      against 124.9).
    - εr averaged inside a cell, so a thin layer needs no lines of its own (`nz_mask` is 1 since 2026-11-14: 4 cells
      through a 10 µm mask had made hairpin 17× longer for "within 1 MHz").
-   - The energy read a check late, the ports' decay judged in the engine, dumps written by a thread.
+   - *Decided* (2026-11-15, R-D8): the energy check's sync stays every 100 steps. Checking every 1,600 instead gains
+     1.7 % of the steps a second on 1.7 M nodes and 3.6 % on 0.22 M (RX 7800 XT), not three backends' work;
+     dumps cost only the runs that ask for them.
 3. **Memory.** *Done 2026-11-15* (R-D7): the build's host peak 443 to 229 B a node (the geometry as views of the
    grid's spacings, compress's arrays let go once used), what the core keeps 152 to 86, and the GPU backends check
    the model against the free VRAM, auto running one that does not fit on the CPU. Left: capping the concurrent
