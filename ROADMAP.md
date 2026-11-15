@@ -319,14 +319,11 @@ validated: pcbqs's docs and CHANGELOG.md (the project's `NOTES-pi-nearfield.md` 
    window, the Results plot draws a log sweep (`sweep = "log"`) on a linear axis in GHz: a log axis and the
    band's own unit; the report's interactive plot is linear in GHz too (its PNG is right), and its table reads
    "0.000 GHz" for a run in kHz (R-G).
-7. **What a PI user takes away** (R-E14):
-   - *done 2026-11-15*: the loads' port matrix as Touchstone (`--touchstone`, pdn.zNp) and the droop of a load
-     step in time (`--rise`, droop.png); left of it: the decap sites as ports, and a SPICE subcircuit;
-   - vendor decap models and MLCC DC-bias derating;
-   - a VRM beyond R + L;
-   - the near field's input capacitors from their own fields, as the PDN reads them (one `--esr`/`--esl` for all
-     today);
-   - an impedance for a rail with no planes (the PEEC route is the trial's only: one source, one ground, no beads).
+7. **What a PI user takes away** (R-E14): the loads' port matrix, the droop in time, vendor models, MLCC
+   derating, a VRM's impedance, the decap sites as ports with a SPICE subcircuit, the near field's capacitors'
+   own values: in the CHANGELOG. Left: an impedance for a rail with no planes (the PEEC route is the trial's only:
+   one source, one ground, no beads); DC-bias derating from a curve by dielectric and voltage (a vendor's file at
+   the bias, or a share, today).
 
 ### Losses and thermal
 

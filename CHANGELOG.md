@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The PDN for a PI user (R-E14).** pcbqs 09cd9db: `--cap-file` (a capacitor's vendor model: a .s2p measured
+  through it, shunt or series told by its |S21|, a .s1p / .z1p or a CSV), `--cap-derate` (an MLCC's C at its DC
+  bias), `--vrm-file` (the regulator's output impedance in place of R + L), `--ports-touchstone` (the bare PDN
+  between every part's port, the decap sites included: the parts attached there give the loaded rail to 1e-6) and
+  `--spice` (it as a passive SPICE subcircuit, vector fitted). The near field's input capacitors take their own ESR
+  and ESL (fields, else their package's), as the PDN does.
 - **The GPUs' runs shared by speed (R-D9).** `--gfdtd-gpus` gives each run to the GPU that would finish it first,
   by each GPU's speed measured on earlier runs (kicad2ems-fdtd 28b75ea): a GPU too slow to help gets none, and one
   GPU alone runs them side by side. rf_coupler's four runs on an RX 7800 XT and a GTX 980 Ti: 22.6 s shared alike,
