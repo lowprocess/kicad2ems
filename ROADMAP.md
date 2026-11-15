@@ -64,8 +64,6 @@ the window lists the questions, with the engine chosen on each row, and compares
    impulse response's energy before t = 0 does not tell it on band-limited data (from 1 GHz): causal openEMS answers
    read up to 53 % there (the rat-race's S11), time-reversed ones as little as 35 %; it needs a band-limited
    Kramers-Kronig check.
-6. **Mesh convergence on every solver** (R-E3). openEMS and gfdtd have `--converge` (gfdtd since 2026-11-14); mom25d
-   has none (demo.json's mesh has a 0.08° angle); Palace's adaptive refinement is unused.
 7. **Materials** (R-E4). KiCad's stackup `material` names are not read and a missing value defaults without a note: a
    small library (RO4350B, FR4 grades) with each one's dispersion and the frequency its εr is given at.
 8. **A run done again** (R-D20): no result is reused (a hash of board.json, the frequencies and the solver's

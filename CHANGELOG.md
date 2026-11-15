@@ -43,6 +43,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **Mesh convergence on every solver (R-E3).** mom25d's `--mom-converge 1,1.5` solves with cells of `--mom-dmax / f`
+  for each factor, gives the finest and says how far the second-finest is (worst term, dB and degrees, against
+  0.1 dB / 2 deg, as the FDTD layer's `--converge`; run.json's `converge`). Palace's adaptive mesh refinement is
+  `--palace-amr N` (its Model.Refinement, to `--palace-amr-tol`). The demo transition at 0.3 against 0.2 mm cells:
+  2.8 dB and 30 deg on its small S11, not converged there.
 - **A passive copy of S (R-E2).** `--passive` (the window's *Write a passive copy of S*) writes
   `<name>_<solver>_passive.sNp` where a solver's S is not passive: each frequency's singular values above 1 clipped
   to 1, the least change that makes it passive, the solver's own file kept. Causality is not checked: tried on the
