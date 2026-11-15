@@ -153,9 +153,61 @@ def _couple(lm, model, ref=None):
         _finish_group(lm, g)
 
 
+def _split_jogs(lm):
+    """A trace with a jog (one element, a polyline) cut at its corners where one of its straight runs lies beside
+    another line closely enough to couple (R-E17: only whole straight elements had been paired, so an edge-coupled
+    filter's legs with a jog coupled nowhere). The others stay whole."""
+    from shapely.geometry import LineString
+    from shapely.strtree import STRtree
+    kinked = [e for e in lm.elements if e.kind == 'trace' and e.xs in COUPLED_XS and e.length > 1e-3
+              and e.pts is not None and len(e.pts) > 2 and not _straight(e)]
+    if not kinked:
+        return
+    runs = []                                                       # (element, its straight run's two points)
+    for e in lm.elements:
+        if e.kind != 'trace' or e.xs not in COUPLED_XS or e.pts is None or len(e.pts) < 2:
+            continue
+        p = np.asarray(e.pts, float)
+        segs = [(p[0], p[-1])] if _straight(e) else [(p[k], p[k + 1]) for k in range(len(p) - 1)]
+        runs += [(e, a, b) for a, b in segs if np.hypot(*(b - a)) > 1e-3]
+    tree = STRtree([LineString([a, b]) for _, a, b in runs])
+    wmax = max(e.w or 0.0 for e, _, _ in runs)
+    split = set()
+    for i, (e, a, b) in enumerate(runs):
+        if id(e) not in {id(k) for k in kinked} or id(e) in split:
+            continue
+        d = b - a
+        u = d / np.hypot(*d)
+        nrm = np.array([-u[1], u[0]])
+        reach = COUPLE_H * _couple_h(e) + 0.5 * (e.w + wmax)
+        for j in tree.query(LineString([a, b]).buffer(reach, cap_style=2)):
+            f, fa, fb = runs[int(j)]
+            if f is e or f.layer != e.layer or f.xs != e.xs or f.h != e.h:
+                continue
+            fd = fb - fa
+            v = fd / np.hypot(*fd)
+            if abs(float(u[0] * v[1] - u[1] * v[0])) > math.sin(math.radians(1.0)):
+                continue                                            # (not parallel)
+            gap = abs(float((fa - a) @ nrm)) - 0.5 * (e.w + f.w)
+            lo, hi = sorted((float(fa @ u), float(fb @ u)))
+            overlap = min(float(b @ u), hi) - max(float(a @ u), lo) if a @ u <= b @ u else \
+                min(float(a @ u), hi) - max(float(b @ u), lo)
+            if 1e-4 < gap <= COUPLE_H * _couple_h(e) and overlap >= max(0.2, gap):
+                split.add(id(e))
+                break
+    for e in kinked:
+        if id(e) not in split:
+            continue
+        p = np.asarray(e.pts, float)
+        nodes = [e.a] + [f"{e.a}>{e.b}^{k}" for k in range(1, len(p) - 1)] + [e.b]
+        k = lm.elements.index(e)
+        lm.elements[k:k + 1] = [_piece(e, nodes[m], nodes[m + 1], p[m], p[m + 1], m) for m in range(len(p) - 1)]
+
+
 def _find_groups(lm, model, ref):
     """_couple's groups, each with its formulas' pairs and, where it is to be solved on the board's cut, the keys
     of that cut (cut_keys)."""
+    _split_jogs(lm)
     cand = [e for e in lm.elements if e.kind == 'trace' and e.xs in COUPLED_XS and e.length > 1e-3 and _straight(e)]
     if len(cand) < 2:
         return

@@ -151,8 +151,9 @@ that: nothing in it may fix a panel in place. Left:
 4. **Boundary elements with a layered Green's function**, for the largest cuts (300–2,000 unknowns, no box), only
    if the mesh's 0.2 s at worst becomes the limit. `mom25d/multilayer.py` has the stack but a dynamic kernel; the
    static 2D one needs deriving.
-5. **Coupled lines with a jog** (R-E17). The legs are paired per element, so a polyline's sub-segments are not, and
-   dfsynth's edge-coupled band-pass is open on the line model.
+5. **Coupled lines with a jog** (R-E17). *Done 2026-11-15*: a polyline trace whose straight run lies beside another
+   line is cut at its corners and that run paired (dfsynth's order-5 edge-coupled band-pass: 0 to 6 coupled
+   sections, its pass band at 2.34 GHz against dfsynth's model's 2.38).
 6. **Discontinuities** (R-E15). Since 2026-11-15 the scikit-rf backend has open ends (Kirschning-Jansen-Koster),
    steps (Edwards) and corners and bends (Gupta-Garg-Bahl, scaled by tan(θ/2) for an angle other than 90°, their
    arms to the corner square's edges as qucsator's), and qucsator a bend of another angle the same way

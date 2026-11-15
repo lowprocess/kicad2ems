@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Coupled lines with a jog (R-E17).** Only whole straight elements were paired, so a trace with a jog (one
+  polyline element) coupled with nothing: dfsynth's edge-coupled band-pass came out open on the line model. A
+  polyline whose straight run lies beside another line closely enough is now cut at its corners and that run
+  paired, the others left whole: the order-5 band-pass's 6 coupled sections, P1 to P2, its pass band at 2.34 GHz
+  (dfsynth's own model 2.38, designed for 2.4).
 - **Discontinuities on scikit-rf (R-E15).** The line model's backend without qucsator had none: open ends now
   carry Kirschning-Jansen-Koster's extension, width steps Edwards', and corners and bends Gupta-Garg-Bahl's
   capacitance (scaled by tan(θ/2) away from 90°) with their arms cut to the corner square as qucsator's MCORN
