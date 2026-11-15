@@ -59,8 +59,9 @@ the window lists the questions, with the engine chosen on each row, and compares
      0.1 nH, docs/model.md), the FDTD model has lumped ports only though gfdtd has line ports, and mom25d's
      lumped ports carry their via.
    - Ports and parts at angles other than x and y.
-   - Internal ports at the parts' pads, with the parts embedded after the solve: value sweeps and vendor
-     S-parameter parts without a new solve, then a `[sweep]` table. There is no sweep or batch driver today.
+   - Internal ports at the parts' pads, embedded after the solve: done 2026-11-15 for openEMS, gfdtd and Palace
+     (`--part-ports`, `--part-value`, `--part-file`; in the CHANGELOG). Left: mom25d's and the line model's (no gap
+     ports), a `[sweep]` table over other settings than parts, and the window's view of a sweep.
 5. **Results the solvers give, the rest** (R-E2). Passivity is checked and warned of, `--passive` writes a passive
    copy (singular values clipped to 1), and mom25d's sweep says when it stopped at its solve cap. Left: causality. An
    impulse response's energy before t = 0 does not tell it on band-limited data (from 1 GHz): causal openEMS answers

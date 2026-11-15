@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Parts as ports, closed after the solve (R-E5).** `--part-ports all` (or `C1,L2`) solves each part as an internal
+  gap port and closes it by its value afterwards (`kicad2ems.embed`): the result is the board with its parts,
+  `<name>_<solver>_ports.sMp` the full matrix, and `--part-value C2=3.3p,6.8p,10p` (every combination, at most 64)
+  or `--part-file C2=vendor.s2p` (a series-measured model) costs no new solve. openEMS, gfdtd and Palace (the
+  solvers with gap ports). demo_lowpass on gfdtd: within 0.011 of the lumped run in S21.
 - **gfdtd on several GPUs (R-D9, the GPUs).** `--gfdtd-gpus all` (or `0,1`) shares a run's excitations out to the
   Vulkan GPUs, a process each taking the next as it comes free (threads cannot: two drove two GPUs at a fifth of
   their speed, the interpreter's lock between them). On a 1.1 M-cell board each GPU runs at its own speed, the

@@ -68,15 +68,16 @@ class Port:
     conductors on the same layer (centre-fed dipoles, gap feeds), from gap[0] to gap[1] along axis.
     c is the port's centre, sgn the direction into the circuit along axis (0: x, 1: y), w its width."""
     FIELDS = ('name', 'layer', 'z_sig', 'z_ref', 'c', 'axis', 'sgn', 'w', 'z0', 'leg', 'pair', 'ref_layer', 'kind',
-              'gap', 'net', 'source')
+              'gap', 'net', 'source', 'internal')
 
     def __init__(self, name, layer, z_sig, z_ref, c, axis, sgn, w, z0, leg=None, pair=None, ref_layer='',
-                 kind='z', gap=None, net=None, source=''):
+                 kind='z', gap=None, net=None, source='', internal=False):
         self.name, self.layer, self.z_sig, self.z_ref = name, layer, z_sig, z_ref
         self.c, self.axis, self.sgn, self.w, self.z0 = np.asarray(c, float), axis, sgn, w, z0
         self.leg, self.pair, self.ref_layer = leg, pair, ref_layer
         self.kind, self.gap, self.net = kind, None if gap is None else tuple(gap), net
         self.source = source                        # footprint TP1 / pad J1.1 / point (x, y) / cut (x, y)
+        self.internal = bool(internal)              # a part's port (embed.py, --part-ports): closed after the solve
 
     @property
     def direction(self):
@@ -183,7 +184,7 @@ class Board:
 
     def __init__(self, raw, nets=None, pos_file=None, include_mask=False, region=None, ground=None, parts='auto',
                  log=print, ports=None, cut_ports=False, edge_walls=(), edge_keepout=0.5, need_ports=True,
-                 fill_voids='off'):
+                 fill_voids='off', part_ports=()):
         from .region import region_polygon, auto_nets, extra_port_fps, ground_nets
         self.log, self.notes, self.need_ports = log, list(getattr(raw, 'notes', ())), need_ports
         self.source = dict(importer=getattr(raw, 'importer', 'kicad'), file=getattr(raw, 'path', ''))
@@ -274,9 +275,37 @@ class Board:
         if parts == 'auto':
             self.parts, notes = find_parts(self)
             self.notes += notes
+        self._part_ports(part_ports)
         self._walls(edge_walls, edge_keepout, cut_ports)
 
     # ---- construction steps ------------------------------------------------------------------------
+    def _part_ports(self, which):
+        """The parts named (or 'all') as internal ports across their gaps (embed.py, R-E5): removed from the parts,
+        kept as part_of {port name: Part} for their values; a 0 ohm strap stays metal."""
+        from .embed import part_port
+        which = [str(w).strip() for w in (which or []) if str(w).strip()]
+        self.part_of = {}
+        if not which:
+            return
+        every = 'all' in which
+        names = {p.name for p in self.ports}
+        keep = []
+        for pt in self.parts:
+            if (every or pt.ref in which) and not pt.short:
+                if pt.ref in names:
+                    raise ValueError(f"--part-ports {pt.ref}: a port of that name already")
+                self.ports.append(part_port(pt))
+                self.part_of[pt.ref] = pt
+            else:
+                keep.append(pt)
+        self.parts = keep
+        left = [w for w in which if w != 'all' and w not in self.part_of]
+        if left:
+            raise ValueError(f"--part-ports {', '.join(left)}: not a two-pad R / L / C part on the modelled copper "
+                             f"(the parts: {', '.join(sorted(self.part_of)) or 'none'})")
+        if every and not self.part_of:
+            self.notes.append("--part-ports all: the board has no R / L / C part on the modelled copper")
+
     def _stack(self, raw, include_mask):
         items = [it for it in raw.stack_items if it['kind'] in ('copper', 'diel') or
                  (it['kind'] == 'mask' and include_mask)]

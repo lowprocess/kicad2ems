@@ -164,7 +164,8 @@ def board_from_settings(s, log=print):
     from .importers import open_board
     return Board(open_board(s.board, pos=s.pos), nets=s.nets, pos_file=s.pos, include_mask=s.mask, region=s.region, ports=s.ports,
                  cut_ports=s.cut_ports, ground=s.ground, parts=s.parts, edge_walls=s.edge_walls,
-                 edge_keepout=s.edge_keepout, fill_voids=getattr(s, 'fill_voids', 'off'), log=log)
+                 edge_keepout=s.edge_keepout, fill_voids=getattr(s, 'fill_voids', 'off'), log=log,
+                 part_ports=getattr(s, 'part_ports', None) or ())
 
 
 class Job:
@@ -320,10 +321,36 @@ class Job:
         self.summary['solvers'] = list(self.plan)
         return True
 
+    def _part_ports_setup(self):
+        """--part-ports (embed.py, R-E5): every part port excited (a run that names its excitations gets them added),
+        --part-file and --part-value checked against the part ports."""
+        from . import embed
+        s, m = self.s, self.m
+        part_of = getattr(m, 'part_of', None) or {}
+        files, values = embed.pairs(getattr(s, 'part_file', None)), embed.pairs(getattr(s, 'part_value', None))
+        if (files or values) and not part_of:
+            raise ValueError("--part-file and --part-value need part ports (--part-ports)")
+        for ref in files:
+            if ref not in part_of:
+                raise ValueError(f"--part-file {ref}: not a part port ({', '.join(part_of) or 'none'})")
+        try:
+            embed.check_files({k: os.path.abspath(v) for k, v in files.items()})
+            self._sweep = embed.sweep(values, part_of)
+        except ValueError as e:
+            raise ValueError(str(e))
+        self._part_files = {k: os.path.abspath(v) for k, v in files.items()}
+        if part_of:
+            exc = getattr(s, 'excite', None)
+            if exc:
+                s.excite = list(exc) + [r for r in part_of if r not in exc]
+            self.log(f"part ports: {', '.join(part_of)}, each closed by its value after the solve"
+                     + (f"; {len(self._sweep)} value combination(s) swept" if self._sweep else ''))
+
     def model(self):
         s = self.s
         self.m = m = board_from_settings(s, log=self.log)
         self.log(m.describe())
+        self._part_ports_setup()
         from . import finish
         self.finish = fin = finish.resolve(s, m)
         for n in (fin.notes if fin is not None else []):
@@ -429,14 +456,22 @@ class Job:
                                                                estimates={n: dict(e) for n, e in est.items()}))
         return True
 
+    def _assess(self, name):
+        """A solver's reasons it cannot model this run: its own, and part ports where it has no gap ports."""
+        sv = registry()[name]
+        why = list(sv.assess(self) or [])
+        if getattr(self.m, 'part_of', None) and str(sv.capabilities.get('gap_ports', 'no')).startswith('no'):
+            why.append("part ports (--part-ports) are gap ports, which it does not model")
+        return why
+
     def assess(self):
         """Can each solver model this board in this run? (False: a named one cannot; the run stops.)"""
         for name in list(self.plan):
-            why = registry()[name].assess(self)
+            why = self._assess(name)
             if why and not self._drop(name, '; '.join(why), 'cannot model this board'):
                 return False
         for name in list(self.previewed):
-            why = registry()[name].assess(self)
+            why = self._assess(name)
             if why:
                 self.log(f"WARNING: {name} cannot model this board, left out: {'; '.join(why)}")
                 self.previewed.remove(name)
@@ -509,18 +544,58 @@ class Job:
             if kept is not None:
                 self.log(f"{label(name)}: the result of an earlier run here, solved {kept.info['reused']['solved']} "
                          f"(the same board, frequencies, settings and code; --no-reuse solves it again)")
-                self.results[name] = kept
+                self.results[name] = self._close_parts(name, kept)
                 continue
             try:
                 self.results[name] = registry()[name].solve(self, self.prep.get(name))
                 if key:
                     reuse.keep(self, name, key, self.results[name])
+                self.results[name] = self._close_parts(name, self.results[name])
             except stop.Stopped:
                 self.log(f"stopped: {label(name)} ended early, no result")
             except Exception as e:
                 if os.environ.get('KICAD2EMS_TRACEBACK'):
                     raise
                 self.log(f"WARNING: {name} failed: {type(e).__name__}: {e}")
+
+    def _part_outputs(self, n, entry):
+        """<name>_<n>_ports.sMp (over the external and part ports) and each value sweep's closed result."""
+        from . import embed
+        full, part_of = self.full[n], self.m.part_of
+        out = self.path(f"_{n}_ports.s{len(full.names)}p")
+        write_touchstone(out, self.freq, np.nan_to_num(full.S), full.zref, names=full.names,
+                         comment=full.comment + '; the part ports open, for embedding (kicad2ems.embed)')
+        self.wrote(f"S-parameters with the part ports, {registry()[n].label}", out)
+        entry['part_ports'] = dict(touchstone=self.rel(out), parts=list(part_of), sweep=[])
+        for combo in getattr(self, '_sweep', None) or []:
+            loads = embed.loads_of(part_of, self.freq, self._part_files, combo)
+            S, names, zref = embed.close(full.S, list(full.names), list(full.zref), loads)
+            f = self.path(f"_{n}_{embed.tag(combo)}.s{len(names)}p")
+            write_touchstone(f, self.freq, np.nan_to_num(S), zref, names=names,
+                             comment=full.comment + f"; part ports closed with {embed.tag(combo)}")
+            entry['part_ports']['sweep'].append(dict(values={r: v for r, v, _, _ in combo}, touchstone=self.rel(f),
+                                                     table=sparam_table(self.freq, S, names)))
+        if entry['part_ports']['sweep']:
+            self.log(f"{label(n)}: {len(entry['part_ports']['sweep'])} part value combination(s) written, "
+                     f"no solve each")
+
+    def _close_parts(self, name, r):
+        """Solver `name`'s result r over the external and part ports, closed by the parts' values (embed.close):
+        the board with its parts, what a run without --part-ports gives. The full one is kept (self.full[name]) for
+        outputs: its Touchstone file and the value sweeps."""
+        from . import embed
+        from .solvers import Result
+        part_of = getattr(self.m, 'part_of', None) or {}
+        if not part_of or not all(k in r.names for k in part_of):
+            return r
+        if not hasattr(self, 'full'):
+            self.full = {}
+        self.full[name] = r
+        loads = embed.loads_of(part_of, self.freq, self._part_files)
+        S, names, zref = embed.close(r.S, list(r.names), list(r.zref), loads)
+        info = dict(r.info, part_ports=list(part_of), part_files=dict(self._part_files))
+        return Result(S, names, zref, r.seconds, info=info,
+                      comment=r.comment + f"; part ports {', '.join(part_of)} closed by their values")
 
     def _deembed(self, n, r, entry):
         """<name>_<n>_deembedded.sNp of solver n's result r, its ports' planes moved and fixtures removed
@@ -575,6 +650,8 @@ class Job:
                     entry['passive_touchstone'] = self.rel(pout)
             if s.deembed or s.deembed_file:                         # (R-E1: lumped ports had no de-embedding)
                 self._deembed(n, r, entry)
+            if n in getattr(self, 'full', {}):                      # (R-E5: part ports)
+                self._part_outputs(n, entry)
             self.summary['solved'][n] = entry
             self.log(f"{reg[n].label}: -> {out}")
         self.join_bands()

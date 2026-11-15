@@ -192,6 +192,16 @@ CORE = [
            "more layer, no more unknowns)", bool, gui='Include solder mask', group='board'),
     Option('parts', 'auto', "lumped R / L / C parts between two pads on the modelled copper (default auto)",
            choices=('auto', 'none'), group='board'),
+    Option('part_ports', [], "parts as internal ports, closed by their values after the solve: all, or references "
+           "(C1,L2); with --part-value and --part-file a value is swept or replaced without solving again (solvers "
+           "with gap ports: openEMS, gfdtd, Palace)", list, conv=strlist, gui='Parts as ports (all or C1,L2)',
+           group='board', cli=dict(metavar='REFS')),
+    Option('part_value', [], "a part port's values to sweep: REF=V1,V2,... (repeat: every combination); each written "
+           "as <name>_<solver>_REF=V.sNp", list, conv=items, gui='Part value sweeps (C1=1p,2p)', group='board',
+           cli=dict(metavar='REF=VALUES', action='append')),
+    Option('part_file', [], "a part port's vendor model, a .s2p measured in series through it: REF=FILE (repeat)",
+           list, conv=items, gui='Part S-parameter files (C1=grm.s2p)', group='board',
+           cli=dict(metavar='REF=FILE', action='append')),
     Option('edge_walls', [], "walls where the ground planes end at these board sides, standing in for stitching vias "
            "or edge plating (openEMS: PEC sheets; mom25d: via rows): xmin,xmax,ymin,ymax (KiCad coordinates: "
            "ymin = top) or all; kept --edge-keepout clear of signal copper", list, conv=_sides,

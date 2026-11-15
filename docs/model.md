@@ -126,6 +126,24 @@ ends. Overlapping copper shortened the element in openEMS: a 100 Ω resistor fed
 with ESR is split into a resistor on one half of the gap and the L or L-C on the other. mom25d uses one
 series element.
 
+### Parts as ports, closed after the solve
+
+`--part-ports all` (or `C1,L2`) makes parts internal ports instead: each is a lumped gap port where its element
+would be, named after it, and every one is excited. The solver's S over the external and part ports is then
+closed by each part's impedance (its series R + jωL + 1/(jωC)), so `<name>_<solver>.sNp` is the board with
+its parts, as a run without the option gives it, and `<name>_<solver>_ports.sMp` the full matrix. Then a
+value costs no solve:
+
+- `--part-value C2=3.3p,6.8p,10p` writes `<name>_<solver>_C2=3.3p.s2p` and so on, for every combination of the
+  parts swept (at most 64);
+- `--part-file C2=grm155.s2p` closes a part port by a vendor's model, measured in series through the part
+  (Z = 2 z0 (1 − S21) / S21).
+
+The solvers with gap ports take it: openEMS, gfdtd and Palace; mom25d and the line model are left out of such
+a run, with the reason. On `demo_lowpass` (L1, C2, L3) on gfdtd, the closed result is the lumped run's within
+0.011 in S21 and 0.054 in S11 (−8.20 dB at 1 GHz against −8.05, −43.7 dB at 2 GHz against −40.8), for one more
+excitation a part.
+
 ## What isn't modelled
 
 - Ports must point along x or y.
