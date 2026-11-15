@@ -430,7 +430,9 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
      4.65-4.66 GHz, mom25d without the can 4.648, openEMS still climbing with its mesh (4.555, 4.588, 4.626 at 1x,
      2x, 4x), EMerge's "converged" 4.621: which is right is open (EMerge's model to be checked: copper thickness,
      the can's floor);
-   - a second-order absorbing boundary or a PML for antennas (efficiency reads up to 100.5 %);
+   - the antennas' efficiency over 100 % (100.4 % at 2.9 GHz on the dipole) is not the boundary: the second-order
+     one (`--palace-abc 2`, 2026-11-15, with the refinement's memory cap and refinement in the eigenmode run, now in
+     the CHANGELOG) leaves it; the far field's integration over the box's faces is next to look at;
    - wave ports;
    - copper as solids in the driven model (as the cap tool's `--thick`): its sheets' loss holds only to ~10 MHz.
 2. **Elmer's harmonic and transient solvers** (R-E21): a coil's AC resistance, its ferrite's loss and Q at the

@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Palace's refinement within the memory, and a second-order boundary (R-E20, part).** kicad2ems-fem's
+  `--palace-amr` stops at `--palace-amr-max` unknowns, by default what 70 % of the memory available holds, and
+  refines the eigenmode run too; `--palace-abc 2` is the second-order absorbing boundary. The estimate's unknowns
+  are Palace's own count (6.9 a tetrahedron, not 1.53). Measured: refining `rf_shielded` from the coarse mesh
+  reaches 4.651 GHz in twice the default mesh's time, so the default mesh stays; the second-order boundary leaves
+  the dipole's 100.4 % efficiency as it was.
 - **Resonances, and a board in its can, on Palace (R-E19).** kicad2ems-fem's Palace solver closes its air box in
   metal (`--palace-box pec`, a can `--palace-margin` from the board) and, with `--palace-modes N`, follows the
   driven run with an eigenmode run on the same mesh: the N resonances above `fmin`, each one's frequency and loaded
