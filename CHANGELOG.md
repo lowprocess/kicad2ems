@@ -226,6 +226,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d's cells grow to the wavelength's size, and the mesher's interior is equilateral (`--mom-cells`, 30).**
+  mom25d 3b86e68, pcbqs daaf1ec. The points inside the copper are seeded on a hexagonal lattice and smoothed (2-10 %
+  fewer unknowns than Triangle at the same S; pcbqs's FastHenry cases as before with a quarter fewer triangles), and
+  by default the cells keep `--mom-dmax` at corners, line ends, vias and ports and grow to a wavelength / 30 away
+  from them (docs/mom.md#cells): 38 % of the unknowns and a quarter of the time on 16 boards, the median RMS from
+  openEMS 0.059 against 0.057. `--mom-cells 0` is the old sizing. Tried and not taken (mom25d's `mesher-trial`
+  branch): the wavelength's size everywhere, fewer edge rings, other layers' outlines imprinted on planes in place
+  of their fine regions (two boards lost 0.03-0.04), via fans as polygonal cells (exact, up to 12 % fewer unknowns,
+  no time gained). With long runs cheap in mom25d the mixed solver's cut saves little.
 - **mom25d and pcbqs mesh with CDT, not Triangle.** Their compiled cores triangulate (CDT 2.0.1, MPL-2.0, vendored
   in each core's `core/CDT`; `core/cdt_mesh.hpp` and `cdtmesh.py`, the same files in both): the `triangle` package
   is gone, with Triangle's non-free terms and its missing wheels (none for Python 3.14). The compiled cores of

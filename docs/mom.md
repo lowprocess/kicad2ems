@@ -359,6 +359,19 @@ in double precision on the CPU (8 cores).*
 The preview's mesh has the structured runs but no quads: they are paired when the run starts, and the run writes
 the mesh it solved on. Quads work with the direct solver on the CPU and the GPU; the compressed solvers ignore them.
 
+<a id="cells"></a>
+### The mesh's cells and the wavelength
+
+The mesher keeps `--mom-dmax` (0.3 mm) at the features (the outline's corners and bends, line ends, vias, ports) and
+the edge rings as they are, and lets the cells grow away from the features to a wavelength / `--mom-cells` (30) in
+the densest dielectric at `fmax`, at most 4 × the narrowest trace: as planar MoM tools size their cells (30 per
+wavelength: the current along a line within about 1 %). Inside the copper the cells are equilateral (a hexagonal
+seed, smoothed; the triangulation is CDT's, in the compiled core). On 16 of the Solver Matrix's boards against
+openEMS (2026-11-15): 38 % of the unknowns of 0.3 mm cells everywhere and a quarter of the time, the median RMS
+0.059 against 0.057; three boards moved by more than 0.005 (antenna_cp_patch 0.098 → 0.115, 208 s → 3 s). The same
+size everywhere, not graded from the features, lost 0.04 on resonators and via boards; fewer edge rings lost as much
+on resonant filters. `--mom-cells 0`: `--mom-dmax` everywhere, as before.
+
 <a id="coarsen"></a>
 ### Coarsening (experimental)
 

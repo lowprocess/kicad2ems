@@ -35,9 +35,9 @@ core = ["pybind11>=2.10"]          # python -m mom25d.core.build: mom25d's C++ /
 openems = ["kicad2ems-fdtd[openems] @ git+https://github.com/lowprocess/kicad2ems-fdtd"]   # the FDTD solvers' package,
                                                                 # openEMS's side; openEMS and CSXCAD themselves come
                                                                 # from elsewhere (README)
-mom = ["mom25d @ git+https://github.com/lowprocess/mom25d@bc1fcd6d3f40a24a975eceb8cd3abe397a0ec51d"]     # the MoM solver and its plugins, mom25d and mixed
+mom = ["mom25d @ git+https://github.com/lowprocess/mom25d@3b86e6892fbd6e16ce9440350a91f266024e1616"]     # the MoM solver and its plugins, mom25d and mixed
                                                                 # (it brings triangle, its mesher)
-qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@b500a58df73fc7f1e4088d26ea750dafdf7b24ae"]  # PDN, MQS/PEEC and ngspice operational circuits
+qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@daaf1ec3d74f3547cabb71bcf9f3d48620bee18d"]  # PDN, MQS/PEEC and ngspice operational circuits
 fem = ["kicad2ems-fem @ git+https://github.com/lowprocess/kicad2ems-fem@acffc2cfe7449de58b623f607bd95c12a8cebc56"]   # Palace and Elmer behind kicad2ems: a
                                                                 # solver (palace) and second engines for a rail's drop,
                                                                 # the temperature and capacitance; the programs
