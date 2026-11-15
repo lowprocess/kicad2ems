@@ -62,11 +62,6 @@ the window lists the questions, with the engine chosen on each row, and compares
    - Internal ports at the parts' pads, embedded after the solve: done 2026-11-15 for openEMS, gfdtd and Palace
      (`--part-ports`, `--part-value`, `--part-file`; in the CHANGELOG). Left: mom25d's and the line model's (no gap
      ports), a `[sweep]` table over other settings than parts, and the window's view of a sweep.
-5. **Results the solvers give, the rest** (R-E2). Passivity is checked and warned of, `--passive` writes a passive
-   copy (singular values clipped to 1), and mom25d's sweep says when it stopped at its solve cap. Left: causality. An
-   impulse response's energy before t = 0 does not tell it on band-limited data (from 1 GHz): causal openEMS answers
-   read up to 53 % there (the rat-race's S11), time-reversed ones as little as 35 %; it needs a band-limited
-   Kramers-Kronig check.
 7. **Materials** (R-E4). *Done 2026-11-15*: KiCad's stackup `material` is read, a missing εr or tan δ is filled
    from a small library by the material's name (`kicad2ems.materials`: RO4350B, RO4003C, 370HR, FR408HR, Megtron 6
    ...) or FR-4's with a note, and a named laminate's reference frequency is the wideband model's for its layer
@@ -415,8 +410,9 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
      worker's device and pipelines cost about 1 s once (0.2-0.5 s and 0.5-0.9 s, four threads at once on the
      7800 XT) and nothing on its later runs; the threads make theirs at the same time, so one device would save
      little of the wall time, and slangpy gives a device one queue, so the runs would no longer overlap.
-   - A node-local time step: gfdtd's is up to 15 % shorter than openEMS's on the same mesh (hairpin 105.9 fs
-     against 124.9).
+   - The exact time step on the GPU: `--gfdtd-timestep exact` measures the operator's limit by Lanczos in NumPy
+     (0.6-2 s once a model, kept), so `auto` takes it only from 1 M cells; the curl-curl products on the backend's
+     own kernels would make it free for every run (R-D6's rest; the step itself is in the CHANGELOG).
    - εr averaged inside a cell, so a thin layer needs no lines of its own (`nz_mask` is 1 since 2026-11-14: 4 cells
      through a 10 µm mask had made hairpin 17× longer for "within 1 MHz").
    - *Decided* (2026-11-15, R-D8): the energy check's sync stays every 100 steps. Checking every 1,600 instead gains

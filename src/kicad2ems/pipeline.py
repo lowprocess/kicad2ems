@@ -66,6 +66,26 @@ def sparam_table(freq, S, names):
 
 
 PASSIVE_TOL = 2e-3              # S's largest singular value above 1 + this: not passive (a solver's noise sits below)
+CAUSAL_TOL = 0.1                # a term's miss of its band-limited Kramers-Kronig reconstruction beyond the bound
+                                # (causality.py): causal solver outputs read 0-0.06, time-reversed ones 1.5-4
+
+
+def causality_note(freq, S, names, what):
+    """(dict for the run summary, a warning or None): S's causality on its band (causality.check)."""
+    from .causality import check
+    try:
+        c = check(freq, S)
+    except Exception as e:                                          # noqa: BLE001  (a check, never the run's end)
+        return dict(error=f"{type(e).__name__}: {e}"), None
+    if c is None:
+        return None, None
+    i, j = c['term'] if c['term'] else (0, 0)
+    out = dict(worst=round(c['worst'], 4), f=c['f'], term=f"S({names[i]},{names[j]})" if c['term'] else None)
+    if c['worst'] <= CAUSAL_TOL:
+        return out, None
+    return out, (f"WARNING: {what}: not causal: {out['term']} at {c['f'] / 1e9:.4g} GHz misses its band-limited "
+                 f"Kramers-Kronig reconstruction by {c['worst']:.3f} beyond what any data outside the band could "
+                 f"explain: a reference plane past the true one (de-embedding), or a sweep's fit there")
 
 
 def passivity(freq, S):
@@ -615,6 +635,9 @@ class Job:
                          comment=r.comment + '; de-embedded: ' + '; '.join(done))
         self.wrote(f"S-parameters de-embedded, {registry()[n].label}", out)
         entry['deembedded'] = dict(touchstone=self.rel(out), done=done, table=sparam_table(self.freq, S, r.names))
+        entry['deembedded']['causality'], warn = causality_note(self.freq, S, r.names, f"{label(n)} de-embedded")
+        if warn:                                                    # (a plane moved past the true one shows here)
+            self.log(warn)
         self.log(f"{label(n)}: de-embedded ({'; '.join(done)}) -> {out}")
 
     def outputs(self):
@@ -648,6 +671,9 @@ class Job:
                                              f"frequencies" + unknown_note(r.S, r.names))
                     self.wrote(f"S-parameters made passive, {reg[n].label}", pout)
                     entry['passive_touchstone'] = self.rel(pout)
+            entry['causality'], warn = causality_note(freq, r.S, r.names, reg[n].label)      # (R-E2)
+            if warn:
+                self.log(warn)
             if s.deembed or s.deembed_file:                         # (R-E1: lumped ports had no de-embedding)
                 self._deembed(n, r, entry)
             if n in getattr(self, 'full', {}):                      # (R-E5: part ports)

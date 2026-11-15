@@ -10,6 +10,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Causality of band-limited S-parameters (R-E2).** Each term against its Kramers-Kronig reconstruction from the
+  band alone, with subtractions (generalised dispersion relations: `kicad2ems.causality`), the bound of what the
+  data outside the band could add from |S| <= 1, and the quadrature's own error from causal test responses; the
+  miss beyond them is in the run summary and above 0.1 warned of, for the solver's S and a de-embedded one. Causal
+  solver outputs read 0-0.06, time-reversed ones 1.5-4 (an impulse response's energy before t = 0 could not tell
+  them apart from 1 GHz: 53 % and 35 %).
+- **gfdtd's time step from the operator's own limit (R-D6).** 2 / sqrt(lambda_max) of its curl-curl with the real
+  coefficients (Lanczos, kept per model), 1.19-1.29 times the vacuum Courant step on the examples: stepping
+  1.14-1.53 times faster, the S within 0.005. `--gfdtd-timestep auto` (the default: from 1 M cells or once
+  measured), `exact`, `courant` (gfdtd 9ce728f, kicad2ems-fdtd 47bf714).
 - **gfdtd takes the openEMS options it had ignored or refused, but cylindrical grids (R-B18).** Mue and magnetic
   loss (`Sigma`; on the NumPy backend, said: the compiled kernels' H update is geometry alone), E- and H-field probes
   (types 2, 3: one file, t Ex Ey Ez), time-domain NF2FF (`CreateNF2FFBox(frequency=None)`: the faces as openEMS's

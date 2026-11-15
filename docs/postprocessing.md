@@ -16,6 +16,14 @@ Each solver writes a Touchstone file, `<name>_<solver>.sNp`.
   otherwise.
 - **The plot** `<name>_<solver>.png` shows |S| in dB and a Smith chart of the reflections for the first
   solver, with the others and any `--compare` file drawn over it.
+- **Passivity.** S's largest singular value over the band is checked; above 1.002 the run warns where, and
+  `--passive` writes `<name>_<solver>_passive.sNp` with the singular values clipped to 1.
+- **Causality.** Each term is checked against its band-limited Kramers-Kronig reconstruction (generalised
+  dispersion relations with 2 to 8 subtractions, `kicad2ems.causality`), on the inner 80 % of the band: the miss
+  beyond what any data outside the band could explain (|S| <= 1 there) is in the run summary (`causality`), and
+  above 0.1 the run warns, naming the term and the frequency. Causal solver outputs read 0 to 0.06; a time-reversed
+  response 1.5 to 4, one advanced 0.4 ns past its delay 0.3 to 2.8 (from 1 GHz; a narrow band such as 2-3 GHz
+  cannot show that). A de-embedded result is checked too: a reference plane moved past the true one shows there.
 
 ## Mesh convergence
 
