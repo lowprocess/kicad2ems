@@ -245,9 +245,12 @@ that does not need N² memory. In this order:
 
 ## mom25d: what the review found (2026-11-14)
 
-1. **Wave-port set-up, the first run** (R-D10). A port's line is a 3D model of its own: on
-   `tests/boards/launch.json` 14.4 s of a 14.6 s set-up. It is kept on disk by cross-section since 2026-11-14 (a run
-   again: 0.5 s); the first run's cost is left, for a 2D cut of the feed (Zc and gamma) to take.
+1. **Wave-port set-up, the first run** (R-D10). A port's line is a 3D model of its own, kept on disk by
+   cross-section since 2026-11-14 (a run again: 0.5 s). *Decided* (2026-11-15): on `tests/boards/launch.json` it
+   takes 6.8 s of the first run's 31 s now (14.4 s on 2026-11-14, before the compiled fill and the GPU factor), no
+   longer more than the sweep; a shorter line is no cheaper way (its 18 mm against 8 mm: Zc 6 ohm and beta 1 % off,
+   10 mm: 36 ohm). A 2D cut of the feed would need a full-wave solve of its own (a quasi-static one has no
+   dispersion) and would not take a coplanar ground stitched by vias; left until a board needs it.
 2. **The reused LU's GMRES on the GPU** (found with R-D11, now in the CHANGELOG): a solve that reuses a nearby
    frequency's LU iterates with the dense Z on the host, a memory-bound product (sma_launch: 13 s of 43, 0.14 s a
    product of its 6.4 GB Z, 46 GB/s). Z kept on the GPU beside its LU (the RX 7800 XT: 624 GB/s) would take it to
