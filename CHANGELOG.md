@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Discontinuities on scikit-rf (R-E15).** The line model's backend without qucsator had none: open ends now
+  carry Kirschning-Jansen-Koster's extension, width steps Edwards', and corners and bends Gupta-Garg-Bahl's
+  capacitance (scaled by tan(θ/2) away from 90°) with their arms cut to the corner square as qucsator's MCORN
+  takes them; qucsator gets the same for a bend of another angle. The formulas are dfsynth's (`lines/formulas.py`,
+  checked against them). The hairpin's pass band on scikit-rf 3.25 to 3.30 GHz (qucsator 3.31, openEMS 3.37);
+  an open stub equals its line lengthened by the end's extension.
 - **De-embedding (R-E1, its first part).** `--deembed P1=2.5` moves a port's reference plane along its own trace,
   the line model's sections from the port taken off (their Z0, εeff, the mode's tan δ and, with `--sigma`, the
   copper's loss; a negative length moves it out), and `--deembed-file P1=fixture.s2p` removes a fixture there:

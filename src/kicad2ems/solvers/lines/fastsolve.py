@@ -85,6 +85,12 @@ def _skrf(lm, ports, freq, sheet, sigma):
     w = 2 * np.pi * fr.f
     rho = 1 / sigma if sigma else 1e-15
     nodes, net = {}, {}
+    cut = {}                                                # a corner's arms to its square's edges, as qucsator's
+    for j in lm.junctions:                                  # MCORN takes them, its capacitance added at the node
+        if j['kind'] in ('corner', 'bend') and discontinuity_c(j, sheet):
+            for (e, end), r in zip(j['arms'], bend_reach(j)):
+                cut[id(e)] = cut.get(id(e), 0.0) + r
+    span = lambda e: max(e.length - cut.get(id(e), 0.0), 1e-3) * 1e-3     # (m)
 
     def series_z(z, name):
         s11 = z / (z + 100.0)
@@ -127,7 +133,7 @@ def _skrf(lm, ports, freq, sheet, sigma):
                                          t=None if sheet and not sigma else max(e.t or 0.035, 1e-9) * 1e-3,
                                          has_metal_backside=True,                   # (a thickness: its loss needs one)
                                          rho=rho if sigma else None, tand=e.tand, diel='frequencyinvariant', z0_port=50.0)
-                ntw = med.line(e.length * 1e-3, 'm', name=name)
+                ntw = med.line(span(e), 'm', name=name)
             elif e.z0:
                 z0, ee = _line_params(e, sheet)
                 if sigma:                                   # the copper's loss too: gamma of R, L, G, C
@@ -136,7 +142,7 @@ def _skrf(lm, ports, freq, sheet, sigma):
                     med = skrf.media.DefinedGammaZ0(frequency=fr, z0=z0, gamma=gamma, z0_port=50.0)
                 else:
                     med = skrf.media.DefinedAEpTandZ0(frequency=fr, ep_r=ee, tanD=mode_tand(e), z0=z0, z0_port=50.0)
-                ntw = med.line(e.length * 1e-3, 'm', name=name)
+                ntw = med.line(span(e), 'm', name=name)
             else:                                           # no reference plane: a plain connection
                 ntw = series_z(np.full_like(w, 1e-6, dtype=complex), name)
             net[name] = ntw
@@ -156,6 +162,10 @@ def _skrf(lm, ports, freq, sheet, sigma):
             ntw = skrf.Network(frequency=fr, s=skrf.network.y2s(Y, z0=50.0), z0=50.0, name=f"gap{k}")
             nodes.setdefault(j['node'], []).append((ntw, 0))
             nodes.setdefault(j['other']['node'], []).append((ntw, 1))
+        for k, j in enumerate(lm.junctions):                # open ends, steps, bends: their excess capacitance
+            c = discontinuity_c(j, sheet)                   # at the node (R-E15: this backend had none of them)
+            if c:
+                nodes.setdefault(j['node'], []).append((shunt_z(1 / (1j * w * c), f"disc{k}"), 0))
         for p in ports:
             if p.name in lm.ports:
                 nodes.setdefault(lm.ports[p.name], []).append((Circuit.Port(fr, p.name, z0=p.z0), 0))
@@ -165,6 +175,35 @@ def _skrf(lm, ports, freq, sheet, sigma):
         cir = Circuit(list(nodes.values()))
         res = cir.network
         return res.s, list(cir.port_names)
+
+
+def bend_reach(j):
+    """How far a corner's or a bend's square reaches along each of its two arms (mm): half the other arm's width
+    (a 90 deg corner, qucsator's MCORN), times tan(angle / 2) for another angle (none for a straight line)."""
+    t = math.tan(math.radians(min(max(j.get('angle', 90.0), 0.0), 135.0)) / 2)
+    return [j['widths'][1] / 2 * t, j['widths'][0] / 2 * t]
+
+
+def discontinuity_c(j, sheet=True):
+    """The excess capacitance (F) a line-model junction j adds at its node, for the backends without models of
+    their own: a microstrip's open end (Kirschning, Jansen and Koster's length extension), a width step (Edwards'),
+    a corner or another bend (Gupta, Garg and Bahl's, scaled by the corner's area): its extension's length of line
+    capacitance, C' = sqrt(eeff) / (c Z0). None for any other junction, or one off a microstrip."""
+    from ...lines.formulas import open_end_extension, step_extension, bend_capacitance
+    if j['xs'] != 'microstrip' or j['kind'] not in ('open', 'step', 'corner', 'bend'):
+        return None
+    arms = [e for e, _ in j['arms']]
+    if any(e.group is not None or not e.er or not e.h or not e.w for e in arms):
+        return None
+    if j['kind'] == 'open':
+        e = arms[0]
+        z0, ee = _line_params(e, sheet)
+        return open_end_extension(e.w, e.h, e.er, ee) * 1e-3 * math.sqrt(ee) / (C0 * z0) if z0 and ee else None
+    if j['kind'] == 'step':
+        e = max(arms, key=lambda x: x.w)
+        z0, ee = _line_params(e, sheet)
+        return step_extension(arms[0].w, arms[1].w, e.h, e.er, ee) * 1e-3 * math.sqrt(ee) / (C0 * z0) if z0 and ee else None
+    return bend_capacitance(0.5 * (arms[0].w + arms[1].w), arms[0].h, arms[0].er, j.get('angle', 90.0))
 
 
 def _group_network(skrf, fr, g, sheet, name, sigma=None):
@@ -261,6 +300,10 @@ def _junction_plan(lm):
                 short[(id(e), end)] = ws[2] / 2 if a < 2 else 0.5 * (ws[0] + ws[1]) / 2
             elif j['kind'] == 'cross':
                 short[(id(e), end)] = 0.5 * (ws[(a + 1) % 4] + ws[(a + 3) % 4]) / 2
+    for j in lm.junctions:                                  # a bend of another angle: its arms to its square's edges
+        if j['kind'] == 'bend' and j['xs'] == 'microstrip' and discontinuity_c(j):     # too, its capacitance at
+            for (e, end), r in zip(j['arms'], bend_reach(j)):                             # the node (one node)
+                short[(id(e), end)] = r
     return endnode, short
 
 
@@ -414,6 +457,10 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
             elif j['kind'] == 'cross':
                 L.append(f'MCROSS:{nm} {" ".join(arms)} Subst="{sub(e0)}" ' +
                          " ".join(f'W{n + 1}="{w * 1e-3:.6g}"' for n, w in enumerate(ws)) + f' {ms}')
+            elif j['kind'] == 'bend':                       # another angle than MCORN's: its capacitance (R-E15)
+                c = discontinuity_c(j, sheet)
+                if c:
+                    L.append(f'C:{nm} {arms[0]} gnd C="{c:.6g}"')
         else:
             s_ = (e0.s or ws[0]) * 1e-3
             if j['kind'] == 'open':

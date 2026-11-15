@@ -153,9 +153,11 @@ that: nothing in it may fix a panel in place. Left:
    static 2D one needs deriving.
 5. **Coupled lines with a jog** (R-E17). The legs are paired per element, so a polyline's sub-segments are not, and
    dfsynth's edge-coupled band-pass is open on the line model.
-6. **Discontinuities** (R-E15). The scikit-rf backend (qucsator's absence: often Windows) has none, so open stubs are
-   short by their end's extension; qucsator has nothing for a 45° bend or a junction of five arms. dfsynth has
-   Kirschning-Jansen-Koster open ends, Garg-Bahl gaps and Edwards steps to port.
+6. **Discontinuities** (R-E15). Since 2026-11-15 the scikit-rf backend has open ends (Kirschning-Jansen-Koster),
+   steps (Edwards) and corners and bends (Gupta-Garg-Bahl, scaled by tan(θ/2) for an angle other than 90°, their
+   arms to the corner square's edges as qucsator's), and qucsator a bend of another angle the same way
+   (`lines/formulas.py`; the hairpin's pass band on scikit-rf 3.25 to 3.30 GHz, qucsator 3.31, openEMS 3.37).
+   Left: tees and crosses on scikit-rf, a junction of five arms on either.
 7. **Dispersion and the losses' next step**: a Djordjevic-Sarkar εr(f) for each layer before the solve; the
    conductor loss from the cross-section (Wheeler's rule: two solves with the copper set back by half a skin
    depth) in place of 2 Rs / w, and each harmonic's in qucsator (its RLCG holds R and G at the band centre).

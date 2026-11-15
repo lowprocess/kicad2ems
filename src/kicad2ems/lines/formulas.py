@@ -107,6 +107,38 @@ def gap_capacitance(w, s, h, er):
     return 0.5 * ce, 0.5 * co - 0.25 * ce
 
 
+def open_end_extension(w, h, er, eeff):
+    """An open end's length extension (mm) of a microstrip of width w over h of er, its eeff (Kirschning, Jansen and
+    Koster 1981). As dfsynth's microstrip.open_end."""
+    u = w / h
+    x1 = 0.434907 * (eeff ** 0.81 + 0.26) / (eeff ** 0.81 - 0.189) * (u ** 0.8544 + 0.236) / (u ** 0.8544 + 0.87)
+    x2 = 1 + u ** 0.371 / (2.358 * er + 1)
+    x3 = 1 + 0.5274 * math.atan(0.084 * u ** (1.9413 / x2)) / eeff ** 0.9236
+    x4 = 1 + 0.0377 * math.atan(0.067 * u ** 1.456) * (6 - 5 * math.exp(0.036 * (1 - er)))
+    x5 = 1 - 0.218 * math.exp(-7.5 * u)
+    return h * x1 * x3 * x5 / x4
+
+
+def step_extension(w1, w2, h, er, eeff_wide):
+    """A width step's length extension of its wider strip (mm): the wider strip's open end scaled by the part of its
+    width the narrower does not cover, 1 - wn / ww (Edwards). As dfsynth's microstrip.step."""
+    wn, ww = sorted((w1, w2))
+    return open_end_extension(ww, h, er, eeff_wide) * (1 - wn / ww)
+
+
+def bend_capacitance(w, h, er, angle=90.0):
+    """The excess capacitance (F) of an unmitred bend of a microstrip of width w over h of er (mm): Gupta, Garg and
+    Bahl's 90 deg corner, scaled for another angle by its corner's area, tan(angle / 2) (0 for a straight line,
+    the corner's own at 90 deg; an estimate away from 90)."""
+    u = w / h
+    if u < 1:
+        cw = ((14 * er + 12.5) * u - (1.83 * er - 2.25)) / math.sqrt(u) + 0.02 * er / u
+    else:
+        cw = (9.5 * er + 1.25) * u + 5.2 * er + 7.0
+    scale = math.tan(math.radians(min(max(angle, 0.0), 135.0)) / 2)
+    return max(cw, 0.0) * 1e-12 * w * 1e-3 * scale
+
+
 def via_inductance(h, r):
     """Partial self-inductance (H) of a via barrel of length h and radius r (mm), Goldfarb & Pucel."""
     h, r = h * 1e-3, r * 1e-3
