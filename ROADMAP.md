@@ -301,8 +301,8 @@ validated: pcbqs's docs and CHANGELOG.md (the project's `NOTES-pi-nearfield.md` 
    band's own unit; the report's interactive plot is linear in GHz too (its PNG is right), and its table reads
    "0.000 GHz" for a run in kHz (R-G).
 7. **What a PI user takes away** (R-E14):
-   - the port matrix (loads and decap sites) as Touchstone or a SPICE subcircuit;
-   - the droop of a load step in time;
+   - *done 2026-11-15*: the loads' port matrix as Touchstone (`--touchstone`, pdn.zNp) and the droop of a load
+     step in time (`--rise`, droop.png); left of it: the decap sites as ports, and a SPICE subcircuit;
    - vendor decap models and MLCC DC-bias derating;
    - a VRM beyond R + L;
    - the near field's input capacitors from their own fields, as the PDN reads them (one `--esr`/`--esl` for all
