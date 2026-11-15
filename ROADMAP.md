@@ -26,8 +26,10 @@ What the CI leaves out is where most of the list above came from.
 2. **Pins, the rest** (R-C5: emsdev is pinned by its release tag in all five pyprojects since 2026-11-14, and
    `sync_pins.py` checks it). kicad2ems-fdtd, gfdtd and dfsynth have no commit in the extras that name them; the KiCad
    plugin's `requirements.txt` is behind and checked by nothing.
-3. **The GPUs** (R-C7). No GPU path runs in CI (Vulkan on lavapipe could), and no NVIDIA run is recorded, though the
-   docs name any GPU.
+3. **The GPUs** (R-C7): run before a release instead of in CI since 2026-11-15 (the superproject's
+   `tools/gpu_report.py`, its reports in `gpu-report/`, `sync_pins.py` saying when the latest is for older commits;
+   now in the CHANGELOG). Left: an NVIDIA run in the report (the GTX 980 Ti is listed, CuPy runs on the AMD card here),
+   and gfdtd on lavapipe in CI (R-C7.2).
 4. **References** (R-C9, C10):
    - no stored S-parameters to regress against, and mom25d's README figures are tighter than its tests;
    - pcbqs's real-board regressions need `~/Desktop/wpthb`;

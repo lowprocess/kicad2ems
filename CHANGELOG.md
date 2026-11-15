@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **A GPU report before each release (R-C7).** CI has no GPU, so the superproject's `tools/gpu_report.py` runs
+  the GPU tests of gfdtd, mom25d, pcbqs, emsdev and kicad2ems-fdtd and two boards on each backend against the CPU on
+  a machine with GPUs, and commits what it found in `gpu-report/`; `sync_pins.py` ends with whether the latest
+  report is for the commits pinned now. The first (2026-11-15): 101 GPU tests pass on the RX 7800 XT (Vulkan and
+  CuPy), gfdtd's GPU runs within 6e-7 of its CPU's, mom25d's within its sweep's 1e-3.
 - **Causality of band-limited S-parameters (R-E2).** Each term against its Kramers-Kronig reconstruction from the
   band alone, with subtractions (generalised dispersion relations: `kicad2ems.causality`), the bound of what the
   data outside the band could add from |S| <= 1, and the quadrature's own error from causal test responses; the
