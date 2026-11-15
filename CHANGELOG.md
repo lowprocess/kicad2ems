@@ -39,6 +39,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **The window waits on nothing it can do in a thread (R-D22).** An example is made in a thread and loaded when it
+  is ready; dfsynth's description for the Filter page is asked in a thread, the page's form made when it comes (the
+  window's start had waited on `dfsynth --describe`).
 - **The line model's coupled pairs from a tree (R-D17).** The pairing tried every pair of straight sections (480-odd
   on CM5); a tree of the sections, each grown by the farthest it couples, proposes the near ones and the same tests
   decide: the same 295 groups, CM5's formula build 5.25 s to 4.69 s. The builder's quadratic loops are all indexed
