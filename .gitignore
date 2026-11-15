@@ -36,3 +36,4 @@ docs/img/readme/*.mp4
 docs/_build/
 docs/reference/_generated/
 docs/reference/api-names.md
+code_growth/
