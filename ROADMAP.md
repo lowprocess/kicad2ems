@@ -384,9 +384,11 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
    engines' runs, and lumped parts gfdtd's update cannot hold are refused (2026-11-14). Left: gfdtd taking a part's
    ESR in one series RLC (an implicit update for R and C without L), so kicad2ems need not split such parts for it.
 2. **Speed without new physics.**
-   - Excitations that start together each make their GPU device and pipelines (about 0.3 s a thread, 22 % of
-     demo_lowpass's 2 s runs); one device with a queue per run would share them. The operator's core and its
-     compressed form are made once a model, and the worker threads (with their devices) kept, since 2026-11-14.
+   - The operator's core and its compressed form are made once a model, and the worker threads (with their GPU
+     devices and pipelines) kept, since 2026-11-14. *Decided* (2026-11-15, R-D4.2): no one shared device. A
+     worker's device and pipelines cost about 1 s once (0.2-0.5 s and 0.5-0.9 s, four threads at once on the
+     7800 XT) and nothing on its later runs; the threads make theirs at the same time, so one device would save
+     little of the wall time, and slangpy gives a device one queue, so the runs would no longer overlap.
    - A node-local time step: gfdtd's is up to 15 % shorter than openEMS's on the same mesh (hairpin 105.9 fs
      against 124.9).
    - εr averaged inside a cell, so a thin layer needs no lines of its own (`nz_mask` is 1 since 2026-11-14: 4 cells
