@@ -503,7 +503,8 @@ near field is corrected out to 5 cells: against 12, |S| moves by 0.0025 at most 
 (3 cells: 0.013). The modules are listed in
 [mom25d's README](https://github.com/lowprocess/mom25d#inside-mom25d). Its tests check it against exact solutions
 and textbook formulas: layered Green's functions to about 1e-5, stripline impedance to 0.6 % (Cohn's), coupled
-striplines' even and odd modes to 2.5 %. Couplers in dB and plane cavity resonances have no test yet.
+striplines' even and odd modes to 2.5 %, a plane cavity's resonance to 0.7 % of the cavity model, and the rf_coupler
+example to 0.1 dB of openEMS's stored answer.
 
 **Limits**: copper is zero-thickness (`--rough` scales its loss: [roughness](simulation.md#roughness)), and wave ports need a straight
 feed line.
