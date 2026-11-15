@@ -433,9 +433,10 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
     edge between them sits on the coarse cells (a 20 mm, 50 ohm line at 30 deg came out 3.4 % longer electrically
     than along x, at 45 deg 1.7 %; a fine cell of 0.09 mm in place of 0.18 helped 0.6 %). Lines along such an
     edge, or a conformal edge (Dey-Mittra), would follow it.
-5. **Excitations batched** in one launch (a batch dimension in the three backends' kernels: the coefficients read
-   once for several fields). Several GPUs are there since 2026-11-15 (`--gfdtd-gpus`, a process each; now in the
-   CHANGELOG): left, sharing the excitations by each GPU's speed, so a much slower one is not given the last.
+5. *Decided* (2026-11-15, R-D9): **excitations batched** in one launch are not built. A node's step moves about
+   72 bytes of fields (V and I, read and written) and 1-2 bytes of the compressed operator's code, so reading the
+   code once for several fields would save under 5 %. Several GPUs, sharing the runs by each one's measured speed,
+   are in the CHANGELOG.
 6. **Tests**: a small board on `gfdtd:cpu` end to end, openEMS's S-parameters stored as references; Vulkan on lavapipe
    in CI; one NVIDIA run before the docs name CUDA.
 7. **Boundaries**: first-order Mur is the default on five sides (6 % reflection against 5e-5 for an 8-cell PML), and

@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The GPUs' runs shared by speed (R-D9).** `--gfdtd-gpus` gives each run to the GPU that would finish it first,
+  by each GPU's speed measured on earlier runs (kicad2ems-fdtd 28b75ea): a GPU too slow to help gets none, and one
+  GPU alone runs them side by side. rf_coupler's four runs on an RX 7800 XT and a GTX 980 Ti: 22.6 s shared alike,
+  11.8 s by speed. Excitations batched in the kernels were measured and left (under 5 % of the traffic to save).
 - **Part ports on every solver, other settings varied, and the window's view (R-E5).** mom25d's part port is a
   delta gap across the part's strip (mom25d d6e51ed; its pads kept: a shunt part's ground pad and vias had gone as a
   lone stitching pad), the line model's a floating port in the part's place (a series tee on scikit-rf, a Pac across
