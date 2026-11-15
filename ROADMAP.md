@@ -439,10 +439,9 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
    blocking, conformal PEC for curved copper.
 9. **Materials**: Lorentz and Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
     material (which is right is not checked).
-10. **openEMS's interface** (R-B18). `TimeStepFactor` and `TimeStep` are honoured and the rest said (2026-11-14);
-    since 2026-11-15 the sinus, Dirac, step and custom excitations and `MaxTime` are there too. Left: time-domain
-    NF2FF, field probes, magnetic σ, cylindrical grids, a coax port's finite `Feed_R` (0 or ∞ only), and
-    `SetAbort` (an `ABORT` file in the run's folder does it).
+10. **openEMS's interface**: cylindrical grids, the one option gfdtd refuses (no use for them yet; the rest of
+    R-B18 is in the CHANGELOG). The magnetic materials run on the NumPy backend: the compiled kernels' H update with
+    a per-edge μ and loss would put them on the GPU.
 
 ## kicad2ems-fem
 

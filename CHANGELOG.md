@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **gfdtd takes the openEMS options it had ignored or refused, but cylindrical grids (R-B18).** Mue and magnetic
+  loss (`Sigma`; on the NumPy backend, said: the compiled kernels' H update is geometry alone), E- and H-field probes
+  (types 2, 3: one file, t Ex Ey Ez), time-domain NF2FF (`CreateNF2FFBox(frequency=None)`: the faces as openEMS's
+  time-domain HDF5 dumps, any frequency at `CalcNF2FF`; the dipole as the frequency-domain box, 0.05 dB), a coaxial
+  port's finite `Feed_R` (a resistive annulus at the feed plane; openEMS's port has none) and `SetAbort` (gfdtd
+  626197c).
 - **Slot planes in mom25d (`--mom-planes slots`, experimental).** Every copper layer as the whole stack has them,
   but the ground a perfect conductor of the stack, infinite, and only its openings meshed: their field the unknowns,
   coupled to the traces and vias on either side through the stack's networks (`mom25d/slots.py`; docs/mom.md#slot-planes).
