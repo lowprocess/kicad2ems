@@ -104,6 +104,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **mom25d's via holes (`--mom-planes holes`): a via ending on the plane sees the hole's first-order field.** A
+  first-order shape leaves a potential on the plane outside its hole (-e1(0) cos phi / rho), which a via ending there
+  had not been charged: such vias did not excite the dipoles at all. Two via ports either side of a 0.6 mm hole: Z21
+  0.287 ohm (as with no hole) against the finely meshed plane's 0.246, now 0.241; the return vias' currents on
+  demo_transition 4-7 times closer at 2 and 6 GHz (mom25d 3842ae4; found with the slot planes).
 - **mom25d says so where its sparse near field cannot fit**, instead of the system killing it: the block low-rank
   solver's near-field correction was not in the memory plan, and on a fine mesh of several layers it is the larger
   (antenna_aperture's whole stack, 78,458 unknowns: 37 M near pairs, ~15 GB, killed 7 s into a 16 GB scope without

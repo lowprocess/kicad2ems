@@ -179,7 +179,10 @@ solver's own items (large boards, the low end) are in the next section.
    filling its voids, about 12k). Before it can be the default: the loop/tree
    basis with the holes (the low end is the RWG basis's on such a board today); a hole two vias share (a
    differential pair's antipad: most pairs on real boards) and holes that are not round (their area's circle
-   today); the second azimuthal order where holes nearly touch (0.012 at 10 GHz with 0.1 mm between them); a
+   today); the second azimuthal order where holes nearly touch (0.012 at 10 GHz with 0.1 mm between them), and maybe
+   for a hole's own residual: with the via-foot term (2026-11-15) a hole's effect on Z21 between via ports is 7-12 %
+   high and on Z11 13 % low, the pattern a missing even order leaves (a slot-plane solve restricted to orders <= 1
+   tells it without new kernels); a
    plane on the top interface; the hole's field in the dumps, the near field and the far field.
 2. **Coupled runs in the mixed solver, the rest.** Two traces of one width side by side are cut as a coupled
    line since 2026-11-13 (their differential and common modes, a mixed-mode wave port on each face:
@@ -200,10 +203,7 @@ solver's own items (large boards, the low end) are in the next section.
    (slots.self_block, ~1 s a solve on rf_slotline) could follow. Then: the loop/tree basis with openings; frill holes and openings in one stack; a via through an
    opening; the openings' field in the dumps and the near field; and when `--mom-stack auto` should choose them (on
    antenna_aperture they are 0.057 from openEMS against 0.19, on antenna_slot 0.257 against 0.058: a ground that is
-   large against the wavelength, or a radiator above the plane rather than in it). Found with them: a frill hole's
-   first-order shapes leave a potential on the plane outside the hole which a via ending there should see (the
-   slots' term, slots.py's doc); added to frill it moved demo_transition from 0.003 to 0.011 at 8 GHz against the
-   finely meshed plane, so it is left out until that is understood.
+   large against the wavelength, or a radiator above the plane rather than in it).
 
 ## mom25d: low frequency, large boards (the user's plan, 2026-11-13)
 
