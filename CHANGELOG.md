@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **mom25d's via and hole blocks, the rest (R-D11).** The lifted Sommerfeld contour's J0, J1 and J2 of complex
+  argument in the compiled core (mom25d 91c1a64; within 5e-12 of scipy's, 13 times faster): demo_transition's via
+  sums 1.77 → 1.34 s, its sweep 7.3 → 6.7 s, S at fixed frequencies within 5e-14. Each frequency's tables stay (their
+  Sommerfeld integrals depend on it). The next frequency's fill beside the GPU's factor was measured and left:
+  sma_launch's 3 factorisations take 4 s of 43 (its other 10 solves reuse one), and the sweep picks each next
+  frequency from the last solve. The reused LU's GMRES product (13 s there) is in the ROADMAP.
 - **The window's desktop basics, the rest (R-E25).** *Edit → Undo / Redo* through the settings' changes (a tick
   or a choice a step, a field's typing a step once it pauses; the menu names the field), *View → Plot colours*
   (as the desktop, light or dark: every plot restyled at once, the Smith grid and markers too), *Save…* (HTML with

@@ -244,12 +244,10 @@ that does not need N² memory. In this order:
 1. **Wave-port set-up, the first run** (R-D10). A port's line is a 3D model of its own: on
    `tests/boards/launch.json` 14.4 s of a 14.6 s set-up. It is kept on disk by cross-section since 2026-11-14 (a run
    again: 0.5 s); the first run's cost is left, for a 2D cut of the feed (Zc and gamma) to take.
-2. **The via blocks, what is left** (R-D11): since 2026-11-14 the chains' kernel is in the compiled core, the fans'
-   product sparse and the pairs' geometry made once (317 vias: 1.36 s a solve for 3.43); since 2026-11-15 the
-   holes' kernels are the core's J0/J1/J2 contour sums (the demo with `planes='holes'`: 0.78 s to 0.52 s of its
-   hole blocks). Left: the holes' tables are made again at every frequency (their Sommerfeld integrals; 87 ms a
-   hole's frequency on the demo), and the fill is not overlapped with the GPU's factor, which would hold two
-   dense Z at once (the memory plan has one).
+2. **The reused LU's GMRES on the GPU** (found with R-D11, now in the CHANGELOG): a solve that reuses a nearby
+   frequency's LU iterates with the dense Z on the host, a memory-bound product (sma_launch: 13 s of 43, 0.14 s a
+   product of its 6.4 GB Z, 46 GB/s). Z kept on the GPU beside its LU (the RX 7800 XT: 624 GB/s) would take it to
+   about 1 s, for one upload a frequency (0.26 s at PCIe 4's 25 GB/s) and 6.4 GB more of the card.
 3. **Copper thickness**, ignored (sheets) while the other solvers model it; the loss takes the port layer's
    thickness for every layer. Per interface first; two sheets with side currents later (`sing.py` names the
    kernels).
