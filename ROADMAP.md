@@ -114,8 +114,7 @@ that: nothing in it may fix a panel in place. Left:
    a tile says nothing of what its example takes (the engine, the time: the index has neither). (*Reset layout*
    with a floated dock aborted only under Qt's offscreen plugin on Windows; on the native platform it works,
    and the CI checks it there.)
-5. **What the review found** (R-D21, E23-E25).
-   - The RF form needs validation and tooltips: 80 of its 85 settings have none, though every `Option` has help.
+5. **What the review found** (R-D21, E24, E25).
    - Failed and stopped runs should stay listed with their log (it lives only in the page today); a run can be
      deleted.
    - The 3D view recolours all 24 phases on the GUI thread at each step of a control (3.2 s and 1.4 GB at 256).
