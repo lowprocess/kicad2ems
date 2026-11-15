@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Coils at their operating frequency, and a board heating from cold, on Elmer (R-E21).** kicad2ems-fem's coil
+  tool (the study's *Coils and ferrite*) takes `--freq`: each coil in the time-harmonic field, its L there and its
+  series resistance from the ferrite's loss (a plate's μ″), from a metal plate's eddy currents (`sigma=`, a surface
+  impedance) and its winding's own (`r=`), and its Q. Checked against a coil over copper and its mirror image (L
+  1.980 against 1.983 µH, R 22.9 against 23.5 mΩ). Its thermal tool takes `--transient S`: BDF2 on pcbqs's steps,
+  each part's pads against time and its time to 63 %, within 0.2 % of a lumped strip's time constant. On wpthb it
+  found pcbqs's transient counting an inner layer's copper as laminate too (pcbqs's CHANGELOG).
 - **Palace's refinement within the memory, and a second-order boundary (R-E20, part).** kicad2ems-fem's
   `--palace-amr` stops at `--palace-amr-max` unknowns, by default what 70 % of the memory available holds, and
   refines the eigenmode run too; `--palace-abc 2` is the second-order absorbing boundary. The estimate's unknowns

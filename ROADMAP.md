@@ -435,8 +435,9 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
      the CHANGELOG) leaves it; the far field's integration over the box's faces is next to look at;
    - wave ports;
    - copper as solids in the driven model (as the cap tool's `--thick`): its sheets' loss holds only to ~10 MHz.
-2. **Elmer's harmonic and transient solvers** (R-E21): a coil's AC resistance, its ferrite's loss and Q at the
-   operating frequency; a transient temperature.
+2. **A winding's own AC loss** (the rest of R-E21, now in the CHANGELOG): the coil tool spreads its turns' current
+   over the section, so skin and proximity loss in the wire is not solved; Elmer's stranded-coil homogenisation
+   (its `circuits_harmonic_*_homogenization` cases) would give it. Elmer's transient with a net's own current.
 3. **pcbqs's Palace validations as engines** (R-E22): `pdn_palace.py` and `mqs_palace.py` as `palace_pdn` and
    `palace_loop`, a second engine for the two questions whose accuracy is open; Palace stays out of pcbqs's
    runtime.
