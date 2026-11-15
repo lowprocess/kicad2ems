@@ -109,6 +109,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **The line model's 45 deg bends, and its junctions on scikit-rf (R-E15).** A bend of another angle than 90 deg keeps
+  its arms' centre lines to the vertex, its capacitance there: cut to a corner square's edges, as qucsator's MCORN is at
+  90 deg, rf_coupler's eight 45 deg bends had moved it from 0.029 to 0.060 from openEMS (now 0.028 on qucsator, 0.027 on
+  scikit-rf). On scikit-rf a tee's stub, a cross's narrower pair and the arms of a junction of five or more start at
+  the widest straight run's edge (they had met at the centre lines): rf_branchline 0.135 -> 0.037, rf_radialstub 0.158
+  -> 0.052, rf_interdig 0.065 -> 0.041, rf_wilkinson 0.086 -> 0.072 from openEMS; a five-arm junction on qucsator the
+  same.
 - **mom25d's via holes (`--mom-planes holes`): a via ending on the plane sees the hole's first-order field.** A
   first-order shape leaves a potential on the plane outside its hole (-e1(0) cos phi / rho), which a via ending there
   had not been charged: such vias did not excite the dipoles at all. Two via ports either side of a 0.6 mm hole: Z21

@@ -491,7 +491,8 @@ def _junctions(lm, model):
         dirs = [_out_dir(e, k) for e, k in ar]
         ws = [e.w for e, _ in ar]
         xs = {e.xs for e, _ in ar}
-        rec = dict(node=node, arms=ar, widths=ws, xy=xy, xs=xs.pop() if len(xs) == 1 else 'mixed', layer=ar[0][0].layer)
+        rec = dict(node=node, arms=ar, widths=ws, xy=xy, xs=xs.pop() if len(xs) == 1 else 'mixed', layer=ar[0][0].layer,
+                   dirs=[tuple(map(float, d)) for d in dirs])           # (each arm's outward direction)
         n = len(ar)
         if n == 1:
             rec['kind'] = 'open'
@@ -513,11 +514,13 @@ def _junctions(lm, model):
             k3 = ({0, 1, 2} - set(best)).pop()
             rec['arms'] = [ar[best[0]], ar[best[1]], ar[k3]]
             rec['widths'] = [ar[best[0]][0].w, ar[best[1]][0].w, ar[k3][0].w]
+            rec['dirs'] = [rec['dirs'][best[0]], rec['dirs'][best[1]], rec['dirs'][k3]]
             rec['kind'] = 'tee'
         elif n == 4:
             order = sorted(range(4), key=lambda i: math.atan2(dirs[i][1], dirs[i][0]))
             rec['arms'] = [ar[i] for i in order]
             rec['widths'] = [ar[i][0].w for i in order]
+            rec['dirs'] = [rec['dirs'][i] for i in order]
             rec['kind'] = 'cross'
         else:
             rec['kind'] = 'junction'

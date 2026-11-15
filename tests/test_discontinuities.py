@@ -47,3 +47,28 @@ def test_an_open_stub_is_its_line_lengthened_by_the_end():
     lm.junctions = []
     S0, _ = solve(lm, [SimpleNamespace(name='P1', z0=50.0)], f, backend='skrf')
     assert np.abs(S0[:, 0, 0] - (zin - 50) / (zin + 50)).max() > 10 * np.abs(S[:, 0, 0] - (zin - 50) / (zin + 50)).max()
+
+
+def test_junction_cuts_tee_cross_and_five_arms():
+    """A junction of three or more arms (R-E15): the widest straight run through it runs on, every other arm starts
+    at its edge; with no straight run, each arm at the widest arm across it."""
+    from kicad2ems.solvers.lines.fastsolve import junction_cuts
+    E, N, W, S = (1, 0), (0, 1), (-1, 0), (0, -1)
+    tee = dict(widths=[1.5, 1.5, 0.6], dirs=[E, W, N])
+    assert junction_cuts(tee) == [0.0, 0.0, 0.75]
+    cross = dict(widths=[1.5, 0.4, 1.5, 0.4], dirs=[E, N, W, S])
+    assert junction_cuts(cross) == [0.0, 0.75, 0.0, 0.75]
+    import math
+    d = (math.cos(math.radians(45)), math.sin(math.radians(45)))
+    five = dict(widths=[1.0, 1.0, 0.5, 0.5, 0.3], dirs=[E, W, N, S, d])
+    assert junction_cuts(five) == [0.0, 0.0, 0.5, 0.5, 0.5]
+    y = dict(widths=[1.0, 0.8, 0.6], dirs=[E, (-0.5, 0.866), (-0.5, -0.866)])     # no straight run: a Y
+    assert junction_cuts(y) == [0.4, 0.5, 0.5]
+
+
+def test_a_bend_of_another_angle_keeps_its_centre_lines():
+    """A 45 deg bend: its capacitance at the vertex, its arms to the vertex (cut as a 90 deg corner's square,
+    rf_coupler had gone from 0.029 to 0.060 from openEMS)."""
+    from kicad2ems.solvers.lines.fastsolve import bend_reach
+    assert bend_reach(dict(kind='bend', widths=[1.0, 1.0], angle=45.0)) == [0.0, 0.0]
+    assert np.allclose(bend_reach(dict(kind='corner', widths=[1.0, 2.0], angle=90.0)), [1.0, 0.5])

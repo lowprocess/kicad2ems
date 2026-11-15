@@ -90,6 +90,10 @@ def _skrf(lm, ports, freq, sheet, sigma):
         if j['kind'] in ('corner', 'bend') and discontinuity_c(j, sheet):
             for (e, end), r in zip(j['arms'], bend_reach(j)):
                 cut[id(e)] = cut.get(id(e), 0.0) + r
+        elif j['kind'] in ('tee', 'cross', 'junction') and j['xs'] == 'microstrip':     # (R-E15: they had joined
+            for (e, end), r in zip(j['arms'], junction_cuts(j)):                         # at their centre lines)
+                if e.group is None and r:
+                    cut[id(e)] = cut.get(id(e), 0.0) + r
     span = lambda e: max(e.length - cut.get(id(e), 0.0), 1e-3) * 1e-3     # (m)
 
     def series_z(z, name):
@@ -177,9 +181,33 @@ def _skrf(lm, ports, freq, sheet, sigma):
         return res.s, list(cir.port_names)
 
 
+def junction_cuts(j):
+    """How far each arm of a junction of three or more arms (a tee, a cross, five or more) starts from its node (mm),
+    for the backends without a model of it: the widest straight run through it (two arms facing each other) runs on
+    uncut, its centre line the junction's; every other arm starts at that run's edge, half its width out (its centre
+    line had reached the node across the run's copper). With no straight run, each arm starts at the widest arm across
+    it, half that width out. [cut per arm, in j['arms']'s order]."""
+    ws, ds = j['widths'], np.asarray(j.get('dirs') or [], float)
+    n = len(ws)
+    if len(ds) != n:
+        return [0.0] * n
+    pairs = [(a, b) for a in range(n) for b in range(a + 1, n) if np.dot(ds[a], ds[b]) < -0.9]
+    if pairs:
+        a, b = max(pairs, key=lambda ab: ws[ab[0]] + ws[ab[1]])
+        run = 0.5 * (ws[a] + ws[b])
+        return [0.0 if k in (a, b) else run / 2 for k in range(n)]
+    return [max((ws[m] for m in range(n) if m != k and abs(np.dot(ds[k], ds[m])) < 0.9), default=0.0) / 2
+            for k in range(n)]
+
+
 def bend_reach(j):
-    """How far a corner's or a bend's square reaches along each of its two arms (mm): half the other arm's width
-    (a 90 deg corner, qucsator's MCORN), times tan(angle / 2) for another angle (none for a straight line)."""
+    """How far a corner's square reaches along each of its two arms (mm): half the other arm's width (a 90 deg corner,
+    qucsator's MCORN); a bend of another angle none (its capacitance alone, at the vertex)."""
+    if j['kind'] == 'bend':
+        # another angle than 90: the arms keep their centre lines to the vertex (the current turns along it). Cut to
+        # the corner square's edges, as at a 90 deg corner, rf_coupler's eight 45 deg bends had moved it from 0.029
+        # to 0.060 from openEMS (0.078 with the cut alone); with the capacitance alone 0.028 (R-E15, 2026-11-15)
+        return [0.0, 0.0]
     t = math.tan(math.radians(min(max(j.get('angle', 90.0), 0.0), 135.0)) / 2)
     return [j['widths'][1] / 2 * t, j['widths'][0] / 2 * t]
 
@@ -304,6 +332,10 @@ def _junction_plan(lm):
         if j['kind'] == 'bend' and j['xs'] == 'microstrip' and discontinuity_c(j):     # too, its capacitance at
             for (e, end), r in zip(j['arms'], bend_reach(j)):                             # the node (one node)
                 short[(id(e), end)] = r
+        elif j['kind'] == 'junction' and j['xs'] == 'microstrip':  # five arms or more: no element; the arms start
+            for (e, end), r in zip(j['arms'], junction_cuts(j)):   # at the widest straight run's edge (R-E15)
+                if e.group is None and r:
+                    short[(id(e), end)] = r
     return endnode, short
 
 

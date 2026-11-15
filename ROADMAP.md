@@ -151,14 +151,8 @@ that: nothing in it may fix a panel in place. Left:
 5. **Coupled lines with a jog** (R-E17). *Done 2026-11-15*: a polyline trace whose straight run lies beside another
    line is cut at its corners and that run paired (dfsynth's order-5 edge-coupled band-pass: 0 to 6 coupled
    sections, its pass band at 2.34 GHz against dfsynth's model's 2.38).
-6. **Discontinuities** (R-E15). Since 2026-11-15 the scikit-rf backend has open ends (Kirschning-Jansen-Koster),
-   steps (Edwards) and corners and bends (Gupta-Garg-Bahl, scaled by tan(θ/2) for an angle other than 90°, their
-   arms to the corner square's edges as qucsator's), and qucsator a bend of another angle the same way
-   (`lines/formulas.py`; the hairpin's pass band on scikit-rf 3.25 to 3.30 GHz, qucsator 3.31, openEMS 3.37).
-   Left: tees and crosses on scikit-rf, a junction of five arms on either. The 45° bends' estimate is to check against
-   openEMS: on the Solver Matrix of 2026-11-15 it moved `rf_coupler` (eight 45° bends) from 0.029 to 0.060 from
-   openEMS (its S21 phase 9° behind at 4 GHz, 3.6° before), while `rf_crosstalk_guard` (0.040 → 0.030) and
-   `demo_transition` (0.071 → 0.066) came closer.
+6. **Discontinuities, the rest** (R-E15, now in the CHANGELOG): a tee's and a cross's own reactances on the
+   scikit-rf backend (Hammerstad's MTEE, MCROSS: it has their geometry since 2026-11-15, not their L and C).
 7. **Dispersion and the losses' next step**: a Djordjevic-Sarkar εr(f) for each layer before the solve; the
    conductor loss from the cross-section (Wheeler's rule: two solves with the copper set back by half a skin
    depth) in place of 2 Rs / w, and each harmonic's in qucsator (its RLCG holds R and G at the band centre).
