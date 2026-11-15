@@ -1098,7 +1098,7 @@ class Engine:
         self.op = op
         self.be = make_backend(op, backend, dtype)
 
-    def run(self, path, nr_ts, end_crit, verbose=1, out=print):
+    def run(self, path, nr_ts, end_crit, verbose=1, out=print, max_time=None):
         """Run up to nr_ts timesteps in folder `path` (probe files written there), ending when the energy (the
         field's and the lumped branches', backend.energy) falls below end_crit times its peak after the excitation. Returns dict(steps, seconds, reason, db)."""
         op, be = self.op, self.be
@@ -1174,6 +1174,9 @@ class Engine:
                     if os.path.exists(abort):
                         reason = 'abort'
                         break
+                    if max_time and now - t0 >= max_time:             # openEMS's MaxTime: the run's own time
+                        reason = 'max_time'
+                        break
             be.sync()
             flush()
             written = dumps.close()
@@ -1186,6 +1189,8 @@ class Engine:
             out(f"RunFDTD: end-criteria of {10 * np.log10(end_crit):.2f}dB reached after {s} timesteps ({db:.2f}dB)")
         elif reason == 'abort':
             out(f"RunFDTD: aborted (ABORT file) after {s} timesteps ({db:.2f}dB)")
+        elif reason == 'max_time':
+            out(f"RunFDTD: max. simulation time ({max_time:g} s) reached after {s} timesteps ({db:.2f}dB)")
         elif reason == 'unstable':
             out(f"RunFDTD: WARNING: the fields grew without bound after {s} timesteps - unstable")
         else:

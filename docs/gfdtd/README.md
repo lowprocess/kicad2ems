@@ -69,11 +69,11 @@ among them) work on gfdtd unchanged.
 | Ports | all of openEMS's Python ports: lumped, curve, microstrip (MSL), stripline, CPW, coaxial, rectangular and circular waveguide, any waveguide mode by functions or mode file ([Ports](#ports)) |
 | Excitations | soft and hard, E and H field (types 0-3), weighted by functions of x, y, z, rho, a, r, t or a mode file, delayed |
 | Probes | voltage, current, voltage and current mode matching (types 10, 11) |
-| Excitation | Gaussian pulse (openEMS's) |
+| Excitation | openEMS's Gaussian pulse, sinus, Dirac, step and custom function of t (`SetGaussExcite`, `SetSinusExcite`, `SetDiracExcite`, `SetStepExcite`, `SetCustomExcite`, and their XML types 0, 1, 2, 3, 10); a sinus, step or custom one lasts the run |
 | Boundaries | PEC, PMC, first-order Mur, PML_n (convolutional PML over the n outermost cells, PEC behind it) |
 | Field dumps | `DumpBox` E, H, J (rot H), Jc (kappa E); time domain (.vtr) and frequency domain (HDF5); at the cell centres (dump mode 2) or the nodes (modes 0, 1); one file per box |
 | Far field | openEMS's NF2FF box (`CreateNF2FFBox`, `CalcNF2FF`), frequency domain, PEC / PMC mirrors: antenna mode |
-| End | the energy in the field and in the lumped parts (`EndCriteria`), timestep limit, `ABORT` |
+| End | the energy in the field and in the lumped parts (`EndCriteria`), timestep limit, `MaxTime` (the run's own seconds), `ABORT` |
 
 Not yet: Lorentz materials, time-domain NF2FF, the mode-purity column of mode-matching probes,
 field probes (types 2, 3), and cylindrical grids. A file that holds these is still read: what gfdtd doesn't

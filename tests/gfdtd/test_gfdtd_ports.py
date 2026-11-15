@@ -313,3 +313,40 @@ def test_auto_runs_on_the_cpu_where_the_gpu_is_too_small(monkeypatch):
     assert be.name == 'numpy' and 'a small GPU' in be.fallback and 'running on the CPU' in be.fallback
     with pytest.raises(MemoryError):
         E.make_backend(op, 'vulkan')
+
+
+def test_openems_other_excitations_and_its_max_time(tmp_path):
+    """R-B18: SetSinusExcite, SetDiracExcite, SetStepExcite and SetCustomExcite give openEMS's signals, which run to
+    their last step (a pulse's end criterion does not stop a sinus), and survive the XML; MaxTime stops a run on its
+    own time."""
+    from gfdtd.operator import excitation_signal
+    from gfdtd.engine import Engine
+    from gfdtd.fdtd import openEMS
+    dt = 1e-12
+    s, h = excitation_signal(1, 1e9, 0.0, dt, 1000)
+    assert len(s) == 1001 and s[250] == pytest.approx(np.sin(2 * np.pi * 1e9 * 250 * dt)) and h[0] == pytest.approx(np.sin(np.pi * 1e9 * dt))
+    assert list(excitation_signal(2, 0.0, 5e9, dt, 1000)[0]) == [0.0, 1.0]
+    st = excitation_signal(3, 0.0, 5e9, dt, 100)[0]
+    assert st[0] == 0 and (st[1:] == 1).all() and len(st) == 101
+    c = excitation_signal(10, 1e9, 5e9, dt, 10, 'sin(2*pi*1e9*t)*(t>2e-12)')[0]
+    assert c[2] == 0 and c[3] == pytest.approx(np.sin(2 * np.pi * 1e9 * 3e-12))
+    with pytest.raises(ValueError, match='NrTS'):
+        excitation_signal(1, 1e9, 0.0, dt, 10 ** 9)
+    for setup, kind in ((lambda F: F.SetSinusExcite(2e9), 1), (lambda F: F.SetDiracExcite(5e9), 2),
+                        (lambda F: F.SetStepExcite(5e9), 3), (lambda F: F.SetCustomExcite('sin(2*pi*1e9*t)', 1e9, 5e9), 10)):
+        F, csx = _fdtd(1e9, 1e9, ['PEC'] * 6, nrts=300)
+        setup(F)
+        g = csx.GetGrid()
+        for a in 'xyz':
+            g.SetLines(a, np.arange(0, 6.0))
+        csx.AddExcitation('p', exc_type=0, exc_val=[0, 0, 1]).AddBox([2, 2, 1], [2, 2, 3])
+        F.Write2XML(str(tmp_path / f'{kind}.xml'))
+        G = openEMS()
+        G.ReadFromXML(str(tmp_path / f'{kind}.xml'))
+        assert G.excitation['type'] == kind and G.settings()['excite_type'] == kind
+        op = build(csx, F.settings())
+        r = Engine(op, 'numpy').run(str(tmp_path / f'run{kind}'), 300, 1e-5, verbose=0, out=lambda *a: None)
+        assert r['steps'] == 300 and r['reason'] == 'steps' if kind != 2 else r['steps'] <= 300
+    lines = []
+    r = Engine(op, 'numpy').run(str(tmp_path / 'short'), 10 ** 6, 0, verbose=0, out=lines.append, max_time=1e-9)
+    assert r['reason'] == 'max_time' and r['steps'] < 10 ** 6 and any('max. simulation time' in l for l in lines)

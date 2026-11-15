@@ -42,8 +42,7 @@ class openEMS:                                                       # noqa: N80
         self.ports = []
         self.backend = backend
         self.op = None
-        if kw.get('MaxTime'):
-            raise NotImplementedError("gfdtd: MaxTime")
+        self.max_time = float(kw['MaxTime']) if kw.get('MaxTime') else None        # s of the run's own (wall) time
         if int(kw.get('CoordSystem', 0) or 0):                       # (these had been dropped without a word)
             raise NotImplementedError("gfdtd: CoordSystem 1 (cylindrical grids)")
         if kw.get('MultiGrid'):
@@ -66,6 +65,22 @@ class openEMS:                                                       # noqa: N80
 
     def SetGaussExcite(self, f0, fc):
         self.excitation = dict(type=0, f0=float(f0), fc=float(fc))
+
+    # openEMS's other excitations (R-B18): their signals in operator.excitation_signal
+    def SetSinusExcite(self, f0):
+        self.excitation = dict(type=1, f0=float(f0), fc=0.0)
+
+    def SetDiracExcite(self, f_max):
+        self.excitation = dict(type=2, f0=0.0, fc=float(f_max))
+
+    def SetStepExcite(self, f_max):
+        self.excitation = dict(type=3, f0=0.0, fc=float(f_max))
+
+    def SetCustomExcite(self, _str, f0, f_max):
+        self.excitation = dict(type=10, f0=float(f0), fc=float(f_max), function=str(_str))
+
+    def SetMaxTime(self, val):
+        self.max_time = float(val) if val else None
 
     def SetBoundaryCond(self, BC):
         if len(BC) != 6:
@@ -116,8 +131,9 @@ class openEMS:                                                       # noqa: N80
 
     def settings(self):
         if self.excitation is None:
-            raise ValueError("gfdtd: no excitation (SetGaussExcite)")
+            raise ValueError("gfdtd: no excitation (SetGaussExcite, SetSinusExcite, SetDiracExcite, SetStepExcite, SetCustomExcite)")
         return dict(bc=self.bc, f0=self.excitation['f0'], fc=self.excitation['fc'], nr_ts=self.nr_ts,
+                    excite_type=self.excitation.get('type', 0), excite_function=self.excitation.get('function'),
                     end_crit=self.end_crit, oversampling=self.oversampling,
                     timestep_factor=getattr(self, 'timestep_factor', 1.0), timestep=getattr(self, 'timestep', None),
                     ignored=list(getattr(self, 'ignored', ())))
@@ -154,8 +170,15 @@ class openEMS:                                                       # noqa: N80
         top = ET.Element('openEMS')
         f = ET.SubElement(top, 'FDTD', NumberOfTimesteps=str(self.nr_ts), endCriteria=f"{self.end_crit:g}",
                           OverSampling=str(self.oversampling))
-        if self.excitation:
-            ET.SubElement(f, 'Excitation', Type='0', f0=f"{self.excitation['f0']:g}", fc=f"{self.excitation['fc']:g}")
+        if self.excitation:                                         # (openEMS's: f0 the Dirac's and step's f_max)
+            ex = self.excitation
+            kind = int(ex.get('type', 0))
+            attrs = dict(Type=str(kind), f0=f"{(ex['fc'] if kind in (2, 3) else ex['f0']):g}")
+            if kind in (0, 10):
+                attrs['fc'] = f"{ex['fc']:g}"
+            if kind == 10:
+                attrs['Function'] = ex['function']
+            ET.SubElement(f, 'Excitation', **attrs)
         ET.SubElement(f, 'BoundaryCond', **dict(zip(SIDES, self.bc)))
         top.append(self.csx.to_xml())
         C._write(top, file)
@@ -169,9 +192,20 @@ class openEMS:                                                       # noqa: N80
         self.end_crit = float(f.get('endCriteria', 1e-5))
         self.oversampling = int(float(f.get('OverSampling', 4)))
         ex = f.find('Excitation')
-        if ex is None or int(ex.get('Type', 0)) != 0:
-            raise ValueError(f"{file}: gfdtd runs a Gaussian excitation (Type 0) only")
-        self.SetGaussExcite(float(ex.get('f0')), float(ex.get('fc')))
+        kind = int(ex.get('Type', 0)) if ex is not None else None
+        if kind == 0:
+            self.SetGaussExcite(float(ex.get('f0')), float(ex.get('fc')))
+        elif kind == 1:
+            self.SetSinusExcite(float(ex.get('f0')))
+        elif kind == 2:
+            self.SetDiracExcite(float(ex.get('f0')))
+        elif kind == 3:
+            self.SetStepExcite(float(ex.get('f0')))
+        elif kind == 10:
+            self.SetCustomExcite(ex.get('Function'), float(ex.get('f0')), float(ex.get('fc')))
+        else:
+            raise ValueError(f"{file}: an excitation of Type {kind}: gfdtd runs 0 (Gaussian), 1 (sinus), 2 (Dirac), "
+                             f"3 (step), 10 (custom)")
         b = f.find('BoundaryCond')
         self.bc = [_bc(b.get(s, 'PEC')) for s in SIDES] if b is not None else ['PEC'] * 6
         self.csx = C.ContinuousStructure()
@@ -217,7 +251,7 @@ class openEMS:                                                       # noqa: N80
                 out(f"Note: {eng.be.fallback}")
             if not setup_only:
                 self.result = eng.run(sim_path, self.nr_ts, self.end_crit, verbose=1 if verbose is None else verbose,
-                                      out=out)
+                                      out=out, max_time=getattr(self, 'max_time', None))
             eng.be.sync()
         return 0
 

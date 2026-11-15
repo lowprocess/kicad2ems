@@ -89,6 +89,21 @@ def evaluate(expr, coords):
     return v
 
 
+def evaluate_signal(expr, t):
+    """openEMS's custom excitation (SetCustomExcite): its expression of t (seconds), in CSXCAD's syntax, at the
+    times t."""
+    t = np.asarray(t, float)
+    with np.errstate(all='ignore'):
+        ns = dict(_FUNCS, t=t, _if=lambda c, a, b: np.where(np.asarray(c) != 0, a, b))
+        ns.pop('if')
+        e = re.sub(r'(?<![<>!=])=(?!=)', '==', str(expr).strip().replace('^', '**'))
+        e = re.sub(r'\bif\s*\(', '_if(', e.replace('&', ' * ').replace('|', ' + '))
+        v = eval(compile(e, '<excitation>', 'eval'), {'__builtins__': {}}, ns)     # noqa: S307 (the model's own)
+        v = np.broadcast_to(np.asarray(v, float), t.shape).copy()
+    v[~np.isfinite(v)] = 0.0
+    return v
+
+
 def read_mode_file(path):
     """openEMS's mode file (HDF5): 1-D 'x', 'y' (the two transverse axes) and 2-D 'Vx', 'Vy' on them."""
     import h5py

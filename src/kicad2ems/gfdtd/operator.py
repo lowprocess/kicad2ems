@@ -445,7 +445,8 @@ def _core_key(csx, fdtd):
         _digest(h, getattr(csx, 'background', None), set())
         props = [p for p in csx.GetAllProperties() if not isinstance(p, (C.Excitation, C.ProbeBox, C.DumpBox))]
         _digest(h, props, set())
-        _digest(h, {k: v for k, v in fdtd.items() if k not in ('nr_ts', 'end_crit')}, set())
+        _digest(h, {k: v for k, v in fdtd.items() if k not in ('nr_ts', 'end_crit', 'excite_type', 'excite_function')},
+                set())
         return h.hexdigest()
     except Exception:                                               # noqa: BLE001  (no key: built anew)
         return None
@@ -499,21 +500,49 @@ def _finish(op, props, fdtd, log, grid, sh, vv, vi, iv, lE, lH, aE, kap, dt, nce
             op.kappa_E = np.stack([_edge_average(kap, a, grid) for a in range(3)])
     op.vv, op.vi, op.iv = vv, vi, iv
     op.cells = int(np.prod(ncell))
-    # excitation signal: openEMS's Gaussian pulse
+    # excitation signal: openEMS's Gaussian pulse, or its sinus, Dirac, step or custom one (R-B18)
     f0, fc = float(fdtd['f0']), float(fdtd['fc'])
     op.f0, op.fc = f0, fc
-    n = int(2 * 9.0 / (2 * np.pi * fc) / dt)
-    t = np.arange(n + 1) * dt
-    gauss = lambda t: np.cos(2 * np.pi * f0 * (t - 9.0 / (2 * np.pi * fc))) * np.exp(-(2 * np.pi * fc * t / 3 - 3) ** 2)
-    op.signal = gauss(t)
-    op.signal_h = gauss(t + dt / 2)                                # the H excitations' signal: half a step later
+    op.excite_type = kind = int(fdtd.get('excite_type', 0) or 0)
+    op.signal, op.signal_h = excitation_signal(kind, f0, fc, dt, int(fdtd.get('nr_ts', 1e9)), fdtd.get('excite_function'))
     op.delay_max = max([g['delay'] for g in op.exc_more], default=0)
-    op.nyquist = nyq = max(1, int(1.0 / (2 * (f0 + fc) * dt)))
+    op.nyquist = nyq = max(1, int(1.0 / (2 * ((f0 + fc) if kind == 0 else max(f0, fc)) * dt)))
     op.sub = max(1, nyq // int(fdtd.get('oversampling', 4) or 4))
     if log:
         for line in describe(op):
             log(line)
     return op
+
+
+SIGNAL_MAX = 20_000_000     # steps a signal that lasts the run (sinus, step, custom) may hold
+
+
+def excitation_signal(kind, f0, fc, dt, nr_ts, function=None):
+    """(signal at the E steps, at the H steps half a step later) of openEMS's excitation `kind`: 0 the Gaussian
+    pulse (f0, fc), 1 sin(2 pi f0 t), 2 a Dirac (one step, f_max = fc), 3 a step (f_max = fc), 10 a custom function
+    of t (f0, f_max = fc). A pulse's signal ends with it; the others last the whole run (nr_ts steps), so that the
+    end criterion never stops them (as openEMS's: a sinus runs to its last step)."""
+    if kind == 0:
+        n = int(2 * 9.0 / (2 * np.pi * fc) / dt)
+        t = np.arange(n + 1) * dt
+        g = lambda t: np.cos(2 * np.pi * f0 * (t - 9.0 / (2 * np.pi * fc))) * np.exp(-(2 * np.pi * fc * t / 3 - 3) ** 2)
+        return g(t), g(t + dt / 2)
+    if kind == 2:
+        return np.array([0.0, 1.0]), np.array([0.0, 1.0])
+    if kind not in (1, 3, 10):
+        raise ValueError(f"gfdtd: excitation type {kind}: 0 (Gaussian), 1 (sinus), 2 (Dirac), 3 (step), 10 (custom)")
+    if nr_ts > SIGNAL_MAX:
+        raise ValueError(f"gfdtd: a {('sinusoidal', 'step', 'custom')[(1, 3, 10).index(kind)]} excitation lasts the "
+                         f"run: set its number of timesteps (NrTS), at most {SIGNAL_MAX:,} (it is {nr_ts:,})")
+    t = np.arange(nr_ts + 1) * dt
+    if kind == 1:
+        return np.sin(2 * np.pi * f0 * t), np.sin(2 * np.pi * f0 * (t + dt / 2))
+    if kind == 3:
+        return np.r_[0.0, np.ones(nr_ts)], np.r_[0.0, np.ones(nr_ts)]
+    from .csx import evaluate_signal
+    if not function:
+        raise ValueError("gfdtd: a custom excitation without its function")
+    return evaluate_signal(function, t), evaluate_signal(function, t + dt / 2)
 
 
 def _core(csx, fdtd):
