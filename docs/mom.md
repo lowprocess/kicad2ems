@@ -365,7 +365,9 @@ the mesh it solved on. Quads work with the direct solver on the CPU and the GPU;
 `--mom-coarsen X` lets the cells grow away from the features (the outline's corners and bends, vias, port and cut
 lines): from dmax at a feature by half the distance to the nearest one, up to X × dmax, along the outline, the edge
 rings and inside them; the spacing across an edge is kept. The error comes from larger cells inside wide copper,
-not along the outline, and X = 2 and 3 give nearly the same error: 2 is the useful setting.
+not along the outline, and X = 2 and 3 give nearly the same error: 2 is the useful setting. A meshed plane is coarsened
+outside its fine regions only: under the copper of the layers near it, where the return current runs, its cells
+keep their size (coarsened there, rf_msvia's S at 10 GHz is 0.05–0.10 further from openEMS).
 
 <a id="stitching"></a>
 With `--mom-stitching-vias square` each fence via snaps to a whole cell of the structured grid, its four triangles

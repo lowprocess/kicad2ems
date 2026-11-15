@@ -69,13 +69,15 @@ pip install .                   # kicad2ems: the board model and the line model
 pip install '.[openems,mom,gfdtd]'   # the full-wave solvers' packages (openems: the plugin; openEMS itself as below)
 pip install '.[gui,dumps,fast]' # the GUI, field dumps, the scikit-rf line model
 pip install '.[all]'            # or all of the above
-python -m mom25d.core.build     # optional: mom25d's compiled core
+python -m mom25d.core.build     # mom25d's compiled core: needed, it holds the mesher
+python -m pcbqs.core.build      # pcbqs's compiled core: needed, it holds the mesher
 python -m gfdtd.core.build      # optional: gfdtd's compiled CPU core
 pip install '.[gpu-vulkan]'     # optional: the GPU through Vulkan (slangpy); or a CuPy wheel such as cupy-cuda12x
 ```
 
-mom25d's mesher, triangle, has no wheel on PyPI for every Python (none for 3.14). If the `mom` extra fails on it,
-build it as [mom25d's README](https://github.com/lowprocess/mom25d#install) says (the installer does it for you).
+mom25d and pcbqs mesh in their compiled cores (the constrained Delaunay triangulation of
+[CDT](https://github.com/artem-ogre/CDT), vendored in each): building them needs a C++17 compiler and pybind11
+(the `core` extras). The installer builds them for you.
 
 openEMS is not on PyPI. On Linux, install it from your distribution, or build it with `tools/build_openems.sh
 [prefix]` (default `~/opt/openEMS`; its header lists the build dependencies), which installs its Python packages

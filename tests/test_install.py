@@ -175,16 +175,38 @@ def test_qs_can_be_selected_without_mom_or_fdtd(inst,monkeypatch):
     assert setup.extras==['qs','core'] and 'pcbqs' in inst.STACK
 
 
-def test_qs_only_mesher_source_fallback(inst,monkeypatch):
-    setup=inst.Installer.__new__(inst.Installer);setup.mom=False;setup.qs=True;setup.vpy='python';setup.pyver='3.14'
-    calls=[]
-    def pip(*args,**kwargs):
-        calls.append((args,kwargs));return len(calls)>1
-    monkeypatch.setattr(setup,'pip',pip);monkeypatch.setattr(inst,'py_ok',lambda *_:False);monkeypatch.setattr(inst,'WINDOWS',False)
-    setup.ensure_triangle()
-    assert calls[0][0]==('triangle>=20230923',)
-    assert calls[1][0][1].endswith('@'+inst.TRIANGLE_COMMIT)
-    assert calls[1][1]['env']=={'CFLAGS':'-O2 -ffp-contract=off'}
+def test_mesh_cores_are_built_without_asking(inst, monkeypatch):
+    """mom25d's and pcbqs's cores hold their mesher: built without asking whenever either is chosen; gfdtd's alone
+    is asked about."""
+    def choose(yes, cc):
+        setup = inst.Installer.__new__(inst.Installer)
+        setup.oems = 'none'
+        asked = []
+        monkeypatch.setattr(inst, 'ask', lambda prompt, default: asked.append(prompt) or prompt.startswith(yes))
+        monkeypatch.setattr(setup, 'has_compiler', lambda: cc)
+        monkeypatch.setattr(inst, 'note', lambda *a: None)
+        setup.choose_parts()
+        return setup, asked
+    setup, asked = choose(('pcbqs (',), 'g++')
+    assert setup.core and 'core' in setup.extras and not any(a.startswith('build') for a in asked)
+    setup, asked = choose(('gfdtd (', "build gfdtd's"), 'g++')
+    assert setup.core and any(a.startswith("build gfdtd's") for a in asked)
+    setup, asked = choose(('pcbqs (',), None)
+    assert not setup.core and inst.MESH_CORES == ('mom25d', 'pcbqs')
+
+
+def test_core_stale_sees_headers(inst, tmp_path):
+    (tmp_path / 'core' / 'CDT').mkdir(parents=True)
+    built = tmp_path / '_core.so'
+    built.write_text('x')
+    os.utime(built, (1000, 1000))
+    for name in ('k.hpp', os.path.join('CDT', 'CDT.h')):
+        f = tmp_path / 'core' / name
+        f.write_text('x')
+        os.utime(f, (2000, 2000))
+        assert inst.core_stale(str(tmp_path), str(built))
+        f.unlink()
+    assert not inst.core_stale(str(tmp_path), str(built))
 
 
 def _fem(inst, monkeypatch, tmp_path, *args, answers=None):

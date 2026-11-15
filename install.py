@@ -31,11 +31,8 @@ Start-menu shortcut on Windows). Makes the example boards that are not in the re
 added to (or made anew if you say so)."""
 import argparse, glob, json, os, re, shutil, subprocess, sys, sysconfig, tempfile
 
-TRIANGLE_COMMIT = '595b43eb6682992a0b1012b9671bf860c0e6ae56'    # triangle 20250106, builds on Python 3.14
-# triangle's exact-arithmetic predicates need every product rounded on its own: a fused multiply-add (GCC fuses them
-# at -O2 where the target has FMA; clang on ARM always) breaks them, and the mesher then never finishes
-TRIANGLE_CFLAGS = '-O2 -ffp-contract=off'
 CUPY_WHEELS = ('cupy-rocm-7-0', 'cupy-cuda12x', 'cupy-cuda13x')
+MESH_CORES = ('mom25d', 'pcbqs')        # their compiled cores hold the mesher (CDT): required
 STACK = ('emsdev', 'kicad2ems-gui', 'kicad2ems-fdtd', 'mom25d', 'pcbqs', 'gfdtd', 'dfsynth', 'kicad2ems-fem')
 REPO = os.path.dirname(os.path.abspath(__file__))
 WINDOWS = sys.platform == 'win32'
@@ -441,12 +438,12 @@ def core_file(vpy, folder):
 
 
 def core_stale(folder, built):
-    """The compiled core is missing, or a source of it (core/*.cpp, *.h) is newer."""
+    """The compiled core is missing, or a source of it (core/*.cpp, *.h, *.hpp, and the vendored CDT's) is newer."""
     if not os.path.isfile(built):
         return True
     t = os.path.getmtime(built)
-    return any(os.path.getmtime(f) > t for f in glob.glob(os.path.join(folder, 'core', '*.cpp')) +
-               glob.glob(os.path.join(folder, 'core', '*.h')))
+    return any(os.path.getmtime(f) > t for pat in ('*.cpp', '*.h', '*.hpp', os.path.join('CDT', '*'))
+               for f in glob.glob(os.path.join(folder, 'core', pat)))
 
 
 def find_install(py):
@@ -741,14 +738,24 @@ class Installer:
         self.core = False
         if self.mom or self.qs or self.gfdtd:
             cc = self.has_compiler()
+            need = self.mom or self.qs                  # their mesher is in the core (CDT): no core, no mesh
             if cc:
-                self.core = ask(f"build the compiled cores (C++ / OpenMP with {cc}: mom25d ~5x, pcbqs QS fill ~5x, gfdtd ~15x faster on "
-                                f"the CPU)?", 'y')
+                if need:
+                    note(f"mom25d and pcbqs mesh with their compiled cores (C++ / OpenMP): they are built with {cc}"
+                         + (" (gfdtd's too)" if self.gfdtd else ''))
+                    self.core = True
+                else:
+                    self.core = ask(f"build gfdtd's compiled core (C++ / OpenMP with {cc}: ~15x faster on the CPU)?", 'y')
                 if self.core:
                     self.extras.append('core')
             else:
-                note("no C++ compiler (" + ("Visual Studio 2022's C++ tools, or MinGW-w64's g++" if WINDOWS else 'g++')
-                     + "): the compiled cores are skipped (NumPy kernels: mom25d ~5x, pcbqs QS fill ~5x, gfdtd ~15x slower)")
+                compiler = "Visual Studio 2022's C++ tools, or MinGW-w64's g++" if WINDOWS else 'g++'
+                if need:
+                    note(f"WARNING: no C++ compiler ({compiler}): mom25d and pcbqs mesh with their compiled cores and do "
+                         f"not run without them. Install one and run the installer again")
+                else:
+                    note(f"no C++ compiler ({compiler}): gfdtd's compiled core is skipped (its NumPy kernels, ~15x "
+                         f"slower)")
         if ask("test tools (pytest)?", 'n'):
             self.extras.append('test')
         if self.oems != 'none':
@@ -1028,23 +1035,12 @@ class Installer:
                     note("the Palace build failed or was not finished (see above): kicad2ems-fem is installed without "
                          "it; run bash tools/build_palace.sh " + prefix + " again (Spack goes on where it stopped)")
 
-    def ensure_triangle(self):
-        # MoM and QS meshing: PyPI has no triangle >= 20230923 for every Python (none for 3.14): build it from its
-        # repository
-        if (self.mom or self.qs) and not py_ok(self.vpy, 'import triangle') and not self.pip('triangle>=20230923', check=False,
-                                                                            quiet=True):
-            note(f"no triangle wheel for Python {self.pyver}: building it from github.com/drufat/triangle (needs a C "
-                 f"compiler)")
-            self.pip('--no-cache-dir', f"triangle @ git+https://github.com/drufat/triangle.git@{TRIANGLE_COMMIT}",
-                     env=None if WINDOWS else {'CFLAGS': TRIANGLE_CFLAGS})    # MSVC: /fp:precise doesn't fuse
-
     # ---- install ----
     def install(self):
         t = self.t
         spec = REPO + (f"[{','.join(self.extras)}]" if self.extras else '')
         how = " (editable: this checkout's code is what runs)" if t.editable else ' (a copy of this checkout)'
         bold(f"Installing kicad2ems{' [' + ','.join(self.extras) + ']' if self.extras else ''}{how}")
-        self.ensure_triangle()
         if self.oems == 'folder':
             bold(f"openEMS's Python packages from {self.oems_dir}")
             self.pip(*self.openems_wheels(self.pyver))
@@ -1079,7 +1075,8 @@ class Installer:
             if self.core and on:
                 bold(f"Building {pkg}'s compiled core")
                 if not run([self.vpy, '-m', f'{pkg}.core.build']):
-                    note(f"the core did not build: {pkg} runs on NumPy (see the error above)")
+                    note(f"the core did not build: {pkg} " + ("cannot mesh without it" if pkg in MESH_CORES else
+                                                              "runs on NumPy") + " (see the error above)")
 
     # ---- openEMS: linked in from another venv, or built from source ---------------------------------------
     def link_openems(self):
@@ -1355,7 +1352,8 @@ class Installer:
             if core_stale(d, core_file(self.vpy, d)):
                 bold(f"Building {pkg}'s compiled core")
                 if not run([self.vpy, '-m', f'{pkg}.core.build']):
-                    note(f"WARNING: the core did not build: {pkg} runs on NumPy")
+                    note(f"WARNING: the core did not build: {pkg} " + ("cannot mesh without it" if pkg in MESH_CORES
+                                                                       else "runs on NumPy"))
                     ok.append(False)
         bold("Requirements")
         if not run([self.vpy, '-m', 'pip', 'check']):

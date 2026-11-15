@@ -34,8 +34,8 @@ What the CI leaves out is where most of the list above came from.
    - no stored S-parameters to regress against, and mom25d's README figures are tighter than its tests;
    - pcbqs's real-board regressions need `~/Desktop/wpthb`;
    - the edge-ring validation scripts live outside the repository.
-5. **A release** (R-C12, C16, C17, M). Semantic versions (0.3.0, tagged), the authors, the LICENSEs and Triangle's
-   notice are done (2026-11-14). Left:
+5. **A release** (R-C12, C16, C17, M). Semantic versions (0.3.0, tagged), the authors and the LICENSEs are done
+   (2026-11-14), and Triangle, whose terms were not the GPL's, is replaced by CDT (MPL-2.0, 2026-11-15). Left:
    - PyPI, which refuses direct-URL dependencies (not yet: the user's call, 2026-11-14);
    - the KiCad plugin's PCM entry and its v0.1.0 tag;
    - a benchmark that runs today's stack (benchmark-results is from 2026-11-08 and imports modules that are gone).

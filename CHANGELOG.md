@@ -226,6 +226,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d and pcbqs mesh with CDT, not Triangle.** Their compiled cores triangulate (CDT 2.0.1, MPL-2.0, vendored
+  in each core's `core/CDT`; `core/cdt_mesh.hpp` and `cdtmesh.py`, the same files in both): the `triangle` package
+  is gone, with Triangle's non-free terms and its missing wheels (none for Python 3.14). The compiled cores of
+  mom25d and pcbqs are needed now (they hold the mesher; their kernels keep their NumPy fallbacks): the installer
+  builds them without asking, CI builds pcbqs's on Windows too. CDT keeps triangles near their area limits, where
+  Triangle's refinement left them at about half, and on the 45 Solver Matrix boards mom25d's answers hold: the
+  default setting 43 boards within 0.005 of Triangle's RMS from openEMS (median 0.0558 against 0.0551) for 6 % more
+  unknowns; the fast setting 44 within 0.005 (median 0.0524 against 0.0525) for 4.6 % more. Under `--mom-coarsen`
+  a meshed plane is now coarsened outside its fine regions only (under the copper of the layers near it): Triangle
+  had in effect left those uncoarsened, and coarsened they cost 0.03-0.08 at 6-10 GHz (rf_msvia, sma_launch,
+  demo_transition). pcbqs's real-board answers moved 0.01-3 % (its CHANGELOG); its validation against FastHenry
+  reads as before on the strip loop, 1 % higher L and 2 % lower R on the trace over a plane. Studies:
+  ~/pcbqs-bench/cdt-trial-2026-11-15 (the quad-cell share first: a mesher of our own buys at most 2.6 % of the fast
+  setting's unknowns by pairing alone).
+
 - **mom25d's retired solver paths (R-F3).** The tiled GPU solver (`--mom-tiled`; the block low-rank solver took its
   boards), the HODLR solver (never chosen automatically) and the Python block low-rank factor (reached only with an
   older core: such a core falls to ACA, the compiled factor named otherwise) are gone, with their modules (`ldlt.py`,
