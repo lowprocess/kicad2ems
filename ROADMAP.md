@@ -57,10 +57,14 @@ the window lists the questions, with the engine chosen on each row, and compares
 3. **The KiCad plugin** (kicad2ems-ipc) starts `kicad2ems study` for a board whose config has one.
 4. **Ports and parts the solvers share** (R-E1, R-E5).
    - A reference plane moved along the port's trace and a fixture removed, for any solver's S: `--deembed`,
-     `--deembed-file` since 2026-11-15 (`kicad2ems.deembed`). Left: lumped ports still carry their feed (about
-     0.1 nH, docs/model.md), the FDTD model has lumped ports only though gfdtd has line ports, and mom25d's
-     lumped ports carry their via.
-   - Ports and parts at angles other than x and y.
+     `--deembed-file` since 2026-11-15 (`kicad2ems.deembed`); the FDTD's line ports and vertical ports at any
+     angle since 2026-11-15 (in the CHANGELOG). *Decided* (R-E1): a lumped port where no straight feed is keeps its
+     feed (0.07-0.1 nH and the trace behind it: docs/model.md#ports), as that is how such a port is driven;
+     mom25d's lumped ports keep their via (its wave ports, `--mom-port wave` and `auto`, are the de-embedded ones).
+     Left: mom25d's wave window (6 cells + max(2 cells, 4 w, 3 h, 1 mm)) refuses the examples' 4-6 mm feeds,
+     where the FDTD's probes stood 3 mm in; FDTD line ports on pairs and oblique traces (FDTD 4).
+   - Parts at angles other than x and y (`parts.py` leaves them out with a note): the lumped piece along the
+     dominant axis and a strap along the other.
    - Internal ports at the parts' pads, embedded after the solve: done 2026-11-15 for openEMS, gfdtd and Palace
      (`--part-ports`, `--part-value`, `--part-file`; in the CHANGELOG). Left: mom25d's and the line model's (no gap
      ports), a `[sweep]` table over other settings than parts, and the window's view of a sweep.
@@ -418,8 +422,14 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
    grid's spacings, compress's arrays let go once used), what the core keeps 152 to 86, and the GPU backends check
    the model against the free VRAM, auto running one that does not fit on the CPU. Left: capping the concurrent
    runs by the VRAM (each excitation's fields are its own).
-4. **Line ports** (MSL, stripline, CPW: gfdtd has them) with a de-embedded plane where a straight trace meets the
-   port.
+4. **Line ports, the rest** (R-E1; `--port-kind line | auto` since 2026-11-15, in the CHANGELOG): differential
+   pairs (the legs' B A^-1 is exact; the shift back needs each mode's Zc and gamma from the two runs), a stripline's
+   port driving both of its planes (one plane drives the wave between them: the probes need 3 mm to settle), and
+   the probes on an oblique trace.
+11. **Diagonal copper** is a staircase on the mesh: the mesher puts lines at a polygon's vertices, so a diagonal
+    edge between them sits on the coarse cells (a 20 mm, 50 ohm line at 30 deg came out 3.4 % longer electrically
+    than along x, at 45 deg 1.7 %; a fine cell of 0.09 mm in place of 0.18 helped 0.6 %). Lines along such an
+    edge, or a conformal edge (Dey-Mittra), would follow it.
 5. **Excitations batched** in one launch (a batch dimension in the three backends' kernels: the coefficients read
    once for several fields). Several GPUs are there since 2026-11-15 (`--gfdtd-gpus`, a process each; now in the
    CHANGELOG): left, sharing the excitations by each GPU's speed, so a much slower one is not given the last.

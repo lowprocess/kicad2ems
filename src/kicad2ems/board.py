@@ -66,14 +66,20 @@ class Port:
     """Lumped port. kind 'z': a vertical sheet across the trace from the reference copper to the trace
     (feed lines over a plane); kind 'gap': a sheet in the copper plane across a gap between two
     conductors on the same layer (centre-fed dipoles, gap feeds), from gap[0] to gap[1] along axis.
-    c is the port's centre, sgn the direction into the circuit along axis (0: x, 1: y), w its width."""
+    c is the port's centre, d the unit direction into the circuit (a vertical port's trace at any angle, R-E1), axis
+    (0: x, 1: y) and sgn its dominant axis and sign there (the port's sheet is normal to that axis), w the trace's
+    width."""
     FIELDS = ('name', 'layer', 'z_sig', 'z_ref', 'c', 'axis', 'sgn', 'w', 'z0', 'leg', 'pair', 'ref_layer', 'kind',
-              'gap', 'net', 'source', 'internal')
+              'gap', 'net', 'source', 'internal', 'd')
 
     def __init__(self, name, layer, z_sig, z_ref, c, axis, sgn, w, z0, leg=None, pair=None, ref_layer='',
-                 kind='z', gap=None, net=None, source='', internal=False):
+                 kind='z', gap=None, net=None, source='', internal=False, d=None):
         self.name, self.layer, self.z_sig, self.z_ref = name, layer, z_sig, z_ref
         self.c, self.axis, self.sgn, self.w, self.z0 = np.asarray(c, float), axis, sgn, w, z0
+        if d is None:
+            d = np.zeros(2)
+            d[axis] = sgn
+        self.d = np.asarray(d, float) / np.linalg.norm(d)
         self.leg, self.pair, self.ref_layer = leg, pair, ref_layer
         self.kind, self.gap, self.net = kind, None if gap is None else tuple(gap), net
         self.source = source                        # footprint TP1 / pad J1.1 / point (x, y) / cut (x, y)
@@ -87,12 +93,19 @@ class Port:
         """Coordinates along the axis that must be mesh lines."""
         return [self.c[self.axis]] if self.kind == 'z' else list(self.gap)
 
+    @property
+    def oblique(self):
+        """Its trace runs at an angle to x and y (more than 0.06 deg)."""
+        return abs(abs(self.d[self.axis]) - 1) > 1e-6
+
     def box(self):
         """Lumped-port sheet: across the trace, from reference copper to the trace ('z'), or across the
-        gap in the copper plane ('gap')."""
+        gap in the copper plane ('gap'). An oblique trace's: in the plane normal to its dominant axis, as wide as
+        the trace's cut there (w / |d[axis]|)."""
         a, b = self.axis, 1 - self.axis
         s, e = np.zeros(3), np.zeros(3)
-        s[b], e[b] = self.c[b] - self.w / 2, self.c[b] + self.w / 2
+        half = self.w / 2 / abs(self.d[a]) if self.kind == 'z' else self.w / 2
+        s[b], e[b] = self.c[b] - half, self.c[b] + half
         if self.kind == 'z':
             s[a] = e[a] = self.c[a]
             s[2], e[2] = self.z_ref, self.z_sig
@@ -103,7 +116,8 @@ class Port:
 
     def to_dict(self):
         d = {k: getattr(self, k) for k in self.FIELDS}
-        return dict(d, c=[float(v) for v in self.c], gap=None if self.gap is None else [float(v) for v in self.gap])
+        return dict(d, c=[float(v) for v in self.c], gap=None if self.gap is None else [float(v) for v in self.gap],
+                    d=[float(v) for v in self.d])
 
     @classmethod
     def from_dict(cls, d):
@@ -573,8 +587,9 @@ class Board:
         a = np.radians(fp['rot'])
         d = np.array([np.cos(a), np.sin(a)])
         axis = int(np.argmax(np.abs(d)))
-        if abs(abs(d[axis]) - 1) > 1e-3:
-            raise ValueError(f"{name} ({fp['ref']}): rotation {fp['rot']} deg - lumped ports need a feed along x or y")
+        oblique = abs(abs(d[axis]) - 1) > 1e-3                     # a vertical port takes any angle (R-E1)
+        if not oblique:
+            d = np.round(d)
         sgn = int(np.sign(d[axis]))
         c = np.array([fp['x'], -fp['y']])
         source = fp.get('source', f"footprint {fp['ref']}")
@@ -582,6 +597,9 @@ class Board:
         if cu is None and str(port_field(props, 'type', '')).lower() != 'z':
             gp = self._gap_port(name, lay, c, d, axis, sgn, props, leg, pair, source)
             if gp is not None:
+                if oblique:
+                    raise ValueError(f"{name} ({fp['ref']}): rotation {fp['rot']} deg - a gap port needs its feed "
+                                     f"along x or y")
                 return gp
         if cu is None:
             here = sorted({l for l in self.copper if self.copper_at(l, Point(*c)) is not None})
@@ -595,8 +613,11 @@ class Board:
             w, pc = float(pw), c.copy()
         else:
             w, mid = cross_section(cu, c + d * 0.05, np.array([-d[1], d[0]]))
-            pc = c + d * min(0.25 * w, 0.1)                           # port plane just inside the trace end
-            pc[1 - axis] = mid[1 - axis]
+            if oblique:                                               # port plane just inside the trace end, centred
+                pc = mid + d * (min(0.25 * w, 0.1) - 0.05)
+            else:
+                pc = c + d * min(0.25 * w, 0.1)
+                pc[1 - axis] = mid[1 - axis]
         # reference: nearest copper below (top side) / above (bottom side) under the port
         zs = self.cu_z[lay]
         below = fp['side'] != 'B'
@@ -618,7 +639,7 @@ class Board:
             raise ValueError(f"{name}: no reference copper {'below' if below else 'above'} the port at "
                              f"({fp['x']:.3f}, {fp['y']:.3f}) mm - {self._reference_hint()}")
         return Port(name, lay, zs, self.cu_z[ref], pc, axis, sgn, w, float(port_field(props, 'z0', 50)), leg, pair, ref,
-                    net=self.net_at(lay, *pc), source=source)
+                    net=self.net_at(lay, *pc), source=source, d=d)
 
     def _gap_port(self, name, lay, c, d, axis, sgn, props, leg, pair, source, reach=5.0):
         """Port in a gap: copper on lay within `reach` mm on both sides of c along d. The sheet spans the
@@ -664,8 +685,9 @@ class Board:
                 L.append(f"  {p.name}: lumped gap port on {p.layer} along {p.direction}, gap {p.gap[1] - p.gap[0]:.3f} mm, "
                          f"w {p.w:.3f} mm, at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm")
                 continue
+            ang = f", its trace at {np.degrees(np.arctan2(p.d[1], p.d[0])):.1f} deg" if p.oblique else ''
             L.append(f"  {p.name}: lumped, {p.layer} -> {p.ref_layer}, w {p.w:.3f} mm, h {abs(p.z_sig - p.z_ref):.3f} mm, "
-                     f"at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm" +
+                     f"at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm{ang}" +
                      (f" [{p.source}]" if p.source and not p.source.startswith('footprint') else ''))
         L += [p.describe() for p in self.parts]
         return "\n".join(L + self.notes)

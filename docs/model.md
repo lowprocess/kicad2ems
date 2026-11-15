@@ -92,13 +92,34 @@ Each port is one of two kinds:
 
 - **Vertical** (the default), for a feed line over a reference plane. The footprint must sit on the trace.
   The port runs from the nearest copper below (above for bottom-side ports) up to the trace, across the
-  trace's width, just inside its end. It must point along x or y.
+  trace's width, just inside its end. The trace may run at any angle: the port's sheet stands across the axis
+  nearer the trace's direction, as wide as the trace's cut there. mom25d takes the angle exactly; the FDTD
+  model's diagonal copper is a staircase on its mesh (a 20 mm line at 30° came out 3.4 % longer electrically than
+  the same line along x, on its default mesh). A pad or point port (`P3=J1.1`, `P3@x,y`) takes its track's
+  direction, snapped to x or y within a degree.
 - **Gap**, when the footprint sits **between** two conductors on one layer, such as a dipole's feed or a
   feed across a slot. The port spans the gap in the copper plane.
 
 The reference impedance is `port.z0` (50 Ω). Differential legs are two ports, combined into modes
-afterwards. Lumped ports aren't de-embedded by the solvers: on a 0.2 mm dielectric the vertical port adds about
-0.1 nH. `--deembed P1=2.5` moves P1's reference plane 2.5 mm in along its own trace (negative: out), the line
+afterwards. A lumped port's S carries its feed: fitted as a series L and a shunt C, about 0.07-0.1 nH (0.22 nH
+on a grounded CPW) and the trace left behind the port plane, about 0.12 pF per mm of 50 Ω line on FR-4 (70 fF in
+the examples, which matter more at 10 GHz).
+
+<a id="line-ports"></a>
+**Line ports** (the FDTD solvers, `--port-kind line` or `auto`): voltage and current probes on each port's
+straight feed, behind its lumped port, which still drives and terminates the line. S comes from the waves
+they read in every run, S = B A⁻¹ (a = (V + z0 I) / 2, b = (V − z0 I) / 2 at the probes' plane, the lumped
+ports' own where a port has none), and each probed port's reference is moved back to its lumped port's plane
+along the FDTD's own line, read there in the port's own run (Zc and εeff, logged beside the line model's). The
+result is the board from the same planes as the lumped S, without the ports' feed: on a straight 50 Ω line
+|S11| fell from −20 dB at 8-10 GHz to below −30 dB, and the thru's phase at 10 GHz came within 0.5° of
+mom25d's wave ports (lumped: 18° off). A port takes probes where its trace runs straight at one width from the
+port to the probes' last plane and max(2 h, w) further, the measurement plane max(3 h, 2 w, four cells, 3 mm)
+along it, with no other signal copper within 3 h of it. Nearer than 3 mm the port's own field is in what the
+probes read (rf_stripline: εeff 4.87 at 0.6 mm, 4.42 at 3 mm, 4.40 at 4.5 mm; S within 0.011 of 4.5 mm's at
+3 mm). 53 of the examples' 88 ports qualify. Gap ports, differential legs,
+oblique traces and thick copper stay lumped. Every port must be driven: the examples that drive P1 alone
+(`excite`) need `--excite` with every port (`auto` says so and keeps them lumped). Default `lumped`. `--deembed P1=2.5` moves P1's reference plane 2.5 mm in along its own trace (negative: out), the line
 model's sections from the port taken off (their Z0, εeff, the mode's tan δ and, with `--sigma`, the copper's
 loss), and `--deembed-file P1=fixture.s2p` removes a fixture there (its port 1 at the port); either writes
 `<name>_<solver>_deembedded.sNp` beside the solver's own (`kicad2ems.deembed`). Single-ended ports only.

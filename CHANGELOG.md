@@ -10,6 +10,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Line ports for the FDTD solvers, and ports at any angle (R-E1).** `--port-kind line | auto` (default `lumped`):
+  probes on each port's straight feed behind its lumped port, S = B A⁻¹ from every run's waves, each reference moved
+  back to the port along the FDTD's own line (kicad2ems-fdtd 3eb00f7; docs/model.md#line-ports). Against mom25d's
+  wave ports, every port driven: rf_stripline 0.348 → 0.053, rf_gcpw 0.499 → 0.067, rf_bends 0.351 → 0.108,
+  rf_crosstalk 0.181 → 0.121; rf_msvia 0.055 → 0.256, where the probes are plane-independent (0.011) and the two
+  solvers' via transitions differ (open). A vertical port's trace may run at any angle (its sheet across the
+  dominant axis, as wide as the trace's cut; mom25d 6fe665d takes the angle exactly: a 20 mm line at 30° and 45°
+  within 0.008 of the same line along x); a pad or point port takes its track's own direction. The lumped port's
+  feed is documented (0.07-0.1 nH and the trace behind the plane, 0.12 pF/mm); where no straight feed is it stays,
+  and mom25d's lumped ports keep their via (its wave ports are the de-embedded ones).
 - **mom25d's via and hole blocks, the rest (R-D11).** The lifted Sommerfeld contour's J0, J1 and J2 of complex
   argument in the compiled core (mom25d 91c1a64; within 5e-12 of scipy's, 13 times faster): demo_transition's via
   sums 1.77 → 1.34 s, its sweep 7.3 → 6.7 s, S at fixed frequencies within 5e-14. Each frequency's tables stay (their

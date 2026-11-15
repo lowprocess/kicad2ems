@@ -116,3 +116,37 @@ def test_a_port_s_reference_is_ground_copper_and_a_plug_is_not_a_port():
     rows = [dict(ref='P1', val='USB_C', package='USB_C_Receptacle'), dict(ref='TP3', val='P2', package='TestPoint'),
             dict(ref='J4', val='SMA', package='RF_Port_SMA')]
     assert pos_port_refs(rows) == {'TP3', 'J4'}
+
+
+def test_a_port_on_a_trace_at_an_angle(tmp_path):
+    """R-E1: a vertical port takes its trace's angle: d along the trace, axis and sgn its dominant axis, its sheet
+    normal to that axis and as wide as the trace's cut there; it survives board.json; a pad or point port takes
+    its track's own direction (snapped to x or y within a degree)."""
+    import sys
+    import numpy as np
+    from kicad2ems.board import Port
+    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems import region as R
+    sys.path.insert(0, EX)
+    import make_rf_examples as M
+    bd, deg, L = M.Board(), 30.0, 16.0
+    a = np.radians(deg)
+    u = np.array([np.cos(a), -np.sin(a)])                       # KiCad y down: up and to the right
+    p0, p1 = np.array([12.0, 12.0]) - u * L / 2, np.array([12.0, 12.0]) + u * L / 2
+    bd.track([tuple(p0), tuple(p1)], M.W50)
+    bd.port(1, *(p0 + 0.5 * u), deg)
+    bd.port(2, *(p1 - 0.5 * u), deg + 180)
+    bd.write(str(tmp_path / 'b.kicad_pcb'), 24.0, 24.0)
+    m = Board(KiCadBoard(str(tmp_path / 'b.kicad_pcb')), nets=['RF', 'GND'], ground='B.Cu', log=lambda *a: None)
+    p1, p2 = m.ports
+    assert p1.oblique and np.allclose(p1.d, [np.cos(a), np.sin(a)]) and (p1.axis, p1.sgn) == (0, 1)
+    assert np.allclose(p2.d, -p1.d) and (p2.axis, p2.sgn) == (0, -1)
+    assert p1.w == pytest.approx(M.W50, abs=0.01)
+    s, e = p1.box()
+    assert s[0] == e[0] and e[1] - s[1] == pytest.approx(p1.w / np.cos(a))
+    assert 'its trace at 30.0 deg' in m.describe()
+    q = Port.from_dict(json.loads(json.dumps(p1.to_dict())))
+    assert np.allclose(q.d, p1.d) and q.oblique
+    old = Port.from_dict({k: v for k, v in p1.to_dict().items() if k != 'd'})    # a board.json from before: its axis
+    assert not old.oblique and np.allclose(old.d, [1, 0])
+    assert np.allclose(R._track([0.6, 0.8]), [0.6, 0.8]) and np.allclose(R._track([1.0, 0.01]), [1, 0])

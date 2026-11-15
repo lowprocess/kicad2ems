@@ -131,7 +131,7 @@ def extra_port_fps(board, specs):
                 d = np.array([1.0, 0.0]) if (b[2] - b[0]) >= (b[3] - b[1]) else np.array([0.0, 1.0])
             x, y = q['xy']
             props = {'port.layer': layer}
-            out[num] = dict(ref=f"{arg[0]}.{arg[1]}", x=float(x), y=float(y), rot=_rot(_axis(d)),
+            out[num] = dict(ref=f"{arg[0]}.{arg[1]}", x=float(x), y=float(y), rot=_rot(_track(d)),
                             side='B' if layer == 'B.Cu' else 'F', props=props, source=f"pad {arg[0]}.{arg[1]}")
         else:
             x, y, layer, rot = arg
@@ -140,14 +140,24 @@ def extra_port_fps(board, specs):
                 d = _dir_along_track(board, layer, x, y)
                 if d is None:
                     raise ValueError(f"port {spec!r}: no track on {layer} at ({x}, {y}); give the rotation")
-                rot = _rot(_axis(d))
+                rot = _rot(_track(d))
             out[num] = dict(ref=name, x=x, y=y, rot=rot, side='B' if layer == 'B.Cu' else 'F',
                             props={'port.layer': layer}, source=f"point ({x:g}, {y:g})")
     return out
 
 
+def _track(d):
+    """A port's direction from its track's: the track's own (a vertical port takes any angle, R-E1), snapped to x or
+    y within SNAP_DEG."""
+    d = np.asarray(d, float) / (np.linalg.norm(d) or 1.0)
+    return _axis(d) if np.max(np.abs(d)) >= math.cos(math.radians(SNAP_DEG)) else d
+
+
+SNAP_DEG = 1.0
+
+
 def _axis(d):
-    """The x or y direction nearest to d (lumped ports run along x or y)."""
+    """The x or y direction nearest to d."""
     return np.array([np.sign(d[0]), 0.0]) if abs(d[0]) >= abs(d[1]) else np.array([0.0, np.sign(d[1])])
 
 

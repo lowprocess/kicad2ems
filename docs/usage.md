@@ -263,6 +263,7 @@ and with neither the study is S-parameters alone, which `kicad2ems board.toml` r
 | `--finish` | auto | surface finish of the outer copper, with `--sigma`: the stackup's, or none, osp, enig, enepig, hasl, hasl-snpb, imag, imsn ([details](simulation.md#finish)) |
 | `--diel fixed\|wideband` | fixed | the dielectric loss model ([details](simulation.md#dielectrics)) |
 | `--diel-fref` | 1 | the frequency at which the stackup's εr and tan δ apply, GHz |
+| `--port-kind lumped\|line\|auto` | lumped | the FDTD solvers' S at the lumped ports, or from probes on each port's straight feed, moved back to the port (every port driven; [line ports](model.md#line-ports)) |
 | `--excite` | all ports | the ports to drive |
 | `--threads` | 0 | openEMS threads per run (0: automatic) |
 | `--jobs` | 1 | runs in parallel |
