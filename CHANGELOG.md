@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **A converter's loop on Palace (R-E22, the loop).** kicad2ems-fem's `palace_loop` is a second engine of the near
+  field's question: the loop of the board's newest pcbqs near-field run, solved again in 3D, its inductance at each
+  harmonic beside pcbqs's (both name it `loop L at F MHz`). On the Jetson's U69 Palace reads 0.22-0.20 nH against
+  pcbqs's 0.42-0.34 nH, where the two agree within 2 % on simple loops: which models this loop right is open.
 - **Coils at their operating frequency, and a board heating from cold, on Elmer (R-E21).** kicad2ems-fem's coil
   tool (the study's *Coils and ferrite*) takes `--freq`: each coil in the time-harmonic field, its L there and its
   series resistance from the ferrite's loss (a plate's μ″), from a metal plate's eddy currents (`sigma=`, a surface
@@ -67,6 +71,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **Part values in a library's form.** A value written `C_22u_16V_0603` or `R_45k3_0402` (the kind's letter, then
+  the value) was not understood, and the part was left out: all 788 R, L and C of the Jetson baseboard. The value
+  after the kind's letter is read now.
 - **An option with choices and a number** (Palace's `--palace-abc 1|2`) was refused on the command line: its
   choices were checked against the typed string.
 - **Crosstalk in time on a grid that holds the trace (R-E16).** The crosstalk question solved 401 linear points to

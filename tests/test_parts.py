@@ -21,6 +21,17 @@ def test_parse_value(text, value):
     assert v == pytest.approx(value) if value is not None else v is None
 
 
+@pytest.mark.parametrize('ref,value,kind,v', [
+    ('C35', 'C_22u_16V_0603', 'C', 22e-6), ('R54', 'R_45k3_0402', 'R', 45.3e3), ('L1', 'L_2u2', 'L', 2.2e-6),
+    ('C1', 'X_22u', None, None), ('R1', 'C_10k', None, None)])
+def test_a_librarys_kind_then_value(ref, value, kind, v):
+    """A value written as a library names its parts ('C_22u_16V_0603'): the kind's letter, then the value (all 788
+    of the Jetson baseboard's R, L and C had been skipped); another letter first is not a value."""
+    from kicad2ems.parts import kind_value
+    k, got = kind_value(dict(ref=ref, value=value, props={}))
+    assert k == kind and (got == pytest.approx(v) if v is not None else got is None or k is None)
+
+
 def test_parts_detected_and_skipped(rlc):
     m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
     assert [p.ref for p in m.parts] == ['C1']

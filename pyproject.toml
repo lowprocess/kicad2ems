@@ -37,8 +37,8 @@ openems = ["kicad2ems-fdtd[openems] @ git+https://github.com/lowprocess/kicad2em
                                                                 # from elsewhere (README)
 mom = ["mom25d @ git+https://github.com/lowprocess/mom25d@ac859699600ea1c85fd8127bb636a60356f9922f"]     # the MoM solver and its plugins, mom25d and mixed
                                                                 # (it brings triangle, its mesher)
-qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@d8b6f0d3e42bb5ec43129c22fca1212196074285"]  # PDN, MQS/PEEC and ngspice operational circuits
-fem = ["kicad2ems-fem @ git+https://github.com/lowprocess/kicad2ems-fem@7c48f358e83cb8e3e00fe2b2b1f5f4b3cd20df13"]   # Palace and Elmer behind kicad2ems: a
+qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@0cb3827c8bba502799e95b63021f52ce61e75767"]  # PDN, MQS/PEEC and ngspice operational circuits
+fem = ["kicad2ems-fem @ git+https://github.com/lowprocess/kicad2ems-fem@e924d5e43ba7f2db62266a9fafd54fdca94936cb"]   # Palace and Elmer behind kicad2ems: a
                                                                 # solver (palace) and second engines for a rail's drop,
                                                                 # the temperature and capacitance; the programs
                                                                 # themselves come from elsewhere (its README)

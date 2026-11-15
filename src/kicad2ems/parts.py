@@ -149,6 +149,10 @@ def kind_value(fp):
     if not mt:
         return None, None
     v = parse_value(fp['value'])
+    if v is None:                                       # a library's 'C_22u_16V_0603', 'R_45k3_0402': the kind's letter,
+        words = re.split(r'[_\s]+', str(fp['value']).strip())    # then the value (all 788 R / L / C of the Jetson board)
+        if len(words) > 1 and words[0].upper() == mt.group(1):
+            v = parse_value(words[1])
     return (mt.group(1), v) if v is not None else (None, f"value '{fp['value']}' not understood")
 
 

@@ -438,9 +438,11 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
 2. **A winding's own AC loss** (the rest of R-E21, now in the CHANGELOG): the coil tool spreads its turns' current
    over the section, so skin and proximity loss in the wire is not solved; Elmer's stranded-coil homogenisation
    (its `circuits_harmonic_*_homogenization` cases) would give it. Elmer's transient with a net's own current.
-3. **pcbqs's Palace validations as engines** (R-E22): `pdn_palace.py` and `mqs_palace.py` as `palace_pdn` and
-   `palace_loop`, a second engine for the two questions whose accuracy is open; Palace stays out of pcbqs's
-   runtime.
+3. **The PDN as a Palace engine** (the rest of R-E22; the loop is done, now in the CHANGELOG): the rail's impedance
+   needs its decoupling capacitors and the regulator as lumped R-L-C, which `pdn_palace.py` (a bare plane pair)
+   does not have. And the loop's 40 % on the Jetson's U69 (Palace 0.20 nH, pcbqs 0.34 nH at 12 MHz) to explain:
+   zero-thickness PEC against 35 µm copper, the capacitors as straps against filaments, one port against all the
+   converter's pads.
 4. **Real boards** (R-B21, B14, D23). Since 2026-11-15 Palace's `feature_size` takes every piece's nearest gap
    (a tree, not the first 60 a layer), its copper's outlines are straightened (to a twentieth of the feature, at
    most 10 µm), and its `estimate()` builds the mesh and scales it by the examples' runs (demo_lowpass at the
