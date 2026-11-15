@@ -10,6 +10,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Resonances, and a board in its can, on Palace (R-E19).** kicad2ems-fem's Palace solver closes its air box in
+  metal (`--palace-box pec`, a can `--palace-margin` from the board) and, with `--palace-modes N`, follows the
+  driven run with an eigenmode run on the same mesh: the N resonances above `fmin`, each one's frequency and loaded
+  Q (the ports as their resistors) and each port's share. A solver's resonances (`Result.info['modes']`) are a
+  table in its report section (plugin API 2.13). `rf_shielded` in its can: the resonator at 4.6574 GHz, Q 158 (the
+  driven peak 4.657 GHz), the can's own mode at 7.115 GHz, 5.7 min for both runs. Palace's own mesh refinement
+  settles there too (4.651 GHz at 547,000 unknowns), 0.8 % above EMerge's 4.621 GHz, while openEMS is still
+  climbing with its mesh (4.626 GHz at 4x).
+- **dfsynth matches its coupled-line band-pass filters (R-E18).** Only their band edges had been calibrated: the
+  hairpin's pass-band return loss was 5.5 dB on dfsynth's own lossless model. The coupling gaps, and each hairpin
+  U's bar, are now fitted for the pass band's match with the edges held: 11.0 dB on FR4 and on RO4003C, the 5 GHz
+  edge-coupled filter 13.7 dB. Every refinement runs BLAS on one thread (the hairpin's fit 9.6 s -> 5.1 s).
 - **Materials by name (R-E4).** The stackup's `material` is read; a dielectric whose εr or tan δ the file does not
   give takes its material's from a small library (`kicad2ems.materials`, with the frequency each maker quotes) or
   FR-4's, and a note says which; the board's log shows each layer's material. With `--diel wideband`, a named
@@ -42,6 +54,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **An option with choices and a number** (Palace's `--palace-abc 1|2`) was refused on the command line: its
+  choices were checked against the typed string.
 - **Crosstalk in time on a grid that holds the trace (R-E16).** The crosstalk question solved 401 linear points to
   1 / rise whatever the traces' length, so a long trace's edge response read low (an ideal 1 m coupler under a 25 ps
   edge: 1.92 % of its 2.5 % plateau). Its grid is now 16 samples a ripple of S for the longest trace (`si.time_grid`,

@@ -281,9 +281,25 @@ def _solver_section(sm, name, base):
                  _f(r['max_dvec'], '.3f'), _f(r['ddelay_ps'], '+.1f')] for r in so['compare']]
         txt += _table(['', f"{a} max (dB)", f"{b} max (dB)", 'max |Δ| (dB, transmissions)', 'max |ΔS| (vector)',
                        f"Δ delay {b} − {a} (ps)"], rows, num=(1, 2, 3, 4, 5))
+    if so.get('modes'):
+        txt += _modes_table(so['modes'])
     if so.get('notes'):
         txt += "<ul>" + "".join(f"<li>{_e(n)}</li>" for n in so['notes']) + "</ul>"
     return txt
+
+
+def _modes_table(modes):
+    """A solver's resonances (its Result.info['modes'], API 2.13: dict(about, rows=[dict(mode, f_ghz, Q,
+    q_ext={port: Q}, kind)])): one row a mode, each port's external Q in a column of its own, `kind` (what a row
+    is where it is not a resonance) last."""
+    rows = modes.get('rows') or []
+    ports = list(dict.fromkeys(p for r in rows for p in (r.get('q_ext') or {})))
+    body = [[str(r.get('mode', i + 1)), _f(r.get('f_ghz'), '.5g'), _f(r.get('Q'), '.4g')]
+            + [_f((r.get('q_ext') or {}).get(p), '.4g') for p in ports] + [_e(r.get('kind', ''))]
+            for i, r in enumerate(rows)]
+    return (f"<h3>Resonances</h3><p>{_e(modes.get('about', ''))}.</p>"
+            + _table(['mode', 'f (GHz)', 'Q'] + [f"Q_ext {p}" for p in ports] + [''], body,
+                     num=tuple(range(1, 3 + len(ports)))))
 
 
 def _saw_section(saw):

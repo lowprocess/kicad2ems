@@ -48,6 +48,8 @@ in it. A user takes a provider of the same major version and at least the minor 
   2.10 several runs of one analysis in a study (a board's rails): an analysis's `several` and `several_keys`, `read_analysis_sets`.
   2.11 a setting picked on the board: an option's `pick`, and `board_layout`, `net_at`, `part_at` in `api.frontend`.
   2.12 a run done again: a solver's `reusable(run)`, whether an earlier run's result may stand for its solve.
+  2.13 a solver's resonances: `Result.info['modes']`, `dict(about, rows=[dict(mode, f_ghz, Q, q_ext={port: Q}, kind)])`,
+  a table in its report section (Palace's `--palace-modes`).
   [CHANGELOG.md](https://github.com/lowprocess/kicad2ems/blob/main/CHANGELOG.md) has each release's.
 
 Both API modules load their names on first use: importing one costs nothing until a name is used.
@@ -108,7 +110,7 @@ and implements, in the order the pipeline calls them:
 | `assess(run)` | why it cannot model this board, a list (`[]`: it can) |
 | `estimate(run)` | `dict(seconds, gb, what)`, its rough cost, for `--solvers auto`; or `None` |
 | `prepare(run)` | its own form of the board (openEMS: the boundaries and mesh); a preview stops here |
-| `solve(run, prep)` | a `Result`: S-parameters, port names, reference impedances, facts for the summary |
+| `solve(run, prep)` | a `Result`: S-parameters, port names, reference impedances, facts for the summary (`info`; its `modes`, the resonances it found, are shown as a table: 2.13) |
 | `deviations(run, prep)` | `[Deviation]`: what it models differently from the board |
 | `readback(run, prep)` | what its own model holds, in the board's terms, for the parity checks; or `None` |
 | `reusable(run)` | whether an earlier run's result may stand for its solve in this run (`kicad2ems.reuse`: the same board, frequencies, settings and code); its `outputs` is not called for one. Default: only a solver with no `outputs` of its own (2.12) |

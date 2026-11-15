@@ -21,6 +21,22 @@ def test_shortened_options_beat_the_toml(tmp_path):
     assert s.max_steps == 5000 and s.excite == ['P1']
 
 
+def test_a_numeric_option_with_choices_takes_a_number():
+    """An int option with choices (Palace's --palace-abc 1|2) had its choices checked against the typed string."""
+    from kicad2ems.cli import parser
+    from kicad2ems.options import Option
+    import kicad2ems.cli as cli
+    o = Option('t_order', 1, 'an order', int, choices=(1, 2), group='output')
+    real = cli.all_options
+    cli.all_options = lambda: real() + [('test', o)]
+    try:
+        assert parser().parse_args(['b.kicad_pcb', '--t-order', '2']).t_order == 2
+        with pytest.raises(SystemExit):
+            parser().parse_args(['b.kicad_pcb', '--t-order', '3'])
+    finally:
+        cli.all_options = real
+
+
 def test_toml_lists_and_strings(tmp_path):
     p = tmp_path / 'c.toml'
     p.write_text('board = "b.kicad_pcb"\nbc = ["MUR", "MUR", "PEC", "PEC", "PEC", "MUR"]\nff_freq = [2.4, 2.5]\n'

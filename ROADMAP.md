@@ -425,19 +425,20 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
 
 ## kicad2ems-fem
 
-1. **Palace's eigenmode** (R-E19): the resonances of a can or a high-Q filter, the one use the notes give Palace;
-   `rf_shielded`'s reference is EMerge's today.
-2. **Palace's own accuracy** (R-E20):
-   - its adaptive refinement from `feature = 1`;
+1. **Palace's own accuracy** (R-E20):
+   - `rf_shielded`'s reference: Palace in its can (R-E19, now in the CHANGELOG) and its own refinement settle near
+     4.65-4.66 GHz, mom25d without the can 4.648, openEMS still climbing with its mesh (4.555, 4.588, 4.626 at 1x,
+     2x, 4x), EMerge's "converged" 4.621: which is right is open (EMerge's model to be checked: copper thickness,
+     the can's floor);
    - a second-order absorbing boundary or a PML for antennas (efficiency reads up to 100.5 %);
    - wave ports;
    - copper as solids in the driven model (as the cap tool's `--thick`): its sheets' loss holds only to ~10 MHz.
-3. **Elmer's harmonic and transient solvers** (R-E21): a coil's AC resistance, its ferrite's loss and Q at the
+2. **Elmer's harmonic and transient solvers** (R-E21): a coil's AC resistance, its ferrite's loss and Q at the
    operating frequency; a transient temperature.
-4. **pcbqs's Palace validations as engines** (R-E22): `pdn_palace.py` and `mqs_palace.py` as `palace_pdn` and
+3. **pcbqs's Palace validations as engines** (R-E22): `pdn_palace.py` and `mqs_palace.py` as `palace_pdn` and
    `palace_loop`, a second engine for the two questions whose accuracy is open; Palace stays out of pcbqs's
    runtime.
-5. **Real boards** (R-B21, B14, D23). Since 2026-11-15 Palace's `feature_size` takes every piece's nearest gap
+4. **Real boards** (R-B21, B14, D23). Since 2026-11-15 Palace's `feature_size` takes every piece's nearest gap
    (a tree, not the first 60 a layer), its copper's outlines are straightened (to a twentieth of the feature, at
    most 10 µm), and its `estimate()` builds the mesh and scales it by the examples' runs (demo_lowpass at the
    default feature: 16 min and 13.5 GB estimated, 30 min and 19.3 GB as run). Left: the Elmer builder's
@@ -461,11 +462,8 @@ Besides the study (the study's item 3), R-E26 and C16:
 
 ## dfsynth
 
-R-E18:
-- The calibration looks at the band's edges only. On dfsynth's own lossless model the hairpin's worst return loss is
-  5.5 dB (FR4) and the interdigital's 9.0 dB, where the README still gives 16.4. The interdigital's match-aware
-  refinement should go to the hairpin, coupled and band-stop designs, with a return-loss test for each.
-- Then, in order:
+R-E18 (the match-aware refinement of the hairpin and edge-coupled designs is done: the CHANGELOG):
+- In order:
   - a `.kicad_mod` to place in one's own board;
   - the tapped hairpin feed;
   - combline;

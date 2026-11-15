@@ -55,10 +55,11 @@ def parser():
         kw = dict(dest=o.key, help=_help(o))
         if o.type is bool:
             kw['action'] = 'store_true'
-        elif o.choices:
-            kw['choices'] = list(o.choices)
-        elif o.type in (float, int):
-            kw['type'] = o.type
+        else:
+            if o.type in (float, int):                      # (before the choices: an int's choices are ints)
+                kw['type'] = o.type
+            if o.choices:
+                kw['choices'] = list(o.choices)
         groups[o.group].add_argument(*o.flags, **dict(kw, **extra))
     return ap
 

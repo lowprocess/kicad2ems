@@ -49,3 +49,17 @@ def test_the_plot_takes_as_many_solvers_as_ran():
     ax, smith = fig.axes
     assert len(ax.lines) == 3 * (2 + len(OVERLAY_STYLES))                     # S11, S21, S22 of each
     assert len(ax.get_legend_handles_labels()[1]) == len(ax.lines)
+
+
+def test_a_solvers_resonances_are_a_table(tmp_path):
+    """API 2.13: Result.info['modes'] (Palace's --palace-modes) is a table in the solver's section, a column per
+    port's external Q, a damped feed line said as such."""
+    sm = _summary(tmp_path)
+    sm['solved']['mom25d']['modes'] = dict(about='eigenmodes in the can', rows=[
+        dict(mode=1, f_ghz=4.6574, Q=157.5, q_ext={'IN': 456.7, 'OUT': 553.9}),
+        dict(mode=2, f_ghz=5.3558, Q=1.054, q_ext={'IN': 0.93}, kind='a feed line damped by its port')])
+    html = report._solver_section(sm, 'mom25d', str(tmp_path))
+    assert '<h3>Resonances</h3>' in html and 'eigenmodes in the can' in html
+    assert 'Q_ext IN' in html and 'Q_ext OUT' in html and '4.6574' in html and '157.5' in html
+    assert 'a feed line damped by its port' in html and html.count('<tr>') == 3
+    assert 'Resonances' not in report._solver_section(_summary(tmp_path), 'mom25d', str(tmp_path))
