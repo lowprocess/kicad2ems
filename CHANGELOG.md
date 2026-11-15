@@ -39,6 +39,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **The line model's coupled pairs from a tree (R-D17).** The pairing tried every pair of straight sections (480-odd
+  on CM5); a tree of the sections, each grown by the farthest it couples, proposes the near ones and the same tests
+  decide: the same 295 groups, CM5's formula build 5.25 s to 4.69 s. The builder's quadratic loops are all indexed
+  now; what is left is each sample's geometry (a per-sample width test was tried: no faster).
 - **gfdtd's excitations share their set-up (R-D4).** The operator's core (grid, materials, metal, sheets, lumped
   parts, coefficients, boundaries) and its compressed GPU form are made once for a model and kept for its other
   excitations, which differ only in their excitation, probes and dumps; kicad2ems-fdtd keeps the worker threads
