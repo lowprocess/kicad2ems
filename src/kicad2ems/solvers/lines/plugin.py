@@ -14,7 +14,9 @@ _CAPS = dict(ports='yes, at the network node', gap_ports='no', diff_pairs='yes',
                                                                 "return; qucsator: at the band centre)",
              roughness='approximated: its conductivity at the band centre (Hammerstad)',
              finish='approximated: its conductivity at the band centre, by the finished faces\' share of the loss',
-             dispersion='no: constant tan d', radiation='no', cavity='no', antenna='no')
+             dispersion="with --diel wideband: each layer's Djordjevic-Sarkar er and tan d, the network solved at a few "
+                        "of the materials' frequencies and interpolated between them; else constant er and tan d",
+             radiation='no', cavity='no', antenna='no')
 
 
 def line_sigma(run):
@@ -50,10 +52,16 @@ class LineSolver(Solver):
     def solve(self, run, prep):
         from .fastsolve import solve
         from ...sparams import mixed_mode
+        wide = getattr(run.s, 'diel', 'fixed') == 'wideband'
+        info = {}
         S, seconds = solve(run.lm, run.m.ports, run.freq, backend=self.backend, sigma=line_sigma(run),
-                           qucsator=getattr(run.s, 'qucsator', None))
+                           qucsator=getattr(run.s, 'qucsator', None),
+                           wideband=getattr(run.s, 'diel_fref', 1.0) * 1e9 if wide else None, info=info)
         Smm, names, zref = mixed_mode(S, run.m)
-        run.log(f"{self.label}: {seconds * 1e3:.0f} ms")
+        held = info.get('held')
+        run.log(f"{self.label}: {seconds * 1e3:.0f} ms" + (
+            f" (wideband dielectric: {len(held)} solves with the materials at {', '.join(f'{f / 1e9:.3g}' for f in held)}"
+            f" GHz, interpolated between them)" if held else ''))
         return Result(Smm, names, zref, seconds, comment=f"line model, {self.backend} ({run.name})",
                       info=dict(backend=self.backend, kpi=f"{seconds * 1e3:.0f} ms",
                                 about=f"The transmission-line sections solved as a circuit with {self.tool} in "

@@ -67,7 +67,8 @@ the window lists the questions, with the engine chosen on each row, and compares
 7. **Materials** (R-E4). *Done 2026-11-15*: KiCad's stackup `material` is read, a missing εr or tan δ is filled
    from a small library by the material's name (`kicad2ems.materials`: RO4350B, RO4003C, 370HR, FR408HR, Megtron 6
    ...) or FR-4's with a note, and a named laminate's reference frequency is the wideband model's for its layer
-   (mom25d, the FDTD layer). Left: the line model's dispersion (its sections' εr at each frequency).
+   (mom25d, the FDTD layer), and since 2026-11-15 the line model's too (`--diel wideband`: solves at a few
+   of the materials' frequencies, interpolated; docs/transmission-lines.md#wideband).
 8. **A run done again** (R-D20): since 2026-11-15 a result is reused where the board, the frequencies, the settings
    and the code are the same (`kicad2ems.reuse`, `--no-reuse`), except where a solver's outputs need its solve
    (dumps, the far field). Since 2026-11-15 `--solver-jobs N` runs the solvers side by side, as threads: it
@@ -155,9 +156,10 @@ that: nothing in it may fix a panel in place. Left:
    sections, its pass band at 2.34 GHz against dfsynth's model's 2.38).
 6. **Discontinuities, the rest** (R-E15, now in the CHANGELOG): a tee's and a cross's own reactances on the
    scikit-rf backend (Hammerstad's MTEE, MCROSS: it has their geometry since 2026-11-15, not their L and C).
-7. **Dispersion and the losses' next step**: a Djordjevic-Sarkar εr(f) for each layer before the solve; the
-   conductor loss from the cross-section (Wheeler's rule: two solves with the copper set back by half a skin
-   depth) in place of 2 Rs / w, and each harmonic's in qucsator (its RLCG holds R and G at the band centre).
+7. **The losses' next step**: the conductor loss from the cross-section (Wheeler's rule: two solves with the
+   copper set back by half a skin depth) in place of 2 Rs / w, and each frequency's in qucsator (its RLCG holds R
+   and G at the band centre; the wideband dielectric's solves at the materials' frequencies keep it there, as G
+   held at each would spread over the band too far to interpolate between a few).
 9. **One multiconductor model** (R-F5). dfsynth's (vectorised, with conductor loss) and `coupled.mtl_s` (looped,
    lossless) are two; so are the Touchstone readers.
 

@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The line model's wideband dielectric (R-E4).** With `--diel wideband` each layer's εr and tan δ follow its
+  Djordjevic-Sarkar curve in the line model too, as in mom25d and the FDTD layer (`kicad2ems.lines.dispersion`):
+  the network solved with its materials frozen at 3-12 frequencies across the band and S interpolated between the
+  solves to each frequency's own (within 4e-5 of solving each alone), at 3-4 times the line model's time. Its
+  effect matches mom25d's: the thru's phase moves +5.5° against mom25d's +5.6° on rf_crosstalk, +12.6° against
+  +13.1° on rf_meander. Against openEMS: rf_meander 0.31 → 0.26, rf_serpentine 0.61 → 0.57, rf_msvia 0.068 →
+  0.055; rf_crosstalk 0.032 → 0.035 (its fixed εr had offset the formulas' own error).
 - **Solvers side by side (R-D20).** `--solver-jobs N` (the window: Solvers at a time) runs a board's solvers N at
   a time, as threads; the log goes to the terminal through a copy of its descriptor, which openEMS's in-process
   redirection to its own log would otherwise have taken. Measured (docs/benchmarks.md#side-by-side): 1.14 times

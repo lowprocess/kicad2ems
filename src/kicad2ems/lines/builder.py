@@ -316,7 +316,7 @@ def _build(model, nets, refcu):
                     continue
                 e = Element('via', f"via{v['i']}:{la}", 'gnd', h, layer=f"{la}-{lg}", w=v['drill'],
                             label=f"via {la} - {lg} ({v['net']})", net=v['net'], pts=np.array([v['xy'], v['xy']]))
-                e.er, e.tand = _dielectric(model, *sorted((model.cu_z[la], model.cu_z[lg])))
+                e.er, e.tand = _dielectric(model, *sorted((model.cu_z[la], model.cu_z[lg])), e)
                 e.eeff, e.h = e.er, h
                 n = parallel.get(f"via{v['i']}:{la}", 1)
                 e.xs, e.L = 'via to ground', via_inductance(h, v['drill'] / 2) / n
@@ -327,7 +327,8 @@ def _build(model, nets, refcu):
                 lm.elements.append(e)
             continue
         z = [model.cu_z[l] for l in lys]
-        er, tand = _dielectric(model, min(z), max(z))
+        stack = Element('via', '', '', 0.0)                  # (holds the layers for the chain's pieces below)
+        er, tand = _dielectric(model, min(z), max(z), stack)
         antipad = []
         for l in lys:
             if l in att:
@@ -343,7 +344,7 @@ def _build(model, nets, refcu):
                 e = Element('via', f"via{v['i']}:{la}", 'gnd', h, layer=f"{la}-{lg}", w=v['drill'],
                             label=f"via {la} - {lg} (to ground)", net=v['net'], pts=np.array([v['xy'], v['xy']]))
                 zz = sorted((model.cu_z[la], model.cu_z[lg]))
-                e.er, e.tand = _dielectric(model, *zz)
+                e.er, e.tand = _dielectric(model, *zz, e)
                 e.eeff, e.h = e.er, h
                 e.xs, e.L = 'via to ground', via_inductance(h, v['drill'] / 2)
                 e.notes.append(f"to the {lg} plane: {e.L * 1e9:.3f} nH")
@@ -355,7 +356,7 @@ def _build(model, nets, refcu):
             e = Element('via', f"via{v['i']}:{l0}", f"via{v['i']}:{l1}", h, layer=f"{l0}-{l1}", w=v['drill'],
                         label=f"via {l0} - {l1}" + ('' if (l0 in att and l1 in att) else ' (stub)'), net=v['net'],
                         pts=np.array([v['xy'], v['xy']]))
-            e.er, e.tand, e.eeff = er, tand, er
+            e.er, e.tand, e.eeff, e.diel = er, tand, er, stack.diel
             if antipad:
                 D = 2 * float(np.median(antipad))
                 if D > v['drill']:

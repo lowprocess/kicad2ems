@@ -332,13 +332,29 @@ microstrip's by its formula, every other section's (stripline, a field-solved or
 per metre, the strip's and its return's (qucsator's RLCG holds it at the band centre, as its dielectric loss).
 Dielectric loss is the mode's own tan δ: the field solver's where it solved a section, the formulas' filling
 factor elsewhere, and a stack's layers weighted as the field crosses them.
+
+<a id="wideband"></a>
+With `--diel wideband` (the FDTD solvers' setting, which mom25d follows too) each layer's εr and tan δ follow its
+Djordjevic-Sarkar curve, through the stackup's values at `--diel-fref` (a named laminate's at its own frequency:
+`kicad2ems.materials`). Both backends take one εr per section, so the network is solved with its materials
+frozen at 3–12 frequencies across the band (`kicad2ems.lines.dispersion`: Chebyshev points in log f, as many as the
+longest path's phase needs), each solve over the whole sweep, and S at each frequency is interpolated between the
+solves to that frequency's own materials. A frozen section keeps its filling factor (εeff − 1) / (εr − 1) and its
+air capacitance (Z0 √εeff), and a coupled group its dielectric share of C. On the test boards the interpolation sits
+within 4e-5 of solving each frequency alone. It costs 3–4 solves: 0.1–3.5 s on the wideband examples, against
+0.03–1.2 s. The line model's shift matches mom25d's own (`--diel wideband` against `fixed`). The thru's phase at
+the top of the band moves +5.5° against mom25d's +5.6° on rf_crosstalk (6 GHz), and +12.6° against +13.1° on
+rf_meander (10 GHz). Against openEMS it helps the long lines, rf_meander 0.31 → 0.26 and rf_serpentine
+0.61 → 0.57 (RMS |ΔS|, qucsator). rf_crosstalk goes from 0.032 to 0.035: its fixed εr had offset the
+formulas' own error. qucsator's RLCG sections still hold their dielectric loss G at the band centre.
 The result is `<name>_qucs.sNp` or `<name>_scikit.sNp`, compared in the plot and report with the first solver. Large
 differences point to something one model leaves out (coupling, radiation, plane resonances, the lumped ports) or to
 a mesh problem.
 
 ## Limits
 
-- Impedances are quasi-static. qucsator's microstrip models add dispersion.
+- Impedances are quasi-static. qucsator's microstrip models add the strip's own dispersion; the material's is
+  [`--diel wideband`](#wideband).
 - Coupled sections must be straight, parallel microstrip or stripline. Coupling across layers isn't modelled.
 - A net is in the model when a port sits on it or a series part leads to it. Copper coupled to the lines only
   through the field (a combline filter's inner rods) is left out, and taken as ground where a cut crosses it.

@@ -9,6 +9,7 @@ wideband`) holds the layer's values there instead of at one `--diel-fref` for ev
     lookup('Rogers RO4350B')    # dict(name='RO4350B', er=3.66, tand=0.0037, fref=10e9, source=...)
 """
 import re
+import numpy as np
 
 # (canonical name, er, tan d, the frequency they are quoted at, Hz, where they come from, other names)
 LAMINATES = [
@@ -53,3 +54,18 @@ def lookup(name):
         return None
     n, er, td, f, src = hit
     return dict(name=n, er=er, tand=td, fref=f, source=src)
+
+
+M1, M2 = 3.0, 12.0          # the Djordjevic-Sarkar curve's corners, 10^M1 .. 10^M2 Hz (1 kHz .. 1 THz)
+
+
+def djordjevic_sarkar(er, tand, fref, f):
+    """Complex relative permittivity (eps' - j eps'', e^(+j w t)) at f (Hz) of the wideband Debye model through
+    er (1 - j tand) at fref: eps_inf + d_eps / (M2 - M1) log10((w2 + j w) / (w1 + j w)), w1,2 = 2 pi 10^(M1,2)
+    (the FDTD layer's kicad2ems_fdtd.dielectric and mom25d.multilayer have the same)."""
+    def k(x):
+        w = 2 * np.pi * np.asarray(x, float)
+        return np.log10((2 * np.pi * 10 ** M2 + 1j * w) / (2 * np.pi * 10 ** M1 + 1j * w)) / (M2 - M1)
+    kr = k(fref)
+    d_eps = -er * tand / kr.imag
+    return er - d_eps * kr.real + d_eps * k(f)

@@ -572,9 +572,11 @@ def _qucsator(lm, ports, freq, sheet, sigma, exe, timeout=120.0):
 
 
 # ---- entry point ----------------------------------------------------------------------------------
-def solve(lm, ports, freq, backend='skrf', sheet=True, sigma=None, qucsator=None):
+def solve(lm, ports, freq, backend='skrf', sheet=True, sigma=None, qucsator=None, wideband=None, info=None):
     """S-parameters (nf, n, n) over `ports` (model.ports order; NaN for ports without a line model) and
-    the backend's run time in seconds. backend 'auto': see resolve_backend."""
+    the backend's run time in seconds. backend 'auto': see resolve_backend. wideband: the frequency (Hz) the
+    stackup's er and tan d hold at for the Djordjevic-Sarkar dielectric (a named laminate's layer at its own), or None
+    (constant er and tan d); the solves at the materials' frequencies go in info['held'] (Hz), when given."""
     import time
     if backend == 'auto':
         backend, _ = resolve_backend('auto', qucsator)
@@ -582,10 +584,18 @@ def solve(lm, ports, freq, backend='skrf', sheet=True, sigma=None, qucsator=None
         raise ValueError(f"fast solver: choose one of {', '.join(BACKENDS)}")
     _check_model(lm, ports)
     t0 = time.time()
-    if backend == 'skrf':
-        S, order = _skrf(lm, ports, freq, sheet, sigma)
+    one = (lambda m: _skrf(m, ports, freq, sheet, sigma)) if backend == 'skrf' else \
+        (lambda m: _qucsator(m, ports, freq, sheet, sigma, qucsator))
+    from ...lines import dispersion
+    held = dispersion.nodes(lm, freq, wideband) if wideband else None
+    if held is None:
+        S, order = one(lm)
     else:
-        S, order = _qucsator(lm, ports, freq, sheet, sigma, qucsator)
+        runs = [one(dispersion.frozen(lm, fk, wideband)) for fk in held]
+        order = runs[0][1]
+        S = dispersion.interpolate(freq, held, [r[0] for r in runs])
+        if info is not None:
+            info['held'] = [float(x) for x in held]
     seconds = time.time() - t0
     names = [p.name for p in ports]
     full = np.full((len(freq), len(names), len(names)), np.nan + 0j)

@@ -14,18 +14,24 @@ from .elements import Element
 
 MIXED_ER = 1.03             # dielectrics between a stripline's planes differing by more: solved on its cut
 
-def _dielectric(model, z_lo, z_hi):
+def _dielectric(model, z_lo, z_hi, e=None):
     """Thickness-weighted er and the tan d of the dielectrics between two heights, as a field across them in series
     weighs them (each layer's thickness over its er: the largest had been taken, 15 % high on a plain microstrip and
-    the worst layer's on a mixed stack)."""
-    tot, acc, wsum, tsum = 0.0, 0.0, 0.0, 0.0
-    for l in model.layers:
-        a, b = max(l['z0'], z_lo), min(l['z1'], z_hi)
-        if b > a:
-            tot += b - a
-            acc += (b - a) * l['er']
-            wsum += (b - a) / l['er']
-            tsum += (b - a) / l['er'] * l['tand']
+    the worst layer's on a mixed stack). e: an Element given them, which keeps the layers (e.diel: thickness, er,
+    tand, fref each) for the wideband dielectric (lines.dispersion: each layer's own curve, averaged the same way)."""
+    diel = tuple((min(l['z1'], z_hi) - max(l['z0'], z_lo), l['er'], l['tand'], l.get('fref'))
+                 for l in model.layers if min(l['z1'], z_hi) > max(l['z0'], z_lo))
+    if e is not None:
+        e.diel = diel
+    return mix(diel)
+
+
+def mix(diel):
+    """(er, tan d) of layers (thickness, er, tand, ...) across a field in series: _dielectric's averages."""
+    tot = sum(t for t, *_ in diel)
+    wsum = sum(t / er for t, er, *_ in diel)
+    acc = sum(t * er for t, er, *_ in diel)
+    tsum = sum(t / er * td for t, er, td, *_ in diel)
     return (acc / tot if tot > 0 else 1.0), (tsum / wsum if wsum > 0 else 0.0)
 
 
@@ -147,7 +153,7 @@ def classify(model, ref, e, pt, d):
             e.notes.append(f"{l} under it does not extend {w / 2 + 2 * h:.2f} mm either side")
     if len(found) == 2:
         (_, h1, _), (_, h2, _) = found['below'], found['above']
-        er, e.tand = _dielectric(model, zs - h1, zs + h2)
+        er, e.tand = _dielectric(model, zs - h1, zs + h2, e)
         e.er, e.h = er, (h1, h2)
         if abs(h1 - h2) <= 0.05 * max(h1, h2):
             e.xs, calc = 'stripline', lambda tt: stripline(w, h1 + h2 + tt, er, tt)
@@ -155,7 +161,7 @@ def classify(model, ref, e, pt, d):
             e.xs, calc = 'offset stripline', lambda tt: offset_stripline(w, h1, h2, er, tt)
     else:
         side, (lp, h, _) = next(iter(found.items()))
-        er, e.tand = _dielectric(model, min(zs, model.cu_z[lp]), max(zs, model.cu_z[lp]))
+        er, e.tand = _dielectric(model, min(zs, model.cu_z[lp]), max(zs, model.cu_z[lp]), e)
         e.er, e.h = er, h
         # dielectric on the far side of the strip (inner layer, or solder mask when modelled)
         far = (zs, model.thickness) if side == 'below' else (0.0, zs)
