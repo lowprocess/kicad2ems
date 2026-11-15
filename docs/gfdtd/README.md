@@ -1,7 +1,7 @@
 # gfdtd
 
-A 3D FDTD solver in the manner of openEMS that runs on a GPU (Vulkan through slangpy on any GPU, or CuPy on NVIDIA
-CUDA or AMD ROCm), or on the CPU through a compiled core, with numpy as the fallback and the reference. It reads
+A 3D FDTD solver in the manner of openEMS that runs on a GPU (Vulkan through slangpy, run on an AMD RX 7800 XT and
+an NVIDIA GTX 980 Ti, or CuPy on NVIDIA CUDA or AMD ROCm), or on the CPU through a compiled core, with numpy as the fallback and the reference. It reads
 openEMS's models: a script written for openEMS's Python interface runs here by swapping two imports, and
 `gfdtd model.xml` runs an openEMS XML file as `openEMS model.xml` does. Neither openEMS nor CSXCAD needs to be
 installed.
