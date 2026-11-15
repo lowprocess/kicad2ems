@@ -224,6 +224,85 @@ def timestep(grid, factor=SAFETY):
     return factor / (C0 * np.sqrt(s))
 
 
+def _curl_V(V):
+    """The loop sum of V around each primary face (what the H update subtracts, per unit iv)."""
+    Vx, Vy, Vz = V
+    out = np.zeros_like(V)
+    out[0][:, :-1, :-1] = Vz[:, 1:, :-1] - Vz[:, :-1, :-1] - Vy[:, :-1, 1:] + Vy[:, :-1, :-1]
+    out[1][:-1, :, :-1] = Vx[:-1, :, 1:] - Vx[:-1, :, :-1] - Vz[1:, :, :-1] + Vz[:-1, :, :-1]
+    out[2][:-1, :-1, :] = Vy[1:, :-1, :] - Vy[:-1, :-1, :] - Vx[:-1, 1:, :] + Vx[:-1, :-1, :]
+    return out
+
+
+def _curl_I(I):
+    """The loop sum of I around each dual face (the E update's c)."""
+    Ix, Iy, Iz = I
+    out = np.empty_like(I)
+    c = Iz - Iy; c[:, 1:, :] -= Iz[:, :-1, :]; c[:, :, 1:] += Iy[:, :, :-1]; out[0] = c       # noqa: E702
+    c = Ix - Iz; c[:, :, 1:] -= Ix[:, :, :-1]; c[1:, :, :] += Iz[:-1, :, :]; out[1] = c       # noqa: E702
+    c = Iy - Ix; c[1:, :, :] -= Iy[:-1, :, :]; c[:, 1:, :] += Ix[:, :-1, :]; out[2] = c       # noqa: E702
+    return out
+
+
+AUTO_CELLS = 1_000_000  # TimeStepMethod auto: the operator's own limit from this many cells (or when it is cached)
+
+
+def _dt_cache():
+    import os
+    return os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(os.path.expanduser('~'), '.cache'),
+                        'gfdtd', 'timestep.json')
+
+
+def cached_limit(key):
+    """The model's exact limit (s, before the safety factor) from an earlier run, or None."""
+    import json
+    try:
+        with open(_dt_cache(), encoding='utf-8') as fh:
+            return json.load(fh).get(key)
+    except (OSError, ValueError):
+        return None
+
+
+def keep_limit(key, dt):
+    """Keep a model's exact limit for its later runs (a few hundred models at most; the oldest dropped)."""
+    import json, os
+    fn = _dt_cache()
+    try:
+        with open(fn, encoding='utf-8') as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        d = {}
+    d.pop(key, None)
+    d[key] = dt
+    d = dict(list(d.items())[-500:])
+    try:
+        os.makedirs(os.path.dirname(fn), exist_ok=True)
+        tmp = fn + f'.{os.getpid()}'
+        with open(tmp, 'w', encoding='utf-8') as fh:
+            json.dump(d, fh)
+        os.replace(tmp, fn)
+    except OSError:
+        pass
+
+
+def exact_timestep(einv, hk, factor=SAFETY, tol=1e-2):
+    """The leapfrog's own limit for these coefficients (R-D6): the largest eigenvalue of the curl-curl operator
+    M = E^-1 C^T K C (E^-1 = 1 / C_edge, 0 on PEC edges; K = l' / (mu A) on the dual edges) by Lanczos on its
+    symmetric form E^-1/2 C^T K C E^-1/2, and dt = factor x 2 / sqrt(lambda). The materials count (a small cell in
+    a dielectric allows a longer step), which the vacuum Courant rule of the smallest cells does not: on the
+    examples 1.26-1.35 times its step. Loss, lumped capacitance and the poles only lower the edges' vi: stabler."""
+    from scipy.sparse.linalg import LinearOperator, eigsh
+    d = np.sqrt(einv).astype(np.float32)
+    hk = hk.astype(np.float32)
+    shp = einv.shape
+    A = LinearOperator((einv.size, einv.size), dtype=float,
+                       matvec=lambda x: (d * _curl_I(hk * _curl_V(d * x.reshape(shp).astype(np.float32)))).ravel()
+                       .astype(np.float64))
+    lam = float(eigsh(A, k=1, which='LA', tol=tol, ncv=20, return_eigenvectors=False, maxiter=5000,
+                      v0=np.random.default_rng(0).standard_normal(einv.size))[0])
+    return factor * 2.0 / np.sqrt(lam * (1 + 2 * tol))
+
+
 def _hedge_average(cell, a, grid):
     """A cell quantity (N-1 each axis) along each dual a-edge (an H_a node: line i of axis a, the cell centre in the
     other two): the two cells it runs through, weighted by their half lengths along a (one at the first and last
@@ -688,6 +767,28 @@ def _core(csx, fdtd):
                                 sheet_of[t][tuple(idx)] = -1
                             pec[t][tuple(idx)] = max(pec[t][tuple(idx)], pr)
     pec_m = pec > -np.inf
+    method = str(fdtd.get('timestep_method') or 'auto').lower()         # (openEMS.settings: GFDTD_TIMESTEP too)
+    key = _core_key(csx, fdtd) if method in ('auto', 'exact', '3', 'rennings') else None
+    kept = cached_limit(key) if key else None
+    if method == 'auto':                                            # the large models, or one already measured
+        method = 'exact' if (kept or int(np.prod([n - 1 for n in sh])) >= AUTO_CELLS) else 'courant'
+    if method in ('exact', '3', 'rennings'):                        # R-D6: the operator's own limit
+        lE0, aE0, lH0, aH0 = _geometry(grid)
+        einv = np.where(pec_m & ~(sheet_of >= 0), 0.0, np.divide(1.0, cap, out=np.zeros_like(cap), where=cap > 0))
+        hk = np.zeros((3,) + sh)
+        for a in range(3):
+            mu = MU0 * (_hedge_average(mue, a, grid) if np.any(mue != 1.0) else 1.0)
+            np.divide(lH0[a], mu * aH0[a], out=hk[a], where=aH0[a] > 0)
+        geo_dt = op.dt
+        limit = kept or exact_timestep(einv, hk, factor=1.0)
+        if key and not kept:
+            keep_limit(key, limit)
+        op.dt = SAFETY * limit * float(fdtd.get('timestep_factor', 1.0) or 1.0)
+        if fdtd.get('timestep'):
+            op.dt = min(op.dt, float(fdtd['timestep']))
+        del einv, hk
+        op.notes.append(f"time step from the operator's own limit{' (kept from an earlier run)' if kept else ''}: "
+                        f"{op.dt * 1e15:.4g} fs, {op.dt / geo_dt:.3f} x the vacuum Courant rule's")
     dt = op.dt
     # conducting sheets: openEMS's model on the edges a sheet owns; PEC near the boundaries, as openEMS's
     sheet_m = pec_m & (sheet_of >= 0)

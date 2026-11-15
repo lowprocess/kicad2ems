@@ -73,6 +73,7 @@ among them) work on gfdtd unchanged.
 | Boundaries | PEC, PMC, first-order Mur, PML_n (convolutional PML over the n outermost cells, PEC behind it) |
 | Field dumps | `DumpBox` E, H, J (rot H), Jc (kappa E); time domain (.vtr, or HDF5 with file_type 1) and frequency domain (HDF5); at the cell centres (dump mode 2) or the nodes (modes 0, 1); one file per box |
 | Far field | openEMS's NF2FF box (`CreateNF2FFBox`, `CalcNF2FF`), frequency domain or time domain (`frequency=None`: the faces as HDF5 samples, any frequency of the band at CalcNF2FF), PEC / PMC mirrors: antenna mode |
+| Time step | the vacuum Courant rule of the smallest cells (0.95 of it), or the operator's own leapfrog limit (`TimeStepMethod=3`, `GFDTD_TIMESTEP=exact`: the largest eigenvalue of its curl-curl with the real coefficients, by Lanczos, kept per model; 1.19-1.29 times the step on the examples, the S within 0.005); `auto`, the default, takes it from 1 M cells or once measured |
 | End | the energy in the field and in the lumped parts (`EndCriteria`), timestep limit, `MaxTime` (the run's own seconds), `ABORT`, `SetAbort` |
 
 Not yet: Lorentz materials, the mode-purity column of mode-matching probes, frequency-domain field probes (the

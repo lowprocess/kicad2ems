@@ -49,6 +49,10 @@ class openEMS:                                                       # noqa: N80
             raise NotImplementedError("gfdtd: MultiGrid (cylindrical subgrids)")
         self.timestep_factor = float(kw.get('TimeStepFactor', 1.0) or 1.0)
         self.timestep = float(kw['TimeStep']) if kw.get('TimeStep') else None
+        # openEMS's TimeStepMethod: 1 the Courant rule (gfdtd's vacuum rule of the smallest cells), 3 (openEMS's
+        # default, Rennings') here the operator's own limit, by Lanczos (operator.exact_timestep, R-D6)
+        tsm = kw.get('TimeStepMethod')
+        self.timestep_method = None if tsm is None else ('exact' if str(tsm).strip() in ('3', 'exact') else 'courant')
         if self.timestep_factor > 1:
             raise ValueError(f"gfdtd: TimeStepFactor {self.timestep_factor:g}: above 1 the step is past its limit")
         self.ignored = [k for k in kw if k in ('CellConstantMaterial',)]
@@ -136,6 +140,7 @@ class openEMS:                                                       # noqa: N80
                     excite_type=self.excitation.get('type', 0), excite_function=self.excitation.get('function'),
                     end_crit=self.end_crit, oversampling=self.oversampling,
                     timestep_factor=getattr(self, 'timestep_factor', 1.0), timestep=getattr(self, 'timestep', None),
+                    timestep_method=getattr(self, 'timestep_method', None) or os.environ.get('GFDTD_TIMESTEP'),
                     ignored=list(getattr(self, 'ignored', ())))
 
     def CreateNF2FFBox(self, name='nf2ff', start=None, stop=None, **kw):

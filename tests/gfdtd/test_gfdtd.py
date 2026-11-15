@@ -1024,3 +1024,38 @@ def test_time_domain_nf2ff(tmp_path):
     assert nf.e_dump.dump_type == 0 and nf.e_dump.file_type == 1
     assert 10 * np.log10(r_td.Dmax[0]) == pytest.approx(10 * np.log10(r_fd.Dmax[0]), abs=0.05)
     assert r_td.Prad[0] == pytest.approx(r_fd.Prad[0], rel=0.02)
+
+
+def test_exact_time_step(tmp_path, monkeypatch):
+    """TimeStepMethod exact (R-D6): the operator's own leapfrog limit by Lanczos. On a uniform vacuum grid it is the
+    Courant limit (to its 1 % tolerance); where the finest cells are inside metal (a board's, at its copper edges)
+    their edges carry no field and it is longer than the vacuum rule of the smallest cells; kept for the next run."""
+    monkeypatch.setenv('XDG_CACHE_HOME', str(tmp_path / 'cache'))
+    from gfdtd.operator import SAFETY
+    def model(lines, metal=False):
+        F = openEMS(NrTS=100, EndCriteria=1e-9, TimeStepMethod=3)
+        F.SetGaussExcite(5e9, 5e9)
+        F.SetBoundaryCond(['PEC'] * 6)
+        csx = ContinuousStructure()
+        F.SetCSX(csx)
+        g = csx.GetGrid()
+        g.SetDeltaUnit(1e-3)
+        for a in 'xyz':
+            g.SetLines(a, lines)
+        csx.AddExcitation('src', exc_type=0, exc_val=[0, 0, 1]).AddBox([5, 5, 5], [5, 5, 6])
+        if metal:
+            csx.AddMetal('block').AddBox([-1, -1, -1], [1, 1, 1], priority=10)
+        F.Run(str(tmp_path / 'r'), cleanup=True, verbose=0, backend='numpy', setup_only=True, log=str(tmp_path / 'log'))
+        return F.op
+    op = model(np.arange(-10, 10.01, 1.0))
+    courant = SAFETY * 1e-3 / (299792458.0 * np.sqrt(3))
+    assert op.dt == pytest.approx(courant, rel=0.015) and op.dt <= courant
+    graded = np.concatenate([np.arange(-10, -1, 1.0), np.arange(-1, 1, 0.25), np.arange(1, 10.01, 1.0)])
+    op2 = model(graded, metal=True)
+    assert any("own limit" in n for n in op2.notes)
+    ratio = float(next(n for n in op2.notes if 'own limit' in n).split(', ')[1].split(' x')[0])
+    assert ratio > 1.15                                               # (1.22: the fine cells at its faces still count)
+    from gfdtd import operator as O
+    O._CORES.clear()                                                  # (the process's own cache: the disk's next)
+    op3 = model(graded, metal=True)
+    assert op3.dt == op2.dt and any('kept from an earlier run' in n for n in op3.notes)
