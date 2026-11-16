@@ -55,10 +55,8 @@ def coupled_stripline(w, s, b, er):
     """(Ze, Zo, er, er) of two coupled strips of width w, gap s, centred between planes b apart (mm), Cohn
     (IRE MTT-3, 1955), exact for zero strip thickness. The medium is homogeneous: both modes travel at er."""
     a, c = math.tanh(math.pi * w / (2 * b)), math.tanh(math.pi * (w + max(s, 1e-6)) / (2 * b))
-    z = []
-    for k in (a * c, a / c):                                   # even, odd
-        z.append(30 * math.pi / math.sqrt(er) * ellipk(math.sqrt(1 - k * k)) / ellipk(k))
-    return z[0], z[1], er, er
+    ze, zo = (30 * math.pi / math.sqrt(er) * ellipk(math.sqrt(1 - k * k)) / ellipk(k) for k in (a * c, a / c))
+    return ze, zo, er, er
 
 
 def coupled_offset_stripline(w, s, h1, h2, er):
@@ -87,13 +85,6 @@ def single(xs, w, h, er):
     return offset_stripline(w, h[0], h[1], er)
 
 
-def _pair_c(w, s, h, er, xs='microstrip'):
-    """(C11, C12) per metre of a symmetric pair (Maxwell form, C12 < 0)."""
-    ze, zo, ee, eo = coupled(xs, w, s, h, er)
-    ce, cc = math.sqrt(ee) / (C0 * ze), math.sqrt(eo) / (C0 * zo)
-    return 0.5 * (ce + cc), 0.5 * (ce - cc)
-
-
 def _single_c(w, h, er, xs='microstrip'):
     z, ee = single(xs, w, h, er)
     return math.sqrt(ee) / (C0 * z)
@@ -108,11 +99,12 @@ def group_lc(widths, gaps, h, er, xs='microstrip'):
         C = np.diag([_single_c(w, h, e, xs) for w in widths])
         for i, s in enumerate(gaps):
             wm = 0.5 * (widths[i] + widths[i + 1])
-            c11, c12 = _pair_c(wm, s, h, e, xs)
-            extra = c11 - _single_c(wm, h, e, xs)              # what the neighbour adds to the self term
+            ze, zo, ee, eo = coupled(xs, wm, s, h, e)
+            ce, cc = math.sqrt(ee) / (C0 * ze), math.sqrt(eo) / (C0 * zo)     # the pair's even / odd mode C per metre
+            extra = 0.5 * (ce + cc) - _single_c(wm, h, e, xs)  # what the neighbour adds to the self term (its C11)
             C[i, i] += extra
             C[i + 1, i + 1] += extra
-            C[i, i + 1] = C[i + 1, i] = c12
+            C[i, i + 1] = C[i + 1, i] = 0.5 * (ce - cc)        # its C12 (< 0, Maxwell form)
         out.append(C)
     return out[0], out[1]
 

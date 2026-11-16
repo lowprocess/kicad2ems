@@ -151,15 +151,10 @@ def cross_section(line):
         diel.append(X.Dielectric(z, z + h, er, tand))
         z += h
     xs = X.CrossSection(dielectrics=diel, planes=[0.0] + ([z] if line.top_plane else []))
-    widths = [line.w, line.w] if line.pair else [line.w]
-    edges = X._strips(xs, widths, [line.gap] if line.pair else [], zc, line.t)
-    if line.ground_gap:
-        X._ground_beside(xs, edges, line.ground_gap, zc, line.t, line.ground_width)
+    X._strips(xs, [line.w, line.w] if line.pair else [line.w], [line.gap] if line.pair else [], zc, line.t,
+              line.ground_gap, line.ground_width)
     if line.mask > 0:
-        xs.dielectrics.append(X.Dielectric(zc, zc + line.mask, line.er_mask, line.tand_mask))
-        for c in xs.conductors:                                 # the mask follows the copper: its top and its sides
-            xs.dielectrics.append(X.Dielectric(c.z1, c.z1 + line.mask, line.er_mask, line.tand_mask,
-                                               c.x0 - line.mask, c.x1 + line.mask))
+        X._mask(xs, zc, line.mask, line.er_mask, line.tand_mask)
     return xs
 
 
