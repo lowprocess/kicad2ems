@@ -17,10 +17,10 @@ round a circle (a conical scan), or with Aim the angle: theta back and forth, or
 """
 import math
 import numpy as np
-from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QRectF, QSignalBlocker, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
-                               QSlider, QSpinBox, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+                               QPushButton, QSizePolicy, QSlider, QSpinBox, QVBoxLayout, QWidget)
 from kicad2ems.core.api.frontend import phased
 
 STEP_MAX = 180          # deg: the phase steps' range, either way
@@ -65,11 +65,12 @@ class PhaseMap(QWidget):
         width = width or (self.width() if self.isVisible() and self.width() > 1 else self.sizeHint().width())
         self.setFixedHeight(self.heightForWidth(width))
 
-    def _dims(self):
-        cols = 1 + max(c for c, *_ in self.cells)
-        rows = 1 + max(r for _, r, *_ in self.cells)                 # cells at (column, row) x the cell size
-        w = min(self.CELL, max(8.0, (self.width() - 2) / cols))
-        return cols, rows, w, w * self._aspect()
+    def _shape(self):
+        """(columns, rows): the cells are at (column, row) x the cell size."""
+        return 1 + max(c for c, *_ in self.cells), 1 + max(r for _, r, *_ in self.cells)
+
+    def _cell_width(self, width):
+        return min(self.CELL, max(8.0, (width - 2) / self._shape()[0]))
 
     def _aspect(self):
         return self.ASPECT * (4.5 / 3.5 if self.tapered else 1.0)          # four lines of text, not three
@@ -80,15 +81,13 @@ class PhaseMap(QWidget):
     def heightForWidth(self, width):
         if not self.cells:
             return 0
-        cols = 1 + max(c for c, *_ in self.cells)
-        rows = 1 + max(r for _, r, *_ in self.cells)
-        return int(math.ceil(rows * min(self.CELL, max(8.0, (width - 2) / cols)) * self._aspect())) + 2
+        return int(math.ceil(self._shape()[1] * self._cell_width(width) * self._aspect())) + 2
 
     def sizeHint(self):
         if not self.cells:
             return QSize(0, 0)
-        cols = 1 + max(c for c, *_ in self.cells)
-        return QSize(int(cols * self.CELL) + 2, self.heightForWidth(int(cols * self.CELL) + 2))
+        width = int(self._shape()[0] * self.CELL) + 2
+        return QSize(width, self.heightForWidth(width))
 
     def resizeEvent(self, ev):
         self._fit(ev.size().width())
@@ -97,7 +96,8 @@ class PhaseMap(QWidget):
     def paintEvent(self, _):
         if not self.cells:
             return
-        _, _, w, h = self._dims()
+        w = self._cell_width(self.width())
+        h = w * self._aspect()
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         f = p.font()
@@ -134,36 +134,28 @@ class SteeringBar(QGroupBox):
         lay = QVBoxLayout(self)
         row = QHBoxLayout()
         row.addWidget(QLabel('Drive'))
-        self.drive = QLineEdit()
-        self.drive.setToolTip("PORT[=amplitude][@phase in degrees] per driven port, comma-separated (incident "
-                              "waves; the ports not named are terminated), e.g. P1@0, P2=0.5@90")
-        self.drive.editingFinished.connect(self.update)
+        self.drive = QLineEdit(toolTip="PORT[=amplitude][@phase in degrees] per driven port, comma-separated "
+                                       "(incident waves; the ports not named are terminated), e.g. P1@0, P2=0.5@90",
+                               editingFinished=self.update)
         row.addWidget(self.drive, 2)
         if compact:                                                 # a narrow side panel: a row each
             lay.addLayout(row)
             row = QHBoxLayout()
         row.addWidget(QLabel('Grid'))
-        self.grid = QLineEdit()
-        self.grid.setPlaceholderText('a line of ports')
-        self.grid.setToolTip("the ports' places in a 2D array, for an X step per column and a Y step per row: "
-                             "COLSxROWS (the ports in order fill the rows, top row first: 4x4 for P1..P16), or "
-                             "PORT:COL,ROW per port separated by spaces (e.g. P1:0,0 P2:1,0 P3:0,1 P4:1,1; "
-                             "fractional places for an offset lattice). Empty: one step from each driven port to "
-                             "the next")
-        self.grid.editingFinished.connect(self.update)
+        self.grid = QLineEdit(placeholderText='a line of ports', editingFinished=self.update,
+                              toolTip="the ports' places in a 2D array, for an X step per column and a Y step per "
+                                      "row: COLSxROWS (the ports in order fill the rows, top row first: 4x4 for "
+                                      "P1..P16), or PORT:COL,ROW per port separated by spaces (e.g. P1:0,0 P2:1,0 "
+                                      "P3:0,1 P4:1,1; fractional places for an offset lattice). Empty: one step from "
+                                      "each driven port to the next")
         row.addWidget(self.grid, 1)
         lay.addLayout(row)
 
         def step_row(label, tip):
             r = QHBoxLayout()
             lab = QLabel(label)
-            slider = QSlider(Qt.Horizontal)
-            slider.setRange(-STEP_MAX, STEP_MAX)
-            slider.setToolTip(tip)
-            spin = QSpinBox()
-            spin.setRange(-STEP_MAX, STEP_MAX)
-            spin.setSuffix('°')
-            spin.setToolTip(tip)
+            slider = QSlider(Qt.Horizontal, minimum=-STEP_MAX, maximum=STEP_MAX, toolTip=tip)
+            spin = QSpinBox(minimum=-STEP_MAX, maximum=STEP_MAX, suffix='°', toolTip=tip)
             slider.valueChanged.connect(spin.setValue)
             spin.valueChanged.connect(slider.setValue)
             spin.valueChanged.connect(lambda *_: self.update())
@@ -178,83 +170,64 @@ class SteeringBar(QGroupBox):
                 r.addWidget(slider, 3)
                 r.addWidget(spin)
             lay.addLayout(r)
-            return lab, slider, spin, r
+            return lab, slider, spin
 
-        self.label_x, self.slider, self.spin, _ = step_row(
+        self.label_x, self.slider, self.spin = step_row(
             'Phase step', "added on top of the drive's phases: from each driven port to the next (in port order), "
                           "or with a grid per column: the beam tilts across the ports")
-        self.label_y, self.slider_y, self.spin_y, _ = step_row(
+        self.label_y, self.slider_y, self.spin_y = step_row(
             'Y step', "with a grid: added per row (row 0 the top one): the beam tilts across the rows")
         self.aim_row = QWidget()
         row = QHBoxLayout(self.aim_row)
         row.setContentsMargins(0, 0, 0, 0)
-        self.aim = QCheckBox('Aim at')
-        self.aim.setToolTip("point the beam at θ, φ: each driven port's phase from its place, −k0 (x sin θ cos φ + "
-                            "y sin θ sin φ) at the pattern frequency, on top of the drive and the steps (any layout "
-                            "of feeds). A feed well off its element's centre still needs the drive's own phases")
-        self.aim.toggled.connect(lambda *_: self._aim_changed())
-        row.addWidget(self.aim)
-        self.theta, self.phi = QDoubleSpinBox(), QDoubleSpinBox()
-        for w, lab, lo, hi in ((self.theta, 'θ', 0, 90), (self.phi, 'φ', -180, 360)):
-            w.setRange(lo, hi)
-            w.setDecimals(0)
-            w.setPrefix(f"{lab} ")
-            w.setSuffix('°')
-            w.valueChanged.connect(lambda *_: self.update())
+        self.aim = QCheckBox('Aim at', toggled=self._aim_changed,
+                             toolTip="point the beam at θ, φ: each driven port's phase from its place, −k0 (x sin θ "
+                                     "cos φ + y sin θ sin φ) at the pattern frequency, on top of the drive and the "
+                                     "steps (any layout of feeds). A feed well off its element's centre still needs "
+                                     "the drive's own phases")
+        self.theta = QDoubleSpinBox(minimum=0, maximum=90, decimals=0, prefix='θ ', suffix='°')
+        self.phi = QDoubleSpinBox(minimum=-180, maximum=360, decimals=0, prefix='φ ', suffix='°', wrapping=True)
+        for w in (self.aim, self.theta, self.phi):
             row.addWidget(w)
-        self.phi.setWrapping(True)
+        for w in (self.theta, self.phi):
+            w.valueChanged.connect(lambda *_: self.update())
         row.addStretch(1)
         lay.addWidget(self.aim_row)
         row = QHBoxLayout()
         row.addWidget(QLabel('Taper'))
-        self.taper = QComboBox()
+        self.taper = QComboBox(toolTip="an amplitude taper multiplied into the drive, for lower sidelobes at the "
+                                       "cost of a wider beam and some gain: Taylor (nearly equal sidelobes at the "
+                                       "level set), Chebyshev (all sidelobes at the level), cosine. With a grid: per "
+                                       "column times per row; without: across the driven ports")
         self.taper.addItems([t.capitalize() for t in phased.TAPERS])
-        self.taper.setToolTip("an amplitude taper multiplied into the drive, for lower sidelobes at the cost of a "
-                              "wider beam and some gain: Taylor (nearly equal sidelobes at the level set), "
-                              "Chebyshev (all sidelobes at the level), cosine. With a grid: per column times per "
-                              "row; without: across the driven ports")
         self.taper.currentIndexChanged.connect(lambda *_: self._taper_changed())
+        self.sll = QDoubleSpinBox(minimum=13.5, maximum=80, decimals=0, value=phased.TAPER_SLL, prefix='−',
+                                  suffix=' dB', toolTip="Taylor's and Chebyshev's sidelobe level, below the main beam",
+                                  valueChanged=lambda *_: self.update())
         row.addWidget(self.taper)
-        self.sll = QDoubleSpinBox()
-        self.sll.setRange(13.5, 80)
-        self.sll.setDecimals(0)
-        self.sll.setValue(phased.TAPER_SLL)
-        self.sll.setPrefix('−')
-        self.sll.setSuffix(' dB')
-        self.sll.setToolTip("Taylor's and Chebyshev's sidelobe level, below the main beam")
-        self.sll.valueChanged.connect(lambda *_: self.update())
         row.addWidget(self.sll)
         row.addStretch(1)
         lay.addLayout(row)
         row = QHBoxLayout()
-        self.anim = QPushButton('Animate')
-        self.anim.setCheckable(True)
-        self.anim.setToolTip(f"sweep the phase step back and forth over ±{STEP_MAX}° (with a grid: X, Y, or both "
-                             f"round a circle, a conical scan)")
-        self.anim.toggled.connect(self._animate)
-        row.addWidget(self.anim)
-        self.anim_mode = QComboBox()
+        self.anim = QPushButton('Animate', checkable=True, toggled=self._animate,
+                                toolTip=f"sweep the phase step back and forth over ±{STEP_MAX}° (with a grid: X, Y, "
+                                        f"or both round a circle, a conical scan)")
+        self.anim_mode = QComboBox(toolTip="what Animate sweeps: the X step, the Y step, or both round a circle (the "
+                                           f"steps' size at the start, {CIRCLE_R}° when about zero); with Aim, θ back "
+                                           f"and forth over 0..{AIM_THETA_MAX}° or φ round")
         self.anim_mode.addItems(ANIM_MODES)
-        self.anim_mode.setToolTip("what Animate sweeps: the X step, the Y step, or both round a circle (the "
-                                  f"steps' size at the start, {CIRCLE_R}° when about zero); with Aim, θ back and "
-                                  f"forth over 0..{AIM_THETA_MAX}° or φ round")
         self.anim_mode.currentIndexChanged.connect(lambda *_: self._restart_circle())
-        row.addWidget(self.anim_mode)
-        self.reset = QPushButton('Reset')
-        self.reset.setToolTip("the run's drive, grid, taper, phase steps and aim")
-        self.reset.clicked.connect(self._reset)
-        row.addWidget(self.reset)
+        self.reset = QPushButton('Reset', toolTip="the run's drive, grid, taper, phase steps and aim",
+                                 clicked=self._reset)
+        for w in (self.anim, self.anim_mode, self.reset):
+            row.addWidget(w)
         row.addStretch(1)
         lay.addLayout(row)
         self.map = PhaseMap()
+        self.readout = QLabel(textInteractionFlags=Qt.TextSelectableByMouse, wordWrap=True)
         lay.addWidget(self.map)
-        self.readout = QLabel()
-        self.readout.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.readout.setWordWrap(True)
         lay.addWidget(self.readout)
-        self.timer = QTimer(self)
-        self.timer.setInterval(ANIM_MS)
-        self.timer.timeout.connect(self._frame)
+        self.timer = QTimer(self, interval=ANIM_MS, timeout=self._frame)
         self._show_2d(False)
         self._taper_changed(update=False)
         self.aim_row.hide()
@@ -281,10 +254,9 @@ class SteeringBar(QGroupBox):
         modes = AIM_MODES if self.aiming() else ANIM_MODES if self._grid else ()
         have = tuple(self.anim_mode.itemText(i) for i in range(self.anim_mode.count()))
         if modes and have != modes:
-            self.anim_mode.blockSignals(True)
-            self.anim_mode.clear()
-            self.anim_mode.addItems(modes)
-            self.anim_mode.blockSignals(False)
+            with QSignalBlocker(self.anim_mode):
+                self.anim_mode.clear()
+                self.anim_mode.addItems(modes)
         self.anim_mode.setVisible(bool(modes))
 
     def places(self):
@@ -298,31 +270,27 @@ class SteeringBar(QGroupBox):
     def aiming(self):
         return self.aim.isChecked() and self.aim_row.isVisible()
 
-    def _aim_changed(self):
+    def _aim_changed(self, *_, update=True):
         for w in (self.theta, self.phi):
             w.setEnabled(self.aim.isChecked())
         self._anim_modes()
-        self.update()
+        if update:
+            self.update()
 
     def _set_aim(self, aim):
         """The aim controls from [theta, phi] or None (off), without an update."""
-        for w in (self.aim, self.theta, self.phi):
-            w.blockSignals(True)
-        self.aim.setChecked(bool(aim))
-        if aim:
-            self.theta.setValue(aim[0])
-            self.phi.setValue(aim[1])
-        for w in (self.aim, self.theta, self.phi):
-            w.blockSignals(False)
-            w.setEnabled(w is self.aim or bool(aim))
-        self._anim_modes()
+        with QSignalBlocker(self.aim), QSignalBlocker(self.theta), QSignalBlocker(self.phi):
+            self.aim.setChecked(bool(aim))
+            if aim:
+                self.theta.setValue(aim[0])
+                self.phi.setValue(aim[1])
+        self._aim_changed(update=False)
 
     def _set_steps(self, x, y):
         """Both steps (and their sliders) without an update each."""
         for w, v in ((self.spin, x), (self.slider, x), (self.spin_y, y), (self.slider_y, y)):
-            w.blockSignals(True)
-            w.setValue(int(round(v)))
-            w.blockSignals(False)
+            with QSignalBlocker(w):
+                w.setValue(int(round(v)))
 
     def taper_spec(self):
         kind = phased.TAPERS[self.taper.currentIndex()]
@@ -334,13 +302,10 @@ class SteeringBar(QGroupBox):
             kind, sll = phased.parse_taper(spec)
         except ValueError:
             kind, sll = 'uniform', phased.TAPER_SLL
-        for w in (self.taper, self.sll):
-            w.blockSignals(True)
-        self.taper.setCurrentIndex(phased.TAPERS.index(kind))
-        self.sll.setValue(sll)
-        for w in (self.taper, self.sll):
-            w.blockSignals(False)
-        self.sll.setEnabled(kind in ('taylor', 'chebyshev'))
+        with QSignalBlocker(self.taper), QSignalBlocker(self.sll):
+            self.taper.setCurrentIndex(phased.TAPERS.index(kind))
+            self.sll.setValue(sll)
+        self._taper_changed(update=False)
 
     def _taper_changed(self, update=True):
         self.sll.setEnabled(phased.TAPERS[self.taper.currentIndex()] in ('taylor', 'chebyshev'))
@@ -349,17 +314,9 @@ class SteeringBar(QGroupBox):
 
     def _parse_grid(self):
         """The grid field's places (phased.parse_grid), shown or hidden with it; ValueError for a bad one."""
-        g = phased.parse_grid(self.grid.text(), self.data['ports'])
-        self._grid = g
-        self._show_2d(bool(g))
-        return g
-
-    def _parse_grid_quiet(self):
-        """_parse_grid, a bad grid left for update() to report."""
-        try:
-            self._parse_grid()
-        except ValueError:
-            pass
+        self._grid = phased.parse_grid(self.grid.text(), self.data['ports'])
+        self._show_2d(bool(self._grid))
+        return self._grid
 
     def _reset(self, *_, emit=True):
         d, res = self.data, self.res or {}
@@ -383,25 +340,26 @@ class SteeringBar(QGroupBox):
         self.grid.setText(other.grid.text())
         self._set_taper(other.taper_spec())
         self._set_aim([other.theta.value(), other.phi.value()] if other.aim.isChecked() else None)
-        self._parse_grid_quiet()
-        self.anim_mode.blockSignals(True)
-        self.anim_mode.setCurrentIndex(other.anim_mode.currentIndex())
-        self.anim_mode.blockSignals(False)
+        try:
+            self._parse_grid()
+        except ValueError:                                          # a bad grid: left for update() to report
+            pass
+        with QSignalBlocker(self.anim_mode):
+            self.anim_mode.setCurrentIndex(other.anim_mode.currentIndex())
         self._set_steps(other.spin.value(), other.spin_y.value())
         self.update(emit=False)
 
     def follow_animation(self, on):
         """Another bar started or stopped Animate: the button shows it, this bar's own timer stays off."""
         self.timer.stop()
-        self.anim.blockSignals(True)
-        self.anim.setChecked(on)
-        self.anim.blockSignals(False)
+        with QSignalBlocker(self.anim):
+            self.anim.setChecked(on)
 
     def weights(self):
         """The incident waves of the drive, the taper, the grid and the phase steps; ValueError for a drive or
         grid that does not parse."""
         names = self.data['ports']
-        a = phased.parse_drive([x for x in self.drive.text().split(',')], names)
+        a = phased.parse_drive(self.drive.text().split(','), names)
         if not np.any(np.abs(a) > 0):
             raise ValueError("drive: no port driven")
         g = self._parse_grid()
@@ -471,12 +429,8 @@ class SteeringBar(QGroupBox):
         if self.aiming():                                          # the angle: theta to and fro, or phi round
             if self.anim_mode.currentText() == 'φ':
                 self.phi.setValue((self.phi.value() + ANIM_DEG + 180) % 360 - 180)
-                return
-            v = self.theta.value() + self._dir * ANIM_DEG
-            if not 0 <= v <= AIM_THETA_MAX:
-                self._dir = -self._dir
-                v = self.theta.value() + self._dir * ANIM_DEG
-            self.theta.setValue(v)
+            else:
+                self._bounce(self.theta, 0, AIM_THETA_MAX)
             return
         mode = ANIM_MODES[self.anim_mode.currentIndex()] if self._grid else 'X'
         if mode == 'Circle':
@@ -484,9 +438,12 @@ class SteeringBar(QGroupBox):
             self._set_steps(self._r * math.cos(self._t), self._r * math.sin(self._t))
             self.update()
             return
-        spin = self.spin_y if mode == 'Y' else self.spin
-        v = spin.value() + self._dir * ANIM_DEG
-        if abs(v) > STEP_MAX:
+        self._bounce(self.spin_y if mode == 'Y' else self.spin, -STEP_MAX, STEP_MAX)
+
+    def _bounce(self, box, lo, hi):
+        """A frame of a sweep to and fro: box's value a step on, turning back at lo and hi."""
+        v = box.value() + self._dir * ANIM_DEG
+        if not lo <= v <= hi:
             self._dir = -self._dir
-            v = spin.value() + self._dir * ANIM_DEG
-        spin.setValue(v)
+            v = box.value() + self._dir * ANIM_DEG
+        box.setValue(v)
