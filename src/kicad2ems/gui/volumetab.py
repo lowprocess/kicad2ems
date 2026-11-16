@@ -7,7 +7,7 @@ from the current camera. Needs PyOpenGL (pip install PyOpenGL; the gui extra has
 import os
 import sys
 import numpy as np
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QSignalBlocker
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QFormLayout, QComboBox, QCheckBox, QSlider,
                                QPushButton, QLabel, QDoubleSpinBox, QFileDialog, QMessageBox, QSpinBox)
@@ -42,15 +42,6 @@ class _Frames:
 
     def __iter__(self):
         return (self[k] for k in range(self.n))
-
-
-def gl_module():
-    """pyqtgraph.opengl, or None (and why) when PyOpenGL is missing."""
-    try:
-        import pyqtgraph.opengl as gl
-        return gl, ''
-    except Exception as e:                                          # ImportError: no PyOpenGL
-        return None, f"{type(e).__name__}: {e}"
 
 
 _GL_WHY = None
@@ -199,10 +190,8 @@ class FrameSlider(QWidget):
         super().__init__()
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        self.slider = QSlider(Qt.Horizontal)
-        self.slider.setRange(0, 0)
-        self.label = QLabel('')
-        self.label.setMinimumWidth(90)
+        self.slider = QSlider(Qt.Horizontal, minimum=0, maximum=0)
+        self.label = QLabel('', minimumWidth=90)
         lay.addWidget(self.slider, 1)
         lay.addWidget(self.label)
         self.labels = []
@@ -215,16 +204,14 @@ class FrameSlider(QWidget):
 
     def clear(self):
         self.labels = []
-        self.slider.blockSignals(True)
-        self.slider.setRange(0, 0)
-        self.slider.blockSignals(False)
+        with QSignalBlocker(self.slider):
+            self.slider.setRange(0, 0)
         self.label.setText('')
 
     def addItems(self, labels):
         self.labels += list(labels)
-        self.slider.blockSignals(True)
-        self.slider.setRange(0, max(0, len(self.labels) - 1))
-        self.slider.blockSignals(False)
+        with QSignalBlocker(self.slider):
+            self.slider.setRange(0, max(0, len(self.labels) - 1))
         self._moved(self.slider.value()) if not self.signalsBlocked() else self.label.setText(
             self.labels[self.slider.value()] if self.labels else '')
         self.slider.setEnabled(len(self.labels) > 1)
@@ -258,10 +245,14 @@ class VolumeTab(QWidget):
         self.win, self.srcs, self.src, self.vol, self.items = win, [], None, None, {}
         self.board, self.mesh_files = None, {}                      # <name>_board.json's geometry; meshes.find()
         self.ant = None                                             # (antenna results, sphere) of the folder
-        self._frames, self._key, self.k = [], None, 0
+        self._frames, self.k = [], 0
         self.lines, self.sel = None, None                           # the line model (overlay.load_lines), a section
         lay = QHBoxLayout(self)
-        self.gl, why = gl_module()
+        try:
+            import pyqtgraph.opengl as gl
+            self.gl, why = gl, ''
+        except Exception as e:                                      # ImportError: no PyOpenGL
+            self.gl, why = None, f"{type(e).__name__}: {e}"
         problem = gl_problem() if self.gl is not None else ''
         if self.gl is None or problem:
             msg = (f"The 3D field view is off: {problem}" if problem else
@@ -269,11 +260,7 @@ class VolumeTab(QWidget):
             if problem:
                 print(f"kicad2ems-gui: {msg}", file=sys.stderr)
             self.gl = None
-            note = QLabel(msg)
-            note.setWordWrap(True)
-            note.setAlignment(Qt.AlignCenter)
-            note.setStyleSheet('color: gray')
-            lay.addWidget(note)
+            lay.addWidget(QLabel(msg, wordWrap=True, alignment=Qt.AlignCenter, styleSheet='color: gray'))
             return
         side = QVBoxLayout()
         self.dump = QComboBox()
@@ -283,111 +270,59 @@ class VolumeTab(QWidget):
         self.cmap = QComboBox()
         self.cmap.addItems(['turbo', 'inferno', 'plasma', 'viridis', 'hot'])
         self.envelope = QCheckBox('envelope (no animation)')
-        self.whole = QCheckBox('one colour range for every frame')
-        self.whole.setToolTip("the colour range over the whole dump (every time step, or every frequency), so a "
-                              "field that grows and decays shows it; off: each frame its own range (a frequency "
-                              "domain dump's period always shares one)")
+        self.whole = QCheckBox('one colour range for every frame', toolTip=(
+            "the colour range over the whole dump (every time step, or every frequency), so a field that grows and "
+            "decays shows it; off: each frame its own range (a frequency domain dump's period always shares one)"))
         self._ranges = {}                                           # (dump, settings) -> the whole dump's top
-        self.log = QCheckBox('log scale')
-        self.log.setChecked(True)
-        self.decades = QDoubleSpinBox()
-        self.decades.setRange(0.5, 5)
-        self.decades.setSingleStep(0.5)
-        self.decades.setValue(1.5)
-        self.opacity = QSlider(Qt.Horizontal)
-        self.opacity.setRange(5, 100)
-        self.opacity.setValue(80)
-        self.gamma = QSlider(Qt.Horizontal)
-        self.gamma.setRange(5, 40)                                  # gamma x 10
-        self.gamma.setValue(12)
-        self.zscale = QDoubleSpinBox()
-        self.zscale.setRange(1, 20)
-        self.zscale.setValue(2)
-        self.zscale.setSuffix(' x')
-        self.clip = QDoubleSpinBox()
-        self.clip.setRange(90, 100)
-        self.clip.setDecimals(2)
-        self.clip.setSingleStep(0.1)
-        self.clip.setValue(99.5)
-        self.clip.setSuffix(' %')
-        self.clip.setToolTip('the top of the colour range: this percentile of the values (a port gap takes it all at 100 %)')
-        self.res = QSpinBox()
-        self.res.setRange(48, 256)
-        self.res.setValue(128)
-        self.res.setSuffix(' voxels')
-        self.copper = QCheckBox('copper')
-        self.copper.setChecked(True)
-        self.cu_t = QDoubleSpinBox()
-        self.cu_t.setRange(0, 5)
-        self.cu_t.setDecimals(2)
-        self.cu_t.setSingleStep(0.05)
-        self.cu_t.setSpecialValueText('flat')
-        self.cu_t.setSuffix(' mm')
-        self.cu_t.setToolTip('the copper drawn as shaded slabs this thick (on screen; real copper is ~35 um): '
-                             'its edges catch the light; 0: flat, unshaded')
+        self.log = QCheckBox('log scale', checked=True)
+        self.decades = QDoubleSpinBox(minimum=0.5, maximum=5, singleStep=0.5, value=1.5)
+        self.opacity = QSlider(Qt.Horizontal, minimum=5, maximum=100, value=80)
+        self.gamma = QSlider(Qt.Horizontal, minimum=5, maximum=40, value=12)        # gamma x 10
+        self.zscale = QDoubleSpinBox(minimum=1, maximum=20, value=2, suffix=' x')
+        self.clip = QDoubleSpinBox(minimum=90, maximum=100, decimals=2, singleStep=0.1, value=99.5, suffix=' %',
+                                   toolTip='the top of the colour range: this percentile of the values (a port gap '
+                                           'takes it all at 100 %)')
+        self.res = QSpinBox(minimum=48, maximum=256, value=128, suffix=' voxels')
+        self.copper = QCheckBox('copper', checked=True)
+        self.cu_t = QDoubleSpinBox(minimum=0, maximum=5, decimals=2, singleStep=0.05, specialValueText='flat',
+                                   suffix=' mm', toolTip='the copper drawn as shaded slabs this thick (on screen; '
+                                                         'real copper is ~35 um): its edges catch the light; 0: flat, '
+                                                         'unshaded')
         self._cu_t_auto = True
-        self.boxc = QCheckBox('board box and vias')
-        self.boxc.setChecked(True)
-        self.mesh = QComboBox()
-        self.solved = QCheckBox('solved mesh')
-        self.solved.setStyleSheet(f'QCheckBox {{ color: {mp.SOLVED_COLOUR}; }}')
-        self.far = QComboBox()
-        self.far.setToolTip("the far-field gain pattern (antenna mode) at a recorded frequency, over the board: "
-                            "its distance from the board's centre is the gain, 30 dB of range")
-        self.far_size = QDoubleSpinBox()
-        self.far_size.setRange(0.2, 5)
-        self.far_size.setSingleStep(0.1)
-        self.far_size.setValue(0.5)
-        self.far_size.setSuffix(' x board')
-        self.far_up = QDoubleSpinBox()
-        self.far_up.setRange(-500, 500)
-        self.far_up.setSingleStep(1)
-        self.far_up.setSuffix(' mm')
-        self.far_up.setToolTip("how far above the board's top surface the pattern's centre is drawn (on screen)")
+        self.boxc = QCheckBox('board box and vias', checked=True)
+        self.mesh = QComboBox(toolTip="a solver's discretisation of the board (written by a preview or a run): "
+                                      "openEMS's grid lines, mom25d's triangles")
+        self.solved = QCheckBox('solved mesh', styleSheet=f'QCheckBox {{ color: {mp.SOLVED_COLOUR}; }}')
+        self.far = QComboBox(toolTip="the far-field gain pattern (antenna mode) at a recorded frequency, over the "
+                                     "board: its distance from the board's centre is the gain, 30 dB of range")
+        self.far_size = QDoubleSpinBox(minimum=0.2, maximum=5, singleStep=0.1, value=0.5, suffix=' x board')
+        self.far_up = QDoubleSpinBox(minimum=-500, maximum=500, singleStep=1, suffix=' mm', toolTip=(
+            "how far above the board's top surface the pattern's centre is drawn (on screen)"))
         from .steering import SteeringBar
         self.steer = SteeringBar(compact=True)                      # the Results page's, linked (app.py)
         self.steer.steered.connect(lambda *_: self._far_on())
-        self.mesh.setToolTip("a solver's discretisation of the board (written by a preview or a run): openEMS's "
-                             "grid lines, mom25d's triangles")
         # the controls: one folding section per subject, shown when the folder has something for it (a field
         # dump, a far field), in a side panel the splitter can narrow or close
         from .panels import Section
-        self.play_btn = QPushButton('Play')
-        self.play_btn.setCheckable(True)
-        self.play_btn.toggled.connect(self._play)
-        self.fps = QSpinBox()                                       # as the 2D view's
-        self.fps.setRange(1, 60)
-        self.fps.setValue(12)
-        self.fps.setToolTip('frames per second of Play and of saved animations')
-        self.fps.valueChanged.connect(lambda v: self.timer.setInterval(int(1000 / v)))
-        self.every = QSpinBox()
-        self.every.setRange(1, 1000)
-        self.every.setToolTip('Time domain: every n-th time step, for Play and saved animations (set for a long '
-                              'dump to about 120 frames)')
+        self.play_btn = QPushButton('Play', checkable=True, toggled=self._play)
+        self.fps = QSpinBox(minimum=1, maximum=60, value=12, toolTip='frames per second of Play and of saved '
+                            'animations', valueChanged=lambda v: self.timer.setInterval(int(1000 / v)))  # as the 2D's
+        self.every = QSpinBox(minimum=1, maximum=1000, toolTip='Time domain: every n-th time step, for Play and saved '
+                              'animations (set for a long dump to about 120 frames)')
         saves = QHBoxLayout()
         for ext in ('gif', 'mp4'):
-            b = QPushButton(f"Save {ext.upper()}")
-            b.clicked.connect(lambda _=False, e=ext: self.save_dialog(e))
-            saves.addWidget(b)
-        self.lines_on = QCheckBox('line model (coloured by Z0)')
-        self.lines_on.setChecked(True)
-        self.lines_on.setToolTip("the line model's sections on their layers; pick one in the section list")
-        self.lines_on.toggled.connect(lambda *_: self._board())
-        self.relief = QDoubleSpinBox()
-        self.relief.setRange(0, 20)
-        self.relief.setDecimals(2)
-        self.relief.setSingleStep(0.1)
-        self.relief.setSuffix(' mm')
-        self.relief.setSpecialValueText('flat')
-        self.relief.setToolTip("the line model's tallest section on screen (the highest Z0); the lowest Z0 stands a "
-                               "quarter as high, so each step in height is a step in impedance. 0: flat")
-        self.relief.valueChanged.connect(self._relief_set)
+            saves.addWidget(QPushButton(f"Save {ext.upper()}", clicked=lambda _=False, e=ext: self.save_dialog(e)))
+        self.lines_on = QCheckBox('line model (coloured by Z0)', checked=True, toggled=lambda *_: self._board(),
+                                  toolTip="the line model's sections on their layers; pick one in the section list")
+        self.relief = QDoubleSpinBox(minimum=0, maximum=20, decimals=2, singleStep=0.1, suffix=' mm',
+                                     specialValueText='flat', valueChanged=self._relief_set, toolTip=(
+                                         "the line model's tallest section on screen (the highest Z0); the lowest Z0 "
+                                         "stands a quarter as high, so each step in height is a step in impedance. "
+                                         "0: flat"))
         self._relief_auto = True
-        self.parts_on = QCheckBox('Components')
-        self.parts_on.setChecked(True)
-        self.parts_on.setToolTip('package silhouettes and lumped-part chips; heights may be approximate. '
-                                 'resistors green, capacitors cyan, inductors pink, with their value')
-        self.parts_on.toggled.connect(lambda *_: self._board())
+        self.parts_on = QCheckBox('Components', checked=True, toggled=lambda *_: self._board(), toolTip=(
+            'package silhouettes and lumped-part chips; heights may be approximate. resistors green, capacitors '
+            'cyan, inductors pink, with their value'))
         groups = (('Field', True, (('Dump', self.dump), ('Frame', self.frame), ('Show', self.comp),
                                    ('Colours', self.cmap), ('', self.envelope), ('', self.whole), ('', self.log),
                                    ('Decades', self.decades), ('Range top', self.clip), ('Opacity', self.opacity),
@@ -410,29 +345,21 @@ class VolumeTab(QWidget):
                 f.addRow(label, w)
             self.sections[title] = Section(title, box, expanded=open_)
             side.addWidget(self.sections[title])
-        reset = QPushButton('Reset view')
-        reset.clicked.connect(self.reset_camera)
-        side.insertWidget(0, reset)
-        self.status = QLabel('')
-        self.status.setWordWrap(True)
-        self.status.setStyleSheet('color: gray')
+        side.insertWidget(0, QPushButton('Reset view', clicked=self.reset_camera))
+        self.status = QLabel('', wordWrap=True, styleSheet='color: gray')
         side.addWidget(self.status)
         side.addStretch(1)
         sw = QWidget()
         sw.setLayout(side)
         from PySide6.QtWidgets import QScrollArea, QSplitter
-        scroll = QScrollArea()
+        scroll = QScrollArea(widgetResizable=True, minimumWidth=200, horizontalScrollBarPolicy=Qt.ScrollBarAlwaysOff)
         scroll.setWidget(sw)
-        scroll.setWidgetResizable(True)
-        scroll.setMinimumWidth(200)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view = _view_class(self.gl)()
         self.view.on_init = self._new_context
         self.view.on_error = lambda why: self.status.setText(f'The 3D view could not start OpenGL ({why}): '
                                                              'the Plan view still works.')
         self.view.setBackgroundColor('w')
-        self.split = QSplitter()
-        self.split.setObjectName('viewer3d')
+        self.split = QSplitter(objectName='viewer3d')
         self.split.addWidget(scroll)
         self.split.addWidget(self.view)
         self.split.setStretchFactor(1, 1)
@@ -450,17 +377,15 @@ class VolumeTab(QWidget):
             w.currentIndexChanged.connect(self._recolour)
         for w in (self.envelope, self.whole, self.log, self.copper, self.boxc):
             w.toggled.connect(self._recolour)
+        for w in (self.decades, self.clip, self.opacity, self.gamma):
+            w.valueChanged.connect(self._recolour)
         self.cu_t.valueChanged.connect(self._cu_t_set)
         self.mesh.currentIndexChanged.connect(lambda *_: (self._solved_state(), self._board()))
         self.solved.toggled.connect(lambda *_: self._board())
         self.far.currentIndexChanged.connect(lambda *_: (self._board(), self.reset_camera()))
         self.far_size.valueChanged.connect(lambda *_: self._board())
         self.far_up.valueChanged.connect(lambda *_: (self._board(), self.reset_camera()))
-        for w in (self.decades, self.clip):
-            w.valueChanged.connect(self._recolour)
         self.zscale.valueChanged.connect(self._rescale)
-        for w in (self.opacity, self.gamma):
-            w.valueChanged.connect(self._recolour)
 
     def _new_context(self):
         """The view has a new OpenGL context (first shown, or moved: a dock tabbed, floated or docked again, which
@@ -484,8 +409,8 @@ class VolumeTab(QWidget):
         if self.gl is None:
             return False
         import glob
-        from kicad2ems.core.api.frontend import find_dumps
-        from kicad2ems.core.api.frontend import meshes
+        from kicad2ems.core.api.frontend import find_dumps, meshes
+        from .antennatab import find_antenna, load_sphere
         self.srcs = [s for s in find_dumps(out_dir) if v3.is_volume(s) or v3.is_plane(s)]
         boards = sorted(glob.glob(os.path.join(out_dir, '*_board.json')), key=os.path.getmtime)
         try:
@@ -493,22 +418,30 @@ class VolumeTab(QWidget):
         except (OSError, ValueError, KeyError):
             self.board = None
         self.mesh_files = meshes.find(out_dir)
-        self._load_far(out_dir)
+        self.ant = None                                             # its far-field pattern: the newest antenna
+        try:                                                        # result with a sphere, into the Far field choice
+            found = find_antenna(out_dir)
+            if found and found[1]:
+                self.ant = (found[0], load_sphere(found[1]))
+        except Exception:                                           # a half-written or missing file: no pattern
+            self.ant = None
+        with QSignalBlocker(self.far):
+            self.far.clear()
+            self.far.addItem('off', None)
+            for i, f in enumerate(self.ant[1]['freq'] if self.ant is not None else []):
+                self.far.addItem(f"gain at {f / 1e9:.4g} GHz", i)
         keep = self.mesh.currentData()
-        self.mesh.blockSignals(True)
-        self.mesh.clear()
-        self.mesh.addItem('none', None)
-        for solver in mp.solvers(self.mesh_files):
-            path = mp.shown(self.mesh_files, solver)
-            self.mesh.addItem(f"{meshes.LABELS.get(solver, solver)}: {meshes.counts(path)}", solver)
-        i = self.mesh.findData(keep)
-        self.mesh.setCurrentIndex(max(i, 0))
-        self.mesh.blockSignals(False)
+        with QSignalBlocker(self.mesh):
+            self.mesh.clear()
+            self.mesh.addItem('none', None)
+            for solver in mp.solvers(self.mesh_files):
+                path = mp.shown(self.mesh_files, solver)
+                self.mesh.addItem(f"{meshes.LABELS.get(solver, solver)}: {meshes.counts(path)}", solver)
+            self.mesh.setCurrentIndex(max(self.mesh.findData(keep), 0))
         self._solved_state()
-        self.dump.blockSignals(True)
-        self.dump.clear()
-        self.dump.addItems([s.label for s in self.srcs])
-        self.dump.blockSignals(False)
+        with QSignalBlocker(self.dump):
+            self.dump.clear()
+            self.dump.addItems([s.label for s in self.srcs])
         if self.srcs:
             self._pick()
         else:                                                       # the board alone, and its meshes
@@ -522,24 +455,6 @@ class VolumeTab(QWidget):
         self._fit_sections()
         return bool(self.srcs or (self.board and (self.mesh_files or self.ant or self.lines)))
 
-    def _load_far(self, out_dir):
-        """The folder's far-field pattern (its newest antenna result with a sphere) into the Far field choice."""
-        from .antennatab import find_antenna, load_sphere
-        self.ant = None
-        try:
-            found = find_antenna(out_dir)
-            if found and found[1]:
-                self.ant = (found[0], load_sphere(found[1]))
-        except Exception:                                           # a half-written or missing file: no pattern
-            self.ant = None
-        self.far.blockSignals(True)
-        self.far.clear()
-        self.far.addItem('off', None)
-        if self.ant is not None:
-            for i, f in enumerate(self.ant[1]['freq']):
-                self.far.addItem(f"gain at {f / 1e9:.4g} GHz", i)
-        self.far.blockSignals(False)
-
     def _pick(self, *_):
         i = self.dump.currentIndex()
         if i < 0 or i >= len(self.srcs):
@@ -547,11 +462,10 @@ class VolumeTab(QWidget):
         if self.srcs[i].field == 'V' or getattr(self.srcs[i], 'spans', False):   # a drop, a rise, a temperature:
             self.log.setChecked(False)                              # linear
         self.src = self.srcs[i].refresh()
-        self.frame.blockSignals(True)
-        self.frame.clear()
-        self.frame.addItems([self.src.frame_label(k) for k in range(len(self.src))])
-        self.frame.setCurrentIndex(0 if self.src.domain == 'FD' else max(0, len(self.src) - 1))
-        self.frame.blockSignals(False)
+        with QSignalBlocker(self.frame):
+            self.frame.clear()
+            self.frame.addItems([self.src.frame_label(k) for k in range(len(self.src))])
+            self.frame.setCurrentIndex(0 if self.src.domain == 'FD' else max(0, len(self.src) - 1))
         self.envelope.setEnabled(self.src.domain == 'FD')
         n, fd = len(self.src), self.src.domain == 'FD'             # as the 2D view: a long dump about 120 frames
         self.every.setEnabled(not fd)
@@ -569,15 +483,6 @@ class VolumeTab(QWidget):
             return
         self.vol = v3.Volume(self.src, self.frame.currentIndex(), n=self.res.value())
         self._recolour()
-
-    def _component(self):
-        return v3.COMPONENTS[self.comp.currentIndex()]
-
-    def _phases(self):
-        """The animation's frames: phases (frequency domain), else None (one frame)."""
-        if self.src.domain == 'FD' and not self.envelope.isChecked():
-            return list(np.linspace(0, 2 * np.pi, N_PHASE, endpoint=False))
-        return [None]
 
     def _whole_top(self, comp, phases):
         """The top of the colour range over every frame of the dump (each frame's `Range top` percentile, the
@@ -597,17 +502,6 @@ class VolumeTab(QWidget):
                 QApplication.restoreOverrideCursor()
         return self._ranges[key]
 
-    def _level_values(self, comp, phases):
-        """The values the colour range is taken from: every phase's, on a large volume from a regular subsample of
-        its voxels (about LEVEL_SAMPLES over the phases: a percentile of them is the whole's to a few parts in a
-        thousand)."""
-        vol = self.vol
-        n = int(np.prod(vol.data.shape[:3]))
-        step = int(np.ceil((n * len(phases) / LEVEL_SAMPLES) ** (1 / 3))) if n * len(phases) > 2 * LEVEL_SAMPLES else 1
-        if step == 1:
-            return [vol.scalar(comp, p) for p in phases]
-        return [v3.scalar_of(vol.data[::step, ::step, ::step], vol.complex, comp, p) for p in phases]
-
     def _rescale(self, *_):
         """The height scale changed: the frames placed again, not coloured again."""
         if self.vol is not None and self._frames:
@@ -618,8 +512,17 @@ class VolumeTab(QWidget):
         """The animation's frames at the current settings (one colour range for all), each coloured when shown."""
         if self.vol is None:
             return
-        comp, phases = self._component(), self._phases()
-        vals = self._level_values(comp, phases)
+        comp = v3.COMPONENTS[self.comp.currentIndex()]
+        # the frames: a period's phases (frequency domain), else None (one frame)
+        fd = self.src.domain == 'FD' and not self.envelope.isChecked()
+        phases = list(np.linspace(0, 2 * np.pi, N_PHASE, endpoint=False)) if fd else [None]
+        # the values the colour range is taken from: every phase's, on a large volume from a regular subsample of
+        # its voxels (about LEVEL_SAMPLES over the phases: a percentile of them is the whole's to a few parts in a
+        # thousand)
+        n = int(np.prod(self.vol.data.shape[:3]))
+        step = int(np.ceil((n * len(phases) / LEVEL_SAMPLES) ** (1 / 3))) if n * len(phases) > 2 * LEVEL_SAMPLES else 1
+        vals = [v3.scalar_of(self.vol.data[::step, ::step, ::step], self.vol.complex, comp, p) if step > 1 else
+                self.vol.scalar(comp, p) for p in phases]
         signed = self.vol.signed(comp, phases[0])
         log = self.log.isChecked() and not signed
         span = bool(getattr(self.src, 'spans', False)) and comp == 'mag' and not signed     # a temperature: its own
@@ -642,23 +545,30 @@ class VolumeTab(QWidget):
                               f"Ctrl + drag to pan")
         self._board()
 
+    def _put(self, key, item, depth):
+        """An item into the view at a depth, kept under key (what is drawn again takes it out by its key)."""
+        item.setDepthValue(depth)
+        self.view.addItem(item)
+        self.items[key] = item
+        return item
+
+    def _dump_item(self, cls, data, **kw):
+        """The dump's item ('vol': a voxel cloud, or a plane's image) showing this frame: made anew when the one there
+        is of the other kind. Drawn last: its slices would hide the board."""
+        it = self.items.get('vol')
+        if isinstance(it, cls):
+            it.setData(data)
+            return it
+        if it is not None:
+            self.view.removeItem(self.items.pop('vol'))
+        return self._put('vol', cls(data, glOptions='translucent', **kw), 10)
+
     def _show(self, k):
-        gl, zs = self.gl, self.zscale.value()
-        rgba = self._frames[k]
+        zs, rgba = self.zscale.value(), self._frames[k]
         if self.vol.plane is not None:                              # a plane dump: an image in place
             self._show_plane(rgba)
             return
-        it = self.items.get('vol')
-        if it is not None and not isinstance(it, gl.GLVolumeItem):    # was a plane's image
-            self.view.removeItem(self.items.pop('vol'))
-            it = None
-        if it is None:
-            it = gl.GLVolumeItem(rgba, sliceDensity=2, smooth=True, glOptions='translucent')
-            it.setDepthValue(10)                                    # last: its slices would hide the board
-            self.view.addItem(it)
-            self.items['vol'] = it
-        else:
-            it.setData(rgba)
+        it = self._dump_item(self.gl.GLVolumeItem, rgba, sliceDensity=2, smooth=True)
         it.resetTransform()
         it.scale(self.vol.step[0], self.vol.step[1], self.vol.step[2] * zs)
         o = self.vol.origin - 0.5 * self.vol.step                  # voxel k spans k..k+1: its centre on sample k
@@ -667,19 +577,9 @@ class VolumeTab(QWidget):
     def _show_plane(self, rgba):
         """A plane dump's frame as an image at its position (normal x, y or z), at the height scale."""
         from PySide6.QtGui import QMatrix4x4
-        gl, zs, n = self.gl, self.zscale.value(), self.vol.plane
+        zs, n = self.zscale.value(), self.vol.plane
         a, b = [k for k in range(3) if k != n]
-        img = np.ascontiguousarray(np.take(rgba, 0, axis=n))         # (n_a, n_b, 4)
-        it = self.items.get('vol')
-        if it is None or not isinstance(it, gl.GLImageItem):
-            if it is not None:
-                self.view.removeItem(it)
-            it = gl.GLImageItem(img, glOptions='translucent')
-            it.setDepthValue(10)
-            self.view.addItem(it)
-            self.items['vol'] = it
-        else:
-            it.setData(img)
+        it = self._dump_item(self.gl.GLImageItem, np.ascontiguousarray(np.take(rgba, 0, axis=n)))   # (n_a, n_b, 4)
         sc = np.array([1.0, 1.0, zs])
         eu, ev = np.zeros(3), np.zeros(3)
         eu[a], ev[b] = self.vol.step[a] * sc[a], self.vol.step[b] * sc[b]
@@ -734,11 +634,8 @@ class VolumeTab(QWidget):
                                                                    z1 * zs + self.far_up.value()),
                                               self.far_size.value() * max(x1 - x0, y1 - y0))
         col[:, 3] = 1.0                                             # opaque: a translucent surface sorts badly
-        m = self.gl.GLMeshItem(vertexes=v.astype(np.float32), faces=faces.astype(np.uint32),
-                               vertexColors=col.astype(np.float32), smooth=True, glOptions='opaque')
-        m.setDepthValue(5)
-        self.view.addItem(m)
-        self.items['far'] = m
+        self._put('far', self.gl.GLMeshItem(vertexes=v.astype(np.float32), faces=faces.astype(np.uint32),
+                                            vertexColors=col.astype(np.float32), smooth=True, glOptions='opaque'), 5)
         self.status.setText(f"far field at {f / 1e9:.4g} GHz: peak gain {peak:.2f} dBi (30 dB of range); "
                             f"drag to orbit, wheel to zoom, Ctrl + drag to pan")
 
@@ -764,6 +661,28 @@ class VolumeTab(QWidget):
         cache[k] = (tuple(objs), made)
         return made
 
+    def _solid(self, key, verts, faces, color, depth, opaque=True):
+        """Shaded slabs (copper_shader) of these triangles into the view."""
+        md = self.gl.MeshData(vertexes=verts.astype(np.float32), faces=faces.astype(np.uint32))
+        self._put(key, self.gl.GLMeshItem(meshdata=md, color=color, smooth=False, shader=copper_shader(),
+                                          glOptions='opaque' if opaque else 'translucent'), depth)
+
+    def _lines(self, key, pos, color, width, depth):
+        """Line segments (pairs of points) into the view."""
+        self._put(key, self.gl.GLLinePlotItem(pos=pos, mode='lines', color=color, width=width, antialias=True), depth)
+
+    def _label(self, key, pos, text):
+        """A label on top: never hidden behind its chip."""
+        from OpenGL import GL
+        t = self.gl.GLTextItem(pos=pos, text=text, color=(20, 20, 20, 255))
+        t.setGLOptions({GL.GL_DEPTH_TEST: False, GL.GL_BLEND: True,
+                        'glBlendFunc': (GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)})
+        self._put(key, t, 20)
+
+    def _has_parts(self):
+        """Whether the board has parts to draw: lumped parts' chips, components' packages."""
+        return bool((self.board or {}).get('parts') or (self.board or self.geometry or {}).get('components'))
+
     def _board(self):
         """Copper (translucent orange), vias and the board's box, at the height scale."""
         gl, zs = self.gl, self.zscale.value()
@@ -775,53 +694,42 @@ class VolumeTab(QWidget):
         if self.copper.isChecked():
             shown = self.cu_t.value()                               # on screen: the slab before the height scale
             t = shown / zs
-            groups=[(g,(0.85,.5,.2,.7))]
+            groups = [(g, (0.85, .5, .2, .7))]
             if 'active_copper' in g:
-                groups=[(dict(g,copper=g.get('inactive_copper',{})),(.55,.59,.63,.22)),
-                        (dict(g,copper=g['active_copper']),(.10,.72,.80,.65))]
-            i=0
-            for geo,rgba in groups:
+                groups = [(dict(g, copper=g.get('inactive_copper', {})), (.55, .59, .63, .22)),
+                          (dict(g, copper=g['active_copper']), (.10, .72, .80, .65))]
+            i = 0
+            for geo, rgba in groups:
                 parts = self._memo((geo['copper'], g.get('cu_z')), ('cu', shown > 0, t),
                                    lambda: v3.copper_solids(geo, t) if shown > 0 else v3.copper_triangles(geo))
                 for lay, z, verts, faces in parts:
-                    v = verts.copy();v[:, 2] *= zs
+                    v = verts.copy()
+                    v[:, 2] *= zs
                     if shown > 0:
-                        md = gl.MeshData(vertexes=v.astype(np.float32), faces=faces.astype(np.uint32))
-                        m = gl.GLMeshItem(meshdata=md, color=rgba, smooth=False, shader=copper_shader(), glOptions='translucent')
+                        self._solid(f'cu{i}', v, faces, rgba, -10 + i, opaque=False)
                     else:
-                        m = gl.GLMeshItem(vertexes=v.astype(np.float32), faces=faces.astype(np.uint32), color=rgba,
-                                          smooth=False, glOptions='translucent')
-                    m.setDepthValue(-10+i);self.view.addItem(m);self.items[f'cu{i}']=m;i+=1
+                        self._put(f'cu{i}', gl.GLMeshItem(vertexes=v.astype(np.float32), faces=faces.astype(np.uint32),
+                                                          color=rgba, smooth=False, glOptions='translucent'), -10 + i)
+                    i += 1
             ol = v3.copper_outlines(g)                              # dark edges: the copper reads through the field
             if len(ol):
                 ol = ol.copy()
                 ol[:, 2] = (ol[:, 2] + 0.5 * t) * zs if shown > 0 else ol[:, 2] * zs   # on the slab's top
-                ln = gl.GLLinePlotItem(pos=ol, mode='lines', color=(0.35, 0.18, 0.03, 1.0), width=1.5, antialias=True)
-                ln.setDepthValue(-5)
-                self.view.addItem(ln)
-                self.items['outline'] = ln
+                self._lines('outline', ol, (0.35, 0.18, 0.03, 1.0), 1.5, -5)
         if self.boxc.isChecked():
             b = v3.board_box(g)
             if b is not None:
                 x0, y0, x1, y1, z0, z1 = b
                 c = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]])
-                pts = []
-                for z in (z0, z1):
-                    pts += [np.column_stack([c, np.full(5, z * zs)])]
+                pts = [np.column_stack([c, np.full(5, z * zs)]) for z in (z0, z1)]
                 edges = np.concatenate([np.repeat(pts[0], 2, 0)[1:-1], np.repeat(pts[1], 2, 0)[1:-1],
                                         np.stack([pts[0][:4], pts[1][:4]], 1).reshape(-1, 3)])
-                ln = gl.GLLinePlotItem(pos=edges, mode='lines', color=(0.3, 0.3, 0.3, 0.8), width=1, antialias=True)
-                ln.setDepthValue(-20)
-                self.view.addItem(ln)
-                self.items['box'] = ln
+                self._lines('box', edges, (0.3, 0.3, 0.3, 0.8), 1, -20)
             vl = v3.via_lines(g)
             if len(vl):
                 vl = vl.copy()
                 vl[:, 2] *= zs
-                ln = gl.GLLinePlotItem(pos=vl, mode='lines', color=(0.45, 0.3, 0.1, 1.0), width=2, antialias=True)
-                ln.setDepthValue(-20)
-                self.view.addItem(ln)
-                self.items['vias'] = ln
+                self._lines('vias', vl, (0.45, 0.3, 0.1, 1.0), 2, -20)
         solver = self.mesh.currentData()
         if solver and mp.shown(self.mesh_files, solver):           # a solver's mesh as lines over the board
             from kicad2ems.core.api.frontend import meshes
@@ -835,11 +743,7 @@ class VolumeTab(QWidget):
                 if len(seg):
                     seg = seg.copy()
                     seg[:, 2] *= zs
-                    ln = gl.GLLinePlotItem(pos=seg.astype(np.float32), mode='lines', color=colour, width=width,
-                                           antialias=True)
-                    ln.setDepthValue(-1 if key == 'mesh' else 0)
-                    self.view.addItem(ln)
-                    self.items[key] = ln
+                    self._lines(key, seg.astype(np.float32), colour, width, -1 if key == 'mesh' else 0)
         self._line_model(zs)
         self._parts(zs)
         self._far_field(g, zs)
@@ -859,7 +763,7 @@ class VolumeTab(QWidget):
         lo, hi = (min(zs_all), max(zs_all)) if zs_all else (None, None)
         full = max(self.relief.value(), 0.01)                       # on screen, mm
         base = 0.5 * self.cu_t.value() if self.copper.isChecked() else 0.0
-        chips = bool((self.board or {}).get('parts') or (self.board or self.geometry or {}).get('components')) and self.parts_on.isChecked()
+        chips = self._has_parts() and self.parts_on.isChecked()
         rims = []
         for e in self.lines['elements']:
             if e.get('z') is None or not ov.drawn(e):
@@ -877,67 +781,40 @@ class VolumeTab(QWidget):
             if not solids:
                 continue
             _, _, verts, faces = solids[0]
-            sel = e['id'] == self.sel
-            rgb = (0.12, 0.12, 0.12) if sel else ov.z0_colour(e.get('z0'), ref, half)
-            md = self.gl.MeshData(vertexes=verts.astype(np.float32), faces=faces.astype(np.uint32))
-            m = self.gl.GLMeshItem(meshdata=md, color=(*rgb, 1.0), smooth=False, shader=copper_shader(),
-                                   glOptions='opaque')
-            m.setDepthValue(2)
-            self.view.addItem(m)
-            self.items[f"ln{e['id']}"] = m
+            rgb = (0.12, 0.12, 0.12) if e['id'] == self.sel else ov.z0_colour(e.get('z0'), ref, half)
+            self._solid(f"ln{e['id']}", verts, faces, (*rgb, 1.0), 2)
             for p in parts:                                         # the top's rim, as segment pairs
                 r = np.asarray(p.exterior.coords)
                 top = np.column_stack([r, np.full(len(r), bottom + h + 0.002)])
                 rims.append(np.repeat(top, 2, 0)[1:-1])
         if rims:
-            ln = self.gl.GLLinePlotItem(pos=np.concatenate(rims).astype(np.float32), mode='lines',
-                                        color=(0.1, 0.1, 0.1, 0.9), width=1.2, antialias=True)
-            ln.setDepthValue(3)
-            self.view.addItem(ln)
-            self.items['ln_rims'] = ln
+            self._lines('ln_rims', np.concatenate(rims).astype(np.float32), (0.1, 0.1, 0.1, 0.9), 1.2, 3)
 
     def _parts(self, zs):
-        """The lumped parts as their chips (volume3d.part_solids): coloured body, metal end caps, a label."""
-        parts = (self.board or {}).get('parts') or []
-        if not self.parts_on.isChecked():
-            return
+        """The lumped parts as their chips (volume3d.part_solids): coloured body, metal end caps, a label; the
+        components' packages (an active one labelled)."""
         g = self.board or self.geometry
-        if g is None:return
+        if not self.parts_on.isChecked() or g is None:
+            return
         lift = 0.5 * self.cu_t.value() if self.copper.isChecked() else 0.0
-        for k,c in enumerate(g.get('components',[])):
-            made=self._memo((c,g.get('cu_z')),('component',zs,lift),lambda:v3.component_solids(c,g.get('cu_z',{}),zs,lift))
-            for j,(rgba,verts,faces) in enumerate(made):
-                md=self.gl.MeshData(vertexes=verts.astype(np.float32),faces=faces.astype(np.uint32))
-                item=self.gl.GLMeshItem(meshdata=md,color=rgba,smooth=False,shader=copper_shader(),glOptions='opaque')
-                item.setDepthValue(4);self.view.addItem(item);self.items[f'component{k}_{j}']=item
-            if not c.get('active'):continue
-            coords=np.asarray(c['polygon']['coordinates'][0]);xy=(coords.min(0)+coords.max(0))/2
-            z=c['z']*zs + (-c['height']-.2 if c.get('side')=='B' else c['height']+.2)
-            label=self.gl.GLTextItem(pos=(xy[0],xy[1],z),text=c['ref'],color=(20,20,20,255))
-            from OpenGL import GL
-            label.setGLOptions({GL.GL_DEPTH_TEST:False,GL.GL_BLEND:True,
-                                'glBlendFunc':(GL.GL_SRC_ALPHA,GL.GL_ONE_MINUS_SRC_ALPHA)})
-            label.setDepthValue(20);self.view.addItem(label);self.items[f'component{k}_label']=label
-        for k, p in enumerate(parts):
+        for k, c in enumerate(g.get('components', [])):
+            made = self._memo((c, g.get('cu_z')), ('component', zs, lift),
+                              lambda: v3.component_solids(c, g.get('cu_z', {}), zs, lift))
+            for j, (rgba, verts, faces) in enumerate(made):
+                self._solid(f'component{k}_{j}', verts, faces, rgba, 4)
+            if c.get('active'):
+                coords = np.asarray(c['polygon']['coordinates'][0])
+                xy = (coords.min(0) + coords.max(0)) / 2
+                z = c['z'] * zs + (-c['height'] - .2 if c.get('side') == 'B' else c['height'] + .2)
+                self._label(f'component{k}_label', (xy[0], xy[1], z), c['ref'])
+        for k, p in enumerate((self.board or {}).get('parts') or []):
             made = v3.part_solids(p, g.get('cu_z') or {}, zs, lift)
             if made is None:
                 continue
             solids, (lx, ly, lz) = made
             for j, (role, rgb, verts, faces) in enumerate(solids):
-                md = self.gl.MeshData(vertexes=verts.astype(np.float32), faces=faces.astype(np.uint32))
-                m = self.gl.GLMeshItem(meshdata=md, color=(*rgb, 1.0), smooth=False, shader=copper_shader(),
-                                       glOptions='opaque')
-                m.setDepthValue(4)
-                self.view.addItem(m)
-                self.items[f"part{k}_{j}"] = m
-            t = self.gl.GLTextItem(pos=(lx, ly, lz), text=f"{p['ref']} {_value(p, main=True)}".strip(),
-                                   color=(20, 20, 20, 255))
-            from OpenGL import GL                                   # on top: never hidden behind its chip
-            t.setGLOptions({GL.GL_DEPTH_TEST: False, GL.GL_BLEND: True,
-                            'glBlendFunc': (GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)})
-            t.setDepthValue(20)
-            self.view.addItem(t)
-            self.items[f"part{k}_label"] = t
+                self._solid(f"part{k}_{j}", verts, faces, (*rgb, 1.0), 4)
+            self._label(f"part{k}_label", (lx, ly, lz), f"{p['ref']} {_value(p, main=True)}".strip())
 
     def set_lines(self, lines):
         """The line model of the folder (overlay.load_lines), or None."""
@@ -959,7 +836,7 @@ class VolumeTab(QWidget):
         self.sections['Far field'].setVisible(self.ant is not None)
         self.lines_on.setVisible(self.lines is not None)
         self.relief.setVisible(self.lines is not None)
-        self.parts_on.setVisible(bool((self.board or {}).get('parts') or (self.board or self.geometry or {}).get('components')))
+        self.parts_on.setVisible(self._has_parts())
         lab = self.relief.parentWidget().layout().labelForField(self.relief) if self.relief.parentWidget() else None
         if lab is not None:
             lab.setVisible(self.lines is not None)
@@ -978,14 +855,10 @@ class VolumeTab(QWidget):
         b = v3.board_box(self.geometry) if self.geometry is not None else None
         if b is None:
             return
-        if self._cu_t_auto:
-            self.cu_t.blockSignals(True)
-            self.cu_t.setValue(round(0.006 * max(b[2] - b[0], b[3] - b[1]), 2))
-            self.cu_t.blockSignals(False)
-        if self._relief_auto:
-            self.relief.blockSignals(True)
-            self.relief.setValue(round(0.015 * max(b[2] - b[0], b[3] - b[1]), 2))
-            self.relief.blockSignals(False)
+        for auto, w, share in ((self._cu_t_auto, self.cu_t, 0.006), (self._relief_auto, self.relief, 0.015)):
+            if auto:
+                with QSignalBlocker(w):
+                    w.setValue(round(share * max(b[2] - b[0], b[3] - b[1]), 2))
 
     def reset_camera(self):
         zs = self.zscale.value()
@@ -1057,9 +930,8 @@ class VolumeTab(QWidget):
             if kind == 'phase':
                 self._show(k)
             else:                                                   # the time step's volume, as the slider would
-                self.frame.blockSignals(True)
-                self.frame.setCurrentIndex(k)
-                self.frame.blockSignals(False)
+                with QSignalBlocker(self.frame):
+                    self.frame.setCurrentIndex(k)
                 self._rebuild()
             if orbit:
                 self.view.setCameraPosition(azimuth=az0 + orbit * n / max(len(steps), 1))
@@ -1068,9 +940,8 @@ class VolumeTab(QWidget):
             imgs.append(self.grab_rgb())
         self.view.setCameraPosition(azimuth=az0)
         if kind == 'time':
-            self.frame.blockSignals(True)
-            self.frame.setCurrentIndex(t0)
-            self.frame.blockSignals(False)
+            with QSignalBlocker(self.frame):
+                self.frame.setCurrentIndex(t0)
             self._rebuild()
         else:
             self._show(self.k)
@@ -1103,10 +974,7 @@ def _value(p, main=False):
     """A board.json part's value as text: 100 Ω, 1.5 pF, 2.2 nH (series parts: each, joined; main: only its main
     element's, the capacitance or the inductance without the ESR / ESL fields)."""
     def fmt(v, unit, scales):
-        for f, pre in scales:
-            if abs(v) >= f * 0.999:
-                return f"{v / f:.3g} {pre}{unit}"
-        f, pre = scales[-1]
+        f, pre = next(((f, pre) for f, pre in scales if abs(v) >= f * 0.999), scales[-1])
         return f"{v / f:.3g} {pre}{unit}"
     out = []
     if main:
