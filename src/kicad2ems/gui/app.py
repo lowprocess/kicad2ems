@@ -62,6 +62,14 @@ WAND = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wand.svg')
 STATE_VERSION = 4                                                   # saved dock layouts of older windows: ignored
 
 
+def _whole(tab, base):
+    """A config table's own board and folder made whole: they are beside the config (in base)."""
+    for k in ('board', 'out'):
+        if tab.get(k) and not os.path.isabs(str(tab[k])):
+            tab[k] = os.path.normpath(os.path.join(base, str(tab[k])))
+    return tab
+
+
 class SolversDialog(QDialog):
     """Help > Solvers and hardware: the solvers this machine can run (✔ / ✖ and why), the GPU, the memory, and
     the last preview's estimates."""
@@ -73,9 +81,7 @@ class SolversDialog(QDialog):
         lay.addWidget(panel)
         row = QHBoxLayout()
         row.addStretch(1)
-        b = QPushButton('Close')
-        b.clicked.connect(self.close)
-        row.addWidget(b)
+        row.addWidget(QPushButton('Close', clicked=self.close))
         lay.addLayout(row)
         self.resize(780, 660)
 
@@ -108,9 +114,7 @@ class ViewerWindow(QWidget):
         lay = QVBoxLayout(self)
         row = QHBoxLayout()
         row.addWidget(QLabel('Results of'))
-        self.runs = QComboBox()
-        self.runs.setMinimumWidth(320)
-        self.runs.activated.connect(lambda i: self.show_run(self.runs.itemData(i)))
+        self.runs = QComboBox(minimumWidth=320, activated=lambda i: self.show_run(self.runs.itemData(i)))
         row.addWidget(self.runs, 1)
         lay.addLayout(row)
         self.viewer = Viewer(win)
@@ -202,7 +206,24 @@ class MainWindow(QMainWindow):
                                                             # that is the method that starts kicad2ems's run)
         self._had_board, self._aside = None, None                   # (the pages that stepped aside for Start)
         self.filter = FilterTab(self)
-        self._analyses()
+        # what runs each analysis of the registry: a settings panel made from its options (analysispanel.py), or,
+        # for the one this window has an editor for (the circuit's schematic), that page
+        from kicad2ems.core.api.frontend import analyses
+        self.registry = analyses()
+        self.panels, self.editors = {}, {}
+        for a in ANALYSES:
+            plugin = self.registry.get(a.key)
+            if plugin is None:
+                continue
+            if a.page and a.key in EDITORS.values():
+                self.editors[a.key] = editor_page(a.key, self)
+                if hasattr(self.editors[a.key], 'panel'):           # its settings: a config holds them too
+                    self.editors[a.key].panel.changed.connect(lambda: self.setup.touch())
+            else:
+                self.panels[a.key] = AnalysisPanel(plugin, self)
+                self.panels[a.key].changed.connect(lambda: self.setup.touch())     # a config holds its settings
+        self.pages = {a.key: (self.panels.get(a.key) or self.editors.get(a.key)) for a in ANALYSES
+                      if a.key in self.panels or a.key in self.editors}
         self._study()
         self.fields, self.volume = self.viewer.cuts, self.viewer.volume      # the field views, inside the viewer
         if getattr(self.volume, 'steer', None) is not None:          # its Far field section steers too
@@ -217,18 +238,15 @@ class MainWindow(QMainWindow):
         # docks, as a studio's: the study (the board and the questions) and the selected question's settings on the
         # left, one over the other; the pages in a workspace of their own: the board's Viewer with the editors
         # tabbed beside it, the Results and Run pages under it. Each moves, tabs, floats and closes (View).
-        self.setDockOptions(QMainWindow.AnimatedDocks | QMainWindow.AllowTabbedDocks | QMainWindow.AllowNestedDocks)
+        docking = QMainWindow.AnimatedDocks | QMainWindow.AllowTabbedDocks | QMainWindow.AllowNestedDocks
+        self.setDockOptions(docking)
         self.study_dock = PageDock('Study', 'Study', self.setup, self)
         self.settings_dock = PageDock('Settings', 'Inspector', self.setup.inspector, self)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.study_dock)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.settings_dock)
-        self.work = QMainWindow()
-        self.work.setObjectName('work')
-        self.work.setDockOptions(QMainWindow.AnimatedDocks | QMainWindow.AllowTabbedDocks | QMainWindow.AllowNestedDocks)
+        self.work = QMainWindow(objectName='work', dockOptions=docking)
         self.work.setTabPosition(Qt.AllDockWidgetAreas, QTabWidget.North)
-        hidden = QWidget()
-        hidden.hide()
-        self.work.setCentralWidget(hidden)                          # the pages take the whole workspace
+        self.work.setCentralWidget(QWidget(visible=False))          # the pages take the whole workspace
         widgets = {'Viewer': self.viewer, 'Run': self.runtab, 'Results': self.results, 'Filter': self.filter,
                    'Report': self.results.reportview, 'Tables': self.results.tablesview, 'Start': self.start_page,
                    'Section': self.viewer.section,
@@ -253,11 +271,8 @@ class MainWindow(QMainWindow):
         self._toolbar()
         self._menus()
         self.statusBar().addPermanentWidget(self.meters)
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.poll)
-        self._needs_timer = QTimer(self)
-        self._needs_timer.setSingleShot(True)
-        self._needs_timer.timeout.connect(self.update_needed)
+        self.timer = QTimer(self, timeout=self.poll)
+        self._needs_timer = QTimer(self, singleShot=True, timeout=self.update_needed)
         self.setup.needed.picked.connect(self.go_to_need)
         self.study.selected.connect(lambda _q: self.update_needed())
         for page in self.pages.values():
@@ -275,26 +290,6 @@ class MainWindow(QMainWindow):
             self.setup.set_values({})                               # (auto), which the S-parameters row shows
 
     # ---- the study: the analyses, which a Run includes, their settings in the dock ----
-    def _analyses(self):
-        """What runs each analysis of the registry: a settings panel made from its options (analysispanel.py), or,
-        for the one this window has an editor for (the circuit's schematic), that page."""
-        from kicad2ems.core.api.frontend import analyses
-        self.registry = analyses()
-        self.panels, self.editors = {}, {}
-        for a in ANALYSES:
-            plugin = self.registry.get(a.key)
-            if plugin is None:
-                continue
-            if a.page and a.key in EDITORS.values():
-                self.editors[a.key] = editor_page(a.key, self)
-                if hasattr(self.editors[a.key], 'panel'):           # its settings: a config holds them too
-                    self.editors[a.key].panel.changed.connect(lambda: self.setup.touch())
-            else:
-                self.panels[a.key] = AnalysisPanel(plugin, self)
-                self.panels[a.key].changed.connect(lambda: self.setup.touch())     # a config holds its settings
-        self.pages = {a.key: (self.panels.get(a.key) or self.editors.get(a.key)) for a in ANALYSES
-                      if a.key in self.panels or a.key in self.editors}
-
     def _study(self):
         """The analyses' list into the settings dock, with each one's settings under it; the ticks of the last
         session (the first time: S-parameters, as Run always did)."""
@@ -739,15 +734,6 @@ class MainWindow(QMainWindow):
             elif key not in ticked and not d.isHidden() and not (self.job == key or self.queue and key in self.queue):
                 d.hide()
 
-    def _save_shape(self):
-        self._start_leaves(hide=False)                              # (the layout kept: with the result pages in it)
-        q = self.qsettings
-        q.setValue('window/geometry', self.saveGeometry())
-        q.setValue('window/state', self.saveState(STATE_VERSION))
-        q.setValue('work/state', self.work.saveState(STATE_VERSION))
-        for name, sp in self._splitters().items():
-            q.setValue(f"splitter/{name}", sp.saveState())
-
     def reset_layout(self):
         """The docks where a new window has them, at their first sizes: the layout the window was built with, put
         back as a saved one is."""
@@ -807,10 +793,7 @@ class MainWindow(QMainWindow):
             self.results.splot.split.setSizes([220, 1000])
 
     def _toolbar(self):
-        tb = QToolBar('Main')
-        tb.setObjectName('Main toolbar')
-        tb.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-        tb.setMovable(False)
+        tb = QToolBar('Main', objectName='Main toolbar', toolButtonStyle=Qt.ToolButtonTextUnderIcon, movable=False)
         st = self.style()
         self.acts = {}
         for name, icon, tip, slot in (
@@ -832,27 +815,21 @@ class MainWindow(QMainWindow):
             if name is None:
                 tb.addSeparator()
                 continue
-            a = QAction(QIcon(icon) if os.path.isfile(icon) else st.standardIcon(getattr(QStyle.StandardPixmap, icon)),
-                        name, self)
-            a.setToolTip(tip)
-            a.triggered.connect(slot)
+            a = self.acts[name] = QAction(QIcon(icon) if os.path.isfile(icon) else
+                                          st.standardIcon(getattr(QStyle.StandardPixmap, icon)), name, self,
+                                          toolTip=tip, triggered=slot)
             tb.addAction(a)
-            self.acts[name] = a
         self.acts['Stop'].setEnabled(False)
         self.acts['Report'].setEnabled(False)
-        self.runs_box = QComboBox()                                 # whose results the pages show
-        self.runs_box.setToolTip("the results the Viewer and Results pages show: this board's preview, or one of "
-                                 "its runs (each in its own folder: <board>_<date>_<time>)")
-        self.runs_box.setMinimumWidth(260)
-        self.runs_box.activated.connect(lambda i: self._pick_run(self.runs_box.itemData(i)))
+        self.runs_box = QComboBox(minimumWidth=260, toolTip=(                # whose results the pages show
+            "the results the Viewer and Results pages show: this board's preview, or one of its runs (each in its "
+            "own folder: <board>_<date>_<time>)"), activated=lambda i: self._pick_run(self.runs_box.itemData(i)))
         tb.addSeparator()
         tb.addWidget(QLabel(' Results of '))
         tb.addWidget(self.runs_box)
-        delete = QAction('Delete run…', self)
-        delete.setToolTip("delete the run shown in Results of, its folder and everything in it (asked first)")
-        delete.triggered.connect(lambda: self.delete_run())
-        tb.addAction(delete)
-        self.acts['Delete run'] = delete
+        self.acts['Delete run'] = QAction('Delete run…', self, triggered=lambda: self.delete_run(), toolTip=(
+            "delete the run shown in Results of, its folder and everything in it (asked first)"))
+        tb.addAction(self.acts['Delete run'])
         self.est_btn = EstimateButton()                             # beside Run / Stop: what a run would take
         self.est_btn.clicked.connect(self.show_solvers)
         acts = tb.actions()
@@ -926,30 +903,17 @@ class MainWindow(QMainWindow):
                 self.recent_menu = fm.addMenu('Open &recent')
                 self.examples_menu = fm.addMenu('&Examples')
                 continue
-            a = QAction(text, self)
-            a.setShortcut(key)
-            a.triggered.connect(slot)
-            fm.addAction(a)
+            fm.addAction(QAction(text, self, shortcut=key, triggered=slot))
         fm.addSeparator()
-        a = QAction(QIcon(WAND), 'New &filter (Filter Synthesis)…', self)
-        a.setToolTip('design a microstrip filter with dfsynth')
-        a.triggered.connect(lambda: self.show_panel('Filter'))
-        fm.addAction(a)
-        a = QAction('Open &results folder…', self)
-        a.triggered.connect(self.results._load)
-        fm.addAction(a)
+        fm.addAction(QAction(QIcon(WAND), 'New &filter (Filter Synthesis)…', self, triggered=lambda: (
+            self.show_panel('Filter')), toolTip='design a microstrip filter with dfsynth'))
+        fm.addAction(QAction('Open &results folder…', self, triggered=self.results._load))
         fm.addSeparator()
-        a = QAction('&Quit', self)
-        a.setShortcut(QKeySequence.Quit)
-        a.triggered.connect(self.close)
-        fm.addAction(a)
+        fm.addAction(QAction('&Quit', self, shortcut=QKeySequence.Quit, triggered=self.close))
         em = self.menuBar().addMenu('&Edit')                     # the settings' changes (R-E25); a field being
-        self.undo_act = QAction('&Undo', self)                      # typed in keeps its own Ctrl+Z
-        self.undo_act.setShortcut(QKeySequence.Undo)
-        self.undo_act.triggered.connect(self.setup.undo)
-        self.redo_act = QAction('&Redo', self)
-        self.redo_act.setShortcut(QKeySequence.Redo)
-        self.redo_act.triggered.connect(self.setup.redo)
+        self.undo_act = QAction('&Undo', self, shortcut=QKeySequence.Undo,      # typed in keeps its own Ctrl+Z
+                                triggered=self.setup.undo)
+        self.redo_act = QAction('&Redo', self, shortcut=QKeySequence.Redo, triggered=self.setup.redo)
         em.addAction(self.undo_act)
         em.addAction(self.redo_act)
         em.aboutToShow.connect(self._edit_menu)
@@ -974,51 +938,34 @@ class MainWindow(QMainWindow):
             vm.addAction(a)
         vm.addSeparator()
         for name in VIEWS:
-            a = QAction(f"Viewer: {name}", self)
-            a.triggered.connect(lambda _=False, n=name: (self.show_panel('Viewer'), self.viewer.set_view(n)))
-            vm.addAction(a)
+            vm.addAction(QAction(f"Viewer: {name}", self, triggered=lambda _=False, n=name: (
+                self.show_panel('Viewer'), self.viewer.set_view(n))))
         vm.addSeparator()
-        a = QAction('A second &Viewer…', self)
-        a.setShortcut(QKeySequence('Ctrl+Shift+V'))
-        a.setToolTip('another run of this board in a window of its own, beside the Viewer')
-        a.triggered.connect(self.second_viewer)
-        vm.addAction(a)
+        vm.addAction(QAction('A second &Viewer…', self, shortcut=QKeySequence('Ctrl+Shift+V'), toolTip=(
+            'another run of this board in a window of its own, beside the Viewer'), triggered=self.second_viewer))
         vm.addSeparator()
         self.plots_menu = vm.addMenu('&Plot colours')               # (kept: PySide frees a submenu it is not held)
         self.plot_acts = QActionGroup(self)
         self.plot_acts.setExclusive(True)
         for key, text in (('system', 'As the &desktop'), ('light', '&Light'), ('dark', '&Dark')):
-            a = QAction(text, self)
-            a.setCheckable(True)
-            a.setChecked(theme.choice() == key)
+            a = QAction(text, self, checkable=True, checked=theme.choice() == key)
             a.setData(key)
             a.triggered.connect(lambda _=False, k=key: self.set_plot_colours(k))
             self.plot_acts.addAction(a)
             self.plots_menu.addAction(a)
-        a = QAction('&Reset layout', self)
-        a.triggered.connect(self.reset_layout)
-        vm.addAction(a)
+        vm.addAction(QAction('&Reset layout', self, triggered=self.reset_layout))
         rm = self.menuBar().addMenu('&Run')
         for text, key, slot in (('&Preview', 'Ctrl+P', self.preview), ('&Run', 'Ctrl+R', self.run),
                                 ('Run the selected &question alone', 'Ctrl+Shift+R',
                                  lambda: self.run_study(only=self.study.current_question())),
                                 ('&Stop', 'Ctrl+.', self.stop)):
-            a = QAction(text, self)
-            a.setShortcut(QKeySequence(key))
-            a.triggered.connect(slot)
-            rm.addAction(a)
+            rm.addAction(QAction(text, self, shortcut=QKeySequence(key), triggered=slot))
         tm = self.menuBar().addMenu('&Tools')                    # what is not about the open board's run
-        a = QAction('&Impedance calculator…', self)
-        a.setToolTip("A line's impedance in a stack-up, and the width of a target: the field solver without a board")
-        a.triggered.connect(self.show_impedance)
-        tm.addAction(a)
+        tm.addAction(QAction('&Impedance calculator…', self, triggered=self.show_impedance, toolTip=(
+            "A line's impedance in a stack-up, and the width of a target: the field solver without a board")))
         hm = self.menuBar().addMenu('&Help')
-        a = QAction('&Solvers and hardware…', self)
-        a.triggered.connect(self.show_solvers)
-        hm.addAction(a)
-        a = QAction('&Documentation', self)
-        a.triggered.connect(lambda: QDesktopServices.openUrl(QUrl(DOCS)))
-        hm.addAction(a)
+        hm.addAction(QAction('&Solvers and hardware…', self, triggered=self.show_solvers))
+        hm.addAction(QAction('&Documentation', self, triggered=lambda: QDesktopServices.openUrl(QUrl(DOCS))))
         self._fill_recent()
         self._fill_examples()
 
@@ -1069,11 +1016,8 @@ class MainWindow(QMainWindow):
                 m = menus[path]
             top = '/' + (e.get('group') or '').split('/')[0].strip()
             self.example_sources.setdefault(top, set()).add(e.get('source'))
-            a = QAction(e['name'], self)
-            a.setToolTip(e.get('title') or '')
-            a.setStatusTip(e.get('title') or '')
-            a.triggered.connect(lambda _=False, n=e['name']: self.open_example(n))
-            m.addAction(a)
+            m.addAction(QAction(e['name'], self, toolTip=e.get('title') or '', statusTip=e.get('title') or '',
+                                triggered=lambda _=False, n=e['name']: self.open_example(n)))
         self.example_menus = menus
         self.examples_menu.setEnabled(bool(entries))
 
@@ -1114,9 +1058,7 @@ class MainWindow(QMainWindow):
         self.recent_menu.clear()
         r = self.recent()
         for p in r:
-            a = QAction(p, self)
-            a.triggered.connect(lambda _=False, p=p: self._open(p))
-            self.recent_menu.addAction(a)
+            self.recent_menu.addAction(QAction(p, self, triggered=lambda _=False, p=p: self._open(p)))
         self.recent_menu.setEnabled(bool(r))
 
     def _open(self, path):
@@ -1167,7 +1109,13 @@ class MainWindow(QMainWindow):
                 ev.ignore()
                 return
         if self.setup.maybe_save():
-            self._save_shape()
+            self._start_leaves(hide=False)                          # the shape kept: with the result pages in it
+            q = self.qsettings
+            q.setValue('window/geometry', self.saveGeometry())
+            q.setValue('window/state', self.saveState(STATE_VERSION))
+            q.setValue('work/state', self.work.saveState(STATE_VERSION))
+            for name, sp in self._splitters().items():
+                q.setValue(f"splitter/{name}", sp.saveState())
             if self.proc is not None:                               # asked above: stopped, as its second Stop does
                 self.proc.kill()
                 self.proc.waitForFinished(3000)
@@ -1279,26 +1227,25 @@ class MainWindow(QMainWindow):
         analyses [analysis] run names; neither: S-parameters) and each analysis's settings from its [analysis.
         <name>] table, the others' cleared. path None: a new study, nothing set. A table of an analysis not
         installed here is kept, and saved back, as is a question or an engine of the study this window lacks."""
-        from kicad2ems.core.api.frontend import read_analyses, read_study, Study
-        run, tables, study, more = None, {}, Study({'sparams': []}), {}
+        from kicad2ems.core.api.frontend import read_analyses, read_analysis_sets, read_study, Study
+        tables, study, more = {}, Study({'sparams': []}), {}
         if not self.busy():
             self.study.clear_states()                               # another study: the last one's states are not its
+        base = os.path.dirname(os.path.abspath(path)) if path else os.getcwd()
         if path:
             try:
-                run, tables = read_analyses(path)
+                tables = read_analyses(path)[1]
                 study = read_study(path, strict=False)
-                more = self._more_sets(path)
+                # the analyses a config gives several tables ([[analysis.<name>]]: a run each): those after the first
+                more = {name: [_whole(dict(t), base) for t in sets[1:]]
+                        for name, sets in read_analysis_sets(path).items() if len(sets) > 1}
             except Exception as e:
                 self.statusBar().showMessage(f"{path}: its study could not be read ({e})", 8000)
         self.more_sets = more
-        base = os.path.dirname(os.path.abspath(path)) if path else os.getcwd()
         loading, self.setup._loading = self.setup._loading, True
         try:
             for key, page in self.pages.items():
-                tab = dict(tables.get(key) or {})
-                for k in ('board', 'out'):                          # its own board and folder: beside the config
-                    if tab.get(k) and not os.path.isabs(str(tab[k])):
-                        tab[k] = os.path.normpath(os.path.join(base, str(tab[k])))
+                tab = _whole(dict(tables.get(key) or {}), base)
                 if key in self.editors:
                     page.load_settings(tab)
                     continue
@@ -1333,25 +1280,6 @@ class MainWindow(QMainWindow):
         run = self.study.run_of(first) if first in self.study.rows else RF
         if path and run in self.editors:
             self.show_panel(BY_KEY[run].page)
-
-    @staticmethod
-    def _more_sets(path):
-        """{analysis: its tables after the first} for the analyses a config gives several tables ([[analysis.
-        <name>]]: a run each, kicad2ems 2.10), their paths whole; {} with an older kicad2ems, which reads one."""
-        try:
-            from kicad2ems.core.api.frontend import read_analysis_sets
-        except ImportError:
-            return {}
-        base, out = os.path.dirname(os.path.abspath(path)), {}
-        for name, sets in read_analysis_sets(path).items():
-            rest = [dict(t) for t in sets[1:]]
-            for t in rest:
-                for k in ('board', 'out'):                          # its own board and folder: beside the config
-                    if t.get(k) and not os.path.isabs(str(t[k])):
-                        t[k] = os.path.normpath(os.path.join(base, str(t[k])))
-            if rest:
-                out[name] = rest
-        return out
 
     def _fields_set(self, question, study):
         """Whether a question's settings ask for field dumps, for a study that does not say (a config written
@@ -1560,19 +1488,13 @@ class MainWindow(QMainWindow):
         memo = getattr(self, '_sources_memo', None)
         if memo and memo[0] == key and time.monotonic() - memo[1] < self.SOURCES_S:
             return [dict(s) for s in memo[2]]
-        out = self._read_sources(base, board)
-        self._sources_memo = (key, time.monotonic(), out)
-        return [dict(s) for s in out]
-
-    def _read_sources(self, base, board):
         from .runfolders import runs, preview_dir, tool_runs
-        out = []
         pv = preview_dir(base, board)
-        if os.path.isdir(pv):
-            out.append(dict(folder=pv, kind='preview', label='preview'))
+        out = [dict(folder=pv, kind='preview', label='preview')] if os.path.isdir(pv) else []
         out += [dict(folder=d, kind='rf', label=f"run {label}") for d, label in runs(base, board)]
         out += [dict(folder=d, kind=kind, label=label) for d, kind, label in tool_runs(base, board)]
-        return out
+        self._sources_memo = (key, time.monotonic(), out)
+        return [dict(s) for s in out]
 
     def refresh_runs(self, select=None):
         """The Results of choice: this board's preview and runs, then its Power integrity and Near field results,
@@ -1833,7 +1755,7 @@ class MainWindow(QMainWindow):
         self.acts['Stop'].setEnabled(False)
         out = self.current.out
         has_s = any(l.startswith('S-parameters') for l, _ in self.files)
-        ant = self.results.load_antenna(out) if not self.current.preview else self.results.load_antenna(None)
+        ant = self.results.load_antenna(None if self.current.preview else out)
         if has_s or not self.current.preview:
             self.results.show_files(self.files)                            # a preview: the solvers it runs (the line model)
         seen = self.viewer.load(out)
@@ -1846,13 +1768,10 @@ class MainWindow(QMainWindow):
         if code or crashed:
             self.runtab.stage.setText('crashed - see the log' if crashed else f"ended with code {code} - see the log")
             self.show_panel('Run')
-        elif self.current.preview:
-            self.show_panel('Viewer' if seen else 'Run')
+        elif not self.current.preview and (has_s or ant):
+            self.show_result()
         else:
-            if has_s or ant:
-                self.show_result()
-            else:
-                self.show_panel('Viewer' if seen else 'Run')
+            self.show_panel('Viewer' if seen else 'Run')
         self._job_done('rf', code)                                  # in a study run: the next analysis
 
 
