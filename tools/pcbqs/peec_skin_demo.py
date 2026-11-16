@@ -99,8 +99,9 @@ def write_kicad(b, path):
         ' (44 "Edge.Cuts" user) (49 "F.Fab" user) (48 "B.Fab" user))',
         '(setup (stackup',
         f' (layer "F.Cu" (type "copper") (thickness {COPPER_MM}))',
-        f' (layer "dielectric 1" (type "core") (thickness {GAP_MM}) (material '
-        f'"Specified er=4 laminate") (epsilon_r {ER}) (loss_tangent {TAND}))',
+        f' (layer "dielectric 1" (type "core") (thickness {GAP_MM})'
+        f' (material "Specified er=4 laminate") (epsilon_r {ER})'
+        f' (loss_tangent {TAND}))',
         f' (layer "B.Cu" (type "copper") (thickness {COPPER_MM}))',
         ' (copper_finish "None") (dielectric_constraints no)) '
         '(pad_to_mask_clearance 0))',
@@ -112,10 +113,13 @@ def write_kicad(b, path):
                 f'(xy {x:g} {-y:g})'
                 for x, y in shape(rec['polygon']).exterior.coords[:-1])
             lines.append(
-                f'(zone (net {nets[rec["net"]]}) (net_name "{rec["net"]}") (layer "{layer}") (uuid "{uid()}")'
-                ' (hatch edge 0.5) (connect_pads yes (clearance 0.2)) (min_thickness 0.1) (filled_areas_thickness no) (fill yes (thermal_gap 0.2) (thermal_bridge_width 0.2))'
-                f' (polygon (pts {points})) (filled_polygon (layer "{layer}") (pts {points})))'
-            )
+                f'(zone (net {nets[rec["net"]]}) (net_name "{rec["net"]}")'
+                f' (layer "{layer}") (uuid "{uid()}")'
+                ' (hatch edge 0.5) (connect_pads yes (clearance 0.2))'
+                ' (min_thickness 0.1) (filled_areas_thickness no)'
+                ' (fill yes (thermal_gap 0.2) (thermal_bridge_width 0.2))'
+                f' (polygon (pts {points}))'
+                f' (filled_polygon (layer "{layer}") (pts {points})))')
     for fp in b['prims']['footprints']:
         pad = fp['pads'][0]; layer = pad['layers'][0]; x, y = pad['xy']
         x0, y0, x1, y1 = shape(pad['geom']).bounds

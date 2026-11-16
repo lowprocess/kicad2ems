@@ -6,10 +6,12 @@ shunt C (F) and series L (H) of two-port results at low frequency. C = Im(sum Y)
 models; L includes the ports' lumped paths in openEMS's result. The CM5 Minima's
 PCIE_PI.nRST, 10.7 mm on In2.Cu:
 
-    # region = "105.0,28.65,114.4,34.65", nets = ["/CM5/PCIE_PI.nRST", "GND"], cut_ports = true, fmin = 0.1, fmax = 10
+    # region = "105.0,28.65,114.4,34.65", nets = ["/CM5/PCIE_PI.nRST", "GND"],
+    # cut_ports = true, fmin = 0.1, fmax = 10
     kicad2ems crop.toml --solvers openems,lines --out ems
     kicad2ems crop.toml --solvers lines --lines-field --out field
-    python tools/lines_crop_check.py ems/*_openems.s2p ems/*_qucs.s2p field/*_qucs.s2p
+    python tools/lines_crop_check.py ems/*_openems.s2p ems/*_qucs.s2p \\
+        field/*_qucs.s2p
 """
 import sys
 import numpy as np

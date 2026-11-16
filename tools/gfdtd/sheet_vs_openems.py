@@ -4,7 +4,8 @@ Conductor loss against openEMS: a 40 mm microstrip (0.4 mm on 0.2 mm, eps_r
 run on gfdtd and, from the same XML, on openEMS; and on gfdtd with PEC for the
 loss the sheets add.
 
-    python tools/gfdtd/sheet_vs_openems.py RUN_FOLDER [--openems PATH] [--backend core]
+    python tools/gfdtd/sheet_vs_openems.py RUN_FOLDER [--openems PATH] \\
+        [--backend core]
 """
 import argparse, os, subprocess, sys, time
 

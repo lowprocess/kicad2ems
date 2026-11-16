@@ -2,8 +2,9 @@
 direct one on kicad2ems boards: time, memory, the ranks per tree level and |dS|
 at one frequency.
 
-    python tools/mom25d/hodlr_study.py board.json f_GHz [tol,tol,...] [--no-dense] [--zone] [--pec] [--drop] [--whole] [--refine]
-                                [--leaf N] [--sym]
+    python tools/mom25d/hodlr_study.py board.json f_GHz [tol,tol,...] \\
+        [--no-dense] [--zone] [--pec] [--drop] [--whole] [--refine] \\
+        [--leaf N] [--sym]
 """
 import json, sys, time
 import numpy as np

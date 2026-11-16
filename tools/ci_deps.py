@@ -4,7 +4,8 @@ the extras named, without the stack's own packages (they are installed from the
 checkouts next to each other, --no-deps, so a git URL in one never replaces
 another's checkout).
 
-    python tools/ci_deps.py ../emsdev ../kicad2ems[test,fast,dumps] ../mom25d[test,core] ... > requirements-ci.txt
+    python tools/ci_deps.py ../emsdev ../kicad2ems[test,fast,dumps] \\
+        ../mom25d[test,core] ... > requirements-ci.txt
 """
 import os, re, sys
 

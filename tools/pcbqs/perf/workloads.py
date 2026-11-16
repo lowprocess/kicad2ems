@@ -1,7 +1,8 @@
 """cProfile of one pcbqs workload: where a tool's time goes, in its own Python,
 in the compiled core and in the libraries under it.
 
-    python tools/pcbqs/perf/workloads.py CASE [--out DIR] [--cm5 PCB] [--wpthb PCB] [--top N]
+    python tools/pcbqs/perf/workloads.py CASE [--out DIR] [--cm5 PCB] \\
+        [--wpthb PCB] [--top N]
 
 Writes DIR/CASE.txt (wall time, peak memory, the functions with the most time of
 their own, then pcbqs's own by cumulative time) and DIR/CASE.prof (for pstats or

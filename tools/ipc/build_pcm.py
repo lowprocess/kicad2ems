@@ -3,7 +3,8 @@
 dist/metadata.json, the entry to submit to gitlab.com/kicad/addons/metadata
 (packages/<identifier>/metadata.json) with the download's URL, hash and sizes.
 
-    python tools/ipc/build_pcm.py [--status stable] [--url https://.../kicad2ems-<version>-pcm.zip]
+    python tools/ipc/build_pcm.py [--status stable] \\
+        [--url https://.../kicad2ems-<version>-pcm.zip]
 
 The default URL is the GitHub release of this version (tag v<version>): upload
 the zip there."""

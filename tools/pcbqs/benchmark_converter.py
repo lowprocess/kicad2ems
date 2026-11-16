@@ -3,7 +3,8 @@
 CM5 Minima (CERN-OHL-S, KiCad demos), download separately:
 https://gitlab.com/kicad/code/kicad/-/raw/master/demos/cm5_minima/CM5_MINIMA_3.kicad_pcb
 
-    python tools/pcbqs/benchmark_converter.py CM5_MINIMA_3.kicad_pcb --out cm5.json
+    python tools/pcbqs/benchmark_converter.py CM5_MINIMA_3.kicad_pcb \\
+        --out cm5.json
 
 Defaults select U702's +5V/GND input loop and C704/C705/C706. ESR/ESL are
 explicit benchmark assumptions, not extracted component measurements.

@@ -1,7 +1,8 @@
 """Quasi-static backend scaling and accuracy; no BLAS solve in these timings.
 
     python -m kicad2ems.pcbqs.core.build
-    OPENBLAS_NUM_THREADS=1 python tools/pcbqs/benchmark_static_fill.py --dmax .5 --repeat 3
+    OPENBLAS_NUM_THREADS=1 python tools/pcbqs/benchmark_static_fill.py \\
+        --dmax .5 --repeat 3
 
 GPU explicitly: --backends numpy,cupy --workers 1 --device 0
 Unavailable explicitly selected backends fail rather than changing the workload.

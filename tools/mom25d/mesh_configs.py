@@ -3,7 +3,8 @@ cells (25 degrees, greedy pairing), --mom-quads on (35 degrees, matching,
 structured runs) and the fast one (60 degrees, coarsen 2). Quad cells are drawn
 without their diagonal. For kicad2ems's docs (docs/mom.md#coarsen).
 
-    python tools/mom25d/mesh_configs.py <name>_board.json out.png [x0,y0,x1,y1 (mm, a window)] [title] [stitching]
+    python tools/mom25d/mesh_configs.py <name>_board.json out.png \\
+        [x0,y0,x1,y1 (mm, a window)] [title] [stitching]
 """
 import functools, sys
 import numpy as np
