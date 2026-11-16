@@ -22,19 +22,6 @@ from . import csx as C
 from .constants import C0, EPS0, MU0 as MUE0, ETA0 as Z0         # noqa: F401  (openEMS's names)
 
 
-def _load_ui_file(path):
-    """(data (N, cols), column names) of a probe file: the last header line names the columns."""
-    comments, rows = [], []
-    with open(path, encoding='utf-8') as fh:
-        for line in fh:
-            if line.startswith('%'):
-                comments.append(line[1:].strip())
-            elif line.strip():
-                rows.append(line.split())
-    names = comments[-1].split() if comments else None
-    return np.array(rows, float).reshape(len(rows), -1), names
-
-
 def dft_time2freq(t, val, freq, signal_type='pulse'):
     """openEMS's DFT_time2freq: the single-sided spectrum of val(t) at freq, 2 dt sum(val exp(-j w t)) for a pulse
     (2 / N sum for a periodic signal); in blocks of 64 frequencies, (64, nt) at a time."""
@@ -53,7 +40,15 @@ class UI_data:
         self.freq = [freq] if np.isscalar(freq) else freq
         self.ui_time, self.ui_val, self.ui_f_val, self.col_names, self.ui_mode_purity = [], [], [], [], []
         for fn in self.fns:
-            data, names = _load_ui_file(os.path.join(path, fn))
+            comments, rows = [], []
+            with open(os.path.join(path, fn), encoding='utf-8') as fh:
+                for line in fh:
+                    if line.startswith('%'):
+                        comments.append(line[1:].strip())
+                    elif line.strip():
+                        rows.append(line.split())
+            names = comments[-1].split() if comments else None      # the last header line names the columns
+            data = np.array(rows, float).reshape(len(rows), -1)
             self.col_names.append(names)
             self.ui_time.append(data[:, 0])
             self.ui_val.append(data[:, 1])
@@ -107,15 +102,11 @@ class Port:
             raise Exception('Unable to enable port! No excitation found!')
 
     def ReadUIData(self, sim_path, freq, signal_type='pulse'):
-        self.u_data = UI_data(self.U_filenames, sim_path, freq, signal_type)
-        self.uf_tot = sum(self.u_data.ui_f_val)
-        self.ut_tot = sum(self.u_data.ui_val)
-        self.u_time = self.u_data.ui_time[0]
-        self.i_data = UI_data(self.I_filenames, sim_path, freq, signal_type)
-        self.if_tot = sum(self.i_data.ui_f_val)
-        self.it_tot = sum(self.i_data.ui_val)
-        self.i_time = self.i_data.ui_time[0]
-        self.u_mode_purity, self.i_mode_purity = self.u_data.ui_mode_purity, self.i_data.ui_mode_purity
+        u = self.u_data = UI_data(self.U_filenames, sim_path, freq, signal_type)
+        i = self.i_data = UI_data(self.I_filenames, sim_path, freq, signal_type)
+        self.uf_tot, self.ut_tot, self.u_time = sum(u.ui_f_val), sum(u.ui_val), u.ui_time[0]
+        self.if_tot, self.it_tot, self.i_time = sum(i.ui_f_val), sum(i.ui_val), i.ui_time[0]
+        self.u_mode_purity, self.i_mode_purity = u.ui_mode_purity, i.ui_mode_purity
 
     def CalcPort(self, sim_path, freq, ref_impedance=None, ref_plane_shift=None, signal_type='pulse'):
         """Incident and reflected waves (uf_inc, uf_ref, if_*, ut_* / it_* for a scalar reference) and the powers
@@ -128,14 +119,9 @@ class Port:
         if ref_plane_shift is not None:
             if not hasattr(self, 'beta'):
                 raise Exception('Port has no beta attribute!')
-            shift = ref_plane_shift
-            if self.measplane_shift:
-                shift -= self.measplane_shift
-            shift *= self.CSX.GetGrid().GetDeltaUnit()
-            phase = np.real(self.beta) * shift
-            uf_tot = self.uf_tot * np.cos(-phase) + 1j * self.if_tot * self.Z_ref * np.sin(-phase)
-            if_tot = self.if_tot * np.cos(-phase) + 1j * self.uf_tot / self.Z_ref * np.sin(-phase)
-            self.uf_tot, self.if_tot = uf_tot, if_tot
+            phase = np.real(self.beta) * ((ref_plane_shift - self.measplane_shift) * self.CSX.GetGrid().GetDeltaUnit())
+            self.uf_tot, self.if_tot = (self.uf_tot * np.cos(-phase) + 1j * self.if_tot * self.Z_ref * np.sin(-phase),
+                                        self.if_tot * np.cos(-phase) + 1j * self.uf_tot / self.Z_ref * np.sin(-phase))
         self.uf_inc = 0.5 * (self.uf_tot + self.if_tot * self.Z_ref)
         self.if_inc = 0.5 * (self.if_tot + self.uf_tot / self.Z_ref)
         self.uf_ref = self.uf_tot - self.uf_inc
@@ -443,16 +429,7 @@ class StripLinePort(_TLPort):
         start, stop = self.start, self.stop
         p, h = self.prop_ny, self.height_ny = C.ny_dir(prop_dir), C.ny_dir(exc_dir)
         w = self.width_ny = 3 - p - h
-        if start[h] != stop[h]:
-            raise Exception('StripLinePort: start/stop in height direction must be equal')
-        self.direction = np.sign(stop[p] - start[p])
-        if self.direction == 0:
-            raise Exception('StripLinePort: start/stop in prop direction must differ')
-        feed_R = kw.get('Feed_R', np.inf)
-        ns, ne = np.minimum(start, stop), np.maximum(start, stop)
-        metal_prop.AddBox(start, stop, priority=self.priority)
-        self.port_props.append(metal_prop)
-        ml = self._planes(kw)
+        ns, ne, ml = self._strip('StripLinePort', metal_prop, kw)
         wl = CSX.GetGrid().GetLines(w)
         wc = wl[int(np.argmin(np.abs(wl - 0.5 * (ns[w] + ne[w]))))]
         hv = np.zeros(3)
@@ -472,16 +449,36 @@ class StripLinePort(_TLPort):
                 self._excitation(f'excite_{k}', sgn * ev).AddBox(x0, x1 + sgn * hv, priority=self.priority)
         r0, r1 = start.copy(), stop.copy()
         r1[p] = r0[p]
+        self._feed_r('StripLinePort', metal_prop, h, [(r0, r1 + hv), (r0, r1 - hv)], kw)
+
+    def _strip(self, name, metal_prop, kw):
+        """The strip from start to stop (flat in height), the checks on it and its measurement planes: (the box's
+        least corner, its largest, the planes' lines)."""
+        start, stop, p, h = self.start, self.stop, self.prop_ny, self.height_ny
+        if start[h] != stop[h]:
+            raise Exception(f'{name}: start/stop in height direction must be equal')
+        self.direction = np.sign(stop[p] - start[p])
+        if self.direction == 0:
+            raise Exception(f'{name}: start/stop in prop direction must differ')
+        metal_prop.AddBox(start, stop, priority=self.priority)
+        self.port_props.append(metal_prop)
+        return np.minimum(start, stop), np.maximum(start, stop), self._planes(kw)
+
+    def _feed_r(self, name, metal_prop, ny, boxes, kw):
+        """Feed_R on the two boxes (2 Feed_R each: the two in parallel), along ny; 0: metal; inf (the default):
+        none."""
+        feed_R = kw.get('Feed_R', np.inf)
         if feed_R > 0 and not np.isinf(feed_R):
-            el = CSX.AddLumpedElement(self.lbl_temp.format('resist'), ny=h, R=2 * feed_R)
-            el.AddBox(r0, r1 + hv, priority=self.priority)
-            el.AddBox(r0, r1 - hv, priority=self.priority)
+            el = self.CSX.AddLumpedElement(self.lbl_temp.format('resist'), ny=ny, R=2 * feed_R)
             self.port_props.append(el)
         elif feed_R == 0:
-            metal_prop.AddBox(r0, r1 + hv, priority=self.priority)
-            metal_prop.AddBox(r0, r1 - hv, priority=self.priority)
+            el = metal_prop
         elif feed_R < 0:
-            raise Exception('StripLinePort: Feed_R must be >= 0')
+            raise Exception(f'{name}: Feed_R must be >= 0')
+        else:
+            return
+        for b in boxes:
+            el.AddBox(*b, priority=self.priority)
 
     def _current_probes(self, start, ns, ne, ml):
         """Two current loops round the strip (its width plus half a cell, two cells either side in height)."""
@@ -508,16 +505,7 @@ class CPWPort(StripLinePort):
         if w == p:
             raise Exception('CPWPort: exc_dir must differ from prop_dir')
         h = self.height_ny = 3 - p - w
-        if start[h] != stop[h]:
-            raise Exception('CPWPort: start/stop in height direction must be equal')
-        self.direction = np.sign(stop[p] - start[p])
-        if self.direction == 0:
-            raise Exception('CPWPort: start/stop in prop direction must differ')
-        feed_R = kw.get('Feed_R', np.inf)
-        ns, ne = np.minimum(start, stop), np.maximum(start, stop)
-        metal_prop.AddBox(start, stop, priority=self.priority)
-        self.port_props.append(metal_prop)
-        ml = self._planes(kw)
+        ns, ne, ml = self._strip('CPWPort', metal_prop, kw)
         wc = 0.5 * (ns[w] + ne[w])
         g0, g1 = np.zeros(3), np.zeros(3)
         g0[w] = 0.5 * (ne[w] - ns[w])
@@ -538,16 +526,7 @@ class CPWPort(StripLinePort):
                 self._excitation(f'excite_{k}', ev).AddBox(pt + sgn * g0, pt + sgn * g1, priority=self.priority)
         rp = np.zeros(3)
         rp[p], rp[w], rp[h] = start[p], wc, start[h]
-        if feed_R > 0 and not np.isinf(feed_R):
-            el = CSX.AddLumpedElement(self.lbl_temp.format('resist'), ny=w, R=2 * feed_R)
-            for sgn in (-1, 1):
-                el.AddBox(rp + sgn * g0, rp + sgn * g1, priority=self.priority)
-            self.port_props.append(el)
-        elif feed_R == 0:
-            for sgn in (-1, 1):
-                metal_prop.AddBox(rp + sgn * g0, rp + sgn * g1, priority=self.priority)
-        elif feed_R < 0:
-            raise Exception('CPWPort: Feed_R must be >= 0')
+        self._feed_r('CPWPort', metal_prop, w, [(rp + sgn * g0, rp + sgn * g1) for sgn in (-1, 1)], kw)
 
 
 class CurvePort(Port):
