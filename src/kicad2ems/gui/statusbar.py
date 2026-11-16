@@ -16,13 +16,8 @@ WARN, FULL = 0.80, 0.95                                             # a bar turn
 
 
 def _bar(tip):
-    b = QProgressBar()
-    b.setRange(0, 1000)
+    b = QProgressBar(minimum=0, maximum=1000, minimumWidth=150, maximumWidth=210, toolTip=tip, textVisible=True)
     b.setFixedHeight(16)
-    b.setMinimumWidth(150)
-    b.setMaximumWidth(210)
-    b.setToolTip(tip)
-    b.setTextVisible(True)
     return b
 
 
@@ -41,22 +36,18 @@ class MemoryMeters(QWidget):
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 4, 0)
         lay.setSpacing(8)
-        self.run = QLabel('')
-        self.run.setToolTip('memory of the run: kicad2ems, its workers and openEMS')
+        self.run = QLabel('', toolTip='memory of the run: kicad2ems, its workers and openEMS')
         self.run.hide()
         self.ram = _bar('system memory in use (all programs); what is left is what a run can have')
         self.gpu = _bar("the GPU's memory in use (mom25d's GPU solvers)")
-        self.gpu_note = QLabel('GPU: none')
-        self.gpu_note.setStyleSheet('color: gray')
-        self.gpu_note.setToolTip('no GPU found for mom25d (Help > Solvers and hardware)')
+        self.gpu_note = QLabel('GPU: none', styleSheet='color: gray',
+                               toolTip='no GPU found for mom25d (Help > Solvers and hardware)')
         for w in (self.run, self.ram, self.gpu, self.gpu_note):
             lay.addWidget(w)
         self.gpu.hide()
-        self.pid, self.info, self.free_gb = None, None, None
+        self.pid, self.info, self.free_gb, self.proc = None, None, None, None
         self.cmd = meters.gpu_command()
-        self.proc = None
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.tick)
+        self.timer = QTimer(self, timeout=self.tick)
         self.timer.start(2000)
         self.ticks = 0
         self.tick()
