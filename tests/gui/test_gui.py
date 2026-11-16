@@ -957,7 +957,7 @@ def test_solver_sections(tmp_path):
     oems, mom = st.parents['FDTD'][0], st.sections['mom25d']
     assert (not oems.isEnabled() and mom.isEnabled()
             and 'openEMS' in oems.toolTip() and 'gfdtd' in oems.toolTip())
-    # built from the plugins installed
+    # built from the solvers
     from kicad2ems.gui.runner import SECTION_TITLES, SECTION_ORDER
     assert (SECTION_TITLES['FDTD'] == 'FDTD (openEMS, gfdtd)'
             and SECTION_ORDER[3:5] == ['FDTD', 'mom25d'])

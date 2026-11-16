@@ -102,7 +102,7 @@ def best_crossover(freq, S_low, S_high, upper, decades=BLEND_DECADES,
     return best, value
 
 
-def pick(results, plugins):
+def pick(results, solvers):
     """(low, high, crossover) of a run's results {solver: Result}: the
     quasi-static solver (its info has valid_to_Hz) and the full-wave one to join
     it with (mom25d first; a line model is neither), or None when there are not
@@ -114,7 +114,7 @@ def pick(results, plugins):
         return None
     full = [
         n for n in results
-        if n != low and getattr(plugins.get(n), 'consumes', 'board') !=
+        if n != low and getattr(solvers.get(n), 'consumes', 'board') !=
         'network' and not (results[n].info or {}).get('valid_to_Hz')
     ]
     full = sorted(

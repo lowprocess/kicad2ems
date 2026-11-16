@@ -1,8 +1,8 @@
 """An analysis's settings panel (analysispanel.py), made from whatever the
-registry's plugin declares: its form, what a config holds of it, a run of its
+registry's analysis declares: its form, what a config holds of it, a run of its
 command (the stand-ins' real child process), what the board and a result
 propose. Nothing here is of one analysis: the stand-ins (fake_analyses.py) are
-any plugin."""
+any analysis."""
 import os
 import time
 
@@ -44,7 +44,7 @@ def test_values_as_a_config_holds_them():
     assert AP.typed(o('load', 'list', []), ' \n') is None
 
 
-def test_the_form_is_the_plugin_s_options(app, tmp_path):
+def test_the_form_is_the_analysis_s_options(app, tmp_path):
     p = AP.AnalysisPanel(FA.PowerIntegrity())
     assert (list(p.w) == ['rail', 'volts', 'load', 'scale', 'no_pdn']
             and list(p.sections) == ['Files', 'Rail', 'PDN impedance'])
@@ -77,12 +77,12 @@ def test_the_form_is_the_plugin_s_options(app, tmp_path):
     assert AP.config_values(p) == {}
     th = AP.AnalysisPanel(FA.Thermal())
     th.set_values(dict(circuit=str(tmp_path / 'run'), film=12))
-    # the plugin's paths: relative
+    # the analysis's paths: relative
     assert AP.config_values(th, str(tmp_path)) == dict(circuit='run', film=12.0)
 
 
 def test_a_run_alone(app, tmp_path):
-    """The plugin's command as a child process: why it cannot start on the
+    """The analysis's command as a child process: why it cannot start on the
     status line; its progress there while it runs, its log kept; done: its
     report's line; a failure: the tool's own last word."""
     p = AP.AnalysisPanel(FA.PowerIntegrity())

@@ -9,7 +9,7 @@ from kicad2ems.core import solvers, sysinfo
 from kicad2ems.core.api import (solver as solver_api, frontend,
                                 analysis as analysis_api)
 
-from test_plugins import _Fake
+from test_solver_registry import _Fake
 
 
 @pytest.mark.parametrize('surface', [solver_api, frontend, analysis_api])
@@ -22,7 +22,7 @@ def test_every_name_resolves(surface):
 
 
 def test_a_surface_loads_on_first_use():
-    """Importing kicad2ems.core.api.solver (as a plugin's module does when the
+    """Importing kicad2ems.core.api.solver (as a solver's module does when the
     registry loads it) imports neither matplotlib nor the field code; a name
     imports its module when it is used."""
     code = (

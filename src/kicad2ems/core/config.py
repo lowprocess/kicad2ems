@@ -136,7 +136,7 @@ def _solvers(v):
     return ordered(out) or None
 
 
-# the settings of every run (each solver's own are in its plugin): (key,
+# the settings of every run (each solver's own are in its class): (key,
 # default, help, type, ...)
 CORE = [
     Option(

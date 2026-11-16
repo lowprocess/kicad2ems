@@ -1,4 +1,4 @@
-"""The solver plugins: the registry (built in and through entry points), the
+"""The solvers: the registry (here of the stand-ins, standins.py), the
 settings made from their option tables ([solver.<name>] config tables,
 command-line options), the checks before a run (assess) and a run that does not
 need openEMS's mesh."""

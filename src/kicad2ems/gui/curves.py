@@ -85,7 +85,7 @@ def load_sets(folder):
             curve_set(d, made[0], folder)
             for d in analyses()[made[0]].curves(folder)
         ]
-    except Exception:  # a plugin's fault, a damaged file: no curves
+    except Exception:  # an analysis's fault, a damaged file: no curves
         return []
 
 

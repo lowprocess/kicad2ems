@@ -1,4 +1,4 @@
-"""--preview on the real FDTD plugin: the mesh and its log, the report and
+"""--preview on the real FDTD solvers: the mesh and its log, the report and
 summary, the walls, the 3D-view grid, the antennas and the shared FDTD settings
 (moved from kicad2ems's tests, which run on stand-ins)."""
 import json, os

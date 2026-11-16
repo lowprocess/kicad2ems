@@ -1,7 +1,7 @@
-"""The DC, thermal and capacitance tools as kicad2ems analysis plugins
-(analyses.py): engines of a study's questions, their settings read from each
-tool's parser, their commands, their reports, whose result a folder is; one of
-them run for real through its command where Elmer is installed."""
+"""The DC, thermal and capacitance tools as kicad2ems analyses (analyses.py):
+engines of a study's questions, their settings read from each tool's parser,
+their commands, their reports, whose result a folder is; one of them run for
+real through its command where Elmer is installed."""
 import json
 import os
 import subprocess
@@ -198,8 +198,8 @@ def test_reports_and_whose_result_a_folder_is(tmp_path, registered):
 @pytest.mark.skipif(not elmer.found()[0], reason='Elmer not installed')
 def test_a_drop_run_through_its_command(tmp_path, registered):
     """A 20 x 5 mm strip of 35 um copper carrying 1 A between two pads, run as a
-    front end runs it: the command of the plugin, its mark, its report; the drop
-    is the strip's own resistance."""
+    front end runs it: the command of the analysis, its mark, its report; the
+    drop is the strip's own resistance."""
     pad = lambda ref, x, a: dict(
         ref=ref, pads=[
             dict(name='1', net='N', layers=['F.Cu'], geom=mapping(

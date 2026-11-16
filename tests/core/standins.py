@@ -1,16 +1,16 @@
 """
-Stand-in solver plugins for kicad2ems's own tests. The full-wave solvers are
-packages of their own (kicad2ems-fdtd: openEMS and gfdtd; mom25d); core's tests
-run against these stand-ins instead, whatever is installed, so they need none of
-those packages and see the same solvers on every machine. install() puts them in
-place of the installed solvers before kicad2ems.core.config builds its settings
-from the registry (conftest.py calls it as the tests start).
+Stand-in solvers for kicad2ems's own tests. The full-wave solvers are parts of
+their own (kicad2ems.fdtd: openEMS and gfdtd; mom25d); core's tests run against
+these stand-ins instead, so they need none of those parts' programs and see the
+same solvers on every machine. install() puts them in place of the real
+solvers before kicad2ems.core.config builds its settings from the registry
+(conftest.py calls it as the tests start).
 
     openems, gfdtd  FDTD-shaped solvers: a few of the shared FDTD settings (the
                     same Option objects on both, in the FDTD groups), gap ports
                     and antenna mode, and a canned answer. openEMS's is usable
                     when CSXCAD and openEMS can be imported (engine_check(), the
-                    real ones or fake_openems's), as the real plugin is; it is
+                    real ones or fake_openems's), as the real solver is; it is
                     previewed, as the real one.
     mom25d          a planar solver: it refuses gap ports and boards without a
                     ground plane as mom25d does, and solves to a canned thru.
@@ -18,9 +18,9 @@ from the registry (conftest.py calls it as the tests start).
                     test.
 
 They keep the real solvers' names, aliases, labels, order and the settings the
-tests use, so a test reads as a run of those. What only the real plugins do (the
+tests use, so a test reads as a run of those. What only the real solvers do (the
 FDTD model, mesh and runs, openEMS's import hints and --converge, mom25d's mesh
-and its deviations, gfdtd's backends) is tested in their packages.
+and its deviations, gfdtd's backends) is tested in their parts' tests.
 """
 import importlib
 import numpy as np
@@ -300,7 +300,7 @@ def install():
     their settings and forms from the registry. Leaves the registry to be built
     again."""
     solvers.SOLVERS = (
-        'kicad2ems.core.solvers.lines.plugin:Qucs',
-        'kicad2ems.core.solvers.lines.plugin:Scikit',
+        'kicad2ems.core.solvers.lines.solver:Qucs',
+        'kicad2ems.core.solvers.lines.solver:Scikit',
         *(f"{__name__}:{c.__name__}" for c in SOLVERS))
     solvers._registry = None

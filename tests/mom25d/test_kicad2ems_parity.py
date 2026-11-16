@@ -1,5 +1,5 @@
-"""Parity of the kicad2ems plugin: mom25d's planar model read back
-(mom25d.board.BoardModel) against kicad2ems's board, minus what the plugin
+"""Parity of the kicad2ems solver: mom25d's planar model read back
+(mom25d.board.BoardModel) against kicad2ems's board, minus what the solver
 declares (the outline, copper below the ground, vias, edge walls as via rows,
 parts as strips). Every difference must be declared; a via moved after the
 declaration fails. From kicad2ems's tests, which check its FDTD model the same

@@ -76,13 +76,13 @@ import numpy as np
 from ..options import Option  # noqa: F401
 
 # every solver, as 'module:class': imported on the first registry() call
-SOLVERS = ('kicad2ems.core.solvers.lines.plugin:Qucs',
-           'kicad2ems.core.solvers.lines.plugin:Scikit',
-           'kicad2ems.fdtd.openems.plugin:OpenEMS',
+SOLVERS = ('kicad2ems.core.solvers.lines.solver:Qucs',
+           'kicad2ems.core.solvers.lines.solver:Scikit',
+           'kicad2ems.fdtd.openems.solver:OpenEMS',
            'kicad2ems.fdtd.gfdtd:GFDTD',
-           'kicad2ems.mom25d.kicad2ems.mom:MoM25D',
-           'kicad2ems.mom25d.kicad2ems.mixed:Mixed',
-           'kicad2ems.fem.palace.plugin:Palace',
+           'kicad2ems.mom25d.solvers.mom:MoM25D',
+           'kicad2ems.mom25d.solvers.mixed:Mixed',
+           'kicad2ems.fem.palace.solver:Palace',
            'kicad2ems.pcbqs.analyses:QuasiStatic')
 # the solver --mom adds as a reference
 MOM = 'mom25d'
@@ -141,7 +141,7 @@ class Deviation:
 
 
 class Solver:
-    """A solver plugin. A subclass sets the declarations (class attributes: the
+    """A solver. A subclass sets the declarations (class attributes: the
     module docstring lists them) and overrides the steps it does differently;
     the pipeline calls them in the order check, validate, assess, estimate (for
     auto), prepare, solve, deviations and readback (the parity checks),

@@ -1,6 +1,6 @@
-"""The analyses: the registry (here fakes of its form), whose result a folder
-holds, a config's [analysis] tables, the
-examples an analysis ships (index, prepared in a folder) and --check's lines."""
+"""The analyses: the registry (here of fakes), whose result a folder holds, a
+config's [analysis] tables, the examples an analysis ships (index, prepared in a
+folder) and --check's lines."""
 import os
 
 import pytest
@@ -41,7 +41,7 @@ class Drop(Heat):
 
 
 @pytest.fixture
-def plugins(monkeypatch):
+def fakes(monkeypatch):
     """The registry: these analyses (classes), by their order."""
     def install(*classes):
         found = sorted((c() for c in classes), key=lambda a: (a.order, a.name))
@@ -58,8 +58,8 @@ def test_every_name_resolves():
             and frontend.analysis_of is analyses.analysis_of)
 
 
-def test_get_and_check_lines(plugins):
-    reg = plugins(Heat, Drop)
+def test_get_and_check_lines(fakes):
+    reg = fakes(Heat, Drop)
     assert analyses.get('HEAT') is reg['heat']
     with pytest.raises(ValueError, match="no analysis 'cfd'"):
         analyses.get('cfd')
@@ -67,8 +67,8 @@ def test_get_and_check_lines(plugins):
     assert any(l.split()[:2] == ['ok', 'heat'] for l in lines)
 
 
-def test_whose_result_a_folder_holds(plugins, tmp_path):
-    plugins(Heat, Drop)
+def test_whose_result_a_folder_holds(fakes, tmp_path):
+    fakes(Heat, Drop)
     assert (analyses.analysis_of(str(tmp_path)) is None
             and analyses.analysis_of(None) is None)
     (tmp_path / 'heat-preview.json').write_text('{}')
@@ -77,8 +77,8 @@ def test_whose_result_a_folder_holds(plugins, tmp_path):
     assert analyses.analysis_of(str(tmp_path)) == ('heat', False)
 
 
-def test_a_config_s_analysis_tables(plugins, tmp_path):
-    plugins(Heat)
+def test_a_config_s_analysis_tables(fakes, tmp_path):
+    fakes(Heat)
     cfg = tmp_path / 'b.toml'
     cfg.write_text(
         'board = "b.kicad_pcb"\n[analysis]\nrun = ["Heat", '
@@ -110,7 +110,7 @@ def test_a_config_s_analysis_tables(plugins, tmp_path):
         str(cfg))[1]['heat'] == dict(losses=str(tmp_path / 'a.json')))
 
 
-def test_an_analysis_ships_examples(plugins, tmp_path):
+def test_an_analysis_ships_examples(fakes, tmp_path):
     """Its examples in the index after kicad2ems's own, under the group it
     names; prepared: the config, its files (always) and its board (kept when
     there)."""
@@ -136,7 +136,7 @@ def test_an_analysis_ships_examples(plugins, tmp_path):
                 dict(name='rf_gcpw', config=str(src / 'bare.toml')),
                 dict(name='heat_gone', config=str(src / 'gone.toml'))
             ]
-    plugins(Shipping)
+    fakes(Shipping)
     ix = ex.index()
     mine = [e for e in ix if e['source'] == ex.SOURCE]
     # each in a group

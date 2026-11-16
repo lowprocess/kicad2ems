@@ -43,20 +43,20 @@ def test_which_two_are_joined():
 
     r = lambda names=('P1', 'P2'), **info: Result(np.zeros(
         (3, 2, 2)), list(names), [50, 50], 1.0, info)
-    plugins = dict(openems=P(), mom25d=P(), pcbqs=P(), qucs=P('network'))
+    solvers = dict(openems=P(), mom25d=P(), pcbqs=P(), qucs=P('network'))
     # no quasi-static one
-    assert pick(dict(openems=r(), mom25d=r()), plugins) is None
+    assert pick(dict(openems=r(), mom25d=r()), solvers) is None
     # nothing to join it to
-    assert pick(dict(pcbqs=r(valid_to_Hz=2e8)), plugins) is None
+    assert pick(dict(pcbqs=r(valid_to_Hz=2e8)), solvers) is None
     # a line model is neither
-    assert pick(dict(qucs=r(), pcbqs=r(valid_to_Hz=2e8)), plugins) is None
+    assert pick(dict(qucs=r(), pcbqs=r(valid_to_Hz=2e8)), solvers) is None
     assert (pick(dict(openems=r(), mom25d=r(), pcbqs=r(valid_to_Hz=2e8)),
-                 plugins) == ('pcbqs', 'mom25d', 2e8))
+                 solvers) == ('pcbqs', 'mom25d', 2e8))
     assert (pick(dict(openems=r(), pcbqs=r(valid_to_Hz=2e8)),
-                 plugins) == ('pcbqs', 'openems', 2e8))
+                 solvers) == ('pcbqs', 'openems', 2e8))
     # other ports
     assert (pick(dict(mom25d=r(names=('P1d', 'P1c')), pcbqs=r(valid_to_Hz=2e8)),
-                 plugins) is None)
+                 solvers) is None)
 
 
 def test_the_crossover_goes_where_the_two_agree_best_at_or_below_the_estimate():

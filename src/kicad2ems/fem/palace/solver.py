@@ -1,8 +1,8 @@
 """
-Palace (AWS's finite-element solver, awslabs/palace) as a kicad2ems solver
-plugin: the board meshed in tetrahedra by gmsh (model.py), a driven Palace run
-over the band with its adaptive frequency sweep (config.py), every port excited
-in turn (run.py).
+Palace (AWS's finite-element solver, awslabs/palace) as a kicad2ems solver: the
+board meshed in tetrahedra by gmsh (model.py), a driven Palace run over the band
+with its adaptive frequency sweep (config.py), every port excited in turn
+(run.py).
 
 Experimental. What it models: the dielectric slabs inside the board outline,
 lossy by their tand; copper as PEC sheets of zero thickness (or lossy ones,

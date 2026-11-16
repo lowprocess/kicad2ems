@@ -15,8 +15,7 @@ from kicad2ems.pcbqs import reports as R
 
 EXAMPLES = (Path(__file__).resolve().parents[2] / 'src' / 'kicad2ems' / 'pcbqs'
             / 'circuit' / 'examples')
-A = pytest.importorskip('kicad2ems.pcbqs.analyses',
-                        reason='the plugins need kicad2ems (its api.analysis)')
+from kicad2ems.pcbqs import analyses as A
 
 
 def cells(rep):
@@ -37,7 +36,7 @@ def cells(rep):
     return out
 
 
-# ---- the plugins ------------------------------------------------------------
+# ---- the analyses -----------------------------------------------------------
 def test_the_four_register_with_kicad2ems():
     """Declared as kicad2ems expects (a name, a result file, options of its
     kinds), in the Study's order."""
@@ -269,12 +268,6 @@ def test_the_examples_are_configs_beside_their_models(tmp_path):
                  for m in EXAMPLES.glob('*.json')}) == len(
                      list(EXAMPLES.glob('*.toml'))) == 10)
     from kicad2ems.core.api import frontend
-    from kicad2ems.core import analyses
-    if 'circuit' not in analyses.registry():
-        pytest.skip(
-            'pcbqs is not installed where kicad2ems looks for plugins (its '
-            'entry points)'
-        )
     names = [
         e['name'] for e in frontend.example_index() if e['source'] == 'circuit'
     ]
@@ -551,8 +544,8 @@ def test_a_load_with_no_pad_on_ground(monkeypatch, tmp_path):
     wpthb's Q1) returns through another part. The rail finds it where the board
     has just one such (pdn.rail.return_part: of the load's kind, on one of its
     nets that is no rail, and on ground) and says so; where it has none or
-    several, the plugin says it as something the run still needs
-    (Analysis.missing, kicad2ems 2.9) instead of running with the return left
+    several, the analysis says it as something the run still needs
+    (Analysis.missing) instead of running with the return left
     out, and a run that is started all the same says it in its report's first
     line."""
     from kicad2ems.pcbqs import analyses as A

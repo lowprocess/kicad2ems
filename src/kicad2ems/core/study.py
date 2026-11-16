@@ -6,8 +6,8 @@ S-parameters, an antenna's pattern, every trace's impedance, a rail's DC drop,
 its impedance, a converter's near field, a circuit on the copper, the
 capacitance between nets, the board's temperature. An *engine* is a program that
 answers one or more of them: the S-parameter solvers (kicad2ems.core.solvers:
-openEMS, gfdtd, mom25d, the line model ...) and the analysis plugins
-(kicad2ems.core.analyses: pcbqs's tools, kicad2ems-fem's Elmer and Palace
+openEMS, gfdtd, mom25d, the line model ...) and the analyses
+(kicad2ems.core.analyses: pcbqs's tools, kicad2ems.fem's Elmer and Palace
 tools). Several engines may answer one question (the temperature by pcbqs or by
 Elmer), and one engine several questions from one run (a rail's drop and its
 impedance).
@@ -22,7 +22,7 @@ impedance).
 
 A front end shows the tree, lets each question asked name its engine (or
 several, to compare them), and starts them: an analysis engine by the command
-its plugin gives (Analysis.command, its settings first passed through
+its Analysis gives (Analysis.command, its settings first passed through
 Analysis.for_questions with the questions asked of it), the solver engines
 together as one kicad2ems run. Whoever starts a run leaves a mark in its folder
 (mark) saying which engine made it and what was asked, so a folder is known as
@@ -132,8 +132,8 @@ QUESTIONS = {
 
 @dataclass(frozen=True)
 class Engine:
-    """A program that answers questions, as a front end lists it: a solver
-    plugin or an analysis plugin."""
+    """A program that answers questions, as a front end lists it: a solver or
+    an analysis."""
     # its registry name: 'mom25d', 'pdn', 'elmer_thermal' (its config table too)
     name: str
     # as a list shows it beside a question: 'mom25d (MoM)', 'pcbqs', 'Elmer'
@@ -143,7 +143,7 @@ class Engine:
     kind: str
     provides: tuple         # the questions it answers
     # the Solver or the Analysis
-    plugin: object = field(compare=False, repr=False)
+    impl: object = field(compare=False, repr=False)
     # the setting that makes it write field dumps too ('' it cannot, or always
     # does)
     fields: str = ''
@@ -151,8 +151,8 @@ class Engine:
     order: int = 50
 
     def check(self):
-        """(usable, one line): the plugin's own check."""
-        return self.plugin.check()
+        """(usable, one line): the Solver's or the Analysis's own check."""
+        return self.impl.check()
 
 
 def provided(a):
@@ -162,9 +162,9 @@ def provided(a):
 
 
 def questions():
-    """{name: Question}: kicad2ems's, then those the installed analyses bring
-    for what it has none for (a plugin's `questions`; an analysis that declares
-    nothing is a question of its own name, in the group Other)."""
+    """{name: Question}: kicad2ems's, then those the analyses bring for what it
+    has none for (an analysis's `questions`; one that declares nothing is a
+    question of its own name, in the group Other)."""
     from .analyses import registry
     out = dict(QUESTIONS)
     for a in registry().values():
@@ -231,7 +231,7 @@ def default_fields(engine, fmin, fmax, layer='F.Cu', sweep='linear'):
     fc = float(f"{fc:.3g}")
     return {
         o.key: [f"E@{layer}@{fc:g}"] if o.key == 'dump' else [fc]
-        for o in dump_options(e.plugin)
+        for o in dump_options(e.impl)
     }
 
 
@@ -242,9 +242,9 @@ def engines_of(question):
 
 def study_tree():
     """What a front end lists: [dict(group, questions=[dict(question, engines,
-    missing)])], every question kicad2ems or a plugin knows, by group and order.
-    engines: those installed that answer it (their own check says whether each
-    can run here); missing: how to get one when there is none ('' otherwise)."""
+    missing)])], every question kicad2ems or an analysis knows, by group and
+    order. engines: those that answer it (their own check says whether each can
+    run here); missing: why there is none ('' otherwise)."""
     qs, es = questions(), list(engines().values())
     tree = []
     for group in GROUPS:
@@ -293,8 +293,8 @@ def compare(results):
     got, order, units = {}, [], {}
     for n in names:
         try:
-            figs = es[n].plugin.figures(results[n]) or []
-        # (a plugin's own reader)
+            figs = es[n].impl.figures(results[n]) or []
+        # (an analysis's own reader)
         except Exception:  # noqa: BLE001
             figs = []
         got[n] = {}
@@ -347,7 +347,7 @@ def marked(folder):
 
 def check_lines():
     """--check's lines about the questions: each one with the engines that
-    answer it, or how to get one."""
+    answer it."""
     lines = []
     for g in study_tree():
         for row in g['questions']:
@@ -423,7 +423,7 @@ def engine_named(question, text, es=None):
         return None
     have = [e for e in (es or engines()).values() if question in e.provides]
     if (want in ('lines', 'line', 'fast')
-            and any(e.kind == 'solver' and e.plugin.consumes == 'network'
+            and any(e.kind == 'solver' and e.impl.consumes == 'network'
                     for e in have)):
         return LINES
     solver = aliases().get(want)
@@ -456,7 +456,7 @@ def read_config(path, strict=True):
     them, [analysis] run as before the questions ("rf": S-parameters; an
     analysis: the questions it answers, by it); with neither, S-parameters.
     strict False (a front end, which shows what it cannot run greyed): a
-    question nobody knows and an engine not installed are kept as written
+    question nobody knows and an engine nobody lists are kept as written
     instead of a ValueError."""
     table = load_toml(path).get('study')
     if isinstance(table, dict):
@@ -620,11 +620,11 @@ def describe(steps, sets=None):
             extra = (' (antenna mode)' if st.mode == 'antenna' else '')
         else:
             a = es[st.engines[0]]
-            who, extra = f"{a.label} ({a.plugin.tool})", ''
+            who, extra = f"{a.label} ({a.impl.tool})", ''
             many = (sets or {}).get(a.name) or []
             if len(many) > 1:
                 extra = (f", {len(many)} runs: "
-                         f"{', '.join(a.plugin.tag(dict(v)) for v in many)}")
+                         f"{', '.join(a.impl.tag(dict(v)) for v in many)}")
         lines.append(f"  {what}: {who}{extra}"
                      + (', with field dumps' if st.fields else
                         ', without field dumps' if st.fields is False else ''))
@@ -662,7 +662,7 @@ def latest_results(base, board):
 def run(config, only=None, preview=False, out=None, echo=print, extra=None):
     """Run the study a config asks, one run after the other (plan), each into a
     folder of its own under the output folder: the solvers' as kicad2ems's own
-    run, an analysis as the command its plugin gives, with its settings from
+    run, an analysis as the command its Analysis gives, with its settings from
     [analysis.<name>] (given several tables, [[analysis.<name>]]: a run for
     each, a board's rails). only:
     the questions (or engines) to run of those it asks; preview: the runs that

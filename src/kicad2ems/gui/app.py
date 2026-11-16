@@ -17,7 +17,7 @@ of it and the settings of the one selected: study.py) and its pages:
     Circuit  the circuit analysis's model as a schematic to edit
              (pcbqs.circuit), when that analysis is installed
 
-The analyses beside S-parameters are plugins kicad2ems's registry holds
+The analyses beside S-parameters are those kicad2ems's registry holds
 (kicad2ems.core.api.frontend.analyses: pcbqs's power integrity, near field,
 circuit and thermal). The window knows none of them by name: each one's settings
 are a panel in the study made from its options (analysispanel.py), the toolbar's
@@ -262,8 +262,8 @@ class MainWindow(QMainWindow):
         self.registry = analyses()
         self.panels, self.editors = {}, {}
         for a in ANALYSES:
-            plugin = self.registry.get(a.key)
-            if plugin is None:
+            analysis = self.registry.get(a.key)
+            if analysis is None:
                 continue
             if a.page and a.key in EDITORS.values():
                 self.editors[a.key] = editor_page(a.key, self)
@@ -272,7 +272,7 @@ class MainWindow(QMainWindow):
                     self.editors[a.key].panel.changed.connect(
                         lambda: self.setup.touch())
             else:
-                self.panels[a.key] = AnalysisPanel(plugin, self)
+                self.panels[a.key] = AnalysisPanel(analysis, self)
                 # a config holds its settings
                 self.panels[a.key].changed.connect(lambda: self.setup.touch())
         self.pages = {
@@ -392,7 +392,7 @@ class MainWindow(QMainWindow):
             elif key in self.editors and not page.run_btn.isEnabled():
                 self.study.set_available(key, False, page.status.text())
             self.runtab.add_log(key, BY_KEY[key].title, page.log)
-        for a in ANALYSES:  # listed without a plugin here (a test's)
+        for a in ANALYSES:  # listed without an analysis here (a test's)
             if a.key != RF and a.key not in self.pages:
                 self.study.set_available(a.key, False, 'not installed')
         self.study.set_study(self._saved_study())
@@ -620,7 +620,7 @@ class MainWindow(QMainWindow):
             self.job, self._job_t0 = key, time.monotonic()
             try:
                 why = self._start_job(key, self._queue_preview)
-            # a page's or a plugin's bug: said on the row, and the queue goes
+            # a page's or an analysis's bug: said on the row, and the queue goes
             # on (the window must not stay busy with nothing running)
             except Exception as e:
                 import traceback
@@ -1305,7 +1305,7 @@ class MainWindow(QMainWindow):
         self.examples_menu.clear()
         try:
             entries = example_index()
-        except Exception:  # a plugin's fault: no examples, not no window
+        except Exception:  # an analysis's fault: no examples, not no window
             entries = []
         # {group path: its menu}, {top group: whose}
         menus, self.example_sources = {}, {}

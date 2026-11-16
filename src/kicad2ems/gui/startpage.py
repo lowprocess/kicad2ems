@@ -245,7 +245,7 @@ class StartPage(QWidget):
             try:
                 from kicad2ems.core.api.frontend import example_index
                 entries = example_index()
-            # (a plugin's fault: no examples)
+            # (an analysis's fault: no examples)
             except Exception:  # noqa: BLE001
                 entries = []
         self.set_examples(entries)

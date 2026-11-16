@@ -1,20 +1,18 @@
 """The Circuit page: the model's editor, with its settings a panel made from the
-circuit plugin's options (pcbqs.circuit's own table), the model's own values
-under them, and a run that is the plugin's command on the model as edited.
-pcbqs's own plugin: skipped without pcbqs."""
+circuit analysis's options (pcbqs.circuit's own table), the model's own values
+under them, and a run that is the analysis's command on the model as edited.
+pcbqs's own analysis."""
 import json
 import pytest
 from kicad2ems.gui.powercircuittab import PowerCircuitTab
-
-A = pytest.importorskip('kicad2ems.pcbqs.analyses',
-                        reason='pcbqs is not installed')
+from kicad2ems.pcbqs import analyses as A
 
 
 @pytest.fixture
 def tab():
     from PySide6.QtWidgets import QApplication
     app=QApplication.instance() or QApplication([])
-    t=PowerCircuitTab(plugin=A.Circuit())
+    t=PowerCircuitTab(analysis=A.Circuit())
     yield t
     t.close();app.processEvents()
 
@@ -63,7 +61,7 @@ def test_a_general_model_s_parameters_and_sweep(tab):
         tab.set_model(dict(format=1, components=[]))
 
 
-def test_a_run_is_the_plugin_s_command_on_the_model_as_edited(
+def test_a_run_is_the_analysis_s_command_on_the_model_as_edited(
         tab, tmp_path, monkeypatch):
     """Run: the model as edited written into the run's folder, pcbqs.circuit
     with the options set; the board's copper needs a board (the model's own, the

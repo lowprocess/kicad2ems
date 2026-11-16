@@ -48,7 +48,7 @@ class Noise(Analysis):  # brings a question of its own
 
 
 @pytest.fixture
-def plugins(monkeypatch):
+def fakes(monkeypatch):
     """The registry: these analyses (classes), by their order."""
     def install(*classes):
         found = sorted((c() for c in classes), key=lambda a: (a.order, a.name))
@@ -57,8 +57,8 @@ def plugins(monkeypatch):
     return install
 
 
-def test_engines_are_solvers_and_analyses_by_what_they_answer(plugins):
-    plugins(Drop, Warm, Elmer)
+def test_engines_are_solvers_and_analyses_by_what_they_answer(fakes):
+    fakes(Drop, Warm, Elmer)
     es = study.engines()
     assert (es['pdn'].provides == ('dc', 'pdn') and es['pdn'].label == 'fake'
             and es['pdn'].kind == 'analysis')
@@ -78,8 +78,8 @@ def test_engines_are_solvers_and_analyses_by_what_they_answer(plugins):
     assert es['pdn'].check() == (True, '')
 
 
-def test_the_tree_lists_every_question_with_its_engines(plugins):
-    plugins(Drop, Warm, Elmer)
+def test_the_tree_lists_every_question_with_its_engines(fakes):
+    fakes(Drop, Warm, Elmer)
     tree = study.study_tree()
     assert ([g['group']
              for g in tree] == ['RF', 'Signal integrity', 'Power', 'Thermal'])
@@ -102,8 +102,8 @@ def test_the_tree_lists_every_question_with_its_engines(plugins):
             and not rows['lines']['missing'])
 
 
-def test_a_plugin_without_questions_and_one_with_its_own(plugins):
-    reg = plugins(Old, Noise)
+def test_an_analysis_without_questions_and_one_with_its_own(fakes):
+    reg = fakes(Old, Noise)
     assert list(reg) == ['emission', 'mqs']
     qs = study.questions()
     # a question of its own name
@@ -118,8 +118,8 @@ def test_a_plugin_without_questions_and_one_with_its_own(plugins):
     assert tree['RF'][-1] == 'emissions' and tree['Other'] == ['mqs']
 
 
-def test_the_runs_a_set_of_questions_takes(plugins):
-    reg = plugins(Drop, Warm, Elmer)
+def test_the_runs_a_set_of_questions_takes(fakes):
+    reg = fakes(Drop, Warm, Elmer)
     # one run answers both
     assert study.runs_for({'dc': [], 'pdn': []}) == {'pdn': ('dc', 'pdn')}
     # two engines: compared
@@ -139,8 +139,8 @@ def test_the_runs_a_set_of_questions_takes(plugins):
         study.runs_for({'circuit': []})
 
 
-def test_a_run_folder_says_whose_it_is(plugins, tmp_path):
-    plugins(Warm, Elmer)
+def test_a_run_folder_says_whose_it_is(fakes, tmp_path):
+    fakes(Warm, Elmer)
     a, b, c = tmp_path / 'a', tmp_path / 'b', tmp_path / 'c'
     for d, text in ((a, '{"method": "grid"}'), (b, '{"tool": "elmer"}'),
                     (c, '{"tool": "elmer"}')):
@@ -164,9 +164,9 @@ def test_a_run_folder_says_whose_it_is(plugins, tmp_path):
     assert study.marked(str(tmp_path)) is None
 
 
-def test_check_lists_the_questions(plugins):
+def test_check_lists_the_questions(fakes):
     from kicad2ems.core.cli import check_report
-    plugins(Drop, Warm)
+    fakes(Drop, Warm)
     _, lines = check_report()
     i = lines.index('questions, and the engines that answer them:')
     text = '\n'.join(lines[i:i + 13])
@@ -247,8 +247,8 @@ def _config(tmp_path, text, board='b.kicad_pcb', name='c.toml'):
     return str(p)
 
 
-def test_a_config_says_what_its_study_asks(plugins, tmp_path):
-    plugins(Drop, Circuit, Heat, Heat3D)
+def test_a_config_says_what_its_study_asks(fakes, tmp_path):
+    fakes(Drop, Circuit, Heat, Heat3D)
     cfg = _config(tmp_path, '''
 [study]
 run = ["sparams", "antenna", "lines", "dc", "thermal"]
@@ -306,8 +306,8 @@ model = "m.json"
     assert study.engine_named('thermal', 'ELMER_THERMAL') == 'elmer_thermal'
 
 
-def test_a_study_is_written_into_its_config(plugins, tmp_path):
-    plugins(Drop, Circuit, Heat, Heat3D)
+def test_a_study_is_written_into_its_config(fakes, tmp_path):
+    fakes(Drop, Circuit, Heat, Heat3D)
     cfg = _config(
         tmp_path,
         'fmin = 1.0\n\n[study]\nrun = ["dc"]\n[study.dc]\nengine = '
@@ -333,8 +333,8 @@ def test_a_study_is_written_into_its_config(plugins, tmp_path):
     assert study.read_config(cfg).asked == dict(sparams=[])
 
 
-def test_the_runs_a_study_takes_in_order(plugins):
-    plugins(Drop, Circuit, Heat, Heat3D)
+def test_the_runs_a_study_takes_in_order(fakes):
+    fakes(Drop, Circuit, Heat, Heat3D)
     S, plan = study.Study, study.plan
     step = lambda st: (st.name, st.engines, st.questions, st.mode, st.fields)
     # as the settings say
@@ -389,13 +389,13 @@ def test_the_runs_a_study_takes_in_order(plugins):
             and lines[4] == '  Temperature: Elmer (fake.thermal)')
 
 
-def test_the_study_command_runs_them(plugins, tmp_path, capsys, demo_files):
+def test_the_study_command_runs_them(fakes, tmp_path, capsys, demo_files):
     """kicad2ems study: each run into a folder of its own with its mark, an
     analysis's settings from its table, one that starts from another's result
     given it, one that fails or cannot start not stopping the rest."""
     import json
     from kicad2ems.core.cli import main
-    plugins(Drop, Circuit, Heat, Heat3D)
+    fakes(Drop, Circuit, Heat, Heat3D)
     base, _ = demo_files
     out = tmp_path / 'runs'
     cfg = _config(tmp_path, f'''out = '{out}'
@@ -507,7 +507,7 @@ class Rails(Drop):
 
 
 def test_an_analysis_given_several_tables_is_a_run_for_each(
-        plugins, tmp_path, capsys):
+        fakes, tmp_path, capsys):
     """[[analysis.pdn]]: a board's rails, each a run of its own in its own
     folder, named by its tag; one that fails or cannot start does not stop
     the others, and the study says which."""
@@ -515,7 +515,7 @@ def test_an_analysis_given_several_tables_is_a_run_for_each(
     import re
     from kicad2ems.core.cli import main
     from kicad2ems.core.api import frontend
-    plugins(Rails, Circuit)
+    fakes(Rails, Circuit)
     assert (analyses.registry()['pdn'].several == 'rail'
             and analyses.registry()['circuit'].several == '')
     out = tmp_path / 'runs'
@@ -592,7 +592,7 @@ volts = 1.8
              / 'pdn.json'))['no_pdn'] == 'False')
 
 
-def test_two_engines_answers_side_by_side(plugins, tmp_path):
+def test_two_engines_answers_side_by_side(fakes, tmp_path):
     """compare: the figures engines name alike in one row each, an engine's own
     where only it has them; the spread between those that give one.
     default_fields: what an engine is asked when its dumps are wanted."""
@@ -615,7 +615,7 @@ def test_two_engines_answers_side_by_side(plugins, tmp_path):
                 dict(name='hottest', value=79.1, unit='C'),
                 dict(name='coolest', value=59.6, unit='C')
             ]
-    plugins(Circuit, A, B)
+    fakes(Circuit, A, B)
     c = study.compare(dict(thermal='x', elmer_thermal='y', rf='z'))
     assert (c['engines'] == ['thermal', 'elmer_thermal']
             and c['labels'] == ['fake', 'Elmer'])
@@ -646,7 +646,7 @@ def test_two_engines_answers_side_by_side(plugins, tmp_path):
             and study.default_fields('nobody', 1, 2) == {})
 
 
-def test_what_a_run_still_needs_and_what_is_shown_first(plugins, tmp_path,
+def test_what_a_run_still_needs_and_what_is_shown_first(fakes, tmp_path,
                                                         demo_files):
     """rf_needs: what an S-parameter run of a form's values lacks, with
     the setting it is set by (cheap: the board's footprints, no model). An

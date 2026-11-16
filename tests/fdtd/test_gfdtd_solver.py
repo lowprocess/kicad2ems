@@ -9,7 +9,7 @@ gfdtd = pytest.importorskip('kicad2ems.gfdtd')  # the [gfdtd] extra
 from kicad2ems.gfdtd.operator import build  # noqa: E402
 
 
-def test_plugin_registered():
+def test_registered():
     from kicad2ems.core.solvers import registry, get
     sv = registry()['gfdtd']
     assert get('gpu-fdtd') is sv and sv.in_auto and not sv.in_all
@@ -189,7 +189,7 @@ def test_gfdtd_runs_the_mesh_convergence_check():
     from types import SimpleNamespace
     from kicad2ems.core.api.solver import AUTO
     from kicad2ems.fdtd import gfdtd as conn
-    from kicad2ems.fdtd.openems.plugin import OpenEMS
+    from kicad2ems.fdtd.openems.solver import OpenEMS
     sv = conn.GFDTD()
     assert ({'converge', 'converge_tol'} <= {o.key
                                              for o in sv.options}

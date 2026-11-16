@@ -1,8 +1,7 @@
 """
-openEMS as a kicad2ems solver plugin: the FDTD model (kicad2ems.fdtd.plugin)
-solved by openEMS's engine. Its own: the import check (engine.py, venv.py). The
-mesh convergence check (--converge) is the FDTD layer's (plugin.py,
-converge.py).
+openEMS as a kicad2ems solver: the FDTD model (kicad2ems.fdtd.solver) solved
+by openEMS's engine. Its own: the import check (engine.py, venv.py). The mesh
+convergence check (--converge) is the FDTD layer's (solver.py, converge.py).
 
 What openEMS changes on the way (declared deviations, docs/architecture.md):
 vias snapped onto mesh lines (--vias), parts with ESR / ESL split in two
@@ -10,7 +9,7 @@ elements (openEMS 0.37), edge walls moved onto mesh lines.
 """
 import os
 
-from ..plugin import FDTD, MESH, RUN, CONVERGE
+from ..solver import FDTD, MESH, RUN, CONVERGE
 
 
 class OpenEMS(FDTD):

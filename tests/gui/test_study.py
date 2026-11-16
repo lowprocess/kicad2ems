@@ -65,7 +65,7 @@ def window(tmp_path, monkeypatch):
 def test_study_dock(window):
     """The board above the list; the list: the questions by group, who answers
     each, its state; the settings of the selected question's engines under it (a
-    panel made from each plugin's options), no Run button of its own; what is
+    panel made from each analysis's options), no Run button of its own; what is
     asked kept for the next window."""
     from PySide6.QtCore import Qt
     from kicad2ems.gui.analysispanel import AnalysisPanel
@@ -293,7 +293,7 @@ def test_the_fields_tick(window):
         2, Qt.CheckStateRole) is None else tree.rows[q].checkState(2)
     assert (box('sparams') == Qt.Unchecked and box('lines') is None
             and box('thermal') is None and box('dc') is None)
-    assert box('circuit') == Qt.Unchecked  # its plugin has a fields switch
+    assert box('circuit') == Qt.Unchecked  # its analysis has a fields switch
     w.setup.set_values(dict(solvers=['openems', 'mom25d'], fmin=2.0, fmax=6.0))
     assert st.edits['dump'][0].text() == '' and tree.fields_on('rf') is False
     tree.rows['sparams'].setCheckState(2, Qt.Checked)
@@ -611,7 +611,7 @@ def test_the_runs_are_read_once_for_a_settings_change(window, tmp_path,
 
 
 def test_one_analysis_starts_from_another_s_result(window, tmp_path):
-    """What a plugin is given of the others' results (the temperature, a
+    """What an analysis is given of the others' results (the temperature, a
     circuit's losses): the one shown, else the newest; and what a result
     proposes for another analysis (a converter's input rail), with what it could
     not say to be set before a run."""

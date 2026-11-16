@@ -154,7 +154,7 @@ KINDS = ('str', 'int', 'float', 'bool', 'list')
 
 
 class Analysis:
-    """An analysis plugin. A subclass sets the declarations (class attributes:
+    """An analysis. A subclass sets the declarations (class attributes:
     the module docstring lists them) and overrides what it does differently; a
     front end calls check, options and examples when it starts, tag and command
     to run it, status while it runs, and report, curves and suggest on a folder
@@ -354,9 +354,9 @@ def read_config(path):
         model = "buck.json"           # its options, by key; a path
                                       # (Analysis.paths) relative to the file
 
-    run: None when the config does not say. A table of an analysis that is not
-    installed is kept as it is (so a front end can write it back); its paths are
-    not known, and stay as written. An analysis given several tables
+    run: None when the config does not say. A table of an analysis the registry
+    does not list is kept as it is (so a front end can write it back); its paths
+    are not known, and stay as written. An analysis given several tables
     (read_sets): its first."""
     run, sets = _tables(path)
     return run, {name: tabs[0] for name, tabs in sets.items()}

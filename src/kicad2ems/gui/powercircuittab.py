@@ -7,13 +7,13 @@ examples like any other, under File > Examples > Circuits. Saving the study
 writes the model back beside its config.
 
 The page is the model's editor only. Its settings are a panel made from the
-circuit plugin's options, as every analysis's are (analysispanel.AnalysisPanel:
-the tools' own tables, `--describe`), in the Study dock when the page is the
-window's. Under them, a section Model has the values the model itself holds: its
-parameters and its sweep. A run is the plugin's command on the model as edited
-(written into the run's folder); what it leaves is shown where every result is:
-its report, tables and waveforms on the Results page, its fields in the Viewer,
-its log on the Run page."""
+circuit analysis's options, as every analysis's are
+(analysispanel.AnalysisPanel: the tools' own tables, `--describe`), in the Study
+dock when the page is the window's. Under them, a section Model has the values
+the model itself holds: its parameters and its sweep. A run is the analysis's
+command on the model as edited (written into the run's folder); what it leaves
+is shown where every result is: its report, tables and waveforms on the Results
+page, its fields in the Viewer, its log on the Run page."""
 import json,os
 from pathlib import Path
 from PySide6.QtCore import QTimer,Qt
@@ -30,23 +30,23 @@ def _is_number(text):
     except (TypeError,ValueError):return False
 
 
-def _plugin():
-    """The circuit analysis: kicad2ems's registry's, else pcbqs's own (the page
-    alone, without the registry)."""
-    try:
-        from kicad2ems.core.api.frontend import analyses
-        a=analyses().get('circuit')
-        if a is not None:return a
-    except ImportError:pass
+def _circuit():
+    """The circuit analysis: the registry's, else pcbqs's own (a registry of
+    others)."""
+    from kicad2ems.core.api.frontend import analyses
+    a = analyses().get('circuit')
+    if a is not None:
+        return a
     from kicad2ems.pcbqs.analyses import Circuit
     return Circuit()
 
 
 class _Run:
-    """The circuit plugin as the page's panel runs it: the model is the page's
+    """The circuit analysis as the page's panel runs it: the model is the page's
     (Load model…), not an option, and a run is of the model as edited, written
     into the run's folder first."""
-    def __init__(self,plugin,page):self._p,self._page=plugin,page
+    def __init__(self, analysis, page):
+        self._p, self._page = analysis, page
     def __getattr__(self,name):return getattr(self._p,name)
     def options(self):return [o for o in self._p.options() if o['key']!='model']
     def tag(self,values):return self._page.run_tag()
@@ -96,7 +96,7 @@ class _Run:
 
 
 class PowerCircuitTab(QWidget):
-    def __init__(self,win=None,plugin=None):
+    def __init__(self, win=None, analysis=None):
         super().__init__();self.win=win;self._syncing=False;self.asked=None
         root=QVBoxLayout(self)
         self.matching_note = QLabel()
@@ -119,10 +119,10 @@ class PowerCircuitTab(QWidget):
         self.model_tabs.addTab(self.schematic, 'Schematic')
         self.model_tabs.addTab(self.editor, 'Model JSON')
         self.split.addWidget(self.model_tabs)
-        # its settings: the plugin's options as a panel (the Study dock's, in
+        # its settings: the analysis's options as a panel (the Study dock's, in
         # the window), and the model's own values
-        self.plugin=plugin or _plugin()
-        self.panel=AnalysisPanel(_Run(self.plugin,self),win)
+        self.analysis = analysis or _circuit()
+        self.panel = AnalysisPanel(_Run(self.analysis, self), win)
         self.board, self.outdir, self.status, self.log = (self.panel.board,
                                                           self.panel.outdir,
                                                           self.panel.status,
@@ -202,7 +202,7 @@ class PowerCircuitTab(QWidget):
                 "pcbqs (kicad2ems.pcbqs) failed to open its circuit: " + str(e))
             self.run_btn.setEnabled(False)
 
-    # ---- the run: the panel's (the plugin's command, its log and status) ----
+    # ---- the run: the panel's (the analysis's command, its log and status) --
     proc=property(lambda self:self.panel.proc)
     out = property(lambda self: self.panel.out,
                    lambda self, v: setattr(self.panel, 'out', v))
@@ -236,7 +236,7 @@ class PowerCircuitTab(QWidget):
     def open_run(self,folder):
         """A run's folder is the one shown (picked under Results of): what the
         others may start from. False: it holds no circuit result."""
-        if not self.plugin.owns(str(folder)):return False
+        if not self.analysis.owns(str(folder)):return False
         self.panel.out=str(folder);self.panel.show_result(str(folder))
         return True
 

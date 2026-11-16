@@ -1,5 +1,5 @@
 """
-mom25d as a kicad2ems solver plugin: the board of the run (Board.to_dict(), the
+mom25d as a kicad2ems solver: the board of the run (Board.to_dict(), the
 content of <name>_board.json) solved by mom25d, which reads that format itself.
 
     S, names, zref, info = solve(board, freq, dmax=0.3)
@@ -1169,7 +1169,7 @@ class MoM25D(Solver):
             return
         from kicad2ems.core.api.solver import DumpSource, save_fd_outputs
         tag = self.name
-        # dump_port may be supplied by the optional FDTD plugin. MoM alone
+        # dump_port: the FDTD solvers' setting, where they are. MoM alone
         # still supports its default (first-port) current/near-field dumps.
         for port, d in current_dumps(
                 run, held, [f * 1e9 for f in run.s.mom_dump],

@@ -1,10 +1,10 @@
-"""Stand-ins for the analysis plugins, for the window's tests (as kicad2ems's
+"""Stand-ins for the analyses, for the window's tests (as kicad2ems's
 standins.py is for the solvers): the same names, labels, order and questions as
-pcbqs's four, and a second engine for the temperature as kicad2ems-fem's Elmer
+pcbqs's four, and a second engine for the temperature as kicad2ems.fem's Elmer
 is, so the window is the one a user has, but each a few lines whose "tool"
 (fake_tool.py) writes a small result at once. The window knows no analysis by
-name, so what is tested with these holds for any plugin; test_real_analyses.py
-runs pcbqs's own through the same window.
+name, so what is tested with these holds for any analysis;
+test_real_analyses.py runs pcbqs's own through the same window.
 
     install()                      before kicad2ems.gui is imported
                                    (conftest.py): the registry holds these

@@ -1,7 +1,7 @@
 """
-kicad2ems-fem's tools as kicad2ems analysis plugins (the 'kicad2ems.analyses'
-entry points of pyproject.toml): they answer questions other engines answer too
-(kicad2ems.core.study), in 3D, so a study can ask the same of two programs and
+kicad2ems.fem's tools as kicad2ems analyses (kicad2ems.core.analyses lists
+them): they answer questions other engines answer too (kicad2ems.core.study),
+in 3D, so a study can ask the same of two programs and
 lay the answers side by side.
 
     elmer_dc       a rail's DC drop                 (python -m
@@ -107,7 +107,7 @@ class _Fem(Analysis):
 
     def check(self):
         if self.program == 'palace':
-            from .palace.plugin import palace_status
+            from .palace.solver import palace_status
             return palace_status()
         from .elmer.run import found
         return found()

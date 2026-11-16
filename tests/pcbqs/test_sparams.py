@@ -425,8 +425,7 @@ def test_it_is_a_kicad2ems_solver(tmp_path):
     """--solvers pcbqs in a kicad2ems run: registered, never picked by auto, its
     Touchstone file and its maps written with the others'; an example's thru is
     a thru at 10 kHz."""
-    pytest.importorskip('kicad2ems')
-    from kicad2ems.core.api.solver import FEATURES, registry
+    from kicad2ems.core.api.solver import FEATURES
     from kicad2ems.core.solvers import SOLVERS
     from kicad2ems.core.cli import main
     from kicad2ems.examples import examples
@@ -439,9 +438,6 @@ def test_it_is_a_kicad2ems_solver(tmp_path):
     assert sv.check()[0]
     assert ([o.key for o in sv.options
              ] == ['qs_dmax', 'qs_fine', 'qs_capacitance', 'qs_thickness'])
-    if 'pcbqs' not in registry():
-        pytest.skip(
-            'pcbqs is not installed where kicad2ems looks for its solvers')
     assert ('sparams' in engines()['pcbqs'].provides
             and 'antenna' not in engines()['pcbqs'].provides)
     from kicad2ems.core.config import _solvers

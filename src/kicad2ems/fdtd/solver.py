@@ -1,5 +1,5 @@
 """
-The FDTD solvers' common plugin: the board lowered to boundaries, a rectilinear
+The FDTD solvers' common class: the board lowered to boundaries, a rectilinear
 mesh and the CSX model, run on an engine with openEMS's interface (engines.py);
 antenna mode and field dumps. A solver on an FDTD engine subclasses FDTD, names
 its engine and adds what is its own (openEMS: the import check; gfdtd: the

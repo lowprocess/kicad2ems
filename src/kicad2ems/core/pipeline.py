@@ -1,6 +1,6 @@
 """
 One run of kicad2ems as a sequence of stages, driven by a config.Settings, over
-the solver plugins (solvers/):
+the solvers (solvers/):
 
     Job(settings).run()
         preflight() the solvers of the run (Settings.solver_plan; 'lines'

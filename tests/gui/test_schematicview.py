@@ -16,10 +16,9 @@ def wpthb():
 
 @pytest.fixture
 def tab():
-    A = pytest.importorskip('kicad2ems.pcbqs.analyses',
-                            reason='pcbqs is not installed')
+    from kicad2ems.pcbqs import analyses as A
     app = (QApplication.instance() or QApplication([]))
-    widget = PowerCircuitTab(plugin=A.Circuit())
+    widget = PowerCircuitTab(analysis=A.Circuit())
     widget.set_model(wpthb())
     yield widget
     widget.close()

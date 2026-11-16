@@ -1,6 +1,6 @@
 """
-gfdtd as a kicad2ems solver plugin and FDTD engine (engines.py): the FDTD model
-(plugin.py) solved by gfdtd's engine (the GPU via CuPy or Vulkan, its compiled
+gfdtd as a kicad2ems solver and FDTD engine (engines.py): the FDTD model
+(solver.py) solved by gfdtd's engine (the GPU via CuPy or Vulkan, its compiled
 CPU core, or numpy) through its CSXCAD / openEMS interface. The board, the mesh
 (--res, --fine, --nz, ...), the ports, the parts and the end criteria are the
 FDTD settings shared with openEMS; only the engine differs. Runs go to
@@ -15,7 +15,7 @@ import json
 import os
 
 from kicad2ems.core.api.solver import Option
-from .plugin import FDTD, MESH, RUN, CONVERGE
+from .solver import FDTD, MESH, RUN, CONVERGE
 
 G = 'gfdtd'                                     # its section in kicad2ems's GUI
 # gfdtd's speed over openEMS's estimate (24 threads), per backend: the examples'

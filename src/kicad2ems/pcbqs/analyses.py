@@ -1,6 +1,6 @@
 """
-pcbqs's tools as kicad2ems analysis plugins (the 'kicad2ems.analyses' entry
-points of pyproject.toml): power integrity, near field, circuit and thermal.
+pcbqs's tools as kicad2ems analyses (kicad2ems.core.analyses lists them): power
+integrity, near field, circuit and thermal, and the quasi-static solver.
 kicad2ems lists them as engines of the questions they answer (a rail's drop and
 its impedance, a converter's near field, a circuit, the temperature:
 kicad2ems.core.study), a front end builds each one's settings from its options

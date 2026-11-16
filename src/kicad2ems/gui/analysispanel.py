@@ -9,7 +9,7 @@ The panel is the analysis's part of the Study dock. It has no page: what a run
 leaves is shown where every result is, its maps in the Viewer (it writes them as
 field dumps), its report and curves on the Results page. Nothing here knows one
 analysis from another; what an analysis does differently it says through its
-plugin (Analysis.command, status, discover and choices, suggest).
+Analysis (command, status, discover and choices, suggest).
 
     panel = AnalysisPanel(analysis, win)
         # win: the window (its board, its output folder), or None alone
@@ -100,8 +100,8 @@ def config_values(panel, base=None, vals=None):
 
 class AnalysisPanel(QWidget):
     """One analysis's settings (the sections of its options, its own board and
-    folder), the buttons its plugin gives it (Find, what its result proposes for
-    another analysis) and its status line."""
+    folder), the buttons its Analysis gives it (Find, what its result proposes
+    for another analysis) and its status line."""
     # a setting was edited by hand (not set_values: a config loaded, a test)
     changed = Signal()
     ended = Signal(int)  # a run ended, all of its rows: 0, or the first failure
@@ -482,7 +482,7 @@ class AnalysisPanel(QWidget):
                                  vals,
                                  self.board_path() or None, latest)
                     ]
-                # (a plugin's check: never the window's end)
+                # (an analysis's check: never the window's end)
                 except Exception:  # noqa: BLE001
                     pass
         return out
@@ -798,7 +798,7 @@ class AnalysisPanel(QWidget):
         try:
             self._suggestions(
                 self.a.suggest(folder) if self.win is not None else [])
-        except Exception:  # a plugin's fault never stops the window
+        except Exception:  # an analysis's fault never stops the window
             self._suggestions([])
 
     def _suggestions(self, items):
