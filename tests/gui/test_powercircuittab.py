@@ -3,9 +3,9 @@
 as edited. pcbqs's own plugin: skipped without pcbqs."""
 import json
 import pytest
-from kicad2ems_gui.powercircuittab import PowerCircuitTab
+from kicad2ems.gui.powercircuittab import PowerCircuitTab
 
-A=pytest.importorskip('pcbqs.analyses',reason='pcbqs is not installed')
+A=pytest.importorskip('kicad2ems.pcbqs.analyses',reason='pcbqs is not installed')
 
 
 @pytest.fixture
@@ -49,12 +49,12 @@ def test_a_general_model_s_parameters_and_sweep(tab):
 def test_a_run_is_the_plugin_s_command_on_the_model_as_edited(tab,tmp_path,monkeypatch):
     """Run: the model as edited written into the run's folder, pcbqs.circuit with the options set; the board's
     copper needs a board (the model's own, the one named, else said)."""
-    import kicad2ems_gui.analysispanel as panel
+    import kicad2ems.gui.analysispanel as panel
     ran=[]
     monkeypatch.setattr(panel,'run_tool',lambda p,argv,*a,**k:ran.append(argv))
     tab.outdir.setText(str(tmp_path/'out'))
     tab.params.item(0,1).setText('123456');tab.start()
-    assert ran[-1][1:5]==['-u','-m','pcbqs.circuit',str(tmp_path/'out'/'model-input.json')] and '--copper' not in ran[-1]
+    assert ran[-1][1:5]==['-u','-m','kicad2ems.pcbqs.circuit',str(tmp_path/'out'/'model-input.json')] and '--copper' not in ran[-1]
     assert 123456 in json.loads((tmp_path/'out'/'model-input.json').read_text())['parameters'].values()
     assert ran[-1][5:]==['--out',str(tmp_path/'out'),'--jobs','4']
     tab.panel.w['set'].setPlainText('drives.pwm.duty=0.4');tab.fields.setChecked(True);tab.start()

@@ -2,19 +2,19 @@
 The analyses, as plugins: tools that work on the same board as a run but are not S-parameter solvers (a rail's DC
 drop and impedance, a converter's near field, a circuit on the board's copper, the board's temperature). Each is an
 Analysis subclass registered under its name by a package that declares an entry point in the group
-'kicad2ems.analyses' (`pdn = "pcbqs.analyses:PowerIntegrity"`): pcbqs's four (the qs extra), kicad2ems-fem's
-(the fem extra). kicad2ems has one of its own, the crosstalk between traces (kicad2ems.si: BUILTIN, listed with
+'kicad2ems.analyses' (`pdn = "kicad2ems.pcbqs.analyses:PowerIntegrity"`): pcbqs's four (the qs extra), kicad2ems-fem's
+(the fem extra). kicad2ems has one of its own, the crosstalk between traces (kicad2ems.core.si: BUILTIN, listed with
 the plugins'). A front end lists what the registry holds, builds each one's settings from its options, starts it
 as the command it gives and shows what its result folder holds.
 
-    from kicad2ems.analyses import registry, analysis_of
+    from kicad2ems.core.analyses import registry, analysis_of
     [a.label for a in registry().values()]
     analysis_of('out/board_pdn_3V3_20261111_120000')        # ('pdn', False): whose result, and whether a preview
 
 An analysis declares (class attributes)
-  api                     the kicad2ems.api version it is written against, (major, minor): (2, 5); a plugin
-                          imports what it needs from kicad2ems.api.analysis, the rest of kicad2ems is private
-  name, label, tool       'pdn', 'Power integrity', 'pcbqs.pdn' (what runs it, as lists show it); name is also its
+  api                     the kicad2ems.core.api version it is written against, (major, minor): (2, 5); a plugin
+                          imports what it needs from kicad2ems.core.api.analysis, the rest of kicad2ems is private
+  name, label, tool       'pdn', 'Power integrity', 'kicad2ems.pcbqs.pdn' (what runs it, as lists show it); name is also its
                           config table [analysis.pdn] and the tag of its run folders
   about                   one line: what it gives
   order                   its place in lists and in a run of several: lowest first, then by name
@@ -55,8 +55,8 @@ and implements
                           a run. A front end offers each on the result, and asks the other's questions with it
   examples()              the examples it ships: [dict(name, config, group, title, files)] (kicad2ems.examples)
   env                     environment variables its command runs with (a thread cap), or {}
-and, since 2.6 (kicad2ems.study: questions and engines),
-  provides                the questions it answers (kicad2ems.study.QUESTIONS: 'dc', 'pdn', 'thermal' ...), from one
+and, since 2.6 (kicad2ems.core.study: questions and engines),
+  provides                the questions it answers (kicad2ems.core.study.QUESTIONS: 'dc', 'pdn', 'thermal' ...), from one
                           run: (); then it is one question of its own name
   engine                  the program's name as a list shows it beside a question ('pcbqs', 'Elmer'); '': its label
   questions               study.Question objects of its own, for what kicad2ems has no question for
@@ -73,7 +73,7 @@ and, since 2.9,
                           from a circuit's losses): not required, as `needs` are
   an option's 'level'     'basic' in an options() row: one of the few a run is set up with (Option.level)
 and, since 2.11,
-  an option's 'pick'      what the setting names on the board, for a front end to pick there (kicad2ems.layout):
+  an option's 'pick'      what the setting names on the board, for a front end to pick there (kicad2ems.core.layout):
                           'net', 'part', or 'nets', 'parts' where it takes several; absent: typed
   fields                  the bool option that makes it write field dumps too ('fields'); '': none
   for_questions(values, asked)
@@ -87,7 +87,7 @@ and, since 2.8,
                           name (the question says which: study.Question.figures), and may add their own
 
 The fields of a result (the maps a Viewer turns and cuts) need nothing here: an analysis writes them as field dumps
-(kicad2ems.api.solver: Dump, write_info, write_npz) under <out>/<name>/exc_<what>/ with its board as
+(kicad2ems.core.api.solver: Dump, write_info, write_npz) under <out>/<name>/exc_<what>/ with its board as
 <out>/<name>_board.json, and every front end that shows a run's dumps shows them.
 """
 import os
@@ -203,7 +203,7 @@ class Analysis:
 _registry, broken = None, []                # broken: (entry point, error) of plugins that failed to load
 
 
-BUILTIN = (('crosstalk', 'kicad2ems.si:Crosstalk'),)     # kicad2ems's own analyses: listed with the plugins'
+BUILTIN = (('crosstalk', 'kicad2ems.core.si:Crosstalk'),)     # kicad2ems's own analyses: listed with the plugins'
 
 
 class _BuiltIn:
@@ -226,7 +226,7 @@ def _entry_points():
 
 def registry():
     """{name: Analysis}: the analyses installed through entry points, by their `order`. A plugin that fails to
-    load, is written for another kicad2ems API (its `api`: kicad2ems.api), has no name or reuses one (or 'rf',
+    load, is written for another kicad2ems API (its `api`: kicad2ems.core.api), has no name or reuses one (or 'rf',
     the S-parameter run's) or declares an option of an unknown kind is left out and listed in `broken`."""
     global _registry
     if _registry is None:

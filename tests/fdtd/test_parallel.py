@@ -1,9 +1,9 @@
 """--jobs: excitations run in worker processes fill the same S columns as the serial loop (stub runs,
 no openEMS needed)."""
 import numpy as np
-from kicad2ems_fdtd import run
-from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.board import Board
+from kicad2ems.fdtd import run
+from kicad2ems.core.importers.kicad import KiCadBoard
+from kicad2ems.core.board import Board
 
 
 def fake_run_port(k, m, mesh, freq, bc, out_dir, dumps=(), xml_path=None, verbose=1, **kw):

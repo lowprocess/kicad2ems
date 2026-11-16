@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from kicad2ems_gui import reportview as RV
+from kicad2ems.gui import reportview as RV
 
 REPORT = dict(
     title='Hottest copper 84.2 °C', summary='Thermal: hottest copper 84.2 °C',

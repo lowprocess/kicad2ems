@@ -6,10 +6,10 @@ tensor grid."""
 import json, math, os
 import numpy as np
 import pytest
-from kicad2ems.constants import C0, EPS0
-from kicad2ems.lines import xsection as X
-from kicad2ems.lines.formulas import microstrip, stripline, cpwg, ellipk
-from kicad2ems.lines.coupled import coupled_stripline, coupled_microstrip, mtl_s
+from kicad2ems.core.constants import C0, EPS0
+from kicad2ems.core.lines import xsection as X
+from kicad2ems.core.lines.formulas import microstrip, stripline, cpwg, ellipk
+from kicad2ems.core.lines.coupled import coupled_stripline, coupled_microstrip, mtl_s
 
 
 def _cohn(w, b, er):
@@ -217,7 +217,7 @@ class _Copper:
 
 def test_the_cut_across_a_strip():
     from shapely.geometry import box
-    from kicad2ems.lines.reference import cut
+    from kicad2ems.core.lines.reference import cut
     ref = _Copper({'B.Cu': box(-50, -50, 50, 50), 'F.Cu': box(0.4, -50, 0.9, 50).union(box(-50, -50, -0.6, 50))})
     got = cut(ref, np.array([0.0, 0.0]), np.array([1.0, 0.0]), 5.0)
     assert got['B.Cu'] == [(-math.inf, math.inf)]                           # a plane across the whole cut
@@ -225,7 +225,7 @@ def test_the_cut_across_a_strip():
 
 
 def test_a_plane_edge_beside_the_strip():
-    from kicad2ems.lines.reference import _solve_cut
+    from kicad2ems.core.lines.reference import _solve_cut
     diel = ((0.0, 0.2, 4.3, 0.0),)
     full = _solve_cut(0.35, 0.2, 0.0, True, (), ((0.0, True, ((-math.inf, math.inf),)),), diel)
     edge = _solve_cut(0.35, 0.2, 0.0, True, (), ((0.0, False, ((-math.inf, 0.3),)),), diel)
@@ -238,14 +238,14 @@ def test_a_plane_edge_beside_the_strip():
 @pytest.fixture(scope='module')
 def field_interdig():
     import os
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.lines import reference
-    from kicad2ems.lines.builder import build
-    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.lines import reference
+    from kicad2ems.core.lines.builder import build
+    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
     m = Board(KiCadBoard(os.path.join(ex, 'rf_interdig.kicad_pcb')), nets=['RF', 'GND'],
               pos_file=os.path.join(ex, 'rf_interdig-all.pos'), log=lambda *a: None)
-    from kicad2ems.lines import topology
+    from kicad2ems.core.lines import topology
     was, reference.FIELD = reference.FIELD, True
     try:
         lm = build(m)
@@ -274,8 +274,8 @@ def test_field_sections_and_groups(field_interdig):
 def test_field_groups_against_openems(field_interdig):
     """The five-finger filter's stop bands: the formulas' nearest-neighbour coupling puts them 40-60 dB too deep."""
     pytest.importorskip('skrf')
-    from kicad2ems.solvers.lines.fastsolve import solve
-    from kicad2ems.touchstone import read_touchstone
+    from kicad2ems.core.solvers.lines.fastsolve import solve
+    from kicad2ems.core.touchstone import read_touchstone
     m, lm, plain, ref = field_interdig
     f, Sr = read_touchstone(ref)
     db = lambda x: 20 * np.log10(np.abs(x) + 1e-15)
@@ -287,8 +287,8 @@ def test_field_groups_against_openems(field_interdig):
 def test_coupled_pairs_with_the_copper():
     """A coupled pair's modes by the field solver: as sheets, the formula's; with the copper, the CM5 Minima's HDMI
     pair (0.13 / 0.25 mm, 0.0994 mm over its plane, 35 um): 13 ohm below the zero-thickness 118 ohm."""
-    from kicad2ems.lines import topology
-    from kicad2ems.lines.coupled import coupled_microstrip as km
+    from kicad2ems.core.lines import topology
+    from kicad2ems.core.lines.coupled import coupled_microstrip as km
     g = dict(xs='microstrip', h=0.0994, er=4.45, gaps=[0.25], pairs=[dict(gap=0.25)])
     topology._field_group(g, [0.13, 0.13], 0.035)
     p = g['pairs'][0]
@@ -298,7 +298,7 @@ def test_coupled_pairs_with_the_copper():
 
 
 def test_similar_cross_sections_share_a_solve():
-    from kicad2ems.lines.reference import _distance_bins, _snap_distance
+    from kicad2ems.core.lines.reference import _distance_bins, _snap_distance
     assert X.snap(0.1300) == X.snap(0.1302) and X.snap(0.13) != X.snap(0.135)   # 1 % steps
     assert X.snap(0.0) == 0.0 and X.snap(-0.2) == -X.snap(0.2) and X.snap(math.inf) == math.inf
     assert abs(X.snap(0.2) / 0.2 - 1) <= X.SIMILAR / 2
@@ -312,7 +312,7 @@ def test_similar_cross_sections_share_a_solve():
 def test_bins_stay_narrow():
     """Far bins grew without limit, and a copper edge 9 heights from a strip's edge moved hundreds of mm: on the CM5 Minima's
     wide traces, conductors reversed and the solve failed (27 sections), and others moved without a word."""
-    from kicad2ems.lines.reference import BIN_MAX, FIELD_REACH, _distance_bins, _snap_distance
+    from kicad2ems.core.lines.reference import BIN_MAX, FIELD_REACH, _distance_bins, _snap_distance
     assert np.diff(_distance_bins(X.SIMILAR)).max() <= BIN_MAX
     for x in np.linspace(0.0, FIELD_REACH + 5, 400):
         assert abs(_snap_distance(x, X.SIMILAR) - x) <= BIN_MAX / 2 + 1e-9
@@ -321,7 +321,7 @@ def test_bins_stay_narrow():
 def _wide_strip(pieces):
     """A section 20 mm wide over a plane in `pieces` on the layer below, through reference._field."""
     from types import SimpleNamespace as NS
-    from kicad2ems.lines import reference
+    from kicad2ems.core.lines import reference
     e = NS(w=20.0, layer='F.Cu', notes=[], z0=2.5, eeff=3.0, z0_sheet=2.5, eeff_sheet=3.0, field=False)
     model = NS(cu_z={'F.Cu': 0.1, 'B.Cu': 0.0}, cu_t={'F.Cu': 0.035}, layers=[dict(z0=0.0, z1=0.1, er=4.4, tand=0.0)])
     was, reference.cut = reference.cut, lambda *a: {'B.Cu': pieces}
@@ -352,7 +352,7 @@ def test_grounded_cpw_formula_on_a_wide_strip():
 
 
 def test_a_group_and_its_mirror_image():
-    from kicad2ems.lines import topology
+    from kicad2ems.core.lines import topology
     a = dict(xs='microstrip', h=0.2, er=4.4, gaps=[0.2, 0.4], pairs=[dict(gap=0.2), dict(gap=0.4)])
     b = dict(xs='microstrip', h=0.2, er=4.4, gaps=[0.4, 0.2], pairs=[dict(gap=0.4), dict(gap=0.2)])
     topology._field_group(a, [0.3, 0.3, 0.5])
@@ -424,11 +424,11 @@ def test_window_shows_the_copper_and_stays_in_the_box():
 def test_each_section_carries_what_shows_its_field():
     """The drawing's sections: where their Z0 came from and the formula's, the cuts solving to --lines-field's values,
     a coupled leg's modes to the group's, grounded CPW's classified section to its Z0; build(field=) restores the flag."""
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.lines import builder, reference, sections
-    from kicad2ems import overlay as ov
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.lines import builder, reference, sections
+    from kicad2ems.core import overlay as ov
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     m = Board(KiCadBoard(os.path.join(root, 'examples', 'rf_diffvia.kicad_pcb')), log=lambda *a: None, need_ports=False)
     nets = sorted({t['net'] for t in m.prims.tracks} - set(m.ground_nets))
     d = json.loads(json.dumps(builder.build(m, nets=nets).drawing(m.cu_z), allow_nan=False))
@@ -454,8 +454,8 @@ def test_each_section_carries_what_shows_its_field():
 
 def test_classified_grounded_cpw_section():
     """A grounded CPW's section, as classified: the strip, its gaps, the plane; its Z0 what the line model took."""
-    from kicad2ems.lines import reference, sections
-    from kicad2ems.lines.elements import Element, LineModel, _section
+    from kicad2ems.core.lines import reference, sections
+    from kicad2ems.core.lines.elements import Element, LineModel, _section
     e = Element('trace', 'a', 'b', 5.0, w=0.3, layer='F.Cu', pts=np.array([[0.0, 0.0], [5.0, 0.0]]))
     e.xs, e.s, e.h, e.er, e.t, e.z0, e.z0_sheet, e.eeff = 'cpwg', 0.15, 0.2, 4.3, 0.035, 60.0, 60.0, 3.0
     e.z0_formula = 60.0

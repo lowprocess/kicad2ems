@@ -15,10 +15,10 @@ import compare_solvers as cs                                             # noqa:
 
 EXTRA = ('demo_transition', 'sma_launch', 'hairpin', 'rf_interdig')
 PORTS = {'branchline': 4, 'coupler': 4, 'ratrace': 4, 'diffvia': 4, 'wilkinson': 3}
-MODES = {'formulas': "import kicad2ems.lines.reference as r, kicad2ems.lines.topology as t; "
+MODES = {'formulas': "import kicad2ems.core.lines.reference as r, kicad2ems.core.lines.topology as t; "
                      "r.FIELD_CPW = t.FIELD_GROUPS = False; ",
-         'default': '', 'field': "import kicad2ems.lines.reference as r; r.FIELD = True; "}
-CLI = "import sys; from kicad2ems.cli import main; sys.argv = ['kicad2ems'] + sys.argv[1:]; sys.exit(main())"
+         'default': '', 'field': "import kicad2ems.core.lines.reference as r; r.FIELD = True; "}
+CLI = "import sys; from kicad2ems.core.cli import main; sys.argv = ['kicad2ems'] + sys.argv[1:]; sys.exit(main())"
 
 boards = sys.argv[1:] or list(cs.BOARDS) + list(EXTRA)
 out = os.path.join(REPO, 'build', 'lines_vs_openems')

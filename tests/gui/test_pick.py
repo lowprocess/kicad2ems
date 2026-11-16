@@ -1,4 +1,4 @@
-"""A setting picked on the board: the board as drawn in the Viewer's plan before any run (kicad2ems.layout), an
+"""A setting picked on the board: the board as drawn in the Viewer's plan before any run (kicad2ems.core.layout), an
 option's `pick` as a button beside the setting, and clicks on the plan into it."""
 import os
 import time
@@ -19,19 +19,19 @@ def window(tmp_path, monkeypatch):
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
-    from kicad2ems import analyses
-    from kicad2ems.si import Crosstalk
+    from kicad2ems.core import analyses
+    from kicad2ems.core.si import Crosstalk
     reg = dict(analyses.registry())                                 # the stand-ins, and
     reg['crosstalk'] = Crosstalk()
     try:
-        from pcbqs.analyses import PowerIntegrity
+        from kicad2ems.pcbqs.analyses import PowerIntegrity
         reg['pdn'] = PowerIntegrity()
     except ImportError:
         pass
     monkeypatch.setattr(analyses, '_registry', reg)
     from PySide6.QtCore import QSettings
-    from kicad2ems_gui import application, study, app as gui
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui import application, study, app as gui
+    from kicad2ems.gui.app import MainWindow
     listed = study.installed()
     for module in (study, gui):
         monkeypatch.setattr(module, 'ANALYSES', listed)
@@ -81,7 +81,7 @@ def test_the_board_is_shown_as_drawn_before_any_run(window):
     assert w.drawn is not None and plan.board is w.drawn and plan.board['layout_of'] == os.path.abspath(BUS)
     assert w.viewer.view() == 'Plan' and not w.viewer.buttons['3D'].isEnabled()
     assert {it['net'] for it in plan.board['copper']['F.Cu']} == {'D0', 'D1', 'D2'}
-    from kicad2ems_gui import app as gui
+    from kicad2ems.gui import app as gui
     drawn = w.drawn
     w.update_needed()                                               # the same file: not read again
     app.processEvents()
@@ -159,7 +159,7 @@ def test_one_name_replaces_and_several_are_listed(window):
 
 def test_a_rail_s_table_cell_is_picked_by_its_column(window):
     pytest.importorskip('pcbqs')
-    from kicad2ems_gui.analysispanel import CELL
+    from kicad2ems.gui.analysispanel import CELL
     w, app = window
     pdn, plan = w.pages['pdn'], w.viewer.plan
     assert CELL in pdn.pick_btns and pdn.pick_kind('rail') == 'net' and pdn.pick_kind('source') == 'part'

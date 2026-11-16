@@ -4,8 +4,8 @@ folder holds, a config's [analysis] tables, the examples an analysis ships (inde
 import os
 
 import pytest
-from kicad2ems import analyses
-from kicad2ems.api import API_VERSION, analysis as analysis_api, frontend
+from kicad2ems.core import analyses
+from kicad2ems.core.api import API_VERSION, analysis as analysis_api, frontend
 
 
 class _EP:

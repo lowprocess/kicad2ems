@@ -7,9 +7,9 @@ import os
 import numpy as np
 import pytest
 
-from gfdtd import ContinuousStructure, openEMS
-from gfdtd import csx as C
-from gfdtd.operator import build, find_path, Grid, _current_nodes
+from kicad2ems.gfdtd import ContinuousStructure, openEMS
+from kicad2ems.gfdtd import csx as C
+from kicad2ems.gfdtd.operator import build, find_path, Grid, _current_nodes
 
 
 def smooth(lines, res):
@@ -242,7 +242,7 @@ def test_lumped_port_matched_along_every_axis(tmp_path, axis):
 def test_a_model_s_other_excitations_share_its_core():
     """Two excitations of one model (kicad2ems runs one per port) share the operator's core and its compressed
     form, and get their own excitations; a change to the model's materials builds a core of its own (R-D4)."""
-    from gfdtd.operator import compress
+    from kicad2ems.gfdtd.operator import compress
 
     def model(port, eps=4.0):
         F, csx = _fdtd(1e9, 1e9, ['PEC'] * 6)
@@ -263,7 +263,7 @@ def test_a_model_s_other_excitations_share_its_core():
     F2, c2 = model(0, eps=4.4)
     c = build(c2, F2.settings())
     assert c._core_key != a._core_key and not np.array_equal(c.vi, a.vi)
-    fresh = __import__('gfdtd.operator', fromlist=['_core'])._core(c0, F0.settings())[1]
+    fresh = __import__('kicad2ems.gfdtd.operator', fromlist=['_core'])._core(c0, F0.settings())[1]
     np.testing.assert_array_equal(fresh['vi'], a.vi)                     # the kept core is what a build makes
 
 
@@ -271,7 +271,7 @@ def test_the_build_holds_less_than_a_quarter_kilobyte_a_node():
     """R-D7: the build's and the compression's peak host memory a node (443 B before: the geometry per node, the
     compression's arrays all alive to its end), and what the core keeps (152 B before)."""
     import tracemalloc
-    from gfdtd.operator import compress, _CORES, _COMPRESSED
+    from kicad2ems.gfdtd.operator import compress, _CORES, _COMPRESSED
     F, csx = _fdtd(1e9, 5e9, ['PML_8'] * 6)
     g = csx.GetGrid()
     for a in 'xyz':
@@ -291,7 +291,7 @@ def test_the_build_holds_less_than_a_quarter_kilobyte_a_node():
 def test_auto_runs_on_the_cpu_where_the_gpu_is_too_small(monkeypatch):
     """R-D7: a model past the GPU's free memory: auto runs it on the CPU and says why; a GPU named outright says
     it cannot."""
-    from gfdtd import engine as E
+    from kicad2ems.gfdtd import engine as E
     F, csx = _fdtd(1e9, 1e9, ['PEC'] * 6)
     g = csx.GetGrid()
     for a in 'xyz':
@@ -319,9 +319,9 @@ def test_openems_other_excitations_and_its_max_time(tmp_path):
     """R-B18: SetSinusExcite, SetDiracExcite, SetStepExcite and SetCustomExcite give openEMS's signals, which run to
     their last step (a pulse's end criterion does not stop a sinus), and survive the XML; MaxTime stops a run on its
     own time."""
-    from gfdtd.operator import excitation_signal
-    from gfdtd.engine import Engine
-    from gfdtd.fdtd import openEMS
+    from kicad2ems.gfdtd.operator import excitation_signal
+    from kicad2ems.gfdtd.engine import Engine
+    from kicad2ems.gfdtd.fdtd import openEMS
     dt = 1e-12
     s, h = excitation_signal(1, 1e9, 0.0, dt, 1000)
     assert len(s) == 1001 and s[250] == pytest.approx(np.sin(2 * np.pi * 1e9 * 250 * dt)) and h[0] == pytest.approx(np.sin(np.pi * 1e9 * dt))

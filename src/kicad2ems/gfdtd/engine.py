@@ -15,8 +15,8 @@ A file ABORT in the run folder ends the run as with openEMS (kicad2ems's port wa
 import os, time
 
 import numpy as np
-from emsdev import gpu as devices                                    # the GPU's probe, shared with mom25d
-from emsdev.cpu import core_threads                                  # noqa: F401  (gfdtd.engine.core_threads)
+from kicad2ems.emsdev import gpu as devices                                    # the GPU's probe, shared with mom25d
+from kicad2ems.emsdev.cpu import core_threads                                  # noqa: F401  (gfdtd.engine.core_threads)
 
 from . import kernels
 from .dumps import Dumps
@@ -83,7 +83,7 @@ def core_info():
         n = os.environ.get('OMP_NUM_THREADS') or core_threads()
         return True, f"compiled CPU core, {n} threads"
     except ImportError as e:
-        return False, f"no compiled CPU core (python -m gfdtd.core.build): {e}"
+        return False, f"no compiled CPU core (python -m kicad2ems.gfdtd.core.build): {e}"
 
 
 def vulkan_gpus():
@@ -92,7 +92,7 @@ def vulkan_gpus():
     Vulkan is not there. Threads cannot share them out: two driving two GPUs from one process ran each at a fifth of
     its speed, the interpreter's lock between them (R-D9)."""
     try:
-        from emsdev import vulkan
+        from kicad2ems.emsdev import vulkan
         ads = vulkan.adapters()
     except Exception:                                               # noqa: BLE001  (no Vulkan: no GPUs to share)
         return []
@@ -737,7 +737,7 @@ class VulkanBackend(_Compressed, NumpyBackend):
     IDX = np.int32              # the kernels' index type (kernels_vk.source idx: int); GFDTD_VK_IDX=64 for int64
 
     def __init__(self, op, dtype=np.float32):
-        from emsdev import vulkan
+        from kicad2ems.emsdev import vulkan
         from . import kernels_vk
         if dtype != np.float32:
             raise ValueError("gfdtd: the GPU kernels are float32")
@@ -795,7 +795,7 @@ class VulkanBackend(_Compressed, NumpyBackend):
             if t is not None:
                 f.update({key + '_idx': self.up(t[0], self.IDX), key + '_w': self.up(t[1]),
                           key + '_pid': self.up(t[2], self.IDX)})
-        from emsdev.vulkan import HostBuffer
+        from kicad2ems.emsdev.vulkan import HostBuffer
         self.hpart = HostBuffer(self.dev, 8 * (self.NBLK + 1))    # the energy's partial sums, written there
         self._hosts = [self.hpart]
         self.buf = self.zeros(self.buf.shape)
@@ -866,7 +866,7 @@ class VulkanBackend(_Compressed, NumpyBackend):
         return h.array[:nbytes].view(d.dtype).reshape(d.shape).copy()
 
     def _host_stage(self, nbytes):
-        from emsdev.vulkan import HostBuffer
+        from kicad2ems.emsdev.vulkan import HostBuffer
         h = getattr(self, '_stage', None)
         if h is None or h.nbytes < nbytes:
             if h is not None:

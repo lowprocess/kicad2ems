@@ -1,6 +1,6 @@
 """
 Antenna mode with Palace: the far field of one driven port, and from it what kicad2ems's other solvers report
-(kicad2ems.fields.antenna: match, directivity, efficiency, gain, polarisation, pattern cuts and the sphere).
+(kicad2ems.core.fields.antenna: match, directivity, efficiency, gain, polarisation, pattern cuts and the sphere).
 
 Palace integrates the fields on the air box's faces to the far field r E at given angles (its FarField
 postprocessing), in a second run at a few frequencies over the band and the pattern frequency, the antenna's port
@@ -58,7 +58,7 @@ def analyse(ffr, s11, pinc, theta, phi, E, step=2.0, f_pattern=None):
     incident power (run.read_incident); theta, phi (n,), E (nf, n, 3): Palace's r E (run.read_farfield). Returns (ant, sphere): the
     result dict without the match (rows, f_pattern, cuts, sphere) and the sphere file's arrays (theta, phi, freq,
     dmax, prad, e_norm (nf, nphi, ntheta))."""
-    from kicad2ems.api.solver import gain_table, add_polarisation, pattern_gain, phased
+    from kicad2ems.core.api.solver import gain_table, add_polarisation, pattern_gain, phased
     ffr = np.asarray(ffr, float)
     E = np.asarray(E)
     at = {_key(t, p): i for i, (t, p) in enumerate(zip(theta, phi))}

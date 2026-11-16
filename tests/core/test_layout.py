@@ -1,12 +1,12 @@
 """
-The board as drawn (kicad2ems.layout): what a front end shows before a run and picks nets and parts on, and the
+The board as drawn (kicad2ems.core.layout): what a front end shows before a run and picks nets and parts on, and the
 options that say what may be picked.
 """
 import os
 
 import pytest
 
-from kicad2ems.layout import board_layout, net_at, part_at
+from kicad2ems.core.layout import board_layout, net_at, part_at
 from k2e_fixtures import ROOT
 
 BUS = os.path.join(ROOT, 'examples', 'rf_bus.kicad_pcb')       # three traces D0, D1, D2 over a plane on In1.Cu
@@ -22,8 +22,8 @@ def test_the_layout_is_all_the_copper_with_no_ports_asked_for():
 
 
 def test_a_point_names_the_net_whose_copper_is_under_it():
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems import si
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core import si
     lay = board_layout(BUS)
     ends = {n: si.trace_ends(KiCadBoard(BUS), n) for n in ('D0', 'D1', 'D2')}
     for n, (a, b) in ends.items():                              # (the traces jog together between their ends)
@@ -58,8 +58,8 @@ def test_a_point_names_the_part_whose_pads_are_under_it(boards):
 
 
 def test_options_say_what_a_front_end_may_pick_on_the_board():
-    from kicad2ems.si import Crosstalk
-    from kicad2ems.api import frontend, API_VERSION
+    from kicad2ems.core.si import Crosstalk
+    from kicad2ems.core.api import frontend, API_VERSION
     picks = {o['key']: o.get('pick') for o in Crosstalk().options()}
     assert picks['nets'] == 'nets' and picks['aggressor'] == 'nets' and picks['near'] == 'parts'
     assert picks['rise'] is None

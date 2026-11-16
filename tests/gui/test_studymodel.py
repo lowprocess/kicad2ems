@@ -4,12 +4,12 @@ without the window uses the same object the Study dock draws."""
 import subprocess
 import sys
 
-from kicad2ems_gui import study
-from kicad2ems_gui.study import StudyModel, RF, AUTO
+from kicad2ems.gui import study
+from kicad2ems.gui.study import StudyModel, RF, AUTO
 
 
 def test_the_module_needs_no_qt():
-    code = ("import sys; import kicad2ems_gui.study as s; m = s.StudyModel(); m.tick('sparams'); "
+    code = ("import sys; import kicad2ems.gui.study as s; m = s.StudyModel(); m.tick('sparams'); "
             "assert m.jobs() == ['rf'] and not any(n.startswith('PySide6') for n in sys.modules), "
             "[n for n in sys.modules if n.startswith('PySide6')]")
     p = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
@@ -113,8 +113,8 @@ def test_the_list_is_the_model_s_view():
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtCore import Qt
-    from kicad2ems_gui import application
-    from kicad2ems_gui.studytree import StudyTree
+    from kicad2ems.gui import application
+    from kicad2ems.gui.studytree import StudyTree
     application()
     m = StudyModel()
     tree = StudyTree(m)

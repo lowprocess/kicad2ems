@@ -58,7 +58,7 @@ def kicad2ems_exe():
         return [exe]
     try:
         import kicad2ems  # noqa: F401
-        return [sys.executable, '-m', 'kicad2ems.cli']
+        return [sys.executable, '-m', 'kicad2ems.core.cli']
     except ImportError:
         return None
 
@@ -180,7 +180,7 @@ class Follow:
     EVERY = 10.0                                       # s between progress lines of a run
 
     def __init__(self, path, log=print):
-        from kicad2ems.api.frontend import EventTail              # kicad2ems's reader: the stream's format checked
+        from kicad2ems.core.api.frontend import EventTail              # kicad2ems's reader: the stream's format checked
         self.tail, self.log, self.last = EventTail(path), log, {}
 
     def read(self):
@@ -275,7 +275,7 @@ def predicted(mets, fw):
 def full_wave(mets):
     """The first full-wave result's name (a solver of kicad2ems's that takes the board: mom25d, openems, gfdtd,
     ...), else None."""
-    from kicad2ems.api.frontend import registry
+    from kicad2ems.core.api.frontend import registry
     reg = registry()
     return next((k for k in mets if k in reg and reg[k].consumes == 'board'), None)
 

@@ -4,13 +4,13 @@ import os
 import numpy as np
 import pytest
 
-from dfsynth.microstrip import Substrate
-from dfsynth.prototype import gvalues, estimate_order
-from dfsynth.topologies import Spec, build
-from dfsynth.calibrate import calibrate, edges, errors, sweep
-from dfsynth.circuit import sparams, db
-from dfsynth import kicad
-from dfsynth.validate import read_touchstone
+from kicad2ems.dfsynth.microstrip import Substrate
+from kicad2ems.dfsynth.prototype import gvalues, estimate_order
+from kicad2ems.dfsynth.topologies import Spec, build
+from kicad2ems.dfsynth.calibrate import calibrate, edges, errors, sweep
+from kicad2ems.dfsynth.circuit import sparams, db
+from kicad2ems.dfsynth import kicad
+from kicad2ems.dfsynth.validate import read_touchstone
 
 
 def test_gvalues_tables():
@@ -65,7 +65,7 @@ def test_calibrated_and_written(kind, topo, f0, bw, sub, tmp_path):
     spec = Spec(kind, topo, f0, bw, 'chebyshev', 5, 0.1)
     d = calibrate(spec, sub)
     f = sweep(spec, 4001)
-    from dfsynth.calibrate import model_response
+    from kicad2ems.dfsynth.calibrate import model_response
     _, s21 = model_response(d, f, lossless=True)
     ef, eb = errors(spec, edges(spec, f, db(s21)))
     assert abs(ef - 1) < 2e-3
@@ -78,8 +78,8 @@ def test_calibrated_and_written(kind, topo, f0, bw, sub, tmp_path):
     assert 'board   = "f.kicad_pcb"' in open(cfg).read()
     if (kind, topo, bw) == ('bandstop', 'stub', 1.5e9):
         pytest.importorskip('scipy')                                # the refine needs it
-        from dfsynth.calibrate import passband_rl
-        from dfsynth.topologies import _z_limits
+        from kicad2ems.dfsynth.calibrate import passband_rl
+        from kicad2ems.dfsynth.topologies import _z_limits
         assert len(spec.trim) == 2 * spec.order - 1
         f = sweep(spec, 2401)
         plain = build(Spec(kind, topo, f0, bw, 'chebyshev', 5, 0.1), sub, d.kf, d.kb)
@@ -111,14 +111,14 @@ def test_coupled_gaps_refined_for_the_match(topo, sub, f0, bw, rl_min):
 
 
 def test_touchstone_roundtrip(tmp_path):
-    from dfsynth.cli import write_model_s2p
+    from kicad2ems.dfsynth.cli import write_model_s2p
     sub = Substrate.preset('RO4003C-0.508')
     spec = Spec('lowpass', 'stepped', 2e9, order=5)
     d = calibrate(spec, sub)
     f = np.linspace(0.1e9, 5e9, 50)
     write_model_s2p(d, str(tmp_path / 'm.s2p'), f)
     f2, s = read_touchstone(str(tmp_path / 'm.s2p'))
-    from dfsynth.calibrate import model_response
+    from kicad2ems.dfsynth.calibrate import model_response
     s11, s21 = model_response(d, f)
     assert np.allclose(f2, f, rtol=1e-6)
     assert np.allclose(s[:, 1, 0], s21, atol=1e-5) and np.allclose(s[:, 0, 0], s11, atol=1e-5)
@@ -144,8 +144,8 @@ def test_resonators_are_separate_copper(topo, sub, f0, bw):
 
 def test_mtl_matches_line_and_pair():
     """The multiconductor model reduces to MLine for one strip and MCoupled for a pair, and is passive."""
-    from dfsynth.mtl import Array, Nodal
-    from dfsynth.circuit import MLine, MCoupled
+    from kicad2ems.dfsynth.mtl import Array, Nodal
+    from kicad2ems.dfsynth.circuit import MLine, MCoupled
     sub = Substrate.preset('RO4003C-0.813')
     f = np.linspace(1e9, 9e9, 41)
     net = Nodal()
@@ -164,7 +164,7 @@ def test_mtl_matches_line_and_pair():
 def test_radial_stub_notch():
     """kicad2ems's rf_radialstub example (60 degrees, 0.75 x a quarter wave at 2.4 GHz on 0.8 mm FR-4):
     openEMS puts the notch at 2.13 GHz; and a small fan is a capacitor."""
-    from dfsynth.circuit import MLine, MRadial, radial_admittance
+    from kicad2ems.dfsynth.circuit import MLine, MRadial, radial_admittance
     sub = Substrate(h=0.8, er=4.4, tand=0.02, t=0.0)
     w = sub.width(50)
     r2 = 0.75 * 299792458 / (2.4e9 * math.sqrt(sub.line(w)[1])) / 4 * 1e3
@@ -175,7 +175,7 @@ def test_radial_stub_notch():
 
 
 def test_fab_limits_refused(tmp_path):
-    from dfsynth.cli import main
+    from kicad2ems.dfsynth.cli import main
     args = ['--type', 'bandpass', '--topology', 'endcoupled', '--f0', '10G', '--bw', '300M', '--order', '3',
             '--substrate', 'Alumina-0.635', '-o', str(tmp_path / 'e')]
     assert main(args) == 2 and not os.path.exists(tmp_path / 'e.kicad_pcb')
@@ -185,8 +185,8 @@ def test_fab_limits_refused(tmp_path):
 def test_strip_caps_match_closed_forms():
     """The moment-method cross-section agrees with Hammerstad-Jensen and Kirschning-Jansen (zero thickness);
     every strip couples to every other one."""
-    from dfsynth.mtl import strip_caps
-    from dfsynth.microstrip import C0
+    from kicad2ems.dfsynth.mtl import strip_caps
+    from kicad2ems.dfsynth.microstrip import C0
     sub = Substrate.preset('RO4003C-0.813', t=0.0)
     for w in (0.4, 1.78, 4.0):
         c, ca = strip_caps([w], [], sub.h, sub.er)[0, 0], strip_caps([w], [], sub.h, 1.0)[0, 0]
@@ -204,8 +204,8 @@ def test_strip_caps_match_closed_forms():
 def test_interdigital_space_map():
     """A board that behaves as the model with other trims (and port planes 0.8 mm out): one space-mapping
     step puts the trims where the board then behaves as the target; and the tap necks meet the limits."""
-    from dfsynth.calibrate import space_map, _coupled_free, _coupled_spec
-    from dfsynth.circuit import MLine
+    from kicad2ems.dfsynth.calibrate import space_map, _coupled_free, _coupled_spec
+    from kicad2ems.dfsynth.circuit import MLine
     sub = Substrate.preset('RO4003C-0.813')
     spec = Spec('bandpass', 'interdigital', 5e9, 0.5e9)
     d = build(spec, sub)
@@ -231,7 +231,7 @@ def test_toml_uses_pml(tmp_path):
 def test_validation_follows_the_run(tmp_path):
     """A kicad2ems run's events reach the log as it runs: its messages, its progress every few seconds."""
     import json
-    from dfsynth.validate import Follow
+    from kicad2ems.dfsynth.validate import Follow
     path = tmp_path / 'events.jsonl'
     ev = [dict(t=0.1, kind='log', text='gfdtd: 1.6 M cells\n  two lines'), dict(t=0.2, kind='stage', name='solve'),
           dict(t=1.0, kind='status', run='P1', step=100, db=-0.0),
@@ -254,7 +254,7 @@ def test_validation_follows_the_run(tmp_path):
 def test_describe_json(capsys):
     """--describe --json: the types, presets and every option, as a front end builds its form from them."""
     import json
-    from dfsynth.cli import main
+    from kicad2ems.dfsynth.cli import main
     assert main(['--describe', '--json']) == 0
     d = json.loads(capsys.readouterr().out)
     assert d['format'] == 1 and 'coupled' in d['kinds']['bandpass'] and d['presets']['FR4']['er'] == 4.3

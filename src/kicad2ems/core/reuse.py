@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 
 VERSION = 1
-STACK = ('kicad2ems', 'mom25d', 'gfdtd', 'kicad2ems_fdtd', 'emsdev', 'pcbqs', 'kicad2ems_fem', 'openEMS', 'CSXCAD',
+STACK = ('kicad2ems', 'mom25d', 'gfdtd', 'kicad2ems.fdtd', 'emsdev', 'pcbqs', 'kicad2ems.fem', 'openEMS', 'CSXCAD',
          'skrf')
 _DIGEST = {}
 

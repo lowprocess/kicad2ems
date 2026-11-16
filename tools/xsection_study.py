@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-The 2D field solver's mesh (kicad2ems.lines.xsection) measured: docs/transmission-lines.md#field-solver quotes this.
+The 2D field solver's mesh (kicad2ems.core.lines.xsection) measured: docs/transmission-lines.md#field-solver quotes this.
 
     python tools/xsection_study.py                       # against the references: exact, closed-form, converged
     python tools/xsection_study.py --board BOARD.kicad_pcb [--every N]     # every cross-section of a real board
@@ -16,8 +16,8 @@ import argparse, math, multiprocessing, os, sys, time
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
-from kicad2ems.constants import C0, EPS0                                 # noqa: E402
-from kicad2ems.lines import coupled as K, formulas as F, xsection as X   # noqa: E402
+from kicad2ems.core.constants import C0, EPS0                                 # noqa: E402
+from kicad2ems.core.lines import coupled as K, formulas as F, xsection as X   # noqa: E402
 
 
 def cohn(w, b, er):
@@ -93,9 +93,9 @@ def _judge(xs):
 
 
 def board(path, every):
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.lines import builder, reference
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.lines import builder, reference
     seen, solve = [], X.solve
 
     def spy(xs):

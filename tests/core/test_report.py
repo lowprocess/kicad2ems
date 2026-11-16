@@ -5,8 +5,8 @@ import re
 
 import numpy as np
 
-from kicad2ems import report
-from kicad2ems.touchstone import write_touchstone
+from kicad2ems.core import report
+from kicad2ems.core.touchstone import write_touchstone
 
 
 def _summary(tmp_path, n=1001):
@@ -39,8 +39,8 @@ def test_report_embeds_the_plot(tmp_path):
 def test_the_plot_takes_as_many_solvers_as_ran():
     """The static plot with a reference and more others than there are dash names: the third other's style is a
     dash pattern (a tuple), which is a line style and not a format (a run of four solvers ended here)."""
-    from kicad2ems.pipeline import OVERLAY_STYLES
-    from kicad2ems.plots import plot_results
+    from kicad2ems.core.pipeline import OVERLAY_STYLES
+    from kicad2ems.core.plots import plot_results
     f = np.linspace(1e9, 3e9, 5)
     S = np.zeros((5, 2, 2), complex) + 0.5
     overlays = [(f, S * (0.9 - 0.1 * i), f"solver {i}", st) for i, st in enumerate(OVERLAY_STYLES)]

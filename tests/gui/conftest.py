@@ -11,9 +11,9 @@ sys.path.insert(0, os.path.join(K2E, 'tests'))
 from k2e_fixtures import *                                          # noqa: E402,F401,F403
 import standins                                                     # noqa: E402
 
-standins.install()                                                  # before kicad2ems.config is imported
+standins.install()                                                  # before kicad2ems.core.config is imported
 
-# the analyses: stand-ins too (fake_analyses.py), before kicad2ems_gui lists the registry's; pcbqs's own are run
+# the analyses: stand-ins too (fake_analyses.py), before kicad2ems.gui lists the registry's; pcbqs's own are run
 # through the same window in test_real_analyses.py
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fake_analyses                                                # noqa: E402

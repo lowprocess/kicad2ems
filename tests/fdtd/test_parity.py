@@ -1,8 +1,8 @@
 """Parity: each solver's native model read back against the board, minus what the solver declared. Every
 difference must be declared; a deliberately undeclared change (a via moved 0.1 mm) fails. Here the FDTD model
 (kicad2ems-fdtd's, openEMS's and gfdtd's); mom25d's planar model is checked the same way in mom25d's tests."""
-from kicad2ems.solvers import registry
-from kicad2ems.parity import check
+from kicad2ems.core.solvers import registry
+from kicad2ems.core.parity import check
 from k2e_fixtures import prepared_job
 
 

@@ -1,7 +1,7 @@
 """
-kicad2ems.si - crosstalk between traces: the near end (NEXT) and the far end (FEXT), and what in the layout makes it
+kicad2ems.core.si - crosstalk between traces: the near end (NEXT) and the far end (FEXT), and what in the layout makes it
 
-    python -m kicad2ems.si board.kicad_pcb --nets D0,D1,D2 --out out/xt
+    python -m kicad2ems.core.si board.kicad_pcb --nets D0,D1,D2 --out out/xt
         [--aggressor D1] [--near U1] [--mode both|next|fext] [--rise 100] [--limit 3]
         [--solvers lines[,mom25d]] [--ground B.Cu] [--fmax GHz] [--z0 50]
 
@@ -363,7 +363,7 @@ def sections(lines, nets, rise_s, widen=WIDEN, notes=None):
 
 # ---- the run ------------------------------------------------------------------------------------------------
 def parser():
-    p = argparse.ArgumentParser(prog='python -m kicad2ems.si', description=__doc__.split('\n\n')[0].strip())
+    p = argparse.ArgumentParser(prog='python -m kicad2ems.core.si', description=__doc__.split('\n\n')[0].strip())
     p.add_argument('board', help=".kicad_pcb")
     p.add_argument('--nets', required=True, help="the traces, by net, comma-separated (two or more)")
     p.add_argument('--aggressor', default='', help="the driven traces, comma-separated (default: each in turn)")
@@ -559,7 +559,7 @@ def main(argv=None):
         from .importers.kicad import KiCadBoard
         board = next((x for x in argv if not x.startswith('-')), None)
         if not board:
-            print("kicad2ems.si: --find needs the board", file=sys.stderr)
+            print("kicad2ems.core.si: --find needs the board", file=sys.stderr)
             return 2
         print(json.dumps(find_pairs(KiCadBoard(board))))
         return 0
@@ -572,12 +572,12 @@ def main(argv=None):
     try:
         run(a)
     except ValueError as e:
-        print(f"kicad2ems.si: {e}", file=sys.stderr)
+        print(f"kicad2ems.core.si: {e}", file=sys.stderr)
         return 2
     return 0
 
 
-# ---- the question, as the study has it (kicad2ems.analyses) ------------------------------------------------------
+# ---- the question, as the study has it (kicad2ems.core.analyses) ------------------------------------------------------
 from .analyses import Analysis                                      # noqa: E402
 
 
@@ -593,7 +593,7 @@ def _result(folder):
 class Crosstalk(Analysis):
     """Crosstalk between traces (this module), kicad2ems's own analysis: built in, not an entry point."""
     api = (2, 10)
-    name, label, tool = 'crosstalk', 'Crosstalk', 'kicad2ems.si'
+    name, label, tool = 'crosstalk', 'Crosstalk', 'kicad2ems.core.si'
     about = "near- and far-end crosstalk between traces for an edge, and what in the layout makes it"
     order = 15
     result = RESULT
@@ -646,7 +646,7 @@ class Crosstalk(Analysis):
             raise ValueError("choose the board")
         if len(nets) < 2:
             raise ValueError("name the traces: two nets or more")
-        cmd = [sys.executable, '-m', 'kicad2ems.si', str(board), '--nets', ','.join(nets), '--out', str(out)]
+        cmd = [sys.executable, '-m', 'kicad2ems.core.si', str(board), '--nets', ','.join(nets), '--out', str(out)]
         for key in ('aggressor', 'near', 'mode', 'rise', 'limit', 'z0', 'ground', 'fmax', 'sigma'):
             v = values.get(key)
             if v not in (None, '', []):
@@ -660,7 +660,7 @@ class Crosstalk(Analysis):
         return line[:160] if line.startswith(('trace ', 'solving ', 'crosstalk:')) else None
 
     def discover(self, values, board):
-        return [sys.executable, '-m', 'kicad2ems.si', str(board), '--find'] if board else None
+        return [sys.executable, '-m', 'kicad2ems.core.si', str(board), '--find'] if board else None
 
     def choices(self, text):
         try:
@@ -778,7 +778,7 @@ class Crosstalk(Analysis):
                                        formats=[None, None, '.2f', '.2f', '.2f', '.2f'])))
         return dict(title=f"Crosstalk: {', '.join(d['nets'])}", summary=head, sections=sec,
                     notes=[str(x) for x in d.get('warnings', [])],
-                    footer=f"kicad2ems.si, {os.path.basename(d['board'])}")
+                    footer=f"kicad2ems.core.si, {os.path.basename(d['board'])}")
 
     def curves(self, folder):
         d = _result(folder)

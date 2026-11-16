@@ -2,10 +2,10 @@
 The example boards, installed with kicad2ems as the package kicad2ems.examples (this folder of the repository): a
 config for each (<name>.toml), the generators of the boards that are not in it (make_rf_examples.py,
 make_antennas.py, make_demo_board.py), and the three boards that are. Front ends reach them through
-kicad2ems.api.frontend:
+kicad2ems.core.api.frontend:
 
     examples()                  {name: config path} of every example: those in this installed folder and those the
-                                installed analyses ship (kicad2ems.analyses: pcbqs's circuits)
+                                installed analyses ship (kicad2ems.core.analyses: pcbqs's circuits)
     index()                     the same as a menu's entries, in its order: [dict(name, config, group, title, source)],
                                 group a path ('RF structures/Filters')
     prepare_example(name, dest) the example in a folder of the user's (default: user_folder()): its config, and its
@@ -52,7 +52,7 @@ def own():
 def shipped():
     """{name: its entry} of the examples the installed analyses ship (Analysis.examples: dict(name, config, group,
     title, files)), each with source = its analysis; one that reuses a name is left out."""
-    from kicad2ems.analyses import registry                       # (absolute: a checkout runs examples/ as a
+    from kicad2ems.core.analyses import registry                       # (absolute: a checkout runs examples/ as a
                                                                     # package of its own, make_boards.py)
     out, taken = {}, set(own())
     for a in registry().values():

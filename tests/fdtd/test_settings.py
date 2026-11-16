@@ -1,8 +1,8 @@
 """openEMS's own settings (--converge, --converge-tol), read from a config and the command line (from kicad2ems's
 tests, where the solvers are stand-ins without them)."""
 import pytest
-from kicad2ems.cli import settings_from_argv
-from kicad2ems.config import build_settings, ConfigError
+from kicad2ems.core.cli import settings_from_argv
+from kicad2ems.core.config import build_settings, ConfigError
 
 
 def test_converge_from_a_config(tmp_path):

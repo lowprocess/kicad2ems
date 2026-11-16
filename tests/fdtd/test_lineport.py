@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from kicad2ems_fdtd import lineport as LP
+from kicad2ems.fdtd import lineport as LP
 
 K2E = os.environ.get('KICAD2EMS_SRC') or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), 'kicad2ems')
@@ -22,8 +22,8 @@ def _line_board(path, length):
     bd.port(1, 0.5, yc, 0)
     bd.port(2, length - 0.5, yc, 180)
     bd.write(str(path), length, 16.0)
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
     return Board(KiCadBoard(str(path)), nets=['RF', 'GND'], ground='B.Cu', log=lambda *a: None)
 
 
@@ -34,8 +34,8 @@ def boards(tmp_path_factory):
 
 
 def _mesh(m):
-    from kicad2ems_fdtd.boundaries import resolve_bc
-    from kicad2ems_fdtd.mesh import auto_mesh
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.mesh import auto_mesh
     return auto_mesh(m, 0.5e9, 10e9, bc=resolve_bc('auto', m))
 
 
@@ -67,7 +67,7 @@ def _abcd_line(zc, beta, length):
 def test_the_waves_give_s_and_the_reference_moves_back_to_the_port():
     """Synthetic runs of a known 2-port seen through 3 mm of a 45 ohm line at port 1 (probed) and directly at
     port 2 (lumped): solve() returns the 2-port at the ports, whatever the terminations reflected."""
-    from kicad2ems.deembed import abcd_to_s, s_to_abcd
+    from kicad2ems.core.deembed import abcd_to_s, s_to_abcd
     f = np.linspace(1e9, 10e9, 41)
     w = 2 * np.pi * f
     zc, beta = 45.0 + 0j * f, w * np.sqrt(3.4) / LP.C0 * (1 - 0.01j)    # a lossy line, its index flat
@@ -100,8 +100,8 @@ def test_a_straight_line_on_gfdtd(boards, tmp_path):
     (|S11| below -27 dB from 2 to 9 GHz), where the lumped ports carry their feed and the trace behind them
     (-21 dB at 8 GHz); the same runs give both."""
     pytest.importorskip('gfdtd')
-    from kicad2ems_fdtd.boundaries import resolve_bc
-    from kicad2ems_fdtd.run import run_excitations
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.run import run_excitations
     m = boards['long']
     mesh = _mesh(m)
     f = np.linspace(0.5e9, 10e9, 96)
@@ -121,10 +121,10 @@ def test_a_port_at_an_angle_builds_and_stays_lumped(tmp_path):
     cut there), and --port-kind auto keeps it lumped (probes stand on the mesh's axes)."""
     sys.path.insert(0, os.path.join(K2E, 'examples'))
     import make_rf_examples as M
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems_fdtd.boundaries import resolve_bc
-    from kicad2ems_fdtd.readback import readback
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.readback import readback
     bd, a, L = M.Board(), np.radians(30.0), 16.0
     u = np.array([np.cos(a), -np.sin(a)])
     p0, p1 = np.array([12.0, 12.0]) - u * L / 2, np.array([12.0, 12.0]) + u * L / 2

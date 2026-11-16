@@ -3,7 +3,7 @@ part's impedance, a vendor file's, the sweeps, and the Board's part ports."""
 import numpy as np
 import pytest
 
-from kicad2ems import embed
+from kicad2ems.core import embed
 
 
 def _s_of_z(Z, z0):
@@ -40,7 +40,7 @@ def test_a_parts_impedance_and_a_vendor_files(tmp_path):
     f = np.array([1e8, 1e9])
     z = embed.impedance(R=0.1, L=1e-9, C=1e-12, f=f)
     assert z == pytest.approx(0.1 + 1j * (2 * np.pi * f * 1e-9 - 1 / (2 * np.pi * f * 1e-12)))
-    from kicad2ems.touchstone import write_touchstone
+    from kicad2ems.core.touchstone import write_touchstone
     Zs = 2.0 + 5j                                                    # a series 2 + j5 ohm, measured in 50 ohm
     s21 = 2 * 50 / (2 * 50 + Zs)
     S = np.zeros((2, 2, 2), complex)
@@ -69,8 +69,8 @@ def test_a_sweep_is_every_combination_of_a_parts_values():
 
 
 def test_a_part_becomes_a_gap_port_across_its_gap(boards):
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
     rlc = boards['rlc']
     plain = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
     m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None,
@@ -88,10 +88,10 @@ def test_a_part_becomes_a_gap_port_across_its_gap(boards):
 def test_the_line_model_s_part_ports_close_to_its_parts(boards, backend):
     """R-E5: the line model's part ports, a floating port in each part's place (a series tee on scikit-rf, a Pac
     across the gap on qucsator), closed by the parts' values: the board with its parts, to rounding."""
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.lines.tlines import build
-    from kicad2ems.solvers.lines.fastsolve import solve, find_qucsator
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.lines.tlines import build
+    from kicad2ems.core.solvers.lines.fastsolve import solve, find_qucsator
     if backend == 'skrf':
         pytest.importorskip('skrf')
     else:

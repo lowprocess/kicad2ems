@@ -1,7 +1,7 @@
 """The dumps' atomic replace: tried again while Windows refuses it (a reader has the frame open)."""
 import os
 import pytest
-from gfdtd import dumps
+from kicad2ems.gfdtd import dumps
 
 
 def test_replace_waits_for_a_reader(tmp_path, monkeypatch):

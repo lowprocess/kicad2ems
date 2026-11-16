@@ -2,11 +2,11 @@
 qucsator netlist and dataset reader, lumped parts."""
 import numpy as np
 import pytest
-from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.board import Board
-from kicad2ems.lines.tlines import build
-from kicad2ems.solvers.lines.fastsolve import solve, qucs_netlist, read_qucs_dataset, part_impedance, find_qucsator
-from kicad2ems.parts import Part
+from kicad2ems.core.importers.kicad import KiCadBoard
+from kicad2ems.core.board import Board
+from kicad2ems.core.lines.tlines import build
+from kicad2ems.core.solvers.lines.fastsolve import solve, qucs_netlist, read_qucs_dataset, part_impedance, find_qucsator
+from kicad2ems.core.parts import Part
 
 FREQ = np.linspace(1e9, 8e9, 15)
 db = lambda x: 20 * np.log10(np.abs(x))
@@ -71,10 +71,10 @@ def test_qucsator_netlist(transition, boards):
 def test_a_log_sweep(transition, tmp_path):
     """sweep = log: the run's frequencies evenly on a log scale, qucsator's sweep the same, the plot's axis in the
     band's own unit and logarithmic; the line model's two backends agree on them as on a linear sweep."""
-    from kicad2ems.config import ConfigError, build_settings
-    from kicad2ems.pipeline import Job
-    from kicad2ems.plots import plot_results
-    from kicad2ems.touchstone import band_unit, log_spaced
+    from kicad2ems.core.config import ConfigError, build_settings
+    from kicad2ems.core.pipeline import Job
+    from kicad2ems.core.plots import plot_results
+    from kicad2ems.core.touchstone import band_unit, log_spaced
     f = np.geomspace(1e4, 1e7, 13)
     assert log_spaced(f) and not log_spaced(FREQ) and not log_spaced(f[:2]) and not log_spaced([0.0, 1.0, 2.0])
     assert [band_unit(v)[1] for v in ([1e3, 9e5], [1e4, 1e7], FREQ)] == ['kHz', 'MHz', 'GHz']
@@ -148,7 +148,7 @@ def test_qucsator_matches_skrf_coplanar(launch):
 def _rf_examples():
     import importlib.util, os
     spec = importlib.util.spec_from_file_location(
-        'make_rf_examples', os.path.join(os.path.dirname(__file__), '..', 'examples', 'make_rf_examples.py'))
+        'make_rf_examples', os.path.join(os.path.dirname(__file__), '..', '..', 'examples', 'make_rf_examples.py'))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -228,14 +228,14 @@ def test_sigma_is_felt_beyond_microstrip():
     """--sigma reaches a stripline and a coupled section (only microstrip sections had felt it); 2 Rs / w per metre,
     never below the strip's DC resistance."""
     pytest.importorskip('skrf')
-    from kicad2ems.config import build_settings
-    from kicad2ems.pipeline import board_from_settings
-    from kicad2ems.solvers.lines.fastsolve import conductor_r
+    from kicad2ems.core.config import build_settings
+    from kicad2ems.core.pipeline import board_from_settings
+    from kicad2ems.core.solvers.lines.fastsolve import conductor_r
     import os
     assert conductor_r(0.2, 0.035, 0.0, 5.8e7) == pytest.approx(1 / (5.8e7 * 35e-6 * 0.2e-3))
     rs = np.sqrt(np.pi * 10e9 * 4e-7 * np.pi / 5.8e7)
     assert conductor_r(0.2, 0.035, 10e9, 5.8e7) == pytest.approx(2 * rs / 0.2e-3)
-    root = os.path.join(os.path.dirname(__file__), '..', 'examples')
+    root = os.path.join(os.path.dirname(__file__), '..', '..', 'examples')
     for name in ('rf_stripline', 'rf_coupler'):
         s = build_settings({}, config=os.path.join(root, name + '.toml'))
         m = board_from_settings(s, log=lambda *a: None)

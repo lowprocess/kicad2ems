@@ -12,7 +12,7 @@ from conftest import K2E
 
 def _core():
     try:
-        from gfdtd.engine import core_info
+        from kicad2ems.gfdtd.engine import core_info
         return core_info()[0]
     except ImportError:
         return False

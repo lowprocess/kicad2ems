@@ -2,9 +2,9 @@
 nets, Excellon, job file, pick-and-place) resolves to the same Board - the same stack, copper per layer and
 net, vias, ports - so every solver sees the same thing whichever file it came from."""
 import pytest
-from kicad2ems.board import Board
-from kicad2ems.importers import open_board
-from kicad2ems.importers.gerber import parse_gerber
+from kicad2ems.core.board import Board
+from kicad2ems.core.importers import open_board
+from kicad2ems.core.importers.gerber import parse_gerber
 from gerber_export import export, write_gerber
 
 quiet = lambda *a: None
@@ -100,7 +100,7 @@ def test_excellon_tool_fields_zero_suppression_and_modal_coordinates(tmp_path):
     """Drill files that write their tools with fields (T1F00S00C0.300), leave zeros out (LZ: the trailing ones,
     TZ: the leading ones) or give only the coordinate that changes, as fabrication tools other than KiCad do
     (the parser had read only T1C... and decimal coordinates: R-G)."""
-    from kicad2ems.importers.gerber import parse_excellon
+    from kicad2ems.core.importers.gerber import parse_excellon
     f = tmp_path / 'a.drl'
     f.write_text('M48\nMETRIC,LZ,000.000\nT1F00S00C0.300\n%\nT1\nX010Y020\nY0255\nM30\n')
     holes, _, _ = parse_excellon(str(f))

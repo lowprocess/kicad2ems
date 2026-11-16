@@ -4,12 +4,12 @@ that does not need openEMS's mesh."""
 import json, os
 import numpy as np
 import pytest
-from kicad2ems import solvers
-from kicad2ems.config import build_settings, settings_class
-from kicad2ems.cli import parser
+from kicad2ems.core import solvers
+from kicad2ems.core.config import build_settings, settings_class
+from kicad2ems.core.cli import parser
 import standins
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FILTER = os.path.join(ROOT, 'examples', 'rf_interdig.toml')
 
 

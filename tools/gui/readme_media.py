@@ -58,8 +58,8 @@ def gif_resized(src, dst, width=720, every=1):
 def gui_media(only):
     os.environ['XDG_CONFIG_HOME'] = os.path.join(RUNS, 'xdg')       # a window of its own: not your saved layout
     shutil.rmtree(os.environ['XDG_CONFIG_HOME'], ignore_errors=True)
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow, LOWER, BESIDE
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow, LOWER, BESIDE
     app = application()
 
     def pump(n=20):
@@ -183,8 +183,8 @@ def gui_media(only):
         shot(w, os.path.join(GUI, 'start.png'))
         close(w)
     if not only or 'filter' in only:
-        from kicad2ems_gui import filtertab as ft
-        from dfsynth.cli import main as dfsynth
+        from kicad2ems.gui import filtertab as ft
+        from kicad2ems.dfsynth.cli import main as dfsynth
         base = os.path.join(RUNS, 'filter', 'hairpin_2g4')
         os.makedirs(os.path.dirname(base), exist_ok=True)
         args = dict(type='bandpass', topology='hairpin', f0='2.4G', bw='240M', substrate='RO4003C-0.813')

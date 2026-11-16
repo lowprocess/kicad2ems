@@ -225,7 +225,7 @@ def solve(m, freq, res, plan):
     """S (nf, n, n) over the single-ended ports, each port's z0, from the probes and the lumped ports of every run
     (B A^-1), each probed port's reference moved back to its lumped port's plane; and the lines read
     {port name: (Zc at mid-band, eps_eff at mid-band, plane mm)} for the log."""
-    from kicad2ems.deembed import connect
+    from kicad2ems.core.deembed import connect
     names = [p.name for p in m.ports]
     missing = [nm for nm in names if nm not in res.lines]
     if missing:

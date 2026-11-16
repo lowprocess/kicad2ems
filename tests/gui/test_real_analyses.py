@@ -7,7 +7,7 @@ import time
 import pytest
 from waiting import wait_until
 
-A = pytest.importorskip('pcbqs.analyses', reason='pcbqs is not installed')
+A = pytest.importorskip('kicad2ems.pcbqs.analyses', reason='pcbqs is not installed')
 
 
 @pytest.fixture
@@ -16,11 +16,11 @@ def window(tmp_path, monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'data'))     # where an example is prepared: not the user's
-    from kicad2ems import analyses
+    from kicad2ems.core import analyses
     monkeypatch.setattr(analyses, '_registry', {a.name: a for a in (A.PowerIntegrity(), A.NearField(), A.Circuit(), A.Thermal())})
     from PySide6.QtCore import QSettings
-    from kicad2ems_gui import application, study, app as gui
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui import application, study, app as gui
+    from kicad2ems.gui.app import MainWindow
     listed = study.installed()                  # the window lists the registry as it was when it was imported:
     for module in (study, gui):                 # the stand-ins', in a run of every test
         monkeypatch.setattr(module, 'ANALYSES', listed)
@@ -46,7 +46,7 @@ def test_the_panels_are_pcbqs_s_options(window):
     by = {q: w.study.rows[q].text(1).replace('  ▾', '') for q in ('dc', 'pdn', 'nearfield', 'circuit', 'thermal')}
     assert set(by.values()) == {'pcbqs'}                            # pcbqs's four alone in this registry
     assert [e.name for e in w.study.engines['dc']][0] == 'pdn' and w.study.run_of('nearfield') == 'mqs'
-    assert w.study.rows['pdn'].toolTip(1).startswith(('pcbqs.pdn', 'click to choose'))
+    assert w.study.rows['pdn'].toolTip(1).startswith(('kicad2ems.pcbqs.pdn', 'click to choose'))
     assert {'/Circuits/Passive and rectifiers', '/Circuits/DC-DC converters', '/Circuits/Bridges'} <= set(w.example_menus)
     assert w.example_sources['/Circuits'] == {'circuit'}
     names = [a.text() for a in w.example_menus['/Circuits/DC-DC converters'].actions()]
@@ -54,7 +54,7 @@ def test_the_panels_are_pcbqs_s_options(window):
 
 
 def test_a_circuit_example_runs_to_its_temperatures(window, tmp_path):
-    from kicad2ems.api.frontend import read_analyses
+    from kicad2ems.core.api.frontend import read_analyses
     w, app = window
     w.show()
     w.open_example('circuit_rc_filter')
@@ -89,7 +89,7 @@ def test_a_circuit_example_runs_to_its_temperatures(window, tmp_path):
     assert r.kind() == 'circuit' and r.modes() == ['Plots', 'Report', 'Tables'] and r.set_box.count() >= 1
     assert 'Points' in [t for t, _ in r.reportview._tables]
     assert w.setup.save()                                           # the study, saved: what it asks, its model
-    from kicad2ems.api.frontend import read_study
+    from kicad2ems.core.api.frontend import read_study
     run, tables = read_analyses(w.setup.path)
     assert run is None and tables['circuit'] == dict(model=str(folder / '01_rc_filter.json'))
     assert list(read_study(w.setup.path).asked) == ['circuit', 'thermal']
@@ -99,7 +99,7 @@ def _regulator(folder):
     """A buck regulator's board, as pcbqs's own tests make it: U1 where the islands in and sw meet the ground
     strip, C1 on its input, L1 from sw to out, C2 on the output."""
     from shapely.geometry import box
-    from pcbqs.circuit import boards as B
+    from kicad2ems.pcbqs.circuit import boards as B
     b = B.Board('regulator', 40, 23)
     b.row(['in', 'sw', 'out'], [12, 8, 14], height=14)
     b.place(dict(parts=[dict(ref='C1', type='capacitor', nodes=['in', '0'], value=22e-6),

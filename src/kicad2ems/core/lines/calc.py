@@ -9,7 +9,7 @@ Z0, the pair's Zdiff and eeff out, from the 2D field solver (xsection), and the 
     Line.on_board('board.kicad_pcb', 'In2.Cu', w=0.14, gap=0.15)            # that board's stack around In2.Cu
     e = element(line)                                                       # for lines.sections.solve: the field
 
-    python -m kicad2ems.lines.calc --w 0.35 --h 0.2 --er 4.3 --t 0.035
+    python -m kicad2ems.core.lines.calc --w 0.35 --h 0.2 --er 4.3 --t 0.035
     kicad2ems-z0 --board board.kicad_pcb --layer F.Cu --target 50 --plot z0.png
 
 A Line is one strip, or a symmetric pair (gap), `t` thick, standing on the dielectrics `below` it (from the plane

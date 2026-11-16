@@ -3,10 +3,10 @@ runs without openEMS, exit codes."""
 import json, os
 import pytest
 import standins
-from kicad2ems.cli import settings_from_argv
-from kicad2ems.config import build_settings, ConfigError
+from kicad2ems.core.cli import settings_from_argv
+from kicad2ems.core.config import build_settings, ConfigError
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FILTER = os.path.join(ROOT, 'examples', 'rf_interdig.toml')
 
 
@@ -51,8 +51,8 @@ def test_solvers_from_toml_and_command_line(tmp_path):
 
 def test_resolve_backend(monkeypatch):
     pytest.importorskip('skrf')
-    from kicad2ems.solvers.lines import fastsolve
-    from kicad2ems.solvers import resolve_lines
+    from kicad2ems.core.solvers.lines import fastsolve
+    from kicad2ems.core.solvers import resolve_lines
     monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)
     assert fastsolve.resolve_backend('auto')[0] == 'skrf' and resolve_lines() == 'scikit'   # no qucsator: scikit-rf
     with pytest.raises(ValueError, match='--fast skrf'):
@@ -89,11 +89,11 @@ def test_line_model_only(run_cli, tmp_path, monkeypatch):
 
 def test_a_run_done_again_takes_its_earlier_result(run_cli, tmp_path, monkeypatch):
     """R-D20: the second run in the folder, with the same board, frequencies, settings and code, takes the first's
-    S (kicad2ems.reuse); another setting or --no-reuse solves again."""
+    S (kicad2ems.core.reuse); another setting or --no-reuse solves again."""
     pytest.importorskip('skrf')
     import numpy as np
-    from kicad2ems import reuse
-    from kicad2ems.touchstone import read_touchstone
+    from kicad2ems.core import reuse
+    from kicad2ems.core.touchstone import read_touchstone
     out = tmp_path / 'out'
     args = (FILTER, '--solvers', 'scikit', '--points', '51', '--out', out)
     code, so, err = run_cli(*args)
@@ -142,7 +142,7 @@ def test_deembedding_moves_the_planes_beside_the_solvers_own(run_cli, tmp_path):
     exact cascades: test_deembed.py); a lossy trace of 50.0-50.2 ohm moves |S21| a little."""
     pytest.importorskip('skrf')
     import numpy as np
-    from kicad2ems.touchstone import read_touchstone
+    from kicad2ems.core.touchstone import read_touchstone
     out = tmp_path / 'out'
     code, so, err = run_cli(FILTER, '--solvers', 'scikit', '--points', '21', '--deembed', 'P1=1', '--deembed', 'P2=1',
                             '--out', out)
@@ -180,7 +180,7 @@ def test_unavailable_reference_is_left_out(run_cli, tmp_path, monkeypatch):
 
 
 def test_kicad2openems_keeps_openems_as_its_default(tmp_path, monkeypatch, capsys):
-    from kicad2ems.cli import main_openems
+    from kicad2ems.core.cli import main_openems
     monkeypatch.setattr(standins, 'engine_check', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
     assert main_openems([FILTER, '--out', str(tmp_path / 'out')]) == 2         # openEMS named by default: stops
     assert 'openEMS (FDTD) cannot run - details' in capsys.readouterr().out
@@ -209,7 +209,7 @@ def test_a_result_that_is_not_passive_is_said():
     """S's largest singular value over 1 (more power out than in): the run warns, and run.json has it (nothing had
     checked: an AAA fit of a lossless two-port had reached 1.0018)."""
     import numpy as np
-    from kicad2ems.pipeline import passivity
+    from kicad2ems.core.pipeline import passivity
     f = np.linspace(1e9, 2e9, 5)
     thru = np.zeros((5, 2, 2), complex); thru[:, 0, 1] = thru[:, 1, 0] = 1.0
     assert passivity(f, thru)['max'] == pytest.approx(1.0) and passivity(f, thru)['count'] == 0
@@ -224,7 +224,7 @@ def test_a_passive_copy_clips_only_what_passes_one():
     """make_passive (--passive, R-E2): each frequency's singular values above 1 clipped to 1, the rest of S as it
     was; a passive frequency, and a term not computed, untouched."""
     import numpy as np
-    from kicad2ems.pipeline import make_passive, passivity
+    from kicad2ems.core.pipeline import make_passive, passivity
     f = np.linspace(1e9, 2e9, 4)
     rng = np.random.default_rng(1)
     S = 0.4 * (rng.standard_normal((4, 3, 3)) + 1j * rng.standard_normal((4, 3, 3)))

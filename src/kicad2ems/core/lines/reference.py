@@ -557,7 +557,7 @@ def solve_deferred(jobs, workers=None):
     todo = [item for item in want if item[1] not in cache[item[0]].got]
     if workers is None:
         try:
-            from emsdev.cpu import core_threads
+            from kicad2ems.emsdev.cpu import core_threads
             workers = core_threads()
         except Exception:                                    # noqa: BLE001
             workers = 1
@@ -572,7 +572,7 @@ def solve_deferred(jobs, workers=None):
 
 def _in_workers(todo, workers):
     """[(item, result or None)] of the cross-sections `todo`, solved by `workers` python processes (python -m
-    kicad2ems.lines.cutworker: pickled lists of items on its stdin, their results on its stdout). What a worker
+    kicad2ems.core.lines.cutworker: pickled lists of items on its stdin, their results on its stdout). What a worker
     did not return (it could not start, or died) is left out: the caller solves it itself.
 
     They are started as commands, not through multiprocessing: that imports the program's main module again in
@@ -595,7 +595,7 @@ def _in_workers(todo, workers):
 
     def serve():
         try:
-            p = subprocess.Popen([exe, '-m', 'kicad2ems.lines.cutworker'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            p = subprocess.Popen([exe, '-m', 'kicad2ems.core.lines.cutworker'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                  stderr=subprocess.DEVNULL, env=env,
                                  creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         except OSError:
@@ -680,7 +680,7 @@ def solve_groups(keys, workers=None):
     todo = [('group', k) for k in dict.fromkeys(keys) if k not in _solve_group.got]
     if workers is None:
         try:
-            from emsdev.cpu import core_threads
+            from kicad2ems.emsdev.cpu import core_threads
             workers = core_threads()
         except Exception:                                    # noqa: BLE001
             workers = 1

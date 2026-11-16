@@ -5,11 +5,11 @@ import os
 import numpy as np
 import pytest
 
-from gfdtd import ContinuousStructure, openEMS
-from gfdtd import csx as C
-from gfdtd.engine import gpu_info, core_info
-from emsdev import gpu as _devices
-from gfdtd.operator import build, timestep, Grid
+from kicad2ems.gfdtd import ContinuousStructure, openEMS
+from kicad2ems.gfdtd import csx as C
+from kicad2ems.gfdtd.engine import gpu_info, core_info
+from kicad2ems.emsdev import gpu as _devices
+from kicad2ems.gfdtd.operator import build, timestep, Grid
 
 from openems_files import read_fd, read_vtr, steps_taken
 
@@ -191,7 +191,7 @@ def test_operator_metal_edges_and_dielectric_average(tmp_path):
     # the via at (5, 2.5): no line there, so no z edge inside it; the port's z edges carry the 50 ohm
     assert op.vi[2, 1, 2, 0] > 0
     # x edges at z = 1 off the sheet: half FR4, half air -> C between the two
-    from gfdtd.operator import EPS0
+    from kicad2ems.gfdtd.operator import EPS0
     g = op.grid
     cap = op.dt / op.vi[0, 4, 4, 2]                                   # no loss in air: vi = dt / C
     A, l = g.dual[1][4] * g.dual[2][2], g.d[0][4]
@@ -262,7 +262,7 @@ def test_end_criterion_counts_the_lumped_energy(el):
     box with the plates charged and an L or series LC across them, the field's own energy swings by half as it
     moves into the branch and back, the total is steady, and steadiest with the branch's energy as it is (not
     scaled): the L and C are the element's. A lumped LC filter had ended its run early on the field alone."""
-    from gfdtd.engine import make_backend
+    from kicad2ems.gfdtd.engine import make_backend
     F = openEMS(NrTS=100, EndCriteria=1e-5)
     F.SetGaussExcite(1e9, 1e9)
     F.SetBoundaryCond(['PEC'] * 6)
@@ -356,7 +356,7 @@ def _plate_wave(tmp_path, n, bc, backend='numpy', dumps=(), debye=False, sheet=F
         csx.AddDump(name, **kw).AddBox(*box)
     path = str(tmp_path / f"{bc}_{n}_{backend}")
     F.Run(path, cleanup=True, verbose=0, backend=backend)
-    from gfdtd.fdtd import read_probe
+    from kicad2ems.gfdtd.fdtd import read_probe
     t, u = read_probe(os.path.join(path, 'ut'))
     return t, u, path, F
 
@@ -408,7 +408,7 @@ def test_dumps_in_openems_files(tmp_path):
 def test_port_power_goes_into_the_load(tmp_path):
     """Power balance: what the port measures going in is what the 50 ohm load takes. (The current files' first
     sample once sat at t = 0 instead of -dt/2: DFTs that take dt from t1 - t0 scaled every current by 1 - 0.5 / sub.)"""
-    from gfdtd.fdtd import read_probe, dft
+    from kicad2ems.gfdtd.fdtd import read_probe, dft
 
     def load_probe(csx):
         csx.AddProbe('uload', p_type=0, weight=-1).AddBox([1, 0, 1], [1, 0, 2])
@@ -426,7 +426,7 @@ def test_port_power_goes_into_the_load(tmp_path):
 
 def F_SUB(path):
     """The probe sampling interval in timesteps of a run folder (et: one sample per step)."""
-    from gfdtd.fdtd import read_probe
+    from kicad2ems.gfdtd.fdtd import read_probe
     t_et, _ = read_probe(os.path.join(path, 'et'))
     t_u, _ = read_probe(os.path.join(path, 'port_ut_1'))
     return round((t_u[1] - t_u[0]) / (t_et[1] - t_et[0]))
@@ -434,7 +434,7 @@ def F_SUB(path):
 
 def test_compressed_operator_gives_the_dense_coefficients(tmp_path):
     """compress(): vv by code, vi = geoE s, iv = geoH from the line arrays, the Debye poles by row."""
-    from gfdtd.operator import compress
+    from kicad2ems.gfdtd.operator import compress
     _, _, _, F = _plate_wave(tmp_path, 30, 'PML_8', debye=True)
     op = F.op
     c = compress(op)
@@ -453,7 +453,7 @@ def test_compressed_operator_gives_the_dense_coefficients(tmp_path):
 
 def test_compressed_operator_keeps_the_sheet_poles_apart(tmp_path):
     """A Debye material and a conducting sheet: three poles, the sheet's two with sg -1 in h's second half."""
-    from gfdtd.operator import compress
+    from kicad2ems.gfdtd.operator import compress
     _, _, _, F = _plate_wave(tmp_path, 30, 'PML_8', debye=True, sheet=True)
     c = compress(F.op)
     assert c.P == 3 and len(c.h) == 6 and sorted(c.h[3:]) == [-1, -1, 1]
@@ -486,8 +486,8 @@ def _sheet_model(prim='box', sigma=5.8e7, t=35e-6, bc='MUR'):
 def test_conducting_sheet_edges_are_openems_model(prim):
     """Each sheet edge: G = G_sq / f / w, R-L branches R_sq f w, tau the sheet's, C openEMS's, w = (edge length) /
     (node width across it), f = 2 on the border; no PEC left on it."""
-    from gfdtd.operator import build
-    from gfdtd import sheet
+    from kicad2ems.gfdtd.operator import build
+    from kicad2ems.gfdtd import sheet
     F, csx = _sheet_model(prim)
     op = build(csx, F.settings())
     G, R1, L1, R2, L2, ok = sheet.per_square(5.8e7, 35e-6, 10e9)
@@ -518,7 +518,7 @@ def test_conducting_sheet_edges_are_openems_model(prim):
 def test_rough_sheet_fit_is_passive_and_follows_hammerstad():
     """fit_rough: R-L branches (passive) whose resistance is Hammerstad's factor x the smooth sheet's within 2 %
     from f_max / 100 to f_max, and the sheet's sigma t at DC."""
-    from gfdtd import sheet
+    from kicad2ems.gfdtd import sheet
     f = np.logspace(np.log10(20e9) - 2, np.log10(20e9), 60)
     for t, rms in ((18e-6, 0.5e-6), (35e-6, 1e-6), (70e-6, 3e-6)):
         G, br = sheet.fit_rough(5.8e7, t, 20e9, rms)
@@ -532,7 +532,7 @@ def test_rough_sheet_fit_is_passive_and_follows_hammerstad():
 def test_rough_sheet_in_the_operator_and_xml(tmp_path):
     """roughness: more R-L poles on the sheet's edges, kept through openEMS's XML (an attribute openEMS reads past),
     and the core runs it as numpy does."""
-    from gfdtd.operator import build
+    from kicad2ems.gfdtd.operator import build
     F, csx = _sheet_model()
     csx.GetAllProperties()[0].roughness = 1e-6
     op = build(csx, F.settings())
@@ -554,7 +554,7 @@ def test_rough_sheet_in_the_operator_and_xml(tmp_path):
 
 def _plate_wave_with(path, F, backend):
     """Run openEMS object F (a _plate_wave model) again in `path` on `backend`."""
-    from gfdtd.fdtd import read_probe
+    from kicad2ems.gfdtd.fdtd import read_probe
     F.Run(str(path), cleanup=True, verbose=0, backend=backend)
     t, u = read_probe(os.path.join(str(path), 'ut'))
     return t, u, str(path), F
@@ -563,7 +563,7 @@ def _plate_wave_with(path, F, backend):
 def test_conducting_sheet_falls_back_to_pec():
     """openEMS's rules: a sheet on a 3D primitive, or with no thickness, is PEC; so are sheet edges next to a
     Mur boundary (its two outer lines)."""
-    from gfdtd.operator import build
+    from kicad2ems.gfdtd.operator import build
     F, csx = _sheet_model('linpoly')
     op = build(csx, F.settings())
     assert op.n_sheet == 0 and sum(op.n_pec) > 0 and any('not flat' in n for n in op.notes)
@@ -579,8 +579,8 @@ def test_conducting_sheet_falls_back_to_pec():
 def _msl_energy(kind, steps, every=100):
     """A 10 mm microstrip (0.4 mm on 0.2 mm, Mur walls), 50 ohm at the fed end, open at the other: its energy every
     `every` steps on the core, and the sample where the pulse ends. kind: 'pec' or 'sheet' (35 um copper)."""
-    from gfdtd.operator import build
-    from gfdtd.engine import make_backend
+    from kicad2ems.gfdtd.operator import build
+    from kicad2ems.gfdtd.engine import make_backend
     L, w, h = 10.0, 0.4, 0.2
     F = openEMS(NrTS=10, EndCriteria=1e-9)
     F.SetGaussExcite(10e9, 10e9)
@@ -608,7 +608,7 @@ def _msl_energy(kind, steps, every=100):
     return np.array(W), len(op.signal) // every
 
 
-@pytest.mark.skipif(not core_info()[0], reason='no compiled CPU core (python -m gfdtd.core.build)')
+@pytest.mark.skipif(not core_info()[0], reason='no compiled CPU core (python -m kicad2ems.gfdtd.core.build)')
 def test_conducting_sheets_stay_stable():
     """Copper sheets on an open microstrip: after the pulse the energy falls by nine orders of magnitude and keeps
     falling (no late-time growth; checked to 120,000 steps by hand)."""
@@ -618,9 +618,9 @@ def test_conducting_sheets_stay_stable():
     assert q[1] < 1e-6 and q[3] <= q[1]
 
 
-@pytest.mark.skipif(not core_info()[0], reason='no compiled CPU core (python -m gfdtd.core.build)')
+@pytest.mark.skipif(not core_info()[0], reason='no compiled CPU core (python -m kicad2ems.gfdtd.core.build)')
 def test_core_matches_numpy_with_pml_debye_and_dumps(tmp_path):
-    from gfdtd.engine import resolve_backend, core_threads
+    from kicad2ems.gfdtd.engine import resolve_backend, core_threads
     assert resolve_backend('cpu') == 'core' and 1 <= core_threads() <= (os.cpu_count() or 1)
     for bc in ('PML_8', 'MUR'):
         _, a, pa, _ = _plate_wave(tmp_path / 'n', 50, bc, 'numpy', dumps=DUMPS[1:2], debye=True, sheet=True)
@@ -707,7 +707,7 @@ def test_gpu_matches_numpy(tmp_path, gpu):
     _, a, _, pa = _load_s11(tmp_path / 'n', backend='numpy', R=20.0, L=5e-9, C=2e-12, LEtype=1)
     _, b, _, pb = _load_s11(tmp_path / 'g', backend=gpu, R=20.0, L=5e-9, C=2e-12, LEtype=1)
     np.testing.assert_allclose(a, b, atol=1e-4)
-    from gfdtd.fdtd import read_probe
+    from kicad2ems.gfdtd.fdtd import read_probe
     np.testing.assert_allclose(read_probe(os.path.join(pa, 'port_ut_1'))[1], read_probe(os.path.join(pb, 'port_ut_1'))[1],
                                atol=1e-6 * np.abs(read_probe(os.path.join(pa, 'port_ut_1'))[1]).max() + 1e-12)
 
@@ -742,7 +742,7 @@ def test_gpu_runs_in_threads(tmp_path, gpu):
     """Runs in threads (a GPU stream each - Vulkan: a device each -, the output in a log file each) give what they
     give one at a time."""
     import threading
-    from gfdtd.engine import concurrent_runs
+    from kicad2ems.gfdtd.engine import concurrent_runs
     assert concurrent_runs(0.29e6, 4) == 4 and concurrent_runs(0.59e6, 4) == 2 and concurrent_runs(2e6, 4) == 1
     _, ref, _, _ = _plate_wave(tmp_path / 'one', 50, 'PML_8', gpu, debye=True)
     got = {}
@@ -771,7 +771,7 @@ def test_run_writes_its_log(tmp_path, capsys):
 
 
 def test_command_line_runs_an_xml(tmp_path, capsys):
-    from gfdtd.fdtd import main
+    from kicad2ems.gfdtd.fdtd import main
     fn = tmp_path / 'model.xml'
     fn.write_text(OPENEMS_XML, encoding='utf-8')
     assert main([str(fn), '--backend', 'numpy', '--path', str(tmp_path / 'run')]) == 0
@@ -783,8 +783,8 @@ def test_command_line_runs_an_xml(tmp_path, capsys):
 def test_api_version_and_its_names():
     """API_VERSION names what other packages may use (kicad2ems-fdtd): each of those is here."""
     import inspect
-    import gfdtd
-    from gfdtd import engine
+    from kicad2ems import gfdtd
+    from kicad2ems.gfdtd import engine
     assert gfdtd.API_VERSION == (1, 3)
     sheet = inspect.signature(gfdtd.ContinuousStructure.AddConductingSheet).parameters
     assert {'roughness', 'finish', 'finish_share', 'face'} <= set(sheet)      # 1.2, 1.3
@@ -798,8 +798,8 @@ def test_finished_sheet_fit_and_xml(tmp_path):
     """A finished sheet (gfdtd 1.3): the wideband fit follows the target (ENIG on all of one face: its resistance
     2-5x the bare face's from 1 to 10 GHz), the share scales it, and finish / share / face survive the XML."""
     import numpy as np
-    from gfdtd import sheet as S
-    from gfdtd.csx import ContinuousStructure
+    from kicad2ems.gfdtd import sheet as S
+    from kicad2ems.gfdtd.csx import ContinuousStructure
     enig = [(4.1e7, 0.08e-6), (1.45e6, 5e-6)]
     sigma, t = 5.8e7 / 4, 2 * 17.5e-6                               # one face of 35 um copper (thick model)
     f = np.array([1e9, 3e9, 10e9])
@@ -830,7 +830,7 @@ def test_finished_sheet_fit_and_xml(tmp_path):
 def test_far_field_face_sums_match_the_per_axis_sum():
     """The face sum (normal axis as a phase, one matrix product over the tangential components) is the per-axis
     sum openEMS does, on faces normal to each axis, at any phase centre."""
-    from gfdtd import nf2ff as NF
+    from kicad2ems.gfdtd import nf2ff as NF
     rng = np.random.default_rng(1)
     th, ph = np.radians(np.arange(0, 181, 15.0)), np.radians(np.arange(0, 361, 20.0))
     T, P = np.meshgrid(th, ph, indexing='ij')
@@ -856,7 +856,7 @@ def test_far_field_face_sums_match_the_per_axis_sum():
 
 
 def test_unique_rows_is_numpys():
-    from gfdtd.operator import _unique_rows
+    from kicad2ems.gfdtd.operator import _unique_rows
     rng = np.random.default_rng(2)
     for hi in (3, 40, 1 << 20, 1 << 22):                            # the last past the packed key: numpy's own
         t = rng.integers(0, hi, (5000, 3))
@@ -867,7 +867,7 @@ def test_unique_rows_is_numpys():
 
 def _plates(tmp_path, **el):
     """Two plates, a lumped port at one side and a lumped element at the other (0.5 mm cells)."""
-    from gfdtd import ContinuousStructure, openEMS
+    from kicad2ems.gfdtd import ContinuousStructure, openEMS
     F = openEMS(NrTS=4000, EndCriteria=1e-5)
     F.SetGaussExcite(1e9, 1e9)
     F.SetBoundaryCond(['PEC'] * 6)
@@ -903,7 +903,7 @@ def test_a_lumped_part_its_update_cannot_hold_is_refused(tmp_path):
 def test_fields_that_grow_once_the_excitation_ends_are_unstable(tmp_path, monkeypatch):
     """Energy over GROWTH times its peak once nothing drives the model: unstable (only infinity was, so a run that
     grew within bounds came back as a result)."""
-    from gfdtd import engine as E
+    from kicad2ems.gfdtd import engine as E
     F, path = _plates(tmp_path, L=1e-9)
     real, n = E.NumpyBackend.energy, [0]
 
@@ -918,7 +918,7 @@ def test_fields_that_grow_once_the_excitation_ends_are_unstable(tmp_path, monkey
 def test_openems_options_gfdtd_does_not_have_are_said(tmp_path):
     """TimeStepFactor and TimeStep are honoured, a cylindrical grid refused, CellConstantMaterial noted (they had all
     been dropped without a word)."""
-    from gfdtd import openEMS
+    from kicad2ems.gfdtd import openEMS
     with pytest.raises(NotImplementedError, match='cylindrical'):
         openEMS(CoordSystem=1)
     F, path = _plates(tmp_path, L=1e-9)
@@ -950,7 +950,7 @@ def _plate_fill(tmp_path, tag, **mat):
         csx.AddMaterial('fill', **mat).AddBox([-30, -30, 0], [30, 30, 2], priority=1)
     path = str(tmp_path / tag)
     F.Run(path, cleanup=True, verbose=0, backend='auto')
-    from gfdtd.fdtd import read_probe
+    from kicad2ems.gfdtd.fdtd import read_probe
     t, u = read_probe(os.path.join(path, 'ut'))
     return t, u, F
 
@@ -1004,7 +1004,7 @@ def test_field_probes(tmp_path):
     csx.AddProbe('Hp', p_type=3).AddBox([15, 0, 1], [15, 0, 1])
     path = str(tmp_path / 'fp')
     F.Run(path, cleanup=True, verbose=0, backend='numpy')
-    from gfdtd.fdtd import read_probe
+    from kicad2ems.gfdtd.fdtd import read_probe
     _, u = read_probe(os.path.join(path, 'ut'))
     head = open(os.path.join(path, 'Ep'), encoding='utf-8').read().splitlines()
     assert head[0].startswith('% time-domain E-field probe') and head[2].split()[1:] == ['t/s', 'Ex', 'Ey', 'Ez']
@@ -1031,7 +1031,7 @@ def test_exact_time_step(tmp_path, monkeypatch):
     Courant limit (to its 1 % tolerance); where the finest cells are inside metal (a board's, at its copper edges)
     their edges carry no field and it is longer than the vacuum rule of the smallest cells; kept for the next run."""
     monkeypatch.setenv('XDG_CACHE_HOME', str(tmp_path / 'cache'))
-    from gfdtd.operator import SAFETY
+    from kicad2ems.gfdtd.operator import SAFETY
     def model(lines, metal=False):
         F = openEMS(NrTS=100, EndCriteria=1e-9, TimeStepMethod=3)
         F.SetGaussExcite(5e9, 5e9)
@@ -1055,7 +1055,7 @@ def test_exact_time_step(tmp_path, monkeypatch):
     assert any("own limit" in n for n in op2.notes)
     ratio = float(next(n for n in op2.notes if 'own limit' in n).split(', ')[1].split(' x')[0])
     assert ratio > 1.15                                               # (1.22: the fine cells at its faces still count)
-    from gfdtd import operator as O
+    from kicad2ems.gfdtd import operator as O
     O._CORES.clear()                                                  # (the process's own cache: the disk's next)
     op3 = model(graded, metal=True)
     assert op3.dt == op2.dt and any('kept from an earlier run' in n for n in op3.notes)

@@ -2,7 +2,7 @@
 The board as drawn, for a front end to show before anything is run: every net's copper by layer, the outline, the
 stack and the footprints, with no ports asked for (a board for a rail's drop or a crosstalk question has none).
 
-    from kicad2ems.layout import board_layout, net_at, part_at
+    from kicad2ems.core.layout import board_layout, net_at, part_at
     lay = board_layout('board.kicad_pcb')               # Board.to_dict() of all the copper, plus 'footprints'
     net_at(lay, 'F.Cu', x, y)                           # the net whose copper is under a point (model mm), or None
     part_at(lay, 'F.Cu', x, y)                          # the footprint whose pads' box is under it, or None

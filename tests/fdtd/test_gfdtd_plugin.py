@@ -1,15 +1,15 @@
-"""gfdtd's connection (kicad2ems_fdtd.gfdtd): registered, its engine API, and the FDTD model built through
+"""gfdtd's connection (kicad2ems.fdtd.gfdtd): registered, its engine API, and the FDTD model built through
 gfdtd's API. Needs a kicad2ems checkout (conftest.py)."""
 import os
 
 import pytest
 
 gfdtd = pytest.importorskip('gfdtd')                                # the [gfdtd] extra
-from gfdtd.operator import build                                    # noqa: E402
+from kicad2ems.gfdtd.operator import build                                    # noqa: E402
 
 
 def test_plugin_registered():
-    from kicad2ems.solvers import registry, get
+    from kicad2ems.core.solvers import registry, get
     sv = registry()['gfdtd']
     assert get('gpu-fdtd') is sv and sv.in_auto and not sv.in_all
     assert sv.check()[0]                                              # numpy at worst
@@ -20,8 +20,8 @@ def test_plugin_registered():
 
 
 def test_engine_api_and_run_dir():
-    from kicad2ems_fdtd.engines import engine_api, engine_name
-    from kicad2ems_fdtd.run import run_dir
+    from kicad2ems.fdtd.engines import engine_api, engine_name
+    from kicad2ems.fdtd.run import run_dir
     assert engine_name(None) == ('openems', 'openEMS') and engine_name('gfdtd:cupy') == ('gfdtd', 'gfdtd')
     with pytest.raises(ValueError, match='unknown FDTD engine'):
         engine_api('hfss')
@@ -39,12 +39,12 @@ def test_engine_api_and_run_dir():
 
 def test_build_fdtd_builds_the_board_on_gfdtd(demo_files):
     """kicad2ems's openEMS model, built through gfdtd's API, lowers to an operator: ports, copper, vias."""
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.board import Board
-    from kicad2ems_fdtd.boundaries import resolve_bc
-    from kicad2ems_fdtd.model import build_fdtd
-    from kicad2ems_fdtd.engines import engine_api
-    from kicad2ems_fdtd.mesh import auto_mesh
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.model import build_fdtd
+    from kicad2ems.fdtd.engines import engine_api
+    from kicad2ems.fdtd.mesh import auto_mesh
     base, _ = demo_files
     m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
     bc = resolve_bc('auto', m)
@@ -59,8 +59,8 @@ def test_build_fdtd_builds_the_board_on_gfdtd(demo_files):
 def test_engine_api_version(monkeypatch):
     """The connection checks gfdtd's API_VERSION: the same major and at least the minor it was written for; else
     the solver is not usable (kicad2ems --check says which package to update) and the engine refuses to build."""
-    from kicad2ems_fdtd import gfdtd as conn
-    from kicad2ems_fdtd.engines import engine_api
+    from kicad2ems.fdtd import gfdtd as conn
+    from kicad2ems.fdtd.engines import engine_api
     assert conn.engine_compatible() is None and conn.GFDTD().check()[0]
     monkeypatch.setattr(gfdtd, 'API_VERSION', (conn.ENGINE_API[0], conn.ENGINE_API[1] + 1), raising=False)
     assert conn.engine_compatible() is None                         # a newer minor: only additions
@@ -80,14 +80,14 @@ def test_sigma_follows_the_engine_api(monkeypatch, demo_files):
     """--sigma: conducting sheets on gfdtd from engine API 1.1 (lossy there), and auto keeps gfdtd for such runs;
     on an older gfdtd its copper stays PEC and auto gives --sigma runs to openEMS."""
     from types import SimpleNamespace
-    from kicad2ems.api.solver import AUTO
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.board import Board
-    from kicad2ems_fdtd import gfdtd as conn
-    from kicad2ems_fdtd.boundaries import resolve_bc
-    from kicad2ems_fdtd.model import build_fdtd
-    from kicad2ems_fdtd.engines import engine_api
-    from kicad2ems_fdtd.mesh import auto_mesh
+    from kicad2ems.core.api.solver import AUTO
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
+    from kicad2ems.fdtd import gfdtd as conn
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.model import build_fdtd
+    from kicad2ems.fdtd.engines import engine_api
+    from kicad2ems.fdtd.mesh import auto_mesh
     run = SimpleNamespace(plan=[AUTO], s=SimpleNamespace(sigma=5.8e7, converge=None))
     monkeypatch.setattr(gfdtd, 'API_VERSION', conn.LOSS_API)
     sv = conn.GFDTD()
@@ -108,15 +108,15 @@ def test_rough_copper_by_engine(monkeypatch, demo_files):
     """--rough: gfdtd from engine API 1.2 gets it in its sheets (Hammerstad over the band); openEMS, and an older
     gfdtd, the conductivity at the band centre (band_sigma)."""
     from types import SimpleNamespace
-    from kicad2ems.api.solver import band_sigma
-    from kicad2ems.solvers import registry
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.board import Board
-    from kicad2ems_fdtd import gfdtd as conn
-    from kicad2ems_fdtd.boundaries import resolve_bc
-    from kicad2ems_fdtd.model import build_fdtd
-    from kicad2ems_fdtd.engines import engine_api
-    from kicad2ems_fdtd.mesh import auto_mesh
+    from kicad2ems.core.api.solver import band_sigma
+    from kicad2ems.core.solvers import registry
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
+    from kicad2ems.fdtd import gfdtd as conn
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.model import build_fdtd
+    from kicad2ems.fdtd.engines import engine_api
+    from kicad2ems.fdtd.mesh import auto_mesh
     s = SimpleNamespace(sigma=5.8e7, rough=1.0)
     run = SimpleNamespace(s=s, fmin=1e9, fmax=9e9)
     centre = band_sigma(s, 1e9, 9e9)
@@ -142,14 +142,14 @@ def test_finished_copper_by_engine(monkeypatch, demo_files):
     finished; sheets: weighted by the strip's share) and marks thick copper's sheets as faces; openEMS the
     conductivity of the same loss at the band centre."""
     from types import SimpleNamespace
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.board import Board
-    from kicad2ems.solvers import registry
-    from kicad2ems_fdtd import gfdtd as conn
-    from kicad2ems_fdtd.boundaries import resolve_bc
-    from kicad2ems_fdtd.model import build_fdtd
-    from kicad2ems_fdtd.engines import engine_api
-    from kicad2ems_fdtd.mesh import auto_mesh
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.solvers import registry
+    from kicad2ems.fdtd import gfdtd as conn
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.model import build_fdtd
+    from kicad2ems.fdtd.engines import engine_api
+    from kicad2ems.fdtd.mesh import auto_mesh
     base, _ = demo_files
     m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
     s = SimpleNamespace(sigma=5.8e7, rough=None, finish='enig', mask=False)
@@ -179,9 +179,9 @@ def test_gfdtd_runs_the_mesh_convergence_check():
     """--converge is the FDTD layer's: gfdtd has its options and levels, and auto no longer hands such runs to
     openEMS (its code was the openEMS subclass's, so gfdtd said 'not supported yet - ignored')."""
     from types import SimpleNamespace
-    from kicad2ems.api.solver import AUTO
-    from kicad2ems_fdtd import gfdtd as conn
-    from kicad2ems_fdtd.openems.plugin import OpenEMS
+    from kicad2ems.core.api.solver import AUTO
+    from kicad2ems.fdtd import gfdtd as conn
+    from kicad2ems.fdtd.openems.plugin import OpenEMS
     sv = conn.GFDTD()
     assert {'converge', 'converge_tol'} <= {o.key for o in sv.options} and {o.key for o in OpenEMS().options} >= {'converge'}
     s = SimpleNamespace(converge=[1.0, 1.5], antenna=False, sigma=None)
@@ -192,8 +192,8 @@ def test_gfdtd_runs_the_mesh_convergence_check():
 def test_the_excitations_go_out_to_the_gpus_named(monkeypatch):
     """R-D9: --gfdtd-gpus all or indices, a process each (threads ran each GPU at a fifth of its speed); fewer than
     two usable, or not asked: None (one GPU); at most a GPU an excitation."""
-    import gfdtd.engine as E
-    from kicad2ems_fdtd import gfdtd as G
+    import kicad2ems.gfdtd.engine as E
+    from kicad2ems.fdtd import gfdtd as G
     monkeypatch.setattr(E, 'vulkan_gpus', lambda: [(0, 'RX'), (1, 'GTX'), (2, 'Arc')])
     assert G.gpu_slots('', 4) is None and G.gpu_slots('all', 4) == [0, 1, 2] and G.gpu_slots('all', 2) == [0, 1]
     assert G.gpu_slots('1,0', 4) == [1, 0] and G.gpu_slots('1', 4) is None and G.gpu_slots('all', 1) is None
@@ -215,7 +215,7 @@ def test_the_excitations_go_out_to_the_gpus_named(monkeypatch):
 def test_the_runs_shared_by_each_gpu_s_speed(tmp_path, monkeypatch):
     """R-D9: each run to the GPU that would finish it first, by the speeds measured before (kept by GPU name): a GPU
     4.7 times slower gets none of two runs and one of six; GPUs never measured share alike."""
-    from kicad2ems_fdtd import gfdtd as conn
+    from kicad2ems.fdtd import gfdtd as conn
     fast, slow = 9300.0, 1970.0
     assert conn.share([0, 1], 2, {0: fast, 1: slow}) == {0: [0, 1], 1: []}
     got = conn.share([0, 1], 6, {0: fast, 1: slow})
@@ -223,7 +223,7 @@ def test_the_runs_shared_by_each_gpu_s_speed(tmp_path, monkeypatch):
     assert conn.share([0, 1], 4, {0: None, 1: None}) == {0: [0, 2], 1: [1, 3]}
     assert conn.share([0, 1], 2, {0: fast, 1: None}) == {0: [0], 1: [1]}          # (the new one measured)
     monkeypatch.setenv('XDG_CACHE_HOME', str(tmp_path))
-    monkeypatch.setattr('gfdtd.engine.vulkan_gpus', lambda: [(0, 'Fast GPU'), (1, 'Slow GPU')])
+    monkeypatch.setattr('kicad2ems.gfdtd.engine.vulkan_gpus', lambda: [(0, 'Fast GPU'), (1, 'Slow GPU')])
     assert conn.gpu_speeds([0, 1]) == {0: None, 1: None}
     conn.record_speed(1, 2000.0)
     conn.record_speed(1, 1940.0)

@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QComboBox, QCheckBox, QLabe
                                QGraphicsPathItem, QToolTip, QSizePolicy)
 import pyqtgraph as pg
 from . import theme
-from kicad2ems.api.frontend import overlay as ov
+from kicad2ems.core.api.frontend import overlay as ov
 from .panels import FlowLayout
 from . import meshpick as mp
 
@@ -121,7 +121,7 @@ class PlanView(QWidget):
     def load(self, out_dir, lines=None):
         """A results folder's board (<name>_board.json), meshes and line model; False when there is no board."""
         import glob
-        from kicad2ems.api.frontend import meshes
+        from kicad2ems.core.api.frontend import meshes
         boards = sorted(glob.glob(os.path.join(out_dir, '*_board.json')), key=os.path.getmtime) if out_dir else []
         try:
             with open(boards[-1], encoding='utf-8') as fh:
@@ -133,7 +133,7 @@ class PlanView(QWidget):
     def set_board(self, board, lines=None, found_meshes=None, fit=True):
         """A board (Board.to_dict(), model mm) and its line model's drawing, without a results folder (the KiCad
         plugin's live board); False when there is no board."""
-        from kicad2ems.api.frontend import meshes
+        from kicad2ems.core.api.frontend import meshes
         from . import volume3d as v3
         if self._behind is not None and not (board or {}).get('layout_of'):
             self._behind = (board, lines, found_meshes)             # a pick is on the board as drawn: this after it
@@ -170,7 +170,7 @@ class PlanView(QWidget):
 
     def _solved_state(self):
         """The "solved" tick box: usable where a run of the solver picked wrote the mesh it solved on."""
-        from kicad2ems.api.frontend import meshes
+        from kicad2ems.core.api.frontend import meshes
         solver = self.mesh.currentData()
         self.solved.setEnabled(mp.solved(self.meshes, solver) is not None)
         self.solved.setToolTip(mp.tip(self.meshes, solver, meshes.counts))
@@ -263,7 +263,7 @@ class PlanView(QWidget):
             t.setPos(*p['c'])
             t.setZValue(30)
             add(t)
-        # the footprints of a board as drawn (kicad2ems.layout), outlined and named; what a setting has picked,
+        # the footprints of a board as drawn (kicad2ems.core.layout), outlined and named; what a setting has picked,
         # marked blue: a net's copper on this layer, a part's box
         for fp in self.board.get('footprints', []):
             if fp['layer'] != lay and not fp.get('through'):
@@ -340,7 +340,7 @@ class PlanView(QWidget):
         """(the net, the part) under a point of the scene on the layer shown, each None where there is none."""
         if not self.board or not self.plot.sceneBoundingRect().contains(scene_pos):
             return None, None
-        from kicad2ems.api.frontend import net_at, part_at
+        from kicad2ems.core.api.frontend import net_at, part_at
         p = self.plot.getPlotItem().vb.mapSceneToView(scene_pos)
         lay = self.current_layer()
         try:
@@ -361,7 +361,7 @@ class PlanView(QWidget):
 
     def start_pick(self, kind, callback, picked=(), layout=None):
         """Clicks name a net ('net', 'nets') or a part ('part', 'parts') to callback(name) until end_pick();
-        picked: the names already chosen, drawn marked. layout: the board as drawn (kicad2ems.layout), shown for
+        picked: the names already chosen, drawn marked. layout: the board as drawn (kicad2ems.core.layout), shown for
         the pick in place of a run's board (which has only the nets it simulated, and no parts) and put back
         after."""
         what = {'net': 'a trace or a pour: its net', 'nets': 'traces: their nets (again: taken out)',

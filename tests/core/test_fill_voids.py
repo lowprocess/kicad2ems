@@ -4,8 +4,8 @@ option."""
 import json
 import pytest
 from shapely.geometry import Point, Polygon, box
-from kicad2ems.board import Board
-from kicad2ems.importers import Imported
+from kicad2ems.core.board import Board
+from kicad2ems.core.importers import Imported
 
 MM = 1e-3
 ANTIPAD, ANTIPAD_VIA = Point(5, 10).buffer(0.6), Point(25, 15).buffer(0.6)
@@ -93,7 +93,7 @@ def test_a_clearance_that_crosses_the_region_s_edge_is_still_a_void():
 
 
 def test_it_is_kept_with_the_board_and_is_an_option(tmp_path):
-    from kicad2ems.config import build_settings, ConfigError
+    from kicad2ems.core.config import build_settings, ConfigError
     b = build('far')
     again = Board.from_dict(json.loads(json.dumps(b.to_dict(), default=list)), log=lambda *a: None)
     assert again.filled == b.filled and again.request['fill_voids'] == 'far'

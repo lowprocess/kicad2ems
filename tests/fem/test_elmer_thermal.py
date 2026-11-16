@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping
 
-from kicad2ems_fem.elmer import layered, run as elmer, thermal
+from kicad2ems.fem.elmer import layered, run as elmer, thermal
 
 needs_elmer = pytest.mark.skipif(not elmer.found()[0], reason=elmer.found()[1] or 'no Elmer')
 

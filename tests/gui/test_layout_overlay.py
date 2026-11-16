@@ -5,8 +5,8 @@ import pytest
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QPointF
-from kicad2ems_gui.layoutscene import layout_items
-from kicad2ems_gui.volume3d import component_solids
+from kicad2ems.gui.layoutscene import layout_items
+from kicad2ems.gui.volume3d import component_solids
 
 
 def test_overlay_preserves_holes_and_reflects_kicad_y():

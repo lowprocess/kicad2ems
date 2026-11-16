@@ -21,7 +21,7 @@ S-parameters) and, per port, the path to the other ports as an ordered list of s
 report. It reads the board's primitives (board.Board.prims: tracks, pads, zones, vias). Units: mm, Ohm;
 model coordinates (y up).
 
-The model lives in four modules, re-exported here (kicad2ems.lines.tlines is what other packages import):
+The model lives in four modules, re-exported here (kicad2ems.core.lines.tlines is what other packages import):
 
   formulas      the closed-form cross-section formulas above (no board)
   reference     the reference copper of a trace and the cross-section it gives (classify)

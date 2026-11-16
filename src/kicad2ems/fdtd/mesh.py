@@ -10,7 +10,7 @@ Automatic rectilinear mesh for openEMS.
           of each copper layer, the stack moved up to make room (thick.py)
 """
 import numpy as np
-from kicad2ems.api.solver import C0
+from kicad2ems.core.api.solver import C0
 from .boundaries import SIDES, bottom_is_plane
 
 

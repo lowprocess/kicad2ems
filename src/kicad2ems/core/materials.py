@@ -62,7 +62,7 @@ M1, M2 = 3.0, 12.0          # the Djordjevic-Sarkar curve's corners, 10^M1 .. 10
 def djordjevic_sarkar(er, tand, fref, f):
     """Complex relative permittivity (eps' - j eps'', e^(+j w t)) at f (Hz) of the wideband Debye model through
     er (1 - j tand) at fref: eps_inf + d_eps / (M2 - M1) log10((w2 + j w) / (w1 + j w)), w1,2 = 2 pi 10^(M1,2)
-    (the FDTD layer's kicad2ems_fdtd.dielectric and mom25d.multilayer have the same)."""
+    (the FDTD layer's kicad2ems.fdtd.dielectric and mom25d.multilayer have the same)."""
     def k(x):
         w = 2 * np.pi * np.asarray(x, float)
         return np.log10((2 * np.pi * 10 ** M2 + 1j * w) / (2 * np.pi * 10 ** M1 + 1j * w)) / (M2 - M1)

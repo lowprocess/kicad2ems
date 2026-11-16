@@ -8,9 +8,9 @@ run is `python -m kicad2ems` in a process of its own, and a solver not installed
 import math, os, subprocess, sys
 import numpy as np
 import pytest
-from kicad2ems.touchstone import read_touchstone
+from kicad2ems.core.touchstone import read_touchstone
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'examples'))
 from make_demo_board import THRU                                    # noqa: E402
 
@@ -43,7 +43,7 @@ def thru(tmp_path_factory):
 
 def installed(solver):
     """(usable, what) of a real solver, asked of a kicad2ems in a process of its own (this one has the stand-ins)."""
-    code = ("from kicad2ems.solvers import registry, missing; r = registry(); n = %r\n"
+    code = ("from kicad2ems.core.solvers import registry, missing; r = registry(); n = %r\n"
             "print('ok' if n in r and r[n].check()[0] else (r[n].check()[1] if n in r else missing(n)))" % solver)
     p = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
     out = p.stdout.strip().splitlines()[-1] if p.stdout.strip() else p.stderr.strip()[-200:]

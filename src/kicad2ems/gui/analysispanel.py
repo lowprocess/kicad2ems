@@ -1,5 +1,5 @@
 """
-An analysis's settings and its run, for any analysis kicad2ems's registry holds (kicad2ems.api.frontend.analyses:
+An analysis's settings and its run, for any analysis kicad2ems's registry holds (kicad2ems.core.api.frontend.analyses:
 pcbqs's power integrity, near field and thermal): the form made from its options, in sections by their groups; its
 command started as a child process; its output followed (the Run page shows the log, the status line its progress).
 
@@ -576,8 +576,8 @@ class AnalysisPanel(QWidget):
             self.status.setText((f"{self._label(vals) or self.a.several}: " if self._count > 1 else '') + str(e))
             return False
         self.out, self._preview, self._vals = os.path.abspath(out), preview, vals
-        from kicad2ems.api.frontend import mark_run
-        from kicad2ems.study import provided
+        from kicad2ems.core.api.frontend import mark_run
+        from kicad2ems.core.study import provided
         mark_run(self.out, self.a.name, asked or provided(self.a), preview)     # whose run this folder is
         self.say('$ ' + ' '.join(['python', *argv[1:]] if os.path.basename(argv[0]).startswith('python') else argv))
         self._running(True)
@@ -635,7 +635,7 @@ class AnalysisPanel(QWidget):
             self.proc.deleteLater()
             self.proc = None
         self._running(False)
-        from kicad2ems.api.frontend import analysis_of
+        from kicad2ems.core.api.frontend import analysis_of
         made = analysis_of(self.out) if code == 0 else None
         if made is None or made[0] != self.a.name:
             lines = [l for l in self.log.toPlainText().splitlines() if l.strip()]

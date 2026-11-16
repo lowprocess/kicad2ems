@@ -1,8 +1,8 @@
-"""Where the external programs are (kicad2ems.sitecfg): the user's file (the GUI's Solvers and hardware window)
+"""Where the external programs are (kicad2ems.core.sitecfg): the user's file (the GUI's Solvers and hardware window)
 wins over the environment's (install.py's kicad2ems-site.toml), and qucsator and openEMS's venv are taken from
 them when nothing else names them."""
 import json
-from kicad2ems import sitecfg
+from kicad2ems.core import sitecfg
 
 
 def test_site_files(tmp_path, monkeypatch):
@@ -16,7 +16,7 @@ def test_site_files(tmp_path, monkeypatch):
     monkeypatch.setattr(sitecfg, '_cache', None)
     assert sitecfg.get('qucsator') == str(exe) and sitecfg.get('openems_venv') == '/opt/openems/venv'
     assert sitecfg.get('nothing') is None
-    from kicad2ems.solvers.lines.fastsolve import find_qucsator
+    from kicad2ems.core.solvers.lines.fastsolve import find_qucsator
     assert find_qucsator() == str(exe)                              # the recorded one, before the PATH
     monkeypatch.setattr(sitecfg, '_cache', None)
 

@@ -8,7 +8,7 @@ import sys
 import numpy as np
 import pytest
 
-from kicad2ems_fem.palace import pdn as P
+from kicad2ems.fem.palace import pdn as P
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BUCK = os.path.join(ROOT, 'pcbqs', 'src', 'pcbqs', 'circuit', 'examples', '04_buck.kicad_pcb')
@@ -35,7 +35,7 @@ def test_closing_ports_is_the_networks_own_reduction():
 def test_each_part_s_port_is_its_own_copper_gap():
     """On the buck's output rail (its pads in pours, the out and GND pours 0.4 mm apart on F.Cu): C2's and J2's
     ports span that gap at their own pads; L1's would lie on C2's: left out."""
-    from kicad2ems.importers import open_board
+    from kicad2ems.core.importers import open_board
     from shapely.ops import unary_union
     raw = open_board(BUCK)
     gcu = {}
@@ -51,14 +51,14 @@ def test_each_part_s_port_is_its_own_copper_gap():
 
 
 @need_buck
-@pytest.mark.skipif(__import__('kicad2ems_fem.palace.run', fromlist=['launcher']).launcher() is None,
+@pytest.mark.skipif(__import__('kicad2ems.fem.palace.run', fromlist=['launcher']).launcher() is None,
                     reason='Palace not found')
 def test_the_buck_rail_in_palace(tmp_path):
     """The buck's output rail: pcbqs's PDN run, then Palace's; each load's |Z| and the bare matrix against pcbqs's
     (the 3D model has the ground pour beside the rail on F.Cu, which pcbqs's plane pair does not: it reads more
     capacitance and less inductance, steadily over the band)."""
     run = tmp_path / 'pdn'
-    subprocess.check_call([sys.executable, '-m', 'pcbqs.pdn', BUCK, '--rail', 'out', '--volts', '5', '--load', 'J2=1',
+    subprocess.check_call([sys.executable, '-m', 'kicad2ems.pcbqs.pdn', BUCK, '--rail', 'out', '--volts', '5', '--load', 'J2=1',
                            '--points', '20', '--ports-touchstone', '--out', str(run)], stdout=subprocess.DEVNULL)
     r = P.solve(str(run), str(tmp_path / 'palace'), fmin=1e7, fmax=3e8, points=4, log=lambda *a: None)
     assert set(r['ports']) == {'C2', 'J2'} and r['left_out'] == ['L1']
@@ -66,4 +66,4 @@ def test_the_buck_rail_in_palace(tmp_path):
     assert np.all((ratio > 0.3) & (ratio < 1.0)) and np.ptp(ratio) < 0.15
     bare = np.asarray(r['bare_vs_pcbqs']['J2'])
     assert np.all((bare > 0.5) & (bare < 0.9))
-    assert json.loads((tmp_path / 'palace' / 'pdn_palace.json').read_text())['tool'] == 'kicad2ems_fem.palace.pdn'
+    assert json.loads((tmp_path / 'palace' / 'pdn_palace.json').read_text())['tool'] == 'kicad2ems.fem.palace.pdn'

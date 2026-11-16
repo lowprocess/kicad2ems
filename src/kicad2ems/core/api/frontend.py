@@ -2,7 +2,7 @@
 The API of a program that drives kicad2ems: reads a board, shows its line model, starts runs and reads their
 results (the GUI, the KiCad plugin, dfsynth's --validate).
 
-    from kicad2ems.api.frontend import KiCadBoard, Board, build_lines, Run, registry
+    from kicad2ems.core.api.frontend import KiCadBoard, Board, build_lines, Run, registry
 
   boards              KiCadBoard (a .kicad_pcb, or KiCad's board text), Board (the canonical model), kind_value
                       (a footprint's lumped part), extra_port_fps (the footprints a region adds as ports)
@@ -15,7 +15,7 @@ results (the GUI, the KiCad plugin, dfsynth's --validate).
   settings            Settings, build_settings, read_toml, all_options, default_out, PATH_KEYS, sitecfg (the
                       module: the user's settings file), G_DUMP (the field-dump settings group)
   solvers             registry, get_solver, resolve_lines, AUTO, LINES
-  analyses            analyses ({name: Analysis}: the analysis plugins installed, kicad2ems.analyses), analysis_of
+  analyses            analyses ({name: Analysis}: the analysis plugins installed, kicad2ems.core.analyses), analysis_of
                       (whose result a folder holds), read_analyses (a config's [analysis] tables) (2.5),
                       read_analysis_sets (every table of each: an analysis given several, a run each) (2.10)
   the study           study_tree (what to list: by group, each question with the engines that answer it),
@@ -30,7 +30,7 @@ results (the GUI, the KiCad plugin, dfsynth's --validate).
                       (a folder each under the output folder): run_dir, preview_dir, tool_dir, tool_preview_dir,
                       board_name (2.7)
   files it writes     read_summary (<name>_run.json), read_antenna (<name>_antenna.json), check_format (a JSON of
-                      kicad2ems's, e.g. python -m kicad2ems.sysinfo's: None, or why this kicad2ems cannot read it)
+                      kicad2ems's, e.g. python -m kicad2ems.core.sysinfo's: None, or why this kicad2ems cannot read it)
   results             read_touchstone, port_names (a kicad2ems Touchstone file's port names); meshes (the module: the solvers' saved meshes); phased (the module: drives,
                       grids, tapers); frames (the module: field frames), find_dumps, write_frames; read_sphere,
                       sphere_cuts, sphere_gain (far fields)
@@ -50,8 +50,8 @@ NAMES = dict(
     Settings='.config:Settings', build_settings='.config:build_settings', read_toml='.config:read_toml',
     all_options='.config:all_options', default_out='.config:default_out', PATH_KEYS='.config:PATH_KEYS',
     sitecfg='.sitecfg', G_DUMP='.fields.dumps:G_DUMP',
-    examples='.examples:examples', prepare_example='.examples:prepare_example', examples_folder='.examples:user_folder',
-    example_index='.examples:index',
+    examples='kicad2ems.examples:examples', prepare_example='kicad2ems.examples:prepare_example', examples_folder='kicad2ems.examples:user_folder',
+    example_index='kicad2ems.examples:index',
     analyses='.analyses:registry', analysis_of='.analyses:analysis_of', read_analyses='.analyses:read_config',
     read_analysis_sets='.analyses:read_sets',
     study_tree='.study:study_tree', questions='.study:questions', engines='.study:engines', runs_for='.study:runs_for',
@@ -70,7 +70,7 @@ NAMES = dict(
     find_dumps='.fields.frames:find_dumps', write_frames='.fields.frames:write_frames',
     read_sphere='.fields.antenna:read_sphere', sphere_cuts='.fields.antenna:sphere_cuts',
     sphere_gain='.fields.antenna:sphere_gain',
-    core_threads='emsdev.cpu:core_threads',
+    core_threads='kicad2ems.emsdev.cpu:core_threads',
 )
 __all__ = ['API_VERSION', *NAMES]
 __getattr__, __dir__ = lazy(__name__, NAMES)

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QComboBox, QPushButton, QLa
 import pyqtgraph as pg
 from . import theme
 from .panels import FlowLayout
-from kicad2ems.api.frontend import frames as F
+from kicad2ems.core.api.frontend import frames as F
 
 COMPONENTS = [('|F|', 'mag'), ('x', 'x'), ('y', 'y'), ('z', 'z')]
 

@@ -1,9 +1,9 @@
-"""The study (kicad2ems.study): the questions, the engines that answer them (solvers and analyses alike), the tree
+"""The study (kicad2ems.core.study): the questions, the engines that answer them (solvers and analyses alike), the tree
 a front end lists, the runs a set of questions takes, and a run folder's mark."""
 import os
 import pytest
-from kicad2ems import analyses, study
-from kicad2ems.api.analysis import Analysis, Question
+from kicad2ems.core import analyses, study
+from kicad2ems.core.api.analysis import Analysis, Question
 
 
 class Drop(Analysis):
@@ -134,7 +134,7 @@ def test_a_run_folder_says_whose_it_is(plugins, tmp_path):
 
 
 def test_check_lists_the_questions(plugins):
-    from kicad2ems.cli import check_report
+    from kicad2ems.core.cli import check_report
     plugins(Drop, Warm)
     _, lines = check_report()
     i = lines.index('questions, and the engines that answer them:')
@@ -283,7 +283,7 @@ def test_the_study_command_runs_them(plugins, tmp_path, capsys, demo_files):
     """kicad2ems study: each run into a folder of its own with its mark, an analysis's settings from its table, one
     that starts from another's result given it, one that fails or cannot start not stopping the rest."""
     import json
-    from kicad2ems.cli import main
+    from kicad2ems.core.cli import main
     plugins(Drop, Circuit, Heat, Heat3D)
     base, _ = demo_files
     out = tmp_path / 'runs'
@@ -367,8 +367,8 @@ def test_an_analysis_given_several_tables_is_a_run_for_each(plugins, tmp_path, c
     one that fails or cannot start does not stop the others, and the study says which."""
     import json
     import re
-    from kicad2ems.cli import main
-    from kicad2ems.api import frontend
+    from kicad2ems.core.cli import main
+    from kicad2ems.core.api import frontend
     plugins(Rails, Circuit)
     assert analyses.registry()['pdn'].several == 'rail' and analyses.registry()['circuit'].several == ''
     out = tmp_path / 'runs'
@@ -458,9 +458,9 @@ def test_what_a_run_still_needs_and_what_is_shown_first(plugins, tmp_path, demo_
     """API 2.9. rf_needs: what an S-parameter run of a form's values lacks, with the setting it is set by (cheap:
     the board's footprints, no model). An analysis's missing(): what its command raises, unless what it uses is
     to come in the same run. An option's level: kicad2ems's few, and those a solver names in `basic`."""
-    from kicad2ems.study import rf_needs
-    from kicad2ems.config import all_options, CORE
-    from kicad2ems.analyses import Analysis
+    from kicad2ems.core.study import rf_needs
+    from kicad2ems.core.config import all_options, CORE
+    from kicad2ems.core.analyses import Analysis
     assert rf_needs({}) == [dict(text='choose the board', key='board')]
     assert rf_needs(dict(board=str(tmp_path / 'no.kicad_pcb'))) == [dict(text='the board is not there: no.kicad_pcb', key='board')]
     board = demo_files[0] + '.kicad_pcb'
@@ -493,7 +493,7 @@ def test_what_a_run_still_needs_and_what_is_shown_first(plugins, tmp_path, demo_
     assert Heat().missing({}, None)[0]['text'].startswith('give the losses')
     assert Heat().missing({}, None, dict(circuit=None)) == []                    # asked with it: to come
     assert Heat().missing({}, None, dict(circuit='out/c')) == [] and Rail().missing({}, None, dict(circuit=None)) != []
-    from kicad2ems.solvers import registry
+    from kicad2ems.core.solvers import registry
     basic = {o.key for _, o in all_options() if o.level == 'basic'}
     assert {o.key for o in CORE if o.level == 'basic'} == {'board', 'ports', 'fmin', 'fmax', 'points'}
     for sv in registry().values():                              # a solver's own: those it names

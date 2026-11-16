@@ -1,8 +1,8 @@
 """Settings (defaults <- TOML <- command line), clean errors and end-to-end previews (in process)."""
 import os
 import pytest
-from kicad2ems.cli import settings_from_argv
-from kicad2ems.config import build_settings, ConfigError, Settings
+from kicad2ems.core.cli import settings_from_argv
+from kicad2ems.core.config import build_settings, ConfigError, Settings
 
 
 def test_toml_config(tmp_path):
@@ -23,9 +23,9 @@ def test_shortened_options_beat_the_toml(tmp_path):
 
 def test_a_numeric_option_with_choices_takes_a_number():
     """An int option with choices (Palace's --palace-abc 1|2) had its choices checked against the typed string."""
-    from kicad2ems.cli import parser
-    from kicad2ems.options import Option
-    import kicad2ems.cli as cli
+    from kicad2ems.core.cli import parser
+    from kicad2ems.core.options import Option
+    import kicad2ems.core.cli as cli
     o = Option('t_order', 1, 'an order', int, choices=(1, 2), group='output')
     real = cli.all_options
     cli.all_options = lambda: real() + [('test', o)]
@@ -156,8 +156,8 @@ def test_config_mistakes_are_said(tmp_path, run_cli):
     conductivity is refused, and a study question's unknown key is an error ('engines' for 'engine' had run the
     default engine); the config's notes are in the run's log, where the window and a study's runs read them."""
     import shutil
-    from kicad2ems.config import build_settings, ConfigError
-    from kicad2ems.study import read_config
+    from kicad2ems.core.config import build_settings, ConfigError
+    from kicad2ems.core.study import read_config
     from k2e_fixtures import ROOT
     board = os.path.join(ROOT, 'examples', 'rf_interdig.kicad_pcb')
     cfg = tmp_path / 'c.toml'

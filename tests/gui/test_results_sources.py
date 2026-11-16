@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 import fake_analyses as FA
-from kicad2ems_gui import curves, runfolders
+from kicad2ems.gui import curves, runfolders
 
 _pdn = lambda folder, scale=1.0, rail='P': FA.write('pdn', folder, rail=rail, scale=scale)
 _mqs = lambda folder: FA.write('mqs', folder, converter='U3')
@@ -65,8 +65,8 @@ def window(tmp_path, monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     from PySide6.QtCore import QSettings
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
     app = application()
     QSettings('kicad2ems', 'gui').clear()
     w = MainWindow()

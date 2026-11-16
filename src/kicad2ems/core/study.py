@@ -4,12 +4,12 @@ A study: what can be asked of a board, and the programs that answer.
 A *question* is something to find out with a known kind of answer: the ports' S-parameters, an antenna's pattern,
 every trace's impedance, a rail's DC drop, its impedance, a converter's near field, a circuit on the copper, the
 capacitance between nets, the board's temperature. An *engine* is a program that answers one or more of them: the
-S-parameter solvers (kicad2ems.solvers: openEMS, gfdtd, mom25d, the line model ...) and the analysis plugins
-(kicad2ems.analyses: pcbqs's tools, kicad2ems-fem's Elmer and Palace tools). Several engines may answer one
+S-parameter solvers (kicad2ems.core.solvers: openEMS, gfdtd, mom25d, the line model ...) and the analysis plugins
+(kicad2ems.core.analyses: pcbqs's tools, kicad2ems-fem's Elmer and Palace tools). Several engines may answer one
 question (the temperature by pcbqs or by Elmer), and one engine several questions from one run (a rail's drop and
 its impedance).
 
-    from kicad2ems.study import study_tree, engines, questions
+    from kicad2ems.core.study import study_tree, engines, questions
     for g in study_tree():                      # what a front end lists: by group, each question with its engines
         for row in g['questions']:
             row['question'].label, [e.label for e in row['engines']], row['missing']
@@ -85,7 +85,7 @@ class Engine:
     """A program that answers questions, as a front end lists it: a solver plugin or an analysis plugin."""
     name: str               # its registry name: 'mom25d', 'pdn', 'elmer_thermal' (its config table too)
     label: str              # as a list shows it beside a question: 'mom25d (MoM)', 'pcbqs', 'Elmer'
-    kind: str               # 'solver' (kicad2ems.solvers: run together, as one kicad2ems run) or 'analysis'
+    kind: str               # 'solver' (kicad2ems.core.solvers: run together, as one kicad2ems run) or 'analysis'
     provides: tuple         # the questions it answers
     plugin: object = field(compare=False, repr=False)       # the Solver or the Analysis
     fields: str = ''        # the setting that makes it write field dumps too ('' it cannot, or always does)

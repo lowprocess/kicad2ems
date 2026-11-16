@@ -17,7 +17,7 @@ import time
 
 import numpy as np
 
-from kicad2ems.api.solver import Option, Solver, Result, Deviation
+from kicad2ems.core.api.solver import Option, Solver, Result, Deviation
 
 G = 'palace'
 ANTENNA_MARGIN = 0.5            # antenna mode's air around the board, wavelengths at the band centre
@@ -189,7 +189,7 @@ class Palace(Solver):
 
     def solve(self, run, prep):
         import json
-        from kicad2ems.api.solver import mixed_mode
+        from kicad2ems.core.api.solver import mixed_mode
         from . import config, run as prun
         s, work, mdl = run.s, prep['work'], prep['model']
         box = getattr(s, 'palace_box', None) or 'absorbing'
@@ -232,7 +232,7 @@ class Palace(Solver):
         cap = int(getattr(s, 'palace_amr_max', 0) or 0)
         if not cap:
             try:
-                from emsdev.memory import available
+                from kicad2ems.emsdev.memory import available
                 gb = available() / 1e9
                 cap = max(int((0.7 * gb - self.GB0) / self.GB_PER_KUNKNOWN * 1e3), 10000)
                 run.log(f"palace: mesh refinement up to {cap:,} unknowns ({gb:.0f} GB available)")
@@ -280,7 +280,7 @@ class Palace(Solver):
         Palace run at frequencies over the band and the pattern frequency, written as the other solvers' antenna
         results (the JSON, the sphere, the plots and the report section)."""
         import json
-        from kicad2ems.api.solver import match_summary, describe_antenna, save_antenna, plot_antenna, plot_pattern
+        from kicad2ems.core.api.solver import match_summary, describe_antenna, save_antenna, plot_antenna, plot_pattern
         from . import antenna, config, run as prun
         s, m, work, mdl = run.s, run.m, prep['work'], prep['model']
         names = [p.name for p in m.ports]

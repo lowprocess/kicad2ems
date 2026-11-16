@@ -1,7 +1,7 @@
-"""kicad2ems.meshes: a surface mesh's `hidden` edges (the diagonals of quad cells) are not drawn."""
+"""kicad2ems.core.meshes: a surface mesh's `hidden` edges (the diagonals of quad cells) are not drawn."""
 import numpy as np
 from types import SimpleNamespace
-from kicad2ems import meshes
+from kicad2ems.core import meshes
 
 
 def test_hidden_edges_are_left_out(tmp_path):

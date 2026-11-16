@@ -7,4 +7,4 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from k2e_fixtures import *                                          # noqa: E402,F401,F403
 import standins                                                     # noqa: E402
 
-standins.install()                                                  # before kicad2ems.config is imported
+standins.install()                                                  # before kicad2ems.core.config is imported

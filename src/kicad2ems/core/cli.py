@@ -110,7 +110,7 @@ def check_report():
     from .study import check_lines as question_lines
     lines += ['questions, and the engines that answer them:'] + question_lines()
     try:
-        gui = importlib.import_module('kicad2ems_gui')
+        gui = importlib.import_module('kicad2ems.gui')
         importlib.import_module('PySide6')
         importlib.import_module('pyqtgraph')
         lines.append(f"  ok      GUI      kicad2ems-gui {gui.__version__}")

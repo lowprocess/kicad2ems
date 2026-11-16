@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Figures of the line model's 2D field solver (kicad2ems.lines.xsection) at work:
+Figures of the line model's 2D field solver (kicad2ems.core.lines.xsection) at work:
 
     python tools/xsection_figures.py [OUT] [--board CM5_MINIMA_3.kicad_pcb]
 
@@ -32,8 +32,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt                                         # noqa: E402
 from matplotlib.colors import LinearSegmentedColormap                   # noqa: E402
 from matplotlib.patches import Rectangle                                # noqa: E402
-from kicad2ems.lines import xsection as X                               # noqa: E402
-from kicad2ems.lines import formulas as F                               # noqa: E402
+from kicad2ems.core.lines import xsection as X                               # noqa: E402
+from kicad2ems.core.lines import formulas as F                               # noqa: E402
 
 SURFACE, INK, INK2, MUTED, GRID = '#fcfcfb', '#0b0b0b', '#52514e', '#8d8c87', '#e4e3de'
 BLUE, ORANGE, AQUA = '#2a78d6', '#eb6834', '#1baf7a'
@@ -104,7 +104,7 @@ def anatomy(out):
     r = xs.solve()
     ze, zo, ee, eo = r.pair()
     zf = F.microstrip(p['w'], p['h'], p['er'])[0]
-    from kicad2ems.lines.coupled import coupled_microstrip
+    from kicad2ems.core.lines.coupled import coupled_microstrip
     kj = coupled_microstrip(p['w'], p['s'], p['h'], p['er'])
     window = (-0.55, 0.55, -0.02, 0.32)
     fig, axs = plt.subplots(3, 1, figsize=(8.2, 9.6))
@@ -139,7 +139,7 @@ def anatomy(out):
 
 
 def cases(out):
-    from kicad2ems.lines.reference import _cut_section
+    from kicad2ems.core.lines.reference import _cut_section
     h, w, er = 0.2, 0.35, 4.3
     diel = ((0.0, h, er, 0.0),)
     plane = lambda edge: ((0.0, edge is None, ((-math.inf, math.inf),) if edge is None else ((-math.inf, edge),)),)
@@ -211,7 +211,7 @@ def convergence(out):
 
 
 def cache(out):
-    from kicad2ems.lines.reference import _distance_bins, FIELD_REACH
+    from kicad2ems.core.lines.reference import _distance_bins, FIELD_REACH
     h, w, er = 0.0994, 0.13, 4.45
     z_of = lambda x: X.microstrip(w, h, er, s=x * h).solve().single()[0]
     z_none = X.microstrip(w, h, er).solve().single()[0]
@@ -245,7 +245,7 @@ def cache(out):
 
 
 def coupling(out):
-    from kicad2ems.lines.coupled import group_lc
+    from kicad2ems.core.lines.coupled import group_lc
     widths, gaps, h, er = [0.6] * 5, [0.58, 0.74, 0.74, 0.58], 0.8, 4.4
     C, _ = group_lc(widths, gaps, h, er)
     r = X.microstrip(widths, h, er, gap=gaps).solve()
@@ -271,9 +271,9 @@ def coupling(out):
 
 def board_cut(out, path):
     """A trace of a real board where its reference plane ends: the board around it, the cut, the cross-section."""
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.lines import builder, reference
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.lines import builder, reference
     m = Board(KiCadBoard(path), log=lambda *a: None, need_ports=False)
     nets = sorted(n for n in {t['net'] for t in m.prims.tracks} if 'HDMI' in n)
     seen = []
@@ -345,9 +345,9 @@ def board_cut(out, path):
 
 def group_cut(out, path):
     """A coupled section of a real board whose cut holds copper between its lines: over ideal planes, and on the cut."""
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.lines import builder, reference, topology
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.lines import builder, reference, topology
     m = Board(KiCadBoard(path), log=lambda *a: None, need_ports=False)
     nets = sorted({t['net'] for t in m.prims.tracks} - set(m.ground_nets))
     ideal = builder.build(m, nets=nets, field='off').groups

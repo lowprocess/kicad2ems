@@ -5,7 +5,7 @@ mom25d and gfdtd each run standalone and under kicad2ems; this package is what t
 backend is found, measured and picked one way, and kicad2ems reports what they will use without importing
 either:
 
-    from emsdev import gpu, cpu, memory
+    from kicad2ems.emsdev import gpu, cpu, memory
     gpu.devices()                   # [Device(index, name, library, api, total)]: the GPUs CuPy and Vulkan see
     vulkan.slang_device()           # the slangpy device the solvers' Vulkan backends run on
     gpu.cupy_device()               # the current CuPy device (raises gpu.Unavailable with the reason)
@@ -15,7 +15,7 @@ either:
 
     python -m emsdev                 # all of it, one line each
 
-    from emsdev.afs import adaptive_sweep   # the S-parameter sweep mom25d and pcbqs share (numpy)
+    from kicad2ems.emsdev.afs import adaptive_sweep   # the S-parameter sweep mom25d and pcbqs share (numpy)
 
 No dependencies (emsdev.afs's numpy aside): CuPy and slangpy are imported only when asked about, and their
 absence is an answer; Vulkan's GPUs are found through the system's Vulkan loader (ctypes).

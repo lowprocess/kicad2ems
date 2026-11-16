@@ -14,7 +14,7 @@ The study: one board, the questions asked of it, who answers each, and the runs 
                                 with a tick (it is asked), who answers it (a menu: one engine, or several to
                                 compare), a tick for its field dumps where an engine can write them, and its state
 
-A question is something to find out (kicad2ems.study: the ports' S-parameters, a rail's drop, the temperature);
+A question is something to find out (kicad2ems.core.study: the ports' S-parameters, a rail's drop, the temperature);
 an engine is a solver or an analysis plugin that answers it. The three RF questions are answered by the solvers,
 together, as kicad2ems's one run; every other engine is a run of its own, in the registry's order, which is
 also a run's: Thermal, which takes its losses from the latest circuit run unless they are typed, runs after
@@ -45,7 +45,7 @@ def installed():
     out = [Analysis(RF, 'S-parameters', 'the solvers ticked', preview=True,
                     note="kicad2ems's run: the solvers chosen on the RF rows, their S-parameters, fields and antenna "
                          "results")]
-    from kicad2ems.api.frontend import analyses
+    from kicad2ems.core.api.frontend import analyses
     for a in analyses().values():
         out.append(Analysis(a.name, a.label, a.tool, page=a.label if a.page else '', needs=tuple(a.needs),
                             preview=bool(a.previewed), note=a.about))
@@ -54,7 +54,7 @@ def installed():
 
 def tree():
     """What the list shows: kicad2ems's study_tree, [dict(group, questions=[dict(question, engines, missing)])]."""
-    from kicad2ems.api.frontend import study_tree
+    from kicad2ems.core.api.frontend import study_tree
     return study_tree()
 
 
@@ -234,7 +234,7 @@ class StudyModel:
 
     def study(self):
         """The study as kicad2ems holds one (a config's [study] tables)."""
-        from kicad2ems.api.frontend import Study
+        from kicad2ems.core.api.frontend import Study
         return Study(self.asked(), self.asked_fields(), 'study')
 
     def set_study(self, study):
@@ -310,7 +310,7 @@ class StudyModel:
                     asked.setdefault(q, [])
                     if k != RF and k != first and k not in asked[q]:
                         asked[q].append(k)
-        from kicad2ems.api.frontend import Study
+        from kicad2ems.core.api.frontend import Study
         return Study(asked, {q: self.fields.get(q, False) for q in asked})
 
     def set_ticked(self, keys):

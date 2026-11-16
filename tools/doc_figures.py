@@ -32,7 +32,7 @@ def _patch(geo, colour):
 
 
 def draw_board(ax, path, title):
-    from kicad2ems.api.frontend import Board, KiCadBoard
+    from kicad2ems.core.api.frontend import Board, KiCadBoard
     d = Board(KiCadBoard(path), log=lambda *a: None, need_ports=False).to_dict()
     (xs, ys), = [zip(*d['outline']['coordinates'][0])]
     ax.fill(xs, ys, color='#2e6b3f', zorder=0)                          # the substrate

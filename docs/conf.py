@@ -45,7 +45,7 @@ myst_fence_as_directive = ['mermaid']                               # ```mermaid
 suppress_warnings = ['myst.xref_missing', 'duplicate_declaration.cpp']
 
 autosummary_generate = True
-# the API modules re-export (kicad2ems.api.analysis: Analysis, Question, Dump ...): followed to their source,
+# the API modules re-export (kicad2ems.core.api.analysis: Analysis, Question, Dump ...): followed to their source,
 # viewcode files a whole module's source page under the re-exporting name, and every link back from it misses
 viewcode_follow_imported_members = False
 autodoc_default_options = dict(members=True, undoc_members=True, show_inheritance=True, member_order='bysource')
@@ -54,15 +54,15 @@ autodoc_mock_imports = [m for m in ('cupy', 'cupyx', 'torch', 'CSXCAD', 'openEMS
                         if importlib.util.find_spec(m) is None]
 # the packages' entry points (python -m <package>) run their program when imported, and listing a package's modules
 # imports each: stand-ins, which autosummary leaves out (the GUI's would open its window and wait)
-autodoc_mock_imports += [f'{p}.__main__' for p in ('kicad2ems', 'kicad2ems_gui', 'kicad2ems_ipc', 'gfdtd', 'dfsynth',
-                                                   'emsdev', 'mom25d', 'kicad2ems_fdtd')]
-autodoc_mock_imports += ['mom25d.core.build', 'gfdtd.core.build']        # these compile their core when imported
+autodoc_mock_imports += [f'{p}.__main__' for p in ('kicad2ems', 'kicad2ems.gui', 'kicad2ems.ipc', 'gfdtd', 'dfsynth',
+                                                   'emsdev', 'mom25d', 'kicad2ems.fdtd')]
+autodoc_mock_imports += ['kicad2ems.mom25d.core.build', 'kicad2ems.gfdtd.core.build']        # these compile their core when imported
 
 
 def _ipc_plugin():
-    """The folder holding kicad2ems_ipc: a checkout beside this one, else the repository's archive."""
+    """The folder holding kicad2ems.ipc: a checkout beside this one, else the repository's archive."""
     local = os.path.join(os.path.dirname(ROOT), 'kicad2ems-ipc', 'plugin')
-    if os.path.isdir(os.path.join(local, 'kicad2ems_ipc')):
+    if os.path.isdir(os.path.join(local, 'kicad2ems.ipc')):
         return local
     dest = os.path.join(BUILD, 'kicad2ems-ipc')
     if not os.path.isdir(dest):
@@ -112,10 +112,10 @@ def _navigation(app, docname, source):
 
 
 def _api_names():
-    """reference/api-names.md: each name of kicad2ems.api.solver and .frontend (and kicad2ems_gui.api), linked to
+    """reference/api-names.md: each name of kicad2ems.core.api.solver and .frontend (and kicad2ems.gui.api), linked to
     where it is defined (the API modules re-export: an object is documented once, in its own module)."""
     import importlib, inspect
-    from kicad2ems.api import solver, frontend
+    from kicad2ems.core.api import solver, frontend
     rows = ['# API names', '', 'Each name of the APIs between the packages ([APIs](../api.md)), and where it is defined.']
     for mod in (solver, frontend):
         rows += ['', f'## `{mod.__name__}`', '', '| Name | Defined as |', '|---|---|']
@@ -128,8 +128,8 @@ def _api_names():
             obj = getattr(importlib.import_module(target), attr)
             role = 'py:class' if inspect.isclass(obj) else 'py:func' if callable(obj) else 'py:data'
             rows.append(f'| `{name}` | {{{role}}}`{target}.{attr}` |')
-    rows += ['', '## `kicad2ems_gui.api`', '', '| Name | Defined as |', '|---|---|',
-             '| `PlanView` | {py:class}`kicad2ems_gui.planview.PlanView` |', '']
+    rows += ['', '## `kicad2ems.gui.api`', '', '| Name | Defined as |', '|---|---|',
+             '| `PlanView` | {py:class}`kicad2ems.gui.planview.PlanView` |', '']
     path = os.path.join(HERE, 'reference', 'api-names.md')
     text = '\n'.join(rows)
     if not os.path.exists(path) or open(path).read() != text:      # rewritten only when it changes (Sphinx's cache)

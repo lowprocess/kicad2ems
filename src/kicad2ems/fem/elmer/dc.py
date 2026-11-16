@@ -1,6 +1,6 @@
 """DC IR drop of a net's copper with Elmer: steady current conduction in the 3D copper and via barrels.
 
-    python -m kicad2ems_fem.elmer.dc board.kicad_pcb --net VHB --source L3 --load Q1=0.67 --load Q2=0.67 --out dc_vhb
+    python -m kicad2ems.fem.elmer.dc board.kicad_pcb --net VHB --source L3 --load Q1=0.67 --load Q2=0.67 --out dc_vhb
 
 The source part's pads on the net are held at 0 V; each load draws its current through its pads on the net as one
 equipotential terminal. The copper is the layered mesh the thermal tool solves on (layered.py: the board's triangles
@@ -9,7 +9,7 @@ tetrahedra of the copper's 3D model (model.py: 1.1 M of them, 3.5 GB, for wpthb'
 (sense resistors, beads) are not modelled: pcbqs.pdn does rail trees and returns, this is the 3D check of their
 copper. Writes <out>/dc.json (each load's voltage, the copper's loss, the mesh) and Elmer's case in <out>/elmer.
 
-    from kicad2ems_fem.elmer.dc import solve
+    from kicad2ems.fem.elmer.dc import solve
     r = solve(board, {'VHB'}, 'L3', {'Q1': 0.67}, out='dc_vhb')   # r['V']['Q1'] (V, negative: the drop), r['loss_W']
 """
 import argparse
@@ -189,7 +189,7 @@ def solve(board, nets, source, loads, out='dc', h=0.25, h_fine=0.05, plating=PLA
     # the power the loads draw through the copper. Not Elmer's Joule heating field: the loop that fills it is not
     # safe with several threads (StatCurrentSolver_post), and now and then gives another figure
     loss = float(sum(-V[ref] * amps for ref, amps in loads.items()))
-    result = dict(format=1, tool='kicad2ems_fem.elmer.dc', engine=elmer.engine(said), nets=sorted(nets), source=source, loads=dict(loads), V=V,
+    result = dict(format=1, tool='kicad2ems.fem.elmer.dc', engine=elmer.engine(said), nets=sorted(nets), source=source, loads=dict(loads), V=V,
                   drop_mV={r: -v * 1e3 for r, v in V.items()}, loss_W=loss, mesh=mesh, **size, vias=m['vias'],
                   h=h, h_fine=h_fine, seconds=dict(mesh=round(mesh_s, 1), solve=round(time.perf_counter() - t, 1)))
     (out / 'dc.json').write_text(json.dumps(result, indent=1))
@@ -197,7 +197,7 @@ def solve(board, nets, source, loads, out='dc', h=0.25, h_fine=0.05, plating=PLA
 
 
 def parser():
-    ap = argparse.ArgumentParser(prog='python -m kicad2ems_fem.elmer.dc', description=__doc__.split('\n\n')[0])
+    ap = argparse.ArgumentParser(prog='python -m kicad2ems.fem.elmer.dc', description=__doc__.split('\n\n')[0])
     ap.add_argument('board', help='.kicad_pcb, or a kicad2ems <name>_board.json')
     ap.add_argument('--net', action='append', required=True, help='the net (repeat: nets joined as one conductor)')
     ap.add_argument('--source', required=True, help="the part whose pads on the net are held at 0 V")

@@ -15,8 +15,8 @@ compared; their results from before that (pdn_<rail>, mqs_<converter> beside the
     tool_runs(base, board)                # [(folder, kind, label)], the newest first: those that wrote a result
 """
 import datetime, glob, os, re
-# the folders' names are kicad2ems's (its `kicad2ems study` puts its runs there too): kicad2ems.runs
-from kicad2ems.api.frontend import board_name, run_dir, preview_dir, tool_dir, tool_preview_dir      # noqa: F401
+# the folders' names are kicad2ems's (its `kicad2ems study` puts its runs there too): kicad2ems.core.runs
+from kicad2ems.core.api.frontend import board_name, run_dir, preview_dir, tool_dir, tool_preview_dir      # noqa: F401
 
 STAMP = '%Y%m%d_%H%M%S'
 
@@ -37,7 +37,7 @@ def runs(base, board):
             out.append((d, f"{when:%Y-%m-%d %H:%M:%S} ({ending(d)})"))  # with its log (R-E24: these had vanished)
             continue
         try:
-            from kicad2ems.api.frontend import read_summary
+            from kicad2ems.core.api.frontend import read_summary
             solvers = read_summary(summary).get('solvers') or []
         except (OSError, ValueError):
             solvers = []
@@ -85,7 +85,7 @@ def run_log(folder):
 
 def tool_titles():
     """{kind: title} of the analyses whose runs are listed: those kicad2ems's registry holds, in its order."""
-    from kicad2ems.api.frontend import analyses
+    from kicad2ems.core.api.frontend import analyses
     return {name: a.label for name, a in analyses().items()}
 
 
@@ -93,7 +93,7 @@ def tool_titles():
 
 def tool_kind(folder):
     """The analysis ('pdn', 'thermal' ...) whose finished result the folder holds, else None (a preview's too)."""
-    from kicad2ems.api.frontend import analysis_of
+    from kicad2ems.core.api.frontend import analysis_of
     made = analysis_of(folder or '')
     return made[0] if made and not made[1] else None
 

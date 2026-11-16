@@ -3,7 +3,7 @@ where it is least sure."""
 import numpy as np
 import pytest
 
-afs = pytest.importorskip('emsdev.afs')                             # (numpy: what it needs)
+afs = pytest.importorskip('kicad2ems.emsdev.afs')                             # (numpy: what it needs)
 
 
 def resonator(f, f0=3e9, q=40):

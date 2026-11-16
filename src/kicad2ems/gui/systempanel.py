@@ -1,6 +1,6 @@
 """
 The Solvers window (Help > Solvers and hardware, or ? beside the Solvers settings): the solvers this machine can
-run, the GPU mom25d would use, the memory of the system and of the GPU (kicad2ems.sysinfo, run as its own process
+run, the GPU mom25d would use, the memory of the system and of the GPU (kicad2ems.core.sysinfo, run as its own process
 with the interpreter the runs use), and after a preview what each full-wave solver would need on that board
 (summary['estimates'] of <name>_run.json) against it.
 """
@@ -30,7 +30,7 @@ def fit_note(need, have):
 
 def _user_value(key):
     """The user's own site.toml setting of key, or '' (the field shows it, not the installer's)."""
-    from kicad2ems.api.frontend import sitecfg
+    from kicad2ems.core.api.frontend import sitecfg
     try:
         import tomllib
     except ImportError:
@@ -67,7 +67,7 @@ class SystemPanel(QWidget):
         lay.addWidget(box)
         box = QGroupBox('Programs')                                 # the machine's, not a board's: site.toml
         pf = QFormLayout(box)
-        from kicad2ems.api.frontend import sitecfg
+        from kicad2ems.core.api.frontend import sitecfg
         where = sitecfg.user_file()
         row = QHBoxLayout()
         self.qucsator = QLineEdit()
@@ -155,7 +155,7 @@ class SystemPanel(QWidget):
 
     def _save_programs(self):
         """The programs into the user's site.toml (sitecfg), then the solvers checked again."""
-        from kicad2ems.api.frontend import sitecfg
+        from kicad2ems.core.api.frontend import sitecfg
         changed = False
         fields = [('qucsator', self.qucsator), ('openems_venv', self.openems_venv)]
         if self.openems_dir is not None:
@@ -176,7 +176,7 @@ class SystemPanel(QWidget):
         self.refresh_btn.setEnabled(False)
         self.proc = QProcess(self)
         self.proc.finished.connect(self._done)
-        self.proc.start(sys.executable, ['-m', 'kicad2ems.sysinfo'])
+        self.proc.start(sys.executable, ['-m', 'kicad2ems.core.sysinfo'])
 
     def stop(self):
         """End a check still going (the window closes)."""
@@ -192,7 +192,7 @@ class SystemPanel(QWidget):
         self.proc = None
         self.refresh_btn.setEnabled(True)
         try:
-            from kicad2ems.api.frontend import check_format
+            from kicad2ems.core.api.frontend import check_format
             d = json.loads(out)
             why = check_format(d, 'kicad2ems-sysinfo')
             if why:
@@ -245,7 +245,7 @@ class SystemPanel(QWidget):
         if not runs:
             return False
         try:
-            from kicad2ems.api.frontend import read_summary
+            from kicad2ems.core.api.frontend import read_summary
             est = read_summary(runs[-1]).get('estimates')
         except (OSError, ValueError):
             return False

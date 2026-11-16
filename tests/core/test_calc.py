@@ -2,7 +2,7 @@
 closed forms, the fit of a width or a gap to a target, a board's stack-up as the stack, the command."""
 import json
 import pytest
-from kicad2ems.lines import calc as K, sections, xsection as X
+from kicad2ems.core.lines import calc as K, sections, xsection as X
 
 
 

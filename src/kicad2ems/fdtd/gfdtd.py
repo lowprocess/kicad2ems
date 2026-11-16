@@ -12,7 +12,7 @@ FDTD layer's mesh levels, run on gfdtd.
 """
 import os
 
-from kicad2ems.api.solver import Option, AUTO
+from kicad2ems.core.api.solver import Option, AUTO
 from .plugin import FDTD, MESH, RUN, CONVERGE
 
 G = 'gfdtd'                                     # its section in kicad2ems's GUI
@@ -29,7 +29,7 @@ GPU_BACKENDS = ('cupy', 'vulkan')
 
 
 class GFDTD(FDTD):
-    api = (2, 9)                    # kicad2ems.api (2.4: resolve_finish, the finish row; 2.9: basic)
+    api = (2, 9)                    # kicad2ems.core.api (2.4: resolve_finish, the finish row; 2.9: basic)
     name, aliases, label = 'gfdtd', ('gpu-fdtd',), 'gfdtd (GPU FDTD)'
     in_auto = True                  # auto: picked over openEMS where it can (no --drive; --sigma: LOSS_API)
     in_all = False                  # --solvers all: openEMS's model again, named on its own
@@ -48,7 +48,7 @@ class GFDTD(FDTD):
     options = MESH + CONVERGE + RUN + [
         Option('gfdtd_backend', 'auto', "gfdtd: where it runs - auto (the GPU when Vulkan or CuPy finds one, else the "
                "CPU), gpu (Vulkan through slangpy, else CuPy; CuPy first on NVIDIA CUDA) or cpu (the compiled core: "
-               "python -m gfdtd.core.build; else numpy, slow); GFDTD_BACKEND=cupy|vulkan picks the GPU's; its "
+               "python -m kicad2ems.gfdtd.core.build; else numpy, slow); GFDTD_BACKEND=cupy|vulkan picks the GPU's; its "
                "mesh and run settings are the FDTD ones shared with openEMS (--res, --end-db, ...)", choices=('auto', 'gpu', 'cpu'), name='backend', gui='Runs on', group=G),
         Option('gfdtd_gpus', '', "gfdtd on Vulkan: the GPUs its excitations are shared out to, a process each - all "
                "(every discrete GPU with the kernels' features) or their indices (0,1); default: one GPU. The runs go "
@@ -84,7 +84,7 @@ class GFDTD(FDTD):
 
     def check(self, s=None):
         try:
-            from gfdtd.engine import gpu_info, core_info
+            from kicad2ems.gfdtd.engine import gpu_info, core_info
         except ImportError as e:
             return False, f"gfdtd cannot be imported ({e}): python -m pip install 'kicad2ems-fdtd[gfdtd]'"
         why = engine_compatible()
@@ -95,24 +95,24 @@ class GFDTD(FDTD):
         if want == 'gpu' and not gpu:
             return False, f"gfdtd_backend = gpu: {what}"
         if gpu and want != 'cpu':
-            from gfdtd.engine import backend_info, resolve_backend
+            from kicad2ems.gfdtd.engine import backend_info, resolve_backend
             return True, f"GPU: {backend_info(resolve_backend('gpu'))}"
         core, cwhat = core_info()
-        return True, f"CPU: {cwhat if core else 'numpy (slow; build the core: python -m gfdtd.core.build)'}" + (
+        return True, f"CPU: {cwhat if core else 'numpy (slow; build the core: python -m kicad2ems.gfdtd.core.build)'}" + (
             '' if gpu else f"; {what}")
 
     def resources(self):
         """The GPU gfdtd's engine would run on (the best Vulkan GPU, else CuPy's first device;
         CuPy's first on CUDA), or why there is
         none."""
-        from emsdev import gpu
-        from gfdtd.engine import gpu_backend, gpu_info
+        from kicad2ems.emsdev import gpu
+        from kicad2ems.gfdtd.engine import gpu_backend, gpu_info
         try:
             b = gpu_backend()
             if b == 'cupy':
                 return dict(gpus=[gpu.cupy_device(0).as_dict()], why='')
             if b == 'vulkan':
-                from gfdtd.engine import VULKAN_NEEDS
+                from kicad2ems.gfdtd.engine import VULKAN_NEEDS
                 return dict(gpus=[gpu.vulkan_device(need=VULKAN_NEEDS).as_dict()], why='')
         except gpu.Unavailable as e:
             return dict(gpus=[], why=str(e))
@@ -122,7 +122,7 @@ class GFDTD(FDTD):
         ok, what = self.check()
         if not ok:
             return ok, [what]
-        import gfdtd
+        from kicad2ems import gfdtd
         return ok, [f"gfdtd {gfdtd.__version__} ({os.path.dirname(gfdtd.__file__)}), engine API "
                     f"{'.'.join(map(str, gfdtd.API_VERSION))}", what]
 
@@ -139,7 +139,7 @@ class GFDTD(FDTD):
 
     def estimate(self, run):
         """openEMS's estimate (the same mesh and timesteps), at gfdtd's speed on the backend it would use."""
-        from gfdtd.engine import resolve_backend
+        from kicad2ems.gfdtd.engine import resolve_backend
         e = super().estimate(run)
         where = resolve_backend(self.engine(run.s).partition(':')[2])
         return dict(e, seconds=e['seconds'] / SPEEDUP[where] + START,
@@ -150,14 +150,14 @@ class GFDTD(FDTD):
         """Runs at once: --jobs when given; on the GPU as many as its cache holds (engine.concurrent_runs), on the
         CPU one (the core's threads already share the cores). --gfdtd-gpus: one a GPU named, each in a process of
         its own bound to it (GPU_SLOTS; R-D9)."""
-        from gfdtd.engine import concurrent_runs, resolve_backend
+        from kicad2ems.gfdtd.engine import concurrent_runs, resolve_backend
         global GPU_SLOTS
         GPU_SLOTS = None
         s = run.s
         where = resolve_backend(self.engine(s).partition(':')[2])
         slots = gpu_slots(getattr(s, 'gfdtd_gpus', '') or '', len(p.excite)) if where == 'vulkan' else None
         if slots:
-            from gfdtd.engine import vulkan_gpus
+            from kicad2ems.gfdtd.engine import vulkan_gpus
             names = dict(vulkan_gpus())
             used = [k for k, v in share(slots, len(p.excite)).items() if v]
             if len(used) == 1:                                      # one GPU by the speeds: its runs side by side
@@ -207,7 +207,7 @@ def gpu_slots(spec, runs):
     if not spec:
         return None
     try:
-        from gfdtd.engine import vulkan_gpus
+        from kicad2ems.gfdtd.engine import vulkan_gpus
     except ImportError:
         raise ValueError("--gfdtd-gpus needs a gfdtd with vulkan_gpus (update gfdtd)")
     usable = [k for k, _ in vulkan_gpus()]
@@ -238,7 +238,7 @@ def gpu_speeds(slots):
     """{slot: M cell updates / s} as measured on earlier runs (by the GPU's name), None where never measured."""
     import json
     try:
-        from gfdtd.engine import vulkan_gpus
+        from kicad2ems.gfdtd.engine import vulkan_gpus
         names = dict(vulkan_gpus())
     except ImportError:
         names = {}
@@ -254,7 +254,7 @@ def record_speed(slot, mcps):
     """A run's speed on GPU `slot`, kept by its name (the mean with what was kept, weighted 1:1)."""
     import json
     try:
-        from gfdtd.engine import vulkan_gpus
+        from kicad2ems.gfdtd.engine import vulkan_gpus
         name = dict(vulkan_gpus()).get(slot, str(slot))
     except ImportError:
         name = str(slot)
@@ -306,7 +306,7 @@ IN_THREADS = True                   # one process: the runs share the GPU (a str
 def engine_compatible():
     """None when the installed gfdtd's API (gfdtd.API_VERSION) is one this connection can use: the major version
     of ENGINE_API and at least its minor. Else why not, and which package to update."""
-    import gfdtd
+    from kicad2ems import gfdtd
     want = '.'.join(map(str, ENGINE_API))
     have = getattr(gfdtd, 'API_VERSION', None)
     if have is None:
@@ -323,7 +323,7 @@ def has_conductor_loss(need=LOSS_API):
     """The installed gfdtd models conducting sheets' loss (engine API LOSS_API or later, same major; need:
     another API, ROUGH_API for their roughness)."""
     try:
-        import gfdtd
+        from kicad2ems import gfdtd
     except ImportError:
         return False
     have = tuple(getattr(gfdtd, 'API_VERSION', (0, 0)))
@@ -334,7 +334,7 @@ def api(backend=''):
     """(ContinuousStructure, openEMS) of gfdtd's engine (engines.py) on a backend: gpu, cupy, vulkan, core, numpy
     or auto. Refuses a gfdtd of another engine API (engine_compatible)."""
     import functools
-    import gfdtd
+    from kicad2ems import gfdtd
     why = engine_compatible()
     if why:
         raise RuntimeError(why)

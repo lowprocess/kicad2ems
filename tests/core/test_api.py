@@ -1,12 +1,12 @@
-"""kicad2ems.api: every public name resolves, importing a surface loads nothing, the registry refuses a plugin
+"""kicad2ems.core.api: every public name resolves, importing a surface loads nothing, the registry refuses a plugin
 written for another API version, and sysinfo asks the solvers what they run on (Solver.resources)."""
 import os
 import subprocess
 import sys
 
 import pytest
-from kicad2ems import solvers, sysinfo
-from kicad2ems.api import API_VERSION, compatible, solver as solver_api, frontend, analysis as analysis_api
+from kicad2ems.core import solvers, sysinfo
+from kicad2ems.core.api import API_VERSION, compatible, solver as solver_api, frontend, analysis as analysis_api
 
 from test_plugins import _EP, _Fake
 
@@ -21,10 +21,10 @@ def test_every_name_resolves(surface):
 
 
 def test_a_surface_loads_on_first_use():
-    """Importing kicad2ems.api.solver (as a plugin's module does when the registry loads it) imports neither
+    """Importing kicad2ems.core.api.solver (as a plugin's module does when the registry loads it) imports neither
     matplotlib nor the field code; a name imports its module when it is used."""
-    code = ("import sys; import kicad2ems.api.solver as a; before = {'matplotlib', 'kicad2ems.plots'} & set(sys.modules); "
-            "a.plot_antenna; print(sorted(before), 'kicad2ems.plots' in sys.modules)")
+    code = ("import sys; import kicad2ems.core.api.solver as a; before = {'matplotlib', 'kicad2ems.core.plots'} & set(sys.modules); "
+            "a.plot_antenna; print(sorted(before), 'kicad2ems.core.plots' in sys.modules)")
     out = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, check=True).stdout.split()
     assert out == ['[]', 'True']
 
@@ -76,14 +76,21 @@ def test_sysinfo_imports_no_solver():
     assert 'mom25d' not in src.replace("mom25d's", '') and 'gfdtd' not in src
 
 
-def test_packages_listed():
-    """pyproject.toml lists the packages (for the examples' mapping): every one under src/, and the examples."""
-    import os, tomllib
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    listed = set(tomllib.load(open(os.path.join(root, 'pyproject.toml'), 'rb'))['tool']['setuptools']['packages'])
-    found = {os.path.relpath(d, os.path.join(root, 'src')).replace(os.sep, '.')
-             for d, _, files in os.walk(os.path.join(root, 'src', 'kicad2ems')) if '__init__.py' in files}
-    assert listed == found | {'kicad2ems.examples'}
+def test_packages_found():
+    """setup.py takes every package under src/ (find_packages) and the examples: so every folder of modules there
+    has to be a package (an __init__.py), down from kicad2ems, or the installed stack would miss it."""
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    src = os.path.join(root, 'src', 'kicad2ems')
+    missed = []
+    for d, dirs, files in os.walk(src):
+        dirs[:] = [x for x in dirs if x != '__pycache__']
+        rel = os.path.relpath(d, src)
+        if any(f.endswith('.py') for f in files) and '__init__.py' not in files and rel.split(os.sep)[-1] != 'core':
+            missed.append(rel)                       # (a part's core/: its C++ sources and build.py, run with -m)
+    assert not missed, missed
+    setup = open(os.path.join(root, 'setup.py'), encoding='utf-8').read()
+    assert "find_packages('src')" in setup and "'kicad2ems.examples'" in setup
 
 
 def test_examples_prepared(tmp_path):
@@ -124,7 +131,7 @@ def test_example_boards_made_in_a_folder(tmp_path, monkeypatch):
 def test_setup_update_needs_an_install(tmp_path):
     """install.py --update: nothing to update says so, before anything is installed; it takes no solver choices."""
     import sys
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     run = lambda *a: subprocess.run([sys.executable, os.path.join(root, 'install.py'), *a], capture_output=True,
                                     text=True)
     r = run('--update', '--venv', str(tmp_path / 'none'))
@@ -138,7 +145,7 @@ def test_every_api_name_is_documented():
     """docs/api.md names every name of api.solver, api.frontend and api.analysis, and each class and function has a docstring:
     a name added to the API without its documentation fails here."""
     import inspect, re
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     page = open(os.path.join(root, 'docs', 'api.md'), encoding='utf-8').read()
     for mod in (solver_api, frontend, analysis_api):
         for name in mod.NAMES:

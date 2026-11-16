@@ -21,7 +21,7 @@ def win(app, tmp_path, monkeypatch):
     from PySide6.QtCore import QSettings
     QSettings.setDefaultFormat(QSettings.IniFormat)
     QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, str(tmp_path / 'settings'))
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui.app import MainWindow
     w = MainWindow()
     w.setup.set_values(dict(board='x.kicad_pcb', fmin=1.0, fmax=6.0, cut_ports=False))
     return w
@@ -50,7 +50,7 @@ def test_settings_undo_and_redo(win, app):
 
 def test_the_plots_follow_the_theme(win, app):
     import pyqtgraph as pg
-    from kicad2ems_gui import theme
+    from kicad2ems.gui import theme
     w = pg.PlotWidget(title='t')
     try:
         win.set_plot_colours('dark')
@@ -70,7 +70,7 @@ def test_the_plots_follow_the_theme(win, app):
 
 def test_a_report_saved_and_printed(app, tmp_path):
     from PySide6.QtPrintSupport import QPrinter
-    from kicad2ems_gui import reportview as RV
+    from kicad2ems.gui import reportview as RV
     png = tmp_path / 'map.png'
     from PySide6.QtGui import QImage, QColor
     img = QImage(8, 8, QImage.Format_RGB32)
@@ -96,7 +96,7 @@ def test_a_report_saved_and_printed(app, tmp_path):
 
 
 def test_a_run_s_touchstone_exported(tmp_path):
-    from kicad2ems_gui.resultstab import ResultsTab
+    from kicad2ems.gui.resultstab import ResultsTab
     src = tmp_path / 'run' / 'b_mom25d.s2p'
     src.parent.mkdir()
     src.write_text('# GHz S RI R 50\n1 0 0 1 0 1 0 0 0\n')

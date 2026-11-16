@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from kicad2ems_gui import runner
-from kicad2ems.api.frontend import read_analyses, build_settings
+from kicad2ems.gui import runner
+from kicad2ems.core.api.frontend import read_analyses, build_settings
 from waiting import wait_until
 
 
@@ -31,7 +31,7 @@ def test_the_tables_are_written_and_replaced(tmp_path):
     runner.write_analyses(str(cfg), None, dict(pdn=rails, mqs=[dict(converter='U7')], thermal=[{}]))
     assert cfg.read_text().endswith('[analysis]\n\n[[analysis.pdn]]\nrail = "+5V"\nvolts = 5.0\n\n[[analysis.pdn]]\n'
                                     'rail = "+3V3"\nvolts = 3.3\nload = ["U1=1"]\n\n[analysis.mqs]\nconverter = "U7"\n')
-    from kicad2ems.api.frontend import read_analysis_sets
+    from kicad2ems.core.api.frontend import read_analysis_sets
     assert read_analysis_sets(str(cfg)) == dict(pdn=rails, mqs=[dict(converter='U7')])
     runner.write_analyses(str(cfg), None, dict(pdn=rails[:1]))
     assert cfg.read_text().count('analysis.pdn') == 1 and '[[' not in cfg.read_text() and 'dmax = 0.4' in cfg.read_text()
@@ -43,8 +43,8 @@ def window(tmp_path, monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     from PySide6.QtCore import QSettings
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
     app = application()
     QSettings('kicad2ems', 'gui').clear()
     w = MainWindow()
@@ -76,7 +76,7 @@ def test_a_config_opens_as_a_study_and_saves_back(window, tmp_path):
     w.study.rows['nearfield'].setCheckState(0, __import__('PySide6.QtCore', fromlist=['Qt']).Qt.Checked)
     assert w.study.ticked() == ['pdn', 'mqs', 'thermal']
     assert w.setup.save() and not w.setup.dirty
-    from kicad2ems.api.frontend import read_study
+    from kicad2ems.core.api.frontend import read_study
     run, tables = read_analyses(str(cfg))
     assert run is None and tables['cfd'] == dict(fans=2)            # [study] says what runs now; not installed: kept
     st = read_study(str(cfg))                                       # the rail tool answered both its questions
@@ -95,7 +95,7 @@ def test_a_config_opens_as_a_study_and_saves_back(window, tmp_path):
     assert pdn.status.text().startswith('This config has 2 more of these (+3V3, +1V8): the first is shown and run here')
     pdn.w['volts'].setText('5.1')
     assert w.setup.save()
-    from kicad2ems.api.frontend import read_analysis_sets
+    from kicad2ems.core.api.frontend import read_analysis_sets
     assert read_analysis_sets(str(many))['pdn'] == [
         dict(rail='+5V', volts=5.1), dict(rail='+3V3', volts=3.3, board='other.kicad_pcb'), dict(rail='+1V8')]
     assert many.read_text().count('[[analysis.pdn]]') == 3
@@ -126,9 +126,9 @@ def test_several_rails_are_a_table_and_a_run_each(tmp_path, monkeypatch):
     monkeypatch.setattr(FA.PowerIntegrity, 'several', 'rail', raising=False)
     monkeypatch.setattr(FA.PowerIntegrity, 'several_keys', ('rail', 'volts', 'load'), raising=False)
     from PySide6.QtCore import QSettings
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow
-    from kicad2ems.api.frontend import read_analysis_sets
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
+    from kicad2ems.core.api.frontend import read_analysis_sets
     app = application()
     QSettings('kicad2ems', 'gui').clear()
     w = MainWindow()

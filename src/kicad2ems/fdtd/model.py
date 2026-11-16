@@ -6,8 +6,8 @@ lumped ports, the Gaussian excitation and the boundaries, built through openEMS'
 """
 import math
 import numpy as np
-from kicad2ems.api.solver import EPS0
-from kicad2ems.api.solver import split_holes
+from kicad2ems.core.api.solver import EPS0
+from kicad2ems.core.api.solver import split_holes
 
 
 def _f(v):
@@ -176,7 +176,7 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
         ports.append(FDTD.AddLumpedPort(i + 1, _f(p.z0), _fl(s), _fl(e), getattr(p, 'direction', 'z'),
                                         excite=1.0 if i == excite else 0.0, priority=12))
     if dumps:
-        from kicad2ems.api.solver import add_dumps
+        from kicad2ems.core.api.solver import add_dumps
         add_dumps(CSX, dumps)
     if line_plan is not None:
         from . import lineport
@@ -194,7 +194,7 @@ def _finished_sheet(CSX, name, sigma, t_mm, fin, share, rkw, face):
     if fin['wideband']:
         kw = dict(finish=[(_f(a), _f(b)) for a, b in fin['layers']], finish_share=_f(share), face=face)
         return CSX.AddConductingSheet(name, conductivity=_f(s), thickness=_f(th), **rkw, **kw)
-    from kicad2ems.api.solver import finish_band_sigma
+    from kicad2ems.core.api.solver import finish_band_sigma
     lay = [(None, a, b) for a, b in fin['layers']]
     t_face = (t_mm / 2 if face else t_mm) * 1e-3
     eff = finish_band_sigma(sigma, lay, share, *fin['band'], t=t_face)

@@ -6,13 +6,13 @@ FDTD, the one FDTD model on openEMS's engine or gfdtd's: kicad2ems-fdtd, the ope
 and mixed (2.5D Method of Moments: mom25d, the mom extra). Each then appears in --solvers, --check,
 the config tables and the GUI with no change here.
 
-    from kicad2ems.solvers import registry, get
+    from kicad2ems.core.solvers import registry, get
     get('mom').name                         # 'mom25d' (aliases: fdtd, mom, qucsator, skrf)
     [sv.label for sv in registry().values()]
 
 A solver declares (class attributes)
-  api                     the kicad2ems.api version it is written against, (major, minor): (2, 1); a plugin
-                          imports what it needs from kicad2ems.api.solver, the rest of kicad2ems is private
+  api                     the kicad2ems.core.api version it is written against, (major, minor): (2, 1); a plugin
+                          imports what it needs from kicad2ems.core.api.solver, the rest of kicad2ems is private
   name, aliases, label    'mom25d', ('mom',), 'mom25d (MoM)'; name is also its table [solver.mom25d]
   consumes                'board' (the geometry) or 'network' (the line model, tlines.LineModel)
   previewed               True: --preview prepares it without solving (openEMS: the mesh preview)
@@ -32,7 +32,7 @@ and implements
   solve(run, prep)        Result: S-parameters over the board's ports, as reported
   outputs(run, prep, res) its own extra outputs (plots, files, summary entries); optional
   reusable(run)           whether an earlier run's result may stand for its solve (no outputs() then): by default
-                          only where it has no outputs() (API 2.12, kicad2ems.reuse)
+                          only where it has no outputs() (API 2.12, kicad2ems.core.reuse)
   deviations(run, prep)   [Deviation]: what it models differently from the board, by its own rules (vias moved
                           onto a mesh, parts split, walls as via rows), for the report and the parity checks
   readback(run, prep)     what its native model holds, read back (parity.py: vias, copper area per layer,
@@ -53,7 +53,7 @@ import numpy as np
 from ..options import Option                    # noqa: F401  (plugins import it from here)
 
 GROUP = 'kicad2ems.solvers'                 # the entry-point group of solvers installed as packages
-BUILTIN = ('kicad2ems.solvers.lines.plugin:Qucs', 'kicad2ems.solvers.lines.plugin:Scikit')
+BUILTIN = ('kicad2ems.core.solvers.lines.plugin:Qucs', 'kicad2ems.core.solvers.lines.plugin:Scikit')
 # the solver packages kicad2ems has extras for (pyproject): {extra: the names and aliases of its solvers, its first
 # solver first}. A name of one not installed says how to get it. MOM: the solver --mom adds as a reference.
 EXTRAS = {'openems': ('openems', 'fdtd'), 'mom': ('mom25d', 'mom', 'mixed', 'segmented'), 'gfdtd': ('gfdtd', 'gpu-fdtd'),
@@ -151,7 +151,7 @@ class Solver:
         pass
 
     def reusable(self, run):
-        """Whether an earlier run's result may stand for its solve in this run (kicad2ems.reuse; API 2.12): its
+        """Whether an earlier run's result may stand for its solve in this run (kicad2ems.core.reuse; API 2.12): its
         outputs() is not called for one, so a solver whose outputs need what its solve keeps says no where this
         run asks for them. By default: only a solver with no outputs() of its own."""
         return type(self).outputs is Solver.outputs
@@ -191,7 +191,7 @@ def _entry_points():
 
 def registry():
     """{name: Solver}: the built-in solvers and those installed through entry points, by their `order`. A plugin
-    that fails to load, is written for another kicad2ems API (its `api`: kicad2ems.api), or reuses a name or a
+    that fails to load, is written for another kicad2ems API (its `api`: kicad2ems.core.api), or reuses a name or a
     setting, is left out and listed in `broken`. Solvers may share a
     setting by listing the same Option object (the FDTD solvers' mesh and run settings)."""
     global _registry

@@ -10,7 +10,7 @@ import argparse, hashlib, json, os, sys, zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(ROOT, 'plugin')
 sys.path.insert(0, PLUGIN)
-from kicad2ems_ipc import __version__                                  # noqa: E402
+from kicad2ems.ipc import __version__                                  # noqa: E402
 
 RELEASE = 'https://github.com/lowprocess/kicad2ems-ipc/releases/download/v{v}/{name}'
 

@@ -7,7 +7,7 @@ a new key needs none. A file without them was written before they were stamped: 
 
     kicad2ems-run        <name>_run.json, the run summary
     kicad2ems-events     --events: its first line ({"kind": "format", ...}), the stream's
-    kicad2ems-sysinfo    python -m kicad2ems.sysinfo's JSON
+    kicad2ems-sysinfo    python -m kicad2ems.core.sysinfo's JSON
     kicad2ems-antenna    <name>[_<solver>]_antenna.json, an antenna run's results
 
     stamp(d, name)       d with its format and version

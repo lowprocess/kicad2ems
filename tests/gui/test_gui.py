@@ -1,8 +1,8 @@
 """kicad2ems-gui: the settings form without a display, and the Qt window (offscreen)."""
 import json, math, os, sys, time, pytest
 import numpy as np
-from kicad2ems_gui.runner import write_toml, settings_values, FIELDS
-from kicad2ems.config import build_settings
+from kicad2ems.gui.runner import write_toml, settings_values, FIELDS
+from kicad2ems.core.config import build_settings
 from waiting import wait_until
 
 
@@ -24,7 +24,7 @@ def test_window_builds(tmp_path):
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtWidgets import QApplication
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     w = MainWindow()
     w.setup.set_values(dict(board='x.kicad_pcb', nets=['RF'], fmin=1.0, fast='skrf', cut_ports=True, ports=['P3=J1.1']))
@@ -43,7 +43,7 @@ def test_dump_lists_and_extra_settings(tmp_path):
                    'dump = ["E@F.Cu@2,6", "J@y=3"]\n[openems]\nbc = "pml_8"\n', encoding='utf-8')
     vals = settings_values(str(cfg))
     assert vals['mode'] == 'antenna' and vals['dump'] == ['E@F.Cu@2,6', 'J@y=3']
-    from kicad2ems_gui.runner import extra_values
+    from kicad2ems.gui.runner import extra_values
     extra = extra_values(str(cfg))
     assert extra == dict(bc='pml_8')                                # kept for the runs: no field in the form
     assert vals['mask'] is False                                    # no_mask = true: the form's mask box, unticked
@@ -61,7 +61,7 @@ def test_window_tabs(tmp_path):
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtWidgets import QApplication
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     w = MainWindow()
     w.setup.set_values(dict(dump=['E@F.Cu@2,6', 'H@volume'], mode='antenna'))
@@ -91,8 +91,8 @@ def test_solver_boxes_estimates_and_availability():
     """A preview's estimates beside the solver tick boxes; a solver that cannot run here says why there."""
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
     app = application()
     w = MainWindow()
     w.system.stop()
@@ -117,8 +117,8 @@ def test_run_panel_plots_the_mom25d_sweep():
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
     app = application()
     w = MainWindow()
     rt = w.runtab
@@ -141,7 +141,7 @@ def test_run_panel_plots_the_mom25d_sweep():
 
 def test_save_config_keeps_the_file(tmp_path):
     """Saving over a loaded config keeps its comments, tables and unknown keys; paths relative to the file."""
-    from kicad2ems_gui.runner import save_config, extra_values
+    from kicad2ems.gui.runner import save_config, extra_values
     (tmp_path / 'b.kicad_pcb').write_text('', encoding='utf-8')
     src = tmp_path / 'c.toml'
     src.write_text('# my board\nboard = "b.kicad_pcb"   # the board\npos = "x.pos"\nfmin = 1.0  # GHz\n'
@@ -177,7 +177,7 @@ def _s2p(path, f, S, names=('IN', 'OUT')):
 
 def test_traces(tmp_path):
     import numpy as np
-    from kicad2ems_gui.traces import load_traces, transform, value_at, export_csv, smith_grid, default_visible
+    from kicad2ems.gui.traces import load_traces, transform, value_at, export_csv, smith_grid, default_visible
     f = np.linspace(1e9, 3e9, 21)
     tau = 0.5e-9                                                    # a matched 0.5 ns line
     S = np.zeros((21, 2, 2), complex)
@@ -207,8 +207,8 @@ def test_window_config_and_plots(tmp_path, monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))   # recent files in a scratch QSettings
     from PySide6.QtWidgets import QApplication
-    from kicad2ems_gui.app import MainWindow
-    from kicad2ems_gui.traces import load_traces
+    from kicad2ems.gui.app import MainWindow
+    from kicad2ems.gui.traces import load_traces
     app = QApplication.instance() or QApplication([])
     cfg = tmp_path / 'c.toml'
     cfg.write_text('# hello\nboard = "b.kicad_pcb"\nfmin = 1.0\n', encoding='utf-8')
@@ -238,8 +238,8 @@ def test_window_config_and_plots(tmp_path, monkeypatch):
                                           ('gcpw', 2), ('coupler', 4)])
 def test_rf_examples_load(name, nports):
     """The RF example boards load: ports, the Wilkinson resistor, the coupler's two separate lines."""
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
     from k2e_fixtures import ROOT as root                             # the kicad2ems checkout: its examples
     path = os.path.join(root, 'examples', f'rf_{name}.toml')
     s = build_settings({}, path)
@@ -252,8 +252,8 @@ def test_rf_examples_load(name, nports):
 
 
 def test_gui_solver_boxes(tmp_path, monkeypatch):
-    from kicad2ems_gui.runner import settings_values, solvers_from_form, save_config, extra_values, write_toml, FIELDS
-    from kicad2ems.solvers.lines import fastsolve
+    from kicad2ems.gui.runner import settings_values, solvers_from_form, save_config, extra_values, write_toml, FIELDS
+    from kicad2ems.core.solvers.lines import fastsolve
     monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)    # no qucsator: lines is scikit
     assert [k for k, *_ in FIELDS if k.startswith('solver:')] == ['solver:auto', 'solver:openems', 'solver:mom25d',
                                                                     'solver:gfdtd', 'solver:qucs', 'solver:scikit']
@@ -283,7 +283,7 @@ def test_gui_solver_boxes(tmp_path, monkeypatch):
 
 def test_save_config_in_solver_tables(tmp_path):
     """A [solver.<name>] table: its short names are its settings; another tool's table is left alone."""
-    from kicad2ems_gui.runner import settings_values, save_config, extra_values
+    from kicad2ems.gui.runner import settings_values, save_config, extra_values
     p = tmp_path / 'c.toml'
     p.write_text('board = "b.kicad_pcb"\n[solver.mom25d]\nport = "auto"  # MoM\ndmax = 0.4\n'
                  '[other]\nmom_port = "x"\n', encoding='utf-8')
@@ -297,14 +297,14 @@ def test_save_config_in_solver_tables(tmp_path):
 
 
 def test_system_panel(tmp_path):
-    """The System panel: the machine as kicad2ems.sysinfo reports it, and a preview's estimates against it (a
+    """The System panel: the machine as kicad2ems.core.sysinfo reports it, and a preview's estimates against it (a
     solver that cannot run here greyed, memory that does not fit marked)."""
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     import json
     from PySide6.QtWidgets import QApplication
-    from kicad2ems_gui.systempanel import SystemPanel, fit_note
-    from kicad2ems.sysinfo import info
+    from kicad2ems.gui.systempanel import SystemPanel, fit_note
+    from kicad2ems.core.sysinfo import info
     app = QApplication.instance() or QApplication([])
     p = SystemPanel()
     p.stop()                                                        # the panel's own check: not needed here
@@ -329,7 +329,7 @@ def test_system_panel(tmp_path):
 @pytest.fixture(scope='module')
 def wilkinson_preview(tmp_path_factory):
     """A preview of the Wilkinson divider: its board, line model (<name>_lines.json), meshes and plots."""
-    from kicad2ems.cli import main
+    from kicad2ems.core.cli import main
     out = tmp_path_factory.mktemp('wilk')
     from k2e_fixtures import ROOT as root                             # the kicad2ems checkout: its examples
     assert main([os.path.join(root, 'examples', 'rf_wilkinson.toml'), '--preview', '--out', str(out),
@@ -340,7 +340,7 @@ def wilkinson_preview(tmp_path_factory):
 def test_line_model_drawing(wilkinson_preview):
     """<name>_lines.json: every section with its points, layer height and Z0; paths as ids; the overlay's
     colours, hit test and description."""
-    from kicad2ems import overlay as ov
+    from kicad2ems.core import overlay as ov
     d = ov.load_lines(wilkinson_preview)
     assert d and d['format'] == 'kicad2ems-lines' and d['path'].endswith('_lines.json')
     els = d['elements']
@@ -357,7 +357,7 @@ def test_line_model_drawing(wilkinson_preview):
     assert ov.z0_colour(50, 50, 10) == ov.MID and ov.z0_colour(None) == ov.MID
     assert ov.z0_colour(80, 50, 10) == pytest.approx(ov.HIGH) and ov.z0_colour(20, 50, 10) == pytest.approx(ov.LOW)
     assert 'Z0 69.0 Ω' in ov.describe(arm) and 'mm' in ov.describe(arm)
-    seg = ov.plan_segments(next(iter(__import__('kicad2ems.meshes', fromlist=['find']).find(wilkinson_preview).values())),
+    seg = ov.plan_segments(next(iter(__import__('kicad2ems.core.meshes', fromlist=['find']).find(wilkinson_preview).values())),
                            (0, -20, 25, 0, 0, 0.8), 0.8)
     assert seg.shape[1] == 2 and len(seg) % 2 == 0 and len(seg) > 0
 
@@ -368,8 +368,8 @@ def test_section_view(wilkinson_preview):
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    from kicad2ems_gui import application
-    from kicad2ems_gui.viewer import Viewer
+    from kicad2ems.gui import application
+    from kicad2ems.gui.viewer import Viewer
     app = application()
     v = Viewer()
     v.load(wilkinson_preview)
@@ -415,8 +415,8 @@ def test_section_page(wilkinson_preview, tmp_path, monkeypatch):
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'config'))
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow, LOWER
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow, LOWER
     app = application()
     w = MainWindow()
     w.show()
@@ -455,8 +455,8 @@ def test_viewer_sections_and_views(wilkinson_preview):
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    from kicad2ems_gui import application
-    from kicad2ems_gui.viewer import Viewer
+    from kicad2ems.gui import application
+    from kicad2ems.gui.viewer import Viewer
     app = application()
     v = Viewer()
     assert v.load(wilkinson_preview)
@@ -497,10 +497,10 @@ def test_results_subplots_and_layout(tmp_path, monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     from PySide6.QtCore import QSettings
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow
-    from kicad2ems_gui.splot import default_layout
-    from kicad2ems_gui.traces import load_traces
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
+    from kicad2ems.gui.splot import default_layout
+    from kicad2ems.gui.traces import load_traces
     app = application()
     QSettings('kicad2ems', 'gui').clear()
     w = MainWindow()
@@ -551,16 +551,16 @@ def test_results_subplots_and_layout(tmp_path, monkeypatch):
 
 def test_meters(tmp_path, monkeypatch):
     """The status bar's readings: system RAM from /proc/meminfo, a process tree's memory, the GPU tools' output."""
-    from kicad2ems_gui import meters
+    from kicad2ems.gui import meters
     mi = tmp_path / 'meminfo'
     mi.write_text('MemTotal:       16000000 kB\nMemFree:  1 kB\nMemAvailable:    4000000 kB\n', encoding='utf-8')
     monkeypatch.setattr(meters.sys, 'platform', 'linux')            # /proc/meminfo's reading, on any system
     used, total = meters.ram(str(mi))
     assert total == pytest.approx(16.384) and used == pytest.approx(12.288)
     assert meters.ram(str(tmp_path / 'none')) is None or len(meters.ram(str(tmp_path / 'none'))) == 2   # sysconf
-    import emsdev.memory
+    import kicad2ems.emsdev.memory
     monkeypatch.setattr(meters.sys, 'platform', 'win32')
-    monkeypatch.setattr(emsdev.memory, 'windows_status', lambda: (32e9, 20e9))
+    monkeypatch.setattr(kicad2ems.emsdev.memory, 'windows_status', lambda: (32e9, 20e9))
     assert meters.ram() == (12.0, 32.0)                             # Windows: GlobalMemoryStatusEx
     monkeypatch.undo()
     if os.path.isdir('/proc/self'):
@@ -575,7 +575,7 @@ def test_meters(tmp_path, monkeypatch):
 def test_estimate_follows_the_solvers():
     """The toolbar's estimate: auto takes the fastest solver that can run and fits; named solvers add up; auto adds
     no full-wave solver beside a named one (as the pipeline); stale settings and a misfit are marked."""
-    from kicad2ems_gui.meters import estimate
+    from kicad2ems.gui.meters import estimate
     est = dict(solvers=dict(openems=dict(seconds=818, gb=0.05), mom25d=dict(seconds=264, gb=1.3, gpu_gb=0.8)))
     e = estimate(est, {})                                           # the default: auto
     assert [r[0] for r in e['rows']] == ['mom25d'] and e['rows'][0][4] and e['gpu_gb'] == 0.8
@@ -589,8 +589,8 @@ def test_estimate_follows_the_solvers():
     assert not estimate(est, dict(solvers=['mom25d']), ram_avail=1.0)['fits']
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
     app = application()
     w = MainWindow()
     w.system.stop()
@@ -616,7 +616,7 @@ def test_estimate_follows_the_solvers():
 
 def test_line_model_relief(wilkinson_preview):
     """The 3D line model: sections as slabs at their width, taller for a higher Z0."""
-    from kicad2ems import overlay as ov
+    from kicad2ems.core import overlay as ov
     d = ov.load_lines(wilkinson_preview)
     arm = next(e for e in d['elements'] if e['kind'] == 'trace' and e['z0'] > 60 and len(e['pts']) == 2)
     g = ov.section_polygon(arm)
@@ -626,8 +626,8 @@ def test_line_model_relief(wilkinson_preview):
     pytest.importorskip('PySide6')
     pytest.importorskip('OpenGL')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    from kicad2ems_gui import application
-    from kicad2ems_gui.volumetab import VolumeTab
+    from kicad2ems.gui import application
+    from kicad2ems.gui.volumetab import VolumeTab
     app = application()
     v = VolumeTab()
     if v.gl is None:
@@ -648,9 +648,9 @@ def test_parts_in_the_viewer(wilkinson_preview):
     """The Wilkinson's resistor as an 0805 chip: green in 3D with its value, outlined in the plan."""
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    from kicad2ems_gui import application
-    from kicad2ems_gui.viewer import Viewer
-    from kicad2ems_gui.volumetab import _value
+    from kicad2ems.gui import application
+    from kicad2ems.gui.viewer import Viewer
+    from kicad2ems.gui.volumetab import _value
     app = application()
     v = Viewer()
     assert v.load(wilkinson_preview)
@@ -675,7 +675,7 @@ def test_run_folders(tmp_path):
     """Each GUI run in a folder of its own (<board>_<date>_<time>), a preview in <board>_preview; a board's runs
     are only its own, the newest first; one that wrote no summary is listed by how it ended (R-E24)."""
     import datetime
-    from kicad2ems_gui.runfolders import run_dir, preview_dir, runs, board_name
+    from kicad2ems.gui.runfolders import run_dir, preview_dir, runs, board_name
     base = str(tmp_path)
     assert board_name('/x/rf_coupler.kicad_pcb') == 'rf_coupler' and board_name('a/b_board.json') == 'b'
     t = datetime.datetime(2026, 10, 13, 14, 15, 2)
@@ -704,8 +704,8 @@ def test_solver_sections(tmp_path):
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
     app = application()
     w = MainWindow()
     st = w.setup
@@ -721,7 +721,7 @@ def test_solver_sections(tmp_path):
     st.set_values(dict(board='b.kicad_pcb', solvers=['mom25d']))
     oems, mom = st.parents['FDTD'][0], st.sections['mom25d']
     assert not oems.isEnabled() and mom.isEnabled() and 'openEMS' in oems.toolTip() and 'gfdtd' in oems.toolTip()
-    from kicad2ems_gui.runner import SECTION_TITLES, SECTION_ORDER    # built from the plugins installed
+    from kicad2ems.gui.runner import SECTION_TITLES, SECTION_ORDER    # built from the plugins installed
     assert SECTION_TITLES['FDTD'] == 'FDTD (openEMS, gfdtd)' and SECTION_ORDER[3:5] == ['FDTD', 'mom25d']
     assert st.sections['Output'].isEnabled() and not st.edits['ff_freq'][0].isEnabled()    # S-parameters: no pattern
     st.edits['mode'][0].setCurrentText('antenna')
@@ -740,10 +740,10 @@ def test_solvers_window_saves_qucsator(tmp_path, monkeypatch):
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
-    from kicad2ems import sitecfg
+    from kicad2ems.core import sitecfg
     monkeypatch.setattr(sitecfg, '_cache', None)
-    from kicad2ems_gui import application
-    from kicad2ems_gui.systempanel import SystemPanel
+    from kicad2ems.gui import application
+    from kicad2ems.gui.systempanel import SystemPanel
     app = application()
     p = SystemPanel()
     p.stop()
@@ -761,7 +761,7 @@ def test_solvers_window_saves_qucsator(tmp_path, monkeypatch):
     p._save_programs()
     assert sitecfg.get('openems_venv') == '/opt/openems/venv' and sitecfg.get('qucsator') is None and checks == [1, 1, 1]
     assert p.openems_dir is None or sys.platform == 'win32'          # the DLL folder: a Windows field
-    import kicad2ems_gui.systempanel as sp
+    import kicad2ems.gui.systempanel as sp
     monkeypatch.setattr(sp.sys, 'platform', 'win32')
     w = SystemPanel()
     w.stop()
@@ -779,9 +779,9 @@ def test_beam_steering_bar(tmp_path, monkeypatch):
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
-    from kicad2ems import phased
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.core import phased
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
     from test_phased import two_sources
     app = application()
     data, _ = two_sources()
@@ -832,9 +832,9 @@ def test_trace_colours_and_styles(tmp_path, monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     from PySide6.QtCore import QSettings
-    from kicad2ems_gui import application
-    from kicad2ems_gui.splot import SPlot
-    from kicad2ems_gui.traces import load_traces
+    from kicad2ems.gui import application
+    from kicad2ems.gui.splot import SPlot
+    from kicad2ems.gui.traces import load_traces
     app = application()
     QSettings('kicad2ems', 'gui').clear()
     f = np.linspace(1e9, 3e9, 11)
@@ -867,7 +867,7 @@ def test_filter_command_line():
     """The Filter page's settings as dfsynth's command line: empty fields left to dfsynth, flags only when set,
     the validation only when asked for; the flags and kinds from dfsynth's description (--describe --json), a value
     of an option this dfsynth lacks left out."""
-    from kicad2ems_gui.filtertab import filter_argv
+    from kicad2ems.gui.filtertab import filter_argv
     desc = dict(options=[dict(key=k, flag='--' + k.replace('_', '-'), kind=kind) for k, kind in (
         ('type', 'str'), ('topology', 'str'), ('f0', 'str'), ('bw', 'str'), ('order', 'int'), ('ripple', 'float'),
         ('h', 'float'), ('allow_fab_violations', 'flag'), ('no_calibrate', 'flag'), ('out', 'str'),
@@ -890,10 +890,10 @@ def test_filter_page(tmp_path):
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    from kicad2ems_gui import filtertab as ft
+    from kicad2ems.gui import filtertab as ft
     if ft.describe() is None:
         pytest.skip('no dfsynth')
-    from dfsynth.cli import main as dfsynth
+    from kicad2ems.dfsynth.cli import main as dfsynth
     base = str(tmp_path / 'lpf')
     assert dfsynth(['--type', 'lowpass', '--topology', 'stepped', '--f0', '2G', '--substrate', 'RO4003C-0.813',
                     '-o', base]) == 0
@@ -902,7 +902,7 @@ def test_filter_page(tmp_path):
     geo = res['design']['geometry']
     assert geo['polys'] and len(geo['ports']) == 2
     from PySide6.QtWidgets import QApplication
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     w = MainWindow()
     assert 'Filter' in w.places and wait_until(lambda: w.filter.desc is not None, 60)   # (asked in a thread)
@@ -949,7 +949,7 @@ def test_the_window_is_docks(monkeypatch, tmp_path):
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     from PySide6.QtCore import QSettings, Qt
     from PySide6.QtWidgets import QApplication
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     QSettings('kicad2ems', 'gui').clear()
     QSettings('kicad2ems', 'gui').setValue('window/state', b'what an older window saved of its docks')
@@ -1035,9 +1035,9 @@ def test_beam_steering_bar_2d(tmp_path, monkeypatch):
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
-    from kicad2ems import phased
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.core import phased
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
     from test_phased import grid_sources
     app = application()
     data, k0, d = grid_sources()
@@ -1108,9 +1108,9 @@ def test_beam_steering_aim(tmp_path, monkeypatch):
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
-    from kicad2ems import phased
-    from kicad2ems_gui import application
-    from kicad2ems_gui.steering import SteeringBar
+    from kicad2ems.core import phased
+    from kicad2ems.gui import application
+    from kicad2ems.gui.steering import SteeringBar
     from test_phased import placed_sources
     application()
     data = placed_sources({'P1': (0.0, 0.0), 'P2': (61.2, 0.0), 'P3': (30.6, 53.0)})
@@ -1154,7 +1154,7 @@ def test_beam_steering_aim(tmp_path, monkeypatch):
 def test_mixed_mode_names():
     """A file with differential pairs (kicad2ems's P1d, P1c ports) names its traces by mode and pair: Sdd21, Scd21,
     and s for a single-ended port among them; a file without pairs keeps S21."""
-    from kicad2ems_gui.traces import Trace, modes
+    from kicad2ems.gui.traces import Trace, modes
     names = ['P1d', 'P1c', 'P2d', 'P2c', 'P3']
     assert modes(names) == [('d', 1), ('c', 1), ('d', 2), ('c', 2), ('s', 3)]
     assert modes(['IN', 'OUT']) is None and modes(None) is None and modes(['Pd', 'Q']) is None
@@ -1172,9 +1172,9 @@ def test_difference_plot(tmp_path, monkeypatch):
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
-    from kicad2ems_gui import application
-    from kicad2ems_gui.splot import SPlot
-    from kicad2ems_gui.traces import DIFF_KINDS, load_traces, difference, counterpart
+    from kicad2ems.gui import application
+    from kicad2ems.gui.splot import SPlot
+    from kicad2ems.gui.traces import DIFF_KINDS, load_traces, difference, counterpart
     application()
     f = np.linspace(1e9, 3e9, 11)
     _s2p(tmp_path / 'b_openems.s2p', f, np.full((11, 2, 2), 0.2 + 0j))
@@ -1206,8 +1206,8 @@ def test_run_notes_on_the_results_page(tmp_path, monkeypatch):
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow, run_notes
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow, run_notes
     application()
     sm = dict(warnings=['WARNING: openems: 2 vias moved onto the mesh'], model=dict(notes=['B.Cu: solid ground']),
               lines=dict(notes=['P2: no reference copper']),
@@ -1244,7 +1244,7 @@ def test_filter_page_from_the_description(monkeypatch):
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     import sys
-    from kicad2ems_gui import application, filtertab as ft
+    from kicad2ems.gui import application, filtertab as ft
     desc = dict(format=1, version='test', kinds={'lowpass': ['stepped', 'radial'], 'bandpass': ['coupled']},
                 presets={'X-1': dict(h=1.0, er=3.0, tand=0.001, material='X')},
                 options=[dict(key='type', flag='--type', kind='str', default=None, choices=None, help='', group=''),
@@ -1274,7 +1274,7 @@ def test_examples_menu_opens_a_prepared_example(tmp_path, monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path))
     from PySide6.QtWidgets import QApplication
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui.app import MainWindow
     QApplication.instance() or QApplication([])
     w = MainWindow()
     assert [a.text() for a in w.examples_menu.actions()] == ['Antennas', 'RF structures', 'Signal integrity',
@@ -1299,7 +1299,7 @@ def test_examples_menu_opens_a_prepared_example(tmp_path, monkeypatch):
 def test_filter_page_says_why_dfsynth_cannot_describe(tmp_path, monkeypatch):
     """No dfsynth, one too old for --describe and one in another description format: three different messages."""
     import sys
-    from kicad2ems_gui import filtertab as ft
+    from kicad2ems.gui import filtertab as ft
 
     def fake(code):                                                 # a Python whose 'dfsynth' behaves so
         path = tmp_path / f"py{len(list(tmp_path.iterdir()))}"
@@ -1322,7 +1322,7 @@ def test_filter_page_says_why_dfsynth_cannot_describe(tmp_path, monkeypatch):
 def test_antenna_sphere_from_sphere_file(tmp_path):
     """The sphere is where the solver's results say (sphere_file); openEMS's results from before it, in its run
     folder."""
-    from kicad2ems_gui.antennatab import find_antenna
+    from kicad2ems.gui.antennatab import find_antenna
     (tmp_path / 'fd').mkdir()
     (tmp_path / 'fd' / 'sph.h5').write_bytes(b'')
     (tmp_path / 'b_antenna.json').write_text(json.dumps(dict(solver='openems', port='P1', sphere_file='fd/sph.h5')), encoding='utf-8')
@@ -1338,7 +1338,7 @@ def test_antenna_sphere_from_sphere_file(tmp_path):
 def test_the_solved_mesh_goes_with_its_solver():
     """meshpick: one Mesh entry a solver; the run's mesh (<solver>-run) is the pink overlay, or the mesh itself where
     there is no preview."""
-    from kicad2ems_gui import meshpick as mp
+    from kicad2ems.gui import meshpick as mp
     found = {'mom25d-run': 'r.npz', 'openems': 'o.npz', 'mom25d': 'p.npz'}
     assert mp.solvers(found) == ['mom25d', 'openems']
     assert (mp.shown(found, 'mom25d'), mp.solved(found, 'mom25d')) == ('p.npz', 'r.npz')

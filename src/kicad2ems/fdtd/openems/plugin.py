@@ -1,5 +1,5 @@
 """
-openEMS as a kicad2ems solver plugin: the FDTD model (kicad2ems_fdtd.plugin) solved by openEMS's engine. Its own: the import check
+openEMS as a kicad2ems solver plugin: the FDTD model (kicad2ems.fdtd.plugin) solved by openEMS's engine. Its own: the import check
 (engine.py, venv.py). The mesh convergence check (--converge) is the FDTD layer's (plugin.py, converge.py).
 
 What openEMS changes on the way (declared deviations, docs/architecture.md): vias snapped onto mesh lines
@@ -11,7 +11,7 @@ from ..plugin import FDTD, MESH, RUN, CONVERGE
 
 
 class OpenEMS(FDTD):
-    api = (2, 9)                    # kicad2ems.api (2.4: resolve_finish, the finish row; 2.9: basic)
+    api = (2, 9)                    # kicad2ems.core.api (2.4: resolve_finish, the finish row; 2.9: basic)
     name, aliases, label = 'openems', ('fdtd',), 'openEMS (FDTD)'
     previewed = True
     order = 10                      # first in kicad2ems's lists: the reference

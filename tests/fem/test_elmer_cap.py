@@ -3,8 +3,8 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping
 
-from kicad2ems_fem.elmer import cap, run as elmer
-from kicad2ems_fem.palace import cap as pcap
+from kicad2ems.fem.elmer import cap, run as elmer
+from kicad2ems.fem.palace import cap as pcap
 from test_palace_cap import board
 
 

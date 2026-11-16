@@ -1,7 +1,7 @@
 """
 The solvers a tool starts (ElmerGrid, ElmerSolver, Palace with its MPI ranks, podman), each in a process group of
 its own and stopped with the tool: on the tool's SIGTERM (the window's Stop), at its exit, and when the run's stop
-is requested (kicad2ems.stop: a Palace driven run inside kicad2ems, whose STOP file the window writes). Started
+is requested (kicad2ems.core.stop: a Palace driven run inside kicad2ems, whose STOP file the window writes). Started
 plainly, they outlived a Stop: 8 Palace ranks went on for their half hour.
 
     p = popen(cmd, **kw)          # subprocess.Popen in a session of its own, watched as above
@@ -24,7 +24,7 @@ GRACE_S = 3.0                   # how long a solver has after SIGTERM before SIG
 
 def _requested():
     try:
-        from kicad2ems.stop import requested
+        from kicad2ems.core.stop import requested
     except ImportError:                                         # (kicad2ems older than its stop module)
         return False
     return requested()
@@ -91,9 +91,9 @@ def stopped(p):
 
 
 def raise_stopped():
-    """kicad2ems.stop.Stopped (the run gives no result), or RuntimeError without kicad2ems's stop module."""
+    """kicad2ems.core.stop.Stopped (the run gives no result), or RuntimeError without kicad2ems's stop module."""
     try:
-        from kicad2ems.stop import Stopped
+        from kicad2ems.core.stop import Stopped
     except ImportError:
         Stopped = RuntimeError
     raise Stopped('stop requested')

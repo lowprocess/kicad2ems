@@ -1,13 +1,13 @@
-"""Settings varied (R-E5, kicad2ems.vary): --vary and a config's [vary] table, a job per combination, the list."""
+"""Settings varied (R-E5, kicad2ems.core.vary): --vary and a config's [vary] table, a job per combination, the list."""
 import json
 import os
 
 import pytest
 
-from kicad2ems import vary as V
-from kicad2ems.config import OPTIONS, ConfigError, build_settings
+from kicad2ems.core import vary as V
+from kicad2ems.core.config import OPTIONS, ConfigError, build_settings
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FILTER = os.path.join(ROOT, 'examples', 'rf_interdig.toml')
 
 
@@ -52,7 +52,7 @@ def test_each_combination_is_a_run_of_its_own(run_cli, tmp_path):
     assert d['runs'][2]['folder'] == os.path.join('vary', 'points=41_fmax=4')
     assert d['runs'][2]['solved']['scikit'] == 'rf_interdig_scikit.s2p'
     got = V.load(str(out))
-    from kicad2ems.touchstone import read_touchstone
+    from kicad2ems.core.touchstone import read_touchstone
     f, S = read_touchstone(got['runs'][3]['solved']['scikit'])
     assert len(f) == 41 and f[-1] == pytest.approx(5e9) and os.path.isabs(got['runs'][0]['folder'])
     assert V.load(str(tmp_path)) is None

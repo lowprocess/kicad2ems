@@ -19,8 +19,8 @@ def settle(app, dlg, seconds=30):
 
 @pytest.fixture
 def dialog():
-    from kicad2ems_gui import application
-    from kicad2ems_gui.impedance import ImpedanceCalculator
+    from kicad2ems.gui import application
+    from kicad2ems.gui.impedance import ImpedanceCalculator
     app = application()
     dlg = ImpedanceCalculator()
     yield dlg, app

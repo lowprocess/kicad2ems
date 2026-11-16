@@ -2,8 +2,8 @@
 corners and that run paired; a polyline alone stays whole."""
 import numpy as np
 
-from kicad2ems.lines import topology
-from kicad2ems.lines.elements import Element, LineModel
+from kicad2ems.core.lines import topology
+from kicad2ems.core.lines.elements import Element, LineModel
 
 
 def trace(a, b, pts, w=0.3):

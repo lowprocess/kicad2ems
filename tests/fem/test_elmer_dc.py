@@ -2,8 +2,8 @@
 import pytest
 from shapely.geometry import box, mapping
 
-from kicad2ems_fem.elmer import run as elmer
-from kicad2ems_fem.geometry import pads_of
+from kicad2ems.fem.elmer import run as elmer
+from kicad2ems.fem.geometry import pads_of
 
 
 def strip_board(t=0.035):
@@ -29,7 +29,7 @@ def test_pads_of_takes_a_parts_pads_on_the_net():
 def test_strip_drop_matches_closed_form(tmp_path):
     """R = 40 mm / (sigma t w) between the pads' inner edges; the pads are tagged on the mesh, so their edges are
     resolved to h_fine (0.15% at h_fine 0.06)."""
-    from kicad2ems_fem.elmer.dc import solve
+    from kicad2ems.fem.elmer.dc import solve
     R0 = 0.040 / (5.8e7 * 35e-6 * 0.005)
     for mesh, tol in (('wedge', 1e-3), ('tet', 3e-3)):                        # the layered mesh (R-D23), gmsh's tets
         r = solve(strip_board(), {'N'}, 'S', {'L': 1.0}, out=tmp_path / mesh, h=0.25, h_fine=0.06, mesh=mesh,

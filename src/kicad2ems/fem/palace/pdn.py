@@ -1,8 +1,8 @@
 """A rail's PDN in Palace (R-E22): the rail pcbqs's PDN run found (its nets, ground, decoupling capacitors, regulator
 and loads), solved again in 3D, its impedance at each load beside pcbqs's.
 
-    python -m pcbqs.pdn board.kicad_pcb --rail +3V3 ... --ports-touchstone --out pdn_3v3
-    python -m kicad2ems_fem.palace.pdn --pdn pdn_3v3 --out pdn_3v3_palace
+    python -m kicad2ems.pcbqs.pdn board.kicad_pcb --rail +3V3 ... --ports-touchstone --out pdn_3v3
+    python -m kicad2ems.fem.palace.pdn --pdn pdn_3v3 --out pdn_3v3_palace
 
 Every part on the rail is a lumped port across the gap between its closest rail pad and ground pad (a series part's:
 between its two pads), and Palace solves the bare copper between them: the rail's and the ground's copper and vias
@@ -113,7 +113,7 @@ def pad_gap(raw, ref, nets_a, nets_b, ground_copper=None):
 
 def gap_port(b, name, g, z0):
     """The kicad2ems gap Port of pad_gap's gap g on board b (model coordinates: y up)."""
-    from kicad2ems.board import Port
+    from kicad2ems.core.board import Port
     a, o = g['axis'], 1 - g['axis']
     flip = (lambda v: -v) if a == 1 else (lambda v: v)
     lo, hi = sorted((flip(g['lo']), flip(g['hi'])))
@@ -130,7 +130,7 @@ def element_z(el, f, files=None):
     run's settings), without its mount (Palace's copper has that)."""
     w = 2 * np.pi * np.asarray(f, float)
     if el.get('file'):
-        from pcbqs.pdn.models import read_impedance, table_z
+        from kicad2ems.pcbqs.pdn.models import read_impedance, table_z
         path = (files or {}).get(el['file'].split(' (')[0])
         if path is None:
             raise ValueError(f"its model file {el['file']} is not in the run's settings")
@@ -167,8 +167,8 @@ def _settings_files(r):
 
 def solve(pdn, out='pdn_palace', board=None, fmin=1e6, fmax=None, points=None, order=2, feature=1.0, hmin=0.25,
           hmax=2.0, margin=10.0, tol=1e-3, np_=0, log=print):
-    from kicad2ems.board import Board
-    from kicad2ems.importers import open_board
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers import open_board
     from . import config, model, run as prun
     r, board_file = read_pdn(pdn, board)
     nets, ground = list(r['nets']), list(r['ground'])
@@ -241,13 +241,13 @@ def solve(pdn, out='pdn_palace', board=None, fmin=1e6, fmax=None, points=None, o
     keep = [k for k, x in enumerate(refs) if x not in series]
     bare = close(Z, keep, zs)                                       # the series parts closed: pcbqs's bare network
     names = [refs[k] for k in keep]
-    from pcbqs.pdn.cli import write_z
+    from kicad2ems.pcbqs.pdn.cli import write_z
     write_z(str(out / f'pdn_palace_ports.z{len(names)}p'), f, bare, names,
             what="Palace's bare PDN (the copper, its series parts) between its parts' ports")
     shut = {k: element_z(parts[x]['element'], f, files) for k, x in enumerate(names) if parts[x]['role'] != 'load'}
     lk = [k for k, x in enumerate(names) if parts[x]['role'] == 'load']
     loaded = close(bare, lk, shut)
-    result = dict(format=1, tool='kicad2ems_fem.palace.pdn', engine=prun.engine(str(work)), pdn=str(Path(pdn).resolve()),
+    result = dict(format=1, tool='kicad2ems.fem.palace.pdn', engine=prun.engine(str(work)), pdn=str(Path(pdn).resolve()),
                   board=board_file, rail=r['rail'], ground=ground, ports={x: s for x, s in zip(refs, specs)},
                   left_out=skipped, port_ohm=zref, frequencies_Hz=f.tolist(), z={}, bare_diag={}, tets=mdl.tets,
                   order=order, hmin=mdl.hmin, hmax=mdl.hmax, margin=mdl.margin,
@@ -267,7 +267,7 @@ def solve(pdn, out='pdn_palace', board=None, fmin=1e6, fmax=None, points=None, o
     pt = r['pdn'].get('ports') or {}
     pfile = Path(pdn) / pt['touchstone'] if pt.get('touchstone') else None
     if pfile is not None and pfile.is_file():                      # pcbqs's own bare matrix, term by term
-        from pcbqs.pdn.models import read_touchstone
+        from kicad2ems.pcbqs.pdn.models import read_touchstone
         fq, Mq, _, _ = read_touchstone(str(pfile))
         common = [x for x in names if x in pt.get('names', [])]
         ia, ib = [names.index(x) for x in common], [pt['names'].index(x) for x in common]
@@ -281,7 +281,7 @@ def solve(pdn, out='pdn_palace', board=None, fmin=1e6, fmax=None, points=None, o
 
 
 def parser():
-    ap = argparse.ArgumentParser(prog='python -m kicad2ems_fem.palace.pdn', description=__doc__.split('\n\n')[0])
+    ap = argparse.ArgumentParser(prog='python -m kicad2ems.fem.palace.pdn', description=__doc__.split('\n\n')[0])
     ap.add_argument('--pdn', required=True, help="a pcbqs PDN run's folder (its pdn.json: the rail and its parts)")
     ap.add_argument('--board', default='', help="the KiCad board, where the run did not record it")
     ap.add_argument('--out', default='pdn_palace', help='output folder')

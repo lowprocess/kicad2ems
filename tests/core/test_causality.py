@@ -1,7 +1,7 @@
-"""The band-limited causality check (kicad2ems.causality, R-E2): generalised dispersion relations with subtractions."""
+"""The band-limited causality check (kicad2ems.core.causality, R-E2): generalised dispersion relations with subtractions."""
 import numpy as np
 
-from kicad2ems.causality import check
+from kicad2ems.core.causality import check
 
 
 def _line(f, delay, q=10.0, f0=2.4e9):

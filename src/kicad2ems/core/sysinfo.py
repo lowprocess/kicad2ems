@@ -1,7 +1,7 @@
 """
 What this machine offers a run: the solvers (each one's check), the GPUs they would use (each one's resources())
 and the memory of the system and of the GPU. The GUI's System panel runs it as its own process (python -m
-kicad2ems.sysinfo: JSON on stdout), so the GUI never holds a GPU context or imports CuPy.
+kicad2ems.core.sysinfo: JSON on stdout), so the GUI never holds a GPU context or imports CuPy.
 
     info()      dict(solvers=[dict(name, label, ok, what)], resources={solver: dict(gpus, why)},
                      gpu=dict(...) | None, gpu_why, ram=dict(total, available), cpus, threads)
@@ -11,12 +11,12 @@ import json
 import os
 import sys
 
-from emsdev.cpu import core_threads                              # noqa: F401  (the KiCad plugin's map workers)
+from kicad2ems.emsdev.cpu import core_threads                              # noqa: F401  (the KiCad plugin's map workers)
 
 
 def memory():
     """System memory in GB: installed, and available to this process now (cgroup aware, as the solvers see it)."""
-    from emsdev import memory as mem
+    from kicad2ems.emsdev import memory as mem
     total = mem.total()
     return dict(total=total / 1e9 if total else None, available=mem.available() / 1e9)
 

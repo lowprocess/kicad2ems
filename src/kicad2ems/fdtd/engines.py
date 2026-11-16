@@ -8,7 +8,7 @@ and the FDTD layer that drives it are always the same version.
 """
 import importlib
 
-ENGINES = {'openems': 'kicad2ems_fdtd.openems.engine', 'gfdtd': 'kicad2ems_fdtd.gfdtd'}
+ENGINES = {'openems': 'kicad2ems.fdtd.openems.engine', 'gfdtd': 'kicad2ems.fdtd.gfdtd'}
 DEFAULT = 'openems'
 
 

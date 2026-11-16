@@ -3,7 +3,7 @@
 import os
 import numpy as np
 import pytest
-from kicad2ems.fields.antenna import match_summary, gain_table, pattern_gain
+from kicad2ems.core.fields.antenna import match_summary, gain_table, pattern_gain
 
 
 def test_match_summary():

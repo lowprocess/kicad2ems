@@ -3,7 +3,7 @@ selected analysis's settings) and the window's Run of the ticked analyses, one a
 import os
 import pytest
 
-from kicad2ems_gui import study
+from kicad2ems.gui import study
 from waiting import wait_until
 
 
@@ -39,8 +39,8 @@ def window(tmp_path, monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     from PySide6.QtCore import QSettings
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
     app = application()
     QSettings('kicad2ems', 'gui').clear()
     w = MainWindow()
@@ -59,7 +59,7 @@ def test_study_dock(window):
     the selected question's engines under it (a panel made from each plugin's options), no Run button of its
     own; what is asked kept for the next window."""
     from PySide6.QtCore import Qt
-    from kicad2ems_gui.analysispanel import AnalysisPanel
+    from kicad2ems.gui.analysispanel import AnalysisPanel
     w, app, MainWindow = window
     st, tree = w.setup, w.study
     assert st.study is tree and st.isAncestorOf(tree)               # the list: the window's left column
@@ -378,7 +378,7 @@ def test_two_engines_of_one_question_run_and_are_compared(window, tmp_path):
     is; the Results page lays the figures they name alike side by side, with the difference; the config keeps who
     was asked."""
     from PySide6.QtCore import Qt
-    from kicad2ems.api.frontend import analysis_of, read_study, run_mark
+    from kicad2ems.core.api.frontend import analysis_of, read_study, run_mark
     w, app, _ = window
     w.show()
     tree = w.study
@@ -422,7 +422,7 @@ def test_the_runs_are_read_once_for_a_settings_change(window, tmp_path, monkeypa
     """What each analysis still needs asks the latest results, once per analysis and row: the run folders are read
     once while they are unchanged (each ask had read them all), again once a run is added or the list refreshed."""
     import time
-    from kicad2ems_gui import runfolders
+    from kicad2ems.gui import runfolders
     import fake_analyses as FA
     w, app, _ = window
     board = tmp_path / 'b.kicad_pcb'
@@ -449,7 +449,7 @@ def test_one_analysis_starts_from_another_s_result(window, tmp_path):
     """What a plugin is given of the others' results (the temperature, a circuit's losses): the one shown, else
     the newest; and what a result proposes for another analysis (a converter's input rail), with what it could not
     say to be set before a run."""
-    from kicad2ems_gui import runfolders
+    from kicad2ems.gui import runfolders
     import fake_analyses as FA
     w, app, _ = window
     pdn, mqs, th = w.pages['pdn'], w.pages['mqs'], w.pages['thermal']
@@ -525,7 +525,7 @@ def test_the_few_settings_first_and_the_rest_found(window):
     """The settings a run is set up with are in view (the registry says which: an option's level, a solver's
     `basic`), those of a solver while it is chosen; the others are under "More settings", in their sections, and
     found by a word of their label, their key or their section. The board's: its file and extra ports first."""
-    from kicad2ems_gui.runner import basic_keys
+    from kicad2ems.gui.runner import basic_keys
     w, app, _ = window
     w.show()
     app.processEvents()
@@ -610,7 +610,7 @@ def test_the_window_s_own_run_starts_and_ends(window, tmp_path, monkeypatch):
     events reach the Log, and the window is idle after; a start that raises says so on its row and leaves the
     window idle too (it stayed busy, so every later Run said "a run is going")."""
     import sys
-    from kicad2ems import runs
+    from kicad2ems.core import runs
     w, app, _ = window
     board = tmp_path / 'b.kicad_pcb'
     board.write_text('')
@@ -636,7 +636,7 @@ def test_stop_asks_the_run_then_ends_its_process(window, tmp_path, monkeypatch):
     """Stop, pressed once, asks kicad2ems's own run to stop (stop_runs: it ends after its current step) and says so;
     pressed again it ends the process at once, and the window is idle after (R-C8: the two-press Stop was untested)."""
     import sys
-    from kicad2ems import runs
+    from kicad2ems.core import runs
     w, app, _ = window
     board = tmp_path / 'b.kicad_pcb'
     board.write_text('')
@@ -646,7 +646,7 @@ def test_stop_asks_the_run_then_ends_its_process(window, tmp_path, monkeypatch):
                       "time.sleep(600)\n")
     monkeypatch.setattr(runs.Run, 'argv', lambda self: [sys.executable, str(script), self.toml, '--events', self.events])
     asked = []
-    import kicad2ems_gui.app as gui_app
+    import kicad2ems.gui.app as gui_app
     monkeypatch.setattr(gui_app, 'stop_runs', lambda out: asked.append(out))
     w.setup.set_values(dict(board=str(board), out=str(tmp_path / 'out')))
     w.study.set_ticked(['rf'])
@@ -674,7 +674,7 @@ def test_a_half_typed_number_is_said_not_frozen(window):
 def test_another_board_lists_its_own_runs(window, tmp_path):
     """Results of follows the board: after another board is chosen it lists that board's runs, and a run of the last
     one leaves the pages (they had kept it, shown under the new study)."""
-    from kicad2ems_gui import runfolders
+    from kicad2ems.gui import runfolders
     import fake_analyses as FA
     w, app, _ = window
     a, b = tmp_path / 'a.kicad_pcb', tmp_path / 'b.kicad_pcb'
@@ -695,7 +695,7 @@ def test_a_failed_run_stays_listed_with_its_log_and_can_be_deleted(window, tmp_p
     """R-E24: a run that ends with an error and no results stays in Results of ("failed, code 1"), its whole output in
     its folder (stdout.log) and its log shown when it is picked; Delete run removes its folder once asked."""
     import sys
-    from kicad2ems import runs
+    from kicad2ems.core import runs
     from PySide6.QtWidgets import QMessageBox
     w, app, _ = window
     board = tmp_path / 'b.kicad_pcb'
@@ -726,7 +726,7 @@ def test_a_failed_run_stays_listed_with_its_log_and_can_be_deleted(window, tmp_p
 def test_a_run_that_cannot_start_is_said_and_leaves_the_window_idle(window, tmp_path, monkeypatch):
     """R-E25: no process (a program that is not there): the Log says why and the window is idle (FailedToStart has no
     finished signal: it had stayed busy)."""
-    from kicad2ems import runs
+    from kicad2ems.core import runs
     w, app, _ = window
     board = tmp_path / 'b.kicad_pcb'
     board.write_text('')
@@ -772,7 +772,7 @@ def test_a_dropped_board_or_config_is_taken(window, tmp_path, monkeypatch):
 def test_an_exception_in_a_slot_is_shown_not_only_printed(window, capsys):
     """R-E25: sys.excepthook shows the traceback in a dialog that does not wait, and still on stderr."""
     import sys
-    from kicad2ems_gui.app import install_excepthook
+    from kicad2ems.gui.app import install_excepthook
     from PySide6.QtWidgets import QApplication, QMessageBox
     w, app, _ = window
     before = sys.excepthook

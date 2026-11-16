@@ -10,7 +10,7 @@ from PySide6.QtGui import QColor, QPen, QBrush
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QComboBox, QCheckBox, QLabel, QPushButton
 import pyqtgraph as pg
 from . import theme
-from kicad2ems.api.frontend import overlay as ov, sections
+from kicad2ems.core.api.frontend import overlay as ov, sections
 from .panels import FlowLayout
 
 SIGNAL, GROUND = QColor(214, 140, 64), QColor(120, 120, 120)

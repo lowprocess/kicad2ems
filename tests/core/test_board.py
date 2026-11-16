@@ -3,11 +3,11 @@ trip, and the golden summaries of the example boards in tests/golden/: a change 
 up as a reviewable diff there before any solver runs (KICAD2EMS_UPDATE_GOLDEN=1 rewrites them)."""
 import json, os, re
 import pytest
-from kicad2ems.board import Board, FORMAT, VERSION, _plain
-from kicad2ems.config import build_settings
-from kicad2ems.pipeline import board_from_settings
+from kicad2ems.core.board import Board, FORMAT, VERSION, _plain
+from kicad2ems.core.config import build_settings
+from kicad2ems.core.pipeline import board_from_settings
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 EX = os.path.join(ROOT, 'examples')
 GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'golden')
 quiet = lambda *a: None
@@ -77,7 +77,7 @@ def test_golden_summary(case, boards):
 def test_round_trip(case, boards, tmp_path):
     """board.json holds everything a solver uses: the board read back gives the same summary and the same line
     model (and the same FDTD mesh: kicad2ems-fdtd's test_board_json.py)."""
-    from kicad2ems.lines.tlines import build
+    from kicad2ems.core.lines.tlines import build
     b = board_of(case, boards)
     b2 = Board.load(b.save(str(tmp_path / 'b.json')), log=quiet)
     assert b2.summary() == b.summary()
@@ -112,7 +112,7 @@ def test_a_board_json_is_an_input(boards, run_cli, tmp_path):
 def test_a_port_s_reference_is_ground_copper_and_a_plug_is_not_a_port():
     """A port's reference: the nearest ground net's copper under it, a signal trace nearer it passed over (it had been
     taken, with nothing said); a placement file's P1, P2 references alone (plugs) are not ports."""
-    from kicad2ems.importers.kicad.pnp import pos_port_refs
+    from kicad2ems.core.importers.kicad.pnp import pos_port_refs
     rows = [dict(ref='P1', val='USB_C', package='USB_C_Receptacle'), dict(ref='TP3', val='P2', package='TestPoint'),
             dict(ref='J4', val='SMA', package='RF_Port_SMA')]
     assert pos_port_refs(rows) == {'TP3', 'J4'}
@@ -124,9 +124,9 @@ def test_a_port_on_a_trace_at_an_angle(tmp_path):
     its track's own direction (snapped to x or y within a degree)."""
     import sys
     import numpy as np
-    from kicad2ems.board import Port
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems import region as R
+    from kicad2ems.core.board import Port
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core import region as R
     sys.path.insert(0, EX)
     import make_rf_examples as M
     bd, deg, L = M.Board(), 30.0, 16.0

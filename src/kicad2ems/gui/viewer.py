@@ -19,7 +19,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QLinearGradient, QPixmap, QIcon
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QToolButton, QButtonGroup, QStackedWidget,
                                QSplitter, QTreeWidget, QTreeWidgetItem, QCheckBox, QLabel, QHeaderView, QSizePolicy)
-from kicad2ems.api.frontend import overlay as ov
+from kicad2ems.core.api.frontend import overlay as ov
 from .fieldtab import FieldsTab
 from .panels import ImagePanel
 from .planview import PlanView
@@ -203,7 +203,7 @@ class Viewer(QWidget):
         return any(e.get('section') for e in (self.lines or {}).get('elements', []))
 
     def show_layout(self, layout):
-        """The board as drawn (kicad2ems.layout; None: none), in the plan wherever no run's board is: now, and
+        """The board as drawn (kicad2ems.core.layout; None: none), in the plan wherever no run's board is: now, and
         after a folder without one is loaded. False: the plan shows no board."""
         self.drawn = layout
         shown = self.plan.board

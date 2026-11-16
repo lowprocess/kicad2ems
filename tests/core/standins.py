@@ -2,7 +2,7 @@
 Stand-in solver plugins for kicad2ems's own tests. The full-wave solvers are packages of their own
 (kicad2ems-fdtd: openEMS and gfdtd; mom25d); core's tests run against these stand-ins instead, whatever is
 installed, so they need none of those packages and see the same solvers on every machine. install() puts them
-in place of the installed solvers before kicad2ems.config builds its settings from the registry (conftest.py
+in place of the installed solvers before kicad2ems.core.config builds its settings from the registry (conftest.py
 calls it as the tests start).
 
     openems, gfdtd  FDTD-shaped solvers: a few of the shared FDTD settings (the same Option objects on both, in
@@ -19,10 +19,10 @@ run of those. What only the real plugins do (the FDTD model, mesh and runs, open
 import importlib
 import numpy as np
 
-from kicad2ems import solvers
-from kicad2ems.options import Option, floatlist, items, strlist
-from kicad2ems.solvers import Solver, Result, Deviation, AUTO
-from kicad2ems.fields.dumps import G_DUMP
+from kicad2ems.core import solvers
+from kicad2ems.core.options import Option, floatlist, items, strlist
+from kicad2ems.core.solvers import Solver, Result, Deviation, AUTO
+from kicad2ems.core.fields.dumps import G_DUMP
 
 
 # ---- the FDTD solvers ------------------------------------------------------------------------------------
@@ -113,8 +113,8 @@ class OpenEMS(FDTD):
     def prepare(self, run):
         """As openEMS's: its preview figure and its grid for the 3D view, here a uniform 1 mm grid over the board
         (no mesh rules), so a --preview has both."""
-        from kicad2ems import meshes
-        from kicad2ems.plots import preview
+        from kicad2ems.core import meshes
+        from kicad2ems.core.plots import preview
         x0, y0, x1, y1 = run.m.outline.bounds
         g = dict(x=np.arange(x0, x1 + 1, 1.0), y=np.arange(y0, y1 + 1, 1.0), z=np.array([0.0, run.m.thickness]))
         run.wrote("openEMS grid (3D view)", meshes.save(run, 'openems', 'grid', **g))
@@ -239,7 +239,7 @@ def entry_points():
 
 
 def install():
-    """The stand-ins in place of the installed solver packages: before kicad2ems.config (and the GUI's runner)
+    """The stand-ins in place of the installed solver packages: before kicad2ems.core.config (and the GUI's runner)
     build their settings and forms from the registry. Leaves the registry to be built again."""
     solvers._entry_points = entry_points
     solvers._registry, solvers.broken[:] = None, []

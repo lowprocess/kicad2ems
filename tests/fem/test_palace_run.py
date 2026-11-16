@@ -6,7 +6,7 @@ import os
 import numpy as np
 import pytest
 
-from kicad2ems_fem.palace import cap, config, model, run
+from kicad2ems.fem.palace import cap, config, model, run
 from test_palace import with_part
 from test_palace_cap import board as cap_board
 

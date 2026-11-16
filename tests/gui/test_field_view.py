@@ -11,7 +11,7 @@ def test_field_view_tab(run_folder, tmp_path):
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtWidgets import QApplication
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     out, _ = run_folder
     w = MainWindow()

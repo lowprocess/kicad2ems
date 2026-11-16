@@ -3,7 +3,7 @@ gfdtd: an FDTD solver in the manner of openEMS, built to run on a GPU (Vulkan th
 CUDA or AMD ROCm), with its compiled CPU core and numpy (the reference) on the CPU. Models come in through CSXCAD's Python API or its XML
 files, so a model made for openEMS runs here unchanged:
 
-    from gfdtd import ContinuousStructure, openEMS          # instead of CSXCAD's / openEMS's
+    from kicad2ems.gfdtd import ContinuousStructure, openEMS          # instead of CSXCAD's / openEMS's
     python -m gfdtd model.xml                                # an openEMS XML file, as `openEMS model.xml`
 
 What it models (the MVP): rectilinear grids; isotropic dielectrics with conductivity (kappa); metals as PEC,

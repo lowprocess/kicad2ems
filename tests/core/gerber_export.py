@@ -8,8 +8,8 @@ file with the stackup - what KiCad's Fabrication Outputs write, in the parts the
 import json, os
 from shapely import affinity
 from shapely.ops import unary_union
-from kicad2ems.geometry import polygons, split_holes
-from kicad2ems.importers.kicad.outline import board_outline
+from kicad2ems.core.geometry import polygons, split_holes
+from kicad2ems.core.importers.kicad.outline import board_outline
 
 HEAD = ['%TF.GenerationSoftware,kicad2ems tests*%', '%TF.FileFunction,{}*%', '%FSLAX46Y46*%', '%MOMM*%', '%LPD*%']
 

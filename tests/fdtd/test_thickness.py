@@ -9,15 +9,15 @@ import pytest
 
 @pytest.fixture(scope='module')
 def board(demo_files):
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
     base, _ = demo_files
     return Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
 
 
 def test_plan_moves_the_stack_by_the_copper(board):
     """B.Cu grows down, the rest up; each dielectric keeps its thickness between the copper faces."""
-    from kicad2ems_fdtd import thick
+    from kicad2ems.fdtd import thick
     m = board
     th = thick.plan(m)
     order = m.cu_order
@@ -36,9 +36,9 @@ def test_plan_moves_the_stack_by_the_copper(board):
 
 
 def test_mesh_has_both_faces_and_one_cell_through_the_copper(board):
-    from kicad2ems_fdtd import thick
-    from kicad2ems_fdtd.boundaries import resolve_bc
-    from kicad2ems_fdtd.mesh import auto_mesh
+    from kicad2ems.fdtd import thick
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.mesh import auto_mesh
     m = board
     bc = resolve_bc('auto', m)
     flat = auto_mesh(m, 1e9, 8e9, bc=bc, res=10, log=lambda *a: None)
@@ -56,12 +56,12 @@ def test_thick_model_on_gfdtd(board, sigma):
     """Ports from the reference copper's face to the trace's; solid copper (PEC), with --sigma its faces as
     conducting sheets of sigma / 4 and 2 t (one side of a conductor t / 2 thick each)."""
     pytest.importorskip('gfdtd')
-    from gfdtd.operator import build
-    from kicad2ems_fdtd import thick
-    from kicad2ems_fdtd.boundaries import resolve_bc
-    from kicad2ems_fdtd.engines import engine_api
-    from kicad2ems_fdtd.mesh import auto_mesh
-    from kicad2ems_fdtd.model import build_fdtd
+    from kicad2ems.gfdtd.operator import build
+    from kicad2ems.fdtd import thick
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.engines import engine_api
+    from kicad2ems.fdtd.mesh import auto_mesh
+    from kicad2ems.fdtd.model import build_fdtd
     m = board
     bc = resolve_bc('auto', m)
     mesh = auto_mesh(m, 1e9, 8e9, bc=bc, res=10, thickness=True, log=lambda *a: None)

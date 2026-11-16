@@ -1,7 +1,7 @@
 """Build a solver's optional compiled core: one C++ file and pybind11 with OpenMP, the module written next to
 the package's own modules (mom25d._core, gfdtd._core). A package's core/build.py is
 
-    from emsdev.build import build_core
+    from kicad2ems.emsdev.build import build_core
     build_core(__file__, 'mom25d_core.cpp', arch_env='MOM25D_ARCH')
 
 Linux and macOS: g++ (-fopenmp). Windows, either of:

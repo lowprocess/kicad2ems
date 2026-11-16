@@ -2,12 +2,12 @@
 graph of the example boards (traces, pads, vias, parts, branches, T-junctions, reference changes)."""
 import os
 import pytest
-from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.board import Board
-from kicad2ems.lines.tlines import (build, microstrip, stripline, offset_stripline, cpwg, coax, ellipk,
+from kicad2ems.core.importers.kicad import KiCadBoard
+from kicad2ems.core.board import Board
+from kicad2ems.core.lines.tlines import (build, microstrip, stripline, offset_stripline, cpwg, coax, ellipk,
                                   embedded_microstrip)
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 # reference values: scikit-rf 2.1 (MLine model='hammerstadjensen', disp='none'; CPW has_metal_backside)
@@ -58,7 +58,7 @@ def test_transition_sections(demo_files):
     near = [e for e, _, _ in secs if e.kind == 'trace' and e.length < 1]
     assert len(near) == 2 and [e.xs for e in near] == ['microstrip', 'stripline']
     assert near[0].z0 == pytest.approx(ms.z0) and near[1].z0 == pytest.approx(sl.z0)
-    from kicad2ems.lines import reference
+    from kicad2ems.core.lines import reference
     old, reference.VIA_ANTIPAD = reference.VIA_ANTIPAD, None
     try:                                                     # without the rule: the antipad's higher Z0
         (_, _, secs0, _), = build(m).paths
@@ -153,11 +153,11 @@ def test_sma_launch_example_line_model():
     close to the openEMS reference over 1-6 GHz."""
     import numpy as np
     rf = pytest.importorskip('skrf')
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.board import Board
-    from kicad2ems.lines.tlines import build
-    from kicad2ems.solvers.lines.fastsolve import solve
-    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.lines.tlines import build
+    from kicad2ems.core.solvers.lines.fastsolve import solve
+    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
     m = Board(KiCadBoard(os.path.join(ex, 'sma_launch.kicad_pcb')), nets=['REF_SMA_N', 'GND'],
               pos_file=os.path.join(ex, 'sma_launch-all.pos'), log=lambda *a: None)
     lm = build(m)
@@ -175,7 +175,7 @@ def test_stubs_drawn_as_rectangles_are_tees(tmp_path):
     3.5 GHz)."""
     import sys
     import numpy as np
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples'))
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples'))
     import make_rf_examples as rf
     path = str(tmp_path / 'stubrect.kicad_pcb')
     rf.stubnotch(path, rects=True)
@@ -186,7 +186,7 @@ def test_stubs_drawn_as_rectangles_are_tees(tmp_path):
     long_ = [b for b in path_['branches'] if b['length'] > 10]
     assert len(long_) == 2 and all(abs(b['length'] - long_[0]['length']) < 1e-6 for b in long_)
     pytest.importorskip('skrf')
-    from kicad2ems.solvers.lines.fastsolve import solve
+    from kicad2ems.core.solvers.lines.fastsolve import solve
     f = np.linspace(1e9, 4e9, 301)
     S, _ = solve(lm, m.ports, f, backend='skrf')
     notch = f[np.argmin(np.abs(S[:, 1, 0]))]
@@ -199,7 +199,7 @@ def test_radial_stub_is_a_tee_and_a_widening_stub(tmp_path):
     no notch)."""
     import sys
     import numpy as np
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples'))
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples'))
     import make_rf_examples as rf
     path = str(tmp_path / 'radial.kicad_pcb')
     rf.radialstub(path)
@@ -210,7 +210,7 @@ def test_radial_stub_is_a_tee_and_a_widening_stub(tmp_path):
     assert stub['length'] > 10 and 'ends: open' in stub['label'] and int(stub['label'].split('(')[1].split()[0]) > 5
     assert min(s['z0'] for s in p['sections']) > 45                  # the line itself is not widened
     pytest.importorskip('skrf')
-    from kicad2ems.solvers.lines.fastsolve import solve
+    from kicad2ems.core.solvers.lines.fastsolve import solve
     f = np.linspace(1e9, 4e9, 301)
     S, _ = solve(lm, m.ports, f, backend='skrf')
     assert 1.8e9 < f[np.argmin(np.abs(S[:, 1, 0]))] < 2.7e9        # scikit-rf 1.99 GHz (no step models)
@@ -223,9 +223,9 @@ def test_radial_stub_in_qucsator_is_mrstub(tmp_path):
     import sys
     import numpy as np
     from shapely.geometry import Polygon
-    from kicad2ems.solvers.lines import fastsolve
-    from kicad2ems.lines.strips import radial_sector
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples'))
+    from kicad2ems.core.solvers.lines import fastsolve
+    from kicad2ems.core.lines.strips import radial_sector
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples'))
     import make_rf_examples as rf
     a = np.radians(np.linspace(60, 120, 25))
     fan = Polygon([(0, 0)] + list(zip(13 * np.cos(a), 13 * np.sin(a))))
@@ -255,10 +255,10 @@ def test_radial_stub_in_qucsator_is_mrstub(tmp_path):
 def test_coupled_lines_under_solder_mask_stay_coupled():
     """With the mask modelled, outer traces are embedded microstrip, and they are coupled too (no group at all
     before: a hairpin filter's ports unconnected); the group's field solve has the mask over its copper."""
-    from kicad2ems.config import build_settings
-    from kicad2ems.pipeline import board_from_settings
+    from kicad2ems.core.config import build_settings
+    from kicad2ems.core.pipeline import board_from_settings
     import os
-    root = os.path.join(os.path.dirname(__file__), '..')
+    root = os.path.join(os.path.dirname(__file__), '..', '..')
     groups = {}
     for mask in (False, True):
         s = build_settings(dict(mask=mask), config=os.path.join(root, 'examples', 'hairpin.toml'))

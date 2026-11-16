@@ -2,10 +2,10 @@
 in the CSX model, and a phased drive from the runs (moved from kicad2ems's test_antenna.py)."""
 import numpy as np
 import pytest
-from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.board import Board
-from kicad2ems_fdtd.mesh import auto_mesh
-from kicad2ems_fdtd.antenna import antenna_air, record_freqs
+from kicad2ems.core.importers.kicad import KiCadBoard
+from kicad2ems.core.board import Board
+from kicad2ems.fdtd.mesh import auto_mesh
+from kicad2ems.fdtd.antenna import antenna_air, record_freqs
 
 
 def test_defaults_and_record_freqs():
@@ -30,7 +30,7 @@ def test_dipole_gap_port(boards):
 
 
 def test_gap_port_direction_in_fdtd(boards, fake_openems, monkeypatch):
-    from kicad2ems_fdtd import model
+    from kicad2ems.fdtd import model
     m = Board(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
     mesh = auto_mesh(m, 1.5e9, 3.5e9, bc=('PML_8',) * 6, air=30, log=lambda *a: None)
     seen = []
@@ -49,8 +49,8 @@ def test_fdtd_phased_drive():
     the sphere agree, the array file steers as mom25d's does, and a single port gives what its run alone gives."""
     from types import SimpleNamespace
     from shapely.geometry import box
-    from kicad2ems import phased
-    from kicad2ems_fdtd.antenna import analyse_port, combine_phased, record_freqs
+    from kicad2ems.core import phased
+    from kicad2ems.fdtd.antenna import analyse_port, combine_phased, record_freqs
     f0, d = 2.45e9, 61.2                                             # half a wavelength apart along y (mm)
     ports = [SimpleNamespace(name=f"P{i + 1}", z0=50.0, c=(0.0, i * d)) for i in range(2)]
     m = SimpleNamespace(ports=ports, outline=box(-10, -10, 10, 10 + d), thickness=1.6)

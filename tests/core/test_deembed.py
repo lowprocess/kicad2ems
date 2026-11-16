@@ -3,8 +3,8 @@ import os
 import numpy as np
 import pytest
 
-from kicad2ems import deembed as D
-from kicad2ems.lines.elements import Element, LineModel
+from kicad2ems.core import deembed as D
+from kicad2ems.core.lines.elements import Element, LineModel
 
 F = np.linspace(1e8, 10e9, 41)
 
@@ -37,7 +37,7 @@ def test_a_matched_lines_plane_moves_by_its_phase():
 
 
 def test_an_unmatched_fixture_comes_off_both_ends_exactly(tmp_path):
-    from kicad2ems.touchstone import write_touchstone
+    from kicad2ems.core.touchstone import write_touchstone
     dut = D.abcd_to_s(D.line_abcd(30.0, 4.0, 3e-3, F, 0.02) @ D.line_abcd(90.0, 2.0, 2e-3, F), 50.0)
     fix = D.line_abcd(70.0, 3.3, 4e-3, F, 0.01)                      # 70 ohm, lossy: port side first
     total = D.connect(D.connect(dut, 0, D.abcd_to_s(fix, 50.0)), 1, D.abcd_to_s(fix, 50.0))

@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from kicad2ems_fem.elmer import mag, run as elmer
+from kicad2ems.fem.elmer import mag, run as elmer
 
 needs_elmer = pytest.mark.skipif(not elmer.found()[0], reason=elmer.found()[1] or 'no Elmer')
 quiet = lambda *_: None

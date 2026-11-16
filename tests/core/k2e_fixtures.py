@@ -11,12 +11,12 @@ import base64, importlib.util, os, subprocess, sys, types, zlib
 import numpy as np
 import pytest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(ROOT, 'src')
 sys.path.insert(0, SRC)
 # the kicad2ems runs the tests start (python -m kicad2ems) import this checkout too
 os.environ['PYTHONPATH'] = os.pathsep.join(x for x in (SRC, os.environ.get('PYTHONPATH')) if x)
-try:                                    # GUI tests: shared OpenGL contexts, as kicad2ems_gui.application makes them
+try:                                    # GUI tests: shared OpenGL contexts, as kicad2ems.gui.application makes them
     from PySide6.QtCore import QCoreApplication, Qt
     QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
 except ImportError:
@@ -33,7 +33,7 @@ def scratch_settings(tmp_path_factory, monkeypatch):
     environment's kicad2ems-site.toml, where install.py records this machine's qucsator and openEMS."""
     if 'XDG_CONFIG_HOME' not in os.environ or not os.environ['XDG_CONFIG_HOME'].startswith(str(tmp_path_factory.getbasetemp())):
         monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path_factory.getbasetemp() / 'xdg'))
-    from kicad2ems import sitecfg
+    from kicad2ems.core import sitecfg
     monkeypatch.setattr(sitecfg, 'paths', lambda: [sitecfg.user_file()])
     monkeypatch.setattr(sitecfg, '_cache', None)
 
@@ -77,7 +77,7 @@ def demo_files(boards):
 @pytest.fixture
 def run_cli(capsys):
     """kicad2ems in this process: run_cli(*args) -> (exit code, stdout, stderr)."""
-    from kicad2ems.cli import main
+    from kicad2ems.core.cli import main
 
     def run(*args):
         code = main([str(a) for a in args])
@@ -203,9 +203,9 @@ def write_vtr(path, x, y, z, field, compress=True):
 def run_folder(demo_files, tmp_path_factory):
     """A run folder with a time-domain plane dump (VTR frames), a frequency-domain one (HDF5) and their info."""
     h5py = pytest.importorskip('h5py')
-    from kicad2ems.fields.dumps import write_info, write_norm, parse_dump
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.board import Board
+    from kicad2ems.core.fields.dumps import write_info, write_norm, parse_dump
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
     base, _ = demo_files
     m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
     out = tmp_path_factory.mktemp('out')
@@ -231,9 +231,9 @@ def run_folder(demo_files, tmp_path_factory):
 # ---- a prepared solver, for the parity checks (kicad2ems-fdtd's, mom25d's) ------------------------------------
 def prepared_job(tmp_path, base, solver, *args):
     """A job with its board and line model, and `solver`'s model prepared, as a preview does (the mesh alone)."""
-    from kicad2ems.cli import settings_from_argv
-    from kicad2ems.pipeline import Job
-    from kicad2ems.solvers import registry
+    from kicad2ems.core.cli import settings_from_argv
+    from kicad2ems.core.pipeline import Job
+    from kicad2ems.core.solvers import registry
     s, _ = settings_from_argv([base + '.kicad_pcb', '--pos', base + '-top.pos', '--preview', '--solvers', solver,
                                '--out', str(tmp_path), *args])
     j = Job(s, echo=lambda *a: None)

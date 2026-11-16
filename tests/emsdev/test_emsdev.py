@@ -5,7 +5,7 @@ import types
 
 import pytest
 
-from emsdev import cpu, gpu, memory, vulkan
+from kicad2ems.emsdev import cpu, gpu, memory, vulkan
 
 
 def fake_cupy(n=2, hip=True, mem=(8e9, 16e9)):
@@ -127,7 +127,7 @@ def test_preference(monkeypatch):
 
 def test_build_command(tmp_path):
     pytest.importorskip('pybind11')
-    from emsdev.build import command
+    from kicad2ems.emsdev.build import command
     cmd = command(str(tmp_path), 'x_core.cpp', 'out.so', '-march=x86-64-v3', [str(tmp_path)])
     assert cmd[:3] == ['g++', '-O3', '-march=x86-64-v3'] and '-fopenmp' in cmd and '-I' + str(tmp_path) in cmd
     assert cmd[-3:] == [os.path.join(str(tmp_path), 'x_core.cpp'), '-o', 'out.so']
@@ -135,7 +135,7 @@ def test_build_command(tmp_path):
 
 def test_msvc_flags():
     """MSVC: OpenMP 3 through /openmp:llvm (collapse, simd), and the -march settings translated."""
-    from emsdev.build import msvc_arch, msvc_flags
+    from kicad2ems.emsdev.build import msvc_arch, msvc_flags
     assert '/openmp:llvm' in msvc_flags() and '/arch:AVX2' in msvc_flags('-march=native')
     assert msvc_arch('-march=x86-64-v3') == '/arch:AVX2' and msvc_arch('-march=x86-64-v2') == ''
     assert msvc_arch('/arch:AVX512') == '/arch:AVX512' and msvc_arch('-march=znver4') == ''
@@ -144,7 +144,7 @@ def test_msvc_flags():
 
 def test_find_omp_dll(tmp_path):
     """libomp140.x86_64.dll from a Visual Studio install: the newest redistributable folder first."""
-    from emsdev.build import find_omp_dll, OMP_DLL
+    from kicad2ems.emsdev.build import find_omp_dll, OMP_DLL
     for ver in ('14.38.33130', '14.40.33807'):
         d = tmp_path / 'VC' / 'Redist' / 'MSVC' / ver / 'x64' / 'Microsoft.VC143.OpenMP.LLVM'
         d.mkdir(parents=True)
@@ -158,7 +158,7 @@ def test_find_omp_dll(tmp_path):
 
 def test_find_omp_dll_any_layout(tmp_path):
     """Wherever a Visual Studio version keeps it under VC: the x64 release build, never x86, ARM64 or debug."""
-    from emsdev.build import find_omp_dll, vs_root, OMP_DLL
+    from kicad2ems.emsdev.build import find_omp_dll, vs_root, OMP_DLL
     vc = tmp_path / 'VS18' / 'VC'
     for sub in ('Tools/MSVC/14.51.36231/bin/Hostx86/x64', 'Redist/MSVC/14.51.36231/debug_nonredist/x64/OpenMP',
                 'Redist/MSVC/14.51.36231/x86/OpenMP.LLVM', 'Redist/MSVC/14.51.36231/arm64/OpenMP.LLVM'):
@@ -177,7 +177,7 @@ def test_build_through_setuptools(tmp_path, monkeypatch):
     pytest.importorskip('pybind11')
     pytest.importorskip('setuptools')
     import shutil, subprocess, sys, sysconfig
-    from emsdev import build
+    from kicad2ems.emsdev import build
     windows = sys.platform == 'win32'
     if windows and not (build.vs_installs() or shutil.which('cl')):
         pytest.skip('no Visual Studio')
@@ -204,7 +204,7 @@ def test_build_through_setuptools(tmp_path, monkeypatch):
 
 def test_efficiency_classes():
     """GetLogicalProcessorInformationEx's records: a core's efficiency class at byte 9, other relations skipped."""
-    from emsdev.cpu import efficiency_classes
+    from kicad2ems.emsdev.cpu import efficiency_classes
     rec = lambda rel, cls, size=48: (rel.to_bytes(4, 'little') + size.to_bytes(4, 'little') + bytes([0, cls])
                                      + bytes(size - 10))
     buf = rec(0, 1) * 8 + rec(2, 0, 32) + rec(0, 0) * 8
@@ -214,7 +214,7 @@ def test_efficiency_classes():
 
 def test_compiler_choice(monkeypatch):
     """EMSDEV_COMPILER chooses; on Windows MSVC when Visual Studio is there, else a MinGW g++ on the PATH."""
-    from emsdev import build
+    from kicad2ems.emsdev import build
     monkeypatch.setenv('EMSDEV_COMPILER', 'GCC')
     assert build.compiler() == 'gcc'
     monkeypatch.delenv('EMSDEV_COMPILER')
@@ -230,7 +230,7 @@ def test_mingw_command(tmp_path):
     """MinGW-w64: no -fPIC, CPython's Windows defines, this Python's DLL linked, the C++ runtime static."""
     pytest.importorskip('pybind11')
     import sys
-    from emsdev.build import command
+    from kicad2ems.emsdev.build import command
     cmd = command(str(tmp_path), 'x_core.cpp', 'out.pyd', '-march=x86-64-v3', mingw=True)
     assert '-fPIC' not in cmd and '-DMS_WIN64' in cmd and '-fopenmp' in cmd and '-static-libstdc++' in cmd
     assert cmd[-3].endswith(f"python{sys.version_info.major}{sys.version_info.minor}.dll") and cmd[-2:] == ['-o', 'out.pyd']
@@ -238,7 +238,7 @@ def test_mingw_command(tmp_path):
 
 def test_vs_installs_without_vswhere(tmp_path, monkeypatch):
     """No vswhere: Visual Studio found by its vcvars64.bat under Program Files, the newest first (18 is 2026)."""
-    from emsdev.build import vs_installs
+    from kicad2ems.emsdev.build import vs_installs
     for pf, ver, ed in (('pf86', '2022', 'BuildTools'), ('pf', '18', 'BuildTools'), ('pf', '18', 'Community')):
         b = tmp_path / pf / 'Microsoft Visual Studio' / ver / ed / 'VC' / 'Auxiliary' / 'Build'
         b.mkdir(parents=True)
@@ -255,7 +255,7 @@ def test_vs_installs_without_vswhere(tmp_path, monkeypatch):
 def test_cgroup_free_reads_the_process_own_cgroup_and_its_parents(tmp_path):
     """A systemd scope's MemoryMax sits in the process's own cgroup, not the root; a parent slice's tighter limit
     wins; the inactive page cache counts as free; no limit anywhere: None."""
-    from emsdev.memory import cgroup_free
+    from kicad2ems.emsdev.memory import cgroup_free
     proc = tmp_path / 'cgroup'
     proc.write_text('0::/user.slice/app.slice/run-1.scope\n')
     root = tmp_path / 'fs'
@@ -282,7 +282,7 @@ def test_available_sees_a_systemd_scope_cap():
     if not shutil.which('systemd-run') or sys.platform != 'linux':
         pytest.skip('no systemd-run')
     r = subprocess.run(['systemd-run', '--user', '--scope', '--quiet', '-p', 'MemoryMax=2G', sys.executable, '-c',
-                        'from emsdev.memory import available; print(available())'], capture_output=True, text=True)
+                        'from kicad2ems.emsdev.memory import available; print(available())'], capture_output=True, text=True)
     if r.returncode != 0:
         pytest.skip(f'systemd-run --user failed: {r.stderr.strip()[:100]}')
     assert float(r.stdout) <= 2 * 2 ** 30

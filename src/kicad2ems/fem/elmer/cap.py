@@ -2,7 +2,7 @@
 Capacitance between nets with Elmer's electrostatic solver: the same model and mesh as Palace's tool
 (palace/cap.py: the finite dielectric, air around it, each net's copper a conductor), solved by a second program.
 
-    python -m kicad2ems_fem.elmer.cap board.kicad_pcb --net SW --net VIN --net GND --out cap_sw
+    python -m kicad2ems.fem.elmer.cap board.kicad_pcb --net SW --net VIN --net GND --out cap_sw
     r = solve(board, ['SW', 'VIN', 'GND'], 'cap_sw')      # r['C']: the Maxwell matrix (F), r['names']
 
 The options are Palace's tool's (--thick, --h, --hmax, --margin, --region, --far, --order). The two share the mesh
@@ -102,7 +102,7 @@ def solve(board, nets, out, thick=False, h=None, hmax=None, margin=None, crop=No
     C = maxwell(np.loadtxt(os.path.join(case, 'capacitance.dat'), ndmin=2))
     if C.shape != (n, n):
         raise RuntimeError(f"Elmer's capacitance matrix is {C.shape}, expected {n} x {n}")
-    r = dict(tool='kicad2ems_fem.elmer.cap', engine=elmer.engine(said), names=[name for name, _ in m['terminals']], C=C.tolist(), thick=bool(thick),
+    r = dict(tool='kicad2ems.fem.elmer.cap', engine=elmer.engine(said), names=[name for name, _ in m['terminals']], C=C.tolist(), thick=bool(thick),
              far=far, order=order, solver='elmer', tets=m['tets'], h=m['h'], hmax=m['hmax'], margin=m['margin'], mesh_s=round(mesh_s, 1),
              seconds=round(time.time() - t, 1))
     with open(os.path.join(str(out), 'cap.json'), 'w') as fh:
@@ -112,7 +112,7 @@ def solve(board, nets, out, thick=False, h=None, hmax=None, margin=None, crop=No
 
 def parser():
     import argparse
-    ap = argparse.ArgumentParser(prog='python -m kicad2ems_fem.elmer.cap', description=__doc__.split('\n\n')[0])
+    ap = argparse.ArgumentParser(prog='python -m kicad2ems.fem.elmer.cap', description=__doc__.split('\n\n')[0])
     ap.add_argument('board', help='a .kicad_pcb, or a kicad2ems <name>_board.json')
     ap.add_argument('--net', action='append', required=True, help='a conductor: a net, or nets joined as A+B; repeat')
     ap.add_argument('--out', required=True, help='the folder of the results')

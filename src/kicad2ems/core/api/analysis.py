@@ -1,18 +1,18 @@
 """
-The API of an analysis plugin: the Analysis interface (kicad2ems.analyses explains it) and what an analysis needs to
+The API of an analysis plugin: the Analysis interface (kicad2ems.core.analyses explains it) and what an analysis needs to
 write its maps where a front end's viewer reads a run's.
 
-    from kicad2ems.api.analysis import Analysis
+    from kicad2ems.core.api.analysis import Analysis
 
     class Thermal(Analysis):
-        api = (2, 6)                # the kicad2ems.api version it is written against (API_VERSION)
-        provides = ('thermal',)     # the questions it answers (kicad2ems.study)
+        api = (2, 6)                # the kicad2ems.core.api version it is written against (API_VERSION)
+        provides = ('thermal',)     # the questions it answers (kicad2ems.core.study)
         name, label, tool = 'thermal', 'Thermal', 'mypackage.thermal'
         result = 'thermal.json'
         ...
 
   the interface       Analysis, KINDS (the kinds of an option), RF (the S-parameter run's key: taken), API_VERSION
-  questions           Question, QUESTIONS (kicad2ems.study: what an analysis `provides`; a plugin's own for what
+  questions           Question, QUESTIONS (kicad2ems.core.study: what an analysis `provides`; a plugin's own for what
                       kicad2ems has none for) (2.6)
   the registry        registry ({name: Analysis}), analysis_of (whose result a folder holds)
   maps for a viewer   Dump, write_info, write_npz (field dumps: <out>/<name>/exc_<what>/, as a solver's), save_mesh

@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from kicad2ems import phased
+from kicad2ems.core import phased
 
 
 def two_sources(d=0.07, f=2.45e9, z0=50.0, coupling=0.0, element=lambda th: np.ones_like(th)):

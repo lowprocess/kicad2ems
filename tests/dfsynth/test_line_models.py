@@ -1,19 +1,19 @@
-"""dfsynth's closed-form line models against kicad2ems's own (kicad2ems.lines): the same microstrip must
+"""dfsynth's closed-form line models against kicad2ems's own (kicad2ems.core.lines): the same microstrip must
 come out the same in the synthesis and in the line model that validates it. dfsynth keeps its copies so it
 runs without kicad2ems; this test is what keeps the two from drifting apart."""
 import itertools
 
 import pytest
 
-from dfsynth import microstrip as ms
-from dfsynth.microstrip import Substrate
+from kicad2ems.dfsynth import microstrip as ms
+from kicad2ems.dfsynth.microstrip import Substrate
 
 k2e = pytest.importorskip('kicad2ems')
 try:
-    from kicad2ems.lines import formulas
+    from kicad2ems.core.lines import formulas
 except ImportError:                                                 # kicad2ems before the tlines split
-    from kicad2ems.lines import tlines as formulas
-from kicad2ems.lines import coupled
+    from kicad2ems.core.lines import tlines as formulas
+from kicad2ems.core.lines import coupled
 
 U = (0.05, 0.3, 1.0, 1.5, 3.0, 10.0)                                # w / h either side of H & J's u = 1 branch
 ER = (2.2, 3.55, 4.4, 9.8)

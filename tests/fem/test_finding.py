@@ -1,18 +1,18 @@
 """Where Elmer and Palace are found: the environment first, then what kicad2ems's installer recorded
-(kicad2ems.sitecfg: elmer, palace, palace_rootfs), then PATH."""
+(kicad2ems.core.sitecfg: elmer, palace, palace_rootfs), then PATH."""
 import os
 import sys
 
 import pytest
 
-from kicad2ems_fem.elmer import run as elmer
-from kicad2ems_fem.palace import run as palace
+from kicad2ems.fem.elmer import run as elmer
+from kicad2ems.fem.palace import run as palace
 
 
 @pytest.fixture
 def site(monkeypatch):
     """The installer's settings as a dict the test fills."""
-    from kicad2ems import sitecfg
+    from kicad2ems.core import sitecfg
     values = {}
     monkeypatch.setattr(sitecfg, 'get', lambda key: values.get(key))
     for key in ('K2E_ELMER', 'K2E_PALACE', 'K2E_PALACE_ROOTFS'):

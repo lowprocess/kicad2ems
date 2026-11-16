@@ -27,11 +27,11 @@ def _is_number(text):
 def _plugin():
     """The circuit analysis: kicad2ems's registry's, else pcbqs's own (the page alone, without the registry)."""
     try:
-        from kicad2ems.api.frontend import analyses
+        from kicad2ems.core.api.frontend import analyses
         a=analyses().get('circuit')
         if a is not None:return a
     except ImportError:pass
-    from pcbqs.analyses import Circuit
+    from kicad2ems.pcbqs.analyses import Circuit
     return Circuit()
 
 
@@ -173,7 +173,7 @@ class PowerCircuitTab(QWidget):
     def templates():
         """pcbqs's example circuits: {name: what it is}; none from a pcbqs without pcbqs.circuit."""
         try:
-            from pcbqs.circuit import model
+            from kicad2ems.pcbqs.circuit import model
             return dict(model.templates())
         except (ImportError,OSError,ValueError):return {}
 
@@ -183,7 +183,7 @@ class PowerCircuitTab(QWidget):
         names=cls.templates()
         if name=='simple' and 'boost' in names:name='boost'
         if name not in names:raise ValueError(f'no circuit template {name!r} (pcbqs.circuit has {", ".join(names) or "none"})')
-        from pcbqs.circuit import model
+        from kicad2ems.pcbqs.circuit import model
         return model.template(name)
 
     def new_model(self,name):

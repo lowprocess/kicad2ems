@@ -18,9 +18,9 @@ import numpy as np
 
 
 def site(key):
-    """A setting kicad2ems's installer recorded (kicad2ems.sitecfg: kicad2ems-site.toml), or None."""
+    """A setting kicad2ems's installer recorded (kicad2ems.core.sitecfg: kicad2ems-site.toml), or None."""
     try:
-        from kicad2ems import sitecfg
+        from kicad2ems.core import sitecfg
         return sitecfg.get(key)
     except Exception:                                               # an older kicad2ems, a file that does not read
         return None
@@ -72,7 +72,7 @@ def solve(case, sif_text, timeout=7200, threads=None):
 
 def engine(log_text):
     """Which Elmer solved a case, from its log (MAIN: Version: 26.2-devel (Rev: 033b105e2, Compiled: ...)), for the
-    tool's result (R-B14): dict(program, version, revision, kicad2ems_fem); the version None when the log has none."""
+    tool's result (R-B14): dict(program, version, revision, kicad2ems.fem); the version None when the log has none."""
     from .. import __version__
     m = re.search(r'Version:\s*(\S+)\s*\(Rev:\s*([^,)]+)', log_text or '')
     return dict(program='Elmer', version=m.group(1) if m else None, revision=m.group(2).strip() if m else None,

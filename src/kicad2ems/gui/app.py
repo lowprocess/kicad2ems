@@ -12,7 +12,7 @@ study on the left (the board, the analyses made of it and the settings of the on
              design a microstrip filter with dfsynth, validate and tune it on the solvers, open its board here
     Circuit  the circuit analysis's model as a schematic to edit (pcbqs.circuit), when that analysis is installed
 
-The analyses beside S-parameters are plugins kicad2ems's registry holds (kicad2ems.api.frontend.analyses: pcbqs's
+The analyses beside S-parameters are plugins kicad2ems's registry holds (kicad2ems.core.api.frontend.analyses: pcbqs's
 power integrity, near field, circuit and thermal). The window knows none of them by name: each one's settings are
 a panel in the study made from its options (analysispanel.py), the toolbar's Run starts its command with the rest,
 its maps are field dumps the Viewer shows and its report and curves are on the Results page.
@@ -89,7 +89,7 @@ class _Preparing(QThread):
         self.name, self.error = name, ''
 
     def run(self):
-        from kicad2ems.api.frontend import prepare_example
+        from kicad2ems.core.api.frontend import prepare_example
         try:
             path = prepare_example(self.name)
         except Exception as e:                                      # noqa: BLE001  (said by the window)
@@ -163,7 +163,7 @@ _READING = set()                                            # layout threads at 
 
 
 class _Layout(QThread):
-    """A board's layout read off the event loop (kicad2ems.layout.board_layout: a few seconds on a large board)."""
+    """A board's layout read off the event loop (kicad2ems.core.layout.board_layout: a few seconds on a large board)."""
     done = Signal(str, object)                              # the board file, its layout (None: not read)
 
     def __init__(self, board):
@@ -177,7 +177,7 @@ class _Layout(QThread):
 
     def run(self):
         try:
-            from kicad2ems.api.frontend import board_layout
+            from kicad2ems.core.api.frontend import board_layout
             layout = board_layout(self.board)
         except Exception:                                   # noqa: BLE001 (a board that cannot be read: no layout)
             layout = None
@@ -278,7 +278,7 @@ class MainWindow(QMainWindow):
     def _analyses(self):
         """What runs each analysis of the registry: a settings panel made from its options (analysispanel.py), or,
         for the one this window has an editor for (the circuit's schematic), that page."""
-        from kicad2ems.api.frontend import analyses
+        from kicad2ems.core.api.frontend import analyses
         self.registry = analyses()
         self.panels, self.editors = {}, {}
         for a in ANALYSES:
@@ -322,7 +322,7 @@ class MainWindow(QMainWindow):
     def _saved_study(self):
         """The study of the last session: its questions, their engines and Fields ticks (the first time:
         S-parameters, as Run always did; a session of before the questions: the runs it had ticked)."""
-        from kicad2ems.api.frontend import Study
+        from kicad2ems.core.api.frontend import Study
         raw = self.qsettings.value('study/asked')
         if isinstance(raw, str) and raw:
             try:
@@ -349,7 +349,7 @@ class MainWindow(QMainWindow):
         out, before = {}, []                                # before: the analyses of this Run that come first
         for run in runs:
             if run == 'rf':
-                from kicad2ems.api.frontend import rf_needs
+                from kicad2ems.core.api.frontend import rf_needs
                 vals = self.setup.values()
                 got = [dict(text=f"{k.replace('_', ' ')}: not a number ({v!r})", key=k)
                        for k, v in getattr(self.setup, 'bad', {}).items()]
@@ -1052,7 +1052,7 @@ class MainWindow(QMainWindow):
     def _fill_examples(self):
         """The examples, kicad2ems's own and those the installed analyses ship (pcbqs's circuits), as a menu of
         their groups; one opens from a folder of the user's, where it is copied, its board made if it is generated."""
-        from kicad2ems.api.frontend import example_index
+        from kicad2ems.core.api.frontend import example_index
         self.examples_menu.clear()
         try:
             entries = example_index()
@@ -1197,11 +1197,11 @@ class MainWindow(QMainWindow):
         """The results already in a folder, whatever analysis wrote them: the viewer (board, meshes, line model,
         dumps, far field) and the results page (S-parameters and antenna, or an analysis's report and curves);
         front: the page with something new in front."""
-        from kicad2ems.api.frontend import analysis_of
+        from kicad2ems.core.api.frontend import analysis_of
         files = find_results(out_dir)
         if not files:                                               # a --vary run's folder: its first run shown,
             try:                                                    # the others under Compare with (R-E5)
-                from kicad2ems.vary import load
+                from kicad2ems.core.vary import load
                 v = load(out_dir)
             except Exception:                                       # noqa: BLE001  (an older kicad2ems)
                 v = None
@@ -1275,11 +1275,11 @@ class MainWindow(QMainWindow):
         return out
 
     def load_analyses(self, path=None):
-        """A config's study into the list (kicad2ems.api.frontend.read_study: its [study] tables, else the
+        """A config's study into the list (kicad2ems.core.api.frontend.read_study: its [study] tables, else the
         analyses [analysis] run names; neither: S-parameters) and each analysis's settings from its [analysis.
         <name>] table, the others' cleared. path None: a new study, nothing set. A table of an analysis not
         installed here is kept, and saved back, as is a question or an engine of the study this window lacks."""
-        from kicad2ems.api.frontend import read_analyses, read_study, Study
+        from kicad2ems.core.api.frontend import read_analyses, read_study, Study
         run, tables, study, more = None, {}, Study({'sparams': []}), {}
         if not self.busy():
             self.study.clear_states()                               # another study: the last one's states are not its
@@ -1339,7 +1339,7 @@ class MainWindow(QMainWindow):
         """{analysis: its tables after the first} for the analyses a config gives several tables ([[analysis.
         <name>]]: a run each, kicad2ems 2.10), their paths whole; {} with an older kicad2ems, which reads one."""
         try:
-            from kicad2ems.api.frontend import read_analysis_sets
+            from kicad2ems.core.api.frontend import read_analysis_sets
         except ImportError:
             return {}
         base, out = os.path.dirname(os.path.abspath(path)), {}
@@ -1370,10 +1370,10 @@ class MainWindow(QMainWindow):
         return False
 
     def save_analyses(self, path):
-        """The study into a config: what it asks and who answers as its [study] tables (kicad2ems.api.frontend.
+        """The study into a config: what it asks and who answers as its [study] tables (kicad2ems.core.api.frontend.
         write_study), each analysis's settings that are set as its [analysis.<name>] table. A study of
         S-parameters alone with nothing else set writes neither."""
-        from kicad2ems.api.frontend import write_study, Study
+        from kicad2ems.core.api.frontend import write_study, Study
         from .runner import write_analyses
         base = os.path.dirname(os.path.abspath(path))
         tables = dict(getattr(self, 'extra_analyses', {}))
@@ -1430,7 +1430,7 @@ class MainWindow(QMainWindow):
 
     # ---- the board as drawn, before anything is run; a setting picked on it ----
     def want_layout(self):
-        """The chosen board's layout (kicad2ems.layout) into the Viewer's plan wherever no run's board is shown
+        """The chosen board's layout (kicad2ems.core.layout) into the Viewer's plan wherever no run's board is shown
         there: read in a thread (a second or a few), once a board file. True: there, or being read. Another board
         (New, or one chosen in the settings): Results of lists its runs, and a run of the last board leaves the
         pages (they had kept it under the new study)."""
@@ -1597,7 +1597,7 @@ class MainWindow(QMainWindow):
     def tool_out(self, kind, board, name, preview=False):
         """Where a page's tool writes a run started here: a folder of its own under the output folder (the
         board's 'out', or the Output setting), so earlier runs stay to compare with; a preview: one per board."""
-        from kicad2ems.api.frontend import default_out
+        from kicad2ems.core.api.frontend import default_out
         from .runfolders import tool_dir, tool_preview_dir
         try:
             base = self.setup.values().get('out')
@@ -1673,7 +1673,7 @@ class MainWindow(QMainWindow):
     def out_dir(self, vals=None):
         """The output folder: the form's, else 'out' next to the board (where a run writes), else in the working
         directory."""
-        from kicad2ems.api.frontend import default_out
+        from kicad2ems.core.api.frontend import default_out
         vals = self.setup.values() if vals is None else vals
         if vals.get('out'):
             return vals['out']
@@ -1697,7 +1697,7 @@ class MainWindow(QMainWindow):
             return no('Setup', 'Choose a board first')
         if not preview and vals.get('solvers') == []:
             return no('Setup', "Choose a solver on the list's S-parameters row (or Preview)")
-        from kicad2ems.api.frontend import mark_run
+        from kicad2ems.core.api.frontend import mark_run
         from .runfolders import run_dir, preview_dir
         if not preview and not self.study.fields_on(RF):            # no Fields tick on an RF row: the run leaves
             for k in self.setup.dump_keys():                        # the dumps out (the settings keep them)

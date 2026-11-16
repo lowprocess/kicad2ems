@@ -2,19 +2,19 @@
 import json,sys
 import pytest
 from PySide6.QtWidgets import QApplication
-from kicad2ems_gui.powercircuittab import PowerCircuitTab
-from kicad2ems_gui.schematicview import ImportReview,KiCadJob
+from kicad2ems.gui.powercircuittab import PowerCircuitTab
+from kicad2ems.gui.schematicview import ImportReview,KiCadJob
 
 
 def wpthb():
-    import pcbqs
+    from kicad2ems import pcbqs
     from pathlib import Path
     return json.loads((Path(pcbqs.__file__).parent/'data'/'wpthb_bridge.json').read_text())
 
 
 @pytest.fixture
 def tab():
-    A=pytest.importorskip('pcbqs.analyses',reason='pcbqs is not installed')
+    A=pytest.importorskip('kicad2ems.pcbqs.analyses',reason='pcbqs is not installed')
     app=QApplication.instance() or QApplication([]);widget=PowerCircuitTab(plugin=A.Circuit());widget.set_model(wpthb());yield widget;widget.close();app.processEvents()
 
 
@@ -92,7 +92,7 @@ def test_kicad_process_import_and_cancellation(tab,tmp_path,monkeypatch):
     from pathlib import Path
     from PySide6.QtCore import QProcess,QTimer
     from PySide6.QtTest import QSignalSpy
-    from kicad2ems_gui import schematicview
+    from kicad2ems.gui import schematicview
     source=tmp_path/'original.kicad_sch';source.write_text('original untouched')
     cli=tmp_path/'fake-kicad-cli';cli.write_text(f'#!{sys.executable}\n'+'''import sys,time
 from pathlib import Path
@@ -152,15 +152,15 @@ def qapp():
 
 
 def general(name):
-    from pcbqs.circuit import model as M
-    from kicad2ems_gui.schematicview import SchematicEditor
+    from kicad2ems.pcbqs.circuit import model as M
+    from kicad2ems.gui.schematicview import SchematicEditor
     ed=SchematicEditor();ed.set_model(M.template(name));return ed,M
 
 
 def test_general_model_columns_follow_the_power_path(qapp):
     """A general model's parts are placed by where they sit between the source and the load, whatever they are
     called: a part to ground stands up in its net's column, a part between two nets lies between them."""
-    from kicad2ems_gui.schematicview import records
+    from kicad2ems.gui.schematicview import records
     ed,M=general('boost')
     by={r['ref']:r for r in records(ed.config)}
     assert [by[r]['group'] for r in ('V1','C1','L1','Q1','D1','C2','R1')]==['c00','c01','c02','c03','c04','c05','c06']
@@ -183,7 +183,7 @@ def test_general_model_columns_follow_the_power_path(qapp):
 
 def test_no_wire_of_any_example_passes_through_a_part(qapp):
     from PySide6.QtCore import QPointF
-    from pcbqs.circuit import model as M
+    from kicad2ems.pcbqs.circuit import model as M
     for name in M.templates():
         ed,_=general(name);sc=ed.scene
         cards=[it.card().translated(it.pos()) for it in sc.devices.values()]
@@ -224,7 +224,7 @@ def test_a_board_is_imported_into_a_general_model(qapp):
     """Import KiCad… with a .kicad_pcb: the footprints with their values and their pads' nets, reviewed, then the
     model's parts; the board becomes the model's."""
     pytest.importorskip('kicad2ems')
-    from kicad2ems_gui.schematicview import ImportReview
+    from kicad2ems.gui.schematicview import ImportReview
     ed,M=general('buck')
     board=ed.config['board']['file']
     model=M.template('buck');model['parts']=[p for p in model['parts'] if p['ref']!='D1']

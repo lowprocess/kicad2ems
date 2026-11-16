@@ -39,7 +39,7 @@ from .parity import describe
 
 def ram_gb():
     """Installed RAM in GB (None where sysconf cannot tell)."""
-    from emsdev.memory import total
+    from kicad2ems.emsdev.memory import total
     t = total()
     return t / 1e9 if t else None
 
@@ -191,7 +191,7 @@ def board_from_settings(s, log=print):
 def _terminal_copy():
     """A copy of this process's stdout descriptor, as a text stream (None where stdout has none, as under pytest):
     what the log writes to while solvers run side by side, so that openEMS's redirection of descriptor 1 to its own
-    log (kicad2ems_fdtd.progress.redirect_output) does not take the other solvers' lines."""
+    log (kicad2ems.fdtd.progress.redirect_output) does not take the other solvers' lines."""
     try:
         sys.stdout.flush()
         return os.fdopen(os.dup(sys.stdout.fileno()), 'w', buffering=1, encoding=sys.stdout.encoding or 'utf-8',
@@ -624,7 +624,7 @@ class Job:
         full, part_of = self.full[n], self.m.part_of
         out = self.path(f"_{n}_ports.s{len(full.names)}p")
         write_touchstone(out, self.freq, np.nan_to_num(full.S), full.zref, names=full.names,
-                         comment=full.comment + '; the part ports open, for embedding (kicad2ems.embed)')
+                         comment=full.comment + '; the part ports open, for embedding (kicad2ems.core.embed)')
         self.wrote(f"S-parameters with the part ports, {registry()[n].label}", out)
         entry['part_ports'] = dict(touchstone=self.rel(out), parts=list(part_of), sweep=[])
         for combo in getattr(self, '_sweep', None) or []:

@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from kicad2ems_fem import children
+from kicad2ems.fem import children
 
 posix = pytest.mark.skipif(os.name != 'posix', reason='process groups')
 TREE = [sys.executable, '-c', "import subprocess, sys, time; "
@@ -36,8 +36,8 @@ def test_a_solver_and_what_it_started_stop_together():
 def test_a_stop_request_stops_it(tmp_path, monkeypatch):
     """A run's STOP file (the window's Stop of a kicad2ems run that runs Palace): the solver is stopped within
     POLL_S, and run() raises kicad2ems's Stopped."""
-    pytest.importorskip('kicad2ems.stop')
-    from kicad2ems import stop
+    pytest.importorskip('kicad2ems.core.stop')
+    from kicad2ems.core import stop
     monkeypatch.setenv(stop.ENV, str(tmp_path / 'STOP'))
     t0 = time.time()
     (tmp_path / 'STOP').write_text('')
@@ -55,7 +55,7 @@ def test_a_timeout_says_so():
 def test_a_tool_s_sigterm_stops_its_solvers(tmp_path):
     """The window's Stop sends a tool SIGTERM: guard() stops the tool's solvers before it exits (they were left
     running)."""
-    code = ("import time, sys; from kicad2ems_fem import children; children.guard(); "
+    code = ("import time, sys; from kicad2ems.fem import children; children.guard(); "
             f"p = children.popen({TREE!r}); open({str(tmp_path / 'pid')!r}, 'w').write(str(p.pid)); time.sleep(60)")
     tool = subprocess.Popen([sys.executable, '-c', code])
     for _ in range(100):
@@ -73,7 +73,7 @@ def test_palace_s_unconverged_solves_are_said(tmp_path, monkeypatch):
     """Palace's own words for a solve that did not converge are a WARNING and kept with its changeset beside the log
     (only its exit code had been read); its ranks default to the fast cores (8 had been fixed)."""
     import json, sys
-    from kicad2ems_fem.palace import run as prun
+    from kicad2ems.fem.palace import run as prun
     script = tmp_path / 'fake_palace.py'
     script.write_text("print('Git changeset ID: abc123')\nprint('GMRES solver did NOT converge in 400 iterations')\n"
                       "print('Linear solver did not converge, norm(Ax-b)/norm(b) = 1.3e-05')\n")

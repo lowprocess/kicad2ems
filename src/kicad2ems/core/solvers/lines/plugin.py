@@ -22,8 +22,8 @@ _CAPS = dict(ports='yes, at the network node', gap_ports="part ports only (a flo
 def line_sigma(run):
     """The line model's one conductivity: --sigma, with --rough and --finish as the loss they give at the band centre
     (the finish weighted by the ports' layer's share of the line's loss). None without --sigma."""
-    from kicad2ems.roughness import band_sigma
-    from kicad2ems import finish as F
+    from kicad2ems.core.roughness import band_sigma
+    from kicad2ems.core import finish as F
     sigma = band_sigma(run.s, run.freq[0], run.freq[-1])
     fin = F.resolve(run.s, run.m) if sigma else None
     if not fin:

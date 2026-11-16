@@ -50,7 +50,7 @@ def ranks(np=None):
     if np:
         return int(np)
     try:
-        from emsdev.cpu import core_threads
+        from kicad2ems.emsdev.cpu import core_threads
         return max(1, int(core_threads()))
     except ImportError:
         return max(1, (os.cpu_count() or 2) // 2)
@@ -83,7 +83,7 @@ def environment(cmd):
 
 def engine(workdir, logfile='palace.log'):
     """Which Palace solved a case, from what run() wrote beside its log (its changeset), for the tool's result
-    (R-B14): dict(program, version, revision, kicad2ems_fem)."""
+    (R-B14): dict(program, version, revision, kicad2ems.fem)."""
     from .. import __version__
     try:
         with open(os.path.join(workdir, logfile + '.json')) as fh:

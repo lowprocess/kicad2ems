@@ -3,7 +3,7 @@ openEMS's Python interface over gfdtd's engine: the FDTD settings, the ports (lu
 coaxial, waveguide and curve ports in gfdtd.ports) and Run, so a script (or
 kicad2ems's build_fdtd) written for openEMS runs here by swapping the two imports:
 
-    from gfdtd import ContinuousStructure, openEMS
+    from kicad2ems.gfdtd import ContinuousStructure, openEMS
     FDTD = openEMS(NrTS=100000, EndCriteria=1e-4); FDTD.SetGaussExcite(f0, fc); FDTD.SetBoundaryCond(['MUR'] * 6)
     CSX = ContinuousStructure(); FDTD.SetCSX(CSX); ...
     port = FDTD.AddLumpedPort(1, 50, start, stop, 'z', excite=1)

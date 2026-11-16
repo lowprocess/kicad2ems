@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 from shapely.geometry import box
 
-from kicad2ems.board import Port
-from kicad2ems_fem.palace import config, model, run
+from kicad2ems.core.board import Port
+from kicad2ems.fem.palace import config, model, run
 
 
 def microstrip(vias=()):
@@ -218,7 +218,7 @@ def test_config_loss_puts_conductivity_on_the_sheets_and_via_walls():
 
 def with_part(R=None, L=None, C=None, gap=0.4):
     """The microstrip cut at its middle, a part across the cut."""
-    from kicad2ems.parts import Part
+    from kicad2ems.core.parts import Part
     b = microstrip()
     g0, g1 = 5 - gap / 2, 5 + gap / 2
     b.copper['F.Cu'] = [box(0, -0.55, g0, 0.55), box(g1, -0.55, 10, 0.55)]
@@ -227,7 +227,7 @@ def with_part(R=None, L=None, C=None, gap=0.4):
 
 
 def test_a_part_is_one_sheet_per_series_element():
-    from kicad2ems.parts import Part
+    from kicad2ems.core.parts import Part
     one = model.part_elements(Part('R1', 50.0, None, None, 'F.Cu', 0.5, 0, (1, 0, 0.5), (1.4, 1, 0.5)))
     assert [(rlc, s[0], e[0]) for rlc, s, e in one] == [({'R': 50.0}, 1.0, 1.4)]
     esr = model.part_elements(Part('C1', 0.1, 5e-10, 6.8e-12, 'F.Cu', 0.5, 1, (0, 1, 0.5), (1, 1.6, 0.5)))
@@ -342,7 +342,7 @@ def test_the_feature_size_is_every_pieces_nearest_gap_and_the_copper_is_straight
 
 def test_the_estimate_is_its_mesh_scaled_by_the_runs():
     """R-B21: Palace's estimate builds the mesh as the run would and scales its tetrahedra by the examples' runs."""
-    from kicad2ems_fem.palace.plugin import Palace
+    from kicad2ems.fem.palace.plugin import Palace
     pl = Palace()
     s = SimpleNamespace(palace_margin=None, palace_feature=4.0, palace_wave=8.0, palace_fine_ground=False, palace_order=2,
                         palace_np=8)
@@ -424,9 +424,9 @@ def test_the_absorbing_boundary_can_be_second_order():
 
 
 def test_the_refinement_cap_follows_the_memory_available(monkeypatch):
-    from kicad2ems_fem.palace.plugin import Palace
-    import emsdev.memory
-    monkeypatch.setattr(emsdev.memory, 'available', lambda: 31e9)
+    from kicad2ems.fem.palace.plugin import Palace
+    import kicad2ems.emsdev.memory
+    monkeypatch.setattr(kicad2ems.emsdev.memory, 'available', lambda: 31e9)
     logs = []
     r = SimpleNamespace(s=SimpleNamespace(palace_amr=2, palace_amr_tol=1e-2, palace_amr_max=0), log=logs.append)
     got = Palace()._amr(r)

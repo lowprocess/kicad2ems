@@ -18,8 +18,8 @@ def load_board(path, nets=None):
     path = str(path)
     if path.endswith('.json'):
         return json.loads(Path(path).read_text())
-    from kicad2ems.importers import open_board
-    from kicad2ems.board import Board
+    from kicad2ems.core.importers import open_board
+    from kicad2ems.core.board import Board
     only = dict(nets=sorted(nets), parts='none') if nets else {}
     return Board(open_board(path), need_ports=False, log=lambda *a: None, **only).to_dict()
 

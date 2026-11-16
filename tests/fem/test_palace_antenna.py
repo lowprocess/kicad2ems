@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from kicad2ems_fem.palace import antenna, run
+from kicad2ems.fem.palace import antenna, run
 
 HEAD = ('        f (GHz),     exc,               theta (deg.),                 phi (deg.),'
         '              r*Re{E_x} (V),              r*Im{E_x} (V),              r*Re{E_y} (V),'

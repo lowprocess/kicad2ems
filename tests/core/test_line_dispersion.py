@@ -5,13 +5,13 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from kicad2ems.board import Board
-from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.lines import dispersion as D
-from kicad2ems.lines.elements import Element, LineModel
-from kicad2ems.lines.tlines import build
-from kicad2ems.materials import djordjevic_sarkar
-from kicad2ems.solvers.lines.fastsolve import find_qucsator, solve
+from kicad2ems.core.board import Board
+from kicad2ems.core.importers.kicad import KiCadBoard
+from kicad2ems.core.lines import dispersion as D
+from kicad2ems.core.lines.elements import Element, LineModel
+from kicad2ems.core.lines.tlines import build
+from kicad2ems.core.materials import djordjevic_sarkar
+from kicad2ems.core.solvers.lines.fastsolve import find_qucsator, solve
 
 FREF = 1e9
 
@@ -27,13 +27,13 @@ def test_the_curve_holds_the_stackup_values_at_fref_and_is_the_fdtd_layers():
     e = djordjevic_sarkar(4.3, 0.02, FREF, np.array([FREF, 10e9]))
     assert e[0] == pytest.approx(4.3 * (1 - 0.02j), rel=1e-12)
     assert e[1].real < 4.3 and -e[1].imag / e[1].real == pytest.approx(0.02, rel=0.05)    # er falls, tand ~ flat
-    fd = pytest.importorskip('kicad2ems_fdtd.dielectric')
+    fd = pytest.importorskip('kicad2ems.fdtd.dielectric')
     f = np.logspace(6, 11, 11)
     assert np.allclose(djordjevic_sarkar(3.66, 0.0037, 10e9, f), fd.djordjevic_sarkar(3.66, 0.0037, 10e9, f))
 
 
 def test_a_section_takes_each_layer_s_own_curve_averaged_as_built():
-    from kicad2ems.lines.reference import mix
+    from kicad2ems.core.lines.reference import mix
     e = Element('trace', 'a', 'b', 10.0)
     e.diel = ((0.2, 3.66, 0.0037, 10e9), (0.1, 4.3, 0.02, None))     # RO4350B core, a generic prepreg (at fref)
     e.er, e.tand = mix(e.diel)
@@ -119,7 +119,7 @@ def test_qucsator_s_interpolated_solve_is_each_frequency_s_own(case, request):
 
 def test_the_plugin_follows_diel_wideband(transition):
     pytest.importorskip('skrf')
-    from kicad2ems.solvers.lines.plugin import Scikit
+    from kicad2ems.core.solvers.lines.plugin import Scikit
     m, lm = transition
     f = np.linspace(1e9, 8e9, 8)
     said = []

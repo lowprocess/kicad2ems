@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping
 
-from kicad2ems_fem.palace import cap
+from kicad2ems.fem.palace import cap
 from test_palace import groups
 
 

@@ -7,7 +7,7 @@ import time
 import pytest
 
 import fake_analyses as FA
-from kicad2ems_gui import analysispanel as AP
+from kicad2ems.gui import analysispanel as AP
 from waiting import wait_until
 
 

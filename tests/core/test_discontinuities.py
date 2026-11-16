@@ -6,13 +6,13 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from kicad2ems.constants import C0
-from kicad2ems.lines import formulas as FM
-from kicad2ems.lines.elements import Element, LineModel
+from kicad2ems.core.constants import C0
+from kicad2ems.core.lines import formulas as FM
+from kicad2ems.core.lines.elements import Element, LineModel
 
 
 def test_the_formulas_are_dfsynths():
-    ms = pytest.importorskip('dfsynth.microstrip')
+    ms = pytest.importorskip('kicad2ems.dfsynth.microstrip')
     sub = next(v for k, v in vars(ms).items() if isinstance(v, type) and hasattr(v, 'open_end'))
     try:
         s = sub(h=0.8, er=4.3, name='t')
@@ -31,7 +31,7 @@ def test_a_bend_is_the_corners_scaled_by_its_area():
 
 def test_an_open_stub_is_its_line_lengthened_by_the_end():
     pytest.importorskip('skrf')
-    from kicad2ems.solvers.lines.fastsolve import solve
+    from kicad2ems.core.solvers.lines.fastsolve import solve
     z0, ee, w, h, er, L = 50.0, 3.2, 1.5, 0.8, 4.3, 20.0
     e = Element('trace', 'p', 'n1', L, w=w, label='stub')
     e.xs, e.z0, e.eeff, e.er, e.h, e.field = 'microstrip', z0, ee, er, h, True          # its own Z0 and eeff
@@ -52,7 +52,7 @@ def test_an_open_stub_is_its_line_lengthened_by_the_end():
 def test_junction_cuts_tee_cross_and_five_arms():
     """A junction of three or more arms (R-E15): the widest straight run through it runs on, every other arm starts
     at its edge; with no straight run, each arm at the widest arm across it."""
-    from kicad2ems.solvers.lines.fastsolve import junction_cuts
+    from kicad2ems.core.solvers.lines.fastsolve import junction_cuts
     E, N, W, S = (1, 0), (0, 1), (-1, 0), (0, -1)
     tee = dict(widths=[1.5, 1.5, 0.6], dirs=[E, W, N])
     assert junction_cuts(tee) == [0.0, 0.0, 0.75]
@@ -69,6 +69,6 @@ def test_junction_cuts_tee_cross_and_five_arms():
 def test_a_bend_of_another_angle_keeps_its_centre_lines():
     """A 45 deg bend: its capacitance at the vertex, its arms to the vertex (cut as a 90 deg corner's square,
     rf_coupler had gone from 0.029 to 0.060 from openEMS)."""
-    from kicad2ems.solvers.lines.fastsolve import bend_reach
+    from kicad2ems.core.solvers.lines.fastsolve import bend_reach
     assert bend_reach(dict(kind='bend', widths=[1.0, 1.0], angle=45.0)) == [0.0, 0.0]
     assert np.allclose(bend_reach(dict(kind='corner', widths=[1.0, 2.0], angle=90.0)), [1.0, 0.5])

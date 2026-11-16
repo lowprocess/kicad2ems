@@ -1,10 +1,10 @@
 """Edge walls (--edge-walls): PEC sheets where the ground planes end at the chosen board sides, kept
 clear of signal copper; settings, solver setup and the run summary."""
 import pytest
-from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.board import Board
-from kicad2ems.edges import edge_walls, parse_sides, describe
-from kicad2ems.config import build_settings, ConfigError
+from kicad2ems.core.importers.kicad import KiCadBoard
+from kicad2ems.core.board import Board
+from kicad2ems.core.edges import edge_walls, parse_sides, describe
+from kicad2ems.core.config import build_settings, ConfigError
 
 
 @pytest.fixture(scope='module')

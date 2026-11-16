@@ -1,11 +1,11 @@
-"""--finish (kicad2ems.finish): KiCad's names, the finished face's impedance, the share of a line's loss on its
+"""--finish (kicad2ems.core.finish): KiCad's names, the finished face's impedance, the share of a line's loss on its
 finished faces, and a run's Finish (the stackup's, none under mask or without --sigma)."""
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
-from kicad2ems import finish as F
+from kicad2ems.core import finish as F
 
 
 def test_kicad_names():
@@ -58,8 +58,8 @@ def test_resolve():
 
 
 def test_line_model_takes_the_finish():
-    from kicad2ems.solvers import registry, FEATURES
-    from kicad2ems.solvers.lines.plugin import line_sigma
+    from kicad2ems.core.solvers import registry, FEATURES
+    from kicad2ems.core.solvers.lines.plugin import line_sigma
     assert 'finish' in FEATURES and registry()['scikit'].capabilities['finish'].startswith('approximated')
     run = SimpleNamespace(s=SimpleNamespace(finish='auto', sigma=5.8e7, mask=False, rough=None), m=_board(),
                           freq=np.linspace(1e9, 5e9, 5))

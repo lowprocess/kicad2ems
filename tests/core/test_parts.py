@@ -2,9 +2,9 @@
 the CSXCAD calls (fake openEMS: the fake_openems fixture in conftest.py)."""
 import numpy as np
 import pytest
-from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.board import Board
-from kicad2ems.parts import parse_value, Part
+from kicad2ems.core.importers.kicad import KiCadBoard
+from kicad2ems.core.board import Board
+from kicad2ems.core.parts import parse_value, Part
 
 
 @pytest.fixture(scope='module')
@@ -27,7 +27,7 @@ def test_parse_value(text, value):
 def test_a_librarys_kind_then_value(ref, value, kind, v):
     """A value written as a library names its parts ('C_22u_16V_0603'): the kind's letter, then the value (all 788
     of the Jetson baseboard's R, L and C had been skipped); another letter first is not a value."""
-    from kicad2ems.parts import kind_value
+    from kicad2ems.core.parts import kind_value
     k, got = kind_value(dict(ref=ref, value=value, props={}))
     assert k == kind and (got == pytest.approx(v) if v is not None else got is None or k is None)
 
@@ -78,7 +78,7 @@ def test_lowpass_demo(boards):
     assert p['L1'].axis == 0 and p['L1'].L == pytest.approx(8.2e-9) and p['L1'].R == pytest.approx(0.4)
     assert p['C2'].axis == 1 and p['C2'].series and p['C2'].L == pytest.approx(0.5e-9)
     assert p['C2'].C == pytest.approx(6.8e-12) and p['C2'].R == pytest.approx(0.1)
-    from kicad2ems.touchstone import read_touchstone
+    from kicad2ems.core.touchstone import read_touchstone
     f, S = read_touchstone(base + '_ideal.s2p')
     s21 = lambda g: 20 * np.log10(abs(S[np.argmin(abs(f - g * 1e9)), 1, 0]))
     assert s21(0.1) > -0.3 and -6.5 < s21(1.0) < -2 and s21(2.0) < -15
@@ -92,14 +92,14 @@ def test_lowpass_demo(boards):
     ('R_2512_6332Metric_Pad1.40x3.35mm', '2512'), ('Resistor_SMD:R_0805_2012Metric', '0805'),
     ('R_Small', None), ('RF:SMA_Edge', None), ('', None), (None, None)])
 def test_package_from_footprint_name(lib, pkg):
-    from kicad2ems.parts import package
+    from kicad2ems.core.parts import package
     assert package(lib) == pkg
 
 
 def test_part_body_true_size(rlc):
     """A part's chip: its size from the footprint name, centred between its pads, kept through board.json (drawn:
     kicad2ems-gui's tests)."""
-    from kicad2ems.parts import SIZES
+    from kicad2ems.core.parts import SIZES
     m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
     c1 = m.parts[0]
     assert c1.package == '0402' and tuple(c1.body) == SIZES['0402'] and c1.kind == 'C'

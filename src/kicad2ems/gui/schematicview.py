@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QSpli
 
 def _api():
     # GUI remains usable without the optional circuit package: KiCad's netlists, read (pcbqs.schematic)
-    from pcbqs import schematic
+    from kicad2ems.pcbqs import schematic
     return schematic
 
 
@@ -566,12 +566,12 @@ class CircuitScene(QGraphicsScene):
 
 
 def _model():
-    from pcbqs.circuit import model
+    from kicad2ems.pcbqs.circuit import model
     return model
 
 
 def _kicad():
-    from pcbqs.circuit import kicad
+    from kicad2ems.pcbqs.circuit import kicad
     return kicad
 
 
@@ -712,7 +712,7 @@ class SchematicEditor(QWidget):
     def check(config,before=None):
         """Raise what is wrong with a model, by pcbqs.circuit's own checks, down to the deck it would run."""
         M=_model();M.validate(config)
-        from pcbqs.circuit.deck import build
+        from kicad2ems.pcbqs.circuit.deck import build
         for point in M.cases(config)[:1]:build(M.resolve(config,point))
 
     def set_model(self,config,reset_history=True,undoable=False):

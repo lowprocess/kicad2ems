@@ -230,7 +230,7 @@ def pick(index=None):
 
 
 def device(index=None, need=()):
-    """emsdev.gpu's Device of a Vulkan adapter (library 'vulkan', api 'Vulkan'). Needs slangpy, the solvers' Vulkan
+    """kicad2ems.emsdev.gpu's Device of a Vulkan adapter (library 'vulkan', api 'Vulkan'). Needs slangpy, the solvers' Vulkan
     runtime: without it the GPU is there but nothing can run on it; and the features in `need`."""
     from .gpu import Device
     a = pick(index)

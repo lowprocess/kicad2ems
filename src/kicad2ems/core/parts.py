@@ -156,7 +156,7 @@ def kind_value(fp):
     return (mt.group(1), v) if v is not None else (None, f"value '{fp['value']}' not understood")
 
 
-_kind_value = kind_value                     # its name before kicad2ems.api (the KiCad plugin's older releases)
+_kind_value = kind_value                     # its name before kicad2ems.core.api (the KiCad plugin's older releases)
 
 
 def _copper_near(board, layer, region):

@@ -3,7 +3,7 @@ Boundary conditions: per-side selection and the closed-box resonance check.
 """
 import numpy as np
 from shapely.ops import unary_union
-from kicad2ems.api.solver import C0
+from kicad2ems.core.api.solver import C0
 
 
 SIDES = ('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax')

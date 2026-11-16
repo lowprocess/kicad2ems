@@ -4,7 +4,7 @@ import pytest
 
 
 def test_hammerstad_factor_and_equivalent_conductivity():
-    from kicad2ems.roughness import hammerstad, rough_sigma, band_sigma
+    from kicad2ems.core.roughness import hammerstad, rough_sigma, band_sigma
     from types import SimpleNamespace
     assert hammerstad(1e6, 1.0, 5.8e7) == pytest.approx(1.0, abs=1e-3)       # delta 66 um >> 1 um: smooth
     assert hammerstad(1e12, 1.0, 5.8e7) == pytest.approx(2.0, abs=1e-2)      # delta 66 nm << 1 um: twice the loss
@@ -21,8 +21,8 @@ def test_hammerstad_factor_and_equivalent_conductivity():
 
 
 def test_rough_option_and_capability_row():
-    from kicad2ems.config import build_settings, ConfigError
-    from kicad2ems.solvers import FEATURES, registry
+    from kicad2ems.core.config import build_settings, ConfigError
+    from kicad2ems.core.solvers import FEATURES, registry
     assert 'roughness' in FEATURES and registry()['scikit'].capabilities['roughness'].startswith('approximated')
     s = build_settings(dict(board='x.kicad_pcb', sigma=5.8e7, rough=1.5))
     assert s.rough == 1.5

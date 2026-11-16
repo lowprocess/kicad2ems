@@ -1,29 +1,29 @@
 """
 kicad2ems-fem's tools as kicad2ems analysis plugins (the 'kicad2ems.analyses' entry points of pyproject.toml): they
-answer questions other engines answer too (kicad2ems.study), in 3D, so a study can ask the same of two programs
+answer questions other engines answer too (kicad2ems.core.study), in 3D, so a study can ask the same of two programs
 and lay the answers side by side.
 
-    elmer_dc        a rail's DC drop                 (python -m kicad2ems_fem.elmer.dc)
-    elmer_thermal   the board's temperature          (python -m kicad2ems_fem.elmer.thermal)
-    elmer_cap       the capacitance between nets     (python -m kicad2ems_fem.elmer.cap)
-    palace_cap      the same, by Palace              (python -m kicad2ems_fem.palace.cap)
-    elmer_mag       wound coils beside ferrite       (python -m kicad2ems_fem.elmer.mag): its own question, no board
-    palace_pdn      a rail's impedance at its loads   (python -m kicad2ems_fem.palace.pdn): the rail pcbqs's PDN run
+    elmer_dc        a rail's DC drop                 (python -m kicad2ems.fem.elmer.dc)
+    elmer_thermal   the board's temperature          (python -m kicad2ems.fem.elmer.thermal)
+    elmer_cap       the capacitance between nets     (python -m kicad2ems.fem.elmer.cap)
+    palace_cap      the same, by Palace              (python -m kicad2ems.fem.palace.cap)
+    elmer_mag       wound coils beside ferrite       (python -m kicad2ems.fem.elmer.mag): its own question, no board
+    palace_pdn      a rail's impedance at its loads   (python -m kicad2ems.fem.palace.pdn): the rail pcbqs's PDN run
                     found, each part a port at its pads, closed by its parts after the solve
-    palace_loop     a converter's input loop         (python -m kicad2ems_fem.palace.loop): the loop pcbqs's near
+    palace_loop     a converter's input loop         (python -m kicad2ems.fem.palace.loop): the loop pcbqs's near
                     field found, its inductance again in 3D
 
 Each one's settings are its command line's options, read from the tool's own parser, so a new option of a tool
-appears in a front end without a change here. Only this module imports kicad2ems.api.analysis.
+appears in a front end without a change here. Only this module imports kicad2ems.core.api.analysis.
 """
 import json
 import os
 import re
 import sys
 
-from kicad2ems.api.analysis import Analysis
+from kicad2ems.core.api.analysis import Analysis
 
-API = (2, 11)                       # kicad2ems.api it is written against: 2.8 figures, 2.11 pick
+API = (2, 11)                       # kicad2ems.core.api it is written against: 2.8 figures, 2.11 pick
 ORDER = ('Coils and plates', 'Nets and loads', 'Heat', 'Air and board', 'Mesh', 'Solver')
 GROUPS = dict(coil='Coils and plates', plate='Coils and plates',
               net='Nets and loads', source='Nets and loads', load='Nets and loads', copper='Nets and loads',
@@ -129,7 +129,7 @@ def _seconds(r):
 
 
 class ElmerDC(_Fem):
-    name, label, engine, tool, module = 'elmer_dc', 'Rail drop (Elmer)', 'Elmer', 'kicad2ems_fem.elmer.dc', 'kicad2ems_fem.elmer.dc'
+    name, label, engine, tool, module = 'elmer_dc', 'Rail drop (Elmer)', 'Elmer', 'kicad2ems.fem.elmer.dc', 'kicad2ems.fem.elmer.dc'
     about = "a net's DC drop in its 3D copper and via barrels: the check of a rail tool's copper"
     order, result, provides = 25, 'dc.json', ('dc',)
 
@@ -168,7 +168,7 @@ class ElmerDC(_Fem):
 
 class ElmerThermal(_Fem):
     name, label, engine = 'elmer_thermal', 'Temperature (Elmer)', 'Elmer'
-    tool = module = 'kicad2ems_fem.elmer.thermal'
+    tool = module = 'kicad2ems.fem.elmer.thermal'
     about = ("the board's steady temperature in 3D: all its copper, vias and laminate, the parts' heat and a "
              "net's own current")
     order, result, provides = 55, 'thermal.json', ('thermal',)
@@ -282,14 +282,14 @@ class _Cap(_Fem):
 
 class ElmerCap(_Cap):
     name, label, engine = 'elmer_cap', 'Capacitance (Elmer)', 'Elmer'
-    tool = module = 'kicad2ems_fem.elmer.cap'
+    tool = module = 'kicad2ems.fem.elmer.cap'
     about = "the capacitance matrix of nets' copper in the board's dielectrics, by Elmer's electrostatics"
     order = 60
 
 
 class PalaceCap(_Cap):
     name, label, engine, program = 'palace_cap', 'Capacitance (Palace)', 'Palace', 'palace'
-    tool = module = 'kicad2ems_fem.palace.cap'
+    tool = module = 'kicad2ems.fem.palace.cap'
     about = "the capacitance matrix of nets' copper in the board's dielectrics, by Palace's electrostatics"
     order = 61
 
@@ -305,7 +305,7 @@ class PalaceLoop(_Fem):
     input net, ground, input capacitors and crop) solved again in 3D, its inductance at the run's harmonics beside
     pcbqs's. Palace stays out of pcbqs: this engine reads pcbqs's result file, not pcbqs."""
     name, label, engine, program = 'palace_loop', 'Converter loop (Palace)', 'Palace', 'palace'
-    tool = module = 'kicad2ems_fem.palace.loop'
+    tool = module = 'kicad2ems.fem.palace.loop'
     about = "a converter's input loop in 3D: its inductance, beside pcbqs's near field's"
     order, result, provides = 35, 'loop.json', ('nearfield',)
 
@@ -362,7 +362,7 @@ class PalacePDN(_Fem):
     pads, the bare copper solved in 3D and closed by the run's parts; each load's |Z| beside pcbqs's. Palace stays
     out of pcbqs: this engine reads pcbqs's result file, not pcbqs."""
     name, label, engine, program = 'palace_pdn', 'Rail impedance (Palace)', 'Palace', 'palace'
-    tool = module = 'kicad2ems_fem.palace.pdn'
+    tool = module = 'kicad2ems.fem.palace.pdn'
     about = "a rail's impedance at its loads in 3D, beside pcbqs's PDN"
     order, result, provides = 36, 'pdn_palace.json', ('pdn',)
 
@@ -424,7 +424,7 @@ class ElmerMag(_Fem):
     board copper: a run needs no board, and its result proposes the coil model of pcbqs's full bridge (the coils'
     inductances and their coupling) to the circuit."""
     name, label, engine = 'elmer_mag', 'Coils with ferrite (Elmer)', 'Elmer'
-    tool = module = 'kicad2ems_fem.elmer.mag'
+    tool = module = 'kicad2ems.fem.elmer.mag'
     about = "wound coils beside ferrite plates: their inductances and coupling, for a wireless-power circuit"
     order, result, provides = 45, 'mag.json', ('coils',)
 

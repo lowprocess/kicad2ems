@@ -2,8 +2,8 @@
 and the check says converged; the plot, the summary and the report's section are written (from kicad2ems's
 pipeline tests)."""
 import json
-from kicad2ems_fdtd import run
-from kicad2ems_fdtd.openems import engine
+from kicad2ems.fdtd import run
+from kicad2ems.fdtd.openems import engine
 from conftest import canned_runs
 
 

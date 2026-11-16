@@ -1,5 +1,5 @@
 """
-The crosstalk question (kicad2ems.si): the traces' ends and ports, NEXT and FEXT from S-parameters over frequency
+The crosstalk question (kicad2ems.core.si): the traces' ends and ports, NEXT and FEXT from S-parameters over frequency
 and for an edge, the layout's coupled stretches, and the question as the study and its report have it.
 """
 import json
@@ -9,14 +9,14 @@ import types
 import numpy as np
 import pytest
 
-from kicad2ems import si
+from kicad2ems.core import si
 from k2e_fixtures import ROOT
 
 BUS = os.path.join(ROOT, 'examples', 'rf_bus.kicad_pcb')       # three traces D0, D1, D2 (the session's rf_examples)
 
 
 def test_a_trace_s_ends_are_its_tracks_free_ends_and_ports_go_there():
-    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems.core.importers.kicad import KiCadBoard
     kb = KiCadBoard(BUS)
     ends = {n: si.trace_ends(kb, n) for n in ('D0', 'D1', 'D2')}
     for n, (a, b) in ends.items():
@@ -61,7 +61,7 @@ def test_renormalised_is_the_impedance_matrix_s_at_the_new_reference():
 
 
 def test_the_board_s_side_by_side_traces_are_found_and_a_pair_s_own_legs_left_out():
-    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems.core.importers.kicad import KiCadBoard
     rows = si.find_pairs(KiCadBoard(BUS))
     near = {tuple(r['nets']): r for r in rows}
     assert ('D0', 'D1') in near and ('D1', 'D2') in near
@@ -115,7 +115,7 @@ def test_the_sections_solve_each_cut_once_and_widen_the_worst(result, monkeypatc
     """A bus's pairs share their cut's one solve, and only the worst stretches are solved at the wider gaps (each
     pair had been solved four times); a cut the solver cannot take is said, not dropped silently."""
     import glob
-    from kicad2ems.lines import xsection as X
+    from kicad2ems.core.lines import xsection as X
     d, out = result
     lines = json.load(open(glob.glob(os.path.join(out, '*_lines.json'))[0], encoding='utf-8'))
     calls, solve = [], X.CrossSection.solve
@@ -131,8 +131,8 @@ def test_the_sections_solve_each_cut_once_and_widen_the_worst(result, monkeypatc
 
 
 def test_the_question_as_the_study_has_it(result):
-    from kicad2ems.analyses import registry
-    from kicad2ems.study import study_tree, QUESTIONS
+    from kicad2ems.core.analyses import registry
+    from kicad2ems.core.study import study_tree, QUESTIONS
     d, out = result
     a = registry()['crosstalk']
     assert a.owns(out) and QUESTIONS['crosstalk'].group == 'Signal integrity'
@@ -146,7 +146,7 @@ def test_the_question_as_the_study_has_it(result):
     with pytest.raises(ValueError, match='board'):
         a.command(dict(nets=['D0', 'D1']), None, out)
     cmd = a.command(dict(nets='D0\nD1, D2', rise=50.0, limit=3, check='mom25d', mode='next'), BUS, out)
-    assert cmd[1:4] == ['-m', 'kicad2ems.si', BUS] and cmd[cmd.index('--nets') + 1] == 'D0,D1,D2'
+    assert cmd[1:4] == ['-m', 'kicad2ems.core.si', BUS] and cmd[cmd.index('--nets') + 1] == 'D0,D1,D2'
     assert cmd[cmd.index('--solvers') + 1] == 'lines,mom25d' and cmd[cmd.index('--mode') + 1] == 'next'
     assert a.tag(dict(nets=['/CM5/A.B', 'D1'])) == 'CM5-A-B_D1'
     assert a.choices(json.dumps([dict(nets=['A', 'B'], layer='F.Cu', length_mm=12.0, gap_mm=0.2)]))[0][1] == dict(nets=['A', 'B'])
@@ -170,7 +170,7 @@ def test_the_question_as_the_study_has_it(result):
 
 
 def test_the_example_config_is_a_study_of_the_question():
-    from kicad2ems.study import read_config, plan
+    from kicad2ems.core.study import read_config, plan
     st = read_config(os.path.join(ROOT, 'examples', 'si_bus.toml'))
     assert [s.name for s in plan(st)] == ['crosstalk']
 
@@ -183,14 +183,14 @@ def test_a_net_with_a_zone_is_not_proposed_as_a_trace():
     assert ['D0', 'GND'] in [r['nets'] for r in si.find_pairs(kb)]
     kb.zone_nets = {'GND'}
     assert all('GND' not in r['nets'] for r in si.find_pairs(kb))
-    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems.core.importers.kicad import KiCadBoard
     assert KiCadBoard(BUS).zone_nets == {'GND'}
 
 
 def test_a_pair_the_line_model_did_not_couple_is_not_judged(tmp_path, monkeypatch):
     """Traces the line model puts in no coupled section have no path between them: their S terms are not computed
     (the Touchstone file says so and holds 0). Their crosstalk is not 0 % and "met": it is not judged."""
-    from kicad2ems.lines import topology
+    from kicad2ems.core.lines import topology
     monkeypatch.setattr(topology, 'COUPLE_H', 0.01)                 # (as traces on two layers, or far apart)
     a = si.parser().parse_args([BUS, '--nets', 'D0,D1', '--ground', 'In1.Cu', '--limit', '3', '--out', str(tmp_path)])
     d = si.run(a, echo=lambda *x: None)
@@ -204,7 +204,7 @@ def test_the_time_grid_holds_a_long_coupler():
     grid time_grid gives, the edge response reaches its 2.5 % plateau; on the fixed 401 points it read 1.92 %
     (R-E16). A short trace keeps 401 points."""
     import numpy as np
-    from kicad2ems.si import edge_response, time_grid
+    from kicad2ems.core.si import edge_response, time_grid
     C0 = 299792458.0
 
     def next_peak(fmin, points, L=1.0, er=4.0, C=0.05):

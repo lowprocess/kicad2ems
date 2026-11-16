@@ -210,7 +210,7 @@ class ResultsTab(QWidget):
         if not here:
             return out
         try:
-            from kicad2ems.vary import load
+            from kicad2ems.core.vary import load
             up = os.path.dirname(os.path.dirname(here))             # one of a variation's runs: <out>/vary/<tag>
             v = load(here) or (load(up) if os.path.basename(os.path.dirname(here)) == 'vary' else None)
         except Exception:                                           # noqa: BLE001  (an older kicad2ems, a damaged list)
@@ -287,7 +287,7 @@ class ResultsTab(QWidget):
         """A folder's result of an analysis (whichever kicad2ems's registry says it is of) onto the page in place
         of the S-parameter plots: its report and its curves. False: it holds none, and the page shows
         S-parameters."""
-        from kicad2ems.api.frontend import analyses, analysis_of
+        from kicad2ems.core.api.frontend import analyses, analysis_of
         made = analysis_of(out_dir) if out_dir else None
         rep, sets = None, []
         if made is not None and made[0] in analyses():
@@ -317,10 +317,10 @@ class ResultsTab(QWidget):
 
     def _with_engines(self, name, folder, report):
         """A result's report with the other engines' answers to the same question beside it: a section 'Engines
-        compared' whose table has the figures they name (kicad2ems.api.frontend.compare_engines: this result and
+        compared' whose table has the figures they name (kicad2ems.core.api.frontend.compare_engines: this result and
         each other engine's newest on this board) against the engines, and the difference where two give one.
         Nothing to compare: the report as it is."""
-        from kicad2ems.api.frontend import compare_engines, engines, questions
+        from kicad2ems.core.api.frontend import compare_engines, engines, questions
         try:
             es, qs = engines(), questions()
             me = es.get(name)
@@ -424,7 +424,7 @@ class ResultsTab(QWidget):
         self.which.clear()
         for f in files:
             try:
-                from kicad2ems.api.frontend import read_antenna
+                from kicad2ems.core.api.frontend import read_antenna
                 solver = read_antenna(f).get('solver', 'openems')
             except (OSError, ValueError):
                 solver = os.path.basename(f)
@@ -509,7 +509,7 @@ class ResultsTab(QWidget):
         self._summary, self._run_folder = None, os.path.dirname(summary) if summary else None
         if summary and os.path.exists(summary):
             try:
-                from kicad2ems.api.frontend import read_summary
+                from kicad2ems.core.api.frontend import read_summary
                 sm = read_summary(summary)
                 self._summary = sm
                 self.set_notes(*run_notes(sm))

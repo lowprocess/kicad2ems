@@ -2,7 +2,7 @@
 Capacitance between nets, by Palace's electrostatic solver on the real stack: the dielectric slabs inside the
 board outline (finite, as built), air around them, the copper of each net a conductor.
 
-    python -m kicad2ems_fem.palace.cap board.kicad_pcb --net SW --net VIN --net GND --out cap_sw
+    python -m kicad2ems.fem.palace.cap board.kicad_pcb --net SW --net VIN --net GND --out cap_sw
     r = solve(board, ['SW', 'VIN', 'GND'], 'cap_sw')      # r['C']: the Maxwell matrix (F), r['names']
 
 - Each `--net` is one conductor (a terminal); `A+B` joins nets into one. Copper of other nets is left out, not
@@ -256,7 +256,7 @@ def solve(board, nets, out, thick=False, h=None, hmax=None, margin=None, crop=No
     n = len(m['terminals'])
     post = os.path.join(work, 'postpro')
     C, Cm = read_c(post, n), read_c(post, n, 'terminal-Cm.csv')
-    r = dict(tool='kicad2ems_fem.palace.cap', engine=prun.engine(work), names=[name for name, _ in m['terminals']], C=C.tolist(), Cm=Cm.tolist(),
+    r = dict(tool='kicad2ems.fem.palace.cap', engine=prun.engine(work), names=[name for name, _ in m['terminals']], C=C.tolist(), Cm=Cm.tolist(),
              thick=bool(thick), far=far,
              order=order, tets=m['tets'], h=m['h'], hmax=m['hmax'], margin=m['margin'], mesh_s=round(mesh_s, 1),
              seconds=round(time.time() - t, 1))

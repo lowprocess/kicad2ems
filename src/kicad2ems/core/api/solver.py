@@ -1,11 +1,11 @@
 """
-The API of a solver plugin: the Solver interface (kicad2ems.solvers explains it) and what a solver needs to write
+The API of a solver plugin: the Solver interface (kicad2ems.core.solvers explains it) and what a solver needs to write
 its results as kicad2ems's other solvers do.
 
-    from kicad2ems.api.solver import Solver, Result, Option, mixed_mode
+    from kicad2ems.core.api.solver import Solver, Result, Option, mixed_mode
 
     class MySolver(Solver):
-        api = (2, 0)                # the kicad2ems.api version it is written against (API_VERSION)
+        api = (2, 0)                # the kicad2ems.core.api version it is written against (API_VERSION)
         name, label = 'mine', 'my solver'
         ...
 
@@ -27,9 +27,9 @@ its results as kicad2ems's other solvers do.
     antennas          gain_table, add_polarisation, pattern_gain
     figures           plot_preview (the model and its mesh)
     the line model    solve_lines, lines_backend (its fast solve: a first look before a long run)
-  copper roughness    hammerstad, rough_sigma, band_sigma (2.3; kicad2ems.roughness)
+  copper roughness    hammerstad, rough_sigma, band_sigma (2.3; kicad2ems.core.roughness)
   surface finish      resolve_finish (a run's Finish: layers, faces, shares), finish_factor, finish_weighted,
-                      finish_band_sigma, finish_face_z (2.4; kicad2ems.finish)
+                      finish_band_sigma, finish_face_z (2.4; kicad2ems.core.finish)
 """
 from . import API_VERSION, lazy                                            # noqa: F401
 
@@ -46,7 +46,7 @@ NAMES = dict(
     write_npz='.fields.frames:write_npz', Dump='.fields.dumps:Dump', write_info='.fields.dumps:write_info',
     save_mesh='.meshes:save',
     phased='.phased', settings_drive='.phased:settings_drive',
-    sitecfg='.sitecfg', core_threads='emsdev.cpu:core_threads', ram_gb='.pipeline:ram_gb',
+    sitecfg='.sitecfg', core_threads='kicad2ems.emsdev.cpu:core_threads', ram_gb='.pipeline:ram_gb',
     C0='.constants:C0', EPS0='.constants:EPS0', ETA0='.constants:ETA0', MU0='.constants:MU0', strlist='.options:strlist', items='.options:items',
     G_DUMP='.fields.dumps:G_DUMP', registry='.solvers:registry', split_holes='.geometry:split_holes',
     describe_edges='.edges:describe', snap_edges='.edges:snap',

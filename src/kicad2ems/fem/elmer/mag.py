@@ -1,6 +1,6 @@
 """Coils with ferrite, with Elmer: the inductance of wound coils and the coupling between them, beside ferrite plates.
 
-    python -m kicad2ems_fem.elmer.mag --coil tx:turns=10,inner=10,outer=22,z=0,t=1 \\
+    python -m kicad2ems.fem.elmer.mag --coil tx:turns=10,inner=10,outer=22,z=0,t=1 \\
         --coil rx:turns=14,inner=8,outer=16,z=5,t=0.5 --plate z=-2.5,t=2.5,size=50x50,mur=2000 --out mag
 
 A coil is a flat ring of winding (mm: inner and outer radius, z of its lower face, thickness t; x, y of its centre, 0
@@ -10,7 +10,7 @@ is z. Elmer solves the static field of each coil alone and of each pair together
 from the field energy. Writes <out>/mag.json: L (H, the matrix), k, and `air`, the same coils without ferrite from
 the ring formulas (air_core below), which no ferrite run needs but every result can be read against.
 
-    from kicad2ems_fem.elmer.mag import solve, air_core
+    from kicad2ems.fem.elmer.mag import solve, air_core
     r = solve([dict(name='tx', turns=10, inner=10, outer=22, z=0, t=1)], [dict(z=-2.5, t=2.5, size=(50, 50), mur=2000)], 'mag')
     r['L'][0][0], r['air'][0][0]
 
@@ -405,7 +405,7 @@ def solve(coils, plates=(), out='mag', h=None, margin=6.0, log=print, freq=None)
     if freq:
         ac, ac_tets = _ac(coils, plates, out, m, case, float(freq), h, margin, log, said)
     d = np.sqrt(np.diag(L))
-    result = dict(format=1, tool='kicad2ems_fem.elmer.mag', engine=elmer.engine(said[0] if said else ''), names=[c['name'] for c in coils], L=L.tolist(),
+    result = dict(format=1, tool='kicad2ems.fem.elmer.mag', engine=elmer.engine(said[0] if said else ''), names=[c['name'] for c in coils], L=L.tolist(),
                   k=(L / np.outer(d, d)).tolist(),
                   air=air_core(coils).tolist(), coils=coils, plates=plates, tets=m['tets'], margin=margin,
                   radius=m['radius'], sizes=m['sizes'],
@@ -470,7 +470,7 @@ def _item(ap, text, flag):
 
 
 def parser():
-    ap = argparse.ArgumentParser(prog='python -m kicad2ems_fem.elmer.mag', description=__doc__.split('\n\n')[0])
+    ap = argparse.ArgumentParser(prog='python -m kicad2ems.fem.elmer.mag', description=__doc__.split('\n\n')[0])
     ap.add_argument('--coil', action='append', required=True,
                     help='[NAME:] turns=N inner=R outer=R z=Z t=T [x=X y=Y] [r=OHM: its winding\'s resistance at '
                          '--freq] (mm, spaces or commas between; repeat: a coil each)')

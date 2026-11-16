@@ -4,7 +4,7 @@ import math, os
 from types import SimpleNamespace as NS
 import numpy as np
 import pytest
-from kicad2ems.lines import reference as R
+from kicad2ems.core.lines import reference as R
 
 INF = math.inf
 PLANE = (0.0, True, ((-INF, INF),))                     # a plane across the whole cut, 0.2 mm under the strip
@@ -60,9 +60,9 @@ def test_a_grounded_cpw_is_solved_as_classified_when_that_is_its_cut():
 
 @pytest.fixture(scope='module')
 def transition(boards):
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.lines import builder
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.lines import builder
     m = Board(KiCadBoard(boards['demo'] + '.kicad_pcb'), log=lambda *a: None, need_ports=False)
     nets = sorted({t['net'] for t in m.prims.tracks} - set(m.ground_nets))
     return {mode: builder.build(m, nets=nets, field=mode) for mode in (None, 'off', 'all', True)}
@@ -84,8 +84,8 @@ def test_the_default_solves_the_sections_at_the_via_s_antipads(transition):
 
 
 def test_the_option_and_its_old_switch(tmp_path):
-    from kicad2ems.cli import parser
-    from kicad2ems.config import build_settings, ConfigError
+    from kicad2ems.core.cli import parser
+    from kicad2ems.core.config import build_settings, ConfigError
     args = lambda *a: vars(parser().parse_args(['board.kicad_pcb', *a])).get('lines_field')
     assert args() is None and args('--lines-field') == 'all' and args('--lines-field', 'off') == 'off'
     assert build_settings(dict(board='b.kicad_pcb')).lines_field == 'auto'
@@ -101,12 +101,12 @@ def test_the_option_and_its_old_switch(tmp_path):
 def test_many_cuts_are_solved_in_worker_processes(monkeypatch):
     """A build's cross-sections go to worker processes when there are many, with the answers of solving them one
     after another; where a process cannot start, or the program is no python, they are solved as before. The
-    workers are commands (python -m kicad2ems.lines.cutworker), so a program's main module is not run again."""
+    workers are commands (python -m kicad2ems.core.lines.cutworker), so a program's main module is not run again."""
     import subprocess, sys
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.lines import builder
-    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.lines import builder
+    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
     m = Board(KiCadBoard(os.path.join(ex, 'rf_radialstub.kicad_pcb')), log=lambda *a: None, need_ports=False)
     nets = sorted({t['net'] for t in m.prims.tracks} - set(m.ground_nets))
     started, real = [], subprocess.Popen
@@ -119,7 +119,7 @@ def test_many_cuts_are_solved_in_worker_processes(monkeypatch):
         monkeypatch.setattr(subprocess, 'Popen', start)
         monkeypatch.setattr(sys, 'executable', exe)
         monkeypatch.setattr(R, 'PARALLEL', parallel)
-        monkeypatch.setattr('emsdev.cpu.core_threads', lambda: 2)
+        monkeypatch.setattr('kicad2ems.emsdev.cpu.core_threads', lambda: 2)
         R._solve_cut.cache_clear()
         del started[:]
         lm = builder.build(m, nets=nets, field='all')
@@ -128,7 +128,7 @@ def test_many_cuts_are_solved_in_worker_processes(monkeypatch):
     one, n, procs = build(10 ** 6)
     assert procs == 0 and n >= 16 and all(s == 'cut' for *_, s in one if s)
     two, n2, procs = build(8)
-    assert procs == 2 and started[0] == ['-m', 'kicad2ems.lines.cutworker'] and n2 == n and two == one
+    assert procs == 2 and started[0] == ['-m', 'kicad2ems.core.lines.cutworker'] and n2 == n and two == one
     assert R.DEFER is None
 
     def broken(*a, **k):
@@ -142,7 +142,7 @@ def test_many_cuts_are_solved_in_worker_processes(monkeypatch):
 def test_a_worker_answers_until_its_input_closes():
     import pickle, subprocess, sys
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(p for p in sys.path if p))
-    p = subprocess.Popen([sys.executable, '-m', 'kicad2ems.lines.cutworker'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
+    p = subprocess.Popen([sys.executable, '-m', 'kicad2ems.core.lines.cutworker'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
     good = ('cpwg', (0.3, 0.15, 0.2, 4.3, 0.035))
     bad = ('cut', (0.3,))                                       # not a cross-section: None, not a crash
     for items in ([good], [bad, good]):
@@ -234,10 +234,10 @@ def diffvia():
     """rf_diffvia's pair (a microstrip and a stripline coupled section either side of its vias), as drawn and with
     ground 0.15 mm beside the stripline pair and the plane under the microstrip pair ending 0.1 mm past it."""
     from shapely.geometry import box
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.lines import builder
-    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.lines import builder
+    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
     m = Board(KiCadBoard(os.path.join(ex, 'rf_diffvia.kicad_pcb')), log=lambda *a: None, need_ports=False)
     nets = sorted({t['net'] for t in m.prims.tracks} - set(m.ground_nets))
 
@@ -292,7 +292,7 @@ def test_the_default_solves_a_group_on_its_cut_where_the_planes_are_not_ideal(di
     drawn = legs[0].coupled['section'].to_dict()
     assert [c[4] for c in drawn['conductors']] == [False, False, True] and len(drawn['planes']) == 2
     assert drawn['conductors'][2][1] == pytest.approx(drawn['conductors'][0][0] - 0.15, abs=5e-3)
-    from kicad2ems.lines import sections
+    from kicad2ems.core.lines import sections
     lm = diffvia['auto changed']
     leg = next(e for e in lm.drawing({})['elements'] if e['kind'] == 'trace' and e['group'] == 1)
     assert sections.solve(leg, 'odd').z0 == pytest.approx(strip['pairs'][0]['zo'], rel=1e-6)
@@ -302,7 +302,7 @@ def test_the_default_solves_a_group_on_its_cut_where_the_planes_are_not_ideal(di
 
 def test_the_line_model_s_answer_follows_the_group_s_cut(diffvia):
     pytest.importorskip('skrf')
-    from kicad2ems.solvers.lines.fastsolve import group_s
+    from kicad2ems.core.solvers.lines.fastsolve import group_s
     f = np.array([1e9, 5e9])
     plain, cut = (group_s(diffvia[k].groups[1], f) for k in ('auto', 'auto changed'))
     assert plain.shape == cut.shape == (2, 4, 4) and np.abs(plain - cut).max() > 0.01
@@ -311,7 +311,7 @@ def test_the_line_model_s_answer_follows_the_group_s_cut(diffvia):
 def test_a_guarded_pair_is_a_block_of_its_cut_in_both_circuit_solvers(diffvia, tmp_path):
     """qucsator's own coupled microstrip (MCOUPLED) knows nothing of the copper between the lines: a pair solved on
     the board's cut is the multiconductor block there too."""
-    from kicad2ems.solvers.lines.fastsolve import group_s, qucs_netlist
+    from kicad2ems.core.solvers.lines.fastsolve import group_s, qucs_netlist
     plain, guarded = diffvia['auto'], diffvia['guarded']
     g, g0 = guarded.groups[2], plain.groups[2]
     assert g.get('source') == 'cut' and [x.get('source') for x in guarded.groups] == [None, None, 'cut', None]
@@ -337,7 +337,7 @@ def test_many_group_cuts_are_solved_in_worker_processes(monkeypatch):
     R.solve_groups(keys[:6], workers=4)                         # too few for a worker: left to the groups
     assert not started and not R._solve_group.got
     R.solve_groups(keys, workers=2)
-    assert started == [['-m', 'kicad2ems.lines.cutworker']] * 2 and len(R._solve_group.got) == len(keys)
+    assert started == [['-m', 'kicad2ems.core.lines.cutworker']] * 2 and len(R._solve_group.got) == len(keys)
     there = {k: R._solve_group.got[k] for k in keys[:4]}
     R._solve_group.cache_clear()
     for k, (C, Ca) in there.items():
@@ -352,8 +352,8 @@ def test_losses_and_a_mixed_stripline():
     effective-medium model, and a stripline between core and prepreg of different er sent to its cut (its formula on
     the averaged er: Z0 4 % low, the delay 5.6 % long)."""
     from types import SimpleNamespace as NS
-    from kicad2ems.lines import reference as R
-    from kicad2ems.solvers.lines.fastsolve import mode_tand
+    from kicad2ems.core.lines import reference as R
+    from kicad2ems.core.solvers.lines.fastsolve import mode_tand
     m = NS(layers=[dict(z0=0.0, z1=0.1, er=3.0, tand=0.002), dict(z0=0.1, z1=0.3, er=4.6, tand=0.02)])
     er, tand = R._dielectric(m, 0.0, 0.3)
     assert er == pytest.approx((0.1 * 3.0 + 0.2 * 4.6) / 0.3)

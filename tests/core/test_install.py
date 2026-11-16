@@ -3,7 +3,7 @@ anything. The Windows paths are checked here on any system, with install.WINDOWS
 import importlib.util, os, subprocess, sys
 import pytest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 @pytest.fixture

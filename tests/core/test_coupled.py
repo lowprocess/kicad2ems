@@ -5,14 +5,14 @@ import numpy as np
 import pytest
 from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
-from kicad2ems.lines.coupled import coupled_microstrip, coupled_stripline, coupled_offset_stripline, group_lc, mtl_s
-from kicad2ems.lines.strips import shape_strips, rectilinear
-from kicad2ems.lines.tlines import microstrip, stripline, build
-from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.board import Board
-from kicad2ems.solvers.lines.fastsolve import solve, qucs_netlist, find_qucsator, read_qucs_dataset
+from kicad2ems.core.lines.coupled import coupled_microstrip, coupled_stripline, coupled_offset_stripline, group_lc, mtl_s
+from kicad2ems.core.lines.strips import shape_strips, rectilinear
+from kicad2ems.core.lines.tlines import microstrip, stripline, build
+from kicad2ems.core.importers.kicad import KiCadBoard
+from kicad2ems.core.board import Board
+from kicad2ems.core.solvers.lines.fastsolve import solve, qucs_netlist, find_qucsator, read_qucs_dataset
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 EX = os.path.join(ROOT, 'examples')
 db = lambda x: 20 * np.log10(np.abs(x) + 1e-15)
 
@@ -138,7 +138,7 @@ def _peak(f, S):
 
 
 def _reference(name):
-    from kicad2ems.touchstone import read_touchstone
+    from kicad2ems.core.touchstone import read_touchstone
     return read_touchstone(os.path.join(EX, 'reference', name))
 
 

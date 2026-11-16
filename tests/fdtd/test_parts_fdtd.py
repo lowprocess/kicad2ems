@@ -2,10 +2,10 @@
 fake_openems fixture; moved from kicad2ems's test_parts.py)."""
 import numpy as np
 import pytest
-from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.board import Board
-from kicad2ems.parts import Part
-from kicad2ems_fdtd.mesh import auto_mesh
+from kicad2ems.core.importers.kicad import KiCadBoard
+from kicad2ems.core.board import Board
+from kicad2ems.core.parts import Part
+from kicad2ems.fdtd.mesh import auto_mesh
 
 
 @pytest.fixture(scope='module')
@@ -23,8 +23,8 @@ def test_part_ends_on_mesh_lines(rlc):
 
 
 def test_build_fdtd_adds_lumped_elements(rlc, fake_openems):
-    from kicad2ems_fdtd.model import build_fdtd
-    from kicad2ems_fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.model import build_fdtd
+    from kicad2ems.fdtd.boundaries import resolve_bc
     m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
     m.parts.append(Part('L7', 0.2, np.float64(2e-9), None, 'F.Cu', m.cu_z['F.Cu'], 1, [3, 3, 0.2], [3.2, 3.5, 0.2]))
     m.parts.append(Part('R5', 0.0, None, None, 'F.Cu', m.cu_z['F.Cu'], 0, [4, 3, 0.2], [4.4, 3.5, 0.2]))

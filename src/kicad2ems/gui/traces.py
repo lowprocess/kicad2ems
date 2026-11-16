@@ -9,7 +9,7 @@ S-parameter traces for the interactive plots (no Qt here: testable without a dis
 """
 import os, re
 import numpy as np
-from kicad2ems.api.frontend import port_names              # noqa: F401  (traces.port_names, as before)
+from kicad2ems.core.api.frontend import port_names              # noqa: F401  (traces.port_names, as before)
 
 KINDS = ('|S| (dB)', '|S| (linear)', 'Phase (deg)', 'Group delay (ns)', 'VSWR')     # the rectangular plot
 SMITH = 'Smith chart'                                     # the reflections beside it
@@ -80,13 +80,13 @@ def classify(path):
     m = re.search(r'_([A-Za-z0-9-]+)\.s\d+p$', os.path.basename(path))
     if m and m.group(1) in BY_SUFFIX:
         return BY_SUFFIX[m.group(1)]
-    from kicad2ems.api.frontend import registry
+    from kicad2ems.core.api.frontend import registry
     return m.group(1) if m and m.group(1) in registry() else 'openEMS'
 
 
 def load_traces(files, compare=None):
     """Traces of every Touchstone file in (label, path) files (a run's file list), plus a compare file."""
-    from kicad2ems.api.frontend import read_touchstone
+    from kicad2ems.core.api.frontend import read_touchstone
     paths = [p for _, p in files if re.search(r'\.s\d+p$', p) and os.path.exists(p)]
     seen, out = set(), []
     items = [(classify(p), p) for p in paths]

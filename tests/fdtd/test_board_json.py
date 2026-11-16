@@ -2,9 +2,9 @@
 test_board.py)."""
 import numpy as np
 import pytest
-from kicad2ems.board import Board
+from kicad2ems.core.board import Board
 from test_board import board_of, quiet                              # kicad2ems's tests (conftest.py puts them on the path)
-from kicad2ems_fdtd.mesh import auto_mesh
+from kicad2ems.fdtd.mesh import auto_mesh
 
 
 @pytest.mark.parametrize('case', ['launch', 'demo_lowpass', 'diff'])

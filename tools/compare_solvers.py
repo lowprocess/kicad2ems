@@ -60,7 +60,7 @@ TERMS = dict(diffvia=('P1d<P1d', 'P2d<P1d'))
 def column(path, spec, complex_=False):
     """(f in Hz, |S| in dB) of S spec ('S21', or 'P2d<P1d' by port name) in a Touchstone file; complex_: S itself."""
     sys.path.insert(0, os.path.join(REPO, 'src'))
-    from kicad2ems.touchstone import read_touchstone, port_names
+    from kicad2ems.core.touchstone import read_touchstone, port_names
     f, S = read_touchstone(path)
     if '<' in spec:
         names = port_names(path) or []
@@ -177,7 +177,7 @@ def run(board, solver, python, timeout):
                         os.path.join(REPO, 'examples', name)], check=True, stdout=subprocess.DEVNULL)
     out = os.path.join(OUT, board, solver)
     os.makedirs(out, exist_ok=True)
-    cmd = [python, '-m', 'kicad2ems.cli', cfg, '--solvers', solver, '--out', out, '--no-report']
+    cmd = [python, '-m', 'kicad2ems.core.cli', cfg, '--solvers', solver, '--out', out, '--no-report']
     if solver == 'mom25d':
         cmd += ['--mom-port', 'lumped']     # the FDTD solvers' lumped ports, not wave ports de-embedded onto the line
     with open(os.path.join(out, 'log.txt'), 'w', encoding='utf-8') as log:

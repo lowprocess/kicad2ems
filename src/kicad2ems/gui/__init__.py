@@ -1,6 +1,6 @@
 """
 kicad2ems-gui: kicad2ems's window (needs PySide6 and pyqtgraph). The settings form made from kicad2ems's option
-tables and solver registry, runs as kicad2ems processes (kicad2ems.runs), and the results: S-parameter plots, the
+tables and solver registry, runs as kicad2ems processes (kicad2ems.core.runs), and the results: S-parameter plots, the
 report, the board in plan and 3D, field maps and animations, antenna patterns and beam steering, and dfsynth's
 filter synthesis (the Filter page).
 

@@ -1198,7 +1198,7 @@ class Installer:
             note(f'{t.bin} is not on your PATH: add it (export PATH="{t.bin}:$PATH")')
 
     def gui_icon(self, ext):
-        return py_out(self.vpy, f"import kicad2ems_gui, os; print(os.path.join(os.path.dirname(kicad2ems_gui.__file__),"
+        return py_out(self.vpy, f"import kicad2ems.gui, os; print(os.path.join(os.path.dirname(kicad2ems.gui.__file__),"
                                 f" 'kicad2ems.{ext}'))")
 
     def launcher(self):
@@ -1248,7 +1248,7 @@ class Installer:
         t = self.t
         bold("The GUI in the Start menu")
         pyw = os.path.join(os.path.dirname(self.vpy), 'pythonw.exe')
-        target, args = (pyw, '-m kicad2ems_gui') if os.path.isfile(pyw) else \
+        target, args = (pyw, '-m kicad2ems.gui') if os.path.isfile(pyw) else \
             (script(t.scripts(self.vpy), 'kicad2ems-gui'), '')
         if not ask(f"a Start-menu entry for kicad2ems-gui (runs {target} {args})?", 'y'):
             return

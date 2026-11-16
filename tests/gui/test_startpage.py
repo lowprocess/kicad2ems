@@ -7,7 +7,7 @@ import pytest
 pytest.importorskip('PySide6')
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from kicad2ems_gui import startpage as SP                              # noqa: E402
+from kicad2ems.gui import startpage as SP                              # noqa: E402
 from k2e_fixtures import ROOT                                          # noqa: E402
 
 ENTRIES = [dict(name=f"rf_{k}", config='', group='RF structures/Filters', title=f"{k} filter, 2 GHz (FR4)", source='kicad2ems')
@@ -18,7 +18,7 @@ ENTRIES = [dict(name=f"rf_{k}", config='', group='RF structures/Filters', title=
 
 @pytest.fixture
 def app():
-    from kicad2ems_gui import application
+    from kicad2ems.gui import application
     return application()
 
 
@@ -46,7 +46,7 @@ def test_tiles_by_group_and_found_by_a_word(app):
 
 
 def test_a_board_s_picture_is_its_copper_from_above(app, tmp_path):
-    from kicad2ems.api.frontend import board_layout
+    from kicad2ems.core.api.frontend import board_layout
     img = SP.board_image(board_layout(os.path.join(ROOT, 'examples', 'rf_bus.kicad_pcb')))
     assert (img.width(), img.height()) == SP.PICTURE
     colours = {img.pixelColor(x, y).name() for x in range(0, img.width(), 3) for y in range(0, img.height(), 3)}
@@ -63,8 +63,8 @@ def test_the_window_begins_on_the_start_page(tmp_path, monkeypatch):
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     monkeypatch.setenv('XDG_CACHE_HOME', str(tmp_path / 'cache'))
     from PySide6.QtCore import QSettings
-    from kicad2ems_gui import application
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui import application
+    from kicad2ems.gui.app import MainWindow
     app = application()
     QSettings('kicad2ems', 'gui').clear()
     monkeypatch.setattr(SP.StartPage, 'start_pictures', lambda self: None)       # (no thread in this test)

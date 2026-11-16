@@ -118,7 +118,7 @@ class PortWatch:
         return port_decay(self.path, self.window, self.z)
 
     def _loop(self):
-        from kicad2ems.api.solver import stop
+        from kicad2ems.core.api.solver import stop
         while not self._stop.wait(self.interval):
             if stop.requested():                                # the GUI's Stop (stop.py)
                 self.fired = dict(reason='stop')
@@ -144,7 +144,7 @@ def watch_window(m, fmin):
     board without lumped parts on its signal nets: nothing there rings below its lowest cavity mode, c0 / (2 D sqrt(er)) over the
     outline's diagonal D, so a band reaching far below it (fmin 0.1 GHz: a 20 ns window, longer than a whole
     run on a 6-layer board) waits no longer than that mode's two periods. At least 1 ns."""
-    from kicad2ems.api.solver import C0
+    from kicad2ems.core.api.solver import C0
     w = 2.0 / fmin
     gnd = set(getattr(m, 'ground_nets', ()) or ())
     signal_parts = [pt for pt in getattr(m, 'parts', []) or [] if any(n and n not in gnd for n in _part_nets(m, pt))]
@@ -202,7 +202,7 @@ def execute(FDTD, path, threads=0, verbose=1, progress=None, watch=None):
     lines to the terminal ('file': the log only - parallel workers, monitored by the main process);
     on_status(label, status dict) is called for every openEMS status line."""
     from .progress import Monitor, Tracker, redirect_output
-    from kicad2ems.api.solver import stop
+    from kicad2ems.core.api.solver import stop
     stop.check()                                                # stopped: no further excitation or level
     os.makedirs(path, exist_ok=True)
     for f in ('ABORT', 'run_end.json'):                         # leftovers of an earlier run in this folder
@@ -302,7 +302,7 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, rough=None,
     token = setup(FDTD, CSX) if setup else None
     os.makedirs(path, exist_ok=True)
     if dumps:
-        from kicad2ems.api.solver import write_info
+        from kicad2ems.core.api.solver import write_info
         write_info(path, dumps, m, mesh['info'].get('dt_ps'))
     else:                                                       # an earlier run's dumps are gone (openEMS cleans up)
         for f in ('dump_info.json', 'dump_norm.json'):
@@ -325,7 +325,7 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, rough=None,
     if fd:                                                      # incident wave at the dump frequencies
         ports[k].CalcPort(path, np.array(fd))
         norm = dict(zip(fd, np.atleast_1d(ports[k].uf_inc)))
-        from kicad2ems.api.solver import write_norm
+        from kicad2ems.core.api.solver import write_norm
         write_norm(path, norm)
     for p in ports:
         p.CalcPort(path, freq)

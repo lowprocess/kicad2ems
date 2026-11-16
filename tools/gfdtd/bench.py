@@ -14,9 +14,9 @@ import argparse, contextlib, io, os, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 import numpy as np
 
-from gfdtd import ContinuousStructure, openEMS
-from gfdtd.operator import build
-from gfdtd.engine import make_backend, resolve_backend
+from kicad2ems.gfdtd import ContinuousStructure, openEMS
+from kicad2ems.gfdtd.operator import build
+from kicad2ems.gfdtd.engine import make_backend, resolve_backend
 
 OPS = ['update_H', 'pml_h', 'mur_pre', 'update_E', 'pml_e', 'excite', 'lumped', 'mur_post', 'probe']
 

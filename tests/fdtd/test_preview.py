@@ -3,10 +3,10 @@ antennas and the shared FDTD settings (moved from kicad2ems's tests, which run o
 import json, os
 import numpy as np
 import pytest
-from kicad2ems import solvers, meshes
-from kicad2ems.importers.kicad import KiCadBoard
-from kicad2ems.board import Board
-from kicad2ems.edges import edge_walls
+from kicad2ems.core import solvers, meshes
+from kicad2ems.core.importers.kicad import KiCadBoard
+from kicad2ems.core.board import Board
+from kicad2ems.core.edges import edge_walls
 from test_plugins import _EP, _Fake                                 # kicad2ems's tests (conftest.py)
 
 K2E = os.environ.get('KICAD2EMS_SRC') or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -35,7 +35,7 @@ def test_preview_report_and_summary(demo_files, run_cli, tmp_path):
     assert "id='openems'" not in page and "id='mom25d'" not in page   # no full-wave solve in a preview (auto: the line model)
     sm = json.loads((out / 'demo_run.json').read_text(encoding='utf-8'))
     assert sm['mode'] == 'preview' and sm['lines']['paths'][0]['port'] == 'P1'
-    from kicad2ems.report import build                         # the report rebuilds from the JSON alone
+    from kicad2ems.core.report import build                         # the report rebuilds from the JSON alone
     assert "id='tlines'" in build(sm, str(out))
     kinds = [json.loads(l)['kind'] for l in (tmp_path / 'ev.jsonl').read_text(encoding='utf-8').splitlines()]
     assert 'stage' in kinds and 'log' in kinds and 'file' in kinds and kinds[-1] == 'done'
@@ -45,9 +45,9 @@ def test_preview_report_and_summary(demo_files, run_cli, tmp_path):
 
 
 def test_build_fdtd_adds_the_walls(launch, fake_openems):
-    from kicad2ems_fdtd.model import build_fdtd
-    from kicad2ems_fdtd.boundaries import resolve_bc
-    from kicad2ems_fdtd.mesh import auto_mesh
+    from kicad2ems.fdtd.model import build_fdtd
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.mesh import auto_mesh
     m = launch
     bc = resolve_bc('auto', m)
     mesh = auto_mesh(m, 1e9, 6e9, bc=bc, log=lambda *a: None)
@@ -70,9 +70,9 @@ def test_walls_and_vias_sit_on_mesh_lines(launch, boards):
     """openEMS drops a zero-thickness sheet or a thin cylinder that misses every mesh line (an 'unused
     primitive'): walls are snapped onto lines, and vias whose own lines were merged away are snapped
     even beyond --via-snap."""
-    from kicad2ems_fdtd.boundaries import resolve_bc
-    from kicad2ems_fdtd.mesh import auto_mesh
-    from kicad2ems.edges import snap
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.mesh import auto_mesh
+    from kicad2ems.core.edges import snap
     for m in (launch, Board(KiCadBoard(boards['demo'] + '.kicad_pcb'), nets=['RF', 'GND'],
                             pos_file=boards['demo'] + '-top.pos', ground='B.Cu', log=lambda *a: None)):
         for fine in (None, 0.05):
@@ -106,8 +106,8 @@ def test_antenna_preview(boards, kind, tmp_path, run_cli):
 def test_shared_fdtd_settings(monkeypatch):
     """FDTD solvers share the mesh and run settings (the same Option objects): one setting each, in either solver's
     table; another plugin may list them too, but not define its own of the same name."""
-    from kicad2ems.config import all_options
-    from kicad2ems_fdtd.plugin import FDTD, MESH, RUN
+    from kicad2ems.core.config import all_options
+    from kicad2ems.fdtd.plugin import FDTD, MESH, RUN
 
     class Engine(FDTD):
         api = (2, 0)

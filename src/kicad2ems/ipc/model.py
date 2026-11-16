@@ -37,8 +37,8 @@ class Plan:
     classes: {net: [class names]} as KiCad reports them (ipc.Live.net_classes); None: the project file next to
     the board (<board>.kicad_pro)."""
     def __init__(self, text, path='', classes=None):
-        from kicad2ems.api.frontend import KiCadBoard
-        from kicad2ems.api.frontend import Board
+        from kicad2ems.core.api.frontend import KiCadBoard
+        from kicad2ems.core.api.frontend import Board
         from .netclass import NetClasses
         self.path = path
         self.notes = []
@@ -100,7 +100,7 @@ class Plan:
         grouped), over `jobs` worker processes (default: one per performance core; 1: here, in this process).
         A unit at a time was also the fastest: 4.9 s for KiCad's CM5 demo, against 5.8 s in groups of 24 nets.
         field: every section by the field solver on the board's cut across it, not the formulas (slower)."""
-        from kicad2ems.api.frontend import RefCopper
+        from kicad2ems.core.api.frontend import RefCopper
         nets = [n for n in (self.signal if nets is None else nets) if not self.nc.disabled(n)]
         refcu = RefCopper(self.m, set(self.signal) | set(self.disabled))
         self.lines['elements'] = []
@@ -149,7 +149,7 @@ class Plan:
         its pads on the nets: one leg of a differential port where it has pads on both legs of a pair. A track end
         that reaches nothing (no pad, via or track) gets a port too. Nets the board's own port footprints sit on
         keep those ports instead."""
-        from kicad2ems.api.frontend import kind_value
+        from kicad2ems.core.api.frontend import kind_value
         from .netclass import partner
         sig, gnd = set(self.signal), set(self.m.ground_nets)
         want = []
@@ -236,7 +236,7 @@ class Plan:
             for (net, lay, x, y, pad, what), leg in legs:
                 spec = f"P{n}{leg}={pad}" if pad else f"P{n}{leg}@{x:.4f},{y:.4f},{lay}"
                 ports.append(dict(name=f"P{n}{leg}", spec=spec, net=net, layer=lay, x=x, y=-y, what=what))
-        from kicad2ems.api.frontend import extra_port_fps
+        from kicad2ems.core.api.frontend import extra_port_fps
         ok = []
         for p in ports:
             try:
@@ -330,7 +330,7 @@ class Plan:
         centre line of the nearest trace section of `layer` within `tol` (P<n>@x,y,layer: KiCad mm, pointing
         along the trace; elements: the map's sections, default plan.lines). Returns the port dict (name, spec, net,
         layer, x, y model mm, what) or raises ValueError with why not."""
-        from kicad2ems.api.frontend import extra_port_fps
+        from kicad2ems.core.api.frontend import extra_port_fps
         n = self.next_port(session)
         kx, ky = x, -y
         for fp in self.raw.footprints:
@@ -420,7 +420,7 @@ def _drawing(m, lm):
 
 
 def _map_group(m, refcu, chunk, field=False):
-    from kicad2ems.api.frontend import build_lines
+    from kicad2ems.core.api.frontend import build_lines
     return _drawing(m, build_lines(m, nets=chunk, refcu=refcu, field=field))
 
 
@@ -438,7 +438,7 @@ def _worker_map(chunk, field=False):
 
 def _jobs():
     """Worker processes for the map: one per performance core (kicad2ems's rule, emsdev's), at least 1."""
-    from kicad2ems.api.frontend import core_threads
+    from kicad2ems.core.api.frontend import core_threads
     return core_threads()
 
 
@@ -637,7 +637,7 @@ def run_values(session, plan, text, folder, stem):
 
 def write_config(values, path):
     """A kicad2ems TOML config of the run's settings (kicad2ems-gui opens it)."""
-    from kicad2ems.api.frontend import toml_value
+    from kicad2ems.core.api.frontend import toml_value
     lines = ["# written by the kicad2ems KiCad plugin"]
     lines += [f"{k} = {toml_value(v)}" for k, v in values.items() if v not in (None, '', [])]
     with open(path, 'w') as fh:
@@ -655,7 +655,7 @@ def gpu_offer():
     except ImportError:
         pass
     try:
-        from emsdev import vulkan
+        from kicad2ems.emsdev import vulkan
         return 'slangpy>=0.43' if any(a.kind == 'discrete' for a in vulkan.adapters()) else None
     except Exception:                                               # noqa: BLE001  (no Vulkan loader: nothing to offer)
         return None
@@ -690,7 +690,7 @@ def board_marks(session, elements, worst=12, off=0.10, size=0.6):
 
 def legend(lines):
     """(reference ohm, half span ohm, low, high) of the map's colours."""
-    from kicad2ems.api.frontend import overlay as ov
+    from kicad2ems.core.api.frontend import overlay as ov
     ref = ov.reference(lines)
     return ref, ov.span(lines, ref), *(lines.get('z0_range') or (ref, ref))
 
@@ -701,7 +701,7 @@ def results(out_dir, stem):
     """The S-parameters of a finished run (<out>/<stem>_run.json and its Touchstone files), or None: dict(freq Hz,
     solved [dict(key, label, names, S, line: is it the line model)], reference (the first solver's key),
     compare {key: the run's table of it against the reference}, warnings)."""
-    from kicad2ems.api.frontend import read_touchstone, read_summary
+    from kicad2ems.core.api.frontend import read_touchstone, read_summary
     try:
         sm = read_summary(os.path.join(out_dir, f"{stem}_run.json"))
     except (OSError, ValueError):
@@ -771,7 +771,7 @@ RAMP = ('#2c7bb6', '#00a6ca', '#00ccbc', '#90eb9d', '#f9d057', '#f29e2e', '#e768
 def analysis_command(name, values, board, out):
     """(argv, missing [str]) of kicad2ems's analysis `name` (pcbqs's pdn or thermal) on the board, `values` beside its
     defaults: argv None and what it still needs where something is missing (its form in the window has the rest)."""
-    from kicad2ems.api.frontend import analyses
+    from kicad2ems.core.api.frontend import analyses
     an = analyses().get(name)
     if an is None:
         return None, [f"{name}: not installed (pip install pcbqs)"]
@@ -804,7 +804,7 @@ def map_bands(path, bands=MAP_BANDS):
     """(levels, [(band, outer ring, [holes])] in KiCad mm) of a plane map: its value on the copper (0 or NaN off it)
     in `bands` equal steps between its least and most, each step's region as polygons (matplotlib's contours)."""
     import numpy as np
-    from kicad2ems.fields.frames import read_npz
+    from kicad2ems.core.fields.frames import read_npz
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt

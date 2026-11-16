@@ -3,15 +3,15 @@ the board's copper as triangles and outlines, and the GUI panel on a results fol
 import os
 import numpy as np
 import pytest
-from kicad2ems_gui import volume3d as v3
-from kicad2ems.fields import frames as F
-from kicad2ems.fields.dumps import write_info, parse_dump
+from kicad2ems.gui import volume3d as v3
+from kicad2ems.core.fields import frames as F
+from kicad2ems.core.fields.dumps import write_info, parse_dump
 
 
 @pytest.fixture(scope='module')
 def board(demo_files):
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
     base, _ = demo_files
     return Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
 
@@ -115,7 +115,7 @@ def test_an_opengl_start_that_fails_stays_in_the_view(monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     import gc, sys
     from PySide6.QtWidgets import QApplication
-    from kicad2ems_gui.volumetab import VolumeTab
+    from kicad2ems.gui.volumetab import VolumeTab
     app = QApplication.instance() or QApplication([])
     mixin = sys.modules[gl.GLViewWidget.__module__].GLViewMixin
 
@@ -153,7 +153,7 @@ def test_volume_panel(volume_run, tmp_path):
     pytest.importorskip('OpenGL')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtWidgets import QApplication
-    from kicad2ems_gui.volumetab import VolumeTab, N_PHASE
+    from kicad2ems.gui.volumetab import VolumeTab, N_PHASE
     app = QApplication.instance() or QApplication([])
     out, m, _ = volume_run
     w = VolumeTab()
@@ -181,7 +181,7 @@ def test_volume_panel_without_opengl(volume_run, monkeypatch):
     pytest.importorskip('OpenGL')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtWidgets import QApplication, QLabel
-    from kicad2ems_gui import volumetab
+    from kicad2ems.gui import volumetab
     app = QApplication.instance() or QApplication([])
     monkeypatch.setattr(volumetab, '_GL_WHY', None)
     monkeypatch.setenv('KICAD2EMS_GL', 'off')
@@ -203,7 +203,7 @@ def test_saved_animations(volume_run, board, tmp_path, monkeypatch):
     pytest.importorskip('OpenGL')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtWidgets import QApplication
-    from kicad2ems_gui.volumetab import VolumeTab, N_PHASE
+    from kicad2ems.gui.volumetab import VolumeTab, N_PHASE
     from test_fields import write_vtr
     app = QApplication.instance() or QApplication([])
     out, m, _ = volume_run
@@ -260,7 +260,7 @@ def test_voxels_and_pixels_centred_on_their_samples(volume_run, tmp_path):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtWidgets import QApplication
     from PySide6.QtGui import QVector3D
-    from kicad2ems_gui.volumetab import VolumeTab
+    from kicad2ems.gui.volumetab import VolumeTab
     app = QApplication.instance() or QApplication([])
     out, m, _ = volume_run
     w = VolumeTab()
@@ -296,9 +296,9 @@ def test_far_field_pattern_mesh():
 def test_part_solids(boards):
     """A part's chip (its size and place: kicad2ems's tests) drawn as a coloured body and two metal end caps standing
     on its copper, below the board on the bottom layer; a part from an older board.json has no body to draw."""
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.board import Board
-    from kicad2ems.parts import Part, SIZES
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.parts import Part, SIZES
     rlc = boards['rlc']
     m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
     c1 = m.parts[0]

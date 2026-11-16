@@ -4,8 +4,8 @@ test_convergence_run.py)."""
 import json
 import numpy as np
 import pytest
-from kicad2ems_fdtd import run, antenna
-from kicad2ems_fdtd.openems import engine
+from kicad2ems.fdtd import run, antenna
+from kicad2ems.fdtd.openems import engine
 from conftest import canned_runs
 
 
@@ -67,7 +67,7 @@ def test_antenna_run(boards, run_cli, tmp_path, monkeypatch):
 
 def test_touchstone_says_what_was_not_computed(demo_files, run_cli, tmp_path, no_openems):
     """With only P1 driven, S22 is unknown: the file still needs a number there (0), and says so."""
-    from kicad2ems.pipeline import unknown_note
+    from kicad2ems.core.pipeline import unknown_note
     S = np.zeros((3, 2, 2), complex)
     S[:, 1, 1] = np.nan
     assert unknown_note(S, ['P1', 'P2']) == '; not computed (written as 0): S(P2,P2)'
@@ -84,7 +84,7 @@ def test_touchstone_says_what_was_not_computed(demo_files, run_cli, tmp_path, no
 def test_an_unstable_engine_run_says_so(tmp_path):
     """gfdtd's run ended because its fields grew without bound: execute says so (nothing read the engine's reason,
     and the run's NaN probes then read as a port not excited, sending the user after the mesh)."""
-    from kicad2ems_fdtd.run import execute
+    from kicad2ems.fdtd.run import execute
 
     class Unstable:
         result = None

@@ -1,8 +1,8 @@
-"""A kicad2ems run started by another program (kicad2ems.runs: kicad2ems-gui, the KiCad plugin): the settings
+"""A kicad2ems run started by another program (kicad2ems.core.runs: kicad2ems-gui, the KiCad plugin): the settings
 file it writes, the command line, the event stream read as it grows, stopping it, and the files of the newest run."""
 import json, os
-from kicad2ems.runs import Run, EventTail, stop_runs, find_results, write_toml, toml_value
-from kicad2ems.config import build_settings
+from kicad2ems.core.runs import Run, EventTail, stop_runs, find_results, write_toml, toml_value
+from kicad2ems.core.config import build_settings
 
 
 def test_run_events_and_stop(tmp_path):

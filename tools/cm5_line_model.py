@@ -13,9 +13,9 @@ demos):
 import argparse, os, sys, time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
-from kicad2ems.board import Board                                        # noqa: E402
-from kicad2ems.importers.kicad import KiCadBoard                         # noqa: E402
-from kicad2ems.lines import builder, reference, topology                 # noqa: E402
+from kicad2ems.core.board import Board                                        # noqa: E402
+from kicad2ems.core.importers.kicad import KiCadBoard                         # noqa: E402
+from kicad2ems.core.lines import builder, reference, topology                 # noqa: E402
 
 
 def main():

@@ -3,8 +3,8 @@ axes, copper outlines, animations; the NF2FF sphere cuts of the antenna view."""
 import os
 import numpy as np
 import pytest
-from kicad2ems.fields import frames as F
-from kicad2ems.fields.dumps import write_info, parse_dump
+from kicad2ems.core.fields import frames as F
+from kicad2ems.core.fields.dumps import write_info, parse_dump
 from k2e_fixtures import write_vtr                                     # and the run_folder fixture
 
 
@@ -76,7 +76,7 @@ def test_save_animations(run_folder, tmp_path):
 
 def test_sphere_cuts(tmp_path):
     h5py = pytest.importorskip('h5py')
-    from kicad2ems.fields.antenna import read_sphere, sphere_gain, sphere_cuts
+    from kicad2ems.core.fields.antenna import read_sphere, sphere_gain, sphere_cuts
     th, ph = np.radians(np.arange(0, 181, 5.0)), np.radians(np.arange(0, 361, 5.0))
     T, P = np.meshgrid(th, ph)
     e = np.abs(np.sin(T) * np.cos(P)) + 1e-9                        # null along z and along y (phi = 90)
@@ -130,7 +130,7 @@ def test_dumps_of_both_solvers_are_listed(tmp_path):
     """A folder with openEMS's and mom25d's dumps: both are found, openEMS's first, each label naming its
     solver (the Viewer's 3D and Cut lists offer both)."""
     import json
-    from kicad2ems.fields.frames import find_dumps
+    from kicad2ems.core.fields.frames import find_dumps
     for solver, name in (('openems', 'dump_E_F_Cu_fd'), ('mom25d', 'dump_J_F_Cu_fd')):
         d = tmp_path / solver / 'exc_P1'
         d.mkdir(parents=True)

@@ -7,7 +7,7 @@ pytest.importorskip('PySide6')
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from k2e_fixtures import ROOT                                          # noqa: E402
-from kicad2ems_gui import steps as ST                                  # noqa: E402
+from kicad2ems.gui import steps as ST                                  # noqa: E402
 
 
 @pytest.fixture
@@ -15,8 +15,8 @@ def window(tmp_path, monkeypatch):
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     monkeypatch.setenv('XDG_CACHE_HOME', str(tmp_path / 'cache'))
     from PySide6.QtCore import QSettings
-    from kicad2ems_gui import application, startpage
-    from kicad2ems_gui.app import MainWindow
+    from kicad2ems.gui import application, startpage
+    from kicad2ems.gui.app import MainWindow
     monkeypatch.setattr(startpage.StartPage, 'start_pictures', lambda self: None)
     app = application()
     QSettings('kicad2ems', 'gui').clear()

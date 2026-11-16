@@ -4,7 +4,7 @@ folder is that folder, and the Plugin and Content Manager installs the same file
 (tools/build_pcm.py):
 
   plugin.json          one action in the PCB editor's toolbar
-  kicad2ems_plugin.py  the entry point: the window (kicad2ems_ipc.window)
+  kicad2ems_plugin.py  the entry point: the window (kicad2ems.ipc.window)
   requirements.txt     what KiCad installs into the plugin's own Python environment (kicad2ems, kicad-python, Qt)
   kicad2ems_ipc/       the plugin
   icon-24.png, icon-48.png
@@ -89,7 +89,7 @@ def install(dest, exec_=False):
         return dest
     for f in FILES:
         shutil.copy2(os.path.join(PLUGIN, f), dest)
-    shutil.copytree(os.path.join(PLUGIN, 'kicad2ems_ipc'), os.path.join(dest, 'kicad2ems_ipc'),
+    shutil.copytree(os.path.join(PLUGIN, 'kicad2ems.ipc'), os.path.join(dest, 'kicad2ems.ipc'),
                     ignore=shutil.ignore_patterns('__pycache__'))
     return dest
 
@@ -123,7 +123,7 @@ def main(argv=None):
             print(f"{'removed' if uninstall(t) else 'not installed'}: {t}")
     if a.action == 'install' and a.exec_:
         try:
-            import kipy, kicad2ems, kicad2ems_gui                   # noqa: F401
+            import kipy, kicad2ems, kicad2ems.gui                   # noqa: F401
         except ImportError as e:
             print(f"note: --exec runs this Python, which lacks {e.name}: pip install -r "
                   f"{os.path.join(PLUGIN, 'requirements.txt')}")

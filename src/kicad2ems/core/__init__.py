@@ -1,8 +1,8 @@
 """
-kicad2ems - KiCad (or Gerber) boards as electromagnetic simulations: one canonical board, solved by
+kicad2ems.core - KiCad (or Gerber) boards as electromagnetic simulations: one canonical board, solved by
 openEMS (3D FDTD), mom25d (2.5D MoM) and a transmission-line model.
 
-    from kicad2ems import KiCadBoard, Board, resolve_bc, auto_mesh
+    from kicad2ems.core import KiCadBoard, Board, resolve_bc, auto_mesh
     b = Board(KiCadBoard('board.kicad_pcb'), nets=['RF', 'GND'], pos_file='board-top.pos')
     b.save('board.json')                        # the board every solver gets
     bc = resolve_bc('auto', b)
@@ -38,15 +38,7 @@ The window is its own package, kicad2ems-gui (the gui extra), as are the full-wa
 
 Documentation: docs/index.md in the repository.
 """
-__version__ = '0.3.0'
-
-import os as _os
-# kicad2ems.examples is the checkout's examples/ (pyproject's package-dir). A compat editable install (install.py's
-# checkout and user targets) puts only src/ on sys.path, where it isn't: look in the checkout too
-_checkout = _os.path.dirname(_os.path.dirname(__path__[0]))
-if not _os.path.isdir(_os.path.join(__path__[0], 'examples')) and \
-        _os.path.isfile(_os.path.join(_checkout, 'examples', '__init__.py')):
-    __path__.append(_checkout)
+from .. import __version__
 
 from .importers.kicad import KiCadBoard, read_pos
 from .board import Board, Port

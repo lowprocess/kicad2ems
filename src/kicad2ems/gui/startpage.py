@@ -39,7 +39,7 @@ def short_title(entry):
 
 
 def board_image(layout, size=PICTURE):
-    """A board as drawn (kicad2ems.layout.board_layout's dict), from above, as a picture: its outline, the copper
+    """A board as drawn (kicad2ems.core.layout.board_layout's dict), from above, as a picture: its outline, the copper
     of the layers under the top faint, the top layer's over them."""
     w, h = size
     img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
@@ -90,8 +90,8 @@ class _Thumbs(QThread):
         self.entries, self.version, self.stop = list(entries), version, False
 
     def run(self):
-        from kicad2ems.api.frontend import board_layout
-        from kicad2ems import examples as X
+        from kicad2ems.core.api.frontend import board_layout
+        from kicad2ems.core import examples as X
         folder = cache_folder()
         boards = os.path.join(folder, 'boards')
         os.makedirs(boards, exist_ok=True)
@@ -217,7 +217,7 @@ class StartPage(QWidget):
     @staticmethod
     def _index():
         try:
-            from kicad2ems.api.frontend import example_index
+            from kicad2ems.core.api.frontend import example_index
             return example_index()
         except Exception:                                           # noqa: BLE001 (a plugin's fault: no examples)
             return []
@@ -289,7 +289,7 @@ class StartPage(QWidget):
         if self._thread is not None or not self.tiles:
             return
         try:
-            from kicad2ems import __version__ as version
+            from kicad2ems.core import __version__ as version
         except Exception:                                           # noqa: BLE001
             version = '0'
         self._thread = _Thumbs([t.entry for t in self.tiles.values()], version)

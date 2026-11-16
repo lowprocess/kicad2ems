@@ -2,7 +2,7 @@
 off by convection at the board's faces; heated by parts and by the DC current of a net (as elmer/dc.py solves it),
 whose copper's resistance follows its temperature.
 
-    python -m kicad2ems_fem.elmer.thermal board.kicad_pcb --heat Q1=0.3 --heat Q2=0.3 \\
+    python -m kicad2ems.fem.elmer.thermal board.kicad_pcb --heat Q1=0.3 --heat Q2=0.3 \\
         --net VHB --source L3 --load Q1=3 --load Q2=3 --out th_vhb
 
 --heat REF=WATTS puts a part's dissipation into the copper under its pads, spread evenly (REF.PAD: under that pad
@@ -15,7 +15,7 @@ right when the on and off times are short beside the seconds a part's copper tak
 <out>/thermal.json (the hottest point, each part's pad temperature, the drops, the heat balance), <out>/thermal.png
 (the board's faces) and Elmer's case with a .vtu in <out>/elmer.
 
-    from kicad2ems_fem.elmer.thermal import solve
+    from kicad2ems.fem.elmer.thermal import solve
     r = solve(board, 'th', heat={'Q1': 0.3}, nets={'VHB'}, source='L3', loads={'Q1': 3.0})
     r['T_max'], r['parts']['Q1'], r['drop_mV']['Q1'], r['balance']
 
@@ -294,7 +294,7 @@ def solve(board, out='thermal', heat=None, nets=None, source=None, loads=None, c
     given = htc * 1e-6 * float(((tf - ambient) * m['face_area']).sum() + ((ts - ambient) * m['side_area']).sum())
     hot = int(np.argmax(T))
     z = m['nodes'][hot, 2]
-    result = dict(format=1, tool='kicad2ems_fem.elmer.thermal', engine=elmer.engine(said), T_max=float(T.max()), T_min=float(T.min()),
+    result = dict(format=1, tool='kicad2ems.fem.elmer.thermal', engine=elmer.engine(said), T_max=float(T.max()), T_min=float(T.min()),
                   ambient=ambient, htc=htc,
                   hottest=dict(x=float(m['nodes'][hot, 0]), y=float(m['nodes'][hot, 1]),
                                layer=min(m['cells'], key=lambda c: abs(0.5 * (c[0] + c[1]) - z))[2]),
@@ -443,7 +443,7 @@ def _pairs(ap, items, flag, what):
 
 
 def parser():
-    ap = argparse.ArgumentParser(prog='python -m kicad2ems_fem.elmer.thermal', description=__doc__.split('\n\n')[0])
+    ap = argparse.ArgumentParser(prog='python -m kicad2ems.fem.elmer.thermal', description=__doc__.split('\n\n')[0])
     ap.add_argument('board', help='.kicad_pcb, or a kicad2ems <name>_board.json')
     ap.add_argument('--heat', action='append', help='REF=WATTS or REF.PAD=WATTS; WATTS@DUTY for part of the time (repeat)')
     ap.add_argument('--heat-from', help="FILE[@DUTY]: a pcbqs circuit run's case.json, or a JSON {REF: watts}")

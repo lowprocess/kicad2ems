@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from kicad2ems.join import join, pick, weight
-from kicad2ems.solvers import Result
+from kicad2ems.core.join import join, pick, weight
+from kicad2ems.core.solvers import Result
 
 
 def test_the_blend_is_one_side_or_the_other_outside_its_band():
@@ -49,7 +49,7 @@ def test_which_two_are_joined():
 def test_the_crossover_goes_where_the_two_agree_best_at_or_below_the_estimate():
     """The quasi-static solver drifts off as its estimate nears and the full-wave one is off at its own low end:
     the join is made between, where they differ least; where they agree as well everywhere, at the estimate."""
-    from kicad2ems.join import best_crossover
+    from kicad2ems.core.join import best_crossover
     f = np.geomspace(1e6, 1e10, 401)
     true = np.full((len(f), 1, 1), 0.2 + 0j)
     lo = true + (0.3 * (f / 1e9) ** 2)[:, None, None]              # the quasi-static one: off towards 1 GHz

@@ -2,7 +2,7 @@
 ground and input capacitors, and the copper it cropped to), solved again in 3D, for its inductance and resistance
 beside pcbqs's.
 
-    python -m kicad2ems_fem.palace.loop --mqs <pcbqs near-field run> --out loop
+    python -m kicad2ems.fem.palace.loop --mqs <pcbqs near-field run> --out loop
 
 The board is kicad2ems's of the KiCad file the run read: the input net's and the ground's copper inside the crop,
 its vias, as Palace's PEC sheets and holes (model.py). The input capacitors are metal straps across their pads
@@ -83,8 +83,8 @@ def port_spec(raw, converter, vin, ground):
 
 
 def solve(mqs, out='loop', order=2, feature=1.0, hmin=0.25, hmax=2.0, margin=10.0, np_=0, log=print):
-    from kicad2ems.board import Board
-    from kicad2ems.importers import open_board
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers import open_board
     from . import config, model, run as prun
     r, board_file = read_mqs(mqs)
     sel = r['selection']
@@ -125,7 +125,7 @@ def solve(mqs, out='loop', order=2, feature=1.0, hmin=0.25, hmax=2.0, margin=10.
     s11 = np.interp(f, fs, S[:, 0, 0].real) + 1j * np.interp(f, fs, S[:, 0, 0].imag)
     Z = zref * (1 + s11) / (1 - s11)
     L, R = Z.imag / (2 * np.pi * f), Z.real
-    result = dict(format=1, tool='kicad2ems_fem.palace.loop', engine=prun.engine(str(work)), mqs=str(Path(mqs).resolve()),
+    result = dict(format=1, tool='kicad2ems.fem.palace.loop', engine=prun.engine(str(work)), mqs=str(Path(mqs).resolve()),
                   board=board_file, selection=sel, port=spec, port_gap_mm=gap, port_ohm=zref,
                   straps=[pt.ref for pt in b.parts],
                   missing_capacitors=left, frequencies_Hz=f.tolist(), L_H=L.tolist(), R_ohm=R.tolist(),
@@ -140,7 +140,7 @@ def solve(mqs, out='loop', order=2, feature=1.0, hmin=0.25, hmax=2.0, margin=10.
 
 
 def parser():
-    ap = argparse.ArgumentParser(prog='python -m kicad2ems_fem.palace.loop', description=__doc__.split('\n\n')[0])
+    ap = argparse.ArgumentParser(prog='python -m kicad2ems.fem.palace.loop', description=__doc__.split('\n\n')[0])
     ap.add_argument('--mqs', required=True, help="a pcbqs near-field run's folder (its mqs.json: the loop)")
     ap.add_argument('--out', default='loop', help='output folder')
     ap.add_argument('--order', type=int, default=2, help="Palace's element order (default 2)")

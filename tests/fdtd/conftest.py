@@ -13,7 +13,7 @@ from k2e_fixtures import *                                          # noqa: E402
 def canned_runs(m, mesh, freq, excite, bc, out_dir, **kw):
     """In place of run.run_excitations: a plausible thru (|S21| ~ -0.3 dB with 130 ps delay, S11 ~ -25 dB)."""
     import numpy as np
-    from kicad2ems_fdtd.run import RunResult
+    from kicad2ems.fdtd.run import RunResult
     n = len(m.ports)
     r = RunResult(np.full((len(freq), n, n), np.nan + 0j))
     ph = np.exp(-2j * np.pi * freq * 130e-12)

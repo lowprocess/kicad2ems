@@ -46,8 +46,8 @@ edge where the feed lines end.
 import math, os, sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
-from kicad2ems.lines.tlines import microstrip, cpwg, stripline as strip_z   # noqa: E402
-from kicad2ems.lines.coupled import coupled_microstrip, coupled_stripline   # noqa: E402
+from kicad2ems.core.lines.tlines import microstrip, cpwg, stripline as strip_z   # noqa: E402
+from kicad2ems.core.lines.coupled import coupled_microstrip, coupled_stripline   # noqa: E402
 from _pcb import u, Items                                            # noqa: E402  (the generators' shared items)
 
 H_SUB, ER, TAND, F0 = 0.8, 4.4, 0.02, 2.4e9
@@ -631,7 +631,7 @@ def crosstalk_guard(path):
 def si_bus(path, n=3, length=30.0, gap=0.2, fan=4.0, spread=2.0):
     """A signal-integrity example: n traces (nets D0, D1, ...) on F.Cu of a 4-layer board, 50 ohm over the In1.Cu
     plane, side by side `gap` mm apart for `length` mm and fanned out to `spread` mm apart at both ends. No ports:
-    the crosstalk question (kicad2ems.si) puts them at the traces' ends."""
+    the crosstalk question (kicad2ems.core.si) puts them at the traces' ends."""
     w = w_on(50.0, H4)
     pitch = w + gap
     H = max((n - 1) * spread, (n - 1) * pitch) + 8.0

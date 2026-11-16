@@ -16,7 +16,7 @@ without a display. Exit status: 1 when any suite fails."""
 import os, re, shutil, subprocess, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SUITES = (('kicad2ems-gui', 'kicad2ems_gui', 'KICAD2EMS_GUI_SRC'), ('kicad2ems-fdtd', 'kicad2ems_fdtd', 'KICAD2EMS_FDTD_SRC'),
+SUITES = (('kicad2ems-gui', 'kicad2ems.gui', 'KICAD2EMS_GUI_SRC'), ('kicad2ems-fdtd', 'kicad2ems.fdtd', 'KICAD2EMS_FDTD_SRC'),
           ('mom25d', 'mom25d', 'MOM25D_SRC'), ('gfdtd', 'gfdtd', 'GFDTD_SRC'))
 WINDOWS = sys.platform == 'win32'
 

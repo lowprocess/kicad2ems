@@ -10,8 +10,8 @@ basis). run_phased runs them; combine_phased gives the drive's antenna result an
 """
 import functools
 import numpy as np
-from kicad2ems.api.solver import C0, ETA0
-from kicad2ems.api.solver import match_summary, gain_table, add_polarisation, pattern_gain, describe_antenna as describe
+from kicad2ems.core.api.solver import C0, ETA0
+from kicad2ems.core.api.solver import match_summary, gain_table, add_polarisation, pattern_gain, describe_antenna as describe
 
 
 def antenna_air(fmin, fmax, air=None):
@@ -134,7 +134,7 @@ def combine_phased(m, freq, res, a, excite, ff_pattern=None, step=2.0, log=print
     """The antenna of drive a (incident waves, one per port of m.ports) from run_phased's runs: (result dict as
     analyse's, with drive, peak and active_db, and the array data for phased.save). The pattern frequency: the
     given one, else the resonance of the first driven port's active reflection."""
-    from kicad2ems.api.solver import phased
+    from kicad2ems.core.api.solver import phased
     ffr, n = res.ffr, len(m.ports)
     S = np.where(np.isfinite(res.S), res.S, 0)                     # the ports not run: no column (not driven)
     names = [p.name for p in m.ports]

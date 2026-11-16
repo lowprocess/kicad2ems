@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-from emsdev import cpu, gpu, vulkan
+from kicad2ems.emsdev import cpu, gpu, vulkan
 
 
 def test_a_sys_list_reads_as_its_cpus(tmp_path):

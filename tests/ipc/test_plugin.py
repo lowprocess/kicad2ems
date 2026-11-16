@@ -24,7 +24,7 @@ def lowpass():
 
 @pytest.fixture(scope='module')
 def plan():
-    from kicad2ems_ipc.model import Plan
+    from kicad2ems.ipc.model import Plan
     p = Plan(_text(), os.path.join(EX, 'rf_coupler.kicad_pcb'))
     steps = list(p.map_steps(jobs=1))
     assert steps[-1][:2] == (len(p.signal), len(p.signal))
@@ -40,7 +40,7 @@ def test_impedance_map_of_the_board(plan):
 
 
 def test_ports_snap_to_traces_and_pads(plan):
-    from kicad2ems_ipc.model import Session
+    from kicad2ems.ipc.model import Session
     s = Session()
     e = next(e for e in plan.lines['elements'] if e['kind'] == 'trace' and e['length'] > 2)
     mid = np.asarray(e['pts'][len(e['pts']) // 2])
@@ -57,7 +57,7 @@ def test_ports_snap_to_traces_and_pads(plan):
 def test_net_class_targets():
     """The target impedance from the class name; SE / diff from the name, else from the class holding a pair; a
     pair class's single nets get none; #PWR nets and classes are disabled."""
-    from kicad2ems_ipc.netclass import parse_target, NetClasses, partner
+    from kicad2ems.ipc.netclass import parse_target, NetClasses, partner
     assert parse_target('50R_SE') == (50.0, 'se') and parse_target('100R_DIFF') == (100.0, 'diff')
     assert parse_target('100 Ohm diff') == (100.0, 'diff') and parse_target('Z90_DP') == (90.0, 'diff')
     assert parse_target('50ohm') == (50.0, None)
@@ -73,7 +73,7 @@ def test_net_class_targets():
 
 def test_project_file_classes(tmp_path):
     """The classes of a .kicad_pro: explicit assignments, then patterns, then Default."""
-    from kicad2ems_ipc.netclass import NetClasses
+    from kicad2ems.ipc.netclass import NetClasses
     pro = tmp_path / 'b.kicad_pro'
     pro.write_text(json.dumps({'net_settings': {
         'classes': [{'name': 'Default'}, {'name': '100ohm'}, {'name': '50R_SE'}],
@@ -88,8 +88,8 @@ def test_diff_pair_impedance_and_pwr_nets():
     """A pair designed as 100 ohm by zero-thickness formulas (the rf_diffvia example) in a 100R_DIFF class: where the
     legs couple, Zdiff (2 Zodd) with its 35 um copper reads 92 ohm on the outer layers and 84 ohm on the inner ones (3D
     FDTD: 92 and 83), and the map colours by it; a #PWR net on the board is never mapped."""
-    from kicad2ems_ipc.model import Plan
-    from kicad2ems import overlay as ov
+    from kicad2ems.ipc.model import Plan
+    from kicad2ems.core import overlay as ov
     text = _text('rf_diffvia')
     p = Plan(text, os.path.join(EX, 'rf_diffvia.kicad_pcb'), classes={'D_P': ['100R_DIFF'], 'D_N': ['100R_DIFF']})
     assert p.classes() == [('100R_DIFF', ['D_N', 'D_P'], '100 ohm diff')]
@@ -109,8 +109,8 @@ def test_diff_pair_impedance_and_pwr_nets():
 def test_map_by_the_field_solver_and_its_cache(lowpass, tmp_path):
     """Every section by the field solver on request, in the worker processes too; the formulas' map and this one kept
     apart in the cache; each section can be solved and drawn from what the map holds."""
-    from kicad2ems_ipc.model import Plan
-    from kicad2ems.api.frontend import sections
+    from kicad2ems.ipc.model import Plan
+    from kicad2ems.core.api.frontend import sections
     text, path, cache = _text(lowpass), lowpass, str(tmp_path / 'map.json.gz')
     plain, field, two = Plan(text, path), Plan(text, path), Plan(text, path)
     list(plain.map_steps(jobs=1, cache=cache))
@@ -132,7 +132,7 @@ def _key(p):
 
 def test_parallel_map_matches_one_process(lowpass):
     """Worker processes give the same map as one process (a net or pair at a time: no dependence on grouping)."""
-    from kicad2ems_ipc.model import Plan
+    from kicad2ems.ipc.model import Plan
     text, path = _text(lowpass), lowpass
     one, two = Plan(text, path), Plan(text, path)
     list(one.map_steps(jobs=1))
@@ -142,8 +142,8 @@ def test_parallel_map_matches_one_process(lowpass):
 
 def test_tiled_planes_give_the_same_map(lowpass):
     """Ray casts against reference copper cut into tiles (reference.TILE) find what the whole planes give."""
-    import kicad2ems.lines.reference as tl
-    from kicad2ems_ipc.model import Plan
+    import kicad2ems.core.lines.reference as tl
+    from kicad2ems.ipc.model import Plan
     text, path = _text(lowpass), lowpass
     keep = tl.TILE
     try:
@@ -162,7 +162,7 @@ def test_map_cache(tmp_path, lowpass):
     """The map kept between sessions: everything from the cache the second time, and after an edit only the net
     it touched is mapped again."""
     import re
-    from kicad2ems_ipc.model import Plan
+    from kicad2ems.ipc.model import Plan
     text, path, cache = _text(lowpass), lowpass, str(tmp_path / 'm.json.gz')
     first = Plan(text, path)
     list(first.map_steps(jobs=1, cache=cache))
@@ -177,8 +177,8 @@ def test_map_cache(tmp_path, lowpass):
 
 
 def test_session_and_run_settings(plan, tmp_path):
-    from kicad2ems_ipc.model import Session, run_values, write_config, session_path, outside
-    from kicad2ems.config import build_settings
+    from kicad2ems.ipc.model import Session, run_values, write_config, session_path, outside
+    from kicad2ems.core.config import build_settings
     s = Session(region=[-1.0, -1.0, 14.0, 12.0], fmin=1.0, fmax=6.0, solvers=['gfdtd'])   # KiCad's env: gfdtd
     e = next(e for e in plan.lines['elements'] if e['kind'] == 'trace')
     s.ports.append(dict(name='P5', spec='P5@3,2.82,F.Cu', x=3.0, y=-2.82, layer='F.Cu', what='', net='RF'))
@@ -213,14 +213,14 @@ def _without_ports(text):
 
 
 def _net_plan(name, text=None):
-    from kicad2ems_ipc.model import Plan
+    from kicad2ems.ipc.model import Plan
     path = name if name.endswith('.kicad_pcb') else os.path.join(EX, f'{name}.kicad_pcb')
     return Plan(text or _without_ports(_text(name)), path)
 
 
 def test_net_run_takes_parts_and_the_nets_beyond(tmp_path, lowpass):
-    from kicad2ems_ipc import model as md
-    from kicad2ems.region import parse_port_spec
+    from kicad2ems.ipc import model as md
+    from kicad2ems.core.region import parse_port_spec
     p = _net_plan(lowpass)
     s = p.setup_for_nets(['RF_IN'], margin=1.0)
     assert s.nets == ['RF_IN'] and s.run_nets == ['RF_IN', 'N1', 'RF_OUT']       # through L1 and L3
@@ -256,8 +256,8 @@ def test_net_run_of_a_pair():
 
 def test_differential_ports_from_specs():
     """A pair's legs given as specs (P1+ / P1-, as a net run writes them) are two legs of one port, not one."""
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
     text = _without_ports(_text('rf_diffvia'))
     s = _net_plan('rf_diffvia', text).setup_for_nets(['D_N'])
     path = os.path.join(EX, 'rf_diffvia.kicad_pcb')
@@ -275,7 +275,7 @@ def test_net_run_keeps_the_boards_ports(lowpass):
 
 
 def _fake_results(folder, stem='b'):
-    from kicad2ems.touchstone import write_touchstone
+    from kicad2ems.core.touchstone import write_touchstone
     f = np.linspace(1e9, 5e9, 41)
     S = np.zeros((41, 2, 2), complex)
     S[:, 0, 0] = S[:, 1, 1] = 0.1
@@ -290,7 +290,7 @@ def _fake_results(folder, stem='b'):
 
 
 def test_results_against_the_line_model(tmp_path):
-    from kicad2ems_ipc import model as md
+    from kicad2ems.ipc import model as md
     assert md.results(str(tmp_path), 'b') is None
     _fake_results(str(tmp_path))
     r = md.results(str(tmp_path), 'b')
@@ -302,13 +302,13 @@ def test_results_against_the_line_model(tmp_path):
 
 
 def test_install_writes_a_valid_plugin(tmp_path):
-    from kicad2ems_ipc import install
+    from kicad2ems.ipc import install
     with open(os.path.join(install.PLUGIN, 'plugin.json')) as fh:
         assert json.load(fh) == install.plugin_json()                  # plugin/plugin.json is the installer's
     dest = install.install(str(tmp_path / 'kicad2ems'))                # the folder, for KiCad's own environment
     pj = json.load(open(os.path.join(dest, 'plugin.json')))
-    assert pj['runtime']['type'] == 'python' and os.path.isfile(os.path.join(dest, 'kicad2ems_ipc', 'window.py'))
-    assert not os.path.exists(os.path.join(dest, 'kicad2ems_ipc', '__pycache__'))
+    assert pj['runtime']['type'] == 'python' and os.path.isfile(os.path.join(dest, 'kicad2ems.ipc', 'window.py'))
+    assert not os.path.exists(os.path.join(dest, 'kicad2ems.ipc', '__pycache__'))
     assert 'kicad2ems' in open(os.path.join(dest, 'requirements.txt')).read()
     exe = install.install(str(tmp_path / 'exec'), exec_=True)          # --exec: this Python on this checkout
     pe = json.load(open(os.path.join(exe, 'plugin.json')))
@@ -331,7 +331,7 @@ def test_live_link_reads_and_selects_through_kipy(monkeypatch):
     pytest.importorskip('kipy')
     from types import SimpleNamespace as NS
     from kipy.proto.board.board_types_pb2 import BoardLayer
-    from kicad2ems_ipc import ipc
+    from kicad2ems.ipc import ipc
     MM = 1_000_000                                                  # nm
 
     def track(layer, net, x0, x1, y, w=0.4):
@@ -448,8 +448,8 @@ def test_window_offscreen(tmp_path):
     pytest.importorskip('PySide6')
     import time
     from PySide6.QtWidgets import QApplication
-    from kicad2ems_ipc.window import Window
-    from kicad2ems_ipc import model as md
+    from kicad2ems.ipc.window import Window
+    from kicad2ems.ipc import model as md
     app = QApplication.instance() or QApplication([])
     live = FakeLive(str(tmp_path))
     w = Window(live)
@@ -503,8 +503,8 @@ def test_window_offscreen(tmp_path):
 def test_what_goes_back_on_the_board(plan):
     """R-E26: the region's outline, each port's cross and name, and markers at the sections furthest from their
     class's target, in KiCad mm; drawn on a user layer in one commit that KiCad's undo takes back."""
-    from kicad2ems_ipc import model as md
-    from kicad2ems_ipc.ipc import draw
+    from kicad2ems.ipc import model as md
+    from kicad2ems.ipc.ipc import draw
     s = md.Session(region=(10.0, 20.0, 30.0, 40.0), ports=[dict(name='P1', x=12.0, y=21.0)])
     els = [dict(z0=62.0, target=50.0, pts=[[1.0, -2.0], [3.0, -2.0]], kind='trace'),
            dict(z0=51.0, target=50.0, pts=[[0.0, 0.0], [1.0, 0.0]], kind='trace'),       # 2 %: no marker
@@ -540,7 +540,7 @@ def test_what_goes_back_on_the_board(plan):
 
 
 def test_the_window_reads_the_board_again_when_it_changed(monkeypatch):
-    from kicad2ems_ipc.ipc import Live
+    from kicad2ems.ipc.ipc import Live
 
     class B:
         text = 'a'
@@ -556,7 +556,7 @@ def test_the_window_reads_the_board_again_when_it_changed(monkeypatch):
 
 def test_the_gpu_is_offered_only_without_slangpy_and_with_a_gpu(monkeypatch):
     import builtins
-    from kicad2ems_ipc import model as md
+    from kicad2ems.ipc import model as md
     real = builtins.__import__
 
     def no_slangpy(name, *a, **k):
@@ -565,7 +565,7 @@ def test_the_gpu_is_offered_only_without_slangpy_and_with_a_gpu(monkeypatch):
         return real(name, *a, **k)
     monkeypatch.setattr(builtins, '__import__', no_slangpy)
     from types import SimpleNamespace
-    import emsdev.vulkan as vk
+    import kicad2ems.emsdev.vulkan as vk
     monkeypatch.setattr(vk, 'adapters', lambda: [SimpleNamespace(kind='discrete')])
     assert md.gpu_offer() == 'slangpy>=0.43'
     monkeypatch.setattr(vk, 'adapters', lambda: [SimpleNamespace(kind='integrated')])
@@ -600,7 +600,7 @@ def test_the_plugin_managers_package_is_valid(tmp_path, monkeypatch):
 def _plane_map(folder, name='dump_V_drop_F_Cu_fd', label='drop F.Cu', unit='mV'):
     """A result's plane map as pcbqs's viewer writes it: a grid, the value 0 off the copper."""
     import json
-    from kicad2ems.fields.frames import write_npz
+    from kicad2ems.core.fields.frames import write_npz
     x, y = np.linspace(0, 10, 41), np.linspace(-6, 0, 25)
     X, Y = np.meshgrid(x, y, indexing='ij')
     v = np.where((X > 1) & (X < 9) & (Y > -5) & (Y < -1), 3.0 * X, 0.0)        # a drop growing along x, on the copper
@@ -616,7 +616,7 @@ def _plane_map(folder, name='dump_V_drop_F_Cu_fd', label='drop F.Cu', unit='mV')
 def test_a_results_maps_as_bands_on_the_board(tmp_path):
     """R-E26: a result's plane maps (a DC drop's, a temperature's), one contoured into bands, each band's polygons
     on its own user layer with a legend, in KiCad's coordinates (y down)."""
-    from kicad2ems_ipc import model as md
+    from kicad2ems.ipc import model as md
     _plane_map(str(tmp_path / 'pdn' / 'exc_power'))
     src = md.map_sources(str(tmp_path))
     assert [(lab, unit) for lab, _, unit in src] == [('drop F.Cu', 'mV')]           # (the current densities left out)
@@ -634,11 +634,11 @@ def test_a_results_maps_as_bands_on_the_board(tmp_path):
 def test_the_power_analyses_through_kicad2ems_s_registry(tmp_path):
     """R-E26: pcbqs's DC drop as kicad2ems runs it (its command line from the analysis registry); one missing a
     setting says what (the window's form has the rest)."""
-    from kicad2ems_ipc import model as md
+    from kicad2ems.ipc import model as md
     pcbqs = pytest.importorskip('pcbqs')
     buck = os.path.join(os.path.dirname(pcbqs.__file__), 'circuit', 'examples', '04_buck.kicad_pcb')
     argv, missing = md.analysis_command('pdn', dict(rail='out', volts=5.0, no_pdn=True), buck, str(tmp_path))
-    assert not missing and 'pcbqs.pdn' in ' '.join(argv) and 'out' in argv and '--no-pdn' in argv
+    assert not missing and 'kicad2ems.pcbqs.pdn' in ' '.join(argv) and 'out' in argv and '--no-pdn' in argv
     argv, missing = md.analysis_command('pdn', dict(rail=''), buck, str(tmp_path))
     assert argv is None and missing
     assert md.analysis_command('nothing', {}, 'b', 'o') == (None, ['nothing: not installed (pip install pcbqs)'])
@@ -649,7 +649,7 @@ def test_a_band_is_a_filled_polygon_in_kicad():
     pytest.importorskip('kipy')
     from kipy import board_types as bt
     from kipy.util.board_layer import layer_from_canonical_name
-    from kicad2ems_ipc.ipc import _polygon
+    from kicad2ems.ipc.ipc import _polygon
     p = _polygon(bt, ('poly', 'User.2', [(0, 0), (1, 0), (1, 1)], [[(0.2, 0.1), (0.5, 0.1), (0.5, 0.3)]], '#2c7bb6'),
                  lambda v: int(round(v * 1e6)), layer_from_canonical_name)
     assert p.layer == layer_from_canonical_name('User.2') and p.attributes.fill.filled

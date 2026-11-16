@@ -2,9 +2,9 @@
 of api.frontend check them: the run summary, the events, sysinfo's JSON and the antenna results."""
 import json
 import pytest
-from kicad2ems import formats
-from kicad2ems.api import frontend
-from kicad2ems.events import EventSink
+from kicad2ems.core import formats
+from kicad2ems.core.api import frontend
+from kicad2ems.core.events import EventSink
 
 
 def test_stamp_and_check():
@@ -23,11 +23,11 @@ def test_readers_check(tmp_path):
     p.write_text(json.dumps(dict(formats.stamp({}, 'kicad2ems-run'), format_version=99)), encoding='utf-8')
     with pytest.raises(ValueError, match='newer'):
         frontend.read_summary(str(p))
-    from kicad2ems.fields.antenna import save
+    from kicad2ems.core.fields.antenna import save
     a = tmp_path / 'b_antenna.json'
     save(dict(solver='mom25d', sphere=[1, 2]), str(a))
     assert frontend.read_antenna(str(a)) == formats.stamp(dict(solver='mom25d'), 'kicad2ems-antenna')
-    from kicad2ems.sysinfo import info
+    from kicad2ems.core.sysinfo import info
     assert frontend.check_format(json.loads(json.dumps(info())), 'kicad2ems-sysinfo') is None
 
 
@@ -52,7 +52,7 @@ def test_touchstone_from_other_programs(tmp_path):
     reference, a v1 noise block ends the data, v2's [Number of Ports] and a lower triangle are read (any file had
     been taken as S, R ignored, the port count taken from the extension, and a noise block failed)."""
     import numpy as np
-    from kicad2ems.touchstone import read_touchstone, write_touchstone
+    from kicad2ems.core.touchstone import read_touchstone, write_touchstone
     (tmp_path / 'z.s2p').write_text("# GHz Z RI R 75\n1 1.3333333 0 1.3333333 0 1.3333333 0 1.3333333 0\n")
     f, S, zr = read_touchstone(str(tmp_path / 'z.s2p'), with_zref=True)          # a shunt 100 ohm, at 75 ohm
     assert f[0] == 1e9 and list(zr) == [75, 75] and S[0, 0, 0] == pytest.approx(-0.75 / 2.75, rel=1e-6)

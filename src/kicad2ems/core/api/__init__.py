@@ -2,9 +2,9 @@
 kicad2ems's public API: what other packages may import. Everything else in kicad2ems is private to it and may
 change in any release.
 
-    kicad2ems.api.solver      for solver plugins (the 'kicad2ems.solvers' entry points: mom25d, kicad2ems-fdtd)
-    kicad2ems.api.analysis    for analysis plugins (the 'kicad2ems.analyses' entry points: pcbqs)
-    kicad2ems.api.frontend    for programs that drive kicad2ems (the GUI, the KiCad plugin, dfsynth)
+    kicad2ems.core.api.solver      for solver plugins (the 'kicad2ems.solvers' entry points: mom25d, kicad2ems-fdtd)
+    kicad2ems.core.api.analysis    for analysis plugins (the 'kicad2ems.analyses' entry points: pcbqs)
+    kicad2ems.core.api.frontend    for programs that drive kicad2ems (the GUI, the KiCad plugin, dfsynth)
 
 API_VERSION is (major, minor). A minor release adds names; a major one removes or changes one. A solver plugin
 says which version it was written against with a class attribute `api = (2, 0)` on its Solver; the registry
@@ -42,7 +42,7 @@ def lazy(module_name, names):
         if spec is None:
             raise AttributeError(f"module {module_name!r} has no attribute {name!r}")
         mod, _, attr = spec.partition(':')
-        obj = importlib.import_module('kicad2ems' + mod if mod.startswith('.') else mod)
+        obj = importlib.import_module('kicad2ems.core' + mod if mod.startswith('.') else mod)
         return getattr(obj, attr) if attr else obj
 
     def __dir__():

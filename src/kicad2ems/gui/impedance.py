@@ -11,7 +11,7 @@ and Fit: the width or gap of a target impedance.
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QComboBox, QCheckBox, QLabel,
                                QDoubleSpinBox, QPushButton, QApplication, QWidget, QSplitter)
-from kicad2ems.api.frontend import impedance as K
+from kicad2ems.core.api.frontend import impedance as K
 from .sectionview import SectionView
 
 OVER = [('air', 'air'), ('mask', 'solder mask'), ('plane', 'a dielectric, then a plane (stripline)'),
