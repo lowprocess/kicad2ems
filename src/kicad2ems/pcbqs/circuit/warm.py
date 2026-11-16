@@ -77,8 +77,9 @@ def temperatures(model, summary, thermal_out):
             if at and at.get('part_C') is not None:
                 parts[p['ref']] = round(float(at['part_C']), 2)
         out[c['name']] = dict(
-            parts=parts, board=(copper_temperature(c, thermal_out / c['name'])
-                                if c.get('copper') else None))
+            parts=parts,
+            board=(copper_temperature(c, thermal_out / c['name'])
+                   if c.get('copper') else None))
     return out
 
 

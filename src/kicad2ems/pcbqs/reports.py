@@ -46,8 +46,7 @@ def _table(columns, rows, formats=None):
                 formats=list(formats or [None] * len(columns)))
 
 
-# ---- power integrity
-# -----------------------------------------------------------------------------------
+# ---- power integrity --------------------------------------------------------
 def pdn_report(res, folder=''):
     worst = max(res['loads'].items(), key=lambda kv: kv[1]['drop'],
                 default=None)
@@ -244,8 +243,7 @@ def pdn_curves(res, folder=''):
     return sets
 
 
-# ---- near field
-# ----------------------------------------------------------------------------------------
+# ---- near field -------------------------------------------------------------
 def mqs_report(res, folder=''):
     s = res['selection']
     if res.get('preview'):
@@ -414,18 +412,18 @@ def circuit_suggest(res, folder='', pads=None):
         if row.get('dcr'):
             values['dcr'] = '\n'.join(
                 f"{r}={v:g}" for r, v in row['dcr'].items())
-        out.append(
-            dict(
-                to='pdn', label=
-                f"Copy the rail {row['net']} and what is drawn from it to "
-                "Power integrity",
-                values=values, need=[], note=
-                f"The rail {row['net']} with what the circuit's parts draw "
-                f"from it{of}: their average as DC loads, their harmonics as "
-                "current spectra" +
-                (f", through {', '.join(row['through'])}" if row.get('through')
-                 else '') + (f"; its source is {src}."
-                             if known else ". Set its source before Run.")))
+        out.append(dict(
+            to='pdn',
+            label=(f"Copy the rail {row['net']} and what is drawn from it to "
+                   "Power integrity"),
+            values=values, need=[],
+            note=(f"The rail {row['net']} with what the circuit's parts draw "
+                  f"from it{of}: their average as DC loads, their harmonics "
+                  "as current spectra"
+                  + (f", through {', '.join(row['through'])}"
+                     if row.get('through') else '')
+                  + (f"; its source is {src}." if known
+                     else ". Set its source before Run."))))
         for l in sorted(loads, key=lambda l: -l['rms_A'])[:2]:
             if pads is not None and ground not in pads.get(l['footprint'], ()):
                 continue  # (the near field's source: a part on both)
@@ -446,8 +444,7 @@ def circuit_suggest(res, folder='', pads=None):
     return out
 
 
-# ---- temperature
-# ---------------------------------------------------------------------------------------
+# ---- temperature ------------------------------------------------------------
 def _methods(res):
     if 'method' in res:  # one solver: its summary alone
         return {res['method']: res}
@@ -537,8 +534,7 @@ def thermal_report(res, folder=''):
     return out
 
 
-# ---- circuits
-# ------------------------------------------------------------------------------------------
+# ---- circuits ---------------------------------------------------------------
 def _num(v):
     return v if isinstance(v, (int, float)) else ''
 
@@ -632,19 +628,17 @@ def circuit_report(res, folder=''):
                                  [None, None, None, '.4g'])))
         f = c.get('fields')
         if f:
-            out['sections'].append(
-                dict(
-                    title=
-                    f"{c['name']}: fields over the board (AC RMS, the largest "
-                    "on each plane)",
-                    table=_table(['height (mm)', 'H (A/m)', 'E (V/m)'],
-                                 list(
-                                     zip(f['heights_mm'],
-                                         f['H_ac_rms_max_A_per_m'],
-                                         f['E_ac_rms_max_V_per_m'])),
-                                 ['.4g'] * 3), text=
-                    f"The copper and its vias only: no part's own field. H to {f['highest_Hz'] / 1e6:.4g} MHz; "
-                    "E from the nets' voltages."))
+            out['sections'].append(dict(
+                title=(f"{c['name']}: fields over the board (AC RMS, the "
+                       "largest on each plane)"),
+                table=_table(['height (mm)', 'H (A/m)', 'E (V/m)'],
+                             list(zip(f['heights_mm'],
+                                      f['H_ac_rms_max_A_per_m'],
+                                      f['E_ac_rms_max_V_per_m'])),
+                             ['.4g'] * 3),
+                text=("The copper and its vias only: no part's own field. "
+                      f"H to {f['highest_Hz'] / 1e6:.4g} MHz; "
+                      "E from the nets' voltages.")))
             if (f.get('picture') and os.path.isfile(f['picture'])
                     and not f.get('dumps')):
                 # (written as dumps: the Viewer shows them)

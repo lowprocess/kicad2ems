@@ -23,10 +23,11 @@ DC load) and its harmonics, i(t) = avg + sum A_n cos(2 pi n t / period +
 phase_n). Parts on one footprint (a regulator's switches) are one load, their
 currents added.
 
-    [dict(node='in', net='+5V', rail_net='+5V', source='V1', source_footprint=None, volts=5.0,
+    [dict(node='in', net='+5V', rail_net='+5V', source='V1',
+          source_footprint=None, volts=5.0,
           capacitors=['C704', 'C705', 'C706'], through=[], dcr={}, loads=[
-        dict(footprint='U702', parts=['QH'], avg_A=1.40, rms_A=1.67, f_Hz=[...], A=[...], deg=[...],
-             file='supply-U702.csv')])]
+        dict(footprint='U702', parts=['QH'], avg_A=1.40, rms_A=1.67,
+             f_Hz=[...], A=[...], deg=[...], file='supply-U702.csv')])]
 
 (net: the board's net of the source's node, where a model of the rail starts;
 rail_net: the board's net of the node the loads are on (behind a filter:

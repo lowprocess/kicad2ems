@@ -11,7 +11,8 @@ table, runs it as its command and shows what its result folder holds
 Only this module imports kicad2ems; the tools themselves run without it.
 
     from kicad2ems.pcbqs.analyses import PowerIntegrity
-    PowerIntegrity().command(dict(rail='+3V3', load='U1=2'), 'board.kicad_pcb', 'out/pdn')
+    PowerIntegrity().command(dict(rail='+3V3', load='U1=2'), 'board.kicad_pcb',
+                             'out/pdn')
 """
 import json
 import os
@@ -426,14 +427,12 @@ class Circuit(_Tool):
         ])['options'])
         for o in describe(OPTIONS)['options']:
             if o['key'] != 'board':
-                out.append(
-                    dict(
-                        o, default=(self.JOBS
-                                    if o['key'] == 'jobs' else o['default'])))
+                out.append(dict(o, default=(self.JOBS if o['key'] == 'jobs'
+                                            else o['default'])))
         order = ['Circuit', 'Board', 'Model', 'Run']
-        return sorted(
-            out, key=lambda o: order.index(o['group'])
-            if o['group'] in order else len(order))
+        return sorted(out, key=lambda o: (order.index(o['group'])
+                                          if o['group'] in order
+                                          else len(order)))
 
     def tag(self, values):
         return (os.path.splitext(
@@ -616,7 +615,8 @@ class Thermal(_Tool):
 
 # ---- a solver: S-parameters at low frequency, from the copper's quasi-static
 # currents (sparams.py) ----
-from kicad2ems.core.api.solver import Deviation, Option, Result, Solver, mixed_mode  # noqa: E402
+from kicad2ems.core.api.solver import (Deviation, Option, Result,  # noqa: E402
+                                       Solver, mixed_mode)
 
 G_QS = 'pcbqs'
 

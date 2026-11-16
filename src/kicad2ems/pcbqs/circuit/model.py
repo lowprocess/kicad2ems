@@ -2,10 +2,13 @@
 The circuit model: its format, the values that are expressions, the sweep.
 
     model = load(path)                  # read and validate
-    validate(model)                     # ModelError naming what is wrong and where
+    # ModelError naming what is wrong and where
+    validate(model)
     for point in cases(model):          # the sweep's points: {path: value}
-        concrete = resolve(model, point)        # numbers everywhere: parameters and expressions worked out
-    get(model, 'drives.pwm.duty'), put(model, 'R1.value', 4.7)      # a number of the model by its path
+        # numbers everywhere: parameters and expressions worked out
+        concrete = resolve(model, point)
+    # a number of the model by its path
+    get(model, 'drives.pwm.duty'), put(model, 'R1.value', 4.7)
 
 format 2. A value may be a number, engineering notation ('22u', '4.7k', '100n')
 or an expression over the model's parameters ('1/(2*pi*fsw*sqrt(L*C))'): + - * /
@@ -13,12 +16,15 @@ or an expression over the model's parameters ('1/(2*pi*fsw*sqrt(L*C))'): + - * /
 
     {"format": 2, "name": "...", "description": "...",
      "parameters": {"fsw": 200e3},
-     "parts": [{"ref": "L1", "type": "inductor", "nodes": ["in", "sw"], "value": "22u", "DCR_ohm": 0.03}, ...],
+     "parts": [{"ref": "L1", "type": "inductor", "nodes": ["in", "sw"],
+                "value": "22u", "DCR_ohm": 0.03}, ...],
      "couplings": [{"inductors": ["L1", "L2"], "k": 0.98}],
-     "drives": {"pwm": {"frequency_Hz": "fsw", "duty": 0.5, "phase_deg": 0, "dead_time_s": 0}},
+     "drives": {"pwm": {"frequency_Hz": "fsw", "duty": 0.5, "phase_deg": 0,
+                        "dead_time_s": 0}},
      "probes": {"vout": {"voltage": ["out", "0"]}, "il": {"current": "L1"}},
      "measures": {"vout_avg": {"avg": "vout"}},
-     "targets": [{"adjust": "drives.pwm.duty", "range": [0.05, 0.95], "measure": "vout_avg", "value": 24}],
+     "targets": [{"adjust": "drives.pwm.duty", "range": [0.05, 0.95],
+                  "measure": "vout_avg", "value": 24}],
      "sweep": {"R1.power_W": [6, 12, 24]},
      "analysis": {"cycles": 200}}
 
@@ -205,9 +211,9 @@ def validate(model):
     _need(isinstance(model, dict), 'the model must be an object')
     _need(
         model.get('format') == FORMAT,
-        f"format must be {FORMAT} (format 1 was the full-bridge tool's, which is no "
-        "longer: pcbqs's data/wpthb_bridge.json is that bridge as a circuit model)"
-    )
+        f"format must be {FORMAT} (format 1 was the full-bridge tool's, which "
+        "is no longer: pcbqs's data/wpthb_bridge.json is that bridge as a "
+        "circuit model)")
     parts = model.get('parts')
     _need((isinstance(parts, list) and parts),
           'parts: a list of at least one part')
@@ -400,9 +406,11 @@ def case_name(point):
             return f"{v:g}"
         return re.sub(r'[^A-Za-z0-9.+-]+', '', str(v))
 
-    return ('_'.join(
-        f"{re.sub(r'[^A-Za-z0-9]+', '-', path.removeprefix('parameters.'))}={short(v)}"
-        for path, v in point.items()) or 'run')
+    def key(path):
+        return re.sub(r'[^A-Za-z0-9]+', '-', path.removeprefix('parameters.'))
+
+    return ('_'.join(f"{key(path)}={short(v)}" for path, v in point.items())
+            or 'run')
 
 
 def _numbers(obj, names, where):

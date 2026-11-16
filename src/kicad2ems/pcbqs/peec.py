@@ -16,7 +16,8 @@ from scipy.linalg import lu_factor, lu_solve
 from collections import OrderedDict
 
 from kicad2ems.emsdev.numerics.base import qform
-from .kernels import peec_system, lu_factor_rows, lu_solve_rows, solve_symmetric, factor_bytes
+from .kernels import (peec_system, lu_factor_rows, lu_solve_rows,
+                      solve_symmetric, factor_bytes)
 
 
 def electric_field(model, result, fi, pts, chunk=100_000):

@@ -1,7 +1,8 @@
 """python -m kicad2ems.pcbqs.thermal: the steady temperature of a board from
 what its parts dissipate.
 
-    python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=0.35 --loss D1=0.5
+    python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=0.35 \
+        --loss D1=0.5
     python -m kicad2ems.pcbqs.thermal --circuit circuit-results
         # the board and the losses of a circuit run
     python -m kicad2ems.pcbqs.thermal --circuit circuit-results --method both
@@ -30,8 +31,8 @@ OPTIONS = [
      "A footprint's loss, REF=W (repeatable); with a circuit run, these "
      "replace its figures", 'Heat'),
     ('circuit', 'str', '',
-     "A circuit run's results folder (python -m kicad2ems.pcbqs.circuit): its board and its parts' "
-     'losses', 'Heat'),
+     "A circuit run's results folder (python -m kicad2ems.pcbqs.circuit): "
+     "its board and its parts' losses", 'Heat'),
     ('case', 'str', '',
      "The circuit run's case, by name; empty: the one with the most loss; all: "
      "a map for each (in <out>/<case>) and a table of each part at each "
@@ -270,10 +271,10 @@ def main(argv=None):
         f"{p.watts:.3f} W into the board, {first.out_W:.3f} W out through the "
         f"films ({first.edge_W:.3f} W of it through the edges)"
         + (f", {sum(extra['air_W'].values()):.3f} W from the parts to the air"
-           if extra.get('air_W') else '') +
-        (f", {sum(extra['held_W'].values()):.3f} W out through the held "
-         "footprints"
-         if extra.get('held_W') else '') + f"; ambient {p.ambient:g} C")
+           if extra.get('air_W') else '')
+        + (f", {sum(extra['held_W'].values()):.3f} W out through the held "
+           "footprints" if extra.get('held_W') else '')
+        + f"; ambient {p.ambient:g} C")
     print(f"{'part':8s} {'W':>7s} "
           + ' '.join(f"{m + ' C':>9s}" for m in methods))
     for ref in sorted(first.parts, key=lambda k: -first.parts[k]['part_C']):
@@ -310,10 +311,10 @@ def main(argv=None):
                 for k in g.parts
             })
         compare(g, m, out / 'thermal-compare.png')
+        parts_k = max(abs(v) for v in summary['difference']['parts_K'].values())
         print(
-            "mesh against grid: parts within "
-            f"{max(abs(v) for v in summary['difference']['parts_K'].values()):.2f} "
-            f"K, the maps within {summary['difference']['largest_K']:.2f} K")
+            f"mesh against grid: parts within {parts_k:.2f} K, the maps within "
+            f"{summary['difference']['largest_K']:.2f} K")
     for n in p.notes:
         print('note:', n)
     np.savez_compressed(out / 'thermal.npz',
@@ -374,14 +375,15 @@ def every_case(a, argv):
          if f.is_dir() else shutil.copy2(f, dest))
     table['top'] = worst
     (out / 'thermal-cases.json').write_text(json.dumps(table, indent=1))
-    refs = sorted(
-        table['parts'], key=lambda k: -max(v['part_C'] or 0
-                                           for v in table['parts'][k].values()))
+    refs = sorted(table['parts'],
+                  key=lambda k: -max(v['part_C'] or 0
+                                     for v in table['parts'][k].values()))
     print(f"{'part':8s} "
           + ' '.join(f"{c['name'][:14]:>14s}" for c in table['cases']))
     for ref in refs:
+        row = table['parts'][ref]
         print(f"{ref:8s} " + ' '.join(
-            f"{(table['parts'][ref].get(c['name']) or {}).get('part_C') or float('nan'):14.1f}"
+            f"{(row.get(c['name']) or {}).get('part_C') or float('nan'):14.1f}"
             for c in table['cases']))
     print(
         f"{len(cases)} cases; the top-level map is {worst}'s (the most loss); "

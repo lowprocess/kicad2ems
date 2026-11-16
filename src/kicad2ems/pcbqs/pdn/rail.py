@@ -13,8 +13,10 @@ on it and what each one is.
 
 The tree is grown from `net` through two-pad parts between two non-ground nets
 that are, by their reference and value,
-  resistors up to max_ohms (default 1 ohm: current-sense and 0 ohm links; a feedback divider's 10 k is not),
-  ferrite beads (FB*, or an L* whose value reads like one: 600R@100MHz, BLM..., bead), jumpers and net ties (JP*, NT*),
+  resistors up to max_ohms (default 1 ohm: current-sense and 0 ohm links; a
+    feedback divider's 10 k is not),
+  ferrite beads (FB*, or an L* whose value reads like one: 600R@100MHz, BLM...,
+    bead), jumpers and net ties (JP*, NT*),
 and any part named in through=; never one in stop=. A power inductor (an L* in
 henries) is where it ends: the regulator's output, and the default source (its
 pad on the tree, the regulator's ground pads the return's source). An inductor

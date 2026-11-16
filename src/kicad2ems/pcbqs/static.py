@@ -5,7 +5,8 @@ import time
 
 import numpy as np
 
-from .static_backends import FillEngine, OpenMPBackend, _compiled, bounded_map, resolve_workers
+from .static_backends import (FillEngine, OpenMPBackend, _compiled, bounded_map,
+                              resolve_workers)
 
 
 def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384,

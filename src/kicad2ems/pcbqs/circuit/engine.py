@@ -7,22 +7,30 @@ knobs, what is measured.
     row = run_case(model, point, folder)  # one point
 
 One point goes like this (analysis: the model's settings for it, all optional):
-    1. The first run starts from ngspice's DC solution at time zero, where every gate is still low: the rails are
-       charged through the diodes and the inductors carry their DC current, whatever the circuit.
-    2. Each run is `cycles` periods (200) and starts where the last one ended (end_state: every capacitor's
-       voltage, every inductor's and switch's current).
-    3. It is settled when every capacitor voltage and inductor current repeats: the last period against every
-       period of the half-run before it, within periodic_tolerance (0.003) of that signal's size (a slow drift or
-       a ringing output filter shows over half a run when it does not from one period to the next), and what the
-       circuit stores (the energy in its capacitors and inductors) changes over a period by no more than
-       energy_tolerance (0.002) of the power it handles. What still goes into storage over the reported period
-       is counted out of the parts' powers, the loss and the efficiency. A run that has not settled is followed by one twice as long, up to eight times `cycles`,
-       started from the middle of whatever was still ringing.
-    4. Settled, each target is compared with its measure; a knob that is off moves by a secant step, kept inside
-       its range, and the runs go on. A target whose measure cannot reach its value inside the range ends the
+    1. The first run starts from ngspice's DC solution at time zero, where every
+       gate is still low: the rails are charged through the diodes and the
+       inductors carry their DC current, whatever the circuit.
+    2. Each run is `cycles` periods (200) and starts where the last one ended
+       (end_state: every capacitor's voltage, every inductor's and switch's
+       current).
+    3. It is settled when every capacitor voltage and inductor current repeats:
+       the last period against every period of the half-run before it, within
+       periodic_tolerance (0.003) of that signal's size (a slow drift or a
+       ringing output filter shows over half a run when it does not from one
+       period to the next), and what the circuit stores (the energy in its
+       capacitors and inductors) changes over a period by no more than
+       energy_tolerance (0.002) of the power it handles. What still goes into
+       storage over the reported period is counted out of the parts' powers, the
+       loss and the efficiency. A run that has not settled is followed by one
+       twice as long, up to eight times `cycles`, started from the middle of
+       whatever was still ringing.
+    4. Settled, each target is compared with its measure; a knob that is off
+       moves by a secant step, kept inside its range, and the runs go on. A
+       target whose measure cannot reach its value inside the range ends the
        point with an error saying which end it stopped at.
-    5. The reported run repeats a few periods at the strict tolerance (analysis.solver.reltol, 1e-4; the search
-       runs at 1e-3) and with steps four times finer (final_samples_per_cycle). If ngspice cannot hold that
+    5. The reported run repeats a few periods at the strict tolerance
+       (analysis.solver.reltol, 1e-4; the search runs at 1e-3) and with steps
+       four times finer (final_samples_per_cycle). If ngspice cannot hold that
        tolerance the search's result is reported and a note says so.
 
 Reported for every point, with no request: each part's power; a switch's and a
@@ -1045,7 +1053,8 @@ def run(model, out, jobs=1, log=print, copper=False, fields=False,
             from .temperature import at
             pending = {
                 pool.submit(run_case,
-                            at(model, (temperatures or {}).get(M.case_name(p))), p, f, log, copper or None): i
+                            at(model, (temperatures or {}).get(M.case_name(p))),
+                            p, f, log, copper or None): i
                 for i, (p, f) in enumerate(zip(points, folders))
             }
             try:

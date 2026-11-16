@@ -2,7 +2,8 @@
 python -m kicad2ems.pcbqs.sparams: low-frequency S-parameters of a board's
 ports, from the quasi-static currents of its copper.
 
-    python -m kicad2ems.pcbqs.sparams board.kicad_pcb --nets SIG,GND --fmin 1e3 --fmax 1e8 --out lf
+    python -m kicad2ems.pcbqs.sparams board.kicad_pcb --nets SIG,GND \
+        --fmin 1e3 --fmax 1e8 --out lf
     python -m kicad2ems.pcbqs.sparams run/board_board.json --out lf
         # a kicad2ems board file: its ports as they are
     python -m kicad2ems.pcbqs.sparams --describe --json
@@ -17,9 +18,11 @@ impedance two ports share. That is the magneto-quasistatic solve (pcbqs.mqs: the
 sheet currents of every layer, the vias, the mutual inductance of all of it),
 with a port as it is in a measurement:
 
-    each port: a 1 A source and its reference impedance, both between the trace's end and the copper under it;
-    one solve per driven port; S from the currents in the terminations:
-        S[j, k] = 2 I_j sqrt(z0_j / z0_k) - (j == k)        I_j: the current in port j's termination
+    each port: a 1 A source and its reference impedance, both between the
+    trace's end and the copper under it; one solve per driven port; S from the
+    currents in the terminations:
+        S[j, k] = 2 I_j sqrt(z0_j / z0_k) - (j == k)
+            I_j: the current in port j's termination
 
 so no impedance matrix is needed (the ports of a board without capacitance have
 none: nothing joins a trace to its plane but the other ports).
@@ -410,8 +413,8 @@ def model(board, fmax, ports=None, z0=None, dmax=None, fine=None,
     ]
     if bad:
         raise ValueError(
-            f"ports {', '.join(bad)}: only ports between a trace and the copper under it are modelled "
-            "(no gap ports)")
+            f"ports {', '.join(bad)}: only ports between a trace and the "
+            "copper under it are modelled (no gap ports)")
     if backend not in ('auto', 'dense', 'hierarchical'):
         raise ValueError(f"backend {backend!r}: auto, dense or hierarchical")
     capacitance = {True: 'on', False: 'off'}.get(capacitance, capacitance)
@@ -483,10 +486,10 @@ def model(board, fmax, ports=None, z0=None, dmax=None, fine=None,
         q.element(e['ref'], e['ref'] + ':1', e['ref'] + ':2', R=e['R'],
                   L=e['L'], C=e['C'], part_h=0)
     if parts or left_out:
-        log(f"sparams: {len(parts)} part(s) between their pads" + (
-            "; left out: "
-            f"{', '.join(f'{ref} ({why})' for ref, why in left_out)}"
-            if left_out else ''))
+        log(f"sparams: {len(parts)} part(s) between their pads"
+            + ("; left out: "
+               f"{', '.join(f'{ref} ({why})' for ref, why in left_out)}"
+               if left_out else ''))
     coarsened = (None if (dmax, fine) == chosen else (
         f"the mesh was made {dmax / chosen[0]:.2g} times coarser "
         f"({dmax:.2g} mm, {min(fine, dmax):.2g} mm at the ports' nets, "
@@ -499,13 +502,14 @@ def model(board, fmax, ports=None, z0=None, dmax=None, fine=None,
         valid_to_Hz=float(f_wave if charge else min(f_wave, f_cap)),
         tenth_wavelength_Hz=float(f_wave), capacitance_limit_Hz=float(f_cap),
         capacitance_F=float(cap), parts=[e['ref'] for e in parts],
-        parts_left_out=[list(x) for x in left_out], model=
-        ("copper resistance, inductance and capacitance (quasi-static currents "
-         "and charge); no radiation" if charge else
-         'copper resistance and inductance (magneto-quasistatic); no '
-         'capacitance, no radiation'
-         ) + ("; the copper's two faces, the skin effect between them" if
-              thickness else '; the copper as one sheet of its DC resistance'))
+        parts_left_out=[list(x) for x in left_out],
+        model=(("copper resistance, inductance and capacitance (quasi-static "
+                "currents and charge); no radiation" if charge
+                else 'copper resistance and inductance (magneto-quasistatic); '
+                'no capacitance, no radiation')
+               + ("; the copper's two faces, the skin effect between them"
+                  if thickness
+                  else '; the copper as one sheet of its DC resistance')))
     return dict(q=q, ports=ports, charge=charge, info=info, t0=t0)
 
 
@@ -556,12 +560,13 @@ def apart_note(p):
     """What to say of two ports that nothing joins at DC (paths()'s joined
     False)."""
     text = (
-        f"{p['a']} and {p['b']} are not joined at DC: their copper, or the copper their returns take, is not "
-        "connected (a ground via missing between two planes?).")
+        f"{p['a']} and {p['b']} are not joined at DC: their copper, or the "
+        "copper their returns take, is not connected (a ground via missing "
+        "between two planes?).")
     if p.get('C_F'):
         return (text + (
-            f" {p['C_F'] * 1e12:.3g} pF closes the path as the frequency rises: an open circuit at the "
-            "low end."))
+            f" {p['C_F'] * 1e12:.3g} pF closes the path as the frequency "
+            "rises: an open circuit at the low end."))
     return (text + (
         " With resistance and inductance alone no current passes at any "
         "frequency; with the charge solved too (--capacitance on), the "
@@ -740,12 +745,15 @@ def main(argv=None):
     write_touchstone(os.path.join(a.out, ts), r['f'], r['S'], r['zref'],
                      r['names'], 'quasi-static: ' + info['model'])
     notes = [(
-        f"The copper's currents and charge, without radiation: to about {info['valid_to_Hz']:.3g} Hz, where "
-        "the ports' copper is a tenth of a wavelength long."
+        "The copper's currents and charge, without radiation: to about "
+        f"{info['valid_to_Hz']:.3g} Hz, where the ports' copper is a tenth of "
+        "a wavelength long."
         if info['capacitance'] else
-        f"Resistance and inductance of the copper only: above about {info['valid_to_Hz']:.3g} Hz the copper's "
-        f"capacitance ({info['capacitance_F'] * 1e12:.3g} pF, estimated) moves S by more than 0.01 "
-        "(--capacitance on, or auto with a band that reaches there, solves the charge too)."
+        "Resistance and inductance of the copper only: above about "
+        f"{info['valid_to_Hz']:.3g} Hz the copper's capacitance "
+        f"({info['capacitance_F'] * 1e12:.3g} pF, estimated) moves S by more "
+        "than 0.01 (--capacitance on, or auto with a band that reaches there, "
+        "solves the charge too)."
     )]
     over = int((r['f'] > info['valid_to_Hz']).sum())
     if over:
@@ -790,7 +798,8 @@ def main(argv=None):
             f"{r['f'][len(r['f']) // 2]:.3g} Hz"
             )
     say(f"{info['triangles']:,} triangles ({info['backend']}, "
-        f"{'R, L, C' if info['capacitance'] else 'R, L'}{', two faces' if info['thickness'] else ''}), "
+        f"{'R, L, C' if info['capacitance'] else 'R, L'}"
+        f"{', two faces' if info['thickness'] else ''}), "
         f"{info['seconds']} s; valid to about {info['valid_to_Hz']:.3g} Hz; "
         f"wrote {os.path.join(a.out, ts)}")
     return 0

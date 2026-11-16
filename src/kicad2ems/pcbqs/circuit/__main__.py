@@ -97,8 +97,8 @@ def main(argv=None):
         for item in a.set:
             path, _, value = item.partition('=')
             M.put(model, path.strip(),
-                  (M.number(value)
-                   if not value.strip().startswith('[') else json.loads(value)))
+                  (M.number(value) if not value.strip().startswith('[')
+                   else json.loads(value)))
         if a.board:
             model.setdefault('board', {})['file'] = a.board
         M.validate(model)
@@ -122,10 +122,11 @@ def main(argv=None):
         print(
             f"{row['name']}: " + (f"{knobs}; " if knobs else '')
             + f"in {row['source_power_W']:.4g} W, out "
-            f"{row['load_power_W']:.4g} W" +
-            (f", efficiency {100 * eff:.2f} %" if eff else '') +
-            (f", copper {row['copper']['loss_W']:.3g} W"
-             if row.get('copper') else ''), flush=True)
+            f"{row['load_power_W']:.4g} W"
+            + (f", efficiency {100 * eff:.2f} %" if eff else '')
+            + (f", copper {row['copper']['loss_W']:.3g} W"
+               if row.get('copper') else ''),
+            flush=True)
         for note in row['notes']:
             print(f"  note: {note}", flush=True)
     for f in summary['failed']:

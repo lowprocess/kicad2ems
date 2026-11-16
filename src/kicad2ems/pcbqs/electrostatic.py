@@ -12,7 +12,8 @@ import time
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-from .static_backends import FillEngine, bounded_map, layered_spline_args, native_layered
+from .static_backends import (FillEngine, bounded_map, layered_spline_args,
+                              native_layered)
 
 
 class DielectricStack:

@@ -383,9 +383,12 @@ def solve(model,freqs,amps=None):
             # tree/graph preconditioners: the copies' block diagonal
             if cp is not None and M.shape[0]==n:
                 Mx,du=M,cp['du']/m['pscale']
-                M = LinearOperator((n + nu, n + nu),
-                                   matvec=lambda y, Mx=Mx, du=du: np.r_[
-                                       Mx @ y[:n], y[n:] / du], dtype=complex)
+
+                def precond(y, Mx=Mx, du=du):
+                    return np.r_[Mx @ y[:n], y[n:] / du]
+
+                M = LinearOperator((n + nu, n + nu), matvec=precond,
+                                   dtype=complex)
             op=LinearOperator((n+nu,n+nu),matvec=product,dtype=complex)
             log(f'peec: {freq:g} Hz, {n:,} unknowns, {kind}, '
                 f'{preconditioner_bytes/1024**2:.2f} MiB preconditioner'

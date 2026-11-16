@@ -24,14 +24,18 @@ over the last period:
        circuit has them.
 
 What that is, and is not:
-    - the copper and its vias only. No part's own field is in it: not an inductor's stray field, not the E of a
-      part's body or a heatsink tab above the board. Those need a model of each part (docs/circuit.md).
-    - quasi-static: the Coulomb E of the charges, without the induced E of changing currents (-dA/dt), and no
-      radiation. It is what a near-field probe a few millimetres over the board sees, not a far field.
-    - the board taken as grounded: its ground copper at zero volts against its surroundings. A board that floats
-      has a common-mode voltage on top of this that no circuit on the board alone decides.
-    - H up to the last harmonic kept: the ringing at the edges (hundreds of MHz) is above it, and case['fields']
-      says what share of the port currents' AC was left out.
+    - the copper and its vias only. No part's own field is in it: not an
+      inductor's stray field, not the E of a part's body or a heatsink tab above
+      the board. Those need a model of each part (docs/circuit.md).
+    - quasi-static: the Coulomb E of the charges, without the induced E of
+      changing currents (-dA/dt), and no radiation. It is what a near-field
+      probe a few millimetres over the board sees, not a far field.
+    - the board taken as grounded: its ground copper at zero volts against its
+      surroundings. A board that floats has a common-mode voltage on top of this
+      that no circuit on the board alone decides.
+    - H up to the last harmonic kept: the ringing at the edges (hundreds of MHz)
+      is above it, and case['fields'] says what share of the port currents' AC
+      was left out.
 
 <case>/exc_fields/: the fields as field dumps a viewer shows (kicad2ems's Viewer
 finds <run>/*/exc_*): H and E on each plane over the period, time_samples frames

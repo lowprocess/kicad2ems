@@ -11,7 +11,8 @@ import shapely
 from shapely.geometry import shape
 from shapely.ops import unary_union
 
-from ._cli import add_options, describe as describe_options, load_board, print_describe
+from ._cli import (add_options, describe as describe_options, load_board,
+                   print_describe)
 
 OPTIONS = [
     ('converter', 'str', '',
@@ -246,11 +247,9 @@ def select(board, a, require_values=True):
             raise ValueError('ambiguous input supply; set --vin from: '
                              + ', '.join(sorted(options)))
         vin=options.pop()
-    caps = ([x.strip()
-             for x in a.capacitors.split(',')
-             if x.strip()] if a.capacitors else sorted(p.ref
-                                                       for p in local
-                                                       if vin in p.nets()))
+    caps = ([x.strip() for x in a.capacitors.split(',') if x.strip()]
+            if a.capacitors
+            else sorted(p.ref for p in local if vin in p.nets()))
     if not caps or len(caps)!=len(set(caps)):
         raise ValueError('select one or more unique --capacitors')
     if vin==a.ground:
@@ -449,10 +448,11 @@ def run(a):
     extent=unary_union([p for pp in terms.values() for _,p in pp])
     crop=extent.buffer(a.margin).envelope
     print(
-        f"mqs: {selected['converter']}" +
-        (f" and {selected['low']} (switch node {selected['switch']})"
-         if selected.get('low') else '') +
-        f", {selected['vin']}, capacitors {', '.join(selected['capacitors'])}",
+        f"mqs: {selected['converter']}"
+        + (f" and {selected['low']} (switch node {selected['switch']})"
+           if selected.get('low') else '')
+        + f", {selected['vin']}, capacitors "
+        f"{', '.join(selected['capacitors'])}",
         flush=True)
     q = MQS(
         board, {

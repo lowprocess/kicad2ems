@@ -3,8 +3,9 @@ A converter found on a board, as a circuit model: what the near-field tool
 selects (pcbqs.mqs: a regulator, its input net and capacitors, the inductor on
 its switch net), with what the board has on the inductor's far side.
 
-    python -m kicad2ems.pcbqs.mqs board.kicad_pcb --converter U702 --vin-volts 5 --vout 3.3 --fsw 1e6 --current 2 --circuit > u702.json
-    python -m kicad2ems.pcbqs.circuit u702.json --copper
+    python -m kicad2ems.pcbqs.mqs board.kicad_pcb --converter U702 \
+        --vin-volts 5 --vout 3.3 --fsw 1e6 --current 2 --circuit > u702.json
+    python -m kicad2ems.pcbqs.circuit u702.json --copper \
         --out out/u702
     model = model_of(board, 'board.kicad_pcb', a)
         # a: the near-field tool's settings (mqs_cli.parser)

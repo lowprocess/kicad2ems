@@ -65,8 +65,8 @@ def edge_inductance(model):
         vertices = np.ascontiguousarray(vertices, float)
         alpha = np.ascontiguousarray(alpha, float)
 
-        provider = (core.RwgEntries(*common, support64, vertices, alpha, MU0 /
-                                    (4 * np.pi))
+        provider = (core.RwgEntries(*common, support64, vertices, alpha,
+                                    MU0 / (4 * np.pi))
                     if hasattr(core, 'RwgEntries') else None)
 
         def entry(rows,cols):
