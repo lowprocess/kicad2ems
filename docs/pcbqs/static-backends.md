@@ -156,9 +156,8 @@ Dense MQS with the native whole-matrix fill and RWG gather (16 threads):
 
 ## Add a backend
 
-Register a factory, or expose it through the `kicad2ems.pcbqs.static_backends` Python
-entry-point group. Providers are imported only when selected. Names cannot
-replace built-ins or already registered providers.
+Register a factory (`register_fill_backend`). Names cannot replace built-ins or
+already registered providers.
 
 ```python
 from pcbqs.static_backends import register_fill_backend

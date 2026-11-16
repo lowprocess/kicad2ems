@@ -327,7 +327,7 @@ class PlanarModel:
                                 a.w + b.w + gap)
                 # (char_length: a longer line where the two modes' speeds have
                 # to be told apart closely: a stretch cut out and put back as
-                # the pair's modal lines, kicad2ems/mixed.py)
+                # the pair's modal lines, solvers/mixed.py)
                 length = max(length_for(a.w + b.w + gap),
                              getattr(p, 'char_length', 0.0))
                 key = ('pair', a.layer, round(0.5 * (a.w + b.w) * 1e7),

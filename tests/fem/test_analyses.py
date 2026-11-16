@@ -1,7 +1,7 @@
-"""The DC, thermal and capacitance tools as kicad2ems analysis plugins
-(analyses.py): engines of a study's questions, their settings read from each
-tool's parser, their commands, their reports, whose result a folder is; one of
-them run for real through its command where Elmer is installed."""
+"""The DC, thermal and capacitance tools as kicad2ems analyses (analyses.py):
+engines of a study's questions, their settings read from each tool's parser,
+their commands, their reports, whose result a folder is; one of them run for
+real through its command where Elmer is installed."""
 import json
 import os
 import subprocess
@@ -16,25 +16,17 @@ from kicad2ems.fem.elmer import run as elmer
 
 ALL = (A.ElmerDC, A.ElmerThermal, A.ElmerCap, A.PalaceCap, A.ElmerMag,
        A.PalaceLoop, A.PalacePDN)
-
-
-class _EP:
-    def __init__(self, cls):
-        self.name, self.value, self.cls = (
-            cls.name, f"kicad2ems.fem.analyses:{cls.__name__}", cls)
-
-    def load(self):
-        return self.cls
+# every analysis kicad2ems lists (`registered` swaps the list for ALL's)
+LISTED = registry_module.ANALYSES
 
 
 @pytest.fixture
 def registered(monkeypatch):
-    monkeypatch.setattr(registry_module, '_entry_points',
-                        lambda: [_EP(c) for c in ALL])
+    monkeypatch.setattr(
+        registry_module, 'ANALYSES',
+        tuple(f"kicad2ems.fem.analyses:{c.__name__}" for c in ALL))
     monkeypatch.setattr(registry_module, '_registry', None)
-    monkeypatch.setattr(registry_module, 'broken', [])
-    yield registry_module.registry()
-    monkeypatch.setattr(registry_module, '_registry', None)
+    return registry_module.registry()
 
 
 def test_they_register_as_engines_of_questions_others_answer_too(registered):
@@ -42,7 +34,6 @@ def test_they_register_as_engines_of_questions_others_answer_too(registered):
         'elmer_dc', 'palace_loop', 'palace_pdn', 'elmer_mag', 'elmer_thermal',
         'elmer_cap', 'palace_cap'
     ])
-    assert not registry_module.broken
     es = study.engines()
     assert ([es[n].provides for n in registered] == [('dc', ), ('nearfield', ),
                                                      ('pdn', ), ('coils', ),
@@ -59,21 +50,8 @@ def test_they_register_as_engines_of_questions_others_answer_too(registered):
     }
     assert ([e.name for e in rows['capacitance']['engines']
              ] == ['elmer_cap', 'palace_cap'])
-    import tomllib
-    with open(
-            os.path.join(
-                os.path.dirname(
-                    os.path.dirname(os.path.dirname(
-                        os.path.abspath(__file__)))), 'pyproject.toml'),
-            'rb') as fh:
-        declared = (
-            tomllib.load(fh)['project']['entry-points']['kicad2ems.analyses'])
-    assert ({
-        k: v
-        for k, v in declared.items()
-        if v.startswith('kicad2ems.fem.')
-    } == {c.name: f"kicad2ems.fem.analyses:{c.__name__}"
-          for c in ALL})
+    assert ({s for s in LISTED if s.startswith('kicad2ems.fem.')}
+            == {f"kicad2ems.fem.analyses:{c.__name__}" for c in ALL})
 
 
 def test_the_settings_are_the_tools_own_options():
@@ -95,7 +73,7 @@ def test_the_settings_are_the_tools_own_options():
             and cap['far']['choices'] == ['open', 'ground']
             and cap['np']['kind'] == 'int')
     # what names a net or a part says so, for a front end to pick it on the
-    # board (kicad2ems API 2.11)
+    # board
     assert (dc['net']['pick'] == 'nets' and dc['source']['pick'] == 'part'
             and 'pick' not in dc['load'])
     assert th['copper']['pick'] == 'nets' and cap['net']['pick'] == 'nets'
@@ -220,8 +198,8 @@ def test_reports_and_whose_result_a_folder_is(tmp_path, registered):
 @pytest.mark.skipif(not elmer.found()[0], reason='Elmer not installed')
 def test_a_drop_run_through_its_command(tmp_path, registered):
     """A 20 x 5 mm strip of 35 um copper carrying 1 A between two pads, run as a
-    front end runs it: the command of the plugin, its mark, its report; the drop
-    is the strip's own resistance."""
+    front end runs it: the command of the analysis, its mark, its report; the
+    drop is the strip's own resistance."""
     pad = lambda ref, x, a: dict(
         ref=ref, pads=[
             dict(name='1', net='N', layers=['F.Cu'], geom=mapping(

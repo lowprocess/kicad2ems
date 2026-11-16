@@ -42,11 +42,12 @@ What the CI leaves out is where most of the list above came from.
 
 ## The study: questions and engines
 
-The registry is there (API 2.6, `kicad2ems.core.study`, docs/api.md#study-api): a study asks questions, engines answer
-them, and a rail's drop, the temperature and capacitance each have two (pcbqs; Elmer or Palace through
-kicad2ems-fem). A config holds a study (`[study]`) and `kicad2ems study` runs it (API 2.7, docs/usage.md#study);
-the window lists the questions, with the engine chosen on each row, and compares two engines' named figures
-(API 2.8, docs/gui.md#the-study). Left:
+The registry is there (`kicad2ems.core.study`, docs/api.md#study-api): a study
+asks questions, engines answer them, and a rail's drop, the temperature and
+capacitance each have two (pcbqs; Elmer or Palace through kicad2ems-fem). A
+config holds a study (`[study]`) and `kicad2ems study` runs it
+(docs/usage.md#study); the window lists the questions, with the engine chosen on
+each row, and compares two engines' named figures (docs/gui.md#the-study). Left:
 
 1. **S-parameters compared per engine in the same way.** Two solvers' S-parameters are overlaid on the Results
    page as before (and scored in the report); the *Engines compared* table is for the analyses' named figures.
@@ -94,7 +95,7 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
 3. **A trace's own quality:** its impedance along its length (the line model has it: *Trace impedances*), the
    reflections of its discontinuities for the edge (TDR from S11), its loss at the data rate.
 4. **The coupled stretches drawn on the plan**, coloured by their share (the traces are picked on the board
-   since API 2.11).
+   already).
 5. **The time grid** (R-E16). The edge response comes from 401 points at fmax/400 steps, linearly interpolated: a
    5 % coupler reads 3.3 % at 1 m and 25 ps. Its step from the longest trace's delay, H interpolated with the delay
    taken out, fmax 2-3 times 1/rise, S11 to DC (for TDR), before items 2 and 3 build on it.
@@ -115,9 +116,10 @@ that: nothing in it may fix a panel in place. Left:
    visible changes; it is what makes the rest cheap, and what kicad2ems-ipc could drive.
 2. **An analysis's panel with its few settings first**, as the solvers' are (an options row may say `level`;
    pcbqs's tables do not yet).
-3. **Picking on the board: what is left.** Nets and parts are picked (an option's `pick`, API 2.11). Not yet:
-   a pad (a port: `REF.PAD`, or a point), a `REF=VALUE` list's part (a rail's loads, a part's loss), a region
-   dragged as a box, and the pick in the 3D view. The Circuit page's own file buttons go.
+3. **Picking on the board: what is left.** Nets and parts are picked (an
+   option's `pick`). Not yet: a pad (a port: `REF.PAD`, or a point), a
+   `REF=VALUE` list's part (a rail's loads, a part's loss), a region dragged as
+   a box, and the pick in the 3D view. The Circuit page's own file buttons go.
 4. **The window's pages, the rest.** Built 2026-11-13, as docks (the user's choice among three mock-ups): the
    Start page with the examples as tiles, Plots, Report, Tables and Log as pages of their own, Section as one
    too (the Viewer's buttons are Plan, 2D, 3D, Images), and the steps as a bar under the toolbar that moves to
@@ -394,10 +396,11 @@ In order:
    geometry, the receiver's and the leads' field geometry, capacitance to the environment, the fields at startup.
 6. **A complete PEEC model up to about λ/10:** resolved proximity currents, via skin loss, mutuals between parts
    and copper, material dispersion.
-7. **Palace 0.19, the rest.** It is built with Spack here, kicad2ems-fem's plugin runs with it (CHANGELOG.md),
-   and kicad2ems-fem's own Palace runs pass on it (2026-11-13: the capacitance tool's microstrip against
-   Hammerstad-Jensen, a grounded box, the driven runs with a series part). Left: pcbqs's Palace validations
-   (`validation/`), which were made on 0.18.1.
+7. **Palace 0.19, the rest.** It is built with Spack here, kicad2ems-fem's
+   solver runs with it (CHANGELOG.md), and kicad2ems-fem's own Palace runs pass
+   on it (2026-11-13: the capacitance tool's microstrip against
+   Hammerstad-Jensen, a grounded box, the driven runs with a series part). Left:
+   pcbqs's Palace validations (`validation/`), which were made on 0.18.1.
 
 ## FDTD (gfdtd, kicad2ems-fdtd)
 

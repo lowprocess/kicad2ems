@@ -4,10 +4,10 @@ that takes.
 
     TREE                        what the list shows: kicad2ems's study_tree (the
                                 questions by group, each with the engines
-                                installed that answer it)
+                                that answer it)
     ANALYSES                    the runs the window can make on a board, in the
                                 order it makes them: kicad2ems's own ('rf': the
-                                solvers together), then each analysis plugin
+                                solvers together), then each analysis
     with_needs(keys)            keys and the analyses they start from, in that
                                 order
     dependents(key)             the analyses that start from key's results
@@ -26,7 +26,7 @@ that takes.
 
 A question is something to find out (kicad2ems.core.study: the ports'
 S-parameters, a rail's drop, the temperature); an engine is a solver or an
-analysis plugin that answers it. The three RF questions are answered by the
+analysis that answers it. The three RF questions are answered by the
 solvers, together, as kicad2ems's one run; every other engine is a run of its
 own, in the registry's order, which is also a run's: Thermal, which takes its
 losses from the latest circuit run unless they are typed, runs after Circuit.
@@ -51,7 +51,7 @@ class Analysis:
     note: str = ''          # the list's tooltip
 
 
-RF = 'rf'                       # kicad2ems's own run: not a plugin's
+RF = 'rf'                       # kicad2ems's own run: not an analysis's
 
 
 def installed():
@@ -135,8 +135,8 @@ short = lambda label: label.split(' (')[0]          # 'mom25d (MoM)' -> 'mom25d'
 
 
 class StudyModel:
-    """The study with no window: the questions by group with the engines
-    installed that answer each (TREE as it is when this is made), and what the
+    """The study with no window: the questions by group with the engines that
+    answer each (TREE as it is when this is made), and what the
     user has made of them:
 
         on       the questions ticked
@@ -276,7 +276,7 @@ class StudyModel:
         text = (' + '.join(by[n].label for n in names)
                 or ' / '.join(e.label for e in es))
         tip = (('click to choose: ' + ', '.join(e.label for e in es))
-               if len(es) > 1 else by[es[0].name].plugin.tool)
+               if len(es) > 1 else by[es[0].name].impl.tool)
         return text, tip, len(es) > 1
 
     # ---- what is asked ----
@@ -313,8 +313,8 @@ class StudyModel:
 
     def set_study(self, study):
         """The ticks, the engines and the Fields ticks of a Study (a config's):
-        a question it does not ask unticked. An engine not installed here is
-        left out; a solver question's solvers are the settings'."""
+        a question it does not ask unticked. An engine the registry does not
+        list is left out; a solver question's solvers are the settings'."""
         self.on = {
             q
             for q in self.questions

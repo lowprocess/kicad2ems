@@ -122,7 +122,7 @@ def test_boundaries_and_air_margin(demo):
             and front['y'][0] == pytest.approx(mesh['y'][0]))
     assert (front['info']['air_mm'] == 0
             and front['info']['air_sides_mm'][3] == 40)
-    from kicad2ems.fdtd.plugin import _air
+    from kicad2ems.fdtd.solver import _air
     assert (_air('7') == 7.0 and _air('1,2,3,4,5,6') == (1, 2, 3, 4, 5, 6)
             and _air(None) is None)
     with pytest.raises(ValueError):

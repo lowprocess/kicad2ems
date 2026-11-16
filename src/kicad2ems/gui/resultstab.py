@@ -341,7 +341,7 @@ class ResultsTab(QWidget):
             folder = os.path.abspath(out_dir)
             try:
                 rep = analyses()[made[0]].report(folder)
-            except Exception:  # a plugin's fault, a damaged file: no report
+            except Exception:  # an analysis's fault, a damaged file: no report
                 rep = None
             if rep:
                 rep = self._with_engines(made[0], folder, rep)
@@ -411,7 +411,7 @@ class ResultsTab(QWidget):
             # after its opening words
             at = 1 if sections and not sections[0].get('title') else 0
             return dict(report, sections=sections[:at] + added + sections[at:])
-        # (a plugin's figures, a damaged file)
+        # (an analysis's figures, a damaged file)
         except Exception:  # noqa: BLE001
             return report
 

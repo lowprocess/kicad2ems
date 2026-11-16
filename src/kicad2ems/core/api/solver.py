@@ -1,18 +1,15 @@
 """
-The API of a solver plugin: the Solver interface (kicad2ems.core.solvers
+The API of a solver: the Solver interface (kicad2ems.core.solvers
 explains it) and what a solver needs to write its results as kicad2ems's other
 solvers do.
 
     from kicad2ems.core.api.solver import Solver, Result, Option, mixed_mode
 
     class MySolver(Solver):
-        api = (2, 0)                # the kicad2ems.core.api version it is
-                                    # written against (API_VERSION)
         name, label = 'mine', 'my solver'
         ...
 
-  the interface       Solver, Result, Deviation, Option, AUTO, FEATURES,
-                      API_VERSION
+  the interface       Solver, Result, Deviation, Option, AUTO, FEATURES
   settings            floatlist, floats: Option value parsers
   stopping            stop: stop.check() between steps raises stop.Stopped when
                       the GUI's Stop was pressed
@@ -27,7 +24,7 @@ solvers do.
                       ram_gb
   for an FDTD layer (kicad2ems-fdtd's: the FDTD solvers' shared model,
   mesh and runs):
-    constants         C0, EPS0; ETA0, MU0 (2.1)
+    constants         C0, EPS0, ETA0, MU0
     settings          strlist, items (Option value parsers), G_DUMP (the
                       field-dump settings group), registry
     geometry          split_holes (a polygon with holes -> simple polygons),
@@ -39,13 +36,13 @@ solvers do.
     figures           plot_preview (the model and its mesh)
     the line model    solve_lines, lines_backend (its fast solve: a first look
                       before a long run)
-  copper roughness    hammerstad, rough_sigma, band_sigma (2.3;
-                      kicad2ems.core.roughness)
+  copper roughness    hammerstad, rough_sigma, band_sigma
+                      (kicad2ems.core.roughness)
   surface finish      resolve_finish (a run's Finish: layers, faces, shares),
                       finish_factor, finish_weighted, finish_band_sigma,
-                      finish_face_z (2.4; kicad2ems.core.finish)
+                      finish_face_z (kicad2ems.core.finish)
 """
-from . import API_VERSION, lazy  # noqa: F401
+from . import lazy
 
 NAMES = dict(
     Solver='.solvers:Solver',
@@ -108,5 +105,5 @@ NAMES = dict(
     finish_band_sigma='.finish:band_sigma',
     finish_face_z='.finish:face_z',
 )
-__all__ = ['API_VERSION', *NAMES]
+__all__ = list(NAMES)
 __getattr__, __dir__ = lazy(__name__, NAMES)

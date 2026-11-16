@@ -76,7 +76,7 @@ main()
 
 def test_no_rf_or_application_dependency_in_core():
     # the rest of kicad2ems (its core, mom25d, the window) is imported in two
-    # places only: _cli.py (reading a KiCad board) and analyses.py (the plugins
+    # places only: _cli.py (reading a KiCad board) and analyses.py (the analyses
     # that kicad2ems itself loads). Nothing in pcbqs imports analyses.py, so the
     # tools run without them; pcbqs's own modules and emsdev (the machine) are
     # kicad2ems.pcbqs, kicad2ems.emsdev
@@ -91,7 +91,7 @@ def test_no_rf_or_application_dependency_in_core():
                 if (other(module) and node.level == 0):
                     assert (file.name in ('_cli.py', 'analyses.py')), file
                 names=[module.split('.')[-1]]+[n.name for n in node.names]
-                # the plugins: kicad2ems's to load
+                # the analyses: kicad2ems's to load
                 assert 'analyses' not in names or other(module),file
             elif isinstance(node,ast.Import):
                 assert (not any(

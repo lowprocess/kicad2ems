@@ -4,8 +4,8 @@ circuit and thermal simulations. One package, its parts subpackages (each was a
 repository of its own until 2026-11-16):
 
     core      the board model, the settings, the pipeline, the line model, the
-              solver and analysis plugins' API (kicad2ems.core.api), the command
-              line
+              registries of the solvers and analyses and their API
+              (kicad2ems.core.api), the command line
     gui       the window (PySide6)
     fdtd      the FDTD solvers' shared model: openEMS and gfdtd
     gfdtd     a 3D FDTD engine on the GPU or a compiled CPU core
@@ -21,9 +21,7 @@ repository of its own until 2026-11-16):
     from kicad2ems.core import KiCadBoard, Board
         # (also: from kicad2ems import Board)
 
-Solver and analysis plugins are found by entry points (the groups
-'kicad2ems.solvers' and 'kicad2ems.analyses'). Documentation: docs/index.md in
-the repository.
+Documentation: docs/index.md in the repository.
 """
 __version__ = '0.4.0.dev0'
 

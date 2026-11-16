@@ -73,7 +73,7 @@ def test_resolve():
 
 def test_line_model_takes_the_finish():
     from kicad2ems.core.solvers import registry, FEATURES
-    from kicad2ems.core.solvers.lines.plugin import line_sigma
+    from kicad2ems.core.solvers.lines.solver import line_sigma
     assert (
         'finish' in FEATURES and
         registry()['scikit'].capabilities['finish'].startswith('approximated'))

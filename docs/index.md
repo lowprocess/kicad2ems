@@ -24,7 +24,7 @@ of moments) or a transmission-line model, and writes S-parameters, antenna resul
 | [openEMS: meshing](meshing.md) | How the FDTD mesh, boundaries and time step are chosen |
 | [openEMS: simulation](simulation.md) | Materials, excitation, when a run stops, parallel and antenna runs |
 | [mom25d](mom.md) | The method-of-moments solver: what it models, ports, antennas, speed, GPU |
-| [gfdtd](gfdtd.md) | The GPU FDTD solver (its own package): openEMS's model on a GPU, from kicad2ems |
+| [gfdtd](gfdtd.md) | The GPU FDTD solver: openEMS's model on a GPU, from kicad2ems |
 | [Which solver](usage.md#which) | The solvers' strengths and weaknesses, how close each comes to openEMS and how fast |
 | [Transmission-line model](transmission-lines.md) | Line sections, impedance formulas, the circuit solvers |
 
@@ -48,8 +48,8 @@ Each part of kicad2ems, as it was described in its own repository before 0.4:
 
 | Page | Contents |
 |---|---|
-| [Architecture](architecture.md) | The run pipeline, solver plugins, the module map |
-| [APIs](api.md) | Every interface between the packages: the Python APIs, the plugin contract, the files and their versions |
+| [Architecture](architecture.md) | The run pipeline, the solvers, the module map |
+| [APIs](api.md) | Every interface between the parts: the Python APIs, the solvers and analyses, the files |
 | [KiCad import](kicad-import.md) | What is read from a `.kicad_pcb` |
 | [The board model](model.md) | The board every solver gets: stack, copper, vias, ports, parts |
 | [Testing](testing.md) | Running and extending the tests |

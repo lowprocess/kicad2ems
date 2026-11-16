@@ -1,4 +1,4 @@
-"""A real FDTD engine through the whole plugin (R-C6): the demo transition run
+"""A real FDTD engine through the whole solver (R-C6): the demo transition run
 by gfdtd on its compiled CPU core, from the board to the S-parameters, against
 openEMS's answer stored in kicad2ems's examples/reference (the same model,
 settings and mesh as that run: examples/demo_transition.toml). The other tests

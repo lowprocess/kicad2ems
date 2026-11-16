@@ -115,7 +115,7 @@ def _solvers(v):
     """Solver names (aliases allowed; 'lines' for the line model, 'all' for
     every solver but the variants of another, as mixed) in registry order, or
     None for an empty list."""
-    from .solvers import registry, aliases, ordered, missing, LINES, AUTO
+    from .solvers import registry, aliases, ordered, LINES, AUTO
     names = dict(aliases(), line=LINES, lines=LINES, fast=LINES, auto=AUTO)
     out = set()
     for x in strlist(v) or []:
@@ -128,8 +128,6 @@ def _solvers(v):
             } | {LINES})
         elif x in names:
             out.add(names[x])
-        elif missing(x):
-            raise ValueError(missing(x))
         else:
             raise ValueError(
                 f"no solver {x!r}: choose from "
@@ -138,7 +136,7 @@ def _solvers(v):
     return ordered(out) or None
 
 
-# the settings of every run (each solver's own are in its plugin): (key,
+# the settings of every run (each solver's own are in its class): (key,
 # default, help, type, ...)
 CORE = [
     Option(
@@ -478,7 +476,7 @@ def all_options(reg=None):
             out.setdefault(o.key, (sv.name, o))
             if (o.key in getattr(sv, 'basic', ())
                     and getattr(o, 'level', None) is None):
-                # (a plugin names them: Solver.basic, since API 2.9)
+                # (a solver names them: Solver.basic)
                 o.level = 'basic'
     return list(out.values())
 

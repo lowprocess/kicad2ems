@@ -1,4 +1,4 @@
-"""The kicad2ems plugin's mesh file: a preview writes mom25d's triangles
+"""The kicad2ems solver's mesh file: a preview writes mom25d's triangles
 (<name>_mesh_mom25d.npz) for kicad2ems's 3D view, on the copper layers, each
 edge drawn once (from kicad2ems's tests of kicad2ems.core.meshes)."""
 import os

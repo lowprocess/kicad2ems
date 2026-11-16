@@ -71,7 +71,7 @@ def test_stack_auto():
     ground or whole is kept."""
     from types import SimpleNamespace as NS
     from shapely.geometry import box, mapping, shape
-    from kicad2ems.mom25d.kicad2ems.mom import _stack, apertures, ports_below
+    from kicad2ems.mom25d.solvers.mom import _stack, apertures, ports_below
     with open(
             os.path.join(os.path.dirname(os.path.abspath(__file__)), 'boards',
                          'demo.json'), encoding='utf-8') as fh:

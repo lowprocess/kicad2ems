@@ -115,10 +115,10 @@ def settings_from_argv(argv=None, default_solvers=None):
 
 def check_report():
     """--check: (a full-wave solver usable, lines): each solver's check (the
-    longer ones in full: openEMS's import), the solver packages not installed,
-    the GUI, what each solver models."""
+    longer ones in full: openEMS's import), the GUI, what each solver
+    models."""
     import importlib
-    from .solvers import registry, broken, capability_table, missing, EXTRAS
+    from .solvers import registry, capability_table
     reg = registry()
     lines, ready = [], []
     for name, sv in reg.items():
@@ -132,12 +132,6 @@ def check_report():
         ok, what = sv.check()
         lines.append(
             f"  {'ok' if ok else 'missing':7s} {name:<8s} {sv.label}: {what}")
-    lines += [
-        f"  missing {names[0]:<8s} {missing(names[0])}"
-        for names in EXTRAS.values()
-        if missing(names[0])
-    ]
-    lines += [f"  BROKEN  {ep}: {err}" for ep, err in broken]
     from .analyses import check_lines
     also = check_lines()
     if also:

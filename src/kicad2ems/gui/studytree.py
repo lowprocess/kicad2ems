@@ -310,7 +310,7 @@ class StudyTree(QTreeWidget):
         a.triggered.connect(lambda _=False: self.choose(q, AUTO, True))
         m.addSeparator()
         for e in es:
-            a = m.addAction(f"{e.label}  ({e.plugin.tool})")
+            a = m.addAction(f"{e.label}  ({e.impl.tool})")
             a.setCheckable(True)
             a.setChecked(e.name in self.m.choice[q])
             if e.name in self.m.why:

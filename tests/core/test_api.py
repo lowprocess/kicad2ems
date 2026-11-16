@@ -1,16 +1,15 @@
 """kicad2ems.core.api: every public name resolves, importing a surface loads
-nothing, the registry refuses a plugin written for another API version, and
-sysinfo asks the solvers what they run on (Solver.resources)."""
+nothing, and sysinfo asks the solvers what they run on (Solver.resources)."""
 import os
 import subprocess
 import sys
 
 import pytest
 from kicad2ems.core import solvers, sysinfo
-from kicad2ems.core.api import (API_VERSION, compatible, solver as solver_api,
-                                frontend, analysis as analysis_api)
+from kicad2ems.core.api import (solver as solver_api, frontend,
+                                analysis as analysis_api)
 
-from test_plugins import _EP, _Fake
+from test_solver_registry import _Fake
 
 
 @pytest.mark.parametrize('surface', [solver_api, frontend, analysis_api])
@@ -23,7 +22,7 @@ def test_every_name_resolves(surface):
 
 
 def test_a_surface_loads_on_first_use():
-    """Importing kicad2ems.core.api.solver (as a plugin's module does when the
+    """Importing kicad2ems.core.api.solver (as a solver's module does when the
     registry loads it) imports neither matplotlib nor the field code; a name
     imports its module when it is used."""
     code = (
@@ -35,38 +34,6 @@ def test_a_surface_loads_on_first_use():
     out = subprocess.run([sys.executable, '-c', code], capture_output=True,
                          text=True, check=True).stdout.split()
     assert out == ['[]', 'True']
-
-
-def test_compatible():
-    major, minor = API_VERSION
-    assert compatible((major, 0)) is None and compatible(API_VERSION) is None
-    # unversioned: 1.0, from before 2.0
-    assert 'update the plugin' in compatible(None)
-    assert 'update kicad2ems' in compatible((major, minor + 1))
-    assert ('update the plugin' in compatible((major - 1, 0))
-            and 'update kicad2ems' in compatible((major + 1, 0)))
-
-
-def test_registry_refuses_another_api(monkeypatch):
-    class Newer(_Fake):
-        name, aliases, options = 'newer', (), []
-        api = (API_VERSION[0] + 1, 0)
-
-    class Current(_Fake):
-        name, aliases, options = 'current', (), []
-        api = API_VERSION
-    monkeypatch.setattr(solvers, '_registry', None)
-    monkeypatch.setattr(solvers, 'broken', [])
-    installed = solvers._entry_points()
-    monkeypatch.setattr(
-        solvers, '_entry_points',
-        lambda: installed + [_EP('newer', Newer),
-                             _EP('current', Current)])
-    reg = solvers.registry()
-    assert 'current' in reg and 'newer' not in reg
-    assert ([b[0].split(' =')[0] for b in solvers.broken] == ['newer']
-            and 'kicad2ems API' in solvers.broken[0][1])
-    monkeypatch.setattr(solvers, '_registry', None)
 
 
 def test_sysinfo_asks_the_solvers(monkeypatch):

@@ -35,7 +35,7 @@ def test_the_check_names_the_setting(tmp_path, monkeypatch):
     """The openEMS check reports the setting, and when it is why openEMS is
     missing, says so first."""
     from kicad2ems.core import sitecfg
-    from kicad2ems.fdtd.openems.plugin import OpenEMS
+    from kicad2ems.fdtd.openems.solver import OpenEMS
     root, _ = _env(tmp_path, '3.9')
     monkeypatch.setattr(sitecfg, '_cache', {'openems_venv': str(root)})
     monkeypatch.setattr(venv, '_done', None)

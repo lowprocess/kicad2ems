@@ -1,4 +1,4 @@
-"""The plugin's tests use kicad2ems's fixtures and example boards, from
+"""The FDTD solvers' tests use kicad2ems's fixtures and example boards, from
 tests/core."""
 import os, sys
 

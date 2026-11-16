@@ -457,7 +457,7 @@ def test_feature_size_is_every_pieces_nearest_gap_copper_straightened():
 def test_the_estimate_is_its_mesh_scaled_by_the_runs():
     """R-B21: Palace's estimate builds the mesh as the run would and scales its
     tetrahedra by the examples' runs."""
-    from kicad2ems.fem.palace.plugin import Palace
+    from kicad2ems.fem.palace.solver import Palace
     pl = Palace()
     s = SimpleNamespace(palace_margin=None, palace_feature=4.0, palace_wave=8.0,
                         palace_fine_ground=False, palace_order=2, palace_np=8)
@@ -564,7 +564,7 @@ def test_the_absorbing_boundary_can_be_second_order():
 
 
 def test_the_refinement_cap_follows_the_memory_available(monkeypatch):
-    from kicad2ems.fem.palace.plugin import Palace
+    from kicad2ems.fem.palace.solver import Palace
     import kicad2ems.emsdev.memory
     monkeypatch.setattr(kicad2ems.emsdev.memory, 'available', lambda: 31e9)
     logs = []

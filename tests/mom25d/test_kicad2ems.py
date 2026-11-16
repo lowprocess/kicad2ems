@@ -59,7 +59,7 @@ def test_mom_run(tmp_path, run_cli, no_csxcad):
 def test_sigma_reaches_mom(demo_files):
     """--sigma is conductor loss in openEMS's conducting sheets; MoM gets the
     same, with the copper thickness of the ports' layer."""
-    from kicad2ems.mom25d.kicad2ems.mom import _metal
+    from kicad2ems.mom25d.solvers.mom import _metal
     from kicad2ems.core.importers.kicad import KiCadBoard
     from kicad2ems.core.board import Board
     base, _ = demo_files
@@ -245,7 +245,7 @@ def test_short_differential_feed_falls_back_to_single_ended_legs(monkeypatch):
     import kicad2ems.mom25d.api
     from kicad2ems.core.board import Board
     from kicad2ems.core.importers.kicad import KiCadBoard
-    from kicad2ems.mom25d.kicad2ems.mom import solve
+    from kicad2ems.mom25d.solvers.mom import solve
     ex = os.path.join(ROOT, 'examples')
     m = Board(KiCadBoard(os.path.join(ex, 'rf_diffvia.kicad_pcb')),
               ground='B.Cu', log=lambda *a: None)
@@ -280,10 +280,10 @@ def test_short_differential_feed_falls_back_to_single_ended_legs(monkeypatch):
 
 
 def test_mixed_connect_cascades_lines():
-    """mom25d.kicad2ems.mixed.connect: two line pieces joined by a third through
+    """mom25d.solvers.mixed.connect: two line pieces joined by a third through
     their inner ports equal one line of the total length (mismatched Zc, so
     reflections are in play)."""
-    from kicad2ems.mom25d.kicad2ems.mixed import connect, line_S
+    from kicad2ems.mom25d.solvers.mixed import connect, line_S
     g, zc, z0 = 0.5 + 180j, 37.0, 50.0
     A, B, C = (line_S(g, zc, 3e-3, z0), line_S(g, zc, 5e-3,
                                                z0), line_S(g, zc, 7e-3, z0))
@@ -329,7 +329,7 @@ def test_mixed_plans_a_pair_s_stretch_as_one_cut():
     its own)."""
     pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
     from kicad2ems.mom25d.board import BoardModel
-    from kicad2ems.mom25d.kicad2ems import mixed
+    from kicad2ems.mom25d.solvers import mixed
     quiet = lambda *a, **k: None
 
     def plan(data, **kw):
@@ -372,7 +372,7 @@ def test_mixed_cuts_a_coupled_pair_as_two_modal_lines(monkeypatch):
     pytest.importorskip('kicad2ems.mom25d._core')
     from types import SimpleNamespace as NS
     import kicad2ems.core.api.solver as ks
-    from kicad2ems.mom25d.kicad2ems import mixed
+    from kicad2ems.mom25d.solvers import mixed
     from kicad2ems.mom25d.api import solve_board
     quiet = lambda *a, **k: None
     data = _two_traces(0.3)
@@ -479,7 +479,7 @@ def test_whole_stack_antenna_radiates_behind_its_ground(run_cli, tmp_path):
 
 def test_factorisations_and_reused_solves_from_the_stage_records():
     from types import SimpleNamespace
-    from kicad2ems.mom25d.kicad2ems.mom import factorisations, reused
+    from kicad2ems.mom25d.solvers.mom import factorisations, reused
     log = SimpleNamespace(
         records=[('LU factor', 1.0, 'N=100, complex64, kept'),
                  ('LU factor (GPU)', 1.0, ''),
@@ -501,8 +501,8 @@ def test_mixed_models_the_board_with_mom25d_s_options(monkeypatch):
     defaults, so --solvers mom,mixed compared two models."""
     from types import SimpleNamespace as NS
     import kicad2ems.mom25d.board as B
-    from kicad2ems.mom25d.kicad2ems import mixed
-    from kicad2ems.mom25d.kicad2ems.mom import _model_kw
+    from kicad2ems.mom25d.solvers import mixed
+    from kicad2ems.mom25d.solvers.mom import _model_kw
     seen = {}
 
     class Stop(Exception):
@@ -528,7 +528,7 @@ def test_mesh_convergence_of_two_levels():
     over the points above -40 dB, the term it is on, and the verdict against 0.1
     dB / 2 deg, as the FDTD layer's check."""
     import numpy as np
-    from kicad2ems.mom25d.kicad2ems.mom import mesh_convergence
+    from kicad2ems.mom25d.solvers.mom import mesh_convergence
     S = np.zeros((3, 2, 2), complex)
     S[:, 0, 1] = S[:, 1, 0] = 0.9
     S[:, 0, 0] = 0.2

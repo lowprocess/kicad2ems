@@ -23,14 +23,15 @@ Modules
     options       Option (one setting, declared once) and the value converters
     fields/       field results of any solver: dumps, frames (DumpSource),
                   antenna (far-field analysis)
-    solvers/      the solver plugins: Solver, Result, the registry (entry points
-                  'kicad2ems.solvers'), capabilities. The full-wave solvers are
-                  packages of their own: openEMS and gfdtd (kicad2ems-fdtd, on
-                  its shared FDTD model), mom25d and mixed (mom25d.kicad2ems)
+    solvers/      the solvers: Solver, Result, the registry (SOLVERS: every
+                  solver), capabilities. The full-wave solvers are parts of
+                  their own: openEMS and gfdtd (kicad2ems.fdtd, on its shared
+                  FDTD model), mom25d and mixed (kicad2ems.mom25d.solvers),
+                  Palace (kicad2ems.fem), pcbqs
       lines/        the line model: tlines (sections, Z0, coupled sections,
                     discontinuities: formulas, reference, builder, topology),
                     strips, coupled, fastsolve (the sections as a circuit);
-                    plugin (qucs, scikit)
+                    solver (qucs, scikit)
     sparams       mixed-mode conversion, reciprocity fill
     touchstone    .sNp read / write
     plots         figures: model / mesh preview, line sections, S-parameters,
@@ -39,13 +40,12 @@ Modules
     events        run events as JSON lines (--events)
     config        Settings (made from the option tables): defaults <- TOML <-
                   command line
-    pipeline      Job: the stages of a run, over the solver plugins
+    pipeline      Job: the stages of a run, over the solvers
     cli           command line (kicad2ems / python -m kicad2ems)
     runs          a run started by another program (kicad2ems-gui, the KiCad
                   plugin): its TOML, events, stopping it
 
-The window is its own package, kicad2ems-gui (the gui extra), as are the
-full-wave solvers.
+The window is kicad2ems.gui (the gui extra brings its packages).
 
 Documentation: docs/index.md in the repository.
 """

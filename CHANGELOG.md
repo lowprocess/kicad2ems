@@ -226,6 +226,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **No plugins: kicad2ems lists its own solvers and analyses.** The registries
+  name every one by module and class (`kicad2ems.core.solvers.SOLVERS`,
+  `kicad2ems.core.analyses.ANALYSES`) instead of reading entry points; the
+  interfaces stay (`kicad2ems.core.api`). Gone with the entry points: the API
+  versions (`API_VERSION`, `compatible()`, each class's `api`, gfdtd's engine
+  API and `kicad2ems.gui.api.API_VERSION`), the `broken` lists, the "not
+  installed" hints (`missing()`, `EXTRAS`, `kicad2ems.core.extras`) and the six
+  empty extras (`dumps`, `mom`, `qs`, `gfdtd`, `openems`, `filter`). A solver
+  or an analysis whose program or package is missing says so in its `check()`,
+  as before; one that fails to import is a bug. Modules renamed for what they
+  are: `core/solvers/lines/plugin.py`, `fdtd/plugin.py`,
+  `fdtd/openems/plugin.py` and `fem/palace/plugin.py` are `solver.py`, and
+  `kicad2ems.mom25d.kicad2ems` is `kicad2ems.mom25d.solvers`; a study's
+  `Engine.plugin` is `Engine.impl`.
 - **mom25d's cells grow to the wavelength's size, and the mesher's interior is equilateral (`--mom-cells`, 30).**
   mom25d 3b86e68, pcbqs daaf1ec. The points inside the copper are seeded on a hexagonal lattice and smoothed (2-10 %
   fewer unknowns than Triangle at the same S; pcbqs's FastHenry cases as before with a quarter fewer triangles), and

@@ -1,5 +1,5 @@
 """
-The line model as solver plugins: qucs (qucsator, Qucs-S's circuit simulator,
+The line model as solvers: qucs (qucsator, Qucs-S's circuit simulator,
 run as a program) and scikit (scikit-rf, in process). Both consume the same
 network, the transmission-line sections the pipeline builds from the board for
 every run (tlines.LineModel), so a difference between the two comes from their

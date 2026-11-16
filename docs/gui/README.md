@@ -4,47 +4,62 @@
 > repository; the [README](../../README.md#install) has the installer). Its history up to then is in this
 > repository's, and in its own repository. Install lines below that name `.` mean this repository.
 
-The window of [kicad2ems](https://github.com/lowprocess/kicad2ems): a run's settings, the run itself and its
-results. S-parameter plots and the report, the board in plan and 3D with the line model over it, field maps and
-animations, antenna patterns and beam steering, dfsynth's filter synthesis (the Filter page), and whatever
-analyses are installed beside S-parameters (pcbqs's power integrity, near field, circuit and thermal).
+The window of [kicad2ems](https://github.com/lowprocess/kicad2ems): a run's
+settings, the run itself and its results. S-parameter plots and the report, the
+board in plan and 3D with the line model over it, field maps and animations,
+antenna patterns and beam steering, dfsynth's filter synthesis (the Filter
+page), and whatever analyses beside S-parameters (pcbqs's power integrity, near
+field, circuit and thermal; Elmer's and Palace's).
 
 ![The window: the questions, a hairpin filter's board with its S-parameters from gfdtd, mom25d and the line model under it, and the settings](https://github.com/lowprocess/kicad2ems/raw/main/docs/img/readme/gui_sparams.png)
 
-The settings form is made from kicad2ems's option tables and its solver registry, so an installed solver package
-(openEMS, mom25d, gfdtd or any other plugin) gets its tick box and its settings with no change here. The analyses
-come the same way, from kicad2ems's analysis registry (`kicad2ems.core.api.frontend.analyses`): the window knows none
-of them by name, but for the Circuit page's model editor, which imports pcbqs's model and schematic code. Each run is a process of its own (`kicad2ems.core.runs`, or the analysis's command), so the window
-needs nothing of a solver's and a solver's crash never takes the window with it. Closing the window stops a run that
-is going (it asks first); what the run had written stays in its folder. kicad2ems's [GUI page](../gui.md) covers using it.
+The settings form is made from kicad2ems's option tables and its solver
+registry, so every solver (openEMS, mom25d, gfdtd or any other the registry
+lists) gets its tick box and its settings with no change here. The analyses come
+the same way, from kicad2ems's analysis registry
+(`kicad2ems.core.api.frontend.analyses`): the window knows none of them by name,
+but for the Circuit page's model editor, which imports pcbqs's model and
+schematic code. Each run is a process of its own (`kicad2ems.core.runs`, or the
+analysis's command), so the window needs nothing of a solver's and a solver's
+crash never takes the window with it. Closing the window stops a run that is
+going (it asks first); what the run had written stays in its folder. kicad2ems's
+[GUI page](../gui.md) covers using it.
 
 ## The window
 
-Docks, as a studio application's: on the left the **Study** (the board and the **Questions** asked of it) over
-the **Settings** of the question selected; in the workspace the board, in the Viewer, with the Results and Run
-pages under it. Each dock moves, tabs with others, floats and closes (View brings it back; *View > Reset layout*
-puts all of them where a new window has them), and the window opens as it was left, the first time over the whole
-screen. The settings: the few a run is set up with in view and the rest under a searchable **More settings**
-(an option's `level`, a solver's `basic`: kicad2ems API 2.9); under them **Still needed**, what a run of that
-question lacks (`rf_needs`, an analysis's `missing`), each line leading to where it is set. The Run button says
-what it will run, or the first thing missing.
+Docks, as a studio application's: on the left the **Study** (the board and the
+**Questions** asked of it) over the **Settings** of the question selected; in
+the workspace the board, in the Viewer, with the Results and Run pages under it.
+Each dock moves, tabs with others, floats and closes (View brings it back;
+*View > Reset layout* puts all of them where a new window has them), and the
+window opens as it was left, the first time over the whole screen. The settings:
+the few a run is set up with in view and the rest under a searchable **More
+settings** (an option's `level`, a solver's `basic`); under them **Still
+needed**, what a run of that question lacks (`rf_needs`, an analysis's
+`missing`), each line leading to where it is set. The Run button says what it
+will run, or the first thing missing.
 
 ## The study
 
-The left column is the study: the board (one for every question) and the **Questions** asked of it; the
-settings of the question selected there are the Settings dock. The list is kicad2ems's (`kicad2ems.core.api.frontend.study_tree`): the
-questions by group (RF, Power, Thermal), each with the engines installed that answer it. A row's *Answered by*
-cell is a menu: *auto*, or a tick per engine, and several ticked all run and are compared; *Fields* asks for its
-field dumps where an engine can write them. The three RF questions are kicad2ems's own run, with the solvers
-ticked on those rows. The others' engines are the analysis plugins installed (`kicad2ems --check` lists them):
-each one's settings are a panel made from the options its plugin declares, with what else it offers: Near
-field's *Find converters*, which lists the board's converters to pick from, and, after a run, what its result
-proposes for another question. A near field's: *Copy the input rail to Power integrity* and *Open U702 as a
-circuit* (the converter in the Circuit editor, its capacitors and inductor from the board); a circuit's: *Copy
-the rail +5V and what is drawn from it to Power integrity* (its loads' currents and their spectra, for the
-ripple on the rail) and *Copy U702's input current to Near field*. A click fills that question's settings, ticks
-it so that Run includes it, and shows it. None installed: those rows are greyed, and say how to install an
-engine.
+The left column is the study: the board (one for every question) and the
+**Questions** asked of it; the settings of the question selected there are the
+Settings dock. The list is kicad2ems's
+(`kicad2ems.core.api.frontend.study_tree`): the questions by group (RF, Power,
+Thermal), each with the engines that answer it. A row's *Answered by* cell is a
+menu: *auto*, or a tick per engine, and several ticked all run and are compared;
+*Fields* asks for its field dumps where an engine can write them. The three RF
+questions are kicad2ems's own run, with the solvers ticked on those rows. The
+others' engines are the analyses (`kicad2ems --check` lists them): each one's
+settings are a panel made from the options its Analysis declares, with what else
+it offers: Near field's *Find converters*, which lists the board's converters to
+pick from, and, after a run, what its result proposes for another question. A
+near field's: *Copy the input rail to Power integrity* and *Open U702 as a
+circuit* (the converter in the Circuit editor, its capacitors and inductor from
+the board); a circuit's: *Copy the rail +5V and what is drawn from it to Power
+integrity* (its loads' currents and their spectra, for the ripple on the rail)
+and *Copy U702's input current to Near field*. A click fills that question's
+settings, ticks it so that Run includes it, and shows it. A question no engine
+answers is greyed.
 
 **Several rails.** An analysis a study may hold several of (its `several`: pcbqs's rail tool) shows what differs
 between them as a table at the top of its settings (`several_keys`: the rail, its volts, source, ground source,
@@ -89,12 +104,15 @@ and written back when it is saved. A config that names no analyses is an S-param
 the installed analyses ship: Circuits). A circuit to start from is an example like any other: it opens as a study
 with its board, its model on the Circuit page and the circuit ticked.
 
-Filter Synthesis opens from the toolbar's Filter, in a window of its own. The **Circuit** page, the
-one analysis with an editor of its own, is a tab beside the board while Circuit is asked. It is the model's editor only (its
-schematic, its JSON): the model is a file the config names, saved back beside the config with the study. The
-circuit's settings are a panel in the Settings dock like any analysis's, made from the plugin's options
-(`kicad2ems.pcbqs.circuit --describe`), with a *Model* section for the model's parameters and sweep. Its results are on the Plots, Report and Tables pages and its log on the Log page, as every
-analysis's.
+Filter Synthesis opens from the toolbar's Filter, in a window of its own. The
+**Circuit** page, the one analysis with an editor of its own, is a tab beside
+the board while Circuit is asked. It is the model's editor only (its schematic,
+its JSON): the model is a file the config names, saved back beside the config
+with the study. The circuit's settings are a panel in the Settings dock like any
+analysis's, made from the analysis's options (`kicad2ems.pcbqs.circuit
+--describe`), with a *Model* section for the model's parameters and sweep. Its
+results are on the Plots, Report and Tables pages and its log on the Log page,
+as every analysis's.
 
 ## Install
 
@@ -102,8 +120,7 @@ analysis's.
 
     kicad2ems-gui [config.toml]                         # or: python -m kicad2ems.gui
 
-It needs PySide6, pyqtgraph and PyOpenGL (installed with it), and kicad2ems 0.3.0 or later (its API 2.11). The
-analyses need pcbqs 0.3.0 or later (`kicad2ems[qs]`).
+It needs PySide6, pyqtgraph and PyOpenGL (installed with it).
 
 ## Inside
 
@@ -113,7 +130,7 @@ analyses need pcbqs 0.3.0 or later (`kicad2ems[qs]`).
 | `setuptab.py`, `runtab.py`, `resultstab.py` | the study and the settings of what is selected in it; the Log page (the runs and their logs); the Plots page (S-parameter, antenna and curve plots) |
 | `study.py` | the study with no window (no Qt): the runs a board can have (the solvers', then each analysis), what follows what, and `StudyModel`: what is asked, who answers each question, the Fields ticks, what cannot run here, each run's state |
 | `studytree.py` | the list in the Study dock, the model's view: a row per question, who answers it, its Fields tick and its state |
-| `analysispanel.py` | an analysis's settings and its run, for any plugin: the form from its options, its command as a child process |
+| `analysispanel.py` | an analysis's settings and its run, for any analysis: the form from its options, its command as a child process |
 | `curves.py`, `curveplot.py` | an analysis's curves on the Plots page (a rail's impedance, a spectrum, waveforms), other runs over them |
 | `reportview.py` | an analysis's report: the Report page to read, the Tables page's tables to sort, copy and export |
 | `startpage.py` | the Start page: open a board, a config or a results folder; the examples as tiles, their boards drawn in a thread and kept in the cache folder |
@@ -127,11 +144,11 @@ analyses need pcbqs 0.3.0 or later (`kicad2ems[qs]`).
 | `fieldtab.py`, `antennatab.py`, `steering.py` | field maps, antenna results, beam steering |
 | `filtertab.py` | the Filter page (dfsynth) |
 | `impedance.py` | Tools > Impedance calculator: a stack-up's Z0 and the width of a target (kicad2ems's `lines.calc`) |
-| `powercircuittab.py`, `schematicview.py` | the Circuit page: the circuit analysis's model as a schematic to edit; its settings panel (the plugin's options, and the model's own values) |
+| `powercircuittab.py`, `schematicview.py` | the Circuit page: the circuit analysis's model as a schematic to edit; its settings panel (the analysis's options, and the model's own values) |
 | `toolprocess.py` | a tool as a child process (an analysis's command, dfsynth) |
 | `systempanel.py`, `statusbar.py`, `meters.py` | what this machine can run, memory, estimates |
 | `panels.py` | a collapsible section, the Still-needed list, an image panel, a row of controls that wraps |
-| `api.py` | what other packages may use (the KiCad plugin): `PlanView`, `SectionView`, `API_VERSION` |
+| `api.py` | what the other parts may use (the KiCad plugin): `PlanView`, `SectionView` |
 
 ## The analyses' pages
 
@@ -167,11 +184,14 @@ simulation JSON, not the KiCad source file.
 
     python -m pytest
 
-They use kicad2ems's fixtures, example boards and stand-in solvers from a kicad2ems checkout (`KICAD2EMS_SRC`,
-default `../kicad2ems`), and run the window offscreen. The analyses are stand-ins too (`tests/fake_analyses.py`:
-the same names as pcbqs's, each a few lines with a tool that writes a small result), so the window is tested as
-the host of any plugin; `tests/test_real_analyses.py` runs pcbqs's own through it when pcbqs is installed. kicad2ems's `tools/test_all.sh` runs them with the rest.
-`python tools/gui/readme_media.py` makes kicad2ems's README and GUI-page pictures from its examples.
+They use kicad2ems's fixtures, example boards and stand-in solvers from a
+kicad2ems checkout (`KICAD2EMS_SRC`, default `../kicad2ems`), and run the window
+offscreen. The analyses are stand-ins too (`tests/fake_analyses.py`: the same
+names as pcbqs's, each a few lines with a tool that writes a small result), so
+the window is tested as the host of any analysis; `tests/test_real_analyses.py`
+runs pcbqs's own through it. kicad2ems's `tools/test_all.sh` runs them with the
+rest. `python tools/gui/readme_media.py` makes kicad2ems's README and GUI-page
+pictures from its examples.
 
 ## Licence
 

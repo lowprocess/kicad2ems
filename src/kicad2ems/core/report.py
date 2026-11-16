@@ -461,7 +461,7 @@ def _solver_section(sm, name, base):
         ], rows, num=(1, 2, 3, 4, 5))
     modes = so.get('modes')
     if modes:
-        # its resonances (Result.info['modes'], API 2.13: dict(about,
+        # its resonances (Result.info['modes']: dict(about,
         # rows=[dict(mode, f_ghz, Q, q_ext={port: Q}, kind)])): a row a mode,
         # each port's external Q in a column of its own, `kind` (where it is
         # none) last

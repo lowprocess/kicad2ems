@@ -310,15 +310,7 @@ def sweep(board, grid, points=31, tol=2e-3, log=print, **kw):
         r = solve(board, grid, log=log, **kw)
         r['info']['sweep'] = dict(solves=len(grid), converged=True, change=0.0)
         return dict(r, grid=grid, S_grid=r['S'])
-    try:
-        from kicad2ems.emsdev.afs import adaptive_sweep
-    except ImportError as e:  # an emsdev from before it had the sweep
-        raise RuntimeError(
-            f"pcbqs's sweep needs emsdev.afs ({e}): reinstall emsdev (pip "
-            "install --force-reinstall "
-            "https://github.com/lowprocess/emsdev/archive/refs/tags/"
-            "v0.3.1.zip)"
-        ) from None
+    from kicad2ems.emsdev.afs import adaptive_sweep
     m = model(board, grid.max(), log=log, **kw)
     log(f"sparams: {len(m['ports'])} port(s) driven in turn, at most {points} "
         f"of {len(grid)} frequencies, where a rational model is least sure; " +

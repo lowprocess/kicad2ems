@@ -1,13 +1,11 @@
 """
-The API of an analysis plugin: the Analysis interface (kicad2ems.core.analyses
+The API of an analysis: the Analysis interface (kicad2ems.core.analyses
 explains it) and what an analysis needs to write its maps where a front end's
 viewer reads a run's.
 
     from kicad2ems.core.api.analysis import Analysis
 
     class Thermal(Analysis):
-        api = (2, 6)                # the kicad2ems.core.api version it is
-                                    # written against (API_VERSION)
         provides = ('thermal',)     # the questions it answers
                                     # (kicad2ems.core.study)
         name, label, tool = 'thermal', 'Thermal', 'mypackage.thermal'
@@ -15,19 +13,20 @@ viewer reads a run's.
         ...
 
   the interface      Analysis, KINDS (the kinds of an option), RF (the
-                     S-parameter run's key: taken), API_VERSION
+                     S-parameter run's key: taken)
   questions          Question, QUESTIONS (kicad2ems.core.study: what an analysis
-                     `provides`; a plugin's own for what kicad2ems has none for)
-                     (2.6)
+                     `provides`; an analysis's own for what kicad2ems has none
+                     for)
   the registry       registry ({name: Analysis}), analysis_of (whose result a
                      folder holds)
   maps for a viewer  Dump, write_info, write_npz (field dumps:
                      <out>/<name>/exc_<what>/, as a solver's), save_mesh
 
 An analysis runs as a command of its own (Analysis.command) and may be used
-without kicad2ems; its plugin class is the only part that imports this module.
+without kicad2ems; its Analysis class is the only part that imports this
+module.
 """
-from . import API_VERSION, lazy  # noqa: F401
+from . import lazy
 
 NAMES = dict(
     Analysis='.analyses:Analysis',
@@ -42,5 +41,5 @@ NAMES = dict(
     write_npz='.fields.frames:write_npz',
     save_mesh='.meshes:save',
 )
-__all__ = ['API_VERSION', *NAMES]
+__all__ = list(NAMES)
 __getattr__, __dir__ = lazy(__name__, NAMES)

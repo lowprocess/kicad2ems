@@ -1,16 +1,15 @@
-"""pcbqs's own analysis plugins through the window the other tests drive with
+"""pcbqs's own analyses through the window the other tests drive with
 stand-ins: its settings panels made from its options, a circuit example opened
 from File > Examples as a study, the circuit and then the temperature run for
-real, their results where every result is shown. Skipped without pcbqs (or
-ngspice)."""
+real, their results where every result is shown. Skipped without
+ngspice."""
 import os
 import time
 
 import pytest
 from waiting import wait_until
 
-A = pytest.importorskip('kicad2ems.pcbqs.analyses',
-                        reason='pcbqs is not installed')
+from kicad2ems.pcbqs import analyses as A
 
 
 @pytest.fixture

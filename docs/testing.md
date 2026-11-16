@@ -14,12 +14,15 @@ kicad2ems's own tests run on stand-in solvers (`tests/standins.py`), whatever is
 solver packages and give the same result on every machine. Tests that need an optional package are skipped without
 it: scikit-rf, h5py, qucsator, PySide6 for the GUI, PyOpenGL for the 3D view.
 
-`tools/test_all.sh` runs each package's suite from its checkout (`../kicad2ems-gui`, `../kicad2ems-fdtd`, `../mom25d`,
-`../gfdtd`, or `KICAD2EMS_GUI_SRC`, `KICAD2EMS_FDTD_SRC`, `MOM25D_SRC`, `GFDTD_SRC`), so the GUI and the real plugins
-are tested against this checkout. It uses `$PYTHON`, the active venv or this checkout's `.venv`, warns when that
-Python imports a package from somewhere other than its checkout, and keeps your settings out (a scratch
-`XDG_CONFIG_HOME`, the GUI offscreen). `--core` runs kicad2ems's suite alone, `--openems` adds openEMS to the
-conformance test, and arguments after `--` go to every pytest (`tools/test_all.sh -- -x -k antenna`). kicad2ems-ipc,
+`tools/test_all.sh` runs each package's suite from its checkout
+(`../kicad2ems-gui`, `../kicad2ems-fdtd`, `../mom25d`, `../gfdtd`, or
+`KICAD2EMS_GUI_SRC`, `KICAD2EMS_FDTD_SRC`, `MOM25D_SRC`, `GFDTD_SRC`), so the
+GUI and the real solvers are tested against this checkout. It uses `$PYTHON`,
+the active venv or this checkout's `.venv`, warns when that Python imports a
+package from somewhere other than its checkout, and keeps your settings out (a
+scratch `XDG_CONFIG_HOME`, the GUI offscreen). `--core` runs kicad2ems's suite
+alone, `--openems` adds openEMS to the conformance test, and arguments after
+`--` go to every pytest (`tools/test_all.sh -- -x -k antenna`). kicad2ems-ipc,
 dfsynth and emsdev run their own (`python -m pytest` in each).
 
 ## What is covered
@@ -30,15 +33,17 @@ dfsynth and emsdev run their own (`python -m pytest` in each).
 | the board model: region, parts, edge walls | `test_board.py`, `test_region.py`, `test_parts.py`, `test_edges.py` |
 | the line model, its field solver and circuit solvers | `test_tlines.py`, `test_coupled.py`, `test_xsection.py`, `test_fastsolve.py` |
 | fields, antennas, phased drives | `test_fields.py`, `test_dumps.py`, `test_antenna.py`, `test_phased.py` |
-| settings, the command line, solver choice, plugins, the APIs and files | `test_cli.py`, `test_solvers.py`, `test_plugins.py`, `test_api.py`, `test_formats.py`, `test_sitecfg.py` |
+| settings, the command line, solver choice, the registries, the APIs and files | `test_cli.py`, `test_solvers.py`, `test_solver_registry.py`, `test_registry_lists.py`, `test_api.py`, `test_formats.py`, `test_sitecfg.py` |
 | runs started by another program, the report, meshes, the installer | `test_runs.py`, `test_report.py`, `test_meshes.py`, `test_install.py` |
 | boards with a known answer, on the real solvers | `test_conformance.py` |
 
-The solver plugins' tests are in their packages: the FDTD layer (mesh, model, runs, dielectrics, antenna runs,
-progress, parity, the pipeline with canned runs, the preview, openEMS's import check, `openems_venv`, `--converge`,
-gfdtd's connection) in kicad2ems-fdtd; the mom25d and mixed plugins, their parity and mesh file in mom25d
-(`test_kicad2ems*.py`); gfdtd's engine in gfdtd; the window (the form, the pages offscreen, the 3D view's arrays) in
-kicad2ems-gui, on the same stand-in solvers.
+The solvers' tests are in their parts' folders: the FDTD layer (mesh, model,
+runs, dielectrics, antenna runs, progress, parity, the pipeline with canned
+runs, the preview, openEMS's import check, `openems_venv`, `--converge`, gfdtd's
+connection) in kicad2ems-fdtd; the mom25d and mixed solvers, their parity and
+mesh file in mom25d (`test_kicad2ems*.py`); gfdtd's engine in gfdtd; the window
+(the form, the pages offscreen, the 3D view's arrays) in kicad2ems-gui, on the
+same stand-in solvers.
 
 `test_conformance.py` is the one test that runs the real solver packages, each run `python -m kicad2ems` in a
 process of its own; a solver that is not installed or not usable is skipped. It runs openEMS only with
@@ -57,11 +62,13 @@ from this checkout):
 
 A fixture's name must not start with `_`: `import *` leaves those out, so the solver packages would not get it.
 
-`tests/standins.py` holds the stand-in solvers, which `tests/conftest.py` puts in place of the installed ones before
-anything reads the registry: `openems` and `gfdtd` (kicad2ems-fdtd's real plugin class on a stand-in engine;
-`standins.engine_check` is their import check), and `mom25d`, which refuses gap ports and boards without a ground
-plane, as mom25d does, and solves to a canned thru (`standins.solve` and `standins.status` can be replaced in a
-test). They keep the real solvers' names, labels, order and the settings the tests use.
+`tests/standins.py` holds the stand-in solvers, which `tests/conftest.py` puts
+in place of the installed ones before anything reads the registry: `openems` and
+`gfdtd` (kicad2ems-fdtd's real solver class on a stand-in engine;
+`standins.engine_check` is their import check), and `mom25d`, which refuses gap
+ports and boards without a ground plane, as mom25d does, and solves to a canned
+thru (`standins.solve` and `standins.status` can be replaced in a test). They
+keep the real solvers' names, labels, order and the settings the tests use.
 
 ## Checking against openEMS
 

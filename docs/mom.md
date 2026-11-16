@@ -311,13 +311,16 @@ mesh (`tools/zone_study.py`, `tools/quad_configs_study.py` in mom25d).
 <a id="mixed"></a>
 ## The mixed solver: long lines as transmission lines
 
-`--solvers mixed` (`mom25d/kicad2ems/mixed.py` in mom25d) is mom25d with the middle of each long straight run of
-signal trace cut out of the board and put back as a transmission line. mom25d solves the rest with a de-embedded
-wave port on each face of each cut; each cut becomes a line of its own cross-section's γ and Zc, joined into
-mom25d's network. A stretch is cut only where no other signal copper comes within 3 widths or 4 heights of it,
-not through vias, parts or ports, keeping the straight feed each wave port needs down to `fmin`; a cut is at least
-`--mixed-cut` mm long (3). It uses mom25d's mesh and board options (`--mom-planes`, `--mom-stitching-pads`,
-`--mom-coarsen`, `--mom-quad-tol`, `--diel`; since 2026-11-14: before, the board as mom25d's defaults have it).
+`--solvers mixed` (`mom25d/solvers/mixed.py`) is mom25d with the middle of each
+long straight run of signal trace cut out of the board and put back as a
+transmission line. mom25d solves the rest with a de-embedded wave port on each
+face of each cut; each cut becomes a line of its own cross-section's γ and Zc,
+joined into mom25d's network. A stretch is cut only where no other signal copper
+comes within 3 widths or 4 heights of it, not through vias, parts or ports,
+keeping the straight feed each wave port needs down to `fmin`; a cut is at least
+`--mixed-cut` mm long (3). It uses mom25d's mesh and board options
+(`--mom-planes`, `--mom-stitching-pads`, `--mom-coarsen`, `--mom-quad-tol`,
+`--diel`; since 2026-11-14: before, the board as mom25d's defaults have it).
 
 On rf_stripline (with `--mom-zone on`) one 12.5 mm stretch is cut, 5,069 unknowns to 4,335, and S21 matches
 mom25d's within 0.5° to 10 GHz. **Current dumps** work: on the cut stretch the trace current comes from the line's

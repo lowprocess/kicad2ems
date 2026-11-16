@@ -33,9 +33,10 @@ The last two have no fast solver in the tool: they supply what it otherwise take
 
 ## As engines of a kicad2ems study
 
-kicad2ems lists what can be asked of a board as questions, each with the engines that answer it
-(`kicad2ems.core.study`, `kicad2ems --check`). Five of the tools here register as engines (`analyses.py`, the
-`kicad2ems.core.analyses` entry points), beside the faster ones:
+kicad2ems lists what can be asked of a board as questions, each with the engines
+that answer it (`kicad2ems.core.study`, `kicad2ems --check`). Five of the tools
+here are engines (`analyses.py`, listed in `kicad2ems.core.analyses.ANALYSES`),
+beside the faster ones:
 
 | Question | Engine here | Beside |
 |---|---|---|
@@ -44,10 +45,12 @@ kicad2ems lists what can be asked of a board as questions, each with the engines
 | capacitance between nets | `elmer_cap`, `palace_cap` | |
 | coils and ferrite (their inductances and coupling) | `elmer_mag` | |
 
-A front end builds each one's settings from the tool's own command-line options, runs it as its command and shows
-its report. The nets and the source part can be picked on the board there (the options' `pick`, kicad2ems API 2.11). Asked for the temperature without any heat typed, `elmer_thermal` takes the losses of the latest
-circuit run's heaviest case. Each result says which tool wrote it, so a `thermal.json` of Elmer's is not taken for
-pcbqs's.
+A front end builds each one's settings from the tool's own command-line options,
+runs it as its command and shows its report. The nets and the source part can be
+picked on the board there (the options' `pick`). Asked for the temperature
+without any heat typed, `elmer_thermal` takes the losses of the latest circuit
+run's heaviest case. Each result says which tool wrote it, so a `thermal.json`
+of Elmer's is not taken for pcbqs's.
 
 ## Elmer: DC IR drop
 
@@ -136,10 +139,11 @@ from the outline, inside the board, and an earlier model builder dropped any she
 volume, so the walls with them. `tests/test_palace.py` holds one now, and a run's record (`*_run.json`) says
 whether the model has its walls (`edge_walls`).
 
-Palace can save the fields too: `Solver.Driven.Save` (frequencies) or `SaveStep` writes ParaView files with E,
-B, the energy densities and the Poynting vector in the volume, and the surface current and charge on the
-boundaries (86 MB a frequency on a 61,000-tetrahedron model). The plugin does not ask for them yet, so the
-tool's field-dump settings do nothing here.
+Palace can save the fields too: `Solver.Driven.Save` (frequencies) or `SaveStep`
+writes ParaView files with E, B, the energy densities and the Poynting vector in
+the volume, and the surface current and charge on the boundaries (86 MB a
+frequency on a 61,000-tetrahedron model). The solver does not ask for them yet,
+so the tool's field-dump settings do nothing here.
 
 ### Antenna mode
 
@@ -241,11 +245,12 @@ Palace is not on PyPI. `run.py` finds it as
   Apptainer image of Palace 0.18.1 (gds2palace's `palace_0181`) unpacked this way, since there is no root
   for Apptainer.
 
-The tools here were written against Palace 0.18.1. The Spack build is of the newest release, and 0.19.0 built
-that way (72 packages, about an hour at 8 jobs, 2.3 GB) runs them too: kicad2ems's `rf_crosstalk` through the
-plugin gives the crosstalk of mom25d with lumped ports and of the line model (NEXT -31.0 dB at 1 GHz, FEXT
--17.2 dB at 6 GHz; mom25d -31.7 and -17.5 dB), 103,000 tetrahedra in 6 minutes. `PALACE_TAG=v0.18.1` builds the
-older one.
+The tools here were written against Palace 0.18.1. The Spack build is of the
+newest release, and 0.19.0 built that way (72 packages, about an hour at 8 jobs,
+2.3 GB) runs them too: kicad2ems's `rf_crosstalk` through the solver gives the
+crosstalk of mom25d with lumped ports and of the line model (NEXT -31.0 dB at 1
+GHz, FEXT -17.2 dB at 6 GHz; mom25d -31.7 and -17.5 dB), 103,000 tetrahedra in 6
+minutes. `PALACE_TAG=v0.18.1` builds the older one.
 
 ### Settings
 

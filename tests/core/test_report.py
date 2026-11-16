@@ -67,7 +67,7 @@ def test_the_plot_takes_as_many_solvers_as_ran():
 
 
 def test_a_solvers_resonances_are_a_table(tmp_path):
-    """API 2.13: Result.info['modes'] (Palace's --palace-modes) is a table in
+    """Result.info['modes'] (Palace's --palace-modes) is a table in
     the solver's section, a column per port's external Q, a damped feed line
     said as such."""
     sm = _summary(tmp_path)

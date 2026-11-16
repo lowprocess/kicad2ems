@@ -1,5 +1,5 @@
 """
-mom25d as a kicad2ems solver plugin: the board of the run (Board.to_dict(), the
+mom25d as a kicad2ems solver: the board of the run (Board.to_dict(), the
 content of <name>_board.json) solved by mom25d, which reads that format itself.
 
     S, names, zref, info = solve(board, freq, dmax=0.3)
@@ -69,7 +69,7 @@ def mom25d_status():
 
 
 def run_finish(run):
-    """The run's surface finish (kicad2ems.core.api 2.4: resolve_finish), or
+    """The run's surface finish (kicad2ems.core.api's resolve_finish), or
     None."""
     fin = getattr(run, 'finish', None)
     if fin is not None or not getattr(run.s, 'sigma', None):
@@ -420,11 +420,10 @@ def mesh_convergence(Sa, Sb, names=None, floor=0.01):
 
 
 class MoM25D(Solver):
-    api = (2, 9)  # kicad2ems.core.api (2.3: the roughness row; 2.9: basic)
     name, aliases, label = 'mom25d', ('mom',), 'mom25d (MoM)'
     # order: after openEMS in kicad2ems's lists
     consumes, previewed, rank, order = 'board', False, 1, 20
-    # what a run is set up with, of its options (kicad2ems 2.9: Solver.basic)
+    # what a run is set up with, of its options (Solver.basic)
     basic = ('mom_dmax',)
     capabilities = dict(
         ports='yes: lumped, or de-embedded wave ports on a long enough feed',
@@ -1170,7 +1169,7 @@ class MoM25D(Solver):
             return
         from kicad2ems.core.api.solver import DumpSource, save_fd_outputs
         tag = self.name
-        # dump_port may be supplied by the optional FDTD plugin. MoM alone
+        # dump_port: the FDTD solvers' setting, where they are. MoM alone
         # still supports its default (first-port) current/near-field dumps.
         for port, d in current_dumps(
                 run, held, [f * 1e9 for f in run.s.mom_dump],

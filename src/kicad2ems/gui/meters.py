@@ -21,11 +21,8 @@ def ram(meminfo='/proc/meminfo'):
     (what other programs can still have). None where neither /proc/meminfo,
     Windows nor sysconf can tell."""
     if sys.platform == 'win32':
-        try:
-            from kicad2ems.emsdev.memory import windows_status
-            st = windows_status()
-        except ImportError:  # an emsdev from before it
-            st = None
+        from kicad2ems.emsdev.memory import windows_status
+        st = windows_status()
         return ((st[0] - st[1]) / 1e9, st[0] / 1e9) if st else None
     try:
         kb = {}

@@ -1,33 +1,23 @@
 """
-gfdtd as a kicad2ems solver plugin and FDTD engine (engines.py): the FDTD model
-(plugin.py) solved by gfdtd's engine (the GPU via CuPy or Vulkan, its compiled
+gfdtd as a kicad2ems solver and FDTD engine (engines.py): the FDTD model
+(solver.py) solved by gfdtd's engine (the GPU via CuPy or Vulkan, its compiled
 CPU core, or numpy) through its CSXCAD / openEMS interface. The board, the mesh
 (--res, --fine, --nz, ...), the ports, the parts and the end criteria are the
 FDTD settings shared with openEMS; only the engine differs. Runs go to
 <out>/gfdtd/exc_<port>, the CSX file to <name>_gfdtd.xml (also runnable with
 `python -m kicad2ems.gfdtd`), the antenna results to <name>_gfdtd_antenna.json.
 
---sigma: openEMS's conducting-sheet model on gfdtd's engine API 1.1 or later
-(LOSS_API); before that its copper is PEC, and --solvers auto gives --sigma runs
-to openEMS. --rough: the sheets' own (Hammerstad, a wideband fit) from engine
-API 1.2 (ROUGH_API), else as the conductivity at the band centre, as openEMS.
---converge: the FDTD layer's mesh levels, run on gfdtd.
+--sigma: openEMS's conducting-sheet model; --rough and --finish: the sheets' own
+(Hammerstad, a wideband fit); --converge: the FDTD layer's mesh levels, run on
+gfdtd.
 """
 import json
 import os
 
-from kicad2ems.core.api.solver import Option, AUTO
-from .plugin import FDTD, MESH, RUN, CONVERGE
+from kicad2ems.core.api.solver import Option
+from .solver import FDTD, MESH, RUN, CONVERGE
 
 G = 'gfdtd'                                     # its section in kicad2ems's GUI
-# the gfdtd API this connection is written against (gfdtd.API_VERSION)
-ENGINE_API = (1, 0)
-# from this gfdtd API on, conducting sheets are lossy (openEMS's model)
-LOSS_API = (1, 1)
-# ... and rough (ConductingSheet(roughness=), a wideband fit)
-ROUGH_API = (1, 2)
-# ... and finished, and thick copper's faces (finish=, face=)
-FINISH_API = (1, 3)
 # gfdtd's speed over openEMS's estimate (24 threads), per backend: the examples'
 # runs on an RX 7800 XT and an i7-13700K, 8-20x on the GPU and 2-2.3x on the
 # core (docs/gfdtd.md#speed); numpy ~10x slower than openEMS. Vulkan runs the
@@ -38,10 +28,8 @@ GPU_BACKENDS = ('cupy', 'vulkan')
 
 
 class GFDTD(FDTD):
-    # kicad2ems.core.api (2.4: resolve_finish, the finish row; 2.9: basic)
-    api = (2, 9)
     name, aliases, label = 'gfdtd', ('gpu-fdtd',), 'gfdtd (GPU FDTD)'
-    # auto: picked over openEMS where it can (no --drive; --sigma: LOSS_API)
+    # auto: picked over openEMS where it can (no --drive)
     in_auto = True
     # --solvers all: openEMS's model again, named on its own
     in_all = False
@@ -49,15 +37,12 @@ class GFDTD(FDTD):
     order = 40  # after openEMS and mom25d in kicad2ems's lists
     tag = '_gfdtd'
     capabilities = dict(
-        FDTD.capabilities, conductor_loss=
-        "yes: openEMS's conducting-sheet model (gfdtd's engine API 1.1 or "
-        "later; PEC before)",
-        roughness=
-        "yes: Hammerstad over the band, a wideband fit of the sheets (gfdtd's "
-        "engine API 1.2 or later; else at the band centre)", finish=
+        FDTD.capabilities,
+        conductor_loss="yes: openEMS's conducting-sheet model",
+        roughness="yes: Hammerstad over the band, a wideband fit of the sheets",
+        finish=
         "yes with --thickness on: the outer faces' own sheets, a wideband fit; "
-        "else the outer layers' sheets weighted by the strip's finished share "
-        "(gfdtd's engine API 1.3 or later; else at the band centre)",
+        "else the outer layers' sheets weighted by the strip's finished share",
         dispersion='yes: fitted at mid-band, or wideband Debye',
         antenna='yes (a phased drive: a run per driven port)')
     options = (MESH + CONVERGE + RUN + [
@@ -94,40 +79,12 @@ class GFDTD(FDTD):
             gui='Time step', group=G),
     ])
 
-    @property
-    def conductor_loss(self):
-        """--sigma reaches the model (conducting sheets) only when the installed
-        gfdtd models their loss."""
-        return has_conductor_loss()
-
-    @property
-    def roughness(self):
-        """--rough as the sheets' own roughness when the installed gfdtd has it
-        (ROUGH_API)."""
-        return has_conductor_loss(ROUGH_API)
-
-    @property
-    def finish_wideband(self):
-        """--finish as the sheets' own (a wideband fit) when the installed gfdtd
-        has it (FINISH_API)."""
-        return has_conductor_loss(FINISH_API)
-
-    @property
-    def face_sheets(self):
-        return has_conductor_loss(FINISH_API)
+    # --rough and --finish as the sheets' own (a wideband fit), thick copper's
+    # sheets marked as its faces
+    roughness = finish_wideband = face_sheets = True
 
     def check(self, s=None):
-        try:
-            from kicad2ems.gfdtd.engine import gpu_info, core_info
-        except ImportError as e:
-            return (
-                False,
-                f"gfdtd cannot be imported ({e}): gfdtd is part of kicad2ems "
-                "(kicad2ems.gfdtd): reinstall kicad2ems"
-            )
-        why = engine_compatible()
-        if why:
-            return False, why
+        from kicad2ems.gfdtd.engine import gpu_info, core_info
         gpu, what = gpu_info()
         want = getattr(s, 'gfdtd_backend', 'auto') if s is not None else 'auto'
         if want == 'gpu' and not gpu:
@@ -165,24 +122,12 @@ class GFDTD(FDTD):
             return ok, [what]
         from kicad2ems import gfdtd
         return (ok, [
-            f"gfdtd {gfdtd.__version__} ({os.path.dirname(gfdtd.__file__)}), "
-            f"engine API {'.'.join(map(str, gfdtd.API_VERSION))}", what
+            f"gfdtd {gfdtd.__version__} ({os.path.dirname(gfdtd.__file__)})",
+            what
         ])
 
     def validate(self, s):
         return self.validate_converge(s)
-
-    def assess(self, run):
-        """Named, gfdtd runs without what it lacks (with a note, prepare); for
-        auto, those runs are openEMS's."""
-        if AUTO not in run.plan:
-            return []
-        s = run.s
-        return [
-            f"{what}: openEMS's" for what, on in (
-                ("--sigma (this gfdtd's copper is PEC: update gfdtd)",
-                 s.sigma and not self.conductor_loss), ) if on
-        ]
 
     def estimate(self, run):
         """openEMS's estimate (the same mesh and timesteps), at gfdtd's speed on
@@ -249,10 +194,6 @@ class GFDTD(FDTD):
     def prepare(self, run):
         p = super().prepare(run)
         s = run.s
-        for what, on in (("--sigma (this gfdtd's copper is PEC: update gfdtd)",
-                          s.sigma and not self.conductor_loss), ):
-            if on:
-                run.log(f"gfdtd: {what} not supported yet - ignored")
         self.summary(run)['backend'] = s.gfdtd_backend
         # (R-D6; workers inherit it)
         os.environ['GFDTD_TIMESTEP'] = (getattr(s, 'gfdtd_timestep', 'auto')
@@ -275,11 +216,7 @@ def gpu_slots(spec, runs):
     spec = str(spec or '').strip().lower()
     if not spec:
         return None
-    try:
-        from kicad2ems.gfdtd.engine import vulkan_gpus
-    except ImportError:
-        raise ValueError(
-            "--gfdtd-gpus needs a gfdtd with vulkan_gpus (update gfdtd)")
+    from kicad2ems.gfdtd.engine import vulkan_gpus
     usable = [k for k, _ in vulkan_gpus()]
     if spec == 'all':
         picked = usable
@@ -381,45 +318,10 @@ LABEL = 'gfdtd'    # the engine's name in kicad2ems's log
 IN_THREADS = True  # one process: the runs share the GPU (a stream each)
 
 
-def engine_compatible():
-    """None when the installed gfdtd's API (gfdtd.API_VERSION) is one this
-    connection can use: the major version of ENGINE_API and at least its minor.
-    Else why not, and which package to update."""
-    from kicad2ems import gfdtd
-    want = '.'.join(map(str, ENGINE_API))
-    have = getattr(gfdtd, 'API_VERSION', None)
-    if have is None:
-        return (f"gfdtd {gfdtd.__version__} has no API version (before "
-                f"261028-r1): update gfdtd (kicad2ems-fdtd wants {want})")
-    have = tuple(have)
-    if have[0] == ENGINE_API[0] and have[1] >= ENGINE_API[1]:
-        return None
-    newer = have[0] > ENGINE_API[0]
-    return (
-        f"gfdtd {gfdtd.__version__} has engine API {'.'.join(map(str, have))}, "
-        f"kicad2ems-fdtd is written for {want}: update "
-        f"{'kicad2ems-fdtd' if newer else 'gfdtd'}")
-
-
-def has_conductor_loss(need=LOSS_API):
-    """The installed gfdtd models conducting sheets' loss (engine API LOSS_API
-    or later, same major; need: another API, ROUGH_API for their roughness)."""
-    try:
-        from kicad2ems import gfdtd
-    except ImportError:
-        return False
-    have = tuple(getattr(gfdtd, 'API_VERSION', (0, 0)))
-    return have[0] == need[0] and have >= need
-
-
 def api(backend=''):
     """(ContinuousStructure, openEMS) of gfdtd's engine (engines.py) on a
-    backend: gpu, cupy, vulkan, core, numpy or auto. Refuses a gfdtd of another
-    engine API (engine_compatible)."""
+    backend: gpu, cupy, vulkan, core, numpy or auto."""
     import functools
     from kicad2ems import gfdtd
-    why = engine_compatible()
-    if why:
-        raise RuntimeError(why)
     return (gfdtd.ContinuousStructure,
             functools.partial(gfdtd.openEMS, backend=backend or 'auto'))

@@ -1,6 +1,6 @@
 """
 Settings as data: Option (one setting of a run, declared once in config.CORE or
-by a solver plugin) and the converters that turn a config or command-line value
+by a solver) and the converters that turn a config or command-line value
 into a setting.
 
     Option('mom_dmax', 0.3,

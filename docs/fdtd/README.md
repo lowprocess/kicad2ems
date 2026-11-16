@@ -4,15 +4,17 @@
 > repository; the [README](../../README.md#install) has the installer). Its history up to then is in this
 > repository's, and in its own repository. Install lines below that name `.` mean this repository.
 
-The FDTD solvers of [kicad2ems](https://github.com/lowprocess/kicad2ems): [openEMS](https://openems.de) and
-[gfdtd](../gfdtd/README.md), on one shared FDTD model. This package turns kicad2ems's board into a
-rectilinear mesh and an openEMS-style model (the boundaries, the ports and parts, the dielectrics, the field dumps,
-the antenna's far-field box), runs one excitation per port with its end criteria, and reads the results back. Only
-the engine differs between the two solvers. kicad2ems finds them through the `kicad2ems.core.solvers` entry points and
-the package reaches kicad2ems only through `kicad2ems.core.api.solver`.
+The FDTD solvers of [kicad2ems](https://github.com/lowprocess/kicad2ems):
+[openEMS](https://openems.de) and [gfdtd](../gfdtd/README.md), on one shared
+FDTD model. This package turns kicad2ems's board into a rectilinear mesh and an
+openEMS-style model (the boundaries, the ports and parts, the dielectrics, the
+field dumps, the antenna's far-field box), runs one excitation per port with its
+end criteria, and reads the results back. Only the engine differs between the
+two solvers. kicad2ems lists them in `kicad2ems.core.solvers.SOLVERS`, and the
+package reaches kicad2ems only through `kicad2ems.core.api.solver`.
 
-- `plugin.py`: `FDTD`, the solvers' common plugin class, and their shared settings (`MESH`, `RUN`: the GUI's
-  FDTD section)
+- `solver.py`: `FDTD`, the solvers' common class, and their shared settings
+  (`MESH`, `RUN`: the GUI's FDTD section)
 - `mesh.py`, `boundaries.py`, `dielectric.py`, `model.py`: the mesh, the six boundaries, dielectric loss, the
   CSX model (`build_fdtd`)
 - `run.py`, `progress.py`: the runs, their end criteria (port watch) and the progress line
@@ -23,8 +25,7 @@ the package reaches kicad2ems only through `kicad2ems.core.api.solver`.
   an openEMS in another environment (`openems_venv`); `--converge` (`converge.py`) is the FDTD layer's, on either
   engine
 - `gfdtd.py`: the solver `gfdtd` (alias `gpu-fdtd`) on gfdtd's engine: its backends, its speed estimate, its
-  runs at once on the GPU. It is written against gfdtd's API version `ENGINE_API` (gfdtd's `API_VERSION`): a
-  gfdtd of another major version, or an older minor one, is not used, and `kicad2ems --check` says which to update
+  runs at once on the GPU
 
 ## Install
 

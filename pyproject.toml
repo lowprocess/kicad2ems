@@ -60,14 +60,6 @@ gpu-vulkan = ["slangpy>=0.43"]
 # everything but a GPU wheel (one of the gpu-* extras)
 all = ["kicad2ems[fast,gui,fem,core]"]
 test = ["pytest>=7", "pytest-xdist>=3", "scikit-rf>=1.0"]
-# the parts that were packages of their own until 0.4: their extras are still
-# accepted, and bring nothing
-dumps = []
-mom = []
-qs = []
-gfdtd = []
-openems = []
-filter = []
 # openEMS and CSXCAD are not on PyPI: install them from your distribution or
 # build them (tools/build_openems.sh)
 
@@ -87,29 +79,6 @@ kicad2ems-fem-cap = "kicad2ems.fem.palace.cap:main"
 kicad2ems-fem-cap-elmer = "kicad2ems.fem.elmer.cap:main"
 kicad2ems-fem-thermal = "kicad2ems.fem.elmer.thermal:main"
 kicad2ems-fem-mag = "kicad2ems.fem.elmer.mag:main"
-
-# the solvers and analyses, found as any other package's would be
-# (kicad2ems.core.solvers, kicad2ems.core.study)
-[project.entry-points."kicad2ems.solvers"]
-openems = "kicad2ems.fdtd.openems.plugin:OpenEMS"
-gfdtd = "kicad2ems.fdtd.gfdtd:GFDTD"
-mom25d = "kicad2ems.mom25d.kicad2ems.mom:MoM25D"
-mixed = "kicad2ems.mom25d.kicad2ems.mixed:Mixed"
-pcbqs = "kicad2ems.pcbqs.analyses:QuasiStatic"
-palace = "kicad2ems.fem.palace.plugin:Palace"
-
-[project.entry-points."kicad2ems.analyses"]
-pdn = "kicad2ems.pcbqs.analyses:PowerIntegrity"
-mqs = "kicad2ems.pcbqs.analyses:NearField"
-circuit = "kicad2ems.pcbqs.analyses:Circuit"
-thermal = "kicad2ems.pcbqs.analyses:Thermal"
-elmer_dc = "kicad2ems.fem.analyses:ElmerDC"
-elmer_thermal = "kicad2ems.fem.analyses:ElmerThermal"
-elmer_cap = "kicad2ems.fem.analyses:ElmerCap"
-palace_cap = "kicad2ems.fem.analyses:PalaceCap"
-elmer_mag = "kicad2ems.fem.analyses:ElmerMag"
-palace_loop = "kicad2ems.fem.analyses:PalaceLoop"
-palace_pdn = "kicad2ems.fem.analyses:PalacePDN"
 
 [tool.setuptools.dynamic]
 version = {attr = "kicad2ems.__version__"}

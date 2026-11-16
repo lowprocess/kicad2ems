@@ -1,7 +1,7 @@
 """
-kicad2ems-fem's tools as kicad2ems analysis plugins (the 'kicad2ems.analyses'
-entry points of pyproject.toml): they answer questions other engines answer too
-(kicad2ems.core.study), in 3D, so a study can ask the same of two programs and
+kicad2ems.fem's tools as kicad2ems analyses (kicad2ems.core.analyses lists
+them): they answer questions other engines answer too (kicad2ems.core.study),
+in 3D, so a study can ask the same of two programs and
 lay the answers side by side.
 
     elmer_dc       a rail's DC drop                 (python -m
@@ -33,8 +33,6 @@ import sys
 
 from kicad2ems.core.api.analysis import Analysis
 
-# kicad2ems.core.api it is written against: 2.8 figures, 2.11 pick
-API = (2, 11)
 ORDER = ('Coils and plates', 'Nets and loads', 'Heat', 'Air and board', 'Mesh',
          'Solver')
 GROUPS = dict(coil='Coils and plates', plate='Coils and plates',
@@ -47,7 +45,7 @@ GROUPS = dict(coil='Coils and plates', plate='Coils and plates',
               thick='Mesh', order='Solver', np='Solver')
 
 
-# settings a front end may pick on the board (API 2.11)
+# settings a front end may pick on the board
 PICK = dict(net='nets', copper='nets', source='part')
 
 
@@ -104,13 +102,12 @@ def argv(module, options, values, board, out):
 class _Fem(Analysis):
     """One of the package's tools: its module, its parser, the program it needs,
     its result file."""
-    api = API
     module = ''
     program = 'elmer'
 
     def check(self):
         if self.program == 'palace':
-            from .palace.plugin import palace_status
+            from .palace.solver import palace_status
             return palace_status()
         from .elmer.run import found
         return found()

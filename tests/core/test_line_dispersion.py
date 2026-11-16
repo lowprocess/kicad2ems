@@ -136,9 +136,9 @@ def test_qucsator_s_interpolated_solve_is_each_frequency_s_own(case, request):
     assert np.abs(S - T)[ok].max() < 2e-3
 
 
-def test_the_plugin_follows_diel_wideband(transition):
+def test_the_solver_follows_diel_wideband(transition):
     pytest.importorskip('skrf')
-    from kicad2ems.core.solvers.lines.plugin import Scikit
+    from kicad2ems.core.solvers.lines.solver import Scikit
     m, lm = transition
     f = np.linspace(1e9, 8e9, 8)
     said = []

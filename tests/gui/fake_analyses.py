@@ -1,10 +1,10 @@
-"""Stand-ins for the analysis plugins, for the window's tests (as kicad2ems's
+"""Stand-ins for the analyses, for the window's tests (as kicad2ems's
 standins.py is for the solvers): the same names, labels, order and questions as
-pcbqs's four, and a second engine for the temperature as kicad2ems-fem's Elmer
+pcbqs's four, and a second engine for the temperature as kicad2ems.fem's Elmer
 is, so the window is the one a user has, but each a few lines whose "tool"
 (fake_tool.py) writes a small result at once. The window knows no analysis by
-name, so what is tested with these holds for any plugin; test_real_analyses.py
-runs pcbqs's own through the same window.
+name, so what is tested with these holds for any analysis;
+test_real_analyses.py runs pcbqs's own through the same window.
 
     install()                      before kicad2ems.gui is imported
                                    (conftest.py): the registry holds these
@@ -118,7 +118,6 @@ def _temperature_dump(folder, hottest):
 
 
 class _Fake(Analysis):
-    api = (2, 6)
     engine = 'fake'
     OPTIONS = ()
 
@@ -413,19 +412,8 @@ class Thermal3D(Thermal):
 FAKES = (PowerIntegrity, NearField, Circuit, Thermal, Thermal3D)
 
 
-class _EP:
-    def __init__(self, cls):
-        self.name, self.value, self._cls = (cls.name, f"tests:{cls.__name__}",
-                                            cls)
-
-    def load(self):
-        return self._cls
-
-
 def install():
-    """The registry holds the stand-ins (and nothing an installed package
-    registers)."""
-    analyses._entry_points = lambda: [_EP(c) for c in FAKES]
+    """The registry holds the stand-ins (and none of kicad2ems's own)."""
+    analyses.ANALYSES = tuple(f"{__name__}:{c.__name__}" for c in FAKES)
     analyses._registry = None
-    analyses.broken.clear()
     return analyses.registry()

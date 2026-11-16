@@ -75,21 +75,15 @@ def own():
 
 
 def shipped():
-    """{name: its entry} of the examples the installed analyses ship
+    """{name: its entry} of the examples the analyses ship
     (Analysis.examples: dict(name, config, group, title, files)), each with
     source = its analysis; one that reuses a name is left out."""
-    # (absolute: a checkout runs examples/ as a
-    from kicad2ems.core.analyses import registry
-    # package of
-    # its own,
+    # (absolute: a checkout runs examples/ as a package of its own,
     # make_boards.py)
+    from kicad2ems.core.analyses import registry
     out, taken = {}, set(own())
     for a in registry().values():
-        try:
-            entries = list(a.examples())
-        except Exception:  # a broken plugin never stops kicad2ems
-            continue
-        for e in entries:
+        for e in a.examples():
             if (e.get('name') and e['name'] not in taken
                     and os.path.isfile(e.get('config', ''))):
                 out[e['name']] = dict(e, source=a.name)

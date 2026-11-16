@@ -10,12 +10,13 @@ openEMS's models: a script written for openEMS's Python interface runs here by s
 `gfdtd model.xml` runs an openEMS XML file as `openEMS model.xml` does. Neither openEMS nor CSXCAD needs to be
 installed.
 
-On one mid-range GPU gfdtd runs 8–20 times faster than openEMS on a 24-thread CPU; its CPU core about twice as
-fast, and five times with PML and wideband dielectrics ([Speed](#speed)). It was written as a solver for
-[kicad2ems](https://github.com/lowprocess/kicad2ems) (`--solvers gfdtd`), which builds openEMS's model of a board
-and runs it here; the connection lives in [kicad2ems-fdtd](../fdtd/README.md), and gfdtd
-itself knows nothing of kicad2ems. What kicad2ems-fdtd may rely on is versioned: `kicad2ems.gfdtd.API_VERSION` (its
-docstring lists it).
+On one mid-range GPU gfdtd runs 8–20 times faster than openEMS on a 24-thread
+CPU; its CPU core about twice as fast, and five times with PML and wideband
+dielectrics ([Speed](#speed)). It was written as a solver for
+[kicad2ems](https://github.com/lowprocess/kicad2ems) (`--solvers gfdtd`), which
+builds openEMS's model of a board and runs it here; the connection lives in
+[kicad2ems-fdtd](../fdtd/README.md), and gfdtd itself knows nothing of
+kicad2ems. What kicad2ems.fdtd relies on, `kicad2ems.gfdtd`'s docstring lists.
 
 ## Install
 
