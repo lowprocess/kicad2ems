@@ -27,10 +27,7 @@ def compatible(api):
     major, minor = tuple(api or UNVERSIONED)[:2]
     if major == API_VERSION[0] and minor <= API_VERSION[1]:
         return None
-    have = '.'.join(map(str, API_VERSION))
-    if major == API_VERSION[0]:
-        return f"written for kicad2ems API {major}.{minor}, this kicad2ems has {have}: update kicad2ems"
-    return (f"written for kicad2ems API {major}.{minor}, this kicad2ems has {have}: "
+    return (f"written for kicad2ems API {major}.{minor}, this kicad2ems has {'.'.join(map(str, API_VERSION))}: "
             f"{'update the plugin' if major < API_VERSION[0] else 'update kicad2ems'}")
 
 

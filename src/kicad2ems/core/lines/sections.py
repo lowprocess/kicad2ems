@@ -33,12 +33,6 @@ class View:
     eeff: float
 
 
-def _pair(c):
-    """The lines of a coupled leg's pair: it and the next line (the last: the one before)."""
-    k, n = c['index'], len(X.CrossSection.from_dict(c['section']).signals)
-    return (k, k + 1) if k + 1 < n else (k - 1, k)
-
-
 def modes(e):
     """[(key, label)] of the views section e has, best first: a coupled pair's odd mode, else the board's cut."""
     s = e.get('section') or {}
@@ -66,7 +60,8 @@ def solve(e, key=None):
     n = len(xs.signals)
     volts, values = [0.0] * n, {}
     if key in ('odd', 'even'):
-        a, b = _pair(c)
+        k = c['index']                                      # its pair: it and the next line (the last: the one before)
+        a, b = (k, k + 1) if k + 1 < n else (k - 1, k)
         ze, zo, ee, eo = _pair_modes(r.C, r.Ca, a)
         volts[a], volts[b] = 1.0, (-1.0 if key == 'odd' else 1.0)
         z0, eeff = (zo, eo) if key == 'odd' else (ze, ee)

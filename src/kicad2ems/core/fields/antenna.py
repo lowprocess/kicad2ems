@@ -35,6 +35,9 @@ def match_summary(freq, s11, z0):
                 bw10_lo=lo, bw10_hi=hi, bw10=(hi - lo) if lo is not None else None)
 
 
+def _dbi(v):
+    return float(10 * np.log10(v)) if v > 0 else None
+
 
 def gain_table(ff_freq, dmax, prad, p_acc, p_inc):
     """Per recorded frequency: directivity, efficiency, gain and realized gain (linear and dBi)."""
@@ -42,11 +45,9 @@ def gain_table(ff_freq, dmax, prad, p_acc, p_inc):
     for f, d, pr, pa, pi in zip(ff_freq, dmax, prad, p_acc, p_inc):
         eff = pr / pa if pa > 0 else np.nan
         reff = pr / pi if pi > 0 else np.nan
-        dbi = lambda v: float(10 * np.log10(v)) if v > 0 else None
-        rows.append(dict(f=float(f), D_dbi=dbi(d), eff=float(eff), G_dbi=dbi(d * eff), Grealized_dbi=dbi(d * reff),
+        rows.append(dict(f=float(f), D_dbi=_dbi(d), eff=float(eff), G_dbi=_dbi(d * eff), Grealized_dbi=_dbi(d * reff),
                          Prad=float(pr), Pacc=float(pa), Pinc=float(pi)))
     return rows
-
 
 
 def polarisation(E_theta, E_phi, theta, phi, phi_first=False):
@@ -65,26 +66,22 @@ def polarisation(E_theta, E_phi, theta, phi, phi_first=False):
                 theta=float(ang[0]), phi=float(ang[1]))
 
 
-
 def add_polarisation(rows, E_theta, E_phi, theta, phi, phi_first=False):
     """Each gain_table row with its polarisation at the maximum: AR_db, sense (RHCP, LHCP, or linear above 20 dB),
     G_rhcp_dbi, G_lhcp_dbi, peak direction (theta, phi deg)."""
     for r, et, ep in zip(rows, E_theta, E_phi):
         pol = polarisation(et, ep, theta, phi, phi_first)
         g = 10 ** (r['G_dbi'] / 10) if r['G_dbi'] is not None else None
-        dbi = lambda v: float(10 * np.log10(v)) if g and v > 0 else None
         r.update(AR_db=pol['AR_db'], sense=pol['sense'] if pol['AR_db'] < 20 else 'linear',
-                 G_rhcp_dbi=dbi(g * pol['rhcp']) if g else None, G_lhcp_dbi=dbi(g * pol['lhcp']) if g else None,
+                 G_rhcp_dbi=_dbi(g * pol['rhcp']) if g else None, G_lhcp_dbi=_dbi(g * pol['lhcp']) if g else None,
                  peak_theta=pol['theta'], peak_phi=pol['phi'])
     return rows
-
 
 
 def pattern_gain(E_norm, dmax, eff):
     """Gain (linear) over a pattern grid from the far-field magnitude: D = (|E| / |E|max)^2 Dmax."""
     e = np.asarray(E_norm, float)
     return (e / e.max()) ** 2 * dmax * eff
-
 
 
 def describe(match, rows, f_pat):
@@ -96,15 +93,14 @@ def describe(match, rows, f_pat):
             f"({match['bw10'] / match['f_res'] * 100:.1f} %)" if match['bw10'] else ", S11 never below -10 dB")]
     pol = any('AR_db' in r for r in rows)
     out.append("   f GHz   D dBi   eff %   G dBi   realized G dBi" + ("   AR dB  sense" if pol else ''))
+    fmt = lambda v: f"{v:7.2f}" if v is not None else "      -"
     for r in rows:
-        fmt = lambda v: f"{v:7.2f}" if v is not None else "      -"
         line = (f"  {r['f'] / 1e9:6.3f} {fmt(r['D_dbi'])} {r['eff'] * 100:7.1f} {fmt(r['G_dbi'])} "
                 f"{fmt(r['Grealized_dbi'])}")
         if pol and 'AR_db' in r:
             line += f"          {r['AR_db']:6.1f}  {r['sense']}"
         out.append(line + ('  <- pattern' if abs(r['f'] - f_pat) < 1 else ''))
     return out
-
 
 
 def save(res, path):
@@ -119,7 +115,6 @@ def read(path):
     """An antenna run's results (save's file), checked: ValueError when this kicad2ems cannot read it."""
     from ..formats import read as read_format
     return read_format(path, 'kicad2ems-antenna')
-
 
 
 def read_sphere(path):
@@ -138,13 +133,11 @@ def read_sphere(path):
     return dict(theta=th, phi=ph, freq=freq, dmax=dmax, prad=prad, e_norm=np.array(e))
 
 
-
 def sphere_gain(sph, i, scale=1.0):
     """Pattern (nphi, ntheta, linear) at recorded frequency i: directivity x scale (efficiency -> gain,
     Prad / Pinc -> realized gain)."""
     e = sph['e_norm'][i]
     return (e / e.max()) ** 2 * sph['dmax'][i] * scale
-
 
 
 def sphere_cuts(sph, g):

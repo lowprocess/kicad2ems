@@ -6,23 +6,8 @@ tee, cross, gap).
 """
 import functools, heapq, math
 import numpy as np
-from ..constants import C0
 from .elements import Element
-
-
-def _shortest(lm, adj, src):
-    """Dijkstra by physical length: (distance, previous (element, node)) per node."""
-    dist, prev, heap = {src: 0.0}, {}, [(0.0, src)]
-    while heap:
-        d0, u = heapq.heappop(heap)
-        if d0 > dist.get(u, math.inf):
-            continue
-        for i, v in adj.get(u, []):
-            nd = d0 + lm.elements[i].length + 1e-9
-            if nd < dist.get(v, math.inf):
-                dist[v], prev[v] = nd, (i, u)
-                heapq.heappush(heap, (nd, v))
-    return dist, prev
+from .xsection import mode
 
 
 def _paths(lm):
@@ -31,7 +16,16 @@ def _paths(lm):
     done = set()
     for p in names:
         src = lm.ports[p]
-        dist, prev = _shortest(lm, adj, src)
+        dist, prev, heap = {src: 0.0}, {}, [(0.0, src)]        # Dijkstra by physical length: each node's distance
+        while heap:                                             # and previous (element, node)
+            d0, u = heapq.heappop(heap)
+            if d0 > dist.get(u, math.inf):
+                continue
+            for i, v in adj.get(u, []):
+                nd = d0 + lm.elements[i].length + 1e-9
+                if nd < dist.get(v, math.inf):
+                    dist[v], prev[v] = nd, (i, u)
+                    heapq.heappush(heap, (nd, v))
         targets = [(q, lm.ports[q]) for q in names if q != p and lm.ports[q] in dist and (q, p) not in done]
         if not targets and not any(p in pair for pair in done):
             far = max((n for n in dist if n != 'gnd'), key=lambda n: dist[n], default=None)
@@ -116,7 +110,7 @@ def _straight(e):
     return bool(np.all(np.abs((p - p[0]) @ n) < 1e-4))
 
 
-def _piece(e, a, b, p0, p1, tag):
+def _piece(e, a, b, p0, p1):
     el = Element(e.kind, a, b, float(np.hypot(*(np.asarray(p1) - p0))), layer=e.layer, w=e.w,
                  pts=np.array([p0, p1], float), net=e.net, label=e.label, region=e.region, radial=e.radial)
     for k in _COPY:
@@ -137,7 +131,7 @@ def _split_at(e, ts, u):
         cuts = cuts[::-1]
     pts = [p0] + [p0 + (p1 - p0) * (t - ta) / (tb - ta) for t in cuts] + [p1]
     nodes = [e.a] + [f"{e.a}>{e.b}~{t:.4f}" for t in cuts] + [e.b]
-    return [_piece(e, nodes[k], nodes[k + 1], pts[k], pts[k + 1], k) for k in range(len(pts) - 1)]
+    return [_piece(e, nodes[k], nodes[k + 1], pts[k], pts[k + 1]) for k in range(len(pts) - 1)]
 
 
 def _couple(lm, model, ref=None):
@@ -145,12 +139,27 @@ def _couple(lm, model, ref=None):
     COUPLE_H * h of each other: cut where their overlaps start and end, and group the pieces side by side
     into coupled sections. ref: the board's reference copper (RefCopper): a group is then solved on the board's
     cut across it where the line model's field setting says (_group_on_cut), over ideal planes otherwise."""
+    from . import reference
     start = len(lm.groups)
     _find_groups(lm, model, ref)
-    from . import reference
     reference.solve_groups([k for g in lm.groups[start:] for k in (g.get('cut_keys') or ())])
-    for g in lm.groups[start:]:
-        _finish_group(lm, g)
+    for gid, g in enumerate(lm.groups[start:], start):
+        # the field solver's pairs (on the board's cut where _group_on_cut chose it; over ideal planes otherwise, or
+        # where the cut does not solve), then its coupling elements
+        members, e0 = g['members'], g['members'][0][0]
+        if not (g.get('cut_keys') and _field_group_cut(g)):
+            if FIELD_GROUPS or reference.field_mode() == 'all':
+                _field_group(g, [m[0].w for m in members], g.get('t', e0.t))
+        for key in ('cut_keys', 'cut_flipped', 't'):
+            g.pop(key, None)
+        for k, p in enumerate(g['pairs']):
+            cp = Element('coupling', members[k][1], members[k + 1][1], 0.0, layer=e0.layer, w=p['gap'], net=e0.net,
+                         label=f"coupled to the next line, gap {p['gap']:.3g} mm",
+                         pts=np.array([np.asarray(members[k][0].pts).mean(0),
+                                       np.asarray(members[k + 1][0].pts).mean(0)]))
+            cp.xs, cp.group = 'coupled', gid
+            cp.notes.append(f"Ze {p['ze']:.1f} / Zo {p['zo']:.1f} ohm over {e0.length:.2f} mm")
+            lm.elements.append(cp)
 
 
 def _split_jogs(lm):
@@ -201,7 +210,7 @@ def _split_jogs(lm):
         p = np.asarray(e.pts, float)
         nodes = [e.a] + [f"{e.a}>{e.b}^{k}" for k in range(1, len(p) - 1)] + [e.b]
         k = lm.elements.index(e)
-        lm.elements[k:k + 1] = [_piece(e, nodes[m], nodes[m + 1], p[m], p[m + 1], m) for m in range(len(p) - 1)]
+        lm.elements[k:k + 1] = [_piece(e, nodes[m], nodes[m + 1], p[m], p[m + 1]) for m in range(len(p) - 1)]
 
 
 def _find_groups(lm, model, ref):
@@ -211,11 +220,10 @@ def _find_groups(lm, model, ref):
     cand = [e for e in lm.elements if e.kind == 'trace' and e.xs in COUPLED_XS and e.length > 1e-3 and _straight(e)]
     if len(cand) < 2:
         return
-    info = {}
+    info = {}                                                       # each one's direction, deg mod 180
     for e in cand:
         d = np.asarray(e.pts[-1], float) - np.asarray(e.pts[0], float)
-        ang = math.degrees(math.atan2(d[1], d[0])) % 180.0
-        info[id(e)] = ang
+        info[id(e)] = math.degrees(math.atan2(d[1], d[0])) % 180.0
     # interacting pairs (union-find over the candidates)
     parent = {id(e): id(e) for e in cand}
 
@@ -242,23 +250,20 @@ def _find_groups(lm, model, ref):
     near = sorted({(min(i, j), max(i, j)) for i, j in zip(src.tolist(), hit.tolist()) if i != j})
     for i, j in near:
         e, f = cand[i], cand[j]
-        if True:                                                    # (the loop's body as it was)
-            if e.layer != f.layer or e.xs != f.xs or e.h != f.h:
-                continue
-            da = abs(info[id(e)] - info[id(f)])
-            if min(da, 180 - da) > 1.0:
-                continue
-            ang = math.radians(info[id(e)])
-            u, n = np.array([math.cos(ang), math.sin(ang)]), np.array([-math.sin(ang), math.cos(ang)])
-            a0, a1, ca = geom(e, u, n)
-            b0, b1, cb = geom(f, u, n)
-            gap = abs(ca - cb) - 0.5 * (e.w + f.w)
-            if gap <= 1e-4 or gap > COUPLE_H * _couple_h(e):
-                continue
-            if min(a1, b1) - max(a0, b0) < max(0.2, gap):
-                continue
-            pairs.append((e, f))
-            parent[find(id(e))] = find(id(f))
+        if e.layer != f.layer or e.xs != f.xs or e.h != f.h:
+            continue
+        da = abs(info[id(e)] - info[id(f)])
+        if min(da, 180 - da) > 1.0:
+            continue
+        ang = math.radians(info[id(e)])
+        u, n = np.array([math.cos(ang), math.sin(ang)]), np.array([-math.sin(ang), math.cos(ang)])
+        a0, a1, ca = geom(e, u, n)
+        b0, b1, cb = geom(f, u, n)
+        gap = abs(ca - cb) - 0.5 * (e.w + f.w)
+        if gap <= 1e-4 or gap > COUPLE_H * _couple_h(e) or min(a1, b1) - max(a0, b0) < max(0.2, gap):
+            continue
+        pairs.append((e, f))
+        parent[find(id(e))] = find(id(f))
     if not pairs:
         return
     sets = {}
@@ -350,36 +355,15 @@ def _add_group(lm, chain, u, tm, model=None, ref=None):
             gaps.append((c - chain[k - 1][0]) - 0.5 * (e.w + chain[k - 1][1].w))
     e0 = chain[0][1]
     g = dict(members=members, gaps=gaps, length=e0.length, h=e0.h, er=e0.er, tand=e0.tand, layer=e0.layer, xs=e0.xs,
-             pairs=[])
+             pairs=[], t=e0.t)
     if getattr(e0, 'cover', 0.0):                              # embedded microstrip: its cover, for the field solve
         g['cover'], g['er_cover'] = e0.cover, e0.er_cover
     for k, gap in enumerate(gaps):
         wa, wb = members[k][0].w, members[k + 1][0].w
         ze, zo, ee, eo = coupled(e0.xs, 0.5 * (wa + wb), gap, e0.h, e0.er)
         g['pairs'].append(dict(gap=gap, ze=ze, zo=zo, eeff_e=ee, eeff_o=eo))
-    g['t'] = e0.t
     _group_on_cut(g, chain, u, tm, model, ref)
     lm.groups.append(g)
-
-
-def _finish_group(lm, g):
-    """A group's pairs from the field solver (on the board's cut where _group_on_cut chose it; over ideal planes
-    otherwise, or where the cut does not solve) and its coupling elements."""
-    from . import reference
-    members, gid = g['members'], lm.groups.index(g)
-    e0 = members[0][0]
-    if not (g.get('cut_keys') and _field_group_cut(g)):
-        if FIELD_GROUPS or reference.field_mode() == 'all':
-            _field_group(g, [m[0].w for m in members], g.get('t', e0.t))
-    for key in ('cut_keys', 'cut_flipped', 't'):
-        g.pop(key, None)
-    for k, p in enumerate(g['pairs']):
-        cp = Element('coupling', members[k][1], members[k + 1][1], 0.0, layer=e0.layer, w=p['gap'], net=e0.net,
-                     label=f"coupled to the next line, gap {p['gap']:.3g} mm",
-                     pts=np.array([np.asarray(members[k][0].pts).mean(0), np.asarray(members[k + 1][0].pts).mean(0)]))
-        cp.xs, cp.group = 'coupled', gid
-        cp.notes.append(f"Ze {p['ze']:.1f} / Zo {p['zo']:.1f} ohm over {e0.length:.2f} mm")
-        lm.elements.append(cp)
 
 
 def _field_group_cut(g):
@@ -393,28 +377,30 @@ def _field_group_cut(g):
     except Exception:                                        # noqa: BLE001 (ideal planes stay)
         del g['cut']
         return False
+    _take_group(g, (C, Ca, Ct, Cat), flipped, reference._strips_section(*g['cut']))
+    g['source'] = 'cut'                                      # (else: ideal planes, or the formulas' pairs)
+    return True
+
+
+def _take_group(g, matrices, flipped, section):
+    """Group g's field-solved C and C_air as sheets and with the copper's thickness (matrices: C, Ca, Ct, Cat; flipped:
+    solved as its mirror image), the section its legs are drawn on, and its pairs' even / odd modes."""
     if flipped:                                              # the matrices of the lines in their own order
-        C, Ca, Ct, Cat = (M[::-1, ::-1] for M in (C, Ca, Ct, Cat))
+        matrices = (M[::-1, ::-1] for M in matrices)
+    C, Ca, Ct, Cat = matrices
     g['C'], g['Ca'] = C.copy(), Ca.copy()
-    section = reference._strips_section(*g['cut'])
     for k, (leg, *_) in enumerate(g.get('members', ())):
         leg.coupled = dict(section=section, index=k)
     for k, p in enumerate(g['pairs']):
         p['ze_sheet'], p['zo_sheet'] = _pair_modes(C, Ca, k)[:2]
         p['ze'], p['zo'], p['eeff_e'], p['eeff_o'] = _pair_modes(Ct, Cat, k)
-    g['source'] = 'cut'                                      # (else: ideal planes, or the formulas' pairs)
-    return True
 
 
 def _pair_modes(C, Ca, k):
     """(Ze, Zo, eeff_e, eeff_o) of lines k and k + 1 of N, the others held at ground (their mean self terms: a pair
     of slightly unequal widths taken as symmetric)."""
     c11, ca11 = 0.5 * (C[k, k] + C[k + 1, k + 1]), 0.5 * (Ca[k, k] + Ca[k + 1, k + 1])
-    out = []
-    for s in (1, -1):
-        c, ca = c11 + s * C[k, k + 1], ca11 + s * Ca[k, k + 1]
-        out.append((1 / (C0 * math.sqrt(c * ca)), c / ca))
-    (ze, ee), (zo, eo) = out
+    (ze, ee), (zo, eo) = (mode(c11 + s * C[k, k + 1], ca11 + s * Ca[k, k + 1]) for s in (1, -1))
     return ze, zo, ee, eo
 
 
@@ -434,15 +420,7 @@ def _field_group(g, widths, t=0.0):
         Ct, Cat = _group_c(*key, round(t, 6), cover) if t else (C, Ca)
     except Exception:                                        # noqa: BLE001 (the formulas' pairs stay)
         return
-    if flip:                                                 # the matrices of the lines in their own order
-        C, Ca, Ct, Cat = (M[::-1, ::-1] for M in (C, Ca, Ct, Cat))
-    g['C'], g['Ca'] = C.copy(), Ca.copy()
-    section = _group_section(g['xs'], ws, gs, h, g['er'], round(t, 6), cover)
-    for k, (leg, *_) in enumerate(g.get('members', ())):
-        leg.coupled = dict(section=section, index=k)
-    for k, p in enumerate(g['pairs']):
-        p['ze_sheet'], p['zo_sheet'] = _pair_modes(C, Ca, k)[:2]
-        p['ze'], p['zo'], p['eeff_e'], p['eeff_o'] = _pair_modes(Ct, Cat, k)
+    _take_group(g, (C, Ca, Ct, Cat), flip, _group_section(g['xs'], ws, gs, h, g['er'], round(t, 6), cover))
 
 
 @functools.lru_cache(maxsize=1024)
@@ -509,19 +487,15 @@ def _junctions(lm, model):
                 rec['kind'] = 'step'
             else:
                 rec['kind'] = 'bend'
-        elif n == 3:
-            best = max(((i, j) for i in range(3) for j in range(i + 1, 3)), key=lambda ij: -np.dot(dirs[ij[0]], dirs[ij[1]]))
-            k3 = ({0, 1, 2} - set(best)).pop()
-            rec['arms'] = [ar[best[0]], ar[best[1]], ar[k3]]
-            rec['widths'] = [ar[best[0]][0].w, ar[best[1]][0].w, ar[k3][0].w]
-            rec['dirs'] = [rec['dirs'][best[0]], rec['dirs'][best[1]], rec['dirs'][k3]]
-            rec['kind'] = 'tee'
-        elif n == 4:
-            order = sorted(range(4), key=lambda i: math.atan2(dirs[i][1], dirs[i][0]))
-            rec['arms'] = [ar[i] for i in order]
-            rec['widths'] = [ar[i][0].w for i in order]
-            rec['dirs'] = [rec['dirs'][i] for i in order]
-            rec['kind'] = 'cross'
+        elif n in (3, 4):                                   # a tee: its straight run first; a cross: by angle
+            if n == 3:
+                best = max(((i, j) for i in range(3) for j in range(i + 1, 3)),
+                           key=lambda ij: -np.dot(dirs[ij[0]], dirs[ij[1]]))
+                order = [*best, ({0, 1, 2} - set(best)).pop()]
+            else:
+                order = sorted(range(4), key=lambda i: math.atan2(dirs[i][1], dirs[i][0]))
+            rec.update(arms=[ar[i] for i in order], widths=[ar[i][0].w for i in order],
+                       dirs=[rec['dirs'][i] for i in order], kind='tee' if n == 3 else 'cross')
         else:
             rec['kind'] = 'junction'
         lm.junctions.append(rec)

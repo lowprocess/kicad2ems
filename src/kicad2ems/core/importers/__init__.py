@@ -35,18 +35,17 @@ class Imported:
         from .kicad.nets import DiffLegs
         pat = re.compile(r'^P(\d+)([+\-PN])?$', re.I)
         out = {}
-
-        def put(m, fp):
+        for fp in self.footprints:
+            listed = pos_refs is not None and fp['ref'] in pos_refs
+            texts = list(fp['fab']) + ([fp['value'], fp['ref']] if listed else [])
+            m = next((m for m in (pat.match(str(t).strip()) for t in texts) if m), None)
+            if not m:
+                continue
             n, leg = int(m.group(1)), (m.group(2) or '').upper()
             if leg:
                 out.setdefault(n, DiffLegs())['+' if leg in ('+', 'P') else '-'] = fp
             else:
                 out[n] = fp
-        for fp in self.footprints:
-            texts = list(fp['fab']) + ([fp['value'], fp['ref']] if pos_refs is not None and fp['ref'] in pos_refs else [])
-            m = next((m for m in (pat.match(str(t).strip()) for t in texts) if m), None)
-            if m:
-                put(m, fp)
         for n, v in out.items():
             if isinstance(v, DiffLegs) and set(v) != {'+', '-'}:
                 raise ValueError(f"differential port P{n} needs both P{n}+ and P{n}- footprints")

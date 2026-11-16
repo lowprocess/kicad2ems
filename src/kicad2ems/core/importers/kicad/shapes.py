@@ -124,18 +124,11 @@ def outline_ring(node):
     return None
 
 
-def _chamfer(shape, w, h, ratio, corners):
-    """Cut 45 degree chamfers (ratio x the smaller side) off the named corners of a w x h pad."""
-    c = ratio * min(w, h)
-    if c <= 0:
-        return shape
-    cuts = {'top_left': (-w / 2, -h / 2, 1, 1), 'top_right': (w / 2, -h / 2, -1, 1),
-            'bottom_left': (-w / 2, h / 2, 1, -1), 'bottom_right': (w / 2, h / 2, -1, -1)}
-    for name in corners:
-        if name in cuts:
-            x, y, dx, dy = cuts[name]
-            shape = shape.difference(Polygon([(x, y), (x + dx * c, y), (x, y + dy * c)]))
-    return shape
+def oval(w, h):
+    """A w x h oval (a stadium: its short sides round), centred on the origin."""
+    r = min(w, h) / 2
+    L = LineString([(-(w / 2 - r), 0), (w / 2 - r, 0)]) if w >= h else LineString([(0, -(h / 2 - r)), (0, h / 2 - r)])
+    return L.buffer(r, quad_segs=8) if L.length > 0 else Point(0, 0).buffer(r, quad_segs=8)
 
 
 def pad_shape(pad):
@@ -146,16 +139,18 @@ def pad_shape(pad):
     if shape == 'circle':
         return Point(0, 0).buffer(w / 2, quad_segs=8)
     if shape == 'oval':
-        r = min(w, h) / 2
-        L = LineString([(-(w / 2 - r), 0), (w / 2 - r, 0)]) if w >= h else LineString([(0, -(h / 2 - r)), (0, h / 2 - r)])
-        return L.buffer(r, quad_segs=8) if L.length > 0 else Point(0, 0).buffer(r, quad_segs=8)
+        return oval(w, h)
     if shape == 'roundrect':
         rr = sx.val(pad, 'roundrect_rratio', 0.25, float) * min(w, h)
         g = (box(-w / 2 + rr, -h / 2 + rr, w / 2 - rr, h / 2 - rr).buffer(rr, quad_segs=4) if rr > 0
              else box(-w / 2, -h / 2, w / 2, h / 2))
         ch = sx.item(pad, 'chamfer')
-        if ch is not None:
-            g = _chamfer(g, w, h, sx.val(pad, 'chamfer_ratio', 0.2, float), [str(c) for c in ch[1:]])
+        c = sx.val(pad, 'chamfer_ratio', 0.2, float) * min(w, h) if ch is not None else 0.0
+        if c > 0:                                       # 45 degree chamfers (ratio x the smaller side), named corners
+            cuts = {'top_left': (-w / 2, -h / 2, 1, 1), 'top_right': (w / 2, -h / 2, -1, 1),
+                    'bottom_left': (-w / 2, h / 2, 1, -1), 'bottom_right': (w / 2, h / 2, -1, -1)}
+            for x, y, dx, dy in (cuts[str(n)] for n in ch[1:] if str(n) in cuts):
+                g = g.difference(Polygon([(x, y), (x + dx * c, y), (x, y + dy * c)]))
         return g
     if shape == 'trapezoid':
         dx, dy = sx.xy(pad, 'rect_delta') or (0.0, 0.0)
@@ -208,13 +203,8 @@ def _glyphs(text):
 
 def text_hidden(node):
     """KiCad's hidden text: (hide yes) (KiCad 8+), or a bare hide token on the text or in its effects."""
-    eff = sx.item(node, 'effects')
-    for n in (node, eff):
-        if n is None:
-            continue
-        if 'hide' in [x for x in n[1:] if isinstance(x, str)] or sx.val(n, 'hide') == 'yes':
-            return True
-    return False
+    return any('hide' in [x for x in n[1:] if isinstance(x, str)] or sx.val(n, 'hide') == 'yes'
+               for n in (node, sx.item(node, 'effects')) if n is not None)
 
 
 def text_shape(node, text, origin=(0.0, 0.0), deg=0.0, absolute_angle=True):

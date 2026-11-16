@@ -89,14 +89,6 @@ def frozen(lm, fk, fref):
     return out
 
 
-def _longest(lm):
-    """The longest path's electrical length at er (m * sqrt(eeff)), the model's largest tan d."""
-    best = 0.0
-    for _, _, secs, _ in lm.paths:
-        best = max(best, sum(e.length * 1e-3 * math.sqrt(e.eeff or e.er or 1.0) for e, _, _ in secs))
-    return best
-
-
 def nodes(lm, freq, fref):
     """The materials' frequencies f_k for the band of freq (Hz), or None when nothing disperses (no section has
     loss: a lossless curve is flat). Chebyshev nodes in log f; K from the phase the er change can move."""
@@ -111,7 +103,9 @@ def nodes(lm, freq, fref):
     lo = [section_at(e, fa, fref)[0] for e in els]
     hi = [section_at(e, fb, fref)[0] for e in els]
     d = max(abs(a - b) / max(a, b) for a, b in zip(lo, hi))         # the largest relative change of er
-    theta = math.pi * fb * _longest(lm) / C0 * d / 2                 # half the phase range the change moves, at fmax
+    longest = max((sum(e.length * 1e-3 * math.sqrt(e.eeff or e.er or 1.0) for e, _, _ in secs)    # (m sqrt(eeff))
+                   for _, _, secs, _ in lm.paths), default=0.0)
+    theta = math.pi * fb * longest / C0 * d / 2                      # half the phase range the change moves, at fmax
     theta = max(theta, 0.05)
     K = K_MIN
     while K < K_MAX and 2 * (theta / 2) ** K / math.factorial(K) > TOL:

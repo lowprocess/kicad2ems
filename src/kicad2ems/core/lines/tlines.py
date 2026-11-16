@@ -30,12 +30,12 @@ The model lives in four modules, re-exported here (kicad2ems.core.lines.tlines i
   elements      the model's data: Element and LineModel
   xsection      a 2D field solver for cross-sections (reference.FIELD, --lines-field: in place of the formulas)
 
-Module settings (reference.TILE, reference.ADAPTIVE, topology.COUPLE_H, ...) are read where they are
+Module settings (reference.TILE, topology.COUPLE_H, ...) are read where they are
 defined: set them on that module, not on this one.
 """
 from .formulas import (ETA0, MU0, ellipk, _hj_z01, _hj_eeff, microstrip, embedded_microstrip, stripline,  # noqa: F401
                        offset_stripline, cpwg, coax, via_inductance)
 from .elements import Element, LineModel                                                         # noqa: F401
-from .reference import RefCopper, NetCopper, classify, GAP_STEP, TILE, ADAPTIVE, WIDTH_STEP      # noqa: F401
+from .reference import RefCopper, NetCopper, classify, GAP_STEP, TILE, WIDTH_STEP                # noqa: F401
 from .topology import COUPLE_H, COUPLED_XS                                                        # noqa: F401
 from .builder import build                                                                        # noqa: F401

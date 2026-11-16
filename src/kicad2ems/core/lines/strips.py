@@ -13,8 +13,10 @@ centreline lengths); where both end there it is a corner.
 
     tracks = shape_strips(poly, 'F.Cu', 'RF')        # model coordinates; dicts like board.tracks
 """
+import itertools
 import numpy as np
-from shapely.geometry import box, Point
+import shapely
+from shapely.geometry import box
 from shapely.ops import unary_union
 
 TOL = 1e-6
@@ -34,15 +36,11 @@ def _runs(mask, sizes):
     out = np.zeros(mask.shape)
     for j in range(mask.shape[1]):
         i = 0
-        while i < mask.shape[0]:
-            if not mask[i, j]:
-                i += 1
-                continue
-            k = i
-            while k + 1 < mask.shape[0] and mask[k + 1, j]:
-                k += 1
-            out[i:k + 1, j] = sizes[i:k + 1].sum()
-            i = k + 1
+        for on, run in itertools.groupby(mask[:, j]):
+            k = i + len(list(run))
+            if on:
+                out[i:k, j] = sizes[i:k].sum()
+            i = k
     return out
 
 
@@ -94,12 +92,10 @@ class _Strip:
         return (a, c) if self.axis == 0 else (c, a)
 
     def polyline(self):
-        pts = []
         first = self.slices[0]
-        start = self.ext[0] if self.ext[0] is not None else self.pt(self.a0, first[2])
-        pts.append(start)
-        if self.ext[0] is not None:                        # onto the other strip's centreline: then along
-            pts.append(self.pt(self.a0, first[2])) if abs(self.ext[0][self.axis] - self.a0) > TOL else None
+        pts = [self.ext[0] if self.ext[0] is not None else self.pt(self.a0, first[2])]
+        if self.ext[0] is not None and abs(self.ext[0][self.axis] - self.a0) > TOL:    # onto the other strip's
+            pts.append(self.pt(self.a0, first[2]))                                     # centreline: then along
         prev_c = first[2]
         for a0, a1, c, _ in self.slices[1:]:
             if abs(c - prev_c) > TOL:                      # the middle moves: a jog
@@ -127,27 +123,18 @@ def shape_strips(poly, layer, net, aspect=1.0):
     """Strips (track dicts with 'region' and 'strip': True) of one rectilinear polygon (model mm)."""
     if poly.is_empty or not rectilinear(poly):
         return []
-    xs = np.unique(np.round(np.asarray(poly.exterior.coords)[:, 0], 6))
-    ys = np.unique(np.round(np.asarray(poly.exterior.coords)[:, 1], 6))
-    for r in poly.interiors:
-        xs = np.unique(np.r_[xs, np.round(np.asarray(r.coords)[:, 0], 6)])
-        ys = np.unique(np.round(np.r_[ys, np.asarray(r.coords)[:, 1]], 6))
+    c = np.round(np.concatenate([np.asarray(r.coords) for r in [poly.exterior, *poly.interiors]]), 6)
+    xs, ys = np.unique(c[:, 0]), np.unique(c[:, 1])
     nx, ny = len(xs) - 1, len(ys) - 1
     if nx < 1 or ny < 1:
         return []
-    inside = np.zeros((nx, ny), bool)
-    for i in range(nx):
-        for j in range(ny):
-            inside[i, j] = poly.contains(Point(0.5 * (xs[i] + xs[i + 1]), 0.5 * (ys[j] + ys[j + 1])))
+    inside = shapely.contains_xy(poly, *np.meshgrid(0.5 * (xs[:-1] + xs[1:]), 0.5 * (ys[:-1] + ys[1:]), indexing='ij'))
     lh = _runs(inside, np.diff(xs))                        # horizontal run through each cell
     lv = _runs(inside.T, np.diff(ys)).T
     cls = np.where(lh * aspect >= lv, 0, 1)
     strips = [_Strip(c, 0, xs, ys) for c in _components(cls, inside, 0)] + \
              [_Strip(c, 1, xs, ys) for c in _components(cls, inside, 1)]
-    owner = {}
-    for k, s in enumerate(strips):
-        for c in s.cells:
-            owner[c] = k
+    owner = {c: k for k, s in enumerate(strips) for c in s.cells}
     # strips meeting: the one ending there runs on to the other's centreline
     done = set()
     for k, s in enumerate(strips):
@@ -158,10 +145,8 @@ def shape_strips(poly, layer, net, aspect=1.0):
                     continue
                 done.add((min(k, o), max(k, o)))
                 _join(s, strips[o], (i, j), (i + di, j + dj), xs, ys)
-    out = []
-    for s in strips:
-        out.append(dict(layer=layer, net=net, width=float(s.width), pts=s.polyline(), region=s.region, strip=True))
-    return out
+    return [dict(layer=layer, net=net, width=float(s.width), pts=s.polyline(), region=s.region, strip=True)
+            for s in strips]
 
 
 def fan_strip(poly, layer, net, tracks, reach=2.0):
@@ -171,6 +156,7 @@ def fan_strip(poly, layer, net, tracks, reach=2.0):
     track's centreline, mostly on one side: tapers and teardrops along a track keep widening it.
     Returns [strip dict] or []."""
     from shapely.geometry import LineString
+    from .elements import direction_at
     for t in tracks:
         if t['layer'] != layer or t['net'] != net:
             continue
@@ -181,9 +167,7 @@ def fan_strip(poly, layer, net, tracks, reach=2.0):
             continue
         s0 = line.project(over.centroid)
         mid = np.asarray(line.interpolate(s0).coords[0])
-        a = np.asarray(line.interpolate(max(s0 - 1e-3, 0)).coords[0])
-        b = np.asarray(line.interpolate(min(s0 + 1e-3, line.length)).coords[0])
-        d = (b - a) / (np.linalg.norm(b - a) or 1.0)
+        d = direction_at(line, s0)
         n = np.array([-d[1], d[0]])
         pts = np.asarray(poly.exterior.coords)
         side = (pts - mid) @ n
@@ -252,8 +236,7 @@ def _join(s, o, cs, co, xs, ys):
     ch, cv = (cs, co) if s.axis == 0 else (co, cs)
     xm = v.centre_at(0.5 * (ys[cv[1]] + ys[cv[1] + 1]))   # the vertical strip's middle at that row
     ym = h.centre_at(0.5 * (xs[ch[0]] + xs[ch[0] + 1]))   # the horizontal strip's middle at that column
-    th = next(t for a0, a1, c, t in h.slices if a0 - TOL <= xs[ch[0]] + TOL and xs[ch[0] + 1] <= a1 + TOL) \
-        if any(a0 - TOL <= xs[ch[0]] + TOL and xs[ch[0] + 1] <= a1 + TOL for a0, a1, c, t in h.slices) else h.width
+    th = next((t for a0, a1, c, t in h.slices if a0 - TOL <= xs[ch[0]] + TOL and xs[ch[0] + 1] <= a1 + TOL), h.width)
     tv = next((t for a0, a1, c, t in v.slices if a0 - TOL <= ys[cv[1]] + TOL and ys[cv[1] + 1] <= a1 + TOL), v.width)
     for strip, a, t_other in ((h, xm, tv), (v, ym, th)):
         d0, d1 = abs(a - strip.a0), abs(a - strip.a1)

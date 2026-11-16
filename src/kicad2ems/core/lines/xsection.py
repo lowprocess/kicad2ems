@@ -124,23 +124,22 @@ class Result:
 
     def single(self, i=0):
         """(Z0, eeff) of conductor i alone, the others held at ground."""
-        c, ca = self.C[i, i], self.Ca[i, i]
-        return 1 / (C0 * math.sqrt(c * ca)), c / ca
+        return mode(self.C[i, i], self.Ca[i, i])
 
     def pair(self):
         """(Ze, Zo, eeff_even, eeff_odd) of a symmetric pair (conductors 0 and 1), as coupled.coupled gives
         them; the differential impedance is 2 Zo, the common-mode Ze / 2."""
-        out = []
-        for s in (1, -1):
-            c = self.C[0, 0] + s * self.C[0, 1]
-            ca = self.Ca[0, 0] + s * self.Ca[0, 1]
-            out.append((1 / (C0 * math.sqrt(c * ca)), c / ca))
-        (ze, ee), (zo, eo) = out
+        (ze, ee), (zo, eo) = (mode(self.C[0, 0] + s * self.C[0, 1], self.Ca[0, 0] + s * self.Ca[0, 1]) for s in (1, -1))
         return ze, zo, ee, eo
 
     def tand_eff(self, i=0):
         """Effective loss tangent of conductor i's line: G / (w C)."""
         return self.G_w[i, i] / self.C[i, i]
+
+
+def mode(c, ca):
+    """(Z0, eeff) of a line's mode from its capacitance per metre c, and ca without the dielectric."""
+    return 1 / (C0 * math.sqrt(c * ca)), c / ca
 
 
 def snap(v, rel=None):
@@ -345,18 +344,21 @@ def potential(xs, volts=None, air=False):
     """(x, z, phi, er): the grid lines (mm), the potential on its nodes (len(x), len(z)) with the signal conductors at
     `volts` (default 1 V on the first, 0 on the others; [1, -1]: a pair's odd mode) and every ground at 0, and er per
     cell; air: without the dielectric. One solve on the grid (no extrapolation): for looking at the field."""
-    from scipy.sparse.linalg import spsolve
     x, z = _grid(xs)
     er, _, own = _grid_cells(xs, x, z)
-    n = int(own.max())
-    volts = [1.0] + [0.0] * (n - 1) if volts is None else list(volts)
-    A = _laplacian(x, z, np.ones_like(er) if air else er)
+    return x, z, _potential(_laplacian(x, z, np.ones_like(er) if air else er), own, volts).reshape(len(x), len(z)), er
+
+
+def _potential(A, own, volts):
+    """The potential on the nodes of operator A (own: their owners) with the signal conductors at `volts` (None: 1 V
+    on the first, 0 on the others) and every ground at 0."""
+    from scipy.sparse.linalg import spsolve
     phi = np.zeros(own.size)
-    for k, v in enumerate(volts):
+    for k, v in enumerate([1.0] + [0.0] * (int(own.max()) - 1) if volts is None else volts):
         phi[own == k + 1] = v
     free, fixed = np.flatnonzero(own < 0), np.flatnonzero(own >= 0)
     phi[free] = spsolve(A[free][:, free].tocsc(), -(A[free][:, fixed] @ phi[fixed]))
-    return x, z, phi.reshape(len(x), len(z)), er
+    return phi
 
 
 def _bisect(a):
@@ -578,18 +580,10 @@ def field(xs, volts=None, air=False, grow=None):
     """The Field of a CrossSection on its mesh, the signal conductors at `volts` (default 1 V on the first, 0 on the
     others; [1, -1]: a pair's odd mode), every ground at 0; air: without the dielectric; grow: the mesh's grading, if not
     MESH_GROW. One solve (no extrapolation): for looking at the field; solve() is what gives the numbers."""
-    from scipy.sparse.linalg import spsolve
     cell = _mesh(xs, grow)
     stiffness, own, _, _, (er, _), (T, nodes) = _mesh_system(xs, cell)
-    n = int(own.max())
-    volts = [1.0] + [0.0] * (n - 1) if volts is None else list(volts)
-    A = stiffness(np.ones_like(er) if air else er)
-    phi = np.zeros(own.size)
-    for k, v in enumerate(volts):
-        phi[own == k + 1] = v
-    free, fixed = np.flatnonzero(own < 0), np.flatnonzero(own >= 0)
-    phi[free] = spsolve(A[free][:, free].tocsc(), -(A[free][:, fixed] @ phi[fixed]))
-    return Field(cell, (T @ phi)[nodes], np.ones_like(er) if air else er)
+    eps = np.ones_like(er) if air else er
+    return Field(cell, (T @ _potential(stiffness(eps), own, volts))[nodes], eps)
 
 
 def window(xs):
@@ -607,22 +601,27 @@ def window(xs):
 
 
 # ---- the common cross-sections ----------------------------------------------------------------------
-def _strips(xs, widths, gaps, z, t):
-    """Side-by-side signal strips at height z (thickness t), centred on x = 0; returns their x edges."""
-    total = sum(widths) + sum(gaps)
-    x, edges = -total / 2, []
-    for i, w in enumerate(widths):
-        xs.conductor(x, x + w, z, z + t)
-        edges.append((x, x + w))
-        x += w + (gaps[i] if i < len(gaps) else 0.0)
-    return edges
+def _strips(xs, w, gap, z, t, s=None, wg=None):
+    """Side-by-side signal strips at height z (thickness t), centred on x = 0: w a width or a list of them, gap one or a
+    list; s: coplanar ground s beyond the outer edges, wg wide (None: to the box)."""
+    widths = list(w) if np.ndim(w) else [w]
+    gaps = list(gap) if np.ndim(gap) else [gap] * (len(widths) - 1)
+    x, edges = -(sum(widths) + sum(gaps)) / 2, []
+    for i, wi in enumerate(widths):
+        xs.conductor(x, x + wi, z, z + t)
+        edges.append((x, x + wi))
+        x += wi + (gaps[i] if i < len(gaps) else 0.0)
+    if s is not None:
+        big = math.inf if wg is None else wg
+        xs.conductor(edges[0][0] - s - big, edges[0][0] - s, z, z + t, ground=True)
+        xs.conductor(edges[-1][1] + s, edges[-1][1] + s + big, z, z + t, ground=True)
 
 
-def _ground_beside(xs, edges, s, z, t, wg=None):
-    """Coplanar ground s beyond the outer edges, wg wide (None: to the box)."""
-    big = math.inf if wg is None else wg
-    xs.conductor(edges[0][0] - s - big, edges[0][0] - s, z, z + t, ground=True)
-    xs.conductor(edges[-1][1] + s, edges[-1][1] + s + big, z, z + t, ground=True)
+def _mask(xs, z, t, er, tand=0.0):
+    """A solder mask t thick over the dielectric's top at z and over the copper: its top and its sides."""
+    xs.dielectrics.append(Dielectric(z, z + t, er, tand))
+    for c in xs.conductors:
+        xs.dielectrics.append(Dielectric(c.z1, c.z1 + t, er, tand, c.x0 - t, c.x1 + t))
 
 
 def microstrip(w, h, er, t=0.0, tand=0.0, mask=0.0, er_mask=3.5, s=None, wg=None, gap=0.0):
@@ -630,29 +629,19 @@ def microstrip(w, h, er, t=0.0, tand=0.0, mask=0.0, er_mask=3.5, s=None, wg=None
     mask: solder mask thickness over the substrate and the copper (following the strip); s: coplanar ground
     s from each side (grounded CPW), wg wide (None: to the box). Pass w as a list (and gap as a list or one
     value) for coupled strips."""
-    widths = list(w) if np.ndim(w) else [w]
-    gaps = list(gap) if np.ndim(gap) else [gap] * (len(widths) - 1)
     xs = CrossSection(dielectrics=[Dielectric(0.0, h, er, tand)], planes=[0.0])
-    edges = _strips(xs, widths, gaps, h, t)
-    if s is not None:
-        _ground_beside(xs, edges, s, h, t, wg)
+    _strips(xs, w, gap, h, t, s, wg)
     if mask > 0:
-        xs.dielectrics.append(Dielectric(h, h + mask, er_mask))
-        for c in xs.conductors:                          # the mask follows the copper: over its top and sides
-            xs.dielectrics.append(Dielectric(c.z1, c.z1 + mask, er_mask, 0.0, c.x0 - mask, c.x1 + mask))
+        _mask(xs, h, mask, er_mask)
     return xs
 
 
 def stripline(w, h1, h2, er, t=0.0, tand=0.0, s=None, wg=None, gap=0.0):
     """A strip h1 above one plane, its top h2 below the other (centred when h1 = h2 + ...: offset otherwise),
     in one dielectric; s, wg, w as a list and gap as for microstrip."""
-    widths = list(w) if np.ndim(w) else [w]
-    gaps = list(gap) if np.ndim(gap) else [gap] * (len(widths) - 1)
     top = h1 + t + h2
     xs = CrossSection(dielectrics=[Dielectric(0.0, top, er, tand)], planes=[0.0, top])
-    edges = _strips(xs, widths, gaps, h1, t)
-    if s is not None:
-        _ground_beside(xs, edges, s, h1, t, wg)
+    _strips(xs, w, gap, h1, t, s, wg)
     return xs
 
 

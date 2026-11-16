@@ -16,13 +16,14 @@ into the same raw form as the KiCad reader, so board.Board resolves both alike.
             fields: a port on an inner layer is a setting, --port P2@x,y,In2.Cu,rotation)
 Coordinates are turned into KiCad's (mm, y down), the raw form every importer produces.
 """
-import json, os, re
+import itertools, json, os, re
 import numpy as np
 from shapely.geometry import Polygon, LineString, Point, box
 from shapely.ops import unary_union
 from shapely import affinity
 from . import Imported
 from .kicad.pnp import read_pos
+from .kicad.shapes import oval
 
 
 # ---- aperture macros ----------------------------------------------------------------------------------
@@ -125,9 +126,7 @@ def parse_gerber(path):
                 elif name == 'R':
                     g = box(-p[0] / 2, -p[1] / 2, p[0] / 2, p[1] / 2)
                 elif name == 'O':
-                    w, h = p[0], p[1]; r = min(w, h) / 2
-                    L = LineString([(-(w / 2 - r), 0), (w / 2 - r, 0)] if w >= h else [(0, -(h / 2 - r)), (0, h / 2 - r)])
-                    g = L.buffer(r, quad_segs=8) if L.length else Point(0, 0).buffer(r, quad_segs=8)
+                    g = oval(p[0], p[1])
                 elif name == 'P':
                     n = int(p[1] / unit); rot = p[2] / unit if len(p) > 2 else 0
                     t = np.radians(rot) + 2 * np.pi * np.arange(n) / n
@@ -194,21 +193,16 @@ def parse_gerber(path):
             add(affinity.translate(aps[cur_ap], nx, ny))
         x, y = nx, ny
     copper = {}
-    k = 0
-    while k < len(ops):                                       # runs of one polarity, in order
-        j = k
-        while j < len(ops) and ops[j][0] == ops[k][0]:
-            j += 1
-        if ops[k][0] == 'D':
+    for pol, run in itertools.groupby(ops, key=lambda op: op[0]):     # runs of one polarity, in order
+        if pol == 'D':
             by = {}
-            for _, g, n in ops[k:j]:
+            for _, g, n in run:
                 by.setdefault(n, []).append(g)
             for n, gs in by.items():
                 copper[n] = unary_union([copper[n]] + gs) if n in copper else unary_union(gs)
         else:
-            clear = unary_union([g for _, g, _ in ops[k:j]])
+            clear = unary_union([g for _, g, _ in run])
             copper = {n: g.difference(clear) for n, g in copper.items()}
-        k = j
     return {n: g.buffer(0) for n, g in copper.items() if not g.is_empty}, draws, attrs
 
 

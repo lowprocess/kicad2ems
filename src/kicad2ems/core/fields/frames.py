@@ -103,14 +103,11 @@ class DumpSource:
         self.path, self.name, self.domain = run_path, name, domain
         self.run = os.path.basename(run_path).replace('exc_', '', 1)
         self.solver = os.path.basename(os.path.dirname(run_path))   # openems, mom25d
-        info = _info(run_path)
-        self.geometry = info
-        self.meta = next((d for d in info.get('dumps', []) if d['name'] == name), {})
+        self.geometry = _info(run_path)
+        self.meta = next((d for d in self.geometry.get('dumps', []) if d['name'] == name), {})
         self.field = self.meta.get('field') or (re.match(r'dump_([EHJ])_', name) or [None, 'E'])[1]
         self.unit = self.meta.get('unit') or UNITS.get(self.field, '')
-        self.frames, self.freqs, self._cache, self._fd = [], [], {}, None
-        self.norm = {}
-        self.dt_ps = None
+        self.frames, self.freqs, self._cache, self._fd, self.norm, self.dt_ps = [], [], {}, None, {}, None
         self.refresh()
 
     @property
@@ -146,11 +143,11 @@ class DumpSource:
                 try:
                     from .dumps import read_fd
                     self._fd = read_fd(h5)
-                    self.freqs = [f for f, _ in self._fd[1]]
                 except (OSError, KeyError):                         # still being written
                     self._fd = None
             elif os.path.exists(npz) and self._fd is None:
                 self._fd = read_npz(npz)
+            if self._fd is not None:
                 self.freqs = [f for f, _ in self._fd[1]]
             try:
                 with open(os.path.join(self.path, 'dump_norm.json'), encoding='utf-8') as fh:
@@ -184,10 +181,8 @@ class DumpSource:
     def load(self, i):
         """(mesh, field (nx, ny, nz, 3)) of frame i (cached; float32 / complex)."""
         if self.domain == 'FD':
-            mesh, frames = self._fd
-            data = frames[i][1]
-            s = self.scale(i)
-            return mesh, (data * s if s else data)
+            data, s = self._fd[1][i][1], self.scale(i)
+            return self._fd[0], (data * s if s else data)
         path = self.frames[i][1]
         if path not in self._cache:
             if len(self._cache) > 400:
@@ -231,9 +226,7 @@ def find_dumps(out_dir):
     runs = sorted(glob.glob(os.path.join(out_dir, '*', 'exc_*')),
                   key=lambda r: (os.path.basename(os.path.dirname(r)) != 'openems', r))
     for run in runs:
-        names = {}
-        for d in _info(run).get('dumps', []):
-            names[d['name']] = 'FD' if d.get('freqs') else 'TD'
+        names = {d['name']: 'FD' if d.get('freqs') else 'TD' for d in _info(run).get('dumps', [])}
         for f in glob.glob(os.path.join(run, 'dump_*')):
             b = os.path.basename(f)
             m = re.match(r'(dump_.+_td)_\d+\.vtr$', b) or re.match(r'(dump_.+_fd)\.(h5|npz)$', b)
@@ -269,14 +262,11 @@ def plane(mesh, data, axis, index, component='mag', phase=None):
     sl = [slice(None)] * 3
     sl[axis] = min(index, data.shape[axis] - 1)
     f = data[tuple(sl)]                                             # (nu, nv, 3)
-    if np.iscomplexobj(f):
-        if phase is None:
-            vec, peak = np.abs(f), True
-        else:
-            vec, peak = np.real(f * np.exp(1j * phase)), False
+    peak = np.iscomplexobj(f) and phase is None
+    if peak:
+        vec = np.abs(f)
     else:
-        vec, peak = f, False
-    if not peak:
+        vec = np.real(f * np.exp(1j * phase)) if np.iscomplexobj(f) else f
         vec = vec * np.array([1, -1, 1], vec.dtype)                 # model y up -> KiCad y down
     signed = component != 'mag' and not peak
     img = np.sqrt(np.sum(np.abs(vec) ** 2, axis=-1)) if component == 'mag' else vec[..., AXES.index(component)]
@@ -362,24 +352,29 @@ def layout_patches(ax, geometry, layer, components=True):
     from matplotlib.patches import PathPatch
     from shapely.geometry import Polygon
     from shapely.geometry.polygon import orient
-    def add(rings, face, edge, z, alpha=1.):
-        poly=orient(Polygon(rings[0],rings[1:]),sign=1.)
-        vertices=[];codes=[]
-        for ring in [poly.exterior,*poly.interiors]:
-            a=np.asarray(ring.coords)*[1,-1]
-            vertices.extend(a);codes.extend([Path.MOVETO]+[Path.LINETO]*(len(a)-2)+[Path.CLOSEPOLY])
-        ax.add_patch(PathPatch(Path(vertices,codes),facecolor=face,edgecolor=edge,lw=.8,zorder=z,alpha=alpha))
-    context=geometry.get('inactive_copper',geometry.get('copper',{}))
-    for rings in context.get(layer,[]):add(rings,'#a8adb3','#737b82',1)
-    for rings in geometry.get('active_copper',{}).get(layer,[]):add(rings,'#46c6d2','#007c88',1)
-    if components:
-        for c in geometry.get('components',[]):
-            if c['layer']!=layer:continue
-            p=c['polygon'];polys=[p['coordinates']] if p['type']=='Polygon' else p['coordinates']
-            for rings in polys:add(rings,'#ffd166' if c.get('active') else '#a7a9ad','#282828',4,.7)
-            if c.get('active'):
-                poly=Polygon(polys[0][0]);p=poly.centroid
-                ax.text(p.x,-p.y,c['ref'],ha='center',va='center',fontsize=8,zorder=5)
+
+    def add(rings, face, edge, z, alpha=1.0):
+        poly = orient(Polygon(rings[0], rings[1:]), sign=1.0)
+        vertices, codes = [], []
+        for ring in [poly.exterior, *poly.interiors]:
+            a = np.asarray(ring.coords) * [1, -1]
+            vertices.extend(a)
+            codes.extend([Path.MOVETO] + [Path.LINETO] * (len(a) - 2) + [Path.CLOSEPOLY])
+        ax.add_patch(PathPatch(Path(vertices, codes), facecolor=face, edgecolor=edge, lw=0.8, zorder=z, alpha=alpha))
+    for rings in geometry.get('inactive_copper', geometry.get('copper', {})).get(layer, []):
+        add(rings, '#a8adb3', '#737b82', 1)
+    for rings in geometry.get('active_copper', {}).get(layer, []):
+        add(rings, '#46c6d2', '#007c88', 1)
+    for c in geometry.get('components', []) if components else []:
+        if c['layer'] != layer:
+            continue
+        p = c['polygon']
+        polys = [p['coordinates']] if p['type'] == 'Polygon' else p['coordinates']
+        for rings in polys:
+            add(rings, '#ffd166' if c.get('active') else '#a7a9ad', '#282828', 4, 0.7)
+        if c.get('active'):
+            centre = Polygon(polys[0][0]).centroid
+            ax.text(centre.x, -centre.y, c['ref'], ha='center', va='center', fontsize=8, zorder=5)
 
 
 def render(pl, lo, hi, log, title, geometry=None, cbar='', size=(9, 5), dpi=110, layout=None):
@@ -399,13 +394,13 @@ def render(pl, lo, hi, log, title, geometry=None, cbar='', size=(9, 5), dpi=110,
         cmap = base.with_extremes(bad=base(0.0), under=base(0.0))
         norm = LogNorm(lo, hi) if log else Normalize(lo, hi)
         img = np.ma.masked_less_equal(pl.img, 0) if log else pl.img
-    style=layout or {}
-    enabled=pl.axis==2 and style.get('enabled',bool((geometry or {}).get('active_copper')))
+    style = layout or {}
+    enabled = pl.axis == 2 and style.get('enabled', bool((geometry or {}).get('active_copper')))
     if enabled and geometry:
-        layer=style.get('layer') or max(geometry.get('cu_z',{}),key=geometry['cu_z'].get,default='')
-        layout_patches(ax,geometry,layer,style.get('components',True))
+        layer = style.get('layer') or max(geometry.get('cu_z', {}), key=geometry['cu_z'].get, default='')
+        layout_patches(ax, geometry, layer, style.get('components', True))
     im = ax.pcolormesh(pl.u, pl.v, img.T, shading='nearest', cmap=cmap, norm=norm,
-                       alpha=style.get('opacity',.65) if enabled else 1.,zorder=2)
+                       alpha=style.get('opacity', 0.65) if enabled else 1.0, zorder=2)
     for us, vs in outlines(geometry, pl.axis, pl.pos):
         ax.plot(us, vs, color='#7fd1ff' if not pl.signed else '#333333', lw=0.6 if pl.axis == 2 else 2.0, alpha=0.85)
     ax.set_xlim(pl.u[0], pl.u[-1])
@@ -491,6 +486,7 @@ def save_fd_outputs(src, prefix, animate=None, log=True, n_phase=24):
     """The files of a frequency-domain plane dump, per frequency: <prefix>_<GHz>GHz.png (the peak |F|) and, with
     animate = 'gif' / 'mp4', <prefix>_<GHz>GHz.<animate>: one period of Re(F e^(j phase)), the standing waves.
     Returns [(freq Hz, path)]."""
+    from PIL import Image
     out = []
     axis = default_axis(src.shape())
     what = f"|{src.field}|"
@@ -501,7 +497,6 @@ def save_fd_outputs(src, prefix, animate=None, log=True, n_phase=24):
         cbar = f"{what} ({src.unit}" + (", 1 V incident)" if src.scale(i) else ")")
         img = render(pl, lo, hi, log, f"{what} (peak), {src.meta.get('label', '')}, {f / 1e9:g} GHz ({src.run} driven)",
                      src.geometry, cbar)
-        from PIL import Image
         png = f"{prefix}_{f / 1e9:g}GHz.png"
         Image.fromarray(img).save(png)
         out.append((f, png))

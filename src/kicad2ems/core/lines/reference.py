@@ -9,7 +9,7 @@ import math
 import numpy as np
 from shapely.geometry import LineString, Point
 from .formulas import cpwg, embedded_microstrip, microstrip, offset_stripline, stripline
-from .elements import Element
+from .elements import Element, direction_at
 
 
 MIXED_ER = 1.03             # dielectrics between a stripline's planes differing by more: solved on its cut
@@ -44,18 +44,17 @@ class RefCopper:
         from shapely.ops import unary_union
         from shapely.prepared import prep
         sel = model.sel
-        outline = model.outline
         by_layer = {}
         for l, n, g in model.prims.items:
             if l in model.cu_z and n not in signal_nets and (sel is None or n in sel):
                 by_layer.setdefault(l, []).append(g)
-        self.geom, self._prep = {}, {}
+        self.geom = {}
         for l, gs in by_layer.items():
-            u = unary_union(gs).intersection(outline)
+            u = unary_union(gs).intersection(model.outline)
             if not u.is_empty:
                 self.geom[l] = u
         if model.ground:
-            self.geom[model.ground] = outline
+            self.geom[model.ground] = model.outline
         self._prep = {l: prep(g) for l, g in self.geom.items()}
 
     def __getstate__(self):                                 # pickled for worker processes: no prepared geometry
@@ -83,47 +82,33 @@ class RefCopper:
             cache[layer] = (shapely.STRtree(pieces), pieces)
         return cache[layer]
 
-    def ray_gap(self, layer, origin, ray):
-        """Distance from `origin` to the nearest reference copper of `layer` on the segment `ray`, or None; the
-        same as ray.intersection(whole layer) (the nearest hit lies in the piece that holds it)."""
-        if layer not in self.geom:
-            return None
-        tree, pieces = self._tiled(layer)
-        best = None
-        for i in tree.query(ray):
-            hit = ray.intersection(pieces[i])
-            if not hit.is_empty:
-                d = origin.distance(hit)
-                best = d if best is None else min(best, d)
-        return best
-
     def covers(self, layer, pt):
         """True when the reference copper of `layer` covers the point pt (x, y: mm)."""
         p = self._prep.get(layer)
         return bool(p is not None and p.covers(Point(*pt)))
 
 
-def _covers(ref, layer, pt, n, reach):
-    """'full' when reference copper on `layer` covers pt and the points `reach` mm either side along n,
-    'partial' when only pt, else None."""
-    if not ref.covers(layer, pt):
-        return None
-    return 'full' if ref.covers(layer, pt + n * reach) and ref.covers(layer, pt - n * reach) else 'partial'
-
-
 def _side_gap(ref, layer, pt, n, w, reach):
     """Distance from the strip edge to the nearest reference copper on the same layer along +n (None:
-    beyond reach)."""
+    beyond reach); against the TILE mm pieces of a RefCopper, which give what the whole layer does (the nearest hit
+    lies in the piece that holds it)."""
     g = ref.geom.get(layer)
     if g is None:
         return None
+    edge = Point(*(pt + n * (w / 2)))
     ray = LineString([pt + n * (w / 2 + 1e-4), pt + n * (w / 2 + reach)])
     if TILE and isinstance(ref, RefCopper):
-        return ref.ray_gap(layer, Point(*(pt + n * (w / 2))), ray)
+        tree, pieces = ref._tiled(layer)
+        hits = [ray.intersection(pieces[i]) for i in tree.query(ray)]
+        return min((edge.distance(hit) for hit in hits if not hit.is_empty), default=None)
     hit = ray.intersection(g)
-    if hit.is_empty:
-        return None
-    return Point(*(pt + n * (w / 2))).distance(hit)
+    return None if hit.is_empty else edge.distance(hit)
+
+
+def _nearest(model, zs, below):
+    """The copper layers below the height zs (else above it), nearest first."""
+    return sorted((l for l in model.cu_order if (model.cu_z[l] < zs if below else model.cu_z[l] > zs)),
+                  key=lambda l: abs(model.cu_z[l] - zs))
 
 
 def classify(model, ref, e, pt, d):
@@ -135,15 +120,14 @@ def classify(model, ref, e, pt, d):
     if not w or w <= 0:                                      # a degenerate pad chord: no cross-section
         e.notes.append('no width here: no impedance')
         return
-    found = {}
-    for side in ('below', 'above'):
-        cand = sorted((l for l in model.cu_order if (model.cu_z[l] < zs if side == 'below' else model.cu_z[l] > zs)),
-                      key=lambda l: abs(model.cu_z[l] - zs))
-        for l in cand:
+    found = {}                                               # the nearest plane each side covering pt: 'full' when
+    for side in ('below', 'above'):                          # it also covers w / 2 + 2 h either side
+        for l in _nearest(model, zs, side == 'below'):
             h = abs(model.cu_z[l] - zs)
-            cov = _covers(ref, l, pt, n, w / 2 + 2 * h)
-            if cov:
-                found[side] = (l, h, cov)
+            if ref.covers(l, pt):
+                reach = w / 2 + 2 * h
+                full = ref.covers(l, pt + n * reach) and ref.covers(l, pt - n * reach)
+                found[side] = (l, h, 'full' if full else 'partial')
                 break
     if not found:
         e.notes.append('no reference plane above or below')
@@ -313,24 +297,21 @@ def cut(ref, pt, n, R):
     return out
 
 
-def _cut_args(model, ref, e, pt, n, found):
-    """_cut_section's arguments for a section: the copper a cut across it finds, every layer's, out to FIELD_REACH
-    reference heights either side, up to the nearest plane that spans the cut on either side."""
+def _cut_copper(model, ref, layer, pt, n, R, W0, W, h0):
+    """The copper a cut across a strip (or a coupled group's strips) on `layer` finds, R mm either side of pt: (its
+    layer's pieces as found; those beside it, beyond its outer edges W0 apart (W when snapped); every other layer's
+    (z, spans the cut, pieces), nearest first, up to the nearest plane that spans the cut on either side; the
+    dielectrics). The pieces' ends have their distances from the nearer outer edge snapped (_snap_distance, in
+    reference heights h0): similar cuts are one solve."""
     from . import xsection as X
-    R = e.w / 2 + max(3 * e.w, FIELD_REACH * max(h for _, h, _ in found.values()))
     pieces = cut(ref, pt, n, R)
-    zs = model.cu_z[e.layer]
-    up = 'below' in found                                    # copper thickness grows away from the plane under it
-    w = X.snap(e.w)                                          # similar cross-sections: one solve (xsection.SIMILAR)
-
-    h0 = X.snap(min(h for _, h, _ in found.values()))
+    zs = model.cu_z[layer]
 
     def at(u):
-        """A position along the cut, its distance d from the strip's nearer edge snapped (_snap_distance)."""
         if not math.isfinite(u):
             return u
-        d = u - (e.w if u >= 0 else -e.w) / 2
-        return round((w if u >= 0 else -w) / 2 + math.copysign(_snap_distance(abs(d) / h0, X.SIMILAR) * h0, d), 6)
+        d = u - (W0 if u >= 0 else -W0) / 2
+        return round((W if u >= 0 else -W) / 2 + math.copysign(_snap_distance(abs(d) / h0, X.SIMILAR) * h0, d), 6)
 
     def snapped(ps):
         """The pieces with their ends snapped; as they are if that would disorder them (ends snapped across the middle
@@ -339,17 +320,28 @@ def _cut_args(model, ref, e, pt, n, found):
         ends = [v for piece in got for v in piece]
         return got if all(p < q for p, q in zip(ends, ends[1:])) else tuple((round(a, 6), round(b, 6)) for a, b in ps)
     layers = []
-    for side in ('below', 'above'):
-        order = sorted((l for l in pieces if l != e.layer and (model.cu_z[l] < zs) == (side == 'below')),
-                       key=lambda l: abs(model.cu_z[l] - zs))
-        for l in order:
+    for below in (True, False):
+        for l in sorted((l for l in pieces if l != layer and (model.cu_z[l] < zs) == below),
+                        key=lambda l: abs(model.cu_z[l] - zs)):
             full = pieces[l] == [(-math.inf, math.inf)]
             layers.append((round(model.cu_z[l], 6), full, snapped(pieces[l])))
             if full:
                 break                                        # nothing beyond a plane across the whole cut counts
     diel = tuple((round(l['z0'], 6), round(l['z1'], 6), l['er'], l['tand']) for l in model.layers)
-    side = snapped([(a, b) for a, b in pieces.get(e.layer, ()) if b < -e.w / 2 or a > e.w / 2])
-    return round(w, 6), round(zs, 6), round(model.cu_t.get(e.layer, 0.0), 6), up, side, tuple(layers), diel
+    own = pieces.get(layer, ())
+    return own, snapped([(a, b) for a, b in own if b < -W0 / 2 or a > W0 / 2]), tuple(layers), diel
+
+
+def _cut_args(model, ref, e, pt, n, found):
+    """_cut_section's arguments for a section: the copper a cut across it finds (_cut_copper), every layer's, out to
+    FIELD_REACH reference heights either side."""
+    from . import xsection as X
+    hs = [h for _, h, _ in found.values()]
+    w = X.snap(e.w)                                          # similar cross-sections: one solve (xsection.SIMILAR)
+    _, side, layers, diel = _cut_copper(model, ref, e.layer, pt, n, e.w / 2 + max(3 * e.w, FIELD_REACH * max(hs)),
+                                        e.w, w, X.snap(min(hs)))
+    up = 'below' in found                                    # copper thickness grows away from the plane under it
+    return round(w, 6), round(model.cu_z[e.layer], 6), round(model.cu_t.get(e.layer, 0.0), 6), up, side, layers, diel
 
 
 def group_cut(model, ref, layer, legs, pt, n, hs, up):
@@ -366,36 +358,11 @@ def group_cut(model, ref, layer, legs, pt, n, hs, up):
     W0 = (legs[-1][0] + legs[-1][1] / 2) - (legs[0][0] - legs[0][1] / 2)      # between its outer edges, as it is
     W = sum(ws) + sum(gaps)                                                   # and snapped
     R = W0 / 2 + max(3 * max(w for _, w in legs), FIELD_REACH * max(hs))
-    pieces = cut(ref, pt, n, R)
-    zs = model.cu_z[layer]
-    h0 = X.snap(min(hs))
-
-    def at(u):
-        if not math.isfinite(u):
-            return u
-        d = u - math.copysign(W0 / 2, u)
-        return round(math.copysign(W / 2, u) + math.copysign(_snap_distance(abs(d) / h0, X.SIMILAR) * h0, d), 6)
-
-    def snapped(ps):
-        got = tuple((at(a), at(b)) for a, b in ps)
-        ends = [v for piece in got for v in piece]
-        return got if all(p < q for p, q in zip(ends, ends[1:])) else tuple((round(a, 6), round(b, 6)) for a, b in ps)
+    own, side, layers, diel = _cut_copper(model, ref, layer, pt, n, R, W0, W, X.snap(min(hs)))
     x, strips = -W / 2, []
     for k, w in enumerate(ws):
         strips.append((round(x, 6), round(x + w, 6)))
         x += w + (gaps[k] if k < len(gaps) else 0.0)
-    layers = []
-    for where in ('below', 'above'):
-        order = sorted((l for l in pieces if l != layer and (model.cu_z[l] < zs) == (where == 'below')),
-                       key=lambda l: abs(model.cu_z[l] - zs))
-        for l in order:
-            full = pieces[l] == [(-math.inf, math.inf)]
-            layers.append((round(model.cu_z[l], 6), full, snapped(pieces[l])))
-            if full:
-                break
-    diel = tuple((round(l['z0'], 6), round(l['z1'], 6), l['er'], l['tand']) for l in model.layers)
-    own = pieces.get(layer, ())
-    side = snapped([(a, b) for a, b in own if b < -W0 / 2 or a > W0 / 2])
     between = []
     for k in range(len(legs) - 1):                           # copper between two lines: a guard trace
         lo, hi = legs[k][0] + legs[k][1] / 2, legs[k + 1][0] - legs[k + 1][1] / 2       # the gap as it is
@@ -407,15 +374,19 @@ def group_cut(model, ref, layer, legs, pt, n, hs, up):
                 b = min(a + X.snap(b - a), s_hi - SNAP)
                 between.append((round(a, 6), round(b, 6)))
     side = tuple(sorted(side + tuple(between)))
-    return tuple(strips), round(zs, 6), round(model.cu_t.get(layer, 0.0), 6), up, side, tuple(layers), diel
+    return tuple(strips), round(model.cu_z[layer], 6), round(model.cu_t.get(layer, 0.0), 6), up, side, layers, diel
+
+
+def _flip(ps):
+    """Pieces (a, b) along a cut, mirrored about its middle."""
+    return tuple(sorted((-b, -a) for a, b in ps))
 
 
 def group_keys(args):
     """(_solve_group's arguments for a group's cut with its copper's thickness and as sheets, flipped): a cut and its
     mirror image are one solve, and flipped says the lines' order in it is the reverse of the group's."""
     strips, zs, t, up, side, layers, diel = args
-    flip = lambda ps: tuple(sorted((-b, -a) for a, b in ps))
-    mirror = (flip(strips), flip(side), tuple((z, full, flip(ps)) for z, full, ps in layers))
+    mirror = (_flip(strips), _flip(side), tuple((z, full, _flip(ps)) for z, full, ps in layers))
     flipped = mirror < (strips, side, layers)
     if flipped:
         strips, side, layers = mirror
@@ -439,48 +410,42 @@ def group_beyond(args, xs, hs):
 
 
 def _field(e):
-    """Z0 and eeff of a section (with its copper's thickness and as a sheet) from the field solver, on its cut. The
-    formulas' values are kept where the solve fails."""
-    try:
-        got = [_solve_cut(*k) for k in _cut_keys(e)]
-    except Exception as ex:                                  # noqa: BLE001 (a cross-section it cannot grid)
-        e.notes.append(f"field solver failed ({ex}): formula impedance")
-        return
-    _take(e, got, 'cut')
+    """Z0 and eeff of a section (with its copper's thickness and as a sheet) from the field solver, on its cut."""
+    _take(e, _solve_cut, _cut_keys, 'cut')
 
 
 def _cut_keys(e):
     """_solve_cut's arguments for section e's cut: with its copper's thickness, and as a sheet."""
     w, zs, t, up, side, layers, diel = e.cut
-    flip = lambda ps: tuple(sorted((-b, -a) for a, b in ps))
-    mirror = (flip(side), tuple((z, full, flip(ps)) for z, full, ps in layers))
+    mirror = (_flip(side), tuple((z, full, _flip(ps)) for z, full, ps in layers))
     side, layers = min((side, layers), mirror)               # a cut and its mirror image: one solve
     return [(w, zs, tt, up, side, layers, diel) for tt in (t, 0.0)]
 
 
-def _take(e, got, source):
-    """The field solver's [(Z0, eeff) with the copper's thickness, as a sheet] for section e, noted."""
+def _take(e, solve, keys, source):
+    """Section e from the field solver: solve(*k) for each of keys(e), [(Z0, eeff) with the copper's thickness, as a
+    sheet], noted. False where the solve fails: the formulas' values are kept."""
+    try:
+        got = [solve(*k) for k in keys(e)]
+    except Exception as ex:                                  # noqa: BLE001 (a cross-section it cannot grid)
+        e.notes.append(f"field solver failed ({ex}): formula impedance")
+        return False
     e.source = source
     e.notes.append(f"field solver: Z0 {got[0][0]:.1f} ohm (formula {e.z0:.1f})")
     e.field = abs(got[1][0] / e.z0_sheet - 1) > FIELD_DIFFERS if e.z0_sheet else True
     (e.z0, e.eeff, *loss), (e.z0_sheet, e.eeff_sheet, *_) = got
     if loss and loss[0] > 0:                                # the mode's own tan d, which the solve gives
         e.tand_eff = loss[0]
+    return True
 
 
 def _field_cpwg(e):
     """A grounded CPW section by the field solver as classify found it: the strip, gaps e.s either side (ground to
     the side of the cut), the plane e.h under it, one dielectric (cached by the snapped sizes)."""
     from . import xsection as X
-    keys = _cpwg_keys(e)
-    try:
-        got = [_solve_cpwg(*k) for k in keys]
-    except Exception as ex:                                  # noqa: BLE001 (a cross-section it cannot grid)
-        e.notes.append(f"field solver failed ({ex}): formula impedance")
-        return
-    w, s, h, er, t = keys[0]
-    e.classified = X.microstrip(w, h, er, t, s=s)
-    _take(e, got, 'cpwg')
+    if _take(e, _solve_cpwg, _cpwg_keys, 'cpwg'):
+        w, s, h, er, t = _cpwg_keys(e)[0]
+        e.classified = X.microstrip(w, h, er, t, s=s)
 
 
 def _cpwg_keys(e):
@@ -543,18 +508,26 @@ def _job(item):
 
 
 def solve_deferred(jobs, workers=None):
-    """Solve the sections classify left in DEFER, in the order it met them. Their distinct cross-sections that no
-    earlier section solved go to worker processes first when there are PARALLEL or more (workers: how many; None:
-    one per fast core, emsdev's core_threads): a real board's hundreds of cuts take a few seconds instead of half
+    """Solve the sections classify left in DEFER, in the order it met them, their cross-sections in worker processes
+    first where there are many (_in_parallel): a real board's hundreds of cuts take a few seconds instead of half
     a minute. Where worker processes cannot start, they are solved one after another, as before."""
-    cache = dict(cut=_solve_cut, cpwg=_solve_cpwg)
-    want = {}
+    want = []
     for e, on_cut in jobs:
         if on_cut:
-            want.update((('cut', k), None) for k in _cut_keys(e))
+            want += [('cut', k) for k in _cut_keys(e)]
         elif e.xs == 'cpwg':
-            want.update((('cpwg', k), None) for k in _cpwg_keys(e))
-    todo = [item for item in want if item[1] not in cache[item[0]].got]
+            want += [('cpwg', k) for k in _cpwg_keys(e)]
+    _in_parallel(want, workers)
+    for e, on_cut in jobs:
+        _solve_section(e, on_cut)
+
+
+def _in_parallel(items, workers=None):
+    """The distinct cross-sections of `items` ([(kind, its solve's arguments)]) that no earlier section solved, solved
+    in worker processes when there are PARALLEL or more (workers: how many; None: one per fast core, emsdev's
+    core_threads), into the caches of their solves."""
+    cache = dict(cut=_solve_cut, cpwg=_solve_cpwg, group=_solve_group)
+    todo = [item for item in dict.fromkeys(items) if item[1] not in cache[item[0]].got]
     if workers is None:
         try:
             from kicad2ems.emsdev.cpu import core_threads
@@ -566,8 +539,6 @@ def solve_deferred(jobs, workers=None):
         for item, got in _in_workers(todo, workers):
             if got is not None and item[1] not in cache[item[0]].got:
                 cache[item[0]].put(item[1], got)
-    for e, on_cut in jobs:
-        _solve_section(e, on_cut)
 
 
 def _in_workers(todo, workers):
@@ -677,18 +648,7 @@ def _solve_group(strips, zs, t, up, side, layers, diel):
 def solve_groups(keys, workers=None):
     """The cuts of coupled groups (group_keys' arguments, any number) solved, those no earlier group solved in
     worker processes when there are PARALLEL or more: _solve_group then has them."""
-    todo = [('group', k) for k in dict.fromkeys(keys) if k not in _solve_group.got]
-    if workers is None:
-        try:
-            from kicad2ems.emsdev.cpu import core_threads
-            workers = core_threads()
-        except Exception:                                    # noqa: BLE001
-            workers = 1
-    workers = min(workers, len(todo) // 8)
-    if len(todo) >= PARALLEL and workers > 1:
-        for item, got in _in_workers(todo, workers):
-            if got is not None and item[1] not in _solve_group.got:
-                _solve_group.put(item[1], got)
+    _in_parallel([('group', k) for k in keys], workers)
 
 
 def _cut_section(w, zs, t, up, side, layers, diel):
@@ -721,25 +681,12 @@ def _strips_section(strips, zs, t, up, side, layers, diel):
     return xs
 
 
-def _references(model, ref, layer, pt):
-    """(nearest reference layer below, nearest above) covering point pt, or None each."""
-    zs = model.cu_z[layer]
-    out = []
-    for below in (True, False):
-        cand = sorted((l for l in model.cu_order if (model.cu_z[l] < zs if below else model.cu_z[l] > zs)),
-                      key=lambda l: abs(model.cu_z[l] - zs))
-        out.append(next((l for l in cand if ref.covers(l, pt)), None))
-    return tuple(out)
-
-
 GAP_STEP = 1.5          # a coplanar gap changing by this factor starts a new section (a tapered gap)
 TILE = 4.0              # mm: reference copper cut into squares of this size for ray casts (None: whole planes)
-ADAPTIVE = None         # mm between samples away from any change (None: every `step`, 0.25 mm). Tried at 1-4 mm:
-                        # the same map, but no faster (1.0-1.1x on KiCad's CM5 and video demos, 0.9x on the Jetson
-                        # one): finding where copper corners lie along a trace cost what the samples saved
+WIDTH_STEP = 1.2        # a copper width changing by this factor starts a new section (a taper)
 
 
-def _gap_class(model, ref, layer, refs, pt, d, w, local):
+def _gap_class(model, layer, refs, pt, d, w, local):
     """Coplanar-gap class at pt: None when there is no ground within 2h on both sides (the reach classify
     uses), else the mean gap on a log scale (GAP_STEP per class)."""
     below, above = refs
@@ -751,16 +698,6 @@ def _gap_class(model, ref, layer, refs, pt, d, w, local):
     if any(x is None or x >= 2 * h for x in g):
         return None
     return int(round(math.log(max(0.5 * (g[0] + g[1]), 1e-3)) / math.log(GAP_STEP)))
-
-
-class _Local:
-    """The reference copper of one layer near one trace (fast ray casts)."""
-    def __init__(self, ref, layer, region):
-        g = ref.geom.get(layer)
-        self.geom = {layer: g.intersection(region)} if g is not None else {}
-
-
-WIDTH_STEP = 1.2        # a copper width changing by this factor starts a new section (a taper)
 
 
 class NetCopper:
@@ -798,7 +735,7 @@ class NetCopper:
             return w, 0.0
         r = max(self.reach if self is not None else 5.0, 10 * w)
         seg = LineString([pt - n * r, pt + n * r]).intersection(g)
-        parts = [seg] if seg.geom_type == 'LineString' else [p for p in getattr(seg, 'geoms', []) if p.geom_type == 'LineString']
+        parts = [p for p in getattr(seg, 'geoms', [seg]) if p.geom_type == 'LineString']
         part = next((p for p in parts if p.distance(Point(*pt)) < 1e-6), None)
         if part is None:
             return w, 0.0
@@ -812,13 +749,15 @@ class NetCopper:
 def _split_by_reference(model, ref, e, netcu=None, step=0.25, max_samples=400):
     """A trace element as consecutive pieces with the same reference planes, coplanar gap class and
     copper width class (sampled every `step` mm; a one-sample change of the gap alone, such as a via
-    pad beside the trace, is ignored). A piece widened by copper shapes of its net gets that width."""
+    pad beside the trace, is ignored). A piece widened by copper shapes of its net gets that width. (Sampling
+    every 1-4 mm away from any change, densely only where copper corners lie along the trace, was tried: the same
+    map, but no faster: 1.0-1.1x on KiCad's CM5 and video demos, 0.9x on the Jetson one.)"""
+    from types import SimpleNamespace
     from shapely.ops import substring
     line = LineString(e.pts)
     L = line.length
     n = int(min(max_samples, max(3, math.ceil(L / step))))
     pos = [(i + 0.5) * L / n for i in range(n)]
-    hmax = max(model.cu_z.values()) - min(model.cu_z.values())
     if e.region is not None:                               # a strip: the width of its own copper
         wide = e.region
     else:
@@ -829,35 +768,30 @@ def _split_by_reference(model, ref, e, netcu=None, step=0.25, max_samples=400):
     def across(s):
         """(point, direction, copper width, centre offset) at distance s along the trace."""
         pt = np.asarray(line.interpolate(s).coords[0])
-        a = np.asarray(line.interpolate(max(s - 0.01, 0.0)).coords[0])
-        b = np.asarray(line.interpolate(min(s + 0.01, L)).coords[0])
-        d = (b - a) / (np.linalg.norm(b - a) or 1.0)
+        d = direction_at(line, s, 0.01)
         w, off = NetCopper.width(netcu, wide, pt, np.array([-d[1], d[0]]), e.w) if wide is not None else (e.w, 0.0)
         return pt, d, w, off
 
-    rmax = max(netcu.reach if netcu is not None else 0.0, 10 * e.w) if wide is not None else e.w
-    local = ref if TILE else _Local(ref, e.layer, line.buffer(rmax + 2 * hmax + 0.1))
+    if TILE:
+        local = ref
+    else:                                                  # the layer's reference copper near the trace: fast rays
+        hmax = max(model.cu_z.values()) - min(model.cu_z.values())
+        rmax = max(netcu.reach if netcu is not None else 0.0, 10 * e.w) if wide is not None else e.w
+        g = ref.geom.get(e.layer)
+        near = {e.layer: g.intersection(line.buffer(rmax + 2 * hmax + 0.1))} if g is not None else {}
+        local = SimpleNamespace(geom=near)
+    zs = model.cu_z[e.layer]
 
     def sample(s):
+        """(the nearest reference layers below and above covering it, or None each; gap class; width class) at s."""
         pt, d, w, off = across(s)
-        r = _references(model, ref, e.layer, pt)
-        return r, _gap_class(model, ref, e.layer, r, pt + np.array([-d[1], d[0]]) * off, d, w, local), \
+        r = tuple(next((l for l in _nearest(model, zs, below) if ref.covers(l, pt)), None) for below in (True, False))
+        return r, _gap_class(model, e.layer, r, pt + np.array([-d[1], d[0]]) * off, d, w, local), \
             int(round(math.log(w / e.w) / math.log(WIDTH_STEP)))
 
-    if ADAPTIVE and TILE and isinstance(ref, RefCopper) and L > 2 * ADAPTIVE:
-        pos, got = _adaptive(model, ref, e, line, L, step, wide, rmax, sample, max_samples)
-        n = len(pos)
-        refs, gaps, widths = (list(x) for x in zip(*got))
-    else:
-        refs, gaps, widths = [], [], []
-        for s in pos:
-            r, g, wc = sample(s)
-            refs.append(r)
-            gaps.append(g)
-            widths.append(wc)
+    refs, gaps, widths = (list(x) for x in zip(*(sample(s) for s in pos)))
     for i in range(1, n - 1):
-        near = pos[i + 1] - pos[i - 1] <= 2.02 * L / max(1, min(max_samples, math.ceil(L / step)))
-        if near and gaps[i - 1] == gaps[i + 1] != gaps[i] and refs[i - 1] == refs[i] == refs[i + 1]:
+        if gaps[i - 1] == gaps[i + 1] != gaps[i] and refs[i - 1] == refs[i] == refs[i + 1]:
             gaps[i] = gaps[i - 1]
     antipad = _via_antipads(model, e, pos, refs, L)
     sig = list(zip(refs, gaps, widths))
@@ -910,84 +844,3 @@ def _via_antipads(model, e, pos, refs, L):
         if hs and (cut if end == 0 else L - cut) <= VIA_ANTIPAD * min(hs):
             out[0 if end == 0 else -1] = pos[k]
     return out
-
-
-SAMPLES = [0]           # sample() calls of the adaptive sampling (for measuring it)
-
-
-def _adaptive(model, ref, e, line, L, step, wide, rmax, sample, max_samples):
-    """Sample positions along a trace (and what sample() gives at each), dense only where something can change:
-    within `step` of every place where reference copper of another layer crosses the trace, and of every corner of
-    the same-layer reference copper or of copper widening it within reach; every ADAPTIVE mm elsewhere; then
-    halving the space between any two neighbours that differ, down to `step`, so that the cuts fall where they
-    did with every sample.
-
-    The reach of the coplanar ground is 2 h (h: the height to the reference plane, as _gap_class has it): the
-    coarse samples give the largest h; where they find no plane, every sample is taken."""
-    import shapely
-    n_full = int(min(max_samples, max(3, math.ceil(L / step))))
-    fine = [(i + 0.5) * L / n_full for i in range(n_full)]
-    got = {}
-
-    def at(i):
-        if i not in got:
-            got[i] = sample(fine[i])
-            SAMPLES[0] += 1
-        return got[i]
-    coarse = max(1, int(round(ADAPTIVE / (L / n_full))))
-    keep = set(range(0, n_full, coarse)) | {n_full - 1}
-    zs, h = model.cu_z[e.layer], 0.0
-    for i in sorted(keep):
-        below, above = at(i)[0]
-        if below is None and above is None:
-            h = None                                       # no plane: nothing to bound the reach
-            break
-        if (below is None) != (above is None):
-            h = max(h, abs(model.cu_z[below or above] - zs))
-    if h is None:
-        keep = set(range(n_full))
-    else:
-        marks = []
-
-        def project(geom):
-            """Where the copper's corners (and crossings) lie along the trace: a gap or a reference can change
-            only there (between them a straight edge keeps it, or changes it steadily: the halving finds that)."""
-            pts = shapely.get_coordinates(geom)
-            if len(pts):
-                marks.append(shapely.line_locate_point(line, shapely.points(pts)))
-        near = line.buffer(e.w / 2 + 2 * h + 0.05)
-        for l in ref.geom:
-            tree, pieces = ref._tiled(l)
-            if l == e.layer:                               # coplanar ground within reach of the strip
-                if h > 0:
-                    for k in tree.query(near):
-                        g = pieces[k].intersection(near)
-                        if not g.is_empty:
-                            project(g.boundary if g.geom_type in ('Polygon', 'MultiPolygon') else g)
-            else:                                          # planes above / below: where an edge crosses the trace
-                for k in tree.query(line):
-                    hit = line.intersection(pieces[k].boundary)
-                    if not hit.is_empty:
-                        project(hit)
-        if wide is not None:                               # copper of its own net widening it
-            w_near = wide.intersection(line.buffer(rmax + 0.1))
-            if not w_near.is_empty:
-                project(w_near.boundary)
-        if marks:
-            fp = np.asarray(fine)
-            for sv in np.unique(np.round(np.concatenate(marks) / step)) * step:
-                lo, hi = np.searchsorted(fp, [sv - step, sv + step])
-                keep.update(range(int(lo), int(hi)))
-    idx = sorted(keep)
-    for i in idx:
-        at(i)
-    k = 0
-    while k < len(idx) - 1:                                # halve where neighbours differ
-        a, b = idx[k], idx[k + 1]
-        if b - a > 1 and got[a] != got[b]:
-            m = (a + b) // 2
-            at(m)
-            idx.insert(k + 1, m)
-            continue
-        k += 1
-    return [fine[i] for i in idx], [got[i] for i in idx]

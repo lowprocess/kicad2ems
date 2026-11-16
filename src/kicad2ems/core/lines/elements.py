@@ -8,6 +8,13 @@ import numpy as np
 from ..constants import C0
 
 
+def direction_at(line, s, eps=1e-3):
+    """The unit direction of a shapely line s mm along it, between the points eps mm either side."""
+    a = np.asarray(line.interpolate(max(s - eps, 0.0)).coords[0])
+    b = np.asarray(line.interpolate(min(s + eps, line.length)).coords[0])
+    return (b - a) / (np.linalg.norm(b - a) or 1.0)
+
+
 # ---- the line model ---------------------------------------------------------------------------------
 class Element:
     """One piece of the line model between nodes a and b ('gnd' for a shunt part).
@@ -71,13 +78,9 @@ class LineModel:
 
     def summary(self):
         """JSON-friendly: every path as a list of section rows with their start positions."""
-        out = []
-        for p, q, secs, branches in self.paths:
-            rows = []
-            for e, s0, _ in secs:
-                rows.append(dict(e.row(), start=s0))
-            out.append(dict(port=p, to=q, z_port=self.port_z0.get(p), sections=rows,
-                            branches=[dict(at=a, length=L, label=lab, z0=z) for a, L, lab, z in branches]))
+        out = [dict(port=p, to=q, z_port=self.port_z0.get(p), sections=[dict(e.row(), start=s0) for e, s0, _ in secs],
+                    branches=[dict(at=a, length=L, label=lab, z0=z) for a, L, lab, z in branches])
+               for p, q, secs, branches in self.paths]
         groups = [dict(lines=len(g['members']), length=g['length'], layer=g['layer'],
                        widths=[e.w for e, _, _ in g['members']], gaps=list(g['gaps']), h=g['h'], er=g['er'],
                        labels=[e.label for e, _, _ in g['members']],
