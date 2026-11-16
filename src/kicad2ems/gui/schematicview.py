@@ -104,8 +104,10 @@ class ImportReview(QDialog):
     def __init__(self,document,config,parent=None):
         super().__init__(parent);self.setWindowTitle('Review KiCad simulation import');self.resize(1100,650);self.document=document;self.config=config
         layout=QVBoxLayout(self)
-        note=QLabel('Choose the parts to take over: resistors, capacitors, inductors, diodes and MOSFETs, each between the two nets its pins are on.\n'
-                    'Which connector is the source and which the load, and what drives the switches, KiCad does not say: add those in the schematic afterwards.');note.setWordWrap(True);layout.addWidget(note)
+        note=QLabel('Choose the parts to take over: resistors, capacitors, inductors, diodes and MOSFETs, each between '
+                    'the two nets its pins are on.\nWhich connector is the source and which the load, and what drives '
+                    'the switches, KiCad does not say: add those in the schematic afterwards.',wordWrap=True)
+        layout.addWidget(note)
         controls=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Filter reference, value, net or sheet');self.search.textChanged.connect(self.filter);controls.addWidget(self.search,1)
         for label,mode in [('Existing only','existing'),('Everything supported','all'),('None','none')]:
             b=QPushButton(label);b.clicked.connect(lambda _,m=mode:self.select(m));controls.addWidget(b)

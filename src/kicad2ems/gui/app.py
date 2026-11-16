@@ -26,7 +26,7 @@ window's size, its docks and splitters, and the Results plots are remembered bet
 """
 import json, os, sys
 import numpy as np
-from PySide6.QtCore import Qt, QProcess, QTimer, QUrl, QSettings, Signal, QThread
+from PySide6.QtCore import Qt, QProcess, QTimer, QUrl, QSettings, Signal, QThread, QSignalBlocker
 from PySide6.QtGui import QDesktopServices, QAction, QActionGroup, QKeySequence, QIcon
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton, QLabel,
                                QMessageBox, QDockWidget, QToolBar, QStyle, QDialog, QTabWidget)
@@ -1502,18 +1502,17 @@ class MainWindow(QMainWindow):
         self._sources_memo = None                                   # (a run just finished: read them again)
         srcs = self.sources()
         keep = select or self.runs_box.currentData()
-        self.runs_box.blockSignals(True)
-        self.runs_box.clear()
         last = None
-        for src in srcs:
-            group = 'rf' if src['kind'] in ('preview', 'rf') else src['kind']
-            if last is not None and group != last:
-                self.runs_box.insertSeparator(self.runs_box.count())
-            last = group
-            self.runs_box.addItem(src['label'], src['folder'])
-        i = self.runs_box.findData(keep) if keep else -1
-        self.runs_box.setCurrentIndex(i if i >= 0 else 0)
-        self.runs_box.blockSignals(False)
+        with QSignalBlocker(self.runs_box):
+            self.runs_box.clear()
+            for src in srcs:
+                group = 'rf' if src['kind'] in ('preview', 'rf') else src['kind']
+                if last is not None and group != last:
+                    self.runs_box.insertSeparator(self.runs_box.count())
+                last = group
+                self.runs_box.addItem(src['label'], src['folder'])
+            i = self.runs_box.findData(keep) if keep else -1
+            self.runs_box.setCurrentIndex(i if i >= 0 else 0)
         return [(src['folder'], src['label'][4:]) for src in srcs if src['kind'] == 'rf']
 
     def tool_out(self, kind, board, name, preview=False):
