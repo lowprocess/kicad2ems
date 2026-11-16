@@ -213,7 +213,7 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, rough=None, finish=None, max_solv
     freq = np.asarray(freq, float)
     fmin, fmax = float(freq[0]), float(freq[-1])
     dm = dmax * 1e-3
-    metal, t_mm = _metal(m, sigma, rough, finish)
+    metal = _metal(m, sigma, rough, finish)[0]
     model = BoardModel(data, port='via' if port == 'lumped' else port, log=lambda *a: None, **(model_kw or {}))
     # the board's own ports, from the uncut copper: a cut would shorten their straight feeds (wave ports turned
     # lumped, and so different terminations); the cuts keep out of their feeds
@@ -323,8 +323,7 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, rough=None, finish=None, max_solv
     S = np.array(S)
     keep = [n for n in names if not n.startswith('cut')]
     if len(f) != len(freq) or not np.allclose(f, freq):
-        S = np.stack([np.stack([np.interp(freq, f, S[:, i, j].real) + 1j * np.interp(freq, f, S[:, i, j].imag)
-                                for j in range(S.shape[2])], -1) for i in range(S.shape[1])], 1)
+        S = np.apply_along_axis(lambda s: np.interp(freq, f, s.real) + 1j * np.interp(freq, f, s.imag), 0, S)
     order = [keep.index(p.name) for p in m.ports]
     S, out_names, out_zref = mixed_mode(S[:, order][:, :, order], m)
     unknowns = int(sim.qT.shape[1]) if getattr(sim, 'qT', None) is not None else int(sim.Ne + sim.Nv)

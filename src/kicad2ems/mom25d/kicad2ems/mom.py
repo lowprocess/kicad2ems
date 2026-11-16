@@ -491,8 +491,7 @@ class MoM25D(Solver):
             for l, ix in pads.items():
                 out += [Deviation(f"pad:{l}:{i}", 'vias', 'a lone stitching-via pad: left out (the via kept)', layer=l,
                                   area=-shape(data['copper'][l][i]['polygon']).area) for i in ix]
-                metal[l] = [p for i, p in enumerate(data['copper'][l]) if i not in ix]
-                metal[l] = [shape(p['polygon']) for p in metal[l]]
+                metal[l] = [shape(p['polygon']) for i, p in enumerate(data['copper'][l]) if i not in ix]
         metal = {l: unary_union(ps).buffer(1e-6) for l, ps in metal.items()}
 
         def span(x, y, z0, z1):

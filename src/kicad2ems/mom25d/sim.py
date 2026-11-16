@@ -996,8 +996,7 @@ class Simulation:
         return ((sig * self.rwg.l[idx])[:, None] * I[idx]).sum(0)
 
     def cut_current(self, I, i):
-        l = self.rwg.l
-        return np.array([((sig * l[idx])[:, None] * I[idx]).sum(0) for idx, sig in self.cuts[i]])
+        return np.array([((sig * self.rwg.l[idx])[:, None] * I[idx]).sum(0) for idx, sig in self.cuts[i]])
 
     def solve(self, Z, E):
         with self.log.timer('LU solve', f"N={Z.shape[0]}"):
