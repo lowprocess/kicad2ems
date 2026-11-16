@@ -8,7 +8,7 @@ circuit.py cannot represent a line shared by two coupled sections.
     a, b = net.nodes(3), net.nodes(3)                        # the strips' ends at y = 0 and y = L
     net.mtl(arr, a, b, L)
     net.via(a[0], sub, drill); net.open(b[0], sub, w) ...
-    ab = net.two_port(p1, p2)                                # an element for circuit.cascade / sparams
+    ab = net.two_port(p1, p2)                                # an element of a circuit.sparams cascade
 
 The per-unit-length capacitance matrix of two or more strips is the full Maxwell matrix of the cross
 section (strip_caps: a quasi-static moment method on zero-thickness strips, every strip coupled to every
@@ -102,6 +102,7 @@ def _nn_caps(sub, widths, gaps, f):
         Ca[i + 1, i + 1] += cma
     return C, Ca
 
+
 class Array:
     """N parallel strips of widths (mm), edge gaps (mm, N - 1 of them) on a Substrate."""
 
@@ -116,18 +117,13 @@ class Array:
             self.dC = strip_caps(self.w, self.s, sub.h, sub.er) - C[0]
             self.dCa = strip_caps(self.w, self.s, sub.h, 1.0) - Ca
 
-    def _caps(self, f):
-        """(C (F, N, N), C_air (N, N)) per metre over f (Hz, array)."""
-        C, Ca = _nn_caps(self.sub, self.w, self.s, f)
-        return C + self.dC, Ca + self.dCa
-
-
     def y(self, f, length):
         """Admittance matrices (F, 2N, 2N) of a length (mm) of the array: ports 0..N-1 at one end,
         N..2N-1 at the other, currents into the lines."""
         sub = self.sub
         f = np.atleast_1d(np.asarray(f, float))
-        C, Ca = self._caps(f)
+        C, Ca = _nn_caps(sub, self.w, self.s, f)                # per metre: C (F, N, N), C_air (N, N)
+        C, Ca = C + self.dC, Ca + self.dCa
         L = np.linalg.inv(Ca) / C0 ** 2
         om = (2 * np.pi * f)[:, None, None]
         Z = 1j * om * L
@@ -202,11 +198,7 @@ class Nodal:
     def two_port(self, p1, p2):
         """ABCD (F, 2, 2) function of the network seen between nodes p1 and p2 (to ground)."""
         def ab(f):
-            f = np.atleast_1d(np.asarray(f, float))
-            Y = np.zeros((len(f), self.n, self.n), complex)
-            for nodes, yf in self.elems:
-                idx = np.array(nodes)
-                Y[:, idx[:, None], idx[None, :]] += yf(f)
+            Y = self._ymat(f)
             ports = [p1, p2]
             inner = [k for k in range(self.n) if k not in ports]
             Ypp = Y[:, ports][:, :, ports]

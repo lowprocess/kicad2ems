@@ -28,18 +28,15 @@ def _series(z):
     return np.stack([np.stack([one, z], -1), np.stack([zero, one], -1)], -2)
 
 
-def _z2abcd(z11, z12, z21, z22):
-    det = z11 * z22 - z12 * z21
-    return np.stack([np.stack([z11 / z21, det / z21], -1), np.stack([1 / z21, z22 / z21], -1)], -2)
-
-
 def _coupled_abcd(ze, zo, gle, glo):
-    """2-port of a coupled-line section driven at diagonally opposite ends, the other two ends open."""
+    """2-port of a coupled-line section driven at diagonally opposite ends, the other two ends open: its Z matrix
+    [[z11, z12], [z12, z11]] as ABCD."""
     zse, zso = ze / np.tanh(gle), zo / np.tanh(glo)            # self (Z coth gl)
     zte, zto = ze / np.sinh(gle), zo / np.sinh(glo)            # transfer (Z csch gl)
     z11 = 0.5 * (zse + zso)
     z12 = 0.5 * (zte - zto)                                    # line a near end -> line b far end
-    return _z2abcd(z11, z12, z12, z11)
+    det = z11 * z11 - z12 * z12
+    return np.stack([np.stack([z11 / z12, det / z12], -1), np.stack([1 / z12, z11 / z12], -1)], -2)
 
 
 # ------------------------------------------------------------------------------- ideal elements
@@ -110,9 +107,7 @@ def MCoupled(sub, w, s, length, open_ext=True):
     L = (length + (sub.open_end(w) if open_ext else 0.0)) * 1e-3
 
     def ab(f):
-        ge = _gamma(sub, w, ze, ee0, f)
-        go = _gamma(sub, w, zo, eo0, f)
-        return _coupled_abcd(ze, zo, ge * L, go * L)
+        return _coupled_abcd(ze, zo, _gamma(sub, w, ze, ee0, f) * L, _gamma(sub, w, zo, eo0, f) * L)
     return ab
 
 
@@ -127,17 +122,12 @@ def MGap(sub, w, s):
 
 
 # ------------------------------------------------------------------------------- network
-def cascade(net, f):
+def sparams(net, f, z0=50.0):
+    """(S11, S21) of the cascade (its elements' ABCD matrices in turn) between z0 ports."""
     f = np.asarray(f, float)
     m = np.broadcast_to(np.eye(2, dtype=complex), (len(f), 2, 2)).copy()
     for el in net:
         m = m @ el(f)
-    return m
-
-
-def sparams(net, f, z0=50.0):
-    """(S11, S21) of the cascade between z0 ports."""
-    m = cascade(net, f)
     a, b, c, d = m[:, 0, 0], m[:, 0, 1], m[:, 1, 0], m[:, 1, 1]
     den = a + b / z0 + c * z0 + d
     return (a + b / z0 - c * z0 - d) / den, 2 / den

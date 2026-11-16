@@ -37,8 +37,7 @@ class Plan:
     classes: {net: [class names]} as KiCad reports them (ipc.Live.net_classes); None: the project file next to
     the board (<board>.kicad_pro)."""
     def __init__(self, text, path='', classes=None):
-        from kicad2ems.core.api.frontend import KiCadBoard
-        from kicad2ems.core.api.frontend import Board
+        from kicad2ems.core.api.frontend import KiCadBoard, Board
         from .netclass import NetClasses
         self.path = path
         self.notes = []
@@ -46,7 +45,7 @@ class Plan:
         self.m = Board(self.raw, nets=None, need_ports=False, parts='none', log=self.notes.append)
         self.board = self.m.to_dict()
         nets = {n for _, n, _ in self.raw.items if n} | {v['net'] for v in self.raw.vias if v['net']}
-        self.nc = NetClasses.from_map(classes, nets) if classes is not None else \
+        self.nc = NetClasses(classes, nets) if classes is not None else \
             NetClasses.from_project(os.path.splitext(path)[0] + '.kicad_pro', nets)
         routed = {t['net'] for t in self.m.prims.tracks if t['layer'] in self.m.cu_z}
         cand = sorted(n for n in routed - set(self.m.ground_nets) if n)
@@ -64,19 +63,6 @@ class Plan:
         """The signal nets of the given classes."""
         cs = set(classes)
         return [n for n in self.signal if self.nc.of(n) in cs]
-
-    def _units(self, nets):
-        """The nets as mapping units: a pair's two legs together (they couple), every other net alone."""
-        from .netclass import partner
-        have, seen, out = set(nets), set(), []
-        for n in nets:
-            if n in seen:
-                continue
-            q = partner(n)
-            unit = [n] + ([q] if q in have and q not in seen else [])
-            seen.update(unit)
-            out.append(unit)
-        return out
 
     def _finish(self, els):
         """Map sections as the window shows them: numbered, with their net's class and target."""
@@ -101,13 +87,18 @@ class Plan:
         A unit at a time was also the fastest: 4.9 s for KiCad's CM5 demo, against 5.8 s in groups of 24 nets.
         field: every section by the field solver on the board's cut across it, not the formulas (slower)."""
         from kicad2ems.core.api.frontend import RefCopper
+        from .netclass import partner
         nets = [n for n in (self.signal if nets is None else nets) if not self.nc.disabled(n)]
         refcu = RefCopper(self.m, set(self.signal) | set(self.disabled))
         self.lines['elements'] = []
-        units = self._units(nets)
+        have, seen, units = set(nets), set(), []          # the units: a pair's two legs together, any other net alone
+        for n in nets:
+            if n not in seen:
+                q = partner(n)
+                units.append([n] + ([q] if q in have and q not in seen else []))
+                seen.update(units[-1])
         store = MapCache(cache, self, refcu, field) if cache else None
-        done = 0
-        todo = []
+        done, todo = 0, []
         for u in units:
             hit = store.get(u) if store else None
             if hit is None:
@@ -149,7 +140,7 @@ class Plan:
         its pads on the nets: one leg of a differential port where it has pads on both legs of a pair. A track end
         that reaches nothing (no pad, via or track) gets a port too. Nets the board's own port footprints sit on
         keep those ports instead."""
-        from kicad2ems.core.api.frontend import kind_value
+        from kicad2ems.core.api.frontend import kind_value, extra_port_fps
         from .netclass import partner
         sig, gnd = set(self.signal), set(self.m.ground_nets)
         want = []
@@ -178,29 +169,21 @@ class Plan:
                 a, b = pads[0]['net'], pads[1]['net']
                 if a not in run and b not in run:
                     continue
-                far = b if a in run else a
-                what = f"{fp['ref']} {kinds[fp['ref']]} {fp['value']}"
-                if far in run:
-                    parts[fp['ref']] = dict(ref=fp['ref'], kind=kinds[fp['ref']], value=fp['value'], role='series',
-                                            nets=[a, b])
-                elif far in gnd:
-                    parts[fp['ref']] = dict(ref=fp['ref'], kind=kinds[fp['ref']], value=fp['value'], role='shunt',
-                                            nets=[a, b])
+                ref, far, role = fp['ref'], b if a in run else a, None
+                what = f"{ref} {kinds[ref]} {fp['value']}"
+                if far in run or far in gnd:
+                    role = 'series' if far in run else 'shunt'
                 elif not far:
                     notes.append(f"{what}: its other pad is not connected - left out")
-                    parts[fp['ref']] = None
                 elif self.nc.disabled(far) or far not in sig and not any(n == far for _, n, _ in self.m.prims.items):
                     notes.append(f"{what}: to {far} (a supply, or no copper) - left out")
-                    parts[fp['ref']] = None
                 elif len(added) >= MAX_EXTEND:
                     notes.append(f"{what}: to {far} - not followed (past {MAX_EXTEND} nets taken in); a port there")
-                    parts[fp['ref']] = None
                 else:
                     run.append(far)
                     added.append(far)
-                    parts[fp['ref']] = dict(ref=fp['ref'], kind=kinds[fp['ref']], value=fp['value'], role='series',
-                                            nets=[a, b])
-                    grow = True
+                    role, grow = 'series', True
+                parts[ref] = dict(ref=ref, kind=kinds[ref], value=fp['value'], role=role, nets=[a, b]) if role else None
         parts = {k: v for k, v in parts.items() if v}
         left_out = {fp['ref'] for fp in fps if two_pad(fp) and fp['ref'] not in parts
                     and any(q['net'] in run for q in fp['pads'])}
@@ -221,22 +204,20 @@ class Plan:
                                  f"pad {fp['ref']}.{q['name']}" + (' (left-out part)' if fp['ref'] in left_out else '')))
         for net, lay, x, y in self._open_ends(set(run) - board_net):
             ends.append((net, lay, x, -y, None, f"open end of {net}"))
-        ports, used = [], set()
-        n = max([int(m.group(1)) for nm in self.board_ports for m in [re.match(r'P(\d+)', nm)] if m], default=0)
+        ports, used, n = [], set(), _last_port(self.board_ports)
         for i, e in enumerate(ends):
             if i in used:
                 continue
             used.add(i)
             j = self._leg_partner(ends, i, used)
             n += 1
-            legs = [(e, '')] if j is None else sorted([(e, ''), (ends[j], '')], key=lambda t: not _positive(t[0][0]))
-            if j is not None:
+            legs = [(e, '')]
+            if j is not None:                               # a pair's legs: the positive one (+ / P) first
                 used.add(j)
-                legs = [(legs[0][0], '+'), (legs[1][0], '-')]
+                legs = list(zip(sorted([e, ends[j]], key=lambda t: not (bool(t[0]) and t[0][-1] in '+Pp')), '+-'))
             for (net, lay, x, y, pad, what), leg in legs:
                 spec = f"P{n}{leg}={pad}" if pad else f"P{n}{leg}@{x:.4f},{y:.4f},{lay}"
                 ports.append(dict(name=f"P{n}{leg}", spec=spec, net=net, layer=lay, x=x, y=-y, what=what))
-        from kicad2ems.core.api.frontend import extra_port_fps
         ok = []
         for p in ports:
             try:
@@ -319,19 +300,13 @@ class Plan:
                 min(r[3], round(-o[1], 4))]
 
     # ---- ports ----------------------------------------------------------------------------------------------
-    def next_port(self, session):
-        """The next free port number: past the board's own port footprints and the session's ports."""
-        used = [int(m.group(1)) for n in self.board_ports + [p['name'] for p in session.ports]
-                for m in [re.match(r'P(\d+)', n)] if m]
-        return max(used, default=0) + 1
-
     def port_at(self, x, y, layer, tol, session, elements=None):
         """A port where the user clicked (model mm): on the pad under the point (P<n>=REF.PAD), else on the
         centre line of the nearest trace section of `layer` within `tol` (P<n>@x,y,layer: KiCad mm, pointing
         along the trace; elements: the map's sections, default plan.lines). Returns the port dict (name, spec, net,
         layer, x, y model mm, what) or raises ValueError with why not."""
         from kicad2ems.core.api.frontend import extra_port_fps
-        n = self.next_port(session)
+        n = _last_port(self.board_ports + [p['name'] for p in session.ports]) + 1     # past the board's and the session's
         kx, ky = x, -y
         for fp in self.raw.footprints:
             if fp['ref'] in self.m.port_refs:
@@ -383,9 +358,9 @@ class NetSetup:
         return "\n".join(lines + self.notes)
 
 
-def _positive(net):
-    """Is a net a pair's positive leg (its name ends in + or P)?"""
-    return bool(net) and net[-1] in '+Pp'
+def _last_port(names):
+    """The highest port number among `names` (P<n>...), 0 for none."""
+    return max((int(m.group(1)) for n in names for m in [re.match(r'P(\d+)', n)] if m), default=0)
 
 
 def _renumber_pairs(ports):
@@ -408,20 +383,18 @@ def _renumber_pairs(ports):
 
 
 # ---- the map's work: groups of nets, here or in worker processes -------------------------------------------------
-def _drawing(m, lm):
-    """A line model's sections (drawing elements), with the pair impedance of coupled legs (Zdiff = 2 Zodd)."""
+def _map_group(m, refcu, chunk, field=False):
+    """The line model's sections (drawing elements) of a group, with the pair impedance of coupled legs (Zdiff =
+    2 Zodd)."""
+    from kicad2ems.core.api.frontend import build_lines
     from .netclass import partner
+    lm = build_lines(m, nets=chunk, refcu=refcu, field=field)
     for g in lm.groups:
         for k, pr in enumerate(g['pairs']):
             ea, eb = g['members'][k][0], g['members'][k + 1][0]
             if ea.net and partner(ea.net) == eb.net and pr.get('zo'):
                 ea.zdiff = eb.zdiff = 2 * pr['zo']
     return lm.drawing(m.cu_z)['elements']
-
-
-def _map_group(m, refcu, chunk, field=False):
-    from kicad2ems.core.api.frontend import build_lines
-    return _drawing(m, build_lines(m, nets=chunk, refcu=refcu, field=field))
 
 
 _WORK = None                # a worker process's board and reference copper
@@ -436,16 +409,11 @@ def _worker_map(chunk, field=False):
     return chunk, _map_group(*_WORK, chunk, field)
 
 
-def _jobs():
-    """Worker processes for the map: one per performance core (kicad2ems's rule, emsdev's), at least 1."""
-    from kicad2ems.core.api.frontend import core_threads
-    return core_threads()
-
-
 def _run_groups(m, refcu, groups, jobs, stop, field=False):
-    """(group, its sections) for each group: in worker processes (each gets the board and the reference copper
-    once), as they finish; here, in order, with one worker or one group."""
-    jobs = jobs or _jobs()
+    """(group, its sections) for each group: in worker processes (default: one per performance core, kicad2ems's rule;
+    each gets the board and the reference copper once), as they finish; here, in order, with one worker or one group."""
+    from kicad2ems.core.api.frontend import core_threads
+    jobs = jobs or core_threads()
     if jobs <= 1 or len(groups) <= 1:
         for g in groups:
             if stop():
@@ -600,11 +568,6 @@ def session_path(folder, stem):
     return os.path.join(folder, f"{stem}_plugin.json")
 
 
-def work_folder(project_dir, stem):
-    """Where the plugin keeps a board's session and runs: <project>/kicad2ems/<board stem>."""
-    return os.path.join(project_dir or os.getcwd(), 'kicad2ems', stem)
-
-
 def region_of_box(x0, y0, x1, y1, margin=1.0):
     """A region (KiCad mm) from two corners, grown by `margin` mm on every side."""
     return [round(min(x0, x1) - margin, 4), round(min(y0, y1) - margin, 4),
@@ -681,9 +644,8 @@ def board_marks(session, elements, worst=12, off=0.10, size=0.6):
         if z and t and abs(z - t) / t > off and e.get('pts') and e.get('kind') != 'coupling':
             bad.append((abs(z - t) / t, e))
     for _, e in sorted(bad, key=lambda b: -b[0])[:worst]:
-        pts = e['pts']
-        mx, my = pts[len(pts) // 2] if len(pts) % 2 else (
-            (pts[len(pts) // 2 - 1][0] + pts[len(pts) // 2][0]) / 2, (pts[len(pts) // 2 - 1][1] + pts[len(pts) // 2][1]) / 2)
+        pts, k = e['pts'], len(e['pts']) // 2
+        mx, my = pts[k] if len(pts) % 2 else ((pts[k - 1][0] + pts[k][0]) / 2, (pts[k - 1][1] + pts[k][1]) / 2)
         out.append(('text', (float(mx), -float(my)), f"Z0 {e['z0']:.0f} ({e['target']:.0f})", size))
     return out
 
@@ -736,6 +698,10 @@ def terms(names):
     return out
 
 
+def db(x):
+    return 20 * np.log10(np.maximum(np.abs(x), 1e-9))
+
+
 def comparison(res, floor=-20.0):
     """[(term, max |S| difference in dB where the full-wave |S| is above `floor` dB (None: nowhere), at GHz,
     max |dS| (the complex difference, linear))] of each full-wave solver against the line model. Below the floor
@@ -751,10 +717,9 @@ def comparison(res, floor=-20.0):
             a = s['S'][:, i, j]
             b = np.interp(s['f'], line['f'], line['S'][:, i, j].real) + \
                 1j * np.interp(s['f'], line['f'], line['S'][:, i, j].imag)
-            da = 20 * np.log10(np.maximum(np.abs(a), 1e-9))
-            db = 20 * np.log10(np.maximum(np.abs(b), 1e-9))
+            da = db(a)
             ok = da > floor
-            d = np.where(ok, np.abs(da - db), -1)
+            d = np.where(ok, np.abs(da - db(b)), -1)
             k = int(np.argmax(d))
             out.append((f"{s['label']}: {lab}", float(d[k]) if ok.any() else None, float(s['f'][k] / 1e9),
                         float(np.nanmax(np.abs(a - b)))))
@@ -803,7 +768,6 @@ def map_sources(folder):
 def map_bands(path, bands=MAP_BANDS):
     """(levels, [(band, outer ring, [holes])] in KiCad mm) of a plane map: its value on the copper (0 or NaN off it)
     in `bands` equal steps between its least and most, each step's region as polygons (matplotlib's contours)."""
-    import numpy as np
     from kicad2ems.core.fields.frames import read_npz
     import matplotlib
     matplotlib.use('Agg')

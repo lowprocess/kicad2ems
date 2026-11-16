@@ -8,18 +8,14 @@ edge, at Omega_3 = cosh(acosh(1 / eps) / n).
 """
 import math
 import time
+from dataclasses import replace
+
 import numpy as np
+from threadpoolctl import threadpool_limits
 
 from .circuit import sparams, db, MLine
 from .prototype import gvalues, lowpass_s21_db
 from .topologies import build, highpass_band, prepare, _z_limits, radial_stub_range
-
-
-def omega3(spec):
-    if spec.response == 'butterworth':
-        return 1.0
-    eps = math.sqrt(10 ** (spec.ripple / 10) - 1)
-    return math.cosh(math.acosh(1 / eps) / spec.order)
 
 
 def band(spec):
@@ -33,7 +29,9 @@ def band(spec):
 def targets(spec):
     """Target -3 dB edges: {'fc': ...} (low-pass) or {'f1': ..., 'f2': ...}."""
     kind, f0, fbw = band(spec)
-    o3 = omega3(spec)
+    o3 = 1.0                                                  # Omega_3 (the module's docstring); Butterworth: 1
+    if spec.response != 'butterworth':
+        o3 = math.cosh(math.acosh(1 / math.sqrt(10 ** (spec.ripple / 10) - 1)) / spec.order)
     if kind == 'lowpass':
         return {'fc': f0 * o3}
     if spec.kind == 'highpass' or spec.topology == 'stub' and kind == 'bandpass':
@@ -85,14 +83,12 @@ def edges(spec, f, s21db, relative=False):
             if y[k] >= lvl > y[k + 1] and f[k] > 0.2 * f0:
                 return {'fc': _cross(f, y, k, k + 1, lvl)}
         return {'fc': None}
-    k0 = int(np.argmin(abs(f - f0)))
     if kind == 'bandpass':
         win = abs(f / f0 - 1) < 0.5 * band(spec)[2] + 0.1
-        kpk = int(np.argmax(np.where(win, y, -np.inf)))
-        ref = y[kpk] if relative else 0.0
+        k0 = int(np.argmax(np.where(win, y, -np.inf)))
+        ref = y[k0] if relative else 0.0
         lvl = ref - 3
         inside = y >= lvl
-        k0 = kpk
     else:
         ref = (np.median(y[(f < 0.6 * f0) | (f > 1.4 * f0)]) if relative else 0.0)
         lvl = ref - 3
@@ -130,9 +126,7 @@ def errors(spec, meas):
 
 def model_response(design, f, lossless=False, sub=None):
     sub = sub or design.sub
-    sub = sub.lossless() if lossless else sub
-    s11, s21 = sparams(design.model(sub), f, design.spec.z0)
-    return s11, s21
+    return sparams(design.model(sub.lossless() if lossless else sub), f, design.spec.z0)
 
 
 REFINE_SECONDS = 10.0          # the refinement's time limit: past it the best trims so far are kept
@@ -175,13 +169,13 @@ def calibrate(spec, sub, kf=1.0, kb=1.0, iters=12, tol=1e-4, log=None, refine_lp
     f = sweep(spec, 2401)
     d, prev = None, None
     for it in range(iters):
-        d = build(_copy(spec), sub, kf, kb)
+        d = build(replace(spec), sub, kf, kb)
         _, s21 = model_response(d, f, lossless=True)
         ef, eb = errors(spec, edges(spec, f, db(s21)))
         if ef is None:
             if log:
                 log(f"  calibration: no band edge found (kf {kf:.4f}, kb {kb:.4f}); keeping the synthesis")
-            d = build(_copy(spec), sub, 1.0, 1.0) if it else d
+            d = build(replace(spec), sub, 1.0, 1.0) if it else d
             break
         if log:
             log(f"  calibration {it}: centre x{ef:.4f}" + (f", bandwidth x{eb:.4f}" if eb else ''))
@@ -203,7 +197,10 @@ def calibrate(spec, sub, kf=1.0, kb=1.0, iters=12, tol=1e-4, log=None, refine_lp
     elif spec.kind == 'bandpass' and spec.topology in ('coupled', 'hairpin'):
         fine = refine_gaps
     if fine and refine_lp and not spec.trim:
-        with _one_thread():
+        # BLAS on one thread while a refinement runs: its solves are of a few hundred unknowns, which threads slow
+        # down (the FR4 hairpin's fit: 9.6 s on the default threads, 5.1 s on one), and parallel runs (pytest -n)
+        # oversubscribe the cores
+        with threadpool_limits(1, user_api='blas'):
             fine(spec, sub, d.kf, d.kb, log, seconds=refine_time)
         if spec.trim:
             d2 = calibrate(spec, sub, d.kf, d.kb, iters, tol, log, refine_lp=False)
@@ -212,50 +209,29 @@ def calibrate(spec, sub, kf=1.0, kb=1.0, iters=12, tol=1e-4, log=None, refine_lp
     return d
 
 
-def _one_thread():
-    """BLAS on one thread while a refinement runs (threadpoolctl, where installed): its solves are of a few
-    hundred unknowns, which threads slow down (the FR4 hairpin's fit: 9.6 s on the default threads, 5.1 s on
-    one), and parallel runs (pytest -n) oversubscribe the cores."""
+def _s21_misfit(s, sub, kf, kb, f, w, ref):
+    """Weighted mean square (dB^2) of the lossless line model's |S21| of the spec s against ref, both clipped at
+    -40 dB (1e6 where s cannot be built)."""
     try:
-        from threadpoolctl import threadpool_limits
-    except ImportError:
-        from contextlib import nullcontext
-        return nullcontext()
-    return threadpool_limits(1, user_api='blas')
-
-
-def _copy(spec):
-    from dataclasses import replace
-    return replace(spec)
+        d = build(s, sub, kf, kb)
+    except ValueError:
+        return 1e6
+    y = db(sparams(d.model(sub.lossless()), f, s.z0)[1])
+    return float(np.mean(w * (np.maximum(y, -40) - np.maximum(ref, -40)) ** 2))
 
 
 def refine(spec, sub, kf, kb=1.0, log=None, iters=400, seconds=REFINE_SECONDS):
     """Low-pass only: trim the sections' electrical lengths (symmetrically) so the lossless line model
     follows the prototype's response up to 1.3 x the cut-off: the distributed sections' departures from
     lumped L and C (the pass-band ripple growing, the edge softening) are taken out. Sets spec.trim."""
-    try:
-        from scipy.optimize import minimize
-    except ImportError:
-        if log:
-            log("  refine: scipy not installed, skipped")
-        return
     n = spec.order
     half = (n + 1) // 2
     f = np.linspace(0.02, 1.3, 260) * spec.f0
     ref = np.array([lowpass_s21_db(spec.response, n, spec.ripple, fi / spec.f0) for fi in f])
     w = np.where(f <= spec.f0, 4.0, 1.0)
-    lsub = sub.lossless()
 
     def cost(x):
-        tr = tuple(np.r_[x, x[:n - half][::-1]])
-        s = _copy(spec)
-        s.trim = tr
-        try:
-            d = build(s, sub, kf, 1.0)
-        except ValueError:
-            return 1e6
-        y = db(sparams(d.model(lsub), f, spec.z0)[1])
-        return float(np.mean(w * (np.maximum(y, -40) - np.maximum(ref, -40)) ** 2))
+        return _s21_misfit(replace(spec, trim=tuple(np.r_[x, x[:n - half][::-1]])), sub, kf, 1.0, f, w, ref)
 
     x0 = np.ones(half)
     c0 = cost(x0)
@@ -283,12 +259,6 @@ def refine_bandstop(spec, sub, kf, kb, log=None, iters=3000, seconds=REFINE_SECO
     line model follows the Chebyshev response in Richards' variable, |S21|^2 = 1 / (1 + eps^2
     T_n^2(tan theta / tan theta1)): the narrow-band synthesis's pass-band mismatch, which grows with the
     bandwidth, is taken out. Kept only if the pass-band return loss improves. Sets spec.trim."""
-    try:
-        from scipy.optimize import minimize
-    except ImportError:
-        if log:
-            log("  refine: scipy not installed, skipped")
-        return
     n = spec.order
     h, hl = (n + 1) // 2, (n - 1) // 2
     f = sweep(spec, 600)
@@ -297,22 +267,14 @@ def refine_bandstop(spec, sub, kf, kb, log=None, iters=3000, seconds=REFINE_SECO
     ref = np.array([lowpass_s21_db(spec.response, n, spec.ripple, abs(math.tan(x)) / math.tan(th1)) for x in th])
     t = targets(spec)
     w = np.where((f < t['f1']) | (f > t['f2']), 4.0, 1.0)
-    lsub = sub.lossless()
     zmin, zmax = _z_limits(sub)
 
     def make(x):
         a, b = np.exp(x[:h]), np.exp(x[h:])
-        s = _copy(spec)
-        s.trim = tuple(float(v) for v in np.r_[a, a[:n - h][::-1], b, b[:n - 1 - hl][::-1]])
-        return s
+        return replace(spec, trim=tuple(float(v) for v in np.r_[a, a[:n - h][::-1], b, b[:n - 1 - hl][::-1]]))
 
     def cost(x):
-        try:
-            d = build(make(x), sub, kf, kb)
-        except ValueError:
-            return 1e6
-        y = db(sparams(d.model(lsub), f, spec.z0)[1])
-        return float(np.mean(w * (np.maximum(y, -40) - np.maximum(ref, -40)) ** 2))
+        return _s21_misfit(make(x), sub, kf, kb, f, w, ref)
 
     # bounds on the log factors: every impedance within what the substrate makes (the synthesis's stubs,
     # unclamped, as bandstop_stub computes them)
@@ -329,7 +291,7 @@ def refine_bandstop(spec, sub, kf, kb, log=None, iters=3000, seconds=REFINE_SECO
                                                                          'fatol': 1e-8})
     s = make(rx)
     fr = sweep(spec, 1201)
-    rl0 = passband_rl(build(_copy(spec), sub, kf, kb), fr)
+    rl0 = passband_rl(build(replace(spec), sub, kf, kb), fr)
     rl1 = passband_rl(build(s, sub, kf, kb), fr)
     if rf < c0 and rl1 > rl0 + 0.5:
         spec.trim = s.trim
@@ -358,9 +320,48 @@ def _coupled_free(spec):
 def _coupled_spec(spec, x):
     """A copy of spec with the free trims x (log, see _coupled_free)."""
     n, ng = spec.order, spec.order // 2
-    s = _copy(spec)
-    s.trim = tuple(float(v) for v in np.exp(np.r_[_sym(x[:ng], n - 1), [x[ng]] * 2, _sym(x[ng + 1:], n)]))
-    return s
+    return replace(spec, trim=tuple(float(v) for v in np.exp(np.r_[_sym(x[:ng], n - 1), [x[ng]] * 2,
+                                                                     _sym(x[ng + 1:], n)])))
+
+
+def _band_fit(spec, span, count):
+    """(f, inband, limit) of a band-pass's fit to its prototype: `count` frequencies from `span` bandwidths below
+    the target -3 dB edges to `span` above, the spec's band, and the most |S11| may be in it: a Chebyshev's ripple
+    level everywhere in the band, a Butterworth's own curve."""
+    t = targets(spec)
+    bw = t['f2'] - t['f1']
+    f = np.linspace(t['f1'] - span * bw, t['f2'] + span * bw, count)
+    om = (f / spec.f0 - spec.f0 / f) / spec.fbw
+    ref21 = np.array([lowpass_s21_db(spec.response, spec.order, spec.ripple, abs(o)) for o in om])
+    ref11 = 10 * np.log10(np.maximum(1 - 10 ** (ref21 / 10), 1e-6))
+    inband = (f > spec.f0 - spec.bw / 2) & (f < spec.f0 + spec.bw / 2)
+    limit = np.full(inband.sum(), ref11[inband].max()) if spec.response == 'chebyshev' else \
+        np.maximum(ref11[inband], -30)
+    return f, inband, limit
+
+
+def _adopt(spec, s, sub, kf, kb, better, log, what=''):
+    """The end of a band-pass refinement: the trims of s into spec where the fit was better and the pass-band return
+    loss with them (the lossless line model's over its measured -3 dB band, a tenth of the band inside the edges)
+    gains more than 0.5 dB."""
+    fr = sweep(spec, 1201)
+
+    def rl(x):
+        s11, s21 = sparams(build(x, sub, kf, kb).model(sub.lossless()), fr, spec.z0)
+        e = edges(spec, fr, db(s21))
+        if not e.get('f1') or not e.get('f2'):
+            return 0.0
+        g = 0.1 * (e['f2'] - e['f1'])
+        m = (fr > e['f1'] + g) & (fr < e['f2'] - g)
+        return float(-db(s11[m]).max()) if m.any() else 0.0
+    rl0, rl1 = rl(replace(spec)), rl(s)
+    if better and rl1 > rl0 + 0.5:
+        spec.trim = s.trim
+        if log:
+            log(f"  refine: pass-band RL {rl0:.1f} -> {rl1:.1f} dB, factors{what} "
+                + ', '.join(f'{v:.3f}' for v in spec.trim))
+    elif log:
+        log(f"  refine: no improvement (pass-band RL {rl0:.1f} -> {rl1:.1f} dB), kept the synthesis")
 
 
 def refine_coupled(spec, sub, kf, kb, log=None, iters=3000, seconds=REFINE_SECONDS):
@@ -371,31 +372,12 @@ def refine_coupled(spec, sub, kf, kb, log=None, iters=3000, seconds=REFINE_SECON
     allows) with the band edges on target. Not a fit to the whole prototype response: the couplings past
     the neighbours give the skirts a shape no trim takes out (slower below the band, a transmission zero
     above it). Kept only if the pass-band return loss improves."""
-    try:
-        from scipy.optimize import minimize
-    except ImportError:
-        if log:
-            log("  refine: scipy not installed, skipped")
-        return
-    n = spec.order
-    t = targets(spec)
-    bw = t['f2'] - t['f1']
-    f = np.linspace(t['f1'] - 0.4 * bw, t['f2'] + 0.4 * bw, 400)
-    om = (f / spec.f0 - spec.f0 / f) / spec.fbw
-    ref21 = np.array([lowpass_s21_db(spec.response, n, spec.ripple, abs(o)) for o in om])
-    ref11 = 10 * np.log10(np.maximum(1 - 10 ** (ref21 / 10), 1e-6))
-    inband = (f > spec.f0 - spec.bw / 2) & (f < spec.f0 + spec.bw / 2)
-    # the most |S11| may be: a Chebyshev's ripple level everywhere in the band, a Butterworth's own curve
-    limit = np.full(inband.sum(), ref11[inband].max()) if spec.response == 'chebyshev' else \
-        np.maximum(ref11[inband], -30)
+    f, inband, limit = _band_fit(spec, 0.4, 400)
     lsub = sub.lossless()
-
-    def make(x):
-        return _coupled_spec(spec, x)
 
     def cost(x):
         try:
-            d = build(make(x), sub, kf, kb)
+            d = build(_coupled_spec(spec, x), sub, kf, kb)
         except ValueError:
             return 1e6
         s11, s21 = sparams(d.model(lsub), f, spec.z0)
@@ -409,26 +391,7 @@ def refine_coupled(spec, sub, kf, kb, log=None, iters=3000, seconds=REFINE_SECON
     c0 = cost(x0)
     rx, rf = _nelder_mead(cost, x0, seconds, log, options={'maxiter': iters, 'xatol': 1e-5, 'fatol': 1e-8,
                                                            'adaptive': True})
-    fr = sweep(spec, 1201)
-
-    def rl(s):
-        d = build(s, sub, kf, kb)
-        s11, s21 = sparams(d.model(lsub), fr, spec.z0)
-        e = edges(spec, fr, db(s21))
-        if not e.get('f1') or not e.get('f2'):
-            return 0.0
-        g = 0.1 * (e['f2'] - e['f1'])
-        m = (fr > e['f1'] + g) & (fr < e['f2'] - g)
-        return float(-db(s11[m]).max()) if m.any() else 0.0
-    s = make(rx)
-    rl0, rl1 = rl(_copy(spec)), rl(s)
-    if rf < c0 and rl1 > rl0 + 0.5:
-        spec.trim = s.trim
-        if log:
-            log(f"  refine: pass-band RL {rl0:.1f} -> {rl1:.1f} dB, factors "
-                + ', '.join(f'{v:.3f}' for v in spec.trim))
-    elif log:
-        log(f"  refine: no improvement (pass-band RL {rl0:.1f} -> {rl1:.1f} dB), kept the synthesis")
+    _adopt(spec, _coupled_spec(spec, rx), sub, kf, kb, rf < c0, log)
 
 
 def refine_gaps(spec, sub, kf, kb, log=None, seconds=REFINE_SECONDS):
@@ -437,25 +400,15 @@ def refine_gaps(spec, sub, kf, kb, log=None, seconds=REFINE_SECONDS):
     for the prototype's match over the band, the edges kept on target (calibrate runs again after). A least-squares
     fit, stopped at `seconds` with the best so far. Kept only if the pass-band return loss improves."""
     n = spec.order
-    t = targets(spec)
-    bw = t['f2'] - t['f1']
-    f = np.linspace(t['f1'] - 0.3 * bw, t['f2'] + 0.3 * bw, 160)
-    om = (f / spec.f0 - spec.f0 / f) / spec.fbw
-    ref21 = np.array([lowpass_s21_db(spec.response, n, spec.ripple, abs(o)) for o in om])
-    ref11 = 10 * np.log10(np.maximum(1 - 10 ** (ref21 / 10), 1e-6))
-    inband = (f > spec.f0 - spec.bw / 2) & (f < spec.f0 + spec.bw / 2)
-    limit = np.full(inband.sum(), ref11[inband].max()) if spec.response == 'chebyshev' else \
-        np.maximum(ref11[inband], -30)
+    f, inband, limit = _band_fit(spec, 0.3, 160)
     lsub = sub.lossless()
     ng = (n + 2) // 2                                               # the n + 1 gaps, symmetric; a hairpin's n Us'
     free = ng + ((n + 1) // 2 if spec.topology == 'hairpin' else 0)  # bars too (each resonator's own tuning)
 
     def make(x):
-        s = _copy(spec)
         x = np.asarray(x)
         tr = _sym(x[:ng], n + 1) + (_sym(x[ng:], n) if spec.topology == 'hairpin' else [])
-        s.trim = tuple(float(v) for v in np.exp(tr))
-        return s
+        return replace(spec, trim=tuple(float(v) for v in np.exp(tr)))
 
     def residuals(x):
         """In the band, |S11| above the prototype's ripple level (dB); the edges, held loosely (calibrate centres
@@ -501,26 +454,7 @@ def refine_gaps(spec, sub, kf, kb, log=None, seconds=REFINE_SECONDS):
     rx, rf = best
     if log:
         log(f"  refine: {time.time() - started:.1f} s, cost {c0:.3g} -> {rf:.3g}")
-    fr = sweep(spec, 1201)
-
-    def rl(s):
-        d = build(s, sub, kf, kb)
-        s11, s21 = sparams(d.model(lsub), fr, spec.z0)
-        e = edges(spec, fr, db(s21))
-        if not e.get('f1') or not e.get('f2'):
-            return 0.0
-        g = 0.1 * (e['f2'] - e['f1'])
-        m = (fr > e['f1'] + g) & (fr < e['f2'] - g)
-        return float(-db(s11[m]).max()) if m.any() else 0.0
-    s = make(rx)
-    rl0, rl1 = rl(_copy(spec)), rl(s)
-    if rf < c0 and rl1 > rl0 + 0.5:
-        spec.trim = s.trim
-        if log:
-            log(f"  refine: pass-band RL {rl0:.1f} -> {rl1:.1f} dB, factors (gaps, then the Us' bars) "
-                + ', '.join(f'{v:.3f}' for v in spec.trim))
-    elif log:
-        log(f"  refine: no improvement (pass-band RL {rl0:.1f} -> {rl1:.1f} dB), kept the synthesis")
+    _adopt(spec, make(rx), sub, kf, kb, rf < c0, log, " (gaps, then the Us' bars)")
 
 
 def space_map(target, current, sub, kf, kb, f, s21, s11, log=None):

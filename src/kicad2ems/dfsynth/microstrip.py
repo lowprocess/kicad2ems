@@ -4,7 +4,8 @@ Microstrip line models on one dielectric layer over a ground plane, and the subs
 Single line: Hammerstad & Jensen (1980), with strip-thickness correction; dispersion of eeff after
 Kirschning & Jansen (1982). Coupled pair: Kirschning & Jansen (1984), quasi-static even / odd modes, each
 mode given the single-line dispersion law. Open end: Kirschning, Jansen & Koster (1981). Series gap:
-Garg & Bahl (1978). Dimensions are in mm, frequencies in Hz.
+Garg & Bahl (1978). Dimensions are in mm, frequencies in Hz. The line, the pair and the ends are kicad2ems's own
+closed forms (kicad2ems.core.lines), so the synthesis and the line model that checks it agree.
 
     sub = Substrate.preset('RO4003C-0.508')
     w50 = sub.width(50.0)
@@ -17,9 +18,12 @@ import math
 import numpy as np
 from dataclasses import dataclass, replace
 
-C0 = 299792458.0
-ETA0 = 376.730313668
-MU0 = 4e-7 * math.pi
+from ..core import constants
+from ..core.lines import formulas
+from ..core.lines.coupled import coupled_microstrip
+
+C0, ETA0, MU0 = constants.C0, constants.ETA0, constants.MU0             # (ETA0: circuit.py)
+_hj_z01, _hj_eeff = formulas._hj_z01, formulas._hj_eeff                 # (the tests compare them with kicad2ems's)
 
 # name: (h mm, er, tan d, material)  er / tan d are the design values near a few GHz
 PRESETS = {
@@ -40,17 +44,6 @@ PRESETS = {
     'RO3010-0.635': (0.635, 11.2, 0.0022, 'RO3010'),
     'Alumina-0.635': (0.635, 9.8, 0.0001, 'Alumina'),
 }
-
-
-def _hj_z01(u):
-    f = 6 + (2 * math.pi - 6) * math.exp(-(30.666 / u) ** 0.7528)
-    return ETA0 / (2 * math.pi) * math.log(f / u + math.sqrt(1 + 4 / u ** 2))
-
-
-def _hj_eeff(u, er):
-    a = 1 + math.log((u ** 4 + (u / 52) ** 2) / (u ** 4 + 0.432)) / 49 + math.log(1 + (u / 18.1) ** 3) / 18.7
-    b = 0.564 * ((er - 0.9) / (er + 3)) ** 0.053
-    return (er + 1) / 2 + (er - 1) / 2 * (1 + 10 / u) ** (-a * b)
 
 
 def _bisect(fn, target, lo, hi, n=100):
@@ -92,16 +85,7 @@ class Substrate:
     # ---------------------------------------------------------------- single line
     def line(self, w):
         """(Z0, eeff) quasi-static of a strip of width w (mm), thickness self.t."""
-        h, er = self.h, self.er
-        u = w / h
-        du1 = dur = 0.0
-        if self.t > 0:
-            th = self.t / h
-            du1 = th / math.pi * math.log(1 + 4 * math.e / (th / math.tanh(math.sqrt(6.517 * u)) ** 2))
-            dur = 0.5 * (1 + 1 / math.cosh(math.sqrt(max(er - 1, 0.0)))) * du1
-        u1, ur = u + du1, u + dur
-        ee = _hj_eeff(ur, er)
-        return _hj_z01(ur) / math.sqrt(ee), ee * (_hj_z01(u1) / _hj_z01(ur)) ** 2
+        return formulas.microstrip(w, self.h, self.er, self.t)
 
     def disperse(self, ee0, w, f):
         """eeff at f (Hz, scalar or array) of a mode with quasi-static eeff ee0 on a strip of width w
@@ -125,30 +109,7 @@ class Substrate:
     # ---------------------------------------------------------------- coupled pair
     def coupled(self, w, s):
         """(Ze, Zo, eeff_even, eeff_odd) of a symmetric edge-coupled pair (Kirschning-Jansen 1984)."""
-        er = self.er
-        u, g = w / self.h, max(s, 1e-6) / self.h
-        ee1 = _hj_eeff(u, er)
-        z1 = _hj_z01(u) / math.sqrt(ee1)
-        v = u * (20 + g * g) / (10 + g * g) + g * math.exp(-g)
-        eee = _hj_eeff(v, er)
-        d = 0.593 + 0.694 * math.exp(-0.562 * u)
-        bo = 0.747 * er / (0.15 + er)
-        co = bo - (bo - 0.207) * math.exp(-0.414 * u)
-        ao = 0.7287 * (ee1 - (er + 1) / 2) * (1 - math.exp(-0.179 * u))
-        eeo = ((er + 1) / 2 + ao - ee1) * math.exp(-co * g ** d) + ee1
-        q1 = 0.8695 * u ** 0.194
-        q2 = 1 + 0.7519 * g + 0.189 * g ** 2.31
-        q3 = 0.1975 + (16.6 + (8.4 / g) ** 6) ** -0.387 + math.log(g ** 10 / (1 + (g / 3.4) ** 10)) / 241
-        q4 = q1 / q2 * 2 / (math.exp(-g) * u ** q3 + (2 - math.exp(-g)) * u ** -q3)
-        ze = math.sqrt(ee1 / eee) * z1 / (1 - z1 * math.sqrt(ee1) * q4 / ETA0)
-        q5 = 1.794 + 1.14 * math.log(1 + 0.638 / (g + 0.517 * g ** 2.43))
-        q6 = 0.2305 + math.log(g ** 10 / (1 + (g / 5.8) ** 10)) / 281.3 + math.log(1 + 0.598 * g ** 1.154) / 5.1
-        q7 = (10 + 190 * g * g) / (1 + 82.3 * g ** 3)
-        q8 = math.exp(-6.5 - 0.95 * math.log(g) - (g / 0.15) ** 5)
-        q9 = math.log(q7) * (q8 + 1 / 16.5)
-        q10 = (q2 * q4 - q5 * math.exp(math.log(u) * q6 * u ** -q9)) / q2
-        zo = math.sqrt(ee1 / eeo) * z1 / (1 - z1 * math.sqrt(ee1) * q10 / ETA0)
-        return ze, zo, eee, eeo
+        return coupled_microstrip(w, s, self.h, self.er)
 
     def coupled_synth(self, ze, zo):
         """(w, s) of the pair with even / odd impedances ze > zo. Newton on (log w, log s)."""
@@ -186,20 +147,12 @@ class Substrate:
     # ---------------------------------------------------------------- discontinuities
     def open_end(self, w):
         """Open-end length extension (mm), Kirschning, Jansen & Koster (1981)."""
-        er, u = self.er, w / self.h
-        ee = self.line(w)[1]
-        x1 = 0.434907 * (ee ** 0.81 + 0.26) / (ee ** 0.81 - 0.189) * (u ** 0.8544 + 0.236) / (u ** 0.8544 + 0.87)
-        x2 = 1 + u ** 0.371 / (2.358 * er + 1)
-        x3 = 1 + 0.5274 * math.atan(0.084 * u ** (1.9413 / x2)) / ee ** 0.9236
-        x4 = 1 + 0.0377 * math.atan(0.067 * u ** 1.456) * (6 - 5 * math.exp(0.036 * (1 - er)))
-        x5 = 1 - 0.218 * math.exp(-7.5 * u)
-        return self.h * x1 * x3 * x5 / x4
+        return formulas.open_end_extension(w, self.h, self.er, self.line(w)[1])
 
     def step(self, w1, w2):
         """Width step w1 -> w2: the wider strip's length extension (mm) at the step (Edwards: the open
         end of the wider strip, scaled by the part of its width not covered, 1 - wn / ww)."""
-        wn, ww = sorted((w1, w2))
-        return self.open_end(ww) * (1 - wn / ww)
+        return formulas.step_extension(w1, w2, self.h, self.er, self.line(max(w1, w2))[1])
 
     def gap(self, w, s):
         """(Cp, Cg) in F of a series gap s in a strip of width w: shunt capacitance at each side and the

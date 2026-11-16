@@ -3,7 +3,6 @@ Validation with kicad2ems: runs the written board through its solvers, reads the
 measures the band edges and compares them with the spec and the line model. em_tune() feeds the
 measured centre / bandwidth error back into the design's kf / kb and re-runs.
 """
-import json
 import math
 import os
 import shutil
@@ -13,61 +12,15 @@ import time
 
 import numpy as np
 
+from kicad2ems.core.touchstone import read_touchstone          # (f Hz, S (nf, n, n)) of a .sNp file
 from .calibrate import edges, errors, targets, band, model_response
 from .circuit import db
 
 
-def read_touchstone(path):
-    """(f Hz, S (nf, n, n) complex) from a .sNp file."""
-    n = int(os.path.splitext(path)[1][2:-1])
-    unit, fmt, vals = 1e9, 'MA', []
-    mult = {'HZ': 1, 'KHZ': 1e3, 'MHZ': 1e6, 'GHZ': 1e9}
-    with open(path) as fh:
-        for line in fh:
-            line = line.split('!')[0].strip()
-            if not line:
-                continue
-            if line.startswith('#'):
-                tok = line[1:].upper().split()
-                for t in tok:
-                    if t in mult:
-                        unit = mult[t]
-                    if t in ('MA', 'DB', 'RI'):
-                        fmt = t
-                continue
-            vals += [float(v) for v in line.split()]
-    rec = 1 + 2 * n * n
-    a = np.array(vals).reshape(-1, rec)
-    f = a[:, 0] * unit
-    p, q = a[:, 1::2], a[:, 2::2]
-    if fmt == 'RI':
-        s = p + 1j * q
-    elif fmt == 'DB':
-        s = 10 ** (p / 20) * np.exp(1j * np.radians(q))
-    else:
-        s = p * np.exp(1j * np.radians(q))
-    s = s.reshape(-1, n, n)
-    if n == 2:                                   # 2-port files list S11 S21 S12 S22
-        s = s.transpose(0, 2, 1)
-    return f, s
-
-
-def kicad2ems_exe():
-    exe = shutil.which('kicad2ems')
-    if exe:
-        return [exe]
-    try:
-        import kicad2ems  # noqa: F401
-        return [sys.executable, '-m', 'kicad2ems.core.cli']
-    except ImportError:
-        return None
-
-
 def run_kicad2ems(toml, outdir, solvers='mom,lines', extra=(), log=print):
     """Runs kicad2ems; returns {solver name: .s2p path}."""
-    exe = kicad2ems_exe()
-    if exe is None:
-        raise RuntimeError("kicad2ems is not installed in this Python (pip install -e <kicad2ems checkout>)")
+    exe = shutil.which('kicad2ems')
+    exe = [exe] if exe else [sys.executable, '-m', 'kicad2ems.core.cli']
     events = os.path.join(outdir, 'kicad2ems_events.jsonl')
     out_log = os.path.join(outdir, 'kicad2ems_output.log')
     cmd = exe + [toml, '--solvers', solvers, '--out', outdir, '--no-report', '--events', events] + list(extra)
@@ -97,18 +50,6 @@ def run_kicad2ems(toml, outdir, solvers='mom,lines', extra=(), log=print):
     return out
 
 
-def _own_passband(kind, f, e):
-    """Mask of the pass band between (or beyond) the measured -3 dB edges, a tenth of the band inside them."""
-    if kind == 'lowpass':
-        return f <= 0.8 * e['fc'] if e.get('fc') else None
-    if not e.get('f1') or not e.get('f2'):
-        return None
-    g = 0.1 * (e['f2'] - e['f1'])
-    if kind == 'bandpass':
-        return (f >= e['f1'] + g) & (f <= e['f2'] - g)
-    return (f <= e['f1'] - g) | (f >= e['f2'] + g)
-
-
 def metrics(design, f, s21, s11=None, relative=True):
     """Band edges, centre and bandwidth errors, pass-band loss / match of a response."""
     spec = design.spec
@@ -132,10 +73,18 @@ def metrics(design, f, s21, s11=None, relative=True):
         m['passband_IL_worst_dB'] = float(-y[pb].min())
         if s11 is not None:
             m['passband_RL_worst_dB'] = float(-db(s11)[pb].max())
-    own = _own_passband(kind, f, e)
+    # the match over the response's own pass band, between (or beyond) the measured -3 dB edges, a tenth of the band
+    # inside them: a mistuned filter's mismatch at the spec's band is its skirt, not its match
+    own = None
+    if kind == 'lowpass' and e.get('fc'):
+        own = f <= 0.8 * e['fc']
+    elif kind != 'lowpass' and e.get('f1') and e.get('f2'):
+        g = 0.1 * (e['f2'] - e['f1'])
+        if kind == 'bandpass':
+            own = (f >= e['f1'] + g) & (f <= e['f2'] - g)
+        else:
+            own = (f <= e['f1'] - g) | (f >= e['f2'] + g)
     if s11 is not None and own is not None and np.any(own):
-        # the match over the response's own pass band: a mistuned filter's mismatch at the spec's band is its
-        # skirt, not its match
         m['own_passband_RL_worst_dB'] = float(-db(s11)[own].max())
     if kind == 'bandstop':
         sb = abs(f / f0 - 1) <= fbw / 4
@@ -223,13 +172,11 @@ def validate(design, base, solvers='mom,lines', extra=(), log=print, tag=''):
     outdir = base + '_em' + tag
     os.makedirs(outdir, exist_ok=True)
     files = run_kicad2ems(base + '.toml', outdir, solvers, extra, log)
-    results, mets = {}, {}
-    f_em = None
+    results = {}
     for name, path in files.items():
-        f, s = read_touchstone(path)
-        f_em = f
-        results[name] = (f, s[:, 1, 0], s[:, 0, 0])
-    if f_em is None:
+        f_em, s = read_touchstone(path)
+        results[name] = (f_em, s[:, 1, 0], s[:, 0, 0])
+    if not results:
         raise RuntimeError(f"kicad2ems wrote no S-parameters in {outdir}")
     s11, s21 = model_response(design, f_em)
     model = {'model (dfsynth)': (f_em, s21, s11)}
@@ -238,30 +185,22 @@ def validate(design, base, solvers='mom,lines', extra=(), log=print, tag=''):
         s11, s21 = model_response(design, f_em, sub=design.sub.with_(t=0.0))
         model[MODEL0] = (f_em, s21, s11)
     results = {**model, **results}
-    for name, (f, s21, s11) in results.items():
-        mets[name] = metrics(design, f, s21, s11)
-    return mets, results
+    return {name: metrics(design, f, s21, s11) for name, (f, s21, s11) in results.items()}, results
 
 
 MODEL0 = 'model (t=0)'
 
 
-def tune_ratios(mets, fw):
-    """(centre ratio, bandwidth ratio) of the full-wave result fw over the zero-thickness line model (the
-    model of what the solver sees): the part of the error the line model does not explain."""
-    ref = mets.get(MODEL0) or mets['model (dfsynth)']
-    a, b = mets[fw]['edges_GHz'], ref['edges_GHz']
-    if 'fc' in a:
-        return (a['fc'] / b['fc'] if a['fc'] and b['fc'] else None), None
-    if not all((a['f1'], a['f2'], b['f1'], b['f2'])):
-        return None, None
-    return math.sqrt(a['f1'] * a['f2'] / (b['f1'] * b['f2'])), (a['f2'] - a['f1']) / (b['f2'] - b['f1'])
-
-
 def predicted(mets, fw):
     """(centre %, bandwidth %) error vs the spec expected of the real board: the line model's own error (with
-    the copper thickness) times the full-wave result's ratio over the zero-thickness model."""
-    rc, rb = tune_ratios(mets, fw)
+    the copper thickness) times the full-wave result's ratio over the zero-thickness model (the model of what the
+    solver sees: the part of the error the line model does not explain)."""
+    e, r = mets[fw]['edges_GHz'], (mets.get(MODEL0) or mets['model (dfsynth)'])['edges_GHz']
+    rc = rb = None
+    if 'fc' in e:
+        rc = e['fc'] / r['fc'] if e['fc'] and r['fc'] else None
+    elif all((e['f1'], e['f2'], r['f1'], r['f2'])):
+        rc, rb = math.sqrt(e['f1'] * e['f2'] / (r['f1'] * r['f2'])), (e['f2'] - e['f1']) / (r['f2'] - r['f1'])
     m = mets['model (dfsynth)']
     if rc is None or m['centre_error_pct'] is None:
         return None
@@ -270,16 +209,3 @@ def predicted(mets, fw):
     if rb is not None and m['bandwidth_error_pct'] is not None:
         b = 100 * ((1 + m['bandwidth_error_pct'] / 100) * rb - 1)
     return c, b
-
-
-def full_wave(mets):
-    """The first full-wave result's name (a solver of kicad2ems's that takes the board: mom25d, openems, gfdtd,
-    ...), else None."""
-    from kicad2ems.core.api.frontend import registry
-    reg = registry()
-    return next((k for k in mets if k in reg and reg[k].consumes == 'board'), None)
-
-
-def save_json(path, obj):
-    with open(path, 'w') as fh:
-        json.dump(obj, fh, indent=2, default=lambda o: float(o) if isinstance(o, np.floating) else str(o))

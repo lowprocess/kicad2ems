@@ -165,12 +165,14 @@ def _trimmed(spec, th):
     return list(th)
 
 
-def _via_row(geo, x, y, w):
-    """Vias across a stub end of width w at (x, y); returns how many."""
-    n = max(1, min(4, int(w / (2 * VIA_SIZE))))
-    for k in range(n):
-        geo.vias.append((x + (k - (n - 1) / 2) * min(w / n, 2 * VIA_SIZE), y))
-    return n
+def _interleave(a, b):
+    """a[0], b[0], a[1], b[1], ..., then the rest of a: stubs (or gaps) and the lines between them."""
+    return [x for pair in zip(a, b) for x in pair] + list(a[len(b):])
+
+
+def _quarter_waves(zs, zl, fd, kind):
+    """The ideal network of quarter-wave `kind` stubs zs and the quarter-wave lines zl between them."""
+    return _interleave([Ideal.stub(z, math.pi / 2, fd, kind) for z in zs], [Ideal.line(z, math.pi / 2, fd) for z in zl])
 
 
 def _z_limits(sub, wmax=None):
@@ -180,29 +182,32 @@ def _z_limits(sub, wmax=None):
 
 
 # ------------------------------------------------------------------------------- low-pass
-def lowpass_stepped(spec, sub, kf=1.0, kb=1.0):
+def _ladder(spec, sub, stepped):
+    """A low-pass ladder's (notes, g, zh, zc, th), th[k] the electrical length of element k (trimmed): the series L
+    (k even) zh lines, zh sin(theta) = g z0; the shunt C (k odd) zc sections, 2 yc tan(theta / 2) (stepped), or zc
+    open stubs, yc tan(theta), each with its neighbours' shunt parasitics = g / z0."""
     notes = []
     _odd_order(spec, notes)
     g = gvalues(spec.response, spec.order, spec.ripple)
     zmin, zmax = _z_limits(sub)
     zh = spec.zhigh or min(120.0, 0.98 * zmax)
-    zl = spec.zlow or max(15.0, zmin)
-    z0, fd = spec.z0, spec.f0 * kf
-    n = spec.order
-    # series L: zh sin(theta) = g z0; shunt C: 2 yl tan(theta / 2) + neighbours' shunt parasitics = g / z0
+    zc = (spec.zlow or max(15.0, zmin)) if stepped else (spec.zstub or max(30.0, zmin))
+    z0, n = spec.z0, spec.order
     th = [0.0] * n
-    for k in range(n):
-        if k % 2 == 0:
-            x = g[k + 1] * z0 / zh
-            if x >= 1:
-                raise ValueError(f"high impedance {zh:.0f} ohm too low for g{k + 1} = {g[k + 1]:.3f}: raise --zhigh")
-            th[k] = math.asin(x)
-    for _ in range(3):
-        for k in range(1, n, 2):
-            par = sum(math.tan(th[j] / 2) / zh for j in (k - 1, k + 1) if 0 <= j < n)
-            b = g[k + 1] / z0 - par
-            th[k] = 2 * math.atan(max(b, 1e-6) * zl / 2)
-    th = _trimmed(spec, th)
+    for k in range(0, n, 2):
+        x = g[k + 1] * z0 / zh
+        if x >= 1:
+            raise ValueError(f"high impedance {zh:.0f} ohm too low for g{k + 1} = {g[k + 1]:.3f}: raise --zhigh")
+        th[k] = math.asin(x)
+    for k in range(1, n, 2):
+        b = max(g[k + 1] / z0 - sum(math.tan(th[j] / 2) / zh for j in (k - 1, k + 1) if j < n), 1e-6)
+        th[k] = 2 * math.atan(b * zc / 2) if stepped else math.atan(b * zc)
+    return notes, g, zh, zc, _trimmed(spec, th)
+
+
+def lowpass_stepped(spec, sub, kf=1.0, kb=1.0):
+    notes, g, zh, zl, th = _ladder(spec, sub, True)
+    z0, fd, n = spec.z0, spec.f0 * kf, spec.order
     zs = [zh if k % 2 == 0 else zl for k in range(n)]
     ws = [sub.width(z) for z in zs]
     w50, feed = sub.width(z0), _feed(spec, sub)
@@ -226,32 +231,16 @@ def lowpass_stepped(spec, sub, kf=1.0, kb=1.0):
     ideal = [Ideal.line(z, t, fd) for z, t in zip(zs, th)]
 
     def model(s):
-        net = [MLine(s, w50, feed - 0.5 + fext)]
-        net += [MLine(s, w, l + e) for w, l, e in zip(ws, ls, ext)]
-        return net + [MLine(s, w50, feed - 0.5 + fext)]
+        fl = MLine(s, w50, feed - 0.5 + fext)
+        return [fl] + [MLine(s, w, l + e) for w, l, e in zip(ws, ls, ext)] + [fl]
     return Design(spec, sub, kf, kb, geo, ideal, model, rows, g, notes)
 
 
 def lowpass_stub(spec, sub, kf=1.0, kb=1.0):
     """Series high-impedance lines (the inductors, L first) with shunt open stubs (the capacitors) at
     the junctions, the stubs alternating sides."""
-    notes = []
-    _odd_order(spec, notes)
-    g = gvalues(spec.response, spec.order, spec.ripple)
-    zmin, zmax = _z_limits(sub)
-    zh = spec.zhigh or min(120.0, 0.98 * zmax)
-    zst = spec.zstub or max(30.0, zmin)
+    notes, g, zh, zst, th = _ladder(spec, sub, False)
     z0, fd, n = spec.z0, spec.f0 * kf, spec.order
-    th = {}
-    for k in range(0, n, 2):
-        x = g[k + 1] * z0 / zh
-        if x >= 1:
-            raise ValueError(f"high impedance {zh:.0f} ohm too low for g{k + 1} = {g[k + 1]:.3f}: raise --zhigh")
-        th[k] = math.asin(x)
-    for k in range(1, n, 2):
-        par = sum(math.tan(th[j] / 2) / zh for j in (k - 1, k + 1) if j in th)
-        th[k] = math.atan(max(g[k + 1] / z0 - par, 1e-6) * zst)        # ys tan(theta) = B
-    th = dict(enumerate(_trimmed(spec, [th[k] for k in range(n)])))
     wh, wst = sub.width(zh), sub.width(zst)
     w50, feed = sub.width(z0), _feed(spec, sub)
     # the main line under a stub is part of the stub: each series line is lengthened by the half widths of
@@ -259,14 +248,11 @@ def lowpass_stub(spec, sub, kf=1.0, kb=1.0):
     cover = {k: wst / 2 * sum(1 for j in (k - 1, k + 1) if 0 <= j < n) for k in range(0, n, 2)}
     lser = {k: th[k] / _beta(sub, wh, fd) + cover[k] for k in range(0, n, 2)}
     lstub = {k: th[k] / _beta(sub, wst, fd) - sub.open_end(wst) - wh / 2 for k in range(1, n, 2)}
-    rows = []
-    for k in range(n):
-        if k % 2 == 0:
-            rows.append((f"L{k + 1} line", zh, wh, lser[k], None))
-        else:
-            rows.append((f"C{k + 1} open stub", zst, wst, lstub[k], None))
-            if lstub[k] <= 0:
-                raise ValueError(f"stub C{k + 1} comes out shorter than the line width: raise --zstub")
+    for k in lstub:
+        if lstub[k] <= 0:
+            raise ValueError(f"stub C{k + 1} comes out shorter than the line width: raise --zstub")
+    rows = [(f"L{k + 1} line", zh, wh, lser[k], None) if k % 2 == 0 else
+            (f"C{k + 1} open stub", zst, wst, lstub[k], None) for k in range(n)]
     _check_w(sub, notes, 'high impedance line', wh)
     _check_w(sub, notes, 'stubs', wst)
 
@@ -284,15 +270,12 @@ def lowpass_stub(spec, sub, kf=1.0, kb=1.0):
     geo.hline(x, x + feed, 0, w50)
     geo.finish(x + feed, _margin(sub), 0, 0)
 
-    ideal = []
-    for k in range(n):
-        ideal.append(Ideal.line(zh, th[k], fd) if k % 2 == 0 else Ideal.stub(zst, th[k], fd, 'open'))
+    ideal = [Ideal.line(zh, th[k], fd) if k % 2 == 0 else Ideal.stub(zst, th[k], fd, 'open') for k in range(n)]
 
     def model(s):
-        net = [MLine(s, w50, feed - 0.5)]
-        for k in range(n):
-            net.append(MLine(s, wh, lser[k] - cover[k]) if k % 2 == 0 else MStub(s, wst, lstub[k] + wh / 2, 'open'))
-        return net + [MLine(s, w50, feed - 0.5)]
+        fl = MLine(s, w50, feed - 0.5)
+        return [fl] + [MLine(s, wh, lser[k] - cover[k]) if k % 2 == 0 else MStub(s, wst, lstub[k] + wh / 2, 'open')
+                       for k in range(n)] + [fl]
     return Design(spec, sub, kf, kb, geo, ideal, model, rows, g, notes)
 
 
@@ -323,30 +306,17 @@ def _radial_resonant(sub, wl, angle, fd):
     raise ValueError(f"no radial stub of {angle:.0f} degrees resonates at {fd / 1e9:.3f} GHz on this line")
 
 
-def _radial_slope(sub, wl, r2, angle, fd):
-    """Reactance slope (w0 / 2) dX/dw (ohm) of a fan at fd."""
-    h = 1e-4 * fd
-    return fd / 2 * (_radial_z(sub, wl, r2, angle, fd + h).imag - _radial_z(sub, wl, r2, angle, fd - h).imag) / (2 * h)
-
-
 def _radial_table(sub, wl, fd, lo=15.0, hi=160.0):
-    """(angles, resonant radii, reactance slopes) of fans on a line of width wl at fd, cached."""
+    """(angles, resonant radii, reactance slopes (w0 / 2) dX/dw (ohm)) of fans on a line of width wl at fd, cached."""
     key = _sub_key(sub, wl, fd, lo, hi)
     if key not in _TABLES:
         ang = np.geomspace(lo, hi, 32)
         rr = np.array([_radial_resonant(sub, wl, a, fd) for a in ang])
-        xs = np.array([_radial_slope(sub, wl, r, a, fd) for a, r in zip(ang, rr)])
+        h = 1e-4 * fd
+        xs = np.array([fd / 2 * (_radial_z(sub, wl, r, a, fd + h).imag - _radial_z(sub, wl, r, a, fd - h).imag)
+                       / (2 * h) for a, r in zip(ang, rr)])
         _TABLES[key] = (ang, rr, xs)
     return _TABLES[key]
-
-
-def _radial_for_slope(sub, wl, x, fd, lo=15.0, hi=160.0):
-    """(angle, radius) of the fan resonating at fd with reactance slope x (a wider fan: a lower one),
-    interpolated in _radial_table; clipped to lo..hi degrees."""
-    ang, rr, xs = _radial_table(sub, wl, fd, lo, hi)
-    la = np.interp(math.log(x), np.log(xs)[::-1], np.log(ang)[::-1])
-    a = float(np.exp(la))
-    return a, float(np.interp(la, np.log(ang), rr))
 
 
 def _radial_for_b(sub, wl, angle, b, fd, count):
@@ -367,33 +337,14 @@ def lowpass_radial(spec, sub, kf=1.0, kb=1.0):
     """lowpass_stub with each capacitor a butterfly (two radial stubs of spec.stub_angle, one each side): the
     pair has the stub's susceptance at the cut-off, and each fan's resonance above it adds a transmission
     zero to the stop band."""
-    notes = []
-    _odd_order(spec, notes)
-    g = gvalues(spec.response, spec.order, spec.ripple)
-    zmin, zmax = _z_limits(sub)
-    zh = spec.zhigh or min(120.0, 0.98 * zmax)
-    zst = spec.zstub or max(30.0, zmin)
+    notes, g, zh, zst, th = _ladder(spec, sub, False)
     z0, fd, n, ang = spec.z0, spec.f0 * kf, spec.order, spec.stub_angle
-    th = {}
-    for k in range(0, n, 2):
-        x = g[k + 1] * z0 / zh
-        if x >= 1:
-            raise ValueError(f"high impedance {zh:.0f} ohm too low for g{k + 1} = {g[k + 1]:.3f}: raise --zhigh")
-        th[k] = math.asin(x)
-    for k in range(1, n, 2):
-        par = sum(math.tan(th[j] / 2) / zh for j in (k - 1, k + 1) if j in th)
-        th[k] = math.atan(max(g[k + 1] / z0 - par, 1e-6) * zst)
-    th = dict(enumerate(_trimmed(spec, [th[k] for k in range(n)])))
     wh = sub.width(zh)
     w50, feed = sub.width(z0), _feed(spec, sub)
     rad = {k: _radial_for_b(sub, wh, ang, math.tan(th[k]) / zst, fd, 2) for k in range(1, n, 2)}
     lser = {k: th[k] / _beta(sub, wh, fd) for k in range(0, n, 2)}
-    rows = []
-    for k in range(n):
-        if k % 2 == 0:
-            rows.append((f"L{k + 1} line", zh, wh, lser[k], None))
-        else:
-            rows.append((f"C{k + 1} butterfly, {ang:.0f} deg", '', None, rad[k], None))
+    rows = [(f"L{k + 1} line", zh, wh, lser[k], None) if k % 2 == 0 else
+            (f"C{k + 1} butterfly, {ang:.0f} deg", '', None, rad[k], None) for k in range(n)]
     _check_w(sub, notes, 'high impedance line', wh)
     half = {k: rad[k] * math.sin(math.radians(min(ang, 180) / 2)) for k in rad}
     for k in range(2, n - 1, 2):                              # fans either side of line L_k+1
@@ -415,10 +366,9 @@ def lowpass_radial(spec, sub, kf=1.0, kb=1.0):
     geo.finish(x + feed, _margin(sub), 0, 0)
 
     def model(s):
-        net = [MLine(s, w50, feed - 0.5)]
-        for k in range(n):
-            net.append(MLine(s, wh, lser[k]) if k % 2 == 0 else MRadial(s, wh, rad[k], ang, count=2))
-        return net + [MLine(s, w50, feed - 0.5)]
+        fl = MLine(s, w50, feed - 0.5)
+        return [fl] + [MLine(s, wh, lser[k]) if k % 2 == 0 else MRadial(s, wh, rad[k], ang, count=2)
+                       for k in range(n)] + [fl]
     return Design(spec, sub, kf, kb, geo, None, model, rows, g, notes)
 
 
@@ -432,21 +382,29 @@ def radial_stub_range(sub, w, fd, angles=(160.0, 15.0)):
     return _TABLES[key]
 
 
-def bandstop_radial(spec, sub, kf=1.0, kb=1.0):
-    """bandstop_stub with radial stubs: each fan resonates at f0 with the reactance slope of the quarter-
-    wave stub it replaces, (pi / 4) Z_k (its angle sets the slope, its radius the resonance). Radial stubs
-    are low-impedance stubs, so this suits wide stop bands. spec.trim (calibrate.refine_bandstop) scales the
-    n stub and n - 1 line impedances."""
+def _bandstop(spec, kb):
+    """A band-stop's (notes, g, stub impedances, line impedances): open quarter-wave stubs Z_k = 4 Z0 / (pi g_k
+    FBW) a quarter wave apart on a Z0 line; spec.trim (calibrate.refine_bandstop) scales the n stub and n - 1 line
+    impedances."""
     notes = []
     _odd_order(spec, notes)
     g = gvalues(spec.response, spec.order, spec.ripple)
-    n, fd, z0 = spec.order, spec.f0 * kf, spec.z0
-    w50, feed = sub.width(z0), _feed(spec, sub)
+    n, z0 = spec.order, spec.z0
     zs = [4 * z0 / (math.pi * g[k + 1] * spec.fbw * kb) for k in range(n)]
     zl = [z0] * (n - 1)
     if spec.trim and len(spec.trim) == 2 * n - 1:
         zs = [z * t for z, t in zip(zs, spec.trim[:n])]
         zl = [z * t for z, t in zip(zl, spec.trim[n:])]
+    return notes, g, zs, zl
+
+
+def bandstop_radial(spec, sub, kf=1.0, kb=1.0):
+    """bandstop_stub with radial stubs: each fan resonates at f0 with the reactance slope of the quarter-
+    wave stub it replaces, (pi / 4) Z_k (its angle sets the slope, its radius the resonance). Radial stubs
+    are low-impedance stubs, so this suits wide stop bands."""
+    notes, g, zs, zl = _bandstop(spec, kb)
+    n, fd, z0 = spec.order, spec.f0 * kf, spec.z0
+    w50, feed = sub.width(z0), _feed(spec, sub)
     wl = [sub.width(z) for z in zl]
     zr = radial_stub_range(sub, w50, fd)
     if not (zr[0] * 0.999 <= min(zs) and max(zs) <= zr[1] * 1.001):
@@ -454,7 +412,11 @@ def bandstop_radial(spec, sub, kf=1.0, kb=1.0):
         notes.append(FabViolation(f"radial stubs (15 to 160 degrees) behave as {zr[0]:.0f} to {zr[1]:.0f} ohm "
                                   f"stubs here, the band needs {min(zs):.0f} to {max(zs):.0f}: use --topology "
                                   f"stub for narrower stop bands"))
-    fans = [_radial_for_slope(sub, w50, math.pi / 4 * z, fd) for z in zs]     # fans designed on the 50 ohm line
+    # the fans, designed on the 50 ohm line: each one resonating at fd with the reactance slope (pi / 4) Z (a wider
+    # fan: a lower one), interpolated in the table (clipped to its 15 to 160 degrees)
+    ang, rr, xs = _radial_table(sub, w50, fd)
+    las = [np.interp(math.log(math.pi / 4 * z), np.log(xs)[::-1], np.log(ang)[::-1]) for z in zs]
+    fans = [(float(np.exp(la)), float(np.interp(la, np.log(ang), rr))) for la in las]
     lc = [math.pi / 2 / _beta(sub, w, fd) for w in wl]
     half = [r * math.sin(math.radians(min(a, 180) / 2)) for a, r in fans]
     for k in range(n - 2):                                    # same-side fans are two sections apart
@@ -462,11 +424,8 @@ def bandstop_radial(spec, sub, kf=1.0, kb=1.0):
     for k in range(n - 1):
         _check_w(sub, notes, f"line {k + 1}-{k + 2}", wl[k])
     feed = max(feed, half[0] + _margin(sub), half[-1] + _margin(sub))   # the outer fans clear of the board edge
-    rows = []
-    for k, (a, r) in enumerate(fans):
-        rows.append((f"stub {k + 1} (radial, {a:.1f} deg)", zs[k], None, r, None))
-        if k < n - 1:
-            rows.append((f"line {k + 1}-{k + 2}", zl[k], wl[k], lc[k], None))
+    rows = _interleave([(f"stub {k + 1} (radial, {a:.1f} deg)", zs[k], None, r, None) for k, (a, r) in enumerate(fans)],
+                       [(f"line {k + 1}-{k + 2}", zl[k], wl[k], lc[k], None) for k in range(n - 1)])
 
     geo = Geometry()
     x = feed
@@ -481,19 +440,12 @@ def bandstop_radial(spec, sub, kf=1.0, kb=1.0):
     geo.hline(x, x + feed, 0, w50)
     geo.finish(x + feed, _margin(sub), 0, 0)
 
-    ideal = []
-    for k in range(n):
-        ideal.append(Ideal.stub(zs[k], math.pi / 2, fd, 'open'))
-        if k < n - 1:
-            ideal.append(Ideal.line(zl[k], math.pi / 2, fd))
+    ideal = _quarter_waves(zs, zl, fd, 'open')
 
     def model(s_):
-        net = [MLine(s_, w50, feed - 0.5)]
-        for k, (a, r) in enumerate(fans):
-            net.append(MRadial(s_, w50, r, a))
-            if k < n - 1:
-                net.append(MLine(s_, wl[k], lc[k]))
-        return net + [MLine(s_, w50, feed - 0.5)]
+        fl = MLine(s_, w50, feed - 0.5)
+        return [fl] + _interleave([MRadial(s_, w50, r, a) for a, r in fans],
+                                  [MLine(s_, w, l) for w, l in zip(wl, lc)]) + [fl]
     return Design(spec, sub, kf, kb, geo, ideal, model, rows, g, notes)
 
 
@@ -573,7 +525,8 @@ def _stub_band(spec, sub, kf, kb, f0, fbw, label):
         pad = max(wst[i], 2 * VIA_SIZE)
         geo.vline(x, 0, y_via + side * VIA_SIZE, wst[i])
         geo.rect(x - pad / 2, y_via - VIA_SIZE, x + pad / 2, y_via + VIA_SIZE)
-        _via_row(geo, x, y_via, wst[i])
+        for k in range(nvias[i]):                             # across the stub's end
+            geo.vias.append((x + (k - (nvias[i] - 1) / 2) * min(wst[i] / nvias[i], 2 * VIA_SIZE), y_via))
         side = -side
         if i < n - 1:
             geo.hline(x, x + lc[i], 0, wc[i])
@@ -581,19 +534,12 @@ def _stub_band(spec, sub, kf, kb, f0, fbw, label):
     geo.hline(x, x + feed, 0, w50)
     geo.finish(x + feed, _margin(sub), 0, 0)
 
-    ideal = []
-    for i in range(n):
-        ideal.append(Ideal.stub(zs[i], math.pi / 2, fd, 'short'))
-        if i < n - 1:
-            ideal.append(Ideal.line(zc[i], math.pi / 2, fd))
+    ideal = _quarter_waves(zs, zc, fd, 'short')
 
     def model(s):
-        net = [MLine(s, w50, feed - 0.5)]
-        for i in range(n):
-            net.append(MStub(s, wst[i], lst[i] + wmain[i] / 2, 'short', vias=nvias[i], drill=VIA_DRILL))
-            if i < n - 1:
-                net.append(MLine(s, wc[i], lc[i] - cover[i]))
-        return net + [MLine(s, w50, feed - 0.5)]
+        fl = MLine(s, w50, feed - 0.5)
+        return [fl] + _interleave([MStub(s, wst[i], lst[i] + wmain[i] / 2, 'short', vias=nvias[i], drill=VIA_DRILL)
+                                   for i in range(n)], [MLine(s, wc[i], lc[i] - cover[i]) for i in range(n - 1)]) + [fl]
     notes.append(f"{label}: Matthaei h = {h}; {sum(nvias)} ground vias ({VIA_DRILL} mm drill)")
     return Design(spec, sub, kf, kb, geo, ideal, model, rows, g, notes)
 
@@ -705,11 +651,10 @@ def bandpass_hairpin(spec, sub, kf=1.0, kb=1.0):
     rows += [(f"resonator {j + 1} arm spacing", '', None, d[j], None) for j in range(n)]
 
     geo = Geometry()
-    xs = []                                                   # arm centre x: feed, (left, right) per resonator, feed
     x = feed + w50
-    xs.append(x)
+    xs = [x]                                                  # arm centre x: feed, (left, right) per resonator, feed
     for j in range(n):
-        x += (ws[j] + ws[j]) / 2 + secs[j][3]                 # gap of section j to resonator j+1's left arm
+        x += ws[j] + secs[j][3]                               # gap of section j to resonator j+1's left arm
         xl = x
         x += d[j]
         xs.append((xl, x))
@@ -746,7 +691,6 @@ def bandpass_hairpin(spec, sub, kf=1.0, kb=1.0):
         yout = arm + w50 / 2
     geo.finish(x_end, _margin(sub), -w50 / 2, yout)
 
-    ideal = None
     strip_w = [ws[0]] + [w for j in range(n) for w in (ws[j], ws[j + 1])] + [ws[n]]   # feed, arms, feed (left to right)
     strip_s = [secs[0][3]] + [g for j in range(n) for g in (inner, secs[j + 1][3])]
 
@@ -773,7 +717,7 @@ def bandpass_hairpin(spec, sub, kf=1.0, kb=1.0):
         return [MLine(s_, w50, xf - 0.5), net.two_port(top[0], pout), MLine(s_, w50, x_end - xo - 0.5)]
     notes.append(f"hairpin: {inner:.2f} mm between a resonator's own arms; their self-coupling and the arms' "
                  "couplings past their neighbours are in the multiconductor line model, the bends are not")
-    return Design(spec, sub, kf, kb, geo, ideal, model, rows, g, notes)
+    return Design(spec, sub, kf, kb, geo, None, model, rows, g, notes)
 
 
 def bandpass_endcoupled(spec, sub, kf=1.0, kb=1.0):
@@ -801,11 +745,8 @@ def bandpass_endcoupled(spec, sub, kf=1.0, kb=1.0):
     b50 = _beta(sub, w50, fd)
     dl = [math.atan(2 * math.pi * fd * sub.gap(w50, s)[0] * z0) / b50 for s in gaps]
     ls = [t / b50 - dl[i] - dl[i + 1] for i, t in enumerate(th)]
-    rows = []
-    for i in range(n + 1):
-        rows.append((f"gap {i}", '', w50, None, gaps[i]))
-        if i < n:
-            rows.append((f"resonator {i + 1}", z0, w50, ls[i], None))
+    rows = _interleave([(f"gap {i}", '', w50, None, s) for i, s in enumerate(gaps)],
+                       [(f"resonator {i + 1}", z0, w50, l, None) for i, l in enumerate(ls)])
     if not 0.5 <= w50 / sub.h <= 2.2:
         notes.append(f"w/h = {w50 / sub.h:.2f} is outside the gap model's fitted range (0.5..2)")
 
@@ -820,14 +761,11 @@ def bandpass_endcoupled(spec, sub, kf=1.0, kb=1.0):
     geo.hline(x, x + feed, 0, w50)
     geo.finish(x + feed, _margin(sub), 0, 0)
 
-    ideal = [Ideal.series_c(b / (2 * math.pi * fd * z0)) for b in B]
-    ideal = [e for i in range(n) for e in (ideal[i], Ideal.line(z0, th[i], fd))] + [ideal[n]]
+    ideal = _interleave([Ideal.series_c(b / (2 * math.pi * fd * z0)) for b in B], [Ideal.line(z0, t, fd) for t in th])
 
     def model(s_):
-        net = [MLine(s_, w50, feed - 0.5)]
-        for i in range(n):
-            net += [MGap(s_, w50, gaps[i]), MLine(s_, w50, ls[i])]
-        return net + [MGap(s_, w50, gaps[n]), MLine(s_, w50, feed - 0.5)]
+        fl = MLine(s_, w50, feed - 0.5)
+        return [fl] + _interleave([MGap(s_, w50, s) for s in gaps], [MLine(s_, w50, l) for l in ls]) + [fl]
     return Design(spec, sub, kf, kb, geo, ideal, model, rows, g, notes)
 
 
@@ -875,14 +813,6 @@ def _rod(net, arr_sub, w, top, bottom, shorted_top, ext=0.0, stem=None):
         vn = short
     net.via(vn, arr_sub, VIA_DRILL, max(1, _rod_vias(w)))
     net.open(opn, arr_sub, w, ext)
-
-
-def _tap_neck(sub, w50):
-    """(width, length) mm of the narrow line from a feed to its rod. A 50 ohm feed joined straight to the
-    rod is as wide as the tap's distance from the short (at strong taps): the junction then spreads the tap
-    over the feed's width, and openEMS and gfdtd both see a tap some 1.5 x lower in Qe than the line
-    model's. A neck a quarter of the feed's width keeps the junction small."""
-    return min(w50, max(sub.min_width, 0.25 * w50)), max(1.0, sub.h)
 
 
 def _idg_tables(sub, w, f0, neck):
@@ -939,7 +869,11 @@ def bandpass_interdigital(spec, sub, kf=1.0, kb=1.0):
     fbw = spec.fbw * kb
     w50, feed = sub.width(z0), _feed(spec, sub)
     wr = sub.width(spec.zstub) if spec.zstub else w50
-    wt, lt = neck = _tap_neck(sub, w50)
+    # the narrow line (width, length mm) from a feed to its rod. A 50 ohm feed joined straight to the rod is as wide
+    # as the tap's distance from the short (at strong taps): the junction then spreads the tap over the feed's width,
+    # and openEMS and gfdtd both see a tap some 1.5 x lower in Qe than the line model's. A neck a quarter of the
+    # feed's width keeps the junction small
+    wt, lt = neck = min(w50, max(sub.min_width, 0.25 * w50)), max(1.0, sub.h)
     gaps_t, ms, us, qs = _idg_tables(sub, wr, spec.f0, neck)
     M = [fbw / math.sqrt(g[i + 1] * g[i + 2]) for i in range(n - 1)]
     if max(M) > ms.max():
@@ -1031,18 +965,10 @@ def bandpass_interdigital(spec, sub, kf=1.0, kb=1.0):
 
 # ------------------------------------------------------------------------------- band-stop
 def bandstop_stub(spec, sub, kf=1.0, kb=1.0):
-    """Open quarter-wave stubs Z_k = 4 Z0 / (pi g_k FBW) a quarter wave apart on a Z0 line; spec.trim
-    (set by calibrate.refine_bandstop) scales the n stub and n - 1 line impedances."""
-    notes = []
-    _odd_order(spec, notes)
-    g = gvalues(spec.response, spec.order, spec.ripple)
+    """Open quarter-wave stubs a quarter wave apart on a Z0 line (_bandstop)."""
+    notes, g, zs, zl = _bandstop(spec, kb)
     n, fd, z0 = spec.order, spec.f0 * kf, spec.z0
     zmin, zmax = _z_limits(sub)
-    zs = [4 * z0 / (math.pi * g[k + 1] * spec.fbw * kb) for k in range(n)]
-    zl = [z0] * (n - 1)
-    if spec.trim and len(spec.trim) == 2 * n - 1:
-        zs = [z * t for z, t in zip(zs, spec.trim[:n])]
-        zl = [z * t for z, t in zip(zl, spec.trim[n:])]
     if max(zs) > zmax:
         notes.append(f"stub impedances up to {max(zs):.0f} ohm exceed the {zmax:.0f} ohm of a minimum-width strip: "
                      "those stubs are clamped to the minimum width, so the stop band comes out wider than asked")
@@ -1076,19 +1002,12 @@ def bandstop_stub(spec, sub, kf=1.0, kb=1.0):
     geo.hline(x, x + feed, 0, w50)
     geo.finish(x + feed, _margin(sub), 0, 0)
 
-    ideal = []
-    for k in range(n):
-        ideal.append(Ideal.stub(zs[k], math.pi / 2, fd, 'open'))
-        if k < n - 1:
-            ideal.append(Ideal.line(zl[k], math.pi / 2, fd))
+    ideal = _quarter_waves(zs, zl, fd, 'open')
 
     def model(s_):
-        net = [MLine(s_, w50, feed - 0.5)]
-        for k in range(n):
-            net.append(MStub(s_, wst[k], lst[k] + wj[k] / 2, 'open'))
-            if k < n - 1:
-                net.append(MLine(s_, wl[k], lc[k] - cover[k]))
-        return net + [MLine(s_, w50, feed - 0.5)]
+        fl = MLine(s_, w50, feed - 0.5)
+        return [fl] + _interleave([MStub(s_, wst[k], lst[k] + wj[k] / 2, 'open') for k in range(n)],
+                                  [MLine(s_, wl[k], lc[k] - cover[k]) for k in range(n - 1)]) + [fl]
     return Design(spec, sub, kf, kb, geo, ideal, model, rows, g, notes)
 
 

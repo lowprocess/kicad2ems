@@ -10,6 +10,7 @@ import math
 import os
 import uuid
 
+from .calibrate import band, sweep
 from .topologies import VIA_DRILL, VIA_SIZE
 
 
@@ -56,7 +57,9 @@ def board_text(design, title=''):
               f'    (property "Value" "RF_Port" (at 0 1.5 {rot}) (layer "F.Fab") (uuid "{_u()}"))',
               f'    (fp_text user "P{n}" (at 0 0.8 {rot}) (layer "F.Fab") (uuid "{_u()}"))',
               '  )']
-    note = f'{design.spec.kind} {design.spec.topology} {_fmt_f(design.spec.f0)}'
+    f0 = design.spec.f0
+    freq = f'{f0 / 1e9:.4g} GHz' if f0 >= 1e9 else f'{f0 / 1e6:.4g} MHz'
+    note = f'{design.spec.kind} {design.spec.topology} {freq}'
     L.append(f'  (gr_text "{note}" (at 1 {H + 1.5:.3f} 0) (layer "Cmts.User") (uuid "{_u()}") '
              '(effects (font (size 1 1) (thickness 0.15)) (justify left)))')
     L.append(f'  (gr_rect (start 0 0) (end {W:.4f} {H:.4f}) (stroke (width 0.1) (type default)) (fill none) '
@@ -65,29 +68,19 @@ def board_text(design, title=''):
     return '\n'.join(L) + '\n'
 
 
-def _fmt_f(f):
-    return f'{f / 1e9:.4g} GHz' if f >= 1e9 else f'{f / 1e6:.4g} MHz'
-
-
-def sweep_range(design):
-    """(fmin, fmax) GHz for the EM run: the band and its skirts."""
-    from .calibrate import band
-    kind, f0, fbw = band(design.spec)
-    if kind == 'lowpass':
-        return 0.05 * f0 / 1e9, 3.0 * f0 / 1e9
-    if kind == 'bandstop' and design.spec.topology == 'radial':
-        from .calibrate import sweep
-        f = sweep(design.spec, 2)
-        return f[0] / 1e9, f[-1] / 1e9
-    if design.spec.topology == 'stub':
-        return 0.1 * f0 / 1e9, 1.9 * f0 / 1e9
-    span = max(2.5 * fbw, 0.3)
-    return max(0.1, 1 - span) * f0 / 1e9, (1 + span) * f0 / 1e9
-
-
 def toml_text(design, board_name, points=401):
-    fmin, fmax = sweep_range(design)
     s = design.spec
+    kind, f0, fbw = band(s)                                   # the EM run's band (GHz): the filter's and its skirts
+    if kind == 'lowpass':
+        fmin, fmax = 0.05 * f0 / 1e9, 3.0 * f0 / 1e9
+    elif kind == 'bandstop' and s.topology == 'radial':
+        f = sweep(s, 2)
+        fmin, fmax = f[0] / 1e9, f[-1] / 1e9
+    elif s.topology == 'stub':
+        fmin, fmax = 0.1 * f0 / 1e9, 1.9 * f0 / 1e9
+    else:
+        span = max(2.5 * fbw, 0.3)
+        fmin, fmax = max(0.1, 1 - span) * f0 / 1e9, (1 + span) * f0 / 1e9
     return '\n'.join([
         f'# kicad2ems run configuration written by dfsynth: {s.kind} / {s.topology}, {s.response} order {s.order}',
         f'#   kicad2ems {os.path.splitext(board_name)[0]}.toml --solvers mom,lines',

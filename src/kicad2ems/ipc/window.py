@@ -16,18 +16,40 @@ from PySide6.QtWidgets import (QApplication, QDialog, QMainWindow, QWidget, QVBo
                                QTableWidget, QTableWidgetItem, QHeaderView)
 import pyqtgraph as pg
 
+from kicad2ems.core.api.frontend import registry, overlay as ov, Run, EventTail, stop_runs
 from kicad2ems.gui.api import PlanView, SectionView
 from . import model as md
+from .netclass import partner
+
+# the solver menu: auto, each full-wave solver installed (kicad2ems's registry), the line model
+SOLVERS = [('auto (the fastest full-wave + line model)', ['auto'])] + \
+    [(sv.label, [n]) for n, sv in registry().items() if sv.consumes == 'board'] + [('line model only', ['lines'])]
 
 
-def solver_choices():
-    """The solver menu: auto, each full-wave solver installed (kicad2ems's registry), the line model."""
-    from kicad2ems.core.api.frontend import registry
-    return [('auto (the fastest full-wave + line model)', ['auto'])] + \
-        [(sv.label, [n]) for n, sv in registry().items() if sv.consumes == 'board'] + [('line model only', ['lines'])]
+def _button(text, slot=None, tip='', checkable=False):
+    b = QPushButton(text)
+    b.setToolTip(tip)
+    b.setCheckable(checkable)
+    if slot is not None:
+        b.clicked.connect(slot)
+    return b
 
 
-SOLVERS = solver_choices()
+def _label(text, colour=None):
+    """A word-wrapped label (in `colour`: a note)."""
+    lab = QLabel(text)
+    lab.setWordWrap(True)
+    if colour:
+        lab.setStyleSheet(f'color: {colour}')
+    return lab
+
+
+def _row(*widgets, stretch=None):
+    """A row of widgets, `stretch` the one that takes the room."""
+    row = QHBoxLayout()
+    for w in widgets:
+        row.addWidget(w, 1 if w is stretch else 0)
+    return row
 
 
 class Loader(QThread):
@@ -79,7 +101,6 @@ class Legend(QWidget):
         self.update()
 
     def paintEvent(self, ev):
-        from kicad2ems.core.api.frontend import overlay as ov
         p = QPainter(self)
         w, h = self.width(), self.height()
         g = QLinearGradient(0, 0, w, 0)
@@ -101,8 +122,7 @@ class Results(QWidget):
     def __init__(self):
         super().__init__()
         v = QVBoxLayout(self)
-        self.title = QLabel('No results yet: set up a run and press Run')
-        self.title.setWordWrap(True)
+        self.title = _label('No results yet: set up a run and press Run')
         v.addWidget(self.title)
         self.plot = pg.PlotWidget(background='w')
         self.plot.showGrid(x=True, y=True, alpha=0.3)
@@ -135,10 +155,10 @@ class Results(QWidget):
             c = self.COLOURS[k % len(self.COLOURS)]
             for n, sv in enumerate(full):
                 if sv['names'] == res['solved'][0]['names']:
-                    self.plot.plot(sv['f'] / 1e9, _db(sv['S'][:, i, j]), name=f"{lab} {sv['key']}",
+                    self.plot.plot(sv['f'] / 1e9, md.db(sv['S'][:, i, j]), name=f"{lab} {sv['key']}",
                                    pen=pg.mkPen(c, width=2, style=styles[n % len(styles)]))
             if line is not None and line['names'] == res['solved'][0]['names']:
-                self.plot.plot(line['f'] / 1e9, _db(line['S'][:, i, j]), name=f"{lab} line model",
+                self.plot.plot(line['f'] / 1e9, md.db(line['S'][:, i, j]), name=f"{lab} line model",
                                pen=pg.mkPen(c, width=1.5, style=Qt.DashLine))
         rows = md.comparison(res)
         self.table.setRowCount(len(rows))
@@ -151,11 +171,6 @@ class Results(QWidget):
         self.title.setText((title + ': ' if title else '') + what +
                            ('' if line else '  - no line model result to compare with') +
                            ''.join(f"\n{w}" for w in res.get('warnings', [])[:3]))
-
-
-def _db(x):
-    import numpy as np
-    return 20 * np.log10(np.maximum(np.abs(x), 1e-9))
 
 
 class PluginPlan(PlanView):
@@ -248,13 +263,9 @@ class Window(QMainWindow):
         split.addWidget(self.tabs)
         side = QWidget()
         lay = QVBoxLayout(side)
-        lay.addWidget(self._board_box())
-        lay.addWidget(self._map_box())
-        lay.addWidget(self._nets_box())
-        lay.addWidget(self._region_box())
-        lay.addWidget(self._ports_box())
-        lay.addWidget(self._run_box())
-        lay.addWidget(self._power_box())
+        for box in (self._board_box(), self._map_box(), self._nets_box(), self._region_box(), self._ports_box(),
+                    self._run_box(), self._power_box()):
+            lay.addWidget(box)
         lay.addStretch(1)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -275,30 +286,22 @@ class Window(QMainWindow):
     def _board_box(self):
         g = QGroupBox('Board')
         v = QVBoxLayout(g)
-        self.board_lab = QLabel('connecting to KiCad ...')
-        self.board_lab.setWordWrap(True)
+        self.board_lab = _label('connecting to KiCad ...')
         v.addWidget(self.board_lab)
-        b = QPushButton('Reload from KiCad')
-        b.setToolTip('Read the board again as KiCad has it now (unsaved edits included). It is read again by itself '
-                     'when this window comes to the front after the board was edited')
-        b.clicked.connect(self.reload)
-        v.addWidget(b)
-        h = QHBoxLayout()
-        self.put_btn = QPushButton('Put on the board')
-        self.put_btn.setToolTip("Draw the region, the ports (a cross and the name) and markers at the traces furthest "
-                                "from their class's impedance on a user layer of the board, in one step KiCad's undo "
-                                "takes back")
-        self.put_btn.clicked.connect(self.put_on_board)
+        v.addWidget(_button('Reload from KiCad', self.reload,
+                            'Read the board again as KiCad has it now (unsaved edits included). It is read again by '
+                            'itself when this window comes to the front after the board was edited'))
+        self.put_btn = _button('Put on the board', self.put_on_board,
+                               "Draw the region, the ports (a cross and the name) and markers at the traces furthest "
+                               "from their class's impedance on a user layer of the board, in one step KiCad's undo "
+                               "takes back")
         self.put_layer = QComboBox()
         self.put_layer.addItems([f'User.{k}' for k in range(1, 10)] + ['Cmts.User', 'Dwgs.User'])
         self.put_layer.setCurrentText('User.9')
-        h.addWidget(self.put_btn)
-        h.addWidget(self.put_layer)
-        v.addLayout(h)
-        self.gpu_btn = QPushButton('Use the GPU for gfdtd')
-        self.gpu_btn.setToolTip("Install slangpy (gfdtd's Vulkan runtime, a download of 40-90 MB) into the plugin's "
-                                "Python: gfdtd runs on the GPU instead of numpy on the CPU")
-        self.gpu_btn.clicked.connect(self.install_gpu)
+        v.addLayout(_row(self.put_btn, self.put_layer))
+        self.gpu_btn = _button('Use the GPU for gfdtd', self.install_gpu,
+                               "Install slangpy (gfdtd's Vulkan runtime, a download of 40-90 MB) into the plugin's "
+                               "Python: gfdtd runs on the GPU instead of numpy on the CPU")
         self.gpu_btn.setVisible(md.gpu_offer() is not None)
         v.addWidget(self.gpu_btn)
         return g
@@ -307,8 +310,7 @@ class Window(QMainWindow):
         """R-E26: the session's region and ports and the map's worst sections, drawn in KiCad."""
         if self.live is None:
             return
-        els = [e for es in self.store.values() for e in es]
-        items = md.board_marks(self.session, els)
+        items = md.board_marks(self.session, [e for es in self.store.values() for e in es])
         if not items:
             self.statusBar().showMessage('Nothing to put on the board: no region, ports or map yet', 6000)
             return
@@ -349,36 +351,24 @@ class Window(QMainWindow):
         v.addWidget(self.map_bar)
         self.legend = Legend()
         v.addWidget(self.legend)
-        self.map_lab = QLabel('Traces coloured by their impedance against their net class\'s target (50 ohm SE '
+        self.map_lab = _label('Traces coloured by their impedance against their net class\'s target (50 ohm SE '
                               'without one), with the copper\'s thickness on pairs and grounded CPW: hover one to read '
-                              'it, click it to select its track in KiCad')
-        self.map_lab.setWordWrap(True)
-        self.map_lab.setStyleSheet('color: #555')
+                              'it, click it to select its track in KiCad', '#555')
         v.addWidget(self.map_lab)
-        row = QHBoxLayout()
         self.field_on = QCheckBox('Every section by the field solver')
         self.field_on.setToolTip("Each trace from the board's copper cut across it, rather than the formulas: what is "
                                  "beside it and any holes in its planes count. Slower (about 5 x); kept like the map")
         self.field_on.toggled.connect(self._field_toggled)
-        row.addWidget(self.field_on, 1)
-        b = QPushButton('Field across it…')
-        b.setToolTip('The field across the section last clicked on the map')
-        b.clicked.connect(self._open_section)
-        row.addWidget(b)
-        v.addLayout(row)
-        row = QHBoxLayout()
-        row.addWidget(QLabel('Show'))
+        v.addLayout(_row(self.field_on, _button('Field across it…', self._open_section,
+                                                'The field across the section last clicked on the map'),
+                         stretch=self.field_on))
         self.scope = QComboBox()
         for label, key in (('all nets', 'all'), ('nets selected in KiCad', 'selection'), ('nets in the region', 'region')):
             self.scope.addItem(label, key)
         self.scope.setToolTip('Which nets the map shows (within the classes ticked below)')
         self.scope.currentIndexChanged.connect(self._filter_changed)
-        row.addWidget(self.scope, 1)
-        b = QPushButton('Update')
-        b.setToolTip("Read KiCad's selection again")
-        b.clicked.connect(self._filter_changed)
-        row.addWidget(b)
-        v.addLayout(row)
+        v.addLayout(_row(QLabel('Show'), self.scope, _button('Update', self._filter_changed,
+                                                             "Read KiCad's selection again"), stretch=self.scope))
         self.class_list = QListWidget()
         self.class_list.setMinimumHeight(90)
         self.class_list.setToolTip('Net classes: tick the ones to map. The target impedance comes from the class '
@@ -390,29 +380,16 @@ class Window(QMainWindow):
     def _nets_box(self):
         g = QGroupBox('Nets to simulate')
         v = QVBoxLayout(g)
-        lab = QLabel('A net, a pair or a set of nets: the region goes around them, their R / L / C parts stay in '
-                     '(in series: the nets beyond come too), and every other component on them gets a port')
-        lab.setWordWrap(True)
-        lab.setStyleSheet('color: #555')
-        v.addWidget(lab)
-        row = QHBoxLayout()
-        b = QPushButton('From KiCad selection')
-        b.setToolTip("The nets of the items selected in KiCad (a pair's other leg comes along)")
-        b.clicked.connect(self._nets_from_selection)
-        row.addWidget(b)
-        self.pick_btn = QPushButton('Pick')
-        self.pick_btn.setCheckable(True)
-        self.pick_btn.setToolTip('Click traces on the plan: each click adds its net (or takes it out again)')
-        row.addWidget(self.pick_btn)
-        b = QPushButton('Clear')
-        b.clicked.connect(lambda: self._set_nets([]))
-        row.addWidget(b)
-        v.addLayout(row)
-        self.nets_lab = QLabel('none')
-        self.nets_lab.setWordWrap(True)
+        v.addWidget(_label('A net, a pair or a set of nets: the region goes around them, their R / L / C parts stay in '
+                           '(in series: the nets beyond come too), and every other component on them gets a port',
+                           '#555'))
+        self.pick_btn = _button('Pick', tip='Click traces on the plan: each click adds its net (or takes it out again)',
+                                checkable=True)
+        v.addLayout(_row(_button('From KiCad selection', self._nets_from_selection,
+                                 "The nets of the items selected in KiCad (a pair's other leg comes along)"),
+                         self.pick_btn, _button('Clear', lambda: self._set_nets([]))))
+        self.nets_lab = _label('none')
         v.addWidget(self.nets_lab)
-        row = QHBoxLayout()
-        row.addWidget(QLabel('Board around them'))
         self.margin = QDoubleSpinBox()
         self.margin.setRange(0.0, 50.0)
         self.margin.setDecimals(1)
@@ -420,14 +397,9 @@ class Window(QMainWindow):
         self.margin.setValue(md.NET_MARGIN)
         self.margin.setToolTip('How far the region reaches beyond the nets\' copper and parts (the planes and '
                                'ground beside them)')
-        row.addWidget(self.margin)
-        self.setup_btn = QPushButton('Set up region and ports')
-        self.setup_btn.clicked.connect(self._setup_nets)
-        row.addWidget(self.setup_btn)
-        v.addLayout(row)
-        self.setup_lab = QLabel(' ')
-        self.setup_lab.setWordWrap(True)
-        self.setup_lab.setStyleSheet('color: #333')
+        self.setup_btn = _button('Set up region and ports', self._setup_nets)
+        v.addLayout(_row(QLabel('Board around them'), self.margin, self.setup_btn))
+        self.setup_lab = _label(' ', '#333')
         v.addWidget(self.setup_lab)
         self.picked = []
         return g
@@ -435,19 +407,10 @@ class Window(QMainWindow):
     def _region_box(self):
         g = QGroupBox('Region to simulate')
         v = QVBoxLayout(g)
-        row = QHBoxLayout()
-        self.draw_btn = QPushButton('Draw')
-        self.draw_btn.setCheckable(True)
-        self.draw_btn.setToolTip('Click two corners on the plan')
-        row.addWidget(self.draw_btn)
-        b = QPushButton('From KiCad selection')
-        b.setToolTip('The box around the items selected in KiCad, 1 mm beyond')
-        b.clicked.connect(self._region_from_selection)
-        row.addWidget(b)
-        b = QPushButton('Clear')
-        b.clicked.connect(lambda: self._set_region(None, by_hand=True))
-        row.addWidget(b)
-        v.addLayout(row)
+        self.draw_btn = _button('Draw', tip='Click two corners on the plan', checkable=True)
+        v.addLayout(_row(self.draw_btn, _button('From KiCad selection', self._region_from_selection,
+                                                'The box around the items selected in KiCad, 1 mm beyond'),
+                         _button('Clear', lambda: self._set_region(None, by_hand=True))))
         self.region_lab = QLabel('the whole board')
         v.addWidget(self.region_lab)
         self.cut = QCheckBox('Ports where signal tracks cross the region edge')
@@ -458,15 +421,12 @@ class Window(QMainWindow):
     def _ports_box(self):
         g = QGroupBox('Ports')
         v = QVBoxLayout(g)
-        self.port_btn = QPushButton('Add: click a trace or a pad')
-        self.port_btn.setCheckable(True)
+        self.port_btn = _button('Add: click a trace or a pad', checkable=True)
         v.addWidget(self.port_btn)
         self.port_list = QListWidget()
         self.port_list.setMinimumHeight(110)
         v.addWidget(self.port_list)
-        b = QPushButton('Remove the selected port')
-        b.clicked.connect(self._remove_port)
-        v.addWidget(b)
+        v.addWidget(_button('Remove the selected port', self._remove_port))
         self.draw_btn.toggled.connect(lambda on: self._tool('region', on))
         self.port_btn.toggled.connect(lambda on: self._tool('port', on))
         self.pick_btn.toggled.connect(lambda on: self._tool('net', on))
@@ -493,25 +453,17 @@ class Window(QMainWindow):
                               "own pdn.load fields); for the temperature the parts' losses in W (empty: a circuit "
                               "run's)")
         f.addRow('Loads / losses', self.loads)
-        row = QHBoxLayout()
-        self.power_btns = []
-        for name, label in md.POWER:
-            b = QPushButton(label)
-            b.setToolTip(f"pcbqs's {label.lower()} of this board, as kicad2ems runs it (Open in kicad2ems has every "
-                         f"setting)")
-            b.clicked.connect(lambda _=False, n=name: self.run_power(n))
-            row.addWidget(b)
-            self.power_btns.append(b)
-        f.addRow(row)
+        self.power_btns = [_button(label, lambda _=False, n=name: self.run_power(n),
+                                   f"pcbqs's {label.lower()} of this board, as kicad2ems runs it (Open in kicad2ems "
+                                   f"has every setting)") for name, label in md.POWER]
+        f.addRow(_row(*self.power_btns))
         self.maps = QComboBox()
         self.maps.setToolTip("a map of the last result: drawn as bands on User.1 ... User.8, the legend on User.8")
         f.addRow('Map', self.maps)
-        self.map_btn = QPushButton('Map on the board')
-        self.map_btn.clicked.connect(self.map_on_board)
+        self.map_btn = _button('Map on the board', self.map_on_board)
         self.map_btn.setEnabled(False)
         f.addRow(self.map_btn)
-        self.power_lab = QLabel('')
-        self.power_lab.setWordWrap(True)
+        self.power_lab = _label('')
         f.addRow(self.power_lab)
         return g
 
@@ -603,28 +555,18 @@ class Window(QMainWindow):
             self.solver.addItem(label, names)
         self.solver.currentIndexChanged.connect(self._save)
         f.addRow('Solver', self.solver)
-        row = QHBoxLayout()
-        self.run_btn = QPushButton('Run')
-        self.run_btn.clicked.connect(self.run)
-        row.addWidget(self.run_btn)
-        self.stop_btn = QPushButton('Stop')
+        self.run_btn, self.stop_btn = _button('Run', self.run), _button('Stop', self.stop)
         self.stop_btn.setEnabled(False)
-        self.stop_btn.clicked.connect(self.stop)
-        row.addWidget(self.stop_btn)
-        b = QPushButton('Open in kicad2ems')
-        b.setToolTip('The same set-up in kicad2ems\'s own window: every setting, the results and the field views')
-        b.clicked.connect(self.open_gui)
-        row.addWidget(b)
-        f.addRow(row)
+        f.addRow(_row(self.run_btn, self.stop_btn, _button('Open in kicad2ems', self.open_gui,
+                                                           'The same set-up in kicad2ems\'s own window: every '
+                                                           'setting, the results and the field views')))
         self.run_bar = QProgressBar()
         self.run_bar.setRange(0, 1000)
         f.addRow(self.run_bar)
-        self.run_lab = QLabel(' ')
-        self.run_lab.setWordWrap(True)
+        self.run_lab = _label(' ')
         f.addRow(self.run_lab)
-        self.report_btn = QPushButton('Open the report')
+        self.report_btn = _button('Open the report', self._open_report)
         self.report_btn.setEnabled(False)
-        self.report_btn.clicked.connect(self._open_report)
         f.addRow(self.report_btn)
         self.report = None
         return g
@@ -639,7 +581,7 @@ class Window(QMainWindow):
                 self.board_lab.setText(str(e))
                 return False
         self.stem = self.live.stem()
-        self.folder = md.work_folder(self.live.project_dir(), self.stem)
+        self.folder = os.path.join(self.live.project_dir() or os.getcwd(), 'kicad2ems', self.stem)   # its session, runs
         self.session = md.Session.load(md.session_path(self.folder, self.stem)) or md.Session()
         self._show_session()
         self.reload()
@@ -729,12 +671,8 @@ class Window(QMainWindow):
         self.class_list.blockSignals(False)
 
     def _checked_classes(self):
-        out = []
-        for i in range(self.class_list.count()):
-            it = self.class_list.item(i)
-            if it.data(Qt.UserRole) and it.checkState() == Qt.Checked:
-                out.append(it.data(Qt.UserRole))
-        return out
+        items = [self.class_list.item(i) for i in range(self.class_list.count())]
+        return [it.data(Qt.UserRole) for it in items if it.data(Qt.UserRole) and it.checkState() == Qt.Checked]
 
     def _visible_nets(self):
         """The nets the map shows: the ticked classes', within the scope (all, KiCad's selection, the region)."""
@@ -764,8 +702,8 @@ class Window(QMainWindow):
             if busy:
                 self.loader.stop()
                 self.loader.wait()
-            self.loader = Loader(None, None, plan=self.plan, nets=missing, cache=self._cache_path(),
-                                 field=self.session.lines_field)
+            cache = os.path.join(self.folder, f"{self.stem}_impedance.json.gz") if self.folder else None  # MapCache
+            self.loader = Loader(None, None, plan=self.plan, nets=missing, cache=cache, field=self.session.lines_field)
             self.loader.progress.connect(self._mapped)
             self.loader.finished.connect(self._map_done)
             self.loader.failed.connect(lambda msg: self.map_lab.setText(msg))
@@ -792,10 +730,6 @@ class Window(QMainWindow):
         self.section_view.show_section(self.section_picked)
         self.section_dlg.show()
         self.section_dlg.raise_()
-
-    def _cache_path(self):
-        """The map kept between sessions (model.MapCache), beside the board's session."""
-        return os.path.join(self.folder, f"{self.stem}_impedance.json.gz") if self.folder else None
 
     def _mapped(self, chunk, new):
         for n in chunk:
@@ -854,13 +788,11 @@ class Window(QMainWindow):
             self.draw_btn.setChecked(False)                         # back to inspecting (clears the band)
             self._set_region(md.region_of_box(x0, -y0, x, -y, margin=0.0), by_hand=True)
         elif self.view.mode == 'net':
-            from kicad2ems.core.api.frontend import overlay as ov
             i = ov.nearest(self.lines['elements'], x, y, tol, layer=self.view.current_layer())
             net = self.lines['elements'][i].get('net') if i is not None else None
             if not net:
                 self.statusBar().showMessage('No mapped trace here (on the layer shown)', 5000)
                 return
-            from .netclass import partner
             pair = [n for n in (net, partner(net)) if n in self.plan.signal]
             self._set_nets([n for n in self.picked if n not in pair] if net in self.picked else self.picked + pair)
         elif self.view.mode == 'port':
@@ -911,7 +843,6 @@ class Window(QMainWindow):
             self.setup_lab.setText(f"set up: {', '.join(self.session.run_nets)}; {len(self.session.ports)} port(s)")
 
     def _nets_from_selection(self):
-        from .netclass import partner
         try:
             sel = self.live.selection_nets() if self.live else set()
         except Exception:                                           # KiCad went away
@@ -993,10 +924,8 @@ class Window(QMainWindow):
         s = self.session
         self.region_lab.setText('the whole board' if not s.region else
                                 f"x {s.region[0]:g} .. {s.region[2]:g}, y {s.region[1]:g} .. {s.region[3]:g} mm (KiCad)")
-        self.field_on.blockSignals(True)
-        self.field_on.setChecked(bool(s.lines_field))
-        self.field_on.blockSignals(False)
-        for w, v in ((self.cut, bool(s.cut_ports)), (self.fmin, s.fmin), (self.fmax, s.fmax), (self.margin, s.margin)):
+        for w, v in ((self.field_on, bool(s.lines_field)), (self.cut, bool(s.cut_ports)), (self.fmin, s.fmin),
+                     (self.fmax, s.fmax), (self.margin, s.margin)):
             w.blockSignals(True)
             (w.setChecked if isinstance(w, QCheckBox) else w.setValue)(v)
             w.blockSignals(False)
@@ -1021,7 +950,6 @@ class Window(QMainWindow):
         return md.run_values(self.session, self.plan, self.text, self.folder, self.stem)
 
     def run(self):
-        from kicad2ems.core.api.frontend import Run
         try:
             vals = self._values()
         except (ValueError, OSError) as e:
@@ -1030,7 +958,6 @@ class Window(QMainWindow):
         md.write_config(vals, os.path.join(self.folder, f"{self.stem}.toml"))
         self.run_out = vals['out']
         r = Run(vals, self.run_out)
-        from kicad2ems.core.api.frontend import EventTail
         self.tail = EventTail(r.events)
         self.proc = QProcess(self)
         self.proc.setProcessChannelMode(QProcess.MergedChannels)
@@ -1077,7 +1004,6 @@ class Window(QMainWindow):
             self.run_lab.setText("the run failed:\n" + "\n".join(tail))
 
     def stop(self):
-        from kicad2ems.core.api.frontend import stop_runs
         if self.run_out:
             stop_runs(self.run_out)
         self.run_lab.setText('stopping ...')
