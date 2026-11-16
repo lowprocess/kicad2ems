@@ -98,20 +98,18 @@ class AnalysisPanel(QWidget):
         files = QWidget()
         f = QFormLayout(files)
         f.setContentsMargins(0, 0, 0, 0)
-        self.board = QLineEdit()
-        self.board.setPlaceholderText("the study's board" if win is not None else 'a .kicad_pcb, or a board.json')
-        self.board.setToolTip('.kicad_pcb (or a run\'s <name>_board.json); empty: the board under Board, above')
-        b = QPushButton('…')
+        self.board = QLineEdit(placeholderText="the study's board" if win is not None else 'a .kicad_pcb, or a '
+                               'board.json', toolTip=".kicad_pcb (or a run's <name>_board.json); empty: the board "
+                                                     "under Board, above")
+        b = QPushButton('…', clicked=self._browse)
         b.setFixedWidth(28)
-        b.clicked.connect(self._browse)
         row = QWidget()
         rl = QHBoxLayout(row)
         rl.setContentsMargins(0, 0, 0, 0)
         rl.addWidget(self.board, 1)
         rl.addWidget(b)
         f.addRow('Board', row)
-        self.outdir = QLineEdit()
-        self.outdir.setPlaceholderText('a folder per run, in the output folder')
+        self.outdir = QLineEdit(placeholderText='a folder per run, in the output folder')
         f.addRow('Output folder', self.outdir)
         for edit in (self.board, self.outdir):
             edit.textChanged.connect(self._edited)
@@ -128,19 +126,17 @@ class AnalysisPanel(QWidget):
             fl.setRowWrapPolicy(QFormLayout.WrapLongRows)
             for o in opts:
                 if o['kind'] == 'bool':                             # named as the other options are, what it does
-                    wid = QCheckBox(o['key'].replace('_', ' '))     # in its tooltip: a long line beside the box made
-                    wid.setChecked(bool(o['default']))              # the panel wider than its column
+                    wid = QCheckBox(o['key'].replace('_', ' '),     # in its tooltip: a long line beside the box made
+                                    checked=bool(o['default']))     # the panel wider than its column
                 elif o['kind'] == 'list':
-                    wid = QPlainTextEdit()
-                    wid.setPlaceholderText('one a line')
+                    wid = QPlainTextEdit(placeholderText='one a line')
                     wid.setFixedHeight(70)
                 elif o.get('choices'):                              # one of a few: a drop-down, the default first
                     wid = QComboBox()
                     wid.addItems([UNSET if o['default'] in ('', None) else f"{o['default']} (default)",
                                   *[str(c) for c in o['choices'] if c != o['default']]])
                 else:
-                    wid = QLineEdit()
-                    wid.setPlaceholderText(str(o['default']) if o['default'] not in ('', None) else '')
+                    wid = QLineEdit(placeholderText=str(o['default']) if o['default'] not in ('', None) else '')
                 wid.setToolTip(f"{o['flag']}: {o['help']}")
                 (wid.toggled if o['kind'] == 'bool' else wid.currentIndexChanged if isinstance(wid, QComboBox)
                  else wid.textChanged).connect(self._edited)
@@ -164,35 +160,25 @@ class AnalysisPanel(QWidget):
         self.buttons = FlowLayout()
         self.find_btn = None
         if getattr(analysis, 'finds', ''):                          # the board proposes settings
-            self.find_btn = QPushButton(f"Find {analysis.finds}")
-            self.find_btn.setToolTip(f"List the board's {analysis.finds}, and pick one: its settings into the form")
-            self.find_btn.clicked.connect(self.find)
+            self.find_btn = QPushButton(f"Find {analysis.finds}", clicked=self.find, toolTip=(
+                f"List the board's {analysis.finds}, and pick one: its settings into the form"))
             self.buttons.addWidget(self.find_btn)
         self.suggest_btns = []
-        self.run_btn = QPushButton('Run')
-        self.run_btn.clicked.connect(lambda: self.start())
-        self.stop_btn = QPushButton('Stop')
-        self.stop_btn.setEnabled(False)
-        self.stop_btn.clicked.connect(self.stop)
+        self.run_btn = QPushButton('Run', clicked=lambda: self.start())
+        self.stop_btn = QPushButton('Stop', enabled=False, clicked=self.stop)
         for b in (self.run_btn, self.stop_btn):
             self.buttons.addWidget(b)
             b.setVisible(win is None)                               # in the window: its toolbar's Run and Stop
         holder = QWidget()
         holder.setLayout(self.buttons)
         v.addWidget(holder)
-        self.busy = QProgressBar()
-        self.busy.setRange(0, 0)
-        self.busy.hide()
+        self.busy = QProgressBar(minimum=0, maximum=0, visible=False)
         v.addWidget(self.busy)
-        self.status = QLabel('')
-        self.status.setWordWrap(True)
-        self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.status = QLabel('', wordWrap=True, textInteractionFlags=Qt.TextSelectableByMouse)
         self.status.setContentsMargins(6, 2, 6, 4)
         v.addWidget(self.status)
-        self.log = QPlainTextEdit()                                 # the Run page shows it (Log of)
-        self.log.setReadOnly(True)
-        self.log.setMaximumBlockCount(5000)
-        self.log.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
+        self.log = QPlainTextEdit(readOnly=True, maximumBlockCount=5000,    # the Run page shows it (Log of)
+                                  font=QFontDatabase.systemFont(QFontDatabase.FixedFont))
         ok, why = analysis.check()
         if not ok:
             self.setEnabled(False)
@@ -219,15 +205,12 @@ class AnalysisPanel(QWidget):
         lay.addWidget(t)
         row = QHBoxLayout()
         for text, slot in ((f"Add a {what}", self.add_run), (f"Remove the {what}", self.remove_run)):
-            b = QPushButton(text)
-            b.clicked.connect(slot)
-            row.addWidget(b)
+            row.addWidget(QPushButton(text, clicked=slot))
         if self.win is not None and hasattr(self.win, 'start_pick') and any(self.pick_kind(k) for k in self.run_keys):
-            b = QPushButton('Pick')                                 # the selected cell, picked on the board
-            b.setCheckable(True)
-            b.setToolTip("Pick the selected cell on the board (a net, or a part: by its column): click in the "
-                         "Viewer's plan; this button again ends it")
-            b.toggled.connect(lambda on: self.win.start_pick(self, CELL) if on else self.win.end_pick(self, CELL))
+            b = QPushButton('Pick', checkable=True, toolTip=(                # the selected cell, picked on the board
+                "Pick the selected cell on the board (a net, or a part: by its column): click in the Viewer's plan; "
+                "this button again ends it"), toggled=lambda on: (self.win.start_pick(self, CELL) if on
+                                                                  else self.win.end_pick(self, CELL)))
             row.addWidget(b)
             self.pick_btns[CELL] = b
             t.currentCellChanged.connect(lambda *_: b.isChecked() and self.win.start_pick(self, CELL))   # its column's
@@ -254,13 +237,10 @@ class AnalysisPanel(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
         lay.addWidget(QLabel(label))
-        b = QToolButton()
-        b.setText('Pick')
-        b.setCheckable(True)
-        many = o['pick'].endswith('s')
-        b.setToolTip(f"Pick {'them' if many else 'it'} on the board: click "
-                     + ("traces" if o['pick'].startswith('net') else "parts")
-                     + f" in the Viewer's plan ({'again takes one out; ' if many else ''}this button again ends it)")
+        many, what = o['pick'].endswith('s'), 'traces' if o['pick'].startswith('net') else 'parts'
+        b = QToolButton(text='Pick', checkable=True, toolTip=f"Pick {'them' if many else 'it'} on the board: click "
+                        f"{what} in the Viewer's plan ({'again takes one out; ' if many else ''}this button again "
+                        "ends it)")
         b.toggled.connect(lambda on, key=o['key']: self.win.start_pick(self, key) if on else self.win.end_pick(self, key))
         lay.addWidget(b)
         self.pick_btns[o['key']] = b

@@ -31,56 +31,37 @@ class ResultsTab(QWidget):
         super().__init__()
         self.win = win
         lay = QVBoxLayout(self)
-        self.info = QLabel('no results yet')
-        self.info.setWordWrap(True)
-        self.info.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.info = QLabel('no results yet', wordWrap=True, textInteractionFlags=Qt.TextSelectableByMouse)
         lay.addWidget(self.info)
-        self.notes_btn = QToolButton()                              # the run's notes and warnings, folded
-        self.notes_btn.setCheckable(True)
-        self.notes_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.notes_btn.setAutoRaise(True)
-        self.notes_btn.toggled.connect(self._fold_notes)
-        self.notes = QLabel()
-        self.notes.setWordWrap(True)
-        self.notes.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.notes.setTextFormat(Qt.RichText)
+        self.notes_btn = QToolButton(checkable=True, toolButtonStyle=Qt.ToolButtonTextBesideIcon, autoRaise=True,
+                                     toggled=self._fold_notes)       # the run's notes and warnings, folded
+        self.notes = QLabel(wordWrap=True, textInteractionFlags=Qt.TextSelectableByMouse, textFormat=Qt.RichText)
         lay.addWidget(self.notes_btn)
         lay.addWidget(self.notes)
         self.set_notes([], [])
         top = FlowLayout()
-        self.which = QComboBox()                                    # openEMS's and mom25d's antenna results
-        self.which.setToolTip("The antenna results to show (a folder can hold openEMS's and mom25d's)")
+        self.which = QComboBox(visible=False, toolTip="The antenna results to show (a folder can hold openEMS's "
+                                                      "and mom25d's)")
         self.which.currentIndexChanged.connect(
             lambda i: self.load_antenna(self.out, self.which.itemData(i)) if i >= 0 and self.out else None)
-        self.which.hide()
         top.addWidget(self.which)
-        self.cmp_btn = QToolButton()                                # other runs over this one
-        self.cmp_btn.setText('Compare with')
-        self.cmp_btn.setToolTip("Lay other runs of this board over the one shown, each labelled by its folder: "
-                                "their S-parameters, or the same kind of curves (a rail's impedance, a spectrum)")
-        self.cmp_btn.setPopupMode(QToolButton.InstantPopup)
-        self.cmp_menu = QMenu(self.cmp_btn)
-        self.cmp_menu.aboutToShow.connect(self._fill_compare)
+        self.cmp_btn = QToolButton(text='Compare with', popupMode=QToolButton.InstantPopup, toolTip=(
+            "Lay other runs of this board over the one shown, each labelled by its folder: their S-parameters, or "
+            "the same kind of curves (a rail's impedance, a spectrum)"))
+        self.cmp_menu = QMenu(self.cmp_btn, aboutToShow=self._fill_compare)
         self.cmp_btn.setMenu(self.cmp_menu)
         top.addWidget(self.cmp_btn)
-        self.export_btn = QToolButton()                             # a solver's S-parameters, out as Touchstone
-        self.export_btn.setText('Export Touchstone')
-        self.export_btn.setToolTip("Save one of this run's S-parameter files (each solver's, the de-embedded and "
-                                   "part-port ones) as a Touchstone file where you choose")
-        self.export_btn.setPopupMode(QToolButton.InstantPopup)
-        self.export_menu = QMenu(self.export_btn)
-        self.export_menu.aboutToShow.connect(self._fill_export)
+        self.export_btn = QToolButton(text='Export Touchstone', popupMode=QToolButton.InstantPopup, toolTip=(
+            "Save one of this run's S-parameter files (each solver's, the de-embedded and part-port ones) as a "
+            "Touchstone file where you choose"))
+        self.export_menu = QMenu(self.export_btn, aboutToShow=self._fill_export)
         self.export_btn.setMenu(self.export_menu)
         top.addWidget(self.export_btn)
-        self.folder_btn = QPushButton('Open folder')
-        self.folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(
+        self.folder_btn = QPushButton('Open folder', clicked=lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(
             self.out if self.analysis and self.out else self.win.out_dir())))
         top.addWidget(self.folder_btn)
-        self.set_box = QComboBox()                                  # a result with several curve sets: which
-        self.set_box.setToolTip("The result's curves to plot (a circuit: each point's voltages and currents)")
-        self.set_box.setMinimumWidth(220)
-        self.set_box.currentIndexChanged.connect(self._pick_set)
-        self.set_box.hide()
+        self.set_box = QComboBox(visible=False, minimumWidth=220, currentIndexChanged=self._pick_set, toolTip=(
+            "The result's curves to plot (a circuit: each point's voltages and currents)"))   # several sets: which
         top.addWidget(self.set_box)
         lay.addLayout(top)
         from .steering import SteeringBar
