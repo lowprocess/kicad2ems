@@ -158,7 +158,7 @@ def test_one_name_replaces_and_several_are_listed(window):
 
 
 def test_a_rail_s_table_cell_is_picked_by_its_column(window):
-    pytest.importorskip('pcbqs')
+    pytest.importorskip('kicad2ems.pcbqs')
     from kicad2ems.gui.analysispanel import CELL
     w, app = window
     pdn, plan = w.pages['pdn'], w.viewer.plan

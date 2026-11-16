@@ -635,7 +635,7 @@ def test_the_power_analyses_through_kicad2ems_s_registry(tmp_path):
     """R-E26: pcbqs's DC drop as kicad2ems runs it (its command line from the analysis registry); one missing a
     setting says what (the window's form has the rest)."""
     from kicad2ems.ipc import model as md
-    pcbqs = pytest.importorskip('pcbqs')
+    pcbqs = pytest.importorskip('kicad2ems.pcbqs')
     buck = os.path.join(os.path.dirname(pcbqs.__file__), 'circuit', 'examples', '04_buck.kicad_pcb')
     argv, missing = md.analysis_command('pdn', dict(rail='out', volts=5.0, no_pdn=True), buck, str(tmp_path))
     assert not missing and 'kicad2ems.pcbqs.pdn' in ' '.join(argv) and 'out' in argv and '--no-pdn' in argv

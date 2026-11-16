@@ -25,7 +25,7 @@ def test_a_stackups_missing_values_come_from_its_material_or_fr4_with_a_note():
 
 
 def test_a_known_laminate_holds_its_values_at_its_own_frequency():
-    pytest.importorskip('mom25d')
+    pytest.importorskip('kicad2ems.mom25d')
     from kicad2ems.mom25d.multilayer import djordjevic_sarkar
     e = djordjevic_sarkar(3.66, 0.0037, 10e9, 10e9)                  # (the wideband model, as the solvers use it)
     assert e.real == pytest.approx(3.66) and -e.imag / e.real == pytest.approx(0.0037)
