@@ -1,0 +1,337 @@
+"""
+openEMS's Python interface over gfdtd's engine: the FDTD settings, the ports (lumped here; MSL, stripline, CPW,
+coaxial, waveguide and curve ports in gfdtd.ports) and Run, so a script (or
+kicad2ems's build_fdtd) written for openEMS runs here by swapping the two imports:
+
+    from gfdtd import ContinuousStructure, openEMS
+    FDTD = openEMS(NrTS=100000, EndCriteria=1e-4); FDTD.SetGaussExcite(f0, fc); FDTD.SetBoundaryCond(['MUR'] * 6)
+    CSX = ContinuousStructure(); FDTD.SetCSX(CSX); ...
+    port = FDTD.AddLumpedPort(1, 50, start, stop, 'z', excite=1)
+    FDTD.Run(sim_path); port.CalcPort(sim_path, freq)          # port.uf_inc, uf_ref, ...
+
+FDTD.Write2XML / ReadFromXML use openEMS's XML (an <openEMS> file with <FDTD> and <ContinuousStructure>):
+`python -m gfdtd model.xml` runs a file written by openEMS (or by AppCSXCAD's tools) like `openEMS model.xml`.
+"""
+import contextlib, glob, os, sys
+import xml.etree.ElementTree as ET
+
+import numpy as np
+
+from . import csx as C
+from . import ports as P
+
+BC_NAMES = {0: 'PEC', 1: 'PMC', 2: 'MUR', 3: 'PML_8'}
+SIDES = ('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax')
+OUTPUTS = ('port_ut*', 'port_it*', 'et', 'ht', '*.vtr', '*.h5')     # cleanup=True removes these only
+
+
+def _bc(b):
+    if isinstance(b, (int, np.integer)) or str(b).strip().isdigit():
+        return BC_NAMES[int(b)]
+    return str(b).strip().upper()
+
+
+class openEMS:                                                       # noqa: N801  (openEMS's own name)
+    writes_log = True           # Run(log=path): its output into a file, without redirecting the process's stdout
+
+    def __init__(self, NrTS=1e9, EndCriteria=1e-5, OverSampling=4, backend='auto', **kw):
+        self.nr_ts, self.end_crit, self.oversampling = int(NrTS), float(EndCriteria), int(OverSampling)
+        self.excitation = None
+        self.bc = ['PEC'] * 6
+        self.csx = None
+        self.ports = []
+        self.backend = backend
+        self.op = None
+        self.max_time = float(kw['MaxTime']) if kw.get('MaxTime') else None        # s of the run's own (wall) time
+        if int(kw.get('CoordSystem', 0) or 0):                       # (these had been dropped without a word)
+            raise NotImplementedError("gfdtd: CoordSystem 1 (cylindrical grids)")
+        if kw.get('MultiGrid'):
+            raise NotImplementedError("gfdtd: MultiGrid (cylindrical subgrids)")
+        self.timestep_factor = float(kw.get('TimeStepFactor', 1.0) or 1.0)
+        self.timestep = float(kw['TimeStep']) if kw.get('TimeStep') else None
+        # openEMS's TimeStepMethod: 1 the Courant rule (gfdtd's vacuum rule of the smallest cells), 3 (openEMS's
+        # default, Rennings') here the operator's own limit, by Lanczos (operator.exact_timestep, R-D6)
+        tsm = kw.get('TimeStepMethod')
+        self.timestep_method = None if tsm is None else ('exact' if str(tsm).strip() in ('3', 'exact') else 'courant')
+        if self.timestep_factor > 1:
+            raise ValueError(f"gfdtd: TimeStepFactor {self.timestep_factor:g}: above 1 the step is past its limit")
+        self.ignored = [k for k in kw if k in ('CellConstantMaterial',)]
+
+    # ---- settings --------------------------------------------------------------------------------------------
+    def SetNumberOfTimeSteps(self, val):
+        self.nr_ts = int(val)
+
+    def SetEndCriteria(self, val):
+        self.end_crit = float(val)
+
+    def SetOverSampling(self, val):
+        self.oversampling = int(val)
+
+    def SetGaussExcite(self, f0, fc):
+        self.excitation = dict(type=0, f0=float(f0), fc=float(fc))
+
+    # openEMS's other excitations (R-B18): their signals in operator.excitation_signal
+    def SetSinusExcite(self, f0):
+        self.excitation = dict(type=1, f0=float(f0), fc=0.0)
+
+    def SetDiracExcite(self, f_max):
+        self.excitation = dict(type=2, f0=0.0, fc=float(f_max))
+
+    def SetStepExcite(self, f_max):
+        self.excitation = dict(type=3, f0=0.0, fc=float(f_max))
+
+    def SetCustomExcite(self, _str, f0, f_max):
+        self.excitation = dict(type=10, f0=float(f0), fc=float(f_max), function=str(_str))
+
+    def SetMaxTime(self, val):
+        self.max_time = float(val) if val else None
+
+    def SetBoundaryCond(self, BC):
+        if len(BC) != 6:
+            raise ValueError("SetBoundaryCond: six values (xmin, xmax, ymin, ymax, zmin, zmax)")
+        self.bc = [_bc(b) for b in BC]
+
+    def SetCSX(self, CSX):
+        self.csx = CSX
+
+    def AddLumpedPort(self, port_nr, R, start, stop, p_dir, excite=0, **kw):
+        return self._add(LumpedPort, port_nr, R, start, stop, p_dir, excite, **kw)
+
+    def _add(self, cls, *args, **kw):
+        if self.csx is None:
+            raise ValueError("gfdtd: SetCSX before adding ports")
+        port = cls(self.csx, *args, **kw)
+        self.ports.append(port)
+        return port
+
+    def AddCurvePort(self, port_nr, R, start, stop, excite=0, **kw):
+        return self._add(P.CurvePort, port_nr, R, start, stop, excite=excite, **kw)
+
+    def AddMSLPort(self, port_nr, metal_prop, start, stop, prop_dir, exc_dir, excite=0, **kw):
+        return self._add(P.MSLPort, port_nr, metal_prop, start, stop, prop_dir, exc_dir, excite=excite, **kw)
+
+    def AddStripLinePort(self, port_nr, metal_prop, start, stop, prop_dir, exc_dir, height, excite=0, **kw):
+        return self._add(P.StripLinePort, port_nr, metal_prop, start, stop, prop_dir, exc_dir, height, excite=excite,
+                         **kw)
+
+    def AddCPWPort(self, port_nr, metal_prop, start, stop, prop_dir, exc_dir, gap_width, excite=0, **kw):
+        return self._add(P.CPWPort, port_nr, metal_prop, start, stop, prop_dir, exc_dir, gap_width, excite=excite, **kw)
+
+    def AddCoaxialPort(self, port_nr, pec_prop, mat_prop, start, stop, prop_dir, r_i, r_o, r_os, excite=0, **kw):
+        return self._add(P.CoaxialPort, port_nr, pec_prop, mat_prop, start, stop, prop_dir, r_i, r_o, r_os,
+                         excite=excite, **kw)
+
+    def AddWaveGuidePort(self, port_nr, start, stop, p_dir, E_func=None, H_func=None, kc=0.0, excite=0, excite_type=0,
+                         E_file=None, H_file=None, **kw):
+        return self._add(P.WaveguidePort, port_nr, start, stop, p_dir, E_func, H_func, kc, excite=excite,
+                         excite_type=excite_type, E_WG_file=E_file, H_WG_file=H_file, **kw)
+
+    def AddRectWaveGuidePort(self, port_nr, start, stop, p_dir, a, b, mode_name, excite=0, **kw):
+        return self._add(P.RectWGPort, port_nr, start, stop, p_dir, a, b, mode_name, excite=excite, **kw)
+
+    def AddCircWaveGuidePort(self, port_nr, start, stop, exc_dir, radius, mode_name, pol_ang=0, excite=0, **kw):
+        return self._add(P.CircWGPort, port_nr, start, stop, exc_dir, radius, mode_name, pol_ang=pol_ang,
+                         excite=excite, **kw)
+
+    def settings(self):
+        if self.excitation is None:
+            raise ValueError("gfdtd: no excitation (SetGaussExcite, SetSinusExcite, SetDiracExcite, SetStepExcite, SetCustomExcite)")
+        return dict(bc=self.bc, f0=self.excitation['f0'], fc=self.excitation['fc'], nr_ts=self.nr_ts,
+                    excite_type=self.excitation.get('type', 0), excite_function=self.excitation.get('function'),
+                    end_crit=self.end_crit, oversampling=self.oversampling,
+                    timestep_factor=getattr(self, 'timestep_factor', 1.0), timestep=getattr(self, 'timestep', None),
+                    timestep_method=getattr(self, 'timestep_method', None) or os.environ.get('GFDTD_TIMESTEP'),
+                    ignored=list(getattr(self, 'ignored', ())))
+
+    def CreateNF2FFBox(self, name='nf2ff', start=None, stop=None, **kw):
+        """A near-field to far-field box (gfdtd.nf2ff.nf2ff), placed as openEMS places it: inside the absorbing
+        boundaries (a Mur side's 2 lines, a PML_n side's n + 1), no face on a PEC / PMC side, which mirrors."""
+        from .nf2ff import nf2ff
+        if self.csx is None:
+            raise ValueError("CreateNF2FFBox: CSX is not set")
+        directions, mirror, size = [True] * 6, [0] * 6, [0] * 6
+        for n, b in enumerate(self.bc):
+            if b == 'PEC':
+                directions[n], mirror[n] = False, 1
+            elif b == 'PMC':
+                directions[n], mirror[n] = False, 2
+            elif b == 'MUR':
+                size[n] = 2
+            elif b.startswith('PML'):
+                size[n] = int(b.split('_')[1]) + 1 if '_' in b else 9
+        if start is None or stop is None:
+            start, stop = np.zeros(3), np.zeros(3)
+            for a in range(3):
+                lines = np.asarray(self.csx.GetGrid().GetLines(a), float)
+                if len(lines) <= size[2 * a] + size[2 * a + 1]:
+                    raise ValueError("CreateNF2FFBox: not enough lines in some direction")
+                start[a], stop[a] = lines[size[2 * a]], lines[-size[2 * a + 1] - 1]
+        directions = kw.pop('directions', directions)
+        mirror = kw.pop('mirror', mirror)
+        return nf2ff(self.csx, name, start, stop, directions=directions, mirror=mirror, **kw)
+
+    # ---- XML --------------------------------------------------------------------------------------------------
+    def Write2XML(self, file):
+        top = ET.Element('openEMS')
+        f = ET.SubElement(top, 'FDTD', NumberOfTimesteps=str(self.nr_ts), endCriteria=f"{self.end_crit:g}",
+                          OverSampling=str(self.oversampling))
+        if self.excitation:                                         # (openEMS's: f0 the Dirac's and step's f_max)
+            ex = self.excitation
+            kind = int(ex.get('type', 0))
+            attrs = dict(Type=str(kind), f0=f"{(ex['fc'] if kind in (2, 3) else ex['f0']):g}")
+            if kind in (0, 10):
+                attrs['fc'] = f"{ex['fc']:g}"
+            if kind == 10:
+                attrs['Function'] = ex['function']
+            ET.SubElement(f, 'Excitation', **attrs)
+        ET.SubElement(f, 'BoundaryCond', **dict(zip(SIDES, self.bc)))
+        top.append(self.csx.to_xml())
+        C._write(top, file)
+
+    def ReadFromXML(self, file):
+        root = ET.parse(file).getroot()
+        f = root.find('FDTD')
+        if f is None:
+            raise ValueError(f"{file}: no <FDTD> settings")
+        self.nr_ts = int(float(f.get('NumberOfTimesteps', 1e9)))
+        self.end_crit = float(f.get('endCriteria', 1e-5))
+        self.oversampling = int(float(f.get('OverSampling', 4)))
+        ex = f.find('Excitation')
+        kind = int(ex.get('Type', 0)) if ex is not None else None
+        if kind == 0:
+            self.SetGaussExcite(float(ex.get('f0')), float(ex.get('fc')))
+        elif kind == 1:
+            self.SetSinusExcite(float(ex.get('f0')))
+        elif kind == 2:
+            self.SetDiracExcite(float(ex.get('f0')))
+        elif kind == 3:
+            self.SetStepExcite(float(ex.get('f0')))
+        elif kind == 10:
+            self.SetCustomExcite(ex.get('Function'), float(ex.get('f0')), float(ex.get('fc')))
+        else:
+            raise ValueError(f"{file}: an excitation of Type {kind}: gfdtd runs 0 (Gaussian), 1 (sinus), 2 (Dirac), "
+                             f"3 (step), 10 (custom)")
+        b = f.find('BoundaryCond')
+        self.bc = [_bc(b.get(s, 'PEC')) for s in SIDES] if b is not None else ['PEC'] * 6
+        self.csx = C.ContinuousStructure()
+        self.csx.from_xml(root.find('ContinuousStructure'))
+        return True
+
+    # ---- the run ----------------------------------------------------------------------------------------------
+    def Run(self, sim_path, cleanup=False, setup_only=False, verbose=None, backend=None, log=None, **kw):
+        """Run in sim_path (made if missing; cleanup: remove openEMS's own outputs there first). Returns 0.
+        numThreads: the CPU core's threads (0: all); openEMS's debug options are accepted and ignored; backend:
+        'auto', 'gpu', 'vulkan', 'cupy', 'cpu', 'core', 'numpy' (engine.resolve_backend); log: a file for the output (appended) in place of stdout. On the GPU a run
+        has a stream of its own, so that runs in several threads overlap."""
+        from . import __version__
+        from .operator import build
+        from .engine import Engine, resolve_backend, backend_info
+        with contextlib.ExitStack() as stack:
+            if log is None:
+                out = lambda line: print(line, flush=True)
+            else:
+                fh = stack.enter_context(open(log, 'a', encoding='utf-8'))
+
+                def out(line):
+                    fh.write(line + '\n')
+                    fh.flush()
+            sim_path = os.path.abspath(sim_path)
+            if cleanup and os.path.isdir(sim_path):
+                for pat in OUTPUTS:
+                    for fn in glob.glob(os.path.join(sim_path, pat)):
+                        os.remove(fn)
+            os.makedirs(sim_path, exist_ok=True)
+            out(f" ---------------------------------------------------------------------- \n"
+                f" | gfdtd -- version {__version__} -- GPU FDTD, openEMS / CSXCAD compatible\n"
+                f" ---------------------------------------------------------------------- ")
+            self.op = build(self.csx, self.settings(), log=out)
+            if resolve_backend(backend or self.backend) == 'cupy':
+                import cupy
+                stack.enter_context(cupy.cuda.Stream(non_blocking=True))
+            eng = Engine(self.op, backend or self.backend)
+            if eng.be.name == 'core' and int(kw.get('numThreads') or 0) > 0:
+                eng.be.core.set_threads(int(kw['numThreads']))
+            out(f"Engine: {eng.be.name}" + (f" ({backend_info(eng.be.name)})" if eng.be.name != 'numpy' else ''))
+            if getattr(eng.be, 'fallback', None):                    # (auto: the GPU too small for the model)
+                out(f"Note: {eng.be.fallback}")
+            if not setup_only:
+                self.result = eng.run(sim_path, self.nr_ts, self.end_crit, verbose=1 if verbose is None else verbose,
+                                      out=out, max_time=getattr(self, 'max_time', None),
+                                      stop=lambda: getattr(self, '_abort', False))
+            eng.be.sync()
+        return 0
+
+    def SetAbort(self, val=True):
+        """End a run at its next check (every engine.CHECK_STEPS timesteps), as a file ABORT in the run folder does:
+        from another thread while Run runs, or before Run (that run then stops at its first check). False clears it
+        (R-B18: it had raised)."""
+        self._abort = bool(val)
+
+
+def read_probe(path):
+    """(t, values) of an openEMS / gfdtd probe file."""
+    rows = []
+    with open(path, encoding='utf-8') as fh:
+        for line in fh:
+            if line.strip() and not line.startswith('%'):
+                rows.append(line.split()[:2])
+    a = np.array(rows, float).reshape(-1, 2)
+    return a[:, 0], a[:, 1]
+
+
+dft = P.dft_time2freq          # openEMS's DFT_time2freq of a pulse: 2 dt sum(val exp(-j w t))
+
+
+class LumpedPort(P.Port):
+    """openEMS's LumpedPort: a resistor R across the box along p_dir, a soft E excitation (when excite != 0), a
+    voltage probe through its middle and a current probe across its middle; CalcPort gives uf_tot, if_tot, uf_inc,
+    uf_ref, if_inc, if_ref (and the time signals ut_*, it_*) as openEMS's does."""
+    def __init__(self, CSX, port_nr, R, start, stop, exc_dir, excite=0, **kw):
+        super().__init__(CSX, port_nr, start, stop, excite, **kw)
+        self.R = float(R)
+        a = self.exc_ny = C.ny_dir(exc_dir)
+        self.direction = np.sign(self.stop[a] - self.start[a])
+        if self.direction == 0:
+            raise ValueError('LumpedPort: start and stop may not be identical in excitation direction')
+        lbl = self.lbl_temp.format('resist')
+        el = CSX.AddLumpedElement(lbl, ny=a, caps=True, R=self.R) if self.R > 0 else CSX.AddMetal(lbl)
+        el.AddBox(self.start, self.stop, priority=self.priority)
+        self.port_props.append(el)
+        if excite != 0:
+            vec = np.zeros(3)
+            vec[a] = -1 * self.direction * excite
+            self._excitation('excite', vec).AddBox(self.start, self.stop, priority=self.priority)
+        mid = 0.5 * (self.start + self.stop)
+        u0, u1 = mid.copy(), mid.copy()
+        u0[a], u1[a] = self.start[a], self.stop[a]
+        self._probe('ut', '', u0, u1, p_type=0, weight=-1)
+        i0, i1 = self.start.copy(), self.stop.copy()
+        i0[a] = i1[a] = mid[a]
+        self._probe('it', '', i0, i1, p_type=1, weight=self.direction, norm_dir=a)
+
+    def CalcPort(self, sim_path, freq, ref_impedance=None, ref_plane_shift=None, signal_type='pulse'):
+        self.Z_ref = self.R if ref_impedance is None else ref_impedance
+        super().CalcPort(sim_path, freq, ref_impedance, None, signal_type)
+
+
+def main(argv=None):
+    """python -m gfdtd model.xml [--backend auto|gpu|cupy|vulkan|cpu|numpy] [--path DIR]: run an openEMS XML file (outputs in the
+    current folder, or --path), as `openEMS model.xml` does."""
+    import argparse
+    ap = argparse.ArgumentParser(prog='gfdtd', description=main.__doc__)
+    ap.add_argument('xml')
+    ap.add_argument('--backend', default='auto', help="auto (the GPU when CuPy or Vulkan finds one), gpu, cupy, "
+                    "vulkan, cpu, core or numpy")
+    ap.add_argument('--path', default='.', help="folder for the probe files (default: the current folder)")
+    ap.add_argument('--numThreads', type=int, default=0, help=argparse.SUPPRESS)
+    a, _ = ap.parse_known_args(argv)
+    F = openEMS()
+    F.ReadFromXML(a.xml)
+    for s in F.csx.skipped:
+        print(f"note: {s}")
+    F.Run(a.path, backend=a.backend)
+    return 0 if F.result['reason'] != 'unstable' else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
