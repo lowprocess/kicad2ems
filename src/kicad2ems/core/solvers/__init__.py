@@ -179,11 +179,6 @@ class Solver:
 _registry, broken = None, []                # broken: (entry point, error) of plugins that failed to load
 
 
-def _load(spec):
-    mod, _, cls = spec.partition(':')
-    return getattr(importlib.import_module(mod), cls)
-
-
 def _entry_points():
     from importlib.metadata import entry_points
     return list(entry_points(group=GROUP))
@@ -198,7 +193,8 @@ def registry():
     if _registry is None:
         reg, keys = {}, {}
         for spec in BUILTIN:
-            sv = _load(spec)()
+            mod, _, cls = spec.partition(':')
+            sv = getattr(importlib.import_module(mod), cls)()
             reg[sv.name] = sv
             keys |= {o.key: o for o in sv.options}
         names = set(reg) | {a for sv in reg.values() for a in sv.aliases} | {LINES, 'all'}

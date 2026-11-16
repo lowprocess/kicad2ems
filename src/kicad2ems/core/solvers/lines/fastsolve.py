@@ -16,7 +16,7 @@ A ballpark: no coupling between sections, no radiation, no plane resonances, qua
 """
 import math, os, re, shutil, subprocess, sys, tempfile, warnings
 import numpy as np
-from ...constants import C0
+from ...constants import C0, MU0
 from ...touchstone import log_spaced, write_touchstone
 
 BACKENDS = ('skrf', 'qucsator')
@@ -42,17 +42,7 @@ def _line_params(e, sheet):
     return e.z0, e.eeff
 
 
-def _check_model(lm, ports):
-    missing = [p.name for p in ports if p.name not in lm.ports]
-    if len(missing) == len(ports):
-        raise ValueError("no port has a line model (ports must sit on routed traces or pads)")
-    return missing
-
-
 # ---- scikit-rf --------------------------------------------------------------------------------------
-MU0 = 4e-7 * math.pi
-
-
 def conductor_r(w_mm, t_mm, f, sigma):
     """A line's series resistance per metre at f: the strip's surface resistance over its width (its DC sheet
     resistance where the skin is deeper than the copper) and its return's, about as much (2 Rs / w, as dfsynth's
@@ -81,6 +71,7 @@ def _skrf(lm, ports, freq, sheet, sigma):
         from skrf.circuit import Circuit
     except ImportError:
         raise ValueError("--fast skrf needs scikit-rf: python -m pip install scikit-rf") from None
+    from ...lines.formulas import gap_capacitance
     fr = skrf.Frequency.from_f(np.asarray(freq, float), unit='Hz')
     w = 2 * np.pi * fr.f
     rho = 1 / sigma if sigma else 1e-15
@@ -105,16 +96,10 @@ def _skrf(lm, ports, freq, sheet, sigma):
     def shunt_z(z, name):
         return skrf.Network(frequency=fr, s=((z - 50) / (z + 50))[:, None, None], z0=50.0, name=name)
 
-    def series_port(name):
-        """A floating port across a series gap (a part port, R-E5): the ideal series tee, ports 1 and 2 the gap's
-        nodes, port 3 the port (its voltage between them)."""
-        S = np.array([[1, 2, 2], [2, 1, -2], [2, -2, 1]], float) / 3.0
-        return skrf.Network(frequency=fr, s=np.broadcast_to(S, (len(fr.f), 3, 3)).astype(complex), z0=50.0, name=name)
-
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         for gid, g in enumerate(lm.groups):                 # coupled sections: one multiconductor block each
-            ntw = _group_network(skrf, fr, g, sheet, f"group{gid}", sigma)
+            ntw = skrf.Network(frequency=fr, s=group_s(g, fr.f, sigma), z0=50.0, name=f"group{gid}")
             n = len(g['members'])
             for k, (e, near, far) in enumerate(g['members']):
                 nodes.setdefault(near, []).append((ntw, k))
@@ -129,8 +114,10 @@ def _skrf(lm, ports, freq, sheet, sigma):
                 zp = lm.port_z0.get(e.port, 50.0)
                 if e.b == 'gnd':
                     nodes.setdefault(e.a, []).append((Circuit.Port(fr, e.port, z0=zp), 0))
-                else:
-                    tee = series_port(name)
+                else:                   # across a series gap (R-E5): an ideal series tee (1, 2: its nodes; 3: the port)
+                    S = np.array([[1, 2, 2], [2, 1, -2], [2, -2, 1]], float) / 3.0
+                    tee = skrf.Network(frequency=fr, s=np.broadcast_to(S, (len(fr.f), 3, 3)).astype(complex), z0=50.0,
+                                       name=name)
                     nodes.setdefault(e.a, []).append((tee, 0))
                     nodes.setdefault(e.b, []).append((tee, 1))
                     nodes.setdefault(f"partport:{e.port}", []).extend([(tee, 2), (Circuit.Port(fr, e.port, z0=zp), 0)])
@@ -172,7 +159,6 @@ def _skrf(lm, ports, freq, sheet, sigma):
         for k, j in enumerate(lm.junctions):                # end gaps: a pi of capacitances (Garg and Bahl)
             if j['kind'] != 'gap':
                 continue
-            from ...lines.formulas import gap_capacitance
             (ea, _), (eb, _) = j['arms'][0], j['other']['arms'][0]
             cp, cg = gap_capacitance(0.5 * (ea.w + eb.w), j['gap'], ea.h, ea.er) if ea.er and ea.h else (0.0, 0.0)
             yp, yg = 1j * w * cp, 1j * w * cg
@@ -193,8 +179,7 @@ def _skrf(lm, ports, freq, sheet, sigma):
             if len(conn) == 1:
                 conn.append((Circuit.Open(fr, f"open{k}"), 0))
         cir = Circuit(list(nodes.values()))
-        res = cir.network
-        return res.s, list(cir.port_names)
+        return cir.network.s, list(cir.port_names)
 
 
 def junction_cuts(j):
@@ -239,32 +224,25 @@ def discontinuity_c(j, sheet=True):
     arms = [e for e, _ in j['arms']]
     if any(e.group is not None or not e.er or not e.h or not e.w for e in arms):
         return None
-    if j['kind'] == 'open':
-        e = arms[0]
+    if j['kind'] in ('open', 'step'):
+        e = arms[0] if j['kind'] == 'open' else max(arms, key=lambda x: x.w)
         z0, ee = _line_params(e, sheet)
-        return open_end_extension(e.w, e.h, e.er, ee) * 1e-3 * math.sqrt(ee) / (C0 * z0) if z0 and ee else None
-    if j['kind'] == 'step':
-        e = max(arms, key=lambda x: x.w)
-        z0, ee = _line_params(e, sheet)
-        return step_extension(arms[0].w, arms[1].w, e.h, e.er, ee) * 1e-3 * math.sqrt(ee) / (C0 * z0) if z0 and ee else None
+        if not (z0 and ee):
+            return None
+        ext = open_end_extension(e.w, e.h, e.er, ee) if j['kind'] == 'open' else \
+            step_extension(arms[0].w, arms[1].w, e.h, e.er, ee)
+        return ext * 1e-3 * math.sqrt(ee) / (C0 * z0)
     return bend_capacitance(0.5 * (arms[0].w + arms[1].w), arms[0].h, arms[0].er, j.get('angle', 90.0))
-
-
-def _group_network(skrf, fr, g, sheet, name, sigma=None):
-    """A coupled section as a 2N-port skrf Network (ports: near ends, then far ends)."""
-    S = group_s(g, fr.f, sigma)
-    return skrf.Network(frequency=fr, s=S, z0=50.0, name=name)
 
 
 def group_s(g, freq, sigma=None):
     """S-parameters (nf, 2N, 2N) of a coupled section of the line model (coupled.py); sigma: its copper's loss."""
     from ...lines.coupled import group_lc, mtl_s
-    widths = [e.w for e, _, _ in g['members']]
+    members = [e for e, _, _ in g['members']]
     if g.get('C') is not None:                              # the field solver's (lines.reference.FIELD)
         C, Ca = g['C'], g['Ca']
     else:
-        C, Ca = group_lc(widths, g['gaps'], g['h'], g['er'], g.get('xs', 'microstrip'))
-    members = [e for e, _, _ in g['members']]
+        C, Ca = group_lc([e.w for e in members], g['gaps'], g['h'], g['er'], g.get('xs', 'microstrip'))
     R = (lambda f: np.array([conductor_r(e.w, e.t or 0.035, f, sigma) for e in members])) if sigma else None
     return mtl_s(C, Ca, g['er'], g['tand'] or 0.0, g['length'], freq, R=R)
 
@@ -284,23 +262,15 @@ def find_qucsator(path=None):
         exe = shutil.which(name)
         if exe:
             return exe
-    for exe in windows_qucsators():
-        return exe
+    if sys.platform == 'win32':                             # Qucs-S's installer does not put its bin folder on the
+        import glob                                         # PATH: Qucs-S's (or Qucs's) under Program Files, newest
+        for base in dict.fromkeys(filter(None, (os.environ.get('ProgramFiles'), os.environ.get('ProgramW6432'),
+                                                os.environ.get('ProgramFiles(x86)')))):
+            for name in ('qucsator_rf.exe', 'qucsator.exe'):
+                found = sorted(glob.glob(os.path.join(base, 'Qucs*', 'bin', name)), reverse=True)
+                if found:
+                    return found[0]
     raise ValueError("--fast qucsator: no qucsator_rf / qucsator on PATH (install Qucs-S, or give --qucsator PATH)")
-
-
-def windows_qucsators():
-    """Windows: qucsator_rf.exe / qucsator.exe in Qucs-S's (or Qucs's) install folders under Program Files, newest
-    first; [] elsewhere. Qucs-S's installer does not put its bin folder on the PATH."""
-    if sys.platform != 'win32':
-        return []
-    import glob
-    found = []
-    for base in dict.fromkeys(filter(None, (os.environ.get('ProgramFiles'), os.environ.get('ProgramW6432'),
-                                            os.environ.get('ProgramFiles(x86)')))):
-        for name in ('qucsator_rf.exe', 'qucsator.exe'):
-            found += sorted(glob.glob(os.path.join(base, 'Qucs*', 'bin', name)), reverse=True)
-    return found
 
 
 def resolve_backend(backend='auto', qucsator=None):
@@ -405,9 +375,7 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
     ids = {}
 
     def node(n):
-        if n == 'gnd':
-            return 'gnd'
-        return ids.setdefault(n, f"n{len(ids)}")
+        return 'gnd' if n == 'gnd' else ids.setdefault(n, f"n{len(ids)}")
     rho = 1 / sigma if sigma else 1e-15
     f0 = 0.5 * (freq[0] + freq[-1])
     L, subst, pac = [], {}, {}               # (pac: a part port's two nodes)
@@ -417,25 +385,20 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
         n = e.a if k == 0 else e.b
         return node(endnode.get((id(e), k), n)) if n != 'gnd' else 'gnd'
 
-    def sub(e, h=None, er=None, tand=None):
-        h = e.h if h is None else h
-        er = e.er if er is None else er
-        tand = e.tand if tand is None else tand
+    def sub(e):
         t = 1e-9 if sheet else max(e.t, 1e-6) * 1e-3
-        key = (round(h, 6), round(er, 6), t, round(tand or 0.0, 6))
+        key = (round(e.h, 6), round(e.er, 6), t, round(e.tand or 0.0, 6))
         if key not in subst:
             subst[key] = f"S{len(subst)}"
-            L.append(f'SUBST:{subst[key]} er="{er:.6g}" h="{h * 1e-3:.6g}" t="{t:.6g}" tand="{tand or 0.0:.6g}" '
+            L.append(f'SUBST:{subst[key]} er="{e.er:.6g}" h="{e.h * 1e-3:.6g}" t="{t:.6g}" tand="{e.tand or 0.0:.6g}" '
                      f'rho="{rho:.6g}" D="0"')
         return subst[key]
     ms = 'MSDispModel="Kirschning" MSModel="Hammerstad"'
 
     def rlc(name, a, b, part):
         """Series R-L-C chain between nodes a and b."""
-        vals = [('R', part.R), ('L', part.L), ('C', part.C)]
-        vals = [(k, v) for k, v in vals if v is not None] or [('R', 1e-6)]
-        if part.short:
-            vals = [('R', 1e-6)]
+        vals = [(k, v) for k, v in (('R', part.R), ('L', part.L), ('C', part.C)) if v is not None and not part.short]
+        vals = vals or [('R', 1e-6)]
         chain = [a] + [f"{name}_{j}" for j in range(len(vals) - 1)] + [b]
         unit = dict(R='Ohm', L='H', C='F')
         for j, (k, v) in enumerate(vals):
@@ -460,7 +423,7 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
             rlc(name, a, b, e.part)
         elif e.kind == 'via' and b == 'gnd':
             if e.er and e.h:
-                L.append(f'MVIA:{name} {a} gnd D="{e.w * 1e-3:.6g}" Subst="{sub(e, h=e.h)}"')
+                L.append(f'MVIA:{name} {a} gnd D="{e.w * 1e-3:.6g}" Subst="{sub(e)}"')
             else:
                 L.append(f'L:{name} {a} gnd L="{e.L:.9g} H"')
         elif e.xs == 'lumped' and e.L:
@@ -536,7 +499,6 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
                      f'W="{0.5 * (ws[0] + ws[1]) * 1e-3:.6g}" S="{g["gaps"][0] * 1e-3:.6g}" L="{g["length"] * 1e-3:.6g}" '
                      f'Model="Kirschning" DispModel="Kirschning"')
         else:
-            import os
             if workdir is None:
                 raise ValueError("a coupled section of more than two lines needs a working folder for its Touchstone")
             path = os.path.join(workdir, f"group{gid}.s{2 * len(mem)}p")
@@ -544,14 +506,10 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
             unix = path.replace(os.sep, '/')                         # (outside the f-string: Python 3.10 and 3.11)
             L.append(f'SPfile:G{gid} {" ".join(nodes_near + nodes_far)} gnd File="{{{unix}}}" Data="rectangular" '
                      f'Interpolator="linear" duringDC="open"')
-    num = 0
-    order = []
-    for p in ports:
-        if p.name in lm.ports:
-            num += 1
-            order.append(p.name)
-            a, b = pac.get(p.name) or (node(lm.ports[p.name]), 'gnd')
-            L.append(f'Pac:P{num} {a} {b} Num="{num}" Z="{p.z0:g} Ohm" P="0 dBm" f="1 GHz"')
+    order = [p.name for p in ports if p.name in lm.ports]
+    for num, p in enumerate((p for p in ports if p.name in lm.ports), 1):
+        a, b = pac.get(p.name) or (node(lm.ports[p.name]), 'gnd')
+        L.append(f'Pac:P{num} {a} {b} Num="{num}" Z="{p.z0:g} Ohm" P="0 dBm" f="1 GHz"')
     kind = 'log' if log_spaced(freq) else 'lin'
     L.append(f'.SP:SP1 Type="{kind}" Start="{freq[0]:.9g}" Stop="{freq[-1]:.9g}" Points="{len(freq)}" Noise="no"')
     return "\n".join(L) + "\n", order
@@ -601,7 +559,8 @@ def solve(lm, ports, freq, backend='skrf', sheet=True, sigma=None, qucsator=None
         backend, _ = resolve_backend('auto', qucsator)
     if backend not in BACKENDS:
         raise ValueError(f"fast solver: choose one of {', '.join(BACKENDS)}")
-    _check_model(lm, ports)
+    if all(p.name not in lm.ports for p in ports):
+        raise ValueError("no port has a line model (ports must sit on routed traces or pads)")
     t0 = time.time()
     one = (lambda m: _skrf(m, ports, freq, sheet, sigma)) if backend == 'skrf' else \
         (lambda m: _qucsator(m, ports, freq, sheet, sigma, qucsator))

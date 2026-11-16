@@ -26,9 +26,7 @@ def line_sigma(run):
     from kicad2ems.core import finish as F
     sigma = band_sigma(run.s, run.freq[0], run.freq[-1])
     fin = F.resolve(run.s, run.m) if sigma else None
-    if not fin:
-        return sigma
-    lays = [p.layer for p in run.m.ports if getattr(p, 'layer', None) in fin.faces]
+    lays = [p.layer for p in run.m.ports if getattr(p, 'layer', None) in fin.faces] if fin else []
     if not lays:
         return sigma
     return F.band_sigma(sigma, fin.layers, fin.share(lays[0], line=True), run.freq[0], run.freq[-1],
