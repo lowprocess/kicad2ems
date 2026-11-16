@@ -20,6 +20,7 @@ defined inside footprints.
 """
 import math
 import numpy as np
+from shapely import affinity
 from shapely.geometry import Polygon, LineString, Point
 from .. import Imported
 from . import sexpr as sx
@@ -52,10 +53,7 @@ class KiCadBoard(Imported):
 
     # ---- nets ---------------------------------------------------------------------------
     def _nets(self):
-        self.net_names = {}
-        for n in sx.items(self.root, 'net'):
-            if len(n) >= 3:
-                self.net_names[str(n[1])] = n[2]
+        self.net_names = {str(n[1]): n[2] for n in sx.items(self.root, 'net') if len(n) >= 3}
 
     def _net_of(self, node):
         it = sx.item(node, 'net')
@@ -119,8 +117,7 @@ class KiCadBoard(Imported):
         all_cu = self.copper_order
         self._removable, self._stroke_text = [], 0
         for s in sx.items(self.root, 'segment'):
-            pts = [sx.xy(s, 'start'), sx.xy(s, 'end')]
-            self._track(s, pts)
+            self._track(s, [sx.xy(s, 'start'), sx.xy(s, 'end')])
         for a in sx.items(self.root, 'arc'):
             self._track(a, shp.arc_points(sx.xy(a, 'start'), sx.xy(a, 'mid'), sx.xy(a, 'end')))
         for v in sx.items(self.root, 'via'):
@@ -133,7 +130,7 @@ class KiCadBoard(Imported):
                 lys = all_cu[i0:i1 + 1]                                        # too: its barrel passes them
             pads = lys if kind == 'through' else ends                          # (its rings: at its ends, as HDI
                                                                                # boards' unused layers are removed)
-            size = sx.val(v, 'size', 0.6, float); drill = sx.val(v, 'drill', 0.3, float)
+            size, drill = sx.val(v, 'size', 0.6, float), sx.val(v, 'drill', 0.3, float)
             self.vias.append(dict(x=x, y=y, size=size, drill=drill, layers=lys, net=self._net_of(v), kind=kind))
             for l in pads:
                 e = self._stack_entry(v, l)                                    # (KiCad 9+: its size on l)
@@ -246,7 +243,7 @@ class KiCadBoard(Imported):
 
     def _text(self, node, text, origin=(0.0, 0.0), deg=0.0, net=''):
         """A text on copper: its outline into self.items (layer, net, geometry); hidden text is none."""
-        cu = [l for l in self._expand([x for x in sx.layers(node) if x != 'knockout'])]
+        cu = self._expand([x for x in sx.layers(node) if x != 'knockout'])
         if not cu or not str(text).strip() or shp.text_hidden(node):
             return
         geom, exact = shp.text_shape(node, text, origin, deg)
@@ -273,11 +270,10 @@ class KiCadBoard(Imported):
         ref, val, fab_texts, props = '', '', [], {}
         for p in sx.items(fp, 'property'):
             props[p[1]] = p[2] if len(p) > 2 else ''
-            if any(str(l).endswith('.Fab') for l in sx.layers(p)) and len(p) > 2:
-                fab_texts.append(p[2])
-        for p in sx.items(fp, 'property'):                                  # (on copper: copper)
             if len(p) > 2:
-                self._text(p, p[2], org, rot)
+                if any(str(l).endswith('.Fab') for l in sx.layers(p)):
+                    fab_texts.append(p[2])
+                self._text(p, p[2], org, rot)                               # (on copper: copper)
         for t in sx.items(fp, 'fp_text'):
             if len(t) > 2:
                 self._text(t, t[2], org, rot)
@@ -288,7 +284,7 @@ class KiCadBoard(Imported):
                 val = txt
             if any(str(l).endswith('.Fab') for l in sx.layers(t)):
                 fab_texts.append(txt)
-        ref = props.get('Reference', ref); val = props.get('Value', val)
+        ref, val = props.get('Reference', ref), props.get('Value', val)
         side = 'B' if sx.val(fp, 'layer', 'F.Cu').startswith('B') else 'F'
         pads = []
         for pad in sx.items(fp, 'pad'):
@@ -302,7 +298,6 @@ class KiCadBoard(Imported):
             off = sx.xy(drill, 'offset') if drill else None            # the copper's offset from the hole
             local = shp.pad_shape(pad)
             if off and any(off):
-                from shapely import affinity
                 local = affinity.translate(local, *off)
             geom = shp.place(local, centre, prot)
             lys = self._expand(sx.layers(pad))
@@ -319,7 +314,6 @@ class KiCadBoard(Imported):
                     shape = sx.val(e, 'shape', pad[3] if len(pad) > 3 else 'rect')
                     local_l = shp.pad_shape(['pad', pad[1], pad[2], shape] + list(e[2:]) + list(pad[4:]))
                     if off and any(off):
-                        from shapely import affinity
                         local_l = affinity.translate(local_l, *off)
                     g_l = shp.place(local_l, centre, prot)
                 self.items.append((l, net, g_l))
@@ -340,7 +334,7 @@ class KiCadBoard(Imported):
                     ring = shp.outline_ring(g)
                     if ring is not None:
                         self.edges.append(shp.place(ring, org, rot))
-                cu = [l for l in self._expand(lys)]
+                cu = self._expand(lys)
                 local = shp.graphic(g) if cu else None
                 if local is None or local.is_empty:
                     continue

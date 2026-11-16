@@ -30,10 +30,7 @@ def items(node, name):
 
 
 def item(node, name, default=None):
-    for c in node[1:]:
-        if isinstance(c, list) and c and c[0] == name:
-            return c
-    return default
+    return next((c for c in node[1:] if isinstance(c, list) and c and c[0] == name), default)
 
 
 def val(node, name, default=None, cast=str):
@@ -73,9 +70,7 @@ def width(node, default=0.0):
 def filled(node, default=True):
     """Fill flag of a graphic: (fill solid|yes) / (fill none|no); `default` when there is none."""
     f = val(node, 'fill')
-    if f is None:
-        return default
-    return str(f).lower() in ('solid', 'yes', 'true')
+    return default if f is None else str(f).lower() in ('solid', 'yes', 'true')
 
 
 def layers(node):
