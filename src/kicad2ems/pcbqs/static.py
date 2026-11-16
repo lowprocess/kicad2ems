@@ -32,22 +32,21 @@ def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384, scalar
     g = engine.geometry
     n, side = len(tris), isqrt(engine.chunk)
     matrices = [np.empty((n, n)) for _ in range(1 if scalar_only else 4)]
+
+    def done(scheduler, pairs, analytic):
+        info = dict(engine.info, scheduler=scheduler, pairs=pairs, analytic_pairs=analytic,
+                    scalar_only=bool(scalar_only), seconds=time.perf_counter()-started)
+        return ((g.nodes, *matrices), info) if return_info else (g.nodes, *matrices)
     if hasattr(engine.backend, 'fill_symmetric'):
         # Device backends may own tiling, classification and reciprocal
         # writes; host pair lists and block transposes then disappear.
-        analytic = engine.backend.fill_symmetric(matrices, engine.near, engine.outer_levels, scalar_only)
-        info = dict(engine.info, scheduler='device', pairs=n*(n+1)//2, analytic_pairs=analytic,
-                    scalar_only=bool(scalar_only), seconds=time.perf_counter()-started)
-        result = (g.nodes, *matrices)
-        return (result, info) if return_info else result
+        return done('device', n*(n+1)//2, engine.backend.fill_symmetric(matrices, engine.near, engine.outer_levels,
+                                                                        scalar_only))
     if isinstance(engine.backend, OpenMPBackend) and hasattr(engine.backend.core, 'static_fill'):
         count, analytic = engine.backend.core.static_fill(
             engine.backend.data, g.cent, g.radius, g.z, float(engine.near), int(engine.outer_levels),
             bool(scalar_only), engine.backend.workers, matrices)
-        info = dict(engine.info, scheduler='native', pairs=int(count), analytic_pairs=int(analytic),
-                    scalar_only=bool(scalar_only), seconds=time.perf_counter()-started)
-        result = (g.nodes, *matrices)
-        return (result, info) if return_info else result
+        return done('native', int(count), int(analytic))
 
     def tiles():
         for p0 in range(0, n, side):
@@ -89,10 +88,7 @@ def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384, scalar
             diagonal = p == q
             mx[p[diagonal], q[diagonal]] = (m[diagonal, 1]+m[diagonal, 3])/2
             my[p[diagonal], q[diagonal]] = (m[diagonal, 2]+m[diagonal, 4])/2
-    result = (g.nodes, *matrices)
-    info = dict(engine.info, scheduler='host', pairs=count, analytic_pairs=analytic, scalar_only=bool(scalar_only),
-                seconds=time.perf_counter()-started)
-    return (result, info) if return_info else result
+    return done('host', count, analytic)
 
 
 def native_combine_available():

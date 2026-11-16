@@ -400,19 +400,14 @@ def circuit_report(res, folder=''):
     return out
 
 
-def _case_folder(case, folder):
-    """A point's folder: the one it names, else its name under the run's (a run moved since)."""
-    d = case.get('folder') or ''
-    return d if os.path.isdir(d) else os.path.join(folder, case.get('name', ''))
-
-
 def circuit_curves(res, folder=''):
     """A run's waveforms over the last two periods: per point, its probes' voltages and currents (a model without
     probes: its capacitors' voltages and inductors' currents)."""
     import numpy as np
     sets = []
     for c in res.get('cases', []):
-        d = _case_folder(c, folder)
+        d = c.get('folder') or ''                              # the point's folder, else its name under the run's
+        d = d if os.path.isdir(d) else os.path.join(folder, c.get('name', ''))     # (a run moved since)
         try:
             with np.load(os.path.join(d, 'transient.npz')) as data:
                 v = {k: data[k] for k in data.files}

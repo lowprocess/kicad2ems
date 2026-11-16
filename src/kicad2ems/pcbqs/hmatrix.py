@@ -32,14 +32,6 @@ def _native():
     return core if hasattr(core,'HBlocks') else None
 
 
-def _trim():
-    try:
-        import ctypes
-        ctypes.CDLL('libc.so.6').malloc_trim(0)
-    except (OSError,AttributeError):
-        pass
-
-
 def _build_core():
     """The compiled ACA/dense-leaf builder, unless PCBQS_NO_CORE is set or the core predates it."""
     core=_native()
@@ -79,6 +71,9 @@ class HMatrix(LinearOperator):
 
         def save(a,b,u,v,same):
             nonlocal next_log,payload
+            if same:                                     # a diagonal block: symmetrised, its diagonal kept
+                u=(u+u.T)/2
+                self.diagonal[a]=np.diag(u)
             self.blocks.append((a,b,u,v,same))
             payload+=a.nbytes+b.nbytes+u.nbytes+(v.nbytes if v is not None else 0)
             if log is not None and time.monotonic()>=next_log:
@@ -101,7 +96,6 @@ class HMatrix(LinearOperator):
             return values
 
         def aca(a,b):
-            nonlocal row_hits
             m,n=len(a),len(b)
             cap=min(128,int(.7*m*n/(m+n)))
             if cap < 1:return None
@@ -158,16 +152,9 @@ class HMatrix(LinearOperator):
                 if factors is not None:
                     save(a.ids,b.ids,*factors,False);return
             if not a.children and not b.children:
-                block=evaluate(a.ids,b.ids)
-                if same:
-                    block=(block+block.T)/2;self.diagonal[a.ids]=np.diag(block)
-                save(a.ids,b.ids,block,None,same);return
-            if same:
-                x,y=a.children;build(x,x);build(x,y);build(y,y)
-            elif a.children and (not b.children or len(a.ids)>=len(b.ids)):
-                for child in a.children:build(child,b)
-            else:
-                for child in b.children:build(a,child)
+                save(a.ids,b.ids,evaluate(a.ids,b.ids),None,same);return
+            for x,y in children(a,b):
+                build(x,y)
 
         def children(a,b):
             if a is b:
@@ -200,10 +187,7 @@ class HMatrix(LinearOperator):
                                              [np.asarray(b.ids,np.int64) for _,b in dense],count)
                     for (a,b),block in zip(dense,blocks):
                         self.entries+=block.size
-                        block=block.astype(dtype,copy=False)
-                        if a is b:
-                            block=(block+block.T)/2;self.diagonal[a.ids]=np.diag(block)
-                        save(a.ids,b.ids,block,None,a is b)
+                        save(a.ids,b.ids,block.astype(dtype,copy=False),None,a is b)
                 pending=following
 
         core=_build_core() if native is not None else None
@@ -303,7 +287,12 @@ class HMatrix(LinearOperator):
         the originals, and malloc_trim returns those pages (glibc only).
         """
         if self.blocks and _native() is not None and getattr(self,'_packed',None) is None:
-            self._pack();_trim()
+            self._pack()
+            try:
+                import ctypes
+                ctypes.CDLL('libc.so.6').malloc_trim(0)
+            except (OSError,AttributeError):
+                pass
 
     def __setstate__(self,state):
         super().__setstate__(state)

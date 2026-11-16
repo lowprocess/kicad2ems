@@ -15,12 +15,8 @@ from .wpt import coil_capacitance, series_resistance, core_resistance
 # tolerance was 3.5x faster than 1e-4 on the wpthb netlist with <=0.03% power/current change.
 # abstol 1e-6 A: 1e-9 A made strict runs fail ("timestep too small") at hard-switched edges on wpthb, and
 # changed no power/current/ripple result by more than 0.03% on the same netlist.
-SOLVER_DEFAULTS = dict(
-    method='gear', maxord=2, reltol=1e-4, abstol=1e-6, vntol=1e-6, chgtol=1e-12, gmin=1e-10, rshunt=1e12
-)
-
-
-
+SOLVER_DEFAULTS = dict(method='gear', maxord=2, reltol=1e-4, abstol=1e-6, vntol=1e-6, chgtol=1e-12, gmin=1e-10,
+                       rshunt=1e12)
 
 
 def _series_modes(R, L):
@@ -38,11 +34,8 @@ def _series_modes(R, L):
     lam, U = np.linalg.eigh(Ci @ L @ Ci.T)
     W = C @ U
     top = max(lam.max(), 0.0)
-    out = []
-    for j in range(len(lam)):
-        lj = lam[j] if lam[j] > max(top * 1e-8, 1e-20) else None   # (R's own mode where L has none)
-        out.append((W[:, j], 1.0, lj, False))
-    return out
+    return [(W[:, j], 1.0, lam[j] if lam[j] > max(top * 1e-8, 1e-20) else None, False)   # (None: R's own mode
+            for j in range(len(lam))]                                                     # where L has none)
 
 
 # A switch's capacitances when its model gives none (a vdmos, the default): a generic power MOSFET's
@@ -213,9 +206,8 @@ class Circuit:
         if L:  # series ESL carries the branch current
             branch = part.get('initial_I', part.get('initial_A') if kind == 'inductor' else None)
             nxt = self.node('L:' + ref)
-            self.lines.append(
-                f'L_{ref}_series {n} {nxt} {L:.17g}' + (f' IC={branch:.17g}' if branch is not None else '')
-            )
+            self.lines.append(f'L_{ref}_series {n} {nxt} {L:.17g}' + (f' IC={branch:.17g}' if branch is not None
+                                                                         else ''))
             n = nxt
         code = {'resistor': 'R', 'capacitor': 'C', 'inductor': 'L'}[kind]
         if kind == 'capacitor':
@@ -238,16 +230,11 @@ class Circuit:
         n = self.sense(ref, a)
         end = self.node(b)
         mid = self.node('RL:' + ref)
-        self.lines.extend(
-            [
-                f'R_{ref} {n} {mid} {max(R, 1e-12):.17g}',
-                f'L_{ref} {mid} {end} {L:.17g}' + (f' IC={coil["initial_A"]:.17g}' if 'initial_A' in coil else ''),
-            ]
-        )
+        self.lines.extend([f'R_{ref} {n} {mid} {max(R, 1e-12):.17g}', f'L_{ref} {mid} {end} {L:.17g}'
+                           + (f' IC={coil["initial_A"]:.17g}' if 'initial_A' in coil else '')])
         if C:
-            self.lines.append(
-                f'C_{ref}_self {n} {end} {C:.17g}' + (f' IC={coil["initial_V"]:.17g}' if 'initial_V' in coil else '')
-            )
+            self.lines.append(f'C_{ref}_self {n} {end} {C:.17g}'
+                              + (f' IC={coil["initial_V"]:.17g}' if 'initial_V' in coil else ''))
         rc = core_resistance(coil)
         if rc:
             self.lines.append(f'R_{ref}_core {mid} {end} {rc:.17g}')
@@ -280,9 +267,8 @@ class Circuit:
         delay = timing[0]
         if delay + tr + width + tf > T:
             delay -= T  # an on-interval across t=0: on from the start, as in steady state
-        self.lines.append(
-            f'VG_{ref} {drv} {s} PULSE(0 {vgate:.17g} {delay:.17g} {tr:.17g} {tf:.17g} {width:.17g} {T:.17g})'
-        )
+        self.lines.append(f'VG_{ref} {drv} {s} PULSE(0 {vgate:.17g} {delay:.17g} {tr:.17g} {tf:.17g} {width:.17g} '
+                          f'{T:.17g})')
         rg = model.get('gate_R_ohm', 2.0)
         _positive(rg, ref + '.gate_R', True)
         self.lines.append(f'RG_{ref} {drv} {g} {max(rg, 1e-9):.17g}')
@@ -307,36 +293,24 @@ class Circuit:
         if kind in ('ideal', 'switch'):
             logoff = np.log(1 / roff)
             logspan = np.log(roff / ron)
-            self.lines.append(
-                f'B_{ref} {d} {s} I=V({d},{s})*exp({logoff:.17g}+({logspan:.17g})*(0.5+0.5*tanh((V({g},{s})-{vgate / 2:.17g})/{model.get("transition_V", 0.5):.17g})))'
-            )
+            self.lines.append(f'B_{ref} {d} {s} I=V({d},{s})*exp({logoff:.17g}+({logspan:.17g})*(0.5+0.5*tanh((V({g},'
+                              f'{s})-{vgate / 2:.17g})/{model.get("transition_V", 0.5):.17g})))')
         elif kind == 'mosfet':
             if not 0 < vt < vgate:
                 raise ValueError('MOSFET threshold must be below gate voltage')
-            self.lines.extend(
-                [
-                    f'.model NM_{ref} NMOS(level=1 VTO={vt:.17g} KP={kp:.17g} LAMBDA={model.get("lambda_per_V", 0):.17g} IS=1e-12)',
-                    f'M_{ref} {d} {g} {s} {s} NM_{ref} W=100u L=100u',
-                ]
-            )
+            self.lines.extend([f'.model NM_{ref} NMOS(level=1 VTO={vt:.17g} KP={kp:.17g} '
+                               f'LAMBDA={model.get("lambda_per_V", 0):.17g} IS=1e-12)',
+                               f'M_{ref} {d} {g} {s} {s} NM_{ref} W=100u L=100u'])
         elif kind == 'vdmos':
-            params = dict(
-                VTO=vt,
-                KP=kp,
-                RDS=roff,
-                CGDMIN=model.get('Cgd_F', VDMOS_C['Cgd_F']),    # a generic MOSFET's, unless the part's are given
-                CGDMAX=model.get('Cgd_F', VDMOS_C['Cgd_F']),
-                CGS=model.get('Cgs_F', VDMOS_C['Cgs_F']),
-                CJO=model.get('Cds_F', VDMOS_C['Cds_F']),       # (without it ngspice's steps shrink: 100s of times slower)
-                TT=model.get('diode_TT_s', 0),
-                RB=model.get('diode_R_ohm', 0.02),
-                IS=1e-12,
-            )
+            # the capacitances a generic MOSFET's unless the part's are given (CJO: without it ngspice's steps shrink,
+            # 100s of times slower)
+            params = dict(VTO=vt, KP=kp, RDS=roff, CGDMIN=model.get('Cgd_F', VDMOS_C['Cgd_F']),
+                          CGDMAX=model.get('Cgd_F', VDMOS_C['Cgd_F']), CGS=model.get('Cgs_F', VDMOS_C['Cgs_F']),
+                          CJO=model.get('Cds_F', VDMOS_C['Cds_F']), TT=model.get('diode_TT_s', 0),
+                          RB=model.get('diode_R_ohm', 0.02), IS=1e-12)
             params.update(model.get('vdmos_parameters', {}))
-            if any(
-                not re.fullmatch('[A-Za-z][A-Za-z0-9_]*', key) or not np.isfinite(value)
-                for key, value in params.items()
-            ):
+            if any(not re.fullmatch('[A-Za-z][A-Za-z0-9_]*', key) or not np.isfinite(value)
+                   for key, value in params.items()):
                 raise ValueError('VDMOS parameters must be named finite numbers')
             if model.get('model_name'):                             # a vendor's VDMOS .model, from its library
                 name = str(model['model_name'])
@@ -344,12 +318,9 @@ class Circuit:
                     raise ValueError(f'{ref}: invalid model_name')
                 self.lines.extend([include_line(model['library'], 'switch'), f'M_{ref} {d} {g} {s} {name}'])
             else:
-                self.lines.extend(
-                    [
-                        f'.model NM_{ref} VDMOS(' + ' '.join(f'{key}={value:.17g}' for key, value in params.items()) + ')',
-                        f'M_{ref} {d} {g} {s} NM_{ref}',
-                    ]
-                )
+                self.lines.extend([f'.model NM_{ref} VDMOS(' + ' '.join(f'{key}={value:.17g}' for key, value in
+                                                                        params.items()) + ')',
+                                   f'M_{ref} {d} {g} {s} NM_{ref}'])
         else:
             name = model['subcircuit']
             if not NAME.fullmatch(name):
@@ -367,12 +338,8 @@ class Circuit:
         if kind in ('ideal', 'switch') and model.get('body_diode', True):
             tt = model.get('diode_TT_s', 20e-9)
             _positive(tt, ref + '.diode_TT_s', True)
-            self.lines.extend(
-                [
-                    f'.model DD_{ref} D(IS=1e-12 N=1 RS={model.get("diode_R_ohm", 0.02):.17g} TT={tt:.17g})',
-                    f'D_{ref} {s} {d} DD_{ref}',
-                ]
-            )
+            self.lines.extend([f'.model DD_{ref} D(IS=1e-12 N=1 RS={model.get("diode_R_ohm", 0.02):.17g} TT={tt:.17g})',
+                               f'D_{ref} {s} {d} DD_{ref}'])
         self.voltage(ref + '.V', a, b)
         self.signals[ref + '.gate_I'] = f'i(VG_{ref})'
         self.voltage(ref + '.gate_V', 'DRIVE:' + ref, b)
@@ -481,17 +448,7 @@ class Circuit:
                     self.lines.append(f'GSUM{i}_{j} 0 {summed} {mode} 0 {gain[i]:.17g}')
             self.lines.append(f'EPCB{i} {n} {self.node(b)} {summed} 0 1')
 
-    def run(
-        self,
-        out,
-        f,
-        cycles=250,
-        samples_per_cycle=128,
-        timeout=600,
-        linear_solver='klu',
-        threads=1,
-        options=None,
-    ):
+    def run(self, out, f, cycles=250, samples_per_cycle=128, timeout=600, linear_solver='klu', threads=1, options=None):
         solver = solver_options(options)
         if linear_solver not in ('klu', 'sparse'):
             raise ValueError('linear_solver must be klu or sparse')
@@ -519,10 +476,8 @@ class Circuit:
         for i, (label, (kind, expr)) in enumerate(self.measures.items()):
             for key, name in zip(labels, output_names):
                 expr = expr.replace('@' + key + '@', f'({self.signal_signs.get(key, 1)}*{name})')
-            measures.extend(
-                [f'let measure{i}={expr}',
-                 f'meas tran m{i} {kind} measure{i} from={stop - 1 / f - self.measure_lead:.17g} to={stop + self.measure_lead:.17g}']
-            )
+            measures += [f'let measure{i}={expr}', f'meas tran m{i} {kind} measure{i} '
+                         f'from={stop - 1 / f - self.measure_lead:.17g} to={stop + self.measure_lead:.17g}']
         if measures:
             # meas prints its result to 6 digits but keeps 7: print them again with every digit kept (a sum of
             # several, the power balance, is otherwise a few parts per million off by rounding alone)
@@ -530,42 +485,24 @@ class Circuit:
             measures += ['set numdgt=15', *('print ' + ' '.join(names[k:k + 16]) for k in range(0, len(names), 16)),
                          'unset numdgt']
         port_vectors = [name for name, label in zip(output_names, labels) if re.fullmatch(r'PCB\d+\.I', label)]
-        adaptive_export = (
-            ['set filetype=binary', 'write adaptive-ports.raw ' + ' '.join(port_vectors), 'set filetype=ascii']
-            if port_vectors
-            else []
-        )
-        lines = [
-            'Transient power circuit',
-            *self.lines,
-            '.options ' + options_line(solver),
-            '.control',
-            *(['set klu'] if linear_solver == 'klu' else []),
-            f'set num_threads={threads}',
-            'set wr_singlescale',
-            'set wr_vecnames',
-            'save ' + ' '.join(sorted(save_vectors)),
-            f'tran {1 / f / samples_per_cycle:.17g} {stop:.17g} 0 {1 / f / samples_per_cycle:.17g}'
-            + (' uic' if self.uic else ''),
-            *lets,
-            *measures,
-            *adaptive_export,
-            'linearize ' + ' '.join(output_names),
-            'set filetype=binary',                                  # binary, read into numpy as it is (the text
-            'write transient.raw ' + ' '.join(output_names),        # wrdata wrote was 98 MB a wpthb run and 0.5 s
-            'rusage all',
-            'quit',
-            '.endc',
-            '.end',
-        ]
+        adaptive_export = (['set filetype=binary', 'write adaptive-ports.raw ' + ' '.join(port_vectors),
+                            'set filetype=ascii'] if port_vectors else [])
+        lines = ['Transient power circuit', *self.lines, '.options ' + options_line(solver),
+                 '.control', *(['set klu'] if linear_solver == 'klu' else []), f'set num_threads={threads}',
+                 'set wr_singlescale', 'set wr_vecnames', 'save ' + ' '.join(sorted(save_vectors)),
+                 f'tran {1 / f / samples_per_cycle:.17g} {stop:.17g} 0 {1 / f / samples_per_cycle:.17g}'
+                 + (' uic' if self.uic else ''),
+                 *lets, *measures, *adaptive_export, 'linearize ' + ' '.join(output_names),
+                 'set filetype=binary',                                 # binary, read into numpy as it is (the text
+                 'write transient.raw ' + ' '.join(output_names),       # wrdata wrote was 98 MB a wpthb run and 0.5 s
+                 'rusage all', 'quit', '.endc', '.end']
         (out / 'circuit.cir').write_text('\n'.join(lines) + '\n')
         started = time.perf_counter()
         with _children_lock:
             if _cancelled.is_set():
                 raise RuntimeError('circuit run cancelled')
-            child = subprocess.Popen(
-                [executable, '-b', 'circuit.cir'], cwd=out, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-            )
+            child = subprocess.Popen([executable, '-b', 'circuit.cir'], cwd=out, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, text=True)
             _children.add(child)
         try:
             try:
@@ -596,7 +533,7 @@ class Circuit:
             said = sorted(dict.fromkeys(said), key=lambda l: 'measure' in l)   # the cause before the measures
             raise RuntimeError('ngspice transient failed; see ' + str(out / 'ngspice.log')    # it left undone
                                + (': ' + ' | '.join(said)[:600] if said else ''))
-        from .power_waveforms import read_raw
+        from .power_waveforms import read_raw, save_port_spectrum
         try:
             cols = list(read_raw(data).values())                      # time, then the vectors as asked (named
             if len(cols) != len(output_names) + 1:                   # by their kind: i(out0), v(out1), out4)
@@ -605,17 +542,11 @@ class Circuit:
         except (KeyError, ValueError) as e:
             raise RuntimeError(f'invalid transient data ({e})') from None
         data.unlink(missing_ok=True)                                # (transient.npz has it)
-        if (
-            table.ndim != 2
-            or table.shape[1] != len(labels) + 1
-            or not np.isfinite(table).all()
-            or table[-1, 0] < stop * (1 - 1e-6)
-        ):
+        if (table.ndim != 2 or table.shape[1] != len(labels) + 1 or not np.isfinite(table).all()
+                or table[-1, 0] < stop * (1 - 1e-6)):
             raise RuntimeError('invalid transient data')
-        res = {
-            'time_s': table[:, 0],
-            **{k: table[:, i + 1] * self.signal_signs.get(k, 1) for i, k in enumerate(labels)},
-        }
+        res = {'time_s': table[:, 0],
+               **{k: table[:, i + 1] * self.signal_signs.get(k, 1) for i, k in enumerate(labels)}}
         np.savez(out / 'transient.npz', **res)                     # (plain: a trial's is deleted after; the
                                                                     # reported run's is compressed as it is kept)
         (out / 'signals.json').write_text(json.dumps(dict(zip(labels, vectors)), indent=2))
@@ -628,27 +559,14 @@ class Circuit:
         (out / 'measurements.json').write_text(json.dumps(measured, indent=2))
         res['_measures'] = measured
         if port_vectors:
-            from .power_waveforms import save_port_spectrum
-
             save_port_spectrum(out, labels, f)
-        stats = dict(
-            ngspice_wall_s=solved - started,
-            postprocess_wall_s=time.perf_counter() - solved,
-            linear_solver=linear_solver,
-            method=solver['method'],
-            reltol=solver['reltol'],
-            ngspice_threads=threads,
-        )
-        for key, label in dict(
-            analysis_s='Total analysis time (seconds)',
-            load_s='Matrix load time',
-            factor_s='Matrix factor time',
-            solve_s='Matrix solve time',
-            equations='Circuit Equations',
-            iterations='Total iterations',
-            accepted_steps='Accepted timepoints',
-            rejected_steps='Rejected timepoints',
-        ).items():
+        stats = dict(ngspice_wall_s=solved - started, postprocess_wall_s=time.perf_counter() - solved,
+                     linear_solver=linear_solver, method=solver['method'], reltol=solver['reltol'],
+                     ngspice_threads=threads)
+        for key, label in dict(analysis_s='Total analysis time (seconds)', load_s='Matrix load time',
+                               factor_s='Matrix factor time', solve_s='Matrix solve time',
+                               equations='Circuit Equations', iterations='Total iterations',
+                               accepted_steps='Accepted timepoints', rejected_steps='Rejected timepoints').items():
             match = re.search(r'^' + re.escape(label) + r'\s*=\s*([+\-0-9.eE]+)', stdout, re.M)
             if match:
                 stats[key] = float(match[1])

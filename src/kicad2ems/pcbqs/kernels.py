@@ -146,50 +146,41 @@ class MixedLU:
             return self.double[0].nbytes + self.double[1].nbytes
         return self.a.nbytes + self.lu[0].nbytes + self.lu[1].nbytes
 
-    def _double(self):
-        if self.double is None:                                 # the single factor first freed, then the matrix
-            from scipy.linalg import lu_factor                  # factored in its own memory (no third copy)
-            self.lu = None
-            self.double = lu_factor(self.a.T, overwrite_a=True, check_finite=False)
-            self.a = None
-        return self.double
-
     def solve(self, b):
-        with blas_threads():
-            return self._solve(b)
-
-    def _solve(self, b):
-        from scipy.linalg import lu_solve
+        from scipy.linalg import lu_factor, lu_solve
         b = np.asarray(b)
-        if self.double is not None:
-            return lu_solve(self.double, b, trans=1, check_finite=False)
-        one = lambda r: lu_solve(self.lu, r.astype(np.complex64), trans=1, check_finite=False).astype(complex)
-        x = one(b)
-        nb = max(float(np.linalg.norm(b)), 1e-300)
-        last = np.inf
-        for _ in range(self.STEPS):
-            r = b - self.a @ x
-            res = float(np.linalg.norm(r)) / nb
-            if res <= self.TOL:
+        with blas_threads():
+            if self.double is not None:
+                return lu_solve(self.double, b, trans=1, check_finite=False)
+            one = lambda r: lu_solve(self.lu, r.astype(np.complex64), trans=1, check_finite=False).astype(complex)
+            x = one(b)
+            nb = max(float(np.linalg.norm(b)), 1e-300)
+            last = np.inf
+            for _ in range(self.STEPS):
+                r = b - self.a @ x
+                res = float(np.linalg.norm(r)) / nb
+                if res <= self.TOL:
+                    return x
+                if res > 0.5 * last:                            # no longer converging: double from here on
+                    break
+                last = res
+                x = x + one(r)
+            if last <= 1e-10:                                   # (stalled at a double solve's own level)
                 return x
-            if res > 0.5 * last:                                # no longer converging: double from here on
-                break
-            last = res
-            x = x + one(r)
-        if last <= 1e-10:                                       # (stalled at a double solve's own level)
-            return x
-        return lu_solve(self._double(), b, trans=1, check_finite=False)
+            self.lu = None                                      # the single factor first freed, then the matrix
+            self.double = lu_factor(self.a.T, overwrite_a=True, check_finite=False)     # factored in its own memory
+            self.a = None                                       # (no third copy)
+            return lu_solve(self.double, b, trans=1, check_finite=False)
 
 
-def _mixed_fits(a):
-    """Whether the single-precision copy fits beside the double matrix in the memory free now, with room to
-    spare (twice the copy: the solver's other arrays come and go meanwhile)."""
+def _fits(nbytes):
+    """Whether nbytes fit in the memory free now, with 2 GB to spare."""
     try:
         from kicad2ems.emsdev.memory import available
         free = available()
     except Exception:                                           # noqa: BLE001  (no probe: assume it does)
         return True
-    return free is None or free > 2 * (a.size * 8) + 2e9
+    return free is None or free > nbytes + 2e9
 
 
 def _rmul(G, v):
@@ -207,8 +198,8 @@ class Pencil:
     symmetric, R positive definite (the loops' DC resistance), P sparse (k, n) (the loops through k parts of
     impedance z(s)). With R = C C^T and C^-1 L C^-T = W diag(lam) W^T, G = C^-T W puts both on the diagonal:
     (R + s L)^-1 = G diag(1 / (1 + s lam)) G^T, and the parts come in by Woodbury, a k x k solve. The
-    eigendecomposition costs about PENCIL_LUS(n) complex LUs, after which a frequency costs three products with
-    G: a sweep of more frequencies than that is quicker (pencil_pays). Raises numpy.linalg.LinAlgError where R
+    eigendecomposition costs about as many complex LUs as pencil_pays says, after which a frequency costs three
+    products with G: a sweep of more frequencies than that is quicker. Raises numpy.linalg.LinAlgError where R
     is not positive definite."""
 
     def __init__(self, R, L, P=None):
@@ -241,26 +232,17 @@ class Pencil:
         return x[:, 0] if one else x
 
 
-def pencil_lus(n):
-    """About how many complex LUs of n unknowns the Pencil's eigendecomposition costs (measured on a Ryzen/
-    Core desktop: 7 at 2,000, 10.5 at 4,000, 13.6 at 6,000), and a frequency's three products."""
-    return 4.0 + 1.6 * n / 1000
-
-
 def pencil_pays(n, frequencies):
     """Whether a sweep of `frequencies` on n loops is quicker by one Pencil than by an LU each, and fits in the
     memory free (four real matrices of n x n at once). PCBQS_PENCIL=always or never decides it."""
     choice = os.environ.get('PCBQS_PENCIL', '').lower()
     if choice in ('always', 'never'):
         return choice == 'always'
-    if n < 200 or frequencies < 1.25 * pencil_lus(n) + 1:
+    # the eigendecomposition costs about 4 + 1.6 n / 1000 complex LUs of n unknowns (measured on a Ryzen/Core
+    # desktop: 7 at 2,000, 10.5 at 4,000, 13.6 at 6,000), and a frequency's three products
+    if n < 200 or frequencies < 1.25 * (4.0 + 1.6 * n / 1000) + 1:
         return False
-    try:
-        from kicad2ems.emsdev.memory import available
-        free = available()
-    except Exception:                                           # noqa: BLE001  (no probe: assume it does)
-        return True
-    return free is None or free > 4 * n * n * 8 + 2e9
+    return _fits(4 * n * n * 8)
 
 
 def lu_factor_rows(a, mixed='auto'):
@@ -276,7 +258,8 @@ def lu_factor_rows(a, mixed='auto'):
         a = np.ascontiguousarray(a)
     if mixed == 'auto':
         mixed = (os.environ.get('PCBQS_LU', '').lower() != 'double' and np.iscomplexobj(a)
-                 and a.shape[0] >= MIXED_MIN and _mixed_fits(a))
+                 and a.shape[0] >= MIXED_MIN and _fits(2 * (a.size * 8)))   # the single copy, twice: other
+                                                                                # arrays come and go meanwhile
     if mixed:
         return MixedLU(a)
     with blas_threads():

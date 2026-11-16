@@ -19,18 +19,9 @@ def _engine(model):
 
 
 def _native(engine):
-    """OpenMP-backed engines also assemble whole entry blocks in the compiled core.
-
-    Returns (core, args) for static_block/rwg_inductance, or None to use the
-    NumPy assembly (other fill backends, or a core that predates the blocks).
-    """
-    backend=engine.backend
-    core=getattr(backend,'core',None)
-    if engine.info['backend']!='openmp' or core is None or not hasattr(core,'rwg_inductance'):
-        return None
-    g=engine.geometry
-    near=float('inf') if np.isinf(engine.near) else float(engine.near)
-    return core,(backend.data,g.z,g.cent,g.radius,near,int(engine.outer_levels)),backend.workers
+    """OpenMP-backed engines also assemble whole entry blocks in the compiled core: (core, args, workers) for
+    static_block/rwg_inductance, or None to use the NumPy assembly (other fill backends, or an older core)."""
+    return native_layered(engine,kernel='rwg_inductance')
 
 
 def _moments(engine,p,q,scalar=False):

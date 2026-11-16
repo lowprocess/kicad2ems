@@ -199,16 +199,12 @@ def potential_moments(model):
                             approximate = 1/np.sqrt(quadrature_rho2[close]+d*d)
                             values[close] -= coefficient*area[p[close]]*area[q[close]]*approximate.mean((1, 2))
                         refine = close & (dist <= size)
-                        for mask, level in ((close & ~refine, 0), (refine, model.outer_levels)):
+                        far = ~close if d == 0 or smooth is None else np.zeros(len(q), bool)
+                        for mask, level in ((close & ~refine, 0), (refine, model.outer_levels), (far, -1)):
                             if mask.any():
                                 kinds = np.full(mask.sum(), level, np.int32)
                                 values[mask] += coefficient*engine.evaluate(
                                     p[mask], q[mask], d, kinds, scalar_only=True)[:, 0]
-                        far = ~close if d == 0 or smooth is None else np.zeros(len(q), bool)
-                        if far.any():
-                            kinds = np.full(far.sum(), -1, np.int32)
-                            values[far] += coefficient*engine.evaluate(
-                                p[far], q[far], d, kinds, scalar_only=True)[:, 0]
                     out[start:start+len(q)] = values
                 return pp, qq, out
 

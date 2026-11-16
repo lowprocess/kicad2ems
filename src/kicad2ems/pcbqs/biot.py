@@ -74,11 +74,9 @@ def h_grid(model, res, fi, x, y, heights, refine=1):
     for k, (vx, vy, rr, za, zb) in enumerate(model.vseg):
         p0.append([vx, vy, za]); p1.append([vx, vy, zb])
         currents.append(res.i[fis, model.ne + k])
-    for k, part in enumerate(model.parts):
-        offset = np.array([0, 0, part['part_h'] * 1e-3])
-        p0.append(model._term_centre(part['a']) + offset)
-        p1.append(model._term_centre(part['b']) + offset)
-        currents.append(res.i[fis, model.ne + model.nv + k])
+    a, b = model._part_ends()
+    p0, p1 = p0 + a, p1 + b
+    currents += [res.i[fis, model.ne + model.nv + k] for k in range(len(model.parts))]
     if p0:
         out += h_segments(p0, p1, np.asarray(currents), pts).reshape(out.shape)
     return out if multi else out[..., 0]

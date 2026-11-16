@@ -8,7 +8,6 @@ import inspect
 from functools import partial
 import numpy as np
 from scipy.sparse import coo_matrix, hstack, eye, diags, block_diag
-from scipy.sparse.csgraph import connected_components
 from scipy.sparse.linalg import LinearOperator, gmres, splu, spilu
 
 # Conservative upper bound for assembling a projected sparse surrogate. Large
@@ -48,7 +47,7 @@ def _graph_preconditioner(m,diagonal,zscale,resistance=None,jw=0):
     it. Recover only loop currents from that operation; tree charge is solved
     separately to avoid subtracting conduction currents and dividing by jw.
     """
-    K,A,T=m['K'],m['A'],m['T'];nl=m['nl'];passive=m['passive'];keep=m['keep']
+    K,A=m['K'],m['A'];nl=m['nl'];passive=m['passive'];keep=m['keep']
     if not nl:return _tree_preconditioner(m,diagonal,zscale)
     Kc,Kt=K[:,:nl],K[:,nl:];cotree=m['cotree']
     position=np.full(A.shape[1],-1,int);position[passive]=np.arange(len(passive))
@@ -91,10 +90,8 @@ class ConvergenceError(RuntimeError):
 
 
 def _restart(model):
-    value=getattr(model,'solver_restart',100)
-    if not isinstance(value,(int,np.integer)) or isinstance(value,bool) or value<1:
-        raise ValueError('solver_restart must be a positive integer')
-    return value
+    from .static_backends import _positive_integer
+    return _positive_integer(getattr(model,'solver_restart',100),'solver_restart')
 
 
 def _gmres(operator,rhs,preconditioner,tol,maxiter,history,log=None,restart=100):
@@ -127,20 +124,15 @@ def potential_solve(model,rhs):
 def prepare(model):
     if model._peec is not None:return model._peec
     m=model._assemble();P=model._ensure_potential()
-    ends=model.br+[(model.term_node[p['a']],model.term_node[p['b']]) for p in model.parts]
-    nb=len(ends);a,b=np.asarray(ends,int).reshape(-1,2).T;branch=np.arange(nb)
-    A=coo_matrix((np.r_[np.ones(nb),-np.ones(nb)],(np.r_[a,b],np.r_[branch,branch])),shape=(model.n_nodes,nb)).tocsc()
     sources=np.flatnonzero(m['is_src']);passive=np.flatnonzero(~m['is_src'])
+    A,nc,labels,keep=model._branch_graph(passive)
     cycles=[i for i in range(m['C'].shape[1]) if i not in m['src'].values()]
-    K=hstack((m['C'][:,cycles],eye(nb,format='csc')[:,np.flatnonzero(m['tree'])]),format='csc')
+    K=hstack((m['C'][:,cycles],eye(A.shape[1],format='csc')[:,np.flatnonzero(m['tree'])]),format='csc')
     nl=len(cycles);T=(A@K[:,nl:]).tocsc()
     non_tree=np.flatnonzero(~m['tree']);identity=m['C'][non_tree][:,cycles].tocoo()
     cotree=np.empty(nl,int);cotree[identity.col]=non_tree[identity.row]
-    graph=coo_matrix((np.ones(len(passive)),(a[passive],b[passive])),shape=(model.n_nodes,model.n_nodes))
-    nc,labels=connected_components(graph,directed=False)
     # Sparse component indicators avoid a potentially node-square identity.
     B=coo_matrix((np.ones(model.n_nodes),(np.arange(model.n_nodes),labels)),shape=(model.n_nodes,nc)).tocsc()
-    roots=np.unique(labels,return_index=True)[1];keep=np.ones(model.n_nodes,bool);keep[roots]=False
     tree_lu=splu(T[keep].astype(complex)) if T.shape[1] else None
     names=[model.parts[k-len(model.br)]['name'] for k in sources]
     pscale=max(float(np.max(abs(P.diagonal))),np.finfo(float).tiny)
@@ -227,10 +219,8 @@ def _charge_copies(model,Pc):
 
 
 def solve(model,freqs,amps=None):
-    from .mqs import Result
-    f=np.atleast_1d(np.asarray(freqs,float))
-    if f.ndim!=1 or not np.isfinite(f).all() or (f<=0).any() or not len(f):
-        raise ValueError('frequencies must be finite and positive')
+    from .mqs import Result,_frequencies
+    f=_frequencies(freqs,empty=False)
     preconditioner=getattr(model,'solver_preconditioner','auto')
     if preconditioner not in ('auto','graph','tree'):
         raise ValueError('solver_preconditioner must be auto, graph or tree')
@@ -255,10 +245,7 @@ def solve(model,freqs,amps=None):
     log=partial(print,flush=True) if model.log is print else model.log
     for fi,freq in enumerate(f):
         jw=2j*np.pi*freq
-        zp=np.zeros(nb,complex)
-        for k,part in enumerate(model.parts,len(model.br)):
-            if part['kind']!='I':
-                zp[k]=part['R']+jw*part['L']+(1/(jw*part['C']) if part.get('C') else 0)
+        zp=model._part_impedance(jw)
         resistance=model._mats['R']+model._resistance_delta(freq)
         def impedance(x):return resistance@x+jw*model._inductive_voltage(x)+zp*x
         diagonal=resistance.diagonal()+jw*m['ldiag']+zp
