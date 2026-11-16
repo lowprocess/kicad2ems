@@ -225,11 +225,6 @@ class FDTD(Solver):
         """Where its facts go in the run summary: its own table (the first FDTD solver: the top level)."""
         return run.summary.setdefault(self.name, {})
 
-    def draws_mesh(self, run):
-        """The first FDTD solver of the run draws the mesh preview (the others have the same mesh)."""
-        reg = registry()
-        return next((n for n in run.plan + run.previewed if isinstance(reg.get(n), FDTD)), self.name) == self.name
-
     # ---- what it changes, and what it holds -------------------------------------------------------------
     def deviations(self, run, p):
         """Vias moved onto mesh lines, parts split in two elements, edge walls moved onto mesh lines."""
@@ -308,7 +303,8 @@ class FDTD(Solver):
         from kicad2ems.core.api.solver import parse_dump
         s, m = run.s, run.m
         folder, who = engine_name(self.engine(s))
-        first = self.draws_mesh(run)
+        reg = registry()                                            # the run's first FDTD solver draws the mesh
+        first = next((n for n in run.plan + run.previewed if isinstance(reg.get(n), FDTD)), self.name) == self.name
         log = run.log if first else (lambda *a: None)               # the same mesh: said once
         p = SimpleNamespace(levels=None, coarse=[], dumps=[], result=None, excite=None, ant=None)
         air, bc = s.air, s.bc
@@ -410,23 +406,6 @@ class FDTD(Solver):
         if p.levels:
             run.log(f"--- mesh level x{p.levels[-1][0]:g} (finest: the result) ---")
 
-    def _convergence(self, run, p, res):
-        from .converge import compare_levels, verdict
-        from kicad2ems.core.api.solver import plot_convergence
-        tol_db, tol_deg = run.s.converge_tol
-        dev = compare_levels([S_ for _, S_ in p.coarse] + [res.S], res.names) + [{}]    # finest: the reference
-        lines, ok = verdict([f for f, _ in p.levels], dev[:-1], tol_db, tol_deg)
-        run.log("\n".join(lines))
-        if not ok:
-            run.log("WARNING: mesh not converged (see the convergence table)")
-        run.figure(plot_convergence(run.freq, [(f"x{f:g}", S_) for f, S_ in p.coarse] +
-                                    [(f"x{p.levels[-1][0]:g}", res.S)], res.names, f"{run.name} - mesh convergence"),
-                   self.tag + '_converge.png' if getattr(self, 'tag', '') else '_converge.png', 'converge',
-                   'mesh convergence')
-        self.summary(run)['convergence'] = dict(converged=ok, tol_db=tol_db, tol_deg=tol_deg,
-                                                levels=[dict(factor=f, cells=lm['info']['cells'], **d)
-                                                        for (f, lm), d in zip(p.levels, dev)])
-
     def solve(self, run, p):
         from .model import port_index
         from .run import run_excitations
@@ -453,7 +432,7 @@ class FDTD(Solver):
         progress = dict(mode='raw' if s.openems_output else 'bar', on_status=run.status if run.events else None)
         sigma, rough = self.copper(run)
         if s.sigma and getattr(s, 'rough', None):
-            run.log(f"{self.label}: --rough {s.rough:g} um " + (f"in its conducting sheets (Hammerstad, over the band)"
+            run.log(f"{self.label}: --rough {s.rough:g} um " + ("in its conducting sheets (Hammerstad, over the band)"
                     if rough else f"as sigma {sigma:.4g} S/m (Hammerstad at the band centre)"))
         ckw = self.copper_kw(run)
         run_kw = dict(end_db=s.end_db, end_on=s.end_on, sigma=sigma, rough=rough, copper_kw=ckw,
@@ -540,9 +519,23 @@ class FDTD(Solver):
         self.summary(run)['runs'] = runs
         if p.ant:
             self.antenna(run, p)
-
         if p.levels:                                                # --converge: the levels compared
-            self._convergence(run, p, res)
+            from .converge import compare_levels, verdict
+            from kicad2ems.core.api.solver import plot_convergence
+            tol_db, tol_deg = run.s.converge_tol
+            dev = compare_levels([S_ for _, S_ in p.coarse] + [res.S], res.names) + [{}]    # finest: the reference
+            lines, ok = verdict([f for f, _ in p.levels], dev[:-1], tol_db, tol_deg)
+            run.log("\n".join(lines))
+            if not ok:
+                run.log("WARNING: mesh not converged (see the convergence table)")
+            run.figure(plot_convergence(run.freq, [(f"x{f:g}", S_) for f, S_ in p.coarse] +
+                                        [(f"x{p.levels[-1][0]:g}", res.S)], res.names,
+                                        f"{run.name} - mesh convergence"),
+                       self.tag + '_converge.png', 'converge', 'mesh convergence')
+            self.summary(run)['convergence'] = dict(converged=ok, tol_db=tol_db, tol_deg=tol_deg,
+                                                    levels=[dict(factor=f, cells=lm['info']['cells'], **d)
+                                                            for (f, lm), d in zip(p.levels, dev)])
+
     def dump_outputs(self, run, p):
         """The field maps (PNG, and animations with --dump-animate) of the frequency-domain plane dumps, named with
         the tag beside another FDTD solver's."""

@@ -35,11 +35,6 @@ FIT_DROP = 0.15             # the lowest share of the band left out of the line'
 C0 = 299792458.0
 
 
-def _union(m, layer):
-    from shapely.ops import unary_union
-    return unary_union(m.copper.get(layer, []))
-
-
 def _width(g, pt, n, half):
     """The width across n of the copper piece of g through pt (0 where pt is not on copper)."""
     from shapely.geometry import LineString, Point
@@ -53,7 +48,8 @@ def _width(g, pt, n, half):
 def feed_length(m, p, upto):
     """How far (mm) the port's trace runs straight from the port along its direction at its width (within
     WIDTH_TOL), looked at up to `upto` mm."""
-    g = _union(m, p.layer)
+    from shapely.ops import unary_union
+    g = unary_union(m.copper.get(p.layer, []))
     d = np.zeros(2)
     d[p.axis] = p.sgn
     n = np.array([-d[1], d[0]])
@@ -145,23 +141,18 @@ def plan_ports(m, mesh, kind):
     return plan, notes
 
 
-def probe_box(pr):
-    """The probes' box (start, stop): from the port plane to their last plane along the feed, across the trace,
-    from the strip (start's z) to the reference copper (stop's)."""
-    a, b = pr['axis'], 1 - pr['axis']
-    s, e = np.zeros(3), np.zeros(3)
-    s[a], e[a] = pr['c'][a], pr['c'][a] + pr['sgn'] * pr['stop']
-    s[b], e[b] = pr['c'][b] - pr['w'] / 2, pr['c'][b] + pr['w'] / 2
-    s[2], e[2] = pr['z_sig'], pr['z_ref']
-    return s, e
-
-
 def add(FDTD, cu_props, plan):
     """The probes of every planned port, on its layer's own copper property (cu_props {layer: property}): the
-    port objects {index: port} (numbers past the lumped ports', names 'line_port_...')."""
+    port objects {index: port} (numbers past the lumped ports', names 'line_port_...'). Their box: from the port
+    plane to their last plane along the feed, across the trace, from the strip (start's z) to the reference copper
+    (stop's)."""
     out = {}
     for i, pr in sorted(plan.items()):
-        s, e = probe_box(pr)
+        a, b = pr['axis'], 1 - pr['axis']
+        s, e = np.zeros(3), np.zeros(3)
+        s[a], e[a] = pr['c'][a], pr['c'][a] + pr['sgn'] * pr['stop']
+        s[b], e[b] = pr['c'][b] - pr['w'] / 2, pr['c'][b] + pr['w'] / 2
+        s[2], e[2] = pr['z_sig'], pr['z_ref']
         out[i] = FDTD.AddMSLPort(1000 + i + 1, cu_props[pr['layer']], [float(v) for v in s], [float(v) for v in e],
                                  'xy'[pr['axis']], 'z', excite=0, MeasPlaneShift=float(pr['d']),
                                  PortNamePrefix='line_', priority=10)

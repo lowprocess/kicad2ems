@@ -10,6 +10,7 @@ copper is PEC, and --solvers auto gives --sigma runs to openEMS. --rough: the sh
 fit) from engine API 1.2 (ROUGH_API), else as the conductivity at the band centre, as openEMS. --converge: the
 FDTD layer's mesh levels, run on gfdtd.
 """
+import json
 import os
 
 from kicad2ems.core.api.solver import Option, AUTO
@@ -234,36 +235,33 @@ def _speed_path():
     return os.path.join(base, 'gfdtd', SPEED_FILE)
 
 
-def gpu_speeds(slots):
-    """{slot: M cell updates / s} as measured on earlier runs (by the GPU's name), None where never measured."""
-    import json
+def _gpu_names():
+    """{Vulkan adapter index: its name}; {} with a gfdtd that cannot list them."""
     try:
         from kicad2ems.gfdtd.engine import vulkan_gpus
-        names = dict(vulkan_gpus())
+        return dict(vulkan_gpus())
     except ImportError:
-        names = {}
+        return {}
+
+
+def _kept():
+    """The speeds measured so far, {GPU name: M cell updates / s}."""
     try:
         with open(_speed_path(), encoding='utf-8') as fh:
-            kept = json.load(fh)
+            return json.load(fh)
     except (OSError, ValueError):
-        kept = {}
+        return {}
+
+
+def gpu_speeds(slots):
+    """{slot: M cell updates / s} as measured on earlier runs (by the GPU's name), None where never measured."""
+    names, kept = _gpu_names(), _kept()
     return {k: kept.get(names.get(k, str(k))) for k in slots}
 
 
 def record_speed(slot, mcps):
     """A run's speed on GPU `slot`, kept by its name (the mean with what was kept, weighted 1:1)."""
-    import json
-    try:
-        from kicad2ems.gfdtd.engine import vulkan_gpus
-        name = dict(vulkan_gpus()).get(slot, str(slot))
-    except ImportError:
-        name = str(slot)
-    path = _speed_path()
-    try:
-        with open(path, encoding='utf-8') as fh:
-            kept = json.load(fh)
-    except (OSError, ValueError):
-        kept = {}
+    name, path, kept = _gpu_names().get(slot, str(slot)), _speed_path(), _kept()
     old = kept.get(name)
     kept[name] = round(float(mcps) if not old else 0.5 * (old + float(mcps)), 1)
     try:

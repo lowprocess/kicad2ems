@@ -107,10 +107,9 @@ def curve_lines(xy, fine, mode='extremes', step=None, boxes=None, inside=None):
     boxes: a list that gets (x0, y0, x1, y1) of each curved run longer than 4 fine and twice `step` (the
     copper's width): arcs, rings and fans, not the round end of a track or a pad's corner.
     inside: a test of (x, y): only the lines of points it passes (the ground copper within the signal zone)."""
-    if inside is not None:
-        allx, ally = _curve_points(xy, fine, mode, step, boxes)
-        return [p[0] for p in allx if inside(*p)], [p[1] for p in ally if inside(*p)]
     allx, ally = _curve_points(xy, fine, mode, step, boxes)
+    if inside is not None:
+        allx, ally = [p for p in allx if inside(*p)], [p for p in ally if inside(*p)]
     return [p[0] for p in allx], [p[1] for p in ally]
 
 
@@ -237,25 +236,6 @@ def _edge_lines(m, fine, curves, boxes=None, zone=None):
                                      inside=(lambda x, y: zp.contains(Point(x, y))) if cut else None)
                 fixed[0] += cx; fixed[1] += cy
     return fixed, third, third_in
-
-
-def _via_modes(m, vias):
-    """Mesh treatment per via: 'exact' / 'centre' / 'snap' ('auto': exact on signal nets, snap elsewhere)."""
-    sig = getattr(m, 'via_signal', [False] * len(m.vias))
-    return ['exact' if (vias == 'auto' and s_) else ('snap' if vias == 'auto' else vias) for s_ in sig]
-
-
-def _kept_lines(m):
-    """Lines kept exactly: the board outline, the port planes (the port width snaps to the edge lines)
-    and both ends of every lumped-part piece."""
-    ob = m.outline.bounds
-    keep = {0: [ob[0], ob[2]], 1: [ob[1], ob[3]]}
-    for p in m.ports:
-        keep[p.axis] += p.planes()
-    for pt in getattr(m, 'parts', []):
-        for _, _, _, s, e in pt.pieces():
-            keep[pt.axis] += [s[pt.axis], e[pt.axis]]
-    return keep
 
 
 def _snap_vias(m, mode, mesh_xy, via_snap):
@@ -418,13 +398,23 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4, bc=('MUR',) 
     boxes = []
     zg = signal_zone(m, None if zone is True else float(zone)) if zone is not False and zone is not None else None
     fixed, third, third_in = _edge_lines(m, fine, curves, boxes, zg)
-    mode = _via_modes(m, vias)
+    sig = getattr(m, 'via_signal', [False] * len(m.vias))
+    mode = [vias] * len(sig)                                        # each via 'exact' / 'centre' / 'snap'
+    if vias == 'auto':                                              # exact on signal nets, snap elsewhere
+        mode = ['exact' if s_ else 'snap' for s_ in sig]
     for (x, y, r, z0, z1), md in zip(m.vias, mode):
         if md == 'exact':
             fixed[0] += [x - r, x, x + r]; fixed[1] += [y - r, y, y + r]
         elif md == 'centre':
             fixed[0].append(x); fixed[1].append(y)
-    keep = _kept_lines(m)
+    # kept exactly: the board outline, the port planes (the port width snaps to the edge lines) and both ends of
+    # every lumped-part piece
+    keep = {0: [ob[0], ob[2]], 1: [ob[1], ob[3]]}
+    for p in m.ports:
+        keep[p.axis] += p.planes()
+    for pt in getattr(m, 'parts', []):
+        for _, _, _, s, e in pt.pieces():
+            keep[pt.axis] += [s[pt.axis], e[pt.axis]]
     for x0, y0, x1, y1, step in refine:                             # local refinement boxes
         fixed[0] += list(np.arange(min(x0, x1), max(x0, x1) + step / 2, step))
         fixed[1] += list(np.arange(min(y0, y1), max(y0, y1) + step / 2, step))
