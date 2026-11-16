@@ -66,8 +66,7 @@ kicad2ems needs Python 3.10 or newer.
 
 ```bash
 pip install .                   # kicad2ems: the board model and the line model
-pip install '.[openems,mom,gfdtd]'   # the full-wave solvers' packages (openems: the plugin; openEMS itself as below)
-pip install '.[gui,dumps,fast]' # the GUI, field dumps, the scikit-rf line model
+pip install '.[gui,fast]'       # the GUI, the scikit-rf line model
 pip install '.[all]'            # or all of the above
 python -m kicad2ems.mom25d.core.build     # mom25d's compiled core: needed, it holds the mesher
 python -m kicad2ems.pcbqs.core.build      # pcbqs's compiled core: needed, it holds the mesher

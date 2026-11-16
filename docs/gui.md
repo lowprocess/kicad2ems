@@ -89,10 +89,10 @@ board as it is now; *Results of* picks an earlier run.
 <a id="solvers"></a>
 ## Solvers
 
-The solvers are chosen on the **S-parameters** row of the Questions list: click its *Answered by* cell for a
-menu with a tick per solver, plus *auto*; plugin solvers appear too, with their own settings. After a preview,
-each full-wave solver's entry shows its estimate (`mom25d (MoM) · ~4 min, 1.3 GB`), and its tooltip says why
-one can't run here.
+The solvers are chosen on the **S-parameters** row of the Questions list: click
+its *Answered by* cell for a menu with a tick per solver, plus *auto*. After a
+preview, each full-wave solver's entry shows its estimate (`mom25d (MoM) · ~4
+min, 1.3 GB`), and its tooltip says why one can't run here.
 
 **?** beside *Solvers* (or *Help > Solvers and hardware*) opens the Solvers window: every solver with ✔ or ✖ and
 what it found, the CPU, the memory and the GPU, and the last preview's estimates. Its *Programs* box sets where
@@ -134,18 +134,22 @@ converter's near field, a circuit on the copper, capacitance) and *Thermal* (the
 | Fields | a tick where an engine can write field dumps. Ticked with none set, a default goes into the settings (an FDTD solver: E on the first port's layer at the band's centre; mom25d: its currents there; a circuit: its field maps), where you can change it. Unticked, the settings stay and the run leaves the dumps out |
 | State | queued, running, done, or why it did not start; per engine where there are several |
 
-The three RF questions are answered by the solvers, in one kicad2ems run: their menus tick the same solvers
-(*Antenna pattern* lists those that model one, and its tick is the run's antenna mode; *Trace impedances* the
-line model's). Every other engine is an analysis plugin (`kicad2ems[qs]`: pcbqs's power integrity, near field,
-circuit and thermal; `kicad2ems[fem]`: Elmer for a rail's drop and the temperature, Elmer and Palace for
-capacitance), found through kicad2ems's [registry](api.md#study-api); the window knows none by name. A question
-nobody installed answers is greyed, and its tooltip says how to install an engine.
+The three RF questions are answered by the solvers, in one kicad2ems run: their
+menus tick the same solvers (*Antenna pattern* lists those that model one, and
+its tick is the run's antenna mode; *Trace impedances* the line model's). Every
+other engine is an analysis (pcbqs's power integrity, near field, circuit and
+thermal; Elmer for a rail's drop and the temperature, Elmer and Palace for
+capacitance: those need the `fem` extra's gmsh), found through kicad2ems's
+[registry](api.md#study-api); the window knows none by name. A question no
+engine answers is greyed.
 
-Selecting a row shows its engines' settings in the Settings dock, each a panel made from the plugin's options (two
-engines: each under its name). **Run** makes the runs the questions take, in order: the solvers', then each
-analysis (the temperature after the circuit whose losses it takes); an engine that answers two questions
-answers them in one run. What a run leaves is shown where every result is: its maps in the Viewer (a rail's
-drop and current per layer, a board's temperature), its curves on the Plots page, its report and its tables on
+Selecting a row shows its engines' settings in the Settings dock, each a panel
+made from the analysis's options (two engines: each under its name). **Run**
+makes the runs the questions take, in order: the solvers', then each analysis
+(the temperature after the circuit whose losses it takes); an engine that
+answers two questions answers them in one run. What a run leaves is shown where
+every result is: its maps in the Viewer (a rail's drop and current per layer, a
+board's temperature), its curves on the Plots page, its report and its tables on
 theirs.
 
 <a id="pick"></a>

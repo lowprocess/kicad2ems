@@ -4,8 +4,9 @@
 
 ## The run pipeline
 
-`cli.main` reads the command line and the config into one `config.Settings`. `pipeline.Job` then runs the
-stages in order. Everything solver-specific goes through the solver's plugin.
+`cli.main` reads the command line and the config into one `config.Settings`.
+`pipeline.Job` then runs the stages in order. Everything solver-specific goes
+through the solver's class.
 
 ```mermaid
 flowchart LR
@@ -37,34 +38,43 @@ which prints them, keeps them for the report and sends them to `--events`; lines
 report's warning list. Lower-level functions take a `log` callable, so they can be used without a `Job`. Plots are
 matplotlib `Figure` objects without pyplot, so the GUI can embed them.
 
-<a id="solver-plugins"></a>
-## Solver plugins
+<a id="solvers"></a>
+## Solvers
 
-A solver is a subclass of `solvers.Solver`. Only the line solvers are built in (`solvers.BUILTIN`); the full-wave
-ones are packages that add theirs through the `kicad2ems.core.solvers` entry point: openEMS's and gfdtd's in
-[kicad2ems-fdtd](fdtd/README.md), on the FDTD layer they share; mom25d's and
-mixed's in mom25d. [APIs](api.md#solver-plugins) lists what a solver declares and implements, and the versions.
+A solver is a subclass of `solvers.Solver`, and `solvers.SOLVERS` lists every
+one by its module and class (imported on the first `registry()` call): the line
+solvers in `core/solvers/lines/`; openEMS's and gfdtd's in
+[kicad2ems.fdtd](fdtd/README.md), on the FDTD layer they share; mom25d's and
+mixed's in `kicad2ems.mom25d.solvers`; Palace's in `kicad2ems.fem`; pcbqs's in
+`kicad2ems.pcbqs.analyses`. [APIs](api.md#solvers) lists what a solver declares
+and implements.
 
-A plugin imports from `kicad2ems.core.api.solver` only; a program that drives kicad2ems (the GUI, the KiCad plugin,
-dfsynth) from `kicad2ems.core.api.frontend`. The rest of kicad2ems is private. A registered solver then appears in
-`--solvers`, `--check`, the config (`[solver.mysolver]`), the GUI (a section per option group), the Filter page and
-the KiCad plugin's menu. A plugin that fails to load is left out and listed by `--check`; a solver kicad2ems has an
-extra for (`solvers.EXTRAS`) but no package for says how to install it.
+A solver imports from `kicad2ems.core.api.solver` only; a program that drives
+kicad2ems (the GUI, the KiCad plugin, dfsynth) from
+`kicad2ems.core.api.frontend`. The rest of kicad2ems.core is the core's own. A
+listed solver then appears in `--solvers`, `--check`, the config
+(`[solver.mysolver]`), the GUI (a section per option group), the Filter page and
+the KiCad plugin's menu. One whose program or package is missing says what to
+install in its `check()`. The names, aliases and settings of the listed solvers
+are each one's own: `tests/core/test_registry_lists.py` holds them to that.
 
-In kicad2ems-fdtd, `plugin.FDTD` builds the mesh and the model, runs the excitations and writes the dumps and
-antenna results; `openems` and `gfdtd` subclass it, each naming its engine (`'<name>'` or `'<name>:<option>'` of
-`engines.ENGINES`, whose `api(option)` returns its `ContinuousStructure` and `openEMS` classes) and listing the shared
-settings (`MESH + RUN`) before its own. Solvers share a setting by listing the same `Option` object; a plugin that
-defines another of the same name is refused.
+In kicad2ems.fdtd, `solver.FDTD` builds the mesh and the model, runs the
+excitations and writes the dumps and antenna results; `openems` and `gfdtd`
+subclass it, each naming its engine (`'<name>'` or `'<name>:<option>'` of
+`engines.ENGINES`, whose `api(option)` returns its `ContinuousStructure` and
+`openEMS` classes) and listing the shared settings (`MESH + RUN`) before its
+own. Solvers share a setting by listing the same `Option` object; no two define
+one of the same name.
 
 **Parity.** A solver may approximate the board, but it must say so. `parity.check` compares the board with each
 solver's readback and lists any difference the solver didn't declare. The parity tests (kicad2ems-fdtd's
 `test_parity.py`, mom25d's `test_kicad2ems_parity.py`) require none on the examples. The declarations also make the
 report's *What each solver saw* table.
 
-**Settings as data.** Every setting is declared once, as an `options.Option`: the run's own in `config.CORE`, each
-solver's in its plugin. The settings class, the command-line options, the config reader and the GUI form are all
-built from these declarations.
+**Settings as data.** Every setting is declared once, as an `options.Option`:
+the run's own in `config.CORE`, each solver's in its class. The settings class,
+the command-line options, the config reader and the GUI form are all built from
+these declarations.
 
 <a id="choosing-solvers"></a>
 ## Choosing solvers (`auto`)
@@ -86,7 +96,8 @@ src/kicad2ems/
   events.py       --events
   starter.py      --init: a commented starter config with the ports found
   stop.py         stopping a run from outside it (the GUI's Stop): a STOP file in its folder
-  api/            the public API: solver (for solver plugins), frontend (for the GUI, the KiCad plugin, dfsynth)
+  api/            the core's API: solver (for the solvers), analysis (for the
+                  analyses), frontend (for the GUI, the KiCad plugin, dfsynth)
   sysinfo.py      what this machine can run (the GUI's Solvers window; python -m kicad2ems.core.sysinfo)
   sitecfg.py      where the external programs are: site.toml
   importers/      KiCad (kicad/) and Gerber readers
@@ -114,17 +125,20 @@ src/kicad2ems/
   runs.py         a run started by another program (the GUI, the KiCad plugin): TOML, command line, events, stop
 ```
 
-The window is [kicad2ems-gui](gui/README.md), a package of its own (the `gui`
-extra): its form is made from the option tables and the solver registry, and it starts each run as a `kicad2ems`
-process (`runs.py`), so it needs nothing of a solver's.
+The window is [kicad2ems.gui](gui/README.md) (the `gui` extra brings its
+packages): its form is made from the option tables and the solver registry, and
+it starts each run as a `kicad2ems` process (`runs.py`), so it needs nothing of
+a solver's.
 
-openEMS, CSXCAD, scikit-rf, h5py and the solver packages are imported **inside the functions that need them**. A
-plugin imports nothing heavy at module level, because the registry loads every plugin to build the settings; the
-tests rely on it, and so do runs without openEMS.
+openEMS, CSXCAD, scikit-rf, gmsh, CuPy, slangpy and the other optional packages
+are imported **inside the functions that need them**. A solver or an analysis
+imports nothing heavy at module level, because the registry loads every one to
+build the settings; the tests rely on it (`test_registry_lists.py` loads the
+registries with each optional package missing), and so do runs without openEMS.
 
-**One board for every solver.** No solver reads KiCad files. Each gets the `Board`, and mom25d reads
-`<name>_board.json` itself. Changes a solver makes, such as the FDTD mesh snapping vias to its lines, stay in its
-plugin.
+**One board for every solver.** No solver reads KiCad files. Each gets the
+`Board`, and mom25d reads `<name>_board.json` itself. Changes a solver makes,
+such as the FDTD mesh snapping vias to its lines, stay in its class.
 
 ## Main data structures
 

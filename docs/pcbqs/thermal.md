@@ -12,8 +12,10 @@ Elmer through kicad2ems-fem, and the two agree within 2 K on eleven boards (belo
     python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=2 --theta Q1=3 --air Q1=15    # a heatsink on Q1
     python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=2 --hold H1=40 --air-speed 1.5 --transient 1800
 
-In kicad2ems-gui it is the **Thermal** analysis (`kicad2ems.pcbqs.analyses.Thermal`, a kicad2ems analysis plugin): its form
-is its options table, and with no losses typed it takes the latest circuit run's, on that run's board.
+In kicad2ems-gui it is the **Thermal** analysis
+(`kicad2ems.pcbqs.analyses.Thermal`, a kicad2ems analysis): its form is its
+options table, and with no losses typed it takes the latest circuit run's, on
+that run's board.
 
 It writes `thermal.json` (each part's temperature, each layer's hottest and mean, heat in and out, the board and
 the circuit case they came from),

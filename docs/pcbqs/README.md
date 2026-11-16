@@ -21,16 +21,17 @@ python -m kicad2ems.pcbqs.circuit src/pcbqs/data/wpthb_bridge.json --out wpthb  
 JSON-based solving, layout/mesh export and field reconstruction work without
 `mom25d` or `kicad2ems`. Install `.[kicad2ems]` to import `.kicad_pcb` files.
 
-With kicad2ems installed the four tools are its analyses (`pcbqs/analyses.py`, the
-`kicad2ems.core.analyses` entry points) and `kicad2ems.pcbqs.sparams` one of its S-parameter solvers
-(`kicad2ems.core.solvers`: `--solvers pcbqs`): `kicad2ems --check` lists them, a config keeps a
-study's under `[analysis]`, and kicad2ems-gui builds each one's settings from its
-options table, runs it and shows what its result folder holds: the maps as field
-dumps in its Viewer, the report and the curves (`pcbqs/reports.py`) on its Results
-page. The circuit examples are configs beside their models
-(`circuit/examples/*.toml`), under its File > Examples > Circuits.
-Install ngspice separately for operational circuits. Component models and
-parasitics are explicit assumptions; footprints do not imply calibrated models.
+In kicad2ems the four tools are its analyses (`pcbqs/analyses.py`, listed in
+`kicad2ems.core.analyses.ANALYSES`) and `kicad2ems.pcbqs.sparams` one of its
+S-parameter solvers (`kicad2ems.core.solvers`: `--solvers pcbqs`): `kicad2ems
+--check` lists them, a config keeps a study's under `[analysis]`, and
+kicad2ems-gui builds each one's settings from its options table, runs it and
+shows what its result folder holds: the maps as field dumps in its Viewer, the
+report and the curves (`pcbqs/reports.py`) on its Results page. The circuit
+examples are configs beside their models (`circuit/examples/*.toml`), under its
+File > Examples > Circuits. Install ngspice separately for operational circuits.
+Component models and parasitics are explicit assumptions; footprints do not
+imply calibrated models.
 
 The compiled core is needed: it meshes (the constrained Delaunay triangulation of
 [CDT](https://github.com/artem-ogre/CDT), vendored in `src/kicad2ems/emsdev/native/CDT`) and holds the
@@ -40,7 +41,8 @@ fallbacks (`PCBQS_NO_CORE`); the mesher has none. CuPy GPU
 fill is optional: select a matching CUDA/ROCm extra and `--fill-backend cupy`.
 Execution controls use `PCBQS_FILL_BACKEND`, `PCBQS_FILL_THREADS`,
 `PCBQS_OMP_THREADS`, `PCBQS_NO_CORE` and `PCBQS_ARCH`; general OpenMP settings
-remain supported. Static-fill plugins use the `kicad2ems.pcbqs.static_backends` entry group.
+remain supported. Another static-fill backend is registered with
+`register_fill_backend`.
 
 - [Quasistatic guide](quasistatic.md)
 - [Low-frequency S-parameters](sparams.md): a board's ports from DC to a tenth of a wavelength, with the

@@ -13,9 +13,9 @@ python -m kicad2ems.pcbqs.sparams run/board_board.json --out lf       # a kicad2
 kicad2ems board.toml --solvers pcbqs --fmin 0.00001 --fmax 0.1 --sweep log     # as a kicad2ems solver (GHz)
 ```
 
-As a kicad2ems solver (`pcbqs`, also `qs`, `quasistatic`; installed with `kicad2ems[qs]`) it writes
-`<name>_pcbqs.sNp` beside the other solvers' files and is compared with them in the report. It is run only when
-named: `--solvers auto` and `all` leave it out.
+As a kicad2ems solver (`pcbqs`, also `qs`, `quasistatic`) it writes
+`<name>_pcbqs.sNp` beside the other solvers' files and is compared with them in
+the report. It is run only when named: `--solvers auto` and `all` leave it out.
 
 ## The model
 

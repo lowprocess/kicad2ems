@@ -63,11 +63,10 @@ res.f, res.S, res.names, res.zref                  # Hz, (nf, n, n), port names,
 ```
 
 DC/PDN, quasistatic fields and operational circuits now live in
-[pcbqs](../pcbqs/README.md), an independent package. Install
-`kicad2ems[qs]` for the integrated GUI workflow, or `pcbqs` directly. The former
-`kicad2ems.mom25d.pdn`, `kicad2ems.mom25d.mqs` and circuit namespaces have been removed; see
-[the migration guide](../pcbqs/migration.md).
-MoM's RF API, shared numerical implementation and native core are unchanged.
+[pcbqs](../pcbqs/README.md), installed with kicad2ems. The former
+`kicad2ems.mom25d.pdn`, `kicad2ems.mom25d.mqs` and circuit namespaces have been
+removed; see [the migration guide](../pcbqs/migration.md). MoM's RF API, shared
+numerical implementation and native core are unchanged.
 
 `solve_board` builds the model, meshes it and runs an adaptive frequency sweep; its docstring lists the options
 (cell size, port kind, mixed-mode pairs, conductor loss, the compiled core). The steps it
@@ -104,7 +103,7 @@ f, S, info = solve_band(sim, 1e9, 6e9, points=101, zref=m.port_z0)
 | `afs.py`, `run.py` | the adaptive frequency sweep (its fit is emsdev's `kicad2ems.emsdev.afs`, which pcbqs shares) |
 | `farfield.py` | far and near fields from the currents |
 | `core/` | the compiled C++ kernels |
-| `kicad2ems/` | kicad2ems's solver plugins, `mom25d` and `mixed` (the `kicad2ems.core.solvers` entry points; only kicad2ems imports them) |
+| `solvers/` | kicad2ems's solvers `mom25d` and `mixed` (listed in `kicad2ems.core.solvers.SOLVERS`; only kicad2ems imports them) |
 
 The formulation is a mixed-potential integral equation with RWG basis functions. Layered-media kernels
 come from a spectral transmission-line network. The singular terms are integrated analytically.

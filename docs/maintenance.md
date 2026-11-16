@@ -58,29 +58,33 @@ efficiency), while S11 looked fine. Antenna runs therefore extend the excitation
 
 ## Adding an option
 
-Every setting is declared once, as an `options.Option`: the run's own in `config.CORE`, each solver's in
-its plugin ([architecture](architecture.md#solver-plugins)).
+Every setting is declared once, as an `options.Option`: the run's own in
+`config.CORE`, each solver's in its class
+([architecture](architecture.md#solvers)).
 
 1. Add the `Option` to the right list, with its default, help text, type, and any of: choices, a
    converter, `path=True` for paths, a short name for the solver table, a GUI label and a group. The
    settings field, command-line option, config key and GUI field all follow from it.
 2. Use it as `s.<key>` where it's needed. Pass plain values to lower-level functions, not the `Settings`.
-   Settings that can't be combined go in the plugin's `validate`.
+   Settings that can't be combined go in the solver's `validate`.
 3. Put anything it produces into `Job.summary` and, if useful, the report.
 4. Document it in `docs/usage.md` and test it.
 
 ## Adding a solver
 
-A solver is a plugin ([architecture](architecture.md#solver-plugins)). It gets the `Board`, or the line
-model with `consumes = 'network'`, and returns a `solvers.Result` with S-parameters for the board's ports.
+A solver is a `solvers.Solver` subclass
+([architecture](architecture.md#solvers)). It gets the `Board`, or the line
+model with `consumes = 'network'`, and returns a `solvers.Result` with
+S-parameters for the board's ports.
 
 1. Declare `name`, `aliases`, `label`, `consumes`, `rank`, `capabilities` and `options`. Implement
    `check()`, which should say how to fix a problem, and `solve()`. Implement `validate()`, `assess()`,
    `prepare()`, `outputs()` and `estimate()` where they apply.
 2. Declare what it changes from the board in `deviations()`, read its model back in `readback()`, and test
    it with `parity.check` as kicad2ems-fdtd's and mom25d's parity tests do.
-3. Register it in `solvers.BUILTIN`, or as an entry point in its own package. Nothing else needs to
-   change; the pipeline, report and GUI pick it up.
+3. List it in `solvers.SOLVERS` (`'module:Class'`). Nothing else needs to
+   change; the pipeline, report and GUI pick it up, and
+   `tests/core/test_registry_lists.py` checks its names and settings.
 4. Add it to the solver table in `docs/usage.md`.
 
 ## Conventions
@@ -96,8 +100,8 @@ As on the [index](index.md#conventions), and:
 
 ## Before committing
 
-1. `tools/test_all.sh` (or `python -m pytest -q` for kicad2ems alone; the solver packages' suites test their
-   plugins against this checkout)
+1. `tools/test_all.sh` (or `python tools/test_all.py core` for the core
+   alone)
 2. `kicad2ems examples/<config>.toml --preview` for the examples your change touches.
 3. A real run of an affected example when the solver setup, model or mesh changed
    ([testing](testing.md#checking-against-openems)).
