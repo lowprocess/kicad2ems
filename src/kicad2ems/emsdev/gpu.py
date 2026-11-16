@@ -52,7 +52,7 @@ class Device:
 
 
 def _name(v, default='GPU'):
-    v = v if v else default
+    v = v or default
     return v.decode() if isinstance(v, bytes) else str(v)
 
 
@@ -93,14 +93,6 @@ def vulkan_device(index=None, need=()):
         raise Unavailable(str(e))
 
 
-def _count(library):
-    if library == 'vulkan':
-        from . import vulkan
-        return len(vulkan.adapters())
-    import cupy
-    return cupy.cuda.runtime.getDeviceCount()
-
-
 def probe(libraries=LIBRARIES):
     """(devices, why): every device of each library, and what kept a library from giving any."""
     out, why = [], []
@@ -113,7 +105,12 @@ def probe(libraries=LIBRARIES):
             continue
         out.append(first)
         try:
-            n = _count(lib)
+            if lib == 'vulkan':
+                from . import vulkan
+                n = len(vulkan.adapters())
+            else:
+                import cupy
+                n = cupy.cuda.runtime.getDeviceCount()
         except Exception:
             n = 1
         for i in range(1, n):
