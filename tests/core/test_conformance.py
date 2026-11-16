@@ -68,8 +68,8 @@ def thru(tmp_path_factory):
 def installed(solver):
     """(usable, what) of a real solver, asked of a kicad2ems in a process of its
     own (this one has the stand-ins)."""
-    code = ("from kicad2ems.core.solvers import get\nok, what = get(%r).check()\n"
-            "print('ok' if ok else what)" % solver)
+    code = ("from kicad2ems.core.solvers import get\n"
+            "ok, what = get(%r).check()\nprint('ok' if ok else what)" % solver)
     p = subprocess.run([sys.executable, '-c', code], capture_output=True,
                        text=True)
     out = (p.stdout.strip().splitlines()[-1]
