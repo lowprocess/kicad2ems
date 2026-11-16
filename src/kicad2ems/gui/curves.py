@@ -41,10 +41,6 @@ class CurveSet:
     info: str = ''                  # one line about the run, for the page's head
 
 
-def _ohm(z):
-    return f"{z:.3g} Ω" if z >= 1 else f"{z * 1e3:.3g} mΩ"
-
-
 def run_label(folder):
     """A run's short name: what it solved and when (<board>_pdn_P_20261111_013136: 'P, 11-11 01:31:36'), else
     its folder's name."""
@@ -58,12 +54,10 @@ def run_label(folder):
 
 def curve_set(d, kind, folder=''):
     """A curve set as an analysis gives it (a dict: Analysis.curves) as a CurveSet."""
-    cs = CurveSet(kind, d.get('title', ''), d.get('xlabel', ''), d.get('ylabel', ''), logx=bool(d.get('logx', True)),
-                  logy=bool(d.get('logy', True)), folder=folder, label=run_label(folder), info=d.get('info', ''))
-    for c in d.get('curves', []):
-        cs.curves.append(Curve(str(c['name']), np.asarray(c['x'], float), np.asarray(c['y'], float),
-                               c.get('role', 'data'), c.get('unit', '')))
-    return cs
+    return CurveSet(kind, d.get('title', ''), d.get('xlabel', ''), d.get('ylabel', ''),
+                    [Curve(str(c['name']), np.asarray(c['x'], float), np.asarray(c['y'], float), c.get('role', 'data'),
+                           c.get('unit', '')) for c in d.get('curves', [])],
+                    bool(d.get('logx', True)), bool(d.get('logy', True)), folder, run_label(folder), d.get('info', ''))
 
 
 def load_sets(folder):
@@ -105,7 +99,7 @@ def fmt(v, unit=''):
     if v is None:
         return ''
     if unit == 'Ω':
-        return _ohm(v)
+        return f"{v:.3g} Ω" if v >= 1 else f"{v * 1e3:.3g} mΩ"
     return f"{v:.4g}" + (f" {unit}" if unit else '')
 
 

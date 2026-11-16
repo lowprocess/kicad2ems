@@ -18,11 +18,6 @@ KEYS = ('board', 'questions', 'setup', 'run', 'results')
 ACCENT, DONE, TODO = '#2f7fd6', '#2e9d5b', '#8a8f98'
 
 
-def _cut(text, n=46):
-    text = ' '.join(str(text).split())
-    return text if len(text) <= n else text[:n - 1].rstrip() + '…'
-
-
 def steps_of(win):
     """Where a window's study stands, step by step (no Qt in what it returns)."""
     values = win.setup.values()
@@ -61,7 +56,8 @@ def steps_of(win):
     now = next((s['key'] for s in out if not s['done']), None)
     for s in out:
         s['state'] = 'done' if s.pop('done') else ('now' if s['key'] == now else 'todo')
-        s['text'] = _cut(s['text'])
+        text = ' '.join(str(s['text']).split())                    # one line, at most 46 characters
+        s['text'] = text if len(text) <= 46 else text[:45].rstrip() + '…'
     return out
 
 
@@ -76,8 +72,7 @@ class _Step(QFrame):
         v = QVBoxLayout(self)
         v.setContentsMargins(12, 2, 12, 2)
         v.setSpacing(0)
-        self.head, self.text = QLabel(), QLabel()
-        self.text.setStyleSheet('color: gray; font-size: 11px;')
+        self.head, self.text = QLabel(), QLabel(styleSheet='color: gray; font-size: 11px;')
         v.addWidget(self.head)
         v.addWidget(self.text)
 

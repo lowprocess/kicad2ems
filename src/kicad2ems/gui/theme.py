@@ -64,9 +64,8 @@ def restyle(w, c=None):
     except AttributeError:
         return
     for ax in pi.axes.values():
-        item = ax['item']
-        item.setPen(c['fg'])
-        item.setTextPen(c['fg'])
+        ax['item'].setPen(c['fg'])
+        ax['item'].setTextPen(c['fg'])
     t = pi.titleLabel
     if t.text:
         t.setText(t.text, color=c['fg'])
@@ -80,6 +79,7 @@ def restyle(w, c=None):
 def apply():
     """The theme's colours as pyqtgraph's defaults (for plots still to come), on every plot widget open and to
     each widget with a restyle() of its own; and, once there is an application, follow the desktop's scheme."""
+    global _watching
     import pyqtgraph as pg
     c = colors()
     pg.setConfigOptions(background=c['bg'], foreground=c['fg'])
@@ -90,23 +90,15 @@ def apply():
     app = QApplication.instance()
     if app is None:
         return c
-    _watch(app)
+    if not _watching:                       # restyle when the desktop's colour scheme changes (what 'system' follows)
+        _watching = True
+        try:
+            app.styleHints().colorSchemeChanged.connect(lambda *_: _choice == 'system' and apply())
+        except AttributeError:                                      # Qt before 6.5
+            pass
     for w in app.allWidgets():
         if isinstance(w, pg.PlotWidget):
             restyle(w, c)
-        own = getattr(w, 'restyle', None)
-        if callable(own) and not isinstance(w, pg.PlotWidget):
-            own()
+        elif callable(getattr(w, 'restyle', None)):
+            w.restyle()
     return c
-
-
-def _watch(app):
-    """Restyle when the desktop's colour scheme changes (only what 'system' follows)."""
-    global _watching
-    if _watching:
-        return
-    _watching = True
-    try:
-        app.styleHints().colorSchemeChanged.connect(lambda *_: _choice == 'system' and apply())
-    except AttributeError:                                          # Qt before 6.5
-        pass

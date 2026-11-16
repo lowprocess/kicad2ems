@@ -89,8 +89,6 @@ def tool_titles():
     return {name: a.label for name, a in analyses().items()}
 
 
-
-
 def tool_kind(folder):
     """The analysis ('pdn', 'thermal' ...) whose finished result the folder holds, else None (a preview's too)."""
     from kicad2ems.core.api.frontend import analysis_of
@@ -103,25 +101,22 @@ def tool_runs(base, board):
     newest first: [(folder, kind, label)], label what was solved (the rail, the converter) and when. Under base:
     a folder per run; beside the board: the single pdn_<rail> / mqs_<converter> folders those tools wrote to
     before."""
-    name = board_name(board)
-    out = []
-    TOOL_TITLES = tool_titles()
-    if not TOOL_TITLES:
-        return out
-    pat = re.compile(re.escape(name) + r'_(' + '|'.join(map(re.escape, TOOL_TITLES)) + r')_(.+)_(\d{8}_\d{6})$')
+    name, titles, found = board_name(board), tool_titles(), []    # found: (when, folder, kind, what it solved)
+    if not titles:
+        return []
+    pat = re.compile(re.escape(name) + r'_(' + '|'.join(map(re.escape, titles)) + r')_(.+)_(\d{8}_\d{6})$')
     for d in glob.glob(os.path.join(base, f"{glob.escape(name)}_*")):
         m = pat.match(os.path.basename(d))
         if m and tool_kind(d) == m.group(1):
-            when = datetime.datetime.strptime(m.group(3), STAMP)
-            out.append((when, d, m.group(1), f"{TOOL_TITLES[m.group(1)]}: {m.group(2)}, {when:%Y-%m-%d %H:%M:%S}"))
+            found.append((datetime.datetime.strptime(m.group(3), STAMP), d, m.group(1), m.group(2)))
     beside = os.path.dirname(os.path.abspath(board)) if board else None
-    for kind in TOOL_TITLES if beside else ():
+    for kind in titles if beside else ():
         for d in glob.glob(os.path.join(glob.escape(beside), f"{kind}_*")):
-            if tool_kind(d) != kind:
-                continue
-            when = datetime.datetime.fromtimestamp(os.path.getmtime(d))
-            out.append((when, d, kind, f"{TOOL_TITLES[kind]}: {os.path.basename(d)[len(kind) + 1:]}, {when:%Y-%m-%d %H:%M:%S}"))
-    tools = list(TOOL_TITLES)
+            if tool_kind(d) == kind:
+                found.append((datetime.datetime.fromtimestamp(os.path.getmtime(d)), d, kind,
+                              os.path.basename(d)[len(kind) + 1:]))
+    out = [(when, d, kind, f"{titles[kind]}: {what}, {when:%Y-%m-%d %H:%M:%S}") for when, d, kind, what in found]
+    tools = list(titles)
     out.sort(key=lambda r: (tools.index(r[2]), r[3]))                   # runs of one moment: in the tools' order
     out.sort(key=lambda r: r[0], reverse=True)                          # newest first (a stable sort keeps the rest)
     return [(d, kind, label) for _when, d, kind, label in out]
