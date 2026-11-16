@@ -1,11 +1,13 @@
 # kicad2ems example: 100 ohm differential pair through two vias, 4 layers
-board   = "rf_diffvia.kicad_pcb"   # paths are relative to this file (python examples/make_rf_examples.py diffvia)
+# paths are relative to this file (python examples/make_rf_examples.py diffvia)
+board   = "rf_diffvia.kicad_pcb"
 ground  = "B.Cu"
 fmin    = 1.0           # GHz
 fmax    = 10.0
 points  = 301
 out     = "out"
-fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+# line model (qucsator if installed, else scikit-rf), compared in the report
+fast    = "auto"
 
 [solver.openems]
 excite  = ["P1+", "P1-"]

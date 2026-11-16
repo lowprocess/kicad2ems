@@ -1,6 +1,8 @@
-# kicad2ems example: mushroom EBG under a microstrip, 4 layers: a 50 ohm line on F.Cu over 3 x 6 patches (5 mm, 0.1 mm gaps) on
-# In1.Cu, each via'd to the B.Cu ground 1.6 mm below
-#   python examples/make_rf_examples.py ebg examples/rf_ebg     # make the board first (it is not in the repository)
+# kicad2ems example: mushroom EBG under a microstrip, 4 layers:
+# a 50 ohm line on F.Cu over 3 x 6 patches (5 mm, 0.1 mm gaps) on In1.Cu, each
+# via'd to the B.Cu ground 1.6 mm below
+#   # make the board first (it is not in the repository)
+#   python examples/make_rf_examples.py ebg examples/rf_ebg
 #   kicad2ems examples/rf_ebg.toml --preview
 #   kicad2ems examples/rf_ebg.toml
 board   = "rf_ebg.kicad_pcb"   # paths are relative to this file
@@ -9,8 +11,11 @@ fmin    = 1           # GHz
 fmax    = 8
 points  = 401
 out     = "out"
-fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+# line model (qucsator if installed, else scikit-rf), compared in the report
+fast    = "auto"
 
 [solver.openems]
 excite  = ["P1"]
-diel    = "wideband"   # Debye FR-4: the default fixed conductivity overstates the loss far below the band centre
+# Debye FR-4: the default fixed conductivity overstates the loss far
+# below the band centre
+diel    = "wideband"

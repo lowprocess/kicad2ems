@@ -1,6 +1,10 @@
-# pcbqs circuit example: a 50 Hz sine through four diodes into a capacitor and a load drawing constant power
-#   python -m kicad2ems.pcbqs.circuit 03_bridge_rectifier.json --out out/bridge_rectifier      # the circuit alone, from the command line
-#   kicad2ems-gui: File > Examples > Circuits                     # the circuit on its board, in the window
+# pcbqs circuit example: a 50 Hz sine through four diodes into a capacitor and a
+# load drawing constant power
+#   # the circuit alone, from the command line
+#   python -m kicad2ems.pcbqs.circuit 03_bridge_rectifier.json \
+#       --out out/bridge_rectifier
+#   # the circuit on its board, in the window
+#   kicad2ems-gui: File > Examples > Circuits
 board = "03_bridge_rectifier.kicad_pcb"   # paths are relative to this file
 out   = "out"
 
@@ -8,4 +12,5 @@ out   = "out"
 run = ["circuit"]   # a Run of the window: the circuit (no S-parameters)
 
 [analysis.circuit]
-model = "03_bridge_rectifier.json"       # the parts, nodes and drives: the Circuit page's schematic
+# the parts, nodes and drives: the Circuit page's schematic
+model = "03_bridge_rectifier.json"

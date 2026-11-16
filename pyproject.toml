@@ -5,7 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kicad2ems"
 dynamic = ["version"]
-description = "KiCad boards as electromagnetic, power-integrity, circuit and thermal simulations: a transmission-line model, openEMS and gfdtd (3D FDTD), mom25d (2.5D MoM), pcbqs (PDN, quasistatics, circuits), Palace and Elmer (FEM), and a window"
+description = """\
+    KiCad boards as electromagnetic, power-integrity, circuit and thermal \
+    simulations: a transmission-line model, openEMS and gfdtd (3D FDTD), \
+    mom25d (2.5D MoM), pcbqs (PDN, quasistatics, circuits), Palace and Elmer \
+    (FEM), and a window"""
 readme = "README.md"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
@@ -15,51 +19,68 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
 ]
 authors = [{ name = "Claude" }, { name = "lowprocess" }]
-# one distribution: every part of the stack is a subpackage of kicad2ems (kicad2ems.core, .gui, .fdtd, .gfdtd, .mom25d,
-# .pcbqs, .fem, .dfsynth, .ipc, .emsdev), so nothing here names another part by revision. The extras are the
+# one distribution: every part of the stack is a subpackage of kicad2ems
+# (kicad2ems.core, .gui, .fdtd, .gfdtd, .mom25d, .pcbqs, .fem, .dfsynth, .ipc,
+# .emsdev), so nothing here names another part by revision. The extras are the
 # third-party packages a part needs beyond these
 dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
     "shapely>=2.0",
     "matplotlib>=3.7",
-    "threadpoolctl>=3.1",          # mom25d, pcbqs: the LU's BLAS threads on the fast cores
+    # mom25d, pcbqs: the LU's BLAS threads on the fast cores
+    "threadpoolctl>=3.1",
     "pillow>=9",                   # pcbqs's reports, the window's saved frames
-    "h5py>=3",                     # frequency-domain field dumps, gfdtd's NF2FF results
+    # frequency-domain field dumps, gfdtd's NF2FF results
+    "h5py>=3",
     "tomli>=2; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
-fast = ["scikit-rf>=1.0"]          # --fast skrf: the line model as S-parameters (qucsator: a separate program)
-gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "PyOpenGL>=3.1"]     # the window (kicad2ems.gui)
-fem = ["gmsh>=4.11"]               # Palace and Elmer behind kicad2ems (kicad2ems.fem); the programs come from elsewhere
-core = ["pybind11>=2.10",          # the compiled cores, built here: python -m kicad2ems.mom25d.core.build (and
-        "setuptools>=61; sys_platform == 'win32'"]   # .pcbqs, .gfdtd); Windows: setuptools finds MSVC
-plugin = ["kicad-python>=0.5"]     # the KiCad plugin's IPC client (kicad2ems.ipc)
-# the GPU: slangpy (gpu-vulkan), the default on any GPU, or the CuPy wheel built for your GPU stack (they conflict:
-# install one). The CUDA wheels need the NVIDIA driver; the ROCm wheel the ROCm 7 runtime
+# --fast skrf: the line model as S-parameters (qucsator: a separate program)
+fast = ["scikit-rf>=1.0"]
+# the window (kicad2ems.gui)
+gui = ["PySide6-Essentials>=6.5", "pyqtgraph>=0.13", "PyOpenGL>=3.1"]
+# Palace and Elmer behind kicad2ems (kicad2ems.fem); the programs
+# come from elsewhere
+fem = ["gmsh>=4.11"]
+# the compiled cores, built here: python -m kicad2ems.mom25d.core.build (and
+# .pcbqs, .gfdtd); Windows: setuptools finds MSVC
+core = ["pybind11>=2.10", "setuptools>=61; sys_platform == 'win32'"]
+# the KiCad plugin's IPC client (kicad2ems.ipc)
+plugin = ["kicad-python>=0.5"]
+# the GPU: slangpy (gpu-vulkan), the default on any GPU, or the CuPy wheel built
+# for your GPU stack (they conflict: install one). The CUDA wheels need the
+# NVIDIA driver; the ROCm wheel the ROCm 7 runtime
 gpu-cuda12 = ["cupy-cuda12x>=14"]   # NVIDIA, CUDA 12.x driver
 gpu-cuda13 = ["cupy-cuda13x>=14"]   # NVIDIA, CUDA 13.x driver
 gpu-rocm7 = ["cupy-rocm-7-0>=14"]   # AMD, ROCm 7.0
-gpu-vulkan = ["slangpy>=0.43"]      # any GPU with a Vulkan driver, Windows or Linux
-all = ["kicad2ems[fast,gui,fem,core]"]         # everything but a GPU wheel (one of the gpu-* extras)
+# any GPU with a Vulkan driver, Windows or Linux
+gpu-vulkan = ["slangpy>=0.43"]
+# everything but a GPU wheel (one of the gpu-* extras)
+all = ["kicad2ems[fast,gui,fem,core]"]
 test = ["pytest>=7", "pytest-xdist>=3", "scikit-rf>=1.0"]
-# the parts that were packages of their own until 0.4: their extras are still accepted, and bring nothing
+# the parts that were packages of their own until 0.4: their extras are still
+# accepted, and bring nothing
 dumps = []
 mom = []
 qs = []
 gfdtd = []
 openems = []
 filter = []
-# openEMS and CSXCAD are not on PyPI: install them from your distribution or build them (tools/build_openems.sh)
+# openEMS and CSXCAD are not on PyPI: install them from your distribution or
+# build them (tools/build_openems.sh)
 
 [project.scripts]
 kicad2ems = "kicad2ems.core.cli:main"
-kicad2openems = "kicad2ems.core.cli:main_openems"     # the old name: openEMS unless --solvers says otherwise
-kicad2ems-z0 = "kicad2ems.core.lines.calc:main"       # a stack-up's impedance, without a board
+# the old name: openEMS unless --solvers says otherwise
+kicad2openems = "kicad2ems.core.cli:main_openems"
+# a stack-up's impedance, without a board
+kicad2ems-z0 = "kicad2ems.core.lines.calc:main"
 kicad2ems-gui = "kicad2ems.gui:main"
 kicad2openems-gui = "kicad2ems.gui:main"              # the old name
-gfdtd = "kicad2ems.gfdtd.fdtd:main"                   # run an openEMS XML file, as `openEMS model.xml`
+# run an openEMS XML file, as `openEMS model.xml`
+gfdtd = "kicad2ems.gfdtd.fdtd:main"
 dfsynth = "kicad2ems.dfsynth.cli:main"
 kicad2ems-fem-dc = "kicad2ems.fem.elmer.dc:main"
 kicad2ems-fem-cap = "kicad2ems.fem.palace.cap:main"
@@ -67,7 +88,8 @@ kicad2ems-fem-cap-elmer = "kicad2ems.fem.elmer.cap:main"
 kicad2ems-fem-thermal = "kicad2ems.fem.elmer.thermal:main"
 kicad2ems-fem-mag = "kicad2ems.fem.elmer.mag:main"
 
-# the solvers and analyses, found as any other package's would be (kicad2ems.core.solvers, kicad2ems.core.study)
+# the solvers and analyses, found as any other package's would be
+# (kicad2ems.core.solvers, kicad2ems.core.study)
 [project.entry-points."kicad2ems.solvers"]
 openems = "kicad2ems.fdtd.openems.plugin:OpenEMS"
 gfdtd = "kicad2ems.fdtd.gfdtd:GFDTD"
@@ -92,31 +114,43 @@ palace_pdn = "kicad2ems.fem.analyses:PalacePDN"
 [tool.setuptools.dynamic]
 version = {attr = "kicad2ems.__version__"}
 
-# the packages: every one under src/ (setup.py finds them), and kicad2ems.examples, which is examples/ here (the
-# configs, the generators, the boards in the repository; not reference/)
+# the packages: every one under src/ (setup.py finds them), and
+# kicad2ems.examples, which is examples/ here (the configs, the generators, the
+# boards in the repository; not reference/)
 [tool.setuptools]
-include-package-data = false                                    # only what package-data names (not every file here)
+# only what package-data names (not every file here)
+include-package-data = false
 
 [tool.setuptools.package-data]
-"kicad2ems.examples" = ["*.toml", "hairpin.kicad_pcb", "hairpin-top.pos", "rf_interdig.kicad_pcb",       # the boards
-                        "rf_interdig.kicad_pro", "rf_interdig-all.pos", "sma_launch.kicad_pcb",       # in the repository:
-                        "sma_launch.kicad_pro", "sma_launch-all.pos"]                                 # the others are made
-"kicad2ems.ipc" = ["plugin/*"]                               # what KiCad gets: plugin.json, the launcher, the icons
-"kicad2ems.gui" = ["*.svg", "*.ico"]                            # the window's and the launcher's icon, the wand
-"kicad2ems.gfdtd.core" = ["*.cpp", "*.h"]                       # the update code (GPU kernels and CPU core)
-"kicad2ems.mom25d.core" = ["*.cpp"]                             # the core's source (it meshes: emsdev/native)
+# the boards in the repository: the others are made
+"kicad2ems.examples" = ["*.toml", "hairpin.kicad_pcb", "hairpin-top.pos",
+                        "rf_interdig.kicad_pcb", "rf_interdig.kicad_pro",
+                        "rf_interdig-all.pos", "sma_launch.kicad_pcb",
+                        "sma_launch.kicad_pro", "sma_launch-all.pos"]
+# what KiCad gets: plugin.json, the launcher, the icons
+"kicad2ems.ipc" = ["plugin/*"]
+# the window's and the launcher's icon, the wand
+"kicad2ems.gui" = ["*.svg", "*.ico"]
+# the update code (GPU kernels and CPU core)
+"kicad2ems.gfdtd.core" = ["*.cpp", "*.h"]
+# the core's source (it meshes: emsdev/native)
+"kicad2ems.mom25d.core" = ["*.cpp"]
 "kicad2ems.pcbqs" = ["data/*.json", "data/*.toml", "circuit/examples/*.json",
-                     "circuit/examples/*.kicad_pcb", "circuit/examples/*.toml", "PROVENANCE.json"]
+                     "circuit/examples/*.kicad_pcb", "circuit/examples/*.toml",
+                     "PROVENANCE.json"]
 "kicad2ems.pcbqs.core" = ["*.cpp", "*.hpp"]
-"kicad2ems.emsdev" = ["native/*.hpp", "native/CDT/*"]           # what both cores include: the mesher's CDT
+# what both cores include: the mesher's CDT
+"kicad2ems.emsdev" = ["native/*.hpp", "native/CDT/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--import-mode=importlib"     # tests/<part>/: the parts' test files share names
+# tests/<part>/: the parts' test files share names
+addopts = "--import-mode=importlib"
 markers = ["slow: long solver runs"]
 
-# a core built in this tree (python -m kicad2ems.<part>.core.build) is for this Python and machine: never in a wheel
-# (the wheels are py3-none-any until each platform's are built with their cores)
+# a core built in this tree (python -m kicad2ems.<part>.core.build) is for this
+# Python and machine: never in a wheel (the wheels are py3-none-any until each
+# platform's are built with their cores)
 [tool.setuptools.exclude-package-data]
 "*" = ["*.so", "*.pyd", "*.dll"]
 

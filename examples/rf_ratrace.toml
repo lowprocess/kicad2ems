@@ -1,12 +1,16 @@
 # kicad2ems example: 180 degree hybrid ring (rat-race), 2.4 GHz, 0.8 mm FR-4
-board   = "rf_ratrace.kicad_pcb"   # paths are relative to this file (python examples/make_rf_examples.py ratrace)
+# paths are relative to this file (python examples/make_rf_examples.py ratrace)
+board   = "rf_ratrace.kicad_pcb"
 ground  = "B.Cu"
 fmin    = 1.0           # GHz
 fmax    = 4.0
 points  = 301
 out     = "out"
-fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+# line model (qucsator if installed, else scikit-rf), compared in the report
+fast    = "auto"
 
 [solver.openems]
-curve_res = 12   # cells along the ring: the reference's (the isolation null converges near 2.30 GHz by 36)
+# cells along the ring: the reference's (the isolation null converges
+# near 2.30 GHz by 36)
+curve_res = 12
 excite  = ["P1"]

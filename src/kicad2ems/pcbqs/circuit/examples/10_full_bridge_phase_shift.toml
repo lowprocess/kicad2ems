@@ -1,11 +1,19 @@
-# pcbqs circuit example: two legs on two drives; the second leg's phase is adjusted until the receiver's load takes 10 W
-#   python -m kicad2ems.pcbqs.circuit 10_full_bridge_phase_shift.json --out out/full_bridge_phase_shift      # the circuit alone, from the command line
-#   kicad2ems-gui: File > Examples > Circuits                     # the circuit on its board, in the window
-board = "10_full_bridge_phase_shift.kicad_pcb"   # paths are relative to this file
+# pcbqs circuit example: two legs on two drives; the second leg's phase is
+# adjusted until the receiver's load takes 10 W
+#   # the circuit alone, from the command line
+#   python -m kicad2ems.pcbqs.circuit 10_full_bridge_phase_shift.json \
+#       --out out/full_bridge_phase_shift
+#   # the circuit on its board, in the window
+#   kicad2ems-gui: File > Examples > Circuits
+# paths are relative to this file
+board = "10_full_bridge_phase_shift.kicad_pcb"
 out   = "out"
 
 [analysis]
-run = ["circuit", "thermal"]   # a Run of the window: the circuit, then the board's temperature from its losses (no S-parameters)
+# a Run of the window: the circuit, then the board's temperature from its losses
+# (no S-parameters)
+run = ["circuit", "thermal"]
 
 [analysis.circuit]
-model = "10_full_bridge_phase_shift.json"       # the parts, nodes and drives: the Circuit page's schematic
+# the parts, nodes and drives: the Circuit page's schematic
+model = "10_full_bridge_phase_shift.json"

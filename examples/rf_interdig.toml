@@ -1,7 +1,9 @@
-# kicad2ems run configuration for the interdigital band-pass filter board (rf_interdig)
+# kicad2ems run configuration for the interdigital band-pass filter board
+# (rf_interdig)
 #   kicad2ems examples/rf_interdig.toml --preview
 #   kicad2ems examples/rf_interdig.toml
-# Reference result: examples/reference/rf_interdig_openems.s2p (use with --compare)
+# Reference result: examples/reference/rf_interdig_openems.s2p
+# (use with --compare)
 board   = "rf_interdig.kicad_pcb"   # paths are relative to this file
 pos     = "rf_interdig-all.pos"
 nets    = ["RF", "GND"]
@@ -10,10 +12,12 @@ fmin    = 1.0           # GHz
 fmax    = 8.0
 points  = 401
 out     = "out"
-fast    = "auto"        # line model: qucsator if installed (coupled lines), else scikit-rf
+# line model: qucsator if installed (coupled lines), else scikit-rf
+fast    = "auto"
 
 [solver.openems]
-excite  = ["P1"]        # S11 and S21 (S12 by reciprocity); remove to excite every port
+# S11 and S21 (S12 by reciprocity); remove to excite every port
+excite  = ["P1"]
 air     = 5.0           # mm of air between the board and the boundary
 bc      = "auto"        # PEC on the solid bottom plane, MUR elsewhere
 end-db  = -40
