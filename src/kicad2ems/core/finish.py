@@ -114,24 +114,19 @@ def loss_share(w, h, t):
     grid = X.FINE, X.GROW
     X.FINE, X.GROW = 1 / 64, 1.15           # the corners' current converges slowly: 1/16 0.425, 1/64 0.455, 1/128 0.465
     try:                                    # (hairpin's line); etched corners are round, which a sharp limit overstates
-        return _share(X, xs, w, h, t)
+        xs.conductor(-w / 2, w / 2, h, h + t)
+        x, z = X._grid(xs)
+        er, _, own = X._grid_cells(xs, x, z)
+        A = X._laplacian(x, z, np.ones_like(er))
     finally:
         X.FINE, X.GROW = grid
-
-
-def _share(X, xs, w, h, t):
-    xs.conductor(-w / 2, w / 2, h, h + t)
-    x, z = X._grid(xs)
-    er, _, own = X._grid_cells(xs, x, z)
-    A = X._laplacian(x, z, np.ones_like(er))
+    from scipy.sparse.linalg import spsolve
     phi = np.zeros(own.size)
     phi[own == 1] = 1.0
     free, fixed = np.flatnonzero(own < 0), np.flatnonzero(own >= 0)
-    from scipy.sparse.linalg import spsolve
     phi[free] = spsolve(A[free][:, free].tocsc(), -(A[free][:, fixed] @ phi[fixed]))
     q = A @ phi
-    X2, Z2 = np.meshgrid(x, z, indexing='ij')
-    X2, Z2 = X2.ravel(), Z2.ravel()
+    X2, Z2 = (g.ravel() for g in np.meshgrid(x, z, indexing='ij'))
 
     def half_widths(v):
         """Each grid line's share of the length around it (half the cells either side)."""
@@ -190,13 +185,8 @@ def resolve_once(s, m):
     solder mask over the board (--mask: copper under mask has no finish; its openings are not modelled). Notes say
     what was taken."""
     choice = (getattr(s, 'finish', None) or 'auto').lower()
-    notes = []
-    if choice == 'auto':
-        stack = getattr(m, 'copper_finish', None)
-        name, note = kicad_name(stack)
-        notes += [note] if note else []
-    else:
-        name = choice
+    name, note = kicad_name(getattr(m, 'copper_finish', None)) if choice == 'auto' else (choice, None)
+    notes = [note] if note else []
     if name not in FINISHES:
         raise ValueError(f"--finish {choice!r}: one of {', '.join(CHOICES)}")
     if not FINISHES[name][1] or not getattr(s, 'sigma', None):
@@ -211,11 +201,8 @@ def resolve_once(s, m):
         ws = sorted((p.w, abs(p.z_sig - p.z_ref)) for p in m.ports
                     if getattr(p, 'layer', None) == lay and getattr(p, 'w', 0) and p.z_sig != p.z_ref)
         t = m.cu_t.get(lay, 0.035)
-        if not ws:
-            faces[lay] = (t * 1e-3, 0.0, 0.0)
-            continue
-        strip, line = loss_share(ws[0][0], ws[0][1], t)        # the narrowest port trace, over its reference
-        faces[lay] = (t * 1e-3, strip, line)
+        shares = loss_share(*ws[0], t) if ws else (0.0, 0.0)     # the narrowest port trace, over its reference
+        faces[lay] = (t * 1e-3, *shares)
     desc = ', '.join(f"{lay} {faces[lay][1]:.0%} of the strip's loss" for lay in sorted(faces) if faces[lay][1])
     notes.append(f"finish: {FINISHES[name][0]}, on the outer copper's outer face and sides ({desc or 'no port traces'})")
     return Finish(name, layers(name), faces, notes)

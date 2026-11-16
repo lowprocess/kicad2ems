@@ -27,10 +27,12 @@ report.py renders that dict and nothing else. Every message goes through Job.log
 report, and sent to --events as JSON lines).
 """
 import dataclasses, datetime, json, os, sys, threading, time
+from collections import Counter
 import numpy as np
 
 from . import __version__, stop
 from .board import Board
+from .formats import plain, stamp
 from .plots import save, preview, plot_results, plot_lines
 from .touchstone import write_touchstone, read_touchstone
 from .solvers import registry, label, resolve_lines, missing, LINES, AUTO, MOM, FEATURES
@@ -215,12 +217,12 @@ class Job:
             self.fmin, self.fmax, settings.points)
         self.antenna = settings.antenna
         self.t0 = time.time()
-        self.lm = self.m = self.finish = None
-        self.events = None
+        self.lm = self.m = self.finish = self.events = None
         self.plan, self.named = settings.solver_plan()              # the solvers of this run; those named in solvers
         # solvers --preview prepares without solving them (openEMS: the mesh preview)
         self.previewed = [x for x in settings.solver_plan(preview=False)[0] if x not in self.plan]
         self.prep, self.results, self.deviations = {}, {}, {}        # per solver: prepare()'s form, its Result, what it changes
+        self.full = {}                                              # (_close_parts: a result over its part ports)
         mode = 'preview' if settings.preview else ('antenna' if self.antenna else 'S-parameters')
         self.summary = dict(name=self.name, version=__version__, mode=mode, command=command, solvers=list(self.plan),
                             created=datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), settings=settings.options(),
@@ -303,12 +305,9 @@ class Job:
             st()
         self.report()
         failed = [label(x) for x in self.named if x in self.plan and x not in self.results]
-        if failed and stop.requested():
-            return 1
-        if failed:
+        if failed and not stop.requested():
             self.log(f"failed: {', '.join(failed)} gave no result (see the warnings above)")
-            return 1
-        return 0
+        return 1 if failed else 0
 
     def _drop(self, name, why, what='cannot run'):
         """A solver that cannot take part: False (the run stops) when it is named in `solvers`, else it is left
@@ -338,7 +337,7 @@ class Job:
             details = reg[name].details()[1] if name in self.named else [what]
             if details != [what]:                                   # a longer check: say all of it (openEMS's import)
                 self.log(f"{label(name)} cannot run - details:\n" + "\n".join(details) + "\n"
-                         f"Without it: --preview (model, mesh, line sections), or another solver (--check lists them)")
+                         "Without it: --preview (model, mesh, line sections), or another solver (--check lists them)")
                 return False
             if not self._drop(name, what):
                 return False
@@ -365,12 +364,11 @@ class Job:
         for ref in files:
             if ref not in part_of:
                 raise ValueError(f"--part-file {ref}: not a part port ({', '.join(part_of) or 'none'})")
-        try:
-            embed.check_files({k: os.path.abspath(v) for k, v in files.items()})
-            self._sweep = embed.sweep(values, part_of)
-        except ValueError as e:
-            raise ValueError(str(e))
         self._part_files = {k: os.path.abspath(v) for k, v in files.items()}
+        for ref, path in self._part_files.items():
+            if not os.path.isfile(path):
+                raise ValueError(f"--part-file {ref}: {path} not found")
+        self._sweep = embed.sweep(values, part_of)
         if part_of:
             exc = getattr(s, 'excite', None)
             if exc:
@@ -405,38 +403,34 @@ class Job:
         """The transmission-line model: sections, coupled groups, discontinuities (and their plot). A ballpark aid
         and what the line solvers solve: whatever goes wrong here is a warning, never the end of the run."""
         try:
-            self._lines()
+            from .lines.builder import build
+            self.lm = lm = build(self.m, field=getattr(self.s, 'lines_field', None))
+            if not lm.paths:
+                self.log("transmission lines: no routed path from the ports" +
+                         (f" ({'; '.join(lm.notes)})" if lm.notes else ''))
+                return
+            self.summary['lines'] = lm.summary()
+            out = self.path('_lines.json')                          # the sections' geometry: the GUI's overlay
+            with open(out, 'w', encoding='utf-8') as fh:
+                json.dump(lm.drawing(getattr(self.m, 'cu_z', None)), fh)
+            self.wrote('line model sections (JSON)', out)
+            for p, q, secs, branches in lm.paths:
+                zs = [e.z0 for e, _, _ in secs if e.z0]
+                self.log(f"transmission line {p} -> {q or 'end'}: {len(secs)} sections, "
+                         f"{sum(e.length for e, _, _ in secs):.2f} mm" +
+                         (f", Z0 {min(zs):.1f}..{max(zs):.1f} ohm" if zs else '') +
+                         (f", {len(branches)} branch(es)" if branches else ''))
+            if lm.groups or lm.junctions:
+                cnt = Counter(j['kind'] for j in lm.junctions)
+                self.log(f"  {len(lm.groups)} coupled section(s)" +
+                         (" (" + ", ".join(f"{len(g['members'])} lines {g['length']:.2f} mm" for g in lm.groups[:6]) +
+                          (", ..." if len(lm.groups) > 6 else "") + ")" if lm.groups else "") +
+                         "; discontinuities: " + (", ".join(f"{n} {k}" for k, n in sorted(cnt.items())) or "none"))
+            self.figure(plot_lines(lm, self.m, self.name), '_tlines.png', 'lines', 'transmission-line sections')
         except Exception as e:
             self.log(f"WARNING: transmission-line model failed: {type(e).__name__}: {e}")
             self.lm = None
             self.summary.pop('lines', None)
-
-    def _lines(self):
-        from .lines.builder import build
-        self.lm = build(self.m, field=getattr(self.s, 'lines_field', None))
-        if not self.lm.paths:
-            self.log("transmission lines: no routed path from the ports" +
-                     (f" ({'; '.join(self.lm.notes)})" if self.lm.notes else ''))
-            return
-        self.summary['lines'] = self.lm.summary()
-        out = self.path('_lines.json')                              # the sections' geometry: the GUI's overlay
-        with open(out, 'w', encoding='utf-8') as fh:
-            json.dump(self.lm.drawing(getattr(self.m, 'cu_z', None)), fh)
-        self.wrote('line model sections (JSON)', out)
-        for p, q, secs, branches in self.lm.paths:
-            zs = [e.z0 for e, _, _ in secs if e.z0]
-            self.log(f"transmission line {p} -> {q or 'end'}: {len(secs)} sections, "
-                     f"{sum(e.length for e, _, _ in secs):.2f} mm" +
-                     (f", Z0 {min(zs):.1f}..{max(zs):.1f} ohm" if zs else '') +
-                     (f", {len(branches)} branch(es)" if branches else ''))
-        if self.lm.groups or self.lm.junctions:
-            from collections import Counter
-            cnt = Counter(j['kind'] for j in self.lm.junctions)
-            self.log(f"  {len(self.lm.groups)} coupled section(s)" +
-                     (" (" + ", ".join(f"{len(g['members'])} lines {g['length']:.2f} mm" for g in self.lm.groups[:6]) +
-                      (", ..." if len(self.lm.groups) > 6 else "") + ")" if self.lm.groups else "") +
-                     "; discontinuities: " + (", ".join(f"{n} {k}" for k, n in sorted(cnt.items())) or "none"))
-        self.figure(plot_lines(self.lm, self.m, self.name), '_tlines.png', 'lines', 'transmission-line sections')
 
     def choose(self):
         """--solvers auto: the full-wave solver (consumes the board) estimated cheapest among those that can run,
@@ -451,8 +445,7 @@ class Job:
             if sv.consumes != 'board' or named_fw or not sv.in_auto:
                 continue
             ok, what = sv.check(s) if not (s.preview and sv.previewed) else (True, '')   # a preview only prepares it
-            why = [] if ok else [f"cannot run: {what}"]
-            why = why or sv.assess(self)
+            why = sv.assess(self) if ok else [f"cannot run: {what}"]
             if not why:
                 try:
                     e = sv.estimate(self)
@@ -530,8 +523,7 @@ class Job:
             self.log(f"estimate: {n}: {e['what']}, {t}, ~{e['gb']:.1f} GB" +
                      (f" + {e['gpu_gb']:.1f} GB on the GPU" if e.get('gpu_gb') else '') +
                      (f" ({e['how']})" if e.get('how') else ''))
-        ram = ram_gb()
-        self.summary['estimates'] = dict(solvers=out, ram_gb=ram)
+        self.summary['estimates'] = dict(solvers=out, ram_gb=ram_gb())
         return out
 
     def prepare(self):
@@ -648,8 +640,6 @@ class Job:
         part_of = getattr(self.m, 'part_of', None) or {}
         if not part_of or not all(k in r.names for k in part_of):
             return r
-        if not hasattr(self, 'full'):
-            self.full = {}
         self.full[name] = r
         loads = embed.loads_of(part_of, self.freq, self._part_files)
         S, names, zref = embed.close(r.S, list(r.names), list(r.zref), loads)
@@ -716,15 +706,12 @@ class Job:
                 self.log(warn)
             if s.deembed or s.deembed_file:                         # (R-E1: lumped ports had no de-embedding)
                 self._deembed(n, r, entry)
-            if n in getattr(self, 'full', {}):                      # (R-E5: part ports)
+            if n in self.full:                                      # (R-E5: part ports)
                 self._part_outputs(n, entry)
             self.summary['solved'][n] = entry
             self.log(f"{reg[n].label}: -> {out}")
         self.join_bands()
-        overlays = []
-        if s.compare:
-            fc, Sc = read_touchstone(s.compare)
-            overlays.append((fc, Sc, os.path.basename(s.compare), '--'))
+        overlays = [(*read_touchstone(s.compare), os.path.basename(s.compare), '--')] if s.compare else []
         others = [n for n in done[1:] if self.results[n].names == ref.names]
         overlays += [(freq, self.results[n].S, reg[n].label, OVERLAY_STYLES[i % len(OVERLAY_STYLES)])
                      for i, n in enumerate(others)]
@@ -756,15 +743,14 @@ class Job:
         if got is None:
             return
         low, high, said = got
-        fc = said
         a, b = self.results[low], self.results[high]
         if not np.allclose(np.asarray(a.zref, float), np.asarray(b.zref, float), rtol=1e-6):
             self.log(f"not joined: {label(low)} and {label(high)} have different reference impedances")
             return
         freq = self.freq
-        if fc >= freq[-1] or fc <= freq[0]:
-            self.log(f"not joined: {label(low)} is valid to about {fc / 1e6:.3g} MHz, "
-                     + ("above the whole band" if fc >= freq[-1] else "below the whole band"))
+        if said >= freq[-1] or said <= freq[0]:
+            self.log(f"not joined: {label(low)} is valid to about {said / 1e6:.3g} MHz, "
+                     + ("above the whole band" if said >= freq[-1] else "below the whole band"))
             return
         fc, _ = best_crossover(freq, a.S, b.S, said)            # where the two agree best, at or below its estimate
         S, info = join(freq, a.S, b.S, fc)
@@ -798,21 +784,10 @@ class Job:
         if 'results' in sm:                                          # the keys older readers use
             sm.update(ports=sm['results']['names'], zref=sm['results']['zref'], excited=sm['results']['excited'],
                       parts=sm['model']['parts'], diel=getattr(self.s, 'diel', None))
-        from .formats import stamp
         with open(js, 'w', encoding='utf-8') as fh:
-            json.dump(stamp(sm, 'kicad2ems-run'), fh, indent=1, default=_plain)
+            json.dump(stamp(sm, 'kicad2ems-run'), fh, indent=1, default=plain)
         if not self.s.no_report:
             from .report import write_report
             write_report(sm, self.path('_report.html'))
             self.log(f"wrote {self.path('_report.html')}")
         self.log(f"done ({time.time() - self.t0:.0f} s)")
-
-
-def _plain(v):
-    """numpy values in the summary -> JSON."""
-    if isinstance(v, np.ndarray):
-        return v.tolist()
-    try:
-        return v.item()
-    except AttributeError:
-        return str(v)

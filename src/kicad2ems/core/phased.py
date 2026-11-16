@@ -81,8 +81,7 @@ def parse_grid(spec, names):
     PORT:COL,ROW items separated by spaces or semicolons (fractional places too: an offset, triangular lattice),
     e.g. 'P1:0,0 P2:1,0 P3:0,1 P4:1,1'. A port not placed gets no phase step. ValueError for an unknown port
     or a bad item."""
-    spec = ' '.join(spec) if isinstance(spec, (list, tuple)) else str(spec or '')
-    spec = spec.strip()
+    spec = (' '.join(spec) if isinstance(spec, (list, tuple)) else str(spec or '')).strip()
     if not spec:
         return None
     m = re.fullmatch(r'(\d+)\s*[xX×]\s*(\d+)', spec)

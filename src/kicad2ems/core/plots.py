@@ -91,11 +91,6 @@ def preview(m, mesh, title=''):
 
 
 # ---- transmission-line sections -------------------------------------------------------------------
-def z_norm(z_port):
-    """Colour scale for Z0: centred on the port impedance, +-40 %."""
-    return TwoSlopeNorm(vcenter=z_port, vmin=0.6 * z_port, vmax=1.4 * z_port)
-
-
 Z_CMAP = matplotlib.colormaps['coolwarm']
 
 
@@ -105,7 +100,7 @@ def plot_lines(lm, m, title=''):
     if not lm.paths:
         return None
     z_port = next(iter(lm.port_z0.values()), 50.0)
-    norm, cmap = z_norm(z_port), Z_CMAP
+    norm, cmap = TwoSlopeNorm(vcenter=z_port, vmin=0.6 * z_port, vmax=1.4 * z_port), Z_CMAP   # the port's Z +-40 %
     npath = len(lm.paths)
     # view: the sections plus a margin (a corner of a large board stays readable)
     pts = np.vstack([np.asarray(e.pts) for e in lm.elements if e.pts is not None and len(e.pts)])

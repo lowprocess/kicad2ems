@@ -38,11 +38,12 @@ import sys
 
 import numpy as np
 
+from .constants import C0
+
 RESULT = 'crosstalk.json'
 INSET = 0.3                 # mm: a port at a track's free end sits this far in from it
 GAPS = (1.5, 2.0, 3.0)      # the wider gaps a section is solved again with, as multiples of its own
 WIDEN = 3                   # the stretches solved at those gaps: the worst so many side by side on one layer
-C0 = 299792458.0
 
 
 # ---- the traces' ends ---------------------------------------------------------------------------------------
@@ -260,9 +261,8 @@ def _coupling(xs_dict, i, j, solved=None):
         r = X.CrossSection.from_dict(xs_dict).solve()
         if solved is not None:
             solved[key] = r
-    L = r.L
     kc = -r.C[i, j] / math.sqrt(r.C[i, i] * r.C[j, j])
-    kl = L[i, j] / math.sqrt(L[i, i] * L[j, j])
+    kl = r.L[i, j] / math.sqrt(r.L[i, i] * r.L[j, j])
     z0, eeff = r.single(i)
     return float(kc), float(kl), float(z0), math.sqrt(eeff) / C0
 
@@ -287,7 +287,7 @@ def time_grid(fmax_hz, length_mm, er, base=401, cap=16001):
     the longest trace (length_mm, its delay td at sqrt(er)): S ripples in frequency with a period of 1 / (2 td),
     and edge_response interpolates S linearly, so 16 samples a ripple (a 5 % coupler 1 m long under a 25 ps edge
     read 1.92 % of its 2.5 % plateau on the fixed 401 points, 2.51 % on this grid: R-E16)."""
-    td = max(float(length_mm), 0.0) * 1e-3 * math.sqrt(max(float(er), 1.0)) / 299792458.0
+    td = max(float(length_mm), 0.0) * 1e-3 * math.sqrt(max(float(er), 1.0)) / C0
     points = int(min(max(base, math.ceil(32 * td * fmax_hz) + 1), cap))
     return fmax_hz / (points - 1), points
 
@@ -409,18 +409,13 @@ def run(a, echo=print):
     out = os.path.abspath(a.out or os.path.join(os.path.dirname(os.path.abspath(a.board)), 'out'))
     os.makedirs(out, exist_ok=True)
     for net, (n, fr) in ordered.items():
-        where = lambda e: f"{e['pad'][0]}.{e['pad'][1]}" if e['pad'] else f"({e['x']:.2f}, {e['y']:.2f}) {e['layer']}"
-        echo(f"trace {net}: near end {where(n)}, far end {where(fr)}, {n['length']:.1f} mm")
+        echo(f"trace {net}: near end {_where(n)}, far end {_where(fr)}, {n['length']:.1f} mm")
     longest = max((max(n['length'], fr['length']) for n, fr in ordered.values()), default=0.0)
     er = max([it.get('er', 1.0) for it in kb.stack_items if it.get('kind') == 'diel'] or [4.5])
     fmin, points = time_grid(fmax * 1e9, longest, er)
     fmin /= 1e9
     cli = dict(board=a.board, ports=specs, nets=['auto'], fmin=fmin, fmax=fmax, points=points, out=out,
-               solvers=a.solvers, no_report=True)
-    if a.ground:
-        cli['ground'] = a.ground
-    if a.sigma:
-        cli['sigma'] = a.sigma
+               solvers=a.solvers, no_report=True, **{k: getattr(a, k) for k in ('ground', 'sigma') if getattr(a, k)})
     if 'mom25d' in a.solvers:                                       # a wave port's fit takes the coupling of a
         cli['mom_port'] = 'lumped'                                  # neighbour out (mom25d.model.COUPLED_REACH)
     s = build_settings(cli)
@@ -428,7 +423,7 @@ def run(a, echo=print):
          f"{longest:.0f} mm): {a.solvers}")
     job = Job(s, echo=echo)
     job.run()
-    name = job.name if hasattr(job, 'name') else os.path.splitext(os.path.basename(a.board))[0]
+    name = job.name
     with open(os.path.join(out, f"{name}_run.json"), encoding='utf-8') as fh:
         summary = json.load(fh)
     pnames = summary['ports']
@@ -439,9 +434,10 @@ def run(a, echo=print):
     for key, r in summary.get('solved', {}).items():
         if not r.get('touchstone'):
             continue
-        f, S = read_touchstone(os.path.join(out, r["touchstone"]))[:2]
-        S = renormalised(S, summary.get('zref') or 50.0, a.z0)
-        rows = crosstalk(f, S, names, rise, aggressors, unknown_terms(os.path.join(out, r['touchstone'])))
+        ts = os.path.join(out, r['touchstone'])
+        f, S = read_touchstone(ts)
+        rows = crosstalk(f, renormalised(S, summary.get('zref') or 50.0, a.z0), names, rise, aggressors,
+                         unknown_terms(ts))
         solved[key] = dict(label=r.get('label', key), touchstone=r['touchstone'], f_Hz=[float(x) for x in f],
                            pairs=rows, victims=victims(rows, f))
     if not solved:
@@ -458,10 +454,9 @@ def run(a, echo=print):
                ports={p: dict(net=n, end=e) for p, (n, e) in names.items()},
                ends={net: dict(near=_end(n), far=_end(fr), length_mm=n['length']) for net, (n, fr) in ordered.items()},
                solved=solved, answer=ref, sections=secs, warnings=summary.get('warnings', []) + left_out)
-    res['worst'] = worst(res)
+    res['worst'] = w = worst(res)
     with open(os.path.join(out, RESULT), 'w', encoding='utf-8') as fh:
         json.dump(res, fh, indent=1)
-    w = res['worst']
     echo(f"crosstalk: NEXT {w['next_pct']:.2f} % ({w['next_victim']} from {w['next_aggressor']}), FEXT "
          f"{w['fext_pct']:.2f} % ({w['fext_victim']} from {w['fext_aggressor']}) for a {a.rise:g} ps edge"
          + (f"; limit {a.limit:g} %: {verdict(w)}" if a.limit is not None else ''))
@@ -546,15 +541,13 @@ def find_pairs(kb, reach=3.0, min_length=3.0, most=12):
 def _legs(a, b):
     """Whether nets a and b are the two legs of one differential pair by their names (D0_P / D0_N, TX+ / TX-):
     coupled on purpose, not crosstalk."""
-    import re
     m = [re.fullmatch(r'(.*?)[_.]?([PN+-])', n, re.I) for n in (a, b)]
     return bool(m[0] and m[1] and m[0].group(1) == m[1].group(1)
                 and {m[0].group(2).upper(), m[1].group(2).upper()} in ({'P', 'N'}, {'+', '-'}))
 
 
 def main(argv=None):
-    if argv is None:
-        argv = sys.argv[1:]
+    argv = sys.argv[1:] if argv is None else argv
     if '--find' in argv:                                            # the board's side-by-side traces, as JSON
         from .importers.kicad import KiCadBoard
         board = next((x for x in argv if not x.startswith('-')), None)
@@ -795,37 +788,30 @@ class Crosstalk(Analysis):
                              for r in ans['pairs'] for what in ('next', 'fext')]
                      + ([dict(name=f"limit {s}{d['limit_pct']:g} %", x=[0, max(ans['pairs'][0]['next_t_ns'])],
                               y=[m * d['limit_pct']] * 2, role='limit', unit='%') for s, m in (('', 1), ('-', -1))]
-                        if d.get('limit_pct') is not None else [])),
-                dict(title='NEXT over frequency', xlabel='frequency (GHz)', ylabel='NEXT (dB)', logx=False, logy=False,
-                     info='S(victim near end, aggressor near end)',
-                     curves=[dict(name=pair(r), x=list(f), y=r['next_db'], role='data', unit='dB') for r in ans['pairs']]),
-                dict(title='FEXT over frequency', xlabel='frequency (GHz)', ylabel='FEXT (dB)', logx=False, logy=False,
-                     info='S(victim far end, aggressor near end)',
-                     curves=[dict(name=pair(r), x=list(f), y=r['fext_db'], role='data', unit='dB') for r in ans['pairs']])]
+                        if d.get('limit_pct') is not None else []))]
+        refs = [(o['label'], np.asarray(o['f_Hz']) / 1e9, o['pairs']) for k, o in d['solved'].items()
+                if k != d['answer']]                                # a second solver's: the reference curves
+        sets += [dict(title=f"{what.upper()} over frequency", xlabel='frequency (GHz)', ylabel=f"{what.upper()} (dB)",
+                      logx=False, logy=False, info=f"S(victim {end} end, aggressor near end)",
+                      curves=[dict(name=pair(r), x=list(f), y=r[f"{what}_db"], role='data', unit='dB')
+                              for r in ans['pairs']]
+                      + [dict(name=f"{pair(r)}, {label}", x=list(fo), y=r[f"{what}_db"], role='reference', unit='dB')
+                         for label, fo, rows in refs for r in rows])
+                 for what, end in (('next', 'near'), ('fext', 'far'))]
         many = [v for v in ans['victims'] if len(v['aggressors']) > 1]
         if many:
             sets.append(dict(title='Power sum at each victim', xlabel='frequency (GHz)', ylabel='power sum (dB)',
                              logx=False, logy=False, info="every aggressor's crosstalk at one victim, as power",
                              curves=[dict(name=f"PS{what.upper()} {v['victim']}", x=list(f), y=v[f"ps{what}_db"],
                                           role='data', unit='dB') for v in many for what in ('next', 'fext')]))
-        for k, o in d['solved'].items():                            # a second solver's: the reference curves
-            if k == d['answer']:
-                continue
-            fo = np.asarray(o['f_Hz']) / 1e9
-            for s, what in ((sets[1], 'next'), (sets[2], 'fext')):
-                s['curves'] += [dict(name=f"{pair(r)}, {o['label']}", x=list(fo), y=r[f"{what}_db"], role='reference',
-                                     unit='dB') for r in o['pairs']]
         return sets
 
     def figures(self, folder):
         d = _result(folder)
         if d is None:
             return []
-        out = []
-        for v in d['solved'][d['answer']]['victims']:
-            out += [dict(name=f"NEXT {v['victim']}", value=v['next_pct'], unit='%'),
-                    dict(name=f"FEXT {v['victim']}", value=v['fext_pct'], unit='%')]
-        return out
+        return [dict(name=f"{what.upper()} {v['victim']}", value=v[f"{what}_pct"], unit='%')
+                for v in d['solved'][d['answer']]['victims'] for what in ('next', 'fext')]
 
 
 def _where(e):

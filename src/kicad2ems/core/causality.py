@@ -28,14 +28,7 @@ def _points(f, n):
     """n subtraction frequencies spread over the band (Chebyshev-like: denser near its ends), snapped to samples."""
     k = np.arange(n)
     x = 0.5 * (1 - np.cos(np.pi * (k + 0.5) / n))
-    idx = np.unique(np.clip(np.round(x * (len(f) - 1)).astype(int), 1, len(f) - 2))
-    return idx
-
-
-def _weights(f):
-    """Trapezoid weights of the samples f."""
-    d = np.diff(f)
-    return np.concatenate([[d[0] / 2], (d[1:] + d[:-1]) / 2, [d[-1] / 2]])
+    return np.unique(np.clip(np.round(x * (len(f) - 1)).astype(int), 1, len(f) - 2))
 
 
 def reconstruct(f, h, n):
@@ -60,43 +53,31 @@ def reconstruct(f, h, n):
         return out
 
     # the whole line from the band and its mirror: w' in B+ (h) and B- (h*), the integrand H / (Pi (w - w'))
-    W = _weights(f)
     a, b = f[0], f[-1]
-    Hr, T = np.zeros(len(f), complex), np.zeros(len(f))
     PiB, PiBm = Pi(f), Pi(-f)
     G = (h - lagrange(f)) / np.where(np.abs(PiB) > 0, PiB, np.inf)  # smooth on B+ (H - P vanishes at the w_k)
     G[ks] = 0.0
     for k in ks:                                                    # (its value there: the derivative's ratio)
         G[k] = 0.5 * ((G[k - 1] if k > 0 else 0) + (G[k + 1] if k + 1 < len(f) else 0))
+    # H_r and T at every sample. The smooth parts by product integration: G (and on the mirror band H* / Pi) linear
+    # between samples, the kernel 1 / (w - w') integrated exactly on each interval (second order; the logarithms at w
+    # itself cancel between its two intervals, the principal value)
+    x, dx = f, np.diff(f)
     with np.errstate(divide='ignore', invalid='ignore'):
-        return _loop(f, h, ks, wk, c, m, G, W, a, b, Pi, PiBm, lagrange)
-
-
-def _loop(f, h, ks, wk, c, m, G, W, a, b, Pi, PiBm, lagrange):
-    """H_r and T at every sample. The smooth parts by product integration: G (and on the mirror band H* / Pi)
-    linear between samples, the kernel 1 / (w - w') integrated exactly on each interval (second order; the
-    logarithms at w itself cancel between its two intervals, the principal value)."""
-    x = f
-    dx = np.diff(x)
-    n = len(x)
-    with np.errstate(divide='ignore'):
         L = np.log(np.abs(np.subtract.outer(x, x)))
-    L[np.arange(n), np.arange(n)] = 0.0                             # (the PV: they cancel)
-    sG = np.diff(G) / dx
-    A = G[None, :-1] + sG[None, :] * (x[:, None] - x[None, :-1])     # the linear piece of interval j, at w_i
-    Ip = (A * (L[:, :-1] - L[:, 1:])).sum(1) - np.sum(sG * dx)
-    for ck, wkk in zip(c, wk):                                      # the P / Pi share, in closed form
-        with np.errstate(divide='ignore', invalid='ignore'):
+        L[np.arange(len(x)), np.arange(len(x))] = 0.0               # (the PV: they cancel)
+        sG = np.diff(G) / dx
+        A = G[None, :-1] + sG[None, :] * (x[:, None] - x[None, :-1])     # the linear piece of interval j, at w_i
+        Ip = (A * (L[:, :-1] - L[:, 1:])).sum(1) - np.sum(sG * dx)
+        for ck, wkk in zip(c, wk):                                  # the P / Pi share, in closed form
             t = ck / (x - wkk) * (np.log(abs((b - wkk) / (a - wkk))) + np.log(np.abs((x - a) / (x - b))))
-        Ip += np.where(np.isfinite(t), t, 0.0)
-    K = np.conj(h) / PiBm                                           # the mirror band: w' = -x, H = h*
-    sK = np.diff(K) / dx
-    Im = ((K[None, :-1] - sK[None, :] * (x[:, None] + x[None, :-1])) *
-          np.log((x[:, None] + x[None, 1:]) / (x[:, None] + x[None, :-1]))).sum(1) + np.sum(sK * dx)
-    Pw = Pi(x)
-    Hr = lagrange(x) + Pw / (1j * np.pi) * (Ip + Im)
-    T = np.abs(Pw) / np.pi * _rest(x, a, b, Pi, m)
-    return Hr, T
+            Ip += np.where(np.isfinite(t), t, 0.0)
+        K = np.conj(h) / PiBm                                       # the mirror band: w' = -x, H = h*
+        sK = np.diff(K) / dx
+        Im = ((K[None, :-1] - sK[None, :] * (x[:, None] + x[None, :-1])) *
+              np.log((x[:, None] + x[None, 1:]) / (x[:, None] + x[None, :-1]))).sum(1) + np.sum(sK * dx)
+        Pw = Pi(x)
+        return lagrange(x) + Pw / (1j * np.pi) * (Ip + Im), np.abs(Pw) / np.pi * _rest(x, a, b, Pi, m)
 
 
 def _rest(w, a, b, Pi, m):

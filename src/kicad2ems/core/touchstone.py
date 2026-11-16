@@ -131,8 +131,6 @@ def read_touchstone(path, with_zref=False):
         if (order21 if order21 is not None else n == 2 and not v2) and n == 2:     # S11 S21 S12 S22
             X = X.transpose(0, 2, 1)
     zref = np.array(refs[:n] if refs else [r_ref] * n, float)
-    if v2 and refs is None:
-        zref = np.full(n, r_ref)
     S = _to_s(X, param, zref, normalised=not v2)
     return (f, S, zref) if with_zref else (f, S)
 

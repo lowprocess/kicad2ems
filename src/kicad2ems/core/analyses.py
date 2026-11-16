@@ -92,6 +92,10 @@ The fields of a result (the maps a Viewer turns and cuts) need nothing here: an 
 """
 import os
 
+from .extras import install_hint
+from .options import strlist
+from .runs import load_toml
+
 GROUP = 'kicad2ems.analyses'                # the entry-point group of analyses installed as packages
 RF = 'rf'                                   # the S-parameter run's own key in a front end's lists: not a plugin's
 # the analysis packages kicad2ems has extras for (pyproject): {extra: the analyses it brings}
@@ -274,7 +278,6 @@ def missing(name):
         return None
     if any(ep.split(' =')[0] in EXTRAS[extra] for ep, _ in broken):
         return f"analysis {name!r} is installed but failed to load (kicad2ems --check)"
-    from .extras import install_hint
     return f"analysis {name!r} is not installed: {install_hint(extra)}"
 
 
@@ -296,21 +299,13 @@ def analysis_of(folder):
 def _tables(path):
     """(run, {name: [{option key: value}, ...]}) of a config's [analysis] part: every table of each analysis, in the
     order written (one table: a list of one)."""
-    import sys
-    if sys.version_info >= (3, 11):
-        import tomllib
-    else:                                                           # pragma: no cover
-        import tomli as tomllib
-    with open(path, 'rb') as fh:
-        cfg = tomllib.load(fh)
-    table = cfg.get('analysis')
+    table = load_toml(path).get('analysis')
     if not isinstance(table, dict):
         return None, {}
     base = os.path.dirname(os.path.abspath(path))
     run = table.get('run')
     if run is not None:
-        run = [str(x).strip().lower() for x in (run if isinstance(run, (list, tuple)) else str(run).split(','))
-               if str(x).strip()]
+        run = [x.lower() for x in strlist(run) or []]
     out, reg = {}, registry()
     for name, tabs in table.items():
         tabs = [tabs] if isinstance(tabs, dict) else tabs
@@ -367,7 +362,6 @@ def check_lines():
     for extra, names in EXTRAS.items():
         gone = [n for n in names if n not in registry()]
         if gone and missing(gone[0]):
-            from .extras import install_hint
             lines.append(f"  missing {', '.join(gone)}: {install_hint(extra)}")
     lines += [f"  BROKEN  {ep}: {err}" for ep, err in broken]
     return lines

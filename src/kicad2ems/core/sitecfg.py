@@ -15,6 +15,8 @@ recorded them. A setting given on the command line or in a config still comes fi
 """
 import os, site, sys
 
+from .runs import load_toml
+
 _cache = None
 
 
@@ -44,16 +46,10 @@ def set_user(key, value):
     global _cache
     import json
     p = user_file()
-    kept = {}
     try:
-        try:
-            import tomllib
-        except ImportError:
-            import tomli as tomllib
-        with open(p, 'rb') as fh:
-            kept = tomllib.load(fh)
+        kept = load_toml(p)
     except (OSError, ValueError):
-        pass
+        kept = {}
     if value:
         kept[key] = str(value)
     else:
@@ -71,15 +67,9 @@ def get(key):
     global _cache
     if _cache is None:
         _cache = {}
-        try:
-            import tomllib
-        except ImportError:                                         # Python 3.10
-            import tomli as tomllib
         for p in reversed(paths()):
             try:
-                with open(p, 'rb') as fh:
-                    _cache.update(tomllib.load(fh))
+                _cache.update(load_toml(p))
             except (OSError, ValueError):
                 continue
-    v = _cache.get(key)
-    return v or None
+    return _cache.get(key) or None

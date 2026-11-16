@@ -47,19 +47,15 @@ def code_digest():
     return _DIGEST[loaded]
 
 
-def _skipped():
-    from .config import CORE
-    return {o.key for o in CORE if o.group == 'output'} | {'solvers', 'mom', 'fast', 'no_reuse', 'notes'}
-
-
 def key(run, name):
     """The key of solver `name`'s result in this run, or None where the run's board was not written."""
+    from .config import CORE
     from .solvers import registry
     board = run.path('_board.json')
     if not os.path.isfile(board):
         return None
     sv = registry()[name]
-    skip = _skipped()
+    skip = {o.key for o in CORE if o.group == 'output'} | {'solvers', 'mom', 'fast', 'no_reuse', 'notes'}
     settings = {k: v for k, v in dataclasses.asdict(run.s).items() if k not in skip}
     h = hashlib.sha256()
     h.update(f"v{VERSION} {name}\n".encode())

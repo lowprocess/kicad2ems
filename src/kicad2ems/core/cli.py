@@ -37,8 +37,7 @@ def parser():
     ap = argparse.ArgumentParser(prog='kicad2ems', description=__doc__, argument_default=S,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--check', action='store_true',
-                    help='check which solvers this python can run and the GUI, '
-                         'then exit')
+                    help='check which solvers this python can run and the GUI, then exit')
     ap.add_argument('--init', action='store_true',
                     help='write a commented starter config next to the board (<board>.toml) with the ports found on '
                          'it, nets = auto and the options typed here, then exit')
@@ -141,14 +140,14 @@ def main(argv=None, prog='kicad2ems', default_solvers=None):
         if args and args[0] == 'study':                             # kicad2ems study board.toml: a config's study
             from .study import main as study
             return study(args[1:], prog=f"{prog} study")
-        if '--init' in (sys.argv[1:] if argv is None else argv):
-            return init(sys.argv[1:] if argv is None else argv)
+        if '--init' in args:
+            return init(args)
         s, check = settings_from_argv(argv, default_solvers)
         if check:
             ok, lines = check_report()
             print("\n".join(lines))
             return 0 if ok else 2
-        command = " ".join([prog] + list(sys.argv[1:] if argv is None else argv))
+        command = " ".join([prog] + args)
         if getattr(s, 'vary', None):                                # --vary / [vary]: a run per combination
             from .vary import run as vary
             return vary(s, command)

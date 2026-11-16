@@ -11,9 +11,14 @@ wrote. No Qt here.
     find_results(out_dir)          # [(label, path)] of the newest finished run's files
     run_dir(base, board), preview_dir(base, board), tool_dir(base, board, analysis, what), tool_preview_dir(...)
                                    # where a front end's runs go: a folder each under the output folder
-    write_toml(path, settings); toml_value(v)
+    write_toml(path, settings); toml_value(v); load_toml(path)
 """
-import glob, json, os, sys
+import datetime, glob, json, os, sys
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:                                                           # pragma: no cover
+    import tomli as tomllib
 
 
 def toml_value(v):
@@ -36,6 +41,12 @@ def write_toml(path, values):
         lines.append(f"{k} = {toml_value(v)}")
     with open(path, 'w', encoding='utf-8') as fh:
         fh.write("\n".join(lines) + "\n")
+
+
+def load_toml(path):
+    """A TOML file's tables; OSError, or tomllib.TOMLDecodeError (a ValueError)."""
+    with open(path, 'rb') as fh:
+        return tomllib.load(fh)
 
 
 class Run:
@@ -114,13 +125,8 @@ def board_name(board):
     return name[:-len('_board')] if name.endswith('_board') else name
 
 
-def _tag(text):
-    return ''.join(c if c.isalnum() else '_' for c in str(text or '')).strip('_') or 'run'
-
-
 def run_dir(base, board, now=None):
     """The folder of an S-parameter run started now: <base>/<board>_20261013_141502."""
-    import datetime
     return os.path.join(base, f"{board_name(board)}_{(now or datetime.datetime.now()).strftime(STAMP)}")
 
 
@@ -132,9 +138,8 @@ def preview_dir(base, board):
 def tool_dir(base, board, kind, name, now=None):
     """The folder of an analysis's run started now: <base>/<board>_<analysis>_<what>_20261013_141502 (what: the
     rail, the converter: Analysis.tag)."""
-    import datetime
-    return os.path.join(base, f"{board_name(board)}_{kind}_{_tag(name)}_"
-                              f"{(now or datetime.datetime.now()).strftime(STAMP)}")
+    what = ''.join(c if c.isalnum() else '_' for c in str(name or '')).strip('_') or 'run'
+    return os.path.join(base, f"{board_name(board)}_{kind}_{what}_{(now or datetime.datetime.now()).strftime(STAMP)}")
 
 
 def tool_preview_dir(base, board, kind):

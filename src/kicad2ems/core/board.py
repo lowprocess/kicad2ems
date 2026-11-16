@@ -28,6 +28,7 @@ import shapely
 from shapely.geometry import Polygon, MultiPolygon, LineString, Point, mapping, shape
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
+from .formats import plain
 from .geometry import polygons, flip_y
 from .importers.kicad.outline import board_outline
 from .importers.kicad.nets import resolve_nets, DiffLegs
@@ -50,6 +51,16 @@ def port_field(props, key, default=None):
         if props.get(k) not in (None, ''):
             return props[k]
     return default
+
+
+def _port_layer(fp):
+    """A port footprint's copper layer: its field port.layer (mom.layer), else its side's outer copper."""
+    return port_field(fp['props'], 'layer') or ('B.Cu' if fp['side'] == 'B' else 'F.Cu')
+
+
+def _legs(fp):
+    """The footprints of a port: a differential port's two legs, or the one."""
+    return fp.values() if isinstance(fp, DiffLegs) else [fp]
 
 
 def cross_section(cu, probe, t, reach=20.0):
@@ -220,27 +231,17 @@ class Board:
             fps = dict(raw.port_footprints(refs))
             for i, sp in enumerate(ports or []):                # one at a time: a pair's legs share a number
                 fps.update({('spec', i): fp for fp in extra_port_fps(raw, [sp]).values()})
-            pts = []
-            for fp in fps.values():
-                for f in (fp.values() if isinstance(fp, DiffLegs) else [fp]):
-                    lay = port_field(f['props'], 'layer') or ('B.Cu' if f['side'] == 'B' else 'F.Cu')
-                    pts.append((lay, f['x'], f['y']))
-            nets = auto_nets(raw, pts, full)
+            nets = auto_nets(raw, [(_port_layer(f), f['x'], f['y']) for fp in fps.values() for f in _legs(fp)], full)
             self.notes.append(f"nets (auto): {', '.join(nets)}")
         self.sel = resolve_nets(nets, {n for _, n, _ in raw.items} | {v['net'] for v in raw.vias}) if nets else None
-        ol = full
-        self.region = region
+        ol, self.region, self.cut_sides = full, region, []
         if rpoly is not None:
-            ol = ol.intersection(rpoly)
+            ol = full.intersection(rpoly)
             if ol.is_empty:
                 raise ValueError(f"region {region} does not overlap the board")
-        # sides where the region cuts the board (named in KiCad coordinates, as --edge-walls)
-        self.cut_sides = []
-        if rpoly is not None:
-            fb, cb = full.bounds, ol.bounds
-            for i, side in enumerate(('xmin', 'ymin', 'xmax', 'ymax')):
-                if (cb[i] > fb[i] + 1e-3) if i < 2 else (cb[i] < fb[i] - 1e-3):
-                    self.cut_sides.append(side)
+            fb, cb = full.bounds, ol.bounds         # the sides it cuts (named in KiCad coordinates, as --edge-walls)
+            self.cut_sides = [side for i, side in enumerate(('xmin', 'ymin', 'xmax', 'ymax'))
+                              if (cb[i] > fb[i] + 1e-3 if i < 2 else cb[i] < fb[i] - 1e-3)]
             if self.cut_sides:
                 self.notes.append(f"region cuts the board on {', '.join(self.cut_sides)}")
         self.outline = flip_y(ol)
@@ -457,20 +458,25 @@ class Board:
             self.via_nets.append(v['net'])
 
     def _ports(self, raw, pos_file, specs, cut_ports, rpoly):
-        from .region import cut_port_fps
+        from .region import cut_port_fps, extra_port_fps, net_at, parse_port_spec
         refs = pos_port_refs(read_pos(pos_file)) if pos_file else None
         fps = dict(raw.port_footprints(refs))
-        for k, f in fps.items():
-            for leg in (f.values() if isinstance(f, DiffLegs) else [f]):
-                leg.setdefault('source', f"footprint {leg['ref']}")
-        for (n, leg), fp in self._extra_ports(raw, specs).items():     # ports given in the settings (pad / point)
+        for fp in fps.values():
+            for f in _legs(fp):
+                f.setdefault('source', f"footprint {f['ref']}")
+        extra = {}                                          # ports given in the settings (pad / point)
+        for sp in specs:                                    # one at a time: a pair's legs (P1+, P1-) share a number
+            name = parse_port_spec(sp)[0]
+            for n, fp in extra_port_fps(raw, [sp]).items():
+                extra[(n, name[-1] if name.endswith(('+', '-')) else '')] = fp
+        for (n, leg), fp in extra.items():
             if leg:
                 fps.setdefault(n, DiffLegs())[leg] = fp
             else:
                 fps[n] = fp
         if cut_ports and rpoly is not None:
             signal = (set(self.sel) - self.ground_nets) if self.sel is not None else \
-                {self._net_at(raw, f) for f in self._single_legs(fps)} - {None}
+                {net_at(raw, _port_layer(f), f['x'], f['y']) for fp in fps.values() for f in _legs(fp)} - {None}
             cut, notes = cut_port_fps(raw, rpoly, signal, set(self.cu_z), first=max(fps, default=0) + 1)
             fps.update(cut)
             self.notes += notes
@@ -481,11 +487,10 @@ class Board:
             raise ValueError("no ports: no port footprints (Fab text P<n>, or P<n> in the pick-and-place file), "
                              "no ports in the settings and no cut ports")
         inside = self.outline.buffer(1e-6)
-        self.port_refs = {f['ref'] for fp in fps.values() for f in (fp.values() if isinstance(fp, DiffLegs) else [fp])}
+        self.port_refs = {f['ref'] for fp in fps.values() for f in _legs(fp)}
         port_fps = {}
         for n, fp in fps.items():
-            legs = fp.values() if isinstance(fp, DiffLegs) else [fp]
-            out = [f for f in legs if not inside.contains(Point(f['x'], -f['y']))]
+            out = [f for f in _legs(fp) if not inside.contains(Point(f['x'], -f['y']))]
             if out:
                 self.notes.append(f"P{n} ({', '.join(f['ref'] for f in out)}) is outside the "
                                   f"{'region' if self.region else 'board outline'}: left out")
@@ -539,25 +544,6 @@ class Board:
         """Pickled for parallel runs: the log callback stays behind."""
         return dict(self.__dict__, log=print)
 
-    def _extra_ports(self, raw, specs):
-        from .region import extra_port_fps, parse_port_spec
-        out = {}
-        for sp in specs:                                    # one at a time: a pair's legs (P1+, P1-) share a number
-            name = parse_port_spec(sp)[0]
-            for n, fp in extra_port_fps(raw, [sp]).items():
-                out[(n, '+' if name.endswith('+') else '-' if name.endswith('-') else '')] = fp
-        return out
-
-    @staticmethod
-    def _single_legs(fps):
-        for f in fps.values():
-            yield from (f.values() if isinstance(f, DiffLegs) else [f])
-
-    def _net_at(self, raw, f):
-        from .region import net_at
-        lay = port_field(f['props'], 'layer') or ('B.Cu' if f['side'] == 'B' else 'F.Cu')
-        return net_at(raw, lay, f['x'], f['y'])
-
     # ---- helpers -----------------------------------------------------------------------------------------
     def copper_at(self, lay, pt):
         """The modelled copper polygon on layer `lay` containing point pt (model coordinates), or None."""
@@ -574,14 +560,9 @@ class Board:
                 return str(n)
         return None
 
-    def _reference_hint(self):
-        if self.sel is not None:
-            return "include the ground net in nets, or set ground = <layer>"
-        return "no copper on any layer there: the board needs a reference plane, or set ground = <layer>"
-
     def _port(self, raw, name, fp, leg=None, pair=None):
         props = fp['props']
-        lay = port_field(props, 'layer') or ('B.Cu' if fp['side'] == 'B' else 'F.Cu')
+        lay = _port_layer(fp)
         if lay not in self.cu_z:
             raise ValueError(f"{name}: port layer {lay} is not a copper layer of the stackup")
         a = np.radians(fp['rot'])
@@ -636,8 +617,10 @@ class Board:
                                       f"{ref}, not a ground net (none under it on that side)")
                 break
         if ref is None:
+            hint = ("include the ground net in nets, or set ground = <layer>" if self.sel is not None else
+                    "no copper on any layer there: the board needs a reference plane, or set ground = <layer>")
             raise ValueError(f"{name}: no reference copper {'below' if below else 'above'} the port at "
-                             f"({fp['x']:.3f}, {fp['y']:.3f}) mm - {self._reference_hint()}")
+                             f"({fp['x']:.3f}, {fp['y']:.3f}) mm - {hint}")
         return Port(name, lay, zs, self.cu_z[ref], pc, axis, sgn, w, float(port_field(props, 'z0', 50)), leg, pair, ref,
                     net=self.net_at(lay, *pc), source=source, d=d)
 
@@ -695,15 +678,14 @@ class Board:
     # ---- board.json ----------------------------------------------------------------------------------------
     def to_dict(self):
         """The board as plain data (board.json): lengths in mm, model coordinates, polygons as GeoJSON."""
-        geo = lambda g: mapping(g)
         req = json.loads(json.dumps(self.request, default=list))
         return dict(format=FORMAT, version=VERSION, units='mm', source=self.source, request=req,
                     stack=dict(layers=self.layers, copper=[dict(name=n, z=self.cu_z[n], t=self.cu_t[n]) for n in self.cu_order],
                                thickness=self.thickness, copper_finish=self.copper_finish),
-                    outline=geo(self.outline), ground=self.ground, region=req['region'], cut_sides=self.cut_sides,
+                    outline=mapping(self.outline), ground=self.ground, region=req['region'], cut_sides=self.cut_sides,
                     filled={l: list(v) for l, v in self.filled.items()},
                     nets=None if self.sel is None else sorted(self.sel), ground_nets=sorted(self.ground_nets),
-                    copper={l: [dict(net=n, polygon=geo(p)) for p, n in zip(ps, self.copper_nets.get(l, []))]
+                    copper={l: [dict(net=n, polygon=mapping(p)) for p, n in zip(ps, self.copper_nets.get(l, []))]
                             for l, ps in self.copper.items()},
                     vias=[dict(x=x, y=y, r=r, z0=z0, z1=z1, net=n) for (x, y, r, z0, z1), n in zip(self.vias, self.via_nets)],
                     ports=[p.to_dict() for p in self.ports], port_refs=sorted(self.port_refs),
@@ -773,12 +755,7 @@ class Board:
 
 
 def _plain(v):
-    """numpy values -> JSON."""
-    if isinstance(v, np.ndarray):
-        return v.tolist()
+    """numpy values, sets (sorted) and tuples -> JSON."""
     if isinstance(v, (set, tuple)):
         return sorted(v) if isinstance(v, set) else list(v)
-    try:
-        return v.item()
-    except AttributeError:
-        return str(v)
+    return plain(v)

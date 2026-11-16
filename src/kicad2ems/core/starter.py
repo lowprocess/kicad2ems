@@ -9,38 +9,28 @@ import glob, os
 from .runs import toml_value
 
 
-def _pos_file(board):
-    """A pick-and-place file next to the board: <stem>-top.pos, <stem>-all.pos, <stem>-both.pos (the first found)."""
-    stem = os.path.splitext(board)[0]
-    return next((p for suffix in ('-top.pos', '-all.pos', '-both.pos', '-top-pos.csv', '-all-pos.csv')
-                 for p in glob.glob(stem + suffix)), None)
-
-
-def _ports(board, pos, typed):
-    """(a line per port, the nets line, an error message) of the board resolved with nets = auto."""
-    from .board import Board
-    from .importers import open_board
-    try:
-        b = Board(open_board(board, pos=pos), nets=typed.get('nets', ['auto']), pos_file=pos, ground=typed.get('ground'),
-                  ports=typed.get('ports'), log=lambda *a: None)
-    except (ValueError, OSError) as e:
-        return [], '', str(e)
-    lines = [f"{p.name}: {p.layer} -> {p.ref_layer or 'gap'}, w {p.w:.3f} mm at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm, "
-             f"Z {p.z0:g} ohm [{p.source}]" for p in b.ports]
-    return lines, f"nets (auto): {', '.join(sorted(b.sel))}" if b.sel else 'nets: all copper', None
-
-
 def write_starter(board, typed):
     """Write <stem>.toml next to the board; returns (its path, the port lines). typed: options given with --init
     (they go into the file). FileExistsError when the file is there already."""
+    from .board import Board
     from .config import OPTIONS
+    from .importers import open_board
     base = os.path.dirname(os.path.abspath(board))
     path = os.path.splitext(os.path.abspath(board))[0] + '.toml'
     if os.path.exists(path):
         raise FileExistsError(f"{path} exists: edit it, or remove it first")
-    pos = typed.get('pos') or _pos_file(board)
-    ports, nets, err = _ports(board, pos, typed)
-    rel = lambda p: os.path.relpath(os.path.abspath(p), base)
+    pos = typed.get('pos') or next((p for s in ('-top.pos', '-all.pos', '-both.pos', '-top-pos.csv', '-all-pos.csv')
+                                    for p in glob.glob(os.path.splitext(board)[0] + s)), None)    # the first found
+    try:                                                            # the board resolved with nets = auto
+        b = Board(open_board(board, pos=pos), nets=typed.get('nets', ['auto']), pos_file=pos,
+                  ground=typed.get('ground'), ports=typed.get('ports'), log=lambda *a: None)
+    except (ValueError, OSError) as e:
+        ports, nets, err = [], '', str(e)
+    else:
+        ports = [f"{p.name}: {p.layer} -> {p.ref_layer or 'gap'}, w {p.w:.3f} mm at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm, "
+                 f"Z {p.z0:g} ohm [{p.source}]" for p in b.ports]
+        nets, err = f"nets (auto): {', '.join(sorted(b.sel))}" if b.sel else 'nets: all copper', None
+    rel = lambda p:os.path.relpath(os.path.abspath(p), base)
     stem = os.path.basename(path)
     vals = dict(board=rel(board), pos=rel(pos) if pos else None, nets='auto', fmin=OPTIONS['fmin'].default,
                 fmax=OPTIONS['fmax'].default, points=OPTIONS['points'].default, out='out')
