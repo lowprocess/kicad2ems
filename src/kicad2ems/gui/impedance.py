@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QComboBox, QCheckBox, QLabel,
                                QDoubleSpinBox, QPushButton, QApplication, QWidget, QSplitter)
 from kicad2ems.core.api.frontend import impedance as K
+from .panels import refill
 from .sectionview import SectionView
 
 OVER = [('air', 'air'), ('mask', 'solder mask'), ('plane', 'a dielectric, then a plane (stripline)'),
@@ -67,32 +68,21 @@ class ImpedanceCalculator(QDialog):
         # ---- the stack ----
         box = QGroupBox('Stack')
         form = QFormLayout(box)
-        self.stack = QComboBox()
-        self.stack.setToolTip("The dielectrics as typed below, or the open board's own around one of its copper "
-                              "layers (the copper layers next to it taken as planes)")
+        self.stack = QComboBox(toolTip="The dielectrics as typed below, or the open board's own around one of its "
+                                       "copper layers (the copper layers next to it taken as planes)")
         form.addRow('From', self.stack)
-        self.stack_note = QLabel()
-        self.stack_note.setWordWrap(True)
-        self.stack_note.setStyleSheet('color: gray')
+        self.stack_note = QLabel(wordWrap=True, styleSheet='color: gray')
         form.addRow(self.stack_note)
-        self.h, self.er, self.tand = _num(0.2, 0.005, 20, 0.01), _num(4.3, 1, 100, 0.1, 3, ''), _num(0.02, 0, 1, 0.001, 4, '')
-        row = QHBoxLayout()
-        for label, w in (('', self.h), ('εr', self.er), ('tan δ', self.tand)):
-            if label:
-                row.addWidget(QLabel(label))
-            row.addWidget(w)
-        self.below_row = self._row(row)
+        self.h, self.er = _num(0.2, 0.005, 20, 0.01), _num(4.3, 1, 100, 0.1, 3, '')
+        self.tand = _num(0.02, 0, 1, 0.001, 4, '')
+        self.below_row = self._row(self.h, QLabel('εr'), self.er, QLabel('tan δ'), self.tand)
         form.addRow('Under the copper', self.below_row)
         self.over = QComboBox()
         for key, label in OVER:
             self.over.addItem(label, key)
         form.addRow('Over the copper', self.over)
         self.h2, self.er2 = _num(0.2, 0.005, 20, 0.01), _num(4.3, 1, 100, 0.1, 3, '')
-        row = QHBoxLayout()
-        row.addWidget(self.h2)
-        row.addWidget(QLabel('εr'))
-        row.addWidget(self.er2)
-        self.over_row = self._row(row)
+        self.over_row = self._row(self.h2, QLabel('εr'), self.er2)
         self.over_label = QLabel('its thickness')
         form.addRow(self.over_label, self.over_row)
         self.stack_form = form
@@ -107,8 +97,8 @@ class ImpedanceCalculator(QDialog):
         self.pair = QCheckBox('A pair, its gap')
         self.gap = _num(0.15, 0.01, 20, 0.01)
         form.addRow(self.pair, self.gap)
-        self.ground = QCheckBox('Ground beside it, away')
-        self.ground.setToolTip('Coplanar ground on the same layer, this far from the copper (a grounded coplanar line)')
+        self.ground = QCheckBox('Ground beside it, away', toolTip='Coplanar ground on the same layer, this far from '
+                                                                 'the copper (a grounded coplanar line)')
         self.ground_gap = _num(0.2, 0.01, 20, 0.01)
         form.addRow(self.ground, self.ground_gap)
         col.addWidget(box)
@@ -118,23 +108,17 @@ class ImpedanceCalculator(QDialog):
         row = QHBoxLayout(box)
         self.target = _num(50, 1, 500, 1, 2, ' Ω')
         self.what, self.vary = QComboBox(), QComboBox()
-        self.fit_btn = QPushButton('Fit')
-        self.fit_btn.setToolTip('Change the size chosen until the impedance is the target (to 0.1 %)')
-        self.fit_btn.clicked.connect(lambda: self.calculate(fit=True))
+        self.fit_btn = QPushButton('Fit', toolTip='Change the size chosen until the impedance is the target (to 0.1 %)',
+                                   clicked=lambda: self.calculate(fit=True))
         for w in (self.what, QLabel('of'), self.target, QLabel('by'), self.vary, self.fit_btn):
             row.addWidget(w)
         col.addWidget(box)
 
-        self.out = QLabel()
-        self.out.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.out.setWordWrap(True)
-        self.out.setTextFormat(Qt.RichText)
+        self.out = QLabel(textInteractionFlags=Qt.TextSelectableByMouse, wordWrap=True, textFormat=Qt.RichText)
         col.addWidget(self.out)
         col.addStretch(1)
         row = QHBoxLayout()
-        self.copy_btn = QPushButton('Copy')
-        self.copy_btn.setToolTip('The line and its numbers, as text')
-        self.copy_btn.clicked.connect(self.copy)
+        self.copy_btn = QPushButton('Copy', toolTip='The line and its numbers, as text', clicked=self.copy)
         row.addStretch(1)
         row.addWidget(self.copy_btn)
         col.addLayout(row)
@@ -145,10 +129,8 @@ class ImpedanceCalculator(QDialog):
         split.setStretchFactor(1, 1)
         split.setSizes([380, 660])
 
-        self._later = QTimer(self)                      # a run of edits: one solve when it pauses
-        self._later.setSingleShot(True)
-        self._later.setInterval(150)
-        self._later.timeout.connect(self.calculate)
+        # a run of edits: one solve when it pauses
+        self._later = QTimer(self, singleShot=True, interval=150, timeout=self.calculate)
         for b in (self.h, self.er, self.tand, self.h2, self.er2, self.w, self.t, self.gap, self.ground_gap):
             b.valueChanged.connect(self._changed)
         for c in (self.pair, self.ground):
@@ -158,31 +140,24 @@ class ImpedanceCalculator(QDialog):
         self.set_board(board)
 
     @staticmethod
-    def _row(layout):
-        w = QWidget()
-        layout.setContentsMargins(0, 0, 0, 0)
-        w.setLayout(layout)
-        return w
+    def _row(*widgets):
+        """Widgets in a row, as one widget (a form's field)."""
+        row = QWidget()
+        lay = QHBoxLayout(row)
+        lay.setContentsMargins(0, 0, 0, 0)
+        for w in widgets:
+            lay.addWidget(w)
+        return row
 
     # ---- the stack's source ----
     def set_board(self, path):
         """The board whose layers the stack can be taken from (None, or one without a stack-up: typed only)."""
         self.board = path or None
-        keep = self.stack.currentData()
-        layers = []
-        if path:
-            try:
-                layers = K.board_layers(path)
-            except Exception:                           # noqa: BLE001 (not a board this reads: typed only)
-                layers = []
-        self._setting = True
-        self.stack.clear()
-        self.stack.addItem('typed here', None)
-        for name in layers:
-            self.stack.addItem(f"{name} of the open board", name)
-        i = self.stack.findData(keep)
-        self.stack.setCurrentIndex(max(i, 0))
-        self._setting = False
+        try:
+            layers = K.board_layers(path) if path else []
+        except Exception:                               # noqa: BLE001 (not a board this reads: typed only)
+            layers = []
+        refill(self.stack, [('typed here', None)] + [(f"{name} of the open board", name) for name in layers])
         self._changed()                                 # another board's layer of that name is another stack
 
     # ---- the line typed ----
@@ -225,11 +200,7 @@ class ImpedanceCalculator(QDialog):
         for combo, items in ((self.what, WHAT_PAIR if self.pair.isChecked() else WHAT_ONE),
                              (self.vary, [v for v in VARY if v[0] == 'w' or (v[0] == 'gap' and self.pair.isChecked())
                                           or (v[0] == 'ground_gap' and self.ground.isChecked())])):
-            keep = combo.currentData()
-            combo.clear()
-            for key, label in items:
-                combo.addItem(label, key)
-            combo.setCurrentIndex(max(combo.findData(keep), 0))
+            refill(combo, [(label, key) for key, label in items])
         self._setting = False
 
     def _changed(self, *_):
@@ -303,7 +274,8 @@ class ImpedanceCalculator(QDialog):
         else:
             head = big.format(f"Z0 {r['z0']:.2f} Ω") + f" &nbsp; εeff {r['eeff']:.3f}"
             rows = []
-        rows += [('delay', f"{r['delay_ps_mm']:.3f} ps/mm"), ('C, L', f"{r['c_pf_m']:.1f} pF/m, {r['l_nh_m']:.1f} nH/m")]
+        rows += [('delay', f"{r['delay_ps_mm']:.3f} ps/mm"),
+                 ('C, L', f"{r['c_pf_m']:.1f} pF/m, {r['l_nh_m']:.1f} nH/m")]
         if r['tand_eff']:
             rows.append(('tan δ, effective', f"{r['tand_eff']:.4f}"))
         if 'formula' in r:
