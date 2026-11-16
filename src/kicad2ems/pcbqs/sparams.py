@@ -702,9 +702,9 @@ def main(argv=None):
         description=__doc__.split('\n\n')[0],
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument(
-        'board', nargs='?', help=
-        'a .kicad_pcb (its P<n> footprints the ports) or a kicad2ems board.json'
-    )
+        'board', nargs='?',
+        help=('a .kicad_pcb (its P<n> footprints the ports) or a kicad2ems '
+              'board.json'))
     ap.add_argument('--out', default='sparams-results',
                     help='the results folder (default: sparams-results)')
     ap.add_argument('--describe', action='store_true',

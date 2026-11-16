@@ -346,18 +346,16 @@ class RailPDN:
                 "that path's inductance and resistance left out"
             )
             return Conn(
-                vias=xyr, R_path=r_barrel, h=h, why=
-                f'{len(reach)} via(s) over {h:.2f} mm, its path to them not '
-                'solved'
-            )
+                vias=xyr, R_path=r_barrel, h=h,
+                why=f'{len(reach)} via(s) over {h:.2f} mm, its path to them '
+                'not solved')
         r_pad = 1.0 / max(r.loss, 1e-12)  # 1 V across it: loss = 1 / R
         squares = r_pad * SIGMA_CU * self.zt[lay][1] * 1e-3
         return Conn(
             vias=xyr, L_path=MU0 * h * 1e-3 * squares, R_path=r_pad + r_barrel,
-            h=h, why=
-            f'{len(reach)} via(s), {squares:.2f} squares over {h:.2f} mm, '
-            f'{(r_pad + r_barrel) * 1e3:.2f} mOhm'
-        )
+            h=h,
+            why=(f'{len(reach)} via(s), {squares:.2f} squares over {h:.2f} mm, '
+                 f'{(r_pad + r_barrel) * 1e3:.2f} mOhm'))
 
     def _isolated(self):
         """The loads whose plane domain no source reaches (through the planes,

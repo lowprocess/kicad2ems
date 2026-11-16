@@ -440,11 +440,9 @@ def run(a):
             from .models import spice_subcircuit
             pn, Zp = pdn.port_matrix(f)
             name = os.path.join(a.out, f'pdn_ports.z{len(pn)}p')
-            write_z(
-                name, f, Zp, pn, what=
-                "the bare PDN (planes, ties, series parts) between its parts' "
-                "ports"
-            )
+            write_z(name, f, Zp, pn,
+                    what=("the bare PDN (planes, ties, series parts) between "
+                          "its parts' ports"))
             out['pdn']['ports'] = dict(
                 touchstone=os.path.basename(name), names=pn,
                 roles={n: pdn.parts[n]['role']
@@ -550,9 +548,9 @@ def droop_figure(droop, allowed, out):
         ax.axhline(allowed * 1e3, color='k', ls='--', lw=1, label='allowed')
     ax.set_xscale('log')
     any_ = next(iter(droop.values()))
-    ax.set(
-        xlabel='time after the step, us', ylabel='drop, mV', title=
-        f"a {any_['step_A']:g} A step rising in {any_['rise_s'] * 1e9:g} ns")
+    ax.set(xlabel='time after the step, us', ylabel='drop, mV',
+           title=(f"a {any_['step_A']:g} A step rising in "
+                  f"{any_['rise_s'] * 1e9:g} ns"))
     ax.grid(alpha=0.3, which='both')
     ax.legend(fontsize=8)
     fig.savefig(os.path.join(out, 'droop.png'), dpi=110)

@@ -428,24 +428,24 @@ class MoM25D(Solver):
     basic = ('mom_dmax',)
     capabilities = dict(
         ports='yes: lumped, or de-embedded wave ports on a long enough feed',
-        gap_ports=
-        "part ports only (a delta gap across the part's strip; no dipole or "
-        "slot feeds)",
+        gap_ports=("part ports only (a delta gap across the part's strip; no "
+                   "dipole or slot feeds)"),
         diff_pairs='yes', parts='yes: one series element across the gap',
         vias='yes: over the layers with metal at the via',
         outline='ignored: laterally infinite dielectric',
         planes='yes: meshed (slow on plane-heavy boards)',
         edge_walls='approximated: via rows every 0.5 mm',
         thickness='ignored: sheets', conductor_loss='yes',
-        roughness='yes: Hammerstad at each frequency', finish=
-        'approximated: on the outer copper, weighted by the finished faces\' '
-        'share of the strip\'s loss (the port trace\'s), at each frequency',
-        dispersion=
-        'yes with --diel wideband (Djordjevic-Sarkar at each frequency), else '
-        'constant er and tan d',
-        radiation='yes', cavity='no', antenna=
-        'approximated: over an infinite ground plane (patches, arrays; not an '
-        'antenna that uses the board edge or a finite ground)')
+        roughness='yes: Hammerstad at each frequency',
+        finish=('approximated: on the outer copper, weighted by the finished '
+                'faces\' share of the strip\'s loss (the port trace\'s), at '
+                'each frequency'),
+        dispersion=('yes with --diel wideband (Djordjevic-Sarkar at each '
+                    'frequency), else constant er and tan d'),
+        radiation='yes', cavity='no',
+        antenna=('approximated: over an infinite ground plane (patches, '
+                 'arrays; not an antenna that uses the board edge or a finite '
+                 'ground)'))
     options = [
         Option(
             'mom_dmax', 0.3,
@@ -883,11 +883,11 @@ class MoM25D(Solver):
             from kicad2ems.mom25d.api import build_board
             # the quads come with a run)
             pairs, kw = _board_kw(m, s.mom_dmax, s.mom_port, **_mesh_kw(s, m))
-            bm, sim = (_legs_if_short(
-                lambda p: build_board(m.to_dict(
-                ), run.fmin, run.fmax, pairs=p, log=lambda *a: None, mesh_only=
-                                      True, characterize=False, **kw), pairs,
-                s.mom_port)[0])
+            bm, sim = _legs_if_short(
+                lambda p: build_board(m.to_dict(), run.fmin, run.fmax, pairs=p,
+                                      log=lambda *a: None, mesh_only=True,
+                                      characterize=False, **kw),
+                pairs, s.mom_port)[0]
             save_mesh(run, sim, bm)
 
     def solve(self, run, prep):
@@ -957,14 +957,15 @@ class MoM25D(Solver):
         kinds = ", ".join(f"{p['name']} {p['kind']}" for p in info['ports'])
         info.update(
             kpi=f"{info['unknowns']:,} unknowns, {info['seconds']:.0f} s",
-            about=
-            f"mom25d, a 2.5D Method-of-Moments solver: {info['unknowns']:,} "
-            f"unknowns ({info['triangles']:,} triangles, cells up to "
-            f"{info['dmax_mm']:g} mm), {info['solves']} EM solves of an "
-            f"adaptive sweep in {info['seconds']:.0f} s; ports: {kinds}. MoM "
-            "sees laterally infinite dielectrics over an infinite ground "
-            "plane: no board edge, no air box, no box resonances; radiation "
-            "and surface waves are in.")
+            about=(
+                "mom25d, a 2.5D Method-of-Moments solver: "
+                f"{info['unknowns']:,} unknowns ({info['triangles']:,} "
+                f"triangles, cells up to {info['dmax_mm']:g} mm), "
+                f"{info['solves']} EM solves of an adaptive sweep in "
+                f"{info['seconds']:.0f} s; ports: {kinds}. MoM sees laterally "
+                "infinite dielectrics over an infinite ground plane: no board "
+                "edge, no air box, no box resonances; radiation and surface "
+                "waves are in."))
         run.log(f"mom25d: {info['solves']} EM solves, {info['seconds']:.0f} s")
         return Result(S, names, zref, info['seconds'], info=info,
                       comment=f"mom25d 2.5D MoM ({run.name})")

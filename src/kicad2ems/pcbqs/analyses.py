@@ -248,10 +248,10 @@ class PowerIntegrity(_Tool):
             path = self._board(board)
             out += [
                 dict(
-                    key='load', text=
-                    f"{ref} has no pad on ground, and the board has no one "
-                    "part of its kind to return through: name it, "
-                    f"{ref}=AMPS@PART")
+                    key='load',
+                    text=(f"{ref} has no pad on ground, and the board has no "
+                          "one part of its kind to return through: name it, "
+                          f"{ref}=AMPS@PART"))
                 for ref in _floating_loads(values, path)
                 if not _return_of(ref, values, path)
             ]
@@ -639,9 +639,8 @@ class QuasiStatic(Solver):
     dumps = False  # its current maps are always written: nothing to ask for
     POINTS = 31    # solved on at most this many frequencies (sparams.sweep)
     capabilities = dict(
-        ports=
-        'yes: a source and its termination between the trace and the copper '
-        'under it',
+        ports=('yes: a source and its termination between the trace and the '
+               'copper under it'),
         gap_ports='no',
         diff_pairs="yes: the legs as single-ended ports, the modes from them",
         parts='yes: a series R, L and C between their pads',
@@ -650,11 +649,11 @@ class QuasiStatic(Solver):
         planes='yes: meshed, the return current where it flows',
         edge_walls='ignored',
         thickness="approximated: one sheet; its two faces with --qs-thickness",
-        conductor_loss=
-        "yes: the copper's DC sheet resistance; the skin effect through it "
-        "with --qs-thickness",
-        roughness='no', finish='no', dispersion=
-        'no: constant er and tan d (with the capacitance); none without',
+        conductor_loss=("yes: the copper's DC sheet resistance; the skin "
+                        "effect through it with --qs-thickness"),
+        roughness='no', finish='no',
+        dispersion=('no: constant er and tan d (with the capacitance); none '
+                    'without'),
         radiation='no', cavity='no', antenna='no')
     options = [
         Option(
@@ -764,13 +763,11 @@ class QuasiStatic(Solver):
         )
         return Result(
             Smm, names, zref, info['seconds'],
-            comment=f"pcbqs quasi-static ({run.name})", info=dict(
-                {k: v
-                 for k, v in info.items()
-                 if k != 'model'}, kpi=
-                f"{info['triangles']:,} triangles, {sw['solves']} solves, "
-                f"{info['seconds']:.1f} s",
-                about=about, not_joined=apart))
+            comment=f"pcbqs quasi-static ({run.name})",
+            info=dict({k: v for k, v in info.items() if k != 'model'},
+                      kpi=(f"{info['triangles']:,} triangles, "
+                           f"{sw['solves']} solves, {info['seconds']:.1f} s"),
+                      about=about, not_joined=apart))
 
     def outputs(self, run, prep, res):
         """The current of each layer with the first port driven, at three

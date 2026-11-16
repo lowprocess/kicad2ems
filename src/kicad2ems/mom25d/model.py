@@ -379,8 +379,8 @@ class PlanarModel:
                             dmax=dmax, length=length_for(p.w))
                 (g, z), kept = cached(
                     'xs', self.stack, args, lambda: line_char_xs(
-                        self.stack, p.layer, p.w, fs, planes=planes, coplanar=
-                        cop, dmax=dmax, length=length_for(p.w)))
+                        self.stack, p.layer, p.w, fs, planes=planes,
+                        coplanar=cop, dmax=dmax, length=length_for(p.w)))
                 cache[key] = (z.real, g)
                 # slower than light: a failed fit
                 if np.any(np.abs(g.imag) < 0.95 * 2 * np.pi * fs / C0):
@@ -411,8 +411,8 @@ class PlanarModel:
         """The Simulation of this model. wave_down_to (Hz): 'auto' ports become
         wave ports only where the feed is long enough for the wave fit down to
         that frequency (else lumped); default: wherever the geometry allows (the
-        fit degrades below KNOWN_SPAN of sample span, with a warning). metal=
-        (sim.Metal): conductor loss (default lossless)."""
+        fit degrades below KNOWN_SPAN of sample span, with a warning).
+        metal= (sim.Metal): conductor loss (default lossless)."""
         from .sim import Simulation
         ports = self.ports(step=step, dmax=dmax, fmin=wave_down_to)
         if characterize:

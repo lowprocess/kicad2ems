@@ -310,10 +310,10 @@ def export(model, summary, copper, out, log=print):
             E_rms_max_V_per_m=Erms.max(axis=(0, 1)).tolist(),
             E_peak_V_per_m=mag(Et).max(axis=(0, 1, 2)).tolist(),
             net_voltage_swing_V=swing, net_capacitance_F=capacitance, grid=info,
-            key=fkey + ':' + str(case.get('fingerprint')), scope=
-            'copper and vias only, no part bodies; quasi-static, Coulomb E, '
-            'the ground copper at zero volts; H band-limited to the harmonics '
-            'kept')
+            key=fkey + ':' + str(case.get('fingerprint')),
+            scope=('copper and vias only, no part bodies; quasi-static, '
+                   'Coulomb E, the ground copper at zero volts; H band-limited '
+                   'to the harmonics kept'))
         np.savez_compressed(
             folder / 'fields.npz', x_mm=x, y_mm=y,
             heights_mm=np.asarray(s['heights_mm'],

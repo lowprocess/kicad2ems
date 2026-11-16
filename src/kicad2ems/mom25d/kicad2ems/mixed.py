@@ -573,13 +573,13 @@ class Mixed(MoM25D):
     in_all = False  # --solvers all: a variant of mom25d, named on its own
     order = 30
     capabilities = dict(
-        MoM25D.capabilities, ports='yes: as mom25d', diff_pairs=
-        'yes: as mom25d (a pair\'s straight stretches are cut as a coupled '
-        'line)',
-        radiation=
-        'approximated: as mom25d, except from the stretches put back as lines',
-        dispersion=
-        'no: constant er and tan d (--diel wideband is mom25d\'s alone)')
+        MoM25D.capabilities, ports='yes: as mom25d',
+        diff_pairs=('yes: as mom25d (a pair\'s straight stretches are cut as '
+                    'a coupled line)'),
+        radiation=('approximated: as mom25d, except from the stretches put '
+                   'back as lines'),
+        dispersion=('no: constant er and tan d (--diel wideband is mom25d\'s '
+                    'alone)'))
     options = [
         Option(
             'mixed_cut', CUT_MIN,
