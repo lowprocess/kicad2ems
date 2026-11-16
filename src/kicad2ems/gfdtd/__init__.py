@@ -33,15 +33,21 @@ API_VERSION is (major, minor), the version of what another package may rely on
 (kicad2ems-fdtd, which runs kicad2ems's models here): a minor release adds to
 it, a major one removes or changes something in it.
 
-    ContinuousStructure, openEMS(..., backend=)   openEMS's / CSXCAD's Python interface, as openEMS scripts use it
-    engine.gpu_info(), engine.core_info()        (usable, one line) of the GPU and the compiled CPU core
-    engine.resolve_backend(name)                 'vulkan', 'cupy', 'core' or 'numpy' for 'auto', 'gpu', 'cpu', ...
-    engine.concurrent_runs(cells, runs)          how many runs to have on the GPU at once
+    ContinuousStructure, openEMS(..., backend=)
+        openEMS's / CSXCAD's Python interface, as openEMS scripts use it
+    engine.gpu_info(), engine.core_info()
+        (usable, one line) of the GPU and the compiled CPU core
+    engine.resolve_backend(name)
+        'vulkan', 'cupy', 'core' or 'numpy' for 'auto', 'gpu', 'cpu', ...
+    engine.concurrent_runs(cells, runs)
+        how many runs to have on the GPU at once
     __version__
     1.1: conducting sheets are lossy (openEMS's model), no longer PEC
-    1.2: ConductingSheet(roughness=): rough copper (m RMS, Hammerstad's loss factor, a wideband fit)
-    1.3: ConductingSheet(finish=, finish_share=, face=): a surface finish (metal layers on the copper, on a share of
-         the sheet's loss), and a sheet that is one face of thick copper (its roughness on that copper's skin depth)
+    1.2: ConductingSheet(roughness=): rough copper (m RMS, Hammerstad's loss
+         factor, a wideband fit)
+    1.3: ConductingSheet(finish=, finish_share=, face=): a surface finish (metal
+         layers on the copper, on a share of the sheet's loss), and a sheet that
+         is one face of thick copper (its roughness on that copper's skin depth)
 """
 __version__ = '0.3.0'
 API_VERSION = (1, 3)

@@ -7,7 +7,8 @@ unchanged and reads the same results). Ported from openEMS's Python interface
 (ports.py, (C) 2015-2026 Thorsten Liebig and the openEMS contributors, GPL-3).
 The lumped port is gfdtd.fdtd.LumpedPort.
 
-    port = FDTD.AddMSLPort(1, metal, start, stop, 'x', 'z', excite=-1, FeedShift=10, MeasPlaneShift=30)
+    port = FDTD.AddMSLPort(1, metal, start, stop, 'x', 'z', excite=-1,
+                           FeedShift=10, MeasPlaneShift=30)
     FDTD.Run(path); port.CalcPort(path, f, ref_impedance=50)
         # uf_inc, uf_ref, beta, Z_ref, ...
 
@@ -45,8 +46,8 @@ class UI_data:
     def __init__(self, fns, path, freq, signal_type='pulse', **kw):
         self.path, self.fns = path, [fns] if isinstance(fns, str) else list(fns)
         self.freq = [freq] if np.isscalar(freq) else freq
-        self.ui_time, self.ui_val, self.ui_f_val, self.col_names, self.ui_mode_purity = (
-            [], [], [], [], [])
+        (self.ui_time, self.ui_val, self.ui_f_val, self.col_names,
+         self.ui_mode_purity) = [], [], [], [], []
         for fn in self.fns:
             comments, rows = [], []
             with open(os.path.join(path, fn), encoding='utf-8') as fh:
@@ -92,8 +93,9 @@ class Port:
                 isinstance(prop, C.ProbeBox)
                 for prop in self.CSX.GetPropertiesByName(name)):
             raise ValueError(
-                f'port {self.number}: a probe named "{name}" already exists, port numbers must be '
-                'unique (or use a different PortNamePrefix)')
+                f'port {self.number}: a probe named "{name}" already exists, '
+                'port numbers must be unique (or use a different '
+                'PortNamePrefix)')
         pr = self.CSX.AddProbe(name, **kw)
         pr.AddBox(p0, p1, priority=priority)
         self.port_props.append(pr)
@@ -390,9 +392,8 @@ class RectWGPort(WaveguidePort):
         nP, nPP = 'xyz'[ny_P], 'xyz'[ny_PP]
         E, H = [0, 0, 0], [0, 0, 0]
         if N > 0:
-            E[ny_P] = H[
-                ny_PP] = (f'{N / b}*cos({M * np.pi / a}*{nP})'
-                          f'*sin({N * np.pi / b}*{nPP})')
+            E[ny_P] = H[ny_PP] = (f'{N / b}*cos({M * np.pi / a}*{nP})'
+                                  f'*sin({N * np.pi / b}*{nPP})')
         if M > 0:
             E[ny_PP] = (f'{-1 * M / a}*sin({M * np.pi / a}*{nP})'
                         f'*cos({N * np.pi / b}*{nPP})')

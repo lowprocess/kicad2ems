@@ -289,8 +289,7 @@ class NumpyBackend:
             self.db_vi = vi_at(idx)
             self.db_i = xp.zeros(len(idx), dt)
 
-    # ---- the updates
-    # ---------------------------------------------------------------------------------------
+    # ---- the updates --------------------------------------------------------
     def step(self, sig=None, n=None):
         """One timestep: H, its PML, the H excitations, E (with the Debye
         poles), its PML, the excitation (sig: the signal's value, None past its
@@ -953,8 +952,7 @@ class VulkanBackend(_Compressed, NumpyBackend):
         self.model = self.up(rec.view(np.uint8))
         self._choose_mode()
 
-    # ---- device memory
-    # -----------------------------------------------------------------------------------------
+    # ---- device memory ------------------------------------------------------
     def _buffer(self, nbytes, data=None):
         # whole 16 bytes, the data padded to them
         size = max(-(-int(nbytes) // 16) * 16, 16)
@@ -1015,8 +1013,7 @@ class VulkanBackend(_Compressed, NumpyBackend):
         """(V, I) as numpy, for what has no kernel (dumps of Jc)."""
         return self.to_host(self.V), self.to_host(self.I)
 
-    # ---- launches
-    # --------------------------------------------------------------------------------------------
+    # ---- launches -----------------------------------------------------------
     def _encoder(self):
         if self.enc is None:
             self.enc = self.dev.create_command_encoder()
@@ -1058,8 +1055,7 @@ class VulkanBackend(_Compressed, NumpyBackend):
         self.dev.wait_for_idle()
         self.batch = self.FIRST
 
-    # ---- the step
-    # --------------------------------------------------------------------------------------------
+    # ---- the step -----------------------------------------------------------
     def step(self, sig=None, n=None):
         """One timestep in three launches (as CupyBackend.step), or the separate
         kernels."""
@@ -1146,8 +1142,7 @@ class VulkanBackend(_Compressed, NumpyBackend):
         self._clear(self.buf)
         return rows
 
-    # ---- dumps (dumps.Region on the GPU)
-    # ---------------------------------------------------------------------
+    # ---- dumps (dumps.Region on the GPU) ------------------------------------
     def dump_kernel(self, region, out, nf, t):
         a = region.args
         self._launch('dump',

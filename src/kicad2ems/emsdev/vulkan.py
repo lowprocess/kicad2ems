@@ -4,12 +4,18 @@ vulkan-1.dll: ctypes, no other dependency), and the slangpy device a solver's
 Vulkan backend runs on. Vulkan is the GPU path where CuPy has none: AMD on
 Windows (no ROCm CuPy there), older NVIDIA cards past CUDA's support.
 
-    vulkan.adapters()           [Adapter]: the hardware GPUs (no CPU renderers such as llvmpipe), best first
-    vulkan.device(index=None)   Device (emsdev.gpu's) of adapter `index` (None: the best; EMSDEV_VULKAN_DEVICE
-                                picks it), or raises Unavailable
-    vulkan.slang_device(index)  the slangpy Device on it, one per thread and adapter (slangpy: pip install slangpy)
-    vulkan.device(need=('float64', ...))   the same, refused (Unavailable) where the GPU lacks a feature a solver's
-                                kernels need: bda (buffer device addresses), int64, float64, atomic_add_f32
+    vulkan.adapters()           [Adapter]: the hardware GPUs (no CPU renderers
+                                such as llvmpipe), best first
+    vulkan.device(index=None)   Device (emsdev.gpu's) of adapter `index` (None:
+                                the best; EMSDEV_VULKAN_DEVICE picks it), or
+                                raises Unavailable
+    vulkan.slang_device(index)  the slangpy Device on it, one per thread and
+                                adapter (slangpy: pip install slangpy)
+    vulkan.device(need=('float64', ...))
+                                the same, refused (Unavailable) where the GPU
+                                lacks a feature a solver's kernels need: bda
+                                (buffer device addresses), int64, float64,
+                                atomic_add_f32
 
 The best adapter: a discrete GPU before an integrated one, then the most device
 memory. Free memory is the device heaps' budget less their use
@@ -338,8 +344,7 @@ def _cache_dir(what):
     return path
 
 
-# ---- host memory the GPU reaches by address
-# ----------------------------------------------------------------------
+# ---- host memory the GPU reaches by address ---------------------------------
 # slangpy's read_back buffers land in uncached host memory on RADV: numpy reads
 # them at 0.2-0.5 GB/s. A HostBuffer is allocated here instead, on the slangpy
 # device's VkDevice, in host-cached memory where there is one (else host memory

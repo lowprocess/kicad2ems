@@ -48,8 +48,12 @@ class RWG:
         alpha = np.concatenate(
             [self.l / (2 * self.area[t1]), -self.l / (2 * self.area[t2])])
         vv = np.vstack([self.vp, self.vm])
-        sp = lambda vals: sparse.csr_matrix((vals, (np.r_[t1, t2], np.r_[
-            np.arange(Ne), np.arange(Ne)])), shape=(len(tris), Ne))
+
+        def sp(vals):
+            return sparse.csr_matrix(
+                (vals, (np.r_[t1, t2], np.r_[np.arange(Ne), np.arange(Ne)])),
+                shape=(len(tris), Ne))
+
         self.Aal, self.Bx, self.By = (sp(alpha), sp(alpha * vv[:, 0]),
                                       sp(alpha * vv[:, 1]))
         self.D = sp(2 * alpha)  # divergence: +l/A on T+, -l/A on T-
