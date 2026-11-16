@@ -27,16 +27,14 @@ integrated the same way: i' = ka i + kb (V' - sg V), sg 1 for Debye, -1 for R-L.
 (CPML, kappa 1, no alpha) with a cubic conductivity grading, ending in PEC. Dumps: DumpBox regions at the cell
 centres (openEMS's dump mode 2), worked out by the engine.
 """
+import copy, hashlib, json, os, threading
 from collections import defaultdict
-
-import copy
-import threading
 
 import numpy as np
 
 from . import csx as C
-
 from .constants import EPS0, MU0, C0
+
 SAFETY = 0.95           # time step: this fraction of the stability limit (C0, the shortest neighbouring cells)
 PML_GRADING = 3         # PML conductivity ~ depth^m
 PML_R0 = 1e-6           # PML: the reflection of a normal wave through it and back, in theory
@@ -70,10 +68,6 @@ class Grid:
         self.shape = tuple(len(l) for l in self.lines)
         self.mid = [0.5 * (l[1:] + l[:-1]) for l in self.lines]        # cell centres, drawing units
         self.tol = [1e-6 * max(np.min(np.diff(l)), 1e-12) for l in self.lines]
-
-    def edge_points(self, a):
-        """Coordinates (drawing units) of the midpoints of the a-edges: three 1-D arrays."""
-        return [self.mid[b] if b == a else self.lines[b] for b in range(3)]
 
 
 # ---- primitives: which points of a tensor grid are inside ------------------------------------------------------
@@ -207,7 +201,7 @@ def curve_edges(q, grid):
 
 def edge_mask(q, a, grid):
     """inside() for the midpoints of the a-edges, on the (Nx, Ny, Nz) node array (False past the last edge)."""
-    m = inside(q, grid.edge_points(a), grid)
+    m = inside(q, [grid.mid[b] if b == a else grid.lines[b] for b in range(3)], grid)
     return np.pad(m, [(0, 1) if b == a else (0, 0) for b in range(3)])
 
 
@@ -248,30 +242,23 @@ AUTO_CELLS = 1_000_000  # TimeStepMethod auto: the operator's own limit from thi
 
 
 def _dt_cache():
-    import os
     return os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(os.path.expanduser('~'), '.cache'),
                         'gfdtd', 'timestep.json')
 
 
-def cached_limit(key):
-    """The model's exact limit (s, before the safety factor) from an earlier run, or None."""
-    import json
+def _kept_limits():
+    """{model key: its exact limit (s, before the safety factor)} from earlier runs, {} where there is none."""
     try:
         with open(_dt_cache(), encoding='utf-8') as fh:
-            return json.load(fh).get(key)
+            return json.load(fh)
     except (OSError, ValueError):
-        return None
+        return {}
 
 
 def keep_limit(key, dt):
     """Keep a model's exact limit for its later runs (a few hundred models at most; the oldest dropped)."""
-    import json, os
     fn = _dt_cache()
-    try:
-        with open(fn, encoding='utf-8') as fh:
-            d = json.load(fh)
-    except (OSError, ValueError):
-        d = {}
+    d = _kept_limits()
     d.pop(key, None)
     d[key] = dt
     d = dict(list(d.items())[-500:])
@@ -356,16 +343,14 @@ def _geometry(grid):
     (_Axes: views of the grid's spacings)."""
     sh = grid.shape
     lE, aE, lH, aH = ([None] * 3 for _ in range(4))
+    d = [np.concatenate([x, [0]]) for x in grid.d]
+    r = lambda v, ax: np.asarray(v, float).reshape([-1 if x == ax else 1 for x in range(3)])
     for a in range(3):
         b, c = [x for x in range(3) if x != a]
-        d_a = np.concatenate([grid.d[a], [0]])
-        d_b = np.concatenate([grid.d[b], [0]])
-        d_c = np.concatenate([grid.d[c], [0]])
-        r = lambda v, ax: np.asarray(v, float).reshape([-1 if x == ax else 1 for x in range(3)])
-        lE[a] = r(d_a, a)
+        lE[a] = r(d[a], a)
         aE[a] = r(grid.dual[b], b) * r(grid.dual[c], c)
         lH[a] = r(grid.dual[a], a)
-        aH[a] = r(d_b, b) * r(d_c, c)
+        aH[a] = r(d[b], b) * r(d[c], c)
     return tuple(_Axes(q, sh) for q in (lE, aE, lH, aH))
 
 
@@ -405,24 +390,18 @@ def _clipped_weights(grid, b, i0, i1, lo, hi):
 def _sheet_normal(q):
     """The normal axis of a flat primitive (a Polygon, or a Box flat along one axis), else None: openEMS models a
     conducting sheet on 2D primitives only (PEC on the others)."""
-    if isinstance(q, C.LinPoly) or isinstance(q, C.Curve):
-        return None
-    if isinstance(q, C.Polygon):
+    if isinstance(q, C.Polygon) and not isinstance(q, C.LinPoly):
         return int(q.norm_dir)
-    if isinstance(q, C.Box):
-        flat = [a for a in range(3) if q.start[a] == q.stop[a]]
-        return flat[0] if len(flat) == 1 else None
-    return None
+    flat = [a for a in range(3) if q.start[a] == q.stop[a]] if isinstance(q, C.Box) else []
+    return flat[0] if len(flat) == 1 else None
 
 
 def _bc_size(b):
     """openEMS's boundary size (cells) of a side: 1 for Mur, n for PML_n, else 0."""
     b = str(b).upper()
-    if b == 'MUR':
-        return 1
     if b.startswith('PML'):
         return int(b.split('_')[1]) if '_' in b else 8
-    return 0
+    return 1 if b == 'MUR' else 0
 
 
 def _sheet_edges(sheets, sheet_of, sheet_m, grid, lE, dt, f_max, notes):
@@ -482,7 +461,6 @@ def _sheet_edges(sheets, sheet_of, sheet_m, grid, lE, dt, f_max, notes):
             cond.append(g / fw)
             cap.append(dt * dt / 4 * (16 / np.min(L, axis=0) + sum(1 / x for x in L)))
             branches += [(flat[mine], r * fw, tau) for r, tau in br]
-    cat = lambda v: np.concatenate(v)
     for p in {id(p): p for p, _ in sheets}.values():
         rms = getattr(p, 'roughness', 0.0) or 0.0
         fin, share = getattr(p, 'finish', ()), getattr(p, 'finish_share', 1.0)
@@ -492,12 +470,26 @@ def _sheet_edges(sheets, sheet_of, sheet_m, grid, lE, dt, f_max, notes):
         notes.append(f"conducting sheet {p.name}: {p.conductivity:g} S/m, {p.thickness * 1e6:g} um" +
                      (f", {', '.join(extra)} (a wideband fit to {2 * f_max / 1e9:g} GHz)" if extra else
                       f" (openEMS's model, fitted to {f_max / 1e9:g} GHz)"))
-    return cat(idx).astype(np.int64), cat(cap), cat(cond), branches
+    return np.concatenate(idx).astype(np.int64), np.concatenate(cap), np.concatenate(cond), branches
 
 
 _CORES = {}                     # {key: (op, ctx)}: the last model's core, for its other excitations (R-D4)
 _CORES_LOCK = threading.Lock()
 _BUILDING = threading.Lock()              # held while a core or its compressed form is made
+
+
+def _kept(cache, key, make):
+    """make()'s result for the model `key`, kept in cache (_CORES, _COMPRESSED): excitations started together
+    have one make it; one model's at a time (its arrays are large)."""
+    with _BUILDING:
+        with _CORES_LOCK:
+            kept = cache.get(key)
+        if kept is None:
+            kept = make()
+            with _CORES_LOCK:
+                cache.clear()
+                cache[key] = kept
+    return kept
 
 
 def _digest(h, o, seen):
@@ -531,7 +523,6 @@ def _digest(h, o, seen):
 def _core_key(csx, fdtd):
     """What the core depends on: the grid, every property but the excitations, probes and dumps (with their
     primitives), the background and the settings. None when the structure cannot be read for it."""
-    import hashlib
     try:
         h = hashlib.sha256()
         g = csx.GetGrid()
@@ -552,21 +543,12 @@ def build(csx, fdtd, log=None):
     dumps and the pulse) is kept for the model's next excitation, which differs only in those: kicad2ems runs
     one per port (the coupler: 0.15 s a run, and compress's 0.2 s on the GPU)."""
     key = _core_key(csx, fdtd)
-    if key is None:
+
+    def make():
         core, ctx = _core(csx, fdtd)
-        core._core_key = None
-    else:
-        with _BUILDING:                                             # excitations started together: one builds it
-            with _CORES_LOCK:
-                kept = _CORES.get(key)
-            if kept is None:
-                core, ctx = _core(csx, fdtd)
-                core._core_key = key
-                with _CORES_LOCK:
-                    _CORES.clear()                                  # one model's at a time: its arrays are large
-                    _CORES[key] = (core, ctx)
-            else:
-                core, ctx = kept
+        core._core_key = key
+        return core, ctx
+    core, ctx = make() if key is None else _kept(_CORES, key, make)
     op = copy.copy(core)                                            # its arrays shared (read only), the rest its own
     op.notes = list(core.notes)
     props = [p for p in csx.GetAllProperties() if getattr(p, 'enabled', True)]
@@ -769,16 +751,15 @@ def _core(csx, fdtd):
     pec_m = pec > -np.inf
     method = str(fdtd.get('timestep_method') or 'auto').lower()         # (openEMS.settings: GFDTD_TIMESTEP too)
     key = _core_key(csx, fdtd) if method in ('auto', 'exact', '3', 'rennings') else None
-    kept = cached_limit(key) if key else None
+    kept = _kept_limits().get(key) if key else None
     if method == 'auto':                                            # the large models, or one already measured
         method = 'exact' if (kept or int(np.prod([n - 1 for n in sh])) >= AUTO_CELLS) else 'courant'
     if method in ('exact', '3', 'rennings'):                        # R-D6: the operator's own limit
-        lE0, aE0, lH0, aH0 = _geometry(grid)
         einv = np.where(pec_m & ~(sheet_of >= 0), 0.0, np.divide(1.0, cap, out=np.zeros_like(cap), where=cap > 0))
         hk = np.zeros((3,) + sh)
         for a in range(3):
             mu = MU0 * (_hedge_average(mue, a, grid) if np.any(mue != 1.0) else 1.0)
-            np.divide(lH0[a], mu * aH0[a], out=hk[a], where=aH0[a] > 0)
+            np.divide(lH[a], mu * aH[a], out=hk[a], where=aH[a] > 0)
         geo_dt = op.dt
         limit = kept or exact_timestep(einv, hk, factor=1.0)
         if key and not kept:
@@ -807,8 +788,7 @@ def _core(csx, fdtd):
     op.n_sheet = int(sheet_m.sum())
     rl = _sheet_edges(sheets, sheet_of, sheet_m, grid, lE, dt, float(fdtd['f0']) + float(fdtd['fc']), op.notes)
     if rl is not None:
-        sidx, s_cap, s_cond = rl[0], rl[1], rl[2]
-        cap.reshape(-1)[sidx], cond.reshape(-1)[sidx] = s_cap, s_cond
+        cap.reshape(-1)[rl[0]], cond.reshape(-1)[rl[0]] = rl[1], rl[2]
     # poles: i' = ka i + kb (V' - sg V). Debye (sg 1): tau di/dt + i = C_p dV/dt; a sheet's R-L branch (sg -1):
     # L di/dt + R i = V. Both by the trapezoidal rule; the E update sees (i + i') / 2, so kb / 2 joins the edge's
     # C / dt in the denominator and sg kb / 2 in the numerator
@@ -893,16 +873,14 @@ def _core(csx, fdtd):
                 vv[t][tuple(sl)] = 0.0
                 vi[t][tuple(sl)] = 0.0
             elif b == 'MUR':
-                ok = vi[t][tuple(sl)] > 0
-                pos = np.nonzero(ok)
+                pos = np.nonzero(vi[t][tuple(sl)] > 0)
                 ijk0, ijk1 = [None] * 3, [None] * 3
                 rest = [x for x in range(3) if x != a]
                 ijk0[a], ijk1[a] = np.full(len(pos[0]), face), np.full(len(pos[0]), inner)
                 for r_, pp in zip(rest, pos):
                     ijk0[r_] = ijk1[r_] = pp
                 delta = abs(grid.m[a][face] - grid.m[a][inner])
-                er = epsE[t][tuple(ijk0)]
-                cl = C0 / np.sqrt(np.maximum(er, 1.0))
+                cl = C0 / np.sqrt(np.maximum(epsE[t][tuple(ijk0)], 1.0))
                 mur0.append(_flat(sh, t, *ijk0))
                 mur1.append(_flat(sh, t, *ijk1))
                 murk.append((cl * dt - delta) / (cl * dt + delta))
@@ -1034,17 +1012,7 @@ def compress(op):
     """op.vv / op.vi / op.iv / op.debye as a Compressed operator (exact to 2^-20 in vv and s), the same object
     for every excitation of one model (it reads only the core): read only."""
     key = getattr(op, '_core_key', None)
-    if key is None:
-        return _compress(op)
-    with _BUILDING:
-        with _CORES_LOCK:
-            kept = _COMPRESSED.get(key)
-        if kept is None:
-            kept = _compress(op)
-            with _CORES_LOCK:
-                _COMPRESSED.clear()
-                _COMPRESSED[key] = kept
-    return kept
+    return _compress(op) if key is None else _kept(_COMPRESSED, key, lambda: _compress(op))
 
 
 def _compress(op):
@@ -1273,10 +1241,9 @@ def _probe(p, q, grid, sh):
     else:
         return None
     terms = {k: v for k, v in terms.items() if v != 0}
-    lo = [grid.lines[a][s[a]] for a in range(3)]
-    hi = [grid.lines[a][e[a]] for a in range(3)]
     return dict(name=p.name, type=p.p_type, field=field, idx=np.array(list(terms), np.int64),
-                w=np.array(list(terms.values()), float), start=(lo, s), stop=(hi, e), unit=grid.unit)
+                w=np.array(list(terms.values()), float), start=([grid.lines[a][s[a]] for a in range(3)], s),
+                stop=([grid.lines[a][e[a]] for a in range(3)], e), unit=grid.unit)
 
 
 def _field_probe(p, q, grid, sh):

@@ -147,18 +147,12 @@ class openEMS:                                                       # noqa: N80
         """A near-field to far-field box (gfdtd.nf2ff.nf2ff), placed as openEMS places it: inside the absorbing
         boundaries (a Mur side's 2 lines, a PML_n side's n + 1), no face on a PEC / PMC side, which mirrors."""
         from .nf2ff import nf2ff
+        from .operator import _bc_size
         if self.csx is None:
             raise ValueError("CreateNF2FFBox: CSX is not set")
-        directions, mirror, size = [True] * 6, [0] * 6, [0] * 6
-        for n, b in enumerate(self.bc):
-            if b == 'PEC':
-                directions[n], mirror[n] = False, 1
-            elif b == 'PMC':
-                directions[n], mirror[n] = False, 2
-            elif b == 'MUR':
-                size[n] = 2
-            elif b.startswith('PML'):
-                size[n] = int(b.split('_')[1]) + 1 if '_' in b else 9
+        mirror = [{'PEC': 1, 'PMC': 2}.get(b, 0) for b in self.bc]
+        directions = [not m for m in mirror]
+        size = [_bc_size(b) + 1 if _bc_size(b) else 0 for b in self.bc]       # Mur: 2 lines, PML_n: n + 1
         if start is None or stop is None:
             start, stop = np.zeros(3), np.zeros(3)
             for a in range(3):
@@ -270,11 +264,8 @@ class openEMS:                                                       # noqa: N80
 
 def read_probe(path):
     """(t, values) of an openEMS / gfdtd probe file."""
-    rows = []
     with open(path, encoding='utf-8') as fh:
-        for line in fh:
-            if line.strip() and not line.startswith('%'):
-                rows.append(line.split()[:2])
+        rows = [line.split()[:2] for line in fh if line.strip() and not line.startswith('%')]
     a = np.array(rows, float).reshape(-1, 2)
     return a[:, 0], a[:, 1]
 
