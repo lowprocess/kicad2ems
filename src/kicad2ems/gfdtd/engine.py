@@ -20,6 +20,7 @@ from kicad2ems.emsdev.cpu import core_threads                                  #
 
 from . import kernels
 from .dumps import Dumps
+from .operator import curl_I_part
 
 STATUS_S = 1.0          # wall seconds between status lines
 CONCURRENT_CELLS = 1.2e6    # GPU runs at once: up to this many cells in all (GFDTD_CONCURRENT_CELLS sets it)
@@ -276,22 +277,9 @@ class NumpyBackend:
         v = self.V.reshape(-1)
         if self.op.debye is not None:
             old = v[self.db_idx]
-        (Ix, Iy, Iz) = self.I
-        c = Iz - Iy
-        c[:, 1:, :] -= Iz[:, :-1, :]
-        c[:, :, 1:] += Iy[:, :, :-1]
-        self.V[0] *= self.vv[0]
-        self.V[0] += self.vi[0] * c
-        c = Ix - Iz
-        c[:, :, 1:] -= Ix[:, :, :-1]
-        c[1:, :, :] += Iz[:-1, :, :]
-        self.V[1] *= self.vv[1]
-        self.V[1] += self.vi[1] * c
-        c = Iy - Ix
-        c[1:, :, :] -= Iy[:-1, :, :]
-        c[:, 1:, :] += Ix[:, :-1, :]
-        self.V[2] *= self.vv[2]
-        self.V[2] += self.vi[2] * c
+        for a in range(3):
+            self.V[a] *= self.vv[a]
+            self.V[a] += self.vi[a] * curl_I_part(self.I, a)
         if self.op.debye is not None:
             np.subtract.at(v, self.db_idx, self.db_vi * self.db_h * self.db_i)
             self.db_i[:] = self.db_ka * self.db_i + self.db_kb * (v[self.db_idx] - self.db_sg * old)
@@ -652,12 +640,12 @@ class CupyBackend(_Compressed, NumpyBackend):
 
     def mur_pre(self):
         if self.op.mur is not None:
-            self._launch('mur_pre', len(self.m0), self.V, self.m0, self.m1, self.o0, self.o1, np.int64(len(self.m0)))
+            self._launch('mur_pre', self.n_mu, self.V, self.m0, self.m1, self.o0, self.o1, np.int64(self.n_mu))
 
     def mur_post(self):
         if self.op.mur is not None:
-            self._launch('mur_post', len(self.m0), self.V, self.m0, self.m1, self.mk, self.o0, self.o1,
-                         np.int64(len(self.m0)))
+            self._launch('mur_post', self.n_mu, self.V, self.m0, self.m1, self.mk, self.o0, self.o1,
+                         np.int64(self.n_mu))
 
     def add(self, F, idx, amp, val):
         self._launch('excite', len(idx), F, idx, amp, np.float32(val), np.int64(len(idx)))
@@ -667,12 +655,10 @@ class CupyBackend(_Compressed, NumpyBackend):
 
     def lumped(self):
         if self.op.par_L:
-            n = len(self.pl_idx)
-            self._launch('par_l', n, self.V, self.pl_vi, self.pl_idx, self.pl_k, self.pl_I, np.int64(n))
+            self._launch('par_l', self.n_pl, self.V, self.pl_vi, self.pl_idx, self.pl_k, self.pl_I, np.int64(self.n_pl))
         if self.op.series:
-            n = len(self.se_idx)
-            self._launch('series_rlc', n, self.V, self.se_vi, self.se_idx, self.se_a, self.se_b, self.se_c,
-                         self.se_I, self.se_q, self.dtf, np.int64(n))
+            self._launch('series_rlc', self.n_se, self.V, self.se_vi, self.se_idx, self.se_a, self.se_b, self.se_c,
+                         self.se_I, self.se_q, self.dtf, np.int64(self.n_se))
 
     def probe(self, slot):
         row = self.buf[slot]
@@ -758,27 +744,20 @@ class VulkanBackend(_Compressed, NumpyBackend):
             self.IDX = np.int64
         self.BLOCK = int(os.environ.get('GFDTD_VK_BLOCK') or self.BLOCK)
         self.k = _vk_kernels(self.dev, ctype, self.BLOCK, 'int64_t' if self.IDX == np.int64 else 'int')
-        f = {}                                                      # Model's fields: addresses, then values
         self.V, self.I = (self.zeros((3,) + op.shape) for _ in range(2))
-        f.update(V=self.V, I=self.I, G=self.up(self.G), code=self.up(self.code), tvv=self.up(self.tvv),
-                 ts=self.up(self.ts), tpole=self.up(self.tpole), tkb=self.up(self.tkb), tka=self.up(self.tka),
-                 th=self.up(self.th), slot=self.up(self.slot), pol=self.up(self.pol))
+        # Model's fields: the arrays' addresses (these uploaded under their own names), then the values
+        dtypes = dict(pl_L=np.float64, se_L=np.float64, se_Cinv=np.float64,
+                      **dict.fromkeys(('pl_idx', 'se_idx', 'm0', 'm1'), self.IDX))
+        names = ['G', 'code', 'tvv', 'ts', 'tpole', 'tkb', 'tka', 'th', 'slot', 'pol']
+        names += ['pl_vi', 'pl_idx', 'pl_k', 'pl_I', 'pl_L'] if op.par_L else []
+        names += ['se_vi', 'se_idx', 'se_a', 'se_b', 'se_c', 'se_I', 'se_q', 'se_L', 'se_Cinv'] if op.series else []
+        names += ['m0', 'm1', 'mk', 'o0', 'o1'] if op.mur is not None else []
+        f = dict(V=self.V, I=self.I, **{n: self.up(getattr(self, n), dtypes.get(n)) for n in names})
         self._pml_all(f)
         self.exc_idx, self.exc_amp = self.up(self.exc_idx, self.IDX), self.up(self.exc_amp)
         f.update(ex_idx=self.exc_idx, ex_amp=self.exc_amp)
         for g in self.more:
             g['idx'], g['amp'] = self.up(g['idx'], self.IDX), self.up(g['amp'])
-        if op.par_L:
-            f.update(pl_vi=self.up(self.pl_vi), pl_idx=self.up(self.pl_idx, self.IDX), pl_k=self.up(self.pl_k),
-                     pl_I=self.up(self.pl_I), pl_L=self.up(self.pl_L, np.float64))
-        if op.series:
-            f.update(se_vi=self.up(self.se_vi), se_idx=self.up(self.se_idx, self.IDX), se_a=self.up(self.se_a),
-                     se_b=self.up(self.se_b), se_c=self.up(self.se_c), se_I=self.up(self.se_I),
-                     se_q=self.up(self.se_q), se_L=self.up(self.se_L, np.float64),
-                     se_Cinv=self.up(self.se_Cinv, np.float64))
-        if op.mur is not None:
-            f.update(m0=self.up(self.m0, self.IDX), m1=self.up(self.m1, self.IDX), mk=self.up(self.mk),
-                     o0=self.up(self.o0), o1=self.up(self.o1))
         for key, t in (('pv', self.pv), ('pi', self.pi)):
             if t is not None:
                 f.update({key + '_idx': self.up(t[0], self.IDX), key + '_w': self.up(t[1]),
@@ -1091,7 +1070,6 @@ class Engine:
                     fh.write(f"% {end}-coordinates: ({','.join(f'{v * u:g}' for v in xyz)}) m -> [{','.join(map(str, ijk))}]\n")
                 fh.write(f"% t/s\t{what}\n")
             outs.append((fh, [c], 0.5 if p['field'] == 'I' else 0.0))
-        files = [o[0] for o in outs]
         dumps = Dumps(op, be, path, op.notes)
         pending = []                                                # (step, slot) samples in the device buffer
 
@@ -1157,7 +1135,7 @@ class Engine:
             flush()
             written = dumps.close()
         finally:
-            for fh in files:
+            for fh, _, _ in outs:
                 fh.close()
         sec = time.time() - t0
         db = 10 * np.log10(e / emax) if emax > 0 and e > 0 else float('-inf')

@@ -228,14 +228,18 @@ def _curl_V(V):
     return out
 
 
-def _curl_I(I):
-    """The loop sum of I around each dual face (the E update's c)."""
-    Ix, Iy, Iz = I
-    out = np.empty_like(I)
-    c = Iz - Iy; c[:, 1:, :] -= Iz[:, :-1, :]; c[:, :, 1:] += Iy[:, :, :-1]; out[0] = c       # noqa: E702
-    c = Ix - Iz; c[:, :, 1:] -= Ix[:, :, :-1]; c[1:, :, :] += Iz[:-1, :, :]; out[1] = c       # noqa: E702
-    c = Iy - Ix; c[1:, :, :] -= Iy[:-1, :, :]; c[:, 1:, :] += Ix[:, :-1, :]; out[2] = c       # noqa: E702
+def curl_I_part(I, a):
+    """Component a of the loop sum of I around each dual face (the E update's c; the numpy backend's too)."""
+    b, c = (a + 1) % 3, (a + 2) % 3
+    along = lambda x, s: tuple(s if y == x else slice(None) for y in range(3))
+    out = I[c] - I[b]
+    out[along(b, slice(1, None))] -= I[c][along(b, slice(None, -1))]
+    out[along(c, slice(1, None))] += I[b][along(c, slice(None, -1))]
     return out
+
+
+def _curl_I(I):
+    return np.stack([curl_I_part(I, a) for a in range(3)])
 
 
 AUTO_CELLS = 1_000_000  # TimeStepMethod auto: the operator's own limit from this many cells (or when it is cached)
