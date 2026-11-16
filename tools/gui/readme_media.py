@@ -6,7 +6,7 @@ renders the 3D field views.
 
     python tools/gui/readme_media.py  # runs, then every picture
     python tools/gui/readme_media.py --skip-runs  # only the pictures, from the
-                                                  last runs
+                                                  # last runs
     python tools/gui/readme_media.py --only hairpin filter
         # (cases: hairpin, stub, patch, filter, start)
 

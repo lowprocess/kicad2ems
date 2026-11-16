@@ -6,9 +6,9 @@ index.md as it is read (NAV). The code reference (reference/) covers every part
 of kicad2ems: autodoc for the Python, Doxygen through Breathe for the compiled
 cores of mom25d and gfdtd.
 
-    python -m pip install -r docs/requirements.txt  # Sphinx, MyST, Furo,
-                                                    Breathe
-    sphinx-build -b html docs docs/_build/html      # needs doxygen on PATH
+    python -m pip install -r docs/requirements.txt
+        # Sphinx, MyST, Furo, Breathe
+    sphinx-build -b html docs docs/_build/html  # needs doxygen on PATH
 
 kicad2ems is imported from where it is installed (a checkout's editable install,
 or Read the Docs' pip install of this checkout), else from src/.

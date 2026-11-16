@@ -30,9 +30,9 @@ def window(tmp_path, monkeypatch):
     from PySide6.QtCore import QSettings
     from kicad2ems.gui import application, study, app as gui
     from kicad2ems.gui.app import MainWindow
-    # the window lists the registry as it was when it was imported:
+    # the window lists the registry as it was when it was imported: the
+    # stand-ins', in a run of every test
     listed = study.installed()
-    # the stand-ins', in a run of every test
     for module in (study, gui):
         monkeypatch.setattr(module, 'ANALYSES', listed)
         monkeypatch.setattr(module, 'BY_KEY', {a.key: a for a in listed})

@@ -3,7 +3,7 @@
 conductance).
 
     python validation/dc_elmer.py [case ...]  # cases: strip, via_single,
-                                              via_hop, wpthb_vhb, jetson_1v15
+                                              # via_hop, wpthb_vhb, jetson_1v15
 
 Each case: one net's copper, a source terminal held at 0 V and loads drawing
 their currents as equipotential pads. Compared: each load's voltage (the drop)

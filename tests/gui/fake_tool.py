@@ -22,9 +22,8 @@ if kind == 'find':
 fake_analyses.install()
 out, v = sys.argv[2], json.loads(sys.argv[3])
 print(f"{kind}: reading the board", flush=True)
-# as a tool that starts a solver: SIGTERM stops
+# as a tool that starts a solver: SIGTERM stops its child, then the tool
 if v.get('rail') == 'SLOW':
-    # its child, then the tool
     import signal, subprocess, time
     child = subprocess.Popen(
         [sys.executable, '-c', 'import time; time.sleep(60)'])

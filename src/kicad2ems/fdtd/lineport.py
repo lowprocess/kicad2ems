@@ -24,9 +24,9 @@ single-ended lines on sheet copper only. Every port must be driven (B A^-1 needs
 each port's run).
 
     plan, notes = plan_ports(m, mesh, 'auto')  # {port index: dict(d, layer,
-                                               ...)}, why the others are not
+                                               # ...)}, why the others are not
     S = solve(m, freq, res, plan)              # res: run_excitations' RunResult
-                                               with res.lines
+                                               # with res.lines
 """
 import numpy as np
 

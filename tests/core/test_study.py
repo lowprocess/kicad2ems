@@ -303,11 +303,9 @@ model = "m.json"
     assert (study.read_config(_config(tmp_path, '')).asked == dict(sparams=[])
             and study.read_config(old).fields == {})
     # no run: the questions that have a table
-    assert (list(
-        study.read_config(
-            _config(tmp_path,
-                    '[study.dc]\n[study.thermal]\nengine = "elmer_thermal"\n')).
-        asked) == ['dc', 'thermal'])
+    assert (list(study.read_config(_config(
+        tmp_path, '[study.dc]\n[study.thermal]\nengine = "elmer_thermal"\n'
+    )).asked) == ['dc', 'thermal'])
     for text, why in (
         ('[study]\nrun = ["warmth"]\n', "no question 'warmth': one of sparams"),
         ('[study]\nrun = ["thermal"]\n[study.thermal]\nengine = "pdn"\n',

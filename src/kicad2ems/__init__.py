@@ -18,8 +18,8 @@ repository of its own until 2026-11-16):
     emsdev    the machine: GPUs, CPU threads, memory, the compiled cores' builds
     examples  the example boards and their configs (the checkout's examples/)
 
-    from kicad2ems.core import KiCadBoard, Board  # (also: from kicad2ems import
-                                                  Board)
+    from kicad2ems.core import KiCadBoard, Board
+        # (also: from kicad2ems import Board)
 
 Solver and analysis plugins are found by entry points (the groups
 'kicad2ems.solvers' and 'kicad2ems.analyses'). Documentation: docs/index.md in

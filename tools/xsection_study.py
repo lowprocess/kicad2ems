@@ -4,7 +4,7 @@ The 2D field solver's mesh (kicad2ems.core.lines.xsection) measured:
 docs/transmission-lines.md#field-solver quotes this.
 
     python tools/xsection_study.py  # against the references: exact,
-                                    closed-form, converged
+                                    # closed-form, converged
     python tools/xsection_study.py --board BOARD.kicad_pcb [--every N]
         # every cross-section of a real board
 

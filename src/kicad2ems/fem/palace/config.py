@@ -7,9 +7,9 @@ reduced-order model fitted to a few full solves) over the run's points.
     cfg = config(mdl, ffr, tol=0, excite=[0], farfield=angles, out='postpro_ff')
         # an antenna's far field
     cfg = config(mdl, freq, box='pec')  # the board in a metal can: the air
-                                        box's faces PEC
+                                        # box's faces PEC
     cfg = eigen(mdl, n=4, target=4e9, box='pec')  # its resonances above 4 GHz,
-                                                  each one's Q (R-E19)
+                                                  # each one's Q (R-E19)
 
 The model's lumped parts are Palace lumped ports that are never excited: a
 boundary with the part's R, L or C. In an eigenmode run the ports are their
