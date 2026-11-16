@@ -1,13 +1,14 @@
 """
-cdtmesh - the points of geo.mesh_polygons' triangulation: CDT (the compiled core's cdt_triangulate, core/cdt_mesh.hpp,
-CDT vendored in core/CDT, MPL-2.0) triangulates; the points inside the copper are placed here. The same file in
-mom25d (mom25d/cdtmesh.py) and pcbqs (pcbqs/_numerics/cdtmesh.py).
+cdtmesh - the points of geo.mesh_polygons' triangulation: CDT (a compiled core's cdt_triangulate, mom25d's or pcbqs's:
+emsdev/native/cdt_mesh.hpp, CDT vendored in emsdev/native/CDT, MPL-2.0) triangulates; the points inside the copper are
+placed here.
 
     T = mesh(V, segs, limit, inside, core, frozen=None, sizes=(1.0,), min_angle=0, max_steiner=0)
 
 V (n, 2), segs (m, 2): geo's vertices and constraint segments, in its units (the layer's dmax). limit(C): the
-largest area of a triangle whose centroid is at C (<= 0: no limit). inside(P): whether P is in the copper. core: the
-package's compiled core. frozen(P): where no point is to be placed (the structured runs' cells; None: nowhere).
+largest area of a triangle whose centroid is at C (<= 0: no limit). inside(P): whether P is in the copper. core: a
+compiled core with cdt_triangulate. frozen(P): where no point is to be placed (the structured runs' cells; None:
+nowhere).
 
   seed     a hexagonal lattice at the local cell size (equilateral cells just under the limit): each region's own
            lattice where the cell size is that region's (sizes), and where it is graded (coarsening) the finest
@@ -130,7 +131,7 @@ def _hex_seed(V, limit, inside, frozen, dseg, sizes):
     vt = cKDTree(V)
     out = []
 
-    def keep(P, sd):
+    def keep(P):
         P = P[inside(P)]
         if frozen is not None and len(P):
             P = P[~frozen(P)]
@@ -151,7 +152,7 @@ def _hex_seed(V, limit, inside, frozen, dseg, sizes):
     near = lambda h, a: np.abs(h / a - 1) <= HEX_NEAR
     for a in sorted(set(sizes), reverse=True):                        # each region's own lattice
         sd = float(side(0.5 * a * a))
-        P = keep(_hex(lo, hi, sd), sd)
+        P = keep(_hex(lo, hi, sd))
         if not len(P):
             continue
         l_ = np.asarray(limit(P), float)
@@ -163,7 +164,7 @@ def _hex_seed(V, limit, inside, frozen, dseg, sizes):
         if len(P):
             out.append(P)
     sd0 = float(side(0.5 * hmin * hmin))                              # the graded rest: thinned
-    P = keep(_hex(lo, hi, sd0), sd0)
+    P = keep(_hex(lo, hi, sd0))
     if len(P):
         l_ = np.asarray(limit(P), float)
         on = l_ > 0

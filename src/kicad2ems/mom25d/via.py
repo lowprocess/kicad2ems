@@ -29,7 +29,7 @@ import numpy as np
 from scipy.special import j0, jv, kv
 from scipy.interpolate import CubicSpline
 
-from .base import MU0, C0
+from kicad2ems.emsdev.numerics.base import MU0, C0
 
 
 # ---- Sommerfeld contour (shared with the horizontal kernels) ----------------

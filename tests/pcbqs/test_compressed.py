@@ -227,7 +227,7 @@ def test_native_hmatrix_rejects_inconsistent_layout():
 @pytest.mark.parametrize('near',[3.,np.inf])
 def test_native_entry_blocks_match_numpy_assembly_bitwise(near,monkeypatch):
     import kicad2ems.pcbqs.compressed as compressed
-    from kicad2ems.pcbqs._numerics.base import RWG,MU0
+    from kicad2ems.emsdev.numerics.base import RWG,MU0
     q=make('hierarchical');q.near=near
     engine=compressed._engine(q)
     native=compressed._native(engine)

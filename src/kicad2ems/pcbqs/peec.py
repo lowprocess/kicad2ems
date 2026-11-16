@@ -15,7 +15,7 @@ from scipy.sparse.linalg import splu
 from scipy.linalg import lu_factor, lu_solve
 from collections import OrderedDict
 
-from ._numerics.base import qform
+from kicad2ems.emsdev.numerics.base import qform
 from .kernels import peec_system, lu_factor_rows, lu_solve_rows, solve_symmetric, factor_bytes
 
 
@@ -24,7 +24,7 @@ def electric_field(model, result, fi, pts, chunk=100_000):
     triangle charge density. No inductive -jw A contribution is included.
     The edge integrals give tangential E and the solid angle gives normal E.
     """
-    from ._numerics.base import EPS0
+    from kicad2ems.emsdev.numerics.base import EPS0
     pts = np.asarray(pts, float)
     if pts.ndim != 2 or pts.shape[1] != 3 or not np.isfinite(pts).all():
         raise ValueError('pts must be a finite (n, 3) array in metres')
@@ -57,7 +57,7 @@ def electric_field(model, result, fi, pts, chunk=100_000):
 
 
 def _electric_triangles(V, z_of, density, pts, chunk):
-    from ._numerics.base import edge_frames
+    from kicad2ems.emsdev.numerics.base import edge_frames
     _, length, tau, un = edge_frames(V)
     E = np.zeros((len(pts), 3, density.shape[1]), complex)
     step = max(1, chunk // len(V))

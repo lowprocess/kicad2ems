@@ -7,7 +7,7 @@ import numpy as np
 from scipy.special import jv
 from scipy.interpolate import CubicSpline
 
-from kicad2ems.mom25d.base import MU0, C0, EPS0
+from kicad2ems.emsdev.numerics.base import MU0, C0, EPS0
 
 
 class Stackup:

@@ -104,10 +104,11 @@ include-package-data = false                                    # only what pack
 "kicad2ems.ipc" = ["plugin/*"]                               # what KiCad gets: plugin.json, the launcher, the icons
 "kicad2ems.gui" = ["*.svg", "*.ico"]                            # the window's and the launcher's icon, the wand
 "kicad2ems.gfdtd.core" = ["*.cpp", "*.h"]                       # the update code (GPU kernels and CPU core)
-"kicad2ems.mom25d.core" = ["*.cpp", "*.hpp", "CDT/*"]           # the core's sources (it meshes: CDT)
+"kicad2ems.mom25d.core" = ["*.cpp"]                             # the core's source (it meshes: emsdev/native)
 "kicad2ems.pcbqs" = ["data/*.json", "data/*.toml", "circuit/examples/*.json",
                      "circuit/examples/*.kicad_pcb", "circuit/examples/*.toml", "PROVENANCE.json"]
-"kicad2ems.pcbqs.core" = ["*.cpp", "*.hpp", "CDT/*"]
+"kicad2ems.pcbqs.core" = ["*.cpp", "*.hpp"]
+"kicad2ems.emsdev" = ["native/*.hpp", "native/CDT/*"]           # what both cores include: the mesher's CDT
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

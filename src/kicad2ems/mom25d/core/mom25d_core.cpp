@@ -22,7 +22,7 @@
 //   tree_cols/rows: X K and K^T X for the loop/tree basis; charge_into: its charge block into Z
 //   BLRFactor     : the block low-rank LU (solve_blr's preconditioner), SciPy's BLAS and LAPACK
 //   project       : T^T Z T for the quad cells / line functions (quads.project), Z's rows reduced in place
-//   cdt_triangulate: the mesher's constrained Delaunay triangulation (cdt_mesh.hpp: CDT, vendored in core/CDT)
+//   cdt_triangulate: the mesher's constrained Delaunay triangulation (emsdev/native/cdt_mesh.hpp: CDT)
 //
 // Everything mirrors the NumPy implementation in mom25d_fast.py (same tables and conventions),
 // which stays the fallback when this module is not built.

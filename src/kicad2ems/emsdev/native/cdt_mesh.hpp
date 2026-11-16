@@ -1,5 +1,6 @@
-// cdt_mesh.hpp - the meshers' constrained Delaunay triangulation (cdtmesh.py, geo.mesh_polygons): CDT
-// (artem-ogre/CDT 2.0.1, vendored in core/CDT, MPL-2.0). The same file in mom25d's and pcbqs's cores.
+// cdt_mesh.hpp - the mesher's constrained Delaunay triangulation (emsdev.numerics: cdtmesh.py, geo.mesh_polygons):
+// CDT (artem-ogre/CDT 2.0.1, vendored in CDT/ beside it, MPL-2.0). In mom25d's and pcbqs's cores (their builds put
+// emsdev/native on the include path).
 //
 //   cdt_triangulate(V, E, min_dist, min_angle, max_steiner) -> (vertices, triangles)
 //

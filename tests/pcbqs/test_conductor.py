@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping
 
-from kicad2ems.pcbqs._numerics.base import MU0
+from kicad2ems.emsdev.numerics.base import MU0
 from kicad2ems.pcbqs.conductor import surface_impedance
 from kicad2ems.pcbqs.mqs import MQS
 

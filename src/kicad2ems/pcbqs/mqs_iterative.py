@@ -96,7 +96,7 @@ def face_pairs(model, Le):
 def _pair_mutual(model, e, g):
     """Mutual partial inductance (branch units, as MQS's L) of RWG edges e and g, from their support triangles'
     analytic moments: the face pairs' preconditioner blocks when the compressed operator keeps no exact entries."""
-    from ._numerics.sing import offplane_pairs
+    from kicad2ems.emsdev.numerics.sing import offplane_pairs
     r, z = model.rwg, model.z_of
     out = np.zeros(len(e))
     for ta, aa, va in ((r.tp[e], r.l[e] / (2 * r.area[r.tp[e]]), r.vp[e]), (r.tm[e], -r.l[e] / (2 * r.area[r.tm[e]]), r.vm[e])):

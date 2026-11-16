@@ -24,7 +24,7 @@ def fingerprint(model,stage):
     digest.update(json.dumps(settings,sort_keys=True).encode())
     root=Path(pcbqs.__file__).parent
     paths=['compressed.py','hmatrix.py','static_backends.py','electrostatic.py','mqs.py',
-           '_numerics/base.py','_numerics/sing.py']
+           '../emsdev/numerics/base.py','../emsdev/numerics/sing.py']
     paths+=sorted(str(p.relative_to(root)) for p in (root/'core').glob('*.hpp'))
     paths+=sorted(str(p.relative_to(root)) for p in (root/'core').glob('*.cpp'))
     for name in paths:digest.update(name.encode());digest.update((root/name).read_bytes())

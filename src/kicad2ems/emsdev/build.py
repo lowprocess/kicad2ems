@@ -21,6 +21,7 @@ MSVC_ARCH = {'native': '/arch:AVX2', 'x86-64': '', 'x86-64-v2': '', 'x86-64-v3':
              'x86-64-v4': '/arch:AVX512'}
 OMP_DLL = 'libomp140.x86_64.dll'
 MINGW_DLLS = ('libgomp-1.dll', 'libwinpthread-1.dll', 'libstdc++-6.dll', 'libgcc_s_seh-1.dll')
+NATIVE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'native')   # sources the cores share (the mesher's CDT)
 
 
 def compiler():
@@ -198,13 +199,14 @@ def build_msvc(here, source, out, arch='-march=native', includes=()):
               f"PATH: the module loads only where Windows finds it")
 
 
-def build_core(build_py, source, arch_env=None, module='_core', includes_here=False):
+def build_core(build_py, source, arch_env=None, module='_core', includes_here=False, includes=()):
     """Build core/<source> (next to build_py, a package's core/build.py) into <package>/<module><EXT_SUFFIX>.
-    includes_here: the core's own directory is on the include path (its headers). Returns the module's path."""
+    includes_here: the core's own directory is on the include path (its headers); includes: more (NATIVE). Returns
+    the module's path."""
     here = os.path.dirname(os.path.abspath(build_py))
     out = os.path.join(here, '..', module + sysconfig.get_config_var('EXT_SUFFIX'))
     arch = os.environ.get(arch_env, '-march=native') if arch_env else '-march=native'
-    includes = [here] if includes_here else []
+    includes = ([here] if includes_here else []) + list(includes)
     if compiler() == 'msvc':
         build_msvc(here, source, out, arch, includes)
     else:

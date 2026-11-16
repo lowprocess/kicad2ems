@@ -11,13 +11,13 @@ FastHenry's rectangular filaments do.
 
 For a pair at heights zp, zq with thicknesses tp, tq the offset between a point of each slab is spread over a
 trapezoid (the convolution of two uniform distributions) centred on zp - zq; the moments are even in the offset and
-exact for any offset (_numerics.sing.offplane_pairs), so the average is a Gauss sum over the offset, split where the
-trapezoid bends and at zero (the |offset| kink).
+exact for any offset (emsdev.numerics.sing.offplane_pairs), so the average is a Gauss sum over the offset, split
+where the trapezoid bends and at zero (the |offset| kink).
 """
 import numpy as np
 from scipy.spatial import cKDTree
 
-from ._numerics.sing import offplane_pairs
+from kicad2ems.emsdev.numerics.sing import offplane_pairs
 
 _GX, _GW = np.polynomial.legendre.leggauss(4)
 

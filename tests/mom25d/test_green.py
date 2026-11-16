@@ -5,7 +5,7 @@ Each test checks the solver against a closed-form result or a conservation law.
 import numpy as np
 import pytest
 
-from kicad2ems.mom25d.base import C0, MU0, EPS0
+from kicad2ems.emsdev.numerics.base import C0, MU0, EPS0
 from kicad2ems.mom25d.multilayer import Layer, LayerStack, GreenTableML, stripline_z0_cohn
 from kicad2ems.mom25d.sim import line_char_xs
 from mom25d_reference import GreenTable, Stackup                    # the first solver's Sommerfeld integrals

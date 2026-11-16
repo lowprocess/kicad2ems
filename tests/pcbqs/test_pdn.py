@@ -4,7 +4,7 @@ import pytest
 from shapely.geometry import box, mapping
 
 from kicad2ems.pcbqs.pdn import dc, cavity
-from kicad2ems.pcbqs._numerics.base import EPS0
+from kicad2ems.emsdev.numerics.base import EPS0
 
 
 def board(layers, copper, vias=()):

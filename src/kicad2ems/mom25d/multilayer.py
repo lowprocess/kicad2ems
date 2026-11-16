@@ -22,7 +22,7 @@ from contextlib import contextmanager
 import numpy as np
 from scipy.special import ellipk
 
-from .base import MU0, C0, EPS0, graded
+from kicad2ems.emsdev.numerics.base import MU0, C0, EPS0, graded
 from .via import sommerfeld_contour, hankel, Table1D
 
 

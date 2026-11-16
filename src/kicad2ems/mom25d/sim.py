@@ -24,10 +24,11 @@ import shapely
 from kicad2ems.emsdev.memory import available as available_memory      # noqa: F401  (bytes; mom25d's name for it)
 
 from .model import KNOWN_SPAN
-from .base import MU0, EPS0, RWG, qform, combine, singular_moments, quad_pts, gram_matrix, \
-    _BAR3, _W3, _BAR6, _W6, fit_gamma, fit_waves, moments7, quad_moments
+from kicad2ems.emsdev.numerics.base import MU0, EPS0, RWG, qform, combine, quad_pts, _BAR3, _W3, _BAR6, _W6
+from kicad2ems.emsdev.numerics.geo import to_geometry, is_manhattan_rects, ngon
+from .base import singular_moments, gram_matrix, fit_gamma, fit_waves, moments7, quad_moments
 from .multilayer import RunLog, GreenTableML, make_mesh_ml
-from .geo import LinePort, to_geometry, is_manhattan_rects, mesh_polygons, ngon
+from .geo import LinePort, mesh_polygons
 from .via import ViaKernels
 from .sing import offplane_pairs, offplane_moments
 
@@ -556,7 +557,8 @@ class Simulation:
         if line_basis and line_basis != 'off':
             # (experimental) line basis functions on straight runs of trace (line.py): per column along a run, a
             # few functions with the edge-peaked shape across it, in place of the RWG unknowns inside the run
-            from .line import find_runs, line_subspace
+            from kicad2ems.emsdev.numerics.runs import find_runs
+            from .line import line_subspace
             prof = {'even': ('maxwell',), 'on': ('maxwell', 'odd'), 'full': ('maxwell', 'uniform', 'odd')}[line_basis]
             # the columns' length along the runs: at least 2 cells - tents a cell long interpolate onto the triangles
             # badly (their kinks fall inside cells: the GCPW at 2 GHz 0.17 off, the differential via all wrong)

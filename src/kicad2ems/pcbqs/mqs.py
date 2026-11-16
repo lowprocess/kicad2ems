@@ -31,9 +31,9 @@ import numpy as np
 from scipy.sparse import coo_matrix, diags, block_diag, csr_matrix
 from shapely.geometry import Point, box
 
-from ._numerics.base import MU0, RWG, combine, qform, _BAR3, _W3, quad_pts
+from kicad2ems.emsdev.numerics.base import MU0, RWG, combine, qform, _BAR3, _W3, quad_pts
 from .static import edge_inductance as dense_edge_inductance, static_moments
-from .biot import rwg_currents, h_sheets, h_segments
+from kicad2ems.emsdev.numerics.biot import rwg_currents, h_sheets, h_segments
 from .pdn.mesh import copper_centres, copper_of, mesh_sheet, simplify_copper, stack_z, SIGMA_CU
 
 
@@ -530,7 +530,7 @@ class MQS:
         return block_diag((delta, csr_matrix((nb-self.ne, nb-self.ne))), format='csr')
 
     def _set_potential(self, M0, er=None):
-        from ._numerics.base import EPS0
+        from kicad2ems.emsdev.numerics.base import EPS0
         of = self.charge_of if getattr(self, 'charge_of', None) is not None else self.node_of
         n = of.max() + 1
         area = np.bincount(of, weights=self.rwg.area, minlength=n)
@@ -811,7 +811,7 @@ class MQS:
         """The magnetic dipole moment (A m^2, (3,) complex) of the currents at frequency index fi: m = 1/2 int r x J
         dV over the sheets, the vias and the parts. It sets the field far from the loop (|H| ~ |m| / 2 pi r^3 on its
         axis): the layout's figure of merit for what it radiates at a distance, as the loop's L is for its noise."""
-        from ._numerics.base import _BAR6, _W6
+        from kicad2ems.emsdev.numerics.base import _BAR6, _W6
         i = res.i[fi]
         r = self.rwg
         a, b = rwg_currents(r, i[:self.n_rwg] / r.l)

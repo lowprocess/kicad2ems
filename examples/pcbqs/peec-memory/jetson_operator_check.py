@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import numpy as np
 from jetson_compressed import build_model
 from operator_cache import checkpoint,sampled_block
-from kicad2ems.pcbqs._numerics.base import RWG,combine,MU0,EPS0
+from kicad2ems.emsdev.numerics.base import RWG,combine,MU0,EPS0
 from kicad2ems.pcbqs.static import static_moments
 from kicad2ems.pcbqs.electrostatic import potential_moments
 

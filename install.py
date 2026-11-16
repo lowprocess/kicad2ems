@@ -404,12 +404,16 @@ def core_file(vpy, folder):
 
 
 def core_stale(folder, built):
-    """The compiled core is missing, or a source of it (core/*.cpp, *.h, *.hpp, and the vendored CDT's) is newer."""
+    """The compiled core is missing, or a source of it (core/*.cpp, *.h, *.hpp, a vendored CDT's, and for the mesh
+    cores those they share in emsdev/native) is newer."""
     if not os.path.isfile(built):
         return True
     t = os.path.getmtime(built)
-    return any(os.path.getmtime(f) > t for pat in ('*.cpp', '*.h', '*.hpp', os.path.join('CDT', '*'))
-               for f in glob.glob(os.path.join(folder, 'core', pat)))
+    dirs = [os.path.join(folder, 'core')]
+    if os.path.basename(folder) in MESH_CORES:
+        dirs.append(os.path.join(os.path.dirname(folder), 'emsdev', 'native'))
+    return any(os.path.getmtime(f) > t for d in dirs for pat in ('*.cpp', '*.h', '*.hpp', os.path.join('CDT', '*'))
+               for f in glob.glob(os.path.join(d, pat)))
 
 
 def find_install(py):

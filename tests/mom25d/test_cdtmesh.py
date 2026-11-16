@@ -4,7 +4,8 @@ import pytest
 import shapely
 from shapely.geometry import Point, box
 
-from kicad2ems.mom25d import cdtmesh, fast, geo
+from kicad2ems.emsdev.numerics import cdtmesh
+from kicad2ems.mom25d import fast, geo
 
 pytestmark = pytest.mark.skipif(fast._built is None or not hasattr(fast._built, 'cdt_triangulate'),
                                 reason="the compiled core without cdt_triangulate")

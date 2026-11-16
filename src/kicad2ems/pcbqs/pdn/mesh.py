@@ -20,7 +20,7 @@ from shapely.ops import unary_union
 from scipy.sparse import coo_matrix
 from scipy.spatial import cKDTree
 
-from .._numerics.geo import mesh_polygons
+from kicad2ems.emsdev.numerics.geo import mesh_polygons
 
 SIGMA_CU = 5.8e7                # copper, S/m (shared by mqs, dc, cavity, stack)
 

@@ -107,7 +107,7 @@ def edge_inductance(rwg, Mrr, Mrx, Mry, M0, factor=1.0, scale=None, workers=None
     triangles of each RWG function, with no temporaries beyond the output;
     otherwise the sparse Galerkin products of combine() are used.
     """
-    from ._numerics.base import combine
+    from kicad2ems.emsdev.numerics.base import combine
     started = time.perf_counter()
     scale = np.ones(rwg.Ne) if scale is None else np.ascontiguousarray(scale, float)
     workers = resolve_workers(workers)

@@ -6,11 +6,12 @@ import numpy as np
 import pytest
 from scipy.integrate import quad
 
-from kicad2ems.mom25d.base import C0, MU0, EPS0
+from kicad2ems.emsdev.numerics.base import C0, MU0, EPS0
 from kicad2ems.mom25d.multilayer import Layer, LayerStack
 from kicad2ems.mom25d.via import ViaKernels
 from kicad2ems.mom25d.sing import offplane_pairs
-from kicad2ems.mom25d.geo import mesh_polygons, gap_zones, LinePort
+from kicad2ems.emsdev.numerics.geo import gap_zones
+from kicad2ems.mom25d.geo import mesh_polygons, LinePort
 from kicad2ems.mom25d.sim import Simulation, SeriesLumped, Via, ViaPort, line_char_xs
 from kicad2ems.mom25d.afs import aaa
 
@@ -43,7 +44,8 @@ def test_via_via_table_matches_the_direct_transform():
 
 
 def test_offplane_reduces_to_inplane_and_converges():
-    from kicad2ems.mom25d.base import RWG, singular_moments
+    from kicad2ems.emsdev.numerics.base import RWG
+    from kicad2ems.mom25d.base import singular_moments
     from mom25d_reference import make_mesh
     nodes, tris = make_mesh([(0, 0, 0.3e-3, 0.06e-3)], 0.15e-3, 0.03e-3)
     M0, _, _ = singular_moments(RWG(nodes, tris))
@@ -78,7 +80,7 @@ def test_a_pair_s_moments_are_one_value_with_the_rule_over_the_smaller_triangle(
     for got, want in zip((m0, mro, mrs, mrr), ref):
         assert np.abs(got - want).max() < 2e-4 * np.abs(want).max()
     core = pytest.importorskip('kicad2ems.mom25d._core')
-    from kicad2ems.mom25d.sing import _offplane_geometry
+    from kicad2ems.emsdev.numerics.sing import _offplane_geometry
     P6 = _offplane_geometry(nodes, tris)[5]
     W6 = np.tile(np.asarray(_offplane_geometry(nodes, tris)[6])[None], (3, 1)) * area[:, None]
     c0, cro, crs, crr = core.offplane_pairs(nodes, tris.astype(np.int32), np.ascontiguousarray(P6), W6,

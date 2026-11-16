@@ -9,7 +9,7 @@ For each pair of an observation triangle Vo[k] and a source triangle Vs[k] ((m, 
 
 The source integral is analytic: in the source triangle's own frame (two in-plane axes and its normal) an
 observation point is (u, v) over the plane at height w, which is the horizontal kernel's (x, y) at offset d
-(_numerics.sing.offplane_pairs), so the same edge formulas hold; the in-plane moment comes back to 3D through the
+(emsdev.numerics.sing.offplane_pairs), so the same edge formulas hold; the in-plane moment comes back to 3D through the
 frame. The observation integral is the 6-point rule, on 4**outer_levels sub-triangles. For two horizontal triangles
 this is offplane_pairs exactly (tests/test_panels3d.py).
 
@@ -18,8 +18,8 @@ alpha alpha' (mrr - v'.mro - v.mrs + v.v' m0)  (rwg_pair).
 """
 import numpy as np
 
-from ._numerics.base import _BAR6, _W6
-from ._numerics.currents import _split4
+from kicad2ems.emsdev.numerics.base import _BAR6, _W6
+from kicad2ems.emsdev.numerics.biot import _split4
 
 
 def _rule(outer_levels):

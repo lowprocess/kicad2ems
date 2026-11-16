@@ -18,7 +18,7 @@ Simulation.
 import numpy as np
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
-from .base import C0
+from kicad2ems.emsdev.numerics.base import C0
 
 MM = 1e-3
 
@@ -223,7 +223,7 @@ class PlanarModel:
         # the centre-fed line must keep the source's near field (a few widths and heights) out of the fit window:
         # 16 mm for a 3 mm line on 1.6 mm FR4 gave Zc 1.6 / 24 / 33 ohm and beta below k0, 48 mm 48-51 ohm;
         # a 0.38 mm line on 0.2 mm was right at 16 mm
-        from .base import C0
+        from kicad2ems.emsdev.numerics.base import C0
         H = float(self.stack.z[-1])
         length_for = lambda w: max(16e-3, 10 * (w + H))
         # the reference planes no wider than the line and 3 H each side: the field is gone by then (Zc and gamma

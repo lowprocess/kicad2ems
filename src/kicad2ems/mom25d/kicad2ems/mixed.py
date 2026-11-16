@@ -25,7 +25,7 @@ import numpy as np
 
 from kicad2ems.core.api.solver import Result, Option
 from .mom import MoM25D, _metal, _model_kw, run_finish, _stack, apertures, aperture_text, ports_below
-from ..base import C0
+from kicad2ems.emsdev.numerics.base import C0
 from kicad2ems.core.api.solver import stop
 
 G = 'mixed'                                     # its section in kicad2ems's GUI
@@ -59,7 +59,7 @@ def _context(model, data, dmax):
     from shapely.geometry import Point, shape
     from shapely.ops import unary_union
     from shapely import affinity
-    from kicad2ems.mom25d.line import find_runs
+    from kicad2ems.emsdev.numerics.runs import find_runs
     MM = 1e-3
     if model.signal is None:
         return None
@@ -112,7 +112,7 @@ def plan_cuts(model, data, dmax, fmin, cut_min=CUT_MIN * 1e-3, keep_out=None, lo
     """The stretches of trace to cut out: [(Run of the cut, the run it is in)]. model: mom25d BoardModel; data: its
     board dict (nets per polygon); dmax (m); fmin (Hz): the wave ports on the cut faces need their feed. skip: the
     runs (their index in the context's) a pair's cut has taken."""
-    from kicad2ems.mom25d.line import Run
+    from kicad2ems.emsdev.numerics.runs import Run
     ctx = ctx or _context(model, data, dmax)
     if ctx is None:
         log("mixed: the board names no ground net - no signal trace to cut")
@@ -141,7 +141,7 @@ def plan_pair_cuts(model, data, dmax, fmin, cut_min=CUT_MIN * 1e-3, keep_out=Non
     runs they take: their index in the context's). Two straight runs on one interface, parallel, of one width (within 5 %), no further
     apart than a lone cut keeps other copper away (3 widths, 4 heights): where they overlap, less the feed a
     mixed-mode wave port needs at each end, and clear as a lone cut is of everything but the two."""
-    from kicad2ems.mom25d.line import Run
+    from kicad2ems.emsdev.numerics.runs import Run
     ctx = ctx or _context(model, data, dmax)
     if ctx is None:
         return [], set()

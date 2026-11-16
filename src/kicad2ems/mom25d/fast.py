@@ -868,7 +868,7 @@ class FastOperator:
     def kh2(self, f):
         """(k h)^2 at f: k in the densest dielectric, h the mesh's median edge - about the ratio of a cell's jw
         part of the MPIE to its 1/(jw) part."""
-        from .base import C0
+        from kicad2ems.emsdev.numerics.base import C0
         k = 2 * np.pi * f / C0 * np.sqrt(self.sim.st.max_er())
         return float((k * np.median(self.sim.rwg.l)) ** 2)
 

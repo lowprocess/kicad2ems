@@ -11,7 +11,7 @@ from scipy.interpolate import CubicSpline
 
 from .hmatrix import HMatrix
 from .static_backends import FillEngine, layered_spline_args, native_layered
-from ._numerics.base import RWG, MU0, EPS0
+from kicad2ems.emsdev.numerics.base import RWG, MU0, EPS0
 
 
 def _engine(model):

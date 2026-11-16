@@ -36,7 +36,7 @@ pip install '.[gpu-cuda12]'         # optional: the CuPy wheel for your stack (g
 On Windows the core builds with Visual Studio 2022 or its Build Tools, or MinGW-w64's g++ (see
 [emsdev](../emsdev/README.md)); CuPy has no ROCm wheel there.
 
-The compiled core is needed: the mesher's triangulation is in it (CDT, vendored in `src/mom25d/core/CDT`). The
+The compiled core is needed: the mesher's triangulation is in it (CDT, vendored in `src/kicad2ems/emsdev/native/CDT`). The
 kernels keep NumPy fallbacks (`MOM25D_NO_CORE`); the mesher has none.
 
 `MOM25D_GPU=off` turns the GPU off; `MOM25D_GPU=vulkan|cupy` picks a backend (`auto` tries Vulkan first, and CuPy
@@ -90,10 +90,11 @@ f, S, info = solve_band(sim, 1e9, 6e9, points=101, zref=m.port_z0)
 | `model.py` | stack, metal, vias, ports, port characterisation |
 | `sim.py` | `Simulation`: mesh, ports, parts, solver choice (`memory_plan`) |
 | `multilayer.py` | layered-media Green's functions |
-| `base.py` | RWG basis functions, the 1/R moment integrals, the port wave fits |
+| `base.py` | the 1/R moment integrals, the port wave fits (RWG functions: `kicad2ems.emsdev.numerics.base`) |
 | `via.py` | via kernels |
 | `frill.py` | a via through a hole in a PEC plane inside the stack: the hole's field as a few unknowns, axisymmetric and of the first azimuthal order (`planes='holes'`) |
-| `geo.py`, `cdtmesh.py` | the mesher (offset rings along the copper edges; a hexagonal seed inside, smoothed; CDT in the core triangulates) |
+| `geo.py` | wave ports in any direction; the mesher on mom25d's core (`kicad2ems.emsdev.numerics`'s `geo` and `cdtmesh`: offset rings along the copper edges; a hexagonal seed inside, smoothed; CDT in the core triangulates) |
+| `sing.py` | the off-plane 1/R integrals with the rule over the smaller triangle (emsdev.numerics.sing's) |
 | `line.py`, `quads.py` | line basis functions on straight runs; quad cells |
 | `fast.py` | the matrix fill and the solvers |
 | `looptree.py` | the loop/tree basis the direct solver takes at low frequency (pcbqs's) |
@@ -122,6 +123,6 @@ feed line.
 
 GPL-3.0-or-later.
 
-The mesher's triangulation is CDT 2.0.1 by Artem Amirkhanov, vendored unmodified in `src/mom25d/core/CDT` under its
+The mesher's triangulation is CDT 2.0.1 by Artem Amirkhanov, vendored unmodified in `src/kicad2ems/emsdev/native/CDT` under its
 MPL-2.0 (its `predicates.h` BSD-3-Clause, `portable_nth_element.hpp` Apache-2.0 with LLVM exceptions;
-`src/mom25d/core/CDT/README.md`), all compatible with the GPL.
+`src/kicad2ems/emsdev/native/CDT/README.md`), all compatible with the GPL.

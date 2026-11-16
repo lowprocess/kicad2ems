@@ -1,6 +1,17 @@
-"""Private numerical snapshot; independently maintained. See PROVENANCE.json."""
+"""
+Analytic integrals of 1/R over triangles with an out-of-plane offset d
+
+For the near-singular kernel 1/sqrt(rho^2 + d^2) between metal on two closely spaced interfaces (thin prepregs, the
+two sheets of a thick conductor). One integral analytic (Wilton et al. 1984 / Graglia 1993), the other by a 6-point
+rule over the observation triangle; d = 0 reduces to the in-plane formulas (mom25d.base.singular_moments). pcbqs's
+compiled static, compressed and layered kernels and its CuPy kernel integrate the same way, held to this by its
+tests; mom25d runs the rule over the smaller triangle of each pair instead (mom25d.sing).
+"""
 import numpy as np
+
 from .base import _BAR6, _W6, edge_frames
+from .biot import _split4
+
 
 def offplane_pairs(nodes, tris, p_idx, q_idx, d, chunk=4000, outer_levels=0, _geometry=None, scalar_only=False):
     """
@@ -17,7 +28,7 @@ def offplane_pairs(nodes, tris, p_idx, q_idx, d, chunk=4000, outer_levels=0, _ge
     n = len(p_idx)
     m0 = np.zeros(n)
     if not scalar_only:
-        mro = np.zeros((n, 2)); mrs = np.zeros((n, 2)); mrr = np.zeros(n)
+        mro, mrs, mrr = np.zeros((n, 2)), np.zeros((n, 2)), np.zeros(n)
     V, L, tau, un, Ar, P, weights = (_offplane_geometry(nodes, tris, outer_levels)
                                      if _geometry is None else _geometry)
     offsets = np.broadcast_to(np.asarray(d, float), (n,))
@@ -54,12 +65,12 @@ def offplane_pairs(nodes, tris, p_idx, q_idx, d, chunk=4000, outer_levels=0, _ge
 
 
 def _offplane_geometry(nodes, tris, outer_levels=0):
+    """offplane_pairs' geometry: vertices, edge lengths, tangents and normals, areas, the rule's points and weights."""
     V = nodes[tris]
     e, L, tau, un = edge_frames(V)
     Ar = 0.5 * np.abs(e[:, 0, 0] * (-e[:, 2, 1]) - e[:, 0, 1] * (-e[:, 2, 0]))
     bar, weights = _BAR6, _W6
     if outer_levels:
-        from .currents import _split4
         ref = np.eye(3)[None]
         for _ in range(outer_levels):
             ref = _split4(ref)

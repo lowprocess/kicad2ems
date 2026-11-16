@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from kicad2ems.pcbqs._numerics.base import EPS0
+from kicad2ems.emsdev.numerics.base import EPS0
 from kicad2ems.pcbqs.electrostatic import DielectricStack
 from pathlib import Path
 from kicad2ems.pcbqs.mqs import MQS

@@ -30,7 +30,7 @@ from scipy.sparse.linalg import splu
 from shapely.geometry import Point, shape
 from shapely.ops import unary_union
 
-from .._numerics.base import MU0
+from kicad2ems.emsdev.numerics.base import MU0
 from .cavity import fill_holes, dielectric, capacitance, plane_admittance, element_z, mount_inductance
 from .mesh import copper_of, mesh_sheet, stiffness, mass, stack_z, SIGMA_CU
 from .rail import part_value, field_value

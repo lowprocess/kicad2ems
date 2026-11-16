@@ -1,4 +1,9 @@
-"""Private numerical snapshot; independently maintained. See PROVENANCE.json."""
+"""
+The pieces of the planar solvers (mom25d's MoM, pcbqs's PEEC and statics) on triangles: RWG basis functions, the
+assembly of triangle-pair moments into the basis's matrix (combine), the quadrature rules and the constants.
+
+Time convention exp(+j w t).
+"""
 import numpy as np
 from scipy import sparse
 
@@ -78,6 +83,7 @@ def graded(u, grade):
 
 def quad_pts(rwg, bar):
     return np.einsum('qk,tkc->tqc', bar, rwg.nodes[rwg.tris])
+
 
 def edge_frames(V):
     """Per triangle (vertices V, (Nt, 3, 2), counter-clockwise) and edge: vector, length, unit tangent, outward

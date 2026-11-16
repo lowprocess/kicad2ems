@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from kicad2ems.pcbqs._numerics.base import RWG, combine
+from kicad2ems.emsdev.numerics.base import RWG, combine
 from kicad2ems.pcbqs.static import static_moments
 from kicad2ems.pcbqs.static_backends import FillEngine, NumpyBackend, bounded_map, register_fill_backend
 import kicad2ems.pcbqs.static_backends as backends

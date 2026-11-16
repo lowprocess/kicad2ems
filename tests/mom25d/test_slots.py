@@ -122,7 +122,7 @@ def test_babinet(er):
     from shapely.geometry import box
     from kicad2ems.mom25d.sim import Simulation
     from kicad2ems.mom25d.slots import SlotTable, self_block
-    from kicad2ems.mom25d.base import MU0, EPS0, quad_pts, _BAR3, _BAR6, _W3, _W6
+    from kicad2ems.emsdev.numerics.base import MU0, EPS0, quad_pts, _BAR3, _BAR6, _W3, _W6
     mm = 1e-3
     shape = box(0, 0, 8 * mm, 1.0 * mm)
     st = lambda pec: LayerStack([Layer(1 * mm, er, 0.0)], top='open', top_er=er, bottom='open', bottom_er=er, pec=pec)

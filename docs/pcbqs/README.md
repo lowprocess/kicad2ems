@@ -33,7 +33,7 @@ Install ngspice separately for operational circuits. Component models and
 parasitics are explicit assumptions; footprints do not imply calibrated models.
 
 The compiled core is needed: it meshes (the constrained Delaunay triangulation of
-[CDT](https://github.com/artem-ogre/CDT), vendored in `src/pcbqs/core/CDT`) and holds the
+[CDT](https://github.com/artem-ogre/CDT), vendored in `src/kicad2ems/emsdev/native/CDT`) and holds the
 CPU kernels. Build it with `pip install '.[core]'` followed by `python -m kicad2ems.pcbqs.core.build`
 (a C++17 compiler; the kicad2ems installer does this). The kernels keep their NumPy/threaded
 fallbacks (`PCBQS_NO_CORE`); the mesher has none. CuPy GPU
@@ -63,14 +63,14 @@ remain supported. Static-fill plugins use the `kicad2ems.pcbqs.static_backends` 
   [experimental compressed backend](peec-memory.md): graded meshes,
   hierarchical current/charge operators and iterative solving.
 
-Private `_numerics` functions are independently maintained snapshots, not a
-shared library or a runtime link to MoM. `emsdev` supplies only hardware and
-native-build services and the adaptive sweep's fit (`kicad2ems.emsdev.afs`). RF/full-wave
-solvers remain in `mom25d`.
+The numerics pcbqs shares with mom25d (RWG functions, the mesher, the off-plane integrals,
+Biot-Savart) are `kicad2ems.emsdev.numerics`, one copy; `emsdev` also supplies the hardware and
+native-build services and the adaptive sweep's fit (`kicad2ems.emsdev.afs`). pcbqs imports no
+other part at run time; RF/full-wave solvers remain in `mom25d`.
 
 ## Licence
 
 GPL-3.0-or-later (see [LICENSE](../../LICENSE)). The mesher's triangulation is CDT 2.0.1 by
-Artem Amirkhanov, vendored unmodified in `src/pcbqs/core/CDT` under its MPL-2.0 (its
+Artem Amirkhanov, vendored unmodified in `src/kicad2ems/emsdev/native/CDT` under its MPL-2.0 (its
 `predicates.h` BSD-3-Clause, `portable_nth_element.hpp` Apache-2.0 with LLVM exceptions;
-`src/pcbqs/core/CDT/README.md`), all compatible with the GPL.
+`src/kicad2ems/emsdev/native/CDT/README.md`), all compatible with the GPL.

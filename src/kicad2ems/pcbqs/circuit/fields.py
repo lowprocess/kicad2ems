@@ -149,7 +149,7 @@ def write_copper_loss(folder, q, driven, weights, total_W):
     """<folder>/copper-loss.npz: each triangle's share of the copper's loss (its sheet resistance x |J|^2 x its area,
     summed over the harmonics kept, J at its centroid), scaled to the run's own copper loss total_W: layer, x_mm,
     y_mm, W. pcbqs.thermal heats the board with it (the copper's loss had reached no thermal map). Its file name."""
-    from ..biot import rwg_currents
+    from kicad2ems.emsdev.numerics.biot import rwg_currents
     r = q.rwg
     raw = np.zeros(len(r.area))
     for n in range(len(driven.f)):

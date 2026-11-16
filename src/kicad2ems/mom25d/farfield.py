@@ -29,7 +29,7 @@ counts both as loss.
 """
 import numpy as np
 
-from .base import C0, MU0, EPS0
+from kicad2ems.emsdev.numerics.base import C0, MU0, EPS0
 
 ETA0 = np.sqrt(MU0 / EPS0)
 
@@ -161,7 +161,7 @@ def near_fields(sim, layers_J, x, y, f, heights, pad=2):
     A = mu0 J~ (e^{-k (z - z_k)} - e^{-k (z + z_k)}) / 2k, H = curl A / mu0. Exact for the near field (h well under
     lambda / 2 pi; the dielectric does not change H there). H from E by Faraday's law through the stack's spectral
     voltages was 15% low at 3 mm over rf_gcpw at 0.1 to 5 GHz (Hy; Hz agreed), against Biot-Savart of the same
-    currents and their images (mom25d.biot), which this matches."""
+    currents and their images (emsdev.numerics.biot), which this matches."""
     (Ek, kz, KX, KY, dxdy, w, mu), _ = _near_spectrum(sim, layers_J, x, y, f, pad)
     st = sim.st.at(f)
     nx0, ny0 = len(x), len(y)
@@ -230,44 +230,6 @@ def current_on_grid_avg(sim, I, x, y, k, sub=2):
             jx, jy, _ = current_on_grid(sim, I, x + a * dx, y + b * dy * 1.0007, k)
             Jx, Jy = Jx + jx, Jy + jy
     return Jx / sub ** 2, Jy / sub ** 2
-
-
-def current_deposit(sim, I, x, y, k, per_cell=2.0):
-    """The surface current of interface k as a density on the uniform grid x, y (m), for the near field's FFT:
-    each triangle's current integrated by a 6-point rule (triangles larger than `per_cell` cells split into four
-    until they are not), each point's current moment spread onto its four grid points (cloud in cell). The total
-    current and its centre are kept on any grid; sampling the current at the grid points instead was fragile (it
-    crowds at a trace's edges: a row of points on one edge and none on the other put rf_gcpw's 1 mm near field
-    0.15 mm off the trace's centre, and at another step halved it). Returns Jx, Jy ((nx, ny) complex, A/m)."""
-    from .base import _BAR6, _W6, tri_area2
-    from .biot import rwg_currents, _split4
-    r = sim.rwg
-    a, b = rwg_currents(r, np.asarray(I)[:r.Ne])
-    idx = sim.tri_idx[k]
-    V, aa, bb = r.nodes[r.tris[idx]][:, :, :2], a[idx], b[idx]
-    dx, dy = x[1] - x[0], y[1] - y[0]
-    for _ in range(6):
-        size = np.sqrt(np.abs(tri_area2(V)) / 2)
-        big = size > per_cell * min(dx, dy)
-        if not big.any():
-            break
-        V = np.concatenate([V[~big], _split4(V[big])])
-        aa = np.concatenate([aa[~big], np.tile(aa[big], 4)])
-        bb = np.concatenate([bb[~big], np.tile(bb[big], (4, 1))])
-    area = 0.5 * np.abs(tri_area2(V))
-    Q = np.einsum('qk,tkc->tqc', _BAR6, V)                              # (M, 6, 2)
-    mom = (aa[:, None, None] * Q + bb[:, None, :]) * (area[:, None] * _W6[None])[..., None]   # A m per point
-    fx, fy = (Q[..., 0].ravel() - x[0]) / dx, (Q[..., 1].ravel() - y[0]) / dy
-    i0, j0 = np.floor(fx).astype(int), np.floor(fy).astype(int)
-    tx, ty = fx - i0, fy - j0
-    nx, ny = len(x), len(y)
-    out = [np.zeros((nx, ny), complex), np.zeros((nx, ny), complex)]
-    for di, dj, wgt in ((0, 0, (1 - tx) * (1 - ty)), (1, 0, tx * (1 - ty)), (0, 1, (1 - tx) * ty), (1, 1, tx * ty)):
-        ii, jj = i0 + di, j0 + dj
-        ok = (ii >= 0) & (ii < nx) & (jj >= 0) & (jj < ny)
-        for c in range(2):
-            np.add.at(out[c], (ii[ok], jj[ok]), (mom[..., c].ravel() * wgt)[ok])
-    return out[0] / (dx * dy), out[1] / (dx * dy)
 
 
 def current_on_grid(sim, I, x, y, k):

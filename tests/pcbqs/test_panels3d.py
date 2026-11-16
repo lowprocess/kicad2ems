@@ -3,8 +3,8 @@ brute-force quadrature."""
 import numpy as np
 import pytest
 
-from kicad2ems.pcbqs._numerics.base import tri_area2
-from kicad2ems.pcbqs._numerics.sing import offplane_pairs
+from kicad2ems.emsdev.numerics.base import tri_area2
+from kicad2ems.emsdev.numerics.sing import offplane_pairs
 from kicad2ems.pcbqs.panels3d import frames, pair_moments, rwg_pair
 
 

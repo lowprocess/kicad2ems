@@ -23,8 +23,8 @@ import numpy as np
 from shapely.geometry import Point, LineString, box, shape, mapping
 from shapely.ops import unary_union
 
-from kicad2ems.pcbqs._numerics.base import MU0
-from kicad2ems.pcbqs.biot import rwg_currents
+from kicad2ems.emsdev.numerics.base import MU0
+from kicad2ems.emsdev.numerics.biot import rwg_currents
 from kicad2ems.pcbqs.mqs import MQS
 from kicad2ems.pcbqs.pdn.rail import parts_of, part_value
 
@@ -188,7 +188,7 @@ def compute(args, out):
 
 def dumps(out, q, board, data):
     from kicad2ems.pcbqs._artifacts import Dump, write_info, write_npz
-    from kicad2ems.pcbqs._numerics.currents import current_deposit
+    from kicad2ems.emsdev.numerics.biot import current_deposit
     sim = SimpleNamespace(rwg=q.rwg, tri_idx=q.layer_tris)
     ztop = q.z_of.max()*1e3
     model = SimpleNamespace(outline=shape(board['outline']), cu_z={c['name']: c['z'] for c in board['stack']['copper']},
@@ -458,7 +458,7 @@ def main():
         if not args.board:
             ap.error('board JSON is required unless --render-only')
         board, data, meta = compute(args, out)
-    from kicad2ems.pcbqs._numerics.base import RWG
+    from kicad2ems.emsdev.numerics.base import RWG
     rwg = RWG(data['nodes'], data['tris'])
     proxy = SimpleNamespace(rwg=rwg, ne=rwg.Ne, z_of=data['triangle_z'],
                             layer_tris={str(lay): np.flatnonzero(data['layer_id'] == k)

@@ -34,7 +34,7 @@ def test_plane_cavity_resonance_against_the_cavity_model():
     against c / (2 (a + 2 dl) sqrt(er)) with Hammerstad's open-end extension dl. +0.71 % at 1 mm cells, +0.90 %
     at the 1.5 mm here (9 s)."""
     from shapely.geometry import box
-    from kicad2ems.mom25d.base import C0
+    from kicad2ems.emsdev.numerics.base import C0
     from kicad2ems.mom25d.multilayer import Layer, LayerStack
     from kicad2ems.mom25d.sim import Simulation, Via, ViaPort
     a, b, h, er = 30e-3, 20e-3, 0.2e-3, 4.3

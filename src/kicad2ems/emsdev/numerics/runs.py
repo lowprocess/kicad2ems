@@ -1,7 +1,11 @@
-"""Private numerical snapshot; independently maintained. See PROVENANCE.json."""
+"""
+Straight runs of trace on copper: geo.mesh_polygons' structured grid (structured=) and mom25d's line basis functions
+(mom25d.line) take them from find_runs.
+"""
 import numpy as np
 from shapely.geometry import Polygon
 from shapely.geometry.polygon import orient
+
 
 class Run:
     """A straight run of trace on layer k: centre line from c0 along unit t, half-width a, from x0 to x1 (m)."""
@@ -10,8 +14,9 @@ class Run:
         self.n = np.array([-self.t[1], self.t[0]])
 
     def polygon(self, pad=0.0):
-        return Polygon([self.c0 + self.t * x + self.n * y for x, y in ((self.x0, -self.a - pad), (self.x1, -self.a - pad),
-                                                                     (self.x1, self.a + pad), (self.x0, self.a + pad))])
+        b = self.a + pad
+        return Polygon([self.c0 + self.t * x + self.n * y for x, y in ((self.x0, -b), (self.x1, -b), (self.x1, b),
+                                                                     (self.x0, b))])
 
     def local(self, P):
         d = np.atleast_2d(P) - self.c0

@@ -17,8 +17,8 @@ from pathlib import Path
 
 import numpy as np
 
-from ._numerics.base import _BAR3
-from ._numerics.sing import _offplane_geometry, offplane_pairs
+from kicad2ems.emsdev.numerics.base import _BAR3
+from kicad2ems.emsdev.numerics.sing import _offplane_geometry, offplane_pairs
 
 
 def default_workers():

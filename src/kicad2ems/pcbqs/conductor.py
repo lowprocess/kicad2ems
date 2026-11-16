@@ -6,7 +6,7 @@ not a solution for arbitrary through-thickness proximity currents or barrels.
 """
 import numpy as np
 
-from ._numerics.base import MU0
+from kicad2ems.emsdev.numerics.base import MU0
 
 
 def surface_impedance(f, thickness, sigma=5.8e7, faces=2):

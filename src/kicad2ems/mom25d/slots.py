@@ -50,8 +50,8 @@ slot's effect on the line came out about doubled (S21 -12 dB at 8 GHz where the 
 """
 import numpy as np
 
-from .base import MU0, EPS0, RWG, qform, combine, singular_moments, quad_pts, moments7, quad_moments, \
-    _BAR3, _W3, _BAR6, _W6
+from kicad2ems.emsdev.numerics.base import MU0, EPS0, RWG, qform, combine, quad_pts, _BAR3, _W3, _BAR6, _W6
+from .base import singular_moments, moments7, quad_moments
 from .frill import bessel_int
 from .via import sommerfeld_contour, hankel, Table1D, _layers
 

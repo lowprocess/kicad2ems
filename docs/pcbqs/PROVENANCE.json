@@ -7,30 +7,6 @@
       "revision": "77509a598561e79c292e65369cec10c1816fc25a",
       "retained": "Three buck input-loop layouts, terminal geometry, waveform and layout drawing in tools/nearfield_demo.py; independently extended for layered PEEC comparisons."
     },
-    "mom25d/src/mom25d/base.py": {
-      "sha256": "a369596195abe431ea5ee2167788c6b430aae4ed0d82e7e8bcf6b1e483bc8cd4",
-      "revision": "bc5449350f529050e6897158e451db6f56b6ae96"
-    },
-    "mom25d/src/mom25d/geo.py": {
-      "sha256": "d99df7f203a0b5d3f81669347e7a929006d6d6f3ba391c3068f47bcfe0d5b395",
-      "revision": "bc5449350f529050e6897158e451db6f56b6ae96"
-    },
-    "mom25d/src/mom25d/line.py": {
-      "sha256": "9ff468c019fbd79286a9cb9e78591cf9adeaf609985872317ee0d9460b809260",
-      "revision": "bc5449350f529050e6897158e451db6f56b6ae96"
-    },
-    "mom25d/src/mom25d/biot.py": {
-      "sha256": "af7f48a8072424ca45fba9b9613659d77aa6bf10ce79e1c18472fa8220a2f3c4",
-      "revision": "bc5449350f529050e6897158e451db6f56b6ae96"
-    },
-    "mom25d/src/mom25d/farfield.py": {
-      "sha256": "db3fa76848bc6bcb651fce8cba2910b28749e73b906263e12d6f5d8b174fa98c",
-      "revision": "bc5449350f529050e6897158e451db6f56b6ae96"
-    },
-    "mom25d/src/mom25d/sing.py": {
-      "sha256": "af6edd68c22046713c819ffe4648d6f4ddff2ddce873540b6226a914d6f83def",
-      "revision": "bc5449350f529050e6897158e451db6f56b6ae96"
-    },
     "mom25d/src/mom25d/mqs.py": {
       "sha256": "b13befd099149903fb1f8326d4b81bfa6ceabead92a4d96e5330690a387db584",
       "revision": "bc5449350f529050e6897158e451db6f56b6ae96"

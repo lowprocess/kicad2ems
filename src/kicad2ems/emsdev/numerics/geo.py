@@ -1,16 +1,29 @@
-"""Private numerical snapshot; independently maintained. See PROVENANCE.json."""
+"""
+geo - the copper of a layer as a triangle mesh, and the geometry around it
+
+  * mesh_polygons : constrained-Delaunay mesh of arbitrary polygons (holes allowed) with
+                    - graded edge refinement (inward offset rings, like the tensor mesher's cosine grading)
+                    - port gap/cut lines inserted as constraint segments (so RWG edges lie on them)
+                    - via points inserted as vertices, with a small ring of radius = via radius around
+                      them so the via 'fan' (triangles sharing the via vertex) matches the via footprint
+  * gap_zones     : the copper edges facing other copper across a narrow gap
+  * to_geometry   : rectangles / shapely geometry -> one cleaned shapely (Multi)Polygon
+"""
+import importlib
+import warnings
+
 import numpy as np
 import shapely
-from shapely.geometry import (Polygon, LineString, Point, box)
+from shapely.geometry import Polygon, LineString, Point, box
+from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from .base import graded
-
-
-# ---- Ports in arbitrary directions ------------------------------------------
+from .cdtmesh import mesh as cdt_mesh
+from .runs import find_runs
 
 
 # ---- Geometry ---------------------------------------------------------------
@@ -80,13 +93,11 @@ def _run_grid(geom, dmax, lines, vias, offsets, w_max, h=None, fill=0.98, within
     polygons, the indices of the vias snapped to a cell of it). h(points): the local spacing (None: dmax), the
     stations at fill x it so that no outline or ring piece between two is split again. within: only the runs
     inside this area (the zone's fine region)."""
-    from .runs import find_runs
     h = h or (lambda P: np.full(len(P), dmax))
     segs, polys, snapped, on_run = [], [], set(), set()
     for r in find_runs({0: geom}, {0: dmax}, w_max=w_max, min_len=1.0, margin=0.0):
         a, cl = r.a, lambda x: r.c0 + r.t * np.asarray(x, float)[..., None]
-        if within is not None and not within.contains(
-                Polygon([cl(r.x0) - r.n * a, cl(r.x1) - r.n * a, cl(r.x1) + r.n * a, cl(r.x0) + r.n * a])):
+        if within is not None and not within.contains(r.polygon()):
             continue
         # fixed stations: the run's ends and the port / cut lines across it; gaps around vias
         fixed, cuts = [r.x0, r.x1], []
@@ -149,8 +160,9 @@ def _run_grid(geom, dmax, lines, vias, offsets, w_max, h=None, fill=0.98, within
             ys = [y for y in ys if not len(vy) or abs(vy - y).min() > 0.5 * hc]      # not next to a via's sides
             for y in list(ys) + list(vy):
                 segs.append((cl(x0) + r.n * y, cl(x1) + r.n * y))
-        ext = 1e-3 * a
-        segs += [(cl(x) - r.n * (a + ext), cl(x) + r.n * (a + ext)) for x in np.unique(np.concatenate(xs))] if xs else []
+        if xs:
+            ext = 1e-3 * a
+            segs += [(cl(x) - r.n * (a + ext), cl(x) + r.n * (a + ext)) for x in np.unique(np.concatenate(xs))]
     return segs, polys, snapped, on_run
 
 
@@ -173,10 +185,12 @@ def _cell_sides(yv, hc, rings):
     return out
 
 
+def _polygons(g):
+    return [p for p in ([g] if isinstance(g, Polygon) else getattr(g, 'geoms', [])) if isinstance(p, Polygon)]
+
+
 def _rings(g):
-    polys = [p for p in ([g] if isinstance(g, Polygon) else getattr(g, 'geoms', []))
-             if isinstance(p, Polygon) and not p.is_empty]
-    return [LineString(r.coords) for p in polys for r in [p.exterior, *p.interiors]]
+    return [LineString(r.coords) for p in _polygons(g) if not p.is_empty for r in [p.exterior, *p.interiors]]
 
 
 def gap_zones(geom, gmax, step, tol=1e-9):
@@ -186,10 +200,8 @@ def gap_zones(geom, gmax, step, tol=1e-9):
     counted only where the edge it hits faces back (within 60 degrees) and is not the same outline within 20 gaps
     of the ray's start: the wedge where a track's round end meets a pad or strip at a tangent is no gap
     (rf_combline's bridged parts: gaps of 8 um, and rings that far in left its complex64 LU unable to precondition)."""
-    from shapely.geometry.polygon import orient
-    polys = [p for p in ([geom] if isinstance(geom, Polygon) else getattr(geom, 'geoms', [])) if isinstance(p, Polygon)]
     mids, normals, segs, rings, ring_of, along = [], [], [], [], [], []
-    for p in polys:
+    for p in _polygons(geom):
         p = orient(p, 1.0)                                          # exterior ccw, holes cw: copper on the left
         for ring in [p.exterior, *p.interiors]:
             r = np.asarray(ring.coords)[:, :2]
@@ -249,9 +261,9 @@ def gap_zones(geom, gmax, step, tol=1e-9):
 def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), amax=None,
                   max_offset_frac=0.45, tol=1e-9, fine=None, dmax_fine=None, edge_zone=None, split_chains=False,
                   coarsen=None, grow=0.5, structured=False, struct_w_max=20e-3, gap_rings=None, quality=None,
-                  area_scale=1.0):
+                  area_scale=1.0, coarsen_fine=True, core=None):
     """
-    geom   : shapely (Multi)Polygon of one metal layer
+    geom   : shapely (Multi)Polygon of one metal layer (triangulated by CDT in a compiled core: cdtmesh.py)
     dmax   : max edge length along conductors / in open regions
     w_ref  : reference strip width for the edge grading (narrowest trace on the layer)
     lines  : [(p0, p1), ...] constraint segments (port gap and cut lines), clipped to geom
@@ -262,27 +274,36 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), ama
              8.4k, S within 0.006 of the full rings (2.4x faster a solve); Simulation(zone=) passes it
     split_chains : each outline at the spacing of the region it runs through (zone=; the default spaces a whole
              chain by where its centroid falls, which a closed outline's centroid can get wrong)
+    coarsen_fine : with coarsen, the fine regions coarsened too (True); False: they keep dmax_fine (sim.py: a
+             meshed plane's, under the copper of the layers near it)
     coarsen : (experimental) cells grow away from the features (corners and bends of the copper outline, vias, port
              and cut lines; _features) up to coarsen x dmax: dmax + grow x the distance to the nearest one, along the
              outline and the edge rings (their spacing across the edge is kept) and over the area inside them
              (the middle of wide traces, planes). None: dmax everywhere
-    structured : (experimental) straight runs of trace (line.find_runs, up to struct_w_max wide: traces and rectangular pads) as a tensor grid:
-             transverse lines across the run at stations along it (the spacing of the field, or dmax), and
-             longitudinal ones across its middle (inside the edge rings), so its cells are rectangles - one diagonal
-             each, quad cells of 0 degrees. Port / cut lines on a run are stations; square vias join the grid (_run_grid),
-             around other vias it is left as is
+    structured : (experimental) straight runs of trace (runs.find_runs, up to struct_w_max wide: traces and
+             rectangular pads) as a tensor grid: transverse lines across the run at stations along it (the spacing of
+             the field, or dmax), and longitudinal ones across its middle (inside the edge rings), so its cells are
+             rectangles - one diagonal each, quad cells of 0 degrees. Port / cut lines on a run are stations; square
+             vias join the grid (_run_grid), around other vias it is left as is
     gap_rings : fractions of the gap (e.g. (1/4, 1/8, 1/16)): rings that far in from the copper edges facing other
              copper across a gap g (gap_zones), where the width-graded rings are too coarse for the edge charge
              across it (g/4 under the first ring at w_ref's grading). Coupled lines: on the 10 dB coupler (0.14 mm
              gap, 1.28 mm strips) S31 -10.64 dB, against -10.24 to -10.29 from refined FDTD, until the edge cells
              came down to the gap's scale; isolated traces and planes keep their cost
+    quality : the minimum angle (degrees: CDT's refinement), on the uncoarsened path only. Off by default (the
+             edge-ring strips of the RF meshes would split into fans); without it a small feature (a via's octagon)
+             fans out to far vertices in long slivers, and the linear elements then underestimate the log spreading
+             around it (DC: ~0.1 mOhm per via junction)
+    core   : the compiled core that triangulates (cdt_triangulate: emsdev/native/cdt_mesh.hpp); None: pcbqs's, else
+             mom25d's (the same code in both)
     Returns nodes (N,2), tris (M,3) counter-clockwise, and the list of via vertex ids.
     """
     if geom.is_empty:
         return np.zeros((0, 2)), np.zeros((0, 3), int), []
     linework = _rings(geom)
     offsets = w_ref * graded(np.arange(1, ncross) / ncross, grade)      # inward rings: the tensor mesher's grading
-    for d in offsets[offsets < 0.5 * w_ref - 1e-12]:
+    inner = offsets[offsets < 0.5 * w_ref - 1e-12]                     # (those inside the narrowest strip)
+    for d in inner:
         linework += [r if edge_zone is None else r.intersection(edge_zone)
                      for r in _rings(geom.buffer(-d, join_style='mitre', mitre_limit=2.0))]
     if gap_rings:
@@ -298,13 +319,10 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), ama
     fine_parts = []
     if fine is not None and dmax_fine:
         fg = fine.intersection(geom).buffer(0)
-        fine_parts = [q for q in getattr(fg, 'geoms', [fg]) if q.geom_type == 'Polygon' and q.area > (2 * dmax_fine) ** 2]
+        fine_parts = [q for q in getattr(fg, 'geoms', [fg])
+                      if q.geom_type == 'Polygon' and q.area > (2 * dmax_fine) ** 2]
         linework += [r for q in fine_parts for r in _rings(q)]          # region boundaries as constraints
     fine_u = unary_union(fine_parts).buffer(tol) if fine_parts else None
-    # quality (degrees): the minimum angle (cdtmesh: CDT's refinement). Off by default (the edge-ring strips of the RF
-    # meshes would split into fans); without it a small feature (a via's octagon) fans out to far vertices in long
-    # slivers, and the linear elements then underestimate the log spreading around it (DC: ~0.1 mOhm per via junction)
-    steiner = expected = 0
     hfield = None
     if coarsen and coarsen > 1:
         F = _features(geom, lines, vias, min(dmax, dmax_fine or dmax))
@@ -320,8 +338,8 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), ama
             # rf_stripline 5,647 unknowns against 4,985 without the grid
             within, dgrid = fine_u.buffer(1e-6 * dmax), dmax_fine
             hrun = (lambda P: hfield(P, dmax_fine)) if hfield is not None else (lambda P: np.full(len(P), dmax_fine))
-        st_lines, run_polys, snapped, on_run = _run_grid(geom, dgrid, lines, vias, offsets[offsets < 0.5 * w_ref - 1e-12],
-                                                 struct_w_max, hrun, within=within)
+        st_lines, run_polys, snapped, on_run = _run_grid(geom, dgrid, lines, vias, inner, struct_w_max, hrun,
+                                                         within=within)
         linework += [LineString([p0, p1]).intersection(geom) for p0, p1 in st_lines]
     vpts = []
     for i, via in enumerate(vias):
@@ -336,14 +354,13 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), ama
     runs_u = shapely.unary_union(run_polys).buffer(tol) if run_polys else None
     # snap-rounding noding: T-junctions (port lines ending on edges) must split the edge exactly
     noded = shapely.unary_union([g for g in linework if not g.is_empty], grid_size=tol)
-    pieces = list(getattr(noded, 'geoms', [noded]))
     chains = []
 
     def spaced(q, d_):
-        if hfield is None:
+        if hfield is None or (not coarsen_fine and fine_parts and d_ == dmax_fine):
             return np.asarray(shapely.segmentize(q, d_).coords)[:, :2]
         return _spaced(np.asarray(q.coords)[:, :2], lambda P: hfield(P, d_), d_)
-    for pc in pieces:
+    for pc in getattr(noded, 'geoms', [noded]):
         if pc.length < tol:
             continue
         if split_chains and fine_u is not None and not fine_u.contains(pc) and fine_u.intersects(pc):
@@ -355,8 +372,7 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), ama
                         chains.append(spaced(q, d_))
             continue
         inside = fine_u is not None and (fine_u.contains(pc) if split_chains else fine_u.contains(pc.centroid))
-        dm = dmax_fine if inside else dmax
-        chains.append(spaced(pc, dm))
+        chains.append(spaced(pc, dmax_fine if inside else dmax))
     allp = np.vstack(chains + [np.array(vpts).reshape(-1, 2)]) if vpts else np.vstack(chains)
     # merge near-coincident vertices (noding round-off would otherwise create sliver triangles): each cluster of
     # vertices closer than `snap` becomes its lowest-numbered one
@@ -379,19 +395,20 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), ama
     # the minimum angle off the coarsened path only: with the field it would split the thin strips between the edge
     # rings, now long, into fans of small triangles (rf_gcpw: twice the unknowns)
     min_angle = float(quality) if quality and hfield is None else 0.0
+    steiner = expected = 0
     if min_angle:
         # a cap on the vertices the minimum angle may add: acute input (rings that cross, slivers) otherwise refines
         # without end. `expected`: the vertices of equilateral cells at the area limits
         fa = sum(p_.area for p_ in fine_parts)
-        expected = len(verts) + 1.2 * ((geom.area - fa) / (amax * dmax ** 2) + (fa / (0.5 * dmax_fine ** 2) if fa else 0))
+        expected = len(verts) + 1.2 * ((geom.area - fa) / (amax * dmax ** 2)
+                                       + (fa / (0.5 * dmax_fine ** 2) if fa else 0))
         steiner = int(10 * expected + 20000)
     T = _cdt((verts - org) / dmax, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u, dmax_fine, runs_u,
-             area_scale, min_angle, steiner)
+             area_scale, coarsen_fine, min_angle, steiner, core)
     if min_angle and T['info']['steiner'] >= steiner:
-        import warnings
-        warnings.warn(f'mesh refinement stopped at {steiner:,} added vertices ({expected:,.0f} expected for this copper '
-                      f'at dmax): features closer than the mesh can resolve, e.g. overlapping vias or slivers of '
-                      f'copper; the minimum angle is not met there', RuntimeWarning, stacklevel=2)
+        warnings.warn(f'mesh refinement stopped at {steiner:,} added vertices ({expected:,.0f} expected for this '
+                      f'copper at dmax): features closer than the mesh can resolve, e.g. overlapping vias or slivers '
+                      f'of copper; the minimum angle is not met there', RuntimeWarning, stacklevel=2)
     nodes, tris = T['vertices'] * dmax + org, T['triangles']
     cent = nodes[tris].mean(1)
     tris = tris[shapely.contains_xy(geom.buffer(tol), cent[:, 0], cent[:, 1])]
@@ -407,23 +424,25 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), ama
     return nodes, tris[np.abs(ar) > 1e-10 * dmax ** 2], via_ids          # (a degenerate triangle: none)
 
 
-def _core():
-    """pcbqs's compiled core (it triangulates: cdt_triangulate)."""
-    try:
-        from .. import _core as core
-    except ImportError:
-        core = None
+CORES = ('kicad2ems.pcbqs._core', 'kicad2ems.mom25d._core')     # the compiled cores that triangulate, in this order
+
+
+def _cdt(V, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u, dmax_fine, runs_u, area_scale, coarsen_fine,
+         min_angle, max_steiner, core):
+    """mesh_polygons' triangulation (cdtmesh: CDT and the points inside; core None: the first of CORES built), the
+    area limits: amax, afine in the fine regions, with coarsen the field's 0.5 h^2 (none in the structured runs'
+    cells; the fine regions kept at afine unless coarsen_fine); all of them x area_scale."""
+    if core is None:
+        for name in CORES:
+            try:
+                core = importlib.import_module(name)
+                break
+            except ImportError:
+                pass
     if core is None or not hasattr(core, 'cdt_triangulate'):
-        raise RuntimeError("pcbqs meshes with its compiled core, which is not built (or is older than its mesher): "
-                           "python -m kicad2ems.pcbqs.core.build (needs a C++17 compiler and pybind11)")
-    return core
-
-
-def _cdt(V, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u, dmax_fine, runs_u, area_scale=1.0,
-         min_angle=0.0, max_steiner=0):
-    """mesh_polygons' triangulation (cdtmesh: CDT and the points inside), the area limits: amax, afine in the fine
-    regions, with coarsen the field's 0.5 h^2 (none in the structured runs' cells); all of them x area_scale."""
-    from .cdtmesh import mesh as cdt_mesh
+        raise RuntimeError("the mesher triangulates with a compiled core (pcbqs's or mom25d's), and none is built (or "
+                           "it is older than its mesher): python -m kicad2ems.pcbqs.core.build (needs a C++17 compiler "
+                           "and pybind11)")
     g_in = geom.buffer(tol)
     to_m = lambda c: np.asarray(c) * dmax + org
     afine = 0.5 * (dmax_fine / dmax) ** 2 if fine_parts else None
@@ -438,7 +457,7 @@ def _cdt(V, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u, dmax_f
         if hfield is None:
             lim = np.where(infine, afine, amax) if fine_parts else np.full(len(P), amax)
         else:
-            h = np.where(infine, hfield(P, dmax_fine or dmax), hfield(P, dmax))
+            h = np.where(infine, hfield(P, dmax_fine or dmax) if coarsen_fine else dmax_fine, hfield(P, dmax))
             lim = 0.5 * (h / dmax) ** 2
             if runs_u is not None:
                 lim[shapely.contains_xy(runs_u, P[:, 0], P[:, 1])] = -1.0
@@ -447,5 +466,5 @@ def _cdt(V, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u, dmax_f
     if runs_u is not None:
         frozen = lambda c: shapely.contains_xy(runs_u, *to_m(c).T)
     sizes = (1.0,) + ((dmax_fine / dmax,) if fine_parts else ())       # each region's cell size (dmax)
-    return cdt_mesh(V, segs, limit, inside, _core(), frozen=frozen, sizes=sizes, min_angle=min_angle,
+    return cdt_mesh(V, segs, limit, inside, core, frozen=frozen, sizes=sizes, min_angle=min_angle,
                     max_steiner=max_steiner)

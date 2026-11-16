@@ -41,4 +41,10 @@ they have (the rest of emsdev needs nothing).
 installs pybind11). Linux and macOS use g++. Windows uses MSVC (Visual Studio 2022 or its Build Tools, *Desktop
 development with C++*) with `/openmp:llvm`, else MinGW-w64's g++ on the PATH; `EMSDEV_COMPILER=msvc` or `gcc`
 chooses. The compiler's runtime DLLs are copied next to the module. `X_ARCH` takes a g++ `-march=` (translated for
-MSVC: `x86-64-v3` is `/arch:AVX2`) or an MSVC `/arch:`.
+MSVC: `x86-64-v3` is `/arch:AVX2`) or an MSVC `/arch:`. `includes=(NATIVE,)` puts `emsdev/native` on the include
+path: the sources mom25d's and pcbqs's cores share (the mesher's `cdt_mesh.hpp`, CDT vendored beside it).
+
+**The shared numerics** (`kicad2ems.emsdev.numerics`, on numpy, scipy and shapely): what mom25d and pcbqs both
+solve with, one copy: RWG basis functions and the quadrature rules (`base`), the mesher (`geo.mesh_polygons`,
+`cdtmesh`; it triangulates with pcbqs's or mom25d's compiled core), straight runs of trace (`runs`), the off-plane
+1/R integrals (`sing`) and the Biot-Savart near field (`biot`).

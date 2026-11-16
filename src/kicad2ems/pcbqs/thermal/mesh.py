@@ -14,7 +14,7 @@ import shapely
 from shapely.affinity import scale
 from scipy.sparse import coo_matrix, diags
 
-from .._numerics.geo import mesh_polygons
+from kicad2ems.emsdev.numerics.geo import mesh_polygons
 from ..pdn.mesh import stiffness, mass, overlapping_vias
 from .problem import Result, part_temperatures, solve_spd
 

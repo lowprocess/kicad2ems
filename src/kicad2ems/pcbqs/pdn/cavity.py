@@ -29,7 +29,7 @@ import numpy as np
 from scipy.sparse import coo_matrix, diags
 from scipy.sparse.linalg import splu
 
-from .._numerics.base import MU0, EPS0
+from kicad2ems.emsdev.numerics.base import MU0, EPS0
 from .mesh import copper_of, mesh_sheet, stiffness, mass, stack_z, SIGMA_CU
 
 

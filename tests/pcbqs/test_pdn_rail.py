@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping, Point
 
-from kicad2ems.pcbqs._numerics.base import MU0, EPS0
+from kicad2ems.emsdev.numerics.base import MU0, EPS0
 from kicad2ems.pcbqs.pdn.rail import Rail, parse_value
 from kicad2ems.pcbqs.pdn.dc import solve_rail
 from kicad2ems.pcbqs.pdn.stack import RailPDN

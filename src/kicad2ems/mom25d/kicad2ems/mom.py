@@ -848,7 +848,8 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d', currents=N
     [(port, dict(dir, names))]. tag: the solver (the directory under <out>). currents(f) -> (N x len(sim.ports)) the
     RWG currents of each port driven (default: sim.currents of the excitations); extra(k, f_index, column, gx, gy, Jx,
     Jy) -> (Jx, Jy): layer k's grid with what the solver adds (mixed: the stretches put back as lines)."""
-    from kicad2ems.mom25d.farfield import current_on_grid, current_deposit, near_fields
+    from kicad2ems.emsdev.numerics.biot import current_deposit
+    from kicad2ems.mom25d.farfield import current_on_grid, near_fields
     from kicad2ems.core.api.solver import Dump, write_info
     from kicad2ems.core.api.solver import write_npz
     sim, model = res.sim, res.model

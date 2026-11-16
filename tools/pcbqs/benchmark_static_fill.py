@@ -13,7 +13,7 @@ import time
 import numpy as np
 from shapely.geometry import box
 
-from kicad2ems.pcbqs._numerics.geo import mesh_polygons
+from kicad2ems.emsdev.numerics.geo import mesh_polygons
 from kicad2ems.pcbqs.static import static_moments
 
 
