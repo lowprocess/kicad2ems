@@ -1,5 +1,6 @@
 # kicad2ems example: one 60 degree radial stub on a 50 ohm line: a notch,
 # 0.8 mm FR-4
+
 # paths are relative to this file
 # (python examples/make_rf_examples.py radialstub)
 board   = "rf_radialstub.kicad_pcb"

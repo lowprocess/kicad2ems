@@ -104,16 +104,20 @@ def examples():
 
 
 def title_of(config):
-    """What an example is, from the first comment line of its config ('#
-    kicad2ems example: ...'); '' without."""
+    """What an example is: the first sentence of its config's first comment
+    paragraph ('# kicad2ems example: ...', up to a '#' alone, an indented
+    '#   ' line or the first setting); '' without."""
+    words = []
     try:
         with open(config, encoding='utf-8') as fh:
-            line = fh.readline().strip()
+            for line in fh:
+                m = re.match(r'#( (\S.*))?$', line.strip())
+                if not m or not m.group(2):
+                    break
+                words.append(m.group(2).strip())
     except OSError:
         return ''
-    if not line.startswith('#'):
-        return ''
-    text = line.lstrip('#').strip()
+    text = re.split(r'\.\s+(?=[A-Z])', ' '.join(words))[0].rstrip('.')
     return re.sub(
         r'^\w+\s+(\w+\s+)?(example|run configuration)\s*(:|for)?\s*(the\s+)?',
         '', text).strip()
