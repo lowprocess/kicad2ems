@@ -32,7 +32,7 @@ added to (or made anew if you say so)."""
 import argparse, glob, json, os, re, shutil, subprocess, sys, sysconfig, tempfile
 
 CUPY_WHEELS = ('cupy-rocm-7-0', 'cupy-cuda12x', 'cupy-cuda13x')
-MESH_CORES = ('mom25d', 'pcbqs')        # their compiled cores hold the mesher (CDT): required
+MESH_CORES = ('mom25d', 'pcbqs')        # their compiled cores hold the mesher (mesh2d): required
 STACK = ('emsdev', 'kicad2ems-gui', 'kicad2ems-fdtd', 'mom25d', 'pcbqs', 'gfdtd', 'dfsynth', 'kicad2ems-fem')
 REPO = os.path.dirname(os.path.abspath(__file__))
 WINDOWS = sys.platform == 'win32'
@@ -438,7 +438,8 @@ def core_file(vpy, folder):
 
 
 def core_stale(folder, built):
-    """The compiled core is missing, or a source of it (core/*.cpp, *.h, *.hpp, and the vendored CDT's) is newer."""
+    """The compiled core is missing, or a source of it (core/*.cpp, *.h, *.hpp; core/CDT/*, the headers the cores vendored
+    before mesh2d) is newer."""
     if not os.path.isfile(built):
         return True
     t = os.path.getmtime(built)
@@ -738,7 +739,7 @@ class Installer:
         self.core = False
         if self.mom or self.qs or self.gfdtd:
             cc = self.has_compiler()
-            need = self.mom or self.qs                  # their mesher is in the core (CDT): no core, no mesh
+            need = self.mom or self.qs                  # their mesher is in the core (mesh2d): no core, no mesh
             if cc:
                 if need:
                     note(f"mom25d and pcbqs mesh with their compiled cores (C++ / OpenMP): they are built with {cc}"

@@ -77,7 +77,7 @@ jobs:
           python -m pip install --no-deps -e emsdev -e kicad2ems -e mom25d -e gfdtd -e kicad2ems-fdtd -e kicad2ems-gui -e dfsynth \
             -e pcbqs -e kicad2ems-fem
           python -m pip check || true
-      - name: Build the compiled cores (mom25d's and pcbqs's hold their mesher: CDT)
+      - name: Build the compiled cores (mom25d's and pcbqs's hold their mesher: mesh2d)
         run: |
           MOM25D_ARCH=-march=x86-64-v2 python -m mom25d.core.build
           GFDTD_ARCH=-march=x86-64-v2 python -m gfdtd.core.build

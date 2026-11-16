@@ -9,6 +9,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+- **mom25d and pcbqs mesh with their own triangulator, not CDT.** `core/mesh2d.hpp` (the same file in both cores)
+  replaces the vendored CDT 2.0.1 under `cdt_triangulate`: exact predicates, Hilbert-ordered insertion with Lawson's
+  flips, segments by Sloan's flips, Ruppert's refinement. On mom25d's test boards the same triangle counts and S
+  within 0.002 of CDT's meshes; 200k points in 0.13 s (CDT 0.23 s). Nothing is vendored now. mom25d's quad cells
+  (`--mom-quads`) mesh the edge rings with their points opposite the outline's (geo `align`): the edge strips are
+  rectangles that pair, 0.3-1 % fewer unknowns after the quads on 4 boards (launch: 58 % of the triangles paired
+  for 53 %), S as before. Rings of trapezoids about the vias (geo `via_rings`) are there to try, off: on via-fence
+  boards they cost 15-20 % more unknowns and brought S no closer to a finer mesh's. The pins move when mom25d and
+  pcbqs merge these.
+
 ### Added
 - **The KiCad plugin runs the DC drop and the temperature, and draws their maps on the board (R-E26).**
   kicad2ems-ipc f43f5ca: a power box (rail, voltage, loads or losses) runs pcbqs's pdn and thermal through

@@ -80,7 +80,7 @@ jobs:
         run: |
           MOM25D_ARCH=-march=x86-64-v2 python -m mom25d.core.build
           GFDTD_ARCH=-march=x86-64-v2 python -m gfdtd.core.build
-          PCBQS_ARCH=-march=x86-64-v2 python -m pcbqs.core.build     # (mom25d's and pcbqs's hold their mesher: CDT)
+          PCBQS_ARCH=-march=x86-64-v2 python -m pcbqs.core.build     # (mom25d's and pcbqs's hold their mesher: mesh2d)
           ls mom25d/src/mom25d/ gfdtd/src/gfdtd/ pcbqs/src/pcbqs/ | grep -iE '\.pyd$|\.dll$'
       - name: The cores import without the compiler on the PATH (only the DLLs beside them)
         shell: pwsh

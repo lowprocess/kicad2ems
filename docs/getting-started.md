@@ -75,9 +75,8 @@ python -m gfdtd.core.build      # optional: gfdtd's compiled CPU core
 pip install '.[gpu-vulkan]'     # optional: the GPU through Vulkan (slangpy); or a CuPy wheel such as cupy-cuda12x
 ```
 
-mom25d and pcbqs mesh in their compiled cores (the constrained Delaunay triangulation of
-[CDT](https://github.com/artem-ogre/CDT), vendored in each): building them needs a C++17 compiler and pybind11
-(the `core` extras). The installer builds them for you.
+mom25d and pcbqs mesh in their compiled cores (`mesh2d.hpp`, their own constrained Delaunay triangulator: no
+library): building them needs a C++17 compiler and pybind11 (the `core` extras). The installer builds them for you.
 
 openEMS is not on PyPI. On Linux, install it from your distribution, or build it with `tools/build_openems.sh
 [prefix]` (default `~/opt/openEMS`; its header lists the build dependencies), which installs its Python packages
