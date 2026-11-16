@@ -85,16 +85,13 @@ def part_fields(board):
     """({ref: K/W}, {ref: C}, {ref: K/W}) from the footprints' fields thermal.theta, thermal.tmax and thermal.air (as
     pdn.load gives a part's current): what the design holds of its parts' thermal limits and paths."""
     from ..pdn.rail import field_value
-    theta, tmax, air = {}, {}, {}
+    out = ({}, {}, {})
     for fp in (board.get('prims') or {}).get('footprints', []):
-        t, m, r = field_value(fp, 'thermal.theta'), field_value(fp, 'thermal.tmax'), field_value(fp, 'thermal.air')
-        if t is not None:
-            theta[fp['ref']] = t
-        if m is not None:
-            tmax[fp['ref']] = m
-        if r is not None:
-            air[fp['ref']] = r
-    return theta, tmax, air
+        for got, key in zip(out, ('thermal.theta', 'thermal.tmax', 'thermal.air')):
+            v = field_value(fp, key)
+            if v is not None:
+                got[fp['ref']] = v
+    return out
 
 
 def _pairs(items, what, ap):
@@ -226,11 +223,9 @@ def main(argv=None):
         from .picture import heating_picture
         heating_picture(tr, out / 'thermal-transient.png')
         slow = sorted(tr['to_63_s'].items(), key=lambda kv: -kv[1])[:3]
-        print(f"heating from cold: " + ', '.join(f"{k} 63 % in {v:.0f} s" for k, v in slow)
-              + f" (thermal-transient.json)")
-        for m in summary:
-            if m == 'grid':
-                summary[m]['transient'] = dict(file='thermal-transient.json', seconds=a.transient, to_63_s=tr['to_63_s'])
+        print("heating from cold: " + ', '.join(f"{k} 63 % in {v:.0f} s" for k, v in slow)
+              + " (thermal-transient.json)")
+        summary['grid']['transient'] = dict(file='thermal-transient.json', seconds=a.transient, to_63_s=tr['to_63_s'])
     if len(res) == 2:
         g, m = res['grid'], res['mesh']
         d = [difference(g, m, l) for l in range(len(p.layers))]
@@ -249,9 +244,8 @@ def main(argv=None):
     except Exception as e:
         shown = None
         print(f"note: the viewer's maps were not written: {type(e).__name__}: {e}")
-    for m in summary:
-        if m in res:
-            summary[m]['viewer'] = shown
+    for m in res:
+        summary[m]['viewer'] = shown
     (out / 'thermal.json').write_text(json.dumps(summary if len(res) > 1 else summary[methods[0]], indent=1))
     print(f"results in {out}")
     return 0
@@ -265,18 +259,12 @@ def every_case(a, argv):
     folder = Path(a.circuit)
     cases = json.loads((folder / 'circuit.json').read_text())['cases']
     argv = list(sys.argv[1:] if argv is None else argv)
-    keep = []                                                       # the arguments but --case and --out
-    skip = False
-    for i, x in enumerate(argv):
-        if skip:
-            skip = False
-            continue
+    keep, given = [], iter(argv)                                    # the arguments but --case and --out
+    for x in given:
         if x in ('--case', '--out'):
-            skip = True
-            continue
-        if x.startswith(('--case=', '--out=')):
-            continue
-        keep.append(x)
+            next(given, None)
+        elif not x.startswith(('--case=', '--out=')):
+            keep.append(x)
     out = Path(a.out)
     table = dict(format=1, circuit=str(folder.resolve()), cases=[], parts={})
     for c in cases:
