@@ -13,18 +13,12 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QComboBox, QCheckBox, QLabe
 import pyqtgraph as pg
 from . import theme
 from kicad2ems.core.api.frontend import overlay as ov
-from .panels import FlowLayout
+from .panels import FlowLayout, refill
 from . import meshpick as mp
+from . import volume3d as v3
 
 COPPER = QColor(214, 140, 64)
 OTHER = QColor(214, 140, 64, 45)
-
-
-def _rings(geom):
-    """GeoJSON-like polygon / multipolygon -> [[outer, hole, ...], ...]."""
-    if geom['type'] == 'Polygon':
-        return [geom['coordinates']]
-    return list(geom['coordinates'])
 
 
 def _path(polys):
@@ -53,6 +47,14 @@ def _item(path, pen=None, brush=None, z=0):
     return it
 
 
+def _text(text, pos, z, **style):
+    """A label (pyqtgraph's TextItem, `style` its own arguments) at pos, at height z."""
+    t = pg.TextItem(text, **style)
+    t.setPos(*pos)
+    t.setZValue(z)
+    return t
+
+
 def section_path(e):
     """A section's outline as a QPainterPath (overlay.section_polygon)."""
     g = ov.section_polygon(e)
@@ -78,29 +80,15 @@ class PlanView(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         bar = FlowLayout()
-        bar.addWidget(QLabel('Layer'))
-        self.layer = QComboBox()
-        self.layer.setSizeAdjustPolicy(QComboBox.AdjustToContents)
-        self.layer.currentIndexChanged.connect(self.redraw)
-        bar.addWidget(self.layer)
-        self.copper = QCheckBox('copper')
-        self.copper.setChecked(True)
-        self.copper.toggled.connect(self.redraw)
-        bar.addWidget(self.copper)
-        bar.addWidget(QLabel('Mesh'))
-        self.mesh = QComboBox()
-        self.mesh.setSizeAdjustPolicy(QComboBox.AdjustToContents)
-        self.mesh.setToolTip("a solver's discretisation of this layer: openEMS's grid lines, mom25d's triangles")
-        self.mesh.currentIndexChanged.connect(self.redraw)
-        bar.addWidget(self.mesh)
-        self.solved = QCheckBox('solved')
-        self.solved.setStyleSheet(f'QCheckBox {{ color: {mp.SOLVED_COLOUR}; }}')
-        self.solved.toggled.connect(self.redraw)
-        bar.addWidget(self.solved)
-        bar.addStretch(1)
-        fit = QPushButton('Fit')
-        fit.clicked.connect(self.fit)
-        bar.addWidget(fit)
+        self.layer = QComboBox(sizeAdjustPolicy=QComboBox.AdjustToContents, currentIndexChanged=self.redraw)
+        self.copper = QCheckBox('copper', checked=True, toggled=self.redraw)
+        self.mesh = QComboBox(sizeAdjustPolicy=QComboBox.AdjustToContents, currentIndexChanged=self.redraw,
+                              toolTip="a solver's discretisation of this layer: openEMS's grid lines, mom25d's "
+                                      "triangles")
+        self.solved = QCheckBox('solved', styleSheet=f'QCheckBox {{ color: {mp.SOLVED_COLOUR}; }}', toggled=self.redraw)
+        for w in (QLabel('Layer'), self.layer, self.copper, QLabel('Mesh'), self.mesh, self.solved,
+                  QPushButton('Fit', clicked=self.fit)):
+            bar.addWidget(w)
         lay.addLayout(bar)
         self.plot = pg.PlotWidget()
         self.plot.setBackground(theme.colors()['bg'])
@@ -112,8 +100,7 @@ class PlanView(QWidget):
         self.plot.scene().sigMouseClicked.connect(self._clicked)
         self.plot.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         lay.addWidget(self.plot, 1)
-        self.info = QLabel(' ')
-        self.info.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.info = QLabel(' ', textInteractionFlags=Qt.TextSelectableByMouse)
         lay.addWidget(self.info)
         self.show_lines = True
 
@@ -134,7 +121,6 @@ class PlanView(QWidget):
         """A board (Board.to_dict(), model mm) and its line model's drawing, without a results folder (the KiCad
         plugin's live board); False when there is no board."""
         from kicad2ems.core.api.frontend import meshes
-        from . import volume3d as v3
         if self._behind is not None and not (board or {}).get('layout_of'):
             self._behind = (board, lines, found_meshes)             # a pick is on the board as drawn: this after it
             return board is not None
@@ -142,25 +128,10 @@ class PlanView(QWidget):
         self.box = v3.board_box(v3.geometry_from_board(board)) if board else None
         self.meshes = found_meshes or {}
         self.lines = lines
-        keep = self.layer.currentData()
-        self.layer.blockSignals(True)
-        self.layer.clear()
-        if self.board:
-            cu = sorted(self.board['stack']['copper'], key=lambda c: -c['z'])     # top first
-            for c in cu:
-                self.layer.addItem(c['name'], c['name'])
-        i = self.layer.findData(keep)
-        self.layer.setCurrentIndex(max(i, 0))
-        self.layer.blockSignals(False)
-        keep = self.mesh.currentData()
-        self.mesh.blockSignals(True)
-        self.mesh.clear()
-        self.mesh.addItem('none', None)
-        for solver in mp.solvers(self.meshes):
-            self.mesh.addItem(meshes.LABELS.get(solver, solver), solver)
-        self.mesh.setCurrentIndex(max(self.mesh.findData(keep), 0))
+        cu = sorted(board['stack']['copper'], key=lambda c: -c['z']) if board else []     # top first
+        refill(self.layer, [(c['name'], c['name']) for c in cu])
+        refill(self.mesh, [('none', None)] + [(meshes.LABELS.get(s, s), s) for s in mp.solvers(self.meshes)])
         self.mesh.setEnabled(bool(self.meshes))
-        self.mesh.blockSignals(False)
         self._solved_state()
         self.sel = self.hover = None
         self.redraw()
@@ -200,17 +171,16 @@ class PlanView(QWidget):
         add = lambda it: (self.plot.addItem(it), self._items.append(it))
         ol = self.board.get('outline')
         if ol:
-            add(_item(_path(_rings(ol)), QPen(QColor('#555'), 1.2), QBrush(QColor(236, 240, 236)), -30))
+            add(_item(_path(v3.rings(ol)), QPen(QColor('#555'), 1.2), QBrush(QColor(236, 240, 236)), -30))
         if 'active_nets' in self.board:
             from .layoutscene import layout_items
-            from .volume3d import geometry_from_board
-            g=geometry_from_board(self.board)
-            if self.copper.isChecked():
-                for it in layout_items(g,lay,components=False):add(it)
-            for it in layout_items({'components':g.get('components',[])},lay):add(it)
+            g = v3.geometry_from_board(self.board)
+            for it in ((layout_items(g, lay, components=False) if self.copper.isChecked() else [])
+                       + layout_items({'components': g.get('components', [])}, lay)):
+                add(it)
         elif self.copper.isChecked():
             for name, items in self.board['copper'].items():
-                polys = [r for it in items for r in _rings(it['polygon'])]
+                polys = [r for it in items for r in v3.rings(it['polygon'])]
                 own = name == lay
                 add(_item(_path(polys), QPen(QColor(150, 90, 30), 1) if own else QPen(Qt.NoPen),
                           QBrush(self.copper_colour if own else self.other_colour), -10 if own else -20))
@@ -233,15 +203,13 @@ class PlanView(QWidget):
             for e in self.lines['elements']:
                 if e.get('layer') != lay or not ov.drawn(e):
                     continue
-                r, g, b = ov.section_colour(e, self.lines, ref, half)
-                col = QColor.fromRgbF(r, g, b, 0.85)
+                col = QColor.fromRgbF(*ov.section_colour(e, self.lines, ref, half), 0.85)
                 pen = QPen(col.darker(140), 1)
                 if e.get('kind') == 'part':
                     pen.setStyle(Qt.DashLine)
                 it = _item(section_path(e), pen, QBrush(col), 10)
                 add(it)
                 self._sec[e['id']] = it
-        from . import volume3d as v3
         for p in self.board.get('parts', []):                       # lumped parts as their chips, true size
             if p.get('layer') != lay or not p.get('body') or not p.get('centre'):
                 continue
@@ -249,20 +217,12 @@ class PlanView(QWidget):
             cx, cy = p['centre']
             hx, hy = (L / 2, W / 2) if int(p.get('axis', 0)) == 0 else (W / 2, L / 2)
             body = [[[cx - hx, cy - hy], [cx + hx, cy - hy], [cx + hx, cy + hy], [cx - hx, cy + hy]]]
-            r, g, b = v3.PART_COLOURS[v3.part_kind(p)]
-            col = QColor.fromRgbF(r, g, b, 0.9)
+            col = QColor.fromRgbF(*v3.PART_COLOURS[v3.part_kind(p)], 0.9)
             add(_item(_path([body]), QPen(col.darker(170), 1.2), QBrush(col), 25))
-            t = pg.TextItem(p['ref'], color='#111', anchor=(0.5, 1.15))
-            t.setPos(cx, cy + hy)
-            t.setZValue(31)
-            add(t)
+            add(_text(p['ref'], (cx, cy + hy), 31, color='#111', anchor=(0.5, 1.15)))
         for p in self.board.get('ports', []):
-            if p.get('layer') != lay or not p.get('c'):
-                continue
-            t = pg.TextItem(p['name'], color='w', fill=pg.mkBrush('#2f6fb0'), anchor=(0.5, 0.5))
-            t.setPos(*p['c'])
-            t.setZValue(30)
-            add(t)
+            if p.get('layer') == lay and p.get('c'):
+                add(_text(p['name'], p['c'], 30, color='w', fill=pg.mkBrush('#2f6fb0'), anchor=(0.5, 0.5)))
         # the footprints of a board as drawn (kicad2ems.core.layout), outlined and named; what a setting has picked,
         # marked blue: a net's copper on this layer, a part's box
         for fp in self.board.get('footprints', []):
@@ -274,21 +234,19 @@ class PlanView(QWidget):
             add(_item(_path([box]), QPen(QColor(PICKED if on else '#8a8f98'), 3.0 if on else 0.6, Qt.SolidLine if on
                                          else Qt.DotLine), QBrush(QColor(31, 111, 235, 90) if on else Qt.NoBrush), 26))
             if on or (x1 - x0) * (y1 - y0) > 4.0:                   # a name on the larger ones, and the picked
-                t = pg.TextItem(fp['ref'], color='#0b2a66' if on else '#5b6068', anchor=(0.5, 0.5))
-                t.setPos((x0 + x1) / 2, (y0 + y1) / 2)
-                t.setZValue(32)
-                add(t)
+                add(_text(fp['ref'], ((x0 + x1) / 2, (y0 + y1) / 2), 32, color='#0b2a66' if on else '#5b6068',
+                          anchor=(0.5, 0.5)))
         if self.picked:
             polys = [r for it in self.board.get('copper', {}).get(lay, []) if it.get('net') in self.picked
-                     for r in _rings(it['polygon'])]
+                     for r in v3.rings(it['polygon'])]
             if polys:
                 add(_item(_path(polys), QPen(QColor('#ffffff'), 1.0), QBrush(QColor(PICKED)), 24))
         self._mark()
         if 'active_nets' in self.board:
-            self.info.setText('Cyan: simulated copper · grey: layout context · gold: selected components (package approximations)')
-            return
-        self.info.setText('hover a section to read it; click to select' if self.lines and self.show_lines
-                          else ' ')
+            self.info.setText('Cyan: simulated copper · grey: layout context · gold: selected components (package '
+                              'approximations)')
+        else:
+            self.info.setText('hover a section to read it; click to select' if self.lines and self.show_lines else ' ')
 
     def _mark(self):
         """Outline the selected section (thick) and the hovered one (thin)."""
@@ -307,14 +265,11 @@ class PlanView(QWidget):
 
     # ---- the mouse ----
     def _at(self, scene_pos):
+        if not (self.lines and self.show_lines and self.plot.sceneBoundingRect().contains(scene_pos)):
+            return None
         vb = self.plot.getPlotItem().vb
-        if not self.plot.sceneBoundingRect().contains(scene_pos):
-            return None
         p = vb.mapSceneToView(scene_pos)
-        px = vb.viewPixelSize()[0]
-        if not (self.lines and self.show_lines):
-            return None
-        return ov.nearest(self.lines['elements'], p.x(), p.y(), 4 * px, layer=self.current_layer())
+        return ov.nearest(self.lines['elements'], p.x(), p.y(), 4 * vb.viewPixelSize()[0], layer=self.current_layer())
 
     def _moved(self, pos):
         i = self._at(pos)

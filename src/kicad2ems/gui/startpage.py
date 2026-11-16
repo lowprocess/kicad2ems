@@ -12,21 +12,16 @@ is generated is made in the cache for it, not in the user's examples folder.
 """
 import os
 
-from PySide6.QtCore import Qt, QThread, Signal, QRectF, QPointF
+from PySide6.QtCore import Qt, QThread, Signal, QPointF
 from PySide6.QtGui import QImage, QPainter, QPainterPath, QColor, QPen, QPixmap, QPolygonF
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QScrollArea, QFrame,
-                               QSizePolicy)
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit, QScrollArea, QFrame, QSizePolicy
 
 from .panels import FlowLayout
+from .volume3d import rings
 
 TILE, PICTURE = (236, 196), (220, 128)      # a tile and its picture, px
 FIRST = 5                                   # the tiles a group shows until "all" is clicked
 RECENT = 4                                  # the configs opened lately that are listed
-
-
-def cache_folder():
-    base = os.environ.get('XDG_CACHE_HOME') or os.path.join(os.path.expanduser('~'), '.cache')
-    return os.path.join(base, 'kicad2ems', 'thumbs')
 
 
 def short_title(entry):
@@ -44,7 +39,6 @@ def board_image(layout, size=PICTURE):
     w, h = size
     img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
     img.fill(QColor('#f3f4f6'))
-    rings = lambda poly: [poly['coordinates']] if poly['type'] == 'Polygon' else list(poly['coordinates'])
     layers = sorted(layout['stack']['copper'], key=lambda c: c['z'])        # bottom first
     shapes = [(c['name'], [r for it in layout.get('copper', {}).get(c['name'], []) for r in rings(it['polygon'])])
               for c in layers]
@@ -92,7 +86,8 @@ class _Thumbs(QThread):
     def run(self):
         from kicad2ems.core.api.frontend import board_layout
         from kicad2ems import examples as X
-        folder = cache_folder()
+        folder = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(os.path.expanduser('~'), '.cache'),
+                              'kicad2ems', 'thumbs')
         boards = os.path.join(folder, 'boards')
         os.makedirs(boards, exist_ok=True)
         for e in self.entries:
@@ -127,23 +122,17 @@ class Tile(QFrame):
         self.setFixedSize(*TILE)
         self.setCursor(Qt.PointingHandCursor)
         self.setToolTip(f"{entry['name']}: {entry.get('title') or ''}")
-        self.setStyleSheet('QFrame#tile { border: 1px solid palette(mid); border-radius: 6px; background: palette(base); }'
-                           'QFrame#tile:hover { border: 1px solid palette(highlight); }')
+        self.setStyleSheet('QFrame#tile { border: 1px solid palette(mid); border-radius: 6px; '
+                           'background: palette(base); }QFrame#tile:hover { border: 1px solid palette(highlight); }')
         v = QVBoxLayout(self)
         v.setContentsMargins(8, 8, 8, 6)
         v.setSpacing(3)
-        self.picture = QLabel()
+        self.picture = QLabel(entry['name'], alignment=Qt.AlignCenter,
+                              styleSheet='background: #f3f4f6; border-radius: 4px; color: #9ca3af;')
         self.picture.setFixedSize(*PICTURE)
-        self.picture.setAlignment(Qt.AlignCenter)
-        self.picture.setStyleSheet('background: #f3f4f6; border-radius: 4px; color: #9ca3af;')
-        self.picture.setText(entry['name'])
-        v.addWidget(self.picture)
-        head = QLabel(f"<b>{short_title(entry)}</b>")
-        head.setWordWrap(True)
-        v.addWidget(head)
-        sub = QLabel(entry['name'])
-        sub.setStyleSheet('color: gray; font-size: 11px;')
-        v.addWidget(sub)
+        for w in (self.picture, QLabel(f"<b>{short_title(entry)}</b>", wordWrap=True),
+                  QLabel(entry['name'], styleSheet='color: gray; font-size: 11px;')):
+            v.addWidget(w)
         v.addStretch(1)
 
     def set_picture(self, png):
@@ -174,53 +163,36 @@ class StartPage(QWidget):
                 ('Open a KiCad board…', self._board, 'Choose a .kicad_pcb: a new study of that board'),
                 ('Open a config…', self._config, 'Open a saved study (a .toml config)'),
                 ('Open a results folder…', self._results, "A run's output folder: its results in the pages")):
-            b = QPushButton(text)
-            b.setToolTip(tip)
-            b.clicked.connect(slot)
-            if not self.buttons:                                    # the first: what most begin with
-                b.setDefault(True)
-                b.setStyleSheet('QPushButton { font-weight: 600; padding: 6px 16px; }')
-            else:
-                b.setStyleSheet('QPushButton { padding: 6px 12px; }')
+            first = not self.buttons                                # the first: what most begin with
+            b = self.buttons[text] = QPushButton(text, toolTip=tip, clicked=slot, default=first)
+            b.setStyleSheet('QPushButton { font-weight: 600; padding: 6px 16px; }' if first else
+                            'QPushButton { padding: 6px 12px; }')
             row.addWidget(b)
-            self.buttons[text] = b
-        self.recent = QLabel()
-        self.recent.setTextFormat(Qt.RichText)
-        self.recent.linkActivated.connect(self._open_recent)
-        row.addWidget(self.recent)
-        self.find = QLineEdit()
-        self.find.setPlaceholderText('Find an example…')
-        self.find.setClearButtonEnabled(True)
+        self.recent = QLabel(textFormat=Qt.RichText, linkActivated=self._open_recent)
+        self.find = QLineEdit(placeholderText='Find an example…', clearButtonEnabled=True, textChanged=self.filter)
         self.find.setFixedWidth(220)
-        self.find.textChanged.connect(self.filter)
+        row.addWidget(self.recent)
         row.addWidget(self.find)
         holder = QWidget()
         holder.setLayout(row)
         v.addWidget(holder)
-        sc = QScrollArea()
-        sc.setWidgetResizable(True)
-        sc.setFrameShape(QFrame.NoFrame)
-        inner = QWidget()
-        inner.setObjectName('start-inner')
-        inner.setStyleSheet('QWidget#start-inner { background: palette(base); }')
+        sc = QScrollArea(widgetResizable=True, frameShape=QFrame.NoFrame)
+        inner = QWidget(objectName='start-inner', styleSheet='QWidget#start-inner { background: palette(base); }')
         self.body = QVBoxLayout(inner)
         self.body.setContentsMargins(0, 0, 0, 0)
         self.body.setSpacing(8)
         sc.setWidget(inner)
         v.addWidget(sc, 1)
         self.tiles, self.groups, self.open_groups, self._thread = {}, [], set(), None
-        self.none = QLabel('no example matches')
-        self.none.setStyleSheet('color: gray')
-        self.set_examples(self._index() if entries is None else entries)
+        self.none = QLabel('no example matches', styleSheet='color: gray')
+        if entries is None:
+            try:
+                from kicad2ems.core.api.frontend import example_index
+                entries = example_index()
+            except Exception:                                       # noqa: BLE001 (a plugin's fault: no examples)
+                entries = []
+        self.set_examples(entries)
         self.refresh_recent()
-
-    @staticmethod
-    def _index():
-        try:
-            from kicad2ems.core.api.frontend import example_index
-            return example_index()
-        except Exception:                                           # noqa: BLE001 (a plugin's fault: no examples)
-            return []
 
     # ---- the examples ----
     def set_examples(self, entries):
@@ -234,15 +206,13 @@ class StartPage(QWidget):
         for e in entries:
             by.setdefault((e.get('group') or 'Other').split('/')[0].strip(), []).append(e)
         for group, es in by.items():
-            head = QLabel()
-            head.setTextFormat(Qt.RichText)
+            head = QLabel(textFormat=Qt.RichText)
             head.linkActivated.connect(lambda _href, g=group: self.toggle(g))
             self.body.addWidget(head)
-            box = QWidget()
+            box = QWidget(sizePolicy=QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum))
             flow = FlowLayout()
             flow.setSpacing(12)
             box.setLayout(flow)
-            box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
             tiles = []
             for e in es:
                 t = Tile(e)
@@ -272,10 +242,9 @@ class StartPage(QWidget):
             for t in tiles:
                 t.setVisible(t in keep)
             more = len(match) > len(keep) or group in self.open_groups
-            head.setText(f"<span style='font-size:14px; font-weight:600'>{group}</span><span style='color:gray'>&nbsp;&nbsp;"
-                         f"{len(match)} example{'s' if len(match) != 1 else ''}"
-                         + (f" · <a href='#'>{'fewer' if group in self.open_groups else 'all'}</a>" if more and not words else '')
-                         + "</span>")
+            link = f" · <a href='#'>{'fewer' if group in self.open_groups else 'all'}</a>" if more and not words else ''
+            head.setText(f"<span style='font-size:14px; font-weight:600'>{group}</span><span style='color:gray'>"
+                         f"&nbsp;&nbsp;{len(match)} example{'s' if len(match) != 1 else ''}{link}</span>")
             head.setVisible(bool(match))
             box.setVisible(bool(match))
             shown += len(match)

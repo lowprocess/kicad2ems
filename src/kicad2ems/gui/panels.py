@@ -3,10 +3,21 @@ GUI building blocks: a collapsible settings section, an image panel (model, mesh
 row of controls that wraps when narrow.
 """
 import os
-from PySide6.QtCore import Qt, QRect, QPoint, QSize, Signal
+from PySide6.QtCore import Qt, QRect, QPoint, QSignalBlocker, QSize, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QToolButton, QLabel, QScrollArea, QSizePolicy,
                                QFrame, QLayout)
+
+
+def refill(combo, items):
+    """A combo box's items anew, [(label, data)], without its signals; the item that was current stays so (else the
+    first)."""
+    keep = combo.currentData()
+    with QSignalBlocker(combo):
+        combo.clear()
+        for label, data in items:
+            combo.addItem(label, data)
+        combo.setCurrentIndex(max(combo.findData(keep), 0))
 
 
 class Section(QWidget):
