@@ -329,23 +329,16 @@ def _mesh_section(sm, g, st):
     return content
 
 
-def _resolved(sm, base):
-    """A copy of the summary with its paths (stored relative to the output folder) made absolute."""
-    ab = lambda p: p if (not p or os.path.isabs(p)) else os.path.join(base, p)
-    sm = dict(sm)
-    sm['images'] = {k: ab(v) for k, v in sm.get('images', {}).items()}
-    sm['files'] = [(l, ab(p)) for l, p in sm.get('files', [])]
-    sm['dumps'] = [dict(d, png=ab(d['png'])) for d in sm.get('dumps', [])]
-    sm['solved'] = {k: dict(v, touchstone=ab(v['touchstone'])) for k, v in sm.get('solved', {}).items()}
-    if sm.get('runs'):
-        sm['runs'] = {k: dict(r, log=ab(r.get('log'))) for k, r in sm['runs'].items()}
-    return sm
-
-
 def build(sm, base):
     """The report page for a run summary; `base` is the output folder (where the report goes), against
     which the summary's relative paths are resolved and links are made relative."""
-    sm = _resolved(sm, base)
+    ab = lambda p: p if (not p or os.path.isabs(p)) else os.path.join(base, p)
+    sm = dict(sm, images={k: ab(v) for k, v in sm.get('images', {}).items()},
+              files=[(l, ab(p)) for l, p in sm.get('files', [])],
+              dumps=[dict(d, png=ab(d['png'])) for d in sm.get('dumps', [])],
+              solved={k: dict(v, touchstone=ab(v['touchstone'])) for k, v in sm.get('solved', {}).items()})
+    if sm.get('runs'):
+        sm['runs'] = {k: dict(r, log=ab(r.get('log'))) for k, r in sm['runs'].items()}
     model, g, st = sm['model'], sm.get('mesh'), sm['settings']
     nav, body = [], []
 

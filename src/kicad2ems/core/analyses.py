@@ -93,6 +93,7 @@ The fields of a result (the maps a Viewer turns and cuts) need nothing here: an 
 import os
 
 from .extras import install_hint
+from .options import strlist
 from .runs import load_toml
 
 GROUP = 'kicad2ems.analyses'                # the entry-point group of analyses installed as packages
@@ -304,8 +305,7 @@ def _tables(path):
     base = os.path.dirname(os.path.abspath(path))
     run = table.get('run')
     if run is not None:
-        run = [str(x).strip().lower() for x in (run if isinstance(run, (list, tuple)) else str(run).split(','))
-               if str(x).strip()]
+        run = [x.lower() for x in strlist(run) or []]
     out, reg = {}, registry()
     for name, tabs in table.items():
         tabs = [tabs] if isinstance(tabs, dict) else tabs
