@@ -177,6 +177,16 @@ def _compiled():
     return core if hasattr(core, 'static_pairs') and getattr(core, 'static_openmp', False) else None
 
 
+def host_data(geometry):
+    """The compiled host kernel's geometry (static_pairs' data): level 0's arrays, and each level's quadrature."""
+    V, L, tau, un, area, _, _ = geometry.levels[0]
+    data = dict(V=V, L=L, tau=tau, un=un, area=area, P3=geometry.points)
+    for level in range(3):
+        g = geometry.levels.get(level, geometry.levels[0])
+        data[f'P{level}'], data[f'W{level}'] = g[5], g[6]
+    return data
+
+
 class OpenMPBackend:
     def __init__(self, geometry, workers, chunk, device):
         if device is not None:
@@ -187,18 +197,15 @@ class OpenMPBackend:
         self.workers = workers
         self.observed_workers = self.core.static_thread_count(workers)
         self.parallel_tiles = workers == 1
-        V, L, tau, un, area, _, _ = geometry.levels[0]
-        self.data = dict(V=V, L=L, tau=tau, un=un, area=area, P3=geometry.points)
-        for level in range(3):
-            g = geometry.levels.get(level, geometry.levels[0])
-            self.data[f'P{level}'], self.data[f'W{level}'] = g[5], g[6]
+        self.data = host_data(geometry)
 
     def evaluate(self, p, q, d, kind, scalar_only):
         return self.core.static_pairs(self.data, p, q, d, kind, scalar_only, self.workers)
 
 
-def native_layered(engine, workers=None):
-    """(core, common args, workers) for the compiled layered image kernel, or None.
+def native_layered(engine, workers=None, kernel='layered_pairs'):
+    """(core, common args, workers) for the compiled layered image kernel (or another `kernel`, rwg_inductance:
+    the whole entry blocks), or None (another fill backend, or a core that predates the kernel).
 
     Only OpenMP engines use it; NumPy/threaded/device backends keep the host
     image loops, so an explicit backend choice is respected.
@@ -206,7 +213,7 @@ def native_layered(engine, workers=None):
     if engine.info['backend'] != 'openmp':
         return None
     core = getattr(engine.backend, 'core', None)
-    if core is None or not hasattr(core, 'layered_pairs'):
+    if core is None or not hasattr(core, kernel):
         return None
     g = engine.geometry
     near = float('inf') if np.isinf(engine.near) else float(engine.near)

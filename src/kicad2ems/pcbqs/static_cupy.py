@@ -99,11 +99,8 @@ class CupyBackend:
         self.routing = dict(host_threshold_pairs=self.host_pairs, host_workers=self.host_workers,
                             host_batches=0, host_pairs=0, device_batches=0, device_pairs=0)
         if self.host_core is not None:
-            self.host_data = dict(V=geometry.levels[0][0], L=geometry.levels[0][1], tau=geometry.levels[0][2],
-                                  un=geometry.levels[0][3], area=geometry.levels[0][4], P3=geometry.points)
-            for level in range(3):
-                g = geometry.levels.get(level, geometry.levels[0])
-                self.host_data[f'P{level}'], self.host_data[f'W{level}'] = g[5], g[6]
+            from .static_backends import host_data
+            self.host_data = host_data(geometry)
 
     def evaluate(self, p, q, d, kind, scalar_only):
         cp = self.cp
