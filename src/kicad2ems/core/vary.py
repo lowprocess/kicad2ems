@@ -133,8 +133,8 @@ def load(folder):
     """The variation listed in a results folder (<name>_vary.json), or None:
     dict(name, keys, runs) with each run's folder and Touchstones made
     absolute."""
-    hits = ([f for f in os.listdir(folder)
-             if f.endswith('_vary.json')] if os.path.isdir(folder) else [])
+    hits = ([f for f in os.listdir(folder) if f.endswith('_vary.json')]
+            if os.path.isdir(folder) else [])
     if not hits:
         return None
     with open(os.path.join(folder, sorted(hits)[0]), encoding='utf-8') as fh:

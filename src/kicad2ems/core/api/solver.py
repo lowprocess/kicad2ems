@@ -6,31 +6,44 @@ solvers do.
     from kicad2ems.core.api.solver import Solver, Result, Option, mixed_mode
 
     class MySolver(Solver):
-        api = (2, 0)                # the kicad2ems.core.api version it is written against (API_VERSION)
+        api = (2, 0)                # the kicad2ems.core.api version it is
+                                    # written against (API_VERSION)
         name, label = 'mine', 'my solver'
         ...
 
-  the interface       Solver, Result, Deviation, Option, AUTO, FEATURES, API_VERSION
+  the interface       Solver, Result, Deviation, Option, AUTO, FEATURES,
+                      API_VERSION
   settings            floatlist, floats: Option value parsers
-  stopping            stop: stop.check() between steps raises stop.Stopped when the GUI's Stop was pressed
+  stopping            stop: stop.check() between steps raises stop.Stopped when
+                      the GUI's Stop was pressed
   S-parameters        mixed_mode, fill_reciprocal
   figures             plot_antenna, plot_pattern, plot_convergence
-  antennas, fields    describe_antenna, match_summary, save_antenna; DumpSource, save_fd_outputs, write_npz;
-                      Dump, write_info; save_mesh (the GUI's 3D mesh view)
-  phased arrays       phased (the module: parse_grid, settings_drive, combine, waves, format_drive, save), settings_drive
-  the machine         sitecfg (where external programs are), core_threads, ram_gb
-  for an FDTD layer (kicad2ems-fdtd's: the FDTD solvers' shared model, mesh and runs):
+  antennas, fields    describe_antenna, match_summary, save_antenna; DumpSource,
+                      save_fd_outputs, write_npz; Dump, write_info; save_mesh
+                      (the GUI's 3D mesh view)
+  phased arrays       phased (the module: parse_grid, settings_drive, combine,
+                      waves, format_drive, save), settings_drive
+  the machine         sitecfg (where external programs are), core_threads,
+                      ram_gb
+  for an FDTD layer (kicad2ems-fdtd's: the FDTD solvers' shared model,
+  mesh and runs):
     constants         C0, EPS0; ETA0, MU0 (2.1)
-    settings          strlist, items (Option value parsers), G_DUMP (the field-dump settings group), registry
-    geometry          split_holes (a polygon with holes -> simple polygons), describe_edges, snap_edges (the
-                      board-edge walls: their log line, snapped onto a grid)
-    field dumps       parse_dump, add_dumps, dump_size_mb, write_norm, plot_fd_dumps, save_animation
+    settings          strlist, items (Option value parsers), G_DUMP (the
+                      field-dump settings group), registry
+    geometry          split_holes (a polygon with holes -> simple polygons),
+                      describe_edges, snap_edges (the board-edge walls: their
+                      log line, snapped onto a grid)
+    field dumps       parse_dump, add_dumps, dump_size_mb, write_norm,
+                      plot_fd_dumps, save_animation
     antennas          gain_table, add_polarisation, pattern_gain
     figures           plot_preview (the model and its mesh)
-    the line model    solve_lines, lines_backend (its fast solve: a first look before a long run)
-  copper roughness    hammerstad, rough_sigma, band_sigma (2.3; kicad2ems.core.roughness)
-  surface finish      resolve_finish (a run's Finish: layers, faces, shares), finish_factor, finish_weighted,
-                      finish_band_sigma, finish_face_z (2.4; kicad2ems.core.finish)
+    the line model    solve_lines, lines_backend (its fast solve: a first look
+                      before a long run)
+  copper roughness    hammerstad, rough_sigma, band_sigma (2.3;
+                      kicad2ems.core.roughness)
+  surface finish      resolve_finish (a run's Finish: layers, faces, shares),
+                      finish_factor, finish_weighted, finish_band_sigma,
+                      finish_face_z (2.4; kicad2ems.core.finish)
 """
 from . import API_VERSION, lazy  # noqa: F401
 

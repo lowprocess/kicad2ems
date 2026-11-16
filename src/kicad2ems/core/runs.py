@@ -6,15 +6,16 @@ here.
 
     run = Run(settings_dict, out_dir, preview=False)
     run.argv()             # [python, -m, kicad2ems, <out>/gui_run.toml,
-                           --events, ...]
+                           #  --events, ...]
     tail = EventTail(path); tail.read() -> [event dicts]
     read_summary(path)     # a <name>_run.json, its format checked (formats.py)
     stop_runs(out_dir)     # STOP for the run (stop.py), ABORT into every FDTD
-                           run folder
+                           # run folder
     find_results(out_dir)  # [(label, path)] of the newest finished run's files
-    run_dir(base, board), preview_dir(base, board), tool_dir(base, board, analysis, what), tool_preview_dir(...)
+    run_dir(base, board), preview_dir(base, board),
+    tool_dir(base, board, analysis, what), tool_preview_dir(...)
                            # where a front end's runs go: a folder each under
-                           the output folder
+                           # the output folder
     write_toml(path, settings); toml_value(v); load_toml(path)
 """
 import datetime, glob, json, os, sys
@@ -151,8 +152,8 @@ def run_dir(base, board, now=None):
     <base>/<board>_20261013_141502."""
     return os.path.join(
         base,
-        f"{board_name(board)}_{(now or datetime.datetime.now()).strftime(STAMP)}"
-    )
+        f"{board_name(board)}_"
+        f"{(now or datetime.datetime.now()).strftime(STAMP)}")
 
 
 def preview_dir(base, board):
@@ -169,8 +170,8 @@ def tool_dir(base, board, kind, name, now=None):
                     for c in str(name or '')).strip('_') or 'run')
     return os.path.join(
         base,
-        f"{board_name(board)}_{kind}_{what}_{(now or datetime.datetime.now()).strftime(STAMP)}"
-    )
+        f"{board_name(board)}_{kind}_{what}_"
+        f"{(now or datetime.datetime.now()).strftime(STAMP)}")
 
 
 def tool_preview_dir(base, board, kind):

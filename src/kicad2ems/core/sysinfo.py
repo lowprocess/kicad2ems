@@ -5,9 +5,12 @@ The GUI's System panel runs it as its own process (python -m
 kicad2ems.core.sysinfo: JSON on stdout), so the GUI never holds a GPU context or
 imports CuPy.
 
-    info()      dict(solvers=[dict(name, label, ok, what)], resources={solver: dict(gpus, why)},
-                     gpu=dict(...) | None, gpu_why, ram=dict(total, available), cpus, threads)
-    core_threads()  the worker count of a parallel map: one per fast physical core (emsdev)
+    info()      dict(solvers=[dict(name, label, ok, what)],
+                     resources={solver: dict(gpus, why)},
+                     gpu=dict(...) | None, gpu_why,
+                     ram=dict(total, available), cpus, threads)
+    core_threads()  the worker count of a parallel map: one per fast physical
+                    core (emsdev)
 """
 import json
 import os

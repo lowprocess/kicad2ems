@@ -10,7 +10,8 @@ thickness t_i, outermost first) a section of line of Z_i = gamma_i / sigma_i,
 gamma_i = (1 + j) / delta_i, loading the one beneath it, down to the copper
 face, gamma / sigma coth(gamma t) (one face of the copper's thickness t):
 
-    Z_in = Z_i (Z_load + Z_i tanh(gamma_i t_i)) / (Z_i + Z_load tanh(gamma_i t_i))
+    Z_in = Z_i (Z_load + Z_i tanh(gamma_i t_i))
+               / (Z_i + Z_load tanh(gamma_i t_i))
 
 5 um of ENIG's nickel (electroless Ni-P, mid-phosphorus: about 1.45 MS/m and, as
 plated, non-magnetic) puts a face at 2.2x bare copper's resistance at 1 GHz and
@@ -138,8 +139,8 @@ def loss_share(w, h, t):
     xs = X.CrossSection(dielectrics=[], planes=[0.0])
     grid = X.FINE, X.GROW
     # the corners' current converges slowly: 1/16 0.425, 1/64 0.455, 1/128 0.465
-    X.FINE, X.GROW = 1 / 64, 1.15
     # (hairpin's line); etched corners are round, which a sharp limit overstates
+    X.FINE, X.GROW = 1 / 64, 1.15
     try:
         xs.conductor(-w / 2, w / 2, h, h + t)
         x, z = X._grid(xs)

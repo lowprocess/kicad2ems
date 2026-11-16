@@ -33,11 +33,10 @@ def compatible(api):
     major, minor = tuple(api or UNVERSIONED)[:2]
     if major == API_VERSION[0] and minor <= API_VERSION[1]:
         return None
-    return (
-        f"written for kicad2ems API {major}.{minor}, this kicad2ems has "
-        f"{'.'.join(map(str, API_VERSION))}: "
-        f"{'update the plugin' if major < API_VERSION[0] else 'update kicad2ems'}"
-    )
+    fix = ('update the plugin' if major < API_VERSION[0]
+           else 'update kicad2ems')
+    return (f"written for kicad2ems API {major}.{minor}, this kicad2ems has "
+            f"{'.'.join(map(str, API_VERSION))}: {fix}")
 
 
 def lazy(module_name, names):

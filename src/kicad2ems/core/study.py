@@ -13,10 +13,12 @@ Elmer), and one engine several questions from one run (a rail's drop and its
 impedance).
 
     from kicad2ems.core.study import study_tree, engines, questions
-    for g in study_tree():                      # what a front end lists: by group, each question with its engines
+    for g in study_tree():      # what a front end lists: by group, each
+                                # question with its engines
         for row in g['questions']:
-            row['question'].label, [e.label for e in row['engines']], row['missing']
-    engines()['pdn'].provides                   # ('dc', 'pdn')
+            (row['question'].label, [e.label for e in row['engines']],
+             row['missing'])
+    engines()['pdn'].provides   # ('dc', 'pdn')
 
 A front end shows the tree, lets each question asked name its engine (or
 several, to compare them), and starts them: an analysis engine by the command
@@ -363,8 +365,7 @@ def check_lines():
     return lines
 
 
-# ---- a config's study: what it asks, the runs that takes, and running them
-# ---------------------------------
+# ---- a config's study: what it asks, the runs that takes, and running them --
 RF = 'rf'  # the S-parameter run's name in a plan and in a run folder's mark
 # what solver engines answer: together, one kicad2ems run
 SOLVER_QUESTIONS = ('sparams', 'antenna', 'lines')
@@ -550,12 +551,10 @@ def write_config(path, study):
     if study is not None:
         out += ['', '[study]', f"run = {toml_value(list(study.asked))}"]
         for q, names in study.asked.items():
-            tab = (([
-                "engine = "
-                f"{toml_value(names[0] if len(names) == 1 else list(names))}"
-            ] if names else []) +
-                   ([f"fields = {toml_value(bool(study.fields[q]))}"]
-                    if q in study.fields else []))
+            value = names[0] if len(names) == 1 else list(names)
+            tab = (([f"engine = {toml_value(value)}"] if names else [])
+                   + ([f"fields = {toml_value(bool(study.fields[q]))}"]
+                      if q in study.fields else []))
             if tab:
                 out += ['', f"[study.{q}]"] + tab
     with open(path, 'w', encoding='utf-8') as fh:
@@ -785,10 +784,9 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
                     failed.add(a.name)
                     continue
                 mark(folder, a.name, st.questions, preview)
-                echo(
-                    f"study: {who}: "
-                    f"{' '.join(['python', *argv[1:]] if argv[0] == sys.executable else argv)}"
-                )
+                shown = (['python', *argv[1:]] if argv[0] == sys.executable
+                         else argv)
+                echo(f"study: {who}: {' '.join(shown)}")
                 proc = subprocess.Popen(argv, stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT, text=True,
                                         env=dict(os.environ, **(a.env or {})))

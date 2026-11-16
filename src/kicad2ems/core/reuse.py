@@ -4,10 +4,11 @@ outputs, <name>_<solver>.result.npz (its S) and .result.json (its key, ports,
 reference impedances, time, info, comment). A later run in the same output
 folder takes it in place of a solve when its key is the same:
 
-    the board every solver gets (<name>_board.json, as this run wrote it), the frequencies, every setting but
-    the output ones (CORE's group 'output', and which solvers run), the solver's name and its check line (its
-    version and where it is), and a digest of the stack's code that is loaded (kicad2ems, the solver packages,
-    their engines): a change to any of them solves again.
+    the board every solver gets (<name>_board.json, as this run wrote it), the
+    frequencies, every setting but the output ones (CORE's group 'output', and
+    which solvers run), the solver's name and its check line (its version and
+    where it is), and a digest of the stack's code that is loaded (kicad2ems,
+    the solver packages, their engines): a change to any of them solves again.
 
 --no-reuse solves every solver again. A result that cannot be read is no result
 (the solver runs).

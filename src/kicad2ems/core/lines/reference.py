@@ -9,7 +9,8 @@ import functools
 import math
 import numpy as np
 from shapely.geometry import LineString, Point
-from .formulas import cpwg, embedded_microstrip, microstrip, offset_stripline, stripline
+from .formulas import (cpwg, embedded_microstrip, microstrip,
+                       offset_stripline, stripline)
 from .elements import Element, direction_at
 
 
@@ -137,9 +138,9 @@ def classify(model, ref, e, pt, d):
     if not w or w <= 0:  # a degenerate pad chord: no cross-section
         e.notes.append('no width here: no impedance')
         return
-    # the nearest plane each side covering pt: 'full' when
+    # the nearest plane each side covering pt: 'full' when it also covers
+    # w / 2 + 2 h either side
     found = {}
-    # it also covers w / 2 + 2 h either side
     for side in ('below', 'above'):
         for l in _nearest(model, zs, side == 'below'):
             h = abs(model.cu_z[l] - zs)
@@ -311,12 +312,10 @@ def _beyond_formula(e, found):
     if seen < len(hs):
         return "a plane it was classified on is not across its cut"
     lo, hi = zs - (shield.get(False) or 0.0), zs + (shield.get(True) or 0.0)
-    ers = ({er
-            for z0, z1, er, _ in diel
-            if min(z1, hi) - max(z0, lo) > 1e-6} if len(hs) == 2 else set())
-    # (a formula on the averaged er: Z0 4 % low, the delay
+    ers = ({er for z0, z1, er, _ in diel if min(z1, hi) - max(z0, lo) > 1e-6}
+           if len(hs) == 2 else set())
+    # (a formula on the averaged er: Z0 4 % low, the delay 5.6 % long)
     if ers and max(ers) > MIXED_ER * min(ers):
-        # 5.6 % long)
         return (f"dielectrics of er {min(ers):.3g} and {max(ers):.3g} between "
                 "its planes")
     # copper on other layers, in front of those planes

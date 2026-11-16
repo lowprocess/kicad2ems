@@ -165,8 +165,8 @@ class Solver:
     capabilities = {}
     options = []
     # the keys of its options a run is set up with (its main cell size): a
-    # window shows them first, the rest under "More settings" (Option.level; API
-    # 2.9)
+    # window shows them first, the rest under "More settings" (Option.level;
+    # API 2.9)
     basic = ()
 
     def check(self, s=None):

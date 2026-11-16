@@ -3,8 +3,9 @@ kicad2ems.core.si - crosstalk between traces: the near end (NEXT) and the far
 end (FEXT), and what in the layout makes it
 
     python -m kicad2ems.core.si board.kicad_pcb --nets D0,D1,D2 --out out/xt
-        [--aggressor D1] [--near U1] [--mode both|next|fext] [--rise 100] [--limit 3]
-        [--solvers lines[,mom25d]] [--ground B.Cu] [--fmax GHz] [--z0 50]
+        [--aggressor D1] [--near U1] [--mode both|next|fext] [--rise 100]
+        [--limit 3] [--solvers lines[,mom25d]] [--ground B.Cu] [--fmax GHz]
+        [--z0 50]
 
 The traces are named by their nets. Each gets a port at its two ends (the ends
 of its routed copper: a pad where one is there, else the track's end), the near
@@ -59,8 +60,7 @@ GAPS = (1.5, 2.0, 3.0)
 WIDEN = 3
 
 
-# ---- the traces' ends
-# ---------------------------------------------------------------------------------------
+# ---- the traces' ends -------------------------------------------------------
 def trace_ends(kb, net, tol=1e-3):
     """The two ends of net's routed copper on board kb
     (importers.kicad.KiCadBoard), [dict(x, y, layer, pad, at)]: the pair of free
@@ -180,8 +180,7 @@ def port_specs(ordered):
     return specs, names
 
 
-# ---- from S-parameters: the crosstalk over frequency and in time
-# -----------------------------------------------
+# ---- from S-parameters: the crosstalk over frequency and in time ------------
 def renormalised(S, zold, znew):
     """S (nf x n x n) at the real port impedances zold (a number or one a port)
     as at znew (a number): each trace terminated in znew."""
@@ -308,8 +307,7 @@ def victims(rows, f):
     return out
 
 
-# ---- the layout: where two traces run side by side
-# ----------------------------------------------------------
+# ---- the layout: where two traces run side by side --------------------------
 def _coupling(xs_dict, i, j, solved=None):
     """(Kc, Kl, Z0 of line i, the delay per metre) of lines i and j of a coupled
     cross-section (its dict). `solved`: a dict of the cuts already solved, by
@@ -443,8 +441,7 @@ def sections(lines, nets, rise_s, widen=WIDEN, notes=None):
     return [row for row, _ in out]
 
 
-# ---- the run
-# ------------------------------------------------------------------------------------------------
+# ---- the run ----------------------------------------------------------------
 def parser():
     p = argparse.ArgumentParser(prog='python -m kicad2ems.core.si',
                                 description=__doc__.split('\n\n')[0].strip())
@@ -639,8 +636,7 @@ def worst(res):
                 not_modelled=blind)
 
 
-# ---- what the board proposes: the traces that run side by side
-# ------------------------------------------------
+# ---- what the board proposes: the traces that run side by side --------------
 def find_pairs(kb, reach=3.0, min_length=3.0, most=12):
     """The pairs of nets whose tracks run side by side on one layer: [dict(nets,
     layer, length_mm, gap_mm)], the longest and closest first. Two tracks count
@@ -731,8 +727,7 @@ def main(argv=None):
     return 0
 
 
-# ---- the question, as the study has it (kicad2ems.core.analyses)
-# ------------------------------------------------------
+# ---- the question, as the study has it (kicad2ems.core.analyses) ------------
 from .analyses import Analysis                                      # noqa: E402
 
 
@@ -869,8 +864,7 @@ class Crosstalk(Analysis):
             f"by side on {r['layer']}, {r['gap_mm']:.2f} mm "
             "apart", dict(nets=r['nets'])) for r in found]
 
-    # ---- what a result holds
-    # --------------------------------------------------------------------------------
+    # ---- what a result holds ------------------------------------------------
     def report(self, folder):
         d = _result(folder)
         if d is None:

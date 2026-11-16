@@ -3,7 +3,8 @@ The API of a program that drives kicad2ems: reads a board, shows its line model,
 starts runs and reads their results (the GUI, the KiCad plugin, dfsynth's
 --validate).
 
-    from kicad2ems.core.api.frontend import KiCadBoard, Board, build_lines, Run, registry
+    from kicad2ems.core.api.frontend import (KiCadBoard, Board, build_lines,
+                                             Run, registry)
 
   boards              KiCadBoard (a .kicad_pcb, or KiCad's board text), Board
                       (the canonical model), kind_value (a footprint's lumped

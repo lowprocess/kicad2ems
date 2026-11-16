@@ -9,7 +9,8 @@ the copper and the dielectrics in; Z0, the pair's Zdiff and eeff out, from the
         # r['z0'], r['eeff'], r['delay_ps_mm']
     line = fit(line, 50.0)
         # the width of 50 ohm
-    pair = fit(Line(w=0.15, gap=0.15, t=0.035, below=[(0.1, 4.1, 0.02)]), 100.0, what='zdiff')
+    pair = fit(Line(w=0.15, gap=0.15, t=0.035, below=[(0.1, 4.1, 0.02)]),
+               100.0, what='zdiff')
     Line.on_board('board.kicad_pcb', 'In2.Cu', w=0.14, gap=0.15)
         # that board's stack around In2.Cu
     e = element(line)
@@ -205,9 +206,9 @@ def cross_section(line):
         diel.append(X.Dielectric(z, z + h, er, tand))
         z += h
     zc = z
-    # the first one holds the copper: its thickness is
+    # the first one holds the copper: its thickness is from the copper's upper
+    # face
     for k, (h, er, tand) in enumerate(line.above):
-        # from the copper's upper face
         h += line.t if k == 0 else 0.0
         diel.append(X.Dielectric(z, z + h, er, tand))
         z += h
@@ -464,8 +465,7 @@ def plot(line, path, r=None, mode=None):
     return path
 
 
-# ---- the command
-# --------------------------------------------------------------------------------------
+# ---- the command ------------------------------------------------------------
 def _layer_list(text, what):
     """'0.2:4.3:0.02, 0.1:3.8' as [(0.2, 4.3, 0.02), (0.1, 3.8, 0)]."""
     out = []
@@ -485,20 +485,28 @@ def parser():
     import argparse
     ap = argparse.ArgumentParser(
         prog='kicad2ems-z0',
-        formatter_class=argparse.RawDescriptionHelpFormatter, description=
-        "The impedance of a line in a stack-up, by kicad2ems's 2D field "
-        "solver; with --target, the width (or gap) that gives "
-        "it.", epilog="""examples:
-  kicad2ems-z0 --w 0.35 --h 0.2 --er 4.3                     a microstrip (35 um copper)
-  kicad2ems-z0 --w 0.35 --h 0.2 --er 4.3 --mask 0.02         under solder mask
-  kicad2ems-z0 --w 0.15 --gap 0.15 --h 0.1 --er 4.1          a pair: Zdiff
-  kicad2ems-z0 --w 0.2 --h 0.2 --er 4.3 --above 0.2          a stripline: a plane 0.2 mm over the copper
-  kicad2ems-z0 --w 0.3 --ground-gap 0.2 --h 0.2 --er 4.3     grounded coplanar
-  kicad2ems-z0 --h 0.2 --er 4.3 --target 50                  the width of 50 ohm
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=("The impedance of a line in a stack-up, by kicad2ems's "
+                     "2D field solver; with --target, the width (or gap) "
+                     "that gives it."),
+        epilog="""examples:
+  kicad2ems-z0 --w 0.35 --h 0.2 --er 4.3
+      a microstrip (35 um copper)
+  kicad2ems-z0 --w 0.35 --h 0.2 --er 4.3 --mask 0.02
+      under solder mask
+  kicad2ems-z0 --w 0.15 --gap 0.15 --h 0.1 --er 4.1
+      a pair: Zdiff
+  kicad2ems-z0 --w 0.2 --h 0.2 --er 4.3 --above 0.2
+      a stripline: a plane 0.2 mm over the copper
+  kicad2ems-z0 --w 0.3 --ground-gap 0.2 --h 0.2 --er 4.3
+      grounded coplanar
+  kicad2ems-z0 --h 0.2 --er 4.3 --target 50
+      the width of 50 ohm
   kicad2ems-z0 --w 0.15 --gap 0.15 --h 0.1 --er 4.1 --target 100 --vary gap
-  kicad2ems-z0 --board b.kicad_pcb --layer In2.Cu --w 0.14   the board's own stack around In2.Cu
-  kicad2ems-z0 --w 0.35 --below 0.1:4.1:0.02,0.1:3.6 ...     several dielectrics, the plane's first"""
-    )
+  kicad2ems-z0 --board b.kicad_pcb --layer In2.Cu --w 0.14
+      the board's own stack around In2.Cu
+  kicad2ems-z0 --w 0.35 --below 0.1:4.1:0.02,0.1:3.6 ...
+      several dielectrics, the plane's first""")
     g = ap.add_argument_group('the line (mm)')
     g.add_argument(
         '--w', type=float,

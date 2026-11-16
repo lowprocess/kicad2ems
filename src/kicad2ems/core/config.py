@@ -489,9 +489,9 @@ def settings_class(reg=None):
     fields = []
     for _, o in all_options(reg):
         d = o.default
-        fields.append(
-            (o.key, o.type, field(default_factory=(lambda d=d: list(d)))
-             if isinstance(d, list) else field(default=d)))
+        fields.append((o.key, o.type,
+                       (field(default_factory=(lambda d=d: list(d)))
+                        if isinstance(d, list) else field(default=d))))
     # remarks from reading the config
     fields.append(('notes', list, field(default_factory=list, repr=False)))
     return dataclasses.make_dataclass(

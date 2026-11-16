@@ -106,12 +106,10 @@ def _branch(lm, adj, j, start, on_path):
     return total, lab, e0.z0
 
 
-# ---- coupled lines
-# -------------------------------------------------------------------------------
-# parallel lines couple when their edge gap is at most this many h (striplines:
-# the mean of
+# ---- coupled lines ----------------------------------------------------------
+# parallel lines couple when their edge gap is at most this many h
+# (striplines: the mean of the heights to the two planes)
 COUPLE_H = 5.0
-# the heights to the two planes)
 COUPLED_XS = ('microstrip', 'embedded microstrip', 'stripline',
               'offset stripline')
 # coupled sections' C from the field solver, every line coupled to every other
@@ -542,8 +540,7 @@ def _group_section(xs_name, widths, gaps, h, er, t=0.0, cover=(0.0, 1.0)):
     return X.stripline(list(widths), h[0], h[1], er, t, gap=list(gaps))
 
 
-# ---- discontinuities
-# -----------------------------------------------------------------------------
+# ---- discontinuities --------------------------------------------------------
 def _out_dir(e, end):
     p = np.asarray(e.pts, float)
     d = (p[1] - p[0]) if end == 0 else (p[-2] - p[-1])

@@ -4,15 +4,18 @@ Each solver's discretisation of the board, for the GUI's 3D view:
 copper), written when the solver prepares (a preview too) or solves.
 
     kind 'grid': x, y, z     openEMS's mesh lines
-    kind 'tris': nodes (n, 3), tris (m, 3)    a surface mesh: mom25d's triangles on each layer; optional
-                 hidden (k, 2): node pairs of edges not drawn (the diagonals a run merged into quad cells)
+    kind 'tris': nodes (n, 3), tris (m, 3)
+                 a surface mesh: mom25d's triangles on each layer; optional
+                 hidden (k, 2): node pairs of edges not drawn (the diagonals
+                 a run merged into quad cells)
 
 A solver may also write the mesh a run solved on as <solver>-run (mom25d-run:
 its quad cells), beside the preview's <solver> file; the GUI draws it over the
 other.
 
     save(run, 'openems', 'grid', x=..., y=..., z=...)
-    find(out_dir) -> {solver: path}; segments(path, box) -> (2 k, 3) line segment end points, for drawing
+    find(out_dir) -> {solver: path};
+    segments(path, box) -> (2 k, 3) line segment end points, for drawing
 """
 import glob, os
 import numpy as np

@@ -3,25 +3,36 @@ One run of kicad2ems as a sequence of stages, driven by a config.Settings, over
 the solver plugins (solvers/):
 
     Job(settings).run()
-        preflight() the solvers of the run (Settings.solver_plan; 'lines' resolved to qucs or scikit), each
-                    checked before any work: one named in `solvers` that cannot run stops the run here
-        model()     the board file -> Board (stack, copper, vias, ports, lumped parts, edge walls), written
-                    as <name>_board.json: what every solver gets
-        lines()     the transmission-line model (lines/tlines.py): sections, Z0, coupled groups, discontinuities;
-                    what the line solvers (qucs, scikit) solve
-        choose()    --solvers auto: the full-wave solver estimated cheapest for this board (Solver.estimate) among
-                    those that can run and model it, plus the line model; why, in the log and the summary
-        assess()    each solver against this board and run: one named that cannot model it stops the run, a
-                    reference is left out with a warning
-        prepare()   each solver lowers the board to its own form (openEMS: boundaries, mesh and the mesh preview;
-                    with --preview it is prepared, not solved) and declares what it changes (deviations: vias
-                    moved, parts split, walls as via rows), the report's "What each solver saw"; without
-                    openEMS, <name>_model.png
-        solve()     the solvers, the cheap ones first: S-parameters over the board's ports
-        outputs()   <name>_<solver>.sNp per solver; the first solver's plot <name>_<solver>.png with the others
-                    (and --compare) overlaid, and each compared with it; each solver's own outputs (openEMS:
-                    field maps, antenna, convergence)
-        report()    <name>_run.json (the run summary) and <name>_report.html built from it
+        preflight() the solvers of the run (Settings.solver_plan; 'lines'
+                    resolved to qucs or scikit), each checked before any work:
+                    one named in `solvers` that cannot run stops the run here
+        model()     the board file -> Board (stack, copper, vias, ports, lumped
+                    parts, edge walls), written as <name>_board.json: what every
+                    solver gets
+        lines()     the transmission-line model (lines/tlines.py): sections, Z0,
+                    coupled groups, discontinuities; what the line solvers
+                    (qucs, scikit) solve
+        choose()    --solvers auto: the full-wave solver estimated cheapest for
+                    this board (Solver.estimate) among those that can run and
+                    model it, plus the line model; why, in the log and the
+                    summary
+        assess()    each solver against this board and run: one named that
+                    cannot model it stops the run, a reference is left out with
+                    a warning
+        prepare()   each solver lowers the board to its own form (openEMS:
+                    boundaries, mesh and the mesh preview; with --preview it is
+                    prepared, not solved) and declares what it changes
+                    (deviations: vias moved, parts split, walls as via rows),
+                    the report's "What each solver saw"; without openEMS,
+                    <name>_model.png
+        solve()     the solvers, the cheap ones first: S-parameters over the
+                    board's ports
+        outputs()   <name>_<solver>.sNp per solver; the first solver's plot
+                    <name>_<solver>.png with the others (and --compare)
+                    overlaid, and each compared with it; each solver's own
+                    outputs (openEMS: field maps, antenna, convergence)
+        report()    <name>_run.json (the run summary) and <name>_report.html
+                    built from it
 
 Everything the report shows is collected in Job.summary, a JSON-friendly dict
 written to <name>_run.json; report.py renders that dict and nothing else. Every
@@ -37,7 +48,8 @@ from .board import Board
 from .formats import plain, stamp
 from .plots import save, preview, plot_results, plot_lines
 from .touchstone import write_touchstone, read_touchstone
-from .solvers import registry, label, resolve_lines, missing, LINES, AUTO, MOM, FEATURES
+from .solvers import (registry, label, resolve_lines, missing, LINES, AUTO,
+                      MOM, FEATURES)
 from .parity import describe
 
 
@@ -72,8 +84,8 @@ def sparam_table(freq, S, names):
     return rows
 
 
-# S's largest singular value above 1 + this: not passive (a solver's noise sits
-# below)
+# S's largest singular value above 1 + this: not passive (a solver's noise
+# sits below)
 PASSIVE_TOL = 2e-3
 # a term's miss of its band-limited Kramers-Kronig reconstruction beyond the
 # bound (causality.py): causal solver outputs read 0-0.06, time-reversed ones
@@ -297,8 +309,7 @@ class Job:
             settings=settings.options(), images={}, files=self.files, dumps=[],
             solved={})
 
-    # ---- helpers
-    # -----------------------------------------------------------------------------------
+    # ---- helpers ------------------------------------------------------------
     def log(self, *msg):
         text = " ".join(str(x) for x in msg)
         self.echo(text)
@@ -349,8 +360,7 @@ class Job:
         self.wrote(label, p)
         return p
 
-    # ---- stages
-    # --------------------------------------------------------------------------------------
+    # ---- stages -------------------------------------------------------------
     def run(self):
         os.makedirs(self.s.out, exist_ok=True)
         stop.arm(self.s.out)  # the GUI's Stop: a STOP file there (stop.py)
@@ -707,11 +717,10 @@ class Job:
         self._unprepared = set()
         for name in names:
             sv = registry()[name]
-            # one solver's set-up failing is a warning, as
+            # one solver's set-up failing is a warning, as its solve's is (it
+            # had lost the whole run: no run.json, no report)
             try:
-                # its solve's is (it had lost the whole run:
                 self.prep[name] = sv.prepare(self)
-                # no run.json, no report)
                 self.deviations[name] = devs = sv.deviations(
                     self, self.prep[name])
             except stop.Stopped:
@@ -792,9 +801,9 @@ class Job:
         )
         from concurrent.futures import ThreadPoolExecutor
         echo, term = self.echo, _terminal_copy() if self.echo is print else None
-        # openEMS (in this process) sends descriptors 1 and 2 to its own
+        # openEMS (in this process) sends descriptors 1 and 2 to its own log
+        # while it steps: the others' lines would go there too
         if term:
-            # log while it steps: the others' lines would go there too
             lock = threading.Lock()
             def to_term(text):
                 with lock:
@@ -1033,12 +1042,12 @@ class Job:
                                       table=sparam_table(freq, S, a.names))
         self._joined = S
         self.log(
-            f"joined: {label(low)} to {fc / 1e6:.3g} MHz, {label(high)} above" +
-            (f" (where they agree best: {label(low)} says it holds to "
-             f"{said / 1e6:.3g} MHz)"
-             if fc < said else '')
-            + (f"; they differ by up to {mis:.3f} in |S| across the crossover"
-               if mis is not None else '') + f" -> {out}")
+            f"joined: {label(low)} to {fc / 1e6:.3g} MHz, {label(high)} above"
+            + (f" (where they agree best: {label(low)} says it holds to "
+               f"{said / 1e6:.3g} MHz)" if fc < said else '')
+            + (f"; they differ by up to {mis:.3f} in |S| across the "
+               "crossover" if mis is not None else '')
+            + f" -> {out}")
         if mis is not None and mis > 0.1:
             self.log(
                 f"WARNING: {label(low)} and {label(high)} differ by {mis:.2f} "

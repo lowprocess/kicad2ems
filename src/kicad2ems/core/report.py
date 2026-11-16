@@ -11,45 +11,63 @@ field maps, the openEMS runs, output files, settings and the full log.
 import base64, html, json, os
 
 CSS = """
-:root { --bg:#fbfbfa; --fg:#1f2328; --muted:#5f6670; --line:#d8dbe0; --card:#ffffff; --accent:#1f5f99;
-        --warn-bg:#fff4e0; --warn:#8a5300; --ok:#1d7a46; --bad:#b42318; --zw:#fdf0d5; --zb:#fbe1de; }
+:root { --bg:#fbfbfa; --fg:#1f2328; --muted:#5f6670; --line:#d8dbe0;
+        --card:#ffffff; --accent:#1f5f99;
+        --warn-bg:#fff4e0; --warn:#8a5300; --ok:#1d7a46; --bad:#b42318;
+        --zw:#fdf0d5; --zb:#fbe1de; }
 @media (prefers-color-scheme: dark) {
-  :root { --bg:#16181c; --fg:#e6e8eb; --muted:#9aa1ab; --line:#33373e; --card:#1e2126; --accent:#6aa7e0;
-          --warn-bg:#3a2c12; --warn:#f0b75a; --ok:#5cc28a; --bad:#f07167; --zw:#3d3218; --zb:#46201d; } }
+  :root { --bg:#16181c; --fg:#e6e8eb; --muted:#9aa1ab; --line:#33373e;
+          --card:#1e2126; --accent:#6aa7e0;
+          --warn-bg:#3a2c12; --warn:#f0b75a; --ok:#5cc28a; --bad:#f07167;
+          --zw:#3d3218; --zb:#46201d; } }
 * { box-sizing: border-box; }
-body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin:0; background:var(--bg); color:var(--fg);
+       font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
 main { max-width:1180px; margin:0 auto; padding:24px 16px 64px; }
 header h1 { margin:0 0 4px; font-size:26px; }
 .meta { color:var(--muted); font-size:13px; }
-nav { margin:16px 0 8px; display:flex; flex-wrap:wrap; gap:6px 14px; font-size:14px; }
+nav { margin:16px 0 8px; display:flex; flex-wrap:wrap; gap:6px 14px;
+      font-size:14px; }
 nav a { color:var(--accent); text-decoration:none; }
-section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 20px; margin:18px 0; }
+section { background:var(--card); border:1px solid var(--line);
+          border-radius:10px; padding:16px 20px; margin:18px 0; }
 h2 { margin:0 0 12px; font-size:19px; }
 h3 { margin:18px 0 8px; font-size:15px; color:var(--muted); }
-table { border-collapse:collapse; width:100%; font-size:13.5px; font-variant-numeric:tabular-nums; }
-th, td { text-align:left; padding:5px 10px 5px 0; border-bottom:1px solid var(--line); vertical-align:top; }
+table { border-collapse:collapse; width:100%; font-size:13.5px;
+        font-variant-numeric:tabular-nums; }
+th, td { text-align:left; padding:5px 10px 5px 0;
+         border-bottom:1px solid var(--line); vertical-align:top; }
 th { color:var(--muted); font-weight:600; }
 td.n, th.n { text-align:right; padding-right:14px; }
 td.zw { background:var(--zw); } td.zb { background:var(--zb); }
 tr.branch td { color:var(--muted); font-style:italic; }
 .scroll { overflow-x:auto; }
-img { max-width:100%; height:auto; border:1px solid var(--line); border-radius:6px; background:#fff; margin:6px 0; }
-.kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; }
+img { max-width:100%; height:auto; border:1px solid var(--line);
+      border-radius:6px; background:#fff; margin:6px 0; }
+.kpis { display:grid;
+        grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; }
 .kpi { border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
 .kpi .v { font-size:20px; font-weight:600; }
 .kpi .l { color:var(--muted); font-size:12.5px; }
-.warn { background:var(--warn-bg); color:var(--warn); border-radius:8px; padding:10px 14px; }
+.warn { background:var(--warn-bg); color:var(--warn); border-radius:8px;
+        padding:10px 14px; }
 .warn ul { margin:6px 0 0 18px; padding:0; }
-.ok { color:var(--ok); font-weight:600; } .bad { color:var(--bad); font-weight:600; }
-pre { white-space:pre-wrap; word-break:break-word; font-size:12.5px; background:var(--bg); border:1px solid var(--line);
+.ok { color:var(--ok); font-weight:600; }
+.bad { color:var(--bad); font-weight:600; }
+pre { white-space:pre-wrap; word-break:break-word; font-size:12.5px;
+      background:var(--bg); border:1px solid var(--line);
       border-radius:6px; padding:10px; max-height:520px; overflow:auto; }
 code { font-size:12.5px; }
 a { color:var(--accent); }
-.iplot { border:1px solid var(--line); border-radius:6px; padding:8px; margin:6px 0; }
-.iplot svg { width:100%; height:auto; display:block; user-select:none; touch-action:none; }
-.iplot .bar { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:13px; align-items:center; margin:0 0 6px; }
+.iplot { border:1px solid var(--line); border-radius:6px; padding:8px;
+         margin:6px 0; }
+.iplot svg { width:100%; height:auto; display:block; user-select:none;
+             touch-action:none; }
+.iplot .bar { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:13px;
+              align-items:center; margin:0 0 6px; }
 .iplot .bar label { white-space:nowrap; cursor:pointer; }
-.iplot .read { font-size:12.5px; color:var(--muted); min-height:1.5em; font-variant-numeric:tabular-nums; }
+.iplot .read { font-size:12.5px; color:var(--muted); min-height:1.5em;
+               font-variant-numeric:tabular-nums; }
 .iplot .read b { font-weight:600; }
 """
 
@@ -59,57 +77,137 @@ PLOT_POINTS = 600
 # library (the page stays one file)
 PLOT_JS = r"""
 (function(){
-const box=document.currentScript.parentElement, D=JSON.parse(box.querySelector('script.data').textContent);
-const C=['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf'];
+const box=document.currentScript.parentElement,
+  D=JSON.parse(box.querySelector('script.data').textContent);
+const C=['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b',
+  '#e377c2','#7f7f7f','#bcbd22','#17becf'];
 const DASH=['','6 4','2 3','8 3 2 3','1 2'];
-const svg=box.querySelector('svg'), read=box.querySelector('.read'), NS='http://www.w3.org/2000/svg';
+const svg=box.querySelector('svg'), read=box.querySelector('.read'),
+  NS='http://www.w3.org/2000/svg';
 const W=900,H=380,L=58,R=12,T=10,B=36;
 let mode='db', on={}, xr=null;
-D.solvers.forEach((s,si)=>s.params.forEach((p,pi)=>{on[si+'|'+p]=(si===0||D.solvers.length<4)&&s.first.includes(p);}));
+D.solvers.forEach((s,si)=>s.params.forEach((p,pi)=>{
+  on[si+'|'+p]=(si===0||D.solvers.length<4)&&s.first.includes(p);}));
 const params=[...new Set(D.solvers.flatMap(s=>s.params))];
-function nice(lo,hi,n){const r=(hi-lo)/n,m=Math.pow(10,Math.floor(Math.log10(r))),st=[1,2,2.5,5,10].map(x=>x*m).find(x=>x>=r);
-  const out=[];for(let v=Math.ceil(lo/st)*st;v<=hi+st*1e-9;v+=st)out.push(+v.toFixed(10));return out;}
-function el(t,a,parent){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);(parent||svg).appendChild(e);return e;}
-function val(s,p,i){const re=s.re[p][i],im=s.im[p][i];return mode==='db'?20*Math.log10(Math.hypot(re,im)+1e-15):Math.atan2(im,re)*180/Math.PI;}
-function bar(){const b=box.querySelector('.bar');b.innerHTML='';
-  const m=document.createElement('label');m.innerHTML="<select><option value='db'>|S| (dB)</option><option value='ph'>phase (°)</option></select>";
-  m.firstChild.value=mode;m.firstChild.onchange=e=>{mode=e.target.value;draw();};b.appendChild(m);
-  D.solvers.forEach((s,si)=>{const g=document.createElement('span');g.innerHTML='<b>'+s.label+'</b> ';
-    s.params.forEach((p,pi)=>{const k=si+'|'+p,l=document.createElement('label');
-      l.innerHTML="<input type='checkbox'"+(on[k]?' checked':'')+"> <span style='color:"+C[params.indexOf(p)%10]+"'>"+p+'</span> ';
-      l.firstChild.onchange=e=>{on[k]=e.target.checked;draw();};g.appendChild(l);});b.appendChild(g);});}
-function draw(){svg.innerHTML='';svg.setAttribute('viewBox','0 0 '+W+' '+H);
-  const f=D.solvers.flatMap(s=>s.f), x0=xr?xr[0]:Math.min(...f), x1=xr?xr[1]:Math.max(...f);
+function nice(lo,hi,n){
+  const r=(hi-lo)/n,m=Math.pow(10,Math.floor(Math.log10(r))),
+    st=[1,2,2.5,5,10].map(x=>x*m).find(x=>x>=r);
+  const out=[];
+  for(let v=Math.ceil(lo/st)*st;v<=hi+st*1e-9;v+=st)out.push(+v.toFixed(10));
+  return out;}
+function el(t,a,parent){
+  const e=document.createElementNS(NS,t);
+  for(const k in a)e.setAttribute(k,a[k]);
+  (parent||svg).appendChild(e);
+  return e;}
+function val(s,p,i){
+  const re=s.re[p][i],im=s.im[p][i];
+  return mode==='db'?20*Math.log10(Math.hypot(re,im)+1e-15)
+    :Math.atan2(im,re)*180/Math.PI;}
+function bar(){
+  const b=box.querySelector('.bar');
+  b.innerHTML='';
+  const m=document.createElement('label');
+  m.innerHTML="<select><option value='db'>|S| (dB)</option>"
+    +"<option value='ph'>phase (°)</option></select>";
+  m.firstChild.value=mode;
+  m.firstChild.onchange=e=>{mode=e.target.value;draw();};
+  b.appendChild(m);
+  D.solvers.forEach((s,si)=>{
+    const g=document.createElement('span');
+    g.innerHTML='<b>'+s.label+'</b> ';
+    s.params.forEach((p,pi)=>{
+      const k=si+'|'+p,l=document.createElement('label');
+      l.innerHTML="<input type='checkbox'"+(on[k]?' checked':'')
+        +"> <span style='color:"+C[params.indexOf(p)%10]+"'>"+p+'</span> ';
+      l.firstChild.onchange=e=>{on[k]=e.target.checked;draw();};
+      g.appendChild(l);});
+    b.appendChild(g);});}
+function draw(){
+  svg.innerHTML='';
+  svg.setAttribute('viewBox','0 0 '+W+' '+H);
+  const f=D.solvers.flatMap(s=>s.f), x0=xr?xr[0]:Math.min(...f),
+    x1=xr?xr[1]:Math.max(...f);
   let lo=Infinity,hi=-Infinity;
-  D.solvers.forEach((s,si)=>s.params.forEach(p=>{if(!on[si+'|'+p])return;s.f.forEach((fv,i)=>{if(fv<x0||fv>x1)return;const v=val(s,p,i);if(isFinite(v)){lo=Math.min(lo,v);hi=Math.max(hi,v);}});}));
-  if(!isFinite(lo)){lo=-40;hi=0;} if(mode==='db'){lo=Math.max(lo,hi-80);} if(hi-lo<1){lo-=0.5;hi+=0.5;}
-  const pad=(hi-lo)*0.05;lo-=pad;hi+=pad;
+  D.solvers.forEach((s,si)=>s.params.forEach(p=>{
+    if(!on[si+'|'+p])return;
+    s.f.forEach((fv,i)=>{
+      if(fv<x0||fv>x1)return;
+      const v=val(s,p,i);
+      if(isFinite(v)){lo=Math.min(lo,v);hi=Math.max(hi,v);}});}));
+  if(!isFinite(lo)){lo=-40;hi=0;}
+  if(mode==='db'){lo=Math.max(lo,hi-80);}
+  if(hi-lo<1){lo-=0.5;hi+=0.5;}
+  const pad=(hi-lo)*0.05;
+  lo-=pad;hi+=pad;
   const X=v=>L+(v-x0)/(x1-x0||1)*(W-L-R), Y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
-  const ax=el('g',{stroke:'currentColor','stroke-opacity':0.18,'font-size':12,fill:'currentColor'});
-  nice(x0,x1,8).forEach(xv=>{el('line',{x1:X(xv),x2:X(xv),y1:T,y2:H-B},ax);
+  const ax=el('g',{stroke:'currentColor','stroke-opacity':0.18,'font-size':12,
+    fill:'currentColor'});
+  nice(x0,x1,8).forEach(xv=>{
+    el('line',{x1:X(xv),x2:X(xv),y1:T,y2:H-B},ax);
     const a=X(xv)<L+20?'start':X(xv)>W-R-20?'end':'middle';
-    el('text',{x:X(xv),y:H-B+16,'text-anchor':a,stroke:'none','fill-opacity':0.75},ax).textContent=+xv.toPrecision(6);});
-  nice(lo,hi,6).forEach(yv=>{el('line',{x1:L,x2:W-R,y1:Y(yv),y2:Y(yv)},ax);
-    el('text',{x:L-6,y:Y(yv)+4,'text-anchor':'end',stroke:'none','fill-opacity':0.75},ax).textContent=+yv.toPrecision(6);});
-  el('text',{x:(L+W-R)/2,y:H-4,'text-anchor':'middle','font-size':12,fill:'currentColor','fill-opacity':0.75}).textContent='frequency (GHz)';
-  el('text',{x:12,y:(T+H-B)/2,'text-anchor':'middle','font-size':12,fill:'currentColor','fill-opacity':0.75,transform:'rotate(-90 12 '+(T+H-B)/2+')'}).textContent=mode==='db'?'|S| (dB)':'phase (°)';
-  const clip=el('clipPath',{id:box.id+'c'});el('rect',{x:L,y:T,width:W-L-R,height:H-T-B},clip);
-  D.solvers.forEach((s,si)=>s.params.forEach(p=>{if(!on[si+'|'+p])return;let d='';
-    s.f.forEach((fv,i)=>{const v=val(s,p,i);if(!isFinite(v))return;d+=(d?'L':'M')+X(fv).toFixed(1)+' '+Y(v).toFixed(1);});
-    el('path',{d:d,fill:'none',stroke:C[params.indexOf(p)%10],'stroke-width':1.8,'stroke-dasharray':DASH[si%5],'clip-path':'url(#'+box.id+'c)'});}));
-  const cur=el('line',{y1:T,y2:H-B,stroke:'currentColor','stroke-opacity':0.5,'stroke-dasharray':'3 3',visibility:'hidden'});
-  const sel=el('rect',{y:T,height:H-T-B,fill:'currentColor','fill-opacity':0.08,visibility:'hidden'});
-  const pt=e=>{const r=svg.getBoundingClientRect();return x0+((e.clientX-r.left)*W/r.width-L)/(W-L-R)*(x1-x0);};
+    el('text',{x:X(xv),y:H-B+16,'text-anchor':a,stroke:'none',
+      'fill-opacity':0.75},ax).textContent=+xv.toPrecision(6);});
+  nice(lo,hi,6).forEach(yv=>{
+    el('line',{x1:L,x2:W-R,y1:Y(yv),y2:Y(yv)},ax);
+    el('text',{x:L-6,y:Y(yv)+4,'text-anchor':'end',stroke:'none',
+      'fill-opacity':0.75},ax).textContent=+yv.toPrecision(6);});
+  el('text',{x:(L+W-R)/2,y:H-4,'text-anchor':'middle','font-size':12,
+    fill:'currentColor','fill-opacity':0.75}).textContent='frequency (GHz)';
+  el('text',{x:12,y:(T+H-B)/2,'text-anchor':'middle','font-size':12,
+    fill:'currentColor','fill-opacity':0.75,
+    transform:'rotate(-90 12 '+(T+H-B)/2+')'}).textContent=
+    mode==='db'?'|S| (dB)':'phase (°)';
+  const clip=el('clipPath',{id:box.id+'c'});
+  el('rect',{x:L,y:T,width:W-L-R,height:H-T-B},clip);
+  D.solvers.forEach((s,si)=>s.params.forEach(p=>{
+    if(!on[si+'|'+p])return;
+    let d='';
+    s.f.forEach((fv,i)=>{
+      const v=val(s,p,i);
+      if(!isFinite(v))return;
+      d+=(d?'L':'M')+X(fv).toFixed(1)+' '+Y(v).toFixed(1);});
+    el('path',{d:d,fill:'none',stroke:C[params.indexOf(p)%10],
+      'stroke-width':1.8,'stroke-dasharray':DASH[si%5],
+      'clip-path':'url(#'+box.id+'c)'});}));
+  const cur=el('line',{y1:T,y2:H-B,stroke:'currentColor','stroke-opacity':0.5,
+    'stroke-dasharray':'3 3',visibility:'hidden'});
+  const sel=el('rect',{y:T,height:H-T-B,fill:'currentColor',
+    'fill-opacity':0.08,visibility:'hidden'});
+  const pt=e=>{
+    const r=svg.getBoundingClientRect();
+    return x0+((e.clientX-r.left)*W/r.width-L)/(W-L-R)*(x1-x0);};
   let drag=null;
   svg.onpointerdown=e=>{drag=pt(e);svg.setPointerCapture(e.pointerId);};
-  svg.onpointermove=e=>{const fv=pt(e);if(fv<x0||fv>x1){cur.setAttribute('visibility','hidden');return;}
-    cur.setAttribute('x1',X(fv));cur.setAttribute('x2',X(fv));cur.setAttribute('visibility','visible');
-    if(drag!==null){sel.setAttribute('x',X(Math.min(drag,fv)));sel.setAttribute('width',Math.abs(X(fv)-X(drag)));sel.setAttribute('visibility','visible');}
-    let out=[];D.solvers.forEach((s,si)=>s.params.forEach(p=>{if(!on[si+'|'+p])return;
-      let i=0;while(i<s.f.length-1&&s.f[i+1]<fv)i++;const j=Math.min(i+1,s.f.length-1),t=s.f[j]>s.f[i]?(fv-s.f[i])/(s.f[j]-s.f[i]):0;
-      const v=val(s,p,i)*(1-t)+val(s,p,j)*t;out.push("<span style='color:"+C[params.indexOf(p)%10]+"'>"+p+'</span> '+s.label+' '+(isFinite(v)?v.toFixed(2):'–'));}));
-    read.innerHTML='<b>'+fv.toFixed(4)+' GHz</b> &nbsp; '+out.join(' &nbsp; ');};
-  svg.onpointerup=e=>{const fv=pt(e);if(drag!==null&&Math.abs(X(fv)-X(drag))>8){xr=[Math.min(drag,fv),Math.max(drag,fv)];drag=null;draw();}else{drag=null;sel.setAttribute('visibility','hidden');}};
+  svg.onpointermove=e=>{
+    const fv=pt(e);
+    if(fv<x0||fv>x1){cur.setAttribute('visibility','hidden');return;}
+    cur.setAttribute('x1',X(fv));
+    cur.setAttribute('x2',X(fv));
+    cur.setAttribute('visibility','visible');
+    if(drag!==null){
+      sel.setAttribute('x',X(Math.min(drag,fv)));
+      sel.setAttribute('width',Math.abs(X(fv)-X(drag)));
+      sel.setAttribute('visibility','visible');}
+    let out=[];
+    D.solvers.forEach((s,si)=>s.params.forEach(p=>{
+      if(!on[si+'|'+p])return;
+      let i=0;
+      while(i<s.f.length-1&&s.f[i+1]<fv)i++;
+      const j=Math.min(i+1,s.f.length-1),
+        t=s.f[j]>s.f[i]?(fv-s.f[i])/(s.f[j]-s.f[i]):0;
+      const v=val(s,p,i)*(1-t)+val(s,p,j)*t;
+      out.push("<span style='color:"+C[params.indexOf(p)%10]+"'>"+p+'</span> '
+        +s.label+' '+(isFinite(v)?v.toFixed(2):'–'));}));
+    read.innerHTML='<b>'+fv.toFixed(4)+' GHz</b> &nbsp; '
+      +out.join(' &nbsp; ');};
+  svg.onpointerup=e=>{
+    const fv=pt(e);
+    if(drag!==null&&Math.abs(X(fv)-X(drag))>8){
+      xr=[Math.min(drag,fv),Math.max(drag,fv)];
+      drag=null;
+      draw();}
+    else{drag=null;sel.setAttribute('visibility','hidden');}};
   svg.ondblclick=()=>{xr=null;draw();};
   svg.onpointerleave=()=>{cur.setAttribute('visibility','hidden');};}
 bar();draw();
@@ -338,15 +436,17 @@ def _solver_section(sm, name, base):
     it compares with the first solver of the run."""
     so = sm['solved'][name]
     txt = (
-        f"<p>{_e(so.get('about', ''))} <a href='{_e(_rel(so['touchstone'], base))}'>"
+        f"<p>{_e(so.get('about', ''))} "
+        f"<a href='{_e(_rel(so['touchstone'], base))}'>"
         f"{_e(os.path.basename(so['touchstone']))}</a>.</p>")
     ref = so.get('reference')
     if so.get('compare') and ref:
         a, b = sm['solved'][ref]['label'], so['label']
         txt += (
-            f"<h3>Against {_e(a)}</h3><p>Overlaid on the S-parameter plot. Large differences point at something "
-            "one of the two models leaves out - coupling, radiation, plane resonances, the board edge, the lumped "
-            "ports - or at a mesh problem.</p>")
+            f"<h3>Against {_e(a)}</h3><p>Overlaid on the S-parameter plot. "
+            "Large differences point at something one of the two models "
+            "leaves out - coupling, radiation, plane resonances, the board "
+            "edge, the lumped ports - or at a mesh problem.</p>")
         rows = [[
             _e(r['param']),
             _f(r['ref_max_db'], '.1f'),
@@ -486,8 +586,7 @@ def build(sm, base):
         body.append(
             f"<section id='{sid}'><h2>{_e(title)}</h2>{content}</section>")
 
-    # ---- summary
-    # ----------------------------------------------------------------------------------
+    # ---- summary ------------------------------------------------------------
     solved = sm.get('solved', {})
     k = [('mode', _e(sm['mode'])),
          ('solvers',
@@ -521,10 +620,9 @@ def build(sm, base):
                        for p, v in (ant.get('active_db') or {}).items())))]
     if 'convergence' in sm:
         ok = sm['convergence']['converged']
-        k.append((
-            'mesh convergence', "<span "
-            f"class='{'ok' if ok else 'bad'}'>{'converged' if ok else 'not converged'}</span>"
-        ))
+        k.append(('mesh convergence',
+                  f"<span class='{'ok' if ok else 'bad'}'>"
+                  f"{'converged' if ok else 'not converged'}</span>"))
     k += [(so['label'], _e(so.get('kpi', f"{so['seconds']:.1f} s")))
           for so in solved.values()]
     warn = sm.get('warnings', [])
@@ -551,8 +649,7 @@ def build(sm, base):
             f"class='l'>{_e(l)}</div></div>"
             for l, v in k) + "</div>" + w)
 
-    # ---- model
-    # ----------------------------------------------------------------------------------------
+    # ---- model --------------------------------------------------------------
     stack = [[
         _e(l['name']), f"{l['z0']:.3f}–{l['z1']:.3f}",
         f"{l['z1'] - l['z0']:.3f}", f"{l['er']:.2f}", f"{l['tand']:.4f}"
@@ -607,18 +704,15 @@ def build(sm, base):
                     + "</ul>")
     section('model', 'Model', content)
 
-    # ---- transmission lines
-    # -----------------------------------------------------------------------------
+    # ---- transmission lines -------------------------------------------------
     if sm.get('lines'):
         section('tlines', 'Transmission-line sections', _lines_section(sm))
 
-    # ---- mesh (openEMS)
-    # --------------------------------------------------------------------------------
+    # ---- mesh (openEMS) -----------------------------------------------------
     if g:
         section('mesh', 'Mesh (FDTD: openEMS, gfdtd)', _mesh_section(sm, g, st))
 
-    # ---- results
-    # -------------------------------------------------------------------------------------
+    # ---- results ------------------------------------------------------------
     res = sm.get('results')
     if res:
         fq = res['freq_ghz']
@@ -633,16 +727,18 @@ def build(sm, base):
         others = [so['label'] for n, so in solved.items() if so.get('compare')]
         data = _sparam_data(sm, base)
         still = _img(sm['images'].get('sparams'), 'S-parameters')
-        plot = (_iplot(data) +
-                (f"<details><summary>static image</summary>{still}</details>"
-                 if still else '') if data else still)
-        content = (plot + (
-            f"<p class='meta'>Solid: {_e(ref)}; overlaid: "
-            f"{_e(', '.join(others))}.</p>"
-            if others else '') + f"<h3>|S| in dB ({_e(ref)})</h3>" + _table([
-                '', f"{fq[0]:g} GHz", f"{fq[1]:g} GHz", f"{fq[2]:g} GHz",
-                'minimum', 'maximum'
-            ], rows, num=(1, 2, 3)))
+        plot = ((_iplot(data)
+                 + (f"<details><summary>static image</summary>{still}"
+                    "</details>" if still else ''))
+                if data else still)
+        content = (
+            plot
+            + (f"<p class='meta'>Solid: {_e(ref)}; overlaid: "
+               f"{_e(', '.join(others))}.</p>" if others else '')
+            + f"<h3>|S| in dB ({_e(ref)})</h3>"
+            + _table(['', f"{fq[0]:g} GHz", f"{fq[1]:g} GHz",
+                      f"{fq[2]:g} GHz", 'minimum', 'maximum'],
+                     rows, num=(1, 2, 3)))
         if res.get('compare_file'):
             content += ("<p class='meta'>Dashed: "
                         f"<code>{_e(res['compare_file'])}</code></p>")
@@ -677,7 +773,8 @@ def build(sm, base):
         ] for l in c['levels']]
         section(
             'convergence', 'Mesh convergence',
-            f"<p>Tolerance {c['tol_db']:g} dB / {c['tol_deg']:g}°: <span class='{'ok' if c['converged'] else 'bad'}'>"
+            f"<p>Tolerance {c['tol_db']:g} dB / {c['tol_deg']:g}°: "
+            f"<span class='{'ok' if c['converged'] else 'bad'}'>"
             f"{'converged' if c['converged'] else 'not converged'}</span></p>"
             + _table(['level', 'cells', 'max |Δ| (dB)', 'max Δ phase (°)'],
                      rows) + _img(sm['images'].get('converge'), 'convergence'))
@@ -687,8 +784,7 @@ def build(sm, base):
             "".join(f"<h3>{_e(d['label'])}</h3>{_img(d['png'], d['label'])}"
                     for d in sm['dumps']))
 
-    # ---- runs, files, settings, log
-    # ------------------------------------------------------------------
+    # ---- runs, files, settings, log -----------------------------------------
     if sm.get('runs'):
         rows = []
         for name, r in sm['runs'].items():
@@ -700,8 +796,9 @@ def build(sm, base):
             rows.append([
                 _e(name), f"{r.get('seconds') or 0:.0f} s",
                 f"{r['steps']:,}" if r.get('steps') else '–',
-                _e(why), f"<a href='{_e(_rel(lp, base))}'>openems.log</a>"
-                if lp and os.path.exists(lp) else '–'
+                _e(why),
+                (f"<a href='{_e(_rel(lp, base))}'>openems.log</a>"
+                 if lp and os.path.exists(lp) else '–')
             ])
         section(
             'runs', 'openEMS runs',

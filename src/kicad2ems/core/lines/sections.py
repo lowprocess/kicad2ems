@@ -4,10 +4,10 @@ LineModel.drawing gives each section the cross-sections it can be seen on
 (e['section']), and this solves one when asked. A whole board's sections would
 take a minute; one takes about 0.1 s, 2 s at worst.
 
-    modes(e)           # [(key, label)]: the views a section has, the first the
-                       one its numbers come from
+    modes(e)           # [(key, label)]: the views a section has, the first
+                       # the one its numbers come from
     v = solve(e, key)  # v.field (xsection.Field), v.xs, v.volts, v.window,
-                       v.values, v.z0, v.eeff
+                       # v.values, v.z0, v.eeff
     x, z, phi, ex, ez, er = v.field.sample(*v.window, 400, 200)
 
 The keys:

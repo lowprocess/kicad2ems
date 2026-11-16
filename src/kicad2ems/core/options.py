@@ -3,8 +3,9 @@ Settings as data: Option (one setting of a run, declared once in config.CORE or
 by a solver plugin) and the converters that turn a config or command-line value
 into a setting.
 
-    Option('mom_dmax', 0.3, 'largest MoM cell along the copper, mm (default {default})', float, name='dmax',
-           gui='MoM cell (mm)', group='mom25d')
+    Option('mom_dmax', 0.3,
+           'largest MoM cell along the copper, mm (default {default})',
+           float, name='dmax', gui='MoM cell (mm)', group='mom25d')
 
 From the option lists come the Settings fields (config.Settings), the
 command-line options (cli.parser), the config keys (config.read_toml: the key at
@@ -63,8 +64,7 @@ class Option:
         return v
 
 
-# ---- converters
-# ---------------------------------------------------------------------------------------
+# ---- converters -------------------------------------------------------------
 def strlist(v):
     """A list of strings: a list, or a comma-separated string. None for an empty
     one."""

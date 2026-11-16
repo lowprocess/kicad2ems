@@ -67,11 +67,12 @@ def write_touchstone(path, f, S, zref, comment='', names=None):
             fh.write(f"[Number of Frequencies] {len(f)}\n")
             fh.write("[Reference] " + " ".join(f"{z:.6g}" for z in zref)
                      + "\n[Network Data]\n")
-        for fi, s in zip(f, S):  # 1-2 ports: one line; more: each matrix
-            # row on a new line,
+        # 1-2 ports: one line; more: each matrix row on a new line, at most 4
+        # values a line
+        for fi, s in zip(f, S):
             rows = ([[s[0, 0], s[1, 0], s[0, 1], s[1, 1]]]
                     if n == 2 else [list(r) for r in s])
-            first = True  # at most 4 values a line
+            first = True
             for row in rows:
                 for k in range(0, len(row), 4):
                     pre = f"{fi:.9e}" if first else " " * 15

@@ -6,8 +6,10 @@ viewer reads a run's.
     from kicad2ems.core.api.analysis import Analysis
 
     class Thermal(Analysis):
-        api = (2, 6)                # the kicad2ems.core.api version it is written against (API_VERSION)
-        provides = ('thermal',)     # the questions it answers (kicad2ems.core.study)
+        api = (2, 6)                # the kicad2ems.core.api version it is
+                                    # written against (API_VERSION)
+        provides = ('thermal',)     # the questions it answers
+                                    # (kicad2ems.core.study)
         name, label, tool = 'thermal', 'Thermal', 'mypackage.thermal'
         result = 'thermal.json'
         ...

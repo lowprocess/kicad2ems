@@ -29,8 +29,7 @@ from .dumps import UNITS
 AXES = 'xyz'
 
 
-# ---- time-domain VTR frames
-# ----------------------------------------------------------------------
+# ---- time-domain VTR frames -------------------------------------------------
 def _decode_binary(text, header_type, compressed, dtype):
     """One inline binary VTK DataArray (base64) -> numpy array."""
     text = ''.join(text.split())
@@ -93,8 +92,7 @@ def read_vtr(path):
     return mesh, v
 
 
-# ---- the dumps of a run folder
-# -------------------------------------------------------------------
+# ---- the dumps of a run folder ----------------------------------------------
 def _info(run_path):
     try:
         with open(os.path.join(run_path, 'dump_info.json'),
@@ -133,8 +131,8 @@ class DumpSource:
         self.field = (self.meta.get('field')
                       or (re.match(r'dump_([EHJ])_', name) or [None, 'E'])[1])
         self.unit = self.meta.get('unit') or UNITS.get(self.field, '')
-        self.frames, self.freqs, self._cache, self._fd, self.norm, self.dt_ps = (
-            [], [], {}, None, {}, None)
+        (self.frames, self.freqs, self._cache, self._fd, self.norm,
+         self.dt_ps) = ([], [], {}, None, {}, None)
         self.refresh()
 
     @property
@@ -287,14 +285,13 @@ def find_dumps(out_dir):
     return out
 
 
-# ---- 2D views
-# ------------------------------------------------------------------------------------
+# ---- 2D views ---------------------------------------------------------------
 class Plane:
     """A 2D view: u, v axis coordinates (ascending, mm, KiCad axes), img[u, v],
     axis names, title."""
     def __init__(self, u, v, img, names, axis, pos, signed):
-        self.u, self.v, self.img, self.names, self.axis, self.pos, self.signed = (
-            u, v, img, names, axis, pos, signed)
+        (self.u, self.v, self.img, self.names, self.axis, self.pos,
+         self.signed) = (u, v, img, names, axis, pos, signed)
 
     def resample(self, n=900):
         """img on a uniform grid (nearest mesh line), for display as an image:
@@ -411,8 +408,7 @@ def levels(values, signed, log, decades=3, span=False):
     return (vmax * 10 ** -decades, vmax) if log else (0.0, vmax)
 
 
-# ---- animations
-# ----------------------------------------------------------------------------------
+# ---- animations -------------------------------------------------------------
 def ffmpeg_exe():
     """The ffmpeg program: on PATH, or the one of the imageio-ffmpeg package;
     None if neither."""

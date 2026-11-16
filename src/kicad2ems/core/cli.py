@@ -1,20 +1,21 @@
-"""
+r"""
 kicad2ems - KiCad board -> S-parameters from openEMS (3D FDTD), mom25d (2.5D
 MoM) and a transmission-line model (qucsator or scikit-rf), all from one
 converted board
 
-    kicad2ems board.kicad_pcb --pos board-top.pos --nets SIG,GND --fmin 1 --fmax 6 --preview
+    kicad2ems board.kicad_pcb --pos board-top.pos --nets SIG,GND \
+        --fmin 1 --fmax 6 --preview
     kicad2ems board.toml  # config with board = "board.kicad_pcb"
-    kicad2ems board.toml --solvers mom,lines  # MoM and the line model: no
-                                              openEMS needed
-    kicad2ems board.toml --solvers all  # openEMS, MoM and the line model,
-                                        compared
+    kicad2ems board.toml --solvers mom,lines
+        # MoM and the line model: no openEMS needed
+    kicad2ems board.toml --solvers all
+        # openEMS, MoM and the line model, compared
     kicad2ems board.kicad_pcb --config board.toml --excite P1
     kicad2ems board.kicad_pcb ... --compare other_tool.s2p
         # overlay another result
     kicad2ems --check  # which solvers this python can run
-    kicad2ems --init board.kicad_pcb  # a commented starter config next to the
-                                      board (board.toml)
+    kicad2ems --init board.kicad_pcb
+        # a commented starter config next to the board (board.toml)
 
 Ports are footprints with a Fab-layer text P1, P2, ... (or Reference / Value
 P<n> in the pick-and-place file); P<n>+ / P<n>- give a differential port.

@@ -25,7 +25,8 @@ close enough to couple.
 import math
 import numpy as np
 from ..constants import C0, ETA0
-from .formulas import microstrip, stripline, offset_stripline, ellipk, _hj_eeff, _hj_z01
+from .formulas import (microstrip, stripline, offset_stripline, ellipk,
+                       _hj_eeff, _hj_z01)
 
 
 def coupled_microstrip(w, s, h, er):
@@ -86,9 +87,9 @@ def coupled(xs, w, s, h, er):
     """(Ze, Zo, eeff_even, eeff_odd) of a coupled pair of cross-section xs
     ('microstrip', 'stripline' or 'offset stripline'; h: the height, or (h1, h2)
     to the planes below and above for striplines)."""
-    # under a cover: the bare formula (the field solver
+    # under a cover: the bare formula (the field solver has the cover:
+    # topology._field_group)
     if xs in ('microstrip', 'embedded microstrip'):
-        # has the cover: topology._field_group)
         return coupled_microstrip(w, s, h, er)
     if xs == 'stripline':
         return coupled_stripline(w, s, h[0] + h[1], er)

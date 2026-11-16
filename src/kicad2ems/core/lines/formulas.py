@@ -12,8 +12,7 @@ import math
 from ..constants import ETA0, MU0  # noqa: F401
 
 
-# ---- closed-form line impedances
-# -------------------------------------------------------------------
+# ---- closed-form line impedances --------------------------------------------
 def ellipk(k, kp=None):
     """Complete elliptic integral of the first kind K(k), modulus k in [0, 1)
     (arithmetic-geometric mean); kp: the complementary modulus, sqrt(1 - k^2),

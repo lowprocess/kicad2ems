@@ -14,7 +14,8 @@ fewer than two layers have ground there or where signal copper on any layer
 comes within `keepout` mm (a launch pad or a trace running off the edge). Sides
 are named in KiCad coordinates:
 
-    xmin = left, xmax = right, ymin = top, ymax = bottom (as drawn in KiCad, y down)
+    xmin = left, xmax = right, ymin = top, ymax = bottom
+    (as drawn in KiCad, y down)
 
     walls = edge_walls(board, ['xmax'], keepout=0.5)
         # [(axis, coord, t0, t1, z0, z1)], model mm
@@ -56,9 +57,8 @@ def edge_walls(model, sides, keepout=0.5, step=0.1, depth=0.3, reach=2.0):
     if not sides:
         return []
     sel = model.sel
-    signal = ({p.net
-               for p in model.ports
-               if p.net} | ((set(sel) - model.ground_nets) if sel else set()))
+    signal = ({p.net for p in model.ports if p.net}
+              | ((set(sel) - model.ground_nets) if sel else set()))
     ground, sig = {}, []
     for l, n, g in model.prims.items:
         if l not in model.cu_z or (sel is not None and n not in sel):

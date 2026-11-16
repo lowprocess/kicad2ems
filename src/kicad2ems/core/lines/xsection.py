@@ -20,14 +20,15 @@ is the perturbation G / w = eps0 Phi^T K_tand Phi of the lossless solution. The
 tensor grid the solver began on is kept (MESH = False, _solve_on_grid): the
 independent check of the mesh, and what potential() solves on.
 
-    xs = CrossSection(dielectrics=[Dielectric(0.0, 0.2, 4.3, 0.02)], planes=[0.0])
+    xs = CrossSection(dielectrics=[Dielectric(0.0, 0.2, 4.3, 0.02)],
+                      planes=[0.0])
     xs.conductor(-0.175, 0.175, 0.2, 0.235)  # a 0.35 mm strip, 35 um copper
     r = xs.solve()
     z0, eeff = r.single()                    # one conductor
     f = field(xs)                            # the field, to look at:
-                                             f.sample(...), on the mesh
-    C, Ca = r.C, r.Ca                        # F/m, N x N (coupled.mtl_s takes
-                                             them)
+                                             # f.sample(...), on the mesh
+    C, Ca = r.C, r.Ca                        # F/m, N x N
+                                             # (coupled.mtl_s takes them)
 
     microstrip(0.35, 0.2, 4.3, t=0.035).solve().single()
         # the common cross-sections, built
@@ -196,8 +197,7 @@ def snap(v, rel=None):
     return math.copysign(math.exp(round(math.log(abs(v)) / k) * k), v)
 
 
-# ---- the grid
-# ---------------------------------------------------------------------------------------
+# ---- the grid ---------------------------------------------------------------
 def _fill(a, b, ha, hb, hmax):
     """Grid lines strictly between a and b: cells from ha at a and hb at b,
     growing by GROW up to hmax."""
@@ -297,8 +297,7 @@ def _grid(xs):
                   hmax), _axis(zk, [size(v, sz) for v in zk], hmax))
 
 
-# ---- the solve
-# --------------------------------------------------------------------------------------
+# ---- the solve --------------------------------------------------------------
 def _laplacian(x, z, eps):
     """The finite-volume operator (nodes x nodes, sparse) for cell values eps
     (nx-1, nz-1): the flux between two neighbouring nodes is eps over the half
@@ -457,8 +456,7 @@ def _solve_on_grid(xs):
     return Result(*(2 * b - a for a, b in zip(c1[:3], c2[:3])), nodes=c2[3])
 
 
-# ---- the mesh of rectangles
-# -------------------------------------------------------------------------
+# ---- the mesh of rectangles -------------------------------------------------
 def _sizes(xs, fine):
     """(the key lines in x and z, the corners (n, 2) the cells grow from, the
     cell allowed at each): every corner of copper and of a dielectric of limited
@@ -605,14 +603,11 @@ def _hanging(x, z, ix, iz):
     return T[:, own].tocsr(), own, np.searchsorted(ids, node)
 
 
-# a bilinear rectangle's
-_K_X = (
-    np.array([[2, -2, -1, 1], [-2, 2, 1, -1], [-1, 1, 2, -2], [1, -1, -2, 2]])
-    / 6.0)
-# stiffness, h / w and w / h
-_K_Z = (
-    np.array([[2, 1, -1, -2], [1, 2, -2, -1], [-1, -2, 2, 1], [-2, -1, 1, 2]])
-    / 6.0)
+# a bilinear rectangle's stiffness, h / w and w / h
+_K_X = np.array([[2, -2, -1, 1], [-2, 2, 1, -1], [-1, 1, 2, -2],
+                 [1, -1, -2, 2]]) / 6.0
+_K_Z = np.array([[2, 1, -1, -2], [1, 2, -2, -1], [-1, -2, 2, 1],
+                 [-2, -1, 1, 2]]) / 6.0
 
 
 def _mesh_system(xs, cell):
@@ -663,8 +658,7 @@ def solve(xs):
                   nodes=c2[3])
 
 
-# ---- the field, to look at
-# -----------------------------------------------------------------------------
+# ---- the field, to look at --------------------------------------------------
 class Field:
     """A solved potential on the mesh: cell (n, 4: x0, x1, z0, z1, mm), v (n, 4:
     the volts at its corners (x0, z0), (x1, z0), (x1, z1), (x0, z1)), er per
@@ -736,8 +730,7 @@ def window(xs):
     return xa - m, xb + m, max(box[2], lo - m), min(box[3], hi + m)
 
 
-# ---- the common cross-sections
-# ----------------------------------------------------------------------
+# ---- the common cross-sections ----------------------------------------------
 def _strips(xs, w, gap, z, t, s=None, wg=None):
     """Side-by-side signal strips at height z (thickness t), centred on x = 0: w
     a width or a list of them, gap one or a list; s: coplanar ground s beyond

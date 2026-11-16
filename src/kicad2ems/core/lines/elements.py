@@ -17,8 +17,7 @@ def direction_at(line, s, eps=1e-3):
     return (b - a) / (np.linalg.norm(b - a) or 1.0)
 
 
-# ---- the line model
-# ---------------------------------------------------------------------------------
+# ---- the line model ---------------------------------------------------------
 class Element:
     """One piece of the line model between nodes a and b ('gnd' for a shunt
     part). kind: 'trace' | 'pad' | 'via' | 'part'. xs: the cross-section

@@ -6,20 +6,25 @@ Spec (command line --dump, repeatable, or `dump = [...]` in the TOML config):
 
     FIELD@REGION[@FREQS]
 
-    FIELD   E | H | J        (J = total current density, rot H: shows the copper currents)
+    FIELD   E | H | J        (J = total current density, rot H: shows the
+                             copper currents)
     REGION  F.Cu             plane at a copper layer's height
-            F.Cu+0.05        ... offset in mm (+ up, - down), e.g. inside the dielectric under a trace
+            F.Cu+0.05        ... offset in mm (+ up, - down), e.g. inside the
+                             dielectric under a trace
             z=0.3            plane at a height (mm, z = 0 at the bottom copper)
             x=12  /  y=7     vertical cut planes (KiCad mm, y down as in KiCad)
             volume           the whole board (outline x stack) plus 0.5 mm
-            volume+5         ... with 5 mm of air above and below (fringing fields, an antenna's near field;
-                             the GUI's 3D view)
+            volume+5         ... with 5 mm of air above and below (fringing
+                             fields, an antenna's near field; the GUI's 3D
+                             view)
             box=x0,y0,z0,x1,y1,z1   any box (KiCad mm, z as above)
-    FREQS   2,4,6            GHz: frequency-domain dump (HDF5) at those frequencies, plotted to PNG
-            (omitted)        time-domain dump (VTK series: the GUI's Fields tab, live, or ParaView)
+    FREQS   2,4,6            GHz: frequency-domain dump (HDF5) at those
+                             frequencies, plotted to PNG
+            (omitted)        time-domain dump (VTK series: the GUI's Fields
+                             tab, live, or ParaView)
 
-Examples:  --dump E@F.Cu+0.05@2,6   --dump J@In2.Cu@4   --dump E@y=7   --dump
-H@volume@5
+Examples:  --dump E@F.Cu+0.05@2,6   --dump J@In2.Cu@4   --dump E@y=7
+           --dump H@volume@5
 
 Planes are clipped to the board outline (+1 mm) and the stack (+1 mm air), so a
 dump does not cover the empty air margin; `volume` is the board + 0.5 mm; a box
@@ -223,7 +228,7 @@ def estimate_size_mb(dumps, mesh, n_td_frames=60):
 
 # ------------------------------------------------------------------------------
 # reading and plotting frequency-domain HDF5 dumps
-# -------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 def _to_nxyz3(a, order):
     """Field array -> (nx, ny, nz, 3) given its storage order ('NXYZ' new
     openEMS, 'NZYX' old)."""

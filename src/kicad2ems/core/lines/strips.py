@@ -107,10 +107,9 @@ class _Strip:
             self.ext[0] if self.ext[0] is not None else self.pt(
                 self.a0, first[2])
         ]
-        # onto the other strip's
+        # onto the other strip's centreline: then along
         if (self.ext[0] is not None
                 and abs(self.ext[0][self.axis] - self.a0) > TOL):
-            # centreline: then along
             pts.append(self.pt(self.a0, first[2]))
         prev_c = first[2]
         for a0, a1, c, _ in self.slices[1:]:

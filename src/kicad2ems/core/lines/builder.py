@@ -12,7 +12,8 @@ from shapely.strtree import STRtree
 from . import reference
 from .formulas import coax, via_inductance
 from .elements import Element, LineModel, direction_at
-from .reference import NetCopper, RefCopper, _dielectric, _split_by_reference, classify
+from .reference import (NetCopper, RefCopper, _dielectric,
+                        _split_by_reference, classify)
 from .topology import _couple, _junctions, _paths
 
 
@@ -117,10 +118,8 @@ def _build(model, nets, refcu):
     track_nets = {t['net'] for t in tracks}
     fps = {fp['ref']: fp for fp in pr.footprints}
     # ---- nets: the ports' nets, extended through series parts ----
-    nets = (set(nets)
-            if nets is not None else {p.net
-                                      for p in model.ports
-                                      if p.net})
+    nets = (set(nets) if nets is not None
+            else {p.net for p in model.ports if p.net})
     # parts made ports (R-E5): a floating port each
     port_parts = dict(getattr(model, 'part_of', None) or {})
     for p in model.ports:
@@ -414,9 +413,8 @@ def _build(model, nets, refcu):
         att = [l for l in lys if f"via{v['i']}:{l}" in ends]
         if not att:
             continue
-        # a ground via a trace ends on: to its plane,
+        # a ground via a trace ends on: to its plane, else to its far end
         if v['net'] in grounds and v['net'] not in nets:
-            # else to its far end
             planes = [
                 l for l in lys if l not in att and refcu.covers(l, v['xy'])
             ]
@@ -430,9 +428,12 @@ def _build(model, nets, refcu):
                     continue
                 n = parallel.get(f"via{v['i']}:{la}", 1)
                 e = to_ground(v, la, lg, v['net'], n)
+                to = ('the ' + lg + ' plane' if planes
+                      else 'its ' + lg + ' end (no plane)')
+                par = (f', {n} in parallel (their mutual inductance left out)'
+                       if n > 1 else '')
                 e.notes.append(
-                    f"{v['net']} via{'s' if n > 1 else ''} to "
-                    f"{'the ' + lg + ' plane' if planes else 'its ' + lg + ' end (no plane)'}{f', {n} in parallel (their mutual inductance left out)' if n > 1 else ''}: "
+                    f"{v['net']} via{'s' if n > 1 else ''} to {to}{par}: "
                     f"{e.L * 1e9:.3f} nH")
             continue
         z = [model.cu_z[l] for l in lys]
@@ -482,9 +483,9 @@ def _build(model, nets, refcu):
     # the field solver's sections: together, below
     keep, reference.DEFER = reference.DEFER, []
     try:
-        # each trace and pad section's cross-section, at its
+        # each trace and pad section's cross-section, at its middle
         for e in lm.elements:
-            if e.kind == 'trace':                               # middle
+            if e.kind == 'trace':
                 pts = np.asarray(e.pts)
                 line = LineString(pts) if len(pts) > 1 else None
                 if line is None or line.length < 1e-9:

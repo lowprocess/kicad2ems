@@ -26,8 +26,8 @@ class Imported:
     def __init__(self, path=''):
         self.path = path
         self.stack_items, self.copper_order = [], []
-        self.items, self.shapes, self.tracks, self.vias, self.footprints, self.edges = (
-            [], [], [], [], [], [])
+        (self.items, self.shapes, self.tracks, self.vias, self.footprints,
+         self.edges) = ([], [], [], [], [], [])
         # the nets with a zone (a plane, a pour): not traces
         self.zone_nets = set()
         # what the import left out or read with a guess (the Board's notes)

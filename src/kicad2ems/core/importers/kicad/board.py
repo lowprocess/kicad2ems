@@ -57,8 +57,7 @@ class KiCadBoard(Imported):
     def from_text(cls, text, path=''):
         return cls(path=path, text=text)
 
-    # ---- nets
-    # ---------------------------------------------------------------------------
+    # ---- nets ---------------------------------------------------------------
     def _nets(self):
         self.net_names = {
             str(n[1]): n[2]
@@ -75,8 +74,7 @@ class KiCadBoard(Imported):
         v = str(it[1])
         return self.net_names.get(v, v)
 
-    # ---- stackup
-    # ---------------------------------------------------------------------------
+    # ---- stackup ------------------------------------------------------------
     def _stackup(self):
         setup = sx.item(self.root, 'setup')
         su = sx.item(setup, 'stackup') if setup else None
@@ -130,8 +128,7 @@ class KiCadBoard(Imported):
                              er=s.get('epsilon_r'), tand=s.get('loss_tangent'),
                              material=s.get('material')))
 
-    # ---- copper
-    # -----------------------------------------------------------------------------
+    # ---- copper -------------------------------------------------------------
     def _expand(self, lys):
         out = []
         for l in lys:
@@ -160,11 +157,10 @@ class KiCadBoard(Imported):
             kind = ('micro' if 'micro' in v else
                     ('blind' if 'blind' in v else 'through'))
             ends = lys
-            # every copper layer from one end
+            # every copper layer from one end to the other, a blind or micro
+            # via's too: its barrel passes them
             if len(lys) == 2 and all_cu and all(l in all_cu for l in lys):
-                # to the other, a blind or micro via's
                 i0, i1 = sorted(all_cu.index(l) for l in lys)
-                # too: its barrel passes them
                 lys = all_cu[i0:i1 + 1]
             # (its rings: at its ends, as HDI boards' unused layers are removed)
             pads = lys if kind == 'through' else ends
@@ -224,10 +220,8 @@ class KiCadBoard(Imported):
         for g in (sx.items(self.root, 'gr_text_box')
                   + sx.items(self.root, 'gr_textbox')):
             if any(str(l).endswith('.Cu') for l in sx.layers(g)):
-                self.notes.append(
-                    "a text box on "
-                    f"{', '.join(l for l in sx.layers(g) if l.endswith('.Cu'))}: "
-                    "left out")
+                on = ', '.join(l for l in sx.layers(g) if l.endswith('.Cu'))
+                self.notes.append(f"a text box on {on}: left out")
         for fp in (sx.items(self.root, 'footprint')
                    + sx.items(self.root, 'module')):
             self._footprint(fp)
@@ -249,9 +243,9 @@ class KiCadBoard(Imported):
             return None
         mode = sx.val(stack, 'mode', 'normal')
         want = (layer if mode == 'custom' else
-                ('B.Cu' if layer == 'B.Cu' else
-                 ('Inner'
-                  if layer != 'F.Cu' and mode == 'front_inner_back' else None)))
+                'B.Cu' if layer == 'B.Cu' else
+                'Inner' if layer != 'F.Cu' and mode == 'front_inner_back'
+                else None)
         if want is None:
             return None
         return next((e for e in sx.items(stack, 'layer')
@@ -289,11 +283,11 @@ class KiCadBoard(Imported):
         for i in self._removable:
             layers.setdefault(self.items[i][0], []).append(i)
         touched = set()
-        # the rings in a tree, each other piece of copper of
+        # the rings in a tree, each other piece of copper of the layer asked
+        # once (a fill prepared once: it had been asked of each ring, 16 s on
+        # vme-wren)
         for lay, rings in layers.items():
-            # the layer asked once (a fill prepared once: it
             tree = STRtree([self.items[i][2] for i in rings])
-            # had been asked of each ring, 16 s on vme-wren)
             others = [j for j, it in enumerate(self.items)
                       if it[0] == lay and j not in cand and it[1]]
             if not others:
@@ -403,11 +397,11 @@ class KiCadBoard(Imported):
                 self.items.append((l, net, g_l))
                 self._unused(len(self.items) - 1, pad, ends)
             if pad[2] == 'thru_hole' and drill and len(lys) > 1:
-                # a slot: the barrel of its perimeter (its
+                # a slot: the barrel of its perimeter (its long side as the
+                # diameter had overstated it)
                 if len(drill) > 3 and drill[1] == 'oval':
-                    # long side as the diameter had overstated
                     a, b = sorted((float(drill[2]), float(drill[3])))
-                    d = (2 * (b - a) + math.pi * a) / math.pi          # it)
+                    d = (2 * (b - a) + math.pi * a) / math.pi
                 else:
                     d = (float(drill[1])
                          if drill[1] != 'oval' else float(drill[2]))

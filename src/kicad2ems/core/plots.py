@@ -112,8 +112,7 @@ def preview(m, mesh, title=''):
     return fig
 
 
-# ---- transmission-line sections
-# -------------------------------------------------------------------
+# ---- transmission-line sections ---------------------------------------------
 Z_CMAP = matplotlib.colormaps['coolwarm']
 
 
@@ -297,8 +296,7 @@ def plot_lines(lm, m, title=''):
     return fig
 
 
-# ---- S-parameters
-# ------------------------------------------------------------------------------------
+# ---- S-parameters -----------------------------------------------------------
 def _draw_smith_grid(ax, r_vals=(0.2, 0.5, 1, 2, 5),
                      x_vals=(0.2, 0.5, 1, 2, 5)):
     """Draw a normalised-impedance Smith chart grid on `ax` (no extra
@@ -443,8 +441,7 @@ def plot_convergence(f, levels, names, title, floor_db=-40.0):
     return fig
 
 
-# ---- antenna
-# -------------------------------------------------------------------------------------------
+# ---- antenna ----------------------------------------------------------------
 def plot_antenna(f, s11, z0, res, title):
     """Input match (|S11|, input impedance) and gain / directivity / efficiency
     over frequency."""

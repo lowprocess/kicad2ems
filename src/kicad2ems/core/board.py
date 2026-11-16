@@ -2,12 +2,13 @@
 The canonical board: what every solver gets, from any importer (units mm, model
 coordinates: y up, the negative of KiCad's y).
 
-    board = Board(raw, nets=['RF', 'GND'], pos_file='board-top.pos', ground='B.Cu')
+    board = Board(raw, nets=['RF', 'GND'], pos_file='board-top.pos',
+                  ground='B.Cu')
         # resolve an import
     board.save('board.json');  board = Board.load('board.json')
-                               # the file contract
-    board.summary()  # what the parity checks compare (copper area per layer and
-                     net, ...)
+        # the file contract
+    board.summary()
+        # what the parity checks compare (copper area per layer and net, ...)
 
   layers      dielectric slabs dict(name, z0, z1, er, tand, kind), bottom to top
   cu_z, cu_t  copper layer heights and thicknesses (cu_order: bottom to top);
@@ -25,7 +26,8 @@ coordinates: y up, the negative of KiCad's y).
               end (edges.py)
   prims       the primitives behind the copper, for the line model: items,
               shapes, tracks, footprints, vias
-  ground, ground_nets, signal_nets, sel (the nets kept; None: all), region, cut_sides, notes, source, request
+  ground, ground_nets, signal_nets, sel (the nets kept; None: all), region,
+  cut_sides, notes, source, request
 
 Physical intent only: what is on the board and what was asked for. Nothing is
 snapped to a mesh, split for a solver or fitted: the solvers do that, and say
@@ -35,7 +37,8 @@ refuses a newer major version and ignores keys it does not know.
 import json
 import numpy as np
 import shapely
-from shapely.geometry import Polygon, MultiPolygon, LineString, Point, mapping, shape
+from shapely.geometry import (Polygon, MultiPolygon, LineString, Point,
+                              mapping, shape)
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 from .formats import plain
@@ -53,11 +56,11 @@ FILL_VOIDS = ('off', 'far', 'all')
 # mm2: fill_voids = far fills a void smaller than this wherever it is
 # (thermal-relief gaps)
 FILL_SMALL = 0.5
-# mm: ... and a larger one farther than this from the signal copper of any
-# layer,
+# mm: ... and a larger one farther than this from the signal copper of
+# any layer,
 FILL_FAR = 1.0
-# or than this many times the widest gap between two copper layers, if that is
-# more
+# or than this many times the widest gap between two copper layers, if
+# that is more
 FILL_HEIGHTS = 3.0
 # mm: a fill reaches this far into the copper around its void (the copper's
 # outline is simplified to 2 um: without it a sliver stays between the two)
@@ -290,10 +293,10 @@ class Board:
                  region=None, ground=None, parts='auto', log=print, ports=None,
                  cut_ports=False, edge_walls=(), edge_keepout=0.5,
                  need_ports=True, fill_voids='off', part_ports=()):
-        from .region import region_polygon, auto_nets, extra_port_fps, ground_nets
-        self.log, self.notes, self.need_ports = (log,
-                                                 list(getattr(raw, 'notes',
-                                                              ())), need_ports)
+        from .region import (region_polygon, auto_nets, extra_port_fps,
+                             ground_nets)
+        self.log, self.notes, self.need_ports = (
+            log, list(getattr(raw, 'notes', ())), need_ports)
         self.source = dict(importer=getattr(raw, 'importer', 'kicad'),
                            file=getattr(raw, 'path', ''))
         self.request = dict(nets=nets, pos=pos_file, mask=include_mask,
@@ -345,9 +348,8 @@ class Board:
                 self.notes.append(
                     f"region cuts the board on {', '.join(self.cut_sides)}")
         self.outline = flip_y(ol)
-        # the region splits the board: the largest
+        # the region splits the board: the largest piece kept, and said (R-E6)
         if isinstance(self.outline, MultiPolygon):
-            # piece kept, and said (R-E6)
             pieces = sorted(self.outline.geoms, key=lambda p: -p.area)
             self.outline = pieces[0]
             self.notes.append(
@@ -416,8 +418,7 @@ class Board:
         self._part_ports(part_ports)
         self._walls(edge_walls, edge_keepout, cut_ports)
 
-    # ---- construction steps
-    # ------------------------------------------------------------------------
+    # ---- construction steps -------------------------------------------------
     def _part_ports(self, which):
         """The parts named (or 'all') as internal ports across their gaps
         (embed.py, R-E5): removed from the parts, kept as part_of {port name:
@@ -500,13 +501,15 @@ class Board:
                 out[k] = src[k]
             what = ' and '.join({'er': 'no er', 'tand': 'no loss tangent'}[k]
                                 for k in missing)
-            self.notes.append(f"dielectric {it['name']}" + (
-                f" ({it['material']})" if it.get('material') else ''
-            ) + f": the stackup gives {what}; " + (
-                f"{src['name']}'s from the material library ({src['source']})"
-                if lib else
-                f"FR-4's taken (er {src['er']:g}, tan d {src['tand']:g}): set "
-                "them in Board Setup > Physical Stackup"))
+            self.notes.append(
+                f"dielectric {it['name']}"
+                + (f" ({it['material']})" if it.get('material') else '')
+                + f": the stackup gives {what}; "
+                + (f"{src['name']}'s from the material library "
+                   f"({src['source']})"
+                   if lib else
+                   f"FR-4's taken (er {src['er']:g}, tan d {src['tand']:g}): "
+                   "set them in Board Setup > Physical Stackup"))
         return out
 
     @property
@@ -637,7 +640,8 @@ class Board:
             self.via_nets.append(v['net'])
 
     def _ports(self, raw, pos_file, specs, cut_ports, rpoly):
-        from .region import cut_port_fps, extra_port_fps, net_at, parse_port_spec
+        from .region import (cut_port_fps, extra_port_fps, net_at,
+                             parse_port_spec)
         refs = pos_port_refs(read_pos(pos_file)) if pos_file else None
         fps = dict(raw.port_footprints(refs))
         for fp in fps.values():
@@ -743,8 +747,7 @@ class Board:
         """Pickled for parallel runs: the log callback stays behind."""
         return dict(self.__dict__, log=print)
 
-    # ---- helpers
-    # -----------------------------------------------------------------------------------------
+    # ---- helpers ------------------------------------------------------------
     def copper_at(self, lay, pt):
         """The modelled copper polygon on layer `lay` containing point pt (model
         coordinates), or None."""
@@ -831,11 +834,9 @@ class Board:
             ]
             # a ground net's copper first: the nearest of any net had been
             # taken, a signal trace crossing under the port as its reference
-            # with nothing said
-            # (ground = L: a
-            grounded = lambda l: l == self.ground or self.net_at(
-                l, *pc) in self.ground_nets
-            # solid plane)
+            # with nothing said (ground = L: a solid plane)
+            grounded = lambda l: (l == self.ground
+                                  or self.net_at(l, *pc) in self.ground_nets)
             ref = next((l for l in under if grounded(l)),
                        under[0] if under else None)
             if ref:
@@ -916,10 +917,9 @@ class Board:
                     f"(KiCad), Z {p.z0:g} ohm"
                 )
                 continue
-            ang = (
-                f", its trace at {np.degrees(np.arctan2(p.d[1], p.d[0])):.1f} "
-                "deg"
-                if p.oblique else '')
+            ang = (f", its trace at "
+                   f"{np.degrees(np.arctan2(p.d[1], p.d[0])):.1f} deg"
+                   if p.oblique else '')
             L.append(
                 f"  {p.name}: lumped, {p.layer} -> {p.ref_layer}, w {p.w:.3f} "
                 f"mm, h {abs(p.z_sig - p.z_ref):.3f} mm, at ({p.c[0]:.3f}, "
@@ -929,8 +929,7 @@ class Board:
         L += [p.describe() for p in self.parts]
         return "\n".join(L + self.notes)
 
-    # ---- board.json
-    # ----------------------------------------------------------------------------------------
+    # ---- board.json ---------------------------------------------------------
     def to_dict(self):
         """The board as plain data (board.json): lengths in mm, model
         coordinates, polygons as GeoJSON."""

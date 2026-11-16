@@ -33,8 +33,7 @@ from .kicad.pnp import read_pos
 from .kicad.shapes import oval
 
 
-# ---- aperture macros
-# ----------------------------------------------------------------------------------
+# ---- aperture macros --------------------------------------------------------
 def _eval(expr, var):
     e = expr.strip().replace('x', '*').replace('X', '*')
     e = re.sub(r'\$(\d+)', lambda m: repr(var.get(int(m.group(1)), 0.0)), e)
@@ -85,8 +84,7 @@ def _macro_shape(body, params):
     return g.difference(unary_union(clear)) if clear else g
 
 
-# ---- one Gerber file
-# -------------------------------------------------------------------------------------
+# ---- one Gerber file --------------------------------------------------------
 def parse_gerber(path):
     """(copper {net: geometry}, draws [(points, round aperture diameter or None,
     net)], X2 file attributes), in mm with y up (Gerber's own orientation)."""
@@ -290,8 +288,7 @@ def parse_excellon(path):
     return holes, span, plated
 
 
-# ---- the board
-# ---------------------------------------------------------------------------------------------
+# ---- the board --------------------------------------------------------------
 class GerberBoard(Imported):
     importer = 'gerber'
 
@@ -368,7 +365,8 @@ class GerberBoard(Imported):
             self.notes.append(
                 "Gerber import: the placement file's parts have no pads, so "
                 f"{len(passives)} lumped part(s) "
-                f"({', '.join(passives[:6])}{', ...' if len(passives) > 6 else ''}) "
+                f"({', '.join(passives[:6])}"
+                f"{', ...' if len(passives) > 6 else ''}) "
                 "are left out of the model: import the .kicad_pcb for them")
 
     def _net_at(self, layers, x, y):

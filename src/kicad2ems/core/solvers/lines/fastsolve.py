@@ -46,8 +46,7 @@ def _line_params(e, sheet):
     return e.z0, e.eeff
 
 
-# ---- scikit-rf
-# --------------------------------------------------------------------------------------
+# ---- scikit-rf --------------------------------------------------------------
 def conductor_r(w_mm, t_mm, f, sigma):
     """A line's series resistance per metre at f: the strip's surface resistance
     over its width (its DC sheet resistance where the skin is deeper than the
@@ -87,17 +86,16 @@ def _skrf(lm, ports, freq, sheet, sigma):
     w = 2 * np.pi * fr.f
     rho = 1 / sigma if sigma else 1e-15
     nodes, net = {}, {}
-    # a corner's arms to its square's edges, as qucsator's
+    # a corner's arms to its square's edges, as qucsator's MCORN takes them,
+    # its capacitance added at the node
     cut = {}
-    # MCORN takes them, its capacitance added at the node
     for j in lm.junctions:
         if j['kind'] in ('corner', 'bend') and discontinuity_c(j, sheet):
             for (e, end), r in zip(j['arms'], bend_reach(j)):
                 cut[id(e)] = cut.get(id(e), 0.0) + r
-        # (R-E15: they had joined
+        # (R-E15: they had joined at their centre lines)
         elif (j['kind'] in ('tee', 'cross', 'junction')
               and j['xs'] == 'microstrip'):
-            # at their centre lines)
             for (e, end), r in zip(j['arms'], junction_cuts(j)):
                 if e.group is None and r:
                     cut[id(e)] = cut.get(id(e), 0.0) + r
@@ -219,9 +217,9 @@ def _skrf(lm, ports, freq, sheet, sigma):
                                z0=50.0, name=f"gap{k}")
             nodes.setdefault(j['node'], []).append((ntw, 0))
             nodes.setdefault(j['other']['node'], []).append((ntw, 1))
-        # open ends, steps, bends: their excess capacitance
+        # open ends, steps, bends: their excess capacitance at the node
+        # (R-E15: this backend had none of them)
         for k, j in enumerate(lm.junctions):
-            # at the node (R-E15: this backend had none of them)
             c = discontinuity_c(j, sheet)
             if c:
                 nodes.setdefault(j['node'], []).append(
@@ -287,7 +285,8 @@ def discontinuity_c(j, sheet=True):
     a corner or another bend (Gupta, Garg and Bahl's, scaled by the corner's
     area): its extension's length of line capacitance, C' = sqrt(eeff) / (c Z0).
     None for any other junction, or one off a microstrip."""
-    from ...lines.formulas import open_end_extension, step_extension, bend_capacitance
+    from ...lines.formulas import (open_end_extension, step_extension,
+                                   bend_capacitance)
     if (j['xs'] != 'microstrip'
             or j['kind'] not in ('open', 'step', 'corner', 'bend')):
         return None
@@ -322,8 +321,7 @@ def group_s(g, freq, sigma=None):
     return mtl_s(C, Ca, g['er'], g['tand'] or 0.0, g['length'], freq, R=R)
 
 
-# ---- qucsator
-# ---------------------------------------------------------------------------------------
+# ---- qucsator ---------------------------------------------------------------
 def find_qucsator(path=None):
     """The qucsator executable: the given path, else the one the installer
     recorded (sitecfg), else qucsator_rf (Qucs-S) or qucsator on PATH, else
@@ -339,9 +337,9 @@ def find_qucsator(path=None):
         exe = shutil.which(name)
         if exe:
             return exe
-    # Qucs-S's installer does not put its bin folder on the
+    # Qucs-S's installer does not put its bin folder on the PATH: Qucs-S's
+    # (or Qucs's) under Program Files, newest
     if sys.platform == 'win32':
-        # PATH: Qucs-S's (or Qucs's) under Program Files, newest
         import glob
         for base in dict.fromkeys(
                 filter(None, (os.environ.get('ProgramFiles'),
@@ -413,15 +411,14 @@ def _junction_plan(lm):
                                        (ws[(a + 1) % 4] + ws[(a + 3) % 4]) / 2)
     # a bend of another angle: its arms to its square's edges
     for j in lm.junctions:
-        # too, its capacitance at
+        # too, its capacitance at the node (one node)
         if (j['kind'] == 'bend' and j['xs'] == 'microstrip'
                 and discontinuity_c(j)):
-            # the node (one node)
             for (e, end), r in zip(j['arms'], bend_reach(j)):
                 short[(id(e), end)] = r
-        # five arms or more: no element; the arms start
+        # five arms or more: no element; the arms start at the widest straight
+        # run's edge (R-E15)
         elif j['kind'] == 'junction' and j['xs'] == 'microstrip':
-            # at the widest straight run's edge (R-E15)
             for (e, end), r in zip(j['arms'], junction_cuts(j)):
                 if e.group is None and r:
                     short[(id(e), end)] = r
@@ -700,9 +697,10 @@ def read_qucs_dataset(text, n):
     S = np.zeros((len(f), n, n), complex)
     for i in range(n):
         for j in range(n):
-            # qucsator leaves out the terms between separate
+            # qucsator leaves out the terms between separate circuits (two
+            # legs not coupled): zero
             if f'S[{i + 1},{j + 1}]' not in blocks:
-                continue  # circuits (two legs not coupled): zero
+                continue
             vals = blocks[f'S[{i + 1},{j + 1}]'].split()
             S[:, i, j] = [
                 complex(v.replace('+j', '+').replace('-j', '-')
@@ -734,8 +732,7 @@ def _qucsator(lm, ports, freq, sheet, sigma, exe, timeout=120.0):
     return S, order
 
 
-# ---- entry point
-# ----------------------------------------------------------------------------------
+# ---- entry point ------------------------------------------------------------
 def solve(lm, ports, freq, backend='skrf', sheet=True, sigma=None,
           qucsator=None, wideband=None, info=None):
     """S-parameters (nf, n, n) over `ports` (model.ports order; NaN for ports

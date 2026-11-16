@@ -43,20 +43,11 @@ is what other packages import):
 Module settings (reference.TILE, topology.COUPLE_H, ...) are read where they are
 defined: set them on that module, not on this one.
 """
-from .formulas import (
-    ETA0,
-    MU0,
-    ellipk,
-    _hj_z01,
-    _hj_eeff,
-    microstrip,
-    embedded_microstrip,
-    stripline,  # noqa: F401
-    offset_stripline,
-    cpwg,
-    coax,
-    via_inductance)
+from .formulas import (  # noqa: F401
+    ETA0, MU0, ellipk, _hj_z01, _hj_eeff, microstrip, embedded_microstrip,
+    stripline, offset_stripline, cpwg, coax, via_inductance)
 from .elements import Element, LineModel  # noqa: F401
-from .reference import RefCopper, NetCopper, classify, GAP_STEP, TILE, WIDTH_STEP  # noqa: F401
+from .reference import (  # noqa: F401
+    RefCopper, NetCopper, classify, GAP_STEP, TILE, WIDTH_STEP)
 from .topology import COUPLE_H, COUPLED_XS  # noqa: F401
 from .builder import build  # noqa: F401
