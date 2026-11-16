@@ -8,6 +8,7 @@ import glob, json, os, sys
 from PySide6.QtCore import QProcess, Qt, Signal
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTreeWidget, QTreeWidgetItem,
                                QProgressBar, QGroupBox, QFormLayout, QHeaderView, QLineEdit)
+from . import meters
 
 OK, NO = '✔', '✖'
 
@@ -50,117 +51,82 @@ class SystemPanel(QWidget):
         self.info, self.est, self.proc = None, None, None
         lay = QVBoxLayout(self)
         top = QHBoxLayout()
-        self.state = QLabel('checking the solvers and the GPU…')
-        self.state.setStyleSheet('color: gray')
+        self.state = QLabel('checking the solvers and the GPU…', styleSheet='color: gray')
+        self.refresh_btn = QPushButton('Refresh', clicked=self.refresh)
         top.addWidget(self.state, 1)
-        self.refresh_btn = QPushButton('Refresh')
-        self.refresh_btn.clicked.connect(self.refresh)
         top.addWidget(self.refresh_btn)
         lay.addLayout(top)
         box = QGroupBox('Solvers')
-        bl = QVBoxLayout(box)
-        self.solvers = QTreeWidget()
-        self.solvers.setHeaderLabels(['', 'solver', 'details'])
-        self.solvers.setRootIsDecorated(False)
-        self.solvers.header().setSectionResizeMode(2, QHeaderView.Stretch)
-        bl.addWidget(self.solvers)
+        self.solvers = self._tree(QVBoxLayout(box), ['', 'solver', 'details'], 2)
         lay.addWidget(box)
         box = QGroupBox('Programs')                                 # the machine's, not a board's: site.toml
         pf = QFormLayout(box)
         from kicad2ems.core.api.frontend import sitecfg
         where = sitecfg.user_file()
-        row = QHBoxLayout()
-        self.qucsator = QLineEdit()
-        self.qucsator.setToolTip("the line model's circuit solver (Qucs-S's qucsator_rf, or qucsator): empty finds it "
-                                 f"on the PATH (or where the installer recorded it); saved in {where}")
-        self.qucsator.setText(_user_value('qucsator'))
-        self.qucsator.editingFinished.connect(self._save_programs)
-        row.addWidget(self.qucsator, 1)
-        b = QPushButton('…')
-        b.setFixedWidth(28)
-        b.clicked.connect(self._browse_qucsator)
-        row.addWidget(b)
-        pf.addRow('qucsator program', row)
-        row = QHBoxLayout()
-        self.openems_venv = QLineEdit()
-        self.openems_venv.setToolTip("a Python environment (venv) with openEMS (CSXCAD and openEMS), when it is not "
-                                     "in kicad2ems's own: its folder, or its python (bin/python, Scripts\\python.exe). "
-                                     f"It must be the same Python version as kicad2ems's; saved in {where}")
-        self.openems_venv.setPlaceholderText('empty: openEMS in kicad2ems\'s own Python')
-        self.openems_venv.setText(_user_value('openems_venv'))
-        self.openems_venv.editingFinished.connect(self._save_programs)
-        row.addWidget(self.openems_venv, 1)
-        b = QPushButton('…')
-        b.setFixedWidth(28)
-        b.clicked.connect(self._browse_openems)
-        row.addWidget(b)
-        pf.addRow('openEMS environment', row)
-        self.openems_dir = None
+        programs = [  # (site.toml key, label, tooltip, placeholder, the folder dialog's title: None for a file's)
+            ('qucsator', 'qucsator program', "the line model's circuit solver (Qucs-S's qucsator_rf, or qucsator): "
+             "empty finds it on the PATH (or where the installer recorded it)", '', None),
+            ('openems_venv', 'openEMS environment', "a Python environment (venv) with openEMS (CSXCAD and openEMS), "
+             "when it is not in kicad2ems's own: its folder, or its python (bin/python, Scripts\\python.exe). It must "
+             "be the same Python version as kicad2ems's", "empty: openEMS in kicad2ems's own Python",
+             'A Python environment (venv) with openEMS')]
         if sys.platform == 'win32':                                 # Windows: where openEMS's DLLs are
-            row = QHBoxLayout()
-            self.openems_dir = QLineEdit()
-            self.openems_dir.setToolTip("the unpacked openEMS for Windows, the folder with openEMS.dll and CSXCAD.dll: "
-                                        f"its DLLs go on the DLL search; saved in {where}")
-            self.openems_dir.setPlaceholderText('empty: OPENEMS_INSTALL_PATH, or the DLLs already on the PATH')
-            self.openems_dir.setText(_user_value('openems_dir'))
-            self.openems_dir.editingFinished.connect(self._save_programs)
-            row.addWidget(self.openems_dir, 1)
-            b = QPushButton('…')
+            programs.append(('openems_dir', 'openEMS folder', "the unpacked openEMS for Windows, the folder with "
+                             "openEMS.dll and CSXCAD.dll: its DLLs go on the DLL search",
+                             'empty: OPENEMS_INSTALL_PATH, or the DLLs already on the PATH',
+                             'The openEMS folder (openEMS.dll, CSXCAD.dll)'))
+        self.openems_dir, self._programs = None, {}
+        for key, label, tip, empty, folder in programs:
+            field = QLineEdit(toolTip=f"{tip}; saved in {where}", placeholderText=empty, text=_user_value(key),
+                              editingFinished=self._save_programs)
+            b = QPushButton('…', clicked=lambda _=False, f=field, t=label, d=folder: self._browse(f, t, d))
             b.setFixedWidth(28)
-            b.clicked.connect(self._browse_openems_dir)
+            row = QHBoxLayout()
+            row.addWidget(field, 1)
             row.addWidget(b)
-            pf.addRow('openEMS folder', row)
+            pf.addRow(label, row)
+            setattr(self, key, field)
+            self._programs[key] = field
         lay.addWidget(box)
         box = QGroupBox('Hardware')
         self.hw = QFormLayout(box)
         lay.addWidget(box)
         box = QGroupBox('Estimate (the last preview)')
         el = QVBoxLayout(box)
-        self.est_note = QLabel('Preview a board: what each full-wave solver needs on its mesh appears here')
-        self.est_note.setWordWrap(True)
-        self.est_note.setStyleSheet('color: gray')
+        self.est_note = QLabel('Preview a board: what each full-wave solver needs on its mesh appears here',
+                               wordWrap=True, styleSheet='color: gray')
         el.addWidget(self.est_note)
-        self.est_tree = QTreeWidget()
-        self.est_tree.setHeaderLabels(['solver', 'time', 'memory', 'GPU memory', 'how', 'model'])
-        self.est_tree.setRootIsDecorated(False)
-        self.est_tree.header().setSectionResizeMode(5, QHeaderView.Stretch)
-        el.addWidget(self.est_tree)
+        self.est_tree = self._tree(el, ['solver', 'time', 'memory', 'GPU memory', 'how', 'model'], 5)
         lay.addWidget(box, 1)
         self.refresh()
 
+    @staticmethod
+    def _tree(lay, headers, stretch):
+        """A list of rows with these columns, column `stretch` taking the width left, added to lay."""
+        tree = QTreeWidget(rootIsDecorated=False)
+        tree.setHeaderLabels(headers)
+        tree.header().setSectionResizeMode(stretch, QHeaderView.Stretch)
+        lay.addWidget(tree)
+        return tree
+
     # ---- the programs ----
-    def _browse_qucsator(self):
+    def _browse(self, field, title, folder):
+        """A program chosen for a field (folder: the title of the folder dialog; None: a file's, titled `title`)."""
         from PySide6.QtWidgets import QFileDialog
-        start = self.qucsator.text() or ('' if sys.platform == 'win32' else '/usr/bin')
-        path, _ = QFileDialog.getOpenFileName(self, 'qucsator program', start)
+        if folder is None:
+            path, _ = QFileDialog.getOpenFileName(self, title, field.text() or ('' if sys.platform == 'win32'
+                                                                                else '/usr/bin'))
+        else:
+            path = QFileDialog.getExistingDirectory(self, folder, field.text() or os.path.expanduser('~'))
         if path:
-            self.qucsator.setText(path)
-            self._save_programs()
-
-    def _browse_openems(self):
-        from PySide6.QtWidgets import QFileDialog
-        path = QFileDialog.getExistingDirectory(self, 'A Python environment (venv) with openEMS',
-                                                self.openems_venv.text() or os.path.expanduser('~'))
-        if path:
-            self.openems_venv.setText(path)
-            self._save_programs()
-
-    def _browse_openems_dir(self):
-        from PySide6.QtWidgets import QFileDialog
-        path = QFileDialog.getExistingDirectory(self, 'The openEMS folder (openEMS.dll, CSXCAD.dll)',
-                                                self.openems_dir.text() or os.path.expanduser('~'))
-        if path:
-            self.openems_dir.setText(path)
+            field.setText(path)
             self._save_programs()
 
     def _save_programs(self):
         """The programs into the user's site.toml (sitecfg), then the solvers checked again."""
         from kicad2ems.core.api.frontend import sitecfg
         changed = False
-        fields = [('qucsator', self.qucsator), ('openems_venv', self.openems_venv)]
-        if self.openems_dir is not None:
-            fields.append(('openems_dir', self.openems_dir))
-        for key, field in fields:
+        for key, field in self._programs.items():
             path = field.text().strip()
             if path != _user_value(key):
                 sitecfg.set_user(key, path)
@@ -200,7 +166,8 @@ class SystemPanel(QWidget):
                 return
             self.set_info(d)
         except ValueError:
-            self.state.setText(f"system check failed (code {code}): {err.strip().splitlines()[-1] if err.strip() else out[:200]}")
+            last = err.strip().splitlines()[-1] if err.strip() else out[:200]
+            self.state.setText(f"system check failed (code {code}): {last}")
 
     def set_info(self, info):
         self.info = info
@@ -231,11 +198,10 @@ class SystemPanel(QWidget):
                 self.hw.addRow('GPU memory', _bar(g['total'] - g['free'], g['total']))
             self.hw.addRow('', QLabel(f"{g['free']:.1f} GB free: mom25d's complex64 LU runs there"))
         else:
-            lab = QLabel(f"{NO} none: mom25d solves on the CPU ({info.get('gpu_why') or 'no GPU backend'}). For a GPU, "
-                         f"install CuPy into this Python ({sys.executable}): pip install cupy-rocm-7-0 (AMD, ROCm 7), "
-                         f"cupy-cuda12x or cupy-cuda13x (NVIDIA)")
-            lab.setWordWrap(True)
-            self.hw.addRow('GPU', lab)
+            why = info.get('gpu_why') or 'no GPU backend'
+            self.hw.addRow('GPU', QLabel(f"{NO} none: mom25d solves on the CPU ({why}). For a GPU, install CuPy into "
+                                         f"this Python ({sys.executable}): pip install cupy-rocm-7-0 (AMD, ROCm 7), "
+                                         f"cupy-cuda12x or cupy-cuda13x (NVIDIA)", wordWrap=True))
         self.show_estimates(self.est)
 
     # ---- a preview's estimates ----
@@ -264,13 +230,11 @@ class SystemPanel(QWidget):
         gfree = g['free'] if g else None
         usable = {s['name']: s['ok'] for s in (self.info or {}).get('solvers', [])}
         for n, e in est['solvers'].items():
-            sec = e.get('seconds', 0)
-            t = f"~{sec:.0f} s" if sec < 120 else (f"~{sec / 60:.0f} min" if sec < 7200 else f"~{sec / 3600:.1f} h")
             mem = f"{e['gb']:.1f} GB" + (f" ({fit_note(e['gb'], ram)})" if ram else '')
             gm = e.get('gpu_gb')
             gtxt = (f"{gm:.1f} GB" + (f" ({fit_note(gm, gfree)})" if gfree else '')) if gm else ''
             how = e.get('how', '') if usable.get(n, True) else 'not available here (the preview only meshes it)'
-            it = QTreeWidgetItem([n, t, mem, gtxt, how, e.get('what', '')])
+            it = QTreeWidgetItem([n, meters.duration(e.get('seconds', 0)), mem, gtxt, how, e.get('what', '')])
             if ram and e['gb'] > ram:
                 it.setForeground(2, Qt.red)
             if not usable.get(n, True):

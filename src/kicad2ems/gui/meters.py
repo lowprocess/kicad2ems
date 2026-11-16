@@ -128,10 +128,9 @@ def estimate(est, values, usable=None, ram_avail=None):
     plan = [AUTO] if plan is None else list(plan)
     full = {n for n, sv in registry().items() if sv.consumes == 'board'}     # named, even hidden: auto adds none
     named = [n for n in plan if n in full]
-    out, missing = [], [n for n in named if n not in rows]
-    for n in named:
-        if n in rows:
-            out.append((n, rows[n].get('seconds', 0.0), rows[n].get('gb', 0.0), rows[n].get('gpu_gb'), False))
+    missing = [n for n in named if n not in rows]
+    out = [(n, rows[n].get('seconds', 0.0), rows[n].get('gb', 0.0), rows[n].get('gpu_gb'), False)
+           for n in named if n in rows]
     if AUTO in plan and not named:                                  # auto: the one Job.choose would take
         cand = [n for n in rows if (usable is None or n in usable)
                 and (ram_avail is None or rows[n].get('gb', 0) <= 0.8 * ram_avail)]

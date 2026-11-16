@@ -5,7 +5,7 @@ and the dielectrics, the solver's mesh on request, and what the section's Z0 is 
 the mesh again, so the corners stay sharp.
 """
 import numpy as np
-from PySide6.QtCore import Qt, QRectF, QThread, QTimer, Signal
+from PySide6.QtCore import Qt, QRectF, QSignalBlocker, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QPen, QBrush
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QComboBox, QCheckBox, QLabel, QPushButton
 import pyqtgraph as pg
@@ -42,36 +42,20 @@ class SectionView(QWidget):
         self.e, self.v, self.items, self._jobs, self._want, self.ink = None, None, [], [], None, (255, 255, 255)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        bar = FlowLayout()
-        bar.addWidget(QLabel('View'))
-        self.mode = QComboBox()
-        self.mode.setSizeAdjustPolicy(QComboBox.AdjustToContents)
-        self.mode.setToolTip('What the section is solved on, and how its conductors are driven')
-        self.mode.currentIndexChanged.connect(self._mode_changed)
-        bar.addWidget(self.mode)
-        bar.addWidget(QLabel('Colour'))
+        self.mode = QComboBox(sizeAdjustPolicy=QComboBox.AdjustToContents, currentIndexChanged=self._mode_changed,
+                              toolTip='What the section is solved on, and how its conductors are driven')
         self.show_what = QComboBox()
         for label, key in SHOWS:
             self.show_what.addItem(label, key)
         self.show_what.currentIndexChanged.connect(self.redraw)
-        bar.addWidget(self.show_what)
-        self.lines_on = QCheckBox('equipotentials')
-        self.lines_on.setChecked(True)
-        self.lines_on.toggled.connect(self.redraw)
-        bar.addWidget(self.lines_on)
-        self.arrows_on = QCheckBox('arrows')
-        self.arrows_on.setChecked(True)
-        self.arrows_on.setToolTip('The direction of E; every arrow is the same length')
-        self.arrows_on.toggled.connect(self.redraw)
-        bar.addWidget(self.arrows_on)
-        self.mesh_on = QCheckBox('mesh')
-        self.mesh_on.setToolTip("The field solver's cells")
-        self.mesh_on.toggled.connect(self.redraw)
-        bar.addWidget(self.mesh_on)
-        bar.addStretch(1)
-        fit = QPushButton('Fit')
-        fit.clicked.connect(self.fit)
-        bar.addWidget(fit)
+        self.lines_on = QCheckBox('equipotentials', checked=True, toggled=self.redraw)
+        self.arrows_on = QCheckBox('arrows', checked=True, toolTip='The direction of E; every arrow is the same length',
+                                   toggled=self.redraw)
+        self.mesh_on = QCheckBox('mesh', toolTip="The field solver's cells", toggled=self.redraw)
+        bar = FlowLayout()
+        for w in (QLabel('View'), self.mode, QLabel('Colour'), self.show_what, self.lines_on, self.arrows_on,
+                  self.mesh_on, QPushButton('Fit', clicked=self.fit)):
+            bar.addWidget(w)
         lay.addLayout(bar)
         self.plot = pg.PlotWidget()
         self.plot.setBackground(theme.colors()['bg'])
@@ -86,14 +70,9 @@ class SectionView(QWidget):
                                     width=14)
         self.cbar.setImageItem(self.img, insert_in=self.plot.getPlotItem())
         lay.addWidget(self.plot, 1)
-        self.info = QLabel(self._none())
-        self.info.setWordWrap(True)
-        self.info.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.info = QLabel(self._none(), wordWrap=True, textInteractionFlags=Qt.TextSelectableByMouse)
         lay.addWidget(self.info)
-        self._later = QTimer(self)                      # zooming: draw again when it stops
-        self._later.setSingleShot(True)
-        self._later.setInterval(120)
-        self._later.timeout.connect(self.redraw)
+        self._later = QTimer(self, singleShot=True, interval=120, timeout=self.redraw)     # zooming: draw when it stops
         self.plot.getViewBox().sigRangeChangedManually.connect(lambda *_: self._later.start())
 
     # ---- the section ----
@@ -105,11 +84,10 @@ class SectionView(QWidget):
         """Section e (a drawing element, or None): its views in the list, the first of them solved."""
         self.e, self.v = e, None
         ms = sections.modes(e) if e else []
-        self.mode.blockSignals(True)
-        self.mode.clear()
-        for key, label in ms:
-            self.mode.addItem(label, key)
-        self.mode.blockSignals(False)
+        with QSignalBlocker(self.mode):
+            self.mode.clear()
+            for key, label in ms:
+                self.mode.addItem(label, key)
         self._clear()
         if not ms:
             self.info.setText(self._none() if e is None else
@@ -147,23 +125,15 @@ class SectionView(QWidget):
             self._clear()
             self.info.setText(f"the field solver could not solve this one: {v}")
             return
-        self.v = v
+        self.v, e = v, self.e
         self.fit()
-        self.info.setText(self._readout())
-
-    def _readout(self):
-        v, e = self.v, self.e
-        parts = []
-        for k, x in v.values.items():
-            if k == 'eeff':
-                parts.append(f"εeff {x:.2f}")
-            elif k != 'nodes':
-                parts.append(f"{k} {x:.1f} Ω")
+        parts = [f"εeff {x:.2f}" if k == 'eeff' else f"{k} {x:.1f} Ω" for k, x in v.values.items() if k != 'nodes']
         parts.append(f"{v.values['nodes']:,} nodes")
-        if not self.model_line:
-            return f"<b>{' · '.join(parts)}</b>"
-        model = f"line model: Z0 {e['z0']:.1f} Ω{ov.source_note(e)}" if e.get('z0') else 'no Z0 in the line model'
-        return f"<b>{' · '.join(parts)}</b><br>{model}<br>{ov.describe(e)}"
+        text = f"<b>{' · '.join(parts)}</b>"
+        if self.model_line:
+            model = f"line model: Z0 {e['z0']:.1f} Ω{ov.source_note(e)}" if e.get('z0') else 'no Z0 in the line model'
+            text += f"<br>{model}<br>{ov.describe(e)}"
+        self.info.setText(text)
 
     # ---- drawing ----
     def fit(self):
@@ -183,49 +153,56 @@ class SectionView(QWidget):
         self.items.append(it)
         return it
 
-    def _pixels(self):
-        """The window on screen, and its size in pixels (at most about 800 across)."""
-        vb = self.plot.getViewBox()
-        (x0, x1), (z0, z1) = vb.viewRange()
-        w, h = max(int(vb.width()), 64), max(int(vb.height()), 64)
-        s = min(1.0, 800 / max(w, h))
-        return x0, x1, z0, z1, max(int(w * s), 32), max(int(h * s), 32)
-
     def redraw(self):
         if not self.v:
             return
         self._clear()
         v = self.v
-        x0, x1, z0, z1, nx, nz = self._pixels()
+        vb = self.plot.getViewBox()                     # the window on screen, sampled at most about 800 across
+        (x0, x1), (z0, z1) = vb.viewRange()
+        w, h = max(int(vb.width()), 64), max(int(vb.height()), 64)
+        s = min(1.0, 800 / max(w, h))
+        nx, nz = max(int(w * s), 32), max(int(h * s), 32)
         x, z, phi, ex, ez, er = v.field.sample(x0, x1, z0, z1, nx, nz)
-        px, pz = (x1 - x0) / nx, (z1 - z0) / nz
         rect = QRectF(x0, z0, x1 - x0, z1 - z0)
+        top, signed = max(abs(a) for a in v.volts) or 1.0, min(v.volts) < 0
         self.ink = (255, 255, 255) if self.show_what.currentData() == 'e' else (40, 40, 40)
         if self.show_what.currentData() == 'e':
             mag = np.hypot(ex, ez)
             good = mag[np.isfinite(mag) & (mag > 0)]
             hi = float(np.percentile(good, 99.5)) if good.size else 1.0     # the corners are singular: they saturate
-            data, lim, cmap, label = np.log10(np.maximum(mag, hi * 1e-3)), (np.log10(hi * 1e-3), np.log10(hi)), \
-                'inferno', 'log10 |E| (V/mm, at 1 V)'
+            data, lim = np.log10(np.maximum(mag, hi * 1e-3)), (np.log10(hi * 1e-3), np.log10(hi))
+            cmap, label = 'inferno', 'log10 |E| (V/mm, at 1 V)'
         else:
-            top = max(abs(a) for a in v.volts) or 1.0
-            signed = min(v.volts) < 0
-            data, lim, cmap, label = phi, ((-top if signed else 0.0), top), ('RdBu_r' if signed else 'viridis'), 'potential (V)'
+            data, lim = phi, ((-top if signed else 0.0), top)
+            cmap, label = 'RdBu_r' if signed else 'viridis', 'potential (V)'
         self.cbar.setColorMap(pg.colormap.getFromMatplotlib(cmap))
         self.img.setImage(data, autoLevels=False, levels=lim)      # NaN, copper and beyond the box: clear
         self.img.setRect(rect)
         self.cbar.setLevels(lim)
         self.cbar.axis.setLabel(label)
-        self._add_dielectrics(er, x, z, rect)
+        self._add_dielectrics(er, z, rect)
         if self.lines_on.isChecked():
-            self._add_equipotentials(phi, rect, v)
+            self._add_equipotentials(phi, rect, top, signed)
         if self.arrows_on.isChecked():
             self._add_arrows(x, z, ex, ez, x1 - x0)
-        if self.mesh_on.isChecked():
-            self._add_mesh(rect)
-        self._add_copper(rect, max(px, pz))
+        if self.mesh_on.isChecked():                    # the solver's cells
+            c = v.field.cell
+            c = c[(c[:, 1] > rect.left()) & (c[:, 0] < rect.right())
+                  & (c[:, 3] > rect.top()) & (c[:, 2] < rect.bottom())]
+            xs = np.stack([c[:, 0], c[:, 1], c[:, 1], c[:, 1], c[:, 1], c[:, 0], c[:, 0], c[:, 0]], 1).ravel()
+            zs = np.stack([c[:, 2], c[:, 2], c[:, 2], c[:, 3], c[:, 3], c[:, 3], c[:, 3], c[:, 2]], 1).ravel()
+            self._add(pg.PlotCurveItem(xs, zs, connect='pairs', pen=pg.mkPen((*self.ink, 70), width=1)))
+        # the copper over the field, a sheet at least two pixels thick so that it shows; planes across the window
+        pixel = max((x1 - x0) / nx, (z1 - z0) / nz)
+        for zp in v.xs.planes:
+            self._add_box(rect.left(), rect.right(), zp, zp, GROUND, pixel)
+        for c in v.xs.conductors:
+            a, b = max(c.x0, rect.left()), min(c.x1, rect.right())
+            if a < b:
+                self._add_box(a, b, c.z0, c.z1, GROUND if c.ground else SIGNAL, pixel)
 
-    def _add_dielectrics(self, er, x, z, rect):
+    def _add_dielectrics(self, er, z, rect):
         """A line where er changes with height, and each layer's er at the window's left."""
         by_height = np.array([np.nan if np.isnan(row).all() else np.nanmax(row) for row in er.T])
         edges = np.flatnonzero(np.abs(np.diff(np.nan_to_num(by_height))) > 1e-6)
@@ -239,15 +216,14 @@ class SectionView(QWidget):
                 t = self._add(pg.TextItem(f"εr {by_height[a]:.3g}", color=self.ink, anchor=(0, 0.5)))
                 t.setPos(rect.left(), 0.5 * (z[a] + z[b - 1]))
 
-    def _add_equipotentials(self, phi, rect, v):
-        """Line pieces where phi crosses each level; none in copper (NaN there)."""
-        top = max(abs(a) for a in v.volts) or 1.0
-        signed = min(v.volts) < 0
+    def _add_equipotentials(self, phi, rect, top, signed):
+        """Line pieces where phi crosses each level (between -top or 0 and top); none in copper (NaN there)."""
         vals = np.linspace(-top if signed else 0.0, top, 2 * LEVELS + 1 if signed else LEVELS + 2)[1:-1]
         px, pz = rect.width() / phi.shape[0], rect.height() / phi.shape[1]
         seg = [q for val in vals for q in pg.functions.isocurve(phi, float(val), connected=False)]
         seg = np.asarray(seg, float).reshape(-1, 2)
-        seg = seg[np.isfinite(seg).all(1)] if len(seg) % 2 else seg.reshape(-1, 2, 2)[np.isfinite(seg.reshape(-1, 4)).all(1)].reshape(-1, 2)
+        seg = seg[np.isfinite(seg).all(1)] if len(seg) % 2 else \
+            seg.reshape(-1, 2, 2)[np.isfinite(seg.reshape(-1, 4)).all(1)].reshape(-1, 2)
         if len(seg):
             self._add(pg.PlotCurveItem(rect.left() + (seg[:, 0] + 0.5) * px, rect.top() + (seg[:, 1] + 0.5) * pz,
                                        connect='pairs', pen=pg.mkPen((*self.ink, 150), width=1)))
@@ -271,24 +247,6 @@ class SectionView(QWidget):
         zs = np.stack([cz - s * L / 2, cz + s * L / 2, cz + s * L / 2 - head * (s - 0.5 * u),
                        cz + s * L / 2, cz + s * L / 2 - head * (s + 0.5 * u), cz + s * L / 2], 1).ravel()
         self._add(pg.PlotCurveItem(xs, zs, connect='pairs', pen=pg.mkPen((0, 200, 255, 170), width=1)))
-
-    def _add_mesh(self, rect):
-        c = self.v.field.cell
-        on = (c[:, 1] > rect.left()) & (c[:, 0] < rect.right()) & (c[:, 3] > rect.top()) & (c[:, 2] < rect.bottom())
-        c = c[on]
-        xs = np.stack([c[:, 0], c[:, 1], c[:, 1], c[:, 1], c[:, 1], c[:, 0], c[:, 0], c[:, 0]], 1).ravel()
-        zs = np.stack([c[:, 2], c[:, 2], c[:, 2], c[:, 3], c[:, 3], c[:, 3], c[:, 3], c[:, 2]], 1).ravel()
-        self._add(pg.PlotCurveItem(xs, zs, connect='pairs', pen=pg.mkPen((*self.ink, 70), width=1)))
-
-    def _add_copper(self, rect, pixel):
-        """The copper over the field, a sheet at least two pixels thick so that it shows; planes across the window."""
-        xs = self.v.xs
-        for z in xs.planes:
-            self._add_box(rect.left(), rect.right(), z, z, GROUND, pixel)
-        for c in xs.conductors:
-            a, b = max(c.x0, rect.left()), min(c.x1, rect.right())
-            if a < b:
-                self._add_box(a, b, c.z0, c.z1, GROUND if c.ground else SIGNAL, pixel)
 
     def _add_box(self, a, b, z0, z1, colour, pixel):
         lo, hi = (z0 - pixel, z1 + pixel) if z1 - z0 < 2 * pixel else (z0, z1)

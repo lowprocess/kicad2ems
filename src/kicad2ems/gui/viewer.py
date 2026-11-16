@@ -15,7 +15,7 @@ window puts it in a dock under the board, so the plan and the section are seen t
 that page is in view (set_section_shown); sections(bool) says whether the folder loaded has any.
 """
 import glob, os
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QSignalBlocker, Signal
 from PySide6.QtGui import QColor, QPainter, QLinearGradient, QPixmap, QIcon
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QToolButton, QButtonGroup, QStackedWidget,
                                QSplitter, QTreeWidget, QTreeWidgetItem, QCheckBox, QLabel, QHeaderView, QSizePolicy)
@@ -62,12 +62,6 @@ class Z0Legend(QWidget):
         p.drawText(w - p.fontMetrics().horizontalAdvance(right) - 1, y, right)
 
 
-def _swatch(rgb):
-    pm = QPixmap(12, 12)
-    pm.fill(QColor.fromRgbF(*rgb))
-    return QIcon(pm)
-
-
 class Viewer(QWidget):
     view_changed = Signal(str)
     sections = Signal(bool)                     # a folder was loaded: whether its line model has cross-sections
@@ -83,24 +77,17 @@ class Viewer(QWidget):
         self.buttons, group = {}, QButtonGroup(self)
         group.setExclusive(True)
         for name in VIEWS:
-            b = QToolButton()
-            b.setText(name)
-            b.setCheckable(True)
-            b.setToolTip(TIPS[name])
-            b.setMinimumWidth(56)
+            b = QToolButton(text=name, checkable=True, toolTip=TIPS[name], minimumWidth=56)
             b.clicked.connect(lambda _=False, n=name: self.set_view(n))
             group.addButton(b)
             bar.addWidget(b)
             self.buttons[name] = b
         bar.addSpacing(12)
-        self.lines_on = QCheckBox('Line model')
-        self.lines_on.setChecked(True)
-        self.lines_on.setToolTip("the line model's sections over the board, coloured by Z0")
-        self.lines_on.toggled.connect(self._lines_toggled)
+        self.lines_on = QCheckBox('Line model', checked=True, toggled=self._lines_toggled,
+                                  toolTip="the line model's sections over the board, coloured by Z0")
+        self.note = QLabel('', styleSheet='color: gray')
         bar.addWidget(self.lines_on)
         bar.addStretch(1)
-        self.note = QLabel('')
-        self.note.setStyleSheet('color: gray')
         bar.addWidget(self.note)
         lay.addLayout(bar)
 
@@ -115,11 +102,9 @@ class Viewer(QWidget):
         sl.addWidget(QLabel('<b>Line model</b>'))
         self.legend = Z0Legend()
         sl.addWidget(self.legend)
-        self.tree = QTreeWidget()
+        self.tree = QTreeWidget(rootIsDecorated=True, uniformRowHeights=True)
         self.tree.setHeaderLabels(['section', 'Z0 (Ω)', 'mm', 'ps', 'εeff', 'by'])
         self.tree.headerItem().setToolTip(5, "where its Z0 came from: the formula, or the field solver")
-        self.tree.setRootIsDecorated(True)
-        self.tree.setUniformRowHeights(True)
         self.tree.header().setSectionResizeMode(0, QHeaderView.Interactive)
         self.tree.header().setStretchLastSection(False)
         self.tree.setColumnWidth(0, 170)
@@ -127,9 +112,7 @@ class Viewer(QWidget):
             self.tree.header().setSectionResizeMode(c, QHeaderView.ResizeToContents)
         self.tree.itemSelectionChanged.connect(self._tree_picked)
         sl.addWidget(self.tree, 1)
-        self.detail = QLabel(' ')
-        self.detail.setWordWrap(True)
-        self.detail.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.detail = QLabel(' ', wordWrap=True, textInteractionFlags=Qt.TextSelectableByMouse)
         sl.addWidget(self.detail)
         self.side = side
         self.split = QSplitter()
@@ -169,15 +152,12 @@ class Viewer(QWidget):
         self.section.show_section(None)
         has = {'3D': self.volume.gl is not None and bool(three or ran), 'Plan': plan,
                '2D': bool(self.cuts.srcs), 'Images': bool(imgs)}
-        self._has = has
-        for n, b in self.buttons.items():
-            b.setEnabled(has[n])
+        self._enable(has)
         cur = self.view()
         if not has.get(cur):
-            vol = bool(self.volume.srcs) if self.volume.gl is not None else False     # volume or plane dumps
+            vol = self.volume.gl is not None and bool(self.volume.srcs)            # volume or plane dumps
             order = ['3D', 'Plan', '2D', 'Images'] if (vol or not self.cuts.srcs) else ['2D', '3D', 'Plan', 'Images']
-            nxt = next((n for n in order if has[n]), cur)
-            self.set_view(nxt)
+            self.set_view(next((n for n in order if has[n]), cur))
         self._fit()
         self.sections.emit(self.has_sections())
         return any(has.values())
@@ -191,9 +171,7 @@ class Viewer(QWidget):
         self._picked = None
         self.section.show_section(None)
         plan = self.plan.set_board(self.drawn, None, {})
-        self._has = {'3D': False, 'Plan': plan, '2D': False, 'Images': False}
-        for n, b in self.buttons.items():
-            b.setEnabled(self._has[n])
+        self._enable({'3D': False, 'Plan': plan, '2D': False, 'Images': False})
         if plan:
             self.set_view('Plan')
         self.sections.emit(False)
@@ -210,12 +188,16 @@ class Viewer(QWidget):
         if shown and not shown.get('layout_of'):                    # a run's board is there: it stays
             return True
         plan = self.plan.set_board(layout, None, {})
-        self._has['Plan'] = plan
-        for n, b in self.buttons.items():
-            b.setEnabled(bool(self._has.get(n)))
+        self._enable(dict(self._has, Plan=plan))
         if plan and not self._has.get(self.view()):                 # the view shown has nothing: the plan has
             self.set_view('Plan')
         return plan
+
+    def _enable(self, has):
+        """What each view has to show ({view: bool}): the buttons of those that have nothing disabled."""
+        self._has = has
+        for n, b in self.buttons.items():
+            b.setEnabled(bool(has.get(n)))
 
     def show_dump(self, label):
         """The dump of that label as the one the 2D and 3D views show (a folder's default is its first)."""
@@ -229,11 +211,12 @@ class Viewer(QWidget):
         self.cuts.follow(out_dir)
 
     def _fill_tree(self):
-        self.tree.blockSignals(True)
-        self.tree.clear()
-        self._items = {}
-        d = self.lines
-        if d:
+        with QSignalBlocker(self.tree):
+            self.tree.clear()
+            self._items = {}
+            d = self.lines
+            if not d:
+                return
             ref, half = ov.reference(d), ov.span(d)
             self.legend.set_range(ref, half)
             els, used = d['elements'], set()
@@ -245,7 +228,9 @@ class Viewer(QWidget):
                                       f"{e['delay_ps']:.1f}" if e.get('delay_ps') else '',
                                       f"{e['eeff']:.2f}" if e.get('eeff') else '',
                                       {'formula': 'formula', 'cut': 'field', 'cpwg': 'field'}.get(e.get('source'), '')])
-                it.setIcon(0, _swatch(ov.z0_colour(z0, ref, half)))
+                swatch = QPixmap(12, 12)
+                swatch.fill(QColor.fromRgbF(*ov.z0_colour(z0, ref, half)))
+                it.setIcon(0, QIcon(swatch))
                 it.setData(0, Qt.UserRole, e['id'])
                 it.setToolTip(0, ov.describe(e))
                 parent.addChild(it)
@@ -264,7 +249,6 @@ class Viewer(QWidget):
                 self.tree.addTopLevelItem(top)
                 for e in rest:
                     row(top, e)
-        self.tree.blockSignals(False)
 
     # ---- views ----
     def set_view(self, name):
@@ -304,12 +288,11 @@ class Viewer(QWidget):
             self.plan.select(i)
         self.volume.select(i)
         if source != 'tree':
-            self.tree.blockSignals(True)
-            self.tree.clearSelection()
-            if i in self._items:
-                self._items[i].setSelected(True)
-                self.tree.scrollToItem(self._items[i])
-            self.tree.blockSignals(False)
+            with QSignalBlocker(self.tree):
+                self.tree.clearSelection()
+                if i in self._items:
+                    self._items[i].setSelected(True)
+                    self.tree.scrollToItem(self._items[i])
         self.detail.setText(ov.describe(self.lines['elements'][i]) if (i is not None and self.lines) else ' ')
         self._picked = i
         if self._section_on:

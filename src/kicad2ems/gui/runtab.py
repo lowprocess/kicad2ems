@@ -9,6 +9,7 @@ from .study import BY_KEY
 
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
 
+
 class RunTab(QWidget):
     def __init__(self, win):
         super().__init__()
@@ -16,19 +17,16 @@ class RunTab(QWidget):
         lay = QVBoxLayout(self)
         top = QHBoxLayout()
         self.stage = QLabel('idle')
+        self.stop_btn = QPushButton('Stop', enabled=False, clicked=win.stop)
         top.addWidget(self.stage, 1)
-        self.stop_btn = QPushButton('Stop')
-        self.stop_btn.setEnabled(False)
-        self.stop_btn.clicked.connect(win.stop)
         top.addWidget(self.stop_btn)
         lay.addLayout(top)
-        self.jobs = QTreeWidget()                                   # a study run's analyses: state and time
+        self.jobs = QTreeWidget(rootIsDecorated=False)              # a study run's analyses: state and time
         self.jobs.setHeaderLabels(['Analysis', 'State', 'Time'])
-        self.jobs.setRootIsDecorated(False)
-        self.jobs.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.jobs.header().setSectionResizeMode(1, QHeaderView.Stretch)
         self.jobs.header().setStretchLastSection(False)
-        self.jobs.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        fit, stretch = QHeaderView.ResizeToContents, QHeaderView.Stretch
+        for c, mode in enumerate((fit, stretch, fit)):
+            self.jobs.header().setSectionResizeMode(c, mode)
         self.jobs.hide()
         self.jobs.currentItemChanged.connect(lambda cur, _old: cur is not None and self.show_log(cur.data(0, Qt.UserRole)))
         self.job_rows = {}
@@ -38,22 +36,16 @@ class RunTab(QWidget):
         self.bars, self.curves, self.hist, self._tol = {}, {}, {}, None
         plots = QVBoxLayout()                                       # one plot per kind of run: their x differ
         self.plot = pg.PlotWidget(title='openEMS: field energy / port signal decay')
-        self.plot.setLabel('bottom', 'timestep')
-        self.plot.setLabel('left', 'dB')
-        self.plot.addLegend()
-        self.plot.showGrid(x=True, y=True, alpha=0.3)
         self.sweep = pg.PlotWidget(title="mom25d: the adaptive sweep's model change (max |dS|)")
-        self.sweep.setLabel('bottom', 'EM solve')
-        self.sweep.setLabel('left', 'dB')
-        self.sweep.addLegend()
-        self.sweep.showGrid(x=True, y=True, alpha=0.3)
+        for p, x in ((self.plot, 'timestep'), (self.sweep, 'EM solve')):
+            p.setLabel('bottom', x)
+            p.setLabel('left', 'dB')
+            p.addLegend()
+            p.showGrid(x=True, y=True, alpha=0.3)
+            plots.addWidget(p, 1)
         self.sweep.hide()
-        plots.addWidget(self.plot, 1)
-        plots.addWidget(self.sweep, 1)
         lay.addLayout(plots, 2)
-        self.log = QPlainTextEdit()
-        self.log.setReadOnly(True)
-        self.log.setMaximumBlockCount(5000)
+        self.log = QPlainTextEdit(readOnly=True, maximumBlockCount=5000)
         row = QHBoxLayout()                                         # whose log: the S-parameter run's, a page's
         self.log_label = QLabel('Log of')
         self.log_of = QComboBox()
@@ -71,8 +63,7 @@ class RunTab(QWidget):
 
     def add_log(self, key, title, log):
         """Another analysis's log beside the S-parameter run's: a view of its page's own (the same document)."""
-        view = QPlainTextEdit()
-        view.setReadOnly(True)
+        view = QPlainTextEdit(readOnly=True)
         view.setDocument(log.document())
         view.setFont(log.font())
         bar = view.verticalScrollBar()
@@ -98,8 +89,7 @@ class RunTab(QWidget):
             self.job_rows[key] = it
         self.jobs.setVisible(len(jobs) > 1)
         if jobs:
-            rows = len(jobs)
-            self.jobs.setFixedHeight(self.jobs.sizeHintForRow(0) * rows + self.jobs.header().sizeHint().height()
+            self.jobs.setFixedHeight(self.jobs.sizeHintForRow(0) * len(jobs) + self.jobs.header().sizeHint().height()
                                      + 2 * self.jobs.frameWidth() + 4)
 
     def job_state(self, key, text, seconds=None):
@@ -195,8 +185,6 @@ class RunTab(QWidget):
             xs.append(ev['step'])
             ys.append(db)
             self.curves[run].setData(xs, ys)
-
-
 
 
 def run_notes(sm):

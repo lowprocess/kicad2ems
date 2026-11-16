@@ -5,7 +5,7 @@ Reading and drawing for files live in ..fields (no Qt).
 """
 import os
 import numpy as np
-from PySide6.QtCore import Qt, QRectF, QTimer
+from PySide6.QtCore import Qt, QRectF, QSignalBlocker, QTimer
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QComboBox, QPushButton, QLabel, QCheckBox,
                                QSlider, QSpinBox, QFileDialog, QMessageBox, QProgressDialog, QApplication)
 import pyqtgraph as pg
@@ -16,13 +16,6 @@ from kicad2ems.core.api.frontend import frames as F
 COMPONENTS = [('|F|', 'mag'), ('x', 'x'), ('y', 'y'), ('z', 'z')]
 
 
-def _slider():
-    s = QSlider(Qt.Horizontal)
-    s.setMinimum(0)
-    s.setMaximum(0)
-    return s
-
-
 class FieldsTab(QWidget):
     def __init__(self, win):
         super().__init__()
@@ -31,66 +24,34 @@ class FieldsTab(QWidget):
         self.user_lim = False                                       # the colour bar was dragged: keep it
         lay = QVBoxLayout(self)
 
-        row = FlowLayout()
-        row.addWidget(QLabel('Dump'))
-        self.dump = QComboBox()
-        self.dump.setMinimumWidth(200)
-        self.dump.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-        self.dump.setMinimumContentsLength(28)
-        self.dump.currentIndexChanged.connect(self._pick)
-        row.addWidget(self.dump, 1)
-        b = QPushButton('Refresh')
-        b.clicked.connect(lambda: self.load(self.out))
-        row.addWidget(b)
-        b = QPushButton('Open results folder…')
-        b.clicked.connect(self._open)
-        row.addWidget(b)
-        self.live = QCheckBox('Live (follow the newest frame)')
-        self.live.setChecked(True)
-        self.live.setToolTip('While a run is going, show each time-domain frame as openEMS writes it')
-        row.addWidget(self.live)
-        lay.addLayout(row)
+        self.dump = QComboBox(minimumWidth=200, sizeAdjustPolicy=QComboBox.AdjustToMinimumContentsLengthWithIcon,
+                              minimumContentsLength=28, currentIndexChanged=self._pick)
+        self.live = QCheckBox('Live (follow the newest frame)', checked=True,
+                              toolTip='While a run is going, show each time-domain frame as openEMS writes it')
+        self._row(lay, QLabel('Dump'), self.dump, QPushButton('Refresh', clicked=lambda: self.load(self.out)),
+                  QPushButton('Open results folder…', clicked=self._open), self.live)
 
-        row = FlowLayout()
-        row.addWidget(QLabel('Component'))
         self.comp = QComboBox()
         self.comp.addItems([c for c, _ in COMPONENTS])
         self.comp.currentIndexChanged.connect(self._new_range)
-        row.addWidget(self.comp)
-        row.addWidget(QLabel('Cut normal to'))
-        self.axis = QComboBox()
+        self.axis = QComboBox(toolTip='Plane dumps have one choice; volume dumps can be cut at any x, y or z mesh line')
         self.axis.addItems(['x', 'y', 'z'])
-        self.axis.setToolTip('Plane dumps have one choice; volume dumps can be cut at any x, y or z mesh line')
         self.axis.currentIndexChanged.connect(self._axis_changed)
-        row.addWidget(self.axis)
-        self.slice = _slider()
-        self.slice.setMinimumWidth(160)
-        self.slice.valueChanged.connect(self._new_range)
-        row.addWidget(self.slice, 1)
-        self.slice_lab = QLabel('')
-        self.slice_lab.setMinimumWidth(110)
-        row.addWidget(self.slice_lab)
-        self.log = QCheckBox('log scale')
-        self.log.setChecked(True)
-        self.log.toggled.connect(self._new_range)
-        row.addWidget(self.log)
-        self.auto = QCheckBox('auto range per frame')
-        self.auto.setToolTip('Off: keep the colour range (drag the colour bar to set it)')
-        self.auto.toggled.connect(self._new_range)
-        row.addWidget(self.auto)
-        lay.addLayout(row)
-        row = FlowLayout()
-        self.layout_on=QCheckBox('Layout overlay');self.layout_on.setChecked(True)
-        self.layout_on.toggled.connect(self.draw);row.addWidget(self.layout_on)
-        row.addWidget(QLabel('Layer'))
-        self.layout_layer=QComboBox();self.layout_layer.setToolTip('Project this copper layer under horizontal field maps; the sampled field height is unchanged');self.layout_layer.currentIndexChanged.connect(self.draw);row.addWidget(self.layout_layer)
-        self.components_on=QCheckBox('Components');self.components_on.setChecked(True)
-        self.components_on.toggled.connect(self.draw);row.addWidget(self.components_on)
-        row.addWidget(QLabel('Field opacity'))
-        self.field_opacity=QSlider(Qt.Horizontal);self.field_opacity.setRange(10,100);self.field_opacity.setValue(65)
-        self.field_opacity.setMaximumWidth(140);self.field_opacity.valueChanged.connect(self.draw);row.addWidget(self.field_opacity)
-        row.addWidget(QLabel('Cyan: simulated copper · grey: context · gold: selected parts'))
-        lay.addLayout(row)
+        self.slice = QSlider(Qt.Horizontal, maximum=0, minimumWidth=160, valueChanged=self._new_range)
+        self.slice_lab = QLabel('', minimumWidth=110)
+        self.log = QCheckBox('log scale', checked=True, toggled=self._new_range)
+        self.auto = QCheckBox('auto range per frame', toolTip='Off: keep the colour range (drag the colour bar to set '
+                                                              'it)', toggled=self._new_range)
+        self._row(lay, QLabel('Component'), self.comp, QLabel('Cut normal to'), self.axis, self.slice, self.slice_lab,
+                  self.log, self.auto)
+        self.layout_on = QCheckBox('Layout overlay', checked=True, toggled=self.draw)
+        self.layout_layer = QComboBox(toolTip='Project this copper layer under horizontal field maps; the sampled '
+                                              'field height is unchanged', currentIndexChanged=self.draw)
+        self.components_on = QCheckBox('Components', checked=True, toggled=self.draw)
+        self.field_opacity = QSlider(Qt.Horizontal, minimum=10, maximum=100, value=65, maximumWidth=140,
+                                     valueChanged=self.draw)
+        self._row(lay, self.layout_on, QLabel('Layer'), self.layout_layer, self.components_on, QLabel('Field opacity'),
+                  self.field_opacity, QLabel('Cyan: simulated copper · grey: context · gold: selected parts'))
 
         self.view = pg.PlotWidget()
         self.view.setBackground(theme.colors()['bg'])
@@ -105,59 +66,36 @@ class FieldsTab(QWidget):
         self.view.scene().sigMouseMoved.connect(self._hover)
         lay.addWidget(self.view, 1)
 
-        row = FlowLayout()
-        self.play_btn = QPushButton('▶ Play')
-        self.play_btn.setCheckable(True)
-        self.play_btn.toggled.connect(self._play)
-        row.addWidget(self.play_btn)
-        row.addWidget(QLabel('frame'))
-        self.frame = _slider()
-        self.frame.setMinimumWidth(160)
-        self.frame.valueChanged.connect(self.draw)
-        row.addWidget(self.frame, 2)
-        self.phase_on = QCheckBox('instantaneous, phase')
-        self.phase_on.setToolTip('Frequency domain: Re(F·e^jφ) at the phase below; off: the peak |F|')
-        self.phase_on.toggled.connect(self._new_range)
-        row.addWidget(self.phase_on)
-        self.phase = _slider()
-        self.phase.setMaximum(359)
-        self.phase.setMinimumWidth(120)
-        self.phase.valueChanged.connect(self.draw)
-        row.addWidget(self.phase, 1)
-        self.frame_lab = QLabel('')
-        self.frame_lab.setMinimumWidth(240)
-        row.addWidget(self.frame_lab)
-        lay.addLayout(row)
+        self.play_btn = QPushButton('▶ Play', checkable=True, toggled=self._play)
+        self.frame = QSlider(Qt.Horizontal, maximum=0, minimumWidth=160, valueChanged=self.draw)
+        self.phase_on = QCheckBox('instantaneous, phase', toggled=self._new_range,
+                                  toolTip='Frequency domain: Re(F·e^jφ) at the phase below; off: the peak |F|')
+        self.phase = QSlider(Qt.Horizontal, maximum=359, minimumWidth=120, valueChanged=self.draw)
+        self.frame_lab = QLabel('', minimumWidth=240)
+        self._row(lay, self.play_btn, QLabel('frame'), self.frame, self.phase_on, self.phase, self.frame_lab)
 
-        row = FlowLayout()
-        self.readout = QLabel('')
-        self.readout.setMinimumWidth(220)
-        row.addWidget(self.readout, 1)
-        row.addWidget(QLabel('fps'))
-        self.fps = QSpinBox()
-        self.fps.setRange(1, 60)
-        self.fps.setValue(12)
-        row.addWidget(self.fps)
-        row.addWidget(QLabel('every n-th frame'))
-        self.every = QSpinBox()
-        self.every.setRange(1, 1000)
-        self.every.setToolTip('Time domain: frames used for Play and saved animations')
-        row.addWidget(self.every)
-        for text, ext in (('Save PNG…', 'png'), ('Save GIF…', 'gif'), ('Save MP4…', 'mp4')):
-            b = QPushButton(text)
-            b.clicked.connect(lambda _=False, e=ext: self.save(e))
-            row.addWidget(b)
-        lay.addLayout(row)
+        self.readout = QLabel('', minimumWidth=220)
+        self.fps = QSpinBox(minimum=1, maximum=60, value=12)
+        self.every = QSpinBox(minimum=1, maximum=1000, toolTip='Time domain: frames used for Play and saved animations')
+        self._row(lay, self.readout, QLabel('fps'), self.fps, QLabel('every n-th frame'), self.every,
+                  *(QPushButton(text, clicked=lambda _=False, e=ext: self.save(e))
+                    for text, ext in (('Save PNG…', 'png'), ('Save GIF…', 'gif'), ('Save MP4…', 'mp4'))))
 
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self._tick)
+        self.timer = QTimer(self, timeout=self._tick)
         self._set_controls()
+
+    @staticmethod
+    def _row(lay, *widgets):
+        """A row of controls that wraps when narrow, added to lay."""
+        row = FlowLayout()
+        for w in widgets:
+            row.addWidget(w)
+        lay.addLayout(row)
 
     # ---- sources ----
     def _open(self):
-        d = QFileDialog.getExistingDirectory(self, 'A results folder (the run\'s output folder)', self.out or os.getcwd())
-        if d:
-            self.load(d)
+        self.load(QFileDialog.getExistingDirectory(self, "A results folder (the run's output folder)",
+                                                   self.out or os.getcwd()))
 
     def load(self, out_dir):
         """List the dumps of a results folder (keeps the selection when it is still there)."""
@@ -166,12 +104,11 @@ class FieldsTab(QWidget):
         self.out = out_dir
         keep = self.src.label if self.src else None
         self.srcs = F.find_dumps(out_dir)
-        self.dump.blockSignals(True)
-        self.dump.clear()
-        self.dump.addItems([s.label for s in self.srcs] or ['(no field dumps in this folder: add some in Setup)'])
         labels = [s.label for s in self.srcs]
-        self.dump.setCurrentIndex(labels.index(keep) if keep in labels else 0)
-        self.dump.blockSignals(False)
+        with QSignalBlocker(self.dump):
+            self.dump.clear()
+            self.dump.addItems(labels or ['(no field dumps in this folder: add some in Setup)'])
+            self.dump.setCurrentIndex(labels.index(keep) if keep in labels else 0)
         self._pick()
 
     def _pick(self, *_):
@@ -180,20 +117,19 @@ class FieldsTab(QWidget):
         self.lim = None
         if self.src is not None and (self.src.field == 'V' or self._spans()):   # a drop, a rise or a temperature:
             self.log.setChecked(False)                              # linear, as volts and degrees are
-        keep=self.layout_layer.currentText()
-        self.layout_layer.blockSignals(True);self.layout_layer.clear()
-        cu=(self.src.geometry if self.src else {}).get('cu_z',{})
-        self.layout_layer.addItems(sorted(cu,key=lambda l:-cu[l]))
-        self.layout_layer.setCurrentIndex(max(0,self.layout_layer.findText(keep)))
-        self.layout_layer.blockSignals(False)
-        self._layout_key=None
-        if self.src is None:self._draw_layout(None)
+        keep = self.layout_layer.currentText()
+        cu = (self.src.geometry if self.src else {}).get('cu_z', {})
+        with QSignalBlocker(self.layout_layer):
+            self.layout_layer.clear()
+            self.layout_layer.addItems(sorted(cu, key=lambda l: -cu[l]))
+            self.layout_layer.setCurrentIndex(max(0, self.layout_layer.findText(keep)))
+        self._layout_key = None
+        if self.src is None:
+            self._draw_layout(None)
         self._set_controls()
         if self.src and len(self.src):
-            shape = self.src.shape()
-            self.axis.blockSignals(True)
-            self.axis.setCurrentIndex(F.default_axis(shape))
-            self.axis.blockSignals(False)
+            with QSignalBlocker(self.axis):
+                self.axis.setCurrentIndex(F.default_axis(self.src.shape()))
             self._axis_changed()
         else:
             self.img.clear()
@@ -203,9 +139,8 @@ class FieldsTab(QWidget):
     def _set_controls(self):
         src = self.src
         n = len(src) if src else 0
-        self.frame.blockSignals(True)
-        self.frame.setMaximum(max(0, n - 1))
-        self.frame.blockSignals(False)
+        with QSignalBlocker(self.frame):
+            self.frame.setMaximum(max(0, n - 1))
         fd = bool(src) and src.domain == 'FD'
         self.phase_on.setEnabled(fd)
         self.phase.setEnabled(fd)
@@ -218,13 +153,11 @@ class FieldsTab(QWidget):
     def _axis_changed(self, *_):
         if not (self.src and len(self.src)):
             return
-        shape = self.src.shape()
-        ax = self.axis.currentIndex()
-        self.slice.blockSignals(True)
-        self.slice.setMaximum(max(0, shape[ax] - 1))
-        self.slice.setValue(shape[ax] // 2 if shape[ax] > 1 else 0)
-        self.slice.setEnabled(shape[ax] > 1)
-        self.slice.blockSignals(False)
+        n = self.src.shape()[self.axis.currentIndex()]
+        with QSignalBlocker(self.slice):
+            self.slice.setMaximum(max(0, n - 1))
+            self.slice.setValue(n // 2 if n > 1 else 0)
+            self.slice.setEnabled(n > 1)
         self._new_range()
 
     # ---- drawing ----
@@ -242,9 +175,8 @@ class FieldsTab(QWidget):
         if self.pl is None:
             return
         lo, hi = self.cbar.levels()
-        self.auto.blockSignals(True)
-        self.auto.setChecked(False)
-        self.auto.blockSignals(False)
+        with QSignalBlocker(self.auto):
+            self.auto.setChecked(False)
         self.lim, self.user_lim = ((10 ** lo, 10 ** hi) if self._use_log() else (lo, hi)), True
 
     def _use_log(self):
@@ -274,25 +206,22 @@ class FieldsTab(QWidget):
         if use_log:
             lo = max(lo, hi * 1e-12) if hi > 0 else 1e-30
             img, lo, hi = np.log10(np.maximum(img, lo)), np.log10(lo), np.log10(max(hi, lo * 10))
-        cmap = pg.colormap.getFromMatplotlib('RdBu_r' if pl.signed else 'inferno')
-        self.cbar.setColorMap(cmap)
+        self.cbar.setColorMap(pg.colormap.getFromMatplotlib('RdBu_r' if pl.signed else 'inferno'))
         self.img.setImage(img, autoLevels=False)
         self.img.setRect(QRectF(u0 - du / 2, v0 - dv / 2, du * img.shape[0], dv * img.shape[1]))
-        self.cbar.blockSignals(True)
-        self.cbar.setLevels((lo, hi))
-        self.cbar.blockSignals(False)
+        with QSignalBlocker(self.cbar):
+            self.cbar.setLevels((lo, hi))
         what = (src.field if self._spans() else f"|{src.field}|") if self._component() == 'mag' else \
             f"{src.field}_{self._component()}"
         scaled = src.domain == 'FD' and src.scale(i)
         self.cbar.axis.setLabel(('log10 ' if use_log else '') + f"{what} ({src.unit}" +
                                 (', 1 V incident' if scaled else '') + ')')
         self._draw_layout(ax)
-        self.img.setOpacity(self.field_opacity.value()/100 if ax==2 and self.layout_on.isChecked() and self.layout_layer.count() else 1.)
+        self.img.setOpacity(self.field_opacity.value() / 100 if self._overlay(ax) else 1.)
         segs = F.outlines(src.geometry, ax, pl.pos)
         if segs:
-            xs = np.concatenate([np.append(u, np.nan) for u, _ in segs])
-            ys = np.concatenate([np.append(v, np.nan) for _, v in segs])
-            self.lines.setData(xs, ys)
+            self.lines.setData(np.concatenate([np.append(u, np.nan) for u, _ in segs]),
+                               np.concatenate([np.append(v, np.nan) for _, v in segs]))
             self.lines.setPen(pg.mkPen('#7fd1ff' if not pl.signed else '#222222', width=1 if ax == 2 else 3))
         else:
             self.lines.setData([], [])
@@ -303,18 +232,26 @@ class FieldsTab(QWidget):
         p.setLabel('left', f"{pl.names[1]} (mm)")
         self.frame_lab.setText(f"{i + 1}/{len(src)}: {src.frame_label(i, self._phase())}")
 
+    def _overlay(self, axis):
+        """Whether the layout is drawn under the field: a horizontal cut, with the overlay on and a layer."""
+        return axis == 2 and self.layout_on.isChecked() and self.layout_layer.count() > 0
+
     def _draw_layout(self, axis):
-        key=(id(self.src),axis,self.layout_layer.currentText(),self.layout_on.isChecked(),self.components_on.isChecked())
-        if key==self._layout_key:return
-        for it in self._layout_items:self.view.removeItem(it)
-        self._layout_items=[];self._layout_key=key
-        if self.src and axis==2 and self.layout_on.isChecked():
+        key = (id(self.src), axis, self.layout_layer.currentText(), self.layout_on.isChecked(),
+               self.components_on.isChecked())
+        if key == self._layout_key:
+            return
+        for it in self._layout_items:
+            self.view.removeItem(it)
+        self._layout_items, self._layout_key = [], key
+        if self.src and axis == 2 and self.layout_on.isChecked():
             from .layoutscene import layout_items
-            self._layout_items=layout_items(self.src.geometry,self.layout_layer.currentText(),kicad=True,
-                                           components=self.components_on.isChecked())
-            for it in self._layout_items:self.view.addItem(it)
-        self.layout_layer.setEnabled(axis==2)
-        self.components_on.setEnabled(axis==2)
+            self._layout_items = layout_items(self.src.geometry, self.layout_layer.currentText(), kicad=True,
+                                              components=self.components_on.isChecked())
+            for it in self._layout_items:
+                self.view.addItem(it)
+        self.layout_layer.setEnabled(axis == 2)
+        self.components_on.setEnabled(axis == 2)
 
     def _spans(self):
         """The dump's colours span its own values (a temperature: from the board's coolest point, not from zero)."""
@@ -385,10 +322,6 @@ class FieldsTab(QWidget):
                 self.frame.setValue(k)
 
     # ---- saving ----
-    def _frames(self):
-        n = len(self.src)
-        return list(range(0, n, self.every.value())) if self.src.domain == 'TD' else [self.frame.value()]
-
     def save(self, ext):
         src = self.src
         if not (src and len(src) and self.pl is not None):
@@ -402,21 +335,19 @@ class FieldsTab(QWidget):
             path += '.' + ext
         ax, comp, use_log = self.axis.currentIndex(), self._component(), self._use_log()
         lim = None if self.auto.isChecked() else self.lim
-        style=dict(enabled=self.layout_on.isChecked() and ax==2 and self.layout_layer.count()>0,layer=self.layout_layer.currentText(),
-                   components=self.components_on.isChecked(),opacity=self.field_opacity.value()/100)
+        style = dict(enabled=self._overlay(ax), layer=self.layout_layer.currentText(),
+                     components=self.components_on.isChecked(), opacity=self.field_opacity.value() / 100)
         try:
             if ext == 'png':
                 from PIL import Image
-                lo, hi = self.lim
-                i = self.frame.value()
                 what = f"|{src.field}|" if comp == 'mag' else f"{src.field}_{comp}"
-                Image.fromarray(F.render(self.pl, lo, hi, use_log,
-                                         f"{what}, {self.slice_lab.text()}, {src.frame_label(i, self._phase())} "
-                                         f"({src.run} driven)", src.geometry, f"{what} ({src.unit})",layout=style)).save(path)
+                Image.fromarray(F.render(self.pl, *self.lim, use_log, f"{what}, {self.slice_lab.text()}, "
+                                         f"{src.frame_label(self.frame.value(), self._phase())} ({src.run} driven)",
+                                         src.geometry, f"{what} ({src.unit})", layout=style)).save(path)
             else:
-                frames = self._frames()
-                n = len(frames) if src.domain == 'TD' else 24
-                dlg = QProgressDialog(f"Writing {os.path.basename(path)}…", None, 0, n, self)
+                td = src.domain == 'TD'
+                frames = list(range(0, len(src), self.every.value())) if td else [self.frame.value()]
+                dlg = QProgressDialog(f"Writing {os.path.basename(path)}…", None, 0, len(frames) if td else 24, self)
                 dlg.setWindowModality(Qt.WindowModal)
                 dlg.show()
 

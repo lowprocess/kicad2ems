@@ -74,31 +74,23 @@ def scalar_of(d, complex_, component='mag', phase=None):
 
 
 # ---- colour ---------------------------------------------------------------------------------------
-def _cmap(name):
-    import matplotlib
-    return matplotlib.colormaps[name]
-
-
 def colour(v, lo, hi, log=True, signed=False, opacity=0.6, gamma=1.5, cmap=None, floor=0.0):
     """RGBA voxels (uint8): the colour map of v between lo and hi (log: magnitudes, decades below hi), alpha
     rising with the value (gamma > 1: the weak field fades out, the strong field stays visible through it).
     floor: the least of that rise (a map whose low end is not nothing: a temperature's coolest point is still
     the board). NaN (off the board) is clear."""
+    import matplotlib
     nan = np.isnan(v)
     if nan.any():
         v = np.where(nan, lo, v)
     if signed:
         t = np.clip(0.5 + 0.5 * v / (hi or 1.0), 0, 1)
-        a = np.abs(2 * t - 1)
-        cm = _cmap(cmap or 'RdBu_r')
+    elif log:
+        t = np.clip((np.log10(np.maximum(v, lo)) - np.log10(lo)) / max(np.log10(hi) - np.log10(lo), 1e-9), 0, 1)
     else:
-        if log:
-            lv = np.log10(np.maximum(v, lo))
-            t = np.clip((lv - np.log10(lo)) / max(np.log10(hi) - np.log10(lo), 1e-9), 0, 1)
-        else:
-            t = np.clip((v - lo) / max(hi - lo, 1e-30), 0, 1)
-        a = t
-        cm = _cmap(cmap or 'inferno')
+        t = np.clip((v - lo) / max(hi - lo, 1e-30), 0, 1)
+    a = np.abs(2 * t - 1) if signed else t
+    cm = matplotlib.colormaps[cmap or ('RdBu_r' if signed else 'inferno')]
     lut = (cm(np.arange(cm.N))[:, :4] * 255).astype(np.uint8)       # (the map's own entries: it takes floor(t N))
     rgba = lut[np.minimum((t * cm.N).astype(np.intp), cm.N - 1)]
     rgba[..., 3] = (255 * opacity * (floor + (1 - floor) * a ** gamma)).astype(np.uint8)
@@ -142,7 +134,8 @@ def _caps(parts, ccw=True):
     c = shapely.get_coordinates(shapely.get_exterior_ring(t)).reshape(-1, 4, 2)[:, :3]
     if not ccw:
         return c
-    cw = ((c[:, 1, 0] - c[:, 0, 0]) * (c[:, 2, 1] - c[:, 0, 1]) - (c[:, 1, 1] - c[:, 0, 1]) * (c[:, 2, 0] - c[:, 0, 0])) < 0
+    cw = ((c[:, 1, 0] - c[:, 0, 0]) * (c[:, 2, 1] - c[:, 0, 1])
+          - (c[:, 1, 1] - c[:, 0, 1]) * (c[:, 2, 0] - c[:, 0, 0])) < 0
     c[cw] = c[cw, ::-1]
     return c
 
@@ -190,8 +183,7 @@ def copper_solids(geometry, thickness):
         same = ring[:-1] == ring[1:]                                # each ring's edges, not across rings
         a, b = xy[:-1][same], xy[1:][same]
         if len(a):                                                  # a wall quad as two triangles: normal (dy, -dx)
-            lo_a, lo_b, hi_a, hi_b = _at(a[:, None], z - h)[:, 0], _at(b[:, None], z - h)[:, 0], \
-                _at(a[:, None], z + h)[:, 0], _at(b[:, None], z + h)[:, 0]
+            lo_a, lo_b, hi_a, hi_b = (_at(e[:, None], ze)[:, 0] for ze in (z - h, z + h) for e in (a, b))
             tri += [np.stack([lo_a, lo_b, hi_b], 1), np.stack([lo_a, hi_b, hi_a], 1)]
         v = np.concatenate(tri).reshape(-1, 3)
         out.append((lay, float(z), v, np.arange(len(v)).reshape(-1, 3)))
@@ -220,9 +212,7 @@ def via_lines(geometry):
     v = np.asarray(geometry.get('vias') or [], float).reshape(-1, 5)
     if not len(v):
         return np.zeros((0, 3))
-    a = np.column_stack([v[:, 0], v[:, 1], v[:, 3]])
-    b = np.column_stack([v[:, 0], v[:, 1], v[:, 4]])
-    return np.stack([a, b], 1).reshape(-1, 3)
+    return np.stack([v[:, [0, 1, 3]], v[:, [0, 1, 4]]], 1).reshape(-1, 3)        # (x, y, z0) to (x, y, z1)
 
 
 def board_box(geometry):
@@ -234,19 +224,22 @@ def board_box(geometry):
     return (*ol.min(0), *ol.max(0), min(zs, default=0.0), max(zs, default=geometry.get('thickness', 1.6)))
 
 
+def rings(geom):
+    """GeoJSON-like polygon / multipolygon -> [[outer, hole, ...], ...]."""
+    return [geom['coordinates']] if geom['type'] == 'Polygon' else list(geom['coordinates'])
+
+
 def geometry_from_board(path):
     """A <name>_board.json (or its content, Board.to_dict()) as the geometry the dumps carry (copper rings per
     layer, cu_z, vias, outline, thickness, model mm): the 3D view's board without a dump."""
     import json
     b = path if isinstance(path, dict) else json.load(open(path, encoding='utf-8'))
-    rings = lambda g: [g['coordinates']] if g['type'] == 'Polygon' else g['coordinates']
     copper = {lay: [poly for it in items for poly in rings(it['polygon'])] for lay, items in b['copper'].items()}
-    ol = b['outline']
-    outline = (rings(ol)[0][0] if ol else [])
     return dict(copper=copper, cu_z={c['name']: c['z'] for c in b['stack']['copper']},
-                vias=[[v['x'], v['y'], v['r'], v['z0'], v['z1']] for v in b['vias']], outline=outline,
-                thickness=b['stack'].get('thickness', max(c['z'] for c in b['stack']['copper'])), parts=b.get('parts') or [],
-                components=b.get('components', []), active_nets=b.get('active_nets', []),
+                vias=[[v['x'], v['y'], v['r'], v['z0'], v['z1']] for v in b['vias']],
+                outline=rings(b['outline'])[0][0] if b['outline'] else [],
+                thickness=b['stack'].get('thickness', max(c['z'] for c in b['stack']['copper'])),
+                parts=b.get('parts') or [], components=b.get('components', []), active_nets=b.get('active_nets', []),
                 **({key: {lay: [poly for it in items if bool(it.get('active')) == flag for poly in rings(it['polygon'])]
                           for lay, items in b['copper'].items()}
                     for key, flag in [('active_copper', True), ('inactive_copper', False)]}
@@ -260,15 +253,11 @@ CAP_COLOUR = (0.86, 0.86, 0.88)                                     # the end te
 
 def component_solids(component, cu_z, zs=1., lift=0.):
     """Display-only package silhouette extruded by an approximate height; never a solver solid."""
-    poly=component['polygon']
-    polys=[poly['coordinates']] if poly['type']=='Polygon' else poly['coordinates']
-    h=component['height'];z=component['z']*zs
-    below=component.get('side')=='B'
-    centre=z-lift-h/2 if below else z+lift+h/2
-    g=dict(copper={'body':polys},cu_z={'body':centre})
-    parts=copper_solids(g,h)
-    colour=(1.,.72,.20,1.) if component.get('active') else (.35,.39,.44,.9)
-    return [(colour,verts,faces) for _,_,verts,faces in parts]
+    h, z = component['height'], component['z'] * zs
+    centre = z - lift - h / 2 if component.get('side') == 'B' else z + lift + h / 2
+    colour = (1., .72, .20, 1.) if component.get('active') else (.35, .39, .44, .9)
+    return [(colour, verts, faces) for _, _, verts, faces in
+            copper_solids(dict(copper={'body': rings(component['polygon'])}, cu_z={'body': centre}), h)]
 
 
 def part_kind(p):
@@ -283,16 +272,17 @@ def part_kind(p):
 
 def part_solids(p, cu_z, zs=1.0, lift=0.0):
     """A board.json part as its chip at true size (body L x W x H, along its pads' axis; the height scale zs
-    places it on its layer but does not stretch it), standing on its copper (`lift` mm on screen above it: the copper's shown
-    half thickness), below the board on the bottom layer: [(role 'body' | 'cap', rgb, vertices, faces)] for a
-    shaded mesh, and the point above it for its label. None for a part without a body (older board.json)."""
+    places it on its layer but does not stretch it), standing on its copper (`lift` mm on screen above it: the
+    copper's shown half thickness), below the board on the bottom layer: [(role 'body' | 'cap', rgb, vertices,
+    faces)] for a shaded mesh, and the point above it for its label. None for a part without a body (older
+    board.json)."""
     if not p.get('body') or not p.get('centre'):
         return None
     L, W, H = (float(v) for v in p['body'])
     cx, cy = (float(v) for v in p['centre'])
-    axis, z, hh = int(p.get('axis', 0)), float(p['z']) * zs, H
+    axis, z = int(p.get('axis', 0)), float(p['z']) * zs
     below = len(cu_z) > 1 and float(p['z']) <= min(cu_z.values()) + 1e-9
-    z0 = z - lift - hh if below else z + lift                       # the body's bottom
+    z0 = z - lift - H if below else z + lift                        # the body's bottom
 
     def box(length, width, height, at, bottom):
         hx, hy = (0.5 * length, 0.5 * width) if axis == 0 else (0.5 * width, 0.5 * length)
@@ -302,11 +292,11 @@ def part_solids(p, cu_z, zs=1.0, lift=0.0):
         return out[0][2], out[0][3]
     cap, grow = 0.22 * L, 0.03 * W                                  # end caps: a little proud of the body
     # the body ends inside the caps: no face of it shares a plane with theirs (that flickered)
-    solids = [('body', PART_COLOURS[part_kind(p)], *box(L - 1.6 * cap, W, hh, (cx, cy), z0))]
+    solids = [('body', PART_COLOURS[part_kind(p)], *box(L - 1.6 * cap, W, H, (cx, cy), z0))]
     for sgn in (-1, 1):
         at = (cx + sgn * 0.5 * (L - cap), cy) if axis == 0 else (cx, cy + sgn * 0.5 * (L - cap))
-        solids.append(('cap', CAP_COLOUR, *box(cap, W + 2 * grow, hh + 2 * grow, at, z0 - grow)))
-    top = z0 - 0.15 * max(L, 1.0) if below else z0 + hh + 0.15 * max(L, 1.0)
+        solids.append(('cap', CAP_COLOUR, *box(cap, W + 2 * grow, H + 2 * grow, at, z0 - grow)))
+    top = z0 - 0.15 * max(L, 1.0) if below else z0 + H + 0.15 * max(L, 1.0)
     return solids, (cx, cy, top)
 
 

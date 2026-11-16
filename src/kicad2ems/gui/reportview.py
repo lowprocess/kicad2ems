@@ -54,16 +54,13 @@ def to_csv(table):
 
 
 def _table_html(table):
-    e, f = html.escape, _formats(table)
-    num = [all(isinstance(r[k], (int, float)) or r[k] in ('', None) for r in table['rows']) and
-           any(isinstance(r[k], (int, float)) for r in table['rows']) for k in range(len(table['columns']))]
-    h = ["<table border=0 cellspacing=6><tr>" + ''.join(
-        f"<th align={'right' if num[k] else 'left'}>{e(str(c))}</th>" for k, c in enumerate(table['columns'])) + "</tr>"]
-    for r in table['rows']:
-        h.append("<tr>" + ''.join(f"<td align={'right' if num[k] else 'left'}>{e(cell(v, f[k]))}</td>"
-                                  for k, v in enumerate(r)) + "</tr>")
-    h.append("</table>")
-    return ''.join(h)
+    e, f, rows = html.escape, _formats(table), table['rows']
+    align = ['right' if all(isinstance(r[k], (int, float)) or r[k] in ('', None) for r in rows)
+             and any(isinstance(r[k], (int, float)) for r in rows) else 'left' for k in range(len(table['columns']))]
+    head = ''.join(f"<th align={align[k]}>{e(str(c))}</th>" for k, c in enumerate(table['columns']))
+    body = ''.join("<tr>" + ''.join(f"<td align={align[k]}>{e(cell(v, f[k]))}</td>" for k, v in enumerate(r))
+                   + "</tr>" for r in rows)
+    return f"<table border=0 cellspacing=6><tr>{head}</tr>{body}</table>"
 
 
 def to_html(report, width=820):
@@ -113,7 +110,7 @@ def standalone(report):
 
 
 try:                                                    # the view itself (Qt); the helpers above need none
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import Qt, QSignalBlocker
     from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget, QTextBrowser, QTableWidget,
                                    QTableWidgetItem, QComboBox, QPushButton, QLabel, QFileDialog, QApplication,
                                    QAbstractItemView, QHeaderView)
@@ -148,74 +145,57 @@ class ReportView(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         self.stack = QStackedWidget()
-        pw = QWidget()                                              # the page, with Save and Print over it
-        pl = QVBoxLayout(pw)
-        pl.setContentsMargins(0, 0, 0, 0)
-        prow = QHBoxLayout()
-        self.page_buttons = []
-        for text, tip, slot in (('Save…', 'the report as a file: HTML (its pictures inside it) or PDF', self.save),
-                                ('Print…', 'the report on a printer (or to a PDF through the print dialog)',
-                                 self.print_)):
-            b = QPushButton(text)
-            b.setToolTip(tip)
-            b.clicked.connect(lambda _=False, f=slot: f())
-            b.setEnabled(False)
-            prow.addWidget(b)
-            self.page_buttons.append(b)
-        prow.addStretch(1)
-        pl.addLayout(prow)
-        self.page = QTextBrowser()
-        self.page.setOpenExternalLinks(True)
-        pl.addWidget(self.page, 1)
-        self.stack.addWidget(pw)
-        tw = QWidget()
-        tl = QVBoxLayout(tw)
-        tl.setContentsMargins(0, 0, 0, 0)
-        row = QHBoxLayout()
-        row.addWidget(QLabel('Table'))
-        self.which = QComboBox()
-        self.which.setMinimumWidth(260)
-        self.which.currentIndexChanged.connect(self._show_table)
-        row.addWidget(self.which)
-        for text, tip, slot in (('Copy', 'the selected cells, or the whole table: tab-separated, with its header',
-                                 self.copy), ('Export CSV…', 'this table as a CSV file', self.export_csv)):
-            b = QPushButton(text)
-            b.setToolTip(tip)
-            b.clicked.connect(lambda _=False, f=slot: f())
-            row.addWidget(b)
-        self.hint = QLabel('click a column to sort by it')
-        self.hint.setStyleSheet('color: gray')
-        row.addWidget(self.hint)
-        row.addStretch(1)
-        tl.addLayout(row)
-        self.grid = QTableWidget(0, 0)
-        self.grid.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.grid.setAlternatingRowColors(True)
+        self.page_buttons = self._buttons(
+            (('Save…', 'the report as a file: HTML (its pictures inside it) or PDF', self.save),
+             ('Print…', 'the report on a printer (or to a PDF through the print dialog)', self.print_)), enabled=False)
+        self.page = QTextBrowser(openExternalLinks=True)
+        self._page(self.page_buttons, self.page)                    # the page, with Save and Print over it
+        self.which = QComboBox(minimumWidth=260, currentIndexChanged=self._show_table)
+        buttons = self._buttons((('Copy', 'the selected cells, or the whole table: tab-separated, with its header',
+                                  self.copy), ('Export CSV…', 'this table as a CSV file', self.export_csv)))
+        self.hint = QLabel('click a column to sort by it', styleSheet='color: gray')
+        self.grid = QTableWidget(0, 0, editTriggers=QAbstractItemView.NoEditTriggers, alternatingRowColors=True)
         self.grid.verticalHeader().hide()
         self.grid.setSortingEnabled(True)
-        tl.addWidget(self.grid, 1)
-        self.stack.addWidget(tw)
+        self._page([QLabel('Table'), self.which, *buttons, self.hint], self.grid)
         lay.addWidget(self.stack)
+
+    @staticmethod
+    def _buttons(table, **props):
+        """[(text, tooltip, slot)] as buttons (the slot called without the click's argument)."""
+        return [QPushButton(text, toolTip=tip, clicked=lambda _=False, f=slot: f(), **props)
+                for text, tip, slot in table]
+
+    def _page(self, tools, main):
+        """A page of the stack: a row of tools over its main widget."""
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(0, 0, 0, 0)
+        row = QHBoxLayout()
+        for w in tools:
+            row.addWidget(w)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addWidget(main, 1)
+        self.stack.addWidget(page)
 
     def set_report(self, report):
         """The report shown (None: none); the table chosen stays when the new report has one of its title."""
         self.report = report
         self._tables = tables(report)
         if report is None:                                          # nothing to read yet: say where it comes from
-            self.page.setHtml("<p style='color:gray'>No report yet. An analysis's result (a rail's drop, a circuit, the "
-                              "temperature, crosstalk) is written up here when it has run; the S-parameter run's "
+            self.page.setHtml("<p style='color:gray'>No report yet. An analysis's result (a rail's drop, a circuit, "
+                              "the temperature, crosstalk) is written up here when it has run; the S-parameter run's "
                               "report opens from the toolbar (Report).</p>")
         else:
             self.page.setHtml(to_html(report, width=max(400, self.page.viewport().width() - 40)))
         for b in self.page_buttons:
             b.setEnabled(report is not None)
         keep = self.which.currentText()
-        self.which.blockSignals(True)
-        self.which.clear()
-        self.which.addItems([t for t, _ in self._tables])
-        i = self.which.findText(keep)
-        self.which.setCurrentIndex(max(i, 0) if self._tables else -1)
-        self.which.blockSignals(False)
+        with QSignalBlocker(self.which):
+            self.which.clear()
+            self.which.addItems([t for t, _ in self._tables])
+            self.which.setCurrentIndex(max(self.which.findText(keep), 0) if self._tables else -1)
         self._show_table()
 
     def save(self, path=None):

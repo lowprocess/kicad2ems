@@ -5,10 +5,11 @@ table, CSV and image export. The S-parameter plots are splot.SPlot; this is the 
 
     plot.set_sets(run, [other runs])        # CurveSets: the run solid, the others dashed in the same colours
 """
+from dataclasses import replace
 import numpy as np
 import pyqtgraph as pg
 from . import theme
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSignalBlocker
 from PySide6.QtGui import QColor, QBrush
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSplitter, QTreeWidget,
                                QTreeWidgetItem, QTableWidget, QTableWidgetItem, QFileDialog, QHeaderView,
@@ -29,23 +30,18 @@ class CurvePlot(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
         for text, tip, slot in (('Fit', 'the whole of the curves shown', self.fit),
-                                ('Clear markers', 'remove every marker (Delete removes the selected row\'s)', self.clear_markers),
+                                ('Clear markers', "remove every marker (Delete removes the selected row's)",
+                                 self.clear_markers),
                                 ('Export CSV…', 'the curves shown, each run with its own frequencies', self.export_csv),
                                 ('Save image…', 'the plot as a PNG', self.save_image)):
-            b = QPushButton(text)
-            b.setToolTip(tip)
-            b.clicked.connect(lambda _=False, f=slot: f())
-            row.addWidget(b)
-        self.hint = QLabel('click: marker · drag a marker to move it · wheel / drag: zoom, pan')
-        self.hint.setStyleSheet('color: gray')
+            row.addWidget(QPushButton(text, toolTip=tip, clicked=lambda _=False, f=slot: f()))
+        self.hint = QLabel('click: marker · drag a marker to move it · wheel / drag: zoom, pan',
+                           styleSheet='color: gray')
         row.addWidget(self.hint)
         row.addStretch(1)
         lay.addLayout(row)
-        self.split = QSplitter(Qt.Horizontal)
-        self.split.setObjectName('curves')
-        self.tree = QTreeWidget()
-        self.tree.setHeaderHidden(True)
-        self.tree.itemChanged.connect(self._ticked)
+        self.split = QSplitter(Qt.Horizontal, objectName='curves')
+        self.tree = QTreeWidget(headerHidden=True, itemChanged=self._ticked)
         self.split.addWidget(self.tree)
         right = QSplitter(Qt.Vertical)
         self.plot = pg.PlotWidget()
@@ -55,10 +51,9 @@ class CurvePlot(QWidget):
         self.legend = self.plot.addLegend(offset=(-10, 10))
         self.plot.scene().sigMouseClicked.connect(self._clicked)
         right.addWidget(self.plot)
-        self.table = QTableWidget(0, 1)
+        self.table = QTableWidget(0, 1, editTriggers=QAbstractItemView.NoEditTriggers,
+                                  selectionBehavior=QAbstractItemView.SelectRows)
         self.table.verticalHeader().hide()
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.hide()
         right.addWidget(self.table)
         right.setSizes([600, 140])
@@ -89,34 +84,31 @@ class CurvePlot(QWidget):
         return self._colors[base]
 
     def _fill_tree(self):
-        self.tree.blockSignals(True)
-        self.tree.clear()
-        for k, cs in enumerate(self.sets):
-            top = QTreeWidgetItem([cs.label if k else f"{cs.label}  (this run)"])
-            f = top.font(0)
-            f.setBold(True)
-            top.setFont(0, f)
-            top.setToolTip(0, cs.folder)
-            self.tree.addTopLevelItem(top)
-            for c in cs.curves:
-                if c.role == 'limit' and k:                         # the run's own targets: once
-                    continue
-                it = QTreeWidgetItem([c.name])
-                it.setData(0, Qt.UserRole, (cs.label, c.name))
-                it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
-                it.setCheckState(0, Qt.Unchecked if (cs.label, c.name) in self.hidden else Qt.Checked)
-                it.setForeground(0, QBrush(QColor(LIMIT if c.role == 'limit' else self._color(c.name))))
-                top.addChild(it)
-        self.tree.expandAll()
-        self.tree.blockSignals(False)
+        with QSignalBlocker(self.tree):
+            self.tree.clear()
+            for k, cs in enumerate(self.sets):
+                top = QTreeWidgetItem([cs.label if k else f"{cs.label}  (this run)"])
+                f = top.font(0)
+                f.setBold(True)
+                top.setFont(0, f)
+                top.setToolTip(0, cs.folder)
+                self.tree.addTopLevelItem(top)
+                for c in cs.curves:
+                    if c.role == 'limit' and k:                     # the run's own targets: once
+                        continue
+                    it = QTreeWidgetItem([c.name])
+                    it.setData(0, Qt.UserRole, (cs.label, c.name))
+                    it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+                    it.setCheckState(0, Qt.Unchecked if (cs.label, c.name) in self.hidden else Qt.Checked)
+                    it.setForeground(0, QBrush(QColor(LIMIT if c.role == 'limit' else self._color(c.name))))
+                    top.addChild(it)
+            self.tree.expandAll()
 
     def _ticked(self, it, _col):
         key = it.data(0, Qt.UserRole)
-        if key is None:
-            return
-        key = tuple(key)
-        (self.hidden.discard if it.checkState(0) == Qt.Checked else self.hidden.add)(key)
-        self.redraw()
+        if key is not None:
+            (self.hidden.discard if it.checkState(0) == Qt.Checked else self.hidden.add)(tuple(key))
+            self.redraw()
 
     def shown(self, roles=('data', 'reference', 'limit')):
         """[(set, curve, its number among the sets)] of the curves ticked, in the order drawn."""
@@ -178,10 +170,7 @@ class CurvePlot(QWidget):
         xs, ys = xs[np.isfinite(xs) & (xs > 0 if m.logx else True)], ys[np.isfinite(ys) & (ys > 0 if m.logy else True)]
         if not len(xs) or not len(ys):
             return
-        if m.logx:
-            xr = (np.log10(xs.min()), np.log10(xs.max()))
-        else:
-            xr = (xs.min(), xs.max())
+        xr = (np.log10(xs.min()), np.log10(xs.max())) if m.logx else (xs.min(), xs.max())
         if m.logy:
             yr = (np.log10(ys.min() / 2), np.log10(ys.max() * 2))
         else:
@@ -217,9 +206,6 @@ class CurvePlot(QWidget):
         self._update_table()
         return line
 
-    def marker_x(self):
-        return [self._x_of(m.value()) for m in self.markers]
-
     def clear_markers(self):
         for m in self.markers:
             self.plot.removeItem(m)
@@ -246,14 +232,15 @@ class CurvePlot(QWidget):
             self.table.setRowCount(0)
             return
         self.table.setColumnCount(1 + len(cols))
-        self.table.setHorizontalHeaderLabels(['marker'] + [c.name if not k else f"{cs.label}: {c.name}" for cs, c, k in cols])
+        self.table.setHorizontalHeaderLabels(['marker'] + [c.name if not k else f"{cs.label}: {c.name}"
+                                                           for cs, c, k in cols])
         self.table.setRowCount(len(self.markers))
-        for r, x in enumerate(self.marker_x()):
+        for r, line in enumerate(self.markers):
+            x = self._x_of(line.value())
             self.table.setItem(r, 0, QTableWidgetItem(f"{r + 1}: {C.fmt_hz(x) if 'Hz' in m.xlabel else f'{x:.4g}'}"))
             for k, (cs, c, _n) in enumerate(cols):
                 self.table.setItem(r, 1 + k, QTableWidgetItem(C.fmt(C.value_at(c, x, m.logx, m.logy), c.unit)))
-        hd = self.table.horizontalHeader()
-        hd.setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
 
     def values(self):
         """The marker table as it reads: [[cell, ...]] (the tests', and what a copy would give)."""
@@ -265,13 +252,12 @@ class CurvePlot(QWidget):
         if not self.sets:
             return
         if not path:
-            path, _ = QFileDialog.getSaveFileName(self, 'Export the curves', f"{self.main.kind}_curves.csv", 'CSV (*.csv)')
+            path, _ = QFileDialog.getSaveFileName(self, 'Export the curves', f"{self.main.kind}_curves.csv",
+                                                  'CSV (*.csv)')
         if path:
             keep = {(cs.label, c.name) for cs, c, _ in self.shown(('data', 'reference'))}
-            sets = [C.CurveSet(cs.kind, cs.title, cs.xlabel, cs.ylabel,
-                               [c for c in cs.curves if (cs.label, c.name) in keep], cs.logx, cs.logy, cs.folder, cs.label)
-                    for cs in self.sets]
-            C.export_csv(path, sets)
+            C.export_csv(path, [replace(cs, curves=[c for c in cs.curves if (cs.label, c.name) in keep])
+                                for cs in self.sets])
 
     def save_image(self, path=None):
         if not path:
