@@ -6,7 +6,6 @@ folder is that folder, and the Plugin and Content Manager installs the same file
   plugin.json          one action in the PCB editor's toolbar
   kicad2ems_plugin.py  the entry point: the window (kicad2ems.ipc.window)
   requirements.txt     what KiCad installs into the plugin's own Python environment (kicad2ems, kicad-python, Qt)
-  kicad2ems_ipc/       the plugin
   icon-24.png, icon-48.png
 
     python plugin/kicad2ems_plugin.py install [--kicad-version 10.0] [--dir FOLDER] [--exec]
@@ -25,7 +24,7 @@ import argparse, glob, json, os, re, shutil, stat, sys
 
 IDENTIFIER = 'org.kicad2ems.plugin'
 FOLDER = 'kicad2ems'
-PLUGIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))     # the plugin/ folder
+PLUGIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plugin')   # what KiCad gets: the plugin/ folder here
 ENTRY = 'kicad2ems_plugin.py'
 ICONS = ['icon-24.png', 'icon-48.png']
 FILES = ['plugin.json', ENTRY, 'requirements.txt'] + ICONS
@@ -87,10 +86,8 @@ def install(dest, exec_=False):
         with open(os.path.join(dest, 'plugin.json'), 'w') as fh:
             json.dump(plugin_json('exec', launcher(dest)), fh, indent=2)
         return dest
-    for f in FILES:
+    for f in FILES:                 # (the window itself, kicad2ems.ipc, comes with kicad2ems: requirements.txt)
         shutil.copy2(os.path.join(PLUGIN, f), dest)
-    shutil.copytree(os.path.join(PLUGIN, 'kicad2ems.ipc'), os.path.join(dest, 'kicad2ems.ipc'),
-                    ignore=shutil.ignore_patterns('__pycache__'))
     return dest
 
 

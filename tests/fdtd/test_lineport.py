@@ -9,8 +9,7 @@ import pytest
 
 from kicad2ems.fdtd import lineport as LP
 
-K2E = os.environ.get('KICAD2EMS_SRC') or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)))), 'kicad2ems')
+K2E = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))     # the repository's root
 
 
 def _line_board(path, length):

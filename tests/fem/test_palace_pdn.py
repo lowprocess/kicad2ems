@@ -11,8 +11,8 @@ import pytest
 from kicad2ems.fem.palace import pdn as P
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BUCK = os.path.join(ROOT, 'pcbqs', 'src', 'pcbqs', 'circuit', 'examples', '04_buck.kicad_pcb')
-need_buck = pytest.mark.skipif(not os.path.isfile(BUCK), reason='no pcbqs checkout beside this one')
+BUCK = os.path.join(ROOT, 'src', 'kicad2ems', 'pcbqs', 'circuit', 'examples', '04_buck.kicad_pcb')
+need_buck = pytest.mark.skipif(not os.path.isfile(BUCK), reason='no pcbqs example board')
 
 
 def test_closing_ports_is_the_networks_own_reduction():

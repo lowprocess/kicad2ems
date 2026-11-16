@@ -307,8 +307,8 @@ def test_install_writes_a_valid_plugin(tmp_path):
         assert json.load(fh) == install.plugin_json()                  # plugin/plugin.json is the installer's
     dest = install.install(str(tmp_path / 'kicad2ems'))                # the folder, for KiCad's own environment
     pj = json.load(open(os.path.join(dest, 'plugin.json')))
-    assert pj['runtime']['type'] == 'python' and os.path.isfile(os.path.join(dest, 'kicad2ems.ipc', 'window.py'))
-    assert not os.path.exists(os.path.join(dest, 'kicad2ems.ipc', '__pycache__'))
+    assert pj['runtime']['type'] == 'python' and os.path.isfile(os.path.join(dest, install.ENTRY))
+    assert sorted(os.listdir(dest)) == sorted(install.FILES)          # the window comes with kicad2ems, not in the folder
     assert 'kicad2ems' in open(os.path.join(dest, 'requirements.txt')).read()
     exe = install.install(str(tmp_path / 'exec'), exec_=True)          # --exec: this Python on this checkout
     pe = json.load(open(os.path.join(exe, 'plugin.json')))
@@ -578,13 +578,13 @@ def test_the_plugin_managers_package_is_valid(tmp_path, monkeypatch):
     space in it had made both invalid)."""
     jsonschema = pytest.importorskip('jsonschema')
     import zipfile
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sys.path.insert(0, os.path.join(root, 'tools'))
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    sys.path.insert(0, os.path.join(root, 'tools', 'ipc'))
     import build_pcm
     monkeypatch.setattr(build_pcm, 'ROOT', str(tmp_path / 'r'))
     import shutil
-    for d in ('pcm', 'plugin'):
-        shutil.copytree(os.path.join(root, d), str(tmp_path / 'r' / d), ignore=shutil.ignore_patterns('__pycache__'))
+    shutil.copytree(os.path.join(root, 'pcm'), str(tmp_path / 'r' / 'pcm'))
+    shutil.copytree(build_pcm.PLUGIN, str(tmp_path / 'r' / 'plugin'), ignore=shutil.ignore_patterns('__pycache__'))
     monkeypatch.setattr(build_pcm, 'PLUGIN', str(tmp_path / 'r' / 'plugin'))
     build_pcm.main([])
     with open('/usr/share/kicad/schemas/pcm.v2.schema.json') as fh:

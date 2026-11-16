@@ -101,6 +101,7 @@ include-package-data = false                                    # only what pack
 "kicad2ems.examples" = ["*.toml", "hairpin.kicad_pcb", "hairpin-top.pos", "rf_interdig.kicad_pcb",       # the boards
                         "rf_interdig.kicad_pro", "rf_interdig-all.pos", "sma_launch.kicad_pcb",       # in the repository:
                         "sma_launch.kicad_pro", "sma_launch-all.pos"]                                 # the others are made
+"kicad2ems.ipc" = ["plugin/*"]                               # what KiCad gets: plugin.json, the launcher, the icons
 "kicad2ems.gui" = ["*.svg", "*.ico"]                            # the window's and the launcher's icon, the wand
 "kicad2ems.gfdtd" = ["core/*.cpp", "core/*.h", "*.so", "*.pyd"]     # the update code (GPU kernels and CPU core), the built core
 "kicad2ems.mom25d" = ["core/*.cpp", "core/*.hpp", "*.so", "*.pyd"]

@@ -9,8 +9,7 @@ from kicad2ems.core.board import Board
 from kicad2ems.core.edges import edge_walls
 from test_plugins import _EP, _Fake                                 # kicad2ems's tests (conftest.py)
 
-K2E = os.environ.get('KICAD2EMS_SRC') or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)))), 'kicad2ems')
+K2E = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))     # the repository's root
 FILTER = os.path.join(K2E, 'examples', 'rf_interdig.toml')
 
 

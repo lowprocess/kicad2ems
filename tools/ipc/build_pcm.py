@@ -7,9 +7,9 @@ gitlab.com/kicad/addons/metadata (packages/<identifier>/metadata.json) with the 
 The default URL is the GitHub release of this version (tag v<version>): upload the zip there."""
 import argparse, hashlib, json, os, sys, zipfile
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PLUGIN = os.path.join(ROOT, 'plugin')
-sys.path.insert(0, PLUGIN)
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))    # the repository
+PLUGIN = os.path.join(ROOT, 'src', 'kicad2ems', 'ipc', 'plugin')
+sys.path.insert(0, os.path.join(ROOT, 'src'))
 from kicad2ems.ipc import __version__                                  # noqa: E402
 
 RELEASE = 'https://github.com/lowprocess/kicad2ems-ipc/releases/download/v{v}/{name}'

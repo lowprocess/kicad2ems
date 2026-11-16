@@ -43,9 +43,10 @@ def test_they_register_as_engines_of_questions_others_answer_too(registered):
     rows = {r['question'].name: r for g in study.study_tree() for r in g['questions']}
     assert [e.name for e in rows['capacitance']['engines']] == ['elmer_cap', 'palace_cap']
     import tomllib
-    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'pyproject.toml'), 'rb') as fh:
+    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'pyproject.toml'), 'rb') as fh:
         declared = tomllib.load(fh)['project']['entry-points']['kicad2ems.analyses']
-    assert declared == {c.name: f"kicad2ems.fem.analyses:{c.__name__}" for c in ALL}
+    assert {k: v for k, v in declared.items() if v.startswith('kicad2ems.fem.')} == \
+        {c.name: f"kicad2ems.fem.analyses:{c.__name__}" for c in ALL}
 
 
 def test_the_settings_are_the_tools_own_options():
