@@ -30,12 +30,10 @@ class Section(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
-        self.head = QToolButton()
-        self.head.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.head.setCheckable(True)
+        self.head = QToolButton(toolButtonStyle=Qt.ToolButtonTextBesideIcon, checkable=True, toggled=self.set_expanded,
+                                styleSheet='QToolButton { border: none; font-weight: bold; padding: 4px; '
+                                           'text-align: left; }')
         self.head.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.head.setStyleSheet('QToolButton { border: none; font-weight: bold; padding: 4px; text-align: left; }')
-        self.head.toggled.connect(self.set_expanded)
         if extra is None:
             lay.addWidget(self.head)
         else:
@@ -44,13 +42,11 @@ class Section(QWidget):
             row.addWidget(self.head, 1)
             row.addWidget(extra)
             lay.addLayout(row)
-        frame = QFrame()
-        frame.setFrameShape(QFrame.StyledPanel)
-        fl = QVBoxLayout(frame)
+        self.body = QFrame(frameShape=QFrame.StyledPanel)
+        fl = QVBoxLayout(self.body)
         fl.setContentsMargins(8, 4, 4, 6)
         fl.addWidget(content)
-        self.body = frame
-        lay.addWidget(frame)
+        lay.addWidget(self.body)
         self.set_count(0)
         self.head.setChecked(expanded)
         self.set_expanded(expanded)
@@ -80,8 +76,7 @@ class NeededList(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(4, 10, 4, 4)
         lay.setSpacing(3)
-        self.title = QLabel('Still needed')
-        self.title.setStyleSheet('font-weight: bold;')
+        self.title = QLabel('Still needed', styleSheet='font-weight: bold;')
         lay.addWidget(self.title)
         self.rows = QVBoxLayout()
         self.rows.setSpacing(2)
@@ -98,17 +93,12 @@ class NeededList(QWidget):
         self.items = list(items)
         self.setVisible(bool(items) or asked)
         if not items:
-            lab = QLabel('nothing: ready to run')
-            lab.setEnabled(False)
-            self.rows.addWidget(lab)
-            return
+            self.rows.addWidget(QLabel('nothing: ready to run', enabled=False))
         for i, it in enumerate(self.items):
-            lab = QLabel(f'<a href="{i}" style="text-decoration: none; color: #9a5b00;">&#9888;&nbsp; {it["text"]}</a>')
-            lab.setWordWrap(True)
-            lab.setTextInteractionFlags(Qt.LinksAccessibleByMouse | Qt.LinksAccessibleByKeyboard)
-            lab.setToolTip('go to where it is set')
-            lab.linkActivated.connect(lambda n: self.picked.emit(self.items[int(n)]))
-            self.rows.addWidget(lab)
+            self.rows.addWidget(QLabel(f'<a href="{i}" style="text-decoration: none; color: #9a5b00;">&#9888;&nbsp; '
+                                       f'{it["text"]}</a>', wordWrap=True, toolTip='go to where it is set',
+                                       textInteractionFlags=Qt.LinksAccessibleByMouse | Qt.LinksAccessibleByKeyboard,
+                                       linkActivated=lambda n: self.picked.emit(self.items[int(n)])))
 
 
 class ImagePanel(QWidget):
@@ -121,9 +111,8 @@ class ImagePanel(QWidget):
         self.inner = QVBoxLayout()
         w = QWidget()
         w.setLayout(self.inner)
-        scroll = QScrollArea()
+        scroll = QScrollArea(widgetResizable=True)
         scroll.setWidget(w)
-        scroll.setWidgetResizable(True)
         lay.addWidget(scroll)
         self.show_images([])
 
@@ -134,9 +123,7 @@ class ImagePanel(QWidget):
             if it.widget():
                 it.widget().deleteLater()
         if not self.paths:
-            note = QLabel(self.empty)
-            note.setStyleSheet('color: gray')
-            self.inner.addWidget(note)
+            self.inner.addWidget(QLabel(self.empty, styleSheet='color: gray'))
         for p in self.paths:
             lab = QLabel()
             pm = QPixmap(p)

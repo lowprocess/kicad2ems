@@ -31,20 +31,15 @@ class StudyTree(QTreeWidget):
     fields_ticked = Signal(str, bool)   # the user ticked or unticked a row's Fields
 
     def __init__(self, model=None):
-        super().__init__()
+        super().__init__(rootIsDecorated=False, indentation=12, uniformRowHeights=True, textElideMode=Qt.ElideRight,
+                         selectionMode=QAbstractItemView.SingleSelection, contextMenuPolicy=Qt.CustomContextMenu,
+                         horizontalScrollBarPolicy=Qt.ScrollBarAlwaysOff,   # every row shown, a long State cut short
+                         verticalScrollBarPolicy=Qt.ScrollBarAlwaysOff)
         self.m = model or StudyModel()
         self.setHeaderLabels(['Question', 'Answered by', 'Fields', 'State'])
         self.headerItem().setToolTip(C_BY, 'click a cell: the engine that answers, or several to compare')
         self.headerItem().setToolTip(C_FIELDS, "its field dumps too, where the engine can write them (ticked with "
                                                "none set: a default, which its settings let you change)")
-        self.setRootIsDecorated(False)
-        self.setIndentation(12)
-        self.setUniformRowHeights(True)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)    # every row shown, a long State cut short
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setTextElideMode(Qt.ElideRight)
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._context)
         self.rows = {}
         self.boxes = {}                             # the solvers' tick boxes (set_solver_boxes)
@@ -73,8 +68,8 @@ class StudyTree(QTreeWidget):
             hd.setSectionResizeMode(c, QHeaderView.ResizeToContents)
         hd.setStretchLastSection(True)
         first = next(iter(self.rows.values()), None)
-        self.setFixedHeight((self.sizeHintForRow(0) if first is None else self.rowHeight(self.indexFromItem(first)) or 20)
-                            * max(n, 1) + hd.sizeHint().height() + 2 * self.frameWidth() + 6)
+        row = self.sizeHintForRow(0) if first is None else self.rowHeight(self.indexFromItem(first)) or 20
+        self.setFixedHeight(row * max(n, 1) + hd.sizeHint().height() + 2 * self.frameWidth() + 6)
         self.itemChanged.connect(self._changed)
         self.itemClicked.connect(self._clicked)
         self.currentItemChanged.connect(self._current)
@@ -210,9 +205,7 @@ class StudyTree(QTreeWidget):
             self.setCurrentItem(self.rows[q])
 
     def _current(self, cur, _old):
-        if cur is not None and not self._is_row(cur):               # a group's heading: not a selection
-            return
-        if cur is not None:
+        if cur is not None and self._is_row(cur):                   # (a group's heading: not a selection)
             self.selected.emit(self._q(cur))
 
     # ---- the user's hand ----

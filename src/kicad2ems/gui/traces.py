@@ -87,9 +87,8 @@ def classify(path):
 def load_traces(files, compare=None):
     """Traces of every Touchstone file in (label, path) files (a run's file list), plus a compare file."""
     from kicad2ems.core.api.frontend import read_touchstone
-    paths = [p for _, p in files if re.search(r'\.s\d+p$', p) and os.path.exists(p)]
     seen, out = set(), []
-    items = [(classify(p), p) for p in paths]
+    items = [(classify(p), p) for _, p in files if re.search(r'\.s\d+p$', p) and os.path.exists(p)]
     if compare and os.path.exists(compare):
         items.append(('compare', compare))
     for source, p in items:
@@ -110,11 +109,6 @@ def default_visible(tr):
     return tr.j == 0 and not tr.empty
 
 
-def group_delay(f, s):
-    ph = np.unwrap(np.angle(s))
-    return -np.gradient(ph, 2 * np.pi * f) * 1e9
-
-
 def transform(kind, tr):
     """(x, y) a plot kind shows of a trace: frequency (GHz) and value, or Re / Im for the Smith chart."""
     s = tr.s
@@ -128,7 +122,7 @@ def transform(kind, tr):
     elif kind == 'Phase (deg)':
         y = np.degrees(np.angle(s))
     elif kind == 'Group delay (ns)':
-        y = group_delay(tr.f, s)
+        y = -np.gradient(np.unwrap(np.angle(s)), 2 * np.pi * tr.f) * 1e9
     elif kind == 'VSWR':
         a = np.minimum(np.abs(s), 0.999999)
         y = (1 + a) / (1 - a)
