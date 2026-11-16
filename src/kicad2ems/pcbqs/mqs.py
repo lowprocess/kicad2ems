@@ -48,6 +48,14 @@ def filament_mutual(z0a, z1a, z0b, z1b, s):
     return MU0 / (4 * np.pi) * (g(z1a - z0b) + g(z0a - z1b) - g(z1a - z1b) - g(z0a - z0b))
 
 
+def _root(parent, a):
+    """Union-find: the root of a's set in parent (a list or an array), halving the path on the way."""
+    while parent[a] != a:
+        parent[a] = parent[parent[a]]
+        a = parent[a]
+    return a
+
+
 def spanning_tree(n_nodes, ends, is_src, first=None):
     """A spanning forest of the branches `ends` [(a, b)] but the sources (is_src): (tree (nb,) bool, comp (each
     node's component), up, upb, ups (each node's parent in it, the branch to it and that branch's sense from the
@@ -97,19 +105,13 @@ def spanning_tree(n_nodes, ends, is_src, first=None):
                 if v not in mark:
                     mark.add(v); tree[k] = True; q.append(v)
     parent = list(range(n_nodes))                   # the parts join the copper's islands, in their order
-
-    def find(a):
-        while parent[a] != a:
-            parent[a] = parent[parent[a]]
-            a = parent[a]
-        return a
     for k in np.flatnonzero(tree):
         a, b = ends[k]
-        parent[find(b)] = find(a)
+        parent[_root(parent, b)] = _root(parent, a)
     for k in range(first, nb):
         a, b = ends[k]
-        if not is_src[k] and find(a) != find(b):
-            parent[find(b)] = find(a)
+        if not is_src[k] and _root(parent, a) != _root(parent, b):
+            parent[_root(parent, b)] = _root(parent, a)
             tree[k] = True
     tadj = [[] for _ in range(n_nodes)]
     for k in np.flatnonzero(tree):
@@ -378,16 +380,10 @@ class MQS:
         Nt = len(self.tris)
         parent = np.arange(Nt)
 
-        def find(a):
-            while parent[a] != a:
-                parent[a] = parent[parent[a]]
-                a = parent[a]
-            return a
-
         def merge(ts):
-            r0 = find(ts[0])
+            r0 = _root(parent, ts[0])
             for t in ts[1:]:
-                parent[find(t)] = r0
+                parent[_root(parent, t)] = r0
         for ts in self.term_tris.values():
             merge(ts)
         for ts in ring_tris.values():
@@ -395,11 +391,11 @@ class MQS:
                 merge(ts)
         # charge nodes (capacitance with face sheets): as the circuit's nodes, but a triangle's copies keep their own
         # charge, so the charge can choose its face (toward ground) while both faces stay at the conductor's potential
-        charge_roots = np.array([find(t) for t in range(Nt)]) if copies else None
+        charge_roots = np.array([_root(parent, t) for t in range(Nt)]) if copies else None
         for a, b, n in copies:                               # a triangle's copies through the thickness: one node
             for j in range(n):
-                parent[find(b + j)] = find(a + j)
-        roots = np.array([find(t) for t in range(Nt)])
+                parent[_root(parent, b + j)] = _root(parent, a + j)
+        roots = np.array([_root(parent, t) for t in range(Nt)])
         self.charge_of = None if charge_roots is None else np.unique(charge_roots, return_inverse=True)[1]
         _, self.node_of = np.unique(roots, return_inverse=True)
         self.n_nodes = self.node_of.max() + 1
