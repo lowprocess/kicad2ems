@@ -143,11 +143,6 @@ def _table(head, rows, num=()):
     return f"<div class='scroll'><table><thead><tr>{h}</tr></thead><tbody>{''.join(body)}</tbody></table></div>"
 
 
-def _kpis(items):
-    return "<div class='kpis'>" + "".join(f"<div class='kpi'><div class='v'>{v}</div><div class='l'>{_e(l)}</div></div>"
-                                          for l, v in items) + "</div>"
-
-
 def _rel(path, base):
     try:
         return os.path.relpath(path, base)
@@ -186,12 +181,13 @@ def _sparam_data(sm, base):
         f, S = f[k], S[k]
         nports = S.shape[1]
         names = so.get('names') or [f"P{i + 1}" for i in range(nports)]
-        params = [f"S{i + 1}{j + 1}" for j in range(nports) for i in range(nports)]
+        ij = [(i, j) for j in range(nports) for i in range(nports)]
+        params = [f"S{i + 1}{j + 1}" for i, j in ij]
         rnd = lambda a: [None if not (x == x) else round(float(x), 6) for x in a]     # NaN (not computed): null
         out.append(dict(label=so.get('label', n), names=names, f=[round(float(x) / 1e9, 6) for x in f],
                         params=params, first=[f"S{i + 1}1" for i in range(nports)],
-                        re={p: rnd(S[:, i, j].real) for p, (i, j) in zip(params, [(i, j) for j in range(nports) for i in range(nports)])},
-                        im={p: rnd(S[:, i, j].imag) for p, (i, j) in zip(params, [(i, j) for j in range(nports) for i in range(nports)])}))
+                        re={p: rnd(S[:, i, j].real) for p, (i, j) in zip(params, ij)},
+                        im={p: rnd(S[:, i, j].imag) for p, (i, j) in zip(params, ij)}))
     return dict(solvers=out) if out else None
 
 
@@ -281,25 +277,21 @@ def _solver_section(sm, name, base):
                  _f(r['max_dvec'], '.3f'), _f(r['ddelay_ps'], '+.1f')] for r in so['compare']]
         txt += _table(['', f"{a} max (dB)", f"{b} max (dB)", 'max |Δ| (dB, transmissions)', 'max |ΔS| (vector)',
                        f"Δ delay {b} − {a} (ps)"], rows, num=(1, 2, 3, 4, 5))
-    if so.get('modes'):
-        txt += _modes_table(so['modes'])
+    modes = so.get('modes')
+    if modes:
+        # its resonances (Result.info['modes'], API 2.13: dict(about, rows=[dict(mode, f_ghz, Q, q_ext={port: Q},
+        # kind)])): a row a mode, each port's external Q in a column of its own, `kind` (where it is none) last
+        rows = modes.get('rows') or []
+        ports = list(dict.fromkeys(p for r in rows for p in (r.get('q_ext') or {})))
+        body = [[str(r.get('mode', i + 1)), _f(r.get('f_ghz'), '.5g'), _f(r.get('Q'), '.4g')]
+                + [_f((r.get('q_ext') or {}).get(p), '.4g') for p in ports] + [_e(r.get('kind', ''))]
+                for i, r in enumerate(rows)]
+        txt += (f"<h3>Resonances</h3><p>{_e(modes.get('about', ''))}.</p>"
+                + _table(['mode', 'f (GHz)', 'Q'] + [f"Q_ext {p}" for p in ports] + [''], body,
+                         num=tuple(range(1, 3 + len(ports)))))
     if so.get('notes'):
         txt += "<ul>" + "".join(f"<li>{_e(n)}</li>" for n in so['notes']) + "</ul>"
     return txt
-
-
-def _modes_table(modes):
-    """A solver's resonances (its Result.info['modes'], API 2.13: dict(about, rows=[dict(mode, f_ghz, Q,
-    q_ext={port: Q}, kind)])): one row a mode, each port's external Q in a column of its own, `kind` (what a row
-    is where it is not a resonance) last."""
-    rows = modes.get('rows') or []
-    ports = list(dict.fromkeys(p for r in rows for p in (r.get('q_ext') or {})))
-    body = [[str(r.get('mode', i + 1)), _f(r.get('f_ghz'), '.5g'), _f(r.get('Q'), '.4g')]
-            + [_f((r.get('q_ext') or {}).get(p), '.4g') for p in ports] + [_e(r.get('kind', ''))]
-            for i, r in enumerate(rows)]
-    return (f"<h3>Resonances</h3><p>{_e(modes.get('about', ''))}.</p>"
-            + _table(['mode', 'f (GHz)', 'Q'] + [f"Q_ext {p}" for p in ports] + [''], body,
-                     num=tuple(range(1, 3 + len(ports)))))
 
 
 def _saw_section(saw):
@@ -388,8 +380,9 @@ def build(sm, base):
         k.append(('mesh convergence', f"<span class='{'ok' if ok else 'bad'}'>{'converged' if ok else 'not converged'}</span>"))
     k += [(so['label'], _e(so.get('kpi', f"{so['seconds']:.1f} s"))) for so in solved.values()]
     warn = sm.get('warnings', [])
-    w = (f"<div class='warn'><b>{len(warn)} warning(s)</b><ul>" + "".join(f"<li>{_e(x)}</li>" for x in warn) +
-         "</ul></div>") if warn else "<p class='ok'>No warnings.</p>"
+    w = "<h3>Warnings</h3>" + ((f"<div class='warn'><b>{len(warn)} warning(s)</b><ul>" +
+                                "".join(f"<li>{_e(x)}</li>" for x in warn) + "</ul></div>") if warn else
+                               "<p class='ok'>No warnings.</p>")
     au = sm.get('auto')
     if au:                                                          # --solvers auto: what it chose, and why
         t_ = lambda sec: f"~{sec:.0f} s" if sec < 120 else f"~{sec / 60:.0f} min"
@@ -397,10 +390,9 @@ def build(sm, base):
                 for n, e in au['estimates'].items()] + [[_e(n), '', '', _e(f"not used: {why}")]
                                                          for n, why in au['not_used'].items()]
         w = (f"<h3>--solvers auto: {_e(' + '.join(au['chosen']))}</h3>" +
-             _table(['solver', 'estimate', 'time (rough)', ''], rows)) + "<h3>Warnings</h3>" + w
-    else:
-        w = "<h3>Warnings</h3>" + w
-    section('summary', 'Summary', _kpis(k) + w)
+             _table(['solver', 'estimate', 'time (rough)', ''], rows)) + w
+    section('summary', 'Summary', "<div class='kpis'>" + "".join(
+        f"<div class='kpi'><div class='v'>{v}</div><div class='l'>{_e(l)}</div></div>" for l, v in k) + "</div>" + w)
 
     # ---- model ----------------------------------------------------------------------------------------
     stack = [[_e(l['name']), f"{l['z0']:.3f}–{l['z1']:.3f}", f"{l['z1'] - l['z0']:.3f}", f"{l['er']:.2f}",

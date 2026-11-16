@@ -30,9 +30,12 @@ order, and run() makes them, which is the command `kicad2ems study board.toml`:
 """
 import json
 import os
+import sys
+import time
 from dataclasses import dataclass, field
 
 from .extras import install_hint
+from .runs import load_toml, toml_value
 
 GROUPS = ('RF', 'Signal integrity', 'Power', 'Thermal', 'Other')
 MARK = 'kicad2ems-study.json'               # in a run's folder: the engine that made it and what was asked of it
@@ -339,14 +342,7 @@ def read_config(path, strict=True):
     questions ("rf": S-parameters; an analysis: the questions it answers, by it); with neither, S-parameters.
     strict False (a front end, which shows what it cannot run greyed): a question nobody knows and an engine not
     installed are kept as written instead of a ValueError."""
-    import sys
-    if sys.version_info >= (3, 11):
-        import tomllib
-    else:                                                           # pragma: no cover
-        import tomli as tomllib
-    with open(path, 'rb') as fh:
-        cfg = tomllib.load(fh)
-    table = cfg.get('study')
+    table = load_toml(path).get('study')
     if isinstance(table, dict):
         known, es = questions(), engines()
         tabs = {str(k).lower(): v for k, v in table.items() if isinstance(v, dict)}
@@ -397,7 +393,6 @@ def write_config(path, study):
     """The [study] tables of the config at `path` written anew from a Study (None: taken out); the rest of the
     file is kept. An engine is written by its registry name."""
     import re
-    from .runs import toml_value
     with open(path, encoding='utf-8') as fh:
         lines = fh.read().splitlines()
     out, skip = [], False
@@ -481,16 +476,9 @@ def describe(steps, sets=None):
     return lines
 
 
-def _dump_keys():
-    """The settings that ask a solver for field dumps, with nothing asked: {key: its default}."""
-    from .solvers import registry
-    return {o.key: o.default for sv in registry().values() for o in dump_options(sv)}
-
-
 def _fresh(folder_at):
     """A run folder nobody has yet: its name is its start to the second, so a second run within one waits for
     the next."""
-    import time
     for _ in range(30):
         d = folder_at()
         if not os.path.exists(d):
@@ -522,11 +510,10 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
     rest go on, except an analysis that needs its result. Returns 0 when every run finished, 1 when one did not,
     2 when the study cannot be read."""
     import subprocess
-    import sys
-    import time
     from .analyses import read_sets, registry
     from .config import ConfigError, build_settings, default_out
     from .runs import preview_dir, run_dir, tool_dir, tool_preview_dir
+    from .solvers import registry as solvers
     try:
         study = read_config(config)
         steps = plan(study)
@@ -561,8 +548,8 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
                 cli['solvers'] = list(st.engines)
             if st.mode:
                 cli['mode'] = st.mode
-            if st.fields is False:
-                cli.update(_dump_keys())
+            if st.fields is False:                                  # the solvers' field dumps: none asked
+                cli.update({o.key: o.default for sv in solvers().values() for o in dump_options(sv)})
             try:
                 s = build_settings(cli, config)
                 mark(folder, RF, st.questions, preview)
@@ -641,7 +628,6 @@ def main(argv=None, prog='kicad2ems study'):
             from .analyses import read_sets
             steps, sets = plan(read_config(a.config)), read_sets(a.config)
         except (ValueError, OSError) as e:
-            import sys
             print(f"{prog}: error: {e}", file=sys.stderr)
             return 2
         print('\n'.join(describe(steps, sets)))
@@ -649,11 +635,13 @@ def main(argv=None, prog='kicad2ems study'):
     return run(a.config, only=a.only, preview=a.preview, out=a.out)
 
 
+_PORTS = {}                                 # {board: (its file's time, how many port footprints it has)}
+
+
 def rf_needs(values):
     """What an S-parameter run of these settings still needs before it can start: [dict(text, key)], key the
     setting it is set by. Cheap (the board file's footprints are read, no model is made): a front end asks on
     every change, lists the answers and does not start the run."""
-    import os
     out = []
     board = str(values.get('board') or '').strip()
     if not board:
@@ -663,7 +651,10 @@ def rf_needs(values):
     if board.lower().endswith('.kicad_pcb') and not any(values.get(k) for k in ('ports', 'region', 'pos')):
         try:
             from .importers.kicad import KiCadBoard
-            if not _ports_of(board, os.path.getmtime(board)):
+            stamp = os.path.getmtime(board)
+            if _PORTS.get(board, (None,))[0] != stamp:              # read again when the file changes
+                _PORTS[board] = (stamp, len(KiCadBoard(board).port_footprints()))
+            if not _PORTS[board][1]:
                 out.append(dict(text="the board has no port: a footprint with P1, P2 ... on its Fab layer at a "
                                      "trace's end, or Extra ports", key='ports'))
         except Exception:                                    # noqa: BLE001 (the run will say what is wrong with it)
@@ -675,14 +666,3 @@ def rf_needs(values):
     except (TypeError, ValueError):
         out.append(dict(text='the frequencies are not numbers', key='fmin'))
     return out
-
-
-_PORTS = {}
-
-
-def _ports_of(board, stamp):
-    """How many port footprints a KiCad board file has (kept until the file changes)."""
-    if _PORTS.get(board, (None,))[0] != stamp:
-        from .importers.kicad import KiCadBoard
-        _PORTS[board] = (stamp, len(KiCadBoard(board).port_footprints()))
-    return _PORTS[board][1]

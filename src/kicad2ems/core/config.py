@@ -29,16 +29,12 @@ compare, out, events, qucsator) are relative to the file's folder; a path that o
 working directory (older configs written for the repository root) is still used, with a note. Unknown keys are
 reported (with the option they are probably a typo of) and ignored.
 """
-import dataclasses, os, sys
+import dataclasses, os
 from dataclasses import field
 
 from .options import Option, strlist, items, floats, floatlist, boolean
+from .runs import load_toml, tomllib
 from . import solvers as _solvers_pkg
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:                                                           # pragma: no cover
-    import tomli as tomllib
 
 
 class ConfigError(ValueError):
@@ -101,9 +97,8 @@ def _lines_field(v):
 
 
 def _solvers(v):
-    """Solver names (aliases allowed; 'lines' for the line model, 'all' for every solver but the variants of another, as mixed) in
-    registry order, or
-    None for an empty list."""
+    """Solver names (aliases allowed; 'lines' for the line model, 'all' for every solver but the variants of another,
+    as mixed) in registry order, or None for an empty list."""
     from .solvers import registry, aliases, ordered, missing, LINES, AUTO
     names = dict(aliases(), line=LINES, lines=LINES, fast=LINES, auto=AUTO)
     out = set()
@@ -393,11 +388,10 @@ TABLES = {'openems', 'solver', 'study', 'analysis', 'vary'}               # the 
 def read_toml(path):
     """(values {option: raw value}, ignored keys, notes) of a TOML config; paths made absolute or
     working-directory relative (see resolve_path)."""
-    with open(path, 'rb') as fh:
-        try:
-            cfg = tomllib.load(fh)
-        except tomllib.TOMLDecodeError as e:
-            raise ConfigError(f"{path}: {e}") from None
+    try:
+        cfg = load_toml(path)
+    except tomllib.TOMLDecodeError as e:
+        raise ConfigError(f"{path}: {e}") from None
     base = os.path.dirname(os.path.abspath(path))
     values, ignored, notes = {}, [], []
     for k, v in _table_items(cfg, notes, ignored):

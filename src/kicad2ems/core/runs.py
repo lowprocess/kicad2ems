@@ -11,9 +11,14 @@ wrote. No Qt here.
     find_results(out_dir)          # [(label, path)] of the newest finished run's files
     run_dir(base, board), preview_dir(base, board), tool_dir(base, board, analysis, what), tool_preview_dir(...)
                                    # where a front end's runs go: a folder each under the output folder
-    write_toml(path, settings); toml_value(v)
+    write_toml(path, settings); toml_value(v); load_toml(path)
 """
 import datetime, glob, json, os, sys
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:                                                           # pragma: no cover
+    import tomli as tomllib
 
 
 def toml_value(v):
@@ -36,6 +41,12 @@ def write_toml(path, values):
         lines.append(f"{k} = {toml_value(v)}")
     with open(path, 'w', encoding='utf-8') as fh:
         fh.write("\n".join(lines) + "\n")
+
+
+def load_toml(path):
+    """A TOML file's tables; OSError, or tomllib.TOMLDecodeError (a ValueError)."""
+    with open(path, 'rb') as fh:
+        return tomllib.load(fh)
 
 
 class Run:
