@@ -245,20 +245,19 @@ def lone_pads(data, layers):
 class BoardModel(PlanarModel):
     def __init__(self, data, ground=None, port='auto', pairs=False, wall_pitch=0.5e-3, planes='pec',
                  stitching_pads='drop', wideband=None, log=print):
-        """data: the board (board.json's content). ground: a copper layer name (default: the board's own,
-        else the lowest solid one). port: 'auto' | 'wave' | 'via' (lumped). pairs: P<n>+ / P<n>- legs as
-        one mixed-mode port. wall_pitch (m): via spacing along edge walls. planes: 'pec' (default: solid planes
-        as the ground and a PEC cover) | 'mesh'. stitching_pads: 'drop' (default: lone pads of ground vias left out)
-        | 'keep'. wideband: None (default: each dielectric's er and tand constant over frequency) or a frequency
-        (a layer's own fref first: the frequency kicad2ems's material library quotes its laminate at)
-        (Hz) at which they hold, the Djordjevic-Sarkar model elsewhere (multilayer.djordjevic_sarkar). planes
-        'holes' (experimental): as 'pec', and a plane between the copper layers whose only holes are those of
-        vias through it (plane_holes) is a PEC plane inside the stack, not meshed, each hole a few unknowns
-        (mom25d.frill): its axisymmetric field and its first azimuthal order, which a trace over the hole
-        drives. planes 'slots' (experimental): every copper layer as the whole stack has them (air above and
-        below), but the ground (`ground`, else the board's) a PEC plane, infinite, its openings - slots, apertures,
-        a defected ground - meshed on their own (slot_plane, mom25d.slots): its unknowns their field, so it costs
-        its openings' area, not its own."""
+        """data: the board (board.json's content). ground: a copper layer name (default: the board's own, else the
+        lowest solid one). port: 'auto' | 'wave' | 'via' (lumped). pairs: P<n>+ / P<n>- legs as one mixed-mode port.
+        wall_pitch (m): via spacing along edge walls. planes: 'pec' (default: solid planes as the ground and a PEC
+        cover) | 'mesh'. stitching_pads: 'drop' (default: lone pads of ground vias left out) | 'keep'. wideband: None
+        (default: each dielectric's er and tand constant over frequency) or a frequency (a layer's own fref first: the
+        frequency kicad2ems's material library quotes its laminate at) (Hz) at which they hold, the Djordjevic-Sarkar
+        model elsewhere (multilayer.djordjevic_sarkar). planes 'holes' (experimental): as 'pec', and a plane between the
+        copper layers whose only holes are those of vias through it (plane_holes) is a PEC plane inside the stack, not
+        meshed, each hole a few unknowns (mom25d.frill): its axisymmetric field and its first azimuthal order, which a
+        trace over the hole drives. planes 'slots' (experimental): every copper layer as the whole stack has them (air
+        above and below), but the ground (`ground`, else the board's) a PEC plane, infinite, its openings - slots,
+        apertures, a defected ground - meshed on their own (slot_plane, mom25d.slots): its unknowns their field, so it
+        costs its openings' area, not its own."""
         assert planes in ('pec', 'mesh', 'holes', 'slots'), f"planes: pec, mesh, holes or slots, not {planes!r}"
         from .multilayer import Layer, LayerStack
         if data.get('format') != FORMAT:

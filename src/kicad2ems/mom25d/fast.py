@@ -1056,13 +1056,12 @@ class FastOperator:
             return dsc[:, None] * _lu_solve(_lu(Z), B)
 
     def _solve_reused(self, f, E, Sx, ready=False):
-        """A solve without a new factorisation: GMRES on the exact operator at f, preconditioned with the one kept
-        from an earlier frequency f0 (the complex64 LU of the mixed direct solver, BLR's, and its
-        equilibration). Z changes smoothly with f, so the LU of one frequency preconditions the band: on the via
-        transition (13.5k unknowns) the 5 GHz LU took 6-30 iterations from 1 to 10 GHz, 4-11 s a solve against 13 s
-        with its own fill and LU; the hairpin 5-28. The iterations are capped at what a fresh solve costs
-        (REUSE_ITER); past it None, and the caller factors at f (that factorisation is then the one kept). ready:
-        dZ_exact, B and C are already f's."""
+        """A solve without a new factorisation: GMRES on the exact operator at f, preconditioned with the one kept from
+        an earlier frequency f0 (the complex64 LU of the mixed direct solver, BLR's, and its equilibration). Z changes
+        smoothly with f, so the LU of one frequency preconditions the band: on the via transition (13.5k unknowns) the 5
+        GHz LU took 6-30 iterations from 1 to 10 GHz, 4-11 s a solve against 13 s with its own fill and LU; the hairpin
+        5-28. The iterations are capped at what a fresh solve costs (REUSE_ITER); past it None, and the caller factors
+        at f (that factorisation is then the one kept). ready: dZ_exact, B and C are already f's."""
         sim = self.sim
         f0, M, dsc, t_fresh = self._reusable(f)
         T = sim.qT

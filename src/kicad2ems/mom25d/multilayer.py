@@ -141,8 +141,7 @@ class LayerStack:
                 if k not in self.pec]
 
     def is_pec(self, k):
-        """Interface k is a PEC plane of the stack itself (the ground, a cover, a plane inside it), not meshed
-        metal."""
+        """Interface k is a PEC plane of the stack itself (the ground, a cover, a plane inside it), not meshed metal."""
         return (k == 0 and self.bottom == 'pec') or (k == self.N and self.top == 'pec') or k in self.pec
 
     def side(self, k):

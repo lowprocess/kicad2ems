@@ -40,14 +40,13 @@ def _zc(sim, f):
 
 def solve_band(sim, fmin, fmax, points=401, zref=50.0, linear=None, afs_tol=2e-3, max_solves=40, log=print,
                keep_mid=False, progress=None, on_step=None, keep_at=(), freq=None):
-    """S-parameters of sim over fmin..fmax (Hz): returns (f, S (nf, n, n), info dict with solves, seconds,
-    zref, the solved frequencies, and afs / afs_tol: the adaptive sweep's history (afs.adaptive_sweep) and
-    tolerance). max_solves: cap of the adaptive sweep. keep_mid: one extra solve at
-    mid-band keeping the currents (sim.last). progress(solves, at most, f): after each EM solve. on_step(entry):
-    after each model of the adaptive sweep (afs.adaptive_sweep). keep_at: frequencies (Hz) the sweep solves among
-    its samples and keeps the currents of, sim.kept {f: currents of the excitations} (a current dump's: no solve
-    of its own). freq: the frequencies asked for (Hz): the adaptive sweep's model is given there (a log sweep's
-    samples spread in log f), in place of `points` spread linearly."""
+    """S-parameters of sim over fmin..fmax (Hz): returns (f, S (nf, n, n), info dict with solves, seconds, zref, the
+    solved frequencies, and afs / afs_tol: the adaptive sweep's history (afs.adaptive_sweep) and tolerance). max_solves:
+    cap of the adaptive sweep. keep_mid: one extra solve at mid-band keeping the currents (sim.last). progress(solves,
+    at most, f): after each EM solve. on_step(entry): after each model of the adaptive sweep (afs.adaptive_sweep).
+    keep_at: frequencies (Hz) the sweep solves among its samples and keeps the currents of, sim.kept {f: currents of the
+    excitations} (a current dump's: no solve of its own). freq: the frequencies asked for (Hz): the adaptive sweep's
+    model is given there (a log sweep's samples spread in log f), in place of `points` spread linearly."""
     t0, zr, done = time.time(), out_refs(sim, zref), []
     keep_at = {float(f) for f in keep_at}
     sim.kept = {}

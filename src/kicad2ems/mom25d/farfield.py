@@ -139,19 +139,18 @@ def near_field(sim, layers_J, x, y, f, height, pad=2):
 
 
 def near_fields(sim, layers_J, x, y, f, heights, pad=2):
-    """E (V/m) and H (A/m), each (nx, ny, nh, 3) complex, on the planes `heights` (m) above the top of the stack,
-    from the surface currents of each layer sampled on the grid x, y (m, uniform): layers_J = {interface: (Jx,
-    Jy)}, each (nx, ny) (A/m; current_deposit). The FFT is periodic: the currents are zero-padded to `pad` x the
-    grid (a port's strong field otherwise reappeared on the far side of a 10 mm margin) and the result cropped
-    back. One spectrum serves every height: a volume costs an inverse FFT per height and component.
+    """E (V/m) and H (A/m), each (nx, ny, nh, 3) complex, on the planes `heights` (m) above the top of the stack, from
+    the surface currents of each layer sampled on the grid x, y (m, uniform): layers_J = {interface: (Jx, Jy)}, each
+    (nx, ny) (A/m; current_deposit). The FFT is periodic: the currents are zero-padded to `pad` x the grid (a port's
+    strong field otherwise reappeared on the far side of a 10 mm margin) and the result cropped back. One spectrum
+    serves every height: a volume costs an inverse FFT per height and component.
 
     E: the plane-wave spectrum of the currents through the stack's TM / TE line voltages to the top surface (as
-    far_field), up by e^{-j kz h}; E_z from the divergence.
-    H: magnetostatic, each layer's current at its height and, over the PEC ground, its image below it:
-    A = mu0 J~ (e^{-k (z - z_k)} - e^{-k (z + z_k)}) / 2k, H = curl A / mu0. Exact for the near field (h well under
-    lambda / 2 pi; the dielectric does not change H there). H from E by Faraday's law through the stack's spectral
-    voltages was 15% low at 3 mm over rf_gcpw at 0.1 to 5 GHz (Hy; Hz agreed), against Biot-Savart of the same
-    currents and their images (emsdev.numerics.biot), which this matches."""
+    far_field), up by e^{-j kz h}; E_z from the divergence. H: magnetostatic, each layer's current at its height and,
+    over the PEC ground, its image below it: A = mu0 J~ (e^{-k (z - z_k)} - e^{-k (z + z_k)}) / 2k, H = curl A / mu0.
+    Exact for the near field (h well under lambda / 2 pi; the dielectric does not change H there). H from E by Faraday's
+    law through the stack's spectral voltages was 15% low at 3 mm over rf_gcpw at 0.1 to 5 GHz (Hy; Hz agreed), against
+    Biot-Savart of the same currents and their images (emsdev.numerics.biot), which this matches."""
     st, w = sim.st.at(f), 2 * np.pi * f
     k_top = w / C0 * np.sqrt(complex(st.top_er)).real
     nx0, ny0 = len(x), len(y)

@@ -55,19 +55,18 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto', pairs=F
     """S-parameters of a board (a <name>_board.json path, or its content) on `freq` (Hz).
 
     dmax (m): largest cell along the copper; layers whose metal covers more than half the board (planes) get
-    plane_factor x dmax (refined near the copper of other layers). port: 'auto' (de-embedded wave ports where
-    the straight feed spans enough for the fit down to the lowest frequency, else lumped), 'wave' or 'via'
-    (lumped). pairs: P<n>+ / P<n>- ports as one mixed-mode port. metal: a sim.Metal (conductor loss), or None
-    (lossless). log: lines of progress (the adaptive sweep's); progress(solves, max_solves, f): after each
-    EM solve. on_step(entry): after each
-    model of the adaptive sweep (its change and prediction error, afs.adaptive_sweep). core: 'auto' (the
-    compiled core where built, NumPy's dense solver without it), 'compiled' (the core for every size) or
-    'python' (NumPy only), fast.use_core. quads: near-rectangular triangle pairs as quad cells (True, or 'centre'),
-    quad_tol: the largest deviation of their corners from 90 degrees. coarsen: cells grow from dmax at corners, vias
-    and ports to coarsen x dmax away from them (geo.mesh_polygons; None: dmax everywhere). planes: 'pec' (default:
-    solid planes as the ground and a PEC cover, not meshed: mom25d.board) or 'mesh'. stitching_pads: 'drop'
-    (default: a ground via's pad with nothing else on its layer left out, the via kept) or 'keep'. wideband: None
-    (constant er, tand) or the frequency (Hz) the stack's er and tand hold at, Djordjevic-Sarkar elsewhere."""
+    plane_factor x dmax (refined near the copper of other layers). port: 'auto' (de-embedded wave ports where the
+    straight feed spans enough for the fit down to the lowest frequency, else lumped), 'wave' or 'via' (lumped). pairs:
+    P<n>+ / P<n>- ports as one mixed-mode port. metal: a sim.Metal (conductor loss), or None (lossless). log: lines of
+    progress (the adaptive sweep's); progress(solves, max_solves, f): after each EM solve. on_step(entry): after each
+    model of the adaptive sweep (its change and prediction error, afs.adaptive_sweep). core: 'auto' (the compiled core
+    where built, NumPy's dense solver without it), 'compiled' (the core for every size) or 'python' (NumPy only),
+    fast.use_core. quads: near-rectangular triangle pairs as quad cells (True, or 'centre'), quad_tol: the largest
+    deviation of their corners from 90 degrees. coarsen: cells grow from dmax at corners, vias and ports to coarsen x
+    dmax away from them (geo.mesh_polygons; None: dmax everywhere). planes: 'pec' (default: solid planes as the ground
+    and a PEC cover, not meshed: mom25d.board) or 'mesh'. stitching_pads: 'drop' (default: a ground via's pad with
+    nothing else on its layer left out, the via kept) or 'keep'. wideband: None (constant er, tand) or the frequency
+    (Hz) the stack's er and tand hold at, Djordjevic-Sarkar elsewhere."""
     from . import fast
     from .geo import LinePort
     from .run import solve_band

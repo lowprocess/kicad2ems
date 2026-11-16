@@ -637,8 +637,7 @@ class VulkanBackend:
         return out.T, self.piv.copy()
 
     def solve(self, R):
-        """Z^-1 R (R: host, N x k or N), on the GPU: U^T y = R, L^T w = y, x = P w. complex64 inside, complex128
-        out."""
+        """Z^-1 R (R: host, N x k or N), on the GPU: U^T y = R, L^T w = y, x = P w. complex64 inside, complex128 out."""
         A, Dbuf, order = self.lu
         N, nb = A.rows, self.nb
         R = np.asarray(R)

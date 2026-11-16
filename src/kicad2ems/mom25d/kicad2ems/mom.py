@@ -286,8 +286,7 @@ def aperture_text(ap):
 
 
 def _solid_ground(m):
-    """The board's ground layer, else the lowest copper layer covering half the outline (mom25d's choice), or
-    None."""
+    """The board's ground layer, else the lowest copper layer covering half the outline (mom25d's choice), or None."""
     if m.ground:
         return m.ground
     half = 0.5 * m.outline.area
@@ -651,12 +650,11 @@ class MoM25D(Solver):
         self._dumps(run, held)
 
     def _antenna(self, run, held, result):
-        """Antenna mode: the far field of each port driven alone (mom25d.farfield; the others shorted) at
-        frequencies over the band and the pattern frequency, combined for the drive (phased.combine: --drive's
-        incident waves, else the one antenna port, the other ports terminated), as openEMS's antenna results
-        (the same JSON, plots and report section). With several ports the per-port fields are kept
-        (<name>_mom25d_array.npz) for the GUI's beam steering. Gain counts substrate loss and surface waves as
-        loss; nothing radiates below the infinite ground."""
+        """Antenna mode: the far field of each port driven alone (mom25d.farfield; the others shorted) at frequencies
+        over the band and the pattern frequency, combined for the drive (phased.combine: --drive's incident waves, else
+        the one antenna port, the other ports terminated), as openEMS's antenna results (the same JSON, plots and report
+        section). With several ports the per-port fields are kept (<name>_mom25d_array.npz) for the GUI's beam steering.
+        Gain counts substrate loss and surface waves as loss; nothing radiates below the infinite ground."""
         from kicad2ems.mom25d.farfield import far_field, radiated
         from kicad2ems.core.api.solver import phased
         from kicad2ems.core.api.solver import match_summary, describe_antenna, save_antenna, pattern_gain
@@ -676,14 +674,12 @@ class MoM25D(Solver):
         driven = [j for j in range(n) if abs(a[j]) > 0]
         k = driven[0]
         zc = np.array([p.zc for p in sim.ports], float)
-        Sa = result.S @ a                                                  # (nf, n): reflected waves over the band
-        s11 = Sa[:, k] / a[k]                                              # the active reflection of the first
+        s11 = (result.S @ a)[:, k] / a[k]                                  # the first's active reflection over the band
         match = match_summary(run.freq, s11, m.ports[k].z0)
         f_pat = float(s.ff_freq[0]) * 1e9 if s.ff_freq else match['f_res']
         if s.drive and s.aim:                                              # phases for the pattern frequency
             a = phased.aim(a, names, pos, s.aim[0], s.aim[1], f_pat)
-            Sa = result.S @ a
-            s11 = Sa[:, k] / a[k]
+            s11 = (result.S @ a)[:, k] / a[k]
             match = match_summary(run.freq, s11, m.ports[k].z0)
         ffr = np.unique(np.concatenate([_far_field_grid(run), [f_pat]]))
         th, ph = np.arange(0, 181, 5.0), np.arange(0, 361, 5.0)
@@ -733,10 +729,8 @@ class MoM25D(Solver):
         cuts['xy (theta = 90)'] = dict(angle=list(map(float, pa_)), gain_dbi=[float(v) for v in 10 * np.log10(np.maximum(g, 1e-6))])
         sph_file = run.path('_mom25d_sphere.npz')
         np.savez_compressed(sph_file, **sph)
-        eff = rows[ip]['eff']
-        e_pat = sph['e_norm'][ip]
         ant = dict(match=match, rows=rows, f_pattern=float(ffr[ip]), cuts=cuts, port=names[k], solver='mom25d',
-                   sphere=dict(theta=th, phi=ph, gain=pattern_gain(e_pat, dmax[ip], eff).T),
+                   sphere=dict(theta=th, phi=ph, gain=pattern_gain(sph['e_norm'][ip], dmax[ip], rows[ip]['eff']).T),
                    sphere_file=os.path.basename(sph_file),
                    model='infinite ground plane: no radiation below it, no board edge' if sim.st.bottom == 'pec' else
                    'the whole stack: its planes meshed, radiation above and below; laterally infinite dielectric')
@@ -838,6 +832,13 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d', currents=N
         d = os.path.join(run.s.out, tag, f"exc_{names[j]}")
         os.makedirs(d, exist_ok=True)
         dumps, units = [], {}
+
+        def add(field, label, gx, gy, zs, data, normal, u):
+            dump = Dump(f"{field}@{label}", field, (gx[0], gy[0], zs[0]), (gx[-1], gy[-1], zs[-1]), list(freqs),
+                        normal, label)
+            write_npz(os.path.join(d, dump.name + '.npz'), dict(x=gx, y=gy, z=np.asarray(zs, float)), freqs, data)
+            dumps.append(dump)
+            units[dump.name] = f'{u}, {unit}'
         for k in layers:
             gx, gy = _grid(nodes, sim.rwg.tris[sim.tri_idx[k]], step)
             data = np.zeros((len(freqs), len(gx), len(gy), 1, 3), complex)
@@ -846,11 +847,7 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d', currents=N
                 if extra is not None:
                     Jx, Jy = extra(k, i, j, gx * 1e-3, gy * 1e-3, Jx, Jy)
                 data[i, :, :, 0, 0], data[i, :, :, 0, 1] = Jx, Jy
-            z = float(model._zk[k])
-            dump = Dump(f"J@{lay[k]}", 'J', (gx[0], gy[0], z), (gx[-1], gy[-1], z), list(freqs), 2, lay[k])
-            write_npz(os.path.join(d, dump.name + '.npz'), dict(x=gx, y=gy, z=np.array([z])), freqs, data)
-            dumps.append(dump)
-            units[dump.name] = f'A/m, {unit}'
+            add('J', lay[k], gx, gy, [float(model._zk[k])], data, 2, 'A/m')
         allt = np.concatenate([sim.tri_idx[k] for k in layers])
 
         def grid(h, most=1023):
@@ -869,13 +866,6 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d', currents=N
                 LJ = {k: current_deposit(sim, I[:, j], gx * 1e-3, gy * 1e-3, k) for k in layers}
                 E[i], H[i] = near_fields(sim, LJ, gx * 1e-3, gy * 1e-3, f, [h * 1e-3 for h in hs])
             return E, H
-
-        def add(field, label, gx, gy, zs, data, normal, u):
-            dump = Dump(f"{field}@{label}", field, (gx[0], gy[0], zs[0]), (gx[-1], gy[-1], zs[-1]), list(freqs),
-                        normal, label)
-            write_npz(os.path.join(d, dump.name + '.npz'), dict(x=gx, y=gy, z=np.asarray(zs, float)), freqs, data)
-            dumps.append(dump)
-            units[dump.name] = f'{u}, {unit}'
         for h in near or ():
             gx, gy = grid(h)
             E, H = fields(gx, gy, [h])
