@@ -310,8 +310,7 @@ class Window(QMainWindow):
         """R-E26: the session's region and ports and the map's worst sections, drawn in KiCad."""
         if self.live is None:
             return
-        els = [e for es in self.store.values() for e in es]
-        items = md.board_marks(self.session, els)
+        items = md.board_marks(self.session, [e for es in self.store.values() for e in es])
         if not items:
             self.statusBar().showMessage('Nothing to put on the board: no region, ports or map yet', 6000)
             return
