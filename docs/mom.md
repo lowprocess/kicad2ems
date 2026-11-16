@@ -3,7 +3,7 @@
 [← openEMS simulation](simulation.md) · [Index](index.md) · [Next: Transmission-line model →](transmission-lines.md)
 
 mom25d is a 2.5D method-of-moments solver for circuit boards, its own package in
-[its own repository](https://github.com/lowprocess/mom25d) (the `mom` extra, or the installer). It doesn't need
+[its own repository](mom25d/README.md) (the `mom` extra, or the installer). It doesn't need
 openEMS; without it, `--check` lists mom25d and the mixed solver built on it as not installed.
 
 ```bash
@@ -13,7 +13,7 @@ kicad2ems examples/rf_interdig.toml --mom                # next to openEMS, as a
 ```
 
 Its settings are the `--mom-*` options, or `dmax`, `port`, `solves`, `dump` and `near` under
-`[solver.mom25d]` ([options](usage.md#options)). Its compiled core, `python -m mom25d.core.build`, makes it about
+`[solver.mom25d]` ([options](usage.md#options)). Its compiled core, `python -m kicad2ems.mom25d.core.build`, makes it about
 five times faster.
 
 ## What mom25d models
@@ -549,7 +549,7 @@ of a pair, with a 6-point rule over the smaller, whichever of the two is the obs
 and S with lumped ports reciprocal (the rule over a 0.9 mm plane cell above a 0.3 mm trace cell was 1.3 % off). The
 near field is corrected out to 5 cells: against 12, |S| moves by 0.0025 at most on the examples' sharpest features
 (3 cells: 0.013). The modules are listed in
-[mom25d's README](https://github.com/lowprocess/mom25d#inside-mom25d). Its tests check it against exact solutions
+[mom25d's README](mom25d/README.md#inside-mom25d). Its tests check it against exact solutions
 and textbook formulas: layered Green's functions to about 1e-5, stripline impedance to 0.6 % (Cohn's), coupled
 striplines' even and odd modes to 2.5 %, a plane cavity's resonance to 0.7 % of the cavity model, and the rf_coupler
 example to 0.1 dB of openEMS's stored answer.

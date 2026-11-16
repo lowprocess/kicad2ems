@@ -1,5 +1,9 @@
 # gfdtd
 
+> Part of kicad2ems since 0.4: the package `kicad2ems.gfdtd`, installed with kicad2ems (`pip install .` in this
+> repository; the [README](../../README.md#install) has the installer). Its history up to then is in this
+> repository's, and in its own repository. Install lines below that name `.` mean this repository.
+
 A 3D FDTD solver in the manner of openEMS that runs on a GPU (Vulkan through slangpy, run on an AMD RX 7800 XT and
 an NVIDIA GTX 980 Ti, or CuPy on NVIDIA CUDA or AMD ROCm), or on the CPU through a compiled core, with numpy as the fallback and the reference. It reads
 openEMS's models: a script written for openEMS's Python interface runs here by swapping two imports, and
@@ -9,8 +13,8 @@ installed.
 On one mid-range GPU gfdtd runs 8–20 times faster than openEMS on a 24-thread CPU; its CPU core about twice as
 fast, and five times with PML and wideband dielectrics ([Speed](#speed)). It was written as a solver for
 [kicad2ems](https://github.com/lowprocess/kicad2ems) (`--solvers gfdtd`), which builds openEMS's model of a board
-and runs it here; the connection lives in [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd), and gfdtd
-itself knows nothing of kicad2ems. What kicad2ems-fdtd may rely on is versioned: `gfdtd.API_VERSION` (its
+and runs it here; the connection lives in [kicad2ems-fdtd](../fdtd/README.md), and gfdtd
+itself knows nothing of kicad2ems. What kicad2ems-fdtd may rely on is versioned: `kicad2ems.gfdtd.API_VERSION` (its
 docstring lists it).
 
 ## Install
@@ -20,7 +24,7 @@ pip install .                       # numpy, scipy, shapely, h5py, emsdev (the G
 pip install '.[gpu-vulkan]'         # the GPU through Vulkan: slangpy (any GPU)
 pip install '.[gpu-cuda12]'         # optional: the CuPy wheel for your stack (gpu-cuda12, gpu-cuda13, gpu-rocm7)
 pip install '.[core]'               # pybind11, then build the CPU core (g++ with OpenMP; Windows: MSVC or MinGW):
-python -m gfdtd.core.build          # src/gfdtd/_core*.so; GFDTD_ARCH=-march=x86-64-v3 for a portable build
+python -m kicad2ems.gfdtd.core.build          # src/gfdtd/_core*.so; GFDTD_ARCH=-march=x86-64-v3 for a portable build
 ```
 
 The CuPy extras conflict: install one (ROCm on Linux only). Vulkan needs only the GPU's driver (Vulkan 1.2 with
@@ -83,7 +87,7 @@ model is listed as a note.
 <a id="ports"></a>
 ## Ports
 
-`gfdtd.ports` has openEMS's Python port classes, made as openEMS makes them (the same metal, probes, excitations
+`kicad2ems.gfdtd.ports` has openEMS's Python port classes, made as openEMS makes them (the same metal, probes, excitations
 and post-processing), and `openEMS` has their `Add...Port` methods:
 
 ```python
@@ -202,7 +206,7 @@ the values within ~3 %. rf_coupler with `--bc PML_8 --diel wideband --dump ...`:
 which took 235 s; gfdtd 11 s on the GPU and 49 s on the CPU core (1.27 M cells).
 
 **Conductor loss.** A 40 mm microstrip (0.4 mm wide on 0.2 mm, eps_r 3.66, lumped 50 ohm ports), strip and ground
-as 35 µm copper sheets, 0.5–20 GHz, one XML on both engines (`tools/sheet_vs_openems.py`): |ΔS21| ≤ 0.009 (mostly
+as 35 µm copper sheets, 0.5–20 GHz, one XML on both engines (`tools/gfdtd/sheet_vs_openems.py`): |ΔS21| ≤ 0.009 (mostly
 0.002–0.004) and |ΔS11| ≤ 0.04 against openEMS 0.37. The sheets add 0.05 dB at 0.5 GHz, rising with about √f to
 0.33 dB at 20 GHz. openEMS's energy stalled at −24.7 dB and it ran all 200,000 timesteps (235 s); gfdtd's fell to
 −40 dB at 4,700 (4 s on the CPU core).
@@ -228,9 +232,9 @@ On demo_lowpass openEMS's field energy stalled above `--end-db` (its port watch 
 timesteps) while gfdtd's, the lumped parts' included, fell to −40 dB after 26,900. The CPU core's S-parameters are
 the GPU's within 1e-6.
 
-**The engine alone** (`python tools/bench.py`; `python tools/readme_figure.py` draws this):
+**The engine alone** (`python tools/gfdtd/bench.py`; `python tools/gfdtd/readme_figure.py` draws this):
 
-![M cell updates per second against the model's size, for each backend](docs/speed.png)
+![M cell updates per second against the model's size, for each backend](speed.png)
 
 Both compiled backends are bound by memory bandwidth on large models: the GPU moves ~420 GB/s of its 624 GB/s over
 a step (73 bytes a cell update), the core ~45 GB/s of DRAM. Up to ~1 M cells the fields fit in the GPU's 64 MB
@@ -262,6 +266,6 @@ tests/test_gfdtd.py          compatibility, operator, physics on small models, t
 tests/test_gfdtd_ports.py    the ports, weighted / hard / H / delayed excitations, mode matching, shells,
                              curves, current-probe snapping
 tests/openems_files.py       readers of the openEMS files a run writes, for the tests
-tools/bench.py               the engine's per-operation timings by backend and model size
-tools/readme_figure.py       the speed figure above
+tools/gfdtd/bench.py               the engine's per-operation timings by backend and model size
+tools/gfdtd/readme_figure.py       the speed figure above
 ```

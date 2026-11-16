@@ -1,6 +1,6 @@
 # Low-frequency S-parameters
 
-`pcbqs.sparams` gives the S-parameters of a board's ports from the quasi-static currents of its copper, from DC
+`kicad2ems.pcbqs.sparams` gives the S-parameters of a board's ports from the quasi-static currents of its copper, from DC
 to about a tenth of a wavelength. That is the band where the full-wave solvers are at their worst (a time-domain
 run needs hundreds of thousands of steps, a moment method's matrix loses its conditioning), and where the answer
 is decided by where the current goes: the resistance of the copper it takes and the area of the loop it makes
@@ -8,8 +8,8 @@ with its return. A ground via missing or in the wrong place, a slot under a trac
 planes: each shows as loop inductance, and as impedance two ports share.
 
 ```sh
-python -m pcbqs.sparams board.kicad_pcb --nets SIG,GND --fmin 1e3 --fmax 1e8 --out lf
-python -m pcbqs.sparams run/board_board.json --out lf       # a kicad2ems board file: its ports as they are
+python -m kicad2ems.pcbqs.sparams board.kicad_pcb --nets SIG,GND --fmin 1e3 --fmax 1e8 --out lf
+python -m kicad2ems.pcbqs.sparams run/board_board.json --out lf       # a kicad2ems board file: its ports as they are
 kicad2ems board.toml --solvers pcbqs --fmin 0.00001 --fmax 0.1 --sweep log     # as a kicad2ems solver (GHz)
 ```
 
@@ -26,7 +26,7 @@ terminations,
     S[j, k] = 2 I_j sqrt(z0_j / z0_k) - (j == k)        I_j: the current in port j's termination
 
 so no impedance matrix is formed (the ports of a board without capacitance have none: nothing joins a trace to
-its plane but the other ports). The copper is `pcbqs.mqs`'s: the sheet current of every layer on a triangle mesh,
+its plane but the other ports). The copper is `kicad2ems.pcbqs.mqs`'s: the sheet current of every layer on a triangle mesh,
 the vias as filaments, and the mutual inductance of all of it. The mesh is fine at the ports' nets and within
 three heights of them, where the return current lies, and coarse elsewhere.
 
@@ -39,7 +39,7 @@ deviations).
 
 **Resistance and inductance** alone hold while the copper's capacitance carries next to no current: until
 `π f C z0 = 0.01`, where a trace's own capacitance moves S by 0.01 (a matched line's S11 first: its capacitance
-is what cancels its inductance). **Above that the charge is solved with the currents** (`pcbqs.peec`: one model
+is what cancels its inductance). **Above that the charge is solved with the currents** (`kicad2ems.pcbqs.peec`: one model
 for R, L and C, in the board's dielectrics, with their loss), which holds to about a tenth of a wavelength.
 Neither has radiation. `--capacitance auto` (the default) adds the charge when the band reaches above the first
 limit; both limits are estimated and written with the result (`valid_to_Hz`), and a run says how many of its
@@ -166,7 +166,7 @@ model, but it leaves two things out that show at the top of the band:
   not much wider than it is thick, so a matched line's S11 reads high.
 
 `--thickness` models each layer's copper as two sheets at its faces, joined through the copper by the slab's
-impedance (`MQS(conductor_loss='slab')`, [quasistatic.md](quasistatic.md#two-face-sheets-experimental)). It
+impedance (`MQS(conductor_loss='slab')`, [quasistatic.md](quasistatic.md#two-face-sheets-the-slabs-default)). It
 doubles the unknowns and needs a cell no wider than the trace to pay off:
 
 | `demo_transition`: 0.35 mm microstrip, a via, 0.15 mm stripline | One sheet, default mesh | Two faces, `--fine 0.15 --dmax 1.3` |

@@ -5,26 +5,29 @@ takes ports from marker footprints and R/L/C parts from the components, and solv
 more electromagnetic solvers. Each run writes Touchstone S-parameters, plots, a JSON summary and an HTML
 report that compares the solvers.
 
-kicad2ems is the core: the board model, the line model, the settings, the runs and the results. The rest are
-packages of their own, each in its repository:
+Everything is in this repository and installs as one package, `kicad2ems` (until 0.4 the parts were packages of
+their own, each in its repository; their histories are merged here):
 
-| Repository | What it is | Installed with |
-|---|---|---|
-| [kicad2ems-gui](https://github.com/lowprocess/kicad2ems-gui) | the window: settings, runs, plots, fields, antennas, the Filter page | `pip install '.[gui]'` |
-| [kicad2ems-ipc](https://github.com/lowprocess/kicad2ems-ipc) | the KiCad plugin: the impedance map, and simulations set up from the PCB editor | KiCad's Plugin and Content Manager |
-| [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) | the FDTD solvers, openEMS and gfdtd, on one shared FDTD model | `pip install '.[openems]'`, `'.[gfdtd]'` |
-| [mom25d](https://github.com/lowprocess/mom25d) | the 2.5D Method-of-Moments solver, with its kicad2ems plugins | `pip install '.[mom]'` |
-| [pcbqs](https://github.com/lowprocess/pcbqs) | DC/PDN, quasistatic fields, low-frequency S-parameters, ngspice circuits and temperature | `pip install '.[qs]'` |
-| [gfdtd](https://github.com/lowprocess/gfdtd) | a 3D FDTD engine for the GPU or the CPU (kicad2ems-fdtd runs it) | `pip install '.[gfdtd]'` |
-| [dfsynth](https://github.com/lowprocess/dfsynth) | distributed filter synthesis (the GUI's Filter page) | `pip install '.[filter]'` |
+| Part | What it is | Code | Docs |
+|---|---|---|---|
+| core | the board model, the line model, the settings, the runs and the results | `kicad2ems.core` | [docs](docs/index.md) |
+| gui | the window: settings, runs, plots, fields, antennas, the Filter page (the `gui` extra) | `kicad2ems.gui` | [docs/gui](docs/gui/README.md) |
+| ipc | the KiCad plugin: the impedance map, and simulations set up from the PCB editor | `kicad2ems.ipc` | [docs/ipc](docs/ipc/README.md) |
+| fdtd | the FDTD solvers, openEMS and gfdtd, on one shared FDTD model | `kicad2ems.fdtd` | [docs/fdtd](docs/fdtd/README.md) |
+| mom25d | the 2.5D Method-of-Moments solver | `kicad2ems.mom25d` | [docs/mom25d](docs/mom25d/README.md) |
+| pcbqs | DC/PDN, quasistatic fields, low-frequency S-parameters, ngspice circuits and temperature | `kicad2ems.pcbqs` | [docs/pcbqs](docs/pcbqs/README.md) |
+| gfdtd | a 3D FDTD engine for the GPU or the CPU (fdtd runs it) | `kicad2ems.gfdtd` | [docs/gfdtd](docs/gfdtd/README.md) |
+| fem | Palace and Elmer behind kicad2ems: a second opinion (the `fem` extra) | `kicad2ems.fem` | [docs/fem](docs/fem/README.md) |
+| dfsynth | distributed filter synthesis (the GUI's Filter page) | `kicad2ems.dfsynth` | [docs/dfsynth](docs/dfsynth/README.md) |
+| emsdev | the machine: GPUs, CPU threads, memory, the compilers the cores build with | `kicad2ems.emsdev` | [docs/emsdev](docs/emsdev/README.md) |
 
 | Solver | Name | Best for | Needs |
 |---|---|---|---|
-| [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS, and the `openems` extra |
-| [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | the `mom` extra; a GPU optional |
-| [gfdtd](docs/gfdtd.md) (3D FDTD on the GPU) | `gfdtd` | openEMS's model, 8–20x faster on a GPU, ~2x on the CPU, without conductor loss | the `gfdtd` extra; a GPU, or its compiled CPU core |
+| [openEMS](https://openems.de) (3D FDTD) | `openems` | anything: planes, board edges, connectors, enclosures, antennas | openEMS (not on PyPI: your distribution's, or `tools/build_openems.sh`) |
+| [mom25d](docs/mom.md) (2.5D method of moments) | `mom` | planar circuits over a ground plane: filters, couplers, matching networks, patch antennas | its compiled core (the mesher); a GPU optional |
+| [gfdtd](docs/gfdtd.md) (3D FDTD on the GPU) | `gfdtd` | openEMS's model, 8–20x faster on a GPU, ~2x on the CPU, without conductor loss | a GPU, or its compiled CPU core |
 | Transmission-line model | `lines` | a quick estimate: impedance steps, delays, layout mistakes | scikit-rf or qucsator |
-| [pcbqs](https://github.com/lowprocess/pcbqs/blob/main/docs/sparams.md) (quasi-static) | `pcbqs` | the low end, DC to about a tenth of a wavelength: copper resistance, loop inductance, where the return current goes | the `qs` extra; run only when named |
+| [pcbqs](docs/pcbqs/sparams.md) (quasi-static) | `pcbqs` | the low end, DC to about a tenth of a wavelength: copper resistance, loop inductance, where the return current goes | its compiled core (the mesher); run only when named |
 
 By default kicad2ems picks the full-wave solver it expects to be fastest for your board and adds the
 line model ([which solver](docs/usage.md#which)).
@@ -148,10 +151,11 @@ Start with [Getting started](docs/getting-started.md), then [Usage](docs/usage.m
 ## License
 
 GPL-3.0-or-later (see [LICENSE](LICENSE)). kicad2ems uses openEMS (GPL-3.0-or-later) and CSXCAD
-(LGPL-3.0-or-later) as Python packages and runs qucsator (GPL-2.0-or-later) as a separate program. No
-third-party code is copied into the repository.
+(LGPL-3.0-or-later) as Python packages and runs qucsator (GPL-2.0-or-later), ngspice (BSD-style), Elmer
+(GPL-2.0-or-later) and Palace (Apache-2.0) as separate programs.
 
-mom25d and pcbqs (the `mom` and `qs` extras) mesh with the `triangle` package (LGPL-3.0), which compiles in
-Jonathan Shewchuk's Triangle. Triangle keeps its own terms, which are not the GPL's: it "may not be sold or
-included in commercial products without a license" from its author
-([Triangle's page](https://www.cs.cmu.edu/~quake/triangle.html)).
+One piece of third-party code is copied into the repository: [CDT](https://github.com/artem-ogre/CDT) 2.0.1
+(MPL-2.0), the constrained Delaunay triangulation that mom25d's and pcbqs's compiled cores mesh with, in
+`src/kicad2ems/mom25d/core/CDT` and `src/kicad2ems/pcbqs/core/CDT` with its licence. Two of its headers carry their
+own: `predicates.h` BSD-3-Clause, `portable_nth_element.hpp` Apache-2.0 with LLVM exceptions. Those files keep
+their licences; the rest of kicad2ems is GPL-3.0-or-later.

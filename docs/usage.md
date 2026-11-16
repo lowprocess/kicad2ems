@@ -33,7 +33,7 @@ is invalid or a named solver cannot run. Settings and solvers are checked before
 | `qucs` | the [line model](transmission-lines.md), solved by qucsator | qucsator on PATH |
 | `scikit` | the line model, solved by scikit-rf | scikit-rf |
 | `lines` | `qucs` if qucsator is installed, otherwise `scikit` | |
-| `pcbqs` (or `qs`) | pcbqs, quasi-static: the low end of a band, from DC to about a tenth of a wavelength, with the return current where it flows ([details](https://github.com/lowprocess/pcbqs/blob/main/docs/sparams.md)) | the `qs` extra; run only when named |
+| `pcbqs` (or `qs`) | pcbqs, quasi-static: the low end of a band, from DC to about a tenth of a wavelength, with the return current where it flows ([details](pcbqs/sparams.md)) | the `qs` extra; run only when named |
 | `auto` | the default: the full-wave solver expected to be fastest, plus the line model | |
 | `all` | every solver | |
 
@@ -203,7 +203,7 @@ volts = 3.3
 load = ["U1=0.8", "U4=0.2"]
 ```
 
-`kicad2ems study board.toml --list` then reads `Rail drop, Rail impedance: Power integrity (pcbqs.pdn), 2 runs:
+`kicad2ems study board.toml --list` then reads `Rail drop, Rail impedance: Power integrity (kicad2ems.pcbqs.pdn), 2 runs:
 +5V, +3V3`. An analysis that starts from another's result takes the last of them.
 
 A config without `[study]` is read as before: `[analysis] run = [...]` names analyses (`"rf"`: S-parameters),

@@ -15,6 +15,6 @@ sphinx:
   configuration: docs/conf.py
 python:
   install:
-    - method: pip                     # this checkout's kicad2ems first: the others require it
+    - method: pip                     # kicad2ems: every part is in it
       path: .
     - requirements: docs/requirements.txt

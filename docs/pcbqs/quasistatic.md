@@ -1,6 +1,6 @@
 # Low-frequency copper currents, capacitance and fields
 
-`pcbqs.mqs.MQS` meshes explicitly selected copper, vias and terminals. The
+`kicad2ems.pcbqs.mqs.MQS` meshes explicitly selected copper, vias and terminals. The
 default magnetic model solves divergence-free loop currents with sheet DC
 resistance and partial inductance. No infinite ground plane or image is added:
 include the return copper in `nets`. Geometry inputs and mesh sizes use mm;
@@ -55,7 +55,7 @@ defaults, bounded scratch memory, GPU limitations and scaling benchmarks.
 The reproducible CPU benchmark is:
 
 ```sh
-OPENBLAS_NUM_THREADS=2 python tools/benchmark_mqs.py --dmax 0.8
+OPENBLAS_NUM_THREADS=2 python tools/pcbqs/benchmark_mqs.py --dmax 0.8
 ```
 
 On the development environment, a 974-triangle example took 1.20 s for the
@@ -284,11 +284,11 @@ the good/far/slot cases took approximately 1.3/4.7/3.4 s for planes and volume,
 with 4,140/5,326/5,588 triangles respectively. These runs use the demo's
 unchanged meshes, RLC assumptions and source waveform.
 
-The maintained `tools/nearfield_demo.py` now reruns those same geometries and
+The maintained `tools/pcbqs/nearfield_demo.py` now reruns those same geometries and
 waveform with layered PEEC and conductor-loss comparisons:
 
 ```sh
-OPENBLAS_NUM_THREADS=4 OMP_NUM_THREADS=8 python tools/nearfield_demo.py out/
+OPENBLAS_NUM_THREADS=4 OMP_NUM_THREADS=8 python tools/pcbqs/nearfield_demo.py out/
 ```
 
 It compares MQS/DC-sheet, PEEC/DC-sheet and PEEC with one- and two-face slabs.
@@ -312,9 +312,9 @@ their timing records identify that reuse.
 ## Converter command and GUI
 
 ```sh
-python -m pcbqs.mqs --describe --json
-python -m pcbqs.mqs board.kicad_pcb --list-converters
-python -m pcbqs.mqs board.kicad_pcb --converter U702 --vin +5V \
+python -m kicad2ems.pcbqs.mqs --describe --json
+python -m kicad2ems.pcbqs.mqs board.kicad_pcb --list-converters
+python -m kicad2ems.pcbqs.mqs board.kicad_pcb --converter U702 --vin +5V \
   --capacitors C704,C705,C706 --fsw 500000 --current 3 --duty .33 \
   --heights 1,3,10 --fill-backend openmp --fill-workers 8 --out nearfield_U702
 ```
@@ -352,7 +352,7 @@ The model omits switch-node E and output-inductor core/winding leakage.
 `f_Hz, A` (peak), as a circuit run writes for each part on its supply
 (`supply-<part>.csv`). Its lowest frequency is the switching frequency, `--harmonics`
 still says which are solved, and the report lists the assumed pulse beside them.
-`--circuit` prints the selected converter as a circuit model for `pcbqs.circuit`
+`--circuit` prints the selected converter as a circuit model for `kicad2ems.pcbqs.circuit`
 and stops; a run writes the same as `circuit-model.json`
 ([From one tool to the next](power-workflow.md#4-from-one-tool-to-the-next)).
 
@@ -371,7 +371,7 @@ storage, crop/hardware validation and resolved package models remain open.
 
 ### Layout, component shapes and mesh preview
 
-`python -m pcbqs.mqs board.kicad_pcb --converter U702 --vin +5V --preview --out preview`
+`python -m kicad2ems.pcbqs.mqs board.kicad_pcb --converter U702 --vin +5V --preview --out preview`
 meshes the selected crop and exports `mqs-preview.json`, `mqs_board.json` and
 `mqs_mesh_mqs.npz` without matrix filling, GPU initialization or solving. The GUI
 **Preview mesh** button writes to a separate `preview/` subfolder and opens
@@ -402,7 +402,7 @@ openEMS simulation at the same frequency.
 
 ## Nonlinear operational circuits
 
-`python -m pcbqs.circuit` simulates any circuit of parts, nodes and drives (switches, MOSFET or vendor subcircuits
+`python -m kicad2ems.pcbqs.circuit` simulates any circuit of parts, nodes and drives (switches, MOSFET or vendor subcircuits
 in ngspice, component parasitics, coupled windings), with the board's copper between its parts' pads as a
 passive broadband multi-port model (`--copper`) whose periodic terminal currents drive the MQS copper field
 response (`--fields`). See [circuits](circuit.md); the wpthb bridge and its coupled receiver are

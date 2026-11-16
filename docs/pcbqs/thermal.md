@@ -1,18 +1,18 @@
-# Temperature (`pcbqs.thermal`)
+# Temperature (`kicad2ems.pcbqs.thermal`)
 
 A trial of a lightweight thermal solver inside pcbqs: the steady temperature of a board from what its parts
 dissipate, in a fraction of a second, with two discretisations of one model to compare. The 3D reference remains
 Elmer through kicad2ems-fem, and the two agree within 2 K on eleven boards (below).
 
-    python -m pcbqs.thermal board.kicad_pcb --loss Q1=0.35 --loss D1=0.5
-    python -m pcbqs.thermal --circuit circuit-results               # the board and losses of a circuit run
-    python -m pcbqs.thermal --circuit circuit-results --method both # grid and mesh, with their difference
-    python -m pcbqs.thermal board.kicad_pcb --loss U1=1.2 --theta U1=8 --film 12 --ambient 40
-    python -m pcbqs.thermal board.kicad_pcb --loss Q1=0.35 --film-edge 0  # the edges insulated
-    python -m pcbqs.thermal board.kicad_pcb --loss Q1=2 --theta Q1=3 --air Q1=15    # a heatsink on Q1
-    python -m pcbqs.thermal board.kicad_pcb --loss Q1=2 --hold H1=40 --air-speed 1.5 --transient 1800
+    python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=0.35 --loss D1=0.5
+    python -m kicad2ems.pcbqs.thermal --circuit circuit-results               # the board and losses of a circuit run
+    python -m kicad2ems.pcbqs.thermal --circuit circuit-results --method both # grid and mesh, with their difference
+    python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss U1=1.2 --theta U1=8 --film 12 --ambient 40
+    python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=0.35 --film-edge 0  # the edges insulated
+    python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=2 --theta Q1=3 --air Q1=15    # a heatsink on Q1
+    python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=2 --hold H1=40 --air-speed 1.5 --transient 1800
 
-In kicad2ems-gui it is the **Thermal** analysis (`pcbqs.analyses.Thermal`, a kicad2ems analysis plugin): its form
+In kicad2ems-gui it is the **Thermal** analysis (`kicad2ems.pcbqs.analyses.Thermal`, a kicad2ems analysis plugin): its form
 is its options table, and with no losses typed it takes the latest circuit run's, on that run's board.
 
 It writes `thermal.json` (each part's temperature, each layer's hottest and mean, heat in and out, the board and
@@ -76,7 +76,7 @@ With a circuit run on its board's copper and `--fields`, the copper's own loss h
 are (the run's `copper-loss.npz`: each triangle's share, gathered into 1 mm squares); without `--fields` the
 report says it is left out.
 
-`--circuit FOLDER` takes the board and the losses from a circuit run (`python -m pcbqs.circuit`): every part's
+`--circuit FOLDER` takes the board and the losses from a circuit run (`python -m kicad2ems.pcbqs.circuit`): every part's
 average power, summed per footprint. A coupled winding gives its own loss (`loss_W`: its resistances', the DCR and
 the core's), not its V·I, which is the power it passes to the other windings too; a switch's gate drive is counted
 on the switch (its gate resistance). A source and a load are not on the board, nor is a part bound to a connector,
@@ -202,7 +202,7 @@ Two things the comparison found:
   few repeats of the same solve.
 - **The copper's own loss** is not put in as a map. From the DC drop it is a loss per triangle; on the demo
   boards it is milliwatts.
-- **Resistance against temperature** feeds back into the circuit's losses with `pcbqs.circuit --warm`
+- **Resistance against temperature** feeds back into the circuit's losses with `kicad2ems.pcbqs.circuit --warm`
   ([circuit.md](circuit.md#parts-at-their-temperatures)); the DC drop's copper is still at 25 °C.
 - **A transient on the mesh**, and a transient of changing losses (a load step): the heating is from cold, at
   the losses given.

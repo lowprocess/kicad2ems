@@ -1,5 +1,9 @@
 # kicad2ems-gui
 
+> Part of kicad2ems since 0.4: the package `kicad2ems.gui`, installed with kicad2ems (`pip install .` in this
+> repository; the [README](../../README.md#install) has the installer). Its history up to then is in this
+> repository's, and in its own repository. Install lines below that name `.` mean this repository.
+
 The window of [kicad2ems](https://github.com/lowprocess/kicad2ems): a run's settings, the run itself and its
 results. S-parameter plots and the report, the board in plan and 3D with the line model over it, field maps and
 animations, antenna patterns and beam steering, dfsynth's filter synthesis (the Filter page), and whatever
@@ -9,10 +13,10 @@ analyses are installed beside S-parameters (pcbqs's power integrity, near field,
 
 The settings form is made from kicad2ems's option tables and its solver registry, so an installed solver package
 (openEMS, mom25d, gfdtd or any other plugin) gets its tick box and its settings with no change here. The analyses
-come the same way, from kicad2ems's analysis registry (`kicad2ems.api.frontend.analyses`): the window knows none
-of them by name, but for the Circuit page's model editor, which imports pcbqs's model and schematic code. Each run is a process of its own (`kicad2ems.runs`, or the analysis's command), so the window
+come the same way, from kicad2ems's analysis registry (`kicad2ems.core.api.frontend.analyses`): the window knows none
+of them by name, but for the Circuit page's model editor, which imports pcbqs's model and schematic code. Each run is a process of its own (`kicad2ems.core.runs`, or the analysis's command), so the window
 needs nothing of a solver's and a solver's crash never takes the window with it. Closing the window stops a run that
-is going (it asks first); what the run had written stays in its folder. kicad2ems's [GUI page](https://github.com/lowprocess/kicad2ems/blob/main/docs/gui.md) covers using it.
+is going (it asks first); what the run had written stays in its folder. kicad2ems's [GUI page](../gui.md) covers using it.
 
 ## The window
 
@@ -28,7 +32,7 @@ what it will run, or the first thing missing.
 ## The study
 
 The left column is the study: the board (one for every question) and the **Questions** asked of it; the
-settings of the question selected there are the Settings dock. The list is kicad2ems's (`kicad2ems.api.frontend.study_tree`): the
+settings of the question selected there are the Settings dock. The list is kicad2ems's (`kicad2ems.core.api.frontend.study_tree`): the
 questions by group (RF, Power, Thermal), each with the engines installed that answer it. A row's *Answered by*
 cell is a menu: *auto*, or a tick per engine, and several ticked all run and are compared; *Fields* asks for its
 field dumps where an engine can write them. The three RF questions are kicad2ems's own run, with the solvers
@@ -89,16 +93,14 @@ Filter Synthesis opens from the toolbar's Filter, in a window of its own. The **
 one analysis with an editor of its own, is a tab beside the board while Circuit is asked. It is the model's editor only (its
 schematic, its JSON): the model is a file the config names, saved back beside the config with the study. The
 circuit's settings are a panel in the Settings dock like any analysis's, made from the plugin's options
-(`pcbqs.circuit --describe`), with a *Model* section for the model's parameters and sweep. Its results are on the Plots, Report and Tables pages and its log on the Log page, as every
+(`kicad2ems.pcbqs.circuit --describe`), with a *Model* section for the model's parameters and sweep. Its results are on the Plots, Report and Tables pages and its log on the Log page, as every
 analysis's.
 
 ## Install
 
-    python -m pip install 'kicad2ems[gui]'              # kicad2ems with its window
-    python -m pip install 'kicad2ems-gui @ git+https://github.com/lowprocess/kicad2ems-gui'
-    python -m pip install 'kicad2ems-gui[filter] @ ...' # with the Filter page (dfsynth)
+    python -m pip install 'kicad2ems[gui]'              # kicad2ems with its window (the Filter page: dfsynth, in it)
 
-    kicad2ems-gui [config.toml]                         # or: python -m kicad2ems_gui
+    kicad2ems-gui [config.toml]                         # or: python -m kicad2ems.gui
 
 It needs PySide6, pyqtgraph and PyOpenGL (installed with it), and kicad2ems 0.3.0 or later (its API 2.11). The
 analyses need pcbqs 0.3.0 or later (`kicad2ems[qs]`).
@@ -138,7 +140,7 @@ and components by layer, and its field overlays with opacity controls, in 3D too
 the layout context and gold selected components. Its result offers **Copy the input rail to Power integrity**: the
 board and the net, the DC source, voltage and loads left for review.
 
-The **Circuit** analysis runs circuits through `python -m pcbqs.circuit`: any
+The **Circuit** analysis runs circuits through `python -m kicad2ems.pcbqs.circuit`: any
 circuit of parts, nodes and drives, by ngspice, with the board's copper between the parts' pads when asked and the
 periodic copper fields inferred from it, which open in the Viewer from a point's
 folder. Among its examples is the wpthb full bridge with a coupled receiver
@@ -169,7 +171,7 @@ They use kicad2ems's fixtures, example boards and stand-in solvers from a kicad2
 default `../kicad2ems`), and run the window offscreen. The analyses are stand-ins too (`tests/fake_analyses.py`:
 the same names as pcbqs's, each a few lines with a tool that writes a small result), so the window is tested as
 the host of any plugin; `tests/test_real_analyses.py` runs pcbqs's own through it when pcbqs is installed. kicad2ems's `tools/test_all.sh` runs them with the rest.
-`python tools/readme_media.py` makes kicad2ems's README and GUI-page pictures from its examples.
+`python tools/gui/readme_media.py` makes kicad2ems's README and GUI-page pictures from its examples.
 
 ## Licence
 

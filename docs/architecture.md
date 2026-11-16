@@ -41,12 +41,12 @@ matplotlib `Figure` objects without pyplot, so the GUI can embed them.
 ## Solver plugins
 
 A solver is a subclass of `solvers.Solver`. Only the line solvers are built in (`solvers.BUILTIN`); the full-wave
-ones are packages that add theirs through the `kicad2ems.solvers` entry point: openEMS's and gfdtd's in
-[kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd), on the FDTD layer they share; mom25d's and
+ones are packages that add theirs through the `kicad2ems.core.solvers` entry point: openEMS's and gfdtd's in
+[kicad2ems-fdtd](fdtd/README.md), on the FDTD layer they share; mom25d's and
 mixed's in mom25d. [APIs](api.md#solver-plugins) lists what a solver declares and implements, and the versions.
 
-A plugin imports from `kicad2ems.api.solver` only; a program that drives kicad2ems (the GUI, the KiCad plugin,
-dfsynth) from `kicad2ems.api.frontend`. The rest of kicad2ems is private. A registered solver then appears in
+A plugin imports from `kicad2ems.core.api.solver` only; a program that drives kicad2ems (the GUI, the KiCad plugin,
+dfsynth) from `kicad2ems.core.api.frontend`. The rest of kicad2ems is private. A registered solver then appears in
 `--solvers`, `--check`, the config (`[solver.mysolver]`), the GUI (a section per option group), the Filter page and
 the KiCad plugin's menu. A plugin that fails to load is left out and listed by `--check`; a solver kicad2ems has an
 extra for (`solvers.EXTRAS`) but no package for says how to install it.
@@ -87,7 +87,7 @@ src/kicad2ems/
   starter.py      --init: a commented starter config with the ports found
   stop.py         stopping a run from outside it (the GUI's Stop): a STOP file in its folder
   api/            the public API: solver (for solver plugins), frontend (for the GUI, the KiCad plugin, dfsynth)
-  sysinfo.py      what this machine can run (the GUI's Solvers window; python -m kicad2ems.sysinfo)
+  sysinfo.py      what this machine can run (the GUI's Solvers window; python -m kicad2ems.core.sysinfo)
   sitecfg.py      where the external programs are: site.toml
   importers/      KiCad (kicad/) and Gerber readers
   board.py        Board: the converted board, board.json
@@ -114,7 +114,7 @@ src/kicad2ems/
   runs.py         a run started by another program (the GUI, the KiCad plugin): TOML, command line, events, stop
 ```
 
-The window is [kicad2ems-gui](https://github.com/lowprocess/kicad2ems-gui), a package of its own (the `gui`
+The window is [kicad2ems-gui](gui/README.md), a package of its own (the `gui`
 extra): its form is made from the option tables and the solver registry, and it starts each run as a `kicad2ems`
 process (`runs.py`), so it needs nothing of a solver's.
 

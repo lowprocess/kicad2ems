@@ -1,5 +1,9 @@
 # kicad2ems-fem
 
+> Part of kicad2ems since 0.4: the package `kicad2ems.fem`, installed with kicad2ems (`pip install .` in this
+> repository; the [README](../../README.md#install) has the installer). Its history up to then is in this
+> repository's, and in its own repository. Install lines below that name `.` mean this repository.
+
 The finite-element solvers of [kicad2ems](https://github.com/lowprocess/kicad2ems), as kicad2ems-fdtd hosts its
 FDTD ones: each an external program behind its own interface, sharing the board's geometry (`geometry.py`) and
 gmsh meshing. Neither program is a Python dependency; each is found when it runs.
@@ -7,11 +11,11 @@ gmsh meshing. Neither program is a Python dependency; each is found when it runs
 | Solver | For | Interface |
 |---|---|---|
 | [Palace](https://github.com/awslabs/palace) (AWS) | S-parameters, frequency domain; antennas | `kicad2ems board.toml --solvers palace` (`palace/`) |
-| Palace, electrostatic | Capacitance between nets on the real stack | `python -m kicad2ems_fem.palace.cap` (`palace/cap.py`) |
-| [Elmer](https://www.elmerfem.org) (CSC) | DC IR drop of a net's copper, 3D | `python -m kicad2ems_fem.elmer.dc` (`elmer/`) |
-| Elmer, heat | The board's steady temperature: parts' heat, a rail's own, a circuit run's | `python -m kicad2ems_fem.elmer.thermal` |
-| Elmer, magnetostatic | Wound coils beside ferrite: inductance and coupling (the study's *Coils and ferrite*) | `python -m kicad2ems_fem.elmer.mag` |
-| Elmer, electrostatic | Capacitance between nets: Palace's model, a second solver | `python -m kicad2ems_fem.elmer.cap` |
+| Palace, electrostatic | Capacitance between nets on the real stack | `python -m kicad2ems.fem.palace.cap` (`palace/cap.py`) |
+| [Elmer](https://www.elmerfem.org) (CSC) | DC IR drop of a net's copper, 3D | `python -m kicad2ems.fem.elmer.dc` (`elmer/`) |
+| Elmer, heat | The board's steady temperature: parts' heat, a rail's own, a circuit run's | `python -m kicad2ems.fem.elmer.thermal` |
+| Elmer, magnetostatic | Wound coils beside ferrite: inductance and coupling (the study's *Coils and ferrite*) | `python -m kicad2ems.fem.elmer.mag` |
+| Elmer, electrostatic | Capacitance between nets: Palace's model, a second solver | `python -m kicad2ems.fem.elmer.cap` |
 
 All are **experimental**. Each is a second opinion on a faster solver of the tool, by a different method:
 
@@ -30,13 +34,13 @@ The last two have no fast solver in the tool: they supply what it otherwise take
 ## As engines of a kicad2ems study
 
 kicad2ems lists what can be asked of a board as questions, each with the engines that answer it
-(`kicad2ems.study`, `kicad2ems --check`). Five of the tools here register as engines (`analyses.py`, the
-`kicad2ems.analyses` entry points), beside the faster ones:
+(`kicad2ems.core.study`, `kicad2ems --check`). Five of the tools here register as engines (`analyses.py`, the
+`kicad2ems.core.analyses` entry points), beside the faster ones:
 
 | Question | Engine here | Beside |
 |---|---|---|
-| a rail's DC drop | `elmer_dc` | pcbqs.pdn |
-| the board's temperature | `elmer_thermal` | pcbqs.thermal |
+| a rail's DC drop | `elmer_dc` | kicad2ems.pcbqs.pdn |
+| the board's temperature | `elmer_thermal` | kicad2ems.pcbqs.thermal |
 | capacitance between nets | `elmer_cap`, `palace_cap` | |
 | coils and ferrite (their inductances and coupling) | `elmer_mag` | |
 
@@ -48,7 +52,7 @@ pcbqs's.
 ## Elmer: DC IR drop
 
 ```sh
-python -m kicad2ems_fem.elmer.dc board.kicad_pcb --net VHB --source L3 --load Q1=0.67 --load Q2=0.67 --out dc_vhb
+python -m kicad2ems.fem.elmer.dc board.kicad_pcb --net VHB --source L3 --load Q1=0.67 --load Q2=0.67 --out dc_vhb
 ```
 
 - **Model:** the net's copper is extruded through its thickness, outer layers outward. Each via is a cylinder
@@ -189,7 +193,7 @@ the default stays `feature = 4`; `amr` is for checking that an answer has settle
 
 ### A rail's impedance
 
-`python -m kicad2ems_fem.palace.pdn --pdn <a pcbqs PDN run> --out pdn_palace`, and in a study the engine
+`python -m kicad2ems.fem.palace.pdn --pdn <a pcbqs PDN run> --out pdn_palace`, and in a study the engine
 *Rail impedance (Palace)* of the power-integrity question, which takes the board's newest pcbqs PDN run: its rail
 solved again in 3D. Each part on the rail is a lumped port across its copper's gap between rail and ground at the
 part (a pour's edge to the next, or pad to pad; a series part's between its pads), so the copper from the pads to
@@ -204,7 +208,7 @@ another, vias between) leaves out. 42,000 tetrahedra, 36 s.
 
 ### A converter's input loop
 
-`python -m kicad2ems_fem.palace.loop --mqs <a pcbqs near-field run> --out loop`, and in a study the engine
+`python -m kicad2ems.fem.palace.loop --mqs <a pcbqs near-field run> --out loop`, and in a study the engine
 *Converter loop (Palace)* of the near field's question, which takes the board's newest pcbqs near-field run: the
 loop pcbqs found (its converter, input net, ground, input capacitors and crop) solved again in 3D. The copper is
 kicad2ems's board of the same KiCad file, cropped as pcbqs cropped it, as PEC sheets and holes; the input
@@ -263,9 +267,9 @@ older one.
 ## Elmer: temperature
 
 ```sh
-python -m kicad2ems_fem.elmer.thermal board.kicad_pcb --heat Q1=0.3 --heat Q2=0.3@0.5 --out th
-python -m kicad2ems_fem.elmer.thermal board.kicad_pcb --heat-from run/case.json --out th
-python -m kicad2ems_fem.elmer.thermal board.kicad_pcb --net VHB --source L3 --load Q1=3 --load Q2=3 --out th
+python -m kicad2ems.fem.elmer.thermal board.kicad_pcb --heat Q1=0.3 --heat Q2=0.3@0.5 --out th
+python -m kicad2ems.fem.elmer.thermal board.kicad_pcb --heat-from run/case.json --out th
+python -m kicad2ems.fem.elmer.thermal board.kicad_pcb --net VHB --source L3 --load Q1=3 --load Q2=3 --out th
 ```
 
 - **Model:** all the board's copper, its vias (barrels of their plated annulus's conductance) and the board
@@ -323,7 +327,7 @@ thread, and the DC tool's loss is the sum of each load's current × drop.
 ## Elmer: coils with ferrite
 
 ```sh
-python -m kicad2ems_fem.elmer.mag --coil tx:turns=10,inner=10.25,outer=22,z=0,t=1 \
+python -m kicad2ems.fem.elmer.mag --coil tx:turns=10,inner=10.25,outer=22,z=0,t=1 \
     --coil rx:turns=14,inner=8,outer=16,z=5,t=0.5 --plate z=-3,t=2.5,size=50x50,mur=2000 --out mag
 ```
 
@@ -342,7 +346,7 @@ board: in kicad2ems's window, tick it under *Power*, describe each coil and each
 (`tx: turns=10 inner=10.25 outer=22 z=0 t=1`; spaces or commas between), and run. Its report has the
 inductances, the coupling and the same coils in air, and its result offers *Use these coils in the circuit*:
 each coil's inductance for the circuit model's inductor of the same name, and each pair's coupling for the model's
-coupling of those two (`pcbqs.circuit --set tx.value=... --set rx.value=... --set couplings.tx+rx.k=...`: name the
+coupling of those two (`kicad2ems.pcbqs.circuit --set tx.value=... --set rx.value=... --set couplings.tx+rx.k=...`: name the
 coils after the model's inductors), so a circuit's run uses the coils as solved, not a datasheet's figure. A
 capacitor tuned to the old inductance is not retuned. In a config:
 `[analysis.elmer_mag] coil = ["tx: turns=10 ...", "rx: ..."]`.
@@ -384,8 +388,8 @@ winding's curve over frequency, one frequency's value would stand for all of it)
 ## Capacitance: Palace, and Elmer on the same model
 
 ```sh
-python -m kicad2ems_fem.palace.cap board.kicad_pcb --net SW --net VIN --net GND --out cap_sw
-python -m kicad2ems_fem.elmer.cap  board.kicad_pcb --net SW --net VIN --net GND --out cap_sw_elmer
+python -m kicad2ems.fem.palace.cap board.kicad_pcb --net SW --net VIN --net GND --out cap_sw
+python -m kicad2ems.fem.elmer.cap  board.kicad_pcb --net SW --net VIN --net GND --out cap_sw_elmer
 ```
 
 - **Model:** the dielectric slabs inside the board outline (finite, as built), air around them, each `--net` a

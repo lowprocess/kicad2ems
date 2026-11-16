@@ -1,11 +1,15 @@
 # kicad2ems-fdtd
 
+> Part of kicad2ems since 0.4: the package `kicad2ems.fdtd`, installed with kicad2ems (`pip install .` in this
+> repository; the [README](../../README.md#install) has the installer). Its history up to then is in this
+> repository's, and in its own repository. Install lines below that name `.` mean this repository.
+
 The FDTD solvers of [kicad2ems](https://github.com/lowprocess/kicad2ems): [openEMS](https://openems.de) and
-[gfdtd](https://github.com/lowprocess/gfdtd), on one shared FDTD model. This package turns kicad2ems's board into a
+[gfdtd](../gfdtd/README.md), on one shared FDTD model. This package turns kicad2ems's board into a
 rectilinear mesh and an openEMS-style model (the boundaries, the ports and parts, the dielectrics, the field dumps,
 the antenna's far-field box), runs one excitation per port with its end criteria, and reads the results back. Only
-the engine differs between the two solvers. kicad2ems finds them through the `kicad2ems.solvers` entry points and
-the package reaches kicad2ems only through `kicad2ems.api.solver`.
+the engine differs between the two solvers. kicad2ems finds them through the `kicad2ems.core.solvers` entry points and
+the package reaches kicad2ems only through `kicad2ems.core.api.solver`.
 
 - `plugin.py`: `FDTD`, the solvers' common plugin class, and their shared settings (`MESH`, `RUN`: the GUI's
   FDTD section)
@@ -24,9 +28,8 @@ the package reaches kicad2ems only through `kicad2ems.api.solver`.
 
 ## Install
 
-    python -m pip install 'kicad2ems[openems]'          # kicad2ems with this package and openEMS's side
-    python -m pip install 'kicad2ems[gfdtd]'            # ... with gfdtd
-    python -m pip install 'kicad2ems-fdtd[openems,gfdtd] @ git+https://github.com/lowprocess/kicad2ems-fdtd'
+    python -m pip install kicad2ems                     # kicad2ems, with this part and gfdtd
+    # openEMS itself is not on PyPI: your distribution's, or tools/build_openems.sh
 
 openEMS and CSXCAD are not on PyPI: install them from your distribution or build them from source (see
 kicad2ems's README). Without them the `openems` solver still loads and `kicad2ems --check` says what is

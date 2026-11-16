@@ -28,6 +28,22 @@ of moments) or a transmission-line model, and writes S-parameters, antenna resul
 | [Which solver](usage.md#which) | The solvers' strengths and weaknesses, how close each comes to openEMS and how fast |
 | [Transmission-line model](transmission-lines.md) | Line sections, impedance formulas, the circuit solvers |
 
+## The parts
+
+Each part of kicad2ems, as it was described in its own repository before 0.4:
+
+| Page | Contents |
+|---|---|
+| [mom25d](mom25d/README.md) | The 2.5D method of moments: the solver itself, its mesher and kernels |
+| [gfdtd](gfdtd/README.md) | The FDTD engine: GPU, compiled CPU core and NumPy, openEMS's interface |
+| [fdtd](fdtd/README.md) | The FDTD layer: openEMS and gfdtd on one shared FDTD model |
+| [fem](fem/README.md) | Palace and Elmer behind kicad2ems: capacitance, rail drop, temperature, coils |
+| [gui](gui/README.md) | The window's code |
+| [ipc](ipc/README.md) | The KiCad plugin's code |
+| [dfsynth](dfsynth/README.md) | Distributed filter synthesis |
+| [emsdev](emsdev/README.md) | The machine: GPUs, CPU threads, memory, the compilers |
+| [pcbqs](pcbqs/README.md) | Power integrity, quasistatic fields, ngspice circuits, temperature ([its pages](pcbqs/README.md)) |
+
 ## Working on kicad2ems
 
 | Page | Contents |

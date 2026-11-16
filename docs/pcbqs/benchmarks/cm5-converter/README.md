@@ -9,7 +9,7 @@ all numerical settings are in [summary.json](summary.json).
 Reproduce from an exported CM5 board JSON:
 
 ```sh
-OPENBLAS_NUM_THREADS=2 python tools/cm5_converter_fields.py CM5_MINIMA_3_board.json --out cm5-fields
+OPENBLAS_NUM_THREADS=2 python tools/pcbqs/cm5_converter_fields.py CM5_MINIMA_3_board.json --out cm5-fields
 ```
 
 The script also exports complex currents/fields, all-layer maps, phase

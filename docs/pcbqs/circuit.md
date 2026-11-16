@@ -1,17 +1,17 @@
-# Circuits (`pcbqs.circuit`)
+# Circuits (`kicad2ems.pcbqs.circuit`)
 
 A general circuit simulator for power switching circuits: the model lists parts, nodes and drives, and the
 engine builds an ngspice deck from exactly that, runs it until it repeats, adjusts whatever the model says may be
 adjusted until its targets are met, and reports what every part does. Nothing in it knows what kind of converter
 it is running.
 
-    python -m pcbqs.circuit --templates                 # the example circuits
-    python -m pcbqs.circuit --template boost > boost.json
-    python -m pcbqs.circuit boost.json --out result --jobs 4
-    python -m pcbqs.circuit boost.json --set parameters.vin=9 --set R1.resistance_ohm=24
-    python -m pcbqs.circuit boost.json --out result --copper          # with its board's copper
-    python -m pcbqs.circuit boost.json --out result --fields          # and the H and E fields over the board
-    python -m pcbqs.circuit --from-kicad board.kicad_pcb > model.json  # the parts of a KiCad design
+    python -m kicad2ems.pcbqs.circuit --templates                 # the example circuits
+    python -m kicad2ems.pcbqs.circuit --template boost > boost.json
+    python -m kicad2ems.pcbqs.circuit boost.json --out result --jobs 4
+    python -m kicad2ems.pcbqs.circuit boost.json --set parameters.vin=9 --set R1.resistance_ohm=24
+    python -m kicad2ems.pcbqs.circuit boost.json --out result --copper          # with its board's copper
+    python -m kicad2ems.pcbqs.circuit boost.json --out result --fields          # and the H and E fields over the board
+    python -m kicad2ems.pcbqs.circuit --from-kicad board.kicad_pcb > model.json  # the parts of a KiCad design
 
 ## The model (format 2)
 
@@ -41,7 +41,7 @@ model: `parameters.vin`, `drives.pwm.duty`, `R1.resistance_ohm`, `Q1.model.Ron_o
 |---|---|---|
 | `resistor` | a, b | `value` |
 | `capacitor` | a, b | `value`, `ESR_ohm`, `ESL_H`, `leakage_ohm`, `bias_factor` |
-| `inductor` | a, b | `value`, `DCR_ohm`; with `SRF_Hz` / `Cp_F` / `core_R_ohm`, a winding with self-capacitance and core loss (`pcbqs.wpt.fit_core_resistance` gives a `core_R_ohm` from a measured AC resistance at a frequency); `AC_R_ohm` and `core_loss`: [losses after the run](#an-inductors-ac-and-core-losses) |
+| `inductor` | a, b | `value`, `DCR_ohm`; with `SRF_Hz` / `Cp_F` / `core_R_ohm`, a winding with self-capacitance and core loss (`kicad2ems.pcbqs.wpt.fit_core_resistance` gives a `core_R_ohm` from a measured AC resistance at a frequency); `AC_R_ohm` and `core_loss`: [losses after the run](#an-inductors-ac-and-core-losses) |
 | `diode` | anode, cathode | `model`: `Vf_V` at `If_A` (0.7 V at 1 A), `n`, `R_ohm`, `Cj_F`, `TT_s`, `spice_parameters` (over them); or a [vendor's](#vendor-models) |
 | `switch` | drain, source | `drive`, `invert`; `model`: `type` (`vdmos`, the default; `switch`, `ideal`, `mosfet`, `subcircuit`), `Ron_ohm`, `Cgs_F`, `Cgd_F`, `Cds_F` (a vdmos without them: 1 nF, 50 pF, 500 pF), `body_diode`, `diode_TT_s`, `vdmos_parameters`, ...; or a [vendor's](#vendor-models) |
 | `source` | +, − | `dc_V`, or `wave` (`pulse`, `sine`, `pwl`), or `dc_A`; `R_ohm`, `L_H` in series |
@@ -125,7 +125,7 @@ and `waveforms.png`:
 
 The circuit has an inductor's DC resistance, and a constant core resistor where `core_R_ohm` is given. Two fields
 add what the winding and the core lose to the current's ripple, worked out from the reported run's last period
-(`pcbqs.circuit.windings`):
+(`kicad2ems.pcbqs.circuit.windings`):
 
 - `AC_R_ohm`: `[[f_Hz, R_ohm], ...]`, the winding's resistance against frequency (a datasheet's ACR curve, or a
   measurement). Each harmonic of the winding's current loses (R(f) - `DCR_ohm`) times its mean square. Between the
@@ -159,7 +159,7 @@ unless given. `board.temperature_C` puts the board copper's resistances at that 
 are kept in each part's `nominal` in the case's `model.json`. A sweep can set them like any value
 (`"sweep": {"Q1.temperature_C": [25, 100]}`).
 
-`--warm N` sets them from the board's own thermal model: the run's losses go to `pcbqs.thermal` (each case its own
+`--warm N` sets them from the board's own thermal model: the run's losses go to `kicad2ems.pcbqs.thermal` (each case its own
 map, `--case all`), each part is put at the temperature it reaches there (its pads', or its junction's where its
 footprint gives `thermal.theta`) and the copper at its mean (under the copper's own loss, with `--fields`), and
 the circuit runs again, up to N times, until no part moves by more than 1 K. A diode's loss falls as it warms and
@@ -172,7 +172,7 @@ the thermal model of the last run's losses, its tables in `thermal.log`.
 
 A vendor's SPICE library gives a part its own model, `library` the file (beside the model, or a path):
 
-```json
+```text
 {"ref": "Q1", "type": "switch", "nodes": ["in", "sw"], "drive": "pwm",
  "model": {"type": "subcircuit", "library": "IPB017N10N5.lib", "subcircuit": "IPB017N10N5_L1",
            "pin_order": ["D", "G", "S", "Tj", "Tcase"], "pins": {"Tcase": "temperature"}}}
@@ -220,7 +220,7 @@ board's pads (`board.parts`, `board.reference`), so `--board wpthb.kicad_pcb --c
 copper: 24 ports. At 90 kHz and 10 W, alone: phase 55.66°, input 10.71 W, efficiency 93.18 %, primary 1.435 A RMS
 (42 s); its hard-switched leg's switches Q2 and Q4 96 mW each. Its `bus_ripple_V` is VHB's settled ripple (256
 samples a period: 0.10 V), `bus_spike_pp_V` the same with the edges' spikes (3.5 V). It was the model of the full-bridge tool
-(`pcbqs.power_circuit`, format 1, removed 2026-11-14), which also tuned the receiver at each frequency; that
+(`kicad2ems.pcbqs.power_circuit`, format 1, removed 2026-11-14), which also tuned the receiver at each frequency; that
 tool's answers at the same receiver: 55.64°, 93.13 %, 1.435 A.
 
 ## On a board
@@ -239,7 +239,7 @@ modelled, `[null, "L3"]`), which is then at its nets' nodes; `board.nets` a node
 Without copper every pin on a node is one point. With it, one pad of each net is the node itself (a source's
 pad, else a load's, else the first; `board.reference` chooses another) and every other pad reaches it through a
 port of a passive R-L model of the copper: all the nets' ports in one model, so the coupling between them is in
-it. The model is extracted by the quasi-static solver (`pcbqs.mqs`) from DC to 20 MHz and at every switching
+it. The model is extracted by the quasi-static solver (`kicad2ems.pcbqs.mqs`) from DC to 20 MHz and at every switching
 frequency and its tenth harmonic, fitted, and kept in `<out>/copper-model.json`. The examples' boards take from
 a second to under a minute.
 
@@ -304,16 +304,16 @@ netlist and prints a model of what it can tell, each part between the two nets i
   built-in VDMOS or diode its `vdmos_parameters` or `spice_parameters`.
 
 A node is the net's name. A board that was read becomes the model's `board`. Left to add, since KiCad does not
-say: which connector is the source and which the load, the drives, and what to measure. `pcbqs.circuit.kicad`
+say: which connector is the source and which the load, the drives, and what to measure. `kicad2ems.pcbqs.circuit.kicad`
 has the same for a model that exists (`apply`: add parts, or bring their values and nets up to date).
 
 ## From a converter on a board
 
-`python -m pcbqs.mqs board.kicad_pcb --converter U702 --vin-volts 5 --vout 3.3 --fsw 1e6 --current 2 --circuit`
+`python -m kicad2ems.pcbqs.mqs board.kicad_pcb --converter U702 --vin-volts 5 --vout 3.3 --fsw 1e6 --current 2 --circuit`
 prints the converter the near-field tool selects as a model: its input capacitors, two switches on the
 regulator's footprint (`board.parts`), its inductor, the output capacitors nearby and a load, on the nodes `in`,
 `sw` and `out` with their nets in `board.nets`. A boost built of discrete parts (a diode up from the switch node)
-is made into its own model the same way: `python -m pcbqs.mqs 06_boost.kicad_pcb --vin-volts 12 --vout 24 --fsw
+is made into its own model the same way: `python -m kicad2ems.pcbqs.mqs 06_boost.kicad_pcb --vin-volts 12 --vout 24 --fsw
 200e3 --current 1 --circuit` gives the boost example's circuit from its board alone, and it settles at the same
 duty and inductor ripple as the example. A near-field run writes the same as `circuit-model.json`, which
 the window opens from that result. What it assumes is in its description

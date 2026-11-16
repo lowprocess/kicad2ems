@@ -5,7 +5,7 @@ and at their far end (FEXT), and what in the layout makes it. You name the trace
 solve and the reading of the result are done for you.
 
 ```sh
-python -m kicad2ems.si board.kicad_pcb --nets D0,D1,D2 --rise 100 --limit 3 --out out/xt
+python -m kicad2ems.core.si board.kicad_pcb --nets D0,D1,D2 --rise 100 --limit 3 --out out/xt
 kicad2ems study examples/si_bus.toml          # the same from a config: [analysis.crosstalk]
 ```
 

@@ -77,7 +77,7 @@ The same model run twice agrees to about 1e-3, because openEMS checks its end cr
 a larger difference means the model or mesh changed:
 
 ```python
-from kicad2ems.touchstone import read_touchstone
+from kicad2ems.core.touchstone import read_touchstone
 import numpy as np
 _, a = read_touchstone('new.s2p'); _, b = read_touchstone('old.s2p')
 print(np.abs(a - b).max())

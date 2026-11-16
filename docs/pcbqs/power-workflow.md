@@ -3,26 +3,26 @@
 Three tools, one question each. All read a `.kicad_pcb` (or a kicad2ems board
 JSON) and run from the command line or from the kicad2ems window. Runnable
 examples with their images are in
-[`examples/power-workflow/`](../examples/power-workflow/README.md).
+[`examples/power-workflow/`](../../examples/pcbqs/power-workflow/README.md).
 
 | Stage | Question | Tool | Window page |
 |---|---|---|---|
-| Converter placed | Is the switching loop small, and where is its field? | `python -m pcbqs.mqs` | Near field |
-| Planes poured | Does each rail hold its voltage, at DC and across frequency? | `python -m pcbqs.pdn` | Power Integrity |
-| Power stage routed | How do the switches, filter and load behave with this copper? | `python -m pcbqs.circuit --copper` | Circuit |
+| Converter placed | Is the switching loop small, and where is its field? | `python -m kicad2ems.pcbqs.mqs` | Near field |
+| Planes poured | Does each rail hold its voltage, at DC and across frequency? | `python -m kicad2ems.pcbqs.pdn` | Power Integrity |
+| Power stage routed | How do the switches, filter and load behave with this copper? | `python -m kicad2ems.pcbqs.circuit --copper` | Circuit |
 
 [From one tool to the next](#4-from-one-tool-to-the-next): a converter found by the first
 becomes a circuit, and what that circuit draws becomes the rail's load and the near
 field's current.
 
-## 1. Converter input loop (`pcbqs.mqs`)
+## 1. Converter input loop (`kicad2ems.pcbqs.mqs`)
 
 Models the input loop only (input capacitors → switch → ground return), driven
 by an assumed trapezoidal current pulse. Set `--converter` (and `--vin` when the
 regulator has several supply pins), the operating point (`--fsw`, `--vin-volts`,
 `--vout`, `--current`) and use `--preview` to check the meshed copper first.
 
-![CM5 U702 near field](../examples/power-workflow/images/01-cm5-u702-H_top_1mm.png)
+![CM5 U702 near field](../../examples/pcbqs/power-workflow/images/01-cm5-u702-H_top_1mm.png)
 
 - **Copper L**: the loop inductance; it sets switch-node overshoot (V ≈ L·di/dt).
   Under ~1 nH is good (CM5 U702: 1.2 nH; Jetson bucks: 0.4 nH).
@@ -30,13 +30,13 @@ regulator has several supply pins), the operating point (`--fsw`, `--vin-volts`,
 - Use it to **compare layouts**; the pulse spectrum and ESR/ESL are assumptions,
   and the package's own inductance is excluded.
 
-## 2. Rail DC drop and impedance (`pcbqs.pdn`)
+## 2. Rail DC drop and impedance (`kicad2ems.pcbqs.pdn`)
 
 Grows the rail from its net through series parts (sense resistors, beads, 0 Ω,
 and anything in `--through`), solves DC drop on the real copper and the PDN
 impedance seen by each load.
 
-![Jetson +1V15 impedance](../examples/power-workflow/images/02-jetson-1v15-impedance.png)
+![Jetson +1V15 impedance](../../examples/pcbqs/power-workflow/images/02-jetson-1v15-impedance.png)
 
 - **Drop at each load** against the tolerance budget; **hottest vias** and the
   current maps show crowding.
@@ -85,21 +85,21 @@ impedance seen by each load.
   `--load REF=A` overrides that part's field, `--no-part-loads` ignores the fields, and the
   report names the loads that came from them.
 
-![wpthb DC-link variants](../examples/power-workflow/images/03-wpthb-dc-link-variants.png)
+![wpthb DC-link variants](../../examples/pcbqs/power-workflow/images/03-wpthb-dc-link-variants.png)
 
 On wpthb the input filter L3 resonates with the bridge's ceramics at 11 kHz
 (1.8 Ω). A 47 µF polymer with ~0.5 Ω in series on VHB (≈ √(L/C) for that
 filter) damps it to 0.5 Ω; replacing L3 with a resistor removes it but lets
 the bridge's ripple current reach the supply.
 
-## 3. Switching circuit with copper (`pcbqs.circuit --copper`)
+## 3. Switching circuit with copper (`kicad2ems.pcbqs.circuit --copper`)
 
 Simulates the power stage with the copper as an extracted multi-port model, sweeping what the model sweeps: the
 wpthb bridge's model (`data/wpthb_bridge.json`, [circuits](circuit.md#examples)) sweeps the frequency and the
 load's power, leg B's phase set for each. Edit its parts, switches and receiver in the window's Circuit page or
 its JSON.
 
-![wpthb circuit builds](../examples/power-workflow/images/04-wpthb-circuit-builds.png)
+![wpthb circuit builds](../../examples/pcbqs/power-workflow/images/04-wpthb-circuit-builds.png)
 
 - **Efficiency, coil currents, input power** per operating point.
 - **VHB ripple** (`bus_ripple_V`) is the settled ripple, VHB sampled 256 times a period (a measure's `samples`), as
@@ -119,13 +119,13 @@ that was simulated is assumed again. On CM5 Minima's U702 (5 V to 3.3 V, 1 MHz, 
 
 ```sh
 # 1. the converter the near field selects, as a circuit: its capacitors and inductor from the board
-python -m pcbqs.mqs CM5_MINIMA_3.kicad_pcb --converter U702 --vin-volts 5 --vout 3.3 --fsw 1e6 --current 2 --circuit > u702.json
-python -m pcbqs.circuit u702.json --copper --out u702          # 94 % at a duty of 0.72
+python -m kicad2ems.pcbqs.mqs CM5_MINIMA_3.kicad_pcb --converter U702 --vin-volts 5 --vout 3.3 --fsw 1e6 --current 2 --circuit > u702.json
+python -m kicad2ems.pcbqs.circuit u702.json --copper --out u702          # 94 % at a duty of 0.72
 # 2. what it draws from +5V, as the rail's load and its current spectrum
-python -m pcbqs.pdn CM5_MINIMA_3.kicad_pcb --rail +5V --volts 5 --source J101 --ground-source J101 \
+python -m kicad2ems.pcbqs.pdn CM5_MINIMA_3.kicad_pcb --rail +5V --volts 5 --source J101 --ground-source J101 \
     --load U702=1.398 --load-spectrum U702=u702/run/supply-U702.csv --out pdn_5v
 # 3. the near field of that current, in place of the assumed pulse
-python -m pcbqs.mqs CM5_MINIMA_3.kicad_pcb --converter U702 --spectrum u702/run/supply-U702.csv --out nearfield
+python -m kicad2ems.pcbqs.mqs CM5_MINIMA_3.kicad_pcb --converter U702 --spectrum u702/run/supply-U702.csv --out nearfield
 ```
 
 In the window the same steps are buttons on a finished result: *Open U702 as a
@@ -166,7 +166,7 @@ the source feeds only R9 and L3 in series, so the rail is the node behind them. 
 switching frequency:
 
 ```sh
-python -m pcbqs.pdn wpthb.kicad_pcb --rail VIN --volts 24 --source TP2 --ground-source TP1 --through L3 --dcr L3=0.03 \
+python -m kicad2ems.pcbqs.pdn wpthb.kicad_pcb --rail VIN --volts 24 --source TP2 --ground-source TP1 --through L3 --dcr L3=0.03 \
     --load Q1=1.109 --load Q2=0.198 --load-spectrum Q1=out/f=90k_P=30/supply-Q1.csv --load-spectrum Q2=out/f=90k_P=30/supply-Q2.csv
 ```
 
@@ -178,7 +178,7 @@ circuit's from its model).
 
 The two tools' fields of the same current, peak |H| at 1 MHz over U702:
 
-| above the copper | `pcbqs.mqs`, parts 0.5 mm up | `pcbqs.mqs`, `--part-height 0` | circuit `--fields` |
+| above the copper | `kicad2ems.pcbqs.mqs`, parts 0.5 mm up | `kicad2ems.pcbqs.mqs`, `--part-height 0` | circuit `--fields` |
 |---|---|---|---|
 | 1 mm | 218 A/m | 76 A/m | 48 A/m |
 | 3 mm | 12.8 A/m | 9.4 A/m | 9.6 A/m |
@@ -198,12 +198,12 @@ inductor's ripple current in the output loop, which the input-loop model leaves 
   points are inputs. Replace them where they decide the answer.
 - **Measure** when margins are thin: VNA shunt-thru for PDN impedance, a
   near-field probe at 1–3 mm for the |H| maps.
-- **Independent solvers**: [validation/](../validation/README.md) compares DC drop
+- **Independent solvers**: [validation/](../../validation/pcbqs/README.md) compares DC drop
   with Elmer (within 0.2–1.5% on wpthb and Jetson), loop inductance with Palace and
   FastHenry (0.3–2%), |H| with Palace (~5%) and plane pairs with Palace (≤ 0.8%).
   Copper AC resistance above ~3 MHz reads 11–34% low; treat loss figures there as
   lower bounds.
 
-Planned work: the [roadmap](https://github.com/lowprocess/kicad2ems/blob/main/ROADMAP.md#power-tools-pcbqs); what was
-done is in [CHANGELOG.md](../CHANGELOG.md); the review of 2026-11-09, as it was written, is
+Planned work: the [roadmap](../../ROADMAP.md#power-tools-pcbqs); what was
+done is in [CHANGELOG.md](CHANGELOG.md); the review of 2026-11-09, as it was written, is
 [power-tools-review.md](power-tools-review.md).

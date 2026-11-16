@@ -26,7 +26,7 @@ Build the OpenMP backend with:
 
 ```sh
 pip install '.[core]'
-python -m pcbqs.core.build
+python -m kicad2ems.pcbqs.core.build
 ```
 
 An older core without the static kernels is treated as unavailable for this
@@ -45,7 +45,7 @@ on platforms without affinity. Explicit counts can exceed that default.
 `PCBQS_FILL_BACKEND` selects a backend when the API requests auto.
 
 ```sh
-PCBQS_FILL_BACKEND=openmp PCBQS_FILL_THREADS=8 python tools/nearfield_demo.py out/
+PCBQS_FILL_BACKEND=openmp PCBQS_FILL_THREADS=8 python tools/pcbqs/nearfield_demo.py out/
 ```
 
 The free-space OpenMP fill is one native call: square tiles of unordered
@@ -156,7 +156,7 @@ Dense MQS with the native whole-matrix fill and RWG gather (16 threads):
 
 ## Add a backend
 
-Register a factory, or expose it through the `pcbqs.static_backends` Python
+Register a factory, or expose it through the `kicad2ems.pcbqs.static_backends` Python
 entry-point group. Providers are imported only when selected. Names cannot
 replace built-ins or already registered providers.
 
@@ -195,8 +195,8 @@ system without changing MQS/PEEC's equations or matrix assembly.
 ## Reproduce scaling and accuracy checks
 
 ```sh
-OPENBLAS_NUM_THREADS=1 python tools/benchmark_static_fill.py --dmax .5 --repeat 3 --out fill.json
-OPENBLAS_NUM_THREADS=2 python tools/benchmark_converter.py CM5_MINIMA_3.kicad_pcb \
+OPENBLAS_NUM_THREADS=1 python tools/pcbqs/benchmark_static_fill.py --dmax .5 --repeat 3 --out fill.json
+OPENBLAS_NUM_THREADS=2 python tools/pcbqs/benchmark_converter.py CM5_MINIMA_3.kicad_pcb \
   --fill-backend openmp --fill-workers 2 --out cm5-openmp.json
 ```
 
@@ -232,7 +232,7 @@ real-board runs, not controlled medians; see the
 ## After the fill: the solve's own kernels
 
 The core also holds what the frequency loops and the thermal maps did in NumPy, where a profile of each tool
-(`tools/perf/workloads.py`) found the time in pcbqs's own Python rather than in LAPACK or the fill. Each has a
+(`tools/pcbqs/perf/workloads.py`) found the time in pcbqs's own Python rather than in LAPACK or the fill. Each has a
 NumPy twin in `pcbqs/kernels.py`, which is what runs without the core (or with `PCBQS_NO_CORE`) and what the
 tests hold the compiled one to; the results agree to rounding.
 

@@ -1,18 +1,21 @@
 # dfsynth
 
+> Part of kicad2ems since 0.4: the package `kicad2ems.dfsynth`, installed with kicad2ems (`pip install .` in this
+> repository; the [README](../../README.md#install) has the installer). Its history up to then is in this
+> repository's, and in its own repository. Install lines below that name `.` mean this repository.
+
 dfsynth synthesises distributed-element microstrip filters from a spec (type, response, frequency,
 bandwidth, substrate) and writes the layout as a KiCad board. It can then run that board through
 [kicad2ems](https://github.com/lowprocess/kicad2ems) to check it with a field solver, and correct the
 design from the result.
 
-![Four filters as dfsynth lays them out, over their line model's response](docs/filters.png)
+![Four filters as dfsynth lays them out, over their line model's response](filters.png)
 
 *Four of its topologies on Rogers substrates, over the response of dfsynth's line model of each layout; dotted: the
-spec's band edges (`python tools/readme_figure.py`).*
+spec's band edges (`python tools/dfsynth/readme_figure.py`).*
 
 ```bash
 pip install .                                     # dfsynth (numpy, scipy, matplotlib)
-pip install '.[validate]'                         # with kicad2ems, for --validate
 
 dfsynth --type bandpass --topology coupled --f0 5G --bw 500M --order 5 \
         --substrate RO4003C-0.813 -o out/bpf --validate mom,lines --em-tune 1
@@ -29,7 +32,7 @@ That writes:
 | `out/bpf_em/`, `_validation.png` | with `--validate`: kicad2ems's results, overlaid on the model (and its output, `kicad2ems_output.log`, `kicad2ems_events.jsonl`) |
 | `out/bpf_em_tune1/`, `_validation_tune1.png` | with `--em-tune N`: each corrected round |
 
-The **Filter Synthesis** page of `kicad2ems-gui` ([GUI](https://github.com/lowprocess/kicad2ems/blob/main/docs/gui.md#filter);
+The **Filter Synthesis** page of `kicad2ems-gui` ([GUI](../gui.md#filter);
 its `filter` extra installs dfsynth) does the same from a window, and opens the board in kicad2ems.
 
 ## Filters

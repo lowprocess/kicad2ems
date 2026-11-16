@@ -9,14 +9,14 @@ lists every module, class and function.
 
 | Interface | Provided by | Used by | Version |
 |---|---|---|---|
-| [`kicad2ems.api.solver`](#kicad2emsapisolver) | kicad2ems | kicad2ems-fdtd, mom25d, pcbqs | `kicad2ems.api.API_VERSION` (2, 11) |
-| [`kicad2ems.api.analysis`](#kicad2emsapianalysis) | kicad2ems | pcbqs | the same |
-| [`kicad2ems.api.frontend`](#kicad2emsapifrontend) | kicad2ems | kicad2ems-gui, kicad2ems-ipc, dfsynth | the same |
-| [The `kicad2ems.solvers` entry point](#solver-plugins) | each solver package | kicad2ems | the plugin's `api` |
-| [The `kicad2ems.analyses` entry point](#analysis-plugins) | each analysis package | kicad2ems, kicad2ems-gui | the plugin's `api` |
+| [`kicad2ems.core.api.solver`](#kicad2emsapisolver) | kicad2ems | kicad2ems-fdtd, mom25d, pcbqs | `kicad2ems.core.api.API_VERSION` (2, 11) |
+| [`kicad2ems.core.api.analysis`](#kicad2emsapianalysis) | kicad2ems | pcbqs | the same |
+| [`kicad2ems.core.api.frontend`](#kicad2emsapifrontend) | kicad2ems | kicad2ems-gui, kicad2ems-ipc, dfsynth | the same |
+| [The `kicad2ems.core.solvers` entry point](#solver-plugins) | each solver package | kicad2ems | the plugin's `api` |
+| [The `kicad2ems.core.analyses` entry point](#analysis-plugins) | each analysis package | kicad2ems, kicad2ems-gui | the plugin's `api` |
 | [The command line and its files](#files) | kicad2ems | kicad2ems-gui, kicad2ems-ipc, dfsynth | `format_version` in each file |
-| [gfdtd's engine](#gfdtd-engine) | gfdtd | kicad2ems-fdtd | `gfdtd.API_VERSION` (1, 0) |
-| [`kicad2ems_gui.api`](#kicad2ems_guiapi) | kicad2ems-gui | kicad2ems-ipc | `kicad2ems_gui.api.API_VERSION` (1, 0) |
+| [gfdtd's engine](#gfdtd-engine) | gfdtd | kicad2ems-fdtd | `kicad2ems.gfdtd.API_VERSION` (1, 0) |
+| [`kicad2ems.gui.api`](#kicad2ems_guiapi) | kicad2ems-gui | kicad2ems-ipc | `kicad2ems.gui.api.API_VERSION` (1, 0) |
 | [`dfsynth --describe --json`](#dfsynth) | dfsynth | kicad2ems-gui's Filter page | `format` 1 |
 
 <a id="versions"></a>
@@ -25,9 +25,9 @@ lists every module, class and function.
 A version is (major, minor). A minor release adds to an interface; a major one removes or changes something
 in it. A user takes a provider of the same major version and at least the minor it was written for.
 
-- **Solver plugins** declare the `kicad2ems.api` version they were written for on their class (`api = (2, 1)`).
+- **Solver plugins** declare the `kicad2ems.core.api` version they were written for on their class (`api = (2, 1)`).
   The registry leaves out a plugin of another major version, or of a newer minor one than this kicad2ems has,
-  and `kicad2ems --check` lists it as broken with what to update (`kicad2ems.api.compatible(api)` gives the
+  and `kicad2ems --check` lists it as broken with what to update (`kicad2ems.core.api.compatible(api)` gives the
   reason). A plugin that declares none counts as 1.0.
 - **Analysis plugins** declare it the same way (`api = (2, 6)` on their `Analysis`), and are left out and listed
   as broken on the same terms.
@@ -37,7 +37,7 @@ in it. A user takes a provider of the same major version and at least the minor 
   file readers to `api.frontend`, and `ETA0`, `MU0` to `api.solver`. 2.3 added the copper roughness (`--rough`):
   `hammerstad`, `rough_sigma`, `band_sigma`, and the `roughness` row of `FEATURES`. 2.4 the surface finish (`--finish`): `resolve_finish`,
   `finish_factor`, `finish_weighted`, `finish_band_sigma`, `finish_face_z`, and the `finish` row. 2.5 the analysis
-  plugins: `kicad2ems.api.analysis`, and `analyses`, `analysis_of`, `read_analyses`, `example_index`, `impedance` in `api.frontend`.
+  plugins: `kicad2ems.core.api.analysis`, and `analyses`, `analysis_of`, `read_analyses`, `example_index`, `impedance` in `api.frontend`.
   2.6 the study's questions and engines: `Question`, `QUESTIONS` and an analysis's `provides`, `engine`, `questions`, `fields`,
   `for_questions`, `owns`; `study_tree`, `questions`, `engines`, `runs_for`, `mark_run`, `run_mark` in `api.frontend`.
   2.7 a config's study and its runs: `Study`, `read_study`, `write_study`, `study_plan`, `engine_named`,
@@ -50,12 +50,12 @@ in it. A user takes a provider of the same major version and at least the minor 
   2.12 a run done again: a solver's `reusable(run)`, whether an earlier run's result may stand for its solve.
   2.13 a solver's resonances: `Result.info['modes']`, `dict(about, rows=[dict(mode, f_ghz, Q, q_ext={port: Q}, kind)])`,
   a table in its report section (Palace's `--palace-modes`).
-  [CHANGELOG.md](https://github.com/lowprocess/kicad2ems/blob/main/CHANGELOG.md) has each release's.
+  [CHANGELOG.md](../CHANGELOG.md) has each release's.
 
 Both API modules load their names on first use: importing one costs nothing until a name is used.
 
 <a id="kicad2emsapisolver"></a>
-## `kicad2ems.api.solver`
+## `kicad2ems.core.api.solver`
 
 For solver plugins: the solver interface and what a solver needs to write its results as the others do.
 
@@ -80,10 +80,10 @@ For solver plugins: the solver interface and what a solver needs to write its re
 <a id="solver-plugins"></a>
 ### Solver plugins
 
-A solver is a subclass of `Solver`, registered under the entry-point group `kicad2ems.solvers`:
+A solver is a subclass of `Solver`, registered under the entry-point group `kicad2ems.core.solvers`:
 
 ```toml
-[project.entry-points."kicad2ems.solvers"]
+[project.entry-points."kicad2ems.core.solvers"]
 mysolver = "mypackage.plugin:MySolver"
 ```
 
@@ -91,7 +91,7 @@ It declares, as class attributes:
 
 | Attribute | Meaning |
 |---|---|
-| `api` | the `kicad2ems.api` version it is written for: `(2, 1)` |
+| `api` | the `kicad2ems.core.api` version it is written for: `(2, 1)` |
 | `name`, `aliases`, `label` | `'mom25d'`, `('mom',)`, `'mom25d (MoM)'`; `name` is also its config table `[solver.mom25d]` |
 | `consumes` | `'board'` (the geometry) or `'network'` (the line model) |
 | `in_auto`, `in_all` | whether `--solvers auto` may pick it, and whether `all` includes it (default True; False for a variant of another solver or one for part of a band: mixed, pcbqs) |
@@ -113,7 +113,7 @@ and implements, in the order the pipeline calls them:
 | `solve(run, prep)` | a `Result`: S-parameters, port names, reference impedances, facts for the summary (`info`; its `modes`, the resonances it found, are shown as a table: 2.13) |
 | `deviations(run, prep)` | `[Deviation]`: what it models differently from the board |
 | `readback(run, prep)` | what its own model holds, in the board's terms, for the parity checks; or `None` |
-| `reusable(run)` | whether an earlier run's result may stand for its solve in this run (`kicad2ems.reuse`: the same board, frequencies, settings and code); its `outputs` is not called for one. Default: only a solver with no `outputs` of its own (2.12) |
+| `reusable(run)` | whether an earlier run's result may stand for its solve in this run (`kicad2ems.core.reuse`: the same board, frequencies, settings and code); its `outputs` is not called for one. Default: only a solver with no `outputs` of its own (2.12) |
 | `outputs(run, prep, result)` | its own extra outputs (optional) |
 | `resources()` | the GPUs it would run on here and why there are none, or `None`: the CPU only |
 
@@ -123,7 +123,7 @@ events), `run.path(suffix)`, `run.wrote(label, path)`, `run.figure(fig, suffix, 
 [Architecture](architecture.md#solver-plugins) has the rest: parity, and settings as data.
 
 <a id="kicad2emsapianalysis"></a>
-## `kicad2ems.api.analysis`
+## `kicad2ems.core.api.analysis`
 
 For analysis plugins: tools that work on the board a run is made of but give something other than S-parameters
 (pcbqs's power integrity, near field, circuit and thermal analyses).
@@ -138,21 +138,21 @@ For analysis plugins: tools that work on the board a run is made of but give som
 <a id="analysis-plugins"></a>
 ### Analysis plugins
 
-An analysis is a subclass of `Analysis`, registered under the entry-point group `kicad2ems.analyses`:
+An analysis is a subclass of `Analysis`, registered under the entry-point group `kicad2ems.core.analyses`:
 
 ```toml
-[project.entry-points."kicad2ems.analyses"]
+[project.entry-points."kicad2ems.core.analyses"]
 thermal = "mypackage.analyses:Thermal"
 ```
 
 It runs as a command of its own, so the tool behind it works without kicad2ems; the plugin class is the only
-part that imports `kicad2ems.api.analysis`. kicad2ems's own analysis, the [crosstalk between traces](si.md), is
+part that imports `kicad2ems.core.api.analysis`. kicad2ems's own analysis, the [crosstalk between traces](si.md), is
 listed with the plugins' without an entry point (`analyses.BUILTIN`). It declares, as class attributes:
 
 | Attribute | Meaning |
 |---|---|
-| `api` | the `kicad2ems.api` version it is written for: `(2, 6)` |
-| `name`, `label`, `tool` | `'pdn'`, `'Power integrity'`, `'pcbqs.pdn'` (what runs it, as lists show it); `name` is also its config table `[analysis.pdn]` and the tag of its run folders |
+| `api` | the `kicad2ems.core.api` version it is written for: `(2, 6)` |
+| `name`, `label`, `tool` | `'pdn'`, `'Power integrity'`, `'kicad2ems.pcbqs.pdn'` (what runs it, as lists show it); `name` is also its config table `[analysis.pdn]` and the tag of its run folders |
 | `about` | one line: what it gives |
 | `order` | its place in lists, and in a run of several |
 | `previewed` | it has a preview (the model and its mesh, no solve) |
@@ -206,7 +206,7 @@ model = "buck.json"                 # an analysis's options by key; a path (its 
 <a id="study-api"></a>
 ### Questions and engines
 
-A study asks questions of a board; engines answer them (`kicad2ems.study`). A question is something to find out
+A study asks questions of a board; engines answer them (`kicad2ems.core.study`). A question is something to find out
 with a known kind of answer; an engine is a solver plugin or an analysis plugin. Several engines may answer one
 question, and one engine several questions from one run.
 
@@ -238,7 +238,7 @@ S-parameters, the solvers the settings name), `fields` `{question: True | False}
 does not know as written, for a front end to grey. `write_study(config, study)` writes the tables anew and keeps
 the rest of the file. `study_plan(study)` is the runs it takes, in order, `[Step]`: `kind` (`'solvers'`: one
 kicad2ems run, or `'analysis'`), `engines`, `questions`, `mode` (`'antenna'`, `'sparams'` or `''`: as the settings
-say), `fields`, `name` (`'rf'` or the analysis). `kicad2ems study` runs them (`kicad2ems.study.run`); a front end
+say), `fields`, `name` (`'rf'` or the analysis). `kicad2ems study` runs them (`kicad2ems.core.study.run`); a front end
 that starts each itself puts it in `run_dir(base, board)` or `tool_dir(base, board, analysis, what)` (a preview
 in `preview_dir`, `tool_preview_dir`), marks the folder, and gives an analysis the results it may start from
 (`latest_results(base, board)`: `{analysis: its newest result's folder}`).
@@ -263,7 +263,7 @@ wrong way round. An analysis says its own with `missing`. A front end lists them
 not start the run; kicad2ems's own commands say the same when they are run.
 
 <a id="kicad2emsapifrontend"></a>
-## `kicad2ems.api.frontend`
+## `kicad2ems.core.api.frontend`
 
 For programs that drive kicad2ems: read a board, show its line model, start runs and read their results.
 
@@ -271,7 +271,7 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 |---|---|
 | boards | `KiCadBoard` (a `.kicad_pcb`, or KiCad's board text), `Board` (the canonical model), `kind_value` (a footprint's lumped part), `extra_port_fps` (the footprints a region adds as ports) |
 | the board as drawn | `board_layout(path)`: a `.kicad_pcb` as the model board's dict (`Board.to_dict()`: every net's copper by layer, no ports asked for) with `footprints` (`[dict(ref, value, layer, through, box, pads=[dict(name, net)])]`, model mm) and `layout_of` (the file), to show before anything is run; `net_at(layout, layer, x, y)` and `part_at(layout, layer, x, y)`: the net whose copper, and the part whose pads' box, is under a point, or `None` (2.11) |
-| the line model | `build_lines` (Board → LineModel; `field=True`: every section by the field solver), `RefCopper` (its reference copper), `overlay` (the module: the line model drawn on the board), `sections` (the module: one section's field: `modes`, `solve`), `impedance` (the module: a stack-up's impedance without a board, `kicad2ems.lines.calc`: `Line`, `calculate`, `fit`, `element`, `describe`, `report`; 2.5) |
+| the line model | `build_lines` (Board → LineModel; `field=True`: every section by the field solver), `RefCopper` (its reference copper), `overlay` (the module: the line model drawn on the board), `sections` (the module: one section's field: `modes`, `solve`), `impedance` (the module: a stack-up's impedance without a board, `kicad2ems.core.lines.calc`: `Line`, `calculate`, `fit`, `element`, `describe`, `report`; 2.5) |
 | settings | `Settings`, `build_settings`, `read_toml`, `all_options`, `default_out`, `PATH_KEYS`, `sitecfg` (the module), `G_DUMP` |
 | solvers | `registry`, `get_solver`, `resolve_lines`, `AUTO`, `LINES` |
 | analyses | `analyses` (`{name: Analysis}`: the analysis plugins installed), `analysis_of(folder)`, `read_analyses(config)` (`(run, {name: {key: value}})` of a config's `[analysis]` tables; an analysis given several: its first), `read_analysis_sets(config)` (`{name: [{key: value}, ...]}`: every table of each, [a run for each](usage.md#several); 2.10) |
@@ -285,10 +285,10 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 <a id="files"></a>
 ## The command line and its files
 
-A front end runs kicad2ems as a separate process (`kicad2ems.api.frontend.Run` makes the command line:
-`python -m kicad2ems <settings>.toml --events <file> [--preview]`; dfsynth runs `python -m kicad2ems.cli`) and
+A front end runs kicad2ems as a separate process (`kicad2ems.core.api.frontend.Run` makes the command line:
+`python -m kicad2ems <settings>.toml --events <file> [--preview]`; dfsynth runs `python -m kicad2ems.core.cli`) and
 reads what it writes. Each file another program reads names its format and version, `format` and
-`format_version` ([`kicad2ems.formats`](reference/index.md)); the readers in `api.frontend` take a version up to
+`format_version` ([`kicad2ems.core.formats`](reference/index.md)); the readers in `api.frontend` take a version up to
 their own and say to update kicad2ems for a newer one. A version goes up only when a key is removed or changes
 meaning; a new key needs none. A file without them was written before they were added: version 1.
 
@@ -296,7 +296,7 @@ meaning; a new key needs none. A file without them was written before they were 
 |---|---|---|
 | `<name>_run.json`, the run summary | `kicad2ems-run` 1 | `read_summary(path)` |
 | the event stream (`--events FILE`, JSON lines; its first line names the format) | `kicad2ems-events` 1 | `EventTail(path).read()` |
-| `python -m kicad2ems.sysinfo`'s JSON on stdout: solvers, GPUs, memory, threads | `kicad2ems-sysinfo` 1 | `check_format(d, 'kicad2ems-sysinfo')` |
+| `python -m kicad2ems.core.sysinfo`'s JSON on stdout: solvers, GPUs, memory, threads | `kicad2ems-sysinfo` 1 | `check_format(d, 'kicad2ems-sysinfo')` |
 | `<name>[_<solver>]_antenna.json`, an antenna run's results (`sphere_file`: its far field) | `kicad2ems-antenna` 1 | `read_antenna(path)` |
 | `<name>_board.json`, the board every solver gets | `kicad2ems-board`, `version` 1 | `Board.load(path)` |
 | `<name>_<solver>.sNp`, Touchstone, the ports named in a `! ports: 1=P1, 2=P2d, ...` comment | Touchstone 1 / 2 | `read_touchstone(path)`, `port_names(path)` |
@@ -310,7 +310,7 @@ over a kind it does not know. [Usage](usage.md#events) shows a stream. A run is 
 ## gfdtd's engine
 
 gfdtd runs openEMS's models: its `ContinuousStructure` and `openEMS` classes stand in for CSXCAD's and openEMS's
-own. kicad2ems-fdtd connects it (`kicad2ems_fdtd.gfdtd`) and is written against `gfdtd.API_VERSION`
+own. kicad2ems-fdtd connects it (`kicad2ems.fdtd.gfdtd`) and is written against `kicad2ems.gfdtd.API_VERSION`
 (`ENGINE_API = (1, 0)`); a gfdtd of another major version, or an older minor one, is not used and
 `kicad2ems --check` says which package to update. What it may rely on:
 
@@ -322,10 +322,10 @@ own. kicad2ems-fdtd connects it (`kicad2ems_fdtd.gfdtd`) and is written against 
 | `engine.concurrent_runs(cells, runs)` | how many runs to keep on the GPU at once |
 | `__version__` | the release |
 
-openEMS itself is the other engine, imported only by `kicad2ems_fdtd.openems.engine`.
+openEMS itself is the other engine, imported only by `kicad2ems.fdtd.openems.engine`.
 
 <a id="kicad2ems_guiapi"></a>
-## `kicad2ems_gui.api`
+## `kicad2ems.gui.api`
 
 The KiCad plugin's map is the GUI's plan view: `PlanView`, the board seen from above. A subclass may use, beside
 its public methods (`load`, `set_board`, `set_lines_visible`, `current_layer`, `z_of`, `redraw`, `fit`,

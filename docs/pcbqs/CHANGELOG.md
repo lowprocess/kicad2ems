@@ -5,7 +5,7 @@ Notable changes to pcbqs, by day, in the form of [Keep a Changelog](https://keep
 roadmap; the git log has every commit, and kicad2ems's CHANGELOG.md has the time these tools lived in mom25d and
 kicad2ems (before 2026-11-07). What is planned is in kicad2ems's
 [ROADMAP.md](https://github.com/lowprocess/kicad2ems/blob/main/ROADMAP.md#power-tools-pcbqs). C, I and U numbers
-are findings of [docs/power-tools-review.md](docs/power-tools-review.md).
+are findings of [docs/power-tools-review.md](power-tools-review.md).
 
 ## Unreleased
 

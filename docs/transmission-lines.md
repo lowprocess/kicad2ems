@@ -64,7 +64,7 @@ within 0.2 %.
 <a id="field-solver"></a>
 ## Field solver
 
-`kicad2ems.lines.xsection` solves a cross-section numerically: the per-unit-length capacitance matrix of N
+`kicad2ems.core.lines.xsection` solves a cross-section numerically: the per-unit-length capacitance matrix of N
 conductors over planes, in any stack of dielectrics, and from it L, Z0, εeff, the even and odd modes of a pair and
 the dielectric loss. It covers what the formulas can't: coplanar ground under solder mask or between two planes,
 mask that follows the copper, coupled lines with copper thickness, coupling beyond the nearest neighbour, layers of
@@ -74,7 +74,7 @@ holds what their formula leaves out, and with `--lines-field` for every section.
 ![A coupled pair's mesh and its odd- and even-mode fields](img/xsection_anatomy.png)
 
 ```python
-from kicad2ems.lines import xsection as X
+from kicad2ems.core.lines import xsection as X
 X.microstrip(0.35, 0.2, 4.3, t=0.035, mask=0.02, er_mask=3.8).solve().single()   # (Z0, eeff)
 X.coupled_microstrip(0.15, 0.15, 0.2, 4.4).solve().pair()                         # (Ze, Zo, eeff_e, eeff_o)
 X.stripline(0.15, 0.2, 0.2, 4.3, s=0.15).solve().single()                         # coplanar ground beside it
@@ -128,7 +128,7 @@ the [Section page](gui.md#section) draws any section's cut.
 <a id="calculator"></a>
 ### Stack-up calculator
 
-`kicad2ems-z0` (`python -m kicad2ems.lines.calc`) is the field solver without a board: a width, a pair's gap, the
+`kicad2ems-z0` (`python -m kicad2ems.core.lines.calc`) is the field solver without a board: a width, a pair's gap, the
 copper and the dielectrics in; Z0, a pair's Zdiff and Zcommon, εeff, the delay and the dielectric's loss out, with
 the closed form beside it where one applies. `--target` finds the width (or `--vary gap`, `ground_gap`) that
 gives an impedance, to 0.1 %; nothing is snapped to the line model's 1 % steps. A solve takes about 0.1 s, a fit
@@ -158,7 +158,7 @@ line model's cuts are for. `--plot` writes the field (a pair's odd mode, or `--m
 
 ![A 100 Ω pair's odd-mode field, from kicad2ems-z0 --plot](img/z0_calculator.png)
 
-From Python, `kicad2ems.lines.calc`: `Line`, `calculate`, `fit`, `Line.on_board`, and `element` for the
+From Python, `kicad2ems.core.lines.calc`: `Line`, `calculate`, `fit`, `Line.on_board`, and `element` for the
 [Section page](gui.md#section). The GUI has it under Tools > Impedance calculator.
 
 <a id="lines-field"></a>
@@ -198,7 +198,7 @@ own cut (`tools/cm5_line_model.py`):
 
 A build classifies its sections first and then solves their distinct cross-sections together, in worker processes
 when there are 48 or more (`reference.solve_deferred`, and `solve_groups` for the coupled sections' cuts; one per
-fast core, each a `python -m kicad2ems.lines.cutworker`): the 684 solves of `auto` take 5 s instead of 29 s.
+fast core, each a `python -m kicad2ems.core.lines.cutworker`): the 684 solves of `auto` take 5 s instead of 29 s.
 
 Most of what `auto` corrects is striplines with ground beside them (297 of their 325 mm were 3–33 % high); the
 largest errors were a plane that ends under the trace and pads classified as coplanar with ground that was not
@@ -336,8 +336,8 @@ factor elsewhere, and a stack's layers weighted as the field crosses them.
 <a id="wideband"></a>
 With `--diel wideband` (the FDTD solvers' setting, which mom25d follows too) each layer's εr and tan δ follow its
 Djordjevic-Sarkar curve, through the stackup's values at `--diel-fref` (a named laminate's at its own frequency:
-`kicad2ems.materials`). Both backends take one εr per section, so the network is solved with its materials
-frozen at 3–12 frequencies across the band (`kicad2ems.lines.dispersion`: Chebyshev points in log f, as many as the
+`kicad2ems.core.materials`). Both backends take one εr per section, so the network is solved with its materials
+frozen at 3–12 frequencies across the band (`kicad2ems.core.lines.dispersion`: Chebyshev points in log f, as many as the
 longest path's phase needs), each solve over the whole sweep, and S at each frequency is interpolated between the
 solves to that frequency's own materials. A frozen section keeps its filling factor (εeff − 1) / (εr − 1) and its
 air capacitance (Z0 √εeff), and a coupled group its dielectric share of C. On the test boards the interpolation sits

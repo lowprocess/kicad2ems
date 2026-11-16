@@ -120,7 +120,7 @@ and every link between the built pages is checked. CI builds it on every push an
 warning fails it) and publishes it to GitHub Pages from main; nightly too, as the code reference follows the other
 repositories' main branches.
 
-Planned work is in [ROADMAP.md](https://github.com/lowprocess/kicad2ems/blob/main/ROADMAP.md).
+Planned work is in [ROADMAP.md](../ROADMAP.md).
 
 ## License
 

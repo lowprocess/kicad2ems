@@ -2,17 +2,16 @@
 Sphinx configuration of the kicad2ems documentation site (Read the Docs: .readthedocs.yaml). The pages are the
 Markdown files of docs/ (through MyST), unchanged, so they read the same on GitHub: the site's navigation is added to index.md as
 it is read (NAV).
-The code reference (reference/) covers the whole stack from the installed packages: autodoc for the Python,
-Doxygen through Breathe for the compiled cores of mom25d and gfdtd.
+The code reference (reference/) covers every part of kicad2ems: autodoc for the Python, Doxygen through Breathe for
+the compiled cores of mom25d and gfdtd.
 
     python -m pip install -r docs/requirements.txt        # Sphinx, MyST, Furo, Breathe
     sphinx-build -b html docs docs/_build/html            # needs doxygen on PATH
 
-The stack's packages are imported from where they are installed (a checkout's editable installs, or Read the
-Docs' pip installs of their main branches). The KiCad plugin is not a pip package: it comes from a checkout of
-kicad2ems-ipc beside this one, else from its repository's archive.
+kicad2ems is imported from where it is installed (a checkout's editable install, or Read the Docs' pip install of
+this checkout), else from src/.
 """
-import importlib.util, io, os, shutil, subprocess, sys, urllib.request, zipfile
+import importlib.util, os, shutil, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -54,32 +53,17 @@ autodoc_mock_imports = [m for m in ('cupy', 'cupyx', 'torch', 'CSXCAD', 'openEMS
                         if importlib.util.find_spec(m) is None]
 # the packages' entry points (python -m <package>) run their program when imported, and listing a package's modules
 # imports each: stand-ins, which autosummary leaves out (the GUI's would open its window and wait)
-autodoc_mock_imports += [f'{p}.__main__' for p in ('kicad2ems', 'kicad2ems.gui', 'kicad2ems.ipc', 'gfdtd', 'dfsynth',
-                                                   'emsdev', 'mom25d', 'kicad2ems.fdtd')]
-autodoc_mock_imports += ['kicad2ems.mom25d.core.build', 'kicad2ems.gfdtd.core.build']        # these compile their core when imported
-
-
-def _ipc_plugin():
-    """The folder holding kicad2ems.ipc: a checkout beside this one, else the repository's archive."""
-    local = os.path.join(os.path.dirname(ROOT), 'kicad2ems-ipc', 'plugin')
-    if os.path.isdir(os.path.join(local, 'kicad2ems.ipc')):
-        return local
-    dest = os.path.join(BUILD, 'kicad2ems-ipc')
-    if not os.path.isdir(dest):
-        url = 'https://github.com/lowprocess/kicad2ems-ipc/archive/refs/heads/main.zip'
-        with urllib.request.urlopen(url, timeout=60) as r:
-            zipfile.ZipFile(io.BytesIO(r.read())).extractall(dest)
-    return os.path.join(dest, 'kicad2ems-ipc-main', 'plugin')
-
-
-sys.path.insert(0, _ipc_plugin())
+autodoc_mock_imports += [f'kicad2ems{p}.__main__' for p in ('', '.gui', '.ipc', '.gfdtd', '.dfsynth', '.emsdev',
+                                                            '.mom25d', '.pcbqs', '.fdtd')]
+autodoc_mock_imports += [f'kicad2ems.{p}.core.build' for p in ('mom25d', 'gfdtd', 'pcbqs')]   # these compile their core
 
 
 def _doxygen():
-    """Doxygen's XML of the compiled cores (mom25d's and gfdtd's C++, shipped with the packages)."""
+    """Doxygen's XML of the compiled cores (mom25d's and gfdtd's C++, shipped with the package)."""
     if not shutil.which('doxygen'):
         raise RuntimeError("the code reference of the compiled cores needs doxygen on PATH")
-    inputs = [os.path.join(os.path.dirname(importlib.util.find_spec(p).origin), 'core') for p in ('mom25d', 'gfdtd')]
+    inputs = [os.path.join(os.path.dirname(importlib.util.find_spec(f'kicad2ems.{p}').origin), 'core')
+              for p in ('mom25d', 'gfdtd')]
     out = os.path.join(BUILD, 'doxygen')
     os.makedirs(out, exist_ok=True)
     cfg = '\n'.join([f'PROJECT_NAME = "kicad2ems compiled cores"', f'INPUT = {" ".join(inputs)}',
@@ -100,7 +84,14 @@ breathe_default_project = 'cores'
 NAV = [('Using kicad2ems', ['getting-started', 'usage', 'gui', 'si', 'kicad-plugin', 'examples', 'postprocessing',
                             'benchmarks', 'solver-matrix']),
        ('The solvers', ['meshing', 'simulation', 'mom', 'gfdtd', 'transmission-lines']),
-       ('Working on kicad2ems', ['architecture', 'api', 'kicad-import', 'model', 'testing', 'maintenance']),
+       ('The parts', ['mom25d/README', 'gfdtd/README', 'fdtd/README', 'fem/README', 'gui/README', 'ipc/README',
+                      'dfsynth/README', 'emsdev/README', 'pcbqs/README']),
+       ('pcbqs: power and quasistatics', ['pcbqs/power-workflow', 'pcbqs/quasistatic', 'pcbqs/quasistatic-validation',
+                                          'pcbqs/sparams', 'pcbqs/circuit', 'pcbqs/thermal', 'pcbqs/static-backends',
+                                          'pcbqs/peec-memory', 'pcbqs/benchmarks/cm5-u702',
+                                          'pcbqs/benchmarks/cm5-converter/README', 'pcbqs/migration']),
+       ('Working on kicad2ems', ['architecture', 'api', 'kicad-import', 'model', 'testing', 'maintenance',
+                                 'gui/redesign', 'pcbqs/power-tools-review', 'pcbqs/ROADMAP', 'pcbqs/CHANGELOG']),
        ('Code reference', ['reference/index'])]
 
 
@@ -113,15 +104,15 @@ def _navigation(app, docname, source):
 
 def _api_names():
     """reference/api-names.md: each name of kicad2ems.core.api.solver and .frontend (and kicad2ems.gui.api), linked to
-    where it is defined (the API modules re-export: an object is documented once, in its own module)."""
+    where it is defined (the API modules re-export: an object is documented once, in its own module); with .analysis."""
     import importlib, inspect
-    from kicad2ems.core.api import solver, frontend
+    from kicad2ems.core.api import analysis, solver, frontend
     rows = ['# API names', '', 'Each name of the APIs between the packages ([APIs](../api.md)), and where it is defined.']
-    for mod in (solver, frontend):
+    for mod in (solver, analysis, frontend):
         rows += ['', f'## `{mod.__name__}`', '', '| Name | Defined as |', '|---|---|']
         for name, spec in mod.NAMES.items():
             target, _, attr = spec.partition(':')
-            target = 'kicad2ems' + target if target.startswith('.') else target
+            target = 'kicad2ems.core' + target if target.startswith('.') else target
             if not attr:
                 rows.append(f'| `{name}` | the module {{py:mod}}`{target}` |')
                 continue

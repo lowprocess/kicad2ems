@@ -4,7 +4,7 @@
 
 ```bash
 pip install '.[gui]'          # kicad2ems-gui, its own package: PySide6, pyqtgraph, h5py, PyOpenGL
-kicad2ems-gui [config.toml]   # or: python -m kicad2ems_gui
+kicad2ems-gui [config.toml]   # or: python -m kicad2ems.gui
 ```
 
 The GUI edits a run's settings and starts the command-line tool as a separate process: a solver's crash never takes
@@ -44,7 +44,7 @@ itself until a board is chosen or a result opened; *View > Start* brings it back
   amber above 80 %, red above 95 %.
 - **Left: the board and the questions.** The *Board* (its file and extra ports; the rest under *More about the
   board*), then the **Questions** asked of it ([below](#the-study)).
-- **The workspace: the board**, in the [Viewer](#viewer). While *Circuit* is asked its schematic is a tab beside
+- **The workspace: the board**, in the [Viewer](#the-viewer). While *Circuit* is asked its schematic is a tab beside
   it, as Filter Synthesis is when opened. A result has a page for each thing it is: its [Plots](#plots), beside
   the board where the window has the width (1,400 px of workspace; else the first tab under it), and under the
   board, tabbed, its [Report, its Tables](#report-page), the [Log](#the-log-page) and, with a line model, the
@@ -73,7 +73,7 @@ itself until a board is chosen or a result opened; *View > Start* brings it back
   their spectra, for the ripple they make) and *Copy U702's input current to Near field* (in place of the
   assumed pulse). A click fills the other question's settings, ticks it so that Run includes it and shows it;
   what the proposal could not say (a rail's source) is listed under Still needed
-  ([the steps on a board](https://github.com/lowprocess/pcbqs/blob/main/docs/power-workflow.md#4-from-one-tool-to-the-next)).
+  ([the steps on a board](pcbqs/power-workflow.md#4-from-one-tool-to-the-next)).
 
 *View* shows and closes each dock (the study and the settings: Ctrl+1, 2) and the steps bar, and *View > Reset
 layout* puts them all back where a new window has them. The window remembers its size, where its docks and the
@@ -341,7 +341,7 @@ section has the same controls.
 <a id="filter"></a>
 ## The Filter Synthesis page
 
-Designs a microstrip filter with [dfsynth](https://github.com/lowprocess/dfsynth) and writes its board and kicad2ems
+Designs a microstrip filter with [dfsynth](dfsynth/README.md) and writes its board and kicad2ems
 config (*Filter* in the toolbar, or *File > New filter*: a window of its own, not about the open board). dfsynth is its own package (the `filter` extra, or the
 installer); the page builds its form from `dfsynth --describe --json` and runs dfsynth as a process, so a dfsynth
 option it has no field for appears under *More options*.

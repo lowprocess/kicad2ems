@@ -81,7 +81,7 @@ This bounds that assembly step, not total RSS or all factorization
 workspace. The full compressed operator determines the convergence residual.
 Nonconvergence raises rather than returning an unchecked impedance.
 
-With the compiled core (`python -m pcbqs.core.build`), H-matrix products run
+With the compiled core (`python -m kicad2ems.pcbqs.core.build`), H-matrix products run
 natively: on first use the blocks are packed into flat arrays (the blocks are
 rebound to views of them, so storage is not duplicated), each block writes its
 own contribution rows in parallel, and each output row then sums its
@@ -157,14 +157,14 @@ a block tolerance or small linear residual alone is not a physical error bound.
 Reproduce the separate-process benchmark (same meshes for both backends):
 
 ```sh
-PYTHONPATH=src OPENBLAS_NUM_THREADS=1 python tools/benchmark_peec_memory.py
+PYTHONPATH=src OPENBLAS_NUM_THREADS=1 python tools/pcbqs/benchmark_peec_memory.py
 ```
 
-See [the investigation](../examples/peec-memory/REPORT.md), accompanying JSON
+See [the investigation](../../examples/pcbqs/peec-memory/REPORT.md), accompanying JSON
 and scripts for measurements. The production PDN CLI still uses its existing
 backend; the new path is opt-in through MQS/PEECPDN.
 
-The [batching and checkpoint follow-up](../examples/peec-memory/OPTIMIZATION.md)
+The [batching and checkpoint follow-up](../../examples/pcbqs/peec-memory/OPTIMIZATION.md)
 describes faster on-demand entry evaluation and resuming the Jetson benchmark
 without rebuilding completed operators. Checkpoints belong to the benchmark
 workflow; the API does not implicitly write caches.

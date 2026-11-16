@@ -3,7 +3,7 @@
 [← Index](index.md)
 
 kicad2ems's plugin for KiCad's PCB editor lives in its own repository,
-[kicad2ems-ipc](https://github.com/lowprocess/kicad2ems-ipc). It talks to KiCad through KiCad's IPC API (KiCad 9
+[kicad2ems-ipc](ipc/README.md). It talks to KiCad through KiCad's IPC API (KiCad 9
 and later) and reads the board as it is open in KiCad, unsaved edits included. A toolbar button opens a window
 with the impedance map of the board (every trace coloured by how far its [line model](transmission-lines.md) Z0
 is from its net class's target), the nets, region and ports to simulate, and a kicad2ems run on them, or the same
@@ -17,9 +17,9 @@ already.
 
 ## What the plugin uses
 
-It uses kicad2ems as a library, through `kicad2ems.api.frontend` (the board, `build_lines` and `RefCopper` for the
+It uses kicad2ems as a library, through `kicad2ems.core.api.frontend` (the board, `build_lines` and `RefCopper` for the
 map, `overlay`, `kind_value` and `extra_port_fps` for the region's parts and ports, `Run`, `EventTail`, `stop_runs`
-and the readers for the runs), and the GUI's plan and section views through `kicad2ems_gui.api`
+and the readers for the runs), and the GUI's plan and section views through `kicad2ems.gui.api`
 ([APIs](api.md)). A change to those is a change to the plugin's interface.
 
 A coupled section's pairs (`LineModel.groups[...]['pairs']`) give their even- and odd-mode impedances with the

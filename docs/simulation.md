@@ -2,7 +2,7 @@
 
 [← openEMS meshing](meshing.md) · [Index](index.md) · [Next: mom25d →](mom.md)
 
-In the [kicad2ems-fdtd](https://github.com/lowprocess/kicad2ems-fdtd) package, `model.py` turns the board and its
+In the [kicad2ems-fdtd](fdtd/README.md) package, `model.py` turns the board and its
 mesh into an openEMS model and `run.py` runs it, on openEMS or on gfdtd, which has openEMS's Python interface
 (`engines.py`); `antenna.py` adds the far field. openEMS is imported only by its engine (`openems/engine.py`).
 What follows holds for gfdtd too, except that it fits `--rough` over the band ([gfdtd](gfdtd.md)).

@@ -1,5 +1,9 @@
 # mom25d
 
+> Part of kicad2ems since 0.4: the package `kicad2ems.mom25d`, installed with kicad2ems (`pip install .` in this
+> repository; the [README](../../README.md#install) has the installer). Its history up to then is in this
+> repository's, and in its own repository. Install lines below that name `.` mean this repository.
+
 A 2.5D method-of-moments solver for circuit boards: copper as zero-thickness sheets on the interfaces of a
 layered dielectric over an infinite ground plane, vias as vertical wires, lumped parts as series elements.
 It takes a board file and gives its S-parameters, on the CPU (NumPy, or a compiled C++ / OpenMP core) with an
@@ -16,7 +20,7 @@ the quarter-wave stub holds the standing wave and nothing passes it.*
 
 It is the planar solver of [kicad2ems](https://github.com/lowprocess/kicad2ems), which reads KiCad and Gerber
 files and writes the board file (`<name>_board.json`) every solver gets. mom25d reads that file without kicad2ems;
-kicad2ems's [mom25d page](https://github.com/lowprocess/kicad2ems/blob/main/docs/mom.md) covers what it models,
+kicad2ems's [mom25d page](../mom.md) covers what it models,
 its ports, the mesh, antenna mode, the GPU paths and its speed against openEMS.
 
 ## Install
@@ -24,13 +28,13 @@ its ports, the mesh, antenna mode, the GPU paths and its speed against openEMS.
 ```bash
 pip install .                       # numpy, scipy, shapely, emsdev (the GPU and memory probes)
 pip install '.[core]'               # pybind11, then build the compiled core (g++ with OpenMP; Windows: MSVC or MinGW):
-python -m mom25d.core.build         # mom25d/_core*.so (.pyd on Windows): the mesher, and kernels ~5x faster
+python -m kicad2ems.mom25d.core.build         # mom25d/_core*.so (.pyd on Windows): the mesher, and kernels ~5x faster
 pip install '.[gpu-vulkan]'         # the GPU LU through Vulkan: slangpy (any GPU)
 pip install '.[gpu-cuda12]'         # optional: the CuPy wheel for your stack (gpu-cuda12, gpu-cuda13, gpu-rocm7)
 ```
 
 On Windows the core builds with Visual Studio 2022 or its Build Tools, or MinGW-w64's g++ (see
-[emsdev](https://github.com/lowprocess/emsdev)); CuPy has no ROCm wheel there.
+[emsdev](../emsdev/README.md)); CuPy has no ROCm wheel there.
 
 The compiled core is needed: the mesher's triangulation is in it (CDT, vendored in `src/mom25d/core/CDT`). The
 kernels keep NumPy fallbacks (`MOM25D_NO_CORE`); the mesher has none.
@@ -59,10 +63,10 @@ res.f, res.S, res.names, res.zref                  # Hz, (nf, n, n), port names,
 ```
 
 DC/PDN, quasistatic fields and operational circuits now live in
-[pcbqs](https://github.com/lowprocess/pcbqs), an independent package. Install
+[pcbqs](../pcbqs/README.md), an independent package. Install
 `kicad2ems[qs]` for the integrated GUI workflow, or `pcbqs` directly. The former
-`mom25d.pdn`, `mom25d.mqs` and circuit namespaces have been removed; see
-[the migration guide](https://github.com/lowprocess/pcbqs/blob/main/docs/migration.md).
+`kicad2ems.mom25d.pdn`, `kicad2ems.mom25d.mqs` and circuit namespaces have been removed; see
+[the migration guide](../pcbqs/migration.md).
 MoM's RF API, shared numerical implementation and native core are unchanged.
 
 `solve_board` builds the model, meshes it and runs an adaptive frequency sweep; its docstring lists the options
@@ -96,10 +100,10 @@ f, S, info = solve_band(sim, 1e9, 6e9, points=101, zref=m.port_z0)
 | `gpu.py` | the GPU backends |
 | `gpu_vk.py` | the Vulkan backend: a hybrid LU (panels on the CPU, updates on the GPU) and its GPU solves |
 | `blr.py` | the block low-rank solver's tiling (its factor is compiled in `core/`: the large boards' path) |
-| `afs.py`, `run.py` | the adaptive frequency sweep (its fit is emsdev's `emsdev.afs`, which pcbqs shares) |
+| `afs.py`, `run.py` | the adaptive frequency sweep (its fit is emsdev's `kicad2ems.emsdev.afs`, which pcbqs shares) |
 | `farfield.py` | far and near fields from the currents |
 | `core/` | the compiled C++ kernels |
-| `kicad2ems/` | kicad2ems's solver plugins, `mom25d` and `mixed` (the `kicad2ems.solvers` entry points; only kicad2ems imports them) |
+| `kicad2ems/` | kicad2ems's solver plugins, `mom25d` and `mixed` (the `kicad2ems.core.solvers` entry points; only kicad2ems imports them) |
 
 The formulation is a mixed-potential integral equation with RWG basis functions. Layered-media kernels
 come from a spectral transmission-line network. The singular terms are integrated analytically.

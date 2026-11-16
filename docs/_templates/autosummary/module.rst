@@ -1,7 +1,7 @@
 {{ fullname | escape | underline }}
 
 .. automodule:: {{ fullname }}
-{%- if fullname in ('kicad2ems.api.solver', 'kicad2ems.api.frontend', 'kicad2ems_gui.api') %}
+{%- if fullname in ('kicad2ems.core.api.solver', 'kicad2ems.core.api.frontend', 'kicad2ems.core.api.analysis', 'kicad2ems.gui.api') %}
    :no-members:
 
 Each name, and where it is defined: :doc:`../api-names`.

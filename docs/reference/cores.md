@@ -1,6 +1,6 @@
 # Compiled cores
 
-The C++ kernels the solvers build on install (`python -m mom25d.core.build`, `python -m gfdtd.core.build`), from
+The C++ kernels the solvers build on install (`python -m kicad2ems.mom25d.core.build`, `python -m kicad2ems.gfdtd.core.build`), from
 their sources through Doxygen. Without a built core each falls back to NumPy.
 
 ## mom25d

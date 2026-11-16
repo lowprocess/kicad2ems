@@ -42,7 +42,7 @@ What the CI leaves out is where most of the list above came from.
 
 ## The study: questions and engines
 
-The registry is there (API 2.6, `kicad2ems.study`, docs/api.md#study-api): a study asks questions, engines answer
+The registry is there (API 2.6, `kicad2ems.core.study`, docs/api.md#study-api): a study asks questions, engines answer
 them, and a rail's drop, the temperature and capacitance each have two (pcbqs; Elmer or Palace through
 kicad2ems-fem). A config holds a study (`[study]`) and `kicad2ems study` runs it (API 2.7, docs/usage.md#study);
 the window lists the questions, with the engine chosen on each row, and compares two engines' named figures
@@ -57,7 +57,7 @@ the window lists the questions, with the engine chosen on each row, and compares
 3. **The KiCad plugin** (kicad2ems-ipc) starts `kicad2ems study` for a board whose config has one.
 4. **Ports and parts the solvers share** (R-E1, R-E5).
    - A reference plane moved along the port's trace and a fixture removed, for any solver's S: `--deembed`,
-     `--deembed-file` since 2026-11-15 (`kicad2ems.deembed`); the FDTD's line ports and vertical ports at any
+     `--deembed-file` since 2026-11-15 (`kicad2ems.core.deembed`); the FDTD's line ports and vertical ports at any
      angle since 2026-11-15 (in the CHANGELOG). *Decided* (R-E1): a lumped port where no straight feed is keeps its
      feed (0.07-0.1 nH and the trace behind it: docs/model.md#ports), as that is how such a port is driven;
      mom25d's lumped ports keep their via (its wave ports, `--mom-port wave` and `auto`, are the de-embedded ones).
@@ -69,12 +69,12 @@ the window lists the questions, with the engine chosen on each row, and compares
      on every solver, other settings varied (`--vary`, `[vary]`) and the window's view of both: in the CHANGELOG.
      Left: a variation's figures side by side (the report: one line a combination).
 7. **Materials** (R-E4). *Done 2026-11-15*: KiCad's stackup `material` is read, a missing εr or tan δ is filled
-   from a small library by the material's name (`kicad2ems.materials`: RO4350B, RO4003C, 370HR, FR408HR, Megtron 6
+   from a small library by the material's name (`kicad2ems.core.materials`: RO4350B, RO4003C, 370HR, FR408HR, Megtron 6
    ...) or FR-4's with a note, and a named laminate's reference frequency is the wideband model's for its layer
    (mom25d, the FDTD layer), and since 2026-11-15 the line model's too (`--diel wideband`: solves at a few
    of the materials' frequencies, interpolated; docs/transmission-lines.md#wideband).
 8. **A run done again** (R-D20): since 2026-11-15 a result is reused where the board, the frequencies, the settings
-   and the code are the same (`kicad2ems.reuse`, `--no-reuse`), except where a solver's outputs need its solve
+   and the code are the same (`kicad2ems.core.reuse`, `--no-reuse`), except where a solver's outputs need its solve
    (dumps, the far field). Since 2026-11-15 `--solver-jobs N` runs the solvers side by side, as threads: it
    gained 1.14 times on rf_ebg and lost elsewhere (docs/benchmarks.md#side-by-side). Left: gfdtd's GPU stepping
    records its kernels from Python and holds the GIL, so a solver beside it waits; processes of their own, or
@@ -84,7 +84,7 @@ the window lists the questions, with the engine chosen on each row, and compares
 
 ## Signal integrity
 
-The crosstalk question (`kicad2ems.si`, docs/si.md) is the first. Left, in the order a board would want them:
+The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in the order a board would want them:
 
 1. **Differential pairs as pairs.** Crosstalk between pairs in their differential and common modes (mixed-mode
    S of the pairs' four ends), a pair's own skew and mode conversion; the proposals then name pairs, not legs.
@@ -271,8 +271,8 @@ that does not need N² memory. In this order:
 
 ## Power tools (pcbqs)
 
-`pcbqs.pdn` (a rail's DC drop and impedance), `pcbqs.mqs` (a converter's near field), `pcbqs.circuit` (switching
-circuits on the board's copper), `pcbqs.thermal` and `pcbqs.sparams` (the
+`kicad2ems.pcbqs.pdn` (a rail's DC drop and impedance), `kicad2ems.pcbqs.mqs` (a converter's near field), `kicad2ems.pcbqs.circuit` (switching
+circuits on the board's copper), `kicad2ems.pcbqs.thermal` and `kicad2ems.pcbqs.sparams` (the
 ports' S-parameters at the low end, a solver of kicad2ems). What exists and how it was
 validated: pcbqs's docs and CHANGELOG.md (the project's `NOTES-pi-nearfield.md` is its history, stale since).
 
@@ -298,7 +298,7 @@ validated: pcbqs's docs and CHANGELOG.md (the project's `NOTES-pi-nearfield.md` 
    table (the user's choice, 2026-11-13). Left: their drops side by side in one report (each run's is its own
    today), each row's state in the questions' list (the study's is the last run's), and a rail's own board or
    output folder (the table's rows share the panel's).
-4. **The full bridge as a general circuit.** Done 2026-11-14: `pcbqs.power_circuit` and `power_bridge` are gone, the
+4. **The full bridge as a general circuit.** Done 2026-11-14: `kicad2ems.pcbqs.power_circuit` and `power_bridge` are gone, the
    wpthb bridge is a circuit model (pcbqs's `data/wpthb_bridge.json`: leg B's phase a target for the load's power,
    the receiver fixed at its 90 kHz values; the per-frequency tuning was dropped on the user's word). On the board
    with copper it gives the old tool's answer (93.11 % for 93.13 %, phase 55.66° for 55.77°). Left: its speed on
@@ -366,7 +366,7 @@ In order:
 1. **Thick copper and AC resistance (C14).** `conductor_loss='slab'` is two face sheets; stacked sheets with the
    thick kernel are the reference. Graded cells at the copper's edges are most of the error away from a plane
    (two faces 1.6 mm over one: −9 % at 10 MHz against FastHenry, from −26 %) and a third of it close over one
-   (0.1 mm: −14 %, from −18 %); `pcbqs.sparams --thickness` has them since 2026-11-13, the circuit's copper and
+   (0.1 mm: −14 %, from −18 %); `kicad2ems.pcbqs.sparams --thickness` has them since 2026-11-13, the circuit's copper and
    the near field not yet (their meshes are the pads' and the loop's: to be measured there first). Open:
    - a trace close over a plane, the largest error: one sheet is 19–30 % low in R, two faces were 12.5 % low when
      last compared, the reference is within 5 %. The validation board's second structure decides;
@@ -378,7 +378,7 @@ In order:
      copper (item 4's jumper variant, or the validation board).
 2. **Capacitance in narrow gaps, with thickness.** Graded edge rings resolve the edge charge (2026-11-13:
    two sheets 0.1 mm apart −2.5 % self and −3.6 % mutual against FasterCap, from −10 % and −23 %, on a third of
-   the triangles; `pcbqs.sparams` uses them with the charge). Left: the same with the copper's thickness (face
+   the triangles; `kicad2ems.pcbqs.sparams` uses them with the charge). Left: the same with the copper's thickness (face
    sheets and side charge were −5.5..−7.5 % and −10..−13 % against FasterCap's boxes, on plain cells), and
    whether the rings should be `MQS(capacitance=True)`'s default.
 3. **A real converter loop, converged.** CM5 U702 (`validation/mqs_cm5.py`): one sheet is within 4 % of Palace's
