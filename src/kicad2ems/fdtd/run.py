@@ -84,16 +84,9 @@ class PortWatch:
         self.fired = None
 
     def _read_energy(self):
-        from .progress import parse_line
-        try:
-            with open(os.path.join(self.path, 'openems.log'), 'rb') as fh:
-                fh.seek(self._pos)
-                chunk = fh.read()
-        except OSError:
-            return
-        cut = chunk.rfind(b'\n') + 1
-        self._pos += cut
-        for line in chunk[:cut].decode('utf-8', 'replace').splitlines():
+        from .progress import parse_line, read_new
+        lines, self._pos = read_new(os.path.join(self.path, 'openems.log'), self._pos)
+        for line in lines:
             p = parse_line(line)
             if p and p['db'] == p['db']:
                 self.energy.append((p['step'], p['db']))
