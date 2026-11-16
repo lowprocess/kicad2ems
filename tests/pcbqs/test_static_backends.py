@@ -1,0 +1,322 @@
+"""Backend equivalence, real host concurrency, bounded scheduling and device contracts."""
+import threading
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+from pcbqs._numerics.base import RWG, combine
+from pcbqs.static import static_moments
+from pcbqs.static_backends import FillEngine, NumpyBackend, bounded_map, register_fill_backend
+import pcbqs.static_backends as backends
+
+
+@pytest.fixture
+def mesh():
+    # Two separated islands on two layers: self, adjacent, off-plane and far pairs.
+    nodes, tris, z = [], [], []
+    for h in (0., .00013):
+        for x in (0., .025):
+            k = len(nodes)
+            nodes.extend([[x, 0.], [x+.002, 0.], [x+.002, .001], [x, .001]])
+            tris.extend([[k, k+1, k+2], [k, k+2, k+3]])
+            z.extend([h, h])
+    return np.array(nodes), np.array(tris), np.array(z)
+
+
+@pytest.mark.parametrize('backend,workers', [('threaded', 1), ('threaded', 2), ('openmp', 1), ('openmp', 2)])
+@pytest.mark.parametrize('level', [0, 1, 2])
+@pytest.mark.parametrize('scalar_only', [False, True])
+def test_backends_match_serial_reference(mesh, backend, workers, level, scalar_only):
+    if backend == 'openmp' and backends._compiled() is None:
+        pytest.skip('OpenMP core not built')
+    reference = static_moments(*mesh, backend='numpy', outer_levels=level, scalar_only=scalar_only, chunk=16)
+    result, info = static_moments(*mesh, backend=backend, workers=workers, outer_levels=level,
+                                  scalar_only=scalar_only, chunk=9, return_info=True)
+    for expected, actual in zip(reference, result):
+        assert actual == pytest.approx(expected, rel=2e-11, abs=1e-27)
+    assert info['pairs'] == len(mesh[1])*(len(mesh[1])+1)//2
+    assert 0 < info['analytic_pairs'] < info['pairs']
+    if backend == 'openmp':
+        assert info['observed_kernel_workers'] >= 1
+    # Every pair has one owner: scheduling/thread count cannot change reductions.
+    again = static_moments(*mesh, backend=backend, workers=workers, outer_levels=level,
+                            scalar_only=scalar_only, chunk=4)
+    for a, b in zip(result, again):
+        assert np.array_equal(a, b)
+
+
+def test_native_combined_inductance_and_all_analytic_path(mesh):
+    if backends._compiled() is None:
+        pytest.skip('OpenMP core not built')
+    results = [static_moments(*mesh, backend=b, workers=2, near=np.inf) for b in ('numpy', 'openmp')]
+    inductances = []
+    for nodes, m0, mx, my, rr in results:
+        inductances.append(combine(RWG(nodes, mesh[1]), rr, mx, my, m0))
+    assert np.linalg.norm(inductances[0]-inductances[1])/np.linalg.norm(inductances[0]) < 1e-11
+    assert np.linalg.eigvalsh(inductances[1]).min() > 0
+
+
+def test_backend_extension_really_runs_concurrently(mesh, monkeypatch):
+    monkeypatch.setattr(backends, '_FACTORIES', dict(backends._FACTORIES))
+    barrier, lock, threads, calls = threading.Barrier(2), threading.Lock(), set(), [0]
+
+    class RecordingBackend(NumpyBackend):
+        def evaluate(self, *args):
+            with lock:
+                threads.add(threading.get_ident())
+                calls[0] += 1
+                first = calls[0] <= 2
+            if first:
+                barrier.wait(timeout=10)
+            return super().evaluate(*args)
+
+    register_fill_backend('recording', RecordingBackend)
+    result = static_moments(*mesh, backend='recording', workers=2, chunk=4)
+    reference = static_moments(*mesh, backend='numpy')
+    assert len(threads) == 2
+    for a, b in zip(result, reference):
+        assert np.array_equal(a, b)
+    with pytest.raises(ValueError, match='registered'):
+        register_fill_backend('recording', RecordingBackend)
+
+
+def test_scheduler_does_not_queue_the_entire_fill():
+    produced = []
+    def tasks():
+        for i in range(20):
+            produced.append(i)
+            yield i
+    results = bounded_map(lambda i: i*i, tasks(), 2)
+    assert next(results) == 0
+    assert len(produced) == 2
+    assert list(results) == [i*i for i in range(1, 20)]
+
+
+def test_backend_failure_is_not_silently_retried(mesh, monkeypatch):
+    monkeypatch.setattr(backends, '_FACTORIES', dict(backends._FACTORIES))
+    class Broken(NumpyBackend):
+        def evaluate(self, *args):
+            raise RuntimeError('device failed')
+    register_fill_backend('broken', Broken)
+    with pytest.raises(RuntimeError, match='device failed'):
+        static_moments(*mesh, backend='broken', workers=2, chunk=4)
+
+
+def test_backend_output_contract(mesh, monkeypatch):
+    monkeypatch.setattr(backends, '_FACTORIES', dict(backends._FACTORIES))
+    class Bad(NumpyBackend):
+        def evaluate(self, p, q, d, kind, scalar_only):
+            return np.full((len(p), 1 if scalar_only else 6), np.nan)
+    register_fill_backend('nonfinite', Bad)
+    with pytest.raises(FloatingPointError, match='non-finite'):
+        static_moments(*mesh, backend='nonfinite')
+
+
+def test_environment_and_missing_backend_policy(mesh, monkeypatch):
+    monkeypatch.setattr(backends, '_compiled', lambda: None)
+    monkeypatch.delenv('PCBQS_FILL_BACKEND', raising=False)
+    monkeypatch.setenv('PCBQS_FILL_THREADS', '2')
+    e = FillEngine(*mesh)
+    assert e.info['backend'] == 'threaded' and e.info['tile_workers'] == 2
+    with pytest.raises(RuntimeError, match='rebuild'):
+        FillEngine(*mesh, backend='openmp')
+    monkeypatch.setenv('PCBQS_FILL_BACKEND', 'numpy')
+    assert FillEngine(*mesh).info['workers'] == 1
+    monkeypatch.setenv('PCBQS_FILL_THREADS', '0')
+    with pytest.raises(ValueError, match='workers'):
+        FillEngine(*mesh)
+
+
+def test_existing_openmp_thread_preferences_are_respected(mesh, monkeypatch):
+    monkeypatch.delenv('PCBQS_FILL_THREADS', raising=False)
+    monkeypatch.delenv('PCBQS_OMP_THREADS', raising=False)
+    monkeypatch.setenv('OMP_NUM_THREADS', '2,1')
+    assert FillEngine(*mesh, backend='threaded').info['workers'] == 2
+    monkeypatch.setenv('PCBQS_OMP_THREADS', '3')
+    assert FillEngine(*mesh, backend='threaded').info['workers'] == 3
+    monkeypatch.setenv('PCBQS_FILL_THREADS', '4')
+    assert FillEngine(*mesh, backend='threaded', workers=1).info['workers'] == 1
+
+
+def test_installed_backend_is_loaded_only_when_selected(mesh, monkeypatch):
+    monkeypatch.setattr(backends, '_FACTORIES', dict(backends._FACTORIES))
+    loaded = []
+    def load():
+        loaded.append(True)
+        return NumpyBackend
+    monkeypatch.setattr(backends.metadata, 'entry_points', lambda **kw: [SimpleNamespace(name='external', load=load)])
+    FillEngine(*mesh, backend='numpy')
+    assert loaded == []
+    out = static_moments(*mesh, backend='external', workers=2, chunk=4)
+    assert loaded == [True]
+    reference = static_moments(*mesh, backend='numpy')
+    assert all(np.array_equal(a, b) for a, b in zip(out, reference))
+
+
+def test_missing_gpu_does_not_fall_back_to_cpu(mesh, monkeypatch):
+    import sys
+    monkeypatch.setitem(sys.modules, 'cupy', None)
+    with pytest.raises(RuntimeError, match='CuPy fill unavailable'):
+        static_moments(*mesh, backend='cupy')
+
+
+@pytest.mark.parametrize('kwargs', [dict(workers=0), dict(workers=True), dict(chunk=0),
+                                   dict(chunk=2.5), dict(near=-1), dict(outer_levels=3)])
+def test_invalid_configuration(mesh, kwargs):
+    with pytest.raises(ValueError):
+        static_moments(*mesh, **kwargs)
+
+
+@pytest.mark.parametrize('level', [0, 1, 2])
+@pytest.mark.parametrize('scalar_only', [False, True])
+def test_portable_gpu_formula_on_host_namespace(mesh, level, scalar_only):
+    # Exercise device formula independently of the CPU reference even without GPU hardware.
+    from pcbqs.static_cupy import _analytic
+    e = FillEngine(*mesh, backend='numpy', outer_levels=level)
+    p, q = np.array([0, 1, 2, 3, 4]), np.array([0, 0, 5, 7, 2])
+    d = np.array([0., .0001, -.0002, 0., .0003])
+    kind = np.full(len(p), level, np.int32)
+    actual = _analytic(np, e.geometry.levels[level], p, q, d, scalar_only)
+    assert actual == pytest.approx(e.evaluate(p, q, d, kind, scalar_only), rel=1e-12, abs=1e-27)
+
+
+@pytest.mark.parametrize('level', [0, 1, 2])
+def test_actual_cupy_backend_when_device_available(mesh, level, monkeypatch):
+    monkeypatch.setenv('PCBQS_CUPY_HOST_PAIRS', '0')      # keep pair batches on the device
+    pytest.importorskip('cupy')
+    import cupy as cp
+    try:
+        cp.zeros(1).sum().item()
+    except Exception as exc:
+        pytest.skip(f'CuPy device unavailable: {exc}')
+    for scalar in (False, True):
+        expected = static_moments(*mesh, backend='numpy', scalar_only=scalar, outer_levels=level)
+        actual = static_moments(*mesh, backend='cupy', device=0, scalar_only=scalar, outer_levels=level)
+        for a, b in zip(expected, actual):
+            assert b == pytest.approx(a, rel=2e-10, abs=1e-26)
+        again = static_moments(*mesh, backend='cupy', device=0, scalar_only=scalar,
+                               outer_levels=level, chunk=3)
+        assert all(np.array_equal(a, b) for a, b in zip(actual, again))
+
+
+@pytest.mark.parametrize('level', [0, 2])
+def test_cupy_row_strips_and_pair_protocol(mesh, level, monkeypatch):
+    pytest.importorskip('cupy')
+    import cupy as cp
+    try:
+        cp.zeros(1).sum().item()
+    except Exception as exc:
+        pytest.skip(f'CuPy device unavailable: {exc}')
+    from pcbqs.static_cupy import CupyBackend
+    monkeypatch.setenv('PCBQS_CUPY_HOST_PAIRS', '0')      # keep pair batches on the device
+    # Eight triangles in strips of 3, 3 and 2 rows: a partial final strip.
+    monkeypatch.setattr(CupyBackend, 'min_strip_pairs', 24)
+    for scalar in (False, True):
+        expected, info0 = static_moments(*mesh, backend='numpy', scalar_only=scalar, outer_levels=level,
+                                         return_info=True)
+        actual, info = static_moments(*mesh, backend='cupy', scalar_only=scalar, outer_levels=level,
+                                      chunk=3, return_info=True)
+        for a, b in zip(expected, actual):
+            assert b == pytest.approx(a, rel=2e-10, abs=1e-26)
+        assert np.array_equal(actual[1], actual[1].T)
+        if not scalar:
+            assert np.array_equal(actual[4], actual[4].T)
+        assert (info['pairs'], info['analytic_pairs']) == (info0['pairs'], info0['analytic_pairs'])
+    # The explicit pair protocol (layered capacitance, compressed PEEC) sorts by kind.
+    reference = FillEngine(*mesh, backend='numpy', outer_levels=level)
+    device = FillEngine(*mesh, backend='cupy', outer_levels=level)
+    p, q = np.array([0, 7, 1, 2, 3, 4, 0]), np.array([0, 2, 0, 5, 7, 2, 6])
+    d = device.geometry.z[p]-device.geometry.z[q]
+    for scalar in (False, True):
+        assert device.evaluate(p, q, d, scalar_only=scalar) == pytest.approx(
+            reference.evaluate(p, q, d, scalar_only=scalar), rel=2e-10, abs=1e-26)
+
+
+@pytest.mark.parametrize('level', [0, 1, 2])
+@pytest.mark.parametrize('scalar_only', [False, True])
+def test_native_whole_matrix_fill_matches_batched_pairs(mesh, monkeypatch, level, scalar_only):
+    core = backends._compiled()
+    if core is None or not hasattr(core, 'static_fill'):
+        pytest.skip('OpenMP core not built')
+    import pcbqs.static as static
+    native, info = static_moments(*mesh, backend='openmp', workers=2, outer_levels=level,
+                                  scalar_only=scalar_only, return_info=True)
+    single = static_moments(*mesh, backend='openmp', workers=1, outer_levels=level, scalar_only=scalar_only)
+    # The host scheduler with the batched static_pairs kernel: same pair code, same rule.
+    monkeypatch.setattr(static, 'OpenMPBackend', type('HostTiles', (), {}))
+    tiled, tiled_info = static_moments(*mesh, backend='openmp', workers=2, outer_levels=level,
+                                       scalar_only=scalar_only, chunk=5, return_info=True)
+    assert info['scheduler'] == 'native' and tiled_info['scheduler'] == 'host'
+    assert (info['pairs'], info['analytic_pairs']) == (tiled_info['pairs'], tiled_info['analytic_pairs'])
+    for a, b, c in zip(native, tiled, single):
+        assert np.array_equal(a, b) and np.array_equal(a, c)
+
+
+def test_native_combine_matches_sparse_galerkin_products(mesh, monkeypatch):
+    from pcbqs.static import edge_inductance, native_combine_available
+    if not native_combine_available():
+        pytest.skip('OpenMP core not built')
+    nodes, m0, mx, my, rr = static_moments(*mesh, backend='numpy')
+    r = RWG(nodes, mesh[1])
+    scale = 1/r.l
+    native, info = edge_inductance(r, rr, mx, my, m0, 1e-7, scale, workers=2)
+    again, _ = edge_inductance(r, rr, mx, my, m0, 1e-7, scale, workers=1)
+    monkeypatch.setenv('PCBQS_NO_CORE', '1')
+    fallback, fallback_info = edge_inductance(r, rr, mx, my, m0, 1e-7, scale, workers=2)
+    assert (info['backend'], fallback_info['backend']) == ('openmp', 'scipy')
+    L = combine(r, rr, mx, my, m0)
+    expected = 1e-7*0.5*(L+L.T)*np.outer(scale, scale)
+    assert native == pytest.approx(expected, rel=1e-12, abs=1e-12*np.abs(expected).max())
+    assert fallback == pytest.approx(expected, rel=1e-14, abs=1e-14*np.abs(expected).max())
+    assert np.array_equal(native, native.T) and np.array_equal(native, again)
+
+
+@pytest.mark.parametrize('near', [0., .5, 3., np.inf])
+@pytest.mark.parametrize('level', [0, 1, 2])
+def test_kinds_rule_and_kind_validation(mesh, near, level):
+    e = FillEngine(*mesh, backend='numpy', near=near, outer_levels=level)
+    n = len(mesh[1]); p, q = np.meshgrid(np.arange(n), np.arange(n), indexing='ij'); p, q = p.ravel(), q.ravel()
+    d = e.geometry.z[p]-e.geometry.z[q]
+    distance = np.sqrt(((e.geometry.cent[p]-e.geometry.cent[q])**2).sum(-1)+d*d)
+    size = e.geometry.radius[p]+e.geometry.radius[q]
+    close = np.ones(len(p), bool) if np.isinf(near) else distance <= near*size
+    expected = np.where(close, np.where(distance <= size, level, 0), -1)
+    assert np.array_equal(e.kinds(p, q, d), expected)
+    for bad in ({0: 1, 1: 2, 2: 1}[level], -2, 3):
+        kind = np.zeros(len(p), np.int32); kind[0] = bad
+        with pytest.raises(ValueError, match='prepared analytic level'):
+            e.evaluate(p, q, d, kind)
+    with pytest.raises(ValueError, match='within the mesh'):
+        e.evaluate(np.array([n]), np.array([0]), 0.)
+    with pytest.raises(ValueError, match='finite'):
+        e.evaluate(np.array([0]), np.array([0]), np.nan)
+
+
+def test_small_cupy_batches_run_on_host_core(mesh, monkeypatch):
+    pytest.importorskip('cupy')
+    import cupy as cp
+    try:
+        cp.zeros(1).sum().item()
+    except Exception as exc:
+        pytest.skip(f'CuPy device unavailable: {exc}')
+    if backends._compiled() is None:
+        pytest.skip('OpenMP core not built')
+    import os
+    if os.environ.get('PCBQS_NO_CORE'):
+        # The core is disabled: every batch stays on the device.
+        assert FillEngine(*mesh, backend='cupy').info['routing']['host_threshold_pairs'] == 0
+        return
+    p, q = np.array([0, 7, 1, 2, 3, 4, 0]), np.array([0, 2, 0, 5, 7, 2, 6])
+    host = FillEngine(*mesh, backend='cupy')
+    d = host.geometry.z[p]-host.geometry.z[q]
+    openmp = FillEngine(*mesh, backend='openmp', workers=1)
+    assert np.array_equal(host.evaluate(p, q, d), openmp.evaluate(p, q, d))
+    assert host.info['routing']['host_batches'] == 1 and host.info['routing']['device_batches'] == 0
+    monkeypatch.setenv('PCBQS_CUPY_HOST_PAIRS', '0')
+    device = FillEngine(*mesh, backend='cupy')
+    assert device.evaluate(p, q, d) == pytest.approx(openmp.evaluate(p, q, d), rel=2e-10, abs=1e-26)
+    assert device.info['routing']['device_batches'] == 1 and device.info['routing']['host_threshold_pairs'] == 0
+    monkeypatch.setenv('PCBQS_CUPY_HOST_PAIRS', '-1')
+    with pytest.raises(ValueError, match='nonnegative'):
+        FillEngine(*mesh, backend='cupy')

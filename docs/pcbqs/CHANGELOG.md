@@ -1,0 +1,623 @@
+# Changelog
+
+Notable changes to pcbqs, by day, in the form of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with
+*Decided* for what was looked at and not done. It was started on 2026-11-12 from the finished items of the
+roadmap; the git log has every commit, and kicad2ems's CHANGELOG.md has the time these tools lived in mom25d and
+kicad2ems (before 2026-11-07). What is planned is in kicad2ems's
+[ROADMAP.md](https://github.com/lowprocess/kicad2ems/blob/main/ROADMAP.md#power-tools-pcbqs). C, I and U numbers
+are findings of [docs/power-tools-review.md](docs/power-tools-review.md).
+
+## Unreleased
+
+### Changed
+- **The mesher's interior is equilateral cells (2026-11-15).** `_numerics/cdtmesh.py` (mom25d's file) seeds the points
+  inside the copper on a hexagonal lattice at the local cell size and smooths them (ODT), in place of rounds of
+  circumcentres alone: fewer triangles for the same limits (the FastHenry plane case 9,826 for 13,194, reading the
+  same: L +0.5 %, R -6.1 % at 1 MHz; the strip loop L -1.4 %, R -3.7 %). The real boards' answers moved up to 1.6 %
+  (the circuits' copper loss; near-field L 1.3 %), the copper fixture is regenerated (within 1 % of the pre-split
+  pipeline's impedances).
+- **The mesher triangulates with CDT, not Triangle (2026-11-15).** `geo.mesh_polygons` keeps its outlines, rings
+  and limits; the triangulation is CDT 2.0.1's (MPL-2.0, vendored in `core/CDT`, `core/cdt_mesh.hpp`:
+  `_core.cdt_triangulate`) and the points inside the copper are placed by `_numerics/cdtmesh.py` (rounds of
+  circumcentres to each area limit; the minimum angle, 25 for DC and thermal, by CDT's refinement). The `triangle`
+  package is gone, and with it Triangle's non-free terms and its missing wheels (none for Python 3.14). The compiled
+  core is now needed: the kernels keep their NumPy twins (`PCBQS_NO_CORE`), the mesher has none. CDT leaves each
+  triangle near its limit where Triangle's refinement left about half of it, so meshes are a little coarser where
+  refinement fills them: the real boards' answers moved by 0.01–0.4 % (PDN), 1–3 % (near field R, L, |H|) and
+  1.7–3.2 % (circuits' copper loss); against FastHenry the strip loop reads as before and the trace over a plane
+  1 % higher L, 2 % lower R (`validation/README.md`). The copper parity fixture is the CDT mesh's now (within
+  0.05 % of the pre-split pipeline's impedances).
+
+### Added
+- **The PDN's droop in time and its port matrix (R-E14, a first part).** Each load's drop for a load step rising
+  in `--rise` (1 ns), from its impedance alone (`pdn/droop.py`: the step response from Im Z / w by the sine
+  integral, exact for the samples taken as piecewise linear; the impedance solved down to 10 Hz for it, so its
+  end is the DC path and not a resonance): `droop.png` and pdn.json's `droop`. Series R + L and parallel R C
+  give their closed forms. `--touchstone` writes the loads' impedance matrix as `pdn.zNp`. Left of E14: vendor
+  decap models and MLCC DC-bias derating, a VRM beyond R + L, the near field's input capacitors from their own
+  fields, a rail with no planes.
+- **One factorisation for a long sweep (R-D13.2).** The dense magnetic solve with the copper's DC resistance (the
+  near field's) takes one generalized eigendecomposition of its loops' R and L for every frequency, (R + sL)^-1 =
+  G diag(1/(1 + s lam)) G^T, with its parts (the capacitors) by Woodbury, a solve of their count; where the sweep
+  has more frequencies than the eigendecomposition costs LUs (`kernels.pencil_pays`: 11 at 1,400 loops, 15 at
+  4,700). The CM5 near field at 4,694 loops: 40 harmonics' solve 17.9 s to 7.3 s, 16 harmonics' 8.7 s to 6.7 s,
+  the answers within 5e-14; six (the default) stay an LU each. `PCBQS_PENCIL=always` or `never` decides it. The
+  copper's port extraction for the circuit (`conductor_loss='slab'`, a resistance that changes with frequency)
+  and the charge's system (quadratic in s) are not pencils, and keep an LU a frequency.
+- **Vendor models through a wider door (R-E12).** A switch's subcircuit takes any pins in its own order: D, G and S
+  where they are (S twice for a Kelvin source), the others on a node of the circuit, held at a voltage (a thermal
+  pin's temperature, or the part's own `temperature_C`) or on their own. A VDMOS and a diode take a library's
+  `.model` card (`model_name`), and a diode a subcircuit; a built-in diode takes `spice_parameters`. KiCad's
+  `Sim.Library`, `Sim.Name`, `Sim.Pins` and `Sim.Params` make the imported part's model the vendor's.
+- **Thermal surroundings beyond one film (R-E13).** `--air REF=K/W` (or the footprint's `thermal.air`) gives a
+  part its own path to the air, a body's or a heatsink's, so its heat splits between that and its pads through
+  its theta; `--hold REF=C` holds a footprint's pads at a temperature (a cold plate, a chassis screw) and reports
+  the heat through it; `--air-speed` sets both faces' film from a flat plate's forced convection; `--transient s`
+  gives the heating from cold on the grid (the board's heat capacity, backward Euler), each part's curve and its
+  time to 63 %. Checked against the exact answers of a plate heated all over, on both solvers, and a sheet's time
+  constant.
+- **Electro-thermal runs (R-E9).** A part's `temperature_C` moves its resistances from their 25 °C values (copper's
+  for a winding's, 0.6 %/K for a MOSFET's R_DS(on) and −2 mV/K for a diode's Vf unless the part gives its own) and
+  `board.temperature_C` the board copper's (`pcbqs.circuit.temperature`). `pcbqs.circuit --warm N` runs the
+  thermal model on the run's losses, sets each part and the copper to what it gives them, case by case, and runs
+  again until no part moves by more than 1 K: the buck example settles in four runs (its diode 77 °C at 25 °C's
+  losses, 71.5 °C at its own), the boost on its copper in three, the copper's loss 6.7 % up at 43.5 °C. A
+  front end's string option that starts with a dash is passed joined to its flag.
+- **An inductor's AC and core losses (R-E10).** Two fields of an inductor, worked out from the reported run's last
+  period (`pcbqs.circuit.windings`): `AC_R_ohm`, its resistance against frequency, gives each harmonic of its
+  current the resistance above its DCR; `core_loss`, a Steinmetz fit with the core's turns, area and volume, gives
+  the core's loss by the iGSE for the flux's own waveform. They are the part's (`AC_winding_loss_W`,
+  `core_loss_W`, `added_loss_W`) for the thermal model and the report, and in the case's loss and efficiency as
+  drawn on top of the run's. Checked against Steinmetz's sine, the iGSE's triangle and a buck's flat AC resistance.
+
+### Fixed
+- **A transient's heat capacity on boards with inner layers.** An inner layer's share of the laminate (half the
+  distance to each neighbour) takes in its own thickness, and where it is copper that volume was counted as laminate
+  and as copper: 4.8 % too much heat capacity on wpthb against Elmer's 3D mesh (8.25 against 7.87 J/K), its parts
+  reaching 63 % of their rise 13 % late. Now 7.93 J/K and 3 to 9 % late (the sheets against the 3D model; four
+  times the steps moves it 1 %), within 0.5 K at 200 s. Checked by `validation/thermal_elmer.py --transient`,
+  against kicad2ems-fem's new Elmer transient (R-E21).
+- **A coupled winding's books.** The change of coupled windings' mutual energy over the reported period came off
+  the loss alone, not off the windings' powers as their own energies' did, so the parts added up short of the loss
+  on a run not quite settled (the flyback on CI's ngspice 45: 1.072 W of parts against 1.101 W of loss). Each
+  coupling's change now comes half off each of its windings (`stored_energy`'s `coupling:A+B`).
+- **The flyback example on ngspice 45 (CI's).** Its search never settled there: at reltol 1e-3 the windings'
+  currents differed by 0.3-0.5 % from period to period however long it ran (lightly damped ringing at the
+  diodes' turn-off, 0.11 % at reltol 1e-4), and the longest run then stopped on "timestep too small" at the
+  last period's start. A run twice as long that repeats no better now moves the search to the reported run's
+  reltol, and the measuring window's mark at the last period's start is left out where a pulse's edge is
+  already there (the two a few ulps apart had made ngspice take a 5e-20 s step); a resonant tank, with no edge
+  there, keeps it (its stored energy is counted out at that instant: its loss within 0.14 % of I²R). Found on
+  CI's ngspice 45.2 by a run of the example and five variants there, each trial's worst signals printed.
+
+### Changed
+- **A map for each case of a sweep (R-E11).** `thermal --case all` solves each case of a circuit run on its own
+  (`<out>/<case>`), writes `thermal-cases.json` (each part's temperature, margin and loss at each case, each case's
+  hottest copper) and keeps the case with the most loss at the top, which the report and the Viewer read as before.
+- **A run's waveforms in binary (R-D2).** ngspice writes them as its binary raw file, read into numpy as it is, in
+  place of text (98 MB a wpthb run, 0.5 s of `loadtxt` each): the wpthb case 24.9 s to 21.4 s. The text had kept
+  about six digits, so a ripple sampled off a 24 V bus moves (0.1017 to 0.1012 V) as rounding no longer does. A
+  failed ngspice run's message gives its log's error lines.
+- **Regressions that run anywhere (R-C10).** The buck example's DC drop and PDN, its near field and the boost
+  example on its own copper are stored answers too (tests/test_regression_boards.py), on the circuit examples'
+  boards in the repository: CI checks real-board answers now, where the CM5 and wpthb cases skip. The edge-ring
+  scripts behind this CHANGELOG's figures are in `validation/` (`edge_rings_*.py`) with the FasterCap and FastHenry
+  answers they compare against (`validation/results`), and the README gives their figures as they run today (two
+  traces 0.1 mm apart: 6 rings −3.6 % / −6.3 %; the −2.5 % / −3.6 % above takes 10). The validation README no longer
+  offers `face_correction`, removed on 2026-11-10.
+- **The circuit tool's leftovers (R-F1).** wpthb's coils carry their fitted core-loss resistance (`core_R_ohm`,
+  30.77 kohm) in place of `loss_model`, `Rac_ref_ohm` and `loss_reference_Hz`, which a fit at every deck build
+  turned into it for them alone; `pcbqs.wpt.fit_core_resistance` makes such a value from a measured AC resistance.
+  The model's `engine` key, the unused `initialization` and `loss_model` text keys, the deck's unread `power_refs`,
+  `run`'s `ramp_s` (always 0 from the engine), the benchmark's Xyce arms and the example outputs tracked inside the
+  package (276 KB) are gone. Same answers: the wpthb regression unchanged.
+- **Dense solves in single precision, refined (R-D13).** A complex system of 4,000 unknowns or more is factored
+  in complex64 (LAPACK's cgetrf, about 2.1 times as fast) and each solve corrected by its residual in double
+  until it is a double solve's (1e-12 of the right-hand side: three or four steps); one that will not get there
+  is factored in double, in its own memory. The double matrix is kept for the residuals (1.5 times a double
+  factor's memory), only when twice the copy and 2 GB are free; `PCBQS_LU=double` turns it off. The demo board's
+  S-parameters with the charge: 13.3 s to 10.6 s; on the copper's faces (16,215 unknowns) 145.9 s to 83.3 s, the
+  same peak memory; S within 2e-12 and 5e-14. Every LU and solve now runs BLAS on the fast cores only (emsdev's
+  core_threads; `PCBQS_BLAS_THREADS`): on a hybrid CPU OpenBLAS's 24 threads made a 2,532-unknown factor take
+  0.11-0.88 s from one call to the next, for 0.041 s on the eight P-cores.
+- **The copper's runs are faster.** ngspice spent 73 % of a copper run refactoring the dense block that couples
+  each of the copper's modes to every port (KLU at each Newton step). R and L now share one modal basis (R's
+  Cholesky factor, then L's eigenvectors in it): each mode is a resistor and an inductor in series, exactly R + sL,
+  so the wpthb bridge has 45 modes for 63. Its 50-period copper run took 36 s and takes 23 s; the reported run 21 s
+  and 13 s. The first run with the copper is also 20 periods, not 50: it starts from the settled run without it,
+  and one that does not settle lengthens as any run does. The wpthb case: 79 s to 45 s, its copper loss 7.347 to
+  7.326 mW (ngspice's own steps; the regression value is updated).
+- **A run's fields are kept.** E for a volt on each net (the costly part: 41 s on the boost board) is kept beside
+  the run under the copper's fingerprint, the field settings and the code, so a rerun or a changed circuit on the
+  same copper does not work it out again; a case reused unchanged keeps its fields as they are.
+- **The tests run in parallel** (`-n auto`, pytest-xdist in the `test` extra; two BLAS threads a worker): 445 tests
+  in 1 min 43 s, from 8 min 19 s.
+- **A switch is a vdmos by default (R-A18).** A switch's model without a `type`, the circuits made from a board
+  (`circuit/converter.py`), the parts read from KiCad and the seven switching examples are ngspice's VDMOS with
+  a generic power MOSFET's capacitances where the model gives none: Cgs 1 nF, Cgd 50 pF, Cds 500 pF. The switching
+  loss is then a device's, charging its gate and its Miller capacitance through the gate resistance, not the
+  drive's ramp. On the examples the hard-switched losses are 1.2-3.5 times the ideal switch's (the synchronous
+  buck's Q1 at 2 A: 133 mW for 38), the soft-switched ones (the resonant half bridge, the full bridge's lagging
+  leg) unchanged, and the runs 0-16 % faster (78 s for 85 over the seven). The report says which switches have
+  the generic capacitances. `type: switch` is the ideal switch of before. Decided: Cds is never 0 by default, as
+  ngspice's steps then shrink (the resonant half bridge: 841 s for 3 s).
+- **The reported run meets its targets.** The strict run (reltol 1e-4, finer steps) can measure a little off the
+  search's (the vdmos flyback: 5.04 V for 5.01 V); a target it misses is stepped once or twice along the search's
+  slope and run again at the strict tolerance (the flyback: 4.99 V, 11.3 s for 8.7 s).
+
+## 2026-11-14 (0.3.0)
+
+### Changed
+- **Semantic versions.** pcbqs is 0.3.0, as the whole stack (it was `261112.post23`), and its `kicad2ems`
+  extra asks for `kicad2ems>=0.3.0`; `authors` is Claude and lowprocess, and the README says that Triangle,
+  which the `triangle` mesher compiles in, keeps its own terms.
+
+### Removed
+- **The piecewise-linear circuit engine** (`circuit/pwl.py`, `--engine pwl`, `analysis.engine`). The circuit run is
+  there for its parts' losses (the thermal analysis) and its copper's currents (the fields), and on the wpthb
+  bridge's copper the piecewise-linear engine was either barely faster than ngspice and wrong on its switches'
+  losses (46 mW for 96: no gate charge, no square law, a constant Cds), or right and hours a run (its gates and
+  junctions as states). ngspice is the one engine; a model that asks for `pwl` runs on it, and its notes say so.
+  The review's fixes that are not the engine's stay (the supply rows, thermal's `board.parts`, `<ref>.cap_V`, a
+  measure's `samples`, the case cache's fingerprint).
+- **The full-bridge tool** (`pcbqs.power_circuit`, `power_bridge`, `power_report`; format 1 models;
+  `data/wpthb-power.json`, `data/simple-bridge.json`, `examples/wpthb`). It was a second circuit tool beside
+  `pcbqs.circuit`, for one circuit. The wpthb bridge is a circuit model now, `data/wpthb_bridge.json` (and
+  `wpthb_bridge.toml`, under the window's Examples > Circuits > Bridges): the board's parts and pads named in its
+  board section, leg B's phase a target for the load's power, the sweep 90 and 110 kHz at 5 to 30 W. Its receiver
+  is fixed (130 nF and 5.65 ohm: tuned and matched at 90 kHz); the old tool tuned it at each frequency, which is
+  dropped. It gives the old tool's answers at the same receiver: 90 kHz, 10 W, alone: efficiency 93.18 % for
+  93.13 %, phase 55.66° for 55.64°, primary 1.435 A RMS for 1.435 A; on the board with its copper 93.11 % for
+  93.13 % (the board regression's new baseline). A format 1 model is refused, saying where its bridge went. The
+  schematic import keeps reading KiCad (`schematic.read_netlist`, `read_schematic`); the bridge's model editing
+  in it is gone. `tools/perf`'s port and preconditioner trials on the old tool are gone too (git has them);
+  `tools/benchmark_ports.py` runs on the new model.
+
+### Changed
+- **The S-parameter solver sweeps where its model is least sure** (R-D15): `sparams.sweep` solves at most 31 of the
+  run's frequencies, where a rational model of all the ports' S (`emsdev.afs`, the AAA sweep mom25d's was) is least
+  sure, until two models agree to 2e-3, and gives S on the run's frequencies from it. The solver had solved 31
+  log-spaced points and interpolated linearly in log f, across a filter's resonance. A run of 31 points or fewer
+  is solved at each; a sweep that stops at 31 before its models agree is a warning. `sparams.model` builds the
+  ports' model once for both. A notch at 15.8 MHz on a 401-point band: 7 solves for 31, |S21| at it 0.0385 as the
+  direct solve's (the interpolation's 0.0408).
+- **The via matrix in blocks, the loop tree breadth first** (R-D16): the via segments' inductance from arrays
+  (2,500 segments: 0.35 s for a Python double loop's 19.5 s, the same entries); the loop basis's tree breadth first
+  over the copper from its middle, the parts joining only the islands the copper leaves apart as before. Mean loops
+  of 20-30 branches are 13-20 (CM5's converter 23.5 to 16.7, the wpthb ports 20.0 to 12.9, mom25d's demo board 29.7
+  to 19.9), the inductance's projection 18-24 % faster, the answers the same (to 1e-14 in S).
+- **The field export takes the copper's model the run made** (R-D3, its first part): the same copper had been meshed
+  and filled again (the buck with copper and fields: 49.0 s for 54.5). Its charges' model (with capacitance) and the
+  extraction at each harmonic are still the export's own.
+- **The PDN's sweep factorises once a frequency** (R-D12): the bare network, the parts added by Woodbury's identity
+  (`RailPDN.sweep`), where the loaded and the bare impedance had each factorised (320 factorisations, 5.9 s of the
+  CM5 +5V rail's 22.3 s); 3.7 times faster on the rail tests' board, to 7e-9.
+- **The circuit's knob runs are shorter** (R-D1): once a run has settled, the next knob's starts from its end at a
+  quarter of the periods (at least 20), doubling only if it does not settle. wpthb's bridge at 90 kHz and 10 W: 25.1 s
+  for 40.9, the same answer (93.179 %, Q2 96.13 mW, bus ripple 0.1017 V). A trial's waveforms are saved
+  uncompressed (they are deleted after), the reported run's compressed: 0.4 s a wpthb run (R-D2, its first part).
+- **A supply behind an input filter** (`circuit/supply.py`): where all a DC source feeds is a lone inductor or
+  resistor in series, the supply row is the node behind it, with `through` (its inductors) and `dcr`, as the
+  bridge tool's own rows were; the reports' proposal of the rail then has them.
+- **A part on two footprints, or off the board** (`board.parts`): a footprint a pin (`"PRIMARY": ["TP15",
+  "TP14"]`), `null` for a part or a pin kept off the board; `board.reference` may name a footprint. A measure may
+  use a winding's `<ref>.winding_I` and a capacitor's `<ref>.cap_V`.
+- **The solves' own Python is in the compiled core** (`core/dense_kernels.hpp`, `pcbqs/kernels.py`). A profile of
+  each tool (`tools/perf/workloads.py`; its README has where every tool's time goes) found three places where the
+  time was pcbqs's own NumPy rather than LAPACK or the fill:
+  the charge solve built its system at each frequency as NumPy expressions (seven temporaries of the whole
+  matrix: as long as its factorization); the dense magnetic solve made the whole loop matrix twice, copied the
+  free loops' block out of it, and SciPy copied that again to factor it; and a thermal mesh was sampled for its
+  pictures through a Delaunay triangulation of its nodes, made again at every call. The systems are now filled
+  in one pass, in parallel, with the parts' impedances and the conductors' change of resistance kept sparse, and
+  factored in their own memory; a mesh is sampled on its own triangles. On mom25d's demo board: the charge
+  solve's system 1.14 s to 0.08 s a frequency (the run 20 s to about 15 s, 3.9 to 3.1 GB); the two-face
+  magnetic solve 188 s and 24.9 GB to 147 s and 15.2 GB; the bridge's copper ports 19.0 s to 12.6 s; the bridge's temperature with its pictures 38.6 s to 15.7 s. The answers are the
+  same to rounding (S within 4e-14), and without the core the NumPy twins run (`kernels.py`), which the tests
+  hold the compiled ones to. `mqs_ports.direct_ports` uses the same kernel.
+- **The coefficients of potential are solved by Cholesky** where the matrix is real in value (`kernels.solve_symmetric`).
+  A layered stack's images make it complex in type, so it went to LAPACK's symmetric indefinite solve; without
+  loss its imaginary part is zero and it is positive definite. Two traces on FR4 (14,538 triangles): the
+  capacitance matrix in 8.9 s for 18.5 s, the same to 3e-16. A lossy stack, or a matrix Cholesky finds not
+  definite, is solved as before.
+- **A rail's pads find their vias in one test** (`pdn/stack.py`). The copper island under a pad was grown again
+  (shapely's `buffer`) for every via of the board to ask whether the via was on it: 12,500 buffers and 7.8 s of
+  CM5's +5V run. One buffer and one vectorised test: 1.2 s, the same result to the last digit.
+- **The charge is solved on graded edge cells** (`pcbqs.sparams`, whenever it solves the copper's charge:
+  `EDGE_RINGS` = 6 across half the narrowest port's width; `edge_rings=1` for plain cells). A constant charge per
+  triangle does not resolve the edge charge on plain cells, so a trace's capacitance was low: the thru's |S11|
+  with the charge was 8.8 % above the field solver's line and is within 0.1 %; demo_transition against mom25d
+  0.040 in |S| at 1 GHz, now 0.019; 1.4 times the triangles. The same rings on `MQS(capacitance=True)` (an
+  option there, as it was): two traces 0.1 mm apart −2.5 % self and −3.6 % mutual against FasterCap at 0.5 mm
+  cells (−10 % and −23 % on plain cells, −7 % and −16 % at 0.25 mm), a microstrip +0.8 % (−2.4 %):
+  `validation/README.md`. `--thickness` (the copper's two faces) has the rings too: with the skin effect the
+  current crowds at a trace's edges as the charge does. A 1 mm trace 1.6 mm over a plane against FastHenry:
+  −9 % at 10 MHz and −10 % at 100 MHz, from −26 % and −33 %; the thru's resistance at 100 MHz 69 mΩ for 46 mΩ,
+  and its inductance there the field solver's line's within 0.5 %.
+
+### Added
+- **A boost found on a board is made into a circuit** (`pcbqs.mqs --circuit`, *Open ... as a circuit* on a near
+  field's result; `circuit/converter.py: boost_of`). Only a buck was: a cell with a diode up from its switch node
+  stopped with "only a buck is made into a circuit". The near field's capacitors are the boost's output's, the
+  net on the inductor's far side its input (a supply on its connector, the capacitors there), the lower switch
+  and the diode as the board names them (two switches: a synchronous boost, where `--vout` is above
+  `--vin-volts`), and `--current` is the inductor's current. From the boost example's board alone it settles
+  at the example's duty (0.516 for 0.514) and inductor ripple. The output capacitors are given their ESR only:
+  the model has no stray inductance to slow the commutation into them, and their ESL rang 27 V on a 24 V output.
+- **The low-frequency S-parameters take the board's lumped parts** (`pcbqs.sparams`, `--solvers pcbqs`): each a
+  series R, L and C between patches of the copper at its two pads, so a filter of parts or a trace with a
+  series capacitor has its low end (they were left out: a series part's gap was an open circuit). The fine
+  mesh follows the signal through the series parts. `demo_lowpass` against mom25d solved point by point: |S21|
+  0.9910 for 0.9912 at 117 MHz, 0.9886 for 0.9882 at 274 MHz. A part with no value or a pad on no copper is
+  left out and named.
+- **The settings that name a net or a part say so** (an option's `pick`, kicad2ems API 2.11): the rail, its
+  ground, source, ground source, `through` and `stop`; a converter, its inductor, input net and capacitors.
+  kicad2ems's window puts a pick button beside each, and a click on the board fills it in.
+- **The full bridge takes its coils' inductances as options** (`--primary-l`, `--secondary-l`, uH, beside
+  `--coupling`): what a field solution of the coils gives. kicad2ems-fem's *Coils and ferrite* (Elmer) proposes
+  the three to the circuit from its result, so a wireless-power bridge runs with the coils as solved beside their
+  ferrite, not a datasheet's figure.
+- **The rail tool names what differs by rail** (`several_keys`, kicad2ems API 2.10): the rail, its volts, source,
+  ground source, loads and load spectra, which kicad2ems's window shows as a table of a board's rails.
+- **The near field of a converter built from discrete parts.** The tool knew a converter only as one IC with pads
+  on the input, the switch node and ground, so none of the circuit examples (all discrete power stages) had one.
+  It now also finds a switching cell: a transistor or diode up from a switch node to a decoupled net and one down
+  to ground, at least one a transistor. Its input loop runs from the capacitors through the upper part, the switch
+  node's copper and the lower part (a 10 mOhm conductor) back to ground. On the examples: the buck (Q1 and D1,
+  1.8 nH), the synchronous buck (Q1 and Q2, 1.5 nH), the boost (D1 and Q1, the output's loop, 2.3 nH), the half
+  bridge, and each leg of the full bridge (`--converter Q1` or `Q3`; 5.5 nH for the leg furthest from its
+  capacitor). A cell's capacitors out of reach are taken by connection. A discrete buck becomes a circuit with
+  its own parts (QH on Q1, D1 or QL on the lower one), and the converter's model now puts the supply and the load
+  on the board's connectors where it has one on each net (J1, J2), so their copper is in the circuit. The boost
+  and the bridges are not made into circuits (their examples have their own models), and say so. Not found: the
+  flyback (its loop runs through the transformer), the inverting buck-boost (through both capacitors).
+- **The full bridge says what it draws from its rail.** A run of `pcbqs.power_circuit` has `supply` in each
+  point, as a general circuit's has (`circuit/supply.py`, `bridge_currents`): each high-side switch's average
+  current and 40 harmonics (`supply-<switch>.csv`), the rail named from the supply's side with the filter's
+  inductors on the way (`through`, `dcr`), and its result proposes that rail to the power integrity. On wpthb
+  at 90 kHz and 30 W: Q1 and Q2 draw 1.11 and 0.20 A, their fundamentals cancel in the rail, and the rail's
+  model gives 36.6 mV at 180 kHz on the bridge rail against the 34.7 mV the circuit's own bus voltage has (20.8
+  and 19.7 mΩ of the same capacitors, by two models).
+- **Several rails, or converters, in one study (kicad2ems API 2.10).** The power-integrity and near-field
+  plugins say that a study may hold several settings of them (`several`: `'rail'`, `'converter'`): a config's
+  `[[analysis.pdn]]` tables are a run each of `kicad2ems study`, into folders named by the rail.
+- **From one tool to the next: a converter as a circuit, a circuit's current as a rail's load and as the near
+  field's.** (Review U4, I3.) *A converter as a circuit*: `python -m pcbqs.mqs ... --circuit` prints what the
+  near-field tool selects as a model for `pcbqs.circuit` (`circuit/converter.py`): a supply on the input net,
+  the selected input capacitors, two switches on the regulator's own footprint (a diode where the board has one
+  from ground to the switch node), the inductor, the output capacitors within reach and a load, the duty
+  adjusted until the output is `vout`; what the board cannot say is assumed and listed in its description. A
+  near-field run writes it as `circuit-model.json`. *What a circuit draws* (`circuit/supply.py`): each point of
+  `circuit.json` has `supply`, for each supply every part on it but its capacitors with its average current and
+  40 harmonics, written as `supply-<part>.csv`. *A rail's ripple*: `python -m pcbqs.pdn --load-spectrum
+  REF=FILE` takes such a file as a load's AC current, and the result has the ripple the spectra make where each
+  load meets the planes (`pdn.ripple`: every harmonic's current times the transfer impedance,
+  `RailPDN.transfer`, put back together over the period; peak to peak, RMS, the largest harmonic, against volts
+  x ripple), in the report, the headline and a curve set. It is the rail's voltage: a load's own pads add the
+  L di/dt of its own connection, which is its pin's. *The near field of a simulated current*: `python -m
+  pcbqs.mqs --spectrum FILE` takes the harmonics from such a file in place of the assumed pulse, and the report
+  lists the pulse beside them. *What a result proposes* (`suggest`): a near field's, its converter as a circuit;
+  a circuit's, its supply rail with its loads and spectra for the power integrity, and a part's input current
+  for the near field. On CM5 Minima's U702 (5 V to 3.3 V, 1 MHz, 2 A): the circuit settles at a duty of 0.72
+  and 94 %; its 1.40 A from +5V makes 140 mV peak to peak on the rail at U702 and 33 mV at U405 (250 mV
+  allowed); the assumed pulse and the simulated current agree at 1 MHz (1.12 and 1.03 A) and differ fivefold at
+  the pulse's nulls. The two tools' fields of that current agree within 6 % at 3 mm; at 1 mm the answer is
+  what a part's body is taken to be (218 A/m with the parts' currents 0.5 mm up, 76 in the copper's plane, 48
+  for the copper alone), and at 10 mm the circuit's is 2.7 times larger, having the output loop too
+  (`docs/power-workflow.md`).
+- **A load with no pad on ground returns through the part the board shows (kicad2ems API 2.9).** A rail's load
+  that is on the rail and not on ground (a bridge's high-side switch: wpthb's Q1 and Q2) had its return left out
+  of the drop, with a note in the result that is easy to miss. The rail now takes the return itself where the
+  board leaves no choice (`pdn.rail.return_part`): the one part of the load's kind (Q for Q) that is on one of
+  its nets that is no rail and on ground, a half bridge's low-side switch, and not the driver that is on that
+  node as well. The result names it (`returns`, a note, the report's first section: "Returning through another
+  part's ground pads: Q1 through Q3"), and `REF=AMPS@PART` still names another. On wpthb the drop at Q1 goes
+  from 49.66 to 50.17 mV, the 0.51 mV its return raises the ground by, and the loss from 66.4 to 67.1 mW.
+  Where the board has no such part, or several, the return is still left out, and the result now says so where
+  it is read: `no_return` lists the loads, and the report's headline ends "without the return of Q1 (no pad on
+  ground: REF=AMPS@PART names the part it returns through)". In kicad2ems's window that case is something the
+  run still needs (`PowerIntegrity.missing`), listed under the Rail drop question's settings, and Run goes to
+  it instead of starting. Also for that API: the temperature says it can start from a circuit's result
+  (`uses`), and the low-frequency solver names its cell size as the setting a run is set up with (`basic`).
+- **The full bridge's run is a circuit result.** A `power-circuit.json` is the circuit analysis's as
+  `circuit.json` is: its operating points, notes and assumptions as a report and table, each point's waveforms
+  as curve sets (the windings, the bridge and coils, the series parts between the supply's rails found by what
+  they join, the bus; again at the solver's own timesteps where the run saved them). The window shows them on
+  its Results page, as it does earlier runs.
+- **`--describe` for the two circuit tools**, `pcbqs.circuit` and `pcbqs.power_circuit`: their options as tables
+  (`_cli`; an option may list its choices), which the circuit plugin gives a front end by the kind of model
+  (`only`: general, bridge or either) and passes to the tool that runs it. The bridge tool gains `--coupling`,
+  `--receiver-c`, `--load` and `--override GROUP.KEY=VALUE`: a value for every part of a group (U2), the groups
+  by what the parts join (`power_bridge.groups`: tank, bridge-rail, input-rail, filter; and switch), so an ESR
+  for the resonant bank leaves the rails' capacitors alone (docs/power-circuit.md).
+- **Low-frequency S-parameters** (`pcbqs.sparams`, docs/sparams.md). A board's ports from the quasi-static
+  currents of its copper, DC to about a tenth of a wavelength: each port a 1 A source and its reference impedance
+  between the trace's end and the copper under it, one solve per driven port, S from the currents in the
+  terminations. Resistance and inductance alone while the copper's capacitance carries next to nothing; the
+  charge solved with the currents above that (`--capacitance auto`), with both limits estimated and written
+  (`valid_to_Hz`). It writes Touchstone, the path between each two ports as a series R and L per frequency (two
+  ports whose return is not joined are said to be so, with the capacitance that closes the path), and each
+  layer's current with a port driven, for kicad2ems's Viewer. `--thickness` models the copper's two faces: the
+  skin effect, and a narrow trace's inductance. With kicad2ems it is a solver, `--solvers pcbqs` (`qs`,
+  `quasistatic`), run only when named. `examples/return-path/return_path.py`: one ground via beside a layer
+  change, 8 mm away, at the board's corner (+1 nH of loop a step), or missing (open at DC; the planes' 29 pF
+  closes the path, −35 dB at 1 MHz). Against gfdtd on kicad2ems's `demo_transition` and `rf_diffvia`
+  from 0.05 to 1 GHz it is within 0.008 rms |ΔS| up to 200 MHz and 0.03 up to 1 GHz (0.010 with `--thickness`
+  and a cell at the trace's width); with `rf_diffvia`'s return vias taken out, the pair's common mode falls to
+  −11.0 dB at 50 MHz, gfdtd's −11.1 dB, which the line model does not see.
+- **The figures of an answer, by name** (`figures(folder)` of the rail and thermal plugins, kicad2ems API 2.8):
+  each load's drop in the rail's own copper, and the hottest point and the board under each part, named as any
+  other engine of that question names them, so kicad2ems lays pcbqs's answer beside Elmer's; the drop with the
+  ground's rise and the loss of both are the rail tool's own figures.
+- **Several drives in one solve.** `MQS.solve(freqs, amps=[{...}, ...])` gives a Result per drive with each
+  frequency's system factored once for them all (the dense solves, with and without the charge).
+- **kicad2ems analysis plugins.** `pcbqs/analyses.py` registers power integrity, near field, circuit and thermal
+  as `kicad2ems.analyses` entry points (kicad2ems API 2.5). Each gives its options (its tool's `--describe`), the
+  command that runs it, and what a result holds to read and to plot (`pcbqs/reports.py`: a report of text and
+  tables, curve sets), so the kicad2ems window builds its Study, its settings and its Results page from them and
+  has no page per tool. Near field lists the board's converters and proposes its input rail to power integrity;
+  thermal starts from the latest circuit run's losses.
+- **Temperatures in the viewer.** `thermal/viewer.py` writes each layer's map as a field dump in °C (nothing off
+  the board, the colours over the data's own range; with both solvers, their difference in K) and
+  `thermal_board.json`, where kicad2ems's Viewer reads any run.
+- **Circuit examples as configs.** The ten general circuits and the WPT bridge each have a TOML config beside the
+  model and board (`[analysis] run`, `[analysis.circuit] model`), shipped through the plugin as Circuits > Passive
+  and rectifiers, DC-DC converters, Bridges.
+- **PDN loads from the parts' fields.** A part's `pdn.load` field is its current: `0.5`, `500m`, `2 A`;
+  `NET=AMPS, ...` for a part on several rails; `AMPS@RETURN`. A rail then runs with no `--load`; `--load`
+  overrides one part, `--no-part-loads` ignores the fields, and the result names the loads that came from them
+  (`pdn.rail.field_loads`).
+
+### Added
+- **The board copper's loss in thermal** (R-E8, the circuit's): a circuit run with `--fields` writes
+  `copper-loss.npz` (each triangle's share of the copper's loss, from its solved currents, scaled to the run's
+  copper loss), and thermal heats the board with it; without it the report says the copper's loss is left out (it
+  had reached no map: 3.6 % of the buck's loss). The DC drop's own loss map is not yet a heat source.
+- **A part's thermal limit and its theta from its footprint** (the review of 2026-11-14, R-E7): `thermal.theta` and
+  `thermal.tmax` fields (or `--theta`, `--tmax`) give each part its temperature above its pads and its margin; a
+  part over its limit is in the headline, and a part with no theta is said to be its pads' temperature (it had been
+  called the part's with no word, and nothing had a limit).
+- **The near field's compressed solve** (R-D14): `--backend hierarchical` (GMRES in the loop basis), which `MQS` had
+  and `pcbqs.mqs` could not choose; the same field as the dense solve to 1e-3, for a crop too large to factorise.
+- **A coupling named by its inductors** in a path: `couplings.L1+L2.k` (`--set`, a proposal), whatever its place in
+  the list; kicad2ems-fem's coils propose each coupling so, for any model.
+
+### Fixed
+- **A switch with ideal edges is said** (R-A18, its first part): a `switch` with no gate charge switches by its drive's
+  ramp, so its switching loss is the ramp's, not a device's: each case says which switches are so (a board's circuit
+  and 9 of the 10 examples). Their default stays; a vdmos or vendor model gives a device's.
+- **Errors that said nothing** (the review of 2026-11-14, R-B8, B9, B12):
+  - an ngspice run past `analysis.timeout_s` fails its own point, saying so, and the sweep goes on (TimeoutExpired
+    had escaped: a traceback and no circuit.json);
+  - the Circuit analysis's check looks for ngspice (it said available without it, and every run then failed);
+  - each point records ngspice's version, which the case cache's fingerprint holds with a vendor library's contents
+    (an edited `.lib` had left a point "unchanged");
+  - a part's vendor library written relative is beside the model, not the working directory (it failed from the
+    window);
+  - `--set analysis.<key>` and `fields.<key>` write a section the model does not have;
+  - sparams says when its automatic mesh was made coarser, in its notes and the run's warnings (only its log had).
+- **Touchstone of ports with different references** (R-A20): v1 holds one reference, and the header had the first
+  port's alone: such a board's file is v2.0 with [Reference].
+- **Two-face copper** (R-A16). `conductor_faces` was ignored with the face sheets the slab defaults to, so faces 1
+  and 2 gave one model and every comparison of the two (the PEEC trial, four tools, the Jetson scripts) computed
+  it twice: `conductor_faces=1` is the one-sheet slab again (with face sheets asked for too: refused). Kernels
+  copied between models one by one left the faces' loss terms out (R at 30 MHz 0.898 mOhm for 1.195: the PEEC
+  PDN's bare curve had no skin loss): `MQS.share_kernels(other)` takes them all, for the same mesh and conductor
+  model only. docs/quasistatic.md's section said three things the code no longer does.
+- **The PDN's low end and its domains** (the review of 2026-11-14, R-A14, A15, B10, B11). A part's mount had only
+  the inductance of its pad's path to its vias: their resistance and the barrels' are in it now (the cavity
+  model's Re Z at 1 kHz had been 22-38 % under the DC network on the Jetson). A load on a plane island no source
+  reaches has no impedance and is said (the Jetson's TP98 had read 838 MOhm). A rail with no plane pair keeps its
+  DC drop, the impedance's absence said (the run had stopped, exit 2, no pdn.json). A failed pad-to-via solve is
+  said, not read as a via in its pad; another net's plane between a cavity's two is said.
+- **The losses thermal takes from a circuit** (the stack review of 2026-11-14, R-A2 and R-A3). A coupled winding's
+  `power_W` is the power it passes to the other windings as well as its loss, and thermal took it as heat: wpthb's
+  primary on a footprint of its own got 10.47 W for the pair's 0.45 W. A coupled winding now has its own loss,
+  `loss_W` (its resistances' V²/R: the DCR, the core's), and thermal takes that; a run from before it is left out
+  with a note unless its windings share a footprint. The report's loss table subtracted the gate drives the loss
+  counts (wpthb: its rows 97.6 % of the loss); it adds them, and thermal counts a switch's `gate_power_W` on the
+  switch. Tested on the synchronous buck, the flyback and the phase-shifted bridge.
+- **Review of the full-bridge removal (2026-11-14).** What a code review of that change found, each with a test:
+  - **A board with no copper ports** put every on-board pin on a node of its own; a part named `PCB...` broke the
+    port spectrum; a probe on a node no enabled part is on stopped the run.
+  - **`<ref>.cap_V` of a capacitor with no ESR or ESL** failed: ngspice had no such vector. Every capacitor has it.
+  - **Thermal on the wpthb bridge** stopped at `board.parts`' null and per-pin entries: a part off the board, or on
+    two footprints (a winding on two test points), is left out and said; one with a pin off the board is its
+    footprint's.
+  - **A boost's inductor taken for an input filter.** The supply row followed any lone series inductor, so a boost's
+    rail was its switch's node; the walk now stops where no capacitor holds the node beyond. A row says the rail's
+    net (`rail_net`), names the filter's parts by footprint, resistors among them (`through`, `dcr`), and the
+    near-field proposals behind a filter name the net the switches are on (VHB, not VIN).
+  - **The bridge's `bus_ripple_V`** was the peak to peak with the edges' spikes (3.17 V at 90 kHz, 10 W), the old
+    tool's `bus_spike_pp_V`: it is the settled ripple again (VHB at 256 instants a period), `bus_spike_pp_V` the
+    spikes. A measure takes `samples` for that: its statistic at so many evenly spaced instants of the period.
+  - The case cache's fingerprint has the supply rows' code.
+  - Removed with the full-bridge tool and now gone too: `wpt.match_receiver`, `link`, `impedance`,
+    `power_spice.periodic_samples`, its step export and the switch's phase/high timing. The tests of the copper's
+    ports, Foster fits and the decks' switch models that were in `tests/test_power_circuit.py` are back, in
+    `tests/test_copper_ports.py`.
+- **A circuit's fields in the Viewer, not as a picture in its report.** `python -m pcbqs.circuit --fields` wrote its
+  H and E only as `fields.npz` and `fields.png`, so a front end showed them as an image in the report and the
+  Viewer had nothing. Each point now also writes them as time-domain field dumps, H and E on each plane over the
+  period (64 frames), in `<run>/<point>/exc_fields/` (`fields.write_dumps`), where kicad2ems's Viewer finds a run's
+  dumps and plays them; the report keeps its table and leaves the picture out. The full bridge's (`power_circuit
+  --fields`) were dumps already, one folder too deep for the Viewer (`<point>/mqs/exc_bridge`): now
+  `<point>/exc_bridge`.
+- **A slow mode of the input filter no longer shifts the bridge's input power (C8).** The inductors in series
+  between the supply's rails ring against the rails' capacitors (wpthb: 10.4 kHz, eight to eleven switching
+  cycles a period) long after the rest of the circuit repeats, and the powers were averaged over the last
+  cycle: the efficiency was off by wherever the ringing was. They are averaged over whole periods of that
+  mode (`power_bridge.slow_mode`, `average_cycles`: 9 cycles at 90 kHz on wpthb). With the mode excited on
+  purpose, against a settled run of 1,500 cycles: +0.69 points of efficiency before, −0.04 now, in the same
+  time (docs/power-circuit.md#slow-mode).
+
+### Changed
+- **No part of wpthb is named in the bridge's code (C7, U1).** A precharged start went by wpthb's references
+  (C25/C27/C30, C19 to C24, CA*, L3) and its two supply resistances, with a second branch by connectivity for
+  other models. It goes by what a part joins for every model, and wpthb's nine decks are the same line for line
+  (its starting values are pinned in the tests). The waveforms' "input filter currents" were L3's and R9's by
+  name: they are the series parts between the supply's rails.
+- **The tools are engines of kicad2ems's questions (API 2.6).** The rail tool answers a rail's drop and its
+  impedance from one run (the drop alone, `--no-pdn`, when only it is asked); near field, circuit and thermal
+  one question each. Lists show them as "pcbqs". The circuit says its `fields` option adds field dumps; a
+  `thermal.json` that names another tool (Elmer's) is not taken for pcbqs's. Needs kicad2ems 261112.post1.
+- kicad2ems may be imported in `_cli.py` and `analyses.py` only, and nothing in pcbqs imports `analyses.py`
+  (`tests/test_standalone.py`): the tools still run without kicad2ems.
+
+### Decided
+- **The copper model's order stays at a 3% fit tolerance.** Measured on wpthb at 90 kHz and 10 W: 3% keeps 39 of
+  146 modes and takes 57 s where all of them take 123 s, with the settled ripple 1.4% off and everything else
+  under 0.4%. At 6% (26 modes, 34 s) the ripple is 19% low, at 10% it is 73% low (docs/power-circuit.md).
+- **No GPU for a circuit's transient.** 369 equations: the launch latency dominates. It would only pay for
+  batched sweeps on a piecewise-linear engine.
+
+## 2026-11-11
+
+### Added
+- **A general circuit engine** (`pcbqs.circuit`, model format 2) with ten example circuits, each with a layout;
+  KiCad input; the board's copper between the parts' pads in the circuit; the H and E fields over the
+  board while the circuit runs (`--fields`).
+- **Thermal** (`pcbqs.thermal`): the board's steady temperature on a grid and on the triangle mesh, heat leaving
+  by the faces and the edges (within 2 K of Elmer); its options as a table and `--describe --json`.
+- **PDN:** the DC solve written where kicad2ems's viewer reads it (the board, the mesh, each layer's drop and
+  current). `power_circuit --template simple`.
+
+### Changed
+- **The bridge's precharge goes by connectivity (C7).** The starting state was keyed on wpthb's references
+  (C25/C27/C30, C19-C24, CA*, L3) and resistances, so another model started with empty capacitors and an inrush
+  the power search could not settle. Parts are now set by what they join (the tank's capacitors, the rails'
+  capacitors, the series inductors, the rails' drops). wpthb's own branches are kept: its deck is byte-identical.
+
+### Fixed
+- ngspice measures are read with every digit kept. A probe has to be on a node some part is on.
+
+## 2026-11-10
+
+### Added
+- **PDN loads and targets (C9, C10, I6).** `--load REF=A@RETURN` (a load returning through another part's ground
+  pads: its ground rise modelled), `--load-target REF=OHMS`, `--no-target`; the impedance plot's axis is set by
+  the loaded curves (the bare planes run off the top).
+- **Converter candidates (I5).** Find converters lists each converter and input net (`pcbqs.mqs
+  --list-converters`) and fills converter, input and capacitors from the pick; a run that fails on an ambiguous
+  net points to it.
+- **Parts on pads (C13).** A two-pad chip part attaches where its end cap and solder fillet are, sized from the
+  footprint name (`pcbqs.contacts`, `pad_contact`), in the converter loop, circuit and PEEC PDN tools. On KiCad
+  footprints the contact is 83-95% of the pad: CM5 loop L -2%, wpthb VHB port +0.5%, settled ripple +2.9%.
+- **Real-board regressions** (`tests/test_regression_boards.py`): CM5 U702's near field, wpthb's DC drop and PDN,
+  and a wpthb circuit case (90 kHz, 10 W, with copper) against stored results; skipped where the board is not
+  installed.
+- **Shared board import (I2).** `pcbqs._cli.load_board` caches each KiCad import by content hash and net subset
+  (`~/.cache/pcbqs/boards`, `PCBQS_CACHE_DIR`, `PCBQS_NO_CACHE=1`): Jetson +1V15 11.8 s, then 0.5 s.
+- **Thick copper.** A finite-thickness kernel for close same-layer pairs (`thick_kernel`, `thick.py`: a bar's DC L
+  to 0.01% of FastHenry; one sparse matrix added to either backend). A reference mode of graded stacked sheets
+  (`thickness_sheets=N, conductor_loss='dc'`: within 5% / 1.3% in R / L of FastHenry near a plane).
+- **Capacitance with thickness.** Each face copy carries its own charge (`charge_of`); `side_charge=True` puts
+  charged panels on the copper's sides (`side_charge.py`). Against FasterCap's copper boxes in air: plates -0.3%,
+  microstrip -2.5% (two faces alone -7.5%), two traces 0.1 mm apart self -5.5..-7.5%, mutual -10..-13%.
+  `dielectric='stack'` with face sheets (`DielectricStack.from_board_thick`): FR-4 microstrip -5.1% against
+  Hammerstad-Jensen with thickness at dmax 0.25.
+- **One model for R, L and C.** The AC solve with face sheets: a node's copies hold one potential and share its
+  charge (`peec.node_potential`; compressed: the redistribution as extra unknowns, 789 -> 52 iterations on a
+  1 kHz microstrip). Both backends agree to 1e-4; the 1 kHz capacitance equals `capacitance_matrix`'s to 1e-6.
+- **Copper ports on the compressed copper.** `mqs_iterative.port_matrix` (all ports in lockstep GMRES, warm
+  started across frequencies); `port_method` picks a direct solve on dense loop matrices when the loops are few,
+  and for two faces a two-level preconditioner (`mqs_precond.FaceLoops`). wpthb extraction: one sheet 91.6 ->
+  11.6 s; two faces 342 -> 115 s; a whole circuit case 151 -> 72 s (one sheet), 420 -> 185 s (two faces).
+- The window plots the solver's own steps on request (`steps.*` in transient.npz). The bench measurement plan
+  (`validation/measurements.md`) and the validation board's structures (`validation/test-board.md`).
+
+### Changed
+- **Ripple is reported twice (I1).** `bus_ripple_V` is the settled ripple (the final cycle sampled at T/256) and
+  `bus_spike_pp_V` the peak to peak on the solver's own steps. Earlier results report the spike as the ripple.
+- **`hierarchical` is the circuit's default copper backend** (the same time as dense, half the memory);
+  `mesh.matrix_backend: dense` restores the old route.
+- **PDN and DC meshing.** Vias drilled into one another are meshed as one ring (`pdn.mesh.overlapping_vias`); the
+  quality mesher has a Steiner-point cap; DC links are assembled as arrays; a rail with no load skips its solve.
+  wpthb PDN at dmax 0.4: 28.5 s / 4.3 GB -> 3.9 s / 0.24 GB.
+
+### Fixed
+- **Eddy currents in terminals.** A terminal's inner sheet edges formed loops of their own, which the field drove
+  and the sheet resistance dissipated: an isolated 20 mm strip's terminals took 15% of its R at 1 MHz. No loop
+  now (`ideal_terminals`): one sheet converges to a 2D cross-section PEEC within 0.4 / 0.9 / 2% (1 / 10 / 100
+  MHz). The CM5 regression moved 0.4-1.2%.
+- **Thick copper keeps the dielectric gaps.** Its thickness goes into the stack (`pdn.mesh.copper_centres`), so
+  every dielectric keeps KiCad's face-to-face thickness. Centring on z had shrunk a 0.1 mm dielectric to 0.065
+  mm; FastHenry's L at 100 MHz rose 36% with the fix and all models now agree with it within a few percent.
+
+### Decided
+- **`conductor_loss='slab'` is two face sheets by default, with no face correction.** The per-pair and overlap
+  corrections are removed (overlap was +254% in R at 100 MHz with a plane 0.1 mm under the trace). Stacked
+  sheets with `thick_kernel` stay the reference. On CM5-lite at dmax 0.35 against FastHenry: stacked R
+  -3.6/-5.9/-3.9%, L within 2.8% (319 s); two faces R -3.6/-6.8/+3.3%, L within 3.9% (12 s); one sheet L +8-12%.
+- **The circuit tool keeps one sheet.** Two faces move wpthb's settled ripple by 6% and nothing else above 0.4%,
+  at 2.6 times the time; `mesh.thickness_sheets: 2` opts in.
+- **No side walls for the current.** Rooftop panels on the copper's sides gave +49% R at 10 MHz on an isolated
+  strip and were not needed once the terminal loops were gone. `panels3d.py` (1/R moments between triangles of
+  any orientation) is kept.
+- **FastHenry finer than 0.1 mm is not a reference for CM5-lite.** Its 0.05 mm grid (82k segments) did not get
+  past the preconditioner in an hour; its R rose 3-9% from 0.2 to 0.1 mm, so the residual is mostly its own.
+
+## 2026-11-09
+
+### Added
+- **The validation suite** (`validation/`): DC drop against Elmer 3D (strip, vias, wpthb, Jetson: 0.2-1.5% on
+  boards); loop inductance and |H| against Palace and FastHenry (0.3-2%, about 5%); plane pairs against Palace
+  and the modal sum (0.8% at most); AC resistance against FastHenry (good to about 1 MHz, then 11-34% low: C14);
+  capacitance against FasterCap with zero-thickness copper in air (plates under 0.1%, microstrip -2.4%, two
+  traces 0.1 mm apart -4% self / -11% mutual), on FR-4 against Hammerstad-Jensen (1% in the effective
+  permittivity). C11 and C12 were found by it and fixed.
+- **Two face sheets** (`MQS(thickness_sheets=2)`), coupled by the slab two-port: the strip loop's 10 / 100 MHz
+  resistance within -1 / +3.5% of FastHenry (one sheet -9%). The compressed backend without capacitance
+  (`mqs_iterative.py`: the dense solve's answers, 48k triangles in 1.7 GB).
+- **PDN:** series filter inductors keep their L and DCR (`--through`, `--dcr`); CA / CE / CP capacitors are decaps
+  with electrolytic defaults (`--cap`); `--plane-min`.
+- **Circuits:** a relaxed-tolerance phase search with warm starts and a strict final run (wpthb per case 478 ->
+  56 s, results within 0.27%); gate pulses start in their steady-state position; a robust abstol and convergence
+  retries; `tools/benchmark_circuit_solver.py`, `tools/benchmark_circuit_options.py`.
+- The window's Circuit results show input power, the VHB spike and the run time; the PDN summary shows series
+  inductance; waveform views tolerate boards without L3 / R9. The power tools review and the workflow guide.
+
+### Changed
+- Dead code removed; the cavity physics, the options and board loader (`pcbqs._cli`) and the window's tool
+  processes shared instead of duplicated; the `power_*` modules reformatted.
+
+### Fixed
+- DC: pads are equipotential and the mesh is graded at vias (found against Elmer).
+
+## 2026-11-08
+
+### Changed
+- Mesh simplification by default: lone pads dropped, regular pads and holes, polygonal vias (three times faster
+  on the Jetson). H-matrices are built and applied in the compiled core.
+
+### Fixed
+- The mutual between segments of one via uses the barrel's radius.
+
+## 2026-11-07
+
+### Added
+- **pcbqs, an independent package:** the rail tools (`pcbqs.pdn`), the converter near field (`pcbqs.mqs`) and the
+  switching circuits (`pcbqs.power_circuit`), taken out of mom25d with their own copies of the numerics and their
+  own native backend. No runtime dependency on mom25d. What it came with:
+- **The quasi-static solver, faster.** Reciprocal near / far integration, refined close terms, a sparse
+  resistance and loop projection, copper matrices reused: a 2,474-triangle sheet fills 3.1 times faster, the
+  inductance within 0.005% of the refined analytic one. Resistance stays sparse, the dense branch L is stored
+  once, PEEC preparation and bounded LU factors are reused, capacitance-only extraction skips the magnetic
+  matrices: the demo's good layout takes 1.3 s for its planes and volume, 18.5 s for nine harmonics.
+- **Fields on a grid by FFT.** `MQS.h_grid`: conservative current deposition and an open-boundary convolution,
+  35 times faster than direct fields on a 974-triangle case at 0.38% peak error. Biot-Savart stays the reference
+  for single points.
+- **Matrix-fill backends:** OpenMP, a threaded NumPy fallback, a serial reference and an optional CuPy
+  integrator, with bounded pair tiles and thread / device controls, shared by the magnetic and capacitance fills.
+  The CM5 case: 66.8 -> 22.4 s. A fused GPU pair kernel fills the fine CM5 ground plane in 1.55 s (3.06 before),
+  still behind eight OpenMP workers at 0.75 s (docs/static-backends.md).
+- **The converter workflow.** `python -m pcbqs.mqs` reads KiCad or board JSON, describes its options as JSON,
+  finds converter candidates, takes part, net, operating-point and scan overrides, and writes summaries, figures
+  and H dumps; `--preview` shows the layer meshes without solving (docs/quasistatic.md).
+- **Capacitance and E.** `MQS(capacitance=True, er=...)`: surface charge, displacement current and the Maxwell
+  capacitance by a scaled loop / tree PEEC solve; `dielectric='stack'` for planar interfaces and dielectric loss;
+  `conductor_loss='slab'` for skin impedance. `MQS.e_field`: the Coulomb E of the surface charges, layered images
+  included.
+- **Real boards.** CM5 U702's input loop as a benchmark (`tools/benchmark_converter.py`: 9,736 triangles on six
+  layers, 85 via segments, 22.4 s, 1.10 GB; two meshes within 3.8% in L). Jetson AGX Thor: all eight regulators
+  found, their cropped input loops solved (3,720-10,045 triangles on ten layers at 500 kHz).

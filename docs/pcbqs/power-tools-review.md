@@ -1,0 +1,63 @@
+# Review: power tools and their GUI integration (2026-11-09)
+
+*The full-bridge tool reviewed here (`pcbqs.power_circuit`, `power_bridge`) was removed on 2026-11-14: its
+model is a general circuit model (`data/wpthb_bridge.json`, run by `pcbqs.circuit`). The findings about it are kept
+as they were written.*
+
+Scope: `pcbqs.pdn` (rail DC drop and PDN impedance), `pcbqs.mqs` CLI (converter
+input-loop near field), `pcbqs.power_circuit` / `power_bridge` / `power_spice`
+(switching circuits with PCB copper), and the kicad2ems window's Power
+Integrity, Near field and Circuit pages. Exercised on Jetson AGX Thor, CM5
+Minima and the wpthb wireless-power bridge; see
+[power-workflow.md](power-workflow.md) and `examples/power-workflow/`.
+
+**Fixed on `claude/circuit-sim-speed` and its base** marks findings found and
+fixed while running these boards; the rest are in the [roadmap](https://github.com/lowprocess/kicad2ems/blob/main/ROADMAP.md#power-tools-pcbqs) ("ROADMAP" below).
+
+## Correctness
+
+| # | Finding | Where | Status |
+|---|---|---|---|
+| C1 | The PDN tool shorted series filter inductors: `--through L3` became a 10 µΩ link, losing L3's 5.6 µH and DCR (wpthb DC drop 9.7 instead of 49.9 mV; the 11 kHz filter resonance invisible). | `pdn/rail.py` | Fixed: followed inductors keep L and DCR; `--dcr` |
+| C2 | Capacitors named CA1/CE1/CP1 were silently not decaps (reference regex `C\d`); electrolytics would have had ceramic ESR/ESL. | `pdn/rail.py`, `pdn/stack.py` | Fixed: prefixed refs, package defaults, `--cap` |
+| C3 | Small rails failed ("no plane pair over 1790 mm²") with no way to set the plane threshold from the CLI/GUI. | `pdn/stack.py:90` | Fixed: `--plane-min` |
+| C4 | Gate pulses with an on-interval spanning t = 0 started off: every transient began with a wrong bridge state for part of a cycle, re-exciting the input filter; at 180° a low-side switch skipped a whole period. | `power_spice.py` `switch()` | Fixed |
+| C5 | abstol 1e-9 A made strict runs fail ("timestep too small") at hard-switched edges; no retry existed. | `power_spice.py` | Fixed: 1e-6 A default, trap/cold retries, failed logs kept |
+| C6 | Coaxial via segments used 1e-7 m separation for their mutual inductance; vias through inner copper were over-inductive (Jetson X −1.6% after fixing). | `mqs.py` `_via_matrices` | Fixed (earlier this branch's base) |
+| C7 | Precharge hard-codes the template's references and drops (C19–C24, CA*, L3, C25/C27/C30; 0.055/0.085 Ω). Another board, or a renamed or replaced L3, starts far from steady state. Warm starts now replace it after the first (pilot) run. | `power_bridge.py:98-101,150` | Mostly: warm starts; precharge by connectivity (2026-11-11). wpthb's own values still in the code: ROADMAP |
+| C8 | The periodicity check ignores supply current, and input power is averaged over one switching cycle, so a slowly decaying input-filter mode biases input power and efficiency (≤ 0.66% on wpthb in both old and new code). | `power_circuit.py:160,181` | ROADMAP |
+| C9 | High-side FET loads have no ground pad, so a bridge's DC return (through the low-side FET) is not modelled; the tool only notes it. | `pdn/dc.py:250` | Fixed 2026-11-10: `--load REF=A@RETURN`; 2026-11-12: taken from the board where one part of the load's kind is on its other net and on ground |
+| C10 | The PDN target defaults to V × 5% ÷ (half the loads' current) even for a switching bridge, where it has little meaning. | `pdn/cli.py:196-197` | Fixed 2026-11-10: `--load-target REF=OHMS`, `--no-target` |
+| C11 | DC pads were not equipotential: a 1e6 S tie shared over all of a pad's vertices, with current entering at its edge, left pads ~20 µV/A off (+1% on a strip, growing with refinement). Found by `validation/dc_elmer.py`. | `pdn/dc.py` | Fixed: 1e6 S per vertex |
+| C12 | DC meshes had slivers from each via's ring to vertices ~2 mm away (Triangle without a minimum angle), underestimating every via junction's spreading by ~0.1 mΩ, regardless of `dmax`. Jetson +1V15 drop 5.78 → 6.18 mV, its PDN peak +5.7% once fixed. | `_numerics/geo.py`, `pdn/dc.py` | Fixed: 25° minimum angle for DC meshes |
+| C13 | A terminal is one node, so a part crosses its pads instantly and large pads lower a small loop's inductance (20 × 10 mm loop: 37.4 nH with 1 mm pads, 38.8 nH with 0.25 mm). Otherwise inductance matches FastHenry to 0.3–2% and |H| matches Palace to ~5%. | `mqs.py`, `contacts.py` | Fixed 2026-11-10: chip parts attach where their end cap and fillet are (`pad_contact`, 83–95% of KiCad pads; whole pads were within 3%); see `validation/README.md` |
+| C14 | AC resistance from the slab model is 11–34% low at 10–100 MHz against FastHenry: every sheet's current is spread over one or both faces alike, while traces over planes crowd onto the facing surfaces. Fine below ~1 MHz (35 µm copper). | `mqs.py` `surface_impedance` | Started: `thickness_sheets=2` (face sheets + slab two-port) halves the 10–100 MHz error on the loop; in-plane edge resolution next |
+
+## Integration and results
+
+| # | Finding | Where | Status |
+|---|---|---|---|
+| I1 | `bus_ripple_V` is measured at every solver timestep (edge spikes), while saved waveforms are resampled at T/256 and hide them; the GUI plots the resampled data. Easy to misread (it was misread during this review). | `power_bridge.py:153` | Fixed: `bus_ripple_V` is the settled ripple (final cycle at T/256, as plotted) and `bus_spike_pp_V` the solver-step p-p; the window shows both, and plots the solver's own steps on request |
+| I2 | Each tool re-imports the KiCad board (25 s for Jetson) on every run; nothing is shared between the three tools or the GUI pages. | CLIs | Fixed: `load_board` caches imports by content hash (Jetson +1V15 11.8 → 0.5 s) |
+| I3 | Two near-field paths: `pcbqs.mqs` (assumed pulse spectrum) and `power_circuit --fields` (simulated currents); results are not cross-referenced. | `mqs_cli.py`, `power_circuit.py` | Fixed 2026-11-12 for the general circuit: `pcbqs.mqs --spectrum` takes a circuit's input current, and the two fields are compared in `power-workflow.md` (within 6 % at 3 mm; the parts' bodies decide 1 mm, the output loop 10 mm) |
+| I4 | PDN and Near field forms are generated from `--describe` (good: new options appear without GUI changes). The Circuit page is hand-built around the wpthb template instead. | `powercircuittab.py` | ROADMAP: `--describe` for power_circuit |
+| I5 | Converter discovery stops at ambiguous input nets (VCC/VDD/VDRV on five Jetson bucks); the user must know the right net. | `mqs_cli.py:125` | Fixed 2026-11-10: Find converters in the Near field page |
+| I6 | The PDN impedance plot's bare-planes curve can reach 10¹¹ Ω on boards with a tiny cavity, flattening the useful curves. | `pdn/cli.py` figure | Fixed 2026-11-10: the axis follows the loaded curves (CLI figure and window) |
+
+## UI flow (kicad2ems window)
+
+| # | Finding | Where | Status |
+|---|---|---|---|
+| U1 | Circuit page overrides "L3 DCR" and the waveform view "Input filter currents" (`L3.I`, `R9.I`) are wpthb-specific. | `powercircuittab.py:32,182` | ROADMAP |
+| U2 | "All-capacitor ESR/ESL override" also changes the resonant bank and polymers. | `powercircuittab.py:96-106` | ROADMAP: per-group overrides |
+| U3 | Circuit results table lacks input power, VHB spike, supply ripple, settling and run time; the Power Integrity summary does not show a series inductor's inductance. | `powercircuittab.py`, `pdntab.py:112` | Fixed in kicad2ems-gui branch (table columns, L in the tree) |
+| U4 | No path from a converter on Near field to its switching circuit, or from Circuit's input current to a PDN load. The PDN↔Near field transfer exists. | pages | Fixed 2026-11-12: a near field's converter opens as a circuit (`pcbqs.mqs --circuit`), a circuit's supply current goes to the rail (`pcbqs.pdn --load-spectrum`) and to the near field (`--spectrum`), each a button on the result |
+| U5 | The Circuit page's switch list offers the behavioural `switch` model first; ngspice did not converge it on the benchmark converter at reltol 1e-3/1e-4 (Xyce did). | `powercircuittab.py:24` | ROADMAP: default to the template's VDMOS, warn |
+| U6 | The Power Integrity page split list options at every comma, so `--cap CA1=47e-6,0.02,1e-9` reached the tool as three broken arguments. | `pdntab.py` `pdn_argv` | Fixed: only a comma before a new `REF=` separates items |
+
+## Maintainability
+
+- The `power_*` modules were written as dense one-line statements, which made review and diffs harder than the rest of pcbqs. Reformatted with ruff (120 columns, quotes preserved; `[tool.ruff]` in pyproject.toml).
+- Duplication removed: plane-pair physics (`pdn/cavity.py` functions now used by `RailPDN`), CLI options/`--describe`/board loading (`pcbqs/_cli.py`), series-part pad selection (`Series.pads`, `Rail.pads_of`), and the window's describe/process code (`toolprocess.py`). Dead code removed (unused end-state nodes, metric fallbacks, `dc.supply`, unused imports and arrays).
+- Tests cover circuit physics with small netlists and now warm starts. Real-board regressions now exist for CM5's near field and wpthb's PDN (`tests/test_regression_boards.py`, stored results); a wpthb circuit case is still missing.
+- Template-specific logic (C7, U1) and the generic engine are mixed in `power_bridge.py`.

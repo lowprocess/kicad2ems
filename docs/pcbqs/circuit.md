@@ -1,0 +1,354 @@
+# Circuits (`pcbqs.circuit`)
+
+A general circuit simulator for power switching circuits: the model lists parts, nodes and drives, and the
+engine builds an ngspice deck from exactly that, runs it until it repeats, adjusts whatever the model says may be
+adjusted until its targets are met, and reports what every part does. Nothing in it knows what kind of converter
+it is running.
+
+    python -m pcbqs.circuit --templates                 # the example circuits
+    python -m pcbqs.circuit --template boost > boost.json
+    python -m pcbqs.circuit boost.json --out result --jobs 4
+    python -m pcbqs.circuit boost.json --set parameters.vin=9 --set R1.resistance_ohm=24
+    python -m pcbqs.circuit boost.json --out result --copper          # with its board's copper
+    python -m pcbqs.circuit boost.json --out result --fields          # and the H and E fields over the board
+    python -m pcbqs.circuit --from-kicad board.kicad_pcb > model.json  # the parts of a KiCad design
+
+## The model (format 2)
+
+```json
+{"format": 2, "name": "Boost converter",
+ "parameters": {"fsw": 200e3, "vin": 12, "vout": 24, "pout": 12},
+ "parts": [
+  {"ref": "V1", "type": "source",    "nodes": ["in", "0"],   "dc_V": "vin", "R_ohm": 0.05},
+  {"ref": "L1", "type": "inductor",  "nodes": ["in", "sw"],  "value": "47u", "DCR_ohm": 0.05},
+  {"ref": "Q1", "type": "switch",    "nodes": ["sw", "0"],   "drive": "pwm", "model": {"Ron_ohm": 0.03}},
+  {"ref": "D1", "type": "diode",     "nodes": ["sw", "out"], "model": {"Vf_V": 0.45, "Cj_F": "100p"}},
+  {"ref": "C2", "type": "capacitor", "nodes": ["out", "0"],  "value": "22u", "ESR_ohm": 0.01},
+  {"ref": "R1", "type": "load",      "nodes": ["out", "0"],  "resistance_ohm": "vout*vout/pout"}],
+ "drives":   {"pwm": {"frequency_Hz": "fsw", "duty": 0.5}},
+ "probes":   {"vout": {"voltage": ["out", "0"]}, "il": {"current": "L1"}},
+ "measures": {"vout_avg": {"avg": "vout"}, "il_ripple": {"pp": "il"}},
+ "targets":  [{"adjust": "drives.pwm.duty", "range": [0.05, 0.9], "measure": "vout_avg", "value": "vout"}],
+ "sweep":    {"parameters.vin": [9, 12, 15]}}
+```
+
+A value is a number, engineering notation (`22u`, `4.7k`, `100n`) or an expression over the parameters
+(`1/((2*pi*fsw)**2*l)`; `+ - * / **`, `pi`, `sqrt abs min max exp log`). A path names a number anywhere in the
+model: `parameters.vin`, `drives.pwm.duty`, `R1.resistance_ohm`, `Q1.model.Ron_ohm`, `couplings.0.k` (or
+`couplings.L1+L2.k`, the coupling of those two inductors).
+
+| part | nodes | fields |
+|---|---|---|
+| `resistor` | a, b | `value` |
+| `capacitor` | a, b | `value`, `ESR_ohm`, `ESL_H`, `leakage_ohm`, `bias_factor` |
+| `inductor` | a, b | `value`, `DCR_ohm`; with `SRF_Hz` / `Cp_F` / `core_R_ohm`, a winding with self-capacitance and core loss (`pcbqs.wpt.fit_core_resistance` gives a `core_R_ohm` from a measured AC resistance at a frequency); `AC_R_ohm` and `core_loss`: [losses after the run](#an-inductors-ac-and-core-losses) |
+| `diode` | anode, cathode | `model`: `Vf_V` at `If_A` (0.7 V at 1 A), `n`, `R_ohm`, `Cj_F`, `TT_s`, `spice_parameters` (over them); or a [vendor's](#vendor-models) |
+| `switch` | drain, source | `drive`, `invert`; `model`: `type` (`vdmos`, the default; `switch`, `ideal`, `mosfet`, `subcircuit`), `Ron_ohm`, `Cgs_F`, `Cgd_F`, `Cds_F` (a vdmos without them: 1 nF, 50 pF, 500 pF), `body_diode`, `diode_TT_s`, `vdmos_parameters`, ...; or a [vendor's](#vendor-models) |
+| `source` | +, − | `dc_V`, or `wave` (`pulse`, `sine`, `pwl`), or `dc_A`; `R_ohm`, `L_H` in series |
+| `load` | a, b | `resistance_ohm`, or `power_W`, or `current_A` (a resistor below `min_V`, so it starts) |
+
+`0` or `GND` is ground. A part's current is taken as entering its first node, so its voltage times its current is
+the power it absorbs.
+
+- **couplings**: `{"inductors": ["LP", "LS"], "k": 0.98}`: a transformer is two inductors and a coupling. The dot
+  is at each inductor's first node.
+- **drives**: `frequency_Hz`, `duty`, `phase_deg`, `dead_time_s` (between the middles of one switch's fall and
+  its complement's rise), `gate_V`, `rise_s`, `fall_s`. A switch follows its drive; with `invert` it is the
+  drive's complement. Any number of drives, at frequencies in a whole-number ratio.
+- **probes**: a voltage between two nodes, or a part's current, under a name.
+- **measures**: `avg`, `rms`, `pp`, `max` or `min` of an expression of probes and parts' signals
+  (`{"avg": "vout*il"}`, `{"max": "Q1.V"}`), over the last period. A part's signals are `<ref>.V`, `<ref>.I`; a
+  capacitor's `<ref>.cap_V` (its capacitance's voltage, without its ESR's and ESL's drops) and a winding's
+  `<ref>.winding_I`. With `samples` (`{"pp": "vhb", "samples": 256}`) the statistic is of that many evenly
+  spaced instants of the period, as a scope sampling so often sees it: a filter's settled ripple, without the
+  switching edges' spikes that fall between the instants (ngspice's own steps have them all).
+- **targets**: adjust one number of the model, inside a range, until a measure (or `load_power_W`,
+  `source_power_W`, `efficiency`, `loss_W`) has a value. Several targets, each with its own knob.
+- **sweep**: paths and the values each takes; every combination is a point, in its own folder.
+- **analysis**: `cycles` (200 periods a run; a knob's run after one has settled takes a quarter, at least 20),
+  `periodic_tolerance` (0.003), `energy_tolerance` (0.002), `target_tolerance` (0.005), `max_cycles` (20000),
+  `max_trials` (40 runs to meet the targets), `final_cycles` (8: the reported run's), `search_reltol` (1e-3: the
+  search's ngspice tolerance; the reported run is at `solver.reltol` when `strict`, the default), `strict`,
+  `samples_per_cycle`, `final_samples_per_cycle` (the reported run's), `linear_solver` (`klu`), `threads` (1),
+  `timeout_s` (600 a run), `period_s`, `ignore`, `solver` (ngspice's `reltol`, `method`, ...).
+
+## A run
+
+1. The first run starts from ngspice's DC solution at time zero, where every gate is still low: the rails are
+   charged through the diodes and the inductors carry their DC current, whatever the circuit.
+2. Each run starts where the last one stopped: every capacitor's voltage, every inductor's current, every
+   switch's and diode's voltage.
+3. It is settled when the state repeats (the last period against every period of the half-run before it) and
+   the energy the circuit stores has stopped changing (by less than 0.2 % of the power it handles: that change
+   is the error of an efficiency taken over the period). A run that has not settled is followed by one twice
+   as long, started from the middle of whatever was still ringing.
+4. Settled, each target is compared with its measure and its knob moved by a secant step. A target that cannot be
+   reached inside its range ends the point saying which end it stopped at and what it gave there.
+5. The reported run repeats a few periods at the strict tolerance (`reltol` 1e-4; the search runs at 1e-3) with
+   steps four times finer. A target it measures off (the strict solve's steady state is a little off the search's)
+   is stepped along the search's slope and run again at the strict tolerance, once or twice. If ngspice cannot hold
+   that tolerance, the search's result is reported and a note says so.
+
+## Results
+
+`<out>/circuit.json`: `{format, name, complete, sweep, cases, failed}`. Each case, also in `<out>/<point>/case.json`
+beside `circuit.cir`, `transient.npz` (every signal, uniformly sampled), `model.json` (the numbers it ran with)
+and `waveforms.png`:
+
+- `knobs`, `targets` (what each reached), `measures` (the model's own)
+- `source_power_W`, `load_power_W`, `loss_W`, `efficiency`, `gate_drive_power_W`
+- `parts`: for every part its `power_W`; a coupled winding also its own loss `loss_W` (its resistances': its
+  `power_W` includes the power it passes on); a switch `gate_power_W` (its drive's, dissipated in its gate
+  resistance); a switch and a diode: `avg_A`, `rms_A`, `peak_A`, `peak_V`; a capacitor:
+  `avg_V`, `ripple_V`, `rms_A`; an inductor: `avg_A`, `ripple_A`, `peak_A`, `rms_A`, and with `AC_R_ohm` or
+  `core_loss` its `AC_winding_loss_W`, `core_loss_W` and their sum `added_loss_W`; a source and a load: `avg_V`,
+  `avg_A`
+- `added_loss_W`: the inductors' losses worked out after the run, in `loss_W` and `efficiency` too
+- `coupled`: each set of coupled inductors with the power the set loses (one winding alone passes power to the
+  other, so its own `power_W` is not a loss)
+- `copper` (with `--copper`): `board`, `loss_W`, `fit_error`, `ports` (pad, its net's reference pad, `rms_A`)
+- `fields` (with `--fields`): the largest H and E on each plane, each net's swing and capacitance, the files
+- `supply`: what the parts draw from each supply (a node a DC source is on), for a power-integrity or near-field
+  run: `node`, `net`, `volts`, the node's `capacitors`, and for every other part on it (parts on one footprint
+  together) its `avg_A`, `rms_A` and `file`, `supply-<footprint>.csv` beside the case: 40 harmonics as `f_Hz`,
+  `A` (peak), `deg` ([From one tool to the next](power-workflow.md#4-from-one-tool-to-the-next)). Behind an input
+  filter (all the source feeds is a lone inductor or resistor in series to a node capacitors hold, as far as such
+  parts lead; a boost's inductor feeds its switch, which none hold, and is a load) the node is the one behind it,
+  `net` the source's, `rail_net` the node's, `through` the footprints the way passes on the board and `dcr` their
+  DC resistance: the wpthb bridge's rail VIN, its loads Q1 and Q2 on VHB, through L3
+- `stored_energy_change_W`: what went into the capacitors and inductors over the reported period, counted out of
+  the parts' powers, the loss and the efficiency
+- `periodic_error`, `energy_drift_relative`, `reltol`, `runs`, `periods`, `history` (every run of the search)
+- `notes`: anything the result should be read with, such as a voltage no circuit gives
+
+## An inductor's AC and core losses
+
+The circuit has an inductor's DC resistance, and a constant core resistor where `core_R_ohm` is given. Two fields
+add what the winding and the core lose to the current's ripple, worked out from the reported run's last period
+(`pcbqs.circuit.windings`):
+
+- `AC_R_ohm`: `[[f_Hz, R_ohm], ...]`, the winding's resistance against frequency (a datasheet's ACR curve, or a
+  measurement). Each harmonic of the winding's current loses (R(f) - `DCR_ohm`) times its mean square. Between the
+  points R is interpolated on log-log axes; below the first the excess over the DCR falls as f² (eddy and proximity
+  losses), above the last R grows as √f (skin effect).
+- `core_loss`: `{"k", "alpha", "beta", "turns", "Ae_m2", "Ve_m3"}`, the core material's Steinmetz fit
+  P = k f^alpha B^beta (W/m³, f in Hz, B the peak flux density in T) and the core's turns, effective area and
+  volume. `windings.core_k_si(k, alpha, beta)` converts a k given for mW/cm³, kHz and mT. The loss is the improved
+  generalised Steinmetz equation's (iGSE) for the flux's own waveform, the flux from the winding's voltage less its
+  resistance's drop. It takes one major loop a period and has no DC-bias or relaxation terms, so a ferrite under DC
+  bias loses more than it says. A transformer's core is one core: give `core_loss` on one of its windings.
+
+```json
+{"ref": "L1", "type": "inductor", "nodes": ["sw", "out"], "value": "22u", "DCR_ohm": 0.03,
+ "AC_R_ohm": [[100e3, 0.035], [1e6, 0.08]],
+ "core_loss": {"k": 6.0, "alpha": 1.4, "beta": 2.6, "turns": 12, "Ae_m2": 20e-6, "Ve_m3": 1.5e-6}}
+```
+
+These losses are the part's for the thermal model (on its footprint) and the report's loss bars, and they are in
+the case's `loss_W`. The efficiency counts them as drawn from the source on top of what the run drew: the run's
+currents are as they were without them, which holds while they are small against what the converter handles.
+
+## Parts at their temperatures
+
+A part's `temperature_C` (25 unless given) moves what it loses by, from its values at 25 °C (a datasheet's):
+an inductor's `DCR_ohm` and `AC_R_ohm` by copper's 0.39 %/K (or its `tempco_per_K`); a switch's `model.Ron_ohm`
+by `model.Ron_tempco_per_K`, 0.6 %/K unless given (a silicon MOSFET's R_DS(on), 1.6 times at 125 °C; a vendor
+subcircuit and an ideal switch are not moved); a diode's `model.Vf_V` by `model.Vf_tempco_V_per_K`, −2 mV/K unless
+given; a resistor's `value` by its `tempco_per_K` and a capacitor's `ESR_ohm` by its `ESR_tempco_per_K`, neither
+unless given. `board.temperature_C` puts the board copper's resistances at that temperature. The values at 25 °C
+are kept in each part's `nominal` in the case's `model.json`. A sweep can set them like any value
+(`"sweep": {"Q1.temperature_C": [25, 100]}`).
+
+`--warm N` sets them from the board's own thermal model: the run's losses go to `pcbqs.thermal` (each case its own
+map, `--case all`), each part is put at the temperature it reaches there (its pads', or its junction's where its
+footprint gives `thermal.theta`) and the copper at its mean (under the copper's own loss, with `--fields`), and
+the circuit runs again, up to N times, until no part moves by more than 1 K. A diode's loss falls as it warms and
+a MOSFET's and a winding's rise, so a few runs settle (the buck example: 77, 70, 71.6, 71.5 °C at its diode).
+`--thermal-args='--ambient 40 --film 12'` gives the thermal model its options. `circuit.json` has `warm` (each
+run's largest move, its hottest part, whether it settled) and each case its `temperatures_C`; `<out>/thermal` is
+the thermal model of the last run's losses, its tables in `thermal.log`.
+
+## Vendor models
+
+A vendor's SPICE library gives a part its own model, `library` the file (beside the model, or a path):
+
+```json
+{"ref": "Q1", "type": "switch", "nodes": ["in", "sw"], "drive": "pwm",
+ "model": {"type": "subcircuit", "library": "IPB017N10N5.lib", "subcircuit": "IPB017N10N5_L1",
+           "pin_order": ["D", "G", "S", "Tj", "Tcase"], "pins": {"Tcase": "temperature"}}}
+{"ref": "Q2", "model": {"type": "vdmos", "library": "vendor.lib", "model_name": "SIR880ADP"}, ...}
+{"ref": "D1", "type": "diode", "model": {"library": "diodes.lib", "model_name": "MBRS340"}, ...}
+{"ref": "D2", "type": "diode", "model": {"library": "C4D10120A.lib", "subcircuit": "C4D10120A", "pin_order": ["A", "K"]}, ...}
+```
+
+- A switch's `subcircuit`: `pin_order` names the subcircuit's pins in its own order, `D`, `G` and `S` where those
+  are (each at least once; `S` twice for a Kelvin source tied to the source) and any other by a name of its own,
+  which `pins` gives: a node of the circuit (its name), a voltage it is held at (a number: vendors' thermal pins
+  take a temperature in °C as a voltage), `"temperature"` (held at the part's `temperature_C`, which `--warm`
+  sets), or nothing: a node of its own, 1 GΩ to ground (a `Tj` the model drives).
+- A switch's `vdmos` with `model_name`: the library's VDMOS `.model` card in place of the one pcbqs makes.
+- A diode's `model_name` (a `.model` card) or `subcircuit` (`pin_order` of `A` and `K`, and `pins` as above).
+
+A vendor's model has its own capacitances, reverse recovery and temperature, so none of pcbqs's are added, and
+`temperature_C` does not move its values (a thermal pin is how it takes one).
+
+## What to give the parts
+
+A switch or a diode with no capacitance, cutting off the current of an inductance that has nowhere else to go,
+has no answer: ngspice either stops ("timestep too small") or returns a spike of thousands of volts, and the
+case's notes say so. Give the switches `Cds_F` and the diodes `Cj_F` (a few hundred pF), as real ones have. A
+bridge of diodes with none leaves its AC side floating while all four are off, and fails the same way.
+
+A switch's body diode has no reverse recovery unless its model gives `diode_TT_s`; with it, a hard-switched leg
+with no loop inductance shows recovery currents of tens of amps, which is the model's answer and not a fault.
+
+## Examples
+
+`rc_filter`, `half_wave_rectifier`, `bridge_rectifier` (constant-power load), `buck`, `buck_synchronous` (dead
+time, a load sweep), `boost`, `buck_boost`, `flyback` (coupled inductors, an RCD clamp), `half_bridge_resonant` (a
+frequency sweep), `full_bridge_phase_shift` (two drives; the phase between them is the knob). Each is checked in
+`tests/test_circuit_examples.py` against its closed form: ripple and duty for the converters, harmonic by
+harmonic for the resonant tank, charge and power balance for the rest.
+
+`data/wpthb_bridge.json` (and `wpthb_bridge.toml`, under File > Examples > Circuits > Bridges) is the wpthb
+board's 24 V full bridge driving a wireless-power link: its four switches on VHB (vdmos, with their packages'
+inductances and Cds), the tank C25/C27/C30 into the primary coil on the test points TP15 and TP14, the input
+filter R9, CA1 to CA4 and L3, and a receiver off the board (a coil like the primary, coupled by k = 0.4, its
+series capacitor and its load, fixed at 130 nF and 5.65 ohm: tuned and matched at 90 kHz). Leg B's phase is the
+target's knob, set so the load takes `P`; the sweep is 90 and 110 kHz at 5 to 30 W. Its board section names the
+board's pads (`board.parts`, `board.reference`), so `--board wpthb.kicad_pcb --copper` puts the bridge on its
+copper: 24 ports. At 90 kHz and 10 W, alone: phase 55.66°, input 10.71 W, efficiency 93.18 %, primary 1.435 A RMS
+(42 s); its hard-switched leg's switches Q2 and Q4 96 mW each. Its `bus_ripple_V` is VHB's settled ripple (256
+samples a period: 0.10 V), `bus_spike_pp_V` the same with the edges' spikes (3.5 V). It was the model of the full-bridge tool
+(`pcbqs.power_circuit`, format 1, removed 2026-11-14), which also tuned the receiver at each frequency; that
+tool's answers at the same receiver: 55.64°, 93.13 %, 1.435 A.
+
+## On a board
+
+```json
+"board": {"file": "06_boost.kicad_pcb", "parts": {"V1": "J1", "R1": "J2"}}
+```
+
+With `--copper` the board's copper is part of the circuit. A part's pin is the pads of its footprint on its
+node's net (`0` is the board's GND), so nothing is said twice: the model says which part is on which node, the
+board which pad is on which net. `board.parts` names a part's footprint when its reference differs (a source is a
+connector), a footprint a pin where its pins are on two (a coil soldered to two test points: `["TP15", "TP14"]`),
+or `null` for a part kept off the board (or a pin of it: the input filter's inductor with one pad on the copper
+modelled, `[null, "L3"]`), which is then at its nets' nodes; `board.nets` a node's net when its name differs.
+
+Without copper every pin on a node is one point. With it, one pad of each net is the node itself (a source's
+pad, else a load's, else the first; `board.reference` chooses another) and every other pad reaches it through a
+port of a passive R-L model of the copper: all the nets' ports in one model, so the coupling between them is in
+it. The model is extracted by the quasi-static solver (`pcbqs.mqs`) from DC to 20 MHz and at every switching
+frequency and its tenth harmonic, fitted, and kept in `<out>/copper-model.json`. The examples' boards take from
+a second to under a minute.
+
+The copper costs ngspice about ten times the time, and moves a converter's operating point very little. So the
+circuit alone is settled first and its targets met; the copper is put in where that ended, and the runs go on
+from there, a tenth of `cycles` (at least 20) at first, longer if they do not settle. Its R and L share one modal
+basis (each mode a resistor and an inductor in series), which halves what ngspice refactors at each step. A case
+reports `copper`: the board, the fit's error, the copper's loss, and each port's RMS
+current. A part with no footprint on the board is at its net's node, and the notes say so.
+
+What the copper shows is mostly at the edges. The loop a switch and a diode commutate around has a few
+nanohenries, and against the diode's and the switch's capacitance that rings: the boost's diode sees 57 V on its
+board where the circuit alone gives 24 V. Nothing in the examples damps that ring but the parts' series
+resistance, so it is larger than on a bench; give the parts their ESL and their losses, or a snubber, to see
+what a real one does.
+
+## Fields over the board
+
+`--fields` (which implies `--copper`) writes, for every case, the fields on planes 1 and 5 mm above the top copper
+over the last period: as field dumps in `exc_fields/` (H and E on each plane, 64 frames over the period), which
+kicad2ems's Viewer shows with the run and plays (its 2D view); `fields.npz` (H and E in time, their RMS maps, H's
+harmonics); and `fields.png` (the AC RMS maps over the board's copper).
+
+- **H** comes from the currents in the copper. The reported run's port currents are taken apart into harmonics
+  of the period (16 by default, from ngspice's own steps); the solver that gave the circuit its copper model
+  gives the current everywhere in the copper for those, and H by Biot-Savart; the harmonics are put back
+  together over the period.
+- **E** comes from the voltages on the copper. Each net's copper is a conductor at its node's voltage, the
+  ground at zero. The charge that puts on it is solved once on the same mesh, in the board's dielectric stack,
+  for a volt on each net; E at any instant is those fields weighted by the nets' voltages then. A switch node
+  swinging 24 V over a 13 x 10 mm island gives about 4 kV/m AC RMS a millimetre up and 0.9 kV/m at 5 mm.
+
+```json
+"fields": {"harmonics": 16, "heights_mm": [1, 5], "pitch_mm": 0.75}
+```
+
+A case's `fields` has the largest values on each plane (`H_ac_rms_max_A_per_m`, `E_ac_rms_max_V_per_m`, the
+peaks, the RMS with the steady part), each net's voltage swing and capacitance, and the share of the port
+currents' AC above the last harmonic kept.
+
+What is in them and what is not:
+
+- The copper and its vias only. No part's own field: not an inductor's stray field, not the E of a part's body
+  above the board. Those need a model of each part.
+- Quasi-static: the Coulomb E of the charges without the induced E of changing currents, and no radiation. It is
+  what a near-field probe a few millimetres up sees, not a far field.
+- The board taken as grounded: its ground copper at zero volts against its surroundings.
+- H is band-limited to the harmonics kept; the ringing at the edges is above them. E is not band-limited.
+
+## From KiCad
+
+`--from-kicad` reads a board (`.kicad_pcb`), a schematic (`.kicad_sch`, through `kicad-cli`) or a KiCad XML
+netlist and prints a model of what it can tell, each part between the two nets its pins are on:
+
+- resistors, capacitors and inductors, by symbol, reference or the footprint's library, with the value as KiCad
+  writes it (`4k7`, `22u`, `0R01`) and `ESR`, `ESL`, `DCR` fields;
+- diodes, anode to cathode by pin names (`A`, `K`), else pad 2 to pad 1;
+- MOSFETs with pins `D`, `G`, `S`, as switches from drain to source;
+- KiCad's simulation fields: `Sim.Library` and `Sim.Name` make a diode's or a MOSFET's model the vendor's (a
+  `.subckt` or a `.model` in that library, the path from the schematic's folder with `${KIPRJMOD}` and other
+  variables expanded), `Sim.Pins` (symbol pin = model pin) its `pin_order` and `pins`, and `Sim.Params` of a
+  built-in VDMOS or diode its `vdmos_parameters` or `spice_parameters`.
+
+A node is the net's name. A board that was read becomes the model's `board`. Left to add, since KiCad does not
+say: which connector is the source and which the load, the drives, and what to measure. `pcbqs.circuit.kicad`
+has the same for a model that exists (`apply`: add parts, or bring their values and nets up to date).
+
+## From a converter on a board
+
+`python -m pcbqs.mqs board.kicad_pcb --converter U702 --vin-volts 5 --vout 3.3 --fsw 1e6 --current 2 --circuit`
+prints the converter the near-field tool selects as a model: its input capacitors, two switches on the
+regulator's footprint (`board.parts`), its inductor, the output capacitors nearby and a load, on the nodes `in`,
+`sw` and `out` with their nets in `board.nets`. A boost built of discrete parts (a diode up from the switch node)
+is made into its own model the same way: `python -m pcbqs.mqs 06_boost.kicad_pcb --vin-volts 12 --vout 24 --fsw
+200e3 --current 1 --circuit` gives the boost example's circuit from its board alone, and it settles at the same
+duty and inductor ripple as the example. A near-field run writes the same as `circuit-model.json`, which
+the window opens from that result. What it assumes is in its description
+([From one tool to the next](power-workflow.md#4-from-one-tool-to-the-next)).
+
+## Example boards
+
+![The ten example boards](images/circuit-boards.png)
+
+Each example has a layout beside it (`examples/*.kicad_pcb`, KiCad 8), written by `python -m
+pcbqs.circuit.boards`: an island of copper for each net on the top layer, ground strips stitched to a ground plane
+on the bottom, and every part across the gap between its two nets' islands. Two layers, 1.5 mm, 35 um copper. The
+generator checks each (every pad on its net, each net in one piece, 0.4 mm between nets), and the tests read every
+file back through kicad2ems's KiCad importer and get the example's netlist.
+
+All ten run with their copper (ngspice 45.2):
+
+| Example | Ports | Efficiency alone | on its board | Copper loss | Highest part voltage, alone to on its board |
+|---|---|---|---|---|---|
+| `rc_filter` | 3 | | | 0 mW | |
+| `half_wave_rectifier` | 5 | 94.29 % | 94.28 % | 0.2 mW | D1 31.5 to 31.5 V |
+| `bridge_rectifier` | 10 | 94.08 % | 94.06 % | 5.0 mW | D2 32.3 to 32.3 V |
+| `buck` | 10 | 93.61 % | 93.57 % | 7.5 mW | D1 11.9 to 30.1 V |
+| `buck_synchronous`, 4 A | 10 | 94.25 % | 94.12 % | 28.8 mW | Q2 11.9 to 24.0 V |
+| `boost` | 10 | 97.49 % | 97.50 % | 2.3 mW | D1 24.0 to 57.0 V |
+| `buck_boost` | 10 | 95.72 % | 95.75 % | 2.3 mW | D1 27.0 to 65.8 V |
+| `flyback` | 16 | 82.18 % | 82.04 % | 4.3 mW | D2 64.2 to 81.4 V |
+| `half_bridge_resonant`, 130 kHz | 9 | 98.14 % | 98.08 % | 6.1 mW | Q2 24.8 to 27.0 V |
+| `full_bridge_phase_shift` | 15 | 94.51 % | 94.45 % | 14.3 mW | Q1 24.8 to 46.2 V |
+
+The efficiencies are within a few hundredths of a per cent of each other either way, which is what the settling
+tolerance allows; the copper's own loss is the column beside them. The soft-switched tank hardly notices its
+board; the hard-switched ones ring to twice their bus and more.
+
+## Not here yet
+
+Parts' own fields (an inductor's stray field, a part body's E) and the temperature sweep. (The copper's fields
+open in kicad2ems's Viewer: `--fields` writes its dumps.)
