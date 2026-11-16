@@ -1,0 +1,966 @@
+"""Editable simulation schematic and read-only KiCad source views."""
+import copy
+import hashlib
+import json
+from pathlib import Path
+import shutil
+import tempfile
+
+from PySide6.QtCore import Qt,QObject,QPointF,QRectF,QProcess,QTimer,Signal
+from PySide6.QtGui import QColor,QPainter,QPainterPath,QPen,QBrush,QFont,QTransform
+from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QSplitter,QLabel,
+    QPushButton,QLineEdit,QComboBox,QCheckBox,QPlainTextEdit,QScrollArea,QGraphicsView,
+    QGraphicsScene,QGraphicsObject,QGraphicsItem,QDialog,QDialogButtonBox,QTableWidget,
+    QTableWidgetItem,QHeaderView,QFileDialog,QStackedWidget,QMenu)
+
+
+def _api():
+    # GUI remains usable without the optional circuit package: KiCad's netlists, read (pcbqs.schematic)
+    from pcbqs import schematic
+    return schematic
+
+
+def _number(value):
+    return f'{value:.17g}' if isinstance(value,(int,float)) else str(value)
+
+
+def _quantity(value,unit):
+    if not isinstance(value,(int,float)):return str(value)
+    for exponent,prefix in [(9,'G'),(6,'M'),(3,'k'),(0,''),(-3,'m'),(-6,'µ'),(-9,'n'),(-12,'p'),(-15,'f')]:
+        if abs(value)>=10**exponent:return f'{value/10**exponent:.4g} {prefix}{unit}'
+    return f'{value:g} {unit}'
+
+
+def _entry(value):
+    if not isinstance(value,(int,float)):return str(value)
+    for exponent,prefix in [(9,'G'),(6,'M'),(3,'k'),(0,''),(-3,'m'),(-6,'u'),(-9,'n'),(-12,'p'),(-15,'f')]:
+        if abs(value)>=10**exponent:return f'{value/10**exponent:.12g}{prefix}'
+    return f'{value:.12g}'
+
+
+def _natural(text):
+    import re
+    return [int(p) if p.isdigit() else p.lower() for p in re.split(r'(\d+)',text)]
+
+
+class KiCadJob(QObject):
+    completed=Signal(dict,object)
+    failed=Signal(str)
+    progress=Signal(str)
+
+    def __init__(self,path,parent=None):
+        super().__init__(parent);self.path=Path(path).expanduser().resolve();self.temp=tempfile.TemporaryDirectory(prefix='pcbqs-gui-');self.proc=None;self.stage='netlist';self.document=None;self.cancelled=False
+
+    def start(self):
+        if self.cancelled:return
+        if self.path.suffix.lower()!='.kicad_sch':
+            try:self.document=_api().read_netlist(self.path)
+            except (OSError,ValueError) as exc:self.failed.emit(str(exc));self.cleanup();return
+            self.completed.emit(self.document,{});self.cleanup();return
+        exe=shutil.which('kicad-cli')
+        if not exe:self.failed.emit('Install kicad-cli or import an exported KiCad XML netlist.');self.cleanup();return
+        self.exe=exe;self._launch(['sch','export','netlist','--format','kicadxml','--output',str(Path(self.temp.name)/'netlist.xml'),str(self.path)])
+
+    def _launch(self,args):
+        self.proc=QProcess(self);self.proc.setProcessChannelMode(QProcess.MergedChannels)
+        self.proc.finished.connect(self._finished);self.proc.errorOccurred.connect(self._error)
+        self.timer=QTimer(self);self.timer.setSingleShot(True);self.timer.setInterval(120000);self.timer.timeout.connect(self._timeout);self.timer.start()
+        self.progress.emit('Reading KiCad connectivity…' if self.stage=='netlist' else 'Rendering read-only KiCad sheets…')
+        self.proc.start(self.exe,args)
+
+    def _error(self,error):
+        if error==QProcess.FailedToStart:
+            self.timer.stop();self.failed.emit('Could not start kicad-cli');self.cleanup()
+
+    def _timeout(self):
+        self.cancel();self.failed.emit('KiCad export timed out after 120 seconds')
+
+    def _finished(self,code,*_):
+        if self.cancelled:return
+        self.timer.stop();log=bytes(self.proc.readAllStandardOutput()).decode(errors='replace');self.proc.deleteLater();self.proc=None
+        if self.stage=='netlist':
+            try:
+                if code:raise ValueError('KiCad netlist export failed: '+log.strip())
+                self.document=_api().read_netlist(Path(self.temp.name)/'netlist.xml')
+                self.document.update(path=str(self.path),kind='kicad_sch',sha256=hashlib.sha256(self.path.read_bytes()).hexdigest())
+            except (OSError,ValueError) as exc:self.failed.emit(str(exc));self.cleanup();return
+            self.stage='svg';folder=Path(self.temp.name)/'sheets';folder.mkdir()
+            self._launch(['sch','export','svg','--output',str(folder),str(self.path)])
+        else:
+            try:sheets={p.name:p.read_bytes() for p in sorted((Path(self.temp.name)/'sheets').glob('*.svg'))} if not code else {}
+            except OSError as exc:
+                sheets={};self.progress.emit('Connectivity imported; could not read source sheets: '+str(exc))
+            if code:self.progress.emit('Connectivity imported; KiCad sheet rendering was unavailable: '+log.strip())
+            self.completed.emit(self.document,sheets);self.cleanup()
+
+    def cancel(self):
+        self.cancelled=True
+        if self.proc and self.proc.state()!=QProcess.NotRunning:
+            self.proc.kill();self.proc.waitForFinished(2000)
+        self.cleanup()
+
+    def cleanup(self):
+        if hasattr(self,'timer'):self.timer.stop()
+        self.temp.cleanup()
+
+
+class ImportReview(QDialog):
+    def __init__(self,document,config,parent=None):
+        super().__init__(parent);self.setWindowTitle('Review KiCad simulation import');self.resize(1100,650);self.document=document;self.config=config
+        layout=QVBoxLayout(self)
+        note=QLabel('Choose the components to apply. Existing parasitics are retained unless matching numeric ESR/ESL/DCR fields are supplied.\nIC logic and gate-driver behavior require explicit simulation models. DNP/excluded parts are imported disabled.');note.setWordWrap(True);layout.addWidget(note)
+        controls=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Filter reference, value, net or sheet');self.search.textChanged.connect(self.filter);controls.addWidget(self.search,1)
+        for label,mode in [('Existing only','existing'),('Everything supported','all'),('None','none')]:
+            b=QPushButton(label);b.clicked.connect(lambda _,m=mode:self.select(m));controls.addWidget(b)
+        layout.addLayout(controls)
+        self.table=QTableWidget(len(document['components']),8);self.table.setHorizontalHeaderLabels(['Apply','Reference','KiCad value','Simulation value','Model','Pins → nets','Sheet','Import status']);self.table.setEditTriggers(QTableWidget.NoEditTriggers);self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents);self.table.horizontalHeader().setSectionResizeMode(5,QHeaderView.Stretch)
+        self.eligible=[]
+        note.setText('Choose the parts to take over: resistors, capacitors, inductors, diodes and MOSFETs, each between the two nets its pins are on.\n'
+                                     'Which connector is the source and which the load, and what drives the switches, KiCad does not say: add those in the schematic afterwards.')
+        for row,c in enumerate(document['components']):
+            status,eligible,default=_kicad().status(c,config)
+            self.eligible.append(eligible)
+            check=QTableWidgetItem();check.setFlags(Qt.ItemIsUserCheckable|Qt.ItemIsEnabled if eligible else Qt.NoItemFlags);check.setCheckState(Qt.Checked if default else Qt.Unchecked);self.table.setItem(row,0,check)
+            existing=next((p for p in config['parts'] if p['ref']==c['ref']),None)
+            present=(_quantity(existing['value'],dict(resistor='Ω',capacitor='F',inductor='H')[existing['type']]) if existing and existing['type'] in ('resistor','capacitor','inductor') else existing['type'] if existing else '—')
+            values=[c['ref'],c['value'],present,c['kind'],', '.join(f"{p['number']} ({p['name']}) → {p['net'] or 'unconnected'}" for p in c['pins']),c['sheet'],status]
+            for col,value in enumerate(values,1):
+                item=QTableWidgetItem(value);item.setToolTip(value);self.table.setItem(row,col,item)
+        layout.addWidget(self.table,1)
+        self.connections=QCheckBox("Also move the model's existing parts to the nets KiCad has them on");self.connections.setChecked(True);layout.addWidget(self.connections)
+        self.details=QPlainTextEdit();self.details.setReadOnly(True);self.details.setMaximumHeight(115);layout.addWidget(self.details)
+        self.table.itemSelectionChanged.connect(self.show_details)
+        buttons=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel);buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);layout.addWidget(buttons)
+
+    def selected_refs(self):
+        return [c['ref'] for i,c in enumerate(self.document['components']) if self.table.item(i,0).checkState()==Qt.Checked]
+
+    def select(self,mode):
+        for i,c in enumerate(self.document['components']):
+            if mode=='existing':on=self.eligible[i] and any(p['ref']==c['ref'] for p in self.config['parts'])
+            elif mode=='all':on=self.eligible[i] and not c['dnp'] and not c['exclude_from_sim']
+            else:on=False
+            self.table.item(i,0).setCheckState(Qt.Checked if on else Qt.Unchecked)
+
+    def filter(self,text):
+        text=text.lower()
+        for row in range(self.table.rowCount()):self.table.setRowHidden(row,not any(text in self.table.item(row,col).text().lower() for col in range(1,self.table.columnCount())))
+
+    def show_details(self):
+        row=self.table.currentRow()
+        if row>=0:self.details.setPlainText(json.dumps(self.document['components'][row],indent=2))
+
+
+class ZoomView(QGraphicsView):
+    def __init__(self,parent=None):
+        super().__init__(parent);self.setRenderHints(QPainter.Antialiasing|QPainter.TextAntialiasing);self.setDragMode(QGraphicsView.ScrollHandDrag);self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse);self.setBackgroundBrush(QColor('#ffffff'))
+
+    def wheelEvent(self,event):
+        factor=1.15 if event.angleDelta().y()>0 else 1/1.15
+        if .08<self.transform().m11()*factor<5:self.scale(factor,factor)
+        event.accept()
+
+    def fit(self):
+        if self.scene() and self.scene().items():
+            self.fitInView(self.scene().itemsBoundingRect().adjusted(-30,-30,30,30),Qt.KeepAspectRatio)
+            if self.transform().m11()>1.6:self.resetTransform();self.scale(1.6,1.6)   # a small circuit: not huge
+
+
+PITCH_X,PITCH_Y=200,76                                                 # a card is 124 x 40, its rail flags below
+PIN_X,PIN_Y=70,6
+INK,NET,PICK='#235e85','#5f6f7a','#d2860b'          # parts; every net, wire or flag; what the selection touches
+MUTED=NET
+KINDS={'capacitor':('#0072b2','#e6f1f8','Capacitor'),'inductor':('#00876a','#e3f4ee','Inductor / coil'),
+       'coil':('#00876a','#e3f4ee','Inductor / coil'),'resistor':('#9a4f22','#f6ece5','Resistor'),
+       'switch':('#7b3fa0','#f1e9f6','Switch'),'supply':('#333333','#f0f0f0','Source'),
+       'diode':('#b0306a','#f8e8f0','Diode'),'load':('#6b6100','#f4f2dc','Load')}   # outline/ink, fill, legend
+
+
+def kind_colors(kind):
+    """A part kind's ink and fill (colour-blind-safe hues; amber is kept for the selection)."""
+    ink,fill,_=KINDS.get(kind,(INK,'#f2f7fb',''))
+    return ink,fill
+CHANNEL=8                                          # wires run this far outside a column's pins, and in the row gaps,
+LANE=5                                             # each net in a lane of its own, LANE apart (LANES of them)
+LANES=4
+TALL_DROP=27                                       # a part stood up sits this far below its row: its lower pin's wires
+                                                   # run in the gap under the next row, its upper pin's above every card
+ROW_GAP=35                                         # below a card's centre: the first lane under its flags (to +32)
+
+
+def rails_of(records,threshold=4):
+    """The nets drawn as flags at their pins instead of wires: ground, and any net on `threshold` pins or more."""
+    count={}
+    for r in records:
+        for n in r['nets']:count[n]=count.get(n,0)+1
+    return {n for n,k in count.items() if k>=threshold or n in ('GND','0')}
+
+
+class DeviceItem(QGraphicsObject):
+    """A part: its reference and value over its symbol, a pin each side; a pin on a rail carries the rail's flag
+    (ground's symbol, else its name), so the busiest nets need no wires."""
+    def __init__(self,record,scene,rotation=None):
+        super().__init__();self.record=record;self.owner=scene;self.chosen=rotation is not None     # by the user, not by load()
+        self.rot=int(rotation if self.chosen else self.natural(record))%360//90*90;self.setFlags(QGraphicsItem.ItemIsMovable|QGraphicsItem.ItemIsSelectable|QGraphicsItem.ItemSendsGeometryChanges);self.setZValue(2)
+        self.setToolTip(record['ref']+' '+record.get('label','')+('\n'+record['details'] if record.get('details') else '')+'\n'+'  ·  '.join(f"{e} ({n})" for e,n in zip(record['endpoints'],record['nets'])))
+
+    @staticmethod
+    def natural(record):
+        """How a part stands before anyone turns it: a part to ground and a winding stood up, the rest along the
+        flow."""
+        return 90 if record.get('stand') else 0
+
+    @property
+    def upright(self):
+        """Pins left and right (0°, 180°); else above and below, the card stood up."""
+        return self.rot in (0,180)
+
+    def card(self):
+        return QRectF(-62,-20,124,40) if self.upright else QRectF(-40,PIN_Y-56,80,112)
+
+    def boundingRect(self):
+        return QRectF(-PIN_X-30,-24,2*PIN_X+60,64) if self.upright else QRectF(-110,PIN_Y-PIN_X-30,220,2*PIN_X+60)
+
+    def shape(self):
+        path=QPainterPath();path.addRect(self.card());return path
+
+    def turn(self):
+        """The symbol's frame: the part drawn horizontally about (0, PIN_Y), turned by its rotation (clockwise)."""
+        return QTransform().translate(0,PIN_Y).rotate(self.rot).translate(0,-PIN_Y)
+
+    def pin(self,index):return self.mapToScene(self.turn().map(QPointF(-PIN_X if index==0 else PIN_X,PIN_Y)))
+
+    def facing(self,index):
+        """The way pin `index` points out of the part, a unit step (dx, dy) in the scene."""
+        a=self.turn().map(QPointF(-PIN_X if index==0 else PIN_X,PIN_Y));o=self.turn().map(QPointF(0,PIN_Y))
+        d=a-o;n=max(abs(d.x()),abs(d.y()))
+        return (round(d.x()/n),round(d.y()/n))
+
+    def set_rotation(self,deg):
+        self.prepareGeometryChange();self.rot=int(deg)%360//90*90;self.update()
+
+    def contextMenuEvent(self,event):
+        if not self.isSelected():self.owner.clearSelection();self.setSelected(True)
+        m=QMenu()
+        for text,d in (('Rotate 90° clockwise\tR',90),('Rotate 90° anticlockwise\tShift+R',-90),('Rotate 180°',180)):
+            m.addAction(text).triggered.connect(lambda _=False,d=d:self.owner.rotate.emit(self.record['id'],d))
+        if self.chosen:m.addAction('Automatic (the way its wires are shortest)').triggered.connect(lambda:self.owner.rotate.emit(self.record['id'],0))
+        m.exec(event.screenPos());event.accept()
+
+    def paint(self,painter,option,widget=None):
+        r=self.record;enabled=r.get('enabled',True);sel=self.isSelected();ink,fill=kind_colors(r['kind'])
+        color=QColor(ink if enabled else '#999999')
+        lit=self.owner.lit;card=self.card()
+        painter.setPen(QPen(QColor(PICK) if sel else color,2 if sel else 1.2));painter.setBrush(QColor('#fff2ce') if sel else QColor(fill) if enabled else QColor('#f5f5f5'))
+        painter.drawRoundedRect(card,5,5)
+        font=QFont();font.setPixelSize(12);font.setBold(True);painter.setFont(font);painter.setPen(color)
+        if self.upright:                                            # the reference, then the value, along the top
+            if painter.fontMetrics().horizontalAdvance(r['ref'])>66:font.setPixelSize(10);painter.setFont(font)   # a long name: smaller
+            rw=min(painter.fontMetrics().horizontalAdvance(r['ref'])+4,72)
+            painter.drawText(QRectF(-57,-19,rw,15),Qt.AlignLeft|Qt.AlignVCenter,painter.fontMetrics().elidedText(r['ref'],Qt.ElideRight,rw))
+            font.setBold(False);font.setPixelSize(10);painter.setFont(font);room=114-rw-6
+            painter.drawText(QRectF(57-room,-19,room,15),Qt.AlignRight|Qt.AlignVCenter,painter.fontMetrics().elidedText(r.get('label',''),Qt.ElideRight,room))
+        late=[]                                                     # stood up: the reference at the top, the value at
+        if not self.upright:                                        # the foot, written over the pins' stems afterwards
+            late=[(QRectF(card.left()+3,card.top()+2,card.width()-6,15),r['ref'],True),(QRectF(card.left()+3,card.bottom()-17,card.width()-6,15),r.get('label',''),False)]
+        flags,grounds=[],[]                                         # (where a rail's stem ends, its way, the net, lit)
+        painter.save();painter.setTransform(self.turn(),True)
+        y=PIN_Y
+        for k,(x0,x1) in enumerate(((-PIN_X,-24),(24,PIN_X))):
+            on=r['nets'][k] in lit
+            painter.setPen(QPen(QColor(PICK) if on else color,2.2 if on else 1.4));painter.drawLine(QPointF(x0,y),QPointF(x1,y))
+        painter.setPen(QPen(color,1.4));painter.setBrush(Qt.NoBrush)
+        kind=r['kind'];path=QPainterPath();path.moveTo(-24,y)
+        if kind=='resistor':
+            for x,dy in [(-18,0),(-14,-5),(-7,5),(0,-5),(7,5),(14,-5),(18,0),(24,0)]:path.lineTo(x,y+dy)
+            painter.drawPath(path)
+        elif kind=='capacitor':
+            painter.drawLine(QPointF(-24,y),QPointF(-4,y));painter.drawLine(QPointF(4,y),QPointF(24,y))
+            painter.drawLine(QPointF(-4,y-8),QPointF(-4,y+8));painter.drawLine(QPointF(4,y-8),QPointF(4,y+8))
+        elif kind in ('inductor','coil'):
+            for x in [-24,-12,0,12]:path.cubicTo(x,y-12,x+12,y-12,x+12,y)
+            painter.drawPath(path)
+        elif kind=='switch':
+            painter.drawLine(QPointF(-24,y),QPointF(-12,y));painter.drawLine(QPointF(-12,y),QPointF(13,y-9));painter.drawLine(QPointF(13,y),QPointF(24,y))
+            painter.drawEllipse(QPointF(-12,y),2,2);painter.drawEllipse(QPointF(13,y),2,2)
+        elif kind=='diode':                                         # anode to cathode: the way it conducts
+            painter.drawLine(QPointF(-24,y),QPointF(-7,y));painter.drawLine(QPointF(7,y),QPointF(24,y))
+            tri=QPainterPath(QPointF(-7,y-8));tri.lineTo(-7,y+8);tri.lineTo(7,y);tri.closeSubpath();painter.drawPath(tri)
+            painter.drawLine(QPointF(7,y-8),QPointF(7,y+8))
+        elif kind=='load':                                          # a box, an arrow through it: what takes the power
+            painter.drawLine(QPointF(-24,y),QPointF(-14,y));painter.drawLine(QPointF(14,y),QPointF(24,y));painter.drawRect(QRectF(-14,y-6,28,12))
+            painter.drawLine(QPointF(-8,y),QPointF(8,y));painter.drawLine(QPointF(8,y),QPointF(4,y-3));painter.drawLine(QPointF(8,y),QPointF(4,y+3))
+        else:
+            painter.drawEllipse(QPointF(0,y),11,11);painter.drawLine(QPointF(-24,y),QPointF(-11,y));painter.drawLine(QPointF(11,y),QPointF(24,y))
+            painter.drawText(QRectF(-10,y-10,20,20),Qt.AlignCenter,r.get('glyph') or ('+' if kind=='supply' else '~'))
+        for k in (0,1):                                             # the pin ends, and a rail's flag under one
+            x=-PIN_X if k==0 else PIN_X;net=r['nets'][k];on=net in lit
+            painter.setPen(Qt.NoPen);painter.setBrush(QColor(PICK) if on else color);painter.drawEllipse(QPointF(x,y),2.2,2.2)
+            if net not in self.owner.rails:continue
+            c=QColor(PICK) if on else QColor(NET)
+            if net in ('GND','0'):grounds.append((self.turn().map(QPointF(x,y)),self.facing(k),on));continue
+            painter.setPen(QPen(c,1.6 if on else 1));painter.drawLine(QPointF(x,y),QPointF(x,y+12))
+            e=self.turn().map(QPointF(x,y+12));o=self.turn().map(QPointF(x,y))
+            flags.append((e,(round((e.x()-o.x())/12),round((e.y()-o.y())/12)),net,on,1 if k==0 else -1))
+        painter.restore()
+        for box,text,bold in late:                                  # on a patch of the card's own colour, so a stem
+            font.setBold(bold);font.setPixelSize(12 if bold else 10);painter.setFont(font)   # does not run through it
+            if bold and painter.fontMetrics().horizontalAdvance(text)>box.width():font.setPixelSize(10);painter.setFont(font)
+            text=painter.fontMetrics().elidedText(text,Qt.ElideRight,int(box.width()));w=painter.fontMetrics().horizontalAdvance(text)+6
+            if text:painter.fillRect(QRectF(box.center().x()-w/2,box.top()+1,w,box.height()-2),QColor('#fff2ce') if sel else QColor(fill) if enabled else QColor('#f5f5f5'))
+            painter.setPen(color);painter.drawText(box,Qt.AlignHCenter|Qt.AlignVCenter,text)
+        for at,(dx,dy),on in grounds:                               # ground: always downward, however the part is turned
+            painter.setPen(QPen(QColor(PICK) if on else QColor(NET),1.8 if on else 1.3))
+            foot=QPointF(at.x(),at.y()+11)
+            if dy<0:                                                # a pin pointing up: beside it, then down
+                side=QPointF(at.x()+14,at.y());painter.drawLine(at,side);foot=QPointF(side.x(),side.y()+11);painter.drawLine(side,foot)
+            else:painter.drawLine(at,foot)
+            for w,d in ((11,0),(7,4),(3,8)):painter.drawLine(QPointF(foot.x()-w,foot.y()+d),QPointF(foot.x()+w,foot.y()+d))
+        for e,(dx,dy),net,on,inward in flags:                       # a rail's name: upright, past its stem's end
+            font.setPixelSize(10);font.setBold(on);painter.setFont(font)
+            tw=painter.fontMetrics().horizontalAdvance(net)+8;c=QColor(PICK) if on else QColor(NET)
+            if dy>0:box=QRectF(e.x()-4 if inward>0 else e.x()-tw+4,e.y(),tw,14)
+            elif dy<0:box=QRectF(e.x()-4 if inward<0 else e.x()-tw+4,e.y()-14,tw,14)
+            elif dx<0:box=QRectF(e.x()-tw,e.y()-7,tw,14)
+            else:box=QRectF(e.x(),e.y()-7,tw,14)
+            painter.setPen(QPen(c,1.6 if on else 1));painter.setBrush(QColor('#fff2ce') if on else QColor('#ffffff'))
+            painter.drawRect(box);painter.drawText(box,Qt.AlignCenter,net)
+        if not enabled:painter.setPen(QPen(QColor('#999999'),1));painter.drawLine(card.topLeft()+QPointF(6,4),card.bottomRight()-QPointF(6,4))
+
+    def itemChange(self,change,value):
+        if change==QGraphicsItem.ItemPositionHasChanged and not self.owner.loading:self.owner.update_connections()
+        return super().itemChange(change,value)
+
+    def mouseReleaseEvent(self,event):
+        super().mouseReleaseEvent(event)
+        if not self.owner.loading:QTimer.singleShot(0,self.owner.positions_changed)
+
+
+class CircuitScene(QGraphicsScene):
+    """The parts in columns by where they sit in the power path (their group), the rails as flags at their pins, the
+    other nets as wires from pin to pin, each with its name; selecting a part lights its nets."""
+    selected=Signal(str)
+    moved=Signal(dict)
+    rotate=Signal(str,int)                                          # a part, degrees clockwise (R, its menu)
+
+    def __init__(self,parent=None):
+        super().__init__(parent);self.devices={};self.links=[];self.rails=set();self.lit=set();self.headers=[]
+        self.loading=False;self.last_positions={};self.coupling=None;self.couplings=[];self.selectionChanged.connect(self._selected)
+
+    def _selected(self):
+        if self.loading:return
+        items=[i for i in self.selectedItems() if isinstance(i,DeviceItem)]
+        self.selected.emit(items[0].record['id'] if items else '')
+        self.highlight(items[0].record['nets'] if items else [])
+
+    @staticmethod
+    def default_positions(records):
+        """Columns by the parts' groups (where each sits along the power's path), a part under another by its
+        reference; one stood up takes two rows."""
+        cols=sorted({r['group'] for r in records})
+        out={}
+        for c,g in enumerate(cols):
+            row=0
+            for r in sorted((r for r in records if r['group']==g),key=lambda r:_natural(r['ref'])):
+                if DeviceItem.natural(r) in (90,270):               # stood up: two rows, its lower pin just over the gap
+                    out[r['id']]=(c*PITCH_X,row*PITCH_Y+TALL_DROP);row+=2
+                else:out[r['id']]=(c*PITCH_X,row*PITCH_Y);row+=1
+        return out,cols
+
+    def keyPressEvent(self,event):
+        items=[i for i in self.selectedItems() if isinstance(i,DeviceItem)]
+        if event.key()==Qt.Key_R and items:
+            self.rotate.emit(items[0].record['id'],-90 if event.modifiers()&Qt.ShiftModifier else 90);event.accept();return
+        super().keyPressEvent(event)
+
+    def load(self,records,positions,rotations=None):
+        self.loading=True;self.clear();self.devices={};self.links=[];self.headers=[];self.lit=set()
+        self.rails=rails_of(records)
+        defaults,cols=self.default_positions(records)
+        for r in records:
+            item=DeviceItem(r,self,(rotations or {}).get(r['id']));self.addItem(item);self.devices[r['id']]=item
+            x,y=positions.get(r['id'],defaults[r['id']]);item.setPos(x,y)
+        self.orient()
+        if not positions:
+            self.legend([r['kind'] for r in records])
+        nets={}
+        for item in self.devices.values():
+            for index,net in enumerate(item.record['nets']):nets.setdefault(net,[]).append((item,index))
+        for net,pins in sorted(nets.items()):
+            if net in self.rails or len(pins)<2:continue
+            for (a,i),(b,j) in zip(pins,pins[1:]):
+                wire=self.addPath(QPainterPath(),QPen(QColor(NET),1.1));wire.setZValue(-2)
+                font=QFont();font.setPixelSize(10);label=self.addSimpleText(net,font);label.setBrush(QColor(NET));label.setZValue(-1)
+                self.links.append((net,wire,(a,i),(b,j),label))
+        self.couplings=[]                                           # coupled coils: (path, label, a, b), dashed, labelled
+        pairs=[(r['id'],other,text) for r in records for other,text in r.get('coupled',[])]
+        if 'primary' in self.devices and 'secondary' in self.devices:
+            pairs.append(('primary','secondary',self.devices['primary'].record.get('details','').split(';')[0]))
+        for a,b,text in pairs:
+            if a not in self.devices or b not in self.devices:continue
+            path=self.addPath(QPainterPath(),QPen(QColor(NET),1.2,Qt.DashLine));path.setZValue(-1)
+            font=QFont();font.setPixelSize(10);label=self.addSimpleText(text or 'coupled',font);label.setBrush(QColor(NET))
+            self.couplings.append((path,label,a,b))
+        self.coupling=self.couplings[0][0] if self.couplings else None
+        self.loading=False;self.update_connections();self.last_positions=self.positions();self.setSceneRect(self.itemsBoundingRect().adjusted(-60,-60,60,60))
+
+    def legend(self,kinds):
+        """A swatch per kind of part shown, in a row over the columns."""
+        font=QFont();font.setPixelSize(11);x=-62;seen=[]
+        for k in ('supply','resistor','capacitor','inductor','coil','switch','diode','load'):
+            if k not in kinds or KINDS[k][2] in seen:continue
+            seen.append(KINDS[k][2]);ink,fill=kind_colors(k)
+            sw=self.addRect(x,-120,12,12,QPen(QColor(ink),1.2),QBrush(QColor(fill)))
+            t=self.addSimpleText(KINDS[k][2],font);t.setBrush(QColor(ink));t.setPos(x+17,-122)
+            self.headers+= [sw,t];x+=17+t.boundingRect().width()+18
+
+    def orient(self):
+        """The parts nobody turned, each the way round (as it stands, or flipped) that brings its pins nearest the
+        parts they connect to, so a wire does not wrap round its own part; rails count for nothing (a flag)."""
+        on={}
+        for item in self.devices.values():
+            for net in item.record['nets']:on.setdefault(net,[]).append(item)
+        def reach(item):
+            total=0.0
+            for k,net in enumerate(item.record['nets']):
+                others=[o for o in on[net] if o is not item]
+                if net in self.rails or not others:continue
+                pin=item.pin(k);cx=sum(o.x() for o in others)/len(others);cy=sum(o.y() for o in others)/len(others)
+                total+=abs(pin.x()-cx)+abs(pin.y()-cy)
+            return total
+        for item in self.devices.values():
+            if item.chosen:continue
+            base=item.natural(item.record);item.rot=base;a=reach(item);item.rot=(base+180)%360;b=reach(item)
+            item.prepareGeometryChange();item.rot=base if a<=b+1e-6 else (base+180)%360
+
+    def positions(self):return {key:[item.x(),item.y()] for key,item in self.devices.items()}
+
+    def positions_changed(self):
+        values=self.positions()
+        if values!=self.last_positions:self.last_positions=values;self.moved.emit(values)
+
+    @staticmethod
+    def route(p,i,q,j,lane=0,dp=None,dq=None):
+        """A wire's corners from pin p (side i: 0 left, 1 right) to pin q, through free space only: out of each
+        pin to its channel (CHANNEL beyond the pin, between the columns); two pins facing across one gap meet in
+        it; else the wire runs along the gap under the upper pin's row, which no card or flag reaches."""
+        out=CHANNEL+LANE*lane                                       # this net's lane, in channels and gaps alike
+        dp=dp or ((-1,0) if i==0 else (1,0));dq=dq or ((-1,0) if j==0 else (1,0))
+        if dp[1] or dq[1]:                                          # a turned part's pin: out along it, then across
+            sp=QPointF(p.x()+out*dp[0],p.y()+out*dp[1]);sq=QPointF(q.x()+out*dq[0],q.y()+out*dq[1])
+            if dp[1] and dq[1]:                                     # both up or down: a level past both, else between
+                my=max(sp.y(),sq.y()) if dp[1]>0 and dq[1]>0 else min(sp.y(),sq.y()) if dp[1]<0 and dq[1]<0 else (sp.y()+sq.y())/2
+                return [p,sp,QPointF(sp.x(),my),QPointF(sq.x(),my),sq,q]
+            corner=QPointF(sp.x(),sq.y()) if dp[0] else QPointF(sq.x(),sp.y())   # level at the turned pin's stub, upright in the other's channel
+            return [p,sp,corner,sq,q]
+        i,j=(1 if dp[0]>0 else 0),(1 if dq[0]>0 else 0)               # 180°: the pins have swapped sides
+        cp=p.x()+(out if i==1 else -out);cq=q.x()+(out if j==1 else -out)
+        lo,hi=min(p.x(),q.x()),max(p.x(),q.x())
+        facing=(i==1 and j==0 and q.x()>p.x()) or (i==0 and j==1 and p.x()>q.x())
+        if facing and hi-lo<2*PIN_X:                                # neighbours: straight across the gap
+            mx=(p.x()+q.x())/2+LANE*(lane-LANES/2+.5);return [p,QPointF(mx,p.y()),QPointF(mx,q.y()),q]
+        if abs(cp-cq)<1:                                            # one channel: down it
+            return [p,QPointF(cp,p.y()),QPointF(cq,q.y()),q]
+        gy=min(p.y(),q.y())-PIN_Y+ROW_GAP+LANE*lane                 # the gap below the upper row (next card: +56)
+        return [p,QPointF(cp,p.y()),QPointF(cp,gy),QPointF(cq,gy),QPointF(cq,q.y()),q]
+
+    @staticmethod
+    def crosses(pts,cards):
+        """Whether a wire's corners take it through a card (2 px inside one)."""
+        for u,v in zip(pts,pts[1:]):
+            seg=QRectF(min(u.x(),v.x())-.1,min(u.y(),v.y())-.1,abs(u.x()-v.x())+.2,abs(u.y()-v.y())+.2)
+            if any(seg.intersects(c.adjusted(2,2,-2,-2)) for c in cards):return True
+        return False
+
+    @staticmethod
+    def around(p,dp,q,dq,lane,cards):
+        """A wire from pin p to pin q round the cards, when the lanes' route would go through one: the shortest
+        path with the fewest corners along the lines that pass just outside every card (and through the two
+        pins' stubs); None when there is none."""
+        import heapq
+        out=CHANNEL+LANE*lane;m=CHANNEL+LANE*lane
+        keep=[c.adjusted(-3,-3,3,3) for c in cards]
+        def stub(pt,d):                                             # out of the pin: as far as its lane, or as far as
+            for o in (out,CHANNEL,5,3):                             # there is room before the next card
+                end=QPointF(pt.x()+o*d[0],pt.y()+o*d[1])
+                if not any(c.contains(end) for c in keep):break
+            return end
+        sp,sq=stub(p,dp),stub(q,dq)
+        xs=sorted({round(v,1) for v in [sp.x(),sq.x()]+[c.left()-m for c in cards]+[c.right()+m for c in cards]})
+        ys=sorted({round(v,1) for v in [sp.y(),sq.y()]+[c.top()-m for c in cards]+[c.bottom()+m for c in cards]})
+        def free(x0,y0,x1,y1):
+            seg=QRectF(min(x0,x1)-.1,min(y0,y1)-.1,abs(x0-x1)+.2,abs(y0-y1)+.2)
+            return not any(seg.intersects(c) for c in keep)
+        start=(xs.index(round(sp.x(),1)),ys.index(round(sp.y(),1)));goal=(xs.index(round(sq.x(),1)),ys.index(round(sq.y(),1)))
+        first=(dp[0],dp[1]);best={(start,first):0.0};heap=[(0.0,start,first,None)];came={}
+        while heap:
+            cost,at,way,prev=heapq.heappop(heap)
+            if (at,way) in came:continue
+            came[(at,way)]=prev
+            if at==goal:
+                pts=[];key=(at,way)
+                while key is not None:pts.append(QPointF(xs[key[0][0]],ys[key[0][1]]));key=came[key]
+                pts.reverse();line=[p]
+                for pt in pts+[q]:                                  # the corners only
+                    if len(line)>=2 and ((line[-2].x()==line[-1].x()==pt.x()) or (line[-2].y()==line[-1].y()==pt.y())):line[-1]=pt
+                    else:line.append(pt)
+                return line
+            for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)):
+                nx,ny=at[0]+dx,at[1]+dy
+                if not (0<=nx<len(xs) and 0<=ny<len(ys)) or (dx,dy)==(-way[0],-way[1]):continue
+                if not free(xs[at[0]],ys[at[1]],xs[nx],ys[ny]):continue
+                c=cost+abs(xs[nx]-xs[at[0]])+abs(ys[ny]-ys[at[1]])+(0 if (dx,dy)==way else 40)
+                if at==start and (dx,dy)!=way:c+=200               # out along the pin first
+                key=((nx,ny),(dx,dy))
+                if c<best.get(key,1e18):best[key]=c;heapq.heappush(heap,(c,(nx,ny),(dx,dy),(at,way)))
+        return None
+
+    def update_connections(self):
+        lanes={n:k%LANES for k,n in enumerate(sorted({l[0] for l in self.links}))}
+        cards=[item.card().translated(item.pos()) for item in self.devices.values()]
+        for net,wire,(a,i),(b,j),label in self.links:
+            pts=self.route(a.pin(i),i,b.pin(j),j,lanes[net],a.facing(i),b.facing(j))
+            if self.crosses(pts,cards):                             # the lanes go through a card here: round it
+                pts=self.around(a.pin(i),a.facing(i),b.pin(j),b.facing(j),lanes[net],cards) or pts
+            path=QPainterPath(pts[0])
+            for pt in pts[1:]:path.lineTo(pt)
+            wire.setPath(path)
+            segs=[(u,v) for u,v in zip(pts,pts[1:]) if abs(u.x()-v.x())+abs(u.y()-v.y())>1]
+            u,v=max(segs,key=lambda s:abs(s[0].x()-s[1].x())+abs(s[0].y()-s[1].y()))   # the label on its longest run
+            if abs(u.x()-v.x())>abs(u.y()-v.y()):label.setPos((u.x()+v.x())/2-label.boundingRect().width()/2,u.y()-13)
+            else:                                                   # beside a vertical, on its outer side
+                w=label.boundingRect().width();left=u.x()<min(pts[0].x(),pts[-1].x())
+                label.setPos(u.x()-w-3 if left else u.x()+3,(u.y()+v.y())/2-6)
+        for line,text,ka,kb in self.couplings:
+            a,b=self.devices[ka],self.devices[kb]
+            if a.x()>b.x():a,b=b,a
+            ra,rb=a.card().translated(a.pos()),b.card().translated(b.pos())
+            y=(max(ra.top(),rb.top())+min(ra.bottom(),rb.bottom()))/2
+            between=[c for c in cards if c!=ra and c!=rb and c.right()>ra.right() and c.left()<rb.left()]
+            clear=not any(c.top()-18<y<c.bottom()+18 for c in between)   # nor close under one, among its wires
+            if rb.left()-ra.right()>4 and min(ra.bottom(),rb.bottom())-max(ra.top(),rb.top())>20 and clear:   # side by side: straight across
+                path=QPainterPath(QPointF(ra.right(),y));path.lineTo(rb.left(),y)
+                text.setPos((ra.right()+rb.left())/2-text.boundingRect().width()/2,y-15)
+            else:                                                   # else over their tops
+                p,q=QPointF(ra.center().x()+14,ra.top()),QPointF(rb.center().x()-14,rb.top())
+                top=min([p.y(),q.y()]+[c.top() for c in between])-44
+                path=QPainterPath(p);path.lineTo(p.x(),top);path.lineTo(q.x(),top);path.lineTo(q)
+                text.setPos((p.x()+q.x())/2-text.boundingRect().width()/2,top-14)
+            line.setPath(path)
+
+    def highlight(self,nets):
+        self.lit=set(nets)
+        for net,wire,*_rest,label in self.links:
+            on=net in self.lit;wire.setPen(QPen(QColor(PICK) if on else QColor(NET),2 if on else 1.1))
+            wire.setOpacity(1 if on or not self.lit else .25);label.setOpacity(1 if on or not self.lit else .3)
+            label.setBrush(QColor(PICK if on else NET))
+        for item in self.devices.values():item.update()
+
+    def focus(self,key):
+        if key not in self.devices:return
+        self.clearSelection();item=self.devices[key];item.setSelected(True)
+        for view in self.views():
+            if view.transform().m11()<.9:view.resetTransform();view.scale(1.1,1.1)
+            view.centerOn(item)
+
+
+def _model():
+    from pcbqs.circuit import model
+    return model
+
+
+def _kicad():
+    from pcbqs.circuit import kicad
+    return kicad
+
+
+GROUND=('0','GND','gnd')
+PART_FIELDS={                                       # the general model's parts: what the inspector offers for each
+    'resistor':[('value','Value (Ω)')],
+    'capacitor':[('value','Value (F)'),('ESR_ohm','ESR (Ω)'),('ESL_H','ESL (H)'),('leakage_ohm','Leakage (Ω)'),('bias_factor','Capacitance bias factor')],
+    'inductor':[('value','Value (H)'),('DCR_ohm','DCR (Ω)'),('SRF_Hz','Self resonance (Hz)'),('Cp_F','Self capacitance (F)'),('core_R_ohm','Core loss resistance (Ω)')],
+    'diode':[('model.Vf_V','Forward drop (V)'),('model.If_A','… at current (A)'),('model.R_ohm','Series resistance (Ω)'),('model.Cj_F','Junction capacitance (F)'),('model.TT_s','Transit time (s)')],
+    'switch':[('model.Ron_ohm','On resistance (Ω)'),('model.Cds_F','Output capacitance Cds (F)'),('model.Cgs_F','Gate capacitance Cgs (F)'),('model.Cgd_F','Miller capacitance Cgd (F)'),('model.dead_time_s','Dead time (s)'),('model.rise_s','Gate rise (s)'),('model.fall_s','Gate fall (s)'),
+              ('model.gate_V','Gate voltage (V)'),('model.diode_TT_s','Body diode transit time (s)'),('model.Vth_V','Threshold (V)')],
+    'source':[('dc_V','DC voltage (V)'),('dc_A','DC current (A)'),('wave.amplitude_V','Sine amplitude (V)'),('wave.high_V','Pulse high (V)'),('wave.frequency_Hz','Wave frequency (Hz)'),
+              ('R_ohm','Series resistance (Ω)'),('L_H','Series inductance (H)')],
+    'load':[('resistance_ohm','Resistance (Ω)'),('power_W','Constant power (W)'),('current_A','Constant current (A)'),('min_V','Resistive below (V)')]}
+
+
+def _dig(part,name):
+    """A part's field by its dotted name ('model.Ron_ohm'): its value, or None."""
+    at=part
+    for key in name.split('.'):
+        if not isinstance(at,dict) or key not in at:return None
+        at=at[key]
+    return at
+
+
+def _plant(part,name,value):
+    """Set a part's field by its dotted name; None removes it."""
+    keys=name.split('.');at=part
+    for key in keys[:-1]:
+        if value is None and key not in at:return
+        at=at.setdefault(key,{})
+    if value is None:at.pop(keys[-1],None)
+    else:at[keys[-1]]=value
+
+
+def records2(config):
+    """The general model's parts as the scene's records. A column each by how far along the power's path a part
+    sits: the nets are numbered outward from the source (one further across every part that is not to ground, and
+    across a coupling), a part to ground stands in its net's column and a part between two nets in the column
+    between them; the load ends the row. Nothing here goes by a reference or a net's name."""
+    M=_model();parts=config.get('parts',[])
+    try:worked=M.resolve(config,M.cases(config)[0])               # the numbers behind the expressions
+    except (ValueError,KeyError,TypeError,IndexError):worked={}
+    shown={p['ref']:p for p in worked.get('parts',[])}
+    net=lambda n:'GND' if n in GROUND else n
+    nets={p['ref']:[net(n) for n in p['nodes']] for p in parts}
+    coupled={}
+    for n,c in enumerate(config.get('couplings',[])):
+        a,b=c.get('inductors',[None,None])[:2];k=worked['couplings'][n]['k'] if len(worked.get('couplings',[]))>n else c.get('k')
+        if a in nets and b in nets:coupled.setdefault(a,[]).append((b,k))
+    depth={}
+    def spread():
+        changed=True
+        while changed:
+            changed=False
+            for p in parts:
+                a,b=nets[p['ref']]
+                if 'GND' in (a,b) or p['type'] in ('source','load'):continue
+                for u,v in ((a,b),(b,a)):
+                    if u in depth and v not in depth:depth[v]=depth[u]+1;changed=True
+            for a,others in coupled.items():                        # across a coupling: the other winding, one further
+                known=[depth[n] for n in nets[a] if n in depth]
+                for b,_ in others:
+                    for n in nets[b]:
+                        if known and n!='GND' and n not in depth:depth[n]=max(known)+1;changed=True
+    sources=[p for p in parts if p['type']=='source'] or parts[:1]
+    for n in nets[sources[0]['ref']] if sources else []:
+        if n!='GND':depth[n]=0
+    spread()
+    for p in parts:                                                 # whatever the source does not reach: after the rest
+        for n in nets[p['ref']]:
+            if n!='GND' and n not in depth:depth[n]=max(depth.values(),default=-1)+1;spread()
+    column={}
+    for p in parts:
+        a,b=nets[p['ref']];da,db=depth.get(a),depth.get(b);kind=p['type']
+        near=min(d for d in (da,db,0) if d is not None) if da is None and db is None else min(d for d in (da,db) if d is not None)
+        if kind=='source':column[p['ref']]=2*near-1
+        elif kind=='load':column[p['ref']]=2*max(d for d in (da,db,near) if d is not None)+1
+        elif da is None or db is None:column[p['ref']]=2*near
+        else:column[p['ref']]=da+db if da!=db else 2*da
+    order={c:i for i,c in enumerate(sorted(set(column.values())))}
+    unit=dict(resistor='Ω',capacitor='F',inductor='H')
+    out=[]
+    for p in parts:
+        ref,kind=p['ref'],p['type'];q=shown.get(ref,p);glyph=None
+        if kind in unit:label=_quantity(q.get('value',''),unit[kind])
+        elif kind=='diode':label=_quantity(q.get('model',{}).get('Vf_V',0.7),'V')
+        elif kind=='switch':label=str(p.get('drive',''))+(' (inverted)' if p.get('invert') else '')
+        elif kind=='source':
+            wave=q.get('wave',{})
+            if 'dc_A' in q:label,glyph=_quantity(q['dc_A'],'A'),'I'
+            elif 'dc_V' in q:label,glyph=_quantity(q['dc_V'],'V'),'+'
+            else:label,glyph=_quantity(wave.get('amplitude_V',wave.get('high_V','')),'V')+' '+_quantity(wave.get('frequency_Hz',''),'Hz'),'~'
+        else:label=next((_quantity(q[k],u) for k,u in (('resistance_ohm','Ω'),('power_W','W'),('current_A','A')) if k in q),'')
+        model=p.get('model',{}) if isinstance(p.get('model'),dict) else {}
+        paras=' · '.join(f"{k.split('_')[0]} {_quantity(v,'H' if k.endswith('_H') else 'F' if k.endswith('_F') else 'Ω')}" for k,v in
+                         [(k,q.get(k,q.get('model',{}).get(k) if isinstance(q.get('model'),dict) else None)) for k in ('ESR_ohm','ESL_H','DCR_ohm','R_ohm','L_H','Ron_ohm','Cds_F','Cj_F')] if v)
+        if kind=='switch' and model.get('type'):paras=(model['type']+' · '+paras).strip(' ·')
+        shunt='GND' in nets[ref] or kind in ('source','load')
+        r=dict(id='part:'+ref,ref=ref,kind={'source':'supply','inductor':'coil' if ref in coupled or any(ref==b for v in coupled.values() for b,_ in v) else 'inductor'}.get(kind,kind),
+               label=label,endpoints=list(p['nodes']),nets=nets[ref],group=f"c{order[column[ref]]:02d}",details=paras,enabled=p.get('enabled',True),stand=shunt)
+        if r['kind']=='coil':r['stand']=True                         # windings side by side, as a transformer is drawn
+        if glyph:r['glyph']=glyph
+        if ref in coupled:r['coupled']=[('part:'+b,f"k={k:g}" if isinstance(k,(int,float)) else f"k={k}") for b,k in coupled[ref]]
+        out.append(r)
+    return out
+
+
+def records(config):
+    """The scene's records of a model (format 2): records2's."""
+    return records2(config)
+
+class SchematicEditor(QWidget):
+    modelChanged=Signal(dict)
+    statusChanged=Signal(str)
+
+    def __init__(self,parent=None):
+        super().__init__(parent);self.config={};self.undo_stack=[];self.redo_stack=[];self.selected_key='';self.model_provider=None;self.job=None;self.fields={};self._sheets={};self._rendered_source=None;self._loading=False
+        root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0);bar=QHBoxLayout();root.addLayout(bar)
+        self.mode=QComboBox();self.mode.addItems(['Simulation schematic','KiCad source sheets','KiCad component data']);bar.addWidget(self.mode)
+        for text,slot in [('Import KiCad…',self.import_file),('Add part…',self.add_part),('Remove',self.remove_part),('Rotate',lambda:self.rotate_part(self.selected_key,90)),('Undo',self.undo),('Redo',self.redo),('Arrange',self.arrange),('Fit',self.fit)]:
+            button=QPushButton(text);button.clicked.connect(slot);bar.addWidget(button)
+            if text=='Rotate':button.setToolTip('Turn the selected part 90° clockwise (R; Shift+R anticlockwise; right-click for more)')
+        self.find=QLineEdit();self.find.setPlaceholderText('Find ref / net');self.find.returnPressed.connect(self.find_ref);bar.addWidget(self.find,1)
+        self.stack=QStackedWidget();root.addWidget(self.stack,1);self.mode.currentIndexChanged.connect(self.stack.setCurrentIndex)
+        self.graph=QSplitter(Qt.Horizontal);self.view=ZoomView();self.scene=CircuitScene(self);self.view.setScene(self.scene);self.graph.addWidget(self.view)
+        self.scene.selected.connect(self.select);self.scene.moved.connect(self.save_positions);self.scene.rotate.connect(self.rotate_part)
+        self.inspector=QScrollArea();self.inspector.setWidgetResizable(True);self.inspector.setMinimumWidth(250);self.graph.addWidget(self.inspector);self.graph.setSizes([1100,300]);self.stack.addWidget(self.graph)
+        source=QWidget();sl=QVBoxLayout(source);row=QHBoxLayout();self.sheet=QComboBox();self.sheet.currentTextChanged.connect(self.show_sheet);row.addWidget(self.sheet,1);load=QPushButton('Load source sheets…');load.clicked.connect(self.load_source);row.addWidget(load);sl.addLayout(row);self.source_view=ZoomView();self.source_scene=QGraphicsScene(self);self.source_view.setScene(self.source_scene);sl.addWidget(self.source_view);self.stack.addWidget(source)
+        data=QWidget();dl=QVBoxLayout(data);self.source_table=QTableWidget();self.source_table.setColumnCount(5);self.source_table.setHorizontalHeaderLabels(['Ref','Value','Kind','Pins → nets','Simulation']);self.source_table.setEditTriggers(QTableWidget.NoEditTriggers);self.source_table.setSelectionBehavior(QTableWidget.SelectRows);self.source_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents);self.source_table.horizontalHeader().setSectionResizeMode(3,QHeaderView.Stretch);self.source_table.itemSelectionChanged.connect(self.source_details);self.source_table.cellDoubleClicked.connect(self.edit_source_part);dl.addWidget(self.source_table,2);self.source_info=QPlainTextEdit();self.source_info.setReadOnly(True);dl.addWidget(self.source_info,1);self.stack.addWidget(data)
+        self.note=QLabel('Select a component to edit its model, parasitics and connections. Drag to arrange; wheel to zoom.');self.note.setWordWrap(True);root.addWidget(self.note)
+        self.select('')
+
+    def base_model(self):
+        return copy.deepcopy(self.model_provider() if self.model_provider else self.config)
+
+    @staticmethod
+    def check(config,before=None):
+        """Raise what is wrong with a model, by pcbqs.circuit's own checks, down to the deck it would run."""
+        M=_model();M.validate(config)
+        from pcbqs.circuit.deck import build
+        for point in M.cases(config)[:1]:build(M.resolve(config,point))
+
+    def set_model(self,config,reset_history=True,undoable=False):
+        """Show `config`: a model loaded (reset_history: the undo steps of another model go), or the same model
+        edited elsewhere (undoable: the model before it becomes an undo step, as an edit here is)."""
+        self.check(config);records(config)
+        before=copy.deepcopy(getattr(self,'config',None))
+        self.config=copy.deepcopy(config)
+        if reset_history:self.undo_stack.clear();self.redo_stack.clear()
+        elif undoable and before is not None and before!=self.config:
+            self.undo_stack.append(before);self.undo_stack=self.undo_stack[-50:];self.redo_stack.clear()
+        self.rebuild()
+
+    def rebuild(self):
+        self._loading=True
+        try:
+            source=self.config.get('schematic',{}).get('source')
+            if source!=self._rendered_source:self.set_sheets({});self._rendered_source=copy.deepcopy(source)
+            self.check(self.config);self.scene.load(records(self.config),self.config.get('schematic',{}).get('positions',{}),self.config.get('schematic',{}).get('rotations',{}));self.refresh_source()
+            if self.selected_key in self.scene.devices:self.scene.devices[self.selected_key].setSelected(True)
+            self.select(self.selected_key if self.selected_key in self.scene.devices else '')
+        finally:self._loading=False
+
+    def commit(self,change,message='Simulation model updated'):
+        try:
+            before=self.base_model();after=copy.deepcopy(before);change(after);self.check(after,before)
+        except (ValueError,KeyError,TypeError,ImportError) as exc:self.message(str(exc));return False
+        if before==after:return True
+        self.undo_stack.append(before);self.undo_stack=self.undo_stack[-50:];self.redo_stack.clear();self.config=after;self.rebuild();self.modelChanged.emit(copy.deepcopy(after));self.message(message);return True
+
+    def message(self,text):self.note.setText(text);self.statusChanged.emit(text)
+
+    def undo(self):
+        if not self.undo_stack:return
+        try:current=self.base_model()
+        except (ValueError,KeyError) as exc:self.message(str(exc));return
+        self.redo_stack.append(current);self.config=self.undo_stack.pop();self.rebuild();self.modelChanged.emit(copy.deepcopy(self.config));self.message('Undid schematic edit')
+
+    def redo(self):
+        if not self.redo_stack:return
+        try:current=self.base_model()
+        except (ValueError,KeyError) as exc:self.message(str(exc));return
+        self.undo_stack.append(current);self.config=self.redo_stack.pop();self.rebuild();self.modelChanged.emit(copy.deepcopy(self.config));self.message('Redid schematic edit')
+
+    def save_positions(self,positions):
+        if self._loading:return
+        self.commit(lambda c:c.setdefault('schematic',dict(format=1)).update(positions=positions),'Schematic arrangement saved')
+
+    def rotate_part(self,key,degrees):
+        """Turn a part by `degrees` (clockwise, a multiple of 90) from how it stands; 0: leave it to the generator
+        again. Kept with the model (schematic.rotations, only the parts turned by hand), undoable."""
+        if not key or key not in self.scene.devices:self.message('Select a part to rotate');return
+        shown=self.scene.devices[key].rot                           # as it stands (the generator may have flipped it)
+        def change(c):
+            rot=c.setdefault('schematic',dict(format=1)).setdefault('rotations',{})
+            if degrees%360:rot[key]=(shown+degrees)%360             # a turn: from then on the part stays as turned
+            else:rot.pop(key,None)                                  # 0: the generator's choice again
+            if not rot:c['schematic'].pop('rotations')
+        if self.commit(change,f"{self.scene.devices[key].record['ref']} rotated"):
+            item=self.scene.devices.get(key)
+            if item is not None:self.scene.clearSelection();item.setSelected(True)
+
+    def arrange(self):
+        def change(c):                                              # the columns, every part upright
+            m=c.setdefault('schematic',dict(format=1));m.pop('positions',None);m.pop('rotations',None)
+        self.commit(change,'Arranged schematic');self.fit()
+
+    def fit(self):
+        (self.source_view if self.mode.currentIndex()==1 else self.view).fit()
+
+    def find_ref(self):
+        text=self.find.text().strip().lower()
+        key=next((key for key,item in self.scene.devices.items() if item.record['ref'].lower()==text),None)
+        if key:self.mode.setCurrentIndex(0);self.scene.focus(key);return
+        nets=[n for item in self.scene.devices.values() for n in item.record['nets'] if text in n.lower()]
+        self.scene.highlight(nets)
+        if nets:self.message('Highlighted nets: '+', '.join(sorted(set(nets))))
+        else:self.message('No matching component or net')
+
+    def _part(self,c,key):
+        return next(p for p in c['parts'] if p['ref']==key[5:])
+
+    def select(self,key):
+        self.selected_key=key;body=QWidget();form=QFormLayout(body);self.fields={};self.field_originals={};self.choice=None;self.enabled=None;self.ends={};self.virtual_extra={}
+        if not key:
+            info=QLabel('Select a part in the schematic, or search its reference.\n\nEvery part is in the model: its type, its two nodes and its values. A switch follows one of the model\'s drives.');info.setWordWrap(True);form.addRow(info);self.inspector.setWidget(body);return
+        record=next((r for r in records(self.config) if r['id']==key),None)
+        if record is None:self.inspector.setWidget(body);return
+        return self.select_part(key,record,body,form)
+
+    def select_part(self,key,record,body,form):
+        """The inspector for a part of the general model: its type's fields (PART_FIELDS), each a number, engineering
+        notation or an expression over the model's parameters; its nodes; a switch's drive."""
+        part=self._part(self.config,key);kind=part['type']
+        form.addRow(QLabel(f"<b>{record['ref']}</b> &nbsp; {kind}"))
+        self.enabled=QCheckBox('Include in simulation');self.enabled.setChecked(part.get('enabled',True));form.addRow(self.enabled)
+        self.drive=self.invert=None
+        if kind=='switch':
+            self.drive=QComboBox();self.drive.addItems(list(self.config.get('drives',{})));self.drive.setCurrentText(str(part.get('drive','')));form.addRow('Drive',self.drive)
+            self.invert=QCheckBox("The drive's complement (on while it is off)");self.invert.setChecked(bool(part.get('invert',False)));form.addRow(self.invert)
+            self.choice=QComboBox();self.choice.addItems(['switch','ideal','mosfet','vdmos','subcircuit']);self.choice.setCurrentText(part.get('model',{}).get('type','switch'));form.addRow('Switch model',self.choice)
+        for name,label in PART_FIELDS[kind]:
+            if name.startswith('wave.') and 'wave' not in part:continue
+            value=_dig(part,name);text='' if value is None else _entry(value)
+            w=QLineEdit(text);w.setPlaceholderText('Optional / default');self.fields[name]=w;self.field_originals[name]=(text,value);form.addRow(label,w)
+        options=sorted({n for p in self.config['parts'] for n in p['nodes']}|{'0'},key=_natural)
+        names={'diode':('Anode','Cathode'),'switch':('Drain','Source'),'source':('Positive','Negative')}.get(kind,('Node A','Node B'))
+        for index,pin in enumerate(['a','b']):
+            w=QComboBox();w.setEditable(True);w.addItems(options);w.setCurrentText(part['nodes'][index]);self.ends[pin]=w;form.addRow(names[index],w)
+        note=QLabel('A value is a number, SI notation (33n, 24u, 110m) or an expression of the model\'s parameters (vout/iout). Blank removes an optional field.');note.setWordWrap(True);form.addRow(note)
+        apply=QPushButton('Apply component changes');apply.clicked.connect(self.apply_part);form.addRow(apply);self.inspector.setWidget(body)
+
+    def apply_part(self):
+        key=self.selected_key
+        def entered(text):
+            text=text.strip()
+            if not text:return None
+            try:return float(text)
+            except ValueError:return text                            # SI notation or an expression: kept as written
+        values={name:self.field_originals[name][1] if w.text()==self.field_originals[name][0] else entered(w.text()) for name,w in self.fields.items()}
+        nodes=[self.ends[p].currentText().strip() for p in ('a','b')];enabled=self.enabled.isChecked()
+        drive=self.drive.currentText() if self.drive is not None else None;invert=self.invert.isChecked() if self.invert is not None else None
+        kind=self.choice.currentText() if self.drive is not None and self.choice is not None else None
+        def edit(c):
+            part=self._part(c,key);part['nodes']=nodes
+            if not enabled or 'enabled' in part:part['enabled']=enabled
+            if drive is not None:
+                part['drive']=drive
+                if invert or 'invert' in part:part['invert']=invert
+                part.setdefault('model',{})['type']=kind
+            for name,value in values.items():_plant(part,name,value)
+        return self.commit(edit)
+
+    def add_part(self):
+        """A new part of the general model, of any type, between two nodes."""
+        dialog=QDialog(self);dialog.setWindowTitle('Add a part');form=QFormLayout(dialog)
+        kind=QComboBox();kind.addItems(list(PART_FIELDS));ref=QLineEdit();value=QLineEdit('1k');a=QLineEdit();b=QLineEdit('0')
+        taken={p['ref'] for p in self.config['parts']}
+        def suggest(*_):
+            letter=dict(resistor='R',capacitor='C',inductor='L',diode='D',switch='Q',source='V',load='R')[kind.currentText()]
+            ref.setText(next(f"{letter}{i}" for i in range(1,999) if f"{letter}{i}" not in taken))
+            value.setText(dict(resistor='1k',capacitor='1u',inductor='10u',diode='0.7',switch='0.02',source='12',load='10')[kind.currentText()])
+            label.setText(dict(resistor='Value (Ω)',capacitor='Value (F)',inductor='Value (H)',diode='Forward drop (V)',switch='On resistance (Ω)',source='DC voltage (V)',load='Resistance (Ω)')[kind.currentText()])
+        label=QLabel();kind.currentTextChanged.connect(suggest)
+        form.addRow('Type',kind);form.addRow('Reference',ref);form.addRow(label,value);form.addRow('First node',a);form.addRow('Second node',b);suggest()
+        buttons=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel);form.addRow(buttons);buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject)
+        if dialog.exec()!=QDialog.Accepted:return
+        self.insert_part(kind.currentText(),ref.text().strip(),value.text().strip(),a.text().strip(),b.text().strip())
+
+    def insert_part(self,kind,ref,value,a,b):
+        try:number=float(value)
+        except ValueError:number=value
+        part=dict(ref=ref,type=kind,nodes=[a,b])
+        if kind in ('resistor','capacitor','inductor'):part['value']=number
+        elif kind=='diode':part['model']=dict(Vf_V=number,Cj_F='100p')
+        elif kind=='source':part['dc_V']=number
+        elif kind=='load':part['resistance_ohm']=number
+        def change(c):
+            if kind=='switch':
+                if not c.get('drives'):c['drives']={'pwm':dict(frequency_Hz=100e3,duty=0.5)}
+                part.update(drive=next(iter(c['drives'])),model=dict(type='vdmos',Ron_ohm=number))
+            c['parts'].append(part)
+        self.selected_key='part:'+ref
+        if self.commit(change,'Added '+ref):self.scene.focus(self.selected_key)
+
+    def remove_part(self):
+        key=self.selected_key
+        if not key:self.message('Select a part to remove');return
+        ref=key[5:]
+        def change(c):                                              # with whatever was about it alone
+            c['parts']=[p for p in c['parts'] if p['ref']!=ref]
+            if 'couplings' in c:c['couplings']=[k for k in c['couplings'] if ref not in k.get('inductors',[])]
+            if 'probes' in c:c['probes']={n:pr for n,pr in c['probes'].items() if pr.get('current')!=ref}
+            for section in ('positions','rotations'):c.get('schematic',{}).get(section,{}).pop(key,None)
+            c.get('board',{}).get('parts',{}).pop(ref,None)
+        self.commit(change,'Removed '+ref)
+
+    def import_file(self):
+        path,_=QFileDialog.getOpenFileName(self,'Import KiCad information','','KiCad board, schematic or XML netlist (*.kicad_pcb *.kicad_sch *.xml);;All files (*)')
+        if path:self.import_path(path)
+
+    def import_path(self,path,view_only=False):
+        try:self.base_model()
+        except (ValueError,KeyError) as exc:self.message('Fix the model JSON before importing: '+str(exc));return
+        if str(path).lower().endswith('.kicad_pcb'):                 # a board: its footprints and their pads' nets, read here
+            try:document=_kicad().read(path)
+            except (ValueError,RuntimeError,OSError,ImportError) as exc:self.message('Could not read the board: '+str(exc));return
+            return self.import_ready(document,{},view_only)
+        if self.job:self.job.cancel();self.job.deleteLater()
+        self.job=KiCadJob(path,self);self.job.progress.connect(self.message);self.job.failed.connect(self.message);self.job.completed.connect(lambda doc,sheets:self.import_ready(doc,sheets,view_only));QTimer.singleShot(0,self.job.start)
+
+    def import_ready(self,document,sheets,view_only=False):
+        if view_only:
+            self.set_sheets(sheets);self.mode.setCurrentIndex(1)
+            if document.get('sha256')!=self.config.get('schematic',{}).get('source',{}).get('sha256'):self.message('Source file changed; re-import to review connectivity and values.')
+            return
+        try:
+            current=self.base_model();self.check(current)
+        except (ValueError,KeyError,TypeError,ImportError) as exc:self.message('Fix the model before applying this import: '+str(exc));return
+        review=self.review(document,current)
+        if review is None:return
+        refs,connections=review
+        def change(c):
+            imported=_kicad().apply(c,document,refs,connections);c.clear();c.update(imported)
+        if self.commit(change,f'Imported {len(refs)} selected components; source has {len(document["components"])} components'):
+            self.set_sheets(sheets)
+
+    def review(self,document,current):
+        """The parts to import and whether to move the existing ones: the review dialog's answer, or None."""
+        dialog=ImportReview(document,current,self)
+        if dialog.exec()!=QDialog.Accepted:return None
+        return dialog.selected_refs(),dialog.connections.isChecked()
+
+    def set_sheets(self,sheets):
+        self._sheets=sheets;self.sheet.blockSignals(True);self.sheet.clear();self.sheet.addItems(list(sheets));self.sheet.blockSignals(False)
+        if sheets:self.show_sheet(next(iter(sheets)))
+        else:self.source_scene.clear()
+
+    def show_sheet(self,name):
+        if name not in self._sheets:return
+        try:
+            from PySide6.QtSvg import QSvgRenderer
+            from PySide6.QtSvgWidgets import QGraphicsSvgItem
+        except ImportError:
+            self.message('Qt SVG support is needed for source sheets; simulation editing is available. Install the matching PySide6-Addons package.');return
+        self.source_scene.clear();item=QGraphicsSvgItem();item.renderer_ref=QSvgRenderer(self._sheets[name])
+        if not item.renderer_ref.isValid():self.message('Could not render this KiCad source sheet');return
+        item.setSharedRenderer(item.renderer_ref);self.source_scene.addItem(item);self.source_view.fit()
+
+    def load_source(self):
+        source=self.config.get('schematic',{}).get('source',{});path=source.get('path','')
+        if not path.endswith('.kicad_sch') or not Path(path).is_file():path,_=QFileDialog.getOpenFileName(self,'Read-only KiCad sheet','','KiCad schematic (*.kicad_sch)')
+        if path:self.import_path(path,view_only=True)
+
+    def refresh_source(self):
+        self.source_components=self.config.get('schematic',{}).get('source',{}).get('components',[]);self.source_table.setRowCount(len(self.source_components));configured={p['ref'] for p in [*self.config.get('parts',[]),*self.config.get('components',[]),*self.config.get('switches',[])]}
+        for row,c in enumerate(self.source_components):
+            for col,value in enumerate([c['ref'],c['value'],c['kind'],', '.join(p['number']+' → '+(p['net'] or 'unconnected') for p in c['pins']),'Configured' if c['ref'] in configured else 'Not in simulation']):
+                item=QTableWidgetItem(value);item.setToolTip(value);self.source_table.setItem(row,col,item)
+
+    def source_details(self):
+        row=self.source_table.currentRow()
+        if 0<=row<len(self.source_components):self.source_info.setPlainText(json.dumps(self.source_components[row],indent=2))
+
+    def edit_source_part(self,row,*_):
+        ref=self.source_components[row]['ref'];key=next((key for key,item in self.scene.devices.items() if item.record['ref']==ref),None)
+        if key:self.mode.setCurrentIndex(0);self.scene.focus(key)
+        else:self.message(ref+' is not in the simulation; use Import KiCad to select supported passives.')
+
+    def cancel_import(self):
+        if self.job:self.job.cancel()
