@@ -323,20 +323,17 @@ def layouts():
         resolved = M.resolve(model, M.cases(model)[0])
         return Board(stem, width, height), resolved
 
-    def done(name, b, names):
+    def done(name, b, m, names, **place):
+        b.place(m, names=names, **place)
         out[name] = (b.check(), names)
 
     b, m = start('rc_filter', 17.4, 16.4)
     b.row(['in', 'out'], [7, 6], height=6)
-    names = dict(V1='J1')
-    b.place(m, names=names)
-    done('rc_filter', b, names)
+    done('rc_filter', b, m, dict(V1='J1'))
 
     b, m = start('half_wave_rectifier', 33.4, 21.4)
     b.row(['ac', 'out'], [10, 19], height=8, strip=7)                # room for the electrolytic's ground pad
-    names = dict(V1='J1', R1='J2')
-    b.place(m, names=names)
-    done('half_wave_rectifier', b, names)
+    done('half_wave_rectifier', b, m, dict(V1='J1', R1='J2'))
 
     b, m = start('bridge_rectifier', 37, 34.2)                      # the AC pair left, one over the other; DC right
     b.ground(2, 2, 16, 6)
@@ -344,17 +341,13 @@ def layouts():
     b.island('n', 2, 15.8, 16, 24.8)
     b.island('p', 16.4, 6.4, 35, 24.8)
     b.ground(2, 25.2, 35, 32.2)
-    names = dict(V1='J1', P1='J2')
-    b.place(m, names=names)
-    done('bridge_rectifier', b, names)
+    done('bridge_rectifier', b, m, dict(V1='J1', P1='J2'))
 
     for name, widths in (('buck', [10, 12, 10]), ('buck_synchronous', [10, 12, 10]), ('boost', [10, 13, 10]),
                          ('buck_boost', [10, 13, 10])):
         b, m = start(name, sum(widths) + 2 * GAP + 4, 20.4)
         b.row(['in', 'sw', 'out'], widths, height=10)
-        names = {'V1': 'J1', next(p['ref'] for p in m['parts'] if p['type'] == 'load'): 'J2'}
-        b.place(m, names=names)
-        done(name, b, names)
+        done(name, b, m, {'V1': 'J1', next(p['ref'] for p in m['parts'] if p['type'] == 'load'): 'J2'})
 
     b, m = start('flyback', 58, 31.2)                               # primary left, the transformer across the gap
     b.ground(2, 2, 24, 6)
@@ -366,16 +359,12 @@ def layouts():
     b.ground(31.5, 14.8, 40, 24.8)
     b.island('out', 40.4, 6.4, 56, 14.4)
     b.ground(40.4, 14.8, 56, 18.8)
-    names = dict(V1='J1', R1='J2', LP='T1', LS='T1')
     b.transformer('T1', 27.75, 14.6, ['in', 'sw', 'sec', 'GND'], value='200uH 2:1')
-    b.place(m, names=names, skip=('LP', 'LS'), packages=dict(R2='R_2512'))
-    done('flyback', b, names)
+    done('flyback', b, m, dict(V1='J1', R1='J2', LP='T1', LS='T1'), skip=('LP', 'LS'), packages=dict(R2='R_2512'))
 
     b, m = start('half_bridge_resonant', 51.6, 20.4)
     b.row(['in', 'sw', 'a', 'b'], [10, 12, 8, 16], height=10)
-    names = dict(V1='J1', R1='J2')
-    b.place(m, names=names, packages=dict(CR='C_1210'))
-    done('half_bridge_resonant', b, names)
+    done('half_bridge_resonant', b, m, dict(V1='J1', R1='J2'), packages=dict(CR='C_1210'))
 
     b, m = start('full_bridge_phase_shift', 62, 35.2)               # the bridge left (the bus over its two legs, the
     b.ground(2, 2, 38, 6)                                           # tank between them), the receiver right
@@ -387,10 +376,8 @@ def layouts():
     b.island('s', 40, 6.4, 50, 16.4)
     b.island('r', 50.4, 6.4, 60, 16.4)
     b.ground(40, 16.8, 60, 20.8)
-    names = dict(V1='J1', L1='J2', L2='J3', R1='J4')
-    b.place(m, names=names, packages=dict(L1='J_PADS', L2='J_PADS', C3='C_1210', C2='C_1210'),
-            values=dict(L1='coil 24uH', L2='coil 24uH'))
-    done('full_bridge_phase_shift', b, names)
+    done('full_bridge_phase_shift', b, m, dict(V1='J1', L1='J2', L2='J3', R1='J4'),
+         packages=dict(L1='J_PADS', L2='J_PADS', C3='C_1210', C2='C_1210'), values=dict(L1='coil 24uH', L2='coil 24uH'))
     return out
 
 

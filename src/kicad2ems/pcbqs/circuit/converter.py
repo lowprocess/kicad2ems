@@ -62,6 +62,33 @@ def _input_cap(parts, esr, esl):
     return cap
 
 
+def _inductor(parts, found, taken):
+    """The inductor on the cell's switch node, its far net and its value (H). ValueError: a far side that is not
+    one net of its own (none, several, or one of `taken`), or a value that is not an inductance."""
+    from ..pdn.rail import part_value
+    ind = parts[found['inductor']]
+    far = sorted(ind.nets() - {found['switch']})
+    if len(far) != 1 or far[0] in taken:
+        raise ValueError(f"{ind.ref}: its far side is not one net of its own ({', '.join(far) or 'none'})")
+    henries = part_value(ind)
+    if not henries:
+        raise ValueError(f"{ind.ref}: its value {ind.value!r} is not an inductance")
+    return ind, far[0], henries
+
+
+def _board(path, parts, ground, on_board, ends, nets):
+    """The model's board: where the board meets the outside, when it shows it (the one connector between each of
+    `ends`' nets and ground is that model part's footprint: their copper then in the circuit, and the supply's as
+    the rail's source for a power-integrity run), and the nodes' nets."""
+    for model_ref, net in ends:
+        plug = [p.ref for p in parts.values() if re.match(r'(J|P|CN|X)\d', p.ref) and {net, ground} <= p.nets()]
+        if len(plug) == 1:
+            on_board[model_ref] = plug[0]
+    if ground not in ('GND', 'gnd', '0', 'GNDPWR', 'PGND'):         # (those copper.net_name finds itself)
+        nets['0'] = ground
+    return dict(file=str(path), parts=on_board, nets=nets)
+
+
 def model_of(board, path, a):
     """The circuit model (format 2) of the converter the settings `a` select on `board` (pcbqs._cli.load_board's;
     path: its file, the model's board). ValueError: no converter, an ambiguous one (as the near-field tool says
@@ -84,20 +111,11 @@ def model_of(board, path, a):
     if not found[0]['inductor']:
         raise ValueError(f"{ref}: no one inductor on its switch node {found[0]['switch']}: only a buck or a boost is "
                          f"made into a circuit (a bridge's tank, a resonant stage: a model of your own)")
-    up_v, out_v = float(getattr(a, 'vin_volts', 0) or 0), float(getattr(a, 'vout', 0) or 0)
-    if cell and (not re.match(r'(Q|M)\d', ref.upper()) or (up_v and out_v > up_v)):
-        return boost_of(board, path, a, selected, found[0], parts)  # (a diode up from the switch node, or stepping up)
-    ind, sw = parts[found[0]['inductor']], found[0]['switch']
-    far = sorted(ind.nets() - {sw})
-    if len(far) != 1 or far[0] in (vin, ground):
-        raise ValueError(f"{ind.ref}: its far side is not one net of its own ({', '.join(far) or 'none'})")
-    out = far[0]
-    henries = part_value(ind)
-    if not henries:
-        raise ValueError(f"{ind.ref}: its value {ind.value!r} is not an inductance")
-    reg = parts[ref]
-    assumed = []
     volts, vout = float(getattr(a, 'vin_volts', 0) or 0), float(getattr(a, 'vout', 0) or 0)
+    if cell and (not re.match(r'(Q|M)\d', ref.upper()) or (volts and vout > volts)):
+        return boost_of(path, a, selected, found[0], parts)  # (a diode up from the switch node, or stepping up)
+    ind, out, henries = _inductor(parts, found[0], (vin, ground))
+    sw, reg, assumed = found[0]['switch'], parts[ref], []
     if not volts:
         volts, vout = VIN, VIN * float(a.duty)
         assumed.append(f"{volts:g} V in and {vout:g} V out (the settings give a duty alone)")
@@ -140,17 +158,6 @@ def model_of(board, path, a):
     else:
         raise ValueError(f"{out}: no capacitor from the inductor's far net to {ground}")
     model_parts.append(dict(ref=rl, type='load', nodes=['out', '0'], resistance_ohm='vout/iout'))
-    # where the board meets the outside, when it shows it: the one connector on the input net and ground is the
-    # supply's footprint, the one on the output net and ground the load's (their copper then in the circuit, and
-    # the supply's as the rail's source for a power-integrity run)
-    plug = lambda net: [p.ref for p in parts.values() if re.match(r'(J|P|CN|X)\d', p.ref) and {net, ground} <= p.nets()]
-    for model_ref, net in ((v1, vin), (rl, out)):
-        found_plug = plug(net)
-        if len(found_plug) == 1:
-            on_board[model_ref] = found_plug[0]
-    nets = {'in': vin, 'sw': sw, 'out': out}
-    if ground not in ('GND', 'gnd', '0', 'GNDPWR', 'PGND'):         # (those copper.net_name finds itself)
-        nets['0'] = ground
     return dict(
         format=2, name=f"{ref}: {vin} to {out}",
         description=(f"The converter {ref} as its board has it: input capacitors {', '.join(selected['capacitors'])}, "
@@ -165,24 +172,17 @@ def model_of(board, path, a):
                       iin_avg=dict(avg='iin'), iin_rms=dict(rms='iin')),
         targets=[dict(adjust='drives.pwm.duty', range=[0.02, 0.98], initial='vout/vin', measure='vout_avg',
                       value='vout')],
-        board=dict(file=str(path), parts=on_board, nets=nets))
+        board=_board(path, parts, ground, on_board, ((v1, vin), (rl, out)), {'in': vin, 'sw': sw, 'out': out}))
 
 
-def boost_of(board, path, a, selected, found, parts):
+def boost_of(path, a, selected, found, parts):
     """The circuit model of a boost: the discrete cell `found` (mqs_cli.discover: its upper part the converter, its
     lower switch `low`, the inductor on its switch node) whose selected capacitors are the output's. ValueError:
     an inductor whose far side is not one net of its own, or settings that do not step up."""
     from shapely.ops import unary_union
     from ..pdn.rail import part_value, field_value
     up, low, sw, ground, out = found['converter'], found['low'], found['switch'], selected['ground'], selected['vin']
-    ind = parts[found['inductor']]
-    far = sorted(ind.nets() - {sw})
-    if len(far) != 1 or far[0] in (out, ground):
-        raise ValueError(f"{ind.ref}: its far side is not one net of its own ({', '.join(far) or 'none'})")
-    vin = far[0]
-    henries = part_value(ind)
-    if not henries:
-        raise ValueError(f"{ind.ref}: its value {ind.value!r} is not an inductance")
+    ind, vin, henries = _inductor(parts, found, (out, ground))
     assumed = []
     volts, vout = float(getattr(a, 'vin_volts', 0) or 0), float(getattr(a, 'vout', 0) or 0)
     if not volts or not vout:                           # a duty alone: the hot loop's pulse, the upper part's share
@@ -220,15 +220,6 @@ def boost_of(board, path, a, selected, found, parts):
                     for c in selected['capacitors']]
     assumed.append("the output capacitors without their ESL (the commutation into them is ideal)")
     model_parts.append(dict(ref=rl, type='load', nodes=['out', '0'], resistance_ohm='vout/iout'))
-    plug = lambda net: [p.ref for p in parts.values() if re.match(r'(J|P|CN|X)\d', p.ref) and {net, ground} <= p.nets()]
-    on_board = {}
-    for model_ref, net in ((v1, vin), (rl, out)):
-        found_plug = plug(net)
-        if len(found_plug) == 1:
-            on_board[model_ref] = found_plug[0]
-    nets = {'in': vin, 'sw': sw, 'out': out}
-    if ground not in ('GND', 'gnd', '0', 'GNDPWR', 'PGND'):
-        nets['0'] = ground
     return dict(
         format=2, name=f"{low} and {up}: {vin} up to {out}",
         description=(f"The boost of {low} and {up} as its board has it: inductor {ind.ref} from {vin}"
@@ -245,4 +236,4 @@ def boost_of(board, path, a, selected, found, parts):
                       iin_avg=dict(avg='il'), iup_rms=dict(rms='iup')),
         targets=[dict(adjust='drives.pwm.duty', range=[0.02, 0.95], initial='1 - vin/vout', measure='vout_avg',
                       value='vout')],
-        board=dict(file=str(path), parts=on_board, nets=nets))
+        board=_board(path, parts, ground, {}, ((v1, vin), (rl, out)), {'in': vin, 'sw': sw, 'out': out}))

@@ -39,10 +39,9 @@ def parse_value(text):
     if not m or not (m.group(1) or m.group(2) or m.group(4)):
         return None
     whole, frac, pre, frac2, _ = m.groups()
-    digits = f"{whole or '0'}.{frac or frac2 or '0'}"
     if frac and frac2:
         return None
-    return float(digits) * _SI.get(pre, 1.0)
+    return float(f"{whole or '0'}.{frac or frac2 or '0'}") * _SI.get(pre, 1.0)
 
 
 def part_value(fp):
@@ -286,11 +285,8 @@ class Rail:
         self.ground_source_pads = gp
         # decaps: two-pad capacitors from the tree to ground (C1, and prefixed series such as CA1 / CE1 / CP1;
         # one whose value is not a capacitance is reported and left out by the PDN model)
-        self.decaps = []
-        for p in self.parts.values():
-            ns = p.nets()
-            if re.match(r'C[A-Z]{0,2}\d', p.ref.upper()) and len(p.pads) == 2 and ns & self.nets and ns & g and len(ns) == 2:
-                self.decaps.append(p)
+        self.decaps = [p for p in self.parts.values() if re.match(r'C[A-Z]{0,2}\d', p.ref.upper()) and len(p.pads) == 2
+                       and len(p.nets()) == 2 and p.nets() & self.nets and p.nets() & g]
         missing = [r for r in self.loads if r not in self.parts]
         if missing:
             raise ValueError(f"loads not on the board: {', '.join(missing)}")

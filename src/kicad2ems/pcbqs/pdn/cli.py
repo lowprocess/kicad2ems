@@ -100,15 +100,6 @@ def say(*a):
     print('pdn:', *a, flush=True)
 
 
-
-def spread(board, rail_net, amps):
-    users = {f['ref']: sum(p.get('net') == rail_net for p in f['pads']) for f in board['prims']['footprints']
-             if not f.get('dnp') and any(p.get('net') == rail_net for p in f['pads'])
-             and not f['ref'].upper().startswith(('C', 'R', 'L', 'FB'))}
-    tot = sum(users.values())
-    return {r: amps * n / tot for r, n in users.items()} if tot else {}
-
-
 def ref_values(items, flag, form, most=1):
     """{REF: [values]} of REF=V[,V...] options (`most` values, each positive); SystemExit naming the bad one."""
     out = {}
@@ -140,8 +131,7 @@ def run(a):
         raise SystemExit('pdn: --rail is required')
     if a.plane_min < 0:                                 # every option checked before the (slow) board import
         raise SystemExit('pdn: error: --plane-min must be nonnegative')
-    returns = {}
-    plain = []
+    returns, plain = {}, []
     for item in a.load:                                 # REF=AMPS[@RETURN]
         head, at, back = item.partition('@')
         if at:
@@ -201,8 +191,12 @@ def run(a):
         loads = {**fielded, **loads}
         if fielded:
             say(f"loads from the parts' {LOAD_FIELD} fields: " + ', '.join(f"{r} {v:g} A" for r, v in sorted(fielded.items())))
-    if not loads and a.spread_load > 0:
-        loads, assumed = spread(board, a.rail, a.spread_load), True
+    if not loads and a.spread_load > 0:                 # shared by +rail pad count over every part but R, C, L
+        users = {f['ref']: sum(p.get('net') == a.rail for p in f['pads']) for f in board['prims']['footprints']
+                 if not f.get('dnp') and any(p.get('net') == a.rail for p in f['pads'])
+                 and not f['ref'].upper().startswith(('C', 'R', 'L', 'FB'))}
+        tot = sum(users.values())
+        loads, assumed = ({r: a.spread_load * n / tot for r, n in users.items()} if tot else {}), True
     if not loads:
         raise SystemExit(f"pdn: no loads: --load REF=AMPS, a {LOAD_FIELD} field on the parts, or --spread-load AMPS")
     unknown = sorted(set(spectra) - set(loads))
@@ -293,7 +287,7 @@ def run(a):
             say(f"droop of a {step:g} A step rising in {a.rise * 1e9:g} ns: {d['peak_V'] * 1e3:.3g} mV at {worst}, "
                 f"{d['at_s'] * 1e6:.3g} us after it ({a.volts * a.ripple * 1e3:.3g} mV allowed)")
         if a.ports_touchstone or a.spice:                       # the bare PDN between every part's port (R-E14)
-            from .models import coverage_note, spice_subcircuit
+            from .models import spice_subcircuit
             pn, Zp = pdn.port_matrix(f)
             name = os.path.join(a.out, f'pdn_ports.z{len(pn)}p')
             write_z(name, f, Zp, pn, what="the bare PDN (planes, ties, series parts) between its parts' ports")
@@ -306,9 +300,9 @@ def run(a):
                     out['pdn']['ports'].update(spice='pdn_ports.sub', fit=fit)
                 except (RuntimeError, ValueError, np.linalg.LinAlgError) as e:
                     out['notes'].append(f"the SPICE subcircuit was not written: {e}")
+        from .models import coverage_note
         for n, info in pdn.parts.items():                       # a model file's band against the sweep's
             if info['el'] is not None and 'Zf' in info['el']:
-                from .models import coverage_note
                 note = coverage_note(n, info['el']['Zf'][0], f)
                 if note:
                     out['notes'].append(note)
@@ -378,8 +372,7 @@ def droop_figure(droop, allowed, out):
            title=f"a {any_['step_A']:g} A step rising in {any_['rise_s'] * 1e9:g} ns")
     ax.grid(alpha=0.3, which='both')
     ax.legend(fontsize=8)
-    path = os.path.join(out, 'droop.png')
-    fig.savefig(path, dpi=110)
+    fig.savefig(os.path.join(out, 'droop.png'), dpi=110)
     plt.close(fig)
     return 'droop.png'
 
@@ -459,12 +452,10 @@ def dc_figures(board, dc, volts, out):
 
 
 def z_figure(f, Z, Z0, targets, out):
-    """|Z| per load, the planes alone dotted. `targets`: {load: ohms or None} (or one value for all). The axis is
-    set by the loaded curves and targets, so a bare-planes curve reaching 1e11 ohm on a tiny cavity (I6) runs
-    off the top instead of flattening them."""
+    """|Z| per load, the planes alone dotted. `targets`: {load: ohms or None}. The axis is set by the loaded curves
+    and targets, so a bare-planes curve reaching 1e11 ohm on a tiny cavity (I6) runs off the top instead of
+    flattening them."""
     plt = _plt()
-    if not isinstance(targets, dict):
-        targets = {r: targets for r in Z}
     fig, ax = plt.subplots(figsize=(9, 4.6))
     shown = []
     for k, (r, z) in enumerate(Z.items()):

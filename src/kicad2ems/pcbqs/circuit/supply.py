@@ -38,30 +38,15 @@ HARMONICS = 40
 GROUND = ('0', 'GND', 'gnd')
 
 
-def _period(result, period, harmonics):
-    """(the samples of the last period, how many, the harmonics that fit), or None: less than a period sampled."""
-    t = np.asarray(result['time_s'])
-    n = int(round(period / (t[1] - t[0])))
-    if n < 4 or len(t) < n + 1:
-        return None
-    return slice(len(t) - 1 - n, len(t) - 1), n, min(int(harmonics), n // 2 - 1)   # its end left to the next period
-
-
-def _load(at, i, n, count, period):
-    """A load's row from its current over the period: its average, its RMS and its harmonics."""
-    c = np.fft.rfft(i) / n
-    return dict(at, avg_A=float(c[0].real), rms_A=float(np.sqrt(np.mean(i ** 2))),
-                f_Hz=[float(k / period) for k in range(1, count + 1)], A=[float(x) for x in 2 * np.abs(c[1:count + 1])],
-                deg=[float(x) for x in np.degrees(np.angle(c[1:count + 1]))])
-
-
 def currents(model, result, period, harmonics=HARMONICS):
     """The supply rows of a resolved model's reported run (result: {signal: samples}, uniformly sampled)."""
     from .copper import net_name, footprint_of
-    got = _period(result, period, harmonics)
-    if got is None:
+    t = np.asarray(result['time_s'])
+    n = int(round(period / (t[1] - t[0])))                          # the samples of the last period
+    if n < 4 or len(t) < n + 1:
         return []
-    last, n, count = got
+    last = slice(len(t) - 1 - n, len(t) - 1)                        # (its end left to the next period)
+    count = min(int(harmonics), n // 2 - 1)                         # the harmonics that fit
     live = [p for p in model['parts'] if p.get('enabled', True) and p['nodes'][0] != p['nodes'][1]]
     where = lambda part, node: footprint_of(model, part['ref'], part['nodes'].index(node)) or part['ref']
     held = lambda node: any(p['type'] == 'capacitor' and node in p['nodes'] and set(p['nodes']) & set(GROUND)
@@ -101,7 +86,14 @@ def currents(model, result, period, harmonics=HARMONICS):
             at = drawn.setdefault(fp, dict(footprint=fp, parts=[], i=0.0))
             at['parts'].append(part['ref'])
             at['i'] = at['i'] + i
-        loads = [_load(at, at.pop('i'), n, count, period) for at in drawn.values()]
+        loads = []
+        for at in drawn.values():                                   # its average, its RMS and its harmonics
+            i = at.pop('i')
+            c = np.fft.rfft(i) / n
+            loads.append(dict(at, avg_A=float(c[0].real), rms_A=float(np.sqrt(np.mean(i ** 2))),
+                              f_Hz=[float(k / period) for k in range(1, count + 1)],
+                              A=[float(x) for x in 2 * np.abs(c[1:count + 1])],
+                              deg=[float(x) for x in np.degrees(np.angle(c[1:count + 1]))]))
         if loads:
             caps = [where(p, node) for p in live if p['type'] == 'capacitor' and node in p['nodes']
                     and set(p['nodes']) & set(GROUND)]

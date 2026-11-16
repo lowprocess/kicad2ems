@@ -45,6 +45,7 @@ import copy
 import itertools
 import json
 import math
+import operator
 import re
 from pathlib import Path
 
@@ -57,6 +58,8 @@ TEXT_KEYS = {'ref', 'type', 'nodes', 'drive', 'name', 'description', 'library', 
              'body_diode', 'external_capacitance', 'linear_solver', 'strict', 'engine', 'model_name', 'pins'}
 SUFFIX = dict(f=1e-15, p=1e-12, n=1e-9, u=1e-6, m=1e-3, k=1e3, K=1e3, M=1e6, G=1e9)
 FUNCTIONS = dict(sqrt=math.sqrt, abs=abs, min=min, max=max, exp=math.exp, log=math.log)
+OPERATORS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv,
+             ast.Pow: operator.pow}
 REF = re.compile(r'[A-Za-z][A-Za-z0-9_]*$')
 
 
@@ -96,17 +99,8 @@ def _evaluate(node, names):
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
         v = _evaluate(node.operand, names)
         return -v if isinstance(node.op, ast.USub) else v
-    if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)):
-        a, b = _evaluate(node.left, names), _evaluate(node.right, names)
-        if isinstance(node.op, ast.Add):
-            return a + b
-        if isinstance(node.op, ast.Sub):
-            return a - b
-        if isinstance(node.op, ast.Mult):
-            return a * b
-        if isinstance(node.op, ast.Div):
-            return a / b
-        return a ** b
+    if isinstance(node, ast.BinOp) and type(node.op) in OPERATORS:
+        return OPERATORS[type(node.op)](_evaluate(node.left, names), _evaluate(node.right, names))
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in FUNCTIONS and not node.keywords:
         return float(FUNCTIONS[node.func.id](*[_evaluate(a, names) for a in node.args]))
     raise ModelError('only numbers, parameters, + - * / **, pi and ' + ', '.join(FUNCTIONS) + ' are allowed')

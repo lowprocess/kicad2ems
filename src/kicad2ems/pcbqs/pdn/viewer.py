@@ -86,6 +86,17 @@ def _copper(board, nets, outline):
     return out
 
 
+def dump_layout(board, nets, outline, crop=False):
+    """What write_info draws the dumps over: the nets' copper over the outline, their vias (crop: only those inside
+    it), the copper layers' heights and the board's thickness."""
+    from shapely.geometry import Point
+    cu_z = {c['name']: c['z'] for c in board['stack']['copper']}
+    vias = [(v['x'], v['y'], v['r'], v['z0'], v['z1']) for v in board['vias']
+            if v['net'] in nets and (not crop or outline.contains(Point(v['x'], v['y'])))]
+    return SimpleNamespace(outline=outline, cu_z=cu_z, copper=_copper(board, nets, outline), ports=[], vias=vias,
+                           thickness=board['stack'].get('thickness', max(cu_z.values())))
+
+
 def write_viewer(out, board, dc, volts, nets, ground, refs=()):
     """Write the files above; returns dict(board=, mesh=, dumps=[{side, layer, field, file}]) for pdn.json.
     nets: the rail tree's; ground: the return's; refs: the parts to show as the solve's own (source, loads,
@@ -108,8 +119,6 @@ def write_viewer(out, board, dc, volts, nets, ground, refs=()):
         np.savez_compressed(os.path.join(out, 'pdn_mesh_pdn.npz'), kind='tris', nodes=np.vstack(nodes),
                             tris=np.vstack(tris))
     x, y = grid_of(outline.bounds)
-    cu_z = {c['name']: c['z'] for c in board['stack']['copper']}
-    top = max(cu_z.values())
     files = []
     for side, mine, what in (('power', nets, 'drop'), ('ground', ground, 'rise')):
         exc = os.path.join(out, 'pdn', f"exc_{side}")
@@ -132,11 +141,7 @@ def write_viewer(out, board, dc, volts, nets, ground, refs=()):
         for stale in os.listdir(exc):                   # a layer of an earlier solve in this folder
             if stale.startswith('dump_') and stale.endswith('.npz') and stale[:-4] not in units:
                 os.remove(os.path.join(exc, stale))
-        vias = [v for v in board['vias'] if v['net'] in mine]
-        m = SimpleNamespace(outline=outline, cu_z=cu_z, copper=_copper(board, mine, outline), ports=[],
-                            vias=[(v['x'], v['y'], v['r'], v['z0'], v['z1']) for v in vias],
-                            thickness=board['stack'].get('thickness', top))
-        write_info(exc, dumps, m)
+        write_info(exc, dumps, dump_layout(board, mine, outline))
         path = os.path.join(exc, 'dump_info.json')
         with open(path, encoding='utf-8') as fh:
             info = json.load(fh)

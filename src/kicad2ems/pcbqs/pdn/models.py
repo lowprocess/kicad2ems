@@ -8,7 +8,6 @@ or a regulator's output impedance, as the PDN's elements take it (cavity.element
 
     S, z0 = to_s(Z, z0)                            # (the port matrix's subcircuit: spice_subcircuit)
 """
-import math
 import os
 
 import numpy as np

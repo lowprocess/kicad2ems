@@ -12,7 +12,6 @@ def _axes(ax, p, title):
 
 
 def _draw(ax, res, layer, vmin, vmax, cmap='inferno'):
-    p = res.problem
     if res.method == 'grid':
         ny, nx = res.T[layer].shape
         ext = (res.x0, res.x0 + nx * res.size, res.y0 + ny * res.size, res.y0)

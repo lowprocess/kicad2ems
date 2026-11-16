@@ -193,15 +193,10 @@ class DCResult:
     series: dict = None
 
 
-def _disc(p):
-    return [(p['layer'], Point(p['x'], p['y']).buffer(p['r'], quad_segs=4))]
-
-
-def solve(board, net, source, loads, dmax=1.0, sigma=SIGMA_CU, plating=0.025, ground=False, log=print, coarsen=None,
-          fine=True):
+def solve(board, net, source, loads, dmax=1.0, sigma=SIGMA_CU, plating=0.025, ground=False, log=print, fine=True):
     """The one-net form (see the module docstring); pads are discs (x, y, r) on a layer."""
     pads = {'_source': source, **{l.get('name', f'L{j + 1}'): l for j, l in enumerate(loads)}}
-    terms = {name: _disc(p) for name, p in pads.items()}
+    terms = {name: [(p['layer'], Point(p['x'], p['y']).buffer(p['r'], quad_segs=4))] for name, p in pads.items()}
     nw = Network(board, net, terms, dmax=dmax, sigma=sigma, plating=plating, log=log,
                  fine=list(terms) if fine else ())
     for name, p in pads.items():
@@ -229,8 +224,8 @@ def solve_rail(rail, volts, dmax=1.0, sigma=SIGMA_CU, plating=0.025, log=print, 
         pt[f'{s.part.ref}:b'] = terminal(s.pads('b'), layers)
     for ref in rail.loads:
         pt[ref] = terminal(rail.parts[ref].on(rail.nets), layers)
-    pw = Network(rail.board, rail.nets, pt, dmax=dmax, sigma=sigma, plating=plating, log=log,
-                 fine=['source', *rail.loads] if fine else ())
+    kw = dict(dmax=dmax, sigma=sigma, plating=plating, log=log, fine=['source', *rail.loads] if fine else ())
+    pw = Network(rail.board, rail.nets, pt, **kw)
     for s in rail.series:
         pw.series(s.part.ref, f'{s.part.ref}:a', f'{s.part.ref}:b', s.R)
     rp = pw.solve({'source': volts}, {ref: -i for ref, i in rail.loads.items()})
@@ -239,8 +234,7 @@ def solve_rail(rail, volts, dmax=1.0, sigma=SIGMA_CU, plating=0.025, log=print, 
     no_gnd = [ref for ref in rail.loads if not gt[ref]]
     for ref in no_gnd:
         gt.pop(ref)
-    gn = Network(rail.board, g, gt, dmax=dmax, sigma=sigma, plating=plating, log=log,
-                 fine=['source', *rail.loads] if fine else ())
+    gn = Network(rail.board, g, gt, **kw)
     rg = gn.solve({'source': 0.0}, {ref: i for ref, i in rail.loads.items() if ref in gt})
     loads = {}
     for ref, i in rail.loads.items():

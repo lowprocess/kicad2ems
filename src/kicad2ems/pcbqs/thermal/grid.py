@@ -263,6 +263,12 @@ def solve(problem, pitch=0.5, sub=None, detail=DETAIL, log=print, transient=None
             ok = live[r, c]
             return (idx[layer, r[ok], c[ok]], f[ok] / f[ok].sum()) if ok.any() else (np.zeros(0, int), np.zeros(0))
         A, q, read = p.extend(A, q, by, spot)
+
+    def parts_at(x):                                                # (x: the rise of every unknown)
+        r = x[:n]
+        return part_temperatures(p, lambda s: p.ambient + (float(r[by[id(s)][0]] @ by[id(s)][1])
+                                                           if by[id(s)] is not None else 0.0),
+                                 read(x) if read else None)
     t1 = time.perf_counter()
     whole = solve_spd(A, q)
     rise = whole[:n]
@@ -271,8 +277,7 @@ def solve(problem, pitch=0.5, sub=None, detail=DETAIL, log=print, transient=None
     for l in range(L):
         T[l][live] = p.ambient + rise[idx[l][live]]
     extra = read(whole) if read else None
-    parts = part_temperatures(p, lambda s: p.ambient + (float(rise[by[id(s)][0]] @ by[id(s)][1])
-                                                        if by[id(s)] is not None else 0.0), extra)
+    parts = parts_at(whole)
     res = Result('grid', p, T, parts, n, dict(build=t1 - t0, solve=t2 - t1), float(film @ rise), pitch, x0=x0, y0=y0,
                  edge_W=float(edge @ rise), extra=extra)
     if transient:
@@ -285,12 +290,6 @@ def solve(problem, pitch=0.5, sub=None, detail=DETAIL, log=print, transient=None
             inner = 0 < l < len(p.layers) - 1
             cap[idx[l][live]] = (area[live] * lay.edge * 1e-3 * RHO_C_FR4 +
                                  cu_area[l][live] * lay.t * 1e-3 * (RHO_C_CU - (RHO_C_FR4 if inner else 0.0)))
-
-        def parts_at(x):
-            r = x[:n]
-            return part_temperatures(p, lambda s: p.ambient + (float(r[by[id(s)][0]] @ by[id(s)][1])
-                                                               if by[id(s)] is not None else 0.0),
-                                     read(x) if read else None)
         res.transient = heating(A, q, cap, float(transient), parts_at, parts, n, log)
         res.transient['hottest_C'] = [p.ambient + v for v in res.transient.pop('hottest_rise_K')]
     log(f"thermal grid: {nx} x {ny} cells of {pitch:g} mm on {L} layer(s), {n:,} unknowns, "

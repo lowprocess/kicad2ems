@@ -42,9 +42,7 @@ def fill_holes(geom, area, cover=None):
 
     def keep(h):
         hp = Polygon(h)
-        if hp.area < area:
-            return False
-        return not (cover is not None and hp.difference(cover).area < 0.05 * hp.area)
+        return hp.area >= area and not (cover is not None and hp.difference(cover).area < 0.05 * hp.area)
     return unary_union([Polygon(p.exterior, [h for h in p.interiors if keep(h)]) for p in polys])
 
 
@@ -137,9 +135,6 @@ class PlanePair:
         log(f"plane pair: {geom.area:.0f} mm2, d {d:.3g} mm, er {er:.3g}, C {self.C * 1e9:.3g} nF; "
             f"{len(nodes):,} vertices, {len(self.ports)} ports")
 
-    def y_planes(self, f):
-        return plane_admittance(self.K, self.M, f, self.d, self.er, self.tand, self.t, self.sigma)
-
     def z(self, f, bare=False, observe=None):
         """(nf, k, k) impedance matrix between the planes at the ports (observe: their names, default every port),
         with each port's element attached (bare: the planes alone)."""
@@ -150,7 +145,7 @@ class PlanePair:
         E = np.zeros((self.n, len(obs)))
         E[obs, np.arange(len(obs))] = 1.0
         for i, fi in enumerate(f):
-            Y = self.y_planes(fi)
+            Y = plane_admittance(self.K, self.M, fi, self.d, self.er, self.tand, self.t, self.sigma)
             if not bare:
                 y = np.zeros(self.n, complex)
                 for k, p in enumerate(self.ports):

@@ -15,19 +15,8 @@ from shapely.affinity import scale
 from scipy.sparse import coo_matrix, diags
 
 from kicad2ems.emsdev.numerics.geo import mesh_polygons
-from ..pdn.mesh import stiffness, mass, overlapping_vias
+from ..pdn.mesh import stiffness, mass, overlapping_vias, outline_segments
 from .problem import Result, part_temperatures, solve_spd
-
-
-def _segments(geom):
-    out = []
-    for q in getattr(geom, 'geoms', [geom]):
-        if q.geom_type != 'Polygon':
-            continue
-        for ring in [q.exterior, *q.interiors]:
-            c = np.asarray(ring.coords)[:, :2] * 1e-3
-            out += [(tuple(a), tuple(b)) for a, b in zip(c[:-1], c[1:])]
-    return out
 
 
 def solve(problem, dmax=1.0, simplify=None, coarsen=None, quality=25, log=print):
@@ -37,12 +26,9 @@ def solve(problem, dmax=1.0, simplify=None, coarsen=None, quality=25, log=print)
     t0 = time.perf_counter()
     tol = dmax / 20 if simplify is None else simplify
     copper = [None if l.copper is None else l.copper.simplify(tol).buffer(0) for l in p.layers]
-    lines = []
-    for g in copper:
-        if g is not None:
-            lines += _segments(g)
+    lines = [seg for g in copper if g is not None for seg in outline_segments(g)]
     for s in [*p.sources, *p.held]:
-        lines += _segments(s.geom)
+        lines += outline_segments(s.geom)
     pts = [(v['x'], v['y'], v['r']) for v in p.vias]
     gone = overlapping_vias(pts)                        # drilled into one another: one ring
     keep = [i for i in range(len(pts)) if i not in gone]

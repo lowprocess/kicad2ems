@@ -135,28 +135,20 @@ def _sim_pairs(text):
     return {k: v.strip('"') for k, v in re.findall(r'([^\s=]+)\s*=\s*("[^"]*"|\S+)', text or '')}
 
 
-def _numbers_of(pairs):
-    out = {}
-    for k, v in pairs.items():
-        try:
-            out[k.upper()] = engineering_value(v)
-        except ValueError:
-            pass                                                    # (type=VDMOS and the like)
-    return out
-
-
 def sim_model(c, fields, roles, folder=None):
     """A component's Sim.* fields as its model's vendor fields: (fields to add, why not | ''). roles: {model role:
     the symbol pin names that are it}, D G S or A K."""
     import os
     from ..power_spice import library_entry
     lib, name = fields.get('sim.library'), fields.get('sim.name')
-    params = _numbers_of(_sim_pairs(fields.get('sim.params')))
+    params = {}
+    for k, v in _sim_pairs(fields.get('sim.params')).items():
+        try:
+            params[k.upper()] = engineering_value(v)
+        except ValueError:
+            pass                                                    # (type=VDMOS and the like)
     if not (lib and name):
-        if params:
-            kind = 'vdmos_parameters' if 'D' in roles else 'spice_parameters'
-            return {kind: params}, ''
-        return {}, ''
+        return ({'vdmos_parameters' if 'D' in roles else 'spice_parameters': params} if params else {}), ''
     env = dict(os.environ, KIPRJMOD=str(folder or '.'))
     path = Path(re.sub(r'\$\{(\w+)\}', lambda m: env.get(m[1], m[0]), lib)).expanduser()
     if not path.is_absolute() and folder:

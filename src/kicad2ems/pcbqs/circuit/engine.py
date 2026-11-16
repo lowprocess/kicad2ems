@@ -29,6 +29,7 @@ and peak current; what the sources deliver, what the loads take, the loss, the e
 (what the sources deliver against what the parts absorb), and the gate drives' power.
 """
 import copy
+import functools
 import hashlib
 import json
 import re
@@ -162,15 +163,11 @@ def collect(measured, deck):
         power_balance_relative=abs(sum(delivered.values()) - absorbed) / max(abs(source), 1e-12) if source > 0 else None)
 
 
-def state_signals(deck):
-    """The signals that hold the circuit's state: {label: 'V' | 'A'} (capacitor voltages, inductor currents)."""
-    out = {}
-    for ref, kind in deck.kinds.items():
-        if kind == 'capacitor':
-            out[(ref + '.cap_V') if ref + '.cap_V' in deck.signals else ref + '.V'] = 'V'
-        elif kind == 'inductor':
-            out[(ref + '.winding_I') if ref + '.winding_I' in deck.signals else ref + '.I'] = 'A'
-    return out
+def state_label(ref, kind, signals):
+    """The signal that holds a capacitor's or an inductor's state: the voltage on the capacitance itself (<ref>.cap_V,
+    without its ESR's and ESL's drops), a winding's inductance current (<ref>.winding_I); else <ref>.V or <ref>.I."""
+    own, plain = (ref + '.cap_V', ref + '.V') if kind == 'capacitor' else (ref + '.winding_I', ref + '.I')
+    return own if own in signals else plain
 
 
 def periodic_error(result, deck, period, ignore=()):
@@ -187,8 +184,9 @@ def periodic_error(result, deck, period, ignore=()):
         raise ValueError('a run needs at least three periods to judge whether it repeats')
     back = np.arange(max(n // 2, 1) + 1)
     times = t[-1] - (back[:, None] + 1) * period + (np.arange(64) / 64 * period)[None, :]
-    signals = {k: u for k, u in state_signals(deck).items() if k in result and k not in ignore
-               and k.split('.')[0] not in ignore}
+    signals = {state_label(r, kind, deck.signals): 'V' if kind == 'capacitor' else 'A'      # capacitor voltages,
+               for r, kind in deck.kinds.items() if kind in ('capacitor', 'inductor')}       # inductor currents
+    signals = {k: u for k, u in signals.items() if k in result and k not in ignore and k.split('.')[0] not in ignore}
     cycles = {k: np.interp(times, t, result[k]) for k in signals}  # [periods back, phase]
     scale = {u: max([np.max(np.abs(cycles[k][0])) for k in signals if signals[k] == u] or [0.0]) for u in ('V', 'A')}
     out = {}
@@ -215,9 +213,9 @@ def stored_energy(result, model, deck, period):
         if ref not in deck.kinds:
             continue
         if kind == 'capacitor':
-            out[ref] = 0.5 * p['value'] * p.get('bias_factor', 1.0) * at(ref + '.cap_V' if ref + '.cap_V' in result else ref + '.V') ** 2
+            out[ref] = 0.5 * p['value'] * p.get('bias_factor', 1.0) * at(state_label(ref, kind, result)) ** 2
         elif kind == 'inductor':
-            current[ref] = at(ref + '.winding_I' if ref + '.winding_I' in result else ref + '.I')
+            current[ref] = at(state_label(ref, kind, result))
             out[ref] = 0.5 * p['value'] * current[ref] ** 2
         elif kind == 'source' and p.get('L_H'):
             out[ref] = 0.5 * p['L_H'] * at(ref + '.I') ** 2
@@ -295,8 +293,7 @@ def end_state(result, model, deck, period=None):
         if ref not in deck.kinds:
             continue
         if kind == 'capacitor':
-            out[ref] = dict(initial_V=last((ref + '.cap_V') if ref + '.cap_V' in result else ref + '.V'),
-                            initial_I=last(ref + '.I'))
+            out[ref] = dict(initial_V=last(state_label(ref, kind, result)), initial_I=last(ref + '.I'))
         elif kind == 'inductor':
             if ref + '.winding_I' in result:
                 out[ref] = dict(initial_A=last(ref + '.winding_I'), initial_V=last(ref + '.V'))
@@ -361,10 +358,10 @@ class Knob:
         new = min(max(new, self.lo), self.hi)
         tried_end = [x for x, _ in self.points if x in (self.lo, self.hi)]
         if new in (self.lo, self.hi) and new in tried_end:
-            end = 'low' if new == self.lo else 'high'
-            raise RuntimeError(f"{self.measure} cannot reach {self.value:g} with {self.path} in "
-                               f"[{self.lo:g}, {self.hi:g}]: at its {end} end it is "
-                               f"{self.value * (1 + [e for x, e in self.points if x == new][-1]) if self.value else [e for x, e in self.points if x == new][-1]:g}")
+            err = [e for x, e in self.points if x == new][-1]
+            raise RuntimeError(f"{self.measure} cannot reach {self.value:g} with {self.path} in [{self.lo:g}, "
+                               f"{self.hi:g}]: at its {'low' if new == self.lo else 'high'} end it is "
+                               f"{self.value * (1 + err) if self.value else err:g}")
         self.x = new
         return new
 
@@ -481,22 +478,17 @@ def edge_at(lines, t, tol=1e-9):
     return False
 
 
-_NGSPICE = []
-
-
+@functools.cache
 def ngspice_version():
     """ngspice's version line ('ngspice-45.2 ...'), '' when it is not found; asked once."""
-    if not _NGSPICE:
-        exe = shutil.which('ngspice')
-        text = ''
-        if exe:
-            try:
-                p = subprocess.run([exe, '-v'], capture_output=True, text=True, timeout=20)
-                text = next((l.strip() for l in (p.stdout + p.stderr).splitlines() if 'ngspice' in l.lower()), '')
-            except (OSError, subprocess.TimeoutExpired):
-                text = ''
-        _NGSPICE.append(text)
-    return _NGSPICE[0]
+    exe = shutil.which('ngspice')
+    if not exe:
+        return ''
+    try:
+        p = subprocess.run([exe, '-v'], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return ''
+    return next((l.strip() for l in (p.stdout + p.stderr).splitlines() if 'ngspice' in l.lower()), '')
 
 
 def fingerprint(model, copper=None):
@@ -532,14 +524,31 @@ def run_case(model, point, out, log=print, copper=None):
             log(f"{M.case_name(point)}: unchanged, reusing its results")
             return row
     a = settings(base)
-    run_once = simulate
     knobs = [Knob(t) for t in base.get('targets', [])]
     label = (M.case_name(point) + ': ') if point else ''
     state, history, notes, total = None, [], [], 0
     if a.get('engine', 'ngspice') != 'ngspice':                     # (a model of the piecewise-linear engine's days)
         notes.append(f"analysis.engine {a['engine']!r} is no longer: ngspice ran it")
     cycles = base_cycles = int(a['cycles'])
+    strict = a['solver'].get('reltol', 1e-4)
     accepted = None
+
+    def knobbed():
+        """The model at the point, with the knobs where they are now, resolved."""
+        current = copy.deepcopy(model)
+        for path, value in (point or {}).items():
+            M.put(current, path, value)
+        for kn in knobs:
+            M.put(current, kn.path, kn.x)
+        return M.resolve(current)
+
+    def worst(r, d):
+        return max(periodic_error(r, d, d.period, a.get('ignore', ())).values(), default=0.0)
+
+    def settled(r, m, d, s):
+        # the strict solver's own steady state is a little off the search's, and what that leaves ringing is
+        # counted out of the powers (count_out_storage): five times the search's allowance
+        return worst(r, d) <= a['periodic_tolerance'] and unsteadiness(r, m, d, s)[1] <= 5 * a['energy_tolerance']
     # with a board: the search is done on the circuit alone, which is quick, and the copper is put in where that
     # settled: it moves a converter's operating point very little, and costs ngspice ten times the time
     with_copper, pending = None, copper
@@ -547,40 +556,34 @@ def run_case(model, point, out, log=print, copper=None):
     if trials.exists():
         shutil.rmtree(trials)
     for trial in range(int(a['max_trials'])):
-        current = copy.deepcopy(model)
-        for path, value in (point or {}).items():
-            M.put(current, path, value)
-        for kn in knobs:
-            M.put(current, kn.path, kn.x)
-        resolved = M.resolve(current)
+        resolved = knobbed()
         folder = trials / f"{trial:02d}"
         log(label + f"run {trial + 1}: {cycles} periods"
             + (''.join(f", {kn.path} = {kn.x:.6g}" for kn in knobs))
             + ('' if state is None else ' (continuing)') + (" with the board's copper" if with_copper else ''))
-        result, deck, stats, retries = run_once(resolved, state, cycles, folder, a, a['search_reltol'], log, label,
+        result, deck, stats, retries = simulate(resolved, state, cycles, folder, a, a['search_reltol'], log, label,
                                                 copper=with_copper)
         total += cycles
         state = end_state(result, resolved, deck)
         errors = periodic_error(result, deck, deck.period, a.get('ignore', ()))
-        worst = max(errors.values(), default=0.0)
+        off = max(errors.values(), default=0.0)
         drifting, _ = unsteadiness(result, resolved, deck, stats)
-        entry = dict(trial=trial, cycles=cycles, knobs={kn.path: kn.x for kn in knobs}, periodic_error=worst,
+        entry = dict(trial=trial, cycles=cycles, knobs={kn.path: kn.x for kn in knobs}, periodic_error=off,
                      energy_drift=drifting, copper=with_copper is not None,
                      retries=retries, **{k: stats[k] for k in ('source_power_W', 'load_power_W', 'efficiency')},
                      measures=stats['measures'])
         history.append(entry)
-        if worst > a['periodic_tolerance'] or drifting > a['energy_tolerance']:
+        if off > a['periodic_tolerance'] or drifting > a['energy_tolerance']:
             # a run twice as long that repeats no better is at the search tolerance's own floor (the solver's
             # error, period to period, on lightly damped ringing: the flyback example, 0.3-0.5 % at reltol 1e-3
             # on ngspice 45, 0.11 % at 1e-4): the search goes on at the reported run's reltol
             before = history[-2] if len(history) > 1 else None
-            strict_rt = a['solver'].get('reltol', 1e-4)
-            if (before is not None and before['knobs'] == entry['knobs'] and worst > a['periodic_tolerance']
-                    and worst > 0.7 * before['periodic_error'] and a['search_reltol'] > strict_rt):
-                log(label + f"run {trial + 1} repeats no better than the one before ({100 * worst:.2g} % period to "
-                    f"period): searching on at reltol {strict_rt:g}")
-                a['search_reltol'] = strict_rt
-                entry['search_reltol'] = strict_rt
+            if (before is not None and before['knobs'] == entry['knobs'] and off > a['periodic_tolerance']
+                    and off > 0.7 * before['periodic_error'] and a['search_reltol'] > strict):
+                log(label + f"run {trial + 1} repeats no better than the one before ({100 * off:.2g} % period to "
+                    f"period): searching on at reltol {strict:g}")
+                a['search_reltol'] = strict
+                entry['search_reltol'] = strict
             state = end_state(result, resolved, deck, deck.period)  # ringing: start the next run from its middle
             cycles = min(cycles * 2, 8 * int(a['cycles']))          # slow to settle: longer runs, fewer of them
             if total >= a['max_cycles']:
@@ -588,7 +591,7 @@ def run_case(model, point, out, log=print, copper=None):
                 raise RuntimeError(
                     f"{label}not settled after {total} periods: " +
                     (f"{slow} still differs by {100 * errors[slow]:.2g} % from period to period (raise "
-                     f"analysis.max_cycles, or list it under analysis.ignore)" if worst > a['periodic_tolerance'] else
+                     f"analysis.max_cycles, or list it under analysis.ignore)" if off > a['periodic_tolerance'] else
                      f"what the circuit stores still changes by {100 * drifting:.2g} % of its power (raise "
                      f"analysis.max_cycles or analysis.energy_tolerance)"))
             continue
@@ -613,7 +616,6 @@ def run_case(model, point, out, log=print, copper=None):
         raise RuntimeError(f"{label}the targets were not met in {a['max_trials']} runs "
                            f"(see {trials}; raise analysis.max_trials, or narrow a target's range)")
     folder, result, deck, stats, resolved = accepted
-    strict = a['solver'].get('reltol', 1e-4)
     reported = a['search_reltol']
     if a['strict'] and strict < a['search_reltol']:
         final = trials / 'final'
@@ -622,10 +624,7 @@ def run_case(model, point, out, log=print, copper=None):
             for _ in range(3):
                 log(label + f"reported run: {n} periods at reltol {strict:g}")
                 r2, d2, s2, _retries = simulate(resolved, state, n, final, a, strict, log, label, final=True, copper=copper)
-                # the strict solver's own steady state is a little off the search's, and what that leaves ringing
-                # is counted out of the powers (count_out_storage): five times the search's allowance
-                if (max(periodic_error(r2, d2, d2.period, a.get('ignore', ())).values(), default=0.0) <= a['periodic_tolerance']
-                        and unsteadiness(r2, resolved, d2, s2)[1] <= 5 * a['energy_tolerance']):
+                if settled(r2, resolved, d2, s2):
                     folder, result, deck, stats, reported = final, r2, d2, s2, strict
                     break
                 state = end_state(r2, resolved, d2)
@@ -640,20 +639,14 @@ def run_case(model, point, out, log=print, copper=None):
                 moved = [kn for kn, e in off if kn.retarget(e)]
                 if not moved:
                     break
-                current = copy.deepcopy(model)
-                for path, value in (point or {}).items():
-                    M.put(current, path, value)
-                for kn in knobs:
-                    M.put(current, kn.path, kn.x)
-                again = M.resolve(current)
+                again = knobbed()
                 log(label + f"reported run, its target again: {n} periods"
                     + ''.join(f", {kn.path} = {kn.x:.6g}" for kn in moved))
                 there, start, m = trials / f'final{fix + 2}', end_state(result, resolved, deck), n
                 for _ in range(3):                                  # as the strict run: longer until it settles
                     r2, d2, s2, _retries = simulate(again, start, m, there, a, strict, log, label, final=True,
                                                     copper=copper)
-                    if (max(periodic_error(r2, d2, d2.period, a.get('ignore', ())).values(), default=0.0) <= a['periodic_tolerance']
-                            and unsteadiness(r2, again, d2, s2)[1] <= 5 * a['energy_tolerance']):
+                    if settled(r2, again, d2, s2):
                         break
                     start, m = end_state(r2, again, d2), 2 * m
                 else:
@@ -677,18 +670,17 @@ def run_case(model, point, out, log=print, copper=None):
     (out / 'model.json').write_text(json.dumps(resolved, indent=1))
     notes += plausibility(stats)
     from . import windings                                          # AC resistance and core loss (R-E10)
-    added = windings.losses(resolved, result, deck, deck.period)
+    added = windings.losses(resolved, result, deck.period)
     if added:
         windings.apply(stats, added, notes)
-    ramps = [pt['ref'] for pt in resolved.get('parts', []) if pt.get('type') == 'switch'
-             and (pt.get('model') or {}).get('type', 'vdmos') == 'switch'
-             and not any((pt.get('model') or {}).get(k) for k in ('Cgd_F', 'Cgs_F', 'Qg_C', 'Qgd_C'))]
+    switches = {pt['ref']: pt.get('model') or {} for pt in resolved.get('parts', []) if pt.get('type') == 'switch'}
+    ramps = [r for r, sw in switches.items() if sw.get('type', 'vdmos') == 'switch'
+             and not any(sw.get(k) for k in ('Cgd_F', 'Cgs_F', 'Qg_C', 'Qgd_C'))]
     if ramps:                                                       # (its loss had read as a device's)
         notes.append(f"{', '.join(ramps)}: switched by the drive's own ramp (rise_s, fall_s), with no gate charge: "
                      f"the switching loss is the ramp's, not a device's (a vdmos or vendor model gives that)")
-    generic = [pt['ref'] for pt in resolved.get('parts', []) if pt.get('type') == 'switch'
-               and (pt.get('model') or {}).get('type', 'vdmos') == 'vdmos' and not (pt.get('model') or {}).get('model_name')
-               and not all(k in (pt.get('model') or {}) for k in ('Cgd_F', 'Cgs_F', 'Cds_F'))]
+    generic = [r for r, sw in switches.items() if sw.get('type', 'vdmos') == 'vdmos' and not sw.get('model_name')
+               and not all(k in sw for k in ('Cgd_F', 'Cgs_F', 'Cds_F'))]
     if generic:                                                     # its switching loss is a generic part's
         from ..power_spice import VDMOS_C
         notes.append(f"{', '.join(generic)}: a generic MOSFET's capacitances where the model gives none (Cgs "
@@ -710,7 +702,7 @@ def run_case(model, point, out, log=print, copper=None):
         targets=[dict(adjust=kn.path, measure=kn.measure, value=kn.value, reached=measured_value(kn.measure, stats))
                  for kn in knobs],
         **stats, reltol=reported, settled=True,
-        periodic_error=max(periodic_error(result, deck, deck.period, a.get('ignore', ())).values(), default=0.0),
+        periodic_error=worst(result, deck),
         energy_drift_relative=unsteadiness(result, resolved, deck, stats)[1],
         runs=len(history), periods=total, notes=notes, history=history, runtime_s=time.perf_counter() - started)
     try:                                                            # what its parts draw from its supply: for a
