@@ -51,12 +51,9 @@ class SetupTab(QWidget):
         self.win, self.edits, self.extra = win, {}, {}
         self.path, self.dirty, self._loading, self.est = None, False, False, None
         self._undo, self._redo, self._base, self._restoring, self._typed = [], [], None, False, None
-        self._rest = QTimer(self)                                   # a field's typing: one step when it rests
-        self._rest.setSingleShot(True)
-        self._rest.setInterval(self.UNDO_REST)
-        self._rest.timeout.connect(self._commit)
-        self.defaults = Settings()
-        defaults = self.defaults
+        self._rest = QTimer(self, singleShot=True, interval=self.UNDO_REST,    # a field's typing: one step when
+                            timeout=self._commit)                               # it rests
+        defaults = self.defaults = Settings()
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         left = QVBoxLayout()
@@ -67,18 +64,20 @@ class SetupTab(QWidget):
         # the few settings a run is set up with first (runner.basic_keys), the others under "More settings", in
         # their sections and found by name; the board's others in a section inside the board's
         basic = basic_keys()
-        form = lambda box: (lambda f: (f.setContentsMargins(0, 0, 0, 0), f.setRowWrapPolicy(QFormLayout.WrapLongRows),
-                                       f.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow), f)[-1])(QFormLayout(box))
+
+        def form(box):
+            f = QFormLayout(box)
+            f.setContentsMargins(0, 0, 0, 0)
+            f.setRowWrapPolicy(QFormLayout.WrapLongRows)                # narrow: the field under its label
+            f.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+            return f
         basic_box, more_box, board_more = QWidget(), QWidget(), QWidget()
         self.basic_form, self.board_more_form = form(basic_box), form(board_more)
         self.basic_form.setContentsMargins(8, 4, 4, 6)
         more = QVBoxLayout(more_box)
         more.setContentsMargins(0, 0, 0, 0)
         more.setSpacing(2)
-        self.find = QLineEdit()
-        self.find.setPlaceholderText('Find a setting')
-        self.find.setClearButtonEnabled(True)
-        self.find.textChanged.connect(self._find)
+        self.find = QLineEdit(placeholderText='Find a setting', clearButtonEnabled=True, textChanged=self._find)
         more.addWidget(self.find)
         rf.addWidget(basic_box)
         self.more = Section('More settings', more_box)
@@ -100,18 +99,12 @@ class SetupTab(QWidget):
                 more.addWidget(self.parents[top][0])
             if group not in groups:
                 box = QWidget()
-                groups[group] = QFormLayout(box)
-                groups[group].setContentsMargins(0, 0, 0, 0)
-                groups[group].setRowWrapPolicy(QFormLayout.WrapLongRows)     # narrow: the field under its label
-                groups[group].setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+                groups[group] = form(box)
                 extra = None
                 if group == 'Solvers':                              # what can run here: the Solvers window
-                    extra = QToolButton()
-                    extra.setText('?')
-                    extra.setAutoRaise(True)
-                    extra.setToolTip('Solvers and hardware: what can run here, the GPU, the memory, the estimates')
+                    extra = self.help_btn = QToolButton(text='?', autoRaise=True, toolTip=(
+                        'Solvers and hardware: what can run here, the GPU, the memory, the estimates'))
                     extra.clicked.connect(lambda: self.win.show_solvers())
-                    self.help_btn = extra
                 self.sections[group] = Section(group.split('/')[-1], box, extra=extra)
                 (self.parents[group.split('/')[0]][1] if '/' in group else top_of(group)).addWidget(self.sections[group])
             self.group_of[key] = group
@@ -120,8 +113,7 @@ class SetupTab(QWidget):
             if into is self.basic_form and group.split('/')[0] in SECTION_SOLVERS:      # among the first few: whose
                 label = f"{group.split('/')[0]}: {label[0].lower()}{label[1:]}"
             if kind == 'bool':
-                w = QCheckBox()
-                w.toggled.connect(self._changed)
+                w = QCheckBox(toggled=self._changed)
                 if key.startswith(TICK):
                     self.solver_boxes[key[len(TICK):]] = w
             elif isinstance(kind, tuple):
@@ -137,9 +129,8 @@ class SetupTab(QWidget):
             if kind in ('file', 'dir'):
                 row = QHBoxLayout()
                 row.addWidget(w)
-                b = QPushButton('…')
+                b = QPushButton('…', clicked=lambda _=False, k=key, d=(kind == 'dir'): self._browse(k, d))
                 b.setFixedWidth(28)
-                b.clicked.connect(lambda _=False, k=key, d=(kind == 'dir'): self._browse(k, d))
                 row.addWidget(b)
                 holder = QWidget()
                 holder.setLayout(row)
@@ -171,10 +162,8 @@ class SetupTab(QWidget):
         for top, need in SECTION_SOLVERS.items():                   # a solver's own section, when it also shares
             shared = [t for t, n in SECTION_SOLVERS.items() if t != top and len(n) > 1 and need <= n]   # another
             if len(need) == 1 and shared and top in groups:
-                note = QLabel(f"{top} also uses the settings under {SECTION_TITLES[shared[0]]} above")
-                note.setWordWrap(True)
-                note.setEnabled(False)                              # greyed: a note, not a setting
-                groups[top].insertRow(0, note)
+                groups[top].insertRow(0, QLabel(f"{top} also uses the settings under {SECTION_TITLES[shared[0]]} above",
+                                                wordWrap=True, enabled=False))     # greyed: a note, not a setting
         self.study = None                                           # the analyses' list (set_study)
         self.study_slot = QVBoxLayout()
         self.study_slot.setContentsMargins(0, 0, 0, 0)
@@ -183,9 +172,7 @@ class SetupTab(QWidget):
         # the selected question's settings: a dock of their own (self.inspector), under the study's on the left
         right = QVBoxLayout()
         right.setSpacing(2)
-        self.panel_title = QLabel('')                               # whose settings follow
-        self.panel_title.setStyleSheet('font-weight: bold; padding: 8px 4px 2px 4px;')
-        self.panel_title.hide()
+        self.panel_title = QLabel('', styleSheet='font-weight: bold; padding: 8px 4px 2px 4px;', visible=False)
         right.addWidget(self.panel_title)
         self.rf_box = QWidget()
         self.rf_box.setLayout(rf)
@@ -200,12 +187,10 @@ class SetupTab(QWidget):
         def scrolled(layout):
             w = QWidget()
             w.setLayout(layout)
-            sc = QScrollArea()
-            sc.setWidget(w)
-            sc.setWidgetResizable(True)
             # a form wraps its rows instead of scrolling sideways: as wide as its narrowest layout, plus room for
             # the vertical scroll bar (a long form shows it, and without that room a sideways one appeared too)
-            sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            sc = QScrollArea(widgetResizable=True, horizontalScrollBarPolicy=Qt.ScrollBarAlwaysOff)
+            sc.setWidget(w)
             return sc, w
         (self.scroll, self._lw), (self.inspector, self._rw) = scrolled(left), scrolled(right)
         self._fit_width()
@@ -231,9 +216,7 @@ class SetupTab(QWidget):
         hl.setContentsMargins(0, 0, 0, 0)
         hl.addWidget(study)
         self.study_note = QLabel("ticked: Preview and Run include it · Answered by: click to choose the engine, "
-                                 "or several to compare")
-        self.study_note.setWordWrap(True)
-        self.study_note.setEnabled(False)                           # greyed: a note, not a setting
+                                 "or several to compare", wordWrap=True, enabled=False)     # greyed: a note
         hl.addWidget(self.study_note)
         self.study_section = Section('Questions', holder, expanded=True)
         self.study_slot.addWidget(self.study_section)
@@ -243,9 +226,8 @@ class SetupTab(QWidget):
             w = panels.get(a.key)
             if w is None or a.key in self.panels:
                 continue
-            lab = QLabel(f"{a.tool}")
-            lab.setStyleSheet('font-weight: bold; color: gray; padding: 6px 4px 0px 4px;')
-            lab.hide()
+            lab = QLabel(f"{a.tool}", styleSheet='font-weight: bold; color: gray; padding: 6px 4px 0px 4px;',
+                         visible=False)
             self.engine_titles[a.key] = lab
             self._left.insertWidget(at, lab)
             self.panels[a.key] = w
@@ -277,26 +259,16 @@ class SetupTab(QWidget):
         self.panel_title.setText(f"{self.study.labels.get(question, 'S-parameters')} settings")
         self.panel_title.setVisible(True)
 
-    def _solvers_text(self):
-        """The RF rows of the list read the solvers' ticks: refreshed when they change."""
-        if self.study is not None:
-            self.study.refresh()
-
     def _ticks(self):
         asked = self.study.asked()
         self.study_section.head.setText(f"Questions  ({len(asked)} asked)" if asked else 'Questions')
-        self._mode_from_antenna()
+        mode = self.edits.get('mode', (None,))[0]                   # the Antenna row ticked is the run's antenna
+        if mode is not None and 'antenna' in self.study.rows:       # mode (the setting the form does not show)
+            want = 'antenna' if 'antenna' in asked else 'sparams'
+            if mode.currentText() != want and mode.findText(want) >= 0:
+                mode.setCurrentIndex(mode.findText(want))
         if hasattr(self.win, 'ticks_changed'):
             self.win.ticks_changed()
-
-    def _mode_from_antenna(self):
-        """The Antenna row ticked is the run's antenna mode (the mode setting, which the form no longer shows)."""
-        mode = self.edits.get('mode', (None,))[0]
-        if mode is None or 'antenna' not in self.study.rows:
-            return
-        want = 'antenna' if 'antenna' in self.study.asked() else 'sparams'
-        if mode.currentText() != want and mode.findText(want) >= 0:
-            mode.setCurrentIndex(mode.findText(want))
 
     def _antenna_from_mode(self):
         """A config's mode = antenna (or a setting typed elsewhere): the Antenna row ticked with it."""
@@ -427,7 +399,8 @@ class SetupTab(QWidget):
         """A solver's section (and the shared ones) greyed while none of its solvers is ticked: auto may run
         openEMS, mom25d and the line model."""
         from kicad2ems.core.api.frontend import registry
-        self._solvers_text()
+        if self.study is not None:                                  # the list's RF rows read the solvers' ticks
+            self.study.refresh()
         ticked = {n for n, w in self.solver_boxes.items() if w.isChecked()}
         auto = self.edits.get(f"{TICK}auto", (None,))[0]
         if auto is not None and auto.isChecked():                   # the solvers auto may run, the line model's
@@ -513,22 +486,17 @@ class SetupTab(QWidget):
 
     def _dump_builder(self):
         """FIELD, where (a layer, an x / y / z plane, the volume), GHz -> a spec appended to the dumps."""
-        fld = QComboBox()
+        fld = QComboBox(toolTip='J: current density (shows the copper currents)')
         fld.addItems(['E', 'H', 'J'])
-        fld.setToolTip('J: current density (shows the copper currents)')
         kind = QComboBox()
         kind.addItems(['layer', 'x =', 'y =', 'z =', 'volume'])
-        at = QComboBox()
-        at.setEditable(True)
+        at = QComboBox(editable=True, toolTip='layer: a copper layer, with an offset in mm (F.Cu-0.1: in the '
+                                              'dielectric below); x / y / z: mm (KiCad x, y; z from the bottom copper)')
         at.addItems(['F.Cu', 'B.Cu', 'In1.Cu', 'In2.Cu', 'F.Cu-0.1'])
-        at.setToolTip('layer: a copper layer, with an offset in mm (F.Cu-0.1: in the dielectric below); '
-                      'x / y / z: mm (KiCad x, y; z from the bottom copper)')
         kind.currentIndexChanged.connect(lambda i: (at.setEnabled(i != 4), at.setEditText(['F.Cu', '0', '0', '0', ''][i])))
-        ghz = QLineEdit()
-        ghz.setPlaceholderText('GHz (empty: time domain)')
-        ghz.setToolTip('Frequencies (GHz, comma-separated): a frequency-domain dump, animated over the phase. '
-                       'Empty: a time-domain dump, viewable live during the run')
-        add = QPushButton('Add')
+        ghz = QLineEdit(placeholderText='GHz (empty: time domain)', toolTip=(
+            'Frequencies (GHz, comma-separated): a frequency-domain dump, animated over the phase. Empty: a '
+            'time-domain dump, viewable live during the run'))
 
         def append():
             k = kind.currentIndex()
@@ -536,14 +504,11 @@ class SetupTab(QWidget):
             spec = f"{fld.currentText()}@{where}" + (f"@{ghz.text().strip()}" if ghz.text().strip() else '')
             w = self.edits['dump'][0]
             w.setText('; '.join([t for t in [w.text().strip()] if t] + [spec]))
-        add.clicked.connect(append)
         grid = QGridLayout()                                        # two short rows: fits a narrow settings dock
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.addWidget(fld, 0, 0)
-        grid.addWidget(kind, 0, 1)
-        grid.addWidget(at, 0, 2)
-        grid.addWidget(ghz, 1, 0, 1, 2)
-        grid.addWidget(add, 1, 2)
+        for w, *cell in ((fld, 0, 0), (kind, 0, 1), (at, 0, 2), (ghz, 1, 0, 1, 2),
+                         (QPushButton('Add', clicked=append), 1, 2)):
+            grid.addWidget(w, *cell)
         grid.setColumnStretch(2, 1)
         holder = QWidget()
         holder.setLayout(grid)
@@ -596,14 +561,27 @@ class SetupTab(QWidget):
                 out[key] = [float(x) for x in t.split(',')]
             else:
                 out[key] = t
-        out = solvers_from_form(out)
-        return out
+        return solvers_from_form(out)
 
     def set_values(self, vals):
         """Fill the form (a loaded config): not an edit, so the settings stay unchanged, and undo starts here."""
+        if not any(k.startswith(TICK) for k in vals):              # settings rather than the form's own values
+            vals = dict(vals, **solver_ticks(vals))
         loading, self._loading = self._loading, True
         try:
-            self._set_values(vals)
+            for key, (w, kind) in self.edits.items():
+                v = vals.get(key)
+                if kind == 'bool':
+                    w.setChecked(bool(v))
+                elif isinstance(kind, tuple):
+                    w.setCurrentIndex(max(w.findText(v or '(none)'), 0))
+                elif v is None:
+                    w.setText('')
+                elif isinstance(v, (list, tuple)):
+                    w.setText(('; ' if key in SEMICOLON_LISTS else ',').join(
+                        str(x) if not isinstance(x, (list, tuple)) else ' '.join(map(str, x)) for x in v))
+                else:
+                    w.setText(str(v))
         finally:
             self._loading = loading
         self._count()
@@ -611,24 +589,6 @@ class SetupTab(QWidget):
         self._rest.stop()
         self._undo, self._redo, self._base = [], [], self._state()
         self.undo_changed.emit()
-
-    def _set_values(self, vals):
-        if not any(k.startswith(TICK) for k in vals):              # settings rather than the form's own values
-            vals = dict(vals, **solver_ticks(vals))
-        for key, (w, kind) in self.edits.items():
-            v = vals.get(key)
-            if kind == 'bool':
-                w.setChecked(bool(v))
-            elif isinstance(kind, tuple):
-                i = w.findText(v or '(none)')
-                w.setCurrentIndex(max(i, 0))
-            elif v is None:
-                w.setText('')
-            elif isinstance(v, (list, tuple)):
-                sep = '; ' if key in SEMICOLON_LISTS else ','
-                w.setText(sep.join(str(x) if not isinstance(x, (list, tuple)) else ' '.join(map(str, x)) for x in v))
-            else:
-                w.setText(str(v))
 
     def touch(self, *_):
         """Something a config holds changed (a field here, an analysis's settings or its tick): unsaved now."""
@@ -656,10 +616,8 @@ class SetupTab(QWidget):
     # ---- undo (R-E25) ----
     def _state(self):
         """The form as it stands: each field's text, tick or choice, as typed (what undo puts back)."""
-        out = {}
-        for key, (w, kind) in self.edits.items():
-            out[key] = w.isChecked() if kind == 'bool' else w.currentText() if isinstance(kind, tuple) else w.text()
-        return out
+        return {key: w.isChecked() if kind == 'bool' else w.currentText() if isinstance(kind, tuple) else w.text()
+                for key, (w, kind) in self.edits.items()}
 
     def _commit(self, st=None):
         """The form's changes since the last step (or up to the state st), as a step (none: nothing)."""
