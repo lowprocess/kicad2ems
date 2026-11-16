@@ -1,6 +1,6 @@
 """Compare an experimental PEEC PDN adapter, existing PDN and analytical limits.
 
-python tools/trial_pdn_peec.py --out examples/pdn-peec-trial/results
+python tools/pcbqs/trial_pdn_peec.py --out examples/pdn-peec-trial/results
 """
 import argparse
 import csv
@@ -15,10 +15,10 @@ from scipy.optimize import brentq
 from scipy.special import j1
 from shapely.geometry import Point, box, mapping
 
-from pcbqs.pdn.rail import Rail
-from pcbqs.pdn.stack import RailPDN
-from pcbqs.pdn.peec_trial import PEECPDN
-from pcbqs.pdn.dc import solve_rail
+from kicad2ems.pcbqs.pdn.rail import Rail
+from kicad2ems.pcbqs.pdn.stack import RailPDN
+from kicad2ems.pcbqs.pdn.peec_trial import PEECPDN
+from kicad2ems.pcbqs.pdn.dc import solve_rail
 
 
 SIGMA=5.8e7
@@ -236,7 +236,7 @@ def main():
                 for key,v in fine['resonances'].items() if v is not None}
         cases[name]=case
         (out/'summary.json').write_text(json.dumps(dict(frequencies_Hz=f.tolist(),cases=cases),indent=2,allow_nan=False)+'\n')
-    from pcbqs.pdn import peec_trial
+    from kicad2ems.pcbqs.pdn import peec_trial
     summary=dict(format=1,frequencies_Hz=f.tolist(),meshes_mm=meshes,workers=args.workers,
         source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         adapter_sha256=hashlib.sha256(Path(peec_trial.__file__).read_bytes()).hexdigest(),cases=cases,

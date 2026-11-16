@@ -6,7 +6,7 @@ import sys
 import numpy as np
 import pytest
 from shapely.geometry import box, mapping
-from pcbqs.mqs_cli import parser, validate, select, discover, run
+from kicad2ems.pcbqs.mqs_cli import parser, validate, select, discover, run
 
 
 def board():
@@ -22,7 +22,7 @@ def board():
 
 
 def test_describe_is_clean_json():
-    p=subprocess.run([sys.executable,'-m','pcbqs.mqs','--describe','--json'],capture_output=True,text=True,check=True)
+    p=subprocess.run([sys.executable,'-m','kicad2ems.pcbqs.mqs','--describe','--json'],capture_output=True,text=True,check=True)
     d=json.loads(p.stdout)
     assert d['format']==1 and any(o['key']=='fill_backend' for o in d['options'])
     assert not p.stderr
@@ -56,8 +56,8 @@ def test_solver_outputs_are_standard_dumps(tmp_path):
     result=run(a)
     assert result['triangles']>0 and np.array(result['peak_H_Am']).shape==(2,2)
     assert np.isfinite(result['copper_L_H']).all()
-    pytest.importorskip('kicad2ems.fields.frames',reason='optional frontend interoperability check')
-    from kicad2ems.fields.frames import find_dumps
+    pytest.importorskip('kicad2ems.core.fields.frames',reason='optional frontend interoperability check')
+    from kicad2ems.core.fields.frames import find_dumps
     dumps=find_dumps(str(tmp_path/'result'))
     assert len(dumps)==3
     # Writer and frontend reader agree on units, axes and frequency/component ordering.
@@ -75,7 +75,7 @@ def test_solver_outputs_are_standard_dumps(tmp_path):
 
 
 def test_preview_never_fills_or_solves_and_exports_real_layer_heights(tmp_path, monkeypatch):
-    from pcbqs.mqs import MQS
+    from kicad2ems.pcbqs.mqs import MQS
     def forbidden(*args, **kwargs):
         raise AssertionError('preview must not fill or solve')
     monkeypatch.setattr(MQS, 'solve', forbidden)
@@ -93,8 +93,8 @@ def test_preview_never_fills_or_solves_and_exports_real_layer_heights(tmp_path, 
     layout=json.loads((tmp_path/'preview/mqs_board.json').read_text())
     assert any(not r['active'] for r in layout['copper']['F.Cu'])
     assert layout['active_parts']==['C1','U1'] and layout['components']
-    pytest.importorskip('kicad2ems.meshes',reason='optional frontend interoperability check')
-    from kicad2ems.meshes import find,segments
+    pytest.importorskip('kicad2ems.core.meshes',reason='optional frontend interoperability check')
+    from kicad2ems.core.meshes import find,segments
     mesh=np.load(find(str(tmp_path/'preview'))['mqs'])
     assert set(np.round(mesh['nodes'][:,2],4))=={0.,-.7}
     assert segments(find(str(tmp_path/'preview'))['mqs']).shape[1]==3
@@ -103,7 +103,7 @@ def test_preview_never_fills_or_solves_and_exports_real_layer_heights(tmp_path, 
 
 
 def test_nominal_component_body_has_rotation_and_is_not_an_electrical_part():
-    from pcbqs.mqs_layout import crop_layout
+    from kicad2ems.pcbqs.mqs_layout import crop_layout
     b=board();fp=b['prims']['footprints'][0]
     fp.update(lib='Example:IC_4x2x0.75mm',x=1,y=2,rot=90)
     layout=crop_layout(b,box(-5,-5,10,10),{'VIN','GND'},{'U1'})
@@ -115,7 +115,7 @@ def test_nominal_component_body_has_rotation_and_is_not_an_electrical_part():
     assert layout['parts']==[]
 
 
-EXAMPLES = __import__('pathlib').Path(__file__).resolve().parents[1] / 'src' / 'pcbqs' / 'circuit' / 'examples'
+EXAMPLES = __import__('pathlib').Path(__file__).resolve().parents[2] / 'src' / 'kicad2ems' / 'pcbqs' / 'circuit' / 'examples'
 
 
 def test_discrete_switching_cells_on_the_example_boards():
@@ -123,7 +123,7 @@ def test_discrete_switching_cells_on_the_example_boards():
     to ground. Every converter example has one (a full bridge two); a rectifier's diodes, a flyback's transformer
     and an inverting buck-boost (its loop through both capacitors) none."""
     pytest.importorskip('kicad2ems')
-    from pcbqs._cli import load_board
+    from kicad2ems.pcbqs._cli import load_board
     found = {b: [(c['converter'], c.get('low'), c['switch'], c['inductor'], [i['vin'] for i in c['inputs']])
                  for c in discover(load_board(str(EXAMPLES / f'{b}.kicad_pcb')))]
              for b in ('03_bridge_rectifier', '04_buck', '05_buck_synchronous', '06_boost', '07_buck_boost', '08_flyback',
@@ -140,7 +140,7 @@ def test_a_discrete_cell_is_selected_and_solved(tmp_path):
     """Its loop: through the upper part to the switch node, through the lower one to ground; the switch node's
     copper in the mesh; a bridge's legs one at a time; its capacitors by connection when none is within reach."""
     pytest.importorskip('kicad2ems')
-    from pcbqs._cli import load_board
+    from kicad2ems.pcbqs._cli import load_board
     buck = load_board(str(EXAMPLES / '04_buck.kicad_pcb'))
     a = parser().parse_args([])
     selected, terms = select(buck, a)
@@ -159,7 +159,7 @@ def test_a_discrete_cell_is_selected_and_solved(tmp_path):
     model = json.loads((tmp_path / 'nf' / 'circuit-model.json').read_text())     # a discrete buck: its own parts
     assert model['board']['parts'] == dict(QH='Q1', V1='J1', RL='J2')
     assert [p['ref'] for p in model['parts'] if p['type'] == 'diode'] == ['D1']
-    from pcbqs.reports import mqs_suggest, mqs_report
+    from kicad2ems.pcbqs.reports import mqs_suggest, mqs_report
     rep = mqs_report(res, str(tmp_path / 'nf'))
     assert rep['summary'] == 'Near field, Q1 and D1 on in: 1 harmonic' and 'the switch node sw and D1' in rep['sections'][0]['text']
     layout = json.loads((tmp_path / 'nf' / 'layout.json').read_text()) if (tmp_path / 'nf' / 'layout.json').exists() else None

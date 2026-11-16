@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping
 
-from pcbqs.mqs import MQS
+from kicad2ems.pcbqs.mqs import MQS
 
 
 def strip(t=0.035):
@@ -46,7 +46,7 @@ def test_stacked_sheets_need_dc_loss():
 
 def test_thick_copper_keeps_the_dielectric_between_facing_surfaces():
     """copper_centres: each slab starts at its z plus the copper below, so KiCad's dielectric is the face-to-face gap."""
-    from pcbqs.pdn.mesh import copper_centres
+    from kicad2ems.pcbqs.pdn.mesh import copper_centres
     b = dict(stack=dict(copper=[dict(name='B', z=0.0, t=0.035), dict(name='In', z=0.1, t=0.015),
                                 dict(name='F', z=0.6, t=0.035)]))
     c = copper_centres(b)

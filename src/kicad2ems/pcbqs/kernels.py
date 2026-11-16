@@ -24,7 +24,7 @@ def core(name):
     if os.environ.get('PCBQS_NO_CORE'):
         return None
     try:
-        return getattr(import_module('pcbqs._core'), name, None)
+        return getattr(import_module('kicad2ems.pcbqs._core'), name, None)
     except ImportError:
         return None
 
@@ -112,7 +112,7 @@ def blas_threads():
         return contextlib.nullcontext()
     try:
         from threadpoolctl import threadpool_limits
-        from emsdev.cpu import core_threads
+        from kicad2ems.emsdev.cpu import core_threads
         n = int(os.environ.get('PCBQS_BLAS_THREADS') or core_threads())
         return threadpool_limits(max(1, n), user_api='blas')
     except Exception:                                           # noqa: BLE001  (no threadpoolctl or emsdev: as is)
@@ -185,7 +185,7 @@ def _mixed_fits(a):
     """Whether the single-precision copy fits beside the double matrix in the memory free now, with room to
     spare (twice the copy: the solver's other arrays come and go meanwhile)."""
     try:
-        from emsdev.memory import available
+        from kicad2ems.emsdev.memory import available
         free = available()
     except Exception:                                           # noqa: BLE001  (no probe: assume it does)
         return True
@@ -256,7 +256,7 @@ def pencil_pays(n, frequencies):
     if n < 200 or frequencies < 1.25 * pencil_lus(n) + 1:
         return False
     try:
-        from emsdev.memory import available
+        from kicad2ems.emsdev.memory import available
         free = available()
     except Exception:                                           # noqa: BLE001  (no probe: assume it does)
         return True

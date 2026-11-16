@@ -8,7 +8,7 @@ import sys
 
 import numpy as np
 import pytest
-from kicad2ems.api.frontend import Board, KiCadBoard
+from kicad2ems.core.api.frontend import Board, KiCadBoard
 from k2e_fixtures import GEN                                        # kicad2ems's examples/make_demo_board.py
 
 BOARDS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'boards')
@@ -55,7 +55,7 @@ def test_stack_auto():
     ground or whole is kept."""
     from types import SimpleNamespace as NS
     from shapely.geometry import box, mapping, shape
-    from mom25d.kicad2ems.mom import _stack, apertures, ports_below
+    from kicad2ems.mom25d.kicad2ems.mom import _stack, apertures, ports_below
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'boards', 'demo.json'), encoding='utf-8') as fh:
         demo = fh.read()
     s = lambda st: NS(mom_stack=st, mom_planes='pec', mom_stitching_pads='drop')

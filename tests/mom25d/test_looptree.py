@@ -6,9 +6,9 @@ below, where that does not.
 import numpy as np
 import pytest
 
-from mom25d.multilayer import Layer, LayerStack
-from mom25d.sim import Simulation, Via, ViaPort, Metal
-from mom25d.looptree import LoopTree, transpose
+from kicad2ems.mom25d.multilayer import Layer, LayerStack
+from kicad2ems.mom25d.sim import Simulation, Via, ViaPort, Metal
+from kicad2ems.mom25d.looptree import LoopTree, transpose
 
 
 def _sim(precision='double', loop_tree='auto', metal=None, dmax=0.4e-3):
@@ -48,7 +48,7 @@ def test_the_loops_carry_no_charge_and_the_transforms_are_the_basis():
     Z = Z + Z.T
     ref = K.T @ Z @ K
     try:
-        import mom25d._core as core
+        import kicad2ems.mom25d._core as core
     except ImportError:
         core = None
     for c in {None, core}:
@@ -73,7 +73,7 @@ def test_the_charge_block_is_the_tree_s_elastance():
     A = (lt.charge_operator(sim) @ lt.from_ideal(lt.from_tree(np.eye(lt.N))))[:, lt.tree]
     Phi = A.T @ (Mq / a[:, None] / a[None, :]) @ A
     try:
-        import mom25d._core as core
+        import kicad2ems.mom25d._core as core
     except ImportError:
         core = None
     for c in {None, core}:
@@ -84,7 +84,7 @@ def test_the_charge_block_is_the_tree_s_elastance():
 
 
 def test_the_loop_tree_solve_is_the_rwg_basis_s_where_that_holds():
-    pytest.importorskip('mom25d._core')
+    pytest.importorskip('kicad2ems.mom25d._core')
     ref = _sim('double', 'off').sparams(1e9)
     for prec in ('double', 'mixed'):
         sim = _sim(prec, 'on')
@@ -97,7 +97,7 @@ def test_below_the_rwg_basis_s_reach_it_stays_right():
     """Copper loss, 10 Hz: the loop/tree basis's S11 is the copper's DC resistance's, as at 10 kHz, and mixed
     precision converges in it (no double fallback). (The RWG basis there: its double LU 14 % off on this board,
     its complex64 LU no preconditioner.)"""
-    pytest.importorskip('mom25d._core')
+    pytest.importorskip('kicad2ems.mom25d._core')
     cu = Metal(5.8e7, 35e-6)
     S = {}
     for f in (1e4, 10.0):
@@ -112,8 +112,8 @@ def test_below_the_rwg_basis_s_reach_it_stays_right():
 
 
 def test_auto_takes_the_loop_tree_basis_below_its_threshold_and_keeps_each_basis_lus():
-    pytest.importorskip('mom25d._core')
-    from mom25d import fast
+    pytest.importorskip('kicad2ems.mom25d._core')
+    from kicad2ems.mom25d import fast
     sim = _sim('mixed', 'auto')
     fo = sim.fast
     lo = 0.5 * np.sqrt(fast.LOOP_TREE_BELOW / fo.kh2(1.0))          # (k h)^2 grows as f^2

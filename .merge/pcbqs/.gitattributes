@@ -1,2 +1,0 @@
-# Preserve historical benchmark CSV bytes, including their original CRLF records.
-docs/benchmarks/**/*.csv -text whitespace=cr-at-eol

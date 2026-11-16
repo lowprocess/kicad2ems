@@ -4,10 +4,10 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping, Point
 
-from pcbqs._numerics.base import MU0, EPS0
-from pcbqs.pdn.rail import Rail, parse_value
-from pcbqs.pdn.dc import solve_rail
-from pcbqs.pdn.stack import RailPDN
+from kicad2ems.pcbqs._numerics.base import MU0, EPS0
+from kicad2ems.pcbqs.pdn.rail import Rail, parse_value
+from kicad2ems.pcbqs.pdn.dc import solve_rail
+from kicad2ems.pcbqs.pdn.stack import RailPDN
 
 W, H = 40.0, 30.0
 # F.Cu 0.6 / 0.1 / In1 GND 0.5 / 0.1 / In2 P plane 0.4 / 0.1 / In3 GND 0.3 / 0.3 / B.Cu 0
@@ -159,7 +159,7 @@ def test_rail_pdn_with_its_parts():
 def test_cli_describes_plane_min():
     # The window's Power Integrity form is generated from describe(): a small
     # rail's plane threshold must be offered there.
-    import pcbqs.pdn.cli as cli
+    import kicad2ems.pcbqs.pdn.cli as cli
     options = {o['key']: o for o in cli.describe()['options']}
     assert options['plane_min']['flag'] == '--plane-min' and options['plane_min']['default'] == 0.0
     assert options['plane_min']['group'] == 'PDN impedance'
@@ -169,8 +169,8 @@ def test_followed_inductor_keeps_its_inductance_and_dcr():
     # An inductor named in through= is a series filter inductor: its henries and
     # DCR stay in the model (DC drop and PDN impedance), not a 10 uOhm link.
     import numpy as np
-    from pcbqs.pdn.rail import DEFAULT_INDUCTOR_DCR
-    from pcbqs.pdn.stack import RailPDN
+    from kicad2ems.pcbqs.pdn.rail import DEFAULT_INDUCTOR_DCR
+    from kicad2ems.pcbqs.pdn.stack import RailPDN
     r = Rail(board(), 'P', loads={'U1': 2.0, 'U2': 0.5}, source='U3', through=('L1',), dcr={'L1': 0.02, 'R1': 0.012})
     series = {s.part.ref: s for s in r.series}
     assert r.nets == {'P', 'VOUT', 'PF', 'SW'}
@@ -186,7 +186,7 @@ def test_followed_inductor_keeps_its_inductance_and_dcr():
 
 
 def test_cli_describes_dcr():
-    import pcbqs.pdn.cli as cli
+    import kicad2ems.pcbqs.pdn.cli as cli
     options = {o['key']: o for o in cli.describe()['options']}
     assert options['dcr']['kind'] == 'list' and options['dcr']['flag'] == '--dcr'
 
@@ -194,7 +194,7 @@ def test_cli_describes_dcr():
 def test_prefixed_capacitors_are_decaps_with_their_values():
     # Bulk electrolytics are often CA*/CE*/CP*: they must be decaps, with
     # electrolytic package defaults (flagged) unless datasheet values are given.
-    from pcbqs.pdn.stack import RailPDN, package
+    from kicad2ems.pcbqs.pdn.stack import RailPDN, package
     assert package('CP_Radial_D8.0mm_P3.50mm') == 'radial' and package('CP_Elec_6.3x5.9') == 'elec_smd'
     b = board()
     c2 = next(f for f in b['prims']['footprints'] if f['ref'] == 'C2')
@@ -212,7 +212,7 @@ def test_prefixed_capacitors_are_decaps_with_their_values():
 
 
 def test_cli_describes_cap():
-    import pcbqs.pdn.cli as cli
+    import kicad2ems.pcbqs.pdn.cli as cli
     options = {o['key']: o for o in cli.describe()['options']}
     assert options['cap']['kind'] == 'list' and options['cap']['flag'] == '--cap'
 
@@ -261,7 +261,7 @@ def test_a_half_bridge_returns_through_its_low_side():
 def test_cli_load_returns_and_targets(tmp_path):
     """The PDN CLI: --load REF=A@RETURN, per-load targets (--load-target) and none (--no-target) (C10)."""
     import json
-    from pcbqs.pdn.cli import main
+    from kicad2ems.pcbqs.pdn.cli import main
     path = tmp_path / 'b_board.json'
     path.write_text(json.dumps(_with_high_side(board())))
     common = [str(path), '--rail', 'P', '--volts', '3.3', '--load', 'U1=2', '--load', 'Q1=1@U1', '--dmax', '1',
@@ -279,7 +279,7 @@ def test_cli_writes_the_viewer_maps(tmp_path):
     """The DC solve where kicad2ems's viewer reads it (pdn/viewer.py): the board, the mesh, per layer the drop (mV,
     as the solve's loads see it) and the sheet current, as 0 Hz plane dumps."""
     import json
-    from pcbqs.pdn.cli import main, describe
+    from kicad2ems.pcbqs.pdn.cli import main, describe
     assert 'viewer' in describe()['features']
     path = tmp_path / 'b_board.json'
     path.write_text(json.dumps(_with_high_side(board())))
@@ -299,8 +299,8 @@ def test_loads_from_the_parts_fields(tmp_path):
     """A part's pdn.load field is its load: amps for the rail it is on, NET=AMPS for a part on several rails,
     AMPS@RETURN; --load overrides one, --no-part-loads ignores them, a field that cannot be read is noted."""
     import json
-    from pcbqs.pdn.cli import main, describe
-    from pcbqs.pdn.rail import field_loads
+    from kicad2ems.pcbqs.pdn.cli import main, describe
+    from kicad2ems.pcbqs.pdn.rail import field_loads
     b = _with_high_side(board())
     fps = {f['ref']: f for f in b['prims']['footprints']}
     fps['U1']['props']['pdn.load'] = '2 A'
@@ -362,7 +362,7 @@ def test_a_rail_with_no_plane_pair_keeps_its_dc_answer(tmp_path):
     """No plane pair (a two-layer board, a routed rail): the impedance is not computed and said, the DC drop solved
     before it written all the same (the run had stopped with exit 2 and no pdn.json)."""
     import json
-    from pcbqs.pdn.cli import main
+    from kicad2ems.pcbqs.pdn.cli import main
     (tmp_path / 'b_board.json').write_text(json.dumps(board()))
     rc = main([str(tmp_path / 'b_board.json'), '--rail', 'P', '--volts', '3.3', '--load', 'U1=2', '--dmax', '1',
                '--points', '7', '--plane-min', '1e6', '--out', str(tmp_path / 'out')])     # (no copper is a plane)
@@ -386,7 +386,7 @@ def test_one_factorisation_gives_the_loaded_and_the_bare_impedance():
 def test_a_load_steps_droop_against_its_closed_forms():
     """R-E14: the drop of a ramp step on a series R + L (R t / tr + L / tr during the edge, R after) and a parallel
     R C (R (1 - exp(-t / RC)) for a fast edge), from the impedance's samples alone."""
-    from pcbqs.pdn.droop import droop
+    from kicad2ems.pcbqs.pdn.droop import droop
     f = np.logspace(1, 10, 500)
     w = 2 * np.pi * f
     R, L, tr = 0.01, 1e-9, 2e-9
@@ -403,7 +403,7 @@ def test_cli_writes_the_droop_and_the_port_matrix(tmp_path):
     """R-E14: pdn.json's droop at each load (its peak, when, where it settles: the DC path's drop) and, with
     --touchstone, pdn.zNp: the loads' impedance matrix, self and transfer, as Touchstone has it."""
     import json
-    from pcbqs.pdn.cli import main
+    from kicad2ems.pcbqs.pdn.cli import main
     path = tmp_path / 'b_board.json'
     path.write_text(json.dumps(_with_high_side(board())))
     main([str(path), '--rail', 'P', '--volts', '3.3', '--load', 'U1=2', '--load', 'Q1=1@U1', '--dmax', '1', '--points',
@@ -426,7 +426,7 @@ def _rlc(f, R=5e-3, L=0.5e-9, C=1e-6):
 def test_a_parts_impedance_from_its_file(tmp_path):
     """R-E14: a capacitor's model from a .s2p measured through it (shunt or series, told by |S21|), a .s1p / .z1p or a
     CSV, read back to its impedance; a table interpolated in log f, its ends held."""
-    from pcbqs.pdn.models import read_impedance, table_z, two_port_z
+    from kicad2ems.pcbqs.pdn.models import read_impedance, table_z, two_port_z
     f = np.logspace(4, 9, 41)
     Z = _rlc(f)
     z0 = 50.0
@@ -459,7 +459,7 @@ def test_a_parts_impedance_from_its_file(tmp_path):
 def test_the_bare_port_matrix_closed_by_the_parts_is_the_loaded_rail():
     """R-E14: the bare PDN between every part's port, each part's own impedance attached at its port: what each load
     sees with everything attached (RailPDN.z)."""
-    from pcbqs.pdn.cavity import element_z
+    from kicad2ems.pcbqs.pdn.cavity import element_z
     r = Rail(board(), 'P', loads={'U1': 2.0, 'U2': 0.5})
     pdn = RailPDN(r, dmax=1.0, vrm=dict(R=2e-3, L=20e-9), log=lambda *a: None)
     f = np.logspace(4, 9, 9)
@@ -479,7 +479,7 @@ def test_cli_vendor_models_derating_ports_and_spice(tmp_path):
     --cap-derate halves every decap's C; --ports-touchstone and --spice write the bare PDN's port matrix and its
     subcircuit."""
     import json
-    from pcbqs.pdn.cli import main
+    from kicad2ems.pcbqs.pdn.cli import main
     path = tmp_path / 'b_board.json'
     path.write_text(json.dumps(board()))
     f = np.logspace(3, 10, 200)

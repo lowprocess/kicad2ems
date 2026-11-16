@@ -3,8 +3,8 @@ import numpy as np
 import pytest
 from scipy.sparse.linalg import LinearOperator
 from shapely.geometry import box,mapping
-from pcbqs.hmatrix import HMatrix
-from pcbqs.mqs import MQS
+from kicad2ems.pcbqs.hmatrix import HMatrix
+from kicad2ems.pcbqs.mqs import MQS
 
 
 def test_hmatrix_reciprocal_complex_kernel_and_storage():
@@ -67,7 +67,7 @@ def test_nonconvergence_is_reported_and_capacitance_is_available():
 
 
 def test_grading_preserves_terminals_and_reduces_bulk():
-    from pcbqs.pdn.mesh import mesh_sheet
+    from kicad2ems.pcbqs.pdn.mesh import mesh_sheet
     g=box(0,0,20,12);pads=[box(1,5,2,6),box(17,5,18,6)]
     n0,t0,_,_=mesh_sheet(g,dmax=1.,regions=pads)
     nd,tr,rings,regs=mesh_sheet(g,dmax=1.,regions=pads,coarsen=4,edge_rings=4,w_ref=.2,edge_zone=box(0,4,3,7))
@@ -78,7 +78,7 @@ def test_grading_preserves_terminals_and_reduces_bulk():
 
 
 def test_via_operator_matches_dense_without_triangle_square_fill(monkeypatch):
-    import pcbqs.mqs as module
+    import kicad2ems.pcbqs.mqs as module
     q=make('hierarchical',layered=True,closed=True)
     board=q.board
     board['copper']['B']=[dict(net='B',polygon=mapping(box(0,0,8,4)))]
@@ -102,7 +102,7 @@ def test_via_operator_matches_dense_without_triangle_square_fill(monkeypatch):
 
 @pytest.mark.parametrize('closed',[False,True])
 def test_graph_preconditioner_avoids_large_projected_fill(monkeypatch,closed):
-    import pcbqs.peec_iterative as module
+    import kicad2ems.pcbqs.peec_iterative as module
     monkeypatch.setattr(module,'_PROJECTED_PRECONDITIONER_BYTES',0)
     q=make('hierarchical',layered=True,closed=closed)
     q.solver_restart=50
@@ -125,9 +125,9 @@ def test_serialized_operators_retain_complex_products():
 @pytest.mark.parametrize('near',[0.,3.,np.inf])
 def test_batched_layer_images_match_dense_with_tiny_chunks(near):
     import copy
-    from pcbqs.compressed import _LayeredPairs
-    from pcbqs.electrostatic import potential_moments
-    from pcbqs.static_backends import FillEngine
+    from kicad2ems.pcbqs.compressed import _LayeredPairs
+    from kicad2ems.pcbqs.electrostatic import potential_moments
+    from kicad2ems.pcbqs.static_backends import FillEngine
     q=copy.copy(make('hierarchical',layered=True))
     ids=np.r_[q.layer_tris['B'][:3],q.layer_tris['F'][:3]]
     q.tris=q.tris[ids];q.z_of=q.z_of[ids]
@@ -146,7 +146,7 @@ def test_batched_layer_images_match_dense_with_tiny_chunks(near):
 def test_benchmark_checkpoints_reuse_kernels_and_invalidate_options(tmp_path):
     import importlib.util
     from pathlib import Path
-    spec=importlib.util.spec_from_file_location('operator_cache',Path(__file__).parents[1]/'examples/peec-memory/operator_cache.py')
+    spec=importlib.util.spec_from_file_location('operator_cache',Path(__file__).resolve().parents[2]/'examples/pcbqs/peec-memory/operator_cache.py')
     cache=importlib.util.module_from_spec(spec);spec.loader.exec_module(cache)
     a=make('hierarchical',layered=True,closed=True)
     assert not cache.checkpoint(a,'inductance',tmp_path,a._assemble)['hit']
@@ -169,7 +169,7 @@ def test_benchmark_checkpoints_reuse_kernels_and_invalidate_options(tmp_path):
 @pytest.mark.parametrize('dtype',[float,complex])
 def test_native_hmatrix_product_matches_python_and_is_thread_independent(dtype,monkeypatch):
     import pickle
-    import pcbqs.hmatrix as hm
+    import kicad2ems.pcbqs.hmatrix as hm
     if hm._native() is None:
         pytest.skip('compiled core without hmatrix_apply')
     rng=np.random.default_rng(7);pts=rng.random((512,3));pts[:,2]*=.01
@@ -197,7 +197,7 @@ def test_native_hmatrix_product_matches_python_and_is_thread_independent(dtype,m
 
 
 def test_native_hmatrix_rejects_inconsistent_layout():
-    import pcbqs.hmatrix as hm
+    import kicad2ems.pcbqs.hmatrix as hm
     core=hm._native()
     if core is None:
         pytest.skip('compiled core without HBlocks')
@@ -226,8 +226,8 @@ def test_native_hmatrix_rejects_inconsistent_layout():
 
 @pytest.mark.parametrize('near',[3.,np.inf])
 def test_native_entry_blocks_match_numpy_assembly_bitwise(near,monkeypatch):
-    import pcbqs.compressed as compressed
-    from pcbqs._numerics.base import RWG,MU0
+    import kicad2ems.pcbqs.compressed as compressed
+    from kicad2ems.pcbqs._numerics.base import RWG,MU0
     q=make('hierarchical');q.near=near
     engine=compressed._engine(q)
     native=compressed._native(engine)
@@ -243,7 +243,7 @@ def test_native_entry_blocks_match_numpy_assembly_bitwise(near,monkeypatch):
         assert np.array_equal(blocks[0],expected) and np.array_equal(blocks[1],expected)
     # Whole inductance operators agree exactly with the NumPy entry assembly
     # (both through the NumPy ACA; native ACA draws its own check rows).
-    import pcbqs.hmatrix as hm
+    import kicad2ems.pcbqs.hmatrix as hm
     monkeypatch.setattr(hm,'_build_core',lambda:None)
     L,_=compressed.edge_inductance(q)
     assert q.fill_info['magnetic']['native_entries']
@@ -263,7 +263,7 @@ def test_native_entry_blocks_match_numpy_assembly_bitwise(near,monkeypatch):
 
 
 def test_entry_blocks_follow_selected_fill_backend():
-    import pcbqs.compressed as compressed
+    import kicad2ems.pcbqs.compressed as compressed
     q=make('hierarchical');q._fill_options=dict(q._fill_options,backend='numpy')
     assert compressed._native(compressed._engine(q)) is None
 
@@ -271,9 +271,9 @@ def test_entry_blocks_follow_selected_fill_backend():
 @pytest.mark.parametrize('near',[0.,3.,np.inf])
 @pytest.mark.parametrize('lossy',[False,True])
 def test_native_layered_images_match_numpy_loops(near,lossy,monkeypatch):
-    import pcbqs.compressed as compressed
-    import pcbqs.electrostatic as electrostatic
-    from pcbqs.static_backends import FillEngine
+    import kicad2ems.pcbqs.compressed as compressed
+    import kicad2ems.pcbqs.electrostatic as electrostatic
+    from kicad2ems.pcbqs.static_backends import FillEngine
     q=make('hierarchical',layered=True);q.near=near
     if lossy:
         q._dielectric_stack.eps=q._dielectric_stack.eps*(1-.05j);q._dielectric_stack._cache.clear()
@@ -298,8 +298,8 @@ def test_native_layered_images_match_numpy_loops(near,lossy,monkeypatch):
 
 @pytest.mark.parametrize('layered',[False,True])
 def test_native_aca_build_matches_numpy_build_within_tolerance(layered,monkeypatch):
-    import pcbqs.compressed as compressed
-    import pcbqs.hmatrix as hm
+    import kicad2ems.pcbqs.compressed as compressed
+    import kicad2ems.pcbqs.hmatrix as hm
     if hm._build_core() is None:
         pytest.skip('compiled core without native ACA')
     q=make('hierarchical',layered=layered)

@@ -2,7 +2,7 @@
 mom25d.api - one call for a program that hands mom25d a board and wants S-parameters back, without reaching
 into the Simulation's internals (kicad2ems's MoM solver is the first user of this seam).
 
-    from mom25d.api import solve_board
+    from kicad2ems.mom25d.api import solve_board
     res = solve_board('out/filter_board.json', np.linspace(1e9, 6e9, 401), dmax=0.3e-3)
     res.S, res.names, res.zref        # (nf, n, n) at the ports' reference impedances, port names, ohms
     res.ports, res.unknowns, res.solves, res.seconds, res.notes

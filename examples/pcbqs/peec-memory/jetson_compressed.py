@@ -6,10 +6,10 @@ stage results before solving so failed attempts remain inspectable.
 from pathlib import Path
 import os,json,time,resource
 from shapely.ops import unary_union
-from pcbqs.pdn.rail import Rail
-from pcbqs.pdn.stack import RailPDN
-from pcbqs.pdn.peec_trial import PEECPDN
-from pcbqs.electrostatic import DielectricStack
+from kicad2ems.pcbqs.pdn.rail import Rail
+from kicad2ems.pcbqs.pdn.stack import RailPDN
+from kicad2ems.pcbqs.pdn.peec_trial import PEECPDN
+from kicad2ems.pcbqs.electrostatic import DielectricStack
 from operator_cache import checkpoint
 
 

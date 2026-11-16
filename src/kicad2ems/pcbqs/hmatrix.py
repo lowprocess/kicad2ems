@@ -26,7 +26,7 @@ def _native():
     if os.environ.get('PCBQS_NO_CORE'):
         return None
     try:
-        core=import_module('pcbqs._core')
+        core=import_module('kicad2ems.pcbqs._core')
     except ImportError:
         return None
     return core if hasattr(core,'HBlocks') else None

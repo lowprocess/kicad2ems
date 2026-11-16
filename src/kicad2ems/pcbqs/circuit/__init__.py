@@ -2,11 +2,11 @@
 A general switching-circuit simulator on ngspice: the circuit is a model file and nothing in the code names a
 converter.
 
-    python -m pcbqs.circuit model.json --out results        # run it (every point of its sweep)
-    python -m pcbqs.circuit --templates                     # the example circuits to start from
-    python -m pcbqs.circuit --template boost > model.json
+    python -m kicad2ems.pcbqs.circuit model.json --out results        # run it (every point of its sweep)
+    python -m kicad2ems.pcbqs.circuit --templates                     # the example circuits to start from
+    python -m kicad2ems.pcbqs.circuit --template boost > model.json
 
-    from pcbqs.circuit import load, run
+    from kicad2ems.pcbqs.circuit import load, run
     summary = run(load('model.json'), 'results')
 
 A model (model.py) is parts, couplings, drives, probes, measures and targets, with parameters its values may refer

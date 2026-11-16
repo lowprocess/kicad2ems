@@ -3,8 +3,8 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping
 
-from pcbqs._numerics.base import EPS0
-from pcbqs.mqs import MQS
+from kicad2ems.pcbqs._numerics.base import EPS0
+from kicad2ems.pcbqs.mqs import MQS
 
 
 def plates(h=0.5, size=10, dmax=2, whole=False, er=1):
@@ -57,7 +57,7 @@ def test_uniform_dielectric_and_parallel_plate_electric_field():
 
 
 def test_electric_field_off_axis_matches_coulomb_quadrature():
-    from pcbqs._numerics.base import _BAR6, _W6
+    from kicad2ems.pcbqs._numerics.base import _BAR6, _W6
     q = plates(whole=True)
     r = q.solve([1e3])
     points = np.array([[.025, .016, .02], [.025, .016, 0.]])

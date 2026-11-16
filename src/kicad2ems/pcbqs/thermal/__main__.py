@@ -1,9 +1,9 @@
-"""python -m pcbqs.thermal: the steady temperature of a board from what its parts dissipate.
+"""python -m kicad2ems.pcbqs.thermal: the steady temperature of a board from what its parts dissipate.
 
-    python -m pcbqs.thermal board.kicad_pcb --loss Q1=0.35 --loss D1=0.5
-    python -m pcbqs.thermal --circuit circuit-results            # the board and the losses of a circuit run
-    python -m pcbqs.thermal --circuit circuit-results --method both
-    python -m pcbqs.thermal --describe --json                     # the options, for kicad2ems-gui's form
+    python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=0.35 --loss D1=0.5
+    python -m kicad2ems.pcbqs.thermal --circuit circuit-results            # the board and the losses of a circuit run
+    python -m kicad2ems.pcbqs.thermal --circuit circuit-results --method both
+    python -m kicad2ems.pcbqs.thermal --describe --json                     # the options, for kicad2ems-gui's form
 
 It writes <out>/thermal.json (each part's temperature, each layer's hottest and mean, the heat in and out),
 thermal.npz (the maps), thermal.png and, where kicad2ems's viewer reads results, the board and each layer's
@@ -21,7 +21,7 @@ from . import Problem, solve, losses_of, FILM, AMBIENT
 
 OPTIONS = [            # (key, kind, default, help, group): _cli's table, which --describe gives the window
     ('loss', 'list', [], "A footprint's loss, REF=W (repeatable); with a circuit run, these replace its figures", 'Heat'),
-    ('circuit', 'str', '', "A circuit run's results folder (python -m pcbqs.circuit): its board and its parts' "
+    ('circuit', 'str', '', "A circuit run's results folder (python -m kicad2ems.pcbqs.circuit): its board and its parts' "
      'losses', 'Heat'),
     ('case', 'str', '', "The circuit run's case, by name; empty: the one with the most loss; all: a map for each "
      "(in <out>/<case>) and a table of each part at each (thermal-cases.json)", 'Heat'),
@@ -109,7 +109,7 @@ def _pairs(items, what, ap):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog='python -m pcbqs.thermal', description=__doc__,
+    ap = argparse.ArgumentParser(prog='python -m kicad2ems.pcbqs.thermal', description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     from .._cli import add_options, load_board, print_describe
     ap.add_argument('board', nargs='?', help='a .kicad_pcb or a kicad2ems board.json')

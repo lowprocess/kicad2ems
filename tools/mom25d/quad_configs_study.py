@@ -1,9 +1,9 @@
-"""The mesh configurations (tools/mesh_configs.py) against a fine triangle reference on kicad2ems boards: unknowns, a
+"""The mesh configurations (tools/mom25d/mesh_configs.py) against a fine triangle reference on kicad2ems boards: unknowns, a
 solve's time (double precision, CPU) and the largest |dS| at three frequencies. For kicad2ems's docs
 (docs/mom.md#coarsen).
 
-    python tools/quad_configs_study.py out.json board.json:f1,f2,f3 [board.json:f1,f2,f3 ...]   # GHz; then the plot
-    python tools/quad_configs_study.py out.json --plot-only out.png
+    python tools/mom25d/quad_configs_study.py out.json board.json:f1,f2,f3 [board.json:f1,f2,f3 ...]   # GHz; then the plot
+    python tools/mom25d/quad_configs_study.py out.json --plot-only out.png
 """
 import functools, json, os, sys, time
 import numpy as np
@@ -20,7 +20,7 @@ SURFACE, INK, INK2, GRID = '#fcfcfb', '#0b0b0b', '#52514e', '#e4e3df'
 
 
 def build(board, dmax=0.3e-3, **kw):
-    from mom25d.board import BoardModel
+    from kicad2ems.mom25d.board import BoardModel
     m = BoardModel(board, port='via', log=lambda *a: None)
     planes = {k: 3 * dmax for k, gs in m.shapes.items() if sum(g.area for g in gs) > 0.5 * m.outline_area}
     return m.simulation(dmax=dmax, dmax_layer=planes, fmin=1e9, fmax=6e9, verbose=False, characterize=False,
@@ -38,7 +38,7 @@ def run(board, F, **kw):
 
 
 def study(out, specs):
-    from mom25d import quads as Q
+    from kicad2ems.mom25d import quads as Q
     res = json.load(open(out)) if os.path.exists(out) else {}
     m0 = Q._match
     for spec in specs:

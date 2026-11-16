@@ -1,6 +1,6 @@
 import time, sys, numpy as np, scipy.sparse.linalg as sla
-import pcbqs.pdn.dc as dc
-from pcbqs.pdn.cli import main
+import kicad2ems.pcbqs.pdn.dc as dc
+from kicad2ems.pcbqs.pdn.cli import main
 orig = dc.spsolve
 def trial(A, b):
     print('DC system', A.shape, 'nnz', A.nnz, 'rhs', np.shape(b), flush=True)

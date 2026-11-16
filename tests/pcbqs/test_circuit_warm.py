@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-import pcbqs
-from pcbqs.circuit import model as M
-from pcbqs.circuit import temperature as T
-from pcbqs.circuit.engine import fingerprint
+from kicad2ems import pcbqs
+from kicad2ems.pcbqs.circuit import model as M
+from kicad2ems.pcbqs.circuit import temperature as T
+from kicad2ems.pcbqs.circuit.engine import fingerprint
 
 
 def test_each_kind_moves_by_its_own_law_from_25_C():
@@ -56,7 +56,7 @@ def test_resolve_puts_each_part_at_its_temperature():
 
 @pytest.mark.skipif(not shutil.which('ngspice'), reason='ngspice not installed')
 def test_the_warm_runs_set_each_part_to_its_maps_temperature_until_none_moves(tmp_path):
-    from pcbqs.circuit import warm
+    from kicad2ems.pcbqs.circuit import warm
     m = M.template('04_buck')
     m['board']['file'] = str(Path(pcbqs.__file__).parent / 'circuit' / 'examples' / '04_buck.kicad_pcb')
     s = warm.run(m, tmp_path, 4, log=lambda s: None)

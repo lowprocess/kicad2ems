@@ -10,8 +10,8 @@ sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "src"))
 sys.path.insert(0, str(HERE.parent / "tests"))
 import time
 import numpy as np
-import pcbqs.mqs as M
-from pcbqs import sparams as SP
+import kicad2ems.pcbqs.mqs as M
+from kicad2ems.pcbqs import sparams as SP
 import test_sparams as T
 f = np.array([1e8, 3e8])
 Lp, Cp, length, z0 = 487.4e-9, 68.3e-12, 29.5e-3, 50.0

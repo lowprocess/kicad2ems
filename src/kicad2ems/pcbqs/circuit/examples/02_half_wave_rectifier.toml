@@ -1,5 +1,5 @@
 # pcbqs circuit example: a 50 Hz sine through one diode into a reservoir capacitor and a resistive load
-#   python -m pcbqs.circuit 02_half_wave_rectifier.json --out out/half_wave_rectifier      # the circuit alone, from the command line
+#   python -m kicad2ems.pcbqs.circuit 02_half_wave_rectifier.json --out out/half_wave_rectifier      # the circuit alone, from the command line
 #   kicad2ems-gui: File > Examples > Circuits                     # the circuit on its board, in the window
 board = "02_half_wave_rectifier.kicad_pcb"   # paths are relative to this file
 out   = "out"

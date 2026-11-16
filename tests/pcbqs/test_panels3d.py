@@ -3,9 +3,9 @@ brute-force quadrature."""
 import numpy as np
 import pytest
 
-from pcbqs._numerics.base import tri_area2
-from pcbqs._numerics.sing import offplane_pairs
-from pcbqs.panels3d import frames, pair_moments, rwg_pair
+from kicad2ems.pcbqs._numerics.base import tri_area2
+from kicad2ems.pcbqs._numerics.sing import offplane_pairs
+from kicad2ems.pcbqs.panels3d import frames, pair_moments, rwg_pair
 
 
 def _rot(axis, angle):
@@ -58,7 +58,7 @@ def test_moments_rotate_with_the_pair(axis, angle):
 
 def _brute(Vo, Vs, levels=4):
     """Both integrals by the 6-point rule on 4**levels sub-triangles each (pairs well apart)."""
-    from pcbqs.panels3d import _rule
+    from kicad2ems.pcbqs.panels3d import _rule
     bar, w = _rule(levels)
     _, _, _, _, Ao = frames(Vo)
     _, _, _, _, As = frames(Vs)
@@ -103,7 +103,7 @@ def test_rwg_pair_is_the_galerkin_product():
     Vo = np.array([[[0, 0, 0], [0.3e-3, 0, 0], [0, 0, 35e-6]]], float)
     Vs = Vo + [[1.5e-3, 0.4e-3, 0.2e-3]]
     vo, vs = Vo[:, 2], Vs[:, 0]
-    from pcbqs.panels3d import _rule
+    from kicad2ems.pcbqs.panels3d import _rule
     bar, w = _rule(4)
     P = np.einsum('qk,mkc->mqc', bar, Vo)[0]
     Q = np.einsum('qk,mkc->mqc', bar, Vs)[0]

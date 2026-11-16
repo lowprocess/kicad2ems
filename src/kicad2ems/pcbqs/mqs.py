@@ -931,5 +931,5 @@ def _inside(poly, pts):
 
 
 if __name__ == '__main__':
-    from pcbqs.mqs_cli import main
+    from kicad2ems.pcbqs.mqs_cli import main
     raise SystemExit(main())

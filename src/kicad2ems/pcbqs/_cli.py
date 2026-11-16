@@ -49,7 +49,7 @@ def _cache_key(path, nets):
     import hashlib
     from . import __version__
     try:
-        from kicad2ems import __version__ as k2e
+        from kicad2ems.core import __version__ as k2e
     except ImportError:
         k2e = '?'
     h = hashlib.sha256(Path(path).read_bytes())
@@ -70,8 +70,8 @@ def load_board(path, nets=None, cache=None):
     if path.endswith('.json'):
         return json.loads(Path(path).read_text())
     try:
-        from kicad2ems.importers import open_board
-        from kicad2ems.board import Board
+        from kicad2ems.core.importers import open_board
+        from kicad2ems.core.board import Board
     except ImportError as exc:
         raise RuntimeError('KiCad input requires pcbqs[kicad2ems]; JSON input works independently') from exc
     use = (cache if cache is not None else not os.environ.get('PCBQS_NO_CACHE'))

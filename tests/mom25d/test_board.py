@@ -7,7 +7,7 @@ import os
 
 import numpy as np
 import pytest
-from mom25d.board import BoardModel, WALL_GAP, wall_points
+from kicad2ems.mom25d.board import BoardModel, WALL_GAP, wall_points
 
 quiet = lambda *a: None
 BOARDS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'boards')
@@ -38,7 +38,7 @@ def test_stack_vias_and_ports():
 def test_ground_found_and_differential_ports():
     """Without a ground setting the lowest solid layer is the ground; P<n>+ / P<n>- become one mixed-mode
     port with pairs=True."""
-    from mom25d.sim import DiffPort
+    from kicad2ems.mom25d.sim import DiffPort
     data = board('diff')
     m = BoardModel(data, pairs=True, log=quiet)
     ps = m.ports(dmax=0.3e-3)
@@ -88,9 +88,9 @@ def test_walls_parts_and_errors():
 
 def test_solve_board_is_the_steps_it_wraps():
     """api.solve_board: the same S-parameters as building the model and sweeping by hand."""
-    pytest.importorskip('mom25d._core')   # (the mesher)
-    from mom25d.api import solve_board
-    from mom25d.run import solve_band
+    pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
+    from kicad2ems.mom25d.api import solve_board
+    from kicad2ems.mom25d.run import solve_band
     data = board('lowpass')
     f = np.linspace(1e9, 3e9, 5)
     calls = []
@@ -110,7 +110,7 @@ def test_wave_ports_with_the_characterised_gamma():
     """A 3 mm 50 ohm line on 1.6 mm FR4 characterises to ~50 ohm (a 16 mm test line gave 1.6 / 24 / 33 ohm), and
     a thru keeps wave ports down to frequencies where its feed spans too little to fit gamma: the characterised
     gamma takes over, and the line stays matched and lossless."""
-    from mom25d.run import renorm, _zc
+    from kicad2ems.mom25d.run import renorm, _zc
     m = BoardModel(board('thru'), port='wave', log=quiet)
     sim = m.simulation(dmax=0.4e-3, fmin=0.2e9, fmax=6e9, verbose=False, wave_down_to=0.2e9)
     assert all(abs(p.zc - 51) < 2 for p in sim.ports)
@@ -125,7 +125,7 @@ def test_a_pair_s_modes_take_their_gamma_from_the_characterisation():
     line's wave is: fitted on the feed's own cuts where they span a quarter of a radian it made S wrong at the low
     end of the band (rf_diffvia at 1 GHz: |Sdd11| 0.19 for 0.01, |Sdd21| 1.21 one way and 0.79 the other, the sweep
     54 solves long). The ports' scales are then taken out (sim.balance): S is reciprocal."""
-    from mom25d.sim import ModePort
+    from kicad2ems.mom25d.sim import ModePort
     m = BoardModel(board('diff'), pairs=True, log=quiet)
     sim = m.simulation(dmax=0.3e-3, fmin=1e9, fmax=10e9, verbose=False, wave_down_to=1e9)
     assert [type(p) for p in sim.ports] == [ModePort] * 4 and [p.name for p in sim.ports] == ['P1d', 'P1c', 'P2d', 'P2c']
@@ -148,8 +148,8 @@ def test_a_plane_only_vias_run_through_as_a_pec_plane_with_holes():
     over it saw the plane closed). A plane with any other hole stays meshed."""
     import copy
     from shapely.geometry import shape
-    from mom25d.board import plane_holes
-    from mom25d.api import solve_board
+    from kicad2ems.mom25d.board import plane_holes
+    from kicad2ems.mom25d.api import solve_board
     data = board('demo')
     gn, outline = set(data['ground_nets']), shape(data['outline'])
     geom, holes = plane_holes(data, 'In1.Cu', gn, outline)
@@ -208,7 +208,7 @@ def test_solid_planes_as_pec_and_lone_pads_dropped():
     """planes='pec': the solid plane over the trace is a PEC cover (the copper above it left out), the ground
     stays B.Cu (the trace's layer is not solid), the stitching vias run from the ground to the cover.
     stitching_pads='drop': the pads beside the trace, and nothing else, are left out; the vias are kept."""
-    from mom25d.board import pec_planes, lone_pads
+    from kicad2ems.mom25d.board import pec_planes, lone_pads
     data = stripline()
     assert pec_planes(data, 'B.Cu') == ('B.Cu', 'In1.Cu')
     assert pec_planes(board('demo'), 'B.Cu') == ('B.Cu', None)         # In1.Cu has the signal via's antipad
@@ -229,7 +229,7 @@ def test_solid_planes_as_pec_and_lone_pads_dropped():
 def test_a_raised_ground():
     """planes='pec' on a stripline whose lower plane is not the board's ground (rf_stripline: B.Cu, In2.Cu
     solid, the trace on In1.Cu): the ground moves up to In2.Cu and B.Cu is left out."""
-    from mom25d.board import pec_planes
+    from kicad2ems.mom25d.board import pec_planes
     data = stripline()
     data['copper']['In2.Cu'], data['copper']['In1.Cu'] = data['copper']['In1.Cu'], data['copper']['In2.Cu']
     for p in data['ports']:
@@ -245,7 +245,7 @@ def test_a_pad_a_part_lands_on_is_not_lone():
     ground (demo_bandpass: dropped, it cut the part off the ground, |dS| 1.98). The part's s and e are its gap's
     corners, so its pads touch that box without containing either."""
     from shapely.geometry import shape
-    from mom25d.board import lone_pads
+    from kicad2ems.mom25d.board import lone_pads
     data = stripline()
     pads = lone_pads(data, ['In2.Cu'])['In2.Cu']
     p = shape(data['copper']['In2.Cu'][pads[0]]['polygon'])
@@ -264,7 +264,7 @@ def test_a_ground_via_under_a_parts_pad_is_meshed_as_a_signal_via():
     data['parts'] = [dict(ref='C1', R=0.1, L=0.0, C=1e-12, layer='In2.Cu', z=0.0, axis=0, s=[v['x'] + 0.3, v['y'] - 0.2, 0.0],
                           e=[v['x'] + 0.7, v['y'] + 0.2, 0.0])]
     from shapely.geometry import box, Point
-    from mom25d.board import PART_VIA
+    from kicad2ems.mom25d.board import PART_VIA
     gap = box(v['x'] + 0.3, v['y'] - 0.2, v['x'] + 0.7, v['y'] + 0.2)
     near = [gap.distance(Point(w['x'], w['y'])) < PART_VIA for w in data['vias']]
     kinds = [w.kind for w in BoardModel(data, log=quiet).vias]
@@ -274,7 +274,7 @@ def test_a_ground_via_under_a_parts_pad_is_meshed_as_a_signal_via():
 def test_metal_finish_per_layer():
     """A surface finish on some interfaces: Zs there times 1 + share (F - 1), elsewhere bare (sim.Metal)."""
     import numpy as np
-    from mom25d.sim import Metal
+    from kicad2ems.mom25d.sim import Metal
     enig = [(4.1e7, 0.08e-6), (1.45e6, 5e-6)]
     m = Metal(5.8e7, 35e-6, finish=enig, on={2: 0.4})
     f = 3e9
@@ -291,7 +291,7 @@ def test_ground_apertures():
     """ground_apertures: a slot cut into the ground under the trace is found, with its area; a via's antipad
     (In1.Cu's, the signal via through it) and a pour pulled back from the board edge are not."""
     from shapely.geometry import box, mapping, shape
-    from mom25d.board import ground_apertures
+    from kicad2ems.mom25d.board import ground_apertures
     data = board('demo')
     assert ground_apertures(data, 'B.Cu') == [] and ground_apertures(data, 'In1.Cu') == []
     gnd = data['copper']['B.Cu'][0]

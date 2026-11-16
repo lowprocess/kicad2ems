@@ -1,6 +1,6 @@
 """Compare dense/compressed PDN in separate processes (including peak RSS).
 
-PYTHONPATH=src python tools/benchmark_peec_memory.py --out examples/peec-memory/backend-comparison.json
+PYTHONPATH=src python tools/pcbqs/benchmark_peec_memory.py --out examples/peec-memory/backend-comparison.json
 """
 import argparse
 import json
@@ -15,9 +15,9 @@ import numpy as np
 
 def worker(args):
     from trial_pdn_peec import board,VRM
-    from pcbqs.pdn.rail import Rail
-    from pcbqs.pdn.stack import RailPDN
-    from pcbqs.pdn.peec_trial import PEECPDN
+    from kicad2ems.pcbqs.pdn.rail import Rail
+    from kicad2ems.pcbqs.pdn.stack import RailPDN
+    from kicad2ems.pcbqs.pdn.peec_trial import PEECPDN
     b=board(slot=args.case=='slotted')
     old=RailPDN(Rail(b,'P',source='U0',ground_source='U0',loads={'U1':1.}),dmax=1.25,vrm=VRM,log=lambda *_:None)
     t=time.perf_counter()

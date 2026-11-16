@@ -1,5 +1,5 @@
 # pcbqs circuit example: non-synchronous buck: the duty is adjusted until the output is 5 V into a resistive load
-#   python -m pcbqs.circuit 04_buck.json --out out/buck      # the circuit alone, from the command line
+#   python -m kicad2ems.pcbqs.circuit 04_buck.json --out out/buck      # the circuit alone, from the command line
 #   kicad2ems-gui: File > Examples > Circuits                     # the circuit on its board, in the window
 board = "04_buck.kicad_pcb"   # paths are relative to this file
 out   = "out"

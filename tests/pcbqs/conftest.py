@@ -4,3 +4,6 @@ import os
 
 for _name in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS'):
     os.environ.setdefault(_name, '2')
+
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))     # this folder's own helpers by name

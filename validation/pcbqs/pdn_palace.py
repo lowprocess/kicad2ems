@@ -98,7 +98,7 @@ def palace_cavity(geom, d, ports, f, folder, h=1.0, order=2, er=ER):
 
 
 def pcbqs_cavity(geom, d, ports, f, dmax=0.5, er=ER):
-    from pcbqs.pdn.cavity import PlanePair
+    from kicad2ems.pcbqs.pdn.cavity import PlanePair
     t = time.perf_counter()
     # the port's w-wide strip as a disc of the same perimeter... and a lossless plane: sigma huge
     pp = PlanePair(geom=geom, d=d, er=er, tand=TAND, sigma=1e15,
@@ -110,8 +110,8 @@ def pcbqs_cavity(geom, d, ports, f, dmax=0.5, er=ER):
 def jetson_cavity():
     """Jetson AGX Thor +1V15: In4.Cu over In3.Cu as pcbqs's PlanePair sees it (antipads filled), ports at a U21 via
     and two decap vias."""
-    from pcbqs._cli import load_board
-    from pcbqs.pdn.cavity import PlanePair
+    from kicad2ems.pcbqs._cli import load_board
+    from kicad2ems.pcbqs.pdn.cavity import PlanePair
     b = load_board('/usr/share/kicad/demos/jetson-agx-thor-baseboard/jetson-agx-thor-baseboard.kicad_pcb', {'+1V15', 'GND'})
     pp = PlanePair(b, power='+1V15', ground='GND', power_layer='In4.Cu', ground_layer='In3.Cu', ports=[], dmax=0.5,
                    log=lambda *a: None)
@@ -137,7 +137,7 @@ def run(name, f=None):
     q = palace_cavity(geom, d, ports, f, folder, er=er)
     out = dict(case=name, f=f, pcbqs=p['Z'], palace=q['Z'], tets=q['tets'], seconds=dict(pcbqs=p['seconds'], palace=q['seconds']))
     if name == 'rect':
-        from pcbqs.pdn.cavity import rect_cavity_z
+        from kicad2ems.pcbqs.pdn.cavity import rect_cavity_z
         out['analytic'] = rect_cavity_z(40, 30, d, ER, TAND, [(x, y, w) for x, y, w in ports], f, modes=200, sigma=1e15)
     write_json(folder / 'result.json', out)
     for i, fi in enumerate(f):

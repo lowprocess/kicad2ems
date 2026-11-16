@@ -1,6 +1,6 @@
 """Reproducible CPU MQS fill/field benchmark, with reference error metrics.
 
-    OPENBLAS_NUM_THREADS=2 python tools/benchmark_mqs.py --dmax 0.8
+    OPENBLAS_NUM_THREADS=2 python tools/pcbqs/benchmark_mqs.py --dmax 0.8
 
 Times are wall seconds; the all-analytic reference uses the same refined close
 terms as the hybrid path. `--skip-reference` omits that quadratic comparison.
@@ -12,7 +12,7 @@ import time
 import numpy as np
 from shapely.geometry import box, mapping
 
-from pcbqs.mqs import MQS
+from kicad2ems.pcbqs.mqs import MQS
 
 
 def main():

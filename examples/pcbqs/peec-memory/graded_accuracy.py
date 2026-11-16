@@ -7,12 +7,12 @@ from pathlib import Path
 import importlib.util
 import json, time
 import numpy as np
-from pcbqs.pdn.rail import Rail
-from pcbqs.pdn.stack import RailPDN
-from pcbqs.pdn.peec_trial import PEECPDN
+from kicad2ems.pcbqs.pdn.rail import Rail
+from kicad2ems.pcbqs.pdn.stack import RailPDN
+from kicad2ems.pcbqs.pdn.peec_trial import PEECPDN
 
 HERE=Path(__file__).resolve().parent
-spec=importlib.util.spec_from_file_location('fixture',HERE.parents[1]/'tools/trial_pdn_peec.py')
+spec=importlib.util.spec_from_file_location('fixture',HERE.parents[1]/'tools/pcbqs/trial_pdn_peec.py')
 fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture)
 f=np.array([1e5,1e6,4e6,4.86e6,5e6,6e6,10e6,30e6])
 out=dict(frequencies_Hz=f.tolist(),runs=[])

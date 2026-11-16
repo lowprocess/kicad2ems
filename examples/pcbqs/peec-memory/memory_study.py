@@ -8,11 +8,11 @@ import os
 import json, time, gc
 import numpy as np
 from shapely.ops import unary_union
-from pcbqs.pdn.rail import Rail
-from pcbqs.pdn.stack import RailPDN
-import pcbqs.pdn.peec_trial as trial
-import pcbqs.mqs as mqs
-from pcbqs.static_backends import FillEngine
+from kicad2ems.pcbqs.pdn.rail import Rail
+from kicad2ems.pcbqs.pdn.stack import RailPDN
+import kicad2ems.pcbqs.pdn.peec_trial as trial
+import kicad2ems.pcbqs.mqs as mqs
+from kicad2ems.pcbqs.static_backends import FillEngine
 
 ROOT=Path(os.environ.get('JETSON_PDN_DIR','/workspace/jetson-pdn'))
 b=json.loads((ROOT/'board.json').read_text())

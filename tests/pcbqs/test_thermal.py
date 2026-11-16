@@ -8,10 +8,10 @@ import pytest
 from scipy.special import i0, i1, k0, k1
 from shapely.geometry import Point, box, mapping
 
-from pcbqs.thermal import Problem, solve, losses_of
-from pcbqs.thermal import grid as G
+from kicad2ems.pcbqs.thermal import Problem, solve, losses_of
+from kicad2ems.pcbqs.thermal import grid as G
 
-EXAMPLES = Path(__file__).resolve().parents[1] / 'src' / 'pcbqs' / 'circuit' / 'examples'
+EXAMPLES = Path(__file__).resolve().parents[2] / 'src' / 'kicad2ems' / 'pcbqs' / 'circuit' / 'examples'
 quiet = lambda *a: None
 
 
@@ -232,7 +232,7 @@ def test_bad_sizes_and_methods_are_refused():
 
 def demo(name):
     pytest.importorskip('kicad2ems')
-    from pcbqs._cli import load_board
+    from kicad2ems.pcbqs._cli import load_board
     return load_board(str(EXAMPLES / f'{name}.kicad_pcb'))
 
 
@@ -252,7 +252,7 @@ def test_the_two_solvers_agree_on_a_demo_board():
 
 def test_the_command_line_takes_a_circuit_run(tmp_path, capsys):
     demo('06_boost')
-    from pcbqs.thermal.__main__ import main
+    from kicad2ems.pcbqs.thermal.__main__ import main
     run = tmp_path / 'run'
     run.mkdir()
     model = json.loads((EXAMPLES / '06_boost.json').read_text())
@@ -282,7 +282,7 @@ def test_the_command_line_takes_a_circuit_run(tmp_path, capsys):
 
 
 def test_the_command_line_needs_a_loss(tmp_path):
-    from pcbqs.thermal.__main__ import main
+    from kicad2ems.pcbqs.thermal.__main__ import main
     with pytest.raises(SystemExit):
         main([str(EXAMPLES / '06_boost.kicad_pcb'), '--out', str(tmp_path)])
 
@@ -290,7 +290,7 @@ def test_the_command_line_needs_a_loss(tmp_path):
 def test_the_options_describe_themselves_for_the_window(capsys, tmp_path):
     """kicad2ems-gui builds its Thermal form from --describe --json, as for pdn and mqs; a run records where its
     heat came from (the board, the circuit run and its case) and its picture beside the numbers."""
-    from pcbqs.thermal.__main__ import main
+    from kicad2ems.pcbqs.thermal.__main__ import main
     assert main(['--describe', '--json']) == 0
     d = json.loads(capsys.readouterr().out)
     opts = {o['key']: o for o in d['options']}
@@ -311,8 +311,8 @@ def test_the_options_describe_themselves_for_the_window(capsys, tmp_path):
 def test_a_part_s_limit_and_its_theta_from_its_footprint(tmp_path):
     """thermal.theta and thermal.tmax fields of a footprint (or --theta, --tmax): the part's temperature, its margin,
     and a part over its limit in the headline (part °C had been its pads' with no word, and no limit existed)."""
-    from pcbqs.thermal.__main__ import part_fields
-    from pcbqs.reports import thermal_report
+    from kicad2ems.pcbqs.thermal.__main__ import part_fields
+    from kicad2ems.pcbqs.reports import thermal_report
     board = dict(prims=dict(footprints=[dict(ref='Q1', props={'thermal.theta': '20', 'thermal.tmax': '125'}),
                                         dict(ref='C1', props={})]))
     theta, tmax, _air = part_fields(board)
@@ -329,7 +329,7 @@ def test_a_part_s_limit_and_its_theta_from_its_footprint(tmp_path):
 def test_the_board_copper_s_loss_heats_where_its_currents_are(tmp_path):
     """A circuit case's copper-loss.npz (its --fields): the copper's own loss into the problem, gathered into squares;
     without the map, said (it had reached no thermal map)."""
-    from pcbqs.thermal.__main__ import add_copper_loss
+    from kicad2ems.pcbqs.thermal.__main__ import add_copper_loss
     p = disc_problem(side=20.0, a=2.0, film=10.0)
     case = dict(folder=str(tmp_path), copper=dict(loss_W=0.02))
     add_copper_loss(p, case, None)

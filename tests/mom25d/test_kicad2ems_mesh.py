@@ -1,16 +1,16 @@
 """The kicad2ems plugin's mesh file: a preview writes mom25d's triangles (<name>_mesh_mom25d.npz) for kicad2ems's
-3D view, on the copper layers, each edge drawn once (from kicad2ems's tests of kicad2ems.meshes)."""
+3D view, on the copper layers, each edge drawn once (from kicad2ems's tests of kicad2ems.core.meshes)."""
 import os
 import numpy as np
 import pytest
-from kicad2ems import meshes
+from kicad2ems.core import meshes
 from k2e_fixtures import ROOT
 
-pytest.importorskip('mom25d._core')   # (the mesher)
+pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
 
 
 def test_preview_writes_the_triangles(run_cli, tmp_path):
-    from kicad2ems.board import Board
+    from kicad2ems.core.board import Board
     out = tmp_path / 'out'
     code, so, se = run_cli(os.path.join(ROOT, 'examples', 'rf_interdig.toml'), '--preview', '--solvers', 'mom25d',
                            '--points', '21', '--no-report', '--out', out)

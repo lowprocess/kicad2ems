@@ -1,7 +1,7 @@
 """cProfile of one pcbqs workload: where a tool's time goes, in its own Python, in the compiled core and in the
 libraries under it.
 
-    python tools/perf/workloads.py CASE [--out DIR] [--cm5 PCB] [--wpthb PCB] [--top N]
+    python tools/pcbqs/perf/workloads.py CASE [--out DIR] [--cm5 PCB] [--wpthb PCB] [--top N]
 
 Writes DIR/CASE.txt (wall time, peak memory, the functions with the most time of their own, then pcbqs's own by
 cumulative time) and DIR/CASE.prof (for pstats or snakeviz). One case per process: the peak memory is the
@@ -19,7 +19,7 @@ process's. Cases:
     circuit_copper  a synchronous buck on its board's copper (ngspice)
 
 The boards are KiCad's CM5 demo (/usr/share/kicad/demos) and the wireless-power bridge (not in this repository:
---wpthb, default ~/Desktop/wpthb/wpthb.kicad_pcb), as tools/benchmark_ports.py uses.
+--wpthb, default ~/Desktop/wpthb/wpthb.kicad_pcb), as tools/pcbqs/benchmark_ports.py uses.
 """
 import argparse
 import cProfile
@@ -51,30 +51,30 @@ def demo_board():
 def work(case, a, out):
     quiet = lambda *args: None
     if case == 'mqs':
-        from pcbqs.mqs_cli import main
+        from kicad2ems.pcbqs.mqs_cli import main
         return main([a.cm5, '--converter', 'U702', '--vin', '+5V', '--harmonics', '1,2,3,5,7', '--heights', '1',
                      '--out', out])
     if case == 'pdn_wpthb':
-        from pcbqs.pdn.cli import main
+        from kicad2ems.pcbqs.pdn.cli import main
         caps = [f'CA{k}=47e-6,0.02,1e-9' for k in range(1, 5)]
         return main([a.wpthb, '--rail', 'VIN', '--volts', '24', '--source', 'TP2', '--ground-source', 'TP1',
                      '--load', 'Q1=0.67', '--load', 'Q2=0.67', '--through', 'L3', '--dcr', 'L3=0.03',
                      *[x for c in caps for x in ('--cap', c)], '--dmax', '0.4', '--out', out])
     if case == 'pdn_cm5':
-        from pcbqs.pdn.cli import main
+        from kicad2ems.pcbqs.pdn.cli import main
         return main([a.cm5, '--rail', '+5V', '--volts', '5', '--source', 'J101', '--ground-source', 'J101',
                      '--load', 'U702=1.4', '--load', 'U405=0.5', '--out', out])
     if case.startswith('sparams_'):
-        from pcbqs import sparams
+        from kicad2ems.pcbqs import sparams
         kw = dict(sparams_charge=dict(capacitance='on'), sparams_faces=dict(capacitance='off', thickness=True),
                   sparams_rl=dict(capacitance='off'))[case]
         return sparams.solve(demo_board(), np.geomspace(1e6, 1e9, 7), log=quiet, **kw)
     if case in ('ports1', 'ports2'):
-        src = (REPO / 'tools/benchmark_ports.py').read_text()
+        src = (REPO / 'tools/pcbqs/benchmark_ports.py').read_text()
         sys.argv = ['benchmark_ports.py', case[-1], 'auto', '--board', a.wpthb]
         return exec(compile(src, 'benchmark_ports.py', 'exec'), {'__name__': '__main__'})
     if case == 'thermal':
-        from pcbqs.thermal.__main__ import main
+        from kicad2ems.pcbqs.thermal.__main__ import main
         return main([a.wpthb, *[x for q in ('Q1', 'Q2', 'Q3', 'Q4') for x in ('--loss', f'{q}=0.4')],
                      '--loss', 'L3=0.6', '--method', 'both', '--out', out])
     if case == 'capmatrix':
@@ -82,7 +82,7 @@ def work(case, a, out):
         import cap_fastercap as V
         return V.pcbqs_c(V.CASES['traces_fr4'](), 0.25, edge_rings=6, edge_width=0.15)
     if case == 'circuit_copper':
-        from pcbqs.circuit.engine import run
+        from kicad2ems.pcbqs.circuit.engine import run
         ex = REPO / 'src/pcbqs/circuit/examples'
         model = json.loads((ex / '05_buck_synchronous.json').read_text())
         model['board']['file'] = str(ex / '05_buck_synchronous.kicad_pcb')

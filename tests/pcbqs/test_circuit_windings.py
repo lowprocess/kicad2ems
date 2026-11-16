@@ -6,9 +6,9 @@ import shutil
 import numpy as np
 import pytest
 
-from pcbqs.circuit import model as M
-from pcbqs.circuit import run
-from pcbqs.circuit import windings as W
+from kicad2ems.pcbqs.circuit import model as M
+from kicad2ems.pcbqs.circuit import run
+from kicad2ems.pcbqs.circuit import windings as W
 
 CORE = dict(k=8.0, alpha=1.4, beta=2.6, turns=12, Ae_m2=20e-6, Ve_m3=1.5e-6)
 
@@ -64,7 +64,7 @@ def test_what_cannot_be_used_is_said_when_the_model_is_resolved(change, says):
 
 @pytest.mark.skipif(not shutil.which('ngspice'), reason='ngspice not installed')
 def test_a_bucks_inductor_adds_its_ac_and_core_losses_to_the_case_and_the_thermal_model(tmp_path):
-    from pcbqs.thermal.problem import losses_of
+    from kicad2ems.pcbqs.thermal.problem import losses_of
     m = M.template('04_buck')
     L1 = next(p for p in m['parts'] if p['ref'] == 'L1')
     L1.update(AC_R_ohm=[[1.0, 0.09], [1e9, 0.09]], core_loss=CORE)     # a flat 90 mOhm: (R - DCR) x the AC's mean square

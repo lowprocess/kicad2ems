@@ -3,10 +3,10 @@ import ast,json,subprocess,sys
 from pathlib import Path
 import numpy as np
 from shapely.geometry import box
-from pcbqs.mqs import MQS
-from pcbqs.mqs_ports import CopperPorts
-from pcbqs._artifacts import Dump,write_npz,write_info
-from pcbqs.mqs_cli import parser,run
+from kicad2ems.pcbqs.mqs import MQS
+from kicad2ems.pcbqs.mqs_ports import CopperPorts
+from kicad2ems.pcbqs._artifacts import Dump,write_npz,write_info
+from kicad2ems.pcbqs.mqs_cli import parser,run
 from test_mqs import trace_board
 from test_mqs_cli import board
 
@@ -36,10 +36,10 @@ def test_json_fields_without_optional_packages(tmp_path):
     code='''import sys,importlib.abc
 class Block(importlib.abc.MetaPathFinder):
     def find_spec(self,fullname,*args):
-        if fullname.split('.')[0] in ('mom25d','kicad2ems'):
+        if fullname.startswith(('kicad2ems.mom25d','kicad2ems.core','kicad2ems.gui','kicad2ems.fdtd','kicad2ems.fem')):
             raise AssertionError('forbidden runtime dependency: '+fullname)
 sys.meta_path.insert(0,Block())
-from pcbqs.mqs_cli import main
+from kicad2ems.pcbqs.mqs_cli import main
 main()
 '''
     subprocess.run([sys.executable,'-c',code,str(b),'--out',str(out),'--harmonics','1,2','--heights','1,2','--scan-points','5','--dmax','1','--fine','1','--fill-backend','numpy'],check=True,capture_output=True,text=True)
@@ -52,19 +52,21 @@ main()
 
 
 def test_no_rf_or_application_dependency_in_core():
-    # kicad2ems is imported in two places only: _cli.py (reading a KiCad board) and analyses.py (the plugins that
-    # kicad2ems itself loads). Nothing in pcbqs imports analyses.py, so the tools run without kicad2ems.
-    root=Path(__file__).parents[1]/'src/pcbqs'
+    # the rest of kicad2ems (its core, mom25d, the window) is imported in two places only: _cli.py (reading a KiCad
+    # board) and analyses.py (the plugins that kicad2ems itself loads). Nothing in pcbqs imports analyses.py, so the
+    # tools run without them; pcbqs's own modules and emsdev (the machine) are kicad2ems.pcbqs, kicad2ems.emsdev
+    root=Path(__file__).resolve().parents[2]/'src/kicad2ems/pcbqs'
+    other=lambda m:m.startswith('kicad2ems') and not m.startswith(('kicad2ems.pcbqs','kicad2ems.emsdev'))
     for file in root.rglob('*.py'):
         for node in ast.walk(ast.parse(file.read_text())):
             if isinstance(node,ast.ImportFrom):
                 module=node.module or ''
-                assert not module.startswith('mom25d'),file
-                if module.startswith('kicad2ems'):assert file.name in ('_cli.py','analyses.py'),file
+                assert not module.startswith('kicad2ems.mom25d'),file
+                if other(module) and node.level==0:assert file.name in ('_cli.py','analyses.py'),file
                 names=[module.split('.')[-1]]+[n.name for n in node.names]
-                assert 'analyses' not in names or module.startswith('kicad2ems'),file   # the plugins: kicad2ems's to load
+                assert 'analyses' not in names or other(module),file   # the plugins: kicad2ems's to load
             elif isinstance(node,ast.Import):
-                assert not any(n.name.startswith('mom25d') for n in node.names),file
+                assert not any(n.name.startswith('kicad2ems.mom25d') for n in node.names),file
                 assert not any(n.name.split('.')[-1]=='analyses' for n in node.names),file
 
 
@@ -74,11 +76,11 @@ def test_automatic_fallback_without_native_core(tmp_path):
 from shapely.geometry import box
 class Block(importlib.abc.MetaPathFinder):
     def find_spec(self,fullname,*args):
-        if fullname.split('.')[0] in ('mom25d','kicad2ems'):
+        if fullname.startswith(('kicad2ems.mom25d','kicad2ems.core','kicad2ems.gui','kicad2ems.fdtd','kicad2ems.fem')):
             raise ImportError('unavailable: '+fullname)
 sys.meta_path.insert(0,Block())
-from pcbqs.mqs import MQS
-from pcbqs.mqs_ports import CopperPorts
+from kicad2ems.pcbqs.mqs import MQS
+from kicad2ems.pcbqs.mqs_ports import CopperPorts
 q=MQS(json.load(open(sys.argv[1])),'N',terminals={'s':[('F.Cu',box(2,9.6,2.6,10.4))],'g':[('F.Cu',box(2,7.7,2.6,8.5))]},dmax=2,fill_workers=2,log=lambda *_:None,drop_lone_pads=False,pad_sides=None,via_sides=None,ideal_terminals=False)
 q.source('p','s','g',part_h=0)
 r=CopperPorts(q).extract([0,1e5,2e5])

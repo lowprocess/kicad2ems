@@ -1,7 +1,7 @@
 import json,time,traceback,gc
 from pathlib import Path
-from pcbqs.pdn.rail import Rail
-from pcbqs.pdn.dc import solve_rail
+from kicad2ems.pcbqs.pdn.rail import Rail
+from kicad2ems.pcbqs.pdn.dc import solve_rail
 ROOT=Path(__import__('os').environ.get('JETSON_PDN_DIR','/workspace/jetson-pdn'));b=json.loads((ROOT/'board.json').read_text());rows=[]
 for net,source,ground,load,volts in [('SYS_VIN_HV','L3','U11','J1',16.),('+1V15','L5','U69','U21',1.15)]:
  entry=dict(net=net,source=source,ground_source=ground,load=load,normalized_A=1.,source_volts=volts,resolutions=[])

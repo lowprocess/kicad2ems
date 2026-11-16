@@ -7,7 +7,7 @@ import numpy as np
 from _common import JETSON, OUT, need, run, keep, load, style, grid, INK, MUTED, SERIES
 
 out = OUT / '02-jetson-1v15'
-run('pcbqs.pdn', need(JETSON, 'Jetson AGX Thor board (KICAD_DEMOS)'), '--out', out, '--rail', '+1V15', '--volts', 1.15,
+run('kicad2ems.pcbqs.pdn', need(JETSON, 'Jetson AGX Thor board (KICAD_DEMOS)'), '--out', out, '--rail', '+1V15', '--volts', 1.15,
     '--source', 'L5', '--ground-source', 'U69', '--load', 'U21=1', '--vrm-r', 0.002, '--vrm-l', 20e-9,
     '--plane-min', 50, '--dmax', 3)
 res = load(out / 'pdn.json')

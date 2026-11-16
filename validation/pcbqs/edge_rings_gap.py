@@ -10,7 +10,7 @@ sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "src"))
 import json, time
 import numpy as np
 import cap_fastercap as V
-from pcbqs.mqs import MQS
+from kicad2ems.pcbqs.mqs import MQS
 from shapely.geometry import Point
 name = sys.argv[1] if len(sys.argv) > 1 else 'traces_air'
 c = V.CASES[name]()

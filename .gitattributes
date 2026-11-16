@@ -1,2 +1,4 @@
 *.cmd text eol=crlf
 *.sh text eol=lf
+# Preserve historical benchmark CSV bytes, including their original CRLF records (pcbqs's).
+docs/pcbqs/benchmarks/**/*.csv -text whitespace=cr-at-eol

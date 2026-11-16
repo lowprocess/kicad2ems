@@ -5,7 +5,7 @@ Operating point (5 V -> 3.3 V, 1 MHz, 2 A) is an assumption; parts and copper co
 from _common import CM5, OUT, need, run, keep, load
 
 out = OUT / '01-cm5-u702'
-run('pcbqs.mqs', need(CM5, 'CM5 Minima board (KICAD_DEMOS)'), '--converter', 'U702', '--vin-volts', 5, '--vout', 3.3,
+run('kicad2ems.pcbqs.mqs', need(CM5, 'CM5 Minima board (KICAD_DEMOS)'), '--converter', 'U702', '--vin-volts', 5, '--vout', 3.3,
     '--fsw', 1e6, '--current', 2, '--out', out)
 res = load(out / 'mqs.json')
 for fig in res['figures']:

@@ -1,9 +1,9 @@
 """Real-board regressions: one coarse case each, checked against stored results so a change that moves real-board
 answers is seen (C4-C6 were drift of this kind). Skipped where the board is not installed.
 
-    CM5 U702 near field (python -m pcbqs.mqs)     /usr/share/kicad/demos/cm5_minima (KiCad's demos)
-    wpthb DC drop and PDN (python -m pcbqs.pdn)   ~/Desktop/wpthb (the as-built 24 V bridge)
-    wpthb circuit, 90 kHz 10 W, with copper        pcbqs's data/wpthb_bridge.json (python -m pcbqs.circuit)
+    CM5 U702 near field (python -m kicad2ems.pcbqs.mqs)     /usr/share/kicad/demos/cm5_minima (KiCad's demos)
+    wpthb DC drop and PDN (python -m kicad2ems.pcbqs.pdn)   ~/Desktop/wpthb (the as-built 24 V bridge)
+    wpthb circuit, 90 kHz 10 W, with copper        pcbqs's data/wpthb_bridge.json (python -m kicad2ems.pcbqs.circuit)
     buck DC drop and PDN, buck near field,         the circuit examples' boards (in the repository: these run
     boost circuit with its copper                  anywhere, CI included, R-C10)
 
@@ -26,7 +26,7 @@ RTOL_CIRCUIT = 1e-2     # a transient's answers move ~0.2% between ngspice versi
 
 def cm5_near_field(out):
     pytest.importorskip('kicad2ems')
-    from pcbqs.mqs_cli import main
+    from kicad2ems.pcbqs.mqs_cli import main
     assert main([str(CM5), '--converter', 'U702', '--vin', '+5V', '--harmonics', '1,2', '--heights', '1',
                  '--scan-points', '9', '--out', str(out)]) in (0, None)
     r = json.loads((Path(out) / 'mqs.json').read_text())
@@ -36,7 +36,7 @@ def cm5_near_field(out):
 
 def wpthb_pdn(out):
     pytest.importorskip('kicad2ems')
-    from pcbqs.pdn.cli import main
+    from kicad2ems.pcbqs.pdn.cli import main
     caps = [f'CA{k}=47e-6,0.02,1e-9' for k in range(1, 5)]
     argv = [str(WPTHB), '--rail', 'VIN', '--volts', '24', '--source', 'TP2', '--ground-source', 'TP1',
             '--load', 'Q1=0.67', '--load', 'Q2=0.67', '--through', 'L3', '--dcr', 'L3=0.03',
@@ -49,8 +49,8 @@ def wpthb_pdn(out):
 
 def wpthb_circuit(out):
     pytest.importorskip('kicad2ems')
-    import pcbqs
-    from pcbqs.circuit.__main__ import main
+    from kicad2ems import pcbqs
+    from kicad2ems.pcbqs.circuit.__main__ import main
     model = json.loads((Path(pcbqs.__file__).parent / 'data' / 'wpthb_bridge.json').read_text())
     model['sweep'] = {'parameters.f': [90000], 'parameters.P': [10]}
     path = Path(out) / 'wpthb_bridge.json'
@@ -62,13 +62,13 @@ def wpthb_circuit(out):
                 phase_deg=c['knobs']['drives.legb.phase_deg'], primary_rms_A=c['measures']['primary_rms_A'],
                 copper_loss_W=c['copper']['loss_W'])
 
-EXAMPLES = Path(__file__).resolve().parents[1] / 'src' / 'pcbqs' / 'circuit' / 'examples'
+EXAMPLES = Path(__file__).resolve().parents[2] / 'src' / 'kicad2ems' / 'pcbqs' / 'circuit' / 'examples'
 BUCK = EXAMPLES / '04_buck.kicad_pcb'
 
 
 def buck_pdn(out):
     pytest.importorskip('kicad2ems')
-    from pcbqs.pdn.cli import main
+    from kicad2ems.pcbqs.pdn.cli import main
     assert main([str(BUCK), '--rail', 'out', '--volts', '5', '--source', 'L1', '--load', 'J2=2', '--dmax', '0.8',
                  '--points', '15', '--out', str(out)]) in (0, None)
     r = json.loads((Path(out) / 'pdn.json').read_text())
@@ -78,7 +78,7 @@ def buck_pdn(out):
 
 def buck_near_field(out):
     pytest.importorskip('kicad2ems')
-    from pcbqs.mqs_cli import main
+    from kicad2ems.pcbqs.mqs_cli import main
     assert main([str(BUCK), '--converter', 'Q1', '--vin', 'in', '--harmonics', '1,2', '--heights', '1',
                  '--scan-points', '9', '--out', str(out)]) in (0, None)
     r = json.loads((Path(out) / 'mqs.json').read_text())
@@ -87,9 +87,9 @@ def buck_near_field(out):
 
 
 def boost_circuit(out):
-    pytest.importorskip('pcbqs._core')                         # (its mesher)
-    from pcbqs.circuit import model as M
-    from pcbqs.circuit.engine import run
+    pytest.importorskip('kicad2ems.pcbqs._core')                         # (its mesher)
+    from kicad2ems.pcbqs.circuit import model as M
+    from kicad2ems.pcbqs.circuit.engine import run
     c, = run(M.template('boost'), Path(out), log=lambda *a: None, copper=True)['cases']
     return dict(load_power_W=c['load_power_W'], efficiency=c['efficiency'], duty=c['knobs']['drives.pwm.duty'],
                 copper_loss_W=c['copper']['loss_W'])

@@ -19,7 +19,7 @@ Typical capacity with 16 GB of VRAM: ~41k unknowns.
 """
 import numpy as np
 import scipy.linalg as sla
-from emsdev import gpu as devices                                 # the device and its memory: emsdev, shared with gfdtd
+from kicad2ems.emsdev import gpu as devices                                 # the device and its memory: emsdev, shared with gfdtd
 
 
 GPUUnavailable = devices.Unavailable

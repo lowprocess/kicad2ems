@@ -3,10 +3,10 @@ elements), and the openings in a solve."""
 import numpy as np
 import pytest
 
-from mom25d.multilayer import Layer, LayerStack
-from mom25d.sim import Via
-from mom25d.frill import Frill, FrillKernels, _nodes, DIPOLE_SHAPES
-from mom25d.slots import SlotKernels, Slot
+from kicad2ems.mom25d.multilayer import Layer, LayerStack
+from kicad2ems.mom25d.sim import Via
+from kicad2ems.mom25d.frill import Frill, FrillKernels, _nodes, DIPOLE_SHAPES
+from kicad2ems.mom25d.slots import SlotKernels, Slot
 
 F = 3e9
 
@@ -120,9 +120,9 @@ def test_babinet(er):
     """An opening's own matrix in an infinite PEC plane in a homogeneous medium is (4 / eta^2) x the impedance
     matrix of a strip of its shape there, on the same mesh (Babinet): the dual of mom25d's strips, exactly."""
     from shapely.geometry import box
-    from mom25d.sim import Simulation
-    from mom25d.slots import SlotTable, self_block
-    from mom25d.base import MU0, EPS0, quad_pts, _BAR3, _BAR6, _W3, _W6
+    from kicad2ems.mom25d.sim import Simulation
+    from kicad2ems.mom25d.slots import SlotTable, self_block
+    from kicad2ems.mom25d.base import MU0, EPS0, quad_pts, _BAR3, _BAR6, _W3, _W6
     mm = 1e-3
     shape = box(0, 0, 8 * mm, 1.0 * mm)
     st = lambda pec: LayerStack([Layer(1 * mm, er, 0.0)], top='open', top_er=er, bottom='open', bottom_er=er, pec=pec)
@@ -144,7 +144,7 @@ def test_slot_under_a_line():
     meshed (whole stack, 0.3 mm cells, a 24 mm ground: its edges barely matter here), within 0.03 in S, and the
     line alone (no opening) as the solid ground's."""
     from shapely.geometry import box
-    from mom25d.sim import Simulation, ViaPort
+    from kicad2ems.mom25d.sim import Simulation, ViaPort
     mm = 1e-3
     L, W = 16 * mm, 1.5 * mm
     strip = box(0, -W / 2, L, W / 2)
@@ -169,8 +169,8 @@ def test_frill_dipoles_couple_to_vias_ending_on_the_plane():
     plane meshed at 0.15 mm's Z21 to 3 % (0.246 / 0.683 / 2.091 ohm at 2 / 5 / 10 GHz; no hole 0.289 / 0.804 /
     2.491). Without it the dipoles did nothing here (0.287 / 0.792 / 2.354)."""
     from shapely.geometry import Point
-    from mom25d.sim import Simulation, ViaPort
-    from mom25d.frill import Frill
+    from kicad2ems.mom25d.sim import Simulation, ViaPort
+    from kicad2ems.mom25d.frill import Frill
     mm = 1e-3
     H, ER, TD, A, B, D = 0.2 * mm, 4.3, 0.02, 0.125 * mm, 0.6 * mm, 1.3 * mm
     layers = [Layer(H, ER, TD) for _ in range(3)]

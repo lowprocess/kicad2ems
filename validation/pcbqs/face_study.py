@@ -43,7 +43,7 @@ PADS = (('F.Cu', box(-10.6, -0.5, -10.5, 0.5)), ('F.Cu', box(-10, -0.5, -9.9, 0.
 
 
 def pcbqs(h, tp, dmax, sheets):
-    from pcbqs.mqs import MQS
+    from kicad2ems.pcbqs.mqs import MQS
     q = MQS(board(h, tp), {'S'}, terminals={'A': [PADS[0]], 'B': [PADS[1]]}, dmax=dmax, conductor_loss='slab',
             thickness_sheets=sheets, log=lambda *a: None)
     q.source('port', 'A', 'B', part_h=0.0)
@@ -56,7 +56,7 @@ def fasthenry_inp(h, tp, cell=0.125, nw=31, nh=5):
     from mqs_fasthenry import via_bars
     x0, y0, x1, y1 = PLANE
     s1, s2 = int(round((x1 - x0) / cell)), int(round((y1 - y0) / cell))
-    from pcbqs.pdn.mesh import copper_centres
+    from kicad2ems.pcbqs.pdn.mesh import copper_centres
     c = copper_centres(board(h, tp))                # as pcbqs's thick models: the dielectric (h) between faces
     zt, zb = c['F.Cu'][0], c['B.Cu'][0]
     return f""".units mm

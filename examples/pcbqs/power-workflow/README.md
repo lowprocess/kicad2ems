@@ -1,6 +1,6 @@
 # Power-workflow examples
 
-Five small scripts, one per question in [docs/power-workflow.md](../../docs/power-workflow.md).
+Five small scripts, one per question in [docs/power-workflow.md](../../../docs/pcbqs/power-workflow.md).
 Each drives the public command-line tools and writes its images to `images/`.
 
 | Script | Board | Shows | Time |

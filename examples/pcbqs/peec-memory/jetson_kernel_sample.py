@@ -6,10 +6,10 @@ from pathlib import Path
 from types import SimpleNamespace
 import os,json,time
 import numpy as np
-from pcbqs.mqs import MQS
-from pcbqs.static_backends import FillEngine
-from pcbqs.compressed import _LayeredPairs
-from pcbqs.electrostatic import potential_moments,DielectricStack
+from kicad2ems.pcbqs.mqs import MQS
+from kicad2ems.pcbqs.static_backends import FillEngine
+from kicad2ems.pcbqs.compressed import _LayeredPairs
+from kicad2ems.pcbqs.electrostatic import potential_moments,DielectricStack
 
 root=Path(os.environ.get('JETSON_PDN_DIR','/workspace/jetson-pdn'))
 start=time.perf_counter();b=json.loads((root/'board.json').read_text())

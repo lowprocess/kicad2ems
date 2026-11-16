@@ -1,8 +1,8 @@
 """The wave ports' line characterisations kept on disk by their cross-section (mom25d.linecache)."""
 import numpy as np
 
-from mom25d import linecache
-from mom25d.multilayer import Layer, LayerStack
+from kicad2ems.mom25d import linecache
+from kicad2ems.mom25d.multilayer import Layer, LayerStack
 
 
 def test_a_line_solved_once_is_kept_for_the_next_run(tmp_path, monkeypatch):

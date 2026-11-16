@@ -1,5 +1,5 @@
 # pcbqs circuit example: two coupled inductors as the transformer, an RCD clamp for the leakage, a diode on the secondary
-#   python -m pcbqs.circuit 08_flyback.json --out out/flyback      # the circuit alone, from the command line
+#   python -m kicad2ems.pcbqs.circuit 08_flyback.json --out out/flyback      # the circuit alone, from the command line
 #   kicad2ems-gui: File > Examples > Circuits                     # the circuit on its board, in the window
 board = "08_flyback.kicad_pcb"   # paths are relative to this file
 out   = "out"

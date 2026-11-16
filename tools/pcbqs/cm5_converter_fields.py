@@ -1,7 +1,7 @@
 """Crop CM5 Minima's U702 converter and plot its copper loops and magnetic near field.
 
-    OPENBLAS_NUM_THREADS=2 python tools/cm5_converter_fields.py CM5_MINIMA_3_board.json --out cm5-fields
-    python tools/cm5_converter_fields.py --out cm5-fields --render-only
+    OPENBLAS_NUM_THREADS=2 python tools/pcbqs/cm5_converter_fields.py CM5_MINIMA_3_board.json --out cm5-fields
+    python tools/pcbqs/cm5_converter_fields.py --out cm5-fields --render-only
 
 Independent 1 A RMS harmonic drives: VIN->PGND (hot-loop component), and
 PGND->SW (output ripple component). They are transfer functions, not an
@@ -23,10 +23,10 @@ import numpy as np
 from shapely.geometry import Point, LineString, box, shape, mapping
 from shapely.ops import unary_union
 
-from pcbqs._numerics.base import MU0
-from pcbqs.biot import rwg_currents
-from pcbqs.mqs import MQS
-from pcbqs.pdn.rail import parts_of, part_value
+from kicad2ems.pcbqs._numerics.base import MU0
+from kicad2ems.pcbqs.biot import rwg_currents
+from kicad2ems.pcbqs.mqs import MQS
+from kicad2ems.pcbqs.pdn.rail import parts_of, part_value
 
 REFS = ['U702', 'L701', 'C704', 'C705', 'C706', 'C708', 'C709', 'C707', 'R704', 'R705', 'R706']
 VIN, GND, SW, VOUT = '+5V', 'GND', '/PCIe-M2/M2_LX', 'M2_3V3'
@@ -98,7 +98,7 @@ def compute(args, out):
     region = extent.buffer(1.).envelope
     board = crop_board(board, region)
     (out/'converter_board.json').write_text(json.dumps(board)+'\n')
-    from kicad2ems.board import Board
+    from kicad2ems.core.board import Board
     loaded = Board.load(out/'converter_board.json', log=lambda *_: None)
     assert loaded.outline.equals(shape(board['outline']))
     parts = {p.ref: p for p in parts_of(board)}
@@ -187,8 +187,8 @@ def compute(args, out):
 
 
 def dumps(out, q, board, data):
-    from pcbqs._artifacts import Dump, write_info, write_npz
-    from pcbqs._numerics.currents import current_deposit
+    from kicad2ems.pcbqs._artifacts import Dump, write_info, write_npz
+    from kicad2ems.pcbqs._numerics.currents import current_deposit
     sim = SimpleNamespace(rwg=q.rwg, tri_idx=q.layer_tris)
     ztop = q.z_of.max()*1e3
     model = SimpleNamespace(outline=shape(board['outline']), cu_z={c['name']: c['z'] for c in board['stack']['copper']},
@@ -458,13 +458,13 @@ def main():
         if not args.board:
             ap.error('board JSON is required unless --render-only')
         board, data, meta = compute(args, out)
-    from pcbqs._numerics.base import RWG
+    from kicad2ems.pcbqs._numerics.base import RWG
     rwg = RWG(data['nodes'], data['tris'])
     proxy = SimpleNamespace(rwg=rwg, ne=rwg.Ne, z_of=data['triangle_z'],
                             layer_tris={str(lay): np.flatnonzero(data['layer_id'] == k)
                                         for k, lay in enumerate(data['layer_names'])})
     dumps(out, proxy, board, data)
-    from kicad2ems.fields.frames import find_dumps
+    from kicad2ems.core.fields.frames import find_dumps
     found = find_dumps(str(out))
     assert len(found) == 18
     for source in found:

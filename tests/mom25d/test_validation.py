@@ -22,8 +22,8 @@ def cpu(monkeypatch):
 
 def _solved(name, freqs, fmin, fmax):
     """S of a board in tests/boards, renormalised to its ports' reference impedances, as solve_board gives it."""
-    from mom25d.api import build_board
-    from mom25d.run import renorm, _zc, out_refs
+    from kicad2ems.mom25d.api import build_board
+    from kicad2ems.mom25d.run import renorm, _zc, out_refs
     d = json.loads((HERE / 'boards' / f'{name}.json').read_text())
     model, sim = build_board(d, fmin, fmax, log=lambda *a, **k: None)
     return np.array([renorm(sim.sparams(f), _zc(sim, f), out_refs(sim, model.port_z0)) for f in freqs])
@@ -34,9 +34,9 @@ def test_plane_cavity_resonance_against_the_cavity_model():
     against c / (2 (a + 2 dl) sqrt(er)) with Hammerstad's open-end extension dl. +0.71 % at 1 mm cells, +0.90 %
     at the 1.5 mm here (9 s)."""
     from shapely.geometry import box
-    from mom25d.base import C0
-    from mom25d.multilayer import Layer, LayerStack
-    from mom25d.sim import Simulation, Via, ViaPort
+    from kicad2ems.mom25d.base import C0
+    from kicad2ems.mom25d.multilayer import Layer, LayerStack
+    from kicad2ems.mom25d.sim import Simulation, Via, ViaPort
     a, b, h, er = 30e-3, 20e-3, 0.2e-3, 4.3
     sim = Simulation(LayerStack([Layer(h, er)]), {1: [box(-a / 2, -b / 2, a / 2, b / 2)]},
                      [ViaPort(Via(-a / 2 + 4e-3, -b / 2 + 4e-3, 0, 1, 0.15e-3), 50.0)], dmax=1.5e-3, verbose=False)

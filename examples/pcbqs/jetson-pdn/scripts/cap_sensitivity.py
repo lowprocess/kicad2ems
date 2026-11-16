@@ -1,8 +1,8 @@
 import json,time
 from pathlib import Path
 import numpy as np
-from pcbqs.pdn.rail import Rail
-from pcbqs.pdn.stack import RailPDN
+from kicad2ems.pcbqs.pdn.rail import Rail
+from kicad2ems.pcbqs.pdn.stack import RailPDN
 ROOT=Path(__import__('os').environ.get('JETSON_PDN_DIR','/workspace/jetson-pdn'));b=json.loads((ROOT/'board.json').read_text());r=Rail(b,'+1V15',source='L5',ground_source='U69',loads={'U21':1.})
 r.parts['U21'].pads=[p for p in r.parts['U21'].pads if p.net in {'+1V15','GND'}]
 p=RailPDN(r,dmax=2.,plane_min=50.,vrm=dict(R=.002,L=20e-9),log=lambda *_:None)

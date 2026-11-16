@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """The README's speed figure: M cell updates per second of each backend against the model's size, from
-tools/bench.py (a microstrip on a Debye substrate, PML or Mur on five sides) on an RX 7800 XT (ROCm 7 / RADV) and
+tools/gfdtd/bench.py (a microstrip on a Debye substrate, PML or Mur on five sides) on an RX 7800 XT (ROCm 7 / RADV) and
 an i7-13700K (8 threads).
 
-    python tools/readme_figure.py [out.png]          # default docs/speed.png
+    python tools/gfdtd/readme_figure.py [out.png]          # default docs/speed.png
 """
 import os, sys
 

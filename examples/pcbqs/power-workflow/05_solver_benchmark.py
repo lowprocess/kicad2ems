@@ -1,4 +1,4 @@
-"""Circuit-solver settings on a small wpthb-like converter (tools/benchmark_circuit_solver.py): time against error.
+"""Circuit-solver settings on a small wpthb-like converter (tools/pcbqs/benchmark_circuit_solver.py): time against error.
 
 Error is the worst of input power and coil RMS current against each switch model's own tight reference: ngspice
 VDMOS at max step T/2048, and for the behavioural (smooth) switch Xyce trap at reltol 1e-4 (which agreed with an

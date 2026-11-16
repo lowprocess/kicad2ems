@@ -2,8 +2,8 @@ import json,time,copy,gc,traceback
 from pathlib import Path
 import numpy as np
 from shapely.geometry import box
-from pcbqs.pdn.rail import parts_of,part_value,terminal
-from pcbqs.mqs import MQS
+from kicad2ems.pcbqs.pdn.rail import parts_of,part_value,terminal
+from kicad2ems.pcbqs.mqs import MQS
 ROOT=Path(__import__('os').environ.get('JETSON_PDN_DIR','/workspace/jetson-pdn'));b=json.loads((ROOT/'board.json').read_text());ps={p.ref:p for p in parts_of(b)}
 cap=ps['C90'];load=ps['U21'];cp=cap.on({'+1V15'});cg=cap.on({'GND'})
 lp=[p for p in load.pads if p.name=='25'];lg=[p for p in load.pads if p.name=='24']

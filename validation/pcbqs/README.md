@@ -94,7 +94,7 @@ from the default `dmax` to 0.25 mm, 3% apart (R 1.62 / 1.57 mΩ, L 1.73 / 1.77 n
   1 mm pads against 38.8 nH with 0.25 mm ones. Here terminals are 0.1 mm slivers at the gap, matching
   Palace's gap port. On real converter loops the part-to-pad model (filament at `part_h`) matters at the
   same scale.
-  - Since 2026-11-10 the tools attach a two-pad chip part where its metal is (`pcbqs.contacts`,
+  - Since 2026-11-10 the tools attach a two-pad chip part where its metal is (`kicad2ems.pcbqs.contacts`,
     `pad_contact='termination'`). The end cap sits on the pad from (body length / 2 − cap band) to the body's end,
     and the solder fillet joins the rest of the pad to the cap's end face. So the contact is the pad from the cap
     outward, and only the bare copper under the ceramic is left out. Sizes come from the footprint name (0402:
@@ -141,7 +141,7 @@ from the default `dmax` to 0.25 mm, 3% apart (R 1.62 / 1.57 mΩ, L 1.73 / 1.77 n
 
     With the rings the two traces are inside the spread of FasterCap's own two runs (−2.5 / −3.6 / −2.1 % from
     the finer one at dmax 0.5, where plain cells were −10 / −23 / −6 %), and 0.5 mm cells with rings beat
-    0.25 mm cells without, on a third of the triangles. `pcbqs.sparams` uses them whenever it solves the charge.
+    0.25 mm cells without, on a third of the triangles. `kicad2ems.pcbqs.sparams` uses them whenever it solves the charge.
     Not yet looked at with rings: the copper's thickness (face sheets and side charge), where the comparison
     with FasterCap's boxes was −5.5..−7.5 % self and −10..−13 % mutual.
   - Copper thickness is not small here. 35 µm boxes in FasterCap give the air microstrip 0.713 pF, +12% over the
@@ -211,7 +211,7 @@ from the default `dmax` to 0.25 mm, 3% apart (R 1.62 / 1.57 mΩ, L 1.73 / 1.77 n
 
     Far from the plane the rings are most of the error (the current crowding at the trace's edges); close over
     it they are a third, and what is left (−14 % at 10 MHz, where the copper is a skin depth and a half thick)
-    is the two faces' coupling through the copper, which the stacked sheets have. `pcbqs.sparams` uses six
+    is the two faces' coupling through the copper, which the stacked sheets have. `kicad2ems.pcbqs.sparams` uses six
     rings whenever it solves the charge or the two faces; the circuit's copper and the near field do not yet.
 
 ## Edge rings

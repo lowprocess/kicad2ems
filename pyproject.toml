@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,9 +8,9 @@ dynamic = ["version"]
 description = "KiCad boards as electromagnetic, power-integrity, circuit and thermal simulations: a transmission-line model, openEMS and gfdtd (3D FDTD), mom25d (2.5D MoM), pcbqs (PDN, quasistatics, circuits), Palace and Elmer (FEM), and a window"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "GPL-3.0-or-later"}
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 classifiers = [
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
 ]
@@ -103,11 +103,24 @@ include-package-data = false                                    # only what pack
                         "sma_launch.kicad_pro", "sma_launch-all.pos"]                                 # the others are made
 "kicad2ems.ipc" = ["plugin/*"]                               # what KiCad gets: plugin.json, the launcher, the icons
 "kicad2ems.gui" = ["*.svg", "*.ico"]                            # the window's and the launcher's icon, the wand
-"kicad2ems.gfdtd" = ["core/*.cpp", "core/*.h", "*.so", "*.pyd"]     # the update code (GPU kernels and CPU core), the built core
-"kicad2ems.mom25d" = ["core/*.cpp", "core/*.hpp", "*.so", "*.pyd"]
-"kicad2ems.pcbqs" = ["core/*.cpp", "core/*.hpp", "*.so", "*.pyd", "data/*.json", "data/*.toml", "circuit/examples/*.json",
+"kicad2ems.gfdtd.core" = ["*.cpp", "*.h"]                       # the update code (GPU kernels and CPU core)
+"kicad2ems.mom25d.core" = ["*.cpp", "*.hpp", "CDT/*"]           # the core's sources (it meshes: CDT)
+"kicad2ems.pcbqs" = ["data/*.json", "data/*.toml", "circuit/examples/*.json",
                      "circuit/examples/*.kicad_pcb", "circuit/examples/*.toml", "PROVENANCE.json"]
+"kicad2ems.pcbqs.core" = ["*.cpp", "*.hpp", "CDT/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--import-mode=importlib"     # tests/<part>/: the parts' test files share names
+markers = ["slow: long solver runs"]
+
+# a core built in this tree (python -m kicad2ems.<part>.core.build) is for this Python and machine: never in a wheel
+# (the wheels are py3-none-any until each platform's are built with their cores)
+[tool.setuptools.exclude-package-data]
+"*" = ["*.so", "*.pyd", "*.dll"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+quote-style = "preserve"

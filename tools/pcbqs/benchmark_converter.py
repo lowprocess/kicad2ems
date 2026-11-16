@@ -3,7 +3,7 @@
 CM5 Minima (CERN-OHL-S, KiCad demos), download separately:
 https://gitlab.com/kicad/code/kicad/-/raw/master/demos/cm5_minima/CM5_MINIMA_3.kicad_pcb
 
-    python tools/benchmark_converter.py CM5_MINIMA_3.kicad_pcb --out cm5.json
+    python tools/pcbqs/benchmark_converter.py CM5_MINIMA_3.kicad_pcb --out cm5.json
 
 Defaults select U702's +5V/GND input loop and C704/C705/C706. ESR/ESL are
 explicit benchmark assumptions, not extracted component measurements.
@@ -17,8 +17,8 @@ from pathlib import Path
 import numpy as np
 from shapely.ops import unary_union
 
-from pcbqs.mqs import MQS
-from pcbqs.pdn.rail import parts_of, part_value
+from kicad2ems.pcbqs.mqs import MQS
+from kicad2ems.pcbqs.pdn.rail import parts_of, part_value
 
 
 def main():
@@ -41,8 +41,8 @@ def main():
     path = Path(args.board)
     start = time.perf_counter()
     if path.suffix == '.kicad_pcb':
-        from kicad2ems.board import Board
-        from kicad2ems.importers.kicad import KiCadBoard
+        from kicad2ems.core.board import Board
+        from kicad2ems.core.importers.kicad import KiCadBoard
         board = Board(KiCadBoard(str(path)), need_ports=False, log=lambda *_: None).to_dict()
     else:
         board = json.loads(path.read_text())

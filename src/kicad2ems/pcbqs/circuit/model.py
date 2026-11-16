@@ -387,7 +387,7 @@ def templates():
     """The example circuits shipped with pcbqs: {name: description}, in a teaching order."""
     from importlib.resources import files
     out = {}
-    for f in sorted(files('pcbqs.circuit').joinpath('examples').iterdir(), key=lambda f: f.name):
+    for f in sorted(files('kicad2ems.pcbqs.circuit').joinpath('examples').iterdir(), key=lambda f: f.name):
         if f.name.endswith('.json'):
             m = json.loads(f.read_text(encoding='utf-8'))
             out[f.name[:-5].split('_', 1)[1] if f.name[:2].isdigit() else f.name[:-5]] = m.get('description', m.get('name', ''))
@@ -396,7 +396,7 @@ def templates():
 
 def template(name):
     from importlib.resources import files
-    for f in files('pcbqs.circuit').joinpath('examples').iterdir():
+    for f in files('kicad2ems.pcbqs.circuit').joinpath('examples').iterdir():
         stem = f.name[:-5]
         if f.name.endswith('.json') and name in (stem, stem.split('_', 1)[-1]):
             return _beside(json.loads(f.read_text(encoding='utf-8')), Path(str(f)).parent)

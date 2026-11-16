@@ -1,11 +1,11 @@
 """Signal zone (--mom-zone, Simulation(zone=)) against the default mesh and a fine reference (dmax 0.2 mm,
 ncross 6) on example boards, with via ports:
     kicad2ems examples/rf_gcpw.toml --solvers lines --out out/b_rf_gcpw     # writes rf_gcpw_board.json
-    python tools/zone_study.py out rf_gcpw rf_diffvia
+    python tools/mom25d/zone_study.py out rf_gcpw rf_diffvia
 The references are cached as out/ref_<board>.npy."""
 import sys, os, json, time, numpy as np
-from mom25d.board import BoardModel
-from mom25d.run import renorm
+from kicad2ems.mom25d.board import BoardModel
+from kicad2ems.mom25d.run import renorm
 SP = sys.argv[1]; F = [2e9, 5e9, 8e9]
 def run(D, dmax=0.3e-3, plane=0.9e-3, **kw):
     m = BoardModel(D, port='via', log=lambda *a: None)

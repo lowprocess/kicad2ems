@@ -1,6 +1,6 @@
 """Generate and solve a two-coupon PCB demonstrating displacement current and skin loss.
 
-Run: python tools/peec_skin_demo.py --out examples/peec-skin/results
+Run: python tools/pcbqs/peec_skin_demo.py --out examples/peec-skin/results
 Only pcbqs is required. The generated KiCad board is also independently importable.
 """
 import argparse
@@ -16,7 +16,7 @@ import numpy as np
 from scipy.constants import epsilon_0, mu_0
 from shapely.geometry import box, mapping, shape
 
-from pcbqs.mqs import MQS
+from kicad2ems.pcbqs.mqs import MQS
 
 
 SIGMA = 5.8e7
@@ -270,7 +270,7 @@ def main(argv=None):
         and checks['capacitance_static_vs_1kHz_relative_error']<.001
         and checks['max_charge_continuity_residual_A']<1e-9
         and checks['PEEC_vs_MQS_skin_impedance_relative']<.01)
-    from pcbqs import __version__
+    from kicad2ems.pcbqs import __version__
     report = dict(format=1, pcbqs_version=__version__, script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         board_sha256=hashlib.sha256((out/'board.json').read_bytes()).hexdigest(),
         frequencies_Hz=f.tolist(), settings=dict(sigma_Sm=SIGMA, copper_mm=COPPER_MM,

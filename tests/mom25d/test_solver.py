@@ -6,13 +6,13 @@ import numpy as np
 import pytest
 from scipy.integrate import quad
 
-from mom25d.base import C0, MU0, EPS0
-from mom25d.multilayer import Layer, LayerStack
-from mom25d.via import ViaKernels
-from mom25d.sing import offplane_pairs
-from mom25d.geo import mesh_polygons, gap_zones, LinePort
-from mom25d.sim import Simulation, SeriesLumped, Via, ViaPort, line_char_xs
-from mom25d.afs import aaa
+from kicad2ems.mom25d.base import C0, MU0, EPS0
+from kicad2ems.mom25d.multilayer import Layer, LayerStack
+from kicad2ems.mom25d.via import ViaKernels
+from kicad2ems.mom25d.sing import offplane_pairs
+from kicad2ems.mom25d.geo import mesh_polygons, gap_zones, LinePort
+from kicad2ems.mom25d.sim import Simulation, SeriesLumped, Via, ViaPort, line_char_xs
+from kicad2ems.mom25d.afs import aaa
 
 
 def test_via_kernels_exact_in_air():
@@ -43,7 +43,7 @@ def test_via_via_table_matches_the_direct_transform():
 
 
 def test_offplane_reduces_to_inplane_and_converges():
-    from mom25d.base import RWG, singular_moments
+    from kicad2ems.mom25d.base import RWG, singular_moments
     from mom25d_reference import make_mesh
     nodes, tris = make_mesh([(0, 0, 0.3e-3, 0.06e-3)], 0.15e-3, 0.03e-3)
     M0, _, _ = singular_moments(RWG(nodes, tris))
@@ -61,7 +61,7 @@ def test_a_pair_s_moments_are_one_value_with_the_rule_over_the_smaller_triangle(
     the larger, whichever is the observation. With the rule over a 0.9 mm plane cell and a 0.3 mm trace cell 0.2 mm
     under it the moment was 1.3 % off, and Z not symmetric: transmission through a via differed by 0.4 % between
     its two directions with lumped ports."""
-    from mom25d.sing import rule_over
+    from kicad2ems.mom25d.sing import rule_over
     tri = lambda c, size, rot: np.c_[c[0] + size * np.cos(rot + np.array([0, 2.1, 4.2])),
                                      c[1] + size * np.sin(rot + np.array([0, 2.1, 4.2]))]
     nodes = np.vstack([tri((0, 0), 0.54, 0.3), tri((0.3, 0.03), 0.18, 1.1), tri((0.5, 0.2), 0.18, 1.1)]) * 1e-3
@@ -77,8 +77,8 @@ def test_a_pair_s_moments_are_one_value_with_the_rule_over_the_smaller_triangle(
     ref = offplane_pairs(nodes, tris, [0, 1], [1, 2], d, outer_levels=4)
     for got, want in zip((m0, mro, mrs, mrr), ref):
         assert np.abs(got - want).max() < 2e-4 * np.abs(want).max()
-    core = pytest.importorskip('mom25d._core')
-    from mom25d.sing import _offplane_geometry
+    core = pytest.importorskip('kicad2ems.mom25d._core')
+    from kicad2ems.mom25d.sing import _offplane_geometry
     P6 = _offplane_geometry(nodes, tris)[5]
     W6 = np.tile(np.asarray(_offplane_geometry(nodes, tris)[6])[None], (3, 1)) * area[:, None]
     c0, cro, crs, crr = core.offplane_pairs(nodes, tris.astype(np.int32), np.ascontiguousarray(P6), W6,
@@ -90,7 +90,7 @@ def test_a_pair_s_moments_are_one_value_with_the_rule_over_the_smaller_triangle(
 def test_balance_takes_the_ports_scales_out():
     """sim.balance: the S of wave ports whose waves are scaled (their characterised impedances a little off) is
     D S D^-1 of the reciprocal one. The scales come out where ports are coupled; a stop band's noise is averaged."""
-    from mom25d.sim import balance
+    from kicad2ems.mom25d.sim import balance
     rng = np.random.default_rng(1)
     S0 = rng.normal(size=(4, 4)) + 1j * rng.normal(size=(4, 4))
     S0 = 0.2 * (S0 + S0.T)
@@ -133,7 +133,7 @@ def test_a_hole_s_potential_and_admittance():
     close over the plane it is the hole's own potential, far away nothing; the admittance is a capacitance into
     both sides, the same at 0.1 and 1 GHz, and two holes couple weakly, with the other sign."""
     from types import SimpleNamespace as NS
-    from mom25d.frill import Frill, FrillKernels, profile
+    from kicad2ems.mom25d.frill import Frill, FrillKernels, profile
     st = LayerStack([Layer(0.2e-3, 4.3), Layer(0.02e-3, 4.3), Layer(3e-3, 4.3)], top_er=4.3, pec=(1,))
     a, b = 0.15e-3, 0.35e-3
     fr, fr2 = Frill(NS(x=0.0, y=0.0, a=a), 1, b, modes=2, dipoles=0), Frill(NS(x=2e-3, y=0.0, a=a), 1, b, modes=1, dipoles=0)
@@ -163,7 +163,7 @@ def test_a_hole_s_first_order_shapes_are_their_tm_and_te_parts():
     1) they are the shape's own field inside the hole, and nothing on the metal: every sign and factor between
     e1, h1, the potential and the field (FrillKernels' tables, with the network's transfers in)."""
     from scipy.special import jv
-    from mom25d.frill import dipole_shapes, DIPOLE_SHAPES
+    from kicad2ems.mom25d.frill import dipole_shapes, DIPOLE_SHAPES
     a, b = 0.15e-3, 0.45e-3
     kr = np.linspace(1e-3 / b, 250 / b, 100001)
     dk = (kr[1] - kr[0]) * np.exp(-0.5 * (kr * 0.01 * b) ** 2)     # (smoothed over b / 100: the integrals converge)
@@ -188,7 +188,7 @@ def test_the_first_order_s_admittance_turns_with_the_holes():
     from the axisymmetric ones); of two holes the matrix is that of two dipoles, the same whatever direction the
     second hole lies in once the shapes are taken along and across that direction."""
     from types import SimpleNamespace as NS
-    from mom25d.frill import Frill, FrillKernels
+    from kicad2ems.mom25d.frill import Frill, FrillKernels
     st = LayerStack([Layer(0.2e-3, 4.3, 0.02) for _ in range(3)], pec=(2,))
     a, b, d = 0.15e-3, 0.45e-3, 1.2e-3
 
@@ -223,9 +223,9 @@ def test_a_trace_over_a_plane_s_hole():
     microstrip above the plane, a stripline below it). With the plane meshed and with the plane as PEC and the
     hole's unknowns, S agrees to the meshes' own difference with the first azimuthal order (frill.dipoles), and
     is three times as far without it (0.006 and 0.05)."""
-    pytest.importorskip('mom25d._core')
+    pytest.importorskip('kicad2ems.mom25d._core')
     from shapely.geometry import box, Point
-    from mom25d.frill import Frill
+    from kicad2ems.mom25d.frill import Frill
     mm = 1e-3
     a, b, L, w3, w1, pad = 0.15 * mm, 0.45 * mm, 4 * mm, 0.35 * mm, 0.15 * mm, 0.3 * mm
     layers = [Layer(0.2 * mm, 4.3, 0.02) for _ in range(3)]
@@ -258,9 +258,9 @@ def test_pads_joined_by_a_via_through_a_plane_s_hole():
     meshed (the hole in its mesh) and with the plane as PEC and the hole's unknowns (frill.py), within 1.5 %;
     with the hole closed it is 39 % more. Axisymmetric: what the model has. (A trace over the hole is what it
     lacks: the transition of tests/boards/demo.json is 0.08 from its meshed plane at 8 GHz.)"""
-    pytest.importorskip('mom25d._core')
+    pytest.importorskip('kicad2ems.mom25d._core')
     from shapely.geometry import box, Point
-    from mom25d.frill import Frill
+    from kicad2ems.mom25d.frill import Frill
     mm, f = 1e-3, 1e8
     layers = [Layer(0.2 * mm, 4.3) for _ in range(3)]
     pad = lambda: [Point(0, 0).buffer(0.3 * mm, 32)]
@@ -374,7 +374,7 @@ def test_aaa_interpolates_resonances():
 
 def test_batched_gmres_reaches_its_tolerance_on_a_complex_system():
     # complex Hessenberg entries: with unconjugated Givens rotations the residual estimate stopped early
-    from mom25d.fast import gmres_batched
+    from kicad2ems.mom25d.fast import gmres_batched
     rng = np.random.default_rng(1)
     n = 200
     ev = (1 + rng.random(n)) * np.exp(1j * rng.uniform(-1.2, 1.2, n))       # eigenvalues of many phases
@@ -402,8 +402,8 @@ def test_afs_does_not_stop_on_a_model_that_ignores_new_samples(monkeypatch):
     """Regression (d5787ca): a fit that a new sample does not move changes by nothing between iterations while
     it is still wrong (seen on a 10 dB coupler: stopped at 9 solves, -14 dB coupling instead of -11 dB). The
     sweep must also see the model predict each new sample before it stops."""
-    import mom25d.afs as afs
-    import emsdev.afs as shared                                     # (the sweep is emsdev's, mom25d's its wrapper)
+    import kicad2ems.mom25d.afs as afs
+    import kicad2ems.emsdev.afs as shared                                     # (the sweep is emsdev's, mom25d's its wrapper)
     real, first = shared.aaa, []
     def stale(z, F, **kw):                                          # fitted to the first samples, ever after
         first.append(first[0] if first else (z, F))
@@ -442,7 +442,7 @@ def test_a_wideband_stack_is_its_constant_stack_at_each_frequency():
     permittivity, on the dense path (its static charge part rescaled per layer) and the direct one (two layers:
     a via between them, the via kernels), and not the S at fref's permittivity."""
     from shapely.geometry import box, Point
-    from mom25d.multilayer import djordjevic_sarkar
+    from kicad2ems.mom25d.multilayer import djordjevic_sarkar
     w, L, f = 0.35e-3, 8e-3, 9e9
     v1 = Via(L / 2, 0, 0, 2, 0.1e-3)
     geo2 = [box(-L / 2, -w / 2, L / 2, w / 2), Point(L / 2, 0).buffer(0.25e-3)]
@@ -463,7 +463,7 @@ def test_a_wideband_stack_is_its_constant_stack_at_each_frequency():
 
 def test_core_matches_numpy_and_solvers_agree(monkeypatch):
     """Compiled core (if built) vs NumPy fallback, and direct/mixed/BLR agreement."""
-    pytest.importorskip('mom25d._core')
+    pytest.importorskip('kicad2ems.mom25d._core')
     from shapely.geometry import box, Point
     st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.2e-3, 4.3, 0.02)])
     w, L = 0.35e-3, 8e-3
@@ -488,7 +488,7 @@ def test_core_matches_numpy_and_solvers_agree(monkeypatch):
         assert np.abs(v - ref).max() < 1e-6, k
     # a factorisation kept from 4 GHz preconditions 4.4 GHz (fast._solve_kept: dense, several kept; _solve_reused:
     # matrix-free, one): the same S as a fresh one
-    from mom25d import fast
+    from kicad2ems.mom25d import fast
     for k, keep in ((('direct', 'mixed'), 4), (('direct', 'mixed'), 0), (('blr', 'double'), 4)):
         S1 = {}
         monkeypatch.setattr(fast, 'REUSE_KEEP', keep)
@@ -502,7 +502,7 @@ def test_core_matches_numpy_and_solvers_agree(monkeypatch):
 
 
 def test_coupled_stripline_even_odd_vs_cohn():
-    from mom25d.sim import line_char_pair, coupled_stripline_cohn
+    from kicad2ems.mom25d.sim import line_char_pair, coupled_stripline_cohn
     b, er, w, s = 0.4e-3, 4.3, 0.15e-3, 0.15e-3
     st = LayerStack([Layer(b / 2, er), Layer(b / 2, er)], top='pec')
     ge, ze, go, zo = line_char_pair(st, 1, w, s, [5e9])
@@ -513,7 +513,7 @@ def test_coupled_stripline_even_odd_vs_cohn():
 
 
 def test_differential_through_line():
-    from mom25d.sim import DiffPort
+    from kicad2ems.mom25d.sim import DiffPort
     st = LayerStack([Layer(0.2e-3, 4.3)])
     w, s, L = 0.25e-3, 0.2e-3, 16e-3
     yc = (w + s) / 2
@@ -537,7 +537,7 @@ def test_far_field_of_a_dipole_over_ground():
     """mom25d.farfield on a small x-directed current at height h above the ground in air against the image
     solution: |r E| = eta k p / (4 pi) * 2 sin(k h cos theta) * (cos theta cos phi, -sin phi), shape and size."""
     from types import SimpleNamespace as NS
-    from mom25d.farfield import far_field
+    from kicad2ems.mom25d.farfield import far_field
     f = 3e9
     k0 = 2 * np.pi * f / C0
     for h in (0.01, 0.2):
@@ -556,7 +556,7 @@ def test_near_field_of_a_dipole_over_ground():
     """mom25d.farfield.near_field (plane-wave spectrum, zero-padded FFT) against the exact field of a small x
     dipole 2 mm above the ground and its image, on planes 0.5 and 1 mm above it."""
     from types import SimpleNamespace as NS
-    from mom25d.farfield import near_field
+    from kicad2ems.mom25d.farfield import near_field
     f = 3e9
     w, k = 2 * np.pi * f, 2 * np.pi * f / C0
     H, h, n = 2e-3, 0.1e-3, 256
@@ -584,10 +584,10 @@ def test_near_field_of_a_dipole_over_ground():
 def test_new_core_kernels_match_numpy():
     """near_pairs, hankel_real (j0_sum), fan_q, scale_c64 and the via blocks' radial_table_sum of the compiled core
     against their NumPy versions."""
-    core = pytest.importorskip('mom25d._core')
+    core = pytest.importorskip('kicad2ems.mom25d._core')
     from shapely.geometry import box, Point
     from scipy.spatial import cKDTree
-    from mom25d.via import j0_sum, j0_matrix
+    from kicad2ems.mom25d.via import j0_sum, j0_matrix
     st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.2e-3, 4.3, 0.02)])
     w, L = 0.35e-3, 8e-3
     geo2 = [box(-L / 2, -w / 2, L / 2, w / 2), Point(L / 2, 0).buffer(0.25e-3)]
@@ -628,7 +628,7 @@ def test_new_core_kernels_match_numpy():
     assert np.allclose(Z, Zr) and Z64.dtype == np.complex64 and np.allclose(Z64, Zr, rtol=1e-6)
     # the via blocks: the chains' kernel on the triangles in the core (a chain at a time in NumPy before), the
     # same B and C
-    from mom25d import fast
+    from kicad2ems.mom25d import fast
     Qf = fo._fan_columns()
     Bc, Cc = sim._via_blocks(4e9, Qf)
     fast._core, keep = None, fast._core
@@ -642,9 +642,9 @@ def test_new_core_kernels_match_numpy():
 def test_core_choice():
     """core='auto' and 'compiled': the core's direct solver for a small board too; use_core('python'): no compiled
     kernels, NumPy's dense solver; the answers agree."""
-    pytest.importorskip('mom25d._core')
+    pytest.importorskip('kicad2ems.mom25d._core')
     from shapely.geometry import box, Point
-    from mom25d import fast
+    from kicad2ems.mom25d import fast
     w, h, L = 0.35e-3, 0.2e-3, 10e-3
     st = LayerStack([Layer(h, 4.3, 0.02)])
     geo = [box(-L / 2, -w / 2, L / 2, w / 2), Point(-L / 2, 0).buffer(0.25e-3), Point(L / 2, 0).buffer(0.25e-3)]
@@ -668,7 +668,7 @@ def test_core_choice():
 def test_memory_plan_cpu_mixed():
     """Above MIXED_MIN_N, 'auto' is mixed precision on the CPU too (complex64 LU + refinement); double below
     it and without the compiled core."""
-    from mom25d.sim import memory_plan, MIXED_MIN_N
+    from kicad2ems.mom25d.sim import memory_plan, MIXED_MIN_N
     big = memory_plan(MIXED_MIN_N + 1000, has_core=True, avail=64e9, gpu=None, solver='direct')
     assert (big['precision'], big['path']) == ('mixed', 'cpu-mixed')
     assert memory_plan(MIXED_MIN_N - 500, has_core=True, avail=64e9, gpu=None, solver='direct')['precision'] == 'double'
@@ -707,7 +707,7 @@ def test_signal_zone_coarsens_away_from_the_signal():
     """zone= (experimental): edge rings, via octagons and pad detail only near the signal copper. A microstrip
     between two rows of stitching-via pads: far fewer unknowns, S within 0.02, the pads become squares."""
     from shapely.geometry import box, Point
-    from mom25d.sim import _simplify_outside
+    from kicad2ems.mom25d.sim import _simplify_outside
     w, h, L = 0.35e-3, 0.2e-3, 10e-3
     st = LayerStack([Layer(h, 4.3)])
     g, zc = line_char_xs(st, 1, w, [5e9]); z = zc[0].real
@@ -732,7 +732,7 @@ def test_square_vias_pads_and_antipads():
     """_square_vias: a pad on its own becomes a same-area square, a pad on a trace the square around it (still
     joined), a round antipad a same-area square hole; a via in a pour is left alone."""
     from shapely.geometry import box, Point
-    from mom25d.sim import _square_vias
+    from kicad2ems.mom25d.sim import _square_vias
     pad = Point(0, 0).buffer(0.3e-3)
     g = _square_vias(pad, [(0, 0)])
     assert len(g.exterior.coords) == 5 and abs(g.area - pad.area) < 1e-3 * pad.area
@@ -840,7 +840,7 @@ def test_far_field_both_half_spaces_and_vias():
     radiate their free-space patterns above and below the board, with the right sign and phase between them
     (E ~ (theta_hat . p) e^{j k r_hat . r'}); a via over the PEC ground radiates with its image, nothing below."""
     from types import SimpleNamespace as NS
-    from mom25d.farfield import far_field
+    from kicad2ems.mom25d.farfield import far_field
     eta, f = np.sqrt(MU0 / EPS0), 3e9
     k0 = 2 * np.pi * f / C0
     H = 0.05 * C0 / f
@@ -872,7 +872,7 @@ def test_a_log_sweep_is_sampled_and_given_in_log_f():
     """A sweep of decades (10 Hz to 1 GHz, a pole at 100 kHz): its first samples and gaps in log f and the model
     given at the frequencies asked for. It had been seeded and checked on a linear grid (one solve below 1 MHz) and
     interpolated linearly onto the log points: |dS| up to 1.8."""
-    import mom25d.afs as afs
+    import kicad2ems.mom25d.afs as afs
     fc = 100e3
     truth = lambda f: np.array([[(1 - 1j * f / fc) / (1 + 1j * f / fc)]])
     freq = np.geomspace(10, 1e9, 201)
@@ -890,10 +890,10 @@ def test_a_blas_thread_setting_leaves_the_openmp_cap():
     """OPENBLAS_NUM_THREADS set by the user had switched the compiled core's OpenMP cap off with the BLAS one."""
     import subprocess, sys
     pytest.importorskip('threadpoolctl')
-    from mom25d import fast
+    from kicad2ems.mom25d import fast
     if fast._core is None:
         pytest.skip('no compiled core')
-    code = "import mom25d.fast as F; F.cap_blas_threads(); print(F._core.num_threads())"
+    code = "import kicad2ems.mom25d.fast as F; F.cap_blas_threads(); print(F._core.num_threads())"
     run = lambda **env: int(subprocess.check_output([sys.executable, '-c', code], text=True,
                                                     env={**__import__('os').environ, **env}).split()[-1])
     assert run(OPENBLAS_NUM_THREADS='8', MOM25D_OMP_THREADS='3') == 3
@@ -904,10 +904,10 @@ def test_the_openmp_cap_holds_in_every_thread():
     """libgomp keeps omp_set_num_threads per calling thread: a solve in another thread than the one the cap was set
     in (kicad2ems's --solver-jobs, a window's worker) is capped in its own (it ran on every CPU)."""
     import subprocess, sys
-    from mom25d import fast
+    from kicad2ems.mom25d import fast
     if fast._core is None:
         pytest.skip('no compiled core')
-    code = ("import threading, mom25d.fast as F; F.cap_blas_threads(); out = []\n"
+    code = ("import threading, kicad2ems.mom25d.fast as F; F.cap_blas_threads(); out = []\n"
             "t = threading.Thread(target=lambda: (F.cap_blas_threads(), out.append(F._core.num_threads())))\n"
             "t.start(); t.join(); print(F._core.num_threads(), out[0])")
     got = subprocess.check_output([sys.executable, '-c', code], text=True,
@@ -919,7 +919,7 @@ def test_an_unconverged_compressed_solve_is_no_answer(monkeypatch):
     """ACA's GMRES that ends far from the answer: an error, as the block low-rank solve's (it had been returned with a
     warning note, its currents written as S-parameters)."""
     from shapely.geometry import box, Point
-    import mom25d.fast as F
+    import kicad2ems.mom25d.fast as F
     w, h, L = 0.35e-3, 0.2e-3, 10e-3
     st = LayerStack([Layer(h, 4.3, 0.02)])
     v1, v2 = Via(-L / 2, 0, 0, 1, 0.1e-3), Via(L / 2, 0, 0, 1, 0.1e-3)

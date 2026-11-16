@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from shapely.geometry import Point, box, mapping
 
-from pcbqs import sparams as SP
+from kicad2ems.pcbqs import sparams as SP
 
 W, LEN, H, T = 1.0, 30.0, 1.5, 0.035
 QUIET = dict(log=lambda *a: None)
@@ -267,7 +267,7 @@ def test_the_command(tmp_path, capsys):
     text = capsys.readouterr().out
     assert 'P1 to P2:' in text and 'mOhm' in text and '(dense, R, L)' in text and 'thru_pcbqs.s2p' in text
     r = json.loads((out / 'sparams.json').read_text())
-    assert r['tool'] == 'pcbqs.sparams' and r['touchstone'] == 'thru_pcbqs.s2p' and len(r['f_Hz']) == 7
+    assert r['tool'] == 'kicad2ems.pcbqs.sparams' and r['touchstone'] == 'thru_pcbqs.s2p' and len(r['f_Hz']) == 7
     assert r['paths'][0]['joined'] and 'Resistance and inductance of the copper only' in r['notes'][0]
     lines = (out / 'thru_pcbqs.s2p').read_text().splitlines()
     assert lines[0].startswith('! pcbqs') and lines[1] == '! ports: 1=P1, 2=P2' and lines[2] == '# Hz S RI R 50'
@@ -299,13 +299,13 @@ def test_it_is_a_kicad2ems_solver(tmp_path):
     written with the others'; an example's thru is a thru at 10 kHz."""
     pytest.importorskip('kicad2ems')
     import tomllib
-    from kicad2ems.api.solver import FEATURES, registry
-    from kicad2ems.cli import main
+    from kicad2ems.core.api.solver import FEATURES, registry
+    from kicad2ems.core.cli import main
     from kicad2ems.examples import examples
-    from kicad2ems.study import engines
-    from pcbqs.analyses import QuasiStatic
-    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'pyproject.toml'), 'rb') as fh:
-        assert tomllib.load(fh)['project']['entry-points']['kicad2ems.solvers'] == {'pcbqs': 'pcbqs.analyses:QuasiStatic'}
+    from kicad2ems.core.study import engines
+    from kicad2ems.pcbqs.analyses import QuasiStatic
+    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'pyproject.toml'), 'rb') as fh:
+        assert tomllib.load(fh)['project']['entry-points']['kicad2ems.solvers']['pcbqs'] == 'kicad2ems.pcbqs.analyses:QuasiStatic'
     sv = QuasiStatic()
     assert set(sv.capabilities) == set(FEATURES) and not sv.in_auto and not sv.in_all and sv.consumes == 'board'
     assert sv.check()[0]
@@ -313,7 +313,7 @@ def test_it_is_a_kicad2ems_solver(tmp_path):
     if 'pcbqs' not in registry():
         pytest.skip('pcbqs is not installed where kicad2ems looks for its solvers')
     assert 'sparams' in engines()['pcbqs'].provides and 'antenna' not in engines()['pcbqs'].provides
-    from kicad2ems.config import _solvers
+    from kicad2ems.core.config import _solvers
     assert 'pcbqs' not in _solvers('all') and _solvers('qs') == ['pcbqs'] == _solvers('quasistatic')
     out = tmp_path / 'run'
     assert main([examples()['sma_launch'], '--solvers', 'pcbqs', '--fmin', '0.00001', '--fmax', '0.001', '--points', '5',
@@ -331,13 +331,13 @@ def test_it_is_a_kicad2ems_solver(tmp_path):
 def test_ports_of_several_references_are_written_as_touchstone_v2(tmp_path):
     """v1 holds one reference: a board whose ports have different ones gets v2.0 with [Reference] (the header had
     the first port's alone, so the file was wrong for the others)."""
-    from pcbqs.sparams import write_touchstone
+    from kicad2ems.pcbqs.sparams import write_touchstone
     S = np.array([[[0.1 + 0.2j, 0.5], [0.4, -0.3j]]] * 2)
     write_touchstone(str(tmp_path / 'a.s2p'), [1e6, 2e6], S, [50, 75], ['A', 'B'])
     text = (tmp_path / 'a.s2p').read_text()
     assert '[Version] 2.0' in text and '[Reference] 50 75' in text and text.rstrip().endswith('[End]')
     write_touchstone(str(tmp_path / 'b.s2p'), [1e6, 2e6], S, [50, 50], ['A', 'B'])
     assert '[Version]' not in (tmp_path / 'b.s2p').read_text()
-    kt = pytest.importorskip('kicad2ems.touchstone')
+    kt = pytest.importorskip('kicad2ems.core.touchstone')
     f, back, zr = kt.read_touchstone(str(tmp_path / 'a.s2p'), with_zref=True)
     assert np.allclose(back, S) and list(zr) == [50, 75]

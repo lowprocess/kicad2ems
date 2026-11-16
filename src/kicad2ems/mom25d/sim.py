@@ -21,7 +21,7 @@ from types import SimpleNamespace
 import os
 import numpy as np
 import shapely
-from emsdev.memory import available as available_memory      # noqa: F401  (bytes; mom25d's name for it)
+from kicad2ems.emsdev.memory import available as available_memory      # noqa: F401  (bytes; mom25d's name for it)
 
 from .model import KNOWN_SPAN
 from .base import MU0, EPS0, RWG, qform, combine, singular_moments, quad_pts, gram_matrix, \
@@ -610,7 +610,7 @@ class Simulation:
         cap_blas_threads()
         has_core = _core is not None
         if not has_core:
-            self.log.note("note: no compiled core (python -m mom25d.core.build, or MOM25D_NO_CORE is set): "
+            self.log.note("note: no compiled core (python -m kicad2ems.mom25d.core.build, or MOM25D_NO_CORE is set): "
                           "the NumPy kernels are several times slower")
         # mixed above MIXED_MIN_N (memory_plan): the complex64 LU on the GPU (5.7 s a solve against 14.9 s on
         # the via transition, 13.5k unknowns, RX 7800 XT) or on the CPU (about 1.3x faster than double). The

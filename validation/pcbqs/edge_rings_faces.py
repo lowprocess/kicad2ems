@@ -10,7 +10,7 @@ sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "src"))
 import json, time
 import numpy as np
 import face_study as FS
-import pcbqs.mqs as M
+import kicad2ems.pcbqs.mqs as M
 rows = json.loads((HERE / 'results' / 'face_study' / 'result.json').read_text())['rows']   # FastHenry's, stored
 orig = M.MQS
 cases = [tuple(float(x) for x in a.split(',')) for a in sys.argv[1:]] or [(1.6, 0.035), (0.1, 0.035)]

@@ -6,13 +6,13 @@ cancelling runs, the solver's options, a gate pulse across the period's start, a
 import shutil
 import numpy as np
 import pytest
-from pcbqs.power_spice import Circuit
-from pcbqs.circuit.deck import gate_timing
-from pcbqs.mqs_ports import CopperPorts, rl_equivalent, rl_error
+from kicad2ems.pcbqs.power_spice import Circuit
+from kicad2ems.pcbqs.circuit.deck import gate_timing
+from kicad2ems.pcbqs.mqs_ports import CopperPorts, rl_equivalent, rl_error
 
 
 def test_srf_gives_the_winding_s_capacitance():
-    from pcbqs.wpt import coil_capacitance, series_resistance
+    from kicad2ems.pcbqs.wpt import coil_capacitance, series_resistance
     c=dict(L_H=24e-6,R_ohm=.11,SRF_Hz=7.7e6)
     assert coil_capacitance(c)==pytest.approx(17.80113e-12) and series_resistance(c)==.11
 
@@ -20,7 +20,7 @@ def test_srf_gives_the_winding_s_capacitance():
 def test_copper_port_signs_reciprocity_and_passivity():
     from test_mqs import trace_board
     from shapely.geometry import box
-    from pcbqs.mqs import MQS
+    from kicad2ems.pcbqs.mqs import MQS
     q=MQS(trace_board(),'N',terminals={'s':[('F.Cu',box(2,9.6,2.6,10.4))],'g':[('F.Cu',box(2,7.7,2.6,8.5))]},dmax=2,log=lambda *_:None)
     q.source('p','s','g',part_h=0)
     extracted=CopperPorts(q).extract([0,1e5,2e5])
@@ -55,7 +55,7 @@ def test_copper_spice_mutual_polarity_and_resistance(tmp_path):
 
 
 def test_foster_fit_passivity_and_independent_frequency_interpolation():
-    from pcbqs.mqs_ports import PortResponse,foster_equivalent,model_impedance
+    from kicad2ems.pcbqs.mqs_ports import PortResponse,foster_equivalent,model_impedance
     f=np.r_[0,np.geomspace(1e2,1e7,24)]
     true=dict(names=['a','b'],R_ohm=[[.1,.02],[.02,.2]],L_H=[[2e-8,-.3e-8],[-.3e-8,3e-8]],foster=[dict(pole_rad_s=2*np.pi*1e4,R_ohm=[[.2,.1],[.1,.2]]),dict(pole_rad_s=2*np.pi*1e6,R_ohm=[[.7,-.2],[-.2,.4]])])
     Z=model_impedance(true,f);r=PortResponse(f,true['names'],Z,None)
@@ -69,7 +69,7 @@ def test_foster_fit_passivity_and_independent_frequency_interpolation():
 def test_parallel_core_loss_matches_q_and_damps_srf():
     """fit_core_resistance gives the core_R_ohm that makes the winding's AC resistance the measured one (wpthb's
     coils: 30.77 kohm, now written into their model rather than fitted at each deck build)."""
-    from pcbqs.wpt import fit_core_resistance,coil_capacitance
+    from kicad2ems.pcbqs.wpt import fit_core_resistance,coil_capacitance
     rc=fit_core_resistance(24e-6,.11,.1216100382,125e3,SRF_Hz=7.7e6);w=2*np.pi*125e3;zz=.11+1/(1/(1j*w*24e-6)+1/rc)
     z=zz/(1+1j*w*coil_capacitance(dict(L_H=24e-6,SRF_Hz=7.7e6))*zz)
     assert z.real==pytest.approx(.1216100382,rel=1e-9)
@@ -105,7 +105,7 @@ def test_switch_types_actual_transient_on_and_off(tmp_path,kind):
 
 
 def test_adaptive_fourier_does_not_alias_a_narrow_pulse():
-    from pcbqs.power_waveforms import periodic_coefficients
+    from kicad2ems.pcbqs.power_waveforms import periodic_coefficients
     f=1000.;width=2e-6;start=.000193
     # A narrow triangular pulse missed entirely by a coarse 128-point display grid.
     t=np.unique(np.r_[np.linspace(0,.002,257),.001+start,.001+start+width/2,.001+start+width])
@@ -120,7 +120,7 @@ def test_adaptive_fourier_does_not_alias_a_narrow_pulse():
 def test_cancelling_sweep_stops_all_children(tmp_path,monkeypatch):
     import os,time
     from concurrent.futures import ThreadPoolExecutor
-    from pcbqs import power_spice
+    from kicad2ems.pcbqs import power_spice
     child=tmp_path/'slow-ngspice';child.write_text('#!/bin/sh\nexec sleep 60\n');child.chmod(0o755)
     monkeypatch.setattr(power_spice.shutil,'which',lambda _:str(child))
     power_spice.reset_runs()
@@ -141,7 +141,7 @@ def test_cancelling_sweep_stops_all_children(tmp_path,monkeypatch):
 
 
 def test_solver_options_defaults_overrides_and_validation():
-    from pcbqs.power_spice import solver_options, SOLVER_DEFAULTS
+    from kicad2ems.pcbqs.power_spice import solver_options, SOLVER_DEFAULTS
     assert solver_options() == SOLVER_DEFAULTS and SOLVER_DEFAULTS['abstol'] == 1e-6
     assert solver_options(dict(reltol=1e-3, method='trap'))['method'] == 'trap'
     for bad in (dict(reltol=0), dict(reltol=0.5), dict(method='euler'), dict(maxord=9), dict(unknown=1), dict(abstol=True)):
@@ -168,7 +168,7 @@ def test_face_impedance_limits():
     """The two-face slab: DC 1/(sigma t) for both terms; the uniform mode's low-frequency reactance the slab's internal
     inductance mu0 t/12; the opposite mode's, with the vacuum term the partial inductance adds back, mu0 t; high
     frequency, the self term's resistance the one-face skin value 1/(sigma delta)."""
-    from pcbqs.conductor import face_impedance
+    from kicad2ems.pcbqs.conductor import face_impedance
     s, t, mu0 = 5.8e7, 35e-6, 4e-7 * np.pi
     zs, zm = face_impedance(0.0, t, s)
     assert zs == pytest.approx(1 / (s * t)) and zm == pytest.approx(1 / (s * t))
@@ -184,7 +184,7 @@ def test_face_impedance_limits():
 
 def test_face_sheets_keep_dc_and_low_frequency_inductance():
     """Two face sheets: the same DC resistance and nearly the same low-frequency inductance as one sheet."""
-    from pcbqs.mqs import MQS
+    from kicad2ems.pcbqs.mqs import MQS
     from shapely.geometry import box, mapping
     b = dict(stack=dict(copper=[dict(name='F.Cu', z=0.0, t=0.035)], layers=[]),
              copper={'F.Cu': [dict(net='N', polygon=mapping(box(0, 0, 20, 1).union(box(0, 4, 20, 5)).union(box(19, 0, 20, 5))))]},
@@ -202,7 +202,7 @@ def test_face_sheets_keep_dc_and_low_frequency_inductance():
 def test_compressed_mqs_matches_dense_without_capacitance():
     """matrix_backend='hierarchical' with capacitance=False (mqs_iterative.py): the same port impedances as the dense
     loop solve, one sheet and two face sheets."""
-    from pcbqs.mqs import MQS
+    from kicad2ems.pcbqs.mqs import MQS
     from shapely.geometry import box, mapping
     ring = box(-5, -3, 5, 3).difference(box(-4, -2, 4, 2)).difference(box(-0.2, -3, 0.2, -2))
     b = dict(stack=dict(copper=[dict(name='F.Cu', z=0.0, t=0.035)], layers=[]),
@@ -230,7 +230,7 @@ def test_copper_ports_on_the_compressed_backend_match_dense(sheets, solver, prec
     same port matrix and branch currents as the dense backend, DC included."""
     from test_mqs import trace_board
     from shapely.geometry import box
-    from pcbqs.mqs import MQS
+    from kicad2ems.pcbqs.mqs import MQS
     terms = {'s': [('F.Cu', box(2, 9.6, 2.6, 10.4))], 'g': [('F.Cu', box(2, 7.7, 2.6, 8.5))],
              'm': [('F.Cu', box(10, 9.6, 10.6, 10.4))]}
     out, said = {}, []
@@ -255,8 +255,8 @@ def test_face_preconditioner_takes_fewer_iterations_and_port_method_chooses():
     what 'auto' picks: direct while the loops are fewer than GMRES's products, the face preconditioner beyond."""
     from test_mqs import trace_board
     from shapely.geometry import box
-    from pcbqs.mqs import MQS
-    from pcbqs import mqs_iterative
+    from kicad2ems.pcbqs.mqs import MQS
+    from kicad2ems.pcbqs import mqs_iterative
     terms = {'s': [('F.Cu', box(2, 9.6, 2.6, 10.4))], 'g': [('F.Cu', box(2, 7.7, 2.6, 8.5))],
              'm': [('F.Cu', box(10, 9.6, 10.6, 10.4))]}
     its = {}

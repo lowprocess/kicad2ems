@@ -109,7 +109,7 @@ def run(model, out, passes, log=print, thermal_args='', **run_kw):
             code = thermal_main(['--circuit', str(out), '--case', 'all', '--out', str(thermal_out), *extra])
         (thermal_out / 'thermal.log').write_text(said.getvalue())
         if code not in (0, None):
-            raise RuntimeError(f"the thermal model failed (python -m pcbqs.thermal exit {code})")
+            raise RuntimeError(f"the thermal model failed (python -m kicad2ems.pcbqs.thermal exit {code})")
         new = temperatures(model, summary, thermal_out)
         moved, where = _moved(new, temps, start)
         hottest = max(((c, f"{n}: {r}") for n, t in new.items() for r, c in t['parts'].items()), default=(None, ''))

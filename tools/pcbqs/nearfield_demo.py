@@ -8,7 +8,7 @@ DC-sheet loss and one/two-face skin slabs. Lateral crowding is resolved;
 through-thickness proximity redistribution is assumed, not resolved. H planes
 at 1, 3 and 10 mm also form a coarse volume for the GUI's field viewer.
 
-    OPENBLAS_NUM_THREADS=4 python tools/nearfield_demo.py out/
+    OPENBLAS_NUM_THREADS=4 python tools/pcbqs/nearfield_demo.py out/
 """
 import argparse
 import copy
@@ -22,9 +22,9 @@ import numpy as np
 from shapely.geometry import box, mapping
 from shapely.ops import unary_union
 
-from pcbqs.mqs import MQS
+from kicad2ems.pcbqs.mqs import MQS
 
-# Layout and waveform retained from lowprocess/mom25d tools/nearfield_demo.py,
+# Layout and waveform retained from lowprocess/mom25d tools/pcbqs/nearfield_demo.py,
 # revision 77509a598561e79c292e65369cec10c1816fc25a (GPL-3.0-or-later).
 # No runtime dependency on mom25d or kicad2ems.
 W, H = 36.0, 26.0
@@ -170,7 +170,7 @@ def run_case(case, out, args):
 
 def write_dumps(d, b, f, gx, gy, planes, vx, vy, vz, vol):
     """All computed harmonics on the three planes and their coarse volume."""
-    from pcbqs._artifacts import Dump, write_info, write_npz
+    from kicad2ems.pcbqs._artifacts import Dump, write_info, write_npz
     from shapely.geometry import shape
     exc = os.path.join(d, 'mqs', 'exc_U1')
     os.makedirs(exc, exist_ok=True)

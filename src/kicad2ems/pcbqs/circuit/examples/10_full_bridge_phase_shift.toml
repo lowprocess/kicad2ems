@@ -1,5 +1,5 @@
 # pcbqs circuit example: two legs on two drives; the second leg's phase is adjusted until the receiver's load takes 10 W
-#   python -m pcbqs.circuit 10_full_bridge_phase_shift.json --out out/full_bridge_phase_shift      # the circuit alone, from the command line
+#   python -m kicad2ems.pcbqs.circuit 10_full_bridge_phase_shift.json --out out/full_bridge_phase_shift      # the circuit alone, from the command line
 #   kicad2ems-gui: File > Examples > Circuits                     # the circuit on its board, in the window
 board = "10_full_bridge_phase_shift.kicad_pcb"   # paths are relative to this file
 out   = "out"

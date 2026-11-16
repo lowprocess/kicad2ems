@@ -1,9 +1,9 @@
 """
-python -m pcbqs.sparams: low-frequency S-parameters of a board's ports, from the quasi-static currents of its copper.
+python -m kicad2ems.pcbqs.sparams: low-frequency S-parameters of a board's ports, from the quasi-static currents of its copper.
 
-    python -m pcbqs.sparams board.kicad_pcb --nets SIG,GND --fmin 1e3 --fmax 1e8 --out lf
-    python -m pcbqs.sparams run/board_board.json --out lf          # a kicad2ems board file: its ports as they are
-    python -m pcbqs.sparams --describe --json
+    python -m kicad2ems.pcbqs.sparams board.kicad_pcb --nets SIG,GND --fmin 1e3 --fmax 1e8 --out lf
+    python -m kicad2ems.pcbqs.sparams run/board_board.json --out lf          # a kicad2ems board file: its ports as they are
+    python -m kicad2ems.pcbqs.sparams --describe --json
 
 From DC up to where the board is a tenth of a wavelength, the full-wave solvers are at their worst (a time-domain
 run needs millions of steps, a moment method's matrix loses its conditioning), and what decides the answer is
@@ -225,7 +225,7 @@ def sweep(board, grid, points=31, tol=2e-3, log=print, **kw):
         r['info']['sweep'] = dict(solves=len(grid), converged=True, change=0.0)
         return dict(r, grid=grid, S_grid=r['S'])
     try:
-        from emsdev.afs import adaptive_sweep
+        from kicad2ems.emsdev.afs import adaptive_sweep
     except ImportError as e:                                # an emsdev from before it had the sweep
         raise RuntimeError(f"pcbqs's sweep needs emsdev.afs ({e}): reinstall emsdev (pip install --force-reinstall "
                            f"https://github.com/lowprocess/emsdev/archive/refs/tags/v0.3.1.zip)") from None
@@ -501,7 +501,7 @@ def describe():
 
 def main(argv=None):
     from ._cli import add_options, load_board, print_describe
-    ap = argparse.ArgumentParser(prog='python -m pcbqs.sparams', description=__doc__.split('\n\n')[0],
+    ap = argparse.ArgumentParser(prog='python -m kicad2ems.pcbqs.sparams', description=__doc__.split('\n\n')[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('board', nargs='?', help='a .kicad_pcb (its P<n> footprints the ports) or a kicad2ems board.json')
     ap.add_argument('--out', default='sparams-results', help='the results folder (default: sparams-results)')
@@ -558,7 +558,7 @@ def main(argv=None):
             viewer = write_maps(a.out, board, r, port, at, log=say)
         except Exception as exc:                            # noqa: BLE001 (the maps are extra: the answer stands)
             notes.append(f"current maps not written: {exc}")
-    out = dict(format=1, tool='pcbqs.sparams', board=os.path.abspath(a.board), touchstone=ts, names=r['names'],
+    out = dict(format=1, tool='kicad2ems.pcbqs.sparams', board=os.path.abspath(a.board), touchstone=ts, names=r['names'],
                zref=r['zref'], f_Hz=r['f'].tolist(), S_re=r['S'].real.tolist(), S_im=r['S'].imag.tolist(),
                paths=paths(r['f'], r['S'], r['names'], r['zref']), settings={k: getattr(a, k) for k, *_ in OPTIONS},
                viewer=viewer, notes=notes, **info)

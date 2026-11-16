@@ -10,8 +10,8 @@ FILTER = os.path.join(ROOT, 'examples', 'rf_interdig.toml')
 
 
 def test_import():
-    import mom25d
-    from mom25d.board import BoardModel                             # noqa: F401
+    from kicad2ems import mom25d
+    from kicad2ems.mom25d.board import BoardModel                             # noqa: F401
     assert hasattr(mom25d, '__version__')
 
 
@@ -27,7 +27,7 @@ def test_preview_solves_no_full_wave_solver(tmp_path, run_cli):
 def test_mom_run(tmp_path, run_cli, no_csxcad):
     """--solvers mom25d end to end with no openEMS (MoM reads the board), and the line model the config's
     fast = "auto" picks compared against it."""
-    pytest.importorskip('mom25d._core')   # (the mesher)
+    pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
     out = tmp_path / 'out'
     code, so, se = run_cli(FILTER, '--solvers', 'mom25d', '--mom-dmax', '1.6', '--mom-solves', '8', '--points', '41',
                            '--out', str(out))
@@ -48,9 +48,9 @@ def test_mom_run(tmp_path, run_cli, no_csxcad):
 def test_sigma_reaches_mom(demo_files):
     """--sigma is conductor loss in openEMS's conducting sheets; MoM gets the same, with the copper thickness
     of the ports' layer."""
-    from mom25d.kicad2ems.mom import _metal
-    from kicad2ems.importers.kicad import KiCadBoard
-    from kicad2ems.board import Board
+    from kicad2ems.mom25d.kicad2ems.mom import _metal
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
     base, _ = demo_files
     m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
               log=lambda *a: None)
@@ -72,9 +72,9 @@ def test_current_dumps(boards, run_cli, tmp_path, monkeypatch):
     """--mom-dump: mom25d's surface currents at the frequencies asked, a |J| map each, with --dump-animate one
     period of Re(J e^j phase), and the dumps where the GUI's Fields tab finds them. The sweep solves at the dump
     frequencies among its samples and the dumps reuse those currents: no solve of their own."""
-    pytest.importorskip('mom25d._core')   # (the mesher)
-    from kicad2ems.fields import frames as F
-    from mom25d.sim import Simulation
+    pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
+    from kicad2ems.core.fields import frames as F
+    from kicad2ems.mom25d.sim import Simulation
     save = F.save_fd_outputs
     monkeypatch.setattr(F, 'save_fd_outputs', lambda *a, **kw: save(*a, n_phase=4, **kw))     # 4 frames, not 24
     calls, currents = [], Simulation.currents
@@ -103,7 +103,7 @@ def test_current_dumps(boards, run_cli, tmp_path, monkeypatch):
 def test_antenna_mode(run_cli, tmp_path):
     """mom25d in antenna mode on the patch example: the resonance, efficiency below 1, and openEMS's antenna
     outputs (JSON, plots, the sphere the GUI reads)."""
-    pytest.importorskip('mom25d._core')   # (the mesher)
+    pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
     import subprocess, sys
     ex = os.path.join(os.path.dirname(FILTER), 'make_antennas.py')
     subprocess.check_call([sys.executable, ex, 'patch', str(tmp_path / 'patch')], stdout=subprocess.DEVNULL)
@@ -127,9 +127,9 @@ def test_phased_array(run_cli, tmp_path):
     the GUI's Reset (the grid in its short form, 1x2), the per-port
     fields kept, and recombining them (phased.combine) gives the run's result back and broadside for the drive
     in phase."""
-    pytest.importorskip('mom25d._core')   # (the mesher)
+    pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
     import subprocess, sys
-    from kicad2ems import phased
+    from kicad2ems.core import phased
     ex = os.path.join(os.path.dirname(FILTER), 'make_antennas.py')
     subprocess.check_call([sys.executable, ex, 'array2x2_phased', str(tmp_path / 'arr')], stdout=subprocess.DEVNULL)
     out = tmp_path / 'out'
@@ -154,11 +154,11 @@ def test_phased_array(run_cli, tmp_path):
 
 
 def test_stop_ends_mom25d_after_its_current_solve(run_cli, tmp_path, monkeypatch):
-    """The GUI's Stop (a STOP file, kicad2ems.stop): mom25d ends after the frequency it is solving, with no
+    """The GUI's Stop (a STOP file, kicad2ems.core.stop): mom25d ends after the frequency it is solving, with no
     result; the line model (the --fast reference) still gives its. ABORT alone had left mom25d running."""
-    pytest.importorskip('mom25d._core')   # (the mesher)
-    from kicad2ems import pipeline
-    from kicad2ems.runs import stop_runs
+    pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
+    from kicad2ems.core import pipeline
+    from kicad2ems.core.runs import stop_runs
     out = tmp_path / 'out'
     seen = []
     status = pipeline.Job.status
@@ -182,10 +182,10 @@ def test_short_differential_feed_falls_back_to_single_ended_legs(monkeypatch):
     """--mom-port auto: a pair whose coupled feed is too short for a differential wave port (ports on pads) is
     solved with its legs as single-ended ports and the modes taken from them, instead of failing."""
     import types
-    import mom25d.api
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
-    from mom25d.kicad2ems.mom import solve
+    import kicad2ems.mom25d.api
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.mom25d.kicad2ems.mom import solve
     ex = os.path.join(ROOT, 'examples')
     m = Board(KiCadBoard(os.path.join(ex, 'rf_diffvia.kicad_pcb')), ground='B.Cu', log=lambda *a: None)
     names = [p.name for p in m.ports]
@@ -202,7 +202,7 @@ def test_short_differential_feed_falls_back_to_single_ended_legs(monkeypatch):
                                      solver='fake', ports=[dict(name=x, kind='via') for x in names], seconds=0.0,
                                      solves=1, triangles=1, notes=[], solved=list(freq), afs=False, afs_tol=None)
 
-    monkeypatch.setattr(mom25d.api, 'solve_board', fake)
+    monkeypatch.setattr(kicad2ems.mom25d.api, 'solve_board', fake)
     log = []
     S, out_names, zref, info = solve(m, np.array([1e9, 2e9]), port='auto', log=log.append)
     assert calls == [True, False] and out_names == ['P1d', 'P1c', 'P2d', 'P2c'] and S.shape == (2, 4, 4)
@@ -212,7 +212,7 @@ def test_short_differential_feed_falls_back_to_single_ended_legs(monkeypatch):
 def test_mixed_connect_cascades_lines():
     """mom25d.kicad2ems.mixed.connect: two line pieces joined by a third through their inner ports equal one
     line of the total length (mismatched Zc, so reflections are in play)."""
-    from mom25d.kicad2ems.mixed import connect, line_S
+    from kicad2ems.mom25d.kicad2ems.mixed import connect, line_S
     g, zc, z0 = 0.5 + 180j, 37.0, 50.0
     A, B, C = line_S(g, zc, 3e-3, z0), line_S(g, zc, 5e-3, z0), line_S(g, zc, 7e-3, z0)
     S = np.zeros((4, 4), complex)
@@ -242,9 +242,9 @@ def test_mixed_plans_a_pair_s_stretch_as_one_cut():
     """mixed.plan_pair_cuts: two traces of one width side by side are cut together where both run straight, less
     the feed each face's mixed-mode port needs; not where a third trace runs beside them, not two of different
     widths, and not two far enough apart to be lone lines (each then a cut of its own)."""
-    pytest.importorskip('mom25d._core')   # (the mesher)
-    from mom25d.board import BoardModel
-    from mom25d.kicad2ems import mixed
+    pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
+    from kicad2ems.mom25d.board import BoardModel
+    from kicad2ems.mom25d.kicad2ems import mixed
     quiet = lambda *a, **k: None
 
     def plan(data, **kw):
@@ -272,12 +272,12 @@ def test_mixed_cuts_a_coupled_pair_as_two_modal_lines(monkeypatch):
     mixed-mode wave port, the stretch two lines: its differential and its common mode) and agrees with mom25d on
     every term (0.007 in |S|), the near- and far-end coupling among them, with under two thirds of the unknowns
     (a 30 mm pair: the faces' feeds are half of it)."""
-    pytest.importorskip('mom25d._core')   # (the mesher)
-    pytest.importorskip('mom25d._core')
+    pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
+    pytest.importorskip('kicad2ems.mom25d._core')
     from types import SimpleNamespace as NS
-    import kicad2ems.api.solver as ks
-    from mom25d.kicad2ems import mixed
-    from mom25d.api import solve_board
+    import kicad2ems.core.api.solver as ks
+    from kicad2ems.mom25d.kicad2ems import mixed
+    from kicad2ems.mom25d.api import solve_board
     quiet = lambda *a, **k: None
     data = _two_traces(0.3)
     freq = np.linspace(3e9, 9e9, 13)
@@ -305,9 +305,9 @@ def test_whole_stack_ports_below_the_ground(run_cli, tmp_path):
     """--mom-stack whole on rf_msvia (F.Cu microstrip through a via to B.Cu, two inner planes): the B.Cu port that
     no ground plane allows, lumped ports to the nearest plane, and S21 as gfdtd gives it (-0.38 dB at 5 GHz);
     with the board's own ground (the default) that port cannot be."""
-    pytest.importorskip('mom25d._core')   # (the mesher)
+    pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
     import subprocess, sys
-    from mom25d.board import BoardModel
+    from kicad2ems.mom25d.board import BoardModel
     ex = os.path.join(os.path.dirname(FILTER), 'make_rf_examples.py')
     subprocess.check_call([sys.executable, ex, 'msvia', str(tmp_path / 'rf_msvia')], stdout=subprocess.DEVNULL)
     cfg = os.path.join(os.path.dirname(FILTER), 'rf_msvia.toml')
@@ -318,7 +318,7 @@ def test_whole_stack_ports_below_the_ground(run_cli, tmp_path):
                             '--no-report')
     assert code == 0, so + err
     assert 'whole stack: no infinite ground' in so and 'P2 (lumped)' in so
-    from kicad2ems.touchstone import read_touchstone
+    from kicad2ems.core.touchstone import read_touchstone
     f, S = read_touchstone(str(out / 'rf_msvia_mom25d.s2p'))
     i = int(np.argmin(np.abs(f - 5e9)))
     assert abs(20 * np.log10(abs(S[i, 1, 0])) + 0.38) < 0.15
@@ -333,7 +333,7 @@ def test_whole_stack_antenna_radiates_behind_its_ground(run_cli, tmp_path):
     """The patch over its own 80 mm ground meshed (--mom-stack whole): a back lobe (gfdtd, the finite board: -13
     dBi), which the infinite ground cannot have, and gain near gfdtd's 3.1 dBi (the infinite ground's 1.9). No
     ground named is the board's own ground, not the whole stack (ground=None once read as 'none')."""
-    pytest.importorskip('mom25d._core')   # (the mesher)
+    pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
     import subprocess, sys
     ex = os.path.join(os.path.dirname(FILTER), 'make_antennas.py')
     subprocess.check_call([sys.executable, ex, 'patch', str(tmp_path / 'patch')], stdout=subprocess.DEVNULL)
@@ -348,14 +348,14 @@ def test_whole_stack_antenna_radiates_behind_its_ground(run_cli, tmp_path):
     assert -25 < g[np.abs(np.abs(a) - 180) < 1.5].max() < -10                     # behind the board
     row = min(res['rows'], key=lambda r: abs(r['f'] - res['f_pattern']))
     assert 2.4 < row['G_dbi'] < 3.6 and 'whole stack' in res['model']
-    from mom25d.board import BoardModel
+    from kicad2ems.mom25d.board import BoardModel
     board = json.loads((out / 'patch_board.json').read_text(encoding='utf-8'))
     assert not BoardModel(board, log=lambda *a: None).whole and BoardModel(board, ground='none', log=lambda *a: None).whole
 
 
 def test_factorisations_and_reused_solves_from_the_stage_records():
     from types import SimpleNamespace
-    from mom25d.kicad2ems.mom import factorisations, reused
+    from kicad2ems.mom25d.kicad2ems.mom import factorisations, reused
     log = SimpleNamespace(records=[('LU factor', 1.0, 'N=100, complex64, kept'), ('LU factor (GPU)', 1.0, ''),
                                    ('refinement (GMRES, reused factorisation)', 0.5, ''),
                                    ('refinement (GMRES, reused factorisation)', 0.5, ''), ('LU factor', 1.0, 'N=100')],
@@ -369,9 +369,9 @@ def test_mixed_models_the_board_with_mom25d_s_options(monkeypatch):
     """--mom-planes, --mom-stitching-pads and --diel reach the mixed solver's BoardModel, --mom-coarsen and
     --mom-quad-tol its mesh: it had taken mom25d's defaults, so --solvers mom,mixed compared two models."""
     from types import SimpleNamespace as NS
-    import mom25d.board as B
-    from mom25d.kicad2ems import mixed
-    from mom25d.kicad2ems.mom import _model_kw
+    import kicad2ems.mom25d.board as B
+    from kicad2ems.mom25d.kicad2ems import mixed
+    from kicad2ems.mom25d.kicad2ems.mom import _model_kw
     seen = {}
 
     class Stop(Exception):
@@ -393,7 +393,7 @@ def test_mesh_convergence_of_two_levels():
     """--mom-converge's comparison (R-E3): the largest change in dB and degrees over the points above -40 dB, the
     term it is on, and the verdict against 0.1 dB / 2 deg, as the FDTD layer's check."""
     import numpy as np
-    from mom25d.kicad2ems.mom import mesh_convergence
+    from kicad2ems.mom25d.kicad2ems.mom import mesh_convergence
     S = np.zeros((3, 2, 2), complex)
     S[:, 0, 1] = S[:, 1, 0] = 0.9
     S[:, 0, 0] = 0.2
@@ -411,12 +411,13 @@ def test_part_ports_are_delta_gaps_closing_to_the_parts(tmp_path, run_cli, no_cs
     """kicad2ems R-E5: a part port is a delta gap across the part's strip (the strip and its pads kept: a shunt
     part's ground pad with its vias is not a lone stitching pad), and closed by the parts' values it is the board
     with its parts."""
-    pytest.importorskip('mom25d._core')   # (the mesher)
-    from kicad2ems.config import build_settings
-    from kicad2ems.pipeline import board_from_settings
-    from kicad2ems.touchstone import read_touchstone
-    from mom25d.board import BoardModel
-    toml = os.path.join(ROOT, 'examples', 'demo_lowpass.toml')
+    pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
+    from kicad2ems.core.config import build_settings
+    from kicad2ems.core.pipeline import board_from_settings
+    from kicad2ems.core.touchstone import read_touchstone
+    from kicad2ems.mom25d.board import BoardModel
+    from kicad2ems.examples import prepare_example
+    toml = prepare_example('demo_lowpass', str(tmp_path / 'board'))     # (a generated board: made there)
     models = {}
     for pp in ((), ('all',)):
         s = build_settings({'part_ports': list(pp)} if pp else {}, toml)

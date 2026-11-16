@@ -5,10 +5,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from pcbqs._numerics.base import RWG, combine
-from pcbqs.static import static_moments
-from pcbqs.static_backends import FillEngine, NumpyBackend, bounded_map, register_fill_backend
-import pcbqs.static_backends as backends
+from kicad2ems.pcbqs._numerics.base import RWG, combine
+from kicad2ems.pcbqs.static import static_moments
+from kicad2ems.pcbqs.static_backends import FillEngine, NumpyBackend, bounded_map, register_fill_backend
+import kicad2ems.pcbqs.static_backends as backends
 
 
 @pytest.fixture
@@ -172,7 +172,7 @@ def test_invalid_configuration(mesh, kwargs):
 @pytest.mark.parametrize('scalar_only', [False, True])
 def test_portable_gpu_formula_on_host_namespace(mesh, level, scalar_only):
     # Exercise device formula independently of the CPU reference even without GPU hardware.
-    from pcbqs.static_cupy import _analytic
+    from kicad2ems.pcbqs.static_cupy import _analytic
     e = FillEngine(*mesh, backend='numpy', outer_levels=level)
     p, q = np.array([0, 1, 2, 3, 4]), np.array([0, 0, 5, 7, 2])
     d = np.array([0., .0001, -.0002, 0., .0003])
@@ -208,7 +208,7 @@ def test_cupy_row_strips_and_pair_protocol(mesh, level, monkeypatch):
         cp.zeros(1).sum().item()
     except Exception as exc:
         pytest.skip(f'CuPy device unavailable: {exc}')
-    from pcbqs.static_cupy import CupyBackend
+    from kicad2ems.pcbqs.static_cupy import CupyBackend
     monkeypatch.setenv('PCBQS_CUPY_HOST_PAIRS', '0')      # keep pair batches on the device
     # Eight triangles in strips of 3, 3 and 2 rows: a partial final strip.
     monkeypatch.setattr(CupyBackend, 'min_strip_pairs', 24)
@@ -239,7 +239,7 @@ def test_native_whole_matrix_fill_matches_batched_pairs(mesh, monkeypatch, level
     core = backends._compiled()
     if core is None or not hasattr(core, 'static_fill'):
         pytest.skip('OpenMP core not built')
-    import pcbqs.static as static
+    import kicad2ems.pcbqs.static as static
     native, info = static_moments(*mesh, backend='openmp', workers=2, outer_levels=level,
                                   scalar_only=scalar_only, return_info=True)
     single = static_moments(*mesh, backend='openmp', workers=1, outer_levels=level, scalar_only=scalar_only)
@@ -254,7 +254,7 @@ def test_native_whole_matrix_fill_matches_batched_pairs(mesh, monkeypatch, level
 
 
 def test_native_combine_matches_sparse_galerkin_products(mesh, monkeypatch):
-    from pcbqs.static import edge_inductance, native_combine_available
+    from kicad2ems.pcbqs.static import edge_inductance, native_combine_available
     if not native_combine_available():
         pytest.skip('OpenMP core not built')
     nodes, m0, mx, my, rr = static_moments(*mesh, backend='numpy')

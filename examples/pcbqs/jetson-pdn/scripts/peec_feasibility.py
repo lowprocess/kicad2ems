@@ -1,10 +1,10 @@
 from pathlib import Path
 import json,time
 from shapely.ops import unary_union
-from pcbqs.pdn.rail import Rail,parts_of
-from pcbqs.pdn.stack import RailPDN
-from pcbqs.pdn.peec_trial import PEECPDN
-from pcbqs.electrostatic import DielectricStack
+from kicad2ems.pcbqs.pdn.rail import Rail,parts_of
+from kicad2ems.pcbqs.pdn.stack import RailPDN
+from kicad2ems.pcbqs.pdn.peec_trial import PEECPDN
+from kicad2ems.pcbqs.electrostatic import DielectricStack
 ROOT=Path(__import__('os').environ.get('JETSON_PDN_DIR','/workspace/jetson-pdn'));b=json.loads((ROOT/'board.json').read_text())
 rail=Rail(b,'+1V15',source='L5',ground_source='U69',loads={'U21':1.})
 rail.parts['U21'].pads=[p for p in rail.parts['U21'].pads if p.net in {'+1V15','GND'}]

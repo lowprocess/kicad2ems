@@ -6,7 +6,7 @@ establish a general accuracy improvement and is not recommended as the default.
 This experiment routes small-signal PDN impedance through the existing PEEC and
 finite-thickness slab implementation. It does not change the default PDN CLI.
 
-`pcbqs.pdn.peec_trial.PEECPDN` takes a `RailPDN` instance to reuse its rail and
+`kicad2ems.pcbqs.pdn.peec_trial.PEECPDN` takes a `RailPDN` instance to reuse its rail and
 component assumptions. It replaces the cavity and heuristic copper/mounting
 paths with explicit power/ground copper, pad terminals, PEEC charge continuity,
 and skin impedance. VRM R/L and capacitor C/ESR/ESL remain explicit lumped
@@ -23,7 +23,7 @@ rejected explicitly. The earlier results retain their original source hashes.
 From a pcbqs checkout with dependencies installed:
 
 ```sh
-PYTHONPATH=src OPENBLAS_NUM_THREADS=1 python tools/trial_pdn_peec.py --workers 2
+PYTHONPATH=src OPENBLAS_NUM_THREADS=1 python tools/pcbqs/trial_pdn_peec.py --workers 2
 ```
 
 The default body spacings are 2.5, 1.75 and 1.25 mm. PEEC contact patches are

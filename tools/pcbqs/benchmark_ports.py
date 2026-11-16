@@ -1,6 +1,6 @@
 """Copper-port extraction on a real board (the circuit tool's 11 frequencies): time, peak memory, GMRES iterations.
 
-    python tools/benchmark_ports.py SHEETS [SOLVER [PRECONDITIONER]] [--board PCB] [--save Z.npy] [--compare Z.npy]
+    python tools/pcbqs/benchmark_ports.py SHEETS [SOLVER [PRECONDITIONER]] [--board PCB] [--save Z.npy] [--compare Z.npy]
 
 SHEETS 1 or 2 (face sheets); SOLVER auto | direct | iterative | dense (the dense backend); PRECONDITIONER auto |
 graph | faces (mqs_iterative.port_method). One run per process: peak memory is the process's. Default board:
@@ -14,10 +14,10 @@ import time
 
 import numpy as np
 
-import pcbqs
-from pcbqs._cli import load_board
-from pcbqs.mqs_ports import CopperPorts
-from pcbqs.circuit.copper import geometry
+from kicad2ems import pcbqs
+from kicad2ems.pcbqs._cli import load_board
+from kicad2ems.pcbqs.mqs_ports import CopperPorts
+from kicad2ems.pcbqs.circuit.copper import geometry
 
 FREQUENCIES = [0.0, 1e3, 1e4, 3e4, 9e4, 1e5, 3e5, 9e5, 3e6, 7e6, 2e7]
 

@@ -54,7 +54,7 @@ not imply that skin effect is enabled.
 From the pcbqs repository, with its dependencies installed:
 
 ```sh
-PYTHONPATH=src OPENBLAS_NUM_THREADS=1 python tools/peec_skin_demo.py \
+PYTHONPATH=src OPENBLAS_NUM_THREADS=1 python tools/pcbqs/peec_skin_demo.py \
     --out examples/peec-skin/results --workers 2
 ```
 

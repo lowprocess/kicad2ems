@@ -4,11 +4,11 @@ import shutil
 
 import pytest
 
-from pcbqs.circuit import model as M
-from pcbqs.circuit import run
-from pcbqs.circuit.deck import build
-from pcbqs.circuit.kicad import part_of
-from pcbqs.power_spice import library_entry
+from kicad2ems.pcbqs.circuit import model as M
+from kicad2ems.pcbqs.circuit import run
+from kicad2ems.pcbqs.circuit.deck import build
+from kicad2ems.pcbqs.circuit.kicad import part_of
+from kicad2ems.pcbqs.power_spice import library_entry
 
 LIBRARY = """* a vendor's library, as they come
 .model DSCHOTTKY D(IS=1e-6 N=1.1 RS=0.02 CJO=150p)

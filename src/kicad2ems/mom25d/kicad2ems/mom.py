@@ -11,9 +11,9 @@ import json
 import os
 import numpy as np
 
-from kicad2ems.api.solver import Option, floatlist
-from kicad2ems.api.solver import Solver, Result, Deviation
-from kicad2ems.api.solver import stop
+from kicad2ems.core.api.solver import Option, floatlist
+from kicad2ems.core.api.solver import Solver, Result, Deviation
+from kicad2ems.core.api.solver import stop
 
 G = 'mom25d'
 # --solvers auto (docs/architecture.md#choosing-solvers): seconds per EM solve on 24 cores, fitted on the examples
@@ -49,26 +49,26 @@ def mom25d_status():
     """(usable, one-line description) of mom25d for --check and the solver checks before a run: where it
     comes from, its version and whether its compiled core is built (it meshes: not usable without it)."""
     try:
-        import mom25d
+        from kicad2ems import mom25d
     except Exception as e:                                          # a missing or broken dependency
         return False, f"{type(e).__name__}: {e}"
     try:
-        from mom25d import _core
+        from kicad2ems.mom25d import _core
     except ImportError:
-        return False, ("no compiled core: mom25d meshes with it (python -m mom25d.core.build; a C++17 compiler and "
+        return False, ("no compiled core: mom25d meshes with it (python -m kicad2ems.mom25d.core.build; a C++17 compiler and "
                        "pybind11)")
     if not hasattr(_core, 'cdt_triangulate'):
-        return False, "its compiled core is older than its mesher: build it again (python -m mom25d.core.build)"
+        return False, "its compiled core is older than its mesher: build it again (python -m kicad2ems.mom25d.core.build)"
     return True, f"{mom25d.__version__} ({os.path.dirname(mom25d.__file__)}), compiled core"
 
 
 def run_finish(run):
-    """The run's surface finish (kicad2ems.api 2.4: resolve_finish), or None with an older kicad2ems."""
+    """The run's surface finish (kicad2ems.core.api 2.4: resolve_finish), or None with an older kicad2ems."""
     fin = getattr(run, 'finish', None)
     if fin is not None or not getattr(run.s, 'sigma', None):
         return fin
     try:
-        from kicad2ems.api.solver import resolve_finish
+        from kicad2ems.core.api.solver import resolve_finish
     except ImportError:
         return None
     return resolve_finish(run.s, run.m)
@@ -77,11 +77,11 @@ def run_finish(run):
 def _metal(m, sigma, rough=None, finish=None):
     """mom25d's conductor loss for --sigma: the conductivity with the copper thickness of the ports' layer
     (openEMS models the same copper as conducting sheets of that conductivity), --rough (um RMS: Hammerstad at
-    each frequency) and the surface finish (kicad2ems.finish.Finish: on the outer copper, weighted by its finished
+    each frequency) and the surface finish (kicad2ems.core.finish.Finish: on the outer copper, weighted by its finished
     faces' share of the strip's loss at each frequency). None without sigma."""
     if not sigma:
         return None, None
-    from mom25d.sim import Metal
+    from kicad2ems.mom25d.sim import Metal
     lays = [p.layer for p in m.ports if p.layer in m.cu_t] or [l for l in m.cu_order if l in m.copper]
     t_mm = m.cu_t.get(lays[0], 0.035) if lays else 0.035
     fin, on = (), {}
@@ -128,13 +128,13 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
     (an infinite ground plane) or 'whole' (every copper layer meshed, mom25d.board ground='none'). planes,
     stitching_pads, wideband: mom25d.board's (wideband: the frequency, Hz, of a Djordjevic-Sarkar stack's er and
     tand, or None)."""
-    from mom25d.api import solve_board
-    from kicad2ems.api.solver import mixed_mode
+    from kicad2ems.mom25d.api import solve_board
+    from kicad2ems.core.api.solver import mixed_mode
     pairs, kw = _board_kw(m, dmax, port, quads=quads, quad_tol=quad_tol, coarsen=coarsen, zone=zone, cells=cells,
                           signal_vias=signal_vias, stitching_vias=stitching_vias, lines=lines, stack=stack,
                           planes=planes, stitching_pads=stitching_pads, wideband=wideband)
     if wideband:
-        from mom25d.multilayer import djordjevic_sarkar
+        from kicad2ems.mom25d.multilayer import djordjevic_sarkar
         for l in m.layers:
             e = djordjevic_sarkar(l['er'], l['tand'], wideband, np.array([freq[0], freq[-1]]))
             log(f"  mom25d: wideband dielectric {l['name']}: er {e[0].real:.3f} -> {e[1].real:.3f}, tand "
@@ -197,7 +197,7 @@ def _board_kw(m, dmax, port, quads=False, quad_tol=35.0, coarsen=None, zone=None
 def preview_mesh(m, fmin, fmax, dmax=0.3, port='auto', **mesh):
     """(BoardModel, Simulation) of the mesh solve() would solve on, without solving (mesh_only: no quad cells
     paired yet). mesh: solve()'s mesh options (quads, coarsen, zone, vias, lines, stack, planes, ...)."""
-    from mom25d.api import build_board
+    from kicad2ems.mom25d.api import build_board
     pairs, kw = _board_kw(m, dmax, port, **mesh)
     try:
         return build_board(m.to_dict(), fmin, fmax, pairs=pairs, log=lambda *a: None, mesh_only=True,
@@ -225,7 +225,7 @@ def save_mesh(run, sim, model, solver='mom25d'):
     """mom25d's mesh for the 3D view and the plan (meshes.py): each meshed layer's triangles at its copper's
     height, and the diagonals merged into quad cells (`hidden`, a run's). solver: the file's name, 'mom25d' (the
     preview) or 'mom25d-run' (the mesh a run solved on)."""
-    from kicad2ems.api.solver import save_mesh
+    from kicad2ems.core.api.solver import save_mesh
     lay = {k: l for l, k in model.iface.items()}
     z = np.array([run.m.cu_z.get(lay.get(int(k)), np.nan) for k in sim.tri_layer])
     tris = np.asarray(sim.rwg.tris)
@@ -247,15 +247,15 @@ HOW = {'dense': 'dense, NumPy', 'double': 'direct LU in double on the CPU',
 
 def memory_plan_for(n):
     """mom25d.sim.memory_plan of n unknowns on this machine: the memory available now, the GPU mom25d would use."""
-    from mom25d.sim import memory_plan, gpu_info
-    from mom25d.fast import _core
-    from mom25d.gpu import get_backend
+    from kicad2ems.mom25d.sim import memory_plan, gpu_info
+    from kicad2ems.mom25d.fast import _core
+    from kicad2ems.mom25d.gpu import get_backend
     g = get_backend('auto') if _core is not None else None
     return memory_plan(n, _core is not None, None, gpu_info(g, n) if g is not None else None)
 
 
 def _model_kw(s):
-    """mom25d.board.BoardModel's options from kicad2ems's settings: --mom-planes, --mom-stitching-pads, and --diel
+    """kicad2ems.mom25d.board.BoardModel's options from kicad2ems's settings: --mom-planes, --mom-stitching-pads, and --diel
     (the FDTD solvers' option, which kicad2ems's examples set: wideband is the Djordjevic-Sarkar model matched at
     --diel-fref; fixed, mom25d's constant er and tand)."""
     wide = getattr(s, 'diel', 'fixed') == 'wideband'
@@ -282,7 +282,7 @@ def apertures(m, s):
     ground or none."""
     if _held_apertures[0] is m and _held_apertures[1][0] == _model_kw(s)['planes']:
         return _held_apertures[1][1]
-    from mom25d.board import ground_apertures, pec_planes
+    from kicad2ems.mom25d.board import ground_apertures, pec_planes
     g, out = _solid_ground(m), []
     if g is not None:
         data = m.to_dict()
@@ -300,7 +300,7 @@ def ports_below(m, s):
     if g is None:
         return []
     if _model_kw(s)['planes'] in ('pec', 'holes'):
-        from mom25d.board import pec_planes
+        from kicad2ems.mom25d.board import pec_planes
         g, _ = pec_planes(m.to_dict(), g)
     return [p.name for p in m.ports if m.cu_z.get(p.layer, np.inf) < m.cu_z[g] - 1e-9]
 
@@ -374,7 +374,7 @@ def mesh_convergence(Sa, Sb, names=None, floor=0.01):
 
 
 class MoM25D(Solver):
-    api = (2, 9)                    # kicad2ems.api (2.3: the roughness row; 2.9: basic)
+    api = (2, 9)                    # kicad2ems.core.api (2.3: the roughness row; 2.9: basic)
     name, aliases, label = 'mom25d', ('mom',), 'mom25d (MoM)'
     consumes, previewed, rank, order = 'board', False, 1, 20     # order: after openEMS in kicad2ems's lists
     basic = ('mom_dmax',)           # what a run is set up with, of its options (kicad2ems 2.9: Solver.basic)
@@ -475,15 +475,15 @@ class MoM25D(Solver):
 
     def validate(self, s):
         if getattr(s, 'mom_core', 'auto') == 'compiled':
-            from mom25d.fast import _built
+            from kicad2ems.mom25d.fast import _built
             if _built is None:
-                return ("mom_core = compiled, but mom25d's compiled core is not built (python -m mom25d.core.build, "
+                return ("mom_core = compiled, but mom25d's compiled core is not built (python -m kicad2ems.mom25d.core.build, "
                         "or setup.sh): auto or python run on NumPy")
         return None
 
     def resources(self):
         """The GPU mom25d's LU would use (MOM25D_GPU), or why there is none."""
-        from mom25d.gpu import get_backend
+        from kicad2ems.mom25d.gpu import get_backend
         b = get_backend('auto')
         if b is None:
             return dict(gpus=[], why='; '.join(get_backend.why) or 'disabled (MOM25D_GPU=off)')
@@ -520,7 +520,7 @@ class MoM25D(Solver):
             return out
         kw, cover, pads = _model_kw(run.s), None, {}
         if not whole and kw['planes'] == 'pec':                     # mom25d.board.pec_planes: the ground may move up
-            from mom25d.board import pec_planes
+            from kicad2ems.mom25d.board import pec_planes
             g, cover = pec_planes(m.to_dict(), g)
         zg = min(m.cu_z.values()) if whole else m.cu_z[g]
         zc = m.cu_z[cover] if cover else np.inf
@@ -539,7 +539,7 @@ class MoM25D(Solver):
         metal = {l: m.copper[l] for l in m.copper if whole or zg + 1e-9 < m.cu_z[l] < zc - 1e-9}
         if kw['stitching_pads'] == 'drop':                          # mom25d.board.lone_pads: left out, the vias kept
             from shapely.geometry import shape
-            from mom25d.board import lone_pads
+            from kicad2ems.mom25d.board import lone_pads
             data = m.to_dict()
             pads = lone_pads(data, [l for l in metal if data.get('copper', {}).get(l)])
             for l, ix in pads.items():
@@ -560,7 +560,7 @@ class MoM25D(Solver):
                 out.append(Deviation(f"via:{i}", 'vias', 'left out: metal on fewer than two layers at it', dropped=True))
             elif abs(s[0] - z0) > 1e-9 or abs(s[1] - z1) > 1e-9:
                 out.append(Deviation(f"via:{i}", 'vias', 'spans only the layers with metal at it', to=[x, y, r, *s]))
-        from mom25d.board import wall_points
+        from kicad2ems.mom25d.board import wall_points
         pts = wall_points(m.walls, self.WALL_PITCH, [(v[0], v[1]) for v in m.vias])
         for i, (axis, c, t0, t1, z0, z1) in enumerate(m.walls):
             add = [[x, y, self.WALL_R, *s] for j, x, y in pts if j == i for s in [span(x, y, z0, z1)] if s]
@@ -580,7 +580,7 @@ class MoM25D(Solver):
 
     def readback(self, run, prep):
         """mom25d's planar model of the board (mom25d.board.BoardModel), in board terms."""
-        from mom25d.board import BoardModel
+        from kicad2ems.mom25d.board import BoardModel
         bm = BoardModel(run.m.to_dict(), log=lambda *a: None, **_model_kw(run.s),
                         **(dict(ground='none') if _stack(run.s, run.m) == 'whole' else {}))
         zk, lay = bm._zk, {k: l for l, k in bm.iface.items()}
@@ -592,7 +592,7 @@ class MoM25D(Solver):
     def estimate(self, run):
         """The unknowns of mom25d's mesh of the board (meshed here, the ports not characterised) and the time of
         a sweep of up to SOLVES solves."""
-        from mom25d.board import BoardModel
+        from kicad2ems.mom25d.board import BoardModel
         s = run.s
         bm = BoardModel(run.m.to_dict(), log=lambda *a: None, **_model_kw(s),
                         **(dict(ground='none') if _stack(s, run.m) == 'whole' else {}))
@@ -629,7 +629,7 @@ class MoM25D(Solver):
         self._held = {}
         port = s.mom_port
         if run.antenna and (s.drive or s.grid or s.steer or s.taper):  # a drive that names no port: before the solve
-            from kicad2ems.api.solver import settings_drive
+            from kicad2ems.core.api.solver import settings_drive
             settings_drive(s.drive, [p.name for p in run.m.ports], s.grid, s.steer, s.taper)
         if run.antenna and port == 'auto':                          # the gap source the antenna's power is taken from
             port = 'lumped'
@@ -690,10 +690,10 @@ class MoM25D(Solver):
         (the same JSON, plots and report section). With several ports the per-port fields are kept
         (<name>_mom25d_array.npz) for the GUI's beam steering. Gain counts substrate loss and surface waves as
         loss; nothing radiates below the infinite ground."""
-        from mom25d.farfield import far_field, radiated
-        from kicad2ems.api.solver import phased
-        from kicad2ems.api.solver import match_summary, describe_antenna, save_antenna, pattern_gain
-        from kicad2ems.api.solver import plot_antenna, plot_pattern
+        from kicad2ems.mom25d.farfield import far_field, radiated
+        from kicad2ems.core.api.solver import phased
+        from kicad2ems.core.api.solver import match_summary, describe_antenna, save_antenna, pattern_gain
+        from kicad2ems.core.api.solver import plot_antenna, plot_pattern
         s, m, sim = run.s, run.m, held.sim
         names = [p.name for p in sim.ports]
         n = len(names)
@@ -815,7 +815,7 @@ class MoM25D(Solver):
         currents / extra / unit (the mixed solver's)."""
         if not run.s.mom_dump or held is None:
             return
-        from kicad2ems.api.solver import DumpSource, save_fd_outputs
+        from kicad2ems.core.api.solver import DumpSource, save_fd_outputs
         tag = self.name
         # dump_port may be supplied by the optional FDTD plugin. MoM alone
         # still supports its default (first-port) current/near-field dumps.
@@ -848,9 +848,9 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d', currents=N
     [(port, dict(dir, names))]. tag: the solver (the directory under <out>). currents(f) -> (N x len(sim.ports)) the
     RWG currents of each port driven (default: sim.currents of the excitations); extra(k, f_index, column, gx, gy, Jx,
     Jy) -> (Jx, Jy): layer k's grid with what the solver adds (mixed: the stretches put back as lines)."""
-    from mom25d.farfield import current_on_grid, current_deposit, near_fields
-    from kicad2ems.api.solver import Dump, write_info
-    from kicad2ems.api.solver import write_npz
+    from kicad2ems.mom25d.farfield import current_on_grid, current_deposit, near_fields
+    from kicad2ems.core.api.solver import Dump, write_info
+    from kicad2ems.core.api.solver import write_npz
     sim, model = res.sim, res.model
     names = [p.name for p in sim.ports]
     want = [n.strip() for n in (ports.split(',') if isinstance(ports, str) else ports or [])]

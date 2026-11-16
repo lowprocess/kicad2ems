@@ -415,7 +415,7 @@ def _core():
         core = None
     if core is None or not hasattr(core, 'cdt_triangulate'):
         raise RuntimeError("pcbqs meshes with its compiled core, which is not built (or is older than its mesher): "
-                           "python -m pcbqs.core.build (needs a C++17 compiler and pybind11)")
+                           "python -m kicad2ems.pcbqs.core.build (needs a C++17 compiler and pybind11)")
     return core
 
 

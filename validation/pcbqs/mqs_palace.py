@@ -67,7 +67,7 @@ LADDERS = dict(loop=((0.5, 0.25, 0.125), (0.25, 0.12)), plane_return=((0.7, 0.5,
 
 
 def pcbqs_loop(b, nets, pads, f, dmax=0.5, part_h=0.0, probes=None):
-    from pcbqs.mqs import MQS
+    from kicad2ems.pcbqs.mqs import MQS
     t = time.perf_counter()
     terms = {'A': [pads[0]], 'B': [pads[1]]}
     q = MQS(b, nets, terminals=terms, dmax=dmax, conductor_loss='slab', conductor_faces=2, log=lambda *a: None)
@@ -84,7 +84,7 @@ def palace_mesh(b, nets, gap, path, margin=25.0, h_cu=0.25, h_air=6.0, extra_she
     via a PEC rod (its faces attribute 2, its inside not meshed), the port sheet `gap` (a polygon on F.Cu's plane,
     attribute 3), the air box's faces absorbing (attribute 4), volume attribute 1."""
     import gmsh
-    from pcbqs.pdn.mesh import copper_of
+    from kicad2ems.pcbqs.pdn.mesh import copper_of
     gmsh.initialize()
     gmsh.option.setNumber('General.Terminal', 0)
     occ = gmsh.model.occ

@@ -6,9 +6,9 @@ import math
 import numpy as np
 import pytest
 
-from pcbqs.circuit import model as M
-from pcbqs.circuit import engine as E
-from pcbqs.circuit.deck import build, gate_timing, period_of
+from kicad2ems.pcbqs.circuit import model as M
+from kicad2ems.pcbqs.circuit import engine as E
+from kicad2ems.pcbqs.circuit.deck import build, gate_timing, period_of
 
 
 def test_values_are_numbers_engineering_notation_or_expressions():

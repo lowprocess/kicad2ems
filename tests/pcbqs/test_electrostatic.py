@@ -2,10 +2,10 @@
 import numpy as np
 import pytest
 
-from pcbqs._numerics.base import EPS0
-from pcbqs.electrostatic import DielectricStack
+from kicad2ems.pcbqs._numerics.base import EPS0
+from kicad2ems.pcbqs.electrostatic import DielectricStack
 from pathlib import Path
-from pcbqs.mqs import MQS
+from kicad2ems.pcbqs.mqs import MQS
 from test_peec import plates
 
 

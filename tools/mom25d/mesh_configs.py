@@ -2,7 +2,7 @@
 --mom-quads on (35 degrees, matching, structured runs) and the fast one (60 degrees, coarsen 2). Quad cells are drawn
 without their diagonal. For kicad2ems's docs (docs/mom.md#coarsen).
 
-    python tools/mesh_configs.py <name>_board.json out.png [x0,y0,x1,y1 (mm, a window)] [title] [stitching]
+    python tools/mom25d/mesh_configs.py <name>_board.json out.png [x0,y0,x1,y1 (mm, a window)] [title] [stitching]
 """
 import functools, sys
 import numpy as np
@@ -11,8 +11,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.patches import Patch
-from mom25d import quads as Q
-from mom25d.board import BoardModel
+from kicad2ems.mom25d import quads as Q
+from kicad2ems.mom25d.board import BoardModel
 
 SURFACE, INK, EDGE = '#fcfcfb', '#0b0b0b', '#52514e'
 FILL = dict(quad='#d4e4f7', tri='#f8cbb6', fan='#b5e6d3')        # tints of the palette's blue, orange, aqua
@@ -22,7 +22,7 @@ CONFIGS = [  # (title, Simulation options, augmenting-path depth: 0 = the old gr
     ('--mom-quads on: 35°, matching, structured runs, the edge strip kept', dict(quads=True, quad_tol=35), 12),
     ('fast: 60°, structured, --mom-coarsen 2', dict(quads=True, quad_tol=60, coarsen=2), 12),
 ]
-CONFIGS_STITCHING = [  # tools/mesh_configs.py ... stitching: round against square stitching vias
+CONFIGS_STITCHING = [  # tools/mom25d/mesh_configs.py ... stitching: round against square stitching vias
     ('fast, stitching vias round (default)', dict(quads=True, quad_tol=60, coarsen=2), 12),
     ('fast, --mom-stitching-vias square: each via snapped to a cell of the grid',
      dict(quads=True, quad_tol=60, coarsen=2, stitching_vias='square'), 12),

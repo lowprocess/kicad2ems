@@ -1,6 +1,6 @@
 import time, sys, resource, numpy as np
-import pcbqs.pdn.dc as dc
-from pcbqs.pdn.cli import main
+import kicad2ems.pcbqs.pdn.dc as dc
+from kicad2ems.pcbqs.pdn.cli import main
 init = dc.Network.__init__
 def patched(self, board, *a, **k):
     if 'fix' in sys.argv:

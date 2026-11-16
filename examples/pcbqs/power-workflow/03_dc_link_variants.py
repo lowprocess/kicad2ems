@@ -17,8 +17,8 @@ common = ['--rail', 'VIN', '--volts', 24, '--source', 'TP2', '--ground-source', 
 
 def resistor_board(value):
     """board.json with L3 replaced by a resistor R99 between the same pads."""
-    from kicad2ems.board import Board
-    from kicad2ems.importers.kicad import KiCadBoard
+    from kicad2ems.core.board import Board
+    from kicad2ems.core.importers.kicad import KiCadBoard
     b = Board(KiCadBoard(str(board)), need_ports=False, log=lambda *_: None).to_dict()
     fp = next(f for f in b['prims']['footprints'] if f['ref'] == 'L3')
     fp.update(ref='R99', value=value, lib='R_1206_3216Metric'); fp['props'] = dict(fp.get('props', {}), Value=value)
@@ -35,7 +35,7 @@ for lo, hi in ((90e3, 110e3), (180e3, 220e3)):
     ax.axvspan(lo, hi, color='#b7791f', alpha=.12, lw=0)
 for (label, src, extra), color in zip(variants, SERIES):
     folder = out / label.split(':')[0].replace(' ', '_').replace('µ', 'u').replace('Ω', 'ohm').replace('→', 'to')
-    run('pcbqs.pdn', src, '--out', folder, *common, *extra)
+    run('kicad2ems.pcbqs.pdn', src, '--out', folder, *common, *extra)
     p = json.loads((folder / 'pdn.json').read_text())['pdn']; f = np.array(p['f']); z = np.array(p['z']['Q1']['mag'])
     k = int(np.argmax(z * (f < 1e6)))
     ax.loglog(f, z, color=color, lw=2, label=f'{label} (peak {z[k]:.2f} Ω @ {f[k]/1e3:.1f} kHz)')

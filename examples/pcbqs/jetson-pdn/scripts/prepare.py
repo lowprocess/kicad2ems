@@ -4,8 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from kicad2ems.board import Board
-from kicad2ems.importers import open_board
+from kicad2ems.core.board import Board
+from kicad2ems.core.importers import open_board
 
 
 def main():

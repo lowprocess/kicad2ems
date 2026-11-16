@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from shapely.geometry import Point, box, mapping
 
-from pcbqs.mqs import MQS
+from kicad2ems.pcbqs.mqs import MQS
 
 
 def stitched_board(inner_pads=True):

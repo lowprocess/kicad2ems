@@ -1,7 +1,7 @@
 # Reducing full-rail PEEC memory
 
 Follow-up: the opt-in hierarchical backend and grading controls are now
-implemented. See [usage and limits](../../docs/peec-memory.md) and
+implemented. See [usage and limits](../../../docs/pcbqs/peec-memory.md) and
 [measured backend comparisons](IMPLEMENTATION.md). The investigation below
 records the measurements and recommendations made before that implementation.
 

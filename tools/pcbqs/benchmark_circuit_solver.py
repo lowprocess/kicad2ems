@@ -6,7 +6,7 @@ VHB ceramics, a phase-shifted full bridge (dead time 100 ns, 20 ns edges), 99 nF
 reflected-load resistor. Switches are either pcbqs's ngspice VDMOS card or a smooth gate-controlled conductance
 (behavioural) with a body diode and Coss.
 
-    python tools/benchmark_circuit_solver.py --out bench [case-filter ...]
+    python tools/pcbqs/benchmark_circuit_solver.py --out bench [case-filter ...]
 
 Results (wall time, accepted/rejected steps, Newton iterations, last-cycle input power, coil RMS, VHB p-p) go to
 <out>/results.json.
@@ -21,7 +21,7 @@ from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from pcbqs.power_spice import options_line  # noqa: E402
+from kicad2ems.pcbqs.power_spice import options_line  # noqa: E402
 
 HERE = Path('circuit-solver-bench')
 F = 110e3

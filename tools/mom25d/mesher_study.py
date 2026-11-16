@@ -2,7 +2,7 @@
 Mesher study: accuracy per unknown of mom25d's polygon mesh (Triangle, offset rings at the copper edges) on
 a board (a kicad2ems <name>_board.json), against a fine reference mesh.
 
-    python tools/mesher_study.py out/board_board.json [--freqs 2.9,3.1,...] [--out study.json]
+    python tools/mom25d/mesher_study.py out/board_board.json [--freqs 2.9,3.1,...] [--out study.json]
 
 For every (mesher, dmax, ncross) it reports unknowns, mesh / fill+solve time and the error of S against
 the reference: max |dS| (complex) over the frequencies and the error of |S21| in dB where the reference's
@@ -12,8 +12,8 @@ import argparse, json, os, sys, time
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-from mom25d.board import BoardModel                                # noqa: E402
-from mom25d.run import renorm                                      # noqa: E402
+from kicad2ems.mom25d.board import BoardModel                                # noqa: E402
+from kicad2ems.mom25d.run import renorm                                      # noqa: E402
 
 
 def run(board, mesher, dmax, ncross, freqs):

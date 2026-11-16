@@ -7,10 +7,10 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping
 
-from pcbqs.thermal import Problem, solve
-from pcbqs.thermal.problem import FILM, RADIATION, RHO_C_CU, RHO_C_FR4, Held, forced_film
+from kicad2ems.pcbqs.thermal import Problem, solve
+from kicad2ems.pcbqs.thermal.problem import FILM, RADIATION, RHO_C_CU, RHO_C_FR4, Held, forced_film
 
-EXAMPLES = Path(__file__).resolve().parents[1] / 'src' / 'pcbqs' / 'circuit' / 'examples'
+EXAMPLES = Path(__file__).resolve().parents[2] / 'src' / 'kicad2ems' / 'pcbqs' / 'circuit' / 'examples'
 quiet = lambda *a: None
 
 
@@ -75,7 +75,7 @@ def test_the_heating_from_cold_is_the_boards_time_constant():
 
 
 def test_the_command_line_takes_the_surroundings(tmp_path, capsys):
-    from pcbqs.thermal.__main__ import main
+    from kicad2ems.pcbqs.thermal.__main__ import main
     board = str(EXAMPLES / '04_buck.kicad_pcb')
     assert main([board, '--loss', 'D1=0.4', '--loss', 'L1=0.15', '--air', 'D1=40', '--theta', 'D1=20',
                  '--hold', 'C1=25', '--air-speed', '2', '--transient', '600', '--out', str(tmp_path)]) == 0

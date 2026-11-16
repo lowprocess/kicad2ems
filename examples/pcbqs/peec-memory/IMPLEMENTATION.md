@@ -8,7 +8,7 @@ earlier implementation and is retained for comparison.
 the MQS API and experimental PEECPDN adapter. It includes RWG inductance,
 layered/homogeneous potential, via inductance, sparse slab skin impedance,
 implicit loop/tree products and preconditioned GMRES. Dense solving remains
-the default. See [API usage and limitations](../../docs/peec-memory.md).
+the default. See [API usage and limitations](../../../docs/pcbqs/peec-memory.md).
 
 The grading API now exposes bulk coarsening, growth rate, edge subdivision
 count/width and edge-ring refinement region. Source outlines are preserved;
@@ -35,7 +35,7 @@ frequency preconditioners and improved plane-coupling preconditioning remain
 optimization opportunities. Accuracy here is agreement with the dense numerical
 reference at the same mesh, not an estimate of physical/discretization error.
 
-Reproduce with `tools/benchmark_peec_memory.py`. Raw values, matrix storage,
+Reproduce with `tools/pcbqs/benchmark_peec_memory.py`. Raw values, matrix storage,
 entry counts and per-frequency residuals are in [backend-comparison.json](backend-comparison.json).
 
 Unit tests additionally cover complex reciprocity, low-frequency continuity,

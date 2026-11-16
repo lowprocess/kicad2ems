@@ -36,3 +36,10 @@ docs/img/readme/*.mp4
 docs/_build/
 docs/reference/_generated/
 docs/reference/api-names.md
+
+# the parts' own (merged from their repositories)
+*.pyc
+dfsynth_validation/
+src/kicad2ems/pcbqs/circuit/examples/out/
+tools/pcbqs/*.npy
+tools/pcbqs/perf/results/

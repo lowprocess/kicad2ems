@@ -2,9 +2,9 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping
 
-from pcbqs._numerics.base import MU0
-from pcbqs.conductor import surface_impedance
-from pcbqs.mqs import MQS
+from kicad2ems.pcbqs._numerics.base import MU0
+from kicad2ems.pcbqs.conductor import surface_impedance
+from kicad2ems.pcbqs.mqs import MQS
 
 
 @pytest.mark.parametrize('faces', [1, 2])

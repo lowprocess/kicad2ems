@@ -1,7 +1,7 @@
 """Solver-option trials on a real pcbqs circuit netlist (the wpthb bridge, data/wpthb_bridge.json, with its copper:
 a case folder of pcbqs.circuit's ngspice run).
 
-    python tools/benchmark_circuit_options.py <circuit case folder with circuit.cir> [variant ...] [--out DIR]
+    python tools/pcbqs/benchmark_circuit_options.py <circuit case folder with circuit.cir> [variant ...] [--out DIR]
 
 Each variant rewrites only the .options line; measurements (last switching cycle: the model's measures and the
 supply's and the load's power) are compared with the unmodified netlist's.
@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from pcbqs.power_spice import options_line  # noqa: E402  (pcbqs's defaults, SOLVER_DEFAULTS)
+from kicad2ems.pcbqs.power_spice import options_line  # noqa: E402  (pcbqs's defaults, SOLVER_DEFAULTS)
 
 VARIANTS = {                                     # each: SOLVER_DEFAULTS with these changes
     'default': options_line(),

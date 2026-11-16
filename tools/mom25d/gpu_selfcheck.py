@@ -1,5 +1,5 @@
 """
-GPU self-check for mom25d:  python tools/gpu_selfcheck.py [--backend vulkan|cupy] [--n 8192]
+GPU self-check for mom25d:  python tools/mom25d/gpu_selfcheck.py [--backend vulkan|cupy] [--n 8192]
 
 1. reports the detected GPU / backend and free VRAM
 2. complex64 LU + solve on the GPU vs SciPy on the CPU (accuracy and speed)
@@ -9,7 +9,7 @@ import argparse, os, sys, time
 import numpy as np
 import scipy.linalg as sla
 
-import mom25d.gpu as mom25d_gpu
+import kicad2ems.mom25d.gpu as mom25d_gpu
 ap = argparse.ArgumentParser()
 ap.add_argument('--backend', default='auto')
 ap.add_argument('--n', type=int, default=8192, help='matrix size for the LU benchmark')
@@ -56,9 +56,9 @@ for n in sorted({min(a.n, nmax), min(a.n // 2, nmax)}):
 # ---- 3. a small simulation, GPU vs CPU -------------------------------------------------------
 if not a.skip_sim:
     from shapely.geometry import box
-    from mom25d.multilayer import Layer, LayerStack
-    from mom25d.geo import LinePort
-    from mom25d.sim import Simulation
+    from kicad2ems.mom25d.multilayer import Layer, LayerStack
+    from kicad2ems.mom25d.geo import LinePort
+    from kicad2ems.mom25d.sim import Simulation
     st = LayerStack([Layer(0.2e-3, 4.3, 0.02)])
     w, L = 0.35e-3, 30e-3
     shapes = {1: [box(-L / 2, -w / 2, L / 2, w / 2), box(-0.2e-3, -4e-3, 0.2e-3, 0)]}       # line + open stub

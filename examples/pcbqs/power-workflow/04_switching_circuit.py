@@ -6,7 +6,7 @@ to the k = 0.4 receiver at 90 and 110 kHz.
 """
 import json
 import numpy as np
-import pcbqs
+from kicad2ems import pcbqs
 from pathlib import Path
 from _common import WPTHB, OUT, need, run, keep, style, grid, INK, SERIES
 
@@ -35,7 +35,7 @@ for name, change in builds.items():
     for p in model['parts']:
         change(p)
     (out / f'{name}.json').write_text(json.dumps(model, indent=1))
-    run('pcbqs.circuit', out / f'{name}.json', '--board', board, '--out', out / name, '--copper', '--jobs', 4)
+    run('kicad2ems.pcbqs.circuit', out / f'{name}.json', '--board', board, '--out', out / name, '--copper', '--jobs', 4)
 
 plt = style(); fig, axes = plt.subplots(2, 2, figsize=(12, 6.6), sharex='col')
 rows = []

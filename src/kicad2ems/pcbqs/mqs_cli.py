@@ -56,7 +56,7 @@ def describe():
 
 
 def parser():
-    ap=argparse.ArgumentParser(prog='python -m pcbqs.mqs', description=__doc__)
+    ap=argparse.ArgumentParser(prog='python -m kicad2ems.pcbqs.mqs', description=__doc__)
     ap.add_argument('board', nargs='?')
     ap.add_argument('--out', default='mqs')
     ap.add_argument('--describe', action='store_true')
@@ -64,7 +64,7 @@ def parser():
     ap.add_argument('--preview', action='store_true', help='mesh and export layout without matrix filling or solving')
     ap.add_argument('--list-converters', action='store_true', help='describe candidate converters without meshing')
     ap.add_argument('--circuit', action='store_true', help='print the selected converter as a circuit model '
-                    '(for python -m pcbqs.circuit) and stop')
+                    '(for python -m kicad2ems.pcbqs.circuit) and stop')
     add_options(ap, OPTIONS)
     return ap
 

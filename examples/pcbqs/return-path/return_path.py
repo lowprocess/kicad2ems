@@ -17,7 +17,7 @@ import tempfile
 import numpy as np
 from shapely.geometry import Point, box, mapping
 
-from pcbqs import sparams
+from kicad2ems.pcbqs import sparams
 
 W, T = 0.35, 0.035
 Z = {'B.Cu': 0.0, 'In2.Cu': 0.2, 'In1.Cu': 1.3, 'F.Cu': 1.5}

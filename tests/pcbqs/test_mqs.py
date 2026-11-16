@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping, Point
 
-from pcbqs._numerics.base import MU0
-from pcbqs.mqs import MQS, filament_mutual, spanning_tree, via_inductance
+from kicad2ems.pcbqs._numerics.base import MU0
+from kicad2ems.pcbqs.mqs import MQS, filament_mutual, spanning_tree, via_inductance
 
 H_TR, W_TR = 0.5, 0.5                     # mm: the trace's height over the plane, its width
 
@@ -141,8 +141,8 @@ def test_open_boundary_fft_grid_matches_biot_savart(solved):
 def test_spectral_near_field_h_is_biot_savart():
     """Frozen independent RF spectral reference; no RF package is needed."""
     from pathlib import Path
-    from pcbqs._numerics.base import RWG
-    from pcbqs.biot import rwg_currents, h_sheets
+    from kicad2ems.pcbqs._numerics.base import RWG
+    from kicad2ems.pcbqs.biot import rwg_currents, h_sheets
     with np.load(Path(__file__).parent/'fixtures/magnetic-reference.npz') as data:
         nodes,tris,I,pts,H = [data[k] for k in ['nodes','tris','I','pts','H']]
     a,b = rwg_currents(RWG(nodes,tris),I)

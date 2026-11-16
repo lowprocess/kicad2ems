@@ -10,10 +10,10 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping
 
-from pcbqs import reports as R
+from kicad2ems.pcbqs import reports as R
 
-EXAMPLES = Path(__file__).resolve().parents[1] / 'src' / 'pcbqs' / 'circuit' / 'examples'
-A = pytest.importorskip('pcbqs.analyses', reason='the plugins need kicad2ems (its api.analysis)')
+EXAMPLES = Path(__file__).resolve().parents[2] / 'src' / 'kicad2ems' / 'pcbqs' / 'circuit' / 'examples'
+A = pytest.importorskip('kicad2ems.pcbqs.analyses', reason='the plugins need kicad2ems (its api.analysis)')
 
 
 def cells(rep):
@@ -34,12 +34,12 @@ def cells(rep):
 # ---- the plugins -------------------------------------------------------------------------------------------
 def test_the_four_register_with_kicad2ems():
     """Declared as kicad2ems expects (its api, a name, a result file, options of its kinds), in the Study's order."""
-    from kicad2ems.api.analysis import Analysis, KINDS, API_VERSION
+    from kicad2ems.core.api.analysis import Analysis, KINDS, API_VERSION
     made = [cls() for cls in (A.PowerIntegrity, A.NearField, A.Circuit, A.Thermal)]
     assert [a.name for a in made] == ['pdn', 'mqs', 'circuit', 'thermal'] == [a.name for a in sorted(made, key=lambda a: a.order)]
     for a in made:
         assert isinstance(a, Analysis) and a.api[0] == API_VERSION[0] and a.api <= API_VERSION
-        assert a.label and a.tool.startswith('pcbqs.') and a.result.endswith('.json') and a.about
+        assert a.label and a.tool.startswith('kicad2ems.pcbqs.') and a.result.endswith('.json') and a.about
         assert a.check() == (True, a.check()[1]) and 'pcbqs' in a.check()[1]
         opts = a.options()
         assert opts and all(o['kind'] in KINDS and o['flag'].startswith('--') for o in opts)
@@ -52,8 +52,9 @@ def test_the_four_register_with_kicad2ems():
     assert pick(made[1]) == dict(converter='part', inductor='part', vin='net', ground='net', capacitors='parts')
     assert pick(made[2]) == {} and pick(made[3]) == {}
     import tomllib
-    eps = tomllib.load(open(Path(__file__).resolve().parents[1] / 'pyproject.toml', 'rb'))['project']['entry-points']
-    assert eps['kicad2ems.analyses'] == {a.name: f"pcbqs.analyses:{type(a).__name__}" for a in made}
+    eps = tomllib.load(open(Path(__file__).resolve().parents[2] / 'pyproject.toml', 'rb'))['project']['entry-points']
+    ours = {k: v for k, v in eps['kicad2ems.analyses'].items() if v.startswith('kicad2ems.pcbqs.')}   # (fem's beside)
+    assert ours == {a.name: f"kicad2ems.pcbqs.analyses:{type(a).__name__}" for a in made}
 
 
 def test_power_integrity_and_near_field_commands(tmp_path):
@@ -66,16 +67,16 @@ def test_power_integrity_and_near_field_commands(tmp_path):
         pdn.command(dict(rail='P'), None, 'out')
     cmd = pdn.command(dict(rail='+3V3', volts='3.3', load='U1=2\nU2=1@U1', cap='CA1=47e-6,0.02,1e-9, C2=1e-7',
                            no_pdn=True, dmax='', fmin='10000.0'), str(b), 'out')
-    assert cmd[:6] == [sys.executable, '-m', 'pcbqs.pdn', str(b), '--out', 'out']
+    assert cmd[:6] == [sys.executable, '-m', 'kicad2ems.pcbqs.pdn', str(b), '--out', 'out']
     assert cmd[6:] == ['--rail', '+3V3', '--load', 'U1=2', '--load', 'U2=1@U1', '--cap', 'CA1=47e-6,0.02,1e-9',
                        '--cap', 'C2=1e-7', '--no-pdn']                  # volts and fmin at their defaults: not passed
     assert pdn.command(dict(rail='P', load=['U1=2', 'U2=1']), str(b), 'o')[-4:] == ['--load', 'U1=2', '--load', 'U2=1']
     assert pdn.tag(dict(rail=' +3V3 ')) == '+3V3' and pdn.status('pdn: DC: meshing') == 'DC: meshing'
     assert pdn.status('RuntimeWarning: x') is None
     cmd = mqs.command(dict(converter='U7', fsw='1e6'), str(b), 'out', preview=True)
-    assert cmd[2] == 'pcbqs.mqs' and cmd[-1] == '--preview' and ['--converter', 'U7'] == cmd[6:8]
+    assert cmd[2] == 'kicad2ems.pcbqs.mqs' and cmd[-1] == '--preview' and ['--converter', 'U7'] == cmd[6:8]
     assert mqs.tag({}) == 'auto' and mqs.status('mqs: filling') == 'filling'
-    assert mqs.discover(dict(ground='AGND'), str(b)) == [sys.executable, '-m', 'pcbqs.mqs', str(b), '--list-converters',
+    assert mqs.discover(dict(ground='AGND'), str(b)) == [sys.executable, '-m', 'kicad2ems.pcbqs.mqs', str(b), '--list-converters',
                                                          '--ground', 'AGND']
     found = [dict(converter='U7', inductor='L3', switch='SW', inputs=[
         dict(vin='VIN', capacitors=['C1', 'C2']), dict(vin='VDRV', capacitors=[])])]
@@ -105,13 +106,13 @@ def test_where_the_temperature_takes_its_losses_and_its_board(tmp_path):
     with pytest.raises(ValueError, match='board'):
         th.command(dict(loss='Q1=0.2'), None, 'out')
     cmd = th.command(dict(loss='Q1=0.2\nL1=0.5', film='12', method='grid'), str(study), 'out')
-    assert cmd[2:] == ['pcbqs.thermal', str(study), '--out', 'out', '--loss', 'Q1=0.2', '--loss', 'L1=0.5', '--film', '12']
+    assert cmd[2:] == ['kicad2ems.pcbqs.thermal', str(study), '--out', 'out', '--loss', 'Q1=0.2', '--loss', 'L1=0.5', '--film', '12']
     run = circuit_folder(tmp_path, theirs)
     cmd = th.command({}, str(study), 'out', results=dict(circuit=str(run)))      # the latest run, on its board
-    assert cmd[2:] == ['pcbqs.thermal', str(theirs), '--out', 'out', '--circuit', str(run)]
+    assert cmd[2:] == ['kicad2ems.pcbqs.thermal', str(theirs), '--out', 'out', '--circuit', str(run)]
     bare = circuit_folder(tmp_path, None, 'bare')
     cmd = th.command(dict(circuit=str(bare), case='full'), str(study), 'out')    # a run that names no board
-    assert cmd[2:] == ['pcbqs.thermal', str(study), '--out', 'out', '--circuit', str(bare), '--case', 'full']
+    assert cmd[2:] == ['kicad2ems.pcbqs.thermal', str(study), '--out', 'out', '--circuit', str(bare), '--case', 'full']
     with pytest.raises(ValueError, match='not a circuit run'):
         th.command(dict(circuit=str(tmp_path)), str(study), 'out')
     assert th.tag(dict(loss='Q1=1')) == 'losses' and th.tag(dict(circuit=str(run) + '/')) == 'circuit'
@@ -126,7 +127,7 @@ def test_the_circuit_command(tmp_path):
     model = tmp_path / 'm.json'
     model.write_text(json.dumps(dict(format=2)))
     assert c.command(dict(model=str(model), jobs=2), None, 'out') == [
-        sys.executable, '-u', '-m', 'pcbqs.circuit', str(model), '--out', 'out', '--jobs', '2']
+        sys.executable, '-u', '-m', 'kicad2ems.pcbqs.circuit', str(model), '--out', 'out', '--jobs', '2']
     with pytest.raises(ValueError, match='board'):
         c.command(dict(model=str(model), copper=True), None, 'out')
     b = tmp_path / 'b.kicad_pcb'
@@ -163,8 +164,8 @@ def test_the_examples_are_configs_beside_their_models(tmp_path):
         if 'board' in cfg:
             assert cfg['board'] in e['files'] and e['title']
     assert len({m.name for m in EXAMPLES.glob('*.json')}) == len(list(EXAMPLES.glob('*.toml'))) == 10
-    from kicad2ems.api import frontend
-    from kicad2ems import analyses
+    from kicad2ems.core.api import frontend
+    from kicad2ems.core import analyses
     if 'circuit' not in analyses.registry():
         pytest.skip('pcbqs is not installed where kicad2ems looks for plugins (its entry points)')
     names = [e['name'] for e in frontend.example_index() if e['source'] == 'circuit']
@@ -180,7 +181,7 @@ def test_the_examples_are_configs_beside_their_models(tmp_path):
 
 # ---- what a result holds -------------------------------------------------------------------------------------
 def test_power_integrity_report_and_curves(tmp_path):
-    from pcbqs.pdn.cli import main
+    from kicad2ems.pcbqs.pdn.cli import main
     from test_pdn_rail import board, _with_high_side
     path = tmp_path / 'b_board.json'
     path.write_text(json.dumps(_with_high_side(board())))
@@ -208,7 +209,7 @@ def test_power_integrity_report_and_curves(tmp_path):
 
 
 def test_near_field_report_curves_and_its_rail_for_power_integrity(tmp_path):
-    from pcbqs.mqs_cli import parser, run
+    from kicad2ems.pcbqs.mqs_cli import parser, run
     from test_mqs_cli import board
     b = tmp_path / 'board.json'
     b.write_text(json.dumps(board()))
@@ -244,7 +245,7 @@ def plate():
 def test_temperature_report_and_its_maps_for_the_viewer(tmp_path, method):
     """The parts' and layers' tables; each layer's map a 0 Hz plane dump in C with NaN off the board, its colours
     spanning its own values; with both solvers, each one's and their difference."""
-    from pcbqs.thermal.__main__ import main
+    from kicad2ems.pcbqs.thermal.__main__ import main
     b = tmp_path / 'b_board.json'
     b.write_text(json.dumps(plate()))
     out = tmp_path / 'th'
@@ -271,7 +272,7 @@ def test_temperature_report_and_its_maps_for_the_viewer(tmp_path, method):
     T = z['data'][0, :, :, 0, 0].real                               # (nx, ny)
     assert np.nanmax(T) == pytest.approx(one['layers']['F.Cu']['hottest_C'], abs=1e-3)
     assert np.isnan(T[-1, -1]) and not np.isnan(T[0, 0]) and np.nanmin(T) > 25.0     # the cut corner: off the board
-    frames = pytest.importorskip('kicad2ems.fields.frames')
+    frames = pytest.importorskip('kicad2ems.core.fields.frames')
     srcs = frames.find_dumps(str(out))
     assert len(srcs) == len(info['dumps']) and all(s.static and s.unit in ('°C', 'K') for s in srcs)
     s = next(s for s in srcs if s.label.startswith('thermal board: T F.Cu'))
@@ -283,7 +284,7 @@ def test_temperature_report_and_its_maps_for_the_viewer(tmp_path, method):
 
 def test_circuit_report_and_waveforms(tmp_path):
     """A general run: a row a point, each point's losses and stress, its waveforms as curve sets."""
-    from pcbqs.circuit.__main__ import main
+    from kicad2ems.pcbqs.circuit.__main__ import main
     out = tmp_path / 'run'
     if main([str(EXAMPLES / '01_rc_filter.json'), '--out', str(out)]) != 0:
         pytest.skip('ngspice is not installed')
@@ -303,12 +304,12 @@ def test_circuit_report_and_waveforms(tmp_path):
 
 
 def test_the_tools_are_engines_of_the_questions_they_answer(tmp_path):
-    """kicad2ems.study: the rail tool answers the drop and the impedance from one run (the drop alone when only it
+    """kicad2ems.core.study: the rail tool answers the drop and the impedance from one run (the drop alone when only it
     is asked), the others one question each; the circuit can add fields; a thermal.json of another tool's is not
     pcbqs's."""
     import json
-    from kicad2ems import study
-    from pcbqs import analyses as A
+    from kicad2ems.core import study
+    from kicad2ems.pcbqs import analyses as A
     pdn, mqs, circuit, thermal = A.PowerIntegrity(), A.NearField(), A.Circuit(), A.Thermal()
     assert [a.provides for a in (pdn, mqs, circuit, thermal)] == [('dc', 'pdn'), ('nearfield',), ('circuit',), ('thermal',)]
     assert all(q in study.QUESTIONS for a in (pdn, mqs, circuit, thermal) for q in a.provides)
@@ -320,7 +321,7 @@ def test_the_tools_are_engines_of_the_questions_they_answer(tmp_path):
     assert '--no-pdn' in argv
     (tmp_path / 'thermal.json').write_text(json.dumps(dict(method='grid', hottest_C=40.0)))
     assert thermal.owns(str(tmp_path)) and not thermal.owns(str(tmp_path), preview=True)
-    # the figures engines of one question name alike (kicad2ems.study.compare): the rail's own copper, the
+    # the figures engines of one question name alike (kicad2ems.core.study.compare): the rail's own copper, the
     # hottest point and the board under each part; this tool's own after them
     assert thermal.figures(str(tmp_path)) == [] and pdn.figures(str(tmp_path)) == []
     (tmp_path / 'thermal.json').write_text(json.dumps(dict(
@@ -331,7 +332,7 @@ def test_the_tools_are_engines_of_the_questions_they_answer(tmp_path):
         C2=dict(I=2.0, drop=0.0010807, power_drop=5.79e-05, ground_rise=0.0010228)))))
     assert [(f['name'], round(f['value'], 4), f['unit']) for f in pdn.figures(str(tmp_path))] == \
         [('drop C2', 0.0579, 'mV'), ('drop with return C2', 1.0807, 'mV'), ('loss with return', 2.159, 'mW')]
-    (tmp_path / 'thermal.json').write_text(json.dumps(dict(tool='kicad2ems_fem.elmer.thermal', T_max=40.0)))
+    (tmp_path / 'thermal.json').write_text(json.dumps(dict(tool='kicad2ems.fem.elmer.thermal', T_max=40.0)))
     assert not thermal.owns(str(tmp_path))
     (tmp_path / 'thermal.json').write_text('{')
     assert not thermal.owns(str(tmp_path))
@@ -343,9 +344,9 @@ def test_a_load_with_no_pad_on_ground(monkeypatch, tmp_path):
     of its nets that is no rail, and on ground) and says so; where it has none or several, the plugin says it as
     something the run still needs (Analysis.missing, kicad2ems 2.9) instead of running with the return left
     out, and a run that is started all the same says it in its report's first line."""
-    from pcbqs import analyses as A
-    from pcbqs.pdn.rail import return_part
-    from pcbqs import reports as R
+    from kicad2ems.pcbqs import analyses as A
+    from kicad2ems.pcbqs.pdn.rail import return_part
+    from kicad2ems.pcbqs import reports as R
     board = tmp_path / 'b.kicad_pcb'
     board.write_text('')
     nets = dict(Q1={'', '/GH', '/SW', 'VHB'}, Q3={'/SW', '/GL', 'GND'}, U6={'/SW', 'GND', 'VCC'}, C32={'/SW', '/BOOT'},
@@ -385,10 +386,10 @@ def test_a_study_s_rails_are_a_run_each(tmp_path):
     """kicad2ems 2.10: the rail tool says a study may hold several rails (`several`), and a config's
     [[analysis.pdn]] tables are a run each of `kicad2ems study`, each rail's result in a folder named by it."""
     import re
-    from kicad2ems.api import API_VERSION
+    from kicad2ems.core.api import API_VERSION
     if API_VERSION < (2, 10):
         pytest.skip('kicad2ems before 2.10 reads one table of an analysis')
-    from kicad2ems import study
+    from kicad2ems.core import study
     from test_pdn_rail import board
     assert (A.PowerIntegrity.several, A.NearField.several, A.Circuit.several, A.Thermal.several) == ('rail', 'converter', '', '')
     assert set(A.PowerIntegrity.several_keys) <= {o['key'] for o in A.PowerIntegrity().options()}
@@ -399,7 +400,7 @@ def test_a_study_s_rails_are_a_run_each(tmp_path):
                    '[[analysis.pdn]]\nrail = "PF"\nvolts = 3.3\nsource = "FB1"\nground_source = "U3"\nload = ["U2=0.1"]\ndmax = 1\n')
     said = []
     assert study.run(str(cfg), echo=said.append) == 0
-    assert '  Rail drop: pcbqs (pcbqs.pdn), 2 runs: P, PF' in said
+    assert '  Rail drop: pcbqs (kicad2ems.pcbqs.pdn), 2 runs: P, PF' in said
     made = sorted((tmp_path / 'out').iterdir(), key=lambda d: re.sub(r'_\d{8}_\d{6}$', '', d.name))
     assert [re.sub(r'_\d{8}_\d{6}$', '', d.name) for d in made] == ['b_pdn_P', 'b_pdn_PF']
     p, pf = (json.loads((d / 'pdn.json').read_text()) for d in made)

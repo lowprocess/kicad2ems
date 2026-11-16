@@ -3,8 +3,8 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping
 
-from pcbqs.pdn import dc, cavity
-from pcbqs._numerics.base import EPS0
+from kicad2ems.pcbqs.pdn import dc, cavity
+from kicad2ems.pcbqs._numerics.base import EPS0
 
 
 def board(layers, copper, vias=()):
@@ -49,7 +49,7 @@ def test_overlapping_vias_are_meshed_as_one_ring():
     and the minimum-angle refinement between them ran to 2.3 million vertices at any dmax. The larger ring is
     meshed and both barrels join it: the mesh stays the size of the one without the small via, and the current
     still passes."""
-    from pcbqs.pdn.mesh import overlapping_vias
+    from kicad2ems.pcbqs.pdn.mesh import overlapping_vias
     assert overlapping_vias([(0, 0, 0.4), (0, 0.25, 0.15), (3, 0, 0.3), (3.7, 0, 0.3)]) == {1: 0}
     assert overlapping_vias([(0, 0, 0.3), (0.5, 0, 0.3), (1.0, 0, 0.3)]) == {1: 0}    # a chain: the middle one only
     cu = {'F.Cu': [('P', box(0, 0, 20, 10))], 'B.Cu': [('P', box(0, 0, 20, 10))]}

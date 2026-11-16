@@ -7,8 +7,8 @@ import shutil
 import numpy as np
 import pytest
 
-from pcbqs.circuit import model as M
-from pcbqs.circuit import run
+from kicad2ems.pcbqs.circuit import model as M
+from kicad2ems.pcbqs.circuit import run
 
 pytestmark = pytest.mark.skipif(not shutil.which('ngspice'), reason='ngspice not installed')
 _results = {}
@@ -196,8 +196,8 @@ def test_the_losses_thermal_and_the_report_take(solved, name):
     """The report's loss table adds up to the loss, gate drives and all (they were taken away from it); thermal
     takes a coupled winding's own loss (its resistances'), not its V·I, which is the power it passes on as well, and
     a switch's gate drive with the switch."""
-    from pcbqs.reports import circuit_report
-    from pcbqs.thermal import losses_of
+    from kicad2ems.pcbqs.reports import circuit_report
+    from kicad2ems.pcbqs.thermal import losses_of
     model, cases = solved(name)
     for c in cases:
         rep = circuit_report(dict(cases=[c], name=name))
@@ -234,7 +234,7 @@ def test_an_ngspice_timeout_fails_its_point_not_the_sweep(tmp_path):
 def test_every_case_of_a_sweep_gets_its_map(solved, tmp_path):
     """thermal --case all (R-E11): the synchronous buck's three load points each a map of their own, a table of
     each part at each, and the point with the most loss at the top, as the report and the Viewer read it."""
-    from pcbqs.thermal.__main__ import main as thermal
+    from kicad2ems.pcbqs.thermal.__main__ import main as thermal
     model, cases = solved('buck_synchronous')
     out = tmp_path / 'th'
     assert thermal(['--circuit', str(_folders['buck_synchronous']), '--case', 'all', '--out', str(out)]) == 0

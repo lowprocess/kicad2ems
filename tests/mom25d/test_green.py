@@ -5,9 +5,9 @@ Each test checks the solver against a closed-form result or a conservation law.
 import numpy as np
 import pytest
 
-from mom25d.base import C0, MU0, EPS0
-from mom25d.multilayer import Layer, LayerStack, GreenTableML, stripline_z0_cohn
-from mom25d.sim import line_char_xs
+from kicad2ems.mom25d.base import C0, MU0, EPS0
+from kicad2ems.mom25d.multilayer import Layer, LayerStack, GreenTableML, stripline_z0_cohn
+from kicad2ems.mom25d.sim import line_char_xs
 from mom25d_reference import GreenTable, Stackup                    # the first solver's Sommerfeld integrals
 
 RHO = np.array([1e-5, 1e-4, 5e-4, 2e-3, 8e-3, 15e-3])

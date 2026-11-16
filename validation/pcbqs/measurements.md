@@ -20,7 +20,7 @@ What each band tests:
 
 | Band | Expected | What it tests |
 |---|---|---|
-| 5–20 kHz | Peak, 1.6–1.8 Ω near 10.5 kHz (`python -m pcbqs.pdn`; regression `wpthb_pdn`) | L3 against the VHB ceramics' *unbiased* C; the CA polymer caps' ESR as damping |
+| 5–20 kHz | Peak, 1.6–1.8 Ω near 10.5 kHz (`python -m kicad2ems.pcbqs.pdn`; regression `wpthb_pdn`) | L3 against the VHB ceramics' *unbiased* C; the CA polymer caps' ESR as damping |
 | 1–3 MHz | Minimum of a few mΩ | The ceramics' ESR (vendor data) |
 | 3–100 MHz | Inductive: 2.9 mΩ near 7 MHz, 30 mΩ at 35 MHz, 87 mΩ at 59 MHz, 147 mΩ at 100 MHz (dmax 0.3); about 230 pH in all, 150 pH ± 7% of it the board | The parts' ESL plus the board's mounting and spreading inductance, the pcbqs copper model, and part contacts (C13) |
 
@@ -57,7 +57,7 @@ convergence (115 pH at dmax 0.8, about 150 pH ± 7% at 0.25–0.6).
 
 - **Probe and scan:** a calibrated loop probe (or a probe with a known antenna factor), scanned on a 1 mm grid at
   1 and 3 mm above F.Cu over the bridge and the VHB caps, at fsw harmonics.
-- **Comparison:** `python -m pcbqs.mqs` for wpthb (converter selection: the bridge), as CM5's regression does.
+- **Comparison:** `python -m kicad2ems.pcbqs.mqs` for wpthb (converter selection: the bridge), as CM5's regression does.
   Compare the shape of |H| first, and the absolute level only with probe calibration.
 
 ## Status

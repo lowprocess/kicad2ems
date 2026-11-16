@@ -1,5 +1,5 @@
 # pcbqs circuit example: two switches on one drive, the lower its complement with dead time; swept over a constant-current load
-#   python -m pcbqs.circuit 05_buck_synchronous.json --out out/buck_synchronous      # the circuit alone, from the command line
+#   python -m kicad2ems.pcbqs.circuit 05_buck_synchronous.json --out out/buck_synchronous      # the circuit alone, from the command line
 #   kicad2ems-gui: File > Examples > Circuits                     # the circuit on its board, in the window
 board = "05_buck_synchronous.kicad_pcb"   # paths are relative to this file
 out   = "out"

@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 from shapely.ops import unary_union
-from pcbqs.pdn.rail import parts_of,terminal,part_value
-from pcbqs.mqs import MQS
+from kicad2ems.pcbqs.pdn.rail import parts_of,terminal,part_value
+from kicad2ems.pcbqs.mqs import MQS
 ROOT=Path(__import__('os').environ.get('JETSON_PDN_DIR','/workspace/jetson-pdn'));b=json.loads((ROOT/'board.json').read_text());ps={p.ref:p for p in parts_of(b)}
 cap=ps['C90'];load=ps['U21'];layers=[c['name'] for c in b['stack']['copper']]
 terms={k:terminal(p,layers) for k,p in [('cap_p',cap.on({'+1V15'})),('cap_g',cap.on({'GND'})),('load_p',[p for p in load.pads if p.name=='25']),('load_g',[p for p in load.pads if p.name=='24'])]}

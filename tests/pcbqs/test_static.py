@@ -3,10 +3,10 @@ import numpy as np
 import pytest
 from shapely.geometry import box
 
-from pcbqs._numerics.base import RWG, combine
-from pcbqs._numerics.geo import mesh_polygons
-from pcbqs.static import static_moments
-from pcbqs._numerics.sing import offplane_pairs
+from kicad2ems.pcbqs._numerics.base import RWG, combine
+from kicad2ems.pcbqs._numerics.geo import mesh_polygons
+from kicad2ems.pcbqs.static import static_moments
+from kicad2ems.pcbqs._numerics.sing import offplane_pairs
 
 
 def test_hybrid_reciprocity_accuracy_and_translation():

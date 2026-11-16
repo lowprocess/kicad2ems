@@ -3,9 +3,9 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping
 
-from pcbqs.pdn.rail import Rail
-from pcbqs.pdn.stack import RailPDN
-from pcbqs.pdn.peec_trial import PEECPDN
+from kicad2ems.pcbqs.pdn.rail import Rail
+from kicad2ems.pcbqs.pdn.stack import RailPDN
+from kicad2ems.pcbqs.pdn.peec_trial import PEECPDN
 
 
 def fixture():
@@ -59,7 +59,7 @@ def test_trial_rejects_unsupported_rails_and_bad_queries():
 
 
 def test_series_sense_resistor_is_retained_at_dc():
-    from pcbqs.pdn.rail import Pad,Part,Series
+    from kicad2ems.pcbqs.pdn.rail import Pad,Part,Series
     legacy=fixture();rail=legacy.rail
     # Split the equipotential top plate into two disconnected islands; ideal
     # whole-island contacts isolate the known lumped resistance from spreading.

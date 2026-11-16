@@ -4,7 +4,7 @@ KiCad into the general model: the parts, their values and their nodes from a sch
     document = read(path)                   # .kicad_sch (through kicad-cli), a KiCad XML netlist, or a .kicad_pcb
     model = model_from(document)            # a new model of everything that can be taken over
     model = apply(model, document, refs)    # or into a model that exists: add these parts, or bring them up to date
-    python -m pcbqs.circuit --from-kicad board.kicad_pcb > model.json
+    python -m kicad2ems.pcbqs.circuit --from-kicad board.kicad_pcb > model.json
 
 What is taken over, each a part between the two nets its pins are on:
     R, C, L         by its symbol, its reference (R1) or its footprint's library; the value as KiCad writes it (4k7, 22u, 0R01, 47uH); ESR, ESL

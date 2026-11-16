@@ -86,9 +86,10 @@ def test_packages_found():
     for d, dirs, files in os.walk(src):
         dirs[:] = [x for x in dirs if x != '__pycache__']
         rel = os.path.relpath(d, src)
-        if any(f.endswith('.py') for f in files) and '__init__.py' not in files and rel.split(os.sep)[-1] != 'core':
-            missed.append(rel)                       # (a part's core/: its C++ sources and build.py, run with -m)
-    assert not missed, missed
+        if any(f.endswith('.py') for f in files) and '__init__.py' not in files:
+            missed.append(rel)
+    # ipc/plugin is the folder KiCad loads as it is (package data, its files copied by kicad2ems.ipc.install)
+    assert missed == [os.path.join('ipc', 'plugin')], missed
     setup = open(os.path.join(root, 'setup.py'), encoding='utf-8').read()
     assert "find_packages('src')" in setup and "'kicad2ems.examples'" in setup
 

@@ -2,7 +2,7 @@
 The steady temperature of a board from what its parts dissipate: a lightweight layered model (problem.py) with two
 solvers, a regular grid (grid.py) and pcbqs's triangle mesh (mesh.py).
 
-    from pcbqs.thermal import Problem, solve
+    from kicad2ems.pcbqs.thermal import Problem, solve
     r = solve(Problem.of(board, {'Q1': 0.35}), method='grid', size=0.5)
 """
 from .problem import Problem, Result, losses_of, K_CU, K_XY, K_Z, FILM, AMBIENT

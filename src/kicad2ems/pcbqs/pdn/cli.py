@@ -1,10 +1,10 @@
 """
-python -m pcbqs.pdn: a power rail's DC drop and PDN impedance from a KiCad board (or a kicad2ems board.json).
+python -m kicad2ems.pcbqs.pdn: a power rail's DC drop and PDN impedance from a KiCad board (or a kicad2ems board.json).
 
-    python -m pcbqs.pdn board.kicad_pcb --rail +3V3 --volts 3.3 --load U21=2 --load U14=1 --out pdn_3v3
-    python -m pcbqs.pdn board.kicad_pcb --rail +3V3 --volts 3.3 --out pdn_3v3     # the loads: the parts' pdn.load fields
-    python -m pcbqs.pdn board.kicad_pcb --rail +3V3 --volts 3.3 --spread-load 5 --out pdn_3v3   # 5 A shared by pad count
-    python -m pcbqs.pdn --describe --json          # the options, for the GUI's PDN page
+    python -m kicad2ems.pcbqs.pdn board.kicad_pcb --rail +3V3 --volts 3.3 --load U21=2 --load U14=1 --out pdn_3v3
+    python -m kicad2ems.pcbqs.pdn board.kicad_pcb --rail +3V3 --volts 3.3 --out pdn_3v3     # the loads: the parts' pdn.load fields
+    python -m kicad2ems.pcbqs.pdn board.kicad_pcb --rail +3V3 --volts 3.3 --spread-load 5 --out pdn_3v3   # 5 A shared by pad count
+    python -m kicad2ems.pcbqs.pdn --describe --json          # the options, for the GUI's PDN page
 
 It writes <out>/pdn.json (the rail tree, each load's voltage and drop, the series parts, the hottest vias, the plane
 pairs, each part's connection and mount inductance, the impedance each load sees and where it is over the target,
@@ -87,7 +87,7 @@ def describe():
 
 
 def parser():
-    ap = argparse.ArgumentParser(prog='python -m pcbqs.pdn', description=__doc__.split('\n\n')[0].strip())
+    ap = argparse.ArgumentParser(prog='python -m kicad2ems.pcbqs.pdn', description=__doc__.split('\n\n')[0].strip())
     ap.add_argument('board', nargs='?', help='.kicad_pcb, or a kicad2ems <name>_board.json')
     ap.add_argument('--out', default='pdn', help='output folder')
     ap.add_argument('--describe', action='store_true', help='print the options and exit')

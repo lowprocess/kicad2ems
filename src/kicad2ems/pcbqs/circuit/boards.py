@@ -1,8 +1,8 @@
 """
 The example circuits' boards: a KiCad layout for each, written from a short description.
 
-    python -m pcbqs.circuit.boards            # write every example's .kicad_pcb beside its model, and check each
-    python -m pcbqs.circuit.boards --picture boards.png
+    python -m kicad2ems.pcbqs.circuit.boards            # write every example's .kicad_pcb beside its model, and check each
+    python -m kicad2ems.pcbqs.circuit.boards --picture boards.png
 
 A layout here is what a power board is: an island of copper for each net on the top layer, a ground strip
 stitched to a ground plane on the bottom, and each part across the gap between the islands of its two nets. So a

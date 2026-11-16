@@ -27,10 +27,10 @@ from pathlib import Path
 import numpy as np
 from shapely.geometry import box
 
-from pcbqs._cli import load_board
-from pcbqs.contacts import contact_terminal
-from pcbqs.mqs import MQS
-from pcbqs.pdn.rail import parts_of
+from kicad2ems.pcbqs._cli import load_board
+from kicad2ems.pcbqs.contacts import contact_terminal
+from kicad2ems.pcbqs.mqs import MQS
+from kicad2ems.pcbqs.pdn.rail import parts_of
 
 BOARD = Path.home() / 'Desktop' / 'wpthb' / 'wpthb.kicad_pcb'
 CAPS = {'C19': (1e-6, 0.010, 0.35e-9), 'C24': (1e-6, 0.010, 0.35e-9),

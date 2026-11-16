@@ -1,8 +1,8 @@
 import json,time,gc,traceback,sys
 from pathlib import Path
 import numpy as np
-from pcbqs.pdn.rail import Rail,parts_of
-from pcbqs.pdn.stack import RailPDN
+from kicad2ems.pcbqs.pdn.rail import Rail,parts_of
+from kicad2ems.pcbqs.pdn.stack import RailPDN
 ROOT=Path(__import__('os').environ.get('JETSON_PDN_DIR','/workspace/jetson-pdn'))
 b=json.loads((ROOT/'board.json').read_text());parts={p.ref:p for p in parts_of(b)}
 f=np.geomspace(1e3,30e6,41)

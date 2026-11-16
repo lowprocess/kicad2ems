@@ -171,7 +171,7 @@ class NumpyBackend:
 
 def _compiled():
     try:
-        core = import_module('pcbqs._core')
+        core = import_module('kicad2ems.pcbqs._core')
     except ImportError:
         return None
     return core if hasattr(core, 'static_pairs') and getattr(core, 'static_openmp', False) else None
@@ -183,7 +183,7 @@ class OpenMPBackend:
             raise ValueError('device is only applicable to a device backend')
         self.core = _compiled()
         if self.core is None:
-            raise RuntimeError('OpenMP fill unavailable: rebuild with python -m pcbqs.core.build')
+            raise RuntimeError('OpenMP fill unavailable: rebuild with python -m kicad2ems.pcbqs.core.build')
         self.workers = workers
         self.observed_workers = self.core.static_thread_count(workers)
         self.parallel_tiles = workers == 1
@@ -233,7 +233,7 @@ _FACTORIES = {'numpy': NumpyBackend, 'threaded': NumpyBackend, 'openmp': OpenMPB
 
 def register_fill_backend(name, factory):
     """Register a factory implementing the module's pair-integration protocol.
-    Installed extensions may instead publish a `pcbqs.static_backends` entry point.
+    Installed extensions may instead publish a `kicad2ems.pcbqs.static_backends` entry point.
     Existing names are protected, and providers are loaded only when selected.
     """
     if not isinstance(name, str) or not name or name == 'auto' or name in _FACTORIES:

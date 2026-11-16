@@ -1,7 +1,7 @@
 """
 The fields over a board while its circuit runs: H from the currents in its copper, E from the voltages on it.
 
-    python -m pcbqs.circuit model.json --out result --fields          # implies --copper
+    python -m kicad2ems.pcbqs.circuit model.json --out result --fields          # implies --copper
     export(model, summary, copper, out, log)                          # engine.run(..., fields=True) calls it
 
 For each case, on planes 1 and 5 mm above the top copper (fields.heights_mm), over the last period:

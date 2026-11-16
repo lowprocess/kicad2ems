@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 from shapely.geometry import Point, box, mapping
 
-from pcbqs.mqs import MQS
-from pcbqs.pdn.mesh import mesh_sheet, simplify_copper
+from kicad2ems.pcbqs.mqs import MQS
+from kicad2ems.pcbqs.pdn.mesh import mesh_sheet, simplify_copper
 
 
 def test_simplify_copper_rules():

@@ -1,9 +1,9 @@
 """_cli.load_board: KiCad imports cached by content hash and net subset."""
 import pytest
 
-from pcbqs import _cli
+from kicad2ems.pcbqs import _cli
 
-kicad2ems = pytest.importorskip('kicad2ems.board')
+kicad2ems = pytest.importorskip('kicad2ems.core.board')
 
 
 class FakeBoard:
@@ -19,10 +19,10 @@ class FakeBoard:
 
 @pytest.fixture
 def fake(monkeypatch, tmp_path):
-    import kicad2ems.importers
+    import kicad2ems.core.importers
     FakeBoard.calls = 0
-    monkeypatch.setattr(kicad2ems.board, 'Board', FakeBoard)
-    monkeypatch.setattr(kicad2ems.importers, 'open_board', lambda path: open(path).read())
+    monkeypatch.setattr(kicad2ems.core.board, 'Board', FakeBoard)
+    monkeypatch.setattr(kicad2ems.core.importers, 'open_board', lambda path: open(path).read())
     monkeypatch.setenv('PCBQS_CACHE_DIR', str(tmp_path / 'cache'))
     monkeypatch.delenv('PCBQS_NO_CACHE', raising=False)
     pcb = tmp_path / 'b.kicad_pcb'

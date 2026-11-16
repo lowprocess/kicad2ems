@@ -332,12 +332,12 @@ class _Mat:
 
 
 class VulkanBackend:
-    """mom25d.gpu's backend on a Vulkan GPU: factor (hybrid blocked LU), solve (on the GPU), download."""
+    """kicad2ems.mom25d.gpu's backend on a Vulkan GPU: factor (hybrid blocked LU), solve (on the GPU), download."""
     name, inplace, hip, api = 'vulkan', True, False, 'Vulkan'
     lu = piv = None
 
     def __init__(self):
-        from emsdev import gpu as devices, vulkan
+        from kicad2ems.emsdev import gpu as devices, vulkan
         self.info = devices.vulkan_device(need=('bda', 'int64'))  # raises Unavailable: no driver, GPU or slangpy
         try:
             self.dev = vulkan.slang_device()
@@ -466,7 +466,7 @@ class VulkanBackend:
     def _host(self, name, nbytes):
         """Mapped host memory kept across calls (emsdev.vulkan.HostBuffer: the kernels copy to and from it by
         address; slangpy's own read-back runs at a fraction of a GB/s on some drivers)."""
-        from emsdev.vulkan import HostBuffer
+        from kicad2ems.emsdev.vulkan import HostBuffer
         h = self._hosts.get(name)
         if h is None or h.nbytes < nbytes:
             if h is not None:

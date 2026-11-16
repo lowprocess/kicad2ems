@@ -14,13 +14,13 @@ import numpy as np
 import pytest
 from shapely.geometry import box
 
-from pcbqs import reports
-from pcbqs.circuit import boards as B
-from pcbqs.circuit import model as M
-from pcbqs.circuit import supply as S
-from pcbqs.circuit.converter import model_of
-from pcbqs.circuit.engine import run
-from pcbqs.mqs_cli import parser, run as near_field
+from kicad2ems.pcbqs import reports
+from kicad2ems.pcbqs.circuit import boards as B
+from kicad2ems.pcbqs.circuit import model as M
+from kicad2ems.pcbqs.circuit import supply as S
+from kicad2ems.pcbqs.circuit.converter import model_of
+from kicad2ems.pcbqs.circuit.engine import run
+from kicad2ems.pcbqs.mqs_cli import parser, run as near_field
 
 ngspice = pytest.mark.skipif(not shutil.which('ngspice'), reason='ngspice not installed')
 
@@ -59,7 +59,7 @@ def board(tmp_path_factory):
 
 # ---- a converter as a circuit ----
 def test_a_converter_is_a_circuit_model(board, tmp_path):
-    from pcbqs._cli import load_board
+    from kicad2ems.pcbqs._cli import load_board
     m = model_of(load_board(str(board)), board, settings(board))
     M.validate(m)
     kinds = {p['ref']: (p['type'], p['nodes']) for p in m['parts']}
@@ -83,7 +83,7 @@ def test_a_converter_is_a_circuit_model(board, tmp_path):
     cout = next(p for p in m3['parts'] if p['ref'] == 'COUT')
     assert cout['value'] == pytest.approx(47.1e-6) and 'COUT, the 2 capacitors on out in one' in m3['description']
     # the command line prints it
-    p = subprocess.run([sys.executable, '-m', 'pcbqs.mqs', str(board), '--vin-volts', '12', '--vout', '5', '--fsw',
+    p = subprocess.run([sys.executable, '-m', 'kicad2ems.pcbqs.mqs', str(board), '--vin-volts', '12', '--vout', '5', '--fsw',
                         '250e3', '--current', '2', '--cap-radius', '30', '--circuit'], capture_output=True, text=True)
     assert p.returncode == 0 and json.loads(p.stdout) == m
     # a board's own diode from ground to the switch node is the low side
@@ -100,15 +100,15 @@ def test_a_converter_is_a_circuit_model(board, tmp_path):
 
 
 def _example(name):
-    import pcbqs.circuit
-    return os.path.join(os.path.dirname(pcbqs.circuit.__file__), 'examples', name)
+    import kicad2ems.pcbqs.circuit
+    return os.path.join(os.path.dirname(kicad2ems.pcbqs.circuit.__file__), 'examples', name)
 
 
 def test_a_boost_found_on_a_board_is_a_circuit_model():
     """The cell whose upper part is a diode: its hot loop's capacitors are the output's and its inductor's far net
     the input (the boost example's board, from which nothing is typed but the operating point)."""
     pytest.importorskip('kicad2ems')
-    from pcbqs._cli import load_board
+    from kicad2ems.pcbqs._cli import load_board
     board = _example('06_boost.kicad_pcb')
     a = parser().parse_args([board, '--vin-volts', '12', '--vout', '24', '--fsw', '200e3', '--current', '1'])
     m = model_of(load_board(board), board, a)
@@ -138,8 +138,8 @@ def test_a_boost_found_on_a_board_is_a_circuit_model():
 @ngspice
 def test_the_boost_made_from_its_board_runs_as_the_example_does(tmp_path):
     pytest.importorskip('kicad2ems')
-    from pcbqs._cli import load_board
-    from pcbqs.circuit.engine import run
+    from kicad2ems.pcbqs._cli import load_board
+    from kicad2ems.pcbqs.circuit.engine import run
     board = _example('06_boost.kicad_pcb')
     a = parser().parse_args([board, '--vin-volts', '12', '--vout', '24', '--fsw', '200e3', '--current', '1'])
     case = run(model_of(load_board(board), board, a), tmp_path / 'made', log=lambda s: None)['cases'][0]
@@ -198,8 +198,8 @@ def test_supply_currents_of_a_run():
 
 @ngspice
 def test_the_regulator_runs_and_says_what_it_draws(board, tmp_path):
-    from pcbqs._cli import load_board
-    from pcbqs.circuit.engine import run
+    from kicad2ems.pcbqs._cli import load_board
+    from kicad2ems.pcbqs.circuit.engine import run
     m = model_of(load_board(str(board)), board, settings(board))
     out = run(m, tmp_path / 'run', log=lambda s: None)
     case = out['cases'][0]
@@ -229,8 +229,8 @@ def test_the_regulator_runs_and_says_what_it_draws(board, tmp_path):
 def test_the_regulator_on_its_copper(board, tmp_path):
     """The model's two switches are one footprint's pads (board.parts): the copper between the regulator, its
     capacitors and its inductor is in the circuit, and what it draws is still the regulator's."""
-    from pcbqs._cli import load_board
-    from pcbqs.circuit.engine import run
+    from kicad2ems.pcbqs._cli import load_board
+    from kicad2ems.pcbqs.circuit.engine import run
     m = model_of(load_board(str(board)), board, settings(board))
     out = run(m, tmp_path / 'run', log=lambda s: None, copper=True)
     case = out['cases'][0]
@@ -244,7 +244,7 @@ def test_the_regulator_on_its_copper(board, tmp_path):
 # ---- a rail's ripple from its loads' currents ----
 def test_a_rails_ripple_from_a_load_spectrum(tmp_path):
     from test_pdn_rail import board as rail_board
-    from pcbqs.pdn.cli import main
+    from kicad2ems.pcbqs.pdn.cli import main
     path = tmp_path / 'b_board.json'
     path.write_text(json.dumps(rail_board()))
     spectrum = tmp_path / 'u1.csv'
@@ -325,15 +325,15 @@ def test_a_near_field_run_writes_its_converter_as_a_circuit(board, tmp_path):
 
 # ---- a supply behind an input filter: the wpthb bridge ----
 def wpthb():
-    import pcbqs
-    return json.loads((Path(pcbqs.__file__).parent / 'data' / 'wpthb_bridge.json').read_text())
+    import kicad2ems.pcbqs
+    return json.loads((Path(kicad2ems.pcbqs.__file__).parent / 'data' / 'wpthb_bridge.json').read_text())
 
 
 def test_a_rail_behind_an_input_filter_is_the_one_its_loads_are_on():
     """Where all a DC source feeds is a lone inductor or resistor in series (the wpthb bridge's R9 and L3), the
     supply row is the node behind them: the high-side switches drawn from VHB, the rail named from the source's
     side (VIN), the filter's inductors on the way with their DC resistance, VHB's capacitors as its decoupling."""
-    from pcbqs.circuit import model as M
+    from kicad2ems.pcbqs.circuit import model as M
     w = M.resolve(wpthb(), M.cases(wpthb())[0])
     f, n = 100e3, 256
     t = np.arange(3 * n + 1) / (n * f)
@@ -395,8 +395,8 @@ def test_the_bridge_proposes_its_rail(tmp_path):
 def test_a_boost_s_inductor_is_its_load_not_a_filter(tmp_path):
     """The source feeds a lone inductor, but to the switch's node, which no capacitor holds: the rail is the
     source's node and the inductor its load (an input filter would be followed to the node behind it)."""
-    import pcbqs.circuit
-    with open(os.path.join(os.path.dirname(pcbqs.circuit.__file__), 'examples', '06_boost.json'), encoding='utf-8') as fh:
+    import kicad2ems.pcbqs.circuit
+    with open(os.path.join(os.path.dirname(kicad2ems.pcbqs.circuit.__file__), 'examples', '06_boost.json'), encoding='utf-8') as fh:
         m = json.load(fh)
     m.pop('board', None)
     case = run(m, tmp_path, log=lambda *a: None)['cases'][0]

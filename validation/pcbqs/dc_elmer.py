@@ -50,8 +50,8 @@ def case_via_hop():
 
 
 def board_case(path, net, source, loads, nets_for_board=None):
-    from pcbqs._cli import load_board
-    from pcbqs.pdn.rail import parts_of, terminal
+    from kicad2ems.pcbqs._cli import load_board
+    from kicad2ems.pcbqs.pdn.rail import parts_of, terminal
     board = load_board(path, set(nets_for_board or [net]))
     parts = {p.ref: p for p in parts_of(board)}
     layers = [c['name'] for c in board['stack']['copper']]
@@ -80,7 +80,7 @@ LADDERS = dict(
 
 
 def pcbqs_dc(board, net, terms, loads, dmax):
-    from pcbqs.pdn.dc import Network
+    from kicad2ems.pcbqs.pdn.dc import Network
     t = time.perf_counter()
     nw = Network(board, net, terms, dmax=dmax, plating=PLATING, fine=list(terms), log=lambda *a: None)
     r = nw.solve({'src': 0.0}, {k: -i for k, i in loads.items()})

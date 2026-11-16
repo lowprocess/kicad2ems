@@ -6,7 +6,7 @@
 
     python validation/thermal_elmer.py --wpthb --transient 2000     # the heating from cold too, over 2000 s
 
-Each example's circuit is run (python -m pcbqs.circuit) and its lossiest case's part losses go to both tools, with
+Each example's circuit is run (python -m kicad2ems.pcbqs.circuit) and its lossiest case's part losses go to both tools, with
 the same film (10 W/m2/K), ambient (25 C) and conductivities. Twice: as each tool models a board by default (a film
 on the faces and on the edges), and with the edges insulated (pcbqs edge_film=0, Elmer's side faces given no
 boundary condition), which isolates the edges from the rest. Compared: each part's temperature (the mean under its
@@ -23,8 +23,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from common import OUT, write_json  # noqa: E402
 
-from pcbqs.thermal import Problem, solve, losses_of  # noqa: E402
-from pcbqs._cli import load_board  # noqa: E402
+from kicad2ems.pcbqs.thermal import Problem, solve, losses_of  # noqa: E402
+from kicad2ems.pcbqs._cli import load_board  # noqa: E402
 
 EXAMPLES = Path(__file__).resolve().parents[1] / 'src' / 'pcbqs' / 'circuit' / 'examples'
 WPTHB = Path.home() / 'Desktop' / 'wpthb' / 'wpthb.kicad_pcb'
@@ -33,7 +33,7 @@ quiet = lambda *a, **k: None
 
 
 def elmer_module():
-    from kicad2ems_fem.elmer import thermal
+    from kicad2ems.fem.elmer import thermal
     return thermal
 
 
@@ -59,7 +59,7 @@ def insulated_sides(layered):
 def circuit_losses(name):
     run = OUT / 'thermal' / 'circuits' / name
     if not (run / 'circuit.json').exists():
-        subprocess.run([sys.executable, '-m', 'pcbqs.circuit', str(EXAMPLES / f'{name}.json'), '--out', str(run)],
+        subprocess.run([sys.executable, '-m', 'kicad2ems.pcbqs.circuit', str(EXAMPLES / f'{name}.json'), '--out', str(run)],
                        check=True, stdout=subprocess.DEVNULL)
     model = json.loads((run / 'model.json').read_text())
     cases = json.loads((run / 'circuit.json').read_text())['cases']

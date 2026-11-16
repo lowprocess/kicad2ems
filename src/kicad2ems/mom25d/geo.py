@@ -440,7 +440,7 @@ def _core():
     core = fast._built
     if core is None or not hasattr(core, 'cdt_triangulate'):
         raise RuntimeError("mom25d meshes with its compiled core, which is not built (or is older than its mesher): "
-                           "python -m mom25d.core.build (needs a C++17 compiler and pybind11)")
+                           "python -m kicad2ems.mom25d.core.build (needs a C++17 compiler and pybind11)")
     return core
 
 

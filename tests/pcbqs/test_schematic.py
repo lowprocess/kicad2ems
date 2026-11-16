@@ -4,7 +4,7 @@ import math
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import pytest
-from pcbqs.schematic import engineering_value,read_netlist,read_schematic
+from kicad2ems.pcbqs.schematic import engineering_value,read_netlist,read_schematic
 
 
 def netlist(tmp_path):
@@ -62,7 +62,7 @@ def test_reject_entities_and_wrong_xml(tmp_path):
 
 def test_schematic_export_uses_temporary_output_and_preserves_original(tmp_path,monkeypatch):
     source=tmp_path/'example.kicad_sch';source.write_text('(kicad_sch original)');xml=netlist(tmp_path).read_bytes();calls=[]
-    from pcbqs import schematic
+    from kicad2ems.pcbqs import schematic
     monkeypatch.setattr(schematic.shutil,'which',lambda _: '/bin/kicad-cli')
     def export(args,**kwargs):
         calls.append(args);Path(args[args.index('--output')+1]).write_bytes(xml)

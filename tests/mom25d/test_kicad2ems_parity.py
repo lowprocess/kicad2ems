@@ -3,11 +3,11 @@ board, minus what the plugin declares (the outline, copper below the ground, via
 strips). Every difference must be declared; a via moved after the declaration fails. From kicad2ems's tests,
 which check its FDTD model the same way."""
 import pytest
-from kicad2ems.solvers import registry
-from kicad2ems.parity import check
+from kicad2ems.core.solvers import registry
+from kicad2ems.core.parity import check
 from k2e_fixtures import prepared_job
 
-pytest.importorskip('mom25d._core')   # (the mesher)
+pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
 
 CASES = dict(transition=('demo', ['--nets', 'RF,GND', '--ground', 'B.Cu']),
              lowpass=('lowpass', []),
@@ -25,7 +25,7 @@ def test_every_difference_is_declared(case, boards, tmp_path):
 
 
 def test_undeclared_changes_fail(boards, tmp_path, monkeypatch):
-    from mom25d.board import BoardModel
+    from kicad2ems.mom25d.board import BoardModel
     name, args = CASES['transition']
     j, prep = prepared_job(tmp_path, boards[name], 'mom25d', *args)
     real = BoardModel._via

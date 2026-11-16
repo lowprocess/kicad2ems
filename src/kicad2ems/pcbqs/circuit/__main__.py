@@ -1,4 +1,4 @@
-"""python -m pcbqs.circuit: run a circuit model, or print one of the example circuits."""
+"""python -m kicad2ems.pcbqs.circuit: run a circuit model, or print one of the example circuits."""
 import argparse
 import json
 import signal
@@ -16,7 +16,7 @@ OPTIONS = [            # (key, kind, default, help, group): _cli's table, which 
      "(repeatable)", 'Model'),
     ('warm', 'int', 0, "electro-thermal runs: the parts and the copper set to the temperatures the board's thermal "
      "model gives the run's losses, and run again, up to this many times until they settle (needs the board)", 'Board'),
-    ('thermal_args', 'str', '', "the thermal model's options for --warm, as python -m pcbqs.thermal takes them "
+    ('thermal_args', 'str', '', "the thermal model's options for --warm, as python -m kicad2ems.pcbqs.thermal takes them "
      "(e.g. --thermal-args='--ambient 40 --film 12')", 'Board'),
     ('jobs', 'int', 1, 'sweep points run at once', 'Run'),
 ]
@@ -29,7 +29,7 @@ def describe():
 
 def main(argv=None):
     from .._cli import add_options, print_describe
-    ap = argparse.ArgumentParser(prog='python -m pcbqs.circuit', description=__doc__)
+    ap = argparse.ArgumentParser(prog='python -m kicad2ems.pcbqs.circuit', description=__doc__)
     ap.add_argument('model', nargs='?', help='a circuit model (JSON, format 2)')
     ap.add_argument('--out', default='circuit-results', help='the results folder (default: circuit-results)')
     add_options(ap, OPTIONS)

@@ -51,7 +51,7 @@ def copper_model(board, nets, terminals, path, crop=None, h=0.4, h_fine=0.12, pl
     Returns dict(bodies={'copper': 1, 'barrel': 2 or None}, boundaries={terminal: tag}, barrel_sigma, vias, tets).
     The barrels are solid cylinders whose conductivity gives each its plated annulus's conductance (pcbqs's model)."""
     import gmsh
-    from pcbqs.pdn.mesh import copper_of
+    from kicad2ems.pcbqs.pdn.mesh import copper_of
     nets = set(nets)
     layers = [c['name'] for c in board['stack']['copper']]
     zs = {c['name']: c['z'] for c in board['stack']['copper']}

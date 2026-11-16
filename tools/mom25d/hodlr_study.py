@@ -1,7 +1,7 @@
 """The hierarchical solver (solver='hodlr', mom25d.hodlr) against the dense direct one on kicad2ems boards: time,
 memory, the ranks per tree level and |dS| at one frequency.
 
-    python tools/hodlr_study.py board.json f_GHz [tol,tol,...] [--no-dense] [--zone] [--pec] [--drop] [--whole] [--refine]
+    python tools/mom25d/hodlr_study.py board.json f_GHz [tol,tol,...] [--no-dense] [--zone] [--pec] [--drop] [--whole] [--refine]
                                 [--leaf N] [--sym]
 """
 import json, sys, time
@@ -9,8 +9,8 @@ import numpy as np
 
 
 def build(board, solver, zone=False, **kw):
-    from mom25d.board import BoardModel
-    from mom25d.api import ZONE_OUT
+    from kicad2ems.mom25d.board import BoardModel
+    from kicad2ems.mom25d.api import ZONE_OUT
     dmax = 0.3e-3
     m = BoardModel(board, port='via', log=lambda *a: None, **kw.pop('model', {}))
     planes = {k: 3 * dmax for k, gs in m.shapes.items() if sum(g.area for g in gs) > 0.5 * m.outline_area}

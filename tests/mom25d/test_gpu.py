@@ -1,15 +1,15 @@
 """GPU LU path: every backend's code runs end to end against NumPy stand-ins for the exact CuPy
 calls it makes, and must reproduce the CPU mixed-precision solver. The Vulkan backend runs on the real GPU
-where there is one (slangpy and a Vulkan driver). (Real hardware: run tools/gpu_selfcheck.py on the GPU machine.)"""
+where there is one (slangpy and a Vulkan driver). (Real hardware: run tools/mom25d/gpu_selfcheck.py on the GPU machine.)"""
 import sys, types
 import numpy as np
 import pytest
 import scipy.linalg as sla
 
-from mom25d.multilayer import Layer, LayerStack
-from mom25d.sim import Simulation, Via, ViaPort
-import mom25d.gpu as mom25d_gpu
-pytest.importorskip('mom25d._core')
+from kicad2ems.mom25d.multilayer import Layer, LayerStack
+from kicad2ems.mom25d.sim import Simulation, Via, ViaPort
+import kicad2ems.mom25d.gpu as mom25d_gpu
+pytest.importorskip('kicad2ems.mom25d._core')
 
 
 # ---- NumPy stand-ins with the semantics of the real libraries ----------------------------------
@@ -195,7 +195,7 @@ def test_a_nan_solve_is_redone_on_the_cpu_or_refused(clean, S_cpu):
 # ---- the Vulkan backend on the real GPU --------------------------------------------------------------------------
 def _vulkan_ok():
     try:
-        from emsdev import gpu as devices
+        from kicad2ems.emsdev import gpu as devices
         devices.vulkan_device()
         return True
     except Exception:
@@ -211,7 +211,7 @@ def test_vulkan_lu_matches_lapack(clean, max_buffer):
     """The hybrid LU against LAPACK: the same pivots and factor (complex64 round-off), the GPU's solves, the
     factor downloaded in lu_factor's layout; a last panel narrower than the rest, rows interchanged; and (max_buffer)
     the matrix over many buffers, as a large one is."""
-    from mom25d import gpu_vk
+    from kicad2ems.mom25d import gpu_vk
     clean.setenv('MOM25D_VK_NB', '64')
     if max_buffer:
         clean.setattr(gpu_vk, 'MAX_BUFFER', max_buffer)
@@ -261,7 +261,7 @@ def test_memory_plan_takes_the_backends_own_estimate():
     """A Vulkan LU factors in place (8 N^2): with gpu_info's 4-tuple the plan puts 40k unknowns on a 16 GB GPU, the
     host holding no Z where it is short of one (gpu-stream), where the 2-tuple's 16 N^2 assumption sent it to the
     CPU."""
-    from mom25d.sim import memory_plan
+    from kicad2ems.mom25d.sim import memory_plan
     n = 40000
     need = 8.0 * n * n + 0.8e9
     p = memory_plan(n, has_core=True, avail=8e9, gpu=('vulkan', 15.7e9, need, True), solver='auto', has_blr=False)
@@ -282,7 +282,7 @@ def test_memory_plan_takes_the_backends_own_estimate():
 def test_far_field_of_several_excitations_at_once_is_each_ones():
     """far_field with I (N x k): every excitation's far field from one set of phases, as one column at a time
     (the vias' included)."""
-    from mom25d.farfield import far_field
+    from kicad2ems.mom25d.farfield import far_field
     sim = make_sim('off')
     f = 4e9
     I = sim.currents(f, sim.excitation())

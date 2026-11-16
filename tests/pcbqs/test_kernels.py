@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
-from pcbqs import kernels as K
+from kicad2ems.pcbqs import kernels as K
 
 core = pytest.mark.skipif(K.core('loop_system') is None, reason='no compiled core with the dense kernels')
 
@@ -123,7 +123,7 @@ def test_points_on_nodes_and_edges_have_a_triangle():
 
 def test_a_thermal_mesh_is_sampled_on_its_own_triangles():
     from types import SimpleNamespace
-    from pcbqs.thermal.problem import Result
+    from kicad2ems.pcbqs.thermal.problem import Result
     nodes, tris = _mesh()
     T = np.vstack([20 + nodes[:, 0] ** 2, 30 + nodes[:, 1]])
     r = Result('mesh', SimpleNamespace(index=lambda name: 1), T, {}, len(nodes), {}, 0.0, 1.0, nodes=nodes, tris=tris)
@@ -156,7 +156,7 @@ def test_the_single_precision_lu_is_refined_to_double_and_falls_back_when_it_can
     """lu_factor_rows's mixed factor (R-D13) solves to a double solve's accuracy, several right-hand sides at once,
     and a system too ill-conditioned for single precision is factored in double, with the same answer."""
     import numpy as np
-    from pcbqs.kernels import lu_factor_rows, lu_solve_rows, MixedLU, factor_bytes
+    from kicad2ems.pcbqs.kernels import lu_factor_rows, lu_solve_rows, MixedLU, factor_bytes
     rng = np.random.default_rng(3)
     n = 300
     a = rng.standard_normal((n, n)) + 1j * rng.standard_normal((n, n)) + 20 * np.eye(n)
@@ -180,7 +180,7 @@ def test_one_eigendecomposition_solves_the_pencil_at_every_frequency_with_its_pa
     """R-D13.2: (R + s L + P^T diag(z) P)^-1 b from one Pencil, against a dense solve, for s from DC up, with parts
     of no impedance (a short) and of an impedance, and several right-hand sides."""
     from scipy.sparse import csr_matrix
-    from pcbqs.kernels import Pencil
+    from kicad2ems.pcbqs.kernels import Pencil
     rng = np.random.default_rng(3)
     n, k = 120, 4
     A = rng.standard_normal((n, n)); R = A @ A.T / n + 0.1 * np.eye(n)
@@ -200,7 +200,7 @@ def test_one_eigendecomposition_solves_the_pencil_at_every_frequency_with_its_pa
 
 
 def test_the_pencil_is_taken_for_a_long_sweep_only(monkeypatch):
-    from pcbqs.kernels import pencil_pays
+    from kicad2ems.pcbqs.kernels import pencil_pays
     monkeypatch.delenv('PCBQS_PENCIL', raising=False)
     assert not pencil_pays(4000, 6) and pencil_pays(4000, 40) and not pencil_pays(100, 400)
     monkeypatch.setenv('PCBQS_PENCIL', 'never')

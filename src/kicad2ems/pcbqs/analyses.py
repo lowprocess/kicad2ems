@@ -1,13 +1,13 @@
 """
 pcbqs's tools as kicad2ems analysis plugins (the 'kicad2ems.analyses' entry points of pyproject.toml): power
 integrity, near field, circuit and thermal. kicad2ems lists them as engines of the questions they answer (a
-rail's drop and its impedance, a converter's near field, a circuit, the temperature: kicad2ems.study), a front end
+rail's drop and its impedance, a converter's near field, a circuit, the temperature: kicad2ems.core.study), a front end
 builds each one's settings from its options table, runs it as its command and shows what its result folder holds
 (reports.py); the circuit examples come as configs beside their models (circuit/examples/*.toml).
 
 Only this module imports kicad2ems; the tools themselves run without it.
 
-    from pcbqs.analyses import PowerIntegrity
+    from kicad2ems.pcbqs.analyses import PowerIntegrity
     PowerIntegrity().command(dict(rail='+3V3', load='U1=2'), 'board.kicad_pcb', 'out/pdn')
 """
 import json
@@ -15,9 +15,9 @@ import os
 import re
 import sys
 
-from kicad2ems.api.analysis import Analysis
+from kicad2ems.core.api.analysis import Analysis
 
-API = (2, 11)                       # kicad2ems.api it is written against: 2.10 several, 2.11 pick
+API = (2, 11)                       # kicad2ems.core.api it is written against: 2.10 several, 2.11 pick
 
 
 def argv(module, options, values, board, out):
@@ -108,7 +108,7 @@ def _pad_nets(board):
     """{reference: the nets of its pads} of a KiCad board file (kept until the file changes)."""
     stamp = os.path.getmtime(board)
     if _PADS.get(board, (None,))[0] != stamp:
-        from kicad2ems.importers import open_board           # (as pcbqs._cli reads a board)
+        from kicad2ems.core.importers import open_board           # (as pcbqs._cli reads a board)
         _PADS[board] = (stamp, {fp['ref']: {p.get('net') for p in fp.get('pads', [])} for fp in open_board(board).footprints})
     return _PADS[board][1]
 
@@ -137,7 +137,7 @@ def _return_of(ref, values, board):
 
 
 class PowerIntegrity(_Tool):
-    name, label, tool, module, order = 'pdn', 'Power integrity', 'pcbqs.pdn', 'pcbqs.pdn', 20
+    name, label, tool, module, order = 'pdn', 'Power integrity', 'kicad2ems.pcbqs.pdn', 'kicad2ems.pcbqs.pdn', 20
     about = "a rail's DC drop and the impedance its loads see"
     result = 'pdn.json'
     provides = ('dc', 'pdn')                # one run: the drop alone when the impedance is not asked for
@@ -192,7 +192,7 @@ class PowerIntegrity(_Tool):
 
 
 class NearField(_Tool):
-    name, label, tool, module, order = 'mqs', 'Near field', 'pcbqs.mqs', 'pcbqs.mqs', 30
+    name, label, tool, module, order = 'mqs', 'Near field', 'kicad2ems.pcbqs.mqs', 'kicad2ems.pcbqs.mqs', 30
     about = "a converter's input loop and its magnetic near field"
     previewed = True
     finds = 'converters'
@@ -279,7 +279,7 @@ EXAMPLE_GROUPS = (
 
 
 class Circuit(_Tool):
-    name, label, tool, module, order = 'circuit', 'Circuit', 'pcbqs.circuit', 'pcbqs.circuit', 40
+    name, label, tool, module, order = 'circuit', 'Circuit', 'kicad2ems.pcbqs.circuit', 'kicad2ems.pcbqs.circuit', 40
     about = ("a circuit model run until it repeats, with its targets met: any circuit of parts, nodes and drives, "
              "by ngspice, with the board's copper between the parts' pads when asked: its parts' losses (for "
              "thermal) and its copper's currents (for the fields)")
@@ -306,7 +306,7 @@ class Circuit(_Tool):
     JOBS = 4                                            # cases run at once, unless set
 
     def options(self):
-        """The model, then pcbqs.circuit's own options (python -m pcbqs.circuit --describe). The board is a front
+        """The model, then pcbqs.circuit's own options (python -m kicad2ems.pcbqs.circuit --describe). The board is a front
         end's to give."""
         from ._cli import describe
         from .circuit.__main__ import OPTIONS
@@ -331,7 +331,7 @@ class Circuit(_Tool):
         on = lambda k: values.get(k) is True or str(values.get(k)).strip().lower() in ('1', 'true', 'yes', 'on')
         values = dict(values, copper=on('copper') or on('fields'), jobs=values.get('jobs') or self.JOBS)
         opts = [dict(o, default=None) if o['key'] == 'jobs' else o for o in self.options() if o['key'] != 'model']
-        cmd = argv('pcbqs.circuit', opts, {k: v for k, v in values.items() if k != 'model'}, model, out)
+        cmd = argv('kicad2ems.pcbqs.circuit', opts, {k: v for k, v in values.items() if k != 'model'}, model, out)
         cmd.insert(1, '-u')
         try:
             warm = int(str(values.get('warm') or 0).strip() or 0)
@@ -380,7 +380,7 @@ class Circuit(_Tool):
 
 
 class Thermal(_Tool):
-    name, label, tool, module, order = 'thermal', 'Thermal', 'pcbqs.thermal', 'pcbqs.thermal', 50
+    name, label, tool, module, order = 'thermal', 'Thermal', 'kicad2ems.pcbqs.thermal', 'kicad2ems.pcbqs.thermal', 50
     about = ("the board's steady temperature from its parts' losses: typed (REF=W), or the latest circuit run's "
              "when none are; each part's temperature, and each layer's map in the viewer")
     result = 'thermal.json'
@@ -447,7 +447,7 @@ class Thermal(_Tool):
 
 
 # ---- a solver: S-parameters at low frequency, from the copper's quasi-static currents (sparams.py) ----
-from kicad2ems.api.solver import Deviation, Option, Result, Solver, mixed_mode   # noqa: E402
+from kicad2ems.core.api.solver import Deviation, Option, Result, Solver, mixed_mode   # noqa: E402
 
 G_QS = 'pcbqs'
 

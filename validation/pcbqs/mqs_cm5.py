@@ -51,8 +51,8 @@ def case():
     cache = DIR / 'board.pickle'
     if cache.is_file():
         return pickle.loads(cache.read_bytes())
-    from pcbqs._cli import load_board
-    from pcbqs.pdn.mesh import copper_of
+    from kicad2ems.pcbqs._cli import load_board
+    from kicad2ems.pcbqs.pdn.mesh import copper_of
     b = load_board(CM5, set(NETS))
     copper = {}
     if LAYERS:
@@ -111,7 +111,7 @@ def geometry():
 
 
 def pcbqs(dmax, sheets=1, backend='dense', workers=16, thick=False):
-    from pcbqs.mqs import MQS
+    from kicad2ems.pcbqs.mqs import MQS
     t = time.perf_counter()
     q = MQS(case(), nets(), terminals={k: [('F.Cu', s)] for k, s in SLIVERS.items()}, dmax=dmax, fine=FINE,
             dmax_fine=dmax / 2, conductor_loss='dc' if thick else 'slab', thickness_sheets=sheets, thick_kernel=thick,
@@ -144,7 +144,7 @@ def fasthenry_inp(p, nh_outer=5, nh_inner=3):
     The port's two edges are equipotential lines (.equiv) of nodes."""
     from mqs_fasthenry import via_bars
     b = case()
-    from pcbqs.pdn.mesh import copper_centres
+    from kicad2ems.pcbqs.pdn.mesh import copper_centres
     zs = copper_centres(b)                          # the thick models' placement: dielectric gaps kept
     outer = {min(zs, key=lambda l: zs[l][0]), max(zs, key=lambda l: zs[l][0])}
     x0, y0 = PORT_GAP.bounds[0], 0.5 * (PORT_GAP.bounds[1] + PORT_GAP.bounds[3])

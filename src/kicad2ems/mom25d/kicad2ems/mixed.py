@@ -23,10 +23,10 @@ import time
 
 import numpy as np
 
-from kicad2ems.api.solver import Result, Option
+from kicad2ems.core.api.solver import Result, Option
 from .mom import MoM25D, _metal, _model_kw, run_finish, _stack, apertures, aperture_text, ports_below
 from ..base import C0
-from kicad2ems.api.solver import stop
+from kicad2ems.core.api.solver import stop
 
 G = 'mixed'                                     # its section in kicad2ems's GUI
 CUT_MIN = 3.0           # mm: the shortest stretch worth cutting out
@@ -42,7 +42,7 @@ PAIR_CHAR_MAX = 64e-3   # m: that line at most
 def _feed_areas(ports):
     """The copper each wave port's fit samples (gap to last cut, plus its width either side), so a cut keeps out."""
     from shapely.geometry import LineString
-    from mom25d.geo import LinePort
+    from kicad2ems.mom25d.geo import LinePort
     out = []
     for p in ports:
         for q in (p.pos, p.neg) if hasattr(p, 'pos') else (p,):
@@ -59,7 +59,7 @@ def _context(model, data, dmax):
     from shapely.geometry import Point, shape
     from shapely.ops import unary_union
     from shapely import affinity
-    from mom25d.line import find_runs
+    from kicad2ems.mom25d.line import find_runs
     MM = 1e-3
     if model.signal is None:
         return None
@@ -83,7 +83,7 @@ def _context(model, data, dmax):
 def _need(model, k, w, dmax, fmin, span=None):
     """The straight feed a wave port on a cut face needs, for a line of width w on interface k down to fmin: its
     cuts spanning `span` rad there (default mom25d's KNOWN_SPAN)."""
-    from mom25d.model import KNOWN_SPAN
+    from kicad2ems.mom25d.model import KNOWN_SPAN
     win, need0 = model._wave_window(w, 1.0, dmax)
     er = model.stack.layers[k - 1].er
     beta = 2 * np.pi * fmin * np.sqrt(0.5 * (er + 1)) / C0
@@ -112,7 +112,7 @@ def plan_cuts(model, data, dmax, fmin, cut_min=CUT_MIN * 1e-3, keep_out=None, lo
     """The stretches of trace to cut out: [(Run of the cut, the run it is in)]. model: mom25d BoardModel; data: its
     board dict (nets per polygon); dmax (m); fmin (Hz): the wave ports on the cut faces need their feed. skip: the
     runs (their index in the context's) a pair's cut has taken."""
-    from mom25d.line import Run
+    from kicad2ems.mom25d.line import Run
     ctx = ctx or _context(model, data, dmax)
     if ctx is None:
         log("mixed: the board names no ground net - no signal trace to cut")
@@ -141,7 +141,7 @@ def plan_pair_cuts(model, data, dmax, fmin, cut_min=CUT_MIN * 1e-3, keep_out=Non
     runs they take: their index in the context's). Two straight runs on one interface, parallel, of one width (within 5 %), no further
     apart than a lone cut keeps other copper away (3 widths, 4 heights): where they overlap, less the feed a
     mixed-mode wave port needs at each end, and clear as a lone cut is of everything but the two."""
-    from mom25d.line import Run
+    from kicad2ems.mom25d.line import Run
     ctx = ctx or _context(model, data, dmax)
     if ctx is None:
         return [], set()
@@ -204,11 +204,11 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, rough=None, finish=None, max_solv
     mom25d's model and put back as lines. mom_kw: the mom25d mesh options (quads, quad_tol, coarsen, zone, lines,
     signal_vias, ...); model_kw: BoardModel's (planes, stitching_pads, wideband: mom.solve's _model_kw), so the two
     solvers model one board (mixed had taken mom25d's defaults whatever --mom-planes and the rest said)."""
-    from mom25d.board import BoardModel
-    from mom25d.geo import LinePort
-    from mom25d.run import solve_band
-    from mom25d.api import ZONE_OUT, LINE_STEP
-    from kicad2ems.api.solver import mixed_mode
+    from kicad2ems.mom25d.board import BoardModel
+    from kicad2ems.mom25d.geo import LinePort
+    from kicad2ems.mom25d.run import solve_band
+    from kicad2ems.mom25d.api import ZONE_OUT, LINE_STEP
+    from kicad2ems.core.api.solver import mixed_mode
     t0 = time.time()
     data = m.to_dict()
     freq = np.asarray(freq, float)
@@ -220,7 +220,7 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, rough=None, finish=None, max_solv
     # lumped, and so different terminations); the cuts keep out of their feeds
     # (each wave port's feed capped at what its fit needs down to fmin - a port fits over its whole straight feed
     # otherwise, and leaves nothing of the line to cut)
-    from mom25d.model import KNOWN_SPAN
+    from kicad2ems.mom25d.model import KNOWN_SPAN
     er_min = min(l.er for l in model.stack.layers)
     beta_lo = 2 * np.pi * fmin * np.sqrt(0.5 * (er_min + 1)) / C0
     feed = model._feed
@@ -267,7 +267,7 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, rough=None, finish=None, max_solv
         stretches.append(dict(run=c, of=[(len(joins), 1.0)]))
         joins.append(dict(a=f"cut{j + 1}a", b=f"cut{j + 1}b", port=cut_ports[-2], mode=None, length=c.x1 - c.x0))
     for j, (ca, cb, need) in enumerate(pcuts):
-        from mom25d.sim import DiffPort
+        from kicad2ems.mom25d.sim import DiffPort
         for c in (ca, cb):
             take_out(c)
             removed += c.x1 - c.x0
@@ -299,7 +299,7 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, rough=None, finish=None, max_solv
     zone, lines = mom_kw.pop('zone', None), mom_kw.pop('lines', None)
     cells = mom_kw.pop('cells', 30.0)                   # the cells grown to the wavelength's size, as mom25d's
     if cells and cells > 0:
-        from mom25d.api import wavelength_coarsen
+        from kicad2ems.mom25d.api import wavelength_coarsen
         mom_kw['coarsen'] = wavelength_coarsen(model, fmax, dm, cells, mom_kw.get('coarsen'), log)
     sim = model.simulation(dmax=dm, dmax_layer=planes, fmin=fmin, fmax=fmax, solver='auto', verbose=False,
                            wave_down_to=fmin, metal=metal, **mom_kw,

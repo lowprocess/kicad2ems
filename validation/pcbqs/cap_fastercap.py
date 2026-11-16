@@ -85,7 +85,7 @@ def board_of(c):
 def pcbqs_c(c, dmax, **mesh):
     """Maxwell C (conductors in the order of their nets' first appearance) from pcbqs, and the time. mesh: MQS's
     mesh options (edge_rings=6, edge_width=half a trace's width: the edge charge on graded cells)."""
-    from pcbqs.mqs import MQS
+    from kicad2ems.pcbqs.mqs import MQS
     b = board_of(c)
     nets = [n for ps in c['copper'].values() for n, _ in ps]
     # one small terminal per conductor, only to name it in the capacitance matrix: a terminal's triangles share one
@@ -108,7 +108,7 @@ def _quads_of(poly, z):
     (FasterCap struggles with slivers; pcbqs's core: CDT)."""
     import shapely
     from common import polygons
-    from pcbqs import _core
+    from kicad2ems.pcbqs import _core
     out = []
     for p in polygons(poly):
         rings = [np.asarray(p.exterior.coords)[:-1]] + [np.asarray(h.coords)[:-1] for h in p.interiors]

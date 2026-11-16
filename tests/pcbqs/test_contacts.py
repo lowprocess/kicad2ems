@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from shapely.geometry import box, mapping
 
-from pcbqs.contacts import beyond, chip_size, part_contacts
+from kicad2ems.pcbqs.contacts import beyond, chip_size, part_contacts
 
 
 def pad(x0, x1, layers=('F.Cu',), net='A'):
@@ -63,7 +63,7 @@ def test_mqs_loop_inductance_rises_when_parts_no_longer_short_their_pads():
     """A 10 x 4 mm loop of 1 mm trace closed by an 0805-sized part: the less of each pad the contact covers, the
     more copper carries the current and the higher the loop reads. Pad and termination differ by less than the
     mesh resolves (0.1 %: their order flips between meshes, Triangle's at dmax 0.1 too); the edge reads 8 % more."""
-    from pcbqs.mqs import MQS
+    from kicad2ems.pcbqs.mqs import MQS
     from shapely.ops import unary_union
     tr = unary_union([box(0, 0, 10, 1), box(9, 0, 10, 4), box(0, 3, 10, 4), box(0, 0, 1, 1.55),
                       box(0, 2.45, 1, 4)])

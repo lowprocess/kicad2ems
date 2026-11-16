@@ -24,7 +24,7 @@ from scipy.spatial import cKDTree
 from .base import gram_matrix, moments7, quad_moments
 from .sing import offplane_pairs, offplane_moments
 
-try:                                    # optional compiled kernels (python -m mom25d.core.build)
+try:                                    # optional compiled kernels (python -m kicad2ems.mom25d.core.build)
     from . import _core as _built
 except ImportError:
     _built = None
@@ -39,7 +39,7 @@ def use_core(mode='auto'):
     if mode not in ('auto', 'compiled', 'python'):
         raise ValueError(f"core: auto, compiled or python, not {mode!r}")
     if mode == 'compiled' and _built is None:
-        raise RuntimeError("mom25d's compiled core is not built (python -m mom25d.core.build): it cannot be "
+        raise RuntimeError("mom25d's compiled core is not built (python -m kicad2ems.mom25d.core.build): it cannot be "
                            "chosen; 'python' or 'auto' run on NumPy")
     prev, _core = _core, None if mode == 'python' or (mode == 'auto' and os.environ.get('MOM25D_NO_CORE')) else _built
     return prev
@@ -56,7 +56,7 @@ def fast_cores():
     process may use: emsdev's, which the other solvers ask too (mom25d had its own rule, 0.9 of the top clock over
     every CPU of the machine, affinity ignored); None where emsdev cannot tell."""
     try:
-        from emsdev.cpu import core_threads
+        from kicad2ems.emsdev.cpu import core_threads
     except ImportError:
         return None
     return core_threads() or None
@@ -693,7 +693,7 @@ class FastOperator:
             raise FloatingPointError(                                # returned with a warning)
                 f"mom25d: the compressed (ACA) solve at {f / 1e9:.4g} GHz did not converge (residual {rel.max():.1e} "
                 f"after {max(self.iters, default=0)} iterations, N = {N}): a coarser mesh (--mom-dmax), or the compiled "
-                f"core (python -m mom25d.core.build) for the direct and block low-rank solvers")
+                f"core (python -m kicad2ems.mom25d.core.build) for the direct and block low-rank solvers")
         for j, info in enumerate(infos):
             if info > 0:
                 sim.log.note(f"WARNING GMRES did not converge for port {j + 1} ({self.iters[j]} iterations, residual "
@@ -879,7 +879,7 @@ class FastOperator:
         sim, mode = self.sim, getattr(self.sim, 'loop_tree', 'auto')
         if mode == 'off' or (mode == 'auto' and self.kh2(f) >= LOOP_TREE_BELOW):
             return False
-        why = ('no compiled core with the loop/tree kernels (python -m mom25d.core.build)' if self.core is None
+        why = ('no compiled core with the loop/tree kernels (python -m kicad2ems.mom25d.core.build)' if self.core is None
                or not hasattr(self.core, 'charge_into') else 'quad cells or line functions' if sim.qT is not None
                else 'holes of PEC planes (frills)' if sim.frills
                else 'openings of PEC planes (slots)' if getattr(sim, 'slots', None) else None)
@@ -1310,7 +1310,7 @@ class FastOperator:
         from .blr import cluster_tiles
         if self.core is None or not hasattr(self.core, 'BLRFactor'):     # (its Python factor retired: R-F3)
             raise RuntimeError("solver='blr' needs the compiled core with its block low-rank factor "
-                               "(python -m mom25d.core.build)")
+                               "(python -m kicad2ems.mom25d.core.build)")
         sim = self.sim
         Ne, Nv = sim.Ne, sim.Nv
         N = Ne + Nv

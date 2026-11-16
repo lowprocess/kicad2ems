@@ -7,9 +7,9 @@ project's checkout, or MOM25D_DEMO for its tests/boards/demo.json).
 import json, os, time
 from pathlib import Path
 import numpy as np
-from pcbqs import sparams as SP
-from mom25d.api import build_board
-from mom25d.run import renorm, _zc, out_refs
+from kicad2ems.pcbqs import sparams as SP
+from kicad2ems.mom25d.api import build_board
+from kicad2ems.mom25d.run import renorm, _zc, out_refs
 d = json.load(open(os.environ.get('MOM25D_DEMO') or Path(__file__).resolve().parents[2] / 'mom25d' / 'tests' / 'boards' / 'demo.json'))
 f = np.array([5e7, 1e8, 2e8, 5e8, 1e9])
 quiet = lambda *a, **k: None

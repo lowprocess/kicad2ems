@@ -7,10 +7,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pcbqs.circuit import boards as B
-from pcbqs.circuit import copper as C
-from pcbqs.circuit import kicad as K
-from pcbqs.circuit import model as M
+from kicad2ems.pcbqs.circuit import boards as B
+from kicad2ems.pcbqs.circuit import copper as C
+from kicad2ems.pcbqs.circuit import kicad as K
+from kicad2ems.pcbqs.circuit import model as M
 
 kicad2ems = pytest.importorskip('kicad2ems')
 EXAMPLES = Path(B.__file__).parent / 'examples'
@@ -83,7 +83,7 @@ def test_every_board_reads_back_as_its_model(name):
         assert nodes == want if p['type'] in ('diode', 'switch') else sorted(nodes) == sorted(want)
         if 'value' in p:
             assert got['value'] == pytest.approx(p['value'], rel=1e-3)
-    where, terminals, absent = C.pins(resolved, __import__('pcbqs._cli', fromlist=['x']).load_board(model['board']['file']))
+    where, terminals, absent = C.pins(resolved, __import__('kicad2ems.pcbqs._cli', fromlist=['x']).load_board(model['board']['file']))
     assert absent == [] and len(where) == 2 * len(resolved['parts'])    # every pin of the model is a pad of the board
 
 
@@ -170,7 +170,7 @@ def test_a_netlist_is_read_the_same_way(tmp_path):
 
 # ---- the copper ----
 def test_a_model_and_a_board_that_do_not_fit_say_where():
-    from pcbqs._cli import load_board
+    from kicad2ems.pcbqs._cli import load_board
     model = M.resolve(M.template('boost'))
     board = load_board(model['board']['file'])
     where, terminals, absent = C.pins(model, board)
@@ -192,7 +192,7 @@ def test_a_model_and_a_board_that_do_not_fit_say_where():
 
 @pytest.fixture(scope='module')
 def boost_copper(tmp_path_factory):
-    pytest.importorskip('pcbqs._core')                         # (its mesher)
+    pytest.importorskip('kicad2ems.pcbqs._core')                         # (its mesher)
     out = tmp_path_factory.mktemp('copper')
     said = []
     model = M.template('boost')
@@ -218,7 +218,7 @@ def test_the_boards_copper_is_a_small_passive_network_between_its_pads(boost_cop
     assert C.port_nodes(resolved, cu)['T0'] == ('C1.in', 'in')
     again = []
     assert C.prepare(model, out, again.append)['model'] == cu['model'] and again == ['The copper of 06_boost.kicad_pcb: as extracted before']
-    from pcbqs.circuit.deck import build
+    from kicad2ems.pcbqs.circuit.deck import build
     deck = build(resolved, None, cu)
     assert len(deck.ports) == 10 and 'PCB9.I' in deck.signals and any(l.startswith('LMODE') for l in deck.lines)
     start = build(resolved, dict(__currents__=dict(L1=1.0, C2=-0.25)), cu)      # the first run on the board
@@ -230,7 +230,7 @@ def test_the_boards_copper_is_a_small_passive_network_between_its_pads(boost_cop
 
 @ngspice
 def test_boost_on_its_board(boost_copper, tmp_path):
-    from pcbqs.circuit import run
+    from kicad2ems.pcbqs.circuit import run
     model, cu, out, said = boost_copper
     log = []
     alone = run(model, tmp_path / 'alone', log=lambda s: None)['cases'][0]
@@ -256,7 +256,7 @@ def test_boost_on_its_board(boost_copper, tmp_path):
 
 # ---- the fields over the board ----
 def test_a_signals_harmonics_put_it_back_together():
-    from pcbqs.circuit import fields as F
+    from kicad2ems.pcbqs.circuit import fields as F
     T = 5e-6
     t = np.arange(8 * 256 + 1) * T / 256
     x = 1.5 + 0.8 * np.cos(2 * np.pi * t / T + 0.4) - 0.3 * np.sin(2 * np.pi * 3 * t / T)
@@ -272,8 +272,8 @@ def test_a_signals_harmonics_put_it_back_together():
 def test_a_volt_on_a_net_is_a_field_over_that_net(boost_copper):
     """E for one volt on each net alone: strongest over that net's own island, and the islands' capacitances are
     those of their plates over the ground plane with the fringe on top."""
-    from pcbqs._cli import load_board
-    from pcbqs.circuit import fields as F
+    from kicad2ems.pcbqs._cli import load_board
+    from kicad2ems.pcbqs.circuit import fields as F
     model, cu, out, said = boost_copper
     board = load_board(model['board']['file'])
     x, y = np.linspace(2, 36, 35), np.linspace(-13, -1, 13)         # over the three islands, 1 mm up
@@ -293,7 +293,7 @@ def test_a_volt_on_a_net_is_a_field_over_that_net(boost_copper):
 @ngspice
 def test_boost_fields_come_from_its_own_currents_and_voltages(boost_copper):
     """H over the loop the switch and the diode commutate round, E over the switch node, both from the run."""
-    from pcbqs.circuit import run
+    from kicad2ems.pcbqs.circuit import run
     model, cu, out, said = boost_copper
     log = []
     summary = run(model, out, log=log.append, copper=True, fields=True)
@@ -325,10 +325,10 @@ def test_boost_fields_come_from_its_own_currents_and_voltages(boost_copper):
     info = json.loads((out / 'run' / 'exc_fields' / 'dump_info.json').read_text())
     assert info['dt_ps'] == pytest.approx(case['period_s'] / 64 * 1e12) and [d['field'] for d in info['dumps']] == ['H', 'H', 'E', 'E']
     assert len(list((out / 'run' / 'exc_fields').glob('dump_E_topp5mm_td_*.vtr'))) == 64
-    from kicad2ems.fields.frames import find_dumps
+    from kicad2ems.core.fields.frames import find_dumps
     found = find_dumps(str(out))
     assert sorted(d.name for d in found) == sorted(f['dumps'])
-    from pcbqs import reports
+    from kicad2ems.pcbqs import reports
     rep = reports.report('circuit', str(out))
     assert rep['images'] == [] and rep['show'] == dict(field='H')   # in the Viewer, not a picture in the report
     again = run(model, out, log=lambda s: None, copper=True, fields=True)['cases'][0]

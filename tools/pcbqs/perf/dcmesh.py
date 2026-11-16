@@ -1,6 +1,6 @@
 import time, sys, numpy as np
-import pcbqs.pdn.dc as dc
-from pcbqs.pdn.cli import main
+import kicad2ems.pcbqs.pdn.dc as dc
+from kicad2ems.pcbqs.pdn.cli import main
 orig = dc.net_sheets
 def ns(board, nets, pts, **kw):
     t = time.time(); s = orig(board, nets, pts, **kw)

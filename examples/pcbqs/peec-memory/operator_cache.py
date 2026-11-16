@@ -10,9 +10,7 @@ import os
 import pickle
 from pathlib import Path
 import numpy as np
-import pcbqs
-
-
+from kicad2ems import pcbqs
 def fingerprint(model,stage):
     digest=hashlib.sha256()
     for name in ('nodes','tris','z_of','t_of','node_of'):

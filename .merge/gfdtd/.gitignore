@@ -1,9 +1,0 @@
-__pycache__/
-*.egg-info/
-build/
-dist/
-.venv/
-.pytest_cache/
-# the compiled core (python -m gfdtd.core.build)
-*.so
-*.pyd
