@@ -100,21 +100,12 @@ def capacitance_matrix(model):
     need not vanish. For floating differential capacitance enforce zero total
     charge, rather than grounding one conductor to infinity.
     """
-    from scipy.sparse.csgraph import connected_components
     model._ensure_potential()
     a, b = np.asarray(model.br, int).reshape(-1, 2).T
     graph = coo_matrix((np.ones(len(a)), (a, b)), shape=(model.n_nodes, model.n_nodes))
     n, labels = connected_components(graph, directed=False)
-    charge_of = getattr(model, 'charge_of', None)
-    if charge_of is not None:                            # face sheets: a charge per triangle copy, on its node's conductor
-        rep = np.zeros(charge_of.max() + 1, int)
-        rep[charge_of] = model.node_of
-        side = getattr(model, 'side_owner', None)
-        if side is not None:                             # side panels: their triangles' nodes
-            rep = np.r_[rep, model.node_of[side]]
-        B = np.eye(n)[labels[rep]]
-    else:
-        B = np.eye(n)[labels]
+    Bn = charge_nodes(model)                             # face sheets: each charge's (a triangle copy's) node
+    B = np.eye(n)[labels if Bn is None else labels[Bn.tocsr().indices]]
     if model.matrix_backend == 'hierarchical':
         from .peec_iterative import potential_solve
         C = B.T @ potential_solve(model,B)
@@ -166,14 +157,10 @@ def prepare(model):
     if model._peec is not None:
         return model._peec
     m = model._assemble()
-    ends = model.br + [(model.term_node[p['a']], model.term_node[p['b']]) for p in model.parts]
-    nb = len(ends)
-    branch = np.arange(nb)
-    a, b = np.asarray(ends, int).reshape(-1, 2).T
-    A = coo_matrix((np.r_[np.ones(nb), -np.ones(nb)], (np.r_[a, b], np.r_[branch, branch])),
-                   shape=(model.n_nodes, nb)).tocsc()
     C, src_cols, is_src, tree = m['C'], m['src'], m['is_src'], m['tree']
     passive, sources = np.flatnonzero(~is_src), np.flatnonzero(is_src)
+    A, nc, labels, keep = model._branch_graph(passive)
+    nb = A.shape[1]
     cycles = [k for k in range(C.shape[1]) if k not in src_cols.values()]
     K = hstack([C[passive][:, cycles], eye(nb, format='csc')[passive][:, np.flatnonzero(tree)]], format='csc')
     nl = len(cycles)
@@ -191,12 +178,7 @@ def prepare(model):
     # component. The remaining tree currents are jw times a correction.
     # Computing q = -(A i + drive)/jw directly would lose the tiny conduction
     # charges to cancellation at low frequency, even with a well-scaled solve.
-    graph = coo_matrix((np.ones(len(passive)), (a[passive], b[passive])),
-                       shape=(model.n_nodes, model.n_nodes))
-    nc, labels = connected_components(graph, directed=False)
     B = np.eye(nc)[labels]
-    roots = np.unique(labels, return_index=True)[1]
-    keep = np.ones(model.n_nodes, bool); keep[roots] = False
     tree_lu = splu(T[keep].astype(complex).tocsc()) if T.shape[1] else None
     part_rows = np.flatnonzero(passive >= len(model.br))
     model._peec = dict(A=A, K=K, T=T, P=P, pscale=pscale, electro=electro,
@@ -209,10 +191,8 @@ def prepare(model):
 
 
 def solve(model, freqs, amps=None):
-    from .mqs import Result
-    f = np.atleast_1d(np.asarray(freqs, float))
-    if f.ndim != 1 or not np.isfinite(f).all() or (f <= 0).any():
-        raise ValueError('frequencies must be finite and positive')
+    from .mqs import Result, _frequencies
+    f = _frequencies(freqs)
     m = prepare(model)
     A, K, T, P, B = [m[k] for k in ('A', 'K', 'T', 'P', 'B')]
     R, L, PT, nl, pscale = [m[k] for k in ('R', 'L', 'PT', 'nl', 'pscale')]
@@ -246,11 +226,7 @@ def solve(model, freqs, amps=None):
         jw = 2j * np.pi * freq
         dr = model._resistance_delta(freq)
         delta = (m['full_basis'].T @ dr @ m['full_basis']).tocsr() if dr.nnz else None     # (sparse: a few per row)
-        zp = np.array([model.parts[passive[j] - len(model.br)]['R'] +
-                       jw * model.parts[passive[j] - len(model.br)]['L'] +
-                       (1 / (jw * model.parts[passive[j] - len(model.br)]['C'])
-                        if model.parts[passive[j] - len(model.br)].get('C') else 0)
-                       for j in m['part_rows']], complex)
+        zp = model._part_impedance(jw)[passive[m['part_rows']]]
         if len(passive) and K.shape[1]:                  # (a terminal covering a whole conductor leaves no unknowns)
             cached = m['factors'].pop(float(freq), None)
             if cached is None:

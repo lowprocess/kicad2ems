@@ -13,8 +13,6 @@ chooses; model.port_solver ('auto', 'direct', 'iterative') and model.port_precon
 override it.
 """
 import numpy as np
-from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
 from scipy.sparse.linalg import LinearOperator
 
 from . import mqs_precond
@@ -41,27 +39,17 @@ def _prepare(model):
         return model._mqs_iter
     m = model._assemble()
     C = m['C'].tocsc()
-    nb, ne, nv = m['nb'], model.ne, model.nv
-    src = {model.parts[k - ne - nv]['name']: c for k, c in m['src'].items()}
+    src = {model.parts[k - model.ne - model.nv]['name']: c for k, c in m['src'].items()}
     sc = np.array(list(src.values()), int)
     free = np.setdiff1d(np.arange(C.shape[1]), sc)
-    ends = list(model.br) + [(model.term_node[p['a']], model.term_node[p['b']]) for p in model.parts]
-    a, b = np.asarray(ends, int).reshape(-1, 2).T
-    branch = np.arange(nb)
-    A = coo_matrix((np.r_[np.ones(nb), -np.ones(nb)], (np.r_[a, b], np.r_[branch, branch])),
-                   shape=(model.n_nodes, nb)).tocsc()
     passive = np.flatnonzero(~m['is_src'])
+    A, _, _, keep = model._branch_graph(passive)
     # each free loop's cotree branch: the non-tree branch with coefficient 1 in its column
     non_tree = np.flatnonzero(~m['tree'])
     ident = C[non_tree][:, free].tocoo()
     one = ident.data == 1
     cotree = np.empty(len(free), int)
     cotree[ident.col[one]] = non_tree[ident.row[one]]
-    graph = coo_matrix((np.ones(len(passive)), (a[passive], b[passive])), shape=(model.n_nodes, model.n_nodes))
-    _, labels = connected_components(graph, directed=False)
-    roots = np.unique(labels, return_index=True)[1]
-    keep = np.ones(model.n_nodes, bool)
-    keep[roots] = False
     Le, Lv = m['L']
     ld = _diagonal(Le)
     if getattr(model, 'thick_kernel', False):
@@ -170,29 +158,36 @@ def _lockstep_gmres(op, M, B, X0, tol, maxiter, restart):
     return X, its, res
 
 
+def _graph_at(p, R, w, zp=None):
+    """The graph preconditioner (mqs_precond.graph) at angular frequency w: each branch's R + jw L (and the parts'
+    zp) on the diagonal, floored at 1e-12 of the largest, and each face pair's coupling. (M, its bytes)."""
+    d = R.diagonal() + 1j * w * p['ldiag']
+    if zp is not None:
+        d = d + zp
+    scale = max(float(np.max(abs(d))), np.finfo(float).tiny)
+    d = np.where(abs(d) < scale * 1e-12, scale * 1e-12, d)
+    e, g = p['pairs']
+    zpair = np.asarray(R[e, g]).ravel() + 1j * w * p['lpair'] if len(e) else np.zeros(0, complex)
+    return _graph_preconditioner(p, d, zpair)
+
+
 def solve(model, freqs, amps=None):
     """MQS.solve for matrix_backend='hierarchical' without capacitance: the same Result (z, zc) as the dense path."""
-    from .mqs import Result
-    f = np.atleast_1d(np.asarray(freqs, float))
-    if f.ndim != 1 or not np.isfinite(f).all() or (f <= 0).any() or not len(f):
-        raise ValueError('frequencies must be finite and positive')
+    from .mqs import Result, _frequencies
+    f = _frequencies(freqs, empty=False)
     p = _prepare(model)
     m = model._mats
     Cf, Cs, src, free = p['Cf'], p['Cs'], p['src'], p['free']
-    nb, ne, nv = m['nb'], model.ne, model.nv
     names = list(src)
     xs = np.array([(amps or {}).get(n, 1.0) for n in names], complex)
-    I = np.zeros((len(f), nb), complex)
+    I = np.zeros((len(f), m['nb']), complex)
     Z = {n: np.zeros(len(f), complex) for n in names}
     Zc = {n: np.zeros(len(f), complex) for n in names}
     restart = _restart(model)
     model.solve_info = []
     for i, fi in enumerate(f):
         w = 2 * np.pi * fi
-        zp = np.zeros(nb, complex)
-        for k, part in enumerate(model.parts):
-            if part['kind'] == 'Z':
-                zp[ne + nv + k] = part['R'] + 1j * w * part['L'] + (1 / (1j * w * part['C']) if part.get('C') else 0)
+        zp = model._part_impedance(1j * w)
         R = (m['R'] + model._resistance_delta(fi)).tocsr()
 
         def copper(x):                                   # branch voltages of the copper (R, skin, L)
@@ -200,16 +195,11 @@ def solve(model, freqs, amps=None):
 
         def total(x):
             return copper(x) + zp * x
-        d = R.diagonal() + 1j * w * p['ldiag'] + zp
-        scale = max(float(np.max(abs(d))), np.finfo(float).tiny)
-        d = np.where(abs(d) < scale * 1e-12, scale * 1e-12, d)
         base = Cs @ xs                                   # the sources' loops, fixed
         rhs = -np.asarray(Cf.T @ total(base)).ravel()
         history = []
         if len(free):
-            e, g = p['pairs']
-            zpair = np.asarray(R[e, g]).ravel() + 1j * w * p['lpair'] if len(e) else np.zeros(0, complex)
-            M, mbytes = _graph_preconditioner(p, d, zpair)
+            M, mbytes = _graph_at(p, R, w, zp)
             op = LinearOperator((len(free), len(free)), matvec=lambda x: np.asarray(Cf.T @ total(Cf @ x)).ravel(),
                                 dtype=complex)
             try:
@@ -303,8 +293,7 @@ def port_matrix(model, freqs, log=None):
     fit in memory. Same conventions as the dense extraction: branch = -(the source loops' currents)."""
     p = _prepare(model)
     m = model._mats
-    Cf, Cs, src, free = p['Cf'], p['Cs'], p['src'], p['free']
-    nb = m['nb']
+    Cf, Cs, free = p['Cf'], p['Cs'], p['free']
     if any(part['kind'] != 'I' for part in model.parts):
         raise ValueError('copper ports take current sources only')
     restart = _restart(model)
@@ -334,12 +323,7 @@ def port_matrix(model, freqs, log=None):
             except mqs_precond.Unusable:
                 faces = p['faces'] = None
         if M is None and len(free):
-            d = (R.diagonal() + 1j * w * p['ldiag']).astype(complex)
-            scale = max(float(np.max(abs(d))), np.finfo(float).tiny)
-            d = np.where(abs(d) < scale * 1e-12, scale * 1e-12, d)
-            e, g = p['pairs']
-            zpair = (np.asarray(R[e, g]).ravel() + 1j * w * p['lpair']).astype(complex) if len(e) else np.zeros(0, complex)
-            M, _ = _graph_preconditioner(p, d, zpair)
+            M, _ = _graph_at(p, R, w)
         base = Cs.toarray().astype(complex)              # every port's own loop, at once
         iterations = 0
         if len(free):
