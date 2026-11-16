@@ -64,9 +64,9 @@ class SetupTab(QWidget):
                                                           None)
         self._undo, self._redo, self._base, self._restoring, self._typed = (
             [], [], None, False, None)
-        # a field's typing: one step when
+        # a field's typing: one step when it rests
         self._rest = QTimer(self, singleShot=True, interval=self.UNDO_REST,
-                            timeout=self._commit)  # it rests
+                            timeout=self._commit)
         defaults = self.defaults = Settings()
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -165,8 +165,8 @@ class SetupTab(QWidget):
                 row = QHBoxLayout()
                 row.addWidget(w)
                 b = QPushButton(
-                    '…', clicked=lambda _=False, k=key, d=(kind == 'dir'): self.
-                    _browse(k, d))
+                    '…', clicked=lambda _=False, k=key, d=(kind == 'dir'):
+                    self._browse(k, d))
                 b.setFixedWidth(28)
                 row.addWidget(b)
                 holder = QWidget()
@@ -428,8 +428,9 @@ class SetupTab(QWidget):
                 box = (self.fields_box(e.name, e.fields)
                        if e.kind == 'analysis' and e.fields else None)
                 if box is not None:
-                    box.toggled.connect(lambda on, q=q, n=e.name: n in st.
-                                        engines_for(q) and st.set_fields(q, on))
+                    box.toggled.connect(
+                        lambda on, q=q, n=e.name: (n in st.engines_for(q)
+                                                   and st.set_fields(q, on)))
 
     def port_layer(self):
         """The copper layer a default field dump is on: the window's board's

@@ -15,9 +15,8 @@ where they do not, one of them is wrong there, and the report says by how much.
 
     S, info = join(freq, S_low, S_high, crossover)
     pick(results, solvers)  # (low, high, crossover) of a run's results, or None
-    best_crossover(freq, S_low, S_high, crossover)  # (where they agree best at
-                                                    # or below it, the mismatch
-                                                    # there)
+    best_crossover(freq, S_low, S_high, crossover)
+        # (where they agree best at or below it, the mismatch there)
 """
 import numpy as np
 

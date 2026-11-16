@@ -1171,8 +1171,8 @@ class VolumeTab(QWidget):
         kind = self.animated()
         if kind is None:
             raise ValueError("one frame only: nothing animates"
-                             + (" (untick envelope to save the period)" if self.
-                                envelope.isChecked() else ""))
+                             + (" (untick envelope to save the period)"
+                                if self.envelope.isChecked() else ""))
         if kind == 'phase':
             steps = list(range(len(self._frames)))
         else:

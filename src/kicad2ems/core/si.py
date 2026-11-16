@@ -645,11 +645,9 @@ def find_pairs(kb, reach=3.0, min_length=3.0, most=12):
     left out, and nets with zones (planes, pours) are not traces."""
     from shapely.geometry import LineString
     from shapely.strtree import STRtree
-    # (they were looked for as dicts in kb.shapes, which
+    # (they were looked for as dicts in kb.shapes, which holds (layer, net,
+    # polygon): none was ever left out)
     poured = set(getattr(kb, 'zone_nets', ()))
-    # holds (layer, net,
-    # polygon): none was
-    # ever left out)
     segs = []
     for t in kb.tracks:
         if not t['net'] or t['net'] in poured:

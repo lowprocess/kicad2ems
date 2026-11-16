@@ -330,8 +330,9 @@ class StartPage(QWidget):
         except Exception:  # noqa: BLE001
             version = '0'
         self._thread = _Thumbs([t.entry for t in self.tiles.values()], version)
-        self._thread.done.connect(lambda name, png: name in self.tiles and self.
-                                  tiles[name].set_picture(png))
+        self._thread.done.connect(
+            lambda name, png: (name in self.tiles
+                               and self.tiles[name].set_picture(png)))
         self._thread.start()
 
     def stop_pictures(self):

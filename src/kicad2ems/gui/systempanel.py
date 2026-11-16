@@ -101,8 +101,8 @@ class SystemPanel(QWidget):
                               placeholderText=empty, text=_user_value(key),
                               editingFinished=self._save_programs)
             b = QPushButton(
-                '…', clicked=lambda _=False, f=field, t=label, d=folder: self.
-                _browse(f, t, d))
+                '…', clicked=lambda _=False, f=field, t=label, d=folder:
+                self._browse(f, t, d))
             b.setFixedWidth(28)
             row = QHBoxLayout()
             row.addWidget(field, 1)

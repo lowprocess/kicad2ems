@@ -498,8 +498,8 @@ class Job:
             self.log(
                 f"part ports: {', '.join(part_of)}, each closed by its value "
                 "after the solve"
-                + (f"; {len(self._sweep)} value combination(s) swept" if self.
-                   _sweep else ''))
+                + (f"; {len(self._sweep)} value combination(s) swept"
+                   if self._sweep else ''))
 
     def model(self):
         s = self.s
@@ -704,8 +704,8 @@ class Job:
             t = (f"~{e['seconds']:.0f} s"
                  if e['seconds'] < 120 else f"~{e['seconds'] / 60:.0f} min")
             self.log(f"estimate: {n}: {e['what']}, {t}, ~{e['gb']:.1f} GB"
-                     + (f" + {e['gpu_gb']:.1f} GB on the GPU" if e.
-                        get('gpu_gb') else '')
+                     + (f" + {e['gpu_gb']:.1f} GB on the GPU"
+                        if e.get('gpu_gb') else '')
                      + (f" ({e['how']})" if e.get('how') else ''))
         self.summary['estimates'] = dict(solvers=out, ram_gb=ram_gb())
         return out

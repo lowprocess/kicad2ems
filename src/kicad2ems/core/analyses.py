@@ -318,8 +318,8 @@ def registry():
                 if why:
                     raise ImportError(why)
                 if not a.name or a.name == RF or a.name in reg:
-                    raise ValueError(f"name already taken: {a.name!r}" if a.
-                                     name else 'no name')
+                    raise ValueError(f"name already taken: {a.name!r}"
+                                     if a.name else 'no name')
                 bad = [
                     o.get('key', '?')
                     for o in a.options()

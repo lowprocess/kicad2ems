@@ -81,15 +81,12 @@ class ResultsTab(QWidget):
                 QUrl.fromLocalFile(self.out if self.analysis and self.out
                                    else self.win.out_dir())))
         top.addWidget(self.folder_btn)
+        # several sets: which
         self.set_box = QComboBox(
-            visible=False,
-            minimumWidth=220,
+            visible=False, minimumWidth=220,
             currentIndexChanged=self._pick_set,
-            toolTip=(
-                # several sets: which
-                "The result's curves to plot (a circuit: each point's voltages "
-                "and currents)"
-            ))
+            toolTip=("The result's curves to plot (a circuit: each point's "
+                     "voltages and currents)"))
         top.addWidget(self.set_box)
         lay.addLayout(top)
         from .steering import SteeringBar

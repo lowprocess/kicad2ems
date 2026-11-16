@@ -686,9 +686,9 @@ class AnalysisPanel(QWidget):
         from kicad2ems.core.study import provided
         # whose run this folder is
         mark_run(self.out, self.a.name, asked or provided(self.a), preview)
-        self.say('$ '
-                 + ' '.join(['python', *argv[1:]] if os.path.basename(argv[0]).
-                            startswith('python') else argv))
+        self.say('$ ' + ' '.join(
+            ['python', *argv[1:]]
+            if os.path.basename(argv[0]).startswith('python') else argv))
         self._running(True)
         self.status.setText(self._progress('running…'))
         run_tool(self, argv, self._stdout, self._finished, env=dict(self.a.env

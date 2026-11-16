@@ -61,12 +61,9 @@ from . import theme
 pg.setConfigOptions(antialias=True, background='w', foreground='k')
 DOCS = 'https://github.com/lowprocess/kicad2ems/blob/main/docs/index.md'
 MAX_RECENT = 8
-# an analysis with a page of its
-EDITORS = {a.page: a.key for a in ANALYSES if a.page and a.key in ('circuit',)}
-# own here (the
-# circuit's
-# schematic): {page:
+# an analysis with a page of its own here (the circuit's schematic): {page:
 # its key}
+EDITORS = {a.page: a.key for a in ANALYSES if a.page and a.key in ('circuit',)}
 # The pages (each a dock of the workspace, by its name here). A result is on
 # pages of its own kind, not one page with a switch: 'Results' is its plots (the
 # tab reads Plots), Report what an analysis found, to read, Tables the report's
@@ -337,12 +334,11 @@ class MainWindow(QMainWindow):
             key = EDITORS.get(name)
             if key:  # an analysis's page in front: its settings
                 d.visibilityChanged.connect(
-                    lambda on, k=key: on and self._study_ready and self.study.
-                    select(k))
+                    lambda on, k=key: (on and self._study_ready
+                                       and self.study.select(k)))
         # the line model's cross-section: a page under the board, so the plan it
         # is picked on stays in view; there while the folder shown has sections,
-        # solved while it is in view
-        # (its tab picked)
+        # solved while it is in view (its tab picked)
         self.docks['Section'].visibilityChanged.connect(
             self.viewer.set_section_shown)
         self.viewer.sections.connect(lambda _has: self._section_follows())
@@ -655,13 +651,9 @@ class MainWindow(QMainWindow):
         proc = page.proc
         if proc is None:  # the page said why on its status line
             return page.status.text() or 'see its page'
-        # its settings' panel: it says when it all
+        # its settings' panel: it says when it all ended (a table of runs: the
+        # last row's end)
         panel = getattr(page, 'panel', page)
-        # ended (a
-        # table of
-        # runs: the
-        # last row's
-        # end)
         def ended(code, k=key, panel=panel):
             panel.ended.disconnect(ended)
             self._job_done(k, code)
@@ -1215,8 +1207,8 @@ class MainWindow(QMainWindow):
             if name not in self.docks:
                 continue
             a = self.docks[name].toggleViewAction()
-            a.triggered.connect(lambda on, d=self.docks[name]: on and d.
-                                isFloating() and d.setFloating(False))
+            a.triggered.connect(lambda on, d=self.docks[name]: (
+                on and d.isFloating() and d.setFloating(False)))
             vm.addAction(a)
         vm.addSeparator()
         for name in VIEWS:
@@ -1830,9 +1822,8 @@ class MainWindow(QMainWindow):
             other, k = self._picking
             self._picking = None
             other.pick_btns[k].setChecked(False)
-        # (the table's selected cell: not a net's or a
+        # (the table's selected cell: not a net's or a part's)
         if not panel.pick_kind(key):
-            # part's)
             self._no_pick(
                 panel, key,
                 'select a cell that names a net or a part, then pick')
@@ -1888,8 +1879,8 @@ class MainWindow(QMainWindow):
             self.results.load_antenna(None)
             self.results.show_files([])
             self.viewer.load(
-                preview_dir(self.out_dir(), board) if board else os.path.
-                join(os.getcwd(), 'out', '-'))
+                preview_dir(self.out_dir(), board) if board
+                else os.path.join(os.getcwd(), 'out', '-'))
         self.want_layout()  # the board as drawn, where nothing of it is shown
         QTimer.singleShot(0, self._auto_preview)
 

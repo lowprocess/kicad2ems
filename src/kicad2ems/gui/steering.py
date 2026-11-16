@@ -139,8 +139,8 @@ class PhaseMap(QWidget):
             p.setPen(QPen(self.palette().mid().color(), 1))
             p.drawRoundedRect(rect, 3, 3)
             if w >= self.MIN_TEXT:
-                p.setPen(Qt.black if ph is not None else self.palette().text().
-                         color())
+                p.setPen(Qt.black if ph is not None
+                         else self.palette().text().color())
                 deg = None if ph is None else int(round(ph)) or 0  # no "-0"
                 lines = [
                     name,
