@@ -90,6 +90,4 @@ def windows_fast_cores():
         classes = efficiency_classes(buf.raw[:n.value])
     except (AttributeError, OSError, ImportError, ValueError):
         return None
-    if not classes:
-        return None
-    return sum(c == max(classes) for c in classes)
+    return sum(c == max(classes) for c in classes) if classes else None

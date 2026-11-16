@@ -101,15 +101,6 @@ def _instance():
         return lib, inst
 
 
-def _physical_devices(lib, inst):
-    n = ctypes.c_uint32(0)
-    lib.vkEnumeratePhysicalDevices(inst, ctypes.byref(n), None)
-    arr = (ctypes.c_void_p * n.value)()
-    if n.value:
-        lib.vkEnumeratePhysicalDevices(inst, ctypes.byref(n), arr)
-    return list(arr)[:n.value]
-
-
 def _extensions(lib, phys):
     n = ctypes.c_uint32(0)
     lib.vkEnumerateDeviceExtensionProperties(ctypes.c_void_p(phys), None, ctypes.byref(n), None)
@@ -187,8 +178,13 @@ def adapters(include_cpu=False):
     EMSDEV_VULKAN_CPU=1: CI runs the solvers' Vulkan paths on lavapipe that way, as no GPU is there)."""
     include_cpu = include_cpu or os.environ.get('EMSDEV_VULKAN_CPU', '').strip() == '1'
     lib, inst = _instance()
+    n = ctypes.c_uint32(0)
+    lib.vkEnumeratePhysicalDevices(inst, ctypes.byref(n), None)
+    phys_devices = (ctypes.c_void_p * n.value)()
+    if n.value:
+        lib.vkEnumeratePhysicalDevices(inst, ctypes.byref(n), phys_devices)
     out = []
-    for order, phys in enumerate(_physical_devices(lib, inst)):
+    for order, phys in enumerate(list(phys_devices)[:n.value]):
         props = ctypes.create_string_buffer(2048)
         lib.vkGetPhysicalDeviceProperties(ctypes.c_void_p(phys), props)
         api, _, vendor, dev, kind = (ctypes.c_uint32.from_buffer(props, 4 * k).value for k in range(5))
@@ -326,14 +322,6 @@ def _device_fn(lib, vkdev, name, *argtypes):
     return _fn_cache[key]
 
 
-def _memory_types(lib, phys):
-    props = ctypes.create_string_buffer(520 + 64)
-    lib.vkGetPhysicalDeviceMemoryProperties(ctypes.c_void_p(phys), props)
-    n = ctypes.c_uint32.from_buffer(props, 0).value
-    return [(ctypes.c_uint32.from_buffer(props, 4 + 8 * i).value, ctypes.c_uint32.from_buffer(props, 8 + 8 * i).value)
-            for i in range(n)]
-
-
 class HostBuffer:
     """`nbytes` of host memory on a slangpy device's VkDevice: .array (numpy uint8, mapped), .address (for kernels),
     .cached (host-cached memory: fast host reads). Freed with free() or when collected."""
@@ -358,23 +346,20 @@ class HostBuffer:
             raise MemoryError(f"vulkan: vkCreateBuffer ({r})")
         req = _MemReq()
         reqs(vp(dev), self._buf, ctypes.byref(req))
-        types = _memory_types(lib, phys)
-        want = [HOST_VISIBLE | HOST_COHERENT | HOST_CACHED, HOST_VISIBLE | HOST_COHERENT]
-        idx = None
-        for local in (False, True):                             # the host's own memory first; a device whose
-            for w in want:                                      # memory is all host-visible (lavapipe, an
-                for i, (flags, _) in enumerate(types):          # integrated GPU) has only device-local types
-                    if req.memoryTypeBits >> i & 1 and flags & w == w and bool(flags & DEVICE_LOCAL) == local:
-                        idx = i
-                        break
-                if idx is not None:
-                    break
-            if idx is not None:
-                break
+        props = ctypes.create_string_buffer(520 + 64)                   # the memory types' property flags
+        lib.vkGetPhysicalDeviceMemoryProperties(ctypes.c_void_p(phys), props)
+        types = [ctypes.c_uint32.from_buffer(props, 4 + 8 * i).value
+                 for i in range(ctypes.c_uint32.from_buffer(props, 0).value)]
+        # the host's own memory first; a device whose memory is all host-visible (lavapipe, an integrated GPU) has
+        # only device-local types
+        idx = next((i for local in (False, True) for w in (HOST_VISIBLE | HOST_COHERENT | HOST_CACHED,
+                                                            HOST_VISIBLE | HOST_COHERENT)
+                    for i, flags in enumerate(types)
+                    if req.memoryTypeBits >> i & 1 and flags & w == w and bool(flags & DEVICE_LOCAL) == local), None)
         if idx is None:
             self.free()
             raise MemoryError("vulkan: no host-visible memory for a host buffer")
-        self.cached = bool(types[idx][0] & HOST_CACHED)
+        self.cached = bool(types[idx] & HOST_CACHED)
         fl = _AllocFlags(1000060000, None, 0x2, 0)               # VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT
         ai = _AllocInfo(5, ctypes.cast(ctypes.pointer(fl), vp), req.size, idx)
         r = alloc(vp(dev), ctypes.byref(ai), None, ctypes.byref(self._mem))
@@ -405,7 +390,6 @@ class HostBuffer:
             self._slang = None
 
     def view(self, dtype, count=None):
-        import numpy as np
         a = self.array.view(dtype)
         return a if count is None else a[:count]
 

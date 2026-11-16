@@ -64,44 +64,39 @@ _FUNCS = dict(sin=np.sin, cos=np.cos, tan=np.tan, asin=np.arcsin, acos=np.arccos
               cot=lambda v: 1 / np.tan(v), pi=np.pi,
               j0=lambda v: _special('j0')(v), j1=lambda v: _special('j1')(v), jn=lambda n, v: _special('jv')(n, v),
               y0=lambda v: _special('y0')(v), y1=lambda v: _special('y1')(v), yn=lambda n, v: _special('yv')(n, v),
-              **{'if': None})
+              _if=lambda c, a, b: np.where(np.asarray(c) != 0, a, b))
+
+
+def _run(expr, names, shape, what):
+    """A CSXCAD expression on arrays (names: its variables), broadcast to shape; nan and inf become 0."""
+    with np.errstate(all='ignore'):
+        # CSXCAD's (fparser's) syntax as numpy's: ^ the power, = equality, & | and / or (on 0 / 1), if(c, a, b)
+        e = re.sub(r'(?<![<>!=])=(?!=)', '==', str(expr).strip().replace('^', '**'))
+        e = re.sub(r'\bif\s*\(', '_if(', e.replace('&', ' * ').replace('|', ' + '))
+        v = eval(compile(e, what, 'eval'), {'__builtins__': {}}, dict(_FUNCS, **names))  # noqa: S307 (the model's own)
+        v = np.broadcast_to(np.asarray(v, float), shape).copy()
+    v[~np.isfinite(v)] = 0.0
+    return v
 
 
 def evaluate(expr, coords):
     """A weight / mode function on arrays: coords = (x, y, z) relative to its origin (drawing units). Returns an array
     broadcast to the coordinates; nan and inf become 0, as openEMS's mode matching does."""
-    x, y, z = (np.asarray(c, float) for c in coords)
-    x, y, z = np.broadcast_arrays(x, y, z)
+    x, y, z = np.broadcast_arrays(*(np.asarray(c, float) for c in coords))
     if expr is None or str(expr).strip() in ('', '0'):
         return np.zeros(x.shape)
     rho = np.sqrt(x * x + y * y)
     with np.errstate(all='ignore'):
-        ns = dict(_FUNCS, x=x, y=y, z=z, rho=rho, a=np.arctan2(y, x), r=np.sqrt(x * x + y * y + z * z),
-                  t=np.arcsin(1) - np.arctan(z / rho),
-                  _if=lambda c, a, b: np.where(np.asarray(c) != 0, a, b))
-        ns.pop('if')
-        # CSXCAD's (fparser's) syntax as numpy's: ^ the power, = equality, & | and / or (on 0 / 1), if(c, a, b)
-        e = re.sub(r'(?<![<>!=])=(?!=)', '==', str(expr).strip().replace('^', '**'))
-        e = re.sub(r'\bif\s*\(', '_if(', e.replace('&', ' * ').replace('|', ' + '))
-        v = eval(compile(e, '<weight function>', 'eval'), {'__builtins__': {}}, ns)
-        v = np.broadcast_to(np.asarray(v, float), x.shape).copy()
-    v[~np.isfinite(v)] = 0.0
-    return v
+        names = dict(x=x, y=y, z=z, rho=rho, a=np.arctan2(y, x), r=np.sqrt(x * x + y * y + z * z),
+                     t=np.arcsin(1) - np.arctan(z / rho))
+    return _run(expr, names, x.shape, '<weight function>')
 
 
 def evaluate_signal(expr, t):
     """openEMS's custom excitation (SetCustomExcite): its expression of t (seconds), in CSXCAD's syntax, at the
     times t."""
     t = np.asarray(t, float)
-    with np.errstate(all='ignore'):
-        ns = dict(_FUNCS, t=t, _if=lambda c, a, b: np.where(np.asarray(c) != 0, a, b))
-        ns.pop('if')
-        e = re.sub(r'(?<![<>!=])=(?!=)', '==', str(expr).strip().replace('^', '**'))
-        e = re.sub(r'\bif\s*\(', '_if(', e.replace('&', ' * ').replace('|', ' + '))
-        v = eval(compile(e, '<excitation>', 'eval'), {'__builtins__': {}}, ns)     # noqa: S307 (the model's own)
-        v = np.broadcast_to(np.asarray(v, float), t.shape).copy()
-    v[~np.isfinite(v)] = 0.0
-    return v
+    return _run(expr, dict(t=t), t.shape, '<excitation>')
 
 
 def read_mode_file(path):
@@ -651,10 +646,7 @@ def _write_property(parent, p, pid):
             a['Face'] = '1'
     elif isinstance(p, LumpedElement):
         a.update(Direction=str(p.ny), Caps='1' if p.caps else '0')
-        for k in ('R', 'C', 'L'):
-            if getattr(p, k) is not None:
-                a[k] = _fmt(getattr(p, k))
-        a['LEtype'] = _fmt(p.LEtype)
+        a.update({k: _fmt(getattr(p, k)) for k in ('R', 'C', 'L') if getattr(p, k) is not None}, LEtype=_fmt(p.LEtype))
     elif isinstance(p, Excitation):
         a.update(Number=str(p.number), Enabled='1' if p.enabled else '0', Frequency=_fmt(0), Delay=_fmt(p.delay),
                  Type=str(p.exc_type), Excite=",".join(_fmt(v) for v in p.exc_val),
@@ -724,16 +716,11 @@ def _point(el):
     return [float(el.get(k, 0)) for k in ('X', 'Y', 'Z')]
 
 
-def _first(el, key, default=0.0):
-    v = el.get(key)
-    return _floats(v)[0] if v is not None else default
-
-
 def _read_property(pe, skipped):
     tag, name = pe.tag, pe.get('Name', '')
     if tag in ('Material', 'DebyeMaterial', 'LorentzMaterial'):
         pr = pe.find('Property')
-        g = (lambda k, d: _first(pr, k, d)) if pr is not None else (lambda k, d: d)
+        g = lambda k, d: _floats(pr.get(k))[0] if pr is not None and pr.get(k) is not None else d
         p = (DebyeMaterial if tag != 'Material' else Material)(name, epsilon=g('Epsilon', 1.0), mue=g('Mue', 1.0),
                                                                kappa=g('Kappa', 0.0), sigma=g('Sigma', 0.0))
         if tag == 'DebyeMaterial' and pr is not None:
@@ -768,7 +755,7 @@ def _read_property(pe, skipped):
         if w is not None and not p.weight_file:
             p.weight = [w.get(k, '1') for k in 'XYZ']
         if wo is not None:
-            p.weight_origin = [float(wo.get(k, 0)) for k in 'XYZ']
+            p.weight_origin = _point(wo)
     elif tag == 'ProbeBox':
         p = ProbeBox(name, int(pe.get('Type', 0)), float(pe.get('Weight', 1)), int(pe.get('NormDir', -1)))
         p.mode_file = pe.get('ModeFile', '')
@@ -776,7 +763,7 @@ def _read_property(pe, skipped):
         if mf is not None:
             p.mode_function = [mf.get(k, '') for k in 'XYZ']
         if mo is not None:
-            p.mode_origin = [float(mo.get(k, 0)) for k in 'XYZ']
+            p.mode_origin = _point(mo)
         if fd is not None and (fd.text or '').strip():
             p.frequency = _floats(fd.text)
     elif tag == 'DumpBox':

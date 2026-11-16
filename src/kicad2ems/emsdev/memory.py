@@ -51,12 +51,11 @@ def cgroup_free(root='/sys/fs/cgroup', proc='/proc/self/cgroup'):
     lines = (_read(proc) or '').splitlines()
     v2 = next((l.split(':', 2)[2] for l in lines if l.startswith('0::')), None)
     v1 = next((l.split(':', 2)[2] for l in lines if ':memory:' in l or l.split(':')[1:2] == ['memory']), None)
-    cands = []
-    if v2 is not None:
-        cands.append((root, v2, 'memory.max', 'memory.current', 'inactive_file'))
-    if v1 is not None:
-        cands.append((root + '/memory', v1, 'memory.limit_in_bytes', 'memory.usage_in_bytes', 'total_inactive_file'))
-    for base, path, lim, use, cache in cands:
+    for base, path, lim, use, cache in ((root, v2, 'memory.max', 'memory.current', 'inactive_file'),
+                                        (root + '/memory', v1, 'memory.limit_in_bytes', 'memory.usage_in_bytes',
+                                         'total_inactive_file')):
+        if path is None:
+            continue
         free, found = None, False
         parts = [x for x in path.split('/') if x]
         for k in range(len(parts), -1, -1):                     # own cgroup, then each parent up to the root
