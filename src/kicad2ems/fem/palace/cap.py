@@ -255,9 +255,10 @@ def report(r):
     return '\n'.join(lines)
 
 
-def parser():
+def parser(prog='kicad2ems-fem-cap', doc=__doc__, palace=True):
+    """The tool's options; Elmer's tool's (elmer/cap.py: palace=False) are the same but for --np."""
     import argparse
-    ap = argparse.ArgumentParser(prog='kicad2ems-fem-cap', description=__doc__.split('\n\n')[0])
+    ap = argparse.ArgumentParser(prog=prog, description=doc.split('\n\n')[0])
     ap.add_argument('board', help='a .kicad_pcb, or a kicad2ems <name>_board.json')
     ap.add_argument('--net', action='append', required=True, help='a conductor: a net, or nets joined as A+B; repeat')
     ap.add_argument('--out', required=True, help='the folder of the results')
@@ -267,8 +268,10 @@ def parser():
     ap.add_argument('--margin', type=float, help='air around the board, mm')
     ap.add_argument('--region', help='x0,y0,x1,y1 (mm, model coordinates): only the board inside it')
     ap.add_argument('--far', choices=('open', 'ground'), default='open', help="the air box's faces (default open)")
-    ap.add_argument('--order', type=int, default=2, help="Palace's element order (default 2)")
-    ap.add_argument('--np', type=int, default=0, help="Palace's MPI processes (default 0: one per fast core)")
+    ap.add_argument('--order', type=int, default=2,
+                    help=("Palace's" if palace else "the") + " element order (default 2)")
+    if palace:
+        ap.add_argument('--np', type=int, default=0, help="Palace's MPI processes (default 0: one per fast core)")
     return ap
 
 

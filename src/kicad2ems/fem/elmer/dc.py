@@ -25,6 +25,26 @@ from . import run as elmer
 from .model import SIGMA_CU, copper_model
 
 PLATING = 0.025
+DIRECT = "  ! direct: the thin copper slabs' flat elements made the iterative solvers diverge\n"
+
+
+def _solvers(masks, bcs, note=''):
+    """The .sif's solvers, the current's (direct; note: comment lines in it) and the loads' mean potentials saved,
+    and the boundary conditions."""
+    return f"""Solver 1
+  Equation = "StatCurrent"
+  Variable = "Potential"
+  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+{note}  Linear System Solver = "Direct"
+  Linear System Direct Method = "Umfpack"
+End
+Solver 2
+  Exec Solver = After All
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "scalars.dat"
+{''.join(masks)}End
+{''.join(bcs)}"""
 
 
 def sif(m, loads):
@@ -49,21 +69,7 @@ End
 Material 2
   Electric Conductivity = {m['barrel_sigma']:.6g}
 End
-Solver 1
-  Equation = "StatCurrent"
-  Variable = "Potential"
-  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
-  ! direct: the thin copper slabs' flat elements made the iterative solvers diverge
-  Linear System Solver = "Direct"
-  Linear System Direct Method = "Umfpack"
-End
-Solver 2
-  Exec Solver = After All
-  Equation = "SaveScalars"
-  Procedure = "SaveData" "SaveScalars"
-  Filename = "scalars.dat"
-{''.join(masks)}End
-{''.join(bcs)}"""
+{_solvers(masks, bcs, DIRECT)}"""
 
 
 def layered_sif(m, loads, plating=PLATING):
@@ -105,20 +111,7 @@ End
 Material 3
   Electric Conductivity = 0.0
 End
-Solver 1
-  Equation = "StatCurrent"
-  Variable = "Potential"
-  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
-  Linear System Solver = "Direct"
-  Linear System Direct Method = "Umfpack"
-End
-Solver 2
-  Exec Solver = After All
-  Equation = "SaveScalars"
-  Procedure = "SaveData" "SaveScalars"
-  Filename = "scalars.dat"
-{''.join(masks)}End
-{''.join(bcs)}"""
+{_solvers(masks, bcs)}"""
 
 
 def solve(board, nets, source, loads, out='dc', h=0.25, h_fine=0.05, plating=PLATING, mesh='wedge', log=print):

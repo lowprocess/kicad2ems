@@ -17,7 +17,7 @@ import numpy as np
 from shapely.geometry import box
 
 from ..geometry import load_board
-from ..palace.cap import _groups, cap_model, report
+from ..palace.cap import _groups, cap_model, parser as palace_parser, report
 from . import run as elmer
 
 EPS0 = 8.8541878128e-12
@@ -99,19 +99,7 @@ def solve(board, nets, out, thick=False, h=None, hmax=None, margin=None, crop=No
 
 
 def parser():
-    import argparse
-    ap = argparse.ArgumentParser(prog='python -m kicad2ems.fem.elmer.cap', description=__doc__.split('\n\n')[0])
-    ap.add_argument('board', help='a .kicad_pcb, or a kicad2ems <name>_board.json')
-    ap.add_argument('--net', action='append', required=True, help='a conductor: a net, or nets joined as A+B; repeat')
-    ap.add_argument('--out', required=True, help='the folder of the results')
-    ap.add_argument('--thick', action='store_true', help='copper as solids of its thickness, not sheets')
-    ap.add_argument('--h', type=float, help='mesh size at the copper edges, mm')
-    ap.add_argument('--hmax', type=float, help='mesh size away from the copper, mm')
-    ap.add_argument('--margin', type=float, help='air around the board, mm')
-    ap.add_argument('--region', help='x0,y0,x1,y1 (mm, model coordinates): only the board inside it')
-    ap.add_argument('--far', choices=('open', 'ground'), default='open', help="the air box's faces (default open)")
-    ap.add_argument('--order', type=int, default=2, help="the element order (default 2)")
-    return ap
+    return palace_parser('python -m kicad2ems.fem.elmer.cap', __doc__, palace=False)
 
 
 def main(argv=None):
