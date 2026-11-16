@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-gfdtd = pytest.importorskip('gfdtd')                                # the [gfdtd] extra
+gfdtd = pytest.importorskip('kicad2ems.gfdtd')                                # the [gfdtd] extra
 from kicad2ems.gfdtd.operator import build                                    # noqa: E402
 
 

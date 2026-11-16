@@ -98,7 +98,7 @@ def test_a_straight_line_on_gfdtd(boards, tmp_path):
     """The 30 mm, 50 ohm line through gfdtd: its line ports read its own line (Zc near 50 ohm) and match it
     (|S11| below -27 dB from 2 to 9 GHz), where the lumped ports carry their feed and the trace behind them
     (-21 dB at 8 GHz); the same runs give both."""
-    pytest.importorskip('gfdtd')
+    pytest.importorskip('kicad2ems.gfdtd')
     from kicad2ems.fdtd.boundaries import resolve_bc
     from kicad2ems.fdtd.run import run_excitations
     m = boards['long']

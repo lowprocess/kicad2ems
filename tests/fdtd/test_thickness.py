@@ -55,7 +55,7 @@ def test_mesh_has_both_faces_and_one_cell_through_the_copper(board):
 def test_thick_model_on_gfdtd(board, sigma):
     """Ports from the reference copper's face to the trace's; solid copper (PEC), with --sigma its faces as
     conducting sheets of sigma / 4 and 2 t (one side of a conductor t / 2 thick each)."""
-    pytest.importorskip('gfdtd')
+    pytest.importorskip('kicad2ems.gfdtd')
     from kicad2ems.gfdtd.operator import build
     from kicad2ems.fdtd import thick
     from kicad2ems.fdtd.boundaries import resolve_bc
