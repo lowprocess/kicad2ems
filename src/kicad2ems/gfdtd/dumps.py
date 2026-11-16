@@ -96,13 +96,10 @@ class Region:
             else:
                 self.count.append(np.float32(0.5 ** len(across)))
 
-    def _kernel(self, out, nf, t):
-        self.be.dump_kernel(self, out, nf, t)
-
     def accumulate(self, acc, t, V, I):
         """acc (nf, nx, ny, nz, 3) complex += the field x exp(-j w t), on the GPU in one kernel."""
         if self.gpu:
-            self._kernel(acc, len(self.d['fd']), t)
+            self.be.dump_kernel(self, acc, len(self.d['fd']), t)
         else:
             ph = np.exp(-2j * np.pi * np.asarray(self.d['fd']) * t).astype(np.complex64)
             acc += self.field(V, I)[None] * self.xp.asarray(ph).reshape((-1, 1, 1, 1, 1))
@@ -111,7 +108,7 @@ class Region:
         """(nx, ny, nz, 3) float32 on the device."""
         if self.gpu:
             out = self.be.zeros(self.shape + (3,), np.float32)
-            self._kernel(out, 0, 0.0)
+            self.be.dump_kernel(self, out, 0, 0.0)
             return out
         xp, f = self.xp, self.d['field']
         out = xp.empty(self.shape + (3,), np.float32)
@@ -164,19 +161,25 @@ def write_vtr(path, coords, data, name):
     replace(tmp, path)                                              # a live viewer never sees half a frame
 
 
+def _h5(tmp, d):
+    """An openEMS HDF5 dump opened in tmp: its attributes and /Mesh written."""
+    import h5py
+    h = h5py.File(tmp, 'w')
+    h.attrs['openEMS_HDF5_version'] = np.float64(0.3)
+    h.attrs['dump_type'] = np.int32(d['type'] % 10)
+    g = h.create_group('Mesh')
+    g.attrs['mesh_scaling'] = np.float64(d['unit'])
+    g.attrs['mesh_type'] = np.int32(0)
+    h.attrs['dual_mesh'] = np.uint8(d.get('mode') != 'node')
+    for ax, c in zip('xyz', d['coords']):
+        g.create_dataset(ax, data=np.asarray(c, np.float64))
+    return h
+
+
 def write_h5(path, d, freqs, data):
     """openEMS's frequency-domain HDF5 dump: data (nf, nx, ny, nz, 3) complex."""
-    import h5py
     tmp = path + '.part'
-    with h5py.File(tmp, 'w') as h:
-        h.attrs['openEMS_HDF5_version'] = np.float64(0.3)
-        h.attrs['dump_type'] = np.int32(d['type'] % 10)
-        g = h.create_group('Mesh')
-        g.attrs['mesh_scaling'] = np.float64(d['unit'])
-        g.attrs['mesh_type'] = np.int32(0)
-        h.attrs['dual_mesh'] = np.uint8(d.get('mode') != 'node')
-        for ax, c in zip('xyz', d['coords']):
-            g.create_dataset(ax, data=np.asarray(c, np.float64))
+    with _h5(tmp, d) as h:
         fd = h.create_group('FieldData').create_group('FD')
         fd.attrs['frequency'] = np.asarray(freqs, np.float64)
         for i, (f, v) in enumerate(zip(freqs, data)):
@@ -189,18 +192,8 @@ def write_h5(path, d, freqs, data):
 def open_h5_td(path, d):
     """openEMS's time-domain HDF5 dump (file_type 1), opened: /Mesh, and /FieldData/TD to take a dataset per sample
     (add_h5_td). Returns (file, its group, the temporary name, the final name)."""
-    import h5py
-    tmp = path + '.part'
-    h = h5py.File(tmp, 'w')
-    h.attrs['openEMS_HDF5_version'] = np.float64(0.3)
-    h.attrs['dump_type'] = np.int32(d['type'] % 10)
-    g = h.create_group('Mesh')
-    g.attrs['mesh_scaling'] = np.float64(d['unit'])
-    g.attrs['mesh_type'] = np.int32(0)
-    h.attrs['dual_mesh'] = np.uint8(d.get('mode') != 'node')
-    for ax, c in zip('xyz', d['coords']):
-        g.create_dataset(ax, data=np.asarray(c, np.float64))
-    return h, h.create_group('FieldData').create_group('TD'), tmp, path
+    h = _h5(path + '.part', d)
+    return h, h.create_group('FieldData').create_group('TD'), path + '.part', path
 
 
 def add_h5_td(group, step, t, data):
@@ -240,9 +233,10 @@ class Dumps:
 
     def sample(self, step):
         """The fields after timestep `step` (E at step dt, H half a step before)."""
-        xp, be = self.xp, self.be
+        be = self.be
         for k, (r, acc) in enumerate(zip(self.regions, self.acc)):
             d = r.d
+            t = max((step - (0.5 if d['field'] == 'H' else 0.0)) * self.op.dt, 0.0)
             if d['fd'] is None:
                 if (step // self.op.sub) % d['sub'] == 0:
                     F = be.to_host(r.field(*((be.V, be.I) if r.gpu else be.fields())))
@@ -251,14 +245,12 @@ class Dumps:
                             continue
                         if k not in self.td:
                             self.td[k] = open_h5_td(os.path.join(self.path, d['name'] + '.h5'), d)
-                        t = (step - (0.5 if d['field'] == 'H' else 0.0)) * self.op.dt
-                        add_h5_td(self.td[k][1], step, max(t, 0.0), F)
+                        add_h5_td(self.td[k][1], step, t, F)
                     else:
                         write_vtr(os.path.join(self.path, f"{d['name']}_{step:010d}.vtr"), d['coords'], F,
                                   VTK_NAME[d['field']])
             elif acc is not None:
-                t = (step - (0.5 if d['field'] == 'H' else 0.0)) * self.op.dt
-                r.accumulate(acc, max(t, 0.0), *((be.V, be.I) if r.gpu else be.fields()))
+                r.accumulate(acc, t, *((be.V, be.I) if r.gpu else be.fields()))
 
     def close(self):
         """Write the frequency-domain dumps and close the time-domain HDF5 ones; returns the files written."""

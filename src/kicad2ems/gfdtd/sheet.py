@@ -9,6 +9,9 @@ first row whose OMEGA_STOP exceeds it, and per square:
 
 The table is openEMS's FDTD/extensions/cond_sheet_parameter.h (made by its OptimizeCondSheetParameter.m).
 """
+import numpy as np
+
+from .constants import MU0
 
 OMEGA_STOP = (
     20.0, 30.0, 45.0, 67.5, 101.25, 151.875, 227.8125, 341.71875, 512.578125, 768.8671875, 1153.300781, 1729.951172,
@@ -53,14 +56,12 @@ def per_square(sigma, thickness, f_max):
     """(G, R1, L1, R2, L2, in_range) of a sheet per square (S, ohm, H): openEMS's fit for f_max. in_range False:
     f_max lies above the table (thick or very conductive sheets at high frequency); the last row is used, as
     openEMS does."""
-    from .constants import MU0
     g0 = sigma * thickness
     w0 = 8.0 / (g0 * thickness * MU0)
     om = 2 * 3.141592653589793 * f_max / w0
     row = next((n for n, v in enumerate(OMEGA_STOP) if v > om), None)
-    ok = row is not None
-    row = len(OMEGA_STOP) - 1 if row is None else row
-    return (g0 * G[row], R1[row] / g0, L1[row] / (g0 * w0), R2[row] / g0, L2[row] / (g0 * w0), ok)
+    k = len(OMEGA_STOP) - 1 if row is None else row
+    return g0 * G[k], R1[k] / g0, L1[k] / (g0 * w0), R2[k] / g0, L2[k] / (g0 * w0), row is not None
 
 
 # ---- surface roughness: a wideband fit of the rough sheet (gfdtd's, beyond openEMS) ------------------------------
@@ -71,8 +72,6 @@ FIT_IM_WEIGHT = 0.05    # the reactance's weight in the fit against the resistan
 
 def hammerstad(f, rms, sigma):
     """Hammerstad and Jensen's roughness factor 1 + 2 / pi atan(1.4 (rms / delta)^2) of the conductor loss."""
-    import numpy as np
-    from .constants import MU0
     delta = 1 / np.sqrt(np.pi * np.asarray(f, float) * MU0 * sigma)
     return 1 + 2 / np.pi * np.arctan(1.4 * (rms / delta) ** 2)
 
@@ -80,8 +79,6 @@ def hammerstad(f, rms, sigma):
 def z_square(f, sigma, thickness):
     """The sheet's impedance per square in openEMS's model: a conductor of that thickness with current on both
     faces, k / (2 sigma tanh(k t / 2)), k = (1 + j) / delta."""
-    import numpy as np
-    from .constants import MU0
     k = (1 + 1j) * np.sqrt(np.pi * np.asarray(f, float) * MU0 * sigma)
     return k / (2 * sigma * np.tanh(k * thickness / 2))
 
@@ -89,8 +86,6 @@ def z_square(f, sigma, thickness):
 def load_finish(z, f, finish):
     """A face's impedance z (per square, at f) under finish layers [(sigma, t m), ...] (outermost first): each a
     line section of Z_i = k_i / sigma_i loading the one beneath."""
-    import numpy as np
-    from .constants import MU0
     w = 2 * np.pi * np.asarray(f, float)
     for s, t in reversed(list(finish)):
         k = (1 + 1j) * np.sqrt(w * MU0 * s / 2)
@@ -126,7 +121,6 @@ def fit_target(zfun, sigma, thickness, f_max):
     loss only, and the fit gives it the reactance a causal surface has), then turned into admittance branches,
     G + sum 1 / (R + s L), tau = L / R, as the sheet's edges take them (the inverse of its state space: R-L
     networks have both forms). DC is the sheet's sigma t."""
-    import numpy as np
     from scipy.optimize import nnls
     f = np.logspace(np.log10(f_max) - FIT_DECADES, np.log10(2 * f_max), 300)
     w = 2 * np.pi * f

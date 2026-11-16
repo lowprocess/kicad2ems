@@ -996,7 +996,9 @@ def _post_disjoint(op):
     """Whether the post kernel may run the excitation, lumped and Mur entries at once: their edges disjoint (and
     Mur's inner edges apart from the others)."""
     sets = [np.asarray(op.exc[0]), np.array([e for e, _ in op.par_L], np.int64),
-            np.array([e[0] for e in op.series], np.int64)] + ([np.concatenate(op.mur[:2])] if op.mur is not None else [])
+            np.array([e[0] for e in op.series], np.int64)]
+    if op.mur is not None:
+        sets.append(np.concatenate(op.mur[:2]))
     flat = np.concatenate([np.unique(x) for x in sets])
     # (an edge twice in the lumped branches' own lists counts too)
     return len(np.unique(flat)) == len(flat) and all(len(np.unique(x)) == len(x) for x in sets[1:3])
