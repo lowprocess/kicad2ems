@@ -15,8 +15,9 @@ struct Geometry {
     const double* P2; const double* W2; int n2;
 };
 
-__device__ __forceinline__ void pair_moments(const Geometry& g, int p, int q, double d, int k,
-                                             int scalar, double* m) {
+__device__ __forceinline__ void pair_moments(const Geometry& g, int p, int q,
+                                             double d, int k, int scalar,
+                                             double* m) {
     double ad = fabs(d);
     for (int j=0; j<6; ++j) m[j] = 0.;
     if (k < 0) {
@@ -29,7 +30,11 @@ __device__ __forceinline__ void pair_moments(const Geometry& g, int p, int q, do
                 double gg=w/sqrt(dx*dx+dy*dy+d*d);
                 m[0]+=gg;
                 if (!scalar) {
-                    m[1]+=gg*x; m[2]+=gg*y; m[3]+=gg*sx; m[4]+=gg*sy; m[5]+=gg*(x*sx+y*sy);
+                    m[1] += gg * x;
+                    m[2] += gg * y;
+                    m[3] += gg * sx;
+                    m[4] += gg * sy;
+                    m[5] += gg * (x * sx + y * sy);
                 }
             }
         }
@@ -48,7 +53,9 @@ __device__ __forceinline__ void pair_moments(const Geometry& g, int p, int q, do
             double t0=vx*g.un[ve]+vy*g.un[ve+1];
             double r02=t0*t0+d*d, r0=sqrt(r02);
             double rm=sqrt(r02+sm*sm), rp=sqrt(r02+sp*sp);
-            double lg=r0>1e-14*g.L[3*(size_t)q+e] ? asinh(sp/r0)-asinh(sm/r0) : 0.;
+            double lg = r0 > 1e-14 * g.L[3 * (size_t)q + e]
+                            ? asinh(sp / r0) - asinh(sm / r0)
+                            : 0.;
             double term=t0*lg;
             if (ad>0.) term-=ad*(atan2(t0*sp,r02+ad*rp)-atan2(t0*sm,r02+ad*rm));
             inner+=term;
@@ -77,9 +84,10 @@ __device__ __forceinline__ void pair_moments(const Geometry& g, int p, int q, do
 
 // Explicit pair lists (backend protocol). `order` (nullable) lets the host
 // launch kind-sorted pairs so wavefronts do not mix far and near work.
-extern "C" __global__ void static_pairs(GEOMETRY_ARGS,
-    const int* pp, const int* qq, const double* dd, const int* kk, const int* order,
-    int n, int scalar, double* out) {
+extern "C" __global__ void static_pairs(GEOMETRY_ARGS, const int* pp,
+                                        const int* qq, const double* dd,
+                                        const int* kk, const int* order, int n,
+                                        int scalar, double* out) {
     int t = blockDim.x * blockIdx.x + threadIdx.x;
     if (t >= n) return;
     int i = order ? order[t] : t;
@@ -92,10 +100,14 @@ extern "C" __global__ void static_pairs(GEOMETRY_ARGS,
 
 // Host FillEngine.kinds() classification, without FMA contraction, so the
 // device chooses the same quadrature as every host backend.
-__device__ __forceinline__ int classify(const double* cent, const double* radius, int a, int b,
-                                        double d, double near, int all_near, int outer) {
-    double dx=__dsub_rn(cent[2*a], cent[2*b]), dy=__dsub_rn(cent[2*a+1], cent[2*b+1]);
-    double distance=sqrt(__dadd_rn(__dadd_rn(__dmul_rn(dx, dx), __dmul_rn(dy, dy)), __dmul_rn(d, d)));
+__device__ __forceinline__ int classify(const double* cent,
+                                        const double* radius, int a, int b,
+                                        double d, double near, int all_near,
+                                        int outer) {
+    double dx = __dsub_rn(cent[2 * a], cent[2 * b]),
+           dy = __dsub_rn(cent[2 * a + 1], cent[2 * b + 1]);
+    double distance = sqrt(__dadd_rn(
+        __dadd_rn(__dmul_rn(dx, dx), __dmul_rn(dy, dy)), __dmul_rn(d, d)));
     double size=__dadd_rn(radius[a], radius[b]);
     if (!all_near && !(distance <= __dmul_rn(near, size))) return -1;
     return distance <= size ? outer : 0;
@@ -103,8 +115,9 @@ __device__ __forceinline__ int classify(const double* cent, const double* radius
 
 // Entry (r, c) of the dense symmetric matrices, from the canonical pair
 // (min, max): reciprocal entries are bitwise identical by construction.
-__device__ __forceinline__ void store_entry(double* out, size_t plane, size_t i, int r, int c,
-                                            const double* m, int scalar) {
+__device__ __forceinline__ void store_entry(double* out, size_t plane, size_t i,
+                                            int r, int c, const double* m,
+                                            int scalar) {
     out[i] = m[0];
     if (scalar) return;
     double mx, my;
@@ -146,7 +159,8 @@ extern "C" __global__ void static_rows_near(GEOMETRY_ARGS,
     double* out, size_t plane, const int* list, const unsigned int* count) {
     unsigned int length = *count;
     Geometry g = GEOMETRY;
-    for (unsigned int j = blockDim.x * blockIdx.x + threadIdx.x; j < length; j += blockDim.x * gridDim.x) {
+    for (unsigned int j = blockDim.x * blockIdx.x + threadIdx.x; j < length;
+         j += blockDim.x * gridDim.x) {
         size_t i = (size_t)list[j];
         int r = r0 + (int)(i / n), c = (int)(i % n);
         int a = min(r, c), b = max(r, c);
