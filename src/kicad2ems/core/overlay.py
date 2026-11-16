@@ -5,13 +5,13 @@ every section's points (model mm, y up), its layer's height and its Z0, eeff,
 length and delay; each path as the ids of its sections.
 
     d = load_lines(out_dir)                # the newest <name>_lines.json of a
-                                           folder, or None
+                                           # folder, or None
     rgb = z0_colour(z0, ref, span)         # blue below the port impedance, red
-                                           above
+                                           # above
     i = nearest(d['elements'], x, y, tol)  # the section under the mouse (model
-                                           mm), or None
+                                           # mm), or None
     describe(e)                            # one line: label, Z0, eeff, length,
-                                           delay
+                                           # delay
 """
 import glob, json, os
 import numpy as np

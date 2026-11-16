@@ -15,7 +15,7 @@ are counted to the middle of corners and tees (the convention of centreline
 lengths); where both end there it is a corner.
 
     tracks = shape_strips(poly, 'F.Cu', 'RF')  # model coordinates; dicts like
-                                               board.tracks
+                                               # board.tracks
 """
 import itertools
 import numpy as np

@@ -14,16 +14,16 @@ and the far field is sum_k V_k E_k. Accepted power (|a|^2 - |b|^2) / 2, incident
 with its neighbours driven too).
 
     a = parse_drive(['P1@0', 'P2=0.5@90'], names)  # incident wave per port
-                                                   (undriven: 0)
+                                                   # (undriven: 0)
     a2 = steer(a, 30)  # a phase step of 30 deg from each driven port to the
-                       next
+                       # next
     g = parse_grid('4x4', names)  # a 2D array: {port: (column, row)}, P1..P4
-                                  the top row
+                                  # the top row
     a3 = steer2d(a, names, g, 30, -45)  # +30 deg per column, -45 deg per row
     a5 = aim(a, names, pos, 20, 0, 2.4e9)  # the beam to theta 20, phi 0 at 2.4
-                                           GHz, from the ports' places
+                                           # GHz, from the ports' places
     a4 = taper(a, names, g, 'taylor:30')  # amplitudes: a Taylor taper per
-                                          column x per row
+                                          # column x per row
     data = load(path)  # mom25d's <name>_mom25d_array.npz
     out = combine(data, a)  # dict(sphere, rows, active, peak)
 

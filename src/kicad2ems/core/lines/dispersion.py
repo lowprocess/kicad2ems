@@ -24,9 +24,9 @@ wideband model: held at f_k, G (proportional to f_k) would spread over the band
 as no few solves interpolate.
 
     plan = nodes(lm, freq, fref)        # None: nothing to do (no loss, so no
-                                        dispersion), else the f_k
+                                        # dispersion), else the f_k
     copy = frozen(lm, fk, fref)         # the line model with its materials at
-                                        fk
+                                        # fk
     S = interpolate(freq, plan, [S_k])  # S at each f from the K solves
 """
 import copy

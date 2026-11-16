@@ -21,7 +21,7 @@ comma-separated strings:
     fmax = 6.0
     no_mask = true
     solvers = ["openems", "mom25d"] # default: auto (kicad2openems: openems; see
-                                    Settings.solver_plan)
+                                    # Settings.solver_plan)
     [solver.openems]
     excite = ["P1"]
     air = 5.0

@@ -3,11 +3,12 @@ Field-dump viewing: the dumps of a run folder as 2D frames, for the GUI's field
 view and for animations.
 
     srcs = find_dumps(out_dir)           # every dump under
-                                         <out>/<solver>/exc_*/ (openems, mom25d)
+                                         # <out>/<solver>/exc_*/
+                                         # (openems, mom25d)
     src = srcs[0]; src.refresh()         # time domain: the .vtr frames written
-                                         so far (a run may be going)
-    mesh, data = src.load(i)             # (x/y/z mm, model axes), (nx, ny, nz,
-                                         3); complex for FD
+                                         # so far (a run may be going)
+    mesh, data = src.load(i)             # (x/y/z mm, model axes),
+                                         # (nx, ny, nz, 3); complex for FD
     sl = plane(mesh, data, axis, index, component='mag', phase=None)
     save_animation(src, 'out.gif', ...)  # .gif (Pillow) or .mp4 (ffmpeg)
 

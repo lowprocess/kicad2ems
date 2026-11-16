@@ -9,7 +9,7 @@ the layer's values there instead of at one `--diel-fref` for every layer. A
 generic material (FR4, polyimide) has none: `--diel-fref` stands for it.
 
     lookup('Rogers RO4350B')  # dict(name='RO4350B', er=3.66, tand=0.0037,
-                              fref=10e9, source=...)
+                              # fref=10e9, source=...)
 """
 import re
 import numpy as np

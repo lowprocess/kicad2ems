@@ -4,9 +4,9 @@ Parity: what a solver holds, read back from its native model, against the board
 so: any difference it did not declare is a finding.
 
     devs = solver.deviations(job, prep)  # [solvers.Deviation], by the solver's
-                                         own rules
+                                         # own rules
     rb = solver.readback(job, prep)      # what its native model holds (None: no
-                                         readback)
+                                         # readback)
     problems = check(job.m, rb, devs)    # [] when every difference was declared
 
 Compared: every via (position, radius, the heights it spans), edge walls, copper

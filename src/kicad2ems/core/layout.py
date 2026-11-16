@@ -5,11 +5,11 @@ for (a board for a rail's drop or a crosstalk question has none).
 
     from kicad2ems.core.layout import board_layout, net_at, part_at
     lay = board_layout('board.kicad_pcb')  # Board.to_dict() of all the copper,
-                                           plus 'footprints'
+                                           # plus 'footprints'
     net_at(lay, 'F.Cu', x, y)              # the net whose copper is under a
-                                           point (model mm), or None
+                                           # point (model mm), or None
     part_at(lay, 'F.Cu', x, y)             # the footprint whose pads' box is
-                                           under it, or None
+                                           # under it, or None
 
 It is the model board's own dict (model mm: y up, y = -y of KiCad), so what
 draws a run's board draws this; with

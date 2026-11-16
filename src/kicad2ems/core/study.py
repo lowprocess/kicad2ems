@@ -34,9 +34,9 @@ plan() gives the runs it takes in order, and run() makes them, which is the
 command `kicad2ems study board.toml`:
 
     study = read_config('board.toml')  # Study(asked={'dc': ['pdn',
-                                       'elmer_dc']}, fields={}, said='study')
+                                       # 'elmer_dc']}, fields={}, said='study')
     [st.name for st in plan(study)]    # ['pdn', 'elmer_dc']: 'rf' is the
-                                       solvers' run
+                                       # solvers' run
     run('board.toml')                  # 0: every run finished
 """
 import json
@@ -377,15 +377,15 @@ class Study:
 
         [study]
         run = ["sparams", "dc", "thermal"]  # the questions, by name (kicad2ems
-                                            --check lists them)
+                                            # --check lists them)
         [study.sparams]
         engine = ["mom25d", "pcbqs"]        # who answers: one, or several to
-                                            compare; none: the default
+                                            # compare; none: the default
         [study.thermal]
         engine = "Elmer"                    # an engine's name ('elmer_thermal')
-                                            or how a list shows it
+                                            # or how a list shows it
         fields = true                       # its field dumps too, where it can
-                                            write them
+                                            # write them
 
     An engine's own settings stay where they were: a solver's under
     [solver.<name>] (and the top level), an analysis's under

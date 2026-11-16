@@ -26,7 +26,7 @@ past the true one (a delay removed that was not there), a time-reversed or badly
 interpolated response.
 
     r = check(freq, S)  # dict: worst (|H - H_r| - bound) over the terms, at
-                        which f and term, ...
+                        # which f and term, ...
 """
 import numpy as np
 

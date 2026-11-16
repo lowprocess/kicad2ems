@@ -429,10 +429,10 @@ def read_config(path):
 
         [analysis]
         run = ["circuit", "thermal"]  # the analyses a study of this config runs
-                                      ("rf": S-parameters)
+                                      # ("rf": S-parameters)
         [analysis.circuit]
         model = "buck.json"           # its options, by key; a path
-                                      (Analysis.paths) relative to the file
+                                      # (Analysis.paths) relative to the file
 
     run: None when the config does not say. A table of an analysis that is not
     installed is kept as it is (so a front end can write it back); its paths are
