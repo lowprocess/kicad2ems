@@ -60,7 +60,8 @@ def test_fdtd_phased_drive():
     from types import SimpleNamespace
     from shapely.geometry import box
     from kicad2ems.core import phased
-    from kicad2ems.fdtd.antenna import analyse_port, combine_phased, record_freqs
+    from kicad2ems.fdtd.antenna import (analyse_port, combine_phased,
+                                        record_freqs)
     f0, d = 2.45e9, 61.2  # half a wavelength apart along y (mm)
     ports = [
         SimpleNamespace(name=f"P{i + 1}", z0=50.0, c=(0.0, i * d))

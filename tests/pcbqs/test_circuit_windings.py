@@ -69,7 +69,7 @@ def test_what_cannot_be_used_is_said_when_the_model_is_resolved(change, says):
 
 
 @pytest.mark.skipif(not shutil.which('ngspice'), reason='ngspice not installed')
-def test_a_bucks_inductor_adds_its_ac_and_core_losses_to_the_case_and_the_thermal_model(
+def test_a_bucks_inductor_adds_its_ac_and_core_losses_to_case_and_thermal(
         tmp_path):
     from kicad2ems.pcbqs.thermal.problem import losses_of
     m = M.template('04_buck')

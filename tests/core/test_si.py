@@ -74,8 +74,7 @@ def test_renormalised_is_the_impedance_matrix_s_at_the_new_reference():
     assert si.renormalised(s_of(50.0)[None], [50.0] * n, 50.0)[0] is not None
 
 
-def test_the_board_s_side_by_side_traces_are_found_and_a_pair_s_own_legs_left_out(
-):
+def test_side_by_side_traces_are_found_and_a_pair_s_own_legs_left_out():
     from kicad2ems.core.importers.kicad import KiCadBoard
     rows = si.find_pairs(KiCadBoard(BUS))
     near = {tuple(r['nets']): r for r in rows}

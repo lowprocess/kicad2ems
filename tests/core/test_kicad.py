@@ -1,6 +1,7 @@
 """KiCad import: S-expressions, stackup, copper, ports, nets, outline."""
 import pytest
-from kicad2ems.core.importers.kicad import KiCadBoard, board_outline, resolve_nets, DiffLegs
+from kicad2ems.core.importers.kicad import (KiCadBoard, board_outline,
+                                            resolve_nets, DiffLegs)
 from kicad2ems.core.importers.kicad.sexpr import parse_sexpr, items, val
 from kicad2ems.core.board import Board
 
@@ -58,16 +59,21 @@ def test_port_fields_both_prefixes():
 
 
 _HEAD4 = '''(kicad_pcb (version 20240108) (generator "test")
-  (layers (0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user))
+  (layers (0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal)
+    (31 "B.Cu" signal) (44 "Edge.Cuts" user))
   (setup (stackup (layer "F.Cu" (type "copper") (thickness 0.035))
-    (layer "dielectric 1" (type "prepreg") (thickness 0.2) (epsilon_r 4.3) (loss_tangent 0.02))
+    (layer "dielectric 1" (type "prepreg") (thickness 0.2) (epsilon_r 4.3)
+      (loss_tangent 0.02))
     (layer "In1.Cu" (type "copper") (thickness 0.035))
-    (layer "dielectric 2" (type "core") (thickness 1.0) (epsilon_r 4.3) (loss_tangent 0.02))
+    (layer "dielectric 2" (type "core") (thickness 1.0) (epsilon_r 4.3)
+      (loss_tangent 0.02))
     (layer "In2.Cu" (type "copper") (thickness 0.035))
-    (layer "dielectric 3" (type "prepreg") (thickness 0.2) (epsilon_r 4.3) (loss_tangent 0.02))
+    (layer "dielectric 3" (type "prepreg") (thickness 0.2) (epsilon_r 4.3)
+      (loss_tangent 0.02))
     (layer "B.Cu" (type "copper") (thickness 0.035))))
   (net 0 "") (net 1 "GND") (net 2 "RF")
-  (gr_rect (start 0 0) (end 20 20) (stroke (width 0.05)) (fill no) (layer "Edge.Cuts"))
+  (gr_rect (start 0 0) (end 20 20) (stroke (width 0.05)) (fill no)
+    (layer "Edge.Cuts"))
 '''
 
 
@@ -92,15 +98,17 @@ def test_what_the_import_read_wrong_before():
     drill offset (its copper beside its hole), an NPTH pad (a hole: no copper),
     and a zone never filled (left out, and said)."""
     b = _text_board(
-        '''(zone (net 1) (net_name GND) (layer In1.Cu) (tstamp 0) (hatch edge 0.508)
+        '''(zone (net 1) (net_name GND) (layer In1.Cu) (tstamp 0)
+      (hatch edge 0.508)
       (polygon (pts (xy 0 0) (xy 20 0) (xy 20 20) (xy 0 20)))
       (filled_polygon (pts (xy 0 0) (xy 20 0) (xy 20 20) (xy 0 20))))''')
     assert ([(l, n, round(g.area))
              for l, n, g in b.items] == [('In1.Cu', 'GND', 400)])
     b = _text_board('''(footprint "p" (layer "F.Cu") (at 5 5 0)
-      (pad "1" thru_hole oval (at 0 0) (size 3 1) (drill 0.6 (offset 1 0)) (layers "*.Cu") (net 2 "RF"))
-      (pad "" np_thru_hole circle (at 3 3) (size 3.2 3.2) (drill 3.2) (layers "*.Cu" "*.Mask")))'''
-                    )
+      (pad "1" thru_hole oval (at 0 0) (size 3 1) (drill 0.6 (offset 1 0))
+        (layers "*.Cu") (net 2 "RF"))
+      (pad "" np_thru_hole circle (at 3 3) (size 3.2 3.2) (drill 3.2)
+        (layers "*.Cu" "*.Mask")))''')
     pads = b.footprints[0]['pads']
     assert [round(v, 6) for v in pads[0]['geom'].bounds] == [4.5, 4.5, 7.5, 5.5]
     assert pads[1]['layers'] == [] and all(n == 'RF' for _, n, _ in b.items)
@@ -156,11 +164,14 @@ def test_outlined_and_hidden_and_knockout_text():
     """Outlined text (render_cache) is KiCad's polygons, exact; hidden text no
     copper; knockout text its box less the glyphs."""
     b = _text_board(
-        '''(gr_text "A" (at 5 5 0) (layer "F.Cu") (effects (font (face "X") (size 1 1)))
-      (render_cache "A" 0 (polygon (pts (xy 4 4) (xy 6 4) (xy 6 6) (xy 4 6)) (pts (xy 4.5 4.5) (xy 5.5 4.5) (xy 5.5 5.5) (xy 4.5 5.5)))))
-      (gr_text "H" (at 20 5 0) (layer "F.Cu") (hide yes) (effects (font (size 1 1))))
-      (gr_text "K" (at 30 5 0) (layer "B.Cu" knockout) (effects (font (size 1 1))))'''
-    )
+        '''(gr_text "A" (at 5 5 0) (layer "F.Cu")
+        (effects (font (face "X") (size 1 1)))
+      (render_cache "A" 0 (polygon (pts (xy 4 4) (xy 6 4) (xy 6 6) (xy 4 6))
+        (pts (xy 4.5 4.5) (xy 5.5 4.5) (xy 5.5 5.5) (xy 4.5 5.5)))))
+      (gr_text "H" (at 20 5 0) (layer "F.Cu") (hide yes)
+        (effects (font (size 1 1))))
+      (gr_text "K" (at 30 5 0) (layer "B.Cu" knockout)
+        (effects (font (size 1 1))))''')
     exact = [g for l, n, g in b.items if l == 'F.Cu']
     # 4 - 1: its hole kept
     assert len(exact) == 1 and exact[0].area == pytest.approx(3.0)
@@ -175,12 +186,15 @@ def test_cutouts_are_air_and_a_split_region_says_so():
     air; a region that splits the board keeps its largest piece and says how
     much is left out (R-E6: both had been silent, the cut-out substrate)."""
     raw = _text_board(
-        '''(gr_circle (center 10 10) (end 12 10) (stroke (width 0.05)) (fill no) (layer "Edge.Cuts"))
-      (gr_rect (start 2 14) (end 18 15) (stroke (width 0.05)) (fill no) (layer "Edge.Cuts"))
+        '''(gr_circle (center 10 10) (end 12 10) (stroke (width 0.05)) (fill no)
+        (layer "Edge.Cuts"))
+      (gr_rect (start 2 14) (end 18 15) (stroke (width 0.05)) (fill no)
+        (layer "Edge.Cuts"))
       (segment (start 1 5) (end 19 5) (width 0.3) (layer "F.Cu") (net 2))
-      (zone (net 1) (net_name "GND") (layer "B.Cu") (polygon (pts (xy 0 0) (xy 20 0) (xy 20 20) (xy 0 20)))
-        (filled_polygon (layer "B.Cu") (pts (xy 0 0) (xy 20 0) (xy 20 20) (xy 0 20))))'''
-    )
+      (zone (net 1) (net_name "GND") (layer "B.Cu")
+        (polygon (pts (xy 0 0) (xy 20 0) (xy 20 20) (xy 0 20)))
+        (filled_polygon (layer "B.Cu")
+          (pts (xy 0 0) (xy 20 0) (xy 20 20) (xy 0 20))))''')
     b = Board(raw, nets=['RF', 'GND'], need_ports=False, log=lambda *a: None)
     assert (len(b.outline.interiors) == 2 and b.outline.area == pytest.approx(
         400 - 3.14159 * 4 - 16, rel=1e-3))

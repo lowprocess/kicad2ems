@@ -3,7 +3,8 @@ kicad2ems-gui, the KiCad plugin): the settings file it writes, the command line,
 the event stream read as it grows, stopping it, and the files of the newest
 run."""
 import json, os
-from kicad2ems.core.runs import Run, EventTail, stop_runs, find_results, write_toml, toml_value
+from kicad2ems.core.runs import (Run, EventTail, stop_runs, find_results,
+                                 write_toml, toml_value)
 from kicad2ems.core.config import build_settings
 
 

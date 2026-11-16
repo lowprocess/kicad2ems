@@ -199,8 +199,7 @@ def test_check_lists_the_questions(plugins):
     assert 'S-parameters' in text and 'qucs' in text
 
 
-# ---- a config's study, its plan, and the command that runs it
-# --------------------------------------------
+# ---- a config's study, its plan, and the command that runs it ---------------
 class Circuit(Analysis):
     """Writes its losses, as a tool would: python -c."""
     api, name, label, tool, engine = (

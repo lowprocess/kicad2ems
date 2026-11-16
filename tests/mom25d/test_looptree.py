@@ -131,8 +131,7 @@ def test_below_the_rwg_basis_s_reach_it_stays_right():
         assert np.linalg.svd(v, compute_uv=False).max() <= 1 + 1e-9, k
 
 
-def test_auto_takes_the_loop_tree_basis_below_its_threshold_and_keeps_each_basis_lus(
-):
+def test_auto_takes_loop_tree_below_its_threshold_and_keeps_each_basis_lus():
     pytest.importorskip('kicad2ems.mom25d._core')
     from kicad2ems.mom25d import fast
     sim = _sim('mixed', 'auto')

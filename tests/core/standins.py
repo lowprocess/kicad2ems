@@ -31,8 +31,7 @@ from kicad2ems.core.solvers import Solver, Result, Deviation, AUTO
 from kicad2ems.core.fields.dumps import G_DUMP
 
 
-# ---- the FDTD solvers
-# ------------------------------------------------------------------------------------
+# ---- the FDTD solvers -------------------------------------------------------
 def engine_check():
     """(ok, report lines): can CSXCAD and openEMS be imported? The openEMS
     stand-in's check (replace it in a test)."""
@@ -202,8 +201,7 @@ class GFDTD(FDTD):
         return dict(super().estimate(run), seconds=200.0)
 
 
-# ---- the planar solver
-# ------------------------------------------------------------------------------------
+# ---- the planar solver ------------------------------------------------------
 def status():
     """(usable, what) of the planar stand-in (replace it in a test)."""
     return True, 'mom25d (stand-in)'
@@ -294,8 +292,7 @@ class MoM25D(Solver):
                       comment=f"mom25d stand-in ({run.name})")
 
 
-# ---- in place of the installed packages
-# -------------------------------------------------------------------
+# ---- in place of the installed packages -------------------------------------
 class _EntryPoint:
     def __init__(self, name, obj):
         self.name, self.value, self._obj = name, f"standins:{name}", obj

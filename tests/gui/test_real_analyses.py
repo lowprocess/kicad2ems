@@ -98,9 +98,9 @@ def test_a_circuit_example_runs_to_its_temperatures(window, tmp_path):
     assert w.study.ticked() == ['circuit'] and w.study.current() == 'circuit'
     assert (page.model_path == str(folder / '01_rc_filter.json')
             and page.values()['name'].startswith('RC low-pass'))
-    # its editor in front; no preview of
+    # its editor in front; no preview of a board without ports
     assert w.places['Circuit'].in_front() and not w.busy()
-    w.study.set_ticked(['circuit', 'thermal'])  # a board without ports
+    w.study.set_ticked(['circuit', 'thermal'])
     w.run()
     wait_until(lambda: not (w.busy()), 180)
     for _ in range(10):

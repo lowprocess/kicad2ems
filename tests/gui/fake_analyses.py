@@ -358,10 +358,9 @@ class Thermal(_Fake):
     def figures(self, folder):
         r = self.read(folder) or {}
         return (([dict(name='hottest', value=r['hottest'], unit='C')]
-                 if 'hottest' in r else []) + [
-                     dict(name=k, value=c, unit='C')
-                     for k, (_w, c) in (r.get('parts') or {}).items()
-                 ])
+                 if 'hottest' in r else [])
+                + [dict(name=k, value=c, unit='C')
+                   for k, (_w, c) in (r.get('parts') or {}).items()])
 
     def tag(self, values):
         return 'losses' if str(values.get('loss') or '').strip() else 'circuit'

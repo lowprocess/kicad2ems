@@ -62,10 +62,11 @@ def test_a_timeout_says_so():
 def test_a_tool_s_sigterm_stops_its_solvers(tmp_path):
     """The window's Stop sends a tool SIGTERM: guard() stops the tool's solvers
     before it exits (they were left running)."""
-    code = (
-        "import time, sys; from kicad2ems.fem import children; children.guard(); "
-        f"p = children.popen({TREE!r}); open({str(tmp_path / 'pid')!r}, 'w').write(str(p.pid)); time.sleep(60)"
-    )
+    code = ("import time, sys; from kicad2ems.fem import children; "
+            "children.guard(); "
+            f"p = children.popen({TREE!r}); "
+            f"open({str(tmp_path / 'pid')!r}, 'w').write(str(p.pid)); "
+            "time.sleep(60)")
     tool = subprocess.Popen([sys.executable, '-c', code])
     for _ in range(100):
         if (tmp_path / 'pid').exists() and (tmp_path / 'pid').read_text():

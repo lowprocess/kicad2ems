@@ -107,8 +107,7 @@ def run_cli(capsys):
     return run
 
 
-# ---- strict CSXCAD / openEMS stand-ins
-# -------------------------------------------------------------
+# ---- strict CSXCAD / openEMS stand-ins --------------------------------------
 def _scalar(v, where):
     assert (type(v) in (
         int, float, bool,
@@ -199,8 +198,7 @@ def fake_openems(monkeypatch):
     return log
 
 
-# ---- a machine without openEMS
-# ------------------------------------------------------------------------
+# ---- a machine without openEMS ----------------------------------------------
 @pytest.fixture
 def no_csxcad(monkeypatch):
     """CSXCAD and openEMS cannot be imported, as on a machine without
@@ -237,8 +235,9 @@ def write_vtr(path, x, y, z, field, compress=True):
     hdr = ' compressor="vtkZLibDataCompressor"' if compress else ''
     data = np.transpose(field.astype('<f4'), (2, 1, 0, 3)).tobytes()
     coords = ''.join(
-        '<DataArray type="Float64" '
-        f'format="binary">{_b64_block((np.asarray(c, "<f8") * 1e-3).tobytes(), compress)}</DataArray>'
+        '<DataArray type="Float64" format="binary">'
+        f'{_b64_block((np.asarray(c, "<f8") * 1e-3).tobytes(), compress)}'
+        '</DataArray>'
         for c in (x, y, z))
     ext = f"0 {len(x) - 1} 0 {len(y) - 1} 0 {len(z) - 1}"
     with open(path, 'w', encoding='utf-8') as fh:
@@ -284,8 +283,7 @@ def run_folder(demo_files, tmp_path_factory):
     return str(out), m
 
 
-# ---- a prepared solver, for the parity checks (kicad2ems-fdtd's, mom25d's)
-# ------------------------------------
+# ---- a prepared solver, for the parity checks (kicad2ems-fdtd's, mom25d's) ---
 def prepared_job(tmp_path, base, solver, *args):
     """A job with its board and line model, and `solver`'s model prepared, as a
     preview does (the mesh alone)."""

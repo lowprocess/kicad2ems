@@ -5,7 +5,8 @@ import math
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import pytest
-from kicad2ems.pcbqs.schematic import engineering_value, read_netlist, read_schematic
+from kicad2ems.pcbqs.schematic import (engineering_value, read_netlist,
+                                       read_schematic)
 
 
 def netlist(tmp_path):

@@ -70,7 +70,8 @@ def test_copper_spice_mutual_polarity_and_resistance(tmp_path):
 
 
 def test_foster_fit_passivity_and_independent_frequency_interpolation():
-    from kicad2ems.pcbqs.mqs_ports import PortResponse, foster_equivalent, model_impedance
+    from kicad2ems.pcbqs.mqs_ports import (PortResponse, foster_equivalent,
+                                           model_impedance)
     f=np.r_[0,np.geomspace(1e2,1e7,24)]
     true = dict(
         names=['a', 'b'], R_ohm=[[.1, .02], [.02, .2]], L_H=[[2e-8, -.3e-8],

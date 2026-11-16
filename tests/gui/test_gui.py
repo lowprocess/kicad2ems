@@ -232,7 +232,8 @@ def _s2p(path, f, S, names=('IN', 'OUT')):
 
 def test_traces(tmp_path):
     import numpy as np
-    from kicad2ems.gui.traces import load_traces, transform, value_at, export_csv, smith_grid, default_visible
+    from kicad2ems.gui.traces import (load_traces, transform, value_at,
+                                      export_csv, smith_grid, default_visible)
     f = np.linspace(1e9, 3e9, 21)
     tau = 0.5e-9  # a matched 0.5 ns line
     S = np.zeros((21, 2, 2), complex)
@@ -323,7 +324,9 @@ def test_rf_examples_load(name, nports):
 
 
 def test_gui_solver_boxes(tmp_path, monkeypatch):
-    from kicad2ems.gui.runner import settings_values, solvers_from_form, save_config, extra_values, write_toml, FIELDS
+    from kicad2ems.gui.runner import (settings_values, solvers_from_form,
+                                      save_config, extra_values, write_toml,
+                                      FIELDS)
     from kicad2ems.core.solvers.lines import fastsolve
     # no qucsator: lines is scikit
     monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)
@@ -1535,7 +1538,8 @@ def test_difference_plot(tmp_path, monkeypatch):
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     from kicad2ems.gui import application
     from kicad2ems.gui.splot import SPlot
-    from kicad2ems.gui.traces import DIFF_KINDS, load_traces, difference, counterpart
+    from kicad2ems.gui.traces import (DIFF_KINDS, load_traces, difference,
+                                      counterpart)
     application()
     f = np.linspace(1e9, 3e9, 11)
     _s2p(tmp_path / 'b_openems.s2p', f, np.full((11, 2, 2), 0.2 + 0j))

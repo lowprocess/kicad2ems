@@ -92,7 +92,8 @@ def test_save_animations(run_folder, tmp_path):
 
 def test_sphere_cuts(tmp_path):
     h5py = pytest.importorskip('h5py')
-    from kicad2ems.core.fields.antenna import read_sphere, sphere_gain, sphere_cuts
+    from kicad2ems.core.fields.antenna import (read_sphere, sphere_gain,
+                                               sphere_cuts)
     th, ph = (np.radians(np.arange(0, 181,
                                    5.0)), np.radians(np.arange(0, 361, 5.0)))
     T, P = np.meshgrid(th, ph)

@@ -107,11 +107,16 @@ def test_every_board_reads_back_as_its_model(name):
 
 def test_what_kicad_tells_and_what_it_does_not():
     text = '''(kicad_pcb (footprint "Package_TO_SOT_SMD:SOT-23" (layer "F.Cu")
-      (property "Reference" "Q7" (at 0 0)) (property "Value" "say \\"(pad\\" here")
-      (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "g") (pinfunction "G") (pintype "input"))
-      (pad "2" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 2 "GND") (pinfunction "S"))
-      (pad "3" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 3 "/sw") (pinfunction "D")))
-     (footprint "x:y" (property "Reference" "R1") (pad "1" smd rect (net 1 "a")) (pad "2" smd rect (net 2 "b"))))'''
+      (property "Reference" "Q7" (at 0 0))
+      (property "Value" "say \\"(pad\\" here")
+      (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "g")
+        (pinfunction "G") (pintype "input"))
+      (pad "2" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 2 "GND")
+        (pinfunction "S"))
+      (pad "3" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 3 "/sw")
+        (pinfunction "D")))
+     (footprint "x:y" (property "Reference" "R1")
+      (pad "1" smd rect (net 1 "a")) (pad "2" smd rect (net 2 "b"))))'''
     assert K.pad_functions(text) == {'Q7': {'1': 'G', '2': 'S', '3': 'D'}}
     pin = lambda number, name, net: dict(number=number, name=name, type='', net=
                                          net)
@@ -197,20 +202,30 @@ def test_importing_into_a_model_adds_updates_and_keeps_what_is_the_models():
 
 
 def test_a_netlist_is_read_the_same_way(tmp_path):
-    xml = '''<?xml version="1.0" encoding="utf-8"?><export version="E"><design><source>buck.kicad_sch</source><tool>Eeschema 8</tool></design>
+    xml = '''<?xml version="1.0" encoding="utf-8"?><export version="E">
+    <design><source>buck.kicad_sch</source><tool>Eeschema 8</tool></design>
     <components>
-     <comp ref="L1"><value>22u</value><libsource lib="Device" part="L"/><fields><field name="DCR">30m</field></fields></comp>
+     <comp ref="L1"><value>22u</value><libsource lib="Device" part="L"/>
+      <fields><field name="DCR">30m</field></fields></comp>
      <comp ref="C2"><value>47u</value><libsource lib="Device" part="C"/></comp>
-     <comp ref="D1"><value>SS34</value><libsource lib="Device" part="D_Schottky"/></comp>
-     <comp ref="Q1"><value>BSC</value><libsource lib="Transistor_FET" part="BSC"/></comp>
-     <comp ref="J1"><value>Conn</value><libsource lib="Connector" part="Conn_01x02"/></comp></components>
+     <comp ref="D1"><value>SS34</value>
+      <libsource lib="Device" part="D_Schottky"/></comp>
+     <comp ref="Q1"><value>BSC</value>
+      <libsource lib="Transistor_FET" part="BSC"/></comp>
+     <comp ref="J1"><value>Conn</value>
+      <libsource lib="Connector" part="Conn_01x02"/></comp></components>
     <libparts/>
     <nets>
-     <net code="1" name="/VIN"><node ref="Q1" pin="3" pinfunction="D"/><node ref="J1" pin="1"/></net>
-     <net code="2" name="/SW"><node ref="Q1" pin="2" pinfunction="S"/><node ref="L1" pin="1"/><node ref="D1" pin="1" pinfunction="K"/></net>
-     <net code="3" name="/VOUT"><node ref="L1" pin="2"/><node ref="C2" pin="1"/></net>
-     <net code="4" name="GND"><node ref="C2" pin="2"/><node ref="D1" pin="2" pinfunction="A"/><node ref="J1" pin="2"/></net>
-     <net code="5" name="Net-(Q1-G)"><node ref="Q1" pin="1" pinfunction="G"/></net></nets></export>'''
+     <net code="1" name="/VIN"><node ref="Q1" pin="3" pinfunction="D"/>
+      <node ref="J1" pin="1"/></net>
+     <net code="2" name="/SW"><node ref="Q1" pin="2" pinfunction="S"/>
+      <node ref="L1" pin="1"/><node ref="D1" pin="1" pinfunction="K"/></net>
+     <net code="3" name="/VOUT"><node ref="L1" pin="2"/><node ref="C2" pin="1"/>
+      </net>
+     <net code="4" name="GND"><node ref="C2" pin="2"/>
+      <node ref="D1" pin="2" pinfunction="A"/><node ref="J1" pin="2"/></net>
+     <net code="5" name="Net-(Q1-G)"><node ref="Q1" pin="1" pinfunction="G"/>
+      </net></nets></export>'''
     path = tmp_path / 'buck.xml'
     path.write_text(xml)
     model = K.model_from(K.read(path))

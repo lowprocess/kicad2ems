@@ -37,8 +37,7 @@ def cells(rep):
     return out
 
 
-# ---- the plugins
-# -------------------------------------------------------------------------------------------
+# ---- the plugins ------------------------------------------------------------
 def test_the_four_register_with_kicad2ems():
     """Declared as kicad2ems expects (its api, a name, a result file, options of
     its kinds), in the Study's order."""
@@ -242,18 +241,15 @@ def test_the_circuit_command(tmp_path):
         'model', 'copper', 'fields', 'warm', 'thermal_args', 'set', 'jobs'
     ] and opts['jobs']['default'] == 4)
     assert 'board' not in opts
-    # --warm: the board for its thermal model; a
+    # --warm: the board for its thermal model; a value with a dash: joined
     model.write_text(json.dumps(dict(format=2)))
-    # value with a
     line = c.command(
         dict(model=str(model), warm='2', thermal_args='--ambient 40'), str(b),
         'out')
-    # dash: joined
     assert ('--warm' in line and '--thermal-args=--ambient 40' in line
             and line[-2:] == ['--board', str(b)])
 
-# ---- the circuit examples as configs
-# -----------------------------------------------------------------------
+# ---- the circuit examples as configs ----------------------------------------
 def test_the_examples_are_configs_beside_their_models(tmp_path):
     """Each a config kicad2ems reads: its board and its model beside it, the
     circuit ticked; prepared in a folder of the user's, a run of it writes there
@@ -304,8 +300,7 @@ def test_the_examples_are_configs_beside_their_models(tmp_path):
     assert frontend.analysis_of(str(tmp_path)) is None
 
 
-# ---- what a result holds
-# -------------------------------------------------------------------------------------
+# ---- what a result holds ----------------------------------------------------
 def test_power_integrity_report_and_curves(tmp_path):
     from kicad2ems.pcbqs.pdn.cli import main
     from test_pdn_rail import board, _with_high_side
@@ -423,8 +418,9 @@ def test_temperature_report_and_its_maps_for_the_viewer(tmp_path, method):
     t = cells(rep)
     cols, rows = t['Parts']
     assert (cols == [
-        'part', 'loss (W)', *(['board °C (grid)', 'board °C (mesh)']
-                              if method == 'both' else ['board °C (grid)']),
+        'part', 'loss (W)',
+        *(['board °C (grid)', 'board °C (mesh)'] if method == 'both'
+          else ['board °C (grid)']),
         'part °C', 'from', 'rise (K)'
     ])
     assert (rows[0][0] == 'Q1' and rows[0][-3]

@@ -6,7 +6,8 @@ import numpy as np
 import pytest
 
 from kicad2ems.emsdev.numerics.base import C0, MU0, EPS0
-from kicad2ems.mom25d.multilayer import Layer, LayerStack, GreenTableML, stripline_z0_cohn
+from kicad2ems.mom25d.multilayer import (Layer, LayerStack, GreenTableML,
+                                         stripline_z0_cohn)
 from kicad2ems.mom25d.sim import line_char_xs
 # the first solver's Sommerfeld integrals
 from mom25d_reference import GreenTable, Stackup

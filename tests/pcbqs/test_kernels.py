@@ -173,13 +173,13 @@ def test_symmetric_solve_by_cholesky_where_it_can():
     assert np.allclose(Z @ K.solve_symmetric(Z, B), B)
 
 
-def test_the_single_precision_lu_is_refined_to_double_and_falls_back_when_it_cannot(
-):
+def test_the_single_lu_is_refined_to_double_and_falls_back_when_it_cannot():
     """lu_factor_rows's mixed factor (R-D13) solves to a double solve's
     accuracy, several right-hand sides at once, and a system too ill-conditioned
     for single precision is factored in double, with the same answer."""
     import numpy as np
-    from kicad2ems.pcbqs.kernels import lu_factor_rows, lu_solve_rows, MixedLU, factor_bytes
+    from kicad2ems.pcbqs.kernels import (lu_factor_rows, lu_solve_rows, MixedLU,
+                                         factor_bytes)
     rng = np.random.default_rng(3)
     n = 300
     a = (rng.standard_normal((n, n)) + 1j * rng.standard_normal(
@@ -207,8 +207,7 @@ def test_the_single_precision_lu_is_refined_to_double_and_falls_back_when_it_can
     assert not isinstance(lu_factor_rows(a.copy()), MixedLU)
 
 
-def test_one_eigendecomposition_solves_the_pencil_at_every_frequency_with_its_parts(
-):
+def test_one_eigendecomposition_solves_the_pencil_at_each_f_with_its_parts():
     """R-D13.2: (R + s L + P^T diag(z) P)^-1 b from one Pencil, against a dense
     solve, for s from DC up, with parts of no impedance (a short) and of an
     impedance, and several right-hand sides."""

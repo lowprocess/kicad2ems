@@ -252,7 +252,8 @@ def test_interdigital_space_map():
     """A board that behaves as the model with other trims (and port planes 0.8
     mm out): one space-mapping step puts the trims where the board then behaves
     as the target; and the tap necks meet the limits."""
-    from kicad2ems.dfsynth.calibrate import space_map, _coupled_free, _coupled_spec
+    from kicad2ems.dfsynth.calibrate import (space_map, _coupled_free,
+                                             _coupled_spec)
     from kicad2ems.dfsynth.circuit import MLine
     sub = Substrate.preset('RO4003C-0.813')
     spec = Spec('bandpass', 'interdigital', 5e9, 0.5e9)

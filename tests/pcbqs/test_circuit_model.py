@@ -270,18 +270,17 @@ def waves(n, envelope, period=1e-5, spc=64):
 def test_settled_means_every_period_of_the_half_run_matches_the_last():
     steady, deck, T = waves(100, lambda k: 1 + 0 * k)
     assert max(E.periodic_error(steady, deck, T).values()) < 1e-9
-    # 0.04 % a period: 2 % over the half-run,
+    # 0.04 % a period: 2 % over the half-run, 9 in 10 within 1.8 %
     drift, deck, T = waves(100, lambda k: 1 + 0.0004 * k)
-    # 9 in 10 within 1.8 %
     assert (E.periodic_error(drift, deck, T)['C2.cap_V'] == pytest.approx(
         0.9 * 0.02 / 1.04, rel=0.03))
     # a filter ringing once every 25 periods, back where it was every 50: only
     # looking at every period shows it
     ring, deck, T = waves(100, lambda k: 1 + 0.03 * np.sin(2 * np.pi * k / 25))
     assert E.periodic_error(ring, deck, T)['C2.cap_V'] > 0.025
-    # one edge of one period stepped over differently,
+    # one edge of one period stepped over differently, in the middle of the
+    # run or in its last period
     for period in (70, 99):
-        # in the middle of the run or in its last period
         blip, deck, T = waves(100, lambda k: 1 + 0 * k)
         blip['L1.I'][period * 64 + 3] += 0.2
         assert max(E.periodic_error(blip, deck, T).values()) < 1e-9
@@ -289,8 +288,7 @@ def test_settled_means_every_period_of_the_half_run_matches_the_last():
         E.periodic_error({k: v[:100] for k, v in steady.items()}, deck, T)
 
 
-def test_a_ringing_run_is_continued_from_its_middle_and_a_drifting_one_from_its_end(
-):
+def test_a_ringing_run_goes_on_from_its_middle_a_drifting_one_from_its_end():
     m = M.resolve(M.template('buck'))
     ring, deck, T = waves(100, lambda k: 1 + 0.05 * np.cos(2 * np.pi * k / 20))
     extra = {

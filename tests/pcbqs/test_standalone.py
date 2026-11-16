@@ -52,7 +52,9 @@ def test_json_fields_without_optional_packages(tmp_path):
     code = '''import sys,importlib.abc
 class Block(importlib.abc.MetaPathFinder):
     def find_spec(self,fullname,*args):
-        if fullname.startswith(('kicad2ems.mom25d','kicad2ems.core','kicad2ems.gui','kicad2ems.fdtd','kicad2ems.fem')):
+        if fullname.startswith(('kicad2ems.mom25d','kicad2ems.core',
+                                'kicad2ems.gui','kicad2ems.fdtd',
+                                'kicad2ems.fem')):
             raise AssertionError('forbidden runtime dependency: '+fullname)
 sys.meta_path.insert(0,Block())
 from kicad2ems.pcbqs.mqs_cli import main
@@ -106,15 +108,23 @@ def test_automatic_fallback_without_native_core(tmp_path):
 from shapely.geometry import box
 class Block(importlib.abc.MetaPathFinder):
     def find_spec(self,fullname,*args):
-        if fullname.startswith(('kicad2ems.mom25d','kicad2ems.core','kicad2ems.gui','kicad2ems.fdtd','kicad2ems.fem')):
+        if fullname.startswith(('kicad2ems.mom25d','kicad2ems.core',
+                                'kicad2ems.gui','kicad2ems.fdtd',
+                                'kicad2ems.fem')):
             raise ImportError('unavailable: '+fullname)
 sys.meta_path.insert(0,Block())
 from kicad2ems.pcbqs.mqs import MQS
 from kicad2ems.pcbqs.mqs_ports import CopperPorts
-q=MQS(json.load(open(sys.argv[1])),'N',terminals={'s':[('F.Cu',box(2,9.6,2.6,10.4))],'g':[('F.Cu',box(2,7.7,2.6,8.5))]},dmax=2,fill_workers=2,log=lambda *_:None,drop_lone_pads=False,pad_sides=None,via_sides=None,ideal_terminals=False)
+q=MQS(json.load(open(sys.argv[1])),'N',
+      terminals={'s':[('F.Cu',box(2,9.6,2.6,10.4))],
+                 'g':[('F.Cu',box(2,7.7,2.6,8.5))]},
+      dmax=2,fill_workers=2,log=lambda *_:None,drop_lone_pads=False,
+      pad_sides=None,via_sides=None,ideal_terminals=False)
 q.source('p','s','g',part_h=0)
 r=CopperPorts(q).extract([0,1e5,2e5])
-with np.load(sys.argv[2]) as ref:np.testing.assert_allclose(r.impedance,ref['impedance'],rtol=1e-8,atol=1e-13)
+with np.load(sys.argv[2]) as ref:
+    np.testing.assert_allclose(r.impedance,ref['impedance'],rtol=1e-8,
+                               atol=1e-13)
 assert q.fill_info['magnetic']['backend']=='threaded'
 '''
     # PCBQS_NO_CORE: the kernels on NumPy's threads. The mesher has no fallback

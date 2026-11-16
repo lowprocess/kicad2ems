@@ -214,8 +214,7 @@ def test_a_worker_answers_until_its_input_closes():
     assert p.wait(timeout=20) == 0
 
 
-# ---- coupled groups on the board's cut (topology._group_on_cut)
-# ---------------------------------------------
+# ---- coupled groups on the board's cut (topology._group_on_cut) -------------
 class _Copper:
     """Reference copper as RefCopper has it (geom per layer), without tiles."""
     def __init__(self, geom):
@@ -235,8 +234,8 @@ def _group(front=(), back=None, legs=PAIR):
     from shapely.geometry import box
     from shapely.ops import unary_union
     geom = {
-        'B.Cu': box(-50, -50, 50, 50)
-        if back is None else unary_union([box(a, -50, b, 50) for a, b in back])
+        'B.Cu': (box(-50, -50, 50, 50) if back is None else
+                 unary_union([box(a, -50, b, 50) for a, b in back]))
     }
     if front:
         geom['F.Cu'] = unary_union([box(a, -50, b, 50) for a, b in front])

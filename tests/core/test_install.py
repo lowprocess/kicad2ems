@@ -273,8 +273,8 @@ def _fem(inst, monkeypatch, tmp_path, *args, answers=None):
     mine = inst.Installer.elmer_dir  # (this machine's own Elmer: not seen)
     monkeypatch.setattr(
         inst.Installer, 'elmer_dir',
-        staticmethod(lambda f: mine(f)
-                     if f and str(f).startswith(str(tmp_path)) else None))
+        staticmethod(lambda f: mine(f) if f and str(f).startswith(str(tmp_path))
+                     else None))
     if answers is not None:
         monkeypatch.setattr(
             inst, 'ask',
@@ -311,8 +311,8 @@ def test_finite_elements_are_offered_and_nothing_built_by_default(
              / 'view' / 'bin')
     image.mkdir(parents=True)
     monkeypatch.setattr(
-        inst.shutil, 'which', lambda name: '/usr/bin/podman'
-        if name == 'podman' else None)
+        inst.shutil, 'which',
+        lambda name: '/usr/bin/podman' if name == 'podman' else None)
     monkeypatch.setattr(inst, 'ask', lambda q, default: default == 'y')
     setup.choose_fem()  # found: asked for by default, each one taken
     assert setup.fem and setup.elmer == str(found)

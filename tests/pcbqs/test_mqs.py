@@ -7,7 +7,8 @@ import pytest
 from shapely.geometry import box, mapping, Point
 
 from kicad2ems.emsdev.numerics.base import MU0
-from kicad2ems.pcbqs.mqs import MQS, filament_mutual, spanning_tree, via_inductance
+from kicad2ems.pcbqs.mqs import (MQS, filament_mutual, spanning_tree,
+                                 via_inductance)
 
 H_TR, W_TR = 0.5, 0.5  # mm: the trace's height over the plane, its width
 
