@@ -9,6 +9,7 @@ dfsynth: distributed-element microstrip filter synthesis -> KiCad layout (+ kica
     dfsynth --describe --json           # the types, topologies, presets and options, for a front end (the GUI)
 """
 import argparse
+import json
 import math
 import re
 import sys
@@ -90,15 +91,6 @@ def parser():
     return p
 
 
-def list_all():
-    print("filter types and topologies:")
-    for k, ts in KINDS.items():
-        print(f"  {k:9s} {', '.join(ts)}")
-    print("\nsubstrate presets (h mm, er, tan d):")
-    for name, (h, er, td, _) in PRESETS.items():
-        print(f"  {name:16s} {h:6.3f}  {er:5.2f}  {td:.4f}")
-
-
 DESCRIBE_FORMAT = 1                 # --describe --json's format: a new key is a minor change, a changed one bumps this
 _META = ('help', 'version', 'list', 'describe', 'json')
 
@@ -122,14 +114,6 @@ def description():
     return dict(format=DESCRIBE_FORMAT, version=__version__, kinds={k: list(v) for k, v in KINDS.items()},
                 presets={n: dict(h=h, er=er, tand=td, material=m) for n, (h, er, td, m) in PRESETS.items()},
                 options=opts)
-
-
-def make_substrate(a):
-    sub = Substrate.preset(a.substrate, t=a.copper, min_width=a.min_width, min_gap=a.min_gap)
-    kw = {k: v for k, v in (('h', a.h), ('er', a.er), ('tand', a.tand)) if v is not None}
-    if kw:
-        sub = sub.with_(name=sub.name + ' (modified)', **kw)
-    return sub
 
 
 def order_from_atten(spec, atten):
@@ -166,20 +150,6 @@ def describe(design, log=print):
         log(f"  note: {n}")
 
 
-def design_json(design, extra=None):
-    sp = design.spec
-    return {
-        'spec': asdict(sp), 'substrate': asdict(design.sub), 'kf': design.kf, 'kb': design.kb,
-        'g': design.g, 'targets_GHz': {k: v / 1e9 for k, v in targets(sp).items()},
-        'elements': [dict(zip(('name', 'z_ohm', 'width_mm', 'length_mm', 'gap_mm'), r)) for r in design.rows],
-        'board_mm': [design.geometry.W, design.geometry.H], 'notes': design.notes,
-        # the layout as drawn (mm, KiCad's y down): copper polygons, ground vias, port markers
-        'geometry': {'polys': design.geometry.polys, 'vias': design.geometry.vias, 'ports': design.geometry.ports,
-                     'via_mm': [VIA_DRILL, VIA_SIZE]},
-        **(extra or {}),
-    }
-
-
 def write_model_s2p(design, path, f):
     s11, s21 = model_response(design, f)
     with open(path, 'w') as fh:
@@ -192,18 +162,25 @@ def write_model_s2p(design, path, f):
 def main(argv=None):
     a = parser().parse_args(argv)
     if a.list:
-        list_all()
+        print("filter types and topologies:")
+        for k, ts in KINDS.items():
+            print(f"  {k:9s} {', '.join(ts)}")
+        print("\nsubstrate presets (h mm, er, tan d):")
+        for name, (h, er, td, _) in PRESETS.items():
+            print(f"  {name:16s} {h:6.3f}  {er:5.2f}  {td:.4f}")
         return 0
     if a.describe or a.json:
         if not (a.describe and a.json):
             parser().error("--describe and --json go together")
-        import json
         print(json.dumps(description(), indent=1))
         return 0
     if not a.type or not a.f0:
         parser().error("--type and --f0 are required (or --list)")
     topo = a.topology or KINDS[a.type][0]
-    sub = make_substrate(a)
+    sub = Substrate.preset(a.substrate, t=a.copper, min_width=a.min_width, min_gap=a.min_gap)
+    kw = {k: v for k, v in (('h', a.h), ('er', a.er), ('tand', a.tand)) if v is not None}
+    if kw:
+        sub = sub.with_(name=sub.name + ' (modified)', **kw)
     spec = Spec(a.type, topo, a.f0, a.bw, a.response, a.order or 5, a.ripple, a.z0,
                 a.zhigh, a.zlow, a.zstub, a.feed, stub_angle=a.stub_angle, hairpin_gap=a.hairpin_gap)
     try:
@@ -222,7 +199,16 @@ def main(argv=None):
         return 2
     describe(design)
     if violations(design) and not a.allow_fab_violations:
-        _refuse(design, sub)
+        print("\ndfsynth: the design cannot be made as asked "
+              f"(fabrication limits --min-width {sub.min_width}, --min-gap {sub.min_gap} mm):", file=sys.stderr)
+        for v in violations(design):
+            print(f"  {v}", file=sys.stderr)
+        bw = reachable_bw(design.spec, sub, design.kf, design.kb)
+        if bw:
+            print(f"  the nearest bandwidth that meets them is about {_fmt(bw)} (asked {_fmt(design.spec.bw)})",
+                  file=sys.stderr)
+        print("  other ways out: another topology or substrate, or --allow-fab-violations to write it anyway",
+              file=sys.stderr)
         return 2
 
     base = a.out
@@ -239,9 +225,9 @@ def main(argv=None):
     summary = {'model': mm}
 
     if a.validate:
+        from kicad2ems.core.api.frontend import registry
         extra = a.k2e_args.split() if a.k2e_args else []
         rounds = []
-        target = spec                                         # the design the line model puts on the spec
         for r in range(a.em_tune + 1):
             tag = '' if r == 0 else f'_tune{r}'
             print(f"\nkicad2ems ({a.validate}){' round ' + str(r) if a.em_tune else ''}:")
@@ -256,7 +242,8 @@ def main(argv=None):
                       f"bw {_pct(m['bandwidth_error_pct'])}  IL {m.get('passband_IL_dB', float('nan')):.2f} dB  "
                       f"RL {m.get('passband_RL_worst_dB', float('nan')):.1f} dB "
                       f"(own band {m.get('own_passband_RL_worst_dB', float('nan')):.1f})")
-            fw = val.full_wave(mets)
+            reg = registry()                                  # the first full-wave result (a solver taking the board)
+            fw = next((k for k in mets if k in reg and reg[k].consumes == 'board'), None)
             pred = val.predicted(mets, fw) if fw else None
             if pred:
                 print(f"  {fw} with {design.sub.t * 1e3:.0f} um copper (its error over the t=0 model, applied to "
@@ -265,40 +252,30 @@ def main(argv=None):
                            'predicted_real_copper_pct': pred})
             if r == a.em_tune or fw is None:
                 break
+            new, kf, kb = spec, design.kf, design.kb
             if spec.topology == 'interdigital':
                 # each resonator's frequency, each coupling and the taps can be off on their own: a
-                # centre / bandwidth correction cannot move them back into line
+                # centre / bandwidth correction cannot move them back into line. The target: the design the line
+                # model puts on the spec
                 fe, s21e, s11e = results[fw]
-                new = space_map(target, design.spec, sub, design.kf, design.kb, fe, s21e, s11e, log=print)
+                new = space_map(spec, design.spec, sub, kf, kb, fe, s21e, s11e, log=print)
                 if new is None:
                     print(f"  the line model does not reproduce the {fw} result: stopping the tuning")
                     break
-                notes = [n for n in design.notes if not isinstance(n, FabViolation)]
-                design = build(new, sub, design.kf, design.kb)
-                design.notes = notes + violations(design)
-                describe(design)
-                if violations(design) and not a.allow_fab_violations:
-                    print("  the corrected design is below the fabrication limits: stopping the tuning")
-                    break
-                kicad.write(design, base, title)
-                continue
-            if pred is None:
+            elif pred is None:
                 print("  no band edges in the full-wave result: stopping the tuning")
                 break
-            rc = 1 + pred[0] / 100
-            rb = 1 + pred[1] / 100 if pred[1] is not None else None
-            if rb is not None and not 0.5 < rb < 2:
-                print(f"  bandwidth error {pred[1]:+.0f}% is too large to tune from (a distorted pass band?): "
-                      "tuning the centre only")
-                rb = None
-            if rc is None:
-                print("  no band edges in the full-wave result: stopping the tuning")
-                break
-            kf = design.kf / rc
-            kb = design.kb / rb ** 0.8 if rb and spec.kind != 'lowpass' else design.kb
-            print(f"  tuning from {fw}: kf {design.kf:.4f} -> {kf:.4f}, kb {design.kb:.4f} -> {kb:.4f}")
+            else:
+                rb = 1 + pred[1] / 100 if pred[1] is not None else None
+                if rb is not None and not 0.5 < rb < 2:
+                    print(f"  bandwidth error {pred[1]:+.0f}% is too large to tune from (a distorted pass band?): "
+                          "tuning the centre only")
+                    rb = None
+                kf = design.kf / (1 + pred[0] / 100)
+                kb = design.kb / rb ** 0.8 if rb and spec.kind != 'lowpass' else design.kb
+                print(f"  tuning from {fw}: kf {design.kf:.4f} -> {kf:.4f}, kb {design.kb:.4f} -> {kb:.4f}")
             notes = [n for n in design.notes if not isinstance(n, FabViolation)]
-            design = build(spec, sub, kf, kb)
+            design = build(new, sub, kf, kb)
             design.notes = notes + violations(design)
             describe(design)
             if violations(design) and not a.allow_fab_violations:
@@ -307,7 +284,17 @@ def main(argv=None):
             kicad.write(design, base, title)
         summary['em'] = rounds
         print(f"wrote {base}_validation*.png")
-    val.save_json(base + '_design.json', design_json(design, summary))
+    sp, geo = design.spec, design.geometry
+    keys = ('name', 'z_ohm', 'width_mm', 'length_mm', 'gap_mm')
+    with open(base + '_design.json', 'w') as fh:
+        json.dump({'spec': asdict(sp), 'substrate': asdict(design.sub), 'kf': design.kf, 'kb': design.kb, 'g': design.g,
+                   'targets_GHz': {k: v / 1e9 for k, v in targets(sp).items()},
+                   'elements': [dict(zip(keys, r)) for r in design.rows], 'board_mm': [geo.W, geo.H],
+                   'notes': design.notes,
+                   # the layout as drawn (mm, KiCad's y down): copper polygons, ground vias, port markers
+                   'geometry': {'polys': geo.polys, 'vias': geo.vias, 'ports': geo.ports,
+                                'via_mm': [VIA_DRILL, VIA_SIZE]},
+                   **summary}, fh, indent=2, default=lambda o: float(o) if isinstance(o, np.floating) else str(o))
     print(f"wrote {base}_design.json")
     return 0
 
@@ -333,19 +320,6 @@ def reachable_bw(spec, sub, kf=1.0, kb=1.0):
         mid = math.sqrt(good * bad)
         good, bad = (mid, bad) if ok(mid) else (good, mid)
     return spec.bw * good
-
-
-def _refuse(design, sub):
-    print("\ndfsynth: the design cannot be made as asked "
-          f"(fabrication limits --min-width {sub.min_width}, --min-gap {sub.min_gap} mm):", file=sys.stderr)
-    for v in violations(design):
-        print(f"  {v}", file=sys.stderr)
-    bw = reachable_bw(design.spec, sub, design.kf, design.kb)
-    if bw:
-        print(f"  the nearest bandwidth that meets them is about {_fmt(bw)} (asked {_fmt(design.spec.bw)})",
-              file=sys.stderr)
-    print("  other ways out: another topology or substrate, or --allow-fab-violations to write it anyway",
-          file=sys.stderr)
 
 
 def _pct(v):
