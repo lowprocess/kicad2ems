@@ -123,9 +123,7 @@ def _skrf(lm, ports, freq, sheet, sigma):
                     nodes.setdefault(f"partport:{e.port}", []).extend([(tee, 2), (Circuit.Port(fr, e.port, z0=zp), 0)])
                 continue
             elif e.kind == 'part':
-                z = part_impedance(e.part, w)
-                if e.part.short:
-                    z = np.full_like(w, 1e-6, dtype=complex)
+                z = np.full_like(w, 1e-6, dtype=complex) if e.part.short else part_impedance(e.part, w)
                 ntw = shunt_z(z, name) if e.b == 'gnd' else series_z(z, name)
             elif e.xs == 'lumped' and e.L:
                 ntw = series_z(1j * w * e.L, name)

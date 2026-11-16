@@ -18,7 +18,7 @@ from .topology import _couple, _junctions, _paths
 def _chord(poly, c, d, reach=50.0):
     """Length of the line through c along d inside poly (the piece containing c)."""
     seg = LineString([c - d * reach, c + d * reach]).intersection(poly)
-    parts = [seg] if seg.geom_type == 'LineString' else [g for g in getattr(seg, 'geoms', []) if g.geom_type == 'LineString']
+    parts = [g for g in getattr(seg, 'geoms', [seg]) if g.geom_type == 'LineString']
     parts = [p for p in parts if p.distance(Point(*c)) < 1e-6] or parts
     return max((p.length for p in parts), default=0.0)
 

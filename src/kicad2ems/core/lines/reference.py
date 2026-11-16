@@ -735,7 +735,7 @@ class NetCopper:
             return w, 0.0
         r = max(self.reach if self is not None else 5.0, 10 * w)
         seg = LineString([pt - n * r, pt + n * r]).intersection(g)
-        parts = [seg] if seg.geom_type == 'LineString' else [p for p in getattr(seg, 'geoms', []) if p.geom_type == 'LineString']
+        parts = [p for p in getattr(seg, 'geoms', [seg]) if p.geom_type == 'LineString']
         part = next((p for p in parts if p.distance(Point(*pt)) < 1e-6), None)
         if part is None:
             return w, 0.0

@@ -13,6 +13,7 @@ centreline lengths); where both end there it is a corner.
 
     tracks = shape_strips(poly, 'F.Cu', 'RF')        # model coordinates; dicts like board.tracks
 """
+import itertools
 import numpy as np
 import shapely
 from shapely.geometry import box
@@ -35,15 +36,11 @@ def _runs(mask, sizes):
     out = np.zeros(mask.shape)
     for j in range(mask.shape[1]):
         i = 0
-        while i < mask.shape[0]:
-            if not mask[i, j]:
-                i += 1
-                continue
-            k = i
-            while k + 1 < mask.shape[0] and mask[k + 1, j]:
-                k += 1
-            out[i:k + 1, j] = sizes[i:k + 1].sum()
-            i = k + 1
+        for on, run in itertools.groupby(mask[:, j]):
+            k = i + len(list(run))
+            if on:
+                out[i:k, j] = sizes[i:k].sum()
+            i = k
     return out
 
 
