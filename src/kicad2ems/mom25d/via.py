@@ -143,12 +143,9 @@ class TMNetwork:
                     v[k] * sc[k] / (1 + 1j * (Yd[k - 1] / Y0[k]) * tn[k])
             self.V[s] = v
 
-    def is_pec(self, k):
-        return self.st.is_pec(k)
-
     def dV(self, i, s):
         """V(z_i|z_s) - V(z_{i-1}|z_s); zero for a PEC source interface."""
-        return 0.0 if self.is_pec(s) else self.V[s][i] - self.V[s][i - 1]
+        return 0.0 if self.st.is_pec(s) else self.V[s][i] - self.V[s][i - 1]
 
     def S(self, k, layers):
         """E_t potential on interface k from a unit upward current through `layers`."""
@@ -192,7 +189,7 @@ class ViaKernels:
         self._gq = {}                     # G_q spectral between interfaces (both non-PEC), from the stack network
 
         def gq(a, b):
-            if net.is_pec(a) or net.is_pec(b):
+            if stack.is_pec(a) or stack.is_pec(b):
                 return 0.0
             key = (min(a, b), max(a, b))
             if key not in self._gq:

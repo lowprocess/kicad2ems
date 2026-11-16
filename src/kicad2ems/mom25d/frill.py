@@ -71,7 +71,7 @@ across it (TE, the 'h' mode):
 import os
 
 import numpy as np
-from scipy.special import jv, j0, j1
+from scipy.special import j0, j1
 
 from .via import sommerfeld_contour, hankel, Table1D, _layers, jn
 

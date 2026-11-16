@@ -218,7 +218,6 @@ def lone_pads(data, layers):
     gnets = set(data.get('ground_nets') or [])
     if not gnets:
         return {}
-    gv = [Point(v['x'], v['y']) for v in data.get('vias', []) if v.get('net') in gnets]
     cu_z = {c['name']: c['z'] for c in data['stack']['copper']}
     out = {}
     for lay in layers:
@@ -333,7 +332,7 @@ class BoardModel(PlanarModel):
         self.pads_dropped = lone_pads(data, list(self.iface)) if stitching_pads == 'drop' else {}
         if self.pads_dropped:
             copper = {l: [g for i, g in enumerate(gs) if i not in self.pads_dropped.get(l, ())] for l, gs in copper.items()}
-            self.notes.append(f"lone stitching-via pads left out (the vias kept): " + ", ".join(
+            self.notes.append("lone stitching-via pads left out (the vias kept): " + ", ".join(
                 f"{len(ix)} on {l}" for l, ix in self.pads_dropped.items()))
         S = lambda g: affinity.scale(g, MM, MM, origin=(0, 0))
         # planes='holes': the planes between the copper layers that only vias run through, as PEC planes of the stack

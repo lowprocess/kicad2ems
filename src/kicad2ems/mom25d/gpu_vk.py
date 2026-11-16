@@ -21,7 +21,6 @@ import os
 import time
 
 import numpy as np
-import scipy.linalg as sla
 from scipy.linalg import lapack
 
 MAX_BUFFER = 2 ** 31            # bytes of one matrix buffer (under every driver's maxBufferSize)
@@ -321,11 +320,6 @@ class _Mat:
         b = [x.device_address for x in self.bufs] + [0] * (TABLE - len(self.bufs))
         return {'b': b, 'sh': self.sh, 'mask': self.per - 1, 'ld': self.rows, 'r0': int(r0), 'c0': int(c0)}
 
-    def upload_rows_of(self, Z):
-        """Z (C-ordered, rows = this matrix's columns) into the buffers."""
-        for i, b in enumerate(self.bufs):
-            b.copy_from_numpy(np.ascontiguousarray(Z[i * self.per:(i + 1) * self.per], np.complex64).view(np.uint8).ravel())
-
     def download(self):
         """The matrix as (cols, rows) C-ordered: its transpose's memory."""
         return np.concatenate([b.to_numpy().view(np.complex64).reshape(-1, self.rows) for b in self.bufs])
@@ -495,7 +489,7 @@ class VulkanBackend:
     def _upload(self, A, Z, chunk=1 << 28, c_start=0):
         """Z (host complex64, C-ordered: its rows are A's columns) into A: column blocks of 256 MB through two mapped
         host buffers, the copy kernel reading each across the bus while the host fills the other. 16 GB/s on an
-        RX 7800 XT, where buffer.copy_from_numpy (_Mat.upload_rows_of) ran at 6.5: 0.6 s -> 0.25 s of each LU at
+        RX 7800 XT, where buffer.copy_from_numpy (the buffers filled whole) ran at 6.5: 0.6 s -> 0.25 s of each LU at
         22k unknowns."""
         N, ncols = A.rows, Z.shape[0]                          # Z's rows: A's columns c_start..
         cols = max(1, min(ncols, chunk // (8 * N)))

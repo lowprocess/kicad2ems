@@ -84,7 +84,6 @@ class Slot:
         self.P6, self.W6 = quad_pts(r, _BAR6), r.area[:, None] * _W6[None, :]
         V = r.nodes[r.tris]
         self.size = np.linalg.norm(V - np.roll(V, 1, axis=1), axis=2).max(1)
-        self._static = None
         return r
 
     def field_integrals(self):
@@ -96,12 +95,6 @@ class Slot:
         fx = D(cx) @ r.Aal - r.Bx                            # f = Aal r - (Bx, By) on a triangle, its integral
         fy = D(cy) @ r.Aal - r.By                            # A (Aal c - B)
         return (D(A) @ (-fy)).tocsr(), (D(A) @ fx).tocsr()   # z x f = (-f_y, f_x)
-
-    def statics(self):
-        """The opening's 1/R moment integrals (frequency-independent): combine's (M0, Mr, Mrr), once."""
-        if self._static is None:
-            self._static = singular_moments(self.rwg)
-        return self._static
 
 
 def _sub_points(level):
@@ -211,8 +204,6 @@ class SlotTable:
 def self_block(slots, table, w, near_fac=5.0, cache=None):
     """Y (n x n) of the openings `slots` of one plane, with `table` (SlotTable), as Simulation.impedance fills Z:
     jw (static A + A) + (static q + q) / (jw), the triangle pairs near each other by quadrature."""
-    from types import SimpleNamespace
-    from scipy import sparse
     from .sing import offplane_pairs, offplane_moments
     # the openings of one plane as one mesh (their triangles and functions in turn)
     nodes, tris, off = [], [], 0
@@ -225,10 +216,14 @@ def self_block(slots, table, w, near_fac=5.0, cache=None):
         M0, Mr, Mrr = singular_moments(r)
         V = r.nodes[r.tris]
         size = np.linalg.norm(V - np.roll(V, 1, axis=1), axis=2).max(1)
+        # the order of the functions: for the edges of the slots' own meshes in turn (Slot.rwg), their index among
+        # the joint mesh's edges, matched by their end points (the joint mesh has each opening's nodes and triangles,
+        # in order). The sign of a function (its T+ and T-) is the same in both: it follows the triangles' order,
+        # which the joint mesh keeps
+        look = {tuple(np.round(r.ends[e].ravel(), 12)): e for e in range(r.Ne)}
+        order = [look[tuple(np.round(s.rwg.ends[e].ravel(), 12))] for s in slots for e in range(s.rwg.Ne)]
         cache[key] = dict(r=r, M0=M0, Mr=Mr, Mrr=Mrr, size=size, P3=quad_pts(r, _BAR3),
-                          W3=r.area[:, None] * _W3[None, :], img={})
-        # the order of the functions: the one mesh's edges, mapped back to each opening's own (Slot.rwg)
-        cache[key]['order'] = _edge_order(r, slots)
+                          W3=r.area[:, None] * _W3[None, :], img={}, order=np.array(order, int))
     c = cache[key]
     r = c['r']
     sym = lambda M: 0.5 * (M + M.T)
@@ -256,20 +251,6 @@ def self_block(slots, table, w, near_fac=5.0, cache=None):
     Y = 0.5 * (Y + Y.T)
     o = c['order']
     return Y[np.ix_(o, o)]
-
-
-def _edge_order(r, slots):
-    """For the edges of the slots' own meshes in turn, their index among the joint mesh's edges r (matched by their
-    end points; the joint mesh has each opening's nodes and triangles, in order). The sign of a function (its T+
-    and T-) is the same in both: it follows the triangles' order, which the joint mesh keeps."""
-    look = {tuple(np.round(r.ends[e].ravel(), 12)): e for e in range(r.Ne)}
-    out = [look[tuple(np.round(s.rwg.ends[e].ravel(), 12))] for s in slots for e in range(s.rwg.Ne)]
-    return np.array(out, int)
-
-
-def _levels(size, dz):
-    """How often a triangle of `size` is subdivided for a kernel peaking over the height dz: to about dz / 2."""
-    return int(np.clip(np.ceil(np.log2(max(size, 1e-12) / max(0.5 * dz, 1e-12))), 0, SUB_MAX))
 
 
 def _tm_te_moments(dx, dy, wgt, ru, P, U):
@@ -379,7 +360,6 @@ def coupling(sim, slots, kern, B, C, col0):
         cols = slice(col, col + n)
         Aal_s, Bx_s, By_s = rs.Aal, rs.Bx, rs.By
         vs = lambda M1, M2, M3: np.asarray(M3 @ Aal_s + M1 @ By_s - M2 @ Bx_s)
-        Vs = s.rwg.nodes[s.rwg.tris]
         for k in sim.layers:
             if (s.k, k) not in kern.P:
                 continue
@@ -410,22 +390,19 @@ def coupling(sim, slots, kern, B, C, col0):
                 B[:, cols] -= np.asarray(te)
         # the chains' remainder (their part of int E_z dz that is not the potential's), by span
         if Nc:
-            spans = {}
-            for c, (v, kb, kt) in enumerate(sim.chains):
-                spans.setdefault((kb, kt), []).append(c)
-            for span, cs in spans.items():
+            geo = sim._via_geometry()
+            for span, cs in geo['by_span'].items():
                 # (a chain does not run through the plane: a via through it is split there, its parts ending on
                 # the plane; Simulation refuses one through an opening)
                 if not any(st.reaches(s.k, j) or j == s.k for j in span):
                     continue
-                xy = np.array([(sim.chains[c][0].x, sim.chains[c][0].y) for c in cs])
-                dx = xy[:, 0, None, None] - s.P6[None, :, :, 0]
-                dy = xy[:, 1, None, None] - s.P6[None, :, :, 1]
+                dx = geo['x'][cs, None, None] - s.P6[None, :, :, 0]
+                dy = geo['y'][cs, None, None] - s.P6[None, :, :, 1]
                 ru = (s.P6[None, :, :, 0] + 0 * dx, s.P6[None, :, :, 1] + 0 * dy)
                 R = kern.rem(s.k, span)
                 if np.any(R.v):
                     (n1, n2, n3), _ = _tm_te_moments(dx, dy, s.W6[None] + 0 * dx, ru, R, None)
-                    C[np.array(cs), cols] += vs(n1.sum(-1), n2.sum(-1), n3.sum(-1))
+                    C[cs, cols] += vs(n1.sum(-1), n2.sum(-1), n3.sum(-1))
                 if s.k in span:
                     # its end on the plane: the opening's potential there, P_p = -1 / (2 pi rho) (T = 1 on the
                     # plane). Not zero outside an opening: only a round hole's axisymmetric field leaves the plane
@@ -433,7 +410,7 @@ def coupling(sim, slots, kern, B, C, col0):
                     # the fans' sign (dF: +1 at a chain's bottom, -1 at its top), the plane at its bottom: -Psi_p
                     (n1, n2, n3), _ = _tm_te_moments(dx, dy, s.W6[None] + 0 * dx, ru, _plane_potential, None)
                     sign = -1.0 if span[0] == s.k else 1.0
-                    C[np.array(cs), cols] += sign * vs(n1.sum(-1), n2.sum(-1), n3.sum(-1))
+                    C[cs, cols] += sign * vs(n1.sum(-1), n2.sum(-1), n3.sum(-1))
         col += n
     return col
 

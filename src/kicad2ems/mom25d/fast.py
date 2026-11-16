@@ -974,8 +974,8 @@ class FastOperator:
         if ok:
             self.sim.log.note(f"reused LU ({f0 / 1e9:.4g} GHz): GMRES iterations per port {self.iters}")
         else:
-            self.sim.log.note(f"the LU of {f0 / 1e9:.4g} GHz did not precondition {f / 1e9:.4g} GHz in {cap} iterations "
-                              f"(residual {rel:.1e}) - a new one")
+            self.sim.log.note(f"the LU of {f0 / 1e9:.4g} GHz did not precondition {f / 1e9:.4g} GHz in {cap} "
+                              f"iterations (residual {rel:.1e}) - a new one")
         return ok
 
     def _solve_kept(self, f, Z, dsc, E, gpu=None):
@@ -1278,7 +1278,7 @@ class FastOperator:
             raise RuntimeError("solver='blr' needs the compiled core with its block low-rank factor "
                                "(python -m kicad2ems.mom25d.core.build)")
         sim = self.sim
-        Ne, Nv, N = sim.Ne, sim.Nv, sim.Ne + sim.Nv
+        Ne, N = sim.Ne, sim.Ne + sim.Nv
         if self._loop_tree_at(f):
             # low frequency: the RWG matrix's loops are below a complex64 factor's rounding, at any compression
             # (antenna_vivaldi, 21.9k unknowns, at 50 MHz: the factor made three times, to no compression at all,
