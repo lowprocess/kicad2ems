@@ -13,8 +13,11 @@ a new key needs none. A file without them was written before they were stamped: 
     stamp(d, name)       d with its format and version
     check(d, name)       None when this kicad2ems reads d, else why not
     read(path, name)     a JSON file, checked (ValueError when this kicad2ems cannot read it)
+    plain(v)             json.dump's default for numpy values
 """
 import json
+
+import numpy as np
 
 FORMATS = {'kicad2ems-run': 1, 'kicad2ems-events': 1, 'kicad2ems-sysinfo': 1, 'kicad2ems-antenna': 1}
 
@@ -45,3 +48,13 @@ def read(path, name):
     if why:
         raise ValueError(f"{path}: {why}")
     return d
+
+
+def plain(v):
+    """numpy values -> JSON: arrays as lists, scalars as numbers; anything else as its str."""
+    if isinstance(v, np.ndarray):
+        return v.tolist()
+    try:
+        return v.item()
+    except AttributeError:
+        return str(v)

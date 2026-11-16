@@ -12,6 +12,7 @@ folders, exit codes and each solver's Touchstone), the window's view of the vari
 """
 import itertools
 import json
+import math
 import os
 import re
 
@@ -40,9 +41,7 @@ def parse(specs, options):
         if any(k == key for k, _ in out):
             raise ValueError(f"--vary {key}: given twice")
         out.append((key, vals))
-    n = 1
-    for _, vals in out:
-        n *= len(vals)
+    n = math.prod(len(vals) for _, vals in out)
     if n > VARY_MAX:
         raise ValueError(f"--vary: {n} combinations, at most {VARY_MAX}")
     return out
@@ -65,11 +64,10 @@ def run(s, command='', echo=print):
     import copy
     from .config import OPTIONS
     from .pipeline import Job
+    from .runs import board_name
     spec = parse(s.vary, OPTIONS)
     combos = combinations(spec)
-    name = os.path.splitext(os.path.basename(s.board))[0]
-    if name.endswith('_board'):
-        name = name[:-len('_board')]
+    name = board_name(s.board)
     os.makedirs(s.out, exist_ok=True)
     echo(f"vary: {len(combos)} combinations of {', '.join(k for k, _ in spec)}, each solved in "
          f"{os.path.join(s.out, 'vary')}")

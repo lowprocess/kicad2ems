@@ -159,18 +159,6 @@ def kind_value(fp):
 _kind_value = kind_value                     # its name before kicad2ems.core.api (the KiCad plugin's older releases)
 
 
-def _copper_near(board, layer, region):
-    """The layer's copper polygons that meet `region`, through a spatial index made once a board and layer (each
-    part's gap had unioned the whole layer: 0.61 s of a 0.95 s board build with 44 parts)."""
-    from shapely.strtree import STRtree
-    cache = board.__dict__.setdefault('_copper_index', {})
-    polys = board.copper.get(layer, [])
-    if cache.get(layer, (None, None))[0] is not polys:
-        cache[layer] = (polys, STRtree(polys) if polys else None)
-    tree = cache[layer][1]
-    return [] if tree is None else [polys[i] for i in tree.query(region, predicate='intersects')]
-
-
 def _copper_gap(board, layer, axis, e1, e2, cb, w):
     """The copper-free part of the gap between a part's pads (e1, e2 along axis, the part's width w about cb):
     tracks drawn to a pad's centre reach into the gap with their copper, so the element spans from where the
@@ -179,11 +167,20 @@ def _copper_gap(board, layer, axis, e1, e2, cb, w):
     and the Wilkinson divider's isolation came out -18.5 dB instead of about -39."""
     from shapely.geometry import box
     from shapely.ops import unary_union
+    from shapely.strtree import STRtree
     band = [0.0] * 4
     band[axis], band[2 + axis] = e1, e2
     band[1 - axis], band[3 - axis] = cb - w / 2, cb + w / 2
     band = box(*band)
-    cu = unary_union([g.intersection(band) for g in _copper_near(board, layer, band)])
+    # the layer's copper that meets the band, through a spatial index made once a board and layer (each part's gap
+    # had unioned the whole layer: 0.61 s of a 0.95 s board build with 44 parts)
+    cache = board.__dict__.setdefault('_copper_index', {})
+    polys = board.copper.get(layer, [])
+    if cache.get(layer, (None, None))[0] is not polys:
+        cache[layer] = (polys, STRtree(polys) if polys else None)
+    tree = cache[layer][1]
+    near = [] if tree is None else [polys[i] for i in tree.query(band, predicate='intersects')]
+    cu = unary_union([g.intersection(band) for g in near])
     lo, hi = e1, e2
     for piece in getattr(cu, 'geoms', [cu]):
         if piece.is_empty or piece.area < 1e-9:
@@ -255,13 +252,7 @@ def find_parts(board):
         if kind == 'C' and val == 0:
             notes.append(f"part {ref} skipped: 0 F is an open circuit")
             continue
-        R = L = C = None
-        if kind == 'R':
-            R = val
-        elif kind == 'L':
-            L = val
-        else:
-            C = val
+        R, L, C = (val if kind == k else None for k in 'RLC')
         for key, name in (('sim.esr', 'R'), ('sim.esl', 'L')):
             pv = _field(fp['props'], key)
             if pv is not None:

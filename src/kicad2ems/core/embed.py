@@ -18,7 +18,6 @@ writes <name>_<solver>_<REF>=<value>[_...].sNp for each combination. A part's im
 1/(jwC) (its value and sim.esr / sim.esl); a vendor file's is 2 z0 (1 - S21) / S21, its series-through reading.
 """
 import itertools
-import os
 
 import numpy as np
 
@@ -29,9 +28,7 @@ def part_port(part, z0=50.0, name=None):
     """The 'gap' Port across a part's gap (where its lumped sheet would be): named after the part."""
     from .board import Port
     a, b = int(part.axis), 1 - int(part.axis)
-    c = np.zeros(2)
-    c[a] = 0.5 * (part.s[a] + part.e[a])
-    c[b] = 0.5 * (part.s[b] + part.e[b])
+    c = 0.5 * (part.s[:2] + part.e[:2])
     w = float(part.e[b] - part.s[b])
     return Port(name or part.ref, part.layer, part.z, part.z, c, a, 1, w, float(z0), ref_layer=part.layer, kind='gap',
                 gap=(float(part.s[a]), float(part.e[a])), source=f"part {part.ref}", internal=True)
@@ -151,9 +148,3 @@ def loads_of(parts, f, files=None, combo=()):
 def tag(combo):
     """A file-name tag of a sweep's combination: C1=2.2p_L2=3n."""
     return '_'.join(f"{ref}={v}" for ref, v, _, _ in combo).replace('/', '-')
-
-
-def check_files(files):
-    for ref, path in files.items():
-        if not os.path.isfile(path):
-            raise ValueError(f"--part-file {ref}: {path} not found")

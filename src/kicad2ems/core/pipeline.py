@@ -31,6 +31,7 @@ import numpy as np
 
 from . import __version__, stop
 from .board import Board
+from .formats import plain, stamp
 from .plots import save, preview, plot_results, plot_lines
 from .touchstone import write_touchstone, read_touchstone
 from .solvers import registry, label, resolve_lines, missing, LINES, AUTO, MOM, FEATURES
@@ -215,12 +216,12 @@ class Job:
             self.fmin, self.fmax, settings.points)
         self.antenna = settings.antenna
         self.t0 = time.time()
-        self.lm = self.m = self.finish = None
-        self.events = None
+        self.lm = self.m = self.finish = self.events = None
         self.plan, self.named = settings.solver_plan()              # the solvers of this run; those named in solvers
         # solvers --preview prepares without solving them (openEMS: the mesh preview)
         self.previewed = [x for x in settings.solver_plan(preview=False)[0] if x not in self.plan]
         self.prep, self.results, self.deviations = {}, {}, {}        # per solver: prepare()'s form, its Result, what it changes
+        self.full = {}                                              # (_close_parts: a result over its part ports)
         mode = 'preview' if settings.preview else ('antenna' if self.antenna else 'S-parameters')
         self.summary = dict(name=self.name, version=__version__, mode=mode, command=command, solvers=list(self.plan),
                             created=datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), settings=settings.options(),
@@ -303,12 +304,9 @@ class Job:
             st()
         self.report()
         failed = [label(x) for x in self.named if x in self.plan and x not in self.results]
-        if failed and stop.requested():
-            return 1
-        if failed:
+        if failed and not stop.requested():
             self.log(f"failed: {', '.join(failed)} gave no result (see the warnings above)")
-            return 1
-        return 0
+        return 1 if failed else 0
 
     def _drop(self, name, why, what='cannot run'):
         """A solver that cannot take part: False (the run stops) when it is named in `solvers`, else it is left
@@ -338,7 +336,7 @@ class Job:
             details = reg[name].details()[1] if name in self.named else [what]
             if details != [what]:                                   # a longer check: say all of it (openEMS's import)
                 self.log(f"{label(name)} cannot run - details:\n" + "\n".join(details) + "\n"
-                         f"Without it: --preview (model, mesh, line sections), or another solver (--check lists them)")
+                         "Without it: --preview (model, mesh, line sections), or another solver (--check lists them)")
                 return False
             if not self._drop(name, what):
                 return False
@@ -365,12 +363,11 @@ class Job:
         for ref in files:
             if ref not in part_of:
                 raise ValueError(f"--part-file {ref}: not a part port ({', '.join(part_of) or 'none'})")
-        try:
-            embed.check_files({k: os.path.abspath(v) for k, v in files.items()})
-            self._sweep = embed.sweep(values, part_of)
-        except ValueError as e:
-            raise ValueError(str(e))
         self._part_files = {k: os.path.abspath(v) for k, v in files.items()}
+        for ref, path in self._part_files.items():
+            if not os.path.isfile(path):
+                raise ValueError(f"--part-file {ref}: {path} not found")
+        self._sweep = embed.sweep(values, part_of)
         if part_of:
             exc = getattr(s, 'excite', None)
             if exc:
@@ -451,8 +448,7 @@ class Job:
             if sv.consumes != 'board' or named_fw or not sv.in_auto:
                 continue
             ok, what = sv.check(s) if not (s.preview and sv.previewed) else (True, '')   # a preview only prepares it
-            why = [] if ok else [f"cannot run: {what}"]
-            why = why or sv.assess(self)
+            why = sv.assess(self) if ok else [f"cannot run: {what}"]
             if not why:
                 try:
                     e = sv.estimate(self)
@@ -530,8 +526,7 @@ class Job:
             self.log(f"estimate: {n}: {e['what']}, {t}, ~{e['gb']:.1f} GB" +
                      (f" + {e['gpu_gb']:.1f} GB on the GPU" if e.get('gpu_gb') else '') +
                      (f" ({e['how']})" if e.get('how') else ''))
-        ram = ram_gb()
-        self.summary['estimates'] = dict(solvers=out, ram_gb=ram)
+        self.summary['estimates'] = dict(solvers=out, ram_gb=ram_gb())
         return out
 
     def prepare(self):
@@ -648,8 +643,6 @@ class Job:
         part_of = getattr(self.m, 'part_of', None) or {}
         if not part_of or not all(k in r.names for k in part_of):
             return r
-        if not hasattr(self, 'full'):
-            self.full = {}
         self.full[name] = r
         loads = embed.loads_of(part_of, self.freq, self._part_files)
         S, names, zref = embed.close(r.S, list(r.names), list(r.zref), loads)
@@ -716,7 +709,7 @@ class Job:
                 self.log(warn)
             if s.deembed or s.deembed_file:                         # (R-E1: lumped ports had no de-embedding)
                 self._deembed(n, r, entry)
-            if n in getattr(self, 'full', {}):                      # (R-E5: part ports)
+            if n in self.full:                                      # (R-E5: part ports)
                 self._part_outputs(n, entry)
             self.summary['solved'][n] = entry
             self.log(f"{reg[n].label}: -> {out}")
@@ -756,15 +749,14 @@ class Job:
         if got is None:
             return
         low, high, said = got
-        fc = said
         a, b = self.results[low], self.results[high]
         if not np.allclose(np.asarray(a.zref, float), np.asarray(b.zref, float), rtol=1e-6):
             self.log(f"not joined: {label(low)} and {label(high)} have different reference impedances")
             return
         freq = self.freq
-        if fc >= freq[-1] or fc <= freq[0]:
-            self.log(f"not joined: {label(low)} is valid to about {fc / 1e6:.3g} MHz, "
-                     + ("above the whole band" if fc >= freq[-1] else "below the whole band"))
+        if said >= freq[-1] or said <= freq[0]:
+            self.log(f"not joined: {label(low)} is valid to about {said / 1e6:.3g} MHz, "
+                     + ("above the whole band" if said >= freq[-1] else "below the whole band"))
             return
         fc, _ = best_crossover(freq, a.S, b.S, said)            # where the two agree best, at or below its estimate
         S, info = join(freq, a.S, b.S, fc)
@@ -798,21 +790,10 @@ class Job:
         if 'results' in sm:                                          # the keys older readers use
             sm.update(ports=sm['results']['names'], zref=sm['results']['zref'], excited=sm['results']['excited'],
                       parts=sm['model']['parts'], diel=getattr(self.s, 'diel', None))
-        from .formats import stamp
         with open(js, 'w', encoding='utf-8') as fh:
-            json.dump(stamp(sm, 'kicad2ems-run'), fh, indent=1, default=_plain)
+            json.dump(stamp(sm, 'kicad2ems-run'), fh, indent=1, default=plain)
         if not self.s.no_report:
             from .report import write_report
             write_report(sm, self.path('_report.html'))
             self.log(f"wrote {self.path('_report.html')}")
         self.log(f"done ({time.time() - self.t0:.0f} s)")
-
-
-def _plain(v):
-    """numpy values in the summary -> JSON."""
-    if isinstance(v, np.ndarray):
-        return v.tolist()
-    try:
-        return v.item()
-    except AttributeError:
-        return str(v)

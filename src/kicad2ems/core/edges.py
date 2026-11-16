@@ -34,13 +34,6 @@ def parse_sides(v):
     return [s for s in SIDES if s in items]
 
 
-def _signal_nets(board):
-    nets = {p.net for p in board.ports if p.net}
-    if board.sel:
-        nets |= set(board.sel) - board.ground_nets
-    return nets
-
-
 def edge_walls(model, sides, keepout=0.5, step=0.1, depth=0.3, reach=2.0):
     """Wall pieces [(axis, coord, t0, t1, z0, z1)] in model coordinates (mm): a sheet normal to `axis`
     ('x' or 'y') at `coord`, from t0 to t1 along the edge and z0 to z1 in height. The sheet stands
@@ -49,8 +42,8 @@ def edge_walls(model, sides, keepout=0.5, step=0.1, depth=0.3, reach=2.0):
     from shapely.prepared import prep
     if not sides:
         return []
-    signal = _signal_nets(model)
     sel = model.sel
+    signal = {p.net for p in model.ports if p.net} | ((set(sel) - model.ground_nets) if sel else set())
     ground, sig = {}, []
     for l, n, g in model.prims.items:
         if l not in model.cu_z or (sel is not None and n not in sel):

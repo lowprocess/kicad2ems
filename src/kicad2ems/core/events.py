@@ -14,18 +14,19 @@ Lines are flushed as they are written.
 """
 import json, math, threading, time
 
+from .formats import plain, stamp
+
 
 class EventSink:
     def __init__(self, path):
         self.t0 = time.time()
         self._fh = open(path, 'w', buffering=1, encoding='utf-8')
         self._lock = threading.Lock()                      # the progress monitor writes from its own thread
-        from .formats import stamp
         self.emit('format', **stamp({}, 'kicad2ems-events'))
 
     def emit(self, kind, **data):
         data = {k: (None if isinstance(v, float) and not math.isfinite(v) else v) for k, v in data.items()}
-        line = json.dumps(dict(t=round(time.time() - self.t0, 3), kind=kind, **data), default=_plain)
+        line = json.dumps(dict(t=round(time.time() - self.t0, 3), kind=kind, **data), default=plain)
         with self._lock:
             if not self._fh.closed:
                 self._fh.write(line + "\n")
@@ -33,11 +34,3 @@ class EventSink:
     def close(self):
         with self._lock:
             self._fh.close()
-
-
-def _plain(v):
-    """numpy scalars and other odd values -> JSON."""
-    try:
-        return v.item()
-    except AttributeError:
-        return str(v)

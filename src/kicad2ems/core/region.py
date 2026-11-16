@@ -73,20 +73,9 @@ def auto_nets(board, points, outline=None):
     return sorted(nets | ground_nets(board.items, getattr(board, 'shapes', []), outline))
 
 
-def _pad(board, ref, name):
-    fp = next((f for f in board.footprints if f['ref'] == ref), None)
-    if fp is None:
-        raise ValueError(f"port on pad {ref}.{name}: no footprint {ref}")
-    pads = [q for q in fp['pads'] if str(q['name']) == str(name)]
-    if not pads:
-        raise ValueError(f"port on pad {ref}.{name}: {ref} has pads {', '.join(sorted({str(q['name']) for q in fp['pads']}))}")
-    return fp, pads[0]
-
-
-def _track_dir_from(board, layer, geom, xy):
-    """Unit direction (model coordinates, y up) from xy along the track that leaves the copper `geom`
-    on `layer`, or None."""
-    best = None
+def _track_dir_from(board, layer, geom):
+    """Unit direction (model coordinates, y up) along the first track that leaves the copper `geom` on `layer`, or
+    None."""
     for t in board.tracks:
         if t['layer'] != layer:
             continue
@@ -94,10 +83,8 @@ def _track_dir_from(board, layer, geom, xy):
             pa, pb = np.asarray(t['pts'][a], float), np.asarray(t['pts'][b], float)
             if geom.distance(Point(*pa)) < 1e-6 and geom.distance(Point(*pb)) > 1e-6:
                 d = pb - pa
-                d = np.array([d[0], -d[1]]) / (np.linalg.norm(d) or 1.0)
-                if best is None:
-                    best = d
-    return best
+                return np.array([d[0], -d[1]]) / (np.linalg.norm(d) or 1.0)
+    return None
 
 
 def _rot(d):
@@ -123,16 +110,23 @@ def extra_port_fps(board, specs):
         name, kind, arg = parse_port_spec(spec)
         num = int(re.sub(r'\D', '', name))
         if kind == 'pad':
-            fp, q = _pad(board, *arg)
+            ref, pad = arg
+            fp = next((f for f in board.footprints if f['ref'] == ref), None)
+            if fp is None:
+                raise ValueError(f"port on pad {ref}.{pad}: no footprint {ref}")
+            q = next((q for q in fp['pads'] if str(q['name']) == str(pad)), None)
+            if q is None:
+                raise ValueError(f"port on pad {ref}.{pad}: {ref} has pads "
+                                 f"{', '.join(sorted({str(q['name']) for q in fp['pads']}))}")
             layer = next((l for l in q['layers'] if l.endswith('.Cu')), 'F.Cu')
-            d = _track_dir_from(board, layer, q['geom'], q['xy'])
+            d = _track_dir_from(board, layer, q['geom'])
             if d is None:                                      # no track: along the pad's longer side
                 b = q['geom'].bounds
                 d = np.array([1.0, 0.0]) if (b[2] - b[0]) >= (b[3] - b[1]) else np.array([0.0, 1.0])
             x, y = q['xy']
-            props = {'port.layer': layer}
-            out[num] = dict(ref=f"{arg[0]}.{arg[1]}", x=float(x), y=float(y), rot=_rot(_track(d)),
-                            side='B' if layer == 'B.Cu' else 'F', props=props, source=f"pad {arg[0]}.{arg[1]}")
+            out[num] = dict(ref=f"{ref}.{pad}", x=float(x), y=float(y), rot=_rot(_track(d)),
+                            side='B' if layer == 'B.Cu' else 'F', props={'port.layer': layer},
+                            source=f"pad {ref}.{pad}")
         else:
             x, y, layer, rot = arg
             layer = layer or 'F.Cu'
@@ -150,15 +144,12 @@ def _track(d):
     """A port's direction from its track's: the track's own (a vertical port takes any angle, R-E1), snapped to x or
     y within SNAP_DEG."""
     d = np.asarray(d, float) / (np.linalg.norm(d) or 1.0)
-    return _axis(d) if np.max(np.abs(d)) >= math.cos(math.radians(SNAP_DEG)) else d
+    if np.max(np.abs(d)) >= math.cos(math.radians(SNAP_DEG)):          # the x or y direction nearest to d
+        return np.array([np.sign(d[0]), 0.0]) if abs(d[0]) >= abs(d[1]) else np.array([0.0, np.sign(d[1])])
+    return d
 
 
 SNAP_DEG = 1.0
-
-
-def _axis(d):
-    """The x or y direction nearest to d."""
-    return np.array([np.sign(d[0]), 0.0]) if abs(d[0]) >= abs(d[1]) else np.array([0.0, np.sign(d[1])])
 
 
 def _dir_along_track(board, layer, x, y):
