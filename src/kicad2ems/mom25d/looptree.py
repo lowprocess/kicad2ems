@@ -51,9 +51,9 @@ has the other's part, so M is right to rounding at any frequency
     lt.to_ideal(Z); lt.cols(Z, core); lt.rows(Z, core)
         # Z <- K^T Mmap^T Z Mmap K, in place
     lt.charge_into(Z, Mq, area, core)  # + A_T^T Gc A_T on the tree (after the
-                                       scaling)
+                                       # scaling)
     u = lt.from_ideal(lt.from_tree(x))  # basis currents from loop and tree
-                                        amplitudes
+                                        # amplitudes
 """
 import numpy as np
 from scipy import sparse
@@ -161,8 +161,8 @@ class LoopTree:
                   for p in zip(*levels[d]))
             for d in sorted(levels)
         ]
-        cat = lambda k: np.concatenate([lv[k] for lv in self.levels]
-                                       ) if self.levels else np.zeros(0)
+        cat = lambda k: (np.concatenate([lv[k] for lv in self.levels])
+                         if self.levels else np.zeros(0))
         self.t_node, self.t_parent, self.t_branch = (cat(k).astype(np.int32)
                                                      for k in range(3))
         self.t_sig = cat(3).astype(float)
@@ -177,8 +177,7 @@ class LoopTree:
                       self.cot.astype(np.int32), self.cu.astype(np.int32),
                       self.cv.astype(np.int32), n_nodes)
 
-    # ---- the transforms
-    # ---------------------------------------------------------------------------
+    # ---- the transforms -----------------------------------------------------
     def to_ideal(self, Z, scale_rows=None):
         """Z <- Mmap^T Z Mmap in place (N x N): unit branch currents. Mmap =
         diag(dl) (I + F): the coefficients' scale, then the fan paths (only the

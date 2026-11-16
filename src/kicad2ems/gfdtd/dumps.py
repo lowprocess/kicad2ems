@@ -265,9 +265,8 @@ class Dumps:
                 self.acc.append(None)
                 continue
             shape = (len(fd),) + r.shape + (3,)
-            self.acc.append(
-                be.zeros(shape, np.complex64) if r.gpu else self.xp.
-                zeros(shape, np.complex64))
+            self.acc.append(be.zeros(shape, np.complex64) if r.gpu
+                            else self.xp.zeros(shape, np.complex64))
         self.dts = op.sub * op.dt
 
     def __bool__(self):

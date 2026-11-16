@@ -16,7 +16,7 @@ the edge from line i to i+1 at y_j, z_k; H_x[i, j, k] sits at x_i, y_j+1/2,
 z_k+1/2. Indices past the last edge hold zero coefficients.
 
     op = build(csx, fdtd)  # fdtd: dict(bc=[6], f0, fc, nr_ts, end_crit,
-                           oversampling)
+                           # oversampling)
 
 Materials are sampled at cell centres (highest priority wins) and averaged over
 the four quarter cells around each edge. Metals take the edges whose midpoint is
@@ -91,8 +91,7 @@ class Grid:
         self.tol = [1e-6 * max(np.min(np.diff(l)), 1e-12) for l in self.lines]
 
 
-# ---- primitives: which points of a tensor grid are inside
-# ------------------------------------------------------
+# ---- primitives: which points of a tensor grid are inside -------------------
 def _range_mask(coord, lo, hi, tol):
     return (coord >= lo - tol) & (coord <= hi + tol)
 
@@ -245,8 +244,7 @@ def edge_mask(q, a, grid):
     return np.pad(m, [(0, 1) if b == a else (0, 0) for b in range(3)])
 
 
-# ---- the operator
-# -------------------------------------------------------------------------------------------------
+# ---- the operator -----------------------------------------------------------
 def timestep(grid, factor=SAFETY):
     """The largest stable step for vacuum on this grid: 1 / (c sqrt(sum over
     axes of the largest 1/(d_i-1 d_i))), the neighbouring primary cells around
@@ -462,8 +460,8 @@ def _sheet_normal(q):
     (PEC on the others)."""
     if isinstance(q, C.Polygon) and not isinstance(q, C.LinPoly):
         return int(q.norm_dir)
-    flat = ([a for a in range(3)
-             if q.start[a] == q.stop[a]] if isinstance(q, C.Box) else [])
+    flat = ([a for a in range(3) if q.start[a] == q.stop[a]]
+            if isinstance(q, C.Box) else [])
     return flat[0] if len(flat) == 1 else None
 
 
@@ -739,8 +737,8 @@ def excitation_signal(kind, f0, fc, dt, nr_ts, function=None):
     if kind == 0:
         n = int(2 * 9.0 / (2 * np.pi * fc) / dt)
         t = np.arange(n + 1) * dt
-        g = lambda t: np.cos(2 * np.pi * f0 * (t - 9.0 / (2 * np.pi * fc))
-                             ) * np.exp(-(2 * np.pi * fc * t / 3 - 3)**2)
+        g = lambda t: (np.cos(2 * np.pi * f0 * (t - 9.0 / (2 * np.pi * fc)))
+                       * np.exp(-(2 * np.pi * fc * t / 3 - 3)**2))
         return g(t), g(t + dt / 2)
     if kind == 2:
         return np.array([0.0, 1.0]), np.array([0.0, 1.0])
@@ -792,9 +790,8 @@ def _core(csx, fdtd):
         Epsilon=1.0, Kappa=0.0))
     eps = np.full(ncell, float(bg.get('Epsilon', 1.0)))
     kap = np.full(ncell, float(bg.get('Kappa', 0.0)))
-    # (R-B18: openEMS's Mue and Sigma, the
+    # (R-B18: openEMS's Mue and Sigma, the magnetic loss, had been dropped)
     mue = np.full(ncell, float(bg.get('Mue', 1.0)))
-    # magnetic loss, had been dropped)
     sig = np.full(ncell, float(bg.get('Sigma', 0.0)))
     prio = np.full(ncell, -np.inf)
     # the Debye material of each cell (index)
@@ -1602,12 +1599,20 @@ def _mode_match(p, grid, sh, s, e):
         return None
     n = flat[0]
     u, v = (n + 1) % 3, (n + 2) % 3
-    disc = (lambda a, i: (grid.mid[a][i]
-                          if i < sh[a] - 1 else grid.lines[a][i] + 0.5 *
-                          (grid.lines[a][i] - grid.lines[a][i - 1]))
-            if dual else grid.lines[a][i])
-    width = lambda a, i: (grid.d[a][i] if i < sh[a] - 1 else 0.0
-                          ) if dual else grid.dual[a][i]
+
+    def disc(a, i):
+        x = grid.lines[a]
+        if not dual:
+            return x[i]
+        if i < sh[a] - 1:
+            return grid.mid[a][i]
+        return x[i] + 0.5 * (x[i] - x[i - 1])
+
+    def width(a, i):
+        if not dual:
+            return grid.dual[a][i]
+        return grid.d[a][i] if i < sh[a] - 1 else 0.0
+
     iu, iv = np.arange(lo[u], hi[u] + 1), np.arange(lo[v], hi[v] + 1)
     cu = np.array([disc(u, i) for i in iu])
     cv = np.array([disc(v, i) for i in iv])

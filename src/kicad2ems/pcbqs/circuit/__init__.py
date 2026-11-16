@@ -35,5 +35,6 @@ inductor's ripple, the sources' and loads' power, the efficiency and the power
 balance. deck.py writes the ngspice deck (on power_spice.Circuit, which has the
 passives with their parasitics, the switch models and the run).
 """
-from .model import load, validate, resolve, cases, templates, template, ModelError  # noqa: F401
+from .model import (load, validate, resolve, cases, templates,  # noqa: F401
+                    template, ModelError)
 from .engine import run, run_case  # noqa: F401

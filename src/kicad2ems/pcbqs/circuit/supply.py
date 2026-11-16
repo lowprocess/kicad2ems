@@ -5,9 +5,9 @@ and a converter's input current for the near-field tool (pcbqs.mqs --spectrum
 FILE).
 
     rows = currents(model, result, period)  # engine.run_case calls it; a case's
-                                            'supply'
+                                            # 'supply'
     write(folder, rows)                     # <case>/supply-<footprint>.csv,
-                                            their names into the rows
+                                            # their names into the rows
 
 A supply node is one a DC voltage source is on (its + side; the other on
 ground). Every other part with a pin on it draws a current from it, but the
@@ -23,10 +23,11 @@ DC load) and its harmonics, i(t) = avg + sum A_n cos(2 pi n t / period +
 phase_n). Parts on one footprint (a regulator's switches) are one load, their
 currents added.
 
-    [dict(node='in', net='+5V', rail_net='+5V', source='V1', source_footprint=None, volts=5.0,
+    [dict(node='in', net='+5V', rail_net='+5V', source='V1',
+          source_footprint=None, volts=5.0,
           capacitors=['C704', 'C705', 'C706'], through=[], dcr={}, loads=[
-        dict(footprint='U702', parts=['QH'], avg_A=1.40, rms_A=1.67, f_Hz=[...], A=[...], deg=[...],
-             file='supply-U702.csv')])]
+        dict(footprint='U702', parts=['QH'], avg_A=1.40, rms_A=1.67,
+             f_Hz=[...], A=[...], deg=[...], file='supply-U702.csv')])]
 
 (net: the board's net of the source's node, where a model of the rail starts;
 rail_net: the board's net of the node the loads are on (behind a filter:
@@ -64,10 +65,11 @@ def currents(model, result, period, harmonics=HARMONICS):
         p for p in model['parts']
         if p.get('enabled', True) and p['nodes'][0] != p['nodes'][1]
     ]
-    where = lambda part, node: footprint_of(model, part['ref'], part['nodes'].
-                                            index(node)) or part['ref']
-    held = lambda node: any(p['type'] == 'capacitor' and node in p['nodes'] and
-                            set(p['nodes']) & set(GROUND) for p in live)
+    where = lambda part, node: (footprint_of(model, part['ref'],
+                                             part['nodes'].index(node))
+                                or part['ref'])
+    held = lambda node: any(p['type'] == 'capacitor' and node in p['nodes']
+                            and set(p['nodes']) & set(GROUND) for p in live)
     rows = []
     for src in live:
         if (src['type'] != 'source' or 'dc_V' not in src

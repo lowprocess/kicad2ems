@@ -10,9 +10,10 @@ preconditioner's iterations grow with frequency (wpthb, 24 ports: 966 at DC,
 3,540 at 900 kHz). The two copies of the copper carry a common current, which
 sees the board's full inductance, and a difference current circulating between
 the faces 35 um apart, whose field is local. So the loops split into
-  - the common-mode loops, as many as one sheet has: solved exactly, a dense matrix from compressed products;
-  - the difference loops, one per edge pair: solved with the inductance among edges that share a triangle only,
-    a sparse matrix,
+  - the common-mode loops, as many as one sheet has: solved exactly, a dense
+    matrix from compressed products;
+  - the difference loops, one per edge pair: solved with the inductance among
+    edges that share a triangle only, a sparse matrix,
 applied one after the other (the difference solve on the residual the common
 solve leaves). 217 to 618 iterations on that case. The setup is one compressed
 product per common-mode loop, so it pays for many right-hand sides (the circuit

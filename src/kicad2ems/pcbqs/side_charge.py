@@ -10,9 +10,9 @@ charge density, at its boundary triangle's conductor potential (no current:
 these panels add charge unknowns, not circuit branches).
 
     panels = side_panels(model)                  # per panel: two triangles (m),
-                                                 area, owning triangle
+                                                 # area, owning triangle
     Ptt, Ptp, Ppp = side_moments(model, panels)  # 1/R moments: triangle x
-                                                 panel, panel x panel (m^3)
+                                                 # panel, panel x panel (m^3)
 """
 import numpy as np
 

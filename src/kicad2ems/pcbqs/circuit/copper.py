@@ -1,13 +1,18 @@
 """
 A model's board: the copper between its parts' pads, as part of the circuit.
 
-    "board": {"file": "06_boost.kicad_pcb",          # beside the model; a .kicad_pcb, or kicad2ems's board.json
-              "parts": {"V1": "J1", "R1": "J2"},     # a model part's footprint, when its reference differs;
-                                                     # a footprint a pin (["TP15", "TP14"]: a coil soldered to two
-                                                     # test points); null: off the board (a pin's, or the part's)
-              "nets": {"vbus": "+24V"},              # a model node's net on the board, when its name differs
-              "reference": {"in": "C1"},             # the part whose pad is a net's node itself (else its first)
-              "mesh": {"coarse_mm": 3, "fine_mm": 1.6, "fit_tolerance": 0.03}}
+    "board": {
+        # beside the model; a .kicad_pcb, or kicad2ems's board.json
+        "file": "06_boost.kicad_pcb",
+        # a model part's footprint, when its reference differs; a footprint a
+        # pin (["TP15", "TP14"]: a coil soldered to two test points); null: off
+        # the board (a pin's, or the part's)
+        "parts": {"V1": "J1", "R1": "J2"},
+        # a model node's net on the board, when its name differs
+        "nets": {"vbus": "+24V"},
+        # the part whose pad is a net's node itself (else its first)
+        "reference": {"in": "C1"},
+        "mesh": {"coarse_mm": 3, "fine_mm": 1.6, "fit_tolerance": 0.03}}
 
 A part's pin is the pads of its footprint on its node's net ('0' is the board's
 GND), so nothing is drawn or named twice: the model says which part is on which
@@ -19,7 +24,7 @@ ports in one model, so their mutual inductance is in it too), extracted by the
 quasi-static solver (pcbqs.mqs) and fitted over frequency.
 
     cu = prepare(model, out, log)      # extract, or read back
-                                       <out>/copper-model.json
+                                       # <out>/copper-model.json
     deck = build(resolved, state, cu)  # circuit/deck.py
 
 A part with no footprint on the board (a coil on a cable, a bench supply) is at
@@ -196,13 +201,12 @@ def geometry(model, board, log=print):
             (chosen[n] for n in chosen if net_name(model, n, nets) == net),
             None))
         if want:
-            # a footprint, or a part's (its
+            # a footprint, or a part's (its pins' footprints: the one on this
+            # net)
             given = (model.get('board') or {}).get('parts', {}).get(want, want)
-            # pins' footprints: the one on
             fp = next(
                 (
                     f for f in (given if isinstance(given, list) else [given])
-                    # this net)
                     if f and f"{f}.{net}" in mine),
                 None)
             if fp is None:

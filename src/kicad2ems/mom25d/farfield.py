@@ -3,9 +3,9 @@ mom25d.farfield - the far field of the surface currents of a solve: patterns,
 directivity, gain, efficiency.
 
     ff = far_field(sim, I, f, theta, phi)  # r E_theta, r E_phi (V) on a theta x
-                                           phi grid (degrees)
+                                           # phi grid (degrees)
     U, prad = radiated(Eth, Eph, theta, phi)  # radiation intensity and radiated
-                                              power
+                                              # power
 
 Every metal interface radiates into the half-space above the stack (the top
 medium, top_er): its current J(x, y), Fourier transformed at k_rho = k_top

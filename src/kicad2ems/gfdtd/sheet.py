@@ -77,7 +77,7 @@ def per_square(sigma, thickness, f_max):
 
 
 # ---- surface roughness: a wideband fit of the rough sheet (gfdtd's, beyond
-# openEMS) ------------------------------
+# openEMS) --------------------------------------------------------------------
 # time constants of the impedance fit (7-9 admittance poles come out of it)
 FIT_BRANCHES = 10
 FIT_DECADES = 4         # the fit from f_max / 10^FIT_DECADES to 2 f_max

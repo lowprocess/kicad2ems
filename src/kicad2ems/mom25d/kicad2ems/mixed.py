@@ -31,7 +31,8 @@ import time
 import numpy as np
 
 from kicad2ems.core.api.solver import Result, Option
-from .mom import MoM25D, _metal, _model_kw, _mesh_kw, run_finish, _stack, apertures, aperture_text, ports_below
+from .mom import (MoM25D, _metal, _model_kw, _mesh_kw, run_finish, _stack,
+                  apertures, aperture_text, ports_below)
 from kicad2ems.emsdev.numerics.base import C0
 from kicad2ems.core.api.solver import stop
 
@@ -404,8 +405,8 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, rough=None, finish=None,
                              on_step=on_step, freq=freq)
     for jn in joins:
         q, md = jn['port'], jn['mode']
-        jn['gamma'] = (q.gamma_fn
-                       if md is None else q.gd_fn if md == 'd' else q.gc_fn)
+        jn['gamma'] = (q.gamma_fn if md is None
+                       else q.gd_fn if md == 'd' else q.gc_fn)
         jn['zc'] = q.zc_fn if md is None else q.zd_fn if md == 'd' else q.zc_fn
         # as solved: zref
         jn['z0'] = (float(q.zc) if md is None else float(q.zdiff) *
@@ -572,13 +573,13 @@ class Mixed(MoM25D):
     in_all = False  # --solvers all: a variant of mom25d, named on its own
     order = 30
     capabilities = dict(
-        MoM25D.capabilities, ports='yes: as mom25d', diff_pairs=
-        'yes: as mom25d (a pair\'s straight stretches are cut as a coupled '
-        'line)',
-        radiation=
-        'approximated: as mom25d, except from the stretches put back as lines',
-        dispersion=
-        'no: constant er and tan d (--diel wideband is mom25d\'s alone)')
+        MoM25D.capabilities, ports='yes: as mom25d',
+        diff_pairs=('yes: as mom25d (a pair\'s straight stretches are cut as '
+                    'a coupled line)'),
+        radiation=('approximated: as mom25d, except from the stretches put '
+                   'back as lines'),
+        dispersion=('no: constant er and tan d (--diel wideband is mom25d\'s '
+                    'alone)'))
     options = [
         Option(
             'mixed_cut', CUT_MIN,
@@ -621,20 +622,17 @@ class Mixed(MoM25D):
             (run.status('mixed', dict(fraction=k / n, solves=k, f_ghz=f / 1e9)),
              stop.check()))
         info.update(
-            kpi=
-            f"{info['unknowns']:,} unknowns, {info['cuts']} line(s), "
-            f"{info['seconds']:.0f} s",
-            about=
-            f"mixed: mom25d with {info['cuts']} long straight stretch(es) of "
-            f"trace ({info['cut_mm']:g} mm"
-            +
-            (f", {info['pairs']} of them two traces side by side as a coupled "
-             "line"
-             if info.get('pairs') else '') +
-            ") cut out and put back as transmission lines (gamma and Zc from "
-            f"each line's cross-section): {info['unknowns']:,} unknowns, "
-            f"{info['solves']} EM solves in {info['seconds']:.0f} s. The cut "
-            "stretches couple to nothing but their own line.")
+            kpi=(f"{info['unknowns']:,} unknowns, {info['cuts']} line(s), "
+                 f"{info['seconds']:.0f} s"),
+            about=(f"mixed: mom25d with {info['cuts']} long straight "
+                   f"stretch(es) of trace ({info['cut_mm']:g} mm"
+                   + (f", {info['pairs']} of them two traces side by side as "
+                      "a coupled line" if info.get('pairs') else '')
+                   + ") cut out and put back as transmission lines (gamma and "
+                   "Zc from each line's cross-section): "
+                   f"{info['unknowns']:,} unknowns, {info['solves']} EM "
+                   f"solves in {info['seconds']:.0f} s. The cut stretches "
+                   "couple to nothing but their own line."))
         run.log(
             f"mixed: {info['unknowns']:,} unknowns, {info['cuts']} line(s), "
             f"{info['solves']} EM solves, {info['seconds']:.0f} s")

@@ -7,7 +7,8 @@ are 14.4 s of a 14.6 s set-up, at every run (R-D10).
     MOM25D_CACHE  the folder (default: $XDG_CACHE_HOME/mom25d, else
                   ~/.cache/mom25d); 'off': nothing kept
 
-    out, kept = cached('xs', stack, dict(layer=.., w=.., ...), lambda: line_char_xs(...))
+    out, kept = cached('xs', stack, dict(layer=.., w=.., ...),
+                       lambda: line_char_xs(...))
 
 An entry's key is the stack (each layer's h, er, tan d and fref; the covers),
 what the call was given and a digest of mom25d's own code (its modules and

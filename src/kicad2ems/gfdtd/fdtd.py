@@ -5,7 +5,8 @@ gfdtd.ports) and Run, so a script (or kicad2ems's build_fdtd) written for
 openEMS runs here by swapping the two imports:
 
     from kicad2ems.gfdtd import ContinuousStructure, openEMS
-    FDTD = openEMS(NrTS=100000, EndCriteria=1e-4); FDTD.SetGaussExcite(f0, fc); FDTD.SetBoundaryCond(['MUR'] * 6)
+    FDTD = openEMS(NrTS=100000, EndCriteria=1e-4); FDTD.SetGaussExcite(f0, fc);
+    FDTD.SetBoundaryCond(['MUR'] * 6)
     CSX = ContinuousStructure(); FDTD.SetCSX(CSX); ...
     port = FDTD.AddLumpedPort(1, 50, start, stop, 'z', excite=1)
     FDTD.Run(sim_path); port.CalcPort(sim_path, freq)
@@ -76,8 +77,7 @@ class openEMS:  # noqa: N801
             )
         self.ignored = [k for k in kw if k in ('CellConstantMaterial',)]
 
-    # ---- settings
-    # --------------------------------------------------------------------------------------------
+    # ---- settings -----------------------------------------------------------
     def SetNumberOfTimeSteps(self, val):
         self.nr_ts = int(val)
 
@@ -214,8 +214,7 @@ class openEMS:  # noqa: N801
         return nf2ff(self.csx, name, start, stop, directions=directions,
                      mirror=mirror, **kw)
 
-    # ---- XML
-    # --------------------------------------------------------------------------------------------------
+    # ---- XML ----------------------------------------------------------------
     def Write2XML(self, file):
         top = ET.Element('openEMS')
         f = ET.SubElement(top, 'FDTD', NumberOfTimesteps=str(self.nr_ts),
@@ -267,8 +266,7 @@ class openEMS:  # noqa: N801
         self.csx.from_xml(root.find('ContinuousStructure'))
         return True
 
-    # ---- the run
-    # ----------------------------------------------------------------------------------------------
+    # ---- the run ------------------------------------------------------------
     def Run(self, sim_path, cleanup=False, setup_only=False, verbose=None,
             backend=None, log=None, **kw):
         """Run in sim_path (made if missing; cleanup: remove openEMS's own
@@ -296,12 +294,12 @@ class openEMS:  # noqa: N801
                     for fn in glob.glob(os.path.join(sim_path, pat)):
                         os.remove(fn)
             os.makedirs(sim_path, exist_ok=True)
-            out(" "
-                "---------------------------------------------------------------------- "
+            out(" -----------------------------------"
+                "----------------------------------- "
                 f"\n | gfdtd -- version {__version__} -- GPU FDTD, openEMS / "
                 "CSXCAD compatible\n "
-                "---------------------------------------------------------------------- "
-                )
+                "-----------------------------------"
+                "----------------------------------- ")
             self.op = build(self.csx, self.settings(), log=out)
             if resolve_backend(backend or self.backend) == 'cupy':
                 import cupy

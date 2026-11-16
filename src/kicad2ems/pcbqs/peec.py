@@ -16,7 +16,8 @@ from scipy.linalg import lu_factor, lu_solve
 from collections import OrderedDict
 
 from kicad2ems.emsdev.numerics.base import qform
-from .kernels import peec_system, lu_factor_rows, lu_solve_rows, solve_symmetric, factor_bytes
+from .kernels import (peec_system, lu_factor_rows, lu_solve_rows,
+                      solve_symmetric, factor_bytes)
 
 
 def electric_field(model, result, fi, pts, chunk=100_000):
@@ -194,9 +195,8 @@ def prepare(model):
     kc = K.tocoo()
     full_basis = coo_matrix((kc.data, (passive[kc.row], kc.col)),
                             shape=(nb, K.shape[1])).tocsc()
-    # (row-major: the system's
+    # (row-major: the system's kernel reads them in place)
     R = np.ascontiguousarray((full_basis.T @ m['R'] @ full_basis).toarray())
-    # kernel reads them in place)
     L = np.ascontiguousarray(model._project_inductance(full_basis, *m['L']))
     names = [model.parts[k - len(model.br)]['name'] for k in sources]
     # Split out the electrostatic equilibrium charge of each passive graph

@@ -169,8 +169,8 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
         log(f"  mom25d: conductor loss sigma {sigma:g} S/m, {t_mm * 1e3:g} um "
             "copper"
             + (f", {rough:g} um RMS rough (Hammerstad)" if rough else "")
-            + (f", {finish.name} on {', '.join(sorted(metal.on))}" if metal.
-               on else ""))
+            + (f", {finish.name} on {', '.join(sorted(metal.on))}"
+               if metal.on else ""))
     kw.update(metal=metal, max_solves=max_solves,
               log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
               progress=progress, on_step=on_step, core=core, keep_at=keep_at)
@@ -428,24 +428,24 @@ class MoM25D(Solver):
     basic = ('mom_dmax',)
     capabilities = dict(
         ports='yes: lumped, or de-embedded wave ports on a long enough feed',
-        gap_ports=
-        "part ports only (a delta gap across the part's strip; no dipole or "
-        "slot feeds)",
+        gap_ports=("part ports only (a delta gap across the part's strip; no "
+                   "dipole or slot feeds)"),
         diff_pairs='yes', parts='yes: one series element across the gap',
         vias='yes: over the layers with metal at the via',
         outline='ignored: laterally infinite dielectric',
         planes='yes: meshed (slow on plane-heavy boards)',
         edge_walls='approximated: via rows every 0.5 mm',
         thickness='ignored: sheets', conductor_loss='yes',
-        roughness='yes: Hammerstad at each frequency', finish=
-        'approximated: on the outer copper, weighted by the finished faces\' '
-        'share of the strip\'s loss (the port trace\'s), at each frequency',
-        dispersion=
-        'yes with --diel wideband (Djordjevic-Sarkar at each frequency), else '
-        'constant er and tan d',
-        radiation='yes', cavity='no', antenna=
-        'approximated: over an infinite ground plane (patches, arrays; not an '
-        'antenna that uses the board edge or a finite ground)')
+        roughness='yes: Hammerstad at each frequency',
+        finish=('approximated: on the outer copper, weighted by the finished '
+                'faces\' share of the strip\'s loss (the port trace\'s), at '
+                'each frequency'),
+        dispersion=('yes with --diel wideband (Djordjevic-Sarkar at each '
+                    'frequency), else constant er and tan d'),
+        radiation='yes', cavity='no',
+        antenna=('approximated: over an infinite ground plane (patches, '
+                 'arrays; not an antenna that uses the board edge or a finite '
+                 'ground)'))
     options = [
         Option(
             'mom_dmax', 0.3,
@@ -654,8 +654,7 @@ class MoM25D(Solver):
                 "board): set ground = <layer>, or mom_stack = whole")
         return out
 
-    # ---- what it changes, and what it holds
-    # -------------------------------------------------------------
+    # ---- what it changes, and what it holds ---------------------------------
     WALL_PITCH, WALL_R = 0.5, 0.05  # mm: edge walls as via rows (mom25d.board)
 
     def deviations(self, run, prep):
@@ -884,11 +883,11 @@ class MoM25D(Solver):
             from kicad2ems.mom25d.api import build_board
             # the quads come with a run)
             pairs, kw = _board_kw(m, s.mom_dmax, s.mom_port, **_mesh_kw(s, m))
-            bm, sim = (_legs_if_short(
-                lambda p: build_board(m.to_dict(
-                ), run.fmin, run.fmax, pairs=p, log=lambda *a: None, mesh_only=
-                                      True, characterize=False, **kw), pairs,
-                s.mom_port)[0])
+            bm, sim = _legs_if_short(
+                lambda p: build_board(m.to_dict(), run.fmin, run.fmax, pairs=p,
+                                      log=lambda *a: None, mesh_only=True,
+                                      characterize=False, **kw),
+                pairs, s.mom_port)[0]
             save_mesh(run, sim, bm)
 
     def solve(self, run, prep):
@@ -917,16 +916,17 @@ class MoM25D(Solver):
         def one(dmax, finest=True):
             return solve(
                 run.m, run.freq, dmax=dmax, port=port, max_solves=s.mom_solves,
-                sigma=s.sigma, rough=getattr(s, 'rough',
-                                             None), finish=run_finish(run),
+                sigma=s.sigma, rough=getattr(s, 'rough', None),
+                finish=run_finish(run),
                 log=run.log, hold=self._held if finest else {}, core=s.mom_core,
                 **_mesh_kw(s, run.m), keep_at=keep if finest else [],
                 progress=lambda k, n, f: (run.status(
-                    'mom25d', dict(fraction=k / n, solves=k, f_ghz=f / 1e9)
-                ), stop.check()), on_step=lambda h: run.status(
+                    'mom25d', dict(fraction=k / n, solves=k, f_ghz=f / 1e9)),
+                    stop.check()),
+                on_step=lambda h: run.status(
                     'mom25d',
-                    dict(afs_solves=h['solves'], change=h['change'], pred=h[
-                        'pred'], tol=h['tol'])))
+                    dict(afs_solves=h['solves'], change=h['change'],
+                         pred=h['pred'], tol=h['tol'])))
 
         levels = sorted({
             float(f)
@@ -957,14 +957,15 @@ class MoM25D(Solver):
         kinds = ", ".join(f"{p['name']} {p['kind']}" for p in info['ports'])
         info.update(
             kpi=f"{info['unknowns']:,} unknowns, {info['seconds']:.0f} s",
-            about=
-            f"mom25d, a 2.5D Method-of-Moments solver: {info['unknowns']:,} "
-            f"unknowns ({info['triangles']:,} triangles, cells up to "
-            f"{info['dmax_mm']:g} mm), {info['solves']} EM solves of an "
-            f"adaptive sweep in {info['seconds']:.0f} s; ports: {kinds}. MoM "
-            "sees laterally infinite dielectrics over an infinite ground "
-            "plane: no board edge, no air box, no box resonances; radiation "
-            "and surface waves are in.")
+            about=(
+                "mom25d, a 2.5D Method-of-Moments solver: "
+                f"{info['unknowns']:,} unknowns ({info['triangles']:,} "
+                f"triangles, cells up to {info['dmax_mm']:g} mm), "
+                f"{info['solves']} EM solves of an adaptive sweep in "
+                f"{info['seconds']:.0f} s; ports: {kinds}. MoM sees laterally "
+                "infinite dielectrics over an infinite ground plane: no board "
+                "edge, no air box, no box resonances; radiation and surface "
+                "waves are in."))
         run.log(f"mom25d: {info['solves']} EM solves, {info['seconds']:.0f} s")
         return Result(S, names, zref, info['seconds'], info=info,
                       comment=f"mom25d 2.5D MoM ({run.name})")
@@ -995,7 +996,8 @@ class MoM25D(Solver):
         infinite ground."""
         from kicad2ems.mom25d.farfield import far_field, radiated
         from kicad2ems.core.api.solver import phased
-        from kicad2ems.core.api.solver import match_summary, describe_antenna, save_antenna, pattern_gain
+        from kicad2ems.core.api.solver import (match_summary, describe_antenna,
+                                               save_antenna, pattern_gain)
         from kicad2ems.core.api.solver import plot_antenna, plot_pattern
         s, m, sim = run.s, run.m, held.sim
         names = [p.name for p in sim.ports]
@@ -1243,9 +1245,8 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d',
     nodes = sim.rwg.nodes[:, :2] * 1e3
     # solved by the sweep at these: no solve
     kept = getattr(sim, 'kept', None) or {}
-    currents = (currents
-                or (lambda f: kept[f]
-                    if f in kept else sim.currents(f, sim.excitation())))
+    currents = currents or (
+        lambda f: kept[f] if f in kept else sim.currents(f, sim.excitation()))
     I_f = [(stop.check(), currents(f))[1] for f in freqs]
     step = max(run.s.mom_dmax / 3, 0.02)
     ztop = float(model._zk[-1])

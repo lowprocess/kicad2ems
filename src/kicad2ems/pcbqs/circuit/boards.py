@@ -3,7 +3,7 @@ The example circuits' boards: a KiCad layout for each, written from a short
 description.
 
     python -m kicad2ems.pcbqs.circuit.boards  # write every example's .kicad_pcb
-                                              beside its model, and check each
+                                              # beside its model, and check each
     python -m kicad2ems.pcbqs.circuit.boards --picture boards.png
 
 A layout here is what a power board is: an island of copper for each net on the
@@ -15,8 +15,9 @@ is put down by hand (`part`).
 
     b = Board('06_boost', 44, 24)
     b.row(['in', 'sw', 'out'], [15, 9, 16])  # three islands in a row over the
-                                             ground strip
-    b.place(model, packages={'V1': 'J_PADS', 'L1': 'L_7x7', ...}, names={'V1': 'J1', 'R1': 'J2'})
+                                             # ground strip
+    b.place(model, packages={'V1': 'J_PADS', 'L1': 'L_7x7', ...},
+            names={'V1': 'J1', 'R1': 'J2'})
     b.check(); b.write(folder)
 
 check() is the generator's own: every pad on copper of its net, every net's
@@ -86,8 +87,8 @@ def package_of(part):
     kind = part['type']
     value = part.get('value')
     if kind == 'capacitor':
-        return ('CP_10x10'
-                if value >= 200e-6 else 'C_1210' if value >= 1e-6 else 'C_0805')
+        return ('CP_10x10' if value >= 200e-6
+                else 'C_1210' if value >= 1e-6 else 'C_0805')
     return (dict(resistor='R_0805', inductor='L_7x7', diode='D_SMA',
                  switch='Q_SO8FL', source='J_PADS', load='J_PADS')[kind])
 
@@ -519,9 +520,9 @@ def layouts():
     done('half_bridge_resonant', b, m, dict(V1='J1', R1='J2'),
          packages=dict(CR='C_1210'))
 
-    # the bridge left (the bus over its two legs, the
+    # the bridge left (the bus over its two legs, the tank between them), the
+    # receiver right
     b, m = start('full_bridge_phase_shift', 62, 35.2)
-    # tank between them), the receiver right
     b.ground(2, 2, 38, 6)
     b.island('in', 2, 6.4, 38, 16.4)
     b.island('a', 2, 16.8, 14, 28.8)

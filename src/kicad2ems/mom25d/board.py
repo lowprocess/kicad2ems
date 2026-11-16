@@ -5,7 +5,8 @@ solver, read without kicad2ems.
 
     import json
     from kicad2ems.mom25d.board import BoardModel
-    model = BoardModel(json.load(open('out/filter_board.json', encoding='utf-8')))
+    model = BoardModel(json.load(open('out/filter_board.json',
+                                      encoding='utf-8')))
         # or kicad2ems's Board.to_dict()
     sim = model.simulation(dmax=0.3e-3, fmin=1e9, fmax=6e9)
     res = mom25d.api.solve_board('out/filter_board.json', freqs)
@@ -389,7 +390,7 @@ class BoardModel(PlanarModel):
         outline = shape(data['outline'])
         self.outline_area = outline.area * MM * MM
         # ---- the ground: z = 0 of the solver (whole stack: the lowest copper
-        # layer, meshed) ----
+        # layer, meshed) ------------------------------------------------------
         # not None: the board's own ground
         self.whole = isinstance(ground, str) and ground.lower() == 'none'
         slot_layer = None
@@ -727,12 +728,13 @@ class BoardModel(PlanarModel):
         """A via (board mm) over the interfaces between z0 and z1 that have
         metal at (x, y) (the ground counts)."""
         from .sim import Via
-        metal = (lambda k: (k == 0 and not self.whole) or
-                 (k == self.stack.N and self.cover is not None) or
-                 (bool(g := self.shapes.get(k)) and g[0].buffer(1e-9).contains(
-                     Point(x * MM, y * MM))) or
-                 (k in self._pec_geom and self._pec_geom[k].buffer(1e-9).
-                  contains(Point(x * MM, y * MM))))
+        metal = (lambda k: (k == 0 and not self.whole)
+                 or (k == self.stack.N and self.cover is not None)
+                 or (bool(g := self.shapes.get(k))
+                     and g[0].buffer(1e-9).contains(Point(x * MM, y * MM)))
+                 or (k in self._pec_geom
+                     and self._pec_geom[k].buffer(1e-9).contains(
+                         Point(x * MM, y * MM))))
         ks = sorted(k for k in [0, self.stack.N] + list(self.iface.values())
                     if z0 - 1e-9 <= self._zk[k] <= z1 + 1e-9 and metal(k))
         if len(set(ks)) < 2:

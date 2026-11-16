@@ -68,11 +68,14 @@ def direct_ports(q, C, Rl, Ll, sc, frequencies, log=None, note=None):
         # free loops' filled in one pass and factored in its own memory
         # (kernels.py): it was the whole matrix, then the block copied out of it
         delta=q._resistance_delta(fi) if fi else None
-        change = ((C.T @ delta
-                   @ C).tocsr() if delta is not None and delta.nnz else None)
-        Z = lambda rows, cols: loop_system(Rl, Ll, 2j * np.pi * fi, rows, cols,
-                                           (None if change is None else change[
-                                               rows][:, cols]))
+        change = ((C.T @ delta @ C).tocsr()
+                  if delta is not None and delta.nnz else None)
+
+        def Z(rows, cols):
+            return loop_system(Rl, Ll, 2j * np.pi * fi, rows, cols,
+                               (None if change is None
+                                else change[rows][:, cols]))
+
         X = (lu_solve_rows(lu_factor_rows(Z(free, free)), -Z(free, sc))
              if len(free) else np.zeros((0, len(sc)), complex))
         zp=Z(sc,sc)+Z(sc,free)@X

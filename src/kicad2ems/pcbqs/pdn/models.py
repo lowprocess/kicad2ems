@@ -4,11 +4,11 @@ measured through it, or a .s1p / .z1p), or a regulator's output impedance, as
 the PDN's elements take it (cavity.element_z: el['Zf'] = (f, Z)).
 
     f, Z = read_impedance('grm155.s2p')  # a 2-port: shunt- or series-through,
-                                         told by its |S21|
+                                         # told by its |S21|
     f, Z = read_impedance('vrm.csv')     # f, Re, Im (or f, |Z|, deg with a
-                                         header saying deg)
+                                         # header saying deg)
     Z_at = table_z(f, Z, f_sweep)        # interpolated in log f; beyond the
-                                         table, its ends held
+                                         # table, its ends held
 
     S, z0 = to_s(Z, z0)  # (the port matrix's subcircuit: spice_subcircuit)
 """

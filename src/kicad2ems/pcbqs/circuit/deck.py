@@ -3,7 +3,7 @@ The ngspice deck of a resolved model: every part and coupling it lists, and
 nothing else.
 
     deck = build(model, state=None)  # model: model.resolve()'s; state:
-                                     engine.end_state()'s, to continue a run
+                                     # engine.end_state()'s, to continue a run
     result = deck.run(folder, 1 / period, cycles=..., ...)
 
 It is power_spice.Circuit (the passives with their parasitics, the switch
@@ -98,9 +98,9 @@ class Deck(Circuit):
             self.passive(ref, a, b, {**part, **saved})
             inner = next(
                 (k for k in ('L:' + ref, 'R:' + ref) if k in self.nodes), None)
-            # the capacitance's own voltage: the state it
+            # the capacitance's own voltage: the state it holds, without its
+            # ESR's and ESL's drops
             if kind == 'capacitor':
-                # holds, without its ESR's and ESL's drops
                 self.voltage(ref + '.cap_V', inner or a, b)
         elif kind == 'inductor':
             # a winding (as model.signal_names)
@@ -134,9 +134,9 @@ class Deck(Circuit):
                 if key in drive:
                     m.setdefault(key, drive[key])
             self.switch(ref, a, b, m, 1 / T, timing=(delay, width))
-            # continuing: its capacitance and its body diode
+            # continuing: its capacitance and its body diode start at the
+            # voltage the last run left on it
             if 'initial_V' in saved:
-                # start at the voltage the last run left on it
                 v = saved['initial_V']
                 for i, line in enumerate(self.lines):
                     if line.startswith(f"C_{ref}_Cds_F "):

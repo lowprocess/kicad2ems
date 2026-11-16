@@ -33,10 +33,16 @@ checks it). The unknowns v_n (the amplitudes of E_n = z x f_n) take one equation
 each, H continuous across the opening, tested with f_n; by reciprocity the
 system stays symmetric, as frill.py's:
 
-    [ Z    c ] [I]   [E]      c_mn = -<f_m, E_k of E_n> = -int div f_m Psi_k(E_n) - int f_m . E_k^TE(E_n) (edges),
-    [ c^T -Y ] [v] = [0]             the chains' ends on pads by their fans' charge and the remainder (frill.py)
-                              Y_mn = int int f_m . f_n G_e + int int div f_m div f_n G_d      (one plane's openings)
-                              G_e = (1/2 pi) int Ye J0 kr dkr,  G_d = (1/2 pi) int (Yh - Ye) / kr^2 J0 kr dkr
+    [ Z    c ] [I]   [E]
+    [ c^T -Y ] [v] = [0]
+
+    c_mn = -<f_m, E_k of E_n> = -int div f_m Psi_k(E_n)
+           - int f_m . E_k^TE(E_n) (edges), the chains' ends on pads by their
+           fans' charge and the remainder (frill.py)
+    Y_mn = int int f_m . f_n G_e + int int div f_m div f_n G_d
+           (one plane's openings)
+    G_e = (1/2 pi) int Ye J0 kr dkr,
+    G_d = (1/2 pi) int (Yh - Ye) / kr^2 J0 kr dkr
 
 Ye, Yh: the TM and TE admittances into both sides of the plane (Yu + Yd). Y is
 the dual of the strips' Z (Vh I + (Ve - Vh) k^k^ there, Ye I + (Yh - Ye) k^k^
@@ -62,7 +68,8 @@ potential too, and its chains see it since then.
 """
 import numpy as np
 
-from kicad2ems.emsdev.numerics.base import MU0, EPS0, RWG, qform, combine, quad_pts, _BAR3, _W3, _BAR6, _W6
+from kicad2ems.emsdev.numerics.base import (MU0, EPS0, RWG, qform, combine,
+                                            quad_pts, _BAR3, _W3, _BAR6, _W6)
 from .base import singular_moments, moments7, quad_moments
 from .frill import bessel_int
 from .multilayer import GreenTableML

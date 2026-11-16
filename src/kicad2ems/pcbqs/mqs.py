@@ -5,12 +5,14 @@ flows (its return pulled under its path as the frequency rises, or around a
 slot), the loop's R and L, and the near magnetic field it makes (Biot-Savart:
 pcbqs.biot).
 
-    q = MQS(board, nets={'VIN', 'GND', 'SW'}, terminals={'U1.VIN': [('F.Cu', pad)], ...}, region=box(...), dmax=0.5)
+    q = MQS(board, nets={'VIN', 'GND', 'SW'},
+            terminals={'U1.VIN': [('F.Cu', pad)], ...}, region=box(...),
+            dmax=0.5)
     q.source('hot', 'U1.VIN', 'U1.PGND', part_h=0.5)
         # a current source in the part between its pads
     q.element('C1', 'C1.1', 'C1.2', C=10e-6, ESR=3e-3, ESL=0.4e-9)
-    r = q.solve([1e6, 3e6])  # per frequency: currents, the sources' Z = R + j w
-                             L
+    r = q.solve([1e6, 3e6])  # per frequency: currents, the sources'
+                             # Z = R + j w L
     H = q.h_field(r, 0, pts)  # (n, 3) A/m at points (m) for 1 A in the sources
 
 The copper of the nets on every layer (cropped to `region`, mm) is meshed by
@@ -42,11 +44,13 @@ from scipy.sparse import coo_matrix, diags, block_diag, csr_matrix
 from scipy.sparse.csgraph import connected_components
 from shapely.geometry import Point, box
 
-from kicad2ems.emsdev.numerics.base import MU0, RWG, combine, qform, _BAR3, _W3, quad_pts
+from kicad2ems.emsdev.numerics.base import (MU0, RWG, combine, qform, _BAR3,
+                                            _W3, quad_pts)
 from .static import edge_inductance as dense_edge_inductance, static_moments
 from .static_backends import _positive_integer
 from kicad2ems.emsdev.numerics.biot import rwg_currents, h_sheets, h_segments
-from .pdn.mesh import copper_centres, copper_of, mesh_sheet, simplify_copper, stack_z, SIGMA_CU
+from .pdn.mesh import (copper_centres, copper_of, mesh_sheet, simplify_copper,
+                       stack_z, SIGMA_CU)
 
 
 def filament_mutual(z0a, z1a, z0b, z1b, s):
@@ -547,7 +551,8 @@ class MQS:
         self.ne, self.nv = r.Ne, len(self.vseg)
         self.parts = []  # dict(name, a, b, kind, R, L, C, part_h)
         self.plating = plating * 1e-3
-        self._mats = self._copper = self._potential = self._peec = self._mqs_iter = None
+        self._mats = self._copper = self._potential = None
+        self._peec = self._mqs_iter = None
         log(f"mqs: {Nt:,} triangles on {len(self.layer_tris)} layer(s), "
             f"{self.ne:,} edges, {self.nv} via segments, {len(self.terms)} "
             "terminals")
@@ -970,7 +975,8 @@ class MQS:
     def _solve_dense(self, freqs, drives):
         """The dense magnetic solve for each of `drives` ({source: A} or None):
         [Result]."""
-        from .kernels import loop_system, lu_factor_rows, lu_solve_rows, Pencil, pencil_pays
+        from .kernels import (loop_system, lu_factor_rows, lu_solve_rows,
+                              Pencil, pencil_pays)
         f = _frequencies(freqs)
         m = self._assemble()
         nb, ne, nv = m['nb'], self.ne, self.nv

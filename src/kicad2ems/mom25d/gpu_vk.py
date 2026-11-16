@@ -3,10 +3,12 @@ mom25d.gpu_vk - the complex64 LU on a Vulkan GPU (slangpy): mom25d.gpu's backend
 interface where CuPy has no GPU (AMD on Windows: no ROCm CuPy there). Vulkan has
 no LAPACK, so the factorisation is the hybrid one of MAGMA's getrf:
 
-  the CPU factors each panel (N - k0 rows, NB columns) with LAPACK's cgetrf (partial pivoting, the same pivots and
-  layout as scipy's lu_factor), and inverts its unit lower triangle (ctrtri);
-  the GPU applies the panel's row interchanges to the other columns, forms U12 = L11^-1 A12 (a GEMM with that
-  inverse) and the trailing update A22 -= L21 U12 (the O(N^3) part: a register-tiled complex GEMM).
+  the CPU factors each panel (N - k0 rows, NB columns) with LAPACK's cgetrf
+  (partial pivoting, the same pivots and layout as scipy's lu_factor), and
+  inverts its unit lower triangle (ctrtri);
+  the GPU applies the panel's row interchanges to the other columns, forms
+  U12 = L11^-1 A12 (a GEMM with that inverse) and the trailing update
+  A22 -= L21 U12 (the O(N^3) part: a register-tiled complex GEMM).
 
 With look-ahead: the GPU updates the next panel's columns first and that panel
 goes to the CPU while the GPU runs the rest of the trailing update, so the CPU's
@@ -19,7 +21,11 @@ matrix is several). The triangular solves of solve() run on the GPU too: blocked
 substitution, the diagonal blocks' inverses from the factorisation, the
 off-diagonal blocks as matrix-vector products.
 
-    b = VulkanBackend(); b.factor(Z); X = b.solve(R); lu, piv = b.download(); b.release()
+    b = VulkanBackend()
+    b.factor(Z)
+    X = b.solve(R)
+    lu, piv = b.download()
+    b.release()
 """
 import os
 import time
@@ -34,7 +40,8 @@ TABLE = 32
 NB = 256                        # panel width (MOM25D_VK_NB)
 
 SOURCE = (r'''
-struct Mat {                    // a column-major complex matrix: column c in buffer c >> sh, at (c & mask) * ld
+// a column-major complex matrix: column c in buffer c >> sh, at (c & mask) * ld
+struct Mat {
     float2* b[TABLE];
     int sh, mask, ld, r0, c0;   // r0, c0: the submatrix's corner
 };
@@ -45,73 +52,86 @@ float2* colp(Mat m, int c)
     return m.b[cc >> m.sh] + (int64_t)(cc & m.mask) * m.ld + m.r0;
 }
 
-float2 cmul(float2 a, float2 b) { return float2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x); }
+float2 cmul(float2 a, float2 b)
+{
+    return float2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
 
 uniform Mat A_, B_, C_;
 uniform int m_, n_, k_;
 uniform float alpha_, beta_;
 
-// C = beta C + alpha A B (complex64): 16 x 16 threads, each GT x GT outputs of a TM x TM tile, TK deep per stage
-// (GT = 4: 64 x 64 tiles ran 13.6 TFLOP/s on an RX 7800 XT with the prefetch, 128 x 128 ones 9.3; TK = 32 crashed
-// RADV's shader compiler).
-// gemm_flat: A and B each in one buffer (the host checks), addressed without the buffer table. Whole tiles load
-// without bounds tests (a workgroup-uniform branch).
+// C = beta C + alpha A B (complex64): 16 x 16 threads, each GT x GT outputs of
+// a TM x TM tile, TK deep per stage
+// (GT = 4: 64 x 64 tiles ran 13.6 TFLOP/s on an RX 7800 XT with the prefetch,
+// 128 x 128 ones 9.3; TK = 32 crashed RADV's shader compiler).
+// gemm_flat: A and B each in one buffer (the host checks), addressed without
+// the buffer table. Whole tiles load without bounds tests (a workgroup-uniform
+// branch).
 #define TM (16 * GT)
 #define TK 16
 groupshared float2 As[TK][TM + 1];
 groupshared float2 Bs[TK][TM + 1];
 
-float2* flatp(Mat m, int c)     // m's column c, m in one buffer: b[0] is that buffer
+// m's column c, m in one buffer: b[0] is that buffer
+float2* flatp(Mat m, int c)
 {
     return m.b[0] + (int64_t)((c + m.c0) & m.mask) * m.ld + m.r0;
 }
 
-#define GEMM_BODY(COLA, COLB)                                                                           \
-    const int tx = (int)lid.x, ty = (int)lid.y, l = ty * 16 + tx;                                       \
-    const int m0 = (int)gid.x * TM, n0 = (int)gid.y * TM;                                               \
-    const bool whole = m0 + TM <= m_ && n0 + TM <= n_;                                                  \
-    float2 acc[GT][GT];                                                                                 \
-    for (int a = 0; a < GT; a++)                                                                        \
-        for (int b = 0; b < GT; b++)                                                                    \
-            acc[a][b] = float2(0.0, 0.0);                                                               \
-    for (int k0 = 0; k0 < k_; k0 += TK) {                                                               \
-        if (whole && k0 + TK <= k_) {                                                                   \
-            for (int q = l; q < TM * TK; q += 256) {                                                    \
-                const int r = q % TM, c = q / TM;                                                       \
-                As[c][r] = COLA(A_, k0 + c)[m0 + r];                                                    \
-                const int kk = q % TK, nn = q / TK;                                                     \
-                Bs[kk][nn] = COLB(B_, n0 + nn)[k0 + kk];                                                \
-            }                                                                                           \
-        } else {                                                                                        \
-            for (int q = l; q < TM * TK; q += 256) {                                                    \
-                const int r = q % TM, c = q / TM;                                                       \
-                As[c][r] = (m0 + r < m_ && k0 + c < k_) ? COLA(A_, k0 + c)[m0 + r] : float2(0.0, 0.0);  \
-                const int kk = q % TK, nn = q / TK;                                                     \
-                Bs[kk][nn] = (k0 + kk < k_ && n0 + nn < n_) ? COLB(B_, n0 + nn)[k0 + kk] : float2(0.0, 0.0); \
-            }                                                                                           \
-        }                                                                                               \
-        GroupMemoryBarrierWithGroupSync();                                                              \
-        for (int kk = 0; kk < TK; kk++) {                                                               \
-            float2 av[GT], bv[GT];                                                                      \
-            for (int a = 0; a < GT; a++) av[a] = As[kk][tx + 16 * a];                                   \
-            for (int b = 0; b < GT; b++) bv[b] = Bs[kk][ty + 16 * b];                                   \
-            for (int a = 0; a < GT; a++)                                                                \
-                for (int b = 0; b < GT; b++) {                                                          \
-                    acc[a][b].x = fma(av[a].x, bv[b].x, fma(-av[a].y, bv[b].y, acc[a][b].x));           \
-                    acc[a][b].y = fma(av[a].x, bv[b].y, fma(av[a].y, bv[b].x, acc[a][b].y));            \
-                }                                                                                       \
-        }                                                                                               \
-        GroupMemoryBarrierWithGroupSync();                                                              \
-    }                                                                                                   \
-    for (int b = 0; b < GT; b++) {                                                                      \
-        const int c = n0 + ty + 16 * b;                                                                 \
-        if (c >= n_) continue;                                                                          \
-        float2* col = colp(C_, c);                                                                      \
-        for (int a = 0; a < GT; a++) {                                                                  \
-            const int r = m0 + tx + 16 * a;                                                             \
-            if (r >= m_) continue;                                                                      \
-            col[r] = (beta_ != 0.0 ? beta_ * col[r] : float2(0.0, 0.0)) + alpha_ * acc[a][b];           \
-        }                                                                                               \
+#define GEMM_BODY(COLA, COLB)                                                  \
+    const int tx = (int)lid.x, ty = (int)lid.y, l = ty * 16 + tx;              \
+    const int m0 = (int)gid.x * TM, n0 = (int)gid.y * TM;                      \
+    const bool whole = m0 + TM <= m_ && n0 + TM <= n_;                         \
+    float2 acc[GT][GT];                                                        \
+    for (int a = 0; a < GT; a++)                                               \
+        for (int b = 0; b < GT; b++)                                           \
+            acc[a][b] = float2(0.0, 0.0);                                      \
+    for (int k0 = 0; k0 < k_; k0 += TK) {                                      \
+        if (whole && k0 + TK <= k_) {                                          \
+            for (int q = l; q < TM * TK; q += 256) {                           \
+                const int r = q % TM, c = q / TM;                              \
+                As[c][r] = COLA(A_, k0 + c)[m0 + r];                           \
+                const int kk = q % TK, nn = q / TK;                            \
+                Bs[kk][nn] = COLB(B_, n0 + nn)[k0 + kk];                       \
+            }                                                                  \
+        } else {                                                               \
+            for (int q = l; q < TM * TK; q += 256) {                           \
+                const int r = q % TM, c = q / TM;                              \
+                As[c][r] = (m0 + r < m_ && k0 + c < k_)                        \
+                               ? COLA(A_, k0 + c)[m0 + r]                      \
+                               : float2(0.0, 0.0);                             \
+                const int kk = q % TK, nn = q / TK;                            \
+                Bs[kk][nn] = (k0 + kk < k_ && n0 + nn < n_)                    \
+                                 ? COLB(B_, n0 + nn)[k0 + kk]                  \
+                                 : float2(0.0, 0.0);                           \
+            }                                                                  \
+        }                                                                      \
+        GroupMemoryBarrierWithGroupSync();                                     \
+        for (int kk = 0; kk < TK; kk++) {                                      \
+            float2 av[GT], bv[GT];                                             \
+            for (int a = 0; a < GT; a++) av[a] = As[kk][tx + 16 * a];          \
+            for (int b = 0; b < GT; b++) bv[b] = Bs[kk][ty + 16 * b];          \
+            for (int a = 0; a < GT; a++)                                       \
+                for (int b = 0; b < GT; b++) {                                 \
+                    acc[a][b].x = fma(av[a].x, bv[b].x,                        \
+                                      fma(-av[a].y, bv[b].y, acc[a][b].x));    \
+                    acc[a][b].y = fma(av[a].x, bv[b].y,                        \
+                                      fma(av[a].y, bv[b].x, acc[a][b].y));     \
+                }                                                              \
+        }                                                                      \
+        GroupMemoryBarrierWithGroupSync();                                     \
+    }                                                                          \
+    for (int b = 0; b < GT; b++) {                                             \
+        const int c = n0 + ty + 16 * b;                                        \
+        if (c >= n_) continue;                                                 \
+        float2* col = colp(C_, c);                                             \
+        for (int a = 0; a < GT; a++) {                                         \
+            const int r = m0 + tx + 16 * a;                                    \
+            if (r >= m_) continue;                                             \
+            col[r] = (beta_ != 0.0 ? beta_ * col[r] : float2(0.0, 0.0)) +      \
+                     alpha_ * acc[a][b];                                       \
+        }                                                                      \
     }
 
 [shader("compute")] [numthreads(16, 16, 1)]
@@ -120,8 +140,9 @@ void gemm(uint3 lid: SV_GroupThreadID, uint3 gid: SV_GroupID)
     GEMM_BODY(colp, colp)
 }
 
-// a whole tile of gemm_flat: the next stage's loads into registers before this stage's products (their latency
-// behind the arithmetic); k past k_ (a last panel narrower than TK stages) loads zeros
+// a whole tile of gemm_flat: the next stage's loads into registers before this
+// stage's products (their latency behind the arithmetic); k past k_ (a last
+// panel narrower than TK stages) loads zeros
 void gemm_whole(int tx, int ty, int m0, int n0)
 {
     const int l = ty * 16 + tx;
@@ -157,8 +178,10 @@ void gemm_whole(int tx, int ty, int m0, int n0)
             for (int b = 0; b < GT; b++) bv[b] = Bs[kk][ty + 16 * b];
             for (int a = 0; a < GT; a++)
                 for (int b = 0; b < GT; b++) {
-                    acc[a][b].x = fma(av[a].x, bv[b].x, fma(-av[a].y, bv[b].y, acc[a][b].x));
-                    acc[a][b].y = fma(av[a].x, bv[b].y, fma(av[a].y, bv[b].x, acc[a][b].y));
+                    acc[a][b].x = fma(av[a].x, bv[b].x,
+                                      fma(-av[a].y, bv[b].y, acc[a][b].x));
+                    acc[a][b].y = fma(av[a].x, bv[b].y,
+                                      fma(av[a].y, bv[b].x, acc[a][b].y));
                 }
         }
         GroupMemoryBarrierWithGroupSync();
@@ -167,7 +190,8 @@ void gemm_whole(int tx, int ty, int m0, int n0)
         float2* col = colp(C_, n0 + ty + 16 * b);
         for (int a = 0; a < GT; a++) {
             const int r = m0 + tx + 16 * a;
-            col[r] = (beta_ != 0.0 ? beta_ * col[r] : float2(0.0, 0.0)) + alpha_ * acc[a][b];
+            col[r] = (beta_ != 0.0 ? beta_ * col[r] : float2(0.0, 0.0)) +
+                     alpha_ * acc[a][b];
         }
     }
 }
@@ -175,7 +199,8 @@ void gemm_whole(int tx, int ty, int m0, int n0)
 [shader("compute")] [numthreads(16, 16, 1)]
 void gemm_flat(uint3 lid: SV_GroupThreadID, uint3 gid: SV_GroupID)
 {
-    if ((int)gid.x * TM + TM <= m_ && (int)gid.y * TM + TM <= n_) {     // uniform in the workgroup
+    // uniform in the workgroup
+    if ((int)gid.x * TM + TM <= m_ && (int)gid.y * TM + TM <= n_) {
         gemm_whole((int)lid.x, (int)lid.y, (int)gid.x * TM, (int)gid.y * TM);
         return;
     }
@@ -192,8 +217,9 @@ void copy(uint3 tid: SV_DispatchThreadID)
     colp(C_, c)[r] = colp(A_, c)[r];
 }
 
-// the panel's row interchanges on columns [ca_, ca_ + na_) and [cb_, cb_ + n_ - na_) of C_ (C_.c0 = 0), in two
-// passes through tmp: rows_[i] <- src_[i]
+// the panel's row interchanges on columns [ca_, ca_ + na_) and
+// [cb_, cb_ + n_ - na_) of C_ (C_.c0 = 0), in two passes through tmp:
+// rows_[i] <- src_[i]
 uniform int* rows_;
 uniform int* src_;
 uniform float2* tmp_;
@@ -219,9 +245,10 @@ void swap_scatter(uint3 tid: SV_DispatchThreadID)
     colp(C_, swap_col(j))[rows_[i]] = tmp_[t];
 }
 
-// U12 = L11^-1 A12 in place (and into C_, U12's work array): forward substitution with the unit lower L11 (A_, b x b,
-// k_ = b) on n_ columns of B_, TRSM_COLS columns a workgroup, the column block in shared memory, TRSM_LANES threads
-// a column; LAPACK's trsm, in order
+// U12 = L11^-1 A12 in place (and into C_, U12's work array): forward
+// substitution with the unit lower L11 (A_, b x b, k_ = b) on n_ columns of B_,
+// TRSM_COLS columns a workgroup, the column block in shared memory, TRSM_LANES
+// threads a column; LAPACK's trsm, in order
 groupshared float2 Xs[NBMAX][TRSM_COLS + 1];
 
 [shader("compute")] [numthreads(TRSM_COLS * TRSM_LANES, 1, 1)]
@@ -231,24 +258,34 @@ void trsm(uint3 lid: SV_GroupThreadID, uint3 gid: SV_GroupID)
     const int col = (int)gid.x * TRSM_COLS + cl;
     const bool ok = col < n_;
     float2* bc = colp(B_, ok ? col : 0);
-    for (int i = lane; i < k_; i += TRSM_LANES) Xs[i][cl] = ok ? bc[i] : float2(0.0, 0.0);
+    for (int i = lane; i < k_; i += TRSM_LANES)
+        Xs[i][cl] = ok ? bc[i] : float2(0.0, 0.0);
     GroupMemoryBarrierWithGroupSync();
     for (int i = 0; i < k_ - 1; i++) {
         const float2 xi = Xs[i][cl];
         float2* li = colp(A_, i);                               // L11[:, i]
-        for (int j = i + 1 + lane; j < k_; j += TRSM_LANES) Xs[j][cl] -= cmul(li[j], xi);
+        for (int j = i + 1 + lane; j < k_; j += TRSM_LANES)
+            Xs[j][cl] -= cmul(li[j], xi);
         GroupMemoryBarrierWithGroupSync();
     }
     if (!ok) return;
     float2* uc = colp(C_, col);
-    for (int i = lane; i < k_; i += TRSM_LANES) { bc[i] = Xs[i][cl]; uc[i] = Xs[i][cl]; }
+    for (int i = lane; i < k_; i += TRSM_LANES) {
+        bc[i] = Xs[i][cl];
+        uc[i] = Xs[i][cl];
+    }
 }
 
-// the solves, Z x = R with A = Z^T = P L U:  U^T y = R (forward), L^T w = y (backward), x = P w (the host).
-// X_: the right-hand sides, N x nrhs column-major (ld N). One block of NB rows at a time:
-//   tri:  x_b = Dinv_b^T x_b  (Dinv_b: the block's inverse, NB x NB column-major, from the factorisation)
-//   upd:  forward: x_i -= sum_{j in b} A(j, i) x_j for i past the block; backward: for i before it
-//   (A(j, i) = U^T(i, j) for j <= i, L^T(i, j) for j > i: row i of the transposed factor is column i of A)
+// the solves, Z x = R with A = Z^T = P L U:  U^T y = R (forward),
+// L^T w = y (backward), x = P w (the host).
+// X_: the right-hand sides, N x nrhs column-major (ld N). One block of NB rows
+// at a time:
+//   tri:  x_b = Dinv_b^T x_b  (Dinv_b: the block's inverse, NB x NB
+//         column-major, from the factorisation)
+//   upd:  forward: x_i -= sum_{j in b} A(j, i) x_j for i past the block;
+//         backward: for i before it
+//   (A(j, i) = U^T(i, j) for j <= i, L^T(i, j) for j > i: row i of the
+//   transposed factor is column i of A)
 uniform float2* X_;
 uniform float2* D_;
 uniform int nrhs_, blk_, bn_, fwd_;
@@ -265,24 +302,29 @@ void solve_tri(uint3 tid: SV_DispatchThreadID)
     GroupMemoryBarrierWithGroupSync();
     for (int i = t; i < bn_; i += 256) {
         float2 s = float2(0.0, 0.0);
-        float2* d = D_ + (int64_t)blk_ * NBMAX + (int64_t)i * bn_;    // block's Dinv, column i
+        // block's Dinv, column i
+        float2* d = D_ + (int64_t)blk_ * NBMAX + (int64_t)i * bn_;
         for (int j = 0; j < bn_; j++) s += cmul(d[j], xb[j]);
         x[i] = s;
     }
 }
 
 [shader("compute")] [numthreads(64, 1, 1)]
-void solve_upd(uint3 tid: SV_DispatchThreadID, uint3 lid: SV_GroupThreadID, uint3 gid: SV_GroupID)
+void solve_upd(uint3 tid: SV_DispatchThreadID,
+               uint3 lid: SV_GroupThreadID, uint3 gid: SV_GroupID)
 {
-    // one wave of 64 per row i (outside the block), all right-hand sides: x_i -= A(blk.., i) . x_blk
+    // one wave of 64 per row i (outside the block), all right-hand sides:
+    // x_i -= A(blk.., i) . x_blk
     const int g = (int)gid.x + (int)gid.y * 65535;
     const int i = fwd_ != 0 ? blk_ + bn_ + g : g;
     if (fwd_ != 0 ? i >= k_ : i >= blk_) return;
-    float2* col = colp(C_, i) + blk_;                         // A(blk.., i): contiguous
+    // A(blk.., i): contiguous
+    float2* col = colp(C_, i) + blk_;
     for (int c = 0; c < nrhs_; c++) {
         float2* x = X_ + (int64_t)c * k_;
         float2 s = float2(0.0, 0.0);
-        for (int j = (int)lid.x; j < bn_; j += 64) s += cmul(col[j], x[blk_ + j]);
+        for (int j = (int)lid.x; j < bn_; j += 64)
+            s += cmul(col[j], x[blk_ + j]);
         red[lid.x] = s;
         GroupMemoryBarrierWithGroupSync();
         for (int w = 32; w > 0; w >>= 1) {
@@ -294,7 +336,6 @@ void solve_upd(uint3 tid: SV_DispatchThreadID, uint3 lid: SV_GroupThreadID, uint
     }
 }
 ''')
-
 NAMES = ('gemm', 'gemm_flat', 'trsm', 'copy', 'swap_gather', 'swap_scatter',
          'solve_tri', 'solve_upd')
 
@@ -384,8 +425,7 @@ class VulkanBackend:
         cap_blas_threads()  # the panels' LAPACK on the fast cores
         self.stats = {}
 
-    # ---- the interface mom25d.gpu's backends share
-    # -----------------------------------------------------------
+    # ---- the interface mom25d.gpu's backends share --------------------------
     def mem_free(self):
         f = self.info.free()
         return float(f) if f is not None else 0.9 * float(self.info.total or 0)
@@ -416,8 +456,7 @@ class VulkanBackend:
         self.lu = self.piv = None
         self._tmp = {}
 
-    # ---- device plumbing
-    # -------------------------------------------------------------------------------------
+    # ---- device plumbing ----------------------------------------------------
     def _buffer(self, nbytes, data=None):
         try:
             b = self.dev.create_buffer(size=max(-(-int(nbytes) // 16) * 16, 16),
@@ -504,8 +543,7 @@ class VulkanBackend:
             'mask': (1 << 30) - 1, 'ld': int(rows), 'r0': int(r0), 'c0': int(c0)
         }
 
-    # ---- the factorisation
-    # -----------------------------------------------------------------------------------
+    # ---- the factorisation --------------------------------------------------
     def _host(self, name, nbytes):
         """Mapped host memory kept across calls (emsdev.vulkan.HostBuffer: the
         kernels copy to and from it by address; slangpy's own read-back runs at
@@ -574,9 +612,8 @@ class VulkanBackend:
         N, nb = A.rows, self.nb
         # the panel, down to the CPU and back
         hdn = self._host('panel', 8 * N * nb)
-        # by step parity: S2 may read them while
+        # by step parity: S2 may read them while the host writes the next step's
         hrows = [self._host(f'rows{i}', 4 * 2 * nb) for i in (0, 1)]
-        # the host writes the next step's
         hsrc = [self._host(f'src{i}', 4 * 2 * nb) for i in (0, 1)]
         tmpS = self._work('swap', 8 * 2 * nb * N)
         U12 = self._work('u12', 8 * nb * N)
@@ -698,8 +735,7 @@ class VulkanBackend:
         self.stats = dict(seconds=time.perf_counter() - t0, cpu=t_cpu,
                           wait=t_wait)
 
-    # ---- solves and the factor on the host
-    # -------------------------------------------------------------------
+    # ---- solves and the factor on the host ----------------------------------
     def download(self, chunk=1 << 28):
         """The factor on the host, as scipy.linalg.lu_factor's of A = Z^T: (lu,
         piv), Fortran order, 0-based."""

@@ -1,13 +1,19 @@
 """
 geo - the copper of a layer as a triangle mesh, and the geometry around it
 
-  * mesh_polygons : constrained-Delaunay mesh of arbitrary polygons (holes allowed) with
-                    - graded edge refinement (inward offset rings, like the tensor mesher's cosine grading)
-                    - port gap/cut lines inserted as constraint segments (so RWG edges lie on them)
-                    - via points inserted as vertices, with a small ring of radius = via radius around
-                      them so the via 'fan' (triangles sharing the via vertex) matches the via footprint
+  * mesh_polygons : constrained-Delaunay mesh of arbitrary polygons (holes
+                    allowed) with
+                    - graded edge refinement (inward offset rings, like the
+                      tensor mesher's cosine grading)
+                    - port gap/cut lines inserted as constraint segments (so
+                      RWG edges lie on them)
+                    - via points inserted as vertices, with a small ring of
+                      radius = via radius around them so the via 'fan'
+                      (triangles sharing the via vertex) matches the via
+                      footprint
   * gap_zones     : the copper edges facing other copper across a narrow gap
-  * to_geometry   : rectangles / shapely geometry -> one cleaned shapely (Multi)Polygon
+  * to_geometry   : rectangles / shapely geometry -> one cleaned shapely
+                    (Multi)Polygon
 """
 import importlib
 import warnings
@@ -324,47 +330,57 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(),
                   coarsen_fine=True, core=None):
     """
     geom   : shapely (Multi)Polygon of one metal layer (triangulated by CDT in a
-    compiled core: cdtmesh.py) dmax   : max edge length along conductors / in
-    open regions w_ref  : reference strip width for the edge grading (narrowest
-    trace on the layer) lines  : [(p0, p1), ...] constraint segments (port gap
-    and cut lines), clipped to geom vias   : [(x, y, radius), ...] points to
-    insert as vertices (+ an octagon of the via radius); (x, y, radius, n)
-             an n-gon; (x, y, radius, 4, True) a square that may snap to a cell of the structured grid
+             compiled core: cdtmesh.py)
+    dmax   : max edge length along conductors / in open regions
+    w_ref  : reference strip width for the edge grading (narrowest trace on the
+             layer)
+    lines  : [(p0, p1), ...] constraint segments (port gap and cut lines),
+             clipped to geom
+    vias   : [(x, y, radius), ...] points to insert as vertices (+ an octagon of
+             the via radius); (x, y, radius, n) an n-gon; (x, y, radius, 4,
+             True) a square that may snap to a cell of the structured grid
     edge_zone : (experimental) shapely area where the current crowds at edges
-    (the signal copper buffered by
-             ~0.5 mm): the edge rings are kept only inside it. Demo transition (cropped): 4.9k unknowns instead of
-             8.4k, S within 0.006 of the full rings (2.4x faster a solve); Simulation(zone=) passes it
+             (the signal copper buffered by ~0.5 mm): the edge rings are kept
+             only inside it. Demo transition (cropped): 4.9k unknowns instead of
+             8.4k, S within 0.006 of the full rings (2.4x faster a solve);
+             Simulation(zone=) passes it
     split_chains : each outline at the spacing of the region it runs through
-    (zone=; the default spaces a whole
-             chain by where its centroid falls, which a closed outline's centroid can get wrong)
+             (zone=; the default spaces a whole chain by where its centroid
+             falls, which a closed outline's centroid can get wrong)
     coarsen_fine : with coarsen, the fine regions coarsened too (True); False:
-    they keep dmax_fine (sim.py: a
-             meshed plane's, under the copper of the layers near it)
+             they keep dmax_fine (sim.py: a meshed plane's, under the copper of
+             the layers near it)
     coarsen : (experimental) cells grow away from the features (corners and
-    bends of the copper outline, vias, port
-             and cut lines; _features) up to coarsen x dmax: dmax + grow x the distance to the nearest one, along the
-             outline and the edge rings (their spacing across the edge is kept) and over the area inside them
-             (the middle of wide traces, planes). None: dmax everywhere
+             bends of the copper outline, vias, port and cut lines; _features)
+             up to coarsen x dmax: dmax + grow x the distance to the nearest
+             one, along the outline and the edge rings (their spacing across the
+             edge is kept) and over the area inside them (the middle of wide
+             traces, planes). None: dmax everywhere
     structured : (experimental) straight runs of trace (runs.find_runs, up to
-    struct_w_max wide: traces and
-             rectangular pads) as a tensor grid: transverse lines across the run at stations along it (the spacing of
-             the field, or dmax), and longitudinal ones across its middle (inside the edge rings), so its cells are
-             rectangles - one diagonal each, quad cells of 0 degrees. Port / cut lines on a run are stations; square
-             vias join the grid (_run_grid), around other vias it is left as is
+             struct_w_max wide: traces and rectangular pads) as a tensor grid:
+             transverse lines across the run at stations along it (the spacing
+             of the field, or dmax), and longitudinal ones across its middle
+             (inside the edge rings), so its cells are rectangles - one diagonal
+             each, quad cells of 0 degrees. Port / cut lines on a run are
+             stations; square vias join the grid (_run_grid), around other vias
+             it is left as is
     gap_rings : fractions of the gap (e.g. (1/4, 1/8, 1/16)): rings that far in
-    from the copper edges facing other
-             copper across a gap g (gap_zones), where the width-graded rings are too coarse for the edge charge
-             across it (g/4 under the first ring at w_ref's grading). Coupled lines: on the 10 dB coupler (0.14 mm
-             gap, 1.28 mm strips) S31 -10.64 dB, against -10.24 to -10.29 from refined FDTD, until the edge cells
-             came down to the gap's scale; isolated traces and planes keep their cost
+             from the copper edges facing other copper across a gap g
+             (gap_zones), where the width-graded rings are too coarse for the
+             edge charge across it (g/4 under the first ring at w_ref's
+             grading). Coupled lines: on the 10 dB coupler (0.14 mm gap, 1.28 mm
+             strips) S31 -10.64 dB, against -10.24 to -10.29 from refined FDTD,
+             until the edge cells came down to the gap's scale; isolated traces
+             and planes keep their cost
     quality : the minimum angle (degrees: CDT's refinement), on the uncoarsened
-    path only. Off by default (the
-             edge-ring strips of the RF meshes would split into fans); without it a small feature (a via's octagon)
-             fans out to far vertices in long slivers, and the linear elements then underestimate the log spreading
-             around it (DC: ~0.1 mOhm per via junction)
+             path only. Off by default (the edge-ring strips of the RF meshes
+             would split into fans); without it a small feature (a via's
+             octagon) fans out to far vertices in long slivers, and the linear
+             elements then underestimate the log spreading around it (DC: ~0.1
+             mOhm per via junction)
     core   : the compiled core that triangulates (cdt_triangulate:
-    emsdev/native/cdt_mesh.hpp); None: pcbqs's, else
-             mom25d's (the same code in both)
+             emsdev/native/cdt_mesh.hpp); None: pcbqs's, else mom25d's (the same
+             code in both)
     Returns nodes (N,2), tris (M,3) counter-clockwise, and the list of via
     vertex ids.
     """
@@ -414,8 +430,8 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(),
         hfield = lambda P, d_: np.minimum(coarsen * d_, d_ + grow * dist(P))
     run_polys, snapped, on_run = [], set(), set()
     if structured:
-        hrun, within, dgrid = (lambda P: hfield(P, dmax)
-                               ) if hfield is not None else None, None, dmax
+        hrun, within, dgrid = ((lambda P: hfield(P, dmax))
+                               if hfield is not None else None), None, dmax
         if edge_zone is not None and fine_u is not None:
             # zone=: only the runs inside its fine region (the traces), at its
             # spacing. A run reaching out of it (a plane under the zone, 8 mm
@@ -580,8 +596,8 @@ def _cdt(V, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u,
         infine = (shapely.contains_xy(fine_u, P[:, 0], P[:, 1])
                   if fine_parts else np.zeros(len(P), bool))
         if hfield is None:
-            lim = (np.where(infine, afine, amax) if fine_parts else np.full(
-                len(P), amax))
+            lim = (np.where(infine, afine, amax) if fine_parts
+                   else np.full(len(P), amax))
         else:
             h = np.where(
                 infine,

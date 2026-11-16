@@ -9,9 +9,9 @@ much nearer than one).
     H = h_sheets([(rwg_nodes, tris, a, b, z), ...], pts)
         # (n, 3) complex, A/m
     H += h_segments(seg_a, seg_b, I_seg, pts)  # filaments (vias): end points
-                                               (m, 3), currents
+                                               # (m, 3), currents
     Jx, Jy = current_deposit(sim, I, x, y, k)  # a layer's current density on a
-                                               grid (the FFT near field)
+                                               # grid (the FFT near field)
 
 The surface integral is a 6-point rule per triangle, subdivided where a point is
 near the triangle (closer than `near` x its size): each triangle split into 4,

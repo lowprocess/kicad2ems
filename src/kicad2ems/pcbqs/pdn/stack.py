@@ -9,19 +9,22 @@ output before its sense resistor) as lumped nodes.
     rail = Rail(board, '+3V3', loads={'U21': 2.0})
     pdn = RailPDN(rail, vrm=dict(R=1e-3, L=30e-9))
     Z = pdn.z(f)  # {load: |Z(f)| complex}, with every decap and the regulator
-                  attached
+                  # attached
     pdn.parts     # per part: its connection (cavity vias or lumped node), mount
-                  L, element
+                  # L, element
 
 Joined:
-  * two cavities sharing the rail plane (a plane between two grounds) at every ground via through both their
-    grounds; two sharing a ground at every rail via through both rails; and both at every part's port (its vias);
-  * a part on a plane net through its pad's copper to the vias there, which reach the plane: the path's
-    inductance mu0 h N (h: the height of that copper over the nearest plane, N: the squares from the pad to the vias,
-    from a conduction solve of that copper) on each side, and the via pair's mu0 h / pi ln(s / r) (s: the
-    distance from its rail vias to its ground vias), shared by the vias of each side;
-  * a series part (a sense resistor, a bead) between its two sides: R, a bead R_dc + (j w L || R_100) with
-    |Z| = R_100 at 100 MHz, plus its package's ESL.
+  * two cavities sharing the rail plane (a plane between two grounds) at every
+    ground via through both their grounds; two sharing a ground at every rail
+    via through both rails; and both at every part's port (its vias);
+  * a part on a plane net through its pad's copper to the vias there, which
+    reach the plane: the path's inductance mu0 h N (h: the height of that copper
+    over the nearest plane, N: the squares from the pad to the vias, from a
+    conduction solve of that copper) on each side, and the via pair's mu0 h / pi
+    ln(s / r) (s: the distance from its rail vias to its ground vias), shared by
+    the vias of each side;
+  * a series part (a sense resistor, a bead) between its two sides: R, a bead
+    R_dc + (j w L || R_100) with |Z| = R_100 at 100 MHz, plus its package's ESL.
 Each cavity's voltage is the rail plane's minus its ground's, the ground planes
 taken as joined at the ports.
 """
@@ -36,7 +39,8 @@ from shapely.geometry import Point, shape
 from shapely.ops import unary_union
 
 from kicad2ems.emsdev.numerics.base import MU0
-from .cavity import fill_holes, dielectric, capacitance, plane_admittance, element_z, mount_inductance
+from .cavity import (fill_holes, dielectric, capacitance, plane_admittance,
+                     element_z, mount_inductance)
 from .mesh import copper_of, mesh_sheet, stiffness, mass, stack_z, SIGMA_CU
 from .rail import part_value, field_value
 
@@ -191,7 +195,8 @@ class RailPDN:
                            min(zt[rl][1], zt[gl][1])))
         if not self.cavities:
             raise ValueError(
-                f"{rail.net}: no plane pair (rail and ground planes over {plane_min:.0f} mm2); "
+                f"{rail.net}: no plane pair (rail and ground planes over "
+                f"{plane_min:.0f} mm2); "
                 "lower plane_min (--plane-min) for a small rail")
         self.plane_layers = sorted(
             {c.rail_layer
@@ -248,8 +253,7 @@ class RailPDN:
         self._assemble(dmax)  # of the DC network by 22-38 %)
         self.isolated = self._isolated()
 
-    # ---- a part's copper
-    # ----------------------------------------------------------------------------------------
+    # ---- a part's copper ----------------------------------------------------
     def _connect(self, pads, nets, vias, window):
         """Conn of a set of pads (one side of a part) on `nets`: their pad
         copper's vias that reach a plane, or the lumped node of a planeless
@@ -342,18 +346,16 @@ class RailPDN:
                 "that path's inductance and resistance left out"
             )
             return Conn(
-                vias=xyr, R_path=r_barrel, h=h, why=
-                f'{len(reach)} via(s) over {h:.2f} mm, its path to them not '
-                'solved'
-            )
+                vias=xyr, R_path=r_barrel, h=h,
+                why=f'{len(reach)} via(s) over {h:.2f} mm, its path to them '
+                'not solved')
         r_pad = 1.0 / max(r.loss, 1e-12)  # 1 V across it: loss = 1 / R
         squares = r_pad * SIGMA_CU * self.zt[lay][1] * 1e-3
         return Conn(
             vias=xyr, L_path=MU0 * h * 1e-3 * squares, R_path=r_pad + r_barrel,
-            h=h, why=
-            f'{len(reach)} via(s), {squares:.2f} squares over {h:.2f} mm, '
-            f'{(r_pad + r_barrel) * 1e3:.2f} mOhm'
-        )
+            h=h,
+            why=(f'{len(reach)} via(s), {squares:.2f} squares over {h:.2f} mm, '
+                 f'{(r_pad + r_barrel) * 1e3:.2f} mOhm'))
 
     def _isolated(self):
         """The loads whose plane domain no source reaches (through the planes,
@@ -401,8 +403,7 @@ class RailPDN:
                   / max(1, min(len(rc.vias), len(gc.vias))))
         return L
 
-    # ---- the cavities, the ports, the nodes
-    # -------------------------------------------------------------------
+    # ---- the cavities, the ports, the nodes ---------------------------------
     def _assemble(self, dmax):
         # the points each cavity needs as vertices: every part's vias, and the
         # vias that join cavities

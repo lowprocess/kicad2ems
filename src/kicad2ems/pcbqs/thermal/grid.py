@@ -11,7 +11,7 @@ than a cell still carries, and nothing has to follow the outline of the copper,
 so the cost does not depend on how intricate the copper is.
 
     r = solve(problem, pitch=0.5)  # problem.Result: r.T (layers, ny, nx) C,
-                                   r.parts, r.hottest
+                                   # r.parts, r.hottest
 """
 import math
 import time

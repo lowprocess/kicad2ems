@@ -3,11 +3,13 @@ mom25d.fast - large problems: hierarchical (H-matrix / ACA) far field + sparse
 near field + GMRES
 
   Z = Z_far + dZ_near
-    Z_far   : every interaction with a 1-point (centroid) rule per triangle, never stored densely:
-              admissible cluster pairs are compressed with adaptive cross approximation (ACA),
-              the remaining (close) leaf blocks are stored dense
-    dZ_near : sparse correction (accurate - centroid) for triangle pairs closer than near_fac cell
-              sizes: analytic singular / near-singular parts + higher-order quadrature
+    Z_far   : every interaction with a 1-point (centroid) rule per triangle,
+              never stored densely: admissible cluster pairs are compressed
+              with adaptive cross approximation (ACA), the remaining (close)
+              leaf blocks are stored dense
+    dZ_near : sparse correction (accurate - centroid) for triangle pairs
+              closer than near_fac cell sizes: analytic singular /
+              near-singular parts + higher-order quadrature
   Vias and lumped elements add a few dense rows/columns and sparse entries.
   Solve: GMRES, preconditioned with a sparse LU of the near-field part.
 Memory ~ O(N log N) instead of O(N^2); the dense path stays the reference for
@@ -286,7 +288,8 @@ class HMatrix:
         return dict(
             dense_entries=self.dense_nnz, lowrank_blocks=len(self.ranks),
             mean_rank=(round(float(np.mean(self.ranks)), 1)
-                       if self.ranks else 0.0), MB=round(mem / 2**20, 1),
+                       if self.ranks else 0.0),
+            MB=round(mem / 2**20, 1),
             compression=round(mem / (16 * self.n**2), 3))
 
 
@@ -496,8 +499,7 @@ class FastOperator:
                 self.q.update(stat=np.zeros((len(self.nP), 12)),
                               stat_ready=False)
 
-    # ---- near pairs (geometry only)
-    # ---------------------------------------------------------------
+    # ---- near pairs (geometry only) -----------------------------------------
     def _near_pairs(self):
         sim, r = self.sim, self.sim.rwg
         size = sim.tri_size
@@ -529,8 +531,7 @@ class FastOperator:
             f"({len(self.nP) / len(size):.0f} per triangle)"
         )
 
-    # ---- kernels
-    # ----------------------------------------------------------------------------------
+    # ---- kernels ------------------------------------------------------------
     def _kern(self, a, b, rho):
         return self.tables[(min(a, b), max(a, b))].total(rho)
 
@@ -575,8 +576,7 @@ class FastOperator:
                              np.concatenate([cols, cols + Ne]))
         return H[:m, :n] + H[:m, n:] + H[m:, :n] + H[m:, n:]
 
-    # ---- near correction
-    # ----------------------------------------------------------------------------
+    # ---- near correction ----------------------------------------------------
     def _near_matrix(self):
         """Sparse (Ne x Ne) correction from triangle-pair moments; keeps their
         G_q part (_qcorr: the via fans')."""
@@ -679,8 +679,7 @@ class FastOperator:
             with self.sim.log.timer('via kernels', f"{self.sim.Nv} chains"):
                 self.B, self.C = self.sim._via_blocks(f, self._fan_columns())
 
-    # ---- assemble & solve
-    # ---------------------------------------------------------------------------------
+    # ---- assemble & solve ---------------------------------------------------
     def matvec_exact(self, X, Sx=None):
         """Z X in double precision without storing Z, X: N or N x k (far:
         triangle-aggregated, one kernel pass for all columns; near: dZ_exact, or
@@ -1075,8 +1074,7 @@ class FastOperator:
         self._mixed_failed = max(self._mixed_failed, f)
         return self.solve_direct(f, E, block, precision='double')
 
-    # ---- the loop/tree basis (looptree.py): low frequency
-    # ------------------------------------------------
+    # ---- the loop/tree basis (looptree.py): low frequency -------------------
     def _basis(self, name):
         """Switch the kept LUs and what was learnt about them (_BASIS_STATE) to
         basis `name` ('rwg', 'loop/tree'): one basis's LU does not precondition
@@ -1199,8 +1197,8 @@ class FastOperator:
         dsc = 1.0 / np.sqrt(np.abs(np.diagonal(Z)) + 1e-300)
         if precision == 'mixed':
             gpu = self._backend()
-            gpu = (gpu
-                   if gpu is not None and gpu.fits(N, self._on_gpu()) else None)
+            gpu = (gpu if gpu is not None and gpu.fits(N, self._on_gpu())
+                   else None)
             self._keep_max = (0 if sim.reuse == 'off' else self._keep_room(
                 N, gpu, 24.0 * N * N))
             Y = self._solve_kept(f, Z, dsc, Es, gpu)

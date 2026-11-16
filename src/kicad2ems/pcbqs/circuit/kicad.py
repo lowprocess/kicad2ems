@@ -3,11 +3,12 @@ KiCad into the general model: the parts, their values and their nodes from a
 schematic, a netlist or a board.
 
     document = read(path)                 # .kicad_sch (through kicad-cli), a
-                                          KiCad XML netlist, or a .kicad_pcb
+                                          # KiCad XML netlist, or a .kicad_pcb
     model = model_from(document)          # a new model of everything that can
-                                          be taken over
+                                          # be taken over
     model = apply(model, document, refs)  # or into a model that exists: add
-                                          these parts, or bring them up to date
+                                          # these parts, or bring them up to
+                                          # date
     python -m kicad2ems.pcbqs.circuit --from-kicad board.kicad_pcb > model.json
 
 What is taken over, each a part between the two nets its pins are on:

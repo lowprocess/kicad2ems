@@ -85,9 +85,12 @@ def read_netlist(path):
         for p in node.findall('./units/unit/pins/pin'):
             n = p.get('num', '')
             pins.setdefault(n, dict(number=n, name='', type='', net=''))
-        flag = lambda key: key in properties and properties[key].lower(
-        ) not in ('0', 'false', 'no') or key in {c.tag
-                                                 for c in node}
+
+        def flag(key):
+            return (key in properties
+                    and properties[key].lower() not in ('0', 'false', 'no')
+                    or key in {c.tag for c in node})
+
         dnp=flag('dnp')
         excluded = (flag('exclude_from_sim') or fields.get(
             'Sim.Enable', '1').lower() in ('0', 'false', 'no'))

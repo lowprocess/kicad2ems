@@ -14,10 +14,10 @@ coefficient. Heat comes in over the pads of the parts that dissipate: each
 part's loss, shared over its pads by their area.
 
     p = Problem.of(board, {'Q1': 0.35, 'D1': 0.5})  # board.json's dict (mm),
-                                                    watts per footprint
+                                                    # watts per footprint
     p.theta = {'Q1': 2.0}                           # K/W from each part's pads
-                                                    to the part itself
-                                                    (optional)
+                                                    # to the part itself
+                                                    # (optional)
 
 A part's temperature is the mean temperature of the copper under its pads plus
 its loss times its theta.

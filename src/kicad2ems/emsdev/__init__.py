@@ -8,15 +8,15 @@ kicad2ems reports what they will use without importing either:
 
     from kicad2ems.emsdev import gpu, cpu, memory
     gpu.devices()  # [Device(index, name, library, api, total)]: the GPUs CuPy
-                   and Vulkan see
+                   # and Vulkan see
     vulkan.slang_device()  # the slangpy device the solvers' Vulkan backends run
-                           on
+                           # on
     gpu.cupy_device()  # the current CuPy device (raises gpu.Unavailable with
-                       the reason)
+                       # the reason)
     gpu.preference('auto', 'MOM25D_GPU')  # a backend setting, the environment's
-                                          override applied
+                                          # override applied
     cpu.core_threads()  # the CPU cores' default thread count: one per fast
-                        physical core
+                        # physical core
     memory.available()  # bytes this process may use now (cgroup aware)
 
     python -m kicad2ems.emsdev                 # all of it, one line each

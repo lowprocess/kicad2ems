@@ -4,14 +4,14 @@ cdt_triangulate, mom25d's or pcbqs's:
 emsdev/native/cdt_mesh.hpp, CDT vendored in emsdev/native/CDT, MPL-2.0)
 triangulates; the points inside the copper are placed here.
 
-    T = mesh(V, segs, limit, inside, core, frozen=None, sizes=(1.0,), min_angle=0, max_steiner=0)
+    T = mesh(V, segs, limit, inside, core, frozen=None, sizes=(1.0,),
+             min_angle=0, max_steiner=0)
 
 V (n, 2), segs (m, 2): geo's vertices and constraint segments, in its units (the
 layer's dmax). limit(C): the largest area of a triangle whose centroid is at C
 (<= 0: no limit). inside(P): whether P is in the copper. core: a compiled core
 with cdt_triangulate. frozen(P): where no point is to be placed (the structured
-runs' cells; None:
-nowhere).
+runs' cells; None: nowhere).
 
   seed    a hexagonal lattice at the local cell size (equilateral cells just
           under the limit): each region's own lattice where the cell size is
@@ -26,9 +26,10 @@ nowhere).
   smooth  ODT passes over the placed points (each to the area-weighted mean of
           its triangles' circumcentres; the outlines' points stay), then the
           limits again, to POST_TOL
-  min_angle (degrees) at the end, no triangle with a smaller angle (CDT's Ruppert refinement, segments split where
-          encroached, at most max_steiner points; pcbqs's DC and thermal meshes:
-          25)
+  min_angle
+          (degrees) at the end, no triangle with a smaller angle (CDT's Ruppert
+          refinement, segments split where encroached, at most max_steiner
+          points; pcbqs's DC and thermal meshes: 25)
 
 Against Triangle, which this replaced (2026-11-15): on mom25d's Solver Matrix
 boards the same S within 0.005 on all but a few, with 2-10 % fewer unknowns.

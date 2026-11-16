@@ -6,7 +6,8 @@ over (theta, phi), written in openEMS's result file and returned as openEMS's
 nf2ff_results.
 
     nf = FDTD.CreateNF2FFBox(frequency=[2.4e9])  # before the run: the faces
-                                                 inside the absorbing boundaries
+                                                 # inside the absorbing
+                                                 # boundaries
     FDTD.Run(path)
     r = nf.CalcNF2FF(path, [2.4e9], theta, phi, center=[0, 0, 0])
     r.Dmax, r.Prad, r.E_norm[0]  # (theta, phi) per frequency
@@ -41,8 +42,8 @@ class nf2ff:  # noqa: N801
     def __init__(self, CSX, name, start, stop, directions=None, mirror=None,
                  frequency=None, **kw):
         self.CSX, self.name = CSX, name
-        self.start, self.stop = (np.asarray(start,
-                                            float), np.asarray(stop, float))
+        self.start, self.stop = (np.asarray(start, float),
+                                 np.asarray(stop, float))
         self.directions = (list(directions)
                            if directions is not None else [True] * 6)
         self.mirror = list(mirror) if mirror is not None else [0] * 6
@@ -304,8 +305,8 @@ class nf2ff_results:  # noqa: N801
                                                          'Prad'))
             TH, PH = np.meshgrid(self.theta, self.phi, indexing='ij')
             cp, sp = np.cos(PH), np.sin(PH)
-            self.E_theta, self.E_phi, self.P_rad, self.E_norm, self.E_cprh, self.E_cplh = (
-                [], [], [], [], [], [])
+            (self.E_theta, self.E_phi, self.P_rad, self.E_norm, self.E_cprh,
+             self.E_cplh) = [], [], [], [], [], []
             for n in range(len(self.freq)):
                 rd = lambda name: (np.array(d[f'{name}/FD/f{n}_real']) + 1j * np
                                    .array(d[f'{name}/FD/f{n}_imag'])).T

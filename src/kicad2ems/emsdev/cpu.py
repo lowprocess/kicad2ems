@@ -36,11 +36,10 @@ def core_threads():
     pcores = _listed('/sys/devices/cpu_core/cpus')
     if pcores and pcores & set(info):
         fast = {core for c, (f, core) in info.items() if c in pcores}
-    # the clocks: within FAST of the top (0.95 had
     else:
-        # split an i9-13900K's P-cores at 5.5 / 5.8 GHz
+        # the clocks: within FAST of the top (0.95 had split an i9-13900K's
+        # P-cores at 5.5 / 5.8 GHz and an X3D's two dies)
         top = max(f for f, _ in info.values())
-        # and an X3D's two dies)
         fast = {core for f, core in info.values() if f >= FAST * top}
     return max(1, len(fast))
 

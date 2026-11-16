@@ -4,17 +4,19 @@ on it and what each one is.
 
     r = Rail(board, '+3V3', ground=('GND',), loads={'U21': 2.0, 'U14': 1.0})
     r.nets    # {'+3V3', '/DCDC/3V3_OUT'}: joined through the series parts in
-              r.series
+              # r.series
     r.series  # [Series(part, a, b, kind, R, z100)]: sense / 0 ohm resistors,
-              beads, jumpers
+              # beads, jumpers
     r.source  # the terminal the rail is fed from (a power inductor's output
-              pad, or the part named source=)
+              # pad, or the part named source=)
     r.ground_source, r.decaps, r.loads
 
 The tree is grown from `net` through two-pad parts between two non-ground nets
 that are, by their reference and value,
-  resistors up to max_ohms (default 1 ohm: current-sense and 0 ohm links; a feedback divider's 10 k is not),
-  ferrite beads (FB*, or an L* whose value reads like one: 600R@100MHz, BLM..., bead), jumpers and net ties (JP*, NT*),
+  resistors up to max_ohms (default 1 ohm: current-sense and 0 ohm links; a
+    feedback divider's 10 k is not),
+  ferrite beads (FB*, or an L* whose value reads like one: 600R@100MHz, BLM...,
+    bead), jumpers and net ties (JP*, NT*),
 and any part named in through=; never one in stop=. A power inductor (an L* in
 henries) is where it ends: the regulator's output, and the default source (its
 pad on the tree, the regulator's ground pads the return's source). An inductor

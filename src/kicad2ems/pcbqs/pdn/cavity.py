@@ -6,19 +6,27 @@ the load attached at their vias as ports. DC to the first cavity modes and
 beyond, as long as the planes are close compared with the wavelength (d <<
 lambda): the field between them is then uniform across d.
 
-    pdn = PlanePair(board, power='+1V0', ground='GND', power_layer='In2.Cu', ground_layer='In1.Cu',
+    pdn = PlanePair(board, power='+1V0', ground='GND', power_layer='In2.Cu',
+                    ground_layer='In1.Cu',
                     ports=[dict(name='U1', x=40, y=-20, r=0.15),
-                           dict(name='C1', x=36, y=-16, r=0.15, C=10e-6, ESR=3e-3, ESL=0.4e-9),
-                           dict(name='VRM', x=5, y=-20, r=0.15, R=1e-3, L=20e-9)], dmax=1.0)
+                           dict(name='C1', x=36, y=-16, r=0.15, C=10e-6,
+                                ESR=3e-3, ESL=0.4e-9),
+                           dict(name='VRM', x=5, y=-20, r=0.15, R=1e-3,
+                                L=20e-9)], dmax=1.0)
     f = np.logspace(3, 9, 241)
-    Z = pdn.z(f)                      # (nf, nports, nports): the port impedance matrix with every element attached
+    # (nf, nports, nports): the port impedance matrix with every element
+    # attached
+    Z = pdn.z(f)
     Z0 = pdn.z(f, bare=True)          # the planes alone
 
 The planes, per unit area and per square:
-  shunt     Y = j w C' (1 - j tand),  C' = eps0 / sum(d_i / er_i)       (the dielectric between them)
-  series    Z = 2 Rs(f) + j w mu0 d                                    (both planes' surface resistance, the
-                                                                         inductance of the space between)
-  -div(grad V / Z) + Y V = J (the current into the cavity at the ports); the edges are open (no current out).
+  shunt     Y = j w C' (1 - j tand),  C' = eps0 / sum(d_i / er_i)
+            (the dielectric between them)
+  series    Z = 2 Rs(f) + j w mu0 d
+            (both planes' surface resistance, the inductance of the space
+            between)
+  -div(grad V / Z) + Y V = J (the current into the cavity at the ports); the
+  edges are open (no current out).
 Rs(f) = 1 / (sigma delta (1 - exp(-t / delta))): 1 / (sigma t) at DC, the skin
 resistance once delta << t.
 
@@ -201,10 +209,13 @@ def rect_cavity_z(a, b, d, er, tand, ports, f, modes=80, sigma=SIGMA_CU,
     """The analytic impedance matrix (nf, k, k) of a rectangular plane pair a x
     b (mm, corner at the origin), spacing d (mm), between square ports (x, y, w)
     (mm): the cavity's double sum over its modes (m, n),
-        Z_ij = j w mu0 d / (a b) sum_mn chi_m^2 chi_n^2 / (k_mn^2 - k^2) f_mn(i) f_mn(j),
-        f_mn(p) = cos(m pi x / a) cos(n pi y / b) sinc(m pi w / 2a) sinc(n pi w / 2b),
-    chi_0 = 1, chi_m = sqrt(2); k^2 = w^2 mu eps (1 - j tand) (1 - j 2 Rs / (w
-    mu0 d)) (the planes' loss)."""
+        Z_ij = j w mu0 d / (a b) sum_mn chi_m^2 chi_n^2 / (k_mn^2 - k^2)
+               f_mn(i) f_mn(j),
+        f_mn(p) = cos(m pi x / a) cos(n pi y / b) sinc(m pi w / 2a)
+                  sinc(n pi w / 2b),
+    chi_0 = 1, chi_m = sqrt(2);
+    k^2 = w^2 mu eps (1 - j tand) (1 - j 2 Rs / (w mu0 d))
+    (the planes' loss)."""
     f = np.atleast_1d(np.asarray(f, float))
     a, b, d = a * 1e-3, b * 1e-3, d * 1e-3
     m = np.arange(modes)

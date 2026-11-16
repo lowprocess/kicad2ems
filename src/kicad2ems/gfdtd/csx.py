@@ -5,7 +5,8 @@ built for openEMS can be built, written, read and run here.
 
     CSX = ContinuousStructure()
     grid = CSX.GetGrid(); grid.SetDeltaUnit(1e-3); grid.SetLines('x', [...])
-    CSX.AddMaterial('FR4', epsilon=4.3, kappa=0.01).AddLinPoly([xs, ys], 'z', 0.0, 1.6, priority=1)
+    CSX.AddMaterial('FR4', epsilon=4.3, kappa=0.01).AddLinPoly([xs, ys], 'z',
+        0.0, 1.6, priority=1)
     CSX.AddMetal('cu').AddPolygon([xs, ys], 'z', 1.6, priority=10)
     CSX.Write2XML('model.xml');  CSX2 = ContinuousStructure();
                                  CSX2.ReadFromXML('model.xml')
@@ -654,8 +655,7 @@ class ContinuousStructure:
     def GetQtyProperties(self):
         return len(self.properties)
 
-    # ---- XML
-    # ---------------------------------------------------------------------------------------------
+    # ---- XML ----------------------------------------------------------------
     def to_xml(self):
         """The <ContinuousStructure> element, as CSXCAD writes it."""
         root = ET.Element('ContinuousStructure', CoordSystem='0')
@@ -925,9 +925,9 @@ def _read_property(pe, skipped):
         elif q.tag in ('Cylinder', 'CylindricalShell'):
             shell = ([float(q.get('ShellWidth'))]
                      if q.tag == 'CylindricalShell' else [])
-            getattr(p,
-                    'Add' + q.tag)(_point(q.find('P1')), _point(q.find('P2')),
-                                   float(q.get('Radius')), *shell, priority=pri)
+            getattr(p, 'Add' + q.tag)(
+                _point(q.find('P1')), _point(q.find('P2')),
+                float(q.get('Radius')), *shell, priority=pri)
         elif q.tag == 'Curve':
             p.AddCurve(
                 np.array([_point(v) for v in q.findall('Vertex')]).T,

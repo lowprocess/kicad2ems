@@ -47,9 +47,8 @@ def on_grid(sh, x, y):
     nearest vertex and triangle of the points on the copper."""
     from .mesh import gradient
     V = np.nan_to_num(np.asarray(sh.V, float))
-    # V/mm: the current runs down it,
+    # V/mm: the current runs down it, as large as the solve's own J
     g = np.asarray(gradient(sh.nodes, sh.tris, V), float)[:, :2]
-    # as large as the solve's own J
     mag = np.hypot(g[:, 0], g[:, 1])
     j = -g * (np.asarray(sh.J, float) / np.where(mag > 0, mag, 1.0))[:, None]
     X, Y = np.meshgrid(x, y, indexing='ij')

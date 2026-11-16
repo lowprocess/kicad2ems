@@ -2,16 +2,18 @@
 mom25d.multilayer - multilayer stackups for the 2.5D planar MoM solver
 (sim.Simulation):
 
-  * Arbitrary stack of dielectric layers above a PEC ground, open (air) or PEC top cover
-    (microstrip, embedded microstrip, stripline, offset/broadside stripline ...); or the whole stack
-    with a half-space below too (bottom='open'): no infinite ground, metal on interface 0 as well
-    (a board's every copper layer, its planes meshed, radiation above and below)
-  * Layered-media Green's functions from a transmission-line network in the spectral domain,
-    for source and observation on the same or different interfaces (MPIE "formulation C",
-    exact for horizontal currents):
+  * Arbitrary stack of dielectric layers above a PEC ground, open (air) or PEC
+    top cover (microstrip, embedded microstrip, stripline, offset/broadside
+    stripline ...); or the whole stack with a half-space below too
+    (bottom='open'): no infinite ground, metal on interface 0 as well (a
+    board's every copper layer, its planes meshed, radiation above and below)
+  * Layered-media Green's functions from a transmission-line network in the
+    spectral domain, for source and observation on the same or different
+    interfaces (MPIE "formulation C", exact for horizontal currents):
         G_A  = V_h / (j w)                 G_q = j w (V_e - V_h) / kr^2
-    same interface: the 1/rho singular part (coefficients cA, cq) is subtracted spectrally and
-    integrated analytically; the remainder is tabulated per frequency.
+    same interface: the 1/rho singular part (coefficients cA, cq) is
+    subtracted spectrally and integrated analytically; the remainder is
+    tabulated per frequency.
   * Non-uniform tensor mesh: n cells across narrow strips, dmax along them
   * The run log (timings and notes).
 
@@ -99,17 +101,22 @@ class Layer:
 class LayerStack:
     """
     Dielectric layers listed bottom -> top, interface 0 at z = 0 their bottom
-    surface. Interface k (k = 1..N) is the top surface of layer k. top='open':
-    half-space of permittivity top_er above layer N (metal allowed on 1..N)
-    top='pec' : PEC cover on interface N (metal allowed on 1..N-1)  ->
-    stripline-type stacks bottom='pec' : a PEC ground at z = 0 (interface 0 is
-    the ground; the default) bottom='open': a half-space of permittivity
-    bottom_er below layer 1, metal allowed on interface 0 too pec          :
-    interfaces (1..N-1) that are PEC planes inside the stack: no metal on them,
-    and what is above
-                   one is decoupled from what is below it (two stacks in one: each sees the plane as its ground
-                   or its cover). A via through such a plane couples them (frill.py), and so do its openings
-                   (slots.py); 0 or N too where the stack is open there (a ground with air beyond it).
+    surface. Interface k (k = 1..N) is the top surface of layer k.
+    top='open':    half-space of permittivity top_er above layer N (metal
+                   allowed on 1..N)
+    top='pec' :    PEC cover on interface N (metal allowed on 1..N-1)  ->
+                   stripline-type stacks
+    bottom='pec' : a PEC ground at z = 0 (interface 0 is the ground; the
+                   default)
+    bottom='open': a half-space of permittivity bottom_er below layer 1, metal
+                   allowed on interface 0 too
+    pec          : interfaces (1..N-1) that are PEC planes inside the stack: no
+                   metal on them, and what is above one is decoupled from what
+                   is below it (two stacks in one: each sees the plane as its
+                   ground or its cover). A via through such a plane couples
+                   them (frill.py), and so do its openings (slots.py); 0 or N
+                   too where the stack is open there (a ground with air beyond
+                   it).
     """
     def __init__(self, layers, top='open', top_er=1.0, bottom='pec',
                  bottom_er=1.0, pec=()):
@@ -382,7 +389,7 @@ class GreenTableML:
 
 
 # ---- Mesh: non-uniform tensor grid (fine across narrow strips, coarse along
-# them) ----
+# them) -----------------------------------------------------------------------
 def _axis_lines(edge_vals, port_vals, dmax, ncross, narrow, grade=0.0):
     e = np.unique(np.round(np.asarray(edge_vals, float), 12))
     pv = np.unique(np.round(np.asarray(port_vals, float), 12))

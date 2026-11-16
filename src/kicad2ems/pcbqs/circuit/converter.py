@@ -1,10 +1,11 @@
-"""
+r"""
 A converter found on a board, as a circuit model: what the near-field tool
 selects (pcbqs.mqs: a regulator, its input net and capacitors, the inductor on
 its switch net), with what the board has on the inductor's far side.
 
-    python -m kicad2ems.pcbqs.mqs board.kicad_pcb --converter U702 --vin-volts 5 --vout 3.3 --fsw 1e6 --current 2 --circuit > u702.json
-    python -m kicad2ems.pcbqs.circuit u702.json --copper
+    python -m kicad2ems.pcbqs.mqs board.kicad_pcb --converter U702 \
+        --vin-volts 5 --vout 3.3 --fsw 1e6 --current 2 --circuit > u702.json
+    python -m kicad2ems.pcbqs.circuit u702.json --copper \
         --out out/u702
     model = model_of(board, 'board.kicad_pcb', a)
         # a: the near-field tool's settings (mqs_cli.parser)
@@ -233,15 +234,17 @@ def model_of(board, path, a):
         dict(ref=rl, type='load', nodes=['out', '0'],
              resistance_ohm='vout/iout'))
     return dict(
-        format=2, name=f"{ref}: {vin} to {out}", description=
-        (f"The converter {ref} as its board has it: input capacitors "
-         f"{', '.join(selected['capacitors'])}, inductor {ind.ref}, output "
-         f"{output}; the duty is adjusted until the output is vout. Assumed: "
-         + '; '.join(assumed) + '.'), parameters=dict(fsw=float(a.fsw),
-                                                      vin=volts, vout=vout,
-                                                      iout=float(a.current)),
-        parts=model_parts, drives=dict(pwm=dict(frequency_Hz='fsw', duty=round(
-            vout / volts, 4), dead_time_s=DEAD)),
+        format=2, name=f"{ref}: {vin} to {out}",
+        description=(
+            f"The converter {ref} as its board has it: input capacitors "
+            f"{', '.join(selected['capacitors'])}, inductor {ind.ref}, output "
+            f"{output}; the duty is adjusted until the output is vout. "
+            "Assumed: " + '; '.join(assumed) + '.'),
+        parameters=dict(fsw=float(a.fsw), vin=volts, vout=vout,
+                        iout=float(a.current)),
+        parts=model_parts,
+        drives=dict(pwm=dict(frequency_Hz='fsw', duty=round(vout / volts, 4),
+                             dead_time_s=DEAD)),
         probes=dict(vout=dict(voltage=['out', '0']),
                     vsw=dict(voltage=['sw', '0']), il=dict(current=ind.ref),
                     iin=dict(current=qh)),
@@ -338,20 +341,23 @@ def boost_of(path, a, selected, found, parts):
         dict(ref=rl, type='load', nodes=['out', '0'],
              resistance_ohm='vout/iout'))
     return dict(
-        format=2, name=f"{low} and {up}: {vin} up to {out}", description=
-        (f"The boost of {low} and {up} as its board has it: inductor {ind.ref} "
-         f"from {vin}"
-         +
-         (f" (capacitors {', '.join(p.ref for p in on_in)})" if on_in else '') +
-         f", output capacitors {', '.join(selected['capacitors'])}; the duty "
-         f"is adjusted until the output is vout. The load draws {iout:.3g} A: "
-         f"the settings' {float(a.current):g} A is the inductor's current, the "
-         "hot loop's pulse. Assumed: "
-         + '; '.join(assumed) + '.'), parameters=dict(fsw=float(a.fsw),
-                                                      vin=volts, vout=vout,
-                                                      iout=round(iout, 6)),
-        parts=model_parts, drives=dict(pwm=dict(frequency_Hz='fsw', duty=round(
-            1 - volts / vout, 4), dead_time_s=DEAD)),
+        format=2, name=f"{low} and {up}: {vin} up to {out}",
+        description=(
+            f"The boost of {low} and {up} as its board has it: inductor "
+            f"{ind.ref} from {vin}"
+            + (f" (capacitors {', '.join(p.ref for p in on_in)})"
+               if on_in else '')
+            + f", output capacitors {', '.join(selected['capacitors'])}; the "
+            "duty is adjusted until the output is vout. The load draws "
+            f"{iout:.3g} A: the settings' {float(a.current):g} A is the "
+            "inductor's current, the hot loop's pulse. Assumed: "
+            + '; '.join(assumed) + '.'),
+        parameters=dict(fsw=float(a.fsw), vin=volts, vout=vout,
+                        iout=round(iout, 6)),
+        parts=model_parts,
+        drives=dict(pwm=dict(frequency_Hz='fsw',
+                             duty=round(1 - volts / vout, 4),
+                             dead_time_s=DEAD)),
         probes=dict(vout=dict(voltage=['out', '0']),
                     vsw=dict(voltage=['sw', '0']), il=dict(current=ind.ref),
                     iup=dict(current=up)),
