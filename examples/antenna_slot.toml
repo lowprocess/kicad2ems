@@ -3,7 +3,8 @@
 #   kicad2ems examples/antenna_slot.toml --preview
 #   kicad2ems examples/antenna_slot.toml
 board   = "antenna_slot.kicad_pcb"   # paths are relative to this file
-mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+# PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+mode    = "antenna"
 fmin    = 1.8           # GHz
 fmax    = 3.2
 points  = 401

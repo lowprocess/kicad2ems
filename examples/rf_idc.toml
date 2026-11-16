@@ -1,5 +1,7 @@
-# kicad2ems example: interdigital capacitor in series with a 50 ohm line: 8 fingers 0.25 mm wide, 0.2 mm apart, 3 mm long
-#   python examples/make_rf_examples.py idc examples/rf_idc     # make the board first (it is not in the repository)
+# kicad2ems example: interdigital capacitor in series with a 50 ohm line:
+# 8 fingers 0.25 mm wide, 0.2 mm apart, 3 mm long
+#   # make the board first (it is not in the repository)
+#   python examples/make_rf_examples.py idc examples/rf_idc
 #   kicad2ems examples/rf_idc.toml --preview
 #   kicad2ems examples/rf_idc.toml
 board   = "rf_idc.kicad_pcb"   # paths are relative to this file
@@ -8,8 +10,11 @@ fmin    = 0.5           # GHz
 fmax    = 10
 points  = 401
 out     = "out"
-fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+# line model (qucsator if installed, else scikit-rf), compared in the report
+fast    = "auto"
 
 [solver.openems]
 excite  = ["P1"]
-diel    = "wideband"   # Debye FR-4: the default fixed conductivity overstates the loss far below the band centre
+# Debye FR-4: the default fixed conductivity overstates the loss far
+# below the band centre
+diel    = "wideband"

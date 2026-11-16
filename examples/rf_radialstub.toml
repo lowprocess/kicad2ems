@@ -1,13 +1,18 @@
-# kicad2ems example: one 60 degree radial stub on a 50 ohm line: a notch, 0.8 mm FR-4
-board   = "rf_radialstub.kicad_pcb"   # paths are relative to this file (python examples/make_rf_examples.py radialstub)
+# kicad2ems example: one 60 degree radial stub on a 50 ohm line: a notch,
+# 0.8 mm FR-4
+# paths are relative to this file
+# (python examples/make_rf_examples.py radialstub)
+board   = "rf_radialstub.kicad_pcb"
 ground  = "B.Cu"
 fmin    = 1.0           # GHz
 fmax    = 4.0
 points  = 301
 out     = "out"
-fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+# line model (qucsator if installed, else scikit-rf), compared in the report
+fast    = "auto"
 
 [solver.openems]
-# The default mesh refines over the fan (--curve-res): the notch at 2.13 GHz in 5 s, as on meshes 3-4x finer;
-# mom25d 2.18 GHz. Without it the fan sat on 1.8 mm cells and the notch came out at 2.03 GHz
+# The default mesh refines over the fan (--curve-res): the notch at 2.13 GHz in
+# 5 s, as on meshes 3-4x finer; mom25d 2.18 GHz. Without it the fan sat on
+# 1.8 mm cells and the notch came out at 2.03 GHz
 excite  = ["P1"]

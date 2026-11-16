@@ -3,11 +3,13 @@
 #   kicad2ems examples/antenna_patch.toml --preview
 #   kicad2ems examples/antenna_patch.toml
 board   = "antenna_patch.kicad_pcb"   # paths are relative to this file
-mode    = "antenna"     # PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+# PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+mode    = "antenna"
 fmin    = 2.0           # GHz
 fmax    = 3.0
 points  = 401
 out     = "out"
 
 [solver.mom25d]
-dmax    = 2.0           # mm (--solvers mom): lambda_g / 30; 1 mm gave the same resonance, S11 and gain
+# mm (--solvers mom): lambda_g / 30; 1 mm gave the same resonance, S11 and gain
+dmax    = 2.0

@@ -1,6 +1,7 @@
-# Every part of kicad2ems at once, from this one repository: the core, the window, the solvers (fdtd, gfdtd,
-# mom25d, pcbqs, fem), the KiCad plugin, dfsynth and emsdev, each part's suite under tests/<part>. A change that
-# breaks another part fails here, not on someone's machine.
+# Every part of kicad2ems at once, from this one repository: the core, the
+# window, the solvers (fdtd, gfdtd, mom25d, pcbqs, fem), the KiCad plugin,
+# dfsynth and emsdev, each part's suite under tests/<part>. A change that breaks
+# another part fails here, not on someone's machine.
 name: stack
 
 on:
@@ -19,14 +20,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     strategy:
-      fail-fast: false              # a failure on one Python shows whether the others pass too
+      # a failure on one Python shows whether the others pass too
+      fail-fast: false
       matrix:
         python: ['3.13', '3.14']
     name: stack (Python ${{ matrix.python }})
     steps:
       - uses: actions/checkout@v4
 
-      # requires-python is >=3.10: every file at least compiles there (3.12's f-strings had slipped in twice)
+      # requires-python is >=3.10: every file at least compiles there (3.12's
+      # f-strings had slipped in twice)
       - uses: actions/setup-python@v5
         with: { python-version: '3.10' }
       - name: Everything compiles on Python 3.10
@@ -34,13 +37,20 @@ jobs:
 
       - uses: actions/setup-python@v5
         with: { python-version: '${{ matrix.python }}' }
-      - name: System libraries (Qt offscreen, OpenGL; ngspice, pcbqs's circuit runs; gmsh's GL)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 ngspice libglu1-mesa libxcursor1 libxinerama1 libxft2
+      - name: >-
+          System libraries (Qt offscreen, OpenGL; ngspice, pcbqs's circuit
+          runs; gmsh's GL)
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1
+          libdbus-1-3 ngspice libglu1-mesa libxcursor1 libxinerama1 libxft2
       - name: Install kicad2ems with its extras
         run: |
           python -m pip install -e '.[test,fast,gui,fem,core,plugin]'
           python -m pip check || true
-      - name: "Build the compiled cores (mom25d's and pcbqs's hold their mesher, CDT)"
+      - name: >-
+          Build the compiled cores
+          (mom25d's and pcbqs's hold their mesher, CDT)
         run: |
           MOM25D_ARCH=-march=x86-64-v2 python -m kicad2ems.mom25d.core.build
           GFDTD_ARCH=-march=x86-64-v2 python -m kicad2ems.gfdtd.core.build
@@ -48,7 +58,8 @@ jobs:
       - name: The machine, the solvers
         run: python -m kicad2ems.emsdev && kicad2ems --check
 
-      # every suite runs even when one before it failed; the job fails if any did
+      # every suite runs even when one before it failed; the job
+      # fails if any did
       - name: emsdev
         run: python -m pytest -q tests/emsdev
       - name: core (golden summaries, parity, the API)
@@ -56,26 +67,37 @@ jobs:
         run: python -m pytest -q -n 4 tests/core
       - name: mom25d (with its kicad2ems plugin's parity)
         if: success() || failure()
-        timeout-minutes: 30         # a hang fails the step with its traceback (faulthandler) instead of the job's cancel
-        run: python -m pytest -v -o faulthandler_timeout=600 --durations=10 tests/mom25d
-      - name: "mom25d's Vulkan LU on lavapipe (Mesa's CPU Vulkan: no GPU here; R-C7)"
+        # a hang fails the step with its traceback (faulthandler) instead of
+        # the job's cancel
+        timeout-minutes: 30
+        run: >-
+          python -m pytest -v -o faulthandler_timeout=600 --durations=10
+          tests/mom25d
+      - name: >-
+          mom25d's Vulkan LU on lavapipe
+          (Mesa's CPU Vulkan: no GPU here; R-C7)
         if: success() || failure()
         timeout-minutes: 15
         run: |
           sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
           python -m pip install slangpy
           EMSDEV_VULKAN_CPU=1 python -m kicad2ems.emsdev
-          EMSDEV_VULKAN_CPU=1 python tools/mom25d/gpu_selfcheck.py --backend vulkan --n 1024
+          EMSDEV_VULKAN_CPU=1 python tools/mom25d/gpu_selfcheck.py \
+            --backend vulkan --n 1024
       - name: gfdtd
         if: success() || failure()
         run: python -m pytest -q tests/gfdtd
       - name: fdtd (the FDTD layer, openEMS's and gfdtd's connections)
         if: success() || failure()
         run: python -m pytest -q -n 4 tests/fdtd
-      - name: "pcbqs (the power tools, kicad2ems's analysis plugins, the circuit runs on ngspice)"
+      - name: >-
+          pcbqs (the power tools, kicad2ems's analysis plugins, the circuit
+          runs on ngspice)
         if: success() || failure()
         timeout-minutes: 30
-        run: python -m pytest -q -n auto --durations=10 --basetemp="$RUNNER_TEMP/pcbqs-tests" tests/pcbqs
+        run: >-
+          python -m pytest -q -n auto --durations=10
+          --basetemp="$RUNNER_TEMP/pcbqs-tests" tests/pcbqs
       - name: pcbqs's ngspice logs (kept when a run fails)
         if: failure()
         uses: actions/upload-artifact@v4
@@ -93,31 +115,43 @@ jobs:
       - name: dfsynth (with the line-model cross-check)
         if: success() || failure()
         run: python -m pytest -q tests/dfsynth
-      # Elmer for kicad2ems-fem's Elmer runs (R-C2): built once by the installer's script, then from the cache
+      # Elmer for kicad2ems-fem's Elmer runs (R-C2): built once by the
+      # installer's script, then from the cache
       - name: Elmer (cached build)
         id: elmer-cache
         if: success() || failure()
         uses: actions/cache@v4
         with:
           path: ~/opt/elmer
-          key: elmer-release-26.2.1-${{ runner.os }}-${{ hashFiles('tools/build_elmer.sh') }}
+          key: >-
+            elmer-release-26.2.1-${{ runner.os }}-${{
+            hashFiles('tools/build_elmer.sh') }}
       - name: Elmer (build)
-        if: (success() || failure()) && steps.elmer-cache.outputs.cache-hit != 'true'
+        if: >-
+          (success() || failure())
+          && steps.elmer-cache.outputs.cache-hit != 'true'
         timeout-minutes: 40
         run: |
-          sudo apt-get install -y --no-install-recommends gfortran cmake libblas-dev liblapack-dev
+          sudo apt-get install -y --no-install-recommends gfortran cmake \
+            libblas-dev liblapack-dev
           bash tools/build_elmer.sh "$HOME/opt/elmer"
-          rm -rf "$HOME/opt/elmer/src"                                  # the cache keeps the install, not the sources
-      - name: "fem (meshes, configs, readers, registry; Elmer's runs on the cached build; no Palace: its runs skip)"
+          # the cache keeps the install, not the sources
+          rm -rf "$HOME/opt/elmer/src"
+      - name: >-
+          fem (meshes, configs, readers, registry; Elmer's runs on the cached
+          build; no Palace: its runs skip)
         if: success() || failure()
         run: |
-          sudo apt-get install -y --no-install-recommends libgfortran5 libblas3 liblapack3 libgomp1   # Elmer's own
+          # Elmer's own
+          sudo apt-get install -y --no-install-recommends libgfortran5 \
+            libblas3 liblapack3 libgomp1
           export K2E_ELMER="$HOME/opt/elmer/bin"
           "$K2E_ELMER/ElmerSolver" -v </dev/null | head -1 || true
           python -m pytest -q -rs tests/fem
 
-  # What KiCad installs: the KiCad plugin's requirements.txt (kicad2ems from main, as a user's KiCad gets it), with
-  # this checkout's plugin tests. Fails when the plugin needs more than that requirement brings.
+  # What KiCad installs: the KiCad plugin's requirements.txt (kicad2ems from
+  # main, as a user's KiCad gets it), with this checkout's plugin tests. Fails
+  # when the plugin needs more than that requirement brings.
   ipc-as-installed:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -126,6 +160,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - name: System libraries (Qt offscreen, OpenGL)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
-      - run: python -m pip install -r src/kicad2ems/ipc/plugin/requirements.txt pytest
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1
+          libdbus-1-3
+      - run: >-
+          python -m pip install -r src/kicad2ems/ipc/plugin/requirements.txt
+          pytest
       - run: python -m pytest -q tests/ipc

@@ -1,4 +1,5 @@
-# What KiCad installs into the plugin's own Python environment: kicad2ems with its window (gui), the scikit-rf line
-# model (fast) and KiCad's IPC client (plugin). kicad2ems is not on PyPI yet: an archive of its repository (no git
+# What KiCad installs into the plugin's own Python environment: kicad2ems
+# with its window (gui), the scikit-rf line model (fast) and KiCad's IPC client
+# (plugin). kicad2ems is not on PyPI yet: an archive of its repository (no git
 # needed). The plugin's window, kicad2ems.ipc, is part of it.
 kicad2ems[gui,fast,plugin] @ https://github.com/lowprocess/kicad2ems/archive/refs/heads/main.zip

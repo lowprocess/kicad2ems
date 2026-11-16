@@ -2,8 +2,8 @@
 #   python examples/make_demo_board.py examples/demo_bandpass bandpass
 #   kicad2ems examples/demo_bandpass.toml --preview
 #   kicad2ems examples/demo_bandpass.toml
-# 2nd-order Butterworth band-pass, f0 = 1 GHz: series L1 27 nH + C1 1 pF, then shunt L2 2.2 nH || C2 12 pF
-# (0402, with ESR / ESL fields).
+# 2nd-order Butterworth band-pass, f0 = 1 GHz: series L1 27 nH + C1 1 pF, then
+# shunt L2 2.2 nH || C2 12 pF (0402, with ESR / ESL fields).
 board   = "demo_bandpass.kicad_pcb"   # paths are relative to this file
 pos     = "demo_bandpass-top.pos"
 fmin    = 0.1           # GHz
@@ -16,5 +16,6 @@ out     = "out"
 excite  = ["P1"]        # S11 and S21 (S12 by reciprocity)
 air     = 5.0
 bc      = "auto"        # PEC on the solid bottom plane, MUR elsewhere
-# the 0.1 GHz start leaves a static field (the energy levels off near -32 dB): the run stops on the
-# port signals instead (end-on = "ports", the default), after 200k steps; S within 1e-4 of a 300k-step run
+# the 0.1 GHz start leaves a static field (the energy levels off near -32 dB):
+# the run stops on the port signals instead (end-on = "ports", the default),
+# after 200k steps; S within 1e-4 of a 300k-step run

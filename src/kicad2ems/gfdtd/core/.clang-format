@@ -1,0 +1,7 @@
+# gfdtd's core: the repository's style, but functions' opening braces on a line
+# of their own and pointers by the type (float* V)
+BasedOnStyle: InheritParentConfig
+PointerAlignment: Left
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true

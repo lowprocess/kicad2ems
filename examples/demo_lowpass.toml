@@ -2,9 +2,10 @@
 #   python examples/make_demo_board.py examples/demo_lowpass lowpass
 #   kicad2ems examples/demo_lowpass.toml --preview
 #   kicad2ems examples/demo_lowpass.toml
-# 3rd-order Butterworth, fc = 1 GHz: L1 8.2 nH - C2 6.8 pF to GND - L3 8.2 nH (0402, with ESR / ESL
-# fields). The plot overlays the ideal lumped circuit (demo_lowpass_ideal.s2p).
-# Variants: make_demo_board.py ... highpass / bandpass with demo_highpass.toml / demo_bandpass.toml.
+# 3rd-order Butterworth, fc = 1 GHz: L1 8.2 nH - C2 6.8 pF to GND - L3 8.2 nH
+# (0402, with ESR / ESL fields). The plot overlays the ideal lumped circuit
+# (demo_lowpass_ideal.s2p). Variants: make_demo_board.py ... highpass / bandpass
+# with demo_highpass.toml / demo_bandpass.toml.
 board   = "demo_lowpass.kicad_pcb"   # paths are relative to this file
 pos     = "demo_lowpass-top.pos"
 fmin    = 0.1           # GHz
@@ -17,5 +18,6 @@ out     = "out"
 excite  = ["P1"]        # S11 and S21 (S12 by reciprocity)
 air     = 5.0
 bc      = "auto"        # PEC on the solid bottom plane, MUR elsewhere
-# the 0.1 GHz start leaves a static field (the energy levels off near -32 dB): the run stops on the
-# port signals instead (end-on = "ports", the default), after 200k steps; S within 1e-4 of a 300k-step run
+# the 0.1 GHz start leaves a static field (the energy levels off near -32 dB):
+# the run stops on the port signals instead (end-on = "ports", the default),
+# after 200k steps; S within 1e-4 of a 300k-step run

@@ -1,0 +1,4 @@
+# pcbqs's core: the repository's style, with a constructor's initializer list
+# on the line after its signature, from ':'
+BasedOnStyle: InheritParentConfig
+BreakConstructorInitializers: BeforeColon

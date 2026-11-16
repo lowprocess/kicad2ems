@@ -1,5 +1,8 @@
-# kicad2ems example: the crosstalk pair with a grounded 0.8 mm guard trace between the lines, stitched every 4 mm
-#   python examples/make_rf_examples.py crosstalk_guard examples/rf_crosstalk_guard     # make the board first (it is not in the repository)
+# kicad2ems example: the crosstalk pair with a grounded 0.8 mm guard trace
+# between the lines, stitched every 4 mm
+#   # make the board first (it is not in the repository)
+#   python examples/make_rf_examples.py crosstalk_guard \
+#       examples/rf_crosstalk_guard
 #   kicad2ems examples/rf_crosstalk_guard.toml --preview
 #   kicad2ems examples/rf_crosstalk_guard.toml
 board   = "rf_crosstalk_guard.kicad_pcb"   # paths are relative to this file
@@ -8,8 +11,11 @@ fmin    = 0.5           # GHz
 fmax    = 6
 points  = 401
 out     = "out"
-fast    = "auto"        # line model (qucsator if installed, else scikit-rf), compared in the report
+# line model (qucsator if installed, else scikit-rf), compared in the report
+fast    = "auto"
 
 [solver.openems]
 excite  = ["P1"]
-diel    = "wideband"   # Debye FR-4: the default fixed conductivity overstates the loss far below the band centre
+# Debye FR-4: the default fixed conductivity overstates the loss far
+# below the band centre
+diel    = "wideband"
