@@ -14,7 +14,9 @@ drive's antenna result and the array file the GUI steers.
 import functools
 import numpy as np
 from kicad2ems.core.api.solver import C0, ETA0
-from kicad2ems.core.api.solver import match_summary, gain_table, add_polarisation, pattern_gain, describe_antenna as describe
+from kicad2ems.core.api.solver import (match_summary, gain_table,
+                                       add_polarisation, pattern_gain,
+                                       describe_antenna as describe)
 
 # the coarse sphere (deg)
 TH, PH = np.arange(0, 181, 5.0), np.arange(0, 361, 5.0)

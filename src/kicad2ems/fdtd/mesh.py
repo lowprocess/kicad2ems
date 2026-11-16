@@ -1,13 +1,15 @@
 """
 Automatic rectilinear mesh for openEMS.
 
-  x / y : thirds rule at Manhattan copper edges (1/3 inside, 2/3 outside the metal), end points of
-          oblique edges, via centre +- radius, port planes and the board outline kept exactly;
-          lines closer than fine/2 merged by priority; graded smoothing (<= ratio growth) up to
+  x / y : thirds rule at Manhattan copper edges (1/3 inside, 2/3 outside the
+          metal), end points of oblique edges, via centre +- radius, port
+          planes and the board outline kept exactly; lines closer than fine/2
+          merged by priority; graded smoothing (<= ratio growth) up to
           lambda/res in the dielectric and in air
-  z     : every interface, >= nz cells per dielectric, copper sheets exactly on lines, air margin
-          (none below a PEC bottom plane), PML cells added only on PML sides; with --thickness on, both faces
-          of each copper layer, the stack moved up to make room (thick.py)
+  z     : every interface, >= nz cells per dielectric, copper sheets exactly
+          on lines, air margin (none below a PEC bottom plane), PML cells added
+          only on PML sides; with --thickness on, both faces of each copper
+          layer, the stack moved up to make room (thick.py)
 """
 import numpy as np
 from kicad2ems.core.api.solver import C0
@@ -197,10 +199,10 @@ def _curve_points(xy, fine, mode='extremes', step=None, boxes=None):
 
 # the cell across a copper edge, as a fraction of `fine` (see _edge_lines)
 THIRDS_CELL = 2 / 3
-# zone: the ground copper's edges are resolved within this many mm of the signal
-# copper,
+# zone: the ground copper's edges are resolved within ZONE_DIST mm of the
+# signal copper, or ZONE_H times the thickest dielectric, whichever is more
+# (signal_zone)
 ZONE_DIST = 1.0
-# or this many times the thickest dielectric, whichever is more (signal_zone)
 ZONE_H = 3.0
 # mm: a ground ring no larger than this (a pad, an antipad, a via) that touches
 # the zone keeps all its lines (rf_diffvia: half of a return via's lines had
@@ -295,8 +297,9 @@ def _edge_lines(m, fine, curves, boxes=None, zone=None):
                 # its width
                 cx, cy = curve_lines(
                     xy, fine, curves, step=max(fine, 2 * p.area / p.length),
-                    boxes=boxes, inside=((lambda x, y: zp.contains(Point(x, y)))
-                                         if cut else None))
+                    boxes=boxes,
+                    inside=((lambda x, y: zp.contains(Point(x, y)))
+                            if cut else None))
                 fixed[0] += cx; fixed[1] += cy
     return fixed, third, third_in
 
@@ -371,8 +374,8 @@ def _z_lines(m, ext, M_die, M_air, nz_min, ratio, dz_sheet=None, th=None,
         lay = next((l for l in layers
                     if l['z0'] <= z0 + 1e-9 and l['z1'] >= z1 - 1e-9), None)
         Mz = M_die if lay else M_air
-        n_min = (nz_mask
-                 if nz_mask and lay and lay.get('kind') == 'mask' else nz_min)
+        n_min = (nz_mask if nz_mask and lay and lay.get('kind') == 'mask'
+                 else nz_min)
         n = max(n_min, int(np.ceil((z1 - z0) / Mz)))
         h = (z1 - z0) / n
         near = [
@@ -398,8 +401,8 @@ def _z_lines(m, ext, M_die, M_air, nz_min, ratio, dz_sheet=None, th=None,
         zl[i] = zc
     zfix = np.concatenate([[zl[0] - ext[4]] if ext[4] > 0 else [], zl,
                            [zl[-1] + ext[5]]])
-    return smooth_lines(zfix, lambda z: M_die
-                        if 0 <= z <= top else M_air, ratio)
+    return smooth_lines(zfix, lambda z: M_die if 0 <= z <= top else M_air,
+                        ratio)
 
 
 def _check(m, mesh, info, log):
@@ -461,31 +464,34 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
     thick is the copper thickness plan (thick.plan, None: zero-thickness sheets)
     that build_fdtd builds the model with.
 
-    curves: 'extremes' (default) or 'vertices' - see curve_lines(). vias:
-    'exact'  lines at the centre and +-radius of every via (round barrel
-    resolved)
+    curves: 'extremes' (default) or 'vertices' - see curve_lines().
+    vias:   'exact'  lines at the centre and +-radius of every via (round
+                     barrel resolved)
             'centre' one line per axis through the centre (barrel modelled on
                      that line)
             'snap'   no lines of their own: each via moves onto the nearest
-                     existing line crossing if it is within via_snap mm (else it
-                     gets centre lines)
+                     existing line crossing if it is within via_snap mm (else
+                     it gets centre lines)
             'auto'   (default) 'exact' for vias on the port (signal) nets,
                      'snap' for all others (ground stitching / fence vias)
-    refine: [(x0, y0, x1, y1, step)] boxes (model coordinates, mm) with x and y
-    lines every `step` z_sheet: the first z cell either side of a copper sheet
-    with signal edges, x fine, graded into the
-             dielectric (0: uniform cells, nz_min per dielectric). On 0.8 mm FR-4 the default nz of 4 gave a
-             10 dB coupler -8.6 dB (converged -10.24 to -10.29, lossless) and a grounded CPW's S11 at 5 GHz -19 dB (about -33);
-             grading from the fine cell gave -10.3 and -31.6 dB for 1.4x the run time. The gap and edge cells in
-             x / y hardly mattered (docs/meshing.md#z-lines)
+    refine: [(x0, y0, x1, y1, step)] boxes (model coordinates, mm) with x and
+            y lines every `step`
+    z_sheet: the first z cell either side of a copper sheet with signal edges,
+             x fine, graded into the dielectric (0: uniform cells, nz_min per
+             dielectric). On 0.8 mm FR-4 the default nz of 4 gave a 10 dB
+             coupler -8.6 dB (converged -10.24 to -10.29, lossless) and a
+             grounded CPW's S11 at 5 GHz -19 dB (about -33); grading from the
+             fine cell gave -10.3 and -31.6 dB for 1.4x the run time. The gap
+             and edge cells in x / y hardly mattered (docs/meshing.md#z-lines)
     curve_res: over curved copper (curve_lines' boxes) the largest cell is the
-    dielectric's / curve_res: a radial
-             stub's fan had cells up to 1.8 mm and notched at 2.03 GHz instead of 2.13
-    zone:   True: the ground copper's edges get mesh lines only near the signal
-    copper (signal_zone); far from it
-             the planes' pours, antipads and pads are left to the graded mesh. A number: the zone's reach (mm)
-    thickness: copper with its stackup thickness, the stack moved to make room
-    (thick.py); False: sheets"""
+             dielectric's / curve_res: a radial stub's fan had cells up to
+             1.8 mm and notched at 2.03 GHz instead of 2.13
+    zone:   True: the ground copper's edges get mesh lines only near the
+             signal copper (signal_zone); far from it the planes' pours,
+             antipads and pads are left to the graded mesh. A number: the
+             zone's reach (mm)
+    thickness: copper with its stackup thickness, the stack moved to make
+             room (thick.py); False: sheets"""
     from . import thick
     th = thick.plan(m) if thickness else None
     er_max = max([l['er'] for l in m.layers] + [1.0])
@@ -549,10 +555,10 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
             pts = np.concatenate([[lo - ext[2 * k]], pts,
                                   [hi + ext[2 * k + 1]]])
             spans = [(b[k], b[2 + k]) for b in boxes] if curve_res > 1 else []
-            Mf = (lambda x, lo=lo, hi=hi, sp=spans: M_air
-                  if not lo - 1e-9 <= x <= hi + 1e-9 else
-                  (M_die / curve_res
-                   if any(a <= x <= b for a, b in sp) else M_die))
+            Mf = (lambda x, lo=lo, hi=hi, sp=spans:
+                  M_air if not lo - 1e-9 <= x <= hi + 1e-9 else
+                  M_die / curve_res if any(a <= x <= b for a, b in sp) else
+                  M_die)
             out[k] = smooth_lines(pts, Mf, ratio, fine)
         return out
 
@@ -593,9 +599,8 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
     if nsnap:
         log(f"vias: {nsnap} snapped onto existing lines (moved <= "
             f"{info['via_max_move_mm']:.3f} mm), {len(m.vias) - nsnap} with "
-            "their own lines" +
-            (f"; {len(far)} moved further than --via-snap {via_snap:g} mm (no "
-             "line nearer)"
-             if far else ""))
+            "their own lines"
+            + (f"; {len(far)} moved further than --via-snap {via_snap:g} mm "
+               "(no line nearer)" if far else ""))
     return dict(x=mesh[0], y=mesh[1], z=mesh[2], vias=placed, info=info,
                 thick=th)

@@ -18,9 +18,9 @@ import importlib.util, os, shutil, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 BUILD = os.path.join(HERE, '_build')
-# not installed: this checkout's (its examples
+# not installed: this checkout's (its examples package exists only installed:
+# pip install .)
 if importlib.util.find_spec('kicad2ems') is None:
-    # package exists only installed: pip install .)
     sys.path.insert(0, os.path.join(ROOT, 'src'))
 # the generators import _pcb as a sibling
 sys.path.insert(0, os.path.join(ROOT, 'examples'))

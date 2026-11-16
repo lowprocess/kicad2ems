@@ -136,10 +136,10 @@ class GFDTD(FDTD):
             from kicad2ems.gfdtd.engine import backend_info, resolve_backend
             return True, f"GPU: {backend_info(resolve_backend('gpu'))}"
         core, cwhat = core_info()
-        return (
-            True, "CPU: "
-            f"{cwhat if core else 'numpy (slow; build the core: python -m kicad2ems.gfdtd.core.build)'}"
-            + ('' if gpu else f"; {what}"))
+        slow = ('numpy (slow; build the core: '
+                'python -m kicad2ems.gfdtd.core.build)')
+        return (True, f"CPU: {cwhat if core else slow}"
+                + ('' if gpu else f"; {what}"))
 
     def resources(self):
         """The GPU gfdtd's engine would run on (the best Vulkan GPU, else CuPy's
@@ -212,15 +212,16 @@ class GFDTD(FDTD):
             from kicad2ems.gfdtd.engine import vulkan_gpus
             names = dict(vulkan_gpus())
             used = [k for k, v in share(slots, len(p.excite)).items() if v]
-            # one GPU by the speeds: its runs side by side
+            # one GPU by the speeds: its runs side by side there, as without
+            # --gfdtd-gpus
             if len(used) == 1:
-                # there, as without --gfdtd-gpus
                 os.environ['EMSDEV_VULKAN_DEVICE'] = str(used[0])
                 sp = gpu_speeds(slots)
+                speeds = ', '.join(f'{names.get(k, k)} {sp[k]:.0f}'
+                                   for k in slots if sp[k])
                 run.log(
                     "gfdtd: by the GPUs' measured speeds "
-                    f"({', '.join(f'{names.get(k, k)} {sp[k]:.0f}' for k in slots if sp[k])} "
-                    "M cells/s) the others would finish later: "
+                    f"({speeds} M cells/s) the others would finish later: "
                     f"{names.get(used[0], used[0])} alone")
                 slots = None
         if slots:
