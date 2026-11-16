@@ -74,31 +74,23 @@ def scalar_of(d, complex_, component='mag', phase=None):
 
 
 # ---- colour ---------------------------------------------------------------------------------------
-def _cmap(name):
-    import matplotlib
-    return matplotlib.colormaps[name]
-
-
 def colour(v, lo, hi, log=True, signed=False, opacity=0.6, gamma=1.5, cmap=None, floor=0.0):
     """RGBA voxels (uint8): the colour map of v between lo and hi (log: magnitudes, decades below hi), alpha
     rising with the value (gamma > 1: the weak field fades out, the strong field stays visible through it).
     floor: the least of that rise (a map whose low end is not nothing: a temperature's coolest point is still
     the board). NaN (off the board) is clear."""
+    import matplotlib
     nan = np.isnan(v)
     if nan.any():
         v = np.where(nan, lo, v)
     if signed:
         t = np.clip(0.5 + 0.5 * v / (hi or 1.0), 0, 1)
-        a = np.abs(2 * t - 1)
-        cm = _cmap(cmap or 'RdBu_r')
+    elif log:
+        t = np.clip((np.log10(np.maximum(v, lo)) - np.log10(lo)) / max(np.log10(hi) - np.log10(lo), 1e-9), 0, 1)
     else:
-        if log:
-            lv = np.log10(np.maximum(v, lo))
-            t = np.clip((lv - np.log10(lo)) / max(np.log10(hi) - np.log10(lo), 1e-9), 0, 1)
-        else:
-            t = np.clip((v - lo) / max(hi - lo, 1e-30), 0, 1)
-        a = t
-        cm = _cmap(cmap or 'inferno')
+        t = np.clip((v - lo) / max(hi - lo, 1e-30), 0, 1)
+    a = np.abs(2 * t - 1) if signed else t
+    cm = matplotlib.colormaps[cmap or ('RdBu_r' if signed else 'inferno')]
     lut = (cm(np.arange(cm.N))[:, :4] * 255).astype(np.uint8)       # (the map's own entries: it takes floor(t N))
     rgba = lut[np.minimum((t * cm.N).astype(np.intp), cm.N - 1)]
     rgba[..., 3] = (255 * opacity * (floor + (1 - floor) * a ** gamma)).astype(np.uint8)

@@ -15,7 +15,6 @@ filter synthesis (the Filter page).
 __version__ = '0.3.0'
 
 
-
 def application(argv=()):
     """The QApplication, made with shared OpenGL contexts when there is none yet: the 3D field view's shaders and
     buffers (pyqtgraph caches them across views) stay valid when a dock is moved or another window opens."""

@@ -16,7 +16,7 @@ from pathlib import Path
 from PySide6.QtCore import QTimer,Qt
 from .schematicview import SchematicEditor
 from .analysispanel import AnalysisPanel,config_values
-from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLineEdit,QPushButton,QComboBox,QPlainTextEdit,
+from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLineEdit,QPushButton,QPlainTextEdit,
                                QTabWidget,QFileDialog,QLabel,QSplitter,QScrollArea,QTableWidget,QTableWidgetItem,QHeaderView)
 
 def _is_number(text):
@@ -201,7 +201,8 @@ class PowerCircuitTab(QWidget):
 
     @staticmethod
     def sweep_text(sweep):
-        return ';  '.join(f"{path}: "+', '.join(f'{v:g}' if isinstance(v,(int,float)) else str(v) for v in values) for path,values in sweep.items())
+        return ';  '.join(f"{path}: " + ', '.join(f'{v:g}' if isinstance(v, (int, float)) else str(v) for v in values)
+                          for path, values in sweep.items())
 
     @staticmethod
     def sweep_of(text):

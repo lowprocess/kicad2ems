@@ -110,9 +110,8 @@ def solvers_from_form(vals):
     if not ticks:
         return out
     on = [k[len(TICK):] for k in ticks if out.pop(k)]
-    out.pop('mom', None)
-    out.pop('fast', None)
-    out.pop('solvers', None)
+    for k in ('mom', 'fast', 'solvers'):
+        out.pop(k, None)
     if on != ['auto']:
         out['solvers'] = on
     return out
