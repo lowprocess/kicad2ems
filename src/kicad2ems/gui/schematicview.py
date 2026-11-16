@@ -20,10 +20,6 @@ def _api():
     return schematic
 
 
-def _number(value):
-    return f'{value:.17g}' if isinstance(value,(int,float)) else str(value)
-
-
 def _quantity(value,unit):
     if not isinstance(value,(int,float)):return str(value)
     for exponent,prefix in [(9,'G'),(6,'M'),(3,'k'),(0,''),(-3,'m'),(-6,'µ'),(-9,'n'),(-12,'p'),(-15,'f')]:
@@ -108,7 +104,8 @@ class ImportReview(QDialog):
     def __init__(self,document,config,parent=None):
         super().__init__(parent);self.setWindowTitle('Review KiCad simulation import');self.resize(1100,650);self.document=document;self.config=config
         layout=QVBoxLayout(self)
-        note=QLabel('Choose the components to apply. Existing parasitics are retained unless matching numeric ESR/ESL/DCR fields are supplied.\nIC logic and gate-driver behavior require explicit simulation models. DNP/excluded parts are imported disabled.');note.setWordWrap(True);layout.addWidget(note)
+        note=QLabel('Choose the parts to take over: resistors, capacitors, inductors, diodes and MOSFETs, each between the two nets its pins are on.\n'
+                    'Which connector is the source and which the load, and what drives the switches, KiCad does not say: add those in the schematic afterwards.');note.setWordWrap(True);layout.addWidget(note)
         controls=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Filter reference, value, net or sheet');self.search.textChanged.connect(self.filter);controls.addWidget(self.search,1)
         for label,mode in [('Existing only','existing'),('Everything supported','all'),('None','none')]:
             b=QPushButton(label);b.clicked.connect(lambda _,m=mode:self.select(m));controls.addWidget(b)
@@ -116,8 +113,6 @@ class ImportReview(QDialog):
         self.table=QTableWidget(len(document['components']),8);self.table.setHorizontalHeaderLabels(['Apply','Reference','KiCad value','Simulation value','Model','Pins → nets','Sheet','Import status']);self.table.setEditTriggers(QTableWidget.NoEditTriggers);self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents);self.table.horizontalHeader().setSectionResizeMode(5,QHeaderView.Stretch)
         self.eligible=[]
-        note.setText('Choose the parts to take over: resistors, capacitors, inductors, diodes and MOSFETs, each between the two nets its pins are on.\n'
-                                     'Which connector is the source and which the load, and what drives the switches, KiCad does not say: add those in the schematic afterwards.')
         for row,c in enumerate(document['components']):
             status,eligible,default=_kicad().status(c,config)
             self.eligible.append(eligible)
@@ -236,9 +231,6 @@ class DeviceItem(QGraphicsObject):
         a=self.turn().map(QPointF(-PIN_X if index==0 else PIN_X,PIN_Y));o=self.turn().map(QPointF(0,PIN_Y))
         d=a-o;n=max(abs(d.x()),abs(d.y()))
         return (round(d.x()/n),round(d.y()/n))
-
-    def set_rotation(self,deg):
-        self.prepareGeometryChange();self.rot=int(deg)%360//90*90;self.update()
 
     def contextMenuEvent(self,event):
         if not self.isSelected():self.owner.clearSelection();self.setSelected(True)
@@ -607,7 +599,7 @@ def _plant(part,name,value):
     else:at[keys[-1]]=value
 
 
-def records2(config):
+def records(config):
     """The general model's parts as the scene's records. A column each by how far along the power's path a part
     sits: the nets are numbered outward from the source (one further across every part that is not to ground, and
     across a coupling), a part to ground stands in its net's column and a part between two nets in the column
@@ -679,10 +671,6 @@ def records2(config):
         out.append(r)
     return out
 
-
-def records(config):
-    """The scene's records of a model (format 2): records2's."""
-    return records2(config)
 
 class SchematicEditor(QWidget):
     modelChanged=Signal(dict)
