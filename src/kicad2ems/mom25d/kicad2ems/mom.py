@@ -38,20 +38,10 @@ def _far_field_grid(run):
     return np.linspace(run.fmin, run.fmax, ANT_FREQS)
 
 
-def _far_field_seeds(run):
-    """The frequencies the sweep solves among its own samples and keeps the currents of, so the far field needs no
-    solves of its own (the pattern frequency's aside, when it is the resonance): ANT_FREQS solves fewer on an
-    antenna, antenna_vivaldi's 37 -> 26."""
-    return list(_far_field_grid(run)) if run.antenna else []
-
-
 def mom25d_status():
     """(usable, one-line description) of mom25d for --check and the solver checks before a run: where it
     comes from, its version and whether its compiled core is built (it meshes: not usable without it)."""
-    try:
-        from kicad2ems import mom25d
-    except Exception as e:                                          # a missing or broken dependency
-        return False, f"{type(e).__name__}: {e}"
+    from kicad2ems import mom25d
     try:
         from kicad2ems.mom25d import _core
     except ImportError:
@@ -63,14 +53,11 @@ def mom25d_status():
 
 
 def run_finish(run):
-    """The run's surface finish (kicad2ems.core.api 2.4: resolve_finish), or None with an older kicad2ems."""
+    """The run's surface finish (kicad2ems.core.api 2.4: resolve_finish), or None."""
     fin = getattr(run, 'finish', None)
     if fin is not None or not getattr(run.s, 'sigma', None):
         return fin
-    try:
-        from kicad2ems.core.api.solver import resolve_finish
-    except ImportError:
-        return None
+    from kicad2ems.core.api.solver import resolve_finish
     return resolve_finish(run.s, run.m)
 
 
@@ -116,23 +103,19 @@ def reused(runlog):
 
 
 def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None, finish=None, log=print, progress=None,
-          hold=None, on_step=None, core='auto', quads=False, zone=None,
-          signal_vias='round', stitching_vias='auto', lines=None, keep_at=(), stack='ground', quad_tol=35.0,
-          coarsen=None, planes='pec', stitching_pads='drop', wideband=None, cells=30.0):
+          hold=None, on_step=None, core='auto', keep_at=(), **mesh):
     """S-parameters of the board m on `freq` (Hz) from mom25d, as kicad2ems reports them: (S (nf, n, n) in
     m.user_ports order with differential pairs as (d, c) modes, names, reference impedances, info dict).
     dmax in mm (planes 3x, refined near the copper of other layers). sigma (S/m): conductor loss, as --sigma
     gives openEMS (default: lossless copper, like openEMS's PEC sheets). progress(solves, at most, f). hold: a
     dict that receives mom25d's result as 'res' (its model and simulation, for the current dumps). keep_at:
-    frequencies (Hz) the sweep solves and keeps the currents of (sim.kept: the current dumps'). stack: 'ground'
-    (an infinite ground plane) or 'whole' (every copper layer meshed, mom25d.board ground='none'). planes,
-    stitching_pads, wideband: mom25d.board's (wideband: the frequency, Hz, of a Djordjevic-Sarkar stack's er and
-    tand, or None)."""
-    from kicad2ems.mom25d.api import solve_board
+    frequencies (Hz) the sweep solves and keeps the currents of (sim.kept: the current dumps'). mesh: _board_kw's
+    options (quads, quad_tol, coarsen, zone, cells, the vias, lines; stack: 'ground' (an infinite ground plane) or
+    'whole' (every copper layer meshed, mom25d.board ground='none'); planes, stitching_pads, wideband: mom25d.board's
+    (wideband: the frequency, Hz, of a Djordjevic-Sarkar stack's er and tand, or None))."""
     from kicad2ems.core.api.solver import mixed_mode
-    pairs, kw = _board_kw(m, dmax, port, quads=quads, quad_tol=quad_tol, coarsen=coarsen, zone=zone, cells=cells,
-                          signal_vias=signal_vias, stitching_vias=stitching_vias, lines=lines, stack=stack,
-                          planes=planes, stitching_pads=stitching_pads, wideband=wideband)
+    pairs, kw = _board_kw(m, dmax, port, **mesh)
+    wideband = mesh.get('wideband')
     if wideband:
         from kicad2ems.mom25d.multilayer import djordjevic_sarkar
         for l in m.layers:
@@ -147,16 +130,11 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
             (f", {finish.name} on {', '.join(sorted(metal.on))}" if metal.on else ""))
     kw.update(metal=metal, max_solves=max_solves, log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
               progress=progress, on_step=on_step, core=core, keep_at=keep_at)
-    try:
-        res = solve_board(m.to_dict(), freq, pairs=pairs, **kw)
-    except ValueError as e:
-        # a pair whose straight coupled feed is too short for a differential wave port (a pad, a connector pin):
-        # with port auto, its legs as single-ended ports (wave or lumped each), the modes taken below
-        if not (pairs and port == 'auto' and 'differential wave port' in str(e)):
-            raise
-        log(f"  mom25d: {e} - the pairs' legs as single-ended ports, the modes from them")
-        pairs = False
-        res = solve_board(m.to_dict(), freq, pairs=False, **kw)
+
+    def board(pairs):
+        from kicad2ems.mom25d.api import solve_board
+        return solve_board(m.to_dict(), freq, pairs=pairs, **kw)
+    res, pairs = _legs_if_short(board, pairs, port, log)
     if hold is not None:
         hold['res'] = res
     for line in res.model.describe().splitlines()[1:] + list(res.sim.log.notes):
@@ -194,31 +172,18 @@ def _board_kw(m, dmax, port, quads=False, quad_tol=35.0, coarsen=None, zone=None
                        **(dict(ground='none') if stack == 'whole' else {}))
 
 
-def preview_mesh(m, fmin, fmax, dmax=0.3, port='auto', **mesh):
-    """(BoardModel, Simulation) of the mesh solve() would solve on, without solving (mesh_only: no quad cells
-    paired yet). mesh: solve()'s mesh options (quads, coarsen, zone, vias, lines, stack, planes, ...)."""
-    from kicad2ems.mom25d.api import build_board
-    pairs, kw = _board_kw(m, dmax, port, **mesh)
+def _legs_if_short(call, pairs, port, log=None):
+    """(call(pairs), pairs): with port auto, a pair whose straight coupled feed is too short for a differential wave
+    port (a pad, a connector pin) solved with its legs as single-ended ports (wave or lumped each), the modes taken
+    from them: (call(False), False)."""
     try:
-        return build_board(m.to_dict(), fmin, fmax, pairs=pairs, log=lambda *a: None, mesh_only=True,
-                           characterize=False, **kw)
-    except ValueError as e:                     # as solve(): a pair too short for a differential wave port
+        return call(pairs), pairs
+    except ValueError as e:
         if not (pairs and port == 'auto' and 'differential wave port' in str(e)):
             raise
-        return build_board(m.to_dict(), fmin, fmax, pairs=False, log=lambda *a: None, mesh_only=True,
-                           characterize=False, **kw)
-
-
-def merged_diagonals(sim):
-    """The node pairs (k, 2) of the triangle edges a run merged away into quad cells (sim.quad_info['elim']),
-    for the viewers to leave out; empty without quads, or where the solver ignored them (sim.qT None)."""
-    qi = getattr(sim, 'quad_info', None)
-    if getattr(sim, 'qT', None) is None or not qi or 'quads' not in qi:
-        return np.zeros((0, 2), int)
-    r, elim = sim.rwg, np.asarray(qi['elim'], int)
-    A, B = r.tris[r.tp[elim]], r.tris[r.tm[elim]]
-    shared = (A[:, :, None] == B[:, None, :]).any(2)                # the edge's two nodes are in both triangles
-    return np.sort(A[shared].reshape(-1, 2), 1)
+        if log is not None:
+            log(f"  mom25d: {e} - the pairs' legs as single-ended ports, the modes from them")
+        return call(False), False
 
 
 def save_mesh(run, sim, model, solver='mom25d'):
@@ -233,7 +198,14 @@ def save_mesh(run, sim, model, solver='mom25d'):
     nz = np.zeros(len(sim.rwg.nodes))                               # each layer is meshed on its own: no shared nodes
     nz[tris[keep].ravel()] = np.repeat(z[keep], 3)
     nodes = np.column_stack([sim.rwg.nodes[:, :2] * 1e3, nz])
-    hidden = merged_diagonals(sim)
+    # the node pairs of the triangle edges a run merged away into quad cells (sim.quad_info['elim']), for the viewers
+    # to leave out; none without quads, or where the solver ignored them (sim.qT None)
+    qi, hidden = getattr(sim, 'quad_info', None), np.zeros((0, 2), int)
+    if getattr(sim, 'qT', None) is not None and qi and 'quads' in qi:
+        r, elim = sim.rwg, np.asarray(qi['elim'], int)
+        A, B = r.tris[r.tp[elim]], r.tris[r.tm[elim]]
+        shared = (A[:, :, None] == B[:, None, :]).any(2)            # the edge's two nodes are in both triangles
+        hidden = np.sort(A[shared].reshape(-1, 2), 1)
     hidden = hidden[np.isfinite(nz[hidden]).all(1) & (nz[hidden[:, 0]] == nz[hidden[:, 1]])] if len(hidden) else hidden
     what = 'mom25d mesh (3D view)' if solver == 'mom25d' else 'mom25d solved mesh (3D view)'
     run.wrote(what, save_mesh(run, solver, 'tris', nodes=nodes, tris=tris[keep], hidden=hidden))
@@ -245,15 +217,6 @@ HOW = {'dense': 'dense, NumPy', 'double': 'direct LU in double on the CPU',
        'blr': 'block low-rank LU (compiled), no dense matrix', 'aca': 'H-matrix and GMRES, no dense matrix'}
 
 
-def memory_plan_for(n):
-    """mom25d.sim.memory_plan of n unknowns on this machine: the memory available now, the GPU mom25d would use."""
-    from kicad2ems.mom25d.sim import memory_plan, gpu_info
-    from kicad2ems.mom25d.fast import _core
-    from kicad2ems.mom25d.gpu import get_backend
-    g = get_backend('auto') if _core is not None else None
-    return memory_plan(n, _core is not None, None, gpu_info(g, n) if g is not None else None)
-
-
 def _model_kw(s):
     """kicad2ems.mom25d.board.BoardModel's options from kicad2ems's settings: --mom-planes, --mom-stitching-pads, and --diel
     (the FDTD solvers' option, which kicad2ems's examples set: wideband is the Djordjevic-Sarkar model matched at
@@ -263,14 +226,15 @@ def _model_kw(s):
                 wideband=getattr(s, 'diel_fref', 1.0) * 1e9 if wide else None)
 
 
-def _mesh_kw(s, m):
-    """solve()'s mesh options from kicad2ems's settings (the run's and the preview's) for the board m: --mom-quads,
-    --mom-quad-tol, --mom-coarsen, --mom-zone, the vias, --mom-lines, --mom-stack (resolved: _stack) and the
-    BoardModel's."""
-    return dict(quads={'off': False, 'on': True}.get(s.mom_quads, s.mom_quads), quad_tol=s.mom_quad_tol,
-                coarsen=s.mom_coarsen or None, cells=getattr(s, 'mom_cells', 30.0), zone='auto' if s.mom_zone == 'on' else None,
-                signal_vias=s.mom_signal_vias, stitching_vias=s.mom_stitching_vias, lines=s.mom_lines,
-                stack=_stack(s, m), **_model_kw(s))
+def _mesh_kw(s, m=None):
+    """solve()'s mesh options from kicad2ems's settings (the run's, the preview's and mixed's): --mom-quads,
+    --mom-quad-tol, --mom-coarsen, --mom-cells, --mom-zone, the vias, --mom-lines; for the board m also --mom-stack
+    (resolved: _stack) and the BoardModel's."""
+    kw = dict(quads={'off': False, 'on': True}.get(s.mom_quads, s.mom_quads), quad_tol=s.mom_quad_tol,
+              coarsen=s.mom_coarsen or None, cells=getattr(s, 'mom_cells', 30.0),
+              zone='auto' if s.mom_zone == 'on' else None, signal_vias=s.mom_signal_vias,
+              stitching_vias=s.mom_stitching_vias, lines=s.mom_lines)
+    return kw if m is None else dict(kw, stack=_stack(s, m), **_model_kw(s))
 
 
 _held_apertures = [None, None]                  # (board, its apertures): the last board's, asked for several times
@@ -314,22 +278,6 @@ def _stack(s, m):
     return 'whole' if apertures(m, s) or ports_below(m, s) else 'ground'
 
 
-def _apertures_said(m, s):
-    """One line on the ground's apertures for the log, or None: why auto chose the whole stack, or a warning
-    that --mom-stack ground fills them in."""
-    ap = apertures(m, s)
-    if s.mom_stack == 'auto' and not ap and ports_below(m, s):
-        return (f"mom25d: stack auto: whole, every copper layer meshed: port(s) {', '.join(ports_below(m, s))} below "
-                f"the ground")
-    if not ap or s.mom_stack == 'whole':
-        return None
-    where = aperture_text(ap)
-    if s.mom_stack == 'auto':
-        return f"mom25d: stack auto: whole, every copper layer meshed: {where}; --mom-stack ground fills them in"
-    return (f"WARNING: mom25d: {where}: --mom-stack ground puts a solid infinite plane there, so what they do is "
-            f"not modelled (rf_dgs |dS| 0.74 against FDTD); --mom-stack whole or auto models them")
-
-
 def aperture_text(ap):
     """apertures()' result in a few words."""
     return f"{len(ap)} aperture{'s' if len(ap) > 1 else ''} in the ground {ap[0][2]} under the signal copper " \
@@ -338,8 +286,7 @@ def aperture_text(ap):
 
 
 def _solid_ground(m):
-    """The board's ground layer, else the lowest copper layer covering half the outline (mom25d's choice), or
-    None."""
+    """The board's ground layer, else the lowest copper layer covering half the outline (mom25d's choice), or None."""
     if m.ground:
         return m.ground
     half = 0.5 * m.outline.area
@@ -353,7 +300,6 @@ def mesh_convergence(Sa, Sb, names=None, floor=0.01):
     """dict(db, deg, worst, converged): the largest change between two levels' S (nf x n x n) in dB and degrees,
     over the points where |S| reaches floor (-40 dB, as the FDTD layer's check: the phase of what is not there is
     noise), and the term it is on."""
-    import numpy as np
     Sa, Sb = np.asarray(Sa), np.asarray(Sb)
     n = Sa.shape[1]
     names = names or [f"P{k + 1}" for k in range(n)]
@@ -545,8 +491,7 @@ class MoM25D(Solver):
             for l, ix in pads.items():
                 out += [Deviation(f"pad:{l}:{i}", 'vias', 'a lone stitching-via pad: left out (the via kept)', layer=l,
                                   area=-shape(data['copper'][l][i]['polygon']).area) for i in ix]
-                metal[l] = [p for i, p in enumerate(data['copper'][l]) if i not in ix]
-                metal[l] = [shape(p['polygon']) for p in metal[l]]
+                metal[l] = [shape(p['polygon']) for i, p in enumerate(data['copper'][l]) if i not in ix]
         metal = {l: unary_union(ps).buffer(1e-6) for l, ps in metal.items()}
 
         def span(x, y, z0, z1):
@@ -601,7 +546,11 @@ class MoM25D(Solver):
         sim = bm.simulation(dmax=dmax, dmax_layer=planes, fmin=run.fmin, fmax=run.fmax, characterize=False,
                             verbose=False, wave_down_to=run.fmin, mesh_only=True)
         n, solves, layers = int(sim.Ne + sim.Nv), min(s.mom_solves, SOLVES), len(bm.shapes)
-        plan = memory_plan_for(n)
+        from kicad2ems.mom25d.sim import memory_plan, gpu_info      # this machine's memory now, mom25d's GPU
+        from kicad2ems.mom25d.fast import _core
+        from kicad2ems.mom25d.gpu import get_backend
+        g = get_backend('auto') if _core is not None else None
+        plan = memory_plan(n, _core is not None, None, gpu_info(g, n) if g is not None else None)
         lu = LU_N3 * REF_CORES / (os.cpu_count() or 1)                 # the CPU LU scales with the cores, a GPU's not
         lu = dict(hybrid=LU_GPU_N3).get(plan['path'], lu)
         factor = BLR_N2 * n ** 2 * BLR_CORES / (os.cpu_count() or 1) if plan['path'] == 'blr' else \
@@ -613,16 +562,28 @@ class MoM25D(Solver):
                     what=f"{n:,} unknowns, ~{solves} EM solves")
 
     def prepare(self, run):
-        said = _apertures_said(run.m, run.s)
-        if said:
-            run.log(said)
+        m, s = run.m, run.s
+        ap = apertures(m, s)                            # why auto chose the whole stack, or that ground fills them in
+        if s.mom_stack == 'auto' and not ap and ports_below(m, s):
+            run.log(f"mom25d: stack auto: whole, every copper layer meshed: port(s) {', '.join(ports_below(m, s))} "
+                    f"below the ground")
+        elif ap and s.mom_stack == 'auto':
+            run.log(f"mom25d: stack auto: whole, every copper layer meshed: {aperture_text(ap)}; --mom-stack ground "
+                    f"fills them in")
+        elif ap and s.mom_stack != 'whole':
+            run.log(f"WARNING: mom25d: {aperture_text(ap)}: --mom-stack ground puts a solid infinite plane there, so "
+                    f"what they do is not modelled (rf_dgs |dS| 0.74 against FDTD); --mom-stack whole or auto models "
+                    f"them")
         what = mom25d_status()[1]
         if 'no compiled core' in what:                              # ~5x slower: say how to build it
             run.log(f"note: mom25d {what}")
-        if run.s.preview and mom25d_status()[0]:                   # the mesh alone, for the 3D view and the plan
-            s = run.s                                               # (the run's mesh options: its structured runs,
-            bm, sim = preview_mesh(run.m, run.fmin, run.fmax, dmax=s.mom_dmax, port=s.mom_port, **_mesh_kw(s, run.m))
-            save_mesh(run, sim, bm)                                 # coarsening and vias; the quads come with a run)
+        if s.preview and mom25d_status()[0]:            # the mesh alone, for the 3D view and the plan (the run's
+            from kicad2ems.mom25d.api import build_board  # mesh options: its structured runs, coarsening and vias;
+            pairs, kw = _board_kw(m, s.mom_dmax, s.mom_port, **_mesh_kw(s, m))     # the quads come with a run)
+            bm, sim = _legs_if_short(lambda p: build_board(m.to_dict(), run.fmin, run.fmax, pairs=p,
+                                                           log=lambda *a: None, mesh_only=True, characterize=False,
+                                                           **kw), pairs, s.mom_port)[0]
+            save_mesh(run, sim, bm)
 
     def solve(self, run, prep):
         s = run.s
@@ -634,12 +595,16 @@ class MoM25D(Solver):
         if run.antenna and port == 'auto':                          # the gap source the antenna's power is taken from
             port = 'lumped'
             run.log("mom25d: antenna mode: lumped ports (--mom-port wave for de-embedded ones)")
+        # the current dumps' frequencies, and the far field's among the sweep's samples, which then needs no solves of
+        # its own (the pattern frequency's aside): ANT_FREQS solves fewer on an antenna, antenna_vivaldi's 37 -> 26
+        keep = [f * 1e9 for f in s.mom_dump or []] + (list(_far_field_grid(run)) if run.antenna else [])
+
         def one(dmax, finest=True):
             return solve(run.m, run.freq, dmax=dmax, port=port,
                          max_solves=s.mom_solves, sigma=s.sigma, rough=getattr(s, 'rough', None), finish=run_finish(run),
                          log=run.log, hold=self._held if finest else {},
                          core=s.mom_core, **_mesh_kw(s, run.m),
-                         keep_at=([f * 1e9 for f in s.mom_dump or []] + _far_field_seeds(run)) if finest else [],
+                         keep_at=keep if finest else [],
                          progress=lambda k, n, f: (run.status('mom25d', dict(fraction=k / n, solves=k,
                                                                              f_ghz=f / 1e9)), stop.check()),
                          on_step=lambda h: run.status('mom25d', dict(afs_solves=h['solves'],
@@ -684,12 +649,11 @@ class MoM25D(Solver):
         self._dumps(run, held)
 
     def _antenna(self, run, held, result):
-        """Antenna mode: the far field of each port driven alone (mom25d.farfield; the others shorted) at
-        frequencies over the band and the pattern frequency, combined for the drive (phased.combine: --drive's
-        incident waves, else the one antenna port, the other ports terminated), as openEMS's antenna results
-        (the same JSON, plots and report section). With several ports the per-port fields are kept
-        (<name>_mom25d_array.npz) for the GUI's beam steering. Gain counts substrate loss and surface waves as
-        loss; nothing radiates below the infinite ground."""
+        """Antenna mode: the far field of each port driven alone (mom25d.farfield; the others shorted) at frequencies
+        over the band and the pattern frequency, combined for the drive (phased.combine: --drive's incident waves, else
+        the one antenna port, the other ports terminated), as openEMS's antenna results (the same JSON, plots and report
+        section). With several ports the per-port fields are kept (<name>_mom25d_array.npz) for the GUI's beam steering.
+        Gain counts substrate loss and surface waves as loss; nothing radiates below the infinite ground."""
         from kicad2ems.mom25d.farfield import far_field, radiated
         from kicad2ems.core.api.solver import phased
         from kicad2ems.core.api.solver import match_summary, describe_antenna, save_antenna, pattern_gain
@@ -709,14 +673,12 @@ class MoM25D(Solver):
         driven = [j for j in range(n) if abs(a[j]) > 0]
         k = driven[0]
         zc = np.array([p.zc for p in sim.ports], float)
-        Sa = result.S @ a                                                  # (nf, n): reflected waves over the band
-        s11 = Sa[:, k] / a[k]                                              # the active reflection of the first
+        s11 = (result.S @ a)[:, k] / a[k]                                  # the first's active reflection over the band
         match = match_summary(run.freq, s11, m.ports[k].z0)
         f_pat = float(s.ff_freq[0]) * 1e9 if s.ff_freq else match['f_res']
         if s.drive and s.aim:                                              # phases for the pattern frequency
             a = phased.aim(a, names, pos, s.aim[0], s.aim[1], f_pat)
-            Sa = result.S @ a
-            s11 = Sa[:, k] / a[k]
+            s11 = (result.S @ a)[:, k] / a[k]
             match = match_summary(run.freq, s11, m.ports[k].z0)
         ffr = np.unique(np.concatenate([_far_field_grid(run), [f_pat]]))
         th, ph = np.arange(0, 181, 5.0), np.arange(0, 361, 5.0)
@@ -766,10 +728,8 @@ class MoM25D(Solver):
         cuts['xy (theta = 90)'] = dict(angle=list(map(float, pa_)), gain_dbi=[float(v) for v in 10 * np.log10(np.maximum(g, 1e-6))])
         sph_file = run.path('_mom25d_sphere.npz')
         np.savez_compressed(sph_file, **sph)
-        eff = rows[ip]['eff']
-        e_pat = sph['e_norm'][ip]
         ant = dict(match=match, rows=rows, f_pattern=float(ffr[ip]), cuts=cuts, port=names[k], solver='mom25d',
-                   sphere=dict(theta=th, phi=ph, gain=pattern_gain(e_pat, dmax[ip], eff).T),
+                   sphere=dict(theta=th, phi=ph, gain=pattern_gain(sph['e_norm'][ip], dmax[ip], rows[ip]['eff']).T),
                    sphere_file=os.path.basename(sph_file),
                    model='infinite ground plane: no radiation below it, no board edge' if sim.st.bottom == 'pec' else
                    'the whole stack: its planes meshed, radiation above and below; laterally infinite dielectric')
@@ -871,6 +831,13 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d', currents=N
         d = os.path.join(run.s.out, tag, f"exc_{names[j]}")
         os.makedirs(d, exist_ok=True)
         dumps, units = [], {}
+
+        def add(field, label, gx, gy, zs, data, normal, u):
+            dump = Dump(f"{field}@{label}", field, (gx[0], gy[0], zs[0]), (gx[-1], gy[-1], zs[-1]), list(freqs),
+                        normal, label)
+            write_npz(os.path.join(d, dump.name + '.npz'), dict(x=gx, y=gy, z=np.asarray(zs, float)), freqs, data)
+            dumps.append(dump)
+            units[dump.name] = f'{u}, {unit}'
         for k in layers:
             gx, gy = _grid(nodes, sim.rwg.tris[sim.tri_idx[k]], step)
             data = np.zeros((len(freqs), len(gx), len(gy), 1, 3), complex)
@@ -879,11 +846,7 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d', currents=N
                 if extra is not None:
                     Jx, Jy = extra(k, i, j, gx * 1e-3, gy * 1e-3, Jx, Jy)
                 data[i, :, :, 0, 0], data[i, :, :, 0, 1] = Jx, Jy
-            z = float(model._zk[k])
-            dump = Dump(f"J@{lay[k]}", 'J', (gx[0], gy[0], z), (gx[-1], gy[-1], z), list(freqs), 2, lay[k])
-            write_npz(os.path.join(d, dump.name + '.npz'), dict(x=gx, y=gy, z=np.array([z])), freqs, data)
-            dumps.append(dump)
-            units[dump.name] = f'A/m, {unit}'
+            add('J', lay[k], gx, gy, [float(model._zk[k])], data, 2, 'A/m')
         allt = np.concatenate([sim.tri_idx[k] for k in layers])
 
         def grid(h, most=1023):
@@ -902,13 +865,6 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d', currents=N
                 LJ = {k: current_deposit(sim, I[:, j], gx * 1e-3, gy * 1e-3, k) for k in layers}
                 E[i], H[i] = near_fields(sim, LJ, gx * 1e-3, gy * 1e-3, f, [h * 1e-3 for h in hs])
             return E, H
-
-        def add(field, label, gx, gy, zs, data, normal, u):
-            dump = Dump(f"{field}@{label}", field, (gx[0], gy[0], zs[0]), (gx[-1], gy[-1], zs[-1]), list(freqs),
-                        normal, label)
-            write_npz(os.path.join(d, dump.name + '.npz'), dict(x=gx, y=gy, z=np.asarray(zs, float)), freqs, data)
-            dumps.append(dump)
-            units[dump.name] = f'{u}, {unit}'
         for h in near or ():
             gx, gy = grid(h)
             E, H = fields(gx, gy, [h])

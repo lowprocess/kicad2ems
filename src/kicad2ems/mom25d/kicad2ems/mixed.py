@@ -24,7 +24,7 @@ import time
 import numpy as np
 
 from kicad2ems.core.api.solver import Result, Option
-from .mom import MoM25D, _metal, _model_kw, run_finish, _stack, apertures, aperture_text, ports_below
+from .mom import MoM25D, _metal, _model_kw, _mesh_kw, run_finish, _stack, apertures, aperture_text, ports_below
 from kicad2ems.emsdev.numerics.base import C0
 from kicad2ems.core.api.solver import stop
 
@@ -155,8 +155,8 @@ def plan_pair_cuts(model, data, dmax, fmin, cut_min=CUT_MIN * 1e-3, keep_out=Non
                 continue                                     # (not a symmetric pair: its modes are not d and c)
             off = float((rb.c0 + rb.t * rb.x0 - ra.c0) @ ra.n)          # the second's centre line across the first's
             w, h = ra.a + rb.a, model.stack.layers[ra.k - 1].h         # (the mean width)
-            gap = abs(off) - ra.a - rb.a
-            if gap <= 1e-9 or gap > (keep_out or max(3 * w, 4 * h, 0.5e-3)):
+            gap, d = abs(off) - ra.a - rb.a, keep_out or max(3 * w, 4 * h, 0.5e-3)
+            if gap <= 1e-9 or gap > d:
                 continue                                     # further apart: each on its own, where it is clear
             ends = sorted(float((rb.c0 + rb.t * x - ra.c0) @ ra.t) for x in (rb.x0, rb.x1))
             lo, hi = max(ra.x0, ends[0]), min(ra.x1, ends[1])           # where both run, along the first
@@ -167,7 +167,6 @@ def plan_pair_cuts(model, data, dmax, fmin, cut_min=CUT_MIN * 1e-3, keep_out=Non
             ca = Run(ra.k, ra.c0, ra.t, ra.a, xc0, xc1)
             cb = Run(ra.k, ra.c0 + ra.n * off, ra.t, rb.a, xc0, xc1)
             box = Run(ra.k, ra.c0 + ra.n * off / 2, ra.t, abs(off) / 2 + max(ra.a, rb.a), xc0, xc1).polygon()
-            d = keep_out or max(3 * w, 4 * h, 0.5e-3)
             own = [Run(c.k, c.c0, c.t, c.a * (1 + 1e-6), xc0 - 2 * d, xc1 + 2 * d).polygon(pad=1e-7) for c in (ca, cb)]
             if _clear(box, own, ra.k, w, h, keep_out, ctx, feeds):
                 out.append((ca, cb, need))
@@ -214,7 +213,7 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, rough=None, finish=None, max_solv
     freq = np.asarray(freq, float)
     fmin, fmax = float(freq[0]), float(freq[-1])
     dm = dmax * 1e-3
-    metal, t_mm = _metal(m, sigma, rough, finish)
+    metal = _metal(m, sigma, rough, finish)[0]
     model = BoardModel(data, port='via' if port == 'lumped' else port, log=lambda *a: None, **(model_kw or {}))
     # the board's own ports, from the uncut copper: a cut would shorten their straight feeds (wave ports turned
     # lumped, and so different terminations); the cuts keep out of their feeds
@@ -324,8 +323,7 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, rough=None, finish=None, max_solv
     S = np.array(S)
     keep = [n for n in names if not n.startswith('cut')]
     if len(f) != len(freq) or not np.allclose(f, freq):
-        S = np.stack([np.stack([np.interp(freq, f, S[:, i, j].real) + 1j * np.interp(freq, f, S[:, i, j].imag)
-                                for j in range(S.shape[2])], -1) for i in range(S.shape[1])], 1)
+        S = np.apply_along_axis(lambda s: np.interp(freq, f, s.real) + 1j * np.interp(freq, f, s.imag), 0, S)
     order = [keep.index(p.name) for p in m.ports]
     S, out_names, out_zref = mixed_mode(S[:, order][:, :, order], m)
     unknowns = int(sim.qT.shape[1]) if getattr(sim, 'qT', None) is not None else int(sim.Ne + sim.Nv)
@@ -474,13 +472,8 @@ class Mixed(MoM25D):
         self._held = {}
         S, names, zref, info = solve_mixed(
             run.m, run.freq, dmax=s.mom_dmax, sigma=s.sigma, rough=getattr(s, 'rough', None), finish=run_finish(run),
-            max_solves=s.mom_solves,
-            cut_min=s.mixed_cut, log=run.log,
-            port=s.mom_port, hold=self._held,
-            quads={'off': False, 'on': True}.get(s.mom_quads, s.mom_quads), quad_tol=s.mom_quad_tol,
-            coarsen=s.mom_coarsen or None, cells=getattr(s, 'mom_cells', 30.0), model_kw=_model_kw(s),
-            zone='auto' if s.mom_zone == 'on' else None, lines=s.mom_lines,
-            signal_vias=s.mom_signal_vias, stitching_vias=s.mom_stitching_vias,
+            max_solves=s.mom_solves, cut_min=s.mixed_cut, log=run.log, port=s.mom_port, hold=self._held,
+            model_kw=_model_kw(s), **_mesh_kw(s),
             progress=lambda k, n, f: (run.status('mixed', dict(fraction=k / n, solves=k, f_ghz=f / 1e9)), stop.check()))
         info.update(kpi=f"{info['unknowns']:,} unknowns, {info['cuts']} line(s), {info['seconds']:.0f} s",
                     about=f"mixed: mom25d with {info['cuts']} long straight stretch(es) of trace ({info['cut_mm']:g} mm"

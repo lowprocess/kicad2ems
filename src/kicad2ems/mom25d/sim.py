@@ -125,21 +125,18 @@ def memory_plan(n, has_core=True, avail=None, gpu=None, precision='auto', solver
     else:
         path, host, dev = 'cpu-mixed', 10.0 * n * n + 0.9e9, 0.0
     fits = host <= 0.8 * avail
+    if has_blr is None and solver in ('auto', 'blr'):
+        from .fast import _core
+        has_blr = hasattr(_core, 'BLRFactor')
     if solver == 'auto':
         # NumPy's dense solver only without the core: the core's direct solver is 3-8x faster on small boards too
         # (rf_stubnotch coarsened, 2.3k unknowns: 25.4 s against 7.3 s a sweep; docs/mom.md#core)
         solver = 'dense' if n <= 3500 and fits and not has_core else \
             ('direct' if fits else ('blr' if has_core else 'aca'))
-        if has_blr is None:
-            from .fast import _core
-            has_blr = hasattr(_core, 'BLRFactor')
         if solver == 'direct' and has_blr and path in ('gpu-lu', 'gpu-stream', 'cpu-mixed') \
                 and n >= BLR_MIN_N and (n_lu is None or n_lu >= n):     # (quad cells: the direct solver's alone)
             solver = 'blr'
     if solver == 'blr':                                         # the factor is the compiled core's: without it, ACA
-        if has_blr is None:
-            from .fast import _core
-            has_blr = hasattr(_core, 'BLRFactor')
         solver = 'blr' if has_blr else 'aca'
     if solver == 'dense':
         path, host, dev = 'dense', 18.0 * n * n + 0.9e9, 0.0
@@ -770,9 +767,7 @@ class Simulation:
         if self.Nv:
             with self.log.timer('via kernels', f"{self.Nv} chains"):
                 B, C = self._via_blocks(f, Q0[:, self.F] + Qs_F)
-            Z[:self.Ne, self.Ne:] = B
-            Z[self.Ne:, :self.Ne] = B.T
-            Z[self.Ne:, self.Ne:] = C
+            Z[:self.Ne, self.Ne:], Z[self.Ne:, :self.Ne], Z[self.Ne:, self.Ne:] = B, B.T, C
         for el, (idx, sig) in zip(self.lumped, self.lumped_edges):
             u = np.zeros(N); u[idx] = sig * r.l[idx]
             Z += el.Z(f) * np.outer(u, u)
@@ -811,7 +806,7 @@ class Simulation:
             sel = order[np.searchsorted(key[order], g, 'left'):np.searchsorted(key[order], g, 'right')]
             groups[(spans[g // len(spans)], spans[g % len(spans)])] = (m[sel], n[sel], d[sel])
         from scipy import sparse
-        geo = dict(x=x, y=y, by_span=by_span, groups=groups, dF=sparse.csc_matrix(self.dF))
+        geo = dict(x=x, y=y, a=a, by_span=by_span, groups=groups, dF=sparse.csc_matrix(self.dF))
         self._via_geo = (len(ch), geo)
         return geo
 
@@ -881,10 +876,7 @@ class Simulation:
         from .frill import FrillKernels
         r, Nc = self.rwg, len(self.chains)
         fk = FrillKernels(f, self.st, self.frills, self.layers, self.rho_max)
-        spans = {}
-        for n, (v, kb, kt) in enumerate(self.chains):
-            spans.setdefault((kb, kt), []).append(n)
-        rems = {}
+        geo, rems = self._via_geometry(), {}
         for m, (fr, mode) in enumerate(fk.unknowns):
             s, col = fk.shape(fr, mode), Nc + m
             dip = mode[0] if isinstance(mode, tuple) else None    # 'c' or 's'
@@ -912,10 +904,9 @@ class Simulation:
             if dip:                                           # -<f, E>: f = Aal r - (Bx, By) on a triangle
                 B[:, col] -= r.Aal.T @ field[0] - r.Bx.T @ field[1] - r.By.T @ field[2]
             c = -(self.dF[:, :Nc].T @ psi[self.F]) if len(self.F) else np.zeros(Nc, complex)
-            for span, ns in spans.items():                    # the chains' remainder, by span
-                dx = np.array([self.chains[n][0].x - fr.via.x for n in ns])
-                dy = np.array([self.chains[n][0].y - fr.via.y for n in ns])
-                d = np.maximum(np.hypot(dx, dy), [self.chains[n][0].a for n in ns])
+            for span, ns in geo['by_span'].items():           # the chains' remainder, by span
+                dx, dy = geo['x'][ns] - fr.via.x, geo['y'][ns] - fr.via.y
+                d = np.maximum(np.hypot(dx, dy), geo['a'][ns])
                 key = (id(fr), s, span)                       # (a dipole's cos and sin share it)
                 if key not in rems:
                     rems[key] = fk.rem(s, span, d)
@@ -931,7 +922,7 @@ class Simulation:
                         # two via ports either side of a hole had Z21 0.287 ohm, the hole's own 0.246, now 0.241
                         sgn = 1.0 if span[1] == fr.k else -1.0
                         e10 = float(np.real(fk.e1[s][0]))
-                        d2 = np.maximum(dx * dx + dy * dy, np.array([self.chains[n][0].a for n in ns]) ** 2)
+                        d2 = np.maximum(dx * dx + dy * dy, geo['a'][ns] ** 2)
                         rem = rem + sgn * (-e10) * (dx if dip == 'c' else dy) / d2
                 c[ns] += rem
             C[:Nc, col] = C[col, :Nc] = c
@@ -1005,8 +996,7 @@ class Simulation:
         return ((sig * self.rwg.l[idx])[:, None] * I[idx]).sum(0)
 
     def cut_current(self, I, i):
-        l = self.rwg.l
-        return np.array([((sig * l[idx])[:, None] * I[idx]).sum(0) for idx, sig in self.cuts[i]])
+        return np.array([((sig * self.rwg.l[idx])[:, None] * I[idx]).sum(0) for idx, sig in self.cuts[i]])
 
     def solve(self, Z, E):
         with self.log.timer('LU solve', f"N={Z.shape[0]}"):

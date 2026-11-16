@@ -34,21 +34,6 @@ from kicad2ems.emsdev.numerics.base import C0, MU0, EPS0
 ETA0 = np.sqrt(MU0 / EPS0)
 
 
-def _surface_E(st, kr, w, k, Jx, Jy, c, s):
-    """E_u, E_v on the top interface from the current spectrum (Jx, Jy) on interface k (u along k_rho, at angle
-    cos c, sin s from x)."""
-    return (-st.voltage(kr, w, st.N, k, 'e') * (Jx * c + Jy * s), -st.voltage(kr, w, st.N, k, 'h') * (-Jx * s + Jy * c))
-
-
-def _via_Eu(st, kr, w, o, layers):
-    """E_u on interface o (spectral) from a unit +z current through `layers` (TM only): -j k_rho S~ (module doc)."""
-    k2 = (w / C0) ** 2
-    S = 0.0
-    for j in layers:
-        S = S + (st.voltage(kr, w, j, o, 'e') - st.voltage(kr, w, j - 1, o, 'e')) / (k2 * st.eps(j) - kr ** 2)
-    return -1j * kr * S
-
-
 def _tangential(sim, I, w, o, kr, cphi, sphi):
     """E_u, E_v on interface o at the plane-wave directions (kr, cos / sin phi) from all the currents: the surface
     currents of every layer, and the via chains' (sim.chains, unknowns after the Ne edges, when the sim has them).
@@ -74,9 +59,13 @@ def _tangential(sim, I, w, o, kr, cphi, sphi):
         spans = {}
         for c, (v, a, b) in enumerate(chains):                          # one kernel per span, summed over its vias
             spans.setdefault((a, b), []).append((v.x, v.y, c))
+        k2 = (w / C0) ** 2
         for (a, b), vs in spans.items():
+            S = 0.0                                                     # E_u = -j k_rho S~ (module doc), TM only
+            for j in range(a + 1, b + 1):
+                S = S + (st.voltage(kr, w, j, o, 'e') - st.voltage(kr, w, j - 1, o, 'e')) / (k2 * st.eps(j) - kr ** 2)
             xy, rows = np.array([(x, y) for x, y, _ in vs]), [c for _, _, c in vs]
-            Eu = Eu + _via_Eu(st, kr, w, o, range(a + 1, b + 1))[:, None] * (
+            Eu = Eu + (-1j * kr * S)[:, None] * (
                 np.exp(1j * (np.outer(kx, xy[:, 0]) + np.outer(ky, xy[:, 1]))) @ Iv[rows])
     slots = getattr(sim, 'slots', None) or []
     if slots and ne is not None:                                        # the openings of PEC planes: their field
@@ -96,7 +85,8 @@ def _tangential(sim, I, w, o, kr, cphi, sphi):
 
 
 def _surface_E_at(st, kr, w, o, k, Jx, Jy, c, s):
-    """E_u, E_v on interface o from the current spectrum (Jx, Jy) on interface k."""
+    """E_u, E_v on interface o from the current spectrum (Jx, Jy) on interface k (u along k_rho, at angle cos c,
+    sin s from x)."""
     return (-st.voltage(kr, w, o, k, 'e') * (Jx * c + Jy * s), -st.voltage(kr, w, o, k, 'h') * (-Jx * s + Jy * c))
 
 
@@ -149,23 +139,35 @@ def near_field(sim, layers_J, x, y, f, height, pad=2):
 
 
 def near_fields(sim, layers_J, x, y, f, heights, pad=2):
-    """E (V/m) and H (A/m), each (nx, ny, nh, 3) complex, on the planes `heights` (m) above the top of the stack,
-    from the surface currents of each layer sampled on the grid x, y (m, uniform): layers_J = {interface: (Jx,
-    Jy)}, each (nx, ny) (A/m; current_deposit). The FFT is periodic: the currents are zero-padded to `pad` x the
-    grid (a port's strong field otherwise reappeared on the far side of a 10 mm margin) and the result cropped
-    back. One spectrum serves every height: a volume costs an inverse FFT per height and component.
+    """E (V/m) and H (A/m), each (nx, ny, nh, 3) complex, on the planes `heights` (m) above the top of the stack, from
+    the surface currents of each layer sampled on the grid x, y (m, uniform): layers_J = {interface: (Jx, Jy)}, each
+    (nx, ny) (A/m; current_deposit). The FFT is periodic: the currents are zero-padded to `pad` x the grid (a port's
+    strong field otherwise reappeared on the far side of a 10 mm margin) and the result cropped back. One spectrum
+    serves every height: a volume costs an inverse FFT per height and component.
 
     E: the plane-wave spectrum of the currents through the stack's TM / TE line voltages to the top surface (as
-    far_field), up by e^{-j kz h}; E_z from the divergence.
-    H: magnetostatic, each layer's current at its height and, over the PEC ground, its image below it:
-    A = mu0 J~ (e^{-k (z - z_k)} - e^{-k (z + z_k)}) / 2k, H = curl A / mu0. Exact for the near field (h well under
-    lambda / 2 pi; the dielectric does not change H there). H from E by Faraday's law through the stack's spectral
-    voltages was 15% low at 3 mm over rf_gcpw at 0.1 to 5 GHz (Hy; Hz agreed), against Biot-Savart of the same
-    currents and their images (emsdev.numerics.biot), which this matches."""
-    (Ek, kz, KX, KY, dxdy, w, mu), _ = _near_spectrum(sim, layers_J, x, y, f, pad)
-    st = sim.st.at(f)
+    far_field), up by e^{-j kz h}; E_z from the divergence. H: magnetostatic, each layer's current at its height and,
+    over the PEC ground, its image below it: A = mu0 J~ (e^{-k (z - z_k)} - e^{-k (z + z_k)}) / 2k, H = curl A / mu0.
+    Exact for the near field (h well under lambda / 2 pi; the dielectric does not change H there). H from E by Faraday's
+    law through the stack's spectral voltages was 15% low at 3 mm over rf_gcpw at 0.1 to 5 GHz (Hy; Hz agreed), against
+    Biot-Savart of the same currents and their images (emsdev.numerics.biot), which this matches."""
+    st, w = sim.st.at(f), 2 * np.pi * f
+    k_top = w / C0 * np.sqrt(complex(st.top_er)).real
     nx0, ny0 = len(x), len(y)
-    nx, ny = KX.shape
+    nx, ny = pad * nx0, pad * ny0
+    dx, dy = x[1] - x[0], y[1] - y[0]
+    KX, KY = np.meshgrid(2 * np.pi * np.fft.fftfreq(nx, dx), 2 * np.pi * np.fft.fftfreq(ny, dy), indexing='ij')
+    kr = np.hypot(KX, KY) + 1e-9 * k_top                             # the E spectrum at the top surface
+    cu, su = KX / kr, KY / kr
+    Ex, Ey = np.zeros((nx, ny), complex), np.zeros((nx, ny), complex)
+    for k, (Jx, Jy) in layers_J.items():
+        Eu, Ev = _surface_E_at(st, kr, w, st.N, k, np.fft.fft2(Jx, s=(nx, ny)) * dx * dy,
+                               np.fft.fft2(Jy, s=(nx, ny)) * dx * dy, cu, su)
+        Ex += Eu * cu - Ev * su
+        Ey += Eu * su + Ev * cu
+    kz = -1j * np.sqrt(kr ** 2 - k_top ** 2 + 0j)                     # e^{-j kz z}: decaying when evanescent
+    Ek = (Ex, Ey, (KX * Ex + KY * Ey) / kz)                          # div E = 0 for e^{+j(kx x + ky y) - j kz z}
+    dxdy = dx * dy
     kr = np.hypot(KX, KY)
     kr_ = np.where(kr > 0, kr, 1.0)
     ztop = float(st.z[-1])
@@ -188,48 +190,6 @@ def near_fields(sim, layers_J, x, y, f, heights, pad=2):
         for c, comp in enumerate((Hx, Hy, Hz)):
             outH[:, :, i, c] = np.fft.ifft2(comp)[:nx0, :ny0] / dxdy
     return outE, outH
-
-
-def _near_spectrum(sim, layers_J, x, y, f, pad):
-    """The E spectrum at the top surface (Ex, Ey, Ez), kz, the wavenumber grids, dx dy, w and mu0."""
-    st, w = sim.st.at(f), 2 * np.pi * f
-    k_top = w / C0 * np.sqrt(complex(st.top_er)).real
-    nx0, ny0 = len(x), len(y)
-    nx, ny = pad * nx0, pad * ny0
-    dx, dy = x[1] - x[0], y[1] - y[0]
-    KX, KY = np.meshgrid(2 * np.pi * np.fft.fftfreq(nx, dx), 2 * np.pi * np.fft.fftfreq(ny, dy), indexing='ij')
-    kr = np.hypot(KX, KY) + 1e-9 * k_top
-    cu, su = KX / kr, KY / kr
-    Ex, Ey = np.zeros((nx, ny), complex), np.zeros((nx, ny), complex)
-    for k, (Jx, Jy) in layers_J.items():
-        Eu, Ev = _surface_E(st, kr, w, k, np.fft.fft2(Jx, s=(nx, ny)) * dx * dy, np.fft.fft2(Jy, s=(nx, ny)) * dx * dy,
-                            cu, su)
-        Ex += Eu * cu - Ev * su
-        Ey += Eu * su + Ev * cu
-    kz = -1j * np.sqrt(kr ** 2 - k_top ** 2 + 0j)                     # e^{-j kz z}: decaying when evanescent
-    Ez = (KX * Ex + KY * Ey) / kz                                    # div E = 0 for e^{+j(kx x + ky y) - j kz z}
-    return (((Ex, Ey, Ez), kz, KX, KY, dx * dy, w, MU0), None)
-
-
-JITTER = 0.0137                 # sample points this fraction of a cell off the grid: never on a copper edge
-
-
-def current_on_grid_avg(sim, I, x, y, k, sub=2):
-    """current_on_grid averaged over sub x sub points in each cell of the uniform grid x, y: the current a cell
-    carries, not its value at one point. A point on a trace's edge (where the current crowds) and its mirror in the
-    gap beside it had a field leaning to one side of the trace; worse, copper edges on round coordinates put a grid
-    row exactly on them, where the triangle search counts the edge on one side only (rf_gcpw at 0.05 mm: the edge
-    current on one edge of the trace and not the other, its 1 mm near field 0.15 mm off centre). The points are
-    also kept JITTER of a cell off the grid's lines. Returns Jx, Jy."""
-    dx, dy = x[1] - x[0], y[1] - y[0]
-    sub = max(1, int(sub))
-    off = (np.arange(sub) + 0.5) / sub - 0.5 + JITTER
-    Jx, Jy = 0, 0
-    for a in off:
-        for b in off:
-            jx, jy, _ = current_on_grid(sim, I, x + a * dx, y + b * dy * 1.0007, k)
-            Jx, Jy = Jx + jx, Jy + jy
-    return Jx / sub ** 2, Jy / sub ** 2
 
 
 def current_on_grid(sim, I, x, y, k):

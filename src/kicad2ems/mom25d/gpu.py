@@ -120,9 +120,8 @@ _cache = {}
 
 
 def get_backend(pref='auto'):
-    """Return a backend instance or None. pref: 'auto' | 'vulkan' | 'cupy' | 'emulate' | 'off'.
-    The environment variable MOM25D_GPU overrides pref. Reasons for failures are kept in
-    get_backend.why for logging."""
+    """Return a backend instance or None. pref: 'auto' | 'vulkan' | 'cupy' | 'emulate' | 'off'. The environment variable
+    MOM25D_GPU overrides pref. Reasons for failures are kept in get_backend.why for logging."""
     pref = devices.preference(pref, 'MOM25D_GPU')
     get_backend.why = []
     if pref == 'off':

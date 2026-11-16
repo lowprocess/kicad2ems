@@ -3,7 +3,7 @@ mom25d.afs - the adaptive frequency sweep with rational (AAA) interpolation: ems
 S-parameters share; here with what to try when an EM solve gives non-finite S-parameters.
 """
 from kicad2ems.emsdev import afs as _afs
-from kicad2ems.emsdev.afs import SMALL, aaa, _is_log                          # noqa: F401 (mom25d's names, as they were)
+from kicad2ems.emsdev.afs import aaa                                         # noqa: F401 (mom25d's name, as it was)
 
 
 def adaptive_sweep(solve, fmin, fmax, **kw):

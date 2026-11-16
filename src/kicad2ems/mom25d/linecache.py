@@ -46,11 +46,6 @@ def code():
     return _CODE
 
 
-def _stack(stack):
-    return dict(layers=[[l.h, l.er, l.tand, l.fref] for l in stack.layers], top=stack.top, top_er=stack.top_er,
-                bottom=stack.bottom, bottom_er=stack.bottom_er, pec=list(stack.pec))
-
-
 def _plain(o):
     return o.tolist() if hasattr(o, 'tolist') else str(o)
 
@@ -60,7 +55,9 @@ def cached(kind, stack, args, solve):
     d = folder()
     if d is None:
         return solve(), False
-    key = json.dumps(dict(version=VERSION, code=code(), kind=kind, stack=_stack(stack), args=args), sort_keys=True,
+    st = dict(layers=[[l.h, l.er, l.tand, l.fref] for l in stack.layers], top=stack.top, top_er=stack.top_er,
+              bottom=stack.bottom, bottom_er=stack.bottom_er, pec=list(stack.pec))
+    key = json.dumps(dict(version=VERSION, code=code(), kind=kind, stack=st, args=args), sort_keys=True,
                      default=_plain)
     path = d / f"line_{hashlib.sha256(key.encode()).hexdigest()[:32]}.npz"
     try:

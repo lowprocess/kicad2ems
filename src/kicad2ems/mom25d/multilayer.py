@@ -141,8 +141,7 @@ class LayerStack:
                 if k not in self.pec]
 
     def is_pec(self, k):
-        """Interface k is a PEC plane of the stack itself (the ground, a cover, a plane inside it), not meshed
-        metal."""
+        """Interface k is a PEC plane of the stack itself (the ground, a cover, a plane inside it), not meshed metal."""
         return (k == 0 and self.bottom == 'pec') or (k == self.N and self.top == 'pec') or k in self.pec
 
     def side(self, k):
@@ -283,13 +282,17 @@ class GreenTableML:
             fac = K1 * np.exp(K1 * self.dimg) / (2 * np.pi)
             self.cAi = complex((ga[0] - MU0 / (2 * K1)) * fac).real
             self.cqi = complex((gq[0] - 1.0 / (EPS0 * stack.eps_sum(o) * K1)) * fac)
+        self._tabulate(GA, Gq, kr, dk, rho_max, nrho, nfine)
+        self.rho, self.A_rest, self.Q_rest = self._tab.rho, self._tab.v[:, 0], self._tab.v[:, 1]
+        self.npts, self.K = len(kr), K
+
+    def _tabulate(self, GA, Gq, kr, dk, rho_max, nrho, nfine):
+        """The table of the spectral G_A, G_q less the extracted parts, nfine points over rho_max."""
         for d, cA, cq in self.extracted():          # c / sqrt(rho^2 + d^2) <-> 2 pi c e^(-kr d) / kr
             e = 2 * np.pi * np.exp(-kr * d) / kr
             GA, Gq = GA - cA * e, Gq - cq * e
         rho = rho_max * np.linspace(0, 1, nrho) ** 2
         self._tab = Table1D(rho, hankel(np.stack([GA, Gq]), kr, dk, rho).T, rho_max, nfine)     # (nfine, 2)
-        self.rho, self.A_rest, self.Q_rest = self._tab.rho, self._tab.v[:, 0], self._tab.v[:, 1]
-        self.npts, self.K = len(kr), K
 
     def extracted(self):
         """[(d, cA, cq)]: the parts taken out of the tables, cA / sqrt(rho^2 + d^2) and cq / sqrt(rho^2 + d^2):

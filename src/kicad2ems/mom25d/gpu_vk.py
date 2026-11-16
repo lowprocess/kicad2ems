@@ -21,7 +21,6 @@ import os
 import time
 
 import numpy as np
-import scipy.linalg as sla
 from scipy.linalg import lapack
 
 MAX_BUFFER = 2 ** 31            # bytes of one matrix buffer (under every driver's maxBufferSize)
@@ -321,11 +320,6 @@ class _Mat:
         b = [x.device_address for x in self.bufs] + [0] * (TABLE - len(self.bufs))
         return {'b': b, 'sh': self.sh, 'mask': self.per - 1, 'ld': self.rows, 'r0': int(r0), 'c0': int(c0)}
 
-    def upload_rows_of(self, Z):
-        """Z (C-ordered, rows = this matrix's columns) into the buffers."""
-        for i, b in enumerate(self.bufs):
-            b.copy_from_numpy(np.ascontiguousarray(Z[i * self.per:(i + 1) * self.per], np.complex64).view(np.uint8).ravel())
-
     def download(self):
         """The matrix as (cols, rows) C-ordered: its transpose's memory."""
         return np.concatenate([b.to_numpy().view(np.complex64).reshape(-1, self.rows) for b in self.bufs])
@@ -474,28 +468,10 @@ class VulkanBackend:
             h = self._hosts[name] = HostBuffer(self.dev, max(int(nbytes), 16))
         return h
 
-    def _cpu_panel(self, hdn, k0, b, N):
-        """Factor the panel the GPU left in hdn (M x b, column-major), in place: LAPACK's cgetrf. Returns the pivots
-        (0-based, the panel's rows), (L11, U11) (copies: their inverses, the solves', are made while the CPU waits
-        on the GPU), the rows it moves [(row, from)]."""
-        M = N - k0
-        P = hdn.view(np.complex64, M * b).reshape(b, M).T                     # Fortran (M, b), mapped memory
-        lu, ip, info = lapack.cgetrf(P, overwrite_a=1)
-        if not np.shares_memory(lu, P):
-            P[...] = lu
-        L11 = np.tril(P[:b, :b], -1) + np.eye(b, dtype=np.complex64)
-        perm = {}
-        for i in range(b):
-            j = int(ip[i])
-            if j != i:
-                a, c = perm.get(k0 + i, k0 + i), perm.get(k0 + j, k0 + j)
-                perm[k0 + i], perm[k0 + j] = c, a
-        return ip, (L11, np.triu(P[:b, :b])), [(r, s) for r, s in perm.items() if r != s]
-
     def _upload(self, A, Z, chunk=1 << 28, c_start=0):
         """Z (host complex64, C-ordered: its rows are A's columns) into A: column blocks of 256 MB through two mapped
         host buffers, the copy kernel reading each across the bus while the host fills the other. 16 GB/s on an
-        RX 7800 XT, where buffer.copy_from_numpy (_Mat.upload_rows_of) ran at 6.5: 0.6 s -> 0.25 s of each LU at
+        RX 7800 XT, where buffer.copy_from_numpy (the buffers filled whole) ran at 6.5: 0.6 s -> 0.25 s of each LU at
         22k unknowns."""
         N, ncols = A.rows, Z.shape[0]                          # Z's rows: A's columns c_start..
         cols = max(1, min(ncols, chunk // (8 * N)))
@@ -549,13 +525,26 @@ class VulkanBackend:
             self._copy(A.desc(k0, k0), self._flatdesc(hdn.address, N - k0), N - k0, b)
 
         def cpu(k0, b):
+            """Factor the panel the GPU left in hdn (N - k0 x b, column-major), in place: LAPACK's cgetrf. Keeps
+            its pivots, and (L11, U11) (copies: their inverses, the solves', are made while the CPU waits on the
+            GPU); returns the rows it moves [(row, from)]."""
             nonlocal t_cpu
             tc = time.perf_counter()
-            ip, LU11, moved = self._cpu_panel(hdn, k0, b, N)
-            pending.append(LU11)
+            M = N - k0
+            P = hdn.view(np.complex64, M * b).reshape(b, M).T                 # Fortran (M, b), mapped memory
+            lu, ip, info = lapack.cgetrf(P, overwrite_a=1)
+            if not np.shares_memory(lu, P):
+                P[...] = lu
+            perm = {}
+            for i in range(b):
+                j = int(ip[i])
+                if j != i:
+                    a, c = perm.get(k0 + i, k0 + i), perm.get(k0 + j, k0 + j)
+                    perm[k0 + i], perm[k0 + j] = c, a
+            pending.append((np.tril(P[:b, :b], -1) + np.eye(b, dtype=np.complex64), np.triu(P[:b, :b])))
             piv[k0:k0 + b] = ip + k0
             t_cpu += time.perf_counter() - tc
-            return moved
+            return [(r, s) for r, s in perm.items() if r != s]
 
         def inverses():                                           # the solves' diagonal blocks, off the critical path
             while pending:
@@ -648,8 +637,7 @@ class VulkanBackend:
         return out.T, self.piv.copy()
 
     def solve(self, R):
-        """Z^-1 R (R: host, N x k or N), on the GPU: U^T y = R, L^T w = y, x = P w. complex64 inside, complex128
-        out."""
+        """Z^-1 R (R: host, N x k or N), on the GPU: U^T y = R, L^T w = y, x = P w. complex64 inside, complex128 out."""
         A, Dbuf, order = self.lu
         N, nb = A.rows, self.nb
         R = np.asarray(R)

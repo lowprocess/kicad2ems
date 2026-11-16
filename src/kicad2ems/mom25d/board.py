@@ -218,7 +218,6 @@ def lone_pads(data, layers):
     gnets = set(data.get('ground_nets') or [])
     if not gnets:
         return {}
-    gv = [Point(v['x'], v['y']) for v in data.get('vias', []) if v.get('net') in gnets]
     cu_z = {c['name']: c['z'] for c in data['stack']['copper']}
     out = {}
     for lay in layers:
@@ -228,8 +227,8 @@ def lone_pads(data, layers):
         # demo_bandpass's shunt parts land on ground pads with a via, which once were dropped as lone: |dS| 1.98)
         at = [_gap_box(p) if p.get('internal') and p.get('gap') else Point(*p['c'][:2])     # (a part's port: its
               for p in data.get('ports', []) if p['layer'] == lay] + \
-             [box(min(q['s'][0], q['e'][0]), min(q['s'][1], q['e'][1]), max(q['s'][0], q['e'][0]),
-                  max(q['s'][1], q['e'][1])) for q in data.get('parts', []) if q['layer'] == lay]     # gap, as a part's)
+             [box(*np.minimum(q['s'][:2], q['e'][:2]), *np.maximum(q['s'][:2], q['e'][:2]))
+              for q in data.get('parts', []) if q['layer'] == lay]                                   # gap, as a part's)
         z = cu_z[lay]
         through = [Point(v['x'], v['y']) for v in data.get('vias', [])
                    if v.get('net') in gnets and v['z0'] - 1e-9 <= z <= v['z1'] + 1e-9]
@@ -246,20 +245,19 @@ def lone_pads(data, layers):
 class BoardModel(PlanarModel):
     def __init__(self, data, ground=None, port='auto', pairs=False, wall_pitch=0.5e-3, planes='pec',
                  stitching_pads='drop', wideband=None, log=print):
-        """data: the board (board.json's content). ground: a copper layer name (default: the board's own,
-        else the lowest solid one). port: 'auto' | 'wave' | 'via' (lumped). pairs: P<n>+ / P<n>- legs as
-        one mixed-mode port. wall_pitch (m): via spacing along edge walls. planes: 'pec' (default: solid planes
-        as the ground and a PEC cover) | 'mesh'. stitching_pads: 'drop' (default: lone pads of ground vias left out)
-        | 'keep'. wideband: None (default: each dielectric's er and tand constant over frequency) or a frequency
-        (a layer's own fref first: the frequency kicad2ems's material library quotes its laminate at)
-        (Hz) at which they hold, the Djordjevic-Sarkar model elsewhere (multilayer.djordjevic_sarkar). planes
-        'holes' (experimental): as 'pec', and a plane between the copper layers whose only holes are those of
-        vias through it (plane_holes) is a PEC plane inside the stack, not meshed, each hole a few unknowns
-        (mom25d.frill): its axisymmetric field and its first azimuthal order, which a trace over the hole
-        drives. planes 'slots' (experimental): every copper layer as the whole stack has them (air above and
-        below), but the ground (`ground`, else the board's) a PEC plane, infinite, its openings - slots, apertures,
-        a defected ground - meshed on their own (slot_plane, mom25d.slots): its unknowns their field, so it costs
-        its openings' area, not its own."""
+        """data: the board (board.json's content). ground: a copper layer name (default: the board's own, else the
+        lowest solid one). port: 'auto' | 'wave' | 'via' (lumped). pairs: P<n>+ / P<n>- legs as one mixed-mode port.
+        wall_pitch (m): via spacing along edge walls. planes: 'pec' (default: solid planes as the ground and a PEC
+        cover) | 'mesh'. stitching_pads: 'drop' (default: lone pads of ground vias left out) | 'keep'. wideband: None
+        (default: each dielectric's er and tand constant over frequency) or a frequency (a layer's own fref first: the
+        frequency kicad2ems's material library quotes its laminate at) (Hz) at which they hold, the Djordjevic-Sarkar
+        model elsewhere (multilayer.djordjevic_sarkar). planes 'holes' (experimental): as 'pec', and a plane between the
+        copper layers whose only holes are those of vias through it (plane_holes) is a PEC plane inside the stack, not
+        meshed, each hole a few unknowns (mom25d.frill): its axisymmetric field and its first azimuthal order, which a
+        trace over the hole drives. planes 'slots' (experimental): every copper layer as the whole stack has them (air
+        above and below), but the ground (`ground`, else the board's) a PEC plane, infinite, its openings - slots,
+        apertures, a defected ground - meshed on their own (slot_plane, mom25d.slots): its unknowns their field, so it
+        costs its openings' area, not its own."""
         assert planes in ('pec', 'mesh', 'holes', 'slots'), f"planes: pec, mesh, holes or slots, not {planes!r}"
         from .multilayer import Layer, LayerStack
         if data.get('format') != FORMAT:
@@ -275,17 +273,17 @@ class BoardModel(PlanarModel):
         # ---- the ground: z = 0 of the solver (whole stack: the lowest copper layer, meshed) ----
         self.whole = isinstance(ground, str) and ground.lower() == 'none'     # not None: the board's own ground
         slot_layer = None
+        solid = [l for l in sorted(cu_z, key=cu_z.get)                    # the copper layers over half the board
+                 if sum(p.area for p in copper.get(l, [])) >= 0.5 * outline.area]
         if planes == 'slots':                       # the whole stack's layers, the ground among them a slot plane
             slot_layer = (ground if ground and not self.whole else None) or data.get('ground')
             if slot_layer is None:
-                solid = [l for l in sorted(cu_z, key=cu_z.get) if sum(p.area for p in copper.get(l, [])) >= 0.5 * outline.area]
                 if not solid:
                     raise ValueError("planes 'slots': no ground layer named and no solid copper layer")
                 slot_layer = solid[0]
             self.whole = True
         name = min(cu_z, key=cu_z.get) if self.whole else ground or data.get('ground')
         if name is None:
-            solid = [l for l in sorted(cu_z, key=cu_z.get) if sum(p.area for p in copper.get(l, [])) >= 0.5 * outline.area]
             if not solid:
                 raise ValueError("no solid ground plane (no copper layer covers half the board): name the ground layer")
             name = solid[0]
@@ -333,7 +331,7 @@ class BoardModel(PlanarModel):
         self.pads_dropped = lone_pads(data, list(self.iface)) if stitching_pads == 'drop' else {}
         if self.pads_dropped:
             copper = {l: [g for i, g in enumerate(gs) if i not in self.pads_dropped.get(l, ())] for l, gs in copper.items()}
-            self.notes.append(f"lone stitching-via pads left out (the vias kept): " + ", ".join(
+            self.notes.append("lone stitching-via pads left out (the vias kept): " + ", ".join(
                 f"{len(ix)} on {l}" for l, ix in self.pads_dropped.items()))
         S = lambda g: affinity.scale(g, MM, MM, origin=(0, 0))
         # planes='holes': the planes between the copper layers that only vias run through, as PEC planes of the stack
@@ -380,8 +378,8 @@ class BoardModel(PlanarModel):
         # a ground via under a part's pad (a shunt part to ground) carries the part's current: meshed as a signal
         # via is, its pad as drawn (squared as a stitching via outside the zone, demo_bandpass's lost its parts:
         # |dS| 1.98)
-        gaps = [box(min(q['s'][0], q['e'][0]), min(q['s'][1], q['e'][1]), max(q['s'][0], q['e'][0]),
-                    max(q['s'][1], q['e'][1])) for q in data.get('parts', [])]
+        gaps = [box(*np.minimum(q['s'][:2], q['e'][:2]), *np.maximum(q['s'][:2], q['e'][:2]))
+                for q in data.get('parts', [])]
         made = {}
         for i, v in enumerate(data.get('vias', [])):
             via = made[i] = self._via(v['x'], v['y'], v['z0'], v['z1'], v['r'], f"{v.get('net', '')}@({v['x']:.2f},{-v['y']:.2f})")
