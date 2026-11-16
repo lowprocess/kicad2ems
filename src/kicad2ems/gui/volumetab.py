@@ -158,7 +158,8 @@ def copper_shader():
                 vec3 n = normalize(v_normal);
                 vec3 l = normalize(vec3(-0.35, 0.55, 1.0));
                 float d = abs(dot(n, l));
-                float s = pow(max(dot(reflect(-l, n), vec3(0.0, 0.0, 1.0)), 0.0), 24.0);
+                float s = pow(max(dot(reflect(-l, n), vec3(0.0, 0.0, 1.0)),
+                                  0.0), 24.0);
                 vec3 rgb = v_color.rgb * (0.5 + 0.55 * d) + vec3(0.25) * s;
                 gl_FragColor = vec4(min(rgb, vec3(1.0)), v_color.a);
             }
@@ -518,8 +519,10 @@ class VolumeTab(QWidget):
         except (OSError, ValueError, KeyError):
             self.board = None
         self.mesh_files = meshes.find(out_dir)
-        self.ant = None  # its far-field pattern: the newest antenna
-        try:             # result with a sphere, into the Far field choice
+        # its far-field pattern: the newest antenna result with a sphere, into
+        # the Far field choice
+        self.ant = None
+        try:
             found = find_antenna(out_dir)
             if found and found[1]:
                 self.ant = (found[0], load_sphere(found[1]))
@@ -643,11 +646,10 @@ class VolumeTab(QWidget):
         n = int(np.prod(self.vol.data.shape[:3]))
         step = (int(np.ceil((n * len(phases) / LEVEL_SAMPLES)**(1 / 3))) if n
                 * len(phases) > 2 * LEVEL_SAMPLES else 1)
-        vals = [
-            v3.scalar_of(self.vol.data[::step, ::step, ::step],
-                         self.vol.complex, comp, p)
-            if step > 1 else self.vol.scalar(comp, p) for p in phases
-        ]
+        vals = [(v3.scalar_of(self.vol.data[::step, ::step, ::step],
+                              self.vol.complex, comp, p)
+                 if step > 1 else self.vol.scalar(comp, p))
+                for p in phases]
         signed = self.vol.signed(comp, phases[0])
         log = self.log.isChecked() and not signed
         # a temperature: its own
@@ -743,10 +745,10 @@ class VolumeTab(QWidget):
             z = next(
                 (c for c in cu.values() if abs(self.vol.origin[2] - c) < 1e-3),
                 None)
-        if z is not None:  # on top of what is drawn on its layer:
-            # the copper's slab,
+        # on top of what is drawn on its layer: the copper's slab, the line
+        # model's slabs
+        if z is not None:
             top = 0.5 * self.cu_t.value() if self.copper.isChecked() else 0.0
-            # the line model's slabs
             if (self.lines and self.lines_on.isChecked() and any(
                     e.get('z') is not None and abs(e['z'] - z) < 1e-3
                     and e.get('kind') != 'coupling'
@@ -889,8 +891,9 @@ class VolumeTab(QWidget):
             for geo, rgba in groups:
                 parts = self._memo((geo['copper'], g.get('cu_z')),
                                    ('cu', shown > 0, t),
-                                   lambda: v3.copper_solids(geo, t)
-                                   if shown > 0 else v3.copper_triangles(geo))
+                                   lambda: (v3.copper_solids(geo, t)
+                                            if shown > 0
+                                            else v3.copper_triangles(geo)))
                 for lay, z, verts, faces in parts:
                     v = verts.copy()
                     v[:, 2] *= zs

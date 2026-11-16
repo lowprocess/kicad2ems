@@ -15,7 +15,8 @@ steering, and dfsynth's filter synthesis (the Filter page).
               volumetab: plan, cut and 3D views
     volume3d  the 3D view's arrays (no Qt): copper, parts, field volumes,
               far-field surfaces
-    splot, traces, fieldtab, antennatab, steering, filtertab, systempanel, statusbar, meters, panels, runfolders
+    splot, traces, fieldtab, antennatab, steering, filtertab, systempanel,
+    statusbar, meters, panels, runfolders
 """
 __version__ = '0.3.0'
 

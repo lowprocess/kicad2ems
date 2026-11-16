@@ -17,8 +17,10 @@ user's examples folder.
 import os
 
 from PySide6.QtCore import Qt, QThread, Signal, QPointF
-from PySide6.QtGui import QImage, QPainter, QPainterPath, QColor, QPen, QPixmap, QPolygonF
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit, QScrollArea, QFrame, QSizePolicy
+from PySide6.QtGui import (QImage, QPainter, QPainterPath, QColor, QPen,
+                           QPixmap, QPolygonF)
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton,
+                               QLineEdit, QScrollArea, QFrame, QSizePolicy)
 
 from .panels import FlowLayout
 from .volume3d import rings
@@ -297,22 +299,19 @@ class StartPage(QWidget):
         shown = 0
         for group, head, box, tiles in self.groups:
             match = [t for t in tiles if all(w in t.words for w in words)]
-            keep = (match if
-                    (words or group in self.open_groups) else match[:FIRST])
+            keep = (match if (words or group in self.open_groups)
+                    else match[:FIRST])
             for t in tiles:
                 t.setVisible(t in keep)
             more = len(match) > len(keep) or group in self.open_groups
-            link = (
-                " · <a "
-                f"href='#'>{'fewer' if group in self.open_groups else 'all'}</"
-                "a>"
-                if more and not words else '')
+            link = (" · <a href='#'>"
+                    f"{'fewer' if group in self.open_groups else 'all'}</a>"
+                    if more and not words else '')
             head.setText(
-                "<span style='font-size:14px; "
-                f"font-weight:600'>{group}</span><span "
-                f"style='color:gray'>&nbsp;&nbsp;{len(match)} "
-                f"example{'s' if len(match) != 1 else ''}{link}</span>"
-            )
+                "<span style='font-size:14px; font-weight:600'>"
+                f"{group}</span><span style='color:gray'>&nbsp;&nbsp;"
+                f"{len(match)} example{'s' if len(match) != 1 else ''}"
+                f"{link}</span>")
             head.setVisible(bool(match))
             box.setVisible(bool(match))
             shown += len(match)

@@ -203,20 +203,20 @@ class PlanView(QWidget):
             from .layoutscene import layout_items
             g = v3.geometry_from_board(self.board)
             for it in ((layout_items(g, lay, components=False)
-                        if self.copper.isChecked() else []) + layout_items(
-                            {'components': g.get('components', [])}, lay)):
+                        if self.copper.isChecked() else [])
+                       + layout_items({'components': g.get('components', [])},
+                                      lay)):
                 add(it)
         elif self.copper.isChecked():
             for name, items in self.board['copper'].items():
                 polys = [r for it in items for r in v3.rings(it['polygon'])]
                 own = name == lay
-                add(
-                    _item(
-                        _path(polys), (QPen(QColor(150, 90, 30), 1)
-                                       if own else QPen(Qt.NoPen)),
-                        QBrush(
-                            self.copper_colour if own else self.other_colour),
-                        -10 if own else -20))
+                add(_item(_path(polys),
+                          (QPen(QColor(150, 90, 30), 1) if own
+                           else QPen(Qt.NoPen)),
+                          QBrush(self.copper_colour if own
+                                 else self.other_colour),
+                          -10 if own else -20))
         solver = self.mesh.currentData()
         self._solved_state()
         if solver and self.box is not None and self.z_of(lay) is not None:

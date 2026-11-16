@@ -121,15 +121,18 @@ def standalone(report):
                 if ext == 'svg' else f"image/{'jpeg' if ext == 'jpg' else ext}")
         return f"<img src='data:{mime};base64,{data}'"
     import re
-    body = re.sub(
-        r"<img src='([^']+)'", lambda m: inline(m)
-        if not m.group(1).startswith('data:') else m.group(0), to_html(report))
+    body = re.sub(r"<img src='([^']+)'",
+                  lambda m: (inline(m) if not m.group(1).startswith('data:')
+                             else m.group(0)),
+                  to_html(report))
     title = html.escape((report or {}).get('title') or 'Report')
-    return ((
-        f"<!doctype html>\n<html><head><meta charset='utf-8'><title>{title}</title>"
-        "<style>body{font-family:sans-serif;max-width:900px;margin:2em auto;padding:0 1em} "
-        "img{max-width:100%;height:auto} th{text-align:left}</style></head><body>\n"
-        + body + "\n</body></html>\n"))
+    return (
+        "<!doctype html>\n<html><head><meta charset='utf-8'>"
+        f"<title>{title}</title>"
+        "<style>body{font-family:sans-serif;max-width:900px;margin:2em auto;"
+        "padding:0 1em} img{max-width:100%;height:auto} th{text-align:left}"
+        "</style></head><body>\n"
+        + body + "\n</body></html>\n")
 
 
 try:  # the view itself (Qt); the helpers above need none

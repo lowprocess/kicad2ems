@@ -7,7 +7,8 @@ import shutil
 import tempfile
 
 from PySide6.QtCore import Qt,QObject,QPointF,QRectF,QProcess,QTimer,Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QBrush, QFont, QTransform
+from PySide6.QtGui import (QColor, QPainter, QPainterPath, QPen, QBrush, QFont,
+                           QTransform)
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QSplitter, QLabel, QPushButton, QLineEdit,
                                QComboBox, QCheckBox, QPlainTextEdit,
@@ -434,8 +435,8 @@ class DeviceItem(QGraphicsObject):
         painter.setPen(QPen((QColor(PICK) if sel else color),
                             2 if sel else 1.2))
         painter.setBrush(
-            QColor('#fff2ce'
-                   ) if sel else QColor(fill) if enabled else QColor('#f5f5f5'))
+            QColor('#fff2ce') if sel
+            else QColor(fill) if enabled else QColor('#f5f5f5'))
         painter.drawRoundedRect(card,5,5)
         font = QFont()
         font.setPixelSize(12)
@@ -460,9 +461,9 @@ class DeviceItem(QGraphicsObject):
                 Qt.AlignRight | Qt.AlignVCenter,
                 painter.fontMetrics().elidedText(r.get('label', ''),
                                                  Qt.ElideRight, room))
-        # stood up: the reference at the top, the value at
+        # stood up: the reference at the top, the value at the foot, written
+        # over the pins' stems afterwards
         late=[]
-        # the foot, written over the pins' stems afterwards
         if not self.upright:
             late = [(QRectF(card.left() + 3,
                             card.top() + 2,
@@ -839,9 +840,9 @@ class CircuitScene(QGraphicsScene):
         import heapq
         out=CHANNEL+LANE*lane;m=CHANNEL+LANE*lane
         keep=[c.adjusted(-3,-3,3,3) for c in cards]
-        # out of the pin: as far as its lane, or as far as
+        # out of the pin: as far as its lane, or as far as there is room
+        # before the next card
         def stub(pt,d):
-            # there is room before the next card
             for o in (out,CHANNEL,5,3):
                 end=QPointF(pt.x()+o*d[0],pt.y()+o*d[1])
                 if not any(c.contains(end) for c in keep):break
@@ -1109,9 +1110,9 @@ def records(config):
     column={}
     for p in parts:
         a,b=nets[p['ref']];da,db=depth.get(a),depth.get(b);kind=p['type']
-        near = (min(d for d in (da, db, 0)
-                    if d is not None) if da is None and db is None else min(
-                        d for d in (da, db) if d is not None))
+        near = (min(d for d in (da, db, 0) if d is not None)
+                if da is None and db is None
+                else min(d for d in (da, db) if d is not None))
         if kind=='source':column[p['ref']]=2*near-1
         elif (kind == 'load'):
             column[p['ref']] = (
@@ -1145,12 +1146,13 @@ def records(config):
                                                  ('current_A', 'A')) if k in q),
                 '')
         model=p.get('model',{}) if isinstance(p.get('model'),dict) else {}
+        unit_of = lambda k: ('H' if k.endswith('_H')
+                             else 'F' if k.endswith('_F') else 'Ω')
         paras = ' · '.join(
-            f"{k.split('_')[0]} "
-            f"{_quantity(v,('H' if k.endswith('_H') else 'F' if k.endswith('_F') else 'Ω'))}"
-            for k, v in [(k,
-                          q.get(k, (q.get('model', {}).get(k) if isinstance(
-                              q.get('model'), dict) else None)))
+            f"{k.split('_')[0]} {_quantity(v, unit_of(k))}"
+            for k, v in [(k, q.get(k, (q.get('model', {}).get(k)
+                                       if isinstance(q.get('model'), dict)
+                                       else None)))
                          for k in ('ESR_ohm', 'ESL_H', 'DCR_ohm', 'R_ohm',
                                    'L_H', 'Ron_ohm', 'Cds_F', 'Cj_F')]
             if v)
@@ -1389,8 +1391,7 @@ class SchematicEditor(QWidget):
                                dict(format=1)).setdefault('rotations', {})
             # a turn: from then on the part stays as turned
             if degrees%360:rot[key]=(shown+degrees)%360
-                # 0: the generator's choice again
-            else:rot.pop(key,None)
+            else:rot.pop(key,None)  # 0: the generator's choice again
             if not rot:c['schematic'].pop('rotations')
 
         if self.commit(change,
@@ -1520,8 +1521,9 @@ class SchematicEditor(QWidget):
             except ValueError:return text
 
         values = {
-            name: self.field_originals[name][1]
-            if w.text() == self.field_originals[name][0] else entered(w.text())
+            name: (self.field_originals[name][1]
+                   if w.text() == self.field_originals[name][0]
+                   else entered(w.text()))
             for name, w in self.fields.items()
         }
         nodes = [self.ends[p].currentText().strip() for p in ('a', 'b')]
@@ -1748,8 +1750,9 @@ class SchematicEditor(QWidget):
             for col, value in enumerate([
                     c['ref'], c['value'], c['kind'],
                     ', '.join(p['number'] + ' → ' + (p['net'] or 'unconnected')
-                              for p in c['pins']), 'Configured'
-                    if c['ref'] in configured else 'Not in simulation'
+                              for p in c['pins']),
+                    ('Configured' if c['ref'] in configured
+                     else 'Not in simulation')
             ]):
                 item = QTableWidgetItem(value)
                 item.setToolTip(value)

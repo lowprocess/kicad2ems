@@ -3,12 +3,12 @@ The curves of the analyses that are not S-parameters, for the Results page (no
 Qt here: testable without a display).
 
     sets = load_sets(folder)  # a result's curve sets, as its analysis gives
-                              them (Analysis.curves: a rail's # |Z| each load
-                              sees, a near field's spectrum, a circuit's
-                              waveforms)
+                              # them (Analysis.curves: a rail's |Z| each load
+                              # sees, a near field's spectrum, a circuit's
+                              # waveforms)
     cs = load_curves(folder)  # the first of them, or None
     value_at(curve, x)        # a curve's value at x (cursor, markers),
-                              interpolated along its axes' scales
+                              # interpolated along its axes' scales
     export_csv(path, sets)    # every curve of some sets, one x column per run
 
 A CurveSet is one run's curves with how to draw them (titles, log axes); its
@@ -55,7 +55,8 @@ def run_label(folder):
     kinds = '|'.join(map(re.escape, analyses())) or 'none'
     name = os.path.basename(os.path.normpath(folder or ''))
     m = re.search(
-        rf'_(?:{kinds})_(.+)_(\d{{4}})(\d{{2}})(\d{{2}})_(\d{{2}})(\d{{2}})(\d{{2}})$',
+        rf'_(?:{kinds})_(.+)_'
+        rf'(\d{{4}})(\d{{2}})(\d{{2}})_(\d{{2}})(\d{{2}})(\d{{2}})$',
         name)
     return f"{m[1]}, {m[3]}-{m[4]} {m[5]}:{m[6]}:{m[7]}" if m else name
 

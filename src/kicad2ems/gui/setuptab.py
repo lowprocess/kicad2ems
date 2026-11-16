@@ -104,8 +104,8 @@ class SetupTab(QWidget):
         self.rows, self.row_text, self._found = {}, {}, set()
         # the board: above the analyses, for all
         top_of = lambda group: left if group == 'Board' else more
-        groups, self.sections, self.group_of, self.solver_boxes, self.solver_labels = (
-            {}, {}, {}, {}, {})
+        (groups, self.sections, self.group_of, self.solver_boxes,
+         self.solver_labels) = ({}, {}, {}, {}, {})
         # 'openEMS': (its section, the layout of its subs)
         self.parents = {}
         # key: its label (greyed with the field)
@@ -157,10 +157,9 @@ class SetupTab(QWidget):
                 w = QLineEdit()
                 d = getattr(defaults, key, None)
                 if d not in (None, '', []) and kind != 'dir':
-                    w.setPlaceholderText(
-                        "default: "
-                        f"{', '.join(map(str, d)) if isinstance(d, (list, tuple)) else d}"
-                    )
+                    shown = (', '.join(map(str, d))
+                             if isinstance(d, (list, tuple)) else d)
+                    w.setPlaceholderText(f"default: {shown}")
                 w.textChanged.connect(self._changed)
             if kind in ('file', 'dir'):
                 row = QHBoxLayout()
@@ -175,9 +174,9 @@ class SetupTab(QWidget):
                 row.setContentsMargins(0, 0, 0, 0)
                 into.addRow(label, holder)
                 self.rows[key], self.row_text[key] = (into, holder), label
-            # a solver: ticked on the list's RF rows (the
+            # a solver: ticked on the list's RF rows (the box is its state:
+            # not in the form)
             elif key.startswith(TICK):
-                # box is its state: not in the form)
                 w.setText(label)
                 self.solver_labels[key[len(TICK):]] = label
                 w.setParent(self)
@@ -342,9 +341,9 @@ class SetupTab(QWidget):
         asked = self.study.asked()
         self.study_section.head.setText(
             f"Questions  ({len(asked)} asked)" if asked else 'Questions')
-        # the Antenna row ticked is the run's antenna
+        # the Antenna row ticked is the run's antenna mode (the setting the
+        # form does not show)
         mode = self.edits.get('mode', (None,))[0]
-        # mode (the setting the form does not show)
         if mode is not None and 'antenna' in self.study.rows:
             want = 'antenna' if 'antenna' in asked else 'sparams'
             if mode.currentText() != want and mode.findText(want) >= 0:
@@ -542,8 +541,8 @@ class SetupTab(QWidget):
                 if n in self.solver_labels)
             sec.setToolTip((
                 '' if on else
-                f"for {names}: choose it on the S-parameters row of the list to use these "
-                "settings"))
+                f"for {names}: choose it on the S-parameters row of the list "
+                "to use these settings"))
             # its settings among the first few: shown with it
             for key, (frm, roww) in self.rows.items():
                 if (frm is self.basic_form
@@ -589,9 +588,8 @@ class SetupTab(QWidget):
             self.sections[g].set_expanded(True)
         w.setFocus()
         QTimer.singleShot(
-            0, lambda:
-            (self.scroll
-             if g == 'Board' else self.inspector).ensureWidgetVisible(w))
+            0, lambda: (self.scroll if g == 'Board'
+                        else self.inspector).ensureWidgetVisible(w))
 
     def _find(self, text):
         """The settings under "More settings" whose label or key holds the text:
@@ -693,9 +691,9 @@ class SetupTab(QWidget):
         runner.solvers_from_form)."""
         # config settings without a field here
         out = dict(self.extra)
-        # fields that are not what they say: left out,
+        # fields that are not what they say: left out, marked, and listed as
+        # still needed
         self.bad = {}
-        # marked, and listed as still needed
         for key, (w, kind) in self.edits.items():
             if kind == 'bool':
                 out[key] = w.isChecked()
@@ -714,9 +712,9 @@ class SetupTab(QWidget):
             if kind in ('float', 'int'):
                 try:
                     x = float(t)
-                # (a half-typed number had raised from a timer:
+                # (a half-typed number had raised from a timer: the list and
+                # Run froze, saying nothing)
                 except ValueError:
-                    # the list and Run froze, saying nothing)
                     self.bad[key] = t
                     w.setStyleSheet('border: 1px solid #c0392b')
                     self.__dict__.setdefault('_marked', set()).add(key)
@@ -775,9 +773,9 @@ class SetupTab(QWidget):
             self.win.update_title()
 
     def _changed(self, *_):
-        # a step for undo: a tick or a choice at once,
+        # a step for undo: a tick or a choice at once, typing when it rests
+        # (and before a tick)
         if not self._loading and not self._restoring:
-            # typing when it rests (and before a tick)
             if isinstance(self.sender(), QLineEdit):
                 self._typed = self._state()
                 self._rest.start()
@@ -860,8 +858,8 @@ class SetupTab(QWidget):
         else:
             keys = (self._differs(self._base, self._undo[-1])
                     if self._undo else [])
-        what = (keys[0]
-                if len(keys) == 1 else f"{len(keys)} settings" if keys else '')
+        what = (keys[0] if len(keys) == 1
+                else f"{len(keys)} settings" if keys else '')
         return ('Redo' if redo else 'Undo') + (f" {what}" if what else '')
 
     def undo(self):

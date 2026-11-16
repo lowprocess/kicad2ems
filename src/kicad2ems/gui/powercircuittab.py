@@ -135,10 +135,10 @@ class PowerCircuitTab(QWidget):
                                                w.get('jobs'))
         # the fields are of the copper's currents
         if self.copper is not None and self.fields is not None:
-            self.fields.toggled.connect(lambda on: self.copper.setChecked(True)
-                                        if on else None)
-            self.copper.toggled.connect(lambda on: self.fields.setChecked(False)
-                                        if not on else None)
+            self.fields.toggled.connect(
+                lambda on: self.copper.setChecked(True) if on else None)
+            self.copper.toggled.connect(
+                lambda on: self.fields.setChecked(False) if not on else None)
         # the model's own values: its parameters, and what it sweeps
         self.params = QTableWidget(0, 2)
         self.params.setHorizontalHeaderLabels(['Parameter', 'Value'])
@@ -462,8 +462,8 @@ class PowerCircuitTab(QWidget):
         self.panel.reset()
         self.panel.set_own(tab.pop('board', None), tab.pop('out', None))
         model=tab.pop('model',None)
-        on = lambda k: tab.get(k) is True or str(tab.get(k)).strip().lower(
-        ) in ('1', 'true', 'yes', 'on')
+        on = lambda k: (tab.get(k) is True or str(tab.get(k)).strip().lower()
+                        in ('1', 'true', 'yes', 'on'))
         if on('fields'):tab['copper']=True
         if model:
             if self.load_model(str(model)):

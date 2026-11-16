@@ -78,9 +78,8 @@ class ResultsTab(QWidget):
         top.addWidget(self.export_btn)
         self.folder_btn = QPushButton(
             'Open folder', clicked=lambda: QDesktopServices.openUrl(
-                QUrl.fromLocalFile(
-                    (self.out
-                     if self.analysis and self.out else self.win.out_dir()))))
+                QUrl.fromLocalFile(self.out if self.analysis and self.out
+                                   else self.win.out_dir())))
         top.addWidget(self.folder_btn)
         self.set_box = QComboBox(
             visible=False,
@@ -185,10 +184,9 @@ class ResultsTab(QWidget):
         d = QFileDialog.getExistingDirectory(
             self, 'Another results folder to overlay', self.win.out_dir())
         if d and not self.add_folder(d):
-            QMessageBox.information(
-                self, 'Results', "No "
-                f"{'S-parameters' if self.curves is None else self.curves.title.lower()} "
-                f"in {d}")
+            what = ('S-parameters' if self.curves is None
+                    else self.curves.title.lower())
+            QMessageBox.information(self, 'Results', f"No {what} in {d}")
 
     def kind(self):
         """What the page shows: 'rf' (S-parameters, antenna) or the analysis
@@ -309,9 +307,9 @@ class ResultsTab(QWidget):
             listed.add(d)
         for d in on:  # added from elsewhere
             if d not in listed:
-                ticked(
-                    os.path.basename(d), True, lambda tick, d=d: None
-                    if tick else self.remove_folder(d))
+                ticked(os.path.basename(d), True,
+                       lambda tick, d=d: (None if tick
+                                          else self.remove_folder(d)))
         if not m.actions():
             a = m.addAction('no other run of this kind for this board yet')
             a.setEnabled(False)
@@ -322,9 +320,9 @@ class ResultsTab(QWidget):
                 ticked(
                     label,
                     os.path.abspath(path) in on,
-                    lambda tick, k=kind, p=path, l=label:
-                    (self._add_sweep(k, p, l)
-                     if tick else self.remove_folder(os.path.abspath(p))))
+                    lambda tick, k=kind, p=path, l=label: (
+                        self._add_sweep(k, p, l) if tick
+                        else self.remove_folder(os.path.abspath(p))))
             a = m.addAction('All of them')
             a.triggered.connect(
                 lambda: [self._add_sweep(k, p, l) for l, k, p in self.sweeps()])
@@ -375,7 +373,8 @@ class ResultsTab(QWidget):
         result and each other engine's newest on this board) against the
         engines, and the difference where two give one. Nothing to compare: the
         report as it is."""
-        from kicad2ems.core.api.frontend import compare_engines, engines, questions
+        from kicad2ems.core.api.frontend import (compare_engines, engines,
+                                                 questions)
         try:
             es, qs = engines(), questions()
             latest = (dict(self.win.latest_results()) if hasattr(
@@ -399,19 +398,16 @@ class ResultsTab(QWidget):
                 ] for r in c['rows']]
                 where = '; '.join(f"{lab}: {os.path.basename(latest[k])}"
                                   for lab, k in zip(c['labels'], c['engines']))
-                added.append(
-                    dict(
-                        title=
-                        f"Engines compared: {qs[q].label if q in qs else q}",
-                        text=
-                        f"Each engine's newest result on this board ({where}). A figure both name is "
-                        "the same quantity; one only an engine has is its own.",
-                        table=dict(
-                            columns=[
-                                'figure', 'unit', *c['labels'], 'difference'
-                            ], rows=rows, formats=[
-                                None, None, *['.4g'] * len(c['labels']), '.3g'
-                            ])))
+                added.append(dict(
+                    title=f"Engines compared: {qs[q].label if q in qs else q}",
+                    text=(f"Each engine's newest result on this board "
+                          f"({where}). A figure both name is the same "
+                          "quantity; one only an engine has is its own."),
+                    table=dict(
+                        columns=['figure', 'unit', *c['labels'], 'difference'],
+                        rows=rows,
+                        formats=[None, None, *['.4g'] * len(c['labels']),
+                                 '.3g'])))
             if not added:
                 return report
             sections = list(report.get('sections') or [])
@@ -507,7 +503,8 @@ class ResultsTab(QWidget):
     def load_antenna(self, out_dir, path=None):
         """The antenna results of a folder (path: which; default the newest)
         into the plots; False: none."""
-        from .antennatab import find_antenna, antenna_files, load_sphere, load_array
+        from .antennatab import (find_antenna, antenna_files, load_sphere,
+                                 load_array)
         self.out = out_dir
         files = antenna_files(out_dir) if out_dir else []
         with QSignalBlocker(self.which):
@@ -617,8 +614,8 @@ class ResultsTab(QWidget):
             (p for l, p in files if p.endswith(('_run.json', '_openems.json'))),
             None)
         self.set_notes([], [])
-        self._summary, self._run_folder = (None, os.path.dirname(summary)
-                                           if summary else None)
+        self._summary, self._run_folder = (
+            None, os.path.dirname(summary) if summary else None)
         if summary and os.path.exists(summary):
             try:
                 from kicad2ems.core.api.frontend import read_summary

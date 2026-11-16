@@ -8,7 +8,8 @@ the formula's. Zooming samples the mesh again, so the corners stay sharp.
 import numpy as np
 from PySide6.QtCore import Qt, QRectF, QSignalBlocker, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QPen, QBrush
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QComboBox, QCheckBox, QLabel, QPushButton
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QComboBox, QCheckBox,
+                               QLabel, QPushButton)
 import pyqtgraph as pg
 from . import theme
 from kicad2ems.core.api.frontend import overlay as ov, sections
@@ -102,10 +103,9 @@ class SectionView(QWidget):
 
     # ---- the section ----
     def _none(self):
-        return ((
-            "No section picked: pick one of the line model's in the Viewer "
-            "(its list beside the Plan and 3D views, or a click on it in the "
-            "plan)")
+        return ("No section picked: pick one of the line model's in the "
+                "Viewer (its list beside the Plan and 3D views, or a click on "
+                "it in the plan)"
                 if self.model_line else 'No section')
 
     def show_section(self, e):
@@ -121,8 +121,8 @@ class SectionView(QWidget):
         if not ms:
             self.info.setText((
                 self._none() if e is None else
-                f"{e.get('label') or e.get('kind')}: no cross-section to solve (a via, a part, or no "
-                "reference plane)"))
+                f"{e.get('label') or e.get('kind')}: no cross-section to "
+                "solve (a via, a part, or no reference plane)"))
             return
         self._solve(ms[0][0])
 

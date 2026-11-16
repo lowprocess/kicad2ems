@@ -6,7 +6,7 @@ CSV and image export. The S-parameter plots are splot.SPlot; this is the same
 page for everything else.
 
     plot.set_sets(run, [other runs])  # CurveSets: the run solid, the others
-                                      dashed in the same colours
+                                      # dashed in the same colours
 """
 from dataclasses import replace
 import numpy as np

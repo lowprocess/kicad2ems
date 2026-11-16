@@ -5,9 +5,9 @@ changes with it; 'light' and 'dark' hold whatever the desktop does. The window's
 View menu sets it (QSettings 'view/plots').
 
     theme.set_choice('dark')  # every plot restyled now; new plots take it as
-                              they are made
+                              # they are made
     c = theme.colors()        # dict: bg, fg, grid, marker, fill (a label's
-                              backing, RGBA)
+                              # backing, RGBA)
 
 A plot widget whose own items carry colours (markers, a cursor's dot) has a
 restyle() method, which apply() calls.

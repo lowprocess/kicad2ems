@@ -9,7 +9,8 @@ too.
 import os
 
 from kicad2ems.core.api.frontend import write_toml as _write_toml
-from kicad2ems.core.api.frontend import Run, EventTail, stop_runs, find_results, toml_value  # noqa: F401
+from kicad2ems.core.api.frontend import (  # noqa: F401
+    Run, EventTail, stop_runs, find_results, toml_value)
 
 # the core option groups (options.Option.group) as the form's group boxes; a
 # solver's under their own name, its section ('FDTD/Mesh': the Mesh sub-section
@@ -334,10 +335,8 @@ def write_analyses(path, run, tables):
             out.append(f"run = {toml_value(list(run))}")
         for name, many in sets.items():
             for tab in many:
-                out += [
-                    '', f"[[analysis.{name}]]"
-                    if len(many) > 1 else f"[analysis.{name}]"
-                ]
+                out += ['', (f"[[analysis.{name}]]" if len(many) > 1
+                             else f"[analysis.{name}]")]
                 out += [f"{k} = {toml_value(v)}" for k, v in tab.items()]
     with open(path, 'w', encoding='utf-8') as fh:
         fh.write('\n'.join(out) + '\n')

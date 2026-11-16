@@ -15,12 +15,12 @@ pattern follow; Animate sweeps X, Y, or both round a circle (a conical scan), or
 with Aim the angle: theta back and forth, or phi round.
 
     bar = SteeringBar()      # compact=True: stacked, for the 3D view's side
-                             panel
+                             # panel
     bar.set_data(res, data)  # the antenna result (JSON dict) and phased.load's
-                             data, or None: hidden
+                             # data, or None: hidden
     bar.steered.connect(lambda res, sphere: ...)
     other.mirror(bar)        # another bar showing the same drive, grid and
-                             steps (Results page's, 3D view's)
+                             # steps (Results page's, 3D view's)
 """
 import math
 import numpy as np
@@ -266,14 +266,14 @@ class SteeringBar(QGroupBox):
         lay.addLayout(row)
         row = QHBoxLayout()
         self.anim = QPushButton(
-            'Animate', checkable=True, toggled=self._animate, toolTip=
-            f"sweep the phase step back and forth over ±{STEP_MAX}° (with a "
-            "grid: X, Y, or both round a circle, a conical scan)")
+            'Animate', checkable=True, toggled=self._animate,
+            toolTip=f"sweep the phase step back and forth over ±{STEP_MAX}° "
+            "(with a grid: X, Y, or both round a circle, a conical scan)")
         self.anim_mode = QComboBox(
-            toolTip=
-            "what Animate sweeps: the X step, the Y step, or both round a circle (the "
-            f"steps' size at the start, {CIRCLE_R}° when about zero); with Aim, θ back "
-            f"and forth over 0..{AIM_THETA_MAX}° or φ round")
+            toolTip="what Animate sweeps: the X step, the Y step, or both "
+            f"round a circle (the steps' size at the start, {CIRCLE_R}° when "
+            "about zero); with Aim, θ back and forth over "
+            f"0..{AIM_THETA_MAX}° or φ round")
         self.anim_mode.addItems(ANIM_MODES)
         self.anim_mode.currentIndexChanged.connect(
             lambda *_: self._restart_circle())
@@ -296,8 +296,7 @@ class SteeringBar(QGroupBox):
         self.aim_row.hide()
         self.hide()
 
-    # ---- state
-    # -----------------------------------------------------------------------------------------
+    # ---- state --------------------------------------------------------------
     def set_data(self, res, data):
         """An antenna result and its per-port far fields (phased.load), or None:
         the bar hidden."""
@@ -506,8 +505,7 @@ class SteeringBar(QGroupBox):
             self.steered.emit(res, c['sphere'])
         return res, c['sphere']
 
-    # ---- Animate
-    # ---------------------------------------------------------------------------------------
+    # ---- Animate ------------------------------------------------------------
     def _restart_circle(self):
         x, y = self.spin.value(), self.spin_y.value()
         rr = math.hypot(x, y)

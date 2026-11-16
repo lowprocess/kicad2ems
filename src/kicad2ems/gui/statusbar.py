@@ -12,7 +12,8 @@ The status bar's memory meters and the toolbar's estimate.
                    opens the Solvers window
 """
 from PySide6.QtCore import Qt, QTimer, QProcess
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QProgressBar, QToolButton, QSizePolicy
+from PySide6.QtWidgets import (QWidget, QHBoxLayout, QLabel, QProgressBar,
+                               QToolButton, QSizePolicy)
 from . import meters
 
 WARN, FULL = 0.80, 0.95  # a bar turns amber, then red

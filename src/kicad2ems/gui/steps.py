@@ -17,7 +17,8 @@ window's layout.
 import os
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QToolBar, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame
+from PySide6.QtWidgets import (QToolBar, QWidget, QHBoxLayout, QVBoxLayout,
+                               QLabel, QFrame)
 
 KEYS = ('board', 'questions', 'setup', 'run', 'results')
 ACCENT, DONE, TODO = '#2f7fd6', '#2e9d5b', '#8a8f98'
@@ -71,15 +72,15 @@ def steps_of(win):
                   if asked else 'the settings of what is asked')),
         dict(
             key='run', title='Run', done=ran and not busy,
-            text=('running' +
-                  (f": {win.runtab.stage.text()}"
-                   if win.runtab.stage.text() not in ('', 'idle') else '')
-                  if busy else failed[0] if failed else
-                  (states[-1] if ran else
-                   (est if est and not est.lower().startswith('no estimate')
-                    else 'not run yet')))),
-        dict(key='results', title='Results', done=bool(info), text=info
-             or 'none yet'),
+            text=(('running'
+                   + (f": {win.runtab.stage.text()}"
+                      if win.runtab.stage.text() not in ('', 'idle') else ''))
+                  if busy else failed[0] if failed
+                  else states[-1] if ran
+                  else est if est and not est.lower().startswith('no estimate')
+                  else 'not run yet')),
+        dict(key='results', title='Results', done=bool(info),
+             text=info or 'none yet'),
     ]
     now = next((s['key'] for s in out if not s['done']), None)
     for s in out:

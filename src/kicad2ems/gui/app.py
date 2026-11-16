@@ -35,8 +35,10 @@ remembered between sessions.
 """
 import json, os, sys
 import numpy as np
-from PySide6.QtCore import Qt, QProcess, QTimer, QUrl, QSettings, Signal, QThread, QSignalBlocker
-from PySide6.QtGui import QDesktopServices, QAction, QActionGroup, QKeySequence, QIcon
+from PySide6.QtCore import (Qt, QProcess, QTimer, QUrl, QSettings, Signal,
+                            QThread, QSignalBlocker)
+from PySide6.QtGui import (QDesktopServices, QAction, QActionGroup,
+                           QKeySequence, QIcon)
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QComboBox, QPushButton, QLabel, QMessageBox,
                                QDockWidget, QToolBar, QStyle, QDialog,
@@ -287,9 +289,9 @@ class MainWindow(QMainWindow):
         # its Far field section steers too
         if getattr(self.volume, 'steer', None) is not None:
             self.results.link_steering(self.volume.steer)
-        # the Solvers window's content: checked now,
+        # the Solvers window's content: checked now, so the tick boxes can say
+        # what cannot run
         self.system = SystemPanel()
-        # so the tick boxes can say what cannot run
         self.system.ready.connect(self.setup.set_availability)
         # the status bar: RAM, GPU, the run's memory
         self.meters = MemoryMeters()
@@ -368,9 +370,9 @@ class MainWindow(QMainWindow):
         self._study_ready = True
         if config:
             self.setup.load(config)
-        # no config: the solvers as kicad2ems's default
+        # no config: the solvers as kicad2ems's default (auto), which the
+        # S-parameters row shows
         else:
-            # (auto), which the S-parameters row shows
             self.setup.set_values({})
 
     # ---- the study: the analyses, which a Run includes, their settings in the
@@ -380,8 +382,8 @@ class MainWindow(QMainWindow):
         under it; the ticks of the last session (the first time: S-parameters,
         as Run always did)."""
         self._study_ready = False
-        self.queue, self.job, self._job_t0, self._queue_preview, self._queue_stopped = (
-            [], None, 0.0, False, False)
+        (self.queue, self.job, self._job_t0, self._queue_preview,
+         self._queue_stopped) = ([], None, 0.0, False, False)
         self.study = StudyList()
         panels = dict(self.panels)
         panels.update({k: p.settings_panel() for k, p in self.editors.items()})
@@ -622,11 +624,10 @@ class MainWindow(QMainWindow):
             self.job, self._job_t0 = key, time.monotonic()
             try:
                 why = self._start_job(key, self._queue_preview)
-            # a page's or a plugin's bug: said on the row,
+            # a page's or a plugin's bug: said on the row, and the queue goes
+            # on (the window must not stay busy with nothing running)
             except Exception as e:
-                # and the queue goes on (the window must not
                 import traceback
-                # stay busy with nothing running)
                 page = self.pages.get(key)
                 (page.log if page is not None else
                  self.runtab.log).appendPlainText(traceback.format_exc())
@@ -742,31 +743,30 @@ class MainWindow(QMainWindow):
             if d.isHidden():
                 d.show()
         self.splitDockWidget(self.study_dock, self.settings_dock, Qt.Vertical)
-        wide = self._wide()  # room for the plots beside the board; else they
-        # are the first tab under it
+        # room for the plots beside the board; else they are the first tab
+        # under it
+        wide = self._wide()
         lower = [n for n in (() if wide else BESIDE) + LOWER if n in self.docks]
         upper = [n for n in self.docks if n not in LOWER + BESIDE]
-        # (only one that was closed is shown: show()
+        # (only one that was closed is shown: show() on a dock of a window not
+        # yet laid out leaves a second tab bar behind, drawn over the page)
         for name in self.docks:
-            # on a dock of a window not yet laid out leaves
             d = self.docks[name]
-            # a second tab bar behind, drawn over the page)
             if d.isFloating():
                 d.setFloating(False)
-            # (Qt 6.12 tabs a dock with another only when
+            # (Qt 6.12 tabs a dock with another only when it is in no tab
+            # group of its own)
             self.work.removeDockWidget(d)
-            # it is in no tab group of its own)
             if d.isHidden():
                 d.show()
         for area, group in ((Qt.TopDockWidgetArea, upper),
                             (Qt.BottomDockWidgetArea, lower)):
             first = self.docks[group[0]]
             self.work.addDockWidget(area, first)
-            # the plots: beside the board (before the board
+            # the plots: beside the board (before the board has tabs: Qt
+            # splits a lone dock, and tabs onto a tabbed one)
             if area == Qt.TopDockWidgetArea and wide:
-                # has tabs: Qt splits a lone dock, and tabs
                 for name in BESIDE:
-                    # onto a tabbed one)
                     self.work.splitDockWidget(first, self.docks[name],
                                               Qt.Horizontal)
             for name in group[1:]:
@@ -846,8 +846,10 @@ class MainWindow(QMainWindow):
         # a result is shown: its pages stay
         if self.results.out or self.results.analysis:
             return
-        if not self.isVisible():  # a window not laid out yet has no sizes to
-            return                # keep: once it is shown (showEvent)
+        # a window not laid out yet has no sizes to keep: once it is shown
+        # (showEvent)
+        if not self.isVisible():
+            return
         pages = [
             n for n in BESIDE + LOWER
             if n in self.docks and not self.docks[n].isHidden()
@@ -942,13 +944,12 @@ class MainWindow(QMainWindow):
             d for d in (self.study_dock, self.settings_dock,
                         *self.docks.values()) if d.isFloating()
         ]
-        # docked first, and Qt left to finish with the
+        # docked first, and Qt left to finish with the floating windows before
+        # the layout is touched: on Windows it aborted in whatever came next
+        # (addDockWidget, show, restoreState)
         for d in floating:
-            # floating windows before the layout is touched:
             d.setFloating(False)
-        # on Windows it aborted in whatever came next
         if floating:
-            # (addDockWidget, show, restoreState)
             from PySide6.QtWidgets import QApplication
             QApplication.processEvents()
         if (built is None or built[2] != self._wide()
@@ -964,9 +965,9 @@ class MainWindow(QMainWindow):
                 d.show()  # a page that was closed: back
         self._aside = None
         self._page_visibility(opening=True)
-        # (stepped aside for the Start page again: they
+        # (stepped aside for the Start page again: they come back at their
+        # first sizes)
         if self._aside:
-            # come back at their first sizes)
             self._aside.update(sizes=None, front=[])
         self._first_sizes()
         QTimer.singleShot(0, self._tidy_tabs)
@@ -1087,9 +1088,9 @@ class MainWindow(QMainWindow):
                         self.est_btn)
         self.addToolBar(Qt.TopToolBarArea, tb)
         from .steps import StepsBar
-        # the study's steps: under the toolbar (it moves to the
+        # the study's steps: under the toolbar (it moves to the bottom, and
+        # hides: View > Steps)
         self.steps = StepsBar(self)
-        # bottom, and hides: View > Steps)
         self.steps.go.connect(self.go_to_step)
         self.addToolBarBreak(Qt.TopToolBarArea)
         self.addToolBar(Qt.TopToolBarArea, self.steps)
@@ -1324,11 +1325,10 @@ class MainWindow(QMainWindow):
                     if p.strip()
             ]:
                 path += '/' + part
-                # kept here: QAction.menu() must not be asked
+                # kept here: QAction.menu() must not be asked for them
+                # (PySide deletes the menu with the wrapper it hands back)
                 if path not in menus:
-                    # for them (PySide deletes the menu with the
                     menus[path] = m.addMenu(part)
-                    # wrapper it hands back)
                     menus[path].setToolTipsVisible(True)
                 m = menus[path]
             top = '/' + (e.get('group') or '').split('/')[0].strip()
@@ -1413,9 +1413,8 @@ class MainWindow(QMainWindow):
             self.est_btn.show_estimate(None, has_preview=False)
             return
         info = self.system.info or {}
-        usable = ({x['name']
-                   for x in info.get('solvers', [])
-                   if x['ok']} if info.get('solvers') else None)
+        usable = ({x['name'] for x in info.get('solvers', []) if x['ok']}
+                  if info.get('solvers') else None)
         e = estimate(est, self.setup.values(), usable, self.meters.free_gb)
         labels = {
             x['name']: x['label'].split(' (')[0]
@@ -1516,9 +1515,9 @@ class MainWindow(QMainWindow):
         if i >= 0:
             self.runs_box.setCurrentIndex(i)
         self.steps.refresh()
-        # something to show: the pages that stepped aside
+        # something to show: the pages that stepped aside for the Start page
+        # are back
         if files or ant or shown or seen:
-            # for the Start page are back
             self._start_leaves(hide=False)
         # its plots, or what an analysis found
         if front and (files or ant or shown):
@@ -1586,7 +1585,8 @@ class MainWindow(QMainWindow):
         cleared. path None: a new study, nothing set. A table of an analysis not
         installed here is kept, and saved back, as is a question or an engine of
         the study this window lacks."""
-        from kicad2ems.core.api.frontend import read_analyses, read_analysis_sets, read_study, Study
+        from kicad2ems.core.api.frontend import (
+            read_analyses, read_analysis_sets, read_study, Study)
         tables, study, more = {}, Study({'sparams': []}), {}
         if not self.busy():
             # another study: the last one's states are not its
@@ -1627,9 +1627,9 @@ class MainWindow(QMainWindow):
                 for k, v in tables.items()
                 if k not in self.pages
             }
-            # an analysis given several tables (a board's
+            # an analysis given several tables (a board's rails): the first is
+            # shown and run here
             for key, rest in more.items():
-                # rails): the first is shown and run here
                 page = self.pages.get(key)
                 if page is not None and hasattr(page, 'status'):
                     tags = ', '.join(self.registry[key].tag(dict(v))
@@ -1650,9 +1650,8 @@ class MainWindow(QMainWindow):
                     if q not in self.study.rows
                 })
             fields = dict(study.fields)
-            # a config of before the Fields ticks: what
+            # a config of before the Fields ticks: what its settings ask for
             for q in study.asked:
-                # its settings ask for
                 if q not in fields and q in self.study.rows:
                     fields[q] = self._fields_set(q, study)
             self.study.set_study(Study(study.asked, fields, study.said))
@@ -1660,9 +1659,9 @@ class MainWindow(QMainWindow):
         finally:
             self.setup._loading = loading
         asked = list(self.study.asked())
-        # the study's first question: its settings
+        # the study's first question: its settings shown, its editor (a
+        # circuit's) in front
         first = asked[0] if asked else 'sparams'
-        # shown, its editor (a circuit's) in front
         self.study.select(first)
         run = self.study.run_of(first) if first in self.study.rows else RF
         if path and run in self.editors:
@@ -1705,9 +1704,9 @@ class MainWindow(QMainWindow):
                 # a table a row
                 tab = [config_values(page, base, r) for r in page.runs()]
             if tab:
-                # the config's other tables of it: kept,
+                # the config's other tables of it: kept, their paths relative
+                # to where it is saved
                 rest = getattr(self, 'more_sets', {}).get(key)
-                # their paths relative to where it is saved
                 if rest:
                     paths = (*getattr(self.registry.get(key), 'paths',
                                       ()), 'board', 'out')
@@ -1753,9 +1752,9 @@ class MainWindow(QMainWindow):
             if own:
                 panel.set_own(own, None)
             panel.set_values(values)
-        # (no model named: its settings for the model
+        # (no model named: its settings for the model on the page, which
+        # stays, with its file)
         elif hasattr(target, 'load_settings'):
-            # on the page, which stays, with its file)
             named = bool(values.get('model'))
             target.load_settings(
                 dict(values, **({'board': own} if own else {})),
@@ -2045,8 +2044,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"deleted {folder}", 6000)
         return True
 
-    # ---- a file or folder dropped on the window (R-E25)
-    # ----------------------------------------------------------
+    # ---- a file or folder dropped on the window (R-E25) ---------------------
     DROPPED = ('.kicad_pcb', '.toml', '_board.json', '.gbrjob')
 
     def _dropped(self, e):
@@ -2110,9 +2108,9 @@ class MainWindow(QMainWindow):
                 "Choose a solver on the list's S-parameters row (or Preview)")
         from kicad2ems.core.api.frontend import mark_run
         from .runfolders import run_dir, preview_dir
-        # no Fields tick on an RF row: the run leaves
+        # no Fields tick on an RF row: the run leaves the dumps out (the
+        # settings keep them)
         if not preview and not self.study.fields_on(RF):
-            # the dumps out (the settings keep them)
             for k in self.setup.dump_keys():
                 vals.pop(k, None)
         base = self.out_dir(vals)  # each run in a folder of its own
@@ -2134,8 +2132,8 @@ class MainWindow(QMainWindow):
         self.proc.finished.connect(self._finished)
         # (one that cannot start ends with no finished)
         self.proc.errorOccurred.connect(self._proc_error)
-        try:  # its whole output, in its folder (the Log has
-            # its events)
+        # its whole output, in its folder (the Log has its events)
+        try:
             self._stdout_fh = open(os.path.join(self.current.out, 'stdout.log'),
                                    'a', encoding='utf-8')
         except OSError:
@@ -2261,8 +2259,8 @@ class MainWindow(QMainWindow):
             pass
         if crashed:
             self.runtab.log.appendPlainText(
-                "the run's process ended abnormally (crashed): its whole output is in "
-                f"{os.path.join(self.current.out, 'stdout.log')}")
+                "the run's process ended abnormally (crashed): its whole "
+                f"output is in {os.path.join(self.current.out, 'stdout.log')}")
         self.proc = None
         self.meters.set_run(None)
         self.runtab.stop_btn.setEnabled(False)

@@ -154,7 +154,8 @@ def _db(x):
 # ------------------------------------------------------------------------------
 # the page (Qt)
 from PySide6.QtCore import Qt, QThread, Signal, QSignalBlocker
-from PySide6.QtGui import QPainterPath, QPen, QBrush, QColor, QFontDatabase, QTextCursor, QTextCharFormat, QIcon
+from PySide6.QtGui import (QPainterPath, QPen, QBrush, QColor, QFontDatabase,
+                           QTextCursor, QTextCharFormat, QIcon)
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox,
     QCheckBox, QPushButton, QPlainTextEdit, QSplitter, QTabWidget, QTableWidget,
@@ -188,9 +189,9 @@ class FilterTab(QWidget):
         self.win, self.proc, self.base, self.result = win, None, None, None
         self.problems, self._last = {'error': 0, 'warn': 0}, None
         known = _known()
-        # (asked in a thread when not yet: dfsynth's
+        # (asked in a thread when not yet: dfsynth's --describe had held the
+        # window's start up)
         self.desc = describe() if known else None
-        # --describe had held the window's start up)
         self.opts = options(self.desc)
         lay = QHBoxLayout(self)
         self.split = QSplitter(Qt.Horizontal)
@@ -342,9 +343,8 @@ class FilterTab(QWidget):
         ], expanded=True)
         self.w.pop('_out_row')
         from kicad2ems.core.api.frontend import registry
-        # each full-wave solver installed, then each
+        # each full-wave solver installed, then each with the line model
         solv = QComboBox(editable=True)
-        # with the line model
         full = [n for n, sv in registry().items() if sv.consumes == 'board']
         solv.addItems(full + [f"{n},lines" for n in full])
         solv.setToolTip(

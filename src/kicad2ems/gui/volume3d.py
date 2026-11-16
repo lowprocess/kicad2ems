@@ -5,13 +5,13 @@ far-field pattern as a surface over it, for the GUI's field panel (volumetab.py)
 and its GIF / MP4 export. No Qt here: the arrays the OpenGL items take.
 
     vol = Volume(src, frame)  # one frame of a volume dump
-                              (fields.frames.DumpSource)
-    v, (origin, step) = vol.scalar('mag', phase)  # uniform grid (mm): |F| or
-                                                  |Re(F e^jphi)| or a component
+                              # (fields.frames.DumpSource)
+    v, (origin, step) = vol.scalar('mag', phase)
+        # uniform grid (mm): |F| or |Re(F e^jphi)| or a component
     rgba = colour(v, lo, hi, log=True)  # (nx, ny, nz, 4) uint8: low values
-                                        transparent
-    tris = copper_triangles(geometry)  # [(layer, z mm, vertices (n, 3), faces
-                                       (m, 3))]
+                                        # transparent
+    tris = copper_triangles(geometry)
+        # [(layer, z mm, vertices (n, 3), faces (m, 3))]
 
 The openEMS mesh is graded (fine at the copper, coarse in the air): the dump is
 resampled onto a uniform grid of about `n` points along its longest side (OpenGL
@@ -93,8 +93,7 @@ def scalar_of(d, complex_, component='mag', phase=None):
                                                      'xyz'.index(component)])
 
 
-# ---- colour
-# ---------------------------------------------------------------------------------------
+# ---- colour -----------------------------------------------------------------
 def colour(v, lo, hi, log=True, signed=False, opacity=0.6, gamma=1.5, cmap=None,
            floor=0.0):
     """RGBA voxels (uint8): the colour map of v between lo and hi (log:
@@ -141,8 +140,7 @@ def levels(vals, signed, log, decades=2.5, clip=99.9, span=False):
     return (hi * 10 ** -decades, hi) if log else (0.0, hi)
 
 
-# ---- the board
-# ------------------------------------------------------------------------------------
+# ---- the board --------------------------------------------------------------
 def _copper_parts(polys):
     """A layer's copper ([rings] per polygon) as valid polygons, exterior
     counter-clockwise and holes clockwise."""

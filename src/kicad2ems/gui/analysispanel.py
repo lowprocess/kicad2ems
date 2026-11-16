@@ -11,12 +11,15 @@ field dumps), its report and curves on the Results page. Nothing here knows one
 analysis from another; what an analysis does differently it says through its
 plugin (Analysis.command, status, discover and choices, suggest).
 
-    panel = AnalysisPanel(analysis, win)     # win: the window (its board, its output folder), or None alone
+    panel = AnalysisPanel(analysis, win)
+        # win: the window (its board, its output folder), or None alone
     panel.values(), panel.set_values({...}), panel.reset()
     panel.start(preview=False), panel.stop(), panel.proc, panel.out
-    config_values(panel)                     # what a config's [analysis.<name>] table holds of it
-    panel.set_runs([{...}, ...]), panel.runs()   # an analysis a study may hold several of (Analysis.several: a
-                                             # board's rails): a table of what differs, a run each, in order
+    config_values(panel)
+        # what a config's [analysis.<name>] table holds of it
+    panel.set_runs([{...}, ...]), panel.runs()
+        # an analysis a study may hold several of (Analysis.several: a
+        # board's rails): a table of what differs, a run each, in order
 """
 import os
 import re
@@ -106,8 +109,8 @@ class AnalysisPanel(QWidget):
     def __init__(self, analysis, win=None):
         super().__init__()
         self.a, self.win = analysis, win
-        self.proc, self.out, self.result, self._preview, self._found, self._setting = (
-            None, None, None, False, None, 0)
+        (self.proc, self.out, self.result, self._preview, self._found,
+         self._setting) = (None, None, None, False, None, 0)
         # options a run needs set (proposed without a value)
         self.required = set()
         self.options = list(analysis.options())
@@ -120,9 +123,8 @@ class AnalysisPanel(QWidget):
         f = QFormLayout(files)
         f.setContentsMargins(0, 0, 0, 0)
         self.board = QLineEdit(
-            placeholderText=("the study's board"
-                             if win is not None else 'a .kicad_pcb, or a '
-                             'board.json'),
+            placeholderText=("the study's board" if win is not None
+                             else 'a .kicad_pcb, or a board.json'),
             toolTip=".kicad_pcb (or a run's <name>_board.json); empty: the "
                     "board under Board, above")
         b = QPushButton('…', clicked=self._browse)
@@ -150,11 +152,11 @@ class AnalysisPanel(QWidget):
             fl.setContentsMargins(0, 0, 0, 0)
             fl.setRowWrapPolicy(QFormLayout.WrapLongRows)
             for o in opts:
-                # named as the other options are, what it does
+                # named as the other options are, what it does in its
+                # tooltip: a long line beside the box made the panel wider
+                # than its column
                 if o['kind'] == 'bool':
-                    # in its tooltip: a long line beside the box made
                     wid = QCheckBox(o['key'].replace('_', ' '),
-                                    # the panel wider than its column
                                     checked=bool(o['default']))
                 elif o['kind'] == 'list':
                     wid = QPlainTextEdit(placeholderText='one a line')
@@ -172,9 +174,9 @@ class AnalysisPanel(QWidget):
                         str(o['default']) if o['default'] not in (
                             '', None) else ''))
                 wid.setToolTip(f"{o['flag']}: {o['help']}")
-                (wid.toggled if o['kind'] == 'bool' else wid.currentIndexChanged
-                 if isinstance(wid, QComboBox) else wid.textChanged).connect(
-                     self._edited)
+                (wid.toggled if o['kind'] == 'bool'
+                 else wid.currentIndexChanged if isinstance(wid, QComboBox)
+                 else wid.textChanged).connect(self._edited)
                 self.w[o['key']] = wid
                 label = (o['key'].replace('_', ' ').capitalize()
                          if o['kind'] != 'bool' else '')
@@ -243,11 +245,9 @@ class AnalysisPanel(QWidget):
         t = QTableWidget(0, len(self.run_keys))
         t.setHorizontalHeaderLabels(
             [k.replace('_', ' ').capitalize() for k in self.run_keys])
-        # each heading whole; the
+        # each heading whole; the dock scrolls sideways if it must
         t.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        # dock scrolls sideways if
         t.horizontalHeader().setStretchLastSection(True)
-        # it must
         t.verticalHeader().hide()
         t.setSelectionBehavior(QAbstractItemView.SelectRows)
         t.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -265,12 +265,12 @@ class AnalysisPanel(QWidget):
                 and any(self.pick_kind(k) for k in self.run_keys)):
             # the selected cell, picked on the board
             b = QPushButton(
-                'Pick', checkable=True, toolTip=
-                ("Pick the selected cell on the board (a net, or a part: by "
-                 "its column): click in the Viewer's plan; this button again "
-                 "ends it"), toggled=lambda on:
-                (self.win.start_pick(self, CELL)
-                 if on else self.win.end_pick(self, CELL)))
+                'Pick', checkable=True,
+                toolTip=("Pick the selected cell on the board (a net, or a "
+                         "part: by its column): click in the Viewer's plan; "
+                         "this button again ends it"),
+                toggled=lambda on: (self.win.start_pick(self, CELL) if on
+                                    else self.win.end_pick(self, CELL)))
             row.addWidget(b)
             self.pick_btns[CELL] = b
             # its column's
@@ -306,7 +306,8 @@ class AnalysisPanel(QWidget):
         b = QToolButton(
             text='Pick', checkable=True,
             toolTip=f"Pick {'them' if many else 'it'} on the board: click "
-            f"{what} in the Viewer's plan ({'again takes one out; ' if many else ''}this button again "
+            f"{what} in the Viewer's plan "
+            f"({'again takes one out; ' if many else ''}this button again "
             "ends it)")
         b.toggled.connect(lambda on, key=o['key']: self.win.start_pick(
             self, key) if on else self.win.end_pick(self, key))
@@ -781,9 +782,8 @@ class AnalysisPanel(QWidget):
                     + rep['summary'] if rep.get('summary') else 'done')))
             self.show_result(self.out)
         queue = getattr(self, '_queue', [])
-        # the next row's run (one that cannot start: said,
+        # the next row's run (one that cannot start: said, the others go on)
         while queue:
-            # the others go on)
             nxt = queue.pop(0)
             if self._start_one(nxt, False):
                 return

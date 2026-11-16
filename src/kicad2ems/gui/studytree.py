@@ -14,7 +14,8 @@ model has is reached through the list too (`list.asked()`, `list.jobs()`,
 """
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont
-from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QHeaderView, QAbstractItemView, QMenu
+from PySide6.QtWidgets import (QTreeWidget, QTreeWidgetItem, QHeaderView,
+                               QAbstractItemView, QMenu)
 
 from .study import RF, AUTO, StudyModel
 

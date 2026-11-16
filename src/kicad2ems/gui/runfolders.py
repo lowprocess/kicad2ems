@@ -8,22 +8,23 @@ config).
     run_dir(base, board)      # <base>/<board>_20261013_141502
     preview_dir(base, board)  # <base>/<board>_preview
     runs(base, board)         # [(folder, label)], the newest first: this
-                              board's runs that wrote a summary
+                              # board's runs that wrote a summary
 
 The other analyses' tools (pcbqs's: 'pdn', 'mqs') get a folder per run there
 too, so two runs of a rail can be compared; their results from before that
 (pdn_<rail>, mqs_<converter> beside the board) are still found.
 
-    tool_dir(base, board, kind, name)    #
-                                         <base>/<board>_pdn_<rail>_20261013_141502
+    tool_dir(base, board, kind, name)
+        # <base>/<board>_pdn_<rail>_20261013_141502
     tool_preview_dir(base, board, kind)  # <base>/<board>_mqs_preview
     tool_runs(base, board)               # [(folder, kind, label)], the newest
-                                         first: those that wrote a result
+                                         # first: those that wrote a result
 """
 import datetime, glob, os, re
 # the folders' names are kicad2ems's (its `kicad2ems study` puts its runs there
 # too): kicad2ems.core.runs
-from kicad2ems.core.api.frontend import board_name, run_dir, preview_dir, tool_dir, tool_preview_dir  # noqa: F401
+from kicad2ems.core.api.frontend import (  # noqa: F401
+    board_name, run_dir, preview_dir, tool_dir, tool_preview_dir)
 
 STAMP = '%Y%m%d_%H%M%S'
 
@@ -40,9 +41,9 @@ def runs(base, board):
             continue
         summary = os.path.join(d, f"{name}_run.json")
         when = datetime.datetime.strptime(m.group(1), STAMP)
-        # stopped or failed before it wrote one: kept,
+        # stopped or failed before it wrote one: kept, with its log (R-E24:
+        # these had vanished)
         if not os.path.exists(summary):
-            # with its log (R-E24: these had vanished)
             out.append((d, f"{when:%Y-%m-%d %H:%M:%S} ({ending(d)})"))
             continue
         try:

@@ -3,14 +3,14 @@ S-parameter traces for the interactive plots (no Qt here: testable without a
 display).
 
     traces = load_traces(files, compare=None)  # the run's Touchstone files
-                                               (openEMS, mom25d, line model,
-                                               compare)
+                                               # (openEMS, mom25d, line model,
+                                               # compare)
     x, y = transform('dB', tr)                 # what a plot kind shows of a
-                                               trace
+                                               # trace
     x, y = difference('Δ|S| (dB)', tr, ref)    # a trace against the same S of
-                                               another solver
+                                               # another solver
     value_at(kind, tr, f)                      # the value at a frequency
-                                               (cursor, markers)
+                                               # (cursor, markers)
     export_csv(path, traces, kind)
 """
 import os, re
