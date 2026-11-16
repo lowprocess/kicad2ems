@@ -1,7 +1,8 @@
 """DC IR drop of a net's copper with Elmer: steady current conduction in the 3D
 copper and via barrels.
 
-    python -m kicad2ems.fem.elmer.dc board.kicad_pcb --net VHB --source L3 --load Q1=0.67 --load Q2=0.67 --out dc_vhb
+    python -m kicad2ems.fem.elmer.dc board.kicad_pcb --net VHB --source L3 \\
+        --load Q1=0.67 --load Q2=0.67 --out dc_vhb
 
 The source part's pads on the net are held at 0 V; each load draws its current
 through its pads on the net as one equipotential terminal. The copper is the
@@ -58,26 +59,28 @@ def sif(m, loads):
     """The .sif: the source pads at 0 V, each load an equipotential terminal
     drawing its current (Potential Constant with a flux); each load's mean
     potential saved."""
-    bodies = ("Body 1\n  Target Bodies(1) = 1\n  Equation = 1\n  Material = "
-              "1\nEnd\n")
+    bodies = ("Body 1\n  Target Bodies(1) = 1\n  Equation = 1\n"
+              "  Material = 1\nEnd\n")
     if m['barrels']:
-        bodies += ("Body 2\n  Target Bodies(1) = 2\n  Equation = 1\n  Material "
-                   "= 2\nEnd\n")
+        bodies += ("Body 2\n  Target Bodies(1) = 2\n  Equation = 1\n"
+                   "  Material = 2\nEnd\n")
     bcs = [
-        "Boundary Condition 1\n  Target Boundaries(1) = "
-        f"{m['boundaries']['source']}\n  Potential = 0.0\nEnd\n"
+        "Boundary Condition 1\n"
+        f"  Target Boundaries(1) = {m['boundaries']['source']}\n"
+        "  Potential = 0.0\nEnd\n"
     ]
     masks = []
     for k, (name, amps) in enumerate(loads.items()):
         bcs.append(
-            f"Boundary Condition {k + 2}\n  Name = \"{name}\"\n  Target "
-            f"Boundaries(1) = {m['boundaries'][name]}\n  Potential Constant = "
-            f"Logical True\n  Potential Constant Flux = Real {-amps:.12g}\n  "
-            f"load{k} = Logical True\nEnd\n")
+            f"Boundary Condition {k + 2}\n  Name = \"{name}\"\n"
+            f"  Target Boundaries(1) = {m['boundaries'][name]}\n"
+            "  Potential Constant = Logical True\n"
+            f"  Potential Constant Flux = Real {-amps:.12g}\n"
+            f"  load{k} = Logical True\nEnd\n")
         masks.append(
-            f"  Variable {k + 1} = Potential\n  Operator {k + 1} = boundary "
-            f"mean\n  Mask Name {k + 1} = load{k}\n"
-        )
+            f"  Variable {k + 1} = Potential\n"
+            f"  Operator {k + 1} = boundary mean\n"
+            f"  Mask Name {k + 1} = load{k}\n")
     return elmer.header() + f"""{bodies}Equation 1
   Active Solvers(2) = 1 2
 End
@@ -102,8 +105,9 @@ def layered_sif(m, loads, plating=PLATING):
     for i, b in enumerate(m['bodies']):
         on = b in (COPPER_E, BARREL_E)
         bodies += (
-            f"Body {i + 1}\n  Target Bodies(1) = {b}\n  Equation = "
-            f"{1 if on else 2}\n  Material = "
+            f"Body {i + 1}\n  Target Bodies(1) = {b}\n"
+            f"  Equation = {1 if on else 2}\n"
+            "  Material = "
             f"{1 if b == COPPER_E else 2 if b == BARREL_E else 3}\nEnd\n")
     bcs, masks, k = [], [], 0
     for i, (tag, (names, _)) in enumerate(m['boundaries'].items()):
@@ -113,18 +117,19 @@ def layered_sif(m, loads, plating=PLATING):
                 lines.append("  Potential = 0.0")
             elif n.startswith('I:') and n[2:] in loads:
                 lines.append(
-                    "  Potential Constant = Logical True\n  Potential "
-                    f"Constant Flux = Real {-loads[n[2:]]:.12g}\n  load{k} = "
-                    "Logical True")
+                    "  Potential Constant = Logical True\n"
+                    "  Potential Constant Flux = Real "
+                    f"{-loads[n[2:]]:.12g}\n"
+                    f"  load{k} = Logical True")
                 masks.append(
-                    f"  Variable {k + 1} = Potential\n  Operator {k + 1} = "
-                    f"boundary mean\n  Mask Name {k + 1} = load{k}\n"
-                )
+                    f"  Variable {k + 1} = Potential\n"
+                    f"  Operator {k + 1} = boundary mean\n"
+                    f"  Mask Name {k + 1} = load{k}\n")
                 k += 1
         if lines:
             bcs.append(
-                f"Boundary Condition {len(bcs) + 1}\n  Target Boundaries(1) = "
-                f"{tag}\n"
+                f"Boundary Condition {len(bcs) + 1}\n"
+                f"  Target Boundaries(1) = {tag}\n"
                 + '\n'.join(lines) + "\nEnd\n")
     return elmer.header() + f"""{bodies}Equation 1
   Active Solvers(1) = 1

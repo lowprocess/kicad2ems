@@ -4,11 +4,12 @@ lines of, swept through the stack as wedges. Each wedge is copper, a via barrel,
 board material or (beside the copper of an outer layer) absent, by where its
 triangle lies in that layer.
 
-    m = layered_mesh(board, 'case/mesh', electric={'VHB'}, terminals={'Q1': [(layer, polygon)]}, h=0.3)
-    m['boundaries']  # {tag: (names, area mm2)}: 1 the exposed faces, 10.. the
-                     terminals' pads (also exposed)
-    m['bodies']      # the bodies present: COPPER_E, BARREL_E (of `electric`
-                     nets), COPPER, BARREL, BOARD
+    m = layered_mesh(board, 'case/mesh', electric={'VHB'},
+                     terminals={'Q1': [(layer, polygon)]}, h=0.3)
+    m['boundaries']  # {tag: (names, area mm2)}: 1 the exposed faces,
+                     # 10.. the terminals' pads (also exposed)
+    m['bodies']      # the bodies present: COPPER_E, BARREL_E (of
+                     # `electric` nets), COPPER, BARREL, BOARD
 
 No 3D booleans: the copper of real boards (planes with hundreds of holes, on
 several layers) breaks them, and all the board's copper matters to where the
@@ -192,16 +193,16 @@ def layered_mesh(board, folder, electric=(), copper=None, terminals=None,
         raise ValueError('the board has no outline')
     if crop is not None:
         region = region.intersection(crop)
-    region = (max(region.geoms, key=lambda p: p.area) if hasattr(
-        region, 'geoms') else region)
+    region = (max(region.geoms, key=lambda p: p.area)
+              if hasattr(region, 'geoms') else region)
     region = shapely.set_precision(region.simplify(tol), grid)
     every = {c.get('net') for l in names for c in board['copper'].get(l, [])}
     passive = (every if copper is None else set(copper)) - electric
     cu = {
         l: (_clean(copper_of(board, electric, l), region, tol, grid)
             if electric else None,
-            _clean(copper_of(board, passive, l), region, 2
-                   * tol, grid) if passive else None)
+            _clean(copper_of(board, passive, l), region, 2 * tol, grid)
+            if passive else None)
         for l in names
     }
     if electric and not any(e is not None for e, _ in cu.values()):
@@ -394,9 +395,8 @@ def layered_mesh(board, folder, electric=(), copper=None, terminals=None,
     folder.mkdir(parents=True, exist_ok=True)
     nw, nb = len(wedges), len(tris) + len(quads)
     (folder / 'mesh.header').write_text(
-        f'{len(nodes)} {nw} {nb}\n3\n706 {nw}\n303 {len(tris)}\n404 '
-        f'{len(quads)}\n'
-    )
+        f'{len(nodes)} {nw} {nb}\n3\n706 {nw}\n303 {len(tris)}\n'
+        f'404 {len(quads)}\n')
     with open(folder / 'mesh.nodes', 'w') as fh:
         np.savetxt(
             fh, np.c_[np.arange(1,
@@ -419,12 +419,12 @@ def layered_mesh(board, folder, electric=(), copper=None, terminals=None,
                       np.zeros(len(quads), int),
                       np.full(len(quads), 404), quads + 1], fmt='%d')
     r = np.array([v[4] for v in vias]) if vias else np.array([0.15])
-    vol = lambda b: float((0.5 * np.abs(
-        _cross(xy[tri[wt, 1]] - xy[tri[wt, 0]], xy[tri[wt, 2]] - xy[tri[wt, 0]])
-    ) * (levels[wk + 1] - levels[wk]))[wbody == b].sum())
+    vol = lambda b: float(
+        (0.5 * np.abs(_cross(xy[tri[wt, 1]] - xy[tri[wt, 0]],
+                             xy[tri[wt, 2]] - xy[tri[wt, 0]]))
+         * (levels[wk + 1] - levels[wk]))[wbody == b].sum())
     log(f'mesh: {nw:,} wedges on {nt:,} triangles in {nk} layers, '
-        f'{len(nodes):,} nodes, {len(vias)} vias'
-        )
+        f'{len(nodes):,} nodes, {len(vias)} vias')
     return dict(boundaries=boundaries, bodies=sorted(set(wbody.tolist())),
                 wedges=nw, triangles=nt, cells=cells, vias=len(vias), via_r=r,
                 nodes=nodes, xy=xy, tri=tri, node=node, body=body, faces=tris,

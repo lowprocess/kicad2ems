@@ -2,20 +2,20 @@
 ground, decoupling capacitors, regulator and loads), solved again in 3D, its
 impedance at each load beside pcbqs's.
 
-    python -m kicad2ems.pcbqs.pdn board.kicad_pcb --rail +3V3 ... --ports-touchstone --out pdn_3v3
+    python -m kicad2ems.pcbqs.pdn board.kicad_pcb --rail +3V3 ... \\
+        --ports-touchstone --out pdn_3v3
     python -m kicad2ems.fem.palace.pdn --pdn pdn_3v3 --out pdn_3v3_palace
 
 Every part on the rail is a lumped port across the gap between its closest rail
-pad and ground pad (a series part's:
-between its two pads), and Palace solves the bare copper between them: the
-rail's and the ground's copper and vias as PEC sheets and barrels, the
-dielectric between. Its port matrix (Z = R (I + S)(I - S)^-1, the ports' R near
-the rail's impedances) is then closed by the parts, as kicad2ems closes part
-ports (embed.close): each series part, the decaps (C, ESR, ESL, or their vendor
-file) and the regulator (R + L, or its file) by its own impedance, the loads
-left open, which is what each load sees. Palace's ports stand at the parts'
-pads, so the copper from the pads to the planes (pcbqs's mount inductance) is
-Palace's own here.
+pad and ground pad (a series part's: between its two pads), and Palace solves
+the bare copper between them: the rail's and the ground's copper and vias as PEC
+sheets and barrels, the dielectric between. Its port matrix (Z = R (I + S)(I -
+S)^-1, the ports' R near the rail's impedances) is then closed by the parts, as
+kicad2ems closes part ports (embed.close): each series part, the decaps (C, ESR,
+ESL, or their vendor file) and the regulator (R + L, or its file) by its own
+impedance, the loads left open, which is what each load sees. Palace's ports
+stand at the parts' pads, so the copper from the pads to the planes (pcbqs's
+mount inductance) is Palace's own here.
 
 Writes <out>/pdn_palace.json: the frequencies, the bare port matrix's diagonal,
 each load's |Z| and phase, pcbqs's beside them (its z and, where the run wrote

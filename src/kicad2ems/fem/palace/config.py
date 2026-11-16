@@ -62,9 +62,8 @@ def config(mdl, freq, order=2, tol=1e-3, out='postpro', verbose=2,
         raise ValueError(
             "a far field needs the absorbing box (box='absorbing')")
     f = np.asarray(freq, float) / 1e9                       # GHz
-    driven_ports = (set(range(len(mdl.ports)))
-                    if excite is None else {int(k)
-                                            for k in excite})
+    driven_ports = (set(range(len(mdl.ports))) if excite is None
+                    else {int(k) for k in excite})
     ports = _ports(mdl, driven_ports)
     materials = _materials(mdl)
     uniform = (len(f) > 1 and np.allclose(np.diff(f), (f[-1] - f[0]) /

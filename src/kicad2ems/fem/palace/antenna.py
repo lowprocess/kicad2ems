@@ -7,8 +7,10 @@ Palace integrates the fields on the air box's faces to the far field r E at
 given angles (its FarField postprocessing), in a second run at a few frequencies
 over the band and the pattern frequency, the antenna's port alone driven:
 
-    ang = angles(step)  # the sphere every 5 deg and the three cuts every `step`
-    ...config(mdl, ffr, tol=0, excite=[k], farfield=ang, out='postpro_ff'), run...
+    # the sphere every 5 deg and the three cuts every `step`
+    ang = angles(step)
+    ...config(mdl, ffr, tol=0, excite=[k], farfield=ang,
+              out='postpro_ff'), run...
     ant, sphere = analyse(ffr, s11, pinc, th, ph, E, step, f_pattern)
 
 The model is the finite board in air: its edges and its back radiate. The
@@ -67,7 +69,8 @@ def analyse(ffr, s11, pinc, theta, phi, E, step=2.0, f_pattern=None):
     the result dict without the match (rows, f_pattern, cuts, sphere) and the
     sphere file's arrays (theta, phi, freq, dmax, prad, e_norm (nf, nphi,
     ntheta))."""
-    from kicad2ems.core.api.solver import gain_table, add_polarisation, pattern_gain, phased
+    from kicad2ems.core.api.solver import (gain_table, add_polarisation,
+                                           pattern_gain, phased)
     ffr = np.asarray(ffr, float)
     E = np.asarray(E)
     at = {_key(t, p): i for i, (t, p) in enumerate(zip(theta, phi))}

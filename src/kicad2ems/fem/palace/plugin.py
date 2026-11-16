@@ -376,14 +376,15 @@ class Palace(Solver):
                    if m['Q'] < DAMPED_Q else {}))
             for i, m in enumerate(found)
         ]
-        about = ((
-            f"Palace's eigenmodes above {run.fmin / 1e9:g} GHz, " +
-            ("in the metal can"
-             if box == 'pec' else "the open board (radiation in Q)")
-            + "; Q loaded by the ports' resistors" +
-            (", the copper's loss" if s.palace_loss else "") +
-            f" and the dielectric's tan d; Q_ext: each port's share. A Q under {DAMPED_Q:g} is a feed line "
-            "damped by its port's resistor, not a resonance"))
+        about = (
+            f"Palace's eigenmodes above {run.fmin / 1e9:g} GHz, "
+            + ("in the metal can" if box == 'pec'
+               else "the open board (radiation in Q)")
+            + "; Q loaded by the ports' resistors"
+            + (", the copper's loss" if s.palace_loss else "")
+            + " and the dielectric's tan d; Q_ext: each port's share. "
+            f"A Q under {DAMPED_Q:g} is a feed line damped by its port's "
+            "resistor, not a resonance")
         for r in rows:
             ext = ', '.join(f"{p} {q:.4g}" for p, q in r['q_ext'].items())
             run.log(
@@ -405,7 +406,9 @@ class Palace(Solver):
         antenna results (the JSON, the sphere, the plots and the report
         section)."""
         import json
-        from kicad2ems.core.api.solver import match_summary, describe_antenna, save_antenna, plot_antenna, plot_pattern
+        from kicad2ems.core.api.solver import (match_summary, describe_antenna,
+                                               save_antenna, plot_antenna,
+                                               plot_pattern)
         from . import antenna, config, run as prun
         s, m, work, mdl = run.s, run.m, prep['work'], prep['model']
         names = [p.name for p in m.ports]

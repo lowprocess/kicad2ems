@@ -9,11 +9,16 @@ terminals (pads) tagged on the copper's surface.
 
 Real copper needs care (each point found on wpthb and Jetson boards,
 pcbqs/validation/dc_elmer.py):
-  - polygons simplified to `tol` (near-duplicate vertices make overlapping facets);
-  - holes cut by a boolean (as curve loops of one face OCC silently dropped some on real planes);
-  - copper fragmented against the via cylinders only (fragmenting everything against everything left planes unfused);
-  - pads tagged on the mesh, not split in the geometry (split pads' slivers fail to mesh);
-  - the size-field points cleared after meshing (orphan nodes make Elmer's system singular).
+  - polygons simplified to `tol` (near-duplicate vertices make overlapping
+    facets);
+  - holes cut by a boolean (as curve loops of one face OCC silently dropped
+    some on real planes);
+  - copper fragmented against the via cylinders only (fragmenting everything
+    against everything left planes unfused);
+  - pads tagged on the mesh, not split in the geometry (split pads' slivers
+    fail to mesh);
+  - the size-field points cleared after meshing (orphan nodes make Elmer's
+    system singular).
 """
 from pathlib import Path
 

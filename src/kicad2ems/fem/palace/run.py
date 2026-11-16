@@ -21,8 +21,8 @@ Palace is found as
                      Spack view in /opt/views/view): run in rootless podman with
                      that as its root, no network, as the user; default
                      ~/opt/palace/rootfs
-  each also as kicad2ems's installer recorded it (kicad2ems-site.toml: palace, palace_rootfs), after the
-  environment's and before PATH's
+  each also as kicad2ems's installer recorded it (kicad2ems-site.toml:
+  palace, palace_rootfs), after the environment's and before PATH's
 """
 import json
 import os

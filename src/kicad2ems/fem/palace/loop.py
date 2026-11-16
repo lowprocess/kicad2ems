@@ -61,10 +61,10 @@ def port_spec(raw, converter, vin, ground):
                 if best is None or gap < best[0]:
                     lay_ = 'F.Cu' if lay == '*.Cu' else lay
                     mid = [(pa.x + pb.x) / 2, (pa.y + pb.y) / 2]
-                    # across the feed: the middle of where the
+                    # across the feed: the middle of where the pads face each
+                    # other (nearest_points gives a corner)
                     ba, bb = a['geom'].bounds, b['geom'].bounds
-                    o = 1 - axis  # pads face each other (nearest_points
-                    # gives a corner)
+                    o = 1 - axis
                     lo, hi = max(ba[o], bb[o]), min(ba[o + 2], bb[o + 2])
                     if hi > lo:
                         mid[o] = (lo + hi) / 2
@@ -120,9 +120,8 @@ def solve(mqs, out='loop', order=2, feature=1.0, hmin=0.25, hmax=2.0,
         f"{gap:.3f} mm), capacitors "
         f"{', '.join(pt.ref for pt in b.parts) or 'none'} as straps"
         + (f"; not on the cropped copper: {', '.join(left)}" if left else ''))
-    # (an RF mesh's 0.02 mm at the Jetson's pads: 2.2 M
+    # (an RF mesh's 0.02 mm at the Jetson's pads: 2.2 M tets)
     h0 = max(model.feature_size(b) / feature, hmin)
-    # tets)
     mdl = model.build(b, float(f.max()), str(work / 'model.msh'), margin=margin,
                       hmin=h0, hmax=hmax, per_feature=feature, log=log)
     mesh_s = time.perf_counter() - t0

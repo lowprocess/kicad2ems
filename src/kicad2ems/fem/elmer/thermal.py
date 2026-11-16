@@ -1,27 +1,36 @@
-"""The board's steady temperature with Elmer: heat conducted in all the copper, the vias and the board material, given
-off by convection at the board's faces; heated by parts and by the DC current of a net (as elmer/dc.py solves it),
-whose copper's resistance follows its temperature.
+"""The board's steady temperature with Elmer: heat conducted in all the copper,
+the vias and the board material, given off by convection at the board's faces;
+heated by parts and by the DC current of a net (as elmer/dc.py solves it), whose
+copper's resistance follows its temperature.
 
-    python -m kicad2ems.fem.elmer.thermal board.kicad_pcb --heat Q1=0.3 --heat Q2=0.3 \\
+    python -m kicad2ems.fem.elmer.thermal board.kicad_pcb \\
+        --heat Q1=0.3 --heat Q2=0.3 \\
         --net VHB --source L3 --load Q1=3 --load Q2=3 --out th_vhb
 
---heat REF=WATTS puts a part's dissipation into the copper under its pads, spread evenly (REF.PAD: under that pad
-only); REF=WATTS@DUTY is a part that dissipates WATTS for that fraction of the time, heated by the mean. --heat-from
-takes every part's dissipation from a circuit run: pcbqs's case.json (pcbqs.circuit's parts: their power_W, a
-coupled winding's own loss_W, a switch's gate drive with it), or any JSON {REF: watts}; FILE@DUTY for a converter that runs part of the
-time. A --heat for the same part replaces the file's figure. The temperature is the steady one for the mean power:
-right when the on and off times are short beside the seconds a part's copper takes to warm. --net, --source and
---load are dc.py's: the current's own heat is added, and the drops are those of the warm copper. Writes
-<out>/thermal.json (the hottest point, each part's pad temperature, the drops, the heat balance), <out>/thermal.png
-(the board's faces) and Elmer's case with a .vtu in <out>/elmer.
+--heat REF=WATTS puts a part's dissipation into the copper under its pads,
+spread evenly (REF.PAD: under that pad only); REF=WATTS@DUTY is a part that
+dissipates WATTS for that fraction of the time, heated by the mean. --heat-from
+takes every part's dissipation from a circuit run: pcbqs's case.json
+(pcbqs.circuit's parts: their power_W, a coupled winding's own loss_W, a
+switch's gate drive with it), or any JSON {REF: watts}; FILE@DUTY for a
+converter that runs part of the time. A --heat for the same part replaces the
+file's figure. The temperature is the steady one for the mean power: right when
+the on and off times are short beside the seconds a part's copper takes to warm.
+--net, --source and --load are dc.py's: the current's own heat is added, and the
+drops are those of the warm copper. Writes <out>/thermal.json (the hottest
+point, each part's pad temperature, the drops, the heat balance),
+<out>/thermal.png (the board's faces) and Elmer's case with a .vtu in
+<out>/elmer.
 
     from kicad2ems.fem.elmer.thermal import solve
-    r = solve(board, 'th', heat={'Q1': 0.3}, nets={'VHB'}, source='L3', loads={'Q1': 3.0})
+    r = solve(board, 'th', heat={'Q1': 0.3}, nets={'VHB'}, source='L3',
+              loads={'Q1': 3.0})
     r['T_max'], r['parts']['Q1'], r['drop_mV']['Q1'], r['balance']
 
-What is left out: the parts' own bodies (a part's heat all enters the board, its case gives none to the air: the pad
-temperatures are upper bounds), solder mask, heat taken by connectors and wires, and radiation and air flow other
-than as the one coefficient --htc (W/m2/K; 10 is still air with radiation near 60 C).
+What is left out: the parts' own bodies (a part's heat all enters the board, its
+case gives none to the air: the pad temperatures are upper bounds), solder mask,
+heat taken by connectors and wires, and radiation and air flow other than as the
+one coefficient --htc (W/m2/K; 10 is still air with radiation near 60 C).
 """
 import argparse
 import json
@@ -109,14 +118,14 @@ def sif(m, heat=None, loads=None, htc=10.0, ambient=25.0, k_board=K_BOARD,
     for i, b in enumerate(m['bodies']):
         on = electric and b in (COPPER_E, BARREL_E)
         bodies += (
-            f"Body {i + 1}\n  Name = \"{NAMES[b]}\"\n  Target Bodies(1) = "
-            f"{b}\n  Equation = {1 if on or not electric else 2}\n  Material = "
-            f"{i + 1}\n  Initial Condition = "
-            f"1\n{'  Body Force = 1' + chr(10) if on else ''}End\n"
-        )
+            f"Body {i + 1}\n  Name = \"{NAMES[b]}\"\n"
+            f"  Target Bodies(1) = {b}\n"
+            f"  Equation = {1 if on or not electric else 2}\n"
+            f"  Material = {i + 1}\n  Initial Condition = 1\n"
+            f"{'  Body Force = 1' + chr(10) if on else ''}End\n")
         k, s = mats[b]
-        materials += (f"Material {i + 1}\n  Density = {rho_c[b][0]:.6g}\n  "
-                      f"Heat Capacity = {rho_c[b][1]:.6g}\n")
+        materials += (f"Material {i + 1}\n  Density = {rho_c[b][0]:.6g}\n"
+                      f"  Heat Capacity = {rho_c[b][1]:.6g}\n")
         materials += (
             f"  Heat Conductivity = {k:.6g}\n" if k else
             f"  Heat Conductivity(3) = {k_board[0]:g} {k_board[0]:g} "
@@ -132,9 +141,9 @@ def sif(m, heat=None, loads=None, htc=10.0, ambient=25.0, k_board=K_BOARD,
     bcs, masks, k = '', '', 0
     for i, (tag, (names, _)) in enumerate(m['boundaries'].items()):
         bcs += (
-            f"Boundary Condition {i + 1}\n  Target Boundaries(1) = {tag}\n  "
-            f"Heat Transfer Coefficient = {htc:g}\n  External Temperature = "
-            f"{ambient:g}\n")
+            f"Boundary Condition {i + 1}\n  Target Boundaries(1) = {tag}\n"
+            f"  Heat Transfer Coefficient = {htc:g}\n"
+            f"  External Temperature = {ambient:g}\n")
         q = sum(heat[n[2:]] / area[n] for n in names if n.startswith('P:'))
         if q:
             bcs += f"  Heat Flux = {q:.9g}\n"
@@ -154,12 +163,14 @@ def sif(m, heat=None, loads=None, htc=10.0, ambient=25.0, k_board=K_BOARD,
                         "of them or none"
                     )
                 bcs += (
-                    "  Potential Constant = Logical True\n  Potential "
-                    f"Constant Flux = Real {-loads[n[2:]]:.12g}\n  load{k} = "
-                    "Logical True\n")
+                    "  Potential Constant = Logical True\n"
+                    "  Potential Constant Flux = Real "
+                    f"{-loads[n[2:]]:.12g}\n"
+                    f"  load{k} = Logical True\n")
                 masks += (
-                    f"  Variable {k + 2} = Potential\n  Operator {k + 2} = "
-                    f"boundary mean\n  Mask Name {k + 2} = load{k}\n")
+                    f"  Variable {k + 2} = Potential\n"
+                    f"  Operator {k + 2} = boundary mean\n"
+                    f"  Mask Name {k + 2} = load{k}\n")
                 k += 1
         bcs += "End\n"
     current = (f"""Solver 1
@@ -168,7 +179,8 @@ def sif(m, heat=None, loads=None, htc=10.0, ambient=25.0, k_board=K_BOARD,
   Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
   Calculate Joule Heating = Logical True
   Calculate Nodal Heating = Logical True
-  Constant Weights = Logical True                 ! without it Elmer scales the nodal heat by each node's volume
+  Constant Weights = Logical True                 ! without it Elmer scales \
+the nodal heat by each node's volume
   Linear System Solver = "Direct"
   Linear System Direct Method = "Umfpack"
   Steady State Convergence Tolerance = 1.0e-6
@@ -188,35 +200,43 @@ End
     record = ''
     if transient:  # each step: the hottest point, each part's pads
         record = (
-            f'Solver {first + 2}\n  Exec Solver = After Timestep\n  Equation = "SaveScalars"\n'
-            '  Procedure = "SaveData" "SaveScalars"\n  Filename = "transient.dat"\n'
+            f'Solver {first + 2}\n  Exec Solver = After Timestep\n'
+            '  Equation = "SaveScalars"\n'
+            '  Procedure = "SaveData" "SaveScalars"\n'
+            '  Filename = "transient.dat"\n'
             '  Variable 1 = Temperature\n  Operator 1 = max\n')
         for j, spec in enumerate(heat):
             record += (
-                f'  Variable {j + 2} = Temperature\n  Operator {j + 2} = '
-                f'boundary int mean\n  Mask Name {j + 2} = part{j}\n')
+                f'  Variable {j + 2} = Temperature\n'
+                f'  Operator {j + 2} = boundary int mean\n'
+                f'  Mask Name {j + 2} = part{j}\n')
         record += 'End\n'
         dts = steps(transient)
         simulation = (
-            '  Simulation Type = Transient\n  Timestepping Method = BDF\n  BDF Order = 2\n'
+            '  Simulation Type = Transient\n  Timestepping Method = BDF\n'
+            '  BDF Order = 2\n'
             f'  Timestep Intervals({len(dts)}) = {" ".join("1" for _ in dts)}\n'
-            f'  Timestep Sizes({len(dts)}) = {" ".join(f"{d:.9g}" for d in dts)}\n'
+            f'  Timestep Sizes({len(dts)}) = '
+            f'{" ".join(f"{d:.9g}" for d in dts)}\n'
             '  Steady State Max Iterations = 1\n')
         output = ''
     else:
         simulation = (
-            '  Simulation Type = Steady State\n  Steady State Max Iterations '
-            f'= {max_iterations if electric else 1}\n'
-        )
+            '  Simulation Type = Steady State\n'
+            '  Steady State Max Iterations = '
+            f'{max_iterations if electric else 1}\n')
         output = (
-            f'Solver {first + 2}\n  Exec Solver = After All\n  Equation = "ResultOutput"\n'
-            '  Procedure = "ResultOutputSolve" "ResultOutputSolver"\n  Output Directory = "."\n'
-            '  Output File Name = "case"\n  Vtu Format = Logical True\n  Ascii Output = Logical True\n'
+            f'Solver {first + 2}\n  Exec Solver = After All\n'
+            '  Equation = "ResultOutput"\n'
+            '  Procedure = "ResultOutputSolve" "ResultOutputSolver"\n'
+            '  Output Directory = "."\n'
+            '  Output File Name = "case"\n  Vtu Format = Logical True\n'
+            '  Ascii Output = Logical True\n'
             '  Save Geometry Ids = Logical True\nEnd\n')
     equations = (
-        "Equation 1\n  Active Solvers(2) = 1 2\nEnd\nEquation 2\n  Active "
-        "Solvers(1) = 2\nEnd\n"
-        if electric else "Equation 1\n  Active Solvers(1) = 1\nEnd\n")
+        "Equation 1\n  Active Solvers(2) = 1 2\nEnd\n"
+        "Equation 2\n  Active Solvers(1) = 2\nEnd\n" if electric else
+        "Equation 1\n  Active Solvers(1) = 1\nEnd\n")
     return (elmer.header(simulation)
             + f"""{bodies}{equations}Initial Condition 1
   Temperature = {ambient:g}
@@ -225,7 +245,8 @@ End
   Equation = "Heat Equation"
   Variable = "Temperature"
   Procedure = "HeatSolveVec" "HeatSolver"
-  Vector Assembly = Logical False                 ! the vectorized assembly takes no conductivity tensor
+  Vector Assembly = Logical False                 ! the vectorized assembly \
+takes no conductivity tensor
   Nonlinear System Max Iterations = 1
   Linear System Solver = "Direct"
   Linear System Direct Method = "Umfpack"
@@ -309,10 +330,10 @@ def solve(board, out='thermal', heat=None, nets=None, source=None, loads=None,
         raise ValueError('--transient: seconds, positive')
     elmer.require()
     heat, loads = dict(heat or {}), dict(loads or {})
-    nets = (set()
-            if nets is None else {nets} if isinstance(nets, str) else set(nets))
-    if (nets and (not source or not loads or any(a <= 0
-                                                 for a in loads.values()))):
+    nets = (set() if nets is None else
+            {nets} if isinstance(nets, str) else set(nets))
+    if nets and (not source or not loads
+                 or any(a <= 0 for a in loads.values())):
         raise ValueError(
             'a net that carries current needs its source and loads, each a '
             'positive current'
@@ -602,22 +623,23 @@ def main(argv=None):
     children.guard()  # its solvers stopped with it
     ap = parser()
     a = ap.parse_args(argv)
-    heat, loads = (_pairs(ap, a.heat, '--heat',
-                          'WATTS'), _pairs(ap, a.load, '--load', 'AMPS'))
+    heat, loads = (_pairs(ap, a.heat, '--heat', 'WATTS'),
+                   _pairs(ap, a.load, '--load', 'AMPS'))
     say = lambda s: print('fem thermal:', s, flush=True)
     try:
         board = load_board(a.board)
         if a.heat_from:
-            path, _, duty = (a.heat_from.rpartition('@') if re.search(
-                r'@[0-9.eE+-]+$', a.heat_from) else (a.heat_from, '', ''))
+            path, _, duty = (a.heat_from.rpartition('@')
+                             if re.search(r'@[0-9.eE+-]+$', a.heat_from)
+                             else (a.heat_from, '', ''))
             found, left = circuit_heat(board, path,
                                        float(duty) if duty else 1.0)
             say(f"{path}: {len(found)} parts, {sum(found.values()):.4g} W"
                 + (f" at {float(duty):g} of the time" if duty else '') +
                 (f"; {len(left)} entries are not parts on the board or "
                  "dissipate nothing "
-                 f"({', '.join(list(left)[:4])}{', ...' if len(left) > 4 else ''})"
-                 if left else ''))
+                 f"({', '.join(list(left)[:4])}"
+                 f"{', ...' if len(left) > 4 else ''})" if left else ''))
             specified = {spec.partition('.')[0] for spec in heat}
             heat = {
                 **{ref: w
