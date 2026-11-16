@@ -292,26 +292,17 @@ class MoM25D(Solver):
                       comment=f"mom25d stand-in ({run.name})")
 
 
-# ---- in place of the installed packages -------------------------------------
-class _EntryPoint:
-    def __init__(self, name, obj):
-        self.name, self.value, self._obj = name, f"standins:{name}", obj
-
-    def load(self):
-        return self._obj
-
-
+# ---- in place of the real ones ---------------------------------------------
 SOLVERS = [OpenEMS, MoM25D, GFDTD]
 
 
-def entry_points():
-    """The stand-ins as the 'kicad2ems.solvers' entry points."""
-    return [_EntryPoint(c.name, c) for c in SOLVERS]
-
-
 def install():
-    """The stand-ins in place of the installed solver packages: before
-    kicad2ems.core.config (and the GUI's runner) build their settings and forms
-    from the registry. Leaves the registry to be built again."""
-    solvers._entry_points = entry_points
-    solvers._registry, solvers.broken[:] = None, []
+    """The stand-ins in place of the full-wave solvers (the line model's are
+    the real ones): before kicad2ems.core.config (and the GUI's runner) build
+    their settings and forms from the registry. Leaves the registry to be built
+    again."""
+    solvers.SOLVERS = (
+        'kicad2ems.core.solvers.lines.plugin:Qucs',
+        'kicad2ems.core.solvers.lines.plugin:Scikit',
+        *(f"{__name__}:{c.__name__}" for c in SOLVERS))
+    solvers._registry = None

@@ -1,13 +1,12 @@
 """
-The solvers, as plugins: each one a Solver subclass registered under its name.
-Built in: the line model solved as a circuit by qucs (qucsator) or scikit
-(scikit-rf). The full-wave solvers install as packages that declare an entry
-point in the group 'kicad2ems.solvers' (`mysolver =
-"mypackage.plugin:MySolver"`): openems and gfdtd (3D FDTD, the one FDTD model on
-openEMS's engine or gfdtd's: kicad2ems-fdtd, the openems and gfdtd extras),
-mom25d and mixed (2.5D Method of Moments: mom25d, the mom extra). Each then
-appears in --solvers, --check, the config tables and the GUI with no change
-here.
+The solvers: each one a Solver subclass, listed in SOLVERS by its module and
+class. The line model solved as a circuit by qucs (qucsator) or scikit
+(scikit-rf); the full-wave solvers openems and gfdtd (3D FDTD, the one FDTD
+model on openEMS's engine or gfdtd's: kicad2ems.fdtd), mom25d and mixed (2.5D
+Method of Moments: kicad2ems.mom25d), palace (3D FEM: kicad2ems.fem) and pcbqs
+(quasi-static: kicad2ems.pcbqs). Each appears in --solvers, --check, the config
+tables and the GUI with no change here. A solver imports what it needs of
+kicad2ems from kicad2ems.core.api.solver.
 
     from kicad2ems.core.solvers import registry, get
     get('mom').name  # 'mom25d' (aliases: fdtd, mom, qucsator, skrf)
@@ -77,13 +76,18 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-# (plugins import it from here)
+# (for the solvers' option tables)
 from ..options import Option  # noqa: F401
 
-# the entry-point group of solvers installed as packages
-GROUP = 'kicad2ems.solvers'
-BUILTIN = ('kicad2ems.core.solvers.lines.plugin:Qucs',
-           'kicad2ems.core.solvers.lines.plugin:Scikit')
+# every solver, as 'module:class': imported on the first registry() call
+SOLVERS = ('kicad2ems.core.solvers.lines.plugin:Qucs',
+           'kicad2ems.core.solvers.lines.plugin:Scikit',
+           'kicad2ems.fdtd.openems.plugin:OpenEMS',
+           'kicad2ems.fdtd.gfdtd:GFDTD',
+           'kicad2ems.mom25d.kicad2ems.mom:MoM25D',
+           'kicad2ems.mom25d.kicad2ems.mixed:Mixed',
+           'kicad2ems.fem.palace.plugin:Palace',
+           'kicad2ems.pcbqs.analyses:QuasiStatic')
 # the solver packages kicad2ems has extras for (pyproject): {extra: the names
 # and aliases of its solvers, its first solver first}. A name of one not
 # installed says how to get it. MOM: the solver --mom adds as a reference.
@@ -239,58 +243,23 @@ class Solver:
         return None
 
 
-# broken: (entry point, error) of plugins that failed to load
-_registry, broken = None, []
-
-
-def _entry_points():
-    from importlib.metadata import entry_points
-    return list(entry_points(group=GROUP))
+_registry = None
 
 
 def registry():
-    """{name: Solver}: the built-in solvers and those installed through entry
-    points, by their `order`. A plugin that fails to load, is written for
-    another kicad2ems API (its `api`: kicad2ems.core.api), or reuses a name or a
-    setting, is left out and listed in `broken`. Solvers may share a setting by
-    listing the same Option object (the FDTD solvers' mesh and run settings)."""
+    """{name: Solver}: every solver of SOLVERS, by its `order` (then its name).
+    Solvers may share a setting by listing the same Option object (the FDTD
+    solvers' mesh and run settings)."""
     global _registry
     if _registry is None:
-        reg, keys = {}, {}
-        for spec in BUILTIN:
-            mod, _, cls = spec.partition(':')
-            sv = getattr(importlib.import_module(mod), cls)()
-            reg[sv.name] = sv
-            keys |= {o.key: o for o in sv.options}
-        names = (set(reg) | {a
-                             for sv in reg.values()
-                             for a in sv.aliases} | {LINES, 'all'})
-        from ..config import CORE
-        keys |= {o.key: o for o in CORE}
-        from ..api import compatible
-        for ep in _entry_points():
-            try:
-                sv = ep.load()()
-                why = compatible(getattr(sv, 'api', None))
-                if why:
-                    raise ImportError(why)
-                clash = (([sv.name] if sv.name in names else []) + [
-                    a for a in sv.aliases if a in names
-                ] + [o.key for o in sv.options if keys.get(o.key, o) is not o])
-                if not sv.name or clash:
-                    raise ValueError(
-                        "name or settings already taken: "
-                        f"{', '.join(clash) or 'no name'}"
-                    )
-            except Exception as e:  # a broken plugin never stops kicad2ems
-                broken.append(
-                    (f"{ep.name} = {ep.value}", f"{type(e).__name__}: {e}"))
-                continue
-            reg[sv.name] = sv
-            names |= {sv.name, *sv.aliases}
-            keys |= {o.key: o for o in sv.options}
-        _registry = dict(
-            sorted(reg.items(), key=lambda kv: (kv[1].order, kv[0])))
+        found = []
+        for spec in SOLVERS:
+            module, _, cls = spec.partition(':')
+            found.append(getattr(importlib.import_module(module), cls)())
+        _registry = {
+            sv.name: sv
+            for sv in sorted(found, key=lambda sv: (sv.order, sv.name))
+        }
     return _registry
 
 
@@ -310,9 +279,6 @@ def missing(name):
     extra = next((e for e, names in EXTRAS.items() if name in names), None)
     if extra is None or name in aliases():
         return None
-    if any(ep.split(' =')[0] in EXTRAS[extra] for ep, _ in broken):
-        return (f"solver {name!r} is installed but failed to load (kicad2ems "
-                "--check)")
     from ..extras import install_hint
     return f"solver {name!r} is not installed: {install_hint(extra)}"
 

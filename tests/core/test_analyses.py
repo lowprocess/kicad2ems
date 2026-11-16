@@ -8,16 +8,6 @@ from kicad2ems.core import analyses
 from kicad2ems.core.api import API_VERSION, analysis as analysis_api, frontend
 
 
-class _EP:
-    def __init__(self, name, obj):
-        self.name, self.value, self._obj = name, f"tests:{name}", obj
-
-    def load(self):
-        if isinstance(self._obj, Exception):
-            raise self._obj
-        return self._obj
-
-
 class Heat(analyses.Analysis):
     api = (2, 5)
     name, label, tool, order = 'heat', 'Heat', 'fake.heat', 30
@@ -53,13 +43,12 @@ class Drop(Heat):
 
 @pytest.fixture
 def plugins(monkeypatch):
-    def install(*eps):
-        monkeypatch.setattr(analyses, '_registry', None)
-        monkeypatch.setattr(analyses, 'broken', [])
-        monkeypatch.setattr(analyses, '_entry_points', lambda: list(eps))
+    """The registry: these analyses (classes), by their order."""
+    def install(*classes):
+        found = sorted((c() for c in classes), key=lambda a: (a.order, a.name))
+        monkeypatch.setattr(analyses, '_registry', {a.name: a for a in found})
         return analyses.registry()
-    yield install
-    analyses._registry = None
+    return install
 
 
 def test_every_name_resolves():
@@ -71,35 +60,8 @@ def test_every_name_resolves():
             and frontend.analysis_of is analyses.analysis_of)
 
 
-def test_registry_by_order_and_what_it_refuses(plugins):
-    class Newer(Heat):
-        name, api = 'newer', (API_VERSION[0] + 1, 0)
-
-    class Nameless(Heat):
-        name = ''
-
-    class Rf(Heat):
-        name = analyses.RF  # the S-parameter run's key
-
-    class Odd(Heat):
-        name = 'odd'
-
-        def options(self):
-            return [
-                dict(key='x', flag='--x', kind='colour', default='', help='',
-                     group='')
-            ]
-
-    reg = plugins(_EP('heat', Heat), _EP('drop', Drop), _EP('again', Heat),
-                  _EP('newer', Newer), _EP('nameless', Nameless), _EP('rf', Rf),
-                  _EP('odd', Odd), _EP('bad', ImportError('no numpy')))
-    assert list(reg) == ['drop', 'heat']                            # by order
-    why = dict((b[0].split(' =')[0], b[1]) for b in analyses.broken)
-    assert set(why) == {'again', 'newer', 'nameless', 'rf', 'odd', 'bad'}
-    assert ('kicad2ems API' in why['newer'] and 'already taken' in why['again']
-            and 'no name' in why['nameless'])
-    assert ('already taken' in why['rf'] and 'unknown kind' in why['odd']
-            and 'no numpy' in why['bad'])
+def test_get_and_check_lines(plugins):
+    reg = plugins(Heat, Drop)
     assert analyses.get('HEAT') is reg['heat']
     with pytest.raises(ValueError, match="no analysis 'cfd'"):
         analyses.get('cfd')
@@ -107,13 +69,12 @@ def test_registry_by_order_and_what_it_refuses(plugins):
     with pytest.raises(ValueError, match="part of kicad2ems: reinstall"):
         analyses.get('pdn')
     lines = analyses.check_lines()
-    assert (any(l.split()[:2] == ['ok', 'heat'] for l in lines)
-            and any('BROKEN' in l and 'odd' in l for l in lines))
+    assert any(l.split()[:2] == ['ok', 'heat'] for l in lines)
     assert any('pdn' in l and 'reinstall kicad2ems' in l for l in lines)
 
 
 def test_whose_result_a_folder_holds(plugins, tmp_path):
-    plugins(_EP('heat', Heat), _EP('drop', Drop))
+    plugins(Heat, Drop)
     assert (analyses.analysis_of(str(tmp_path)) is None
             and analyses.analysis_of(None) is None)
     (tmp_path / 'heat-preview.json').write_text('{}')
@@ -123,7 +84,7 @@ def test_whose_result_a_folder_holds(plugins, tmp_path):
 
 
 def test_a_config_s_analysis_tables(plugins, tmp_path):
-    plugins(_EP('heat', Heat))
+    plugins(Heat)
     cfg = tmp_path / 'b.toml'
     cfg.write_text(
         'board = "b.kicad_pcb"\n[analysis]\nrun = ["Heat", '
@@ -181,7 +142,7 @@ def test_an_analysis_ships_examples(plugins, tmp_path):
                 dict(name='rf_gcpw', config=str(src / 'bare.toml')),
                 dict(name='heat_gone', config=str(src / 'gone.toml'))
             ]
-    plugins(_EP('heat', Shipping))
+    plugins(Shipping)
     ix = ex.index()
     mine = [e for e in ix if e['source'] == ex.SOURCE]
     # each in a group

@@ -49,29 +49,14 @@ class Noise(Analysis):  # brings a question of its own
                           'the field at 3 m', order=90), )
 
 
-class Wrong(Analysis):
-    api, name, label, tool, result, provides = (
-        2, 6), 'wrong', 'Wrong', 'x.w', 'w.json', ('nothing', )
-
-
-class _EP:
-    def __init__(self, cls):
-        self.name, self.value, self.cls = cls.name, f"fake:{cls.__name__}", cls
-
-    def load(self):
-        return self.cls
-
-
 @pytest.fixture
 def plugins(monkeypatch):
+    """The registry: these analyses (classes), by their order."""
     def install(*classes):
-        monkeypatch.setattr(analyses, '_entry_points',
-                            lambda: [_EP(c) for c in classes])
-        monkeypatch.setattr(analyses, '_registry', None)
-        monkeypatch.setattr(analyses, 'broken', [])
+        found = sorted((c() for c in classes), key=lambda a: (a.order, a.name))
+        monkeypatch.setattr(analyses, '_registry', {a.name: a for a in found})
         return analyses.registry()
-    yield install
-    monkeypatch.setattr(analyses, '_registry', None)
+    return install
 
 
 def test_engines_are_solvers_and_analyses_by_what_they_answer(plugins):
@@ -121,10 +106,8 @@ def test_the_tree_lists_every_question_with_its_engines(plugins):
 
 
 def test_a_plugin_without_questions_and_one_with_its_own(plugins):
-    reg = plugins(Old, Noise, Wrong)
-    assert (list(reg) == ['emission', 'mqs']
-            and 'provides questions nobody declares: nothing'
-            in analyses.broken[0][1])
+    reg = plugins(Old, Noise)
+    assert list(reg) == ['emission', 'mqs']
     qs = study.questions()
     # a question of its own name
     assert qs['mqs'].group == 'Other' and qs['mqs'].label == 'Near field'

@@ -413,19 +413,8 @@ class Thermal3D(Thermal):
 FAKES = (PowerIntegrity, NearField, Circuit, Thermal, Thermal3D)
 
 
-class _EP:
-    def __init__(self, cls):
-        self.name, self.value, self._cls = (cls.name, f"tests:{cls.__name__}",
-                                            cls)
-
-    def load(self):
-        return self._cls
-
-
 def install():
-    """The registry holds the stand-ins (and nothing an installed package
-    registers)."""
-    analyses._entry_points = lambda: [_EP(c) for c in FAKES]
+    """The registry holds the stand-ins (and none of kicad2ems's own)."""
+    analyses.ANALYSES = tuple(f"{__name__}:{c.__name__}" for c in FAKES)
     analyses._registry = None
-    analyses.broken.clear()
     return analyses.registry()

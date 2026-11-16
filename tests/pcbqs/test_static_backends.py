@@ -1,7 +1,6 @@
 """Backend equivalence, real host concurrency, bounded scheduling and device
 contracts."""
 import threading
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -150,24 +149,6 @@ def test_existing_openmp_thread_preferences_are_respected(mesh, monkeypatch):
     assert FillEngine(*mesh, backend='threaded').info['workers'] == 3
     monkeypatch.setenv('PCBQS_FILL_THREADS', '4')
     assert FillEngine(*mesh, backend='threaded', workers=1).info['workers'] == 1
-
-
-def test_installed_backend_is_loaded_only_when_selected(mesh, monkeypatch):
-    monkeypatch.setattr(backends, '_FACTORIES', dict(backends._FACTORIES))
-    loaded = []
-    def load():
-        loaded.append(True)
-        return NumpyBackend
-
-    monkeypatch.setattr(
-        backends.metadata, 'entry_points',
-        lambda **kw: [SimpleNamespace(name='external', load=load)])
-    FillEngine(*mesh, backend='numpy')
-    assert loaded == []
-    out = static_moments(*mesh, backend='external', workers=2, chunk=4)
-    assert loaded == [True]
-    reference = static_moments(*mesh, backend='numpy')
-    assert all(np.array_equal(a, b) for a, b in zip(out, reference))
 
 
 def test_missing_gpu_does_not_fall_back_to_cpu(mesh, monkeypatch):

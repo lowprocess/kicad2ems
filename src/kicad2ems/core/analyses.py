@@ -1,14 +1,14 @@
 """
-The analyses, as plugins: tools that work on the same board as a run but are not
-S-parameter solvers (a rail's DC drop and impedance, a converter's near field, a
-circuit on the board's copper, the board's temperature). Each is an Analysis
-subclass registered under its name by a package that declares an entry point in
-the group 'kicad2ems.analyses' (`pdn =
-"kicad2ems.pcbqs.analyses:PowerIntegrity"`): pcbqs's four (the qs extra),
-kicad2ems-fem's (the fem extra). kicad2ems has one of its own, the crosstalk
-between traces (kicad2ems.core.si: BUILTIN, listed with the plugins'). A front
-end lists what the registry holds, builds each one's settings from its options,
-starts it as the command it gives and shows what its result folder holds.
+The analyses: tools that work on the same board as a run but are not
+S-parameter solvers (the crosstalk between traces, a rail's DC drop and
+impedance, a converter's near field, a circuit on the board's copper, the
+board's temperature). Each is an Analysis subclass, listed in ANALYSES by its
+module and class: the crosstalk (kicad2ems.core.si), pcbqs's four
+(kicad2ems.pcbqs.analyses), the Elmer and Palace tools (kicad2ems.fem.analyses).
+An analysis imports what it needs of kicad2ems from kicad2ems.core.api.analysis.
+A front end lists what the registry holds, builds each one's settings from its
+options, starts it as the command it gives and shows what its result folder
+holds.
 
     from kicad2ems.core.analyses import registry, analysis_of
     [a.label for a in registry().values()]
@@ -137,15 +137,27 @@ write_info, write_npz) under <out>/<name>/exc_<what>/ with its board as
 <out>/<name>_board.json, and every front end that shows a run's dumps shows
 them.
 """
+import importlib
 import os
 
 from .extras import install_hint
 from .options import strlist
 from .runs import load_toml
 
-# the entry-point group of analyses installed as packages
-GROUP = 'kicad2ems.analyses'
-# the S-parameter run's own key in a front end's lists: not a plugin's
+# every analysis, as 'module:class': imported on the first registry() call
+ANALYSES = ('kicad2ems.core.si:Crosstalk',
+            'kicad2ems.pcbqs.analyses:PowerIntegrity',
+            'kicad2ems.pcbqs.analyses:NearField',
+            'kicad2ems.pcbqs.analyses:Circuit',
+            'kicad2ems.pcbqs.analyses:Thermal',
+            'kicad2ems.fem.analyses:ElmerDC',
+            'kicad2ems.fem.analyses:ElmerThermal',
+            'kicad2ems.fem.analyses:ElmerCap',
+            'kicad2ems.fem.analyses:PalaceCap',
+            'kicad2ems.fem.analyses:ElmerMag',
+            'kicad2ems.fem.analyses:PalaceLoop',
+            'kicad2ems.fem.analyses:PalacePDN')
+# the S-parameter run's own key in a front end's lists: not an analysis's
 RF = 'rf'
 # the analysis packages kicad2ems has extras for (pyproject): {extra: the
 # analyses it brings}
@@ -273,82 +285,22 @@ class Analysis:
         return []
 
 
-# broken: (entry point, error) of plugins that failed to load
-_registry, broken = None, []
-
-
-# kicad2ems's own analyses: listed with the plugins'
-BUILTIN = (('crosstalk', 'kicad2ems.core.si:Crosstalk'),)
-
-
-class _BuiltIn:
-    """kicad2ems's own analysis as the registry reads an entry point (name,
-    value, load): no package metadata, so a checkout that was installed before
-    it was added has it too."""
-    def __init__(self, name, value):
-        self.name, self.value = name, value
-
-    def load(self):
-        import importlib
-        module, _, attr = self.value.partition(':')
-        return getattr(importlib.import_module(module), attr)
-
-
-def _entry_points():
-    from importlib.metadata import entry_points
-    return ([_BuiltIn(*b) for b in BUILTIN] + [
-        ep for ep in entry_points(group=GROUP) if ep.name not in dict(BUILTIN)
-    ])
+_registry = None
 
 
 def registry():
-    """{name: Analysis}: the analyses installed through entry points, by their
-    `order`. A plugin that fails to load, is written for another kicad2ems API
-    (its `api`: kicad2ems.core.api), has no name or reuses one (or 'rf', the
-    S-parameter run's) or declares an option of an unknown kind is left out and
-    listed in `broken`."""
+    """{name: Analysis}: every analysis of ANALYSES, by its `order` (then its
+    name)."""
     global _registry
     if _registry is None:
-        from .api import compatible
-        reg = {}
-        for ep in _entry_points():
-            try:
-                a = ep.load()()
-                why = compatible(getattr(a, 'api', None))
-                if why:
-                    raise ImportError(why)
-                if not a.name or a.name == RF or a.name in reg:
-                    raise ValueError(f"name already taken: {a.name!r}"
-                                     if a.name else 'no name')
-                bad = [
-                    o.get('key', '?')
-                    for o in a.options()
-                    if o.get('kind') not in KINDS or not o.get('key')
-                ]
-                if bad:
-                    raise ValueError(
-                        f"options of an unknown kind: {', '.join(bad)} (one of "
-                        f"{', '.join(KINDS)})"
-                    )
-                from .study import QUESTIONS
-                own = {q.name for q in getattr(a, 'questions', ()) or ()}
-                unknown = [
-                    q for q in getattr(a, 'provides', ()) or ()
-                    if q not in QUESTIONS and q not in own
-                ]
-                if unknown:
-                    raise ValueError(
-                        "provides questions nobody declares: "
-                        f"{', '.join(unknown)} (kicad2ems's: "
-                        f"{', '.join(QUESTIONS)}; or its own `questions`)"
-                    )
-            except Exception as e:  # a broken plugin never stops kicad2ems
-                broken.append(
-                    (f"{ep.name} = {ep.value}", f"{type(e).__name__}: {e}"))
-                continue
-            reg[a.name] = a
-        _registry = dict(
-            sorted(reg.items(), key=lambda kv: (kv[1].order, kv[0])))
+        found = []
+        for spec in ANALYSES:
+            module, _, cls = spec.partition(':')
+            found.append(getattr(importlib.import_module(module), cls)())
+        _registry = {
+            a.name: a
+            for a in sorted(found, key=lambda a: (a.order, a.name))
+        }
     return _registry
 
 
@@ -371,9 +323,6 @@ def missing(name):
     extra = next((e for e, names in EXTRAS.items() if name in names), None)
     if extra is None or name in registry():
         return None
-    if any(ep.split(' =')[0] in EXTRAS[extra] for ep, _ in broken):
-        return (f"analysis {name!r} is installed but failed to load (kicad2ems "
-                "--check)")
     return f"analysis {name!r} is not installed: {install_hint(extra)}"
 
 
@@ -461,7 +410,7 @@ def read_sets(path):
 
 def check_lines():
     """--check's lines about the analyses: each one's check, the known ones not
-    installed, the broken plugins."""
+    installed."""
     lines = []
     for name, a in registry().items():
         ok, what = a.check()
@@ -471,5 +420,4 @@ def check_lines():
         gone = [n for n in names if n not in registry()]
         if gone and missing(gone[0]):
             lines.append(f"  missing {', '.join(gone)}: {install_hint(extra)}")
-    lines += [f"  BROKEN  {ep}: {err}" for ep, err in broken]
     return lines

@@ -68,20 +68,11 @@ def test_the_four_register_with_kicad2ems():
     assert (pick(made[1]) == dict(converter='part', inductor='part', vin='net',
                                   ground='net', capacitors='parts'))
     assert pick(made[2]) == {} and pick(made[3]) == {}
-    import tomllib
-    eps = (tomllib.load(
-        open(Path(__file__).resolve().parents[2] / 'pyproject.toml',
-             'rb'))['project']['entry-points'])
+    from kicad2ems.core.analyses import ANALYSES
     # (fem's beside)
-    ours = {
-        k: v
-        for k, v in eps['kicad2ems.analyses'].items()
-        if v.startswith('kicad2ems.pcbqs.')
-    }
-    assert (ours == {
-        a.name: f"kicad2ems.pcbqs.analyses:{type(a).__name__}"
-        for a in made
-    })
+    assert ([s for s in ANALYSES if s.startswith('kicad2ems.pcbqs.')] == [
+        f"kicad2ems.pcbqs.analyses:{type(a).__name__}" for a in made
+    ])
 
 
 def test_power_integrity_and_near_field_commands(tmp_path):

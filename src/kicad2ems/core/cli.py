@@ -118,7 +118,7 @@ def check_report():
     longer ones in full: openEMS's import), the solver packages not installed,
     the GUI, what each solver models."""
     import importlib
-    from .solvers import registry, broken, capability_table, missing, EXTRAS
+    from .solvers import registry, capability_table, missing, EXTRAS
     reg = registry()
     lines, ready = [], []
     for name, sv in reg.items():
@@ -137,7 +137,6 @@ def check_report():
         for names in EXTRAS.values()
         if missing(names[0])
     ]
-    lines += [f"  BROKEN  {ep}: {err}" for ep, err in broken]
     from .analyses import check_lines
     also = check_lines()
     if also:

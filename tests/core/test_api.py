@@ -10,7 +10,7 @@ from kicad2ems.core import solvers, sysinfo
 from kicad2ems.core.api import (API_VERSION, compatible, solver as solver_api,
                                 frontend, analysis as analysis_api)
 
-from test_plugins import _EP, _Fake
+from test_plugins import _Fake
 
 
 @pytest.mark.parametrize('surface', [solver_api, frontend, analysis_api])
@@ -45,28 +45,6 @@ def test_compatible():
     assert 'update kicad2ems' in compatible((major, minor + 1))
     assert ('update the plugin' in compatible((major - 1, 0))
             and 'update kicad2ems' in compatible((major + 1, 0)))
-
-
-def test_registry_refuses_another_api(monkeypatch):
-    class Newer(_Fake):
-        name, aliases, options = 'newer', (), []
-        api = (API_VERSION[0] + 1, 0)
-
-    class Current(_Fake):
-        name, aliases, options = 'current', (), []
-        api = API_VERSION
-    monkeypatch.setattr(solvers, '_registry', None)
-    monkeypatch.setattr(solvers, 'broken', [])
-    installed = solvers._entry_points()
-    monkeypatch.setattr(
-        solvers, '_entry_points',
-        lambda: installed + [_EP('newer', Newer),
-                             _EP('current', Current)])
-    reg = solvers.registry()
-    assert 'current' in reg and 'newer' not in reg
-    assert ([b[0].split(' =')[0] for b in solvers.broken] == ['newer']
-            and 'kicad2ems API' in solvers.broken[0][1])
-    monkeypatch.setattr(solvers, '_registry', None)
 
 
 def test_sysinfo_asks_the_solvers(monkeypatch):

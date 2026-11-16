@@ -6,7 +6,7 @@ import json, os
 import numpy as np
 import pytest
 from kicad2ems.core import solvers
-from kicad2ems.core.config import build_settings, settings_class
+from kicad2ems.core.config import build_settings
 from kicad2ems.core.cli import parser
 import standins
 
@@ -38,42 +38,6 @@ class _Fake(solvers.Solver):
         solvers.Option('fake_level', 3, "level", int, name='level',
                        gui='Fake level', group='fake')
     ]
-
-
-class _EP:
-    def __init__(self, name, obj):
-        self.name, self.value, self._obj = name, f"tests:{name}", obj
-
-    def load(self):
-        if isinstance(self._obj, Exception):
-            raise self._obj
-        return self._obj
-
-
-def test_entry_point_plugins(monkeypatch):
-    class Clash(_Fake):
-        name, aliases = 'clash', ()
-        options = [solvers.Option('fmin', 1.0)]  # a core setting: refused
-    monkeypatch.setattr(solvers, '_registry', None)
-    monkeypatch.setattr(solvers, 'broken', [])
-    installed = solvers._entry_points()  # the stand-ins: openems, mom25d, gfdtd
-    monkeypatch.setattr(
-        solvers, '_entry_points', lambda: installed + [
-            _EP('fake', _Fake),
-            _EP('bad', ImportError('no numpy')),
-            _EP('clash', Clash)
-        ])
-    reg = solvers.registry()
-    assert (list(reg)
-            == ['openems', 'mom25d', 'gfdtd', 'fake', 'qucs', 'scikit']
-            and solvers.get('fk') is reg['fake'])
-    assert [b[0].split(' =')[0] for b in solvers.broken] == ['bad', 'clash']
-    assert ('ImportError: no numpy' in solvers.broken[0][1]
-            and 'fmin' in solvers.broken[1][1])
-    S = settings_class(reg)  # its options become settings
-    assert S(board='b').fake_level == 3
-    # back to the built-in ones for the others
-    monkeypatch.setattr(solvers, '_registry', None)
 
 
 def test_solver_tables(tmp_path):

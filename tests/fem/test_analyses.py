@@ -16,25 +16,17 @@ from kicad2ems.fem.elmer import run as elmer
 
 ALL = (A.ElmerDC, A.ElmerThermal, A.ElmerCap, A.PalaceCap, A.ElmerMag,
        A.PalaceLoop, A.PalacePDN)
-
-
-class _EP:
-    def __init__(self, cls):
-        self.name, self.value, self.cls = (
-            cls.name, f"kicad2ems.fem.analyses:{cls.__name__}", cls)
-
-    def load(self):
-        return self.cls
+# every analysis kicad2ems lists (`registered` swaps the list for ALL's)
+LISTED = registry_module.ANALYSES
 
 
 @pytest.fixture
 def registered(monkeypatch):
-    monkeypatch.setattr(registry_module, '_entry_points',
-                        lambda: [_EP(c) for c in ALL])
+    monkeypatch.setattr(
+        registry_module, 'ANALYSES',
+        tuple(f"kicad2ems.fem.analyses:{c.__name__}" for c in ALL))
     monkeypatch.setattr(registry_module, '_registry', None)
-    monkeypatch.setattr(registry_module, 'broken', [])
-    yield registry_module.registry()
-    monkeypatch.setattr(registry_module, '_registry', None)
+    return registry_module.registry()
 
 
 def test_they_register_as_engines_of_questions_others_answer_too(registered):
@@ -42,7 +34,6 @@ def test_they_register_as_engines_of_questions_others_answer_too(registered):
         'elmer_dc', 'palace_loop', 'palace_pdn', 'elmer_mag', 'elmer_thermal',
         'elmer_cap', 'palace_cap'
     ])
-    assert not registry_module.broken
     es = study.engines()
     assert ([es[n].provides for n in registered] == [('dc', ), ('nearfield', ),
                                                      ('pdn', ), ('coils', ),
@@ -59,21 +50,8 @@ def test_they_register_as_engines_of_questions_others_answer_too(registered):
     }
     assert ([e.name for e in rows['capacitance']['engines']
              ] == ['elmer_cap', 'palace_cap'])
-    import tomllib
-    with open(
-            os.path.join(
-                os.path.dirname(
-                    os.path.dirname(os.path.dirname(
-                        os.path.abspath(__file__)))), 'pyproject.toml'),
-            'rb') as fh:
-        declared = (
-            tomllib.load(fh)['project']['entry-points']['kicad2ems.analyses'])
-    assert ({
-        k: v
-        for k, v in declared.items()
-        if v.startswith('kicad2ems.fem.')
-    } == {c.name: f"kicad2ems.fem.analyses:{c.__name__}"
-          for c in ALL})
+    assert ({s for s in LISTED if s.startswith('kicad2ems.fem.')}
+            == {f"kicad2ems.fem.analyses:{c.__name__}" for c in ALL})
 
 
 def test_the_settings_are_the_tools_own_options():

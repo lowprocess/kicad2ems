@@ -8,7 +8,6 @@ from kicad2ems.core import solvers, meshes
 from kicad2ems.core.importers.kicad import KiCadBoard
 from kicad2ems.core.board import Board
 from kicad2ems.core.edges import edge_walls
-from test_plugins import _EP, _Fake  # kicad2ems's tests (conftest.py)
 
 # the repository's root
 K2E = os.path.dirname(
@@ -132,34 +131,12 @@ def test_antenna_preview(boards, kind, tmp_path, run_cli):
     assert ('gap port' in out) == (kind == 'dipole')
 
 
-def test_shared_fdtd_settings(monkeypatch):
+def test_shared_fdtd_settings():
     """FDTD solvers share the mesh and run settings (the same Option objects):
-    one setting each, in either solver's table; another plugin may list them
-    too, but not define its own of the same name."""
+    one setting each, in either solver's table."""
     from kicad2ems.core.config import all_options
-    from kicad2ems.fdtd.plugin import FDTD, MESH, RUN
-
-    class Engine(FDTD):
-        api = (2, 0)
-        name, aliases, label = 'fdtd2', (), 'another FDTD engine'
-        options = MESH + RUN
-
-    class Clash(_Fake):
-        name, aliases = 'clash', ()
-        # the shared setting, redefined: refused
-        options = [solvers.Option('res', 10.0)]
-    monkeypatch.setattr(solvers, '_registry', None)
-    monkeypatch.setattr(solvers, 'broken', [])
-    installed = solvers._entry_points()
-    monkeypatch.setattr(
-        solvers, '_entry_points',
-        lambda: installed + [_EP('fdtd2', Engine),
-                             _EP('clash', Clash)])
     reg = solvers.registry()
-    assert ('fdtd2' in reg
-            and [b[0].split(' =')[0] for b in solvers.broken] == ['clash'])
     owner = [(o.key, n) for n, o in all_options(reg)]
     # once, under the first
     assert len(owner) == len(dict(owner)) and dict(owner)['res'] == 'openems'
     assert reg['gfdtd'].options[0] is reg['openems'].options[0]
-    monkeypatch.setattr(solvers, '_registry', None)

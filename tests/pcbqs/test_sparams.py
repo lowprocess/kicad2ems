@@ -4,7 +4,6 @@ path (a slot under the trace; a ground via beside a layer change, far from it,
 or missing), the charge solved with the currents, the command, and the kicad2ems
 solver."""
 import json
-import os
 
 import numpy as np
 import pytest
@@ -427,20 +426,13 @@ def test_it_is_a_kicad2ems_solver(tmp_path):
     Touchstone file and its maps written with the others'; an example's thru is
     a thru at 10 kHz."""
     pytest.importorskip('kicad2ems')
-    import tomllib
     from kicad2ems.core.api.solver import FEATURES, registry
+    from kicad2ems.core.solvers import SOLVERS
     from kicad2ems.core.cli import main
     from kicad2ems.examples import examples
     from kicad2ems.core.study import engines
     from kicad2ems.pcbqs.analyses import QuasiStatic
-    with open(
-            os.path.join(
-                os.path.dirname(
-                    os.path.dirname(os.path.dirname(
-                        os.path.abspath(__file__)))), 'pyproject.toml'),
-            'rb') as fh:
-        assert (tomllib.load(fh)['project']['entry-points']['kicad2ems.solvers']
-                ['pcbqs'] == 'kicad2ems.pcbqs.analyses:QuasiStatic')
+    assert 'kicad2ems.pcbqs.analyses:QuasiStatic' in SOLVERS
     sv = QuasiStatic()
     assert (set(sv.capabilities) == set(FEATURES) and not sv.in_auto
             and not sv.in_all and sv.consumes == 'board')

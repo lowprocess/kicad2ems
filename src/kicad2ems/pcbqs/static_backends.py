@@ -11,7 +11,7 @@ upload/synchronization; the scheduler owns tiling, reciprocity and output.
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from importlib import import_module, metadata
+from importlib import import_module
 import os
 from pathlib import Path
 
@@ -270,9 +270,7 @@ _FACTORIES = {
 
 def register_fill_backend(name, factory):
     """Register a factory implementing the module's pair-integration protocol.
-    Installed extensions may instead publish a `kicad2ems.pcbqs.static_backends`
-    entry point. Existing names are protected, and providers are loaded only
-    when selected.
+    Existing names are protected.
     """
     if (not isinstance(name, str) or not name or name == 'auto'
             or name in _FACTORIES):
@@ -300,14 +298,7 @@ class FillEngine:
                  and not os.environ.get('PCBQS_NO_CORE') else 'threaded')
                 if requested == 'auto' else requested)
         if name not in _FACTORIES:
-            providers = [
-                ep
-                for ep in metadata.entry_points(group='pcbqs.static_backends')
-                if ep.name == name
-            ]
-            if len(providers) != 1:
-                raise ValueError(f'unknown or ambiguous fill backend {name!r}')
-            register_fill_backend(name, providers[0].load())
+            raise ValueError(f'unknown fill backend {name!r}')
         if name in ('numpy', 'cupy'):
             workers = 1
         self.geometry = FillGeometry.prepare(nodes, tris, z, outer_levels)
