@@ -132,7 +132,6 @@ them.
 import importlib
 import os
 
-from .extras import install_hint
 from .options import strlist
 from .runs import load_toml
 
@@ -151,12 +150,6 @@ ANALYSES = ('kicad2ems.core.si:Crosstalk',
             'kicad2ems.fem.analyses:PalacePDN')
 # the S-parameter run's own key in a front end's lists: not an analysis's
 RF = 'rf'
-# the analysis packages kicad2ems has extras for (pyproject): {extra: the
-# analyses it brings}
-EXTRAS = {
-    'qs': ('pdn', 'mqs', 'circuit', 'thermal'),
-    'fem': ('elmer_dc', 'elmer_thermal', 'elmer_cap', 'palace_cap', 'elmer_mag')
-}
 KINDS = ('str', 'int', 'float', 'bool', 'list')
 
 
@@ -300,21 +293,8 @@ def get(name):
     a = registry().get(str(name).lower())
     if a is None:
         raise ValueError(
-            missing(name) or
-            f"no analysis {name!r}: choose from "
-            f"{', '.join(registry()) or 'none installed'}"
-        )
+            f"no analysis {name!r}: choose from {', '.join(registry())}")
     return a
-
-
-def missing(name):
-    """Why an analysis kicad2ems knows of cannot be found, and how to install
-    it; None for any other name, or one installed."""
-    name = str(name).lower()
-    extra = next((e for e, names in EXTRAS.items() if name in names), None)
-    if extra is None or name in registry():
-        return None
-    return f"analysis {name!r} is not installed: {install_hint(extra)}"
 
 
 def analysis_of(folder):
@@ -400,15 +380,10 @@ def read_sets(path):
 
 
 def check_lines():
-    """--check's lines about the analyses: each one's check, the known ones not
-    installed."""
+    """--check's lines about the analyses: each one's check."""
     lines = []
     for name, a in registry().items():
         ok, what = a.check()
         lines.append(
             f"  {'ok' if ok else 'missing':7s} {name:<8s} {a.label}: {what}")
-    for extra, names in EXTRAS.items():
-        gone = [n for n in names if n not in registry()]
-        if gone and missing(gone[0]):
-            lines.append(f"  missing {', '.join(gone)}: {install_hint(extra)}")
     return lines

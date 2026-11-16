@@ -115,7 +115,7 @@ def _solvers(v):
     """Solver names (aliases allowed; 'lines' for the line model, 'all' for
     every solver but the variants of another, as mixed) in registry order, or
     None for an empty list."""
-    from .solvers import registry, aliases, ordered, missing, LINES, AUTO
+    from .solvers import registry, aliases, ordered, LINES, AUTO
     names = dict(aliases(), line=LINES, lines=LINES, fast=LINES, auto=AUTO)
     out = set()
     for x in strlist(v) or []:
@@ -128,8 +128,6 @@ def _solvers(v):
             } | {LINES})
         elif x in names:
             out.add(names[x])
-        elif missing(x):
-            raise ValueError(missing(x))
         else:
             raise ValueError(
                 f"no solver {x!r}: choose from "

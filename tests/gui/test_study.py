@@ -92,7 +92,7 @@ def test_study_dock(window):
     assert (tree.rows['thermal'].text(1).endswith('▾')
             and not tree.rows['dc'].text(1).endswith('▾'))
     assert (tree.rows['capacitance'].text(3) == 'not installed'
-            and 'kicad2ems[fem]' in tree.rows['capacitance'].toolTip(3))
+            and 'no engine for it' in tree.rows['capacitance'].toolTip(3))
     assert not tree.rows['capacitance'].flags() & Qt.ItemIsUserCheckable
     # as Run always did
     assert (tree.asked() == dict(sparams=[]) and tree.ticked() == ['rf']

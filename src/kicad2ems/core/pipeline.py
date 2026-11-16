@@ -48,8 +48,7 @@ from .board import Board
 from .formats import plain, stamp
 from .plots import save, preview, plot_results, plot_lines
 from .touchstone import write_touchstone, read_touchstone
-from .solvers import (registry, label, resolve_lines, missing, LINES, AUTO,
-                      MOM, FEATURES)
+from .solvers import registry, label, resolve_lines, LINES, AUTO, FEATURES
 from .parity import describe
 
 
@@ -455,8 +454,6 @@ class Job:
                 return False
             if not self._drop(name, what):
                 return False
-        if s.mom and MOM not in reg:  # --mom's reference, not installed
-            self.log(f"WARNING: --mom: {missing(MOM)}")
         # a preview prepares them, solves none: warn
         for name in list(self.previewed):
             sv = reg[name]

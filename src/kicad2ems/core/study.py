@@ -45,7 +45,6 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-from .extras import install_hint
 from .runs import load_toml, toml_value
 
 GROUPS = ('RF', 'Signal integrity', 'Power', 'Thermal', 'Other')
@@ -69,8 +68,6 @@ class Question:
     # Analysis.report / .curves)
     answer: str = 'report'
     order: int = 50         # its place in its group
-    # the kicad2ems extra that installs an engine for it ('' built in, or none)
-    extra: str = ''
     # the figures its engines name alike (Analysis.figures), so their answers
     # can be compared
     figures: str = ''
@@ -81,10 +78,10 @@ QUESTIONS = {
     for q in (
         Question('sparams', 'S-parameters', 'RF',
                  "the ports' S-parameters over the band", answer='touchstone',
-                 order=10, extra='mom'),
+                 order=10),
         Question('antenna', 'Antenna pattern', 'RF',
                  "a driven port's far field: pattern, gain, efficiency",
-                 answer='antenna', order=20, extra='mom'),
+                 answer='antenna', order=20),
         Question('lines', 'Trace impedances', 'RF',
                  "every trace's impedance and delay, from the line model",
                  order=30),
@@ -98,40 +95,37 @@ QUESTIONS = {
         Question(
             'dc', 'Rail drop', 'Power',
             "a rail's DC drop, its current density and its loss", order=10,
-            extra='qs', figures=
-            "drop <load>: the rail's own copper from the source to the load's "
-            "pads, mV (no ground return, no series part); loss: in that "
+            figures="drop <load>: the rail's own copper from the source to the "
+            "load's pads, mV (no ground return, no series part); loss: in that "
             "copper, mW"),
         Question('pdn', 'Rail impedance', 'Power',
                  "the impedance a rail's loads see over frequency", shares='dc',
-                 order=20, extra='qs'),
+                 order=20),
         Question('nearfield', 'Converter near field', 'Power',
                  "a converter's input loop and the magnetic field over it",
-                 order=30, extra='qs'),
+                 order=30),
         Question(
             'circuit', 'Circuit', 'Power',
             "a switching circuit on the board's copper: waveforms, losses, "
             "stress",
-            order=40, extra='qs'),
+            order=40),
         Question(
             'coils', 'Coils and ferrite', 'Power',
             "wound coils beside ferrite plates: their inductances and "
             "coupling (a wireless-power link's coil model)", order=45,
-            extra='fem', figures=
-            "L <coil>: its inductance, uH; k <coil>,<coil>: two coils' coupling"
-        ),
+            figures="L <coil>: its inductance, uH; k <coil>,<coil>: two coils' "
+            "coupling"),
         Question(
             'capacitance', 'Capacitance', 'Power',
-            "the capacitance between nets", order=50, extra='fem', figures=
-            "C <net>,<net>: between two nets, pF; C <net>: a net to all the "
-            "others, pF"
-        ),
+            "the capacitance between nets", order=50,
+            figures="C <net>,<net>: between two nets, pF; C <net>: a net to "
+            "all the others, pF"),
         Question(
             'thermal', 'Temperature', 'Thermal',
             "the board's steady temperature from what its parts dissipate",
-            order=10, extra='qs', figures=
-            "hottest: the copper's highest temperature, C; <part>: the board "
-            "at the part's pads, C"),
+            order=10,
+            figures="hottest: the copper's highest temperature, C; <part>: the "
+            "board at the part's pads, C"),
     )
 }
 
@@ -258,8 +252,7 @@ def study_tree():
         for q in sorted((q for q in qs.values() if q.group == group),
                         key=lambda q: (q.order, q.name)):
             have = [e for e in es if q.name in e.provides]
-            how = '' if have else (install_hint(q.extra) if q.extra else
-                                   'no engine for it is installed')
+            how = '' if have else 'no engine for it is installed'
             rows.append(dict(question=q, engines=have, missing=how))
         if rows:
             tree.append(dict(group=group, questions=rows))
@@ -443,11 +436,6 @@ def engine_named(question, text, es=None):
     ]
     if len(hits) == 1:
         return hits[0]
-    from .analyses import missing as missing_analysis
-    from .solvers import missing as missing_solver
-    why = missing_solver(want) or missing_analysis(want)
-    if not hits and why:
-        raise ValueError(why)
     names = ', '.join(e.name for e in have) or 'none installed'
     raise ValueError(
         f"{'no' if not hits else 'more than one'} engine {text!r} for "
@@ -509,7 +497,7 @@ def read_config(path, strict=True):
             if 'fields' in tab:
                 fields[q] = bool(tab['fields'])
         return Study(asked, fields, 'study')
-    from .analyses import read_config as read_analyses, registry, missing
+    from .analyses import read_config as read_analyses, registry
     run, _ = read_analyses(path)
     if run is None:
         return Study({'sparams': []})
@@ -522,10 +510,8 @@ def read_config(path, strict=True):
                 if name not in asked.setdefault(q, []):
                     asked[q].append(name)
         elif strict:
-            raise ValueError(
-                missing(name)
-                or f"[analysis] run: no analysis {name!r}: one of "
-                f"{', '.join([RF, *reg])}")
+            raise ValueError(f"[analysis] run: no analysis {name!r}: one of "
+                             f"{', '.join([RF, *reg])}")
         else:
             asked.setdefault(name, [name])
     return Study(asked, {}, 'analysis')

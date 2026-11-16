@@ -84,15 +84,7 @@ SOLVERS = ('kicad2ems.core.solvers.lines.plugin:Qucs',
            'kicad2ems.mom25d.kicad2ems.mixed:Mixed',
            'kicad2ems.fem.palace.plugin:Palace',
            'kicad2ems.pcbqs.analyses:QuasiStatic')
-# the solver packages kicad2ems has extras for (pyproject): {extra: the names
-# and aliases of its solvers, its first solver first}. A name of one not
-# installed says how to get it. MOM: the solver --mom adds as a reference.
-EXTRAS = {
-    'openems': ('openems', 'fdtd'),
-    'mom': ('mom25d', 'mom', 'mixed', 'segmented'),
-    'gfdtd': ('gfdtd', 'gpu-fdtd'), 'qs': ('pcbqs', 'qs', 'quasistatic'),
-    'fem': ('palace', )
-}
+# the solver --mom adds as a reference
 MOM = 'mom25d'
 # the line model: qucs when qucsator is installed, else scikit
 LINES = 'lines'
@@ -266,24 +258,12 @@ def aliases():
     }
 
 
-def missing(name):
-    """Why a solver kicad2ems knows of cannot be found, and how to install it;
-    None for any other name, or one installed."""
-    name = str(name).lower()
-    extra = next((e for e, names in EXTRAS.items() if name in names), None)
-    if extra is None or name in aliases():
-        return None
-    from ..extras import install_hint
-    return f"solver {name!r} is not installed: {install_hint(extra)}"
-
-
 def get(name):
     """The solver of a name or alias (any case)."""
     n = aliases().get(str(name).lower())
     if n is None:
         raise ValueError(
-            missing(name)
-            or f"no solver {name!r}: choose from {', '.join(registry())}")
+            f"no solver {name!r}: choose from {', '.join(registry())}")
     return registry()[n]
 
 

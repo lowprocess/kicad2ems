@@ -96,10 +96,9 @@ def test_the_tree_lists_every_question_with_its_engines(plugins):
             and rows['sparams']['question'].answer == 'touchstone')
     assert ([e.name for e in rows['thermal']['engines']]
             == ['thermal', 'elmer_thermal'] and not rows['thermal']['missing'])
-    assert (rows['circuit']['engines'] == [] and rows['circuit']
-            ['missing'].startswith("it is part of kicad2ems: reinstall"))
-    assert (rows['capacitance']['missing']
-            == "python -m pip install 'kicad2ems[fem]'"
+    assert (rows['circuit']['engines'] == []
+            and rows['circuit']['missing'] == 'no engine for it is installed')
+    assert (rows['capacitance']['missing'] == 'no engine for it is installed'
             and not rows['lines']['missing'])
 
 
@@ -173,10 +172,8 @@ def test_check_lists_the_questions(plugins):
     text = '\n'.join(lines[i:i + 13])
     assert ('Rail drop             pdn' in text
             and 'Temperature           thermal' in text)
-    assert (
-        "Circuit               none (it is part of kicad2ems: reinstall "
-        "kicad2ems"
-        in text)
+    assert ("Circuit               none (no engine for it is installed)"
+            in text)
     assert 'S-parameters' in text and 'qucs' in text
 
 
@@ -290,14 +287,11 @@ model = "m.json"
         ('[study]\nrun = ["thermal"]\n[study.thermal]\nengine = "pdn"\n',
          "no engine 'pdn' for 'thermal': one of thermal, elmer_thermal"),
         ('[study]\nrun = ["dc"]\n[study.dc]\nengine = "elmer_dc"\n',
-         r"analysis 'elmer_dc' is not installed: python -m pip install "
-         r"'kicad2ems\[fem\]'"
-         ), ('[study]\nrun = ["sparams"]\n[study.sparams]\nengine = "palace"\n',
-             r"python -m pip install 'kicad2ems\[fem\]'"),
+         "no engine 'elmer_dc' for 'dc': one of pdn"),
+        ('[study]\nrun = ["sparams"]\n[study.sparams]\nengine = "palace"\n',
+         "no engine 'palace' for 'sparams'"),
         ('[analysis]\nrun = ["mqs"]\n',
-         r"analysis 'mqs' is not installed: it is part of kicad2ems: reinstall "
-         r"kicad2ems"
-         )):
+         r"\[analysis\] run: no analysis 'mqs': one of rf")):
         with pytest.raises(ValueError, match=why):
             study.read_config(_config(tmp_path, text))
     lax = study.read_config(

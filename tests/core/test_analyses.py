@@ -63,12 +63,8 @@ def test_get_and_check_lines(plugins):
     assert analyses.get('HEAT') is reg['heat']
     with pytest.raises(ValueError, match="no analysis 'cfd'"):
         analyses.get('cfd')
-    # one of kicad2ems's own parts
-    with pytest.raises(ValueError, match="part of kicad2ems: reinstall"):
-        analyses.get('pdn')
     lines = analyses.check_lines()
     assert any(l.split()[:2] == ['ok', 'heat'] for l in lines)
-    assert any('pdn' in l and 'reinstall kicad2ems' in l for l in lines)
 
 
 def test_whose_result_a_folder_holds(plugins, tmp_path):

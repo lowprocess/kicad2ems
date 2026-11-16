@@ -44,13 +44,6 @@ gpu-rocm7 = ["cupy-rocm-7-0>=14"]   # AMD, ROCm 7.0
 gpu-vulkan = ["slangpy>=0.43"]      # any GPU with a Vulkan driver, Windows or Linux
 all = ["kicad2ems[fast,gui,fem,core]"]         # everything but a GPU wheel (one of the gpu-* extras)
 test = ["pytest>=7", "pytest-xdist>=3", "scikit-rf>=1.0"]
-# the parts that were packages of their own until 0.4: their extras are still accepted, and bring nothing
-dumps = []
-mom = []
-qs = []
-gfdtd = []
-openems = []
-filter = []
 # openEMS and CSXCAD are not on PyPI: install them from your distribution or build them (tools/build_openems.sh)
 
 [project.scripts]
