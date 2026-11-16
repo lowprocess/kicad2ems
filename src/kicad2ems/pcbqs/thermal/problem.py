@@ -108,11 +108,9 @@ class Problem:
             raise ValueError('the board has no copper layer')
         zs = [c['z'] for c in cu]
         thick = float(board['stack'].get('thickness') or (zs[-1] - zs[0]) or 1.6)
-        lam = np.zeros(len(cu))
-        for i in range(len(cu) - 1):
-            d = zs[i + 1] - zs[i]
-            lam[i] += 0.5 * d
-            lam[i + 1] += 0.5 * d
+        lam, half = np.zeros(len(cu)), 0.5 * np.diff(zs)               # half of each dielectric to either side
+        lam[:-1] += half
+        lam[1:] += half
         spare = max(thick - (zs[-1] - zs[0]), 0.0)          # dielectric outside the copper (one layer: all of it)
         lam[0] += 0.5 * spare
         lam[-1] += 0.5 * spare

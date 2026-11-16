@@ -358,10 +358,10 @@ class Knob:
         new = min(max(new, self.lo), self.hi)
         tried_end = [x for x, _ in self.points if x in (self.lo, self.hi)]
         if new in (self.lo, self.hi) and new in tried_end:
-            end = 'low' if new == self.lo else 'high'
-            raise RuntimeError(f"{self.measure} cannot reach {self.value:g} with {self.path} in "
-                               f"[{self.lo:g}, {self.hi:g}]: at its {end} end it is "
-                               f"{self.value * (1 + [e for x, e in self.points if x == new][-1]) if self.value else [e for x, e in self.points if x == new][-1]:g}")
+            err = [e for x, e in self.points if x == new][-1]
+            raise RuntimeError(f"{self.measure} cannot reach {self.value:g} with {self.path} in [{self.lo:g}, "
+                               f"{self.hi:g}]: at its {'low' if new == self.lo else 'high'} end it is "
+                               f"{self.value * (1 + err) if self.value else err:g}")
         self.x = new
         return new
 
