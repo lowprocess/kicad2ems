@@ -26,7 +26,8 @@ def _host_routing():
     try:
         threshold = int(env) if env is not None else 32768*workers
     except ValueError as exc:
-        raise ValueError('PCBQS_CUPY_HOST_PAIRS must be a nonnegative integer') from exc
+        raise ValueError(
+            'PCBQS_CUPY_HOST_PAIRS must be a nonnegative integer') from exc
     if threshold < 0:
         raise ValueError('PCBQS_CUPY_HOST_PAIRS must be a nonnegative integer')
     return (core, workers, threshold) if threshold else (None, 0, 0)
@@ -74,17 +75,29 @@ class CupyBackend:
         try:
             import cupy as cp
         except ImportError as exc:
-            raise RuntimeError('CuPy fill unavailable: install a pcbqs GPU CuPy extra matching your driver') from exc
+            raise RuntimeError(
+                'CuPy fill unavailable: install a pcbqs GPU CuPy extra '
+                'matching your driver'
+            ) from exc
         try:
             self.device = cp.cuda.Device(0 if device is None else device)
             self.device_id = self.device.id
             with self.device:
                 cp.zeros(1, dtype=cp.float64).sum().item()
-                self.levels = {k: tuple(cp.asarray(a) for a in g) for k, g in geometry.levels.items()}
+                self.levels = {
+                    k: tuple(cp.asarray(a)
+                             for a in g)
+                    for k, g in geometry.levels.items()
+                }
                 self.points = cp.asarray(geometry.points)
-                self.z, self.cent, self.radius = (cp.asarray(a) for a in (geometry.z, geometry.cent, geometry.radius))
+                self.z, self.cent, self.radius = (cp.asarray(a)
+                                                  for a in (geometry.z,
+                                                            geometry.cent,
+                                                            geometry.radius))
         except Exception as exc:
-            raise RuntimeError(f'CuPy fill could not initialize device {device}: {exc}') from exc
+            raise RuntimeError(
+                f'CuPy fill could not initialize device {device}: {exc}'
+            ) from exc
         from .static_cupy_kernels import SOURCE
         module = cp.RawModule(code=SOURCE)
         self.kernel = module.get_function('static_pairs')
@@ -92,12 +105,16 @@ class CupyBackend:
         self.rows_near = module.get_function('static_rows_near')
         levels = [self.levels.get(k, self.levels[0]) for k in range(3)]
         V, length, tau, un, area, _, _ = self.levels[0]
-        quadrature = tuple(a for level in levels for a in (level[5], level[6], np.int32(len(level[6]))))
-        self.geometry_args = (V, length, tau, un, area, self.points, *quadrature)
+        quadrature = tuple(a for level in levels
+                           for a in (level[5], level[6],
+                                     np.int32(len(level[6]))))
+        self.geometry_args = (V, length, tau, un, area, self.points,
+                              *quadrature)
         self.cp, self.chunk = cp, chunk
         self.host_core, self.host_workers, self.host_pairs = _host_routing()
-        self.routing = dict(host_threshold_pairs=self.host_pairs, host_workers=self.host_workers,
-                            host_batches=0, host_pairs=0, device_batches=0, device_pairs=0)
+        self.routing = dict(host_threshold_pairs=self.host_pairs,
+                            host_workers=self.host_workers, host_batches=0,
+                            host_pairs=0, device_batches=0, device_pairs=0)
         if self.host_core is not None:
             from .static_backends import host_data
             self.host_data = host_data(geometry)
@@ -105,20 +122,27 @@ class CupyBackend:
     def evaluate(self, p, q, d, kind, scalar_only):
         cp = self.cp
         if len(p) < self.host_pairs:
-            self.routing['host_batches'] += 1; self.routing['host_pairs'] += len(p)
-            return self.host_core.static_pairs(self.host_data, p, q, d, kind, scalar_only, self.host_workers)
-        self.routing['device_batches'] += 1; self.routing['device_pairs'] += len(p)
+            self.routing['host_batches'] += 1
+            self.routing['host_pairs'] += len(p)
+            return self.host_core.static_pairs(self.host_data, p, q, d, kind,
+                                               scalar_only, self.host_workers)
+        self.routing['device_batches'] += 1
+        self.routing['device_pairs'] += len(p)
         with self.device:
             out = cp.empty((len(p), 1 if scalar_only else 6), dtype=cp.float64)
             if len(p):
                 # Upload one bounded pair tile and launch one fused kernel in
-                # kind-sorted order, so far and near pairs do not share wavefronts.
+                # kind-sorted order, so far and near pairs do not share
+                # wavefronts.
                 kind = cp.asarray(kind, dtype=cp.int32)
-                order = cp.argsort(kind).astype(cp.int32) if len(p) > 1 else None
-                inputs = (cp.asarray(p, dtype=cp.int32), cp.asarray(q, dtype=cp.int32),
+                order = (cp.argsort(kind).astype(cp.int32)
+                         if len(p) > 1 else None)
+                inputs = (cp.asarray(p, dtype=cp.int32),
+                          cp.asarray(q, dtype=cp.int32),
                           cp.asarray(d, dtype=cp.float64), kind, order)
-                self.kernel(((len(p)+127)//128,), (128,),
-                            (*self.geometry_args, *inputs, np.int32(len(p)), np.int32(scalar_only), out))
+                self.kernel(((len(p) + 127) // 128, ), (128, ),
+                            (*self.geometry_args, *inputs, np.int32(
+                                len(p)), np.int32(scalar_only), out))
             return cp.asnumpy(out)
 
     def fill_symmetric(self, matrices, near, outer_levels, scalar_only):
@@ -142,15 +166,20 @@ class CupyBackend:
         near = np.float64(0. if all_near else near)
         threads = 256
         with self.device:
-            compute, copy = cp.cuda.Stream(non_blocking=True), cp.cuda.Stream(non_blocking=True)
-            buffers = [dict(out=cp.empty((width, rows*n), dtype=cp.float64),
-                            lists=cp.empty((2, rows*n), dtype=cp.int32),
-                            count=cp.empty(3, dtype=cp.uint32), done=cp.cuda.Event(), copied=None)
-                       for _ in range(2)]
+            compute, copy = (cp.cuda.Stream(non_blocking=True),
+                             cp.cuda.Stream(non_blocking=True))
+            buffers = [
+                dict(out=cp.empty((width, rows * n),
+                                  dtype=cp.float64), lists=cp.empty(
+                                      (2, rows * n), dtype=cp.int32),
+                     count=cp.empty(3, dtype=cp.uint32), done=cp.cuda.Event(),
+                     copied=None) for _ in range(2)
+            ]
             with compute:
                 analytic = cp.zeros((), dtype=cp.uint64)
                 finite = cp.ones((), dtype=cp.bool_)
-            near_blocks = 4*self.device.attributes['MultiProcessorCount']*(1024//threads)
+            near_blocks = (4 * self.device.attributes['MultiProcessorCount'] *
+                           (1024 // threads))
 
             def launch(index, r0):
                 b = buffers[index % 2]
@@ -159,16 +188,21 @@ class CupyBackend:
                     if b['copied'] is not None:
                         compute.wait_event(b['copied'])
                     b['count'].fill(0)
-                    self.rows_far((((m*n)+threads-1)//threads,), (threads,),
-                                  (*self.geometry_args, self.z, self.cent, self.radius,
-                                   np.int32(r0), np.int32(m), np.int32(n), near, np.int32(all_near),
-                                   np.int32(outer_levels), np.int32(scalar_only),
-                                   b['out'], plane, b['lists'][0], b['lists'][1], b['count']))
+                    self.rows_far(
+                        (((m * n) + threads - 1) // threads, ), (threads, ),
+                        (*self.geometry_args, self.z, self.cent, self.radius,
+                         np.int32(r0), np.int32(m), np.int32(n), near,
+                         np.int32(all_near), np.int32(outer_levels),
+                         np.int32(scalar_only), b['out'], plane, b['lists'][0],
+                         b['lists'][1], b['count']))
                     for level in (0, 1):
-                        self.rows_near((near_blocks,), (threads,),
-                                       (*self.geometry_args, self.z, np.int32(r0), np.int32(n),
-                                        np.int32(outer_levels if level else 0), np.int32(scalar_only),
-                                        b['out'], plane, b['lists'][level], b['count'][level:level+1]))
+                        self.rows_near(
+                            (near_blocks, ), (threads, ),
+                            (*self.geometry_args, self.z, np.int32(r0),
+                             np.int32(n),
+                             np.int32(outer_levels if level else 0),
+                             np.int32(scalar_only), b['out'], plane,
+                             b['lists'][level], b['count'][level:level + 1]))
                     analytic[...] += b['count'][2]
                     finite[...] &= cp.isfinite(b['out'][:, :m*n]).all()
                     b['done'].record(compute)
@@ -178,7 +212,8 @@ class CupyBackend:
                 m = min(rows, n-r0)
                 copy.wait_event(b['done'])
                 for k, matrix in enumerate(matrices):
-                    b['out'][k, :m*n].get(stream=copy, out=matrix[r0:r0+m].reshape(-1))
+                    b['out'][k, :m * n].get(stream=copy,
+                                            out=matrix[r0:r0 + m].reshape(-1))
                 b['copied'] = copy.record()
                 copy.synchronize()
 
@@ -190,5 +225,6 @@ class CupyBackend:
                 receive(index, r0)
             compute.synchronize()
             if not bool(finite.get()):
-                raise FloatingPointError('non-finite triangle-pair moments from fill backend')
+                raise FloatingPointError(
+                    'non-finite triangle-pair moments from fill backend')
             return int(analytic.get())

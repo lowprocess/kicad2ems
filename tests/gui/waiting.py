@@ -1,9 +1,11 @@
-"""wait_until(cond, seconds): what the tests wait on (a run, a thread, a child process), in a Qt event loop that a
-10 ms timer checks cond() from, not in sleeps between processEvents() calls (R-C8: up to 180 s of 20 ms sleeps)."""
+"""wait_until(cond, seconds): what the tests wait on (a run, a thread, a child
+process), in a Qt event loop that a 10 ms timer checks cond() from, not in
+sleeps between processEvents() calls (R-C8: up to 180 s of 20 ms sleeps)."""
 
 
 def wait_until(cond, seconds):
-    """Run the event loop until cond() holds or `seconds` pass; cond()'s value then."""
+    """Run the event loop until cond() holds or `seconds` pass; cond()'s value
+    then."""
     from PySide6.QtCore import QElapsedTimer, QEventLoop, QTimer
     if cond():
         return True

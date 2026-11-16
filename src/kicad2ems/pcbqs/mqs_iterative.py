@@ -1,15 +1,21 @@
-"""Compressed MQS (inductance only, capacitance=False): loop currents by GMRES on the compressed copper inductance.
+"""Compressed MQS (inductance only, capacitance=False): loop currents by GMRES
+on the compressed copper inductance.
 
-The dense path projects R and L onto the loop basis C and factors C^T Z C at each frequency: O(n^2) memory, which
-stops a 32 GB machine near 12k triangles. Here Z is applied as products (sparse R and its skin correction exactly,
-L through its hierarchical matrix) and C^T Z C is never formed. The preconditioner inverts C^T D C exactly for a
-diagonal D (each branch's resistance, self inductance and part): with the loops' cotree branches carrying the
-force, that is one sparse graph-Laplacian solve on the nodes, A D^-1 A^T, factored once per frequency.
+The dense path projects R and L onto the loop basis C and factors C^T Z C at
+each frequency: O(n^2) memory, which stops a 32 GB machine near 12k triangles.
+Here Z is applied as products (sparse R and its skin correction exactly, L
+through its hierarchical matrix) and C^T Z C is never formed. The preconditioner
+inverts C^T D C exactly for a diagonal D (each branch's resistance, self
+inductance and part): with the loops' cotree branches carrying the force, that
+is one sparse graph-Laplacian solve on the nodes, A D^-1 A^T, factored once per
+frequency.
 
-Copper ports (port_matrix) have many right-hand sides (ports x frequencies), which changes what pays: with few
-loops the dense loop matrix is built from compressed products and solved directly (loop_matrices); with face
-sheets the common-mode / difference-loop preconditioner replaces the graph one (mqs_precond.FaceLoops). port_method
-chooses; model.port_solver ('auto', 'direct', 'iterative') and model.port_preconditioner ('auto', 'graph', 'faces')
+Copper ports (port_matrix) have many right-hand sides (ports x frequencies),
+which changes what pays: with few loops the dense loop matrix is built from
+compressed products and solved directly (loop_matrices); with face sheets the
+common-mode / difference-loop preconditioner replaces the graph one
+(mqs_precond.FaceLoops). port_method chooses; model.port_solver ('auto',
+'direct', 'iterative') and model.port_preconditioner ('auto', 'graph', 'faces')
 override it.
 """
 import numpy as np
@@ -19,12 +25,16 @@ from . import mqs_precond
 from .mqs_precond import graph as _graph_preconditioner
 from .peec_iterative import ConvergenceError, _gmres, _restart
 
-__all__ = ['solve', 'port_matrix', 'loop_matrices', 'port_method', 'ConvergenceError']
+__all__ = [
+    'solve', 'port_matrix', 'loop_matrices', 'port_method', 'ConvergenceError'
+]
 
-# How the copper ports are solved on the compressed backend (port_method). A dense loop matrix costs one compressed
-# product per loop and then a direct solve per frequency; GMRES costs about PRODUCTS_PER_SOLVE products per port and
-# frequency with the graph preconditioner (wpthb, one sheet: 28 to 108). So the dense matrix wins when the loops
-# are fewer than the products GMRES would take, while it fits: n loops need about 40 n^2 bytes during a solve.
+# How the copper ports are solved on the compressed backend (port_method). A
+# dense loop matrix costs one compressed product per loop and then a direct
+# solve per frequency; GMRES costs about PRODUCTS_PER_SOLVE products per port
+# and frequency with the graph preconditioner (wpthb, one sheet: 28 to 108). So
+# the dense matrix wins when the loops are fewer than the products GMRES would
+# take, while it fits: n loops need about 40 n^2 bytes during a solve.
 DIRECT_LOOPS = 8000
 PRODUCTS_PER_SOLVE = 60
 
@@ -39,12 +49,16 @@ def _prepare(model):
         return model._mqs_iter
     m = model._assemble()
     C = m['C'].tocsc()
-    src = {model.parts[k - model.ne - model.nv]['name']: c for k, c in m['src'].items()}
+    src = {
+        model.parts[k - model.ne - model.nv]['name']: c
+        for k, c in m['src'].items()
+    }
     sc = np.array(list(src.values()), int)
     free = np.setdiff1d(np.arange(C.shape[1]), sc)
     passive = np.flatnonzero(~m['is_src'])
     A, _, _, keep = model._branch_graph(passive)
-    # each free loop's cotree branch: the non-tree branch with coefficient 1 in its column
+    # each free loop's cotree branch: the non-tree branch with coefficient 1 in
+    # its column
     non_tree = np.flatnonzero(~m['tree'])
     ident = C[non_tree][:, free].tocoo()
     one = ident.data == 1
@@ -53,51 +67,69 @@ def _prepare(model):
     Le, Lv = m['L']
     ld = _diagonal(Le)
     if getattr(model, 'thick_kernel', False):
-        ld = ld + np.r_[model._thick_correction().diagonal(), np.zeros(len(ld) - model.n_rwg)]
-    ldiag = np.r_[ld, _diagonal(Lv) if model.nv else np.zeros(0), np.zeros(len(model.parts))]
-    # face sheets (thickness_sheets=2): an edge's two copies are nearly one conductor (35 um apart), so the
-    # preconditioner keeps each pair's 2x2 block: their mutual inductance, exactly, in chunks
+        ld = (ld + np.r_[model._thick_correction().diagonal(),
+                         np.zeros(len(ld) - model.n_rwg)])
+    ldiag = (np.r_[ld,
+                   _diagonal(Lv) if model.nv else np.zeros(0),
+                   np.zeros(len(model.parts))])
+    # face sheets (thickness_sheets=2): an edge's two copies are nearly one
+    # conductor (35 um apart), so the preconditioner keeps each pair's 2x2
+    # block: their mutual inductance, exactly, in chunks
     pairs, lpair = face_pairs(model, Le)
-    model._mqs_iter = dict(C=C, Cf=C[:, free], Cs=C[:, sc], src=src, sc=sc, free=free, A=A, passive=passive,
-                           cotree=cotree, keep=keep, ldiag=ldiag, pairs=pairs, lpair=lpair)
+    model._mqs_iter = dict(C=C, Cf=C[:, free], Cs=C[:, sc], src=src, sc=sc,
+                           free=free, A=A, passive=passive, cotree=cotree,
+                           keep=keep, ldiag=ldiag, pairs=pairs, lpair=lpair)
     return model._mqs_iter
 
 
 def face_pairs(model, Le):
-    """Face sheets: the (2, P) edge pairs (an edge on one face, the same edge on the other) and their mutual
-    partial inductance, exactly, for the preconditioners' 2x2 blocks. Empty without face sheets."""
-    pairs = np.hstack(getattr(model, '_face_pairs', [])) if getattr(model, '_face_pairs', None) else np.zeros((2, 0), int)
+    """Face sheets: the (2, P) edge pairs (an edge on one face, the same edge on
+    the other) and their mutual partial inductance, exactly, for the
+    preconditioners' 2x2 blocks. Empty without face sheets."""
+    pairs = (np.hstack(getattr(model, '_face_pairs', [])) if getattr(
+        model, '_face_pairs', None) else np.zeros((2, 0), int))
     lpair = np.zeros(pairs.shape[1])
     for k in range(0, pairs.shape[1], 256):
         e, g = pairs[0, k:k + 256], pairs[1, k:k + 256]
         if hasattr(Le, 'entry') and Le.entry is not None:
             lpair[k:k + 256] = np.diagonal(np.asarray(Le.entry(e, g)))
-        elif hasattr(Le, 'entry'):                       # a cached, reloaded operator keeps no exact entries
+        # a cached, reloaded operator keeps no exact entries
+        elif hasattr(Le, 'entry'):
             lpair[k:k + 256] = _pair_mutual(model, e, g)
         else:
             lpair[k:k + 256] = np.asarray(Le)[e, g]
     if getattr(model, 'thick_kernel', False) and pairs.shape[1]:
-        lpair = lpair + np.asarray(model._thick_correction()[pairs[0], pairs[1]]).ravel()
+        lpair = (
+            lpair
+            + np.asarray(model._thick_correction()[pairs[0], pairs[1]]).ravel())
     return pairs, lpair
 
 
 def _pair_mutual(model, e, g):
-    """Mutual partial inductance (branch units, as MQS's L) of RWG edges e and g, from their support triangles'
-    analytic moments: the face pairs' preconditioner blocks when the compressed operator keeps no exact entries."""
+    """Mutual partial inductance (branch units, as MQS's L) of RWG edges e and
+    g, from their support triangles' analytic moments: the face pairs'
+    preconditioner blocks when the compressed operator keeps no exact
+    entries."""
     from kicad2ems.emsdev.numerics.sing import offplane_pairs
     r, z = model.rwg, model.z_of
     out = np.zeros(len(e))
-    for ta, aa, va in ((r.tp[e], r.l[e] / (2 * r.area[r.tp[e]]), r.vp[e]), (r.tm[e], -r.l[e] / (2 * r.area[r.tm[e]]), r.vm[e])):
-        for tb, ab, vb in ((r.tp[g], r.l[g] / (2 * r.area[r.tp[g]]), r.vp[g]), (r.tm[g], -r.l[g] / (2 * r.area[r.tm[g]]), r.vm[g])):
-            m0, mro, mrs, mrr = offplane_pairs(r.nodes, r.tris, ta, tb, z[ta] - z[tb], outer_levels=1)
-            out += aa * ab * (mrr - (vb * mro).sum(1) - (va * mrs).sum(1) + (va * vb).sum(1) * m0)
+    for ta, aa, va in ((r.tp[e], r.l[e] / (2 * r.area[r.tp[e]]), r.vp[e]),
+                       (r.tm[e], -r.l[e] / (2 * r.area[r.tm[e]]), r.vm[e])):
+        for tb, ab, vb in ((r.tp[g], r.l[g] / (2 * r.area[r.tp[g]]), r.vp[g]),
+                           (r.tm[g], -r.l[g] / (2 * r.area[r.tm[g]]), r.vm[g])):
+            m0, mro, mrs, mrr = offplane_pairs(r.nodes, r.tris, ta, tb,
+                                               z[ta] - z[tb], outer_levels=1)
+            out += (aa * ab * (mrr - (vb * mro).sum(1) - (va * mrs).sum(1) +
+                               (va * vb).sum(1) * m0))
     return 1e-7 * out / (r.l[e] * r.l[g])                   # mu0 / 4 pi
 
 
 def _lockstep_gmres(op, M, B, X0, tol, maxiter, restart):
-    """GMRES on k right-hand sides at once (B: (n, k)), right-preconditioned, each column its own Krylov space
-    but every step one operator product on all the active columns (a compressed matrix read once for k columns).
-    Columns that converge drop out at the next restart. Returns (X, iterations per column, relative residuals)."""
+    """GMRES on k right-hand sides at once (B: (n, k)), right-preconditioned,
+    each column its own Krylov space but every step one operator product on all
+    the active columns (a compressed matrix read once for k columns). Columns
+    that converge drop out at the next restart. Returns (X, iterations per
+    column, relative residuals)."""
     n, k = B.shape
     X = np.array(X0, complex)
     bn = np.maximum(np.linalg.norm(B, axis=0), np.finfo(float).tiny)
@@ -122,14 +154,15 @@ def _lockstep_gmres(op, M, B, X0, tol, maxiter, restart):
         for j in range(m):
             Z[j] = M(V[j])
             w = op(Z[j])
-            for i in range(j + 1):                       # modified Gram-Schmidt, per column
+            for i in range(j + 1):  # modified Gram-Schmidt, per column
                 h = np.einsum('nk,nk->k', V[i].conj(), w)
                 H[i, j] = h
                 w -= V[i] * h
             hn = np.linalg.norm(w, axis=0)
             H[j + 1, j] = hn
             V[j + 1] = w / np.where(hn > 0, hn, 1)
-            for i in range(j):                           # the earlier Givens rotations (copies: H[i, j] is a view)
+            # the earlier Givens rotations (copies: H[i, j] is a view)
+            for i in range(j):
                 a, b = H[i, j].copy(), H[i + 1, j].copy()
                 H[i, j] = cs[i].conj() * a + sn[i].conj() * b
                 H[i + 1, j] = -sn[i] * a + cs[i] * b
@@ -147,9 +180,11 @@ def _lockstep_gmres(op, M, B, X0, tol, maxiter, restart):
             its[active[~done | newly]] += 1
             if done.all():
                 break
-        for c in range(ka):                              # each column's update from its own Hessenberg
+        for c in range(ka):  # each column's update from its own Hessenberg
             jj = last[c] + 1 if done[c] else j + 1
-            y = np.linalg.solve(np.triu(H[:jj, :jj, c]), g[:jj, c]) if jj else np.zeros(0)
+            y = (np.linalg.solve(np.triu(H[:jj, :jj,
+                                           c]), g[:jj,
+                                                  c]) if jj else np.zeros(0))
             X[:, active[c]] += np.einsum('j,jn->n', y, Z[:jj, :, c])
         R[:, active] = B[:, active] - op(X[:, active])
         res = np.linalg.norm(R[:, active], axis=0) / bn[active]
@@ -159,20 +194,23 @@ def _lockstep_gmres(op, M, B, X0, tol, maxiter, restart):
 
 
 def _graph_at(p, R, w, zp=None):
-    """The graph preconditioner (mqs_precond.graph) at angular frequency w: each branch's R + jw L (and the parts'
-    zp) on the diagonal, floored at 1e-12 of the largest, and each face pair's coupling. (M, its bytes)."""
+    """The graph preconditioner (mqs_precond.graph) at angular frequency w: each
+    branch's R + jw L (and the parts' zp) on the diagonal, floored at 1e-12 of
+    the largest, and each face pair's coupling. (M, its bytes)."""
     d = R.diagonal() + 1j * w * p['ldiag']
     if zp is not None:
         d = d + zp
     scale = max(float(np.max(abs(d))), np.finfo(float).tiny)
     d = np.where(abs(d) < scale * 1e-12, scale * 1e-12, d)
     e, g = p['pairs']
-    zpair = np.asarray(R[e, g]).ravel() + 1j * w * p['lpair'] if len(e) else np.zeros(0, complex)
+    zpair = (np.asarray(R[e, g]).ravel()
+             + 1j * w * p['lpair'] if len(e) else np.zeros(0, complex))
     return _graph_preconditioner(p, d, zpair)
 
 
 def solve(model, freqs, amps=None):
-    """MQS.solve for matrix_backend='hierarchical' without capacitance: the same Result (z, zc) as the dense path."""
+    """MQS.solve for matrix_backend='hierarchical' without capacitance: the same
+    Result (z, zc) as the dense path."""
     from .mqs import Result, _frequencies
     f = _frequencies(freqs, empty=False)
     p = _prepare(model)
@@ -190,50 +228,62 @@ def solve(model, freqs, amps=None):
         zp = model._part_impedance(1j * w)
         R = (m['R'] + model._resistance_delta(fi)).tocsr()
 
-        def copper(x):                                   # branch voltages of the copper (R, skin, L)
+        def copper(x):  # branch voltages of the copper (R, skin, L)
             return R @ x + 1j * w * model._inductive_voltage(x)
 
         def total(x):
             return copper(x) + zp * x
-        base = Cs @ xs                                   # the sources' loops, fixed
+        base = Cs @ xs  # the sources' loops, fixed
         rhs = -np.asarray(Cf.T @ total(base)).ravel()
         history = []
         if len(free):
             M, mbytes = _graph_at(p, R, w, zp)
-            op = LinearOperator((len(free), len(free)), matvec=lambda x: np.asarray(Cf.T @ total(Cf @ x)).ravel(),
-                                dtype=complex)
+            op = LinearOperator(
+                (len(free), len(free)),
+                matvec=lambda x: np.asarray(Cf.T @ total(Cf @ x)).ravel(),
+                dtype=complex)
             try:
-                x, residual = _gmres(op, rhs, M, model.solver_tol, model.solver_maxiter, history, model.log, restart)
+                x, residual = _gmres(op, rhs, M, model.solver_tol,
+                                     model.solver_maxiter, history, model.log,
+                                     restart)
             except ConvergenceError as error:
-                model.solve_info.append(dict(frequency_Hz=float(fi), iterations=error.iterations, converged=False,
-                                             relative_residual=error.relative_residual))
+                model.solve_info.append(
+                    dict(frequency_Hz=float(fi), iterations=error.iterations,
+                         converged=False,
+                         relative_residual=error.relative_residual))
                 raise
         else:
             x, residual, mbytes = np.zeros(0, complex), 0.0, 0
         I[i] = base + Cf @ x
-        loop_v = np.asarray(Cs.T @ total(I[i])).ravel()  # KVL round each source's loop
+        # KVL round each source's loop
+        loop_v = np.asarray(Cs.T @ total(I[i])).ravel()
         copper_v = np.asarray(Cs.T @ copper(I[i])).ravel()
         for j, n in enumerate(names):
             Z[n][i] = loop_v[j] / xs[j] if xs[j] else np.nan
             Zc[n][i] = copper_v[j] / xs[j] if xs[j] else np.nan
-        model.solve_info.append(dict(frequency_Hz=float(fi), iterations=len(history), relative_residual=float(residual),
-                                     preconditioner='graph_lu', preconditioner_bytes=int(mbytes), converged=True))
+        model.solve_info.append(
+            dict(frequency_Hz=float(fi), iterations=len(history),
+                 relative_residual=float(residual), preconditioner='graph_lu',
+                 preconditioner_bytes=int(mbytes), converged=True))
     return Result(f, I, Z, [part['name'] for part in model.parts], Zc)
 
 
 def loop_products(model, left, right, chunk=48):
-    """left^T L right as a dense real matrix, for sparse sets of branch currents left and right (nb, k): the
-    compressed inductance applied to `chunk` columns of right at a time (its scratch grows with the columns)."""
+    """left^T L right as a dense real matrix, for sparse sets of branch currents
+    left and right (nb, k): the compressed inductance applied to `chunk` columns
+    of right at a time (its scratch grows with the columns)."""
     out = np.empty((left.shape[1], right.shape[1]))
     right, LT = right.tocsc(), left.T.tocsr()
     for k in range(0, right.shape[1], chunk):
-        out[:, k:k + chunk] = LT @ model._inductive_voltage(right[:, k:k + chunk].toarray())
+        out[:, k:k + chunk] = (
+            LT @ model._inductive_voltage(right[:, k:k + chunk].toarray()))
     return out
 
 
 def loop_matrices(model, log=None):
-    """The dense loop matrices (Rl, Ll) of the compressed model, as the dense backend's _assemble gives them:
-    C^T R C, and C^T L C from one compressed product per loop. Kept on the model."""
+    """The dense loop matrices (Rl, Ll) of the compressed model, as the dense
+    backend's _assemble gives them: C^T R C, and C^T L C from one compressed
+    product per loop. Kept on the model."""
     p = _prepare(model)
     if 'loop_matrices' not in p:
         import time
@@ -242,41 +292,51 @@ def loop_matrices(model, log=None):
         Ll = loop_products(model, C, C)
         p['loop_matrices'] = (C.T @ m['R'] @ C).toarray(), 0.5 * (Ll + Ll.T)
         if log:
-            log(f'Copper ports: dense loop matrices from the compressed inductance, {C.shape[1]:,} loops, '
-                f'{time.time() - t:.1f} s')
+            log('Copper ports: dense loop matrices from the compressed '
+                f'inductance, {C.shape[1]:,} loops, {time.time() - t:.1f} s')
     return p['loop_matrices']
 
 
 def port_method(model, n_freq):
-    """('direct' | 'iterative', 'graph' | 'faces') for the copper ports of a compressed model at n_freq frequencies
-    (the constants above). 'faces' is asked for; port_matrix falls back to 'graph' where it does not apply."""
+    """('direct' | 'iterative', 'graph' | 'faces') for the copper ports of a
+    compressed model at n_freq frequencies (the constants above). 'faces' is
+    asked for; port_matrix falls back to 'graph' where it does not apply."""
     p = _prepare(model)
     loops, ports = len(p['free']), len(p['sc'])
     budget = PRODUCTS_PER_SOLVE * ports * n_freq
     solver = getattr(model, 'port_solver', 'auto')
     precond = getattr(model, 'port_preconditioner', 'auto')
-    if solver not in ('auto', 'direct', 'iterative') or precond not in ('auto', 'graph', 'faces'):
-        raise ValueError('port_solver must be auto, direct or iterative; port_preconditioner auto, graph or faces')
+    if (solver not in ('auto', 'direct', 'iterative')
+            or precond not in ('auto', 'graph', 'faces')):
+        raise ValueError(
+            'port_solver must be auto, direct or iterative; '
+            'port_preconditioner auto, graph or faces'
+        )
     if solver == 'auto':
         solver = 'direct' if loops <= min(DIRECT_LOOPS, budget) else 'iterative'
     if precond == 'auto':
-        # its setup: a product per common-mode loop (at most the free loops not closed by a top-face edge)
+        # its setup: a product per common-mode loop (at most the free loops not
+        # closed by a top-face edge)
         lower = np.ones(model._mats['nb'], bool)
         lower[p['pairs'][1]] = False
         common = int(lower[p['cotree']].sum())
-        precond = 'faces' if p['pairs'].shape[1] and 0 < common <= min(DIRECT_LOOPS, budget) else 'graph'
+        precond = ('faces' if p['pairs'].shape[1]
+                   and 0 < common <= min(DIRECT_LOOPS, budget) else 'graph')
     return solver, precond
 
 
 def _face_preconditioner(model, p, log=None):
-    """The model's FaceLoops, built once; None where it does not apply (said through log)."""
+    """The model's FaceLoops, built once; None where it does not apply (said
+    through log)."""
     if 'faces' not in p:
         import time
         t = time.time()
         try:
-            p['faces'] = mqs_precond.FaceLoops(model, p, lambda a, b: loop_products(model, a, b), DIRECT_LOOPS)
+            p['faces'] = mqs_precond.FaceLoops(
+                model, p, lambda a, b: loop_products(model, a, b), DIRECT_LOOPS)
             if log:
-                log(f'Copper ports: face-sheet preconditioner, {p["faces"].size:,} common-mode loops of '
+                log('Copper ports: face-sheet preconditioner, '
+                    f'{p["faces"].size:,} common-mode loops of '
                     f'{len(p["free"]):,}, {time.time() - t:.1f} s')
         except mqs_precond.Unusable as why:
             p['faces'] = None
@@ -286,11 +346,14 @@ def _face_preconditioner(model, p, log=None):
 
 
 def port_matrix(model, freqs, log=None):
-    """Copper ports on the compressed backend (mqs_ports.CopperPorts): for each frequency (0 allowed: DC) the port
-    impedance matrix (P, P) and the branch currents (nb, P) of a unit current into each port in turn, the others
-    open. By port_method: the dense loop matrices from compressed products, solved directly (few loops); or one
-    GMRES per port in lockstep, sharing each frequency's preconditioner, with no dense loop matrix, so face sheets
-    fit in memory. Same conventions as the dense extraction: branch = -(the source loops' currents)."""
+    """Copper ports on the compressed backend (mqs_ports.CopperPorts): for each
+    frequency (0 allowed: DC) the port impedance matrix (P, P) and the branch
+    currents (nb, P) of a unit current into each port in turn, the others open.
+    By port_method: the dense loop matrices from compressed products, solved
+    directly (few loops); or one GMRES per port in lockstep, sharing each
+    frequency's preconditioner, with no dense loop matrix, so face sheets fit in
+    memory. Same conventions as the dense extraction: branch = -(the source
+    loops' currents)."""
     p = _prepare(model)
     m = model._mats
     Cf, Cs, free = p['Cf'], p['Cs'], p['free']
@@ -304,15 +367,20 @@ def port_matrix(model, freqs, log=None):
     if solver == 'direct':
         from .mqs_ports import direct_ports
         Rl, Ll = loop_matrices(model, log)
-        Z, B = direct_ports(model, p['C'], Rl, Ll, p['sc'], freqs, log, note=f'direct, {len(free):,} loops')
-        model.solve_info = [dict(frequency_Hz=float(fi), iterations=0, ports=Cs.shape[1], method='direct')
-                            for fi in freqs]
+        Z, B = direct_ports(model, p['C'], Rl, Ll, p['sc'], freqs, log,
+                            note=f'direct, {len(free):,} loops')
+        model.solve_info = [
+            dict(frequency_Hz=float(fi), iterations=0, ports=Cs.shape[1],
+                 method='direct') for fi in freqs
+        ]
         return Z, B
-    faces = _face_preconditioner(model, p, log) if precond == 'faces' and len(free) else None
+    faces = (_face_preconditioner(model, p, log)
+             if precond == 'faces' and len(free) else None)
     warm = None
     for fi in freqs:
         w = 2 * np.pi * fi
-        R = (m['R'] + (model._resistance_delta(fi) if fi else 0 * m['R'])).tocsr()
+        R = (m['R'] +
+             (model._resistance_delta(fi) if fi else 0 * m['R'])).tocsr()
 
         def total(x):
             return R @ x + (1j * w * model._inductive_voltage(x) if fi else 0)
@@ -324,28 +392,33 @@ def port_matrix(model, freqs, log=None):
                 faces = p['faces'] = None
         if M is None and len(free):
             M, _ = _graph_at(p, R, w)
-        base = Cs.toarray().astype(complex)              # every port's own loop, at once
+        base = Cs.toarray().astype(complex)  # every port's own loop, at once
         iterations = 0
         if len(free):
             rhs = -np.asarray(Cf.T @ total(base))
             block = lambda X: np.asarray(Cf.T @ total(Cf @ X))
             X0 = warm if warm is not None else np.zeros_like(rhs)
-            X, its, res = _lockstep_gmres(block, M.block, rhs, X0, model.solver_tol, model.solver_maxiter,
+            X, its, res = _lockstep_gmres(block, M.block, rhs, X0,
+                                          model.solver_tol,
+                                          model.solver_maxiter,
                                           min(restart, 60))
             if (res > max(5 * model.solver_tol, 1e-13)).any():
                 raise ConvergenceError(1, float(res.max()), int(its.max()))
-            warm = X                                     # the next frequency starts here
+            warm = X  # the next frequency starts here
             iterations = int(its.sum())
             I = base + Cf @ X
         else:
             I = base
         Zp = np.asarray(Cs.T @ total(I))
         branch = -I
-        Zs.append(0.5 * (Zp + Zp.T))                     # reciprocal (GMRES leaves ~tol asymmetry)
+        Zs.append(0.5 * (Zp + Zp.T))  # reciprocal (GMRES leaves ~tol asymmetry)
         Bs.append(branch)
         kind = 'faces' if faces is not None else 'graph'
-        model.solve_info.append(dict(frequency_Hz=float(fi), iterations=iterations, ports=Cs.shape[1],
-                                     method='iterative', preconditioner=kind))
+        model.solve_info.append(
+            dict(frequency_Hz=float(fi), iterations=iterations,
+                 ports=Cs.shape[1], method='iterative', preconditioner=kind))
         if log:
-            log(f'Copper ports: {fi:g} Hz ({iterations:,} GMRES iterations over {Cs.shape[1]} ports)')
+            log(f'Copper ports: {fi:g} Hz ({iterations:,} GMRES iterations '
+                f'over {Cs.shape[1]} ports)'
+                )
     return np.asarray(Zs), np.asarray(Bs)

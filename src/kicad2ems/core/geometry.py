@@ -1,5 +1,6 @@
 """
-Polygon utilities: KiCad (y down) -> model (y up), polygon lists, hole splitting for CSXCAD.
+Polygon utilities: KiCad (y down) -> model (y up), polygon lists, hole splitting
+for CSXCAD.
 """
 from shapely.geometry import Polygon, LineString
 from shapely.ops import split
@@ -10,7 +11,10 @@ def polygons(g):
         return []
     if isinstance(g, Polygon):
         return [g]
-    return [p for p in getattr(g, 'geoms', []) if isinstance(p, Polygon) and not p.is_empty]
+    return [
+        p for p in getattr(g, 'geoms', [])
+        if isinstance(p, Polygon) and not p.is_empty
+    ]
 
 
 def flip_y(g):
@@ -20,8 +24,9 @@ def flip_y(g):
 
 
 def split_holes(p):
-    """Polygon with holes -> list of hole-free polygons (CSXCAD polygons cannot have holes):
-    cut with a vertical line through the first hole, recursively."""
+    """Polygon with holes -> list of hole-free polygons (CSXCAD polygons cannot
+    have holes): cut with a vertical line through the first hole,
+    recursively."""
     if not p.interiors:
         return [p]
     hx = Polygon(p.interiors[0]).representative_point().x

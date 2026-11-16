@@ -8,8 +8,9 @@ import numpy as np
 from .static_backends import FillEngine, OpenMPBackend, _compiled, bounded_map, resolve_workers
 
 
-def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384, scalar_only=False,
-                   backend='auto', workers=None, device=None, return_info=False):
+def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384,
+                   scalar_only=False, backend='auto', workers=None, device=None,
+                   return_info=False):
     """Return (local nodes, M0, Mrx, Mry, Mrr), in SI units.
 
     Pairs within `near` times the sum of their bounding radii use analytic
@@ -28,24 +29,32 @@ def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384, scalar
     return_info=True returns (moments, execution metadata).
     """
     started = time.perf_counter()
-    engine = FillEngine(nodes, tris, z, near, outer_levels, backend, workers, chunk, device)
+    engine = FillEngine(nodes, tris, z, near, outer_levels, backend, workers,
+                        chunk, device)
     g = engine.geometry
     n, side = len(tris), isqrt(engine.chunk)
     matrices = [np.empty((n, n)) for _ in range(1 if scalar_only else 4)]
 
     def done(scheduler, pairs, analytic):
-        info = dict(engine.info, scheduler=scheduler, pairs=pairs, analytic_pairs=analytic,
-                    scalar_only=bool(scalar_only), seconds=time.perf_counter()-started)
-        return ((g.nodes, *matrices), info) if return_info else (g.nodes, *matrices)
+        info = dict(engine.info, scheduler=scheduler, pairs=pairs,
+                    analytic_pairs=analytic, scalar_only=bool(scalar_only),
+                    seconds=time.perf_counter() - started)
+        return (((g.nodes, *matrices), info) if return_info else
+                (g.nodes, *matrices))
     if hasattr(engine.backend, 'fill_symmetric'):
         # Device backends may own tiling, classification and reciprocal
         # writes; host pair lists and block transposes then disappear.
-        return done('device', n*(n+1)//2, engine.backend.fill_symmetric(matrices, engine.near, engine.outer_levels,
-                                                                        scalar_only))
-    if isinstance(engine.backend, OpenMPBackend) and hasattr(engine.backend.core, 'static_fill'):
+        return done(
+            'device',
+            n * (n + 1) // 2,
+            engine.backend.fill_symmetric(matrices, engine.near,
+                                          engine.outer_levels, scalar_only))
+    if (isinstance(engine.backend, OpenMPBackend)
+            and hasattr(engine.backend.core, 'static_fill')):
         count, analytic = engine.backend.core.static_fill(
-            engine.backend.data, g.cent, g.radius, g.z, float(engine.near), int(engine.outer_levels),
-            bool(scalar_only), engine.backend.workers, matrices)
+            engine.backend.data, g.cent, g.radius, g.z, float(engine.near),
+            int(engine.outer_levels), bool(scalar_only), engine.backend.workers,
+            matrices)
         return done('native', int(count), int(analytic))
 
     def tiles():
@@ -55,17 +64,20 @@ def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384, scalar
 
     def evaluate(tile):
         p0, p1, q0, q1 = tile
-        p, q = np.meshgrid(np.arange(p0, p1, dtype=np.int32), np.arange(q0, q1, dtype=np.int32), indexing='ij')
+        p, q = np.meshgrid(np.arange(p0, p1, dtype=np.int32),
+                           np.arange(q0, q1, dtype=np.int32), indexing='ij')
         p, q = p.ravel(), q.ravel()
         if p0 == q0:
             upper = p <= q
             p, q = p[upper], q[upper]
         d = g.z[p]-g.z[q]
         kind = engine.kinds(p, q, d)
-        return tile, p, q, engine.evaluate(p, q, d, kind, scalar_only), np.count_nonzero(kind >= 0)
+        return (tile, p, q, engine.evaluate(p, q, d, kind, scalar_only),
+                np.count_nonzero(kind >= 0))
 
     count, analytic = 0, 0
-    for tile, p, q, m, close_count in bounded_map(evaluate, tiles(), engine.tile_workers):
+    for tile, p, q, m, close_count in bounded_map(evaluate, tiles(),
+                                                  engine.tile_workers):
         count += len(p); analytic += int(close_count)
         p0, p1, q0, q1 = tile
         if p0 != q0:
@@ -75,7 +87,9 @@ def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384, scalar
             matrices[0][p0:p1, q0:q1] = block[..., 0]
             matrices[0][q0:q1, p0:p1] = block[..., 0].T
             if not scalar_only:
-                for matrix, forward, reverse in ((matrices[1], 1, 3), (matrices[2], 2, 4), (matrices[3], 5, 5)):
+                for matrix, forward, reverse in ((matrices[1], 1,
+                                                  3), (matrices[2], 2, 4),
+                                                 (matrices[3], 5, 5)):
                     matrix[p0:p1, q0:q1] = block[..., forward]
                     matrix[q0:q1, p0:p1] = block[..., reverse].T
             continue
@@ -93,11 +107,14 @@ def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384, scalar
 
 def native_combine_available():
     core = _compiled()
-    return core is not None and hasattr(core, 'static_combine') and not os.environ.get('PCBQS_NO_CORE')
+    return (core is not None and hasattr(core, 'static_combine')
+            and not os.environ.get('PCBQS_NO_CORE'))
 
 
-def edge_inductance(rwg, Mrr, Mrx, Mry, M0, factor=1.0, scale=None, workers=None):
-    """factor * diag(scale) combine(rwg, Mrr, Mrx, Mry, M0) diag(scale), symmetric.
+def edge_inductance(rwg, Mrr, Mrx, Mry, M0, factor=1.0, scale=None,
+                    workers=None):
+    """factor * diag(scale) combine(rwg, Mrr, Mrx, Mry, M0) diag(scale),
+    symmetric.
 
     Returns (matrix, info). The compiled core gathers each entry from the two
     triangles of each RWG function, with no temporaries beyond the output;
@@ -105,20 +122,26 @@ def edge_inductance(rwg, Mrr, Mrx, Mry, M0, factor=1.0, scale=None, workers=None
     """
     from kicad2ems.emsdev.numerics.base import combine
     started = time.perf_counter()
-    scale = np.ones(rwg.Ne) if scale is None else np.ascontiguousarray(scale, float)
+    scale = (np.ones(rwg.Ne) if scale is None else np.ascontiguousarray(
+        scale, float))
     workers = resolve_workers(workers)
-    if native_combine_available() and all(m.flags.c_contiguous and m.dtype == np.float64
-                                          for m in (Mrr, Mrx, Mry, M0)):
+    if (native_combine_available()
+            and all(m.flags.c_contiguous and m.dtype == np.float64
+                    for m in (Mrr, Mrx, Mry, M0))):
         tri = np.ascontiguousarray(np.stack([rwg.tp, rwg.tm]), np.int32)
-        alpha = np.stack([rwg.l/(2*rwg.area[rwg.tp]), -rwg.l/(2*rwg.area[rwg.tm])])
+        alpha = np.stack(
+            [rwg.l / (2 * rwg.area[rwg.tp]), -rwg.l / (2 * rwg.area[rwg.tm])])
         vertex = np.ascontiguousarray(np.stack([rwg.vp, rwg.vm]), float)
-        L = _compiled().static_combine(Mrr, Mrx, Mry, M0, tri, alpha, vertex, scale, float(factor), workers)
+        L = _compiled().static_combine(Mrr, Mrx, Mry, M0, tri, alpha, vertex,
+                                       scale, float(factor), workers)
         backend = 'openmp'
     else:
         L = combine(rwg, Mrr, Mrx, Mry, M0)
-        L += L.T                                   # overlap-safe: NumPy buffers the transpose
+        L += L.T  # overlap-safe: NumPy buffers the transpose
         L *= 0.5 * factor
         L *= scale[:, None]
         L *= scale[None, :]
         backend, workers = 'scipy', 1
-    return L, dict(backend=backend, workers=workers, seconds=time.perf_counter()-started)
+    return (L,
+            dict(backend=backend, workers=workers,
+                 seconds=time.perf_counter() - started))

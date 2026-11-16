@@ -1,10 +1,10 @@
 """
-A small ABCD circuit simulator for the filters: ideal (TEM) elements for checking a synthesis, and
-microstrip elements on a Substrate (dispersion, loss, open ends, gaps, vias) for the expected response
-of a layout.
+A small ABCD circuit simulator for the filters: ideal (TEM) elements for
+checking a synthesis, and microstrip elements on a Substrate (dispersion, loss,
+open ends, gaps, vias) for the expected response of a layout.
 
     net = [MLine(sub, w, 12.0), MStub(sub, w2, 8.4, 'open'), MLine(sub, w, 12.0)]
-    s11, s21 = sparams(net, f)          # complex arrays over f (Hz), 50 ohm ports
+    s11, s21 = sparams(net, f)  # complex arrays over f (Hz), 50 ohm ports
 """
 import math
 import numpy as np
@@ -13,9 +13,11 @@ from .microstrip import C0, ETA0
 
 
 def _line_abcd(z, gl):
-    """ABCD of a line of impedance z (array or scalar) and complex electrical length gl = gamma * l."""
+    """ABCD of a line of impedance z (array or scalar) and complex electrical
+    length gl = gamma * l."""
     ch, sh = np.cosh(gl), np.sinh(gl)
-    return np.stack([np.stack([ch, z * sh], -1), np.stack([sh / z, ch], -1)], -2)
+    return np.stack([np.stack([ch, z * sh], -1),
+                     np.stack([sh / z, ch], -1)], -2)
 
 
 def _shunt(y):
@@ -29,23 +31,28 @@ def _series(z):
 
 
 def _coupled_abcd(ze, zo, gle, glo):
-    """2-port of a coupled-line section driven at diagonally opposite ends, the other two ends open: its Z matrix
-    [[z11, z12], [z12, z11]] as ABCD."""
-    zse, zso = ze / np.tanh(gle), zo / np.tanh(glo)            # self (Z coth gl)
-    zte, zto = ze / np.sinh(gle), zo / np.sinh(glo)            # transfer (Z csch gl)
+    """2-port of a coupled-line section driven at diagonally opposite ends, the
+    other two ends open: its Z matrix [[z11, z12], [z12, z11]] as ABCD."""
+    zse, zso = ze / np.tanh(gle), zo / np.tanh(glo)  # self (Z coth gl)
+    zte, zto = ze / np.sinh(gle), zo / np.sinh(glo)  # transfer (Z csch gl)
     z11 = 0.5 * (zse + zso)
-    z12 = 0.5 * (zte - zto)                                    # line a near end -> line b far end
+    z12 = 0.5 * (zte - zto)  # line a near end -> line b far end
     det = z11 * z11 - z12 * z12
-    return np.stack([np.stack([z11 / z12, det / z12], -1), np.stack([1 / z12, z11 / z12], -1)], -2)
+    return np.stack([
+        np.stack([z11 / z12, det / z12], -1),
+        np.stack([1 / z12, z11 / z12], -1)
+    ], -2)
 
 
-# ------------------------------------------------------------------------------- ideal elements
+# ------------------------------------------------------------------------------
+# ideal elements
 class Ideal:
     """TEM elements: z ohm, electrical length theta0 (rad) at f0."""
 
     @staticmethod
     def line(z, theta0, f0):
-        return lambda f: _line_abcd(np.full(f.shape, z, complex), 1j * theta0 * f / f0)
+        return lambda f: _line_abcd(np.full(f.shape, z, complex), 1j * theta0 *
+                                    f / f0)
 
     @staticmethod
     def stub(z, theta0, f0, kind='open'):
@@ -57,14 +64,16 @@ class Ideal:
 
     @staticmethod
     def coupled(ze, zo, theta0, f0):
-        return lambda f: _coupled_abcd(ze, zo, 1j * theta0 * f / f0, 1j * theta0 * f / f0)
+        return lambda f: _coupled_abcd(ze, zo, 1j * theta0 * f / f0, 1j * theta0
+                                       * f / f0)
 
     @staticmethod
     def series_c(c):
         return lambda f: _series(1 / (2j * np.pi * f * c))
 
 
-# ------------------------------------------------------------------------------- microstrip elements
+# ------------------------------------------------------------------------------
+# microstrip elements
 def _gamma(sub, w, z0, ee0, f):
     f = np.asarray(f, float)
     ee = sub.disperse(ee0, w, f)
@@ -77,13 +86,14 @@ def MLine(sub, w, length):
     z0, ee0 = sub.line(w)
 
     def ab(f):
-        return _line_abcd(np.full(f.shape, z0, complex), _gamma(sub, w, z0, ee0, f) * length * 1e-3)
+        return _line_abcd(np.full(f.shape, z0, complex),
+                          _gamma(sub, w, z0, ee0, f) * length * 1e-3)
     return ab
 
 
 def MStub(sub, w, length, kind='open', vias=1, drill=0.3):
-    """A shunt stub of width w, physical length (mm). open: the open-end extension is added; short: ends in
-    `vias` vias of `drill` mm in parallel."""
+    """A shunt stub of width w, physical length (mm). open: the open-end
+    extension is added; short: ends in `vias` vias of `drill` mm in parallel."""
     z0, ee0 = sub.line(w)
     lv = sub.via_inductance(drill) / max(vias, 1)
 
@@ -101,13 +111,15 @@ def MStub(sub, w, length, kind='open', vias=1, drill=0.3):
 
 
 def MCoupled(sub, w, s, length, open_ext=True):
-    """An edge-coupled section (diagonal ports, the other ends open): open_ext adds each open end's
-    extension (as the layout shortens the strips by it)."""
+    """An edge-coupled section (diagonal ports, the other ends open): open_ext
+    adds each open end's extension (as the layout shortens the strips by it)."""
     ze, zo, ee0, eo0 = sub.coupled(w, s)
     L = (length + (sub.open_end(w) if open_ext else 0.0)) * 1e-3
 
     def ab(f):
-        return _coupled_abcd(ze, zo, _gamma(sub, w, ze, ee0, f) * L, _gamma(sub, w, zo, eo0, f) * L)
+        return _coupled_abcd(ze, zo,
+                             _gamma(sub, w, ze, ee0, f) * L,
+                             _gamma(sub, w, zo, eo0, f) * L)
     return ab
 
 
@@ -117,13 +129,16 @@ def MGap(sub, w, s):
 
     def ab(f):
         om = 2 * np.pi * f
-        return _shunt(1j * om * cp) @ _series(1 / (1j * om * cg)) @ _shunt(1j * om * cp)
+        return (_shunt(1j * om * cp) @ _series(1 / (1j * om * cg))
+                @ _shunt(1j * om * cp))
     return ab
 
 
-# ------------------------------------------------------------------------------- network
+# ------------------------------------------------------------------------------
+# network
 def sparams(net, f, z0=50.0):
-    """(S11, S21) of the cascade (its elements' ABCD matrices in turn) between z0 ports."""
+    """(S11, S21) of the cascade (its elements' ABCD matrices in turn) between
+    z0 ports."""
     f = np.asarray(f, float)
     m = np.broadcast_to(np.eye(2, dtype=complex), (len(f), 2, 2)).copy()
     for el in net:
@@ -138,11 +153,13 @@ def db(x):
 
 
 def radial_admittance(sub, r1, r2, angle, f):
-    """Input admittance (S, array over f) at radius r1 (mm) of an open radial stub of angle (degrees) and
-    outer radius r2 (mm), as a radial line: E_z ~ J0(kr) + c Y0(kr), H_phi ~ j / eta (J1(kr) + c Y1(kr)),
-    c from H_phi = 0 at the rim (moved out by the open-end extension of a strip as wide as the rim's arc).
-    The sector's wave impedance eta h / (theta r) uses an effective angle: that of a microstrip as wide
-    as the arc at the mean radius (its Z0 and eeff, so fringing is in), the same eeff in k."""
+    """Input admittance (S, array over f) at radius r1 (mm) of an open radial
+    stub of angle (degrees) and outer radius r2 (mm), as a radial line: E_z ~
+    J0(kr) + c Y0(kr), H_phi ~ j / eta (J1(kr) + c Y1(kr)), c from H_phi = 0 at
+    the rim (moved out by the open-end extension of a strip as wide as the rim's
+    arc). The sector's wave impedance eta h / (theta r) uses an effective angle:
+    that of a microstrip as wide as the arc at the mean radius (its Z0 and eeff,
+    so fringing is in), the same eeff in k."""
     from scipy.special import j0, j1, y0, y1
     th = math.radians(angle)
     rm = 0.5 * (r1 + r2)
@@ -151,23 +168,28 @@ def radial_admittance(sub, r1, r2, angle, f):
     f = np.asarray(f, float)
     ee = sub.disperse(ee0, wm, f)
     eta = ETA0 / np.sqrt(ee)
-    th_eff = eta * sub.h / (z0 * np.sqrt(ee0 / ee) * rm)       # eta h / (theta_eff rm) = Z0 of the arc width
+    # eta h / (theta_eff rm) = Z0 of the arc width
+    th_eff = eta * sub.h / (z0 * np.sqrt(ee0 / ee) * rm)
     r2e = r2 + sub.open_end(th * r2)
     k = 2 * np.pi * f * np.sqrt(ee) / C0 * 1e-3                # rad / mm
     x1, x2 = k * r1, k * r2e
     c = -j1(x2) / y1(x2)
     # the top strip is at -E_z h: I / V = -(theta r1 H_phi) / (E_z h)
-    return -(th_eff * r1 / (eta * sub.h)) * 1j * (j1(x1) + c * y1(x1)) / (j0(x1) + c * y0(x1))
+    return (-(th_eff * r1 / (eta * sub.h)) * 1j * (j1(x1) + c * y1(x1)) /
+            (j0(x1) + c * y0(x1)))
 
 
-RADIAL_RI_LINE = 0.5     # the radial line starts this many line widths beyond the line's edge (kicad2ems's
-                         # fit of qucsator's MRSTUB against mom25d: a fan from the line's centre carries no
-                         # radial wave yet where it leaves the line; at the edge its notch is 17-20 % low)
+# the radial line starts this many line widths beyond the line's edge
+# (kicad2ems's fit of qucsator's MRSTUB against mom25d: a fan from the line's
+# centre carries no radial wave yet where it leaves the line; at the edge its
+# notch is 17-20 % low)
+RADIAL_RI_LINE = 0.5
 
 
 def MRadial(sub, w_line, r2, angle, count=1):
-    """`count` radial open stubs (1, or 2 for a butterfly) in shunt at a line of width w_line, each a fan of
-    apex angle (degrees) and radius r2 (mm) about the line's centre."""
+    """`count` radial open stubs (1, or 2 for a butterfly) in shunt at a line of
+    width w_line, each a fan of apex angle (degrees) and radius r2 (mm) about
+    the line's centre."""
     r1 = w_line / 2 + RADIAL_RI_LINE * w_line
 
     def ab(f):

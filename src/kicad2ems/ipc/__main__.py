@@ -1,5 +1,6 @@
-"""python plugin/kicad2ems_plugin.py [install | uninstall] [--kicad-version 10.0] [--dir FOLDER] [--exec]: the
-window (what KiCad's button runs), or the plugin installed into / removed from KiCad's plugins folder."""
+"""python plugin/kicad2ems_plugin.py [install | uninstall] [--kicad-version
+10.0] [--dir FOLDER] [--exec]: the window (what KiCad's button runs), or the
+plugin installed into / removed from KiCad's plugins folder."""
 import sys
 
 

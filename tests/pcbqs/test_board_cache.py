@@ -22,7 +22,8 @@ def fake(monkeypatch, tmp_path):
     import kicad2ems.core.importers
     FakeBoard.calls = 0
     monkeypatch.setattr(kicad2ems.core.board, 'Board', FakeBoard)
-    monkeypatch.setattr(kicad2ems.core.importers, 'open_board', lambda path: open(path).read())
+    monkeypatch.setattr(kicad2ems.core.importers, 'open_board',
+                        lambda path: open(path).read())
     monkeypatch.setenv('PCBQS_CACHE_DIR', str(tmp_path / 'cache'))
     monkeypatch.delenv('PCBQS_NO_CACHE', raising=False)
     pcb = tmp_path / 'b.kicad_pcb'
@@ -44,8 +45,8 @@ def test_an_edited_board_or_another_net_subset_is_imported_again(fake):
     fake.write_text('(kicad_pcb v2)')
     assert _cli.load_board(fake)['source'] == '(kicad_pcb v2)'
     assert FakeBoard.calls == 3
-    _cli.load_board(fake, {'VIN', 'GND'})                    # the subset's order does not matter
-    assert FakeBoard.calls == 4                              # (v2 with these nets: new)
+    _cli.load_board(fake, {'VIN', 'GND'})  # the subset's order does not matter
+    assert FakeBoard.calls == 4            # (v2 with these nets: new)
     _cli.load_board(fake, {'GND', 'VIN'})
     assert FakeBoard.calls == 4
 

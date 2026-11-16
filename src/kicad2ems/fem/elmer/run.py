@@ -1,14 +1,18 @@
-"""Running Elmer: ElmerGrid (gmsh mesh to Elmer's), ElmerSolver (a .sif), SaveScalars output.
+"""Running Elmer: ElmerGrid (gmsh mesh to Elmer's), ElmerSolver (a .sif),
+SaveScalars output.
 
-    found()                                  # (True, where) or (False, why); require(): RuntimeError(why)
-    header()                                 # a .sif's Header and Simulation sections
-    elmergrid(msh, folder)                   # Elmer's mesh folder from a gmsh .msh (version 2)
-    solve(case_folder, sif_text)             # ElmerSolver's log; raises with the log's tail on failure
-                                             # (threads=1: for a .sif whose solvers are not thread safe)
-    scalars(path)                            # {column name: value} of a SaveScalars file
+    found()                       # (True, where) or (False, why); require():
+                                  RuntimeError(why)
+    header()                      # a .sif's Header and Simulation sections
+    elmergrid(msh, folder)        # Elmer's mesh folder from a gmsh .msh
+                                  (version 2)
+    solve(case_folder, sif_text)  # ElmerSolver's log; raises with the log's
+                                  tail on failure # (threads=1: for a .sif whose
+                                  solvers are not thread safe)
+    scalars(path)                 # {column name: value} of a SaveScalars file
 
-Elmer is found as K2E_ELMER (the folder with ElmerSolver and ElmerGrid), the folder kicad2ems's installer
-recorded (kicad2ems-site.toml: elmer), or on PATH.
+Elmer is found as K2E_ELMER (the folder with ElmerSolver and ElmerGrid), the
+folder kicad2ems's installer recorded (kicad2ems-site.toml: elmer), or on PATH.
 """
 import os
 import re
@@ -19,13 +23,15 @@ import numpy as np
 
 
 def site(key):
-    """A setting kicad2ems's installer recorded (kicad2ems.core.sitecfg: kicad2ems-site.toml), or None."""
+    """A setting kicad2ems's installer recorded (kicad2ems.core.sitecfg:
+    kicad2ems-site.toml), or None."""
     from kicad2ems.core import sitecfg
     return sitecfg.get(key)
 
 
 def _tool(name):
-    """An Elmer program: in K2E_ELMER, else in the folder the installer recorded (sitecfg 'elmer'), else on PATH."""
+    """An Elmer program: in K2E_ELMER, else in the folder the installer recorded
+    (sitecfg 'elmer'), else on PATH."""
     where = os.environ.get('K2E_ELMER') or site('elmer')
     exe = name + ('.exe' if os.name == 'nt' else '')
     if where:
@@ -37,8 +43,9 @@ def _tool(name):
 def found():
     missing = [n for n in ('ElmerSolver', 'ElmerGrid') if _tool(n) is None]
     if missing:
-        return False, (f"Elmer not found ({', '.join(missing)}): install Elmer (elmerfem), or set K2E_ELMER to the "
-                       "folder with ElmerSolver and ElmerGrid")
+        return (False, (
+            f"Elmer not found ({', '.join(missing)}): install Elmer (elmerfem), or set K2E_ELMER to the "
+            "folder with ElmerSolver and ElmerGrid"))
     return True, f"Elmer ({Path(_tool('ElmerSolver')).parent})"
 
 
@@ -49,49 +56,71 @@ def require():
         raise RuntimeError(why)
 
 
-def header(simulation='  Simulation Type = Steady State\n  Steady State Max Iterations = 1\n', level=4):
-    """A .sif's Header and Simulation sections: the mesh in the case's folder 'mesh', its coordinates in mm."""
-    return ('Header\n  Mesh DB "." "mesh"\nEnd\nSimulation\n  Coordinate System = Cartesian 3D\n'
-            f'  Coordinate Scaling = 1.0e-3\n{simulation}  Max Output Level = {level}\nEnd\n')
+def header(
+        simulation='  Simulation Type = Steady State\n  Steady State Max '
+                   'Iterations = 1\n',
+        level=4):
+    """A .sif's Header and Simulation sections: the mesh in the case's folder
+    'mesh', its coordinates in mm."""
+    return (
+        'Header\n  Mesh DB "." "mesh"\nEnd\nSimulation\n  Coordinate System = Cartesian 3D\n'
+        f'  Coordinate Scaling = 1.0e-3\n{simulation}  Max Output Level = {level}\nEnd\n'
+    )
 
 
 def elmergrid(msh, folder):
-    """Elmer's mesh folder from a gmsh .msh. No -autoclean: it renumbers the physical tags the .sif refers to."""
+    """Elmer's mesh folder from a gmsh .msh. No -autoclean: it renumbers the
+    physical tags the .sif refers to."""
     folder = Path(folder)
     if folder.exists():
         shutil.rmtree(folder)
     from .. import children
-    p = children.run([_tool('ElmerGrid'), '14', '2', str(msh), '-out', str(folder)], timeout=3600)
+    p = children.run(
+        [_tool('ElmerGrid'), '14', '2',
+         str(msh), '-out',
+         str(folder)], timeout=3600)
     if p.returncode:
         raise RuntimeError('ElmerGrid failed: ' + (p.stdout + p.stderr)[-1500:])
     return folder
 
 
 def solve(case, sif_text, timeout=7200, threads=None):
-    """threads: OMP_NUM_THREADS for this run (None: as the environment has it)."""
+    """threads: OMP_NUM_THREADS for this run (None: as the environment has
+    it)."""
     case = Path(case)
     (case / 'case.sif').write_text(sif_text)
     (case / 'ELMERSOLVER_STARTINFO').write_text('case.sif\n1\n')
-    from .. import children                                 # its own process group, stopped with the tool; a
-    p = children.run([_tool('ElmerSolver'), 'case.sif'], cwd=case, timeout=timeout,   # timeout: RuntimeError
-                     env=None if threads is None else {**os.environ, 'OMP_NUM_THREADS': str(threads)})
+    from .. import children  # its own process group, stopped with the tool; a
+    # timeout: RuntimeError
+    p = children.run([_tool('ElmerSolver'), 'case.sif'], cwd=case,
+                     timeout=timeout,
+                     env=(None if threads is None else
+                          {**os.environ, 'OMP_NUM_THREADS': str(threads)}))
     (case / 'elmer.log').write_text(p.stdout + p.stderr)
     if p.returncode or 'ALL DONE' not in p.stdout:
-        raise RuntimeError('ElmerSolver failed; see ' + str(case / 'elmer.log') + '\n' + (p.stdout + p.stderr)[-1500:])
+        raise RuntimeError('ElmerSolver failed; see ' + str(case / 'elmer.log')
+                           + '\n' + (p.stdout + p.stderr)[-1500:])
     return p.stdout
 
 
 def engine(log_text):
-    """Which Elmer solved a case, from its log (MAIN: Version: 26.2-devel (Rev: 033b105e2, Compiled: ...)), for the
-    tool's result (R-B14): dict(program, version, revision, kicad2ems.fem); the version None when the log has none."""
+    """Which Elmer solved a case, from its log (MAIN: Version: 26.2-devel (Rev:
+    033b105e2, Compiled: ...)), for the tool's result (R-B14): dict(program,
+    version, revision, kicad2ems.fem); the version None when the log has
+    none."""
     from .. import __version__
     m = re.search(r'Version:\s*(\S+)\s*\(Rev:\s*([^,)]+)', log_text or '')
-    return dict(program='Elmer', version=m.group(1) if m else None, revision=m.group(2).strip() if m else None,
+    return dict(program='Elmer', version=m.group(1) if m else None,
+                revision=(m.group(2).strip() if m else None),
                 kicad2ems_fem=__version__)
 
 
 def scalars(path):
     """{name: value} of a SaveScalars file (the last row) and its .names."""
     names = Path(str(path) + '.names').read_text().splitlines()
-    cols = [re.sub(r'^\s*\d+:\s*', '', l).strip() for l in names if re.match(r'^\s*\d+:', l)]
+    cols = [
+        re.sub(r'^\s*\d+:\s*', '', l).strip()
+        for l in names
+        if re.match(r'^\s*\d+:', l)
+    ]
     return dict(zip(cols, np.loadtxt(path, ndmin=2)[-1]))

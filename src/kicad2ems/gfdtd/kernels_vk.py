@@ -1,45 +1,62 @@
 """
-The Vulkan kernels (Slang, compiled to SPIR-V by slangpy): kernels.py's, kernel for kernel, around the same update
-maths (core/fdtd_core.h, read by Slang as it is). The differences are Vulkan's:
+The Vulkan kernels (Slang, compiled to SPIR-V by slangpy): kernels.py's, kernel
+for kernel, around the same update maths (core/fdtd_core.h, read by Slang as it
+is). The differences are Vulkan's:
 
-- the model's arrays are reached through one struct in device memory (Model: their device addresses and the sizes),
-  so a launch sets a pointer and a few values, not twenty arguments (each costs host time in slangpy);
-- a launch's threads cover its range in a grid-stride loop (`stride`: the threads launched), the node index in 32
-  bits as on CUDA (the backend keeps 3 nx ny nz below 2^31);
-- the energy: a double per workgroup into part[], their sum on the host (no float64 atomics on RDNA's Vulkan), and
-  the lumped branches' energy in part[nblk] by the first thread;
+- the model's arrays are reached through one struct in device memory (Model:
+  their device addresses and the sizes), so a launch sets a pointer and a few
+  values, not twenty arguments (each costs host time in slangpy);
+- a launch's threads cover its range in a grid-stride loop (`stride`: the
+  threads launched), the node index in 32 bits as on CUDA (the backend keeps 3
+  nx ny nz below 2^31);
+- the energy: a double per workgroup into part[], their sum on the host (no
+  float64 atomics on RDNA's Vulkan), and the lumped branches' energy in
+  part[nblk] by the first thread;
 - probe() adds the voltage and the current probes in one launch.
 
-    source('uint16_t')          # the module's source, for uint8_t / uint16_t / uint32_t codes
-    MODEL                       # Model's fields in order: (name, kind), kind 'p' a pointer, 'i' int32, 'f' float32
+    source('uint16_t')  # the module's source, for uint8_t / uint16_t / uint32_t
+                        codes
+    MODEL               # Model's fields in order: (name, kind), kind 'p' a
+                        pointer, 'i' int32, 'f' float32
 """
 
 
 from .kernels import HEADER
 
-NAMES = ('update_h', 'update_e', 'energy', 'step_h', 'step_e', 'step_post', 'pml_e', 'pml_h', 'mur_pre', 'mur_post',
-         'excite', 'assign', 'par_l', 'series_rlc', 'probe', 'dump', 'copy_words')
+NAMES = ('update_h', 'update_e', 'energy', 'step_h', 'step_e', 'step_post',
+         'pml_e', 'pml_h', 'mur_pre', 'mur_post', 'excite', 'assign', 'par_l',
+         'series_rlc', 'probe', 'dump', 'copy_words')
 
-# the struct the kernels read the model through: pointers first (8 bytes each), then 32-bit values, so the layout
-# is the same in every Vulkan layout rule (and numpy's, packed)
-MODEL = [(n, 'p') for n in (
-    'V', 'I', 'G', 'code', 'tvv', 'ts', 'tpole', 'tkb', 'tka', 'th', 'slot', 'pol',
-    'psiH', 'bH', 'cH', 'k1H', 'k2H', 'descH', 'psiE', 'bE', 'cE', 'k1E', 'k2E', 'descE', 'boxH', 'boxE',
-    'ex_idx', 'ex_amp', 'pl_vi', 'pl_idx', 'pl_k', 'pl_I', 'pl_L',
-    'se_vi', 'se_idx', 'se_a', 'se_b', 'se_c', 'se_I', 'se_q', 'se_L', 'se_Cinv',
-    'm0', 'm1', 'mk', 'o0', 'o1', 'part', 'buf', 'pv_idx', 'pv_w', 'pv_pid', 'pi_idx', 'pi_w', 'pi_pid')] + \
-    [(n, 'i') for n in ('nx', 'ny', 'nz', 'P', 'ns', 'n_ex', 'n_pl', 'n_se', 'n_mu', 'n_pv', 'n_pi', 'np_', 'pml_M',
-                         'pad')] + \
-    [(n, 'f') for n in ('kh', 'ke', 'dt', 'dtf')]
+# the struct the kernels read the model through: pointers first (8 bytes each),
+# then 32-bit values, so the layout is the same in every Vulkan layout rule (and
+# numpy's, packed)
+MODEL = (
+    [(n, 'p')
+     for n in ('V', 'I', 'G', 'code', 'tvv', 'ts', 'tpole', 'tkb', 'tka', 'th',
+               'slot', 'pol', 'psiH', 'bH', 'cH', 'k1H', 'k2H', 'descH', 'psiE',
+               'bE', 'cE', 'k1E', 'k2E', 'descE', 'boxH', 'boxE', 'ex_idx',
+               'ex_amp', 'pl_vi', 'pl_idx', 'pl_k', 'pl_I', 'pl_L', 'se_vi',
+               'se_idx', 'se_a', 'se_b', 'se_c', 'se_I', 'se_q', 'se_L',
+               'se_Cinv', 'm0', 'm1', 'mk', 'o0', 'o1', 'part', 'buf', 'pv_idx',
+               'pv_w', 'pv_pid', 'pi_idx', 'pi_w', 'pi_pid')]
+    + [(n, 'i') for n in ('nx', 'ny', 'nz', 'P', 'ns', 'n_ex', 'n_pl', 'n_se',
+                          'n_mu', 'n_pv', 'n_pi', 'np_', 'pml_M', 'pad')]
+    + [(n, 'f') for n in ('kh', 'ke', 'dt', 'dtf')])
 
-_TYPES = {'V': 'float', 'I': 'float', 'G': 'float', 'code': 'C', 'tpole': 'int', 'slot': 'int', 'descH': 'idx_t',
-          'descE': 'idx_t', 'boxH': 'int', 'boxE': 'int', 'ex_idx': 'idx_t', 'pl_idx': 'idx_t', 'se_idx': 'idx_t',
-          'm0': 'idx_t', 'm1': 'idx_t', 'part': 'double', 'pl_L': 'double', 'se_L': 'double', 'se_Cinv': 'double',
-          'pv_idx': 'idx_t', 'pv_pid': 'idx_t', 'pi_idx': 'idx_t', 'pi_pid': 'idx_t'}
-MODEL_STRUCT = "struct Model {\n" + "".join(f"    {_TYPES.get(n, 'float')}* {n};\n" if k == 'p' else
-                                            f"    {dict(i='int', f='float')[k]} {n};\n" for n, k in MODEL) + "};\n"
+_TYPES = {
+    'V': 'float', 'I': 'float', 'G': 'float', 'code': 'C', 'tpole': 'int',
+    'slot': 'int', 'descH': 'idx_t', 'descE': 'idx_t', 'boxH': 'int',
+    'boxE': 'int', 'ex_idx': 'idx_t', 'pl_idx': 'idx_t', 'se_idx': 'idx_t',
+    'm0': 'idx_t', 'm1': 'idx_t', 'part': 'double', 'pl_L': 'double',
+    'se_L': 'double', 'se_Cinv': 'double', 'pv_idx': 'idx_t', 'pv_pid': 'idx_t',
+    'pi_idx': 'idx_t', 'pi_pid': 'idx_t'
+}
+MODEL_STRUCT = ("struct Model {\n"
+                + "".join(f"    {_TYPES.get(n, 'float')}* {n};\n" if k ==
+                          'p' else f"    {dict(i='int', f='float')[k]} {n};\n"
+                          for n, k in MODEL) + "};\n")
 
-KERNELS = r'''
+KERNELS = (r'''
 uniform Model* M;
 uniform uint stride;                    // the threads launched: the grid-stride loops' step
 
@@ -364,16 +381,17 @@ void dump(uint3 tid: SV_DispatchThreadID)
         }
     }
 }
-'''
+''')
 
 
 def source(code_t='uint16_t', block=128, idx='int'):
-    """The module: CODE_T codes, `block` threads a workgroup, `idx` the index type (int: the index arrays int32)."""
+    """The module: CODE_T codes, `block` threads a workgroup, `idx` the index
+    type (int: the index arrays int32)."""
     with open(HEADER, encoding='utf-8') as fh:
         head = fh.read()
-    pre = (f"#define GF_DEV\n#define GF_GPU 1\n#define GF_BLOCK {int(block)}\n#define CODE_T {code_t}\n"
-           f"#define GF_IDX {idx}\n#define GF_ADD(p, v) InterlockedAdd(*(p), (v))\n")
+    pre = (
+        "#define GF_DEV\n#define GF_GPU 1\n#define GF_BLOCK "
+        f"{int(block)}\n#define CODE_T {code_t}\n#define GF_IDX {idx}\n#define "
+        "GF_ADD(p, v) InterlockedAdd(*(p), (v))\n"
+    )
     return pre + head + "\n" + MODEL_STRUCT + KERNELS
-
-
-

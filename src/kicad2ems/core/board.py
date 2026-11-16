@@ -1,26 +1,36 @@
 """
-The canonical board: what every solver gets, from any importer (units mm, model coordinates: y up, the
-negative of KiCad's y).
+The canonical board: what every solver gets, from any importer (units mm, model
+coordinates: y up, the negative of KiCad's y).
 
-    board = Board(raw, nets=['RF', 'GND'], pos_file='board-top.pos', ground='B.Cu')   # resolve an import
-    board.save('board.json');  board = Board.load('board.json')                       # the file contract
-    board.summary()                       # what the parity checks compare (copper area per layer and net, ...)
+    board = Board(raw, nets=['RF', 'GND'], pos_file='board-top.pos', ground='B.Cu')
+        # resolve an import
+    board.save('board.json');  board = Board.load('board.json')
+                               # the file contract
+    board.summary()  # what the parity checks compare (copper area per layer and
+                     net, ...)
 
-  layers         dielectric slabs dict(name, z0, z1, er, tand, kind), bottom to top
-  cu_z, cu_t     copper layer heights and thicknesses (cu_order: bottom to top); thickness: the stack's
-  outline        the dielectric's extent: the board outline, cropped to the region if one is given
-  copper         {layer: [polygons]} the selected copper, merged per layer; copper_nets: the net of each
-  vias           [(x, y, radius, z0, z1)] plated holes as metal cylinders; via_nets, via_signal (on a port net)
-  ports          [Port] from the P<n> footprints, the settings and region cuts; user_ports groups the legs
-                 of differential ports
-  parts          [parts.Part] lumped R / L / C parts between two pads
-  walls          [(axis, coord, t0, t1, z0, z1)] edge walls where the ground planes end (edges.py)
-  prims          the primitives behind the copper, for the line model: items, shapes, tracks, footprints, vias
+  layers      dielectric slabs dict(name, z0, z1, er, tand, kind), bottom to top
+  cu_z, cu_t  copper layer heights and thicknesses (cu_order: bottom to top);
+              thickness: the stack's
+  outline     the dielectric's extent: the board outline, cropped to the region
+              if one is given
+  copper      {layer: [polygons]} the selected copper, merged per layer;
+              copper_nets: the net of each
+  vias        [(x, y, radius, z0, z1)] plated holes as metal cylinders;
+              via_nets, via_signal (on a port net)
+  ports       [Port] from the P<n> footprints, the settings and region cuts;
+              user_ports groups the legs of differential ports
+  parts       [parts.Part] lumped R / L / C parts between two pads
+  walls       [(axis, coord, t0, t1, z0, z1)] edge walls where the ground planes
+              end (edges.py)
+  prims       the primitives behind the copper, for the line model: items,
+              shapes, tracks, footprints, vias
   ground, ground_nets, signal_nets, sel (the nets kept; None: all), region, cut_sides, notes, source, request
 
-Physical intent only: what is on the board and what was asked for. Nothing is snapped to a mesh, split for
-a solver or fitted: the solvers do that, and say so. board.json holds all of it (format kicad2ems-board,
-version 1); a reader refuses a newer major version and ignores keys it does not know.
+Physical intent only: what is on the board and what was asked for. Nothing is
+snapped to a mesh, split for a solver or fitted: the solvers do that, and say
+so. board.json holds all of it (format kicad2ems-board, version 1); a reader
+refuses a newer major version and ignores keys it does not know.
 """
 import json
 import numpy as np
@@ -36,17 +46,27 @@ from .importers.kicad.pnp import read_pos, pos_port_refs
 from .parts import Part, find_parts
 
 FORMAT, VERSION = 'kicad2ems-board', 1
-CUT_KEEPOUT = 2.0      # mm: edge walls on a region cut stay this far from the signal copper (docs/model.md)
+# mm: edge walls on a region cut stay this far from the signal copper
+# (docs/model.md)
+CUT_KEEPOUT = 2.0
 FILL_VOIDS = ('off', 'far', 'all')
-FILL_SMALL = 0.5       # mm2: fill_voids = far fills a void smaller than this wherever it is (thermal-relief gaps)
-FILL_FAR = 1.0         # mm: ... and a larger one farther than this from the signal copper of any layer,
-FILL_HEIGHTS = 3.0     # or than this many times the widest gap between two copper layers, if that is more
-FILL_LAP = 0.01        # mm: a fill reaches this far into the copper around its void (the copper's outline is
-                       # simplified to 2 um: without it a sliver stays between the two)
+# mm2: fill_voids = far fills a void smaller than this wherever it is
+# (thermal-relief gaps)
+FILL_SMALL = 0.5
+# mm: ... and a larger one farther than this from the signal copper of any
+# layer,
+FILL_FAR = 1.0
+# or than this many times the widest gap between two copper layers, if that is
+# more
+FILL_HEIGHTS = 3.0
+# mm: a fill reaches this far into the copper around its void (the copper's
+# outline is simplified to 2 um: without it a sliver stays between the two)
+FILL_LAP = 0.01
 
 
 def port_field(props, key, default=None):
-    """Port footprint field: 'port.<key>' (preferred) or 'mom.<key>' (mom25d footprints)."""
+    """Port footprint field: 'port.<key>' (preferred) or 'mom.<key>' (mom25d
+    footprints)."""
     for k in (f'port.{key}', f'mom.{key}'):
         if props.get(k) not in (None, ''):
             return props[k]
@@ -54,8 +74,10 @@ def port_field(props, key, default=None):
 
 
 def _port_layer(fp):
-    """A port footprint's copper layer: its field port.layer (mom.layer), else its side's outer copper."""
-    return port_field(fp['props'], 'layer') or ('B.Cu' if fp['side'] == 'B' else 'F.Cu')
+    """A port footprint's copper layer: its field port.layer (mom.layer), else
+    its side's outer copper."""
+    return (port_field(fp['props'], 'layer')
+            or ('B.Cu' if fp['side'] == 'B' else 'F.Cu'))
 
 
 def _legs(fp):
@@ -64,37 +86,51 @@ def _legs(fp):
 
 
 def cross_section(cu, probe, t, reach=20.0):
-    """Width (mm) and mid point of the copper polygon `cu` along the line through `probe` in direction
-    t (unit vector): the piece of that line inside the copper nearest to the probe."""
+    """Width (mm) and mid point of the copper polygon `cu` along the line
+    through `probe` in direction t (unit vector): the piece of that line inside
+    the copper nearest to the probe."""
     seg = LineString([probe - t * reach, probe + t * reach]).intersection(cu)
-    parts = [seg] if seg.geom_type == 'LineString' else [g for g in getattr(seg, 'geoms', []) if g.geom_type == 'LineString']
+    parts = ([seg] if seg.geom_type == 'LineString' else [
+        g for g in getattr(seg, 'geoms', []) if g.geom_type == 'LineString'
+    ])
     part = min(parts, key=lambda q: q.distance(Point(*probe)))
     (x0, y0), (x1, y1) = part.coords[0], part.coords[-1]
-    return float(np.hypot(x1 - x0, y1 - y0)), np.array([(x0 + x1) / 2, (y0 + y1) / 2])
+    return (float(np.hypot(x1 - x0,
+                           y1 - y0)), np.array([(x0 + x1) / 2, (y0 + y1) / 2]))
 
 
 class Port:
-    """Lumped port. kind 'z': a vertical sheet across the trace from the reference copper to the trace
-    (feed lines over a plane); kind 'gap': a sheet in the copper plane across a gap between two
-    conductors on the same layer (centre-fed dipoles, gap feeds), from gap[0] to gap[1] along axis.
-    c is the port's centre, d the unit direction into the circuit (a vertical port's trace at any angle, R-E1), axis
-    (0: x, 1: y) and sgn its dominant axis and sign there (the port's sheet is normal to that axis), w the trace's
+    """Lumped port. kind 'z': a vertical sheet across the trace from the
+    reference copper to the trace (feed lines over a plane); kind 'gap': a sheet
+    in the copper plane across a gap between two conductors on the same layer
+    (centre-fed dipoles, gap feeds), from gap[0] to gap[1] along axis. c is the
+    port's centre, d the unit direction into the circuit (a vertical port's
+    trace at any angle, R-E1), axis (0: x, 1: y) and sgn its dominant axis and
+    sign there (the port's sheet is normal to that axis), w the trace's
     width."""
-    FIELDS = ('name', 'layer', 'z_sig', 'z_ref', 'c', 'axis', 'sgn', 'w', 'z0', 'leg', 'pair', 'ref_layer', 'kind',
-              'gap', 'net', 'source', 'internal', 'd')
+    FIELDS = ('name', 'layer', 'z_sig', 'z_ref', 'c', 'axis', 'sgn', 'w', 'z0',
+              'leg', 'pair', 'ref_layer', 'kind', 'gap', 'net', 'source',
+              'internal', 'd')
 
-    def __init__(self, name, layer, z_sig, z_ref, c, axis, sgn, w, z0, leg=None, pair=None, ref_layer='',
-                 kind='z', gap=None, net=None, source='', internal=False, d=None):
-        self.name, self.layer, self.z_sig, self.z_ref = name, layer, z_sig, z_ref
-        self.c, self.axis, self.sgn, self.w, self.z0 = np.asarray(c, float), axis, sgn, w, z0
+    def __init__(self, name, layer, z_sig, z_ref, c, axis, sgn, w, z0, leg=None,
+                 pair=None, ref_layer='', kind='z', gap=None, net=None,
+                 source='', internal=False, d=None):
+        self.name, self.layer, self.z_sig, self.z_ref = (name, layer, z_sig,
+                                                         z_ref)
+        self.c, self.axis, self.sgn, self.w, self.z0 = (np.asarray(c, float),
+                                                        axis, sgn, w, z0)
         if d is None:
             d = np.zeros(2)
             d[axis] = sgn
         self.d = np.asarray(d, float) / np.linalg.norm(d)
         self.leg, self.pair, self.ref_layer = leg, pair, ref_layer
-        self.kind, self.gap, self.net = kind, None if gap is None else tuple(gap), net
-        self.source = source                        # footprint TP1 / pad J1.1 / point (x, y) / cut (x, y)
-        self.internal = bool(internal)              # a part's port (embed.py, --part-ports): closed after the solve
+        self.kind, self.gap, self.net = (kind,
+                                         None if gap is None else tuple(gap),
+                                         net)
+        # footprint TP1 / pad J1.1 / point (x, y) / cut (x, y)
+        self.source = source
+        # a part's port (embed.py, --part-ports): closed after the solve
+        self.internal = bool(internal)
 
     @property
     def direction(self):
@@ -110,9 +146,10 @@ class Port:
         return abs(abs(self.d[self.axis]) - 1) > 1e-6
 
     def box(self):
-        """Lumped-port sheet: across the trace, from reference copper to the trace ('z'), or across the
-        gap in the copper plane ('gap'). An oblique trace's: in the plane normal to its dominant axis, as wide as
-        the trace's cut there (w / |d[axis]|)."""
+        """Lumped-port sheet: across the trace, from reference copper to the
+        trace ('z'), or across the gap in the copper plane ('gap'). An oblique
+        trace's: in the plane normal to its dominant axis, as wide as the
+        trace's cut there (w / |d[axis]|)."""
         a, b = self.axis, 1 - self.axis
         s, e = np.zeros(3), np.zeros(3)
         half = self.w / 2 / abs(self.d[a]) if self.kind == 'z' else self.w / 2
@@ -127,8 +164,10 @@ class Port:
 
     def to_dict(self):
         d = {k: getattr(self, k) for k in self.FIELDS}
-        return dict(d, c=[float(v) for v in self.c], gap=None if self.gap is None else [float(v) for v in self.gap],
-                    d=[float(v) for v in self.d])
+        return dict(
+            d, c=[float(v) for v in self.c],
+            gap=(None if self.gap is None else [float(v) for v in self.gap]),
+            d=[float(v) for v in self.d])
 
     @classmethod
     def from_dict(cls, d):
@@ -136,20 +175,24 @@ class Port:
 
 
 class Prims:
-    """The primitives the copper is made of, in model coordinates (what the line model reads): items
-    [(layer, net, geometry)], shapes (the zones and drawn copper among the items), tracks [dict(layer, net,
-    width, pts)], vias [dict(x, y, size, drill, layers, net[, pth])] and footprints [dict(ref, value, props,
-    x, y, rot, side, dnp, exclude_from_sim, pads [dict(name, xy, layers, net, geom, rot)])]."""
+    """The primitives the copper is made of, in model coordinates (what the line
+    model reads): items [(layer, net, geometry)], shapes (the zones and drawn
+    copper among the items), tracks [dict(layer, net, width, pts)], vias
+    [dict(x, y, size, drill, layers, net[, pth])] and footprints [dict(ref,
+    value, props, x, y, rot, side, dnp, exclude_from_sim, pads [dict(name, xy,
+    layers, net, geom, rot)])]."""
 
     def __init__(self, items=(), shapes=(), tracks=(), vias=(), footprints=()):
-        self.items, self.shapes, self.tracks = list(items), list(shapes), list(tracks)
+        self.items, self.shapes, self.tracks = (list(items), list(shapes),
+                                                list(tracks))
         self.vias, self.footprints = list(vias), list(footprints)
 
     @classmethod
     def from_raw(cls, raw, keep, layers, outline):
-        """The primitives of an imported board (KiCad coordinates) on copper `layers` that reach `outline`
-        (model coordinates): a cropped region of a large board keeps only what it can use. keep: its
-        items that do (inside_items)."""
+        """The primitives of an imported board (KiCad coordinates) on copper
+        `layers` that reach `outline` (model coordinates): a cropped region of a
+        large board keeps only what it can use. keep: its items that do
+        (inside_items)."""
         reach = outline.buffer(1e-6)
         k_reach = flip_y(reach)
         shape_ids = {id(it) for it in getattr(raw, 'shapes', [])}
@@ -163,20 +206,45 @@ class Prims:
             pts = np.column_stack([t['pts'][:, 0], -t['pts'][:, 1]])
             if t['layer'] in layers and LineString(pts).intersects(reach):
                 tracks.append(dict(t, pts=pts))
-        vias = [dict(v, y=-v['y']) for v in raw.vias if reach.contains(Point(v['x'], -v['y']))]
+        vias = [
+            dict(v, y=-v['y'])
+            for v in raw.vias
+            if reach.contains(Point(v['x'], -v['y']))
+        ]
         fps = []
         for fp in getattr(raw, 'footprints', []):
-            if any(l in layers for q in fp['pads'] for l in q['layers']) and any(q['geom'].intersects(k_reach) for q in fp['pads']):
-                pads = [dict(q, xy=np.array([q['xy'][0], -q['xy'][1]], float), geom=flip_y(q['geom'])) for q in fp['pads']]
-                fps.append(dict({k: v for k, v in fp.items() if k not in ('pads', 'fab')}, y=-fp['y'], pads=pads))
+            if (any(l in layers for q in fp['pads'] for l in q['layers'])
+                    and any(q['geom'].intersects(k_reach) for q in fp['pads'])):
+                pads = [
+                    dict(q, xy=np.array([q['xy'][0], -q['xy'][1]], float),
+                         geom=flip_y(q['geom'])) for q in fp['pads']
+                ]
+                fps.append(
+                    dict(
+                        {
+                            k: v
+                            for k, v in fp.items()
+                            if k not in ('pads', 'fab')
+                        }, y=-fp['y'], pads=pads))
         return cls(items, shapes, tracks, vias, fps)
 
     def to_dict(self):
         shapes = {id(s) for s in self.shapes}
-        return dict(items=[dict(layer=it[0], net=it[1], shape=id(it) in shapes, geom=mapping(it[2])) for it in self.items],
-                    tracks=[dict(t, pts=np.asarray(t['pts']).tolist()) for t in self.tracks], vias=self.vias,
-                    footprints=[dict(fp, pads=[dict(q, xy=[float(v) for v in q['xy']], geom=mapping(q['geom']))
-                                               for q in fp['pads']]) for fp in self.footprints])
+        return dict(
+            items=[
+                dict(layer=it[0], net=it[1], shape=id(it) in shapes,
+                     geom=mapping(it[2])) for it in self.items
+            ], tracks=[
+                dict(t, pts=np.asarray(t['pts']).tolist()) for t in self.tracks
+            ], vias=self.vias, footprints=[
+                dict(
+                    fp, pads=[
+                        dict(q, xy=[float(v)
+                                    for v in q['xy']], geom=mapping(q['geom']))
+                        for q in fp['pads']
+                    ])
+                for fp in self.footprints
+            ])
 
     @classmethod
     def from_dict(cls, d):
@@ -185,99 +253,154 @@ class Prims:
             items.append((it['layer'], it['net'], shape(it['geom'])))
             if it.get('shape'):
                 shapes.append(items[-1])
-        tracks = [dict(t, pts=np.asarray(t['pts'], float)) for t in d.get('tracks', [])]
-        fps = [dict(fp, pads=[dict(q, xy=np.asarray(q['xy'], float), geom=shape(q['geom'])) for q in fp['pads']])
-               for fp in d.get('footprints', [])]
+        tracks = [
+            dict(t, pts=np.asarray(t['pts'], float))
+            for t in d.get('tracks', [])
+        ]
+        fps = [
+            dict(
+                fp, pads=[
+                    dict(q, xy=np.asarray(q['xy'], float),
+                         geom=shape(q['geom'])) for q in fp['pads']
+                ]) for fp in d.get('footprints', [])
+        ]
         return cls(items, shapes, tracks, d.get('vias', []), fps)
 
 
 def inside_items(raw, layers, outline):
-    """The items of an imported board (KiCad coordinates) on copper `layers` whose bounding box meets the
-    outline's (model coordinates)."""
+    """The items of an imported board (KiCad coordinates) on copper `layers`
+    whose bounding box meets the outline's (model coordinates)."""
     cand = [it for it in raw.items if it[0] in layers]
     if not cand:
         return []
-    hit = shapely.STRtree([g for _, _, g in cand]).query(flip_y(outline).buffer(1e-6))
+    hit = shapely.STRtree([g for _, _, g in cand
+                           ]).query(flip_y(outline).buffer(1e-6))
     return [cand[i] for i in sorted(hit)]
 
 
 class Board:
-    """The board of a run, resolved from an imported board (`raw`: KiCadBoard, GerberBoard) and the
-    selection settings: nets, pick-and-place file, solder mask, region, solid ground layer, lumped parts,
-    extra ports, ports where tracks cross the region edge and edge walls. need_ports=False: a board without
-    ports is fine (the KiCad plugin's impedance map, before any are placed)."""
+    """The board of a run, resolved from an imported board (`raw`: KiCadBoard,
+    GerberBoard) and the selection settings: nets, pick-and-place file, solder
+    mask, region, solid ground layer, lumped parts, extra ports, ports where
+    tracks cross the region edge and edge walls. need_ports=False: a board
+    without ports is fine (the KiCad plugin's impedance map, before any are
+    placed)."""
 
-    def __init__(self, raw, nets=None, pos_file=None, include_mask=False, region=None, ground=None, parts='auto',
-                 log=print, ports=None, cut_ports=False, edge_walls=(), edge_keepout=0.5, need_ports=True,
-                 fill_voids='off', part_ports=()):
+    def __init__(self, raw, nets=None, pos_file=None, include_mask=False,
+                 region=None, ground=None, parts='auto', log=print, ports=None,
+                 cut_ports=False, edge_walls=(), edge_keepout=0.5,
+                 need_ports=True, fill_voids='off', part_ports=()):
         from .region import region_polygon, auto_nets, extra_port_fps, ground_nets
-        self.log, self.notes, self.need_ports = log, list(getattr(raw, 'notes', ())), need_ports
-        self.source = dict(importer=getattr(raw, 'importer', 'kicad'), file=getattr(raw, 'path', ''))
-        self.request = dict(nets=nets, pos=pos_file, mask=include_mask, region=region, ground=ground, parts=parts,
-                            ports=list(ports or []), cut_ports=cut_ports, edge_walls=list(edge_walls or []),
+        self.log, self.notes, self.need_ports = (log,
+                                                 list(getattr(raw, 'notes',
+                                                              ())), need_ports)
+        self.source = dict(importer=getattr(raw, 'importer', 'kicad'),
+                           file=getattr(raw, 'path', ''))
+        self.request = dict(nets=nets, pos=pos_file, mask=include_mask,
+                            region=region, ground=ground, parts=parts,
+                            ports=list(ports or []), cut_ports=cut_ports,
+                            edge_walls=list(edge_walls or []),
                             edge_keepout=edge_keepout, fill_voids=fill_voids)
         self._stack(raw, include_mask)
-        self.copper_finish = getattr(raw, 'copper_finish', None)    # the stackup's (--finish auto reads it)
+        # the stackup's (--finish auto reads it)
+        self.copper_finish = getattr(raw, 'copper_finish', None)
         # ---- outline / region (KiCad coordinates until flipped) ----
-        full = board_outline(raw, with_holes=True)                   # its cut-outs too: no dielectric there
+        # its cut-outs too: no dielectric there
+        full = board_outline(raw, with_holes=True)
         rpoly = region_polygon(raw, region)
         if full is None:
             cop = [g for l, n, g in raw.items if l in self.cu_z]
             full = unary_union(cop).envelope.buffer(1.0, join_style=2)
-            self.notes.append("no board outline: using the copper bounding box + 1 mm")
-        # ---- nets: as given, all copper, or 'auto' (the nets under the ports + the ground nets) ----
+            self.notes.append(
+                "no board outline: using the copper bounding box + 1 mm")
+        # ---- nets: as given, all copper, or 'auto' (the nets under the ports +
+        # the ground nets) ----
         if nets in ('auto', ['auto'], ('auto',)):
             refs = pos_port_refs(read_pos(pos_file)) if pos_file else None
             fps = dict(raw.port_footprints(refs))
-            for i, sp in enumerate(ports or []):                # one at a time: a pair's legs share a number
-                fps.update({('spec', i): fp for fp in extra_port_fps(raw, [sp]).values()})
-            nets = auto_nets(raw, [(_port_layer(f), f['x'], f['y']) for fp in fps.values() for f in _legs(fp)], full)
+            # one at a time: a pair's legs share a number
+            for i, sp in enumerate(ports or []):
+                fps.update({('spec', i): fp
+                            for fp in extra_port_fps(raw, [sp]).values()})
+            nets = auto_nets(raw, [(_port_layer(f), f['x'], f['y'])
+                                   for fp in fps.values()
+                                   for f in _legs(fp)], full)
             self.notes.append(f"nets (auto): {', '.join(nets)}")
-        self.sel = resolve_nets(nets, {n for _, n, _ in raw.items} | {v['net'] for v in raw.vias}) if nets else None
+        self.sel = (resolve_nets(nets, {n
+                                        for _, n, _ in raw.items}
+                                 | {v['net']
+                                    for v in raw.vias}) if nets else None)
         ol, self.region, self.cut_sides = full, region, []
         if rpoly is not None:
             ol = full.intersection(rpoly)
             if ol.is_empty:
                 raise ValueError(f"region {region} does not overlap the board")
-            fb, cb = full.bounds, ol.bounds         # the sides it cuts (named in KiCad coordinates, as --edge-walls)
-            self.cut_sides = [side for i, side in enumerate(('xmin', 'ymin', 'xmax', 'ymax'))
-                              if (cb[i] > fb[i] + 1e-3 if i < 2 else cb[i] < fb[i] - 1e-3)]
+            # the sides it cuts (named in KiCad coordinates, as --edge-walls)
+            fb, cb = full.bounds, ol.bounds
+            self.cut_sides = [
+                side for i, side in enumerate(('xmin', 'ymin', 'xmax', 'ymax'))
+                if (cb[i] > fb[i] + 1e-3 if i < 2 else cb[i] < fb[i] - 1e-3)
+            ]
             if self.cut_sides:
-                self.notes.append(f"region cuts the board on {', '.join(self.cut_sides)}")
+                self.notes.append(
+                    f"region cuts the board on {', '.join(self.cut_sides)}")
         self.outline = flip_y(ol)
-        if isinstance(self.outline, MultiPolygon):                  # the region splits the board: the largest
-            pieces = sorted(self.outline.geoms, key=lambda p: -p.area)   # piece kept, and said (R-E6)
+        # the region splits the board: the largest
+        if isinstance(self.outline, MultiPolygon):
+            # piece kept, and said (R-E6)
+            pieces = sorted(self.outline.geoms, key=lambda p: -p.area)
             self.outline = pieces[0]
-            self.notes.append(f"the region splits the board into {len(pieces)} pieces: the largest kept "
-                              f"({pieces[0].area:.0f} mm2; {sum(q.area for q in pieces[1:]):.0f} mm2 left out)")
-        self.outline = Polygon(self.outline.exterior, [h for h in self.outline.interiors
-                                                       if Polygon(h).area > 1e-4])
-        if self.outline.interiors:                                  # the cut-outs: air in the dielectric
-            self.notes.append(f"{len(self.outline.interiors)} cut-out(s) in the board outline: no dielectric there "
-                              f"({sum(Polygon(h).area for h in self.outline.interiors):.1f} mm2)")
+            self.notes.append(
+                f"the region splits the board into {len(pieces)} pieces: the "
+                f"largest kept ({pieces[0].area:.0f} mm2; "
+                f"{sum(q.area for q in pieces[1:]):.0f} mm2 left out)"
+            )
+        self.outline = Polygon(
+            self.outline.exterior,
+            [h for h in self.outline.interiors if Polygon(h).area > 1e-4])
+        if self.outline.interiors:  # the cut-outs: air in the dielectric
+            self.notes.append(
+                f"{len(self.outline.interiors)} cut-out(s) in the board "
+                "outline: no dielectric there "
+                f"({sum(Polygon(h).area for h in self.outline.interiors):.1f} "
+                "mm2)"
+            )
         keep = inside_items(raw, set(self.cu_z), self.outline)
         self.prims = Prims.from_raw(raw, keep, set(self.cu_z), self.outline)
-        self.ground_nets = ground_nets(self.prims.items, self.prims.shapes, self.outline)
+        self.ground_nets = ground_nets(self.prims.items, self.prims.shapes,
+                                       self.outline)
         # ---- copper per layer: the selected nets' items, merged ----
         self.copper, self.copper_nets = {}, {}
         for lay in self.cu_order:
-            gs = [g for l, n, g in keep if l == lay and (self.sel is None or n in self.sel)]
+            gs = [
+                g for l, n, g in keep
+                if l == lay and (self.sel is None or n in self.sel)
+            ]
             if not gs:
                 continue
-            g = flip_y(unary_union(gs)).intersection(self.outline).simplify(2e-3, preserve_topology=True)
+            g = flip_y(unary_union(gs)).intersection(self.outline).simplify(
+                2e-3, preserve_topology=True)
             ps = [orient(p, 1.0) for p in polygons(g) if p.area > 1e-6]
             if ps:
                 self.copper[lay] = ps
-        if ground:                                              # model this layer as a solid plane
+        if ground:  # model this layer as a solid plane
             if ground not in self.cu_z:
-                raise ValueError(f"ground layer {ground} is not a copper layer of the stackup "
-                                 f"({', '.join(self.cu_order)})")
-            self.copper[ground] = [orient(self.outline, 1.0)]       # union of its copper and the outline = outline
-            self.notes.append(f"{ground}: solid ground plane over the board outline (ground = {ground})")
+                raise ValueError(
+                    f"ground layer {ground} is not a copper layer of the "
+                    f"stackup ({', '.join(self.cu_order)})")
+            # union of its copper and the outline = outline
+            self.copper[ground] = [orient(self.outline, 1.0)]
+            self.notes.append(
+                f"{ground}: solid ground plane over the board outline (ground "
+                f"= {ground})"
+            )
         self.ground = ground
         self.filled = {}
         if fill_voids not in FILL_VOIDS:
-            raise ValueError(f"fill_voids: one of {', '.join(FILL_VOIDS)}, not {fill_voids!r}")
+            raise ValueError(
+                f"fill_voids: one of {', '.join(FILL_VOIDS)}, not "
+                f"{fill_voids!r}"
+            )
         if fill_voids != 'off':
             self._fill_voids(fill_voids, keep)
         self._nets_of_copper()
@@ -293,10 +416,12 @@ class Board:
         self._part_ports(part_ports)
         self._walls(edge_walls, edge_keepout, cut_ports)
 
-    # ---- construction steps ------------------------------------------------------------------------
+    # ---- construction steps
+    # ------------------------------------------------------------------------
     def _part_ports(self, which):
-        """The parts named (or 'all') as internal ports across their gaps (embed.py, R-E5): removed from the parts,
-        kept as part_of {port name: Part} for their values; a 0 ohm strap stays metal."""
+        """The parts named (or 'all') as internal ports across their gaps
+        (embed.py, R-E5): removed from the parts, kept as part_of {port name:
+        Part} for their values; a 0 ohm strap stays metal."""
         from .embed import part_port
         which = [str(w).strip() for w in (which or []) if str(w).strip()]
         self.part_of = {}
@@ -308,7 +433,8 @@ class Board:
         for pt in self.parts:
             if (every or pt.ref in which) and not pt.short:
                 if pt.ref in names:
-                    raise ValueError(f"--part-ports {pt.ref}: a port of that name already")
+                    raise ValueError(
+                        f"--part-ports {pt.ref}: a port of that name already")
                 self.ports.append(part_port(pt))
                 self.part_of[pt.ref] = pt
             else:
@@ -316,51 +442,71 @@ class Board:
         self.parts = keep
         left = [w for w in which if w != 'all' and w not in self.part_of]
         if left:
-            raise ValueError(f"--part-ports {', '.join(left)}: not a two-pad R / L / C part on the modelled copper "
-                             f"(the parts: {', '.join(sorted(self.part_of)) or 'none'})")
+            raise ValueError(
+                f"--part-ports {', '.join(left)}: not a two-pad R / L / C part "
+                "on the modelled copper (the parts: "
+                f"{', '.join(sorted(self.part_of)) or 'none'})")
         if every and not self.part_of:
-            self.notes.append("--part-ports all: the board has no R / L / C part on the modelled copper")
+            self.notes.append(
+                "--part-ports all: the board has no R / L / C part on the "
+                "modelled copper"
+            )
 
     def _stack(self, raw, include_mask):
-        items = [it for it in raw.stack_items if it['kind'] in ('copper', 'diel') or
-                 (it['kind'] == 'mask' and include_mask)]
+        items = [
+            it for it in raw.stack_items
+            if it['kind'] in ('copper',
+                              'diel') or (it['kind'] == 'mask' and include_mask)
+        ]
         if not items:
-            raise ValueError("board has no stackup section: define one in Board Setup > Physical Stackup")
+            raise ValueError(
+                "board has no stackup section: define one in Board Setup > "
+                "Physical Stackup"
+            )
         z = 0.0
         self.layers, self.cu_z, self.cu_t = [], {}, {}
-        rz = lambda v: round(v, 6)                              # exact, repeatable heights (sheets must sit on z lines)
+        # exact, repeatable heights (sheets must sit on z lines)
+        rz = lambda v: round(v, 6)
         for it in items[::-1]:
             if it['kind'] == 'copper':
                 self.cu_z[it['name']] = rz(z)
                 self.cu_t[it['name']] = it['t'] * 1e3
             else:
                 t = it['t'] * 1e3
-                self.layers.append(dict(name=it['name'], z0=rz(z), z1=rz(z + t), kind=it['kind'],
-                                        **self._material(it)))
+                self.layers.append(
+                    dict(name=it['name'], z0=rz(z), z1=rz(z + t),
+                         kind=it['kind'], **self._material(it)))
                 z = rz(z + t)
         self.thickness = z
 
     def _material(self, it):
-        """A dielectric's er, tand, material and fref (R-E4): er and tand as the file gives them, else from its
-        material's name (materials.py), else FR-4's, said in a note; fref the frequency the library quotes a known
-        material at (the wideband model holds the layer's values there), else None (--diel-fref)."""
+        """A dielectric's er, tand, material and fref (R-E4): er and tand as the
+        file gives them, else from its material's name (materials.py), else
+        FR-4's, said in a note; fref the frequency the library quotes a known
+        material at (the wideband model holds the layer's values there), else
+        None (--diel-fref)."""
         from . import materials
         lib = materials.lookup(it.get('material'))
-        out = dict(er=it.get('er'), tand=it.get('tand'), material=it.get('material') or None,
+        out = dict(er=it.get('er'), tand=it.get('tand'),
+                   material=it.get('material') or None,
                    fref=lib['fref'] if lib else None)
         if it['kind'] == 'mask':
-            return dict(out, er=3.3 if out['er'] is None else out['er'], tand=out['tand'] or 0.0)
+            return dict(out, er=(3.3 if out['er'] is None else out['er']),
+                        tand=out['tand'] or 0.0)
         missing = [k for k in ('er', 'tand') if out[k] is None]
         if missing:
             src = lib or materials.lookup(materials.DEFAULT)
             for k in missing:
                 out[k] = src[k]
-            what = ' and '.join({'er': 'no er', 'tand': 'no loss tangent'}[k] for k in missing)
-            self.notes.append(f"dielectric {it['name']}" + (f" ({it['material']})" if it.get('material') else '') +
-                              f": the stackup gives {what}; " +
-                              (f"{src['name']}'s from the material library ({src['source']})" if lib else
-                               f"FR-4's taken (er {src['er']:g}, tan d {src['tand']:g}): set them in Board Setup > "
-                               f"Physical Stackup"))
+            what = ' and '.join({'er': 'no er', 'tand': 'no loss tangent'}[k]
+                                for k in missing)
+            self.notes.append(f"dielectric {it['name']}" + (
+                f" ({it['material']})" if it.get('material') else ''
+            ) + f": the stackup gives {what}; " + (
+                f"{src['name']}'s from the material library ({src['source']})"
+                if lib else
+                f"FR-4's taken (er {src['er']:g}, tan d {src['tand']:g}): set "
+                "them in Board Setup > Physical Stackup"))
         return out
 
     @property
@@ -369,30 +515,45 @@ class Board:
         return sorted(self.cu_z, key=lambda n: self.cu_z[n])
 
     def _fill_voids(self, mode, keep):
-        """Fill the ground copper's voids that the nets left out made: a pour imported with only some nets selected
-        keeps the clearance around every other net's pads, traces and vias, holes with nothing in them, and every
-        one costs a solver its edge. A void is a hole of a ground net's copper as the board has it (keep: the items
-        that reach the region, whole: a clearance that crosses a region's edge is still a hole). It is kept when
-        it holds copper or a via of a selected net that is not ground (an antipad, a trace's clearance: the model).
-        Of the others, mode 'all' fills every one; 'far' those smaller than FILL_SMALL, and those farther than
-        FILL_FAR mm (or FILL_HEIGHTS x the widest gap between copper layers) from the signal copper of any layer,
-        since a void under or beside a trace changes its return path. Ground copper that stood alone in a filled
-        void joins the pour. self.filled: {layer: (voids filled, mm2 added)}; a note says it."""
+        """Fill the ground copper's voids that the nets left out made: a pour
+        imported with only some nets selected keeps the clearance around every
+        other net's pads, traces and vias, holes with nothing in them, and every
+        one costs a solver its edge. A void is a hole of a ground net's copper
+        as the board has it (keep: the items that reach the region, whole: a
+        clearance that crosses a region's edge is still a hole). It is kept when
+        it holds copper or a via of a selected net that is not ground (an
+        antipad, a trace's clearance: the model). Of the others, mode 'all'
+        fills every one; 'far' those smaller than FILL_SMALL, and those farther
+        than FILL_FAR mm (or FILL_HEIGHTS x the widest gap between copper
+        layers) from the signal copper of any layer, since a void under or
+        beside a trace changes its return path. Ground copper that stood alone
+        in a filled void joins the pour. self.filled: {layer: (voids filled, mm2
+        added)}; a note says it."""
         ground = set(self.ground_nets)
-        chosen = lambda n: n and n not in ground and (self.sel is None or n in self.sel)
+        chosen = lambda n: n and n not in ground and (self.sel is None or n in
+                                                      self.sel)
         signal = {}
         for l, n, g in self.prims.items:
             if chosen(n):
                 signal.setdefault(l, []).append(g)
-        every = unary_union([g for gs in signal.values() for g in gs]) if signal else None
+        every = (unary_union([g for gs in signal.values()
+                              for g in gs]) if signal else None)
         zs = sorted(self.cu_z.values())
-        far = max(FILL_FAR, FILL_HEIGHTS * max((b - a for a, b in zip(zs, zs[1:])), default=0.0))
-        vias = [(Point(v['x'], v['y']), set(v['layers'])) for v in self.prims.vias if chosen(v['net'])]
+        far = max(
+            FILL_FAR,
+            FILL_HEIGHTS * max(
+                (b - a for a, b in zip(zs, zs[1:])), default=0.0))
+        vias = [(Point(v['x'], v['y']), set(v['layers']))
+                for v in self.prims.vias
+                if chosen(v['net'])]
         via_tree = shapely.STRtree([p for p, _ in vias]) if vias else None
         for lay in list(self.copper):
             if lay == self.ground:
-                continue                                        # already the whole outline
-            on = [flip_y(g) for l, n, g in keep if l == lay and n in ground and (self.sel is None or n in self.sel)]
+                continue  # already the whole outline
+            on = [
+                flip_y(g) for l, n, g in keep if l == lay and n in ground and (
+                    self.sel is None or n in self.sel)
+            ]
             if not on:
                 continue
             s_tree = shapely.STRtree(signal[lay]) if lay in signal else None
@@ -401,40 +562,58 @@ class Board:
                 for ring in p.interiors:
                     hole = Polygon(ring)
                     if not hole.intersects(self.outline):
-                        continue                                # beyond the region
-                    if s_tree is not None and len(s_tree.query(hole, predicate='intersects')):
-                        continue                                # a trace or a pad of the model in it
-                    if via_tree is not None and any(lay in vias[i][1] for i in via_tree.query(hole, predicate='intersects')):
-                        continue                                # a signal via through it: its antipad
-                    if mode == 'far' and hole.area >= FILL_SMALL and every is not None and hole.distance(every) <= far:
-                        continue                                # near the signal: part of its return path
+                        continue  # beyond the region
+                    if (s_tree is not None and len(
+                            s_tree.query(hole, predicate='intersects'))):
+                        continue  # a trace or a pad of the model in it
+                    if (via_tree is not None
+                            and any(lay in vias[i][1] for i in via_tree.query(
+                                hole, predicate='intersects'))):
+                        continue  # a signal via through it: its antipad
+                    if (mode == 'far' and hole.area >= FILL_SMALL
+                            and every is not None
+                            and hole.distance(every) <= far):
+                        continue  # near the signal: part of its return path
                     fills.append(hole)
             if not fills:
                 continue
             ps = self.copper[lay]
             before = sum(p.area for p in ps)
-            lap = [h.buffer(FILL_LAP, join_style=2) for h in fills]     # into the ground around it: no slivers left
-            g = unary_union(list(ps) + lap).intersection(self.outline).simplify(2e-3, preserve_topology=True)
+            # into the ground around it: no slivers left
+            lap = [h.buffer(FILL_LAP, join_style=2) for h in fills]
+            g = unary_union(list(ps) + lap).intersection(self.outline).simplify(
+                2e-3, preserve_topology=True)
             new = [orient(p, 1.0) for p in polygons(g) if p.area > 1e-6]
             added = sum(p.area for p in new) - before
             if added > 1e-6:
                 self.copper[lay] = new
                 self.filled[lay] = (len(fills), added)
         if self.filled:
-            what = ', '.join(f"{l} {n} void{'s' if n != 1 else ''} (+{a:.1f} mm2)" for l, (n, a) in self.filled.items())
-            why = ("clearances of nets left out, away from the signal copper" if mode == 'far' else
+            what = ', '.join(
+                f"{l} {n} void{'s' if n != 1 else ''} (+{a:.1f} mm2)"
+                for l, (n, a) in self.filled.items())
+            why = ("clearances of nets left out, away from the signal copper"
+                   if mode == 'far' else
                    "every one without a selected net's copper or via in it")
-            self.notes.append(f"fill_voids = {mode}: {what} of the ground copper filled: {why}")
+            self.notes.append(
+                f"fill_voids = {mode}: {what} of the ground copper filled: "
+                f"{why}"
+            )
 
     def _nets_of_copper(self):
-        """copper_nets: per layer, the net of each copper polygon (the selected net covering most of it)."""
+        """copper_nets: per layer, the net of each copper polygon (the selected
+        net covering most of it)."""
         for lay, ps in self.copper.items():
-            items = [(n, g) for l, n, g in self.prims.items if l == lay and n and (self.sel is None or n in self.sel)]
+            items = [(n, g)
+                     for l, n, g in self.prims.items
+                     if l == lay and n and (self.sel is None or n in self.sel)]
             tree = shapely.STRtree([g for _, g in items]) if items else None
             nets = []
             for p in ps:
-                hit = tree.query(p, predicate='intersects') if tree is not None else []
-                if len({items[i][0] for i in hit}) == 1:             # one net here: no areas to weigh
+                hit = (tree.query(p, predicate='intersects')
+                       if tree is not None else [])
+                # one net here: no areas to weigh
+                if len({items[i][0] for i in hit}) == 1:
                     nets.append(str(items[hit[0]][0]))
                     continue
                 area = {}
@@ -464,8 +643,10 @@ class Board:
         for fp in fps.values():
             for f in _legs(fp):
                 f.setdefault('source', f"footprint {f['ref']}")
-        extra = {}                                          # ports given in the settings (pad / point)
-        for sp in specs:                                    # one at a time: a pair's legs (P1+, P1-) share a number
+        # ports given in the settings (pad / point)
+        extra = {}
+        # one at a time: a pair's legs (P1+, P1-) share a number
+        for sp in specs:
             name = parse_port_spec(sp)[0]
             for n, fp in extra_port_fps(raw, [sp]).items():
                 extra[(n, name[-1] if name.endswith(('+', '-')) else '')] = fp
@@ -475,41 +656,56 @@ class Board:
             else:
                 fps[n] = fp
         if cut_ports and rpoly is not None:
-            signal = (set(self.sel) - self.ground_nets) if self.sel is not None else \
-                {net_at(raw, _port_layer(f), f['x'], f['y']) for fp in fps.values() for f in _legs(fp)} - {None}
-            cut, notes = cut_port_fps(raw, rpoly, signal, set(self.cu_z), first=max(fps, default=0) + 1)
+            signal = ((set(self.sel)
+                       - self.ground_nets) if self.sel is not None else {
+                           net_at(raw, _port_layer(f), f['x'], f['y'])
+                           for fp in fps.values()
+                           for f in _legs(fp)
+                       } - {None})
+            cut, notes = cut_port_fps(raw, rpoly, signal, set(self.cu_z),
+                                      first=max(fps, default=0) + 1)
             fps.update(cut)
             self.notes += notes
             if cut:
-                self.notes.append(f"{len(cut)} port(s) where tracks cross the region edge: "
-                                  f"{', '.join(f'P{n}' for n in cut)}")
+                self.notes.append(
+                    f"{len(cut)} port(s) where tracks cross the region edge: "
+                    f"{', '.join(f'P{n}' for n in cut)}")
         if not fps and self.need_ports:
-            raise ValueError("no ports: no port footprints (Fab text P<n>, or P<n> in the pick-and-place file), "
-                             "no ports in the settings and no cut ports")
+            raise ValueError(
+                "no ports: no port footprints (Fab text P<n>, or P<n> in the "
+                "pick-and-place file), no ports in the settings and no cut "
+                "ports")
         inside = self.outline.buffer(1e-6)
         self.port_refs = {f['ref'] for fp in fps.values() for f in _legs(fp)}
         port_fps = {}
         for n, fp in fps.items():
-            out = [f for f in _legs(fp) if not inside.contains(Point(f['x'], -f['y']))]
+            out = [
+                f for f in _legs(fp)
+                if not inside.contains(Point(f['x'], -f['y']))
+            ]
             if out:
-                self.notes.append(f"P{n} ({', '.join(f['ref'] for f in out)}) is outside the "
-                                  f"{'region' if self.region else 'board outline'}: left out")
+                self.notes.append(
+                    f"P{n} ({', '.join(f['ref'] for f in out)}) is outside the "
+                    f"{'region' if self.region else 'board outline'}: left out")
                 continue
             port_fps[n] = fp
         if not port_fps and self.need_ports:
-            raise ValueError("no port footprints inside the " + ("region" if self.region else "board outline"))
+            raise ValueError("no port footprints inside the "
+                             + ("region" if self.region else "board outline"))
         self.ports = []
         for n, fp in port_fps.items():
             if isinstance(fp, DiffLegs):
-                self.ports += [self._port(raw, f"P{n}+", fp['+'], leg='+', pair=f"P{n}"),
-                               self._port(raw, f"P{n}-", fp['-'], leg='-', pair=f"P{n}")]
+                self.ports += [
+                    self._port(raw, f"P{n}+", fp['+'], leg='+', pair=f"P{n}"),
+                    self._port(raw, f"P{n}-", fp['-'], leg='-', pair=f"P{n}")
+                ]
             else:
                 self.ports.append(self._port(raw, f"P{n}", fp))
 
     @property
     def user_ports(self):
-        """[(name, [ports])]: one entry per port as the user named it, the two legs of a differential port
-        together."""
+        """[(name, [ports])]: one entry per port as the user named it, the two
+        legs of a differential port together."""
         out = []
         for p in self.ports:
             if p.pair and out and out[-1][0] == p.pair:
@@ -520,7 +716,8 @@ class Board:
 
     @property
     def signal_nets(self):
-        """The nets of the traces the ports sit on; vias on them are 'signal vias'."""
+        """The nets of the traces the ports sit on; vias on them are 'signal
+        vias'."""
         return {p.net for p in self.ports if p.net}
 
     @property
@@ -532,10 +729,12 @@ class Board:
         from .edges import edge_walls, describe
         sides = list(sides or [])
         if not sides and cut_ports and self.cut_sides:
-            # a cut through a plane pair leaves it open at the port: close it, well clear of the lines
+            # a cut through a plane pair leaves it open at the port: close it,
+            # well clear of the lines
             sides, keepout = list(self.cut_sides), max(keepout, CUT_KEEPOUT)
-            self.notes.append(f"edge walls on the region cut ({', '.join(sides)}), {keepout:g} mm clear of the "
-                              f"signal copper")
+            self.notes.append(
+                f"edge walls on the region cut ({', '.join(sides)}), "
+                f"{keepout:g} mm clear of the signal copper")
         self.walls = edge_walls(self, sides, keepout=keepout) if sides else []
         if sides:
             self.notes.append(describe(self.walls, self))
@@ -544,19 +743,23 @@ class Board:
         """Pickled for parallel runs: the log callback stays behind."""
         return dict(self.__dict__, log=print)
 
-    # ---- helpers -----------------------------------------------------------------------------------------
+    # ---- helpers
+    # -----------------------------------------------------------------------------------------
     def copper_at(self, lay, pt):
-        """The modelled copper polygon on layer `lay` containing point pt (model coordinates), or None."""
+        """The modelled copper polygon on layer `lay` containing point pt (model
+        coordinates), or None."""
         for p in self.copper.get(lay, []):
             if p.distance(pt) < 1e-6:
                 return p
         return None
 
     def net_at(self, lay, x, y):
-        """Net of the selected copper on layer `lay` at model point (x, y), or None."""
+        """Net of the selected copper on layer `lay` at model point (x, y), or
+        None."""
         pt = Point(x, y)
         for l, n, g in self.prims.items:
-            if l == lay and n and g.distance(pt) < 1e-6 and (self.sel is None or n in self.sel):
+            if (l == lay and n and g.distance(pt) < 1e-6
+                    and (self.sel is None or n in self.sel)):
                 return str(n)
         return None
 
@@ -564,11 +767,14 @@ class Board:
         props = fp['props']
         lay = _port_layer(fp)
         if lay not in self.cu_z:
-            raise ValueError(f"{name}: port layer {lay} is not a copper layer of the stackup")
+            raise ValueError(
+                f"{name}: port layer {lay} is not a copper layer of the stackup"
+            )
         a = np.radians(fp['rot'])
         d = np.array([np.cos(a), np.sin(a)])
         axis = int(np.argmax(np.abs(d)))
-        oblique = abs(abs(d[axis]) - 1) > 1e-3                     # a vertical port takes any angle (R-E1)
+        # a vertical port takes any angle (R-E1)
+        oblique = abs(abs(d[axis]) - 1) > 1e-3
         if not oblique:
             d = np.round(d)
         sgn = int(np.sign(d[axis]))
@@ -576,57 +782,88 @@ class Board:
         source = fp.get('source', f"footprint {fp['ref']}")
         cu = self.copper_at(lay, Point(*c))
         if cu is None and str(port_field(props, 'type', '')).lower() != 'z':
-            gp = self._gap_port(name, lay, c, d, axis, sgn, props, leg, pair, source)
+            gp = self._gap_port(name, lay, c, d, axis, sgn, props, leg, pair,
+                                source)
             if gp is not None:
                 if oblique:
-                    raise ValueError(f"{name} ({fp['ref']}): rotation {fp['rot']} deg - a gap port needs its feed "
-                                     f"along x or y")
+                    raise ValueError(
+                        f"{name} ({fp['ref']}): rotation {fp['rot']} deg - a "
+                        "gap port needs its feed along x or y")
                 return gp
         if cu is None:
-            here = sorted({l for l in self.copper if self.copper_at(l, Point(*c)) is not None})
-            raise ValueError(f"{name} ({fp['ref']}) at ({fp['x']:.3f}, {fp['y']:.3f}) mm is not on {lay} copper of the "
-                             f"selected nets" + (f"; copper there on {here} - check the footprint field port.layer / "
-                                                 f"mom.layer" if here else ''))
-        # width across the feed at a point just inside the trace; centre the port on the trace. port.width: a port
-        # that wide centred on the footprint instead (a probe feed inside a patch, where the copper is no trace)
+            here = sorted({
+                l
+                for l in self.copper
+                if self.copper_at(l, Point(*c)) is not None
+            })
+            raise ValueError(
+                f"{name} ({fp['ref']}) at ({fp['x']:.3f}, {fp['y']:.3f}) mm is "
+                f"not on {lay} copper of the selected nets" +
+                (f"; copper there on {here} - check the footprint field "
+                 "port.layer / mom.layer" if here else ''))
+        # width across the feed at a point just inside the trace; centre the
+        # port on the trace. port.width: a port that wide centred on the
+        # footprint instead (a probe feed inside a patch, where the copper is no
+        # trace)
         pw = port_field(props, 'width')
         if pw not in (None, ''):
             w, pc = float(pw), c.copy()
         else:
             w, mid = cross_section(cu, c + d * 0.05, np.array([-d[1], d[0]]))
-            if oblique:                                               # port plane just inside the trace end, centred
+            if oblique:  # port plane just inside the trace end, centred
                 pc = mid + d * (min(0.25 * w, 0.1) - 0.05)
             else:
                 pc = c + d * min(0.25 * w, 0.1)
                 pc[1 - axis] = mid[1 - axis]
-        # reference: nearest copper below (top side) / above (bottom side) under the port
+        # reference: nearest copper below (top side) / above (bottom side) under
+        # the port
         zs = self.cu_z[lay]
         below = fp['side'] != 'B'
         ref = None
-        for side in (below, not below):                         # preferred side first, then the other
-            cand = [l for l in self.cu_order if (self.cu_z[l] < zs if side else self.cu_z[l] > zs)]
+        for side in (below, not below):  # preferred side first, then the other
+            cand = [
+                l for l in self.cu_order
+                if (self.cu_z[l] < zs if side else self.cu_z[l] > zs)
+            ]
             cand.sort(key=lambda l: abs(self.cu_z[l] - zs))
-            under = [l for l in cand if self.copper_at(l, Point(*pc)) is not None]
-            # a ground net's copper first: the nearest of any net had been taken, a signal trace crossing under
-            # the port as its reference with nothing said
-            grounded = lambda l: l == self.ground or self.net_at(l, *pc) in self.ground_nets     # (ground = L: a
-            ref = next((l for l in under if grounded(l)), under[0] if under else None)           # solid plane)
+            under = [
+                l for l in cand if self.copper_at(l, Point(*pc)) is not None
+            ]
+            # a ground net's copper first: the nearest of any net had been
+            # taken, a signal trace crossing under the port as its reference
+            # with nothing said
+            # (ground = L: a
+            grounded = lambda l: l == self.ground or self.net_at(
+                l, *pc) in self.ground_nets
+            # solid plane)
+            ref = next((l for l in under if grounded(l)),
+                       under[0] if under else None)
             if ref:
                 if not grounded(ref):
-                    self.notes.append(f"{name}: its reference is {self.net_at(ref, *pc) or 'copper of no net'} on "
-                                      f"{ref}, not a ground net (none under it on that side)")
+                    self.notes.append(
+                        f"{name}: its reference is "
+                        f"{self.net_at(ref, *pc) or 'copper of no net'} on "
+                        f"{ref}, not a ground net (none under it on that side)")
                 break
         if ref is None:
-            hint = ("include the ground net in nets, or set ground = <layer>" if self.sel is not None else
-                    "no copper on any layer there: the board needs a reference plane, or set ground = <layer>")
-            raise ValueError(f"{name}: no reference copper {'below' if below else 'above'} the port at "
-                             f"({fp['x']:.3f}, {fp['y']:.3f}) mm - {hint}")
-        return Port(name, lay, zs, self.cu_z[ref], pc, axis, sgn, w, float(port_field(props, 'z0', 50)), leg, pair, ref,
+            hint = (
+                "include the ground net in nets, or set ground = <layer>"
+                if self.sel is not None else
+                "no copper on any layer there: the board needs a reference "
+                "plane, or set ground = <layer>"
+            )
+            raise ValueError(
+                f"{name}: no reference copper {'below' if below else 'above'} "
+                f"the port at ({fp['x']:.3f}, {fp['y']:.3f}) mm - {hint}")
+        return Port(name, lay, zs, self.cu_z[ref], pc, axis, sgn, w,
+                    float(port_field(props, 'z0', 50)), leg, pair, ref,
                     net=self.net_at(lay, *pc), source=source, d=d)
 
-    def _gap_port(self, name, lay, c, d, axis, sgn, props, leg, pair, source, reach=5.0):
-        """Port in a gap: copper on lay within `reach` mm on both sides of c along d. The sheet spans the
-        gap between the two copper edges; its width is the narrower of the two conductors there."""
+    def _gap_port(self, name, lay, c, d, axis, sgn, props, leg, pair, source,
+                  reach=5.0):
+        """Port in a gap: copper on lay within `reach` mm on both sides of c
+        along d. The sheet spans the gap between the two copper edges; its width
+        is the narrower of the two conductors there."""
         ps = self.copper.get(lay, [])
         ends, widths, mids = [], [], []
         for sg in (-1, 1):
@@ -647,54 +884,88 @@ class Board:
         pc = c.copy()
         pc[1 - axis] = 0.5 * (mids[0][1 - axis] + mids[1][1 - axis])
         zs = self.cu_z[lay]
-        return Port(name, lay, zs, zs, pc, axis, sgn, min(widths), float(port_field(props, 'z0', 50)), leg, pair, lay,
+        return Port(name, lay, zs, zs, pc, axis, sgn, min(widths),
+                    float(port_field(props, 'z0', 50)), leg, pair, lay,
                     kind='gap', gap=(min(ends), max(ends)), source=source)
 
     def describe(self):
-        """The board as the log shows it: the stack, the copper, the outline and vias, each port and part, the notes."""
+        """The board as the log shows it: the stack, the copper, the outline and
+        vias, each port and part, the notes."""
         L = ["stack (bottom to top):"]
         for l in self.layers:
-            L.append(f"  {l['name']:<14s} z {l['z0']:.3f}..{l['z1']:.3f} mm  er {l['er']:.2f}  tand {l['tand']:.4f}"
-                     + (f"  {l['material']}" if l.get('material') else '')
-                     + (f" (at {l['fref'] / 1e9:g} GHz)" if l.get('fref') else ''))
+            L.append(
+                f"  {l['name']:<14s} z {l['z0']:.3f}..{l['z1']:.3f} mm  er "
+                f"{l['er']:.2f}  tand {l['tand']:.4f}"
+                + (f"  {l['material']}" if l.get('material') else '')
+                + (f" (at {l['fref'] / 1e9:g} GHz)" if l.get('fref') else ''))
         for n in self.cu_order[::-1]:
-            L.append(f"  copper {n:<8s} z {self.cu_z[n]:.3f} mm" + ("" if n in self.copper else "  (nothing selected)"))
+            L.append(f"  copper {n:<8s} z {self.cu_z[n]:.3f} mm"
+                     + ("" if n in self.copper else "  (nothing selected)"))
         b = self.outline.bounds
         ns = sum(self.via_signal)
-        L.append(f"outline {b[2] - b[0]:.2f} x {b[3] - b[1]:.2f} mm, vias {len(self.vias)} ({ns} on signal nets "
-                 f"{sorted(self.signal_nets)}, {len(self.vias) - ns} other)")
+        L.append(
+            f"outline {b[2] - b[0]:.2f} x {b[3] - b[1]:.2f} mm, vias "
+            f"{len(self.vias)} ({ns} on signal nets "
+            f"{sorted(self.signal_nets)}, {len(self.vias) - ns} other)")
         for p in self.ports:
             if p.kind == 'gap':
-                L.append(f"  {p.name}: lumped gap port on {p.layer} along {p.direction}, gap {p.gap[1] - p.gap[0]:.3f} mm, "
-                         f"w {p.w:.3f} mm, at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm")
+                L.append(
+                    f"  {p.name}: lumped gap port on {p.layer} along "
+                    f"{p.direction}, gap {p.gap[1] - p.gap[0]:.3f} mm, w "
+                    f"{p.w:.3f} mm, at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm "
+                    f"(KiCad), Z {p.z0:g} ohm"
+                )
                 continue
-            ang = f", its trace at {np.degrees(np.arctan2(p.d[1], p.d[0])):.1f} deg" if p.oblique else ''
-            L.append(f"  {p.name}: lumped, {p.layer} -> {p.ref_layer}, w {p.w:.3f} mm, h {abs(p.z_sig - p.z_ref):.3f} mm, "
-                     f"at ({p.c[0]:.3f}, {-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm{ang}" +
-                     (f" [{p.source}]" if p.source and not p.source.startswith('footprint') else ''))
+            ang = (
+                f", its trace at {np.degrees(np.arctan2(p.d[1], p.d[0])):.1f} "
+                "deg"
+                if p.oblique else '')
+            L.append(
+                f"  {p.name}: lumped, {p.layer} -> {p.ref_layer}, w {p.w:.3f} "
+                f"mm, h {abs(p.z_sig - p.z_ref):.3f} mm, at ({p.c[0]:.3f}, "
+                f"{-p.c[1]:.3f}) mm (KiCad), Z {p.z0:g} ohm{ang}"
+                + (f" [{p.source}]" if p.source
+                   and not p.source.startswith('footprint') else ''))
         L += [p.describe() for p in self.parts]
         return "\n".join(L + self.notes)
 
-    # ---- board.json ----------------------------------------------------------------------------------------
+    # ---- board.json
+    # ----------------------------------------------------------------------------------------
     def to_dict(self):
-        """The board as plain data (board.json): lengths in mm, model coordinates, polygons as GeoJSON."""
+        """The board as plain data (board.json): lengths in mm, model
+        coordinates, polygons as GeoJSON."""
         req = json.loads(json.dumps(self.request, default=list))
-        return dict(format=FORMAT, version=VERSION, units='mm', source=self.source, request=req,
-                    stack=dict(layers=self.layers, copper=[dict(name=n, z=self.cu_z[n], t=self.cu_t[n]) for n in self.cu_order],
-                               thickness=self.thickness, copper_finish=self.copper_finish),
-                    outline=mapping(self.outline), ground=self.ground, region=req['region'], cut_sides=self.cut_sides,
-                    filled={l: list(v) for l, v in self.filled.items()},
-                    nets=None if self.sel is None else sorted(self.sel), ground_nets=sorted(self.ground_nets),
-                    copper={l: [dict(net=n, polygon=mapping(p)) for p, n in zip(ps, self.copper_nets.get(l, []))]
-                            for l, ps in self.copper.items()},
-                    vias=[dict(x=x, y=y, r=r, z0=z0, z1=z1, net=n) for (x, y, r, z0, z1), n in zip(self.vias, self.via_nets)],
-                    ports=[p.to_dict() for p in self.ports], port_refs=sorted(self.port_refs),
-                    parts=[p.to_dict() for p in self.parts],
-                    walls=[dict(axis=a, at=c, t0=t0, t1=t1, z0=z0, z1=z1) for a, c, t0, t1, z0, z1 in self.walls],
-                    prims=self.prims.to_dict(), notes=self.notes)
+        return dict(
+            format=FORMAT, version=VERSION, units='mm', source=self.source,
+            request=req, stack=dict(
+                layers=self.layers, copper=[
+                    dict(name=n, z=self.cu_z[n], t=self.cu_t[n])
+                    for n in self.cu_order
+                ], thickness=self.thickness, copper_finish=self.copper_finish),
+            outline=mapping(self.outline), ground=self.ground,
+            region=req['region'], cut_sides=self.cut_sides,
+            filled={l: list(v)
+                    for l, v in self.filled.items()
+                    }, nets=(None if self.sel is None else sorted(self.sel)),
+            ground_nets=sorted(self.ground_nets), copper={
+                l: [
+                    dict(net=n, polygon=mapping(p))
+                    for p, n in zip(ps, self.copper_nets.get(l, []))
+                ]
+                for l, ps in self.copper.items()
+            }, vias=[
+                dict(x=x, y=y, r=r, z0=z0, z1=z1, net=n)
+                for (x, y, r, z0, z1), n in zip(self.vias, self.via_nets)
+            ], ports=[p.to_dict()
+                      for p in self.ports], port_refs=sorted(self.port_refs),
+            parts=[p.to_dict() for p in self.parts], walls=[
+                dict(axis=a, at=c, t0=t0, t1=t1, z0=z0, z1=z1)
+                for a, c, t0, t1, z0, z1 in self.walls
+            ], prims=self.prims.to_dict(), notes=self.notes)
 
     def save(self, path):
-        """Writes the board file (to_dict as JSON: <name>_board.json); returns path."""
+        """Writes the board file (to_dict as JSON: <name>_board.json); returns
+        path."""
         with open(path, 'w', encoding='utf-8') as fh:
             json.dump(self.to_dict(), fh, default=_plain)
         return path
@@ -702,29 +973,46 @@ class Board:
     @classmethod
     def from_dict(cls, d, log=print):
         if d.get('format') != FORMAT:
-            raise ValueError(f"not a {FORMAT} file (format {d.get('format')!r})")
+            raise ValueError(
+                f"not a {FORMAT} file (format {d.get('format')!r})")
         if int(d.get('version', 0)) > VERSION:
-            raise ValueError(f"board file version {d['version']} is newer than this program reads ({VERSION}): "
-                             f"update kicad2ems")
+            raise ValueError(
+                f"board file version {d['version']} is newer than this program "
+                f"reads ({VERSION}): update kicad2ems")
         b = cls.__new__(cls)
-        b.log, b.source, b.request, b.notes = log, d.get('source', {}), d.get('request', {}), list(d.get('notes', []))
+        b.log, b.source, b.request, b.notes = (log, d.get('source', {}),
+                                               d.get('request', {}),
+                                               list(d.get('notes', [])))
         st = d['stack']
         b.layers, b.thickness = [dict(l) for l in st['layers']], st['thickness']
         b.copper_finish = st.get('copper_finish')
         b.cu_z = {c['name']: c['z'] for c in st['copper']}
         b.cu_t = {c['name']: c['t'] for c in st['copper']}
-        b.outline, b.ground, b.region, b.cut_sides = shape(d['outline']), d.get('ground'), d.get('region'), d.get('cut_sides', [])
+        b.outline, b.ground, b.region, b.cut_sides = (shape(d['outline']),
+                                                      d.get('ground'),
+                                                      d.get('region'),
+                                                      d.get('cut_sides', []))
         b.sel = None if d.get('nets') is None else set(d['nets'])
         b.filled = {l: tuple(v) for l, v in d.get('filled', {}).items()}
         b.ground_nets = set(d.get('ground_nets', []))
-        b.copper = {l: [shape(p['polygon']) for p in ps] for l, ps in d.get('copper', {}).items()}
-        b.copper_nets = {l: [p.get('net', '') for p in ps] for l, ps in d.get('copper', {}).items()}
-        b.vias = [(v['x'], v['y'], v['r'], v['z0'], v['z1']) for v in d.get('vias', [])]
+        b.copper = {
+            l: [shape(p['polygon'])
+                for p in ps]
+            for l, ps in d.get('copper', {}).items()
+        }
+        b.copper_nets = {
+            l: [p.get('net', '')
+                for p in ps]
+            for l, ps in d.get('copper', {}).items()
+        }
+        b.vias = [(v['x'], v['y'], v['r'], v['z0'], v['z1'])
+                  for v in d.get('vias', [])]
         b.via_nets = [v.get('net', '') for v in d.get('vias', [])]
         b.ports = [Port.from_dict(p) for p in d.get('ports', [])]
         b.port_refs = set(d.get('port_refs', []))
         b.parts = [Part.from_dict(p) for p in d.get('parts', [])]
-        b.walls = [(w['axis'], w['at'], w['t0'], w['t1'], w['z0'], w['z1']) for w in d.get('walls', [])]
+        b.walls = [(w['axis'], w['at'], w['t0'], w['t1'], w['z0'], w['z1'])
+                   for w in d.get('walls', [])]
         b.prims = Prims.from_dict(d.get('prims', {}))
         return b
 
@@ -734,24 +1022,46 @@ class Board:
             return cls.from_dict(json.load(fh), log=log)
 
     def summary(self, nd=4):
-        """The numbers two boards (two importers, a refactor, a solver's readback) should agree on: the stack,
-        copper area per layer and net, vias, ports, parts, edge walls, the outline (rounded to nd decimals)."""
+        """The numbers two boards (two importers, a refactor, a solver's
+        readback) should agree on: the stack, copper area per layer and net,
+        vias, ports, parts, edge walls, the outline (rounded to nd decimals)."""
         r = lambda v: round(float(v), nd)
         area = {}
         for l, ps in self.copper.items():
             for p, n in zip(ps, self.copper_nets.get(l, [''] * len(ps))):
                 area.setdefault(l, {}).setdefault(n, 0.0)
                 area[l][n] += p.area
-        return dict(stack=[[l['name'], r(l['z0']), r(l['z1']), r(l['er']), r(l['tand'])] for l in self.layers],
-                    copper_z={n: r(self.cu_z[n]) for n in self.cu_order}, ground=self.ground,
-                    outline=dict(area=r(self.outline.area), bounds=[r(v) for v in self.outline.bounds]),
-                    copper={l: {n: r(a) for n, a in sorted(v.items())} for l, v in sorted(area.items())},
-                    vias=sorted([r(x), r(y), r(rv), r(z0), r(z1), n] for (x, y, rv, z0, z1), n in zip(self.vias, self.via_nets)),
-                    ports=[dict(name=p.name, kind=p.kind, layer=p.layer, ref_layer=p.ref_layer, at=[r(v) for v in p.c],
-                                axis=p.axis, sgn=p.sgn, w=r(p.w), z0=r(p.z0), net=p.net) for p in self.ports],
-                    parts=[dict(ref=p.ref, value=p.value_str(), layer=p.layer, s=[r(v) for v in p.s], e=[r(v) for v in p.e])
-                           for p in self.parts],
-                    walls=[[a, r(c), r(t0), r(t1), r(z0), r(z1)] for a, c, t0, t1, z0, z1 in self.walls])
+        return dict(
+            stack=[
+                [l['name'],
+                 r(l['z0']),
+                 r(l['z1']),
+                 r(l['er']),
+                 r(l['tand'])] for l in self.layers
+            ], copper_z={n: r(self.cu_z[n])
+                         for n in self.cu_order}, ground=self.ground,
+            outline=dict(area=r(self.outline.area),
+                         bounds=[r(v) for v in self.outline.bounds]), copper={
+                             l: {n: r(a)
+                                 for n, a in sorted(v.items())}
+                             for l, v in sorted(area.items())
+                         },
+            vias=sorted(
+                [r(x), r(y), r(rv), r(z0), r(z1), n]
+                for (x, y, rv, z0, z1), n in zip(self.vias, self.via_nets)),
+            ports=[
+                dict(name=p.name, kind=p.kind, layer=p.layer,
+                     ref_layer=p.ref_layer, at=[r(v) for v in p.c], axis=p.axis,
+                     sgn=p.sgn, w=r(p.w), z0=r(p.z0),
+                     net=p.net) for p in self.ports
+            ], parts=[
+                dict(ref=p.ref, value=p.value_str(), layer=p.layer,
+                     s=[r(v)
+                        for v in p.s], e=[r(v)
+                                          for v in p.e])
+                for p in self.parts
+            ], walls=[[a, r(c), r(t0), r(t1),
+                       r(z0), r(z1)] for a, c, t0, t1, z0, z1 in self.walls])
 
 
 def _plain(v):

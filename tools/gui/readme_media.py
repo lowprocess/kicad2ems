@@ -1,28 +1,38 @@
 #!/usr/bin/env python3
 """
-kicad2ems's README and GUI-page pictures, from the examples: runs them (gfdtd, mom25d and the line model, with
-field dumps), then takes the window's pages and renders the 3D field views.
+kicad2ems's README and GUI-page pictures, from the examples: runs them (gfdtd,
+mom25d and the line model, with field dumps), then takes the window's pages and
+renders the 3D field views.
 
-    python tools/gui/readme_media.py                 # runs, then every picture
-    python tools/gui/readme_media.py --skip-runs     # only the pictures, from the last runs
-    python tools/gui/readme_media.py --only hairpin filter         # (cases: hairpin, stub, patch, filter, start)
+    python tools/gui/readme_media.py  # runs, then every picture
+    python tools/gui/readme_media.py --skip-runs  # only the pictures, from the
+                                                  last runs
+    python tools/gui/readme_media.py --only hairpin filter
+        # (cases: hairpin, stub, patch, filter, start)
 
-Writes docs/img/readme/ (the README) and docs/img/gui/ (docs/gui.md) in this repository (the runs go to its
-build/readme/). Needs PySide6, pyqtgraph and dfsynth; the 3D views also
-PyOpenGL and a display (with QT_QPA_PLATFORM=offscreen they are left out).
+Writes docs/img/readme/ (the README) and docs/img/gui/ (docs/gui.md) in this
+repository (the runs go to its build/readme/). Needs PySide6, pyqtgraph and
+dfsynth; the 3D views also PyOpenGL and a display (with
+QT_QPA_PLATFORM=offscreen they are left out).
 """
 import argparse, glob, os, shutil, subprocess, sys, time
 
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the repository: examples, docs
-IMG, GUI = os.path.join(REPO, 'docs', 'img', 'readme'), os.path.join(REPO, 'docs', 'img', 'gui')
+# the repository: examples, docs
+REPO = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+IMG, GUI = (os.path.join(REPO, 'docs', 'img',
+                         'readme'), os.path.join(REPO, 'docs', 'img', 'gui'))
 RUNS = os.path.join(REPO, 'build', 'readme')
 
 # name: (example, extra arguments)
 CASES = {
     'hairpin': ('hairpin', ['--solvers', 'gfdtd,mom25d,qucs']),
-    'stub': ('rf_stubnotch', ['--solvers', 'gfdtd,mom25d', '--dump', 'E@volume+3@2.4', '--mom-dump', '2.4',
-                              '--dump-animate', 'gif']),
-    'patch': ('antenna_patch', ['--solvers', 'gfdtd,mom25d', '--dump', 'E@volume+12@2.45']),
+    'stub': ('rf_stubnotch', [
+        '--solvers', 'gfdtd,mom25d', '--dump', 'E@volume+3@2.4', '--mom-dump',
+        '2.4', '--dump-animate', 'gif'
+    ]),
+    'patch': ('antenna_patch',
+              ['--solvers', 'gfdtd,mom25d', '--dump', 'E@volume+12@2.45']),
 }
 
 
@@ -31,14 +41,19 @@ def run_cases(only):
         if only and name not in only:
             continue
         out = os.path.join(RUNS, name)
-        cmd = [sys.executable, '-m', 'kicad2ems', os.path.join(REPO, 'examples', ex + '.toml'), '--no-report',
-               '--out', out] + args
+        cmd = ([
+            sys.executable, '-m', 'kicad2ems',
+            os.path.join(REPO, 'examples', ex + '.toml'), '--no-report',
+            '--out', out
+        ] + args)
         print(f"run {name}: {' '.join(cmd[2:])}", flush=True)
         t = time.time()
         with open(os.path.join(RUNS, name + '.log'), 'w') as log:
             p = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT)
-        print(f"  {'ok' if p.returncode == 0 else f'FAILED ({p.returncode}): see build/readme/{name}.log'} "
-              f"({time.time() - t:.0f} s)", flush=True)
+        print(
+            "  "
+            f"{'ok' if p.returncode == 0 else f'FAILED ({p.returncode}): see build/readme/{name}.log'} "
+            f"({time.time() - t:.0f} s)", flush=True)
 
 
 def gif_resized(src, dst, width=720, every=1):
@@ -49,13 +64,16 @@ def gif_resized(src, dst, width=720, every=1):
     for k in range(0, im.n_frames, every):
         im.seek(k)
         f = im.convert('RGB')
-        frames.append(f.resize((width, round(f.height * width / f.width)), Image.LANCZOS))
-    frames[0].save(dst, save_all=True, append_images=frames[1:], duration=dur * every, loop=0, optimize=True)
+        frames.append(
+            f.resize((width, round(f.height * width / f.width)), Image.LANCZOS))
+    frames[0].save(dst, save_all=True, append_images=frames[1:],
+                   duration=dur * every, loop=0, optimize=True)
     return dst
 
 
 def gui_media(only):
-    os.environ['XDG_CONFIG_HOME'] = os.path.join(RUNS, 'xdg')       # a window of its own: not your saved layout
+    # a window of its own: not your saved layout
+    os.environ['XDG_CONFIG_HOME'] = os.path.join(RUNS, 'xdg')
     shutil.rmtree(os.environ['XDG_CONFIG_HOME'], ignore_errors=True)
     from kicad2ems.gui import application
     from kicad2ems.gui.app import MainWindow, LOWER, BESIDE
@@ -67,7 +85,8 @@ def gui_media(only):
             time.sleep(0.03)
 
     def sized(w, size):
-        """On the screen at that size (a first window opens over the whole screen: not here)."""
+        """On the screen at that size (a first window opens over the whole
+        screen: not here)."""
         w.show()
         pump(5)
         w.showNormal()
@@ -75,20 +94,23 @@ def gui_media(only):
         pump()
 
     def window(case, size=(1600, 950)):
-        """The window with the case's config in the settings and its run in the pages (no preview of its own)."""
+        """The window with the case's config in the settings and its run in the
+        pages (no preview of its own)."""
         w = MainWindow(os.path.join(REPO, 'examples', CASES[case][0] + '.toml'))
-        pump()                                                      # not on the screen yet: no automatic preview
+        pump()  # not on the screen yet: no automatic preview
         sized(w, size)
         w.reset_layout()
         w.open_results(os.path.join(RUNS, case), quiet=True)
-        if os.environ.get('QT_QPA_PLATFORM') == 'offscreen':        # no 3D there: the board from above
+        # no 3D there: the board from above
+        if os.environ.get('QT_QPA_PLATFORM') == 'offscreen':
             w.viewer.set_view('Plan')
         pump(40)
         return w
 
     def shot(w, path, page=None, view=None, share=None):
-        """The window with `page` in front (and the Viewer's `view`), saved to path (None: only shown). A page
-        under the board gets most of the workspace's height (share of it: 0.7), the board the rest; the board's
+        """The window with `page` in front (and the Viewer's `view`), saved to
+        path (None: only shown). A page under the board gets most of the
+        workspace's height (share of it: 0.7), the board the rest; the board's
         own pictures the other way round."""
         if page:
             w.show_panel(page)
@@ -96,13 +118,15 @@ def gui_media(only):
             h = w.work.height()
             lower = page in LOWER + BESIDE
             share = share or (0.7 if lower else 0.22)
-            w.work.resizeDocks([w.docks['Viewer'], w.docks[page if lower else LOWER[0]]],
-                               [int((1 - share) * h), int(share * h)], Qt.Vertical)
+            w.work.resizeDocks(
+                [w.docks['Viewer'], w.docks[page if lower else LOWER[0]]],
+                [int((1 - share) * h), int(share * h)], Qt.Vertical)
         if view:
             w.viewer.set_view(view)
         pump(30)
         if path:
-            w.statusBar().clearMessage()                            # ("opened /home/...": not in a picture)
+            # ("opened /home/...": not in a picture)
+            w.statusBar().clearMessage()
             pump(2)
             w.grab().save(path)
             print(f"  {os.path.relpath(path, REPO)}")
@@ -115,20 +139,28 @@ def gui_media(only):
     if not only or 'hairpin' in only:
         w = window('hairpin')
         shot(w, os.path.join(IMG, 'gui_sparams.png'), 'Results')
-        w.viewer.plan.mesh.setCurrentIndex(max(0, w.viewer.plan.mesh.findData('mom25d')))
-        w.viewer.lines_on.setChecked(False)                         # the mesh, not the sections over it
+        w.viewer.plan.mesh.setCurrentIndex(
+            max(0, w.viewer.plan.mesh.findData('mom25d')))
+        # the mesh, not the sections over it
+        w.viewer.lines_on.setChecked(False)
         shot(w, None, 'Viewer', 'Plan')
-        w.viewer.plan.plot.setRange(xRange=(3.2, 9.4), yRange=(-14.0, -9.6), padding=0)   # one U's bottom, close up
+        # one U's bottom, close up
+        w.viewer.plan.plot.setRange(xRange=(3.2, 9.4), yRange=(-14.0, -9.6),
+                                    padding=0)
         shot(w, os.path.join(IMG, 'gui_mesh.png'))
         w.viewer.lines_on.setChecked(True)
         els = (w.viewer.lines or {}).get('elements', [])
-        pick = next((e for e in els if e.get('section') and e.get('group') is not None),       # a coupled pair
-                    next((e for e in els if e.get('section')), None))
+        # a coupled pair
+        pick = next(
+            (e for e in els if e.get('section') and e.get('group') is not None),
+            next((e for e in els if e.get('section')), None))
         if pick is not None:
             w.viewer.select(pick['id'])
             w.viewer.plan.plot.autoRange()
-            shot(w, None, 'Section', 'Plan', share=0.55)            # the section's page, under the plan it is
-            t = time.time()                                         # picked on: solved once it is in view
+            # the section's page, under the plan it is
+            shot(w, None, 'Section', 'Plan', share=0.55)
+            # picked on: solved once it is in view
+            t = time.time()
             while w.viewer.section.busy() and time.time() - t < 60:
                 pump(2)
             shot(w, os.path.join(GUI, 'section.png'))
@@ -141,7 +173,7 @@ def gui_media(only):
             v.zscale.setValue(1.0)
             v.decades.setValue(1.2)
             v.clip.setValue(99.0)
-            v.gamma.setValue(22)                                    # the near field above the patch: thinned out
+            v.gamma.setValue(22)  # the near field above the patch: thinned out
             v.opacity.setValue(70)
             shot(w, None, 'Viewer', '3D')
             v.reset_camera()
@@ -169,14 +201,17 @@ def gui_media(only):
                 gif_resized(tmp, os.path.join(IMG, 'stub_3d.gif'))
                 print("  docs/img/readme/stub_3d.gif")
             close(w)
-        # mom25d's surface-current standing wave (written by the run: --mom-dump 2.4 --dump-animate gif)
-        for f in glob.glob(os.path.join(RUNS, 'stub', '*mom25d*_J_F_Cu_fd_2.4GHz.gif')):
+        # mom25d's surface-current standing wave (written by the run: --mom-dump
+        # 2.4 --dump-animate gif)
+        for f in glob.glob(
+                os.path.join(RUNS, 'stub', '*mom25d*_J_F_Cu_fd_2.4GHz.gif')):
             gif_resized(f, os.path.join(IMG, 'stub_current.gif'), width=720)
             print("  docs/img/readme/stub_current.gif")
     if not only or 'start' in only:
-        w = MainWindow()                                            # no board: the Start page, its examples as tiles
+        w = MainWindow()  # no board: the Start page, its examples as tiles
         sized(w, (1600, 950))
-        t, th = time.time(), w.start._thread                        # (the tiles' pictures: drawn in a thread)
+        # (the tiles' pictures: drawn in a thread)
+        t, th = time.time(), w.start._thread
         while th is not None and th.isRunning() and time.time() - t < 300:
             pump(5)
         shot(w, os.path.join(GUI, 'start.png'))
@@ -186,8 +221,10 @@ def gui_media(only):
         from kicad2ems.dfsynth.cli import main as dfsynth
         base = os.path.join(RUNS, 'filter', 'hairpin_2g4')
         os.makedirs(os.path.dirname(base), exist_ok=True)
-        args = dict(type='bandpass', topology='hairpin', f0='2.4G', bw='240M', substrate='RO4003C-0.813')
-        dfsynth([a for k, v in args.items() for a in (f'--{k}', v)] + ['-o', base])
+        args = dict(type='bandpass', topology='hairpin', f0='2.4G', bw='240M',
+                    substrate='RO4003C-0.813')
+        dfsynth([a for k, v in args.items()
+                 for a in (f'--{k}', v)] + ['-o', base])
         w = MainWindow()
         sized(w, (1500, 900))
         w.filter.set_values(dict(args, out=base))
@@ -211,8 +248,11 @@ def copies(only):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
-    ap.add_argument('--skip-runs', action='store_true', help="render from the runs already in build/readme/")
-    ap.add_argument('--only', nargs='*', choices=list(CASES) + ['filter', 'start'], help="these cases only")
+    ap.add_argument('--skip-runs', action='store_true',
+                    help="render from the runs already in build/readme/")
+    ap.add_argument('--only', nargs='*',
+                    choices=list(CASES) + ['filter', 'start'],
+                    help="these cases only")
     a = ap.parse_args()
     for d in (IMG, GUI, RUNS):
         os.makedirs(d, exist_ok=True)

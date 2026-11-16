@@ -1,52 +1,64 @@
 """
-mom25d.run - solve a Simulation over a band and return S-parameters at the output reference impedances.
+mom25d.run - solve a Simulation over a band and return S-parameters at the
+output reference impedances.
 
     f, S, info = solve_band(sim, 1e9, 6e9, points=401, zref=[50, 50])
 
-Adaptive by default (rational fit through as few EM solves as the tolerance allows, sampled on `points`
-frequencies); linear=N solves at N equally spaced frequencies instead. S is renormalised from each port's
-characterised line impedance (wave ports) or its own impedance (lumped ports) to zref.
+Adaptive by default (rational fit through as few EM solves as the tolerance
+allows, sampled on `points` frequencies); linear=N solves at N equally spaced
+frequencies instead. S is renormalised from each port's characterised line
+impedance (wave ports) or its own impedance (lumped ports) to zref.
 """
 import time
 import numpy as np
 
 
 def renorm(S, zc, zref):
-    """Renormalise S from reference impedances zc to zref (scalars or per-port, real)."""
+    """Renormalise S from reference impedances zc to zref (scalars or per-port,
+    real)."""
     zc, n = np.asarray(zc, float), S.shape[0]
     zref = np.broadcast_to(np.asarray(zref, float), (n,))
     if np.allclose(zc, zref):
         return S
     I = np.eye(n)
-    Z = np.diag(np.sqrt(zc)) @ (I + S) @ np.linalg.inv(I - S) @ np.diag(np.sqrt(zc))
+    Z = (np.diag(np.sqrt(zc)) @ (I + S) @ np.linalg.inv(I - S)
+         @ np.diag(np.sqrt(zc)))
     zn = np.diag(1 / np.sqrt(zref)) @ Z @ np.diag(1 / np.sqrt(zref))
     return (zn - I) @ np.linalg.inv(zn + I)
 
 
 def out_refs(sim, z0):
-    """Output reference per (modal) port: z0 (a number, or {port name: ohms}) single-ended, 2 z0 differential,
-    z0 / 2 common."""
+    """Output reference per (modal) port: z0 (a number, or {port name: ohms})
+    single-ended, 2 z0 differential, z0 / 2 common."""
     out = []
     for p in sim.ports:
         mode = getattr(p, 'mode', None)
-        z = z0.get(p.parent.name if mode else p.name, z0.get(p.name, 50.0)) if isinstance(z0, dict) else z0
+        z = (z0.get(p.parent.name if mode else p.name, z0.get(p.name, 50.0))
+             if isinstance(z0, dict) else z0)
         out.append({'d': 2 * z, 'c': z / 2}.get(mode, z))
     return np.array(out, float)
 
 
 def _zc(sim, f):
-    return np.array([p.zc_fn(f) if getattr(p, 'zc_fn', None) else p.zc for p in sim.ports])
+    return np.array(
+        [p.zc_fn(f) if getattr(p, 'zc_fn', None) else p.zc for p in sim.ports])
 
 
-def solve_band(sim, fmin, fmax, points=401, zref=50.0, linear=None, afs_tol=2e-3, max_solves=40, log=print,
-               keep_mid=False, progress=None, on_step=None, keep_at=(), freq=None):
-    """S-parameters of sim over fmin..fmax (Hz): returns (f, S (nf, n, n), info dict with solves, seconds, zref, the
-    solved frequencies, and afs / afs_tol: the adaptive sweep's history (afs.adaptive_sweep) and tolerance). max_solves:
-    cap of the adaptive sweep. keep_mid: one extra solve at mid-band keeping the currents (sim.last). progress(solves,
-    at most, f): after each EM solve. on_step(entry): after each model of the adaptive sweep (afs.adaptive_sweep).
-    keep_at: frequencies (Hz) the sweep solves among its samples and keeps the currents of, sim.kept {f: currents of the
-    excitations} (a current dump's: no solve of its own). freq: the frequencies asked for (Hz): the adaptive sweep's
-    model is given there (a log sweep's samples spread in log f), in place of `points` spread linearly."""
+def solve_band(sim, fmin, fmax, points=401, zref=50.0, linear=None,
+               afs_tol=2e-3, max_solves=40, log=print, keep_mid=False,
+               progress=None, on_step=None, keep_at=(), freq=None):
+    """S-parameters of sim over fmin..fmax (Hz): returns (f, S (nf, n, n), info
+    dict with solves, seconds, zref, the solved frequencies, and afs / afs_tol:
+    the adaptive sweep's history (afs.adaptive_sweep) and tolerance).
+    max_solves:
+    cap of the adaptive sweep. keep_mid: one extra solve at mid-band keeping the
+    currents (sim.last). progress(solves, at most, f): after each EM solve.
+    on_step(entry): after each model of the adaptive sweep (afs.adaptive_sweep).
+    keep_at: frequencies (Hz) the sweep solves among its samples and keeps the
+    currents of, sim.kept {f: currents of the excitations} (a current dump's: no
+    solve of its own). freq: the frequencies asked for (Hz): the adaptive
+    sweep's model is given there (a log sweep's samples spread in log f), in
+    place of `points` spread linearly."""
     t0, zr, done = time.time(), out_refs(sim, zref), []
     keep_at = {float(f) for f in keep_at}
     sim.kept = {}
@@ -66,18 +78,27 @@ def solve_band(sim, fmin, fmax, points=401, zref=50.0, linear=None, afs_tol=2e-3
         S = np.array([solve(fi) for fi in f])
     else:
         from .afs import adaptive_sweep
-        f, S, fs, _, hist = adaptive_sweep(solve, fmin, fmax, tol=afs_tol, ngrid=points, max_points=max_solves,
-                                           log=log, on_step=on_step, seed=sorted(keep_at), grid=freq)
+        f, S, fs, _, hist = adaptive_sweep(solve, fmin, fmax, tol=afs_tol,
+                                           ngrid=points, max_points=max_solves,
+                                           log=log, on_step=on_step,
+                                           seed=sorted(keep_at), grid=freq)
         if hist and not hist[-1].get('converged', True):
-            sim.log.note(f"WARNING adaptive sweep: stopped at its {max_solves} solves before its models agreed "
-                         f"(last change {hist[-1]['change']:.1e} at {hist[-1]['f_change'] / 1e9:.4g} GHz, tolerance "
-                         f"{afs_tol:g}): more solves (--mom-solves) or a narrower band")
+            sim.log.note(
+                f"WARNING adaptive sweep: stopped at its {max_solves} solves "
+                "before its models agreed (last change "
+                f"{hist[-1]['change']:.1e} at {hist[-1]['f_change'] / 1e9:.4g} "
+                f"GHz, tolerance {afs_tol:g}): more solves (--mom-solves) or a "
+                "narrower band")
     if keep_mid:
         sim.sparams(fs[len(fs) // 2], keep=True)
     worst = getattr(sim, 'unbalance', 0.0)
-    if worst > 0.02:                                         # (sim.balance took it out)
-        sim.log.note(('WARNING ' if worst > 0.1 else '') + f"wave ports: transmission differed by up to "
-                     f"{100 * worst:.1f} % between its two directions, the ports' characterised impedances being "
-                     f"that consistent; made reciprocal")
-    return f, S, dict(solves=len(fs), seconds=time.time() - t0, zref=zr.tolist(), solved=list(map(float, fs)),
-                      names=[p.name for p in sim.ports], afs=[] if linear else hist, afs_tol=afs_tol)
+    if worst > 0.02:  # (sim.balance took it out)
+        sim.log.note(
+            ('WARNING ' if worst > 0.1 else '')
+            + f"wave ports: transmission differed by up to {100 * worst:.1f} % "
+              "between its two directions, the ports' characterised "
+              "impedances being that consistent; made reciprocal")
+    return (f, S,
+            dict(solves=len(fs), seconds=time.time() - t0, zref=zr.tolist(),
+                 solved=list(map(float, fs)), names=[p.name for p in sim.ports],
+                 afs=[] if linear else hist, afs_tol=afs_tol))

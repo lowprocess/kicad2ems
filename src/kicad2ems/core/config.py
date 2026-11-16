@@ -1,15 +1,18 @@
 """
-Run settings: one typed Settings object, built once from the defaults, a TOML file and the command line (in
-that order: the command line wins). Everything downstream (pipeline, solvers, report, the GUI) reads
-Settings, never raw strings.
+Run settings: one typed Settings object, built once from the defaults, a TOML
+file and the command line (in that order: the command line wins). Everything
+downstream (pipeline, solvers, report, the GUI) reads Settings, never raw
+strings.
 
-The settings are declared once, as options (options.Option): CORE here, the settings of every run, and each
-solver's own (solvers/: openEMS's mesh and time stepping, mom25d's cells ...). Settings has a field for each;
-the command line, the config keys and the GUI fields are made from the same lists.
+The settings are declared once, as options (options.Option): CORE here, the
+settings of every run, and each solver's own (solvers/: openEMS's mesh and time
+stepping, mom25d's cells ...). Settings has a field for each; the command line,
+the config keys and the GUI fields are made from the same lists.
 
-A config's keys are the command-line options (dashes or underscores) at the top level; a solver's options
-may also sit under its table, [solver.<name>], by their short names (mom25d's mom_dmax is dmax there). Lists
-may be TOML arrays or comma-separated strings:
+A config's keys are the command-line options (dashes or underscores) at the top
+level; a solver's options may also sit under its table, [solver.<name>], by
+their short names (mom25d's mom_dmax is dmax there). Lists may be TOML arrays or
+comma-separated strings:
 
     board = "board.kicad_pcb"       # then:  kicad2ems board.toml
     pos = "board-top.pos"
@@ -17,17 +20,20 @@ may be TOML arrays or comma-separated strings:
     fmin = 1.0
     fmax = 6.0
     no_mask = true
-    solvers = ["openems", "mom25d"] # default: auto (kicad2openems: openems; see Settings.solver_plan)
+    solvers = ["openems", "mom25d"] # default: auto (kicad2openems: openems; see
+                                    Settings.solver_plan)
     [solver.openems]
     excite = ["P1"]
     air = 5.0
     [solver.mom25d]
     dmax = 0.4
 
-An [openems] table (the older form) is read like the top level, with a note. Paths in the file (board, pos,
-compare, out, events, qucsator) are relative to the file's folder; a path that only exists relative to the
-working directory (older configs written for the repository root) is still used, with a note. Unknown keys are
-reported (with the option they are probably a typo of) and ignored.
+An [openems] table (the older form) is read like the top level, with a note.
+Paths in the file (board, pos, compare, out, events, qucsator) are relative to
+the file's folder; a path that only exists relative to the working directory
+(older configs written for the repository root) is still used, with a note.
+Unknown keys are reported (with the option they are probably a typo of) and
+ignored.
 """
 import dataclasses, os
 from dataclasses import field
@@ -42,18 +48,23 @@ class ConfigError(ValueError):
 
 
 def _region(v):
-    """x0,y0,x1,y1 / [x0, y0, x1, y1] (rectangle), [[x, y], ...] (polygon) or a drawing layer name."""
+    """x0,y0,x1,y1 / [x0, y0, x1, y1] (rectangle), [[x, y], ...] (polygon) or a
+    drawing layer name."""
     if isinstance(v, str):
         try:
             return floats(4)(v)
         except (TypeError, ValueError):
             if ',' in v or not v.strip():
-                raise ValueError("expected x0,y0,x1,y1, a list of [x, y] points or a drawing layer such as User.1")
+                raise ValueError(
+                    "expected x0,y0,x1,y1, a list of [x, y] points or a "
+                    "drawing layer such as User.1"
+                )
             return v.strip()
     vals = list(v)
     if vals and all(isinstance(p, (list, tuple)) for p in vals):
         if len(vals) < 3 or any(len(p) != 2 for p in vals):
-            raise ValueError("a polygon region needs at least three [x, y] points")
+            raise ValueError(
+                "a polygon region needs at least three [x, y] points")
         return [tuple(float(c) for c in p) for p in vals]
     return floats(4)(vals)
 
@@ -64,7 +75,8 @@ def _sides(v):
 
 
 def _steer(v):
-    """--steer: one or two phase steps (deg), as a list; None for an empty one."""
+    """--steer: one or two phase steps (deg), as a list; None for an empty
+    one."""
     vals = floatlist(v)
     if len(vals) > 2:
         raise ValueError("expected X or X,Y (phase steps in degrees)")
@@ -72,7 +84,8 @@ def _steer(v):
 
 
 def _aim(v):
-    """--aim: the beam's direction, THETA,PHI (deg), as a list; None for an empty one."""
+    """--aim: the beam's direction, THETA,PHI (deg), as a list; None for an
+    empty one."""
     vals = floatlist(v)
     if vals and len(vals) != 2:
         raise ValueError("expected THETA,PHI (the beam's direction in degrees)")
@@ -82,7 +95,8 @@ def _aim(v):
 
 
 def _taper(v):
-    """--taper: KIND[:SLL] (phased.parse_taper checks it); None for an empty one."""
+    """--taper: KIND[:SLL] (phased.parse_taper checks it); None for an empty
+    one."""
     from .phased import parse_taper
     v = str(v or '').strip()
     if v:
@@ -91,234 +105,413 @@ def _taper(v):
 
 
 def _lines_field(v):
-    """auto, all or off; a config's true and false (the setting was a switch) are all and off."""
+    """auto, all or off; a config's true and false (the setting was a switch)
+    are all and off."""
     from .lines.reference import field_mode
     return field_mode(v)
 
 
 def _solvers(v):
-    """Solver names (aliases allowed; 'lines' for the line model, 'all' for every solver but the variants of another,
-    as mixed) in registry order, or None for an empty list."""
+    """Solver names (aliases allowed; 'lines' for the line model, 'all' for
+    every solver but the variants of another, as mixed) in registry order, or
+    None for an empty list."""
     from .solvers import registry, aliases, ordered, missing, LINES, AUTO
     names = dict(aliases(), line=LINES, lines=LINES, fast=LINES, auto=AUTO)
     out = set()
     for x in strlist(v) or []:
         x = x.lower()
-        if x == 'all':                                          # every solver, the line model once
-            out |= {n for n, sv in registry().items() if sv.consumes != 'network' and getattr(sv, 'in_all', True)} | {LINES}
+        if x == 'all':  # every solver, the line model once
+            out |= ({
+                n
+                for n, sv in registry().items()
+                if sv.consumes != 'network' and getattr(sv, 'in_all', True)
+            } | {LINES})
         elif x in names:
             out.add(names[x])
         elif missing(x):
             raise ValueError(missing(x))
         else:
-            raise ValueError(f"no solver {x!r}: choose from {', '.join(list(registry()) + [LINES, AUTO, 'all'])}")
+            raise ValueError(
+                f"no solver {x!r}: choose from "
+                f"{', '.join(list(registry()) + [LINES, AUTO, 'all'])}"
+            )
     return ordered(out) or None
 
 
-# the settings of every run (each solver's own are in its plugin): (key, default, help, type, ...)
+# the settings of every run (each solver's own are in its plugin): (key,
+# default, help, type, ...)
 CORE = [
-    Option('solvers', None, "solvers to run, comma-separated: auto (the default: the full-wave solver estimated "
-           "cheapest for this board, plus the line model; kicad2openems: openems), openems (3D FDTD), gfdtd (3D FDTD on the GPU or the CPU, openEMS's model; not in all), mom25d (alias mom; 2.5D "
-           "MoM: planar boards over a ground plane, no openEMS needed), mixed (mom25d with long straight runs as transmission lines; not in all), qucs or scikit (the transmission-line model as "
-           "a circuit, solved by qucsator or scikit-rf: milliseconds), lines (qucs when qucsator is installed, else "
-           "scikit) or all. A "
-           "named solver that cannot run stops the run before it starts; --mom and --fast add theirs as references",
-           list, conv=_solvers, group='solvers', cli=dict(metavar='LIST')),
-    Option('mom', False, "also run mom25d, as a reference next to the other solvers (if it cannot run, that is a "
-           "warning); works with --preview", bool, group='solvers'),
-    Option('fast', None, "also solve the transmission-line model as a circuit, as a reference: skrf (scikit-rf), "
-           "qucsator, or auto (qucsator if installed, else scikit-rf)", choices=('auto', 'skrf', 'qucsator'),
-           group='solvers'),
-    Option('lines_field', 'auto', "which of the line model's sections the 2D field solver solves on the board's "
-           "copper cut across them: auto (default), those whose cut holds what the formulas leave out (ground "
-           "beside a stripline, a plane that ends near the trace, copper on a layer in between, a guard trace "
-           "between coupled lines); all, every one (--lines-field alone; seconds to minutes); off, none: the "
-           "formulas. Its coupled sections and grounded CPW come from the field solver in any case, over ideal "
-           "planes where not on their cut", choices=('auto', 'all', 'off'), conv=_lines_field,
-           gui="Line model: sections by the field solver", group='solvers',
-           cli=dict(nargs='?', const='all', metavar='auto|all|off')),
-    Option('mode', 'sparams', "sparams (default): S-parameters of all ports; antenna: a driven port (several with "
-           "--drive), far field (gain, efficiency, patterns); openEMS and mom25d", choices=('sparams', 'antenna'),
-           gui='Mode', group='solvers'),
-    Option('drive', [], "antenna mode: drive several ports at once, each PORT[=amplitude][@phase in deg] (the "
-           "incident waves; the other ports terminated), e.g. P1@0,P2@60: a phased array (mom25d; openEMS and "
-           "gfdtd: a run per driven port). The GUI's Results page steers the beam afterwards", list, conv=strlist,
-           gui='Antenna: phased drive (P1@0, P2@60 ...; empty: one port)', group='antenna',
-           cli=dict(metavar='PORT[=AMP][@DEG],...')),
-    Option('grid', None, "antenna mode: the ports' places in a 2D array, for --steer and the GUI's beam steering: "
-           "COLSxROWS (the ports in order fill the rows, top row first: 4x4 for P1..P16) or PORT:COL,ROW items "
-           "separated by spaces (e.g. 'P1:0,0 P2:1,0 P3:0,1 P4:1,1'); empty: the ports in a line",
-           gui='Antenna: array grid (4x4, or P1:0,0 P2:1,0 ...)', group='antenna', cli=dict(metavar='SPEC')),
-    Option('steer', None, "antenna mode: phase steps (deg) added to --drive: X[,Y], X per column and Y per row of "
-           "--grid (without a grid: X from each driven port to the next), e.g. 30,-45", list,
-           conv=_steer, gui='Antenna: phase step X, Y (deg)', group='antenna', cli=dict(metavar='X[,Y]')),
-    Option('aim', None, "antenna mode: point the beam at THETA,PHI (deg): each driven port's phase from its place, "
-           "-k0 (x sin theta cos phi + y sin theta sin phi) at the pattern frequency, on top of --drive and --steer "
-           "(any layout of feeds), e.g. 20,0", list, conv=_aim,
-           gui='Antenna: aim the beam at theta, phi (deg)', group='antenna', cli=dict(metavar='THETA,PHI')),
-    Option('taper', None, "antenna mode: an amplitude taper multiplied into --drive, for lower sidelobes: uniform, "
-           "taylor, chebyshev or cosine, with :SLL for the sidelobe level in dB (taylor and chebyshev; default "
-           "25), e.g. taylor:30. Across --grid's columns times its rows, else across the driven ports",
-           conv=_taper, gui='Antenna: amplitude taper (taylor:30, chebyshev:25, cosine)', group='antenna',
-           cli=dict(metavar='KIND[:SLL]')),
-    Option('board', None, ".kicad_pcb, .gbrjob (Gerber job file; ports from --pos), the <name>_board.json of an "
-           "earlier run, or a .toml config that names one", path=True, gui='Board (.kicad_pcb)', group='board',
-           cli=dict(flags=['board'], nargs='?'), level='basic'),
-    Option('pos', None, "pick-and-place file listing the port components", path=True, gui='Pick-and-place file',
-           group='board'),
-    Option('nets', None, "comma-separated nets to include, or auto (the nets under the ports plus the ground nets; "
-           "default: all copper)", list, gui='Nets (comma-separated, or auto)', group='board'),
-    Option('region', None, "crop to x0,y0,x1,y1 (KiCad mm) or to the shapes on a drawing layer (e.g. User.1); in a "
-           "config also a list of [x, y] points. Ports outside it are left out", object, conv=_region,
-           gui='Region (x0,y0,x1,y1 or a drawing layer)', group='board'),
-    Option('ports', [], "an extra port: P3=J1.1 (on pad 1 of J1) or P3@x,y[,layer[,rotation]] (KiCad mm); "
-           "repeatable", list, conv=items, gui='Extra ports (P3=J1.1, P4@x,y ...)', group='board',
-           cli=dict(flags=['--port'], dest='ports', action='append', metavar='SPEC'), level='basic'),
-    Option('cut_ports', False, "a port wherever a signal track crosses the region edge", bool,
+    Option(
+        'solvers', None,
+        "solvers to run, comma-separated: auto (the default: the full-wave "
+        "solver estimated cheapest for this board, plus the line model; "
+        "kicad2openems: openems), openems (3D FDTD), gfdtd (3D FDTD on the GPU "
+        "or the CPU, openEMS's model; not in all), mom25d (alias mom; 2.5D "
+        "MoM: planar boards over a ground plane, no openEMS needed), mixed "
+        "(mom25d with long straight runs as transmission lines; not in all), "
+        "qucs or scikit (the transmission-line model as a circuit, solved by "
+        "qucsator or scikit-rf: milliseconds), lines (qucs when qucsator is "
+        "installed, else scikit) or all. A named solver that cannot run stops "
+        "the run before it starts; --mom and --fast add theirs as references",
+        list, conv=_solvers, group='solvers', cli=dict(metavar='LIST')),
+    Option(
+        'mom', False,
+        "also run mom25d, as a reference next to the other solvers (if it "
+        "cannot run, that is a warning); works with "
+        "--preview", bool, group='solvers'),
+    Option(
+        'fast', None,
+        "also solve the transmission-line model as a circuit, as a reference: "
+        "skrf (scikit-rf), qucsator, or auto (qucsator if installed, else "
+        "scikit-rf)",
+        choices=('auto', 'skrf', 'qucsator'), group='solvers'),
+    Option(
+        'lines_field', 'auto',
+        "which of the line model's sections the 2D field solver solves on the "
+        "board's copper cut across them: auto (default), those whose cut holds "
+        "what the formulas leave out (ground beside a stripline, a plane that "
+        "ends near the trace, copper on a layer in between, a guard trace "
+        "between coupled lines); all, every one (--lines-field alone; seconds "
+        "to minutes); off, none: the formulas. Its coupled sections and "
+        "grounded CPW come from the field solver in any case, over ideal "
+        "planes where not on their cut", choices=('auto', 'all', 'off'),
+        conv=_lines_field, gui="Line model: sections by the field solver",
+        group='solvers', cli=dict(nargs='?', const='all',
+                                  metavar='auto|all|off')),
+    Option(
+        'mode', 'sparams',
+        "sparams (default): S-parameters of all ports; antenna: a driven port "
+        "(several with --drive), far field (gain, efficiency, patterns); "
+        "openEMS and mom25d",
+        choices=('sparams', 'antenna'), gui='Mode', group='solvers'),
+    Option(
+        'drive', [],
+        "antenna mode: drive several ports at once, each "
+        "PORT[=amplitude][@phase in deg] (the incident waves; the other ports "
+        "terminated), e.g. P1@0,P2@60: a phased array (mom25d; openEMS and "
+        "gfdtd: a run per driven port). The GUI's Results page steers the beam "
+        "afterwards",
+        list, conv=strlist,
+        gui='Antenna: phased drive (P1@0, P2@60 ...; empty: one port)',
+        group='antenna', cli=dict(metavar='PORT[=AMP][@DEG],...')),
+    Option(
+        'grid', None,
+        "antenna mode: the ports' places in a 2D array, for --steer and the "
+        "GUI's beam steering: COLSxROWS (the ports in order fill the rows, top "
+        "row first: 4x4 for P1..P16) or PORT:COL,ROW items separated by spaces "
+        "(e.g. 'P1:0,0 P2:1,0 P3:0,1 P4:1,1'); empty: the ports in a line",
+        gui='Antenna: array grid (4x4, or P1:0,0 P2:1,0 ...)', group='antenna',
+        cli=dict(metavar='SPEC')),
+    Option(
+        'steer', None,
+        "antenna mode: phase steps (deg) added to --drive: X[,Y], X per column "
+        "and Y per row of --grid (without a grid: X from each driven port to "
+        "the next), e.g. 30,-45",
+        list, conv=_steer, gui='Antenna: phase step X, Y (deg)',
+        group='antenna', cli=dict(metavar='X[,Y]')),
+    Option(
+        'aim', None,
+        "antenna mode: point the beam at THETA,PHI (deg): each driven port's "
+        "phase from its place, -k0 (x sin theta cos phi + y sin theta sin phi) "
+        "at the pattern frequency, on top of --drive and --steer (any layout "
+        "of feeds), e.g. 20,0", list, conv=_aim,
+        gui='Antenna: aim the beam at theta, phi (deg)', group='antenna',
+        cli=dict(metavar='THETA,PHI')),
+    Option(
+        'taper', None,
+        "antenna mode: an amplitude taper multiplied into --drive, for lower "
+        "sidelobes: uniform, taylor, chebyshev or cosine, with :SLL for the "
+        "sidelobe level in dB (taylor and chebyshev; default 25), e.g. "
+        "taylor:30. Across --grid's columns times its rows, else across the "
+        "driven ports",
+        conv=_taper,
+        gui='Antenna: amplitude taper (taylor:30, chebyshev:25, cosine)',
+        group='antenna', cli=dict(metavar='KIND[:SLL]')),
+    Option(
+        'board', None,
+        ".kicad_pcb, .gbrjob (Gerber job file; ports from --pos), the "
+        "<name>_board.json of an earlier run, or a .toml config that names "
+        "one", path=True,
+        gui='Board (.kicad_pcb)', group='board',
+        cli=dict(flags=['board'], nargs='?'), level='basic'),
+    Option('pos', None, "pick-and-place file listing the port components",
+           path=True, gui='Pick-and-place file', group='board'),
+    Option(
+        'nets', None,
+        "comma-separated nets to include, or auto (the nets under the ports "
+        "plus the ground nets; default: all "
+        "copper)", list, gui='Nets (comma-separated, or auto)',
+        group='board'),
+    Option(
+        'region', None,
+        "crop to x0,y0,x1,y1 (KiCad mm) or to the shapes on a drawing layer "
+        "(e.g. User.1); in a config also a list of [x, y] points. Ports "
+        "outside it are left out",
+        object, conv=_region, gui='Region (x0,y0,x1,y1 or a drawing layer)',
+        group='board'),
+    Option(
+        'ports', [],
+        "an extra port: P3=J1.1 (on pad 1 of J1) or P3@x,y[,layer[,rotation]] "
+        "(KiCad mm); "
+        "repeatable", list, conv=items, gui='Extra ports (P3=J1.1, P4@x,y ...)',
+        group='board', cli=dict(flags=['--port'], dest='ports', action='append',
+                                metavar='SPEC'), level='basic'),
+    Option('cut_ports', False,
+           "a port wherever a signal track crosses the region edge", bool,
            gui='Ports where tracks cross the region edge', group='board'),
-    Option('ground', None, "copper layer to model as a solid plane over the whole outline", gui='Solid ground layer',
+    Option('ground', None,
+           "copper layer to model as a solid plane over the whole outline",
+           gui='Solid ground layer', group='board'),
+    Option(
+        'fill_voids', 'off',
+        "fill the ground copper's voids that the nets left out made (the "
+        "clearances around their pads, traces and vias): off (default: the "
+        "copper as imported), far (those away from the signal copper, and the "
+        "small ones), all (every one without a selected net's copper or via in "
+        "it). Every solver gets the filled copper; mom25d's unknowns fall most",
+        choices=('off', 'far', 'all'), gui='Fill pour voids', group='board'),
+    Option(
+        'mask', False,
+        "include solder mask layers (FDTD: its cells set the time step, see "
+        "--nz-mask; mom25d: one more layer, no more "
+        "unknowns)", bool, gui='Include solder mask',
+        group='board'),
+    Option(
+        'parts', 'auto',
+        "lumped R / L / C parts between two pads on the modelled copper "
+        "(default auto)",
+        choices=('auto', 'none'), group='board'),
+    Option(
+        'part_ports', [],
+        "parts as internal ports, closed by their values after the solve: all, "
+        "or references (C1,L2); with --part-value and --part-file a value is "
+        "swept or replaced without solving again (solvers with part ports: "
+        "openEMS, gfdtd, Palace, mom25d, the line model)",
+        list, conv=strlist, gui='Parts as ports (all or C1,L2)', group='board',
+        cli=dict(metavar='REFS')),
+    Option(
+        'vary', [],
+        "other settings varied, the run solved again for each combination: "
+        "KEY=V1,V2,... (repeat: every combination, at most 32; each in "
+        "<out>/vary/<tag>/, listed in <name>_vary.json); a config's [vary] "
+        "table: key = [v1, "
+        "v2]", list, conv=items, gui='Vary settings (fine=0.1,0.05)',
+        group='output', cli=dict(metavar='KEY=V1,V2', action='append')),
+    Option(
+        'part_value', [],
+        "a part port's values to sweep: REF=V1,V2,... (repeat: every "
+        "combination); each written as "
+        "<name>_<solver>_REF=V.sNp", list, conv=items,
+        gui='Part value sweeps (C1=1p,2p)', group='board',
+        cli=dict(metavar='REF=VALUES', action='append')),
+    Option(
+        'part_file', [],
+        "a part port's vendor model, a .s2p measured in series through it: "
+        "REF=FILE (repeat)",
+        list, conv=items, gui='Part S-parameter files (C1=grm.s2p)',
+        group='board', cli=dict(metavar='REF=FILE', action='append')),
+    Option(
+        'edge_walls', [],
+        "walls where the ground planes end at these board sides, standing in "
+        "for stitching vias or edge plating (openEMS: PEC sheets; mom25d: via "
+        "rows): xmin,xmax,ymin,ymax (KiCad coordinates: ymin = top) or all; "
+        "kept --edge-keepout clear of signal copper", list,
+        conv=_sides, gui='Edge walls (xmin,xmax,ymin,ymax or all)',
+        group='board', cli=dict(metavar='SIDES')),
+    Option('edge_keepout', 0.5,
+           "mm between edge walls and signal copper (default {default})", float,
            group='board'),
-    Option('fill_voids', 'off', "fill the ground copper's voids that the nets left out made (the clearances around "
-           "their pads, traces and vias): off (default: the copper as imported), far (those away from the signal "
-           "copper, and the small ones), all (every one without a selected net's copper or via in it). Every solver "
-           "gets the filled copper; mom25d's unknowns fall most", choices=('off', 'far', 'all'), gui='Fill pour voids',
-           group='board'),
-    Option('mask', False, "include solder mask layers (FDTD: its cells set the time step, see --nz-mask; mom25d: one "
-           "more layer, no more unknowns)", bool, gui='Include solder mask', group='board'),
-    Option('parts', 'auto', "lumped R / L / C parts between two pads on the modelled copper (default auto)",
-           choices=('auto', 'none'), group='board'),
-    Option('part_ports', [], "parts as internal ports, closed by their values after the solve: all, or references "
-           "(C1,L2); with --part-value and --part-file a value is swept or replaced without solving again (solvers "
-           "with part ports: openEMS, gfdtd, Palace, mom25d, the line model)", list, conv=strlist, gui='Parts as ports (all or C1,L2)',
-           group='board', cli=dict(metavar='REFS')),
-    Option('vary', [], "other settings varied, the run solved again for each combination: KEY=V1,V2,... (repeat: every "
-           "combination, at most 32; each in <out>/vary/<tag>/, listed in <name>_vary.json); a config's [vary] table: "
-           "key = [v1, v2]", list, conv=items, gui='Vary settings (fine=0.1,0.05)', group='output',
-           cli=dict(metavar='KEY=V1,V2', action='append')),
-    Option('part_value', [], "a part port's values to sweep: REF=V1,V2,... (repeat: every combination); each written "
-           "as <name>_<solver>_REF=V.sNp", list, conv=items, gui='Part value sweeps (C1=1p,2p)', group='board',
-           cli=dict(metavar='REF=VALUES', action='append')),
-    Option('part_file', [], "a part port's vendor model, a .s2p measured in series through it: REF=FILE (repeat)",
-           list, conv=items, gui='Part S-parameter files (C1=grm.s2p)', group='board',
-           cli=dict(metavar='REF=FILE', action='append')),
-    Option('edge_walls', [], "walls where the ground planes end at these board sides, standing in for stitching vias "
-           "or edge plating (openEMS: PEC sheets; mom25d: via rows): xmin,xmax,ymin,ymax (KiCad coordinates: "
-           "ymin = top) or all; kept --edge-keepout clear of signal copper", list, conv=_sides,
-           gui='Edge walls (xmin,xmax,ymin,ymax or all)', group='board', cli=dict(metavar='SIDES')),
-    Option('edge_keepout', 0.5, "mm between edge walls and signal copper (default {default})", float, group='board'),
-    Option('sigma', None, "copper conductivity S/m (default: lossless; openEMS and gfdtd: conducting sheets, mom25d "
-           "and the line model: conductor loss)", float, gui='Copper conductivity (S/m, empty: lossless)', group='board'),
-    Option('rough', None, "copper surface roughness, um RMS (default: smooth; with --sigma): Hammerstad's factor of "
-           "the conductor loss, over the band in mom25d and gfdtd, at the band centre in openEMS and the line model",
-           float, gui='Copper roughness (um RMS)', group='board'),
-    Option('finish', 'auto', "surface finish of the outer copper where there is no solder mask, with --sigma: auto "
-           "(default: the stackup's copper finish), none / osp (bare copper), enig, enepig, hasl (lead-free), hasl-snpb, "
-           "imag (immersion silver), imsn (immersion tin). On the outer face and sides only: FDTD with --thickness on "
-           "as those faces' own sheets, else (mom25d, the line model, zero-thickness sheets) weighted by their share of "
-           "the loss", choices=('auto', 'none', 'osp', 'enig', 'enepig', 'hasl', 'hasl-snpb', 'imag', 'imsn'),
-           gui='Surface finish', group='board'),
-    Option('fmin', 0.5, "GHz (default {default})", float, gui='f min (GHz)', group='band', level='basic'),
-    Option('fmax', 10.0, "GHz (default {default})", float, gui='f max (GHz)', group='band', level='basic'),
-    Option('points', 401, "frequency points (default {default})", int, gui='Frequency points', group='band', level='basic'),
-    Option('sweep', 'linear', "how the points are spaced: linear (default) or log (evenly on a log scale: a band of "
-           "several decades, as the low-frequency solver's; fmin above 0)", choices=('linear', 'log'),
-           gui='Frequency spacing', group='band'),
-    Option('compare', None, "Touchstone file to overlay on the result plot", path=True, group='output'),
-    Option('preview', False, "write the model (and openEMS's mesh) preview, the line sections and the report, run "
-           "the solvers other than openEMS, then exit", bool, group='output'),
-    Option('no_report', False, "do not write <name>_report.html", bool, group='output'),
-    Option('deembed', [], "move a port's reference plane along its own trace, PORT=MM (repeatable; negative: outwards): "
-           "<name>_<solver>_deembedded.sNp beside the solver's own, the line model's sections removed (R-E1)", list,
-           conv=items, group='output', gui='De-embed (PORT=mm)', cli=dict(action='append', metavar='PORT=MM')),
-    Option('deembed_file', [], "remove a fixture at a port, PORT=FILE.s2p (repeatable; its port 1 at the port, its port 2 "
-           "the device's side)", list, conv=items, group='output', gui='De-embed fixture (PORT=file.s2p)',
-           cli=dict(action='append', metavar='PORT=FILE')),
-    Option('no_reuse', False, "solve every solver again: by default a result an earlier run left in the output folder "
-           "is taken where the board, the frequencies, the settings and the code are the same (<name>_<solver>.result.*)",
-           bool, group='output'),
-    Option('solver_jobs', 1, "solvers run side by side, this many at a time (threads; default 1: one after another): a "
-           "CPU solver beside a GPU one gains most, two that both fill the CPU's memory bandwidth little (R-D20)",
-           int, group='output', gui='Solvers at a time'),
-    Option('passive', False, "also write <name>_<solver>_passive.sNp where a solver's S is not passive: its singular "
-           "values clipped to 1 at each frequency they pass it (a circuit or time-domain use needs it passive); the "
-           "solver's own S is kept", bool, gui='Write a passive copy of S', group='output'),
-    Option('dump_animate', None, "frequency-domain dumps (openEMS --dump ...@GHz, mom25d --mom-dump): also write one "
-           "period of Re(F e^jphi) at each frequency, the standing waves: gif or mp4 (mp4 needs ffmpeg)",
-           choices=('gif', 'mp4'), gui='Animate frequency-domain dumps (gif / mp4; empty: no)', group='field dumps'),
-    Option('events', None, "also write the run as JSON lines (stages, log, progress, files) to FILE, for a GUI or a "
-           "script", path=True, group='output', cli=dict(metavar='FILE')),
-    Option('out', None, "output folder (default: out next to the board; for the <name>_board.json of an earlier run, "
-           "its folder)", path=True, gui='Output folder', group='output'),
+    Option(
+        'sigma', None,
+        "copper conductivity S/m (default: lossless; openEMS and gfdtd: "
+        "conducting sheets, mom25d and the line model: conductor loss)", float,
+        gui='Copper conductivity (S/m, empty: lossless)', group='board'),
+    Option(
+        'rough', None,
+        "copper surface roughness, um RMS (default: smooth; with --sigma): "
+        "Hammerstad's factor of the conductor loss, over the band in mom25d "
+        "and gfdtd, at the band centre in openEMS and the line model",
+        float, gui='Copper roughness (um RMS)', group='board'),
+    Option(
+        'finish', 'auto',
+        "surface finish of the outer copper where there is no solder mask, "
+        "with --sigma: auto (default: the stackup's copper finish), none / osp "
+        "(bare copper), enig, enepig, hasl (lead-free), hasl-snpb, imag "
+        "(immersion silver), imsn (immersion tin). On the outer face and sides "
+        "only: FDTD with --thickness on as those faces' own sheets, else "
+        "(mom25d, the line model, zero-thickness sheets) weighted by their "
+        "share of the "
+        "loss", choices=('auto', 'none', 'osp', 'enig', 'enepig', 'hasl',
+                             'hasl-snpb', 'imag', 'imsn'), gui='Surface finish',
+        group='board'),
+    Option('fmin', 0.5, "GHz (default {default})", float, gui='f min (GHz)',
+           group='band', level='basic'),
+    Option('fmax', 10.0, "GHz (default {default})", float, gui='f max (GHz)',
+           group='band', level='basic'),
+    Option('points', 401, "frequency points (default {default})", int,
+           gui='Frequency points', group='band', level='basic'),
+    Option(
+        'sweep', 'linear',
+        "how the points are spaced: linear (default) or log (evenly on a log "
+        "scale: a band of several decades, as the low-frequency solver's; fmin "
+        "above 0)",
+        choices=('linear', 'log'), gui='Frequency spacing', group='band'),
+    Option('compare', None, "Touchstone file to overlay on the result plot",
+           path=True, group='output'),
+    Option(
+        'preview', False,
+        "write the model (and openEMS's mesh) preview, the line sections and "
+        "the report, run the solvers other than openEMS, then "
+        "exit", bool, group='output'),
+    Option('no_report', False, "do not write <name>_report.html", bool,
+           group='output'),
+    Option(
+        'deembed', [],
+        "move a port's reference plane along its own trace, PORT=MM "
+        "(repeatable; negative: outwards): <name>_<solver>_deembedded.sNp "
+        "beside the solver's own, the line model's sections removed (R-E1)",
+        list, conv=items, group='output', gui='De-embed (PORT=mm)',
+        cli=dict(action='append', metavar='PORT=MM')),
+    Option(
+        'deembed_file', [],
+        "remove a fixture at a port, PORT=FILE.s2p (repeatable; its port 1 at "
+        "the port, its port 2 the device's "
+        "side)", list, conv=items, group='output',
+        gui='De-embed fixture (PORT=file.s2p)',
+        cli=dict(action='append', metavar='PORT=FILE')),
+    Option(
+        'no_reuse', False,
+        "solve every solver again: by default a result an earlier run left in "
+        "the output folder is taken where the board, the frequencies, the "
+        "settings and the code are the same (<name>_<solver>.result.*)",
+        bool, group='output'),
+    Option(
+        'solver_jobs', 1,
+        "solvers run side by side, this many at a time (threads; default 1: "
+        "one after another): a CPU solver beside a GPU one gains most, two "
+        "that both fill the CPU's memory bandwidth little (R-D20)",
+        int, group='output', gui='Solvers at a time'),
+    Option(
+        'passive', False,
+        "also write <name>_<solver>_passive.sNp where a solver's S is not "
+        "passive: its singular values clipped to 1 at each frequency they pass "
+        "it (a circuit or time-domain use needs it passive); the solver's own "
+        "S is kept", bool, gui='Write a passive copy of S',
+        group='output'),
+    Option(
+        'dump_animate', None,
+        "frequency-domain dumps (openEMS --dump ...@GHz, mom25d --mom-dump): "
+        "also write one period of Re(F e^jphi) at each frequency, the standing "
+        "waves: gif or mp4 (mp4 needs ffmpeg)",
+        choices=('gif', 'mp4'),
+        gui='Animate frequency-domain dumps (gif / mp4; empty: no)',
+        group='field dumps'),
+    Option(
+        'events', None,
+        "also write the run as JSON lines (stages, log, progress, files) to "
+        "FILE, for a GUI or a "
+        "script", path=True, group='output', cli=dict(metavar='FILE')),
+    Option(
+        'out', None,
+        "output folder (default: out next to the board; for the "
+        "<name>_board.json of an earlier run, its "
+        "folder)", path=True, gui='Output folder', group='output'),
 ]
 CLI_ONLY = ('check', 'config')
 
 
 class _Settings:
-    """Every option of a run, typed. Frequencies in GHz, lengths in mm (as on the command line)."""
+    """Every option of a run, typed. Frequencies in GHz, lengths in mm (as on
+    the command line)."""
 
     @property
     def antenna(self):
         return self.mode == 'antenna'
 
     def solver_plan(self, preview=None):
-        """(the solvers this run uses, the ones named in `solvers`), both in registry order (solvers.ordered).
+        """(the solvers this run uses, the ones named in `solvers`), both in
+        registry order (solvers.ordered).
 
-        The solvers are those named in `solvers` (default: auto, as if named), plus mom25d with mom = true and the line
-        model with fast = ... ('lines' until the run resolves it: qucs when qucsator is installed, else scikit;
-        fast = "skrf" / "qucsator" names the line solver). --preview solves no full-wave solver, only the line model
-        (openEMS prepares its mesh preview; preview=False: the plan as without --preview).
-        A solver named in `solvers` is a result the run is for: if it cannot run, the run stops before it starts.
-        One added by --mom / --fast is a reference next to the others: if it cannot run, that is a warning."""
+        The solvers are those named in `solvers` (default: auto, as if named),
+        plus mom25d with mom = true and the line model with fast = ... ('lines'
+        until the run resolves it: qucs when qucsator is installed, else scikit;
+        fast = "skrf" / "qucsator" names the line solver). --preview solves no
+        full-wave solver, only the line model (openEMS prepares its mesh
+        preview; preview=False: the plan as without --preview). A solver named
+        in `solvers` is a result the run is for: if it cannot run, the run stops
+        before it starts. One added by --mom / --fast is a reference next to the
+        others: if it cannot run, that is a warning."""
         from .solvers import ordered, registry, LINES, AUTO, MOM
         line = {'skrf': 'scikit', 'qucsator': 'qucs'}.get(self.fast, LINES)
-        named = [line if x == LINES else x for x in self.solvers] if self.solvers is not None else [AUTO]
+        named = ([line if x == LINES else x for x in self.solvers]
+                 if self.solvers is not None else [AUTO])
         run = set(named)
         if self.mom:
             run.add(MOM)
         if self.fast:
             run.add(line)
-        if self.preview if preview is None else preview:                    # no full-wave solve: the line model
-            run = {x for x in run if x in (LINES, AUTO) or registry()[x].consumes != 'board'}
+        # no full-wave solve: the line model
+        if self.preview if preview is None else preview:
+            run = {
+                x
+                for x in run
+                if x in (LINES, AUTO) or registry()[x].consumes != 'board'
+            }
         return ordered(run), ordered(named)
 
     def options(self):
         """The options as a plain dict (for the report and the run summary)."""
-        return {k: v for k, v in dataclasses.asdict(self).items() if k != 'notes'}
+        return {
+            k: v
+            for k, v in dataclasses.asdict(self).items()
+            if k != 'notes'
+        }
 
 
 def all_options(reg=None):
-    """CORE, then every solver's options: [(solver name or None, Option)]; a setting solvers share, under the first."""
+    """CORE, then every solver's options: [(solver name or None, Option)]; a
+    setting solvers share, under the first."""
     reg = _solvers_pkg.registry() if reg is None else reg
     out = {o.key: (None, o) for o in CORE}
     for sv in reg.values():
         for o in sv.options:
             out.setdefault(o.key, (sv.name, o))
-            if o.key in getattr(sv, 'basic', ()) and getattr(o, 'level', None) is None:
-                o.level = 'basic'                            # (a plugin names them: Solver.basic, since API 2.9)
+            if (o.key in getattr(sv, 'basic', ())
+                    and getattr(o, 'level', None) is None):
+                # (a plugin names them: Solver.basic, since API 2.9)
+                o.level = 'basic'
     return list(out.values())
 
 
 def settings_class(reg=None):
-    """The Settings dataclass: a field per option (CORE and every solver's), plus notes."""
+    """The Settings dataclass: a field per option (CORE and every solver's),
+    plus notes."""
     fields = []
     for _, o in all_options(reg):
         d = o.default
-        fields.append((o.key, o.type, field(default_factory=(lambda d=d: list(d))) if isinstance(d, list) else field(default=d)))
-    fields.append(('notes', list, field(default_factory=list, repr=False)))       # remarks from reading the config
-    return dataclasses.make_dataclass('Settings', fields, bases=(_Settings,),
-                                      namespace=dict(__doc__=_Settings.__doc__, __module__=__name__))
+        fields.append(
+            (o.key, o.type, field(default_factory=(lambda d=d: list(d)))
+             if isinstance(d, list) else field(default=d)))
+    # remarks from reading the config
+    fields.append(('notes', list, field(default_factory=list, repr=False)))
+    return dataclasses.make_dataclass(
+        'Settings', fields, bases=(_Settings, ),
+        namespace=dict(__doc__=_Settings.__doc__, __module__=__name__))
 
 
 Settings = settings_class()
 OPTIONS = {o.key: o for _, o in all_options()}
-PATH_KEYS = tuple(k for k, o in OPTIONS.items() if o.path)          # relative to the TOML file
+# relative to the TOML file
+PATH_KEYS = tuple(k for k, o in OPTIONS.items() if o.path)
 
 
 def default_out(board):
-    """The output folder when none is given: out next to the board file, or the folder of the <name>_board.json
-    of an earlier run (whose folder is an output folder already)."""
+    """The output folder when none is given: out next to the board file, or the
+    folder of the <name>_board.json of an earlier run (whose folder is an output
+    folder already)."""
     base = os.path.dirname(os.path.abspath(board))
-    return base if board.lower().endswith('_board.json') else os.path.join(base, 'out')
+    return (base if board.lower().endswith('_board.json') else os.path.join(
+        base, 'out'))
 
 
 def _convert(key, value):
@@ -329,36 +522,51 @@ def _convert(key, value):
 
 
 def resolve_path(value, base, key, notes):
-    """A path from the TOML file at `base`: relative to base, or - if only that exists - to the working
-    directory (configs written for the repository root), with a note."""
+    """A path from the TOML file at `base`: relative to base, or - if only that
+    exists - to the working directory (configs written for the repository root),
+    with a note."""
     value = os.path.expanduser(str(value))
     if os.path.isabs(value):
         return value
     here = os.path.normpath(os.path.join(base, value))
-    target = here if key not in ('out', 'events') else (os.path.dirname(here) or '.')   # out: its parent must exist
-    cwd_target = value if key not in ('out', 'events') else (os.path.dirname(value) or '.')
-    if not os.path.exists(target) and os.path.exists(cwd_target) and os.path.normpath(value) != here:
-        notes.append(f"{key} = {value!r}: not found next to the config; using it relative to the working "
-                     f"directory (write it relative to the config file)")
+    # out: its parent must exist
+    target = (here if key not in ('out', 'events') else
+              (os.path.dirname(here) or '.'))
+    cwd_target = (value if key not in ('out', 'events') else
+                  (os.path.dirname(value) or '.'))
+    if (not os.path.exists(target) and os.path.exists(cwd_target)
+            and os.path.normpath(value) != here):
+        notes.append(
+            f"{key} = {value!r}: not found next to the config; using it "
+            "relative to the working directory (write it relative to the "
+            "config file)")
         return value
     return here
 
 
 def _table_items(cfg, notes, ignored):
-    """(key, value) of a config: the top level, an [openems] table (the older form, read like the top level) and
-    the [solver.<name>] tables (each solver's options by short name or key)."""
+    """(key, value) of a config: the top level, an [openems] table (the older
+    form, read like the top level) and the [solver.<name>] tables (each solver's
+    options by short name or key)."""
     from .solvers import get
     out = []
     for t, v in cfg.items():
         if not isinstance(v, dict):
             out.append((t.replace('-', '_'), v))
-        elif t.lower() == 'openems':                                # [openems], [OpenEMS]
-            notes.append(f"[{t}]: read like the top level (the older form); openEMS's own settings now go under "
-                         f"[solver.openems]")
-            out += [(k.replace('-', '_'), x) for k, x in v.items() if not isinstance(x, dict)]
-        elif t.lower() == 'vary':                                   # [vary] key = [v1, v2]: --vary key=v1,v2
-            out.append(('vary', [f"{k.replace('-', '_')}=" + ','.join(str(x) for x in (vals if isinstance(vals, list)
-                                                                                  else [vals])) for k, vals in v.items()]))
+        elif t.lower() == 'openems':  # [openems], [OpenEMS]
+            notes.append(
+                f"[{t}]: read like the top level (the older form); openEMS's "
+                "own settings now go under [solver.openems]")
+            out += [(k.replace('-', '_'), x)
+                    for k, x in v.items()
+                    if not isinstance(x, dict)]
+        elif t.lower() == 'vary':  # [vary] key = [v1, v2]: --vary key=v1,v2
+            out.append(('vary', [
+                f"{k.replace('-', '_')}=" + ','.join(
+                    str(x)
+                    for x in (vals if isinstance(vals, list) else [vals]))
+                for k, vals in v.items()
+            ]))
         elif t.lower() == 'solver':
             for name, tab in v.items():
                 try:
@@ -369,25 +577,32 @@ def _table_items(cfg, notes, ignored):
                 if not isinstance(tab, dict):
                     ignored.append(f"solver.{name}")
                     continue
-                by_name = {o.short: o.key for o in sv.options} | {o.key: o.key for o in sv.options}
+                by_name = ({o.short: o.key
+                            for o in sv.options}
+                           | {o.key: o.key
+                              for o in sv.options})
                 for k, x in tab.items():
                     k = k.replace('-', '_')
                     if k in by_name:
                         out.append((by_name[k], x))
                     else:
                         ignored.append(f"solver.{name}.{k}")
-        elif t.lower() not in TABLES:                              # (a misspelt [solver.x] had been taken silently)
-            notes.append(f"[{t}] is not a table kicad2ems reads ({', '.join(f'[{x}]' for x in sorted(TABLES))}, "
-                         f"[solver.<name>]): ignored")
+        # (a misspelt [solver.x] had been taken silently)
+        elif t.lower() not in TABLES:
+            notes.append(
+                f"[{t}] is not a table kicad2ems reads "
+                f"({', '.join(f'[{x}]' for x in sorted(TABLES))}, "
+                "[solver.<name>]): ignored")
     return out
 
 
-TABLES = {'openems', 'solver', 'study', 'analysis', 'vary'}               # the tables a config of the stack holds
+# the tables a config of the stack holds
+TABLES = {'openems', 'solver', 'study', 'analysis', 'vary'}
 
 
 def read_toml(path):
-    """(values {option: raw value}, ignored keys, notes) of a TOML config; paths made absolute or
-    working-directory relative (see resolve_path)."""
+    """(values {option: raw value}, ignored keys, notes) of a TOML config; paths
+    made absolute or working-directory relative (see resolve_path)."""
     try:
         cfg = load_toml(path)
     except tomllib.TOMLDecodeError as e:
@@ -407,28 +622,35 @@ def read_toml(path):
 
 
 def _suggest(key):
-    """An unknown key, with the option it is probably a typo of (a solver table's key: its short names)."""
+    """An unknown key, with the option it is probably a typo of (a solver
+    table's key: its short names)."""
     import difflib
     if key.startswith('solver.') and key.count('.') == 2:
         from .solvers import get
         sv = get(key.split('.')[1])
-        near = difflib.get_close_matches(key.split('.')[2], [o.short for o in sv.options], n=1, cutoff=0.8)
+        near = difflib.get_close_matches(
+            key.split('.')[2], [o.short for o in sv.options], n=1, cutoff=0.8)
         top = key.split('.')[2] in OPTIONS
-        return key + (f" (did you mean {near[0]}?)" if near else " (a top-level setting)" if top else '')
-    near = difflib.get_close_matches(key, list(OPTIONS) + ['no_mask'], n=1, cutoff=0.8)
+        return (key + (f" (did you mean {near[0]}?)"
+                       if near else " (a top-level setting)" if top else ''))
+    near = difflib.get_close_matches(key,
+                                     list(OPTIONS) + ['no_mask'], n=1,
+                                     cutoff=0.8)
     return f"{key} (did you mean {near[0]}?)" if near else key
 
 
 def build_settings(cli=None, config=None, default_solvers=None):
-    """Settings from the defaults, a TOML file (path or None) and command-line values (a dict holding only
-    the options that were typed). default_solvers: the solvers when neither names any (kicad2openems: openems;
-    otherwise auto). Raises ConfigError for anything that cannot be used."""
+    """Settings from the defaults, a TOML file (path or None) and command-line
+    values (a dict holding only the options that were typed). default_solvers:
+    the solvers when neither names any (kicad2openems: openems; otherwise auto).
+    Raises ConfigError for anything that cannot be used."""
     cli = dict(cli or {})
     values, notes = {}, []
     if config:
         values, ignored, notes = read_toml(config)
         if ignored:
-            notes.append("ignoring keys not used here: " + ", ".join(_suggest(k) for k in ignored))
+            notes.append("ignoring keys not used here: "
+                         + ", ".join(_suggest(k) for k in ignored))
     values.update({k: v for k, v in cli.items() if k not in CLI_ONLY})
     unknown = [k for k in values if k not in OPTIONS]
     if unknown:
@@ -438,7 +660,8 @@ def build_settings(cli=None, config=None, default_solvers=None):
     if s.solvers is None and default_solvers:
         s.solvers = _convert('solvers', default_solvers)
     if s.fmin >= s.fmax:
-        raise ConfigError(f"fmin ({s.fmin:g} GHz) must be below fmax ({s.fmax:g} GHz)")
+        raise ConfigError(
+            f"fmin ({s.fmin:g} GHz) must be below fmax ({s.fmax:g} GHz)")
     if s.points < 2:
         raise ConfigError("points must be at least 2")
     if getattr(s, 'vary', None):
@@ -451,28 +674,43 @@ def build_settings(cli=None, config=None, default_solvers=None):
         raise ConfigError(f"sweep = log: fmin ({s.fmin:g} GHz) must be above 0")
     if s.rough is not None and s.rough < 0:
         raise ConfigError(f"rough = {s.rough:g}: um RMS, at least 0")
-    if s.sigma is not None and s.sigma <= 0:                        # (accepted before: a negative conductivity)
+    # (accepted before: a negative conductivity)
+    if s.sigma is not None and s.sigma <= 0:
         raise ConfigError(f"sigma = {s.sigma:g}: S/m, above 0")
     if s.points > 100_000:
         raise ConfigError(f"points = {s.points}: at most 100,000 frequencies")
     if s.rough and not s.sigma:
-        s.notes.append("--rough without --sigma: lossless copper has no roughness loss (ignored)")
+        s.notes.append(
+            "--rough without --sigma: lossless copper has no roughness loss "
+            "(ignored)"
+        )
     reg = _solvers_pkg.registry()
     for sv in reg.values():
         msg = sv.validate(s)
         if msg:
             raise ConfigError(msg)
     if s.steer and len(s.steer) > 1 and s.steer[1] and not s.grid:
-        raise ConfigError("steer: a Y step needs grid (the ports' columns and rows), e.g. grid = \"4x4\"")
+        raise ConfigError(
+            "steer: a Y step needs grid (the ports' columns and rows), e.g. "
+            "grid = \"4x4\""
+        )
     run, named = s.solver_plan()
     if s.antenna:
         for x in named:
-            cap = reg[x].capabilities.get('antenna', 'no') if x in reg else 'yes'
+            cap = (reg[x].capabilities.get('antenna', 'no')
+                   if x in reg else 'yes')
             if cap.startswith('no'):
-                raise ConfigError(f"solvers: {reg[x].label} is not available in antenna mode" +
-                                  (f" ({cap.split(':', 1)[1].strip()})" if ':' in cap else ''))
-        able = [n for n, sv in reg.items() if not sv.capabilities.get('antenna', 'no').startswith('no')]
-        if not s.preview and 'auto' not in run and not any(x in able for x in run):
-            raise ConfigError(f"mode = antenna needs a solver with a far field: add {' or '.join(able)} to solvers "
-                              f"(or use --preview)")
+                raise ConfigError(
+                    f"solvers: {reg[x].label} is not available in antenna mode"
+                    + (f" ({cap.split(':', 1)[1].strip()})" if ':' in
+                       cap else ''))
+        able = [
+            n for n, sv in reg.items()
+            if not sv.capabilities.get('antenna', 'no').startswith('no')
+        ]
+        if (not s.preview and 'auto' not in run
+                and not any(x in able for x in run)):
+            raise ConfigError(
+                "mode = antenna needs a solver with a far field: add "
+                f"{' or '.join(able)} to solvers (or use --preview)")
     return s

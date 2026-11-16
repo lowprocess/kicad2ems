@@ -18,10 +18,15 @@ from .static_backends import FillEngine, bounded_map, layered_spline_args, nativ
 class DielectricStack:
     def __init__(self, z, eps, tol=1e-8, max_states=200_000):
         self.z, self.eps = np.asarray(z, float), np.asarray(eps, complex)
-        if (len(self.eps) != len(self.z)+1 or len(self.z) < 1 or
-                not np.isfinite(self.z).all() or (np.diff(self.z) <= 0).any() or
-                not np.isfinite(self.eps).all() or (self.eps.real <= 0).any() or (self.eps.imag > 0).any()):
-            raise ValueError('stack needs increasing boundaries and passive positive permittivities')
+        if (len(self.eps) != len(self.z) + 1 or len(self.z) < 1
+                or not np.isfinite(self.z).all()
+                or (np.diff(self.z) <= 0).any()
+                or not np.isfinite(self.eps).all()
+                or (self.eps.real <= 0).any() or (self.eps.imag > 0).any()):
+            raise ValueError(
+                'stack needs increasing boundaries and passive positive '
+                'permittivities'
+            )
         if not np.isfinite(tol) or tol <= 0 or tol >= 1:
             raise ValueError('dielectric_tol must be between 0 and 1')
         self.tol, self.max_states, self._cache = tol, max_states, {}
@@ -33,29 +38,39 @@ class DielectricStack:
             raise ValueError('stack electrostatics requires dielectric layers')
         for a, b in zip(slabs, slabs[1:]):
             if abs(a['z1']-b['z0']) > 1e-6:
-                raise ValueError('dielectric slabs must be contiguous and non-overlapping')
+                raise ValueError(
+                    'dielectric slabs must be contiguous and non-overlapping')
         z = np.array([slabs[0]['z0']] + [s['z1'] for s in slabs])*1e-3
-        eps = [board['stack'].get('bottom_er', 1.0)] + [
-            s['er']*(1-1j*s.get('tand', 0.0)) for s in slabs] + [board['stack'].get('top_er', 1.0)]
+        eps = ([board['stack'].get('bottom_er', 1.0)]
+               + [s['er'] * (1 - 1j * s.get('tand', 0.0))
+                  for s in slabs] + [board['stack'].get('top_er', 1.0)])
         return cls(z, eps, tol)
 
     @classmethod
     def from_board_thick(cls, board, tol=1e-8):
-        """The stack with each copper layer's thickness put in (pdn.mesh.copper_centres): every dielectric shifted up
-        by the copper beneath it, each copper layer a slab of its own, so face sheets lie on interfaces. Beside the
-        copper a layer is filled with air (outer layers) or resin, taken as the mean of its two neighbours."""
+        """The stack with each copper layer's thickness put in
+        (pdn.mesh.copper_centres): every dielectric shifted up by the copper
+        beneath it, each copper layer a slab of its own, so face sheets lie on
+        interfaces. Beside the copper a layer is filled with air (outer layers)
+        or resin, taken as the mean of its two neighbours."""
         from .pdn.mesh import copper_centres
         slabs = sorted(board['stack']['layers'], key=lambda l: l['z0'])
         if not slabs:
             raise ValueError('stack electrostatics requires dielectric layers')
         cu = copper_centres(board)
         z_board = {c['name']: c['z'] for c in board['stack']['copper']}
-        below = lambda z: sum(c['t'] for c in board['stack']['copper'] if c['z'] < z - 1e-9)
+        below = lambda z: sum(c['t']
+                              for c in board['stack']['copper']
+                              if c['z'] < z - 1e-9)
         eps_of = lambda s: s['er'] * (1 - 1j * s.get('tand', 0.0))
-        bottom, top = board['stack'].get('bottom_er', 1.0), board['stack'].get('top_er', 1.0)
-        regions = [(s['z0'] + below(s['z0']) + (sum(c['t'] for c in board['stack']['copper']
-                                                     if abs(c['z'] - s['z0']) < 1e-9)),
-                    s['z1'] + below(s['z1']), eps_of(s)) for s in slabs]
+        bottom, top = (board['stack'].get('bottom_er', 1.0),
+                       board['stack'].get('top_er', 1.0))
+        regions = [(s['z0'] + below(s['z0']) +
+                    (sum(c['t']
+                         for c in board['stack']['copper']
+                         if abs(c['z'] - s['z0']) < 1e-9)),
+                    s['z1'] + below(s['z1']), eps_of(s))
+                   for s in slabs]
         for name, (zc, t) in cu.items():
             z = z_board[name]
             under = [s for s in slabs if abs(s['z1'] - z) < 1e-6]
@@ -75,7 +90,8 @@ class DielectricStack:
     def interface(self, z):
         i = int(np.argmin(abs(self.z-z)))
         if abs(self.z[i]-z) > 1e-9:
-            raise ValueError(f'copper at z={z:g} m is not on a dielectric interface')
+            raise ValueError(
+                f'copper at z={z:g} m is not on a dielectric interface')
         return i
 
     def images(self, source, observation, field=False):
@@ -88,7 +104,8 @@ class DielectricStack:
         if key in self._cache:
             return self._cache[key]
         if field and np.min(abs(self.z-observation)) < 1e-12:
-            raise ValueError('evaluate layered E away from dielectric interfaces')
+            raise ValueError(
+                'evaluate layered E away from dielectric interfaces')
         n = len(self.z)-1
         launch = 2/(self.eps[source]+self.eps[source+1])
         states = {(source, 1, 0.): launch, (source, -1, 0.): launch}
@@ -105,15 +122,20 @@ class DielectricStack:
                     continue
                 count += 1
                 if count > self.max_states:
-                    raise RuntimeError('dielectric image expansion exceeded max_states; simplify stack or relax tolerance')
+                    raise RuntimeError(
+                        'dielectric image expansion exceeded max_states; '
+                        'simplify stack or relax tolerance'
+                    )
                 medium = i if direction > 0 else i-1
                 boundary = i+direction
                 exterior = medium < 0 or medium >= n
                 if field:
                     travel = direction*(observation-self.z[i])
-                    length = np.inf if exterior else abs(self.z[boundary]-self.z[i])
+                    length = (np.inf if exterior else abs(self.z[boundary]
+                                                          - self.z[i]))
                     if 0 < travel < length:
-                        image_z = round(observation-direction*(distance+travel), 14)
+                        image_z = round(
+                            observation - direction * (distance + travel), 14)
                         add(images, image_z, amp)
                 if exterior:
                     continue
@@ -129,28 +151,34 @@ class DielectricStack:
             if not states:
                 self._cache[key] = list(sorted(images.items()))
                 return self._cache[key]
-        raise RuntimeError('dielectric images did not converge after 4096 interface crossings')
+        raise RuntimeError(
+            'dielectric images did not converge after 4096 interface crossings')
 
 
 def potential_moments(model):
     """Triangle-pair int int sum(c/R), before the 1/(4*pi*eps0) factor."""
     stack = model._dielectric_stack
     started = time.perf_counter()
-    engine = FillEngine(model.nodes, model.tris, model.z_of, model.near, model.outer_levels,
-                        **model._fill_options, prefer_outer=True)
+    engine = FillEngine(model.nodes, model.tris, model.z_of, model.near,
+                        model.outer_levels, **model._fill_options,
+                        prefer_outer=True)
     g = engine.geometry
-    nodes, cent, radius, points, area = g.nodes, g.cent, g.radius, g.points, g.area
+    nodes, cent, radius, points, area = (g.nodes, g.cent, g.radius, g.points,
+                                         g.area)
     v = nodes[g.tris]
     M = np.zeros((len(v), len(v)), complex)
     rho_max = np.linalg.norm(np.ptp(nodes, axis=0))
     layers = [np.asarray(t) for t in model.layer_tris.values()]
     native = native_layered(engine)
-    # The compiled kernel threads over pairs itself: larger blocks, one at a time.
-    batch, tile_workers = (max(engine.pair_batch, 1 << 20), 1) if native else (engine.pair_batch, engine.tile_workers)
+    # The compiled kernel threads over pairs itself: larger blocks, one at a
+    # time.
+    batch, tile_workers = ((max(engine.pair_batch, 1 << 20), 1) if native else
+                           (engine.pair_batch, engine.tile_workers))
     image_count = 0
     for li, pa in enumerate(layers):
         for pb in layers[li:]:
-            o, s = stack.interface(model.z_of[pa[0]]), stack.interface(model.z_of[pb[0]])
+            o, s = (stack.interface(model.z_of[pa[0]]),
+                    stack.interface(model.z_of[pb[0]]))
             images = stack.images(s, o)
             image_count += len(images)
             positive = [(d, c) for d, c in images if d > 0]
@@ -159,7 +187,12 @@ def potential_moments(model):
                 # Sum the smooth images once, rather than re-evaluating
                 # thousands of weak reflections for every triangle pair.
                 # Grading resolves the shortest image distance near rho=0.
-                ngrid = max(257, int(np.ceil(32*np.sqrt(rho_max/min(d for d, _ in positive)))))
+                ngrid = max(
+                    257,
+                    int(
+                        np.ceil(
+                            32
+                            * np.sqrt(rho_max / min(d for d, _ in positive)))))
                 rho = rho_max*np.linspace(0, 1, ngrid)**2
                 kernel = np.zeros(ngrid, complex)
                 for d, c in positive:
@@ -175,9 +208,11 @@ def potential_moments(model):
                     pp, qq = np.repeat(rows, len(pb)), np.tile(pb, len(rows))
                 if native is not None:
                     core, common, workers = native
-                    return pp, qq, core.layered_pairs(*common, np.ascontiguousarray(pp, np.int64),
-                                                      np.ascontiguousarray(qq, np.int64),
-                                                      *layered_spline_args(images, smooth), workers)
+                    return (pp, qq,
+                            core.layered_pairs(
+                                *common, np.ascontiguousarray(pp, np.int64),
+                                np.ascontiguousarray(qq, np.int64),
+                                *layered_spline_args(images, smooth), workers))
                 out = np.empty(len(pp), complex)
                 for start in range(0, len(pp), batch):
                     p, q = pp[start:start+batch], qq[start:start+batch]
@@ -187,7 +222,9 @@ def potential_moments(model):
                     quadrature_rho2 = (delta*delta).sum(-1)
                     size = radius[p]+radius[q]
                     if smooth is not None:
-                        values += area[p]*area[q]*smooth(np.sqrt(quadrature_rho2)).mean((1, 2))
+                        values += (area[p] * area[q]
+                                   * smooth(np.sqrt(quadrature_rho2)).mean(
+                                       (1, 2)))
                     for d, coefficient in images:
                         dist = np.sqrt(rho2+d*d)
                         close = dist <= model.near*size
@@ -197,21 +234,30 @@ def potential_moments(model):
                             # Replace the smooth product rule by analytic
                             # source integration wherever an image is close.
                             approximate = 1/np.sqrt(quadrature_rho2[close]+d*d)
-                            values[close] -= coefficient*area[p[close]]*area[q[close]]*approximate.mean((1, 2))
+                            values[close] -= (coefficient * area[p[close]]
+                                              * area[q[close]]
+                                              * approximate.mean((1, 2)))
                         refine = close & (dist <= size)
-                        far = ~close if d == 0 or smooth is None else np.zeros(len(q), bool)
-                        for mask, level in ((close & ~refine, 0), (refine, model.outer_levels), (far, -1)):
+                        far = (~close if d == 0 or smooth is None else np.zeros(
+                            len(q), bool))
+                        for mask, level in ((close & ~refine, 0),
+                                            (refine, model.outer_levels), (far,
+                                                                           -1)):
                             if mask.any():
                                 kinds = np.full(mask.sum(), level, np.int32)
-                                values[mask] += coefficient*engine.evaluate(
-                                    p[mask], q[mask], d, kinds, scalar_only=True)[:, 0]
+                                values[mask] += (coefficient * engine.evaluate(
+                                    p[mask], q[mask], d, kinds,
+                                    scalar_only=True)[:, 0])
                     out[start:start+len(q)] = values
                 return pp, qq, out
 
             step = max(1, batch//max(1, len(pb)))
             blocks = [pa[i:i+step] for i in range(0, len(pa), step)]
-            for p, q, values in bounded_map(evaluate_rows, blocks, tile_workers):
+            for p, q, values in bounded_map(evaluate_rows, blocks,
+                                            tile_workers):
                 M[p, q] = M[q, p] = values
-    model.fill_info['capacitance'] = dict(engine.info, image_terms=image_count, scalar_only=True,
-                                         native_images=native is not None, seconds=time.perf_counter()-started)
+    model.fill_info['capacitance'] = dict(engine.info, image_terms=image_count,
+                                          scalar_only=True, native_images=native
+                                          is not None,
+                                          seconds=time.perf_counter() - started)
     return M

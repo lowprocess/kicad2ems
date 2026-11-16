@@ -22,7 +22,8 @@ from kicad2ems.emsdev.numerics.sing import _offplane_geometry, offplane_pairs
 
 
 def default_workers():
-    """Respect affinity and Linux cgroup CPU quotas; never change global OMP/BLAS settings."""
+    """Respect affinity and Linux cgroup CPU quotas; never change global
+    OMP/BLAS settings."""
     try:
         n = len(os.sched_getaffinity(0))
     except (AttributeError, OSError):
@@ -49,31 +50,37 @@ def default_workers():
 
 
 def _positive_integer(value, name):
-    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)) or value < 1:
+    if (isinstance(value, (bool, np.bool_))
+            or not isinstance(value, (int, np.integer)) or value < 1):
         raise ValueError(f'{name} must be a positive integer')
     return int(value)
 
 
 def resolve_workers(workers=None):
-    """Explicit count, else PCBQS_FILL_THREADS, PCBQS_OMP_THREADS, OMP_NUM_THREADS, then default_workers()."""
+    """Explicit count, else PCBQS_FILL_THREADS, PCBQS_OMP_THREADS,
+    OMP_NUM_THREADS, then default_workers()."""
     if workers is None:
-        key = next((k for k in ('PCBQS_FILL_THREADS', 'PCBQS_OMP_THREADS', 'OMP_NUM_THREADS')
-                    if k in os.environ), None)
+        key = next((k for k in ('PCBQS_FILL_THREADS', 'PCBQS_OMP_THREADS',
+                                'OMP_NUM_THREADS') if k in os.environ), None)
         env = os.environ.get(key) if key else None
         try:
-            workers = int(env.split(',')[0] if key == 'OMP_NUM_THREADS' else env) if env is not None else default_workers()
+            workers = (
+                int(env.split(',')[0] if key == 'OMP_NUM_THREADS' else env)
+                if env is not None else default_workers())
         except ValueError as exc:
             raise ValueError(f'{key} must be a positive integer') from exc
     return _positive_integer(workers, 'workers')
 
 
 def bounded_map(function, items, workers):
-    """Ordered results with at most `workers` tasks/results in flight, including on failure."""
+    """Ordered results with at most `workers` tasks/results in flight, including
+    on failure."""
     if workers == 1:
         yield from map(function, items)
         return
     iterator = iter(items)
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='pcbqs-fill') as pool:
+    with ThreadPoolExecutor(max_workers=workers,
+                            thread_name_prefix='pcbqs-fill') as pool:
         pending = deque()
         try:
             for _ in range(workers):
@@ -103,19 +110,25 @@ class FillGeometry:
 
     @classmethod
     def prepare(cls, nodes, tris, z, outer_levels):
-        nodes, tris, z = np.asarray(nodes, float), np.asarray(tris), np.asarray(z, float)
-        if (nodes.ndim != 2 or nodes.shape[1] != 2 or not len(nodes) or
-                tris.ndim != 2 or tris.shape[1] != 3 or not len(tris) or tris.dtype.kind not in 'iu' or
-                z.shape != (len(tris),) or not np.isfinite(nodes).all() or not np.isfinite(z).all() or
-                tris.min() < 0 or tris.max() >= len(nodes)):
-            raise ValueError('fill requires finite planar nodes, integer triangles and one z per triangle')
+        nodes, tris, z = (np.asarray(nodes, float), np.asarray(tris),
+                          np.asarray(z, float))
+        if (nodes.ndim != 2 or nodes.shape[1] != 2 or not len(nodes)
+                or tris.ndim != 2 or tris.shape[1] != 3 or not len(tris)
+                or tris.dtype.kind not in 'iu' or z.shape != (len(tris), )
+                or not np.isfinite(nodes).all() or not np.isfinite(z).all()
+                or tris.min() < 0 or tris.max() >= len(nodes)):
+            raise ValueError(
+                'fill requires finite planar nodes, integer triangles and one '
+                'z per triangle'
+            )
         nodes = np.ascontiguousarray(nodes - nodes.mean(0))
         tris = np.array(tris, dtype=np.int32, order='C', copy=True)
         z = np.array(z, order='C', copy=True)
         V = nodes[tris]
         edge = V[:, 1:]-V[:, :1]
         if (edge[:, 0, 0]*edge[:, 1, 1]-edge[:, 0, 1]*edge[:, 1, 0] <= 0).any():
-            raise ValueError('fill triangles must be nondegenerate and counter-clockwise')
+            raise ValueError(
+                'fill triangles must be nondegenerate and counter-clockwise')
         cent = V.mean(1)
         radius = np.linalg.norm(V-cent[:, None], axis=2).max(1)
         points = np.einsum('qk,tkc->tqc', _BAR3, V)
@@ -125,7 +138,8 @@ class FillGeometry:
             # The unrefined weights are a shared module constant; freeze an
             # owned copy rather than changing its global writeability.
             levels[level] = (*g[:-1], g[-1].copy())
-        for array in (nodes, tris, z, cent, radius, points, *(a for g in levels.values() for a in g)):
+        for array in (nodes, tris, z, cent, radius, points,
+                      *(a for g in levels.values() for a in g)):
             array.setflags(write=False)
         return cls(nodes, tris, z, cent, radius, points, levels)
 
@@ -137,7 +151,8 @@ class FillGeometry:
 def _far(xp, points, area, p, q, d, scalar_only):
     pa, pb = points[p], points[q]
     a, b = pa[:, :, None], pb[:, None, :]
-    g = (area[p]*area[q]/9)[:, None, None] / xp.sqrt(((a-b)**2).sum(-1)+d[:, None, None]**2)
+    g = ((area[p] * area[q] / 9)[:, None, None]
+         / xp.sqrt(((a - b)**2).sum(-1) + d[:, None, None]**2))
     m0 = g.sum((1, 2))
     if scalar_only:
         return m0[:, None]
@@ -160,11 +175,14 @@ class NumpyBackend:
         for level in np.unique(kind):
             mask = kind == level
             if level == -1:
-                out[mask] = _far(np, self.g.points, self.g.area, p[mask], q[mask], d[mask], scalar_only)
+                out[mask] = _far(np, self.g.points, self.g.area, p[mask],
+                                 q[mask], d[mask], scalar_only)
             else:
-                m = offplane_pairs(self.g.nodes, self.g.tris, p[mask], q[mask], d[mask],
-                                   _geometry=self.g.levels[int(level)], scalar_only=scalar_only,
-                                   chunk=max(1, min(self.chunk, 4096//4**int(level))))
+                m = offplane_pairs(
+                    self.g.nodes, self.g.tris, p[mask], q[mask], d[mask],
+                    _geometry=self.g.levels[int(level)],
+                    scalar_only=scalar_only,
+                    chunk=max(1, min(self.chunk, 4096 // 4**int(level))))
                 out[mask] = m[:, None] if scalar_only else np.column_stack(m)
         return out
 
@@ -174,11 +192,13 @@ def _compiled():
         core = import_module('kicad2ems.pcbqs._core')
     except ImportError:
         return None
-    return core if hasattr(core, 'static_pairs') and getattr(core, 'static_openmp', False) else None
+    return (core if hasattr(core, 'static_pairs')
+            and getattr(core, 'static_openmp', False) else None)
 
 
 def host_data(geometry):
-    """The compiled host kernel's geometry (static_pairs' data): level 0's arrays, and each level's quadrature."""
+    """The compiled host kernel's geometry (static_pairs' data): level 0's
+    arrays, and each level's quadrature."""
     V, L, tau, un, area, _, _ = geometry.levels[0]
     data = dict(V=V, L=L, tau=tau, un=un, area=area, P3=geometry.points)
     for level in range(3):
@@ -193,19 +213,24 @@ class OpenMPBackend:
             raise ValueError('device is only applicable to a device backend')
         self.core = _compiled()
         if self.core is None:
-            raise RuntimeError('OpenMP fill unavailable: rebuild with python -m kicad2ems.pcbqs.core.build')
+            raise RuntimeError(
+                'OpenMP fill unavailable: rebuild with python -m '
+                'kicad2ems.pcbqs.core.build'
+            )
         self.workers = workers
         self.observed_workers = self.core.static_thread_count(workers)
         self.parallel_tiles = workers == 1
         self.data = host_data(geometry)
 
     def evaluate(self, p, q, d, kind, scalar_only):
-        return self.core.static_pairs(self.data, p, q, d, kind, scalar_only, self.workers)
+        return self.core.static_pairs(self.data, p, q, d, kind, scalar_only,
+                                      self.workers)
 
 
 def native_layered(engine, workers=None, kernel='layered_pairs'):
-    """(core, common args, workers) for the compiled layered image kernel (or another `kernel`, rwg_inductance:
-    the whole entry blocks), or None (another fill backend, or a core that predates the kernel).
+    """(core, common args, workers) for the compiled layered image kernel (or
+    another `kernel`, rwg_inductance: the whole entry blocks), or None (another
+    fill backend, or a core that predates the kernel).
 
     Only OpenMP engines use it; NumPy/threaded/device backends keep the host
     image loops, so an explicit backend choice is respected.
@@ -217,17 +242,19 @@ def native_layered(engine, workers=None, kernel='layered_pairs'):
         return None
     g = engine.geometry
     near = float('inf') if np.isinf(engine.near) else float(engine.near)
-    return core, (engine.backend.data, g.z, g.cent, g.radius, near, int(engine.outer_levels)), \
-        workers or engine.info['workers']
+    return (core, (engine.backend.data, g.z, g.cent, g.radius, near,
+                   int(engine.outer_levels)), workers or engine.info['workers'])
 
 
 def layered_spline_args(images, smooth):
-    """Image distances/coefficients and spline breaks/coefficients for layered_pairs."""
+    """Image distances/coefficients and spline breaks/coefficients for
+    layered_pairs."""
     d = np.ascontiguousarray([d for d, _ in images], float)
     c = np.ascontiguousarray([c for _, c in images], complex)
     if smooth is None:
         return d, c, np.empty(0), np.empty((4, 0), complex)
-    return d, c, np.ascontiguousarray(smooth.x, float), np.ascontiguousarray(smooth.c, complex)
+    return (d, c, np.ascontiguousarray(smooth.x, float),
+            np.ascontiguousarray(smooth.c, complex))
 
 
 def _cupy_factory(geometry, workers, chunk, device):
@@ -235,15 +262,20 @@ def _cupy_factory(geometry, workers, chunk, device):
     return CupyBackend(geometry, workers, chunk, device)
 
 
-_FACTORIES = {'numpy': NumpyBackend, 'threaded': NumpyBackend, 'openmp': OpenMPBackend, 'cupy': _cupy_factory}
+_FACTORIES = {
+    'numpy': NumpyBackend, 'threaded': NumpyBackend, 'openmp': OpenMPBackend,
+    'cupy': _cupy_factory
+}
 
 
 def register_fill_backend(name, factory):
     """Register a factory implementing the module's pair-integration protocol.
-    Installed extensions may instead publish a `kicad2ems.pcbqs.static_backends` entry point.
-    Existing names are protected, and providers are loaded only when selected.
+    Installed extensions may instead publish a `kicad2ems.pcbqs.static_backends`
+    entry point. Existing names are protected, and providers are loaded only
+    when selected.
     """
-    if not isinstance(name, str) or not name or name == 'auto' or name in _FACTORIES:
+    if (not isinstance(name, str) or not name or name == 'auto'
+            or name in _FACTORIES):
         raise ValueError(f'invalid or already registered fill backend {name!r}')
     if not callable(factory):
         raise TypeError('fill backend factory must be callable')
@@ -251,11 +283,12 @@ def register_fill_backend(name, factory):
 
 
 class FillEngine:
-    def __init__(self, nodes, tris, z, near=3., outer_levels=1, backend='auto', workers=None,
-                 chunk=16384, device=None, prefer_outer=False):
+    def __init__(self, nodes, tris, z, near=3., outer_levels=1, backend='auto',
+                 workers=None, chunk=16384, device=None, prefer_outer=False):
         if np.ndim(near) != 0 or near < 0 or np.isnan(near):
             raise ValueError('near must be nonnegative (or infinity)')
-        if not isinstance(outer_levels, (int, np.integer)) or outer_levels not in (0, 1, 2):
+        if (not isinstance(outer_levels, (int, np.integer))
+                or outer_levels not in (0, 1, 2)):
             raise ValueError('outer_levels must be 0, 1 or 2')
         requested = backend or os.environ.get('PCBQS_FILL_BACKEND', 'auto')
         if requested == 'auto':
@@ -263,24 +296,34 @@ class FillEngine:
         workers = resolve_workers(workers)
         self.chunk = _positive_integer(chunk, 'chunk')
         self.near, self.outer_levels = near, outer_levels
-        name = ('openmp' if _compiled() is not None and not os.environ.get('PCBQS_NO_CORE')
-                else 'threaded') if requested == 'auto' else requested
+        name = (('openmp' if _compiled() is not None
+                 and not os.environ.get('PCBQS_NO_CORE') else 'threaded')
+                if requested == 'auto' else requested)
         if name not in _FACTORIES:
-            providers = [ep for ep in metadata.entry_points(group='pcbqs.static_backends') if ep.name == name]
+            providers = [
+                ep
+                for ep in metadata.entry_points(group='pcbqs.static_backends')
+                if ep.name == name
+            ]
             if len(providers) != 1:
                 raise ValueError(f'unknown or ambiguous fill backend {name!r}')
             register_fill_backend(name, providers[0].load())
         if name in ('numpy', 'cupy'):
             workers = 1
         self.geometry = FillGeometry.prepare(nodes, tris, z, outer_levels)
-        kernel_workers = 1 if name in ('numpy', 'threaded', 'cupy') or (prefer_outer and name == 'openmp') else workers
-        self.backend = _FACTORIES[name](self.geometry, kernel_workers, self.chunk, device)
+        kernel_workers = (1 if name in ('numpy', 'threaded', 'cupy') or
+                          (prefer_outer and name == 'openmp') else workers)
+        self.backend = _FACTORIES[name](self.geometry, kernel_workers,
+                                        self.chunk, device)
         self.tile_workers = workers if self.backend.parallel_tiles else 1
-        self.info = dict(backend=name, workers=workers, kernel_workers=1 if self.backend.parallel_tiles else kernel_workers,
-                         tile_workers=self.tile_workers, chunk=self.chunk,
-                         device=getattr(self.backend, 'device_id', device), precision='float64',
-                         triangles=len(self.geometry.tris), outer_levels=int(outer_levels),
-                         near='all' if np.isinf(near) else float(near))
+        self.info = dict(
+            backend=name, workers=workers,
+            kernel_workers=(1 if self.backend.parallel_tiles else
+                            kernel_workers), tile_workers=self.tile_workers,
+            chunk=self.chunk, device=getattr(self.backend, 'device_id',
+                                             device), precision='float64',
+            triangles=len(self.geometry.tris), outer_levels=int(outer_levels),
+            near=('all' if np.isinf(near) else float(near)))
         if hasattr(self.backend, 'observed_workers'):
             self.info['observed_kernel_workers'] = self.backend.observed_workers
         if hasattr(self.backend, 'routing'):
@@ -289,7 +332,8 @@ class FillEngine:
 
     @property
     def pair_batch(self):
-        """Pairs per evaluate() call: the tile bound, or a device's larger minimum."""
+        """Pairs per evaluate() call: the tile bound, or a device's larger
+        minimum."""
         return max(self.chunk, getattr(self.backend, 'min_batch_pairs', 1))
 
     def kinds(self, p, q, d):
@@ -298,10 +342,12 @@ class FillEngine:
         size = g.radius[p]+g.radius[q]
         refine = distance <= size
         if np.isinf(self.near):
-            return np.where(refine, np.int32(self.outer_levels), np.int32(0)).astype(np.int32)
+            return np.where(refine, np.int32(self.outer_levels),
+                            np.int32(0)).astype(np.int32)
         close = distance <= self.near*size
         kind = np.where(close, np.int32(0), np.int32(-1)).astype(np.int32)
-        kind[close & refine] = self.outer_levels       # near < 1 can leave refine pairs far
+        # near < 1 can leave refine pairs far
+        kind[close & refine] = self.outer_levels
         return kind
 
     def evaluate(self, p, q, d, kind=None, scalar_only=False):
@@ -309,10 +355,14 @@ class FillEngine:
         n = len(self.geometry.tris)
         # Bounds via min/max (no boolean temporaries): small ACA-style calls
         # are dominated by this validation rather than by integration.
-        if (p.ndim != 1 or q.shape != p.shape or p.dtype.kind not in 'iu' or q.dtype.kind not in 'iu' or
-                (len(p) and (p.min() < 0 or q.min() < 0 or p.max() >= n or q.max() >= n))):
-            raise ValueError('pair indices must be matching integer vectors within the mesh')
-        p, q = np.ascontiguousarray(p, np.int32), np.ascontiguousarray(q, np.int32)
+        if (p.ndim != 1 or q.shape != p.shape or p.dtype.kind not in 'iu'
+                or q.dtype.kind not in 'iu' or
+            (len(p) and
+             (p.min() < 0 or q.min() < 0 or p.max() >= n or q.max() >= n))):
+            raise ValueError(
+                'pair indices must be matching integer vectors within the mesh')
+        p, q = (np.ascontiguousarray(p, np.int32),
+                np.ascontiguousarray(q, np.int32))
         d = np.asarray(d, float)
         if d.ndim == 0:
             if not np.isfinite(d):
@@ -327,17 +377,27 @@ class FillEngine:
         else:
             kind = np.asarray(kind)
             if kind.shape != p.shape or kind.dtype.kind not in 'iu':
-                raise ValueError('pair kinds must select far (-1) or a prepared analytic level')
+                raise ValueError(
+                    'pair kinds must select far (-1) or a prepared analytic '
+                    'level'
+                )
             if len(kind):
                 lo, hi = int(kind.min()), int(kind.max())
                 levels = self.geometry.levels
-                if (lo < -1 or hi > max(levels) or
-                        any(level not in levels and (kind == level).any() for level in range(max(0, lo), hi+1))):
-                    raise ValueError('pair kinds must select far (-1) or a prepared analytic level')
+                if (lo < -1 or hi > max(levels)
+                        or any(level not in levels and (kind == level).any()
+                               for level in range(max(0, lo), hi + 1))):
+                    raise ValueError(
+                        'pair kinds must select far (-1) or a prepared '
+                        'analytic level'
+                    )
         kind = np.ascontiguousarray(kind, np.int32)
         out = self.backend.evaluate(p, q, d, kind, scalar_only)
-        if not isinstance(out, np.ndarray) or out.dtype != np.float64 or out.shape != (len(p), 1 if scalar_only else 6):
-            raise TypeError('fill backend must return a host float64 array of pair moments')
+        if (not isinstance(out, np.ndarray) or out.dtype != np.float64
+                or out.shape != (len(p), 1 if scalar_only else 6)):
+            raise TypeError(
+                'fill backend must return a host float64 array of pair moments')
         if not np.isfinite(out).all():
-            raise FloatingPointError('non-finite triangle-pair moments from fill backend')
+            raise FloatingPointError(
+                'non-finite triangle-pair moments from fill backend')
         return out

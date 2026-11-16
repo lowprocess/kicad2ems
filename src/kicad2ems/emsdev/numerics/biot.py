@@ -1,16 +1,22 @@
 """
-The magnetic field of surface currents on triangles and of straight filaments, by Biot-Savart:
-H(r) = 1/(4 pi) int J(r') x (r - r') / |r - r'|^3 dS'. Exact for the quasi-static near field (the board much
-smaller than a wavelength, or the point much nearer than one).
+The magnetic field of surface currents on triangles and of straight filaments,
+by Biot-Savart:
+H(r) = 1/(4 pi) int J(r') x (r - r') / |r - r'|^3 dS'. Exact for the
+quasi-static near field (the board much smaller than a wavelength, or the point
+much nearer than one).
 
-    J = rwg_currents(rwg, I)                         # (a, b) per triangle: J(r) = a r + b on it, A/m
-    H = h_sheets([(rwg_nodes, tris, a, b, z), ...], pts)   # (n, 3) complex, A/m
-    H += h_segments(seg_a, seg_b, I_seg, pts)        # filaments (vias): end points (m, 3), currents
-    Jx, Jy = current_deposit(sim, I, x, y, k)        # a layer's current density on a grid (the FFT near field)
+    J = rwg_currents(rwg, I)  # (a, b) per triangle: J(r) = a r + b on it, A/m
+    H = h_sheets([(rwg_nodes, tris, a, b, z), ...], pts)
+        # (n, 3) complex, A/m
+    H += h_segments(seg_a, seg_b, I_seg, pts)  # filaments (vias): end points
+                                               (m, 3), currents
+    Jx, Jy = current_deposit(sim, I, x, y, k)  # a layer's current density on a
+                                               grid (the FFT near field)
 
-The surface integral is a 6-point rule per triangle, subdivided where a point is near the triangle (closer than
-`near` x its size): each triangle split into 4, twice at most; accurate to about 1% for points at a tenth of a
-triangle's size and more above the sheet.
+The surface integral is a 6-point rule per triangle, subdivided where a point is
+near the triangle (closer than `near` x its size): each triangle split into 4,
+twice at most; accurate to about 1% for points at a tenth of a triangle's size
+and more above the sheet.
 """
 import numpy as np
 from scipy.spatial import cKDTree
@@ -19,8 +25,8 @@ from .base import _BAR6, _W6, tri_area2
 
 
 def rwg_currents(rwg, I):
-    """(a, b): J = a r + b on each triangle (a (Nt,), b (Nt, 2)) from RWG coefficients I (Ne,); I (Ne, k): a (Nt, k),
-    b (Nt, 2, k)."""
+    """(a, b): J = a r + b on each triangle (a (Nt,), b (Nt, 2)) from RWG
+    coefficients I (Ne,); I (Ne, k): a (Nt, k), b (Nt, 2, k)."""
     I = np.asarray(I)
     multi = I.ndim > 1
     I2 = I if multi else I[:, None]
@@ -37,29 +43,39 @@ def rwg_currents(rwg, I):
 
 def _split4(V):
     """Each triangle (M, 3, 2) into its 4 midpoint triangles (4M, 3, 2)."""
-    m01, m12, m20 = (V[:, 0] + V[:, 1]) / 2, (V[:, 1] + V[:, 2]) / 2, (V[:, 2] + V[:, 0]) / 2
-    return np.concatenate([np.stack(t, 1) for t in ((V[:, 0], m01, m20), (m01, V[:, 1], m12),
-                                                      (m20, m12, V[:, 2]), (m01, m12, m20))])
+    m01, m12, m20 = (V[:, 0] + V[:, 1]) / 2, (V[:, 1] + V[:, 2]) / 2, (
+        V[:, 2] + V[:, 0]) / 2
+    return np.concatenate([
+        np.stack(t, 1) for t in ((V[:, 0], m01, m20), (m01, V[:, 1], m12),
+                                 (m20, m12, V[:, 2]), (m01, m12, m20))
+    ])
 
 
 def _h_tris(V, a, b, z, pts, chunk=4_000_000):
-    """H at pts (n, 3) of triangles V (M, 3, 2) at height z (M,), current J = a r + b, by the 6-point rule. a, b may
-    carry a last axis of excitations (frequencies): a (M, k), b (M, 2, k), giving H (n, 3, k). The geometry is
-    made once per block of points and the currents of every excitation applied by one matrix product each:
-    J has no z part, so H_x = sum J_y R_z / r^3, H_y = -sum J_x R_z / r^3, H_z = sum (J_x R_y - J_y R_x) / r^3."""
+    """H at pts (n, 3) of triangles V (M, 3, 2) at height z (M,), current J = a
+    r + b, by the 6-point rule. a, b may carry a last axis of excitations
+    (frequencies): a (M, k), b (M, 2, k), giving H (n, 3, k). The geometry is
+    made once per block of points and the currents of every excitation applied
+    by one matrix product each:
+    J has no z part, so H_x = sum J_y R_z / r^3, H_y = -sum J_x R_z / r^3, H_z =
+    sum (J_x R_y - J_y R_x) / r^3."""
     multi = np.ndim(a) > 1
     a2 = a if multi else a[:, None]
     b2 = b if multi else b[:, :, None]
     Q = np.einsum('qk,tkc->tqc', _BAR6, V)                          # (M, 6, 2)
-    w = (0.5 * np.abs(tri_area2(V))[:, None] * _W6[None]).reshape(-1)    # (M6,): area x weight
-    Jx = (a2[:, None, :] * Q[..., 0:1] + b2[:, None, 0, :]).reshape(-1, a2.shape[1]) * w[:, None]
-    Jy = (a2[:, None, :] * Q[..., 1:2] + b2[:, None, 1, :]).reshape(-1, a2.shape[1]) * w[:, None]
+    # (M6,): area x weight
+    w = (0.5 * np.abs(tri_area2(V))[:, None] * _W6[None]).reshape(-1)
+    Jx = ((a2[:, None, :] * Q[..., 0:1] + b2[:, None, 0, :]).reshape(
+        -1, a2.shape[1]) * w[:, None])
+    Jy = ((a2[:, None, :] * Q[..., 1:2] + b2[:, None, 1, :]).reshape(
+        -1, a2.shape[1]) * w[:, None])
     sx, sy, sz = Q[..., 0].reshape(-1), Q[..., 1].reshape(-1), np.repeat(z, 6)
     H = np.zeros((len(pts), 3, a2.shape[1]), complex)
     step = max(1, chunk // max(len(sx), 1))
     for p0 in range(0, len(pts), step):
         P = pts[p0:p0 + step]
-        Rx, Ry, Rz = P[:, 0:1] - sx[None], P[:, 1:2] - sy[None], P[:, 2:3] - sz[None]
+        Rx, Ry, Rz = (P[:, 0:1] - sx[None], P[:, 1:2] - sy[None],
+                      P[:, 2:3] - sz[None])
         r3 = (Rx * Rx + Ry * Ry + Rz * Rz) ** 1.5
         inv = np.where(r3 > 1e-30, 1.0 / np.where(r3 > 1e-30, r3, 1.0), 0.0)
         Az, Ay, Ax = Rz * inv, Ry * inv, Rx * inv
@@ -71,15 +87,19 @@ def _h_tris(V, a, b, z, pts, chunk=4_000_000):
 
 
 def h_sheets(sheets, pts, near=1.5, levels=2):
-    """H (n, 3) complex at points pts (n, 3), m, of the sheets [(nodes (N, 2) m, tris, a, b, z)]: each a
-    triangle mesh at height z carrying J = a r + b on each triangle (A/m). With a (M, k) and b (M, 2, k) for k
-    excitations (frequencies): H (n, 3, k), the geometry made once."""
+    """H (n, 3) complex at points pts (n, 3), m, of the sheets [(nodes (N, 2) m,
+    tris, a, b, z)]: each a triangle mesh at height z carrying J = a r + b on
+    each triangle (A/m). With a (M, k) and b (M, 2, k) for k excitations
+    (frequencies): H (n, 3, k), the geometry made once."""
     pts = np.asarray(pts, float)
     H = None
     for nodes, tris, a, b, z in sheets:
         V = nodes[tris]
-        # the triangles near any point (closer than `near` x twice their size): refined
-        dist = cKDTree(np.c_[pts[:, :2], pts[:, 2] - z]).query(np.c_[V.mean(1), np.zeros(len(V))])[0]
+        # the triangles near any point (closer than `near` x twice their size):
+        # refined
+        dist = (cKDTree(np.c_[pts[:, :2],
+                              pts[:, 2] - z]).query(np.c_[V.mean(1),
+                                                          np.zeros(len(V))])[0])
         far = dist > near * 2 * np.sqrt(np.abs(tri_area2(V)) / 2)
         h = _h_tris(V[far], a[far], b[far], np.full(far.sum(), z), pts)
         Vn, an, bn = V[~far], a[~far], b[~far]
@@ -95,9 +115,12 @@ def h_sheets(sheets, pts, near=1.5, levels=2):
 
 
 def h_segments(p0, p1, I, pts):
-    """H (n, 3) at pts of straight filaments from p0 to p1 ((m, 3) m) carrying I (m,) amps (or (m, k): H (n, 3, k)):
-    the finite-segment Biot-Savart, H = I / (4 pi d) (cos t1 - cos t2) around each."""
-    p0, p1, pts = np.asarray(p0, float), np.asarray(p1, float), np.asarray(pts, float)
+    """H (n, 3) at pts of straight filaments from p0 to p1 ((m, 3) m) carrying I
+    (m,) amps (or (m, k): H (n, 3, k)): the finite-segment Biot-Savart, H = I /
+    (4 pi d) (cos t1 - cos t2) around each."""
+    p0, p1, pts = (np.asarray(p0,
+                              float), np.asarray(p1,
+                                                 float), np.asarray(pts, float))
     I = np.asarray(I)
     multi = I.ndim > 1
     I2 = I if multi else I[:, None]
@@ -108,25 +131,30 @@ def h_segments(p0, p1, I, pts):
         u = L / ln[:, None]
         for k in range(len(p0)):
             r0 = pts - p0[k]
-            s_ = r0 @ u[k]                                          # along the filament
+            s_ = r0 @ u[k]  # along the filament
             perp = r0 - s_[:, None] * u[k]
             d = np.linalg.norm(perp, axis=1)
             ok = d > 1e-9
             c1 = s_ / np.sqrt(s_ ** 2 + d ** 2)
             c2 = (s_ - ln[k]) / np.sqrt((s_ - ln[k]) ** 2 + d ** 2)
             g = np.where(ok, (c1 - c2) / (4 * np.pi * np.where(ok, d, 1)), 0)
-            dirn = np.cross(u[k], np.where(ok[:, None], perp / np.where(ok, d, 1)[:, None], 0))
+            dirn = np.cross(
+                u[k],
+                np.where(ok[:, None], perp / np.where(ok, d, 1)[:, None], 0))
             H += (dirn * g[:, None])[:, :, None] * I2[k][None, None, :]
     return H if multi else H[:, :, 0]
 
 
 def current_deposit(sim, I, x, y, k, per_cell=2.0):
-    """The surface current of interface k as a density on the uniform grid x, y (m), for the near field's FFT:
-    each triangle's current integrated by a 6-point rule (triangles larger than `per_cell` cells split into four
-    until they are not), each point's current moment spread onto its four grid points (cloud in cell). The total
-    current and its centre are kept on any grid; sampling the current at the grid points instead was fragile (it
-    crowds at a trace's edges: a row of points on one edge and none on the other put rf_gcpw's 1 mm near field
-    0.15 mm off the trace's centre, and at another step halved it). Returns Jx, Jy ((nx, ny) complex, A/m)."""
+    """The surface current of interface k as a density on the uniform grid x, y
+    (m), for the near field's FFT: each triangle's current integrated by a
+    6-point rule (triangles larger than `per_cell` cells split into four until
+    they are not), each point's current moment spread onto its four grid points
+    (cloud in cell). The total current and its centre are kept on any grid;
+    sampling the current at the grid points instead was fragile (it crowds at a
+    trace's edges: a row of points on one edge and none on the other put
+    rf_gcpw's 1 mm near field 0.15 mm off the trace's centre, and at another
+    step halved it). Returns Jx, Jy ((nx, ny) complex, A/m)."""
     r = sim.rwg
     a, b = rwg_currents(r, np.asarray(I)[:r.Ne])
     idx = sim.tri_idx[k]
@@ -141,14 +169,17 @@ def current_deposit(sim, I, x, y, k, per_cell=2.0):
         aa = np.concatenate([aa[~big], np.tile(aa[big], 4)])
         bb = np.concatenate([bb[~big], np.tile(bb[big], (4, 1))])
     area = 0.5 * np.abs(tri_area2(V))
-    Q = np.einsum('qk,tkc->tqc', _BAR6, V)                              # (M, 6, 2)
-    mom = (aa[:, None, None] * Q + bb[:, None, :]) * (area[:, None] * _W6[None])[..., None]   # A m per point
+    Q = np.einsum('qk,tkc->tqc', _BAR6, V)  # (M, 6, 2)
+    # A m per point
+    mom = ((aa[:, None, None] * Q + bb[:, None, :]) *
+           (area[:, None] * _W6[None])[..., None])
     fx, fy = (Q[..., 0].ravel() - x[0]) / dx, (Q[..., 1].ravel() - y[0]) / dy
     i0, j0 = np.floor(fx).astype(int), np.floor(fy).astype(int)
     tx, ty = fx - i0, fy - j0
     nx, ny = len(x), len(y)
     out = [np.zeros((nx, ny), complex), np.zeros((nx, ny), complex)]
-    for di, dj, wgt in ((0, 0, (1 - tx) * (1 - ty)), (1, 0, tx * (1 - ty)), (0, 1, (1 - tx) * ty), (1, 1, tx * ty)):
+    for di, dj, wgt in ((0, 0, (1 - tx) * (1 - ty)), (1, 0, tx * (1 - ty)),
+                        (0, 1, (1 - tx) * ty), (1, 1, tx * ty)):
         ii, jj = i0 + di, j0 + dj
         ok = (ii >= 0) & (ii < nx) & (jj >= 0) & (jj < ny)
         for c in range(2):

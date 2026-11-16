@@ -1,12 +1,13 @@
 """
-kicad2ems.core - KiCad (or Gerber) boards as electromagnetic simulations: one canonical board, solved by
-openEMS (3D FDTD), mom25d (2.5D MoM) and a transmission-line model.
+kicad2ems.core - KiCad (or Gerber) boards as electromagnetic simulations: one
+canonical board, solved by openEMS (3D FDTD), mom25d (2.5D MoM) and a
+transmission-line model.
 
     from kicad2ems.core import KiCadBoard, Board, resolve_bc, auto_mesh
     b = Board(KiCadBoard('board.kicad_pcb'), nets=['RF', 'GND'], pos_file='board-top.pos')
-    b.save('board.json')                        # the board every solver gets
+    b.save('board.json')                  # the board every solver gets
     bc = resolve_bc('auto', b)
-    mesh = auto_mesh(b, 1e9, 6e9, bc=bc)        # openEMS's mesh of it
+    mesh = auto_mesh(b, 1e9, 6e9, bc=bc)  # openEMS's mesh of it
 
 Modules
     importers/    board readers: kicad/ (.kicad_pcb: sexpr, shapes, board, nets, pnp, outline), gerber.py
@@ -34,7 +35,8 @@ Modules
     cli           command line (kicad2ems / python -m kicad2ems)
     runs          a run started by another program (kicad2ems-gui, the KiCad plugin): its TOML, events, stopping it
 
-The window is its own package, kicad2ems-gui (the gui extra), as are the full-wave solvers.
+The window is its own package, kicad2ems-gui (the gui extra), as are the
+full-wave solvers.
 
 Documentation: docs/index.md in the repository.
 """

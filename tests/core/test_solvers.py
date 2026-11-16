@@ -1,12 +1,13 @@
-"""Choosing the solvers of a run (openEMS, mom25d, the line model): settings, the checks before a run,
-runs without openEMS, exit codes."""
+"""Choosing the solvers of a run (openEMS, mom25d, the line model): settings,
+the checks before a run, runs without openEMS, exit codes."""
 import json, os
 import pytest
 import standins
 from kicad2ems.core.cli import settings_from_argv
 from kicad2ems.core.config import build_settings, ConfigError
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FILTER = os.path.join(ROOT, 'examples', 'rf_interdig.toml')
 
 
@@ -15,25 +16,39 @@ def plan(**kw):
 
 
 def test_solver_plan():
-    assert plan() == (['auto'], ['auto'])                          # the default: auto, as if named
-    assert build_settings(dict(board='b'), default_solvers=['openems']).solver_plan()[0] == ['openems']   # kicad2openems
-    assert plan(mom=True, fast='skrf') == (['auto', 'mom25d', 'scikit'], ['auto'])   # --mom / --fast add theirs
+    assert plan() == (['auto'], ['auto'])  # the default: auto, as if named
+    # kicad2openems
+    assert (build_settings(dict(board='b'),
+                           default_solvers=['openems'
+                                            ]).solver_plan()[0] == ['openems'])
+    # --mom / --fast add theirs
+    assert (plan(mom=True, fast='skrf') == (['auto', 'mom25d',
+                                             'scikit'], ['auto']))
     assert plan(solvers='mom') == (['mom25d'], ['mom25d'])
-    assert plan(solvers='lines,MoM25d', fast='qucsator') == (['mom25d', 'qucs'], ['mom25d', 'qucs'])
-    assert plan(solvers=['fdtd', 'line']) == (['openems', 'lines'], ['openems', 'lines'])   # lines: resolved later
+    assert (plan(solvers='lines,MoM25d',
+                 fast='qucsator') == (['mom25d', 'qucs'], ['mom25d', 'qucs']))
+    # lines: resolved later
+    assert (plan(solvers=['fdtd', 'line']) == (['openems',
+                                                'lines'], ['openems', 'lines']))
     assert plan(solvers='all')[0] == ['openems', 'mom25d', 'lines']
-    assert plan(solvers='skrf,qucsator')[0] == ['qucs', 'scikit']                         # both line solvers
-    assert plan(solvers='openems', mom=True) == (['openems', 'mom25d'], ['openems'])
-    assert plan(preview=True, mom=True)[0] == ['auto']             # --preview: no full-wave solve (auto: the line model)
+    # both line solvers
+    assert plan(solvers='skrf,qucsator')[0] == ['qucs', 'scikit']
+    assert (plan(solvers='openems', mom=True) == (['openems',
+                                                   'mom25d'], ['openems']))
+    # --preview: no full-wave solve (auto: the line model)
+    assert plan(preview=True, mom=True)[0] == ['auto']
     assert plan(solvers='mom25d,lines', preview=True)[0] == ['lines']
-    assert plan(solvers='openems', preview=True)[0] == []          # no openEMS run in a preview
+    # no openEMS run in a preview
+    assert plan(solvers='openems', preview=True)[0] == []
 
 
-@pytest.mark.parametrize('values,match', [
-    (dict(solvers='openems,hfss'), "no solver 'hfss'"),
-    (dict(solvers='scikit', mode='antenna'), 'not available in antenna mode'),
-    (dict(solvers='lines', mode='antenna'), 'antenna needs a solver with a far field'),
-    (dict(fast='spice'), 'choose one of')])
+@pytest.mark.parametrize(
+    'values,match',
+    [(dict(solvers='openems,hfss'), "no solver 'hfss'"),
+     (dict(solvers='scikit', mode='antenna'), 'not available in antenna mode'),
+     (dict(solvers='lines',
+           mode='antenna'), 'antenna needs a solver with a far field'),
+     (dict(fast='spice'), 'choose one of')])
 def test_bad_solver_settings(values, match):
     with pytest.raises(ConfigError, match=match):
         build_settings(dict(board='b.kicad_pcb', **values))
@@ -41,10 +56,12 @@ def test_bad_solver_settings(values, match):
 
 def test_solvers_from_toml_and_command_line(tmp_path):
     p = tmp_path / 'c.toml'
-    p.write_text('board = "b.kicad_pcb"\nsolvers = ["openems", "mom"]\n', encoding='utf-8')
+    p.write_text('board = "b.kicad_pcb"\nsolvers = ["openems", "mom"]\n',
+                 encoding='utf-8')
     s, _ = settings_from_argv([str(p)])
     assert s.solver_plan()[0] == ['openems', 'mom25d']
-    s, _ = settings_from_argv([str(p), '--solvers', 'lines'])       # the command line wins
+    # the command line wins
+    s, _ = settings_from_argv([str(p), '--solvers', 'lines'])
     assert s.solver_plan() == (['lines'], ['lines'])
 
 
@@ -54,42 +71,65 @@ def test_resolve_backend(monkeypatch):
     from kicad2ems.core.solvers.lines import fastsolve
     from kicad2ems.core.solvers import resolve_lines
     monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)
-    assert fastsolve.resolve_backend('auto')[0] == 'skrf' and resolve_lines() == 'scikit'   # no qucsator: scikit-rf
+    # no qucsator: scikit-rf
+    assert (fastsolve.resolve_backend('auto')[0] == 'skrf'
+            and resolve_lines() == 'scikit')
     with pytest.raises(ValueError, match='--fast skrf'):
         fastsolve.resolve_backend('qucsator')
-    monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: '/usr/bin/' + name)
-    assert fastsolve.resolve_backend('auto') == ('qucsator', '/usr/bin/qucsator_rf') and resolve_lines() == 'qucs'
+    monkeypatch.setattr(fastsolve.shutil, 'which',
+                        lambda name: '/usr/bin/' + name)
+    assert (fastsolve.resolve_backend('auto')
+            == ('qucsator', '/usr/bin/qucsator_rf')
+            and resolve_lines() == 'qucs')
 
 
 def test_missing_openems_stops_before_any_work(run_cli, tmp_path, monkeypatch):
-    monkeypatch.setattr(standins, 'engine_check', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
+    monkeypatch.setattr(
+        standins, 'engine_check', lambda:
+        (False, ['  FAILED  openEMS  ModuleNotFoundError']))
     out = tmp_path / 'out'
     ev = tmp_path / 'ev.jsonl'
-    code, so, _ = run_cli(FILTER, '--solvers', 'openems', '--out', out, '--events', ev)
-    assert code == 2 and 'openEMS (FDTD) cannot run - details' in so and 'another solver' in so
-    events = [json.loads(l) for l in ev.read_text(encoding='utf-8').splitlines()]
-    assert not [e for e in events if e['kind'] == 'stage'] and (events[-1]['kind'], events[-1]['code']) == ('done', 2)
-    assert not (out / 'rf_interdig_mesh.png').exists()                  # nothing built: it stopped at once
+    code, so, _ = run_cli(FILTER, '--solvers', 'openems', '--out', out,
+                          '--events', ev)
+    assert (code == 2 and 'openEMS (FDTD) cannot run - details' in so
+            and 'another solver' in so)
+    events = [
+        json.loads(l) for l in ev.read_text(encoding='utf-8').splitlines()
+    ]
+    assert (not [e for e in events if e['kind'] == 'stage']
+            and (events[-1]['kind'], events[-1]['code']) == ('done', 2))
+    # nothing built: it stopped at once
+    assert not (out / 'rf_interdig_mesh.png').exists()
 
 
 def test_line_model_only(run_cli, tmp_path, monkeypatch):
     pytest.importorskip('skrf')
-    monkeypatch.setattr(standins, 'engine_check', lambda: pytest.fail('openEMS must not be needed'))
+    monkeypatch.setattr(standins, 'engine_check',
+                        lambda: pytest.fail('openEMS must not be needed'))
     out = tmp_path / 'out'
-    code, so, err = run_cli(FILTER, '--solvers', 'lines', '--fast', 'skrf', '--points', '51', '--out', out)
+    code, so, err = run_cli(FILTER, '--solvers', 'lines', '--fast', 'skrf',
+                            '--points', '51', '--out', out)
     assert code == 0, so + err
     sm = json.loads((out / 'rf_interdig_run.json').read_text(encoding='utf-8'))
-    assert sm['solvers'] == ['scikit'] and sm['mode'] == 'S-parameters' and sm['results']['reference'] == 'scikit'
-    assert 'pulse_steps' not in sm and not any('max-steps' in w for w in sm['warnings'])   # no openEMS talk
-    assert 'mesh' not in sm and (out / 'rf_interdig_model.png').exists() and not (out / 'rf_interdig_mesh.png').exists()
-    assert (out / 'rf_interdig_scikit.s2p').exists() and (out / 'rf_interdig_scikit.png').exists()
+    assert (sm['solvers'] == ['scikit'] and sm['mode'] == 'S-parameters'
+            and sm['results']['reference'] == 'scikit')
+    # no openEMS talk
+    assert ('pulse_steps' not in sm
+            and not any('max-steps' in w for w in sm['warnings']))
+    assert ('mesh' not in sm and (out / 'rf_interdig_model.png').exists()
+            and not (out / 'rf_interdig_mesh.png').exists())
+    assert ((out / 'rf_interdig_scikit.s2p').exists()
+            and (out / 'rf_interdig_scikit.png').exists())
     page = (out / 'rf_interdig_report.html').read_text(encoding='utf-8')
-    assert 'line model' in page and "<div class='l'>mesh</div>" not in page    # no FDTD mesh tile without openEMS
+    # no FDTD mesh tile without openEMS
+    assert 'line model' in page and "<div class='l'>mesh</div>" not in page
 
 
-def test_a_run_done_again_takes_its_earlier_result(run_cli, tmp_path, monkeypatch):
-    """R-D20: the second run in the folder, with the same board, frequencies, settings and code, takes the first's
-    S (kicad2ems.core.reuse); another setting or --no-reuse solves again."""
+def test_a_run_done_again_takes_its_earlier_result(run_cli, tmp_path,
+                                                   monkeypatch):
+    """R-D20: the second run in the folder, with the same board, frequencies,
+    settings and code, takes the first's S (kicad2ems.core.reuse); another
+    setting or --no-reuse solves again."""
     pytest.importorskip('skrf')
     import numpy as np
     from kicad2ems.core import reuse
@@ -99,25 +139,30 @@ def test_a_run_done_again_takes_its_earlier_result(run_cli, tmp_path, monkeypatc
     code, so, err = run_cli(*args)
     assert code == 0 and 'the result of an earlier run here' not in so, so + err
     f0, S0 = read_touchstone(str(out / 'rf_interdig_scikit.s2p'))
-    assert (out / 'rf_interdig_scikit.result.npz').exists() and (out / 'rf_interdig_scikit.result.json').exists()
+    assert ((out / 'rf_interdig_scikit.result.npz').exists()
+            and (out / 'rf_interdig_scikit.result.json').exists())
     code, so, err = run_cli(*args)
     assert code == 0 and 'the result of an earlier run here' in so, so
     f1, S1 = read_touchstone(str(out / 'rf_interdig_scikit.s2p'))
     assert np.array_equal(f0, f1) and np.allclose(S0, S1, atol=1e-12)
     sm = json.loads((out / 'rf_interdig_run.json').read_text(encoding='utf-8'))
     assert 'reused' in sm['solved']['scikit']
-    code, so, _ = run_cli(*args[:-2], '--points', '41', '--out', out)                # another sweep: solved
+    # another sweep: solved
+    code, so, _ = run_cli(*args[:-2], '--points', '41', '--out', out)
     assert code == 0 and 'the result of an earlier run here' not in so
-    code, so, _ = run_cli(*args[:-2], '--points', '41', '--no-reuse', '--out', out)
+    code, so, _ = run_cli(*args[:-2], '--points', '41', '--no-reuse', '--out',
+                          out)
     assert code == 0 and 'the result of an earlier run here' not in so
-    monkeypatch.setattr(reuse, 'code_digest', lambda: 'changed')                    # other code: solved again
+    # other code: solved again
+    monkeypatch.setattr(reuse, 'code_digest', lambda: 'changed')
     code, so, _ = run_cli(*args[:-2], '--points', '41', '--out', out)
     assert code == 0 and 'the result of an earlier run here' not in so
 
 
 def test_solvers_side_by_side(run_cli, tmp_path, monkeypatch):
-    """R-D20: --solver-jobs 2 runs the solvers at the same time, in threads of their own; each writes its result and
-    a failing one is a warning as one after another."""
+    """R-D20: --solver-jobs 2 runs the solvers at the same time, in threads of
+    their own; each writes its result and a failing one is a warning as one
+    after another."""
     pytest.importorskip('skrf')
     import threading
     seen = {}
@@ -127,68 +172,92 @@ def test_solvers_side_by_side(run_cli, tmp_path, monkeypatch):
         return canned(m, freq, **kw)
     monkeypatch.setattr(standins, 'solve', solve)
     out = tmp_path / 'out'
-    code, so, err = run_cli(FILTER, '--solvers', 'scikit,mom25d', '--points', '21', '--solver-jobs', '2', '--out', out)
+    code, so, err = run_cli(FILTER, '--solvers', 'scikit,mom25d', '--points',
+                            '21', '--solver-jobs', '2', '--out', out)
     assert code == 0, so + err
-    assert 'solvers side by side, 2 at a time' in so and seen['thread'].startswith('solver')
-    assert (out / 'rf_interdig_scikit.s2p').exists() and (out / 'rf_interdig_mom25d.s2p').exists()
+    assert ('solvers side by side, 2 at a time' in so
+            and seen['thread'].startswith('solver'))
+    assert ((out / 'rf_interdig_scikit.s2p').exists()
+            and (out / 'rf_interdig_mom25d.s2p').exists())
     monkeypatch.setattr(standins, 'solve', lambda *a, **k: 1 / 0)
-    code, so, _ = run_cli(FILTER, '--solvers', 'scikit,mom25d', '--points', '21', '--solver-jobs', '2', '--no-reuse',
-                          '--out', tmp_path / 'out2')
-    assert 'WARNING: mom25d failed: ZeroDivisionError' in so and (tmp_path / 'out2' / 'rf_interdig_scikit.s2p').exists()
+    code, so, _ = run_cli(FILTER, '--solvers', 'scikit,mom25d', '--points',
+                          '21', '--solver-jobs', '2', '--no-reuse', '--out',
+                          tmp_path / 'out2')
+    assert ('WARNING: mom25d failed: ZeroDivisionError' in so
+            and (tmp_path / 'out2' / 'rf_interdig_scikit.s2p').exists())
 
 
 def test_deembedding_moves_the_planes_beside_the_solvers_own(run_cli, tmp_path):
-    """R-E1: --deembed writes <name>_<solver>_deembedded.sNp, the line model's sections taken off each port (the
-    exact cascades: test_deembed.py); a lossy trace of 50.0-50.2 ohm moves |S21| a little."""
+    """R-E1: --deembed writes <name>_<solver>_deembedded.sNp, the line model's
+    sections taken off each port (the exact cascades: test_deembed.py); a lossy
+    trace of 50.0-50.2 ohm moves |S21| a little."""
     pytest.importorskip('skrf')
     import numpy as np
     from kicad2ems.core.touchstone import read_touchstone
     out = tmp_path / 'out'
-    code, so, err = run_cli(FILTER, '--solvers', 'scikit', '--points', '21', '--deembed', 'P1=1', '--deembed', 'P2=1',
-                            '--out', out)
+    code, so, err = run_cli(FILTER, '--solvers', 'scikit', '--points', '21',
+                            '--deembed', 'P1=1', '--deembed', 'P2=1', '--out',
+                            out)
     assert code == 0 and 'de-embedded (P1: its reference +1 mm' in so, so + err
     f, S = read_touchstone(str(out / 'rf_interdig_scikit.s2p'))
     f2, D = read_touchstone(str(out / 'rf_interdig_scikit_deembedded.s2p'))
-    assert np.array_equal(f, f2) and np.allclose(np.abs(D[:, 1, 0]), np.abs(S[:, 1, 0]), rtol=0.05)
+    assert (np.array_equal(f, f2)
+            and np.allclose(np.abs(D[:, 1, 0]), np.abs(S[:, 1, 0]), rtol=0.05))
     assert not np.allclose(D, S)
     sm = json.loads((out / 'rf_interdig_run.json').read_text(encoding='utf-8'))
-    assert sm['solved']['scikit']['deembedded']['touchstone'] == 'rf_interdig_scikit_deembedded.s2p'
-    code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--points', '21', '--deembed', 'P1=500', '--out', out)
-    assert code == 0 and 'WARNING' in so and 'not de-embedded' in so        # past its trace: said, S stands
+    assert (sm['solved']['scikit']['deembedded']['touchstone'] ==
+            'rf_interdig_scikit_deembedded.s2p')
+    code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--points', '21',
+                          '--deembed', 'P1=500', '--out', out)
+    # past its trace: said, S stands
+    assert code == 0 and 'WARNING' in so and 'not de-embedded' in so
 
 
-def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path, monkeypatch):
+def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path,
+                                                   monkeypatch):
     pytest.importorskip('skrf')
     def broken(*a, **kw):
         raise RuntimeError('singular matrix')
     monkeypatch.setattr(standins, 'solve', broken)
     out = tmp_path / 'out'
     code, so, _ = run_cli(FILTER, '--solvers', 'mom', '--out', out)
-    assert code == 1 and 'WARNING: mom25d failed: RuntimeError: singular matrix' in so and 'failed: mom25d' in so
-    assert (out / 'rf_interdig_report.html').exists()                    # the report still says what happened
-    code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--mom', '--out', out)   # a reference: a warning
+    assert (code == 1
+            and 'WARNING: mom25d failed: RuntimeError: singular matrix' in so
+            and 'failed: mom25d' in so)
+    # the report still says what happened
+    assert (out / 'rf_interdig_report.html').exists()
+    # a reference: a warning
+    code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--mom', '--out', out)
     assert code == 0 and 'WARNING: mom25d failed' in so
 
 
 def test_unavailable_reference_is_left_out(run_cli, tmp_path, monkeypatch):
-    monkeypatch.setattr(standins, 'status', lambda: (False, 'ImportError: no mom25d'))
+    monkeypatch.setattr(standins, 'status', lambda:
+                        (False, 'ImportError: no mom25d'))
     out = tmp_path / 'out'
     code, so, _ = run_cli(FILTER, '--preview', '--mom', '--out', out)
     assert code == 0 and 'WARNING: mom25d cannot run' in so
-    code, so, _ = run_cli(FILTER, '--solvers', 'mom', '--out', out)       # named: stops before it starts
+    # named: stops before it starts
+    code, so, _ = run_cli(FILTER, '--solvers', 'mom', '--out', out)
     assert code == 2 and 'mom25d cannot run' in so
 
 
-def test_kicad2openems_keeps_openems_as_its_default(tmp_path, monkeypatch, capsys):
+def test_kicad2openems_keeps_openems_as_its_default(tmp_path, monkeypatch,
+                                                    capsys):
     from kicad2ems.core.cli import main_openems
-    monkeypatch.setattr(standins, 'engine_check', lambda: (False, ['  FAILED  openEMS  ModuleNotFoundError']))
-    assert main_openems([FILTER, '--out', str(tmp_path / 'out')]) == 2         # openEMS named by default: stops
+    monkeypatch.setattr(
+        standins, 'engine_check', lambda:
+        (False, ['  FAILED  openEMS  ModuleNotFoundError']))
+    # openEMS named by default: stops
+    assert main_openems([FILTER, '--out', str(tmp_path / 'out')]) == 2
     assert 'openEMS (FDTD) cannot run - details' in capsys.readouterr().out
 
 
-def test_a_solver_s_set_up_or_outputs_failing_leaves_the_run_and_its_report(run_cli, tmp_path, monkeypatch):
-    """A solver's prepare or outputs that raises is a warning as its solve's is: the other solvers' results, run.json
-    and the report are written (an exception there had ended the whole run with nothing written)."""
+def test_a_solver_s_set_up_or_outputs_failing_leaves_the_run_and_its_report(
+        run_cli, tmp_path, monkeypatch):
+    """A solver's prepare or outputs that raises is a warning as its solve's is:
+    the other solvers' results, run.json and the report are written (an
+    exception there had ended the whole run with nothing written)."""
     pytest.importorskip('skrf')
 
     def broken(self, run, *a):
@@ -196,42 +265,54 @@ def test_a_solver_s_set_up_or_outputs_failing_leaves_the_run_and_its_report(run_
     monkeypatch.setattr(standins.MoM25D, 'prepare', broken)
     out = tmp_path / 'out'
     code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--mom', '--out', out)
-    assert code == 0 and 'WARNING: mom25d failed in its set-up: RuntimeError: no mesh for you' in so
-    assert (out / 'rf_interdig_scikit.s2p').exists() and (out / 'rf_interdig_run.json').exists()
+    assert (
+        code == 0 and
+        'WARNING: mom25d failed in its set-up: RuntimeError: no mesh for you'
+        in so)
+    assert ((out / 'rf_interdig_scikit.s2p').exists()
+            and (out / 'rf_interdig_run.json').exists())
     monkeypatch.undo()
     pytest.importorskip('skrf')
     monkeypatch.setattr(standins.MoM25D, 'outputs', broken, raising=False)
-    code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--mom', '--out', tmp_path / 'out2')
-    assert code == 0 and "WARNING: mom25d's outputs failed" in so and (tmp_path / 'out2' / 'rf_interdig_report.html').exists()
+    code, so, _ = run_cli(FILTER, '--solvers', 'scikit', '--mom', '--out',
+                          tmp_path / 'out2')
+    assert (code == 0 and "WARNING: mom25d's outputs failed" in so
+            and (tmp_path / 'out2' / 'rf_interdig_report.html').exists())
 
 
 def test_a_result_that_is_not_passive_is_said():
-    """S's largest singular value over 1 (more power out than in): the run warns, and run.json has it (nothing had
-    checked: an AAA fit of a lossless two-port had reached 1.0018)."""
+    """S's largest singular value over 1 (more power out than in): the run
+    warns, and run.json has it (nothing had checked: an AAA fit of a lossless
+    two-port had reached 1.0018)."""
     import numpy as np
     from kicad2ems.core.pipeline import passivity
     f = np.linspace(1e9, 2e9, 5)
     thru = np.zeros((5, 2, 2), complex); thru[:, 0, 1] = thru[:, 1, 0] = 1.0
-    assert passivity(f, thru)['max'] == pytest.approx(1.0) and passivity(f, thru)['count'] == 0
+    assert (passivity(f, thru)['max'] == pytest.approx(1.0)
+            and passivity(f, thru)['count'] == 0)
     thru[2, 0, 1] *= 1.05
     p = passivity(f, thru)
-    assert p['count'] == 1 and p['f'] == pytest.approx(1.5e9) and p['max'] == pytest.approx(1.05)
+    assert (p['count'] == 1 and p['f'] == pytest.approx(1.5e9)
+            and p['max'] == pytest.approx(1.05))
     thru[:] = np.nan
     assert passivity(f, thru) is None
 
 
 def test_a_passive_copy_clips_only_what_passes_one():
-    """make_passive (--passive, R-E2): each frequency's singular values above 1 clipped to 1, the rest of S as it
-    was; a passive frequency, and a term not computed, untouched."""
+    """make_passive (--passive, R-E2): each frequency's singular values above 1
+    clipped to 1, the rest of S as it was; a passive frequency, and a term not
+    computed, untouched."""
     import numpy as np
     from kicad2ems.core.pipeline import make_passive, passivity
     f = np.linspace(1e9, 2e9, 4)
     rng = np.random.default_rng(1)
-    S = 0.4 * (rng.standard_normal((4, 3, 3)) + 1j * rng.standard_normal((4, 3, 3)))
-    S[1] *= 3.0                                                     # one frequency far from passive
+    S = (0.4 * (rng.standard_normal((4, 3, 3)) + 1j * rng.standard_normal(
+        (4, 3, 3))))
+    S[1] *= 3.0  # one frequency far from passive
     P, k = make_passive(S)
     sv = np.linalg.svd(P, compute_uv=False)
-    assert k == sum(np.linalg.svd(S, compute_uv=False)[:, 0] > 1) and (sv <= 1 + 1e-12).all()
+    assert (k == sum(np.linalg.svd(S, compute_uv=False)[:, 0] > 1)
+            and (sv <= 1 + 1e-12).all())
     for i in range(4):
         if np.linalg.svd(S[i], compute_uv=False)[0] <= 1:
             np.testing.assert_array_equal(P[i], S[i])

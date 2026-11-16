@@ -1,6 +1,6 @@
 """
-The compiled block low-rank LU (core BLRFactor, fast._CompiledBLR): the preconditioner of solve_blr, against
-blr.py's and the direct solver.
+The compiled block low-rank LU (core BLRFactor, fast._CompiledBLR): the
+preconditioner of solve_blr, against blr.py's and the direct solver.
 """
 import types
 
@@ -12,15 +12,21 @@ from kicad2ems.mom25d.sim import Simulation, Via, ViaPort
 
 
 def _sim(solver='blr', dmax=0.25e-3):
-    """A strip on M2 over a plane on M1 (an antipad round a via to the ground), a via port at each end."""
+    """A strip on M2 over a plane on M1 (an antipad round a via to the ground),
+    a via port at each end."""
     from shapely.geometry import box, Point
     st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.2e-3, 4.3, 0.02)])
     w, L = 0.35e-3, 8e-3
     v1 = Via(L / 2, 0, 0, 2, 0.1e-3)
     geo2 = [box(-L / 2, -w / 2, L / 2, w / 2), Point(L / 2, 0).buffer(0.25e-3)]
-    geo1 = [box(-L / 2, -2e-3, L / 2 + 1e-3, 2e-3).difference(Point(L / 2, 0).buffer(0.5e-3))]
-    sim = Simulation(st, {1: geo1, 2: geo2}, [ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)), ViaPort(v1)], dmax=dmax,
-                     dmax_layer={1: 0.6e-3}, w_ref={2: w, 1: 1e-3}, solver=solver, precision='double',
+    geo1 = [
+        box(-L / 2, -2e-3, L / 2 + 1e-3,
+            2e-3).difference(Point(L / 2, 0).buffer(0.5e-3))
+    ]
+    sim = Simulation(st, {1: geo1, 2: geo2},
+                     [ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
+                      ViaPort(v1)], dmax=dmax, dmax_layer={1: 0.6e-3},
+                     w_ref={2: w, 1: 1e-3}, solver=solver, precision='double',
                      verbose=False)
     sim.gpu, sim.loop_tree = 'off', 'off'
     return sim
@@ -28,13 +34,18 @@ def _sim(solver='blr', dmax=0.25e-3):
 
 def _without_compiled_blr(sim):
     core = sim.fast.core
-    sim.fast.core = types.SimpleNamespace(**{k: getattr(core, k) for k in dir(core)
-                                             if not k.startswith('_') and k != 'BLRFactor'})
+    sim.fast.core = types.SimpleNamespace(
+        **{
+            k: getattr(core, k)
+            for k in dir(core)
+            if not k.startswith('_') and k != 'BLRFactor'
+        })
 
 
 def test_the_compiled_blr_solves_as_the_direct_solver():
-    """The compiled block low-rank factor (its Python one retired, R-F3) gives the direct solver's S; without it
-    the run says what it needs rather than falling back to a slow copy."""
+    """The compiled block low-rank factor (its Python one retired, R-F3) gives
+    the direct solver's S; without it the run says what it needs rather than
+    falling back to a slow copy."""
     core = pytest.importorskip('kicad2ems.mom25d._core')
     if not hasattr(core, 'BLRFactor'):
         pytest.skip('a core without BLRFactor')
@@ -43,11 +54,12 @@ def test_the_compiled_blr_solves_as_the_direct_solver():
     sim = _sim()
     sim.blr_tile, sim.blr_tol, sim.blr_eta = 128, 1e-3, 0.7
     S = sim.sparams(f)
-    assert not any('did not converge' in n for n in sim.log.notes), sim.log.notes
+    assert (not any('did not converge' in n
+                    for n in sim.log.notes)), sim.log.notes
     assert np.abs(S - ref).max() < 1e-6
     st, N = sim.fast.blr.stats, _sim().Ne + _sim().Nv
     assert st['lowrank'] > 0 and st['singular'] == 0
-    assert st['bytes'] < 8.0 * N * N                                # less than a complex64 matrix
+    assert st['bytes'] < 8.0 * N * N  # less than a complex64 matrix
     sim = _sim()
     _without_compiled_blr(sim)
     with pytest.raises(RuntimeError, match='compiled core'):
@@ -55,9 +67,11 @@ def test_the_compiled_blr_solves_as_the_direct_solver():
 
 
 def test_a_smaller_eta_compresses_more_tiles_to_the_same_answer():
-    """The admissibility (gap > eta x the larger cluster's diameter): a smaller eta compresses tiles nearer each
-    other, the answer the same (GMRES's). (Compressing the tiles beside the diagonal too, eta < 0, leaves no
-    preconditioner on tiles of 128: GMRES did not converge in 500 iterations.)"""
+    """The admissibility (gap > eta x the larger cluster's diameter): a smaller
+    eta compresses tiles nearer each other, the answer the same (GMRES's).
+    (Compressing the tiles beside the diagonal too, eta < 0, leaves no
+    preconditioner on tiles of 128: GMRES did not converge in 500
+    iterations.)"""
     core = pytest.importorskip('kicad2ems.mom25d._core')
     if not hasattr(core, 'BLRFactor'):
         pytest.skip('a core without BLRFactor')
@@ -69,14 +83,16 @@ def test_a_smaller_eta_compresses_more_tiles_to_the_same_answer():
         sim.blr_tile, sim.blr_tol, sim.blr_eta = 128, 1e-3, eta
         S = sim.sparams(f)
         assert np.abs(S - ref).max() < 1e-6, eta
-        assert not any('did not converge' in n for n in sim.log.notes), sim.log.notes
+        assert (not any('did not converge' in n
+                        for n in sim.log.notes)), sim.log.notes
         low[eta] = sim.fast.blr.stats['lowrank']
     assert low[0.3] > low[0.7]
 
 
 def test_the_factor_inverts_the_matrix_to_its_tolerance():
-    """M Z ~ I: the compiled factor applied to Z x gives x back, as near as the compression and complex64 allow
-    (this Z's condition number is ~2e6: 1e-2 at any tolerance below 1e-6)."""
+    """M Z ~ I: the compiled factor applied to Z x gives x back, as near as the
+    compression and complex64 allow (this Z's condition number is ~2e6: 1e-2 at
+    any tolerance below 1e-6)."""
     core = pytest.importorskip('kicad2ems.mom25d._core')
     if not hasattr(core, 'BLRFactor'):
         pytest.skip('a core without BLRFactor')
@@ -96,7 +112,8 @@ def test_the_factor_inverts_the_matrix_to_its_tolerance():
     Z = raw(allu, allu)
     dsc = 1.0 / np.sqrt(np.abs(np.diagonal(Z)))
     Zs = Z * dsc[:, None] * dsc[None, :]
-    # (at 1e-3 a rough preconditioner: 0.62 on the hex mesh, 2026-11-15; 0.013 at 1e-6)
+    # (at 1e-3 a rough preconditioner: 0.62 on the hex mesh, 2026-11-15; 0.013
+    # at 1e-6)
     for tol, err in ((1e-3, 0.8), (1e-6, 0.05)):
         blr = _CompiledBLR(fo, tiles, boxes, dZx, dsc, tol, 0.7)
         x = np.random.default_rng(3).standard_normal((N, 2)) + 0j
@@ -106,8 +123,9 @@ def test_the_factor_inverts_the_matrix_to_its_tolerance():
 
 
 def test_a_factor_too_loose_to_precondition_is_made_again_tighter(monkeypatch):
-    """A factor GMRES stalls with (fast.BLR_STALL) is factored again at a hundredth of the tolerance, kept for the
-    frequencies after; the answer the direct solver's."""
+    """A factor GMRES stalls with (fast.BLR_STALL) is factored again at a
+    hundredth of the tolerance, kept for the frequencies after; the answer the
+    direct solver's."""
     core = pytest.importorskip('kicad2ems.mom25d._core')
     if not hasattr(core, 'BLRFactor'):
         pytest.skip('a core without BLRFactor')
@@ -122,10 +140,13 @@ def test_a_factor_too_loose_to_precondition_is_made_again_tighter(monkeypatch):
     assert sim.fast._blr_tol < 1e-3
 
 
-def test_low_frequency_goes_to_the_loop_tree_basis_or_a_double_factor(monkeypatch):
-    """Below (k h)^2 = LOOP_TREE_BELOW a complex64 factor of the RWG matrix cannot hold the loops: the block
-    low-rank path hands the frequency to the loop/tree basis's dense solve, and where that has no room factors in
-    double precision, compressed to a hundredth of (k h)^2. Both give the direct solver's answer."""
+def test_low_frequency_goes_to_the_loop_tree_basis_or_a_double_factor(
+        monkeypatch):
+    """Below (k h)^2 = LOOP_TREE_BELOW a complex64 factor of the RWG matrix
+    cannot hold the loops: the block low-rank path hands the frequency to the
+    loop/tree basis's dense solve, and where that has no room factors in double
+    precision, compressed to a hundredth of (k h)^2. Both give the direct
+    solver's answer."""
     core = pytest.importorskip('kicad2ems.mom25d._core')
     if not hasattr(core, 'BLRFactor128'):
         pytest.skip('a core without BLRFactor128')
@@ -140,15 +161,19 @@ def test_low_frequency_goes_to_the_loop_tree_basis_or_a_double_factor(monkeypatc
     S = sim.sparams(f)
     assert sim.fast._basis_name == 'loop/tree' and np.abs(S - ref).max() < 1e-6
     assert any('in the loop/tree basis, dense' in n for n in sim.log.notes)
-    monkeypatch.setattr(fast.FastOperator, '_loop_tree_at', lambda self, f: False)      # no room for it
+    # no room for it
+    monkeypatch.setattr(fast.FastOperator, '_loop_tree_at',
+                        lambda self, f: False)
     sim = _sim()
     sim.loop_tree, sim.blr_tile = 'auto', 128
     S = sim.sparams(f)
     assert any('factor in double precision' in n for n in sim.log.notes)
-    assert np.abs(S - ref).max() < 1e-5 and not any('did not converge' in n for n in sim.log.notes)
+    assert (np.abs(S - ref).max() < 1e-5
+            and not any('did not converge' in n for n in sim.log.notes))
 
 
-def test_an_unconverged_block_low_rank_solve_is_an_error_not_an_answer(monkeypatch):
+def test_an_unconverged_block_low_rank_solve_is_an_error_not_an_answer(
+        monkeypatch):
     core = pytest.importorskip('kicad2ems.mom25d._core')
     if not hasattr(core, 'BLRFactor'):
         pytest.skip('a core without BLRFactor')

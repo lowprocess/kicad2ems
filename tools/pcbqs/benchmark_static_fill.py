@@ -19,7 +19,8 @@ from kicad2ems.pcbqs.static import static_moments
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--dmax', type=float, default=.5, help='triangle mesh size (mm)')
+    ap.add_argument('--dmax', type=float, default=.5,
+                    help='triangle mesh size (mm)')
     ap.add_argument('--backends', default='numpy,threaded,openmp')
     ap.add_argument('--workers', default='1,2')
     ap.add_argument('--repeat', type=int, default=3)
@@ -30,25 +31,30 @@ def main():
     args = ap.parse_args()
     if args.repeat < 1:
         ap.error('--repeat must be positive')
-    nodes, tris, _ = mesh_polygons(box(0, 0, .02, .01), args.dmax*1e-3, args.dmax*1e-3)
+    nodes, tris, _ = mesh_polygons(box(0, 0, .02, .01), args.dmax * 1e-3,
+                                   args.dmax * 1e-3)
     z = np.zeros(len(tris))
-    reference = static_moments(nodes, tris, z, backend='numpy', chunk=args.chunk, scalar_only=args.scalar)
+    reference = static_moments(nodes, tris, z, backend='numpy',
+                               chunk=args.chunk, scalar_only=args.scalar)
     report = dict(triangles=len(tris), scalar_only=args.scalar, cases=[])
     for backend in args.backends.split(','):
-        counts = [1] if backend in ('numpy', 'cupy') else [int(n) for n in args.workers.split(',')]
+        counts = ([1] if backend in ('numpy', 'cupy') else
+                  [int(n) for n in args.workers.split(',')])
         for workers in counts:
             times, error = [], 0.
             for _ in range(args.repeat):
                 start = time.perf_counter()
-                result, info = static_moments(nodes, tris, z, backend=backend, workers=workers,
-                                              device=args.device if backend == 'cupy' else None,
-                                              chunk=args.chunk, scalar_only=args.scalar, return_info=True)
+                result, info = static_moments(
+                    nodes, tris, z, backend=backend, workers=workers,
+                    device=(args.device if backend == 'cupy' else None),
+                    chunk=args.chunk, scalar_only=args.scalar, return_info=True)
                 times.append(time.perf_counter()-start)
                 for a, b in zip(reference[1:], result[1:]):
-                    error = max(error, float(np.linalg.norm(a-b)/np.linalg.norm(a)))
+                    error = max(
+                        error, float(np.linalg.norm(a - b) / np.linalg.norm(a)))
                 del result
-            case = dict(info, seconds_median=float(np.median(times)), seconds_samples=times,
-                        max_relative_moment_error=error)
+            case = dict(info, seconds_median=float(np.median(times)),
+                        seconds_samples=times, max_relative_moment_error=error)
             report['cases'].append(case)
             print(json.dumps(case), flush=True)
     if args.out:

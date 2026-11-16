@@ -1,19 +1,27 @@
 """
-The fields over a board while its circuit runs: H from the currents in its copper, E from the voltages on it.
+The fields over a board while its circuit runs: H from the currents in its
+copper, E from the voltages on it.
 
-    python -m kicad2ems.pcbqs.circuit model.json --out result --fields          # implies --copper
-    export(model, summary, copper, out, log)                          # engine.run(..., fields=True) calls it
+    python -m kicad2ems.pcbqs.circuit model.json --out result --fields
+        # implies --copper
+    export(model, summary, copper, out, log)  # engine.run(..., fields=True)
+                                              calls it
 
-For each case, on planes 1 and 5 mm above the top copper (fields.heights_mm), over the last period:
+For each case, on planes 1 and 5 mm above the top copper (fields.heights_mm),
+over the last period:
 
-    H   The copper's port currents of the reported run are taken apart into harmonics of the period (the first 16,
-        fields.harmonics; from ngspice's own time steps). The solver that gave the circuit its copper model
-        (pcbqs.mqs) gives, at each harmonic, the current everywhere in the copper for those port currents, and
-        H from that by Biot-Savart. Put back together over the period.
-    E   Each net's copper is a conductor at its node's voltage, the ground at zero. The charge that puts on
-        the copper comes from the board's capacitance (the same mesh, with its dielectric), once for a volt on
-        each net; E at any instant is those fields weighted by the nets' voltages at that instant. Nothing
-        is band-limited here: E has the edges as the circuit has them.
+    H  The copper's port currents of the reported run are taken apart into
+       harmonics of the period (the first 16, fields.harmonics; from ngspice's
+       own time steps). The solver that gave the circuit its copper model
+       (pcbqs.mqs) gives, at each harmonic, the current everywhere in the copper
+       for those port currents, and H from that by Biot-Savart. Put back
+       together over the period.
+    E  Each net's copper is a conductor at its node's voltage, the ground at
+       zero. The charge that puts on the copper comes from the board's
+       capacitance (the same mesh, with its dielectric), once for a volt on each
+       net; E at any instant is those fields weighted by the nets' voltages at
+       that instant. Nothing is band-limited here: E has the edges as the
+       circuit has them.
 
 What that is, and is not:
     - the copper and its vias only. No part's own field is in it: not an inductor's stray field, not the E of a
@@ -25,18 +33,22 @@ What that is, and is not:
     - H up to the last harmonic kept: the ringing at the edges (hundreds of MHz) is above it, and case['fields']
       says what share of the port currents' AC was left out.
 
-<case>/exc_fields/: the fields as field dumps a viewer shows (kicad2ems's Viewer finds <run>/*/exc_*): H and E on
-each plane over the period, time_samples frames each (dump_H_top_1mm_td_0000.vtr ...), with dump_info.json (the
-period's step, the copper to outline). <case>/fields.npz: x_mm, y_mm, heights_mm, time_s, H_A_per_m and E_V_per_m
-(time, x, y, height, 3), their RMS maps with and without the part that does not change over the period, H's
-harmonics; <case>/fields.png: the AC RMS maps over the board's copper (a picture for a page, not the report's).
+<case>/exc_fields/: the fields as field dumps a viewer shows (kicad2ems's Viewer
+finds <run>/*/exc_*): H and E on each plane over the period, time_samples frames
+each (dump_H_top_1mm_td_0000.vtr ...), with dump_info.json (the period's step,
+the copper to outline). <case>/fields.npz: x_mm, y_mm, heights_mm, time_s,
+H_A_per_m and E_V_per_m (time, x, y, height, 3), their RMS maps with and without
+the part that does not change over the period, H's harmonics; <case>/fields.png:
+the AC RMS maps over the board's copper (a picture for a page, not the
+report's).
 """
 import json
 from pathlib import Path
 
 import numpy as np
 
-DEFAULTS = dict(harmonics=16, heights_mm=(1.0, 5.0), pitch_mm=0.75, time_samples=64, margin_mm=3.0)
+DEFAULTS = dict(harmonics=16, heights_mm=(1.0, 5.0), pitch_mm=0.75,
+                time_samples=64, margin_mm=3.0)
 
 
 def settings(model):
@@ -44,40 +56,50 @@ def settings(model):
 
 
 def grid(q, s):
-    """The planes' points: x, y (mm, the board's frame) over the meshed region and a margin, z (mm) above the
-    top copper."""
+    """The planes' points: x, y (mm, the board's frame) over the meshed region
+    and a margin, z (mm) above the top copper."""
     nodes = q.nodes * 1000
-    lo, hi = nodes[:, :2].min(axis=0) - s['margin_mm'], nodes[:, :2].max(axis=0) + s['margin_mm']
+    lo, hi = (nodes[:, :2].min(axis=0) - s['margin_mm'],
+              nodes[:, :2].max(axis=0) + s['margin_mm'])
     n = np.maximum(np.ceil((hi - lo) / s['pitch_mm']).astype(int), 8) + 1
     x, y = np.linspace(lo[0], hi[0], n[0]), np.linspace(lo[1], hi[1], n[1])
     return x, y, q.z_of.max() * 1000 + np.asarray(s['heights_mm'], float)
 
 
 def unit_fields(model, board, x, y, z, log=print):
-    """E at the planes' points for one volt on each net and none on the others: ({net: E (nx, ny, nh, 3) V/m per
-    V}, {net: its capacitance to everything else, F}). The copper's charge for those voltages comes from its
+    """E at the planes' points for one volt on each net and none on the others:
+    ({net: E (nx, ny, nh, 3) V/m per V}, {net: its capacitance to everything
+    else, F}). The copper's charge for those voltages comes from its
     coefficients of potential, in the board's dielectric stack."""
     from scipy.linalg import solve
     from ..mqs import Result
     from .copper import copper_mesh
-    stack = bool(board.get('stack', {}).get('layers'))             # the board's dielectrics, when it says them
-    q, _, terminals = copper_mesh(model, board, log, capacitance=True, dielectric='stack' if stack else 'homogeneous',
-                                  thickness_sheets=1, matrix_backend='dense')
+    # the board's dielectrics, when it says them
+    stack = bool(board.get('stack', {}).get('layers'))
+    q, _, terminals = copper_mesh(
+        model, board, log, capacitance=True,
+        dielectric=('stack' if stack else 'homogeneous'), thickness_sheets=1,
+        matrix_backend='dense')
     C, labels, of_terminal = q.capacitance_matrix()
     conductor = {}
     for name, k in of_terminal.items():
         net = terminals[name][1]
         if conductor.setdefault(net, k) != k:
-            raise ValueError(f"the copper of net {net} is in more than one piece inside the meshed region")
+            raise ValueError(
+                f"the copper of net {net} is in more than one piece inside the "
+                "meshed region"
+            )
     order = sorted(conductor)
     B = np.zeros((len(labels), len(order)))
     for j, net in enumerate(order):
         B[labels == conductor[net], j] = 1.0
-    charge = solve(q._ensure_potential(), B, assume_a='sym')          # C per volt on each net, node by node
+    # C per volt on each net, node by node
+    charge = solve(q._ensure_potential(), B, assume_a='sym')
     X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
     pts = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()]) * 1e-3
-    res = Result(np.zeros(len(order)), None, {}, [], charge=np.asarray(charge).T)
-    E = q.e_field(res, list(range(len(order))), pts)                   # (points, 3, nets)
+    res = Result(np.zeros(len(order)), None, {}, [],
+                 charge=np.asarray(charge).T)
+    E = q.e_field(res, list(range(len(order))), pts)  # (points, 3, nets)
     E = np.real(E).reshape(len(x), len(y), len(z), 3, len(order))
     idx = [conductor[n] for n in order]
     cap = {n: float(np.real(C[k, k])) for n, k in zip(order, idx)}
@@ -85,14 +107,24 @@ def unit_fields(model, board, x, y, z, log=print):
 
 
 def _fields_key(copper, s, x, y, z):
-    """What the fields of a run depend on besides its circuit: the copper (its fingerprint: board, mesh, parts and
-    the extraction's code), the field settings and grid, and this module's and the field kernels' code."""
+    """What the fields of a run depend on besides its circuit: the copper (its
+    fingerprint: board, mesh, parts and the extraction's code), the field
+    settings and grid, and this module's and the field kernels' code."""
     import hashlib
     from .. import peec, mqs
-    h = hashlib.sha256(json.dumps(dict(copper=copper.get('fingerprint'), settings={k: list(v) if isinstance(v, tuple) else v
-                                                                                     for k, v in s.items()},
-                                       grid=[len(x), len(y), float(x[0]), float(y[0]), list(map(float, z))]),
-                                  sort_keys=True).encode())
+    h = hashlib.sha256(
+        json.dumps(
+            dict(
+                copper=copper.get('fingerprint'), settings={
+                    k: list(v) if isinstance(v, tuple) else v
+                    for k, v in s.items()
+                }, grid=[
+                    len(x),
+                    len(y),
+                    float(x[0]),
+                    float(y[0]),
+                    list(map(float, z))
+                ]), sort_keys=True).encode())
     for module in (peec, mqs):
         h.update(Path(module.__file__).read_bytes())
     h.update(Path(__file__).read_bytes())
@@ -100,8 +132,9 @@ def _fields_key(copper, s, x, y, z):
 
 
 def _unit_fields_kept(path, key, make, log=print):
-    """unit_fields' answer kept beside the run under `key`: a rerun (a changed circuit on the same copper, or the
-    same run again) does not work out E for a volt on each net again (the boost board: 41 s)."""
+    """unit_fields' answer kept beside the run under `key`: a rerun (a changed
+    circuit on the same copper, or the same run again) does not work out E for a
+    volt on each net again (the boost board: 41 s)."""
     try:
         with np.load(path) as z:
             if str(z['key']) == key:
@@ -115,7 +148,8 @@ def _unit_fields_kept(path, key, make, log=print):
     nets = sorted(unit)
     try:
         tmp = path.with_name(path.stem + '.tmp.npz')
-        np.savez(tmp, key=np.array(key), nets=np.array(nets), E=np.stack([unit[n] for n in nets], axis=-1),
+        np.savez(tmp, key=np.array(key), nets=np.array(nets),
+                 E=np.stack([unit[n] for n in nets], axis=-1),
                  capacitance_F=np.array([cap[n] for n in nets]))
         tmp.replace(path)
     except OSError:
@@ -124,8 +158,9 @@ def _unit_fields_kept(path, key, make, log=print):
 
 
 def harmonics_of(result, labels, period, count):
-    """The complex Fourier coefficients c_n (n = 0..count) of signals over the last period, from uniform samples:
-    x(t) = c_0 + 2 Re sum c_n exp(2 pi i n t / period). (count + 1, signals)."""
+    """The complex Fourier coefficients c_n (n = 0..count) of signals over the
+    last period, from uniform samples: x(t) = c_0 + 2 Re sum c_n exp(2 pi i n t
+    / period). (count + 1, signals)."""
     t = np.asarray(result['time_s'])
     n = max(int(round(period / (t[1] - t[0]))), 2 * count + 2)
     at = t[-1] - period + np.arange(n) / n * period
@@ -134,9 +169,11 @@ def harmonics_of(result, labels, period, count):
 
 
 def write_copper_loss(folder, q, driven, weights, total_W):
-    """<folder>/copper-loss.npz: each triangle's share of the copper's loss (its sheet resistance x |J|^2 x its area,
-    summed over the harmonics kept, J at its centroid), scaled to the run's own copper loss total_W: layer, x_mm,
-    y_mm, W. pcbqs.thermal heats the board with it (the copper's loss had reached no thermal map). Its file name."""
+    """<folder>/copper-loss.npz: each triangle's share of the copper's loss (its
+    sheet resistance x |J|^2 x its area, summed over the harmonics kept, J at
+    its centroid), scaled to the run's own copper loss total_W: layer, x_mm,
+    y_mm, W. pcbqs.thermal heats the board with it (the copper's loss had
+    reached no thermal map). Its file name."""
     from kicad2ems.emsdev.numerics.biot import rwg_currents
     r = q.rwg
     raw = np.zeros(len(r.area))
@@ -147,28 +184,35 @@ def write_copper_loss(folder, q, driven, weights, total_W):
     raw *= r.area / (q.sigma * np.asarray(q.t_of, float))
     layer = np.empty(len(raw), dtype=object)
     for lay, idx in q.layer_tris.items():
-        layer[idx] = lay.split('#')[0]                              # (a face sheet's copy: its layer)
+        layer[idx] = lay.split('#')[0]  # (a face sheet's copy: its layer)
     W = raw * (total_W / raw.sum()) if raw.sum() > 0 else raw
-    np.savez_compressed(folder / 'copper-loss.npz', layer=layer.astype(str), x_mm=r.cent[:, 0] * 1e3,
-                        y_mm=r.cent[:, 1] * 1e3, W=W)
+    np.savez_compressed(folder / 'copper-loss.npz', layer=layer.astype(str),
+                        x_mm=r.cent[:, 0] * 1e3, y_mm=r.cent[:, 1] * 1e3, W=W)
     return 'copper-loss.npz'
 
 
 def export(model, summary, copper, out, log=print):
-    """Every case's fields, written beside it; each case of `summary` gets its 'fields' (what was kept, the
-    largest values, the files). The copper's solver model is made once, its response once for each period."""
+    """Every case's fields, written beside it; each case of `summary` gets its
+    'fields' (what was kept, the largest values, the files). The copper's solver
+    model is made once, its response once for each period."""
     from .._cli import load_board
     from ..mqs_ports import CopperPorts
     from .copper import board_file, model_of, net_name
     s = settings(model)
     board = load_board(str(board_file(model)))
     log("Fields: the copper's currents and charges")
-    q, ports, _ = model_of(copper, model, board, log)            # (prepare's, in the same run: not meshed again)
+    # (prepare's, in the same run: not meshed again)
+    q, ports, _ = model_of(copper, model, board, log)
     if [p['name'] for p in ports] != [p['name'] for p in copper['ports']]:
-        raise ValueError("the copper's ports are not the ones the circuit ran with: run again")
+        raise ValueError(
+            "the copper's ports are not the ones the circuit ran with: run "
+            "again"
+        )
     x, y, z = grid(q, s)
     fkey = _fields_key(copper, s, x, y, z)
-    unit, capacitance = _unit_fields_kept(Path(out) / 'fields-unit.npz', fkey, lambda: unit_fields(model, board, x, y, z, log), log)
+    unit, capacitance = _unit_fields_kept(
+        Path(out) / 'fields-unit.npz', fkey,
+        lambda: unit_fields(model, board, x, y, z, log), log)
     known = set(unit)
     node_net = {}
     for part in model['parts']:
@@ -183,37 +227,55 @@ def export(model, summary, copper, out, log=print):
     for case in summary['cases']:
         folder = Path(case['folder'])
         before = case.get('fields') or {}
-        if (before.get('key') == fkey + ':' + str(case.get('fingerprint')) and Path(before.get('file', '')).is_file()
-                and (folder / 'exc_fields').is_dir()):              # the case and its copper as before: its fields too
+        if (before.get('key') == fkey + ':' + str(case.get('fingerprint'))
+                and Path(before.get('file', '')).is_file()
+                # the case and its copper as before: its fields too
+                and (folder / 'exc_fields').is_dir()):
             log(f"{case['name']}: fields as before")
             continue
-        case['notes'] = [n for n in case.get('notes', []) if not n.startswith(('H keeps ', 'fields.png '))]   # a rerun's own
+        # a rerun's own
+        case['notes'] = [
+            n for n in case.get('notes', [])
+            if not n.startswith(('H keeps ', 'fields.png '))
+        ]
         with np.load(folder / 'transient.npz') as data:
             result = {k: data[k] for k in data.files}
         period = case['period_s']
         labels = [f"PCB{i}.I" for i in range(len(ports))]
         spectrum = folder / 'port-spectrum.npz'
-        if spectrum.exists():                                       # from ngspice's own steps: the edges as solved
+        if spectrum.exists():  # from ngspice's own steps: the edges as solved
             with np.load(spectrum) as sp:
                 full = sp['coefficients_A']
                 total = float(np.sum(sp['AC_mean_square_A2']))
             coef = full[:count + 1]
         else:
             coef, _ = harmonics_of(result, labels, period, count)
-            ac = np.stack([result[k][result['time_s'] >= result['time_s'][-1] - period] for k in labels], axis=1)
+            ac = np.stack([
+                result[k][result['time_s'] >= result['time_s'][-1] - period]
+                for k in labels
+            ], axis=1)
             total = float(np.sum(np.var(ac, axis=0)))
         if len(coef) < count + 1:
-            raise ValueError(f"{case['name']}: the port currents were kept to {len(coef) - 1} harmonics, fewer than fields.harmonics")
+            raise ValueError(
+                f"{case['name']}: the port currents were kept to "
+                f"{len(coef) - 1} harmonics, fewer than fields.harmonics"
+            )
         key = round(1 / period, 6)
         if key not in responses:
-            responses[key] = CopperPorts(q).extract(np.arange(count + 1) / period, log=None)
+            responses[key] = CopperPorts(q).extract(
+                np.arange(count + 1) / period, log=None)
         driven = responses[key].drive(coef)
         try:
-            H, info = q.h_grid(driven, list(range(count + 1)), x * 1e-3, y * 1e-3, z * 1e-3, rtol=0.02, return_info=True)
-        except RuntimeError as exc:                                 # the grid's own check: said, not hidden
-            H = q.h_grid(driven, list(range(count + 1)), x * 1e-3, y * 1e-3, z * 1e-3, refine=4)
+            H, info = q.h_grid(driven, list(range(count + 1)), x * 1e-3,
+                               y * 1e-3, z * 1e-3, rtol=0.02, return_info=True)
+        except RuntimeError as exc:  # the grid's own check: said, not hidden
+            H = q.h_grid(driven, list(range(count + 1)), x * 1e-3, y * 1e-3,
+                         z * 1e-3, refine=4)
             info = dict(converged=False, note=str(exc)[:200])
-        Ht = np.einsum('xyvcn,nt,n->txyvc', H, np.exp(2j * np.pi * np.arange(count + 1)[:, None] * theta), weights).real
+        Ht = (np.einsum(
+            'xyvcn,nt,n->txyvc', H,
+            np.exp(2j * np.pi * np.arange(count + 1)[:, None] * theta),
+            weights).real)
         t = result['time_s'][-1] - period + theta * period
         Et = np.zeros((nt, len(x), len(y), len(z), 3))
         swing = {}
@@ -225,70 +287,100 @@ def export(model, summary, copper, out, log=print):
             Et += v[:, None, None, None, None] * unit[net][None]
             swing[net] = float(v.max() - v.min())
         mag = lambda F: np.linalg.norm(F, axis=-1)
-        rms = lambda F: np.sqrt((mag(F) ** 2).mean(axis=0))            # over the period, at each point
-        ac = lambda F: rms(F - F.mean(axis=0))                       # without what does not change: the DC current's
-        kept = float(2 * np.sum(np.abs(coef[1:]) ** 2))              # H, the rails' E
-        Hac, Hrms, Eac, Erms = ac(Ht), rms(Ht), ac(Et), rms(Et)        # (x, y, plane)
+        # over the period, at each point
+        rms = lambda F: np.sqrt((mag(F) ** 2).mean(axis=0))
+        # without what does not change: the DC current's
+        ac = lambda F: rms(F - F.mean(axis=0))
+        # H, the rails' E
+        kept = float(2 * np.sum(np.abs(coef[1:]) ** 2))
+        Hac, Hrms, Eac, Erms = ac(Ht), rms(Ht), ac(Et), rms(Et)  # (x, y, plane)
         fields = dict(
-            file=str(folder / 'fields.npz'), picture=str(folder / 'fields.png'), heights_mm=[float(h) for h in s['heights_mm']],
-            harmonics=count, highest_Hz=count / period,
-            port_current_AC_left_out=float(max(0.0, total - kept) / max(total, 1e-30)),
-            H_ac_rms_max_A_per_m=Hac.max(axis=(0, 1)).tolist(), H_rms_max_A_per_m=Hrms.max(axis=(0, 1)).tolist(),
+            file=str(folder / 'fields.npz'), picture=str(folder / 'fields.png'),
+            heights_mm=[float(h) for h in s['heights_mm']], harmonics=count,
+            highest_Hz=count / period, port_current_AC_left_out=float(
+                max(0.0, total - kept) / max(total, 1e-30)),
+            H_ac_rms_max_A_per_m=Hac.max(axis=(0, 1)).tolist(),
+            H_rms_max_A_per_m=Hrms.max(axis=(0, 1)).tolist(),
             H_peak_A_per_m=mag(Ht).max(axis=(0, 1, 2)).tolist(),
-            E_ac_rms_max_V_per_m=Eac.max(axis=(0, 1)).tolist(), E_rms_max_V_per_m=Erms.max(axis=(0, 1)).tolist(),
+            E_ac_rms_max_V_per_m=Eac.max(axis=(0, 1)).tolist(),
+            E_rms_max_V_per_m=Erms.max(axis=(0, 1)).tolist(),
             E_peak_V_per_m=mag(Et).max(axis=(0, 1, 2)).tolist(),
-            net_voltage_swing_V=swing, net_capacitance_F=capacitance, grid=info, key=fkey + ':' + str(case.get('fingerprint')),
-            scope='copper and vias only, no part bodies; quasi-static, Coulomb E, the ground copper at zero volts; '
-                  'H band-limited to the harmonics kept')
+            net_voltage_swing_V=swing, net_capacitance_F=capacitance, grid=info,
+            key=fkey + ':' + str(case.get('fingerprint')), scope=
+            'copper and vias only, no part bodies; quasi-static, Coulomb E, '
+            'the ground copper at zero volts; H band-limited to the harmonics '
+            'kept')
         np.savez_compressed(
-            folder / 'fields.npz', x_mm=x, y_mm=y, heights_mm=np.asarray(s['heights_mm'], float), z_mm=z, time_s=theta * period,
+            folder / 'fields.npz', x_mm=x, y_mm=y,
+            heights_mm=np.asarray(s['heights_mm'],
+                                  float), z_mm=z, time_s=theta * period,
             H_A_per_m=Ht.astype(np.float32), E_V_per_m=Et.astype(np.float32),
-            H_rms_A_per_m=Hrms.astype(np.float32), E_rms_V_per_m=Erms.astype(np.float32),
-            H_ac_rms_A_per_m=Hac.astype(np.float32), E_ac_rms_V_per_m=Eac.astype(np.float32),
-            H_harmonics_A_per_m=np.linalg.norm(np.abs(H), axis=3).astype(np.float32) * weights / np.sqrt(2),
+            H_rms_A_per_m=Hrms.astype(np.float32), E_rms_V_per_m=Erms.astype(
+                np.float32), H_ac_rms_A_per_m=Hac.astype(np.float32),
+            E_ac_rms_V_per_m=Eac.astype(np.float32),
+            H_harmonics_A_per_m=np.linalg.norm(np.abs(H), axis=3).astype(
+                np.float32) * weights / np.sqrt(2),
             frequencies_Hz=np.arange(count + 1) / period)
-        try:                                                        # the frames the Viewer plays over the period
-            fields['dumps'] = write_dumps(folder / 'exc_fields', q, board, x, y, z, s['heights_mm'], Ht, Et, period)
-        except Exception as exc:                                    # noqa: BLE001  (the npz has them)
-            case.setdefault('notes', []).append(f"the fields' dumps were not written: {type(exc).__name__}: {exc}")
+        try:  # the frames the Viewer plays over the period
+            fields['dumps'] = write_dumps(folder / 'exc_fields', q, board, x, y,
+                                          z, s['heights_mm'], Ht, Et, period)
+        # (the npz has them)
+        except Exception as exc:  # noqa: BLE001
+            case.setdefault('notes', []).append(
+                f"the fields' dumps were not written: {type(exc).__name__}: "
+                f"{exc}"
+            )
         try:
-            picture(folder / 'fields.png', board, model, case, x, y, Hac, Eac, s['heights_mm'])
-        except Exception as exc:                                    # noqa: BLE001  (a picture is not the result)
+            picture(folder / 'fields.png', board, model, case, x, y, Hac, Eac,
+                    s['heights_mm'])
+        # (a picture is not the result)
+        except Exception as exc:  # noqa: BLE001
             fields['picture'] = None
-            case.setdefault('notes', []).append(f"fields.png was not drawn: {type(exc).__name__}: {exc}")
+            case.setdefault('notes', []).append(
+                f"fields.png was not drawn: {type(exc).__name__}: {exc}")
         total = float(((case.get('copper') or {}).get('loss_W')) or 0.0)
         if total > 0:
-            try:                                                    # where the copper's loss is, for thermal
-                fields['copper_loss'] = write_copper_loss(folder, q, driven, weights, total)
-            except Exception as exc:                                # noqa: BLE001  (thermal says it is left out)
-                case.setdefault('notes', []).append(f"the copper's loss map was not written: {type(exc).__name__}: {exc}")
+            try:  # where the copper's loss is, for thermal
+                fields['copper_loss'] = write_copper_loss(
+                    folder, q, driven, weights, total)
+            # (thermal says it is left out)
+            except Exception as exc:  # noqa: BLE001
+                case.setdefault('notes', []).append(
+                    "the copper's loss map was not written: "
+                    f"{type(exc).__name__}: {exc}"
+                )
         if fields['port_current_AC_left_out'] > 0.25:
             case.setdefault('notes', []).append(
-                f"H keeps {count} harmonics (to {count / period / 1e6:.3g} MHz): {100 * fields['port_current_AC_left_out']:.0f} % "
-                f"of the copper currents' AC is above that")
+                f"H keeps {count} harmonics (to {count / period / 1e6:.3g} "
+                f"MHz): {100 * fields['port_current_AC_left_out']:.0f} % of "
+                "the copper currents' AC is above that")
         case['fields'] = fields
         (folder / 'case.json').write_text(json.dumps(case, indent=1))
-        log(f"{case['name']}: fields at {s['heights_mm'][0]:g} mm: H to {fields['H_ac_rms_max_A_per_m'][0]:.3g} A/m, "
-            f"E to {fields['E_ac_rms_max_V_per_m'][0]:.3g} V/m (AC RMS)")
+        log(f"{case['name']}: fields at {s['heights_mm'][0]:g} mm: H to "
+            f"{fields['H_ac_rms_max_A_per_m'][0]:.3g} A/m, E to "
+            f"{fields['E_ac_rms_max_V_per_m'][0]:.3g} V/m (AC RMS)")
     return summary
 
 
 def write_dumps(exc, q, board, x, y, z, heights, Ht, Et, period):
-    """H and E (time, x, y, height, 3) over the period as time-domain field dumps in exc (a viewer's run folder):
-    a plane a height, a frame a sample. [the dumps' names]"""
+    """H and E (time, x, y, height, 3) over the period as time-domain field
+    dumps in exc (a viewer's run folder): a plane a height, a frame a sample.
+    [the dumps' names]"""
     import shutil
     from shapely.geometry import box
     from .._artifacts import Dump, write_info
     from ..pdn.viewer import dump_layout
     if exc.exists():
-        shutil.rmtree(exc)                                          # a rerun's frames: none of the last one's
+        shutil.rmtree(exc)  # a rerun's frames: none of the last one's
     exc.mkdir(parents=True)
     dumps = []
     for field, F in (('H', Ht), ('E', Et)):
         for k, h in enumerate(heights):
-            dm = Dump(f"{field}@top+{h:g}mm", field, (x[0], y[0], z[k]), (x[-1], y[-1], z[k]), None, 2, f"top+{h:g}mm")
+            dm = Dump(f"{field}@top+{h:g}mm", field, (x[0], y[0], z[k]),
+                      (x[-1], y[-1], z[k]), None, 2, f"top+{h:g}mm")
             for t in range(F.shape[0]):
-                write_vtr(exc / f"{dm.name}_{t:04d}.vtr", x, y, z[k], F[t, :, :, k, :])
+                write_vtr(exc / f"{dm.name}_{t:04d}.vtr", x, y, z[k], F[t, :, :,
+                                                                        k, :])
             dumps.append(dm)
     m = dump_layout(board, q.nets, box(x[0], y[0], x[-1], y[-1]), crop=True)
     write_info(str(exc), dumps, m, dt_ps=period / Ht.shape[0] * 1e12)
@@ -296,31 +388,41 @@ def write_dumps(exc, q, board, x, y, z, heights, Ht, Et, period):
 
 
 def picture(path, board, model, case, x, y, H, E, heights):
-    """The AC RMS maps of H and E on each plane (what changes over the period: the DC current's H and the rails'
-    steady E left out), the board's top copper and its parts' references drawn over them."""
+    """The AC RMS maps of H and E on each plane (what changes over the period:
+    the DC current's H and the rails' steady E left out), the board's top copper
+    and its parts' references drawn over them."""
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     from shapely.geometry import shape
     from ..pdn.rail import parts_of
-    top = next((l for l in ('F.Cu',) if l in board['copper']), next(iter(board['copper'])))
+    top = next((l for l in ('F.Cu', ) if l in board['copper']),
+               next(iter(board['copper'])))
     outlines = [shape(c['polygon']) for c in board['copper'][top]]
-    fig, axs = plt.subplots(len(heights), 2, figsize=(11, 4.2 * len(heights)), squeeze=False, constrained_layout=True)
+    fig, axs = plt.subplots(len(heights), 2, figsize=(11, 4.2 * len(heights)),
+                            squeeze=False, constrained_layout=True)
     for k, h in enumerate(heights):
-        for ax, F, unit, cmap, name in ((axs[k, 0], H, 'A/m', 'inferno', 'H'), (axs[k, 1], E, 'V/m', 'viridis', 'E')):
+        for ax, F, unit, cmap, name in ((axs[k, 0], H, 'A/m', 'inferno', 'H'),
+                                        (axs[k, 1], E, 'V/m', 'viridis', 'E')):
             im = ax.pcolormesh(x, y, F[:, :, k].T, shading='gouraud', cmap=cmap)
             for g in outlines:
                 for piece in (g.geoms if hasattr(g, 'geoms') else [g]):
                     ax.plot(*piece.exterior.xy, color='w', lw=0.5, alpha=0.7)
             for p in parts_of(board):
                 c = np.mean([pad.xy for pad in p.pads], axis=0)
-                ax.text(c[0], c[1], p.ref, color='w', fontsize=6, ha='center', va='center')
+                ax.text(c[0], c[1], p.ref, color='w', fontsize=6, ha='center',
+                        va='center')
             ax.set_aspect('equal')
             ax.set(xlim=(x[0], x[-1]), ylim=(y[0], y[-1]))
-            ax.set_title(f"AC RMS |{name}| {h:g} mm over the board, to {F[:, :, k].max():.3g} {unit}", fontsize=9)
+            ax.set_title(
+                f"AC RMS |{name}| {h:g} mm over the board, to "
+                f"{F[:, :, k].max():.3g} {unit}",
+                fontsize=9)
             ax.tick_params(labelsize=7)
             fig.colorbar(im, ax=ax, shrink=0.8).set_label(unit, fontsize=8)
-    fig.suptitle(model.get('name', '') + (f"  ({case['name']})" if case.get('sweep') else ''), fontsize=10)
+    fig.suptitle(
+        model.get('name', '') +
+        (f"  ({case['name']})" if case.get('sweep') else ''), fontsize=10)
     fig.savefig(path, dpi=100)
     plt.close(fig)
 
@@ -333,5 +435,15 @@ def write_vtr(path, x, y, z, H):
     nx, ny = len(x), len(y)
     extent = f'0 {nx - 1} 0 {ny - 1} 0 0'
     path.write_text(
-        f'<VTKFile type="RectilinearGrid" version="0.1" byte_order="LittleEndian"><RectilinearGrid WholeExtent="{extent}"><Piece Extent="{extent}"><PointData Vectors="H"><DataArray type="Float32" Name="H" NumberOfComponents="3" format="ascii">{ascii(H.transpose(1, 0, 2))}</DataArray></PointData><Coordinates><DataArray type="Float64" format="ascii">{ascii(x)}</DataArray><DataArray type="Float64" format="ascii">{ascii(y)}</DataArray><DataArray type="Float64" format="ascii">{z}</DataArray></Coordinates></Piece></RectilinearGrid></VTKFile>'
+        '<VTKFile type="RectilinearGrid" version="0.1" '
+        'byte_order="LittleEndian"><RectilinearGrid '
+        f'WholeExtent="{extent}"><Piece Extent="{extent}"><PointData '
+        'Vectors="H"><DataArray type="Float32" Name="H" '
+        'NumberOfComponents="3" '
+        f'format="ascii">{ascii(H.transpose(1, 0, 2))}</DataArray></'
+        'PointData><Coordinates><DataArray type="Float64" '
+        f'format="ascii">{ascii(x)}</DataArray><DataArray type="Float64" '
+        f'format="ascii">{ascii(y)}</DataArray><DataArray type="Float64" '
+        f'format="ascii">{z}</DataArray></Coordinates></Piece></'
+        'RectilinearGrid></VTKFile>'
     )

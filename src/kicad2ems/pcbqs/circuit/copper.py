@@ -9,18 +9,21 @@ A model's board: the copper between its parts' pads, as part of the circuit.
               "reference": {"in": "C1"},             # the part whose pad is a net's node itself (else its first)
               "mesh": {"coarse_mm": 3, "fine_mm": 1.6, "fit_tolerance": 0.03}}
 
-A part's pin is the pads of its footprint on its node's net ('0' is the board's GND), so nothing is drawn or named
-twice: the model says which part is on which node, the board which pad is on which net. Without copper every pin
-on a node is one point. With it, each net's pads are joined by what the board has between them: one pad of the
-net is the node itself (its reference), and every other pad reaches it through a port of a passive R-L model
-of the copper (all the nets' ports in one model, so their mutual inductance is in it too), extracted by the
+A part's pin is the pads of its footprint on its node's net ('0' is the board's
+GND), so nothing is drawn or named twice: the model says which part is on which
+node, the board which pad is on which net. Without copper every pin on a node is
+one point. With it, each net's pads are joined by what the board has between
+them: one pad of the net is the node itself (its reference), and every other pad
+reaches it through a port of a passive R-L model of the copper (all the nets'
+ports in one model, so their mutual inductance is in it too), extracted by the
 quasi-static solver (pcbqs.mqs) and fitted over frequency.
 
-    cu = prepare(model, out, log)                    # extract, or read back <out>/copper-model.json
-    deck = build(resolved, state, cu)                # circuit/deck.py
+    cu = prepare(model, out, log)      # extract, or read back
+                                       <out>/copper-model.json
+    deck = build(resolved, state, cu)  # circuit/deck.py
 
-A part with no footprint on the board (a coil on a cable, a bench supply) is at its net's node, and the results'
-notes say so.
+A part with no footprint on the board (a coil on a cable, a bench supply) is at
+its net's node, and the results' notes say so.
 """
 import hashlib
 import json
@@ -40,7 +43,10 @@ class BoardError(ValueError):
 def board_file(model):
     b = model.get('board') or {}
     if not b.get('file'):
-        raise BoardError('the model names no board: add "board": {"file": "<layout>.kicad_pcb"}')
+        raise BoardError(
+            'the model names no board: add "board": {"file": '
+            '"<layout>.kicad_pcb"}'
+        )
     path = Path(b['file']).expanduser()
     if not path.is_file():
         raise BoardError(f"board: no file {path}")
@@ -48,25 +54,29 @@ def board_file(model):
 
 
 def net_name(model, node, nets):
-    """The board's net of a model node: board.nets' when given, the board's ground for '0', else the same name."""
+    """The board's net of a model node: board.nets' when given, the board's
+    ground for '0', else the same name."""
     named = (model.get('board') or {}).get('nets', {})
     if node in named:
         return named[node]
     if node in GROUND:
-        return next((n for n in ('GND', 'gnd', '0', 'GNDPWR', 'PGND') if n in nets), 'GND')
+        return next(
+            (n for n in ('GND', 'gnd', '0', 'GNDPWR', 'PGND') if n in nets),
+            'GND')
     return node
 
 
 def footprint_of(model, ref, k):
-    """The footprint pin k of part `ref` is on: board.parts' (a name, a name a pin, or null: off the board), else
-    the part's own reference."""
+    """The footprint pin k of part `ref` is on: board.parts' (a name, a name a
+    pin, or null: off the board), else the part's own reference."""
     fp = (model.get('board') or {}).get('parts', {}).get(ref, ref)
     return fp[k] if isinstance(fp, list) else fp
 
 
 def pins(model, board):
-    """Where each pin of the model is on the board: ({(ref, 0 | 1): terminal}, {terminal: (footprint, net)},
-    [parts with no footprint]). A terminal is a footprint's pads on one net, named '<footprint>.<net>'."""
+    """Where each pin of the model is on the board: ({(ref, 0 | 1): terminal},
+    {terminal: (footprint, net)}, [parts with no footprint]). A terminal is a
+    footprint's pads on one net, named '<footprint>.<net>'."""
     from ..pdn.rail import parts_of
     footprints = {p.ref: p for p in parts_of(board)}
     known = {pad.net for p in footprints.values() for pad in p.pads if pad.net}
@@ -78,49 +88,65 @@ def pins(model, board):
             continue
         given = names.get(ref, ref)
         if isinstance(given, list) and len(given) != len(part['nodes']):
-            raise BoardError(f"board.parts: {ref} has {len(part['nodes'])} pins, so a footprint a pin is "
-                             f"{len(part['nodes'])} names (null: that pin off the board)")
+            raise BoardError(
+                f"board.parts: {ref} has {len(part['nodes'])} pins, so a "
+                f"footprint a pin is {len(part['nodes'])} names (null: that "
+                "pin off the board)")
         on_board = False
         for k, node in enumerate(part['nodes']):
             fp = footprint_of(model, ref, k)
-            if fp is None:                                          # (null: kept off the board)
+            if fp is None:  # (null: kept off the board)
                 continue
             if fp not in footprints:
                 if ref in names:
-                    raise BoardError(f"board.parts: {ref} is given footprint {fp!r}, which the board does not have")
+                    raise BoardError(
+                        f"board.parts: {ref} is given footprint {fp!r}, which "
+                        "the board does not have"
+                    )
                 continue
             on_board = True
             net = net_name(model, node, known)
             if not footprints[fp].on({net}):
-                have = sorted({pad.net for pad in footprints[fp].pads if pad.net})
-                raise BoardError(f"{ref}: footprint {fp} has no pad on net {net!r} (node {node!r}); its pads are on "
-                                 f"{', '.join(have) or 'no net'}")
+                have = sorted(
+                    {pad.net
+                     for pad in footprints[fp].pads
+                     if pad.net})
+                raise BoardError(
+                    f"{ref}: footprint {fp} has no pad on net {net!r} (node "
+                    f"{node!r}); its pads are on {', '.join(have) or 'no net'}")
             where[(ref, k)] = f"{fp}.{net}"
             terminals[f"{fp}.{net}"] = (fp, net)
         if not on_board:
             absent.append(ref)
     if not terminals:
-        raise BoardError('none of the model\'s parts is a footprint of the board (board.parts names them when their '
-                         'references differ)')
+        raise BoardError(
+            'none of the model\'s parts is a footprint of the board '
+            '(board.parts names them when their references differ)')
     return where, terminals, absent
 
 
 def frequencies(model):
-    """The frequencies the copper model is fitted at: DC to 20 MHz, and every switching and source frequency of
-    every sweep point with its tenth harmonic."""
+    """The frequencies the copper model is fitted at: DC to 20 MHz, and every
+    switching and source frequency of every sweep point with its tenth
+    harmonic."""
     from . import model as M
     out = set(BASE_FREQUENCIES)
     for point in M.cases(model):
         r = M.resolve(model, point)
         fs = [d['frequency_Hz'] for d in r.get('drives', {}).values()]
-        fs += [p['wave']['frequency_Hz'] for p in r['parts'] if p['type'] == 'source' and p.get('wave', {}).get('frequency_Hz')]
+        fs += [
+            p['wave']['frequency_Hz']
+            for p in r['parts']
+            if p['type'] == 'source' and p.get('wave', {}).get('frequency_Hz')
+        ]
         out |= {float(f) for f in fs} | {10.0 * f for f in fs}
     return sorted(out)
 
 
 def copper_mesh(model, board, log=print, **options):
-    """The solver (MQS, with `options` of its own) on the copper between the model's pads, meshed over them and a
-    margin as board.mesh says: (MQS, pins' where, pins' terminals)."""
+    """The solver (MQS, with `options` of its own) on the copper between the
+    model's pads, meshed over them and a margin as board.mesh says: (MQS, pins'
+    where, pins' terminals)."""
     from shapely.ops import unary_union
     from ..mqs import MQS
     from ..pdn.rail import parts_of
@@ -128,55 +154,84 @@ def copper_mesh(model, board, log=print, **options):
     mesh = (model.get('board') or {}).get('mesh', {})
     where, terminals, _ = pins(model, board)
     footprints = {p.ref: p for p in parts_of(board)}
-    terms = {name: contact_terminal(footprints[fp], footprints[fp].on({net}), mesh.get('pad_contact', 'termination'))
-             for name, (fp, net) in terminals.items()}
+    terms = {
+        name: contact_terminal(footprints[fp], footprints[fp].on({net}),
+                               mesh.get('pad_contact', 'termination'))
+        for name, (fp, net) in terminals.items()
+    }
     for name, shapes in terms.items():
         if not shapes:
             raise BoardError(f"board: {name} has no contact area")
     extent = unary_union([p for vv in terms.values() for _, p in vv])
-    q = MQS(board, {net for _, net in terminals.values()}, terminals=terms,
-            region=extent.buffer(mesh.get('margin_mm', 2)).envelope, dmax=mesh.get('coarse_mm', 3),
-            fine=extent.buffer(0.6).envelope, dmax_fine=mesh.get('fine_mm', 1.6),
-            fill_backend=mesh.get('backend', 'auto'), fill_workers=mesh.get('workers', 8), log=log, **options)
+    q = MQS(board, {net
+                    for _, net in terminals.values()}, terminals=terms,
+            region=extent.buffer(mesh.get('margin_mm', 2)).envelope,
+            dmax=mesh.get('coarse_mm', 3), fine=extent.buffer(0.6).envelope,
+            dmax_fine=mesh.get('fine_mm',
+                               1.6), fill_backend=mesh.get('backend', 'auto'),
+            fill_workers=mesh.get('workers', 8), log=log, **options)
     return q, where, terminals
 
 
 def geometry(model, board, log=print):
-    """The solver's model of the board's copper with a port at every pad but one of each net:
-    (MQS, ports [{name, terminal, reference, net}], same {terminal: the terminal it is one mesh node with})."""
+    """The solver's model of the board's copper with a port at every pad but one
+    of each net: (MQS, ports [{name, terminal, reference, net}], same {terminal:
+    the terminal it is one mesh node with})."""
     mesh = (model.get('board') or {}).get('mesh', {})
-    q, where, terminals = copper_mesh(model, board, log, conductor_loss='slab', conductor_faces=2,
-                                      thickness_sheets=int(mesh.get('thickness_sheets', 1)),
-                                      matrix_backend=mesh.get('matrix_backend', 'hierarchical'))
+    q, where, terminals = copper_mesh(
+        model, board, log, conductor_loss='slab', conductor_faces=2,
+        thickness_sheets=int(mesh.get('thickness_sheets', 1)),
+        matrix_backend=mesh.get('matrix_backend', 'hierarchical'))
     nets = {net for _, net in terminals.values()}
-    order = [t for part in model['parts'] for k in (0, 1) if (t := where.get((part['ref'], k)))]     # the model's order
+    # the model's order
+    order = [
+        t for part in model['parts'] for k in (0, 1)
+        if (t := where.get((part['ref'], k)))
+    ]
     chosen = (model.get('board') or {}).get('reference', {})
     reference = {}
     for net in nets:
         mine = [t for t in dict.fromkeys(order) if terminals[t][1] == net]
-        want = chosen.get(net) or next((chosen[n] for n in chosen if net_name(model, n, nets) == net), None)
+        want = (chosen.get(net) or next(
+            (chosen[n] for n in chosen if net_name(model, n, nets) == net),
+            None))
         if want:
-            given = (model.get('board') or {}).get('parts', {}).get(want, want)     # a footprint, or a part's (its
-            fp = next((f for f in (given if isinstance(given, list) else [given])   # pins' footprints: the one on
-                       if f and f"{f}.{net}" in mine), None)                        # this net)
+            # a footprint, or a part's (its
+            given = (model.get('board') or {}).get('parts', {}).get(want, want)
+            # pins' footprints: the one on
+            fp = next(
+                (
+                    f for f in (given if isinstance(given, list) else [given])
+                    # this net)
+                    if f and f"{f}.{net}" in mine),
+                None)
             if fp is None:
-                raise BoardError(f"board.reference: {want} has no pad on net {net!r}")
+                raise BoardError(
+                    f"board.reference: {want} has no pad on net {net!r}")
             reference[net] = f"{fp}.{net}"
-        else:                                                       # where the board meets the outside: a source's
-            kind = {footprint_of(model, p['ref'], k): p['type'] for p in model['parts'] for k in range(len(p['nodes']))}
-            rank = lambda t: dict(source=0, load=1).get(kind.get(terminals[t][0]), 2)   # pad, else a load's, else the first
+        else:  # where the board meets the outside: a source's
+            kind = {
+                footprint_of(model, p['ref'], k): p['type']
+                for p in model['parts']
+                for k in range(len(p['nodes']))
+            }
+            # pad, else a load's, else the first
+            rank = lambda t: dict(source=0, load=1).get(
+                kind.get(terminals[t][0]), 2)
             reference[net] = min(mine, key=rank)
     ports, same = [], {}
     for t in dict.fromkeys(order):
         net = terminals[t][1]
         if t == reference[net]:
             continue
-        if q.term_node[t] == q.term_node[reference[net]]:           # one piece of copper too small to tell apart
+        # one piece of copper too small to tell apart
+        if q.term_node[t] == q.term_node[reference[net]]:
             same[t] = reference[net]
             continue
         name = f"T{len(ports)}"
         q.source(name, t, reference[net], part_h=0)
-        ports.append(dict(name=name, terminal=t, reference=reference[net], net=net))
+        ports.append(
+            dict(name=name, terminal=t, reference=reference[net], net=net))
     return q, ports, same
 
 
@@ -184,28 +239,36 @@ def fingerprint(model, path, fs):
     h = hashlib.sha256(Path(path).read_bytes())
     b = dict(model.get('board') or {})
     b.pop('file', None)
-    h.update(json.dumps(dict(board=b, parts=[(p['ref'], p['nodes'], p.get('enabled', True)) for p in model['parts']],
-                             frequencies=fs), sort_keys=True).encode())
+    h.update(
+        json.dumps(
+            dict(
+                board=b, parts=[(p['ref'], p['nodes'], p.get('enabled', True))
+                                for p in model['parts']], frequencies=fs),
+            sort_keys=True).encode())
     from .. import mqs, mqs_ports
     for module in (mqs, mqs_ports, __import__(__name__, fromlist=['x'])):
         h.update(Path(module.__file__).read_bytes())
     return h.hexdigest()
 
 
-_MODELS = {}                    # {fingerprint: (MQS, ports, same)}: the copper's model as prepare made it, kept for the
-                                # field export of the same run (it had meshed and filled the same copper again)
+# {fingerprint: (MQS, ports, same)}: the copper's model as prepare made it, kept
+# for the field export of the same run (it had meshed and filled the same copper
+# again)
+_MODELS = {}
 
 
 def model_of(copper, model, board, log=print):
-    """The copper's (MQS, ports, same) for a prepared copper dict: the one prepare made in this process, else made."""
+    """The copper's (MQS, ports, same) for a prepared copper dict: the one
+    prepare made in this process, else made."""
     got = _MODELS.get(copper.get('fingerprint'))
     return got if got is not None else geometry(model, board, log)
 
 
 def prepare(model, out, log=print):
-    """The copper of the model's board, ready for the deck: {file, ports, model (R_ohm, L_H, foster: the passive
-    fit), pins {(ref, k): terminal}, same, absent, fit_error, fingerprint}. Extracted once for a model and
-    its board and kept in <out>/copper-model.json."""
+    """The copper of the model's board, ready for the deck: {file, ports, model
+    (R_ohm, L_H, foster: the passive fit), pins {(ref, k): terminal}, same,
+    absent, fit_error, fingerprint}. Extracted once for a model and its board
+    and kept in <out>/copper-model.json."""
     from .._cli import load_board
     from ..mqs_ports import CopperPorts, foster_equivalent
     path = board_file(model)
@@ -216,30 +279,39 @@ def prepare(model, out, log=print):
     where, terminals, absent = pins(model, board)
     saved = json.loads(cache.read_text()) if cache.exists() else {}
     if saved.get('fingerprint') != key:
-        log(f"Extracting the copper of {path.name}: {len(terminals)} pads on {len({n for _, n in terminals.values()})} nets")
+        log(f"Extracting the copper of {path.name}: {len(terminals)} pads on "
+            f"{len({n for _, n in terminals.values()})} nets"
+            )
         q, ports, same = geometry(model, board, log)
-        _MODELS.clear()                                             # (one board's at a time: its kernels are large)
+        _MODELS.clear()  # (one board's at a time: its kernels are large)
         _MODELS[key] = (q, ports, same)
         if ports:
             response = CopperPorts(q).extract(fs, log=log)
             fitted = reduce_copper(foster_equivalent(response), response,
-                                   (model.get('board') or {}).get('mesh', {}).get('fit_tolerance', FIT_TOLERANCE))
+                                   (model.get('board')
+                                    or {}).get('mesh',
+                                               {}).get('fit_tolerance',
+                                                       FIT_TOLERANCE))
             fitted['check_frequencies_Hz'] = fs
         else:
             fitted = None
-        saved = dict(fingerprint=key, file=str(path), ports=ports, same=same, model=fitted)
+        saved = dict(fingerprint=key, file=str(path), ports=ports, same=same,
+                     model=fitted)
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps(saved, indent=1))
     else:
         log(f"The copper of {path.name}: as extracted before")
     fitted = saved['model']
-    return dict(saved, pins=where, terminals=terminals, absent=absent,
-                fit_error=None if fitted is None else float(np.max(fitted.get('relative_impedance_error', 0.0))))
+    return dict(
+        saved, pins=where, terminals=terminals, absent=absent,
+        fit_error=(None if fitted is None else float(
+            np.max(fitted.get('relative_impedance_error', 0.0)))))
 
 
 def nodes(model, cu):
-    """The circuit node of every pin: {(ref, k): node}. A net's reference pad is the model's node; any other pad
-    is a node of its own ('<footprint>.<net>'), joined to it by its port."""
+    """The circuit node of every pin: {(ref, k): node}. A net's reference pad is
+    the model's node; any other pad is a node of its own ('<footprint>.<net>'),
+    joined to it by its port."""
     port_of = {p['terminal'] for p in cu['ports']}
     out = {}
     for part in model['parts']:
@@ -262,9 +334,10 @@ def port_nodes(model, cu):
 
 
 def port_currents(model, cu, currents):
-    """The current each port carries when its part carries `currents` ({ref: A entering its first node}): what
-    leaves a part's second pin into its pad's copper, and what its first pin draws out of it. [A], in the ports'
-    order, as Circuit.copper's PCB<i>.I counts it (into the pad's end of the port)."""
+    """The current each port carries when its part carries `currents` ({ref: A
+    entering its first node}): what leaves a part's second pin into its pad's
+    copper, and what its first pin draws out of it. [A], in the ports' order, as
+    Circuit.copper's PCB<i>.I counts it (into the pad's end of the port)."""
     at = {}
     for part in model['parts']:
         i = currents.get(part['ref'])
@@ -278,8 +351,9 @@ def port_currents(model, cu, currents):
 
 
 def reduce_copper(model, response, tolerance=FIT_TOLERANCE):
-    """The copper's Foster fit with the modes left out whose share of the impedance is under `tolerance` at every
-    frequency of `response` (smallest first, while the fit stays within it): fewer states for the circuit."""
+    """The copper's Foster fit with the modes left out whose share of the
+    impedance is under `tolerance` at every frequency of `response` (smallest
+    first, while the fit stays within it): fewer states for the circuit."""
     import copy
     from ..mqs_ports import model_impedance, rl_error
 
@@ -288,21 +362,27 @@ def reduce_copper(model, response, tolerance=FIT_TOLERANCE):
     target = response.impedance
     norm = np.maximum(np.linalg.norm(target, axis=(1, 2)), 1e-30)
     current = model_impedance(result, response.frequencies)
-    matrix = lambda kind: np.asarray(result[kind] if isinstance(kind, str) else result['foster'][kind]['R_ohm'])
+    matrix = lambda kind: np.asarray(result[kind] if isinstance(kind, str) else
+                                     result['foster'][kind]['R_ohm'])
     candidates = []
     for kind in ['L_H', *range(len(result.get('foster', [])))]:
         A = matrix(kind)
         e, V = np.linalg.eigh(A)
-        factor = s if isinstance(kind, str) else s / (s + result['foster'][kind]['pole_rad_s'])
+        factor = (s if isinstance(kind, str) else s /
+                  (s + result['foster'][kind]['pole_rad_s']))
         for j, val in enumerate(e):
             if val <= max(e.max() * 1e-8, 1e-20):
                 continue
             part = val * np.outer(V[:, j], V[:, j])
             delta = factor[:, None, None] * part
-            candidates.append((float(np.max(np.linalg.norm(delta, axis=(1, 2)) / norm)), kind, part, delta))
+            candidates.append(
+                (float(np.max(np.linalg.norm(delta, axis=(1, 2)) / norm)), kind,
+                 part, delta))
     removed = 0
     for _, kind, part, delta in sorted(candidates, key=lambda t: t[0]):
-        if np.max(np.linalg.norm(current - delta - target, axis=(1, 2)) / norm) <= tolerance:
+        if (np.max(
+                np.linalg.norm(current - delta - target, axis=(1, 2)) / norm)
+                <= tolerance):
             current -= delta
             A = matrix(kind) - part
             if isinstance(kind, str):
@@ -314,7 +394,8 @@ def reduce_copper(model, response, tolerance=FIT_TOLERANCE):
         key = 'L_H' if part is result else 'R_ohm'
         A = np.asarray(part[key])
         e, V = np.linalg.eigh((A + A.T) / 2)
-        part[key] = (np.zeros_like(A) if abs(e).max() < 1e-15 else (V * np.maximum(e, 0)) @ V.T).tolist()
+        part[key] = (np.zeros_like(A) if abs(e).max() < 1e-15 else
+                     (V * np.maximum(e, 0)) @ V.T).tolist()
     result.update(
         reduction_tolerance=tolerance,
         removed_modes=removed,

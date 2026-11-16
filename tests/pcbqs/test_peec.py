@@ -8,9 +8,15 @@ from kicad2ems.pcbqs.mqs import MQS
 
 
 def plates(h=0.5, size=10, dmax=2, whole=False, er=1):
-    copper = {lay: [dict(net=lay, polygon=mapping(box(0, 0, size, size)))] for lay in ('B', 'F')}
-    b = dict(stack=dict(layers=[], copper=[dict(name='B', z=0, t=.035), dict(name='F', z=h, t=.035)]),
-             copper=copper, vias=[])
+    copper = {
+        lay: [dict(net=lay, polygon=mapping(box(0, 0, size, size)))]
+        for lay in ('B', 'F')
+    }
+    b = dict(
+        stack=dict(
+            layers=[],
+            copper=[dict(name='B', z=0, t=.035),
+                    dict(name='F', z=h, t=.035)]), copper=copper, vias=[])
     pad = box(0, 0, size, size) if whole else box(0, 0, 1, 1)
     q = MQS(b, {'B', 'F'}, terminals={l: [(l, pad)] for l in copper}, dmax=dmax,
             capacitance=True, er=er, log=lambda *_: None)
@@ -23,7 +29,9 @@ def test_disconnected_plates_carry_displacement_current():
     r = q.solve([1e2, 1e5, 1e7])
     C, labels, terminals = q.capacitance_matrix()
     # Equal/opposite conductor charges, floating pair; infinity is no terminal.
-    drive = np.zeros(len(C)); drive[terminals['B']] = 1; drive[terminals['F']] = -1
+    drive = np.zeros(len(C))
+    drive[terminals['B']] = 1
+    drive[terminals['F']] = (-1)
     expected = 1 / (drive @ np.linalg.solve(C, drive))
     measured = -1 / (2 * np.pi * r.f[:2] * r.z['I'][:2].imag)
     assert measured == pytest.approx(expected, rel=2e-5)
@@ -62,12 +70,16 @@ def test_electric_field_off_axis_matches_coulomb_quadrature():
     r = q.solve([1e3])
     points = np.array([[.025, .016, .02], [.025, .016, 0.]])
     obs = np.einsum('qk,tkc->tqc', _BAR6, q.nodes[q.tris])
-    xyz = np.concatenate([obs, np.broadcast_to(q.z_of[:, None, None], obs.shape[:-1] + (1,))], axis=-1)
+    xyz = np.concatenate(
+        [obs,
+         np.broadcast_to(q.z_of[:, None, None], obs.shape[:-1] +
+                         (1, ))], axis=-1)
     area = np.bincount(q.node_of, weights=q.rwg.area)
     density = r.charge[0, q.node_of] / area[q.node_of]
     delta = points[:, None, None] - xyz[None]
     kernel = delta / np.linalg.norm(delta, axis=-1)[..., None]**3
-    expected = np.einsum('ptqc,t,q,t->pc', kernel, q.rwg.area, _W6, density) / (4*np.pi*EPS0)
+    expected = (np.einsum('ptqc,t,q,t->pc', kernel, q.rwg.area, _W6, density) /
+                (4 * np.pi * EPS0))
     assert q.e_field(r, 0, points) == pytest.approx(expected, rel=2e-6)
 
 
@@ -85,17 +97,21 @@ def test_peec_handles_passive_capacitor_between_islands():
 
 
 def test_peec_approaches_mqs_for_a_closed_copper_path():
-    board = dict(stack=dict(layers=[], copper=[dict(name='F', z=0, t=.035)]),
-                 copper={'F': [dict(net='N', polygon=mapping(box(0, 0, 5, 2)))]}, vias=[])
+    board = dict(
+        stack=dict(layers=[], copper=[dict(name='F', z=0, t=.035)]),
+        copper={'F': [dict(net='N', polygon=mapping(box(0, 0, 5,
+                                                        2)))]}, vias=[])
     terms = {'a': [('F', box(0, 0, 1, 2))], 'b': [('F', box(4, 0, 5, 2))]}
     zs = []
     for cap in (False, True):
-        q = MQS(board, 'N', terminals=terms, dmax=.7, capacitance=cap, ideal_terminals=False, log=lambda *_: None)
+        q = MQS(board, 'N', terminals=terms, dmax=.7, capacitance=cap,
+                ideal_terminals=False, log=lambda *_: None)
         q.source('I', 'a', 'b', part_h=0)
         result = q.solve([1e-3, 1e2, 1e5])
         zs.append(result.z['I'])
         if cap:
-            assert result.potential == pytest.approx(result.charge @ q._potential.T, rel=1e-8, abs=1e-12)
+            assert (result.potential == pytest.approx(
+                result.charge @ q._potential.T, rel=1e-8, abs=1e-12))
     assert zs[1] == pytest.approx(zs[0], rel=1e-5)
 
 
@@ -133,10 +149,16 @@ def test_preparation_factor_reuse_and_part_invalidation():
 
 
 def test_closed_multiple_sources_do_not_create_common_mode_charge():
-    board = dict(stack=dict(layers=[], copper=[dict(name='F', z=0, t=.035)]),
-                 copper={'F': [dict(net='N', polygon=mapping(box(0, 0, 6, 2)))]}, vias=[])
-    terms = {n: [('F', box(x, 0, x+1, 2))] for n, x in [('a', 0), ('b', 5), ('c', 2)]}
-    q = MQS(board, 'N', terminals=terms, dmax=.7, capacitance=True, log=lambda *_: None)
+    board = dict(
+        stack=dict(layers=[], copper=[dict(name='F', z=0, t=.035)]),
+        copper={'F': [dict(net='N', polygon=mapping(box(0, 0, 6,
+                                                        2)))]}, vias=[])
+    terms = {
+        n: [('F', box(x, 0, x + 1, 2))]
+        for n, x in [('a', 0), ('b', 5), ('c', 2)]
+    }
+    q = MQS(board, 'N', terminals=terms, dmax=.7, capacitance=True,
+            log=lambda *_: None)
     q.source('I', 'a', 'b', part_h=0)
     q.source('J', 'c', 'b', part_h=0)
     a = q.solve([1e-3], amps={'I': 1, 'J': 0})

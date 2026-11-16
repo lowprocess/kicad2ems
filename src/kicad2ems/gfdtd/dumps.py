@@ -1,11 +1,15 @@
 """
-Field dumps, in openEMS's files: a time-domain dump is a series of VTK rectilinear grids (<name>_<step>.vtr,
-zlib-compressed binary, every sample step), a frequency-domain dump one HDF5 file (<name>.h5: /Mesh, /FieldData/FD
-with one complex dataset per frequency, d_order NXYZ, as openEMS 0.37 writes it).
+Field dumps, in openEMS's files: a time-domain dump is a series of VTK
+rectilinear grids (<name>_<step>.vtr, zlib-compressed binary, every sample
+step), a frequency-domain dump one HDF5 file (<name>.h5: /Mesh, /FieldData/FD
+with one complex dataset per frequency, d_order NXYZ, as openEMS 0.37 writes
+it).
 
-Values are at the cell centres (openEMS's dump mode 2): E and J averaged over the four parallel edges of a cell, H
-over its two. J is rot H (the loop sum of the currents around each E edge over its dual area), Jc kappa E.
-Frequency-domain values are 2 dt_s sum F(t) exp(-j w t) over the samples, as openEMS's (and its port DFT).
+Values are at the cell centres (openEMS's dump mode 2): E and J averaged over
+the four parallel edges of a cell, H over its two. J is rot H (the loop sum of
+the currents around each E edge over its dual area), Jc kappa E.
+Frequency-domain values are 2 dt_s sum F(t) exp(-j w t) over the samples, as
+openEMS's (and its port DFT).
 
     d = Dumps(op, backend); d.sample(step); ...; d.close(path)
 """
@@ -18,8 +22,9 @@ BLOCK = 32768           # VTK's compressed block size
 
 
 def replace(tmp, path, tries=50):
-    """os.replace(tmp, path), tried again for a while where Windows refuses it: a file another program has open (the
-    GUI reading the last frame) cannot be replaced there until it is closed."""
+    """os.replace(tmp, path), tried again for a while where Windows refuses it:
+    a file another program has open (the GUI reading the last frame) cannot be
+    replaced there until it is closed."""
     import time
     for k in range(tries):
         try:
@@ -31,7 +36,8 @@ def replace(tmp, path, tries=50):
 
 
 def _take(xp, F, lo, hi):
-    """F[lo:hi + 1] on each axis, with zeros where the range runs past the array."""
+    """F[lo:hi + 1] on each axis, with zeros where the range runs past the
+    array."""
     out = xp.zeros([h - l + 1 for l, h in zip(lo, hi)], F.dtype)
     src, dst = [], []
     for a in range(3):
@@ -54,14 +60,17 @@ def _shift(lo, hi, a, d):
 def _pair(xp, G, a):
     """The sums of neighbours along axis a (the array shrinks by one there)."""
     n = G.shape[a]
-    return xp.take(G, xp.arange(n - 1), axis=a) + xp.take(G, xp.arange(1, n), axis=a)
+    return (xp.take(G, xp.arange(n - 1), axis=a)
+            + xp.take(G, xp.arange(1, n), axis=a))
 
 
 class Region:
-    """One dump box's points (cell centres or nodes), with the per-edge scale factors it needs on the backend's
-    device. Cell centres: E and J average the four parallel edges of the cell, H its two. Nodes: E and J average
-    the two edges along their direction, H the four around the node; edges past the domain don't count. On the GPU
-    (E, H, J) one kernel does it all, and adds the DFT term in the same pass (kernels.py / kernels_vk.py: dump;
+    """One dump box's points (cell centres or nodes), with the per-edge scale
+    factors it needs on the backend's device. Cell centres: E and J average the
+    four parallel edges of the cell, H its two. Nodes: E and J average the two
+    edges along their direction, H the four around the node; edges past the
+    domain don't count. On the GPU (E, H, J) one kernel does it all, and adds
+    the DFT term in the same pass (kernels.py / kernels_vk.py: dump;
     backend.dump_kernel)."""
     def __init__(self, d, op, be):
         xp = be.xp
@@ -71,38 +80,49 @@ class Region:
         self.node = d.get('mode') == 'node'
         self.shape = tuple(h - l + 1 for l, h in zip(self.lo, self.hi))
         if self.gpu:
-            self.args = tuple(np.int32(v) for v in ({'E': 0, 'H': 1, 'J': 2}[f], not self.node, *self.lo, *self.shape))
-            self.omega = be.up(2 * np.pi * np.asarray(d['fd'] or [0.0]), np.float32)
+            self.args = tuple(
+                np.int32(v) for v in ({'E': 0, 'H': 1, 'J': 2}[f],
+                                      not self.node, *self.lo, *self.shape))
+            self.omega = be.up(2 * np.pi * np.asarray(d['fd'] or [0.0]),
+                               np.float32)
             return
-        self.ext, self.scale, self.count = [], [], []               # per component: edge range, scale, edges averaged
+        # per component: edge range, scale, edges averaged
+        self.ext, self.scale, self.count = [], [], []
         for a in range(3):
             lo, hi = list(self.lo), list(self.hi)
-            across = [a] if (f == 'H') != self.node else [b for b in range(3) if b != a]
-            for b in across:                                        # the axes it averages along
+            across = ([a] if (f == 'H') != self.node else
+                      [b for b in range(3) if b != a])
+            for b in across:  # the axes it averages along
                 if self.node:
                     lo[b] -= 1
                 else:
                     hi[b] += 1
             self.ext.append((lo, hi, across))
-            den = {'E': op.lE, 'H': op.lH, 'J': op.aE, 'Jc': op.lE}[f][a]       # 1 / l, 1 / l', 1 / A', kappa / l
-            s_ = np.where(den > 0, (op.kappa_E[a] if f == 'Jc' else 1.0) / np.where(den > 0, den, 1), 0.0)
+            # 1 / l, 1 / l', 1 / A', kappa / l
+            den = {'E': op.lE, 'H': op.lH, 'J': op.aE, 'Jc': op.lE}[f][a]
+            s_ = np.where(den > 0, (op.kappa_E[a] if f == 'Jc' else 1.0)
+                          / np.where(den > 0, den, 1), 0.0)
             self.scale.append(xp.asarray(_take(np, s_, lo, hi), np.float32))
-            if self.node:                                           # the edges that exist, per point
+            if self.node:  # the edges that exist, per point
                 exists = (op.lE[a] > 0) if f != 'H' else (op.iv[a] > 0)
                 cnt = _take(np, exists.astype(np.float32), lo, hi)
                 for b in across:
                     cnt = _pair(np, cnt, b)
-                self.count.append(xp.asarray(1.0 / np.maximum(cnt, 1.0), np.float32))
+                self.count.append(
+                    xp.asarray(1.0 / np.maximum(cnt, 1.0), np.float32))
             else:
                 self.count.append(np.float32(0.5 ** len(across)))
 
     def accumulate(self, acc, t, V, I):
-        """acc (nf, nx, ny, nz, 3) complex += the field x exp(-j w t), on the GPU in one kernel."""
+        """acc (nf, nx, ny, nz, 3) complex += the field x exp(-j w t), on the
+        GPU in one kernel."""
         if self.gpu:
             self.be.dump_kernel(self, acc, len(self.d['fd']), t)
         else:
-            ph = np.exp(-2j * np.pi * np.asarray(self.d['fd']) * t).astype(np.complex64)
-            acc += self.field(V, I)[None] * self.xp.asarray(ph).reshape((-1, 1, 1, 1, 1))
+            ph = np.exp(-2j * np.pi * np.asarray(self.d['fd']) * t).astype(
+                np.complex64)
+            acc += (self.field(V, I)[None] * self.xp.asarray(ph).reshape(
+                (-1, 1, 1, 1, 1)))
 
     def field(self, V, I):
         """(nx, ny, nz, 3) float32 on the device."""
@@ -116,8 +136,10 @@ class Region:
             lo, hi, across = self.ext[a]
             if f == 'J':
                 b, c = (a + 1) % 3, (a + 2) % 3
-                G = (_take(xp, I[c], lo, hi) - _take(xp, I[c], *_shift(lo, hi, b, -1))
-                     - _take(xp, I[b], lo, hi) + _take(xp, I[b], *_shift(lo, hi, c, -1)))
+                G = (_take(xp, I[c], lo, hi)
+                     - _take(xp, I[c], *_shift(lo, hi, b, -1))
+                     - _take(xp, I[b], lo, hi)
+                     + _take(xp, I[b], *_shift(lo, hi, c, -1)))
             else:
                 G = _take(xp, (I if f == 'H' else V)[a], lo, hi)
             G = G * self.scale[a]
@@ -128,37 +150,53 @@ class Region:
 
 
 def _b64_block(raw):
-    """VTK's inline binary, compressed: the header (blocks, block size, last block, compressed sizes) and the data
-    encoded separately."""
+    """VTK's inline binary, compressed: the header (blocks, block size, last
+    block, compressed sizes) and the data encoded separately."""
     blocks = [raw[i:i + BLOCK] for i in range(0, len(raw), BLOCK)] or [b'']
     comp = [zlib.compress(b, 1) for b in blocks]
-    head = np.array([len(blocks), BLOCK, len(blocks[-1])] + [len(c) for c in comp], '<u4').tobytes()
+    head = np.array([len(blocks), BLOCK, len(blocks[-1])]
+                    + [len(c) for c in comp], '<u4').tobytes()
     return (base64.b64encode(head) + base64.b64encode(b''.join(comp))).decode()
 
 
 def write_vtr(path, coords, data, name):
-    """A VTK rectilinear grid as openEMS writes its time-domain dumps: coords (m) per axis, data (nx, ny, nz, 3)."""
+    """A VTK rectilinear grid as openEMS writes its time-domain dumps: coords
+    (m) per axis, data (nx, ny, nz, 3)."""
     nx, ny, nz = data.shape[:3]
     ext = f"0 {nx - 1} 0 {ny - 1} 0 {nz - 1}"
-    vals = np.ascontiguousarray(np.transpose(data, (2, 1, 0, 3)), '<f4')          # x fastest
+    # x fastest
+    vals = np.ascontiguousarray(np.transpose(data, (2, 1, 0, 3)), '<f4')
     mag = np.sqrt((vals.astype(np.float64) ** 2).sum(-1))
-    out = ['<?xml version="1.0"?>',
-           '<VTKFile type="RectilinearGrid" version="0.1" byte_order="LittleEndian" header_type="UInt32" '
-           'compressor="vtkZLibDataCompressor">',
-           f'  <RectilinearGrid WholeExtent="{ext}">', f'  <Piece Extent="{ext}">', '    <PointData>',
-           f'      <DataArray type="Float32" Name="{name}" NumberOfComponents="3" format="binary" RangeMin="'
-           f'{mag.min() if mag.size else 0:g}" RangeMax="{mag.max() if mag.size else 0:g}">',
-           '        ' + _b64_block(vals.tobytes()), '      </DataArray>', '    </PointData>', '    <CellData>',
-           '    </CellData>', '    <Coordinates>']
+    out = [
+        '<?xml version="1.0"?>',
+        '<VTKFile type="RectilinearGrid" version="0.1" '
+        'byte_order="LittleEndian" header_type="UInt32" '
+        'compressor="vtkZLibDataCompressor">',
+        f'  <RectilinearGrid WholeExtent="{ext}">', f'  <Piece Extent="{ext}">',
+        '    <PointData>',
+        f'      <DataArray type="Float32" Name="{name}" NumberOfComponents="3" '
+        f'format="binary" RangeMin="{mag.min() if mag.size else 0:g}" '
+        f'RangeMax="{mag.max() if mag.size else 0:g}">',
+        '        ' + _b64_block(vals.tobytes()), '      </DataArray>',
+        '    </PointData>', '    <CellData>', '    </CellData>',
+        '    <Coordinates>'
+    ]
     for ax, c in zip('xyz', coords):
         c = np.asarray(c, '<f8')
-        out += [f'      <DataArray type="Float64" Name="{ax}" format="binary" RangeMin="{c.min():g}" '
-                f'RangeMax="{c.max():g}">', '        ' + _b64_block(c.tobytes()), '      </DataArray>']
-    out += ['    </Coordinates>', '  </Piece>', '  </RectilinearGrid>', '</VTKFile>', '']
+        out += [
+            f'      <DataArray type="Float64" Name="{ax}" format="binary" '
+            f'RangeMin="{c.min():g}" '
+            f'RangeMax="{c.max():g}">', '        ' + _b64_block(c.tobytes()),
+            '      </DataArray>'
+        ]
+    out += [
+        '    </Coordinates>', '  </Piece>', '  </RectilinearGrid>',
+        '</VTKFile>', ''
+    ]
     tmp = path + '.part'
     with open(tmp, 'w', encoding='utf-8') as fh:
         fh.write('\n'.join(out))
-    replace(tmp, path)                                              # a live viewer never sees half a frame
+    replace(tmp, path)  # a live viewer never sees half a frame
 
 
 def _h5(tmp, d):
@@ -177,78 +215,100 @@ def _h5(tmp, d):
 
 
 def write_h5(path, d, freqs, data):
-    """openEMS's frequency-domain HDF5 dump: data (nf, nx, ny, nz, 3) complex."""
+    """openEMS's frequency-domain HDF5 dump: data (nf, nx, ny, nz, 3)
+    complex."""
     tmp = path + '.part'
     with _h5(tmp, d) as h:
         fd = h.create_group('FieldData').create_group('FD')
         fd.attrs['frequency'] = np.asarray(freqs, np.float64)
         for i, (f, v) in enumerate(zip(freqs, data)):
-            ds = fd.create_dataset(f'f{i}', data=np.ascontiguousarray(np.transpose(v, (3, 0, 1, 2)), np.complex64))
+            ds = fd.create_dataset(
+                f'f{i}',
+                data=np.ascontiguousarray(np.transpose(v, (3, 0, 1, 2)),
+                                          np.complex64))
             ds.attrs['d_order'] = 'NXYZ'
             ds.attrs['frequency'] = np.float64(f)
     replace(tmp, path)
 
 
 def add_h5_td(group, step, t, data):
-    """One sample (nx, ny, nz, 3) of a time-domain HDF5 dump: dataset <step>, d_order NXYZ, its time."""
-    ds = group.create_dataset(f'{step:010d}', data=np.ascontiguousarray(np.transpose(data, (3, 0, 1, 2)), np.float32))
+    """One sample (nx, ny, nz, 3) of a time-domain HDF5 dump: dataset <step>,
+    d_order NXYZ, its time."""
+    ds = group.create_dataset(
+        f'{step:010d}',
+        data=np.ascontiguousarray(np.transpose(data, (3, 0, 1, 2)), np.float32))
     ds.attrs['d_order'] = 'NXYZ'
     ds.attrs['time'] = np.float64(t)
 
 
 class Dumps:
-    """The dumps of a run: sample(step) at every sample step (time domain: a frame every `sub` of them; frequency
-    domain: one DFT term), close() writes the frequency-domain files."""
+    """The dumps of a run: sample(step) at every sample step (time domain: a
+    frame every `sub` of them; frequency domain: one DFT term), close() writes
+    the frequency-domain files."""
     def __init__(self, op, be, path, notes=None):
         self.op, self.be, self.path, self.xp = op, be, path, be.xp
         self.regions = [Region(d, op, be) for d in op.dumps]
         self.acc, self.n = [], 0
         self.h5 = True
-        self.td = {}                                                # region index: an open time-domain HDF5 dump
+        self.td = {}  # region index: an open time-domain HDF5 dump
         if any(d['fd'] or d.get('file_type') == 1 for d in op.dumps):
             try:
                 import h5py                                         # noqa: F401
             except ImportError:
                 self.h5 = False
-                (notes if notes is not None else []).append("h5py is not installed: HDF5 dumps (frequency domain, "
-                                                            "and time domain with file_type 1) skipped")
+                (notes if notes is not None else []).append(
+                    "h5py is not installed: HDF5 dumps (frequency domain, "
+                    "and time domain with file_type 1) skipped")
         for r in self.regions:
             fd = r.d['fd']
             if not (fd and self.h5):
                 self.acc.append(None)
                 continue
             shape = (len(fd),) + r.shape + (3,)
-            self.acc.append(be.zeros(shape, np.complex64) if r.gpu else self.xp.zeros(shape, np.complex64))
+            self.acc.append(
+                be.zeros(shape, np.complex64) if r.gpu else self.xp.
+                zeros(shape, np.complex64))
         self.dts = op.sub * op.dt
 
     def __bool__(self):
         return bool(self.regions)
 
     def sample(self, step):
-        """The fields after timestep `step` (E at step dt, H half a step before)."""
+        """The fields after timestep `step` (E at step dt, H half a step
+        before)."""
         be = self.be
         for k, (r, acc) in enumerate(zip(self.regions, self.acc)):
             d = r.d
-            t = max((step - (0.5 if d['field'] == 'H' else 0.0)) * self.op.dt, 0.0)
+            t = max((step - (0.5 if d['field'] == 'H' else 0.0)) * self.op.dt,
+                    0.0)
             if d['fd'] is None:
                 if (step // self.op.sub) % d['sub'] == 0:
-                    F = be.to_host(r.field(*((be.V, be.I) if r.gpu else be.fields())))
-                    if d.get('file_type') == 1:                     # HDF5 (R-B18: time-domain NF2FF reads it)
+                    F = be.to_host(
+                        r.field(*((be.V, be.I) if r.gpu else be.fields())))
+                    # HDF5 (R-B18: time-domain NF2FF reads it)
+                    if d.get('file_type') == 1:
                         if not self.h5:
                             continue
-                        if k not in self.td:                        # (file, its /FieldData/TD, tmp, final name)
+                        # (file, its /FieldData/TD, tmp, final name)
+                        if k not in self.td:
                             fn = os.path.join(self.path, d['name'] + '.h5')
                             h = _h5(fn + '.part', d)
-                            self.td[k] = (h, h.create_group('FieldData').create_group('TD'), fn + '.part', fn)
+                            self.td[k] = (
+                                h,
+                                h.create_group('FieldData').create_group('TD'),
+                                fn + '.part', fn)
                         add_h5_td(self.td[k][1], step, t, F)
                     else:
-                        write_vtr(os.path.join(self.path, f"{d['name']}_{step:010d}.vtr"), d['coords'], F,
-                                  VTK_NAME[d['field']])
+                        write_vtr(
+                            os.path.join(self.path,
+                                         f"{d['name']}_{step:010d}.vtr"),
+                            d['coords'], F, VTK_NAME[d['field']])
             elif acc is not None:
                 r.accumulate(acc, t, *((be.V, be.I) if r.gpu else be.fields()))
 
     def close(self):
-        """Write the frequency-domain dumps and close the time-domain HDF5 ones; returns the files written."""
+        """Write the frequency-domain dumps and close the time-domain HDF5 ones;
+        returns the files written."""
         out = []
         for k, (h, _, tmp, final) in sorted(self.td.items()):
             h.close()

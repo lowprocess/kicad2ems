@@ -3,17 +3,22 @@ import os, sys
 
 
 def windows_status():
-    """Windows: (installed, available) bytes from GlobalMemoryStatusEx; None elsewhere or where it fails."""
+    """Windows: (installed, available) bytes from GlobalMemoryStatusEx; None
+    elsewhere or where it fails."""
     if sys.platform != 'win32':
         return None
     try:
         import ctypes
 
         class MEMORYSTATUSEX(ctypes.Structure):
-            _fields_ = [('dwLength', ctypes.c_ulong), ('dwMemoryLoad', ctypes.c_ulong),
-                        ('ullTotalPhys', ctypes.c_ulonglong), ('ullAvailPhys', ctypes.c_ulonglong),
-                        ('ullTotalPageFile', ctypes.c_ulonglong), ('ullAvailPageFile', ctypes.c_ulonglong),
-                        ('ullTotalVirtual', ctypes.c_ulonglong), ('ullAvailVirtual', ctypes.c_ulonglong),
+            _fields_ = [('dwLength', ctypes.c_ulong),
+                        ('dwMemoryLoad', ctypes.c_ulong),
+                        ('ullTotalPhys', ctypes.c_ulonglong),
+                        ('ullAvailPhys', ctypes.c_ulonglong),
+                        ('ullTotalPageFile', ctypes.c_ulonglong),
+                        ('ullAvailPageFile', ctypes.c_ulonglong),
+                        ('ullTotalVirtual', ctypes.c_ulonglong),
+                        ('ullAvailVirtual', ctypes.c_ulonglong),
                         ('ullAvailExtendedVirtual', ctypes.c_ulonglong)]
         st = MEMORYSTATUSEX()
         st.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
@@ -25,7 +30,8 @@ def windows_status():
 
 
 def total():
-    """Installed RAM in bytes (None where neither sysconf nor Windows can tell)."""
+    """Installed RAM in bytes (None where neither sysconf nor Windows can
+    tell)."""
     win = windows_status()
     if win:
         return win[0]
@@ -44,21 +50,29 @@ def _read(path):
 
 
 def cgroup_free(root='/sys/fs/cgroup', proc='/proc/self/cgroup'):
-    """Bytes this process's cgroup can still take: the least (limit - usage) over its own cgroup and every parent
-    (a slice above can cap it too), cgroup v2 or v1's memory controller; None where no cgroup limits it. The
-    process's own cgroup is the one /proc/self/cgroup names, not the root: a systemd scope's MemoryMax sits there
-    (inside a container, whose root is its own cgroup, the two are the same)."""
+    """Bytes this process's cgroup can still take: the least (limit - usage)
+    over its own cgroup and every parent (a slice above can cap it too), cgroup
+    v2 or v1's memory controller; None where no cgroup limits it. The process's
+    own cgroup is the one /proc/self/cgroup names, not the root: a systemd
+    scope's MemoryMax sits there (inside a container, whose root is its own
+    cgroup, the two are the same)."""
     lines = (_read(proc) or '').splitlines()
     v2 = next((l.split(':', 2)[2] for l in lines if l.startswith('0::')), None)
-    v1 = next((l.split(':', 2)[2] for l in lines if ':memory:' in l or l.split(':')[1:2] == ['memory']), None)
-    for base, path, lim, use, cache in ((root, v2, 'memory.max', 'memory.current', 'inactive_file'),
-                                        (root + '/memory', v1, 'memory.limit_in_bytes', 'memory.usage_in_bytes',
+    v1 = next((l.split(':', 2)[2]
+               for l in lines
+               if ':memory:' in l or l.split(':')[1:2] == ['memory']), None)
+    for base, path, lim, use, cache in ((root, v2, 'memory.max',
+                                         'memory.current', 'inactive_file'),
+                                        (root + '/memory', v1,
+                                         'memory.limit_in_bytes',
+                                         'memory.usage_in_bytes',
                                          'total_inactive_file')):
         if path is None:
             continue
         free, found = None, False
         parts = [x for x in path.split('/') if x]
-        for k in range(len(parts), -1, -1):                     # own cgroup, then each parent up to the root
+        # own cgroup, then each parent up to the root
+        for k in range(len(parts), -1, -1):
             d = '/'.join([base] + parts[:k])
             L, U = _read(f'{d}/{lim}'), _read(f'{d}/{use}')
             if L is None:
@@ -71,8 +85,12 @@ def cgroup_free(root='/sys/fs/cgroup', proc='/proc/self/cgroup'):
             except ValueError:
                 continue
             if Li < 1 << 60:
-                # usage counts the page cache: its inactive part is reclaimed before the limit bites
-                stat = dict(l.split()[:2] for l in (_read(f'{d}/memory.stat') or '').splitlines() if len(l.split()) >= 2)
+                # usage counts the page cache: its inactive part is reclaimed
+                # before the limit bites
+                stat = dict(
+                    l.split()[:2]
+                    for l in (_read(f'{d}/memory.stat') or '').splitlines()
+                    if len(l.split()) >= 2)
                 try:
                     Ui -= int(stat.get(cache, 0))
                 except ValueError:
@@ -84,13 +102,16 @@ def cgroup_free(root='/sys/fs/cgroup', proc='/proc/self/cgroup'):
 
 
 def available():
-    """Bytes of memory available to this process: MemAvailable, capped by a cgroup limit (Linux); what Windows
-    reports available; else psutil's, else 8 GB."""
+    """Bytes of memory available to this process: MemAvailable, capped by a
+    cgroup limit (Linux); what Windows reports available; else psutil's, else 8
+    GB."""
     win = windows_status()
     if win:
         return win[1]
     try:
-        avail = next((int(l.split()[1]) * 1024 for l in open('/proc/meminfo', encoding='utf-8') if l.startswith('MemAvailable:')), None)
+        avail = next((int(l.split()[1]) * 1024
+                      for l in open('/proc/meminfo', encoding='utf-8')
+                      if l.startswith('MemAvailable:')), None)
     except OSError:
         avail = None
     free = cgroup_free()

@@ -1,21 +1,26 @@
 """
-What a result folder of each tool holds, in the forms a front end shows without knowing the tool: a report to read
-(a title, a line, sections of text and tables, notes, pictures) and curve sets to plot. Plain dicts and lists, read
-from the tool's own result file; kicad2ems's Analysis.report and Analysis.curves are these (analyses.py), and
-nothing here needs kicad2ems.
+What a result folder of each tool holds, in the forms a front end shows without
+knowing the tool: a report to read (a title, a line, sections of text and
+tables, notes, pictures) and curve sets to plot. Plain dicts and lists, read
+from the tool's own result file; kicad2ems's Analysis.report and Analysis.curves
+are these (analyses.py), and nothing here needs kicad2ems.
 
-    report('pdn', folder)       dict(title, summary, sections=[dict(title, text, table=dict(columns, rows, formats),
-                                notes)], notes, images, footer), or None: no result there
-    curves('pdn', folder)       [dict(title, xlabel, ylabel, logx, logy, info, curves=[dict(name, x, y, role, unit)])]
+    report('pdn', folder)  dict(title, summary, sections=[dict(title, text,
+                           table=dict(columns, rows, formats), notes)], notes,
+                           images, footer), or None: no result there
+    curves('pdn', folder)  [dict(title, xlabel, ylabel, logx, logy, info,
+                           curves=[dict(name, x, y, role, unit)])]
 
-A table's cells are numbers or strings; formats give a column's number format (None: '.4g'). The maps of a result
-are not pictures here: each tool writes them as field dumps, which a viewer shows (pdn/viewer.py, thermal/viewer.py,
-the near field's own); images holds only what has no dump (a circuit's fields picture).
+A table's cells are numbers or strings; formats give a column's number format
+(None: '.4g'). The maps of a result are not pictures here: each tool writes them
+as field dumps, which a viewer shows (pdn/viewer.py, thermal/viewer.py, the near
+field's own); images holds only what has no dump (a circuit's fields picture).
 """
 import json
 import os
 
-RESULTS = dict(pdn='pdn.json', mqs='mqs.json', thermal='thermal.json', circuit='circuit.json')
+RESULTS = dict(pdn='pdn.json', mqs='mqs.json', thermal='thermal.json',
+               circuit='circuit.json')
 PREVIEWS = dict(mqs='mqs-preview.json')
 
 
@@ -28,7 +33,8 @@ def _load(folder, name):
 
 
 def _hz(f):
-    return f"{f / 1e9:.3g} GHz" if f >= 1e9 else (f"{f / 1e6:.3g} MHz" if f >= 1e6 else f"{f / 1e3:.3g} kHz")
+    return (f"{f / 1e9:.3g} GHz" if f >= 1e9 else
+            (f"{f / 1e6:.3g} MHz" if f >= 1e6 else f"{f / 1e3:.3g} kHz"))
 
 
 def _ohm(z):
@@ -36,25 +42,40 @@ def _ohm(z):
 
 
 def _table(columns, rows, formats=None):
-    return dict(columns=list(columns), rows=[list(r) for r in rows], formats=list(formats or [None] * len(columns)))
+    return dict(columns=list(columns), rows=[list(r) for r in rows],
+                formats=list(formats or [None] * len(columns)))
 
 
-# ---- power integrity -----------------------------------------------------------------------------------
+# ---- power integrity
+# -----------------------------------------------------------------------------------
 def pdn_report(res, folder=''):
-    worst = max(res['loads'].items(), key=lambda kv: kv[1]['drop'], default=None)
-    out = dict(title=f"{res['rail']}: {res['volts']:g} V", sections=[], notes=list(res.get('notes') or []), images=[],
-               show=dict(field='V', run='power'))               # a viewer starts on the layer that drops most
-    out['summary'] = f"Power integrity, rail {res['rail']}" + (
-        f": worst DC drop {worst[1]['drop'] * 1e3:.2f} mV (at {worst[0]})" if worst else '')
-    if res.get('no_return'):                                    # a drop without its ground's share: said first
-        out['summary'] += (f"; without the return of {', '.join(res['no_return'])} (no pad on ground: "
-                           f"REF=AMPS@PART names the part it returns through)")
-    text = (f"Rail tree: {', '.join(res['nets'])}; source {', '.join(res['source'])}; "
-            f"{res['loss_W'] * 1e3:.1f} mW in the copper.")
+    worst = max(res['loads'].items(), key=lambda kv: kv[1]['drop'],
+                default=None)
+    out = dict(
+        title=f"{res['rail']}: {res['volts']:g} V",
+        sections=[],
+        notes=list(res.get('notes') or []),
+        images=[],
+        # a viewer starts on the layer that drops most
+        show=dict(field='V', run='power'))
+    out['summary'] = (
+        f"Power integrity, rail {res['rail']}" +
+        (f": worst DC drop {worst[1]['drop'] * 1e3:.2f} mV (at {worst[0]})"
+         if worst else ''))
+    if res.get('no_return'):  # a drop without its ground's share: said first
+        out['summary'] += (
+            f"; without the return of {', '.join(res['no_return'])} (no pad on "
+            "ground: REF=AMPS@PART names the part it returns through)")
+    text = (
+        f"Rail tree: {', '.join(res['nets'])}; source "
+        f"{', '.join(res['source'])}; {res['loss_W'] * 1e3:.1f} mW in the "
+        "copper.")
     if res.get('assumed_loads'):
-        text += " The loads' currents are assumed (shared by pad count), not known."
+        text += (" The loads' currents are assumed (shared by pad count), not "
+                 "known.")
     if res.get('field_loads'):
-        text += f" From the parts' pdn.load fields: {', '.join(res['field_loads'])}."
+        text += (" From the parts' pdn.load fields: "
+                 f"{', '.join(res['field_loads'])}.")
     if res.get('returns'):
         text += " Returning through another part's ground pads: " + ', '.join(
             f"{r} through {b}" for r, b in sorted(res['returns'].items())) + '.'
@@ -63,66 +84,124 @@ def pdn_report(res, folder=''):
         rows = []
         for t in res['tree']:
             s = res['series'].get(t['ref'], {})
-            rows.append([t['ref'], t['kind'] + (' (DCR assumed)' if t.get('defaulted') else ''), t['R'],
-                         t['L'] * 1e6 if t.get('L') else '', s.get('I', 0.0), s.get('drop', 0.0) * 1e3,
-                         f"{t['a']} → {t['b']}"])
-        out['sections'].append(dict(title='Series parts', table=_table(
-            ['part', 'kind', 'R (Ω)', 'L (µH)', 'current (A)', 'drop (mV)', 'between'], rows,
-            [None, None, '.3g', '.3g', '.3g', '.2f', None])))
-    rows = [[r, l['I'], l['V'], l['drop'] * 1e3, l['power_drop'] * 1e3, l['ground_rise'] * 1e3]
-            for r, l in sorted(res['loads'].items(), key=lambda kv: -kv[1]['drop'])]
-    out['sections'].append(dict(title='Loads at DC', table=_table(
-        ['load', 'I (A)', 'sees (V)', 'drop (mV)', 'supply side (mV)', 'ground rise (mV)'], rows,
-        [None, '.3g', '.4f', '.2f', '.2f', '.2f'])))
+            rows.append([
+                t['ref'], t['kind'] +
+                (' (DCR assumed)' if t.get('defaulted') else ''), t['R'],
+                t['L'] * 1e6 if t.get('L') else '',
+                s.get('I', 0.0),
+                s.get('drop', 0.0) * 1e3, f"{t['a']} → {t['b']}"
+            ])
+        out['sections'].append(
+            dict(
+                title='Series parts', table=_table([
+                    'part', 'kind', 'R (Ω)', 'L (µH)', 'current (A)',
+                    'drop (mV)', 'between'
+                ], rows, [None, None, '.3g', '.3g', '.3g', '.2f', None])))
+    rows = [[
+        r, l['I'], l['V'], l['drop'] * 1e3, l['power_drop'] * 1e3,
+        l['ground_rise'] * 1e3
+    ] for r, l in sorted(res['loads'].items(), key=lambda kv: -kv[1]['drop'])]
+    out['sections'].append(
+        dict(
+            title='Loads at DC', table=_table([
+                'load', 'I (A)', 'sees (V)', 'drop (mV)', 'supply side (mV)',
+                'ground rise (mV)'
+            ], rows, [None, '.3g', '.4f', '.2f', '.2f', '.2f'])))
     vias = (res.get('vias') or {}).get('power') or []
     if vias:
-        out['sections'].append(dict(title='Hottest supply vias', table=_table(
-            ['current (A)', 'x (mm)', 'y (mm)'], [[v['I'], v['x'], v['y']] for v in vias[:10]], ['.2f', '.1f', '.1f'])))
+        out['sections'].append(
+            dict(
+                title='Hottest supply vias',
+                table=_table(['current (A)', 'x (mm)', 'y (mm)'],
+                             [[v['I'], v['x'], v['y']] for v in vias[:10]],
+                             ['.2f', '.1f', '.1f'])))
     p = res.get('pdn')
     if p:
-        out['sections'].append(dict(
-            title='Plane pairs' + (f" (target {p['target'] * 1e3:.1f} mΩ)" if p.get('target') else ''),
-            table=_table(['plane pair', 'd (mm)', 'εr', 'area (mm²)', 'C (nF)'],
-                         [[f"{c['rail']} over {c['ground']}", c['d'], c['er'], c['area'], c['C'] * 1e9]
-                          for c in p['cavities']], [None, '.3g', '.3g', '.0f', '.3g'])))
+        out['sections'].append(
+            dict(
+                title='Plane pairs' + (f" (target {p['target'] * 1e3:.1f} mΩ)"
+                                       if p.get('target') else ''),
+                table=_table(
+                    ['plane pair', 'd (mm)', 'εr', 'area (mm²)', 'C (nF)'], [[
+                        f"{c['rail']} over {c['ground']}", c['d'], c['er'],
+                        c['area'], c['C'] * 1e9
+                    ] for c in p['cavities']],
+                    [None, '.3g', '.3g', '.0f', '.3g'])))
         rows = []
         for r, z in p['z'].items():
             t = z.get('target', p.get('target'))
-            rows.append([r, t if t else '', ('; '.join(f"{_hz(a)} – {_hz(b)}" for a, b in z['over']) or 'never') if t
-                         else 'no target', max(z['mag'])])
-        out['sections'].append(dict(title='Impedance each load sees', table=_table(
-            ['load', 'target (Ω)', 'over the target', 'at most (Ω)'], rows, [None, '.3g', None, '.3g'])))
+            rows.append([
+                r, t if t else '',
+                ('; '.join(f"{_hz(a)} – {_hz(b)}" for a, b in z['over'])
+                 or 'never') if t else 'no target',
+                max(z['mag'])
+            ])
+        out['sections'].append(
+            dict(
+                title='Impedance each load sees', table=_table(
+                    ['load', 'target (Ω)', 'over the target', 'at most (Ω)'],
+                    rows, [None, '.3g', None, '.3g'])))
         rows = []
-        for n, i in sorted(p['parts'].items(), key=lambda kv: (kv[1]['role'], kv[0])):
+        for n, i in sorted(p['parts'].items(), key=lambda kv:
+                           (kv[1]['role'], kv[0])):
             el = i['element']
-            what = (f"{el['C'] * 1e6:.3g} µF, {el.get('ESR', 0) * 1e3:.3g} mΩ, {el.get('ESL', 0) * 1e9:.2f} nH"
-                    if 'C' in el else (f"{el.get('R', 0) * 1e3:.3g} mΩ, {el.get('L', 0) * 1e9:.3g} nH" if el else ''))
-            rows.append([n, i['role'], what + (' (ESR/ESL by package)' if i.get('defaulted') else ''), i['mount_nH'],
-                         f"node {i['node']}" if i['node'] else i['rail']])
-        out['sections'].append(dict(title='Parts', table=_table(
-            ['part', 'role', 'element', 'mount (nH)', 'connection'], rows, [None, None, None, '.2f', None])))
+            what = (
+                f"{el['C'] * 1e6:.3g} µF, {el.get('ESR', 0) * 1e3:.3g} mΩ, "
+                f"{el.get('ESL', 0) * 1e9:.2f} nH"
+                if 'C' in el else
+                (f"{el.get('R', 0) * 1e3:.3g} mΩ, {el.get('L', 0) * 1e9:.3g} nH"
+                 if el else ''))
+            rows.append([
+                n, i['role'], what +
+                (' (ESR/ESL by package)' if i.get('defaulted') else ''),
+                i['mount_nH'], f"node {i['node']}" if i['node'] else i['rail']
+            ])
+        out['sections'].append(
+            dict(
+                title='Parts', table=_table(
+                    ['part', 'role', 'element', 'mount (nH)', 'connection'],
+                    rows, [None, None, None, '.2f', None])))
         top = max(p['z'].items(), key=lambda kv: max(kv[1]['mag']))
-        out['summary'] += f"; {len(p['z'])} load{'s' if len(p['z']) != 1 else ''}, at most {_ohm(max(top[1]['mag']))} (at {top[0]})"
+        out['summary'] += (f"; {len(p['z'])} "
+                           f"load{'s' if len(p['z']) != 1 else ''}, at most "
+                           f"{_ohm(max(top[1]['mag']))} (at {top[0]})")
         rp = p.get('ripple')
         if rp and rp.get('loads'):
-            who = ', '.join(f"{r} ({os.path.basename(v['file'])}: {v['harmonics']} harmonics of {_hz(v['fundamental_Hz'])})"
-                            for r, v in sorted(rp['sources'].items()))
-            rows = [[r, l['pp_V'] * 1e3, 'at most' if l.get('bound') else '', l['rms_V'] * 1e3, rp['allowed_V'] * 1e3,
-                     f"{_hz(l['worst_f'])}: {max(l['V']) * 1e3:.3g} mV" if l.get('worst_f') else '']
-                    for r, l in sorted(rp['loads'].items(), key=lambda kv: -kv[1]['pp_V'])]
-            out['sections'].append(dict(
-                title='Ripple from the current spectra',
-                text=(f"The rail's voltage where each load meets the planes, for the currents of {who}: each "
-                      f"harmonic's current times the impedance from there to the load, to {_hz(rp['highest_Hz'])}. "
-                      f"A load's own pads add the L di/dt of its own current, which is its pin's and not the rail's."),
-                table=_table(['load', 'peak to peak (mV)', '', 'RMS (mV)', 'allowed (mV)', 'largest harmonic'], rows,
-                             [None, '.3g', None, '.3g', '.3g', None])))
+            who = ', '.join(
+                f"{r} ({os.path.basename(v['file'])}: {v['harmonics']} "
+                f"harmonics of {_hz(v['fundamental_Hz'])})"
+                for r, v in sorted(rp['sources'].items()))
+            rows = [[
+                r, l['pp_V'] * 1e3, 'at most' if l.get('bound') else '',
+                l['rms_V'] * 1e3, rp['allowed_V'] * 1e3,
+                f"{_hz(l['worst_f'])}: {max(l['V']) * 1e3:.3g} mV"
+                if l.get('worst_f') else ''
+            ] for r, l in sorted(rp['loads'].items(),
+                                 key=lambda kv: -kv[1]['pp_V'])]
+            out['sections'].append(
+                dict(
+                    title='Ripple from the current spectra', text=
+                    ("The rail's voltage where each load meets the planes, "
+                     f"for the currents of {who}: each harmonic's current "
+                     "times the impedance from there to the load, to "
+                     f"{_hz(rp['highest_Hz'])}. A load's own pads add the L "
+                     "di/dt of its own current, which is its pin's and not "
+                     "the rail's."
+                     ), table=_table([
+                         'load', 'peak to peak (mV)', '', 'RMS (mV)',
+                         'allowed (mV)', 'largest harmonic'
+                     ], rows, [None, '.3g', None, '.3g', '.3g', None])))
             r, l = max(rp['loads'].items(), key=lambda kv: kv[1]['pp_V'])
-            out['summary'] += (f"; ripple {l['pp_V'] * 1e3:.3g} mV peak to peak at {r} from the current spectra"
-                               + (f", over the {rp['allowed_V'] * 1e3:.3g} mV allowed" if l['pp_V'] > rp['allowed_V'] else ''))
+            out['summary'] += (
+                f"; ripple {l['pp_V'] * 1e3:.3g} mV peak to peak at {r} from "
+                "the current spectra"
+                + (f", over the {rp['allowed_V'] * 1e3:.3g} mV allowed"
+                   if l['pp_V'] > rp['allowed_V'] else ''))
     s = res.get('seconds', {})
-    out['footer'] = (f"{res['vertices']['power']:,} + {res['vertices']['ground']:,} DC vertices; "
-                     + ', '.join(f"{k} {v} s" for k, v in s.items()))
+    out['footer'] = (
+        f"{res['vertices']['power']:,} + {res['vertices']['ground']:,} DC "
+        "vertices; "
+        + ', '.join(f"{k} {v} s" for k, v in s.items()))
     return out
 
 
@@ -131,154 +210,246 @@ def pdn_curves(res, folder=''):
     if not p or not p.get('z'):
         return []
     f = [float(x) for x in p['f']]
-    cs = dict(title='Impedance each load sees', xlabel='frequency (Hz)', ylabel='|Z| (Ω)', logx=True, logy=True,
-              curves=[], info=pdn_report(res, folder)['summary'])
+    cs = dict(title='Impedance each load sees', xlabel='frequency (Hz)',
+              ylabel='|Z| (Ω)', logx=True, logy=True, curves=[],
+              info=pdn_report(res, folder)['summary'])
     for ref, z in p['z'].items():
-        cs['curves'].append(dict(name=ref, x=f, y=z['mag'], role='data', unit='Ω'))
-        cs['curves'].append(dict(name=f"{ref}, bare planes", x=f, y=z['bare'], role='reference', unit='Ω'))
-    for t in sorted({t for t in [p.get('target'), *[z.get('target') for z in p['z'].values()]] if t}):
-        cs['curves'].append(dict(name=f"target {_ohm(t)}", x=[f[0], f[-1]], y=[t, t], role='limit', unit='Ω'))
+        cs['curves'].append(
+            dict(name=ref, x=f, y=z['mag'], role='data', unit='Ω'))
+        cs['curves'].append(
+            dict(name=f"{ref}, bare planes", x=f, y=z['bare'], role='reference',
+                 unit='Ω'))
+    for t in sorted({
+            t
+            for t in
+        [p.get('target'), *[z.get('target') for z in p['z'].values()]]
+            if t
+    }):
+        cs['curves'].append(
+            dict(name=f"target {_ohm(t)}", x=[f[0], f[-1]], y=[t, t],
+                 role='limit', unit='Ω'))
     sets = [cs]
     rp = p.get('ripple')
-    if rp and rp.get('loads'):                                  # what the loads' current spectra make of it
-        sets.append(dict(title='Ripple on the rail by harmonic', xlabel='frequency (Hz)', ylabel='peak (mV)',
-                         logx=True, logy=True, info=cs['info'],
-                         curves=[dict(name=r, x=l['f'], y=[v * 1e3 for v in l['V']], role='data', unit='mV')
-                                 for r, l in rp['loads'].items()]))
+    if rp and rp.get('loads'):  # what the loads' current spectra make of it
+        sets.append(
+            dict(
+                title='Ripple on the rail by harmonic', xlabel='frequency (Hz)',
+                ylabel='peak (mV)', logx=True, logy=True, info=cs['info'],
+                curves=[
+                    dict(name=r, x=l['f'], y=[v * 1e3
+                                              for v in l['V']], role='data',
+                         unit='mV')
+                    for r, l in rp['loads'].items()
+                ]))
     return sets
 
 
-# ---- near field ----------------------------------------------------------------------------------------
+# ---- near field
+# ----------------------------------------------------------------------------------------
 def mqs_report(res, folder=''):
     s = res['selection']
     if res.get('preview'):
-        return dict(title=f"{s['converter']}: mesh preview", summary=f"Near field, {s['converter']}: mesh preview",
-                    sections=[dict(title='', text=f"{res['triangles']:,} triangles. No matrix fill or solve."),
-                              dict(title='Mesh', table=_table(
-                                  ['layer', 'triangles', 'max edge (mm)', 'min angle (°)'],
-                                  [[l, v['triangles'], v['max_edge_mm'], v['min_angle_deg']]
-                                   for l, v in res['layers'].items()], [None, 'd', '.3g', '.2f']))],
-                    notes=[], images=[], footer='', mesh='mqs')
+        return dict(
+            title=f"{s['converter']}: mesh preview",
+            summary=f"Near field, {s['converter']}: mesh preview", sections=[
+                dict(
+                    title='', text=
+                    f"{res['triangles']:,} triangles. No matrix fill or solve."
+                ),
+                dict(
+                    title='Mesh', table=_table([
+                        'layer', 'triangles', 'max edge (mm)', 'min angle (°)'
+                    ], [[
+                        l, v['triangles'], v['max_edge_mm'], v['min_angle_deg']
+                    ] for l, v in res['layers'].items()],
+                                               [None, 'd', '.3g', '.2f']))
+            ], notes=[], images=[], footer='', mesh='mqs')
     n = len(res['frequencies_Hz'])
     rows = [[f, a, r * 1e3, l * 1e9, max(hp)] for f, a, r, l, hp in zip(
-        res['frequencies_Hz'], res['harmonic_peak_A'], res['copper_R_ohm'], res['copper_L_H'], res['peak_H_Am'])]
-    columns = ['frequency (Hz)', 'peak (A)', 'copper R (mΩ)', 'copper L (nH)', 'peak H (A/m)']
+        res['frequencies_Hz'], res['harmonic_peak_A'], res['copper_R_ohm'],
+        res['copper_L_H'], res['peak_H_Am'])]
+    columns = [
+        'frequency (Hz)', 'peak (A)', 'copper R (mΩ)', 'copper L (nH)',
+        'peak H (A/m)'
+    ]
     formats = ['g', '.4g', '.4g', '.4g', '.4g']
-    name = f"{s['converter']} and {s['low']}" if s.get('low') else s['converter']      # a discrete cell's two parts
-    text = (f"Input capacitors: {', '.join(s['capacitors'])}"
-            + (f"; the loop through {s['converter']}, the switch node {s['switch']} and {s['low']}" if s.get('low') else '')
-            + f"; {res['triangles']:,} triangles.")
+    # a discrete cell's two parts
+    name = (f"{s['converter']} and {s['low']}"
+            if s.get('low') else s['converter'])
+    text = (f"Input capacitors: {', '.join(s['capacitors'])}" + (
+        f"; the loop through {s['converter']}, the switch node {s['switch']} "
+        f"and {s['low']}"
+        if s.get('low') else '') + f"; {res['triangles']:,} triangles.")
     sp = res.get('spectrum')
-    if sp:                                                      # a circuit's current, beside the pulse of the settings
-        rows = [[*row[:2], a, *row[2:]] for row, a in zip(rows, sp['assumed_peak_A'])]
+    if sp:  # a circuit's current, beside the pulse of the settings
+        rows = [[*row[:2], a, *row[2:]]
+                for row, a in zip(rows, sp['assumed_peak_A'])]
         columns.insert(2, 'assumed pulse (A)')
         formats.insert(2, '.4g')
-        text += (f" The input current's harmonics are those of {os.path.basename(sp['file'])} (a circuit's run), not "
-                 f"the rectangular pulse of the settings, which is beside them.")
+        text += (
+            " The input current's harmonics are those of "
+            f"{os.path.basename(sp['file'])} (a circuit's run), not the "
+            "rectangular pulse of the settings, which is beside them.")
     return dict(
-        title=f"{name}: {s['vin']} / {s['ground']}",
-        summary=(f"Near field, {name} on {s['vin']}: {n} harmonic{'s' if n != 1 else ''}"
-                 + (" of a circuit's input current" if sp else '')),
-        sections=[dict(title='', text=text),
-                  dict(title='Harmonics', table=_table(columns, rows, formats)),
-                  dict(title='Model assumptions', notes=list(res.get('notes') or []))],
-        notes=[], images=[], mesh='mqs',
-        footer=', '.join(f"{k} {v:g} s" for k, v in (res.get('seconds') or {}).items()
-                         if isinstance(v, (int, float))))
+        title=f"{name}: {s['vin']} / {s['ground']}", summary=
+        (f"Near field, {name} on {s['vin']}: {n} "
+         f"harmonic{'s' if n != 1 else ''}"
+         + (" of a circuit's input current" if sp else '')), sections=[
+             dict(title='', text=text),
+             dict(title='Harmonics', table=_table(columns, rows, formats)),
+             dict(title='Model assumptions', notes=list(res.get('notes') or []))
+         ], notes=[], images=[], mesh='mqs', footer=', '.join(
+             f"{k} {v:g} s" for k, v in (res.get('seconds') or {}).items()
+             if isinstance(v, (int, float))))
 
 
 def mqs_curves(res, folder=''):
     if res.get('preview') or not res.get('frequencies_Hz'):
         return []
-    return [dict(title='Peak magnetic field per harmonic', xlabel='frequency (Hz)', ylabel='peak |H| (A/m)',
-                 logx=True, logy=True, info=mqs_report(res, folder)['summary'],
-                 curves=[dict(name='peak |H|', x=res['frequencies_Hz'], y=[max(row) for row in res['peak_H_Am']],
-                              role='data', unit='A/m')])]
+    return [
+        dict(
+            title='Peak magnetic field per harmonic', xlabel='frequency (Hz)',
+            ylabel='peak |H| (A/m)', logx=True, logy=True,
+            info=mqs_report(res, folder)['summary'], curves=[
+                dict(name='peak |H|', x=res['frequencies_Hz'],
+                     y=[max(row) for row in res['peak_H_Am']], role='data',
+                     unit='A/m')
+            ])
+    ]
 
 
 def mqs_suggest(res, folder=''):
-    """The converter's input rail, for the power-integrity analysis: its net, its ground and its voltage; the
-    source and the loads are not the near field's to know. And the converter as a circuit (circuit/converter.py's
-    model, which the run wrote), for the circuit analysis: with the board's copper."""
+    """The converter's input rail, for the power-integrity analysis: its net,
+    its ground and its voltage; the source and the loads are not the near
+    field's to know. And the converter as a circuit (circuit/converter.py's
+    model, which the run wrote), for the circuit analysis: with the board's
+    copper."""
     s = res['selection']
     volts = (res.get('settings') or {}).get('vin_volts') or ''
-    out = [dict(to='pdn', label='Copy the input rail to Power integrity',
-                values=dict(rail=s['vin'], ground=s['ground'], ground_source=s.get('low') or s['converter'], volts=volts, load=''),
-                need=[] if volts else ['volts'],
-                note='The input rail is copied. Set its source' + ('' if volts else ', its voltage')
-                     + ' and its DC loads before Run.')]
+    out = [
+        dict(
+            to='pdn', label='Copy the input rail to Power integrity',
+            values=dict(rail=s['vin'], ground=s['ground'],
+                        ground_source=(s.get('low') or s['converter']),
+                        volts=volts, load=''), need=[] if volts else ['volts'],
+            note='The input rail is copied. Set its source' +
+            ('' if volts else ', its voltage')
+            + ' and its DC loads before Run.')
+    ]
     model = os.path.join(folder or '', res.get('circuit_model') or '')
     if res.get('circuit_model') and os.path.isfile(model):
-        out.append(dict(to='circuit', label=f"Open {s['converter']} as a circuit",
-                        values=dict(model=os.path.abspath(model), copper=True), need=[],
-                        note=f"{s['converter']} as a circuit: its capacitors and inductor from the board, its "
-                             f"switches, supply and load assumed. Check its parameters (vin, vout, iout, fsw) "
-                             f"before Run."))
+        out.append(
+            dict(
+                to='circuit', label=f"Open {s['converter']} as a circuit",
+                values=dict(model=os.path.abspath(model),
+                            copper=True), need=[], note=
+                f"{s['converter']} as a circuit: its capacitors and inductor "
+                "from the board, its switches, supply and load assumed. Check "
+                "its parameters (vin, vout, iout, fsw) before Run."))
     return out
 
 
 def circuit_suggest(res, folder='', pads=None):
-    """What a circuit's run draws from its supply (a case's 'supply': circuit/supply.py), for the others: the
-    rail with its DC loads and their current spectra for the power-integrity analysis, and a part's input current
-    for the near field. Of the point that draws most. pads: {footprint: the
-    nets of its pads} of the model's board, when known: only parts on it are proposed."""
+    """What a circuit's run draws from its supply (a case's 'supply':
+    circuit/supply.py), for the others: the rail with its DC loads and their
+    current spectra for the power-integrity analysis, and a part's input current
+    for the near field. Of the point that draws most. pads: {footprint: the nets
+    of its pads} of the model's board, when known: only parts on it are
+    proposed."""
     cases = [c for c in res.get('cases') or [] if c.get('supply')]
     if not cases:
         return []
-    case = max(cases, key=lambda c: c.get('source_power_W') or c.get('input_power_W') or 0.0)
+    case = max(
+        cases,
+        key=lambda c: c.get('source_power_W') or c.get('input_power_W') or 0.0)
     name = case.get('name') or os.path.basename(str(case.get('folder') or ''))
-    here = case.get('folder') if os.path.isdir(str(case.get('folder') or '')) else os.path.join(folder or '', name)
+    here = (case.get('folder') if os.path.isdir(str(case.get('folder') or ''))
+            else os.path.join(folder or '', name))
     of = f" (point {name})" if len(res['cases']) > 1 else ''
-    ground = next((g for g in ('GND', 'gnd', '0', 'GNDPWR', 'PGND') if any(g in ns for ns in (pads or {}).values())),
-                  'GND')                                        # (as circuit/copper.py finds the board's ground)
+    ground = next((g for g in ('GND', 'gnd', '0', 'GNDPWR', 'PGND')
+                   if any(g in ns for ns in (pads or {}).values())),
+                  'GND')  # (as circuit/copper.py finds the board's ground)
     try:
         with open(os.path.join(here, 'model.json'), encoding='utf-8') as fh:
-            ground = ((json.load(fh).get('board') or {}).get('nets') or {}).get('0', ground)
+            ground = ((json.load(fh).get('board') or {}).get('nets')
+                      or {}).get('0', ground)
     except (OSError, ValueError):
         pass
     out = []
     for row in case['supply']:
-        on = row.get('rail_net') or (row.get('node') if row.get('through') else row['net'])   # the net its loads
-                                                                        # are on (behind a filter: not the source's)
-        loads = [l for l in row['loads'] if os.path.isfile(os.path.join(here, l['file']))
-                 and (pads is None or on in pads.get(l['footprint'], ()) or row['net'] in pads.get(l['footprint'], ()))]
+        # the net its loads
+        on = (row.get('rail_net')
+              or (row.get('node') if row.get('through') else row['net']))
+        # are on
+        # (behind
+        # a
+        # filter:
+        # not
+        # the
+        # source's)
+        loads = [
+            l for l in row['loads']
+            if os.path.isfile(os.path.join(here, l['file'])) and (
+                pads is None or on in pads.get(l['footprint'], ())
+                or row['net'] in pads.get(l['footprint'], ()))
+        ]
         if not loads:
             continue
         file = lambda l: os.path.abspath(os.path.join(here, l['file']))
-        values = dict(rail=row['net'], ground=ground, volts=row['volts'],
-                      load='\n'.join(f"{l['footprint']}={l['avg_A']:.4g}" for l in loads),
-                      load_spectrum='\n'.join(f"{l['footprint']}={file(l)}" for l in loads))
-        src = row.get('source_footprint')                       # the supply is a part of the board: the rail's
-        known = bool(src) and (pads is None or {row['net'], ground} <= set(pads.get(src, ())))     # source, both sides
+        values = dict(
+            rail=row['net'], ground=ground, volts=row['volts'],
+            load='\n'.join(f"{l['footprint']}={l['avg_A']:.4g}" for l in loads),
+            load_spectrum='\n'.join(
+                f"{l['footprint']}={file(l)}" for l in loads))
+        # the supply is a part of the board: the rail's
+        src = row.get('source_footprint')
+        # source, both sides
+        known = (bool(src) and
+                 (pads is None or {row['net'], ground} <= set(pads.get(src,
+                                                                       ()))))
         if known:
             values.update(source=src, ground_source=src)
-        if row.get('through'):                                  # the filter's inductors: in the rail's model
+        if row.get('through'):  # the filter's inductors: in the rail's model
             values['through'] = ','.join(row['through'])
         if row.get('dcr'):
-            values['dcr'] = '\n'.join(f"{r}={v:g}" for r, v in row['dcr'].items())
-        out.append(dict(
-            to='pdn', label=f"Copy the rail {row['net']} and what is drawn from it to Power integrity",
-            values=values, need=[],
-            note=f"The rail {row['net']} with what the circuit's parts draw from it{of}: their average as "
-                 f"DC loads, their harmonics as current spectra"
-                 + (f", through {', '.join(row['through'])}" if row.get('through') else '')
-                 + (f"; its source is {src}." if known else ". Set its source before Run.")))
+            values['dcr'] = '\n'.join(
+                f"{r}={v:g}" for r, v in row['dcr'].items())
+        out.append(
+            dict(
+                to='pdn', label=
+                f"Copy the rail {row['net']} and what is drawn from it to "
+                "Power integrity",
+                values=values, need=[], note=
+                f"The rail {row['net']} with what the circuit's parts draw "
+                f"from it{of}: their average as DC loads, their harmonics as "
+                "current spectra" +
+                (f", through {', '.join(row['through'])}" if row.get('through')
+                 else '') + (f"; its source is {src}."
+                             if known else ". Set its source before Run.")))
         for l in sorted(loads, key=lambda l: -l['rms_A'])[:2]:
             if pads is not None and ground not in pads.get(l['footprint'], ()):
-                continue                                        # (the near field's source: a part on both)
-            caps = [c for c in row.get('capacitors') or [] if pads is None or {on, ground} <= set(pads.get(c, ()))]
-            out.append(dict(
-                to='mqs', label=f"Copy {l['footprint']}'s input current to Near field",
-                values=dict(converter=l['footprint'], vin=on, ground=ground, capacitors=','.join(caps),
-                            spectrum=file(l)),
-                need=[], note=f"{l['footprint']} on {on} with the input current the circuit gave it{of}, in "
-                              f"place of the assumed pulse."))
+                continue  # (the near field's source: a part on both)
+            caps = [
+                c for c in row.get('capacitors') or []
+                if pads is None or {on, ground} <= set(pads.get(c, ()))
+            ]
+            out.append(
+                dict(
+                    to='mqs',
+                    label=f"Copy {l['footprint']}'s input current to Near "
+                          "field",
+                    values=dict(converter=l['footprint'], vin=on, ground=ground,
+                                capacitors=','.join(caps),
+                                spectrum=file(l)), need=[], note=
+                    f"{l['footprint']} on {on} with the input current the "
+                    f"circuit gave it{of}, in place of the assumed pulse."))
     return out
 
 
-# ---- temperature ---------------------------------------------------------------------------------------
+# ---- temperature
+# ---------------------------------------------------------------------------------------
 def _methods(res):
-    if 'method' in res:                                     # one solver: its summary alone
+    if 'method' in res:  # one solver: its summary alone
         return {res['method']: res}
     return {k: v for k, v in res.items() if k in ('grid', 'mesh')}
 
@@ -292,108 +463,192 @@ def thermal_report(res, folder=''):
     hot = max(m['hottest_C'] for m in ms.values())
     src = os.path.basename(first.get('board') or '')
     if first.get('circuit'):
-        src += f"; losses of circuit case {first.get('case')} ({os.path.basename(str(first['circuit']).rstrip('/'))})"
-    text = (f"{src}. " if src else '') + (
+        src += (f"; losses of circuit case {first.get('case')} "
+                f"({os.path.basename(str(first['circuit']).rstrip('/'))})")
+    text = ((f"{src}. " if src else '') + (
         f"{first['heat_in_W']:.3g} W in, {first['heat_out_W']:.3g} W given off "
-        f"({first.get('heat_out_edges_W', 0):.3g} W of it through the edges); air {first['ambient_C']:g} °C, films "
-        f"{first['film_W_m2K'][1]:g} / {first['film_W_m2K'][0]:g} W/m²K top / bottom, "
-        f"{first.get('edge_film_W_m2K', 0):g} at the edges.")
+        f"({first.get('heat_out_edges_W', 0):.3g} W of it through the edges); "
+        f"air {first['ambient_C']:g} °C, films {first['film_W_m2K'][1]:g} / "
+        f"{first['film_W_m2K'][0]:g} W/m²K top / bottom, "
+        f"{first.get('edge_film_W_m2K', 0):g} at the edges."))
     parts = sorted(first['parts'].items(), key=lambda kv: -kv[1]['part_C'])
     limits = any('tmax_C' in p for _, p in parts)
-    rows = [[ref, p['power_W'], *[ms[n]['parts'].get(ref, {}).get('board_C', '') for n in names], p['part_C'],
-             'pads' if p.get('theta_K_W') is None else f"{p['theta_K_W']:g} K/W", p['part_C'] - first['ambient_C'],
-             *([p.get('tmax_C', ''), p.get('margin_K', '')] if limits else [])] for ref, p in parts]
-    over = [(r, p) for r, p in parts if p.get('margin_K') is not None and p['margin_K'] < 0]
+    rows = [[
+        ref, p['power_W'],
+        *[ms[n]['parts'].get(ref, {}).get('board_C', '')
+          for n in names], p['part_C'],
+        'pads' if p.get('theta_K_W') is None else f"{p['theta_K_W']:g} K/W",
+        p['part_C'] - first['ambient_C'],
+        *([p.get('tmax_C', ''), p.get('margin_K', '')] if limits else [])
+    ]
+            for ref, p in parts]
+    over = [(r, p)
+            for r, p in parts
+            if p.get('margin_K') is not None and p['margin_K'] < 0]
     head = ''
-    if over:                                                        # (a limit is in the headline: none had been)
-        worst = ', '.join('%s %.0f °C for %.0f' % (r, p['part_C'], p['tmax_C']) for r, p in over)
+    if over:  # (a limit is in the headline: none had been)
+        worst = ', '.join('%s %.0f °C for %.0f' % (r, p['part_C'], p['tmax_C'])
+                          for r, p in over)
         head = ', OVER ITS LIMIT: ' + worst
     hottest = parts[0] if parts else None
-    out = dict(title=f"Hottest copper {hot:.1f} °C", sections=[dict(title='', text=text)], images=[],
-               show=dict(field='T'),                            # a viewer starts on the hottest layer
-               summary=f"Thermal: hottest copper {hot:.1f} °C" + (
-                   f", hottest part {hottest[0]} at {hottest[1]['part_C']:.1f} °C"
-                   + (' (its pads: no theta)' if hottest[1].get('theta_K_W') is None else '') if hottest else '')
-               + head)
-    out['sections'].append(dict(title='Parts', text=("part °C: the copper under its pads plus its loss times its "
-                                                     "theta (pads: no theta given: --theta, or the footprint's field "
-                                                     "thermal.theta)."), table=_table(
-        ['part', 'loss (W)', *[f"board °C ({n})" for n in names], 'part °C', 'from', 'rise (K)',
-         *(['limit °C', 'margin (K)'] if limits else [])], rows,
-        [None, '.3g', *['.1f'] * len(names), '.1f', None, '.1f', *(['.0f', '.1f'] if limits else [])])))
-    out['sections'].append(dict(title='Layers', table=_table(
-        ['layer', 'hottest °C', 'mean °C'],
-        [[lay, v['hottest_C'], v['mean_C']] for lay, v in first['layers'].items()], [None, '.1f', '.1f'])))
+    out = dict(
+        title=f"Hottest copper {hot:.1f} °C",
+        sections=[dict(title='', text=text)],
+        images=[],
+        show=dict(field='T'),  # a viewer starts on the hottest layer
+        summary=f"Thermal: hottest copper {hot:.1f} °C" +
+        (f", hottest part {hottest[0]} at {hottest[1]['part_C']:.1f} °C" +
+         (' (its pads: no theta)' if hottest[1].get('theta_K_W') is None else
+          '') if hottest else '') + head)
+    out['sections'].append(
+        dict(
+            title='Parts', text=(
+                "part °C: the copper under its pads plus its loss times its "
+                "theta (pads: no theta given: --theta, or the footprint's "
+                "field thermal.theta)."), table=_table([
+                    'part', 'loss (W)', *[f"board °C ({n})" for n in names],
+                    'part °C', 'from', 'rise (K)',
+                    *(['limit °C', 'margin (K)'] if limits else [])
+                ], rows, [
+                    None, '.3g', *['.1f'] * len(names), '.1f', None, '.1f',
+                    *(['.0f', '.1f'] if limits else [])
+                ])))
+    out['sections'].append(
+        dict(
+            title='Layers',
+            table=_table(['layer', 'hottest °C', 'mean °C'],
+                         [[lay, v['hottest_C'], v['mean_C']]
+                          for lay, v in first['layers'].items()],
+                         [None, '.1f', '.1f'])))
     d = res.get('difference')
     if d:
-        out['sections'].append(dict(title='Mesh against grid', text=(
-            f"Parts within {max(abs(v) for v in d['parts_K'].values()):.2f} K, the maps within {d['largest_K']:.2f} K.")))
+        out['sections'].append(
+            dict(
+                title='Mesh against grid', text=
+                ("Parts within "
+                 f"{max(abs(v) for v in d['parts_K'].values()):.2f} K, the "
+                 f"maps within {d['largest_K']:.2f} K."
+                 )))
     out['notes'] = list(dict.fromkeys(first.get('notes') or []))
-    out['footer'] = ('; '.join(f"{n}: {ms[n]['unknowns']:,} unknowns at {ms[n]['size_mm']:g} mm" for n in names) + '; '
-                     + ', '.join(f"{k} {v:g} s" for k, v in (first.get('seconds') or {}).items()))
+    out['footer'] = ('; '.join(
+        f"{n}: {ms[n]['unknowns']:,} unknowns at {ms[n]['size_mm']:g} mm"
+        for n in names) + '; ' + ', '.join(
+            f"{k} {v:g} s" for k, v in (first.get('seconds') or {}).items()))
     return out
 
 
-# ---- circuits ------------------------------------------------------------------------------------------
+# ---- circuits
+# ------------------------------------------------------------------------------------------
 def _num(v):
     return v if isinstance(v, (int, float)) else ''
 
 
 def circuit_report(res, folder=''):
-    """A circuit run: a row a point, then for each point where its loss goes and its parts' stress."""
+    """A circuit run: a row a point, then for each point where its loss goes and
+    its parts' stress."""
     cases = res.get('cases', [])
     knobs = sorted({k for c in cases for k in c.get('knobs', {})})
     measures = sorted({k for c in cases for k in c.get('measures', {})})
-    rows = [[c['name'], *[_num(c['knobs'].get(k)) for k in knobs], _num(c.get('source_power_W')),
-             _num(c.get('load_power_W')), _num(c.get('loss_W')), 100 * c['efficiency'] if c.get('efficiency') else '',
-             *[_num(c['measures'].get(m)) for m in measures], c.get('runs', ''), _num(c.get('runtime_s'))] for c in cases]
+    rows = [[
+        c['name'], *[_num(c['knobs'].get(k)) for k in knobs],
+        _num(c.get('source_power_W')),
+        _num(c.get('load_power_W')),
+        _num(c.get('loss_W')),
+        100 * c['efficiency'] if c.get('efficiency') else '',
+        *[_num(c['measures'].get(m)) for m in measures],
+        c.get('runs', ''),
+        _num(c.get('runtime_s'))
+    ] for c in cases]
     name = res.get('name') or 'Circuit'
-    best = max((c for c in cases if c.get('efficiency')), key=lambda c: c['efficiency'], default=None)
-    out = dict(title=name, sections=[], images=[],
-               notes=[f"{f['name']}: failed. {f['error']}" for f in res.get('failed', [])],
-               summary=f"Circuit, {name}: {len(cases)} point{'s' if len(cases) != 1 else ''}" + (
-                   f", efficiency up to {100 * best['efficiency']:.1f} %" if best else ''))
-    out['sections'].append(dict(title='Points', table=_table(
-        ['point', *[k.split('.', 1)[-1] for k in knobs], 'in (W)', 'out (W)', 'loss (W)', 'efficiency %', *measures,
-         'runs', 'time (s)'], rows,
-        [None, *['.4g'] * len(knobs), '.4g', '.4g', '.4g', '.2f', *['.4g'] * len(measures), 'd', '.0f'])))
+    best = max((c for c in cases if c.get('efficiency')),
+               key=lambda c: c['efficiency'], default=None)
+    out = dict(
+        title=name, sections=[], images=[], notes=[
+            f"{f['name']}: failed. {f['error']}" for f in res.get('failed', [])
+        ], summary=
+        f"Circuit, {name}: {len(cases)} point{'s' if len(cases) != 1 else ''}" +
+        (f", efficiency up to {100 * best['efficiency']:.1f} %"
+         if best else ''))
+    out['sections'].append(
+        dict(
+            title='Points', table=_table([
+                'point', *[k.split('.', 1)[-1]
+                           for k in knobs], 'in (W)', 'out (W)', 'loss (W)',
+                'efficiency %', *measures, 'runs', 'time (s)'
+            ], rows, [
+                None, *['.4g'] * len(knobs), '.4g', '.4g', '.4g', '.2f',
+                *['.4g'] * len(measures), 'd', '.0f'
+            ])))
     for c in cases:
         together = {r for grp in c.get('coupled', []) for r in grp['inductors']}
         loss = [(r, p['power_W']) for r, p in c['parts'].items()
                 if p['type'] not in ('source', 'load') and r not in together]
-        loss += [(' + '.join(grp['inductors']), grp['power_W']) for grp in c.get('coupled', [])]
+        loss += [(' + '.join(grp['inductors']), grp['power_W'])
+                 for grp in c.get('coupled', [])]
         if c.get('copper'):
-            loss.append((f"board copper ({c['copper'].get('board', '')})", c['copper']['loss_W']))
+            loss.append((f"board copper ({c['copper'].get('board', '')})",
+                         c['copper']['loss_W']))
         if c.get('gate_drive_power_W'):
-            loss.append(('gate drives', c['gate_drive_power_W']))     # what the drives put in: their resistors'
+            # what the drives put in: their resistors'
+            loss.append(('gate drives', c['gate_drive_power_W']))
         total = max(c.get('loss_W') or 0.0, 1e-30)
-        out['sections'].append(dict(title=f"{c['name']}: where the {c.get('loss_W', 0):.4g} W goes", table=_table(
-            ['part', 'loss (W)', '%'], [[r, w, 100 * w / total] for r, w in sorted(loss, key=lambda x: -x[1])
-                                        if abs(w) > 1e-4 * total], [None, '.4g', '.1f'])))
-        stress = [(r, p) for r, p in c['parts'].items() if p['type'] in ('switch', 'diode', 'capacitor', 'inductor')]
-        out['sections'].append(dict(
-            title=f"{c['name']}: stress",
-            table=_table(['part', 'avg (A)', 'RMS (A)', 'peak (A)', 'peak (V)', 'avg (V)', 'ripple (V)', 'ripple (A)'],
-                         [[r, *[_num(p.get(k)) for k in ('avg_A', 'rms_A', 'peak_A', 'peak_V', 'avg_V', 'ripple_V',
-                                                         'ripple_A')]] for r, p in stress], [None] + ['.4g'] * 7),
-            notes=list(c.get('notes') or []),
-            text=(f"Settled to {100 * c.get('periodic_error', 0):.2g} % period to period; solver tolerance "
-                  f"{c.get('reltol', '–')}; {c.get('periods', '–')} periods simulated.")))
+        out['sections'].append(
+            dict(
+                title=f"{c['name']}: where the {c.get('loss_W', 0):.4g} W goes",
+                table=_table(['part', 'loss (W)', '%'],
+                             [[r, w, 100 * w / total]
+                              for r, w in sorted(loss, key=lambda x: -x[1])
+                              if abs(w) > 1e-4 * total], [None, '.4g', '.1f'])))
+        stress = [(r, p)
+                  for r, p in c['parts'].items()
+                  if p['type'] in ('switch', 'diode', 'capacitor', 'inductor')]
+        out['sections'].append(
+            dict(
+                title=f"{c['name']}: stress", table=_table([
+                    'part', 'avg (A)', 'RMS (A)', 'peak (A)', 'peak (V)',
+                    'avg (V)', 'ripple (V)', 'ripple (A)'
+                ], [[
+                    r, *[
+                        _num(p.get(k))
+                        for k in ('avg_A', 'rms_A', 'peak_A', 'peak_V', 'avg_V',
+                                  'ripple_V', 'ripple_A')
+                    ]
+                ]
+                    for r, p in stress], [None] + ['.4g'] * 7),
+                notes=list(c.get('notes') or []), text=
+                (f"Settled to {100 * c.get('periodic_error', 0):.2g} % period "
+                 f"to period; solver tolerance {c.get('reltol', '–')}; "
+                 f"{c.get('periods', '–')} periods simulated."
+                 )))
         if c.get('copper') and c['copper'].get('ports'):
-            out['sections'].append(dict(title=f"{c['name']}: board copper", table=_table(
-                ['pad', 'net', 'to', 'RMS (A)'],
-                [[p['terminal'].rsplit('.', 1)[0], p['net'], p['reference'].rsplit('.', 1)[0], _num(p.get('rms_A'))]
-                 for p in c['copper']['ports']], [None, None, None, '.4g'])))
+            out['sections'].append(
+                dict(
+                    title=f"{c['name']}: board copper",
+                    table=_table(['pad', 'net', 'to', 'RMS (A)'], [[
+                        p['terminal'].rsplit('.', 1)[0], p['net'],
+                        p['reference'].rsplit('.', 1)[0],
+                        _num(p.get('rms_A'))
+                    ] for p in c['copper']['ports']],
+                                 [None, None, None, '.4g'])))
         f = c.get('fields')
         if f:
-            out['sections'].append(dict(
-                title=f"{c['name']}: fields over the board (AC RMS, the largest on each plane)",
-                table=_table(['height (mm)', 'H (A/m)', 'E (V/m)'], list(zip(
-                    f['heights_mm'], f['H_ac_rms_max_A_per_m'], f['E_ac_rms_max_V_per_m'])), ['.4g'] * 3),
-                text=f"The copper and its vias only: no part's own field. H to {f['highest_Hz'] / 1e6:.4g} MHz; "
-                     "E from the nets' voltages."))
-            if f.get('picture') and os.path.isfile(f['picture']) and not f.get('dumps'):
-                out['images'].append(f['picture'])                  # (written as dumps: the Viewer shows them)
+            out['sections'].append(
+                dict(
+                    title=
+                    f"{c['name']}: fields over the board (AC RMS, the largest "
+                    "on each plane)",
+                    table=_table(['height (mm)', 'H (A/m)', 'E (V/m)'],
+                                 list(
+                                     zip(f['heights_mm'],
+                                         f['H_ac_rms_max_A_per_m'],
+                                         f['E_ac_rms_max_V_per_m'])),
+                                 ['.4g'] * 3), text=
+                    f"The copper and its vias only: no part's own field. H to {f['highest_Hz'] / 1e6:.4g} MHz; "
+                    "E from the nets' voltages."))
+            if (f.get('picture') and os.path.isfile(f['picture'])
+                    and not f.get('dumps')):
+                # (written as dumps: the Viewer shows them)
+                out['images'].append(f['picture'])
             if f.get('dumps'):
                 out['show'] = dict(field='H')
     out['footer'] = 'Completed.' if res.get('complete') else 'Partial results.'
@@ -401,13 +656,16 @@ def circuit_report(res, folder=''):
 
 
 def circuit_curves(res, folder=''):
-    """A run's waveforms over the last two periods: per point, its probes' voltages and currents (a model without
-    probes: its capacitors' voltages and inductors' currents)."""
+    """A run's waveforms over the last two periods: per point, its probes'
+    voltages and currents (a model without probes: its capacitors' voltages and
+    inductors' currents)."""
     import numpy as np
     sets = []
     for c in res.get('cases', []):
-        d = c.get('folder') or ''                              # the point's folder, else its name under the run's
-        d = d if os.path.isdir(d) else os.path.join(folder, c.get('name', ''))     # (a run moved since)
+        # the point's folder, else its name under the run's
+        d = c.get('folder') or ''
+        # (a run moved since)
+        d = d if os.path.isdir(d) else os.path.join(folder, c.get('name', ''))
         try:
             with np.load(os.path.join(d, 'transient.npz')) as data:
                 v = {k: data[k] for k in data.files}
@@ -416,27 +674,38 @@ def circuit_curves(res, folder=''):
             continue
         probes = model.get('probes', {})
         kinds = {p['ref']: p.get('type') for p in model.get('parts', [])}
-        volts = [n for n, p in probes.items() if 'voltage' in p] or [r + '.V' for r, k in kinds.items() if k == 'capacitor']
-        amps = [n for n, p in probes.items() if 'current' in p] or [r + '.I' for r, k in kinds.items() if k == 'inductor']
+        volts = ([n for n, p in probes.items() if 'voltage' in p]
+                 or [r + '.V' for r, k in kinds.items() if k == 'capacitor'])
+        amps = ([n for n, p in probes.items() if 'current' in p]
+                or [r + '.I' for r, k in kinds.items() if k == 'inductor'])
         T, t = c['period_s'], v['time_s']
         take = t >= t[-1] - 2 * T
         scale, unit = (1e3, 'ms') if T >= 1e-3 else (1e6, 'µs')
         x = ((t[take] - (t[-1] - 2 * T)) * scale).tolist()
-        for what, keys, u in (('voltages', volts, 'V'), ('currents', amps, 'A')):
+        for what, keys, u in (('voltages', volts, 'V'), ('currents', amps,
+                                                         'A')):
             have = [k for k in keys if k in v]
             if have:
-                sets.append(dict(title=f"{c['name']}: {what}", xlabel=f"time in the final two periods ({unit})",
-                                 ylabel=u, logx=False, logy=False, info=circuit_report(res, folder)['summary'],
-                                 curves=[dict(name=k, x=x, y=v[k][take].tolist(), role='data', unit=u) for k in have]))
+                sets.append(
+                    dict(
+                        title=f"{c['name']}: {what}",
+                        xlabel=f"time in the final two periods ({unit})",
+                        ylabel=u, logx=False, logy=False,
+                        info=circuit_report(res, folder)['summary'], curves=[
+                            dict(name=k, x=x, y=v[k][take].tolist(),
+                                 role='data', unit=u) for k in have
+                        ]))
     return sets
 
 
-BUILDERS = dict(pdn=(pdn_report, pdn_curves), mqs=(mqs_report, mqs_curves), thermal=(thermal_report, None),
+BUILDERS = dict(pdn=(pdn_report, pdn_curves), mqs=(mqs_report, mqs_curves),
+                thermal=(thermal_report, None),
                 circuit=(circuit_report, circuit_curves))
 
 
 def result(kind, folder):
-    """A folder's result of a tool (its preview's when that is all there is), or None."""
+    """A folder's result of a tool (its preview's when that is all there is), or
+    None."""
     for name in (RESULTS[kind], PREVIEWS.get(kind)):
         res = _load(folder, name) if name else None
         if res is not None:

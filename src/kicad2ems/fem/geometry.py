@@ -1,11 +1,16 @@
-"""The board's copper, pads and vias as shapely pieces (mm), from kicad2ems's board.json dict, shared by the solvers.
+"""The board's copper, pads and vias as shapely pieces (mm), from kicad2ems's
+board.json dict, shared by the solvers.
 
-    load_board(path, nets)              # board.json's dict: a .kicad_pcb through kicad2ems, or a <name>_board.json
-    copper_of(board, nets, layer)       # one shapely geometry, or None
-    polygons(geom, tol)                 # its polygons, simplified to tol mm, slivers and tiny holes dropped
-    pads_of(board, ref, nets)           # [(layer, polygon)]: a part's pads on those nets (through-hole: every layer)
-    part_copper(board, ref, keep)       # the same of the pads keep(pad) passes
-    slab(board, layer)                  # (bottom, top) z of a copper layer's thickness, mm
+    load_board(path, nets)         # board.json's dict: a .kicad_pcb through
+                                   kicad2ems, or a <name>_board.json
+    copper_of(board, nets, layer)  # one shapely geometry, or None
+    polygons(geom, tol)            # its polygons, simplified to tol mm, slivers
+                                   and tiny holes dropped
+    pads_of(board, ref, nets)      # [(layer, polygon)]: a part's pads on those
+                                   nets (through-hole: every layer)
+    part_copper(board, ref, keep)  # the same of the pads keep(pad) passes
+    slab(board, layer)             # (bottom, top) z of a copper layer's
+                                   thickness, mm
 """
 import json
 from pathlib import Path
@@ -15,26 +20,33 @@ from shapely.ops import unary_union
 
 
 def load_board(path, nets=None):
-    """board.json's dict from a .kicad_pcb (through kicad2ems; only `nets` when given) or a kicad2ems board.json."""
+    """board.json's dict from a .kicad_pcb (through kicad2ems; only `nets` when
+    given) or a kicad2ems board.json."""
     path = str(path)
     if path.endswith('.json'):
         return json.loads(Path(path).read_text())
     from kicad2ems.core.importers import open_board
     from kicad2ems.core.board import Board
     only = dict(nets=sorted(nets), parts='none') if nets else {}
-    return Board(open_board(path), need_ports=False, log=lambda *a: None, **only).to_dict()
+    return Board(open_board(path), need_ports=False, log=lambda *a: None,
+                 **only).to_dict()
 
 
 def copper_of(board, nets, layer):
     nets = {nets} if isinstance(nets, str) else set(nets)
-    gs = [shape(c['polygon']) for c in board['copper'].get(layer, []) if c.get('net') in nets]
+    gs = [
+        shape(c['polygon'])
+        for c in board['copper'].get(layer, [])
+        if c.get('net') in nets
+    ]
     g = unary_union(gs).buffer(0) if gs else None
     return None if g is None or g.is_empty else g
 
 
 def polygons(g, tol=0.0):
-    """The polygons of a shapely geometry; tol > 0 simplifies them (mm) and drops tiny holes and slivers (real
-    copper's near-duplicate vertices otherwise break 3D meshing)."""
+    """The polygons of a shapely geometry; tol > 0 simplifies them (mm) and
+    drops tiny holes and slivers (real copper's near-duplicate vertices
+    otherwise break 3D meshing)."""
     if g is None or g.is_empty:
         return []
     if tol:
@@ -42,7 +54,11 @@ def polygons(g, tol=0.0):
     out = []
     for p in (g.geoms if hasattr(g, 'geoms') else [g]):
         if isinstance(p, Polygon) and p.area > 1e-4:
-            out.append(Polygon(p.exterior, [h for h in p.interiors if Polygon(h).area > 4 * tol * tol + 1e-4]) if tol else p)
+            out.append(
+                Polygon(p.exterior, [
+                    h for h in p.interiors
+                    if Polygon(h).area > 4 * tol * tol + 1e-4
+                ]) if tol else p)
     return out
 
 
@@ -51,8 +67,9 @@ def layers(board):
 
 
 def slab(board, layer):
-    """(bottom, top) z of a copper layer's slab, mm: board.json's copper is a sheet at z with thickness t; the outer
-    layers grow outward, the inner ones upward."""
+    """(bottom, top) z of a copper layer's slab, mm: board.json's copper is a
+    sheet at z with thickness t; the outer layers grow outward, the inner ones
+    upward."""
     zs = {c['name']: (c['z'], c['t']) for c in board['stack']['copper']}
     z, t = zs[layer]
     if z <= min(v[0] for v in zs.values()):
@@ -61,17 +78,20 @@ def slab(board, layer):
 
 
 def part_copper(board, ref, keep):
-    """[(layer, polygon)] of part `ref`'s pads that keep(pad) passes: an SMD pad on its layer, a through-hole one
-    (*.Cu or several layers) on every copper layer."""
+    """[(layer, polygon)] of part `ref`'s pads that keep(pad) passes: an SMD pad
+    on its layer, a through-hole one (*.Cu or several layers) on every copper
+    layer."""
     names = layers(board)
-    fp = next((f for f in board['prims']['footprints'] if f['ref'] == ref), None)
+    fp = next((f for f in board['prims']['footprints'] if f['ref'] == ref),
+              None)
     if fp is None:
         raise ValueError(f'no part {ref} on the board')
     out = []
     for p in fp.get('pads', []):
         if p.get('geom') and keep(p):
             on = p.get('layers', [])
-            ls = names if any(l in ('*.Cu', '*.Cu*') for l in on) else [l for l in on if l in names]
+            ls = (names if any(l in ('*.Cu', '*.Cu*')
+                               for l in on) else [l for l in on if l in names])
             out += [(l, shape(p['geom'])) for l in ls]
     return out
 

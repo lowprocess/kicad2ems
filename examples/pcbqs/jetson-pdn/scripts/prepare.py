@@ -16,9 +16,11 @@ def main():
     raw=args.board.read_bytes()
     sha=hashlib.sha1(f'blob {len(raw)}\0'.encode()+raw).hexdigest()
     if sha!='2884cd5276b0676d4e5d8d919f202d85e8432987':
-        parser.error('board differs from the pinned example used in this report')
+        parser.error(
+            'board differs from the pinned example used in this report')
     args.out.mkdir(parents=True,exist_ok=True)
-    board=Board(open_board(str(args.board)),need_ports=False,parts='none',log=print).to_dict()
+    board = Board(open_board(str(args.board)), need_ports=False, parts='none',
+                  log=print).to_dict()
     (args.out/'board.json').write_text(json.dumps(board))
     print('Verified source blob and wrote',args.out/'board.json')
 

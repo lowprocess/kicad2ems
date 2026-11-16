@@ -1,11 +1,13 @@
 """
-An analysis's report on the Results page (Analysis.report: a title, a line, sections of text and tables, notes,
-pictures): as a page to read, or as its tables to sort, copy and export. The helpers need no Qt.
+An analysis's report on the Results page (Analysis.report: a title, a line,
+sections of text and tables, notes, pictures): as a page to read, or as its
+tables to sort, copy and export. The helpers need no Qt.
 
-    to_html(report)                 the page
-    tables(report)                  [(title, table)]: the sections that hold one
-    cell(value, format)             a cell as it is shown; to_csv(table) a table as CSV text
-    standalone(report)              the page as a file of its own (pictures inside it)
+    to_html(report)      the page
+    tables(report)       [(title, table)]: the sections that hold one
+    cell(value, format)  a cell as it is shown; to_csv(table) a table as CSV
+                         text
+    standalone(report)   the page as a file of its own (pictures inside it)
     view = ReportView(); view.set_report(report); view.set_mode('Tables')
     view.save('r.html' | 'r.pdf'); view.print_()
 """
@@ -17,7 +19,8 @@ MODES = ('Report', 'Tables')
 
 
 def cell(v, fmt=None):
-    """A cell as it is shown: a number by its column's format (None: '.4g'), anything else as it is."""
+    """A cell as it is shown: a number by its column's format (None: '.4g'),
+    anything else as it is."""
     if v is None or v == '':
         return ''
     if isinstance(v, bool):
@@ -31,7 +34,8 @@ def cell(v, fmt=None):
 
 
 def tables(report):
-    """[(title, table)] of the report's sections that hold a table (an untitled one: 'Table n')."""
+    """[(title, table)] of the report's sections that hold a table (an untitled
+    one: 'Table n')."""
     out = []
     for s in (report or {}).get('sections', []):
         if s.get('table') and s['table'].get('columns'):
@@ -48,24 +52,35 @@ def to_csv(table):
     f = _formats(table)
     rows = [','.join(q(c) for c in table['columns'])]
     for r in table['rows']:
-        rows.append(','.join('' if v in ('', None) else q(v) if isinstance(v, str) else cell(v, f[k]).replace(',', '')
+        rows.append(','.join('' if v in (
+            '', None
+        ) else q(v) if isinstance(v, str) else cell(v, f[k]).replace(',', '')
                              for k, v in enumerate(r)))
     return '\n'.join(rows) + '\n'
 
 
 def _table_html(table):
     e, f, rows = html.escape, _formats(table), table['rows']
-    align = ['right' if all(isinstance(r[k], (int, float)) or r[k] in ('', None) for r in rows)
-             and any(isinstance(r[k], (int, float)) for r in rows) else 'left' for k in range(len(table['columns']))]
-    head = ''.join(f"<th align={align[k]}>{e(str(c))}</th>" for k, c in enumerate(table['columns']))
-    body = ''.join("<tr>" + ''.join(f"<td align={align[k]}>{e(cell(v, f[k]))}</td>" for k, v in enumerate(r))
-                   + "</tr>" for r in rows)
+    align = [
+        'right' if
+        all(isinstance(r[k], (int, float)) or r[k] in ('', None)
+            for r in rows)
+        and any(isinstance(r[k], (int, float))
+                for r in rows) else 'left'
+        for k in range(len(table['columns']))
+    ]
+    head = ''.join(f"<th align={align[k]}>{e(str(c))}</th>"
+                   for k, c in enumerate(table['columns']))
+    body = ''.join(
+        "<tr>" + ''.join(f"<td align={align[k]}>{e(cell(v, f[k]))}</td>"
+                         for k, v in enumerate(r)) + "</tr>"
+        for r in rows)
     return f"<table border=0 cellspacing=6><tr>{head}</tr>{body}</table>"
 
 
 def to_html(report, width=820):
-    """The report as a page: its title, each section (its heading, text, table and notes), the notes, the
-    pictures, the footer."""
+    """The report as a page: its title, each section (its heading, text, table
+    and notes), the notes, the pictures, the footer."""
     if not report:
         return ''
     e = html.escape
@@ -78,9 +93,12 @@ def to_html(report, width=820):
         if s.get('table') and s['table'].get('columns'):
             h.append(_table_html(s['table']))
         if s.get('notes'):
-            h.append("<ul>" + ''.join(f"<li>{e(str(n))}</li>" for n in s['notes']) + "</ul>")
+            h.append("<ul>" + ''.join(f"<li>{e(str(n))}</li>"
+                                      for n in s['notes']) + "</ul>")
     if report.get('notes'):
-        h.append("<h4>Notes</h4><ul>" + ''.join(f"<li>{e(str(n))}</li>" for n in report['notes']) + "</ul>")
+        h.append("<h4>Notes</h4><ul>"
+                 + ''.join(f"<li>{e(str(n))}</li>" for n in report['notes'])
+                 + "</ul>")
     for p in report.get('images') or []:
         h.append(f"<p><img src='{e(str(p))}' width={int(width)}></p>")
     if report.get('footer'):
@@ -89,7 +107,8 @@ def to_html(report, width=820):
 
 
 def standalone(report):
-    """The page as a file of its own: its pictures inside it (data URIs), so it opens anywhere, sent or moved."""
+    """The page as a file of its own: its pictures inside it (data URIs), so it
+    opens anywhere, sent or moved."""
     def inline(m):
         path = m.group(1)
         try:
@@ -98,28 +117,35 @@ def standalone(report):
         except OSError:
             return m.group(0)
         ext = os.path.splitext(path)[1].lower().lstrip('.') or 'png'
-        mime = 'image/svg+xml' if ext == 'svg' else f"image/{'jpeg' if ext == 'jpg' else ext}"
+        mime = ('image/svg+xml'
+                if ext == 'svg' else f"image/{'jpeg' if ext == 'jpg' else ext}")
         return f"<img src='data:{mime};base64,{data}'"
     import re
-    body = re.sub(r"<img src='([^']+)'", lambda m: inline(m) if not m.group(1).startswith('data:') else m.group(0),
-                  to_html(report))
+    body = re.sub(
+        r"<img src='([^']+)'", lambda m: inline(m)
+        if not m.group(1).startswith('data:') else m.group(0), to_html(report))
     title = html.escape((report or {}).get('title') or 'Report')
-    return (f"<!doctype html>\n<html><head><meta charset='utf-8'><title>{title}</title>"
-            "<style>body{font-family:sans-serif;max-width:900px;margin:2em auto;padding:0 1em} "
-            "img{max-width:100%;height:auto} th{text-align:left}</style></head><body>\n" + body + "\n</body></html>\n")
+    return ((
+        f"<!doctype html>\n<html><head><meta charset='utf-8'><title>{title}</title>"
+        "<style>body{font-family:sans-serif;max-width:900px;margin:2em auto;padding:0 1em} "
+        "img{max-width:100%;height:auto} th{text-align:left}</style></head><body>\n"
+        + body + "\n</body></html>\n"))
 
 
-try:                                                    # the view itself (Qt); the helpers above need none
+try:  # the view itself (Qt); the helpers above need none
     from PySide6.QtCore import Qt, QSignalBlocker
-    from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget, QTextBrowser, QTableWidget,
-                                   QTableWidgetItem, QComboBox, QPushButton, QLabel, QFileDialog, QApplication,
+    from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
+                                   QStackedWidget, QTextBrowser, QTableWidget,
+                                   QTableWidgetItem, QComboBox, QPushButton,
+                                   QLabel, QFileDialog, QApplication,
                                    QAbstractItemView, QHeaderView)
 except ImportError:                                     # pragma: no cover
     QWidget = QTableWidgetItem = object
 
 
 class _Cell(QTableWidgetItem):
-    """A cell that sorts by its value: numbers as numbers (the empty ones last), text as text."""
+    """A cell that sorts by its value: numbers as numbers (the empty ones last),
+    text as text."""
     def __init__(self, value, text):
         super().__init__(text)
         self.value = value
@@ -128,16 +154,19 @@ class _Cell(QTableWidgetItem):
 
     def _key(self):
         v = self.value
-        return (0, v, '') if isinstance(v, (int, float)) and not isinstance(v, bool) else \
-            (2, 0, '') if v in ('', None) else (1, 0, str(v).lower())
+        return ((0, v, '')
+                if isinstance(v, (int, float)) and not isinstance(v, bool) else
+                (2, 0, '') if v in ('', None) else (1, 0, str(v).lower()))
 
     def __lt__(self, other):
-        return self._key() < other._key() if isinstance(other, _Cell) else super().__lt__(other)
+        return (self._key() < other._key()
+                if isinstance(other, _Cell) else super().__lt__(other))
 
 
 class ReportView(QWidget):
-    """The report to read (a page) or its tables one at a time: sorted by a click on a column, copied (the
-    selection, or all of it, tab-separated: it pastes into a spreadsheet), exported as CSV."""
+    """The report to read (a page) or its tables one at a time: sorted by a
+    click on a column, copied (the selection, or all of it, tab-separated: it
+    pastes into a spreadsheet), exported as CSV."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -146,25 +175,42 @@ class ReportView(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         self.stack = QStackedWidget()
         self.page_buttons = self._buttons(
-            (('Save…', 'the report as a file: HTML (its pictures inside it) or PDF', self.save),
-             ('Print…', 'the report on a printer (or to a PDF through the print dialog)', self.print_)), enabled=False)
+            (('Save…',
+              'the report as a file: HTML (its pictures inside it) or PDF',
+              self.save),
+             ('Print…',
+              'the report on a printer (or to a PDF through the print dialog)',
+              self.print_)), enabled=False)
         self.page = QTextBrowser(openExternalLinks=True)
-        self._page(self.page_buttons, self.page)                    # the page, with Save and Print over it
-        self.which = QComboBox(minimumWidth=260, currentIndexChanged=self._show_table)
-        buttons = self._buttons((('Copy', 'the selected cells, or the whole table: tab-separated, with its header',
-                                  self.copy), ('Export CSV…', 'this table as a CSV file', self.export_csv)))
-        self.hint = QLabel('click a column to sort by it', styleSheet='color: gray')
-        self.grid = QTableWidget(0, 0, editTriggers=QAbstractItemView.NoEditTriggers, alternatingRowColors=True)
+        # the page, with Save and Print over it
+        self._page(self.page_buttons, self.page)
+        self.which = QComboBox(minimumWidth=260,
+                               currentIndexChanged=self._show_table)
+        buttons = self._buttons(((
+            'Copy',
+            'the selected cells, or the whole table: tab-separated, with its '
+            'header',
+            self.copy), ('Export CSV…', 'this table as a CSV file',
+                         self.export_csv)))
+        self.hint = QLabel('click a column to sort by it',
+                           styleSheet='color: gray')
+        self.grid = QTableWidget(0, 0,
+                                 editTriggers=QAbstractItemView.NoEditTriggers,
+                                 alternatingRowColors=True)
         self.grid.verticalHeader().hide()
         self.grid.setSortingEnabled(True)
-        self._page([QLabel('Table'), self.which, *buttons, self.hint], self.grid)
+        self._page([QLabel('Table'), self.which, *buttons, self.hint],
+                   self.grid)
         lay.addWidget(self.stack)
 
     @staticmethod
     def _buttons(table, **props):
-        """[(text, tooltip, slot)] as buttons (the slot called without the click's argument)."""
-        return [QPushButton(text, toolTip=tip, clicked=lambda _=False, f=slot: f(), **props)
-                for text, tip, slot in table]
+        """[(text, tooltip, slot)] as buttons (the slot called without the
+        click's argument)."""
+        return [
+            QPushButton(text, toolTip=tip, clicked=lambda _=False, f=slot: f(),
+                        **props) for text, tip, slot in table
+        ]
 
     def _page(self, tools, main):
         """A page of the stack: a row of tools over its main widget."""
@@ -180,32 +226,41 @@ class ReportView(QWidget):
         self.stack.addWidget(page)
 
     def set_report(self, report):
-        """The report shown (None: none); the table chosen stays when the new report has one of its title."""
+        """The report shown (None: none); the table chosen stays when the new
+        report has one of its title."""
         self.report = report
         self._tables = tables(report)
-        if report is None:                                          # nothing to read yet: say where it comes from
-            self.page.setHtml("<p style='color:gray'>No report yet. An analysis's result (a rail's drop, a circuit, "
-                              "the temperature, crosstalk) is written up here when it has run; the S-parameter run's "
-                              "report opens from the toolbar (Report).</p>")
+        if report is None:  # nothing to read yet: say where it comes from
+            self.page.setHtml(
+                "<p style='color:gray'>No report yet. An analysis's result (a "
+                "rail's drop, a circuit, the temperature, crosstalk) is "
+                "written up here when it has run; the S-parameter run's report "
+                "opens from the toolbar (Report).</p>")
         else:
-            self.page.setHtml(to_html(report, width=max(400, self.page.viewport().width() - 40)))
+            self.page.setHtml(
+                to_html(report, width=max(400,
+                                          self.page.viewport().width() - 40)))
         for b in self.page_buttons:
             b.setEnabled(report is not None)
         keep = self.which.currentText()
         with QSignalBlocker(self.which):
             self.which.clear()
             self.which.addItems([t for t, _ in self._tables])
-            self.which.setCurrentIndex(max(self.which.findText(keep), 0) if self._tables else -1)
+            self.which.setCurrentIndex(
+                max(self.which.findText(keep), 0) if self._tables else -1)
         self._show_table()
 
     def save(self, path=None):
-        """The report as a file: .html (standalone: its pictures inside it) or .pdf (as the page shows it). Asks
-        where without a path; returns the path written, or None."""
+        """The report as a file: .html (standalone: its pictures inside it) or
+        .pdf (as the page shows it). Asks where without a path; returns the path
+        written, or None."""
         if self.report is None:
             return None
         if not path:
-            name = ''.join(c if c.isalnum() or c in ' -_' else '_' for c in (self.report.get('title') or 'report'))
-            path, _ = QFileDialog.getSaveFileName(self, 'Save the report', name.strip()[:60] + '.html',
+            name = ''.join(c if c.isalnum() or c in ' -_' else '_'
+                           for c in (self.report.get('title') or 'report'))
+            path, _ = QFileDialog.getSaveFileName(self, 'Save the report',
+                                                  name.strip()[:60] + '.html',
                                                   'HTML (*.html);;PDF (*.pdf)')
             if not path:
                 return None
@@ -223,7 +278,8 @@ class ReportView(QWidget):
         return path
 
     def print_(self, printer=None):
-        """The report on a printer: the print dialog without one (its own Print to PDF too). True when printed."""
+        """The report on a printer: the print dialog without one (its own Print
+        to PDF too). True when printed."""
         if self.report is None:
             return False
         from PySide6.QtPrintSupport import QPrinter, QPrintDialog
@@ -267,11 +323,13 @@ class ReportView(QWidget):
             for k, v in enumerate(row):
                 g.setItem(r, k, _Cell(v, cell(v, f[k])))
         g.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        g.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)    # as the report has it, until a click
+        # as the report has it, until a click
+        g.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)
         g.setSortingEnabled(True)
 
     def _text(self, selected=True):
-        """The table as tab-separated lines, as it is sorted: the selected cells' block, else all of it."""
+        """The table as tab-separated lines, as it is sorted: the selected
+        cells' block, else all of it."""
         g = self.grid
         rows, cols = range(g.rowCount()), range(g.columnCount())
         picked = g.selectedIndexes() if selected else []
@@ -279,7 +337,12 @@ class ReportView(QWidget):
             rows = sorted({i.row() for i in picked})
             cols = sorted({i.column() for i in picked})
         lines = ['\t'.join(g.horizontalHeaderItem(c).text() for c in cols)]
-        lines += ['\t'.join(g.item(r, c).text() if g.item(r, c) else '' for c in cols) for r in rows]
+        lines += [
+            '\t'.join(
+                g.item(r, c).text() if g.item(r, c) else ''
+                for c in cols)
+            for r in rows
+        ]
         return '\n'.join(lines)
 
     def copy(self):
@@ -290,8 +353,10 @@ class ReportView(QWidget):
         if t is None:
             return False
         if path is None:
-            name = ''.join(c if c.isalnum() else '_' for c in t[0]).strip('_') or 'table'
-            path, _ = QFileDialog.getSaveFileName(self, 'Export the table', f"{name}.csv", 'CSV (*.csv)')
+            name = (''.join(c if c.isalnum() else '_' for c in t[0]).strip('_')
+                    or 'table')
+            path, _ = QFileDialog.getSaveFileName(self, 'Export the table',
+                                                  f"{name}.csv", 'CSV (*.csv)')
         if not path:
             return False
         with open(path, 'w', encoding='utf-8') as fh:

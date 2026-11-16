@@ -1,9 +1,12 @@
 """
-The Results page's plot of an analysis's curves (curves.py: a rail's impedance, a near field's spectrum), with other
-runs of the same kind over it: the curves listed with a tick each, markers you click in and drag, their values in a
-table, CSV and image export. The S-parameter plots are splot.SPlot; this is the same page for everything else.
+The Results page's plot of an analysis's curves (curves.py: a rail's impedance,
+a near field's spectrum), with other runs of the same kind over it: the curves
+listed with a tick each, markers you click in and drag, their values in a table,
+CSV and image export. The S-parameter plots are splot.SPlot; this is the same
+page for everything else.
 
-    plot.set_sets(run, [other runs])        # CurveSets: the run solid, the others dashed in the same colours
+    plot.set_sets(run, [other runs])  # CurveSets: the run solid, the others
+                                      dashed in the same colours
 """
 from dataclasses import replace
 import numpy as np
@@ -11,13 +14,17 @@ import pyqtgraph as pg
 from . import theme
 from PySide6.QtCore import Qt, QSignalBlocker
 from PySide6.QtGui import QColor, QBrush
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSplitter, QTreeWidget,
-                               QTreeWidgetItem, QTableWidget, QTableWidgetItem, QFileDialog, QHeaderView,
-                               QAbstractItemView)
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+                               QLabel, QSplitter, QTreeWidget, QTreeWidgetItem,
+                               QTableWidget, QTableWidgetItem, QFileDialog,
+                               QHeaderView, QAbstractItemView)
 
 from . import curves as C
 
-COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+COLORS = [
+    '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
+    '#7f7f7f', '#bcbd22', '#17becf'
+]
 LIMIT = '#c0392b'
 
 
@@ -25,18 +32,26 @@ class CurvePlot(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.sets, self.items, self.markers, self._colors = [], [], [], {}
-        self.hidden = set()                                         # (run label, curve name) unticked
+        self.hidden = set()  # (run label, curve name) unticked
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
-        for text, tip, slot in (('Fit', 'the whole of the curves shown', self.fit),
-                                ('Clear markers', "remove every marker (Delete removes the selected row's)",
-                                 self.clear_markers),
-                                ('Export CSV…', 'the curves shown, each run with its own frequencies', self.export_csv),
-                                ('Save image…', 'the plot as a PNG', self.save_image)):
-            row.addWidget(QPushButton(text, toolTip=tip, clicked=lambda _=False, f=slot: f()))
-        self.hint = QLabel('click: marker · drag a marker to move it · wheel / drag: zoom, pan',
-                           styleSheet='color: gray')
+        for text, tip, slot in (
+            ('Fit', 'the whole of the curves shown', self.fit),
+            ('Clear markers',
+             "remove every marker (Delete removes the selected row's)",
+             self.clear_markers),
+            ('Export CSV…',
+             'the curves shown, each run with its own frequencies',
+             self.export_csv), ('Save image…', 'the plot as a PNG',
+                                self.save_image)):
+            row.addWidget(
+                QPushButton(text, toolTip=tip,
+                            clicked=lambda _=False, f=slot: f()))
+        self.hint = QLabel(
+            'click: marker · drag a marker to move it · wheel / drag: zoom, '
+            'pan',
+            styleSheet='color: gray')
         row.addWidget(self.hint)
         row.addStretch(1)
         lay.addLayout(row)
@@ -46,13 +61,14 @@ class CurvePlot(QWidget):
         right = QSplitter(Qt.Vertical)
         self.plot = pg.PlotWidget()
         self.plot.showGrid(x=True, y=True, alpha=0.3)
-        for ax in ('bottom', 'left'):                               # log axes: decades as they are
+        for ax in ('bottom', 'left'):  # log axes: decades as they are
             self.plot.getAxis(ax).enableAutoSIPrefix(False)
         self.legend = self.plot.addLegend(offset=(-10, 10))
         self.plot.scene().sigMouseClicked.connect(self._clicked)
         right.addWidget(self.plot)
-        self.table = QTableWidget(0, 1, editTriggers=QAbstractItemView.NoEditTriggers,
-                                  selectionBehavior=QAbstractItemView.SelectRows)
+        self.table = QTableWidget(
+            0, 1, editTriggers=QAbstractItemView.NoEditTriggers,
+            selectionBehavior=QAbstractItemView.SelectRows)
         self.table.verticalHeader().hide()
         self.table.hide()
         right.addWidget(self.table)
@@ -63,9 +79,13 @@ class CurvePlot(QWidget):
 
     # ---- data ----
     def set_sets(self, run, others=()):
-        """The run's curves (None: nothing) and those of other runs of the same kind laid over them."""
-        same = bool(self.sets) and run is not None and self.sets[0].kind == run.kind
-        self.sets = ([run] if run is not None else []) + [o for o in others if run is not None and o.kind == run.kind]
+        """The run's curves (None: nothing) and those of other runs of the same
+        kind laid over them."""
+        same = (bool(self.sets) and run is not None
+                and self.sets[0].kind == run.kind)
+        self.sets = (
+            ([run] if run is not None else [])
+            + [o for o in others if run is not None and o.kind == run.kind])
         if not same:
             self.clear_markers()
             self.hidden = set()
@@ -78,7 +98,8 @@ class CurvePlot(QWidget):
         return self.sets[0] if self.sets else None
 
     def _color(self, name):
-        base = name.split(', bare planes')[0]                       # a load and its bare planes: one colour
+        # a load and its bare planes: one colour
+        base = name.split(', bare planes')[0]
         if base not in self._colors:
             self._colors[base] = COLORS[len(self._colors) % len(COLORS)]
         return self._colors[base]
@@ -87,41 +108,52 @@ class CurvePlot(QWidget):
         with QSignalBlocker(self.tree):
             self.tree.clear()
             for k, cs in enumerate(self.sets):
-                top = QTreeWidgetItem([cs.label if k else f"{cs.label}  (this run)"])
+                top = QTreeWidgetItem(
+                    [cs.label if k else f"{cs.label}  (this run)"])
                 f = top.font(0)
                 f.setBold(True)
                 top.setFont(0, f)
                 top.setToolTip(0, cs.folder)
                 self.tree.addTopLevelItem(top)
                 for c in cs.curves:
-                    if c.role == 'limit' and k:                     # the run's own targets: once
+                    if c.role == 'limit' and k:  # the run's own targets: once
                         continue
                     it = QTreeWidgetItem([c.name])
                     it.setData(0, Qt.UserRole, (cs.label, c.name))
                     it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
-                    it.setCheckState(0, Qt.Unchecked if (cs.label, c.name) in self.hidden else Qt.Checked)
-                    it.setForeground(0, QBrush(QColor(LIMIT if c.role == 'limit' else self._color(c.name))))
+                    it.setCheckState(
+                        0, (Qt.Unchecked if
+                            (cs.label, c.name) in self.hidden else Qt.Checked))
+                    it.setForeground(
+                        0,
+                        QBrush(
+                            QColor(LIMIT if c.role ==
+                                   'limit' else self._color(c.name))))
                     top.addChild(it)
             self.tree.expandAll()
 
     def _ticked(self, it, _col):
         key = it.data(0, Qt.UserRole)
         if key is not None:
-            (self.hidden.discard if it.checkState(0) == Qt.Checked else self.hidden.add)(tuple(key))
+            (self.hidden.discard
+             if it.checkState(0) == Qt.Checked else self.hidden.add)(tuple(key))
             self.redraw()
 
     def shown(self, roles=('data', 'reference', 'limit')):
-        """[(set, curve, its number among the sets)] of the curves ticked, in the order drawn."""
+        """[(set, curve, its number among the sets)] of the curves ticked, in
+        the order drawn."""
         out = []
         for k, cs in enumerate(self.sets):
             for c in cs.curves:
-                if c.role in roles and (cs.label, c.name) not in self.hidden and not (c.role == 'limit' and k):
+                if (c.role in roles and (cs.label, c.name) not in self.hidden
+                        and not (c.role == 'limit' and k)):
                     out.append((cs, c, k))
         return out
 
     # ---- drawing ----
     def restyle(self):
-        """The theme's colours (theme.apply): the markers, then the curves drawn again."""
+        """The theme's colours (theme.apply): the markers, then the curves drawn
+        again."""
         col = theme.colors()['marker']
         for ln in self.markers:
             ln.setPen(pg.mkPen(col, width=1))
@@ -148,29 +180,37 @@ class CurvePlot(QWidget):
                 pen = pg.mkPen(LIMIT, width=1.5, style=Qt.DashLine)
             elif c.role == 'reference':
                 pen = pg.mkPen(self._color(c.name), width=1, style=Qt.DotLine)
-            else:                                                   # another run: the same colour, dashed
-                pen = pg.mkPen(self._color(c.name), width=2, style=Qt.DashLine if k else Qt.SolidLine)
+            else:  # another run: the same colour, dashed
+                pen = pg.mkPen(self._color(c.name), width=2,
+                               style=(Qt.DashLine if k else Qt.SolidLine))
             x, y = np.asarray(c.x, float), np.asarray(c.y, float)
-            ok = (x > 0 if m.logx else np.isfinite(x)) & (y > 0 if m.logy else np.isfinite(y))
+            ok = ((x > 0 if m.logx else np.isfinite(x)) &
+                  (y > 0 if m.logy else np.isfinite(y)))
             name = c.name if not k else f"{cs.label}: {c.name}"
-            symbol = 'o' if c.role == 'data' and len(x) <= 24 else None     # a few points (harmonics): shown
-            item = self.plot.plot(x[ok], y[ok], pen=pen, name=None if c.role == 'reference' else name,
-                                  symbol=symbol, symbolSize=6, symbolBrush=pen.color() if symbol else None)
+            # a few points (harmonics): shown
+            symbol = 'o' if c.role == 'data' and len(x) <= 24 else None
+            item = self.plot.plot(
+                x[ok], y[ok], pen=pen,
+                name=(None if c.role == 'reference' else name), symbol=symbol,
+                symbolSize=6, symbolBrush=(pen.color() if symbol else None))
             self.items.append(item)
         self._update_table()
 
     def fit(self):
-        """The data curves and the limits whole (a bare-planes curve reaching 1e11 Ω would squash the rest)."""
+        """The data curves and the limits whole (a bare-planes curve reaching
+        1e11 Ω would squash the rest)."""
         m = self.main
         cs = self.shown(('data', 'limit')) or self.shown()
         if m is None or not cs:
             return
         xs = np.concatenate([np.asarray(c.x, float) for _, c, _ in cs])
         ys = np.concatenate([np.asarray(c.y, float) for _, c, _ in cs])
-        xs, ys = xs[np.isfinite(xs) & (xs > 0 if m.logx else True)], ys[np.isfinite(ys) & (ys > 0 if m.logy else True)]
+        xs, ys = (xs[np.isfinite(xs) & (xs > 0 if m.logx else True)],
+                  ys[np.isfinite(ys) & (ys > 0 if m.logy else True)])
         if not len(xs) or not len(ys):
             return
-        xr = (np.log10(xs.min()), np.log10(xs.max())) if m.logx else (xs.min(), xs.max())
+        xr = ((np.log10(xs.min()), np.log10(xs.max())) if m.logx else
+              (xs.min(), xs.max()))
         if m.logy:
             yr = (np.log10(ys.min() / 2), np.log10(ys.max() * 2))
         else:
@@ -183,7 +223,8 @@ class CurvePlot(QWidget):
 
     # ---- markers ----
     def _x_of(self, pos):
-        return float(10 ** pos) if self.main is not None and self.main.logx else float(pos)
+        return (float(10**pos)
+                if self.main is not None and self.main.logx else float(pos))
 
     def _clicked(self, ev):
         if ev.button() != Qt.LeftButton or self.main is None or ev.isAccepted():
@@ -195,11 +236,14 @@ class CurvePlot(QWidget):
 
     def add_marker(self, x):
         """A marker at x (the axis's own unit, not its logarithm)."""
-        if self.main is None or not np.isfinite(x) or (self.main.logx and x <= 0):
+        if (self.main is None or not np.isfinite(x)
+                or (self.main.logx and x <= 0)):
             return None
-        line = pg.InfiniteLine(pos=np.log10(x) if self.main.logx else x, angle=90, movable=True,
-                               pen=pg.mkPen(theme.colors()['marker'], width=1), label=str(len(self.markers) + 1),
-                               labelOpts=dict(position=0.95, color=theme.colors()['marker']))
+        line = pg.InfiniteLine(
+            pos=(np.log10(x) if self.main.logx else x), angle=90, movable=True,
+            pen=pg.mkPen(theme.colors()['marker'],
+                         width=1), label=str(len(self.markers) + 1),
+            labelOpts=dict(position=0.95, color=theme.colors()['marker']))
         line.sigPositionChanged.connect(self._update_table)
         self.plot.addItem(line)
         self.markers.append(line)
@@ -213,8 +257,10 @@ class CurvePlot(QWidget):
         self._update_table()
 
     def keyPressEvent(self, ev):
-        if ev.key() in (Qt.Key_Delete, Qt.Key_Backspace) and self.table.hasFocus():
-            rows = sorted({i.row() for i in self.table.selectedIndexes()}, reverse=True)
+        if (ev.key() in (Qt.Key_Delete, Qt.Key_Backspace)
+                and self.table.hasFocus()):
+            rows = sorted({i.row()
+                           for i in self.table.selectedIndexes()}, reverse=True)
             for r in rows:
                 if r < len(self.markers):
                     self.plot.removeItem(self.markers.pop(r))
@@ -226,25 +272,39 @@ class CurvePlot(QWidget):
 
     def _update_table(self, *_):
         m = self.main
-        cols = self.shown(('data',))                                # the bare planes: on the plot, not here
+        cols = self.shown(('data',))  # the bare planes: on the plot, not here
         self.table.setVisible(bool(self.markers) and m is not None)
         if m is None or not self.markers:
             self.table.setRowCount(0)
             return
         self.table.setColumnCount(1 + len(cols))
-        self.table.setHorizontalHeaderLabels(['marker'] + [c.name if not k else f"{cs.label}: {c.name}"
-                                                           for cs, c, k in cols])
+        self.table.setHorizontalHeaderLabels(
+            ['marker'] +
+            [c.name if not k else f"{cs.label}: {c.name}" for cs, c, k in cols])
         self.table.setRowCount(len(self.markers))
         for r, line in enumerate(self.markers):
             x = self._x_of(line.value())
-            self.table.setItem(r, 0, QTableWidgetItem(f"{r + 1}: {C.fmt_hz(x) if 'Hz' in m.xlabel else f'{x:.4g}'}"))
+            self.table.setItem(
+                r, 0,
+                QTableWidgetItem(
+                    f"{r + 1}: "
+                    f"{C.fmt_hz(x) if 'Hz' in m.xlabel else f'{x:.4g}'}"
+                ))
             for k, (cs, c, _n) in enumerate(cols):
-                self.table.setItem(r, 1 + k, QTableWidgetItem(C.fmt(C.value_at(c, x, m.logx, m.logy), c.unit)))
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+                self.table.setItem(
+                    r, 1 + k,
+                    QTableWidgetItem(
+                        C.fmt(C.value_at(c, x, m.logx, m.logy), c.unit)))
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeToContents)
 
     def values(self):
-        """The marker table as it reads: [[cell, ...]] (the tests', and what a copy would give)."""
-        return [[self.table.item(r, c).text() if self.table.item(r, c) else '' for c in range(self.table.columnCount())]
+        """The marker table as it reads: [[cell, ...]] (the tests', and what a
+        copy would give)."""
+        return [[
+            self.table.item(r, c).text() if self.table.item(r, c) else ''
+            for c in range(self.table.columnCount())
+        ]
                 for r in range(self.table.rowCount())]
 
     # ---- export ----
@@ -252,15 +312,22 @@ class CurvePlot(QWidget):
         if not self.sets:
             return
         if not path:
-            path, _ = QFileDialog.getSaveFileName(self, 'Export the curves', f"{self.main.kind}_curves.csv",
-                                                  'CSV (*.csv)')
+            path, _ = QFileDialog.getSaveFileName(
+                self, 'Export the curves', f"{self.main.kind}_curves.csv",
+                'CSV (*.csv)')
         if path:
-            keep = {(cs.label, c.name) for cs, c, _ in self.shown(('data', 'reference'))}
-            C.export_csv(path, [replace(cs, curves=[c for c in cs.curves if (cs.label, c.name) in keep])
-                                for cs in self.sets])
+            keep = {(cs.label, c.name)
+                    for cs, c, _ in self.shown(('data', 'reference'))}
+            C.export_csv(path, [
+                replace(
+                    cs, curves=[
+                        c for c in cs.curves if (cs.label, c.name) in keep
+                    ]) for cs in self.sets
+            ])
 
     def save_image(self, path=None):
         if not path:
-            path, _ = QFileDialog.getSaveFileName(self, 'Save the plot', 'results.png', 'PNG (*.png)')
+            path, _ = QFileDialog.getSaveFileName(self, 'Save the plot',
+                                                  'results.png', 'PNG (*.png)')
         if path:
             self.plot.grab().save(path)

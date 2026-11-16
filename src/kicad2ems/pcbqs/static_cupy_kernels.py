@@ -6,7 +6,7 @@ analytic near pairs run in separate launches (or in kind-sorted order), since
 mixing them in one wavefront serializes the cheap far path behind the near
 path's asinh/atan2 loop, which was measured at about 8x on an RX 7800 XT.
 """
-SOURCE = r'''
+SOURCE = (r'''
 struct Geometry {
     const double* V; const double* L; const double* tau; const double* un;
     const double* area; const double* P3;
@@ -155,4 +155,4 @@ extern "C" __global__ void static_rows_near(GEOMETRY_ARGS,
         store_entry(out, plane, i, r, c, m, scalar);
     }
 }
-'''
+''')

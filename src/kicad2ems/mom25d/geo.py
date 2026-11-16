@@ -1,6 +1,7 @@
 """
-mom25d.geo - wave ports on a straight feed in any in-plane direction (LinePort: KiCad traces at 45 deg etc.), and the
-mesher (emsdev.numerics.geo.mesh_polygons) on mom25d's own compiled core
+mom25d.geo - wave ports on a straight feed in any in-plane direction (LinePort:
+KiCad traces at 45 deg etc.), and the mesher (emsdev.numerics.geo.mesh_polygons)
+on mom25d's own compiled core
 """
 import numpy as np
 
@@ -22,15 +23,20 @@ class LinePort:
     """
     kind = 'wave'
 
-    def __init__(self, layer, center, direction, width, ref_dist, s0=None, step=None, zc=50.0, name='', s1=None):
+    def __init__(self, layer, center, direction, width, ref_dist, s0=None,
+                 step=None, zc=50.0, name='', s1=None):
         self.layer, self.s1 = layer, s1
         d = np.asarray(direction, float)
         self.c, self.d = np.asarray(center, float), d / np.linalg.norm(d)
         self.t = np.array([-self.d[1], self.d[0]])
-        self.w, self.ref, self.s0, self.step, self.zc, self.name = width, ref_dist, s0, step, zc, name
+        self.w, self.ref, self.s0, self.step, self.zc, self.name = (width,
+                                                                    ref_dist,
+                                                                    s0, step,
+                                                                    zc, name)
 
     def line(self, s):
-        """End points of the transverse line at distance s from the gap (s=0: the gap)."""
+        """End points of the transverse line at distance s from the gap (s=0:
+        the gap)."""
         p = self.c + self.d * s
         return p - self.t * self.w / 2, p + self.t * self.w / 2
 
@@ -40,10 +46,13 @@ class LinePort:
 
 
 def mesh_polygons(*args, **kw):
-    """emsdev.numerics.geo.mesh_polygons on mom25d's compiled core, built or not set aside (MOM25D_NO_CORE sets the
-    kernels aside, not the mesher)."""
+    """emsdev.numerics.geo.mesh_polygons on mom25d's compiled core, built or not
+    set aside (MOM25D_NO_CORE sets the kernels aside, not the mesher)."""
     from . import fast
     if fast._built is None or not hasattr(fast._built, 'cdt_triangulate'):
-        raise RuntimeError("mom25d meshes with its compiled core, which is not built (or is older than its mesher): "
-                           "python -m kicad2ems.mom25d.core.build (needs a C++17 compiler and pybind11)")
+        raise RuntimeError(
+            "mom25d meshes with its compiled core, which is not built (or is "
+            "older than its mesher): python -m kicad2ems.mom25d.core.build "
+            "(needs a C++17 compiler and pybind11)"
+        )
     return geo.mesh_polygons(*args, core=fast._built, **kw)

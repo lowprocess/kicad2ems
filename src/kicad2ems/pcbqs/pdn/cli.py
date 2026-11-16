@@ -1,17 +1,25 @@
 """
-python -m kicad2ems.pcbqs.pdn: a power rail's DC drop and PDN impedance from a KiCad board (or a kicad2ems board.json).
+python -m kicad2ems.pcbqs.pdn: a power rail's DC drop and PDN impedance from a
+KiCad board (or a kicad2ems board.json).
 
-    python -m kicad2ems.pcbqs.pdn board.kicad_pcb --rail +3V3 --volts 3.3 --load U21=2 --load U14=1 --out pdn_3v3
-    python -m kicad2ems.pcbqs.pdn board.kicad_pcb --rail +3V3 --volts 3.3 --out pdn_3v3     # the loads: the parts' pdn.load fields
-    python -m kicad2ems.pcbqs.pdn board.kicad_pcb --rail +3V3 --volts 3.3 --spread-load 5 --out pdn_3v3   # 5 A shared by pad count
-    python -m kicad2ems.pcbqs.pdn --describe --json          # the options, for the GUI's PDN page
+    python -m kicad2ems.pcbqs.pdn board.kicad_pcb --rail +3V3 --volts 3.3 --load U21=2 --load U14=1 --out
+        pdn_3v3
+    python -m kicad2ems.pcbqs.pdn board.kicad_pcb --rail +3V3 --volts 3.3 --out pdn_3v3
+        # the loads: the parts' pdn.load fields
+    python -m kicad2ems.pcbqs.pdn board.kicad_pcb --rail +3V3 --volts 3.3 --spread-load 5 --out pdn_3v3
+        # 5 A shared by pad count
+    python -m kicad2ems.pcbqs.pdn --describe --json
+        # the options, for the GUI's PDN page
 
-It writes <out>/pdn.json (the rail tree, each load's voltage and drop, the series parts, the hottest vias, the plane
-pairs, each part's connection and mount inductance, the impedance each load sees and where it is over the target,
-the notes), <out>/z.csv, and the figures <out>/dc_power_<layer>.png, dc_ground_<layer>.png (drop or rise, current
-per mm, vias by current) and pdn_z.png. The DC solve is also written where kicad2ems's viewer reads results
-(pdn/viewer.py: the board, the mesh, each layer's drop and current on a grid), named under 'viewer' in pdn.json.
-Its progress goes to stdout, one line per step ('pdn: ...').
+It writes <out>/pdn.json (the rail tree, each load's voltage and drop, the
+series parts, the hottest vias, the plane pairs, each part's connection and
+mount inductance, the impedance each load sees and where it is over the target,
+the notes), <out>/z.csv, and the figures <out>/dc_power_<layer>.png,
+dc_ground_<layer>.png (drop or rise, current per mm, vias by current) and
+pdn_z.png. The DC solve is also written where kicad2ems's viewer reads results
+(pdn/viewer.py: the board, the mesh, each layer's drop and current on a grid),
+named under 'viewer' in pdn.json. Its progress goes to stdout, one line per step
+('pdn: ...').
 """
 import argparse
 import json
@@ -26,58 +34,101 @@ from .._cli import add_options, describe as describe_options, load_board, print_
 G_RAIL, G_DC, G_PDN, G_MESH = 'Rail', 'DC', 'PDN impedance', 'Mesh'
 OPTIONS = [
     # key, kind, default, help, group (pcbqs._cli: the flag is --key)
-    ('rail', 'str', '', "the rail's net (the tree grows from it through series parts)", G_RAIL),
+    ('rail', 'str', '',
+     "the rail's net (the tree grows from it through series parts)", G_RAIL),
     ('ground', 'str', 'GND', "its ground net(s), comma-separated", G_RAIL),
     ('volts', 'float', 3.3, "the rail's voltage at its source", G_RAIL),
-    ('source', 'str', '', "the part it is fed from (default: the power inductor feeding the tree)", G_RAIL),
-    ('ground_source', 'str', '', "the part whose ground pads its return goes back to (default: "
+    ('source', 'str', '',
+     "the part it is fed from (default: the power inductor feeding the tree)",
+     G_RAIL),
+    ('ground_source', 'str', '',
+     "the part whose ground pads its return goes back to (default: "
      "the parts on that inductor's switch node)", G_RAIL),
-    ('load', 'list', [], "a load: REF=AMPS, or REF=AMPS@RETURN when its return is another part's ground pads "
-     "(a bridge's high side through its low side) (repeat)", G_RAIL),
-    ('load_spectrum', 'list', [], "a load's AC current: REF=FILE, lines of f_Hz, A (peak)[, deg] (a circuit run's "
-     "supply-<part>.csv) (repeat); the ripple the spectra make at each load is reported against volts x ripple", G_PDN),
-    ('no_part_loads', 'bool', False, "ignore the parts' own pdn.load fields (a field gives a part's current: "
-     "AMPS, NET=AMPS for a part on several rails, AMPS@RETURN; --load overrides it for that part)", G_RAIL),
-    ('spread_load', 'float', 0.0, "amps shared by +rail pad count over every part but R, C, L "
+    ('load', 'list', [],
+     "a load: REF=AMPS, or REF=AMPS@RETURN when its return is another part's "
+     "ground pads (a bridge's high side through its low side) "
+     "(repeat)", G_RAIL),
+    ('load_spectrum', 'list', [],
+     "a load's AC current: REF=FILE, lines of f_Hz, A (peak)[, deg] (a circuit "
+     "run's supply-<part>.csv) (repeat); the ripple the spectra make at each "
+     "load is reported against volts x ripple",
+     G_PDN),
+    ('no_part_loads', 'bool', False,
+     "ignore the parts' own pdn.load fields (a field gives a part's current: "
+     "AMPS, NET=AMPS for a part on several rails, AMPS@RETURN; --load "
+     "overrides it for that part)",
+     G_RAIL),
+    ('spread_load', 'float', 0.0,
+     "amps shared by +rail pad count over every part but R, C, L "
      "(an assumption, for a first look when the loads are not known)", G_RAIL),
-    ('max_ohms', 'float', 1.0, "the largest resistor the tree follows (sense and 0 ohm links)", G_RAIL),
-    ('through', 'str', '', "parts the tree follows whatever they are, comma-separated (an inductor "
-     "named here is a series filter inductor: its inductance and DCR stay in the model)", G_RAIL),
-    ('dcr', 'list', [], "a series part's DC resistance: REF=OHMS (repeat); overrides its value or the "
-     "assumed default", G_RAIL),
-    ('cap', 'list', [], "a capacitor's datasheet values: REF=C[,ESR[,ESL]] in F, ohms, H (repeat); overrides "
-     "its value field and the package defaults", G_PDN),
-    ('cap_file', 'list', [], "a capacitor's vendor model: REF=FILE[:shunt|series], a .s2p measured through it (shunt or "
-     "series, told by its |S21| unless given), a .s1p / .z1p, or a CSV of f, Re, Im (or f, |Z|, deg); its impedance "
-     "replaces C, ESR and ESL (a vendor's file at the DC bias is an MLCC's derating too) (repeat)", G_PDN),
-    ('cap_derate', 'list', [], "an MLCC's capacitance at its DC bias, a share of its value: REF=0.6, or all=0.6 for "
-     "every decap without a file (repeat)", G_PDN),
-    ('stop', 'str', '', "parts the tree never follows, comma-separated", G_RAIL),
+    ('max_ohms', 'float', 1.0,
+     "the largest resistor the tree follows (sense and 0 ohm links)", G_RAIL),
+    ('through', 'str', '',
+     "parts the tree follows whatever they are, comma-separated (an inductor "
+     "named here is a series filter inductor: its inductance and DCR stay in "
+     "the model)",
+     G_RAIL),
+    ('dcr', 'list', [],
+     "a series part's DC resistance: REF=OHMS (repeat); overrides its value or "
+     "the assumed default", G_RAIL),
+    ('cap', 'list', [],
+     "a capacitor's datasheet values: REF=C[,ESR[,ESL]] in F, ohms, H "
+     "(repeat); overrides its value field and the package defaults", G_PDN),
+    ('cap_file', 'list', [],
+     "a capacitor's vendor model: REF=FILE[:shunt|series], a .s2p measured "
+     "through it (shunt or series, told by its |S21| unless given), a .s1p / "
+     ".z1p, or a CSV of f, Re, Im (or f, |Z|, deg); its impedance replaces C, "
+     "ESR and ESL (a vendor's file at the DC bias is an MLCC's derating too) "
+     "(repeat)",
+     G_PDN),
+    ('cap_derate', 'list', [],
+     "an MLCC's capacitance at its DC bias, a share of its value: REF=0.6, or "
+     "all=0.6 for every decap without a file (repeat)", G_PDN),
+    ('stop', 'str', '', "parts the tree never follows, comma-separated",
+     G_RAIL),
     ('plating', 'float', 0.025, "via plating thickness, mm", G_DC),
-    ('dmax', 'float', 1.0, "the largest mesh cell, mm (finer at the source and the loads)", G_MESH),
-    ('plane_min', 'float', 0.0, "smallest rail or ground copper on a layer counted as a plane, mm^2 "
+    ('dmax', 'float', 1.0,
+     "the largest mesh cell, mm (finer at the source and the loads)", G_MESH),
+    ('plane_min', 'float', 0.0,
+     "smallest rail or ground copper on a layer counted as a plane, mm^2 "
      "(0: a tenth of the board's area; small rails need less)", G_PDN),
     ('vrm_r', 'float', 1e-3, "the regulator's output resistance, ohms", G_PDN),
-    ('vrm_l', 'float', 30e-9, "the regulator's output inductance (its loop's bandwidth), H", G_PDN),
-    ('vrm_file', 'str', '', "the regulator's output impedance over frequency in place of --vrm-r and --vrm-l: a .s1p / "
-     ".z1p, or a CSV of f, Re, Im (or f, |Z|, deg)", G_PDN),
+    ('vrm_l', 'float', 30e-9,
+     "the regulator's output inductance (its loop's bandwidth), H", G_PDN),
+    ('vrm_file', 'str', '',
+     "the regulator's output impedance over frequency in place of --vrm-r and "
+     "--vrm-l: a .s1p / .z1p, or a CSV of f, Re, Im (or f, |Z|, deg)", G_PDN),
     ('fmin', 'float', 1e4, "lowest frequency, Hz", G_PDN),
     ('fmax', 'float', 2e9, "highest frequency, Hz", G_PDN),
     ('points', 'int', 160, "frequencies (log-spaced)", G_PDN),
-    ('target', 'float', 0.0, "the target impedance, ohms (0: volts x ripple / step)", G_PDN),
-    ('load_target', 'list', [], "a load's own target impedance: REF=OHMS (repeat); overrides --target for it", G_PDN),
-    ('no_target', 'bool', False, "no target impedance (a switching bridge's input, where V x ripple / step means "
-     "little); loads given --load-target keep theirs", G_PDN),
-    ('ripple', 'float', 0.05, "the allowed ripple, a fraction of the voltage", G_PDN),
-    ('step', 'float', 0.0, "the load step, A (0: half the loads' current)", G_PDN),
-    ('rise', 'float', 1e-9, "the load step's rise time, s: the droop in time at each load (droop.png, pdn.json's "
-     "droop)", G_PDN),
-    ('touchstone', 'bool', False, "also the loads' impedance matrix, self and transfer, as Touchstone (pdn.zNp)", G_PDN),
-    ('ports_touchstone', 'bool', False, "also the bare PDN (the planes, their ties and the series parts, no decap, "
-     "regulator or load) between every part's port, as Touchstone (pdn_ports.zNp): the decap sites, the regulator and "
-     "the loads as ports, to attach other models to in a circuit tool", G_PDN),
-    ('spice', 'bool', False, "also that port matrix as a SPICE subcircuit (pdn_ports.sub; vector fitted and made "
-     "passive: needs scikit-rf)", G_PDN),
+    ('target', 'float', 0.0,
+     "the target impedance, ohms (0: volts x ripple / step)", G_PDN),
+    ('load_target', 'list', [],
+     "a load's own target impedance: REF=OHMS (repeat); overrides --target for "
+     "it",
+     G_PDN),
+    ('no_target', 'bool', False,
+     "no target impedance (a switching bridge's input, where V x ripple / step "
+     "means little); loads given --load-target keep theirs", G_PDN),
+    ('ripple', 'float', 0.05, "the allowed ripple, a fraction of the voltage",
+     G_PDN),
+    ('step', 'float', 0.0, "the load step, A (0: half the loads' current)",
+     G_PDN),
+    ('rise', 'float', 1e-9,
+     "the load step's rise time, s: the droop in time at each load (droop.png, "
+     "pdn.json's droop)", G_PDN),
+    ('touchstone', 'bool', False,
+     "also the loads' impedance matrix, self and transfer, as Touchstone "
+     "(pdn.zNp)",
+     G_PDN),
+    ('ports_touchstone', 'bool', False,
+     "also the bare PDN (the planes, their ties and the series parts, no "
+     "decap, regulator or load) between every part's port, as Touchstone "
+     "(pdn_ports.zNp): the decap sites, the regulator and the loads as ports, "
+     "to attach other models to in a circuit tool", G_PDN),
+    ('spice', 'bool', False,
+     "also that port matrix as a SPICE subcircuit (pdn_ports.sub; vector "
+     "fitted and made passive: needs scikit-rf)", G_PDN),
     ('no_pdn', 'bool', False, "the DC drop only", G_PDN),
 ]
 
@@ -87,11 +138,15 @@ def describe():
 
 
 def parser():
-    ap = argparse.ArgumentParser(prog='python -m kicad2ems.pcbqs.pdn', description=__doc__.split('\n\n')[0].strip())
-    ap.add_argument('board', nargs='?', help='.kicad_pcb, or a kicad2ems <name>_board.json')
+    ap = argparse.ArgumentParser(prog='python -m kicad2ems.pcbqs.pdn',
+                                 description=__doc__.split('\n\n')[0].strip())
+    ap.add_argument('board', nargs='?',
+                    help='.kicad_pcb, or a kicad2ems <name>_board.json')
     ap.add_argument('--out', default='pdn', help='output folder')
-    ap.add_argument('--describe', action='store_true', help='print the options and exit')
-    ap.add_argument('--json', action='store_true', help='with --describe: as JSON')
+    ap.add_argument('--describe', action='store_true',
+                    help='print the options and exit')
+    ap.add_argument('--json', action='store_true',
+                    help='with --describe: as JSON')
     add_options(ap, OPTIONS)
     return ap
 
@@ -101,7 +156,8 @@ def say(*a):
 
 
 def ref_values(items, flag, form, most=1):
-    """{REF: [values]} of REF=V[,V...] options (`most` values, each positive); SystemExit naming the bad one."""
+    """{REF: [values]} of REF=V[,V...] options (`most` values, each positive);
+    SystemExit naming the bad one."""
     out = {}
     for item in items:
         ref, _, rest = item.partition('=')
@@ -109,8 +165,10 @@ def ref_values(items, flag, form, most=1):
             vals = [float(x) for x in rest.split(',') if x.strip()]
         except ValueError:
             vals = []
-        if not ref.strip() or not 1 <= len(vals) <= most or any(not np.isfinite(v) or v <= 0 for v in vals):
-            raise SystemExit(f'pdn: error: {flag} {item!r}: expected {form}, positive')
+        if (not ref.strip() or not 1 <= len(vals) <= most
+                or any(not np.isfinite(v) or v <= 0 for v in vals)):
+            raise SystemExit(
+                f'pdn: error: {flag} {item!r}: expected {form}, positive')
         out[ref.strip()] = vals
     return out
 
@@ -118,7 +176,8 @@ def ref_values(items, flag, form, most=1):
 def bands(f, z, target):
     over = np.abs(z) > target
     edges = np.flatnonzero(np.diff(np.r_[0, over.astype(int), 0]))
-    return [[float(f[a]), float(f[min(b, len(f)) - 1])] for a, b in zip(edges[::2], edges[1::2])]
+    return [[float(f[a]), float(f[min(b, len(f)) - 1])]
+            for a, b in zip(edges[::2], edges[1::2])]
 
 
 def run(a):
@@ -129,34 +188,56 @@ def run(a):
     ground = tuple(x.strip() for x in a.ground.split(',') if x.strip())
     if not a.rail:
         raise SystemExit('pdn: --rail is required')
-    if a.plane_min < 0:                                 # every option checked before the (slow) board import
+    if a.plane_min < 0:  # every option checked before the (slow) board import
         raise SystemExit('pdn: error: --plane-min must be nonnegative')
     returns, plain = {}, []
     for item in a.load:                                 # REF=AMPS[@RETURN]
         head, at, back = item.partition('@')
         if at:
             if not back.strip():
-                raise SystemExit(f'pdn: error: --load {item!r}: expected REF=AMPS@RETURN')
+                raise SystemExit(
+                    f'pdn: error: --load {item!r}: expected REF=AMPS@RETURN')
             returns[head.partition('=')[0].strip()] = back.strip()
         plain.append(head)
-    loads = {r: v[0] for r, v in ref_values(plain, '--load', 'REF=AMPS[@RETURN]').items()}
+    loads = {
+        r: v[0]
+        for r, v in ref_values(plain, '--load', 'REF=AMPS[@RETURN]').items()
+    }
     dcr = {r: v[0] for r, v in ref_values(a.dcr, '--dcr', 'REF=OHMS').items()}
-    load_targets = {r: v[0] for r, v in ref_values(a.load_target, '--load-target', 'REF=OHMS').items()}
-    caps = {r: dict(zip(('C', 'ESR', 'ESL'), v)) for r, v in ref_values(a.cap, '--cap', 'REF=C[,ESR[,ESL]]', 3).items()}
+    load_targets = {
+        r: v[0]
+        for r, v in ref_values(a.load_target, '--load-target',
+                               'REF=OHMS').items()
+    }
+    caps = {
+        r: dict(zip(('C', 'ESR', 'ESL'), v))
+        for r, v in ref_values(a.cap, '--cap', 'REF=C[,ESR[,ESL]]', 3).items()
+    }
     from .models import read_impedance
-    for item in a.cap_file:                             # REF=FILE[:shunt|series] (R-E14)
+    for item in a.cap_file:  # REF=FILE[:shunt|series] (R-E14)
         ref, _, rest = item.partition('=')
-        path, _, mode = rest.rpartition(':') if rest.endswith((':shunt', ':series')) else (rest, '', 'auto')
+        path, _, mode = (rest.rpartition(':') if rest.endswith(
+            (':shunt', ':series')) else (rest, '', 'auto'))
         if not ref.strip() or not path.strip():
-            raise SystemExit(f'pdn: error: --cap-file {item!r}: expected REF=FILE[:shunt|series]')
+            raise SystemExit(
+                f'pdn: error: --cap-file {item!r}: expected '
+                'REF=FILE[:shunt|series]'
+            )
         try:
             ft, Zt, taken = read_impedance(path.strip(), mode or 'auto')
         except (OSError, ValueError) as e:
             raise SystemExit(f'pdn: error: --cap-file {ref.strip()}: {e}')
-        caps.setdefault(ref.strip(), {}).update(Zf=(ft, Zt), file=os.path.basename(path.strip()) + (f' ({taken})' if taken else ''))
-    derate = {r: v[0] for r, v in ref_values(a.cap_derate, '--cap-derate', 'REF=SHARE').items()}
+        caps.setdefault(ref.strip(), {}).update(
+            Zf=(ft, Zt), file=os.path.basename(path.strip()) +
+            (f' ({taken})' if taken else ''))
+    derate = {
+        r: v[0]
+        for r, v in ref_values(a.cap_derate, '--cap-derate',
+                               'REF=SHARE').items()
+    }
     if any(v > 1 for v in derate.values()):
-        raise SystemExit('pdn: error: --cap-derate: a share of the value, at most 1')
+        raise SystemExit(
+            'pdn: error: --cap-derate: a share of the value, at most 1')
     vrm = dict(R=a.vrm_r, L=a.vrm_l)
     if a.vrm_file:
         try:
@@ -168,7 +249,8 @@ def run(a):
     for item in a.load_spectrum:                        # REF=FILE
         ref, _, file = item.partition('=')
         if not ref.strip() or not file.strip():
-            raise SystemExit(f'pdn: error: --load-spectrum {item!r}: expected REF=FILE')
+            raise SystemExit(
+                f'pdn: error: --load-spectrum {item!r}: expected REF=FILE')
         from ..circuit.supply import read_spectrum
         try:
             spectra[ref.strip()] = (file.strip(), *read_spectrum(file.strip()))
@@ -176,33 +258,49 @@ def run(a):
             raise SystemExit(f'pdn: error: --load-spectrum {ref.strip()}: {e}')
     say(f'reading {os.path.basename(a.board)}')
     board = load_board(a.board, {a.rail, *ground})
-    kw = dict(ground=ground, source=a.source or None, ground_source=a.ground_source or None,
-              max_ohms=a.max_ohms, through=tuple(x for x in a.through.split(',') if x),
+    kw = dict(ground=ground, source=a.source or None,
+              ground_source=a.ground_source or None, max_ohms=a.max_ohms,
+              through=tuple(x for x in a.through.split(',') if x),
               stop=tuple(x for x in a.stop.split(',') if x), dcr=dcr)
-    tree = Rail(board, a.rail, **kw)                    # the rail's nets, before its loads are known
-    if not a.board.endswith('.json') and not tree.nets <= {a.rail}:      # the tree's other nets: read with it
+    # the rail's nets, before its loads are known
+    tree = Rail(board, a.rail, **kw)
+    # the tree's other nets: read with it
+    if not a.board.endswith('.json') and not tree.nets <= {a.rail}:
         say(f'rail tree: {len(tree.nets)} nets; reading their copper')
         board = load_board(a.board, set(tree.nets) | set(ground))
     assumed, fielded, field_notes = False, {}, []
-    if not a.no_part_loads:                             # the parts' own fields; --load overrides one
+    if not a.no_part_loads:  # the parts' own fields; --load overrides one
         found, back, field_notes = field_loads(board, tree.nets)
         fielded = {r: v for r, v in found.items() if r not in loads}
         returns = {**{r: b for r, b in back.items() if r in fielded}, **returns}
         loads = {**fielded, **loads}
         if fielded:
-            say(f"loads from the parts' {LOAD_FIELD} fields: " + ', '.join(f"{r} {v:g} A" for r, v in sorted(fielded.items())))
-    if not loads and a.spread_load > 0:                 # shared by +rail pad count over every part but R, C, L
-        users = {f['ref']: sum(p.get('net') == a.rail for p in f['pads']) for f in board['prims']['footprints']
-                 if not f.get('dnp') and any(p.get('net') == a.rail for p in f['pads'])
-                 and not f['ref'].upper().startswith(('C', 'R', 'L', 'FB'))}
+            say(f"loads from the parts' {LOAD_FIELD} fields: "
+                + ', '.join(f"{r} {v:g} A" for r, v in sorted(fielded.items())))
+    # shared by +rail pad count over every part but R, C, L
+    if not loads and a.spread_load > 0:
+        users = {
+            f['ref']: sum(p.get('net') == a.rail
+                          for p in f['pads'])
+            for f in board['prims']['footprints']
+            if not f.get('dnp') and any(
+                p.get('net') == a.rail for p in f['pads'])
+            and not f['ref'].upper().startswith(('C', 'R', 'L', 'FB'))
+        }
         tot = sum(users.values())
-        loads, assumed = ({r: a.spread_load * n / tot for r, n in users.items()} if tot else {}), True
+        loads, assumed = (
+            {r: a.spread_load * n / tot
+             for r, n in users.items()} if tot else {}), True
     if not loads:
-        raise SystemExit(f"pdn: no loads: --load REF=AMPS, a {LOAD_FIELD} field on the parts, or --spread-load AMPS")
+        raise SystemExit(
+            f"pdn: no loads: --load REF=AMPS, a {LOAD_FIELD} field on the "
+            "parts, or --spread-load AMPS"
+        )
     unknown = sorted(set(spectra) - set(loads))
     if unknown:
-        raise SystemExit(f"pdn: error: --load-spectrum for {', '.join(unknown)}: not a load (give its DC current too, "
-                         f"--load REF=AMPS)")
+        raise SystemExit(
+            f"pdn: error: --load-spectrum for {', '.join(unknown)}: not a load "
+            "(give its DC current too, --load REF=AMPS)")
     rail = Rail(board, a.rail, loads=loads, returns=returns, **kw)
     for line in rail.describe():
         say(line.strip())
@@ -210,41 +308,61 @@ def run(a):
     t = time.time()
     dc = solve_rail(rail, a.volts, dmax=a.dmax, plating=a.plating, log=say)
     t_dc = time.time() - t
-    out = dict(format=1, board=os.path.abspath(a.board), rail=a.rail, nets=sorted(rail.nets), ground=list(ground), volts=a.volts, assumed_loads=assumed,
-               settings={k: getattr(a, k) for k, *_ in OPTIONS},
-               tree=[dict(ref=s.part.ref, kind=s.kind, R=s.R, L=s.L, a=s.a, b=s.b, defaulted=s.defaulted) for s in rail.series],
-               source=[p.ref for p in rail.source_parts],
-               loads={r: dict(I=v['I'], V=v['V'], drop=v['drop'], power_drop=v['power_drop'], ground_rise=v['ground_rise'])
-                      for r, v in dc['loads'].items()},
-               series=dict(dc['series']),
-               loss_W=dc['power'].loss + dc['ground'].loss,
-               vias={side: sorted([dict(x=v['x'], y=v['y'], I=v['I']) for v in dc[side].vias], key=lambda v: -v['I'])[:20]
-                     for side in ('power', 'ground')},
-               vertices=dict(power=dc['power'].nodes, ground=dc['ground'].nodes), seconds=dict(dc=round(t_dc, 1)),
-               field_loads=sorted(fielded), notes=list(rail.notes) + field_notes + dc['notes'],
-               returns=dict(rail.returns), no_return=list(dc.get('no_return') or []))
-    say(f"DC done in {t_dc:.1f} s: worst drop {max(v['drop'] for v in out['loads'].values()) * 1e3:.2f} mV")
+    out = dict(
+        format=1, board=os.path.abspath(a.board), rail=a.rail,
+        nets=sorted(rail.nets), ground=list(ground), volts=a.volts,
+        assumed_loads=assumed, settings={k: getattr(a, k)
+                                         for k, *_ in OPTIONS},
+        tree=[
+            dict(ref=s.part.ref, kind=s.kind, R=s.R, L=s.L, a=s.a, b=s.b,
+                 defaulted=s.defaulted) for s in rail.series
+        ], source=[p.ref for p in rail.source_parts], loads={
+            r: dict(I=v['I'], V=v['V'], drop=v['drop'],
+                    power_drop=v['power_drop'], ground_rise=v['ground_rise'])
+            for r, v in dc['loads'].items()
+        }, series=dict(dc['series']),
+        loss_W=dc['power'].loss + dc['ground'].loss, vias={
+            side: sorted(
+                [dict(x=v['x'], y=v['y'], I=v['I'])
+                 for v in dc[side].vias], key=lambda v: -v['I'])[:20]
+            for side in ('power', 'ground')
+        }, vertices=dict(power=dc['power'].nodes, ground=dc['ground'].nodes),
+        seconds=dict(dc=round(t_dc, 1)), field_loads=sorted(fielded),
+        notes=list(rail.notes) + field_notes + dc['notes'],
+        returns=dict(rail.returns), no_return=list(dc.get('no_return') or []))
+    say(f"DC done in {t_dc:.1f} s: worst drop "
+        f"{max(v['drop'] for v in out['loads'].values()) * 1e3:.2f} mV"
+        )
     figs = dc_figures(board, dc, a.volts, a.out)
     out['figures'] = figs
-    try:                                                # the same maps for the viewer; a failure costs only them
+    try:  # the same maps for the viewer; a failure costs only them
         from .viewer import write_viewer
-        refs = {p.ref for p in rail.source_parts} | set(loads) | {s.part.ref for s in rail.series}
-        out['viewer'] = write_viewer(a.out, board, dc, a.volts, rail.nets, ground, refs)
+        refs = ({p.ref
+                 for p in rail.source_parts} | set(loads)
+                | {s.part.ref
+                   for s in rail.series})
+        out['viewer'] = write_viewer(a.out, board, dc, a.volts, rail.nets,
+                                     ground, refs)
     except Exception as e:                              # noqa: BLE001
-        out['notes'].append(f"the viewer's maps were not written: {type(e).__name__}: {e}")
+        out['notes'].append(
+            f"the viewer's maps were not written: {type(e).__name__}: {e}")
     if not a.no_pdn:
         from .stack import RailPDN
         from .cavity import capacitance
         say('PDN: plane pairs, parts, mesh')
         t = time.time()
         try:
-            for d in rail.decaps:                           # --cap-derate: every decap (all=) or the one named
-                share = derate.get(d.ref, derate.get('all') if 'Zf' not in caps.get(d.ref, {}) else None)
+            # --cap-derate: every decap (all=) or the one named
+            for d in rail.decaps:
+                share = derate.get(d.ref,
+                                   (derate.get('all') if 'Zf' not in caps.get(
+                                       d.ref, {}) else None))
                 if share:
                     caps.setdefault(d.ref, {})['derate'] = share
-            pdn = RailPDN(rail, dmax=a.dmax, plane_min=a.plane_min or None, vrm=vrm, caps=caps,
-                          log=say)
-        except ValueError as e:                         # (no plane pair: the DC drop solved above had been lost too)
+            pdn = RailPDN(rail, dmax=a.dmax, plane_min=a.plane_min or None,
+                          vrm=vrm, caps=caps, log=say)
+        # (no plane pair: the DC drop solved above had been lost too)
+        except ValueError as e:
             out['notes'].append(f"PDN impedance not computed: {e}")
             say(f"PDN: not computed: {e}")
             pdn = None
@@ -253,81 +371,133 @@ def run(a):
         f = np.logspace(np.log10(a.fmin), np.log10(a.fmax), a.points)
         say(f'PDN: {len(f)} frequencies')
         t = time.time()
-        obs = [r for r in loads if pdn.dof(r) is not None and r not in pdn.isolated]
-        Z, Z0 = pdn.sweep(f, observe=obs)                # loaded and bare from one factorisation a frequency
+        obs = [
+            r for r in loads if pdn.dof(r) is not None and r not in pdn.isolated
+        ]
+        # loaded and bare from one factorisation a frequency
+        Z, Z0 = pdn.sweep(f, observe=obs)
         t_z = time.time() - t
         step = a.step or 0.5 * sum(loads.values())
-        target = None if a.no_target else (a.target or a.volts * a.ripple / step)
+        target = (None if a.no_target else
+                  (a.target or a.volts * a.ripple / step))
         unknown = sorted(set(load_targets) - set(loads))
         if unknown:
-            out['notes'].append(f"--load-target for {', '.join(unknown)}: not a load (ignored)")
-        targets = {r: load_targets.get(r, target) for r in obs}         # None: no target for that load
-        out['pdn'] = dict(f=f.tolist(), target=target,
-                          z={r: dict(mag=np.abs(Z[r]).tolist(), deg=np.degrees(np.angle(Z[r])).tolist(),
-                                     bare=np.abs(Z0[r]).tolist(), target=targets[r],
-                                     over=bands(f, Z[r], targets[r]) if targets[r] else []) for r in obs},
-                          cavities=[dict(rail=c.rail_layer, ground=c.ground_layer, d=c.d, er=c.er, area=c.geom.area,
-                                         C=capacitance(c.geom.area, c.d, c.er)) for c in pdn.cavities],
-                          parts={n: dict(role=i['role'], mount_nH=i['mount'] * 1e9,
-                                         mount_mohm=i.get('mount_R', 0.0) * 1e3, node=i['rail'].node,
-                                         rail=i['rail'].why, gnd=i['gnd'].why,
-                                         element={k: v for k, v in (i['el'] or {}).items() if k not in ('defaulted', 'Zf')},
-                                         defaulted=bool((i['el'] or {}).get('defaulted')))
-                                 for n, i in pdn.parts.items()},
-                          vertices=pdn.nv)
-        from .droop import summary as droop_of                  # each load's step in time (R-E14), its
-        low = np.logspace(1, np.log10(a.fmin), 9)[:-1] if a.fmin > 20 else np.zeros(0)    # impedance down to 10 Hz:
-        Zl = pdn.sweep(low, observe=obs)[0] if len(low) else {r: np.zeros(0) for r in obs}    # its DC path and the
-        fd = np.r_[low, f]                                              # regulator's L, not a resonance's
-        out['pdn']['droop'] = {r: droop_of(fd, np.r_[Zl[r], Z[r]], step, a.rise) for r in obs}
+            out['notes'].append(
+                f"--load-target for {', '.join(unknown)}: not a load (ignored)")
+        # None: no target for that load
+        targets = {r: load_targets.get(r, target) for r in obs}
+        out['pdn'] = dict(
+            f=f.tolist(), target=target, z={
+                r: dict(mag=np.abs(Z[r]).tolist(),
+                        deg=np.degrees(np.angle(Z[r])).tolist(),
+                        bare=np.abs(Z0[r]).tolist(), target=targets[r],
+                        over=(bands(f, Z[r], targets[r]) if targets[r] else []))
+                for r in obs
+            }, cavities=[
+                dict(rail=c.rail_layer, ground=c.ground_layer, d=c.d, er=c.er,
+                     area=c.geom.area, C=capacitance(c.geom.area, c.d, c.er))
+                for c in pdn.cavities
+            ], parts={
+                n: dict(
+                    role=i['role'], mount_nH=i['mount'] * 1e9,
+                    mount_mohm=i.get('mount_R', 0.0) * 1e3, node=i['rail'].node,
+                    rail=i['rail'].why, gnd=i['gnd'].why, element={
+                        k: v
+                        for k, v in (i['el'] or {}).items()
+                        if k not in ('defaulted', 'Zf')
+                    }, defaulted=bool((i['el'] or {}).get('defaulted')))
+                for n, i in pdn.parts.items()
+            }, vertices=pdn.nv)
+        # each load's step in time (R-E14), its
+        from .droop import summary as droop_of
+        # impedance down to 10 Hz:
+        low = (np.logspace(1, np.log10(a.fmin), 9)[:-1]
+               if a.fmin > 20 else np.zeros(0))
+        # its DC path and the
+        Zl = (pdn.sweep(low, observe=obs)[0]
+              if len(low) else {r: np.zeros(0)
+                                for r in obs})
+        fd = np.r_[low, f]  # regulator's L, not a resonance's
+        out['pdn']['droop'] = {
+            r: droop_of(fd, np.r_[Zl[r], Z[r]], step, a.rise)
+            for r in obs
+        }
         if obs:
-            figs.append(droop_figure(out['pdn']['droop'], a.volts * a.ripple, a.out))
-            worst = max(obs, key=lambda r: abs(out['pdn']['droop'][r]['peak_V']))
+            figs.append(
+                droop_figure(out['pdn']['droop'], a.volts * a.ripple, a.out))
+            worst = max(obs,
+                        key=lambda r: abs(out['pdn']['droop'][r]['peak_V']))
             d = out['pdn']['droop'][worst]
-            say(f"droop of a {step:g} A step rising in {a.rise * 1e9:g} ns: {d['peak_V'] * 1e3:.3g} mV at {worst}, "
-                f"{d['at_s'] * 1e6:.3g} us after it ({a.volts * a.ripple * 1e3:.3g} mV allowed)")
-        if a.ports_touchstone or a.spice:                       # the bare PDN between every part's port (R-E14)
+            say(f"droop of a {step:g} A step rising in {a.rise * 1e9:g} ns: "
+                f"{d['peak_V'] * 1e3:.3g} mV at {worst}, {d['at_s'] * 1e6:.3g} "
+                f"us after it ({a.volts * a.ripple * 1e3:.3g} mV allowed)"
+                )
+        # the bare PDN between every part's port (R-E14)
+        if a.ports_touchstone or a.spice:
             from .models import spice_subcircuit
             pn, Zp = pdn.port_matrix(f)
             name = os.path.join(a.out, f'pdn_ports.z{len(pn)}p')
-            write_z(name, f, Zp, pn, what="the bare PDN (planes, ties, series parts) between its parts' ports")
-            out['pdn']['ports'] = dict(touchstone=os.path.basename(name), names=pn,
-                                       roles={n: pdn.parts[n]['role'] for n in pn})
-            say(f"PDN: the bare network between {len(pn)} ports -> {os.path.basename(name)}")
+            write_z(
+                name, f, Zp, pn, what=
+                "the bare PDN (planes, ties, series parts) between its parts' "
+                "ports"
+            )
+            out['pdn']['ports'] = dict(
+                touchstone=os.path.basename(name), names=pn,
+                roles={n: pdn.parts[n]['role']
+                       for n in pn})
+            say(f"PDN: the bare network between {len(pn)} ports -> "
+                f"{os.path.basename(name)}"
+                )
             if a.spice:
                 try:
-                    fit = spice_subcircuit(os.path.join(a.out, 'pdn_ports.sub'), f, Zp, pn, log=say)
+                    fit = spice_subcircuit(os.path.join(a.out, 'pdn_ports.sub'),
+                                           f, Zp, pn, log=say)
                     out['pdn']['ports'].update(spice='pdn_ports.sub', fit=fit)
                 except (RuntimeError, ValueError, np.linalg.LinAlgError) as e:
-                    out['notes'].append(f"the SPICE subcircuit was not written: {e}")
+                    out['notes'].append(
+                        f"the SPICE subcircuit was not written: {e}")
         from .models import coverage_note
-        for n, info in pdn.parts.items():                       # a model file's band against the sweep's
+        # a model file's band against the sweep's
+        for n, info in pdn.parts.items():
             if info['el'] is not None and 'Zf' in info['el']:
                 note = coverage_note(n, info['el']['Zf'][0], f)
                 if note:
                     out['notes'].append(note)
-        if a.touchstone and obs:                                # (R-E14: the port matrix for a circuit or PI tool)
+        # (R-E14: the port matrix for a circuit or PI tool)
+        if a.touchstone and obs:
             zt = pdn.transfer(f, obs, obs)
             name = os.path.join(a.out, f'pdn.z{len(obs)}p')
-            write_z(name, f, np.array([[zt[(m, k)] for k in obs] for m in obs]).transpose(2, 0, 1), obs)
+            write_z(
+                name, f,
+                np.array([[zt[(m, k)]
+                           for k in obs]
+                          for m in obs]).transpose(2, 0, 1), obs)
             out['pdn']['touchstone'] = os.path.basename(name)
         if spectra:
             out['pdn']['ripple'] = ripple(pdn, spectra, obs, a.volts * a.ripple)
-            worst = max(out['pdn']['ripple']['loads'].items(), key=lambda kv: kv[1]['pp_V'], default=None)
+            worst = max(out['pdn']['ripple']['loads'].items(),
+                        key=lambda kv: kv[1]['pp_V'], default=None)
             if worst:
-                say(f"ripple on the rail from the current spectra of {', '.join(sorted(spectra))}: "
-                    f"{worst[1]['pp_V'] * 1e3:.3g} mV peak to peak at {worst[0]}, {worst[1]['rms_V'] * 1e3:.3g} mV RMS "
+                say("ripple on the rail from the current spectra of "
+                    f"{', '.join(sorted(spectra))}: "
+                    f"{worst[1]['pp_V'] * 1e3:.3g} mV peak to peak at "
+                    f"{worst[0]}, {worst[1]['rms_V'] * 1e3:.3g} mV RMS "
                     f"({a.volts * a.ripple * 1e3:.3g} mV allowed)")
-        out['notes'] = list(dict.fromkeys(out['notes'] + pdn.notes))    # (the PDN model has the rail's too)
+        # (the PDN model has the rail's too)
+        out['notes'] = list(dict.fromkeys(out['notes'] + pdn.notes))
         out['seconds'].update(pdn_build=round(t_b, 1), pdn_sweep=round(t_z, 1))
         with open(os.path.join(a.out, 'z.csv'), 'w') as fh:
             fh.write('f_Hz,' + ','.join(f'{r}_mag,{r}_deg' for r in obs) + '\n')
             for i in range(len(f)):
-                fh.write(f'{f[i]:.6g},' + ','.join(f'{abs(Z[r][i]):.6g},{np.degrees(np.angle(Z[r][i])):.3f}' for r in obs) + '\n')
+                fh.write(f'{f[i]:.6g},' + ','.join(
+                    f'{abs(Z[r][i]):.6g},{np.degrees(np.angle(Z[r][i])):.3f}'
+                    for r in obs) + '\n')
         figs.append(z_figure(f, Z, Z0, targets, a.out))
         worst = max(obs, key=lambda r: np.abs(Z[r]).max()) if obs else None
         if worst and targets.get(worst):
-            say(f'PDN done in {t_b + t_z:.1f} s; target {targets[worst] * 1e3:.1f} mOhm; {worst} over it at '
+            say(f'PDN done in {t_b + t_z:.1f} s; target '
+                f'{targets[worst] * 1e3:.1f} mOhm; {worst} over it at '
                 f'{len(out["pdn"]["z"][worst]["over"])} band(s)')
         elif worst:
             say(f'PDN done in {t_b + t_z:.1f} s; no target')
@@ -338,27 +508,36 @@ def run(a):
     return out
 
 
-def write_z(path, f, Z, names, what="the rail's impedance between the loads' connections to it"):
-    """Touchstone v1 of the impedance matrices Z (nf, n, n) at f Hz: '# HZ Z RI R 1', its rows as Touchstone has
-    them (a 2-port 11 21 12 22, more ports row by row, four pairs a line)."""
+def write_z(path, f, Z, names,
+            what="the rail's impedance between the loads' connections to it"):
+    """Touchstone v1 of the impedance matrices Z (nf, n, n) at f Hz: '# HZ Z RI
+    R 1', its rows as Touchstone has them (a 2-port 11 21 12 22, more ports row
+    by row, four pairs a line)."""
     n = Z.shape[1]
     with open(path, 'w') as fh:
         fh.write(f"! pcbqs.pdn: {what} ({', '.join(names)})\n")
         fh.write("# HZ Z RI R 1\n")
         for i, fi in enumerate(f):
-            order = [(0, 0), (1, 0), (0, 1), (1, 1)] if n == 2 else [(r, c) for r in range(n) for c in range(n)]
-            vals = [f"{Z[i, r, c].real:.9g} {Z[i, r, c].imag:.9g}" for r, c in order]
+            order = ([(0, 0), (1, 0), (0, 1),
+                      (1, 1)] if n == 2 else [(r, c)
+                                              for r in range(n)
+                                              for c in range(n)])
+            vals = [
+                f"{Z[i, r, c].real:.9g} {Z[i, r, c].imag:.9g}" for r, c in order
+            ]
             if n <= 2:
                 fh.write(f"{fi:.9g} " + ' '.join(vals) + "\n")
             else:
                 for r in range(n):
                     row = vals[r * n:(r + 1) * n]
                     for k in range(0, n, 4):
-                        fh.write((f"{fi:.9g} " if r == 0 and k == 0 else '    ') + ' '.join(row[k:k + 4]) + "\n")
+                        fh.write((f"{fi:.9g} " if r == 0 and k == 0 else '    ')
+                                 + ' '.join(row[k:k + 4]) + "\n")
 
 
 def droop_figure(droop, allowed, out):
-    """droop.png: each load's drop against time from the step, the allowed ripple marked."""
+    """droop.png: each load's drop against time from the step, the allowed
+    ripple marked."""
     plt = _plt()
     fig, ax = plt.subplots(figsize=(7, 3.8), constrained_layout=True)
     for r, d in droop.items():
@@ -368,8 +547,9 @@ def droop_figure(droop, allowed, out):
         ax.axhline(allowed * 1e3, color='k', ls='--', lw=1, label='allowed')
     ax.set_xscale('log')
     any_ = next(iter(droop.values()))
-    ax.set(xlabel='time after the step, us', ylabel='drop, mV',
-           title=f"a {any_['step_A']:g} A step rising in {any_['rise_s'] * 1e9:g} ns")
+    ax.set(
+        xlabel='time after the step, us', ylabel='drop, mV', title=
+        f"a {any_['step_A']:g} A step rising in {any_['rise_s'] * 1e9:g} ns")
     ax.grid(alpha=0.3, which='both')
     ax.legend(fontsize=8)
     fig.savefig(os.path.join(out, 'droop.png'), dpi=110)
@@ -378,15 +558,19 @@ def droop_figure(droop, allowed, out):
 
 
 def ripple(pdn, spectra, observe, allowed):
-    """The ripple the loads' current spectra make on the rail where each load meets it: dict(allowed_V, highest_Hz,
-    sources {ref: dict(file, harmonics, fundamental_Hz, largest_A)}, loads {ref: dict(pp_V, rms_V, bound, f, V,
-    worst_f)}). spectra: {ref: (file, f Hz, complex peak amplitudes)}, the current a load draws on top of its DC.
-    Each frequency's voltage at a load is the sum over the spectra of the transfer impedance times the current
-    (V: its peak). It is the rail's voltage at the load's connection to the planes: a load's own pads add the
-    L di/dt of its own current through that connection, which is its pin's voltage and not the rail's (and, for
-    a converter whose input capacitors sit beside it, not the path its edges take: pcbqs.mqs has that loop).
-    pp_V is the waveform's peak to peak over the period when every frequency is a harmonic of the lowest (bound
-    False), else the bound 2 sum |V|; both are of the harmonics the files hold and no more."""
+    """The ripple the loads' current spectra make on the rail where each load
+    meets it: dict(allowed_V, highest_Hz, sources {ref: dict(file, harmonics,
+    fundamental_Hz, largest_A)}, loads {ref: dict(pp_V, rms_V, bound, f, V,
+    worst_f)}). spectra: {ref: (file, f Hz, complex peak amplitudes)}, the
+    current a load draws on top of its DC. Each frequency's voltage at a load is
+    the sum over the spectra of the transfer impedance times the current (V: its
+    peak). It is the rail's voltage at the load's connection to the planes: a
+    load's own pads add the L di/dt of its own current through that connection,
+    which is its pin's voltage and not the rail's (and, for a converter whose
+    input capacitors sit beside it, not the path its edges take: pcbqs.mqs has
+    that loop). pp_V is the waveform's peak to peak over the period when every
+    frequency is a harmonic of the lowest (bound False), else the bound 2 sum
+    |V|; both are of the harmonics the files hold and no more."""
     from ..circuit.supply import waveform
     src = [r for r in spectra if pdn.dof(r) is not None]
     fs = np.array(sorted({float(x) for r in src for x in spectra[r][1]}))
@@ -400,13 +584,18 @@ def ripple(pdn, spectra, observe, allowed):
             v[at] += zt[(m, k)][at] * amp
         periodic, pp = waveform(fs, v)
         top = int(np.argmax(np.abs(v))) if len(v) else 0
-        loads[m] = dict(pp_V=pp, rms_V=float(np.sqrt(np.sum(np.abs(v) ** 2) / 2)), bound=not periodic,
-                        f=fs.tolist(), V=np.abs(v).tolist(), worst_f=float(fs[top]) if len(fs) else None)
-    return dict(allowed_V=float(allowed), highest_Hz=float(fs[-1]) if len(fs) else None,
-                sources={r: dict(file=os.path.abspath(spectra[r][0]), harmonics=len(spectra[r][1]),
-                                 fundamental_Hz=float(spectra[r][1][0]), largest_A=float(np.abs(spectra[r][2]).max()))
-                         for r in src},
-                loads=loads)
+        loads[m] = dict(pp_V=pp, rms_V=float(np.sqrt(np.sum(np.abs(v)**2) / 2)),
+                        bound=not periodic, f=fs.tolist(), V=np.abs(v).tolist(),
+                        worst_f=(float(fs[top]) if len(fs) else None))
+    return dict(
+        allowed_V=float(allowed),
+        highest_Hz=(float(fs[-1]) if len(fs) else None), sources={
+            r: dict(file=os.path.abspath(spectra[r][0]),
+                    harmonics=len(spectra[r][1]),
+                    fundamental_Hz=float(spectra[r][1][0]),
+                    largest_A=float(np.abs(spectra[r][2]).max()))
+            for r in src
+        }, loads=loads)
 
 
 def _plt():
@@ -417,32 +606,50 @@ def _plt():
 
 
 def dc_figures(board, dc, volts, out):
-    """dc_power_<layer>.png and dc_ground_<layer>.png for the layers carrying most of the current: the drop (or the
-    rise), the current per mm, the vias by their current."""
+    """dc_power_<layer>.png and dc_ground_<layer>.png for the layers carrying
+    most of the current: the drop (or the rise), the current per mm, the vias by
+    their current."""
     from matplotlib.tri import Triangulation
     from shapely.geometry import shape
     plt = _plt()
     x0, y0, x1, y1 = shape(board['outline']).bounds
     files = []
     for side, res in (('power', dc['power']), ('ground', dc['ground'])):
-        carry = sorted(res.sheets.items(), key=lambda kv: -float(np.nansum(kv[1].J)))
+        carry = sorted(res.sheets.items(),
+                       key=lambda kv: -float(np.nansum(kv[1].J)))
         for lay, sh in carry[:2]:
             tri = Triangulation(sh.nodes[:, 0], sh.nodes[:, 1], sh.tris)
-            fig, ax = plt.subplots(1, 2, figsize=(14, 4.6 * (y1 - y0) / max(x1 - x0, 1) + 1.2))
+            fig, ax = plt.subplots(
+                1, 2, figsize=(14, 4.6 * (y1 - y0) / max(x1 - x0, 1) + 1.2))
             v = (volts - sh.V) * 1e3 if side == 'power' else sh.V * 1e3
-            m = ax[0].tripcolor(tri, np.nan_to_num(v), shading='gouraud', cmap='viridis' if side == 'power' else 'cividis')
+            m = ax[0].tripcolor(
+                tri, np.nan_to_num(v), shading='gouraud',
+                cmap=('viridis' if side == 'power' else 'cividis'))
             fig.colorbar(m, ax=ax[0], label='mV')
-            ax[0].set_title(f"{lay}: {'drop from the source' if side == 'power' else 'rise above the source'}, mV", fontsize=10)
+            ax[0].set_title(
+                f"{lay}: "
+                f"{'drop from the source' if side == 'power' else 'rise above the source'}, "
+                "mV", fontsize=10)
             j = sh.J
-            n = ax[1].tripcolor(tri, facecolors=j, cmap='magma', vmax=float(np.percentile(j, 99.7)) if len(j) else 1)
+            n = ax[1].tripcolor(
+                tri, facecolors=j, cmap='magma',
+                vmax=(float(np.percentile(j, 99.7)) if len(j) else 1))
             fig.colorbar(n, ax=ax[1], label='A/mm')
             I = np.array([q['I'] for q in res.vias])
             if len(I) and I.max() > 0:
                 XY = np.array([(q['x'], q['y']) for q in res.vias])
-                ax[1].scatter(XY[:, 0], XY[:, 1], s=2 + 50 * I / I.max(), facecolors='none', edgecolors='c', lw=0.5)
-            ax[1].set_title(f"{lay}: current per mm; vias by current (max {I.max() if len(I) else 0:.2f} A)", fontsize=10)
+                ax[1].scatter(XY[:, 0], XY[:, 1], s=2 + 50 * I / I.max(),
+                              facecolors='none', edgecolors='c', lw=0.5)
+            ax[1].set_title(
+                f"{lay}: current per mm; vias by current (max "
+                f"{I.max() if len(I) else 0:.2f} A)",
+                fontsize=10)
             for q in ax:
-                q.set_aspect('equal'); q.set_xlim(x0, x1); q.set_ylim(y0, y1); q.set_xticks([]); q.set_yticks([])
+                q.set_aspect('equal')
+                q.set_xlim(x0, x1)
+                q.set_ylim(y0, y1)
+                q.set_xticks([])
+                q.set_yticks([])
             fig.tight_layout()
             name = f"dc_{side}_{lay.replace('.', '_')}.png"
             fig.savefig(os.path.join(out, name), dpi=110)
@@ -452,8 +659,9 @@ def dc_figures(board, dc, volts, out):
 
 
 def z_figure(f, Z, Z0, targets, out):
-    """|Z| per load, the planes alone dotted. `targets`: {load: ohms or None}. The axis is set by the loaded curves
-    and targets, so a bare-planes curve reaching 1e11 ohm on a tiny cavity (I6) runs off the top instead of
+    """|Z| per load, the planes alone dotted. `targets`: {load: ohms or None}.
+    The axis is set by the loaded curves and targets, so a bare-planes curve
+    reaching 1e11 ohm on a tiny cavity (I6) runs off the top instead of
     flattening them."""
     plt = _plt()
     fig, ax = plt.subplots(figsize=(9, 4.6))
@@ -465,17 +673,24 @@ def z_figure(f, Z, Z0, targets, out):
     levels = sorted({t for t in targets.values() if t})
     for t in levels:
         who = [r for r, v in targets.items() if v == t]
-        ax.axhline(t, c='r', lw=1, label=f"target {t * 1e3:.1f} mOhm" + (f" ({', '.join(who)})" if len(levels) > 1 else ''))
+        ax.axhline(
+            t, c='r', lw=1, label=f"target {t * 1e3:.1f} mOhm" +
+            (f" ({', '.join(who)})" if len(levels) > 1 else ''))
     if shown:
         data = np.concatenate(shown)
         data = data[np.isfinite(data) & (data > 0)]
         if len(data):
             lo, hi = min([data.min(), *levels]), max([data.max(), *levels])
             ax.set_ylim(lo / 3, hi * 3)
-    ax.set_xlabel('Hz'); ax.set_ylabel('|Z| (Ohm)'); ax.grid(True, which='both', alpha=0.3)
-    ax.set_title('impedance each load sees (dotted: the planes alone)', fontsize=10)
+    ax.set_xlabel('Hz')
+    ax.set_ylabel('|Z| (Ohm)')
+    ax.grid(True, which='both', alpha=0.3)
+    ax.set_title('impedance each load sees (dotted: the planes alone)',
+                 fontsize=10)
     ax.legend(fontsize=7, ncol=2)
-    fig.tight_layout(); fig.savefig(os.path.join(out, 'pdn_z.png'), dpi=110); plt.close(fig)
+    fig.tight_layout()
+    fig.savefig(os.path.join(out, 'pdn_z.png'), dpi=110)
+    plt.close(fig)
     return dict(file='pdn_z.png', side='pdn', layer='')
 
 

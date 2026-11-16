@@ -1,4 +1,5 @@
-"""kicad2ems-gui: the settings form without a display, and the Qt window (offscreen)."""
+"""kicad2ems-gui: the settings form without a display, and the Qt window
+(offscreen)."""
 import json, math, os, sys, time, pytest
 import numpy as np
 from kicad2ems.gui.runner import write_toml, settings_values, FIELDS
@@ -7,13 +8,17 @@ from waiting import wait_until
 
 
 def test_settings_round_trip(tmp_path):
-    vals = dict(board=str(tmp_path / 'b.kicad_pcb'), nets=['RF', 'GND'], fmin=1.0, fmax=6.0, points=201,
-                ports=['P3=J1.1', 'P4@1,2,F.Cu'], cut_ports=True, region=[0.0, 0.0, 10.0, 5.0], fast='qucsator',
-                end_on='ports', fine=None)
+    vals = dict(board=str(tmp_path / 'b.kicad_pcb'), nets=['RF',
+                                                           'GND'], fmin=1.0,
+                fmax=6.0, points=201, ports=['P3=J1.1',
+                                             'P4@1,2,F.Cu'], cut_ports=True,
+                region=[0.0, 0.0, 10.0,
+                        5.0], fast='qucsator', end_on='ports', fine=None)
     p = tmp_path / 'c.toml'
     write_toml(p, vals)
     s = build_settings({}, str(p))
-    assert s.nets == ['RF', 'GND'] and s.points == 201 and s.ports == ['P3=J1.1', 'P4@1,2,F.Cu'] and s.cut_ports
+    assert (s.nets == ['RF', 'GND'] and s.points == 201
+            and s.ports == ['P3=J1.1', 'P4@1,2,F.Cu'] and s.cut_ports)
     assert s.region == (0, 0, 10, 5) and s.fast == 'qucsator' and s.fine is None
     back = settings_values(str(p))
     assert set(back) == {k for k, *_ in FIELDS} and back['fmax'] == 6.0
@@ -27,10 +32,14 @@ def test_window_builds(tmp_path):
     from kicad2ems.gui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     w = MainWindow()
-    w.setup.set_values(dict(board='x.kicad_pcb', nets=['RF'], fmin=1.0, fast='skrf', cut_ports=True, ports=['P3=J1.1']))
+    w.setup.set_values(
+        dict(board='x.kicad_pcb', nets=['RF'], fmin=1.0, fast='skrf',
+             cut_ports=True, ports=['P3=J1.1']))
     v = w.setup.values()
-    assert v['board'] == 'x.kicad_pcb' and v['nets'] == ['RF'] and v['cut_ports'] is True
-    assert v['solvers'] == ['auto', 'scikit'] and 'fast' not in v              # the default (auto) + fast = skrf
+    assert (v['board'] == 'x.kicad_pcb' and v['nets'] == ['RF']
+            and v['cut_ports'] is True)
+    # the default (auto) + fast = skrf
+    assert v['solvers'] == ['auto', 'scikit'] and 'fast' not in v
     assert v['ports'] == ['P3=J1.1']
     w.runtab.status(dict(run='P1', step=1000, db=-12.0, fraction=0.3, eta=65))
     assert w.runtab.bars['P1'].value() == 30
@@ -39,24 +48,33 @@ def test_window_builds(tmp_path):
 
 def test_dump_lists_and_extra_settings(tmp_path):
     cfg = tmp_path / 'c.toml'
-    cfg.write_text('board = "b.kicad_pcb"\nmode = "antenna"\nair = 7.5\nno_mask = true\n'
-                   'dump = ["E@F.Cu@2,6", "J@y=3"]\n[openems]\nbc = "pml_8"\n', encoding='utf-8')
+    cfg.write_text(
+        'board = "b.kicad_pcb"\nmode = "antenna"\nair = 7.5\nno_mask = true\n'
+        'dump = ["E@F.Cu@2,6", "J@y=3"]\n[openems]\nbc = "pml_8"\n',
+        encoding='utf-8')
     vals = settings_values(str(cfg))
     assert vals['mode'] == 'antenna' and vals['dump'] == ['E@F.Cu@2,6', 'J@y=3']
     from kicad2ems.gui.runner import extra_values
     extra = extra_values(str(cfg))
-    assert extra == dict(bc='pml_8')                                # kept for the runs: no field in the form
-    assert vals['mask'] is False                                    # no_mask = true: the form's mask box, unticked
-    assert vals['air'] == 7.5                                       # the air margin has one (openEMS + gfdtd)
+    # kept for the runs: no field in the form
+    assert extra == dict(bc='pml_8')
+    # no_mask = true: the form's mask box, unticked
+    assert vals['mask'] is False
+    # the air margin has one (openEMS + gfdtd)
+    assert vals['air'] == 7.5
     write_toml(tmp_path / 'r.toml', dict(vals, **extra))
     s = build_settings({}, str(tmp_path / 'r.toml'))
-    assert s.air == 7.5 and not s.mask and s.antenna and s.dump == ['E@F.Cu@2,6', 'J@y=3']
-    write_toml(tmp_path / 'r.toml', dict(vals, **extra, air='5,5,5,40,5,5'))     # as the field writes six
-    assert build_settings({}, str(tmp_path / 'r.toml')).air == (5, 5, 5, 40, 5, 5)
+    assert (s.air == 7.5 and not s.mask and s.antenna
+            and s.dump == ['E@F.Cu@2,6', 'J@y=3'])
+    # as the field writes six
+    write_toml(tmp_path / 'r.toml', dict(vals, **extra, air='5,5,5,40,5,5'))
+    assert (build_settings({},
+                           str(tmp_path / 'r.toml')).air == (5, 5, 5, 40, 5, 5))
 
 
 def test_window_tabs(tmp_path):
-    """Four pages (Viewer, Run, Results, Filter), the settings collapsed, the Solvers window behind ? and Help."""
+    """Four pages (Viewer, Run, Results, Filter), the settings collapsed, the
+    Solvers window behind ? and Help."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -69,26 +87,36 @@ def test_window_tabs(tmp_path):
     assert v['dump'] == ['E@F.Cu@2,6', 'H@volume'] and v['mode'] == 'antenna'
     w.setup.extra = dict(air=3.0)
     assert w.setup.values()['air'] == 3.0
-    assert list(w.places) == ['Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Section', 'Filter', 'Circuit']   # no page per analysis: an editor's
-    assert w.viewer.view() in ('3D', 'Plan')                         # 3D when OpenGL can be had
+    # no page per analysis: an editor's
+    assert (list(w.places) == [
+        'Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Section',
+        'Filter', 'Circuit'
+    ])
+    assert w.viewer.view() in ('3D', 'Plan')  # 3D when OpenGL can be had
     w.viewer.set_view('Plan')
     assert w.viewer.view() == 'Plan' and w.viewer.buttons['Plan'].isChecked()
-    assert all(not s.expanded for s in w.setup.sections.values())  # settings collapsed when the window opens
-    assert 'set)' in w.setup.sections['FDTD/Field dumps'].head.text()   # the dumps given above count
-    assert 'set)' in w.setup.parents['FDTD'][0].head.text()               # and in the FDTD section
+    # settings collapsed when the window opens
+    assert all(not s.expanded for s in w.setup.sections.values())
+    # the dumps given above count
+    assert 'set)' in w.setup.sections['FDTD/Field dumps'].head.text()
+    # and in the FDTD section
+    assert 'set)' in w.setup.parents['FDTD'][0].head.text()
     assert {'Open', 'Save', 'Preview', 'Run', 'Stop'} <= set(w.acts)
     assert w.setup.help_btn.text() == '?' and not w.solvers_dialog.isVisible()
-    w.setup.help_btn.click()                                        # ? beside Solvers: the Solvers window
-    assert w.solvers_dialog.isVisible() and w.system.isVisibleTo(w.solvers_dialog)
-    w.fields.load(str(tmp_path))                                    # an empty folder: no dumps, no error
+    w.setup.help_btn.click()  # ? beside Solvers: the Solvers window
+    assert (w.solvers_dialog.isVisible()
+            and w.system.isVisibleTo(w.solvers_dialog))
+    w.fields.load(str(tmp_path))  # an empty folder: no dumps, no error
     assert w.fields.src is None and not w.results.load_antenna(str(tmp_path))
-    assert not w.viewer.load(str(tmp_path)) and not w.viewer.buttons['2D'].isEnabled()
+    assert (not w.viewer.load(str(tmp_path))
+            and not w.viewer.buttons['2D'].isEnabled())
     w.setup.dirty = False
     w.close()
 
 
 def test_solver_boxes_estimates_and_availability():
-    """A preview's estimates beside the solver tick boxes; a solver that cannot run here says why there."""
+    """A preview's estimates beside the solver tick boxes; a solver that cannot
+    run here says why there."""
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from kicad2ems.gui import application
@@ -96,24 +124,33 @@ def test_solver_boxes_estimates_and_availability():
     app = application()
     w = MainWindow()
     w.system.stop()
-    w.setup.set_estimates(dict(solvers=dict(mom25d=dict(seconds=35, gb=1.3, what='4,657 unknowns'),
-                                            openems=dict(seconds=900, gb=0.4))))
-    assert w.setup.solver_boxes['mom25d'].text() == 'mom25d (MoM)  ·  ~35 s, 1.3 GB'
+    w.setup.set_estimates(
+        dict(
+            solvers=dict(mom25d=dict(seconds=35, gb=1.3, what='4,657 unknowns'),
+                         openems=dict(seconds=900, gb=0.4))))
+    assert (w.setup.solver_boxes['mom25d'].text() ==
+            'mom25d (MoM)  ·  ~35 s, 1.3 GB')
     assert w.setup.solver_boxes['openems'].text().endswith('~15 min, 0.4 GB')
     w.setup.dirty = False
-    w.setup.new()                                                   # another board: the estimates go
+    w.setup.new()  # another board: the estimates go
     assert w.setup.solver_boxes['mom25d'].text() == 'mom25d (MoM)'
-    w.setup.set_availability(dict(solvers=[dict(name='openems', ok=False, what='no CSXCAD'),
-                                           dict(name='mom25d', ok=True, what='0.6')]))
-    assert 'no CSXCAD' in w.setup.solver_boxes['openems'].toolTip() and 'not available' not in w.setup.solver_boxes['mom25d'].toolTip()   # (its description)
+    w.setup.set_availability(
+        dict(solvers=[
+            dict(name='openems', ok=False, what='no CSXCAD'),
+            dict(name='mom25d', ok=True, what='0.6')
+        ]))
+    # (its description)
+    assert ('no CSXCAD' in w.setup.solver_boxes['openems'].toolTip()
+            and 'not available' not in w.setup.solver_boxes['mom25d'].toolTip())
     w.setup.dirty = False
     w.close()
     app.processEvents()
 
 
 def test_run_panel_plots_the_mom25d_sweep():
-    """mom25d's adaptive-sweep steps (status events with change / pred) go to the Run panel's plot: its model
-    change and prediction error in dB per solve, and the tolerance it stops at."""
+    """mom25d's adaptive-sweep steps (status events with change / pred) go to
+    the Run panel's plot: its model change and prediction error in dB per solve,
+    and the tolerance it stops at."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -122,17 +159,23 @@ def test_run_panel_plots_the_mom25d_sweep():
     app = application()
     w = MainWindow()
     rt = w.runtab
-    for k, (c, p) in enumerate([(2.0, float('inf')), (0.1, 0.5), (1e-3, 2e-3)], 6):
-        rt.status(dict(run='mom25d', fraction=k / 60, solves=k, f_ghz=2.4))     # progress: a bar, no curve
+    for k, (c, p) in enumerate([(2.0, float('inf')), (0.1, 0.5), (1e-3, 2e-3)],
+                               6):
+        # progress: a bar, no curve
+        rt.status(dict(run='mom25d', fraction=k / 60, solves=k, f_ghz=2.4))
         rt.status(dict(run='mom25d', afs_solves=k, change=c, pred=p, tol=5e-3))
     assert set(rt.curves) == {'mom25d model change', 'mom25d prediction error'}
     xs, ys = rt.hist['mom25d model change']
-    assert xs == [6, 7, 8] and abs(ys[-1] + 60) < 1e-9                         # 1e-3: -60 dB
-    assert rt.hist['mom25d prediction error'][0] == [7, 8]                       # the first has none
-    assert rt._tol is not None and abs(rt._tol.value() - 20 * math.log10(5e-3)) < 1e-9
-    assert not rt.sweep.isHidden() and rt.plot.isHidden()                       # mom25d alone: its plot alone
-    rt.status(dict(run='P1', step=1000, db=-10.0, fraction=0.1))                # openEMS too: both, one above the other
-    assert not rt.sweep.isHidden() and not rt.plot.isHidden() and 'P1' in rt.curves
+    assert xs == [6, 7, 8] and abs(ys[-1] + 60) < 1e-9  # 1e-3: -60 dB
+    assert rt.hist['mom25d prediction error'][0] == [7, 8]  # the first has none
+    assert (rt._tol is not None
+            and abs(rt._tol.value() - 20 * math.log10(5e-3)) < 1e-9)
+    # mom25d alone: its plot alone
+    assert not rt.sweep.isHidden() and rt.plot.isHidden()
+    # openEMS too: both, one above the other
+    rt.status(dict(run='P1', step=1000, db=-10.0, fraction=0.1))
+    assert (not rt.sweep.isHidden() and not rt.plot.isHidden()
+            and 'P1' in rt.curves)
     rt.reset()
     assert rt.sweep.isHidden() and not rt.plot.isHidden() and not rt.curves
     w.close()
@@ -140,31 +183,40 @@ def test_run_panel_plots_the_mom25d_sweep():
 
 
 def test_save_config_keeps_the_file(tmp_path):
-    """Saving over a loaded config keeps its comments, tables and unknown keys; paths relative to the file."""
+    """Saving over a loaded config keeps its comments, tables and unknown keys;
+    paths relative to the file."""
     from kicad2ems.gui.runner import save_config, extra_values
     (tmp_path / 'b.kicad_pcb').write_text('', encoding='utf-8')
     src = tmp_path / 'c.toml'
-    src.write_text('# my board\nboard = "b.kicad_pcb"   # the board\npos = "x.pos"\nfmin = 1.0  # GHz\n'
-                   'nets = [\n  "RF",\n  "GND",\n]\nfuture_key = 3\n\n[openems]\nair = 5.0   # mm\nend-db = -40\n', encoding='utf-8')
+    src.write_text(
+        '# my board\nboard = "b.kicad_pcb"   # the board\npos = "x.pos"\nfmin '
+        '= 1.0  # GHz\nnets = [\n  "RF",\n  "GND",\n]\nfuture_key = '
+        '3\n\n[openems]\nair = 5.0   # mm\nend-db = -40\n',
+        encoding='utf-8')
     vals = dict(settings_values(str(src)), **extra_values(str(src)))
     vals.update(fmin=2.0, nets=['RF'], **{'solver:mom25d': True})
-    del vals['pos']                                                 # the field was cleared
+    del vals['pos']  # the field was cleared
     save_config(str(src), vals, template=str(src))
     text = src.read_text(encoding='utf-8')
-    assert '# my board' in text and 'board = "b.kicad_pcb"   # the board' in text
-    assert 'fmin = 2.0  # GHz' in text and 'pos' not in text and 'future_key = 3' in text
+    assert ('# my board' in text
+            and 'board = "b.kicad_pcb"   # the board' in text)
+    assert ('fmin = 2.0  # GHz' in text and 'pos' not in text
+            and 'future_key = 3' in text)
     assert 'air = 5.0   # mm' in text and 'end-db = -40.0' in text
     assert text.index('solvers = ["auto", "mom25d"]') < text.index('[openems]')
-    assert '\nout =' not in text and 'solver:' not in text          # the default folder is not pinned to the cwd
+    # the default folder is not pinned to the cwd
+    assert '\nout =' not in text and 'solver:' not in text
     s = build_settings({}, str(src))
     assert s.fmin == 2.0 and s.nets == ['RF'] and s.pos is None and s.air == 5.0
     assert s.solver_plan()[0] == ['auto', 'mom25d']
     assert s.board == str(tmp_path / 'b.kicad_pcb')
-    new = tmp_path / 'sub' / 'n.toml'                                # a new file: only what differs from the defaults
+    # a new file: only what differs from the defaults
+    new = tmp_path / 'sub' / 'n.toml'
     new.parent.mkdir()
     save_config(str(new), vals)
     t = new.read_text(encoding='utf-8')
-    assert 'board = "../b.kicad_pcb"' in t and 'points' not in t and 'fmin = 2.0' in t
+    assert ('board = "../b.kicad_pcb"' in t and 'points' not in t
+            and 'fmin = 2.0' in t)
     assert build_settings({}, str(new)).board == str(tmp_path / 'b.kicad_pcb')
 
 
@@ -172,31 +224,39 @@ def _s2p(path, f, S, names=('IN', 'OUT')):
     with open(path, 'w', encoding='utf-8') as fh:
         fh.write(f"! ports: 1={names[0]}, 2={names[1]}\n# Hz S RI R 50\n")
         for fi, s in zip(f, S):
-            fh.write(f"{fi:.6e} " + " ".join(f"{v.real:.9e} {v.imag:.9e}" for v in (s[0, 0], s[1, 0], s[0, 1], s[1, 1])) + "\n")
+            fh.write(f"{fi:.6e} "
+                     + " ".join(f"{v.real:.9e} {v.imag:.9e}"
+                                for v in (s[0, 0], s[1, 0], s[0, 1], s[1, 1]))
+                     + "\n")
 
 
 def test_traces(tmp_path):
     import numpy as np
     from kicad2ems.gui.traces import load_traces, transform, value_at, export_csv, smith_grid, default_visible
     f = np.linspace(1e9, 3e9, 21)
-    tau = 0.5e-9                                                    # a matched 0.5 ns line
+    tau = 0.5e-9  # a matched 0.5 ns line
     S = np.zeros((21, 2, 2), complex)
     S[:, 1, 0] = S[:, 0, 1] = np.exp(-2j * np.pi * f * tau)
     S[:, 0, 0] = S[:, 1, 1] = 0.1
     _s2p(tmp_path / 'b_openems.s2p', f, S)
     _s2p(tmp_path / 'b_mom.s2p', f, S)
-    trs = load_traces([('t', str(tmp_path / 'b_openems.s2p')), ('m', str(tmp_path / 'b_mom.s2p'))])
-    assert [t.source for t in trs[:4]] == ['openEMS'] * 4 and trs[4].source == 'mom25d'
+    trs = load_traces([('t', str(tmp_path / 'b_openems.s2p')),
+                       ('m', str(tmp_path / 'b_mom.s2p'))])
+    assert ([t.source for t in trs[:4]] == ['openEMS'] * 4
+            and trs[4].source == 'mom25d')
     s21 = next(t for t in trs if t.param == 'S21')
-    assert s21.title == 'S21 (OUT ← IN)' and default_visible(s21) and not default_visible(trs[2])
+    assert (s21.title == 'S21 (OUT ← IN)' and default_visible(s21)
+            and not default_visible(trs[2]))
     assert np.allclose(transform('Group delay (ns)', s21)[1], 0.5)
     s11 = next(t for t in trs if t.param == 'S11')
     assert value_at('|S| (dB)', s11, 2e9) == __import__('pytest').approx(-20.0)
     assert value_at('VSWR', s11, 2e9) == __import__('pytest').approx(1.1 / 0.9)
-    assert np.isnan(value_at('|S| (dB)', s11, 5e9)) and value_at('Smith chart', s11, 2e9) == __import__('pytest').approx(0.1)
+    assert (np.isnan(value_at('|S| (dB)', s11, 5e9)) and value_at(
+        'Smith chart', s11, 2e9) == __import__('pytest').approx(0.1))
     export_csv(tmp_path / 'x.csv', [s11, s21], '|S| (dB)', reflections=[s11])
     head = (tmp_path / 'x.csv').read_text(encoding='utf-8').splitlines()[0]
-    assert head == 'f_GHz,S11 openEMS dB,S21 openEMS dB,S11 openEMS re,S11 openEMS im'
+    assert (head ==
+            'f_GHz,S11 openEMS dB,S21 openEMS dB,S11 openEMS re,S11 openEMS im')
     assert len(smith_grid()) > 10
 
 
@@ -205,27 +265,34 @@ def test_window_config_and_plots(tmp_path, monkeypatch):
     pytest.importorskip('pyqtgraph')
     import numpy as np
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))   # recent files in a scratch QSettings
+    # recent files in a scratch QSettings
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     from PySide6.QtWidgets import QApplication
     from kicad2ems.gui.app import MainWindow
     from kicad2ems.gui.traces import load_traces
     app = QApplication.instance() or QApplication([])
     cfg = tmp_path / 'c.toml'
-    cfg.write_text('# hello\nboard = "b.kicad_pcb"\nfmin = 1.0\n', encoding='utf-8')
+    cfg.write_text('# hello\nboard = "b.kicad_pcb"\nfmin = 1.0\n',
+                   encoding='utf-8')
     w = MainWindow(str(cfg))
-    assert w.setup.path == str(cfg) and not w.setup.dirty and w.windowTitle().startswith('c.toml -')
+    assert (w.setup.path == str(cfg) and not w.setup.dirty
+            and w.windowTitle().startswith('c.toml -'))
     w.setup.edits['fmax'][0].setText('7')
     assert w.setup.dirty and w.windowTitle().startswith('c.toml*')
-    assert w.setup.save() and not w.setup.dirty and 'fmax = 7.0' in cfg.read_text(encoding='utf-8') and '# hello' in cfg.read_text(encoding='utf-8')
+    assert (w.setup.save() and not w.setup.dirty
+            and 'fmax = 7.0' in cfg.read_text(encoding='utf-8')
+            and '# hello' in cfg.read_text(encoding='utf-8'))
     assert str(cfg) in w.recent()
     f = np.linspace(1e9, 3e9, 11)
     S = np.full((11, 2, 2), 0.2 + 0j)
     _s2p(tmp_path / 'b_openems.s2p', f, S)
     sp = w.results.splot
     sp.set_traces(load_traces([('t', str(tmp_path / 'b_openems.s2p'))]))
-    assert [t.param for t in sp.visible()] == ['S11', 'S21'] and [t.param for t in sp.reflections()] == ['S11']
+    assert ([t.param for t in sp.visible()] == ['S11', 'S21']
+            and [t.param for t in sp.reflections()] == ['S11'])
     sp.add_marker(2e9)
-    assert sp.table.rowCount() == 1 and sp.table.item(0, 1).text() == '-13.98 dB'
+    assert (sp.table.rowCount() == 1
+            and sp.table.item(0, 1).text() == '-13.98 dB')
     sp.kind.setCurrentText('VSWR')
     assert sp.table.item(0, 1).text() == '1.500'
     sp.export_csv(str(tmp_path / 'e.csv'))
@@ -234,13 +301,16 @@ def test_window_config_and_plots(tmp_path, monkeypatch):
     w.close()
 
 
-@pytest.mark.parametrize('name, nports', [('branchline', 4), ('wilkinson', 3), ('steplpf', 2), ('stubnotch', 2),
+@pytest.mark.parametrize('name, nports', [('branchline', 4), ('wilkinson', 3),
+                                          ('steplpf', 2), ('stubnotch', 2),
                                           ('gcpw', 2), ('coupler', 4)])
 def test_rf_examples_load(name, nports):
-    """The RF example boards load: ports, the Wilkinson resistor, the coupler's two separate lines."""
+    """The RF example boards load: ports, the Wilkinson resistor, the coupler's
+    two separate lines."""
     from kicad2ems.core.importers.kicad import KiCadBoard
     from kicad2ems.core.board import Board
-    from k2e_fixtures import ROOT as root                             # the kicad2ems checkout: its examples
+    # the kicad2ems checkout: its examples
+    from k2e_fixtures import ROOT as root
     path = os.path.join(root, 'examples', f'rf_{name}.toml')
     s = build_settings({}, path)
     m = Board(KiCadBoard(s.board), ground=s.ground, log=lambda *a: None)
@@ -248,57 +318,86 @@ def test_rf_examples_load(name, nports):
     if name == 'wilkinson':
         assert len(m.parts) == 1 and abs(m.parts[0].R - 100) < 1e-9
     if name == 'coupler':
-        assert len(m.copper['F.Cu']) == 2                           # the gap is open: two separate conductors
+        # the gap is open: two separate conductors
+        assert len(m.copper['F.Cu']) == 2
 
 
 def test_gui_solver_boxes(tmp_path, monkeypatch):
     from kicad2ems.gui.runner import settings_values, solvers_from_form, save_config, extra_values, write_toml, FIELDS
     from kicad2ems.core.solvers.lines import fastsolve
-    monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)    # no qucsator: lines is scikit
-    assert [k for k, *_ in FIELDS if k.startswith('solver:')] == ['solver:auto', 'solver:openems', 'solver:mom25d',
-                                                                    'solver:gfdtd', 'solver:qucs', 'solver:scikit']
+    # no qucsator: lines is scikit
+    monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)
+    assert ([k for k, *_ in FIELDS if k.startswith('solver:')] == [
+        'solver:auto', 'solver:openems', 'solver:mom25d', 'solver:gfdtd',
+        'solver:qucs', 'solver:scikit'
+    ])
     p = tmp_path / 'c.toml'
-    p.write_text('board = "b.kicad_pcb"\nsolvers = ["mom", "lines"]\n', encoding='utf-8')
+    p.write_text('board = "b.kicad_pcb"\nsolvers = ["mom", "lines"]\n',
+                 encoding='utf-8')
     vals = settings_values(str(p))
-    assert not vals['solver:openems'] and vals['solver:mom25d'] and vals['solver:scikit'] and not vals['solver:qucs']
-    assert 'solvers' not in extra_values(str(p))                    # the tick boxes own it
-    s = solvers_from_form(dict(vals, **{'solver:openems': True}))   # openEMS ticked again
-    assert not any(k.startswith('solver:') for k in s) and s['solvers'] == ['openems', 'mom25d', 'scikit']
+    assert (not vals['solver:openems'] and vals['solver:mom25d']
+            and vals['solver:scikit'] and not vals['solver:qucs'])
+    # the tick boxes own it
+    assert 'solvers' not in extra_values(str(p))
+    # openEMS ticked again
+    s = solvers_from_form(dict(vals, **{'solver:openems': True}))
+    assert (not any(k.startswith('solver:') for k in s)
+            and s['solvers'] == ['openems', 'mom25d', 'scikit'])
     save_config(str(p), s, template=str(p))
-    assert build_settings({}, str(p)).solver_plan()[0] == ['openems', 'mom25d', 'scikit']
-    s = solvers_from_form(dict(vals, **{'solver:auto': True, 'solver:mom25d': False, 'solver:scikit': False}))
-    assert 'solvers' not in s                                       # auto alone: the default, not written
+    assert (build_settings(
+        {}, str(p)).solver_plan()[0] == ['openems', 'mom25d', 'scikit'])
+    s = solvers_from_form(
+        dict(
+            vals, **{
+                'solver:auto': True, 'solver:mom25d': False,
+                'solver:scikit': False
+            }))
+    assert 'solvers' not in s  # auto alone: the default, not written
     save_config(str(p), s, template=str(p))
-    assert 'solvers' not in p.read_text(encoding='utf-8') and build_settings({}, str(p)).solver_plan()[0] == ['auto']
-    s = solvers_from_form(dict(vals, **{'solver:mom25d': False}))   # only the line model
+    assert ('solvers' not in p.read_text(encoding='utf-8')
+            and build_settings({}, str(p)).solver_plan()[0] == ['auto'])
+    # only the line model
+    s = solvers_from_form(dict(vals, **{'solver:mom25d': False}))
     assert s['solvers'] == ['scikit']
     write_toml(tmp_path / 'r.toml', s)
-    assert build_settings({}, str(tmp_path / 'r.toml')).solver_plan()[0] == ['scikit']
-    none = solvers_from_form({k: False for k, *_ in FIELDS if k.startswith('solver:')})
-    assert none['solvers'] == []                                    # none: the GUI says so
-    p.write_text('board = "b.kicad_pcb"\nsolvers = ["auto"]\n', encoding='utf-8')     # auto has a box of its own (and is the default)
+    assert (build_settings({}, str(
+        tmp_path / 'r.toml')).solver_plan()[0] == ['scikit'])
+    none = solvers_from_form(
+        {k: False
+         for k, *_ in FIELDS
+         if k.startswith('solver:')})
+    assert none['solvers'] == []  # none: the GUI says so
+    # auto has a box of its own (and is the default)
+    p.write_text('board = "b.kicad_pcb"\nsolvers = ["auto"]\n',
+                 encoding='utf-8')
     vals = settings_values(str(p))
-    assert vals['solver:auto'] and not vals['solver:openems'] and 'solvers' not in solvers_from_form(vals)   # the default
+    # the default
+    assert (vals['solver:auto'] and not vals['solver:openems']
+            and 'solvers' not in solvers_from_form(vals))
 
 
 def test_save_config_in_solver_tables(tmp_path):
-    """A [solver.<name>] table: its short names are its settings; another tool's table is left alone."""
+    """A [solver.<name>] table: its short names are its settings; another tool's
+    table is left alone."""
     from kicad2ems.gui.runner import settings_values, save_config, extra_values
     p = tmp_path / 'c.toml'
-    p.write_text('board = "b.kicad_pcb"\n[solver.mom25d]\nport = "auto"  # MoM\ndmax = 0.4\n'
-                 '[other]\nmom_port = "x"\n', encoding='utf-8')
+    p.write_text(
+        'board = "b.kicad_pcb"\n[solver.mom25d]\nport = "auto"  # MoM\ndmax = '
+        '0.4\n[other]\nmom_port = "x"\n', encoding='utf-8')
     vals = dict(settings_values(str(p)), **extra_values(str(p)))
     assert vals['mom_port'] == 'auto' and vals['mom_dmax'] == 0.4
     save_config(str(p), dict(vals, mom_port='lumped'), template=str(p))
     text = p.read_text(encoding='utf-8')
-    assert 'port = "lumped"' in text and '# MoM' in text and 'dmax = 0.4' in text and 'mom_port = "x"' in text
+    assert ('port = "lumped"' in text and '# MoM' in text
+            and 'dmax = 0.4' in text and 'mom_port = "x"' in text)
     s = build_settings({}, str(p))
     assert s.mom_port == 'lumped' and s.mom_dmax == 0.4
 
 
 def test_system_panel(tmp_path):
-    """The System panel: the machine as kicad2ems.core.sysinfo reports it, and a preview's estimates against it (a
-    solver that cannot run here greyed, memory that does not fit marked)."""
+    """The System panel: the machine as kicad2ems.core.sysinfo reports it, and a
+    preview's estimates against it (a solver that cannot run here greyed, memory
+    that does not fit marked)."""
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     import json
@@ -307,64 +406,99 @@ def test_system_panel(tmp_path):
     from kicad2ems.core.sysinfo import info
     app = QApplication.instance() or QApplication([])
     p = SystemPanel()
-    p.stop()                                                        # the panel's own check: not needed here
+    p.stop()  # the panel's own check: not needed here
     sysinfo = info()
-    assert {s['name'] for s in sysinfo['solvers']} >= {'mom25d', 'scikit'} and sysinfo['ram']['total'] > 0
-    sysinfo['solvers'] = [dict(name='openems', label='openEMS', ok=False, what='no CSXCAD', consumes='board'),
-                          dict(name='mom25d', label='mom25d', ok=True, what='0.6', consumes='board')]
+    assert ({s['name']
+             for s in sysinfo['solvers']} >= {'mom25d', 'scikit'}
+            and sysinfo['ram']['total'] > 0)
+    sysinfo['solvers'] = [
+        dict(name='openems', label='openEMS', ok=False, what='no CSXCAD',
+             consumes='board'),
+        dict(name='mom25d', label='mom25d', ok=True, what='0.6',
+             consumes='board')
+    ]
     sysinfo['ram'] = dict(total=32.0, available=20.0)
-    sysinfo['gpu'] = dict(device='GPU', backend='cupy', api='ROCm/HIP', free=16.0, total=17.0)
+    sysinfo['gpu'] = dict(device='GPU', backend='cupy', api='ROCm/HIP',
+                          free=16.0, total=17.0)
     p.set_info(sysinfo)
     assert p.solvers.topLevelItemCount() == 2
-    est = dict(solvers=dict(openems=dict(seconds=60, gb=0.1, what='0.5 M cells'),
-                            mom25d=dict(seconds=600, gb=30.0, gpu_gb=8.1, how='tiled', what='45,000 unknowns')))
-    (tmp_path / 'b_run.json').write_text(json.dumps(dict(estimates=est)), encoding='utf-8')
-    assert p.load_estimates(str(tmp_path)) and p.est_tree.topLevelItemCount() == 2
+    est = dict(solvers=dict(
+        openems=dict(seconds=60, gb=0.1, what='0.5 M cells'), mom25d=dict(
+            seconds=600, gb=30.0, gpu_gb=8.1, how='tiled',
+            what='45,000 unknowns')))
+    (tmp_path / 'b_run.json').write_text(json.dumps(dict(estimates=est)),
+                                         encoding='utf-8')
+    assert (p.load_estimates(str(tmp_path))
+            and p.est_tree.topLevelItemCount() == 2)
     oems, mom = (p.est_tree.topLevelItem(i) for i in range(2))
     assert 'not available' in oems.text(4) and '~10 min' == mom.text(1)
     assert 'does not fit' in mom.text(2) and 'fits' in mom.text(3)
-    assert fit_note(10, 20) == 'fits' and fit_note(18, 20) == 'tight' and not p.load_estimates(str(tmp_path / 'none'))
+    assert (fit_note(10, 20) == 'fits' and fit_note(18, 20) == 'tight'
+            and not p.load_estimates(str(tmp_path / 'none')))
 
 
 @pytest.fixture(scope='module')
 def wilkinson_preview(tmp_path_factory):
-    """A preview of the Wilkinson divider: its board, line model (<name>_lines.json), meshes and plots."""
+    """A preview of the Wilkinson divider: its board, line model
+    (<name>_lines.json), meshes and plots."""
     from kicad2ems.core.cli import main
     out = tmp_path_factory.mktemp('wilk')
-    from k2e_fixtures import ROOT as root                             # the kicad2ems checkout: its examples
-    assert main([os.path.join(root, 'examples', 'rf_wilkinson.toml'), '--preview', '--out', str(out),
-                 '--solvers', 'openems,lines', '--no-report']) == 0
+    # the kicad2ems checkout: its examples
+    from k2e_fixtures import ROOT as root
+    assert (main([
+        os.path.join(root, 'examples', 'rf_wilkinson.toml'), '--preview',
+        '--out',
+        str(out), '--solvers', 'openems,lines', '--no-report'
+    ]) == 0)
     return str(out)
 
 
 def test_line_model_drawing(wilkinson_preview):
-    """<name>_lines.json: every section with its points, layer height and Z0; paths as ids; the overlay's
-    colours, hit test and description."""
+    """<name>_lines.json: every section with its points, layer height and Z0;
+    paths as ids; the overlay's colours, hit test and description."""
     from kicad2ems.core import overlay as ov
     d = ov.load_lines(wilkinson_preview)
-    assert d and d['format'] == 'kicad2ems-lines' and d['path'].endswith('_lines.json')
+    assert (d and d['format'] == 'kicad2ems-lines'
+            and d['path'].endswith('_lines.json'))
     els = d['elements']
     assert [e['id'] for e in els] == list(range(len(els)))
-    assert all(len(e['pts']) >= 1 and e['z'] == pytest.approx(0.8) for e in els if e['layer'] == 'F.Cu')
-    assert [p['port'] for p in d['paths']] == ['P1', 'P1', 'P2'] and all(p['ids'] for p in d['paths'])
-    z0 = sorted({round(e['z0']) for e in els if e.get('z0') and e['kind'] == 'trace'})
-    assert z0 == [49, 69]                                           # the 50 ohm feeds and the 70.7 ohm arms
-    assert ov.reference(d) == 50.0 and ov.span(d) == pytest.approx(19.04, abs=0.05)
-    arm = next(e for e in els if e['kind'] == 'trace' and e['z0'] > 60 and len(e['pts']) == 2)
+    assert all(
+        len(e['pts']) >= 1 and e['z'] == pytest.approx(0.8)
+        for e in els
+        if e['layer'] == 'F.Cu')
+    assert ([p['port'] for p in d['paths']] == ['P1', 'P1', 'P2']
+            and all(p['ids'] for p in d['paths']))
+    z0 = sorted(
+        {round(e['z0'])
+         for e in els
+         if e.get('z0') and e['kind'] == 'trace'})
+    assert z0 == [49, 69]  # the 50 ohm feeds and the 70.7 ohm arms
+    assert (ov.reference(d) == 50.0
+            and ov.span(d) == pytest.approx(19.04, abs=0.05))
+    arm = next(e for e in els
+               if e['kind'] == 'trace' and e['z0'] > 60 and len(e['pts']) == 2)
     mid = np.mean(arm['pts'], 0)
     assert ov.nearest(els, mid[0], mid[1], 0.1) == arm['id']
-    assert ov.nearest(els, 1e3, 1e3, 0.1) is None and ov.nearest(els, mid[0], mid[1], 0.1, layer='B.Cu') is None
+    assert (ov.nearest(els, 1e3, 1e3, 0.1) is None
+            and ov.nearest(els, mid[0], mid[1], 0.1, layer='B.Cu') is None)
     assert ov.z0_colour(50, 50, 10) == ov.MID and ov.z0_colour(None) == ov.MID
-    assert ov.z0_colour(80, 50, 10) == pytest.approx(ov.HIGH) and ov.z0_colour(20, 50, 10) == pytest.approx(ov.LOW)
+    assert (ov.z0_colour(80, 50, 10) == pytest.approx(ov.HIGH)
+            and ov.z0_colour(20, 50, 10) == pytest.approx(ov.LOW))
     assert 'Z0 69.0 Ω' in ov.describe(arm) and 'mm' in ov.describe(arm)
-    seg = ov.plan_segments(next(iter(__import__('kicad2ems.core.meshes', fromlist=['find']).find(wilkinson_preview).values())),
-                           (0, -20, 25, 0, 0, 0.8), 0.8)
+    seg = ov.plan_segments(
+        next(
+            iter(
+                __import__('kicad2ems.core.meshes',
+                           fromlist=['find'
+                                     ]).find(wilkinson_preview).values())),
+        (0, -20, 25, 0, 0, 0.8), 0.8)
     assert seg.shape[1] == 2 and len(seg) % 2 == 0 and len(seg) > 0
 
 
 def test_section_view(wilkinson_preview):
-    """The Section page: a section picked in the list solved when the page is in view, its Z0 where it comes from,
-    the field drawn with the copper; a section with no cross-section says so; a new folder clears it."""
+    """The Section page: a section picked in the list solved when the page is in
+    view, its Z0 where it comes from, the field drawn with the copper; a section
+    with no cross-section says so; a new folder clears it."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -373,12 +507,15 @@ def test_section_view(wilkinson_preview):
     app = application()
     v = Viewer()
     v.load(wilkinson_preview)
-    assert 'Section' not in v.buttons and v.has_sections()          # a page of its own, not a view of the board
+    # a page of its own, not a view of the board
+    assert 'Section' not in v.buttons and v.has_sections()
     assert 'No section picked' in v.section.info.text()
     v.set_view('Plan')
-    arm = next(e for e in v.lines['elements'] if e['kind'] == 'trace' and e['z0'] and e['z0'] > 60 and e['length'])
+    arm = next(
+        e for e in v.lines['elements']
+        if e['kind'] == 'trace' and e['z0'] and e['z0'] > 60 and e['length'])
     v.select(arm['id'])
-    assert v.section.e is None                                      # not solved until its page is in view
+    assert v.section.e is None  # not solved until its page is in view
     v.set_section_shown(True)
     assert v.section.e is arm and not v.side.isHidden()
 
@@ -387,10 +524,11 @@ def test_section_view(wilkinson_preview):
         app.processEvents()
     settle()
     text = v.section.info.text()
-    assert v.section.v is not None and 'Z0' in text and 'formula' in text and 'nodes' in text
+    assert (v.section.v is not None and 'Z0' in text and 'formula' in text
+            and 'nodes' in text)
     img = v.section.img.image
     assert img is not None and np.isfinite(img).any()
-    assert len(v.section.items) > 3                                 # lines, arrows, copper
+    assert len(v.section.items) > 3  # lines, arrows, copper
     assert v.section.mode.count() >= 1 and v.section.mode.currentData() == 'cut'
     for what in (1, 0):
         v.section.show_what.setCurrentIndex(what)
@@ -398,19 +536,21 @@ def test_section_view(wilkinson_preview):
         v.section.redraw()
     n = len(v.section.items)
     v.section.redraw()
-    assert len(v.section.items) == n                                # nothing piles up
+    assert len(v.section.items) == n  # nothing piles up
     other = next((e for e in v.lines['elements'] if not e.get('section')), None)
     if other is not None:
         v.select(other['id'])
         settle()
-        assert v.section.v is None and 'no cross-section' in v.section.info.text()
+        assert (v.section.v is None
+                and 'no cross-section' in v.section.info.text())
     v.load(wilkinson_preview)
     assert v.section.e is None and v.section.v is None
 
 
 def test_section_page(wilkinson_preview, tmp_path, monkeypatch):
-    """The window's Section page: gone while nothing shown has sections, there (behind what is in front) once a
-    folder has; the section picked in the Viewer is solved when the page is brought to the front."""
+    """The window's Section page: gone while nothing shown has sections, there
+    (behind what is in front) once a folder has; the section picked in the
+    Viewer is solved when the page is brought to the front."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -422,26 +562,33 @@ def test_section_page(wilkinson_preview, tmp_path, monkeypatch):
     w.show()
     app.processEvents()
     d = w.docks['Section']
-    assert 'Section' in LOWER and d.widget() is w.viewer.section and d.isHidden()
+    assert ('Section' in LOWER and d.widget() is w.viewer.section
+            and d.isHidden())
     assert list(w.viewer.buttons) == ['Plan', '2D', '3D', 'Images']
     w.open_results(wilkinson_preview, quiet=True)
     app.processEvents()
-    assert not d.isHidden() and not d.in_front()                    # there, under the board, not in front
+    # there, under the board, not in front
+    assert not d.isHidden() and not d.in_front()
     assert d in w.work.tabifiedDockWidgets(w.docks[LOWER[0]])
-    arm = next(e for e in w.viewer.lines['elements'] if e['kind'] == 'trace' and e.get('section') and e['length'])
+    arm = next(e for e in w.viewer.lines['elements']
+               if e['kind'] == 'trace' and e.get('section') and e['length'])
     w.viewer.select(arm['id'])
-    assert w.viewer.section.e is None                               # not solved behind another page
+    assert w.viewer.section.e is None  # not solved behind another page
     w.show_panel('Section')
     app.processEvents()
     assert d.in_front() and w.viewer.section.e is arm
     wait_until(lambda: not w.viewer.section.busy(), 15)
-    assert w.viewer.section.v is not None and 'Z0' in w.viewer.section.info.text()
+    assert (w.viewer.section.v is not None
+            and 'Z0' in w.viewer.section.info.text())
     w.show_panel('Run')
     app.processEvents()
-    other = next(e for e in w.viewer.lines['elements'] if e.get('section') and e is not arm)
+    other = next(e for e in w.viewer.lines['elements']
+                 if e.get('section') and e is not arm)
     w.viewer.select(other['id'])
-    assert w.viewer.section.e is arm                                # behind the log: the next one waits
-    w.open_results(str(tmp_path), quiet=True)                       # a folder with no line model: the page goes
+    # behind the log: the next one waits
+    assert w.viewer.section.e is arm
+    # a folder with no line model: the page goes
+    w.open_results(str(tmp_path), quiet=True)
     app.processEvents()
     assert d.isHidden()
     w.setup.dirty = False
@@ -450,8 +597,8 @@ def test_section_page(wilkinson_preview, tmp_path, monkeypatch):
 
 
 def test_viewer_sections_and_views(wilkinson_preview):
-    """The viewer on a preview: the plan and the section list, one selection in every view; the views a folder
-    has nothing for disabled."""
+    """The viewer on a preview: the plan and the section list, one selection in
+    every view; the views a folder has nothing for disabled."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -460,27 +607,31 @@ def test_viewer_sections_and_views(wilkinson_preview):
     app = application()
     v = Viewer()
     assert v.load(wilkinson_preview)
-    assert v.buttons['Plan'].isEnabled() and v.buttons['Images'].isEnabled() and not v.buttons['2D'].isEnabled()
-    assert v.plan.current_layer() == 'F.Cu' and v.plan.layer.count() == 2      # top first
+    assert (v.buttons['Plan'].isEnabled() and v.buttons['Images'].isEnabled()
+            and not v.buttons['2D'].isEnabled())
+    # top first
+    assert v.plan.current_layer() == 'F.Cu' and v.plan.layer.count() == 2
     n = len([e for e in v.lines['elements'] if e['kind'] != 'coupling'])
-    rows = sum(v.tree.topLevelItem(k).childCount() for k in range(v.tree.topLevelItemCount()))
+    rows = sum(
+        v.tree.topLevelItem(k).childCount()
+        for k in range(v.tree.topLevelItemCount()))
     assert rows >= n and v.tree.topLevelItem(0).text(0) == 'P1 → P2'
     v.set_view('Plan')
     assert not v.side.isHidden()
     sec = v.tree.topLevelItem(0).child(1)
-    sec.setSelected(True)                                           # the list: the plan and 3D follow
+    sec.setSelected(True)  # the list: the plan and 3D follow
     i = sec.data(0, Qt_UserRole())
     assert v.plan.sel == i and v.volume.sel == i and 'Z0' in v.detail.text()
-    v.plan.selected.emit(0)                                         # a click in the plan: the list follows
+    v.plan.selected.emit(0)  # a click in the plan: the list follows
     assert v.tree.selectedItems()[0].data(0, Qt_UserRole()) == 0
-    v.load(wilkinson_preview)                                       # the folder again: nothing selected
+    v.load(wilkinson_preview)  # the folder again: nothing selected
     assert v.detail.text().strip() == '' and v.plan.sel is None
     v.select(0)
-    v.lines_on.setChecked(False)                                    # the overlay off: no list
+    v.lines_on.setChecked(False)  # the overlay off: no list
     assert v.side.isHidden() and not v.plan.show_lines
     v.set_view('Images')
     assert v.side.isHidden()
-    v.plan.mesh.setCurrentIndex(1)                                  # a solver's mesh on the layer
+    v.plan.mesh.setCurrentIndex(1)  # a solver's mesh on the layer
     assert v.plan.mesh.currentData() in ('openems', 'mom25d')
 
 
@@ -490,8 +641,9 @@ def Qt_UserRole():
 
 
 def test_results_subplots_and_layout(tmp_path, monkeypatch):
-    """Subplots added and removed (Cartesian, Smith, polar), markers on all of them, antenna quantities when a
-    folder has antenna results, the layout and the window's shape remembered by the next window."""
+    """Subplots added and removed (Cartesian, Smith, polar), markers on all of
+    them, antenna quantities when a folder has antenna results, the layout and
+    the window's shape remembered by the next window."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -512,80 +664,116 @@ def test_results_subplots_and_layout(tmp_path, monkeypatch):
     _s2p(tmp_path / 'b_openems.s2p', f, S)
     sp.set_traces(load_traces([('t', str(tmp_path / 'b_openems.s2p'))]))
     polar = sp.add_subplot('Polar')
-    assert sp.layout_spec()[-1] == 'Polar:S (polar)' and polar.option.count() == 1   # no far field: S only
+    # no far field: S only
+    assert (sp.layout_spec()[-1] == 'Polar:S (polar)'
+            and polar.option.count() == 1)
     sp.add_subplot('Cartesian', 'Phase (deg)')
     assert sp.s_kinds() == ['|S| (dB)', 'Phase (deg)']
     m = sp.add_marker(2e9)
-    assert set(m['items']) == {id(p) for p in sp.subplots}          # on every plot
-    assert sp.table.columnCount() == 1 + 2 * 2 + 1                  # f, |S| and phase of S11, S21, S11 on Smith
-    m['items'][id(sp.subplots[0])][0].setValue(2.4)                  # dragged on one plot: moved on the others
-    assert m['f'] == pytest.approx(2.4e9) and m['items'][id(sp.subplots[3])][0].value() == pytest.approx(2.4)
+    # on every plot
+    assert set(m['items']) == {id(p) for p in sp.subplots}
+    # f, |S| and phase of S11, S21, S11 on Smith
+    assert sp.table.columnCount() == 1 + 2 * 2 + 1
+    # dragged on one plot: moved on the others
+    m['items'][id(sp.subplots[0])][0].setValue(2.4)
+    assert (m['f'] == pytest.approx(2.4e9)
+            and m['items'][id(sp.subplots[3])][0].value() == pytest.approx(2.4))
     sp.remove_subplot(polar)
     assert 'Polar:S (polar)' not in sp.layout_spec() and len(sp.subplots) == 3
-    res = dict(rows=[dict(f=f0, D_dbi=5.0, G_dbi=3.0, Grealized_dbi=2.5, eff=0.6, Prad=0.6, Pinc=1.0)
-                     for f0 in (1e9, 2e9, 3e9)], f_pattern=2e9)
+    res = dict(
+        rows=[
+            dict(f=f0, D_dbi=5.0, G_dbi=3.0, Grealized_dbi=2.5, eff=0.6,
+                 Prad=0.6, Pinc=1.0) for f0 in (1e9, 2e9, 3e9)
+        ], f_pattern=2e9)
     th, ph = np.arange(0, 181, 5.0), np.arange(0, 360, 5.0)
-    sph = dict(freq=np.array([2e9]), theta=th, phi=ph, e_norm=np.ones((1, len(ph), len(th))), dmax=np.array([2.0]))
+    sph = dict(freq=np.array([2e9]), theta=th, phi=ph, e_norm=np.ones(
+        (1, len(ph), len(th))), dmax=np.array([2.0]))
     sp.set_antenna(res, sph)
     assert sp.subplots[0].option.findText('Gain (dBi)') >= 0
     cuts = sp.add_subplot('Polar', 'Far-field cuts')
-    assert cuts.mode == 'Far-field cuts' and cuts.freq.count() == 1 and cuts.freq.isVisibleTo(cuts)
+    assert (cuts.mode == 'Far-field cuts' and cuts.freq.count() == 1
+            and cuts.freq.isVisibleTo(cuts))
     sp.subplots[0].option.setCurrentText('Gain (dBi)')
-    assert 'gain' in [sp.table.horizontalHeaderItem(c).text() for c in range(sp.table.columnCount())]
+    assert ('gain' in [
+        sp.table.horizontalHeaderItem(c).text()
+        for c in range(sp.table.columnCount())
+    ])
     spec = sp.layout_spec()
     w.results._mode = 'sparams'
     w.results._save_layout()
-    w.resize(760, 590)                                              # fits the offscreen screen (800 x 800)
+    w.resize(760, 590)  # fits the offscreen screen (800 x 800)
     w.setup.dirty = False
     w.close()
-    w2 = MainWindow()                                               # the next window: the same plots and size
-    assert w2.results.splot.layout_spec() == spec and (w2.width(), w2.height()) == (760, 590)
+    w2 = MainWindow()  # the next window: the same plots and size
+    assert (w2.results.splot.layout_spec() == spec
+            and (w2.width(), w2.height()) == (760, 590))
     first = w2.results.splot.subplots[0]
-    assert first.mode == '|S| (dB)'                                 # no antenna results here: |S| for now
+    assert first.mode == '|S| (dB)'  # no antenna results here: |S| for now
     w2.results.splot.set_antenna(res, sph)
-    assert first.mode == 'Gain (dBi)'                               # and the gain once there are
+    assert first.mode == 'Gain (dBi)'  # and the gain once there are
     w2.setup.dirty = False
     w2.close()
     app.processEvents()
 
 
 def test_meters(tmp_path, monkeypatch):
-    """The status bar's readings: system RAM from /proc/meminfo, a process tree's memory, the GPU tools' output."""
+    """The status bar's readings: system RAM from /proc/meminfo, a process
+    tree's memory, the GPU tools' output."""
     from kicad2ems.gui import meters
     mi = tmp_path / 'meminfo'
-    mi.write_text('MemTotal:       16000000 kB\nMemFree:  1 kB\nMemAvailable:    4000000 kB\n', encoding='utf-8')
-    monkeypatch.setattr(meters.sys, 'platform', 'linux')            # /proc/meminfo's reading, on any system
+    mi.write_text(
+        'MemTotal:       16000000 kB\nMemFree:  1 kB\nMemAvailable:    4000000 '
+        'kB\n',
+        encoding='utf-8')
+    # /proc/meminfo's reading, on any system
+    monkeypatch.setattr(meters.sys, 'platform', 'linux')
     used, total = meters.ram(str(mi))
     assert total == pytest.approx(16.384) and used == pytest.approx(12.288)
-    assert meters.ram(str(tmp_path / 'none')) is None or len(meters.ram(str(tmp_path / 'none'))) == 2   # sysconf
+    # sysconf
+    assert (meters.ram(str(tmp_path / 'none')) is None
+            or len(meters.ram(str(tmp_path / 'none'))) == 2)
     import kicad2ems.emsdev.memory
     monkeypatch.setattr(meters.sys, 'platform', 'win32')
-    monkeypatch.setattr(kicad2ems.emsdev.memory, 'windows_status', lambda: (32e9, 20e9))
-    assert meters.ram() == (12.0, 32.0)                             # Windows: GlobalMemoryStatusEx
+    monkeypatch.setattr(kicad2ems.emsdev.memory, 'windows_status', lambda:
+                        (32e9, 20e9))
+    assert meters.ram() == (12.0, 32.0)  # Windows: GlobalMemoryStatusEx
     monkeypatch.undo()
     if os.path.isdir('/proc/self'):
-        assert meters.tree_rss(os.getpid()) > 0.01                  # this test process
+        assert meters.tree_rss(os.getpid()) > 0.01  # this test process
     assert meters.tree_rss(None) is None and meters.tree_rss(2 ** 30) is None
-    assert meters.parse_gpu('nvidia-smi', '2048, 16384, RTX\n') == [pytest.approx((2.147483648, 17.179869184))]
-    rocm = 'WARNING: x\n{"card0": {"VRAM Total Memory (B)": "17163091968", "VRAM Total Used Memory (B)": "1000000000"}}'
-    assert meters.parse_gpu('/opt/rocm/bin/rocm-smi', rocm) == [pytest.approx((1.0, 17.163091968))]
-    assert meters.parse_gpu('nvidia-smi', 'garbage') == [] and meters.duration(263) == '~4 min'
+    assert (meters.parse_gpu('nvidia-smi', '2048, 16384, RTX\n') == [
+        pytest.approx((2.147483648, 17.179869184))
+    ])
+    rocm = ('WARNING: x\n{"card0": {"VRAM Total Memory (B)": "17163091968", '
+            '"VRAM Total Used Memory (B)": "1000000000"}}')
+    assert (meters.parse_gpu('/opt/rocm/bin/rocm-smi',
+                             rocm) == [pytest.approx((1.0, 17.163091968))])
+    assert (meters.parse_gpu('nvidia-smi', 'garbage') == []
+            and meters.duration(263) == '~4 min')
 
 
 def test_estimate_follows_the_solvers():
-    """The toolbar's estimate: auto takes the fastest solver that can run and fits; named solvers add up; auto adds
-    no full-wave solver beside a named one (as the pipeline); stale settings and a misfit are marked."""
+    """The toolbar's estimate: auto takes the fastest solver that can run and
+    fits; named solvers add up; auto adds no full-wave solver beside a named one
+    (as the pipeline); stale settings and a misfit are marked."""
     from kicad2ems.gui.meters import estimate
-    est = dict(solvers=dict(openems=dict(seconds=818, gb=0.05), mom25d=dict(seconds=264, gb=1.3, gpu_gb=0.8)))
-    e = estimate(est, {})                                           # the default: auto
-    assert [r[0] for r in e['rows']] == ['mom25d'] and e['rows'][0][4] and e['gpu_gb'] == 0.8
-    assert estimate(est, {}, usable={'openems'})['rows'][0][0] == 'openems'          # mom25d can't run here
-    assert estimate(est, {}, ram_avail=1.0)['rows'][0][0] == 'openems'               # mom25d doesn't fit
+    est = dict(solvers=dict(openems=dict(seconds=818, gb=0.05), mom25d=dict(
+        seconds=264, gb=1.3, gpu_gb=0.8)))
+    e = estimate(est, {})  # the default: auto
+    assert ([r[0] for r in e['rows']] == ['mom25d'] and e['rows'][0][4]
+            and e['gpu_gb'] == 0.8)
+    # mom25d can't run here
+    assert estimate(est, {}, usable={'openems'})['rows'][0][0] == 'openems'
+    # mom25d doesn't fit
+    assert estimate(est, {}, ram_avail=1.0)['rows'][0][0] == 'openems'
     both = estimate(est, dict(solvers=['openems', 'mom25d', 'scikit']))
-    assert both['seconds'] == 818 + 264 and both['gb'] == 1.3 and not any(r[4] for r in both['rows'])
-    named = estimate(est, dict(solvers=['auto', 'gfdtd']))          # a named full-wave solver: auto adds none
+    assert (both['seconds'] == 818 + 264 and both['gb'] == 1.3
+            and not any(r[4] for r in both['rows']))
+    # a named full-wave solver: auto adds none
+    named = estimate(est, dict(solvers=['auto', 'gfdtd']))
     assert named is None
-    assert estimate(est, dict(solvers=['scikit'])) is None and estimate(None, {}) is None
+    assert (estimate(est, dict(solvers=['scikit'])) is None
+            and estimate(None, {}) is None)
     assert not estimate(est, dict(solvers=['mom25d']), ram_avail=1.0)['fits']
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -597,32 +785,43 @@ def test_estimate_follows_the_solvers():
     assert w.est_btn.text().startswith('No estimate')
     w.setup.set_values(dict(board='b.kicad_pcb'))
     w.new_estimates(est)
-    assert w.est_btn.text().startswith('~4 min · 1.3 GB · GPU 0.8 GB') and '(auto)' in w.est_btn.text()
+    assert (w.est_btn.text().startswith('~4 min · 1.3 GB · GPU 0.8 GB')
+            and '(auto)' in w.est_btn.text())
     assert 'changed' not in w.est_btn.text()
-    w.setup.solver_boxes['openems'].setChecked(True)                # a named solver: auto's choice gives way
-    assert w.est_btn.text().startswith('~14 min') and 'changed' not in w.est_btn.text()
-    w.setup.edits['out'][0].setText('elsewhere')                   # where results go: the same estimate
+    # a named solver: auto's choice gives way
+    w.setup.solver_boxes['openems'].setChecked(True)
+    assert (w.est_btn.text().startswith('~14 min')
+            and 'changed' not in w.est_btn.text())
+    # where results go: the same estimate
+    w.setup.edits['out'][0].setText('elsewhere')
     assert 'changed' not in w.est_btn.text()
-    w.setup.edits['fmax'][0].setText('9')                           # another setting: the estimate is stale
+    # another setting: the estimate is stale
+    w.setup.edits['fmax'][0].setText('9')
     assert w.est_btn.text().endswith('· changed')
-    w.setup.dirty = False                                           # (else New asks to save first)
-    w.setup.new()                                                   # another board: no estimate
+    w.setup.dirty = False  # (else New asks to save first)
+    w.setup.new()          # another board: no estimate
     assert w.est_btn.text().startswith('No estimate')
-    assert w.meters.ram.format().startswith('RAM ') and not w.meters.run.isVisible()
+    assert (w.meters.ram.format().startswith('RAM ')
+            and not w.meters.run.isVisible())
     w.setup.dirty = False
     w.close()
     app.processEvents()
 
 
 def test_line_model_relief(wilkinson_preview):
-    """The 3D line model: sections as slabs at their width, taller for a higher Z0."""
+    """The 3D line model: sections as slabs at their width, taller for a higher
+    Z0."""
     from kicad2ems.core import overlay as ov
     d = ov.load_lines(wilkinson_preview)
-    arm = next(e for e in d['elements'] if e['kind'] == 'trace' and e['z0'] > 60 and len(e['pts']) == 2)
+    arm = next(e for e in d['elements']
+               if e['kind'] == 'trace' and e['z0'] > 60 and len(e['pts']) == 2)
     g = ov.section_polygon(arm)
-    assert g.area == pytest.approx(arm['w'] * arm['length'], rel=1e-6)          # its width, its length
-    assert ov.relief(69, 49, 69) == 1.0 and ov.relief(49, 49, 69) == 0.25 and ov.relief(None, 49, 69) == 0.25
-    assert ov.relief(59, 49, 69) == pytest.approx(0.625) and ov.relief(50, 50, 50) == pytest.approx(0.625)
+    # its width, its length
+    assert g.area == pytest.approx(arm['w'] * arm['length'], rel=1e-6)
+    assert (ov.relief(69, 49, 69) == 1.0 and ov.relief(49, 49, 69) == 0.25
+            and ov.relief(None, 49, 69) == 0.25)
+    assert (ov.relief(59, 49, 69) == pytest.approx(0.625)
+            and ov.relief(50, 50, 50) == pytest.approx(0.625))
     pytest.importorskip('PySide6')
     pytest.importorskip('OpenGL')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -635,17 +834,21 @@ def test_line_model_relief(wilkinson_preview):
     v.set_lines(d)
     assert v.load(wilkinson_preview)
     slabs = [k for k in v.items if k.startswith('ln') and k != 'ln_rims']
-    assert len(slabs) >= 20 and 'ln_rims' in v.items and v.relief.value() == pytest.approx(0.38)
+    assert (len(slabs) >= 20 and 'ln_rims' in v.items
+            and v.relief.value() == pytest.approx(0.38))
     tall = v.items[f"ln{arm['id']}"].opts['meshdata'].vertexes()[:, 2].max()
-    feed = next(e for e in d['elements'] if e['kind'] == 'trace' and e['z0'] < 55 and len(e['pts']) == 2)
+    feed = next(e for e in d['elements']
+                if e['kind'] == 'trace' and e['z0'] < 55 and len(e['pts']) == 2)
     low = v.items[f"ln{feed['id']}"].opts['meshdata'].vertexes()[:, 2].max()
-    assert tall - low == pytest.approx(0.75 * 0.38, abs=1e-3)       # the step in Z0 is a step in height
+    # the step in Z0 is a step in height
+    assert tall - low == pytest.approx(0.75 * 0.38, abs=1e-3)
     v.lines_on.setChecked(False)
     assert not any(k.startswith('ln') for k in v.items)
 
 
 def test_parts_in_the_viewer(wilkinson_preview):
-    """The Wilkinson's resistor as an 0805 chip: green in 3D with its value, outlined in the plan."""
+    """The Wilkinson's resistor as an 0805 chip: green in 3D with its value,
+    outlined in the plan."""
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from kicad2ems.gui import application
@@ -655,52 +858,72 @@ def test_parts_in_the_viewer(wilkinson_preview):
     v = Viewer()
     assert v.load(wilkinson_preview)
     r1 = v.plan.board['parts'][0]
-    assert r1['ref'] == 'R1' and r1['package'] == '0805' and _value(r1) == '100 Ω'
-    assert _value(dict(R=0.4, L=2.7e-8, C=None), main=True) == '27 nH' and _value(dict(R=0.4, L=2.7e-8, C=None)) == \
-        '0.4 Ω + 27 nH'
+    assert (r1['ref'] == 'R1' and r1['package'] == '0805'
+            and _value(r1) == '100 Ω')
+    assert (_value(dict(R=0.4, L=2.7e-8, C=None), main=True) == '27 nH'
+            and _value(dict(R=0.4, L=2.7e-8, C=None)) == '0.4 Ω + 27 nH')
     v.set_view('Plan')
-    assert any(isinstance(it, __import__('pyqtgraph').TextItem) and it.toPlainText() == 'R1' for it in v.plan._items)
+    assert any(
+        isinstance(it,
+                   __import__('pyqtgraph').TextItem)
+        and it.toPlainText() == 'R1' for it in v.plan._items)
     vol = v.volume
     if vol.gl is None:
         return
-    assert not vol.parts_on.isHidden() and {'part0_0', 'part0_1', 'part0_2', 'part0_label'} <= set(vol.items)
+    assert (not vol.parts_on.isHidden() and
+            {'part0_0', 'part0_1', 'part0_2', 'part0_label'} <= set(vol.items))
     assert vol.items['part0_label'].text == 'R1 100 Ω'
     strip = next(e['id'] for e in v.lines['elements'] if e['kind'] == 'part')
-    assert f"ln{strip}" not in vol.items                            # no line-model strip inside the chip
+    assert f"ln{strip}" not in vol.items  # no line-model strip inside the chip
     vol.parts_on.setChecked(False)
-    assert not any(k.startswith('part') for k in vol.items) and f"ln{strip}" in vol.items
+    assert (not any(k.startswith('part') for k in vol.items)
+            and f"ln{strip}" in vol.items)
 
 
 def test_run_folders(tmp_path):
-    """Each GUI run in a folder of its own (<board>_<date>_<time>), a preview in <board>_preview; a board's runs
-    are only its own, the newest first; one that wrote no summary is listed by how it ended (R-E24)."""
+    """Each GUI run in a folder of its own (<board>_<date>_<time>), a preview in
+    <board>_preview; a board's runs are only its own, the newest first; one that
+    wrote no summary is listed by how it ended (R-E24)."""
     import datetime
     from kicad2ems.gui.runfolders import run_dir, preview_dir, runs, board_name
     base = str(tmp_path)
-    assert board_name('/x/rf_coupler.kicad_pcb') == 'rf_coupler' and board_name('a/b_board.json') == 'b'
+    assert (board_name('/x/rf_coupler.kicad_pcb') == 'rf_coupler'
+            and board_name('a/b_board.json') == 'b')
     t = datetime.datetime(2026, 10, 13, 14, 15, 2)
     d1 = run_dir(base, 'x/rf_coupler.kicad_pcb', t)
-    d2 = run_dir(base, 'x/rf_coupler.kicad_pcb', t + datetime.timedelta(minutes=5))
-    other = run_dir(base, 'x/rf_coupler2.kicad_pcb', t)              # another board, a name that starts the same
+    d2 = run_dir(base, 'x/rf_coupler.kicad_pcb',
+                 t + datetime.timedelta(minutes=5))
+    # another board, a name that starts the same
+    other = run_dir(base, 'x/rf_coupler2.kicad_pcb', t)
     assert os.path.basename(d1) == 'rf_coupler_20261013_141502'
-    assert preview_dir(base, 'x/rf_coupler.kicad_pcb') == os.path.join(base, 'rf_coupler_preview')
-    for d, solvers in ((d1, ['openems']), (d2, ['mom25d', 'qucs']), (other, ['openems'])):
+    assert (preview_dir(base, 'x/rf_coupler.kicad_pcb') == os.path.join(
+        base, 'rf_coupler_preview'))
+    for d, solvers in ((d1, ['openems']), (d2, ['mom25d',
+                                                'qucs']), (other, ['openems'])):
         os.makedirs(d)
         name = os.path.basename(d).rsplit('_', 2)[0]
-        json.dump(dict(solvers=solvers), open(os.path.join(d, f"{name}_run.json"), 'w', encoding='utf-8'))
-    d3 = run_dir(base, 'x/rf_coupler.kicad_pcb', t + datetime.timedelta(hours=1))    # stopped: no summary
+        json.dump(
+            dict(solvers=solvers),
+            open(os.path.join(d, f"{name}_run.json"), 'w', encoding='utf-8'))
+    # stopped: no summary
+    d3 = run_dir(base, 'x/rf_coupler.kicad_pcb',
+                 t + datetime.timedelta(hours=1))
     os.makedirs(d3)
     rs = runs(base, 'x/rf_coupler.kicad_pcb')
     assert [d for d, _ in rs] == [d3, d2, d1]
-    assert rs[1][1] == '2026-10-13 14:20:02 (mom25d, qucs)' and rs[0][1] == '2026-10-13 15:15:02 (no result)'
-    json.dump(dict(code=0, stopped=True), open(os.path.join(d3, 'run_exit.json'), 'w', encoding='utf-8'))
+    assert (rs[1][1] == '2026-10-13 14:20:02 (mom25d, qucs)'
+            and rs[0][1] == '2026-10-13 15:15:02 (no result)')
+    json.dump(dict(code=0, stopped=True),
+              open(os.path.join(d3, 'run_exit.json'), 'w', encoding='utf-8'))
     assert runs(base, 'x/rf_coupler.kicad_pcb')[0][1].endswith('(stopped)')
 
 
 def test_solver_sections(tmp_path):
-    """Each solver's settings in a section of its own (openEMS's in Mesh, Run and Field dumps sub-sections), the
-    shared ones apart (Antenna; the dump settings both use under Output), qucsator not a board's setting (the
-    Solvers and hardware window); a section greyed while none of its solvers is ticked."""
+    """Each solver's settings in a section of its own (openEMS's in Mesh, Run
+    and Field dumps sub-sections), the shared ones apart (Antenna; the dump
+    settings both use under Output), qucsator not a board's setting (the Solvers
+    and hardware window); a section greyed while none of its solvers is
+    ticked."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -709,34 +932,50 @@ def test_solver_sections(tmp_path):
     app = application()
     w = MainWindow()
     st = w.setup
-    if not any(b.isChecked() for b in st.solver_boxes.values()) and not st.edits['solver:auto'][0].isChecked():
-        assert not st.parents['FDTD'][0].isEnabled() and not st.sections['mom25d'].isEnabled()   # first launch
+    if (not any(b.isChecked() for b in st.solver_boxes.values())
+            and not st.edits['solver:auto'][0].isChecked()):
+        # first launch
+        assert (not st.parents['FDTD'][0].isEnabled()
+                and not st.sections['mom25d'].isEnabled())
         assert not st.edits['ff_freq'][0].isEnabled()
-    assert st.group_of['res'] == 'FDTD/Mesh' and st.group_of['mom_dmax'] == 'mom25d'
-    assert st.group_of['excite'] == 'Solvers' and st.group_of['ff_freq'] == 'Output' and 'Antenna' not in st.sections
+    assert (st.group_of['res'] == 'FDTD/Mesh'
+            and st.group_of['mom_dmax'] == 'mom25d')
+    assert (st.group_of['excite'] == 'Solvers'
+            and st.group_of['ff_freq'] == 'Output'
+            and 'Antenna' not in st.sections)
     assert st.group_of['dump_port'] == st.group_of['dump_animate'] == 'Output'
-    assert 'qucsator' not in st.group_of and 'Line model' not in st.sections and 'Field dumps' not in st.sections
-    assert 'mom_dmax' not in [k for k, g in st.group_of.items() if g == 'Solvers']
-    assert w.system.qucsator.text() == ''                           # the Solvers window's, empty: the PATH's
+    assert ('qucsator' not in st.group_of and 'Line model' not in st.sections
+            and 'Field dumps' not in st.sections)
+    assert ('mom_dmax'
+            not in [k for k, g in st.group_of.items() if g == 'Solvers'])
+    # the Solvers window's, empty: the PATH's
+    assert w.system.qucsator.text() == ''
     st.set_values(dict(board='b.kicad_pcb', solvers=['mom25d']))
     oems, mom = st.parents['FDTD'][0], st.sections['mom25d']
-    assert not oems.isEnabled() and mom.isEnabled() and 'openEMS' in oems.toolTip() and 'gfdtd' in oems.toolTip()
-    from kicad2ems.gui.runner import SECTION_TITLES, SECTION_ORDER    # built from the plugins installed
-    assert SECTION_TITLES['FDTD'] == 'FDTD (openEMS, gfdtd)' and SECTION_ORDER[3:5] == ['FDTD', 'mom25d']
-    assert st.sections['Output'].isEnabled() and not st.edits['ff_freq'][0].isEnabled()    # S-parameters: no pattern
+    assert (not oems.isEnabled() and mom.isEnabled()
+            and 'openEMS' in oems.toolTip() and 'gfdtd' in oems.toolTip())
+    # built from the plugins installed
+    from kicad2ems.gui.runner import SECTION_TITLES, SECTION_ORDER
+    assert (SECTION_TITLES['FDTD'] == 'FDTD (openEMS, gfdtd)'
+            and SECTION_ORDER[3:5] == ['FDTD', 'mom25d'])
+    # S-parameters: no pattern
+    assert (st.sections['Output'].isEnabled()
+            and not st.edits['ff_freq'][0].isEnabled())
     st.edits['mode'][0].setCurrentText('antenna')
-    assert st.edits['ff_freq'][0].isEnabled() and st.field_labels['ff_freq'].isEnabled()
+    assert (st.edits['ff_freq'][0].isEnabled()
+            and st.field_labels['ff_freq'].isEnabled())
     st.solver_boxes['openems'].setChecked(True)
     assert oems.isEnabled()
-    st.set_values(dict(board='b.kicad_pcb'))                        # auto: openEMS, mom25d and the line model may run
+    # auto: openEMS, mom25d and the line model may run
+    st.set_values(dict(board='b.kicad_pcb'))
     assert oems.isEnabled() and mom.isEnabled()
     w.hide()
     app.processEvents()
 
 
 def test_solvers_window_saves_qucsator(tmp_path, monkeypatch):
-    """The Solvers and hardware window's qucsator field: saved for the user (sitecfg), then the solvers checked
-    again; emptied, the PATH's again."""
+    """The Solvers and hardware window's qucsator field: saved for the user
+    (sitecfg), then the solvers checked again; emptied, the PATH's again."""
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
@@ -751,16 +990,20 @@ def test_solvers_window_saves_qucsator(tmp_path, monkeypatch):
     monkeypatch.setattr(p, 'refresh', lambda: checks.append(1))
     p.qucsator.setText('/opt/qucs/bin/qucsator_rf')
     p._save_programs()
-    assert sitecfg.get('qucsator') == '/opt/qucs/bin/qucsator_rf' and checks == [1]
-    p._save_programs()                                              # unchanged: no new check
+    assert (sitecfg.get('qucsator') == '/opt/qucs/bin/qucsator_rf'
+            and checks == [1])
+    p._save_programs()  # unchanged: no new check
     assert checks == [1]
     p.qucsator.setText('')
     p._save_programs()
     assert sitecfg.get('qucsator') is None and checks == [1, 1]
-    p.openems_venv.setText('/opt/openems/venv')                     # the openEMS environment, the same way
+    # the openEMS environment, the same way
+    p.openems_venv.setText('/opt/openems/venv')
     p._save_programs()
-    assert sitecfg.get('openems_venv') == '/opt/openems/venv' and sitecfg.get('qucsator') is None and checks == [1, 1, 1]
-    assert p.openems_dir is None or sys.platform == 'win32'          # the DLL folder: a Windows field
+    assert (sitecfg.get('openems_venv') == '/opt/openems/venv'
+            and sitecfg.get('qucsator') is None and checks == [1, 1, 1])
+    # the DLL folder: a Windows field
+    assert p.openems_dir is None or sys.platform == 'win32'
     import kicad2ems.gui.systempanel as sp
     monkeypatch.setattr(sp.sys, 'platform', 'win32')
     w = SystemPanel()
@@ -768,13 +1011,15 @@ def test_solvers_window_saves_qucsator(tmp_path, monkeypatch):
     monkeypatch.setattr(w, 'refresh', lambda: checks.append(1))
     w.openems_dir.setText('C:/openEMS')
     w._save_programs()
-    assert sitecfg.get('openems_dir') == 'C:/openEMS' and sitecfg.get('openems_venv') == '/opt/openems/venv'
+    assert (sitecfg.get('openems_dir') == 'C:/openEMS'
+            and sitecfg.get('openems_venv') == '/opt/openems/venv')
     monkeypatch.setattr(sitecfg, '_cache', None)
 
 
 def test_beam_steering_bar(tmp_path, monkeypatch):
-    """An antenna result with each port's far field kept: the Results page's Beam steering bar recombines them for
-    a phase step (the plots' antenna results follow), Animate steps it, a drive that does not parse is shown."""
+    """An antenna result with each port's far field kept: the Results page's
+    Beam steering bar recombines them for a phase step (the plots' antenna
+    results follow), Animate steps it, a drive that does not parse is shown."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -788,26 +1033,36 @@ def test_beam_steering_bar(tmp_path, monkeypatch):
     phased.save(tmp_path / 'b_mom25d_array.npz', **data)
     c = phased.combine(data, data['drive'])
     np.savez_compressed(tmp_path / 'b_mom25d_sphere.npz', **c['sphere'])
-    res = dict(match=dict(f_res=2.45e9, s11_db=-20.0, zin=[50.0, 0.0], bw10=None), rows=c['rows'],
-               f_pattern=2.45e9, port='P1@0, P2@0', solver='mom25d', sphere_file='b_mom25d_sphere.npz',
-               array_file='b_mom25d_array.npz', drive=['P1@0', 'P2@0'], peak=c['peak'])
-    (tmp_path / 'b_mom25d_antenna.json').write_text(json.dumps(res), encoding='utf-8')
+    res = dict(
+        match=dict(f_res=2.45e9, s11_db=-20.0, zin=[50.0, 0.0],
+                   bw10=None), rows=c['rows'], f_pattern=2.45e9,
+        port='P1@0, P2@0', solver='mom25d', sphere_file='b_mom25d_sphere.npz',
+        array_file='b_mom25d_array.npz', drive=['P1@0', 'P2@0'], peak=c['peak'])
+    (tmp_path / 'b_mom25d_antenna.json').write_text(json.dumps(res),
+                                                    encoding='utf-8')
     w = MainWindow()
     assert w.results.load_antenna(str(tmp_path))
     bar = w.results.steer
-    assert bar.isVisibleTo(w.results) and bar.drive.text() == 'P1@0, P2@0' and 'θ 0°' in bar.readout.text()
+    assert (bar.isVisibleTo(w.results) and bar.drive.text() == 'P1@0, P2@0'
+            and 'θ 0°' in bar.readout.text())
     got = []
     bar.steered.connect(lambda r, s: got.append(r))
     bar.spin.setValue(60)
-    assert got and got[-1]['drive'] == ['P1@0', 'P2@60'] and got[-1]['peak']['theta'] > 10
-    assert w.results.splot.antenna['peak'] == got[-1]['peak']        # the plots show the steered drive
-    vb = getattr(w.volume, 'steer', None)                            # the 3D view's bar (with PyOpenGL)
+    assert (got and got[-1]['drive'] == ['P1@0', 'P2@60']
+            and got[-1]['peak']['theta'] > 10)
+    # the plots show the steered drive
+    assert w.results.splot.antenna['peak'] == got[-1]['peak']
+    # the 3D view's bar (with PyOpenGL)
+    vb = getattr(w.volume, 'steer', None)
     if vb is not None:
-        assert vb.data is not None and vb.spin.value() == 60 and vb.readout.text() == bar.readout.text()
-        vb.spin.setValue(-30)                                        # steered from the 3D view: this page follows
-        assert bar.spin.value() == -30 and w.results.splot.antenna['drive'] == ['P1@0', 'P2@-30']
-        vb.anim.setChecked(True)                                     # one timer runs, both buttons show it
-        assert vb.timer.isActive() and bar.anim.isChecked() and not bar.timer.isActive()
+        assert (vb.data is not None and vb.spin.value() == 60
+                and vb.readout.text() == bar.readout.text())
+        vb.spin.setValue(-30)  # steered from the 3D view: this page follows
+        assert (bar.spin.value() == -30
+                and w.results.splot.antenna['drive'] == ['P1@0', 'P2@-30'])
+        vb.anim.setChecked(True)  # one timer runs, both buttons show it
+        assert (vb.timer.isActive() and bar.anim.isChecked()
+                and not bar.timer.isActive())
         bar.anim.setChecked(False)
         assert not vb.timer.isActive() and not vb.anim.isChecked()
         bar.spin.setValue(60)
@@ -825,8 +1080,9 @@ def test_beam_steering_bar(tmp_path, monkeypatch):
 
 
 def test_trace_colours_and_styles(tmp_path, monkeypatch):
-    """Every trace its own colour, every source its own line style (S11 of two solvers had shared both, an added
-    folder's traces openEMS's solid line); the user's colour / style / width from the trace list, remembered."""
+    """Every trace its own colour, every source its own line style (S11 of two
+    solvers had shared both, an added folder's traces openEMS's solid line); the
+    user's colour / style / width from the trace list, remembered."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -842,20 +1098,25 @@ def test_trace_colours_and_styles(tmp_path, monkeypatch):
     S[:, 0, 0], S[:, 1, 0] = 0.2, 0.9
     for name in ('b_openems', 'b_mom25d', 'b_qucs', 'b_scikit'):
         _s2p(tmp_path / f'{name}.s2p', f, S)
-    tr = load_traces([('t', str(tmp_path / f'{n}.s2p')) for n in ('b_openems', 'b_mom25d', 'b_qucs', 'b_scikit')])
+    tr = load_traces([('t', str(tmp_path / f'{n}.s2p'))
+                      for n in ('b_openems', 'b_mom25d', 'b_qucs', 'b_scikit')])
     extra = load_traces([('t', str(tmp_path / 'b_openems.s2p'))])
     for t in extra:
         t.source = f"other run: {t.source}"
     sp = SPlot()
     sp.set_traces(tr + extra)
     looks = [sp.look(t) for t in sp.traces]
-    assert len({c for c, _, _ in looks}) == len(looks)               # a colour each
+    assert len({c for c, _, _ in looks}) == len(looks)  # a colour each
     s11 = [t for t in sp.traces if t.param == 'S11']
-    assert len({sp.look(t)[1] for t in s11}) == len(s11) == 5        # a style per source, the added folder too
+    # a style per source, the added folder too
+    assert len({sp.look(t)[1] for t in s11}) == len(s11) == 5
     sp.set_look([s11[0]], color='#000000', style='dot', width=3)
-    assert sp.look(s11[0]) == ('#000000', 'dot', 3) and sp._pen(s11[0]).width() == 3
-    assert not sp.tree.topLevelItem(0).child(0).icon(0).isNull()     # the line beside its name
-    sp2 = SPlot()                                                    # remembered
+    assert (sp.look(s11[0]) == ('#000000', 'dot', 3)
+            and sp._pen(s11[0]).width() == 3)
+    # the line beside its name
+    assert not sp.tree.topLevelItem(0).child(0).icon(0).isNull()
+    # remembered
+    sp2 = SPlot()
     sp2.set_traces(tr + extra)
     assert sp2.look(sp2.traces[0]) == ('#000000', 'dot', 3)
     sp2.set_look([sp2.traces[0]], color=None, style=None, width=None)
@@ -864,29 +1125,42 @@ def test_trace_colours_and_styles(tmp_path, monkeypatch):
 
 
 def test_filter_command_line():
-    """The Filter page's settings as dfsynth's command line: empty fields left to dfsynth, flags only when set,
-    the validation only when asked for; the flags and kinds from dfsynth's description (--describe --json), a value
-    of an option this dfsynth lacks left out."""
+    """The Filter page's settings as dfsynth's command line: empty fields left
+    to dfsynth, flags only when set, the validation only when asked for; the
+    flags and kinds from dfsynth's description (--describe --json), a value of
+    an option this dfsynth lacks left out."""
     from kicad2ems.gui.filtertab import filter_argv
-    desc = dict(options=[dict(key=k, flag='--' + k.replace('_', '-'), kind=kind) for k, kind in (
-        ('type', 'str'), ('topology', 'str'), ('f0', 'str'), ('bw', 'str'), ('order', 'int'), ('ripple', 'float'),
-        ('h', 'float'), ('allow_fab_violations', 'flag'), ('no_calibrate', 'flag'), ('out', 'str'),
-        ('validate', 'str'), ('em_tune', 'int'), ('k2e_args', 'str'))])
-    vals = dict(type='bandpass', topology='interdigital', f0='5G', bw='500M', order=None, ripple=None, h=0.8,
-                allow_fab_violations=True, no_calibrate=False, out='/x/idg', validate='gfdtd', em_tune=3,
+    desc = dict(options=[
+        dict(key=k, flag='--' + k.replace('_', '-'), kind=kind)
+        for k, kind in (('type', 'str'), ('topology', 'str'), ('f0', 'str'),
+                        ('bw', 'str'), ('order', 'int'), ('ripple', 'float'),
+                        ('h', 'float'), ('allow_fab_violations', 'flag'),
+                        ('no_calibrate', 'flag'), ('out', 'str'),
+                        ('validate', 'str'), ('em_tune', 'int'), ('k2e_args',
+                                                                  'str'))
+    ])
+    vals = dict(type='bandpass', topology='interdigital', f0='5G', bw='500M',
+                order=None, ripple=None, h=0.8, allow_fab_violations=True,
+                no_calibrate=False, out='/x/idg', validate='gfdtd', em_tune=3,
                 k2e_args='--fine 0.03')
     a = filter_argv(dict(vals, future_option=1), desc=desc)
-    assert a[:3] == ['-u', '-m', 'kicad2ems.dfsynth'] and a[a.index('--f0') + 1] == '5G' and a[a.index('--h') + 1] == '0.8'
-    assert '--allow-fab-violations' in a and '--no-calibrate' not in a and '--order' not in a
+    assert (a[:3] == ['-u', '-m', 'kicad2ems.dfsynth']
+            and a[a.index('--f0') + 1] == '5G'
+            and a[a.index('--h') + 1] == '0.8')
+    assert ('--allow-fab-violations' in a and '--no-calibrate' not in a
+            and '--order' not in a)
     assert '--future-option' not in a
-    assert a[a.index('--em-tune') + 1] == '3' and a[a.index('--k2e-args') + 1] == '--fine 0.03'
+    assert (a[a.index('--em-tune') + 1] == '3'
+            and a[a.index('--k2e-args') + 1] == '--fine 0.03')
     b = filter_argv(vals, validate=False, desc=desc)
-    assert '--validate' not in b and '--em-tune' not in b and '--k2e-args' not in b
+    assert ('--validate' not in b and '--em-tune' not in b
+            and '--k2e-args' not in b)
 
 
 def test_filter_page(tmp_path):
-    """dfsynth (the checkout's) designs a filter; the page reads what it wrote (design, layout, model response)
-    and shows it; the main window has the page."""
+    """dfsynth (the checkout's) designs a filter; the page reads what it wrote
+    (design, layout, model response) and shows it; the main window has the
+    page."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -895,43 +1169,60 @@ def test_filter_page(tmp_path):
         pytest.skip('no dfsynth')
     from kicad2ems.dfsynth.cli import main as dfsynth
     base = str(tmp_path / 'lpf')
-    assert dfsynth(['--type', 'lowpass', '--topology', 'stepped', '--f0', '2G', '--substrate', 'RO4003C-0.813',
-                    '-o', base]) == 0
+    assert (dfsynth([
+        '--type', 'lowpass', '--topology', 'stepped', '--f0', '2G',
+        '--substrate', 'RO4003C-0.813', '-o', base
+    ]) == 0)
     res = ft.load_design(base)
-    assert res and res['model'][1].shape[1:] == (2, 2) and res['em'] == [] and os.path.exists(res['toml'])
+    assert (res and res['model'][1].shape[1:] == (2, 2) and res['em'] == []
+            and os.path.exists(res['toml']))
     geo = res['design']['geometry']
     assert geo['polys'] and len(geo['ports']) == 2
     from PySide6.QtWidgets import QApplication
     from kicad2ems.gui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     w = MainWindow()
-    assert 'Filter' in w.places and wait_until(lambda: w.filter.desc is not None, 60)   # (asked in a thread)
+    # (asked in a thread)
+    assert ('Filter' in w.places
+            and wait_until(lambda: w.filter.desc is not None, 60))
     page = w.filter
     page.set_values(dict(type='lowpass', topology='radial', f0='2G', out=base))
     v = page.values()
     assert v['topology'] == 'radial' and v['bw'] is None and v['f0'] == '2G'
     assert page.w['stub_angle'].isEnabled() and not page.w['zlow'].isEnabled()
     page.show_result(res)
-    assert page.table.rowCount() == len(res['design']['elements']) and page.open_btn.isEnabled()
+    assert (page.table.rowCount() == len(res['design']['elements'])
+            and page.open_btn.isEnabled())
     assert 'lowpass / stepped' in page.summary.toPlainText()
     # problems go to the log, in red, counted on its tab; the rest plain
     lv, last = [], None
-    for line in ['g = 1.0', '  note: order 3 Chebyshev needs unequal terminations', '',
-                 'dfsynth: the design cannot be made as asked:', '  gap 0.05 mm is below the 0.1 mm minimum',
-                 'wrote x.kicad_pcb', 'Traceback (most recent call last):', '  File "x.py", line 1',
-                 'ValueError: no', 'usage: dfsynth', 'dfsynth: error: unrecognized arguments: --x',
-                 'kicad2ems (gfdtd):', '    note: P2 not excited', '    WARNING: the run stopped at --max-steps']:
+    for line in [
+            'g = 1.0', '  note: order 3 Chebyshev needs unequal terminations',
+            '', 'dfsynth: the design cannot be made as asked:',
+            '  gap 0.05 mm is below the 0.1 mm minimum', 'wrote x.kicad_pcb',
+            'Traceback (most recent call last):', '  File "x.py", line 1',
+            'ValueError: no', 'usage: dfsynth',
+            'dfsynth: error: unrecognized arguments: --x', 'kicad2ems (gfdtd):',
+            '    note: P2 not excited',
+            '    WARNING: the run stopped at --max-steps'
+    ]:
         last = line_level = ft.line_level(line, last)
         lv.append(line_level)
-    assert lv == [None, 'warn', None, 'error', 'error', None, 'error', 'error', 'error', None, 'error', None, None, 'warn']
-    assert ft.PROGRESS.match('    P1: step 36600, energy -3.2 dB, 14 s') and ft.PROGRESS.match('    mom25d: 40% (24 f')
+    assert (lv == [
+        None, 'warn', None, 'error', 'error', None, 'error', 'error', 'error',
+        None, 'error', None, None, 'warn'
+    ])
+    assert (ft.PROGRESS.match('    P1: step 36600, energy -3.2 dB, 14 s')
+            and ft.PROGRESS.match('    mom25d: 40% (24 f'))
     page.clear_log()
     page.say('fine')
     page.say('a warning', 'warn')
     assert page.tabs.tabText(page.tabs.indexOf(page.log)) == 'Log (1 warning)'
     page.say('broken', 'error')
-    assert page.tabs.tabText(page.tabs.indexOf(page.log)) == 'Log (1 error, 1 warning)'
-    assert page.tabs.currentWidget() is page.log and '⚠ a warning' in page.log.toPlainText()
+    assert (page.tabs.tabText(page.tabs.indexOf(
+        page.log)) == 'Log (1 error, 1 warning)')
+    assert (page.tabs.currentWidget() is page.log
+            and '⚠ a warning' in page.log.toPlainText())
     page.clear_log()
     assert page.tabs.tabText(page.tabs.indexOf(page.log)) == 'Log'
     w.setup.dirty = False
@@ -939,10 +1230,12 @@ def test_filter_page(tmp_path):
 
 
 def test_the_window_is_docks(monkeypatch, tmp_path):
-    """The window is docks, as a studio's: the study (the board, the questions) over the selected question's
-    settings on the left; the Viewer with the Results and Run pages under it in the workspace. Each moves, tabs,
-    floats and closes, View brings it back, and the next window opens as this one was left; a layout an older
-    window saved is not read. Filter Synthesis is a page, closed until asked for; Reset layout puts all back."""
+    """The window is docks, as a studio's: the study (the board, the questions)
+    over the selected question's settings on the left; the Viewer with the
+    Results and Run pages under it in the workspace. Each moves, tabs, floats
+    and closes, View brings it back, and the next window opens as this one was
+    left; a layout an older window saved is not read. Filter Synthesis is a
+    page, closed until asked for; Reset layout puts all back."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -952,50 +1245,76 @@ def test_the_window_is_docks(monkeypatch, tmp_path):
     from kicad2ems.gui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     QSettings('kicad2ems', 'gui').clear()
-    QSettings('kicad2ems', 'gui').setValue('window/state', b'what an older window saved of its docks')
+    QSettings('kicad2ems',
+              'gui').setValue('window/state',
+                              b'what an older window saved of its docks')
     w = MainWindow()
     w.show()
     app.processEvents()
-    assert w.windowState() & Qt.WindowMaximized                     # no session before: the whole screen
-    assert w.study_dock.widget() is w.setup and w.settings_dock.widget() is w.setup.inspector
-    assert w.dockWidgetArea(w.study_dock) == w.dockWidgetArea(w.settings_dock) == Qt.LeftDockWidgetArea
-    assert w.study_dock.geometry().bottom() < w.settings_dock.geometry().top()      # the settings: under the list
-    assert w.setup.isAncestorOf(w.study) and w.setup.inspector.isAncestorOf(w.setup.rf_box)
-    assert list(w.docks) == ['Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Section', 'Filter', 'Circuit'] and w.places is w.docks
-    # a result's pages: its plots, its report, its tables, and the runs' log (the tabs read Plots and Log). On a
-    # screen this narrow the plots are the first tab under the board; with 1,400 px of workspace, beside it
-    assert [w.docks[n].windowTitle() for n in ('Results', 'Report', 'Tables', 'Run')] == ['Plots', 'Report', 'Tables', 'Log']
-    # no board yet: the Start page in front of the Viewer, with the workspace to itself (the result pages step
-    # aside for it, and come back with a board, or a result)
+    # no session before: the whole screen
+    assert w.windowState() & Qt.WindowMaximized
+    assert (w.study_dock.widget() is w.setup
+            and w.settings_dock.widget() is w.setup.inspector)
+    assert (w.dockWidgetArea(w.study_dock) == w.dockWidgetArea(w.settings_dock)
+            == Qt.LeftDockWidgetArea)
+    # the settings: under the list
+    assert w.study_dock.geometry().bottom() < w.settings_dock.geometry().top()
+    assert (w.setup.isAncestorOf(w.study)
+            and w.setup.inspector.isAncestorOf(w.setup.rf_box))
+    assert (list(w.docks) == [
+        'Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Section',
+        'Filter', 'Circuit'
+    ] and w.places is w.docks)
+    # a result's pages: its plots, its report, its tables, and the runs' log
+    # (the tabs read Plots and Log). On a screen this narrow the plots are the
+    # first tab under the board; with 1,400 px of workspace, beside it
+    assert ([
+        w.docks[n].windowTitle() for n in ('Results', 'Report', 'Tables', 'Run')
+    ] == ['Plots', 'Report', 'Tables', 'Log'])
+    # no board yet: the Start page in front of the Viewer, with the workspace to
+    # itself (the result pages step aside for it, and come back with a board, or
+    # a result)
     pages = ('Results', 'Report', 'Tables', 'Run')
     assert w.places['Start'].in_front() and not w.places['Viewer'].in_front()
-    assert all(w.docks[n].isHidden() for n in pages) and w._aside['pages'] == list(pages)
+    assert (all(w.docks[n].isHidden() for n in pages)
+            and w._aside['pages'] == list(pages))
     assert w.docks['Start'].height() > 0.8 * w.work.height()
-    w._start_leaves()                                               # (what a board chosen does)
+    w._start_leaves()  # (what a board chosen does)
     app.processEvents()
-    assert not any(w.docks[n].isHidden() for n in pages) and w.docks['Start'].isHidden() and w._aside is None
-    assert not w._wide() and w.docks['Viewer'].geometry().bottom() < w.docks['Results'].geometry().top()
-    assert all(w.docks[n] in w.work.tabifiedDockWidgets(w.docks['Results']) for n in ('Report', 'Tables', 'Run'))
-    assert 0.3 < w.docks['Results'].height() / w.docks['Viewer'].height() < 1.2      # at their first sizes
-    assert w.places['Results'].in_front() and not w.places['Run'].in_front()        # the plots in front, under it
+    assert (not any(w.docks[n].isHidden() for n in pages)
+            and w.docks['Start'].isHidden() and w._aside is None)
+    assert (not w._wide() and w.docks['Viewer'].geometry().bottom()
+            < w.docks['Results'].geometry().top())
+    assert all(w.docks[n] in w.work.tabifiedDockWidgets(w.docks['Results'])
+               for n in ('Report', 'Tables', 'Run'))
+    # at their first sizes
+    assert 0.3 < w.docks['Results'].height() / w.docks['Viewer'].height() < 1.2
+    # the plots in front, under it
+    assert w.places['Results'].in_front() and not w.places['Run'].in_front()
     w.show_panel('Run')
     app.processEvents()
     assert w.places['Run'].in_front() and not w.places['Results'].in_front()
-    w.show_panel('Results', front=False)                            # only there: what is in front stays
+    w.show_panel('Results', front=False)  # only there: what is in front stays
     app.processEvents()
     assert w.places['Run'].in_front()
-    assert w.places['Filter'].isHidden()                            # closed until asked for
+    assert w.places['Filter'].isHidden()  # closed until asked for
     w.acts['Filter'].trigger()
     app.processEvents()
-    assert w.docks['Filter'] in w.work.tabifiedDockWidgets(w.docks['Viewer']) and w.places['Filter'].in_front()
+    assert (w.docks['Filter'] in w.work.tabifiedDockWidgets(w.docks['Viewer'])
+            and w.places['Filter'].in_front())
     if w.filter.desc is not None:
-        assert w.filter.w['substrate'].findText('FR4-1.6') >= 0 and w.filter.design_btn.isEnabled()
+        assert (w.filter.w['substrate'].findText('FR4-1.6') >= 0
+                and w.filter.design_btn.isEnabled())
     # moved about and closed: so the next window opens
-    w.work.removeDockWidget(w.docks['Results'])                     # the results beside the board, not under it
-    w.docks['Results'].show()                                       # (as a drag does: out of its group first)
+    # the results beside the board, not under it
+    w.work.removeDockWidget(w.docks['Results'])
+    # (as a drag does: out of its group first)
+    w.docks['Results'].show()
     w.work.tabifyDockWidget(w.docks['Viewer'], w.docks['Results'])
-    w.addDockWidget(Qt.RightDockWidgetArea, w.settings_dock)        # the settings on the right
-    w.fold_acts['Questions'].trigger()                              # the study closed
+    # the settings on the right
+    w.addDockWidget(Qt.RightDockWidgetArea, w.settings_dock)
+    # the study closed
+    w.fold_acts['Questions'].trigger()
     app.processEvents()
     assert w.study_dock.isHidden()
     w.setup.dirty = False
@@ -1004,33 +1323,42 @@ def test_the_window_is_docks(monkeypatch, tmp_path):
     w.show()
     app.processEvents()
     assert w.dockWidgetArea(w.settings_dock) == Qt.RightDockWidgetArea
-    assert w.docks['Results'].isHidden() and w.places['Start'].in_front()       # no board: aside again
+    # no board: aside again
+    assert w.docks['Results'].isHidden() and w.places['Start'].in_front()
     w._start_leaves()
     app.processEvents()
     assert w.docks['Results'] in w.work.tabifiedDockWidgets(w.docks['Viewer'])
-    assert not w.study_dock.isHidden() and w.places['Filter'].isHidden()    # the study: always there on opening
-    # (Qt's offscreen plugin on Windows aborts when a floated dock is docked again, whichever call does it; the
-    # native one does not: kicad2ems's windows workflow runs this test on it as well, and there it floats)
+    # the study: always there on opening
+    assert not w.study_dock.isHidden() and w.places['Filter'].isHidden()
+    # (Qt's offscreen plugin on Windows aborts when a floated dock is docked
+    # again, whichever call does it; the native one does not: kicad2ems's
+    # windows workflow runs this test on it as well, and there it floats)
     if not (sys.platform == 'win32' and app.platformName() == 'offscreen'):
         w.settings_dock.setFloating(True)
     w.docks['Run'].hide()
     w.reset_layout()
     app.processEvents()
-    assert not w.settings_dock.isFloating() and w.dockWidgetArea(w.settings_dock) == Qt.LeftDockWidgetArea
-    assert w.places['Start'].in_front() and w.docks['Run'].isHidden()           # (no board: the Start page again)
+    assert (not w.settings_dock.isFloating()
+            and w.dockWidgetArea(w.settings_dock) == Qt.LeftDockWidgetArea)
+    # (no board: the Start page again)
+    assert w.places['Start'].in_front() and w.docks['Run'].isHidden()
     w._start_leaves()
     app.processEvents()
-    assert not w.docks['Run'].isHidden() and w.docks['Results'] not in w.work.tabifiedDockWidgets(w.docks['Viewer'])
-    assert w.docks['Viewer'].geometry().bottom() < w.docks['Results'].geometry().top()
+    assert (not w.docks['Run'].isHidden() and w.docks['Results']
+            not in w.work.tabifiedDockWidgets(w.docks['Viewer']))
+    assert (w.docks['Viewer'].geometry().bottom()
+            < w.docks['Results'].geometry().top())
     w.setup.dirty = False
     w.close()
     QSettings('kicad2ems', 'gui').clear()
 
 
 def test_beam_steering_bar_2d(tmp_path, monkeypatch):
-    """A 4 x 4 array with a feed per element: the run's grid fills the Grid field, an X step per column and a Y step
-    per row steer the beam in two planes, the phase map shows each element, Circle animates both, the 3D view's
-    bar follows; a bad grid is shown, an empty one goes back to a line of ports."""
+    """A 4 x 4 array with a feed per element: the run's grid fills the Grid
+    field, an X step per column and a Y step per row steer the beam in two
+    planes, the phase map shows each element, Circle animates both, the 3D
+    view's bar follows; a bad grid is shown, an empty one goes back to a line of
+    ports."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -1045,65 +1373,83 @@ def test_beam_steering_bar_2d(tmp_path, monkeypatch):
     c = phased.combine(data, data['drive'])
     np.savez_compressed(tmp_path / 'a_mom25d_sphere.npz', **c['sphere'])
     drive = phased.format_drive(data['drive'], data['ports'])
-    res = dict(match=dict(f_res=2.45e9, s11_db=-20.0, zin=[50.0, 0.0], bw10=None), rows=c['rows'],
-               f_pattern=2.45e9, port=', '.join(drive), solver='mom25d', sphere_file='a_mom25d_sphere.npz',
-               array_file='a_mom25d_array.npz', drive=drive, grid='4x4', peak=c['peak'])
-    (tmp_path / 'a_mom25d_antenna.json').write_text(json.dumps(res), encoding='utf-8')
+    res = dict(
+        match=dict(f_res=2.45e9, s11_db=-20.0, zin=[50.0, 0.0],
+                   bw10=None), rows=c['rows'], f_pattern=2.45e9,
+        port=', '.join(drive), solver='mom25d',
+        sphere_file='a_mom25d_sphere.npz', array_file='a_mom25d_array.npz',
+        drive=drive, grid='4x4', peak=c['peak'])
+    (tmp_path / 'a_mom25d_antenna.json').write_text(json.dumps(res),
+                                                    encoding='utf-8')
     w = MainWindow()
     assert w.results.load_antenna(str(tmp_path))
     bar = w.results.steer
-    assert bar.grid.text() == '4x4' and bar.spin_y.isVisibleTo(bar) and bar.map.isVisibleTo(bar)
+    assert (bar.grid.text() == '4x4' and bar.spin_y.isVisibleTo(bar)
+            and bar.map.isVisibleTo(bar))
     assert len(bar.map.cells) == 16 and bar.map.cells[5][:3] == (1, 1, 'P6')
     got = []
     bar.steered.connect(lambda r, s: got.append(r))
     bar.spin.setValue(40)
     bar.spin_y.setValue(-40)
     r = got[-1]
-    assert r['grid'] == '4x4' and 'P6@0' in r['drive'] and 'P2@40' in r['drive'] and 'P5@-40' in r['drive']
+    assert (r['grid'] == '4x4' and 'P6@0' in r['drive']
+            and 'P2@40' in r['drive'] and 'P5@-40' in r['drive'])
     th, ph = np.radians(r['peak']['theta']), np.radians(r['peak']['phi'])
     assert abs(np.sin(th) * np.cos(ph) + np.radians(40) / (k0 * d)) < 0.05
     assert abs(np.sin(th) * np.sin(ph) - np.radians(40) / (k0 * d)) < 0.05
-    assert abs({c[2]: c[3] for c in bar.map.cells}['P16']) < 1e-6   # 3 x 40 - 3 x 40
-    assert 'worst' in bar.readout.text()                             # 16 active reflections: the range
+    # 3 x 40 - 3 x 40
+    assert abs({c[2]: c[3] for c in bar.map.cells}['P16']) < 1e-6
+    assert 'worst' in bar.readout.text()  # 16 active reflections: the range
     vb = getattr(w.volume, 'steer', None)
     if vb is not None:
         assert vb.grid.text() == '4x4' and vb.spin_y.value() == -40
         vb.spin_y.setValue(20)
         assert bar.spin_y.value() == 20
-    bar.anim_mode.setCurrentIndex(2)                                 # Circle: both steps round
+    bar.anim_mode.setCurrentIndex(2)  # Circle: both steps round
     bar.anim.setChecked(True)
     x0, y0 = bar.spin.value(), bar.spin_y.value()
     for _ in range(10):
         bar._frame()
     assert (bar.spin.value(), bar.spin_y.value()) != (x0, y0)
-    assert abs(np.hypot(bar.spin.value(), bar.spin_y.value()) - np.hypot(x0, y0)) < 2
+    assert (
+        abs(np.hypot(bar.spin.value(), bar.spin_y.value()) - np.hypot(x0, y0))
+        < 2)
     bar.anim.setChecked(False)
     bar.grid.setText('P1:0')
     bar.update()
     assert 'expected' in bar.readout.text()
     bar.grid.setText('')
     bar.update()
-    assert not bar.spin_y.isVisibleTo(bar) and bar.label_x.text() == 'Phase step' and 'grid' not in got[-1]
+    assert (not bar.spin_y.isVisibleTo(bar)
+            and bar.label_x.text() == 'Phase step' and 'grid' not in got[-1])
     bar.reset.click()
-    assert bar.grid.text() == '4x4' and bar.spin.value() == 0 and bar.spin_y.value() == 0
-    bar.taper.setCurrentIndex(1)                                     # Taylor: the corners weakest
+    assert (bar.grid.text() == '4x4' and bar.spin.value() == 0
+            and bar.spin_y.value() == 0)
+    bar.taper.setCurrentIndex(1)  # Taylor: the corners weakest
     assert bar.sll.isEnabled() and bar.taper_spec() == 'taylor:25'
     r = got[-1]
     amps = {c[2]: c[5] for c in bar.map.cells}
-    assert amps['P1'] < amps['P2'] < 1 and amps['P6'] == pytest.approx(1) and 'Taylor' in bar.readout.text()
-    assert 'P1=0.' in ', '.join(r['drive']) and r['peak']['gain_dbi'] < res['peak']['gain_dbi']
+    assert (amps['P1'] < amps['P2'] < 1 and amps['P6'] == pytest.approx(1)
+            and 'Taylor' in bar.readout.text())
+    assert ('P1=0.' in ', '.join(r['drive'])
+            and r['peak']['gain_dbi'] < res['peak']['gain_dbi'])
     if vb is not None:
         assert vb.taper_spec() == 'taylor:25'
-    bar.taper.setCurrentIndex(3)                                     # cosine: no level to set
+    bar.taper.setCurrentIndex(3)  # cosine: no level to set
     assert not bar.sll.isEnabled() and bar.taper_spec() == 'cosine'
-    bar.set_data(dict(res, drive_base=drive, taper='chebyshev:30', steer=[20.0, -10.0]), bar.data)
-    assert bar.taper_spec() == 'chebyshev:30' and (bar.spin.value(), bar.spin_y.value()) == (20, -10)
-    assert bar.drive.text() == ', '.join(drive)                      # the run's untapered drive, not tapered twice
+    bar.set_data(
+        dict(res, drive_base=drive, taper='chebyshev:30', steer=[20.0, -10.0]),
+        bar.data)
+    assert (bar.taper_spec() == 'chebyshev:30'
+            and (bar.spin.value(), bar.spin_y.value()) == (20, -10))
+    # the run's untapered drive, not tapered twice
+    assert bar.drive.text() == ', '.join(drive)
 
 
 def test_beam_steering_aim(tmp_path, monkeypatch):
-    """A result that kept the ports' places (three feeds in a triangle): Aim points the beam at θ, φ, Animate
-    sweeps θ or turns φ, Reset gives the run's aim back; a result without places has no Aim."""
+    """A result that kept the ports' places (three feeds in a triangle): Aim
+    points the beam at θ, φ, Animate sweeps θ or turns φ, Reset gives the run's
+    aim back; a result without places has no Aim."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -1113,61 +1459,76 @@ def test_beam_steering_aim(tmp_path, monkeypatch):
     from kicad2ems.gui.steering import SteeringBar
     from test_phased import placed_sources
     application()
-    data = placed_sources({'P1': (0.0, 0.0), 'P2': (61.2, 0.0), 'P3': (30.6, 53.0)})
+    data = placed_sources(
+        {'P1': (0.0, 0.0), 'P2': (61.2, 0.0), 'P3': (30.6, 53.0)})
     c = phased.combine(data, data['drive'])
     drive = phased.format_drive(data['drive'], data['ports'])
-    res = dict(rows=c['rows'], peak=c['peak'], drive=drive, drive_base=drive, taper='uniform', steer=[0.0, 0.0],
-               aim=[25.0, 45.0])
+    res = dict(rows=c['rows'], peak=c['peak'], drive=drive, drive_base=drive,
+               taper='uniform', steer=[0.0, 0.0], aim=[25.0, 45.0])
     bar = SteeringBar()
     got = []
     bar.steered.connect(lambda r, s: got.append(r))
     bar.set_data(res, data)
-    assert bar.aim_row.isVisibleTo(bar) and bar.aim.isChecked() and (bar.theta.value(), bar.phi.value()) == (25, 45)
-    assert [bar.anim_mode.itemText(i) for i in range(bar.anim_mode.count())] == ['θ', 'φ']
+    assert (bar.aim_row.isVisibleTo(bar) and bar.aim.isChecked()
+            and (bar.theta.value(), bar.phi.value()) == (25, 45))
+    assert ([bar.anim_mode.itemText(i)
+             for i in range(bar.anim_mode.count())] == ['θ', 'φ'])
     bar.phi.setValue(200)
     pk = got[-1]['peak']
-    assert abs(pk['theta'] - 25) <= 2 and abs(pk['phi'] - 200) <= 4 and 'aimed at θ 25°' in bar.readout.text()
-    assert 'aim' not in got[-1]                                      # the drive holds it all now
+    assert (abs(pk['theta'] - 25) <= 2 and abs(pk['phi'] - 200) <= 4
+            and 'aimed at θ 25°' in bar.readout.text())
+    assert 'aim' not in got[-1]  # the drive holds it all now
     bar.anim.setChecked(True)
     t0 = bar.theta.value()
     for _ in range(5):
         bar._frame()
     assert bar.theta.value() != t0 and 0 <= bar.theta.value() <= 60
-    bar.anim_mode.setCurrentIndex(1)                                 # φ round, θ kept
+    bar.anim_mode.setCurrentIndex(1)  # φ round, θ kept
     t1, p1 = bar.theta.value(), bar.phi.value()
     bar._frame()
     assert bar.theta.value() == t1 and bar.phi.value() != p1
     bar.anim.setChecked(False)
-    bar.aim.setChecked(False)                                        # off: the drive's own phases, broadside
+    bar.aim.setChecked(False)  # off: the drive's own phases, broadside
     assert got[-1]['peak']['theta'] == 0 and not bar.anim_mode.isVisibleTo(bar)
     bar.reset.click()
-    assert bar.aim.isChecked() and (bar.theta.value(), bar.phi.value()) == (25, 45)
-    old = {k: v for k, v in data.items() if k != 'pos'}               # a result from before the places were kept
+    assert (bar.aim.isChecked()
+            and (bar.theta.value(), bar.phi.value()) == (25, 45))
+    # a result from before the places were kept
+    old = {k: v for k, v in data.items() if k != 'pos'}
     bar.set_data(dict(res, aim=None), old)
     assert not bar.aim_row.isVisibleTo(bar) and not bar.aiming()
     from PySide6.QtWidgets import QApplication
-    bar.steered.disconnect()                                         # a parentless bar: gone before the interpreter
+    bar.steered.disconnect()  # a parentless bar: gone before the interpreter
     bar.deleteLater()
     QApplication.processEvents()
 
 
 def test_mixed_mode_names():
-    """A file with differential pairs (kicad2ems's P1d, P1c ports) names its traces by mode and pair: Sdd21, Scd21,
-    and s for a single-ended port among them; a file without pairs keeps S21."""
+    """A file with differential pairs (kicad2ems's P1d, P1c ports) names its
+    traces by mode and pair: Sdd21, Scd21, and s for a single-ended port among
+    them; a file without pairs keeps S21."""
     from kicad2ems.gui.traces import Trace, modes
     names = ['P1d', 'P1c', 'P2d', 'P2c', 'P3']
     assert modes(names) == [('d', 1), ('c', 1), ('d', 2), ('c', 2), ('s', 3)]
-    assert modes(['IN', 'OUT']) is None and modes(None) is None and modes(['Pd', 'Q']) is None
+    assert (modes(['IN', 'OUT']) is None and modes(None) is None
+            and modes(['Pd', 'Q']) is None)
     f, s = np.array([1e9, 2e9]), np.zeros(2)
     tr = lambda i, j, nm=names: Trace('mom25d', i, j, f, s, list(nm))
-    assert [tr(2, 0).param, tr(3, 0).param, tr(0, 0).param, tr(4, 0).param, tr(2, 4).param] == \
-        ['Sdd21', 'Scd21', 'Sdd11', 'Ssd31', 'Sds23']
-    assert tr(2, 0).title == 'Sdd21 (P2d ← P1d)' and tr(1, 0, ['IN', 'OUT']).param == 'S21'
+    assert ([
+        tr(2, 0).param,
+        tr(3, 0).param,
+        tr(0, 0).param,
+        tr(4, 0).param,
+        tr(2, 4).param
+    ] == ['Sdd21', 'Scd21', 'Sdd11', 'Ssd31', 'Sds23'])
+    assert (tr(2, 0).title == 'Sdd21 (P2d ← P1d)'
+            and tr(1, 0, ['IN', 'OUT']).param == 'S21')
 
 
 def test_difference_plot(tmp_path, monkeypatch):
-    """Two solvers' results: the Cartesian plot offers Δ|S| and |ΔS| against a chosen solver, and draws each other
-    solver's checked trace as its difference from the reference's same S; with one solver there is none."""
+    """Two solvers' results: the Cartesian plot offers Δ|S| and |ΔS| against a
+    chosen solver, and draws each other solver's checked trace as its difference
+    from the reference's same S; with one solver there is none."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -1181,57 +1542,82 @@ def test_difference_plot(tmp_path, monkeypatch):
     _s2p(tmp_path / 'b_mom25d.s2p', f, np.full((11, 2, 2), 0.25 + 0j))
     sp = SPlot()
     sp.set_traces(load_traces([('t', str(tmp_path / 'b_openems.s2p'))]))
-    opts = lambda: [sp.subplots[0].option.itemText(i) for i in range(sp.subplots[0].option.count())]
-    assert not set(DIFF_KINDS) & set(opts())                         # one solver: nothing to compare
-    trs = load_traces([('a', str(tmp_path / 'b_openems.s2p')), ('b', str(tmp_path / 'b_mom25d.s2p'))])
+    opts = lambda: [
+        sp.subplots[0].option.itemText(i)
+        for i in range(sp.subplots[0].option.count())
+    ]
+    assert not set(DIFF_KINDS) & set(opts())  # one solver: nothing to compare
+    trs = load_traces([('a', str(tmp_path / 'b_openems.s2p')),
+                       ('b', str(tmp_path / 'b_mom25d.s2p'))])
     sp.set_traces(trs)
     assert set(DIFF_KINDS) <= set(opts())
     plot = sp.subplots[0]
     plot.option.setCurrentText(DIFF_KINDS[0])
     assert plot.ref.isVisibleTo(plot) and plot.reference == 'openEMS'
     import pyqtgraph as pg
-    lines = lambda: [c for c in plot.pw.listDataItems() if isinstance(c, pg.PlotDataItem)]   # not the cursor dot
+    # not the cursor dot
+    lines = lambda: [
+        c for c in plot.pw.listDataItems() if isinstance(c, pg.PlotDataItem)
+    ]
     curves = lines()
-    assert len(curves) == 2 and all(np.allclose(c.yData, 20 * np.log10(0.25 / 0.2)) for c in curves)
+    assert (len(curves) == 2 and all(
+        np.allclose(c.yData, 20 * np.log10(0.25 / 0.2)) for c in curves))
     m21 = next(t for t in trs if t.source == 'mom25d' and t.param == 'S21')
     _, y = difference(DIFF_KINDS[1], m21, counterpart(trs, m21, 'openEMS'))
-    assert np.allclose(y, 20 * np.log10(0.05))                       # |0.25 - 0.2|
-    plot.ref.setCurrentText('against mom25d')                         # openEMS against mom25d: the other sign
-    assert lines() and all(np.allclose(c.yData, -20 * np.log10(0.25 / 0.2)) for c in lines())
+    assert np.allclose(y, 20 * np.log10(0.05))  # |0.25 - 0.2|
+    # openEMS against mom25d: the other sign
+    plot.ref.setCurrentText('against mom25d')
+    assert (lines() and all(
+        np.allclose(c.yData, -20 * np.log10(0.25 / 0.2)) for c in lines()))
 
 
 def test_run_notes_on_the_results_page(tmp_path, monkeypatch):
-    """The run's warnings and notes (the board's conversion, the line model, the log's 'note:' lines) under a fold
-    on the Results page: open and red with a warning, folded with notes only, hidden with neither."""
+    """The run's warnings and notes (the board's conversion, the line model, the
+    log's 'note:' lines) under a fold on the Results page: open and red with a
+    warning, folded with notes only, hidden with neither."""
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     from kicad2ems.gui import application
     from kicad2ems.gui.app import MainWindow, run_notes
     application()
-    sm = dict(warnings=['WARNING: openems: 2 vias moved onto the mesh'], model=dict(notes=['B.Cu: solid ground']),
-              lines=dict(notes=['P2: no reference copper']),
-              log=['mom25d: 400 unknowns', 'note: --steer, --taper and --aim need --drive: ignored',
-                   'mom25d: note: wave ports need a longer feed', 'WARNING: openems: 2 vias moved onto the mesh'])
+    sm = dict(
+        warnings=['WARNING: openems: 2 vias moved onto the mesh'],
+        model=dict(notes=['B.Cu: solid ground']),
+        lines=dict(notes=['P2: no reference copper']), log=[
+            'mom25d: 400 unknowns',
+            'note: --steer, --taper and --aim need --drive: ignored',
+            'mom25d: note: wave ports need a longer feed',
+            'WARNING: openems: 2 vias moved onto the mesh'
+        ])
     warns, notes = run_notes(sm)
     assert warns == ['openems: 2 vias moved onto the mesh']
-    assert notes == ['B.Cu: solid ground', 'P2: no reference copper', '--steer, --taper and --aim need --drive: ignored',
-                     'wave ports need a longer feed']
+    assert (notes == [
+        'B.Cu: solid ground', 'P2: no reference copper',
+        '--steer, --taper and --aim need --drive: ignored',
+        'wave ports need a longer feed'
+    ])
     f = np.linspace(1e9, 3e9, 11)
     _s2p(tmp_path / 'b_openems.s2p', f, np.full((11, 2, 2), 0.2 + 0j))
     (tmp_path / 'b_run.json').write_text(json.dumps(sm), encoding='utf-8')
     w = MainWindow()
     r = w.results
-    files = [('s', str(tmp_path / 'b_openems.s2p')), ('run', str(tmp_path / 'b_run.json'))]
+    files = [('s', str(tmp_path / 'b_openems.s2p')),
+             ('run', str(tmp_path / 'b_run.json'))]
     r.show_files(files)
-    assert r.notes_btn.isVisibleTo(r) and r.notes_btn.text() == 'Notes and warnings (1 warning, 4 notes)'
-    assert r.notes_btn.isChecked() and r.notes.isVisibleTo(r) and '#c62828' in r.notes.text()
-    (tmp_path / 'b_run.json').write_text(json.dumps(dict(sm, warnings=[], log=[])), encoding='utf-8')
+    assert (r.notes_btn.isVisibleTo(r)
+            and r.notes_btn.text() == 'Notes and warnings (1 warning, 4 notes)')
+    assert (r.notes_btn.isChecked() and r.notes.isVisibleTo(r)
+            and '#c62828' in r.notes.text())
+    (tmp_path / 'b_run.json').write_text(
+        json.dumps(dict(sm, warnings=[], log=[])), encoding='utf-8')
     r.show_files(files)
-    assert r.notes_btn.text() == 'Notes and warnings (2 notes)' and not r.notes.isVisibleTo(r)
+    assert (r.notes_btn.text() == 'Notes and warnings (2 notes)'
+            and not r.notes.isVisibleTo(r))
     r.notes_btn.setChecked(True)
     assert r.notes.isVisibleTo(r) and 'solid ground' in r.notes.text()
-    (tmp_path / 'b_run.json').write_text(json.dumps(dict(warnings=[], model=dict(notes=[]))), encoding='utf-8')
+    (tmp_path / 'b_run.json').write_text(
+        json.dumps(dict(warnings=[], model=dict(notes=[]))), encoding='utf-8')
     r.show_files(files)
     assert not r.notes_btn.isVisibleTo(r)
     w.setup.dirty = False
@@ -1239,37 +1625,52 @@ def test_run_notes_on_the_results_page(tmp_path, monkeypatch):
 
 
 def test_filter_page_from_the_description(monkeypatch):
-    """The Filter page builds from dfsynth's description alone, without importing dfsynth: its types, topologies
-    and presets; an option it has no place for appears under More options; one this dfsynth lacks is disabled."""
+    """The Filter page builds from dfsynth's description alone, without
+    importing dfsynth: its types, topologies and presets; an option it has no
+    place for appears under More options; one this dfsynth lacks is disabled."""
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     import sys
     from kicad2ems.gui import application, filtertab as ft
-    desc = dict(format=1, version='test', kinds={'lowpass': ['stepped', 'radial'], 'bandpass': ['coupled']},
-                presets={'X-1': dict(h=1.0, er=3.0, tand=0.001, material='X')},
-                options=[dict(key='type', flag='--type', kind='str', default=None, choices=None, help='', group=''),
-                         dict(key='f0', flag='--f0', kind='str', default=None, choices=None, help='', group=''),
-                         dict(key='h', flag='--h', kind='float', default=None, choices=None, help='height', group=''),
-                         dict(key='smooth', flag='--smooth', kind='flag', default=False, choices=None,
-                              help='round the corners', group='')])
+    desc = dict(
+        format=1, version='test',
+        kinds={'lowpass': ['stepped', 'radial'], 'bandpass': ['coupled']},
+        presets={'X-1': dict(h=1.0, er=3.0, tand=0.001, material='X')},
+        options=[
+            dict(key='type', flag='--type', kind='str', default=None,
+                 choices=None, help='', group=''),
+            dict(key='f0', flag='--f0', kind='str', default=None, choices=None,
+                 help='', group=''),
+            dict(key='h', flag='--h', kind='float', default=None, choices=None,
+                 help='height', group=''),
+            dict(key='smooth', flag='--smooth', kind='flag', default=False,
+                 choices=None, help='round the corners', group='')
+        ])
     monkeypatch.setattr(ft, 'describe', lambda python=None: desc)
-    monkeypatch.setattr(ft, '_known', lambda python=None: True)                # (else asked in a thread)
-    monkeypatch.setitem(sys.modules, 'dfsynth', None)                   # importing it would fail
+    # (else asked in a thread)
+    monkeypatch.setattr(ft, '_known', lambda python=None: True)
+    monkeypatch.setitem(sys.modules, 'dfsynth', None)  # importing it would fail
     application()
     page = ft.FilterTab()
-    assert [page.w['type'].itemText(i) for i in range(page.w['type'].count())] == ['lowpass', 'bandpass']
-    assert page.w['substrate'].currentText() == 'X-1' and '1 (preset)' in page.w['h'].placeholderText()
-    assert 'smooth' in page.w and not page.w['ripple'].isEnabled()      # More options; ripple: not in this dfsynth
+    assert ([page.w['type'].itemText(i)
+             for i in range(page.w['type'].count())] == ['lowpass', 'bandpass'])
+    assert (page.w['substrate'].currentText() == 'X-1'
+            and '1 (preset)' in page.w['h'].placeholderText())
+    # More options; ripple: not in this dfsynth
+    assert 'smooth' in page.w and not page.w['ripple'].isEnabled()
     page.set_values(dict(type='lowpass', f0='2G', smooth=True))
-    assert ft.filter_argv(page.values(), desc=desc) == ['-u', '-m', 'kicad2ems.dfsynth', '--type', 'lowpass', '--f0', '2G',
-                                                       '--smooth']
+    assert (ft.filter_argv(page.values(), desc=desc) == [
+        '-u', '-m', 'kicad2ems.dfsynth', '--type', 'lowpass', '--f0', '2G',
+        '--smooth'
+    ])
     import shiboken6
-    shiboken6.delete(page)                  # now, not at interpreter exit: a parentless page's plots crash it then
+    # now, not at interpreter exit: a parentless page's plots crash it then
+    shiboken6.delete(page)
 
 
 def test_examples_menu_opens_a_prepared_example(tmp_path, monkeypatch):
-    """File > Examples lists the installed examples in their groups; one opens from the user's folder, its board
-    made."""
+    """File > Examples lists the installed examples in their groups; one opens
+    from the user's folder, its board made."""
     pytest.importorskip('PySide6')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path))
@@ -1277,70 +1678,101 @@ def test_examples_menu_opens_a_prepared_example(tmp_path, monkeypatch):
     from kicad2ems.gui.app import MainWindow
     QApplication.instance() or QApplication([])
     w = MainWindow()
-    assert [a.text() for a in w.examples_menu.actions()] == ['Antennas', 'RF structures', 'Signal integrity',
-                                                             'Lumped-element demos']
-    assert set(w.example_menus) >= {'/Antennas', '/Antennas/Patches and arrays', '/RF structures/Filters'}
-    assert w.example_sources == {'/Antennas': {'kicad2ems'}, '/RF structures': {'kicad2ems'},
-                                 '/Signal integrity': {'kicad2ems'}, '/Lumped-element demos': {'kicad2ems'}}
+    assert ([a.text() for a in w.examples_menu.actions()] == [
+        'Antennas', 'RF structures', 'Signal integrity', 'Lumped-element demos'
+    ])
+    assert (set(w.example_menus) >= {
+        '/Antennas', '/Antennas/Patches and arrays', '/RF structures/Filters'
+    })
+    assert (w.example_sources == {
+        '/Antennas': {'kicad2ems'}, '/RF structures': {'kicad2ems'},
+        '/Signal integrity': {'kicad2ems'},
+        '/Lumped-element demos': {'kicad2ems'}
+    })
     lines = w.example_menus['/RF structures/Lines and transitions']
     names = [a.text() for a in lines.actions()]
-    assert 'rf_gcpw' in names and 'sma_launch' in names and 'rf_steplpf' not in names
-    assert next(a for a in lines.actions() if a.text() == 'rf_gcpw').toolTip().startswith('grounded coplanar waveguide')
-    assert [a.text() for a in w.example_menus['/Lumped-element demos'].actions()][0] == 'demo_lowpass'    # no subgroup
+    assert ('rf_gcpw' in names and 'sma_launch' in names
+            and 'rf_steplpf' not in names)
+    assert next(a for a in lines.actions() if a.text() ==
+                'rf_gcpw').toolTip().startswith('grounded coplanar waveguide')
+    # no subgroup
+    assert ([
+        a.text() for a in w.example_menus['/Lumped-element demos'].actions()
+    ][0] == 'demo_lowpass')
     w.setup.dirty = False
     w.open_example('rf_gcpw')
     folder = tmp_path / 'kicad2ems' / 'examples'
-    wait_until(lambda: w.setup.path == str(folder / 'rf_gcpw.toml'), 60)       # (made in a thread)
-    assert w.setup.path == str(folder / 'rf_gcpw.toml') and (folder / 'rf_gcpw.kicad_pcb').exists()
+    # (made in a thread)
+    wait_until(lambda: w.setup.path == str(folder / 'rf_gcpw.toml'), 60)
+    assert (w.setup.path == str(folder / 'rf_gcpw.toml')
+            and (folder / 'rf_gcpw.kicad_pcb').exists())
     w.setup.dirty = False
     w.close()
 
 
 def test_filter_page_says_why_dfsynth_cannot_describe(tmp_path, monkeypatch):
-    """No dfsynth, one too old for --describe and one in another description format: three different messages."""
+    """No dfsynth, one too old for --describe and one in another description
+    format: three different messages."""
     import sys
     from kicad2ems.gui import filtertab as ft
 
-    def fake(code):                                                 # a Python whose 'dfsynth' behaves so
+    def fake(code):  # a Python whose 'dfsynth' behaves so
         path = tmp_path / f"py{len(list(tmp_path.iterdir()))}"
-        if sys.platform == 'win32':                                 # no shebangs: a .cmd runs the script
-            path.with_suffix('.py').write_text(f"import sys\n{code}\n", encoding='utf-8')
+        if sys.platform == 'win32':  # no shebangs: a .cmd runs the script
+            path.with_suffix('.py').write_text(f"import sys\n{code}\n",
+                                               encoding='utf-8')
             path = path.with_suffix('.cmd')
-            path.write_text(f'@"{sys.executable}" "{path.with_suffix(".py")}" %*\r\n', encoding='utf-8')
+            path.write_text(
+                f'@"{sys.executable}" "{path.with_suffix(".py")}" %*\r\n',
+                encoding='utf-8')
             return str(path)
-        path.write_text(f"#!{sys.executable}\nimport sys\n{code}\n", encoding='utf-8')
+        path.write_text(f"#!{sys.executable}\nimport sys\n{code}\n",
+                        encoding='utf-8')
         path.chmod(0o755)
         return str(path)
-    missing = fake("sys.stderr.write('No module named dfsynth\\n'); sys.exit(1)")
-    old = fake("sys.stderr.write('dfsynth: error: unrecognized arguments: --describe --json\\n'); sys.exit(2)")
+
+    missing = fake(
+        "sys.stderr.write('No module named dfsynth\\n'); sys.exit(1)")
+    old = fake(
+        "sys.stderr.write('dfsynth: error: unrecognized arguments: --describe "
+        "--json\\n'); sys.exit(2)"
+    )
     newer = fake("print('{\"format\": 2, \"version\": \"x\"}')")
-    assert ft.describe(missing) is None and 'not installed' in ft.why_not(missing)
+    assert (ft.describe(missing) is None
+            and 'not installed' in ft.why_not(missing))
     assert ft.describe(old) is None and 'too old' in ft.why_not(old)
-    assert ft.describe(newer) is None and 'update kicad2ems-gui' in ft.why_not(newer)
+    assert (ft.describe(newer) is None
+            and 'update kicad2ems-gui' in ft.why_not(newer))
 
 
 def test_antenna_sphere_from_sphere_file(tmp_path):
-    """The sphere is where the solver's results say (sphere_file); openEMS's results from before it, in its run
-    folder."""
+    """The sphere is where the solver's results say (sphere_file); openEMS's
+    results from before it, in its run folder."""
     from kicad2ems.gui.antennatab import find_antenna
     (tmp_path / 'fd').mkdir()
     (tmp_path / 'fd' / 'sph.h5').write_bytes(b'')
-    (tmp_path / 'b_antenna.json').write_text(json.dumps(dict(solver='openems', port='P1', sphere_file='fd/sph.h5')), encoding='utf-8')
+    (tmp_path / 'b_antenna.json').write_text(
+        json.dumps(dict(solver='openems', port='P1', sphere_file='fd/sph.h5')),
+        encoding='utf-8')
     res, sph, _ = find_antenna(str(tmp_path))
     assert sph == str(tmp_path / 'fd' / 'sph.h5')
     old = tmp_path / 'openems' / 'exc_P1p'
     old.mkdir(parents=True)
     (old / 'nf2ff_sphere.h5').write_bytes(b'')
-    (tmp_path / 'b_antenna.json').write_text(json.dumps(dict(solver='openems', port='P1+')), encoding='utf-8')
+    (tmp_path / 'b_antenna.json').write_text(
+        json.dumps(dict(solver='openems', port='P1+')), encoding='utf-8')
     assert find_antenna(str(tmp_path))[1] == str(old / 'nf2ff_sphere.h5')
 
 
 def test_the_solved_mesh_goes_with_its_solver():
-    """meshpick: one Mesh entry a solver; the run's mesh (<solver>-run) is the pink overlay, or the mesh itself where
-    there is no preview."""
+    """meshpick: one Mesh entry a solver; the run's mesh (<solver>-run) is the
+    pink overlay, or the mesh itself where there is no preview."""
     from kicad2ems.gui import meshpick as mp
     found = {'mom25d-run': 'r.npz', 'openems': 'o.npz', 'mom25d': 'p.npz'}
     assert mp.solvers(found) == ['mom25d', 'openems']
-    assert (mp.shown(found, 'mom25d'), mp.solved(found, 'mom25d')) == ('p.npz', 'r.npz')
-    assert mp.solved(found, 'openems') is None and mp.solved(found, None) is None
+    assert ((mp.shown(found,
+                      'mom25d'), mp.solved(found,
+                                           'mom25d')) == ('p.npz', 'r.npz'))
+    assert (mp.solved(found, 'openems') is None
+            and mp.solved(found, None) is None)
     assert mp.shown({'mom25d-run': 'r.npz'}, 'mom25d') == 'r.npz'

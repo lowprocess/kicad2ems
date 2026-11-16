@@ -22,8 +22,10 @@ def test_hybrid_reciprocity_accuracy_and_translation():
     assert np.linalg.norm(L - Lref) / np.linalg.norm(Lref) < 2e-4
     assert np.linalg.eigvalsh(L).min() > 0
     shifted, *shift_m = static_moments(nodes + [10, -20], tris, z)
-    # translated: the same, but for the pairs exactly at the near rule's threshold, which the shift's rounding moves
-    # across it (a lattice of right triangles has centroids sqrt(20) apart: 3 x the two radii; 18 of 94,249 here)
+    # translated: the same, but for the pairs exactly at the near rule's
+    # threshold, which the shift's rounding moves across it (a lattice of right
+    # triangles has centroids sqrt(20) apart: 3 x the two radii; 18 of 94,249
+    # here)
     Ls = inductive(shifted, shift_m)
     assert np.linalg.norm(Ls - L) / np.linalg.norm(L) < 1e-5
     assert (np.abs(Ls - L) > 2e-7 * np.abs(L) + 1e-18).mean() < 1e-3
@@ -34,7 +36,10 @@ def test_hybrid_reciprocity_accuracy_and_translation():
 def test_refined_self_integral_converges():
     nodes = np.array([[0., 0.], [1., 0.], [0., 1.]])
     tris = np.array([[0, 1, 2]])
-    vals = [offplane_pairs(nodes, tris, [0], [0], 0, outer_levels=k)[0][0] for k in (0, 1, 2)]
+    vals = [
+        offplane_pairs(nodes, tris, [0], [0], 0, outer_levels=k)[0][0]
+        for k in (0, 1, 2)
+    ]
     assert abs(vals[1] - vals[2]) < abs(vals[0] - vals[2]) / 3
     assert vals[1] == pytest.approx(vals[2], rel=.01)
 

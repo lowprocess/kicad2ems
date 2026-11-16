@@ -1,25 +1,34 @@
 """
-pcbqs.mqs - the magneto-quasistatic currents of a board's copper (the board much smaller than a wavelength: a
-DC-DC converter's 0.1-30 MHz): where an AC current flows (its return pulled under its path as the frequency rises,
-or around a slot), the loop's R and L, and the near magnetic field it makes (Biot-Savart: pcbqs.biot).
+pcbqs.mqs - the magneto-quasistatic currents of a board's copper (the board much
+smaller than a wavelength: a DC-DC converter's 0.1-30 MHz): where an AC current
+flows (its return pulled under its path as the frequency rises, or around a
+slot), the loop's R and L, and the near magnetic field it makes (Biot-Savart:
+pcbqs.biot).
 
     q = MQS(board, nets={'VIN', 'GND', 'SW'}, terminals={'U1.VIN': [('F.Cu', pad)], ...}, region=box(...), dmax=0.5)
-    q.source('hot', 'U1.VIN', 'U1.PGND', part_h=0.5)          # a current source in the part between its pads
+    q.source('hot', 'U1.VIN', 'U1.PGND', part_h=0.5)
+        # a current source in the part between its pads
     q.element('C1', 'C1.1', 'C1.2', C=10e-6, ESR=3e-3, ESL=0.4e-9)
-    r = q.solve([1e6, 3e6])                                    # per frequency: currents, the sources' Z = R + j w L
-    H = q.h_field(r, 0, pts)                                   # (n, 3) A/m at points (m) for 1 A in the sources
+    r = q.solve([1e6, 3e6])  # per frequency: currents, the sources' Z = R + j w
+                             L
+    H = q.h_field(r, 0, pts)  # (n, 3) A/m at points (m) for 1 A in the sources
 
-The copper of the nets on every layer (cropped to `region`, mm) is meshed by pcbqs's mesher (pdn.mesh, the pads'
-outlines as mesh edges; `fine`, a shapely region in mm, meshed at dmax_fine: the loop's own area) and carries RWG
-currents; a via is a filament between the layers it joins; a part (a source,
-a capacitor) a branch between its terminals, drawn for the field as a filament `part_h` above its pads. The unknowns
-are the loop currents of the branch graph (a spanning tree's cotree: Kirchhoff's current law holds by construction,
-no node potentials), so a sweep is one small solve per frequency:
-    Z_loops = C^T (R + j w L) C,   R: the sheets' Gram matrix / (sigma t) and the barrels',  L: mu0 / 4 pi of
-    int int f_m . f_n / R (pcbqs's 1/R moments, analytic inner integral, between layers at their offset), the vias'
+The copper of the nets on every layer (cropped to `region`, mm) is meshed by
+pcbqs's mesher (pdn.mesh, the pads' outlines as mesh edges; `fine`, a shapely
+region in mm, meshed at dmax_fine: the loop's own area) and carries RWG
+currents; a via is a filament between the layers it joins; a part (a source, a
+capacitor) a branch between its terminals, drawn for the field as a filament
+`part_h` above its pads. The unknowns are the loop currents of the branch graph
+(a spanning tree's cotree: Kirchhoff's current law holds by construction, no
+node potentials), so a sweep is one small solve per frequency:
+    Z_loops = C^T (R + j w L) C,   R: the sheets' Gram matrix / (sigma t) and
+                                   the barrels',  L: mu0 / 4 pi of
+    int int f_m . f_n / R (pcbqs's 1/R moments, analytic inner integral, between
+                                   layers at their offset), the vias'
     partial inductances (parallel filaments), and the parts' series R, L, C.
-Horizontal and vertical currents do not couple (orthogonal); the parts' own fields count, their mutual inductance to
-the copper does not (a part's body: a short filament well above it).
+Horizontal and vertical currents do not couple (orthogonal); the parts' own
+fields count, their mutual inductance to the copper does not (a part's body: a
+short filament well above it).
 
 With capacitance=True, a homogeneous-dielectric surface-charge PEEC model
 replaces the closed-loop constraint by charge continuity (pcbqs.peec).
@@ -41,15 +50,18 @@ from .pdn.mesh import copper_centres, copper_of, mesh_sheet, simplify_copper, st
 
 
 def filament_mutual(z0a, z1a, z0b, z1b, s):
-    """Partial mutual inductance (H) of two parallel filaments along z, a from z0a to z1a and b from z0b to z1b (m),
-    s apart (the self term: s = the radius). Grover: mu0 / 4 pi [g(a1 - b0) + g(a0 - b1) - g(a1 - b1) - g(a0 - b0)],
-    g(u) = u asinh(u / s) - sqrt(u^2 + s^2)."""
+    """Partial mutual inductance (H) of two parallel filaments along z, a from
+    z0a to z1a and b from z0b to z1b (m), s apart (the self term: s = the
+    radius). Grover: mu0 / 4 pi [g(a1 - b0) + g(a0 - b1) - g(a1 - b1) - g(a0 -
+    b0)], g(u) = u asinh(u / s) - sqrt(u^2 + s^2)."""
     g = lambda u: u * np.arcsinh(u / s) - np.sqrt(u * u + s * s)
-    return MU0 / (4 * np.pi) * (g(z1a - z0b) + g(z0a - z1b) - g(z1a - z1b) - g(z0a - z0b))
+    return (MU0 / (4 * np.pi) *
+            (g(z1a - z0b) + g(z0a - z1b) - g(z1a - z1b) - g(z0a - z0b)))
 
 
 def _root(parent, a):
-    """Union-find: the root of a's set in parent (a list or an array), halving the path on the way."""
+    """Union-find: the root of a's set in parent (a list or an array), halving
+    the path on the way."""
     while parent[a] != a:
         parent[a] = parent[parent[a]]
         a = parent[a]
@@ -57,13 +69,17 @@ def _root(parent, a):
 
 
 def spanning_tree(n_nodes, ends, is_src, first=None):
-    """A spanning forest of the branches `ends` [(a, b)] but the sources (is_src): (tree (nb,) bool, comp (each
-    node's component), up, upb, ups (each node's parent in it, the branch to it and that branch's sense from the
-    parent), depth). The `first` branches (the copper) are a breadth-first forest, each island's from its most
-    central node; the rest (the parts) only join islands the copper leaves apart, as before, so a source's loop
-    crosses a part only where the copper has no way round it (its copper alone, Result.zc, is that loop's). The tree
-    had been the branches' order: a mean loop of 20-30 branches where breadth first gives 13-20 (the CM5's converter,
-    the wpthb ports, mom25d's demo board), the longest a third to two thirds as long, with the same answers."""
+    """A spanning forest of the branches `ends` [(a, b)] but the sources
+    (is_src): (tree (nb,) bool, comp (each node's component), up, upb, ups (each
+    node's parent in it, the branch to it and that branch's sense from the
+    parent), depth). The `first` branches (the copper) are a breadth-first
+    forest, each island's from its most central node; the rest (the parts) only
+    join islands the copper leaves apart, as before, so a source's loop crosses
+    a part only where the copper has no way round it (its copper alone,
+    Result.zc, is that loop's). The tree had been the branches' order: a mean
+    loop of 20-30 branches where breadth first gives 13-20 (the CM5's converter,
+    the wpthb ports, mom25d's demo board), the longest a third to two thirds as
+    long, with the same answers."""
     import collections
     nb = len(ends)
     first = nb if first is None else first
@@ -75,7 +91,8 @@ def spanning_tree(n_nodes, ends, is_src, first=None):
     tree = np.zeros(nb, bool)
 
     def sweep(root):
-        """Breadth first from root: the nodes in that order and their distances."""
+        """Breadth first from root: the nodes in that order and their
+        distances."""
         dist = {root: 0}
         q = collections.deque([root])
         order = [root]
@@ -93,7 +110,8 @@ def spanning_tree(n_nodes, ends, is_src, first=None):
         order, _ = sweep(s)
         seen[order] = True
         root = s
-        if len(order) > 2:                      # a central root: the middle of a double sweep's long path
+        # a central root: the middle of a double sweep's long path
+        if len(order) > 2:
             _, d1 = sweep(order[-1])
             _, d2 = sweep(max(d1, key=d1.get))
             root = min(order, key=lambda v: max(d1[v], d2[v]))
@@ -104,7 +122,8 @@ def spanning_tree(n_nodes, ends, is_src, first=None):
             for v, k in adj[u]:
                 if v not in mark:
                     mark.add(v); tree[k] = True; q.append(v)
-    parent = list(range(n_nodes))                   # the parts join the copper's islands, in their order
+    # the parts join the copper's islands, in their order
+    parent = list(range(n_nodes))
     for k in np.flatnonzero(tree):
         a, b = ends[k]
         parent[_root(parent, b)] = _root(parent, a)
@@ -117,7 +136,9 @@ def spanning_tree(n_nodes, ends, is_src, first=None):
     for k in np.flatnonzero(tree):
         a, b = ends[k]
         tadj[a].append((b, k)); tadj[b].append((a, k))
-    up = np.full(n_nodes, -1); upb = np.full(n_nodes, -1); ups = np.zeros(n_nodes, int)
+    up = np.full(n_nodes, -1)
+    upb = np.full(n_nodes, -1)
+    ups = np.zeros(n_nodes, int)
     depth = np.full(n_nodes, -1); comp = np.full(n_nodes, -1)
     for root in range(n_nodes):
         if depth[root] >= 0:
@@ -135,15 +156,18 @@ def spanning_tree(n_nodes, ends, is_src, first=None):
 
 
 def _frequencies(freqs, empty=True):
-    """freqs (Hz) as a 1D float array, each finite and positive, else ValueError (empty=False: at least one)."""
+    """freqs (Hz) as a 1D float array, each finite and positive, else ValueError
+    (empty=False: at least one)."""
     f = np.atleast_1d(np.asarray(freqs, float))
-    if f.ndim != 1 or not np.isfinite(f).all() or (f <= 0).any() or not (empty or len(f)):
+    if (f.ndim != 1 or not np.isfinite(f).all() or (f <= 0).any()
+            or not (empty or len(f))):
         raise ValueError('frequencies must be finite and positive')
     return f
 
 
 def via_resistance(vseg, sigma, plating):
-    """Each via segment's DC resistance (ohm): its barrel's plated ring, (x, y, r, z0, z1) a row (m)."""
+    """Each via segment's DC resistance (ohm): its barrel's plated ring, (x, y,
+    r, z0, z1) a row (m)."""
     v = np.asarray(vseg, float).reshape(-1, 5)
     rr = v[:, 2]
     ri = np.maximum(rr - plating, 0.0)
@@ -151,9 +175,11 @@ def via_resistance(vseg, sigma, plating):
 
 
 def via_inductance(vseg, rows=512):
-    """The via segments' partial inductance matrix (H): filaments along z, (x, y, r, z0, z1) a row (m). Segments
-    of one barrel (coaxial, i == j included) take the barrel's radius, so stacked segments add up to the whole
-    barrel. In blocks of `rows` (a Python double loop had taken ~15 s at 2,500 segments)."""
+    """The via segments' partial inductance matrix (H): filaments along z, (x,
+    y, r, z0, z1) a row (m). Segments of one barrel (coaxial, i == j included)
+    take the barrel's radius, so stacked segments add up to the whole barrel. In
+    blocks of `rows` (a Python double loop had taken ~15 s at 2,500
+    segments)."""
     v = np.asarray(vseg, float).reshape(-1, 5)
     x, y, rr, z0, z1 = v.T
     n = len(v)
@@ -162,31 +188,42 @@ def via_inductance(vseg, rows=512):
         b = min(a + rows, n)
         s = np.hypot(x[a:b, None] - x[None], y[a:b, None] - y[None])
         s = np.where(s < 1e-9, np.maximum(rr[a:b, None], rr[None]), s)
-        L[a:b] = filament_mutual(z0[a:b, None], z1[a:b, None], z0[None], z1[None], s)
+        L[a:b] = filament_mutual(z0[a:b, None], z1[a:b, None], z0[None],
+                                 z1[None], s)
     return L
 
 
 @dataclass
 class Result:
     f: np.ndarray
-    i: np.ndarray                   # (nf, nbranch) branch currents (A): edges (total current across), vias, parts
-    z: dict                         # {source: Z (nf,) complex}: the loop each source drives, its parts included
+    # (nf, nbranch) branch currents (A): edges (total current across), vias,
+    # parts
+    i: np.ndarray
+    # {source: Z (nf,) complex}: the loop each source drives, its parts included
+    z: dict
     names: list
-    zc: dict = None                 # {source: Z (nf,)}: the copper of that loop alone (the parts' own Z left out)
+    # {source: Z (nf,)}: the copper of that loop alone (the parts' own Z left
+    # out)
+    zc: dict = None
     charge: np.ndarray = None      # PEEC only: (nf, n_nodes), C
-    potential: np.ndarray = None   # PEEC only: (nf, n_nodes), V relative to infinity
+    # PEEC only: (nf, n_nodes), V relative to infinity
+    potential: np.ndarray = None
 
 
 class MQS:
-    def __init__(self, board, nets, terminals=None, region=None, dmax=0.5, sigma=SIGMA_CU, plating=0.025, log=print,
-                 fine=None, dmax_fine=None, near=3.0, outer_levels=1, capacitance=False, er=1.0,
-                 factor_cache_bytes=64 * 1024**2, conductor_loss='dc', conductor_faces=2,
-                 dielectric='homogeneous', dielectric_tol=1e-8, fill_backend='auto', fill_workers=None,
+    def __init__(self, board, nets, terminals=None, region=None, dmax=0.5,
+                 sigma=SIGMA_CU, plating=0.025, log=print, fine=None,
+                 dmax_fine=None, near=3.0, outer_levels=1, capacitance=False,
+                 er=1.0, factor_cache_bytes=64 * 1024**2, conductor_loss='dc',
+                 conductor_faces=2, dielectric='homogeneous',
+                 dielectric_tol=1e-8, fill_backend='auto', fill_workers=None,
                  fill_chunk=16384, fill_device=None, coarsen=None, grow=0.5,
-                 edge_rings=1, edge_width=None, edge_zone=None, matrix_backend='dense',
-                 compression_tol=1e-6, compression_leaf=64, compression_eta=1.,
-                 solver_tol=1e-8, solver_maxiter=500, drop_lone_pads=True, pad_area=1.0, pad_sides=8,
-                 via_sides=6, thickness_sheets=None, thick_kernel=False, side_charge=False, ideal_terminals=True):
+                 edge_rings=1, edge_width=None, edge_zone=None,
+                 matrix_backend='dense', compression_tol=1e-6,
+                 compression_leaf=64, compression_eta=1., solver_tol=1e-8,
+                 solver_maxiter=500, drop_lone_pads=True, pad_area=1.0,
+                 pad_sides=8, via_sides=6, thickness_sheets=None,
+                 thick_kernel=False, side_charge=False, ideal_terminals=True):
         """Mesh the selected copper. `near` controls analytic 1/R integration
         (infinity: all pairs); `outer_levels` refines its close-pair quadrature.
         `capacitance=True` enables surface-charge PEEC: homogeneous `er`, or
@@ -215,7 +252,8 @@ class MQS:
         """
         if matrix_backend not in ('dense','hierarchical'):
             raise ValueError('matrix_backend must be dense or hierarchical')
-        for name,value in [('compression_tol',compression_tol),('solver_tol',solver_tol)]:
+        for name, value in [('compression_tol', compression_tol),
+                            ('solver_tol', solver_tol)]:
             if not np.isfinite(value) or not 0 < value < 1:
                 raise ValueError(name+' must be between 0 and 1')
         _positive_integer(compression_leaf, 'compression_leaf')
@@ -225,99 +263,152 @@ class MQS:
         if not np.isfinite(pad_area) or pad_area < 0:
             raise ValueError('pad_area must be finite and nonnegative')
         for name, value in (('pad_sides', pad_sides), ('via_sides', via_sides)):
-            if value not in (None, 0, False) and (isinstance(value, bool) or not isinstance(value, (int, np.integer))
-                                                  or value < 3):
-                raise ValueError(name + ' must be None or an integer of at least 3')
+            if (value not in (None, 0, False)
+                    and (isinstance(value, bool)
+                         or not isinstance(value,
+                                           (int, np.integer)) or value < 3)):
+                raise ValueError(name
+                                 + ' must be None or an integer of at least 3')
         self.matrix_backend=matrix_backend
-        self._compression_options=dict(tol=compression_tol,leaf=compression_leaf,eta=compression_eta)
+        self._compression_options = dict(tol=compression_tol,
+                                         leaf=compression_leaf,
+                                         eta=compression_eta)
         self.solver_tol,self.solver_maxiter=solver_tol,solver_maxiter
-        # set after construction: GMRES restart length; how copper ports are solved on the compressed backend
-        # (mqs_iterative.port_method: 'auto' | 'direct' | 'iterative', and 'auto' | 'graph' | 'faces')
-        self.solver_restart,self.port_solver,self.port_preconditioner=100,'auto','auto'
+        # set after construction: GMRES restart length; how copper ports are
+        # solved on the compressed backend (mqs_iterative.port_method: 'auto' |
+        # 'direct' | 'iterative', and 'auto' | 'graph' | 'faces')
+        self.solver_restart, self.port_solver, self.port_preconditioner = (
+            100, 'auto', 'auto')
         self.solve_info=[]
         if not np.isfinite(er) or er <= 0:
             raise ValueError('er must be finite and positive')
-        self.near, self.outer_levels, self.capacitance, self.er = near, outer_levels, capacitance, er
-        self._fill_options = dict(backend=fill_backend, workers=fill_workers, chunk=fill_chunk, device=fill_device)
+        self.near, self.outer_levels, self.capacitance, self.er = (near,
+                                                                   outer_levels,
+                                                                   capacitance,
+                                                                   er)
+        self._fill_options = dict(backend=fill_backend, workers=fill_workers,
+                                  chunk=fill_chunk, device=fill_device)
         self.fill_info = {}
         if factor_cache_bytes < 0:
             raise ValueError('factor_cache_bytes must be nonnegative')
         self.factor_cache_bytes = factor_cache_bytes
-        if conductor_loss not in ('dc', 'slab') or conductor_faces not in (1, 2):
-            raise ValueError('conductor_loss must be dc or slab; conductor_faces must be 1 or 2')
-        self.conductor_loss, self.conductor_faces = conductor_loss, conductor_faces
+        if (conductor_loss not in ('dc', 'slab')
+                or conductor_faces not in (1, 2)):
+            raise ValueError(
+                'conductor_loss must be dc or slab; conductor_faces must be 1 '
+                'or 2'
+            )
+        self.conductor_loss, self.conductor_faces = (conductor_loss,
+                                                     conductor_faces)
         if dielectric not in ('homogeneous', 'stack'):
             raise ValueError('dielectric must be homogeneous or stack')
-        # thickness_sheets=2 (experimental): each layer's copper as two sheets at its faces (z -+ t/2), each copy of
-        # a triangle one node, each RWG edge two parallel branches, coupled through the copper by the slab's exact
-        # 1D two-port, Zs [[coth kt, csch kt], [csch kt, coth kt]], with no correction for the vacuum field the partial
-        # inductance puts between the faces (the per-pair and overlap corrections were removed 2026-11-10: against
-        # FastHenry they were right only far from a plane, +200% R at 100 MHz with a plane 0.1 mm away, while the
-        # uncorrected faces are within ~10% everywhere tested). The external field sets how the current divides:
-        # the proximity effect a single sheet's slab cannot give (C14, validation/mqs_fasthenry.py).
-        # thickness_sheets: default two face sheets with conductor_loss='slab' (validated against FastHenry for
-        # inductance and FasterCap for capacitance, validation/README.md; with capacitance a node's two faces share
-        # its charge, peec.node_potential), else one sheet
-        # conductor_faces is the one-sheet slab's (its current on one face or both): with conductor_faces=1 the slab
-        # is that one sheet (it had been ignored for the face sheets, so one model was computed twice by every
-        # comparison of the two)
+        # thickness_sheets=2 (experimental): each layer's copper as two sheets
+        # at its faces (z -+ t/2), each copy of a triangle one node, each RWG
+        # edge two parallel branches, coupled through the copper by the slab's
+        # exact 1D two-port, Zs [[coth kt, csch kt], [csch kt, coth kt]], with
+        # no correction for the vacuum field the partial inductance puts between
+        # the faces (the per-pair and overlap corrections were removed
+        # 2026-11-10: against FastHenry they were right only far from a plane,
+        # +200% R at 100 MHz with a plane 0.1 mm away, while the uncorrected
+        # faces are within ~10% everywhere tested). The external field sets how
+        # the current divides: the proximity effect a single sheet's slab cannot
+        # give (C14, validation/mqs_fasthenry.py). thickness_sheets: default two
+        # face sheets with conductor_loss='slab' (validated against FastHenry
+        # for inductance and FasterCap for capacitance, validation/README.md;
+        # with capacitance a node's two faces share its charge,
+        # peec.node_potential), else one sheet conductor_faces is the one-sheet
+        # slab's (its current on one face or both): with conductor_faces=1 the
+        # slab is that one sheet (it had been ignored for the face sheets, so
+        # one model was computed twice by every comparison of the two)
         if thickness_sheets is None:
-            thickness_sheets = 2 if conductor_loss == 'slab' and conductor_faces == 2 else 1
-        elif conductor_faces == 1 and conductor_loss == 'slab' and thickness_sheets == 2:
-            raise ValueError("conductor_faces=1 is the one-sheet slab's: the face sheets (thickness_sheets=2) carry "
-                             "both faces")
-        # thickness_sheets=N with conductor_loss='dc' (experimental, the reference): N sheets at the centres of N
-        # slices of the copper (cosine-graded: thinner at the faces, where the skin is), each at its slice's DC
-        # sheet resistance, a triangle's copies one node. Skin
-        # and proximity effect come from the sheets' mutual inductance alone, as FastHenry's filaments through the
-        # thickness: no slab formula, no correction. N times the unknowns.
+            thickness_sheets = (2 if conductor_loss == 'slab'
+                                and conductor_faces == 2 else 1)
+        elif (conductor_faces == 1 and conductor_loss == 'slab'
+              and thickness_sheets == 2):
+            raise ValueError(
+                "conductor_faces=1 is the one-sheet slab's: the face sheets "
+                "(thickness_sheets=2) carry both faces")
+        # thickness_sheets=N with conductor_loss='dc' (experimental, the
+        # reference): N sheets at the centres of N slices of the copper
+        # (cosine-graded: thinner at the faces, where the skin is), each at its
+        # slice's DC sheet resistance, a triangle's copies one node. Skin and
+        # proximity effect come from the sheets' mutual inductance alone, as
+        # FastHenry's filaments through the thickness: no slab formula, no
+        # correction. N times the unknowns.
         _positive_integer(thickness_sheets, 'thickness_sheets')
-        if thickness_sheets > 2 and conductor_loss == 'slab':          # (2 with 'slab': the face model)
-            raise ValueError("thickness_sheets=2 with conductor_loss='slab' is the face model; N stacked sheets need "
-                             "conductor_loss='dc'")
+        # (2 with 'slab': the face model)
+        if thickness_sheets > 2 and conductor_loss == 'slab':
+            raise ValueError(
+                "thickness_sheets=2 with conductor_loss='slab' is the face "
+                "model; N stacked sheets need conductor_loss='dc'")
         if thickness_sheets > 2 and dielectric == 'stack':
-            raise NotImplementedError('stacked sheets with dielectric=stack (the images need copper on interfaces)')
+            raise NotImplementedError(
+                'stacked sheets with dielectric=stack (the images need copper '
+                'on interfaces)'
+            )
         self.thickness_sheets = int(thickness_sheets)
         self._dielectric_stack = None
         if dielectric == 'stack':
             from .electrostatic import DielectricStack
-            make = DielectricStack.from_board_thick if self.thickness_sheets == 2 else DielectricStack.from_board
+            make = (DielectricStack.from_board_thick if self.thickness_sheets
+                    == 2 else DielectricStack.from_board)
             self._dielectric_stack = make(board, dielectric_tol)
-        # thick_kernel=True (experimental, dense): close same-layer pairs interact through the 1/R kernel averaged
-        # over their slabs' thickness (thick.py), which bounds the edge current a zero-thickness sheet makes singular
+        # thick_kernel=True (experimental, dense): close same-layer pairs
+        # interact through the 1/R kernel averaged over their slabs' thickness
+        # (thick.py), which bounds the edge current a zero-thickness sheet makes
+        # singular
         self.thick_kernel = bool(thick_kernel)
-        # side_charge=True (experimental): with capacitance and face sheets, the copper's sides as charged panels
-        # between the faces (side_charge.py; no current), homogeneous dielectric (either backend)
+        # side_charge=True (experimental): with capacitance and face sheets, the
+        # copper's sides as charged panels between the faces (side_charge.py; no
+        # current), homogeneous dielectric (either backend)
         if side_charge and not (capacitance and dielectric == 'homogeneous'):
-            raise NotImplementedError("side_charge needs capacitance=True, a homogeneous dielectric and "
-                                      "thickness_sheets=2")
+            raise NotImplementedError(
+                "side_charge needs capacitance=True, a homogeneous dielectric "
+                "and thickness_sheets=2")
         self.side_charge = bool(side_charge)
         self._thick_D = None
-        # ideal_terminals (default): a terminal's (and a via fan's) inner sheet edges carry no loop current, the
-        # terminal an ideal contact; False keeps the earlier behaviour (eddies in terminals), for parity with the
+        # ideal_terminals (default): a terminal's (and a via fan's) inner sheet
+        # edges carry no loop current, the terminal an ideal contact; False
+        # keeps the earlier behaviour (eddies in terminals), for parity with the
         # capacitance (PEEC) path and stored references
         self.ideal_terminals = bool(ideal_terminals)
         if dielectric == 'stack' and er != 1:
-            raise ValueError('er applies to homogeneous dielectric; stack uses board permittivities')
+            raise ValueError(
+                'er applies to homogeneous dielectric; stack uses board '
+                'permittivities'
+            )
         self.dielectric = dielectric
         self.board, self.sigma, self.log = board, sigma, log
         self.nets = {nets} if isinstance(nets, str) else set(nets)
-        # one sheet sits at board.json's z (the dielectric interface: the facing gaps exact); thick copper (two faces,
-        # stacked sheets, or one sheet whose kernel is averaged over its slab) is placed with its thickness put into
-        # the stack (copper_centres), so no dielectric shrinks
+        # one sheet sits at board.json's z (the dielectric interface: the facing
+        # gaps exact); thick copper (two faces, stacked sheets, or one sheet
+        # whose kernel is averaged over its slab) is placed with its thickness
+        # put into the stack (copper_centres), so no dielectric shrinks
         z_board = stack_z(board)
-        zt = copper_centres(board) if thickness_sheets > 1 or thick_kernel else z_board   # a slab kernel: its real slab
+        # a slab kernel: its real slab
+        zt = (copper_centres(board)
+              if thickness_sheets > 1 or thick_kernel else z_board)
         self.copper_z = {l: v[0] for l, v in zt.items()}
         self.terms = dict(terminals or {})
         reg = box(*region) if isinstance(region, (tuple, list)) else region
-        vias = [v for v in board['vias'] if v.get('net') in self.nets and (reg is None or reg.contains(Point(v['x'], v['y'])))]
+        vias = [
+            v for v in board['vias'] if v.get('net') in self.nets and (
+                reg is None or reg.contains(Point(v['x'], v['y'])))
+        ]
         pts = [(v['x'], v['y'], v['r']) for v in vias]
         nodes, tris, layer_of, z_of, t_of = [], [], [], [], []
-        self.layer_tris, self.term_tris, ring_tris = {}, {n: [] for n in self.terms}, {}
-        self.sheet_layer = {}                                # layer_tris key -> its copper layer (copies: 'F.Cu#1')
-        copies = []                                          # (first triangle of a layer's copy 0, of copy k, count)
-        self.mesh_info = dict(dropped_pads=0, regular_pads=0, regular_holes=0, drop_lone_pads=bool(drop_lone_pads),
-                              pad_area_mm2=float(pad_area), pad_sides=pad_sides or None, via_sides=via_sides or None)
+        self.layer_tris, self.term_tris, ring_tris = ({}, {
+            n: []
+            for n in self.terms
+        }, {})
+        # layer_tris key -> its copper layer (copies: 'F.Cu#1')
+        self.sheet_layer = {}
+        # (first triangle of a layer's copy 0, of copy k, count)
+        copies = []
+        self.mesh_info = dict(dropped_pads=0, regular_pads=0, regular_holes=0,
+                              drop_lone_pads=bool(drop_lone_pads),
+                              pad_area_mm2=float(pad_area), pad_sides=pad_sides
+                              or None, via_sides=via_sides or None)
         off = 0
         for lay in sorted(zt, key=lambda l: zt[l][0]):
             g = copper_of(board, self.nets, lay)
@@ -327,30 +418,45 @@ class MQS:
                 g = g.intersection(reg).buffer(0)
                 if g.is_empty:
                     continue
-            polys = [(n, poly) for n, pads in self.terms.items() for l, poly in pads if l == lay]
-            g, counts = simplify_copper(g, [p for _, p in polys], pts, bool(drop_lone_pads), pad_area,
+            polys = [(n, poly)
+                     for n, pads in self.terms.items()
+                     for l, poly in pads
+                     if l == lay]
+            g, counts = simplify_copper(g, [p for _, p in polys], pts,
+                                        bool(drop_lone_pads), pad_area,
                                         pad_sides or None)
             for key, value in counts.items():
                 self.mesh_info[key] += value
             if g is None:
                 continue
-            nd, tr, rings, regs = mesh_sheet(g, pts, dmax, regions=[p for _, p in polys], fine=fine,
-                                             dmax_fine=dmax_fine if fine is not None else None,
-                                             coarsen=coarsen,grow=grow,edge_rings=edge_rings,w_ref=edge_width,
-                                             edge_zone=edge_zone,via_sides=via_sides or None,info=self.mesh_info)
+            nd, tr, rings, regs = mesh_sheet(
+                g, pts, dmax, regions=[p for _, p in polys], fine=fine,
+                dmax_fine=(dmax_fine if fine is not None else None),
+                coarsen=coarsen, grow=grow, edge_rings=edge_rings,
+                w_ref=edge_width, edge_zone=edge_zone, via_sides=via_sides
+                or None, info=self.mesh_info)
             if not len(tr):
                 continue
             cen = nd[tr].mean(1)
-            inside = [np.flatnonzero(shapely.contains_xy(poly.buffer(1e-6), cen[:, 0], cen[:, 1])) for n, poly in polys]
-            fans = {k: np.flatnonzero(np.isin(tr, ring[:1]).any(1)) for k, ring in enumerate(rings) if ring is not None}
+            inside = [
+                np.flatnonzero(
+                    shapely.contains_xy(poly.buffer(1e-6), cen[:, 0],
+                                        cen[:, 1])) for n, poly in polys
+            ]
+            fans = {
+                k: np.flatnonzero(np.isin(tr, ring[:1]).any(1))
+                for k, ring in enumerate(rings)
+                if ring is not None
+            }
             n_s, (z, t) = self.thickness_sheets, zt[lay]
             first = sum(len(t_) for t_ in tris)
-            for s in range(n_s):                             # n_s = 1: the sheet itself at the layer's z
+            for s in range(n_s):  # n_s = 1: the sheet itself at the layer's z
                 nt0 = sum(len(t_) for t_ in tris)
                 key = lay if s == 0 else f'{lay}#{s}'
                 for (n, _), ids in zip(polys, inside):
                     self.term_tris[n] += list(nt0 + ids)
-                for k, fan in fans.items():                  # a via's fan: in every copy, one node
+                # a via's fan: in every copy, one node
+                for k, fan in fans.items():
                     ring_tris.setdefault((k, lay), []).extend(nt0 + fan)
                 nodes.append(nd * 1e-3)
                 tris.append(tr + off)
@@ -358,25 +464,35 @@ class MQS:
                 self.layer_tris[key] = np.arange(nt0, nt0 + len(tr))
                 self.sheet_layer[key] = lay
                 ts = t / n_s
-                if n_s == 2 and conductor_loss == 'slab':    # two sheets: the copper's faces, centred on its z
+                # two sheets: the copper's faces, centred on its z
+                if n_s == 2 and conductor_loss == 'slab':
                     zs = z + (s - 0.5) * t
-                elif n_s > 1:                                # N stacked sheets: slices graded toward the faces
-                    lo, hi = (0.5 - 0.5 * np.cos(np.pi * np.array([s, s + 1]) / n_s))
+                # N stacked sheets: slices graded toward the faces
+                elif n_s > 1:
+                    lo, hi = (
+                        0.5 - 0.5 * np.cos(np.pi * np.array([s, s + 1]) / n_s))
                     zs, ts = z + ((lo + hi) / 2 - 0.5) * t, (hi - lo) * t
                 else:
                     zs = z
-                layer_of += [lay] * len(tr); z_of += [zs * 1e-3] * len(tr); t_of += [ts * 1e-3] * len(tr)
+                layer_of += ([lay] * len(tr))
+                z_of += ([zs * 1e-3] * len(tr))
+                t_of += ([ts * 1e-3] * len(tr))
                 if s:
                     copies.append((first, nt0, len(tr)))
         if not tris:
-            raise ValueError(f"no copper of {', '.join(sorted(self.nets))} in the region")
+            raise ValueError(
+                f"no copper of {', '.join(sorted(self.nets))} in the region")
         self.nodes, self.tris = np.vstack(nodes), np.vstack(tris)
-        self.layer_of, self.z_of, self.t_of = np.array(layer_of), np.array(z_of), np.array(t_of)
+        self.layer_of, self.z_of, self.t_of = (np.array(layer_of),
+                                               np.array(z_of), np.array(t_of))
         self.rwg = RWG(self.nodes, self.tris)
         missing = [n for n, ts in self.term_tris.items() if not ts]
         if missing:
-            raise ValueError(f"terminal(s) {', '.join(missing)} on none of the meshed copper")
-        # the graph's nodes: a triangle each, but every terminal's triangles one node, every via end's fan one node
+            raise ValueError(
+                f"terminal(s) {', '.join(missing)} on none of the meshed copper"
+            )
+        # the graph's nodes: a triangle each, but every terminal's triangles one
+        # node, every via end's fan one node
         Nt = len(self.tris)
         parent = np.arange(Nt)
 
@@ -389,72 +505,101 @@ class MQS:
         for ts in ring_tris.values():
             if ts:
                 merge(ts)
-        # charge nodes (capacitance with face sheets): as the circuit's nodes, but a triangle's copies keep their own
-        # charge, so the charge can choose its face (toward ground) while both faces stay at the conductor's potential
-        charge_roots = np.array([_root(parent, t) for t in range(Nt)]) if copies else None
-        for a, b, n in copies:                               # a triangle's copies through the thickness: one node
+        # charge nodes (capacitance with face sheets): as the circuit's nodes,
+        # but a triangle's copies keep their own charge, so the charge can
+        # choose its face (toward ground) while both faces stay at the
+        # conductor's potential
+        charge_roots = (np.array([_root(parent, t)
+                                  for t in range(Nt)]) if copies else None)
+        # a triangle's copies through the thickness: one node
+        for a, b, n in copies:
             for j in range(n):
                 parent[_root(parent, b + j)] = _root(parent, a + j)
         roots = np.array([_root(parent, t) for t in range(Nt)])
-        self.charge_of = None if charge_roots is None else np.unique(charge_roots, return_inverse=True)[1]
+        self.charge_of = (None if charge_roots is None else np.unique(
+            charge_roots, return_inverse=True)[1])
         _, self.node_of = np.unique(roots, return_inverse=True)
         self.n_nodes = self.node_of.max() + 1
-        self.term_node = {n: int(self.node_of[ts[0]]) for n, ts in self.term_tris.items()}
-        # branches: the RWG edges (their total current), then the via segments, then the parts (added later)
+        self.term_node = {
+            n: int(self.node_of[ts[0]])
+            for n, ts in self.term_tris.items()
+        }
+        # branches: the RWG edges (their total current), then the via segments,
+        # then the parts (added later)
         r = self.rwg
-        self.br = [(int(self.node_of[a]), int(self.node_of[b])) for a, b in zip(r.tp, r.tm)]
+        self.br = [(int(self.node_of[a]), int(self.node_of[b]))
+                   for a, b in zip(r.tp, r.tm)]
         self.n_rwg = r.Ne
-        self.vseg = []                                       # (x, y, r, z0, z1) m, per via segment
+        self.vseg = []  # (x, y, r, z0, z1) m, per via segment
         for k, v in enumerate(vias):
-            on = sorted([(zt[l][0], l) for l in dict.fromkeys(self.sheet_layer.values())
-                         if (k, l) in ring_tris and ring_tris[(k, l)] and v['z0'] - 1e-6 <= z_board[l][0] <= v['z1'] + 1e-6])
+            on = sorted([
+                (zt[l][0], l)
+                for l in dict.fromkeys(self.sheet_layer.values())
+                if (k, l) in ring_tris and ring_tris[(
+                    k, l)] and v['z0'] - 1e-6 <= z_board[l][0] <= v['z1'] + 1e-6
+            ])
             for (za, la), (zb, lb) in zip(on, on[1:]):
-                na, nb = int(self.node_of[ring_tris[(k, la)][0]]), int(self.node_of[ring_tris[(k, lb)][0]])
+                na, nb = (int(self.node_of[ring_tris[(k, la)][0]]),
+                          int(self.node_of[ring_tris[(k, lb)][0]]))
                 self.br.append((na, nb))
-                self.vseg.append((v['x'] * 1e-3, v['y'] * 1e-3, v['r'] * 1e-3, za * 1e-3, zb * 1e-3))
+                self.vseg.append((v['x'] * 1e-3, v['y'] * 1e-3, v['r'] * 1e-3,
+                                  za * 1e-3, zb * 1e-3))
         self.ne, self.nv = r.Ne, len(self.vseg)
-        self.parts = []                                       # dict(name, a, b, kind, R, L, C, part_h)
+        self.parts = []  # dict(name, a, b, kind, R, L, C, part_h)
         self.plating = plating * 1e-3
         self._mats = self._copper = self._potential = self._peec = self._mqs_iter = None
-        log(f"mqs: {Nt:,} triangles on {len(self.layer_tris)} layer(s), {self.ne:,} edges, {self.nv} via segments, "
-            f"{len(self.terms)} terminals")
+        log(f"mqs: {Nt:,} triangles on {len(self.layer_tris)} layer(s), "
+            f"{self.ne:,} edges, {self.nv} via segments, {len(self.terms)} "
+            "terminals")
 
     # ---- the parts ----
     def source(self, name, a, b, part_h=0.5):
-        """A 1 A current source (scaled by solve's amps) through a part from terminal a to terminal b."""
+        """A 1 A current source (scaled by solve's amps) through a part from
+        terminal a to terminal b."""
         self.parts.append(dict(name=name, a=a, b=b, kind='I', part_h=part_h))
         self._mats = self._peec = self._mqs_iter = None
 
-    def element(self, name, a, b, R=0.0, L=0.0, C=None, ESR=None, ESL=None, part_h=0.5):
+    def element(self, name, a, b, R=0.0, L=0.0, C=None, ESR=None, ESL=None,
+                part_h=0.5):
         """A series R, L (and C) through a part between terminals a and b."""
-        self.parts.append(dict(name=name, a=a, b=b, kind='Z', R=ESR if ESR is not None else R,
-                               L=ESL if ESL is not None else L, C=C, part_h=part_h))
+        self.parts.append(
+            dict(name=name, a=a, b=b, kind='Z', R=ESR if ESR is not None else R,
+                 L=ESL if ESL is not None else L, C=C, part_h=part_h))
         self._mats = self._peec = self._mqs_iter = None
 
     def _part_impedance(self, jw):
-        """The parts' own impedances over the branches (nb,) at jw: R + jw L + 1 / (jw C); zero but for the parts."""
+        """The parts' own impedances over the branches (nb,) at jw: R + jw L + 1
+        / (jw C); zero but for the parts."""
         zp = np.zeros(len(self.br) + len(self.parts), complex)
         for k, p in enumerate(self.parts, len(self.br)):
             if p['kind'] == 'Z':
-                zp[k] = p['R'] + jw * p['L'] + (1 / (jw * p['C']) if p.get('C') else 0)
+                zp[k] = (p['R'] + jw * p['L'] +
+                         (1 / (jw * p['C']) if p.get('C') else 0))
         return zp
 
     def _part_ends(self):
-        """The parts' filaments (m): their terminals' centres, part_h above them, as ([start], [end])."""
+        """The parts' filaments (m): their terminals' centres, part_h above
+        them, as ([start], [end])."""
         lift = [np.array([0, 0, p['part_h'] * 1e-3]) for p in self.parts]
-        return ([self._term_centre(p['a']) + h for p, h in zip(self.parts, lift)],
-                [self._term_centre(p['b']) + h for p, h in zip(self.parts, lift)])
+        return ([
+            self._term_centre(p['a']) + h for p, h in zip(self.parts, lift)
+        ], [self._term_centre(p['b']) + h for p, h in zip(self.parts, lift)])
 
     def _branch_graph(self, passive):
-        """The branches' incidence A (n_nodes, nb: +1 at a branch's start node), and the components the passive
-        branches make: (A, their count, each node's, keep: every node but each component's first)."""
-        ends = list(self.br) + [(self.term_node[p['a']], self.term_node[p['b']]) for p in self.parts]
+        """The branches' incidence A (n_nodes, nb: +1 at a branch's start node),
+        and the components the passive branches make: (A, their count, each
+        node's, keep: every node but each component's first)."""
+        ends = (list(self.br)
+                + [(self.term_node[p['a']], self.term_node[p['b']])
+                   for p in self.parts])
         nb = len(ends)
         a, b = np.asarray(ends, int).reshape(-1, 2).T
         branch = np.arange(nb)
-        A = coo_matrix((np.r_[np.ones(nb), -np.ones(nb)], (np.r_[a, b], np.r_[branch, branch])),
+        A = coo_matrix((np.r_[np.ones(nb), -np.ones(nb)],
+                        (np.r_[a, b], np.r_[branch, branch])),
                        shape=(self.n_nodes, nb)).tocsc()
-        graph = coo_matrix((np.ones(len(passive)), (a[passive], b[passive])), shape=(self.n_nodes, self.n_nodes))
+        graph = coo_matrix((np.ones(len(passive)), (a[passive], b[passive])),
+                           shape=(self.n_nodes, self.n_nodes))
         nc, labels = connected_components(graph, directed=False)
         keep = np.ones(self.n_nodes, bool)
         keep[np.unique(labels, return_index=True)[1]] = False
@@ -462,10 +607,12 @@ class MQS:
 
     # ---- the matrices ----
     def _thick_correction(self):
-        """thick_kernel's sparse correction over the RWG branches (thick.delta_inductance), made once."""
+        """thick_kernel's sparse correction over the RWG branches
+        (thick.delta_inductance), made once."""
         if self.thick_kernel and self._thick_D is None:
             from .thick import delta_inductance
-            self._thick_D = delta_inductance(self.rwg, self.z_of, self.t_of, log=self.log)
+            self._thick_D = delta_inductance(self.rwg, self.z_of, self.t_of,
+                                             log=self.log)
         return self._thick_D
 
     def _edge_matrices(self):
@@ -473,33 +620,41 @@ class MQS:
             from .compressed import edge_inductance
             L,r = edge_inductance(self)
             return self._sheet_resistance(r),L
-        moments, info = static_moments(self.nodes, self.tris, self.z_of, self.near, self.outer_levels,
+        moments, info = static_moments(self.nodes, self.tris, self.z_of,
+                                       self.near, self.outer_levels,
                                        **self._fill_options, return_info=True)
         nodes, M0, Mrx, Mry, Mrr = moments
         self.fill_info['magnetic'] = info
-        self.log(f'mqs: {info["backend"]} matrix fill, {info["workers"]} worker(s), {info["seconds"]:.2f} s')
+        self.log(
+            f'mqs: {info["backend"]} matrix fill, {info["workers"]} worker(s), '
+            f'{info["seconds"]:.2f} s'
+        )
         r = RWG(nodes, self.tris)
         # in total currents across each edge (i = l I): Z / (l_m l_n)
-        L, info['combine'] = dense_edge_inductance(r, Mrr, Mrx, Mry, M0, MU0 / (4 * np.pi), 1.0 / r.l,
-                                                   self._fill_options['workers'])
+        L, info['combine'] = dense_edge_inductance(
+            r, Mrr, Mrx, Mry, M0, MU0 / (4 * np.pi), 1.0 / r.l,
+            self._fill_options['workers'])
         del Mrr, Mrx, Mry, moments
         if self.thick_kernel:
             L = L + self._thick_correction().toarray()
         if self.capacitance and self._potential is None:
             if self.dielectric == 'homogeneous':
                 self._set_potential(M0)
-                self.fill_info['capacitance'] = dict(info, reused_magnetic_moments=True)
+                self.fill_info['capacitance'] = dict(
+                    info, reused_magnetic_moments=True)
             else:
                 self._ensure_potential()
         return self._sheet_resistance(r), L
 
     def _sheet_resistance(self,r):
-        # R: the Gram matrix of the RWG functions, each triangle at its sheet resistance
+        # R: the Gram matrix of the RWG functions, each triangle at its sheet
+        # resistance
         Ar, Pq = r.area, quad_pts(r, _BAR3)
         rs = 1.0 / (self.sigma * self.t_of)
         def gram(weights):
             m = lambda v: diags(Ar * weights * (_W3[None, :] * v).sum(1))
-            return combine(r, m((Pq ** 2).sum(-1)), m(Pq[..., 0]), m(Pq[..., 1]), diags(Ar * weights)).tocsr()
+            return combine(r, m((Pq**2).sum(-1)), m(Pq[..., 0]), m(Pq[..., 1]),
+                           diags(Ar * weights)).tocsr()
         R = gram(rs)
         # in total currents across each edge (i = l I): Z / (l_m l_n)
         scale = diags(1.0 / r.l)
@@ -507,27 +662,36 @@ class MQS:
         if self.conductor_loss == 'slab' and self.thickness_sheets == 1:
             for idx in self.layer_tris.values():
                 weights = np.zeros(len(self.tris)); weights[idx] = rs[idx]
-                self._sheet_terms.append((self.t_of[idx[0]], self.conductor_faces, (scale @ gram(weights) @ scale).tocsr()))
+                self._sheet_terms.append(
+                    (self.t_of[idx[0]], self.conductor_faces,
+                     (scale @ gram(weights) @ scale).tocsr()))
         elif self.conductor_loss == 'slab':
-            # face sheets: each layer's two copies, the Gram matrices of each and between them (edge e of the
-            # bottom face <-> the same edge of the top face, found by its triangles' offset)
-            edge = {(int(a), int(b)): k for k, (a, b) in enumerate(zip(r.tp, r.tm))}
-            self._face_pairs = []                            # (bottom edge, top edge): the preconditioner's 2x2 blocks
+            # face sheets: each layer's two copies, the Gram matrices of each
+            # and between them (edge e of the bottom face <-> the same edge of
+            # the top face, found by its triangles' offset)
+            edge = {(int(a), int(b)): k
+                    for k, (a, b) in enumerate(zip(r.tp, r.tm))}
+            # (bottom edge, top edge): the preconditioner's 2x2 blocks
+            self._face_pairs = []
             for lay in dict.fromkeys(self.sheet_layer.values()):
                 bottom, top = self.layer_tris[lay], self.layer_tris[f'{lay}#1']
                 d = int(top[0] - bottom[0])
                 pairs = [(e, edge.get((a + d, b + d), edge.get((b + d, a + d))))
-                         for e, (a, b) in enumerate(zip(r.tp, r.tm)) if bottom[0] <= a <= bottom[-1]]
+                         for e, (a, b) in enumerate(zip(r.tp, r.tm))
+                         if bottom[0] <= a <= bottom[-1]]
                 rows, cols = zip(*[(e, f) for e, f in pairs if f is not None])
                 self._face_pairs.append(np.array([rows, cols]))
-                P = csr_matrix((np.ones(len(rows)), (rows, cols)), shape=(r.Ne, r.Ne))
+                P = csr_matrix((np.ones(len(rows)), (rows, cols)),
+                               shape=(r.Ne, r.Ne))
                 G = []
                 for idx in (bottom, top):
                     w = np.zeros(len(self.tris)); w[idx] = 1.0
                     G.append(gram(w))
                 X = G[0] @ P
-                self._face_terms.append((2 * self.t_of[bottom[0]], (scale @ (G[0] + G[1]) @ scale).tocsr(),
-                                         (scale @ (X + X.T) @ scale).tocsr()))
+                self._face_terms.append(
+                    (2 * self.t_of[bottom[0]],
+                     (scale @ (G[0] + G[1]) @ scale).tocsr(),
+                     (scale @ (X + X.T) @ scale).tocsr()))
         return (scale @ R @ scale).tocsr()
 
     def _resistance_delta(self, f):
@@ -540,32 +704,40 @@ class MQS:
             ratio = surface_impedance(f, t, self.sigma, faces) * self.sigma * t
             delta = delta + (ratio - 1) * R
         for t, Gs, Gx in getattr(self, '_face_terms', []):
-            # the raw slab two-port, uncorrected: the partial inductance between the faces is left as filled
+            # the raw slab two-port, uncorrected: the partial inductance between
+            # the faces is left as filled
             zself, zmutual = face_impedance(f, t, self.sigma, vacuum=False)
             delta = delta + (zself - 2 / (self.sigma * t)) * Gs + zmutual * Gx
-        return block_diag((delta, csr_matrix((nb-self.ne, nb-self.ne))), format='csr')
+        return block_diag((delta, csr_matrix((nb - self.ne, nb - self.ne))),
+                          format='csr')
 
     def _set_potential(self, M0, er=None):
         from kicad2ems.emsdev.numerics.base import EPS0
-        of = self.charge_of if getattr(self, 'charge_of', None) is not None else self.node_of
+        of = (self.charge_of
+              if getattr(self, 'charge_of', None) is not None else self.node_of)
         n = of.max() + 1
         area = np.bincount(of, weights=self.rwg.area, minlength=n)
-        W = coo_matrix((1 / area[of], (np.arange(len(self.tris)), of)), shape=(len(self.tris), n)).tocsr()
+        W = coo_matrix((1 / area[of], (np.arange(len(self.tris)), of)),
+                       shape=(len(self.tris), n)).tocsr()
         if getattr(self, 'side_charge', False) and self.thickness_sheets == 2:
             from .side_charge import side_moments, side_panels
             p = side_panels(self)
             Mtp, Mpp = side_moments(self, p)
             M0 = np.block([[np.asarray(M0), Mtp], [Mtp.T, Mpp]])
             npn = len(p['area'])
-            Wp = coo_matrix((1 / p['area'][p['panel']], (np.arange(len(p['panel'])), n + p['panel'])),
+            Wp = coo_matrix((1 / p['area'][p['panel']],
+                             (np.arange(len(p['panel'])), n + p['panel'])),
                             shape=(len(p['panel']), n + npn))
             Wc = W.tocoo()
-            W = coo_matrix((Wc.data, (Wc.row, Wc.col)), shape=(len(self.tris), n + npn))
+            W = coo_matrix((Wc.data, (Wc.row, Wc.col)),
+                           shape=(len(self.tris), n + npn))
             from scipy.sparse import vstack
             W = vstack([W, Wp]).tocsr()
-            self.side_owner = p['owner']                     # each panel's charge node: its triangle's conductor
+            # each panel's charge node: its triangle's conductor
+            self.side_owner = p['owner']
             self.log(f'mqs: {npn:,} side panels carry charge')
-        self._potential = qform(W, M0, W) / (4 * np.pi * EPS0 * (self.er if er is None else er))
+        self._potential = (qform(W, M0, W) / (4 * np.pi * EPS0 *
+                                              (self.er if er is None else er)))
 
     def _ensure_potential(self):
         if self._potential is not None:
@@ -578,8 +750,8 @@ class MQS:
             self._set_potential(potential_moments(self), er=1.)
         else:
             (_, M0), self.fill_info['capacitance'] = static_moments(
-                self.nodes, self.tris, self.z_of, self.near, self.outer_levels, scalar_only=True, **self._fill_options,
-                return_info=True)
+                self.nodes, self.tris, self.z_of, self.near, self.outer_levels,
+                scalar_only=True, **self._fill_options, return_info=True)
             self._set_potential(M0)
         return self._potential
 
@@ -601,34 +773,45 @@ class MQS:
             L=HMatrix(entry,lo,hi,**self._compression_options)
             self.fill_info['vias']=dict(L.info,matrix_backend='hierarchical')
             return diags(R).tocsr(),L
-        return diags(via_resistance(self.vseg, self.sigma, self.plating)).tocsr(), via_inductance(self.vseg)
+        return (diags(via_resistance(self.vseg, self.sigma,
+                                     self.plating)).tocsr(),
+                via_inductance(self.vseg))
 
     def _loops(self, allow_open=False, return_tree=False):
-        """The loop basis: C (nbranch x nloop), the source loops' columns separate (sources' branches in no tree)."""
+        """The loop basis: C (nbranch x nloop), the source loops' columns
+        separate (sources' branches in no tree)."""
         nb = len(self.br) + len(self.parts)
-        ends = list(self.br) + [(self.term_node[p['a']], self.term_node[p['b']]) for p in self.parts]
-        is_src = np.array([False] * len(self.br) + [p['kind'] == 'I' for p in self.parts])
-        tree, comp, up, upb, ups, depth = spanning_tree(self.n_nodes, ends, is_src, len(self.br))
+        ends = (list(self.br)
+                + [(self.term_node[p['a']], self.term_node[p['b']])
+                   for p in self.parts])
+        is_src = np.array([False] * len(self.br)
+                          + [p['kind'] == 'I' for p in self.parts])
+        tree, comp, up, upb, ups, depth = spanning_tree(self.n_nodes, ends,
+                                                        is_src, len(self.br))
         rows, cols, vals, src_cols, dead = [], [], [], {}, []
         col = 0
         n_rwg = getattr(self, 'n_rwg', len(self.br))
         for k in np.flatnonzero(~tree):
             a, b = ends[k]
             if a == b and k < n_rwg and getattr(self, 'ideal_terminals', True):
-                # a sheet edge inside one node (a terminal's pads, a via's fan) is inside an ideal equipotential: no
-                # loop. As its own loop it carried eddy current that the field drove and the sheet resistance
-                # dissipated: an isolated 20 mm strip's terminals took 15% of its R at 1 MHz (FastHenry, 2D PEEC).
-                # With capacitance too: both ends are one node, so the edge's incidence column is zero and charge
-                # continuity does not see it.
+                # a sheet edge inside one node (a terminal's pads, a via's fan)
+                # is inside an ideal equipotential: no loop. As its own loop it
+                # carried eddy current that the field drove and the sheet
+                # resistance dissipated: an isolated 20 mm strip's terminals
+                # took 15% of its R at 1 MHz (FastHenry, 2D PEEC). With
+                # capacitance too: both ends are one node, so the edge's
+                # incidence column is zero and charge continuity does not see
+                # it.
                 continue
-            if comp[a] != comp[b]:                                # its ends on copper joined only through it
+            if comp[a] != comp[b]:  # its ends on copper joined only through it
                 dead.append(k)
                 continue
             # the loop: branch k from a to b, then the tree from b back to a
             u, v = b, a
             pu, pv = [], []
             while depth[u] > depth[v]:
-                pu.append((upb[u], -ups[u])); u = up[u]           # b towards the root: against the branch's sense
+                # b towards the root: against the branch's sense
+                pu.append((upb[u], -ups[u])); u = up[u]
             while depth[v] > depth[u]:
                 pv.append((upb[v], ups[v])); v = up[v]
             while u != v:
@@ -645,9 +828,13 @@ class MQS:
         bad = [k for k in dead if is_src[k]]
         if bad and not allow_open:
             names = [self.parts[k - len(self.br)]['name'] for k in bad]
-            raise ValueError(f"source(s) {', '.join(names)}: their terminals are on copper joined only through them "
-                             f"(an island: a pad with no via or path to the rest): no loop to drive")
-        return (C, src_cols, is_src, tree) if return_tree else (C, src_cols, is_src)
+            raise ValueError(
+                f"source(s) {', '.join(names)}: their terminals are on copper "
+                "joined only through them (an island: a pad with no via or "
+                "path to the rest): no loop to drive"
+            )
+        return ((C, src_cols, is_src, tree) if return_tree else
+                (C, src_cols, is_src))
 
     def _assemble(self):
         if self._mats is not None:
@@ -665,17 +852,24 @@ class MQS:
         # The magnetic coupling has support only on copper branches. Parts
         # carry their explicit RLC impedance separately, without padding L.
         L = (Le, Lv)
-        C, src_cols, is_src, tree = self._loops(allow_open=self.capacitance, return_tree=True)
-        # PEEC and the compressed backend never project onto the loops densely (peec*.py, mqs_iterative.py)
-        Rl, Ll = (None, None) if self.capacitance or self.matrix_backend == 'hierarchical' else (
-            np.ascontiguousarray((C.T @ R @ C).toarray()), np.ascontiguousarray(self._project_inductance(C, Le, Lv)))
-        self._mats = dict(R=R, L=L, C=C, Rl=Rl, Ll=Ll, src=src_cols, is_src=is_src, nb=nb, tree=tree)
-        self.log(f"mqs: {C.shape[1]:,} loops; matrices in {time.time() - t:.1f} s")
+        C, src_cols, is_src, tree = self._loops(allow_open=self.capacitance,
+                                                return_tree=True)
+        # PEEC and the compressed backend never project onto the loops densely
+        # (peec*.py, mqs_iterative.py)
+        Rl, Ll = ((None, None) if self.capacitance
+                  or self.matrix_backend == 'hierarchical' else
+                  (np.ascontiguousarray((C.T @ R @ C).toarray()),
+                   np.ascontiguousarray(self._project_inductance(C, Le, Lv))))
+        self._mats = dict(R=R, L=L, C=C, Rl=Rl, Ll=Ll, src=src_cols,
+                          is_src=is_src, nb=nb, tree=tree)
+        self.log(
+            f"mqs: {C.shape[1]:,} loops; matrices in {time.time() - t:.1f} s")
         return self._mats
 
     def _project_inductance(self, basis, Le, Lv):
-        return qform(basis[:self.ne], Le, basis[:self.ne]) + qform(
-            basis[self.ne:self.ne + self.nv], Lv, basis[self.ne:self.ne + self.nv])
+        return (qform(basis[:self.ne], Le, basis[:self.ne])
+                + qform(basis[self.ne:self.ne + self.nv], Lv,
+                        basis[self.ne:self.ne + self.nv]))
 
     def _inductive_voltage(self, currents):
         Le, Lv = self._mats['L']
@@ -683,37 +877,52 @@ class MQS:
         out = np.zeros_like(currents, dtype=float if real else complex)
         # Real matrices times complex currents: two real products, never a
         # complex copy of the dense copper inductance. Real currents: one.
-        for block, L in ((slice(0, self.ne), Le), (slice(self.ne, self.ne + self.nv), Lv)):
-            out[block] = L @ currents[block] if real else L @ currents[block].real + 1j * (L @ currents[block].imag)
-        if self.thick_kernel and self.matrix_backend == 'hierarchical':   # the dense L already holds it
+        for block, L in ((slice(0,
+                                self.ne), Le), (slice(self.ne,
+                                                      self.ne + self.nv), Lv)):
+            out[block] = (L @ currents[block]
+                          if real else L @ currents[block].real + 1j *
+                          (L @ currents[block].imag))
+        # the dense L already holds it
+        if self.thick_kernel and self.matrix_backend == 'hierarchical':
             n = self.n_rwg
             out[:n] += self._thick_correction() @ currents[:n]
         return out
 
     def share_kernels(self, other):
-        """Take another model's kernels of the same mesh (its partial inductances and potentials, and, of the same
-        conductor model, its sheets' and faces' loss terms), so neither is filled twice. Copying them one by one had
-        left the face sheets' terms behind: the copy had no skin loss (R at 30 MHz 0.898 mOhm for 1.195). A model of
-        another mesh: ValueError."""
-        if len(self.tris) != len(other.tris) or self.ne != other.ne or self.nv != other.nv or \
-                not np.array_equal(np.asarray(self.tris), np.asarray(other.tris)):
-            raise ValueError(f"share_kernels: another mesh ({len(other.tris)} triangles, {other.ne} edges; this one "
-                             f"{len(self.tris)}, {self.ne}): its kernels do not fit")
+        """Take another model's kernels of the same mesh (its partial
+        inductances and potentials, and, of the same conductor model, its
+        sheets' and faces' loss terms), so neither is filled twice. Copying them
+        one by one had left the face sheets' terms behind: the copy had no skin
+        loss (R at 30 MHz 0.898 mOhm for 1.195). A model of another mesh:
+        ValueError."""
+        if (len(self.tris) != len(other.tris) or self.ne != other.ne
+                or self.nv != other.nv or not np.array_equal(
+                    np.asarray(self.tris), np.asarray(other.tris))):
+            raise ValueError(
+                f"share_kernels: another mesh ({len(other.tris)} triangles, "
+                f"{other.ne} edges; this one {len(self.tris)}, {self.ne}): its "
+                "kernels do not fit")
         self._potential = other._potential
         self.fill_info = dict(getattr(other, 'fill_info', {}) or {})
-        same = (self.conductor_loss, self.thickness_sheets, self.conductor_faces) == \
-               (other.conductor_loss, other.thickness_sheets, other.conductor_faces)
-        if same and other._copper is not None:              # (another conductor model: its loss terms are made
-            self._copper = other._copper                     # with its copper's matrices, so those are made again)
+        same = ((self.conductor_loss, self.thickness_sheets,
+                 self.conductor_faces) == (other.conductor_loss,
+                                           other.thickness_sheets,
+                                           other.conductor_faces))
+        # (another conductor model: its loss terms are made
+        if same and other._copper is not None:
+            # with its copper's matrices, so those are made again)
+            self._copper = other._copper
             for name in ('_sheet_terms', '_face_terms', '_face_pairs'):
                 if hasattr(other, name):
                     setattr(self, name, getattr(other, name))
         return self
 
     def solve(self, freqs, amps=None):
-        """The currents at each frequency (Hz) for the sources' currents (amps: {source: A}, default 1 A each).
-        amps a list of such: a list of Results, one per drive, each frequency's system factored once for them
-        all (the dense magnetic solve; the others solve drive by drive)."""
+        """The currents at each frequency (Hz) for the sources' currents (amps:
+        {source: A}, default 1 A each). amps a list of such: a list of Results,
+        one per drive, each frequency's system factored once for them all (the
+        dense magnetic solve; the others solve drive by drive)."""
         if isinstance(amps, (list, tuple)):
             if self.matrix_backend == 'hierarchical':
                 return [self.solve(freqs, a) for a in amps]
@@ -732,8 +941,10 @@ class MQS:
         return self._solve_dense(freqs, [amps])[0]
 
     def _solve_charge(self, freqs, drives):
-        """The dense solve with the charge (peec.solve) for each of `drives`: [Result]. Frequency by frequency, so
-        that one factor is held at a time and every drive uses it (the cache's budget is for a sweep's repeats)."""
+        """The dense solve with the charge (peec.solve) for each of `drives`:
+        [Result]. Frequency by frequency, so that one factor is held at a time
+        and every drive uses it (the cache's budget is for a sweep's
+        repeats)."""
         from .peec import prepare, solve
         f = _frequencies(freqs)
         budget, self.factor_cache_bytes = self.factor_cache_bytes, float('inf')
@@ -747,12 +958,18 @@ class MQS:
         finally:
             self.factor_cache_bytes = budget
         join = lambda d, get: np.concatenate([get(s[d]) for s in steps])
-        return [Result(f, join(d, lambda r: r.i), {n: join(d, lambda r: r.z[n]) for n in steps[0][d].z},
-                       steps[0][d].names, charge=join(d, lambda r: r.charge), potential=join(d, lambda r: r.potential))
-                for d in range(len(drives))]
+        return [
+            Result(f, join(d, lambda r: r.i),
+                   {n: join(d, lambda r: r.z[n])
+                    for n in steps[0][d].z}, steps[0][d].names,
+                   charge=join(d, lambda r: r.charge),
+                   potential=join(d, lambda r: r.potential))
+            for d in range(len(drives))
+        ]
 
     def _solve_dense(self, freqs, drives):
-        """The dense magnetic solve for each of `drives` ({source: A} or None): [Result]."""
+        """The dense magnetic solve for each of `drives` ({source: A} or None):
+        [Result]."""
         from .kernels import loop_system, lu_factor_rows, lu_solve_rows, Pencil, pencil_pays
         f = _frequencies(freqs)
         m = self._assemble()
@@ -762,28 +979,39 @@ class MQS:
         free = [c for c in range(Cd.shape[1]) if c not in src.values()]
         sc = list(src.values())
         nd = len(drives)
-        # a long sweep with the copper's DC resistance: one eigendecomposition for every frequency (R-D13.2)
+        # a long sweep with the copper's DC resistance: one eigendecomposition
+        # for every frequency (R-D13.2)
         pencil = None
-        zparts = [ne + nv + k for k, p in enumerate(self.parts) if p['kind'] == 'Z']
-        if free and self.conductor_loss == 'dc' and pencil_pays(len(free), len(f)):
+        zparts = [
+            ne + nv + k for k, p in enumerate(self.parts) if p['kind'] == 'Z'
+        ]
+        if (free and self.conductor_loss == 'dc'
+                and pencil_pays(len(free), len(f))):
             ix = np.ix_(free, free)
             try:
-                pencil = Pencil(m['Rl'][ix], m['Ll'][ix], Cd[zparts][:, free] if zparts else None)
-            except np.linalg.LinAlgError:                        # (a loop with no resistance: an LU each)
+                pencil = Pencil(m['Rl'][ix], m['Ll'][ix],
+                                (Cd[zparts][:, free] if zparts else None))
+            # (a loop with no resistance: an LU each)
+            except np.linalg.LinAlgError:
                 pencil = None
-        self.solve_info = [dict(frequency_Hz=float(fi), iterations=0, method='pencil' if pencil is not None else 'direct')
-                           for fi in f]
+        self.solve_info = [
+            dict(frequency_Hz=float(fi), iterations=0,
+                 method=('pencil' if pencil is not None else 'direct'))
+            for fi in f
+        ]
         I = np.zeros((nd, len(f), nb), complex)
         Z = [{n: np.zeros(len(f), complex) for n in src} for _ in drives]
         Zc = [{n: np.zeros(len(f), complex) for n in src} for _ in drives]
         for i, fi in enumerate(f):
             w = 2 * np.pi * fi
             zp = self._part_impedance(1j * w)
-            # Loop impedance of the copper alone (R + jw L and, sparse, the conductors' change of resistance with
-            # frequency), then with the parts' own RLC (sparse too). Only what is used is made: the free loops'
-            # block, filled in one pass and factored in its own memory (kernels.py), and the sources' rows and
-            # columns. It was the whole matrix twice, the block copied out of it and copied again to be factored:
-            # four matrices where there is now one.
+            # Loop impedance of the copper alone (R + jw L and, sparse, the
+            # conductors' change of resistance with frequency), then with the
+            # parts' own RLC (sparse too). Only what is used is made: the free
+            # loops' block, filled in one pass and factored in its own memory
+            # (kernels.py), and the sources' rows and columns. It was the whole
+            # matrix twice, the block copied out of it and copied again to be
+            # factored: four matrices where there is now one.
             dR = self._resistance_delta(fi)
             cu = (Cd.T @ dR @ Cd).tocsr() if dR.nnz else None
             parts = (Cd.T @ diags(zp) @ Cd).tocsr()
@@ -794,29 +1022,38 @@ class MQS:
                     x[c, d] = (amps or {}).get(n, 1.0)
             every = np.arange(Cd.shape[1])
             if free:
-                rhs = -loop_system(m['Rl'], m['Ll'], 1j * w, free, sc, both[free][:, sc]) @ x[sc]
+                rhs = (-loop_system(m['Rl'], m['Ll'], 1j * w, free, sc,
+                                    both[free][:, sc]) @ x[sc])
                 if pencil is not None:
                     x[free] = pencil.solve(1j * w, zp[zparts], rhs)
                 else:
-                    x[free] = lu_solve_rows(lu_factor_rows(
-                        loop_system(m['Rl'], m['Ll'], 1j * w, free, free, both[free][:, free])), rhs)
+                    x[free] = lu_solve_rows(
+                        lu_factor_rows(
+                            loop_system(m['Rl'], m['Ll'], 1j * w, free, free,
+                                        both[free][:, free])), rhs)
             I[:, i] = (Cd @ x).T
             # Kirchhoff's voltage law round each source's loop, in loop space:
             # C^T v = Zl x, where v holds every branch drop (the copper's mutual
-            # coupling included) and the ideal source branch itself drops nothing.
-            loop_v = loop_system(m['Rl'], m['Ll'], 1j * w, sc, every, both[sc]) @ x
-            copper_v = loop_system(m['Rl'], m['Ll'], 1j * w, sc, every, None if cu is None else cu[sc]) @ x
+            # coupling included) and the ideal source branch itself drops
+            # nothing.
+            loop_v = (loop_system(m['Rl'], m['Ll'], 1j * w, sc, every, both[sc])
+                      @ x)
+            copper_v = (loop_system(m['Rl'], m['Ll'], 1j * w, sc, every,
+                                    None if cu is None else cu[sc]) @ x)
             for d in range(nd):
                 for j, (n, c) in enumerate(src.items()):
                     Z[d][n][i] = loop_v[j, d] / x[c, d] if x[c, d] else np.nan
-                    Zc[d][n][i] = copper_v[j, d] / x[c, d] if x[c, d] else np.nan
+                    Zc[d][n][i] = (copper_v[j, d] / x[c, d] if x[c,
+                                                                 d] else np.nan)
         names = [p['name'] for p in self.parts]
         return [Result(f, I[d], Z[d], names, Zc[d]) for d in range(nd)]
 
     def moment(self, res, fi):
-        """The magnetic dipole moment (A m^2, (3,) complex) of the currents at frequency index fi: m = 1/2 int r x J
-        dV over the sheets, the vias and the parts. It sets the field far from the loop (|H| ~ |m| / 2 pi r^3 on its
-        axis): the layout's figure of merit for what it radiates at a distance, as the loop's L is for its noise."""
+        """The magnetic dipole moment (A m^2, (3,) complex) of the currents at
+        frequency index fi: m = 1/2 int r x J dV over the sheets, the vias and
+        the parts. It sets the field far from the loop (|H| ~ |m| / 2 pi r^3 on
+        its axis): the layout's figure of merit for what it radiates at a
+        distance, as the loop's L is for its noise."""
         from kicad2ems.emsdev.numerics.base import _BAR6, _W6
         i = res.i[fi]
         r = self.rwg
@@ -827,23 +1064,28 @@ class MQS:
         J = a[:, None, None] * Q + b[:, None, :]
         w = area[:, None] * _W6[None]
         z = self.z_of[:, None]
-        # r x J with J horizontal: (y Jz - z Jy, z Jx - x Jz, x Jy - y Jx), Jz = 0
+        # r x J with J horizontal: (y Jz - z Jy, z Jx - x Jz, x Jy - y Jx), Jz =
+        # 0
         mx = (-(z * J[..., 1]) * w).sum()
         my = ((z * J[..., 0]) * w).sum()
         mz = ((Q[..., 0] * J[..., 1] - Q[..., 1] * J[..., 0]) * w).sum()
         m = 0.5 * np.array([mx, my, mz])
         segs = [(np.array([x, y, z0]), np.array([x, y, z1]), ii)
-                for (x, y, rr, z0, z1), ii in zip(self.vseg, i[self.ne:self.ne + self.nv])]
-        for p0, p1, ii in segs + list(zip(*self._part_ends(), i[self.ne + self.nv:])):   # a filament: 1/2 I (r0 x r1)
+                for (x, y, rr, z0,
+                     z1), ii in zip(self.vseg, i[self.ne:self.ne + self.nv])]
+        # a filament: 1/2 I (r0 x r1)
+        for p0, p1, ii in (
+                segs + list(zip(*self._part_ends(), i[self.ne + self.nv:]))):
             m = m + 0.5 * ii * np.cross(p0, p1)
         return m
 
     # ---- the field ----
     def capacitance_matrix(self):
         """Maxwell capacitance (F), node conductor labels, terminal labels.
-        Requires capacitance=True; see pcbqs.peec.capacitance_matrix.
-        Keep terminals small: a terminal's triangles share one charge density, so a terminal covering a whole
-        conductor forbids its edge charge (a 0.3 mm trace lost half its capacitance; validation/cap_fastercap.py).
+        Requires capacitance=True; see pcbqs.peec.capacitance_matrix. Keep
+        terminals small: a terminal's triangles share one charge density, so a
+        terminal covering a whole conductor forbids its edge charge (a 0.3 mm
+        trace lost half its capacitance; validation/cap_fastercap.py).
         """
         if not self.capacitance:
             raise ValueError('capacitance_matrix requires capacitance=True')
@@ -857,7 +1099,8 @@ class MQS:
         from .peec import electric_field
         return electric_field(self, res, fi, pts)
 
-    def h_grid(self, res, fi, x, y, heights, refine=1, rtol=None, max_refine=8, return_info=False):
+    def h_grid(self, res, fi, x, y, heights, refine=1, rtol=None, max_refine=8,
+               return_info=False):
         """Fast open-boundary FFT H on uniform x/y grids and absolute z heights
         (all m). Shape (nx, ny, nh, 3), or (nx, ny, nh, 3, nf) for a list of fi.
         `refine` increases internal resolution without changing output points.
@@ -878,35 +1121,43 @@ class MQS:
                 refine = min(2 * refine, max_refine)
                 finer = h_grid(self, res, fi, x, y, heights, refine)
                 axes = (0, 1, 3)
-                scale = np.maximum(np.max(np.abs(finer), axis=axes), np.finfo(float).tiny)
+                scale = np.maximum(np.max(np.abs(finer), axis=axes),
+                                   np.finfo(float).tiny)
                 error = np.max(np.abs(finer - H), axis=axes) / scale
                 H = finer
-                info = dict(refine=refine, converged=bool(np.all(error <= rtol)),
+                info = dict(refine=refine,
+                            converged=bool(np.all(error <= rtol)),
                             relative_change=np.asarray(error).tolist())
                 if info['converged']:
                     break
             if not info['converged']:
-                raise RuntimeError(f'FFT field did not converge to {rtol:g} at refinement {refine}; '
-                                   f'relative change {info["relative_change"]}')
+                raise RuntimeError(
+                    f'FFT field did not converge to {rtol:g} at refinement '
+                    f'{refine}; relative change {info["relative_change"]}')
         return (H, info) if return_info else H
 
     def h_field(self, res, fi, pts):
-        """H (n, 3) complex, A/m, at points (n, 3), m, at frequency index fi (or a list of them: H (n, 3, k), the
-        geometry made once for all): the sheets' currents (Biot-Savart), the vias' and the parts' filaments."""
+        """H (n, 3) complex, A/m, at points (n, 3), m, at frequency index fi (or
+        a list of them: H (n, 3, k), the geometry made once for all): the
+        sheets' currents (Biot-Savart), the vias' and the parts' filaments."""
         multi = np.ndim(fi) > 0
         fis = list(np.atleast_1d(fi))
         i = res.i[fis].T                                        # (nbranch, k)
         r = self.rwg
         a, b = rwg_currents(r, i[:self.n_rwg] / r.l[:, None])
-        sheets = [(self.nodes, self.tris[idx], a[idx], b[idx], float(self.z_of[idx[0]])) for idx in self.layer_tris.values()]
+        sheets = [(self.nodes, self.tris[idx], a[idx], b[idx],
+                   float(self.z_of[idx[0]]))
+                  for idx in self.layer_tris.values()]
         H = h_sheets(sheets, pts)
         if self.nv:
             v = np.array(self.vseg)
-            H = H + h_segments(np.c_[v[:, 0], v[:, 1], v[:, 3]], np.c_[v[:, 0], v[:, 1], v[:, 4]],
-                               i[self.ne:self.ne + self.nv], pts)
+            H = (H + h_segments(np.c_[v[:, 0], v[:, 1], v[:, 3]],
+                                np.c_[v[:, 0], v[:, 1], v[:, 4]],
+                                i[self.ne:self.ne + self.nv], pts))
         if self.parts:
             p0, p1 = self._part_ends()
-            H = H + h_segments(np.array(p0), np.array(p1), np.array(i[self.ne + self.nv:]), pts)
+            H = (H + h_segments(np.array(p0), np.array(p1),
+                                np.array(i[self.ne + self.nv:]), pts))
         return H if multi else H[:, :, 0]
 
     def _term_centre(self, name):
@@ -915,11 +1166,15 @@ class MQS:
         return np.array([c[0], c[1], float(self.z_of[ts].mean())])
 
     def current_density(self, res, fi):
-        """{layer: (centroids (m), J (A/m, (n, 2)))} per triangle at its centroid."""
+        """{layer: (centroids (m), J (A/m, (n, 2)))} per triangle at its
+        centroid."""
         r = self.rwg
         a, b = rwg_currents(r, res.i[fi][:self.n_rwg] / r.l)
         J = a[:, None] * r.cent + b
-        return {lay: (r.cent[idx], J[idx]) for lay, idx in self.layer_tris.items()}
+        return {
+            lay: (r.cent[idx], J[idx])
+            for lay, idx in self.layer_tris.items()
+        }
 
 
 

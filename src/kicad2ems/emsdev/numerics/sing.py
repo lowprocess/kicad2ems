@@ -1,11 +1,14 @@
 """
 Analytic integrals of 1/R over triangles with an out-of-plane offset d
 
-For the near-singular kernel 1/sqrt(rho^2 + d^2) between metal on two closely spaced interfaces (thin prepregs, the
-two sheets of a thick conductor). One integral analytic (Wilton et al. 1984 / Graglia 1993), the other by a 6-point
-rule over the observation triangle; d = 0 reduces to the in-plane formulas (mom25d.base.singular_moments). pcbqs's
-compiled static, compressed and layered kernels and its CuPy kernel integrate the same way, held to this by its
-tests; mom25d runs the rule over the smaller triangle of each pair instead (mom25d.sing).
+For the near-singular kernel 1/sqrt(rho^2 + d^2) between metal on two closely
+spaced interfaces (thin prepregs, the two sheets of a thick conductor). One
+integral analytic (Wilton et al. 1984 / Graglia 1993), the other by a 6-point
+rule over the observation triangle; d = 0 reduces to the in-plane formulas
+(mom25d.base.singular_moments). pcbqs's compiled static, compressed and layered
+kernels and its CuPy kernel integrate the same way, held to this by its tests;
+mom25d runs the rule over the smaller triangle of each pair instead
+(mom25d.sing).
 """
 import numpy as np
 
@@ -13,24 +16,27 @@ from .base import _BAR6, _W6, edge_frames
 from .biot import _split4
 
 
-def offplane_pairs(nodes, tris, p_idx, q_idx, d, chunk=4000, outer_levels=0, _geometry=None, scalar_only=False):
+def offplane_pairs(nodes, tris, p_idx, q_idx, d, chunk=4000, outer_levels=0,
+                   _geometry=None, scalar_only=False):
     """
-    For pairs (p, q) of triangles (observation p, source q) at vertical offset d:
+    For pairs (p, q) of triangles (observation p, source q) at vertical offset
+    d:
       m0  = int_p int_q 1/R
       mro = int_p r int_q 1/R          (observation-weighted, 2-vector)
       mrs = int_p int_q r'/R           (source-weighted, 2-vector)
       mrr = int_p int_q r.r'/R
-    d may be a scalar or one offset per pair. outer_levels subdivides the observation
-    triangle into four per level, improving self and near-singular terms.
-    With scalar_only=True, returns just m0 without computing current moments.
+    d may be a scalar or one offset per pair. outer_levels subdivides the
+    observation triangle into four per level, improving self and near-singular
+    terms. With scalar_only=True, returns just m0 without computing current
+    moments.
     """
     p_idx, q_idx = np.asarray(p_idx), np.asarray(q_idx)
     n = len(p_idx)
     m0 = np.zeros(n)
     if not scalar_only:
         mro, mrs, mrr = np.zeros((n, 2)), np.zeros((n, 2)), np.zeros(n)
-    V, L, tau, un, Ar, P, weights = (_offplane_geometry(nodes, tris, outer_levels)
-                                     if _geometry is None else _geometry)
+    V, L, tau, un, Ar, P, weights = (_offplane_geometry(
+        nodes, tris, outer_levels) if _geometry is None else _geometry)
     offsets = np.broadcast_to(np.asarray(d, float), (n,))
     for c0 in range(0, n, chunk):
         sl = slice(c0, min(n, c0 + chunk))
@@ -49,15 +55,16 @@ def offplane_pairs(nodes, tris, p_idx, q_idx, d, chunk=4000, outer_levels=0, _ge
         ok = R0 > 1e-14 * Lq[:, None, :]
         R0s = np.where(ok, R0, 1.0)
         lg = np.where(ok, np.arcsinh(sp / R0s) - np.arcsinh(sm / R0s), 0.0)
-        beta = np.arctan2(t0 * sp, R02 + ad * Rp) - np.arctan2(t0 * sm, R02 + ad * Rm)
+        beta = (np.arctan2(t0 * sp, R02 + ad * Rp)
+                - np.arctan2(t0 * sm, R02 + ad * Rm))
         I1 = (t0 * lg - ad * beta).sum(-1)
         wq = (weights[None, :] * Ar[pp][:, None])
         m0[sl] = (wq * I1).sum(1)
         if scalar_only:
             continue
         eR = 0.5 * (R02 * lg + sp * Rp - sm * Rm)
-        IR = (eR[..., None] * uq[:, None]).sum(-2)                           # (m,6,2)
-        W = IR + r * I1[..., None]                                           # int r'/R
+        IR = (eR[..., None] * uq[:, None]).sum(-2)  # (m,6,2)
+        W = IR + r * I1[..., None]                  # int r'/R
         mro[sl] = (wq[..., None] * r * I1[..., None]).sum(1)
         mrs[sl] = (wq[..., None] * W).sum(1)
         mrr[sl] = (wq * (r * W).sum(-1)).sum(1)
@@ -65,7 +72,8 @@ def offplane_pairs(nodes, tris, p_idx, q_idx, d, chunk=4000, outer_levels=0, _ge
 
 
 def _offplane_geometry(nodes, tris, outer_levels=0):
-    """offplane_pairs' geometry: vertices, edge lengths, tangents and normals, areas, the rule's points and weights."""
+    """offplane_pairs' geometry: vertices, edge lengths, tangents and normals,
+    areas, the rule's points and weights."""
     V = nodes[tris]
     e, L, tau, un = edge_frames(V)
     Ar = 0.5 * np.abs(e[:, 0, 0] * (-e[:, 2, 1]) - e[:, 0, 1] * (-e[:, 2, 0]))

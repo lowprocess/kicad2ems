@@ -1,5 +1,6 @@
-"""openEMS's import check (engine.check, kicad2ems --check): this Python, the modules, and on a failure the real
-error with a hint (from kicad2ems's tests)."""
+"""openEMS's import check (engine.check, kicad2ems --check): this Python, the
+modules, and on a failure the real error with a hint (from kicad2ems's
+tests)."""
 import sys
 from kicad2ems.fdtd.openems.engine import check
 
@@ -9,7 +10,8 @@ def test_check_reports_python_and_modules():
     text = "\n".join(lines)
     assert sys.executable in text and 'numpy' in text
     if not ok:
-        assert 'FAILED' in text and 'hints:' in text                # the real error and a hint are shown
+        # the real error and a hint are shown
+        assert 'FAILED' in text and 'hints:' in text
 
 
 def test_check_without_openems(no_csxcad):

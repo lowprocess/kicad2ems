@@ -1,6 +1,6 @@
 """
-openEMS as an FDTD engine (engines.py): its CSXCAD /
-openEMS classes, from this Python or the openems_venv setting (venv.py), and the check of that import.
+openEMS as an FDTD engine (engines.py): its CSXCAD / openEMS classes, from this
+Python or the openems_venv setting (venv.py), and the check of that import.
 """
 import os
 
@@ -8,11 +8,12 @@ LABEL = 'openEMS'                   # the engine's name in kicad2ems's log
 
 
 def api(_option=''):
-    """(ContinuousStructure, openEMS): openEMS's own classes, the structure given AddDebyeMaterial where this
-    CSXCAD lacks it (model.py builds wideband dielectrics with it)."""
+    """(ContinuousStructure, openEMS): openEMS's own classes, the structure
+    given AddDebyeMaterial where this CSXCAD lacks it (model.py builds wideband
+    dielectrics with it)."""
     from .venv import activate, dll_dirs
-    activate()                                                  # an openEMS in another venv (openems_venv)
-    dll_dirs()                                                  # Windows: its DLLs (openems_dir)
+    activate()  # an openEMS in another venv (openems_venv)
+    dll_dirs()  # Windows: its DLLs (openems_dir)
     from CSXCAD import ContinuousStructure
     from openEMS import openEMS
     if hasattr(ContinuousStructure, 'AddDebyeMaterial'):
@@ -28,49 +29,75 @@ def api(_option=''):
 
 
 def check():
-    """Can this Python import openEMS? Returns (ok, report lines) with the real errors and hints."""
+    """Can this Python import openEMS? Returns (ok, report lines) with the real
+    errors and hints."""
     import importlib, shutil, sys
     from .venv import activate, dll_dirs
     from kicad2ems.core.api.solver import sitecfg
     why = activate()
     windows = sys.platform == 'win32'
     dlls = dll_dirs()
-    lines = [f"python      {sys.executable}",
-             f"environment {sys.prefix}" + ("  (virtual env)" if sys.prefix != getattr(sys, 'base_prefix', sys.prefix) else "  (no virtual env active)"),
-             f"DLL folders {'; '.join(dlls) or '(none: the openems_dir setting names one)'}" if windows else
-             f"LD_LIBRARY_PATH={os.environ.get('LD_LIBRARY_PATH', '')}"]
+    lines = [
+        f"python      {sys.executable}", f"environment {sys.prefix}" +
+        ("  (virtual env)" if sys.prefix != getattr(
+            sys, 'base_prefix', sys.prefix) else "  (no virtual env active)"),
+        "DLL folders "
+        f"{'; '.join(dlls) or '(none: the openems_dir setting names one)'}"
+        if windows else
+        f"LD_LIBRARY_PATH={os.environ.get('LD_LIBRARY_PATH', '')}"
+    ]
     if sitecfg.get('openems_venv'):
-        lines.append(f"openems_venv {sitecfg.get('openems_venv')}" + (f"  (not used: {why})" if why else ''))
+        lines.append(f"openems_venv {sitecfg.get('openems_venv')}"
+                     + (f"  (not used: {why})" if why else ''))
     ok, hints = True, [why] if why else []
     for mod in ('numpy', 'h5py', 'CSXCAD', 'openEMS'):
         try:
             m = importlib.import_module(mod)
             lines.append(f"  ok      {mod:8s} {getattr(m, '__file__', '')}")
-        except Exception as e:                                  # ImportError, OSError from the .so, ...
+        except Exception as e:  # ImportError, OSError from the .so, ...
             ok = False
             msg = f"{type(e).__name__}: {e}"
             lines.append(f"  FAILED  {mod:8s} {msg}")
-            if isinstance(e, ModuleNotFoundError) and e.name == mod and mod in ('CSXCAD', 'openEMS'):
-                hints.append(f"{mod} is not installed for THIS python ({sys.executable}). If you installed it in a "
-                             f"venv, run kicad2ems from that venv (python -m kicad2ems ...), or pip-install "
-                             f"the {mod} python package (openEMS-Project/{mod}/python) with this python.")
+            if (isinstance(e, ModuleNotFoundError) and e.name == mod
+                    and mod in ('CSXCAD', 'openEMS')):
+                hints.append(
+                    f"{mod} is not installed for THIS python "
+                    f"({sys.executable}). If you installed it in a venv, run "
+                    "kicad2ems from that venv (python -m kicad2ems ...), or "
+                    f"pip-install the {mod} python package "
+                    f"(openEMS-Project/{mod}/python) with this python."
+                )
             elif isinstance(e, ModuleNotFoundError):
-                hints.append(f"missing dependency '{e.name}': python -m pip install {e.name}")
+                hints.append(
+                    f"missing dependency '{e.name}': python -m pip install "
+                    f"{e.name}"
+                )
             elif windows and ('DLL' in str(e) or isinstance(e, OSError)):
-                hints.append(f"{mod} is installed but cannot load the openEMS / CSXCAD DLLs: set the openems_dir "
-                             f"setting (the GUI's Solvers and hardware window, or kicad2ems-site.toml) to the "
-                             f"unpacked openEMS folder, the one with openEMS.dll and CSXCAD.dll")
-            elif '.so' in str(e) or 'shared object' in str(e) or isinstance(e, OSError):
-                hints.append(f"{mod} is installed but cannot load the compiled openEMS/CSXCAD libraries: add the "
-                             f"openEMS install's lib folder to LD_LIBRARY_PATH (e.g. export LD_LIBRARY_PATH="
-                             f"$HOME/opt/openEMS/lib:$LD_LIBRARY_PATH)")
+                hints.append(
+                    f"{mod} is installed but cannot load the openEMS / CSXCAD "
+                    "DLLs: set the openems_dir setting (the GUI's Solvers and "
+                    "hardware window, or kicad2ems-site.toml) to the unpacked "
+                    "openEMS folder, the one with openEMS.dll and CSXCAD.dll"
+                )
+            elif ('.so' in str(e) or 'shared object' in str(e)
+                  or isinstance(e, OSError)):
+                hints.append(
+                    f"{mod} is installed but cannot load the compiled "
+                    "openEMS/CSXCAD libraries: add the openEMS install's lib "
+                    "folder to LD_LIBRARY_PATH (e.g. export "
+                    "LD_LIBRARY_PATH=$HOME/opt/openEMS/lib:$LD_LIBRARY_PATH)")
     exe = shutil.which('kicad2ems')
     if exe and windows:
         # pip's kicad2ems.exe runs the python of its own Scripts folder
         lines.append(f"command     {exe}")
-        if os.path.normcase(os.path.dirname(os.path.abspath(exe))) != os.path.normcase(os.path.dirname(os.path.abspath(sys.executable))):
-            hints.append(f"the 'kicad2ems' command on PATH is {exe}, not this python's - reinstall it here "
-                         f"(python -m pip install <kicad2ems folder>) or use: python -m kicad2ems ...")
+        if (os.path.normcase(os.path.dirname(os.path.abspath(exe)))
+                != os.path.normcase(
+                    os.path.dirname(os.path.abspath(sys.executable)))):
+            hints.append(
+                f"the 'kicad2ems' command on PATH is {exe}, not this python's "
+                "- reinstall it here (python -m pip install <kicad2ems "
+                "folder>) or use: python -m kicad2ems ..."
+            )
     elif exe:
         try:
             with open(exe, encoding='utf-8') as fh:
@@ -79,20 +106,30 @@ def check():
             first = ''
         launcher = first[2:].strip() if first.startswith('#!') else ''
         lines.append(f"command     {exe} -> {launcher or '?'}")
-        # compare the bin folders, not resolved files: a venv's python is a symlink to the system one
-        if launcher and os.path.dirname(os.path.abspath(launcher.split()[0])) != os.path.dirname(os.path.abspath(sys.executable)):
-            hints.append(f"the 'kicad2ems' command on PATH runs {launcher}, not this python - reinstall it here "
-                         f"(python -m pip install <kicad2ems folder>) or use: python -m kicad2ems ...")
+        # compare the bin folders, not resolved files: a venv's python is a
+        # symlink to the system one
+        if (launcher and os.path.dirname(os.path.abspath(launcher.split()[0]))
+                != os.path.dirname(os.path.abspath(sys.executable))):
+            hints.append(
+                f"the 'kicad2ems' command on PATH runs {launcher}, not this "
+                "python - reinstall it here (python -m pip install <kicad2ems "
+                "folder>) or use: python -m kicad2ems ..."
+            )
     in_venv = sys.prefix != getattr(sys, 'base_prefix', sys.prefix)
     if not ok and in_venv:
         cfg = os.path.join(sys.prefix, 'pyvenv.cfg')
         try:
-            sysite = 'include-system-site-packages = true' in open(cfg, encoding='utf-8').read().replace('True', 'true')
+            sysite = ('include-system-site-packages = true'
+                      in open(cfg,
+                              encoding='utf-8').read().replace('True', 'true'))
         except OSError:
             sysite = True
         if not sysite and not windows:
-            hints.append("this venv does not see system packages: if openEMS came from your distribution "
-                         "(dnf / apt), recreate the venv with  python3 -m venv --system-site-packages <dir>")
+            hints.append(
+                "this venv does not see system packages: if openEMS came from "
+                "your distribution (dnf / apt), recreate the venv with  "
+                "python3 -m venv --system-site-packages <dir>"
+            )
     if hints:
         lines.append("hints:")
         lines += [f"  - {h}" for h in dict.fromkeys(hints)]

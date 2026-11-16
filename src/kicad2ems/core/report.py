@@ -1,10 +1,12 @@
 """
-HTML report of a run (<name>_report.html): one self-contained page (the plots embedded) rendered from
-the run summary (pipeline.Job.summary, also written as <name>_run.json) and nothing else - so a GUI,
-or a later run, can rebuild it from the JSON file. Sections: summary, model, transmission-line
-sections, mesh (openEMS), results (an interactive plot of every solver's Touchstone file, inline SVG and script,
-over the static image of the first solver with the others overlaid), one per solver (each compared with the
-first), antenna, convergence, field maps, the openEMS runs, output files, settings and the full log.
+HTML report of a run (<name>_report.html): one self-contained page (the plots
+embedded) rendered from the run summary (pipeline.Job.summary, also written as
+<name>_run.json) and nothing else - so a GUI, or a later run, can rebuild it
+from the JSON file. Sections: summary, model, transmission-line sections, mesh
+(openEMS), results (an interactive plot of every solver's Touchstone file,
+inline SVG and script, over the static image of the first solver with the others
+overlaid), one per solver (each compared with the first), antenna, convergence,
+field maps, the openEMS runs, output files, settings and the full log.
 """
 import base64, html, json, os
 
@@ -51,8 +53,10 @@ a { color:var(--accent); }
 .iplot .read b { font-weight:600; }
 """
 
-PLOT_POINTS = 600       # the interactive plot's points per trace at most (every n-th sample beyond)
-# the interactive S-parameter plot: data in a JSON script tag, drawn as SVG, no library (the page stays one file)
+# the interactive plot's points per trace at most (every n-th sample beyond)
+PLOT_POINTS = 600
+# the interactive S-parameter plot: data in a JSON script tag, drawn as SVG, no
+# library (the page stays one file)
 PLOT_JS = r"""
 (function(){
 const box=document.currentScript.parentElement, D=JSON.parse(box.querySelector('script.data').textContent);
@@ -127,8 +131,10 @@ def _img(path, alt=''):
 
 
 def _table(head, rows, num=()):
-    """rows: lists of cells; a cell may be (html, css class). num: indexes of numeric columns."""
-    h = "".join(f"<th class='{'n' if i in num else ''}'>{_e(c)}</th>" for i, c in enumerate(head))
+    """rows: lists of cells; a cell may be (html, css class). num: indexes of
+    numeric columns."""
+    h = "".join(f"<th class='{'n' if i in num else ''}'>{_e(c)}</th>"
+                for i, c in enumerate(head))
     body = []
     for r in rows:
         cls = ''
@@ -139,8 +145,11 @@ def _table(head, rows, num=()):
             c, k = c if isinstance(c, tuple) else (c, '')
             k = (k + (' n' if i in num else '')).strip()
             cells.append(f"<td class='{k}'>{c}</td>" if k else f"<td>{c}</td>")
-        body.append(f"<tr class='{cls}'>" + "".join(cells) + "</tr>" if cls else "<tr>" + "".join(cells) + "</tr>")
-    return f"<div class='scroll'><table><thead><tr>{h}</tr></thead><tbody>{''.join(body)}</tbody></table></div>"
+        body.append(f"<tr class='{cls}'>" + "".join(cells)
+                    + "</tr>" if cls else "<tr>" + "".join(cells) + "</tr>")
+    return ("<div "
+            f"class='scroll'><table><thead><tr>{h}</tr></"
+            f"thead><tbody>{''.join(body)}</tbody></table></div>")
 
 
 def _rel(path, base):
@@ -155,7 +164,8 @@ def _f(v, fmt='.2f', none='–'):
 
 
 def _zcell(z, zref, fmt='.1f'):
-    """Z0 cell, shaded by its deviation from the port impedance (10 % / 25 %)."""
+    """Z0 cell, shaded by its deviation from the port impedance (10 % / 25
+    %)."""
     if z is None:
         return ('–', '')
     d = abs(z - zref) / zref
@@ -163,8 +173,9 @@ def _zcell(z, zref, fmt='.1f'):
 
 
 def _sparam_data(sm, base):
-    """The interactive plot's data: per solver with a Touchstone file, its label, ports, frequencies (GHz) and each
-    S as real and imaginary parts (at most PLOT_POINTS samples), the first port's column marked to show at first;
+    """The interactive plot's data: per solver with a Touchstone file, its
+    label, ports, frequencies (GHz) and each S as real and imaginary parts (at
+    most PLOT_POINTS samples), the first port's column marked to show at first;
     None when no file can be read."""
     from .touchstone import read_touchstone
     out = []
@@ -183,30 +194,47 @@ def _sparam_data(sm, base):
         names = so.get('names') or [f"P{i + 1}" for i in range(nports)]
         ij = [(i, j) for j in range(nports) for i in range(nports)]
         params = [f"S{i + 1}{j + 1}" for i, j in ij]
-        rnd = lambda a: [None if not (x == x) else round(float(x), 6) for x in a]     # NaN (not computed): null
-        out.append(dict(label=so.get('label', n), names=names, f=[round(float(x) / 1e9, 6) for x in f],
-                        params=params, first=[f"S{i + 1}1" for i in range(nports)],
-                        re={p: rnd(S[:, i, j].real) for p, (i, j) in zip(params, ij)},
-                        im={p: rnd(S[:, i, j].imag) for p, (i, j) in zip(params, ij)}))
+        # NaN (not computed): null
+        rnd = lambda a: [
+            None if not (x == x) else round(float(x), 6) for x in a
+        ]
+        out.append(
+            dict(label=so.get('label', n), names=names,
+                 f=[round(float(x) / 1e9, 6) for x in f], params=params,
+                 first=[f"S{i + 1}1" for i in range(nports)],
+                 re={p: rnd(S[:, i, j].real)
+                     for p, (i, j) in zip(params, ij)},
+                 im={p: rnd(S[:, i, j].imag)
+                     for p, (i, j) in zip(params, ij)}))
     return dict(solvers=out) if out else None
 
 
 def _iplot(data, pid='iplot'):
-    """The interactive S-parameter plot of _sparam_data's data: a toolbar (|S| dB or phase, a box per solver and S),
-    the plot (hover: every trace at a frequency; drag: zoom; double-click: all) and the readout."""
+    """The interactive S-parameter plot of _sparam_data's data: a toolbar (|S|
+    dB or phase, a box per solver and S), the plot (hover: every trace at a
+    frequency; drag: zoom; double-click: all) and the readout."""
     blob = json.dumps(data, separators=(',', ':')).replace('</', '<\\/')
-    return (f"<div class='iplot' id='{pid}'><div class='bar'></div><svg role='img' aria-label='S-parameters'></svg>"
-            f"<div class='read'>hover over the plot for the values; drag to zoom, double-click for the whole band</div>"
-            f"<script type='application/json' class='data'>{blob}</script><script>{PLOT_JS}</script></div>")
+    return (
+        f"<div class='iplot' id='{pid}'><div class='bar'></div><svg role='img' "
+        "aria-label='S-parameters'></svg><div class='read'>hover over the "
+        "plot for the values; drag to zoom, double-click for the whole "
+        "band</div><script type='application/json' "
+        f"class='data'>{blob}</script><script>{PLOT_JS}</script></div>"
+    )
 
 
 def _lines_section(sm):
     ln = sm['lines']
-    parts = ["<p>Each port's net broken into uniform sections: trace runs (split where the planes under or over "
-             "them change), component pads at their own width, via barrels and lumped parts, with closed-form "
-             "quasi-static impedances. <b>Z0</b> uses the stackup's copper thickness; <b>Z0 sheet</b> is the same "
-             "section with zero-thickness copper, as openEMS models it. Shading: more than 10 % / 25 % from the "
-             "port impedance. Copper drawn as rectilinear shapes becomes strips. A ballpark: no radiation, no plane resonances.</p>"]
+    parts = [
+        "<p>Each port's net broken into uniform sections: trace runs (split "
+        "where the planes under or over them change), component pads at their "
+        "own width, via barrels and lumped parts, with closed-form "
+        "quasi-static impedances. <b>Z0</b> uses the stackup's copper "
+        "thickness; <b>Z0 sheet</b> is the same section with zero-thickness "
+        "copper, as openEMS models it. Shading: more than 10 % / 25 % from the "
+        "port impedance. Copper drawn as rectilinear shapes becomes strips. A "
+        "ballpark: no radiation, no plane resonances.</p>"
+    ]
     if 'lines' in sm.get('images', {}):
         parts.append(_img(sm['images']['lines'], 'transmission-line sections'))
     for path in ln['paths']:
@@ -217,139 +245,253 @@ def _lines_section(sm):
             if r['kind'] == 'part' and r.get('value'):
                 what += f" <span class='meta'>{_e(r['value'])}</span>"
             note = "; ".join(r['notes'])
-            xs = _e(r['xs']) + (f" <span class='meta'>s {r['s']:.3f}</span>" if r.get('s') else '')
-            rows.append([str(i), what, _e(r['layer']), xs, _f(r['w'], '.3f'), _f(r['length'], '.3f'),
-                         _zcell(r['z0'], zref), _zcell(r['z0_sheet'], zref), _f(r['eeff'], '.2f'),
-                         _f(r['delay_ps'], '.1f'), _f(r['start'], '.2f'), _e(note)])
+            xs = (_e(r['xs']) + (f" <span class='meta'>s {r['s']:.3f}</span>"
+                                 if r.get('s') else ''))
+            rows.append([
+                str(i), what,
+                _e(r['layer']), xs,
+                _f(r['w'], '.3f'),
+                _f(r['length'], '.3f'),
+                _zcell(r['z0'], zref),
+                _zcell(r['z0_sheet'], zref),
+                _f(r['eeff'], '.2f'),
+                _f(r['delay_ps'], '.1f'),
+                _f(r['start'], '.2f'),
+                _e(note)
+            ])
         for b in path['branches']:
-            rows.append(dict(cls='branch', cells=['↳', _e(b['label']), '', 'branch', '', _f(b['length'], '.3f'),
-                                                   _zcell(b['z0'], zref), '', '', '', _f(b['at'], '.2f'), '']))
+            rows.append(
+                dict(
+                    cls='branch', cells=[
+                        '↳',
+                        _e(b['label']), '', 'branch', '',
+                        _f(b['length'], '.3f'),
+                        _zcell(b['z0'], zref), '', '', '',
+                        _f(b['at'], '.2f'), ''
+                    ]))
         tot = sum(r['length'] for r in path['sections'])
         dl = sum(r['delay_ps'] or 0 for r in path['sections'])
-        parts.append(f"<h3>{_e(path['port'])} → {_e(path['to'] or 'end of the trace')}: {len(path['sections'])} "
-                     f"sections, {tot:.2f} mm, {dl:.0f} ps (port {zref:g} Ω)</h3>")
-        parts.append(_table(['#', 'section', 'layer', 'cross-section', 'w (mm)', 'length (mm)', 'Z0 (Ω)',
-                             'Z0 sheet (Ω)', 'εeff', 'delay (ps)', 'from (mm)', 'notes'], rows,
-                            num=(4, 5, 6, 7, 8, 9, 10)))
+        parts.append(
+            f"<h3>{_e(path['port'])} → {_e(path['to'] or 'end of the trace')}: "
+            f"{len(path['sections'])} sections, {tot:.2f} mm, {dl:.0f} ps "
+            f"(port {zref:g} Ω)</h3>")
+        parts.append(
+            _table([
+                '#', 'section', 'layer', 'cross-section', 'w (mm)',
+                'length (mm)', 'Z0 (Ω)', 'Z0 sheet (Ω)', 'εeff', 'delay (ps)',
+                'from (mm)', 'notes'
+            ], rows, num=(4, 5, 6, 7, 8, 9, 10)))
     if ln.get('groups'):
-        parts.append("<h3>Coupled sections</h3><p>Parallel lines of one cross-section within 5 h of each other, side "
-                     "by side over the same stretch: a multiconductor block from the field solver's capacitance "
-                     "matrix, every line coupled to every other, over ideal planes or, where the board's copper "
-                     "around the lines is more than that, on the board's cut across them. From the formulas "
-                     "(Kirschning &amp; Jansen, Cohn) it is neighbour pairs only. With qucsator a microstrip pair "
-                     "is its MCOUPLED.</p>")
-        solved = dict(cut="the board's cut", planes='ideal planes', formula='formulas')
+        parts.append(
+            "<h3>Coupled sections</h3><p>Parallel lines of one cross-section "
+            "within 5 h of each other, side by side over the same stretch: a "
+            "multiconductor block from the field solver's capacitance matrix, "
+            "every line coupled to every other, over ideal planes or, where "
+            "the board's copper around the lines is more than that, on the "
+            "board's cut across them. From the formulas (Kirschning &amp; "
+            "Jansen, Cohn) it is neighbour pairs only. With qucsator a "
+            "microstrip pair is its MCOUPLED.</p>")
+        solved = dict(cut="the board's cut", planes='ideal planes',
+                      formula='formulas')
         rows = []
         for k, g in enumerate(ln['groups'], 1):
-            pairs = ", ".join(f"{p['ze']:.1f} / {p['zo']:.1f}" for p in g['pairs'])
-            rows.append([str(k), str(g['lines']), _e(g['layer']), _f(g['length'], '.3f'),
-                         ", ".join(f"{w:.3f}" for w in g['widths']), ", ".join(f"{x:.3f}" for x in g['gaps']),
-                         _e(pairs), _e(solved.get(g.get('source'), ''))])
-        parts.append(_table(['#', 'lines', 'layer', 'length (mm)', 'widths (mm)', 'gaps (mm)',
-                             'Ze / Zo per neighbour pair (Ω)', 'solved on'], rows, num=(1, 3)))
+            pairs = ", ".join(
+                f"{p['ze']:.1f} / {p['zo']:.1f}" for p in g['pairs'])
+            rows.append([
+                str(k),
+                str(g['lines']),
+                _e(g['layer']),
+                _f(g['length'],
+                   '.3f'), ", ".join(f"{w:.3f}" for w in g['widths']),
+                ", ".join(f"{x:.3f}" for x in g['gaps']),
+                _e(pairs),
+                _e(solved.get(g.get('source'), ''))
+            ])
+        parts.append(
+            _table([
+                '#', 'lines', 'layer', 'length (mm)', 'widths (mm)',
+                'gaps (mm)', 'Ze / Zo per neighbour pair (Ω)', 'solved on'
+            ], rows, num=(1, 3)))
     if ln.get('junctions'):
         from collections import Counter
         cnt = Counter(j['kind'] for j in ln['junctions'])
-        model = dict(open='MOPEN / COPEN', corner='MCORN', step='MSTEP / CSTEP', tee='MTEE', cross='MCROSS',
-                     gap='MGAP / CGAP', bend='none', junction='none')
-        rows = [[_e(k), str(n), _e(model.get(k, ''))] for k, n in sorted(cnt.items())]
-        parts.append("<h3>Discontinuities</h3><p>Where sections meet. qucsator models each with its own element "
-                     "(lines measured to the edge of a corner, tee or cross); scikit-rf joins the lines directly.</p>")
-        parts.append(_table(['kind', 'count', 'qucsator model'], rows, num=(1,)))
+        model = dict(open='MOPEN / COPEN', corner='MCORN', step='MSTEP / CSTEP',
+                     tee='MTEE', cross='MCROSS', gap='MGAP / CGAP', bend='none',
+                     junction='none')
+        rows = [[_e(k), str(n), _e(model.get(k, ''))]
+                for k, n in sorted(cnt.items())]
+        parts.append(
+            "<h3>Discontinuities</h3><p>Where sections meet. qucsator models "
+            "each with its own element (lines measured to the edge of a "
+            "corner, tee or cross); scikit-rf joins the lines directly.</p>"
+        )
+        parts.append(
+            _table(['kind', 'count', 'qucsator model'], rows, num=(1, )))
     if ln['notes']:
-        parts.append("<ul>" + "".join(f"<li>{_e(n)}</li>" for n in ln['notes']) + "</ul>")
+        parts.append("<ul>" + "".join(f"<li>{_e(n)}</li>" for n in ln['notes'])
+                     + "</ul>")
     return "".join(parts)
 
 
 def _solver_section(sm, name, base):
-    """One solver's result: what it did, its Touchstone file, its notes, and how it compares with the first
-    solver of the run."""
+    """One solver's result: what it did, its Touchstone file, its notes, and how
+    it compares with the first solver of the run."""
     so = sm['solved'][name]
-    txt = (f"<p>{_e(so.get('about', ''))} <a href='{_e(_rel(so['touchstone'], base))}'>"
-           f"{_e(os.path.basename(so['touchstone']))}</a>.</p>")
+    txt = (
+        f"<p>{_e(so.get('about', ''))} <a href='{_e(_rel(so['touchstone'], base))}'>"
+        f"{_e(os.path.basename(so['touchstone']))}</a>.</p>")
     ref = so.get('reference')
     if so.get('compare') and ref:
         a, b = sm['solved'][ref]['label'], so['label']
-        txt += (f"<h3>Against {_e(a)}</h3><p>Overlaid on the S-parameter plot. Large differences point at something "
-                "one of the two models leaves out - coupling, radiation, plane resonances, the board edge, the lumped "
-                "ports - or at a mesh problem.</p>")
-        rows = [[_e(r['param']), _f(r['ref_max_db'], '.1f'), _f(r['other_max_db'], '.1f'), _f(r['max_ddb'], '.2f'),
-                 _f(r['max_dvec'], '.3f'), _f(r['ddelay_ps'], '+.1f')] for r in so['compare']]
-        txt += _table(['', f"{a} max (dB)", f"{b} max (dB)", 'max |Δ| (dB, transmissions)', 'max |ΔS| (vector)',
-                       f"Δ delay {b} − {a} (ps)"], rows, num=(1, 2, 3, 4, 5))
+        txt += (
+            f"<h3>Against {_e(a)}</h3><p>Overlaid on the S-parameter plot. Large differences point at something "
+            "one of the two models leaves out - coupling, radiation, plane resonances, the board edge, the lumped "
+            "ports - or at a mesh problem.</p>")
+        rows = [[
+            _e(r['param']),
+            _f(r['ref_max_db'], '.1f'),
+            _f(r['other_max_db'], '.1f'),
+            _f(r['max_ddb'], '.2f'),
+            _f(r['max_dvec'], '.3f'),
+            _f(r['ddelay_ps'], '+.1f')
+        ] for r in so['compare']]
+        txt += _table([
+            '', f"{a} max (dB)", f"{b} max (dB)", 'max |Δ| (dB, transmissions)',
+            'max |ΔS| (vector)', f"Δ delay {b} − {a} (ps)"
+        ], rows, num=(1, 2, 3, 4, 5))
     modes = so.get('modes')
     if modes:
-        # its resonances (Result.info['modes'], API 2.13: dict(about, rows=[dict(mode, f_ghz, Q, q_ext={port: Q},
-        # kind)])): a row a mode, each port's external Q in a column of its own, `kind` (where it is none) last
+        # its resonances (Result.info['modes'], API 2.13: dict(about,
+        # rows=[dict(mode, f_ghz, Q, q_ext={port: Q}, kind)])): a row a mode,
+        # each port's external Q in a column of its own, `kind` (where it is
+        # none) last
         rows = modes.get('rows') or []
-        ports = list(dict.fromkeys(p for r in rows for p in (r.get('q_ext') or {})))
-        body = [[str(r.get('mode', i + 1)), _f(r.get('f_ghz'), '.5g'), _f(r.get('Q'), '.4g')]
-                + [_f((r.get('q_ext') or {}).get(p), '.4g') for p in ports] + [_e(r.get('kind', ''))]
+        ports = list(
+            dict.fromkeys(p for r in rows for p in (r.get('q_ext') or {})))
+        body = [[
+            str(r.get('mode', i + 1)),
+            _f(r.get('f_ghz'), '.5g'),
+            _f(r.get('Q'), '.4g')
+        ] + [_f((r.get('q_ext') or {}).get(p), '.4g')
+             for p in ports] + [_e(r.get('kind', ''))]
                 for i, r in enumerate(rows)]
-        txt += (f"<h3>Resonances</h3><p>{_e(modes.get('about', ''))}.</p>"
-                + _table(['mode', 'f (GHz)', 'Q'] + [f"Q_ext {p}" for p in ports] + [''], body,
-                         num=tuple(range(1, 3 + len(ports)))))
+        txt += (
+            f"<h3>Resonances</h3><p>{_e(modes.get('about', ''))}.</p>"
+            + _table(['mode', 'f (GHz)', 'Q'] + [f"Q_ext {p}" for p in ports]
+                     + [''], body, num=tuple(range(1, 3 + len(ports)))))
     if so.get('notes'):
-        txt += "<ul>" + "".join(f"<li>{_e(n)}</li>" for n in so['notes']) + "</ul>"
+        txt += ("<ul>" + "".join(f"<li>{_e(n)}</li>" for n in so['notes'])
+                + "</ul>")
     return txt
 
 
 def _saw_section(saw):
-    """Per feature of the board, what each solver models (its capability) and what it declared changing."""
+    """Per feature of the board, what each solver models (its capability) and
+    what it declared changing."""
     def cell(c):
         word, _, how = c['cap'].partition(':')
-        cls = {'yes': '', 'no': 'bad', 'ignored': 'meta'}.get(word.split(',')[0].strip(), '')
-        txt = f"<b class='{cls}'>{_e(word)}</b>" + (f" <span class='meta'>{_e(how.strip())}</span>" if how else '')
-        return txt + "".join(f"<br><span class='meta'>· {_e(d)}</span>" for d in c['deviations'])
-    rows = [[_e(r['feature'])] + [cell(c) for c in r['cells']] for r in saw['rows']]
-    return ("<p>Where two solvers disagree, look here first: what each one models of this board, and what it "
-            "declared changing on the way (the parity checks fail on anything a solver changes without saying "
-            "so).</p>" + _table([''] + saw['solvers'], rows))
+        cls = {'yes': '', 'no': 'bad',
+               'ignored': 'meta'}.get(word.split(',')[0].strip(), '')
+        txt = (f"<b class='{cls}'>{_e(word)}</b>" +
+               (f" <span class='meta'>{_e(how.strip())}</span>" if how else ''))
+        return (txt + "".join(f"<br><span class='meta'>· {_e(d)}</span>"
+                              for d in c['deviations']))
+
+    rows = [[_e(r['feature'])] + [cell(c)
+                                  for c in r['cells']]
+            for r in saw['rows']]
+    return (
+        "<p>Where two solvers disagree, look here first: what each one models "
+        "of this board, and what it declared changing on the way (the parity "
+        "checks fail on anything a solver changes without saying "
+        "so).</p>" + _table([''] + saw['solvers'], rows))
 
 
 def _mesh_section(sm, g, st):
-    """openEMS's mesh: cells, cell sizes, time step, boundaries, the preview, the convergence levels."""
-    rows = [['cells', f"{g['nx']} × {g['ny']} × {g['nz']} = {g['cells']:,}"],
-            ['fine cell (copper edges)', f"{g['fine_mm']:.4f} mm"],
-            ['largest cell (dielectric / air)', f"{g['maxres_die_mm']:.3f} / {g['maxres_air_mm']:.3f} mm"],
-            ['smallest cell x / y / z', " / ".join(f"{v:.4f}" for v in g['min_cell_mm']) + " mm"],
-            ['time step (estimate)', f"{g['dt_ps']:.4f} ps"], ['memory (estimate)', f"{g['mem_gb']:.2f} GB"],
-            ['air margin', _e(g.get('air_text') or f"{g['air_mm']:.1f} mm")],     # the solver's text (older: the least)
-            ['boundaries', _e(" ".join(f"{s}={b}" for s, b in zip(('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'), g['bc'])))],
-            ['curves / vias', f"{_e(g['curves'])} / {_e(g['vias'])} ({g['vias_snapped']} snapped)"],
-            *([['edge walls (PEC)', _e(g['edge_walls'])]] if g.get('edge_walls') else []),
-            ['lines across port traces', _e(", ".join(f"{k_}: {v}" for k_, v in g.get('lines_across_ports', {}).items()))],
-            *([['excitation pulse', f"~{sm['pulse_steps']:,} timesteps; --max-steps {st['max_steps']:,}"]]
-              if 'pulse_steps' in sm else [])]
-    content = _table(['', ''], rows) + _img(sm['images'].get('mesh'), 'model and mesh')
+    """openEMS's mesh: cells, cell sizes, time step, boundaries, the preview,
+    the convergence levels."""
+    rows = [
+        ['cells', f"{g['nx']} × {g['ny']} × {g['nz']} = {g['cells']:,}"],
+        ['fine cell (copper edges)', f"{g['fine_mm']:.4f} mm"],
+        [
+            'largest cell (dielectric / air)',
+            f"{g['maxres_die_mm']:.3f} / {g['maxres_air_mm']:.3f} mm"
+        ],
+        [
+            'smallest cell x / y / z',
+            " / ".join(f"{v:.4f}" for v in g['min_cell_mm']) + " mm"
+        ],
+        ['time step (estimate)', f"{g['dt_ps']:.4f} ps"],
+        ['memory (estimate)', f"{g['mem_gb']:.2f} GB"],
+        # the solver's text (older: the least)
+        ['air margin',
+         _e(g.get('air_text') or f"{g['air_mm']:.1f} mm")],
+        [
+            'boundaries',
+            _e(" ".join(
+                f"{s}={b}" for s, b in zip(('xmin', 'xmax', 'ymin', 'ymax',
+                                            'zmin', 'zmax'), g['bc'])))
+        ],
+        [
+            'curves / vias',
+            f"{_e(g['curves'])} / {_e(g['vias'])} ({g['vias_snapped']} snapped)"
+        ],
+        *([['edge walls (PEC)', _e(g['edge_walls'])]]
+          if g.get('edge_walls') else []),
+        [
+            'lines across port traces',
+            _e(", ".join(f"{k_}: {v}"
+                         for k_, v in g.get('lines_across_ports', {}).items()))
+        ],
+        *([[
+            'excitation pulse',
+            f"~{sm['pulse_steps']:,} timesteps; --max-steps {st['max_steps']:,}"
+        ]] if 'pulse_steps' in sm else [])
+    ]
+    content = (_table(['', ''], rows)
+               + _img(sm['images'].get('mesh'), 'model and mesh'))
     if sm.get('levels'):
-        content += "<h3>Convergence levels</h3>" + _table(
-            ['factor', 'cells', 'fine (mm)', 'time step (ps)'],
-            [[f"×{l['factor']:g}", f"{l['cells']:,}", f"{l['fine_mm']:.4f}", f"{l['dt_ps']:.4f}"] for l in sm['levels']])
+        content += (
+            "<h3>Convergence levels</h3>"
+            + _table(['factor', 'cells', 'fine (mm)', 'time step (ps)'], [[
+                f"×{l['factor']:g}", f"{l['cells']:,}", f"{l['fine_mm']:.4f}",
+                f"{l['dt_ps']:.4f}"
+            ] for l in sm['levels']]))
     return content
 
 
 def build(sm, base):
-    """The report page for a run summary; `base` is the output folder (where the report goes), against
-    which the summary's relative paths are resolved and links are made relative."""
+    """The report page for a run summary; `base` is the output folder (where the
+    report goes), against which the summary's relative paths are resolved and
+    links are made relative."""
     ab = lambda p: p if (not p or os.path.isabs(p)) else os.path.join(base, p)
-    sm = dict(sm, images={k: ab(v) for k, v in sm.get('images', {}).items()},
-              files=[(l, ab(p)) for l, p in sm.get('files', [])],
-              dumps=[dict(d, png=ab(d['png'])) for d in sm.get('dumps', [])],
-              solved={k: dict(v, touchstone=ab(v['touchstone'])) for k, v in sm.get('solved', {}).items()})
+    sm = dict(
+        sm, images={k: ab(v)
+                    for k, v in sm.get('images', {}).items()},
+        files=[(l, ab(p)) for l, p in sm.get('files', [])],
+        dumps=[dict(d, png=ab(d['png'])) for d in sm.get('dumps', [])], solved={
+            k: dict(v, touchstone=ab(v['touchstone']))
+            for k, v in sm.get('solved', {}).items()
+        })
     if sm.get('runs'):
-        sm['runs'] = {k: dict(r, log=ab(r.get('log'))) for k, r in sm['runs'].items()}
+        sm['runs'] = {
+            k: dict(r, log=ab(r.get('log')))
+            for k, r in sm['runs'].items()
+        }
     model, g, st = sm['model'], sm.get('mesh'), sm['settings']
     nav, body = [], []
 
     def section(sid, title, content):
         nav.append(f"<a href='#{sid}'>{_e(title)}</a>")
-        body.append(f"<section id='{sid}'><h2>{_e(title)}</h2>{content}</section>")
+        body.append(
+            f"<section id='{sid}'><h2>{_e(title)}</h2>{content}</section>")
 
-    # ---- summary ----------------------------------------------------------------------------------
+    # ---- summary
+    # ----------------------------------------------------------------------------------
     solved = sm.get('solved', {})
     k = [('mode', _e(sm['mode'])),
-         ('solvers', _e(", ".join(sm['solvers']) or 'none')) if 'solvers' in sm else None,
+         ('solvers',
+          _e(", ".join(sm['solvers']) or 'none')) if 'solvers' in sm else None,
          ('band', f"{st['fmin']:g}–{st['fmax']:g} GHz"),
          ('ports', _e(", ".join(p['name'] for p in model['ports']))),
          ('mesh', f"{g['cells'] / 1e6:.2f} M cells") if g else None,
@@ -359,143 +501,238 @@ def build(sm, base):
     if ant:
         mt = ant['match']
         row = min(ant['rows'], key=lambda r: abs(r['f'] - ant['f_pattern']))
-        k += [('resonance', f"{mt['f_res'] / 1e9:.3f} GHz"), ('S11 at resonance', f"{mt['s11_db']:.1f} dB"),
-              ('−10 dB band', f"{mt['bw10'] / mt['f_res'] * 100:.1f} %" if mt['bw10'] else 'none'),
-              ('directivity', f"{row['D_dbi']:.2f} dBi" if row['D_dbi'] is not None else '–'),
+        k += [('resonance', f"{mt['f_res'] / 1e9:.3f} GHz"),
+              ('S11 at resonance', f"{mt['s11_db']:.1f} dB"),
+              ('−10 dB band', f"{mt['bw10'] / mt['f_res'] * 100:.1f} %"
+               if mt['bw10'] else 'none'),
+              ('directivity',
+               f"{row['D_dbi']:.2f} dBi" if row['D_dbi'] is not None else '–'),
               ('efficiency', f"{row['eff'] * 100:.0f} %"),
-              ('gain', f"{row['G_dbi']:.2f} dBi" if row['G_dbi'] is not None else '–')]
-        if ant.get('peak') and len(ant.get('drive') or []) > 1:     # a phased drive: where the beam points
+              ('gain',
+               f"{row['G_dbi']:.2f} dBi" if row['G_dbi'] is not None else '–')]
+        # a phased drive: where the beam points
+        if ant.get('peak') and len(ant.get('drive') or []) > 1:
             pk = ant['peak']
-            k += [('drive', _e(', '.join(ant['drive']))), ('beam', f"θ {pk['theta']:g}°, φ {pk['phi']:g}°"),
-                  ('active S11', _e(', '.join(f"{p} {v:.1f} dB" for p, v in (ant.get('active_db') or {}).items())))]
+            k += [('drive', _e(', '.join(ant['drive']))),
+                  ('beam', f"θ {pk['theta']:g}°, φ {pk['phi']:g}°"),
+                  ('active S11',
+                   _e(', '.join(
+                       f"{p} {v:.1f} dB"
+                       for p, v in (ant.get('active_db') or {}).items())))]
     if 'convergence' in sm:
         ok = sm['convergence']['converged']
-        k.append(('mesh convergence', f"<span class='{'ok' if ok else 'bad'}'>{'converged' if ok else 'not converged'}</span>"))
-    k += [(so['label'], _e(so.get('kpi', f"{so['seconds']:.1f} s"))) for so in solved.values()]
+        k.append((
+            'mesh convergence', "<span "
+            f"class='{'ok' if ok else 'bad'}'>{'converged' if ok else 'not converged'}</span>"
+        ))
+    k += [(so['label'], _e(so.get('kpi', f"{so['seconds']:.1f} s")))
+          for so in solved.values()]
     warn = sm.get('warnings', [])
-    w = "<h3>Warnings</h3>" + ((f"<div class='warn'><b>{len(warn)} warning(s)</b><ul>" +
-                                "".join(f"<li>{_e(x)}</li>" for x in warn) + "</ul></div>") if warn else
-                               "<p class='ok'>No warnings.</p>")
+    w = ("<h3>Warnings</h3>" +
+         ((f"<div class='warn'><b>{len(warn)} warning(s)</b><ul>"
+           + "".join(f"<li>{_e(x)}</li>" for x in warn)
+           + "</ul></div>") if warn else "<p class='ok'>No warnings.</p>"))
     au = sm.get('auto')
-    if au:                                                          # --solvers auto: what it chose, and why
-        t_ = lambda sec: f"~{sec:.0f} s" if sec < 120 else f"~{sec / 60:.0f} min"
-        rows = [[_e(n), _e(e['what']), t_(e['seconds']), 'chosen' if n in au['chosen'] else 'not chosen']
-                for n, e in au['estimates'].items()] + [[_e(n), '', '', _e(f"not used: {why}")]
-                                                         for n, why in au['not_used'].items()]
+    if au:  # --solvers auto: what it chose, and why
+        t_ = lambda sec: (f"~{sec:.0f} "
+                          "s") if sec < 120 else f"~{sec / 60:.0f} min"
+        rows = ([[
+            _e(n),
+            _e(e['what']),
+            t_(e['seconds']), 'chosen' if n in au['chosen'] else 'not chosen'
+        ] for n, e in au['estimates'].items()]
+                + [[_e(n), '', '', _e(f"not used: {why}")]
+                   for n, why in au['not_used'].items()])
         w = (f"<h3>--solvers auto: {_e(' + '.join(au['chosen']))}</h3>" +
              _table(['solver', 'estimate', 'time (rough)', ''], rows)) + w
-    section('summary', 'Summary', "<div class='kpis'>" + "".join(
-        f"<div class='kpi'><div class='v'>{v}</div><div class='l'>{_e(l)}</div></div>" for l, v in k) + "</div>" + w)
+    section(
+        'summary', 'Summary', "<div class='kpis'>" + "".join(
+            f"<div class='kpi'><div class='v'>{v}</div><div "
+            f"class='l'>{_e(l)}</div></div>"
+            for l, v in k) + "</div>" + w)
 
-    # ---- model ----------------------------------------------------------------------------------------
-    stack = [[_e(l['name']), f"{l['z0']:.3f}–{l['z1']:.3f}", f"{l['z1'] - l['z0']:.3f}", f"{l['er']:.2f}",
-              f"{l['tand']:.4f}"] for l in model['stack']]
-    cu = [[_e(c['layer']), f"{c['z']:.3f}", 'yes' if c['modelled'] else 'nothing selected'] for c in model['copper']]
+    # ---- model
+    # ----------------------------------------------------------------------------------------
+    stack = [[
+        _e(l['name']), f"{l['z0']:.3f}–{l['z1']:.3f}",
+        f"{l['z1'] - l['z0']:.3f}", f"{l['er']:.2f}", f"{l['tand']:.4f}"
+    ] for l in model['stack']]
+    cu = [[
+        _e(c['layer']), f"{c['z']:.3f}",
+        'yes' if c['modelled'] else 'nothing selected'
+    ] for c in model['copper']]
     ports = []
     for p in model['ports']:
         where = f"({p['at'][0]:.3f}, {p['at'][1]:.3f})"
         if p['kind'] == 'gap':
-            ports.append([_e(p['name']), 'gap', _e(p['layer']), f"gap {p['gap']:.3f} mm along {p['direction']}",
-                          f"{p['w']:.3f}", f"{p['z0']:g}", where])
+            ports.append([
+                _e(p['name']), 'gap',
+                _e(p['layer']), f"gap {p['gap']:.3f} mm along {p['direction']}",
+                f"{p['w']:.3f}", f"{p['z0']:g}", where
+            ])
         else:
-            ports.append([_e(p['name']), 'vertical', f"{_e(p['layer'])} → {_e(p['ref_layer'])}", f"h {p['h']:.3f} mm",
-                          f"{p['w']:.3f}", f"{p['z0']:g}", where])
-    nets = model['nets'] if isinstance(model['nets'], str) else ", ".join(model['nets'])
-    content = (f"<p>Board <code>{_e(model['board'])}</code>: outline {model['outline_mm'][0]:.2f} × "
-               f"{model['outline_mm'][1]:.2f} mm, {model['vias']} vias ({model['vias_signal']} on signal nets), nets "
-               f"{_e(nets)}" + (f", dielectric loss {_e(model['diel'])}" if model.get('diel') else '') + ".</p>"
-               "<h3>Dielectrics (top to bottom)</h3>" +
-               _table(['layer', 'z (mm)', 'thickness (mm)', 'εr', 'tan δ'], stack) +
-               (_img(sm['images']['model'], 'model') if sm['images'].get('model') else '') +
-               "<h3>Copper</h3>" + _table(['layer', 'z (mm)', 'modelled'], cu) +
-               "<h3>Ports</h3>" + _table(['port', 'kind', 'layer', 'size', 'width (mm)', 'Z0 (Ω)', 'at (KiCad mm)'], ports))
+            ports.append([
+                _e(p['name']), 'vertical',
+                f"{_e(p['layer'])} → {_e(p['ref_layer'])}",
+                f"h {p['h']:.3f} mm", f"{p['w']:.3f}", f"{p['z0']:g}", where
+            ])
+    nets = (model['nets']
+            if isinstance(model['nets'], str) else ", ".join(model['nets']))
+    content = (
+        f"<p>Board <code>{_e(model['board'])}</code>: outline "
+        f"{model['outline_mm'][0]:.2f} × {model['outline_mm'][1]:.2f} mm, "
+        f"{model['vias']} vias ({model['vias_signal']} on signal nets), nets "
+        f"{_e(nets)}" +
+        (f", dielectric loss {_e(model['diel'])}" if model.get('diel') else '')
+        + ".</p>"
+        "<h3>Dielectrics (top to bottom)</h3>"
+        + _table(['layer', 'z (mm)', 'thickness (mm)', 'εr', 'tan δ'], stack) +
+        (_img(sm['images']['model'], 'model') if sm['images'].get('model') else
+         '') + "<h3>Copper</h3>" + _table(['layer', 'z (mm)', 'modelled'], cu)
+        + "<h3>Ports</h3>" + _table([
+            'port', 'kind', 'layer', 'size', 'width (mm)', 'Z0 (Ω)',
+            'at (KiCad mm)'
+        ], ports))
     if model['parts']:
-        content += "<h3>Lumped parts</h3>" + _table(
-            ['part', 'value', 'layer', 'gap (mm)', 'openEMS elements'],
-            [[_e(p['ref']), _e(p['value']), _e(p['layer']), f"{p['gap']:.3f}", str(p['elements'])] for p in model['parts']])
+        content += ("<h3>Lumped parts</h3>" + _table(
+            ['part', 'value', 'layer', 'gap (mm)', 'openEMS elements'], [[
+                _e(p['ref']),
+                _e(p['value']),
+                _e(p['layer']), f"{p['gap']:.3f}",
+                str(p['elements'])
+            ] for p in model['parts']]))
     if model['notes']:
-        content += "<h3>Notes</h3><ul>" + "".join(f"<li>{_e(n)}</li>" for n in model['notes']) + "</ul>"
+        content += ("<h3>Notes</h3><ul>"
+                    + "".join(f"<li>{_e(n)}</li>" for n in model['notes'])
+                    + "</ul>")
     section('model', 'Model', content)
 
-    # ---- transmission lines -----------------------------------------------------------------------------
+    # ---- transmission lines
+    # -----------------------------------------------------------------------------
     if sm.get('lines'):
         section('tlines', 'Transmission-line sections', _lines_section(sm))
 
-    # ---- mesh (openEMS) --------------------------------------------------------------------------------
+    # ---- mesh (openEMS)
+    # --------------------------------------------------------------------------------
     if g:
         section('mesh', 'Mesh (FDTD: openEMS, gfdtd)', _mesh_section(sm, g, st))
 
-    # ---- results -------------------------------------------------------------------------------------
+    # ---- results
+    # -------------------------------------------------------------------------------------
     res = sm.get('results')
     if res:
         fq = res['freq_ghz']
-        rows = [[_e(r['param']), _f(r['fmin_db']), _f(r['fc_db']), _f(r['fmax_db']),
-                 f"{r['min_db']:.2f} @ {r['f_min'] / 1e9:.3f} GHz", f"{r['max_db']:.2f} @ {r['f_max'] / 1e9:.3f} GHz"]
-                for r in res['table']]
+        rows = [[
+            _e(r['param']),
+            _f(r['fmin_db']),
+            _f(r['fc_db']),
+            _f(r['fmax_db']), f"{r['min_db']:.2f} @ {r['f_min'] / 1e9:.3f} GHz",
+            f"{r['max_db']:.2f} @ {r['f_max'] / 1e9:.3f} GHz"
+        ] for r in res['table']]
         ref = solved.get(res.get('reference'), {}).get('label', '')
         others = [so['label'] for n, so in solved.items() if so.get('compare')]
         data = _sparam_data(sm, base)
         still = _img(sm['images'].get('sparams'), 'S-parameters')
-        plot = (_iplot(data) + (f"<details><summary>static image</summary>{still}</details>" if still else '')
-                if data else still)
-        content = (plot +
-                   (f"<p class='meta'>Solid: {_e(ref)}; overlaid: {_e(', '.join(others))}.</p>" if others else '') +
-                   f"<h3>|S| in dB ({_e(ref)})</h3>" +
-                   _table(['', f"{fq[0]:g} GHz", f"{fq[1]:g} GHz", f"{fq[2]:g} GHz", 'minimum', 'maximum'], rows,
-                          num=(1, 2, 3)))
+        plot = (_iplot(data) +
+                (f"<details><summary>static image</summary>{still}</details>"
+                 if still else '') if data else still)
+        content = (plot + (
+            f"<p class='meta'>Solid: {_e(ref)}; overlaid: "
+            f"{_e(', '.join(others))}.</p>"
+            if others else '') + f"<h3>|S| in dB ({_e(ref)})</h3>" + _table([
+                '', f"{fq[0]:g} GHz", f"{fq[1]:g} GHz", f"{fq[2]:g} GHz",
+                'minimum', 'maximum'
+            ], rows, num=(1, 2, 3)))
         if res.get('compare_file'):
-            content += f"<p class='meta'>Dashed: <code>{_e(res['compare_file'])}</code></p>"
+            content += ("<p class='meta'>Dashed: "
+                        f"<code>{_e(res['compare_file'])}</code></p>")
         section('results', 'S-parameters', content)
     if sm.get('saw') and len(sm['saw']['solvers']) > 1:
         section('saw', 'What each solver saw', _saw_section(sm['saw']))
     for n in solved:
         section(n, solved[n]['label'], _solver_section(sm, n, base))
     if ant:
-        rows = [[f"{r['f'] / 1e9:.3f}" + (' ◀' if abs(r['f'] - ant['f_pattern']) < 1 else ''),
-                 '–' if r['D_dbi'] is None else f"{r['D_dbi']:.2f}", f"{r['eff'] * 100:.1f}",
-                 '–' if r['G_dbi'] is None else f"{r['G_dbi']:.2f}",
-                 '–' if r['Grealized_dbi'] is None else f"{r['Grealized_dbi']:.2f}"] for r in ant['rows']]
-        section('antenna', 'Antenna',
-                _img(sm['images'].get('antenna'), 'antenna') + _img(sm['images'].get('pattern'), 'patterns') +
-                "<h3>Over frequency (◀ pattern frequency)</h3>" +
-                _table(['f (GHz)', 'directivity (dBi)', 'efficiency (%)', 'gain (dBi)', 'realized gain (dBi)'], rows))
+        rows = [[
+            f"{r['f'] / 1e9:.3f}" +
+            (' ◀' if abs(r['f'] - ant['f_pattern']) < 1 else ''),
+            '–' if r['D_dbi'] is None else f"{r['D_dbi']:.2f}",
+            f"{r['eff'] * 100:.1f}",
+            '–' if r['G_dbi'] is None else f"{r['G_dbi']:.2f}",
+            '–' if r['Grealized_dbi'] is None else f"{r['Grealized_dbi']:.2f}"
+        ] for r in ant['rows']]
+        section(
+            'antenna', 'Antenna',
+            _img(sm['images'].get('antenna'), 'antenna')
+            + _img(sm['images'].get('pattern'), 'patterns')
+            + "<h3>Over frequency (◀ pattern frequency)</h3>" + _table([
+                'f (GHz)', 'directivity (dBi)', 'efficiency (%)', 'gain (dBi)',
+                'realized gain (dBi)'
+            ], rows))
     if 'convergence' in sm:
         c = sm['convergence']
-        rows = [[f"×{l['factor']:g}", f"{l['cells']:,}",
-                 f"{l['max_db']:.3f}" if 'max_db' in l else 'reference', f"{l['max_deg']:.2f}" if 'max_deg' in l else '']
-                for l in c['levels']]
-        section('convergence', 'Mesh convergence',
-                f"<p>Tolerance {c['tol_db']:g} dB / {c['tol_deg']:g}°: <span class='{'ok' if c['converged'] else 'bad'}'>"
-                f"{'converged' if c['converged'] else 'not converged'}</span></p>" +
-                _table(['level', 'cells', 'max |Δ| (dB)', 'max Δ phase (°)'], rows) +
-                _img(sm['images'].get('converge'), 'convergence'))
+        rows = [[
+            f"×{l['factor']:g}", f"{l['cells']:,}",
+            f"{l['max_db']:.3f}" if 'max_db' in l else 'reference',
+            f"{l['max_deg']:.2f}" if 'max_deg' in l else ''
+        ] for l in c['levels']]
+        section(
+            'convergence', 'Mesh convergence',
+            f"<p>Tolerance {c['tol_db']:g} dB / {c['tol_deg']:g}°: <span class='{'ok' if c['converged'] else 'bad'}'>"
+            f"{'converged' if c['converged'] else 'not converged'}</span></p>"
+            + _table(['level', 'cells', 'max |Δ| (dB)', 'max Δ phase (°)'],
+                     rows) + _img(sm['images'].get('converge'), 'convergence'))
     if sm.get('dumps'):
-        section('dumps', 'Field maps', "".join(f"<h3>{_e(d['label'])}</h3>{_img(d['png'], d['label'])}" for d in sm['dumps']))
+        section(
+            'dumps', 'Field maps',
+            "".join(f"<h3>{_e(d['label'])}</h3>{_img(d['png'], d['label'])}"
+                    for d in sm['dumps']))
 
-    # ---- runs, files, settings, log ------------------------------------------------------------------
+    # ---- runs, files, settings, log
+    # ------------------------------------------------------------------
     if sm.get('runs'):
         rows = []
         for name, r in sm['runs'].items():
             lp = r.get('log')
             end = r.get('ended')
-            why = (f"port signals {end['level_db']:.1f} dB at {end['t_ns']:.2f} ns" if end else 'field energy / step limit')
-            rows.append([_e(name), f"{r.get('seconds') or 0:.0f} s", f"{r['steps']:,}" if r.get('steps') else '–', _e(why),
-                         f"<a href='{_e(_rel(lp, base))}'>openems.log</a>" if lp and os.path.exists(lp) else '–'])
-        section('runs', 'openEMS runs', _table(['driven port', 'time', 'timesteps', 'ended on', 'solver output'], rows))
-    files = [[_e(l), f"<a href='{_e(_rel(p, base))}'>{_e(os.path.basename(p))}</a>"] for l, p in sm['files']]
+            why = (
+                f"port signals {end['level_db']:.1f} dB at {end['t_ns']:.2f} ns"
+                if end else 'field energy / step limit')
+            rows.append([
+                _e(name), f"{r.get('seconds') or 0:.0f} s",
+                f"{r['steps']:,}" if r.get('steps') else '–',
+                _e(why), f"<a href='{_e(_rel(lp, base))}'>openems.log</a>"
+                if lp and os.path.exists(lp) else '–'
+            ])
+        section(
+            'runs', 'openEMS runs',
+            _table([
+                'driven port', 'time', 'timesteps', 'ended on', 'solver output'
+            ], rows))
+    files = [[
+        _e(l), f"<a href='{_e(_rel(p, base))}'>{_e(os.path.basename(p))}</a>"
+    ] for l, p in sm['files']]
     section('files', 'Output files', _table(['', 'file'], files))
     opts = [[f"<code>{_e(k_)}</code>", _e(v)] for k_, v in sorted(st.items())]
     section('settings', 'Settings', _table(['option', 'value'], opts))
     log = sm.get('log', [])
-    section('log', 'Log', f"<details><summary>{len(log)} lines</summary><pre>{_e(chr(10).join(log))}</pre></details>")
+    section(
+        'log', 'Log',
+        f"<details><summary>{len(log)} "
+        f"lines</summary><pre>{_e(chr(10).join(log))}</pre></details>"
+    )
 
     cmd = f" · <code>{_e(sm['command'])}</code>" if sm.get('command') else ''
-    head = (f"<header><h1>{_e(sm['name'])}</h1><div class='meta'>kicad2ems {_e(sm['version'])} · "
-            f"{_e(sm['created'])} · {_e(sm['mode'])}{cmd}</div></header>")
-    return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'>"
-            f"<meta name='viewport' content='width=device-width, initial-scale=1'>"
-            f"<title>{_e(sm['name'])} – kicad2ems</title><style>{CSS}</style></head><body><main>{head}"
-            f"<nav>{''.join(nav)}</nav>{''.join(body)}</main></body></html>")
+    head = (
+        f"<header><h1>{_e(sm['name'])}</h1><div class='meta'>kicad2ems "
+        f"{_e(sm['version'])} · {_e(sm['created'])} · "
+        f"{_e(sm['mode'])}{cmd}</div></header>")
+    return (
+        "<!doctype html><html lang='en'><head><meta charset='utf-8'><meta "
+        "name='viewport' content='width=device-width, "
+        f"initial-scale=1'><title>{_e(sm['name'])} – "
+        f"kicad2ems</title><style>{CSS}</style></"
+        f"head><body><main>{head}<nav>{''.join(nav)}</nav>{''.join(body)}</"
+        "main></body></html>")
 
 
 def write_report(sm, path):

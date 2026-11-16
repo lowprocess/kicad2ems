@@ -1,36 +1,59 @@
 """
-S-parameter traces for the interactive plots (no Qt here: testable without a display).
+S-parameter traces for the interactive plots (no Qt here: testable without a
+display).
 
-    traces = load_traces(files, compare=None)    # the run's Touchstone files (openEMS, mom25d, line model, compare)
-    x, y = transform('dB', tr)                   # what a plot kind shows of a trace
-    x, y = difference('Δ|S| (dB)', tr, ref)      # a trace against the same S of another solver
-    value_at(kind, tr, f)                        # the value at a frequency (cursor, markers)
+    traces = load_traces(files, compare=None)  # the run's Touchstone files
+                                               (openEMS, mom25d, line model,
+                                               compare)
+    x, y = transform('dB', tr)                 # what a plot kind shows of a
+                                               trace
+    x, y = difference('Δ|S| (dB)', tr, ref)    # a trace against the same S of
+                                               another solver
+    value_at(kind, tr, f)                      # the value at a frequency
+                                               (cursor, markers)
     export_csv(path, traces, kind)
 """
 import os, re
 import numpy as np
-from kicad2ems.core.api.frontend import port_names              # noqa: F401  (traces.port_names, as before)
+# (traces.port_names, as before)
+from kicad2ems.core.api.frontend import port_names  # noqa: F401
 
-KINDS = ('|S| (dB)', '|S| (linear)', 'Phase (deg)', 'Group delay (ns)', 'VSWR')     # the rectangular plot
-SMITH = 'Smith chart'                                     # the reflections beside it
-DIFF_KINDS = ('Δ|S| (dB)', '|ΔS| (dB)')                   # one solver against another: |S| apart, and S apart
-UNITS = {'|S| (dB)': 'dB', '|S| (linear)': '', 'Phase (deg)': '°', 'Group delay (ns)': 'ns', 'VSWR': '',
-         'Smith chart': ''}
-SOURCES = (('joined', 'solid'), ('openEMS', 'solid'), ('mom25d', 'dashdot'), ('qucsator', 'dot'), ('scikit-rf', 'dot'),
-           ('line model', 'dot'), ('compare', 'dash'))      # joined: a quasi-static and a full-wave answer, one band
+# the rectangular plot
+KINDS = ('|S| (dB)', '|S| (linear)', 'Phase (deg)', 'Group delay (ns)', 'VSWR')
+# the reflections beside it
+SMITH = 'Smith chart'
+# one solver against another: |S| apart, and S apart
+DIFF_KINDS = ('Δ|S| (dB)', '|ΔS| (dB)')
+UNITS = {
+    '|S| (dB)': 'dB', '|S| (linear)': '', 'Phase (deg)': '°',
+    'Group delay (ns)': 'ns', 'VSWR': '', 'Smith chart': ''
+}
+SOURCES = (
+    ('joined', 'solid'),
+    ('openEMS', 'solid'),
+    ('mom25d', 'dashdot'),
+    ('qucsator', 'dot'),
+    ('scikit-rf', 'dot'),
+    # joined: a quasi-static and a full-wave answer, one band
+    ('line model', 'dot'),
+    ('compare', 'dash'))
 
 
 class Trace:
     """S(i+1, j+1) of one result file."""
     def __init__(self, source, i, j, f, s, names=None, path=None):
-        self.source, self.i, self.j, self.f, self.s, self.path = source, i, j, np.asarray(f), np.asarray(s), path
+        self.source, self.i, self.j, self.f, self.s, self.path = (source, i, j,
+                                                                  np.asarray(f),
+                                                                  np.asarray(s),
+                                                                  path)
         self.names = names
         self.style = dict(SOURCES).get(source, 'solid')
 
     @property
     def param(self):
-        """S21; for a file with differential pairs (P1d, P1c: kicad2ems's mixed-mode ports) the modes and the
-        pairs' numbers, Sdd21, Scd21, and s for a single-ended port among them (Sds31)."""
+        """S21; for a file with differential pairs (P1d, P1c: kicad2ems's
+        mixed-mode ports) the modes and the pairs' numbers, Sdd21, Scd21, and s
+        for a single-ended port among them (Sds31)."""
         m = modes(self.names)
         if m and max(self.i, self.j) < len(m):
             (mi, ki), (mj, kj) = m[self.i], m[self.j]
@@ -54,9 +77,11 @@ class Trace:
 
 
 def modes(names):
-    """[(mode, port number)] per port of a file with differential pairs, or None: a pair's ports are <name>d and
-    <name>c (its differential and common modes, as kicad2ems writes them), 'd' and 'c' at the pair's number; any
-    other port is single-ended, 's'. Ports are numbered in order of first appearance, a pair once."""
+    """[(mode, port number)] per port of a file with differential pairs, or
+    None: a pair's ports are <name>d and <name>c (its differential and common
+    modes, as kicad2ems writes them), 'd' and 'c' at the pair's number; any
+    other port is single-ended, 's'. Ports are numbered in order of first
+    appearance, a pair once."""
     if not names:
         return None
     pairs = {n[:-1] for n in names if n.endswith('d') and n[:-1] + 'c' in names}
@@ -64,19 +89,28 @@ def modes(names):
         return None
     out, order = [], []
     for n in names:
-        base, mode = (n[:-1], n[-1]) if n[:-1] in pairs and n[-1] in 'dc' else (n, 's')
+        base, mode = ((n[:-1], n[-1]) if n[:-1] in pairs and n[-1] in 'dc' else
+                      (n, 's'))
         if base not in order:
             order.append(base)
         out.append((mode, order.index(base) + 1))
     return out
 
 
-BY_SUFFIX = dict(openems='openEMS', mom25d='mom25d', qucs='qucsator', scikit='scikit-rf', joined='joined',
-                 mom='mom25d', fast='line model')             # the last two: file names of older runs
+BY_SUFFIX = dict(
+    openems='openEMS',
+    mom25d='mom25d',
+    qucs='qucsator',
+    scikit='scikit-rf',
+    joined='joined',
+    # the last two: file names of older runs
+    mom='mom25d',
+    fast='line model')
 
 
 def classify(path):
-    """The source of a Touchstone file of a run, from its name (<name>_<solver>.sNp)."""
+    """The source of a Touchstone file of a run, from its name
+    (<name>_<solver>.sNp)."""
     m = re.search(r'_([A-Za-z0-9-]+)\.s\d+p$', os.path.basename(path))
     if m and m.group(1) in BY_SUFFIX:
         return BY_SUFFIX[m.group(1)]
@@ -85,10 +119,13 @@ def classify(path):
 
 
 def load_traces(files, compare=None):
-    """Traces of every Touchstone file in (label, path) files (a run's file list), plus a compare file."""
+    """Traces of every Touchstone file in (label, path) files (a run's file
+    list), plus a compare file."""
     from kicad2ems.core.api.frontend import read_touchstone
     seen, out = set(), []
-    items = [(classify(p), p) for _, p in files if re.search(r'\.s\d+p$', p) and os.path.exists(p)]
+    items = [(classify(p), p)
+             for _, p in files
+             if re.search(r'\.s\d+p$', p) and os.path.exists(p)]
     if compare and os.path.exists(compare):
         items.append(('compare', compare))
     for source, p in items:
@@ -98,19 +135,25 @@ def load_traces(files, compare=None):
         f, S = read_touchstone(p)
         names = port_names(p)
         n = S.shape[1]
-        out += [Trace(source, i, j, f, S[:, i, j], names, p) for j in range(n) for i in range(n)]
+        out += [
+            Trace(source, i, j, f, S[:, i, j], names, p)
+            for j in range(n)
+            for i in range(n)
+        ]
     order = {s: k for k, (s, _) in enumerate(SOURCES)}
     out.sort(key=lambda t: (order.get(t.source, 9), t.j, t.i))
     return out
 
 
 def default_visible(tr):
-    """Shown at first: the first port's column (S11, S21, S31, ...: what a run driving P1 computes)."""
+    """Shown at first: the first port's column (S11, S21, S31, ...: what a run
+    driving P1 computes)."""
     return tr.j == 0 and not tr.empty
 
 
 def transform(kind, tr):
-    """(x, y) a plot kind shows of a trace: frequency (GHz) and value, or Re / Im for the Smith chart."""
+    """(x, y) a plot kind shows of a trace: frequency (GHz) and value, or Re /
+    Im for the Smith chart."""
     s = tr.s
     if kind == 'Smith chart':
         return s.real, s.imag
@@ -132,14 +175,16 @@ def transform(kind, tr):
 
 
 def difference(kind, tr, ref):
-    """(x, y) of trace tr against ref (the same S of another solver), on tr's frequencies (GHz): Δ|S| (dB), the
-    difference of their magnitudes in dB, or |ΔS| (dB), the magnitude of the complex difference (the error
-    vector) in dB. NaN outside ref's band."""
+    """(x, y) of trace tr against ref (the same S of another solver), on tr's
+    frequencies (GHz): Δ|S| (dB), the difference of their magnitudes in dB, or
+    |ΔS| (dB), the magnitude of the complex difference (the error vector) in dB.
+    NaN outside ref's band."""
     f = tr.f
     inside = (f >= ref.f[0]) & (f <= ref.f[-1])
     r = np.interp(f, ref.f, ref.s.real) + 1j * np.interp(f, ref.f, ref.s.imag)
     if kind == DIFF_KINDS[0]:
-        y = 20 * np.log10(np.abs(tr.s) + 1e-15) - 20 * np.log10(np.abs(r) + 1e-15)
+        y = (20 * np.log10(np.abs(tr.s) + 1e-15)
+             - 20 * np.log10(np.abs(r) + 1e-15))
     elif kind == DIFF_KINDS[1]:
         y = 20 * np.log10(np.abs(tr.s - r) + 1e-15)
     else:
@@ -149,15 +194,18 @@ def difference(kind, tr, ref):
 
 def counterpart(traces, tr, source):
     """The trace of `source` with tr's S (the same i, j), or None."""
-    return next((t for t in traces if t.source == source and (t.i, t.j) == (tr.i, tr.j)), None)
+    return next((t for t in traces
+                 if t.source == source and (t.i, t.j) == (tr.i, tr.j)), None)
 
 
 def value_at(kind, tr, f):
-    """The value of a trace at frequency f (Hz), interpolated; NaN outside its band. Smith: complex S."""
+    """The value of a trace at frequency f (Hz), interpolated; NaN outside its
+    band. Smith: complex S."""
     if f < tr.f[0] or f > tr.f[-1]:
         return np.nan
     if kind == 'Smith chart':
-        return np.interp(f, tr.f, tr.s.real) + 1j * np.interp(f, tr.f, tr.s.imag)
+        return (np.interp(f, tr.f, tr.s.real)
+                + 1j * np.interp(f, tr.f, tr.s.imag))
     x, y = transform(kind, tr)
     return float(np.interp(f / 1e9, x, y))
 
@@ -167,10 +215,12 @@ def fmt_value(kind, v, z0=50.0):
         if not np.isfinite(v):
             return '–'
         z = z0 * (1 + v) / (1 - v) if abs(1 - v) > 1e-12 else complex(np.inf)
-        return f"|S| {abs(v):.3f} ∠{np.degrees(np.angle(v)):.1f}°, Z {z.real:.1f}{z.imag:+.1f}j Ω"
+        return (f"|S| {abs(v):.3f} ∠{np.degrees(np.angle(v)):.1f}°, Z "
+                f"{z.real:.1f}{z.imag:+.1f}j Ω")
     if not np.isfinite(v):
         return '–'
-    return f"{v:.3f} {UNITS[kind]}".strip() if kind != '|S| (dB)' else f"{v:.2f} dB"
+    return (f"{v:.3f} {UNITS[kind]}".strip()
+            if kind != '|S| (dB)' else f"{v:.2f} dB")
 
 
 def nearest(trs, x, y):
@@ -185,7 +235,8 @@ def nearest(trs, x, y):
 
 
 def smith_grid(n=181):
-    """Polylines (x, y) of a Smith chart grid: constant-resistance circles and constant-reactance arcs."""
+    """Polylines (x, y) of a Smith chart grid: constant-resistance circles and
+    constant-reactance arcs."""
     lines = []
     t = np.linspace(0, 2 * np.pi, n)
     for r in (0, 0.2, 0.5, 1, 2, 5):
@@ -193,7 +244,8 @@ def smith_grid(n=181):
         lines.append((c + rad * np.cos(t), rad * np.sin(t)))
     for x in (0.2, 0.5, 1, 2, 5):
         for sx in (x, -x):
-            g = (np.linspace(0, 50, 400) + 1j * sx)               # z = r + jx, r from 0 to 50
+            # z = r + jx, r from 0 to 50
+            g = (np.linspace(0, 50, 400) + 1j * sx)
             gam = (g - 1) / (g + 1)
             lines.append((gam.real, gam.imag))
     lines.append((np.array([-1, 1]), np.array([0, 0])))
@@ -201,19 +253,21 @@ def smith_grid(n=181):
 
 
 def polar_grid(rings=(0.25, 0.5, 0.75, 1.0), spokes=12, n=181):
-    """Polylines (x, y) of a polar grid: circles of the given radii and `spokes` radial lines out to the largest."""
+    """Polylines (x, y) of a polar grid: circles of the given radii and `spokes`
+    radial lines out to the largest."""
     t = np.linspace(0, 2 * np.pi, n)
     lines = [(r * np.cos(t), r * np.sin(t)) for r in rings]
     R = max(rings)
     for k in range(spokes):
         a = 2 * np.pi * k / spokes
-        lines.append((np.array([0, R * np.cos(a)]), np.array([0, R * np.sin(a)])))
+        lines.append((np.array([0, R * np.cos(a)]), np.array([0,
+                                                              R * np.sin(a)])))
     return lines
 
 
 def pattern_xy(angles_deg, gain, lo_db, range_db):
-    """A far-field cut on a polar plot: angle 0 at the top, clockwise; the radius 0 at lo_db, 1 at lo_db +
-    range_db. gain linear. Returns (x, y)."""
+    """A far-field cut on a polar plot: angle 0 at the top, clockwise; the
+    radius 0 at lo_db, 1 at lo_db + range_db. gain linear. Returns (x, y)."""
     db = 10 * np.log10(np.maximum(np.asarray(gain, float), 1e-12))
     r = np.clip((db - lo_db) / range_db, 0, 1)
     a = np.radians(np.asarray(angles_deg, float))
@@ -221,8 +275,9 @@ def pattern_xy(angles_deg, gain, lo_db, range_db):
 
 
 def export_csv(path, trs, kind, reflections=()):
-    """The traces as a kind shows them, plus Re / Im of the Smith chart's reflections, on the frequency grid of
-    the first trace (the others interpolated; NaN outside their band)."""
+    """The traces as a kind shows them, plus Re / Im of the Smith chart's
+    reflections, on the frequency grid of the first trace (the others
+    interpolated; NaN outside their band)."""
     if not trs:
         raise ValueError("no traces shown")
     f = trs[0].f
@@ -235,4 +290,5 @@ def export_csv(path, trs, kind, reflections=()):
         cols += [np.interp(f, t.f, t.s.real, left=np.nan, right=np.nan),
                  np.interp(f, t.f, t.s.imag, left=np.nan, right=np.nan)]
         head += [f"{t.label} re", f"{t.label} im"]
-    np.savetxt(path, np.column_stack(cols), delimiter=',', header=','.join(head), comments='', fmt='%.9g')
+    np.savetxt(path, np.column_stack(cols), delimiter=',',
+               header=','.join(head), comments='', fmt='%.9g')

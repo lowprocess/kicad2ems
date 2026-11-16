@@ -1,6 +1,7 @@
-"""Where the external programs are (kicad2ems.core.sitecfg): the user's file (the GUI's Solvers and hardware window)
-wins over the environment's (install.py's kicad2ems-site.toml), and qucsator and openEMS's venv are taken from
-them when nothing else names them."""
+"""Where the external programs are (kicad2ems.core.sitecfg): the user's file
+(the GUI's Solvers and hardware window) wins over the environment's
+(install.py's kicad2ems-site.toml), and qucsator and openEMS's venv are taken
+from them when nothing else names them."""
 import json
 from kicad2ems.core import sitecfg
 
@@ -10,36 +11,47 @@ def test_site_files(tmp_path, monkeypatch):
     exe = tmp_path / 'qucsator_rf'
     exe.write_text('#!/bin/sh\n', encoding='utf-8')
     exe.chmod(0o755)
-    user.write_text(f'qucsator = {json.dumps(str(exe))}\n', encoding='utf-8')                 # a TOML string, backslashes escaped
-    env.write_text('qucsator = "/nowhere/qucsator"\nopenems_venv = "/opt/openems/venv"\n', encoding='utf-8')
+    # a TOML string, backslashes escaped
+    user.write_text(f'qucsator = {json.dumps(str(exe))}\n', encoding='utf-8')
+    env.write_text(
+        'qucsator = "/nowhere/qucsator"\nopenems_venv = "/opt/openems/venv"\n',
+        encoding='utf-8')
     monkeypatch.setattr(sitecfg, 'paths', lambda: [str(user), str(env)])
     monkeypatch.setattr(sitecfg, '_cache', None)
-    assert sitecfg.get('qucsator') == str(exe) and sitecfg.get('openems_venv') == '/opt/openems/venv'
+    assert (sitecfg.get('qucsator') == str(exe)
+            and sitecfg.get('openems_venv') == '/opt/openems/venv')
     assert sitecfg.get('nothing') is None
     from kicad2ems.core.solvers.lines.fastsolve import find_qucsator
-    assert find_qucsator() == str(exe)                              # the recorded one, before the PATH
+    assert find_qucsator() == str(exe)  # the recorded one, before the PATH
     monkeypatch.setattr(sitecfg, '_cache', None)
 
 
 def test_set_user(tmp_path, monkeypatch):
-    """The GUI's setting into ~/.config/kicad2ems/site.toml: the other keys kept, '' removes it, read back first."""
+    """The GUI's setting into ~/.config/kicad2ems/site.toml: the other keys
+    kept, '' removes it, read back first."""
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
     monkeypatch.setattr(sitecfg, '_cache', None)
     sitecfg.set_user('openems_venv', '/opt/o/venv')
     sitecfg.set_user('qucsator', '/usr/bin/qucsator_rf')
-    assert sitecfg.user_file() == str(tmp_path / 'kicad2ems' / 'site.toml') and sitecfg.paths()[0] == sitecfg.user_file()
-    assert sitecfg.get('qucsator') == '/usr/bin/qucsator_rf' and sitecfg.get('openems_venv') == '/opt/o/venv'
+    assert (sitecfg.user_file() == str(tmp_path / 'kicad2ems' / 'site.toml')
+            and sitecfg.paths()[0] == sitecfg.user_file())
+    assert (sitecfg.get('qucsator') == '/usr/bin/qucsator_rf'
+            and sitecfg.get('openems_venv') == '/opt/o/venv')
     sitecfg.set_user('qucsator', '')
-    assert sitecfg.get('qucsator') is None and sitecfg.get('openems_venv') == '/opt/o/venv'
+    assert (sitecfg.get('qucsator') is None
+            and sitecfg.get('openems_venv') == '/opt/o/venv')
     monkeypatch.setattr(sitecfg, '_cache', None)
 
 
 def test_user_file_on_windows(tmp_path, monkeypatch):
-    """Windows: %APPDATA%\\kicad2ems\\site.toml (XDG_CONFIG_HOME still wins where it is set)."""
+    """Windows: %APPDATA%\\kicad2ems\\site.toml (XDG_CONFIG_HOME still wins
+    where it is set)."""
     import os
     monkeypatch.delenv('XDG_CONFIG_HOME', raising=False)
     monkeypatch.setenv('APPDATA', str(tmp_path / 'Roaming'))
     monkeypatch.setattr(sitecfg.sys, 'platform', 'win32')
-    assert sitecfg.user_file() == os.path.join(str(tmp_path / 'Roaming'), 'kicad2ems', 'site.toml')
+    assert (sitecfg.user_file() == os.path.join(str(tmp_path / 'Roaming'),
+                                                'kicad2ems', 'site.toml'))
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
-    assert sitecfg.user_file() == os.path.join(str(tmp_path / 'xdg'), 'kicad2ems', 'site.toml')
+    assert (sitecfg.user_file() == os.path.join(str(tmp_path / 'xdg'),
+                                                'kicad2ems', 'site.toml'))

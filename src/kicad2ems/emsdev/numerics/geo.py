@@ -32,8 +32,10 @@ def _is_rect(s):
 
 
 def to_geometry(shapes):
-    """List of rectangles (x0,y0,x1,y1) and/or shapely geometries -> cleaned (Multi)Polygon."""
-    return unary_union([box(*s) if _is_rect(s) else s for s in shapes]).buffer(0)
+    """List of rectangles (x0,y0,x1,y1) and/or shapely geometries -> cleaned
+    (Multi)Polygon."""
+    return unary_union([box(*s) if _is_rect(s) else s
+                        for s in shapes]).buffer(0)
 
 
 def is_manhattan_rects(shapes):
@@ -41,16 +43,17 @@ def is_manhattan_rects(shapes):
 
 
 def ngon(x, y, R, n, closed=False):
-    """Vertices (n, 2) of the regular n-gon of circumradius R about (x, y), a flat side at the bottom (closed:
-    the first vertex repeated at the end)."""
+    """Vertices (n, 2) of the regular n-gon of circumradius R about (x, y), a
+    flat side at the bottom (closed: the first vertex repeated at the end)."""
     a = 2 * np.pi * np.arange(n) / n + np.pi / n
     P = np.c_[x + R * np.cos(a), y + R * np.sin(a)]
     return np.vstack([P, P[:1]]) if closed else P
 
 
 def _features(geom, lines, vias, dmax, turn_deg=25.0):
-    """The points the coarsening grows from: vertices of the copper outline where it turns by more than turn_deg
-    within 2 dmax (corners, and bends drawn as arcs), the ends and middles of the port / cut lines, via centres."""
+    """The points the coarsening grows from: vertices of the copper outline
+    where it turns by more than turn_deg within 2 dmax (corners, and bends drawn
+    as arcs), the ends and middles of the port / cut lines, via centres."""
     pts = []
     for ring in _rings(geom):
         P = np.asarray(ring.coords)[:-1, :2]
@@ -58,12 +61,16 @@ def _features(geom, lines, vias, dmax, turn_deg=25.0):
         if n < 3:
             continue
         d0, d1 = P - np.roll(P, 1, 0), np.roll(P, -1, 0) - P
-        turn = np.abs(np.arctan2(d0[:, 0] * d1[:, 1] - d0[:, 1] * d1[:, 0], (d0 * d1).sum(1)))
+        turn = np.abs(
+            np.arctan2(d0[:, 0] * d1[:, 1] - d0[:, 1] * d1[:, 0],
+                       (d0 * d1).sum(1)))
         s = np.concatenate([[0], np.cumsum(np.linalg.norm(d1, axis=1))])
         L, s = s[-1], s[:-1]
-        s3, t3 = np.concatenate([s - L, s, s + L]), np.concatenate([turn] * 3)    # the ring is closed
+        # the ring is closed
+        s3, t3 = np.concatenate([s - L, s, s + L]), np.concatenate([turn] * 3)
         c = np.concatenate([[0], np.cumsum(t3)])
-        lo, hi = np.searchsorted(s3, s - 2 * dmax), np.searchsorted(s3, s + 2 * dmax, side='right')
+        lo, hi = (np.searchsorted(s3, s - 2 * dmax),
+                  np.searchsorted(s3, s + 2 * dmax, side='right'))
         pts += list(P[c[hi] - c[lo] > np.radians(turn_deg)])
     for p0, p1 in lines:
         p0, p1 = np.asarray(p0, float), np.asarray(p1, float)
@@ -73,7 +80,8 @@ def _features(geom, lines, vias, dmax, turn_deg=25.0):
 
 
 def _spaced(P, h, dmin):
-    """Points along the polyline P (its vertices kept) at the local spacing h(points) gives (at least dmin)."""
+    """Points along the polyline P (its vertices kept) at the local spacing
+    h(points) gives (at least dmin)."""
     out = [P[:1]]
     for a, b in zip(P[:-1], P[1:]):
         L = np.linalg.norm(b - a)
@@ -81,94 +89,126 @@ def _spaced(P, h, dmin):
             continue
         t = np.linspace(0, 1, int(np.ceil(4 * L / dmin)) + 1)
         hv = h(a + t[:, None] * (b - a))
-        n = np.concatenate([[0], np.cumsum(np.diff(t) * L * 2 / (hv[1:] + hv[:-1]))])    # cells so far
+        # cells so far
+        n = np.concatenate([[0],
+                            np.cumsum(np.diff(t) * L * 2 / (hv[1:] + hv[:-1]))])
         k = max(1, int(np.ceil(n[-1] - 1e-6)))
         u = np.interp(np.arange(1, k + 1) * n[-1] / k, n, t)
         out.append(a + u[:, None] * (b - a))
     return np.vstack(out)
 
 
-def _run_grid(geom, dmax, lines, vias, offsets, w_max, h=None, fill=0.98, within=None):
-    """The tensor grid of mesh_polygons(structured=): (transverse and longitudinal constraint segments, the runs'
-    polygons, the indices of the vias snapped to a cell of it). h(points): the local spacing (None: dmax), the
-    stations at fill x it so that no outline or ring piece between two is split again. within: only the runs
-    inside this area (the zone's fine region)."""
+def _run_grid(geom, dmax, lines, vias, offsets, w_max, h=None, fill=0.98,
+              within=None):
+    """The tensor grid of mesh_polygons(structured=): (transverse and
+    longitudinal constraint segments, the runs' polygons, the indices of the
+    vias snapped to a cell of it). h(points): the local spacing (None: dmax),
+    the stations at fill x it so that no outline or ring piece between two is
+    split again. within: only the runs inside this area (the zone's fine
+    region)."""
     h = h or (lambda P: np.full(len(P), dmax))
     segs, polys, snapped, on_run = [], [], set(), set()
-    for r in find_runs({0: geom}, {0: dmax}, w_max=w_max, min_len=1.0, margin=0.0):
+    for r in find_runs({0: geom}, {0: dmax}, w_max=w_max, min_len=1.0,
+                       margin=0.0):
         a, cl = r.a, lambda x: r.c0 + r.t * np.asarray(x, float)[..., None]
         if within is not None and not within.contains(r.polygon()):
             continue
-        # fixed stations: the run's ends and the port / cut lines across it; gaps around vias
+        # fixed stations: the run's ends and the port / cut lines across it;
+        # gaps around vias
         fixed, cuts = [r.x0, r.x1], []
         for p0, p1 in lines:
             (xa, xb), (ya, yb) = r.local(np.array([p0, p1]))
-            if abs(xa - xb) < 1e-3 * a and r.x0 < xa < r.x1 and min(ya, yb) <= 0 <= max(ya, yb):
+            if (abs(xa - xb) < 1e-3 * a and r.x0 < xa < r.x1
+                    and min(ya, yb) <= 0 <= max(ya, yb)):
                 fixed.append(xa)
-        # a square via (4 sides, its barrel square: sim.Simulation) on an axis-aligned run, clear of the edge rings'
-        # lines, joins the grid: its sides become two stations and two longitudinal lines. One that may snap (a 5th
-        # entry, True: stitching vias) takes a whole grid cell instead, centred on it, its own square dropped - no
-        # thin column and row of cells across the run for each via (rf_gcpw, --mom-quads on: 3,391 unknowns with its
-        # true square). Any other via: a gap in the grid
-        rings = np.concatenate([[a], a - offsets]) if len(offsets) else np.array([a])
-        clear = lambda yv, hs: all(abs(abs(y) - rings).min() > 0.15 * dmax for y in (yv - hs, yv + hs)) and \
-            abs(yv) + hs < a
+        # a square via (4 sides, its barrel square: sim.Simulation) on an
+        # axis-aligned run, clear of the edge rings' lines, joins the grid: its
+        # sides become two stations and two longitudinal lines. One that may
+        # snap (a 5th entry, True: stitching vias) takes a whole grid cell
+        # instead, centred on it, its own square dropped - no thin column and
+        # row of cells across the run for each via (rf_gcpw, --mom-quads on:
+        # 3,391 unknowns with its true square). Any other via: a gap in the grid
+        rings = (np.concatenate([[a], a
+                                 - offsets]) if len(offsets) else np.array([a]))
+        clear = (lambda yv, hs: all(
+            abs(abs(y) - rings).min() > 0.15 * dmax
+            for y in (yv - hs, yv + hs)) and abs(yv) + hs < a)
         vy, cells = [], []
         for i, v in enumerate(vias):
             xv, yv = r.local(np.array(v[:2], float))
             xv, yv = float(xv[0]), float(yv[0])
             rad = v[2] if len(v) > 2 else 0.0
-            if not (abs(yv) < a + rad + 0.5 * dmax and r.x0 - rad - 0.5 * dmax < xv < r.x1 + rad + 0.5 * dmax):
-                continue                                   # not on the run (a via beside it, on another trace)
+            if (not (abs(yv) < a + rad + 0.5 * dmax and
+                     r.x0 - rad - 0.5 * dmax < xv < r.x1 + rad + 0.5 * dmax)):
+                continue  # not on the run (a via beside it, on another trace)
             on_run.add(i)
-            square, aligned = len(v) > 3 and v[3] == 4 and v[2] > 0, min(abs(r.t)) < 1e-9
+            square, aligned = (len(v) > 3 and v[3] == 4
+                               and v[2] > 0, min(abs(r.t)) < 1e-9)
             if square and aligned and len(v) > 4 and v[4]:
-                hc = 0.5 * fill * float(h(np.array(v[:2], float)[None])[0])        # half a cell there
+                # half a cell there
+                hc = 0.5 * fill * float(h(np.array(v[:2], float)[None])[0])
                 sides = _cell_sides(yv, hc, rings)
-                if sides is not None and r.x0 < xv - hc and xv + hc < r.x1 and \
-                        not any(abs(xv - x) < 2 * hc and abs(yv - y) < 2 * hc for x, y in cells):
+                if (sides is not None and r.x0 < xv - hc and xv + hc < r.x1
+                        and not any(
+                            abs(xv - x) < 2 * hc and abs(yv - y) < 2 * hc
+                            for x, y in cells)):
                     fixed += [xv - hc, xv + hc]
                     vy += sides
                     cells.append((xv, yv))
                     snapped.add(i)
                     continue
-            hs = v[2] / np.sqrt(2) if square else 0.0                                  # the square's half side
-            if hs and aligned and r.x0 < xv - hs and xv + hs < r.x1 and clear(yv, hs):
+            hs = v[2] / np.sqrt(2) if square else 0.0  # the square's half side
+            if (hs and aligned and r.x0 < xv - hs and xv + hs < r.x1
+                    and clear(yv, hs)):
                 fixed += [xv - hs, xv + hs]
                 vy += [yv - hs, yv + hs]
                 continue
             cuts.append((xv - rad - 2 * dmax, xv + rad + 2 * dmax))
         vy = np.unique(np.round(vy, 12))
-        fixed = np.unique(np.clip(fixed + [x for c in cuts for x in c], r.x0, r.x1))
-        inside = lambda x: not any(c0 - 1e-12 < x < c1 + 1e-12 for c0, c1 in cuts)
+        fixed = np.unique(
+            np.clip(fixed + [x for c in cuts for x in c], r.x0, r.x1))
+        inside = lambda x: not any(c0 - 1e-12 < x < c1 + 1e-12
+                                   for c0, c1 in cuts)
         xs = []
         for x0, x1 in zip(fixed[:-1], fixed[1:]):
             if x1 - x0 < 1e-9 or not inside(0.5 * (x0 + x1)):
                 continue
             t = np.linspace(x0, x1, int(np.ceil(8 * (x1 - x0) / dmax)) + 1)
             P = np.stack([cl(t) + r.n * y for y in (-a, 0.0, a)])
-            hv = fill * h(P.reshape(-1, 2)).reshape(3, -1).min(0)        # the finest across the run
-            n = np.concatenate([[0], np.cumsum(np.diff(t) * 2 / (hv[1:] + hv[:-1]))])
+            # the finest across the run
+            hv = fill * h(P.reshape(-1, 2)).reshape(3, -1).min(0)
+            n = np.concatenate([[0],
+                                np.cumsum(np.diff(t) * 2 / (hv[1:] + hv[:-1]))])
             k = max(1, int(np.ceil(n[-1] - 1e-6)))
             xs.append(np.interp(np.arange(k + 1) * n[-1] / k, n, t))
-            polys.append(Polygon([cl(x0) - r.n * a, cl(x1) - r.n * a, cl(x1) + r.n * a, cl(x0) + r.n * a]))
-            # across the middle, inside the innermost edge ring: longitudinal lines at the spacing at the centre
+            polys.append(
+                Polygon([
+                    cl(x0) - r.n * a,
+                    cl(x1) - r.n * a,
+                    cl(x1) + r.n * a,
+                    cl(x0) + r.n * a
+                ]))
+            # across the middle, inside the innermost edge ring: longitudinal
+            # lines at the spacing at the centre
             b = a - (offsets.max() if len(offsets) else 0.0)
             hc = fill * float(h(cl(0.5 * (x0 + x1))[None])[0])
             m = int(np.ceil(2 * b / hc)) if b > 0 else 0
             ys = -b + 2 * b * np.arange(1, m) / m
-            ys = [y for y in ys if not len(vy) or abs(vy - y).min() > 0.5 * hc]      # not next to a via's sides
+            # not next to a via's sides
+            ys = [y for y in ys if not len(vy) or abs(vy - y).min() > 0.5 * hc]
             for y in list(ys) + list(vy):
                 segs.append((cl(x0) + r.n * y, cl(x1) + r.n * y))
         if xs:
             ext = 1e-3 * a
-            segs += [(cl(x) - r.n * (a + ext), cl(x) + r.n * (a + ext)) for x in np.unique(np.concatenate(xs))]
+            segs += [(cl(x) - r.n * (a + ext), cl(x) + r.n * (a + ext))
+                     for x in np.unique(np.concatenate(xs))]
     return segs, polys, snapped, on_run
 
 
 def _cell_sides(yv, hc, rings):
-    """The longitudinal lines of the grid cell a via at yv (across the run) snaps to: yv -/+ hc, except where an edge
-    ring's line (or the copper edge: rings, as |y|) lies within hc / 2 of one, which is then that side itself (no
+    """The longitudinal lines of the grid cell a via at yv (across the run)
+    snaps to: yv -/+ hc, except where an edge ring's line (or the copper edge:
+    rings, as |y|) lies within hc / 2 of one, which is then that side itself (no
     line: no sliver beside it). None if the via would not be inside its cell."""
     out = []
     for sgn in (-1.0, 1.0):
@@ -176,37 +216,49 @@ def _cell_sides(yv, hc, rings):
         j = np.argmin(abs(abs(y) - rings))
         ring = rings[j] * (np.sign(y) or 1.0)
         if abs(abs(y) - rings[j]) < 0.5 * hc:
-            if (ring - yv) * sgn < 0.25 * hc:                  # the via on or past that ring: not inside its cell
+            # the via on or past that ring: not inside its cell
+            if (ring - yv) * sgn < 0.25 * hc:
                 return None
             continue
-        if abs(y) >= rings[0]:                                 # past the copper edge
+        if abs(y) >= rings[0]:  # past the copper edge
             return None
         out.append(y)
     return out
 
 
 def _polygons(g):
-    return [p for p in ([g] if isinstance(g, Polygon) else getattr(g, 'geoms', [])) if isinstance(p, Polygon)]
+    return [
+        p for p in ([g] if isinstance(g, Polygon) else getattr(g, 'geoms', []))
+        if isinstance(p, Polygon)
+    ]
 
 
 def _rings(g):
-    return [LineString(r.coords) for p in _polygons(g) if not p.is_empty for r in [p.exterior, *p.interiors]]
+    return [
+        LineString(r.coords) for p in _polygons(g) if not p.is_empty
+        for r in [p.exterior, *p.interiors]
+    ]
 
 
 def gap_zones(geom, gmax, step, tol=1e-9):
-    """The copper edges facing other copper across a gap narrower than gmax: [(zone, g)], each zone the copper
-    within reach of the edges whose gap falls in one band (about 1.4x wide), g the narrowest gap of that band.
-    The gap at an edge: a ray out of the copper along its normal, from points `step` apart, to the copper it hits,
-    counted only where the edge it hits faces back (within 60 degrees) and is not the same outline within 20 gaps
-    of the ray's start: the wedge where a track's round end meets a pad or strip at a tangent is no gap
-    (rf_combline's bridged parts: gaps of 8 um, and rings that far in left its complex64 LU unable to precondition)."""
+    """The copper edges facing other copper across a gap narrower than gmax:
+    [(zone, g)], each zone the copper within reach of the edges whose gap falls
+    in one band (about 1.4x wide), g the narrowest gap of that band. The gap at
+    an edge: a ray out of the copper along its normal, from points `step` apart,
+    to the copper it hits, counted only where the edge it hits faces back
+    (within 60 degrees) and is not the same outline within 20 gaps of the ray's
+    start: the wedge where a track's round end meets a pad or strip at a tangent
+    is no gap (rf_combline's bridged parts: gaps of 8 um, and rings that far in
+    left its complex64 LU unable to precondition)."""
     mids, normals, segs, rings, ring_of, along = [], [], [], [], [], []
     for p in _polygons(geom):
-        p = orient(p, 1.0)                                          # exterior ccw, holes cw: copper on the left
+        p = orient(p, 1.0)  # exterior ccw, holes cw: copper on the left
         for ring in [p.exterior, *p.interiors]:
             r = np.asarray(ring.coords)[:, :2]
             segs.append(np.stack([r[:-1], r[1:]], 1))
-            c = np.asarray(shapely.segmentize(LineString(ring.coords), step).coords)[:, :2]
+            c = (np.asarray(
+                shapely.segmentize(LineString(ring.coords),
+                                   step).coords)[:, :2])
             d = np.diff(c, axis=0)
             ln = np.hypot(d[:, 0], d[:, 1])
             ok = ln > tol
@@ -214,7 +266,8 @@ def gap_zones(geom, gmax, step, tol=1e-9):
             along.append((np.cumsum(ln) - 0.5 * ln)[ok])
             rings.append(LineString(ring.coords))
             mids.append(0.5 * (c[1:] + c[:-1])[ok])
-            normals.append(np.c_[d[ok, 1], -d[ok, 0]] / ln[ok, None])   # to the right: out of the copper
+            # to the right: out of the copper
+            normals.append(np.c_[d[ok, 1], -d[ok, 0]] / ln[ok, None])
     if not mids:
         return []
     M, N = np.vstack(mids), np.vstack(normals)
@@ -225,22 +278,26 @@ def gap_zones(geom, gmax, step, tol=1e-9):
     gap = np.full(len(M), np.inf)
     pts = shapely.points(M[hit])
     gap[hit] = shapely.distance(pts, hits[hit])
-    if hit.any():                                                   # the edge hit: its direction against the ray
+    if hit.any():  # the edge hit: its direction against the ray
         Sg = np.vstack(segs)
         Sg = Sg[np.hypot(*(Sg[:, 1] - Sg[:, 0]).T) > tol]
         tree = shapely.STRtree(shapely.linestrings(Sg))
-        H = shapely.get_coordinates(shapely.get_point(shapely.shortest_line(pts, hits[hit]), 1))
+        H = shapely.get_coordinates(
+            shapely.get_point(shapely.shortest_line(pts, hits[hit]), 1))
         j = tree.query_nearest(shapely.points(H), all_matches=False)[1]
         dv = Sg[j, 1] - Sg[j, 0]
         dv /= np.hypot(dv[:, 0], dv[:, 1])[:, None]
         oblique = np.abs(np.einsum('ij,ij->i', dv, N[hit])) > 0.5
         R, A = np.concatenate(ring_of)[hit], np.concatenate(along)[hit]
         wedge = np.zeros(len(H), bool)
-        for k in np.unique(R):                                      # the hit on the ray's own outline, close along it
+        # the hit on the ray's own outline, close along it
+        for k in np.unique(R):
             i = np.flatnonzero(R == k)
             ring = rings[k]
-            on = shapely.distance(ring, shapely.points(H[i])) < 1e-6 * gmax + tol
-            ds = np.abs(shapely.line_locate_point(ring, shapely.points(H[i])) - A[i])
+            on = (shapely.distance(ring, shapely.points(H[i]))
+                  < 1e-6 * gmax + tol)
+            ds = np.abs(
+                shapely.line_locate_point(ring, shapely.points(H[i])) - A[i])
             ds = np.minimum(ds, ring.length - ds)
             wedge[i] = on & (ds < 20 * gap[np.flatnonzero(hit)[i]])
         gap[np.flatnonzero(hit)[oblique | wedge]] = np.inf
@@ -252,133 +309,178 @@ def gap_zones(geom, gmax, step, tol=1e-9):
     for b in np.unique(band):
         sel = np.flatnonzero(near)[band == b]
         g = float(gap[sel].min())
-        zone = shapely.union_all(shapely.buffer(shapely.points(M[sel]), max(0.6 * step, g)))
+        zone = shapely.union_all(
+            shapely.buffer(shapely.points(M[sel]), max(0.6 * step, g)))
         out.append((zone, g))
     return out
 
 
 # ---- Mesher -----------------------------------------------------------------
-def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), amax=None,
-                  max_offset_frac=0.45, tol=1e-9, fine=None, dmax_fine=None, edge_zone=None, split_chains=False,
-                  coarsen=None, grow=0.5, structured=False, struct_w_max=20e-3, gap_rings=None, quality=None,
-                  area_scale=1.0, coarsen_fine=True, core=None):
+def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(),
+                  amax=None, max_offset_frac=0.45, tol=1e-9, fine=None,
+                  dmax_fine=None, edge_zone=None, split_chains=False,
+                  coarsen=None, grow=0.5, structured=False, struct_w_max=20e-3,
+                  gap_rings=None, quality=None, area_scale=1.0,
+                  coarsen_fine=True, core=None):
     """
-    geom   : shapely (Multi)Polygon of one metal layer (triangulated by CDT in a compiled core: cdtmesh.py)
-    dmax   : max edge length along conductors / in open regions
-    w_ref  : reference strip width for the edge grading (narrowest trace on the layer)
-    lines  : [(p0, p1), ...] constraint segments (port gap and cut lines), clipped to geom
-    vias   : [(x, y, radius), ...] points to insert as vertices (+ an octagon of the via radius); (x, y, radius, n)
+    geom   : shapely (Multi)Polygon of one metal layer (triangulated by CDT in a
+    compiled core: cdtmesh.py) dmax   : max edge length along conductors / in
+    open regions w_ref  : reference strip width for the edge grading (narrowest
+    trace on the layer) lines  : [(p0, p1), ...] constraint segments (port gap
+    and cut lines), clipped to geom vias   : [(x, y, radius), ...] points to
+    insert as vertices (+ an octagon of the via radius); (x, y, radius, n)
              an n-gon; (x, y, radius, 4, True) a square that may snap to a cell of the structured grid
-    edge_zone : (experimental) shapely area where the current crowds at edges (the signal copper buffered by
+    edge_zone : (experimental) shapely area where the current crowds at edges
+    (the signal copper buffered by
              ~0.5 mm): the edge rings are kept only inside it. Demo transition (cropped): 4.9k unknowns instead of
              8.4k, S within 0.006 of the full rings (2.4x faster a solve); Simulation(zone=) passes it
-    split_chains : each outline at the spacing of the region it runs through (zone=; the default spaces a whole
+    split_chains : each outline at the spacing of the region it runs through
+    (zone=; the default spaces a whole
              chain by where its centroid falls, which a closed outline's centroid can get wrong)
-    coarsen_fine : with coarsen, the fine regions coarsened too (True); False: they keep dmax_fine (sim.py: a
+    coarsen_fine : with coarsen, the fine regions coarsened too (True); False:
+    they keep dmax_fine (sim.py: a
              meshed plane's, under the copper of the layers near it)
-    coarsen : (experimental) cells grow away from the features (corners and bends of the copper outline, vias, port
+    coarsen : (experimental) cells grow away from the features (corners and
+    bends of the copper outline, vias, port
              and cut lines; _features) up to coarsen x dmax: dmax + grow x the distance to the nearest one, along the
              outline and the edge rings (their spacing across the edge is kept) and over the area inside them
              (the middle of wide traces, planes). None: dmax everywhere
-    structured : (experimental) straight runs of trace (runs.find_runs, up to struct_w_max wide: traces and
+    structured : (experimental) straight runs of trace (runs.find_runs, up to
+    struct_w_max wide: traces and
              rectangular pads) as a tensor grid: transverse lines across the run at stations along it (the spacing of
              the field, or dmax), and longitudinal ones across its middle (inside the edge rings), so its cells are
              rectangles - one diagonal each, quad cells of 0 degrees. Port / cut lines on a run are stations; square
              vias join the grid (_run_grid), around other vias it is left as is
-    gap_rings : fractions of the gap (e.g. (1/4, 1/8, 1/16)): rings that far in from the copper edges facing other
+    gap_rings : fractions of the gap (e.g. (1/4, 1/8, 1/16)): rings that far in
+    from the copper edges facing other
              copper across a gap g (gap_zones), where the width-graded rings are too coarse for the edge charge
              across it (g/4 under the first ring at w_ref's grading). Coupled lines: on the 10 dB coupler (0.14 mm
              gap, 1.28 mm strips) S31 -10.64 dB, against -10.24 to -10.29 from refined FDTD, until the edge cells
              came down to the gap's scale; isolated traces and planes keep their cost
-    quality : the minimum angle (degrees: CDT's refinement), on the uncoarsened path only. Off by default (the
+    quality : the minimum angle (degrees: CDT's refinement), on the uncoarsened
+    path only. Off by default (the
              edge-ring strips of the RF meshes would split into fans); without it a small feature (a via's octagon)
              fans out to far vertices in long slivers, and the linear elements then underestimate the log spreading
              around it (DC: ~0.1 mOhm per via junction)
-    core   : the compiled core that triangulates (cdt_triangulate: emsdev/native/cdt_mesh.hpp); None: pcbqs's, else
+    core   : the compiled core that triangulates (cdt_triangulate:
+    emsdev/native/cdt_mesh.hpp); None: pcbqs's, else
              mom25d's (the same code in both)
-    Returns nodes (N,2), tris (M,3) counter-clockwise, and the list of via vertex ids.
+    Returns nodes (N,2), tris (M,3) counter-clockwise, and the list of via
+    vertex ids.
     """
     if geom.is_empty:
         return np.zeros((0, 2)), np.zeros((0, 3), int), []
     linework = _rings(geom)
-    offsets = w_ref * graded(np.arange(1, ncross) / ncross, grade)      # inward rings: the tensor mesher's grading
-    inner = offsets[offsets < 0.5 * w_ref - 1e-12]                     # (those inside the narrowest strip)
+    # inward rings: the tensor mesher's grading
+    offsets = w_ref * graded(np.arange(1, ncross) / ncross, grade)
+    # (those inside the narrowest strip)
+    inner = offsets[offsets < 0.5 * w_ref - 1e-12]
     for d in inner:
-        linework += [r if edge_zone is None else r.intersection(edge_zone)
-                     for r in _rings(geom.buffer(-d, join_style='mitre', mitre_limit=2.0))]
+        linework += [
+            r if edge_zone is None else r.intersection(edge_zone) for r in
+            _rings(geom.buffer(-d, join_style='mitre', mitre_limit=2.0))
+        ]
     if gap_rings:
         first = offsets[0] if len(offsets) else 0.5 * w_ref
-        for zone, g in gap_zones(geom, 4 * first, dmax if dmax_fine is None else min(dmax, dmax_fine), tol):
+        for zone, g in gap_zones(
+                geom, 4 * first,
+            (dmax if dmax_fine is None else min(dmax, dmax_fine)), tol):
             if edge_zone is not None:
                 zone = zone.intersection(edge_zone)
             for d in sorted({fr * g for fr in gap_rings}):
                 if d < 0.75 * first:
-                    linework += [r.intersection(zone)
-                                 for r in _rings(geom.buffer(-d, join_style='mitre', mitre_limit=2.0))]
+                    linework += [
+                        r.intersection(zone) for r in _rings(
+                            geom.buffer(-d, join_style='mitre',
+                                        mitre_limit=2.0))
+                    ]
     linework += [LineString([p0, p1]).intersection(geom) for p0, p1 in lines]
     fine_parts = []
     if fine is not None and dmax_fine:
         fg = fine.intersection(geom).buffer(0)
-        fine_parts = [q for q in getattr(fg, 'geoms', [fg])
-                      if q.geom_type == 'Polygon' and q.area > (2 * dmax_fine) ** 2]
-        linework += [r for q in fine_parts for r in _rings(q)]          # region boundaries as constraints
+        fine_parts = [
+            q for q in getattr(fg, 'geoms', [fg])
+            if q.geom_type == 'Polygon' and q.area > (2 * dmax_fine)**2
+        ]
+        # region boundaries as constraints
+        linework += [r for q in fine_parts for r in _rings(q)]
     fine_u = unary_union(fine_parts).buffer(tol) if fine_parts else None
     hfield = None
     if coarsen and coarsen > 1:
         F = _features(geom, lines, vias, min(dmax, dmax_fine or dmax))
         Fk = cKDTree(F) if len(F) else None
-        dist = (lambda P: Fk.query(P)[0]) if Fk is not None else (lambda P: np.full(len(P), np.inf))
+        dist = ((lambda P: Fk.query(P)[0]) if Fk is not None else
+                (lambda P: np.full(len(P), np.inf)))
         hfield = lambda P, d_: np.minimum(coarsen * d_, d_ + grow * dist(P))
     run_polys, snapped, on_run = [], set(), set()
     if structured:
-        hrun, within, dgrid = (lambda P: hfield(P, dmax)) if hfield is not None else None, None, dmax
+        hrun, within, dgrid = (lambda P: hfield(P, dmax)
+                               ) if hfield is not None else None, None, dmax
         if edge_zone is not None and fine_u is not None:
-            # zone=: only the runs inside its fine region (the traces), at its spacing. A run reaching out of it (a
-            # plane under the zone, 8 mm wide on rf_stripline) took its grid's lines over the coarse cells:
+            # zone=: only the runs inside its fine region (the traces), at its
+            # spacing. A run reaching out of it (a plane under the zone, 8 mm
+            # wide on rf_stripline) took its grid's lines over the coarse cells:
             # rf_stripline 5,647 unknowns against 4,985 without the grid
             within, dgrid = fine_u.buffer(1e-6 * dmax), dmax_fine
-            hrun = (lambda P: hfield(P, dmax_fine)) if hfield is not None else (lambda P: np.full(len(P), dmax_fine))
-        st_lines, run_polys, snapped, on_run = _run_grid(geom, dgrid, lines, vias, inner, struct_w_max, hrun,
-                                                         within=within)
-        linework += [LineString([p0, p1]).intersection(geom) for p0, p1 in st_lines]
+            hrun = ((lambda P: hfield(P, dmax_fine)) if hfield is not None else
+                    (lambda P: np.full(len(P), dmax_fine)))
+        st_lines, run_polys, snapped, on_run = _run_grid(
+            geom, dgrid, lines, vias, inner, struct_w_max, hrun, within=within)
+        linework += [
+            LineString([p0, p1]).intersection(geom) for p0, p1 in st_lines
+        ]
     vpts = []
     for i, via in enumerate(vias):
         x, y, r = via[:3]
         vpts.append((x, y))
         if len(via) > 4 and via[4] and i not in on_run:
-            r = 0.0                                              # one that could snap, on no run: its vertex alone
-        if r > 0 and i not in snapped:                           # (x, y, r, n): a regular n-gon, else an octagon
-            ring = ngon(x, y, r, int(via[3]), closed=True) if len(via) > 3 else \
-                Point(x, y).buffer(r, quad_segs=2).exterior.coords
+            # one that could snap, on no run: its vertex alone
+            r = 0.0
+        # (x, y, r, n): a regular n-gon, else an octagon
+        if r > 0 and i not in snapped:
+            ring = (ngon(x, y, r, int(via[3]), closed=True) if len(via) > 3 else
+                Point(x, y).buffer(r, quad_segs=2).exterior.coords)
             linework.append(LineString(ring).intersection(geom))
     runs_u = shapely.unary_union(run_polys).buffer(tol) if run_polys else None
-    # snap-rounding noding: T-junctions (port lines ending on edges) must split the edge exactly
-    noded = shapely.unary_union([g for g in linework if not g.is_empty], grid_size=tol)
+    # snap-rounding noding: T-junctions (port lines ending on edges) must split
+    # the edge exactly
+    noded = shapely.unary_union([g for g in linework if not g.is_empty],
+                                grid_size=tol)
     chains = []
 
     def spaced(q, d_):
-        if hfield is None or (not coarsen_fine and fine_parts and d_ == dmax_fine):
+        if (hfield is None
+                or (not coarsen_fine and fine_parts and d_ == dmax_fine)):
             return np.asarray(shapely.segmentize(q, d_).coords)[:, :2]
         return _spaced(np.asarray(q.coords)[:, :2], lambda P: hfield(P, d_), d_)
     for pc in getattr(noded, 'geoms', [noded]):
         if pc.length < tol:
             continue
-        if split_chains and fine_u is not None and not fine_u.contains(pc) and fine_u.intersects(pc):
-            # a chain that runs in and out of the fine region (a pad or trace outline around the zone's edge):
-            # each part at its own spacing (the centroid of a closed outline can lie anywhere)
-            for part, d_ in ((pc.intersection(fine_u), dmax_fine), (pc.difference(fine_u), dmax)):
+        if (split_chains and fine_u is not None and not fine_u.contains(pc)
+                and fine_u.intersects(pc)):
+            # a chain that runs in and out of the fine region (a pad or trace
+            # outline around the zone's edge): each part at its own spacing (the
+            # centroid of a closed outline can lie anywhere)
+            for part, d_ in ((pc.intersection(fine_u), dmax_fine),
+                             (pc.difference(fine_u), dmax)):
                 for q in getattr(part, 'geoms', [part]):
                     if q.geom_type == 'LineString' and q.length >= tol:
                         chains.append(spaced(q, d_))
             continue
-        inside = fine_u is not None and (fine_u.contains(pc) if split_chains else fine_u.contains(pc.centroid))
+        inside = (fine_u is not None and (fine_u.contains(pc) if split_chains
+                                          else fine_u.contains(pc.centroid)))
         chains.append(spaced(pc, dmax_fine if inside else dmax))
-    allp = np.vstack(chains + [np.array(vpts).reshape(-1, 2)]) if vpts else np.vstack(chains)
-    # merge near-coincident vertices (noding round-off would otherwise create sliver triangles): each cluster of
-    # vertices closer than `snap` becomes its lowest-numbered one
+    allp = (np.vstack(chains + [np.array(vpts).reshape(-1, 2)])
+            if vpts else np.vstack(chains))
+    # merge near-coincident vertices (noding round-off would otherwise create
+    # sliver triangles): each cluster of vertices closer than `snap` becomes its
+    # lowest-numbered one
     n = len(allp)
-    pairs = cKDTree(allp).query_pairs(max(10 * tol, 1e-4 * dmax), output_type='ndarray')
-    _, lab = connected_components(coo_matrix((np.ones(len(pairs)), pairs.T), shape=(n, n)), directed=False)
+    pairs = cKDTree(allp).query_pairs(max(10 * tol, 1e-4 * dmax),
+                                      output_type='ndarray')
+    _, lab = connected_components(
+        coo_matrix((np.ones(len(pairs)), pairs.T), shape=(n, n)),
+        directed=False)
     first = np.full(lab.max() + 1, n)
     np.minimum.at(first, lab, np.arange(n))
     uniq, inv = np.unique(first[lab], return_inverse=True)
@@ -386,29 +488,40 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), ama
     segs, off = set(), 0
     for ch in chains:
         ids, off = inv[off:off + len(ch)], off + len(ch)
-        segs |= {(min(a, b), max(a, b)) for a, b in zip(ids[:-1], ids[1:]) if a != b}
+        segs |= {(min(a, b), max(a, b))
+                 for a, b in zip(ids[:-1], ids[1:])
+                 if a != b}
     via_ids = list(inv[off:off + len(vpts)])
     segs = np.array(sorted(segs))
-    # in units of dmax about the vertices' middle (the triangulation's numbers near 1)
+    # in units of dmax about the vertices' middle (the triangulation's numbers
+    # near 1)
     org = verts.mean(0)
     amax = (amax or 0.5 * dmax ** 2) / dmax ** 2
-    # the minimum angle off the coarsened path only: with the field it would split the thin strips between the edge
-    # rings, now long, into fans of small triangles (rf_gcpw: twice the unknowns)
+    # the minimum angle off the coarsened path only: with the field it would
+    # split the thin strips between the edge rings, now long, into fans of small
+    # triangles (rf_gcpw: twice the unknowns)
     min_angle = float(quality) if quality and hfield is None else 0.0
     steiner = expected = 0
     if min_angle:
-        # a cap on the vertices the minimum angle may add: acute input (rings that cross, slivers) otherwise refines
-        # without end. `expected`: the vertices of equilateral cells at the area limits
+        # a cap on the vertices the minimum angle may add: acute input (rings
+        # that cross, slivers) otherwise refines without end. `expected`: the
+        # vertices of equilateral cells at the area limits
         fa = sum(p_.area for p_ in fine_parts)
-        expected = len(verts) + 1.2 * ((geom.area - fa) / (amax * dmax ** 2)
-                                       + (fa / (0.5 * dmax_fine ** 2) if fa else 0))
+        expected = (len(verts) + 1.2 * ((geom.area - fa) / (amax * dmax**2) +
+                                        (fa /
+                                         (0.5 * dmax_fine**2) if fa else 0)))
         steiner = int(10 * expected + 20000)
-    T = _cdt((verts - org) / dmax, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u, dmax_fine, runs_u,
-             area_scale, coarsen_fine, min_angle, steiner, core)
+    T = _cdt((verts - org) / dmax, segs, geom, tol, dmax, org, amax, hfield,
+             fine_parts, fine_u, dmax_fine, runs_u, area_scale, coarsen_fine,
+             min_angle, steiner, core)
     if min_angle and T['info']['steiner'] >= steiner:
-        warnings.warn(f'mesh refinement stopped at {steiner:,} added vertices ({expected:,.0f} expected for this '
-                      f'copper at dmax): features closer than the mesh can resolve, e.g. overlapping vias or slivers '
-                      f'of copper; the minimum angle is not met there', RuntimeWarning, stacklevel=2)
+        warnings.warn(
+            f'mesh refinement stopped at {steiner:,} added vertices '
+            f'({expected:,.0f} expected for this copper at dmax): features '
+            'closer than the mesh can resolve, e.g. overlapping vias or '
+            'slivers of copper; the minimum angle is not met '
+            'there', RuntimeWarning,
+            stacklevel=2)
     nodes, tris = T['vertices'] * dmax + org, T['triangles']
     cent = nodes[tris].mean(1)
     tris = tris[shapely.contains_xy(geom.buffer(tol), cent[:, 0], cent[:, 1])]
@@ -417,21 +530,30 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(), ama
     remap = -np.ones(len(nodes), int)
     remap[used] = np.arange(len(used))
     nodes, tris = nodes[used], remap[tris]
-    via_ids = [int(remap[i]) if i < len(remap) and remap[i] >= 0 else -1 for i in via_ids]
+    via_ids = [
+        int(remap[i]) if i < len(remap) and remap[i] >= 0 else -1
+        for i in via_ids
+    ]
     V = nodes[tris]
-    ar = (V[:, 1, 0] - V[:, 0, 0]) * (V[:, 2, 1] - V[:, 0, 1]) - (V[:, 1, 1] - V[:, 0, 1]) * (V[:, 2, 0] - V[:, 0, 0])
+    ar = ((V[:, 1, 0] - V[:, 0, 0]) * (V[:, 2, 1] - V[:, 0, 1]) -
+          (V[:, 1, 1] - V[:, 0, 1]) * (V[:, 2, 0] - V[:, 0, 0]))
     tris[ar < 0] = tris[ar < 0][:, [0, 2, 1]]
-    return nodes, tris[np.abs(ar) > 1e-10 * dmax ** 2], via_ids          # (a degenerate triangle: none)
+    # (a degenerate triangle: none)
+    return nodes, tris[np.abs(ar) > 1e-10 * dmax ** 2], via_ids
 
 
-CORES = ('kicad2ems.pcbqs._core', 'kicad2ems.mom25d._core')     # the compiled cores that triangulate, in this order
+# the compiled cores that triangulate, in this order
+CORES = ('kicad2ems.pcbqs._core', 'kicad2ems.mom25d._core')
 
 
-def _cdt(V, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u, dmax_fine, runs_u, area_scale, coarsen_fine,
-         min_angle, max_steiner, core):
-    """mesh_polygons' triangulation (cdtmesh: CDT and the points inside; core None: the first of CORES built), the
-    area limits: amax, afine in the fine regions, with coarsen the field's 0.5 h^2 (none in the structured runs'
-    cells; the fine regions kept at afine unless coarsen_fine); all of them x area_scale."""
+def _cdt(V, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u,
+         dmax_fine, runs_u, area_scale, coarsen_fine, min_angle, max_steiner,
+         core):
+    """mesh_polygons' triangulation (cdtmesh: CDT and the points inside; core
+    None: the first of CORES built), the area limits: amax, afine in the fine
+    regions, with coarsen the field's 0.5 h^2 (none in the structured runs'
+    cells; the fine regions kept at afine unless coarsen_fine); all of them x
+    area_scale."""
     if core is None:
         for name in CORES:
             try:
@@ -440,9 +562,11 @@ def _cdt(V, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u, dmax_f
             except ImportError:
                 pass
     if core is None or not hasattr(core, 'cdt_triangulate'):
-        raise RuntimeError("the mesher triangulates with a compiled core (pcbqs's or mom25d's), and none is built (or "
-                           "it is older than its mesher): python -m kicad2ems.pcbqs.core.build (needs a C++17 compiler "
-                           "and pybind11)")
+        raise RuntimeError(
+            "the mesher triangulates with a compiled core (pcbqs's or "
+            "mom25d's), and none is built (or it is older than its mesher): "
+            "python -m kicad2ems.pcbqs.core.build (needs a C++17 compiler and "
+            "pybind11)")
     g_in = geom.buffer(tol)
     to_m = lambda c: np.asarray(c) * dmax + org
     afine = 0.5 * (dmax_fine / dmax) ** 2 if fine_parts else None
@@ -453,11 +577,16 @@ def _cdt(V, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u, dmax_f
 
     def limit(c):
         P = to_m(c)
-        infine = shapely.contains_xy(fine_u, P[:, 0], P[:, 1]) if fine_parts else np.zeros(len(P), bool)
+        infine = (shapely.contains_xy(fine_u, P[:, 0], P[:, 1])
+                  if fine_parts else np.zeros(len(P), bool))
         if hfield is None:
-            lim = np.where(infine, afine, amax) if fine_parts else np.full(len(P), amax)
+            lim = (np.where(infine, afine, amax) if fine_parts else np.full(
+                len(P), amax))
         else:
-            h = np.where(infine, hfield(P, dmax_fine or dmax) if coarsen_fine else dmax_fine, hfield(P, dmax))
+            h = np.where(
+                infine,
+                (hfield(P, dmax_fine or dmax) if coarsen_fine else dmax_fine),
+                hfield(P, dmax))
             lim = 0.5 * (h / dmax) ** 2
             if runs_u is not None:
                 lim[shapely.contains_xy(runs_u, P[:, 0], P[:, 1])] = -1.0
@@ -465,6 +594,7 @@ def _cdt(V, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u, dmax_f
     frozen = None
     if runs_u is not None:
         frozen = lambda c: shapely.contains_xy(runs_u, *to_m(c).T)
-    sizes = (1.0,) + ((dmax_fine / dmax,) if fine_parts else ())       # each region's cell size (dmax)
-    return cdt_mesh(V, segs, limit, inside, core, frozen=frozen, sizes=sizes, min_angle=min_angle,
-                    max_steiner=max_steiner)
+    # each region's cell size (dmax)
+    sizes = (1.0,) + ((dmax_fine / dmax,) if fine_parts else ())
+    return cdt_mesh(V, segs, limit, inside, core, frozen=frozen, sizes=sizes,
+                    min_angle=min_angle, max_steiner=max_steiner)

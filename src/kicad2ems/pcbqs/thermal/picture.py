@@ -1,4 +1,5 @@
-"""Pictures of thermal results: the temperature of each layer, and two results side by side with their difference."""
+"""Pictures of thermal results: the temperature of each layer, and two results
+side by side with their difference."""
 import numpy as np
 
 
@@ -15,10 +16,11 @@ def _draw(ax, res, layer, vmin, vmax, cmap='inferno'):
     if res.method == 'grid':
         ny, nx = res.T[layer].shape
         ext = (res.x0, res.x0 + nx * res.size, res.y0 + ny * res.size, res.y0)
-        return ax.imshow(res.T[layer], extent=ext, origin='upper', vmin=vmin, vmax=vmax, cmap=cmap,
-                         interpolation='nearest')
-    return ax.tripcolor(res.nodes[:, 0], res.nodes[:, 1], res.tris, res.T[layer], vmin=vmin, vmax=vmax, cmap=cmap,
-                        shading='gouraud')
+        return ax.imshow(res.T[layer], extent=ext, origin='upper', vmin=vmin,
+                         vmax=vmax, cmap=cmap, interpolation='nearest')
+    return ax.tripcolor(res.nodes[:, 0], res.nodes[:,
+                                                   1], res.tris, res.T[layer],
+                        vmin=vmin, vmax=vmax, cmap=cmap, shading='gouraud')
 
 
 def _copper(ax, p, layer):
@@ -36,8 +38,9 @@ def _labels(ax, res, layer):
         if s.layer == layer and s.name not in seen:
             seen.add(s.name)
             c = s.geom.centroid
-            ax.annotate(f"{s.name} {res.parts[s.name]['board_C']:.0f}", (c.x, c.y), color='white', fontsize=6,
-                        ha='center', va='center')
+            ax.annotate(f"{s.name} {res.parts[s.name]['board_C']:.0f}",
+                        (c.x, c.y), color='white', fontsize=6, ha='center',
+                        va='center')
 
 
 def picture(res, path, dpi=150):
@@ -50,7 +53,8 @@ def picture(res, path, dpi=150):
     x0, y0, x1, y1 = p.outline.bounds
     w = 4.2
     hgt = w * (y1 - y0) / (x1 - x0) + 0.6
-    fig, axs = plt.subplots(1, L, figsize=(w * L + 0.8, hgt), squeeze=False, constrained_layout=True)
+    fig, axs = plt.subplots(1, L, figsize=(w * L + 0.8, hgt), squeeze=False,
+                            constrained_layout=True)
     vmin, vmax = float(np.nanmin(res.T)), float(np.nanmax(res.T))
     for ax, l in zip(axs[0], reversed(range(L))):
         im = _draw(ax, res, l, vmin, vmax)
@@ -63,9 +67,11 @@ def picture(res, path, dpi=150):
 
 
 def difference(a, b, layer):
-    """b minus a on `layer` at a's cell centres (a: a grid result): (ny, nx), NaN off the board."""
+    """b minus a on `layer` at a's cell centres (a: a grid result): (ny, nx),
+    NaN off the board."""
     ny, nx = a.T[layer].shape
-    X, Y = np.meshgrid(a.x0 + (np.arange(nx) + 0.5) * a.size, a.y0 + (np.arange(ny) + 0.5) * a.size)
+    X, Y = np.meshgrid(a.x0 + (np.arange(nx) + 0.5) * a.size, a.y0 +
+                       (np.arange(ny) + 0.5) * a.size)
     return b.sample(layer, X, Y) - a.T[layer]
 
 
@@ -79,20 +85,27 @@ def compare(grid, mesh, path, dpi=150):
     x0, y0, x1, y1 = p.outline.bounds
     w = 4.2
     hgt = w * (y1 - y0) / (x1 - x0) + 0.6
-    fig, axs = plt.subplots(1, 3, figsize=(3 * w + 1.4, hgt), constrained_layout=True)
+    fig, axs = plt.subplots(1, 3, figsize=(3 * w + 1.4, hgt),
+                            constrained_layout=True)
     vmin = min(np.nanmin(grid.T[l]), np.nanmin(mesh.T[l]))
     vmax = max(np.nanmax(grid.T[l]), np.nanmax(mesh.T[l]))
     for ax, r in zip(axs, (grid, mesh)):
         im = _draw(ax, r, l, vmin, vmax)
         _copper(ax, p, l)
         _labels(ax, r, l)
-        _axes(ax, p, f"{r.method}, {r.size:g} mm, {r.unknowns:,} unknowns: up to {np.nanmax(r.T[l]):.1f} C")
+        _axes(
+            ax, p,
+            f"{r.method}, {r.size:g} mm, {r.unknowns:,} unknowns: up to "
+            f"{np.nanmax(r.T[l]):.1f} C"
+        )
     fig.colorbar(im, ax=axs[:2].tolist(), shrink=0.85, label='C')
     d = difference(grid, mesh, l)
     lim = max(float(np.nanmax(np.abs(d))), 1e-6)
     ny, nx = d.shape
-    im = axs[2].imshow(d, extent=(grid.x0, grid.x0 + nx * grid.size, grid.y0 + ny * grid.size, grid.y0), origin='upper',
-                       cmap='RdBu_r', vmin=-lim, vmax=lim, interpolation='nearest')
+    im = axs[2].imshow(
+        d, extent=(grid.x0, grid.x0 + nx * grid.size, grid.y0 + ny * grid.size,
+                   grid.y0), origin='upper', cmap='RdBu_r', vmin=-lim, vmax=lim,
+        interpolation='nearest')
     _copper(axs[2], p, l)
     _axes(axs[2], p, f"mesh minus grid: within {lim:.2f} K")
     fig.colorbar(im, ax=axs[2], shrink=0.85, label='K')
@@ -101,14 +114,17 @@ def compare(grid, mesh, path, dpi=150):
 
 
 def heating_picture(transient, path, most=8):
-    """The heating from cold (grid.heating's): the hottest copper and the `most` hottest parts against time."""
+    """The heating from cold (grid.heating's): the hottest copper and the `most`
+    hottest parts against time."""
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     t = np.asarray(transient['times_s'])
     fig, ax = plt.subplots(figsize=(7, 4), constrained_layout=True)
-    ax.plot(t[1:], transient['hottest_C'][1:], 'k--', lw=1.2, label='hottest copper')
-    top = sorted(transient['parts'], key=lambda k: -transient['parts'][k][-1])[:most]
+    ax.plot(t[1:], transient['hottest_C'][1:], 'k--', lw=1.2,
+            label='hottest copper')
+    top = (sorted(transient['parts'],
+                  key=lambda k: -transient['parts'][k][-1])[:most])
     for name in top:
         ax.plot(t[1:], transient['parts'][name][1:], lw=1.2, label=name)
     ax.set_xscale('log')

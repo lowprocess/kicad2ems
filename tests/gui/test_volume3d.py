@@ -1,5 +1,6 @@
-"""The 3D field view: volume dumps (volume+MM), their resampling onto a uniform grid, the translucent colouring,
-the board's copper as triangles and outlines, and the GUI panel on a results folder."""
+"""The 3D field view: volume dumps (volume+MM), their resampling onto a uniform
+grid, the translucent colouring, the board's copper as triangles and outlines,
+and the GUI panel on a results folder."""
 import os
 import numpy as np
 import pytest
@@ -13,13 +14,15 @@ def board(demo_files):
     from kicad2ems.core.importers.kicad import KiCadBoard
     from kicad2ems.core.board import Board
     base, _ = demo_files
-    return Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu')
+    return Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'],
+                 pos_file=base + '-top.pos', ground='B.Cu')
 
 
 @pytest.fixture(scope='module')
 def volume_run(board, tmp_path_factory):
-    """A frequency-domain volume dump on a graded grid (fine in z at the board, coarse above), as a grid file:
-    a wave running along x that decays with height."""
+    """A frequency-domain volume dump on a graded grid (fine in z at the board,
+    coarse above), as a grid file: a wave running along x that decays with
+    height."""
     m = board
     out = tmp_path_factory.mktemp('vol')
     run = out / 'openems' / 'exc_P1'
@@ -27,10 +30,14 @@ def volume_run(board, tmp_path_factory):
     write_info(str(run), [d], m)
     x = np.linspace(d.start[0], d.stop[0], 40)
     y = np.linspace(d.start[1], d.stop[1], 20)
-    z = np.concatenate([np.linspace(d.start[2], m.thickness, 8), m.thickness + np.array([0.3, 0.8, 1.5, 2.0])])
+    z = np.concatenate([
+        np.linspace(d.start[2], m.thickness, 8),
+        m.thickness + np.array([0.3, 0.8, 1.5, 2.0])
+    ])
     X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
     data = np.zeros((1, len(x), len(y), len(z), 3), complex)
-    data[0, ..., 2] = np.exp(-1j * X / 3) * np.exp(-np.maximum(Z - m.thickness, 0))
+    data[0, ...,
+         2] = (np.exp(-1j * X / 3) * np.exp(-np.maximum(Z - m.thickness, 0)))
     F.write_npz(str(run / f"{d.name}.npz"), dict(x=x, y=y, z=z), [3e9], data)
     return str(out), m, d
 
@@ -38,10 +45,14 @@ def volume_run(board, tmp_path_factory):
 def test_volume_dump_region(board):
     m = board
     d = parse_dump('E@volume+2@3', m)
-    assert d.normal is None and d.label == 'volume+2' and d.name == 'dump_E_volumep2_fd'
-    assert d.start[2] == pytest.approx(-2.0) and d.stop[2] == pytest.approx(m.thickness + 2.0)  # beyond planes' +1 mm
+    assert (d.normal is None and d.label == 'volume+2'
+            and d.name == 'dump_E_volumep2_fd')
+    # beyond planes' +1 mm
+    assert (d.start[2] == pytest.approx(-2.0)
+            and d.stop[2] == pytest.approx(m.thickness + 2.0))
     plain = parse_dump('E@volume@3', m)
-    assert plain.stop[2] == pytest.approx(m.thickness + 0.5) and plain.label == 'volume'
+    assert (plain.stop[2] == pytest.approx(m.thickness + 0.5)
+            and plain.label == 'volume')
 
 
 def test_volume_resampled_and_coloured(volume_run):
@@ -50,22 +61,30 @@ def test_volume_resampled_and_coloured(volume_run):
     assert v3.is_volume(src)
     vol = v3.Volume(src, 0, n=64)
     steps = vol.step
-    assert np.allclose(np.diff(vol.axes[0]), steps[0]) and np.allclose(np.diff(vol.axes[2]), steps[2])
+    assert (np.allclose(np.diff(vol.axes[0]), steps[0])
+            and np.allclose(np.diff(vol.axes[2]), steps[2]))
     assert vol.data.shape[0] == 65 and vol.complex
-    env = vol.scalar('mag')                                     # the envelope: |E| = e^-(z - top) above the board
+    env = vol.scalar('mag')  # the envelope: |E| = e^-(z - top) above the board
     top = np.searchsorted(vol.axes[2], m.thickness)
-    assert env[:, :, :top].max() == pytest.approx(1.0, rel=1e-6) and env[..., -1].max() < 0.2
-    a, b = vol.scalar('z', 0.0), vol.scalar('z', np.pi)          # half a period apart: opposite signs
-    assert np.allclose(a, -b) and vol.signed('z', 0.0) and not vol.signed('mag', 0.0) and not vol.signed('z')
+    assert (env[:, :, :top].max() == pytest.approx(1.0, rel=1e-6)
+            and env[..., -1].max() < 0.2)
+    # half a period apart: opposite signs
+    a, b = vol.scalar('z', 0.0), vol.scalar('z', np.pi)
+    assert (np.allclose(a, -b) and vol.signed('z', 0.0)
+            and not vol.signed('mag', 0.0) and not vol.signed('z'))
     lo, hi = v3.levels([env], False, True, decades=0.5, clip=100)
-    assert hi == pytest.approx(env.max()) and lo == pytest.approx(hi / 10 ** 0.5)
+    assert (hi == pytest.approx(env.max())
+            and lo == pytest.approx(hi / 10**0.5))
     rgba = v3.colour(env, lo, hi, log=True, opacity=0.5)
     assert rgba.shape == env.shape + (4,) and rgba.dtype == np.uint8
     alpha = rgba[..., 3]
-    assert alpha.max() <= 128 and alpha[env <= lo].max() == 0 < alpha[env > 0.9 * hi].min()   # weak: transparent
+    # weak: transparent
+    assert (alpha.max() <= 128
+            and alpha[env <= lo].max() == 0 < alpha[env > 0.9 * hi].min())
     s = v3.colour(a, -1, 1, signed=True)
     weak, strong = np.argmin(np.abs(a)), np.argmax(np.abs(a))
-    assert s[..., 3].flat[weak] <= 2 < s[..., 3].flat[strong]      # a signed component: transparent at zero
+    # a signed component: transparent at zero
+    assert s[..., 3].flat[weak] <= 2 < s[..., 3].flat[strong]
 
 
 def test_board_geometry(volume_run):
@@ -74,20 +93,28 @@ def test_board_geometry(volume_run):
     tris = v3.copper_triangles(g)
     assert {lay for lay, *_ in tris} == set(m.copper)
     for lay, z, verts, faces in tris:
-        assert np.allclose(verts[:, 2], m.cu_z[lay]) and faces.max() < len(verts)
+        assert (np.allclose(verts[:, 2], m.cu_z[lay])
+                and faces.max() < len(verts))
         tri = verts[faces]
-        area = 0.5 * np.abs(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])[:, 2]).sum()
-        assert area == pytest.approx(sum(p.area for p in m.copper[lay]), rel=2e-2)   # rings simplified to 0.01 mm
+        area = (0.5 * np.abs(
+            np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])[:, 2]).sum())
+        # rings simplified to 0.01 mm
+        assert (area == pytest.approx(sum(p.area for p in m.copper[lay]),
+                                      rel=2e-2))
     ol = v3.copper_outlines(g)
-    assert len(ol) % 2 == 0 and set(np.round(ol[:, 2], 6)) <= {round(z, 6) for z in m.cu_z.values()}
+    assert (len(ol) % 2 == 0 and set(np.round(ol[:, 2], 6))
+            <= {round(z, 6)
+                for z in m.cu_z.values()})
     assert len(v3.via_lines(g)) == 2 * len(m.vias)
     x0, y0, x1, y1, z0, z1 = v3.board_box(g)
-    assert (x0, y0, x1, y1) == pytest.approx(m.outline.bounds, abs=1e-3) and z1 == pytest.approx(max(m.cu_z.values()))
+    assert ((x0, y0, x1, y1) == pytest.approx(m.outline.bounds, abs=1e-3)
+            and z1 == pytest.approx(max(m.cu_z.values())))
 
 
 def test_copper_solids_face_outward():
-    """A square with a hole as a slab: top faces up, bottom faces down, every wall facing away from the copper
-    (out of the square, into the hole), and the caps' area that of the copper."""
+    """A square with a hole as a slab: top faces up, bottom faces down, every
+    wall facing away from the copper (out of the square, into the hole), and the
+    caps' area that of the copper."""
     sq = [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]
     hole = [[4, 4], [4, 6], [6, 6], [6, 4], [4, 4]]
     g = dict(cu_z={'F.Cu': 1.0}, copper={'F.Cu': [[sq, hole]]})
@@ -99,16 +126,18 @@ def test_copper_solids_face_outward():
     assert (n[top, 2] > 0).all() and (n[bot, 2] < 0).all()
     assert 0.5 * n[top, 2].sum() == pytest.approx(100 - 4)
     wall = ~(top | bot)
-    out = c[wall, :2] - 5.0                                     # from the square's centre
-    inner = np.abs(out).max(1) < 1.5                             # the hole's walls
+    out = c[wall, :2] - 5.0  # from the square's centre
+    inner = np.abs(out).max(1) < 1.5  # the hole's walls
     radial = (n[wall, :2] * out).sum(1)
     assert (radial[~inner] > 0).all() and (radial[inner] < 0).all()
 
 
 def test_an_opengl_start_that_fails_stays_in_the_view(monkeypatch):
-    """pyqtgraph raises in initializeGL without a usable OpenGL. The exception must not leave Qt's override: under
-    PySide 6.11 that drops a reference to the class's paintGL, and a later garbage collection crashed on the freed
-    function (the GUI tests segfaulted once a test showed a window with the 3D view)."""
+    """pyqtgraph raises in initializeGL without a usable OpenGL. The exception
+    must not leave Qt's override: under PySide 6.11 that drops a reference to
+    the class's paintGL, and a later garbage collection crashed on the freed
+    function (the GUI tests segfaulted once a test showed a window with the 3D
+    view)."""
     pytest.importorskip('PySide6')
     gl = pytest.importorskip('pyqtgraph.opengl')
     pytest.importorskip('OpenGL')
@@ -133,14 +162,16 @@ def test_an_opengl_start_that_fails_stays_in_the_view(monkeypatch):
         app.processEvents()
         w.view.repaint()
         app.processEvents()
-        if not called:                                              # no context to start: Qt never calls it here
-            w.close()                                               # (a CI machine without a GL driver); the
-            w.deleteLater()                                         # window gone now, not at the interpreter's
-            del w                                                   # exit after Qt's teardown (a segfault there)
+        if not called:       # no context to start: Qt never calls it here
+            w.close()        # (a CI machine without a GL driver); the
+            w.deleteLater()  # window gone now, not at the interpreter's
+            del w            # exit after Qt's teardown (a segfault there)
             app.processEvents()
             gc.collect()
-            pytest.skip('Qt made no OpenGL context here: initializeGL is never called')
-        assert w.view.gl_error.startswith('RuntimeError') and 'could not start OpenGL' in w.status.text()
+            pytest.skip(
+                'Qt made no OpenGL context here: initializeGL is never called')
+        assert (w.view.gl_error.startswith('RuntimeError')
+                and 'could not start OpenGL' in w.status.text())
         w.close()
         del w
         gc.collect()
@@ -157,16 +188,18 @@ def test_volume_panel(volume_run, tmp_path):
     app = QApplication.instance() or QApplication([])
     out, m, _ = volume_run
     w = VolumeTab()
-    assert not w.load(str(tmp_path))                            # no dumps: nothing
-    assert w.load(out) and w.dump.count() == 1 and w.frame.currentText() == '3 GHz'
-    assert len(w._frames) == N_PHASE                             # one period of Re(E e^jphi)
-    assert {'vol', 'outline', 'box', 'vias'} <= set(w.items) and any(k.startswith('cu') for k in w.items)
+    assert not w.load(str(tmp_path))  # no dumps: nothing
+    assert (w.load(out) and w.dump.count() == 1
+            and w.frame.currentText() == '3 GHz')
+    assert len(w._frames) == N_PHASE  # one period of Re(E e^jphi)
+    assert ({'vol', 'outline', 'box', 'vias'} <= set(w.items)
+            and any(k.startswith('cu') for k in w.items))
     w.envelope.setChecked(True)
     assert len(w._frames) == 1
     w.comp.setCurrentIndex(3)
-    w.envelope.setChecked(False)                                 # Ez at an instant: signed
+    w.envelope.setChecked(False)  # Ez at an instant: signed
     assert 'Ez' in w.status.text() and '-' in w.status.text().split(':')[1]
-    assert w.cu_t.value() > 0                                     # shaded slabs, as thick as 0.6 % of the board
+    assert w.cu_t.value() > 0  # shaded slabs, as thick as 0.6 % of the board
     w.cu_t.setValue(0)                                           # flat
     assert any(k.startswith('cu') for k in w.items)
     w.copper.setChecked(False)
@@ -174,8 +207,9 @@ def test_volume_panel(volume_run, tmp_path):
 
 
 def test_volume_panel_without_opengl(volume_run, monkeypatch):
-    """A machine whose OpenGL the 3D view cannot use (a VM's GDI Generic 1.1, Qt's software renderer out of
-    PyOpenGL's reach): the panel says why and loads nothing; the window still opens."""
+    """A machine whose OpenGL the 3D view cannot use (a VM's GDI Generic 1.1,
+    Qt's software renderer out of PyOpenGL's reach): the panel says why and
+    loads nothing; the window still opens."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     pytest.importorskip('OpenGL')
@@ -187,17 +221,22 @@ def test_volume_panel_without_opengl(volume_run, monkeypatch):
     monkeypatch.setenv('KICAD2EMS_GL', 'off')
     w = volumetab.VolumeTab()
     assert w.gl is None and not w.load(volume_run[0])
-    assert any('3D field view is off' in lb.text() for lb in w.findChildren(QLabel))
+    assert any('3D field view is off' in lb.text()
+               for lb in w.findChildren(QLabel))
     monkeypatch.setattr(volumetab, '_GL_WHY', None)
-    monkeypatch.setattr(volumetab, '_gl_probe', lambda: "OpenGL 1.1.0 (GDI Generic): the 3D view needs OpenGL 2.1")
+    monkeypatch.setattr(
+        volumetab, '_gl_probe',
+        lambda: "OpenGL 1.1.0 (GDI Generic): the 3D view needs OpenGL 2.1")
     monkeypatch.delenv('KICAD2EMS_GL')
-    assert volumetab.gl_problem().startswith('OpenGL 1.1.0') and volumetab.VolumeTab().gl is None
+    assert (volumetab.gl_problem().startswith('OpenGL 1.1.0')
+            and volumetab.VolumeTab().gl is None)
     monkeypatch.setattr(volumetab, '_GL_WHY', None)
 
 
 def test_saved_animations(volume_run, board, tmp_path, monkeypatch):
-    """Save GIF / MP4 of the 3D view: a frequency-domain dump's period, a time-domain dump's time steps (it had
-    given a single still frame), and one frame only (the envelope) refused."""
+    """Save GIF / MP4 of the 3D view: a frequency-domain dump's period, a
+    time-domain dump's time steps (it had given a single still frame), and one
+    frame only (the envelope) refused."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     pytest.importorskip('OpenGL')
@@ -207,12 +246,15 @@ def test_saved_animations(volume_run, board, tmp_path, monkeypatch):
     from test_fields import write_vtr
     app = QApplication.instance() or QApplication([])
     out, m, _ = volume_run
-    shown = []                                                       # no GL offscreen: what each grab would show
-    monkeypatch.setattr(VolumeTab, 'grab_rgb', lambda self: (shown.append((self.frame.currentIndex(), self.k)),
-                                                             np.full((8, 8, 3), 7 * len(shown) % 256, np.uint8))[1])
+    shown = []  # no GL offscreen: what each grab would show
+    monkeypatch.setattr(
+        VolumeTab, 'grab_rgb', lambda self:
+        (shown.append((self.frame.currentIndex(), self.k)),
+         np.full((8, 8, 3), 7 * len(shown) % 256, np.uint8))[1])
     w = VolumeTab()
     w.resize(400, 300)
-    assert w.load(out) and w.animated() == 'phase' and len(w.render_frames()) == N_PHASE
+    assert (w.load(out) and w.animated() == 'phase'
+            and len(w.render_frames()) == N_PHASE)
     w.envelope.setChecked(True)
     assert w.animated() is None
     with pytest.raises(ValueError, match='untick envelope'):
@@ -221,7 +263,8 @@ def test_saved_animations(volume_run, board, tmp_path, monkeypatch):
     run = td_out / 'openems' / 'exc_P1'
     d = parse_dump('E@volume+2', m)
     write_info(str(run), [d], m, dt_ps=0.5)
-    x, y = np.linspace(d.start[0], d.stop[0], 12), np.linspace(d.start[1], d.stop[1], 8)
+    x, y = (np.linspace(d.start[0], d.stop[0],
+                        12), np.linspace(d.start[1], d.stop[1], 8))
     z = np.linspace(d.start[2], d.stop[2], 6)
     for k in range(4):
         f = np.zeros((12, 8, 6, 3), np.float32)
@@ -229,31 +272,39 @@ def test_saved_animations(volume_run, board, tmp_path, monkeypatch):
         write_vtr(run / f"{d.name}_{k * 60:010d}.vtr", x, y, z, f)
     w2 = VolumeTab()
     w2.resize(400, 300)
-    assert w2.load(str(td_out)) and w2.src.domain == 'TD' and w2.animated() == 'time'
+    assert (w2.load(str(td_out)) and w2.src.domain == 'TD'
+            and w2.animated() == 'time')
     t0 = w2.frame.currentIndex()
     imgs = w2.render_frames()
-    assert len(imgs) == 4 and w2.frame.currentIndex() == t0      # each time step, then back where it was
+    # each time step, then back where it was
+    assert len(imgs) == 4 and w2.frame.currentIndex() == t0
     assert [t for t, _ in shown[-4:]] == [0, 1, 2, 3]
     w2.log.setChecked(False)
-    own = float(w2.status.text().split(' to ')[1].split()[0])        # this frame's own range
-    w2.whole.setChecked(True)                                        # one range over the four time steps
+    # this frame's own range
+    own = float(w2.status.text().split(' to ')[1].split()[0])
+    # one range over the four time steps
+    w2.whole.setChecked(True)
     top = float(w2.status.text().split(' to ')[1].split()[0])
     assert 'over every frame' in w2.status.text() and top >= own
-    tops = [v3.levels([v3.Volume(w2.src, k, n=w2.res.value()).scalar('mag')], False, False, clip=w2.clip.value())[1]
-            for k in range(4)]
+    tops = [
+        v3.levels([v3.Volume(w2.src, k, n=w2.res.value()).scalar('mag')], False,
+                  False, clip=w2.clip.value())[1] for k in range(4)
+    ]
     assert top == pytest.approx(max(tops), rel=1e-3)
     from PIL import Image
-    w2.every.setValue(2)                                             # every other time step, at 5 fps
+    w2.every.setValue(2)  # every other time step, at 5 fps
     w2.fps.setValue(5)
     p = w2.save(str(tmp_path / 'a.gif'))
     assert Image.open(p).n_frames == 2 and Image.open(p).info['duration'] == 200
     assert [t for t, _ in shown[-2:]] == [0, 2] and w2.timer.interval() == 200
-    assert not w.every.isEnabled() and w2.every.isEnabled()          # frequency domain: its period
+    # frequency domain: its period
+    assert not w.every.isEnabled() and w2.every.isEnabled()
 
 
 def test_voxels_and_pixels_centred_on_their_samples(volume_run, tmp_path):
-    """pyqtgraph draws voxel / pixel k from k to k + 1: the 3D view shifts them back half a cell, so each sits
-    centred on its sample (a half-cell offset in +x, +y had shown the current off the copper)."""
+    """pyqtgraph draws voxel / pixel k from k to k + 1: the 3D view shifts them
+    back half a cell, so each sits centred on its sample (a half-cell offset in
+    +x, +y had shown the current off the copper)."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     pytest.importorskip('OpenGL')
@@ -266,73 +317,107 @@ def test_voxels_and_pixels_centred_on_their_samples(volume_run, tmp_path):
     w = VolumeTab()
     assert w.load(out) and w.vol.plane is None
     zs, v = w.zscale.value(), w.vol
-    p = w.items['vol'].transform().map(QVector3D(0.5, 0.5, 0.5))     # the first voxel's centre
-    assert (p.x(), p.y(), p.z()) == pytest.approx((v.origin[0], v.origin[1], v.origin[2] * zs), abs=1e-6)
-    d = parse_dump('J@F.Cu@3', m)                                    # a layer dump: an image
+    # the first voxel's centre
+    p = w.items['vol'].transform().map(QVector3D(0.5, 0.5, 0.5))
+    assert ((p.x(), p.y(), p.z()) == pytest.approx(
+        (v.origin[0], v.origin[1], v.origin[2] * zs), abs=1e-6))
+    d = parse_dump('J@F.Cu@3', m)  # a layer dump: an image
     run = tmp_path / 'openems' / 'exc_P1'
     write_info(str(run), [d], m)
-    x, y = np.linspace(d.start[0], d.stop[0], 30), np.linspace(d.start[1], d.stop[1], 12)
-    F.write_npz(str(run / f"{d.name}.npz"), dict(x=x, y=y, z=np.array([d.start[2]])), [3e9],
+    x, y = (np.linspace(d.start[0], d.stop[0],
+                        30), np.linspace(d.start[1], d.stop[1], 12))
+    F.write_npz(str(run / f"{d.name}.npz"),
+                dict(x=x, y=y, z=np.array([d.start[2]])), [3e9],
                 np.ones((1, 30, 12, 1, 3), complex))
     w2 = VolumeTab()
     assert w2.load(str(tmp_path)) and w2.vol.plane == 2
     p = w2.items['vol'].transform().map(QVector3D(0.5, 0.5, 0))
-    assert (p.x(), p.y()) == pytest.approx((w2.vol.origin[0], w2.vol.origin[1]), abs=1e-6)
+    assert ((p.x(), p.y()) == pytest.approx(
+        (w2.vol.origin[0], w2.vol.origin[1]), abs=1e-6))
 
 
 def test_far_field_pattern_mesh():
-    """The far field as a surface: radius at the peak, 0 at 30 dB below, colours by gain."""
+    """The far field as a surface: radius at the peak, 0 at 30 dB below, colours
+    by gain."""
     th, ph = np.arange(0, 91, 5.0), np.arange(0, 360, 10.0)
     T, P = np.meshgrid(np.radians(th), np.radians(ph))
-    e = np.cos(T) + 1e-3                                            # a pattern straight up
-    sph = dict(theta=th, phi=ph, e_norm=e[None], dmax=np.array([4.0]), freq=np.array([2.45e9]))
+    e = np.cos(T) + 1e-3  # a pattern straight up
+    sph = dict(theta=th, phi=ph, e_norm=e[None], dmax=np.array([4.0]),
+               freq=np.array([2.45e9]))
     v, faces, col, peak = v3.pattern_mesh(sph, 0, 1.0, (10, 20, 1), 5.0)
-    assert v.shape == (len(ph) * len(th), 3) and faces.max() < len(v) and col.shape == (len(v), 4)
+    assert (v.shape == (len(ph) * len(th), 3) and faces.max() < len(v)
+            and col.shape == (len(v), 4))
     assert abs(peak - 10 * np.log10(4.0)) < 1e-9
     top = v[np.argmax(v[:, 2])]
-    assert np.allclose(top, (10, 20, 6), atol=1e-6)                 # 5 mm straight up at theta 0
+    # 5 mm straight up at theta 0
+    assert np.allclose(top, (10, 20, 6), atol=1e-6)
 
 
 def test_part_solids(boards):
-    """A part's chip (its size and place: kicad2ems's tests) drawn as a coloured body and two metal end caps standing
-    on its copper, below the board on the bottom layer; a part from an older board.json has no body to draw."""
+    """A part's chip (its size and place: kicad2ems's tests) drawn as a coloured
+    body and two metal end caps standing on its copper, below the board on the
+    bottom layer; a part from an older board.json has no body to draw."""
     from kicad2ems.core.importers.kicad import KiCadBoard
     from kicad2ems.core.board import Board
     from kicad2ems.core.parts import Part, SIZES
     rlc = boards['rlc']
-    m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'], pos_file=rlc + '-top.pos', log=lambda *a: None)
+    m = Board(KiCadBoard(rlc + '.kicad_pcb'), nets=['RF1', 'RF2', 'GND'],
+              pos_file=rlc + '-top.pos', log=lambda *a: None)
     c1 = m.parts[0]
-    assert c1.package == '0402' and tuple(c1.body) == SIZES['0402'] and c1.kind == 'C'
-    assert c1.centre[0] == pytest.approx(12.0) and c1.centre[1] == pytest.approx(0.5 * (c1.s[1] + c1.e[1]))
+    assert (c1.package == '0402' and tuple(c1.body) == SIZES['0402']
+            and c1.kind == 'C')
+    assert (c1.centre[0] == pytest.approx(12.0)
+            and c1.centre[1] == pytest.approx(0.5 * (c1.s[1] + c1.e[1])))
     d = c1.to_dict()
     back = Part.from_dict(d)
-    assert back.package == '0402' and list(back.body) == list(c1.body) and back.to_dict() == d
-    old = {k: v for k, v in d.items() if k not in ('package', 'body', 'centre')}     # an older board.json
-    assert Part.from_dict(old).body is None and v3.part_solids(old, {'F.Cu': 0.2}) is None
+    assert (back.package == '0402' and list(back.body) == list(c1.body)
+            and back.to_dict() == d)
+    # an older board.json
+    old = {k: v for k, v in d.items() if k not in ('package', 'body', 'centre')}
+    assert (Part.from_dict(old).body is None
+            and v3.part_solids(old, {'F.Cu': 0.2}) is None)
     cu_z = {'B.Cu': 0.0, 'F.Cu': 0.2}
     solids, label = v3.part_solids(d, cu_z, zs=2.0, lift=0.05)
-    assert [r for r, *_ in solids] == ['body', 'cap', 'cap'] and solids[0][1] == v3.PART_COLOURS['C']
+    assert ([r for r, *_ in solids] == ['body', 'cap', 'cap']
+            and solids[0][1] == v3.PART_COLOURS['C'])
     allv = np.concatenate([v for *_, v, f in solids])
-    assert allv[:, 0].max() - allv[:, 0].min() == pytest.approx(1.0 + 0.0, abs=1e-6)          # 0402: 1.0 mm long
+    # 0402: 1.0 mm long
+    assert (allv[:, 0].max() - allv[:, 0].min() == pytest.approx(
+        1.0 + 0.0, abs=1e-6))
     body = solids[0][2]
-    assert body[:, 2].min() == pytest.approx(0.2 * 2 + 0.05)                     # on the copper, at the height scale
-    assert body[:, 2].max() - body[:, 2].min() == pytest.approx(0.35)            # its true height, not stretched
+    # on the copper, at the height scale
+    assert body[:, 2].min() == pytest.approx(0.2 * 2 + 0.05)
+    # its true height, not stretched
+    assert body[:, 2].max() - body[:, 2].min() == pytest.approx(0.35)
     assert label[2] > allv[:, 2].max()
-    under, _ = v3.part_solids(dict(d, layer='B.Cu', z=0.0), cu_z, zs=2.0, lift=0.05)
-    assert under[0][2][:, 2].max() == pytest.approx(-0.05)                       # the bottom layer: below the board
-    assert v3.part_kind(dict(R=100.0, L=None, C=None)) == 'R' and v3.part_kind(dict(R=0.4, L=2e-9, C=None)) == 'L'
-    assert v3.part_kind(dict(R=0.0, L=None, C=None)) == 'short' and v3.part_kind(dict(R=0.1, L=5e-10, C=1e-12)) == 'C'
+    under, _ = v3.part_solids(dict(d, layer='B.Cu', z=0.0), cu_z, zs=2.0,
+                              lift=0.05)
+    # the bottom layer: below the board
+    assert under[0][2][:, 2].max() == pytest.approx(-0.05)
+    assert (v3.part_kind(dict(R=100.0, L=None, C=None)) == 'R'
+            and v3.part_kind(dict(R=0.4, L=2e-9, C=None)) == 'L')
+    assert (v3.part_kind(dict(R=0.0, L=None, C=None)) == 'short'
+            and v3.part_kind(dict(R=0.1, L=5e-10, C=1e-12)) == 'C')
 
 
 def test_a_temperature_s_colours_span_its_own_values():
-    """A dump whose range is its data's (dump_info.json's "range": "data": a temperature): from its coolest point
-    to its hottest, not from zero; NaN (off the board) clear; its low end still drawn."""
+    """A dump whose range is its data's (dump_info.json's "range": "data": a
+    temperature): from its coolest point to its hottest, not from zero; NaN (off
+    the board) clear; its low end still drawn."""
     t = np.array([[65.0, 70.0], [84.0, np.nan]])
     assert v3.levels([t], False, False, span=True) == (65.0, 84.0)
-    assert v3.levels([t], False, False)[0] == 0.0                   # a field: from nothing
-    assert v3.levels([np.full((2, 2), 30.0)], False, False, span=True) == (29.5, 30.5)          # one value: a range still
-    rgba = v3.colour(t, 65.0, 84.0, log=False, opacity=1.0, gamma=1.0, floor=0.5)
-    assert rgba.shape == (2, 2, 4) and tuple(rgba[1, 1]) == (0, 0, 0, 0)                  # off the board: nothing
-    assert rgba[0, 0, 3] == 127 and rgba[1, 0, 3] == 255            # the coolest point half there, the hottest whole
-    assert v3.colour(t, 65.0, 84.0, log=False, opacity=1.0, gamma=1.0)[0, 0, 3] == 0      # a field's low end: clear
-    assert F.levels([t], False, False, span=True) == (65.0, 84.0) and F.levels([t], False, False)[0] == 0.0
+    assert v3.levels([t], False, False)[0] == 0.0  # a field: from nothing
+    # one value: a range still
+    assert (v3.levels([np.full((2, 2), 30.0)], False, False,
+                      span=True) == (29.5, 30.5))
+    rgba = v3.colour(t, 65.0, 84.0, log=False, opacity=1.0, gamma=1.0,
+                     floor=0.5)
+    # off the board: nothing
+    assert rgba.shape == (2, 2, 4) and tuple(rgba[1, 1]) == (0, 0, 0, 0)
+    # the coolest point half there, the hottest whole
+    assert rgba[0, 0, 3] == 127 and rgba[1, 0, 3] == 255
+    # a field's low end: clear
+    assert (v3.colour(t, 65.0, 84.0, log=False, opacity=1.0, gamma=1.0)[0, 0,
+                                                                        3] == 0)
+    assert (F.levels([t], False, False, span=True) == (65.0, 84.0)
+            and F.levels([t], False, False)[0] == 0.0)

@@ -1,4 +1,5 @@
-"""Dielectric images against the independent spectral transmission-line solver."""
+"""Dielectric images against the independent spectral transmission-line
+solver."""
 import numpy as np
 import pytest
 
@@ -36,7 +37,8 @@ def test_layers_in_series_and_displacement_boundary_condition():
     measured = -1/(2*np.pi*1e3*r.z['I'][0].imag)
     parallel = EPS0*.01**2/(.00005/2+.00005/6)
     assert measured == pytest.approx(parallel, rel=.05)
-    E = q.e_field(r, 0, np.array([[.005, .005, .000025], [.005, .005, .000075]]))
+    E = q.e_field(r, 0, np.array([[.005, .005, .000025], [.005, .005,
+                                                          .000075]]))
     assert E[0, 2]*2 == pytest.approx(E[1, 2]*6, rel=.02)
     assert r.charge.sum() == pytest.approx(0, abs=1e-17)
     assert q._potential == pytest.approx(q._potential.T)
@@ -64,7 +66,8 @@ def test_uniform_stack_agrees_with_homogeneous_model():
     a, b = p.solve([1e3]), q.solve([1e3])
     assert b.z['I'] == pytest.approx(a.z['I'], rel=1e-10)
     pts = np.array([[.005, .005, .00025], [.016, .01, .003]])
-    assert q.e_field(b, 0, pts) == pytest.approx(p.e_field(a, 0, pts), rel=1e-10, abs=1e-4)
+    assert (q.e_field(b, 0, pts) == pytest.approx(p.e_field(a, 0, pts),
+                                                  rel=1e-10, abs=1e-4))
 
 
 def test_image_sum_quadrature_matches_all_analytic_reference():

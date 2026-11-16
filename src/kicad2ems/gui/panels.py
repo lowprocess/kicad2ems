@@ -1,17 +1,18 @@
 """
-GUI building blocks: a collapsible settings section, an image panel (model, mesh, line model, convergence plots), a
-row of controls that wraps when narrow.
+GUI building blocks: a collapsible settings section, an image panel (model,
+mesh, line model, convergence plots), a row of controls that wraps when narrow.
 """
 import os
 from PySide6.QtCore import Qt, QRect, QPoint, QSignalBlocker, QSize, Signal
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QToolButton, QLabel, QScrollArea, QSizePolicy,
-                               QFrame, QLayout)
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QToolButton,
+                               QLabel, QScrollArea, QSizePolicy, QFrame,
+                               QLayout)
 
 
 def refill(combo, items):
-    """A combo box's items anew, [(label, data)], without its signals; the item that was current stays so (else the
-    first)."""
+    """A combo box's items anew, [(label, data)], without its signals; the item
+    that was current stays so (else the first)."""
     keep = combo.currentData()
     with QSignalBlocker(combo):
         combo.clear()
@@ -21,8 +22,9 @@ def refill(combo, items):
 
 
 class Section(QWidget):
-    """A titled group that folds open and closed: a header (arrow, title, how many of its settings are set) and
-    the content widget. Collapsed when made."""
+    """A titled group that folds open and closed: a header (arrow, title, how
+    many of its settings are set) and the content widget. Collapsed when
+    made."""
     def __init__(self, title, content, expanded=False, extra=None):
         """extra: a widget at the right of the header (a help button)."""
         super().__init__()
@@ -30,9 +32,11 @@ class Section(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
-        self.head = QToolButton(toolButtonStyle=Qt.ToolButtonTextBesideIcon, checkable=True, toggled=self.set_expanded,
-                                styleSheet='QToolButton { border: none; font-weight: bold; padding: 4px; '
-                                           'text-align: left; }')
+        self.head = QToolButton(
+            toolButtonStyle=Qt.ToolButtonTextBesideIcon, checkable=True,
+            toggled=self.set_expanded, styleSheet=
+            'QToolButton { border: none; font-weight: bold; padding: 4px; '
+            'text-align: left; }')
         self.head.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         if extra is None:
             lay.addWidget(self.head)
@@ -62,13 +66,15 @@ class Section(QWidget):
         return self.head.isChecked()
 
     def set_count(self, n):
-        """n: how many settings of the section differ from their defaults (shown in the header)."""
+        """n: how many settings of the section differ from their defaults (shown
+        in the header)."""
         self.head.setText(f"{self.title}" + (f"  ({n} set)" if n else ''))
 
 
 class NeededList(QWidget):
-    """What a run of the selected question still needs: a line each, which leads to where it is set (picked: the
-    item, dict(text, key, run)). Nothing needed: it says so; a question not asked and complete: hidden."""
+    """What a run of the selected question still needs: a line each, which leads
+    to where it is set (picked: the item, dict(text, key, run)). Nothing needed:
+    it says so; a question not asked and complete: hidden."""
     picked = Signal(object)
 
     def __init__(self):
@@ -87,7 +93,8 @@ class NeededList(QWidget):
         while self.rows.count():
             w = self.rows.takeAt(0).widget()
             if w is not None:
-                w.hide()                                    # (gone now: deleteLater alone left it drawn under the new)
+                # (gone now: deleteLater alone left it drawn under the new)
+                w.hide()
                 w.setParent(None)
                 w.deleteLater()
         self.items = list(items)
@@ -95,14 +102,19 @@ class NeededList(QWidget):
         if not items:
             self.rows.addWidget(QLabel('nothing: ready to run', enabled=False))
         for i, it in enumerate(self.items):
-            self.rows.addWidget(QLabel(f'<a href="{i}" style="text-decoration: none; color: #9a5b00;">&#9888;&nbsp; '
-                                       f'{it["text"]}</a>', wordWrap=True, toolTip='go to where it is set',
-                                       textInteractionFlags=Qt.LinksAccessibleByMouse | Qt.LinksAccessibleByKeyboard,
-                                       linkActivated=lambda n: self.picked.emit(self.items[int(n)])))
+            self.rows.addWidget(
+                QLabel(
+                    f'<a href="{i}" style="text-decoration: none; color: '
+                    f'#9a5b00;">&#9888;&nbsp; {it["text"]}</a>', wordWrap=True,
+                    toolTip='go to where it is set',
+                    textInteractionFlags=Qt.LinksAccessibleByMouse
+                    | Qt.LinksAccessibleByKeyboard, linkActivated=lambda n: self
+                    .picked.emit(self.items[int(n)])))
 
 
 class ImagePanel(QWidget):
-    """Plots written by a run (PNG), stacked and scaled to the panel's width; a note when there are none."""
+    """Plots written by a run (PNG), stacked and scaled to the panel's width; a
+    note when there are none."""
     def __init__(self, empty='nothing yet'):
         super().__init__()
         self.paths, self.empty = [], empty
@@ -127,15 +139,19 @@ class ImagePanel(QWidget):
         for p in self.paths:
             lab = QLabel()
             pm = QPixmap(p)
-            lab.setPixmap(pm.scaledToWidth(min(pm.width(), 1400), Qt.SmoothTransformation))
+            lab.setPixmap(
+                pm.scaledToWidth(min(pm.width(), 1400),
+                                 Qt.SmoothTransformation))
             lab.setToolTip(p)
             self.inner.addWidget(lab)
         self.inner.addStretch(1)
 
 
 class FlowLayout(QLayout):
-    """A row of controls that wraps onto more lines when the panel is narrow (Qt's flow layout example). A drop-in
-    for a QHBoxLayout of controls: addWidget takes (and ignores) a stretch, addStretch / addSpacing do nothing."""
+    """A row of controls that wraps onto more lines when the panel is narrow
+    (Qt's flow layout example). A drop-in for a QHBoxLayout of controls:
+    addWidget takes (and ignores) a stretch, addStretch / addSpacing do
+    nothing."""
     def __init__(self, parent=None, spacing=6):
         super().__init__(parent)
         self._items, self._sp = [], spacing
@@ -188,7 +204,10 @@ class FlowLayout(QLayout):
         return s + QSize(m.left() + m.right(), m.top() + m.bottom())
 
     def _visible(self):
-        return [it for it in self._items if not (it.widget() and it.widget().isHidden())]
+        return [
+            it for it in self._items
+            if not (it.widget() and it.widget().isHidden())
+        ]
 
     def _place(self, rect, test):
         m = self.contentsMargins()

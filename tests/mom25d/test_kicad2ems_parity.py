@@ -1,7 +1,9 @@
-"""Parity of the kicad2ems plugin: mom25d's planar model read back (mom25d.board.BoardModel) against kicad2ems's
-board, minus what the plugin declares (the outline, copper below the ground, vias, edge walls as via rows, parts as
-strips). Every difference must be declared; a via moved after the declaration fails. From kicad2ems's tests,
-which check its FDTD model the same way."""
+"""Parity of the kicad2ems plugin: mom25d's planar model read back
+(mom25d.board.BoardModel) against kicad2ems's board, minus what the plugin
+declares (the outline, copper below the ground, vias, edge walls as via rows,
+parts as strips). Every difference must be declared; a via moved after the
+declaration fails. From kicad2ems's tests, which check its FDTD model the same
+way."""
 import pytest
 from kicad2ems.core.solvers import registry
 from kicad2ems.core.parity import check
@@ -9,11 +11,13 @@ from k2e_fixtures import prepared_job
 
 pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
 
-CASES = dict(transition=('demo', ['--nets', 'RF,GND', '--ground', 'B.Cu']),
-             lowpass=('lowpass', []),
-             launch=('launch', ['--edge-walls', 'all']),
-             transition_pads=('demo', ['--nets', 'RF,GND', '--ground', 'B.Cu', '--mom-planes', 'pec',
-                                       '--mom-stitching-pads', 'drop']))
+CASES = dict(
+    transition=('demo', ['--nets', 'RF,GND', '--ground',
+                         'B.Cu']), lowpass=('lowpass', []),
+    launch=('launch', ['--edge-walls', 'all']), transition_pads=('demo', [
+        '--nets', 'RF,GND', '--ground', 'B.Cu', '--mom-planes', 'pec',
+        '--mom-stitching-pads', 'drop'
+    ]))
 
 
 @pytest.mark.parametrize('case', list(CASES))
@@ -29,7 +33,9 @@ def test_undeclared_changes_fail(boards, tmp_path, monkeypatch):
     name, args = CASES['transition']
     j, prep = prepared_job(tmp_path, boards[name], 'mom25d', *args)
     real = BoardModel._via
-    monkeypatch.setattr(BoardModel, '_via', lambda self, x, *a, **k: real(self, x + 0.1 if x > 0 else x, *a, **k))
+    monkeypatch.setattr(
+        BoardModel, '_via',
+        lambda self, x, *a, **k: real(self, x + 0.1 if x > 0 else x, *a, **k))
     sv = registry()['mom25d']
     problems = check(j.m, sv.readback(j, prep), sv.deviations(j, prep))
     assert problems and all(p.startswith('via:') for p in problems)
@@ -38,6 +44,8 @@ def test_undeclared_changes_fail(boards, tmp_path, monkeypatch):
 def test_a_dropped_declaration_fails(boards, tmp_path):
     j, prep = prepared_job(tmp_path, boards['lowpass'], 'mom25d')
     sv = registry()['mom25d']
-    devs = [d for d in sv.deviations(j, prep) if not d.item.startswith('part:')]       # parts left unsaid
+    # parts left unsaid
+    devs = [d for d in sv.deviations(j, prep) if not d.item.startswith('part:')]
     problems = check(j.m, sv.readback(j, prep), devs)
-    assert any(p.startswith(('part', 'copper on F.Cu')) for p in problems), problems
+    assert any(p.startswith(('part', 'copper on F.Cu'))
+               for p in problems), problems

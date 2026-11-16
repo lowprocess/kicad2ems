@@ -1,20 +1,24 @@
 """
-emsdev.afs - an adaptive frequency sweep with rational (AAA) interpolation, which mom25d's sweep and pcbqs's
-S-parameters share (it was mom25d's own).
+emsdev.afs - an adaptive frequency sweep with rational (AAA) interpolation,
+which mom25d's sweep and pcbqs's S-parameters share (it was mom25d's own).
 
-A solve per frequency is the expensive step; S(f) of a passive structure is a smooth rational function between
-its resonances. Fit one barycentric rational model to all S entries at once (set-valued AAA), and only solve at
-the frequency where two successive models disagree most, until they agree everywhere on the band.
+A solve per frequency is the expensive step; S(f) of a passive structure is a
+smooth rational function between its resonances. Fit one barycentric rational
+model to all S entries at once (set-valued AAA), and only solve at the frequency
+where two successive models disagree most, until they agree everywhere on the
+band.
 
-    r = aaa(z, F)                                   # F (n, m) at z (n,): r(zz) -> (len(zz), m)
+    r = aaa(z, F)  # F (n, m) at z (n,): r(zz) -> (len(zz), m)
     grid, S, fs, Ss, history = adaptive_sweep(solve, fmin, fmax, grid=freqs)
 
-numpy is the one thing it needs (emsdev itself needs nothing: import this module only where numpy is).
+numpy is the one thing it needs (emsdev itself needs nothing: import this module
+only where numpy is).
 """
 import numpy as np
 
 
-SMALL = 1e-4          # entries below this fraction of the largest are fitted apart (see aaa)
+# entries below this fraction of the largest are fitted apart (see aaa)
+SMALL = 1e-4
 
 
 def aaa(z, F, tol=1e-10, mmax=80):
@@ -25,10 +29,12 @@ def aaa(z, F, tol=1e-10, mmax=80):
     n, m = F.shape
     small = np.abs(F).max(0) < SMALL * np.abs(F).max()
     if small.any() and not small.all():
-        # entries below SMALL of the largest (ports with no path between them: a cut network's, at the solver's
-        # noise) fitted on their own: in the shared denominator they had decided the poles the large entries
-        # left free, and spoilt the large entries' model between the samples
-        big_r, small_r = aaa(z, F[:, ~small], tol, mmax), aaa(z, F[:, small], tol, mmax)
+        # entries below SMALL of the largest (ports with no path between them: a
+        # cut network's, at the solver's noise) fitted on their own: in the
+        # shared denominator they had decided the poles the large entries left
+        # free, and spoilt the large entries' model between the samples
+        big_r, small_r = (aaa(z, F[:, ~small], tol,
+                              mmax), aaa(z, F[:, small], tol, mmax))
 
         def r(zz):
             a, b = big_r(zz), small_r(zz)
@@ -49,7 +55,8 @@ def aaa(z, F, tol=1e-10, mmax=80):
         J[j] = False
         zs, Fsup = z[sup], Fs[sup]
         C = 1.0 / (z[J][:, None] - zs[None, :])
-        A = np.vstack([C * (Fs[J, k][:, None] - Fsup[None, :, k]) for k in range(m)])
+        A = np.vstack(
+            [C * (Fs[J, k][:, None] - Fsup[None, :, k]) for k in range(m)])
         if A.shape[0] < A.shape[1]:
             A = np.vstack([A, np.zeros((A.shape[1] - A.shape[0], A.shape[1]))])
         _, _, Vh = np.linalg.svd(A, full_matrices=False)
@@ -74,7 +81,8 @@ def aaa(z, F, tol=1e-10, mmax=80):
 
 
 def _is_log(grid):
-    """Whether a frequency grid is spaced in log f (a ratio between neighbours rather than a step)."""
+    """Whether a frequency grid is spaced in log f (a ratio between neighbours
+    rather than a step)."""
     g = np.asarray(grid, float)
     if len(g) < 3 or g[0] <= 0 or g[-1] / g[0] < 10:
         return False
@@ -82,42 +90,56 @@ def _is_log(grid):
     return np.ptp(r) < 1e-6 * r.mean() * len(g) or np.ptp(d) > 10 * d.min()
 
 
-def adaptive_sweep(solve, fmin, fmax, n0=5, tol=2e-3, max_points=40, ngrid=2001, log=print, on_step=None, seed=(),
-                   grid=None, hint=None):
+def adaptive_sweep(solve, fmin, fmax, n0=5, tol=2e-3, max_points=40, ngrid=2001,
+                   log=print, on_step=None, seed=(), grid=None, hint=None):
     """
-    solve(f) -> S (P x P).  Returns (f_grid, S_grid (ngrid, P, P), f_samples, S_samples, history): one dict per
-    model after the first, solves (samples so far), change (max |dS| from the previous model, on the grid) at
-    f_change (Hz), pred (how far the previous model was from the newest sample) and f_new (Hz: the next
-    frequency solved, None when the sweep stopped). on_step(entry): called with each entry as it is made.
-    Converged when, twice in a row, the models from the last two iterations agree to `tol` (max |dS|) on the
-    grid and the model predicted the newest sample to `tol` before it was solved. (The model change alone can
-    be zero while the model is still wrong: a sparse fit that the new sample does not alter.) seed: frequencies
-    (Hz) solved among the first samples, besides the n0 spread over the band (those inside it). grid: the
-    frequencies asked for (Hz), the model checked and returned there (else ngrid spread linearly); a grid in log f
-    (a sweep of decades) has the first samples and the gaps between them in log f too. (A log sweep had been
-    solved on a linear grid and interpolated linearly: below its first step, decades between two samples.) The
-    last history entry's `converged` says whether the models agreed, or the sweep stopped at max_points. hint: what
-    to try, said with a solve that gives non-finite S-parameters.
+    solve(f) -> S (P x P).  Returns (f_grid, S_grid (ngrid, P, P), f_samples,
+    S_samples, history): one dict per model after the first, solves (samples so
+    far), change (max |dS| from the previous model, on the grid) at f_change
+    (Hz), pred (how far the previous model was from the newest sample) and f_new
+    (Hz: the next frequency solved, None when the sweep stopped).
+    on_step(entry): called with each entry as it is made. Converged when, twice
+    in a row, the models from the last two iterations agree to `tol` (max |dS|)
+    on the grid and the model predicted the newest sample to `tol` before it was
+    solved. (The model change alone can be zero while the model is still wrong:
+    a sparse fit that the new sample does not alter.) seed: frequencies (Hz)
+    solved among the first samples, besides the n0 spread over the band (those
+    inside it). grid: the frequencies asked for (Hz), the model checked and
+    returned there (else ngrid spread linearly); a grid in log f (a sweep of
+    decades) has the first samples and the gaps between them in log f too. (A
+    log sweep had been solved on a linear grid and interpolated linearly: below
+    its first step, decades between two samples.) The last history entry's
+    `converged` says whether the models agreed, or the sweep stopped at
+    max_points. hint: what to try, said with a solve that gives non-finite
+    S-parameters.
     """
     def checked(f):
         S = solve(f)
-        if not np.isfinite(S).all():                            # the fit would fail on it with an SVD error
-            raise FloatingPointError(f"the solve at {f / 1e9:.4g} GHz gave non-finite S-parameters"
-                                     + (f" ({hint})" if hint else ''))
+        # the fit would fail on it with an SVD error
+        if not np.isfinite(S).all():
+            raise FloatingPointError(
+                f"the solve at {f / 1e9:.4g} GHz gave non-finite S-parameters"
+                + (f" ({hint})" if hint else ''))
         return S
 
-    grid = np.linspace(fmin, fmax, ngrid) if grid is None else np.asarray(grid, float)
+    grid = (np.linspace(fmin, fmax, ngrid) if grid is None else np.asarray(
+        grid, float))
     ngrid, logf = len(grid), _is_log(grid)
-    u = np.log if logf else (lambda x: np.asarray(x, float))      # the axis the gaps are measured on
+    # the axis the gaps are measured on
+    u = np.log if logf else (lambda x: np.asarray(x, float))
     iu = np.exp if logf else (lambda x: x)
 
-    def widest_gap():                                       # the middle of the widest gap between samples
+    def widest_gap():  # the middle of the widest gap between samples
         us = np.sort(u(np.array(fs)))
         i = int(np.argmax(np.diff(us)))
         return float(iu(us[i] + (us[i + 1] - us[i]) / 2))
 
-    first = np.geomspace(fmin, fmax, n0) if logf else np.linspace(fmin, fmax, n0)
-    fs = sorted(set(first.tolist()) | {float(f) for f in seed if fmin <= f <= fmax})
+    first = (np.geomspace(fmin, fmax, n0) if logf else np.linspace(
+        fmin, fmax, n0))
+    fs = sorted(
+        set(first.tolist()) | {float(f)
+                               for f in seed
+                               if fmin <= f <= fmax})
     Ss = [checked(f) for f in fs]
     P, sc = Ss[0].shape[0], 1e9
     prev, hist, ok, pred_err = None, [], 0, np.inf
@@ -129,12 +151,13 @@ def adaptive_sweep(solve, fmin, fmax, n0=5, tol=2e-3, max_points=40, ngrid=2001,
         if prev is not None:
             dif = np.abs(Mg - prev).max(1)
             k = int(np.argmax(dif))
-            hist.append(dict(solves=len(fs), change=float(dif[k]), f_change=float(grid[k]), pred=float(pred_err),
-                             f_new=None))
+            hist.append(
+                dict(solves=len(fs), change=float(dif[k]),
+                     f_change=float(grid[k]), pred=float(pred_err), f_new=None))
             if on_step:
                 on_step(dict(hist[-1], tol=tol))
-            log(f"  AFS: {len(fs)} solves, max model change {dif[k]:.1e} at {grid[k] / 1e9:.3f} GHz, "
-                f"prediction error {pred_err:.1e}")
+            log(f"  AFS: {len(fs)} solves, max model change {dif[k]:.1e} at "
+                f"{grid[k] / 1e9:.3f} GHz, prediction error {pred_err:.1e}")
             ok = ok + 1 if dif[k] < tol and pred_err < tol else 0
             if ok >= 2 or len(fs) >= max_points:
                 hist[-1]['converged'] = ok >= 2
@@ -142,13 +165,16 @@ def adaptive_sweep(solve, fmin, fmax, n0=5, tol=2e-3, max_points=40, ngrid=2001,
             fnew = grid[k]
         else:
             fnew = widest_gap()
-        if min(abs(u(np.array(fs)) - u(fnew))) < (u(fmax) - u(fmin)) / (4 * ngrid):   # keep new samples away from
-            fnew = widest_gap()                                                      # existing ones
+        # keep new samples away from
+        if (min(abs(u(np.array(fs)) - u(fnew))) < (u(fmax) - u(fmin)) /
+            (4 * ngrid)):
+            fnew = widest_gap()  # existing ones
         prev = Mg
         if hist:
             hist[-1]['f_new'] = float(fnew)
         Snew = checked(fnew)
-        pred_err = float(np.abs(model(np.array([fnew / sc]))[0] - Snew.ravel()).max())
+        pred_err = float(
+            np.abs(model(np.array([fnew / sc]))[0] - Snew.ravel()).max())
         fs.append(fnew); Ss.append(Snew)
     o = np.argsort(fs)
     return grid, Mg.reshape(ngrid, P, P), np.array(fs)[o], np.array(Ss)[o], hist

@@ -1,5 +1,6 @@
-"""The report's interactive S-parameter plot: each solver's Touchstone file embedded as data (thinned to
-PLOT_POINTS, NaN as null), the static image kept under it, and the plain image when there is no file."""
+"""The report's interactive S-parameter plot: each solver's Touchstone file
+embedded as data (thinned to PLOT_POINTS, NaN as null), the static image kept
+under it, and the plain image when there is no file."""
 import json
 import re
 
@@ -13,53 +14,74 @@ def _summary(tmp_path, n=1001):
     f = np.linspace(1e9, 3e9, n)
     S = np.zeros((n, 2, 2), complex)
     S[:, 0, 0], S[:, 1, 0] = 0.1, 0.9j
-    S[:, 0, 1] = np.nan                                              # P2 not driven
+    S[:, 0, 1] = np.nan  # P2 not driven
     write_touchstone(str(tmp_path / 'b_mom25d.s2p'), f, S, [50.0, 50.0])
-    return dict(solved=dict(mom25d=dict(label='mom25d (MoM)', touchstone='b_mom25d.s2p', names=['IN', 'OUT'])))
+    return dict(solved=dict(mom25d=dict(
+        label='mom25d (MoM)', touchstone='b_mom25d.s2p', names=['IN', 'OUT'])))
 
 
 def test_sparam_data(tmp_path):
     d = report._sparam_data(_summary(tmp_path), str(tmp_path))
     (s,) = d['solvers']
-    assert s['label'] == 'mom25d (MoM)' and s['names'] == ['IN', 'OUT'] and s['first'] == ['S11', 'S21']
-    assert s['params'] == ['S11', 'S21', 'S12', 'S22'] and len(s['f']) <= report.PLOT_POINTS
-    assert s['f'][0] == 1.0 and s['re']['S11'][0] == 0.1 and s['im']['S21'][0] == 0.9 and s['re']['S12'][0] is None
-    assert report._sparam_data(dict(solved=dict(x=dict(touchstone='gone.s2p'))), str(tmp_path)) is None
+    assert (s['label'] == 'mom25d (MoM)' and s['names'] == ['IN', 'OUT']
+            and s['first'] == ['S11', 'S21'])
+    assert (s['params'] == ['S11', 'S21', 'S12', 'S22']
+            and len(s['f']) <= report.PLOT_POINTS)
+    assert (s['f'][0] == 1.0 and s['re']['S11'][0] == 0.1
+            and s['im']['S21'][0] == 0.9 and s['re']['S12'][0] is None)
+    assert (report._sparam_data(
+        dict(solved=dict(x=dict(touchstone='gone.s2p'))), str(tmp_path))
+            is None)
 
 
 def test_report_embeds_the_plot(tmp_path):
     sm = _summary(tmp_path)
     data = report._sparam_data(sm, str(tmp_path))
-    html = report._iplot(dict(data, solvers=[dict(data['solvers'][0], label='a</script>b')]))
-    assert html.count('<script') == 2 and 'a<\\/script>b' in html             # no early end of the data's script
-    blob = re.search(r"<script type='application/json' class='data'>(.*?)</script>", html, re.S).group(1)
+    html = report._iplot(
+        dict(data, solvers=[dict(data['solvers'][0], label='a</script>b')]))
+    # no early end of the data's script
+    assert html.count('<script') == 2 and 'a<\\/script>b' in html
+    blob = re.search(
+        r"<script type='application/json' class='data'>(.*?)</script>", html,
+        re.S).group(1)
     assert json.loads(blob)['solvers'][0]['label'] == 'a</script>b'
 
 
 def test_the_plot_takes_as_many_solvers_as_ran():
-    """The static plot with a reference and more others than there are dash names: the third other's style is a
-    dash pattern (a tuple), which is a line style and not a format (a run of four solvers ended here)."""
+    """The static plot with a reference and more others than there are dash
+    names: the third other's style is a dash pattern (a tuple), which is a line
+    style and not a format (a run of four solvers ended here)."""
     from kicad2ems.core.pipeline import OVERLAY_STYLES
     from kicad2ems.core.plots import plot_results
     f = np.linspace(1e9, 3e9, 5)
     S = np.zeros((5, 2, 2), complex) + 0.5
-    overlays = [(f, S * (0.9 - 0.1 * i), f"solver {i}", st) for i, st in enumerate(OVERLAY_STYLES)]
+    overlays = [(f, S * (0.9 - 0.1 * i), f"solver {i}", st)
+                for i, st in enumerate(OVERLAY_STYLES)]
     assert any(isinstance(st, tuple) for st in OVERLAY_STYLES)
-    fig = plot_results(f, S, ['P1', 'P2'], 'four and more', overlays + [(f, S, 'file.s2p', '--')], label='reference')
+    fig = plot_results(f, S, ['P1', 'P2'], 'four and more',
+                       overlays + [(f, S, 'file.s2p', '--')], label='reference')
     ax, smith = fig.axes
-    assert len(ax.lines) == 3 * (2 + len(OVERLAY_STYLES))                     # S11, S21, S22 of each
+    # S11, S21, S22 of each
+    assert len(ax.lines) == 3 * (2 + len(OVERLAY_STYLES))
     assert len(ax.get_legend_handles_labels()[1]) == len(ax.lines)
 
 
 def test_a_solvers_resonances_are_a_table(tmp_path):
-    """API 2.13: Result.info['modes'] (Palace's --palace-modes) is a table in the solver's section, a column per
-    port's external Q, a damped feed line said as such."""
+    """API 2.13: Result.info['modes'] (Palace's --palace-modes) is a table in
+    the solver's section, a column per port's external Q, a damped feed line
+    said as such."""
     sm = _summary(tmp_path)
-    sm['solved']['mom25d']['modes'] = dict(about='eigenmodes in the can', rows=[
-        dict(mode=1, f_ghz=4.6574, Q=157.5, q_ext={'IN': 456.7, 'OUT': 553.9}),
-        dict(mode=2, f_ghz=5.3558, Q=1.054, q_ext={'IN': 0.93}, kind='a feed line damped by its port')])
+    sm['solved']['mom25d']['modes'] = dict(
+        about='eigenmodes in the can', rows=[
+            dict(mode=1, f_ghz=4.6574, Q=157.5,
+                 q_ext={'IN': 456.7, 'OUT': 553.9}),
+            dict(mode=2, f_ghz=5.3558, Q=1.054, q_ext={'IN': 0.93},
+                 kind='a feed line damped by its port')
+        ])
     html = report._solver_section(sm, 'mom25d', str(tmp_path))
     assert '<h3>Resonances</h3>' in html and 'eigenmodes in the can' in html
-    assert 'Q_ext IN' in html and 'Q_ext OUT' in html and '4.6574' in html and '157.5' in html
+    assert ('Q_ext IN' in html and 'Q_ext OUT' in html and '4.6574' in html
+            and '157.5' in html)
     assert 'a feed line damped by its port' in html and html.count('<tr>') == 3
-    assert 'Resonances' not in report._solver_section(_summary(tmp_path), 'mom25d', str(tmp_path))
+    assert ('Resonances' not in report._solver_section(_summary(tmp_path),
+                                                       'mom25d', str(tmp_path)))

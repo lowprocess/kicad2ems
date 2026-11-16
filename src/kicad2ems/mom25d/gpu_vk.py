@@ -1,19 +1,23 @@
 """
-mom25d.gpu_vk - the complex64 LU on a Vulkan GPU (slangpy): mom25d.gpu's backend interface where CuPy has no GPU (AMD
-on Windows: no ROCm CuPy there). Vulkan has no LAPACK, so the factorisation is the hybrid one of MAGMA's getrf:
+mom25d.gpu_vk - the complex64 LU on a Vulkan GPU (slangpy): mom25d.gpu's backend
+interface where CuPy has no GPU (AMD on Windows: no ROCm CuPy there). Vulkan has
+no LAPACK, so the factorisation is the hybrid one of MAGMA's getrf:
 
   the CPU factors each panel (N - k0 rows, NB columns) with LAPACK's cgetrf (partial pivoting, the same pivots and
   layout as scipy's lu_factor), and inverts its unit lower triangle (ctrtri);
   the GPU applies the panel's row interchanges to the other columns, forms U12 = L11^-1 A12 (a GEMM with that
   inverse) and the trailing update A22 -= L21 U12 (the O(N^3) part: a register-tiled complex GEMM).
 
-With look-ahead: the GPU updates the next panel's columns first and that panel goes to the CPU while the GPU runs
-the rest of the trailing update, so the CPU's panel and the GPU's update overlap.
+With look-ahead: the GPU updates the next panel's columns first and that panel
+goes to the CPU while the GPU runs the rest of the trailing update, so the CPU's
+panel and the GPU's update overlap.
 
-The matrix is A = Z^T, column-major (Z's rows are its columns, as the CuPy backend factors it): column c in buffer
-c >> sh at (c & mask) * N, the buffers at most MAX_BUFFER bytes each (Vulkan drivers cap one buffer at 2-4 GB; 16 GB
-of matrix is several). The triangular solves of solve() run on the GPU too: blocked substitution, the diagonal
-blocks' inverses from the factorisation, the off-diagonal blocks as matrix-vector products.
+The matrix is A = Z^T, column-major (Z's rows are its columns, as the CuPy
+backend factors it): column c in buffer c >> sh at (c & mask) * N, the buffers
+at most MAX_BUFFER bytes each (Vulkan drivers cap one buffer at 2-4 GB; 16 GB of
+matrix is several). The triangular solves of solve() run on the GPU too: blocked
+substitution, the diagonal blocks' inverses from the factorisation, the
+off-diagonal blocks as matrix-vector products.
 
     b = VulkanBackend(); b.factor(Z); X = b.solve(R); lu, piv = b.download(); b.release()
 """
@@ -23,11 +27,13 @@ import time
 import numpy as np
 from scipy.linalg import lapack
 
-MAX_BUFFER = 2 ** 31            # bytes of one matrix buffer (under every driver's maxBufferSize)
-TABLE = 32                      # matrix buffers at most (the descriptor's table): 64 GB
+# bytes of one matrix buffer (under every driver's maxBufferSize)
+MAX_BUFFER = 2 ** 31
+# matrix buffers at most (the descriptor's table): 64 GB
+TABLE = 32
 NB = 256                        # panel width (MOM25D_VK_NB)
 
-SOURCE = r'''
+SOURCE = (r'''
 struct Mat {                    // a column-major complex matrix: column c in buffer c >> sh, at (c & mask) * ld
     float2* b[TABLE];
     int sh, mask, ld, r0, c0;   // r0, c0: the submatrix's corner
@@ -287,25 +293,31 @@ void solve_upd(uint3 tid: SV_DispatchThreadID, uint3 lid: SV_GroupThreadID, uint
         GroupMemoryBarrierWithGroupSync();
     }
 }
-'''
+''')
 
-NAMES = ('gemm', 'gemm_flat', 'trsm', 'copy', 'swap_gather', 'swap_scatter', 'solve_tri', 'solve_upd')
+NAMES = ('gemm', 'gemm_flat', 'trsm', 'copy', 'swap_gather', 'swap_scatter',
+         'solve_tri', 'solve_upd')
 
 
-GT = 4                          # each thread's outputs: GT x GT (the tile 16 GT square)
-# trsm's workgroup: TRSM_COLS columns, TRSM_LANES threads each. At N = 16k on an RX 7800 XT: 4 x 64 69 ms a
-# factorisation, 16 x 16 271 ms, 16 x 8 377 ms (few rows a thread between barriers is what pays)
+GT = 4  # each thread's outputs: GT x GT (the tile 16 GT square)
+# trsm's workgroup: TRSM_COLS columns, TRSM_LANES threads each. At N = 16k on an
+# RX 7800 XT: 4 x 64 69 ms a factorisation, 16 x 16 271 ms, 16 x 8 377 ms (few
+# rows a thread between barriers is what pays)
 TRSM_COLS = int(os.environ.get('MOM25D_VK_TRSM_COLS') or 4)
 TRSM_LANES = int(os.environ.get('MOM25D_VK_TRSM_LANES') or 64)
 
 
 def source(gt=GT, nbmax=NB):
-    return (f"#define TABLE {TABLE}\n#define GT {int(gt)}\n#define NBMAX {int(nbmax)}\n"
-            f"#define TRSM_COLS {TRSM_COLS}\n#define TRSM_LANES {TRSM_LANES}\n" + SOURCE)
+    return (
+        f"#define TABLE {TABLE}\n#define GT {int(gt)}\n#define NBMAX "
+        f"{int(nbmax)}\n#define TRSM_COLS {TRSM_COLS}\n#define TRSM_LANES "
+        f"{TRSM_LANES}\n"
+        + SOURCE)
 
 
 class _Mat:
-    """A column-major complex64 matrix on the device: buffers of whole columns (MAX_BUFFER bytes at most)."""
+    """A column-major complex64 matrix on the device: buffers of whole columns
+    (MAX_BUFFER bytes at most)."""
     def __init__(self, be, rows, cols):
         self.rows, self.cols = int(rows), int(cols)
         per = max(1, MAX_BUFFER // (8 * max(self.rows, 1)))
@@ -313,26 +325,41 @@ class _Mat:
         self.per = 1 << self.sh
         nbuf = -(-self.cols // self.per)
         if nbuf > TABLE:
-            raise MemoryError(f"mom25d: a {rows} x {cols} matrix needs {nbuf} GPU buffers (at most {TABLE})")
-        self.bufs = [be._buffer(8 * self.rows * min(self.per, self.cols - i * self.per)) for i in range(nbuf)]
+            raise MemoryError(
+                f"mom25d: a {rows} x {cols} matrix needs {nbuf} GPU buffers "
+                f"(at most {TABLE})"
+            )
+        self.bufs = [
+            be._buffer(8 * self.rows * min(self.per, self.cols - i * self.per))
+            for i in range(nbuf)
+        ]
 
     def desc(self, r0=0, c0=0):
-        b = [x.device_address for x in self.bufs] + [0] * (TABLE - len(self.bufs))
-        return {'b': b, 'sh': self.sh, 'mask': self.per - 1, 'ld': self.rows, 'r0': int(r0), 'c0': int(c0)}
+        b = ([x.device_address for x in self.bufs] + [0] *
+             (TABLE - len(self.bufs)))
+        return {
+            'b': b, 'sh': self.sh, 'mask': self.per - 1, 'ld': self.rows,
+            'r0': int(r0), 'c0': int(c0)
+        }
 
     def download(self):
         """The matrix as (cols, rows) C-ordered: its transpose's memory."""
-        return np.concatenate([b.to_numpy().view(np.complex64).reshape(-1, self.rows) for b in self.bufs])
+        return np.concatenate([
+            b.to_numpy().view(np.complex64).reshape(-1, self.rows)
+            for b in self.bufs
+        ])
 
 
 class VulkanBackend:
-    """kicad2ems.mom25d.gpu's backend on a Vulkan GPU: factor (hybrid blocked LU), solve (on the GPU), download."""
+    """kicad2ems.mom25d.gpu's backend on a Vulkan GPU: factor (hybrid blocked
+    LU), solve (on the GPU), download."""
     name, inplace, hip, api = 'vulkan', True, False, 'Vulkan'
     lu = piv = None
 
     def __init__(self):
         from kicad2ems.emsdev import gpu as devices, vulkan
-        self.info = devices.vulkan_device(need=('bda', 'int64'))  # raises Unavailable: no driver, GPU or slangpy
+        # raises Unavailable: no driver, GPU or slangpy
+        self.info = devices.vulkan_device(need=('bda', 'int64'))
         try:
             self.dev = vulkan.slang_device()
             import slangpy as spy
@@ -340,17 +367,25 @@ class VulkanBackend:
             raise devices.Unavailable(f"vulkan: {e}")
         self.spy, self.device = spy, self.info.name
         self.nb = int(os.environ.get('MOM25D_VK_NB') or NB)
-        self.usage = spy.BufferUsage.shader_resource | spy.BufferUsage.unordered_access | \
-            spy.BufferUsage.copy_source | spy.BufferUsage.copy_destination
-        mod = self.dev.load_module_from_source(f"mom25d_lu_{self.nb}_{GT}_{TRSM_COLS}_{TRSM_LANES}", source(GT, self.nb))
-        self.k = {n: self.dev.create_compute_pipeline(self.dev.link_program([mod], [mod.entry_point(n)]))
-                  for n in NAMES}
+        self.usage = (spy.BufferUsage.shader_resource
+                      | spy.BufferUsage.unordered_access
+                      | spy.BufferUsage.copy_source
+                      | spy.BufferUsage.copy_destination)
+        mod = self.dev.load_module_from_source(
+            f"mom25d_lu_{self.nb}_{GT}_{TRSM_COLS}_{TRSM_LANES}",
+            source(GT, self.nb))
+        self.k = {
+            n: self.dev.create_compute_pipeline(
+                self.dev.link_program([mod], [mod.entry_point(n)]))
+            for n in NAMES
+        }
         self.enc, self._tmp, self._hosts = None, {}, {}
         from .fast import cap_blas_threads
-        cap_blas_threads()                                        # the panels' LAPACK on the fast cores
+        cap_blas_threads()  # the panels' LAPACK on the fast cores
         self.stats = {}
 
-    # ---- the interface mom25d.gpu's backends share -----------------------------------------------------------
+    # ---- the interface mom25d.gpu's backends share
+    # -----------------------------------------------------------
     def mem_free(self):
         f = self.info.free()
         return float(f) if f is not None else 0.9 * float(self.info.total or 0)
@@ -359,30 +394,37 @@ class VulkanBackend:
         return self.info.total
 
     def vram_needed(self, N):
-        """The matrix, the panel staging, the swap and U12 work arrays, the diagonal blocks' inverses."""
+        """The matrix, the panel staging, the swap and U12 work arrays, the
+        diagonal blocks' inverses."""
         return 8.0 * N * N + 8.0 * N * self.nb * 5 + 0.4e9
 
     def fits(self, N, extra=0.0):
-        """Whether an N-unknown LU fits in the free memory (+ extra: what kept factors would give back). vram_needed
-        counts every device buffer factor() makes and 0.4 GB besides, so the margin is that and at least 0.5 GB
-        (3% of the free): 90% of the free turned down antenna_cp_patch's 40.8k unknowns (14.15 GB of 15.7 GB),
-        which factored there in 19 s with 1.95 GB left, against minutes on the CPU."""
+        """Whether an N-unknown LU fits in the free memory (+ extra: what kept
+        factors would give back). vram_needed counts every device buffer
+        factor() makes and 0.4 GB besides, so the margin is that and at least
+        0.5 GB (3% of the free): 90% of the free turned down antenna_cp_patch's
+        40.8k unknowns (14.15 GB of 15.7 GB), which factored there in 19 s with
+        1.95 GB left, against minutes on the CPU."""
         free = self.mem_free() + extra
         return self.vram_needed(N) <= free - max(0.5e9, 0.03 * free)
 
     def release(self):
-        """Free the factor and the work arrays (the device memory; the mapped host buffers are kept)."""
+        """Free the factor and the work arrays (the device memory; the mapped
+        host buffers are kept)."""
         if self.enc is not None or self.lu is not None:
             self._submit(wait=True)
         self.lu = self.piv = None
         self._tmp = {}
 
-    # ---- device plumbing -------------------------------------------------------------------------------------
+    # ---- device plumbing
+    # -------------------------------------------------------------------------------------
     def _buffer(self, nbytes, data=None):
         try:
-            b = self.dev.create_buffer(size=max(-(-int(nbytes) // 16) * 16, 16), usage=self.usage)
+            b = self.dev.create_buffer(size=max(-(-int(nbytes) // 16) * 16, 16),
+                                       usage=self.usage)
         except Exception as e:
-            raise MemoryError(f"mom25d: a {nbytes / 1e9:.2f} GB GPU buffer: {e}")
+            raise MemoryError(
+                f"mom25d: a {nbytes / 1e9:.2f} GB GPU buffer: {e}")
         if data is not None:
             b.copy_from_numpy(np.ascontiguousarray(data).view(np.uint8).ravel())
         return b
@@ -416,7 +458,8 @@ class VulkanBackend:
         return (min(g, 65535), -(-g // 65535), 1)
 
     def _submit(self, wait=False):
-        """Submit what is recorded; returns the submission's id (None: nothing recorded)."""
+        """Submit what is recorded; returns the submission's id (None: nothing
+        recorded)."""
         sid = None
         if self.enc is not None:
             sid = self.dev.submit_command_buffer(self.enc.finish())
@@ -426,19 +469,21 @@ class VulkanBackend:
         return sid
 
     def _gemm(self, A, B, C, m, n, k, alpha=-1.0, beta=1.0):
-        """C = beta C + alpha A B (m x n, k deep); gemm_flat where A's k columns and B's n are each in one buffer."""
+        """C = beta C + alpha A B (m x n, k deep); gemm_flat where A's k columns
+        and B's n are each in one buffer."""
         if m <= 0 or n <= 0 or k <= 0:
             return
         tm = 16 * GT
         A, fa = self._one_buffer(A, k)
         B, fb = self._one_buffer(B, n)
-        self._run('gemm_flat' if fa and fb else 'gemm', (-(-m // tm), -(-n // tm), 1), A_=A, B_=B, C_=C, m_=m,
-                  n_=n, k_=k, alpha_=alpha, beta_=beta)
+        self._run(('gemm_flat' if fa and fb else 'gemm'),
+                  (-(-m // tm), -(-n // tm), 1), A_=A, B_=B, C_=C, m_=m, n_=n,
+                  k_=k, alpha_=alpha, beta_=beta)
 
     @staticmethod
     def _one_buffer(d, ncols):
-        """(descriptor, flat): d as a one-buffer descriptor (b[0] that buffer, c0 within it) when its ncols
-        columns are in one buffer."""
+        """(descriptor, flat): d as a one-buffer descriptor (b[0] that buffer,
+        c0 within it) when its ncols columns are in one buffer."""
         sh, c0 = d['sh'], d['c0']
         if (c0 >> sh) != ((c0 + max(ncols, 1) - 1) >> sh):
             return d, False
@@ -452,14 +497,19 @@ class VulkanBackend:
 
     @staticmethod
     def _flatdesc(addr, rows, r0=0, c0=0):
-        """A Mat descriptor of one contiguous column-major array at device address addr (device or mapped host)."""
-        return {'b': [int(addr)] + [0] * (TABLE - 1), 'sh': 30, 'mask': (1 << 30) - 1, 'ld': int(rows),
-                'r0': int(r0), 'c0': int(c0)}
+        """A Mat descriptor of one contiguous column-major array at device
+        address addr (device or mapped host)."""
+        return {
+            'b': [int(addr)] + [0] * (TABLE - 1), 'sh': 30,
+            'mask': (1 << 30) - 1, 'ld': int(rows), 'r0': int(r0), 'c0': int(c0)
+        }
 
-    # ---- the factorisation -----------------------------------------------------------------------------------
+    # ---- the factorisation
+    # -----------------------------------------------------------------------------------
     def _host(self, name, nbytes):
-        """Mapped host memory kept across calls (emsdev.vulkan.HostBuffer: the kernels copy to and from it by
-        address; slangpy's own read-back runs at a fraction of a GB/s on some drivers)."""
+        """Mapped host memory kept across calls (emsdev.vulkan.HostBuffer: the
+        kernels copy to and from it by address; slangpy's own read-back runs at
+        a fraction of a GB/s on some drivers)."""
         from kicad2ems.emsdev.vulkan import HostBuffer
         h = self._hosts.get(name)
         if h is None or h.nbytes < nbytes:
@@ -469,29 +519,34 @@ class VulkanBackend:
         return h
 
     def _upload(self, A, Z, chunk=1 << 28, c_start=0):
-        """Z (host complex64, C-ordered: its rows are A's columns) into A: column blocks of 256 MB through two mapped
-        host buffers, the copy kernel reading each across the bus while the host fills the other. 16 GB/s on an
-        RX 7800 XT, where buffer.copy_from_numpy (the buffers filled whole) ran at 6.5: 0.6 s -> 0.25 s of each LU at
-        22k unknowns."""
-        N, ncols = A.rows, Z.shape[0]                          # Z's rows: A's columns c_start..
+        """Z (host complex64, C-ordered: its rows are A's columns) into A:
+        column blocks of 256 MB through two mapped host buffers, the copy kernel
+        reading each across the bus while the host fills the other. 16 GB/s on
+        an RX 7800 XT, where buffer.copy_from_numpy (the buffers filled whole)
+        ran at 6.5: 0.6 s -> 0.25 s of each LU at 22k unknowns."""
+        N, ncols = A.rows, Z.shape[0]  # Z's rows: A's columns c_start..
         cols = max(1, min(ncols, chunk // (8 * N)))
         hs = [self._host(f'up{i}', 8 * N * cols) for i in (0, 1)]
         subs = [None, None]
         for j, c0 in enumerate(range(0, ncols, cols)):
             cc, i = min(cols, ncols - c0), j % 2
             if subs[i] is not None:
-                self.dev.wait_for_submit(subs[i])                 # that buffer's last copy is done
+                # that buffer's last copy is done
+                self.dev.wait_for_submit(subs[i])
             hs[i].view(np.complex64, N * cc).reshape(cc, N)[...] = Z[c0:c0 + cc]
-            self._copy(self._flatdesc(hs[i].address, N), A.desc(0, c_start + c0), N, cc)
+            self._copy(self._flatdesc(hs[i].address, N),
+                       A.desc(0, c_start + c0), N, cc)
             subs[i] = self._submit()
         for x in subs:
             if x is not None:
                 self.dev.wait_for_submit(x)
 
     def factor(self, Z):
-        """Z: host complex64, C-contiguous, equilibrated. Factors A = Z^T in place on the GPU (P L U, LAPACK's
-        pivots), keeping the diagonal blocks' inverses for solve(). Look-ahead: the next panel's columns are updated
-        first and go to the CPU, which factors them while the GPU runs the rest of the trailing update."""
+        """Z: host complex64, C-contiguous, equilibrated. Factors A = Z^T in
+        place on the GPU (P L U, LAPACK's pivots), keeping the diagonal blocks'
+        inverses for solve(). Look-ahead: the next panel's columns are updated
+        first and go to the CPU, which factors them while the GPU runs the rest
+        of the trailing update."""
         self.release()
         Z = np.asarray(Z, np.complex64)
         t0 = time.perf_counter()
@@ -500,38 +555,48 @@ class VulkanBackend:
         self._factor(A, t0)
 
     def factor_rows(self, N, rows, block=2048):
-        """factor() of the N x N Z whose rows rows(r0, r1) gives (host, complex64-able, C-ordered), block rows at a
-        time: Z is never whole on the host (it goes up as it is filled), so the host needs a block where factor()'s
-        caller needs 8 N^2 bytes (antenna_cp_patch's 40.8k unknowns: 13.3 GB)."""
+        """factor() of the N x N Z whose rows rows(r0, r1) gives (host,
+        complex64-able, C-ordered), block rows at a time: Z is never whole on
+        the host (it goes up as it is filled), so the host needs a block where
+        factor()'s caller needs 8 N^2 bytes (antenna_cp_patch's 40.8k unknowns:
+        13.3 GB)."""
         self.release()
         t0 = time.perf_counter()
         A = _Mat(self, N, N)
         for r0 in range(0, N, block):
-            self._upload(A, np.asarray(rows(r0, min(N, r0 + block)), np.complex64), c_start=r0)
+            self._upload(A,
+                         np.asarray(rows(r0, min(N, r0 + block)), np.complex64),
+                         c_start=r0)
         self._factor(A, t0)
 
     def _factor(self, A, t0):
         """The blocked LU of the matrix uploaded into A (factor)."""
         N, nb = A.rows, self.nb
-        hdn = self._host('panel', 8 * N * nb)                     # the panel, down to the CPU and back
-        hrows = [self._host(f'rows{i}', 4 * 2 * nb) for i in (0, 1)]  # by step parity: S2 may read them while
-        hsrc = [self._host(f'src{i}', 4 * 2 * nb) for i in (0, 1)]    # the host writes the next step's
+        # the panel, down to the CPU and back
+        hdn = self._host('panel', 8 * N * nb)
+        # by step parity: S2 may read them while
+        hrows = [self._host(f'rows{i}', 4 * 2 * nb) for i in (0, 1)]
+        # the host writes the next step's
+        hsrc = [self._host(f'src{i}', 4 * 2 * nb) for i in (0, 1)]
         tmpS = self._work('swap', 8 * 2 * nb * N)
         U12 = self._work('u12', 8 * nb * N)
         dinv, pending, piv = [], [], np.zeros(N, np.int32)
         t_cpu = t_wait = 0.0
 
-        def down(k0, b):                                          # record: panel A[k0:, k0:k0+b] -> hdn
-            self._copy(A.desc(k0, k0), self._flatdesc(hdn.address, N - k0), N - k0, b)
+        def down(k0, b):  # record: panel A[k0:, k0:k0+b] -> hdn
+            self._copy(A.desc(k0, k0), self._flatdesc(hdn.address, N - k0),
+                       N - k0, b)
 
         def cpu(k0, b):
-            """Factor the panel the GPU left in hdn (N - k0 x b, column-major), in place: LAPACK's cgetrf. Keeps
-            its pivots, and (L11, U11) (copies: their inverses, the solves', are made while the CPU waits on the
+            """Factor the panel the GPU left in hdn (N - k0 x b, column-major),
+            in place: LAPACK's cgetrf. Keeps its pivots, and (L11, U11) (copies:
+            their inverses, the solves', are made while the CPU waits on the
             GPU); returns the rows it moves [(row, from)]."""
             nonlocal t_cpu
             tc = time.perf_counter()
             M = N - k0
-            P = hdn.view(np.complex64, M * b).reshape(b, M).T                 # Fortran (M, b), mapped memory
+            # Fortran (M, b), mapped memory
+            P = hdn.view(np.complex64, M * b).reshape(b, M).T
             lu, ip, info = lapack.cgetrf(P, overwrite_a=1)
             if not np.shares_memory(lu, P):
                 P[...] = lu
@@ -541,31 +606,38 @@ class VulkanBackend:
                 if j != i:
                     a, c = perm.get(k0 + i, k0 + i), perm.get(k0 + j, k0 + j)
                     perm[k0 + i], perm[k0 + j] = c, a
-            pending.append((np.tril(P[:b, :b], -1) + np.eye(b, dtype=np.complex64), np.triu(P[:b, :b])))
+            pending.append(
+                (np.tril(P[:b, :b], -1) + np.eye(b, dtype=np.complex64),
+                 np.triu(P[:b, :b])))
             piv[k0:k0 + b] = ip + k0
             t_cpu += time.perf_counter() - tc
             return [(r, s) for r, s in perm.items() if r != s]
 
-        def inverses():                                           # the solves' diagonal blocks, off the critical path
+        def inverses():  # the solves' diagonal blocks, off the critical path
             while pending:
                 L11, U11 = pending.pop(0)
                 Ui, _ = lapack.ctrtri(U11, lower=0, unitdiag=0)
                 Lf, _ = lapack.ctrtri(L11, lower=1, unitdiag=1)
-                dinv.append((np.asfortranarray(Ui, np.complex64), np.asfortranarray(Lf, np.complex64)))
+                dinv.append((np.asfortranarray(Ui, np.complex64),
+                             np.asfortranarray(Lf, np.complex64)))
 
-        def swaps(step, moved, k0, b, ranges):                     # record: the interchanges on these column ranges
+        # record: the interchanges on these column ranges
+        def swaps(step, moved, k0, b, ranges):
             (ca, na), (cb, nbb) = ranges
             n = na + nbb
             if moved and n > 0:
-                kw = dict(C_=A.desc(), rows_=hrows[step % 2].address, src_=hsrc[step % 2].address,
-                          tmp_=tmpS.device_address, cnt_=len(moved), ca_=ca, na_=na, cb_=cb, n_=n)
+                kw = dict(C_=A.desc(), rows_=hrows[step % 2].address,
+                          src_=hsrc[step % 2].address, tmp_=tmpS.device_address,
+                          cnt_=len(moved), ca_=ca, na_=na, cb_=cb, n_=n)
                 self._run('swap_gather', self._flat(len(moved) * n), **kw)
                 self._run('swap_scatter', self._flat(len(moved) * n), **kw)
 
-        def trsm(k0, b, c, nc):                                   # record: U12[:, c:c+nc] = L11^-1 A12, in place
+        def trsm(k0, b, c, nc):  # record: U12[:, c:c+nc] = L11^-1 A12, in place
             if nc > 0:
-                self._run('trsm', (-(-nc // TRSM_COLS), 1, 1), A_=A.desc(k0, k0), B_=A.desc(k0, k0 + b + c),
-                          C_=self._flatdesc(U12.device_address, b, 0, c), k_=b, n_=nc)
+                self._run('trsm', (-(-nc // TRSM_COLS), 1, 1),
+                          A_=A.desc(k0, k0), B_=A.desc(k0, k0 + b + c),
+                          C_=self._flatdesc(U12.device_address, b, 0,
+                                            c), k_=b, n_=nc)
 
         b0 = min(nb, N)
         down(0, b0)
@@ -576,25 +648,29 @@ class VulkanBackend:
             n2 = N - k0 - b
             nb1 = min(nb, n2)
             if moved:
-                hrows[step % 2].view(np.int32)[:len(moved)] = [x[0] for x in moved]
-                hsrc[step % 2].view(np.int32)[:len(moved)] = [x[1] for x in moved]
-            # S1 (the CPU waits on it): the factored panel into place, the next panel's columns interchanged,
-            # solved (U12) and updated, that panel down
+                hrows[step % 2].view(
+                    np.int32)[:len(moved)] = [x[0] for x in moved]
+                hsrc[step % 2].view(
+                    np.int32)[:len(moved)] = [x[1] for x in moved]
+            # S1 (the CPU waits on it): the factored panel into place, the next
+            # panel's columns interchanged, solved (U12) and updated, that panel
+            # down
             self._copy(self._flatdesc(hdn.address, M), A.desc(k0, k0), M, b)
             if n2 > 0:
                 swaps(step, moved, k0, b, ((k0 + b, nb1), (0, 0)))
                 trsm(k0, b, 0, nb1)
                 L21 = A.desc(k0 + b, k0)
-                self._gemm(L21, self._flatdesc(U12.device_address, b), A.desc(k0 + b, k0 + b), n2, nb1, b)
+                self._gemm(L21, self._flatdesc(U12.device_address, b),
+                           A.desc(k0 + b, k0 + b), n2, nb1, b)
                 down(k0 + b, nb1)
             s1 = self._submit()
-            # S2 (while the CPU factors the next panel): the interchanges on the other columns, U12 and the
-            # trailing update past the next panel
+            # S2 (while the CPU factors the next panel): the interchanges on the
+            # other columns, U12 and the trailing update past the next panel
             swaps(step, moved, k0, b, ((0, k0), (k0 + b + nb1, n2 - nb1)))
             if n2 > nb1:
                 trsm(k0, b, nb1, n2 - nb1)
-                self._gemm(L21, self._flatdesc(U12.device_address, b, 0, nb1), A.desc(k0 + b, k0 + b + nb1),
-                           n2, n2 - nb1, b)
+                self._gemm(L21, self._flatdesc(U12.device_address, b, 0, nb1),
+                           A.desc(k0 + b, k0 + b + nb1), n2, n2 - nb1, b)
             self._submit()
             if n2 <= 0:
                 break
@@ -604,14 +680,14 @@ class VulkanBackend:
             t_wait += time.perf_counter() - tw
             moved = cpu(k0 + b, nb1)
         inverses()
-        Dbuf = []                                                 # the inverses on the device: block bi at bi NB^2
+        Dbuf = []  # the inverses on the device: block bi at bi NB^2
         for which in (0, 1):
             h = np.zeros(len(dinv) * nb * nb, np.complex64)
             for bi, d in enumerate(dinv):
                 m = d[which]
                 h[bi * nb * nb:bi * nb * nb + m.size] = m.ravel(order='F')
             Dbuf.append(self._buffer(h.nbytes, h))
-        order = np.arange(N)                                      # x = P w: w[order]
+        order = np.arange(N)  # x = P w: w[order]
         for i in range(N - 1, -1, -1):
             j = piv[i]
             if j != i:
@@ -619,14 +695,18 @@ class VulkanBackend:
         self.dev.wait_for_idle()
         self.lu = (A, Dbuf, order)
         self.piv = piv
-        self.stats = dict(seconds=time.perf_counter() - t0, cpu=t_cpu, wait=t_wait)
+        self.stats = dict(seconds=time.perf_counter() - t0, cpu=t_cpu,
+                          wait=t_wait)
 
-    # ---- solves and the factor on the host -------------------------------------------------------------------
+    # ---- solves and the factor on the host
+    # -------------------------------------------------------------------
     def download(self, chunk=1 << 28):
-        """The factor on the host, as scipy.linalg.lu_factor's of A = Z^T: (lu, piv), Fortran order, 0-based."""
+        """The factor on the host, as scipy.linalg.lu_factor's of A = Z^T: (lu,
+        piv), Fortran order, 0-based."""
         A = self.lu[0]
         N = A.rows
-        out = np.empty((N, N), np.complex64)                      # rows = A's columns: out.T is A, Fortran
+        # rows = A's columns: out.T is A, Fortran
+        out = np.empty((N, N), np.complex64)
         cols = max(1, min(N, chunk // (8 * N)))
         h = self._host('down', 8 * N * cols)
         for c0 in range(0, N, cols):
@@ -637,7 +717,8 @@ class VulkanBackend:
         return out.T, self.piv.copy()
 
     def solve(self, R):
-        """Z^-1 R (R: host, N x k or N), on the GPU: U^T y = R, L^T w = y, x = P w. complex64 inside, complex128 out."""
+        """Z^-1 R (R: host, N x k or N), on the GPU: U^T y = R, L^T w = y, x = P
+        w. complex64 inside, complex128 out."""
         A, Dbuf, order = self.lu
         N, nb = A.rows, self.nb
         R = np.asarray(R)
@@ -647,20 +728,26 @@ class VulkanBackend:
         X = self._work('x', 8 * N * k)
         hx = self._host('x', 8 * N * k)
         hx.view(np.complex64, N * k).reshape(k, N)[...] = R2.T
-        self._copy(self._flatdesc(hx.address, N * k), self._flatdesc(X.device_address, N * k), N * k, 1)
+        self._copy(self._flatdesc(hx.address, N * k),
+                   self._flatdesc(X.device_address, N * k), N * k, 1)
         xa = X.device_address
         nblk = -(-N // nb)
         for fwd in (1, 0):
-            D = Dbuf[0 if fwd else 1].device_address              # U_bb^-1 (forward), L_bb^-1 (backward)
+            # U_bb^-1 (forward), L_bb^-1 (backward)
+            D = Dbuf[0 if fwd else 1].device_address
             for bi in (range(nblk) if fwd else range(nblk - 1, -1, -1)):
                 b0 = bi * nb
                 bn = min(nb, N - b0)
-                self._run('solve_tri', (1, k, 1), X_=xa, D_=D, nrhs_=k, blk_=b0, bn_=bn, k_=N)
+                self._run('solve_tri', (1, k, 1), X_=xa, D_=D, nrhs_=k, blk_=b0,
+                          bn_=bn, k_=N)
                 rest = N - b0 - bn if fwd else b0
                 if rest > 0:
-                    self._run('solve_upd', (min(rest, 65535), -(-rest // 65535), 1), C_=A.desc(), X_=xa, nrhs_=k,
-                              blk_=b0, bn_=bn, k_=N, fwd_=fwd)
-        self._copy(self._flatdesc(X.device_address, N * k), self._flatdesc(hx.address, N * k), N * k, 1)
+                    self._run('solve_upd',
+                              (min(rest, 65535), -(-rest // 65535), 1),
+                              C_=A.desc(), X_=xa, nrhs_=k, blk_=b0, bn_=bn,
+                              k_=N, fwd_=fwd)
+        self._copy(self._flatdesc(X.device_address, N * k),
+                   self._flatdesc(hx.address, N * k), N * k, 1)
         self.dev.wait_for_submit(self._submit())
         W = hx.view(np.complex64, N * k).reshape(k, N).T.astype(complex)[order]
         return W[:, 0] if one else W

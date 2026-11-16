@@ -1,14 +1,19 @@
-"""The whole board as a layered mesh for Elmer: one triangle mesh of the board's outline that every layer's copper
-edges, the vias and the terminals' pads are lines of, swept through the stack as wedges. Each wedge is copper, a via
-barrel, board material or (beside the copper of an outer layer) absent, by where its triangle lies in that layer.
+"""The whole board as a layered mesh for Elmer: one triangle mesh of the board's
+outline that every layer's copper edges, the vias and the terminals' pads are
+lines of, swept through the stack as wedges. Each wedge is copper, a via barrel,
+board material or (beside the copper of an outer layer) absent, by where its
+triangle lies in that layer.
 
     m = layered_mesh(board, 'case/mesh', electric={'VHB'}, terminals={'Q1': [(layer, polygon)]}, h=0.3)
-    m['boundaries']        # {tag: (names, area mm2)}: 1 the exposed faces, 10.. the terminals' pads (also exposed)
-    m['bodies']            # the bodies present: COPPER_E, BARREL_E (of `electric` nets), COPPER, BARREL, BOARD
+    m['boundaries']  # {tag: (names, area mm2)}: 1 the exposed faces, 10.. the
+                     terminals' pads (also exposed)
+    m['bodies']      # the bodies present: COPPER_E, BARREL_E (of `electric`
+                     nets), COPPER, BARREL, BOARD
 
-No 3D booleans: the copper of real boards (planes with hundreds of holes, on several layers) breaks them, and all the
-board's copper matters to where the heat goes. Shapely does the layout's arithmetic in 2D, on a grid of `grid` mm.
-A via is a prism of its hole's area through the layers it joins.
+No 3D booleans: the copper of real boards (planes with hundreds of holes, on
+several layers) breaks them, and all the board's copper matters to where the
+heat goes. Shapely does the layout's arithmetic in 2D, on a grid of `grid` mm. A
+via is a prism of its hole's area through the layers it joins.
 """
 from pathlib import Path
 
@@ -36,18 +41,27 @@ def _ngon(x, y, r, n):
 
 
 def z_cells(board, dz=0.5):
-    """The stack as cells bottom to top: [(z0, z1, copper layer or None)]. A copper layer is one cell of its
-    thickness, the board between them cells of at most `dz` mm."""
+    """The stack as cells bottom to top: [(z0, z1, copper layer or None)]. A
+    copper layer is one cell of its thickness, the board between them cells of
+    at most `dz` mm."""
     names = layer_names(board)
     slabs = {l: slab(board, l) for l in names}
-    zs = sorted({round(z, 6) for s in slabs.values() for z in s} |
-                {round(l[k], 6) for l in board['stack'].get('layers', []) for k in ('z0', 'z1')})
+    zs = sorted({round(z, 6)
+                 for s in slabs.values()
+                 for z in s} | {
+                     round(l[k], 6)
+                     for l in board['stack'].get('layers', [])
+                     for k in ('z0', 'z1')
+                 })
     out = []
     for a, b in zip(zs[:-1], zs[1:]):
         mid = 0.5 * (a + b)
-        lay = next((l for l, (s0, s1) in slabs.items() if s0 - 1e-9 < mid < s1 + 1e-9), None)
+        lay = next(
+            (l for l, (s0, s1) in slabs.items() if s0 - 1e-9 < mid < s1 + 1e-9),
+            None)
         n = 1 if lay else max(1, int(np.ceil((b - a) / dz - 1e-9)))
-        out += [(a + (b - a) * i / n, a + (b - a) * (i + 1) / n, lay) for i in range(n)]
+        out += [(a + (b - a) * i / n, a + (b - a) * (i + 1) / n, lay)
+                for i in range(n)]
     return out
 
 
@@ -58,7 +72,8 @@ def _rings(g):
 
 
 def _clean(g, region, tol, grid):
-    """A layout geometry inside the region, simplified to tol and on the grid; None when nothing is left."""
+    """A layout geometry inside the region, simplified to tol and on the grid;
+    None when nothing is left."""
     if g is None or g.is_empty:
         return None
     g = g.intersection(region)
@@ -69,8 +84,9 @@ def _clean(g, region, tol, grid):
 
 
 def triangulate(region, lines, size, grid, log=print):
-    """Triangles of `region` (a polygon) with the segments of `lines` (noded, on the grid) as edges. size: (x0, y0,
-    step, array[ny, nx]) of the element size wanted, mm. Returns (xy [n, 2], triangles [m, 3], counter-clockwise)."""
+    """Triangles of `region` (a polygon) with the segments of `lines` (noded, on
+    the grid) as edges. size: (x0, y0, step, array[ny, nx]) of the element size
+    wanted, mm. Returns (xy [n, 2], triangles [m, 3], counter-clockwise)."""
     import gmsh
     x0, y0, step, raster = size
     gmsh.initialize()
@@ -97,13 +113,21 @@ def triangulate(region, lines, size, grid, log=print):
             return (segs[k] if a < b else -segs[k]), new
 
         # the outline's rings, through the points where lines end on them
-        ends = shapely.points([c for l in lines for c in (l.coords[0], l.coords[-1])]) if lines else np.array([])
+        ends = (shapely.points(
+            [c for l in lines
+             for c in (l.coords[0], l.coords[-1])]) if lines else np.array([]))
         loops, edge = [], set()
         for ring in _rings(orient(region, 1.0)):
-            on = [(ring.project(p), (p.x, p.y)) for p in ends[shapely.dwithin(ends, ring, 0.25 * grid)]] if len(ends) else []
-            on += [(ring.project(shapely.Point(c)), c) for c in ring.coords[:-1]]
+            on = ([(ring.project(p), (p.x, p.y))
+                   for p in ends[shapely.dwithin(ends, ring, 0.25
+                                                 * grid)]] if len(ends) else [])
+            on += [(ring.project(shapely.Point(c)), c)
+                   for c in ring.coords[:-1]]
             chain = [c for _, c in sorted(on)]
-            tags = [s[0] for s in (seg(chain[i], chain[(i + 1) % len(chain)]) for i in range(len(chain))) if s]
+            tags = [
+                s[0] for s in (seg(chain[i], chain[(i + 1) % len(chain)])
+                               for i in range(len(chain))) if s
+            ]
             edge |= {abs(t) for t in tags}
             loops.append(geo.addCurveLoop(tags))
         surface = geo.addPlaneSurface(loops)
@@ -124,8 +148,11 @@ def triangulate(region, lines, size, grid, log=print):
             j = min(max(int((x - x0) / step), 0), nx - 1)
             return float(raster[i, j])
         gmsh.model.mesh.setSizeCallback(wanted)
-        for k, v in {'Mesh.MeshSizeExtendFromBoundary': 0, 'Mesh.MeshSizeFromPoints': 0, 'Mesh.MeshSizeFromCurvature': 0,
-                     'Mesh.MeshSizeMax': float(raster.max()), 'Mesh.Algorithm': 5}.items():
+        for k, v in {
+                'Mesh.MeshSizeExtendFromBoundary': 0,
+                'Mesh.MeshSizeFromPoints': 0, 'Mesh.MeshSizeFromCurvature': 0,
+                'Mesh.MeshSizeMax': float(raster.max()), 'Mesh.Algorithm': 5
+        }.items():
             gmsh.option.setNumber(k, v)
         gmsh.model.mesh.generate(2)
         tags, xyz, _ = gmsh.model.mesh.getNodes()
@@ -147,12 +174,15 @@ def triangulate(region, lines, size, grid, log=print):
     return xy, tri
 
 
-def layered_mesh(board, folder, electric=(), copper=None, terminals=None, crop=None, h=0.3, hmax=2.0, dz=0.5,
-                 tol=0.02, grid=0.005, grade=0.35, log=print):
-    """Write Elmer's mesh of the board to `folder`. electric: the nets that carry current (bodies COPPER_E and
-    BARREL_E, meshed at `h`); copper: the other nets to keep (None: all); terminals: {name: [(layer, polygon)]}, pads
-    on the outer layers, each a boundary (pads shared by several names are one boundary of those names). Returns the
-    mesh's description (see the module's text) with the arrays the results are read with."""
+def layered_mesh(board, folder, electric=(), copper=None, terminals=None,
+                 crop=None, h=0.3, hmax=2.0, dz=0.5, tol=0.02, grid=0.005,
+                 grade=0.35, log=print):
+    """Write Elmer's mesh of the board to `folder`. electric: the nets that
+    carry current (bodies COPPER_E and BARREL_E, meshed at `h`); copper: the
+    other nets to keep (None: all); terminals: {name: [(layer, polygon)]}, pads
+    on the outer layers, each a boundary (pads shared by several names are one
+    boundary of those names). Returns the mesh's description (see the module's
+    text) with the arrays the results are read with."""
     electric = set(electric)
     terminals = terminals or {}
     names = layer_names(board)
@@ -162,19 +192,27 @@ def layered_mesh(board, folder, electric=(), copper=None, terminals=None, crop=N
         raise ValueError('the board has no outline')
     if crop is not None:
         region = region.intersection(crop)
-    region = max(region.geoms, key=lambda p: p.area) if hasattr(region, 'geoms') else region
+    region = (max(region.geoms, key=lambda p: p.area) if hasattr(
+        region, 'geoms') else region)
     region = shapely.set_precision(region.simplify(tol), grid)
     every = {c.get('net') for l in names for c in board['copper'].get(l, [])}
     passive = (every if copper is None else set(copper)) - electric
-    cu = {l: (_clean(copper_of(board, electric, l), region, tol, grid) if electric else None,
-              _clean(copper_of(board, passive, l), region, 2 * tol, grid) if passive else None) for l in names}
+    cu = {
+        l: (_clean(copper_of(board, electric, l), region, tol, grid)
+            if electric else None,
+            _clean(copper_of(board, passive, l), region, 2
+                   * tol, grid) if passive else None)
+        for l in names
+    }
     if electric and not any(e is not None for e, _ in cu.values()):
         raise ValueError(f"no copper of {', '.join(sorted(electric))}")
     slabs = {l: slab(board, l) for l in names}
     zs = {c['name']: c['z'] for c in board['stack']['copper']}
-    bottom, top = min(names, key=lambda l: zs[l]), max(names, key=lambda l: zs[l])
+    bottom, top = (min(names,
+                       key=lambda l: zs[l]), max(names, key=lambda l: zs[l]))
 
-    def span(v):                             # a via ending at a layer's sheet goes through that layer's slab
+    # a via ending at a layer's sheet goes through that layer's slab
+    def span(v):
         ends = []
         for z, side in ((v['z0'], 0), (v['z1'], 1)):
             hit = [slabs[l][side] for l in names if abs(zs[l] - z) < 1e-6]
@@ -182,40 +220,61 @@ def layered_mesh(board, folder, electric=(), copper=None, terminals=None, crop=N
         return ends
     vias = []
     for v in board.get('vias', []):
-        cls = BARREL_E if v.get('net') in electric else BARREL if v.get('net') in passive else 0
+        cls = (BARREL_E if v.get('net') in electric else
+               BARREL if v.get('net') in passive else 0)
         g = _ngon(v['x'], v['y'], v['r'], 8 if cls == BARREL_E else 6)
         if cls and region.contains(g):
             vias.append((shapely.set_precision(g, grid), cls, *span(v), v['r']))
     pads = {}
     for name, ps in terminals.items():
-        gs = {l: _clean(unary_union([p for lay, p in ps if lay == l]), region, 0.0, grid) for l in (bottom, top)}
+        gs = {
+            l: _clean(unary_union([p
+                                   for lay, p in ps
+                                   if lay == l]), region, 0.0, grid)
+            for l in (bottom, top)
+        }
         if all(g is None for g in gs.values()):
-            raise ValueError(f'terminal {name}: no pad on an outer layer inside the board')
+            raise ValueError(
+                f'terminal {name}: no pad on an outer layer inside the board')
         pads[name] = gs
 
     # every edge of the layout, noded on the grid
-    work = [r for e, p in cu.values() for g in (e, p) if g is not None for r in _rings(g)]
-    work += [v[0].exterior for v in vias] + [r for gs in pads.values() for g in gs.values() if g is not None
-                                             for r in _rings(g)]
+    work = [
+        r for e, p in cu.values() for g in (e, p) if g is not None
+        for r in _rings(g)
+    ]
+    work += ([v[0].exterior for v in vias] + [
+        r for gs in pads.values() for g in gs.values() if g is not None
+        for r in _rings(g)
+    ])
     lines = []
     if work:
-        noded = shapely.unary_union([LineString(r.coords) for r in work] + [LineString(r.coords) for r in _rings(region)],
-                                    grid_size=grid)
-        lines = [l for l in (noded.geoms if hasattr(noded, 'geoms') else [noded]) if l.geom_type == 'LineString']
+        noded = shapely.unary_union(
+            [LineString(r.coords)
+             for r in work] + [LineString(r.coords) for r in _rings(region)],
+            grid_size=grid)
+        lines = [
+            l for l in (noded.geoms if hasattr(noded, 'geoms') else [noded])
+            if l.geom_type == 'LineString'
+        ]
         shapely.prepare(region)
         lines = [l for l in lines if region.covers(l)]
 
-    # the element size wanted: h in the copper that carries current and at the terminals, growing away from them
+    # the element size wanted: h in the copper that carries current and at the
+    # terminals, growing away from them
     x0, y0, x1, y1 = region.bounds
     step = max(0.5 * h, max(x1 - x0, y1 - y0) / 2000)
     gx, gy = np.arange(x0, x1 + step, step), np.arange(y0, y1 + step, step)
-    fine = [e for e, _ in cu.values() if e is not None] + [g for gs in pads.values() for g in gs.values() if g is not None]
+    fine = ([e for e, _ in cu.values() if e is not None]
+            + [g for gs in pads.values() for g in gs.values() if g is not None])
     raster = np.full((len(gy), len(gx)), float(hmax))
     if fine:
         from scipy import ndimage
         X, Y = np.meshgrid(gx, gy)
         inside_fine = shapely.contains_xy(unary_union(fine).buffer(step), X, Y)
-        raster = np.clip(h + grade * step * ndimage.distance_transform_edt(~inside_fine), h, hmax)
+        raster = np.clip(
+            h + grade * step * ndimage.distance_transform_edt(~inside_fine), h,
+            hmax)
     xy, tri = triangulate(region, lines, (x0, y0, step, raster), grid, log)
 
     # what each triangle is in each cell
@@ -245,8 +304,10 @@ def layered_mesh(board, folder, electric=(), copper=None, terminals=None, crop=N
         body[k] = np.where(c > 0, c, np.where(barrel[k] > 0, barrel[k], rest))
     exists = body > 0
     if not exists.any(axis=0).all():
-        tri, cen, body, exists = tri[exists.any(axis=0)], cen[exists.any(axis=0)], body[:, exists.any(axis=0)], \
-            exists[:, exists.any(axis=0)]
+        tri, cen, body, exists = (tri[exists.any(axis=0)],
+                                  cen[exists.any(axis=0)],
+                                  body[:, exists.any(axis=0)],
+                                  exists[:, exists.any(axis=0)])
         nt = len(tri)
 
     # nodes: (2D node, level), those in use
@@ -269,22 +330,27 @@ def layered_mesh(board, folder, electric=(), copper=None, terminals=None, crop=N
     up = exists & ~np.vstack([exists[1:], np.zeros((1, nt), bool)])
     down = exists & ~np.vstack([np.zeros((1, nt), bool), exists[:-1]])
     tris, tparent, tkey = [], [], []
-    key = {'top': np.zeros(nt, int), 'bottom': np.zeros(nt, int)}               # bit i: terminal i's pad
+    # bit i: terminal i's pad
+    key = {'top': np.zeros(nt, int), 'bottom': np.zeros(nt, int)}
     for i, (name, gs) in enumerate(pads.items()):
         for side, lay in (('top', top), ('bottom', bottom)):
             if gs[lay] is not None:
-                key[side][shapely.contains_xy(gs[lay].buffer(0.5 * grid), cen[:, 0], cen[:, 1])] |= 1 << i
+                key[side][shapely.contains_xy(gs[lay].buffer(0.5 * grid),
+                                              cen[:, 0], cen[:, 1])] |= (1 << i)
     ktop, kbot = nk - 1, 0
     for k in range(nk):
-        for mask, off, side, kk in ((up[k], 1, 'top', ktop), (down[k], 0, 'bottom', kbot)):
+        for mask, off, side, kk in ((up[k], 1, 'top', ktop), (down[k], 0,
+                                                              'bottom', kbot)):
             t = np.flatnonzero(mask)
             if len(t):
                 tris.append(node[k + off][tri[t]])
                 tparent.append(wid[k, t])
                 on_pad = (k == kk) & np.isin(body[k, t], (COPPER_E, COPPER))
                 tkey.append(np.where(on_pad, key[side][t], 0))
-    tris, tparent, tkey = np.vstack(tris), np.concatenate(tparent), np.concatenate(tkey)
-    e = np.sort(np.vstack([tri[:, [0, 1]], tri[:, [1, 2]], tri[:, [2, 0]]]), axis=1)
+    tris, tparent, tkey = (np.vstack(tris), np.concatenate(tparent),
+                           np.concatenate(tkey))
+    e = np.sort(np.vstack([tri[:, [0, 1]], tri[:, [1, 2]], tri[:, [2, 0]]]),
+                axis=1)
     et = np.tile(np.arange(nt), 3)
     order = np.lexsort((e[:, 1], e[:, 0]))
     e, et = e[order], et[order]
@@ -298,7 +364,8 @@ def layered_mesh(board, folder, electric=(), copper=None, terminals=None, crop=N
         own = np.where(exists[k, a[d]], a[d], b[d])
         s = single[exists[k, et[single]]]
         ed = np.vstack([e[pair[d]], e[s]])
-        quads.append(np.c_[node[k][ed[:, 0]], node[k][ed[:, 1]], node[k + 1][ed[:, 1]], node[k + 1][ed[:, 0]]])
+        quads.append(np.c_[node[k][ed[:, 0]], node[k][ed[:, 1]],
+                           node[k + 1][ed[:, 1]], node[k + 1][ed[:, 0]]])
         qparent.append(np.r_[wid[k, own], wid[k, et[s]]])
     quads, qparent = np.vstack(quads), np.concatenate(qparent)
 
@@ -306,13 +373,19 @@ def layered_mesh(board, folder, electric=(), copper=None, terminals=None, crop=N
     tag_of = {0: EXPOSED, **{k: TERM0 + i for i, k in enumerate(keys)}}
     ttag = np.array([tag_of[k] for k in tkey.tolist()])
     p = nodes[tris]
-    tarea = 0.5 * np.abs(_cross(p[:, 1, :2] - p[:, 0, :2], p[:, 2, :2] - p[:, 0, :2]))
+    tarea = (
+        0.5
+        * np.abs(_cross(p[:, 1, :2] - p[:, 0, :2], p[:, 2, :2] - p[:, 0, :2])))
     q = nodes[quads]
     qarea = np.hypot(*(q[:, 1, :2] - q[:, 0, :2]).T) * (q[:, 2, 2] - q[:, 1, 2])
     tnames = list(pads)
-    boundaries = {EXPOSED: ((), float(tarea[ttag == EXPOSED].sum() + qarea.sum()))}
+    boundaries = {
+        EXPOSED: ((), float(tarea[ttag == EXPOSED].sum() + qarea.sum()))
+    }
     for k in keys:
-        boundaries[tag_of[k]] = (tuple(n for i, n in enumerate(tnames) if k >> i & 1), float(tarea[ttag == tag_of[k]].sum()))
+        boundaries[tag_of[k]] = (tuple(n for i, n in enumerate(tnames)
+                                       if k >> i & 1),
+                                 float(tarea[ttag == tag_of[k]].sum()))
     for i, name in enumerate(tnames):
         if not any(k >> i & 1 for k in keys):
             raise ValueError(f'terminal {name}: no copper under its pads')
@@ -320,21 +393,41 @@ def layered_mesh(board, folder, electric=(), copper=None, terminals=None, crop=N
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     nw, nb = len(wedges), len(tris) + len(quads)
-    (folder / 'mesh.header').write_text(f'{len(nodes)} {nw} {nb}\n3\n706 {nw}\n303 {len(tris)}\n404 {len(quads)}\n')
+    (folder / 'mesh.header').write_text(
+        f'{len(nodes)} {nw} {nb}\n3\n706 {nw}\n303 {len(tris)}\n404 '
+        f'{len(quads)}\n'
+    )
     with open(folder / 'mesh.nodes', 'w') as fh:
-        np.savetxt(fh, np.c_[np.arange(1, len(nodes) + 1), np.full(len(nodes), -1), nodes], fmt='%d %d %.9g %.9g %.9g')
+        np.savetxt(
+            fh, np.c_[np.arange(1,
+                                len(nodes) + 1),
+                      np.full(len(nodes), -1), nodes],
+            fmt='%d %d %.9g %.9g %.9g')
     with open(folder / 'mesh.elements', 'w') as fh:
-        np.savetxt(fh, np.c_[np.arange(1, nw + 1), wbody, np.full(nw, 706), wedges + 1], fmt='%d')
+        np.savetxt(
+            fh, np.c_[np.arange(1, nw + 1), wbody,
+                      np.full(nw, 706), wedges + 1], fmt='%d')
     with open(folder / 'mesh.boundary', 'w') as fh:
-        np.savetxt(fh, np.c_[np.arange(1, len(tris) + 1), ttag, tparent + 1, np.zeros(len(tris), int),
-                             np.full(len(tris), 303), tris + 1], fmt='%d')
-        np.savetxt(fh, np.c_[np.arange(len(tris) + 1, nb + 1), np.full(len(quads), EXPOSED), qparent + 1,
-                             np.zeros(len(quads), int), np.full(len(quads), 404), quads + 1], fmt='%d')
+        np.savetxt(
+            fh, np.c_[np.arange(1,
+                                len(tris) + 1), ttag, tparent + 1,
+                      np.zeros(len(tris), int),
+                      np.full(len(tris), 303), tris + 1], fmt='%d')
+        np.savetxt(
+            fh, np.c_[np.arange(len(tris) + 1, nb + 1),
+                      np.full(len(quads), EXPOSED), qparent + 1,
+                      np.zeros(len(quads), int),
+                      np.full(len(quads), 404), quads + 1], fmt='%d')
     r = np.array([v[4] for v in vias]) if vias else np.array([0.15])
-    vol = lambda b: float((0.5 * np.abs(_cross(xy[tri[wt, 1]] - xy[tri[wt, 0]], xy[tri[wt, 2]] - xy[tri[wt, 0]])) *
-                           (levels[wk + 1] - levels[wk]))[wbody == b].sum())
-    log(f'mesh: {nw:,} wedges on {nt:,} triangles in {nk} layers, {len(nodes):,} nodes, {len(vias)} vias')
-    return dict(boundaries=boundaries, bodies=sorted(set(wbody.tolist())), wedges=nw, triangles=nt, cells=cells,
-                vias=len(vias), via_r=r, nodes=nodes, xy=xy, tri=tri, node=node, body=body, faces=tris, face_tag=ttag,
-                face_area=tarea, sides=quads, side_area=qarea, volume={b: vol(b) for b in set(wbody.tolist())},
-                top=top, bottom=bottom)
+    vol = lambda b: float((0.5 * np.abs(
+        _cross(xy[tri[wt, 1]] - xy[tri[wt, 0]], xy[tri[wt, 2]] - xy[tri[wt, 0]])
+    ) * (levels[wk + 1] - levels[wk]))[wbody == b].sum())
+    log(f'mesh: {nw:,} wedges on {nt:,} triangles in {nk} layers, '
+        f'{len(nodes):,} nodes, {len(vias)} vias'
+        )
+    return dict(boundaries=boundaries, bodies=sorted(set(wbody.tolist())),
+                wedges=nw, triangles=nt, cells=cells, vias=len(vias), via_r=r,
+                nodes=nodes, xy=xy, tri=tri, node=node, body=body, faces=tris,
+                face_tag=ttag, face_area=tarea, sides=quads, side_area=qarea,
+                volume={b: vol(b)
+                        for b in set(wbody.tolist())}, top=top, bottom=bottom)

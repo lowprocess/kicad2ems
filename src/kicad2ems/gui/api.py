@@ -1,21 +1,26 @@
 """
-kicad2ems-gui's public API: what other packages may import (the KiCad plugin, kicad2ems-ipc). Everything else in
-kicad2ems.gui is private to it and may change in any release.
+kicad2ems-gui's public API: what other packages may import (the KiCad plugin,
+kicad2ems-ipc). Everything else in kicad2ems.gui is private to it and may change
+in any release.
 
-    PlanView      the board seen from above, the window's plan view and the KiCad plugin's map
-    SectionView   the field across a line-model section: show_section(a drawing element, or None)
+    PlanView     the board seen from above, the window's plan view and the KiCad
+                 plugin's map
+    SectionView  the field across a line-model section: show_section(a drawing
+                 element, or None)
 
-A subclass of PlanView may use, beside its public methods (load, set_board, set_lines_visible, current_layer,
-z_of, redraw, fit, select) and its `selected` signal: `plot` (the pyqtgraph PlotWidget it draws in), `mesh` (the
-mesh selector), and override redraw() and the mouse hooks _moved(scene_pos) and _clicked(event), calling the
-base's for what it does not handle itself.
+A subclass of PlanView may use, beside its public methods (load, set_board,
+set_lines_visible, current_layer, z_of, redraw, fit, select) and its `selected`
+signal: `plot` (the pyqtgraph PlotWidget it draws in), `mesh` (the mesh
+selector), and override redraw() and the mouse hooks _moved(scene_pos) and
+_clicked(event), calling the base's for what it does not handle itself.
 
-API_VERSION is (major, minor), as kicad2ems.core.api's: a minor release adds names, a major one removes or changes one.
+API_VERSION is (major, minor), as kicad2ems.core.api's: a minor release adds
+names, a major one removes or changes one.
 """
 API_VERSION = (1, 1)
 
 
-def __getattr__(name):                                          # PySide6 and pyqtgraph load on first use
+def __getattr__(name):  # PySide6 and pyqtgraph load on first use
     if name == 'PlanView':
         from .planview import PlanView
         return PlanView

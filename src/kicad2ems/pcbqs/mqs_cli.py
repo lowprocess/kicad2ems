@@ -14,40 +14,70 @@ from shapely.ops import unary_union
 from ._cli import add_options, describe as describe_options, load_board, print_describe
 
 OPTIONS = [
-    ('converter', 'str', '', 'Regulator reference; empty selects a unique discovered converter', 'Converter'),
+    ('converter', 'str', '',
+     'Regulator reference; empty selects a unique discovered converter',
+     'Converter'),
     ('inductor', 'str', '', 'Power inductor reference override', 'Converter'),
     ('vin', 'str', '', 'Input supply net override', 'Converter'),
     ('ground', 'str', 'GND', 'Ground net', 'Converter'),
-    ('capacitors', 'str', '', 'Input capacitors, comma-separated; empty discovers nearby parts', 'Converter'),
-    ('cap_radius', 'float', 8., 'Maximum distance from regulator to input capacitors, mm', 'Converter'),
+    ('capacitors', 'str', '',
+     'Input capacitors, comma-separated; empty discovers nearby parts',
+     'Converter'),
+    ('cap_radius', 'float', 8.,
+     'Maximum distance from regulator to input capacitors, mm', 'Converter'),
     ('fsw', 'float', 500e3, 'Switching frequency, Hz', 'Operating point'),
-    ('vin_volts', 'float', 0., 'Input voltage; with vout sets duty (0 uses duty)', 'Operating point'),
-    ('vout', 'float', 0., 'Output voltage; with vin-volts sets duty', 'Operating point'),
-    ('duty', 'float', .33, 'Duty fraction for assumed rectangular input-current pulse', 'Operating point'),
-    ('current', 'float', 1., 'Pulse amplitude, A; approximates buck load current', 'Operating point'),
-    ('edge_time', 'float', 5e-9, 'Edge smoothing time, s', 'Operating point'),
-    ('harmonics', 'str', '1,2,3,4,5,6', 'Positive harmonic numbers, comma-separated', 'Operating point'),
-    ('spectrum', 'str', '', "The input current's harmonics from a file in place of the assumed pulse: lines of "
-     "f_Hz, A (peak) (a circuit run's supply-<part>.csv); its lowest frequency is the switching frequency",
+    ('vin_volts', 'float', 0.,
+     'Input voltage; with vout sets duty (0 uses duty)', 'Operating point'),
+    ('vout', 'float', 0., 'Output voltage; with vin-volts sets duty',
      'Operating point'),
-    ('heights', 'str', '1,3', 'Scan heights above top copper, mm; 2+ heights also give a volume', 'Scan'),
+    ('duty', 'float', .33,
+     'Duty fraction for assumed rectangular input-current pulse',
+     'Operating point'),
+    ('current', 'float', 1.,
+     'Pulse amplitude, A; approximates buck load current', 'Operating point'),
+    ('edge_time', 'float', 5e-9, 'Edge smoothing time, s', 'Operating point'),
+    ('harmonics', 'str', '1,2,3,4,5,6',
+     'Positive harmonic numbers, comma-separated', 'Operating point'),
+    ('spectrum', 'str', '',
+     "The input current's harmonics from a file in place of the assumed pulse: "
+     "lines of f_Hz, A (peak) (a circuit run's supply-<part>.csv); its lowest "
+     "frequency is the switching frequency",
+     'Operating point'),
+    ('heights', 'str', '1,3',
+     'Scan heights above top copper, mm; 2+ heights also give a volume',
+     'Scan'),
     ('scan_points', 'int', 25, 'Points along each lateral scan axis', 'Scan'),
-    ('field_tol', 'float', .02, 'Successive FFT-grid peak-relative tolerance per height/frequency', 'Scan'),
-    ('margin', 'float', 3., 'Copper crop margin around selected component pads, mm', 'Mesh'),
+    ('field_tol', 'float', .02,
+     'Successive FFT-grid peak-relative tolerance per height/frequency',
+     'Scan'),
+    ('margin', 'float', 3.,
+     'Copper crop margin around selected component pads, mm', 'Mesh'),
     ('dmax', 'float', 1.5, 'Nominal coarse mesh spacing, mm', 'Mesh'),
-    ('fine', 'float', .6, 'Nominal spacing near selected component pads, mm', 'Mesh'),
-    ('fill_backend', 'str', 'auto', 'auto, openmp, threaded, numpy or cupy', 'Mesh'),
-    ('fill_workers', 'int', 0, 'CPU fill workers (0 chooses automatically)', 'Mesh'),
-    ('fill_chunk', 'int', 16384, 'Maximum triangle pairs per fill tile', 'Mesh'),
+    ('fine', 'float', .6, 'Nominal spacing near selected component pads, mm',
+     'Mesh'),
+    ('fill_backend', 'str', 'auto', 'auto, openmp, threaded, numpy or cupy',
+     'Mesh'),
+    ('fill_workers', 'int', 0, 'CPU fill workers (0 chooses automatically)',
+     'Mesh'),
+    ('fill_chunk', 'int', 16384, 'Maximum triangle pairs per fill tile',
+     'Mesh'),
     ('fill_device', 'int', 0, 'CuPy device index', 'Mesh'),
-    ('backend', 'str', 'dense', "The solve: dense (a factor a frequency, or one for a long sweep) or hierarchical (compressed, GMRES in the loop "
-     "basis: a whole plane's 50k triangles in ~2 GB, where dense needs ~20 GB)", 'Mesh'),
-    ('esr', 'float', .003, "An input capacitor's ESR, ohms, where neither its fields (ESR, Sim.esr) nor its package "
-     "give one", 'Parts'),
-    ('esl', 'float', .4e-9, "An input capacitor's ESL, H, where neither its fields (ESL) nor its package (0402: "
-     "0.35 nH ...) give one", 'Parts'),
-    ('part_height', 'float', .5, 'Assumed part filament height above pads, mm', 'Parts'),
-    ('pad_contact', 'str', 'termination', 'Where a part meets its pads: termination (end-cap band), pad or edge', 'Parts'),
+    ('backend', 'str', 'dense',
+     "The solve: dense (a factor a frequency, or one for a long sweep) or "
+     "hierarchical (compressed, GMRES in the loop basis: a whole plane's 50k "
+     "triangles in ~2 GB, where dense needs ~20 GB)",
+     'Mesh'),
+    ('esr', 'float', .003,
+     "An input capacitor's ESR, ohms, where neither its fields (ESR, Sim.esr) "
+     "nor its package give one", 'Parts'),
+    ('esl', 'float', .4e-9,
+     "An input capacitor's ESL, H, where neither its fields (ESL) nor its "
+     "package (0402: 0.35 nH ...) give one", 'Parts'),
+    ('part_height', 'float', .5, 'Assumed part filament height above pads, mm',
+     'Parts'),
+    ('pad_contact', 'str', 'termination',
+     'Where a part meets its pads: termination (end-cap band), pad or edge',
+     'Parts'),
 ]
 
 
@@ -56,43 +86,66 @@ def describe():
 
 
 def parser():
-    ap=argparse.ArgumentParser(prog='python -m kicad2ems.pcbqs.mqs', description=__doc__)
+    ap = argparse.ArgumentParser(prog='python -m kicad2ems.pcbqs.mqs',
+                                 description=__doc__)
     ap.add_argument('board', nargs='?')
     ap.add_argument('--out', default='mqs')
     ap.add_argument('--describe', action='store_true')
     ap.add_argument('--json', action='store_true')
-    ap.add_argument('--preview', action='store_true', help='mesh and export layout without matrix filling or solving')
-    ap.add_argument('--list-converters', action='store_true', help='describe candidate converters without meshing')
-    ap.add_argument('--circuit', action='store_true', help='print the selected converter as a circuit model '
-                    '(for python -m kicad2ems.pcbqs.circuit) and stop')
+    ap.add_argument(
+        '--preview', action='store_true',
+        help='mesh and export layout without matrix filling or solving')
+    ap.add_argument('--list-converters', action='store_true',
+                    help='describe candidate converters without meshing')
+    ap.add_argument(
+        '--circuit', action='store_true',
+        help='print the selected converter as a circuit model '
+        '(for python -m kicad2ems.pcbqs.circuit) and stop')
     add_options(ap, OPTIONS)
     return ap
 
 
-SWITCHING = r'(Q|D|M)\d'      # the parts a discrete switching cell is made of: transistors and diodes, by reference
-LOW_SIDE_R = 0.01            # ohms: the lower part of a discrete cell, conducting while the upper one is off
+# the parts a discrete switching cell is made of: transistors and diodes, by
+# reference
+SWITCHING = r'(Q|D|M)\d'
+# ohms: the lower part of a discrete cell, conducting while the upper one is off
+LOW_SIDE_R = 0.01
 
 
 def _inputs(nets, caps):
-    """[dict(vin, capacitors)]: those of the nets that capacitors of `caps` are on, with those capacitors."""
-    found=((net,[p.ref for p in caps if net in p.nets()]) for net in sorted(nets))
+    """[dict(vin, capacitors)]: those of the nets that capacitors of `caps` are
+    on, with those capacitors."""
+    found = ((net, [p.ref
+                    for p in caps
+                    if net in p.nets()])
+             for net in sorted(nets))
     return [dict(vin=net,capacitors=refs) for net,refs in found if refs]
 
 
 def discover(board, ground='GND'):
-    """Structural candidates only; ambiguity is returned, never resolved by picking the first net or part.
+    """Structural candidates only; ambiguity is returned, never resolved by
+    picking the first net or part.
 
-    A regulator IC: an inductor-to-IC switch net, and VIN/GND capacitors (the IC both switches).
-    A discrete switching cell: a switch node with a transistor or diode up to a net that has capacitors to ground
-    (the upper part, the converter's name), and one down to ground (the lower part, `low`). Its input loop runs
-    from those capacitors through the upper part, the switch node and the lower part back to ground: a buck's
-    switch and diode (or its two switches), a boost's diode and switch (its capacitors the output's), a half
-    bridge's leg. The inductor on the switch node, where there is one, is named too."""
+    A regulator IC: an inductor-to-IC switch net, and VIN/GND capacitors (the IC
+    both switches). A discrete switching cell: a switch node with a transistor
+    or diode up to a net that has capacitors to ground (the upper part, the
+    converter's name), and one down to ground (the lower part, `low`). Its input
+    loop runs from those capacitors through the upper part, the switch node and
+    the lower part back to ground: a buck's switch and diode (or its two
+    switches), a boost's diode and switch (its capacitors the output's), a half
+    bridge's leg. The inductor on the switch node, where there is one, is named
+    too."""
     import re
     from .pdn.rail import parts_of, classify
     parts=parts_of(board)
-    regulators=[p for p in parts if p.ref.upper().startswith('U') and ground in p.nets()]
-    caps=[p for p in parts if p.ref.upper().startswith('C') and ground in p.nets()]
+    regulators = [
+        p for p in parts
+        if p.ref.upper().startswith('U') and ground in p.nets()
+    ]
+    caps = [
+        p for p in parts
+        if p.ref.upper().startswith('C') and ground in p.nets()
+    ]
     inductors=[p for p in parts if (classify(p) or ('',))[0]=='inductor']
     candidates=[]
     for ind in inductors:
@@ -101,7 +154,9 @@ def discover(board, ground='GND'):
             for sw in sorted(switch):
                 inputs=_inputs(reg.nets()-{ground,sw}-ind.nets(),caps)
                 if inputs:
-                    candidates.append(dict(converter=reg.ref,inductor=ind.ref,switch=sw,inputs=inputs))
+                    candidates.append(
+                        dict(converter=reg.ref, inductor=ind.ref, switch=sw,
+                             inputs=inputs))
     cells=[p for p in parts if re.match(SWITCHING,p.ref.upper())]
     for low in cells:
         if ground not in low.nets():
@@ -110,56 +165,92 @@ def discover(board, ground='GND'):
             for up in cells:
                 if up is low or sw not in up.nets() or ground in up.nets():
                     continue
-                if not any(re.match(r'(Q|M)\d',p.ref.upper()) for p in (up,low)):
-                    continue                            # two diodes: a rectifier's leg, nothing switched
-                inputs=_inputs(up.nets()-{sw},[p for p in caps if sw not in p.nets()])
+                if (not any(
+                        re.match(r'(Q|M)\d', p.ref.upper())
+                        for p in (up, low))):
+                    continue  # two diodes: a rectifier's leg, nothing switched
+                inputs = _inputs(up.nets() - {sw},
+                                 [p for p in caps if sw not in p.nets()])
                 if inputs:
                     ind=[p.ref for p in inductors if sw in p.nets()]
-                    candidates.append(dict(converter=up.ref,inductor=ind[0] if len(ind)==1 else '',switch=sw,
-                                           inputs=inputs,low=low.ref))
+                    candidates.append(
+                        dict(converter=up.ref,
+                             inductor=ind[0] if len(ind) == 1 else '',
+                             switch=sw, inputs=inputs, low=low.ref))
     return candidates
 
 
 def select(board, a, require_values=True):
     from .pdn.rail import parts_of, part_value
     parts={p.ref:p for p in parts_of(board)}
-    candidates=[c for c in discover(board,a.ground) if (not a.converter or c['converter']==a.converter)
-                and (not a.inductor or c['inductor']==a.inductor)]
-    cell=[c for c in candidates if c.get('low') and (not a.vin or any(i['vin']==a.vin for i in c['inputs']))]
+    candidates = [
+        c for c in discover(board, a.ground)
+        if (not a.converter or c['converter'] == a.converter) and (
+            not a.inductor or c['inductor'] == a.inductor)
+    ]
+    cell = [
+        c for c in candidates
+        if c.get('low') and (not a.vin or any(i['vin'] == a.vin
+                                              for i in c['inputs']))
+    ]
     if a.converter and a.vin and not cell:
-        ref=a.converter  # Explicit input-loop selection also works without a recognizable switch/inductor.
+        # Explicit input-loop selection also works without a recognizable
+        # switch/inductor.
+        ref=a.converter
     else:
         refs=sorted({c['converter'] for c in candidates})
         if len(refs)!=1:
-            raise ValueError('select --converter and --vin; candidates: '+(', '.join(refs) or 'none'))
+            raise ValueError('select --converter and --vin; candidates: '
+                             + (', '.join(refs) or 'none'))
         ref=refs[0]
     if ref not in parts:
         raise ValueError(f'unknown converter {ref}')
     low=sw=None
-    if cell:                                            # a discrete cell: its upper part, its switch node, its lower
+    if cell:  # a discrete cell: its upper part, its switch node, its lower
         lows=sorted({(c['low'],c['switch']) for c in cell})
         if len(lows)!=1:
-            raise ValueError(f"{ref}: several parts close its loop to ground ({', '.join(l for l,_ in lows)}): "
-                             f"name the input net, --vin")
+            raise ValueError(
+                f"{ref}: several parts close its loop to ground "
+                f"({', '.join(l for l,_ in lows)}): name the input net, --vin")
         low,sw=lows[0]
     reg=parts[ref]
     centre=unary_union([p.geom for p in reg.pads]).centroid
-    local=[p for p in parts.values() if p.ref.upper().startswith('C') and a.ground in p.nets()
-           and (sw is None or sw not in p.nets())
-           and min((pad.geom.distance(centre) for pad in p.pads),default=float('inf'))<=a.cap_radius]
-    if cell and not any(any(i['vin'] in p.nets() for i in c['inputs']) for c in cell for p in local):
-        local=[parts[r] for c in cell for i in c['inputs'] if not a.vin or i['vin']==a.vin for r in i['capacitors']]
-        print(f"mqs: no capacitor within {a.cap_radius:g} mm of {ref}: its loop's are taken wherever they are "
-              f"({', '.join(sorted({p.ref for p in local}))})",flush=True)       # (a cell's own: by connection)
+    local = [
+        p for p in parts.values()
+        if p.ref.upper().startswith('C') and a.ground in p.nets() and (
+            sw is None or sw not in p.nets()) and min((
+                pad.geom.distance(centre)
+                for pad in p.pads), default=float('inf')) <= a.cap_radius
+    ]
+    if (cell and not any(
+            any(i['vin'] in p.nets()
+                for i in c['inputs'])
+            for c in cell
+            for p in local)):
+        local = [
+            parts[r] for c in cell for i in c['inputs']
+            if not a.vin or i['vin'] == a.vin for r in i['capacitors']
+        ]
+        print(
+            f"mqs: no capacitor within {a.cap_radius:g} mm of {ref}: its "
+            "loop's are taken wherever they are "
+            # (a cell's own: by connection)
+            f"({', '.join(sorted({p.ref for p in local}))})",
+            flush=True)
     if a.vin:
         vin=a.vin
     else:
         options={i['vin'] for c in (cell or candidates) for i in c['inputs']
                  if any(i['vin'] in p.nets() for p in local)}
         if len(options)!=1:
-            raise ValueError('ambiguous input supply; set --vin from: '+', '.join(sorted(options)))
+            raise ValueError('ambiguous input supply; set --vin from: '
+                             + ', '.join(sorted(options)))
         vin=options.pop()
-    caps=[x.strip() for x in a.capacitors.split(',') if x.strip()] if a.capacitors else sorted(p.ref for p in local if vin in p.nets())
+    caps = ([x.strip()
+             for x in a.capacitors.split(',')
+             if x.strip()] if a.capacitors else sorted(p.ref
+                                                       for p in local
+                                                       if vin in p.nets()))
     if not caps or len(caps)!=len(set(caps)):
         raise ValueError('select one or more unique --capacitors')
     if vin==a.ground:
@@ -167,18 +258,22 @@ def select(board, a, require_values=True):
     from .contacts import contact_terminal
     terms={}
     pads=[(c,net) for c in caps for net in (vin,a.ground)]
-    pads+=[(ref,vin),(ref,sw),(low,sw),(low,a.ground)] if low else [(ref,vin),(ref,a.ground)]
+    pads += ([(ref, vin), (ref, sw), (low, sw),
+              (low, a.ground)] if low else [(ref, vin), (ref, a.ground)])
     for name,net in pads:
         if name not in parts:
             raise ValueError(f'unknown part {name}')
-        found=contact_terminal(parts[name],parts[name].on({net}),getattr(a,'pad_contact','termination'))
+        found = contact_terminal(parts[name], parts[name].on({net}),
+                                 getattr(a, 'pad_contact', 'termination'))
         if not found:
             raise ValueError(f'{name} has no copper pads on {net}')
         terms[f'{name}:{net}']=found
     values={c:part_value(parts[c]) for c in caps}
     if require_values and any(v is None or v<=0 for v in values.values()):
-        raise ValueError('each selected capacitor needs a positive capacitance value')
-    out=dict(converter=ref,vin=vin,ground=a.ground,capacitors=caps,values=values)
+        raise ValueError(
+            'each selected capacitor needs a positive capacitance value')
+    out = dict(converter=ref, vin=vin, ground=a.ground, capacitors=caps,
+               values=values)
     if low:
         out.update(switch=sw,low=low)
     return out,terms
@@ -189,33 +284,41 @@ def numbers(text, name):
         x=np.array([float(t) for t in text.split(',')])
     except ValueError as exc:
         raise ValueError(f'{name} must be comma-separated numbers') from exc
-    if not len(x) or not np.isfinite(x).all() or (x<=0).any() or len(np.unique(x))!=len(x):
+    if (not len(x) or not np.isfinite(x).all() or (x <= 0).any()
+            or len(np.unique(x)) != len(x)):
         raise ValueError(f'{name} must contain unique positive finite values')
     return np.sort(x)
 
 
 def spectrum(path, n):
-    """(switching frequency, peak amps of the harmonics n) of a current spectrum file (circuit/supply.py's): its
-    lowest frequency is the fundamental, and each harmonic asked for must be in it."""
+    """(switching frequency, peak amps of the harmonics n) of a current spectrum
+    file (circuit/supply.py's): its lowest frequency is the fundamental, and
+    each harmonic asked for must be in it."""
     from .circuit.supply import read_spectrum
     f,amp=read_spectrum(path)
     k=np.round(f/f[0])
     have={int(kk):abs(aa) for kk,aa,ff in zip(k,amp,f) if abs(ff/f[0]-kk)<1e-3}
     missing=[int(x) for x in n if int(x) not in have]
     if missing:
-        raise ValueError(f"{path}: no harmonic {', '.join(map(str,missing))} of its lowest frequency ({f[0]:g} Hz): "
-                         f"it has {len(have)}; shorten --harmonics")
+        raise ValueError(
+            f"{path}: no harmonic {', '.join(map(str,missing))} of its lowest "
+            f"frequency ({f[0]:g} Hz): it has {len(have)}; shorten --harmonics")
     return float(f[0]),np.array([have[int(x)] for x in n])
 
 
 def validate(a, preview=False):
-    """(harmonics, heights, duty); a preview (mesh only) checks just the mesh settings and returns None."""
-    for k in ['cap_radius','dmax','fine','margin']+([] if preview else ['fsw','field_tol']):
+    """(harmonics, heights, duty); a preview (mesh only) checks just the mesh
+    settings and returns None."""
+    for k in (['cap_radius', 'dmax', 'fine', 'margin'] +
+              ([] if preview else ['fsw', 'field_tol'])):
         if not np.isfinite(getattr(a,k)) or getattr(a,k)<=0:
             raise ValueError(f'{k} must be positive and finite')
     if preview:
         return None
-    for k in ['current','edge_time','esr','esl','part_height','vin_volts','vout']:
+    for k in [
+            'current', 'edge_time', 'esr', 'esl', 'part_height', 'vin_volts',
+            'vout'
+    ]:
         if not np.isfinite(getattr(a,k)) or getattr(a,k)<0:
             raise ValueError(f'{k} must be nonnegative and finite')
     if bool(a.vin_volts)!=bool(a.vout):
@@ -232,20 +335,26 @@ def validate(a, preview=False):
 
 
 def draw_layout(ax, layout):
-    """Projection onto the layout: context grey, simulated nets cyan, selected components gold."""
+    """Projection onto the layout: context grey, simulated nets cyan, selected
+    components gold."""
     from matplotlib.patches import Polygon
     top=max(layout['stack']['copper'],key=lambda c:c['z'])['name']
     for rec in layout['copper'].get(top,[]):
         poly=shape(rec['polygon'])
         color='#007f8b' if rec['active'] else '#777777'
-        ax.plot(*poly.exterior.xy,color=color,lw=1.1 if rec['active'] else .6,zorder=3)
+        ax.plot(*poly.exterior.xy, color=color, lw=1.1 if rec['active'] else .6,
+                zorder=3)
         for hole in poly.interiors:ax.plot(*hole.xy,color=color,lw=.6,zorder=3)
     for c in layout['components']:
         if c['layer']!=top:continue
         poly=shape(c['polygon'])
-        ax.add_patch(Polygon(list(poly.exterior.coords),facecolor='#ffd166' if c['active'] else '#aaaaaa',
-                            edgecolor='#333333',alpha=.55,zorder=4))
-        if c['active']:ax.text(poly.centroid.x,poly.centroid.y,c['ref'],ha='center',va='center',fontsize=7,zorder=5)
+        ax.add_patch(
+            Polygon(list(poly.exterior.coords),
+                    facecolor=('#ffd166' if c['active'] else '#aaaaaa'),
+                    edgecolor='#333333', alpha=.55, zorder=4))
+        if (c['active']):
+            ax.text(poly.centroid.x, poly.centroid.y, c['ref'], ha='center',
+                    va='center', fontsize=7, zorder=5)
 
 
 def write_outputs(out, board, q, r, H, x, y, heights, summary):
@@ -260,23 +369,32 @@ def write_outputs(out, board, q, r, H, x, y, heights, summary):
     dumps=[]
     for k,h in enumerate(heights):
         label=f'top+{h:g}mm'
-        dm=Dump('H@'+label,'H',(x[0],y[0],z[k]),(x[-1],y[-1],z[k]),r.f.tolist(),2,label)
-        write_npz(exc/(dm.name+'.npz'),dict(x=x,y=y,z=z[k:k+1]),r.f,np.moveaxis(H[:,:,k:k+1],-1,0))
+        dm = Dump('H@' + label, 'H', (x[0], y[0], z[k]), (x[-1], y[-1], z[k]),
+                  r.f.tolist(), 2, label)
+        write_npz(exc / (dm.name + '.npz'), dict(x=x, y=y, z=z[k:k + 1]), r.f,
+                  np.moveaxis(H[:, :, k:k + 1], -1, 0))
         dumps.append(dm)
     if len(z)>1:
-        dm=Dump('H@volume','H',(x[0],y[0],z[0]),(x[-1],y[-1],z[-1]),r.f.tolist(),None,'volume')
-        write_npz(exc/(dm.name+'.npz'),dict(x=x,y=y,z=z),r.f,np.moveaxis(H,-1,0))
+        dm = Dump('H@volume', 'H', (x[0], y[0], z[0]), (x[-1], y[-1], z[-1]),
+                  r.f.tolist(), None, 'volume')
+        write_npz(exc / (dm.name + '.npz'), dict(x=x, y=y, z=z), r.f,
+                  np.moveaxis(H, -1, 0))
         dumps.append(dm)
     from .mqs_layout import save_layout, geometry
     from .pdn.viewer import _copper
     crop=shape(summary['crop'])
     layout=save_layout(out,board,q,crop,summary['selection'])
     vias=[v for v in board['vias'] if v['net'] in q.nets]
-    inside=shapely.intersects_xy(crop,[v['x'] for v in vias],[v['y'] for v in vias]) if vias else []
-    m=SimpleNamespace(outline=crop,cu_z={c['name']:c['z'] for c in board['stack']['copper']},
-        copper=_copper(board,q.nets,crop),ports=[],
-        vias=[(v['x'],v['y'],v['r'],v['z0'],v['z1']) for v,keep in zip(vias,inside) if keep],
-        thickness=board['stack'].get('thickness',top))
+    inside = (shapely.intersects_xy(crop, [v['x'] for v in vias],
+                                    [v['y'] for v in vias]) if vias else [])
+    m = SimpleNamespace(
+        outline=crop,
+        cu_z={c['name']: c['z']
+              for c in board['stack']['copper']},
+        copper=_copper(board, q.nets, crop), ports=[],
+        vias=[(v['x'], v['y'], v['r'], v['z0'], v['z1'])
+              for v, keep in zip(vias, inside)
+              if keep], thickness=board['stack'].get('thickness', top))
     # The frontend also discovers files absent from the metadata. Remove only
     # obsolete generated H dumps in this command's reserved excitation folder.
     generated={d.name+'.npz' for d in dumps}
@@ -291,16 +409,22 @@ def write_outputs(out, board, q, r, H, x, y, heights, summary):
     figures=[]
     for k,h in enumerate(heights):
         fig,ax=plt.subplots()
-        im=ax.pcolormesh(x,y,mag[:,:,k,0].T,shading='auto',alpha=.65);fig.colorbar(im,ax=ax,label='|H|, A/m peak')
+        im = ax.pcolormesh(x, y, mag[:, :, k, 0].T, shading='auto', alpha=.65)
+        fig.colorbar(im, ax=ax, label='|H|, A/m peak')
         draw_layout(ax,layout)
-        ax.set(xlabel='mm',ylabel='mm',aspect='equal',title=f'{r.f[0]:g} Hz, {h:g} mm above top copper')
-        name=f'H_top_{h:g}mm.png';fig.tight_layout();fig.savefig(out/name,dpi=120);plt.close(fig)
+        ax.set(xlabel='mm', ylabel='mm', aspect='equal',
+               title=f'{r.f[0]:g} Hz, {h:g} mm above top copper')
+        name = f'H_top_{h:g}mm.png'
+        fig.tight_layout()
+        fig.savefig(out / name, dpi=120)
+        plt.close(fig)
         figures.append(name)
     fig,ax=plt.subplots();ax.loglog(r.f,np.max(mag,axis=(0,1,2)),marker='o')
     ax.set(xlabel='Hz',ylabel='Peak |H| across scan, A/m');ax.grid(True)
     fig.tight_layout();fig.savefig(out/'spectrum.png',dpi=120);plt.close(fig)
     summary['figures']=figures+['spectrum.png']
-    np.savez_compressed(out/'mesh.npz',nodes=q.nodes,tris=q.tris,layer_of=q.layer_of)
+    np.savez_compressed(out / 'mesh.npz', nodes=q.nodes, tris=q.tris,
+                        layer_of=q.layer_of)
 
 
 def run(a):
@@ -311,10 +435,12 @@ def run(a):
     if not preview:
         n,heights,duty=validate(a)
         fsw,given=a.fsw,None
-        if a.spectrum:                                  # (read before the mesh is made: a wrong file says so at once)
+        # (read before the mesh is made: a wrong file says so at once)
+        if a.spectrum:
             fsw,given=spectrum(a.spectrum,n)
-            print(f'mqs: input current from {Path(a.spectrum).name}: {fsw:g} Hz, {given[0]:.3g} A at its first '
-                  f'harmonic kept',flush=True)
+            print(
+                f'mqs: input current from {Path(a.spectrum).name}: {fsw:g} Hz, '
+                f'{given[0]:.3g} A at its first harmonic kept', flush=True)
     else:
         validate(a,preview=True)
     print('mqs: reading board',flush=True)
@@ -322,71 +448,116 @@ def run(a):
     selected,terms=select(board,a,require_values=not preview)
     extent=unary_union([p for pp in terms.values() for _,p in pp])
     crop=extent.buffer(a.margin).envelope
-    print(f"mqs: {selected['converter']}"+(f" and {selected['low']} (switch node {selected['switch']})" if selected.get('low') else '')
-          +f", {selected['vin']}, capacitors {', '.join(selected['capacitors'])}",flush=True)
-    q=MQS(board,{selected['vin'],a.ground,*([selected['switch']] if selected.get('low') else [])},terminals=terms,region=crop,dmax=a.dmax,
-          fine=extent.buffer(1).envelope,dmax_fine=a.fine,fill_backend=a.fill_backend,
-          fill_workers=a.fill_workers or None,fill_chunk=a.fill_chunk,fill_device=a.fill_device if a.fill_backend=='cupy' else None,
-          matrix_backend=a.backend)
+    print(
+        f"mqs: {selected['converter']}" +
+        (f" and {selected['low']} (switch node {selected['switch']})"
+         if selected.get('low') else '') +
+        f", {selected['vin']}, capacitors {', '.join(selected['capacitors'])}",
+        flush=True)
+    q = MQS(
+        board, {
+            selected['vin'], a.ground,
+            *([selected['switch']] if selected.get('low') else [])
+        }, terminals=terms, region=crop, dmax=a.dmax,
+        fine=extent.buffer(1).envelope, dmax_fine=a.fine,
+        fill_backend=a.fill_backend, fill_workers=a.fill_workers or None,
+        fill_chunk=a.fill_chunk,
+        fill_device=(a.fill_device if a.fill_backend == 'cupy' else None),
+        matrix_backend=a.backend)
     if preview:
         from .mqs_layout import save_layout, mesh_stats
         out=Path(a.out)
         save_layout(out,board,q,crop,selected)
-        summary=dict(format=1,preview=True,selection=selected,source_path=str(Path(a.board).resolve()),
-                     settings={k:getattr(a,k) for k,*_ in OPTIONS},triangles=len(q.tris),layers=mesh_stats(q),
-                     seconds=dict(total=time.perf_counter()-start))
+        summary = dict(format=1, preview=True, selection=selected,
+                       source_path=str(Path(a.board).resolve()),
+                       settings={k: getattr(a, k)
+                                 for k, *_ in OPTIONS}, triangles=len(q.tris),
+                       layers=mesh_stats(q),
+                       seconds=dict(total=time.perf_counter() - start))
         (out/'mqs-preview.json').write_text(json.dumps(summary,indent=2))
         print(f'mqs: wrote mesh preview to {out}',flush=True)
         return summary
     ref=selected['converter'];vin=selected['vin']
-    if selected.get('low'):                             # a discrete cell: through the upper part to the switch node,
-        sw,low=selected['switch'],selected['low']       # through the lower part to ground
+    # a discrete cell: through the upper part to the switch node,
+    if selected.get('low'):
+        # through the lower part to ground
+        sw,low=selected['switch'],selected['low']
         q.source(ref,f'{ref}:{vin}',f'{ref}:{sw}',part_h=a.part_height)
-        q.element(low,f'{low}:{sw}',f'{low}:{a.ground}',R=LOW_SIDE_R,part_h=a.part_height)
+        q.element(low, f'{low}:{sw}', f'{low}:{a.ground}', R=LOW_SIDE_R,
+                  part_h=a.part_height)
     else:
         q.source(ref,f'{ref}:{vin}',f'{ref}:{a.ground}',part_h=a.part_height)
     from .pdn.rail import parts_of
     from .pdn.stack import cap_parasitics
-    own={p.ref:p for p in parts_of(board)}               # each its own ESR and ESL (fields, else its package's;
-    for cap,value in selected['values'].items():         # else --esr / --esl), as the PDN takes them (R-E14)
+    # each its own ESR and ESL (fields, else its package's;
+    own={p.ref:p for p in parts_of(board)}
+    # else --esr / --esl), as the PDN takes them (R-E14)
+    for cap,value in selected['values'].items():
         esr,esl=cap_parasitics(own.get(cap),a.esr,a.esl)
-        q.element(cap,f'{cap}:{vin}',f'{cap}:{a.ground}',C=value,ESR=float(esr),ESL=float(esl),part_h=a.part_height)
+        q.element(cap, f'{cap}:{vin}', f'{cap}:{a.ground}', C=value,
+                  ESR=float(esr), ESL=float(esl), part_h=a.part_height)
     r=q.solve(n*fsw)
     impedance=r.zc[ref].copy()
-    assumed=2*a.current*duty*np.abs(np.sinc(n*duty))*np.abs(np.sinc(n*fsw*a.edge_time))
+    assumed = (2 * a.current * duty * np.abs(np.sinc(n * duty))
+               * np.abs(np.sinc(n * fsw * a.edge_time)))
     amps=assumed if given is None else given
     r.i*=amps[:,None]
     moments=np.array([q.moment(r,i) for i in range(len(n))])
     solve_s=time.perf_counter()-start
     xmin,ymin,xmax,ymax=crop.bounds
-    x=np.linspace(xmin,xmax,a.scan_points);y=np.linspace(ymin,ymax,a.scan_points)
+    x = np.linspace(xmin, xmax, a.scan_points)
+    y = np.linspace(ymin, ymax, a.scan_points)
     top=max(c['z'] for c in board['stack']['copper'])
-    H,info=q.h_grid(r,list(range(len(n))),x*.001,y*.001,(top+heights)*.001,rtol=a.field_tol,return_info=True)
-    summary=dict(format=1,selection=selected,source_path=str(Path(a.board).resolve()),settings={k:getattr(a,k) for k,*_ in OPTIONS},crop=mapping(crop),
-        frequencies_Hz=r.f.tolist(),harmonic_peak_A=amps.tolist(),copper_R_ohm=impedance.real.tolist(),
-        copper_L_H=(impedance.imag/(2*np.pi*r.f)).tolist(),dipole_real_Am2=moments.real.tolist(),dipole_imag_Am2=moments.imag.tolist(),
-        heights_above_top_mm=heights.tolist(),peak_H_Am=np.linalg.norm(H,axis=3).max(axis=(0,1)).T.tolist(),
-        triangles=len(q.tris),fill=q.fill_info,field_convergence=info,
-        notes=['Input-loop magnetic model; switch-node E and output-inductor leakage are excluded.',
-               *([f"A discrete switching cell: the current through {ref} to the switch node {selected['switch']} and "
-                  f"through {selected['low']} ({LOW_SIDE_R*1e3:g} mOhm, conducting) to ground."] if selected.get('low') else []),
-               ('Pulse spectrum, ESR, ESL and part filament heights are explicit assumptions.' if given is None else
-                f"The input current's harmonics are those of {Path(a.spectrum).name}; ESR, ESL and part filament "
-                f"heights are explicit assumptions."),
-               'FFT convergence does not establish copper mesh or crop convergence.'],
-        seconds=dict(solve=solve_s,total=time.perf_counter()-start))
-    if given is not None:                               # beside what the pulse of the settings would have given
-        summary['spectrum']=dict(file=str(Path(a.spectrum).resolve()),fsw_Hz=float(fsw),assumed_peak_A=assumed.tolist())
+    H, info = q.h_grid(r, list(range(len(n))), x * .001, y * .001,
+                       (top + heights) * .001, rtol=a.field_tol,
+                       return_info=True)
+    summary = dict(
+        format=1, selection=selected, source_path=str(Path(a.board).resolve()),
+        settings={k: getattr(a, k)
+                  for k, *_ in OPTIONS
+                  }, crop=mapping(crop), frequencies_Hz=r.f.tolist(),
+        harmonic_peak_A=amps.tolist(), copper_R_ohm=impedance.real.tolist(),
+        copper_L_H=(impedance.imag / (2 * np.pi * r.f)).tolist(),
+        dipole_real_Am2=moments.real.tolist(),
+        dipole_imag_Am2=moments.imag.tolist(),
+        heights_above_top_mm=heights.tolist(),
+        peak_H_Am=np.linalg.norm(H, axis=3).max(axis=(0, 1)).T.tolist(),
+        triangles=len(q.tris), fill=q.fill_info, field_convergence=info, notes=[
+            'Input-loop magnetic model; switch-node E and output-inductor '
+            'leakage are excluded.',
+            *([
+                f"A discrete switching cell: the current through {ref} to the "
+                f"switch node {selected['switch']} and through "
+                f"{selected['low']} ({LOW_SIDE_R*1e3:g} mOhm, conducting) to "
+                "ground."
+            ] if selected.get('low') else []),
+            ('Pulse spectrum, ESR, ESL and part filament heights are explicit '
+             'assumptions.'
+             if given is None else
+             "The input current's harmonics are those of "
+             f"{Path(a.spectrum).name}; ESR, ESL and part filament heights are "
+             "explicit assumptions."),
+            'FFT convergence does not establish copper mesh or crop '
+            'convergence.'
+        ], seconds=dict(solve=solve_s, total=time.perf_counter() - start))
+    # beside what the pulse of the settings would have given
+    if given is not None:
+        summary['spectrum'] = dict(file=str(Path(a.spectrum).resolve()),
+                                   fsw_Hz=float(fsw),
+                                   assumed_peak_A=assumed.tolist())
     out=Path(a.out);out.mkdir(parents=True,exist_ok=True)
-    try:                                                # the converter as a circuit, for pcbqs.circuit to run
+    try:  # the converter as a circuit, for pcbqs.circuit to run
         from .circuit.converter import model_of
-        (out/'circuit-model.json').write_text(json.dumps(model_of(board,Path(a.board).resolve(),a),indent=1)+'\n')
+        (out / 'circuit-model.json').write_text(
+            json.dumps(model_of(board,
+                                Path(a.board).resolve(), a), indent=1) + '\n')
         summary['circuit_model']='circuit-model.json'
     except ValueError as exc:
         summary['notes'].append(f'No circuit model of the converter: {exc}')
     write_outputs(out,board,q,r,H,x,y,heights,summary)
     summary['seconds']['total']=time.perf_counter()-start
-    (out/'mqs.json').write_text(json.dumps(summary,indent=2,allow_nan=False)+'\n')
+    (out / 'mqs.json'
+     ).write_text(json.dumps(summary, indent=2, allow_nan=False) + '\n')
     print(f'mqs: wrote {out / "mqs.json"}',flush=True)
     return summary
 
@@ -402,7 +573,10 @@ def main(argv=None):
         elif a.circuit:
             from .circuit.converter import model_of
             validate(a)
-            print(json.dumps(model_of(load_board(a.board),Path(a.board).resolve(),a),indent=1))
+            print(
+                json.dumps(
+                    model_of(load_board(a.board),
+                             Path(a.board).resolve(), a), indent=1))
         else:run(a)
     except (ValueError,KeyError,OSError,RuntimeError) as exc:
         print(f'mqs: error: {exc}',file=sys.stderr);return 2

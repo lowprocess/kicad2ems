@@ -1,6 +1,7 @@
-"""The solver plugins: the registry (built in and through entry points), the settings made from their option
-tables ([solver.<name>] config tables, command-line options), the checks before a run (assess) and a run
-that does not need openEMS's mesh."""
+"""The solver plugins: the registry (built in and through entry points), the
+settings made from their option tables ([solver.<name>] config tables,
+command-line options), the checks before a run (assess) and a run that does not
+need openEMS's mesh."""
 import json, os
 import numpy as np
 import pytest
@@ -9,27 +10,34 @@ from kicad2ems.core.config import build_settings, settings_class
 from kicad2ems.core.cli import parser
 import standins
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FILTER = os.path.join(ROOT, 'examples', 'rf_interdig.toml')
 
 
 def test_registry_and_aliases():
-    """The line solvers built in, the others through entry points (here the stand-ins, standins.py), by order."""
+    """The line solvers built in, the others through entry points (here the
+    stand-ins, standins.py), by order."""
     reg = solvers.registry()
     assert list(reg) == ['openems', 'mom25d', 'gfdtd', 'qucs', 'scikit']
-    assert [solvers.get(a).name for a in ('fdtd', 'MOM', 'qucsator', 'skrf')] == ['openems', 'mom25d', 'qucs', 'scikit']
+    assert ([solvers.get(a).name for a in ('fdtd', 'MOM', 'qucsator', 'skrf')
+             ] == ['openems', 'mom25d', 'qucs', 'scikit'])
     with pytest.raises(ValueError, match="no solver 'hfss'"):
         solvers.get('hfss')
-    for sv in reg.values():                                         # every feature declared by every solver
+    for sv in reg.values():  # every feature declared by every solver
         assert set(sv.capabilities) == set(solvers.FEATURES), sv.name
-    assert solvers.ordered({'scikit', 'lines', 'openems'}) == ['openems', 'lines', 'scikit']
+    assert (solvers.ordered({'scikit', 'lines',
+                             'openems'}) == ['openems', 'lines', 'scikit'])
 
 
 class _Fake(solvers.Solver):
     name, aliases, label, rank = 'fake', ('fk',), 'fake solver', 0
     api = (2, 0)
     capabilities = {k: 'yes' for k in solvers.FEATURES}
-    options = [solvers.Option('fake_level', 3, "level", int, name='level', gui='Fake level', group='fake')]
+    options = [
+        solvers.Option('fake_level', 3, "level", int, name='level',
+                       gui='Fake level', group='fake')
+    ]
 
 
 class _EP:
@@ -45,41 +53,63 @@ class _EP:
 def test_entry_point_plugins(monkeypatch):
     class Clash(_Fake):
         name, aliases = 'clash', ()
-        options = [solvers.Option('fmin', 1.0)]                     # a core setting: refused
+        options = [solvers.Option('fmin', 1.0)]  # a core setting: refused
     monkeypatch.setattr(solvers, '_registry', None)
     monkeypatch.setattr(solvers, 'broken', [])
-    installed = solvers._entry_points()                             # the stand-ins: openems, mom25d, gfdtd
-    monkeypatch.setattr(solvers, '_entry_points', lambda: installed + [_EP('fake', _Fake), _EP('bad', ImportError('no numpy')),
-                                                                       _EP('clash', Clash)])
+    installed = solvers._entry_points()  # the stand-ins: openems, mom25d, gfdtd
+    monkeypatch.setattr(
+        solvers, '_entry_points', lambda: installed + [
+            _EP('fake', _Fake),
+            _EP('bad', ImportError('no numpy')),
+            _EP('clash', Clash)
+        ])
     reg = solvers.registry()
-    assert list(reg) == ['openems', 'mom25d', 'gfdtd', 'fake', 'qucs', 'scikit'] and solvers.get('fk') is reg['fake']
+    assert (list(reg)
+            == ['openems', 'mom25d', 'gfdtd', 'fake', 'qucs', 'scikit']
+            and solvers.get('fk') is reg['fake'])
     assert [b[0].split(' =')[0] for b in solvers.broken] == ['bad', 'clash']
-    assert 'ImportError: no numpy' in solvers.broken[0][1] and 'fmin' in solvers.broken[1][1]
-    S = settings_class(reg)                                         # its options become settings
+    assert ('ImportError: no numpy' in solvers.broken[0][1]
+            and 'fmin' in solvers.broken[1][1])
+    S = settings_class(reg)  # its options become settings
     assert S(board='b').fake_level == 3
-    monkeypatch.setattr(solvers, '_registry', None)                 # back to the built-in ones for the others
+    # back to the built-in ones for the others
+    monkeypatch.setattr(solvers, '_registry', None)
 
 
 def test_solver_tables(tmp_path):
     p = tmp_path / 'c.toml'
-    p.write_text('board = "b.kicad_pcb"\nsolvers = ["fdtd", "mom"]\n[solver.mom25d]\ndmax = 0.5\nport = "wave"\n'
-                 'dmx = 1\nfmin = 2\n[solver.openems]\nend-db = -30\nexcite = "P1"\n[solver.hfss]\nx = 1\n'
-                 '[othertool]\nfoo = 1\n', encoding='utf-8')
+    p.write_text(
+        'board = "b.kicad_pcb"\nsolvers = ["fdtd", '
+        '"mom"]\n[solver.mom25d]\ndmax = 0.5\nport = "wave"\ndmx = 1\nfmin = '
+        '2\n[solver.openems]\nend-db = -30\nexcite = "P1"\n[solver.hfss]\nx = '
+        '1\n[othertool]\nfoo = 1\n', encoding='utf-8')
     s = build_settings({}, str(p))
-    assert s.mom_dmax == 0.5 and s.mom_port == 'wave' and s.end_db == -30 and s.excite == ['P1'] and s.fmin == 0.5
+    assert (s.mom_dmax == 0.5 and s.mom_port == 'wave' and s.end_db == -30
+            and s.excite == ['P1'] and s.fmin == 0.5)
     note = next(n for n in s.notes if n.startswith('ignoring'))
-    assert 'solver.mom25d.dmx (did you mean dmax?)' in note and 'solver.mom25d.fmin (a top-level setting)' in note
-    assert '[solver.hfss]' in note and 'foo' not in note            # another tool's table: not ours to judge
-    p.write_text('board = "b.kicad_pcb"\n[openems]\nair = 3\nfast = "auto"\n', encoding='utf-8')     # the older form, with a note
+    assert ('solver.mom25d.dmx (did you mean dmax?)' in note
+            and 'solver.mom25d.fmin (a top-level setting)' in note)
+    # another tool's table: not ours to judge
+    assert '[solver.hfss]' in note and 'foo' not in note
+    # the older form, with a note
+    p.write_text('board = "b.kicad_pcb"\n[openems]\nair = 3\nfast = "auto"\n',
+                 encoding='utf-8')
     s = build_settings({}, str(p))
-    assert s.air == 3 and s.fast == 'auto' and any('[solver.openems]' in n for n in s.notes)
+    assert (s.air == 3 and s.fast == 'auto'
+            and any('[solver.openems]' in n for n in s.notes))
 
 
 def test_command_line_from_the_option_tables():
     flags = {f for a in parser()._actions for f in a.option_strings}
-    assert {'--mom-dmax', '--mom-solves', '--qucsator', '--end-db', '--port', '--dump', '--solvers'} <= flags
-    s = build_settings(vars(parser().parse_args(['b.kicad_pcb', '--mom-dmax', '0.6', '--port', 'P3=J1.1',
-                                                  '--port', 'P4@1,2'])))
+    assert ({
+        '--mom-dmax', '--mom-solves', '--qucsator', '--end-db', '--port',
+        '--dump', '--solvers'
+    } <= flags)
+    s = build_settings(
+        vars(parser().parse_args([
+            'b.kicad_pcb', '--mom-dmax', '0.6', '--port', 'P3=J1.1', '--port',
+            'P4@1,2'
+        ])))
     assert s.mom_dmax == 0.6 and s.ports == ['P3=J1.1', 'P4@1,2']
 
 
@@ -88,62 +118,97 @@ def _canned_mom(m, freq, **kw):
     S = np.zeros((len(freq), n, n), complex)
     S[:, 1, 0] = S[:, 0, 1] = 0.9 * np.exp(-2j * np.pi * freq * 100e-12)
     S[:, 0, 0] = S[:, 1, 1] = 0.1
-    info = dict(seconds=1.5, solves=7, unknowns=1234, triangles=800, solver='dense', dmax_mm=0.3,
-                ports=[dict(name=p.name, kind='lumped', zc=0.0) for p in m.ports], notes=['canned'])
+    info = dict(
+        seconds=1.5, solves=7, unknowns=1234, triangles=800, solver='dense',
+        dmax_mm=0.3,
+        ports=[dict(name=p.name, kind='lumped', zc=0.0)
+               for p in m.ports], notes=['canned'])
     return S, [p.name for p in m.ports], [50.0] * n, info
 
 
 def test_mom_alone_prepares_no_openems(run_cli, tmp_path, monkeypatch):
     monkeypatch.setattr(standins, 'solve', _canned_mom)
-    monkeypatch.setattr(standins.OpenEMS, 'prepare', lambda self, run: pytest.fail('no openEMS mesh for MoM alone'))
+    monkeypatch.setattr(
+        standins.OpenEMS, 'prepare',
+        lambda self, run: pytest.fail('no openEMS mesh for MoM alone'))
     out = tmp_path / 'out'
-    code, so, err = run_cli(FILTER, '--solvers', 'mom', '--points', '21', '--out', out)
+    code, so, err = run_cli(FILTER, '--solvers', 'mom', '--points', '21',
+                            '--out', out)
     assert code == 0, so + err
     sm = json.loads((out / 'rf_interdig_run.json').read_text(encoding='utf-8'))
-    assert sm['solvers'][0] == 'mom25d' and 'mesh' not in sm and sm['solved']['mom25d']['unknowns'] == 1234
+    assert (sm['solvers'][0] == 'mom25d' and 'mesh' not in sm
+            and sm['solved']['mom25d']['unknowns'] == 1234)
     assert sm['results']['reference'] == 'mom25d' and sm['zref'] == [50.0, 50.0]
-    for f in ('rf_interdig_mom25d.s2p', 'rf_interdig_mom25d.png', 'rf_interdig_model.png', 'rf_interdig_report.html'):
+    for f in ('rf_interdig_mom25d.s2p', 'rf_interdig_mom25d.png',
+              'rf_interdig_model.png', 'rf_interdig_report.html'):
         assert (out / f).exists(), f
     page = (out / 'rf_interdig_report.html').read_text(encoding='utf-8')
-    assert "id='mom25d'" in page and "id='mesh'" not in page and 'canned' in page
-    assert "id='saw'" in page and 'What each solver saw' in page                    # mom25d and the line model
-    assert sm['saw']['solvers'][0] == 'mom25d (MoM)' and any(d['item'] == 'outline' for d in sm['deviations']['mom25d'])
+    assert ("id='mom25d'" in page and "id='mesh'" not in page
+            and 'canned' in page)
+    # mom25d and the line model
+    assert "id='saw'" in page and 'What each solver saw' in page
+    assert (sm['saw']['solvers'][0] == 'mom25d (MoM)'
+            and any(d['item'] == 'outline' for d in sm['deviations']['mom25d']))
 
 
 def test_assess_named_and_reference(boards, run_cli, tmp_path, monkeypatch):
-    """A gap-fed dipole: mom25d cannot model it. Named, the run stops before any solver; added with --mom, it is
-    left out with a warning."""
-    monkeypatch.setattr(standins, 'solve', lambda *a, **k: pytest.fail('mom25d must not run'))
+    """A gap-fed dipole: mom25d cannot model it. Named, the run stops before any
+    solver; added with --mom, it is left out with a warning."""
+    monkeypatch.setattr(standins, 'solve',
+                        lambda *a, **k: pytest.fail('mom25d must not run'))
     out = tmp_path / 'out'
-    code, so, _ = run_cli(boards['dipole'] + '.kicad_pcb', '--solvers', 'mom', '--fmin', '1', '--fmax', '3', '--out', out)
-    assert code == 2 and 'mom25d cannot model this board' in so and 'gap port' in so
-    code, so, _ = run_cli(boards['dipole'] + '.kicad_pcb', '--preview', '--mom', '--fmin', '1', '--fmax', '3', '--out', out)
-    assert code == 0 and 'WARNING: mom25d cannot model this board, left out' in so
+    code, so, _ = run_cli(boards['dipole'] + '.kicad_pcb', '--solvers', 'mom',
+                          '--fmin', '1', '--fmax', '3', '--out', out)
+    assert (code == 2 and 'mom25d cannot model this board' in so
+            and 'gap port' in so)
+    code, so, _ = run_cli(boards['dipole'] + '.kicad_pcb', '--preview', '--mom',
+                          '--fmin', '1', '--fmax', '3', '--out', out)
+    assert (code == 0
+            and 'WARNING: mom25d cannot model this board, left out' in so)
 
 
-def test_auto_picks_the_cheaper_full_wave_solver(run_cli, tmp_path, monkeypatch):
+def test_auto_picks_the_cheaper_full_wave_solver(run_cli, tmp_path,
+                                                 monkeypatch):
     monkeypatch.setattr(standins, 'solve', _canned_mom)
-    monkeypatch.setattr(standins, 'engine_check', lambda: (True, ['  ok      openEMS  /x/openEMS/__init__.py']))
+    monkeypatch.setattr(
+        standins, 'engine_check', lambda:
+        (True, ['  ok      openEMS  /x/openEMS/__init__.py']))
     cost = dict(openems=100.0, mom25d=10.0, gfdtd=50.0)
-    monkeypatch.setattr(standins.OpenEMS, 'estimate', lambda self, run: dict(seconds=cost['openems'], gb=0.1, what='0.4 M cells'))
-    monkeypatch.setattr(standins.GFDTD, 'estimate', lambda self, run: dict(seconds=cost['gfdtd'], gb=0.1, what='on the GPU'))
-    monkeypatch.setattr(standins.MoM25D, 'estimate', lambda self, run: dict(seconds=cost['mom25d'], gb=0.1, what='4,400 unknowns'))
+    monkeypatch.setattr(
+        standins.OpenEMS, 'estimate', lambda self, run: dict(
+            seconds=cost['openems'], gb=0.1, what='0.4 M cells'))
+    monkeypatch.setattr(
+        standins.GFDTD, 'estimate', lambda self, run: dict(
+            seconds=cost['gfdtd'], gb=0.1, what='on the GPU'))
+    monkeypatch.setattr(
+        standins.MoM25D, 'estimate', lambda self, run: dict(
+            seconds=cost['mom25d'], gb=0.1, what='4,400 unknowns'))
     out = tmp_path / 'out'
-    code, so, err = run_cli(FILTER, '--solvers', 'auto', '--points', '21', '--out', out)
+    code, so, err = run_cli(FILTER, '--solvers', 'auto', '--points', '21',
+                            '--out', out)
     assert code == 0, so + err
-    assert 'solvers auto: mom25d + ' in so and 'openems not chosen (0.4 M cells, ~100 s)' in so
+    assert ('solvers auto: mom25d + ' in so
+            and 'openems not chosen (0.4 M cells, ~100 s)' in so)
     assert 'gfdtd not chosen (on the GPU, ~50 s)' in so
     sm = json.loads((out / 'rf_interdig_run.json').read_text(encoding='utf-8'))
-    assert sm['solvers'][0] == 'mom25d' and sm['auto']['chosen'][0] == 'mom25d' and 'openems' in sm['auto']['estimates']
-    assert '--solvers auto: mom25d' in (out / 'rf_interdig_report.html').read_text(encoding='utf-8')
-    cost.update(gfdtd=5.0)                                          # now gfdtd is cheaper: --preview prepares openEMS's mesh
-    code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview', '--points', '21', '--out', out)
-    assert code == 0 and 'solvers auto: gfdtd + ' in so and (out / 'rf_interdig_mesh.png').exists(), so + err
-    code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview', '--sigma', '5.8e7', '--points', '21', '--out', out)
-    assert code == 0 and 'solvers auto: mom25d + ' in so, so + err        # copper loss: not gfdtd's
+    assert (sm['solvers'][0] == 'mom25d' and sm['auto']['chosen'][0] == 'mom25d'
+            and 'openems' in sm['auto']['estimates'])
+    assert ('--solvers auto: mom25d'
+            in (out / 'rf_interdig_report.html').read_text(encoding='utf-8'))
+    # now gfdtd is cheaper: --preview prepares openEMS's mesh
+    cost.update(gfdtd=5.0)
+    code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview',
+                            '--points', '21', '--out', out)
+    assert (code == 0 and 'solvers auto: gfdtd + ' in so
+            and (out / 'rf_interdig_mesh.png').exists()), so + err
+    code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview', '--sigma',
+                            '5.8e7', '--points', '21', '--out', out)
+    # copper loss: not gfdtd's
+    assert code == 0 and 'solvers auto: mom25d + ' in so, so + err
     assert "gfdtd not used: --sigma (gfdtd's copper is PEC): openEMS's" in so
     cost.update(mom25d=50.0, openems=20.0)
-    code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview', '--sigma', '5.8e7', '--points', '21', '--out', out)
+    code, so, err = run_cli(FILTER, '--solvers', 'auto', '--preview', '--sigma',
+                            '5.8e7', '--points', '21', '--out', out)
     assert code == 0 and 'solvers auto: openems + ' in so, so + err
     assert settings_plan('auto') == (['auto'], ['auto'])
 
@@ -152,11 +217,16 @@ def settings_plan(v):
     return build_settings(dict(board='b.kicad_pcb', solvers=v)).solver_plan()
 
 
-def test_auto_leaves_out_what_cannot_model_the_board(boards, run_cli, tmp_path, monkeypatch):
-    monkeypatch.setattr(standins.MoM25D, 'estimate', lambda self, run: pytest.fail('a dipole is not for mom25d'))
+def test_auto_leaves_out_what_cannot_model_the_board(boards, run_cli, tmp_path,
+                                                     monkeypatch):
+    monkeypatch.setattr(
+        standins.MoM25D, 'estimate',
+        lambda self, run: pytest.fail('a dipole is not for mom25d'))
     out = tmp_path / 'out'
-    code, so, err = run_cli(boards['dipole'] + '.kicad_pcb', '--solvers', 'auto', '--preview', '--fmin', '1', '--fmax', '3',
+    code, so, err = run_cli(boards['dipole'] + '.kicad_pcb', '--solvers',
+                            'auto', '--preview', '--fmin', '1', '--fmax', '3',
                             '--out', out)
     assert code == 0, so + err
-    assert ('solvers auto: openems' in so or 'solvers auto: gfdtd' in so)            # FDTD, whichever is cheaper
+    # FDTD, whichever is cheaper
+    assert ('solvers auto: openems' in so or 'solvers auto: gfdtd' in so)
     assert 'mom25d not used: gap port(s) P1: no planar equivalent' in so

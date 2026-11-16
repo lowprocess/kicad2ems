@@ -1,6 +1,7 @@
 """
-The API of a solver plugin: the Solver interface (kicad2ems.core.solvers explains it) and what a solver needs to write
-its results as kicad2ems's other solvers do.
+The API of a solver plugin: the Solver interface (kicad2ems.core.solvers
+explains it) and what a solver needs to write its results as kicad2ems's other
+solvers do.
 
     from kicad2ems.core.api.solver import Solver, Result, Option, mixed_mode
 
@@ -31,34 +32,68 @@ its results as kicad2ems's other solvers do.
   surface finish      resolve_finish (a run's Finish: layers, faces, shares), finish_factor, finish_weighted,
                       finish_band_sigma, finish_face_z (2.4; kicad2ems.core.finish)
 """
-from . import API_VERSION, lazy                                            # noqa: F401
+from . import API_VERSION, lazy  # noqa: F401
 
 NAMES = dict(
-    Solver='.solvers:Solver', Result='.solvers:Result', Deviation='.solvers:Deviation', Option='.options:Option',
-    AUTO='.solvers:AUTO', FEATURES='.solvers:FEATURES',
-    floatlist='.options:floatlist', floats='.options:floats',
+    Solver='.solvers:Solver',
+    Result='.solvers:Result',
+    Deviation='.solvers:Deviation',
+    Option='.options:Option',
+    AUTO='.solvers:AUTO',
+    FEATURES='.solvers:FEATURES',
+    floatlist='.options:floatlist',
+    floats='.options:floats',
     stop='.stop',
-    mixed_mode='.sparams:mixed_mode', fill_reciprocal='.sparams:fill_reciprocal',
-    plot_antenna='.plots:plot_antenna', plot_pattern='.plots:plot_pattern', plot_convergence='.plots:plot_convergence',
-    describe_antenna='.fields.antenna:describe', match_summary='.fields.antenna:match_summary',
+    mixed_mode='.sparams:mixed_mode',
+    fill_reciprocal='.sparams:fill_reciprocal',
+    plot_antenna='.plots:plot_antenna',
+    plot_pattern='.plots:plot_pattern',
+    plot_convergence='.plots:plot_convergence',
+    describe_antenna='.fields.antenna:describe',
+    match_summary='.fields.antenna:match_summary',
     save_antenna='.fields.antenna:save',
-    DumpSource='.fields.frames:DumpSource', save_fd_outputs='.fields.frames:save_fd_outputs',
-    write_npz='.fields.frames:write_npz', Dump='.fields.dumps:Dump', write_info='.fields.dumps:write_info',
+    DumpSource='.fields.frames:DumpSource',
+    save_fd_outputs='.fields.frames:save_fd_outputs',
+    write_npz='.fields.frames:write_npz',
+    Dump='.fields.dumps:Dump',
+    write_info='.fields.dumps:write_info',
     save_mesh='.meshes:save',
-    phased='.phased', settings_drive='.phased:settings_drive',
-    sitecfg='.sitecfg', core_threads='kicad2ems.emsdev.cpu:core_threads', ram_gb='.pipeline:ram_gb',
-    C0='.constants:C0', EPS0='.constants:EPS0', ETA0='.constants:ETA0', MU0='.constants:MU0', strlist='.options:strlist', items='.options:items',
-    G_DUMP='.fields.dumps:G_DUMP', registry='.solvers:registry', split_holes='.geometry:split_holes',
-    describe_edges='.edges:describe', snap_edges='.edges:snap',
-    parse_dump='.fields.dumps:parse_dump', add_dumps='.fields.dumps:add_dumps',
-    dump_size_mb='.fields.dumps:estimate_size_mb', write_norm='.fields.dumps:write_norm',
-    plot_fd_dumps='.fields.dumps:plot_fd_dumps', save_animation='.fields.frames:save_animation',
-    gain_table='.fields.antenna:gain_table', add_polarisation='.fields.antenna:add_polarisation',
-    pattern_gain='.fields.antenna:pattern_gain', plot_preview='.plots:preview',
-    solve_lines='.solvers.lines.fastsolve:solve', lines_backend='.solvers.lines.fastsolve:resolve_backend',
-    hammerstad='.roughness:hammerstad', rough_sigma='.roughness:rough_sigma', band_sigma='.roughness:band_sigma',
-    resolve_finish='.finish:resolve', finish_factor='.finish:factor', finish_weighted='.finish:weighted',
-    finish_band_sigma='.finish:band_sigma', finish_face_z='.finish:face_z',
+    phased='.phased',
+    settings_drive='.phased:settings_drive',
+    sitecfg='.sitecfg',
+    core_threads='kicad2ems.emsdev.cpu:core_threads',
+    ram_gb='.pipeline:ram_gb',
+    C0='.constants:C0',
+    EPS0='.constants:EPS0',
+    ETA0='.constants:ETA0',
+    MU0='.constants:MU0',
+    strlist='.options:strlist',
+    items='.options:items',
+    G_DUMP='.fields.dumps:G_DUMP',
+    registry='.solvers:registry',
+    split_holes='.geometry:split_holes',
+    describe_edges='.edges:describe',
+    snap_edges='.edges:snap',
+    parse_dump='.fields.dumps:parse_dump',
+    add_dumps='.fields.dumps:add_dumps',
+    dump_size_mb='.fields.dumps:estimate_size_mb',
+    write_norm='.fields.dumps:write_norm',
+    plot_fd_dumps='.fields.dumps:plot_fd_dumps',
+    save_animation='.fields.frames:save_animation',
+    gain_table='.fields.antenna:gain_table',
+    add_polarisation='.fields.antenna:add_polarisation',
+    pattern_gain='.fields.antenna:pattern_gain',
+    plot_preview='.plots:preview',
+    solve_lines='.solvers.lines.fastsolve:solve',
+    lines_backend='.solvers.lines.fastsolve:resolve_backend',
+    hammerstad='.roughness:hammerstad',
+    rough_sigma='.roughness:rough_sigma',
+    band_sigma='.roughness:band_sigma',
+    resolve_finish='.finish:resolve',
+    finish_factor='.finish:factor',
+    finish_weighted='.finish:weighted',
+    finish_band_sigma='.finish:band_sigma',
+    finish_face_z='.finish:face_z',
 )
 __all__ = ['API_VERSION', *NAMES]
 __getattr__, __dir__ = lazy(__name__, NAMES)

@@ -1,31 +1,43 @@
 """
-A phased drive of an antenna with several ports (mode = antenna, drive = P1@0,P2@60): the far field of each port
-driven alone, combined afterwards. The solve is linear, so this is exact at every frequency and keeps the coupling
-between the elements: each port's column (its 1 V source, the other ports shorted) gives a far field E_k and the
-ports' currents, Y[:, k]; incident waves a (the drive) need the port voltages
+A phased drive of an antenna with several ports (mode = antenna, drive =
+P1@0,P2@60): the far field of each port driven alone, combined afterwards. The
+solve is linear, so this is exact at every frequency and keeps the coupling
+between the elements: each port's column (its 1 V source, the other ports
+shorted) gives a far field E_k and the ports' currents, Y[:, k]; incident waves
+a (the drive) need the port voltages
 
-    a = (V + Zc Y V) / (2 sqrt(Zc))  ->  V = 2 (1 + Zc Y)^-1 sqrt(Zc) a,   b = (V - Zc Y V) / (2 sqrt(Zc))
+    a = (V + Zc Y V) / (2 sqrt(Zc))  ->  V = 2 (1 + Zc Y)^-1 sqrt(Zc) a,   b =
+                                     (V - Zc Y V) / (2 sqrt(Zc))
 
-and the far field is sum_k V_k E_k. Accepted power (|a|^2 - |b|^2) / 2, incident |a|^2 / 2, the active
-reflection of each driven port b_k / a_k (what it sees with its neighbours driven too).
+and the far field is sum_k V_k E_k. Accepted power (|a|^2 - |b|^2) / 2, incident
+|a|^2 / 2, the active reflection of each driven port b_k / a_k (what it sees
+with its neighbours driven too).
 
-    a = parse_drive(['P1@0', 'P2=0.5@90'], names)      # incident wave per port (undriven: 0)
-    a2 = steer(a, 30)                                   # a phase step of 30 deg from each driven port to the next
-    g = parse_grid('4x4', names)                        # a 2D array: {port: (column, row)}, P1..P4 the top row
-    a3 = steer2d(a, names, g, 30, -45)                  # +30 deg per column, -45 deg per row
-    a5 = aim(a, names, pos, 20, 0, 2.4e9)               # the beam to theta 20, phi 0 at 2.4 GHz, from the ports' places
-    a4 = taper(a, names, g, 'taylor:30')                # amplitudes: a Taylor taper per column x per row
-    data = load(path)                                   # mom25d's <name>_mom25d_array.npz
-    out = combine(data, a)                              # dict(sphere, rows, active, peak)
+    a = parse_drive(['P1@0', 'P2=0.5@90'], names)  # incident wave per port
+                                                   (undriven: 0)
+    a2 = steer(a, 30)  # a phase step of 30 deg from each driven port to the
+                       next
+    g = parse_grid('4x4', names)  # a 2D array: {port: (column, row)}, P1..P4
+                                  the top row
+    a3 = steer2d(a, names, g, 30, -45)  # +30 deg per column, -45 deg per row
+    a5 = aim(a, names, pos, 20, 0, 2.4e9)  # the beam to theta 20, phi 0 at 2.4
+                                           GHz, from the ports' places
+    a4 = taper(a, names, g, 'taylor:30')  # amplitudes: a Taylor taper per
+                                          column x per row
+    data = load(path)  # mom25d's <name>_mom25d_array.npz
+    out = combine(data, a)  # dict(sphere, rows, active, peak)
 
-The .npz: theta, phi (deg; mom25d: the upper hemisphere), freq (Hz), ports, zc (ohm), Y (nf, n, n), Eth, Eph
-(nf, n, nphi, ntheta: r E per port column), drive (the run's a), the sphere's theta (0..180, the lower half 0) and
-pos (n, 2: each port's centre, model mm; files written before it have none, and cannot be aimed).
+The .npz: theta, phi (deg; mom25d: the upper hemisphere), freq (Hz), ports, zc
+(ohm), Y (nf, n, n), Eth, Eph (nf, n, nphi, ntheta: r E per port column), drive
+(the run's a), the sphere's theta (0..180, the lower half 0) and pos (n, 2: each
+port's centre, model mm; files written before it have none, and cannot be
+aimed).
 
-An FDTD solver (openEMS, gfdtd) runs each driven port once with the others terminated, which is an incident wave
-on that port alone: its file holds S (nf, n, n) in place of Y, Eth / Eph per unit incident wave (r E / a_k), and
-excited (n: the ports that were run). Then b = S a and the far field is sum_k a_k E_k; a drive of a port that was
-not run is refused.
+An FDTD solver (openEMS, gfdtd) runs each driven port once with the others
+terminated, which is an incident wave on that port alone: its file holds S (nf,
+n, n) in place of Y, Eth / Eph per unit incident wave (r E / a_k), and excited
+(n: the ports that were run). Then b = S a and the far field is sum_k a_k E_k; a
+drive of a port that was not run is refused.
 """
 import cmath, math, re
 import numpy as np
@@ -33,8 +45,9 @@ from .constants import C0, ETA0
 
 
 def parse_drive(spec, names):
-    """Incident waves (complex, one per port of names) from PORT[=amplitude][@phase deg] items; a port not
-    named is not driven (terminated). ValueError for an unknown port or a bad number."""
+    """Incident waves (complex, one per port of names) from
+    PORT[=amplitude][@phase deg] items; a port not named is not driven
+    (terminated). ValueError for an unknown port or a bad number."""
     a = np.zeros(len(names), complex)
     for item in spec or []:
         item = str(item).strip()
@@ -44,28 +57,35 @@ def parse_drive(spec, names):
         name, _, amp = name.partition('=')
         name = name.strip()
         if name not in names:
-            raise ValueError(f"drive: no port {name!r} (the ports: {', '.join(names)})")
+            raise ValueError(
+                f"drive: no port {name!r} (the ports: {', '.join(names)})")
         try:
-            amp_v, ph_v = float(amp) if amp.strip() else 1.0, float(phase) if phase.strip() else 0.0
+            amp_v, ph_v = (float(amp) if amp.strip() else 1.0,
+                           float(phase) if phase.strip() else 0.0)
         except ValueError:
-            raise ValueError(f"drive: {item!r}: expected PORT[=amplitude][@phase in degrees]")
+            raise ValueError(
+                f"drive: {item!r}: expected PORT[=amplitude][@phase in degrees]"
+            )
         a[names.index(name)] = amp_v * cmath.exp(1j * math.radians(ph_v))
     return a
 
 
 def format_drive(a, names):
-    """The drive items of incident waves a (the driven ports), as parse_drive reads them."""
+    """The drive items of incident waves a (the driven ports), as parse_drive
+    reads them."""
     out = []
     for n, v in zip(names, a):
         if abs(v) > 0:
             amp, ph = abs(v), math.degrees(cmath.phase(v))
-            out.append(f"{n}{'' if abs(amp - 1) < 1e-9 else f'={amp:g}'}@{ph:.4g}")
+            out.append(
+                f"{n}{'' if abs(amp - 1) < 1e-9 else f'={amp:g}'}@{ph:.4g}")
     return out
 
 
 def steer(a, step_deg):
-    """The drive a with a phase step added from each driven port to the next (in port order): the first keeps
-    its phase, the k-th driven port gets k x step more."""
+    """The drive a with a phase step added from each driven port to the next (in
+    port order): the first keeps its phase, the k-th driven port gets k x step
+    more."""
     out = np.array(a, complex)
     k = 0
     for i, v in enumerate(out):
@@ -76,12 +96,15 @@ def steer(a, step_deg):
 
 
 def parse_grid(spec, names):
-    """Each port's place in a 2D array, {port: (column, row)}, for steer2d. spec: empty (None: no grid),
-    COLSxROWS (the ports in port order fill the rows, left to right, top row first; e.g. 4x4 for P1..P16), or
-    PORT:COL,ROW items separated by spaces or semicolons (fractional places too: an offset, triangular lattice),
-    e.g. 'P1:0,0 P2:1,0 P3:0,1 P4:1,1'. A port not placed gets no phase step. ValueError for an unknown port
-    or a bad item."""
-    spec = (' '.join(spec) if isinstance(spec, (list, tuple)) else str(spec or '')).strip()
+    """Each port's place in a 2D array, {port: (column, row)}, for steer2d.
+    spec: empty (None: no grid), COLSxROWS (the ports in port order fill the
+    rows, left to right, top row first; e.g. 4x4 for P1..P16), or PORT:COL,ROW
+    items separated by spaces or semicolons (fractional places too: an offset,
+    triangular lattice), e.g. 'P1:0,0 P2:1,0 P3:0,1 P4:1,1'. A port not placed
+    gets no phase step. ValueError for an unknown port or a bad item."""
+    spec = (' '.join(spec) if isinstance(spec,
+                                         (list,
+                                          tuple)) else str(spec or '')).strip()
     if not spec:
         return None
     m = re.fullmatch(r'(\d+)\s*[xX×]\s*(\d+)', spec)
@@ -89,7 +112,10 @@ def parse_grid(spec, names):
         cols, rows = int(m.group(1)), int(m.group(2))
         if cols < 1 or rows < 1:
             raise ValueError(f"grid: {spec!r}: at least one column and one row")
-        return {n: (k % cols, k // cols) for k, n in enumerate(names[:cols * rows])}
+        return {
+            n: (k % cols, k // cols)
+            for k, n in enumerate(names[:cols * rows])
+        }
     out = {}
     for item in re.split(r'[\s;]+', spec.replace(', ', ',')):
         if not item:
@@ -100,15 +126,20 @@ def parse_grid(spec, names):
                 raise ValueError
             col, row = (float(x) for x in place.split(','))
         except ValueError:
-            raise ValueError(f"grid: {item!r}: expected COLSxROWS, or PORT:COLUMN,ROW per port")
+            raise ValueError(
+                f"grid: {item!r}: expected COLSxROWS, or PORT:COLUMN,ROW per "
+                "port"
+            )
         if name not in names:
-            raise ValueError(f"grid: no port {name!r} (the ports: {', '.join(names)})")
+            raise ValueError(
+                f"grid: no port {name!r} (the ports: {', '.join(names)})")
         out[name] = (col, row)
     return out or None
 
 
 def format_grid(grid, names):
-    """The grid (parse_grid's) as a spec: COLSxROWS when it is the ports in order row by row, else the items."""
+    """The grid (parse_grid's) as a spec: COLSxROWS when it is the ports in
+    order row by row, else the items."""
     if not grid:
         return ''
     cols = 1 + max(int(c) for c, _ in grid.values())
@@ -119,9 +150,11 @@ def format_grid(grid, names):
 
 
 def steer2d(a, names, grid, step_x, step_y):
-    """The drive a (one per port of names) with phase steps across a 2D array: a driven port at (column, row) of
-    grid (parse_grid's) gets column x step_x + row x step_y more phase (deg) on top of its own; ports off the
-    grid are kept. No grid: steer(a, step_x), the 1D step from each driven port to the next."""
+    """The drive a (one per port of names) with phase steps across a 2D array: a
+    driven port at (column, row) of grid (parse_grid's) gets column x step_x +
+    row x step_y more phase (deg) on top of its own; ports off the grid are
+    kept. No grid: steer(a, step_x), the 1D step from each driven port to the
+    next."""
     if not grid:
         return steer(a, step_x)
     out = np.array(a, complex)
@@ -133,12 +166,14 @@ def steer2d(a, names, grid, step_x, step_y):
 
 
 def aim(a, names, pos, theta, phi, f):
-    """The drive a with the phases that point the beam at (theta, phi) (deg) at frequency f (Hz): a driven port at
-    pos[name] = (x, y) (model mm) gets -k0 (x sin(theta) cos(phi) + y sin(theta) sin(phi)) more, on top of its own
-    phase (the far field of a current at r is e^{+j k.r}). Any layout of feeds: rows and columns, a triangle. The
-    phases are those of phase shifters set at f, the same at every frequency (the beam squints off f). A feed well
-    off its element's centre still needs the drive's own phases to make up the difference. ValueError for a driven
-    port without a place."""
+    """The drive a with the phases that point the beam at (theta, phi) (deg) at
+    frequency f (Hz): a driven port at pos[name] = (x, y) (model mm) gets -k0 (x
+    sin(theta) cos(phi) + y sin(theta) sin(phi)) more, on top of its own phase
+    (the far field of a current at r is e^{+j k.r}). Any layout of feeds: rows
+    and columns, a triangle. The phases are those of phase shifters set at f,
+    the same at every frequency (the beam squints off f). A feed well off its
+    element's centre still needs the drive's own phases to make up the
+    difference. ValueError for a driven port without a place."""
     out = np.array(a, complex)
     k0 = 2 * math.pi * f / C0 * 1e-3                                # rad / mm
     st, ph = math.sin(math.radians(theta)), math.radians(phi)
@@ -147,29 +182,41 @@ def aim(a, names, pos, theta, phi, f):
             if n not in pos:
                 raise ValueError(f"aim: port {n} has no place")
             x, y = pos[n]
-            out[i] *= cmath.exp(-1j * k0 * st * (x * math.cos(ph) + y * math.sin(ph)))
+            out[i] *= cmath.exp(-1j * k0 * st *
+                                (x * math.cos(ph) + y * math.sin(ph)))
     return out
 
 
 TAPERS = ('uniform', 'taylor', 'chebyshev', 'cosine')
-TAPER_SLL = 25.0        # dB: Taylor's and Chebyshev's sidelobe level when none is given
+# dB: Taylor's and Chebyshev's sidelobe level when none is given
+TAPER_SLL = 25.0
 TAYLOR_NBAR = 4         # Taylor's nearly equal sidelobes next to the main beam
 
 
 def parse_taper(spec):
-    """(kind, sidelobe level in dB, positive) of KIND[:SLL]: uniform, taylor, chebyshev, cosine; e.g. taylor:30,
-    chebyshev:-25 (either sign). Empty: uniform. ValueError for an unknown kind or a bad level."""
+    """(kind, sidelobe level in dB, positive) of KIND[:SLL]: uniform, taylor,
+    chebyshev, cosine; e.g. taylor:30, chebyshev:-25 (either sign). Empty:
+    uniform. ValueError for an unknown kind or a bad level."""
     spec = str(spec or '').strip().lower()
     kind, _, sll = spec.partition(':')
     kind = kind.strip() or 'uniform'
     if kind not in TAPERS:
-        raise ValueError(f"taper: {spec!r}: one of {', '.join(TAPERS)}, optionally :SLL in dB (e.g. taylor:30)")
+        raise ValueError(
+            f"taper: {spec!r}: one of {', '.join(TAPERS)}, optionally :SLL in "
+            "dB (e.g. taylor:30)"
+        )
     try:
         level = abs(float(sll)) if sll.strip() else TAPER_SLL
     except ValueError:
-        raise ValueError(f"taper: {spec!r}: the sidelobe level after ':' is a number of dB (e.g. taylor:30)")
+        raise ValueError(
+            f"taper: {spec!r}: the sidelobe level after ':' is a number of dB "
+            "(e.g. taylor:30)"
+        )
     if kind in ('taylor', 'chebyshev') and not 13.3 <= level <= 80:
-        raise ValueError(f"taper: {spec!r}: a sidelobe level of 13.3..80 dB (13.3: uniform's own)")
+        raise ValueError(
+            f"taper: {spec!r}: a sidelobe level of 13.3..80 dB (13.3: "
+            "uniform's own)"
+        )
     return kind, level
 
 
@@ -182,7 +229,8 @@ def taper_1d(kind, n, sll=TAPER_SLL):
     if kind == 'taylor':
         w = windows.taylor(n, nbar=min(TAYLOR_NBAR, n), sll=sll, norm=False)
     elif kind == 'chebyshev':
-        with warnings.catch_warnings():                     # scipy's spectral-analysis note: not ours
+        # scipy's spectral-analysis note: not ours
+        with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             w = windows.chebwin(n, sll)
     else:
@@ -191,10 +239,12 @@ def taper_1d(kind, n, sll=TAPER_SLL):
 
 
 def taper(a, names, grid, spec):
-    """The drive a with an amplitude taper (parse_taper's spec) multiplied in, on top of its own amplitudes. With
-    a grid (parse_grid's) the taper is separable: a column weight times a row weight, the columns and rows
-    counted by their distinct places (an offset lattice's half steps are columns of their own). Without one,
-    across the driven ports in port order. Undriven ports stay off."""
+    """The drive a with an amplitude taper (parse_taper's spec) multiplied in,
+    on top of its own amplitudes. With a grid (parse_grid's) the taper is
+    separable: a column weight times a row weight, the columns and rows counted
+    by their distinct places (an offset lattice's half steps are columns of
+    their own). Without one, across the driven ports in port order. Undriven
+    ports stay off."""
     kind, sll = parse_taper(spec)
     out = np.array(a, complex)
     if kind == 'uniform':
@@ -213,10 +263,12 @@ def taper(a, names, grid, spec):
     return out
 
 
-def settings_drive(drive, names, grid_spec=None, steps=None, taper_spec=None, target=None, pos=None, f=None):
-    """The incident waves of a run's settings: --drive (parse_drive), --taper's amplitudes, --steer's phase
-    steps (X[,Y]) across --grid (steer2d), --aim's (target: theta, phi) phases from the ports' places pos at f
-    (aim), and the grid itself (None without one). ValueError for one that does not parse."""
+def settings_drive(drive, names, grid_spec=None, steps=None, taper_spec=None,
+                   target=None, pos=None, f=None):
+    """The incident waves of a run's settings: --drive (parse_drive), --taper's
+    amplitudes, --steer's phase steps (X[,Y]) across --grid (steer2d), --aim's
+    (target: theta, phi) phases from the ports' places pos at f (aim), and the
+    grid itself (None without one). ValueError for one that does not parse."""
     a = parse_drive(drive, names)
     g = parse_grid(grid_spec, names)
     a = taper(a, names, g, taper_spec)
@@ -232,7 +284,8 @@ def settings_drive(drive, names, grid_spec=None, steps=None, taper_spec=None, ta
 
 
 def waves(Y, zc, a):
-    """Port voltages V and reflected waves b for incident waves a (Y: port currents per 1 V column)."""
+    """Port voltages V and reflected waves b for incident waves a (Y: port
+    currents per 1 V column)."""
     zc = np.asarray(zc, float)
     rz = np.sqrt(zc)
     V = np.linalg.solve(np.eye(len(zc)) + zc[:, None] * Y, 2 * rz * a)
@@ -241,28 +294,41 @@ def waves(Y, zc, a):
 
 
 def radiated(Eth, Eph, theta, phi, eta=ETA0):
-    """Radiation intensity U (W/sr, (nphi, ntheta)) and its integral over the grid (mom25d.farfield.radiated)."""
+    """Radiation intensity U (W/sr, (nphi, ntheta)) and its integral over the
+    grid (mom25d.farfield.radiated)."""
     U = (np.abs(Eth) ** 2 + np.abs(Eph) ** 2) / (2 * eta)
     th, ph = np.radians(theta), np.radians(phi)
-    return U, float(np.trapezoid(np.trapezoid(U * np.sin(th)[None, :], th, axis=1), ph))
+    return (U,
+            float(
+                np.trapezoid(np.trapezoid(U * np.sin(th)[None, :], th, axis=1),
+                             ph)))
 
 
 def combine(data, a, f_pattern=None):
-    """The antenna of drive a from the per-port far fields: sphere (as load_sphere's: theta, phi, freq, dmax,
-    prad, e_norm), rows (gain_table's), active ((nf, n) b / a of the driven ports, nan elsewhere) and the beam's
+    """The antenna of drive a from the per-port far fields: sphere (as
+    load_sphere's: theta, phi, freq, dmax, prad, e_norm), rows (gain_table's),
+    active ((nf, n) b / a of the driven ports, nan elsewhere) and the beam's
     peak at f_pattern (default the data's): dict(theta, phi, gain_dbi)."""
     from .fields.antenna import gain_table, add_polarisation
     th, ph, freq = data['theta'], data['phi'], data['freq']
     th_s = data.get('theta_sphere', th)
     a = np.asarray(a, complex)
     driven = np.abs(a) > 0
-    incident = 'S' in data and data.get('Y') is None                # an FDTD solver's: per unit incident wave
+    # an FDTD solver's: per unit incident wave
+    incident = 'S' in data and data.get('Y') is None
     if incident and 'excited' in data:
-        off = [n for n, d, x in zip(data['ports'], driven, np.asarray(data['excited'], bool)) if d and not x]
+        off = [
+            n for n, d, x in zip(data['ports'], driven,
+                                 np.asarray(data['excited'], bool))
+            if d and not x
+        ]
         if off:
-            raise ValueError(f"drive: {', '.join(off)} {'was' if len(off) == 1 else 'were'} not run (no far field "
-                             f"recorded): drive the ports of the run's --drive")
-    dmax, prad, pacc, pinc, e_norm, active, eth, eph = [], [], [], [], [], [], [], []
+            raise ValueError(
+                f"drive: {', '.join(off)} {'was' if len(off) == 1 else 'were'} "
+                "not run (no far field recorded): drive the ports of the "
+                "run's --drive")
+    dmax, prad, pacc, pinc, e_norm, active, eth, eph = ([], [], [], [], [], [],
+                                                        [], [])
     for i in range(len(freq)):
         if incident:
             b, w = data['S'][i] @ a, a
@@ -283,34 +349,49 @@ def combine(data, a, f_pattern=None):
         act = np.full(len(a), np.nan + 0j)
         act[driven] = b[driven] / a[driven]
         active.append(act)
-    rows = add_polarisation(gain_table(freq, dmax, prad, pacc, pinc), eth, eph, th, ph, phi_first=True)
-    f0 = float(data.get('f_pattern', freq[0]) if f_pattern is None else f_pattern)
+    rows = add_polarisation(gain_table(freq, dmax, prad, pacc, pinc), eth, eph,
+                            th, ph, phi_first=True)
+    f0 = float(
+        data.get('f_pattern', freq[0]) if f_pattern is None else f_pattern)
     ip = int(np.argmin(np.abs(freq - f0)))
     e = e_norm[ip]
     j = np.unravel_index(int(np.argmax(e)), e.shape)
     g = dmax[ip] * rows[ip]['eff']
-    peak = dict(theta=float(th_s[j[1]]), phi=float(ph[j[0]]), gain_dbi=float(10 * np.log10(g)) if g > 0 else None,
+    peak = dict(theta=float(th_s[j[1]]), phi=float(ph[j[0]]),
+                gain_dbi=(float(10 * np.log10(g)) if g > 0 else None),
                 f=float(freq[ip]))
-    sphere = dict(theta=np.asarray(th_s), phi=np.asarray(ph), freq=np.asarray(freq), dmax=np.array(dmax),
+    sphere = dict(theta=np.asarray(th_s), phi=np.asarray(ph),
+                  freq=np.asarray(freq), dmax=np.array(dmax),
                   prad=np.array(prad), e_norm=np.array(e_norm))
     return dict(sphere=sphere, rows=rows, active=np.array(active), peak=peak)
 
 
-def save(path, *, theta, phi, theta_sphere, freq, ports, zc, Eth, Eph, drive, f_pattern, Y=None, S=None,
-         excited=None, pos=None):
-    """The array file: Y (mom25d: E per unit port voltage) or S and excited (an FDTD solver: E per unit incident
-    wave); pos optional."""
+def save(path, *, theta, phi, theta_sphere, freq, ports, zc, Eth, Eph, drive,
+         f_pattern, Y=None, S=None, excited=None, pos=None):
+    """The array file: Y (mom25d: E per unit port voltage) or S and excited (an
+    FDTD solver: E per unit incident wave); pos optional."""
     if (Y is None) == (S is None):
-        raise ValueError("phased.save: Y (per unit voltage) or S (per unit incident wave)")
-    extra = {k: np.asarray(v, complex if k in ('Y', 'S') else bool if k == 'excited' else float)
-             for k, v in dict(Y=Y, S=S, excited=excited, pos=pos).items() if v is not None}
-    np.savez_compressed(path, theta=theta, phi=phi, theta_sphere=theta_sphere, freq=freq, ports=np.array(ports),
-                        zc=np.asarray(zc, float), Eth=np.asarray(Eth, np.complex64), Eph=np.asarray(Eph, np.complex64),
-                        drive=np.asarray(drive, complex), f_pattern=f_pattern, **extra)
+        raise ValueError(
+            "phased.save: Y (per unit voltage) or S (per unit incident wave)")
+    extra = {
+        k: np.asarray(
+            v,
+            (complex if k in ('Y', 'S') else bool if k == 'excited' else float))
+        for k, v in dict(Y=Y, S=S, excited=excited, pos=pos).items()
+        if v is not None
+    }
+    np.savez_compressed(path, theta=theta, phi=phi, theta_sphere=theta_sphere,
+                        freq=freq, ports=np.array(ports),
+                        zc=np.asarray(zc,
+                                      float), Eth=np.asarray(Eth, np.complex64),
+                        Eph=np.asarray(Eph, np.complex64),
+                        drive=np.asarray(drive,
+                                         complex), f_pattern=f_pattern, **extra)
 
 
 def load(path):
-    """An array file save() wrote (each port's far field, the drive, the ports), as numpy arrays: save's inverse."""
+    """An array file save() wrote (each port's far field, the drive, the ports),
+    as numpy arrays: save's inverse."""
     with np.load(path) as z:
         d = {k: np.asarray(z[k]) for k in z.files}
     d['ports'] = [str(p) for p in d['ports']]

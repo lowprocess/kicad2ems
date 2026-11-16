@@ -1,5 +1,6 @@
-"""kicad2ems.core.api: every public name resolves, importing a surface loads nothing, the registry refuses a plugin
-written for another API version, and sysinfo asks the solvers what they run on (Solver.resources)."""
+"""kicad2ems.core.api: every public name resolves, importing a surface loads
+nothing, the registry refuses a plugin written for another API version, and
+sysinfo asks the solvers what they run on (Solver.resources)."""
 import os
 import subprocess
 import sys
@@ -21,20 +22,28 @@ def test_every_name_resolves(surface):
 
 
 def test_a_surface_loads_on_first_use():
-    """Importing kicad2ems.core.api.solver (as a plugin's module does when the registry loads it) imports neither
-    matplotlib nor the field code; a name imports its module when it is used."""
-    code = ("import sys; import kicad2ems.core.api.solver as a; before = {'matplotlib', 'kicad2ems.core.plots'} & set(sys.modules); "
-            "a.plot_antenna; print(sorted(before), 'kicad2ems.core.plots' in sys.modules)")
-    out = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, check=True).stdout.split()
+    """Importing kicad2ems.core.api.solver (as a plugin's module does when the
+    registry loads it) imports neither matplotlib nor the field code; a name
+    imports its module when it is used."""
+    code = (
+        "import sys; import kicad2ems.core.api.solver as a; before = "
+        "{'matplotlib', 'kicad2ems.core.plots'} & set(sys.modules); "
+        "a.plot_antenna; print(sorted(before), 'kicad2ems.core.plots' in "
+        "sys.modules)"
+    )
+    out = subprocess.run([sys.executable, '-c', code], capture_output=True,
+                         text=True, check=True).stdout.split()
     assert out == ['[]', 'True']
 
 
 def test_compatible():
     major, minor = API_VERSION
     assert compatible((major, 0)) is None and compatible(API_VERSION) is None
-    assert 'update the plugin' in compatible(None)                  # unversioned: 1.0, from before 2.0
+    # unversioned: 1.0, from before 2.0
+    assert 'update the plugin' in compatible(None)
     assert 'update kicad2ems' in compatible((major, minor + 1))
-    assert 'update the plugin' in compatible((major - 1, 0)) and 'update kicad2ems' in compatible((major + 1, 0))
+    assert ('update the plugin' in compatible((major - 1, 0))
+            and 'update kicad2ems' in compatible((major + 1, 0)))
 
 
 def test_registry_refuses_another_api(monkeypatch):
@@ -48,39 +57,51 @@ def test_registry_refuses_another_api(monkeypatch):
     monkeypatch.setattr(solvers, '_registry', None)
     monkeypatch.setattr(solvers, 'broken', [])
     installed = solvers._entry_points()
-    monkeypatch.setattr(solvers, '_entry_points', lambda: installed + [_EP('newer', Newer), _EP('current', Current)])
+    monkeypatch.setattr(
+        solvers, '_entry_points',
+        lambda: installed + [_EP('newer', Newer),
+                             _EP('current', Current)])
     reg = solvers.registry()
     assert 'current' in reg and 'newer' not in reg
-    assert [b[0].split(' =')[0] for b in solvers.broken] == ['newer'] and 'kicad2ems API' in solvers.broken[0][1]
+    assert ([b[0].split(' =')[0] for b in solvers.broken] == ['newer']
+            and 'kicad2ems API' in solvers.broken[0][1])
     monkeypatch.setattr(solvers, '_registry', None)
 
 
 def test_sysinfo_asks_the_solvers(monkeypatch):
-    gpu = dict(device='Fake GPU', backend='cupy', api='ROCm/HIP', free=8.0, total=16.0)
-    reg = dict(a=type('A', (_Fake,), dict(resources=lambda self: dict(gpus=[], why='no CuPy')))(),
-               b=type('B', (_Fake,), dict(resources=lambda self: None))(),
-               mom25d=type('M', (_Fake,), dict(resources=lambda self: dict(gpus=[gpu], why='')))())
+    gpu = dict(device='Fake GPU', backend='cupy', api='ROCm/HIP', free=8.0,
+               total=16.0)
+    reg = dict(
+        a=type('A', (_Fake, ),
+               dict(resources=lambda self: dict(gpus=[], why='no CuPy')))(),
+        b=type('B', (_Fake, ), dict(resources=lambda self: None))(),
+        mom25d=type('M', (_Fake, ),
+                    dict(resources=lambda self: dict(gpus=[gpu], why='')))())
     monkeypatch.setattr(solvers, 'registry', lambda: reg)
     res = sysinfo.resources()
-    assert set(res) == {'a', 'mom25d'}                              # b: the CPU only
+    assert set(res) == {'a', 'mom25d'}  # b: the CPU only
     assert sysinfo.gpu(res) == (gpu, '')
     del reg['mom25d']
     assert sysinfo.gpu() == (None, 'a: no CuPy')
     info = sysinfo.info()
-    assert info['ram']['available'] > 0 and info['threads'] >= 1 and info['resources'] == {'a': dict(gpus=[], why='no CuPy')}
+    assert (info['ram']['available'] > 0 and info['threads'] >= 1
+            and info['resources'] == {'a': dict(gpus=[], why='no CuPy')})
 
 
 def test_sysinfo_imports_no_solver():
-    """The core reports the machine without importing a solver package (mom25d, gfdtd) itself."""
+    """The core reports the machine without importing a solver package (mom25d,
+    gfdtd) itself."""
     src = open(sysinfo.__file__, encoding='utf-8').read()
     assert 'mom25d' not in src.replace("mom25d's", '') and 'gfdtd' not in src
 
 
 def test_packages_found():
-    """setup.py takes every package under src/ (find_packages) and the examples: so every folder of modules there
-    has to be a package (an __init__.py), down from kicad2ems, or the installed stack would miss it."""
+    """setup.py takes every package under src/ (find_packages) and the examples:
+    so every folder of modules there has to be a package (an __init__.py), down
+    from kicad2ems, or the installed stack would miss it."""
     import os
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     src = os.path.join(root, 'src', 'kicad2ems')
     missed = []
     for d, dirs, files in os.walk(src):
@@ -88,69 +109,99 @@ def test_packages_found():
         rel = os.path.relpath(d, src)
         if any(f.endswith('.py') for f in files) and '__init__.py' not in files:
             missed.append(rel)
-    # ipc/plugin is the folder KiCad loads as it is (package data, its files copied by kicad2ems.ipc.install)
+    # ipc/plugin is the folder KiCad loads as it is (package data, its files
+    # copied by kicad2ems.ipc.install)
     assert missed == [os.path.join('ipc', 'plugin')], missed
     setup = open(os.path.join(root, 'setup.py'), encoding='utf-8').read()
     assert "find_packages('src')" in setup and "'kicad2ems.examples'" in setup
 
 
 def test_examples_prepared(tmp_path):
-    """api.frontend's examples: every config, each copied into a folder with its board, made by its generator or
-    copied with its project and placement files."""
+    """api.frontend's examples: every config, each copied into a folder with its
+    board, made by its generator or copied with its project and placement
+    files."""
     import kicad2ems.examples as ex
-    names = ex.own()                                                # kicad2ems's own (an analysis may ship more)
+    names = ex.own()  # kicad2ems's own (an analysis may ship more)
     assert set(names) <= set(frontend.examples())
-    assert len(names) > 40 and {'rf_gcpw', 'sma_launch', 'demo_lowpass', 'antenna_patch'} <= set(names)
-    for p in names.values():                                        # each board: made, or one of those shipped
+    assert (len(names) > 40
+            and {'rf_gcpw', 'sma_launch', 'demo_lowpass', 'antenna_patch'
+                 } <= set(names))
+    for p in names.values():  # each board: made, or one of those shipped
         stem = ex.board_of(p)[:-len('.kicad_pcb')]
-        assert ex.generator(stem) is not None or os.path.exists(os.path.join(ex.HERE, stem + '.kicad_pcb'))
+        assert (ex.generator(stem) is not None
+                or os.path.exists(os.path.join(ex.HERE, stem + '.kicad_pcb')))
     import tomllib
-    data = tomllib.load(open(os.path.join(os.path.dirname(ex.HERE), 'pyproject.toml'), 'rb'))
+    data = tomllib.load(
+        open(os.path.join(os.path.dirname(ex.HERE), 'pyproject.toml'), 'rb'))
     shipped = data['tool']['setuptools']['package-data']['kicad2ems.examples']
-    assert {s[:-len('.kicad_pcb')] for s in shipped if s.endswith('.kicad_pcb')} == set(ex.BOARDS)
+    assert ({
+        s[:-len('.kicad_pcb')]
+        for s in shipped
+        if s.endswith('.kicad_pcb')
+    } == set(ex.BOARDS))
     for n in ('rf_gcpw', 'sma_launch', 'demo_lowpass'):
         cfg = frontend.prepare_example(n, str(tmp_path))
-        assert cfg == str(tmp_path / f'{n}.toml') and (tmp_path / ex.board_of(cfg)).exists()
-    assert (tmp_path / 'sma_launch-all.pos').exists() and (tmp_path / 'demo_lowpass-top.pos').exists()
+        assert (cfg == str(tmp_path / f'{n}.toml')
+                and (tmp_path / ex.board_of(cfg)).exists())
+    assert ((tmp_path / 'sma_launch-all.pos').exists()
+            and (tmp_path / 'demo_lowpass-top.pos').exists())
     s = frontend.build_settings({}, str(tmp_path / 'rf_gcpw.toml'))
     assert os.path.dirname(s.board) == str(tmp_path)
 
 
 def test_example_boards_made_in_a_folder(tmp_path, monkeypatch):
-    """make_boards (install.py, through examples/make_boards.py): each generated board made in the folder, those in
-    the repository left alone; a generator that fails is reported, the others still made."""
+    """make_boards (install.py, through examples/make_boards.py): each generated
+    board made in the folder, those in the repository left alone; a generator
+    that fails is reported, the others still made."""
     import kicad2ems.examples as ex
-    assert ex.make_boards(str(tmp_path), names=['demo_lowpass', 'rf_gcpw', 'hairpin'], log=None) == {}
-    assert {p.name for p in tmp_path.glob('*.kicad_pcb')} == {'demo_lowpass.kicad_pcb', 'rf_gcpw.kicad_pcb'}
+    assert (ex.make_boards(str(tmp_path),
+                           names=['demo_lowpass', 'rf_gcpw',
+                                  'hairpin'], log=None) == {})
+    assert ({p.name
+             for p in tmp_path.glob('*.kicad_pcb')
+             } == {'demo_lowpass.kicad_pcb', 'rf_gcpw.kicad_pcb'})
     real = ex.generator
-    monkeypatch.setattr(ex, 'generator', lambda stem: ('no_such_generator.py', [], []) if stem == 'rf_gcpw'
-                        else real(stem))
-    failed = ex.make_boards(str(tmp_path), names=['rf_gcpw', 'antenna_patch'], log=None)
-    assert list(failed) == ['rf_gcpw.kicad_pcb'] and (tmp_path / 'antenna_patch.kicad_pcb').exists()
+    monkeypatch.setattr(
+        ex, 'generator', lambda stem: ('no_such_generator.py', [], [])
+        if stem == 'rf_gcpw' else real(stem))
+    failed = ex.make_boards(str(tmp_path), names=['rf_gcpw', 'antenna_patch'],
+                            log=None)
+    assert (list(failed) == ['rf_gcpw.kicad_pcb']
+            and (tmp_path / 'antenna_patch.kicad_pcb').exists())
 
 
 def test_setup_update_needs_an_install(tmp_path):
-    """install.py --update: nothing to update says so, before anything is installed; it takes no solver choices."""
+    """install.py --update: nothing to update says so, before anything is
+    installed; it takes no solver choices."""
     import sys
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    run = lambda *a: subprocess.run([sys.executable, os.path.join(root, 'install.py'), *a], capture_output=True,
-                                    text=True)
+    root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    run = lambda *a: subprocess.run([
+        sys.executable, os.path.join(root, 'install.py'), *a
+    ], capture_output=True, text=True)
     r = run('--update', '--venv', str(tmp_path / 'none'))
-    assert r.returncode == 1 and 'run the installer' in r.stdout and not (tmp_path / 'none').exists()
-    for other in (['--uninstall'], ['--openems', 'build'], ['--qucsator', 'none']):
+    assert (r.returncode == 1 and 'run the installer' in r.stdout
+            and not (tmp_path / 'none').exists())
+    for other in (['--uninstall'], ['--openems',
+                                    'build'], ['--qucsator', 'none']):
         r = run('--update', '--target', 'user', *other)
         assert r.returncode == 2 and '--update' in r.stdout
 
 
 def test_every_api_name_is_documented():
-    """docs/api.md names every name of api.solver, api.frontend and api.analysis, and each class and function has a docstring:
-    a name added to the API without its documentation fails here."""
+    """docs/api.md names every name of api.solver, api.frontend and
+    api.analysis, and each class and function has a docstring: a name added to
+    the API without its documentation fails here."""
     import inspect, re
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     page = open(os.path.join(root, 'docs', 'api.md'), encoding='utf-8').read()
     for mod in (solver_api, frontend, analysis_api):
         for name in mod.NAMES:
-            assert re.search(rf'`{re.escape(name)}[`(.]', page), f"{mod.__name__}.{name} is not in docs/api.md"
+            assert re.search(
+                rf'`{re.escape(name)}[`(.]',
+                page), f"{mod.__name__}.{name} is not in docs/api.md"
             obj = getattr(mod, name)
             if inspect.isclass(obj) or inspect.isfunction(obj):
-                assert inspect.getdoc(obj), f"{mod.__name__}.{name} has no docstring"
+                assert inspect.getdoc(
+                    obj), f"{mod.__name__}.{name} has no docstring"

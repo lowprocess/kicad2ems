@@ -1,24 +1,33 @@
 """
-Hot-loop benchmark of gfdtd's engine: the time per timestep of each operation, by backend and model size.
+Hot-loop benchmark of gfdtd's engine: the time per timestep of each operation,
+by backend and model size.
 
     python tools/gfdtd/bench.py [--backends cupy,vulkan,core,numpy] [--sizes 0.1,1,4,16] [--steps 200] [--bc PML_8]
 
-The model is a microstrip on a Debye substrate (one pole), two ports and a series RLC part, with PML (or --bc) on
-five sides and PEC below: about N million cells, x : y : z = 4 : 2 : 1. "wall" is the engine's own step (the GPU's:
-three fused launches) with a probe sample every 25 steps, synchronised once at the end. The breakdown below it
-times each operation run on its own (CuPy: events around each kernel, which add a little each; Vulkan: each
-operation `steps` times between two syncs).
+The model is a microstrip on a Debye substrate (one pole), two ports and a
+series RLC part, with PML (or --bc) on five sides and PEC below: about N million
+cells, x : y : z = 4 : 2 : 1. "wall" is the engine's own step (the GPU's:
+three fused launches) with a probe sample every 25 steps, synchronised once at
+the end. The breakdown below it times each operation run on its own (CuPy:
+events around each kernel, which add a little each; Vulkan: each operation
+`steps` times between two syncs).
 """
 import argparse, contextlib, io, os, sys, time
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                 'src'))
 import numpy as np
 
 from kicad2ems.gfdtd import ContinuousStructure, openEMS
 from kicad2ems.gfdtd.operator import build
 from kicad2ems.gfdtd.engine import make_backend, resolve_backend
 
-OPS = ['update_H', 'pml_h', 'mur_pre', 'update_E', 'pml_e', 'excite', 'lumped', 'mur_post', 'probe']
+OPS = [
+    'update_H', 'pml_h', 'mur_pre', 'update_E', 'pml_e', 'excite', 'lumped',
+    'mur_post', 'probe'
+]
 
 
 def model(n, bc='PML_8'):
@@ -34,15 +43,17 @@ def model(n, bc='PML_8'):
     nsub = max(4, nz // 4)
     g.SetLines('x', np.linspace(-20, 20, nx + 1))
     g.SetLines('y', np.linspace(-10, 10, ny + 1))
-    g.SetLines('z', np.r_[np.linspace(0, 1, nsub + 1), np.linspace(1, 10, nz - nsub + 1)[1:]])
+    g.SetLines(
+        'z', np.r_[np.linspace(0, 1, nsub + 1),
+                   np.linspace(1, 10, nz - nsub + 1)[1:]])
     m = C.AddDebyeMaterial('sub', order=1, epsilon=3.0, kappa=1e-3)
     m.SetDispersiveMaterialProperty(order=0, eps_delta=1.0, eps_relax=30e-12)
     m.AddBox([-15, -8, 0], [15, 8, 1], priority=1)
     C.AddMetal('cu').AddBox([-15, -1, 1], [15, 1, 1], priority=10)
     F.AddLumpedPort(1, 50, [-15, -1, 0], [-15, 1, 1], 'z', excite=1, priority=5)
     F.AddLumpedPort(2, 50, [15, -1, 0], [15, 1, 1], 'z', excite=0, priority=5)
-    C.AddLumpedElement('rlc', ny='z', caps=True, R=10, L=1e-9, C=1e-12, LEtype=1).AddBox([0, 3, 0], [0, 3.5, 1],
-                                                                                           priority=5)
+    C.AddLumpedElement('rlc', ny='z', caps=True, R=10, L=1e-9, C=1e-12,
+                       LEtype=1).AddBox([0, 3, 0], [0, 3.5, 1], priority=5)
     with contextlib.redirect_stdout(io.StringIO()):
         return build(C, F.settings())
 
@@ -55,7 +66,7 @@ def bench(op, backend, steps):
     """({op: s per step}, wall s per step) of one backend."""
     be = make_backend(op, backend)
     calls = [(n, getattr(be, n)) for n in OPS]
-    for _ in range(3):                                              # warm up: kernel compilation, caches
+    for _ in range(3):  # warm up: kernel compilation, caches
         for n, f in calls:
             _call(n, f)
     be.sync()
@@ -71,7 +82,7 @@ def bench(op, backend, steps):
             ev[-1].synchronize()
             for i, n in enumerate(OPS):
                 t[n] += cp.cuda.get_elapsed_time(ev[i], ev[i + 1]) * 1e-3
-    elif be.name == 'vulkan':                                       # each operation `steps` times between syncs
+    elif be.name == 'vulkan':  # each operation `steps` times between syncs
         for n, f in calls:
             a = time.perf_counter()
             for _ in range(steps):
@@ -94,11 +105,14 @@ def bench(op, backend, steps):
         if s % 25 == 0:
             be.probe(0)
     be.sync()
-    return {n: v / steps for n, v in t.items()}, (time.perf_counter() - t0) / steps
+    return ({n: v / steps
+             for n, v in t.items()}, (time.perf_counter() - t0) / steps)
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--backends', default='cupy,vulkan,core,numpy')
     ap.add_argument('--sizes', default='0.1,1,4')
     ap.add_argument('--steps', type=int, default=100)
@@ -111,16 +125,22 @@ def main():
                 if resolve_backend(b) != b:
                     print(f"\n{b}: not available")
                     continue
-                per, wall = bench(op, b, max(5, a.steps // (20 if b == 'numpy' else 1)))
-            except Exception as e:                                  # no GPU, no core
+                per, wall = bench(
+                    op, b, max(5, a.steps // (20 if b == 'numpy' else 1)))
+            except Exception as e:  # no GPU, no core
                 print(f"\n{b}: {type(e).__name__}: {e}")
                 continue
-            print(f"\n{b}: {op.cells / 1e6:.2f} M cells {op.shape}: {wall * 1e3:.3f} ms/step, "
-                  f"{op.cells / wall / 1e6:.0f} M cells/s")
+            print(
+                f"\n{b}: {op.cells / 1e6:.2f} M cells {op.shape}: "
+                f"{wall * 1e3:.3f} ms/step, {op.cells / wall / 1e6:.0f} M "
+                "cells/s")
             tot = sum(per.values()) or 1
             for k in OPS:
                 if per[k] > 0.005 * tot:
-                    print(f"   {k:10s} {per[k] * 1e6:10.1f} us  {per[k] / tot * 100:5.1f} %")
+                    print(
+                        f"   {k:10s} {per[k] * 1e6:10.1f} us  "
+                        f"{per[k] / tot * 100:5.1f} %"
+                    )
 
 
 if __name__ == '__main__':

@@ -1,8 +1,9 @@
 """
-The line model's topology, once build() has its sections: the ports' paths (shortest by length, the
-branches off them as stubs), coupled lines (parallel sections within COUPLE_H h of each other, cut where
-their overlaps start and end) and discontinuities where sections meet (open end, corner, bend, step,
-tee, cross, gap).
+The line model's topology, once build() has its sections: the ports' paths
+(shortest by length, the branches off them as stubs), coupled lines (parallel
+sections within COUPLE_H h of each other, cut where their overlaps start and
+end) and discontinuities where sections meet (open end, corner, bend, step, tee,
+cross, gap).
 """
 import functools, heapq, math
 import numpy as np
@@ -12,12 +13,14 @@ from .xsection import mode
 
 def _paths(lm):
     adj = lm.adjacency()
-    names = [n for n, v in lm.ports.items() if not isinstance(v, tuple)]    # (a part port: two nodes, no path)
+    # (a part port: two nodes, no path)
+    names = [n for n, v in lm.ports.items() if not isinstance(v, tuple)]
     done = set()
     for p in names:
         src = lm.ports[p]
-        dist, prev, heap = {src: 0.0}, {}, [(0.0, src)]        # Dijkstra by physical length: each node's distance
-        while heap:                                             # and previous (element, node)
+        # Dijkstra by physical length: each node's distance
+        dist, prev, heap = {src: 0.0}, {}, [(0.0, src)]
+        while heap:  # and previous (element, node)
             d0, u = heapq.heappop(heap)
             if d0 > dist.get(u, math.inf):
                 continue
@@ -26,17 +29,29 @@ def _paths(lm):
                 if nd < dist.get(v, math.inf):
                     dist[v], prev[v] = nd, (i, u)
                     heapq.heappush(heap, (nd, v))
-        targets = [(q, lm.ports[q]) for q in names if q != p and lm.ports[q] in dist and (q, p) not in done]
+        targets = [(q, lm.ports[q])
+                   for q in names
+                   if q != p and lm.ports[q] in dist and (q, p) not in done]
         if not targets and not any(p in pair for pair in done):
-            far = max((n for n in dist if n != 'gnd'), key=lambda n: dist[n], default=None)
+            far = max((n for n in dist if n != 'gnd'), key=lambda n: dist[n],
+                      default=None)
             targets = [(None, far)] if far is not None and far != src else []
-            gaps = [j for j in lm.junctions if j['kind'] == 'gap' and (j['node'] in dist or j['other']['node'] in dist)]
+            gaps = [
+                j for j in lm.junctions if j['kind'] == 'gap' and (
+                    j['node'] in dist or j['other']['node'] in dist)
+            ]
             if targets and gaps:
-                lm.notes.append(f"{p}: its path stops at an end gap ({len(gaps)} on its side): the S-parameters "
-                                f"go across it, the path's table stops there")
+                lm.notes.append(
+                    f"{p}: its path stops at an end gap ({len(gaps)} on its "
+                    "side): the S-parameters go across it, the path's table "
+                    "stops there")
             elif targets:
-                lm.notes.append(f"{p} reaches no other port through traces, pads and parts: its path ends "
-                                f"{dist[far]:.2f} mm from it (copper drawn as shapes or zones is not followed: it only widens the tracks it overlaps)")
+                lm.notes.append(
+                    f"{p} reaches no other port through traces, pads and "
+                    f"parts: its path ends {dist[far]:.2f} mm from it (copper "
+                    "drawn as shapes or zones is not followed: it only widens "
+                    "the tracks it overlaps)"
+                )
         for q, dst in targets:
             done.add((p, q))
             seq, node = [], dst
@@ -58,40 +73,53 @@ def _paths(lm):
                         continue
                     L, lab, z = _branch(lm, adj, j, u, on_path)
                     if L < 0.25 and lab.endswith('ends: open)'):
-                        continue                            # trace overhang behind a port or past a pad
+                        continue  # trace overhang behind a port or past a pad
                     branches.append((secs[k][1], L, lab, z))
             lm.paths.append((p, q, secs, branches))
 
 
 def _branch(lm, adj, j, start, on_path):
-    """Total length, a description and the first Z0 of the branch that leaves the path through element j."""
+    """Total length, a description and the first Z0 of the branch that leaves
+    the path through element j."""
     e0 = lm.elements[j]
     if e0.kind == 'part' and 'gnd' in (e0.a, e0.b):
         return e0.length, f"{e0.label} {e0.part.value_str()} to ground", None
-    seen, stack, total, ends = {j}, [(j, e0.b if e0.a == start else e0.a)], 0.0, []
+    seen, stack, total, ends = ({j}, [(j, e0.b if e0.a == start else e0.a)],
+                                0.0, [])
     while stack:
         i, node = stack.pop()
         e = lm.elements[i]
         total += e.length
         if e.kind == 'part':
-            ends.append(f"{e.label} {e.part.value_str()}" + (' to ground' if 'gnd' in (e.a, e.b) else ''))
-        nxt = [(k, o) for k, o in adj.get(node, []) if k not in seen and node not in on_path]
+            ends.append(f"{e.label} {e.part.value_str()}"
+                        + (' to ground' if 'gnd' in (e.a, e.b) else ''))
+        nxt = [(k, o)
+               for k, o in adj.get(node, [])
+               if k not in seen and node not in on_path]
         if not nxt and node not in on_path and e.kind != 'part':
             ends.append('open')
         for k, o in nxt:
             seen.add(k)
             stack.append((k, o))
-    lab = f"stub ({len(seen)} section{'s' if len(seen) > 1 else ''}, ends: {', '.join(sorted(set(ends))) or 'open'})"
+    lab = (f"stub ({len(seen)} section{'s' if len(seen) > 1 else ''}, ends: "
+           f"{', '.join(sorted(set(ends))) or 'open'})")
     return total, lab, e0.z0
 
 
-# ---- coupled lines -------------------------------------------------------------------------------
-COUPLE_H = 5.0          # parallel lines couple when their edge gap is at most this many h (striplines: the mean of
-COUPLED_XS = ('microstrip', 'embedded microstrip', 'stripline', 'offset stripline')   # the heights to the two planes)
-FIELD_GROUPS = True     # coupled sections' C from the field solver, every line coupled to every other (False:
-                        # group_lc's nearest-neighbour pairs of the formulas)
-_COPY = ('xs', 'z0', 'eeff', 'z0_sheet', 'eeff_sheet', 'er', 'h', 's', 't', 'tand', 'offset', 'field', 'z0_formula',
-         'source', 'cut', 'classified', 'cover', 'er_cover', 'tand_eff')
+# ---- coupled lines
+# -------------------------------------------------------------------------------
+# parallel lines couple when their edge gap is at most this many h (striplines:
+# the mean of
+COUPLE_H = 5.0
+# the heights to the two planes)
+COUPLED_XS = ('microstrip', 'embedded microstrip', 'stripline',
+              'offset stripline')
+# coupled sections' C from the field solver, every line coupled to every other
+# (False: group_lc's nearest-neighbour pairs of the formulas)
+FIELD_GROUPS = True
+_COPY = ('xs', 'z0', 'eeff', 'z0_sheet', 'eeff_sheet', 'er', 'h', 's', 't',
+         'tand', 'offset', 'field', 'z0_formula', 'source', 'cut', 'classified',
+         'cover', 'er_cover', 'tand_eff')
 
 
 def _couple_h(e):
@@ -111,8 +139,9 @@ def _straight(e):
 
 
 def _piece(e, a, b, p0, p1):
-    el = Element(e.kind, a, b, float(np.hypot(*(np.asarray(p1) - p0))), layer=e.layer, w=e.w,
-                 pts=np.array([p0, p1], float), net=e.net, label=e.label, region=e.region, radial=e.radial)
+    el = Element(e.kind, a, b, float(np.hypot(*(np.asarray(p1) - p0))),
+                 layer=e.layer, w=e.w, pts=np.array([p0, p1], float), net=e.net,
+                 label=e.label, region=e.region, radial=e.radial)
     for k in _COPY:
         setattr(el, k, getattr(e, k))
     el.notes = list(e.notes)
@@ -120,7 +149,8 @@ def _piece(e, a, b, p0, p1):
 
 
 def _split_at(e, ts, u):
-    """Element e (straight) cut where its coordinate along u passes the values ts: pieces in order a -> b."""
+    """Element e (straight) cut where its coordinate along u passes the values
+    ts: pieces in order a -> b."""
     p0, p1 = np.asarray(e.pts[0], float), np.asarray(e.pts[-1], float)
     ta, tb = float(p0 @ u), float(p1 @ u)
     lo, hi = sorted((ta, tb))
@@ -131,21 +161,28 @@ def _split_at(e, ts, u):
         cuts = cuts[::-1]
     pts = [p0] + [p0 + (p1 - p0) * (t - ta) / (tb - ta) for t in cuts] + [p1]
     nodes = [e.a] + [f"{e.a}>{e.b}~{t:.4f}" for t in cuts] + [e.b]
-    return [_piece(e, nodes[k], nodes[k + 1], pts[k], pts[k + 1]) for k in range(len(pts) - 1)]
+    return [
+        _piece(e, nodes[k], nodes[k + 1], pts[k], pts[k + 1])
+        for k in range(len(pts) - 1)
+    ]
 
 
 def _couple(lm, model, ref=None):
-    """Parallel straight sections of one cross-section (microstrip or stripline) on one layer within
-    COUPLE_H * h of each other: cut where their overlaps start and end, and group the pieces side by side
-    into coupled sections. ref: the board's reference copper (RefCopper): a group is then solved on the board's
-    cut across it where the line model's field setting says (_group_on_cut), over ideal planes otherwise."""
+    """Parallel straight sections of one cross-section (microstrip or stripline)
+    on one layer within COUPLE_H * h of each other: cut where their overlaps
+    start and end, and group the pieces side by side into coupled sections. ref:
+    the board's reference copper (RefCopper): a group is then solved on the
+    board's cut across it where the line model's field setting says
+    (_group_on_cut), over ideal planes otherwise."""
     from . import reference
     start = len(lm.groups)
     _find_groups(lm, model, ref)
-    reference.solve_groups([k for g in lm.groups[start:] for k in (g.get('cut_keys') or ())])
+    reference.solve_groups(
+        [k for g in lm.groups[start:] for k in (g.get('cut_keys') or ())])
     for gid, g in enumerate(lm.groups[start:], start):
-        # the field solver's pairs (on the board's cut where _group_on_cut chose it; over ideal planes otherwise, or
-        # where the cut does not solve), then its coupling elements
+        # the field solver's pairs (on the board's cut where _group_on_cut chose
+        # it; over ideal planes otherwise, or where the cut does not solve),
+        # then its coupling elements
         members, e0 = g['members'], g['members'][0][0]
         if not (g.get('cut_keys') and _field_group_cut(g)):
             if FIELD_GROUPS or reference.field_mode() == 'all':
@@ -153,31 +190,45 @@ def _couple(lm, model, ref=None):
         for key in ('cut_keys', 'cut_flipped', 't'):
             g.pop(key, None)
         for k, p in enumerate(g['pairs']):
-            cp = Element('coupling', members[k][1], members[k + 1][1], 0.0, layer=e0.layer, w=p['gap'], net=e0.net,
-                         label=f"coupled to the next line, gap {p['gap']:.3g} mm",
-                         pts=np.array([np.asarray(members[k][0].pts).mean(0),
-                                       np.asarray(members[k + 1][0].pts).mean(0)]))
+            cp = Element(
+                'coupling', members[k][1], members[k + 1][1], 0.0,
+                layer=e0.layer, w=p['gap'], net=e0.net,
+                label=f"coupled to the next line, gap {p['gap']:.3g} mm",
+                pts=np.array([
+                    np.asarray(members[k][0].pts).mean(0),
+                    np.asarray(members[k + 1][0].pts).mean(0)
+                ]))
             cp.xs, cp.group = 'coupled', gid
-            cp.notes.append(f"Ze {p['ze']:.1f} / Zo {p['zo']:.1f} ohm over {e0.length:.2f} mm")
+            cp.notes.append(
+                f"Ze {p['ze']:.1f} / Zo {p['zo']:.1f} ohm over {e0.length:.2f} "
+                "mm"
+            )
             lm.elements.append(cp)
 
 
 def _split_jogs(lm):
-    """A trace with a jog (one element, a polyline) cut at its corners where one of its straight runs lies beside
-    another line closely enough to couple (R-E17: only whole straight elements had been paired, so an edge-coupled
+    """A trace with a jog (one element, a polyline) cut at its corners where one
+    of its straight runs lies beside another line closely enough to couple
+    (R-E17: only whole straight elements had been paired, so an edge-coupled
     filter's legs with a jog coupled nowhere). The others stay whole."""
     from shapely.geometry import LineString
     from shapely.strtree import STRtree
-    kinked = [e for e in lm.elements if e.kind == 'trace' and e.xs in COUPLED_XS and e.length > 1e-3
-              and e.pts is not None and len(e.pts) > 2 and not _straight(e)]
+    kinked = [
+        e for e in lm.elements
+        if e.kind == 'trace' and e.xs in COUPLED_XS and e.length > 1e-3
+        and e.pts is not None and len(e.pts) > 2 and not _straight(e)
+    ]
     if not kinked:
         return
-    runs = []                                                       # (element, its straight run's two points)
+    runs = []  # (element, its straight run's two points)
     for e in lm.elements:
-        if e.kind != 'trace' or e.xs not in COUPLED_XS or e.pts is None or len(e.pts) < 2:
+        if (e.kind != 'trace' or e.xs not in COUPLED_XS or e.pts is None
+                or len(e.pts) < 2):
             continue
         p = np.asarray(e.pts, float)
-        segs = [(p[0], p[-1])] if _straight(e) else [(p[k], p[k + 1]) for k in range(len(p) - 1)]
+        segs = ([(p[0],
+                  p[-1])] if _straight(e) else [(p[k], p[k + 1])
+                                                for k in range(len(p) - 1)])
         runs += [(e, a, b) for a, b in segs if np.hypot(*(b - a)) > 1e-3]
     tree = STRtree([LineString([a, b]) for _, a, b in runs])
     wmax = max(e.w or 0.0 for e, _, _ in runs)
@@ -195,32 +246,43 @@ def _split_jogs(lm):
                 continue
             fd = fb - fa
             v = fd / np.hypot(*fd)
-            if abs(float(u[0] * v[1] - u[1] * v[0])) > math.sin(math.radians(1.0)):
-                continue                                            # (not parallel)
+            if (abs(float(u[0] * v[1] - u[1] * v[0]))
+                    > math.sin(math.radians(1.0))):
+                continue  # (not parallel)
             gap = abs(float((fa - a) @ nrm)) - 0.5 * (e.w + f.w)
             lo, hi = sorted((float(fa @ u), float(fb @ u)))
-            overlap = min(float(b @ u), hi) - max(float(a @ u), lo) if a @ u <= b @ u else \
-                min(float(a @ u), hi) - max(float(b @ u), lo)
-            if 1e-4 < gap <= COUPLE_H * _couple_h(e) and overlap >= max(0.2, gap):
+            overlap = (min(float(b @ u), hi) - max(float(a @ u), lo) if a
+                       @ u <= b @ u else min(float(a @ u), hi)
+                       - max(float(b @ u), lo))
+            if (1e-4 < gap <= COUPLE_H * _couple_h(e)
+                    and overlap >= max(0.2, gap)):
                 split.add(id(e))
                 break
     for e in kinked:
         if id(e) not in split:
             continue
         p = np.asarray(e.pts, float)
-        nodes = [e.a] + [f"{e.a}>{e.b}^{k}" for k in range(1, len(p) - 1)] + [e.b]
+        nodes = ([e.a] + [f"{e.a}>{e.b}^{k}" for k in range(1,
+                                                            len(p) - 1)]
+                 + [e.b])
         k = lm.elements.index(e)
-        lm.elements[k:k + 1] = [_piece(e, nodes[m], nodes[m + 1], p[m], p[m + 1]) for m in range(len(p) - 1)]
+        lm.elements[k:k + 1] = [
+            _piece(e, nodes[m], nodes[m + 1], p[m], p[m + 1])
+            for m in range(len(p) - 1)
+        ]
 
 
 def _find_groups(lm, model, ref):
-    """_couple's groups, each with its formulas' pairs and, where it is to be solved on the board's cut, the keys
-    of that cut (cut_keys)."""
+    """_couple's groups, each with its formulas' pairs and, where it is to be
+    solved on the board's cut, the keys of that cut (cut_keys)."""
     _split_jogs(lm)
-    cand = [e for e in lm.elements if e.kind == 'trace' and e.xs in COUPLED_XS and e.length > 1e-3 and _straight(e)]
+    cand = [
+        e for e in lm.elements if e.kind == 'trace' and e.xs in COUPLED_XS
+        and e.length > 1e-3 and _straight(e)
+    ]
     if len(cand) < 2:
         return
-    info = {}                                                       # each one's direction, deg mod 180
+    info = {}  # each one's direction, deg mod 180
     for e in cand:
         d = np.asarray(e.pts[-1], float) - np.asarray(e.pts[0], float)
         info[id(e)] = math.degrees(math.atan2(d[1], d[0])) % 180.0
@@ -238,16 +300,22 @@ def _find_groups(lm, model, ref):
         t = sorted((float(p[0] @ u), float(p[-1] @ u)))
         return t[0], t[1], float(p[0] @ n)
     pairs = []
-    # the pairs near enough to couple, from a tree of the sections (each grown by the farthest it couples); every
-    # pair of the 480-odd sections on CM5 had been tried, 1.4 s of its build (R-D17); the same pairs, in order
+    # the pairs near enough to couple, from a tree of the sections (each grown
+    # by the farthest it couples); every pair of the 480-odd sections on CM5 had
+    # been tried, 1.4 s of its build (R-D17); the same pairs, in order
     from shapely.geometry import LineString
     from shapely.strtree import STRtree
     lines = [LineString(e.pts) for e in cand]
     tree = STRtree(lines)
-    wmax = max(e.w for e in cand)                                  # (the gap is between edges: either width)
-    grown = [ln.buffer(COUPLE_H * _couple_h(e) + 0.5 * (e.w + wmax) + 1e-6, cap_style=2) for ln, e in zip(lines, cand)]
+    wmax = max(e.w for e in cand)  # (the gap is between edges: either width)
+    grown = [
+        ln.buffer(COUPLE_H * _couple_h(e) + 0.5 * (e.w + wmax) + 1e-6,
+                  cap_style=2) for ln, e in zip(lines, cand)
+    ]
     src, hit = tree.query(grown, predicate='intersects')
-    near = sorted({(min(i, j), max(i, j)) for i, j in zip(src.tolist(), hit.tolist()) if i != j})
+    near = sorted({(min(i, j), max(i, j))
+                   for i, j in zip(src.tolist(), hit.tolist())
+                   if i != j})
     for i, j in near:
         e, f = cand[i], cand[j]
         if e.layer != f.layer or e.xs != f.xs or e.h != f.h:
@@ -256,11 +324,13 @@ def _find_groups(lm, model, ref):
         if min(da, 180 - da) > 1.0:
             continue
         ang = math.radians(info[id(e)])
-        u, n = np.array([math.cos(ang), math.sin(ang)]), np.array([-math.sin(ang), math.cos(ang)])
+        u, n = (np.array([math.cos(ang), math.sin(ang)]),
+                np.array([-math.sin(ang), math.cos(ang)]))
         a0, a1, ca = geom(e, u, n)
         b0, b1, cb = geom(f, u, n)
         gap = abs(ca - cb) - 0.5 * (e.w + f.w)
-        if gap <= 1e-4 or gap > COUPLE_H * _couple_h(e) or min(a1, b1) - max(a0, b0) < max(0.2, gap):
+        if (gap <= 1e-4 or gap > COUPLE_H * _couple_h(e)
+                or min(a1, b1) - max(a0, b0) < max(0.2, gap)):
             continue
         pairs.append((e, f))
         parent[find(id(e))] = find(id(f))
@@ -272,9 +342,11 @@ def _find_groups(lm, model, ref):
             sets.setdefault(find(id(e)), []).append(e)
     for members in sets.values():
         ang = math.radians(info[id(members[0])])
-        u, n = np.array([math.cos(ang), math.sin(ang)]), np.array([-math.sin(ang), math.cos(ang)])
-        # the overlaps' ends, merged within 1 um: rounding apart two ends at the same place (0.57424999 and
-        # 0.57425 to 0.5742 / 0.5743) had put the legs of a pair into separate pieces, and nothing coupled
+        u, n = (np.array([math.cos(ang), math.sin(ang)]),
+                np.array([-math.sin(ang), math.cos(ang)]))
+        # the overlaps' ends, merged within 1 um: rounding apart two ends at the
+        # same place (0.57424999 and 0.57425 to 0.5742 / 0.5743) had put the
+        # legs of a pair into separate pieces, and nothing coupled
         cuts = []
         for v in sorted(t for e in members for t in geom(e, u, n)[:2]):
             if not cuts or v - cuts[-1] > 1e-3:
@@ -296,8 +368,10 @@ def _find_groups(lm, model, ref):
             chain = [row[0]]
             for c, pc in row[1:] + [(None, None)]:
                 prev = chain[-1][1]
-                gap = None if pc is None else (c - chain[-1][0]) - 0.5 * (prev.w + pc.w)
-                if pc is not None and prev.xs == pc.xs and prev.h == pc.h and 1e-4 < gap <= COUPLE_H * _couple_h(prev):
+                gap = (None if pc is None else (c - chain[-1][0]) - 0.5 *
+                       (prev.w + pc.w))
+                if (pc is not None and prev.xs == pc.xs and prev.h == pc.h
+                        and 1e-4 < gap <= COUPLE_H * _couple_h(prev)):
                     chain.append((c, pc))
                     continue
                 if len(chain) >= 2:
@@ -306,27 +380,33 @@ def _find_groups(lm, model, ref):
 
 
 def _group_on_cut(g, chain, u, tm, model, ref):
-    """Whether a coupled group is solved on the board's cut across its middle, and if so its cut (g['cut'],
-    g['cut_keys'], g['cut_flipped']). With the line model's field setting 'all', every group; 'auto', a group
-    whose cut holds what ideal planes leave out (reference.group_beyond: a plane that ends near it, copper on
-    another layer in front of a plane, ground beside a stripline pair or between two of its lines), said in its
-    legs' notes; 'off', none."""
+    """Whether a coupled group is solved on the board's cut across its middle,
+    and if so its cut (g['cut'], g['cut_keys'], g['cut_flipped']). With the line
+    model's field setting 'all', every group; 'auto', a group whose cut holds
+    what ideal planes leave out (reference.group_beyond: a plane that ends near
+    it, copper on another layer in front of a plane, ground beside a stripline
+    pair or between two of its lines), said in its legs' notes; 'off', none."""
     from . import reference
     mode = reference.field_mode()
     if ref is None or mode == 'off':
         return False
     n = np.array([-u[1], u[0]])
     legs = [(c, e.w) for c, e in chain]
-    mid = 0.5 * ((legs[0][0] - legs[0][1] / 2) + (legs[-1][0] + legs[-1][1] / 2))
+    mid = (0.5 * ((legs[0][0] - legs[0][1] / 2) +
+                  (legs[-1][0] + legs[-1][1] / 2)))
     e0 = chain[0][1]
-    if not getattr(e0, 'cut', None):                         # not a section classify cut: nothing says which way up
+    # not a section classify cut: nothing says which way up
+    if not getattr(e0, 'cut', None):
         return False
     hs = (e0.h,) if isinstance(e0.h, float) else tuple(e0.h)
     try:
-        args = reference.group_cut(model, ref, e0.layer, [(c - mid, w) for c, w in legs], u * tm + n * mid, n, hs,
-                                   e0.cut[3])
-        why = reference.group_beyond(args, e0.xs, hs) if mode == 'auto' else None
-    except Exception:                                        # noqa: BLE001 (a cut it cannot take: ideal planes)
+        args = reference.group_cut(model, ref, e0.layer,
+                                   [(c - mid, w) for c, w in legs],
+                                   u * tm + n * mid, n, hs, e0.cut[3])
+        why = (reference.group_beyond(args, e0.xs, hs)
+               if mode == 'auto' else None)
+    # (a cut it cannot take: ideal planes)
+    except Exception:  # noqa: BLE001
         return False
     if mode == 'auto' and not why:
         return False
@@ -339,14 +419,16 @@ def _group_on_cut(g, chain, u, tm, model, ref):
 
 
 def _add_group(lm, chain, u, tm, model=None, ref=None):
-    """A coupled group of the legs in chain ([(centre across the lines, element)], side by side), tm their middle
-    along the lines: its formulas' pairs now; the field solver's and its coupling elements when _couple finishes
-    it."""
+    """A coupled group of the legs in chain ([(centre across the lines,
+    element)], side by side), tm their middle along the lines: its formulas'
+    pairs now; the field solver's and its coupling elements when _couple
+    finishes it."""
     from .coupled import coupled
     gid = len(lm.groups)
     members, gaps = [], []
     for k, (c, e) in enumerate(chain):
-        near_first = float(np.asarray(e.pts[0]) @ u) <= float(np.asarray(e.pts[-1]) @ u)
+        near_first = (float(np.asarray(e.pts[0]) @ u)
+                      <= float(np.asarray(e.pts[-1]) @ u))
         near, far = (e.a, e.b) if near_first else (e.b, e.a)
         members.append((e, near, far))
         e.group = gid
@@ -354,9 +436,10 @@ def _add_group(lm, chain, u, tm, model=None, ref=None):
         if k:
             gaps.append((c - chain[k - 1][0]) - 0.5 * (e.w + chain[k - 1][1].w))
     e0 = chain[0][1]
-    g = dict(members=members, gaps=gaps, length=e0.length, h=e0.h, er=e0.er, tand=e0.tand, layer=e0.layer, xs=e0.xs,
-             pairs=[], t=e0.t)
-    if getattr(e0, 'cover', 0.0):                              # embedded microstrip: its cover, for the field solve
+    g = dict(members=members, gaps=gaps, length=e0.length, h=e0.h, er=e0.er,
+             tand=e0.tand, layer=e0.layer, xs=e0.xs, pairs=[], t=e0.t)
+    # embedded microstrip: its cover, for the field solve
+    if getattr(e0, 'cover', 0.0):
         g['cover'], g['er_cover'] = e0.cover, e0.er_cover
     for k, gap in enumerate(gaps):
         wa, wb = members[k][0].w, members[k + 1][0].w
@@ -367,25 +450,30 @@ def _add_group(lm, chain, u, tm, model=None, ref=None):
 
 
 def _field_group_cut(g):
-    """The group's C and C_air from the field solver on the board's cut across it (g['cut_keys']: with its copper's
-    thickness, and as sheets), as _field_group sets them from ideal planes. False where the cut does not solve."""
+    """The group's C and C_air from the field solver on the board's cut across
+    it (g['cut_keys']: with its copper's thickness, and as sheets), as
+    _field_group sets them from ideal planes. False where the cut does not
+    solve."""
     from . import reference
     (thick, sheet), flipped = g['cut_keys'], g['cut_flipped']
     try:
         C, Ca = reference._solve_group(*sheet)
         Ct, Cat = reference._solve_group(*thick) if thick[2] else (C, Ca)
-    except Exception:                                        # noqa: BLE001 (ideal planes stay)
+    # (ideal planes stay)
+    except Exception:  # noqa: BLE001
         del g['cut']
         return False
-    _take_group(g, (C, Ca, Ct, Cat), flipped, reference._strips_section(*g['cut']))
-    g['source'] = 'cut'                                      # (else: ideal planes, or the formulas' pairs)
+    _take_group(g, (C, Ca, Ct, Cat), flipped,
+                reference._strips_section(*g['cut']))
+    g['source'] = 'cut'  # (else: ideal planes, or the formulas' pairs)
     return True
 
 
 def _take_group(g, matrices, flipped, section):
-    """Group g's field-solved C and C_air as sheets and with the copper's thickness (matrices: C, Ca, Ct, Cat; flipped:
-    solved as its mirror image), the section its legs are drawn on, and its pairs' even / odd modes."""
-    if flipped:                                              # the matrices of the lines in their own order
+    """Group g's field-solved C and C_air as sheets and with the copper's
+    thickness (matrices: C, Ca, Ct, Cat; flipped: solved as its mirror image),
+    the section its legs are drawn on, and its pairs' even / odd modes."""
+    if flipped:  # the matrices of the lines in their own order
         matrices = (M[::-1, ::-1] for M in matrices)
     C, Ca, Ct, Cat = matrices
     g['C'], g['Ca'] = C.copy(), Ca.copy()
@@ -397,52 +485,65 @@ def _take_group(g, matrices, flipped, section):
 
 
 def _pair_modes(C, Ca, k):
-    """(Ze, Zo, eeff_e, eeff_o) of lines k and k + 1 of N, the others held at ground (their mean self terms: a pair
-    of slightly unequal widths taken as symmetric)."""
-    c11, ca11 = 0.5 * (C[k, k] + C[k + 1, k + 1]), 0.5 * (Ca[k, k] + Ca[k + 1, k + 1])
-    (ze, ee), (zo, eo) = (mode(c11 + s * C[k, k + 1], ca11 + s * Ca[k, k + 1]) for s in (1, -1))
+    """(Ze, Zo, eeff_e, eeff_o) of lines k and k + 1 of N, the others held at
+    ground (their mean self terms: a pair of slightly unequal widths taken as
+    symmetric)."""
+    c11, ca11 = (0.5 * (C[k, k] + C[k + 1, k + 1]), 0.5 *
+                 (Ca[k, k] + Ca[k + 1, k + 1]))
+    (ze, ee), (zo, eo) = (mode(c11 + s * C[k, k + 1], ca11 + s * Ca[k, k + 1])
+                          for s in (1, -1))
     return ze, zo, ee, eo
 
 
 def _field_group(g, widths, t=0.0):
-    """The group's per-unit-length C and C_air (sheets, every line coupled to every other) from the field solver,
-    in place of group_lc's nearest-neighbour pairs (fastsolve.group_s uses them when present), and its pairs' even /
-    odd modes with the copper's thickness t (ze_sheet, zo_sheet: as sheets), in place of the zero-thickness
-    formulas'."""
-    h = g['h'] if g['xs'] in ('microstrip', 'embedded microstrip') else tuple(g['h'])
-    from .xsection import snap                               # similar sections: one solve (xsection.SIMILAR)
-    ws, gs = tuple(round(snap(w), 6) for w in widths), tuple(round(snap(s), 6) for s in g['gaps'])
-    flip = (ws[::-1], gs[::-1]) < (ws, gs)                   # a group and its mirror image: one solve
+    """The group's per-unit-length C and C_air (sheets, every line coupled to
+    every other) from the field solver, in place of group_lc's nearest-neighbour
+    pairs (fastsolve.group_s uses them when present), and its pairs' even / odd
+    modes with the copper's thickness t (ze_sheet, zo_sheet: as sheets), in
+    place of the zero-thickness formulas'."""
+    h = (g['h'] if g['xs'] in ('microstrip',
+                               'embedded microstrip') else tuple(g['h']))
+    from .xsection import snap  # similar sections: one solve (xsection.SIMILAR)
+    ws, gs = (tuple(round(snap(w), 6) for w in widths),
+              tuple(round(snap(s), 6) for s in g['gaps']))
+    # a group and its mirror image: one solve
+    flip = (ws[::-1], gs[::-1]) < (ws, gs)
     cover = (round(g.get('cover', 0.0), 6), round(g.get('er_cover', 1.0), 6))
-    key = (g['xs'],) + ((ws[::-1], gs[::-1]) if flip else (ws, gs)) + (h, g['er'])
+    key = ((g['xs'], ) + ((ws[::-1], gs[::-1]) if flip else (ws, gs)) +
+           (h, g['er']))
     try:
         C, Ca = _group_c(*key, 0.0, cover)
         Ct, Cat = _group_c(*key, round(t, 6), cover) if t else (C, Ca)
-    except Exception:                                        # noqa: BLE001 (the formulas' pairs stay)
+    # (the formulas' pairs stay)
+    except Exception:  # noqa: BLE001
         return
-    _take_group(g, (C, Ca, Ct, Cat), flip, _group_section(g['xs'], ws, gs, h, g['er'], round(t, 6), cover))
+    _take_group(g, (C, Ca, Ct, Cat), flip,
+                _group_section(g['xs'], ws, gs, h, g['er'], round(t, 6), cover))
 
 
 @functools.lru_cache(maxsize=1024)
 def _group_c(xs_name, widths, gaps, h, er, t=0.0, cover=(0.0, 1.0)):
-    """(C, C_air) of side-by-side strips t thick (sheets by default; a board's diff pairs are mostly the same few:
-    solved once each)."""
+    """(C, C_air) of side-by-side strips t thick (sheets by default; a board's
+    diff pairs are mostly the same few: solved once each)."""
     r = _group_section(xs_name, widths, gaps, h, er, t, cover).solve()
     return r.C, r.Ca
 
 
 def _group_section(xs_name, widths, gaps, h, er, t=0.0, cover=(0.0, 1.0)):
-    """The xsection.CrossSection of side-by-side strips; cover: (thickness, er) of the dielectric over embedded
-    microstrip (solder mask: it follows the copper)."""
+    """The xsection.CrossSection of side-by-side strips; cover: (thickness, er)
+    of the dielectric over embedded microstrip (solder mask: it follows the
+    copper)."""
     from . import xsection as X
     if xs_name == 'embedded microstrip':
-        return X.microstrip(list(widths), h, er, t, mask=cover[0], er_mask=cover[1], gap=list(gaps))
+        return X.microstrip(list(widths), h, er, t, mask=cover[0],
+                            er_mask=cover[1], gap=list(gaps))
     if xs_name == 'microstrip':
         return X.microstrip(list(widths), h, er, t, gap=list(gaps))
     return X.stripline(list(widths), h[0], h[1], er, t, gap=list(gaps))
 
 
-# ---- discontinuities -----------------------------------------------------------------------------
+# ---- discontinuities
+# -----------------------------------------------------------------------------
 def _out_dir(e, end):
     p = np.asarray(e.pts, float)
     d = (p[1] - p[0]) if end == 0 else (p[-2] - p[-1])
@@ -450,12 +551,14 @@ def _out_dir(e, end):
 
 
 def _junctions(lm, model):
-    """Discontinuities where trace and pad sections meet: open end, corner (90 degrees), bend (other
-    angles: no model), step (width change in line), tee, cross; facing open ends close together are a
-    gap. Nodes with a port, a via or a part are left out."""
+    """Discontinuities where trace and pad sections meet: open end, corner (90
+    degrees), bend (other angles: no model), step (width change in line), tee,
+    cross; facing open ends close together are a gap. Nodes with a port, a via
+    or a part are left out."""
     arms, busy = {}, set(lm.ports.values())
     for e in lm.elements:
-        if e.kind in ('trace', 'pad') and e.pts is not None and len(e.pts) >= 2 and e.length > 1e-6:
+        if (e.kind in ('trace', 'pad') and e.pts is not None and len(e.pts) >= 2
+                and e.length > 1e-6):
             arms.setdefault(e.a, []).append((e, 0))
             arms.setdefault(e.b, []).append((e, 1))
         elif e.kind in ('via', 'part'):
@@ -464,13 +567,23 @@ def _junctions(lm, model):
     for node, ar in arms.items():
         if node in busy or node == 'gnd':
             continue
-        ends = [np.asarray(e.pts[0] if k == 0 else e.pts[-1], float) for e, k in ar]
+        ends = [
+            np.asarray((e.pts[0] if k == 0 else e.pts[-1]), float)
+            for e, k in ar
+        ]
         xy = np.mean(ends, axis=0)
         dirs = [_out_dir(e, k) for e, k in ar]
         ws = [e.w for e, _ in ar]
         xs = {e.xs for e, _ in ar}
-        rec = dict(node=node, arms=ar, widths=ws, xy=xy, xs=xs.pop() if len(xs) == 1 else 'mixed', layer=ar[0][0].layer,
-                   dirs=[tuple(map(float, d)) for d in dirs])           # (each arm's outward direction)
+        rec = dict(
+            node=node,
+            arms=ar,
+            widths=ws,
+            xy=xy,
+            xs=(xs.pop() if len(xs) == 1 else 'mixed'),
+            layer=ar[0][0].layer,
+            # (each arm's outward direction)
+            dirs=[tuple(map(float, d)) for d in dirs])
         n = len(ar)
         if n == 1:
             rec['kind'] = 'open'
@@ -487,15 +600,18 @@ def _junctions(lm, model):
                 rec['kind'] = 'step'
             else:
                 rec['kind'] = 'bend'
-        elif n in (3, 4):                                   # a tee: its straight run first; a cross: by angle
+        elif n in (3, 4):  # a tee: its straight run first; a cross: by angle
             if n == 3:
                 best = max(((i, j) for i in range(3) for j in range(i + 1, 3)),
                            key=lambda ij: -np.dot(dirs[ij[0]], dirs[ij[1]]))
                 order = [*best, ({0, 1, 2} - set(best)).pop()]
             else:
-                order = sorted(range(4), key=lambda i: math.atan2(dirs[i][1], dirs[i][0]))
-            rec.update(arms=[ar[i] for i in order], widths=[ar[i][0].w for i in order],
-                       dirs=[rec['dirs'][i] for i in order], kind='tee' if n == 3 else 'cross')
+                order = sorted(range(4),
+                               key=lambda i: math.atan2(dirs[i][1], dirs[i][0]))
+            rec.update(arms=[ar[i] for i in order],
+                       widths=[ar[i][0].w for i in order],
+                       dirs=[rec['dirs'][i]
+                             for i in order], kind='tee' if n == 3 else 'cross')
         else:
             rec['kind'] = 'junction'
         lm.junctions.append(rec)
@@ -507,12 +623,16 @@ def _junctions(lm, model):
                 continue
             ea, ka = a['arms'][0]
             eb, kb = b['arms'][0]
-            da, db = -_out_dir(ea, ka), -_out_dir(eb, kb)       # pointing out of the line, past its end
+            # pointing out of the line, past its end
+            da, db = -_out_dir(ea, ka), -_out_dir(eb, kb)
             v = b['xy'] - a['xy']
             g = float(np.linalg.norm(v))
             h = ea.h if isinstance(ea.h, float) else 0.0
-            if g < 1e-6 or g > 2 * h or np.dot(da, db) > -0.98 or np.dot(v / g, da) < 0.98:
+            if (g < 1e-6 or g > 2 * h or np.dot(da, db) > -0.98
+                    or np.dot(v / g, da) < 0.98):
                 continue
             a.update(kind='gap', gap=g, other=b)
             used |= {id(a), id(b)}
-    lm.junctions = [r for r in lm.junctions if id(r) not in used or r['kind'] == 'gap']
+    lm.junctions = [
+        r for r in lm.junctions if id(r) not in used or r['kind'] == 'gap'
+    ]

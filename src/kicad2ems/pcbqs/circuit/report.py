@@ -1,5 +1,6 @@
-"""A picture of a finished point: its probes (else its capacitor voltages and inductor currents) over the last two
-periods, voltages over currents, and each part's share of the loss."""
+"""A picture of a finished point: its probes (else its capacitor voltages and
+inductor currents) over the last two periods, voltages over currents, and each
+part's share of the loss."""
 from pathlib import Path
 
 import numpy as np
@@ -21,14 +22,22 @@ def waveforms(out, row, model, deck):
     if not probes:
         volts = [r + '.V' for r, k in deck.kinds.items() if k == 'capacitor']
         amps = [r + '.I' for r, k in deck.kinds.items() if k == 'inductor']
-    losses = {r: p['power_W'] + p.get('added_loss_W', 0.0) for r, p in row['parts'].items()
-              if p['type'] not in ('source', 'load') and not p.get('coupled_with')}
-    losses.update({'+'.join(g['inductors']): g['power_W'] + g.get('added_loss_W', 0.0)     # a transformer: its
-                   for g in row.get('coupled', [])})                                         # windings together
+    losses = {
+        r: p['power_W'] + p.get('added_loss_W', 0.0)
+        for r, p in row['parts'].items()
+        if p['type'] not in ('source', 'load') and not p.get('coupled_with')
+    }
+    # a transformer: its
+    losses.update({
+        '+'.join(g['inductors']): g['power_W'] + g.get('added_loss_W', 0.0)
+        for g in row.get('coupled', [])
+    })  # windings together
     if row.get('copper'):
         losses['copper'] = row['copper']['loss_W']
     losses = {r: w for r, w in losses.items() if w > 0}
-    fig, axs = plt.subplots(3 if losses else 2, 1, figsize=(8, 7.5 if losses else 5.5), constrained_layout=True)
+    fig, axs = plt.subplots(3 if losses else 2, 1,
+                            figsize=(8, 7.5 if losses else 5.5),
+                            constrained_layout=True)
     for ax, keys, unit in ((axs[0], volts, 'V'), (axs[1], amps, 'A')):
         for k in keys:
             if k in res:
@@ -38,9 +47,12 @@ def waveforms(out, row, model, deck):
         if keys:
             ax.legend(fontsize=8, ncol=4, loc='upper right')
     axs[1].set_xlabel('time / period')
-    title = model.get('name', '') + (f"  ({row['name']})" if row['sweep'] else '')
+    title = (model.get('name', '') +
+             (f"  ({row['name']})" if row['sweep'] else ''))
     eff = row.get('efficiency')
-    axs[0].set_title(title + (f"   efficiency {100 * eff:.1f} %" if eff else ''), fontsize=10)
+    axs[0].set_title(
+        title + (f"   efficiency {100 * eff:.1f} %" if eff else ''),
+        fontsize=10)
     if losses:
         order = sorted(losses, key=losses.get, reverse=True)[:12]
         axs[2].bar(order, [losses[r] for r in order], color='#9a4f22')

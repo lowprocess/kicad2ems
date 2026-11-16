@@ -1,4 +1,5 @@
-"""Crop CM5 Minima's U702 converter and plot its copper loops and magnetic near field.
+"""Crop CM5 Minima's U702 converter and plot its copper loops and magnetic near
+field.
 
     OPENBLAS_NUM_THREADS=2 python tools/pcbqs/cm5_converter_fields.py CM5_MINIMA_3_board.json --out cm5-fields
     python tools/pcbqs/cm5_converter_fields.py --out cm5-fields --render-only
@@ -28,7 +29,10 @@ from kicad2ems.emsdev.numerics.biot import rwg_currents
 from kicad2ems.pcbqs.mqs import MQS
 from kicad2ems.pcbqs.pdn.rail import parts_of, part_value
 
-REFS = ['U702', 'L701', 'C704', 'C705', 'C706', 'C708', 'C709', 'C707', 'R704', 'R705', 'R706']
+REFS = [
+    'U702', 'L701', 'C704', 'C705', 'C706', 'C708', 'C709', 'C707', 'R704',
+    'R705', 'R706'
+]
 VIN, GND, SW, VOUT = '+5V', 'GND', '/PCIe-M2/M2_LX', 'M2_3V3'
 NETS = {VIN, GND, SW, VOUT}
 CASES = ['hot', 'ripple']
@@ -47,11 +51,14 @@ def polygons(g):
 
 
 def crop_board(board, region):
-    """Keep real clipped copper and local primitives, with source coordinates preserved."""
+    """Keep real clipped copper and local primitives, with source coordinates
+    preserved."""
     out = copy.deepcopy(board)
-    out['outline'], out['region'] = mapping(shape(board['outline']).intersection(region)), list(region.bounds)
+    out['outline'], out['region'] = (mapping(
+        shape(board['outline']).intersection(region)), list(region.bounds))
     out['request']['region'] = list(region.bounds)
-    out['nets'], out['ports'], out['parts'], out['walls'], out['port_refs'] = None, [], [], [], []
+    out['nets'], out['ports'], out['parts'], out['walls'], out['port_refs'] = (
+        None, [], [], [], [])
     out['copper'] = {}
     for layer, records in board['copper'].items():
         out['copper'][layer] = []
@@ -59,8 +66,11 @@ def crop_board(board, region):
             g = shape(record['polygon']).intersection(region)
             for p in polygons(g):
                 if p.area:
-                    out['copper'][layer].append(dict(record, polygon=mapping(p)))
-    out['vias'] = [v for v in board['vias'] if region.contains(Point(v['x'], v['y']))]
+                    out['copper'][layer].append(dict(record,
+                                                     polygon=mapping(p)))
+    out['vias'] = [
+        v for v in board['vias'] if region.contains(Point(v['x'], v['y']))
+    ]
     prims = out['prims']
     prims['items'] = []
     for record in board['prims']['items']:
@@ -72,8 +82,12 @@ def crop_board(board, region):
         clipped = LineString(record['pts']).intersection(region)
         for line in getattr(clipped, 'geoms', [clipped]):
             if line.geom_type == 'LineString' and line.length:
-                prims['tracks'].append(dict(record, pts=list(map(list, line.coords))))
-    prims['vias'] = [v for v in board['prims']['vias'] if region.contains(Point(v['x'], v['y']))]
+                prims['tracks'].append(
+                    dict(record, pts=list(map(list, line.coords))))
+    prims['vias'] = [
+        v for v in board['prims']['vias']
+        if region.contains(Point(v['x'], v['y']))
+    ]
     prims['footprints'] = []
     for fp in board['prims']['footprints']:
         pads = []
@@ -85,8 +99,11 @@ def crop_board(board, region):
                 pads.append(dict(p, geom=mapping(clipped)))
         if pads:
             prims['footprints'].append(dict(fp, pads=pads))
-    out['notes'] = ['Local U702 converter crop; source board coordinates retained.',
-                    'All clipped copper retained for context; explicit MQS nets and parts are in summary.json.']
+    out['notes'] = [
+        'Local U702 converter crop; source board coordinates retained.',
+        'All clipped copper retained for context; explicit MQS nets and parts '
+        'are in summary.json.'
+    ]
     return out
 
 
@@ -94,7 +111,8 @@ def compute(args, out):
     path = Path(args.board)
     board = json.loads(path.read_text())
     parts = {p.ref: p for p in parts_of(board)}
-    extent = unary_union([pad.geom for ref in REFS for pad in parts[ref].pads if pad.layers])
+    extent = unary_union(
+        [pad.geom for ref in REFS for pad in parts[ref].pads if pad.layers])
     region = extent.buffer(1.).envelope
     board = crop_board(board, region)
     (out/'converter_board.json').write_text(json.dumps(board)+'\n')
@@ -105,20 +123,29 @@ def compute(args, out):
     terms = {}
     for ref in ['U702', 'L701', 'C704', 'C705', 'C706', 'C708', 'C709']:
         for net in NETS:
-            pp = [(layer, p.geom) for p in parts[ref].on({net}) for layer in p.layers]
+            pp = [(layer, p.geom)
+                  for p in parts[ref].on({net})
+                  for layer in p.layers]
             if pp:
                 terms[f'{ref}:{net}'] = pp
     fine = unary_union([p for pp in terms.values() for _, p in pp]).buffer(.2)
-    q = MQS(board, NETS, terminals=terms, dmax=args.dmax, fine=fine, dmax_fine=args.fine,
-            conductor_loss='slab', conductor_faces=1, fill_workers=2)
+    q = MQS(board, NETS, terminals=terms, dmax=args.dmax, fine=fine,
+            dmax_fine=args.fine, conductor_loss='slab', conductor_faces=1,
+            fill_workers=2)
     estimate = (4*len(q.tris)**2+3*q.ne**2)*8
     if estimate > 6.5e9:
-        raise RuntimeError(f'estimated dense working set {estimate/1e9:.1f} GB; increase --dmax/--fine')
+        raise RuntimeError(
+            f'estimated dense working set {estimate/1e9:.1f} GB; increase '
+            '--dmax/--fine'
+        )
     q.source('hot', f'U702:{VIN}', f'U702:{GND}', part_h=0)
     q.source('ripple', f'U702:{GND}', f'U702:{SW}', part_h=0)
-    for ref, rail in [('C704', VIN), ('C705', VIN), ('C706', VIN), ('C708', VOUT), ('C709', VOUT)]:
-        q.element(ref, f'{ref}:{rail}', f'{ref}:{GND}', C=part_value(parts[ref]), ESR=.003, ESL=.4e-9, part_h=0)
-    q.element('L701', f'L701:{SW}', f'L701:{VOUT}', R=.05, L=part_value(parts['L701']), part_h=0)
+    for ref, rail in [('C704', VIN), ('C705', VIN), ('C706', VIN),
+                      ('C708', VOUT), ('C709', VOUT)]:
+        q.element(ref, f'{ref}:{rail}', f'{ref}:{GND}',
+                  C=part_value(parts[ref]), ESR=.003, ESL=.4e-9, part_h=0)
+    q.element('L701', f'L701:{SW}', f'L701:{VOUT}', R=.05,
+              L=part_value(parts['L701']), part_h=0)
     freqs = np.array([.1, 1., 10.])*1e6
     primary = 1
     xmin, ymin, xmax, ymax = region.bounds
@@ -126,12 +153,14 @@ def compute(args, out):
     heights = np.array([1., 3.])
     volume_heights = np.linspace(.5, 5., 19)
     ztop = q.z_of.max()
-    results, J, planes, volume, convergence, direct_errors, timings, residuals = [], [], [], [], {}, {}, {}, {}
+    results, J, planes, volume, convergence, direct_errors, timings, residuals = (
+        [], [], [], [], {}, {}, {}, {})
     ends = q.br+[(q.term_node[p['a']], q.term_node[p['b']]) for p in q.parts]
     from scipy.sparse import coo_matrix
     a, b = np.array(ends).T; indices = np.arange(len(ends))
     A = coo_matrix((np.r_[np.ones(len(ends)), -np.ones(len(ends))],
-                    (np.r_[a, b], np.r_[indices, indices])), shape=(q.n_nodes, len(ends))).tocsr()
+                    (np.r_[a, b], np.r_[indices, indices])),
+                   shape=(q.n_nodes, len(ends))).tocsr()
     for case in CASES:
         start = time.perf_counter()
         r = q.solve(freqs, amps={n: float(n == case) for n in CASES})
@@ -145,43 +174,67 @@ def compute(args, out):
             currents.append(aa[:, None]*q.rwg.cent+bb)
         J.append(currents)
         start = time.perf_counter()
-        H, plane_info = q.h_grid(r, list(range(len(freqs))), x, y, ztop+heights*1e-3,
-                                 rtol=.02, return_info=True)
-        Hv, vol_info = q.h_grid(r, primary, x, y, ztop+volume_heights*1e-3, rtol=.02, return_info=True)
+        H, plane_info = q.h_grid(r, list(range(len(freqs))), x, y,
+                                 ztop + heights * 1e-3, rtol=.02,
+                                 return_info=True)
+        Hv, vol_info = q.h_grid(r, primary, x, y, ztop + volume_heights * 1e-3,
+                                rtol=.02, return_info=True)
         planes.append(H); volume.append(Hv)
         timings[f'{case}_field_s'] = time.perf_counter()-start
         convergence[case] = dict(planes=plane_info, volume=vol_info)
-        X, Y, Z = np.meshgrid(x[::16], y[::13], ztop+heights*1e-3, indexing='ij')
+        X, Y, Z = np.meshgrid(x[::16], y[::13], ztop + heights * 1e-3,
+                              indexing='ij')
         points = np.stack([X, Y, Z], -1).reshape(-1, 3)
         direct = q.h_field(r, primary, points).reshape(5, 5, 2, 3)
-        direct_errors[case] = float(abs(H[::16, ::13, :, :, primary]-direct).max()/abs(direct).max())
-        print(case, 'direct field error', direct_errors[case], 'KCL', residuals[case], flush=True)
+        direct_errors[case] = float(
+            abs(H[::16, ::13, :, :, primary] - direct).max()
+            / abs(direct).max())
+        print(case, 'direct field error', direct_errors[case], 'KCL',
+              residuals[case], flush=True)
     layer_names = list(q.layer_tris)
     layer_id = np.array([layer_names.index(l) for l in q.layer_of])
     part_a = np.array([q._term_centre(p['a']) for p in q.parts])
     part_b = np.array([q._term_centre(p['b']) for p in q.parts])
-    data = dict(nodes=q.nodes, tris=q.tris, layer_id=layer_id, layer_names=np.array(layer_names),
-                triangle_z=q.z_of, J=np.array(J), I=np.array([r.i for r in results]),
-                part_a=part_a, part_b=part_b, part_index=np.arange(len(q.parts))+len(q.br),
+    data = dict(nodes=q.nodes, tris=q.tris, layer_id=layer_id,
+                layer_names=np.array(layer_names), triangle_z=q.z_of,
+                J=np.array(J), I=np.array([r.i
+                                           for r in results]), part_a=part_a,
+                part_b=part_b, part_index=np.arange(len(q.parts)) + len(q.br),
                 x=x, y=y, heights_mm=heights, volume_heights_mm=volume_heights,
-                H=np.array(planes), H_volume=np.array(volume), freqs=freqs, primary=np.array(primary),
+                H=np.array(planes), H_volume=np.array(volume), freqs=freqs,
+                primary=np.array(primary),
                 copper_z=np.array([r.zc[c] for r, c in zip(results, CASES)]))
     np.savez_compressed(out/'currents_fields.npz', **data)
-    meta = dict(converter='U702 AP3441SHE-7B', inductor='L701', source_json=path.name,
-                source_json_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), crop_model_mm=list(region.bounds),
-                crop_kicad_mm=[xmin, -ymax, xmax, -ymin], nets=sorted(NETS), refs=REFS, cases=CASES,
-                source_drive='Independent 1 A RMS sinusoidal phasors; not a measured operating waveform',
-                frequencies_hz=freqs.tolist(), primary_hz=float(freqs[primary]), triangles=len(q.tris),
-                edges=q.ne, via_segments=q.nv, layers=layer_names, dmax_mm=args.dmax, fine_mm=args.fine,
-                fill=q.fill_info, convergence=convergence, direct_relative_peak_error=direct_errors,
-                kcl_residual_a=residuals, timings=timings,
-                parts=q.parts, assumptions=dict(capacitor_ESR_ohm=.003, capacitor_ESL_h=.4e-9,
-                   inductor_DCR_ohm=.05, inductor_L_h=part_value(parts['L701']), conductor_loss='one-face slab; via DC',
-                   dielectric='magneto-quasistatic, explicit copper returns', package_height_mm=0,
-                   omitted='inductor winding/core leakage, switch-node E, far-field radiation, nonlinear switching',
-                   accuracy='Cropped coarse-mesh illustration; absolute hardware and crop/mesh convergence unvalidated'))
-    meta['peak_B_uT_per_A_rms'] = {c: (MU0*1e6*np.linalg.norm(data['H'][k], axis=3)).max(axis=(0, 1)).tolist()
-                                   for k, c in enumerate(CASES)}
+    meta = dict(
+        converter='U702 AP3441SHE-7B', inductor='L701', source_json=path.name,
+        source_json_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        crop_model_mm=list(region.bounds),
+        crop_kicad_mm=[xmin, -ymax, xmax, -ymin], nets=sorted(NETS), refs=REFS,
+        cases=CASES, source_drive=
+        'Independent 1 A RMS sinusoidal phasors; not a measured operating '
+        'waveform',
+        frequencies_hz=freqs.tolist(), primary_hz=float(freqs[primary]),
+        triangles=len(q.tris), edges=q.ne, via_segments=q.nv,
+        layers=layer_names, dmax_mm=args.dmax, fine_mm=args.fine,
+        fill=q.fill_info, convergence=convergence,
+        direct_relative_peak_error=direct_errors, kcl_residual_a=residuals,
+        timings=timings, parts=q.parts, assumptions=dict(
+            capacitor_ESR_ohm=.003, capacitor_ESL_h=.4e-9, inductor_DCR_ohm=.05,
+            inductor_L_h=part_value(parts['L701']),
+            conductor_loss='one-face slab; via DC',
+            dielectric='magneto-quasistatic, explicit copper returns',
+            package_height_mm=0, omitted=
+            'inductor winding/core leakage, switch-node E, far-field '
+            'radiation, nonlinear switching',
+            accuracy=
+            'Cropped coarse-mesh illustration; absolute hardware and crop/mesh '
+            'convergence unvalidated'
+        ))
+    meta['peak_B_uT_per_A_rms'] = {
+        c: (MU0 * 1e6
+            * np.linalg.norm(data['H'][k], axis=3)).max(axis=(0, 1)).tolist()
+        for k, c in enumerate(CASES)
+    }
     (out/'summary.json').write_text(json.dumps(meta, indent=2)+'\n')
     return board, data, meta
 
@@ -191,37 +244,56 @@ def dumps(out, q, board, data):
     from kicad2ems.emsdev.numerics.biot import current_deposit
     sim = SimpleNamespace(rwg=q.rwg, tri_idx=q.layer_tris)
     ztop = q.z_of.max()*1e3
-    model = SimpleNamespace(outline=shape(board['outline']), cu_z={c['name']: c['z'] for c in board['stack']['copper']},
-                            copper={l: [p for c in cs for p in polygons(shape(c['polygon']))]
-                                    for l, cs in board['copper'].items()}, ports=[],
-                            vias=[(v['x'], v['y'], v['r'], v['z0'], v['z1']) for v in board['vias']], thickness=ztop)
+    model = SimpleNamespace(
+        outline=shape(board['outline']),
+        cu_z={c['name']: c['z']
+              for c in board['stack']['copper']}, copper={
+                  l: [p
+                      for c in cs
+                      for p in polygons(shape(c['polygon']))]
+                  for l, cs in board['copper'].items()
+              }, ports=[], vias=[(v['x'], v['y'], v['r'], v['z0'], v['z1'])
+                                 for v in board['vias']], thickness=ztop)
     x, y, f = data['x']*1e3, data['y']*1e3, data['freqs']
     for ci, case in enumerate(CASES):
-        target = out/'mqs'/f'exc_{case}';target.mkdir(parents=True, exist_ok=True)
+        target = (out / 'mqs' / f'exc_{case}')
+        target.mkdir(parents=True, exist_ok=True)
         for obsolete in ('dump_H_plane_fd.npz', 'H@volume.npz'):
             (target/obsolete).unlink(missing_ok=True)
         records = []
         for hi, h in enumerate(data['heights_mm']):
             z = ztop+h
-            record = Dump(f'H@top+{h:g}mm', 'H', (x[0], y[0], z), (x[-1], y[-1], z), list(f), 2, f'top+{h:g}mm')
-            fields = np.moveaxis(data['H'][ci, :, :, hi], -1, 0)[:, :, :, None, :]
-            write_npz(str(target/f'{record.name}.npz'), dict(x=x, y=y, z=np.array([z])), f, fields)
+            record = Dump(f'H@top+{h:g}mm', 'H', (x[0], y[0], z),
+                          (x[-1], y[-1], z), list(f), 2, f'top+{h:g}mm')
+            fields = (np.moveaxis(data['H'][ci, :, :, hi], -1, 0)[:, :, :,
+                                                                  None, :])
+            write_npz(str(target / f'{record.name}.npz'),
+                      dict(x=x, y=y, z=np.array([z])), f, fields)
             records.append(record)
         z = ztop+data['volume_heights_mm']
-        record = Dump('H@volume', 'H', (x[0], y[0], z[0]), (x[-1], y[-1], z[-1]), [f[int(data['primary'])]], None, 'volume')
-        write_npz(str(target/f'{record.name}.npz'), dict(x=x, y=y, z=z), [f[int(data['primary'])]], data['H_volume'][ci][None])
+        record = Dump('H@volume', 'H', (x[0], y[0], z[0]),
+                      (x[-1], y[-1], z[-1]), [f[int(data['primary'])]], None,
+                      'volume')
+        write_npz(str(target / f'{record.name}.npz'), dict(x=x, y=y, z=z),
+                  [f[int(data['primary'])]], data['H_volume'][ci][None])
         records.append(record)
         for lay, idx in q.layer_tris.items():
             fields = []
             for fi in range(len(f)):
-                jx, jy = current_deposit(sim, data['I'][ci, fi, :q.ne]/q.rwg.l, data['x'], data['y'], lay)
-                fields.append(np.stack([jx, jy, np.zeros_like(jx)], -1)[:, :, None])
+                jx, jy = current_deposit(sim,
+                                         data['I'][ci, fi, :q.ne] / q.rwg.l,
+                                         data['x'], data['y'], lay)
+                fields.append(
+                    np.stack([jx, jy, np.zeros_like(jx)], -1)[:, :, None])
             z = q.z_of[idx[0]]*1e3
-            record = Dump(f'J@{lay}', 'J', (x[0], y[0], z), (x[-1], y[-1], z), list(f), 2, lay)
-            write_npz(str(target/f'{record.name}.npz'), dict(x=x, y=y, z=np.array([z])), f, np.array(fields))
+            record = Dump(f'J@{lay}', 'J', (x[0], y[0], z), (x[-1], y[-1], z),
+                          list(f), 2, lay)
+            write_npz(str(target / f'{record.name}.npz'),
+                      dict(x=x, y=y, z=np.array([z])), f, np.array(fields))
             records.append(record)
         write_info(str(target), records, model)
-        info_path = target/'dump_info.json';info = json.loads(info_path.read_text())
+        info_path = (target / 'dump_info.json')
+        info = json.loads(info_path.read_text())
         for record in info['dumps']:
             record['unit'] = 'A/m RMS per 1 A RMS source harmonic'
         info_path.write_text(json.dumps(info, indent=2))
@@ -237,8 +309,10 @@ def render(out, board, data, meta):
     from PIL import Image
     import io
 
-    plt.rcParams.update({'font.size': 9, 'axes.titlesize': 11, 'axes.labelsize': 9,
-                         'savefig.dpi': 160, 'font.family': 'DejaVu Sans'})
+    plt.rcParams.update({
+        'font.size': 9, 'axes.titlesize': 11, 'axes.labelsize': 9,
+        'savefig.dpi': 160, 'font.family': 'DejaVu Sans'
+    })
     bounds = meta['crop_model_mm'];xmin, ymin, xmax, ymax = bounds
     parts = {p.ref: p for p in parts_of(board)}
     fidx = int(data['primary'])
@@ -253,8 +327,8 @@ def render(out, board, data, meta):
     pdf = PdfPages(out/'converter_report.pdf')
 
     def style(ax, title, dark=False):
-        ax.set(xlim=(xmin, xmax), ylim=(-ymin, -ymax), aspect='equal', title=title,
-               xlabel='KiCad X (mm)', ylabel='KiCad Y (mm)')
+        ax.set(xlim=(xmin, xmax), ylim=(-ymin, -ymax), aspect='equal',
+               title=title, xlabel='KiCad X (mm)', ylabel='KiCad Y (mm)')
         if dark:
             ax.set_facecolor('#12222f')
         ax.tick_params(labelsize=8)
@@ -266,13 +340,18 @@ def render(out, board, data, meta):
             for p in polygons(shape(c['polygon'])):
                 for ring in [p.exterior, *p.interiors]:
                     coords = np.asarray(ring.coords)
-                    ax.plot(coords[:, 0], -coords[:, 1], color=color, alpha=alpha, lw=.45)
+                    ax.plot(coords[:, 0], -coords[:, 1], color=color,
+                            alpha=alpha, lw=.45)
 
     def part_labels(ax, refs, color='white'):
         for ref in refs:
             p = parts[ref]
-            ax.text(p.raw['x'], -p.raw['y'], ref, ha='center', va='center', fontsize=7, color=color,
-                    bbox=dict(boxstyle='round,pad=.16', fc='#132431' if color == 'white' else 'white', ec='none', alpha=.82))
+            ax.text(
+                p.raw['x'], -p.raw['y'], ref, ha='center', va='center',
+                fontsize=7, color=color,
+                bbox=dict(boxstyle='round,pad=.16',
+                          fc=('#132431' if color == 'white' else 'white'),
+                          ec='none', alpha=.82))
 
     def save(fig, name):
         fig.savefig(out/f'{name}.png', bbox_inches='tight')
@@ -284,34 +363,54 @@ def render(out, board, data, meta):
     for c in board['copper']['F.Cu']:
         for p in polygons(shape(c['polygon'])):
             col = COLORS.get(c.get('net'), '#dfdde4')
-            ax.fill(*np.c_[np.asarray(p.exterior.coords)[:, 0], -np.asarray(p.exterior.coords)[:, 1]].T,
-                    fc=col, ec='white', lw=.4, alpha=.92)
+            ax.fill(
+                *np.c_[np.asarray(p.exterior.coords)[:, 0],
+                       -np.asarray(p.exterior.coords)[:, 1]].T, fc=col,
+                ec='white', lw=.4, alpha=.92)
             for ring in p.interiors:
-                xy = np.asarray(ring.coords);ax.fill(xy[:, 0], -xy[:, 1], fc='#f1f4f5', ec='none')
+                xy = np.asarray(ring.coords)
+                ax.fill(xy[:, 0], -xy[:, 1], fc='#f1f4f5', ec='none')
     for v in board['vias']:
         if v.get('net') in NETS:
-            ax.add_patch(plt.Circle((v['x'], -v['y']), v['r'], fc='none', ec='#253b4e', lw=.6))
+            ax.add_patch(
+                plt.Circle((v['x'], -v['y']), v['r'], fc='none', ec='#253b4e',
+                           lw=.6))
     for ref in REFS:
         pp = unary_union([p.geom for p in parts[ref].pads if p.layers])
         x0, y0, x1, y1 = pp.bounds
-        ax.plot([x0, x1, x1, x0, x0], [-y0, -y0, -y1, -y1, -y0], color='#364b5c', ls='--', lw=.7)
+        ax.plot([x0, x1, x1, x0, x0], [-y0, -y0, -y1, -y1, -y0],
+                color='#364b5c', ls='--', lw=.7)
     part_labels(ax, REFS, color='#0e2638')
-    style(ax, 'CM5 Minima • U702 converter crop\nActual top copper, vias and pad extents; six layers retained in the solve')
-    ax.legend(handles=[Patch(fc=COLORS[n], label=l) for n, l in [(VIN, '+5 V input'), (SW, 'Switch node'),
-                                                               (VOUT, '3.3 V output'), (GND, 'Ground')]],
-              loc='lower left', fontsize=8, framealpha=.95)
-    fig.text(.13, .018, 'Input: C704/C705/C706 → U702.  Output: U702 → L701 → C708/C709.\n'
-             'Coordinates follow KiCad (Y increases downward). Dashed boxes are pad extents, not package body outlines.', fontsize=8)
+    style(
+        ax,
+        'CM5 Minima • U702 converter crop\nActual top copper, vias and pad '
+        'extents; six layers retained in the solve'
+    )
+    ax.legend(
+        handles=[
+            Patch(fc=COLORS[n], label=l)
+            for n, l in [(VIN, '+5 V input'), (
+                SW, 'Switch node'), (VOUT, '3.3 V output'), (GND, 'Ground')]
+        ], loc='lower left', fontsize=8, framealpha=.95)
+    fig.text(
+        .13, .018,
+        'Input: C704/C705/C706 → U702.  Output: U702 → L701 → '
+        'C708/C709.\nCoordinates follow KiCad (Y increases downward). Dashed '
+        'boxes are pad extents, not package body outlines.',
+        fontsize=8)
     fig.subplots_adjust(bottom=.13)
     save(fig, 'converter_crop')
 
-    def current_panel(ax, ci, layer, phase=0., arrows=True, contacts=False, background=True):
+    def current_panel(ax, ci, layer, phase=0., arrows=True, contacts=False,
+                      background=True):
         idx = np.flatnonzero(data['layer_id'] == labels.index(layer))
         pc = None
         if background:
-            triang = tri.Triangulation(points[:, 0], -points[:, 1], data['tris'][idx])
-            pc = ax.tripcolor(triang, facecolors=np.maximum(global_mag[ci, idx], jnorm.vmin),
-                              norm=jnorm, cmap=cmap, shading='flat', rasterized=True)
+            triang = tri.Triangulation(points[:, 0], -points[:, 1],
+                                       data['tris'][idx])
+            pc = ax.tripcolor(
+                triang, facecolors=np.maximum(global_mag[ci, idx], jnorm.vmin),
+                norm=jnorm, cmap=cmap, shading='flat', rasterized=True)
             outline(ax, layer, alpha=.35)
         artists = []
         if arrows:
@@ -327,23 +426,30 @@ def render(out, board, data, meta):
             norm = np.linalg.norm(instant, axis=1)
             length = .40*np.sqrt(np.minimum(norm/jmax, 1.5))
             unit = instant/np.maximum(norm[:, None], 1e-30)
-            arrows_artist = ax.quiver(cent[chosen, 0], -cent[chosen, 1], unit[:, 0]*length, -unit[:, 1]*length,
-                                     angles='xy', scale_units='xy', scale=1, color='white', width=.004,
-                                     headwidth=3.5, headlength=4.2, pivot='mid')
+            arrows_artist = ax.quiver(cent[chosen, 0], -cent[chosen, 1],
+                                      unit[:, 0] * length, -unit[:, 1] * length,
+                                      angles='xy', scale_units='xy', scale=1,
+                                      color='white', width=.004, headwidth=3.5,
+                                      headlength=4.2, pivot='mid')
             artists.append(arrows_artist)
         if contacts:
             for pi, part in enumerate(meta['parts']):
-                if part['name'] not in CASES+['L701', 'C704', 'C705', 'C706', 'C708', 'C709']:
+                if (part['name'] not in CASES
+                        + ['L701', 'C704', 'C705', 'C706', 'C708', 'C709']):
                     continue
-                amp = float(np.real(data['I'][ci, fidx, data['part_index'][pi]]*np.exp(1j*phase)))
+                amp = float(
+                    np.real(data['I'][ci, fidx, data['part_index'][pi]]
+                            * np.exp(1j * phase)))
                 if abs(amp) < .015:
                     continue
                 a, b = data['part_a'][pi]*1e3, data['part_b'][pi]*1e3
                 if amp < 0:
                     a, b = b, a
-                arrow = FancyArrowPatch((a[0], -a[1]), (b[0], -b[1]), arrowstyle='-|>', mutation_scale=13,
-                                        lw=1.7 if part['kind'] == 'I' else 1.2,
-                                        color='#ff738e' if part['kind'] == 'I' else '#ffe07b', zorder=5)
+                arrow = FancyArrowPatch(
+                    (a[0], -a[1]), (b[0], -b[1]), arrowstyle='-|>',
+                    mutation_scale=13, lw=(1.7 if part['kind'] == 'I' else 1.2),
+                    color=('#ff738e' if part['kind'] == 'I' else '#ffe07b'),
+                    zorder=5)
                 ax.add_patch(arrow);artists.append(arrow)
         if background:
             style(ax, f'{CASE_TITLES[ci]} • {layer}', dark=True)
@@ -353,18 +459,28 @@ def render(out, board, data, meta):
     for ci in range(2):
         for li, layer in enumerate(['F.Cu', 'In1.Cu']):
             pc, _ = current_panel(axes[ci, li], ci, layer, contacts=li == 0)
-            part_labels(axes[ci, li], ['U702', 'L701', 'C704', 'C705', 'C706', 'C708', 'C709'])
+            part_labels(
+                axes[ci, li],
+                ['U702', 'L701', 'C704', 'C705', 'C706', 'C708', 'C709'])
     cb = fig.colorbar(pc, ax=axes.ravel(), shrink=.8, pad=.02)
-    cb.set_label('Sheet current |J|, A/m RMS per 1 A RMS drive\nColor clipped at the 99.5th percentile')
-    fig.suptitle('Computed copper current loops at 1 MHz • independent 1 A RMS drives\n'
-                 'White: phase-zero directions • pink: source • gold: lumped branches', fontsize=14)
+    cb.set_label(
+        'Sheet current |J|, A/m RMS per 1 A RMS drive\nColor clipped at the '
+        '99.5th percentile'
+    )
+    fig.suptitle(
+        'Computed copper current loops at 1 MHz • independent 1 A RMS drives\n'
+        'White: phase-zero directions • pink: source • gold: lumped branches',
+        fontsize=14)
     save(fig, 'current_loops')
 
     field = MU0*1e6*np.linalg.norm(data['H'][..., fidx], axis=4)
     bmax = float(field.max())
     bnorm = colors.LogNorm(vmin=max(bmax/1000, 1e-4), vmax=bmax)
     fig, axes = plt.subplots(2, 2, figsize=(12.5, 9.2), constrained_layout=True)
-    extent = [data['x'][0]*1e3, data['x'][-1]*1e3, -data['y'][0]*1e3, -data['y'][-1]*1e3]
+    extent = [
+        data['x'][0] * 1e3, data['x'][-1] * 1e3, -data['y'][0] * 1e3,
+        -data['y'][-1] * 1e3
+    ]
     for ci in range(2):
         for hi, h in enumerate(data['heights_mm']):
             ax = axes[ci, hi]
@@ -374,20 +490,29 @@ def render(out, board, data, meta):
             part_labels(ax, ['U702', 'L701', 'C705', 'C708', 'C709'])
             style(ax, f'{CASE_TITLES[ci]} • {h:g} mm above F.Cu')
             peak = float(field[ci, :, :, hi].max())
-            ax.text(.02, .97, f'Peak {peak:.2f} µT/A', transform=ax.transAxes, va='top', color='white',
-                    bbox=dict(fc='#172330', alpha=.8, ec='none', pad=3))
-    fig.colorbar(im, ax=axes.ravel(), shrink=.8, pad=.02, label='Magnetic flux density |B|, µT RMS per A RMS')
-    fig.suptitle('Copper/interconnect magnetic near field at 1 MHz\n'
-                 'Independent 1 A RMS drives • inductor coil/core leakage excluded', fontsize=14)
+            ax.text(.02, .97, f'Peak {peak:.2f} µT/A', transform=ax.transAxes,
+                    va='top', color='white', bbox=dict(fc='#172330', alpha=.8,
+                                                       ec='none', pad=3))
+    fig.colorbar(im, ax=axes.ravel(), shrink=.8, pad=.02,
+                 label='Magnetic flux density |B|, µT RMS per A RMS')
+    fig.suptitle(
+        'Copper/interconnect magnetic near field at 1 MHz\n'
+        'Independent 1 A RMS drives • inductor coil/core leakage excluded',
+        fontsize=14)
     save(fig, 'magnetic_fields')
 
-    fig, axes = plt.subplots(2, len(labels), figsize=(22, 8), constrained_layout=True)
+    fig, axes = plt.subplots(2, len(labels), figsize=(22, 8),
+                             constrained_layout=True)
     for ci in range(2):
         for li, layer in enumerate(labels):
-            pc, _ = current_panel(axes[ci, li], ci, layer, contacts=layer == 'F.Cu')
+            pc, _ = current_panel(axes[ci, li], ci, layer,
+                                  contacts=layer == 'F.Cu')
             axes[ci, li].set_title(f'{CASES[ci]} • {layer}', fontsize=10)
-    fig.colorbar(pc, ax=axes.ravel(), shrink=.75, pad=.01, label='|J|, A/m RMS per A RMS (same scale on every layer)')
-    fig.suptitle('Return-current distribution through all six copper layers • 1 MHz', fontsize=15)
+    fig.colorbar(pc, ax=axes.ravel(), shrink=.75, pad=.01,
+                 label='|J|, A/m RMS per A RMS (same scale on every layer)')
+    fig.suptitle(
+        'Return-current distribution through all six copper layers • 1 MHz',
+        fontsize=15)
     save(fig, 'all_layer_currents')
 
     volume = MU0*1e6*np.linalg.norm(data['H_volume'], axis=-1)
@@ -395,32 +520,47 @@ def render(out, board, data, meta):
     yi = int(np.argmin(abs(-data['y']*1e3-cut_y)))
     fig, axes = plt.subplots(2, 1, figsize=(11, 7), constrained_layout=True)
     for ci, ax in enumerate(axes):
-        im = ax.pcolormesh(data['x']*1e3, data['volume_heights_mm'], volume[ci, :, yi].T,
-                           shading='auto', cmap='magma', norm=colors.LogNorm(vmin=bnorm.vmin, vmax=volume.max()))
-        ax.set(xlabel='KiCad X (mm)', ylabel='Height above F.Cu (mm)',
-               title=f'{CASE_TITLES[ci]} • vertical slice at KiCad Y = {-data["y"][yi]*1e3:.2f} mm')
+        im = ax.pcolormesh(
+            data['x'] * 1e3, data['volume_heights_mm'], volume[ci, :, yi].T,
+            shading='auto', cmap='magma',
+            norm=colors.LogNorm(vmin=bnorm.vmin, vmax=volume.max()))
+        ax.set(
+            xlabel='KiCad X (mm)', ylabel='Height above F.Cu (mm)', title=
+            f'{CASE_TITLES[ci]} • vertical slice at KiCad Y = '
+            f'{-data["y"][yi]*1e3:.2f} mm'
+        )
     fig.colorbar(im, ax=axes, shrink=.85, label='|B|, µT RMS per A RMS')
-    fig.suptitle('Field decay away from the cropped converter • 1 MHz', fontsize=14)
+    fig.suptitle('Field decay away from the cropped converter • 1 MHz',
+                 fontsize=14)
     save(fig, 'field_cross_section')
 
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.6), constrained_layout=True)
     for ci, ax in enumerate(axes):
         for hi, h in enumerate(data['heights_mm']):
-            peak = MU0*1e6*np.linalg.norm(data['H'][ci, :, :, hi], axis=2).max(axis=(0, 1))
+            peak = (MU0 * 1e6 * np.linalg.norm(data['H'][ci, :, :, hi],
+                                               axis=2).max(axis=(0, 1)))
             ax.loglog(data['freqs'], peak, 'o-', label=f'{h:g} mm above F.Cu')
-        ax.set(xlabel='Frequency (Hz)', ylabel='Peak |B| in scan (µT RMS per A RMS)', title=CASE_TITLES[ci])
+        ax.set(xlabel='Frequency (Hz)',
+               ylabel='Peak |B| in scan (µT RMS per A RMS)',
+               title=CASE_TITLES[ci])
         ax.grid(True, which='both', alpha=.25);ax.legend(fontsize=8)
-    fig.suptitle('Sampled magnetic-field transfer • three frequencies, not a switching spectrum', fontsize=13)
+    fig.suptitle(
+        'Sampled magnetic-field transfer • three frequencies, not a switching '
+        'spectrum',
+        fontsize=13)
     save(fig, 'frequency_response')
 
     # Phase animation: colors remain RMS current; vectors and signed Bz move.
     for ci, case in enumerate(CASES):
-        fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.5), constrained_layout=True)
+        fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.5),
+                                 constrained_layout=True)
         _, artists0 = current_panel(axes[0], ci, 'F.Cu', arrows=False)
         _, artists1 = current_panel(axes[1], ci, 'In1.Cu', arrows=False)
         hz = data['H'][ci, :, :, 0, 2, fidx]*MU0*1e6*np.sqrt(2)
         lim = max(float(abs(hz).max()), 1e-10)
-        im = axes[2].imshow(np.real(hz).T, origin='lower', extent=extent, cmap='RdBu_r', vmin=-lim, vmax=lim)
+        im = axes[2].imshow(
+            np.real(hz).T, origin='lower', extent=extent, cmap='RdBu_r',
+            vmin=-lim, vmax=lim)
         style(axes[2], 'Instantaneous Bz • 1 mm above copper')
         outline(axes[2], alpha=.4)
         fig.colorbar(im, ax=axes[2], shrink=.8, label='Bz (µT), instantaneous')
@@ -429,14 +569,22 @@ def render(out, board, data, meta):
         for phase in np.linspace(0, 2*np.pi, 24, endpoint=False):
             for a in artists0+artists1:
                 a.remove()
-            _, artists0 = current_panel(axes[0], ci, 'F.Cu', phase, contacts=True, background=False)
-            _, artists1 = current_panel(axes[1], ci, 'In1.Cu', phase, background=False)
+            _, artists0 = current_panel(axes[0], ci, 'F.Cu', phase,
+                                        contacts=True, background=False)
+            _, artists1 = current_panel(axes[1], ci, 'In1.Cu', phase,
+                                        background=False)
             im.set_data(np.real(hz*np.exp(1j*phase)).T)
-            title.set_text(f'{CASE_TITLES[ci]} • 1 MHz • 1 A RMS • phase {np.degrees(phase):.0f}°')
+            title.set_text(
+                f'{CASE_TITLES[ci]} • 1 MHz • 1 A RMS • phase '
+                f'{np.degrees(phase):.0f}°'
+            )
             fig.canvas.draw()
             rgba = np.asarray(fig.canvas.buffer_rgba())
-            frames.append(Image.fromarray(rgba[:, :, :3].copy()).convert('P', palette=Image.Palette.ADAPTIVE, colors=128))
-        frames[0].save(out/f'{case}_phase.gif', save_all=True, append_images=frames[1:], duration=100, loop=0)
+            frames.append(
+                Image.fromarray(rgba[:, :, :3].copy()).convert(
+                    'P', palette=Image.Palette.ADAPTIVE, colors=128))
+        frames[0].save(out / f'{case}_phase.gif', save_all=True,
+                       append_images=frames[1:], duration=100, loop=0)
         plt.close(fig)
     pdf.close()
 
@@ -460,9 +608,11 @@ def main():
         board, data, meta = compute(args, out)
     from kicad2ems.emsdev.numerics.base import RWG
     rwg = RWG(data['nodes'], data['tris'])
-    proxy = SimpleNamespace(rwg=rwg, ne=rwg.Ne, z_of=data['triangle_z'],
-                            layer_tris={str(lay): np.flatnonzero(data['layer_id'] == k)
-                                        for k, lay in enumerate(data['layer_names'])})
+    proxy = SimpleNamespace(
+        rwg=rwg, ne=rwg.Ne, z_of=data['triangle_z'], layer_tris={
+            str(lay): np.flatnonzero(data['layer_id'] == k)
+            for k, lay in enumerate(data['layer_names'])
+        })
     dumps(out, proxy, board, data)
     from kicad2ems.core.fields.frames import find_dumps
     found = find_dumps(str(out))
@@ -472,12 +622,19 @@ def main():
         assert np.isfinite(field).all() and field.shape[-1] == 3
     with (out/'branch_currents.csv').open('w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['case', 'frequency_Hz', 'part', 'magnitude_A_RMS', 'phase_deg', 'real_A_RMS', 'imag_A_RMS'])
+        writer.writerow([
+            'case', 'frequency_Hz', 'part', 'magnitude_A_RMS', 'phase_deg',
+            'real_A_RMS', 'imag_A_RMS'
+        ])
         for ci, case in enumerate(CASES):
             for fi, freq in enumerate(data['freqs']):
                 for pi, part in enumerate(meta['parts']):
                     v = data['I'][ci, fi, data['part_index'][pi]]
-                    writer.writerow([case, freq, part['name'], abs(v), np.angle(v, deg=True), v.real, v.imag])
+                    writer.writerow([
+                        case, freq, part['name'],
+                        abs(v),
+                        np.angle(v, deg=True), v.real, v.imag
+                    ])
     render(out, board, data, meta)
     report = '''# CM5 U702 converter: current loops and magnetic near field
 
@@ -511,7 +668,8 @@ crop and coarse mesh are illustrative; absolute hardware and crop/mesh
 convergence are not established. FFT convergence does not establish those.
 '''
     (out/'README.md').write_text(report)
-    with zipfile.ZipFile(out/'cm5_converter_results.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+    with zipfile.ZipFile(out / 'cm5_converter_results.zip', 'w',
+                         zipfile.ZIP_DEFLATED) as z:
         for path in out.rglob('*'):
             if path.is_file() and path.suffix != '.zip':
                 z.write(path, path.relative_to(out))

@@ -1,29 +1,36 @@
 """
-Where the GUI's runs go: each in a folder of its own under the output folder, named after the board and the date
-and time it started, and a preview in one folder per board that each preview refreshes. A folder then only ever
-holds one board's results (a shared one had shown another board's dumps after opening a config).
+Where the GUI's runs go: each in a folder of its own under the output folder,
+named after the board and the date and time it started, and a preview in one
+folder per board that each preview refreshes. A folder then only ever holds one
+board's results (a shared one had shown another board's dumps after opening a
+config).
 
-    run_dir(base, board)          # <base>/<board>_20261013_141502
-    preview_dir(base, board)      # <base>/<board>_preview
-    runs(base, board)             # [(folder, label)], the newest first: this board's runs that wrote a summary
+    run_dir(base, board)      # <base>/<board>_20261013_141502
+    preview_dir(base, board)  # <base>/<board>_preview
+    runs(base, board)         # [(folder, label)], the newest first: this
+                              board's runs that wrote a summary
 
-The other analyses' tools (pcbqs's: 'pdn', 'mqs') get a folder per run there too, so two runs of a rail can be
-compared; their results from before that (pdn_<rail>, mqs_<converter> beside the board) are still found.
+The other analyses' tools (pcbqs's: 'pdn', 'mqs') get a folder per run there
+too, so two runs of a rail can be compared; their results from before that
+(pdn_<rail>, mqs_<converter> beside the board) are still found.
 
-    tool_dir(base, board, kind, name)     # <base>/<board>_pdn_<rail>_20261013_141502
-    tool_preview_dir(base, board, kind)   # <base>/<board>_mqs_preview
-    tool_runs(base, board)                # [(folder, kind, label)], the newest first: those that wrote a result
+    tool_dir(base, board, kind, name)    #
+                                         <base>/<board>_pdn_<rail>_20261013_141502
+    tool_preview_dir(base, board, kind)  # <base>/<board>_mqs_preview
+    tool_runs(base, board)               # [(folder, kind, label)], the newest
+                                         first: those that wrote a result
 """
 import datetime, glob, os, re
-# the folders' names are kicad2ems's (its `kicad2ems study` puts its runs there too): kicad2ems.core.runs
-from kicad2ems.core.api.frontend import board_name, run_dir, preview_dir, tool_dir, tool_preview_dir      # noqa: F401
+# the folders' names are kicad2ems's (its `kicad2ems study` puts its runs there
+# too): kicad2ems.core.runs
+from kicad2ems.core.api.frontend import board_name, run_dir, preview_dir, tool_dir, tool_preview_dir  # noqa: F401
 
 STAMP = '%Y%m%d_%H%M%S'
 
 
 def runs(base, board):
-    """This board's run folders under base, the newest first: [(folder, label)], label the start time and the
-    solvers of its summary (<name>_run.json)."""
+    """This board's run folders under base, the newest first: [(folder, label)],
+    label the start time and the solvers of its summary (<name>_run.json)."""
     name = board_name(board)
     pat = re.compile(re.escape(name) + r'_(\d{8}_\d{6})$')
     out = []
@@ -33,24 +40,29 @@ def runs(base, board):
             continue
         summary = os.path.join(d, f"{name}_run.json")
         when = datetime.datetime.strptime(m.group(1), STAMP)
-        if not os.path.exists(summary):                             # stopped or failed before it wrote one: kept,
-            out.append((d, f"{when:%Y-%m-%d %H:%M:%S} ({ending(d)})"))  # with its log (R-E24: these had vanished)
+        # stopped or failed before it wrote one: kept,
+        if not os.path.exists(summary):
+            # with its log (R-E24: these had vanished)
+            out.append((d, f"{when:%Y-%m-%d %H:%M:%S} ({ending(d)})"))
             continue
         try:
             from kicad2ems.core.api.frontend import read_summary
             solvers = read_summary(summary).get('solvers') or []
         except (OSError, ValueError):
             solvers = []
-        out.append((d, f"{when:%Y-%m-%d %H:%M:%S}" + (f" ({', '.join(solvers)})" if solvers else '')))
+        out.append((d, f"{when:%Y-%m-%d %H:%M:%S}" +
+                    (f" ({', '.join(solvers)})" if solvers else '')))
     return sorted(out, key=lambda r: os.path.basename(r[0]), reverse=True)
 
 
-EXIT = 'run_exit.json'          # how the window's run of it ended: {code, crashed, stopped, ended}
+# how the window's run of it ended: {code, crashed, stopped, ended}
+EXIT = 'run_exit.json'
 
 
 def ending(folder):
-    """A run folder with no results: how it ended, as the list says it ('stopped', 'failed, code 1', 'crashed',
-    'no result': the window did not see its end)."""
+    """A run folder with no results: how it ended, as the list says it
+    ('stopped', 'failed, code 1', 'crashed', 'no result': the window did not see
+    its end)."""
     try:
         import json
         e = json.load(open(os.path.join(folder, EXIT), encoding='utf-8'))
@@ -64,10 +76,12 @@ def ending(folder):
 
 
 def run_log(folder):
-    """A run's log as text: the events' log lines, else its process's whole output (stdout.log); '' if neither."""
+    """A run's log as text: the events' log lines, else its process's whole
+    output (stdout.log); '' if neither."""
     import json
     lines = []
-    for f in sorted(glob.glob(os.path.join(glob.escape(folder), '*events*.jsonl'))):
+    for f in sorted(
+            glob.glob(os.path.join(glob.escape(folder), '*events*.jsonl'))):
         try:
             for raw in open(f, encoding='utf-8', errors='replace'):
                 try:
@@ -79,44 +93,58 @@ def run_log(folder):
         except OSError:
             pass
     if not lines and os.path.isfile(os.path.join(folder, 'stdout.log')):
-        return open(os.path.join(folder, 'stdout.log'), encoding='utf-8', errors='replace').read()
+        return open(os.path.join(folder, 'stdout.log'), encoding='utf-8',
+                    errors='replace').read()
     return '\n'.join(lines)
 
 
 def tool_titles():
-    """{kind: title} of the analyses whose runs are listed: those kicad2ems's registry holds, in its order."""
+    """{kind: title} of the analyses whose runs are listed: those kicad2ems's
+    registry holds, in its order."""
     from kicad2ems.core.api.frontend import analyses
     return {name: a.label for name, a in analyses().items()}
 
 
 def tool_kind(folder):
-    """The analysis ('pdn', 'thermal' ...) whose finished result the folder holds, else None (a preview's too)."""
+    """The analysis ('pdn', 'thermal' ...) whose finished result the folder
+    holds, else None (a preview's too)."""
     from kicad2ems.core.api.frontend import analysis_of
     made = analysis_of(folder or '')
     return made[0] if made and not made[1] else None
 
 
 def tool_runs(base, board):
-    """This board's analysis results (Power integrity, Near field, Circuit, Thermal: what the registry holds), the
-    newest first: [(folder, kind, label)], label what was solved (the rail, the converter) and when. Under base:
-    a folder per run; beside the board: the single pdn_<rail> / mqs_<converter> folders those tools wrote to
-    before."""
-    name, titles, found = board_name(board), tool_titles(), []    # found: (when, folder, kind, what it solved)
+    """This board's analysis results (Power integrity, Near field, Circuit,
+    Thermal: what the registry holds), the newest first: [(folder, kind,
+    label)], label what was solved (the rail, the converter) and when. Under
+    base:
+    a folder per run; beside the board: the single pdn_<rail> / mqs_<converter>
+    folders those tools wrote to before."""
+    # found: (when, folder, kind, what it solved)
+    name, titles, found = board_name(board), tool_titles(), []
     if not titles:
         return []
-    pat = re.compile(re.escape(name) + r'_(' + '|'.join(map(re.escape, titles)) + r')_(.+)_(\d{8}_\d{6})$')
+    pat = re.compile(
+        re.escape(name) + r'_(' + '|'.join(map(re.escape, titles))
+        + r')_(.+)_(\d{8}_\d{6})$')
     for d in glob.glob(os.path.join(base, f"{glob.escape(name)}_*")):
         m = pat.match(os.path.basename(d))
         if m and tool_kind(d) == m.group(1):
-            found.append((datetime.datetime.strptime(m.group(3), STAMP), d, m.group(1), m.group(2)))
+            found.append(
+                (datetime.datetime.strptime(m.group(3),
+                                            STAMP), d, m.group(1), m.group(2)))
     beside = os.path.dirname(os.path.abspath(board)) if board else None
     for kind in titles if beside else ():
         for d in glob.glob(os.path.join(glob.escape(beside), f"{kind}_*")):
             if tool_kind(d) == kind:
-                found.append((datetime.datetime.fromtimestamp(os.path.getmtime(d)), d, kind,
-                              os.path.basename(d)[len(kind) + 1:]))
-    out = [(when, d, kind, f"{titles[kind]}: {what}, {when:%Y-%m-%d %H:%M:%S}") for when, d, kind, what in found]
+                found.append(
+                    (datetime.datetime.fromtimestamp(os.path.getmtime(d)), d,
+                     kind, os.path.basename(d)[len(kind) + 1:]))
+    out = [(when, d, kind, f"{titles[kind]}: {what}, {when:%Y-%m-%d %H:%M:%S}")
+           for when, d, kind, what in found]
     tools = list(titles)
-    out.sort(key=lambda r: (tools.index(r[2]), r[3]))                   # runs of one moment: in the tools' order
-    out.sort(key=lambda r: r[0], reverse=True)                          # newest first (a stable sort keeps the rest)
+    # runs of one moment: in the tools' order
+    out.sort(key=lambda r: (tools.index(r[2]), r[3]))
+    # newest first (a stable sort keeps the rest)
+    out.sort(key=lambda r: r[0], reverse=True)
     return [(d, kind, label) for _when, d, kind, label in out]

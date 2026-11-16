@@ -1,6 +1,7 @@
-"""The DC, thermal and capacitance tools as kicad2ems analysis plugins (analyses.py): engines of a study's questions,
-their settings read from each tool's parser, their commands, their reports, whose result a folder is; one of them
-run for real through its command where Elmer is installed."""
+"""The DC, thermal and capacitance tools as kicad2ems analysis plugins
+(analyses.py): engines of a study's questions, their settings read from each
+tool's parser, their commands, their reports, whose result a folder is; one of
+them run for real through its command where Elmer is installed."""
 import json
 import os
 import subprocess
@@ -13,12 +14,14 @@ from kicad2ems.core import analyses as registry_module, study
 from kicad2ems.fem import analyses as A
 from kicad2ems.fem.elmer import run as elmer
 
-ALL = (A.ElmerDC, A.ElmerThermal, A.ElmerCap, A.PalaceCap, A.ElmerMag, A.PalaceLoop, A.PalacePDN)
+ALL = (A.ElmerDC, A.ElmerThermal, A.ElmerCap, A.PalaceCap, A.ElmerMag,
+       A.PalaceLoop, A.PalacePDN)
 
 
 class _EP:
     def __init__(self, cls):
-        self.name, self.value, self.cls = cls.name, f"kicad2ems.fem.analyses:{cls.__name__}", cls
+        self.name, self.value, self.cls = (
+            cls.name, f"kicad2ems.fem.analyses:{cls.__name__}", cls)
 
     def load(self):
         return self.cls
@@ -26,7 +29,8 @@ class _EP:
 
 @pytest.fixture
 def registered(monkeypatch):
-    monkeypatch.setattr(registry_module, '_entry_points', lambda: [_EP(c) for c in ALL])
+    monkeypatch.setattr(registry_module, '_entry_points',
+                        lambda: [_EP(c) for c in ALL])
     monkeypatch.setattr(registry_module, '_registry', None)
     monkeypatch.setattr(registry_module, 'broken', [])
     yield registry_module.registry()
@@ -34,52 +38,93 @@ def registered(monkeypatch):
 
 
 def test_they_register_as_engines_of_questions_others_answer_too(registered):
-    assert list(registered) == ['elmer_dc', 'palace_loop', 'palace_pdn', 'elmer_mag', 'elmer_thermal', 'elmer_cap', 'palace_cap']
+    assert (list(registered) == [
+        'elmer_dc', 'palace_loop', 'palace_pdn', 'elmer_mag', 'elmer_thermal',
+        'elmer_cap', 'palace_cap'
+    ])
     assert not registry_module.broken
     es = study.engines()
-    assert [es[n].provides for n in registered] == [('dc',), ('nearfield',), ('pdn',), ('coils',), ('thermal',),
-                                                    ('capacitance',), ('capacitance',)]
-    assert [es[n].label for n in registered] == ['Elmer', 'Palace', 'Palace', 'Elmer', 'Elmer', 'Elmer', 'Palace']
-    rows = {r['question'].name: r for g in study.study_tree() for r in g['questions']}
-    assert [e.name for e in rows['capacitance']['engines']] == ['elmer_cap', 'palace_cap']
+    assert ([es[n].provides for n in registered] == [('dc', ), ('nearfield', ),
+                                                     ('pdn', ), ('coils', ),
+                                                     ('thermal', ),
+                                                     ('capacitance', ),
+                                                     ('capacitance', )])
+    assert ([es[n].label for n in registered] == [
+        'Elmer', 'Palace', 'Palace', 'Elmer', 'Elmer', 'Elmer', 'Palace'
+    ])
+    rows = {
+        r['question'].name: r
+        for g in study.study_tree()
+        for r in g['questions']
+    }
+    assert ([e.name for e in rows['capacitance']['engines']
+             ] == ['elmer_cap', 'palace_cap'])
     import tomllib
-    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'pyproject.toml'), 'rb') as fh:
-        declared = tomllib.load(fh)['project']['entry-points']['kicad2ems.analyses']
-    assert {k: v for k, v in declared.items() if v.startswith('kicad2ems.fem.')} == \
-        {c.name: f"kicad2ems.fem.analyses:{c.__name__}" for c in ALL}
+    with open(
+            os.path.join(
+                os.path.dirname(
+                    os.path.dirname(os.path.dirname(
+                        os.path.abspath(__file__)))), 'pyproject.toml'),
+            'rb') as fh:
+        declared = (
+            tomllib.load(fh)['project']['entry-points']['kicad2ems.analyses'])
+    assert ({
+        k: v
+        for k, v in declared.items()
+        if v.startswith('kicad2ems.fem.')
+    } == {c.name: f"kicad2ems.fem.analyses:{c.__name__}"
+          for c in ALL})
 
 
 def test_the_settings_are_the_tools_own_options():
     dc = {o['key']: o for o in A.ElmerDC().options()}
-    assert list(dc) == ['net', 'source', 'load', 'h', 'h_fine', 'plating', 'mesh'] and 'out' not in dc
-    assert dc['net']['kind'] == 'list' and dc['net']['required'] and dc['h']['default'] == 0.25 and dc['h']['kind'] == 'float'
-    assert dc['source']['group'] == 'Nets and loads' and dc['plating']['group'] == 'Mesh'
+    assert (list(dc)
+            == ['net', 'source', 'load', 'h', 'h_fine', 'plating', 'mesh']
+            and 'out' not in dc)
+    assert (dc['net']['kind'] == 'list' and dc['net']['required']
+            and dc['h']['default'] == 0.25 and dc['h']['kind'] == 'float')
+    assert (dc['source']['group'] == 'Nets and loads'
+            and dc['plating']['group'] == 'Mesh')
     th = {o['key']: o for o in A.ElmerThermal().options()}
-    assert {'heat', 'heat_from', 'htc', 'ambient', 'k_board', 'region'} <= set(th) and th['htc']['default'] == 10.0
-    assert [o['group'] for o in A.ElmerThermal().options()] == sorted((o['group'] for o in A.ElmerThermal().options()),
-                                                                    key=A.ORDER.index)
+    assert ({'heat', 'heat_from', 'htc', 'ambient', 'k_board', 'region'}
+            <= set(th) and th['htc']['default'] == 10.0)
+    assert ([o['group'] for o in A.ElmerThermal().options()] == sorted(
+        (o['group'] for o in A.ElmerThermal().options()), key=A.ORDER.index))
     cap = {o['key']: o for o in A.PalaceCap().options()}
-    assert cap['thick']['kind'] == 'bool' and cap['far']['choices'] == ['open', 'ground'] and cap['np']['kind'] == 'int'
-    # what names a net or a part says so, for a front end to pick it on the board (kicad2ems API 2.11)
-    assert dc['net']['pick'] == 'nets' and dc['source']['pick'] == 'part' and 'pick' not in dc['load']
+    assert (cap['thick']['kind'] == 'bool'
+            and cap['far']['choices'] == ['open', 'ground']
+            and cap['np']['kind'] == 'int')
+    # what names a net or a part says so, for a front end to pick it on the
+    # board (kicad2ems API 2.11)
+    assert (dc['net']['pick'] == 'nets' and dc['source']['pick'] == 'part'
+            and 'pick' not in dc['load'])
     assert th['copper']['pick'] == 'nets' and cap['net']['pick'] == 'nets'
-    assert not any('pick' in o for o in A.ElmerMag().options())     # no board: nothing to pick on
+    # no board: nothing to pick on
+    assert not any('pick' in o for o in A.ElmerMag().options())
 
 
 def test_the_commands(tmp_path):
     board = str(tmp_path / 'b.kicad_pcb')
     open(board, 'w').close()
     dc = A.ElmerDC()
-    line = dc.command(dict(net='VHB', source='L3', load='Q1=0.67, Q2=0.67', h=0.25, h_fine='0.1'), board, 'out')
-    assert line == [sys.executable, '-m', 'kicad2ems.fem.elmer.dc', board, '--out', 'out', '--net', 'VHB', '--source',
-                    'L3', '--load', 'Q1=0.67', '--load', 'Q2=0.67', '--h-fine', '0.1']
-    assert dc.tag(dict(net=['VHB', 'VIN'])) == 'VHB' and dc.status('fem dc: meshing') == 'meshing' and dc.status('x') is None
+    line = dc.command(
+        dict(net='VHB', source='L3', load='Q1=0.67, Q2=0.67', h=0.25,
+             h_fine='0.1'), board, 'out')
+    assert (line == [
+        sys.executable, '-m', 'kicad2ems.fem.elmer.dc', board, '--out', 'out',
+        '--net', 'VHB', '--source', 'L3', '--load', 'Q1=0.67', '--load',
+        'Q2=0.67', '--h-fine', '0.1'
+    ])
+    assert (dc.tag(dict(net=['VHB', 'VIN'])) == 'VHB'
+            and dc.status('fem dc: meshing') == 'meshing'
+            and dc.status('x') is None)
     with pytest.raises(ValueError, match='set --source, --load'):
         dc.command(dict(net='VHB'), board, 'out')
     with pytest.raises(ValueError, match='choose a board first'):
         dc.command(dict(net='VHB', source='L3', load='Q1=1'), '', 'out')
     cap = A.ElmerCap()
-    assert cap.command(dict(net='A\nB+C', thick=True, order=2), board, 'o')[6:] == ['--net', 'A', '--net', 'B+C', '--thick']
+    assert (cap.command(dict(net='A\nB+C', thick=True, order=2), board,
+                        'o')[6:] == ['--net', 'A', '--net', 'B+C', '--thick'])
     assert cap.tag(dict(net='A, B+C')) == 'A-B+C'
 
 
@@ -92,169 +137,287 @@ def test_the_temperature_takes_a_circuit_run_s_losses(tmp_path):
     run = tmp_path / 'circuit'
     for name, loss in (('light', 0.1), ('heavy', 0.9)):
         (run / name).mkdir(parents=True)
-        (run / name / 'case.json').write_text(json.dumps(dict(parts=dict(Q1=dict(power_W=loss), V1=dict(power_W=-5.0)))))
+        (run / name / 'case.json').write_text(
+            json.dumps(
+                dict(parts=dict(Q1=dict(power_W=loss), V1=dict(power_W=-5.0)))))
     line = th.command({}, board, 'out', results=dict(circuit=str(run)))
     assert line[6:] == ['--heat-from', str(run / 'heavy' / 'case.json')]
-    assert th.command(dict(heat='Q1=0.3'), board, 'out', results=dict(circuit=str(run)))[6:] == ['--heat', 'Q1=0.3']
+    assert (th.command(
+        dict(heat='Q1=0.3'), board, 'out',
+        results=dict(circuit=str(run)))[6:] == ['--heat', 'Q1=0.3'])
 
 
 def test_reports_and_whose_result_a_folder_is(tmp_path, registered):
     d = tmp_path / 'dc'
     d.mkdir()
-    (d / 'dc.json').write_text(json.dumps(dict(
-        format=1, tool='kicad2ems.fem.elmer.dc', nets=['VHB'], source='L3', loads=dict(Q1=0.67, Q2=0.67),
-        V=dict(Q1=-0.0021, Q2=-0.0034), drop_mV=dict(Q1=2.1, Q2=3.4), loss_W=0.0037, tets=12345, vias=4,
-        seconds=dict(mesh=1.5, solve=2.0))))
+    (d / 'dc.json').write_text(
+        json.dumps(
+            dict(format=1, tool='kicad2ems.fem.elmer.dc', nets=['VHB'],
+                 source='L3', loads=dict(Q1=0.67, Q2=0.67),
+                 V=dict(Q1=-0.0021,
+                        Q2=-0.0034), drop_mV=dict(Q1=2.1,
+                                                  Q2=3.4), loss_W=0.0037,
+                 tets=12345, vias=4, seconds=dict(mesh=1.5, solve=2.0))))
     assert registry_module.analysis_of(str(d)) == ('elmer_dc', False)
     rep = A.ElmerDC().report(str(d))
-    assert rep['title'] == 'VHB: DC drop from L3' and 'Worst drop 3.400 mV at Q2' in rep['sections'][0]['text']
-    assert rep['sections'][1]['table']['rows'] == [['Q1', 0.67, 2.1], ['Q2', 0.67, 3.4]] and '12,345' in rep['footer']
-    # the figures another engine of the rail's copper names alike (kicad2ems.core.study.compare)
-    assert [(f['name'], f['value'], f['unit']) for f in A.ElmerDC().figures(str(d))] == \
-        [('drop Q1', 2.1, 'mV'), ('drop Q2', 3.4, 'mV'), ('loss', 3.7, 'mW')]
-    assert A.ElmerDC().figures(str(tmp_path)) == [] and A.ElmerThermal().figures(str(tmp_path)) == []
+    assert (rep['title'] == 'VHB: DC drop from L3'
+            and 'Worst drop 3.400 mV at Q2' in rep['sections'][0]['text'])
+    assert (rep['sections'][1]['table']['rows'] == [['Q1', 0.67, 2.1],
+                                                    ['Q2', 0.67, 3.4]]
+            and '12,345' in rep['footer'])
+    # the figures another engine of the rail's copper names alike
+    # (kicad2ems.core.study.compare)
+    assert ([(f['name'], f['value'], f['unit'])
+             for f in A.ElmerDC().figures(str(d))] == [('drop Q1', 2.1, 'mV'),
+                                                       ('drop Q2', 3.4, 'mV'),
+                                                       ('loss', 3.7, 'mW')])
+    assert (A.ElmerDC().figures(str(tmp_path)) == []
+            and A.ElmerThermal().figures(str(tmp_path)) == [])
     t = tmp_path / 'th'
     t.mkdir()
-    ours = dict(format=1, tool='kicad2ems.fem.elmer.thermal', T_max=71.2, T_min=30.0, ambient=25.0, htc=10.0,
-                hottest=dict(x=1.0, y=2.0, layer='F.Cu'), parts=dict(Q1=70.5, L1=48.0), heat=dict(Q1=0.3, L1=0.1),
-                wedges=999, seconds=dict(mesh=1.0, solve=3.0), balance=dict(in_W=0.4, out_W=0.4, error=0.0))
+    ours = dict(format=1, tool='kicad2ems.fem.elmer.thermal', T_max=71.2,
+                T_min=30.0, ambient=25.0, htc=10.0,
+                hottest=dict(x=1.0, y=2.0, layer='F.Cu'),
+                parts=dict(Q1=70.5, L1=48.0), heat=dict(Q1=0.3,
+                                                        L1=0.1), wedges=999,
+                seconds=dict(mesh=1.0,
+                             solve=3.0), balance=dict(in_W=0.4, out_W=0.4,
+                                                      error=0.0))
     (t / 'thermal.json').write_text(json.dumps(ours))
     assert registry_module.analysis_of(str(t)) == ('elmer_thermal', False)
     rep = A.ElmerThermal().report(str(t))
-    assert rep['title'] == 'Temperature: hottest 71.2 °C' and rep['sections'][1]['table']['rows'][0] == ['Q1', 0.3, 70.5, 45.5]
-    assert [(f['name'], f['value']) for f in A.ElmerThermal().figures(str(t))] == \
-        [('hottest', 71.2), ('Q1', 70.5), ('L1', 48.0), ('coolest', 30.0)]
-    (t / 'thermal.json').write_text(json.dumps(dict(method='grid', hottest_C=70.0)))       # pcbqs's file: not Elmer's
-    assert not A.ElmerThermal().owns(str(t)) and registry_module.analysis_of(str(t)) is None
+    assert (rep['title'] == 'Temperature: hottest 71.2 °C' and
+            rep['sections'][1]['table']['rows'][0] == ['Q1', 0.3, 70.5, 45.5])
+    assert ([(f['name'], f['value'])
+             for f in A.ElmerThermal().figures(str(t))] == [('hottest', 71.2),
+                                                            ('Q1', 70.5),
+                                                            ('L1', 48.0),
+                                                            ('coolest', 30.0)])
+    # pcbqs's file: not Elmer's
+    (t / 'thermal.json').write_text(
+        json.dumps(dict(method='grid', hottest_C=70.0)))
+    assert (not A.ElmerThermal().owns(str(t))
+            and registry_module.analysis_of(str(t)) is None)
     c = tmp_path / 'cap'
     c.mkdir()
-    (c / 'cap.json').write_text(json.dumps(dict(tool='kicad2ems.fem.palace.cap', names=['A', 'B'], thick=False, far='open',
-                                                C=[[2e-12, -1.5e-12], [-1.5e-12, 3e-12]], tets=500, seconds=4.0, mesh_s=1.0)))
+    (c / 'cap.json').write_text(
+        json.dumps(
+            dict(tool='kicad2ems.fem.palace.cap', names=['A', 'B'], thick=False,
+                 far='open', C=[[2e-12, -1.5e-12], [-1.5e-12, 3e-12]], tets=500,
+                 seconds=4.0, mesh_s=1.0)))
     assert registry_module.analysis_of(str(c)) == ('palace_cap', False)
     rep = A.PalaceCap().report(str(c))
-    assert rep['sections'][0]['table']['columns'] == ['', 'A', 'B'] and rep['sections'][0]['table']['rows'][0] == ['A', 2.0, -1.5]
+    assert (rep['sections'][0]['table']['columns'] == ['', 'A', 'B']
+            and rep['sections'][0]['table']['rows'][0] == ['A', 2.0, -1.5])
     assert rep['footer'].startswith('Palace, 500')
-    assert [(f['name'], round(f['value'], 6)) for f in A.PalaceCap().figures(str(c))] == [('C A', 2.0), ('C B', 3.0), ('C A,B', 1.5)]
+    assert ([(f['name'], round(f['value'], 6))
+             for f in A.PalaceCap().figures(str(c))] == [('C A', 2.0),
+                                                         ('C B', 3.0),
+                                                         ('C A,B', 1.5)])
     assert A.ElmerCap().report(str(tmp_path)) is None
 
 
 @pytest.mark.skipif(not elmer.found()[0], reason='Elmer not installed')
 def test_a_drop_run_through_its_command(tmp_path, registered):
-    """A 20 x 5 mm strip of 35 um copper carrying 1 A between two pads, run as a front end runs it: the command of
-    the plugin, its mark, its report; the drop is the strip's own resistance."""
-    pad = lambda ref, x, a: dict(ref=ref, pads=[dict(name='1', net='N', layers=['F.Cu'], geom=mapping(box(x, 0, x + a, 5.0)))])
-    board = dict(stack=dict(copper=[dict(name='B.Cu', z=0.0, t=0.035), dict(name='F.Cu', z=1.6, t=0.035)],
-                            layers=[dict(name='core', z0=0.0, z1=1.6, er=4.5, tand=0.02)]),
-                 copper={'F.Cu': [dict(net='N', polygon=mapping(box(0, 0, 20.0, 5.0)))]}, vias=[],
-                 outline=mapping(box(0, 0, 20.0, 5.0)), prims=dict(footprints=[pad('S', 0.0, 1.0), pad('L', 19.0, 1.0)]))
+    """A 20 x 5 mm strip of 35 um copper carrying 1 A between two pads, run as a
+    front end runs it: the command of the plugin, its mark, its report; the drop
+    is the strip's own resistance."""
+    pad = lambda ref, x, a: dict(
+        ref=ref, pads=[
+            dict(name='1', net='N', layers=['F.Cu'], geom=mapping(
+                box(x, 0, x + a, 5.0)))
+        ])
+    board = dict(
+        stack=dict(
+            copper=[
+                dict(name='B.Cu', z=0.0, t=0.035),
+                dict(name='F.Cu', z=1.6, t=0.035)
+            ], layers=[dict(name='core', z0=0.0, z1=1.6, er=4.5, tand=0.02)]),
+        copper={'F.Cu': [dict(net='N', polygon=mapping(box(0, 0, 20.0, 5.0)))]},
+        vias=[], outline=mapping(box(0, 0, 20.0, 5.0)),
+        prims=dict(footprints=[pad('S', 0.0, 1.0),
+                               pad('L', 19.0, 1.0)]))
     path = tmp_path / 'strip_board.json'
     path.write_text(json.dumps(board))
     out = tmp_path / 'run'
     a = registered['elmer_dc']
-    line = a.command(a.for_questions(dict(net='N', source='S', load='L=1', h=0.5, h_fine=0.25), ('dc',)), str(path), str(out))
+    line = a.command(
+        a.for_questions(
+            dict(net='N', source='S', load='L=1', h=0.5, h_fine=0.25),
+            ('dc', )), str(path), str(out))
     study.mark(str(out), 'elmer_dc', ('dc',))
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(p for p in sys.path if p))
-    done = subprocess.run(line, capture_output=True, text=True, env=env, timeout=600)
+    done = subprocess.run(line, capture_output=True, text=True, env=env,
+                          timeout=600)
     assert done.returncode == 0, done.stderr[-800:]
     assert any(a.status(l) for l in done.stdout.splitlines())
     assert registry_module.analysis_of(str(out)) == ('elmer_dc', False)
     rep = a.report(str(out))
     drop = rep['sections'][1]['table']['rows'][0][2]
-    assert drop == pytest.approx(1.0 * 18.0e-3 / (5.8e7 * 35e-6 * 5e-3) * 1e3, rel=0.03)       # 18 mm between the pads
+    # 18 mm between the pads
+    assert (drop == pytest.approx(1.0 * 18.0e-3 / (5.8e7 * 35e-6 * 5e-3) * 1e3,
+                                  rel=0.03))
 
 
-def test_coils_with_ferrite_are_a_question_of_their_own_with_no_board(tmp_path, registered):
-    """elmer_mag: its coils and plates one a line (an item has spaces or commas of its own), a command without a
-    board, its report, and the coil model it proposes to the circuit."""
+def test_coils_with_ferrite_are_a_question_of_their_own_with_no_board(
+        tmp_path, registered):
+    """elmer_mag: its coils and plates one a line (an item has spaces or commas
+    of its own), a command without a board, its report, and the coil model it
+    proposes to the circuit."""
     a = registered['elmer_mag']
-    rows = {r['question'].name: r for g in study.study_tree() for r in g['questions']}
-    assert [e.name for e in rows['coils']['engines']] == ['elmer_mag'] and rows['coils']['question'].group == 'Power'
+    rows = {
+        r['question'].name: r
+        for g in study.study_tree()
+        for r in g['questions']
+    }
+    assert ([e.name for e in rows['coils']['engines']] == ['elmer_mag']
+            and rows['coils']['question'].group == 'Power')
     opts = {o['key']: o for o in a.options()}
-    assert opts['coil']['kind'] == 'list' and opts['coil']['level'] == 'basic' and opts['coil']['group'] == 'Coils and plates'
+    assert (opts['coil']['kind'] == 'list' and opts['coil']['level'] == 'basic'
+            and opts['coil']['group'] == 'Coils and plates')
     with pytest.raises(ValueError, match='describe a coil'):
         a.command({}, None, str(tmp_path))
-    cmd = a.command(dict(coil='tx: turns=10 inner=10.25 outer=22 z=0 t=1\nrx:turns=14,inner=8,outer=16,z=5,t=0.5',
-                         plate=['z=-3 t=2.5 size=50x50 mur=2000'], margin=6.0, h='0.8'), None, str(tmp_path))
+    cmd = a.command(
+        dict(
+            coil=
+            'tx: turns=10 inner=10.25 outer=22 z=0 '
+            't=1\nrx:turns=14,inner=8,outer=16,z=5,t=0.5',
+            plate=['z=-3 t=2.5 size=50x50 mur=2000'], margin=6.0, h='0.8'),
+        None, str(tmp_path))
     assert cmd[1:5] == ['-m', 'kicad2ems.fem.elmer.mag', '--out', str(tmp_path)]
-    assert cmd.count('--coil') == 2 and cmd[cmd.index('--plate') + 1] == 'z=-3 t=2.5 size=50x50 mur=2000'
-    assert cmd[cmd.index('--h') + 1] == '0.8' and '--margin' not in cmd          # (its default)
+    assert (cmd.count('--coil') == 2 and cmd[cmd.index('--plate') + 1]
+            == 'z=-3 t=2.5 size=50x50 mur=2000')
+    # (its default)
+    assert cmd[cmd.index('--h') + 1] == '0.8' and '--margin' not in cmd
     assert a.tag(dict(coil=['tx: turns=1', 'turns=2'])) == 'tx_coil2'
     from kicad2ems.fem.elmer import mag
     p = mag.parser()
-    assert mag._item(p, 'tx: turns=10 inner=10.25, outer=22 z=0 t=1', '--coil') == dict(
-        name='tx', turns=10.0, inner=10.25, outer=22.0, z=0.0, t=1.0)
-    assert mag._item(p, 'z=-3,t=2.5,size=50x50,mur=2000', '--plate')['size'] == (50.0, 50.0)
+    assert (mag._item(p, 'tx: turns=10 inner=10.25, outer=22 z=0 t=1',
+                      '--coil') == dict(name='tx', turns=10.0, inner=10.25,
+                                        outer=22.0, z=0.0, t=1.0))
+    assert (mag._item(p, 'z=-3,t=2.5,size=50x50,mur=2000',
+                      '--plate')['size'] == (50.0, 50.0))
     assert a.report(str(tmp_path)) is None and a.suggest(str(tmp_path)) == []
-    r = dict(format=1, tool='kicad2ems.fem.elmer.mag', names=['tx', 'rx'], L=[[6.45e-6, 3.75e-6], [3.75e-6, 6.80e-6]],
-             k=[[1.0, 0.567], [0.567, 1.0]], air=[[3.74e-6, 2.2e-6], [2.2e-6, 5.77e-6]],
-             coils=[dict(name='tx', turns=10), dict(name='rx', turns=14)],
-             plates=[dict(z=-3, t=2.5, size=[50, 50], mur=2000)], tets=77000, seconds=dict(mesh=3, solve=71))
+    r = dict(format=1, tool='kicad2ems.fem.elmer.mag', names=['tx', 'rx'],
+             L=[[6.45e-6, 3.75e-6],
+                [3.75e-6, 6.80e-6]], k=[[1.0, 0.567],
+                                        [0.567, 1.0]], air=[[3.74e-6, 2.2e-6],
+                                                            [2.2e-6, 5.77e-6]],
+             coils=[dict(name='tx', turns=10),
+                    dict(name='rx', turns=14)],
+             plates=[dict(z=-3, t=2.5, size=[50, 50], mur=2000)], tets=77000,
+             seconds=dict(mesh=3, solve=71))
     (tmp_path / 'mag.json').write_text(json.dumps(r))
     assert a.owns(str(tmp_path))
     rep = a.report(str(tmp_path))
     assert rep['summary'] == 'tx 6.45 uH, rx 6.8 uH; k 0.567 (tx to rx)'
-    assert [s['title'] for s in rep['sections']] == ['Inductances', 'Coupling', 'Plates']
-    assert rep['sections'][0]['table']['rows'][0][:3] == ['tx', 10, pytest.approx(6.45)]
+    assert ([s['title']
+             for s in rep['sections']] == ['Inductances', 'Coupling', 'Plates'])
+    assert (rep['sections'][0]['table']['rows'][0][:3] == [
+        'tx', 10, pytest.approx(6.45)
+    ])
     figs = {f['name']: f['value'] for f in a.figures(str(tmp_path))}
-    assert figs['L tx'] == pytest.approx(6.45) and figs['k tx,rx'] == pytest.approx(0.567)
+    assert (figs['L tx'] == pytest.approx(6.45)
+            and figs['k tx,rx'] == pytest.approx(0.567))
     s, = a.suggest(str(tmp_path))
-    # each coil for the model's inductor of its name, each pair's coupling by its two inductors: no model assumed
-    assert s['to'] == 'circuit' and s['values'] == dict(set='tx.value=6.45e-06\nrx.value=6.8e-06\ncouplings.tx+rx.k=0.5670')
-    # R-E21: a frequency on the command line, and its run's AC table, figures and summary
-    assert a.command(dict(coil='tx: turns=1 inner=1 outer=2 z=0 t=1', freq='1e5'), None, str(tmp_path))[-2:] == [
-        '--freq', '1e5']
-    r.update(freq=1e5, ac=[dict(name='tx', L=6.1e-6, R_ferrite=3.43e-3, R_metal=2.31e-3, R_winding=0.0, R=5.74e-3,
-                                Q=667.0), dict(name='rx', L=6.7e-6, R_ferrite=1e-3, R_metal=0.0, R_winding=0.0,
-                                               R=1e-3, Q=4210.0)])
+    # each coil for the model's inductor of its name, each pair's coupling by
+    # its two inductors: no model assumed
+    assert (s['to'] == 'circuit' and s['values'] == dict(
+        set='tx.value=6.45e-06\nrx.value=6.8e-06\ncouplings.tx+rx.k=0.5670'))
+    # R-E21: a frequency on the command line, and its run's AC table, figures
+    # and summary
+    assert (a.command(
+        dict(coil='tx: turns=1 inner=1 outer=2 z=0 t=1', freq='1e5'), None,
+        str(tmp_path))[-2:] == ['--freq', '1e5'])
+    r.update(
+        freq=1e5, ac=[
+            dict(name='tx', L=6.1e-6, R_ferrite=3.43e-3, R_metal=2.31e-3,
+                 R_winding=0.0, R=5.74e-3, Q=667.0),
+            dict(name='rx', L=6.7e-6, R_ferrite=1e-3, R_metal=0.0,
+                 R_winding=0.0, R=1e-3, Q=4210.0)
+        ])
     (tmp_path / 'mag.json').write_text(json.dumps(r))
     rep = a.report(str(tmp_path))
-    assert [s['title'] for s in rep['sections']] == ['Inductances', 'Coupling', 'At 100 kHz', 'Plates']
-    assert rep['sections'][2]['table']['rows'][0] == ['tx', pytest.approx(6.1), pytest.approx(3.43),
-                                                      pytest.approx(2.31), 0.0, pytest.approx(5.74), 667.0]
+    assert ([s['title'] for s in rep['sections']
+             ] == ['Inductances', 'Coupling', 'At 100 kHz', 'Plates'])
+    assert (rep['sections'][2]['table']['rows'][0] == [
+        'tx',
+        pytest.approx(6.1),
+        pytest.approx(3.43),
+        pytest.approx(2.31), 0.0,
+        pytest.approx(5.74), 667.0
+    ])
     assert rep['summary'].endswith('at 100 kHz tx Q 667, rx Q 4.21e+03')
     figs = {f['name']: f['value'] for f in a.figures(str(tmp_path))}
-    assert figs['R tx at 100 kHz'] == pytest.approx(5.74) and figs['Q rx at 100 kHz'] == 4210.0
+    assert (figs['R tx at 100 kHz'] == pytest.approx(5.74)
+            and figs['Q rx at 100 kHz'] == 4210.0)
     assert 'PRIMARY' not in s['note'] and 'nF' not in s['note']
-    (tmp_path / 'mag.json').write_text(json.dumps(dict(r, names=['tx'], L=[[6.45e-6]], k=[[1.0]], air=[[3.74e-6]])))
-    (s,) = a.suggest(str(tmp_path))                                 # one coil: its inductance, no pair
-    assert s['values'] == dict(set='tx.value=6.45e-06') and 'k ' not in a.report(str(tmp_path))['summary']
+    (tmp_path / 'mag.json').write_text(
+        json.dumps(
+            dict(r, names=['tx'], L=[[6.45e-6]], k=[[1.0]], air=[[3.74e-6]])))
+    (s,) = a.suggest(str(tmp_path))  # one coil: its inductance, no pair
+    assert (s['values'] == dict(set='tx.value=6.45e-06')
+            and 'k ' not in a.report(str(tmp_path))['summary'])
 
 
 def test_the_palace_loop_takes_pcbqs_near_field_run(tmp_path):
-    """R-E22: palace_loop answers the near field's question with the loop of the board's newest pcbqs near-field run
-    (results['mqs']), its figures named as pcbqs's are so a study lays the two side by side."""
+    """R-E22: palace_loop answers the near field's question with the loop of the
+    board's newest pcbqs near-field run (results['mqs']), its figures named as
+    pcbqs's are so a study lays the two side by side."""
     a = A.PalaceLoop()
     assert 'nearfield' in a.provides and a.engine == 'Palace'
     opts = {o['key']: o for o in a.options()}
     assert not opts['mqs']['required'] and 'hmin' in opts
-    assert a.missing({}, 'b.kicad_pcb', {})[0]['key'] == 'mqs' and a.missing({}, 'b.kicad_pcb', {'mqs': 'run'}) == []
+    assert (a.missing({}, 'b.kicad_pcb', {})[0]['key'] == 'mqs'
+            and a.missing({}, 'b.kicad_pcb', {'mqs': 'run'}) == [])
     with pytest.raises(ValueError, match='near field'):
         a.command({}, 'b.kicad_pcb', str(tmp_path))
-    cmd = a.command(dict(hmin='0.4'), 'b.kicad_pcb', str(tmp_path / 'o'), results={'mqs': '/runs/mqs_U69'})
-    assert cmd[1:7] == ['-m', 'kicad2ems.fem.palace.loop', '--mqs', '/runs/mqs_U69', '--out', str(tmp_path / 'o')]
+    cmd = a.command(dict(hmin='0.4'), 'b.kicad_pcb', str(tmp_path / 'o'),
+                    results={'mqs': '/runs/mqs_U69'})
+    assert (cmd[1:7] == [
+        '-m', 'kicad2ems.fem.palace.loop', '--mqs', '/runs/mqs_U69', '--out',
+        str(tmp_path / 'o')
+    ])
     assert cmd[cmd.index('--hmin') + 1] == '0.4' and '--order' not in cmd
-    r = dict(format=1, tool='kicad2ems.fem.palace.loop', selection=dict(converter='U69', vin='+5V'),
-             frequencies_Hz=[6e5, 1.2e7], L_H=[2.9e-10, 2.8e-10], R_ohm=[0.0, 0.0], straps=['C35', 'C76'],
-             missing_capacitors=[], pcbqs=dict(L_H=[3.74e-10, 2.78e-10]), tets=123000, seconds=dict(mesh=4, solve=300))
+    r = dict(format=1, tool='kicad2ems.fem.palace.loop',
+             selection=dict(converter='U69',
+                            vin='+5V'), frequencies_Hz=[6e5, 1.2e7],
+             L_H=[2.9e-10, 2.8e-10], R_ohm=[0.0, 0.0], straps=['C35', 'C76'],
+             missing_capacitors=[], pcbqs=dict(L_H=[3.74e-10, 2.78e-10]),
+             tets=123000, seconds=dict(mesh=4, solve=300))
     (tmp_path / 'loop.json').write_text(json.dumps(r))
     assert a.owns(str(tmp_path))
     figs = {f['name']: f['value'] for f in a.figures(str(tmp_path))}
-    assert figs == {'loop L at 0.6 MHz': pytest.approx(0.29), 'loop L at 12 MHz': pytest.approx(0.28)}
+    assert (figs == {
+        'loop L at 0.6 MHz': pytest.approx(0.29),
+        'loop L at 12 MHz': pytest.approx(0.28)
+    })
     rep = a.report(str(tmp_path))
     assert rep['summary'] == 'L 0.28 nH at 12 MHz (pcbqs 0.278 nH)'
-    assert rep['sections'][0]['table']['rows'][1][:3] == [12.0, pytest.approx(0.28), pytest.approx(0.278)]
+    assert (rep['sections'][0]['table']['rows'][1][:3] == [
+        12.0, pytest.approx(0.28),
+        pytest.approx(0.278)
+    ])
 
 
 def test_the_loops_port_crosses_the_converters_closest_input_and_ground_pads():
     from types import SimpleNamespace
     from kicad2ems.fem.palace import loop
-    pad = lambda net, x0, x1, y0=0.0, y1=1.0, layers=('F.Cu',): dict(net=net, layers=list(layers), geom=box(x0, y0, x1, y1))
-    raw = SimpleNamespace(footprints=[dict(ref='U1', pads=[pad('VIN', 0, 1), pad('GND', 1.5, 2.5), pad('GND', 0, 1, 3, 4),
-                                                           pad('SW', 5, 6)])])
+    pad = lambda net, x0, x1, y0=0.0, y1=1.0, layers=('F.Cu', ): dict(
+        net=net, layers=list(layers), geom=box(x0, y0, x1, y1))
+    raw = SimpleNamespace(footprints=[
+        dict(
+            ref='U1', pads=[
+                pad('VIN', 0, 1),
+                pad('GND', 1.5, 2.5),
+                pad('GND', 0, 1, 3, 4),
+                pad('SW', 5, 6)
+            ])
+    ])
     spec, gap = loop.port_spec(raw, 'U1', 'VIN', 'GND')
-    assert spec == 'P1@1.25,0.5,F.Cu,0' and gap == pytest.approx(0.5)          # along x, the 0.5 mm gap
+    # along x, the 0.5 mm gap
+    assert spec == 'P1@1.25,0.5,F.Cu,0' and gap == pytest.approx(0.5)
     with pytest.raises(ValueError):
         loop.port_spec(raw, 'U2', 'VIN', 'GND')
     with pytest.raises(ValueError):
         loop.port_spec(raw, 'U1', 'VIN', 'AGND')
-

@@ -1,17 +1,21 @@
 """
-Copper drawn as shapes (rectangles, polygons, zones) turned into line strips for the line model, so
-resonators drawn as polygons (hairpins, interdigital fingers, tapped feeds) become sections.
+Copper drawn as shapes (rectangles, polygons, zones) turned into line strips for
+the line model, so resonators drawn as polygons (hairpins, interdigital fingers,
+tapped feeds) become sections.
 
-Only rectilinear shapes (every edge along x or y) are converted; others (a taper, a teardrop, a
-rounded pad) keep widening the tracks they overlap (tlines.NetCopper). A shape is cut on the grid of
-its vertex coordinates; each cell belongs to the direction in which the copper runs further through
-it (its horizontal or vertical run), and connected cells of one direction form a strip: a centreline
-through the middle of the strip (a jog where its middle moves), its width the narrowest place, its
-own cells for the width along it. Where a strip ends on another, its centreline runs on to the
-other's centreline, so lengths are counted to the middle of corners and tees (the convention of
-centreline lengths); where both end there it is a corner.
+Only rectilinear shapes (every edge along x or y) are converted; others (a
+taper, a teardrop, a rounded pad) keep widening the tracks they overlap
+(tlines.NetCopper). A shape is cut on the grid of its vertex coordinates; each
+cell belongs to the direction in which the copper runs further through it (its
+horizontal or vertical run), and connected cells of one direction form a strip:
+a centreline through the middle of the strip (a jog where its middle moves), its
+width the narrowest place, its own cells for the width along it. Where a strip
+ends on another, its centreline runs on to the other's centreline, so lengths
+are counted to the middle of corners and tees (the convention of centreline
+lengths); where both end there it is a corner.
 
-    tracks = shape_strips(poly, 'F.Cu', 'RF')        # model coordinates; dicts like board.tracks
+    tracks = shape_strips(poly, 'F.Cu', 'RF')  # model coordinates; dicts like
+                                               board.tracks
 """
 import itertools
 import numpy as np
@@ -32,7 +36,8 @@ def rectilinear(poly, tol=1e-4):
 
 
 def _runs(mask, sizes):
-    """Physical length of the contiguous run of True each entry is in (along axis 0 of mask)."""
+    """Physical length of the contiguous run of True each entry is in (along
+    axis 0 of mask)."""
     out = np.zeros(mask.shape)
     for j in range(mask.shape[1]):
         i = 0
@@ -57,7 +62,9 @@ def _components(cls, inside, want):
             i, j = stack.pop()
             comp.append((i, j))
             for a, b in ((i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)):
-                if 0 <= a < cls.shape[0] and 0 <= b < cls.shape[1] and not seen[a, b] and inside[a, b] and cls[a, b] == want:
+                if (0 <= a < cls.shape[0] and 0 <= b < cls.shape[1]
+                        and not seen[a, b] and inside[a, b]
+                        and cls[a, b] == want):
                     seen[a, b] = True
                     stack.append((a, b))
         comps.append(comp)
@@ -66,21 +73,24 @@ def _components(cls, inside, want):
 
 class _Strip:
     def __init__(self, cells, axis, xs, ys):
-        self.cells, self.axis = set(cells), axis          # axis 0: runs along x (horizontal), 1: along y
+        # axis 0: runs along x (horizontal), 1: along y
+        self.cells, self.axis = set(cells), axis
         g = (xs, ys)
         along, across = (0, 1) if axis == 0 else (1, 0)
         by = {}
         for c in cells:
             by.setdefault(c[along], []).append(c[across])
-        self.slices = []                                   # (a0, a1, centre, thickness) along the strip
+        self.slices = []  # (a0, a1, centre, thickness) along the strip
         for k in sorted(by):
             lo, hi = min(by[k]), max(by[k])
             c0, c1 = g[across][lo], g[across][hi + 1]
-            self.slices.append((g[along][k], g[along][k + 1], 0.5 * (c0 + c1), c1 - c0))
+            self.slices.append((g[along][k], g[along][k + 1], 0.5 *
+                                (c0 + c1), c1 - c0))
         self.a0, self.a1 = self.slices[0][0], self.slices[-1][1]
         self.width = min(s[3] for s in self.slices)
-        self.region = unary_union([box(xs[i], ys[j], xs[i + 1], ys[j + 1]) for i, j in cells])
-        self.ext = {0: None, 1: None}                      # centreline end moved to (start, end)
+        self.region = unary_union(
+            [box(xs[i], ys[j], xs[i + 1], ys[j + 1]) for i, j in cells])
+        self.ext = {0: None, 1: None}  # centreline end moved to (start, end)
 
     def centre_at(self, a):
         for a0, a1, c, _ in self.slices:
@@ -93,16 +103,24 @@ class _Strip:
 
     def polyline(self):
         first = self.slices[0]
-        pts = [self.ext[0] if self.ext[0] is not None else self.pt(self.a0, first[2])]
-        if self.ext[0] is not None and abs(self.ext[0][self.axis] - self.a0) > TOL:    # onto the other strip's
-            pts.append(self.pt(self.a0, first[2]))                                     # centreline: then along
+        pts = [
+            self.ext[0] if self.ext[0] is not None else self.pt(
+                self.a0, first[2])
+        ]
+        # onto the other strip's
+        if (self.ext[0] is not None
+                and abs(self.ext[0][self.axis] - self.a0) > TOL):
+            # centreline: then along
+            pts.append(self.pt(self.a0, first[2]))
         prev_c = first[2]
         for a0, a1, c, _ in self.slices[1:]:
-            if abs(c - prev_c) > TOL:                      # the middle moves: a jog
+            if abs(c - prev_c) > TOL:  # the middle moves: a jog
                 pts += [self.pt(a0, prev_c), self.pt(a0, c)]
             prev_c = c
-        end = self.ext[1] if self.ext[1] is not None else self.pt(self.a1, prev_c)
-        if self.ext[1] is not None and abs(self.ext[1][self.axis] - self.a1) > TOL:
+        end = (self.ext[1] if self.ext[1] is not None else self.pt(
+            self.a1, prev_c))
+        if (self.ext[1] is not None
+                and abs(self.ext[1][self.axis] - self.a1) > TOL):
             pts.append(self.pt(self.a1, prev_c))
         pts.append(end)
         out = [pts[0]]
@@ -112,7 +130,8 @@ class _Strip:
         # drop points in the middle of straight runs
         keep = [out[0]]
         for i in range(1, len(out) - 1):
-            a, b, c = np.asarray(keep[-1]), np.asarray(out[i]), np.asarray(out[i + 1])
+            a, b, c = (np.asarray(keep[-1]), np.asarray(out[i]),
+                       np.asarray(out[i + 1]))
             if abs((b - a)[0] * (c - b)[1] - (b - a)[1] * (c - b)[0]) > 1e-9:
                 keep.append(out[i])
         keep.append(out[-1])
@@ -120,16 +139,23 @@ class _Strip:
 
 
 def shape_strips(poly, layer, net, aspect=1.0):
-    """Strips (track dicts with 'region' and 'strip': True) of one rectilinear polygon (model mm)."""
+    """Strips (track dicts with 'region' and 'strip': True) of one rectilinear
+    polygon (model mm)."""
     if poly.is_empty or not rectilinear(poly):
         return []
-    c = np.round(np.concatenate([np.asarray(r.coords) for r in [poly.exterior, *poly.interiors]]), 6)
+    c = np.round(
+        np.concatenate(
+            [np.asarray(r.coords) for r in [poly.exterior, *poly.interiors]]),
+        6)
     xs, ys = np.unique(c[:, 0]), np.unique(c[:, 1])
     nx, ny = len(xs) - 1, len(ys) - 1
     if nx < 1 or ny < 1:
         return []
-    inside = shapely.contains_xy(poly, *np.meshgrid(0.5 * (xs[:-1] + xs[1:]), 0.5 * (ys[:-1] + ys[1:]), indexing='ij'))
-    lh = _runs(inside, np.diff(xs))                        # horizontal run through each cell
+    inside = shapely.contains_xy(
+        poly,
+        *np.meshgrid(0.5 * (xs[:-1] + xs[1:]), 0.5 * (ys[:-1] + ys[1:]),
+                     indexing='ij'))
+    lh = _runs(inside, np.diff(xs))  # horizontal run through each cell
     lv = _runs(inside.T, np.diff(ys)).T
     cls = np.where(lh * aspect >= lv, 0, 1)
     strips = [_Strip(c, 0, xs, ys) for c in _components(cls, inside, 0)] + \
@@ -145,16 +171,19 @@ def shape_strips(poly, layer, net, aspect=1.0):
                     continue
                 done.add((min(k, o), max(k, o)))
                 _join(s, strips[o], (i, j), (i + di, j + dj), xs, ys)
-    return [dict(layer=layer, net=net, width=float(s.width), pts=s.polyline(), region=s.region, strip=True)
-            for s in strips]
+    return [
+        dict(layer=layer, net=net, width=float(s.width), pts=s.polyline(),
+             region=s.region, strip=True) for s in strips
+    ]
 
 
 def fan_strip(poly, layer, net, tracks, reach=2.0):
-    """A shape that is not rectilinear but sits across a track as a stub (a radial stub, a fan): one strip from
-    the track's centreline straight out through the shape, its region the shape, so the line model slices it
-    into sections that widen with the copper. Only when the shape reaches `reach` track widths beyond the
-    track's centreline, mostly on one side: tapers and teardrops along a track keep widening it.
-    Returns [strip dict] or []."""
+    """A shape that is not rectilinear but sits across a track as a stub (a
+    radial stub, a fan): one strip from the track's centreline straight out
+    through the shape, its region the shape, so the line model slices it into
+    sections that widen with the copper. Only when the shape reaches `reach`
+    track widths beyond the track's centreline, mostly on one side: tapers and
+    teardrops along a track keep widening it. Returns [strip dict] or []."""
     from shapely.geometry import LineString
     from .elements import direction_at
     for t in tracks:
@@ -162,7 +191,8 @@ def fan_strip(poly, layer, net, tracks, reach=2.0):
             continue
         line = LineString(t['pts'])
         w = float(t['width'])
-        over = line.buffer(w / 2).intersection(poly)              # where the shape overlaps the track's copper
+        # where the shape overlaps the track's copper
+        over = line.buffer(w / 2).intersection(poly)
         if over.is_empty or over.area < 1e-6:
             continue
         s0 = line.project(over.centroid)
@@ -176,30 +206,41 @@ def fan_strip(poly, layer, net, tracks, reach=2.0):
         if side.max() < reach * w or -side.min() > 0.25 * side.max():
             continue
         tip = mid + n * side.max()
-        edge = LineString([mid + n * (w / 2) - d * 1e3, mid + n * (w / 2) + d * 1e3]).intersection(poly)
+        edge = LineString(
+            [mid + n * (w / 2) - d * 1e3, mid + n *
+             (w / 2) + d * 1e3]).intersection(poly)
         w0 = max(edge.length if not edge.is_empty else 0.0, 0.1 * w)
-        return [dict(layer=layer, net=net, width=float(w0), pts=np.array([mid, tip]), region=poly, strip=True,
-                     radial=radial_sector(poly, mid, n, w))]
+        return [
+            dict(layer=layer, net=net, width=float(w0), pts=np.array([mid,
+                                                                      tip]),
+                 region=poly, strip=True, radial=radial_sector(poly, mid, n, w))
+        ]
     return []
 
 
 def radial_sector(poly, mid, n, w, tol=0.05):
-    """A fan across a track (centreline point mid, normal n towards the fan, width w) as a circular sector, the
-    radial stub of qucsator's MRSTUB: dict(ri, ro (mm, from the sector's apex: where it leaves the track's edge,
-    its arc), alpha (deg), wf (its width at the track's edge)), or None when the shape is not one. The apex is a
-    vertex inside the track's copper, or for a fan cut off at the track's edge, where its two sides meet."""
+    """A fan across a track (centreline point mid, normal n towards the fan,
+    width w) as a circular sector, the radial stub of qucsator's MRSTUB:
+    dict(ri, ro (mm, from the sector's apex: where it leaves the track's edge,
+    its arc), alpha (deg), wf (its width at the track's edge)), or None when the
+    shape is not one. The apex is a vertex inside the track's copper, or for a
+    fan cut off at the track's edge, where its two sides meet."""
     pts = np.asarray(poly.exterior.coords)[:-1]
     m = len(pts)
     if m < 5:
         return None
     off = (pts - mid) @ n
     near = np.where(np.abs(off - w / 2) < 1e-3 + 1e-3 * w)[0]
-    inside = [i for i in range(m) if off[i] < w / 2 - 1e-6 and abs((pts[i] - mid) @ np.array([n[1], -n[0]])) < w]
-    if len(inside) == 1:                                       # the apex on the track
+    inside = [
+        i for i in range(m) if off[i] < w / 2
+        - 1e-6 and abs((pts[i] - mid) @ np.array([n[1], -n[0]])) < w
+    ]
+    if len(inside) == 1:  # the apex on the track
         i = inside[0]
         apex, s0, s1 = pts[i], pts[(i - 1) % m], pts[(i + 1) % m]
         arc = [k for k in range(m) if k != i]
-    elif len(near) == 2 and (near[1] - near[0]) % m in (1, m - 1):     # cut off at the edge: the sides' meeting
+    # cut off at the edge: the sides' meeting
+    elif len(near) == 2 and (near[1] - near[0]) % m in (1, m - 1):
         b, c = near if (near[1] - near[0]) % m == 1 else near[::-1]
         pb, pc = pts[(b - 1) % m], pts[(c + 1) % m]
         d1, d2 = pts[b] - pb, pts[c] - pc
@@ -214,30 +255,41 @@ def radial_sector(poly, mid, n, w, tol=0.05):
     r = np.linalg.norm(pts[arc] - apex, axis=1)
     ro = float(r.max())
     far = pts[arc][r > 0.5 * ro]
-    if len(far) < 3 or np.ptp(np.linalg.norm(far - apex, axis=1)) > tol * ro:      # not an arc about the apex
+    # not an arc about the apex
+    if len(far) < 3 or np.ptp(np.linalg.norm(far - apex, axis=1)) > tol * ro:
         return None
-    u0, u1 = (s0 - apex) / np.linalg.norm(s0 - apex), (s1 - apex) / np.linalg.norm(s1 - apex)
+    u0, u1 = (s0 - apex) / np.linalg.norm(s0 - apex), (
+        s1 - apex) / np.linalg.norm(s1 - apex)
     alpha = float(np.degrees(np.arccos(np.clip(u0 @ u1, -1, 1))))
     bis = (u0 + u1) / (np.linalg.norm(u0 + u1) or 1.0)
-    h = (w / 2 - (apex - mid) @ n) / max(bis @ n, 1e-6)          # apex to the track's edge, along the fan's axis
+    # apex to the track's edge, along the fan's axis
+    h = (w / 2 - (apex - mid) @ n) / max(bis @ n, 1e-6)
     ri = max(float(h), 1e-3)
     if not 5 < alpha < 175 or ri >= 0.8 * ro:
         return None
-    return dict(ri=ri, ro=ro, alpha=alpha, wf=float(2 * ri * np.tan(np.radians(alpha / 2))))
+    return dict(ri=ri, ro=ro, alpha=alpha,
+                wf=float(2 * ri * np.tan(np.radians(alpha / 2))))
 
 
 def _join(s, o, cs, co, xs, ys):
-    """Connect strips s and o, whose cells cs and co touch: a strip ending at the other (within half the
-    other's thickness of the meeting point) runs on to the meeting point; both ending there is a
-    corner, one is a T-junction (the other gets a node from tlines' junction split)."""
+    """Connect strips s and o, whose cells cs and co touch: a strip ending at
+    the other (within half the other's thickness of the meeting point) runs on
+    to the meeting point; both ending there is a corner, one is a T-junction
+    (the other gets a node from tlines' junction split)."""
     if s.axis == o.axis:
-        return                                             # same direction never touch (one component)
+        return  # same direction never touch (one component)
     h, v = (s, o) if s.axis == 0 else (o, s)
     ch, cv = (cs, co) if s.axis == 0 else (co, cs)
-    xm = v.centre_at(0.5 * (ys[cv[1]] + ys[cv[1] + 1]))   # the vertical strip's middle at that row
-    ym = h.centre_at(0.5 * (xs[ch[0]] + xs[ch[0] + 1]))   # the horizontal strip's middle at that column
-    th = next((t for a0, a1, c, t in h.slices if a0 - TOL <= xs[ch[0]] + TOL and xs[ch[0] + 1] <= a1 + TOL), h.width)
-    tv = next((t for a0, a1, c, t in v.slices if a0 - TOL <= ys[cv[1]] + TOL and ys[cv[1] + 1] <= a1 + TOL), v.width)
+    # the vertical strip's middle at that row
+    xm = v.centre_at(0.5 * (ys[cv[1]] + ys[cv[1] + 1]))
+    # the horizontal strip's middle at that column
+    ym = h.centre_at(0.5 * (xs[ch[0]] + xs[ch[0] + 1]))
+    th = next((t for a0, a1, c, t in h.slices
+               if a0 - TOL <= xs[ch[0]] + TOL and xs[ch[0] + 1] <= a1 + TOL),
+              h.width)
+    tv = next((t for a0, a1, c, t in v.slices
+               if a0 - TOL <= ys[cv[1]] + TOL and ys[cv[1] + 1] <= a1 + TOL),
+              v.width)
     for strip, a, t_other in ((h, xm, tv), (v, ym, th)):
         d0, d1 = abs(a - strip.a0), abs(a - strip.a1)
         if min(d0, d1) <= t_other / 2 + 1e-4:

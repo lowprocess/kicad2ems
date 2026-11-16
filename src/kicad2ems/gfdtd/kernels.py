@@ -1,20 +1,27 @@
 """
-The GPU kernels (CUDA C; CuPy compiles the same source for ROCm through hiprtc). The update maths is in
-core/fdtd_core.h, shared with the CPU core; here are the kernels around it: one thread per node in a grid-stride
-loop for the H and E updates (on the compressed operator: codes, tables and line arrays, no coefficient arrays),
-the energy as a block reduction, and the sparse kernels on flat indices into the (3, Nx, Ny, Nz) arrays.
+The GPU kernels (CUDA C; CuPy compiles the same source for ROCm through hiprtc).
+The update maths is in core/fdtd_core.h, shared with the CPU core; here are the
+kernels around it: one thread per node in a grid-stride loop for the H and E
+updates (on the compressed operator: codes, tables and line arrays, no
+coefficient arrays), the energy as a block reduction, and the sparse kernels on
+flat indices into the (3, Nx, Ny, Nz) arrays.
 
-    source('unsigned short')        # the module's source, for uint16 or uint32 (unsigned int) codes
+    source('unsigned short')  # the module's source, for uint16 or uint32
+                              (unsigned int) codes
 """
 import os
 
-NAMES = ('update_h', 'update_e', 'energy', 'mur_pre', 'mur_post', 'excite', 'assign', 'par_l', 'series_rlc', 'probe',
-         'pml_e', 'pml_h', 'step_h', 'step_e', 'step_post', 'dump')
-SLAB = 6                # the PML kernels' slab table: start, m, axis, s0, cnt, offset of b / c, per slab
+NAMES = ('update_h', 'update_e', 'energy', 'mur_pre', 'mur_post', 'excite',
+         'assign', 'par_l', 'series_rlc', 'probe', 'pml_e', 'pml_h', 'step_h',
+         'step_e', 'step_post', 'dump')
+# the PML kernels' slab table: start, m, axis, s0, cnt, offset of b / c, per
+# slab
+SLAB = 6
 
-HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'core', 'fdtd_core.h')
+HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'core',
+                      'fdtd_core.h')
 
-KERNELS = r'''
+KERNELS = (r'''
 #define GF_LOOP(m) for (idx_t t = blockIdx.x * (idx_t)blockDim.x + threadIdx.x; t < (m); t += (idx_t)gridDim.x * blockDim.x)
 // the node of t, in 32-bit arithmetic (the backend keeps 3 nx ny nz below 2^31): 64-bit division is emulated
 #define GF_IJK const unsigned u_ = (unsigned)t, r_ = u_ / (unsigned)D.nz; const int k = (int)(u_ - r_ * (unsigned)D.nz); \
@@ -307,12 +314,13 @@ extern "C" __global__ void dump(const float* V, const float* I, const float* G, 
         }
     }
 }
-'''
+''')
 
 
 def source(code_t='unsigned short'):
     with open(HEADER, encoding='utf-8') as fh:
         head = fh.read()
-    return (f"#define GF_DEV __device__ inline\n#define GF_GPU 1\n#define GF_ADD(p, v) atomicAdd((p), (v))\n"
-            f"#define CODE_T {code_t}\n" +
-            head + KERNELS)
+    return (
+        "#define GF_DEV __device__ inline\n#define GF_GPU 1\n#define "
+        "GF_ADD(p, v) atomicAdd((p), (v))\n#define CODE_T "
+        f"{code_t}\n" + head + KERNELS)

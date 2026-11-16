@@ -1,110 +1,159 @@
 """
-The solvers, as plugins: each one a Solver subclass registered under its name. Built in: the line model solved as
-a circuit by qucs (qucsator) or scikit (scikit-rf). The full-wave solvers install as packages that declare an
-entry point in the group 'kicad2ems.solvers' (`mysolver = "mypackage.plugin:MySolver"`): openems and gfdtd (3D
-FDTD, the one FDTD model on openEMS's engine or gfdtd's: kicad2ems-fdtd, the openems and gfdtd extras), mom25d
-and mixed (2.5D Method of Moments: mom25d, the mom extra). Each then appears in --solvers, --check,
-the config tables and the GUI with no change here.
+The solvers, as plugins: each one a Solver subclass registered under its name.
+Built in: the line model solved as a circuit by qucs (qucsator) or scikit
+(scikit-rf). The full-wave solvers install as packages that declare an entry
+point in the group 'kicad2ems.solvers' (`mysolver =
+"mypackage.plugin:MySolver"`): openems and gfdtd (3D FDTD, the one FDTD model on
+openEMS's engine or gfdtd's: kicad2ems-fdtd, the openems and gfdtd extras),
+mom25d and mixed (2.5D Method of Moments: mom25d, the mom extra). Each then
+appears in --solvers, --check, the config tables and the GUI with no change
+here.
 
     from kicad2ems.core.solvers import registry, get
-    get('mom').name                         # 'mom25d' (aliases: fdtd, mom, qucsator, skrf)
+    get('mom').name  # 'mom25d' (aliases: fdtd, mom, qucsator, skrf)
     [sv.label for sv in registry().values()]
 
 A solver declares (class attributes)
-  api                     the kicad2ems.core.api version it is written against, (major, minor): (2, 1); a plugin
-                          imports what it needs from kicad2ems.core.api.solver, the rest of kicad2ems is private
-  name, aliases, label    'mom25d', ('mom',), 'mom25d (MoM)'; name is also its table [solver.mom25d]
-  consumes                'board' (the geometry) or 'network' (the line model, tlines.LineModel)
-  previewed               True: --preview prepares it without solving (openEMS: the mesh preview)
-  rank                    rough cost: 0 circuit, 1 planar, 2 3D; the cheap solvers run first
-  order                   its place in the registry (lists, the GUI, the order of results): lowest first, then by name
-  capabilities            {feature: 'yes' | 'no' | 'ignored' | 'approximated: how'}, features in FEATURES
-  options                 [Option]: its settings. The command-line options, the config keys (top level, or
-                          under [solver.<name>] by their short names), the GUI fields and the Settings fields
-                          are all made from these lists (and config.CORE for the settings of every run)
+  api                   the kicad2ems.core.api version it is written against,
+                        (major, minor): (2, 1); a plugin imports what it needs
+                        from kicad2ems.core.api.solver, the rest of kicad2ems is
+                        private
+  name, aliases, label  'mom25d', ('mom',), 'mom25d (MoM)'; name is also its
+                        table [solver.mom25d]
+  consumes              'board' (the geometry) or 'network' (the line model,
+                        tlines.LineModel)
+  previewed             True: --preview prepares it without solving (openEMS:
+                        the mesh preview)
+  rank                  rough cost: 0 circuit, 1 planar, 2 3D; the cheap solvers
+                        run first
+  order                 its place in the registry (lists, the GUI, the order of
+                        results): lowest first, then by name
+  capabilities          {feature: 'yes' | 'no' | 'ignored' | 'approximated:
+                        how'}, features in FEATURES
+  options               [Option]: its settings. The command-line options, the
+                        config keys (top level, or under [solver.<name>] by
+                        their short names), the GUI fields and the Settings
+                        fields are all made from these lists (and config.CORE
+                        for the settings of every run)
 and implements
-  check(s=None)           (usable, one line: version and origin, or what is missing and how to get it); s: the
-                          settings of the run, where one says where the solver is (--qucsator)
-  validate(s)             a message when its settings cannot be used together (checked with the settings)
-  assess(run)             why it cannot model this board in this run ([]: it can); after the board and the line
-                          model are built, before any solver prepares
-  prepare(run)            its own form of the board (openEMS: boundaries, mesh), handed to solve()
-  solve(run, prep)        Result: S-parameters over the board's ports, as reported
-  outputs(run, prep, res) its own extra outputs (plots, files, summary entries); optional
-  reusable(run)           whether an earlier run's result may stand for its solve (no outputs() then): by default
-                          only where it has no outputs() (API 2.12, kicad2ems.core.reuse)
-  deviations(run, prep)   [Deviation]: what it models differently from the board, by its own rules (vias moved
-                          onto a mesh, parts split, walls as via rows), for the report and the parity checks
-  readback(run, prep)     what its native model holds, read back (parity.py: vias, copper area per layer,
-                          parts, ports), or None
-  estimate(run)           dict(seconds, gb, what): its rough cost on this board (--solvers auto), or None
-  resources()             dict(gpus=[dict(device, backend, api, free, total): GB], why): the GPUs it would run on
-                          here and why there are none (sysinfo, the GUI's System panel), or None: the CPU only
+  check(s=None)           (usable, one line: version and origin, or what is
+                          missing and how to get it); s: the settings of the
+                          run, where one says where the solver is (--qucsator)
+  validate(s)             a message when its settings cannot be used together
+                          (checked with the settings)
+  assess(run)             why it cannot model this board in this run ([]: it
+                          can); after the board and the line model are built,
+                          before any solver prepares
+  prepare(run)            its own form of the board (openEMS: boundaries, mesh),
+                          handed to solve()
+  solve(run, prep)        Result: S-parameters over the board's ports, as
+                          reported
+  outputs(run, prep, res) its own extra outputs (plots, files, summary entries);
+                          optional
+  reusable(run)           whether an earlier run's result may stand for its
+                          solve (no outputs() then): by default only where it
+                          has no outputs() (API 2.12, kicad2ems.core.reuse)
+  deviations(run, prep)   [Deviation]: what it models differently from the
+                          board, by its own rules (vias moved onto a mesh, parts
+                          split, walls as via rows), for the report and the
+                          parity checks
+  readback(run, prep)     what its native model holds, read back (parity.py:
+                          vias, copper area per layer, parts, ports), or None
+  estimate(run)           dict(seconds, gb, what): its rough cost on this board
+                          (--solvers auto), or None
+  resources()             dict(gpus=[dict(device, backend, api, free, total):
+                          GB], why): the GPUs it would run on here and why there
+                          are none (sysinfo, the GUI's System panel), or None:
+                          the CPU only
 
-`run` is the pipeline's Job. A solver may use run.m (the board), run.s (Settings: its options are fields),
-run.freq (Hz), run.lm (the line model), run.name, run.log(), run.status(run_name, dict) (progress events),
-run.path(suffix), run.wrote(label, path), run.figure(fig, suffix, key, label) and run.summary.
+`run` is the pipeline's Job. A solver may use run.m (the board), run.s
+(Settings: its options are fields), run.freq (Hz), run.lm (the line model),
+run.name, run.log(), run.status(run_name, dict) (progress events),
+run.path(suffix), run.wrote(label, path), run.figure(fig, suffix, key, label)
+and run.summary.
 """
 import importlib
 from dataclasses import dataclass, field
 
 import numpy as np
 
-from ..options import Option                    # noqa: F401  (plugins import it from here)
+# (plugins import it from here)
+from ..options import Option  # noqa: F401
 
-GROUP = 'kicad2ems.solvers'                 # the entry-point group of solvers installed as packages
-BUILTIN = ('kicad2ems.core.solvers.lines.plugin:Qucs', 'kicad2ems.core.solvers.lines.plugin:Scikit')
-# the solver packages kicad2ems has extras for (pyproject): {extra: the names and aliases of its solvers, its first
-# solver first}. A name of one not installed says how to get it. MOM: the solver --mom adds as a reference.
-EXTRAS = {'openems': ('openems', 'fdtd'), 'mom': ('mom25d', 'mom', 'mixed', 'segmented'), 'gfdtd': ('gfdtd', 'gpu-fdtd'),
-          'qs': ('pcbqs', 'qs', 'quasistatic'), 'fem': ('palace',)}
+# the entry-point group of solvers installed as packages
+GROUP = 'kicad2ems.solvers'
+BUILTIN = ('kicad2ems.core.solvers.lines.plugin:Qucs',
+           'kicad2ems.core.solvers.lines.plugin:Scikit')
+# the solver packages kicad2ems has extras for (pyproject): {extra: the names
+# and aliases of its solvers, its first solver first}. A name of one not
+# installed says how to get it. MOM: the solver --mom adds as a reference.
+EXTRAS = {
+    'openems': ('openems', 'fdtd'),
+    'mom': ('mom25d', 'mom', 'mixed', 'segmented'),
+    'gfdtd': ('gfdtd', 'gpu-fdtd'), 'qs': ('pcbqs', 'qs', 'quasistatic'),
+    'fem': ('palace', )
+}
 MOM = 'mom25d'
-LINES = 'lines'                             # the line model: qucs when qucsator is installed, else scikit
-AUTO = 'auto'                               # the cheapest full-wave solver that can model the board, + the line model
-# what a solver models, the rows of the capabilities table (--check, docs/architecture.md)
-FEATURES = dict(ports='ports on a trace over a plane', gap_ports='gap ports (dipoles, slots)',
-                diff_pairs='differential pairs', parts='lumped R / L / C parts', vias='vias',
-                outline='board outline and edges',
-                planes='inner planes and pours', edge_walls='edge walls', thickness='copper thickness',
-                conductor_loss='conductor loss (sigma)', roughness='copper roughness (rough)',
-                finish='surface finish (finish)',
-                dispersion='dielectric dispersion',
-                radiation='radiation, surface waves', cavity='box and cavity effects', antenna='antenna mode, far field')
+# the line model: qucs when qucsator is installed, else scikit
+LINES = 'lines'
+# the cheapest full-wave solver that can model the board, + the line model
+AUTO = 'auto'
+# what a solver models, the rows of the capabilities table (--check,
+# docs/architecture.md)
+FEATURES = dict(
+    ports='ports on a trace over a plane',
+    gap_ports='gap ports (dipoles, slots)', diff_pairs='differential pairs',
+    parts='lumped R / L / C parts', vias='vias',
+    outline='board outline and edges', planes='inner planes and pours',
+    edge_walls='edge walls', thickness='copper thickness',
+    conductor_loss='conductor loss (sigma)',
+    roughness='copper roughness (rough)', finish='surface finish (finish)',
+    dispersion='dielectric dispersion', radiation='radiation, surface waves',
+    cavity='box and cavity effects', antenna='antenna mode, far field')
 
 
 @dataclass
 class Result:
-    """A solver's answer, over the board's ports as reported: differential pairs as mixed-mode ports (P1d,
-    P1c), the others single-ended, in board order. NaN where a term was not computed."""
+    """A solver's answer, over the board's ports as reported: differential pairs
+    as mixed-mode ports (P1d, P1c), the others single-ended, in board order. NaN
+    where a term was not computed."""
     S: np.ndarray               # (nf, n, n)
     names: list                 # port names
     zref: list                  # reference impedance per port, ohms
     seconds: float              # the solver's own time
-    info: dict = field(default_factory=dict)    # JSON-friendly facts for the run summary and the report
+    # JSON-friendly facts for the run summary and the report
+    info: dict = field(default_factory=dict)
     comment: str = ''           # the first comment line of its Touchstone file
 
 
 @dataclass
 class Deviation:
-    """Something a solver models differently from the board, and says so (parity.py, the report's "What each
-    solver saw" table). item names what it is about: 'via:<index>', 'wall:<index>', 'part:<ref>',
-    'copper:<layer>', 'outline'."""
+    """Something a solver models differently from the board, and says so
+    (parity.py, the report's "What each solver saw" table). item names what it
+    is about: 'via:<index>', 'wall:<index>', 'part:<ref>', 'copper:<layer>',
+    'outline'."""
     item: str
-    feature: str                # the FEATURES key it belongs to
-    what: str                   # 'moved onto the mesh', 'split in 2 elements', ...
-    amount: float = None        # how much, mm (a move), where it applies
-    to: object = None           # what the solver has instead: a via [x, y, r, z0, z1], a wall [axis, c, t0, t1, z0, z1],
-                                # a part's element count
+    feature: str          # the FEATURES key it belongs to
+    what: str             # 'moved onto the mesh', 'split in 2 elements', ...
+    amount: float = None  # how much, mm (a move), where it applies
+    # what the solver has instead: a via [x, y, r, z0, z1], a wall [axis, c, t0,
+    # t1, z0, z1], a part's element count
+    to: object = None
     dropped: bool = False       # the item is not in the solver's model
-    added: list = None          # vias the solver adds for it ([x, y, r, z0, z1] each: edge walls as via rows)
-    layer: str = None           # with area: copper the solver adds on this layer (mm2)
+    # vias the solver adds for it ([x, y, r, z0, z1] each: edge walls as via
+    # rows)
+    added: list = None
+    # with area: copper the solver adds on this layer (mm2)
+    layer: str = None
     area: float = None
 
 
 class Solver:
-    """A solver plugin. A subclass sets the declarations (class attributes: the module docstring lists them) and
-    overrides the steps it does differently; the pipeline calls them in the order check, validate, assess,
-    estimate (for auto), prepare, solve, deviations and readback (the parity checks), outputs."""
+    """A solver plugin. A subclass sets the declarations (class attributes: the
+    module docstring lists them) and overrides the steps it does differently;
+    the pipeline calls them in the order check, validate, assess, estimate (for
+    auto), prepare, solve, deviations and readback (the parity checks),
+    outputs."""
     name = ''
     aliases = ()
     label = ''
@@ -115,68 +164,83 @@ class Solver:
     order = 50
     capabilities = {}
     options = []
-    basic = ()                  # the keys of its options a run is set up with (its main cell size): a window shows
-                                # them first, the rest under "More settings" (Option.level; API 2.9)
+    # the keys of its options a run is set up with (its main cell size): a
+    # window shows them first, the rest under "More settings" (Option.level; API
+    # 2.9)
+    basic = ()
 
     def check(self, s=None):
-        """(usable, one line): its version and origin, or what is missing and how to get it. s: the run's settings,
-        where one says where the solver is (--qucsator); None for --check."""
+        """(usable, one line): its version and origin, or what is missing and
+        how to get it. s: the run's settings, where one says where the solver is
+        (--qucsator); None for --check."""
         return True, ''
 
     def details(self):
-        """(usable, report lines) of a longer check (--check, and when a named solver cannot run)."""
+        """(usable, report lines) of a longer check (--check, and when a named
+        solver cannot run)."""
         ok, what = self.check()
         return ok, [what]
 
     def validate(self, s):
-        """A message when its settings in s cannot be used together (None: fine); checked for every run."""
+        """A message when its settings in s cannot be used together (None:
+        fine); checked for every run."""
         return None
 
     def assess(self, run):
-        """Why it cannot model this board in this run, a list of reasons ([]: it can). Called after the board and the
-        line model are built, before any solver prepares."""
+        """Why it cannot model this board in this run, a list of reasons ([]: it
+        can). Called after the board and the line model are built, before any
+        solver prepares."""
         return []
 
     def prepare(self, run):
-        """Its own form of the board (openEMS: the boundaries and the mesh), handed to solve() and the later steps;
-        None when it needs none. A preview stops here."""
+        """Its own form of the board (openEMS: the boundaries and the mesh),
+        handed to solve() and the later steps; None when it needs none. A
+        preview stops here."""
         return None
 
     def solve(self, run, prep):
-        """The Result: S-parameters over the board's ports as reported (differential pairs as mixed-mode ports)."""
+        """The Result: S-parameters over the board's ports as reported
+        (differential pairs as mixed-mode ports)."""
         raise NotImplementedError(f"{self.name}: solve")
 
     def outputs(self, run, prep, res):
-        """Its own outputs after the solve (plots, files, summary entries); optional."""
+        """Its own outputs after the solve (plots, files, summary entries);
+        optional."""
         pass
 
     def reusable(self, run):
-        """Whether an earlier run's result may stand for its solve in this run (kicad2ems.core.reuse; API 2.12): its
-        outputs() is not called for one, so a solver whose outputs need what its solve keeps says no where this
-        run asks for them. By default: only a solver with no outputs() of its own."""
+        """Whether an earlier run's result may stand for its solve in this run
+        (kicad2ems.core.reuse; API 2.12): its outputs() is not called for one,
+        so a solver whose outputs need what its solve keeps says no where this
+        run asks for them. By default: only a solver with no outputs() of its
+        own."""
         return type(self).outputs is Solver.outputs
 
     def deviations(self, run, prep):
-        """[Deviation]: what it models differently from the board, by its own rules (vias moved onto a mesh, parts
-        split, walls as via rows), for the report and the parity checks."""
+        """[Deviation]: what it models differently from the board, by its own
+        rules (vias moved onto a mesh, parts split, walls as via rows), for the
+        report and the parity checks."""
         return []
 
     def readback(self, run, prep):
-        """What its native model holds, read back in the board's terms (parity.py: vias, copper area per layer,
-        parts, ports), or None."""
+        """What its native model holds, read back in the board's terms
+        (parity.py: vias, copper area per layer, parts, ports), or None."""
         return None
 
     def estimate(self, run):
-        """dict(seconds, gb, what): its rough cost on this board, for --solvers auto, or None."""
+        """dict(seconds, gb, what): its rough cost on this board, for --solvers
+        auto, or None."""
         return None
 
     def resources(self):
-        """dict(gpus=[dict(device, backend, api, free, total)], why): the GPUs it would run on here (memory in GB)
-        and why there are none (sysinfo, the GUI's System panel), or None: the CPU only."""
+        """dict(gpus=[dict(device, backend, api, free, total)], why): the GPUs
+        it would run on here (memory in GB) and why there are none (sysinfo, the
+        GUI's System panel), or None: the CPU only."""
         return None
 
 
-_registry, broken = None, []                # broken: (entry point, error) of plugins that failed to load
+# broken: (entry point, error) of plugins that failed to load
+_registry, broken = None, []
 
 
 def _entry_points():
@@ -185,10 +249,11 @@ def _entry_points():
 
 
 def registry():
-    """{name: Solver}: the built-in solvers and those installed through entry points, by their `order`. A plugin
-    that fails to load, is written for another kicad2ems API (its `api`: kicad2ems.core.api), or reuses a name or a
-    setting, is left out and listed in `broken`. Solvers may share a
-    setting by listing the same Option object (the FDTD solvers' mesh and run settings)."""
+    """{name: Solver}: the built-in solvers and those installed through entry
+    points, by their `order`. A plugin that fails to load, is written for
+    another kicad2ems API (its `api`: kicad2ems.core.api), or reuses a name or a
+    setting, is left out and listed in `broken`. Solvers may share a setting by
+    listing the same Option object (the FDTD solvers' mesh and run settings)."""
     global _registry
     if _registry is None:
         reg, keys = {}, {}
@@ -197,7 +262,9 @@ def registry():
             sv = getattr(importlib.import_module(mod), cls)()
             reg[sv.name] = sv
             keys |= {o.key: o for o in sv.options}
-        names = set(reg) | {a for sv in reg.values() for a in sv.aliases} | {LINES, 'all'}
+        names = (set(reg) | {a
+                             for sv in reg.values()
+                             for a in sv.aliases} | {LINES, 'all'})
         from ..config import CORE
         keys |= {o.key: o for o in CORE}
         from ..api import compatible
@@ -207,34 +274,45 @@ def registry():
                 why = compatible(getattr(sv, 'api', None))
                 if why:
                     raise ImportError(why)
-                clash = ([sv.name] if sv.name in names else []) + [a for a in sv.aliases if a in names] + \
-                        [o.key for o in sv.options if keys.get(o.key, o) is not o]
+                clash = (([sv.name] if sv.name in names else []) + [
+                    a for a in sv.aliases if a in names
+                ] + [o.key for o in sv.options if keys.get(o.key, o) is not o])
                 if not sv.name or clash:
-                    raise ValueError(f"name or settings already taken: {', '.join(clash) or 'no name'}")
-            except Exception as e:                                  # a broken plugin never stops kicad2ems
-                broken.append((f"{ep.name} = {ep.value}", f"{type(e).__name__}: {e}"))
+                    raise ValueError(
+                        "name or settings already taken: "
+                        f"{', '.join(clash) or 'no name'}"
+                    )
+            except Exception as e:  # a broken plugin never stops kicad2ems
+                broken.append(
+                    (f"{ep.name} = {ep.value}", f"{type(e).__name__}: {e}"))
                 continue
             reg[sv.name] = sv
             names |= {sv.name, *sv.aliases}
             keys |= {o.key: o for o in sv.options}
-        _registry = dict(sorted(reg.items(), key=lambda kv: (kv[1].order, kv[0])))
+        _registry = dict(
+            sorted(reg.items(), key=lambda kv: (kv[1].order, kv[0])))
     return _registry
 
 
 def aliases():
     """{name or alias: name} of every solver."""
-    return {a: sv.name for sv in registry().values() for a in (*sv.aliases, sv.name)}
+    return {
+        a: sv.name
+        for sv in registry().values()
+        for a in (*sv.aliases, sv.name)
+    }
 
 
 def missing(name):
-    """Why a solver kicad2ems knows of cannot be found, and how to install it; None for any other name, or one
-    installed."""
+    """Why a solver kicad2ems knows of cannot be found, and how to install it;
+    None for any other name, or one installed."""
     name = str(name).lower()
     extra = next((e for e, names in EXTRAS.items() if name in names), None)
     if extra is None or name in aliases():
         return None
     if any(ep.split(' =')[0] in EXTRAS[extra] for ep, _ in broken):
-        return f"solver {name!r} is installed but failed to load (kicad2ems --check)"
+        return (f"solver {name!r} is installed but failed to load (kicad2ems "
+                "--check)")
     from ..extras import install_hint
     return f"solver {name!r} is not installed: {install_hint(extra)}"
 
@@ -243,37 +321,59 @@ def get(name):
     """The solver of a name or alias (any case)."""
     n = aliases().get(str(name).lower())
     if n is None:
-        raise ValueError(missing(name) or f"no solver {name!r}: choose from {', '.join(registry())}")
+        raise ValueError(
+            missing(name)
+            or f"no solver {name!r}: choose from {', '.join(registry())}")
     return registry()[n]
 
 
 def ordered(names):
-    """Solver names in registry order; LINES (the line model, not resolved yet) where the line solvers are."""
+    """Solver names in registry order; LINES (the line model, not resolved yet)
+    where the line solvers are."""
     order = list(registry())
-    first_net = next((i for i, n in enumerate(order) if registry()[n].consumes == 'network'), len(order))
+    first_net = next(
+        (i for i, n in enumerate(order) if registry()[n].consumes == 'network'),
+        len(order))
     order.insert(first_net, LINES)
     order.insert(0, AUTO)
     return [n for n in order if n in names]
 
 
 def resolve_lines(s=None):
-    """The solver LINES stands for: qucs when qucsator is installed (its coupled-line and discontinuity
-    models), else scikit."""
+    """The solver LINES stands for: qucs when qucsator is installed (its
+    coupled-line and discontinuity models), else scikit."""
     q = registry().get('qucs')
     return 'qucs' if q is not None and q.check(s)[0] else 'scikit'
 
 
 def label(name):
-    return {LINES: 'line model', AUTO: 'auto'}.get(name) or registry()[name].label
+    return ({LINES: 'line model', AUTO: 'auto'}.get(name)
+            or registry()[name].label)
 
 
 def capability_table():
-    """The capabilities as text lines: one row per feature, one column per solver (--check)."""
+    """The capabilities as text lines: one row per feature, one column per
+    solver (--check)."""
     reg = registry()
-    cells = {k: [sv.capabilities.get(k, '?').split(':')[0].split(',')[0] for sv in reg.values()] for k in FEATURES}
-    cols = [max([len(n)] + [len(c[i]) for c in cells.values()]) for i, n in enumerate(reg)]
+    cells = {
+        k: [
+            sv.capabilities.get(k, '?').split(':')[0].split(',')[0]
+            for sv in reg.values()
+        ]
+        for k in FEATURES
+    }
+    cols = [
+        max([len(n)] + [len(c[i])
+                        for c in cells.values()])
+        for i, n in enumerate(reg)
+    ]
     w = max(len(v) for v in FEATURES.values())
-    rows = ["  " + " " * w + "  " + "  ".join(f"{n:<{c}}" for n, c in zip(reg, cols))]
+    rows = [
+        "  " + " " * w + "  "
+        + "  ".join(f"{n:<{c}}" for n, c in zip(reg, cols))
+    ]
     for k, text in FEATURES.items():
-        rows.append(f"  {text:<{w}}  " + "  ".join(f"{v:<{c}}" for v, c in zip(cells[k], cols)).rstrip())
+        rows.append(f"  {text:<{w}}  "
+                    + "  ".join(f"{v:<{c}}"
+                                for v, c in zip(cells[k], cols)).rstrip())
     return rows

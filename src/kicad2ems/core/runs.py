@@ -1,42 +1,49 @@
 """
-A kicad2ems run started by another program (kicad2ems-gui, the KiCad plugin): its settings as a TOML file, the
-command line (run as a separate process), its event stream (--events, JSON lines), stopping it and the files it
-wrote. No Qt here.
+A kicad2ems run started by another program (kicad2ems-gui, the KiCad plugin):
+its settings as a TOML file, the command line (run as a separate process), its
+event stream (--events, JSON lines), stopping it and the files it wrote. No Qt
+here.
 
     run = Run(settings_dict, out_dir, preview=False)
-    run.argv()                     # [python, -m, kicad2ems, <out>/gui_run.toml, --events, ...]
+    run.argv()             # [python, -m, kicad2ems, <out>/gui_run.toml,
+                           --events, ...]
     tail = EventTail(path); tail.read() -> [event dicts]
-    read_summary(path)             # a <name>_run.json, its format checked (formats.py)
-    stop_runs(out_dir)             # STOP for the run (stop.py), ABORT into every FDTD run folder
-    find_results(out_dir)          # [(label, path)] of the newest finished run's files
+    read_summary(path)     # a <name>_run.json, its format checked (formats.py)
+    stop_runs(out_dir)     # STOP for the run (stop.py), ABORT into every FDTD
+                           run folder
+    find_results(out_dir)  # [(label, path)] of the newest finished run's files
     run_dir(base, board), preview_dir(base, board), tool_dir(base, board, analysis, what), tool_preview_dir(...)
-                                   # where a front end's runs go: a folder each under the output folder
+                           # where a front end's runs go: a folder each under
+                           the output folder
     write_toml(path, settings); toml_value(v); load_toml(path)
 """
 import datetime, glob, json, os, sys
 
 if sys.version_info >= (3, 11):
     import tomllib
-else:                                                           # pragma: no cover
+else:  # pragma: no cover
     import tomli as tomllib
 
 
 def toml_value(v):
-    """A value as TOML text: booleans, numbers and lists of them as they are, anything else a quoted string."""
+    """A value as TOML text: booleans, numbers and lists of them as they are,
+    anything else a quoted string."""
     if isinstance(v, bool):
         return 'true' if v else 'false'
     if isinstance(v, (int, float)):
         return repr(v)
     if isinstance(v, (list, tuple)):
         return '[' + ', '.join(toml_value(x) for x in v) + ']'
-    return json.dumps(str(v))                              # a TOML basic string is a JSON string
+    return json.dumps(str(v))  # a TOML basic string is a JSON string
 
 
 def write_toml(path, values):
-    """A flat TOML file of the non-empty settings (solvers = [] kept: no solver, as the GUI says so)."""
+    """A flat TOML file of the non-empty settings (solvers = [] kept: no solver,
+    as the GUI says so)."""
     lines = ["# written by the kicad2ems GUI"]
     for k, v in values.items():
-        if v is None or v == '' or (v == [] and k != 'solvers') or (k in ('cut_ports', 'mom') and v is False):
+        if (v is None or v == '' or (v == [] and k != 'solvers')
+                or (k in ('cut_ports', 'mom') and v is False)):
             continue
         lines.append(f"{k} = {toml_value(v)}")
     with open(path, 'w', encoding='utf-8') as fh:
@@ -44,7 +51,8 @@ def write_toml(path, values):
 
 
 def load_toml(path):
-    """A TOML file's tables; OSError, or tomllib.TOMLDecodeError (a ValueError)."""
+    """A TOML file's tables; OSError, or tomllib.TOMLDecodeError (a
+    ValueError)."""
     with open(path, 'rb') as fh:
         return tomllib.load(fh)
 
@@ -52,7 +60,9 @@ def load_toml(path):
 class Run:
     """One kicad2ems run: its settings file, event file and command line."""
     def __init__(self, values, out_dir, preview=False):
-        self.values, self.out, self.preview = dict(values), os.path.abspath(out_dir), preview
+        self.values, self.out, self.preview = (dict(values),
+                                               os.path.abspath(out_dir),
+                                               preview)
         os.makedirs(self.out, exist_ok=True)
         self.toml = os.path.join(self.out, 'gui_run.toml')
         self.events = os.path.join(self.out, 'gui_events.jsonl')
@@ -61,25 +71,31 @@ class Run:
             os.remove(self.events)
 
     def argv(self):
-        """The run's command line: this Python, -m kicad2ems, its TOML file and events file, --preview for a preview."""
-        return [sys.executable, '-m', 'kicad2ems', self.toml, '--events', self.events] + \
-               (['--preview'] if self.preview else [])
+        """The run's command line: this Python, -m kicad2ems, its TOML file and
+        events file, --preview for a preview."""
+        return ([
+            sys.executable, '-m', 'kicad2ems', self.toml, '--events',
+            self.events
+        ] + (['--preview'] if self.preview else []))
 
 
 def read_summary(path):
-    """A run summary (<name>_run.json), checked: ValueError when this kicad2ems cannot read its format."""
+    """A run summary (<name>_run.json), checked: ValueError when this kicad2ems
+    cannot read its format."""
     from .formats import read
     return read(path, 'kicad2ems-run')
 
 
 class EventTail:
-    """Reads the new complete lines of an events file on each call. The stream's first line names its format
-    (formats.py): it is not passed on, and a format this kicad2ems cannot read comes out as a log line saying so."""
+    """Reads the new complete lines of an events file on each call. The stream's
+    first line names its format (formats.py): it is not passed on, and a format
+    this kicad2ems cannot read comes out as a log line saying so."""
     def __init__(self, path):
         self.path, self.pos = path, 0
 
     def read(self):
-        """The events written since the last call (whole lines only), as dicts; [] while the file is not there."""
+        """The events written since the last call (whole lines only), as dicts;
+        [] while the file is not there."""
         try:
             with open(self.path, 'rb') as fh:
                 fh.seek(self.pos)
@@ -98,19 +114,23 @@ class EventTail:
                 from .formats import check
                 why = check(e, 'kicad2ems-events')
                 if why:
-                    out.append(dict(t=e.get('t', 0.0), kind='log', text=f"WARNING: the run's events: {why}"))
+                    out.append(
+                        dict(t=e.get('t', 0.0), kind='log',
+                             text=f"WARNING: the run's events: {why}"))
                 continue
             out.append(e)
         return out
 
 
 def stop_runs(out_dir):
-    """Ask the run writing to out_dir to stop: its STOP file (every solver checks it, stop.py), and ABORT into
-    every FDTD run folder under out_dir (<out>/<engine>/exc_<port>: the engine stops and finishes normally); returns
+    """Ask the run writing to out_dir to stop: its STOP file (every solver
+    checks it, stop.py), and ABORT into every FDTD run folder under out_dir
+    (<out>/<engine>/exc_<port>: the engine stops and finishes normally); returns
     those folders."""
     from . import stop
     stop.request(out_dir)
-    dirs = glob.glob(os.path.join(out_dir, '*', 'exc_*')) + glob.glob(os.path.join(out_dir, 'converge', '*', '*', 'exc_*'))
+    dirs = (glob.glob(os.path.join(out_dir, '*', 'exc_*'))
+            + glob.glob(os.path.join(out_dir, 'converge', '*', '*', 'exc_*')))
     for d in dirs:
         open(os.path.join(d, 'ABORT'), 'w', encoding='utf-8').close()
     return dirs
@@ -120,40 +140,55 @@ STAMP = '%Y%m%d_%H%M%S'                     # a run folder's date and time
 
 
 def board_name(board):
-    """The name a board's run folders take: its file name without the extension (and a resolved board's _board)."""
+    """The name a board's run folders take: its file name without the extension
+    (and a resolved board's _board)."""
     name = os.path.splitext(os.path.basename(board or 'board'))[0]
     return name[:-len('_board')] if name.endswith('_board') else name
 
 
 def run_dir(base, board, now=None):
-    """The folder of an S-parameter run started now: <base>/<board>_20261013_141502."""
-    return os.path.join(base, f"{board_name(board)}_{(now or datetime.datetime.now()).strftime(STAMP)}")
+    """The folder of an S-parameter run started now:
+    <base>/<board>_20261013_141502."""
+    return os.path.join(
+        base,
+        f"{board_name(board)}_{(now or datetime.datetime.now()).strftime(STAMP)}"
+    )
 
 
 def preview_dir(base, board):
-    """The folder a board's previews share (each refreshes it): <base>/<board>_preview."""
+    """The folder a board's previews share (each refreshes it):
+    <base>/<board>_preview."""
     return os.path.join(base, f"{board_name(board)}_preview")
 
 
 def tool_dir(base, board, kind, name, now=None):
-    """The folder of an analysis's run started now: <base>/<board>_<analysis>_<what>_20261013_141502 (what: the
-    rail, the converter: Analysis.tag)."""
-    what = ''.join(c if c.isalnum() else '_' for c in str(name or '')).strip('_') or 'run'
-    return os.path.join(base, f"{board_name(board)}_{kind}_{what}_{(now or datetime.datetime.now()).strftime(STAMP)}")
+    """The folder of an analysis's run started now:
+    <base>/<board>_<analysis>_<what>_20261013_141502 (what: the rail, the
+    converter: Analysis.tag)."""
+    what = (''.join(c if c.isalnum() else '_'
+                    for c in str(name or '')).strip('_') or 'run')
+    return os.path.join(
+        base,
+        f"{board_name(board)}_{kind}_{what}_{(now or datetime.datetime.now()).strftime(STAMP)}"
+    )
 
 
 def tool_preview_dir(base, board, kind):
-    """The folder an analysis's previews of a board share: <base>/<board>_<analysis>_preview."""
+    """The folder an analysis's previews of a board share:
+    <base>/<board>_<analysis>_preview."""
     return os.path.join(base, f"{board_name(board)}_{kind}_preview")
 
 
 def find_results(out_dir):
-    """(label, path) of the files of the newest finished run in out_dir (from its <name>_run.json, or the
-    <name>_openems.json of an older run)."""
-    sums = sorted(glob.glob(os.path.join(out_dir, '*_run.json')) + glob.glob(os.path.join(out_dir, '*_openems.json')),
-                  key=os.path.getmtime)
+    """(label, path) of the files of the newest finished run in out_dir (from
+    its <name>_run.json, or the <name>_openems.json of an older run)."""
+    sums = sorted(
+        glob.glob(os.path.join(out_dir, '*_run.json'))
+        + glob.glob(os.path.join(out_dir, '*_openems.json')),
+        key=os.path.getmtime)
     if not sums:
         return []
     with open(sums[-1], encoding='utf-8') as fh:
         files = json.load(fh).get('files', [])
-    return [(lab, p if os.path.isabs(p) else os.path.join(out_dir, p)) for lab, p in files]
+    return [(lab, p if os.path.isabs(p) else os.path.join(out_dir, p))
+            for lab, p in files]

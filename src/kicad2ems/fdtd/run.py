@@ -1,7 +1,8 @@
 """
-FDTD runs: one run per excited port (in parallel with --jobs), each in its own folder
-<out>/<engine>/exc_<port>; the end criteria (PortWatch), progress, and the S-parameter columns from the
-port probes. Any engine with openEMS's interface (engines.py) runs the same way.
+FDTD runs: one run per excited port (in parallel with --jobs), each in its own
+folder <out>/<engine>/exc_<port>; the end criteria (PortWatch), progress, and
+the S-parameter columns from the port probes. Any engine with openEMS's
+interface (engines.py) runs the same way.
 """
 import contextlib, glob, json, math, os, threading, time
 import numpy as np
@@ -17,7 +18,8 @@ def _remove(path, *names):
 
 
 def _times(fn, n=None):
-    """First column of an openEMS text probe file (comment lines start with %); the first n values, or all."""
+    """First column of an openEMS text probe file (comment lines start with %);
+    the first n values, or all."""
     out = []
     with open(fn, encoding='utf-8') as fh:
         for line in fh:
@@ -29,10 +31,11 @@ def _times(fn, n=None):
 
 
 def steps_taken(path, dt_ps=None):
-    """Timesteps a finished run took: the last sample time of its port voltage probe divided by openEMS's
-    time step, read from the excitation signal file 'et' (one sample per step; the mesher's estimate dt_ps,
-    used only without 'et', can be ~10 % off). The probes are subsampled, so this may undercount by a few
-    dozen steps. None if there is no probe file."""
+    """Timesteps a finished run took: the last sample time of its port voltage
+    probe divided by openEMS's time step, read from the excitation signal file
+    'et' (one sample per step; the mesher's estimate dt_ps, used only without
+    'et', can be ~10 % off). The probes are subsampled, so this may undercount
+    by a few dozen steps. None if there is no probe file."""
     et = os.path.join(path, 'et')
     dt = None
     if os.path.exists(et):
@@ -49,35 +52,46 @@ def steps_taken(path, dt_ps=None):
 
 
 def step_limit_warning(name, steps, max_steps, end_db):
-    """Warning text when a run stopped at --max-steps instead of decaying to --end-db (None otherwise)."""
+    """Warning text when a run stopped at --max-steps instead of decaying to
+    --end-db (None otherwise)."""
     if steps is None or steps < 0.97 * max_steps:
         return None
-    return (f"WARNING: {name} ran to the step limit (~{steps} of --max-steps {max_steps}) before the energy fell by "
-            f"{-end_db:g} dB - the fields may still be ringing; raise --max-steps (or accept a higher --end-db)")
+    return (
+        f"WARNING: {name} ran to the step limit (~{steps} of --max-steps "
+        f"{max_steps}) before the energy fell by {-end_db:g} dB - the fields "
+        "may still be ringing; raise --max-steps (or accept a higher --end-db)"
+    )
 
 
-DEAD_DB = -120.0         # PortWatch: port signals this far below their peak end a run at once
+# PortWatch: port signals this far below their peak end a run at once
+DEAD_DB = -120.0
 
 
 class PortWatch:
-    """Thread that ends a run whose field energy has stalled once every port signal has died away.
-    openEMS's own end criterion is the total field energy, which can level off above --end-db when some
-    energy sits where no port sees it (a static field, a mode the ports do not couple to) while the
-    S-parameters are long settled. Every `interval` s it reads the port voltage / current probes
-    (port_ut* / port_it*, which openEMS flushes as it runs) and the energy from openEMS's status lines
-    (openems.log). It writes ABORT into the run folder (openEMS stops and finishes normally) and records
-    why in run_end.json when all of these hold:
+    """Thread that ends a run whose field energy has stalled once every port
+    signal has died away. openEMS's own end criterion is the total field energy,
+    which can level off above --end-db when some energy sits where no port sees
+    it (a static field, a mode the ports do not couple to) while the
+    S-parameters are long settled. Every `interval` s it reads the port voltage
+    / current probes (port_ut* / port_it*, which openEMS flushes as it runs) and
+    the energy from openEMS's status lines (openems.log). It writes ABORT into
+    the run folder (openEMS stops and finishes normally) and records why in
+    run_end.json when all of these hold:
       - the time is past t_min (the excitation pulse) and the largest u^2 + (z i)^2 of any port over the
         last `window` s is end_db below its peak;
       - the energy has stalled: over the last quarter of the steps so far (and at least 8 status lines)
         it fell by less than `stall_db`.
-    The second condition matters: in a high-Q circuit (a filter) the stored energy leaks out through
-    the ports slowly, the port signals sit far below their peak while it does, and stopping then cuts
-    the ring-down off (the response comes out smoothed and shifted). Port signals below DEAD_DB end it
-    without the stall: nothing reaches the ports any more (a radial stub held the pulse's DC charge at
-    -33 dB of energy, its ports at -222 dB, for 176k timesteps where 20k were enough)."""
-    def __init__(self, path, end_db, t_min, window, z=50.0, interval=2.0, stall_db=1.5):
-        self.path, self.end_db, self.t_min, self.window, self.z, self.interval = path, end_db, t_min, window, z, interval
+    The second condition matters: in a high-Q circuit (a filter) the stored
+    energy leaks out through the ports slowly, the port signals sit far below
+    their peak while it does, and stopping then cuts the ring-down off (the
+    response comes out smoothed and shifted). Port signals below DEAD_DB end it
+    without the stall: nothing reaches the ports any more (a radial stub held
+    the pulse's DC charge at -33 dB of energy, its ports at -222 dB, for 176k
+    timesteps where 20k were enough)."""
+    def __init__(self, path, end_db, t_min, window, z=50.0, interval=2.0,
+                 stall_db=1.5):
+        self.path, self.end_db, self.t_min, self.window, self.z, self.interval = (
+            path, end_db, t_min, window, z, interval)
         self.stall_db, self.energy, self._pos = stall_db, [], 0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -85,14 +99,16 @@ class PortWatch:
 
     def _read_energy(self):
         from .progress import parse_line, read_new
-        lines, self._pos = read_new(os.path.join(self.path, 'openems.log'), self._pos)
+        lines, self._pos = read_new(os.path.join(self.path, 'openems.log'),
+                                    self._pos)
         for line in lines:
             p = parse_line(line)
             if p and p['db'] == p['db']:
                 self.energy.append((p['step'], p['db']))
 
     def stalled(self):
-        """The energy fell by less than stall_db over the last quarter of the steps (>= 8 status lines)."""
+        """The energy fell by less than stall_db over the last quarter of the
+        steps (>= 8 status lines)."""
         if len(self.energy) < 8:
             return False
         last = self.energy[-1][0]
@@ -110,40 +126,51 @@ class PortWatch:
         self._thread.join(timeout=5)
 
     def level(self):
-        """(time of the last sample s, level of the last window below the peak in dB) or None."""
+        """(time of the last sample s, level of the last window below the peak
+        in dB) or None."""
         return port_decay(self.path, self.window, self.z)
 
     def _loop(self):
         from kicad2ems.core.api.solver import stop
         while not self._stop.wait(self.interval):
-            if stop.requested():                                # the GUI's Stop (stop.py)
+            if stop.requested():  # the GUI's Stop (stop.py)
                 self.fired = dict(reason='stop')
-                open(os.path.join(self.path, 'ABORT'), 'w', encoding='utf-8').close()
+                open(os.path.join(self.path, 'ABORT'), 'w',
+                     encoding='utf-8').close()
                 return
             try:
                 lv = self.level()
-            except Exception:                                   # a half-written file: try again later
+            except Exception:  # a half-written file: try again later
                 continue
             self._read_energy()
-            if lv and lv[0] > self.t_min + self.window and lv[1] <= self.end_db and (self.stalled() or lv[1] <= DEAD_DB):
-                self.fired = dict(reason='ports', t_ns=lv[0] * 1e9, level_db=lv[1],
-                                  energy_db=self.energy[-1][1] if self.energy else None)
-                with open(os.path.join(self.path, 'run_end.json'), 'w', encoding='utf-8') as fh:
+            if (lv and lv[0] > self.t_min + self.window and lv[1] <= self.end_db
+                    and (self.stalled() or lv[1] <= DEAD_DB)):
+                self.fired = dict(
+                    reason='ports', t_ns=lv[0] * 1e9, level_db=lv[1],
+                    energy_db=(self.energy[-1][1] if self.energy else None))
+                with open(os.path.join(self.path, 'run_end.json'), 'w',
+                          encoding='utf-8') as fh:
                     json.dump(self.fired, fh)
-                open(os.path.join(self.path, 'ABORT'), 'w', encoding='utf-8').close()
+                open(os.path.join(self.path, 'ABORT'), 'w',
+                     encoding='utf-8').close()
                 return
 
 
 def watch_window(m, fmin):
-    """PortWatch's window (s): two periods of the slowest ringing the ports can see. That is fmin's, except on a
-    board without lumped parts on its signal nets: nothing there rings below its lowest cavity mode, c0 / (2 D sqrt(er)) over the
-    outline's diagonal D, so a band reaching far below it (fmin 0.1 GHz: a 20 ns window, longer than a whole
-    run on a 6-layer board) waits no longer than that mode's two periods. At least 1 ns."""
+    """PortWatch's window (s): two periods of the slowest ringing the ports can
+    see. That is fmin's, except on a board without lumped parts on its signal
+    nets: nothing there rings below its lowest cavity mode, c0 / (2 D sqrt(er))
+    over the outline's diagonal D, so a band reaching far below it (fmin 0.1
+    GHz: a 20 ns window, longer than a whole run on a 6-layer board) waits no
+    longer than that mode's two periods. At least 1 ns."""
     from kicad2ems.core.api.solver import C0
     w = 2.0 / fmin
     gnd = set(getattr(m, 'ground_nets', ()) or ())
-    signal_parts = [pt for pt in getattr(m, 'parts', []) or [] if any(n and n not in gnd for n in _part_nets(m, pt))]
-    if not signal_parts:                                        # (decoupling between two ground nets does not count)
+    signal_parts = [
+        pt for pt in getattr(m, 'parts', []) or []
+        if any(n and n not in gnd for n in _part_nets(m, pt))
+    ]
+    if not signal_parts:  # (decoupling between two ground nets does not count)
         x0, y0, x1, y1 = m.outline.bounds
         er = max([l['er'] for l in m.layers] + [1.0])
         f_low = C0 / (2 * np.hypot(x1 - x0, y1 - y0) * 1e-3 * np.sqrt(er))
@@ -152,28 +179,35 @@ def watch_window(m, fmin):
 
 
 def _part_nets(m, pt, reach=0.1):
-    """The nets of the copper at a lumped part's two ends (its pads, within `reach` mm of the ends)."""
+    """The nets of the copper at a lumped part's two ends (its pads, within
+    `reach` mm of the ends)."""
     from shapely.geometry import Point
-    ps, nets = m.copper.get(pt.layer, []), getattr(m, 'copper_nets', {}).get(pt.layer, [])
+    ps, nets = (m.copper.get(pt.layer, []), getattr(m, 'copper_nets',
+                                                    {}).get(pt.layer, []))
     out = []
     for c in (pt.s, pt.e):
         q = Point(float(c[0]), float(c[1]))
-        hit = [(g.distance(q), n) for g, n in zip(ps, nets) if g.distance(q) <= reach]
+        hit = [(g.distance(q), n)
+               for g, n in zip(ps, nets)
+               if g.distance(q) <= reach]
         out.append(min(hit)[1] if hit else None)
     return out
 
 
 def port_decay(path, window, z=50.0):
-    """(last probe time s, max over ports of the signal power in the last `window` s relative to its peak,
-    dB) from the port probe files of a run folder, or None when there are none yet."""
+    """(last probe time s, max over ports of the signal power in the last
+    `window` s relative to its peak, dB) from the port probe files of a run
+    folder, or None when there are none yet."""
     import warnings
     peak, last, tmax = 0.0, 0.0, None
     for fu in sorted(glob.glob(os.path.join(path, 'port_ut*'))):
         fi = fu.replace('port_ut', 'port_it')
-        with warnings.catch_warnings():                             # a file the run has only its header in yet
+        # a file the run has only its header in yet
+        with warnings.catch_warnings():
             warnings.simplefilter('ignore', UserWarning)
             u = np.loadtxt(fu, comments='%', ndmin=2)
-            i = np.loadtxt(fi, comments='%', ndmin=2) if os.path.exists(fi) else None
+            i = (np.loadtxt(fi, comments='%', ndmin=2)
+                 if os.path.exists(fi) else None)
         n = len(u) if i is None else min(len(u), len(i))
         if n < 4:
             return None
@@ -188,16 +222,19 @@ def port_decay(path, window, z=50.0):
 
 
 def execute(FDTD, path, threads=0, verbose=1, progress=None, watch=None):
-    """FDTD.Run in `path`, restoring the working directory (openEMS changes it). Returns seconds taken.
-    progress: None (openEMS writes to the terminal), or dict(mode, label, end_db, max_steps[, on_status]):
-    openEMS's output goes to <path>/openems.log and, for mode 'bar' / 'raw', a progress line / the raw
-    lines to the terminal ('file': the log only - parallel workers, monitored by the main process);
-    on_status(label, status dict) is called for every openEMS status line."""
+    """FDTD.Run in `path`, restoring the working directory (openEMS changes it).
+    Returns seconds taken. progress: None (openEMS writes to the terminal), or
+    dict(mode, label, end_db, max_steps[, on_status]):
+    openEMS's output goes to <path>/openems.log and, for mode 'bar' / 'raw', a
+    progress line / the raw lines to the terminal ('file': the log only -
+    parallel workers, monitored by the main process); on_status(label, status
+    dict) is called for every openEMS status line."""
     from .progress import Monitor, Tracker, redirect_output
     from kicad2ems.core.api.solver import stop
-    stop.check()                                                # stopped: no further excitation or level
+    stop.check()  # stopped: no further excitation or level
     os.makedirs(path, exist_ok=True)
-    _remove(path, 'ABORT', 'run_end.json')                      # leftovers of an earlier run in this folder
+    # leftovers of an earlier run in this folder
+    _remove(path, 'ABORT', 'run_end.json')
     cwd, t1 = os.getcwd(), time.time()
     pw = PortWatch(path, **watch).start() if watch else None
     try:
@@ -206,16 +243,22 @@ def execute(FDTD, path, threads=0, verbose=1, progress=None, watch=None):
         else:
             log = log_path(path)
             open(log, 'w', encoding='utf-8').close()
-            own = getattr(FDTD, 'writes_log', False)            # gfdtd: its output to the log itself (runs in
-            kw = dict(log=log) if own else {}                   # threads share the process's stdout)
-            with (contextlib.nullcontext() if own else redirect_output(log)) as terminal:
+            # gfdtd: its output to the log itself (runs in
+            own = getattr(FDTD, 'writes_log', False)
+            # threads share the process's stdout)
+            kw = dict(log=log) if own else {}
+            with (contextlib.nullcontext()
+                  if own else redirect_output(log)) as terminal:
                 mon = None
                 if progress['mode'] in ('bar', 'raw'):
-                    tr = Tracker(progress['label'], progress['end_db'], progress['max_steps'])
-                    mon = Monitor([(progress['label'], log, tr)], progress['mode'], out_fd=terminal,
+                    tr = Tracker(progress['label'], progress['end_db'],
+                                 progress['max_steps'])
+                    mon = Monitor([(progress['label'], log, tr)],
+                                  progress['mode'], out_fd=terminal,
                                   on_status=progress.get('on_status')).start()
                 try:
-                    FDTD.Run(path, cleanup=True, numThreads=threads, verbose=max(verbose, 1), **kw)
+                    FDTD.Run(path, cleanup=True, numThreads=threads,
+                             verbose=max(verbose, 1), **kw)
                 finally:
                     if mon:
                         mon.stop()
@@ -224,52 +267,67 @@ def execute(FDTD, path, threads=0, verbose=1, progress=None, watch=None):
         if pw:
             pw.stop()
     _remove(path, 'ABORT')
-    res = getattr(FDTD, 'result', None) or {}                   # gfdtd's: how its run ended
+    res = getattr(FDTD, 'result', None) or {}  # gfdtd's: how its run ended
     if res.get('reason') == 'unstable':
-        raise RuntimeError(f"the FDTD run in {path} became unstable after {res.get('steps')} timesteps (its fields "
-                           f"grew without bound): a lumped part too small for the cells, or a cell or time step "
-                           f"the mesh makes too large; see its openems.log")
+        raise RuntimeError(
+            f"the FDTD run in {path} became unstable after {res.get('steps')} "
+            "timesteps (its fields grew without bound): a lumped part too "
+            "small for the cells, or a cell or time step the mesh makes too "
+            "large; see its openems.log")
     return time.time() - t1
 
 
 def log_path(path):
-    """openEMS's output of a run (written when the run has a progress setting)."""
+    """openEMS's output of a run (written when the run has a progress
+    setting)."""
     return os.path.join(path, 'openems.log')
 
 
 class RunResult:
-    """Result of run_excitations: S (nf, n, n) over the single-ended ports (NaN in the columns of ports not
-    excited), dump_files {(port, dump name): path}, dump_norm {port: {freq: incident voltage}} (field maps
-    scaled to a 1 V incident wave), seconds / steps {port: value} per run, extra {port: what the run's
-    `analyse` hook returned} (antenna mode: the far-field results)."""
+    """Result of run_excitations: S (nf, n, n) over the single-ended ports (NaN
+    in the columns of ports not excited), dump_files {(port, dump name): path},
+    dump_norm {port: {freq: incident voltage}} (field maps scaled to a 1 V
+    incident wave), seconds / steps {port: value} per run, extra {port: what the
+    run's `analyse` hook returned} (antenna mode: the far-field results)."""
     def __init__(self, S):
-        self.S, self.dump_files, self.dump_norm, self.seconds, self.steps, self.extra = S, {}, {}, {}, {}, {}
-        self.ended = {}                             # {port: dict(reason='ports', t_ns, level_db)} when PortWatch ended it
-        self.lines = {}                             # {port: its run's line-probe readings} (R-E1, lineport.py)
+        self.S, self.dump_files, self.dump_norm, self.seconds, self.steps, self.extra = (
+            S, {}, {}, {}, {}, {})
+        # {port: dict(reason='ports', t_ns, level_db)} when PortWatch ended it
+        self.ended = {}
+        # {port: its run's line-probe readings} (R-E1, lineport.py)
+        self.lines = {}
 
 
 def run_dir(m, k, out_dir, engine=None):
-    """Folder of the run that excites port k: <out>/openems/exc_<port> (P1+ / P1- -> exc_P1p / exc_P1n); another
-    engine's under <out>/<engine>/."""
+    """Folder of the run that excites port k: <out>/openems/exc_<port> (P1+ /
+    P1- -> exc_P1p / exc_P1n); another engine's under <out>/<engine>/."""
     tag = m.ports[k].name.replace('+', 'p').replace('-', 'n')
-    return os.path.abspath(os.path.join(out_dir, engine_name(engine)[0], f"exc_{tag}"))
+    return os.path.abspath(
+        os.path.join(out_dir,
+                     engine_name(engine)[0], f"exc_{tag}"))
 
 
-def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, rough=None, copper_kw=None, threads=0, xml_path=None, dumps=(),
-              verbose=1, diel='fixed', diel_fref=1e9, max_steps=1_000_000, progress=None, exc_fmax=None,
-              setup=None, analyse=None, end_on='ports', engine=None, line_plan=None):
-    """One openEMS run with port k excited (top level, so it can run in a worker process); engine: another FDTD
-    engine with openEMS's interface (engine_api: 'gfdtd'), run the same way. setup(FDTD, CSX)
-    may add to the model before the run (antenna mode: the NF2FF box) and its return value is handed to
-    analyse(path, ports, token, k, col) after the run. Returns (k, S column (nf, n), {(port, dump): path},
-    {freq: incident voltage} or None, seconds, steps taken, what analyse returned or None, the line probes'
-    readings or None). line_plan: lineport.plan_ports' plan (R-E1): its probes read, with every lumped port's
-    a and b, as dict(probes={index: lineport.read's}, lumped=(a, b) (n, nf))."""
+def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, rough=None,
+              copper_kw=None, threads=0, xml_path=None, dumps=(), verbose=1,
+              diel='fixed', diel_fref=1e9, max_steps=1_000_000, progress=None,
+              exc_fmax=None, setup=None, analyse=None, end_on='ports',
+              engine=None, line_plan=None):
+    """One openEMS run with port k excited (top level, so it can run in a worker
+    process); engine: another FDTD engine with openEMS's interface (engine_api:
+    'gfdtd'), run the same way. setup(FDTD, CSX) may add to the model before the
+    run (antenna mode: the NF2FF box) and its return value is handed to
+    analyse(path, ports, token, k, col) after the run. Returns (k, S column (nf,
+    n), {(port, dump): path}, {freq: incident voltage} or None, seconds, steps
+    taken, what analyse returned or None, the line probes' readings or None).
+    line_plan: lineport.plan_ports' plan (R-E1): its probes read, with every
+    lumped port's a and b, as dict(probes={index: lineport.read's}, lumped=(a,
+    b) (n, nf))."""
     fmin, fmax = freq[0], freq[-1]
     path = run_dir(m, k, out_dir, engine)
-    built = build_fdtd(m, mesh, fmin, fmax, k, bc=bc, end_db=end_db, sigma=sigma, rough=rough,
-                       copper_kw=copper_kw, dumps=dumps,
-                       diel=diel, diel_fref=diel_fref, max_steps=max_steps, exc_fmax=exc_fmax,
+    built = build_fdtd(m, mesh, fmin, fmax, k, bc=bc, end_db=end_db,
+                       sigma=sigma, rough=rough, copper_kw=copper_kw,
+                       dumps=dumps, diel=diel, diel_fref=diel_fref,
+                       max_steps=max_steps, exc_fmax=exc_fmax,
                        api=engine_api(engine), line_plan=line_plan or None)
     FDTD, CSX, ports = built[:3]
     probes = built[3] if len(built) > 3 else None
@@ -278,69 +336,92 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, rough=None,
     if dumps:
         from kicad2ems.core.api.solver import write_info
         write_info(path, dumps, m, mesh['info'].get('dt_ps'))
-    else:                                                       # an earlier run's dumps are gone (openEMS cleans up)
+    else:  # an earlier run's dumps are gone (openEMS cleans up)
         _remove(path, 'dump_info.json', 'dump_norm.json')
     if xml_path:
         CSX.Write2XML(os.path.abspath(xml_path))
     if progress is not None:
-        progress = dict(progress, label=m.ports[k].name, end_db=end_db, max_steps=max_steps)
+        progress = dict(progress, label=m.ports[k].name, end_db=end_db,
+                        max_steps=max_steps)
     watch = None
     if end_on == 'ports':
         fe = fmax if exc_fmax is None else exc_fmax
-        watch = dict(end_db=end_db, t_min=pulse_time(fmin, fe), window=watch_window(m, fmin), z=m.ports[k].z0)
+        watch = dict(end_db=end_db, t_min=pulse_time(fmin, fe),
+                     window=watch_window(m, fmin), z=m.ports[k].z0)
     seconds = execute(FDTD, path, threads, verbose, progress, watch=watch)
     norm = None
-    files = {(m.ports[k].name, d.name): os.path.join(path, d.name + ('.h5' if d.freqs else '_*.vtr')) for d in dumps}
+    files = {(m.ports[k].name, d.name): os.path.join(
+                 path, d.name + ('.h5' if d.freqs else '_*.vtr'))
+             for d in dumps}
     fd = sorted({f for d in dumps for f in (d.freqs or [])})
-    if fd:                                                      # incident wave at the dump frequencies
+    if fd:  # incident wave at the dump frequencies
         ports[k].CalcPort(path, np.array(fd))
         norm = dict(zip(fd, np.atleast_1d(ports[k].uf_inc)))
         from kicad2ems.core.api.solver import write_norm
         write_norm(path, norm)
     for p in ports:
         p.CalcPort(path, freq)
-    if not all(np.isfinite(p.uf_inc).all() and np.isfinite(p.uf_ref).all() for p in ports):
-        raise RuntimeError(f"the FDTD run of port {m.ports[k].name} became unstable (its port voltages are not "
-                           f"finite): see the run's openems.log")
-    if not np.any(np.abs(ports[k].uf_inc) > 0):                 # nothing went in: no S column to compute
-        raise RuntimeError(f"port {m.ports[k].name} was not excited (no incident wave: its box catches no mesh "
-                           f"edges; see the run's openems.log, 'Voltage excitations')")
+    if (not all(
+            np.isfinite(p.uf_inc).all() and np.isfinite(p.uf_ref).all()
+            for p in ports)):
+        raise RuntimeError(
+            f"the FDTD run of port {m.ports[k].name} became unstable (its port "
+            "voltages are not finite): see the run's openems.log")
+    # nothing went in: no S column to compute
+    if not np.any(np.abs(ports[k].uf_inc) > 0):
+        raise RuntimeError(
+            f"port {m.ports[k].name} was not excited (no incident wave: its "
+            "box catches no mesh edges; see the run's openems.log, 'Voltage "
+            "excitations')")
     col = np.array([p.uf_ref / ports[k].uf_inc for p in ports]).T
-    extra = analyse(path=path, ports=ports, token=token, k=k, col=col) if analyse else None
+    extra = (analyse(path=path, ports=ports, token=token, k=k, col=col)
+             if analyse else None)
     lines = None
     if probes:
         from . import lineport
-        lines = dict(probes=lineport.read(probes, path, freq),
-                     lumped=(np.array([p.uf_inc for p in ports]), np.array([p.uf_ref for p in ports])))
-    return k, col, files, norm, seconds, steps_taken(path, mesh['info']['dt_ps']), extra, lines
+        lines = dict(
+            probes=lineport.read(probes, path, freq),
+            lumped=(np.array([p.uf_inc for p in ports]),
+                    np.array([p.uf_ref for p in ports])))
+    return (k, col, files, norm, seconds,
+            steps_taken(path, mesh['info']['dt_ps']), extra, lines)
 
 
-# The threads an engine that runs in threads (gfdtd) is given, by their count, kept for the next solve: each makes its
-# GPU device and pipelines once (emsdev's slang_device, per thread: about 0.3 s), so a --converge level, a sweep's
-# next point or the window's next run does not make them again (R-D4)
+# The threads an engine that runs in threads (gfdtd) is given, by their count,
+# kept for the next solve: each makes its GPU device and pipelines once
+# (emsdev's slang_device, per thread: about 0.3 s), so a --converge level, a
+# sweep's next point or the window's next run does not make them again (R-D4)
 _POOLS = {}
 
 
-def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, rough=None, copper_kw=None, threads=0, xml_path=None,
-                    dumps=(), dump_runs=None, jobs=1, diel='fixed', diel_fref=1e9, max_steps=1_000_000, progress=None,
-                    exc_fmax=None, setup=None, analyse=None, log=print, end_on='ports', engine=None, line_plan=None):
-    """One openEMS run per excited port, `jobs` of them at a time (separate processes; without `threads`,
-    half the logical CPUs are shared between them; gfdtd: threads of this process, on the GPU a stream each). Field dumps are added to the runs in dump_runs (port
-    indices; default: the first excited port). progress: None or dict(mode='bar' | 'raw'[, on_status]) -
-    see execute(). setup / analyse: hooks of every run (see _run_port; picklable for jobs > 1). engine: see
-    _run_port. line_plan: lineport.plan_ports' (R-E1): each run's probe readings in RunResult.lines. Returns a
-    RunResult."""
+def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None,
+                    rough=None, copper_kw=None, threads=0, xml_path=None,
+                    dumps=(), dump_runs=None, jobs=1, diel='fixed',
+                    diel_fref=1e9, max_steps=1_000_000, progress=None,
+                    exc_fmax=None, setup=None, analyse=None, log=print,
+                    end_on='ports', engine=None, line_plan=None):
+    """One openEMS run per excited port, `jobs` of them at a time (separate
+    processes; without `threads`, half the logical CPUs are shared between them;
+    gfdtd: threads of this process, on the GPU a stream each). Field dumps are
+    added to the runs in dump_runs (port indices; default: the first excited
+    port). progress: None or dict(mode='bar' | 'raw'[, on_status]) - see
+    execute(). setup / analyse: hooks of every run (see _run_port; picklable for
+    jobs > 1). engine: see _run_port. line_plan: lineport.plan_ports' (R-E1):
+    each run's probe readings in RunResult.lines. Returns a RunResult."""
     folder, who = engine_name(engine)
     dump_runs = [excite[0]] if dump_runs is None else dump_runs
     n = len(m.ports)
     res = RunResult(np.full((len(freq), n, n), np.nan + 0j))
     jobs = max(1, min(int(jobs or 1), len(excite)))
     if jobs > 1 and not threads:
-        # FDTD is memory-bound: half the logical CPUs (no hyper-thread pairs) shared by the runs; giving each
-        # run cpu_count / jobs threads oversubscribes the cores and made every run ~4x slower
+        # FDTD is memory-bound: half the logical CPUs (no hyper-thread pairs)
+        # shared by the runs; giving each run cpu_count / jobs threads
+        # oversubscribes the cores and made every run ~4x slower
         threads = max(1, (os.cpu_count() or 2) // 2 // jobs)
-    tasks = [dict(k=k, dumps=dumps if k in dump_runs else (), xml_path=xml_path if k == excite[0] else None)
-             for k in excite]
+    tasks = [
+        dict(k=k, dumps=(dumps if k in dump_runs else ()),
+             xml_path=(xml_path if k == excite[0] else None)) for k in excite
+    ]
 
     def collect(out):
         k, col, files, norm, seconds, steps, extra, lines = out
@@ -357,23 +438,32 @@ def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, 
         for (pn, dn), path in files.items():
             if not glob.glob(os.path.join(os.path.dirname(path), dn + '*')):
                 log(f"  WARNING: no output found for field dump {dn}")
-        log(f"  {name} done in {seconds:.0f} s" + (f", ~{steps} timesteps" if steps else ''))
+        log(f"  {name} done in {seconds:.0f} s"
+            + (f", ~{steps} timesteps" if steps else ''))
         end = os.path.join(run_dir(m, k, out_dir, engine), 'run_end.json')
         if os.path.exists(end):
             with open(end, encoding='utf-8') as fh:
                 res.ended[name] = json.load(fh)
-            log(f"  {name}: stopped when the port signals had decayed by {-res.ended[name]['level_db']:.1f} dB "
-                f"(at {res.ended[name]['t_ns']:.2f} ns; the field energy had not reached --end-db)")
+            log(f"  {name}: stopped when the port signals had decayed by "
+                f"{-res.ended[name]['level_db']:.1f} dB (at "
+                f"{res.ended[name]['t_ns']:.2f} ns; the field energy had not "
+                "reached --end-db)"
+                )
         w = step_limit_warning(name, steps, max_steps, end_db)
         if w:
             log("  " + w)
 
-    common = dict(m=m, mesh=mesh, freq=freq, bc=bc, out_dir=out_dir, end_db=end_db, sigma=sigma, rough=rough,
-                  copper_kw=copper_kw, threads=threads, diel=diel, diel_fref=diel_fref, max_steps=max_steps,
-                  exc_fmax=exc_fmax, setup=setup, analyse=analyse, end_on=end_on, engine=engine, line_plan=line_plan)
+    common = dict(m=m, mesh=mesh, freq=freq, bc=bc, out_dir=out_dir,
+                  end_db=end_db, sigma=sigma, rough=rough, copper_kw=copper_kw,
+                  threads=threads, diel=diel, diel_fref=diel_fref,
+                  max_steps=max_steps, exc_fmax=exc_fmax, setup=setup,
+                  analyse=analyse, end_on=end_on, engine=engine,
+                  line_plan=line_plan)
     if jobs == 1:
         for t in tasks:
-            log(f"{who}: exciting {m.ports[t['k']].name} -> {run_dir(m, t['k'], out_dir, engine)}")
+            log(f"{who}: exciting {m.ports[t['k']].name} -> "
+                f"{run_dir(m, t['k'], out_dir, engine)}"
+                )
             collect(_run_port(**t, **common, progress=progress))
         return res
     import multiprocessing
@@ -381,58 +471,82 @@ def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None, 
     from .progress import Monitor, Tracker
     mod = engine_module(engine)
     slots = getattr(mod, 'GPU_SLOTS', None)
-    slots = slots if slots and len(slots) == jobs else None         # (R-D9: a process a GPU, bound as it starts)
-    in_threads = getattr(mod, 'IN_THREADS', False) and not slots    # one process: the runs share it (gfdtd: the GPU)
-    log(f"{who}: {len(tasks)} excitation(s), {jobs} at a time" + ('' if in_threads else f", {threads} thread(s) each") +
-        f" ({who} output in openems.log of each run under {os.path.join(out_dir, folder)})")
+    # (R-D9: a process a GPU, bound as it starts)
+    slots = slots if slots and len(slots) == jobs else None
+    # one process: the runs share it (gfdtd: the GPU)
+    in_threads = getattr(mod, 'IN_THREADS', False) and not slots
+    log(f"{who}: {len(tasks)} excitation(s), {jobs} at a time"
+        + ('' if in_threads else f", {threads} thread(s) each") +
+        f" ({who} output in openems.log of each run under "
+        f"{os.path.join(out_dir, folder)})"
+        )
     mon = None
     if progress is not None:
-        for t in tasks:                                             # fresh logs, so the monitor never reads old ones
+        for t in tasks:  # fresh logs, so the monitor never reads old ones
             os.makedirs(run_dir(m, t['k'], out_dir, engine), exist_ok=True)
-            open(log_path(run_dir(m, t['k'], out_dir, engine)), 'w', encoding='utf-8').close()
-        mon = Monitor([(m.ports[t['k']].name, log_path(run_dir(m, t['k'], out_dir, engine)),
-                        Tracker(m.ports[t['k']].name, end_db, max_steps)) for t in tasks], progress['mode'],
+            open(log_path(run_dir(m, t['k'], out_dir, engine)), 'w',
+                 encoding='utf-8').close()
+        mon = Monitor([(m.ports[t['k']].name,
+                        log_path(run_dir(m, t['k'], out_dir, engine)),
+                        Tracker(m.ports[t['k']].name, end_db, max_steps))
+                       for t in tasks], progress['mode'],
                       on_status=progress.get('on_status')).start()
     try:
-        if in_threads:                                              # kept: each thread's GPU device with it
+        if in_threads:  # kept: each thread's GPU device with it
             if jobs not in _POOLS:
-                _POOLS[jobs] = ThreadPoolExecutor(jobs, thread_name_prefix=f'fdtd{jobs}')
+                _POOLS[jobs] = ThreadPoolExecutor(
+                    jobs, thread_name_prefix=f'fdtd{jobs}')
             ex = _POOLS[jobs]
-            futs = [ex.submit(_run_port, **t, **common, verbose=1, progress=dict(mode='file')) for t in tasks]
+            futs = [
+                ex.submit(_run_port, **t, **common, verbose=1,
+                          progress=dict(mode='file')) for t in tasks
+            ]
             outs = [f.result() for f in as_completed(futs)]
-        elif slots and hasattr(mod, 'share'):                          # a process a GPU, the runs shared by speed
+        # a process a GPU, the runs shared by speed
+        elif slots and hasattr(mod, 'share'):
             ctx = multiprocessing.get_context('spawn')
             plan = mod.share(slots, len(tasks))
-            log(f"{who}: runs a GPU, by their measured speeds: " + ', '.join(f"{k}: {len(v)}" for k, v in plan.items()))
+            log(f"{who}: runs a GPU, by their measured speeds: "
+                + ', '.join(f"{k}: {len(v)}" for k, v in plan.items()))
             pools, futs = [], []
             try:
                 for k, idx in plan.items():
                     if not idx:
                         continue
-                    ex = ProcessPoolExecutor(1, mp_context=ctx, initializer=mod.bind_process,
-                                             initargs=([k], ctx.Value('i', 0), ctx.Lock()))
+                    ex = ProcessPoolExecutor(
+                        1, mp_context=ctx, initializer=mod.bind_process,
+                        initargs=([k], ctx.Value('i', 0), ctx.Lock()))
                     pools.append(ex)
-                    futs += [(k, ex.submit(_run_port, **tasks[i], **common, verbose=1, progress=dict(mode='file')))
+                    futs += [(k,
+                              ex.submit(_run_port, **tasks[i], **common,
+                                        verbose=1, progress=dict(mode='file')))
                              for i in idx]
                 outs = []
                 for k, f in futs:
                     out = f.result()
                     outs.append(out)
                     seconds, steps = out[4], out[5]
-                    if seconds and steps:                           # (each GPU's speed, for the next plan)
-                        mod.record_speed(k, mesh['info']['cells'] * steps / seconds / 1e6)
+                    # (each GPU's speed, for the next plan)
+                    if seconds and steps:
+                        mod.record_speed(
+                            k, mesh['info']['cells'] * steps / seconds / 1e6)
             finally:
                 for ex in pools:
                     ex.shutdown()
         else:
             ctx = multiprocessing.get_context('spawn')
-            kw = dict(initializer=mod.bind_process, initargs=(slots, ctx.Value('i', 0), ctx.Lock())) if slots else {}
+            kw = (dict(initializer=mod.bind_process,
+                       initargs=(slots, ctx.Value('i', 0),
+                                 ctx.Lock())) if slots else {})
             with ProcessPoolExecutor(jobs, mp_context=ctx, **kw) as ex:
-                futs = [ex.submit(_run_port, **t, **common, verbose=1, progress=dict(mode='file')) for t in tasks]
+                futs = [
+                    ex.submit(_run_port, **t, **common, verbose=1,
+                              progress=dict(mode='file')) for t in tasks
+                ]
                 outs = [f.result() for f in as_completed(futs)]
     finally:
         if mon:
             mon.stop()
-    for out in outs:                                                # after the progress lines: clean output
+    for out in outs:  # after the progress lines: clean output
         collect(out)
     return res

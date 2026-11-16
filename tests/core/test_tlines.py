@@ -1,26 +1,35 @@
-"""Transmission-line sections: the closed-form impedances against reference values, the section
-graph of the example boards (traces, pads, vias, parts, branches, T-junctions, reference changes)."""
+"""Transmission-line sections: the closed-form impedances against reference
+values, the section graph of the example boards (traces, pads, vias, parts,
+branches, T-junctions, reference changes)."""
 import os
 import pytest
 from kicad2ems.core.importers.kicad import KiCadBoard
 from kicad2ems.core.board import Board
-from kicad2ems.core.lines.tlines import (build, microstrip, stripline, offset_stripline, cpwg, coax, ellipk,
-                                  embedded_microstrip)
+from kicad2ems.core.lines.tlines import (build, microstrip, stripline,
+                                         offset_stripline, cpwg, coax, ellipk,
+                                         embedded_microstrip)
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-# reference values: scikit-rf 2.1 (MLine model='hammerstadjensen', disp='none'; CPW has_metal_backside)
-@pytest.mark.parametrize('w,h,t,er,z0,ee', [
-    (0.35, 0.2, 0.0, 4.3, 53.267, 3.2388), (0.40, 0.2104, 0.035, 4.4, 48.009, 3.2123),
-    (0.40, 0.2104, 0.0, 4.4, 50.200, 3.3294), (3.0, 1.6, 0.035, 4.4, 50.166, 3.3008), (0.1, 0.1, 0.018, 3.5, 72.801, 2.4787)])
+# reference values: scikit-rf 2.1 (MLine model='hammerstadjensen', disp='none';
+# CPW has_metal_backside)
+@pytest.mark.parametrize('w,h,t,er,z0,ee',
+                         [(0.35, 0.2, 0.0, 4.3, 53.267, 3.2388),
+                          (0.40, 0.2104, 0.035, 4.4, 48.009, 3.2123),
+                          (0.40, 0.2104, 0.0, 4.4, 50.200, 3.3294),
+                          (3.0, 1.6, 0.035, 4.4, 50.166, 3.3008),
+                          (0.1, 0.1, 0.018, 3.5, 72.801, 2.4787)])
 def test_microstrip(w, h, t, er, z0, ee):
     z, e = microstrip(w, h, er, t)
     assert z == pytest.approx(z0, rel=2e-3) and e == pytest.approx(ee, rel=2e-3)
 
 
-@pytest.mark.parametrize('w,s,h,er,z0,ee', [(0.3, 0.15, 0.2, 4.3, 54.159, 3.0126), (1.0, 0.2, 0.5, 4.4, 42.127, 3.0579),
-                                            (0.5, 0.5, 1.6, 4.4, 85.910, 2.7540)])
+@pytest.mark.parametrize('w,s,h,er,z0,ee',
+                         [(0.3, 0.15, 0.2, 4.3, 54.159, 3.0126),
+                          (1.0, 0.2, 0.5, 4.4, 42.127, 3.0579),
+                          (0.5, 0.5, 1.6, 4.4, 85.910, 2.7540)])
 def test_grounded_cpw(w, s, h, er, z0, ee):
     z, e = cpwg(w, s, h, er)
     assert z == pytest.approx(z0, rel=3e-3) and e == pytest.approx(ee, rel=3e-3)
@@ -28,141 +37,196 @@ def test_grounded_cpw(w, s, h, er, z0, ee):
 
 def test_stripline_and_friends():
     import math
-    # Cohn's exact zero-thickness result for w 0.15, b 0.4, er 4.3: 30 pi / sqrt(er) K(k) / K(k')
+    # Cohn's exact zero-thickness result for w 0.15, b 0.4, er 4.3: 30 pi /
+    # sqrt(er) K(k) / K(k')
     k = 1 / math.cosh(math.pi * 0.15 / 0.8)
-    cohn = 30 * math.pi / math.sqrt(4.3) * ellipk(k) / ellipk(math.sqrt(1 - k * k))
-    assert stripline(0.15, 0.4, 4.3)[0] == pytest.approx(cohn, rel=2e-3) == pytest.approx(56.22, abs=0.05)
-    assert stripline(0.15, 0.435, 4.3, 0.035)[0] < cohn                       # thickness lowers Z0
-    assert offset_stripline(0.15, 0.2, 0.2, 4.3)[0] == pytest.approx(stripline(0.15, 0.4, 4.3)[0])
-    assert offset_stripline(0.15, 0.1, 0.3, 4.3)[0] < stripline(0.15, 0.4, 4.3)[0]
+    cohn = (30 * math.pi / math.sqrt(4.3) * ellipk(k)
+            / ellipk(math.sqrt(1 - k * k)))
+    assert (stripline(0.15, 0.4, 4.3)[0] == pytest.approx(cohn, rel=2e-3) ==
+            pytest.approx(56.22, abs=0.05))
+    assert stripline(0.15, 0.435, 4.3, 0.035)[0] < cohn  # thickness lowers Z0
+    assert (offset_stripline(0.15, 0.2, 0.2, 4.3)[0] == pytest.approx(
+        stripline(0.15, 0.4, 4.3)[0]))
+    assert (offset_stripline(0.15, 0.1, 0.3, 4.3)[0]
+            < stripline(0.15, 0.4, 4.3)[0])
     assert ellipk(0.0) == pytest.approx(math.pi / 2)
     assert coax(1.0, 2.3, 1.0) == pytest.approx(49.97, abs=0.05)
-    z, ee = embedded_microstrip(0.35, 0.2, 4.3, 0.0, 1.0, 4.3)               # deeply buried: eeff -> er
-    assert ee == pytest.approx(4.3, rel=0.02) and z < microstrip(0.35, 0.2, 4.3)[0]
+    # deeply buried: eeff -> er
+    z, ee = embedded_microstrip(0.35, 0.2, 4.3, 0.0, 1.0, 4.3)
+    assert (ee == pytest.approx(4.3, rel=0.02)
+            and z < microstrip(0.35, 0.2, 4.3)[0])
 
 
 def test_transition_sections(demo_files):
     base, _ = demo_files
-    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', ground='B.Cu',
-              log=lambda *a: None)
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'],
+              pos_file=base + '-top.pos', ground='B.Cu', log=lambda *a: None)
     lm = build(m)
     (p, q, secs, branches), = lm.paths
     assert (p, q) == ('P1', 'P2')
     xs = [e.xs for e, _, _ in secs]
-    assert xs[0] == 'microstrip' and xs[-1] == 'stripline' and 'coax' in xs           # the via in the antipad
+    # the via in the antipad
+    assert xs[0] == 'microstrip' and xs[-1] == 'stripline' and 'coax' in xs
     ms, sl = secs[0][0], secs[-1][0]
-    assert ms.z0_sheet == pytest.approx(53.27, abs=0.05) and ms.z0 < ms.z0_sheet          # 35 um copper: lower
+    # 35 um copper: lower
+    assert ms.z0_sheet == pytest.approx(53.27, abs=0.05) and ms.z0 < ms.z0_sheet
     assert sl.z0_sheet == pytest.approx(56.2, abs=0.1) and sl.layer == 'In2.Cu'
-    # the In1 antipad under the trace next to the via: sections of their own, with their line's cross-section
-    # (part of the via transition, not a line over the next plane down: reference._via_antipads)
+    # the In1 antipad under the trace next to the via: sections of their own,
+    # with their line's cross-section (part of the via transition, not a line
+    # over the next plane down: reference._via_antipads)
     near = [e for e, _, _ in secs if e.kind == 'trace' and e.length < 1]
-    assert len(near) == 2 and [e.xs for e in near] == ['microstrip', 'stripline']
-    assert near[0].z0 == pytest.approx(ms.z0) and near[1].z0 == pytest.approx(sl.z0)
+    assert (len(near) == 2
+            and [e.xs for e in near] == ['microstrip', 'stripline'])
+    assert (near[0].z0 == pytest.approx(ms.z0)
+            and near[1].z0 == pytest.approx(sl.z0))
     from kicad2ems.core.lines import reference
     old, reference.VIA_ANTIPAD = reference.VIA_ANTIPAD, None
-    try:                                                     # without the rule: the antipad's higher Z0
+    try:  # without the rule: the antipad's higher Z0
         (_, _, secs0, _), = build(m).paths
     finally:
         reference.VIA_ANTIPAD = old
-    assert all(e.z0 > ms.z0 for e, _, _ in secs0 if e.kind == 'trace' and e.length < 1)
+    assert all(e.z0 > ms.z0
+               for e, _, _ in secs0
+               if e.kind == 'trace' and e.length < 1)
     total = sum(e.length for e, _, _ in secs)
-    assert total == pytest.approx(19.875 + 0.4, abs=0.02)                              # port to port + barrel
-    assert all(s0 == pytest.approx(sum(e.length for e, _, _ in secs[:i])) for i, (_, s0, _) in enumerate(secs))
+    # port to port + barrel
+    assert total == pytest.approx(19.875 + 0.4, abs=0.02)
+    assert all(s0 == pytest.approx(sum(e.length
+                                       for e, _, _ in secs[:i]))
+               for i, (_, s0, _) in enumerate(secs))
 
 
 def test_lowpass_pads_parts_and_branch(boards):
     base = boards['lowpass']
-    m = Board(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
+    m = Board(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos',
+              log=lambda *a: None)
     lm = build(m)
     (p, q, secs, branches), = lm.paths
     kinds = [e.kind for e, _, _ in secs]
-    assert kinds.count('part') == 2 and kinds.count('pad') == 4                         # L1, L3 with their pads
+    # L1, L3 with their pads
+    assert kinds.count('part') == 2 and kinds.count('pad') == 4
     pads = [e for e, _, _ in secs if e.kind == 'pad']
     trace = secs[0][0]
-    assert all(e.w > trace.w and e.z0 < trace.z0 for e in pads)                        # pads: wide, low Z0
+    # pads: wide, low Z0
+    assert all(e.w > trace.w and e.z0 < trace.z0 for e in pads)
     assert [e.label for e, _, _ in secs if e.kind == 'part'] == ['L1', 'L3']
-    (at, L, lab, z), = branches                                                         # C2 hangs off a T-junction
+    (at, L, lab, z), = branches  # C2 hangs off a T-junction
     assert 'C2' in lab and 'to ground' in lab and 5 < at < 10
-    # the trace through the T-junction is split there: no trace passes the junction
+    # the trace through the T-junction is split there: no trace passes the
+    # junction
     assert sum(1 for e, _, _ in secs if e.kind == 'trace') == 4
 
 
 def test_filter_feeds_and_gap_ports(boards):
-    m = Board(KiCadBoard(os.path.join(ROOT, 'examples', 'rf_interdig.kicad_pcb')), nets=['RF', 'GND'], log=lambda *a: None)
+    m = Board(
+        KiCadBoard(os.path.join(ROOT, 'examples', 'rf_interdig.kicad_pcb')),
+        nets=['RF', 'GND'], log=lambda *a: None)
     lm = build(m)
     assert set(lm.ports) == {'P1', 'P2'}
     assert all(secs for _, _, secs, _ in lm.paths)
-    dip = Board(KiCadBoard(boards['dipole'] + '.kicad_pcb'), log=lambda *a: None)
+    dip = Board(KiCadBoard(boards['dipole'] + '.kicad_pcb'),
+                log=lambda *a: None)
     lm = build(dip)
     assert not lm.paths and any('gap port' in n for n in lm.notes)
 
 
 def test_ground_nets_region_and_partner(boards, demo_files):
-    """A shunt part's ground pad with a track stays a shunt; a region crop clips the traces; a
-    differential leg's partner is not its coplanar ground; a trace never references its own net."""
+    """A shunt part's ground pad with a track stays a shunt; a region crop clips
+    the traces; a differential leg's partner is not its coplanar ground; a trace
+    never references its own net."""
     base = boards['lowpass']
-    m = Board(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos', log=lambda *a: None)
+    m = Board(KiCadBoard(base + '.kicad_pcb'), pos_file=base + '-top.pos',
+              log=lambda *a: None)
     assert 'GND' in m.ground_nets
     c2 = [e for e in build(m).elements if e.kind == 'part' and e.label == 'C2']
     assert c2 and c2[0].b == 'gnd'
     demo, diff = demo_files
-    m = Board(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=demo + '-top.pos', ground='B.Cu',
+    m = Board(KiCadBoard(demo + '.kicad_pcb'), nets=['RF', 'GND'],
+              pos_file=demo + '-top.pos', ground='B.Cu',
               region=(0, -20, 14, 20), log=lambda *a: None)
     (p, q, secs, _), = build(m).paths
-    assert q is None and sum(e.length for e, _, _ in secs) == pytest.approx(14 - 2.0875 + 0.4, abs=0.05)
-    m = Board(KiCadBoard(diff + '.kicad_pcb'), pos_file=diff + '-top.pos', ground='B.Cu', log=lambda *a: None)
+    assert (q is None and sum(e.length for e, _, _ in secs) == pytest.approx(
+        14 - 2.0875 + 0.4, abs=0.05))
+    m = Board(KiCadBoard(diff + '.kicad_pcb'), pos_file=diff + '-top.pos',
+              ground='B.Cu', log=lambda *a: None)
     lm = build(m)
     assert any('differential pair' in n for n in lm.notes)
-    assert all(not any('beside it' in note for note in e.notes) for _, _, secs, _ in lm.paths for e, _, _ in secs)
-    assert all(e.xs == 'microstrip' for _, _, secs, _ in lm.paths for e, _, _ in secs if e.kind == 'trace')
+    assert all(not any('beside it' in note
+                       for note in e.notes)
+               for _, _, secs, _ in lm.paths
+               for e, _, _ in secs)
+    assert all(e.xs == 'microstrip'
+               for _, _, secs, _ in lm.paths
+               for e, _, _ in secs
+               if e.kind == 'trace')
 
 
 def test_edge_launch_pad_port_and_taper(boards):
-    """The connector's signal pad drawn as two pads numbered 1 is one pad section, running from where the
-    feed meets it to P2 on it; the taper drawn as footprint copper widens the trace in steps; the
-    45 degree opening of the F.Cu pour widens the coplanar gap in steps."""
+    """The connector's signal pad drawn as two pads numbered 1 is one pad
+    section, running from where the feed meets it to P2 on it; the taper drawn
+    as footprint copper widens the trace in steps; the 45 degree opening of the
+    F.Cu pour widens the coplanar gap in steps."""
     base = boards['launch']
-    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'], pos_file=base + '-top.pos', log=lambda *a: None)
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'],
+              pos_file=base + '-top.pos', log=lambda *a: None)
     lm = build(m)
     (p, q, secs, branches), = lm.paths
     assert (p, q) == ('P1', 'P2') and not branches
     p1, p2 = (next(pp for pp in m.ports if pp.name == n) for n in ('P1', 'P2'))
-    assert sum(e.length for e, _, _ in secs) == pytest.approx(p2.c[0] - p1.c[0], abs=0.01)   # port to port
+    # port to port
+    assert (sum(e.length
+                for e, _, _ in secs) == pytest.approx(p2.c[0] - p1.c[0],
+                                                      abs=0.01))
     pad = secs[-1][0]
-    assert pad.kind == 'pad' and 'J1.1' in pad.label and pad.w == pytest.approx(1.6, abs=0.01)
-    assert pad.length == pytest.approx(p2.c[0] - 13.45, abs=0.05)            # from the oval's edge to the port
-    assert pad.xs == 'cpwg' and pad.h == pytest.approx(1.4858, abs=1e-3)       # over the cut-away inner planes
-    assert len({e.label for e in lm.elements if e.kind == 'pad'}) == 1         # one pad, not two
+    assert (pad.kind == 'pad' and 'J1.1' in pad.label
+            and pad.w == pytest.approx(1.6, abs=0.01))
+    # from the oval's edge to the port
+    assert pad.length == pytest.approx(p2.c[0] - 13.45, abs=0.05)
+    # over the cut-away inner planes
+    assert pad.xs == 'cpwg' and pad.h == pytest.approx(1.4858, abs=1e-3)
+    # one pad, not two
+    assert len({e.label for e in lm.elements if e.kind == 'pad'}) == 1
     feed = secs[0][0]
-    assert feed.xs == 'cpwg' and feed.s == pytest.approx(0.25, abs=1e-3) and feed.z0_sheet == pytest.approx(55.9, abs=1)
-    assert feed.z0 < 0.95 * feed.z0_sheet                    # the field solver's: 35 um of copper beside the gaps
+    assert (feed.xs == 'cpwg' and feed.s == pytest.approx(0.25, abs=1e-3)
+            and feed.z0_sheet == pytest.approx(55.9, abs=1))
+    # the field solver's: 35 um of copper beside the gaps
+    assert feed.z0 < 0.95 * feed.z0_sheet
     rest = [(e, s0 + p1.c[0]) for e, s0, _ in secs[1:-1]]
     assert all(e.kind == 'trace' for e, _ in rest)
-    opening = [e for e, x in rest if x < 11.4]                 # the pour opens out, the trace is still 0.32 mm
-    assert len(opening) >= 3 and all(e.w == pytest.approx(0.32) for e in opening)
+    # the pour opens out, the trace is still 0.32 mm
+    opening = [e for e, x in rest if x < 11.4]
+    assert (len(opening) >= 3
+            and all(e.w == pytest.approx(0.32) for e in opening))
     z = [e.z0 for e in opening]
-    assert z == sorted(z) and z[0] > feed.z0                   # rising Z0 as the gap opens
+    assert z == sorted(z) and z[0] > feed.z0  # rising Z0 as the gap opens
     taper = [e for e, x in rest if x > 11.6]
     w = [e.w for e in taper]
-    assert len(taper) >= 4 and w == sorted(w) and w[0] > 0.33 and w[-1] > 1.0     # the drawn taper, stepped
+    # the drawn taper, stepped
+    assert len(taper) >= 4 and w == sorted(w) and w[0] > 0.33 and w[-1] > 1.0
     assert all('widened' in e.label for e in taper)
 
 
 def test_sma_launch_example_line_model():
-    """examples/sma_launch: a straight 0.32 mm line onto the connector pad (no taper), and the line model stays
-    close to the openEMS reference over 1-6 GHz."""
+    """examples/sma_launch: a straight 0.32 mm line onto the connector pad (no
+    taper), and the line model stays close to the openEMS reference over 1-6
+    GHz."""
     import numpy as np
     rf = pytest.importorskip('skrf')
     from kicad2ems.core.importers.kicad import KiCadBoard
     from kicad2ems.core.board import Board
     from kicad2ems.core.lines.tlines import build
     from kicad2ems.core.solvers.lines.fastsolve import solve
-    ex = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
-    m = Board(KiCadBoard(os.path.join(ex, 'sma_launch.kicad_pcb')), nets=['REF_SMA_N', 'GND'],
-              pos_file=os.path.join(ex, 'sma_launch-all.pos'), log=lambda *a: None)
+    ex = os.path.join(
+        os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        'examples')
+    m = Board(KiCadBoard(os.path.join(ex, 'sma_launch.kicad_pcb')),
+              nets=['REF_SMA_N',
+                    'GND'], pos_file=os.path.join(ex, 'sma_launch-all.pos'),
+              log=lambda *a: None)
     lm = build(m)
     widths = [e.w for e in lm.elements if e.kind == 'trace' and e.w]
-    assert set(widths) == {0.32}                                             # no taper: one width to the pad
+    assert set(widths) == {0.32}  # no taper: one width to the pad
     ref = rf.Network(os.path.join(ex, 'reference', 'sma_launch_openems.s2p'))
     s, _ = solve(lm, m.ports, ref.f, backend='skrf')
     s21 = 20 * np.log10(np.abs(s[:, 1, 0]))
@@ -170,12 +234,17 @@ def test_sma_launch_example_line_model():
 
 
 def test_stubs_drawn_as_rectangles_are_tees(tmp_path):
-    """Stubs drawn as filled rectangles over the line (not tracks) are tees with open stubs: the line keeps its
-    50 ohm, and the notch stays near 2.4 GHz (the shapes had widened the line into an 8 ohm piece, the notch at
-    3.5 GHz)."""
+    """Stubs drawn as filled rectangles over the line (not tracks) are tees with
+    open stubs: the line keeps its 50 ohm, and the notch stays near 2.4 GHz (the
+    shapes had widened the line into an 8 ohm piece, the notch at 3.5 GHz)."""
     import sys
     import numpy as np
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples'))
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            'examples'))
     import make_rf_examples as rf
     path = str(tmp_path / 'stubrect.kicad_pcb')
     rf.stubnotch(path, rects=True)
@@ -184,7 +253,8 @@ def test_stubs_drawn_as_rectangles_are_tees(tmp_path):
     (path_,) = lm.summary()['paths']
     assert min(s['z0'] for s in path_['sections']) > 45
     long_ = [b for b in path_['branches'] if b['length'] > 10]
-    assert len(long_) == 2 and all(abs(b['length'] - long_[0]['length']) < 1e-6 for b in long_)
+    assert (len(long_) == 2 and all(
+        abs(b['length'] - long_[0]['length']) < 1e-6 for b in long_))
     pytest.importorskip('skrf')
     from kicad2ems.core.solvers.lines.fastsolve import solve
     f = np.linspace(1e9, 4e9, 301)
@@ -194,12 +264,17 @@ def test_stubs_drawn_as_rectangles_are_tees(tmp_path):
 
 
 def test_radial_stub_is_a_tee_and_a_widening_stub(tmp_path):
-    """A fan-shaped stub across the line (not rectilinear) is a tee and an open stub sliced into sections
-    that widen with the fan, and the notch comes out near the field solvers' 2.1-2.2 GHz (before: no stub,
-    no notch)."""
+    """A fan-shaped stub across the line (not rectilinear) is a tee and an open
+    stub sliced into sections that widen with the fan, and the notch comes out
+    near the field solvers' 2.1-2.2 GHz (before: no stub, no notch)."""
     import sys
     import numpy as np
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples'))
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            'examples'))
     import make_rf_examples as rf
     path = str(tmp_path / 'radial.kicad_pcb')
     rf.radialstub(path)
@@ -207,34 +282,48 @@ def test_radial_stub_is_a_tee_and_a_widening_stub(tmp_path):
     lm = build(m)
     (p,) = lm.summary()['paths']
     stub = max(p['branches'], key=lambda b: b['length'])
-    assert stub['length'] > 10 and 'ends: open' in stub['label'] and int(stub['label'].split('(')[1].split()[0]) > 5
-    assert min(s['z0'] for s in p['sections']) > 45                  # the line itself is not widened
+    assert (stub['length'] > 10 and 'ends: open' in stub['label']
+            and int(stub['label'].split('(')[1].split()[0]) > 5)
+    # the line itself is not widened
+    assert min(s['z0'] for s in p['sections']) > 45
     pytest.importorskip('skrf')
     from kicad2ems.core.solvers.lines.fastsolve import solve
     f = np.linspace(1e9, 4e9, 301)
     S, _ = solve(lm, m.ports, f, backend='skrf')
-    assert 1.8e9 < f[np.argmin(np.abs(S[:, 1, 0]))] < 2.7e9        # scikit-rf 1.99 GHz (no step models)
+    # scikit-rf 1.99 GHz (no step models)
+    assert 1.8e9 < f[np.argmin(np.abs(S[:, 1, 0]))] < 2.7e9
 
 
 def test_radial_stub_in_qucsator_is_mrstub(tmp_path):
-    """The fan is a circular sector (strips.radial_sector: its apex on the line, 60 deg, the example's radius),
-    and qucsator models it as one MRSTUB on the tee instead of its widening sections: the notch at mom25d's
-    2.18 GHz (openEMS 2.13; the sections had given 2.32)."""
+    """The fan is a circular sector (strips.radial_sector: its apex on the line,
+    60 deg, the example's radius), and qucsator models it as one MRSTUB on the
+    tee instead of its widening sections: the notch at mom25d's 2.18 GHz
+    (openEMS 2.13; the sections had given 2.32)."""
     import sys
     import numpy as np
     from shapely.geometry import Polygon
     from kicad2ems.core.solvers.lines import fastsolve
     from kicad2ems.core.lines.strips import radial_sector
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples'))
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            'examples'))
     import make_rf_examples as rf
     a = np.radians(np.linspace(60, 120, 25))
     fan = Polygon([(0, 0)] + list(zip(13 * np.cos(a), 13 * np.sin(a))))
     sec = radial_sector(fan, np.zeros(2), np.array([0.0, 1.0]), 1.5)
-    assert sec['ri'] == pytest.approx(0.75) and sec['ro'] == pytest.approx(13) and sec['alpha'] == pytest.approx(60)
-    cut = fan.intersection(Polygon([(-20, 0.75), (20, 0.75), (20, 20), (-20, 20)]))     # cut off at the edge
-    assert radial_sector(cut, np.zeros(2), np.array([0.0, 1.0]), 1.5) == pytest.approx(sec)
-    assert radial_sector(Polygon([(0, 0), (5, 0), (5, 8), (0, 8), (0, 0.5)]), np.zeros(2), np.array([0.0, 1.0]),
-                         1.5) is None                                # not a sector
+    assert (sec['ri'] == pytest.approx(0.75) and sec['ro'] == pytest.approx(13)
+            and sec['alpha'] == pytest.approx(60))
+    # cut off at the edge
+    cut = fan.intersection(
+        Polygon([(-20, 0.75), (20, 0.75), (20, 20), (-20, 20)]))
+    assert (radial_sector(cut, np.zeros(2), np.array([0.0, 1.0]),
+                          1.5) == pytest.approx(sec))
+    assert (radial_sector(Polygon([(0, 0), (5, 0), (5, 8), (0, 8), (0, 0.5)]),
+                          np.zeros(2), np.array([0.0, 1.0]), 1.5)
+            is None)  # not a sector
     path = str(tmp_path / 'radial.kicad_pcb')
     r = rf.radialstub(path)
     m = Board(KiCadBoard(path), ground='B.Cu', log=lambda *a: None)
@@ -243,7 +332,8 @@ def test_radial_stub_in_qucsator_is_mrstub(tmp_path):
     text, _ = fastsolve.qucs_netlist(lm, m.ports, f)
     (line,) = [x for x in text.splitlines() if x.startswith('MRSTUB')]
     assert 'alpha="60' in line and f'ro="{r * 1e-3:.4g}' in line
-    assert 'MSTEP' not in text and text.count('MOPEN') == 2          # the two port ends, not the stub's
+    # the two port ends, not the stub's
+    assert 'MSTEP' not in text and text.count('MOPEN') == 2
     try:
         fastsolve.find_qucsator(None)
     except ValueError:
@@ -253,19 +343,24 @@ def test_radial_stub_in_qucsator_is_mrstub(tmp_path):
 
 
 def test_coupled_lines_under_solder_mask_stay_coupled():
-    """With the mask modelled, outer traces are embedded microstrip, and they are coupled too (no group at all
-    before: a hairpin filter's ports unconnected); the group's field solve has the mask over its copper."""
+    """With the mask modelled, outer traces are embedded microstrip, and they
+    are coupled too (no group at all before: a hairpin filter's ports
+    unconnected); the group's field solve has the mask over its copper."""
     from kicad2ems.core.config import build_settings
     from kicad2ems.core.pipeline import board_from_settings
     import os
     root = os.path.join(os.path.dirname(__file__), '..', '..')
     groups = {}
     for mask in (False, True):
-        s = build_settings(dict(mask=mask), config=os.path.join(root, 'examples', 'hairpin.toml'))
+        s = build_settings(
+            dict(mask=mask), config=os.path.join(root, 'examples',
+                                                 'hairpin.toml'))
         m = board_from_settings(s, log=lambda *a: None)
         lm = build(m)
         groups[mask] = lm.groups
     assert len(groups[True]) == len(groups[False]) >= 2
-    assert all(g['xs'] == 'embedded microstrip' and g.get('cover', 0) > 0 for g in groups[True])
+    assert all(g['xs'] == 'embedded microstrip' and g.get('cover', 0) > 0
+               for g in groups[True])
     plain, masked = groups[False][0]['pairs'][0], groups[True][0]['pairs'][0]
-    assert masked['eeff_o'] > plain['eeff_o']                       # the mask over the gap slows the odd mode
+    # the mask over the gap slows the odd mode
+    assert masked['eeff_o'] > plain['eeff_o']

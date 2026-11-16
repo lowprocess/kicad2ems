@@ -19,7 +19,9 @@ def parse_sexpr(text):
         elif t == ')':
             done = cur; cur = stack.pop(); cur.append(done)
         elif t[0] == '"':
-            cur.append(bytes(t[1:-1], 'utf-8').decode('unicode_escape') if '\\' in t else t[1:-1])
+            cur.append(
+                bytes(t[1:-1], 'utf-8').decode('unicode_escape') if '\\' in
+                t else t[1:-1])
         else:
             cur.append(t)
     return cur[0]
@@ -30,7 +32,9 @@ def items(node, name):
 
 
 def item(node, name, default=None):
-    return next((c for c in node[1:] if isinstance(c, list) and c and c[0] == name), default)
+    return next(
+        (c for c in node[1:] if isinstance(c, list) and c and c[0] == name),
+        default)
 
 
 def val(node, name, default=None, cast=str):
@@ -44,8 +48,8 @@ def xy(node, name):
 
 
 def pts(node):
-    """Points of a (pts ...) list: (xy x y) entries and, in KiCad 7+ polygons, (arc (start) (mid) (end))
-    entries expanded into points along the arc."""
+    """Points of a (pts ...) list: (xy x y) entries and, in KiCad 7+ polygons,
+    (arc (start) (mid) (end)) entries expanded into points along the arc."""
     from .shapes import arc_points
     p = item(node, 'pts')
     out = []
@@ -55,7 +59,10 @@ def pts(node):
         if c[0] == 'xy':
             out.append((float(c[1]), float(c[2])))
         elif c[0] == 'arc':
-            out += [tuple(q) for q in arc_points(xy(c, 'start'), xy(c, 'mid'), xy(c, 'end'))]
+            out += [
+                tuple(q)
+                for q in arc_points(xy(c, 'start'), xy(c, 'mid'), xy(c, 'end'))
+            ]
     return out
 
 
@@ -68,7 +75,8 @@ def width(node, default=0.0):
 
 
 def filled(node, default=True):
-    """Fill flag of a graphic: (fill solid|yes) / (fill none|no); `default` when there is none."""
+    """Fill flag of a graphic: (fill solid|yes) / (fill none|no); `default` when
+    there is none."""
     f = val(node, 'fill')
     return default if f is None else str(f).lower() in ('solid', 'yes', 'true')
 
