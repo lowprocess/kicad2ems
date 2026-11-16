@@ -1,4 +1,4 @@
-"""
+r"""
 A converter found on a board, as a circuit model: what the near-field tool
 selects (pcbqs.mqs: a regulator, its input net and capacitors, the inductor on
 its switch net), with what the board has on the inductor's far side.

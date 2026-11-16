@@ -1,4 +1,4 @@
-"""python -m kicad2ems.pcbqs.thermal: the steady temperature of a board from
+r"""python -m kicad2ems.pcbqs.thermal: the steady temperature of a board from
 what its parts dissipate.
 
     python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=0.35 \

@@ -1,4 +1,4 @@
-"""
+r"""
 python -m kicad2ems.pcbqs.sparams: low-frequency S-parameters of a board's
 ports, from the quasi-static currents of its copper.
 

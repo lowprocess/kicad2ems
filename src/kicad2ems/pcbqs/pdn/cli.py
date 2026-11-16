@@ -1,4 +1,4 @@
-"""
+r"""
 python -m kicad2ems.pcbqs.pdn: a power rail's DC drop and PDN impedance from a
 KiCad board (or a kicad2ems board.json).
 
