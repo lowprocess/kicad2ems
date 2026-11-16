@@ -4,7 +4,7 @@ CUDA or AMD ROCm), with its compiled CPU core and numpy (the reference) on the C
 files, so a model made for openEMS runs here unchanged:
 
     from kicad2ems.gfdtd import ContinuousStructure, openEMS          # instead of CSXCAD's / openEMS's
-    python -m gfdtd model.xml                                # an openEMS XML file, as `openEMS model.xml`
+    python -m kicad2ems.gfdtd model.xml                                # an openEMS XML file, as `openEMS model.xml`
 
 What it models (the MVP): rectilinear grids; isotropic dielectrics with conductivity (kappa); metals as PEC,
 conducting sheets with conductor loss (openEMS's model); lumped elements (R, L, C, parallel or series, with caps); openEMS's ports (lumped, MSL, stripline, CPW, coaxial,

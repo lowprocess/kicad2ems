@@ -13,7 +13,7 @@ either:
     cpu.core_threads()              # the CPU cores' default thread count: one per fast physical core
     memory.available()              # bytes this process may use now (cgroup aware)
 
-    python -m emsdev                 # all of it, one line each
+    python -m kicad2ems.emsdev                 # all of it, one line each
 
     from kicad2ems.emsdev.afs import adaptive_sweep   # the S-parameter sweep mom25d and pcbqs share (numpy)
 

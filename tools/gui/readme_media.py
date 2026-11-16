@@ -3,18 +3,17 @@
 kicad2ems's README and GUI-page pictures, from the examples: runs them (gfdtd, mom25d and the line model, with
 field dumps), then takes the window's pages and renders the 3D field views.
 
-    python tools/readme_media.py                 # runs, then every picture
-    python tools/readme_media.py --skip-runs     # only the pictures, from the last runs
-    python tools/readme_media.py --only hairpin filter         # (cases: hairpin, stub, patch, filter, start)
+    python tools/gui/readme_media.py                 # runs, then every picture
+    python tools/gui/readme_media.py --skip-runs     # only the pictures, from the last runs
+    python tools/gui/readme_media.py --only hairpin filter         # (cases: hairpin, stub, patch, filter, start)
 
-Writes kicad2ems's docs/img/readme/ (the README) and docs/img/gui/ (docs/gui.md), in its checkout (KICAD2EMS_SRC,
-default ../kicad2ems; the runs go to its build/readme/). Needs PySide6, pyqtgraph and dfsynth; the 3D views also
+Writes docs/img/readme/ (the README) and docs/img/gui/ (docs/gui.md) in this repository (the runs go to its
+build/readme/). Needs PySide6, pyqtgraph and dfsynth; the 3D views also
 PyOpenGL and a display (with QT_QPA_PLATFORM=offscreen they are left out).
 """
 import argparse, glob, os, shutil, subprocess, sys, time
 
-REPO = os.environ.get('KICAD2EMS_SRC') or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)))), 'kicad2ems')                      # kicad2ems's checkout: its examples and docs
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # the repository: examples, docs
 IMG, GUI = os.path.join(REPO, 'docs', 'img', 'readme'), os.path.join(REPO, 'docs', 'img', 'gui')
 RUNS = os.path.join(REPO, 'build', 'readme')
 

@@ -774,7 +774,7 @@ def analysis_command(name, values, board, out):
     from kicad2ems.core.api.frontend import analyses
     an = analyses().get(name)
     if an is None:
-        return None, [f"{name}: not installed (pip install pcbqs)"]
+        return None, [f"{name}: not installed (kicad2ems has no such analysis)"]
     miss = [m.get('text', str(m)) for m in (an.missing(values, board) or [])]
     if miss:
         return None, miss

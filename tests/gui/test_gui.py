@@ -876,7 +876,7 @@ def test_filter_command_line():
                 allow_fab_violations=True, no_calibrate=False, out='/x/idg', validate='gfdtd', em_tune=3,
                 k2e_args='--fine 0.03')
     a = filter_argv(dict(vals, future_option=1), desc=desc)
-    assert a[:3] == ['-u', '-m', 'dfsynth'] and a[a.index('--f0') + 1] == '5G' and a[a.index('--h') + 1] == '0.8'
+    assert a[:3] == ['-u', '-m', 'kicad2ems.dfsynth'] and a[a.index('--f0') + 1] == '5G' and a[a.index('--h') + 1] == '0.8'
     assert '--allow-fab-violations' in a and '--no-calibrate' not in a and '--order' not in a
     assert '--future-option' not in a
     assert a[a.index('--em-tune') + 1] == '3' and a[a.index('--k2e-args') + 1] == '--fine 0.03'
@@ -1261,7 +1261,7 @@ def test_filter_page_from_the_description(monkeypatch):
     assert page.w['substrate'].currentText() == 'X-1' and '1 (preset)' in page.w['h'].placeholderText()
     assert 'smooth' in page.w and not page.w['ripple'].isEnabled()      # More options; ripple: not in this dfsynth
     page.set_values(dict(type='lowpass', f0='2G', smooth=True))
-    assert ft.filter_argv(page.values(), desc=desc) == ['-u', '-m', 'dfsynth', '--type', 'lowpass', '--f0', '2G',
+    assert ft.filter_argv(page.values(), desc=desc) == ['-u', '-m', 'kicad2ems.dfsynth', '--type', 'lowpass', '--f0', '2G',
                                                        '--smooth']
     import shiboken6
     shiboken6.delete(page)                  # now, not at interpreter exit: a parentless page's plots crash it then

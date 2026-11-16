@@ -2,7 +2,7 @@
 gfdtd as a kicad2ems solver plugin and FDTD engine (engines.py): the FDTD model (plugin.py) solved by gfdtd's
 engine (the GPU via CuPy or Vulkan, its compiled CPU core, or numpy) through its CSXCAD / openEMS interface. The board, the mesh (--res, --fine, --nz, ...), the
 ports, the parts and the end criteria are the FDTD settings shared with openEMS; only the engine differs. Runs go
-to <out>/gfdtd/exc_<port>, the CSX file to <name>_gfdtd.xml (also runnable with `python -m gfdtd`), the antenna
+to <out>/gfdtd/exc_<port>, the CSX file to <name>_gfdtd.xml (also runnable with `python -m kicad2ems.gfdtd`), the antenna
 results to <name>_gfdtd_antenna.json.
 
 --sigma: openEMS's conducting-sheet model on gfdtd's engine API 1.1 or later (LOSS_API); before that its
@@ -86,7 +86,7 @@ class GFDTD(FDTD):
         try:
             from kicad2ems.gfdtd.engine import gpu_info, core_info
         except ImportError as e:
-            return False, f"gfdtd cannot be imported ({e}): python -m pip install 'kicad2ems-fdtd[gfdtd]'"
+            return False, f"gfdtd cannot be imported ({e}): gfdtd is part of kicad2ems (kicad2ems.gfdtd): reinstall kicad2ems"
         why = engine_compatible()
         if why:
             return False, why

@@ -91,7 +91,7 @@ class _Thumbs(QThread):
 
     def run(self):
         from kicad2ems.core.api.frontend import board_layout
-        from kicad2ems.core import examples as X
+        from kicad2ems import examples as X
         folder = cache_folder()
         boards = os.path.join(folder, 'boards')
         os.makedirs(boards, exist_ok=True)

@@ -15,7 +15,7 @@ substrate presets and its options come from `dfsynth --describe --json`, so the 
 import glob, html, json, os, re, shutil, sys
 import numpy as np
 
-DFSYNTH_PIP = "python -m pip install 'kicad2ems[filter]' (or 'dfsynth @ git+https://github.com/lowprocess/dfsynth')"
+DFSYNTH_PIP = "dfsynth is part of kicad2ems (kicad2ems.dfsynth): reinstall kicad2ems"
 
 
 DESCRIBE_FORMAT = 1                 # the --describe --json format this page reads
@@ -37,14 +37,13 @@ def why_not(python=None):
 def _known(python=None):
     """Whether dfsynth's description has been asked for already (describe() then answers at once)."""
     from .toolprocess import _DESCRIPTIONS
-    return (python or sys.executable, '-m', 'dfsynth') in _DESCRIPTIONS
+    return (python or sys.executable, '-m', 'kicad2ems.dfsynth') in _DESCRIPTIONS
 
 
 def _describe(python=None):
     from .toolprocess import describe_tool
-    return describe_tool(python, ('-m', 'dfsynth'), 'dfsynth', DFSYNTH_PIP, DESCRIBE_FORMAT,
-                         too_old="this dfsynth is too old for the page (it has no --describe): update it, "
-                                 "python -m pip install -U 'dfsynth @ git+https://github.com/lowprocess/dfsynth'")
+    return describe_tool(python, ('-m', 'kicad2ems.dfsynth'), 'dfsynth', DFSYNTH_PIP, DESCRIBE_FORMAT,
+                         too_old="this dfsynth is too old for the page (it has no --describe): update kicad2ems")
 
 
 def options(desc):
@@ -56,7 +55,7 @@ def filter_argv(vals, validate=True, desc=None):
     """dfsynth's command line (after the interpreter) for the page's values; None / '' leave dfsynth's default.
     validate False: the design only (no --validate, --em-tune, --k2e-args). desc: dfsynth's description
     (default: describe()); a value of no option it has is left out."""
-    argv = ['-u', '-m', 'dfsynth']
+    argv = ['-u', '-m', 'kicad2ems.dfsynth']
     for key, o in options(desc or describe()).items():
         opt, kind = o['flag'], o['kind']
         v = vals.get(key)

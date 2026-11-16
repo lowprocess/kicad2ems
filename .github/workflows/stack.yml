@@ -1,9 +1,6 @@
-# The whole stack at once: kicad2ems with every package that builds on it, each from its main branch (or the ref a
-# repository_dispatch names), checked out side by side as the tests expect (../kicad2ems next to each repository).
-# A change to kicad2ems that breaks a plugin, the GUI or the KiCad plugin fails here, not on someone's machine.
-#
-# The other repositories can run it for their own changes:
-#   gh api repos/lowprocess/kicad2ems/dispatches -f event_type=stack -F 'client_payload[mom25d]=my-branch'
+# Every part of kicad2ems at once, from this one repository: the core, the window, the solvers (fdtd, gfdtd,
+# mom25d, pcbqs, fem), the KiCad plugin, dfsynth and emsdev, each part's suite under tests/<part>. A change that
+# breaks another part fails here, not on someone's machine.
 name: stack
 
 on:
@@ -11,10 +8,6 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  repository_dispatch:
-    types: [stack]
-  schedule:
-    - cron: '17 3 * * *'            # nightly: the other repositories' main moves without a push here
 
 env:
   QT_QPA_PLATFORM: offscreen
@@ -24,7 +17,7 @@ env:
 jobs:
   stack:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     strategy:
       fail-fast: false              # a failure on one Python shows whether the others pass too
       matrix:
@@ -32,89 +25,59 @@ jobs:
     name: stack (Python ${{ matrix.python }})
     steps:
       - uses: actions/checkout@v4
-        with: { path: kicad2ems }
-      - uses: actions/checkout@v4
-        with: { repository: lowprocess/emsdev, path: emsdev, ref: "${{ github.event.client_payload.emsdev || 'main' }}" }
-      - uses: actions/checkout@v4
-        with: { repository: lowprocess/mom25d, path: mom25d, ref: "${{ github.event.client_payload.mom25d || 'main' }}" }
-      - uses: actions/checkout@v4
-        with: { repository: lowprocess/gfdtd, path: gfdtd, ref: "${{ github.event.client_payload.gfdtd || 'main' }}" }
-      - uses: actions/checkout@v4
-        with: { repository: lowprocess/kicad2ems-fdtd, path: kicad2ems-fdtd,
-                ref: "${{ github.event.client_payload['kicad2ems-fdtd'] || 'main' }}" }
-      - uses: actions/checkout@v4
-        with: { repository: lowprocess/kicad2ems-gui, path: kicad2ems-gui,
-                ref: "${{ github.event.client_payload['kicad2ems-gui'] || 'main' }}" }
-      - uses: actions/checkout@v4
-        with: { repository: lowprocess/kicad2ems-ipc, path: kicad2ems-ipc,
-                ref: "${{ github.event.client_payload['kicad2ems-ipc'] || 'main' }}" }
-      - uses: actions/checkout@v4
-        with: { repository: lowprocess/dfsynth, path: dfsynth, ref: "${{ github.event.client_payload.dfsynth || 'main' }}" }
-      - uses: actions/checkout@v4
-        with: { repository: lowprocess/pcbqs, path: pcbqs, ref: "${{ github.event.client_payload.pcbqs || 'main' }}" }
-      - uses: actions/checkout@v4
-        with: { repository: lowprocess/kicad2ems-fem, path: kicad2ems-fem,
-                ref: "${{ github.event.client_payload['kicad2ems-fem'] || 'main' }}" }
 
       # requires-python is >=3.10: every file at least compiles there (3.12's f-strings had slipped in twice)
       - uses: actions/setup-python@v5
         with: { python-version: '3.10' }
-      - name: Every package compiles on Python 3.10
-        run: python -m compileall -q emsdev/src kicad2ems/src kicad2ems/install.py mom25d/src gfdtd/src kicad2ems-fdtd/src kicad2ems-gui/src kicad2ems-ipc/plugin dfsynth/src pcbqs/src kicad2ems-fem/src
+      - name: Everything compiles on Python 3.10
+        run: python -m compileall -q src install.py
 
       - uses: actions/setup-python@v5
         with: { python-version: '${{ matrix.python }}' }
       - name: System libraries (Qt offscreen, OpenGL; ngspice, pcbqs's circuit runs; gmsh's GL)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 ngspice libglu1-mesa libxcursor1 libxinerama1 libxft2
-      - name: Install the stack from the checkouts
+      - name: Install kicad2ems with its extras
         run: |
-          python kicad2ems/tools/ci_deps.py emsdev 'kicad2ems[test,fast,dumps]' 'mom25d[test,core]' 'gfdtd[test,core]' \
-            'kicad2ems-fdtd[test,openems]' 'kicad2ems-gui[test]' 'dfsynth[test]' \
-            'pcbqs[test,core]' 'kicad2ems-fem[test]' > requirements-ci.txt
-          echo 'kicad-python>=0.5' >> requirements-ci.txt                # the KiCad plugin's IPC client
-          cat requirements-ci.txt
-          python -m pip install -r requirements-ci.txt
-          python -m pip install --no-deps -e emsdev -e kicad2ems -e mom25d -e gfdtd -e kicad2ems-fdtd -e kicad2ems-gui -e dfsynth \
-            -e pcbqs -e kicad2ems-fem
+          python -m pip install -e '.[test,fast,gui,fem,core,plugin]'
           python -m pip check || true
-      - name: Build the compiled cores (mom25d's and pcbqs's hold their mesher: CDT)
+      - name: "Build the compiled cores (mom25d's and pcbqs's hold their mesher, CDT)"
         run: |
-          MOM25D_ARCH=-march=x86-64-v2 python -m mom25d.core.build
-          GFDTD_ARCH=-march=x86-64-v2 python -m gfdtd.core.build
-          PCBQS_ARCH=-march=x86-64-v2 python -m pcbqs.core.build
+          MOM25D_ARCH=-march=x86-64-v2 python -m kicad2ems.mom25d.core.build
+          GFDTD_ARCH=-march=x86-64-v2 python -m kicad2ems.gfdtd.core.build
+          PCBQS_ARCH=-march=x86-64-v2 python -m kicad2ems.pcbqs.core.build
       - name: The machine, the solvers
-        run: python -m emsdev && kicad2ems --check
+        run: python -m kicad2ems.emsdev && kicad2ems --check
 
       # every suite runs even when one before it failed; the job fails if any did
       - name: emsdev
-        run: cd emsdev && python -m pytest -q
-      - name: kicad2ems (golden summaries, parity, the API)
+        run: python -m pytest -q tests/emsdev
+      - name: core (golden summaries, parity, the API)
         if: success() || failure()
-        run: cd kicad2ems && python -m pytest -q
+        run: python -m pytest -q -n 4 tests/core
       - name: mom25d (with its kicad2ems plugin's parity)
         if: success() || failure()
         timeout-minutes: 30         # a hang fails the step with its traceback (faulthandler) instead of the job's cancel
-        run: cd mom25d && python -m pytest -v -o faulthandler_timeout=600 --durations=10
+        run: python -m pytest -v -o faulthandler_timeout=600 --durations=10 tests/mom25d
       - name: "mom25d's Vulkan LU on lavapipe (Mesa's CPU Vulkan: no GPU here; R-C7)"
         if: success() || failure()
         timeout-minutes: 15
         run: |
           sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
           python -m pip install slangpy
-          EMSDEV_VULKAN_CPU=1 python -m emsdev
-          EMSDEV_VULKAN_CPU=1 python mom25d/tools/gpu_selfcheck.py --backend vulkan --n 1024
+          EMSDEV_VULKAN_CPU=1 python -m kicad2ems.emsdev
+          EMSDEV_VULKAN_CPU=1 python tools/mom25d/gpu_selfcheck.py --backend vulkan --n 1024
       - name: gfdtd
         if: success() || failure()
-        run: cd gfdtd && python -m pytest -q
-      - name: kicad2ems-fdtd (the FDTD layer, openEMS's and gfdtd's connections)
+        run: python -m pytest -q tests/gfdtd
+      - name: fdtd (the FDTD layer, openEMS's and gfdtd's connections)
         if: success() || failure()
-        run: cd kicad2ems-fdtd && python -m pytest -q
+        run: python -m pytest -q -n 4 tests/fdtd
       - name: "pcbqs and mom25d's numerics, how far they have drifted (a report: R-F4)"
-        run: python kicad2ems/tools/numerics_drift.py
+        run: python tools/numerics_drift.py
       - name: "pcbqs (the power tools, kicad2ems's analysis plugins, the circuit runs on ngspice)"
         if: success() || failure()
         timeout-minutes: 30
-        run: cd pcbqs && python -m pytest -q --durations=10 --basetemp="$RUNNER_TEMP/pcbqs-tests"
+        run: python -m pytest -q -n auto --durations=10 --basetemp="$RUNNER_TEMP/pcbqs-tests" tests/pcbqs
       - name: pcbqs's ngspice logs (kept when a run fails)
         if: failure()
         uses: actions/upload-artifact@v4
@@ -123,15 +86,15 @@ jobs:
           path: ${{ runner.temp }}/pcbqs-tests/**/ngspice.log
           if-no-files-found: ignore
           retention-days: 7
-      - name: kicad2ems-gui
+      - name: gui (the window)
         if: success() || failure()
-        run: cd kicad2ems-gui && python -m pytest -q
-      - name: kicad2ems-ipc
+        run: python -m pytest -q tests/gui
+      - name: ipc (the KiCad plugin)
         if: success() || failure()
-        run: cd kicad2ems-ipc && python -m pytest -q
+        run: python -m pytest -q tests/ipc
       - name: dfsynth (with the line-model cross-check)
         if: success() || failure()
-        run: cd dfsynth && python -m pytest -q
+        run: python -m pytest -q tests/dfsynth
       # Elmer for kicad2ems-fem's Elmer runs (R-C2): built once by the installer's script, then from the cache
       - name: Elmer (cached build)
         id: elmer-cache
@@ -139,33 +102,32 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/opt/elmer
-          key: elmer-release-26.2.1-${{ runner.os }}-${{ hashFiles('kicad2ems/tools/build_elmer.sh') }}
+          key: elmer-release-26.2.1-${{ runner.os }}-${{ hashFiles('tools/build_elmer.sh') }}
       - name: Elmer (build)
         if: (success() || failure()) && steps.elmer-cache.outputs.cache-hit != 'true'
         timeout-minutes: 40
         run: |
           sudo apt-get install -y --no-install-recommends gfortran cmake libblas-dev liblapack-dev
-          bash kicad2ems/tools/build_elmer.sh "$HOME/opt/elmer"
+          bash tools/build_elmer.sh "$HOME/opt/elmer"
           rm -rf "$HOME/opt/elmer/src"                                  # the cache keeps the install, not the sources
-      - name: "kicad2ems-fem (meshes, configs, readers, registry; Elmer's runs on the cached build; no Palace: its runs skip)"
+      - name: "fem (meshes, configs, readers, registry; Elmer's runs on the cached build; no Palace: its runs skip)"
         if: success() || failure()
         run: |
           sudo apt-get install -y --no-install-recommends libgfortran5 libblas3 liblapack3 libgomp1   # Elmer's own
           export K2E_ELMER="$HOME/opt/elmer/bin"
           "$K2E_ELMER/ElmerSolver" -v </dev/null | head -1 || true
-          cd kicad2ems-fem && python -m pytest -q -rs
+          python -m pytest -q -rs tests/fem
 
-  # What KiCad installs: the KiCad plugin on main with the commits its requirements.txt pins. Fails when the plugin
-  # needs a kicad2ems newer than the pins (bump plugin/requirements.txt).
-  ipc-pinned:
+  # What KiCad installs: the KiCad plugin's requirements.txt (kicad2ems from main, as a user's KiCad gets it), with
+  # this checkout's plugin tests. Fails when the plugin needs more than that requirement brings.
+  ipc-as-installed:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-        with: { repository: lowprocess/kicad2ems-ipc, path: kicad2ems-ipc }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - name: System libraries (Qt offscreen, OpenGL)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
-      - run: python -m pip install -r kicad2ems-ipc/plugin/requirements.txt pytest
-      - run: cd kicad2ems-ipc && python -m pytest -q
+      - run: python -m pip install -r src/kicad2ems/ipc/plugin/requirements.txt pytest
+      - run: python -m pytest -q tests/ipc

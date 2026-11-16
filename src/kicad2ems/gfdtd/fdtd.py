@@ -10,7 +10,7 @@ kicad2ems's build_fdtd) written for openEMS runs here by swapping the two import
     FDTD.Run(sim_path); port.CalcPort(sim_path, freq)          # port.uf_inc, uf_ref, ...
 
 FDTD.Write2XML / ReadFromXML use openEMS's XML (an <openEMS> file with <FDTD> and <ContinuousStructure>):
-`python -m gfdtd model.xml` runs a file written by openEMS (or by AppCSXCAD's tools) like `openEMS model.xml`.
+`python -m kicad2ems.gfdtd model.xml` runs a file written by openEMS (or by AppCSXCAD's tools) like `openEMS model.xml`.
 """
 import contextlib, glob, os, sys
 import xml.etree.ElementTree as ET
@@ -315,7 +315,7 @@ class LumpedPort(P.Port):
 
 
 def main(argv=None):
-    """python -m gfdtd model.xml [--backend auto|gpu|cupy|vulkan|cpu|numpy] [--path DIR]: run an openEMS XML file (outputs in the
+    """python -m kicad2ems.gfdtd model.xml [--backend auto|gpu|cupy|vulkan|cpu|numpy] [--path DIR]: run an openEMS XML file (outputs in the
     current folder, or --path), as `openEMS model.xml` does."""
     import argparse
     ap = argparse.ArgumentParser(prog='gfdtd', description=main.__doc__)

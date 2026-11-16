@@ -32,6 +32,8 @@ import json
 import os
 from dataclasses import dataclass, field
 
+from .extras import install_hint
+
 GROUPS = ('RF', 'Signal integrity', 'Power', 'Thermal', 'Other')
 MARK = 'kicad2ems-study.json'               # in a run's folder: the engine that made it and what was asked of it
 
@@ -173,7 +175,7 @@ def study_tree():
         rows = []
         for q in sorted((q for q in qs.values() if q.group == group), key=lambda q: (q.order, q.name)):
             have = [e for e in es if q.name in e.provides]
-            how = '' if have else (f"python -m pip install 'kicad2ems[{q.extra}]'" if q.extra else
+            how = '' if have else (install_hint(q.extra) if q.extra else
                                    'no engine for it is installed')
             rows.append(dict(question=q, engines=have, missing=how))
         if rows:

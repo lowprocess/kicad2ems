@@ -1,7 +1,7 @@
 """
 The plugin folder KiCad loads (KiCad 9 and later): <KiCad's plugins folder>/kicad2ems/. The repository's plugin/
 folder is that folder, and the Plugin and Content Manager installs the same files from its package
-(tools/build_pcm.py):
+(tools/ipc/build_pcm.py):
 
   plugin.json          one action in the PCB editor's toolbar
   kicad2ems_plugin.py  the entry point: the window (kicad2ems.ipc.window)

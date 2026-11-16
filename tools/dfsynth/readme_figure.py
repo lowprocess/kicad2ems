@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The README's figure: four filters as dfsynth lays them out, over their line model's response.
 
-    python tools/readme_figure.py [out.png]          # default docs/filters.png
+    python tools/dfsynth/readme_figure.py [out.png]          # default docs/filters.png
 """
 import json, os, subprocess, sys, tempfile
 
@@ -22,7 +22,7 @@ def main(out):
     with tempfile.TemporaryDirectory() as tmp:
         for k, (title, args) in enumerate(CASES):
             base = os.path.join(tmp, f'f{k}')
-            subprocess.run([sys.executable, '-m', 'dfsynth', *args.split(), '-o', base], check=True, capture_output=True)
+            subprocess.run([sys.executable, '-m', 'kicad2ems.dfsynth', *args.split(), '-o', base], check=True, capture_output=True)
             d = json.load(open(base + '_design.json', encoding='utf-8'))
             g, (W, H) = d['geometry'], d['board_mm']
             ax = axs[0, k]

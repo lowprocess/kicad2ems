@@ -33,7 +33,7 @@ import argparse, glob, json, os, re, shutil, subprocess, sys, sysconfig, tempfil
 
 CUPY_WHEELS = ('cupy-rocm-7-0', 'cupy-cuda12x', 'cupy-cuda13x')
 MESH_CORES = ('mom25d', 'pcbqs')        # their compiled cores hold the mesher (CDT): required
-STACK = ('emsdev', 'kicad2ems-gui', 'kicad2ems-fdtd', 'mom25d', 'pcbqs', 'gfdtd', 'dfsynth', 'kicad2ems-fem')
+CORES = ('mom25d', 'pcbqs', 'gfdtd')    # the parts with a compiled core (kicad2ems.<part>.core.build)
 REPO = os.path.dirname(os.path.abspath(__file__))
 WINDOWS = sys.platform == 'win32'
 LINUX = sys.platform.startswith('linux')
@@ -393,43 +393,9 @@ def recorded(path):
 
 
 # ---- update -----------------------------------------------------------------------------------------------
-INSTALLED_FROM = r'''
-import importlib.metadata as md, json, urllib.parse, urllib.request
-for name in %r:
-    try:
-        text = md.distribution(name).read_text('direct_url.json')
-    except md.PackageNotFoundError:
-        continue
-    d = json.loads(text) if text else {}
-    url = d.get('url', '')
-    if d.get('dir_info', {}).get('editable'):
-        print('editable', name, urllib.request.url2pathname(urllib.parse.urlparse(url).path), sep='\t')
-    elif 'vcs_info' in d:
-        rev = d['vcs_info'].get('requested_revision')
-        print('url', name, f"{d['vcs_info']['vcs']}+{url}" + (f"@{rev}" if rev else ''), sep='\t')
-    elif url:
-        print('url', name, url, sep='\t')
-    else:
-        print('index', name, '', sep='\t')
-''' % (STACK,)
-
-
-def pinned_specs(repo):
-    """{package: 'git+https://...@sha'}: the commits this checkout's pyproject.toml pins for the stack's packages
-    (its extras). --update installs those, not the ones installed before (re-installing a package's recorded
-    revision had kept the stack at its old commits however far kicad2ems had moved)."""
-    try:
-        with open(os.path.join(repo, 'pyproject.toml'), encoding='utf-8') as fh:
-            text = fh.read()
-    except OSError:
-        return {}
-    return {m.group(1): m.group(2) for m in
-            re.finditer(r'"([A-Za-z0-9_.-]+)\s*(?:\[[^\]]*\])?\s*@\s*(git\+https://[^"@\s]+@[0-9a-f]{7,40})', text)}
-
-
 def core_dir(vpy, pkg):
-    """The folder of an installed package with a compiled core ('' when it isn't installed)."""
-    return py_out(vpy, f"import importlib.util as u, os; s = u.find_spec('{pkg}'); "
+    """The installed folder of a part with a compiled core (kicad2ems.<pkg>; '' when kicad2ems isn't installed)."""
+    return py_out(vpy, f"import importlib.util as u, os; s = u.find_spec('kicad2ems.{pkg}'); "
                        f"print(os.path.dirname(s.origin) if s else '')")
 
 
@@ -716,50 +682,25 @@ class Installer:
 
     def choose_parts(self):
         bold("Optional parts")
+        # every part of kicad2ems is in its one package (mom25d, pcbqs, gfdtd, dfsynth, the field dumps' h5py):
+        # what is asked is the window's and the line model's libraries, and the compiled cores are built
         self.extras = []
-        if ask("GUI (kicad2ems-gui, from github.com/lowprocess/kicad2ems-gui: PySide6, pyqtgraph, PyOpenGL)?", 'y'):
+        if ask("GUI (the window, kicad2ems-gui: PySide6, pyqtgraph, PyOpenGL)?", 'y'):
             self.extras.append('gui')
-        if ask("frequency-domain field dumps and far fields (h5py)?", 'y'):
-            self.extras.append('dumps')
         if ask("line model with scikit-rf (--fast skrf; qucsator is a separate program)?", 'y'):
             self.extras.append('fast')
-        self.mom = ask("mom25d (2.5D MoM: planar circuits and antennas, no openEMS needed; from "
-                       "github.com/lowprocess/mom25d)?", 'y')
-        if self.mom:
-            self.extras.append('mom')
-        self.qs = ask("pcbqs (power integrity, quasistatic fields and ngspice circuits; from github.com/lowprocess/pcbqs)?", 'y')
-        if self.qs:
-            self.extras.append('qs')
-        self.gfdtd = ask("gfdtd (3D FDTD on the GPU or a CPU core, openEMS's model; from github.com/lowprocess/gfdtd)?", 'y')
-        if self.gfdtd:
-            self.extras.append('gfdtd')
-        if ask("dfsynth (filter synthesis: the GUI's Filter page; from github.com/lowprocess/dfsynth)?", 'y'):
-            self.extras.append('filter')
-        self.core = False
-        if self.mom or self.qs or self.gfdtd:
-            cc = self.has_compiler()
-            need = self.mom or self.qs                  # their mesher is in the core (CDT): no core, no mesh
-            if cc:
-                if need:
-                    note(f"mom25d and pcbqs mesh with their compiled cores (C++ / OpenMP): they are built with {cc}"
-                         + (" (gfdtd's too)" if self.gfdtd else ''))
-                    self.core = True
-                else:
-                    self.core = ask(f"build gfdtd's compiled core (C++ / OpenMP with {cc}: ~15x faster on the CPU)?", 'y')
-                if self.core:
-                    self.extras.append('core')
-            else:
-                compiler = "Visual Studio 2022's C++ tools, or MinGW-w64's g++" if WINDOWS else 'g++'
-                if need:
-                    note(f"WARNING: no C++ compiler ({compiler}): mom25d and pcbqs mesh with their compiled cores and do "
-                         f"not run without them. Install one and run the installer again")
-                else:
-                    note(f"no C++ compiler ({compiler}): gfdtd's compiled core is skipped (its NumPy kernels, ~15x "
-                         f"slower)")
+        cc = self.has_compiler()
+        self.core = bool(cc)
+        if cc:
+            note(f"the compiled cores (C++ / OpenMP: mom25d's and pcbqs's hold their mesher, gfdtd's runs ~15x "
+                 f"faster than NumPy) are built with {cc}")
+            self.extras.append('core')
+        else:
+            compiler = "Visual Studio 2022's C++ tools, or MinGW-w64's g++" if WINDOWS else 'g++'
+            note(f"WARNING: no C++ compiler ({compiler}): mom25d and pcbqs mesh with their compiled cores and do "
+                 f"not run without them (gfdtd runs on NumPy). Install one and run the installer again")
         if ask("test tools (pytest)?", 'n'):
             self.extras.append('test')
-        if self.oems != 'none':
-            self.extras.append('openems')        # openEMS's solver (kicad2ems-fdtd[openems]; it brings h5py)
 
     # ---- the GPU through Vulkan: slangpy, the primary GPU path (AMD, Intel, NVIDIA; Windows and Linux) ------
     @staticmethod
@@ -1071,12 +1012,11 @@ class Installer:
         if self.slang:
             bold("Installing slangpy")
             self.pip("slangpy>=0.43")
-        for pkg, on in (('mom25d', self.mom), ('pcbqs', self.qs), ('gfdtd', self.gfdtd)):
-            if self.core and on:
-                bold(f"Building {pkg}'s compiled core")
-                if not run([self.vpy, '-m', f'{pkg}.core.build']):
-                    note(f"the core did not build: {pkg} " + ("cannot mesh without it" if pkg in MESH_CORES else
-                                                              "runs on NumPy") + " (see the error above)")
+        for pkg in CORES if self.core else ():
+            bold(f"Building {pkg}'s compiled core")
+            if not run([self.vpy, '-m', f'kicad2ems.{pkg}.core.build']):
+                note(f"the core did not build: {pkg} " + ("cannot mesh without it" if pkg in MESH_CORES else
+                                                          "runs on NumPy") + " (see the error above)")
 
     # ---- openEMS: linked in from another venv, or built from source ---------------------------------------
     def link_openems(self):
@@ -1290,7 +1230,7 @@ class Installer:
 
     def done(self):
         if self.cupy or self.slang:
-            run([self.vpy, '-m', 'emsdev'])
+            run([self.vpy, '-m', 'kicad2ems.emsdev'])
         t = self.t
         print(f"\nDone ({t.name} install). Use it with:")
         if t.name == 'checkout':
@@ -1314,7 +1254,7 @@ class Installer:
         self.need_privileges()
         bold(f"Updating the {t.name} install ({self.vpy})")
         had_core = []
-        for pkg in ('mom25d', 'pcbqs', 'gfdtd'):
+        for pkg in CORES:
             d = core_dir(self.vpy, pkg)
             if d and os.path.isfile(core_file(self.vpy, d)):
                 had_core.append(pkg)
@@ -1328,30 +1268,12 @@ class Installer:
         else:
             note("kicad2ems: a copy of this checkout")
             ok.append(self.pip('-q', '--no-deps', '--force-reinstall', REPO, check=False))
-        # the others as they were installed: a checkout stays that checkout, a URL is fetched again (a stack package
-        # at the commit this checkout pins)
-        pins = pinned_specs(REPO)
-        for line in py_out(self.vpy, INSTALLED_FROM).splitlines():
-            kind, name, spec = (line.split('\t') + ['', ''])[:3]
-            if kind == 'url' and name in pins and spec != pins[name]:
-                note(f"{name}: kicad2ems pins {pins[name].rsplit('@', 1)[1][:7]} (was {spec.rsplit('@', 1)[-1][:7]})")
-                spec = pins[name]
-            if kind == 'editable':
-                note(f"{name}: its checkout {spec} (editable)")
-                ok.append(self.pip('-q', '--no-deps', '--no-build-isolation', '-e', spec, '--config-settings',
-                                   'editable_mode=compat', check=False))
-            elif kind == 'url':
-                note(f"{name}: {spec}")
-                ok.append(self.pip('-q', '--no-deps', '--force-reinstall', f"{name} @ {spec}", check=False))
-            elif kind == 'index':
-                note(f"{name}: the package index")
-                ok.append(self.pip('-q', '--no-deps', '--upgrade', name, check=False))
-        # a compiled core that was built is built again where its source is newer (a package installed anew is)
+        # a compiled core that was built is built again where its source is newer (a copy installed anew is)
         for pkg in had_core:
             d = core_dir(self.vpy, pkg)
             if core_stale(d, core_file(self.vpy, d)):
                 bold(f"Building {pkg}'s compiled core")
-                if not run([self.vpy, '-m', f'{pkg}.core.build']):
+                if not run([self.vpy, '-m', f'kicad2ems.{pkg}.core.build']):
                     note(f"WARNING: the core did not build: {pkg} " + ("cannot mesh without it" if pkg in MESH_CORES
                                                                        else "runs on NumPy"))
                     ok.append(False)

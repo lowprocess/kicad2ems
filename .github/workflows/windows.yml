@@ -7,15 +7,10 @@
 #   gh api repos/lowprocess/kicad2ems/dispatches -f event_type=windows -F 'client_payload[mom25d]=my-branch'
 name: windows
 
+# Not converted to the single repository yet (it still checks out the old ones side by side): run by hand only
+# until it is (the Windows CI is set aside for now).
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
-  repository_dispatch:
-    types: [windows]
-  schedule:
-    - cron: '37 3 * * *'            # nightly: the other repositories' main moves without a push here
 
 env:
   QT_QPA_PLATFORM: offscreen
@@ -78,9 +73,9 @@ jobs:
           C:/mingw64/bin/g++ --version | head -1
       - name: Build the compiled cores (${{ matrix.compiler }})
         run: |
-          MOM25D_ARCH=-march=x86-64-v2 python -m mom25d.core.build
-          GFDTD_ARCH=-march=x86-64-v2 python -m gfdtd.core.build
-          PCBQS_ARCH=-march=x86-64-v2 python -m pcbqs.core.build     # (mom25d's and pcbqs's hold their mesher: CDT)
+          MOM25D_ARCH=-march=x86-64-v2 python -m kicad2ems.mom25d.core.build
+          GFDTD_ARCH=-march=x86-64-v2 python -m kicad2ems.gfdtd.core.build
+          PCBQS_ARCH=-march=x86-64-v2 python -m kicad2ems.pcbqs.core.build     # (mom25d's and pcbqs's hold their mesher: CDT)
           ls mom25d/src/mom25d/ gfdtd/src/gfdtd/ pcbqs/src/pcbqs/ | grep -iE '\.pyd$|\.dll$'
       - name: The cores import without the compiler on the PATH (only the DLLs beside them)
         shell: pwsh
@@ -89,7 +84,7 @@ jobs:
           python -c "import mom25d._core, gfdtd._core; print('cores import:', mom25d._core.__file__, gfdtd._core.__file__)"
       - name: The machine, the solvers (each with its compiled core)
         run: |
-          python -m emsdev
+          python -m kicad2ems.emsdev
           kicad2ems --check | tee check.txt
           ! grep -q 'no compiled core' check.txt
 

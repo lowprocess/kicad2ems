@@ -8,7 +8,7 @@ def test_elmer_s_version_from_its_log():
     log = ("ELMER SOLVER (v 26.2) STARTED AT: 2026/11/09 19:05:44\n"
            "MAIN: Version: 26.2-devel (Rev: 033b105e2, Compiled: 2026-06-22)\n")
     e = engine(log)
-    assert (e['program'], e['version'], e['revision']) == ('Elmer', '26.2-devel', '033b105e2') and e['kicad2ems.fem']
+    assert (e['program'], e['version'], e['revision']) == ('Elmer', '26.2-devel', '033b105e2') and e['kicad2ems_fem']
     assert engine('')['version'] is None
 
 

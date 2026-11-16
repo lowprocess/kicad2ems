@@ -274,7 +274,8 @@ def missing(name):
         return None
     if any(ep.split(' =')[0] in EXTRAS[extra] for ep, _ in broken):
         return f"analysis {name!r} is installed but failed to load (kicad2ems --check)"
-    return f"analysis {name!r} is not installed: python -m pip install 'kicad2ems[{extra}]'"
+    from .extras import install_hint
+    return f"analysis {name!r} is not installed: {install_hint(extra)}"
 
 
 def analysis_of(folder):
@@ -366,6 +367,7 @@ def check_lines():
     for extra, names in EXTRAS.items():
         gone = [n for n in names if n not in registry()]
         if gone and missing(gone[0]):
-            lines.append(f"  missing {', '.join(gone)}: python -m pip install 'kicad2ems[{extra}]'")
+            from .extras import install_hint
+            lines.append(f"  missing {', '.join(gone)}: {install_hint(extra)}")
     lines += [f"  BROKEN  {ep}: {err}" for ep, err in broken]
     return lines

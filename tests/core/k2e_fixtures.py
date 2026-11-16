@@ -1,6 +1,6 @@
-"""kicad2ems's test fixtures, shared with the solver packages' tests (kicad2ems-fdtd, mom25d: their
-conftest imports this file from a kicad2ems checkout, KICAD2EMS_SRC): the generated example boards, a strict
-stand-in for CSXCAD / openEMS, a machine without openEMS, and an in-process command-line runner.
+"""kicad2ems's shared test fixtures (tests/core; the other parts' conftests put this folder on sys.path and import
+them): the generated example boards, a strict stand-in for CSXCAD / openEMS, a machine without openEMS, and an
+in-process command-line runner.
 
     from k2e_fixtures import *              # noqa: F401,F403  (in a conftest.py)
 

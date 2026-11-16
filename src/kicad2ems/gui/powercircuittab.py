@@ -120,7 +120,7 @@ class PowerCircuitTab(QWidget):
             self._scroll=QScrollArea();self._scroll.setWidgetResizable(True);self._scroll.setWidget(self.panel);self.split.addWidget(self._scroll)
         try:
             self.set_model(self.template('simple'))                  # a small circuit to open on, not a board's
-        except (OSError,ValueError,ImportError,KeyError,TypeError) as e:self.status.setText("Install/update pcbqs with python -m pip install 'kicad2ems[qs]': "+str(e));self.run_btn.setEnabled(False)
+        except (OSError,ValueError,ImportError,KeyError,TypeError) as e:self.status.setText("pcbqs (kicad2ems.pcbqs) failed to open its circuit: "+str(e));self.run_btn.setEnabled(False)
 
     # ---- the run: the panel's (the plugin's command, its log and status) ----
     proc=property(lambda self:self.panel.proc)

@@ -86,11 +86,11 @@ def test_registry_by_order_and_what_it_refuses(plugins):
     assert analyses.get('HEAT') is reg['heat']
     with pytest.raises(ValueError, match="no analysis 'cfd'"):
         analyses.get('cfd')
-    with pytest.raises(ValueError, match=r"kicad2ems\[qs\]"):       # one kicad2ems has an extra for
+    with pytest.raises(ValueError, match="part of kicad2ems: reinstall"):   # one of kicad2ems's own parts
         analyses.get('pdn')
     lines = analyses.check_lines()
     assert any(l.split()[:2] == ['ok', 'heat'] for l in lines) and any('BROKEN' in l and 'odd' in l for l in lines)
-    assert any('kicad2ems[qs]' in l for l in lines)
+    assert any('pdn' in l and 'reinstall kicad2ems' in l for l in lines)
 
 
 def test_whose_result_a_folder_holds(plugins, tmp_path):

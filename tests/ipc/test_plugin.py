@@ -641,7 +641,7 @@ def test_the_power_analyses_through_kicad2ems_s_registry(tmp_path):
     assert not missing and 'kicad2ems.pcbqs.pdn' in ' '.join(argv) and 'out' in argv and '--no-pdn' in argv
     argv, missing = md.analysis_command('pdn', dict(rail=''), buck, str(tmp_path))
     assert argv is None and missing
-    assert md.analysis_command('nothing', {}, 'b', 'o') == (None, ['nothing: not installed (pip install pcbqs)'])
+    assert md.analysis_command('nothing', {}, 'b', 'o') == (None, ['nothing: not installed (kicad2ems has no such analysis)'])
 
 
 def test_a_band_is_a_filled_polygon_in_kicad():

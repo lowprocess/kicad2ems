@@ -5,7 +5,7 @@ itself: mom25d's smaller-triangle singular rule (a moment 1.3 % off) had not rea
 quality fix mom25d. This reports the functions whose code differs (docstrings and comments aside) and those only one
 side has, so a fix is ported or the difference is meant.
 
-    python tools/numerics_drift.py            # the report (the checkouts side by side: ../pcbqs, ../mom25d); exit 0
+    python tools/numerics_drift.py            # the report; exit 0
     python tools/numerics_drift.py --strict   # exit 1 when a function both have differs
 
 Known (2026-11-15), each a fix to port with every kernel that has the same rule:
@@ -20,11 +20,12 @@ import ast
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]                         # the checkouts' folder
-PAIRS = [('geo', 'pcbqs/src/pcbqs/_numerics/geo.py', 'mom25d/src/mom25d/geo.py'),
-         ('base', 'pcbqs/src/pcbqs/_numerics/base.py', 'mom25d/src/mom25d/base.py'),
-         ('sing', 'pcbqs/src/pcbqs/_numerics/sing.py', 'mom25d/src/mom25d/sing.py'),
-         ('biot', 'pcbqs/src/pcbqs/biot.py', 'mom25d/src/mom25d/biot.py')]
+ROOT = Path(__file__).resolve().parents[1] / 'src' / 'kicad2ems'
+PAIRS = [('geo', 'pcbqs/_numerics/geo.py', 'mom25d/geo.py'),
+         ('base', 'pcbqs/_numerics/base.py', 'mom25d/base.py'),
+         ('sing', 'pcbqs/_numerics/sing.py', 'mom25d/sing.py'),
+         ('biot', 'pcbqs/biot.py', 'mom25d/biot.py'),
+         ('cdtmesh', 'pcbqs/_numerics/cdtmesh.py', 'mom25d/cdtmesh.py')]
 
 
 def functions(path):

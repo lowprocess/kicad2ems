@@ -1,4 +1,4 @@
-"""python -m emsdev: the GPUs, CPU threads and memory, one line each."""
+"""python -m kicad2ems.emsdev: the GPUs, CPU threads and memory, one line each."""
 from . import cpu, gpu, memory
 
 

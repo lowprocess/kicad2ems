@@ -242,7 +242,8 @@ def missing(name):
         return None
     if any(ep.split(' =')[0] in EXTRAS[extra] for ep, _ in broken):
         return f"solver {name!r} is installed but failed to load (kicad2ems --check)"
-    return f"solver {name!r} is not installed: python -m pip install 'kicad2ems[{extra}]'"
+    from ..extras import install_hint
+    return f"solver {name!r} is not installed: {install_hint(extra)}"
 
 
 def get(name):

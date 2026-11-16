@@ -166,33 +166,24 @@ def test_visual_studio_without_vswhere(windows, tmp_path, monkeypatch):
     assert windows.Installer(windows.parse([])).has_compiler() == 'Visual Studio'
 
 
-def test_qs_can_be_selected_without_mom_or_fdtd(inst,monkeypatch):
-    setup=inst.Installer.__new__(inst.Installer);setup.oems='none'
-    monkeypatch.setattr(inst,'ask',lambda prompt,default:prompt.startswith(('pcbqs (','build the compiled cores')))
-    monkeypatch.setattr(setup,'has_compiler',lambda:'g++')
-    setup.choose_parts()
-    assert setup.qs and setup.core and not setup.mom and not setup.gfdtd
-    assert setup.extras==['qs','core'] and 'pcbqs' in inst.STACK
-
-
-def test_mesh_cores_are_built_without_asking(inst, monkeypatch):
-    """mom25d's and pcbqs's cores hold their mesher: built without asking whenever either is chosen; gfdtd's alone
-    is asked about."""
-    def choose(yes, cc):
+def test_the_cores_are_built_without_asking(inst, monkeypatch):
+    """Every part is in the one package: the questions are the window's and the line model's libraries, and the
+    compiled cores (mom25d's and pcbqs's hold their mesher) are built whenever there is a compiler, without asking."""
+    def choose(cc):
         setup = inst.Installer.__new__(inst.Installer)
         setup.oems = 'none'
         asked = []
-        monkeypatch.setattr(inst, 'ask', lambda prompt, default: asked.append(prompt) or prompt.startswith(yes))
+        monkeypatch.setattr(inst, 'ask', lambda prompt, default: asked.append(prompt) or default == 'y')
         monkeypatch.setattr(setup, 'has_compiler', lambda: cc)
         monkeypatch.setattr(inst, 'note', lambda *a: None)
         setup.choose_parts()
         return setup, asked
-    setup, asked = choose(('pcbqs (',), 'g++')
-    assert setup.core and 'core' in setup.extras and not any(a.startswith('build') for a in asked)
-    setup, asked = choose(('gfdtd (', "build gfdtd's"), 'g++')
-    assert setup.core and any(a.startswith("build gfdtd's") for a in asked)
-    setup, asked = choose(('pcbqs (',), None)
-    assert not setup.core and inst.MESH_CORES == ('mom25d', 'pcbqs')
+    setup, asked = choose('g++')
+    assert setup.core and setup.extras == ['gui', 'fast', 'core']
+    assert not any(a.startswith(('build', 'mom25d', 'pcbqs', 'gfdtd', 'dfsynth')) for a in asked)
+    setup, asked = choose(None)
+    assert not setup.core and 'core' not in setup.extras
+    assert inst.MESH_CORES == ('mom25d', 'pcbqs') and inst.CORES == ('mom25d', 'pcbqs', 'gfdtd')
 
 
 def test_core_stale_sees_headers(inst, tmp_path):
@@ -306,7 +297,6 @@ def test_the_builds_run_their_scripts_and_record_what_they_made(inst, monkeypatc
                    [os.path.join(inst.REPO, 'tools', 'build_palace.sh'), str(tmp_path / 'fem' / 'palace')]]
     assert setup.elmer == str(tmp_path / 'fem' / 'elmer' / 'bin')
     assert setup.palace == ('exe', str(tmp_path / 'fem' / 'palace' / 'bin' / 'palace'))
-    assert 'kicad2ems-fem' in inst.STACK
 
 
 @pytest.mark.skipif(sys.platform == 'win32', reason='the builds are for Linux and macOS')
@@ -316,14 +306,9 @@ def test_the_build_scripts_are_shell_that_parses():
         assert r.returncode == 0, r.stderr
 
 
-def test_update_takes_the_commits_this_checkout_pins(inst, tmp_path):
-    """--update installs a stack package at the commit this checkout's pyproject.toml pins: it had re-installed the
-    revision recorded at its last install, so the stack stayed at its old commits however far kicad2ems moved."""
-    pins = inst.pinned_specs(inst.REPO)
-    assert {'mom25d', 'pcbqs', 'kicad2ems-gui'} <= set(pins)
-    assert all(v.startswith('git+https://github.com/lowprocess/') and len(v.rsplit('@', 1)[1]) == 40 for v in pins.values())
-    (tmp_path / 'pyproject.toml').write_text('qs = ["pcbqs @ git+https://github.com/lowprocess/pcbqs@' + 'a' * 40 + '"]\n'
-                                             'gui = ["kicad2ems-gui[filter] @ git+https://github.com/x/y@' + 'b' * 7 + '"]\n')
-    assert inst.pinned_specs(str(tmp_path)) == {'pcbqs': 'git+https://github.com/lowprocess/pcbqs@' + 'a' * 40,
-                                                'kicad2ems-gui': 'git+https://github.com/x/y@bbbbbbb'}
-    assert inst.pinned_specs(str(tmp_path / 'none')) == {}
+def test_update_pins_nothing(inst):
+    """One repository, one package: --update reinstalls this checkout (and rebuilds the cores whose sources are newer);
+    there are no other packages at pinned commits to fetch."""
+    assert not hasattr(inst, 'pinned_specs') and not hasattr(inst, 'STACK')
+    src = open(inst.__file__, encoding='utf-8').read()
+    assert 'git+https://' not in src
