@@ -37,17 +37,7 @@ def sif(m, order=2, far='open'):
     if far == 'ground':
         bcs += (f"Boundary Condition {len(m['terminals']) + 1}\n  Target Boundaries(1) = {m['outer']}\n"
                 "  Potential = 0.0\nEnd\n")
-    return f"""Header
-  Mesh DB "." "mesh"
-End
-Simulation
-  Coordinate System = Cartesian 3D
-  Coordinate Scaling = 1.0e-3
-  Simulation Type = Steady State
-  Steady State Max Iterations = 1
-  Max Output Level = 4
-End
-Constants
+    return elmer.header() + f"""Constants
   Permittivity Of Vacuum = {EPS0:.10g}
 End
 {bodies}Equation 1
@@ -84,9 +74,7 @@ def maxwell(E):
 def solve(board, nets, out, thick=False, h=None, hmax=None, margin=None, crop=None, order=2, far='open', log=print):
     """The capacitance matrix between `nets` (each a conductor; 'A+B' joins nets). Returns dict(names, C (F), tets,
     h, hmax, margin, seconds) and writes it to <out>/cap.json; Elmer's case is in <out>/elmer."""
-    ok, why = elmer.found()
-    if not ok:
-        raise RuntimeError(why)
+    elmer.require()
     if isinstance(board, (str, os.PathLike)):
         board = load_board(board, {n for _, ns in _groups(nets) for n in ns})
     case = os.path.join(str(out), 'elmer')

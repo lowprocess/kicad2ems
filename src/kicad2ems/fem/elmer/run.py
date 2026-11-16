@@ -1,6 +1,7 @@
 """Running Elmer: ElmerGrid (gmsh mesh to Elmer's), ElmerSolver (a .sif), SaveScalars output.
 
-    found()                                  # (True, where) or (False, why)
+    found()                                  # (True, where) or (False, why); require(): RuntimeError(why)
+    header()                                 # a .sif's Header and Simulation sections
     elmergrid(msh, folder)                   # Elmer's mesh folder from a gmsh .msh (version 2)
     solve(case_folder, sif_text)             # ElmerSolver's log; raises with the log's tail on failure
                                              # (threads=1: for a .sif whose solvers are not thread safe)
@@ -19,11 +20,8 @@ import numpy as np
 
 def site(key):
     """A setting kicad2ems's installer recorded (kicad2ems.core.sitecfg: kicad2ems-site.toml), or None."""
-    try:
-        from kicad2ems.core import sitecfg
-        return sitecfg.get(key)
-    except Exception:                                               # an older kicad2ems, a file that does not read
-        return None
+    from kicad2ems.core import sitecfg
+    return sitecfg.get(key)
 
 
 def _tool(name):
@@ -42,6 +40,19 @@ def found():
         return False, (f"Elmer not found ({', '.join(missing)}): install Elmer (elmerfem), or set K2E_ELMER to the "
                        "folder with ElmerSolver and ElmerGrid")
     return True, f"Elmer ({Path(_tool('ElmerSolver')).parent})"
+
+
+def require():
+    """RuntimeError saying why when Elmer is not found."""
+    ok, why = found()
+    if not ok:
+        raise RuntimeError(why)
+
+
+def header(simulation='  Simulation Type = Steady State\n  Steady State Max Iterations = 1\n', level=4):
+    """A .sif's Header and Simulation sections: the mesh in the case's folder 'mesh', its coordinates in mm."""
+    return ('Header\n  Mesh DB "." "mesh"\nEnd\nSimulation\n  Coordinate System = Cartesian 3D\n'
+            f'  Coordinate Scaling = 1.0e-3\n{simulation}  Max Output Level = {level}\nEnd\n')
 
 
 def elmergrid(msh, folder):

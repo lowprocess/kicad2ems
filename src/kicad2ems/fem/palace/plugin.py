@@ -146,18 +146,12 @@ class Palace(Solver):
         runs above. Only for a run that has it (a preview estimates every solver: the mesh is seconds to minutes),
         gmsh's own output kept out of the run's."""
         import tempfile
-        from . import model
         from .run import ranks
         if self.name not in [*(getattr(run, 'plan', None) or ()), *(getattr(run, 'previewed', None) or ())]:
             return None
         s = run.s
-        margin = s.palace_margin
-        if margin is None and getattr(run, 'antenna', False):
-            margin = ANTENNA_MARGIN * 299792458.0 / (0.5 * (run.fmin + run.fmax)) * 1e3
         with tempfile.TemporaryDirectory() as d, _quiet():
-            mdl = model.build(run.m, float(np.max(run.freq)), os.path.join(d, 'model.msh'), margin=margin,
-                              per_feature=s.palace_feature, per_wave=s.palace_wave, planes=not s.palace_fine_ground,
-                              log=lambda *a: None)
+            mdl = self._build(run, os.path.join(d, 'model.msh'), lambda *a: None)
         order = int(getattr(s, 'palace_order', 2) or 2)
         unknowns = self.UNKNOWNS_PER_TET * mdl.tets * (order / 2) ** 3
         return dict(seconds=self.T0 * (unknowns / self.UNKNOWNS_PER_TET) ** 1.5 * 8 / max(ranks(s.palace_np), 1),
@@ -173,18 +167,22 @@ class Palace(Solver):
                 out.append(Deviation(f'part:{pt.ref}', 'parts', f'{n} sheets in series along its gap, one element each'))
         return out
 
-    def prepare(self, run):
+    @staticmethod
+    def _build(run, path, log):
+        """The run's model (model.build), written to path."""
         from . import model
         s = run.s
-        work = run.path('_palace')
-        os.makedirs(work, exist_ok=True)
-        t = time.time()
         margin = s.palace_margin
         if margin is None and getattr(run, 'antenna', False):  # the absorbing faces well away from the antenna
             margin = ANTENNA_MARGIN * 299792458.0 / (0.5 * (run.fmin + run.fmax)) * 1e3
-        mdl = model.build(run.m, float(np.max(run.freq)), os.path.join(work, 'model.msh'), margin=margin,
-                          per_feature=s.palace_feature, per_wave=s.palace_wave, planes=not s.palace_fine_ground,
-                          log=run.log)
+        return model.build(run.m, float(np.max(run.freq)), path, margin=margin, per_feature=s.palace_feature,
+                           per_wave=s.palace_wave, planes=not s.palace_fine_ground, log=log)
+
+    def prepare(self, run):
+        work = run.path('_palace')
+        os.makedirs(work, exist_ok=True)
+        t = time.time()
+        mdl = self._build(run, os.path.join(work, 'model.msh'), run.log)
         return dict(work=work, model=mdl, mesh_s=time.time() - t)
 
     def solve(self, run, prep):
@@ -292,7 +290,8 @@ class Palace(Solver):
         ff = getattr(s, 'ff_freq', None)
         f_pat = float(ff[0]) * 1e9 if ff else match['f_res']
         step = float(getattr(s, 'ff_step', None) or 2.0)
-        ffr = antenna.far_freqs(run.fmin, run.fmax, f_pat)
+        ffr = np.linspace(run.fmin, run.fmax, antenna.FREQS)          # over the band, and the pattern's
+        ffr = np.unique(np.r_[ffr, f_pat]) if f_pat else ffr
         run.log(f"palace: antenna, {names[k]} driven: far field at {len(ffr)} frequencies")
         cfg = config.config(mdl, ffr, order=s.palace_order, tol=0, loss=bool(s.palace_loss), excite=[k],
                             farfield=antenna.angles(step), out='postpro_ff')

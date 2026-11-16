@@ -20,11 +20,6 @@ TH, PH = np.arange(0, 181, 5.0), np.arange(0, 361, 5.0)     # the sphere, as the
 FREQS = 11                                                  # far-field frequencies over the band (+ the pattern's)
 
 
-def far_freqs(fmin, fmax, f_pattern=None):
-    f = np.linspace(fmin, fmax, FREQS)
-    return np.unique(np.r_[f, f_pattern]) if f_pattern else f
-
-
 def _key(t, p):
     """One key per direction: at the poles every phi is the same one (Palace lists it once)."""
     t = round(float(t), 4)

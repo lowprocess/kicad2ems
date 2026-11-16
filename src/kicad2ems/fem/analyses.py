@@ -88,16 +88,13 @@ class _Fem(Analysis):
         from .elmer.run import found
         return found()
 
-    def _parser(self):
-        import importlib
-        return importlib.import_module(self.module).parser()
-
     def options(self):
-        return describe(self._parser())
+        import importlib
+        return describe(importlib.import_module(self.module).parser())
 
     def owns(self, folder, preview=False):
         """A result of this tool's: its file says whose it is (pcbqs writes a thermal.json too)."""
-        return not preview and (self._read(folder) or {}).get('tool') == self.module
+        return not preview and self._mine(folder) is not None
 
     def _read(self, folder):
         try:
@@ -106,6 +103,11 @@ class _Fem(Analysis):
             return d if isinstance(d, dict) else None
         except (OSError, ValueError):
             return None
+
+    def _mine(self, folder):
+        """Its result file's dict when this tool wrote it, else None."""
+        r = self._read(folder)
+        return r if r and r.get('tool') == self.module else None
 
     def command(self, values, board, out, preview=False, results=None):
         if not board or not os.path.exists(board):
@@ -150,8 +152,8 @@ class ElmerDC(_Fem):
                       dict(title='Loads', table=dict(columns=['load', 'current (A)', 'drop (mV)'], rows=rows,
                                                     formats=[None, '.4g', '.4f']))],
             notes=["The net's own copper and vias in 3D; series parts and the ground return are not in it."],
-            footer=f"Elmer, " + (f"{r['tets']:,} tetrahedra" if 'tets' in r else f"{r.get('wedges', 0):,} wedges (layered)")
-                   + f", {_seconds(r):.1f} s")
+            footer="Elmer, " + (f"{r['tets']:,} tetrahedra" if 'tets' in r else
+                                f"{r.get('wedges', 0):,} wedges (layered)") + f", {_seconds(r):.1f} s")
 
     def summary(self, folder):
         r = self._read(folder)
@@ -294,50 +296,54 @@ class PalaceCap(_Cap):
     order = 61
 
 
-def _loop_L(f, L):
-    """A loop's figures: its inductance at each frequency, nH (the names pcbqs's near field gives them too)."""
-    return [dict(name=f"loop L at {fi / 1e6:g} MHz", value=li * 1e9, unit='nH') for fi, li in zip(f, L)
-            if isinstance(li, (int, float))]
-
-
-class PalaceLoop(_Fem):
-    """A converter's input loop in Palace (R-E22): the loop of the board's newest pcbqs near-field run (its converter,
-    input net, ground, input capacitors and crop) solved again in 3D, its inductance at the run's harmonics beside
-    pcbqs's. Palace stays out of pcbqs: this engine reads pcbqs's result file, not pcbqs."""
-    name, label, engine, program = 'palace_loop', 'Converter loop (Palace)', 'Palace', 'palace'
-    tool = module = 'kicad2ems.fem.palace.loop'
-    about = "a converter's input loop in 3D: its inductance, beside pcbqs's near field's"
-    order, result, provides = 35, 'loop.json', ('nearfield',)
+class _FromRun(_Fem):
+    """A Palace tool that solves again what a pcbqs run found: that run's folder its setting `key` (else the board's
+    newest run of that kind in `results`), the tool's log lines starting with `say`."""
+    program = 'palace'
+    key = need = say = ''
 
     def options(self):
-        return [dict(o, required=False) if o['key'] == 'mqs' else o for o in super().options()]
+        return [dict(o, required=False) if o['key'] == self.key else o for o in super().options()]
 
     def missing(self, values, board, results=None):
-        if str(values.get('mqs') or '').strip() or (results or {}).get('mqs'):
+        if str(values.get(self.key) or '').strip() or (results or {}).get(self.key):
             return []
-        return [dict(key='mqs', text="run the near field (pcbqs) first: its loop is what Palace solves")]
+        return [dict(key=self.key, text=self.need)]
 
     def command(self, values, board, out, preview=False, results=None):
-        run = str(values.get('mqs') or '').strip() or (results or {}).get('mqs')
+        run = str(values.get(self.key) or '').strip() or (results or {}).get(self.key)
         if not run:
-            raise ValueError("run the near field (pcbqs) first: its loop is what Palace solves")
-        cmd = [sys.executable, '-m', self.module, '--mqs', str(run), '--out', str(out)]
+            raise ValueError(self.need)
+        cmd = [sys.executable, '-m', self.module, '--' + self.key, str(run), '--out', str(out)]
         for o in self.options():
             v = str(values.get(o['key']) if values.get(o['key']) is not None else '').strip()
-            if o['key'] not in ('mqs', 'out') and v and v != str(o['default']):
+            if o['key'] not in (self.key, 'out') and v and v != str(o['default']):
                 cmd += [o['flag'], v]
         return cmd
 
     def status(self, line):
-        return line.split(':', 1)[1].strip()[:160] if line.startswith('palace loop:') else None
+        return line.split(':', 1)[1].strip()[:160] if line.startswith(self.say) else None
+
+
+class PalaceLoop(_FromRun):
+    """A converter's input loop in Palace (R-E22): the loop of the board's newest pcbqs near-field run (its converter,
+    input net, ground, input capacitors and crop) solved again in 3D, its inductance at the run's harmonics beside
+    pcbqs's. Palace stays out of pcbqs: this engine reads pcbqs's result file, not pcbqs."""
+    name, label, engine = 'palace_loop', 'Converter loop (Palace)', 'Palace'
+    tool = module = 'kicad2ems.fem.palace.loop'
+    about = "a converter's input loop in 3D: its inductance, beside pcbqs's near field's"
+    order, result, provides = 35, 'loop.json', ('nearfield',)
+    key, need, say = 'mqs', "run the near field (pcbqs) first: its loop is what Palace solves", 'palace loop:'
 
     def figures(self, folder):
-        r = self._read(folder)
-        return _loop_L(r['frequencies_Hz'], r['L_H']) if r and r.get('tool') == self.module else []
+        """Its inductance at each frequency, nH (the names pcbqs's near field gives them too)."""
+        r = self._mine(folder) or dict(frequencies_Hz=[], L_H=[])
+        return [dict(name=f"loop L at {fi / 1e6:g} MHz", value=li * 1e9, unit='nH')
+                for fi, li in zip(r['frequencies_Hz'], r['L_H']) if isinstance(li, (int, float))]
 
     def report(self, folder):
-        r = self._read(folder)
-        if not r or r.get('tool') != self.module:
+        r = self._mine(folder)
+        if not r:
             return None
         sel, pc = r['selection'], (r.get('pcbqs') or {}).get('L_H') or [None] * len(r['L_H'])
         rows = [[fi / 1e6, li * 1e9, p * 1e9 if p else '', f"{li / p:.3f}" if p else '']
@@ -357,40 +363,19 @@ class PalaceLoop(_Fem):
                     notes=notes, footer=f"Palace, {r.get('tets', 0):,} tetrahedra, {_seconds(r):.0f} s")
 
 
-class PalacePDN(_Fem):
+class PalacePDN(_FromRun):
     """A rail's PDN in Palace (R-E22): the rail of the board's newest pcbqs PDN run, each part a lumped port at its
     pads, the bare copper solved in 3D and closed by the run's parts; each load's |Z| beside pcbqs's. Palace stays
     out of pcbqs: this engine reads pcbqs's result file, not pcbqs."""
-    name, label, engine, program = 'palace_pdn', 'Rail impedance (Palace)', 'Palace', 'palace'
+    name, label, engine = 'palace_pdn', 'Rail impedance (Palace)', 'Palace'
     tool = module = 'kicad2ems.fem.palace.pdn'
     about = "a rail's impedance at its loads in 3D, beside pcbqs's PDN"
     order, result, provides = 36, 'pdn_palace.json', ('pdn',)
-
-    def options(self):
-        return [dict(o, required=False) if o['key'] == 'pdn' else o for o in super().options()]
-
-    def missing(self, values, board, results=None):
-        if str(values.get('pdn') or '').strip() or (results or {}).get('pdn'):
-            return []
-        return [dict(key='pdn', text="run the PDN (pcbqs) first: its rail and parts are what Palace solves")]
-
-    def command(self, values, board, out, preview=False, results=None):
-        run = str(values.get('pdn') or '').strip() or (results or {}).get('pdn')
-        if not run:
-            raise ValueError("run the PDN (pcbqs) first: its rail and parts are what Palace solves")
-        cmd = [sys.executable, '-m', self.module, '--pdn', str(run), '--out', str(out)]
-        for o in self.options():
-            v = str(values.get(o['key']) if values.get(o['key']) is not None else '').strip()
-            if o['key'] not in ('pdn', 'out') and v and v != str(o['default']):
-                cmd += [o['flag'], v]
-        return cmd
-
-    def status(self, line):
-        return line.split(':', 1)[1].strip()[:160] if line.startswith('palace pdn:') else None
+    key, need, say = 'pdn', "run the PDN (pcbqs) first: its rail and parts are what Palace solves", 'palace pdn:'
 
     def report(self, folder):
-        r = self._read(folder)
-        if not r or r.get('tool') != self.module:
+        r = self._mine(folder)
+        if not r:
             return None
         f = r['frequencies_Hz']
         sections = []
@@ -462,8 +447,8 @@ class ElmerMag(_Fem):
         return cmd
 
     def figures(self, folder):
-        r = self._read(folder)
-        if not r or r.get('tool') != self.module:
+        r = self._mine(folder)
+        if not r:
             return []
         n = r['names']
         out = [dict(name=f"L {a}", value=r['L'][i][i] * 1e6, unit='uH') for i, a in enumerate(n)]
@@ -475,8 +460,8 @@ class ElmerMag(_Fem):
         return out
 
     def report(self, folder):
-        r = self._read(folder)
-        if not r or r.get('tool') != self.module:
+        r = self._mine(folder)
+        if not r:
             return None
         n, L, air = r['names'], r['L'], r['air']
         coils = {c['name']: c for c in r.get('coils', [])}
@@ -533,8 +518,8 @@ class ElmerMag(_Fem):
         """Each coil's inductance for the circuit model's inductor of the same name (name the coils after them:
         --coil REF:...), and each pair's coupling for the model's coupling of those two (couplings.A+B.k): no model's
         names are assumed. (It had written the wpthb bridge's PRIMARY, SECONDARY and couplings.0.)"""
-        r = self._read(folder)
-        if not r or r.get('tool') != self.module or not r.get('names'):
+        r = self._mine(folder)
+        if not r or not r.get('names'):
             return []
         n, L, k = r['names'], r['L'], r['k']
         sets = [f"{a}.value={L[i][i]:.6g}" for i, a in enumerate(n)]

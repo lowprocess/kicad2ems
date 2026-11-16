@@ -28,20 +28,6 @@ import numpy as np
 from shapely.ops import nearest_points
 
 
-def read_pdn(folder, board=None):
-    """A pcbqs PDN run's pdn.json, and the KiCad file it read (`board` where the run did not record one)."""
-    path = Path(folder) / 'pdn.json'
-    if not path.is_file():
-        raise ValueError(f"{folder}: no pdn.json (a pcbqs PDN run's folder)")
-    r = json.loads(path.read_text())
-    if 'pdn' not in r or not r['pdn'].get('parts'):
-        raise ValueError(f"{folder}: the run has no PDN impedance (--no-pdn, or no plane pair)")
-    board = board or r.get('board') or ''
-    if not board.lower().endswith('.kicad_pcb') or not os.path.isfile(board):
-        raise ValueError(f"the run's board {board!r} is not a KiCad file here (--board)")
-    return r, board
-
-
 def _box(g, shrink=0.0):
     from shapely.geometry import box
     a, o = g['axis'], 1 - g['axis']
@@ -153,24 +139,20 @@ def close(Z, keep, loads):
     return out
 
 
-def _settings_files(r):
-    s = r.get('settings') or {}
-    files = {}
-    for item in s.get('cap_file') or []:
-        path = item.partition('=')[2]
-        path = path.rpartition(':')[0] if path.endswith((':shunt', ':series')) else path
-        files[os.path.basename(path)] = path
-    if s.get('vrm_file'):
-        files[os.path.basename(s['vrm_file'])] = s['vrm_file']
-    return files
-
-
 def solve(pdn, out='pdn_palace', board=None, fmin=1e6, fmax=None, points=None, order=2, feature=1.0, hmin=0.25,
           hmax=2.0, margin=10.0, tol=1e-3, np_=0, log=print):
     from kicad2ems.core.board import Board
     from kicad2ems.core.importers import open_board
     from . import config, model, run as prun
-    r, board_file = read_pdn(pdn, board)
+    path = Path(pdn) / 'pdn.json'                                   # the run's pdn.json and the KiCad file it read
+    if not path.is_file():
+        raise ValueError(f"{pdn}: no pdn.json (a pcbqs PDN run's folder)")
+    r = json.loads(path.read_text())
+    if 'pdn' not in r or not r['pdn'].get('parts'):
+        raise ValueError(f"{pdn}: the run has no PDN impedance (--no-pdn, or no plane pair)")
+    board_file = board or r.get('board') or ''
+    if not board_file.lower().endswith('.kicad_pcb') or not os.path.isfile(board_file):
+        raise ValueError(f"the run's board {board_file!r} is not a KiCad file here (--board)")
     nets, ground = list(r['nets']), list(r['ground'])
     parts = r['pdn']['parts']
     f0 = np.asarray(r['pdn']['f'], float)
@@ -232,7 +214,13 @@ def solve(pdn, out='pdn_palace', board=None, fmin=1e6, fmax=None, points=None, o
                    for j in range(len(refs))] for i in range(len(refs))]).transpose(2, 0, 1)
     I = np.eye(len(refs))
     Z = np.array([zref * (I + s) @ np.linalg.inv(I - s) for s in S])
-    files = _settings_files(r)
+    files, settings = {}, r.get('settings') or {}                   # the parts' model files, by their names
+    for item in settings.get('cap_file') or []:
+        path = item.partition('=')[2]
+        path = path.rpartition(':')[0] if path.endswith((':shunt', ':series')) else path
+        files[os.path.basename(path)] = path
+    if settings.get('vrm_file'):
+        files[os.path.basename(settings['vrm_file'])] = settings['vrm_file']
     zs = {}
     for x in refs:
         if x in series:
