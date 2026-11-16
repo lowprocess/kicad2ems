@@ -10,9 +10,12 @@ at every step along it, plus the transverse ones in between. Here the unknowns
 inside a run are replaced by, per column along it (a tent of length h), a few
 functions with a fixed shape across the line:
 
-    J(x, y) = t S_i(x) p(y)        p: 'maxwell'  1 / (pi sqrt(a^2 - y^2))   (the isolated strip, even)
-                                      'uniform'  1 / (2 a)                  (with maxwell: the even shape free-er)
-                                      'odd'      y / (a pi sqrt(a^2 - y^2)) (coupled lines: current pushed aside)
+    J(x, y) = t S_i(x) p(y)
+        p: 'maxwell'  1 / (pi sqrt(a^2 - y^2))    (the isolated strip, even)
+           'uniform'  1 / (2 a)                   (with maxwell: the even shape
+                                                  free-er)
+           'odd'      y / (a pi sqrt(a^2 - y^2))  (coupled lines: current
+                                                  pushed aside)
 
 expressed in the RWG basis by interpolation (each RWG coefficient = the mean
 normal current through its edge), so they are conforming RWG combinations: the
@@ -21,8 +24,10 @@ ports, cuts and dumps unchanged. The edges at the run's ends and everything
 outside the runs stay unknowns of their own; the runs stop short of bends, tees
 and pads (by `margin`).
 
-    runs = find_runs(geoms, h_of_layer, signal=..., w_max=..)              # emsdev.numerics.runs
-    T, info = line_subspace(rwg, n_total, tri_layer, runs, profiles=('maxwell', 'odd'), exclude_tris=..,
+    # emsdev.numerics.runs
+    runs = find_runs(geoms, h_of_layer, signal=..., w_max=..)
+    T, info = line_subspace(rwg, n_total, tri_layer, runs,
+                            profiles=('maxwell', 'odd'), exclude_tris=..,
                             exclude_edges=..)
 """
 import numpy as np

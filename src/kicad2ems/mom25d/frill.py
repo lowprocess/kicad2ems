@@ -39,9 +39,14 @@ The unknown V takes one equation, H_phi continuous across the hole, tested with
 the hole's own profile. By reciprocity the row is the transpose of the column
 the hole's field makes in the other equations, so the system stays symmetric:
 
-    [ Z    c ] [I]   [E]        c_m = -<f_m, E of the hole at 1 V>  = -int div f_m Psi   (an edge; a chain's
-    [ c^T -Y ] [V] = [0]              ends on pads the same, by their fans' charge), plus the chains' remainder
-                                Y_fg = 2 pi int (Yu + Yd) e_f e_g J0(kr d_fg) kr dkr     (holes of one plane)
+    [ Z    c ] [I]   [E]
+    [ c^T -Y ] [V] = [0]
+
+    c_m = -<f_m, E of the hole at 1 V>  = -int div f_m Psi   (an edge; a
+          chain's ends on pads the same, by their fans' charge), plus the
+          chains' remainder
+    Y_fg = 2 pi int (Yu + Yd) e_f e_g J0(kr d_fg) kr dkr     (holes of one
+          plane)
 
 A chain's potential terms at the plane itself cancel between its two sides (a
 via through the hole). A via onto the plane, outside every hole, is at zero
@@ -382,8 +387,8 @@ class FrillKernels:
         sep = u[0].xy - v[0].xy
         d, be = ((0.0, 0.0) if same else
                  (float(np.hypot(*sep)), float(np.arctan2(sep[1], sep[0]))))
-        J = lambda n: jn(n, kr * d) if d else (np.ones_like(kr)
-                                               if n == 0 else np.zeros_like(kr))
+        J = lambda n: (jn(n, kr * d) if d
+                       else (np.ones_like(kr) if n == 0 else np.zeros_like(kr)))
         tot = lambda spec: complex(np.sum(spec * kr * dk))
         if not du and not dv:
             return 2 * np.pi * tot(Ye * self.e[su] * self.e[sv] * J(0))

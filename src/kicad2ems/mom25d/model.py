@@ -7,9 +7,11 @@ vias, lumped elements and port definitions. A subclass fills in
     iface       {copper layer name: interface index}
     shapes      {interface: [shapely geometry, metres, y up]}
     vias        [sim.Via];  lumped: [sim.SeriesLumped]
-    port_specs  [dict(name, c (m), d (unit vector into the circuit), k (interface), w (m), z0, kind 'auto' |
-                 'wave' | 'via' | 'gap', kref (reference interface of a lumped port), radius (m))] or, for a
-                 differential pair, dict(name, legs={'+': spec, '-': spec}); port_z0 {name: ohms}
+    port_specs  [dict(name, c (m), d (unit vector into the circuit),
+                 k (interface), w (m), z0, kind 'auto' | 'wave' | 'via' |
+                 'gap', kref (reference interface of a lumped port),
+                 radius (m))] or, for a differential pair,
+                 dict(name, legs={'+': spec, '-': spec}); port_z0 {name: ohms}
     ground, cover, notes
 
 and the methods here turn the port definitions into solver ports (wave ports
@@ -74,13 +76,11 @@ class PlanarModel:
             L.append(
                 f"  D{j + 1} {l.name:<14s} h={l.h * 1e3:.3f} mm er={l.er:.2f} "
                 f"tand={l.tand:.4f}"
-                +
-                ("   -> "
-                 f"{'a PEC plane' if j + 1 in self.stack.pec else 'metal'} "
-                 f"{cu[0]} on interface {j + 1}"
-                 if cu else ''))
-        L.append((f"  ground: {self.ground} (z=0)" if self.
-                  ground else "  no ground: the whole stack, air below")
+                + ("   -> "
+                   f"{'a PEC plane' if j + 1 in self.stack.pec else 'metal'}"
+                   f" {cu[0]} on interface {j + 1}" if cu else ''))
+        L.append((f"  ground: {self.ground} (z=0)" if self.ground
+                  else "  no ground: the whole stack, air below")
                  + (f", PEC cover: {self.cover}" if self.cover else ''))
         L.append("metal interfaces: " + ", ".join(
             f"{n}->M{k}" for n, k in self.iface.items() if k in self.shapes))
@@ -89,8 +89,7 @@ class PlanarModel:
             for sp in self.port_specs))
         return "\n".join(L + self.notes)
 
-    # ---- ports
-    # ----------------------------------------------------------------------------------------
+    # ---- ports --------------------------------------------------------------
     def _feed(self, g, c, d, step):
         """Width of the copper strip through c across direction d, and straight
         length along d."""
@@ -151,9 +150,11 @@ class PlanarModel:
         step, out = step or dmax, []
         # a wave port of width w on the feed from c along d, in the window (gap
         # offset, first / last cut, spacing)
-        wave = lambda k, c, d, w, win, **kw: LinePort(k, c + d * win[
-            0], d, w, -win[0], s0=win[1] - win[0], s1=win[2] - win[0], step=win[
-                3], **kw)
+        def wave(k, c, d, w, win, **kw):
+            return LinePort(k, c + d * win[0], d, w, -win[0],
+                            s0=win[1] - win[0], s1=win[2] - win[0],
+                            step=win[3], **kw)
+
         for sp in self.port_specs:
             name = sp['name']
             if 'legs' in sp:  # differential pair
@@ -356,7 +357,8 @@ class PlanarModel:
                 p.gc_fn = (lambda f, gf=_smooth(fs, ge / fs): f * gf(f))
                 p.zdiff, p.zcomm = (float(zd[len(zd) // 2]),
                                     float(zcm[len(zcm) // 2]))
-                log(f"  {p.name}: coupled pair on M{a.layer}, w={a.w * 1e3:.3f} mm, gap={gap * 1e3:.3f} mm: "
+                log(f"  {p.name}: coupled pair on M{a.layer}, "
+                    f"w={a.w * 1e3:.3f} mm, gap={gap * 1e3:.3f} mm: "
                     f"Zdiff = " + ", ".join(f"{v:.1f}" for v in zd)
                     + ", Zcomm = " + ", ".join(f"{v:.1f}" for v in zcm) + " ohm"
                     + (" (kept from an earlier run)" if kept else ''))

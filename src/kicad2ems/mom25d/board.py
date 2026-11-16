@@ -5,7 +5,8 @@ solver, read without kicad2ems.
 
     import json
     from kicad2ems.mom25d.board import BoardModel
-    model = BoardModel(json.load(open('out/filter_board.json', encoding='utf-8')))
+    model = BoardModel(json.load(open('out/filter_board.json',
+                                      encoding='utf-8')))
         # or kicad2ems's Board.to_dict()
     sim = model.simulation(dmax=0.3e-3, fmin=1e9, fmax=6e9)
     res = mom25d.api.solve_board('out/filter_board.json', freqs)

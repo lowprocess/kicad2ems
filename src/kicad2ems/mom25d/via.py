@@ -13,12 +13,16 @@ interface s:
 voltages V(z_i | z_s) at all interfaces; kz_j, eps_j per layer). Derived from
 Maxwell with the exp(+jwt), exp(-j k.rho) conventions used throughout:
 
-  via segment in layer j (unit current, +z)  ->  E_t on interface k   :  E_t = grad_t S
+  via segment in layer j (unit current, +z)  ->  E_t on interface k   :
+        E_t = grad_t S
         S~_{k,j}(kr) = [V(z_j|z_k) - V(z_{j-1}|z_k)] / kz_j^2
   reaction between via segments in layers i (obs) and j (src):
-        P~_ij = kr^2/(kz_i^2 kz_j^2) [dV_i(z_j) - dV_i(z_{j-1})] + delta_ij j w mu0 h_j/(kr^2 - k_j^2)
-        dV_i(z_s) = V(z_i|z_s) - V(z_{i-1}|z_s)    (zero if z_s is a PEC interface)
-  (the delta(z-z') self term cancels the constant part of the second term exactly).
+        P~_ij = kr^2/(kz_i^2 kz_j^2) [dV_i(z_j) - dV_i(z_{j-1})]
+                + delta_ij j w mu0 h_j/(kr^2 - k_j^2)
+        dV_i(z_s) = V(z_i|z_s) - V(z_{i-1}|z_s)
+                (zero if z_s is a PEC interface)
+  (the delta(z-z') self term cancels the constant part of the second term
+  exactly).
 
 For numerics the point end charges are taken out spectrally:
   D~ = S~ - (1/jw) sum_ends div_e G~_q(k, k_e)
@@ -202,7 +206,8 @@ class ViaKernels:
     Per-frequency via kernels for a set of chain spans [(k_bot, k_top), ...] and
     metal interfaces.
       D[(k, span)] : Table1D of the smooth via->interface kernel D(rho)
-      R(span_m, span_n, rho) : smooth via-via reaction remainder at distances rho
+      R(span_m, span_n, rho) : smooth via-via reaction remainder at
+                               distances rho
       homog(span_m, span_n, rho) : analytic K0 part
     """
     def __init__(self, f, stack, spans, interfaces, rho_max, nrho=200):

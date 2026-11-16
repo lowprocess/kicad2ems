@@ -1,7 +1,8 @@
 """
 mom25d.sim - the general simulation object (stage 3)
 
-    sim = Simulation(stack, shapes, ports=[...], vias=[...], lumped=[...], dmax=...)
+    sim = Simulation(stack, shapes, ports=[...], vias=[...], lumped=[...],
+                     dmax=...)
     res = sim.sweep(freqs)
 
 shapes  : {interface: [rect (x0,y0,x1,y1) | shapely Polygon/MultiPolygon, ...]}
@@ -27,9 +28,11 @@ import shapely
 from kicad2ems.emsdev.memory import available as available_memory  # noqa: F401
 
 from .model import KNOWN_SPAN
-from kicad2ems.emsdev.numerics.base import MU0, EPS0, RWG, qform, combine, quad_pts, _BAR3, _W3, _BAR6, _W6
+from kicad2ems.emsdev.numerics.base import (MU0, EPS0, RWG, qform, combine,
+                                            quad_pts, _BAR3, _W3, _BAR6, _W6)
 from kicad2ems.emsdev.numerics.geo import to_geometry, is_manhattan_rects, ngon
-from .base import singular_moments, gram_matrix, fit_gamma, fit_waves, moments7, quad_moments
+from .base import (singular_moments, gram_matrix, fit_gamma, fit_waves,
+                   moments7, quad_moments)
 from .multilayer import RunLog, GreenTableML, make_mesh_ml
 from .geo import LinePort, mesh_polygons
 from .via import ViaKernels
@@ -233,8 +236,10 @@ class DiffPort:
     S-matrix: '<name>d' (differential) and '<name>c' (common). Each mode is
     fitted with its own propagation constant (odd/even modes of a symmetric
     pair), so mode conversion and modal dispersion are captured.
-      pos, neg : LinePort for each line (same direction, layer, sampling and reference plane)
-      zdiff, zcomm : modal reference impedances (2 Z_odd and Z_even / 2 of the pair; see line_char_pair)
+      pos, neg : LinePort for each line (same direction, layer, sampling and
+                 reference plane)
+      zdiff, zcomm : modal reference impedances (2 Z_odd and Z_even / 2 of the
+                 pair; see line_char_pair)
     """
     def __init__(self, pos, neg, zdiff=100.0, zcomm=25.0, name='P'):
         if not (np.allclose(pos.d, neg.d)):
@@ -546,8 +551,7 @@ class Simulation:
         self.geoms = geoms
         dmax_layer = dmax_layer or {}
 
-        # ---- via chains: split where the via touches metal
-        # ------------------------------
+        # ---- via chains: split where the via touches metal ------------------
         self.chains = []      # (via, k_bot, k_top)
         self.via_attach = []  # per via: list of metal interfaces it attaches to
         holes = {(id(fr.via), fr.k) for fr in self.frills}
@@ -567,8 +571,7 @@ class Simulation:
             self.via_attach.append([k for k in att if k in geoms])
             self.chains += [(v, a, b) for a, b in zip(att[:-1], att[1:])]
 
-        # ---- port sample positions and constraint lines
-        # -----------------------------------
+        # ---- port sample positions and constraint lines ---------------------
         self.samples, lines = [], {k: [] for k in self.layers}
         add = lambda lp, xs: [
             lines[k].append((lp, x)) for k in _ls(lp.layer) for x in xs
@@ -591,8 +594,7 @@ class Simulation:
         for el in self.lumped:
             add(el.lp, [0.0])
 
-        # ---- mesh
-        # ---------------------------------------------------------------------------
+        # ---- mesh -----------------------------------------------------------
         with self.log.timer('mesh'):
             nodes, tris, tl, off, self.mesher_used = [], [], [], 0, {}
             via_vertex = {}
@@ -645,19 +647,17 @@ class Simulation:
                         # resolve return currents under/over metal on nearby
                         # layers
                         near = [
-                            (geoms[j]
-                             if zone is None else geoms[j].intersection(zone)
-                             ).buffer(3 * abs(stack.z[j] - stack.z[k])
-                                      + 2 * dmax)
+                            (geoms[j] if zone is None
+                             else geoms[j].intersection(zone)).buffer(
+                                 3 * abs(stack.z[j] - stack.z[k]) + 2 * dmax)
                             for j in self.layers
                             if j != k and abs(stack.z[j] - stack.z[k]) < refine
                         ]
                         fine = shapely.unary_union(near) if near else None
                     zkw = (dict(edge_zone=zone, split_chains=True)
                            if zone is not None else {})
-                    dm_mesh, dm_fine = (dm,
-                                        (2
-                                         * dmax if fine is not None else None))
+                    dm_mesh, dm_fine = dm, (2 * dmax if fine is not None
+                                            else None)
                     if zone is not None and dmax_out and dmax_out > dm:
                         # outside the zone the copper carries little current:
                         # cells up to dmax_out there, dm (or the refinement's 2
@@ -726,8 +726,7 @@ class Simulation:
         }
         Nt = len(r.tris)
 
-        # ---- via fans and extended divergence
-        # ---------------------------------------------
+        # ---- via fans and extended divergence -------------------------------
         self.fan = {
             key: np.nonzero((r.tris == vid).any(1))[0]
             for key, vid in via_vertex.items()
@@ -746,13 +745,14 @@ class Simulation:
         self.log.note(
             f"mesh: {Nt} triangles, {r.Ne} edge + {len(self.chains)} via "
             "unknowns"
-            + (f" + {len(self.frills)} holes in PEC planes" if self.
-               frills else '') +
-            (f" + {sum(sl.count for sl in self.slots)} in {len(self.slots)} "
-             "opening(s) of PEC planes"
-             if self.slots else '') + "  (" + ", ".join(
-                 f"M{k}: {len(self.tri_idx[k])} tri ({self.mesher_used[k]})"
-                 for k in self.layers) + ")")
+            + (f" + {len(self.frills)} holes in PEC planes"
+               if self.frills else '')
+            + (f" + {sum(sl.count for sl in self.slots)} in "
+               f"{len(self.slots)} opening(s) of PEC planes"
+               if self.slots else '')
+            + "  (" + ", ".join(
+                f"M{k}: {len(self.tri_idx[k])} tri ({self.mesher_used[k]})"
+                for k in self.layers) + ")")
 
         V = r.nodes[r.tris]
         self.tri_size = np.linalg.norm(V - np.roll(V, 1, axis=1), axis=2).max(1)
@@ -839,8 +839,8 @@ class Simulation:
                 "unknowns")
         if self.qT is not None and solver not in ('dense', 'direct', 'auto'):
             self.log.note(
-                f"{'lines' if line_basis and line_basis != 'off' else 'quads'}: "
-                f"not with solver {solver} yet - ignored")
+                f"{'lines' if line_basis and line_basis != 'off' else 'quads'}"
+                f": not with solver {solver} yet - ignored")
             self.qT = None
         self.tables, self.last = {}, None
         for p in self.ports:
@@ -919,8 +919,7 @@ class Simulation:
             self.fast = FastOperator(self, tol=aca_tol)
             return
 
-        # ---- static singular parts
-        # ------------------------------------------------------------
+        # ---- static singular parts ------------------------------------------
         with self.log.timer('singular integrals (static, once)'):
             M0, Mrr, Mr, Qs = (np.zeros((Nt, Nt)), np.zeros(
                 (Nt, Nt)), np.zeros((Nt, Nt, 2)), np.zeros((Nt, Nt), complex))
@@ -974,8 +973,7 @@ class Simulation:
             if q.geom_type == 'Polygon' and q.length > 0
         ])
 
-    # ---- edges on lines
-    # --------------------------------------------------------------------
+    # ---- edges on lines -----------------------------------------------------
     def _line_edges(self, lp, s, tol=1e-8):
         r = self.rwg
         e0, e1 = (r.ends[:, 0] - (lp.c + lp.d * s), r.ends[:, 1] -
@@ -1020,8 +1018,7 @@ class Simulation:
         """Index of the lowest chain of the via of a ViaPort."""
         return next(n for n, (v, _, _) in enumerate(self.chains) if v is p.via)
 
-    # ---- matrix
-    # --------------------------------------------------------------------------------
+    # ---- matrix -------------------------------------------------------------
     def green_tables(self, f):
         """The layered-media tables of every pair of metal interfaces at f: {(a,
         b): GreenTableML}, a <= b."""
@@ -1236,8 +1233,9 @@ class Simulation:
                            U[..., 1] * s2) if dip == 'c' else
                           (U[..., 1] * s2, U[..., 0] - U[..., 1] * c2))
                 W = self.W6[idx]
-                field[:, idx] = ((self.P6[idx, :, 0] * ex + self.P6[idx, :, 1] * ey) * W).sum(1), (ex * W).sum(1), \
-                    (ey * W).sum(1)
+                field[:, idx] = (((self.P6[idx, :, 0] * ex
+                                   + self.P6[idx, :, 1] * ey) * W).sum(1),
+                                 (ex * W).sum(1), (ey * W).sum(1))
             B[:, col] = -(r.D.T @ psi)
             if dip:  # -<f, E>: f = Aal r - (Bx, By) on a triangle
                 B[:, col] -= (r.Aal.T @ field[0] - r.Bx.T @ field[1]
@@ -1343,8 +1341,7 @@ class Simulation:
                 M[pp, qq] += v
         return out
 
-    # ---- excitation and port quantities
-    # -------------------------------------------------
+    # ---- excitation and port quantities -------------------------------------
     def excitation(self):
         E = np.zeros((self.Ne + self.Nv, len(self.ports)), complex)
         for j, p in enumerate(self.ports):

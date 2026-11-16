@@ -654,8 +654,7 @@ class MoM25D(Solver):
                 "board): set ground = <layer>, or mom_stack = whole")
         return out
 
-    # ---- what it changes, and what it holds
-    # -------------------------------------------------------------
+    # ---- what it changes, and what it holds ---------------------------------
     WALL_PITCH, WALL_R = 0.5, 0.05  # mm: edge walls as via rows (mom25d.board)
 
     def deviations(self, run, prep):
@@ -917,16 +916,17 @@ class MoM25D(Solver):
         def one(dmax, finest=True):
             return solve(
                 run.m, run.freq, dmax=dmax, port=port, max_solves=s.mom_solves,
-                sigma=s.sigma, rough=getattr(s, 'rough',
-                                             None), finish=run_finish(run),
+                sigma=s.sigma, rough=getattr(s, 'rough', None),
+                finish=run_finish(run),
                 log=run.log, hold=self._held if finest else {}, core=s.mom_core,
                 **_mesh_kw(s, run.m), keep_at=keep if finest else [],
                 progress=lambda k, n, f: (run.status(
-                    'mom25d', dict(fraction=k / n, solves=k, f_ghz=f / 1e9)
-                ), stop.check()), on_step=lambda h: run.status(
+                    'mom25d', dict(fraction=k / n, solves=k, f_ghz=f / 1e9)),
+                    stop.check()),
+                on_step=lambda h: run.status(
                     'mom25d',
-                    dict(afs_solves=h['solves'], change=h['change'], pred=h[
-                        'pred'], tol=h['tol'])))
+                    dict(afs_solves=h['solves'], change=h['change'],
+                         pred=h['pred'], tol=h['tol'])))
 
         levels = sorted({
             float(f)
@@ -995,7 +995,8 @@ class MoM25D(Solver):
         infinite ground."""
         from kicad2ems.mom25d.farfield import far_field, radiated
         from kicad2ems.core.api.solver import phased
-        from kicad2ems.core.api.solver import match_summary, describe_antenna, save_antenna, pattern_gain
+        from kicad2ems.core.api.solver import (match_summary, describe_antenna,
+                                               save_antenna, pattern_gain)
         from kicad2ems.core.api.solver import plot_antenna, plot_pattern
         s, m, sim = run.s, run.m, held.sim
         names = [p.name for p in sim.ports]
@@ -1243,9 +1244,8 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d',
     nodes = sim.rwg.nodes[:, :2] * 1e3
     # solved by the sweep at these: no solve
     kept = getattr(sim, 'kept', None) or {}
-    currents = (currents
-                or (lambda f: kept[f]
-                    if f in kept else sim.currents(f, sim.excitation())))
+    currents = currents or (
+        lambda f: kept[f] if f in kept else sim.currents(f, sim.excitation()))
     I_f = [(stop.check(), currents(f))[1] for f in freqs]
     step = max(run.s.mom_dmax / 3, 0.02)
     ztop = float(model._zk[-1])

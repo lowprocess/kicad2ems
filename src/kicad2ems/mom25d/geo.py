@@ -14,11 +14,14 @@ class LinePort:
       layer     : metal interface index
       center    : (x, y) of the gap (delta-gap source) on the feed centre line
       direction : vector pointing INTO the device along the feed (any angle)
-      width     : feed width (the gap and sample cuts span this, centred on `center`)
-      ref_dist  : distance from the gap to the reference plane, along `direction`
+      width     : feed width (the gap and sample cuts span this, centred on
+                  `center`)
+      ref_dist  : distance from the gap to the reference plane, along
+                  `direction`
       s0, step  : closest sample cut to the gap, and spacing between cuts
-      s1        : farthest sample cut (default = ref_dist). Keep the cuts clear of discontinuities:
-                  the reference plane may lie beyond s1 (the fitted waves are shifted to it).
+      s1        : farthest sample cut (default = ref_dist). Keep the cuts clear
+                  of discontinuities: the reference plane may lie beyond s1
+                  (the fitted waves are shifted to it).
       zc        : reference impedance
     """
     kind = 'wave'

@@ -9,7 +9,8 @@ Time convention exp(+j w t).
 """
 import numpy as np
 
-from kicad2ems.emsdev.numerics.base import _BAR3, _BAR6, _W3, _W6, combine, edge_frames, quad_pts
+from kicad2ems.emsdev.numerics.base import (_BAR3, _BAR6, _W3, _W6, combine,
+                                            edge_frames, quad_pts)
 
 
 def moments7(GA, GQ, ra, rb):

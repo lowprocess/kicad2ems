@@ -17,7 +17,8 @@ functions as both bases and tests). An n x m strip of rectangles split into
 triangles has ~3nm edge unknowns; as quads ~2nm: a third fewer, and the LU (N^3)
 about 3.4x cheaper on those cells.
 
-    T, info = quad_subspace(rwg, n_total, exclude_tris=..., exclude_edges=..., tol_deg=25)
+    T, info = quad_subspace(rwg, n_total, exclude_tris=..., exclude_edges=...,
+                            tol_deg=25)
 """
 import numpy as np
 from scipy import sparse
