@@ -74,15 +74,12 @@ def copper_centres(board):
     return out
 
 
-def _outline_lines(polys, geom):
-    """The outlines of `polys` (mm) inside `geom` as mesh_polygons' constraint segments (m)."""
+def outline_segments(geom):
+    """The outlines of a geometry's polygons (mm) as mesh_polygons' constraint segments (m)."""
     segs = []
-    for q in polys:
-        q = q.intersection(geom)
-        for part in getattr(q, 'geoms', [q]):
-            if part.geom_type != 'Polygon' or part.is_empty:
-                continue
-            for ring in [part.exterior] + list(part.interiors):
+    for part in getattr(geom, 'geoms', [geom]):
+        if part.geom_type == 'Polygon' and not part.is_empty:
+            for ring in [part.exterior, *part.interiors]:
                 c = np.asarray(ring.coords)[:, :2] * 1e-3
                 segs += [(tuple(a), tuple(b)) for a, b in zip(c[:-1], c[1:])]
     return segs
@@ -203,7 +200,7 @@ def mesh_sheet(geom, points=(), dmax=1.0, w_ref=None, coarsen=None, regions=(), 
             for i in inside]
     g = scale(geom, 1e-3, 1e-3, origin=(0, 0))
     live = [k for k, q in enumerate(regions) if q.intersects(geom)]
-    lines = _outline_lines([regions[k] for k in live], geom)
+    lines = [seg for k in live for seg in outline_segments(regions[k].intersection(geom))]
     kw = {}
     if fine is not None and dmax_fine:
         kw = dict(fine=scale(fine, 1e-3, 1e-3, origin=(0, 0)), dmax_fine=dmax_fine * 1e-3)

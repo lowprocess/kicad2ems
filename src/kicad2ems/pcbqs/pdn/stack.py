@@ -214,9 +214,9 @@ class RailPDN:
         barrels = sum(_barrel_g(v['r'], max(min(abs(zl - z) for z in planes if v['z0'] - 1e-6 <= z <= v['z1'] + 1e-6),
                                             1e-3), 0.025, SIGMA_CU) for v in reach)
         r_barrel = 1.0 / barrels                        # the vias in parallel, the pad's layer to the nearest plane
+        xyr = [(v['x'], v['y'], v['r']) for v in reach]
         if any(pg.intersects(Point(v['x'], v['y']).buffer(v['r'], quad_segs=4)) for v in reach):
-            return Conn(vias=[(v['x'], v['y'], v['r']) for v in reach], R_path=r_barrel, h=h,
-                        why=f'{len(reach)} via(s) in its pad over {h:.2f} mm')
+            return Conn(vias=xyr, R_path=r_barrel, h=h, why=f'{len(reach)} via(s) in its pad over {h:.2f} mm')
         # the squares from the pad to its vias: a conduction solve of that copper alone
         from .dc import Network
         terms = {'pad': [(lay, pg.intersection(isl))]}
@@ -229,12 +229,11 @@ class RailPDN:
         except (ValueError, RuntimeError, MemoryError) as e:   # (any failure had read as a via in its pad: no path)
             self.notes.append(f"{pads[0].ref if hasattr(pads[0], 'ref') else 'a part'}: its pad to its vias was not "
                               f"solved ({type(e).__name__}: {e}): that path's inductance and resistance left out")
-            return Conn(vias=[(v['x'], v['y'], v['r']) for v in reach], R_path=r_barrel, h=h,
+            return Conn(vias=xyr, R_path=r_barrel, h=h,
                         why=f'{len(reach)} via(s) over {h:.2f} mm, its path to them not solved')
         r_pad = 1.0 / max(r.loss, 1e-12)                # 1 V across it: loss = 1 / R
         squares = r_pad * SIGMA_CU * self.zt[lay][1] * 1e-3
-        return Conn(vias=[(v['x'], v['y'], v['r']) for v in reach], L_path=MU0 * h * 1e-3 * squares,
-                    R_path=r_pad + r_barrel, h=h,
+        return Conn(vias=xyr, L_path=MU0 * h * 1e-3 * squares, R_path=r_pad + r_barrel, h=h,
                     why=f'{len(reach)} via(s), {squares:.2f} squares over {h:.2f} mm, {(r_pad + r_barrel) * 1e3:.2f} mOhm')
 
     def _isolated(self):
@@ -302,11 +301,6 @@ class RailPDN:
                 parent[a] = parent[parent[a]]
                 a = parent[a]
             return a
-
-        def union(a, b):
-            ra, rb = find(a), find(b)
-            if ra != rb:
-                parent[rb] = ra
         off = 0
         for ci, c in enumerate(cs):
             pts, owner = [], []
@@ -327,8 +321,10 @@ class RailPDN:
                     continue
                 kind, who = owner[k]
                 key = ('port', who) if kind == 'port' else ('tie', id(who))
-                for q in ring:
-                    union(key, ('v', off + q))
+                for q in ring:                          # each vertex of its ring joined to it
+                    ra, rb = find(key), find(('v', off + q))
+                    if ra != rb:
+                        parent[rb] = ra
             off += len(nodes)
             self.log(f"cavity {c.rail_layer}/{c.ground_layer}: {c.geom.area:.0f} mm2, d {c.d:.3g} mm, er {c.er:.3g}, "
                      f"C {capacitance(c.geom.area, c.d, c.er) * 1e9:.3g} nF; {len(nodes):,} vertices")
@@ -369,6 +365,12 @@ class RailPDN:
             return s.R + zl * s.z100 / (zl + s.z100) + 1j * w * sr['esl']
         return s.R + 1j * w * (s.L + sr['esl'])        # a series inductor's own L, and its package
 
+    @staticmethod
+    def _part_z(info, w):
+        """A part's element in series with its mount (a lumped node's part: a nominal 0.5 nH) and its paths' R."""
+        mount = info['mount'] + (0.5e-9 if info['rail'].node else 0.0)
+        return element_z(info['el'], w, mount) + info.get('mount_R', 0.0)
+
     def matrix(self, f, bare=False):
         w = 2 * np.pi * f
         Y = sum(plane_admittance(c.Kg, c.Mg, f, c.d, c.er, c.tand, c.t) for c in self.cavities)
@@ -377,11 +379,8 @@ class RailPDN:
         if not bare:
             for name, info in self.parts.items():
                 d = self.dof(name)
-                el = info['el']
-                if d is None or el is None:
-                    continue
-                m = info['mount'] + (0.5e-9 if info['rail'].node else 0.0)     # a lumped node's part: a nominal 0.5 nH
-                y[d] += 1 / (element_z(el, w, m) + info.get('mount_R', 0.0))
+                if d is not None and info['el'] is not None:
+                    y[d] += 1 / self._part_z(info, w)
         for k, sr in enumerate(self.series):                    # the series parts join their two sides
             da = self.node_dof[sr['a'].node] if sr['a'].node else self.port_dof.get(f'~{k}a')
             db = self.node_dof[sr['b'].node] if sr['b'].node else self.port_dof.get(f'~{k}b')
@@ -401,8 +400,7 @@ class RailPDN:
         f = np.atleast_1d(np.asarray(f, float))
         out = {n: np.zeros(len(f), complex) for n in names}
         E = np.zeros((self.n, len(names)))
-        for k, n in enumerate(names):
-            E[self.dof(n), k] = 1.0
+        E[[self.dof(n) for n in names], np.arange(len(names))] = 1.0
         for i, fi in enumerate(f):
             X = splu(self.matrix(fi, bare=bare)).solve(E.astype(complex))
             for k, n in enumerate(names):
@@ -425,15 +423,13 @@ class RailPDN:
         cols = list(dict.fromkeys([self.dof(n) for n in names] + [d for _, d, _ in parts]))
         at = {d: k for k, d in enumerate(cols)}
         E = np.zeros((self.n, len(cols)))
-        for k, d in enumerate(cols):
-            E[d, k] = 1.0
+        E[cols, np.arange(len(cols))] = 1.0
         o = [at[self.dof(n)] for n in names]
         u = [at[d] for _, d, _ in parts]
         for i, fi in enumerate(f):
             w = 2 * np.pi * fi
             X = splu(self.matrix(fi, bare=True)).solve(E.astype(complex))[cols]          # Zb on the columns
-            zp = np.array([element_z(info['el'], w, info['mount'] + (0.5e-9 if info['rail'].node else 0.0))
-                           + info.get('mount_R', 0.0) for _, _, info in parts], complex)
+            zp = np.array([self._part_z(info, w) for _, _, info in parts], complex)
             Zb_oo = X[np.ix_(o, o)]
             if parts:
                 Zb_op, Zb_po, Zb_pp = X[np.ix_(o, u)], X[np.ix_(u, o)], X[np.ix_(u, u)]
@@ -454,8 +450,7 @@ class RailPDN:
         f = np.atleast_1d(np.asarray(f, float))
         out = {(m, k): np.zeros(len(f), complex) for m in observe for k in sources}
         E = np.zeros((self.n, len(sources)))
-        for j, k in enumerate(sources):
-            E[self.dof(k), j] = 1.0
+        E[[self.dof(k) for k in sources], np.arange(len(sources))] = 1.0
         for i, fi in enumerate(f):
             X = splu(self.matrix(fi)).solve(E.astype(complex))
             for j, k in enumerate(sources):
@@ -473,10 +468,9 @@ class RailPDN:
         names = [n for n in (names or list(self.parts)) if self.dof(n) is not None and n not in self.isolated]
         f = np.atleast_1d(np.asarray(f, float))
         Z = np.zeros((len(f), len(names), len(names)), complex)
-        E = np.zeros((self.n, len(names)))
-        for k, n in enumerate(names):
-            E[self.dof(n), k] = 1.0
         rows = [self.dof(n) for n in names]
+        E = np.zeros((self.n, len(names)))
+        E[rows, np.arange(len(names))] = 1.0
         for i, fi in enumerate(f):
             X = splu(self.matrix(fi, bare=True)).solve(E.astype(complex))[rows]
             w = 2 * np.pi * fi
