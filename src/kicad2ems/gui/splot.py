@@ -11,8 +11,9 @@ The traces (one tree: openEMS, mom25d, the line model, a compare file, added fol
 The mouse reads every plot at a frequency; a click drops a marker on all of them (drag a marker line to move
 it, Delete in the table to remove it). Export CSV and Save image take what is shown.
 """
+import json
 import numpy as np
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QSettings, QSignalBlocker
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QComboBox, QPushButton, QLabel,
                                QTreeWidget, QTreeWidgetItem, QTableWidget, QTableWidgetItem, QSplitter, QFileDialog,
                                QMessageBox, QHeaderView, QAbstractItemView, QToolButton, QMenu, QFrame, QScrollArea,
@@ -68,25 +69,19 @@ class Subplot(QFrame):
         lay.setSpacing(2)
         head = QHBoxLayout()
         head.addWidget(QLabel(f"<b>{kind}</b>"))
-        self.option = QComboBox()
-        self.option.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.option = QComboBox(sizeAdjustPolicy=QComboBox.AdjustToContents)
         head.addWidget(self.option)
         self.freq = QComboBox()                                     # the far-field cuts' frequency and quantity
         self.qty = QComboBox()
         self.qty.addItems(PATTERN_QTY)
-        self.ref = QComboBox()                                      # a difference plot's reference solver
-        self.ref.setToolTip("the solver the others are compared with: each checked trace of another solver is "
-                            "drawn as its difference from this one's same S")
+        self.ref = QComboBox(toolTip="the solver the others are compared with: each checked trace of another "
+                                     "solver is drawn as its difference from this one's same S")
         for w in (self.freq, self.qty, self.ref):
             w.setSizeAdjustPolicy(QComboBox.AdjustToContents)
             head.addWidget(w)
         head.addStretch(1)
-        close = QToolButton()
-        close.setText('✕')
-        close.setAutoRaise(True)
-        close.setToolTip('Remove this plot')
-        close.clicked.connect(lambda: host.remove_subplot(self))
-        head.addWidget(close)
+        head.addWidget(QToolButton(text='✕', autoRaise=True, toolTip='Remove this plot',
+                                   clicked=lambda: host.remove_subplot(self)))
         lay.addLayout(head)
         self.pw = pg.PlotWidget()
         self.pw.setMinimumHeight(MIN_PLOT_HEIGHT - 40)
@@ -105,9 +100,8 @@ class Subplot(QFrame):
         self.dot = pg.ScatterPlotItem(size=9, pen=pg.mkPen(c['fg']), brush=pg.mkBrush(*c['fill'][:3], 180))
         self.fill_options()
         self.option.currentIndexChanged.connect(self._option_changed)
-        self.freq.currentIndexChanged.connect(lambda *_: host.redraw())
-        self.qty.currentIndexChanged.connect(lambda *_: host.redraw())
-        self.ref.currentIndexChanged.connect(lambda *_: host.redraw())
+        for w in (self.freq, self.qty, self.ref):
+            w.currentIndexChanged.connect(lambda *_: host.redraw())
         self.pw.scene().sigMouseMoved.connect(lambda pos: host._moved(self, pos))
         self.pw.scene().sigMouseClicked.connect(lambda ev: host._clicked(self, ev))
         self._fit_head()
@@ -115,37 +109,34 @@ class Subplot(QFrame):
     def fill_options(self):
         """What this plot can show, for what the page has (antenna quantities only with antenna results)."""
         keep = self.option.currentText()
-        self.option.blockSignals(True)
-        self.option.clear()
         sources = self.host.sources()
-        if self.kind == CARTESIAN:
-            self.option.addItems(list(KINDS) + (list(DIFF_KINDS) if len(sources) > 1 else []) +
-                                 (list(ANT_KINDS) if self.host.antenna else []))
-        elif self.kind == POLAR:
-            self.option.addItems([S_POLAR] + ([FAR_CUTS] if self.host.sphere is not None else []))
-        for pick in (self.wanted, keep):
-            if pick and self.option.findText(pick) >= 0:
-                self.option.setCurrentText(pick)
-                break
-        self.option.blockSignals(False)
+        with QSignalBlocker(self.option):
+            self.option.clear()
+            if self.kind == CARTESIAN:
+                self.option.addItems(list(KINDS) + (list(DIFF_KINDS) if len(sources) > 1 else []) +
+                                     (list(ANT_KINDS) if self.host.antenna else []))
+            elif self.kind == POLAR:
+                self.option.addItems([S_POLAR] + ([FAR_CUTS] if self.host.sphere is not None else []))
+            for pick in (self.wanted, keep):
+                if pick and self.option.findText(pick) >= 0:
+                    self.option.setCurrentText(pick)
+                    break
         self.option.setVisible(self.kind != SMITH_PLOT)
         sph = self.host.sphere
         keep = self.freq.currentIndex()
-        self.freq.blockSignals(True)
-        self.freq.clear()
-        if sph is not None:
-            self.freq.addItems([f"{f / 1e9:.4g} GHz" for f in sph['freq']])
-            f0 = (self.host.antenna or {}).get('f_pattern', sph['freq'][0])
-            pick = keep if 0 <= keep < len(sph['freq']) else int(np.argmin(np.abs(sph['freq'] - f0)))
-            self.freq.setCurrentIndex(pick)
-        self.freq.blockSignals(False)
+        with QSignalBlocker(self.freq):
+            self.freq.clear()
+            if sph is not None:
+                self.freq.addItems([f"{f / 1e9:.4g} GHz" for f in sph['freq']])
+                f0 = (self.host.antenna or {}).get('f_pattern', sph['freq'][0])
+                self.freq.setCurrentIndex(keep if 0 <= keep < len(sph['freq']) else
+                                          int(np.argmin(np.abs(sph['freq'] - f0))))
         keep = self.ref.currentText()
-        self.ref.blockSignals(True)
-        self.ref.clear()
-        self.ref.addItems([f"against {x}" for x in sources])
-        if keep and self.ref.findText(keep) >= 0:
-            self.ref.setCurrentText(keep)
-        self.ref.blockSignals(False)
+        with QSignalBlocker(self.ref):
+            self.ref.clear()
+            self.ref.addItems([f"against {x}" for x in sources])
+            if keep and self.ref.findText(keep) >= 0:
+                self.ref.setCurrentText(keep)
         self._fit_head()
 
     def _fit_head(self):
@@ -202,10 +193,7 @@ class SPlot(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         bar = FlowLayout()                                          # wraps when the page is narrow
-        add = QToolButton()
-        add.setText('Add plot')
-        add.setPopupMode(QToolButton.InstantPopup)
-        add.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        add = QToolButton(text='Add plot', popupMode=QToolButton.InstantPopup, toolButtonStyle=Qt.ToolButtonTextOnly)
         menu = QMenu(add)
         for kind, tip in ((CARTESIAN, 'over frequency'), (SMITH_PLOT, 'the reflections'),
                           (POLAR, 'S in polar form, or the far-field cuts')):
@@ -217,40 +205,31 @@ class SPlot(QWidget):
                                 ('Clear markers', self.clear_markers, 'Remove every marker (or select one and press Delete)'),
                                 ('Export CSV…', self.export_csv, 'The shown traces as the first plot shows them'),
                                 ('Save image…', self.save_image, 'Every plot as one PNG')):
-            b = QPushButton(text)
-            b.setToolTip(tip)
-            b.clicked.connect(slot)
-            bar.addWidget(b)
+            bar.addWidget(QPushButton(text, toolTip=tip, clicked=slot))
         bar.addStretch(1)
-        hint = QLabel('click: marker · drag a marker to move it · wheel / drag: zoom, pan')
-        hint.setStyleSheet('color: gray')
-        bar.addWidget(hint)
+        bar.addWidget(QLabel('click: marker · drag a marker to move it · wheel / drag: zoom, pan',
+                             styleSheet='color: gray'))
         lay.addLayout(bar)
 
-        self.tree = QTreeWidget()
-        self.tree.setHeaderHidden(True)
-        self.tree.setMinimumWidth(150)
-        self.tree.itemChanged.connect(lambda *_: self.redraw())
-        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tree.customContextMenuRequested.connect(self._tree_menu)
-        self.tree.setToolTip('right-click a trace (or a source) for its colour, line style and width')
-        self.looks = self._load_looks()                             # 'source|S21' -> {color, style, width}
+        self.tree = QTreeWidget(headerHidden=True, minimumWidth=150, itemChanged=lambda *_: self.redraw(),
+                                contextMenuPolicy=Qt.CustomContextMenu, customContextMenuRequested=self._tree_menu,
+                                toolTip='right-click a trace (or a source) for its colour, line style and width')
+        try:                                                        # 'source|S21' -> {color, style, width}
+            v = QSettings('kicad2ems', 'gui').value(LOOKS_KEY)
+            d = json.loads(v) if v else {}
+            self.looks = d if isinstance(d, dict) else {}
+        except (ValueError, TypeError):
+            self.looks = {}
         self.grid_host = QWidget()
         self.grid = QGridLayout(self.grid_host)
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(4)
-        self.scroll = QScrollArea()
+        self.scroll = QScrollArea(widgetResizable=True, frameShape=QFrame.NoFrame)
         self.scroll.setWidget(self.grid_host)
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setFrameShape(QFrame.NoFrame)
-        self.readout = QLabel(' ')
-        self.readout.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.readout.setWordWrap(True)
-        self.table = QTableWidget(0, 0)
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.readout = QLabel(' ', textInteractionFlags=Qt.TextSelectableByMouse, wordWrap=True)
+        self.table = QTableWidget(0, 0, editTriggers=QAbstractItemView.NoEditTriggers,
+                                  selectionBehavior=QAbstractItemView.SelectRows, maximumHeight=150)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.table.setMaximumHeight(150)
         self.table.keyPressEvent = self._table_key
         right = QWidget()
         rl = QVBoxLayout(right)
@@ -258,8 +237,7 @@ class SPlot(QWidget):
         rl.addWidget(self.scroll, 1)
         rl.addWidget(self.readout)
         rl.addWidget(self.table)
-        self.split = QSplitter()
-        self.split.setObjectName('results')
+        self.split = QSplitter(objectName='results')
         self.split.addWidget(self.tree)
         self.split.addWidget(right)
         self.split.setStretchFactor(1, 4)
@@ -303,14 +281,9 @@ class SPlot(QWidget):
             _drop(sp)
         for m in self.markers:
             m['items'] = {}
-        for s in spec or []:
-            kind, _, opt = str(s).partition(':')
-            if kind in TYPES:
-                self.add_subplot(kind, opt or None, redraw=False)
-        if not self.subplots:
-            for s in default_layout(bool(self.antenna)):
-                kind, _, opt = s.partition(':')
-                self.add_subplot(kind, opt or None, redraw=False)
+        for s in [s for s in spec or [] if str(s).partition(':')[0] in TYPES] or default_layout(bool(self.antenna)):
+            kind, _, opt = str(s).partition(':')                    # (none of them known: the page's first plots)
+            self.add_subplot(kind, opt or None, redraw=False)
         self.redraw()
         self.fit()
 
@@ -341,27 +314,26 @@ class SPlot(QWidget):
     def set_traces(self, traces, z0=50.0):
         """Show these traces (a new run): keeps the plots and the markers' frequencies."""
         self.traces, self.z0 = list(traces), z0
-        self.tree.blockSignals(True)
-        self.tree.clear()
-        groups = {}
-        for k, t in enumerate(self.traces):
-            if t.source not in groups:
-                g = QTreeWidgetItem([t.source])
-                g.setFlags(g.flags() | Qt.ItemIsAutoTristate | Qt.ItemIsUserCheckable)
-                self.tree.addTopLevelItem(g)
-                groups[t.source] = g
-            it = QTreeWidgetItem([t.title])
-            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
-            it.setCheckState(0, Qt.Checked if default_visible(t) else Qt.Unchecked)
-            it.setData(0, Qt.UserRole, k)
-            it.setToolTip(0, t.path or '')
-            if t.empty:
-                it.setDisabled(True)
-                it.setToolTip(0, 'not computed (port not excited)')
-            groups[t.source].addChild(it)
-        self.tree.expandAll()
-        self._swatches()
-        self.tree.blockSignals(False)
+        with QSignalBlocker(self.tree):
+            self.tree.clear()
+            groups = {}
+            for k, t in enumerate(self.traces):
+                if t.source not in groups:
+                    g = QTreeWidgetItem([t.source])
+                    g.setFlags(g.flags() | Qt.ItemIsAutoTristate | Qt.ItemIsUserCheckable)
+                    self.tree.addTopLevelItem(g)
+                    groups[t.source] = g
+                it = QTreeWidgetItem([t.title])
+                it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+                it.setCheckState(0, Qt.Checked if default_visible(t) else Qt.Unchecked)
+                it.setData(0, Qt.UserRole, k)
+                it.setToolTip(0, t.path or '')
+                if t.empty:
+                    it.setDisabled(True)
+                    it.setToolTip(0, 'not computed (port not excited)')
+                groups[t.source].addChild(it)
+            self.tree.expandAll()
+            self._swatches()
         for sp in self.subplots:                                    # a difference plot needs two solvers
             sp.fill_options()
         self.redraw()
@@ -386,16 +358,16 @@ class SPlot(QWidget):
         """The solvers (sources) of the traces, in their order."""
         return list(dict.fromkeys(t.source for t in getattr(self, 'traces', [])))
 
-    def visible(self):
-        """The checked traces."""
-        out = []
+    def _items(self):
+        """The trace list's items: a trace each, under its source's."""
         for g in range(self.tree.topLevelItemCount()):
             grp = self.tree.topLevelItem(g)
-            for c in range(grp.childCount()):
-                it = grp.child(c)
-                if it.checkState(0) == Qt.Checked and not it.isDisabled():
-                    out.append(self.traces[it.data(0, Qt.UserRole)])
-        return out
+            yield from (grp.child(c) for c in range(grp.childCount()))
+
+    def visible(self):
+        """The checked traces."""
+        return [self.traces[it.data(0, Qt.UserRole)] for it in self._items()
+                if it.checkState(0) == Qt.Checked and not it.isDisabled()]
 
     def reflections(self):
         """The checked reflections (what a Smith chart shows)."""
@@ -424,33 +396,15 @@ class SPlot(QWidget):
         """(colour, style name, width) of a trace: its own colour (by its place in the list), its source's line
         style (the sources in order: solid, dashed, dotted, ...), then what the user chose."""
         k = next((n for n, x in enumerate(self.traces) if x is t), 0)
-        sources = list(dict.fromkeys(x.source for x in self.traces))
+        sources = self.sources()
         si = sources.index(t.source) if t.source in sources else 0
         auto = dict(color=COLORS[k % len(COLORS)], style=list(STYLES)[si % len(STYLES)], width=2)
         auto.update(self.looks.get(self.look_key(t), {}))
         return auto['color'], auto['style'] if auto['style'] in STYLES else 'solid', int(auto['width'])
 
-    def _color(self, t):
-        return self.look(t)[0]
-
     def _pen(self, t):
         c, st, w = self.look(t)
         return pg.mkPen(c, width=w, style=STYLES[st])
-
-    def _load_looks(self):
-        from PySide6.QtCore import QSettings
-        import json
-        try:
-            v = QSettings('kicad2ems', 'gui').value(LOOKS_KEY)
-            d = json.loads(v) if v else {}
-            return d if isinstance(d, dict) else {}
-        except (ValueError, TypeError):
-            return {}
-
-    def _save_looks(self):
-        from PySide6.QtCore import QSettings
-        import json
-        QSettings('kicad2ems', 'gui').setValue(LOOKS_KEY, json.dumps(self.looks))
 
     def set_look(self, traces, **kw):
         """The user's colour / style / width for these traces (kw None: back to the automatic one)."""
@@ -463,26 +417,22 @@ class SPlot(QWidget):
                     d[k] = v
             if not d:
                 self.looks.pop(self.look_key(t), None)
-        self._save_looks()
+        QSettings('kicad2ems', 'gui').setValue(LOOKS_KEY, json.dumps(self.looks))
         self._swatches()
         self.redraw()
 
     def _swatches(self):
         """Each trace's line, as it is drawn, beside its name in the list."""
         from PySide6.QtGui import QPixmap, QPainter, QPen, QColor, QIcon
-        for g in range(self.tree.topLevelItemCount()):
-            grp = self.tree.topLevelItem(g)
-            for c in range(grp.childCount()):
-                it = grp.child(c)
-                t = self.traces[it.data(0, Qt.UserRole)]
-                col, st, w = self.look(t)
-                pm = QPixmap(28, 12)
-                pm.fill(Qt.transparent)
-                p = QPainter(pm)
-                p.setPen(QPen(QColor(col), w, STYLES[st]))
-                p.drawLine(1, 6, 27, 6)
-                p.end()
-                it.setIcon(0, QIcon(pm))
+        for it in self._items():
+            col, st, w = self.look(self.traces[it.data(0, Qt.UserRole)])
+            pm = QPixmap(28, 12)
+            pm.fill(Qt.transparent)
+            p = QPainter(pm)
+            p.setPen(QPen(QColor(col), w, STYLES[st]))
+            p.drawLine(1, 6, 27, 6)
+            p.end()
+            it.setIcon(0, QIcon(pm))
 
     def _tree_menu(self, pos):
         """Right-click on a trace (or a source: all of its traces): colour, line style, width, automatic."""
@@ -576,16 +526,11 @@ class SPlot(QWidget):
             grid = smith_grid() if sp.kind == SMITH_PLOT else polar_grid()
             for x, y in grid:
                 pw.plot(x, y, pen=pg.mkPen(theme.colors()['grid'], width=1))
-            if sp.kind == SMITH_PLOT:
-                for r in (0.2, 0.5, 1, 2, 5):                        # resistance labels on the real axis
-                    lab = pg.TextItem(f"{r:g}", color='#999999', anchor=(1.1, 0))
-                    lab.setPos((r - 1) / (r + 1), 0)
-                    pw.addItem(lab)
-            else:
-                for r in (0.25, 0.5, 0.75, 1.0):
-                    lab = pg.TextItem(f"{r:g}", color='#999999', anchor=(0, 1))
-                    lab.setPos(r * 0.707, r * 0.707)
-                    pw.addItem(lab)
+            smith = sp.kind == SMITH_PLOT                           # Smith: resistance labels on the real axis
+            for r in (0.2, 0.5, 1, 2, 5) if smith else (0.25, 0.5, 0.75, 1.0):
+                lab = pg.TextItem(f"{r:g}", color='#999999', anchor=(1.1, 0) if smith else (0, 1))
+                lab.setPos((r - 1) / (r + 1) if smith else r * 0.707, 0 if smith else r * 0.707)
+                pw.addItem(lab)
             for t in self._plane_traces(sp):
                 pw.plot(t.s.real, t.s.imag, pen=self._pen(t))
         else:                                                       # the far-field cuts
@@ -663,10 +608,10 @@ class SPlot(QWidget):
             elif sp.complex_plane:
                 g = [value_at(SMITH, t, f) for t in self._plane_traces(sp)]
                 sp.dot.setData([v.real for v in g], [v.imag for v in g])
-        parts = [f"<span style='color:{self._color(t)}'>{t.label}</span> {fmt_value(kind, value_at(kind, t, f))}"
+        parts = [f"<span style='color:{self.look(t)[0]}'>{t.label}</span> {fmt_value(kind, value_at(kind, t, f))}"
                  for t in trs]
         if any(sp.kind == SMITH_PLOT for sp in self.subplots):
-            parts += [f"<span style='color:{self._color(t)}'>{t.param} {t.source}</span> Z "
+            parts += [f"<span style='color:{self.look(t)[0]}'>{t.param} {t.source}</span> Z "
                       + fmt_value(SMITH, v, self.z0).split('Z ')[-1]
                       for t in self.reflections() for v in [value_at(SMITH, t, f)] if np.isfinite(v)]
         self.readout.setText(f"{head}<b>{f / 1e9:.4f} GHz</b> &nbsp; " + ' &nbsp; '.join(parts))
@@ -680,9 +625,7 @@ class SPlot(QWidget):
         return float(grid[np.argmin(np.abs(grid - f))])             # on a computed frequency
 
     def _clicked(self, sp, ev):
-        if ev.button() != Qt.LeftButton or ev.double():
-            return
-        if not sp.pw.sceneBoundingRect().contains(ev.scenePos()):
+        if ev.button() != Qt.LeftButton or ev.double() or not sp.pw.sceneBoundingRect().contains(ev.scenePos()):
             return
         p = sp.pw.getPlotItem().vb.mapSceneToView(ev.scenePos())
         if sp.on_frequency and (self.visible() or self.antenna):

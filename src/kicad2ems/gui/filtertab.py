@@ -16,8 +16,6 @@ import glob, html, json, os, re, shutil, sys
 import numpy as np
 
 DFSYNTH_PIP = "dfsynth is part of kicad2ems (kicad2ems.dfsynth): reinstall kicad2ems"
-
-
 DESCRIBE_FORMAT = 1                 # the --describe --json format this page reads
 
 
@@ -69,22 +67,6 @@ def filter_argv(vals, validate=True, desc=None):
     return argv
 
 
-def _em_rounds(base):
-    """[(round label, {solver: s2p path})] of a dfsynth validation under <base>: <base>_em, <base>_em_tune1, ..."""
-    name = os.path.basename(base)
-    out = []
-    for d in sorted(glob.glob(base + '_em') + glob.glob(base + '_em_tune*'),
-                    key=lambda d: int(d.rsplit('tune', 1)[1]) if '_em_tune' in d else 0):
-        files = {}
-        for p in sorted(glob.glob(os.path.join(d, name + '_*.s2p'))):
-            solver = os.path.basename(p)[len(name) + 1:-4]
-            if solver != 'qucs':                                    # kicad2ems's line model: not dfsynth's
-                files[solver] = p
-        if files:
-            out.append(('round 0' if d.endswith('_em') else 'round ' + d.rsplit('tune', 1)[1], files))
-    return out
-
-
 def load_design(base):
     """What dfsynth wrote under <base>, or None: {'design': the design JSON, 'model': (f, S) of the line model,
     'em': [(round, {solver: (f, S)})], 'pcb', 'toml'}."""
@@ -95,9 +77,19 @@ def load_design(base):
     with open(path, encoding='utf-8') as fh:
         design = json.load(fh)
     model = read_touchstone(base + '_model.s2p') if os.path.exists(base + '_model.s2p') else None
+    name, rounds = os.path.basename(base), []           # each validation round's: <base>_em, <base>_em_tune1, ...
+    for d in sorted(glob.glob(base + '_em') + glob.glob(base + '_em_tune*'),
+                    key=lambda d: int(d.rsplit('tune', 1)[1]) if '_em_tune' in d else 0):
+        files = {}
+        for p in sorted(glob.glob(os.path.join(d, name + '_*.s2p'))):
+            solver = os.path.basename(p)[len(name) + 1:-4]
+            if solver != 'qucs':                                    # kicad2ems's line model: not dfsynth's
+                files[solver] = p
+        if files:
+            rounds.append(('round 0' if d.endswith('_em') else 'round ' + d.rsplit('tune', 1)[1], files))
     # only this run's rounds (the design JSON lists them): a folder of an earlier run with more rounds is not one
-    rounds = _em_rounds(base)[:len(design.get('em') or [])]
-    em = [(lab, {k: read_touchstone(p) for k, p in files.items()}) for lab, files in rounds]
+    em = [(lab, {k: read_touchstone(p) for k, p in files.items()})
+          for lab, files in rounds[:len(design.get('em') or [])]]
     return {'design': design, 'model': model, 'em': em, 'pcb': base + '.kicad_pcb', 'toml': base + '.toml'}
 
 
@@ -105,8 +97,6 @@ def load_design(base):
 ERRORS = re.compile(r'^(dfsynth:|Traceback|\w*(Error|Exception)\b)|\berror:')
 WARNINGS = re.compile(r'note:|warning|stopping the tuning|too large to tune|no band edge|not installed|'
                       r'no improvement|below the|cannot|not found', re.I)
-
-
 K2E_WARNINGS = re.compile(r'warning|stopped at --max-steps|still be ringing', re.I)
 PROGRESS = re.compile(r'^ {4}\S+: (step \d+|\d+% )')             # dfsynth's lines of a solver's progress
 
@@ -128,7 +118,7 @@ def _db(x):
 
 
 # ------------------------------------------------------------------------------------------- the page (Qt)
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QSignalBlocker
 from PySide6.QtGui import QPainterPath, QPen, QBrush, QColor, QFontDatabase, QTextCursor, QTextCharFormat, QIcon
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox, QCheckBox,
                                QPushButton, QPlainTextEdit, QSplitter, QTabWidget, QTableWidget,
@@ -141,14 +131,6 @@ COPPER = QColor(214, 140, 64)
 VIA = QColor(90, 90, 90)
 LEVELS = {'error': ('#d00000', '✖ '), 'warn': ('#d00000', '⚠ ')}       # red, both: the log's problems
 COLORS = ['#1f77b4', '#d62728', '#2ca02c', '#9467bd', '#8c564b', '#e377c2']
-
-
-def validation_solvers():
-    """The Filter page's solver choices: each full-wave solver installed (kicad2ems's registry), then each with
-    the line model."""
-    from kicad2ems.core.api.frontend import registry
-    full = [n for n, sv in registry().items() if sv.consumes == 'board']
-    return full + [f"{n},lines" for n in full]
 
 
 class _Asking(QThread):
@@ -198,18 +180,13 @@ class FilterTab(QWidget):
         self._described()
 
     def _described(self):
+        self.split.widget(0).setEnabled(self.desc is not None)
         if self.desc is None:                                       # nothing to design with: say so, up front
-            self.split.widget(0).setEnabled(False)
             self.say(why_not() or f"dfsynth cannot be run here: {DFSYNTH_PIP}", 'error')
-        else:
-            self.split.widget(0).setEnabled(True)
 
     # ---- the settings ----
     def _line(self, hint='', tip=''):
-        e = QLineEdit()
-        e.setPlaceholderText(hint)
-        e.setToolTip(tip)
-        return e
+        return QLineEdit(placeholderText=hint, toolTip=tip)
 
     def _form(self):
         d = self.desc
@@ -233,14 +210,11 @@ class FilterTab(QWidget):
         typ.addItems(list(kinds))
         typ.setCurrentText('bandpass')
         typ.currentTextChanged.connect(self._type_changed)
-        topo = QComboBox()
-        topo.currentTextChanged.connect(self._topology_changed)
+        topo = QComboBox(currentTextChanged=self._topology_changed)
         resp = QComboBox()
         resp.addItems(['chebyshev', 'butterworth'])
-        order = QSpinBox()
-        order.setRange(0, 15)
-        order.setSpecialValueText('auto')                           # 0: from the attenuation, else 5
-        order.setToolTip('filter order; auto: the lowest meeting the attenuation, else 5')
+        order = QSpinBox(minimum=0, maximum=15, specialValueText='auto',      # 0: from the attenuation, else 5
+                         toolTip='filter order; auto: the lowest meeting the attenuation, else 5')
         section('Filter', [
             ('Type', 'type', typ), ('Topology', 'topology', topo),
             ('f0', 'f0', self._line('e.g. 5G', 'centre (band-pass / band-stop) or cut-off frequency: 2.4G, 500M')),
@@ -260,8 +234,8 @@ class FilterTab(QWidget):
         sub.addItems(presets)
         sub.setCurrentText('RO4003C-0.813' if 'RO4003C-0.813' in presets else presets[0])
         sub.currentTextChanged.connect(self._substrate_changed)
-        allow = QCheckBox('allow below the limits')
-        allow.setToolTip('write designs with traces or gaps below the minimums (refused by default)')
+        allow = QCheckBox('allow below the limits', toolTip='write designs with traces or gaps below the minimums '
+                                                            '(refused by default)')
         section('Substrate and fabrication', [
             ('Preset', 'substrate', sub), ('Height (mm)', 'h', self._line()), ('εr', 'er', self._line()),
             ('tan δ', 'tand', self._line()), ('Copper (mm)', 'copper', self._line('0.035')),
@@ -269,30 +243,28 @@ class FilterTab(QWidget):
             ('Min space (mm)', 'min_gap', self._line('0.1', 'fabrication minimum gap')),
             ('', 'allow_fab_violations', allow)], expanded=True)
         out = self._line('', "output base path: <out>.kicad_pcb, <out>.toml, <out>_design.json, ...")
-        browse = QPushButton('…')
+        browse = QPushButton('…', clicked=self._browse)
         browse.setFixedWidth(28)
-        browse.clicked.connect(self._browse)
         row = QWidget()
         rl = QHBoxLayout(row)
         rl.setContentsMargins(0, 0, 0, 0)
         rl.addWidget(out, 1)
         rl.addWidget(browse)
         self.w['out'] = out
-        nocal = QCheckBox('no calibration')
-        nocal.setToolTip('skip the line-model calibration: the textbook synthesis as it is')
+        nocal = QCheckBox('no calibration', toolTip='skip the line-model calibration: the textbook synthesis as it is')
         section('Output', [('Base path', '_out_row', row), ('', 'no_calibrate', nocal),
                            ('Refine limit (s)', 'refine_time',
                             self._line('10', "time limit of the calibration's final refinement (low-pass, band-stop, "
                                              "interdigital): past it the best so far is kept"))], expanded=True)
         self.w.pop('_out_row')
-        solv = QComboBox()
-        solv.setEditable(True)
-        solv.addItems(validation_solvers())
+        from kicad2ems.core.api.frontend import registry
+        solv = QComboBox(editable=True)                             # each full-wave solver installed, then each
+        full = [n for n, sv in registry().items() if sv.consumes == 'board']             # with the line model
+        solv.addItems(full + [f"{n},lines" for n in full])
         solv.setToolTip("kicad2ems solvers for the validation, comma-separated (the full-wave ones installed here, "
                         "alone or with the line model)")
-        tune = QSpinBox()
-        tune.setRange(0, 6)
-        tune.setToolTip('rounds of correcting the design from the full-wave result (interdigital: space mapping)')
+        tune = QSpinBox(minimum=0, maximum=6, toolTip='rounds of correcting the design from the full-wave result '
+                                                      '(interdigital: space mapping)')
         section('Validation', [
             ('Solvers', 'validate', solv), ('Tune rounds', 'em_tune', tune),
             ('kicad2ems args', 'k2e_args', self._line('e.g. --fine 0.03', 'extra kicad2ems arguments'))],
@@ -311,31 +283,23 @@ class FilterTab(QWidget):
         fv = QVBoxLayout(foot)
         fv.setContentsMargins(6, 4, 6, 6)
         btns = QHBoxLayout()
-        self.design_btn = QPushButton('Design')
-        self.design_btn.setToolTip('synthesise, calibrate on the line model and write the board')
-        self.design_btn.clicked.connect(lambda: self.start(validate=False))
-        self.validate_btn = QPushButton('Design + validate')
-        self.validate_btn.setToolTip('the same, then solve the board with the solvers chosen (and tune it)')
-        self.validate_btn.clicked.connect(lambda: self.start(validate=True))
-        self.stop_btn = QPushButton('Stop')
-        self.stop_btn.setEnabled(False)
-        self.stop_btn.clicked.connect(self.stop)
+        self.design_btn = QPushButton('Design', clicked=lambda: self.start(validate=False),
+                                      toolTip='synthesise, calibrate on the line model and write the board')
+        self.validate_btn = QPushButton('Design + validate', clicked=lambda: self.start(validate=True),
+                                        toolTip='the same, then solve the board with the solvers chosen (and tune it)')
+        self.stop_btn = QPushButton('Stop', enabled=False, clicked=self.stop)
         for b in (self.design_btn, self.validate_btn, self.stop_btn):
             btns.addWidget(b)
         fv.addLayout(btns)
-        self.busy = QProgressBar()                                  # while dfsynth runs: what it is doing
-        self.busy.setRange(0, 0)
-        self.busy.hide()
+        self.busy = QProgressBar(minimum=0, maximum=0, visible=False)  # while dfsynth runs: what it is doing
         fv.addWidget(self.busy)
-        self.open_btn = QPushButton('Open the board in kicad2ems')
-        self.open_btn.setToolTip("the config dfsynth wrote, in the main settings: preview it, run any solver")
-        self.open_btn.setEnabled(False)
-        self.open_btn.clicked.connect(self.open_in_kicad2ems)
+        self.open_btn = QPushButton('Open the board in kicad2ems', enabled=False, clicked=self.open_in_kicad2ems,
+                                    toolTip="the config dfsynth wrote, in the main settings: preview it, run any "
+                                            "solver")
         fv.addWidget(self.open_btn)
         v.addStretch(1)
         self._substrate_changed(sub.currentText())
-        sc = QScrollArea()
-        sc.setWidgetResizable(True)
+        sc = QScrollArea(widgetResizable=True)
         sc.setWidget(box)
         left = QWidget()
         lv = QVBoxLayout(left)
@@ -358,13 +322,12 @@ class FilterTab(QWidget):
     def _type_changed(self, *_):
         kinds = self.desc['kinds'] if self.desc else {'bandpass': ('coupled',)}
         topo = self.w['topology']
-        cur = topo.currentText()
-        topo.blockSignals(True)
-        topo.clear()
-        topo.addItems(list(kinds.get(self.w['type'].currentText(), ())))
-        if cur in kinds.get(self.w['type'].currentText(), ()):
-            topo.setCurrentText(cur)
-        topo.blockSignals(False)
+        cur, have = topo.currentText(), kinds.get(self.w['type'].currentText(), ())
+        with QSignalBlocker(topo):
+            topo.clear()
+            topo.addItems(list(have))
+            if cur in have:
+                topo.setCurrentText(cur)
         self._topology_changed()
 
     def _topology_changed(self, *_):
@@ -382,9 +345,8 @@ class FilterTab(QWidget):
         """The preset's values as the hints of its overrides."""
         if not self.desc:
             return
-        pre = self.desc['presets'].get(name, {})
-        h, er, td = pre.get('h'), pre.get('er'), pre.get('tand')
-        for key, val in (('h', h), ('er', er), ('tand', td)):
+        for key in ('h', 'er', 'tand'):
+            val = self.desc['presets'].get(name, {}).get(key)
             self.w[key].setPlaceholderText('' if val is None else f"{val:g} (preset)")
 
     def _browse(self):
@@ -451,12 +413,8 @@ class FilterTab(QWidget):
         self.table.setHorizontalHeaderLabels(['element', 'Z (Ω)', 'width (mm)', 'length (mm)', 'gap (mm)'])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.summary = QPlainTextEdit()
-        self.summary.setReadOnly(True)
-        self.summary.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
-        self.log = QPlainTextEdit()
-        self.log.setReadOnly(True)
-        self.log.setMaximumBlockCount(5000)
+        self.summary = QPlainTextEdit(readOnly=True, font=QFontDatabase.systemFont(QFontDatabase.FixedFont))
+        self.log = QPlainTextEdit(readOnly=True, maximumBlockCount=5000)
         tabs.addTab(self.table, 'Dimensions')
         tabs.addTab(self.summary, 'Summary')
         tabs.addTab(self.log, 'Log')

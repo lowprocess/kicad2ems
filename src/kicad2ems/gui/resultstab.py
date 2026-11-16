@@ -2,7 +2,7 @@
 an analysis's curves (ResultsTab). Moved out of app.py (R-F2)."""
 import os
 import re
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QSignalBlocker
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QComboBox, QPushButton, QLabel, QFileDialog, QMessageBox,
                                QToolButton, QStackedWidget, QMenu)
@@ -12,7 +12,6 @@ from .curveplot import CurvePlot
 from .curves import load_sets
 from .reportview import ReportView
 from .panels import FlowLayout
-
 from .runtab import run_notes
 
 TOUCHSTONE = re.compile(r'\.s\d+p$', re.I)
@@ -32,56 +31,37 @@ class ResultsTab(QWidget):
         super().__init__()
         self.win = win
         lay = QVBoxLayout(self)
-        self.info = QLabel('no results yet')
-        self.info.setWordWrap(True)
-        self.info.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.info = QLabel('no results yet', wordWrap=True, textInteractionFlags=Qt.TextSelectableByMouse)
         lay.addWidget(self.info)
-        self.notes_btn = QToolButton()                              # the run's notes and warnings, folded
-        self.notes_btn.setCheckable(True)
-        self.notes_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.notes_btn.setAutoRaise(True)
-        self.notes_btn.toggled.connect(self._fold_notes)
-        self.notes = QLabel()
-        self.notes.setWordWrap(True)
-        self.notes.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.notes.setTextFormat(Qt.RichText)
+        self.notes_btn = QToolButton(checkable=True, toolButtonStyle=Qt.ToolButtonTextBesideIcon, autoRaise=True,
+                                     toggled=self._fold_notes)       # the run's notes and warnings, folded
+        self.notes = QLabel(wordWrap=True, textInteractionFlags=Qt.TextSelectableByMouse, textFormat=Qt.RichText)
         lay.addWidget(self.notes_btn)
         lay.addWidget(self.notes)
         self.set_notes([], [])
         top = FlowLayout()
-        self.which = QComboBox()                                    # openEMS's and mom25d's antenna results
-        self.which.setToolTip("The antenna results to show (a folder can hold openEMS's and mom25d's)")
+        self.which = QComboBox(visible=False, toolTip="The antenna results to show (a folder can hold openEMS's "
+                                                      "and mom25d's)")
         self.which.currentIndexChanged.connect(
             lambda i: self.load_antenna(self.out, self.which.itemData(i)) if i >= 0 and self.out else None)
-        self.which.hide()
         top.addWidget(self.which)
-        self.cmp_btn = QToolButton()                                # other runs over this one
-        self.cmp_btn.setText('Compare with')
-        self.cmp_btn.setToolTip("Lay other runs of this board over the one shown, each labelled by its folder: "
-                                "their S-parameters, or the same kind of curves (a rail's impedance, a spectrum)")
-        self.cmp_btn.setPopupMode(QToolButton.InstantPopup)
-        self.cmp_menu = QMenu(self.cmp_btn)
-        self.cmp_menu.aboutToShow.connect(self._fill_compare)
+        self.cmp_btn = QToolButton(text='Compare with', popupMode=QToolButton.InstantPopup, toolTip=(
+            "Lay other runs of this board over the one shown, each labelled by its folder: their S-parameters, or "
+            "the same kind of curves (a rail's impedance, a spectrum)"))
+        self.cmp_menu = QMenu(self.cmp_btn, aboutToShow=self._fill_compare)
         self.cmp_btn.setMenu(self.cmp_menu)
         top.addWidget(self.cmp_btn)
-        self.export_btn = QToolButton()                             # a solver's S-parameters, out as Touchstone
-        self.export_btn.setText('Export Touchstone')
-        self.export_btn.setToolTip("Save one of this run's S-parameter files (each solver's, the de-embedded and "
-                                   "part-port ones) as a Touchstone file where you choose")
-        self.export_btn.setPopupMode(QToolButton.InstantPopup)
-        self.export_menu = QMenu(self.export_btn)
-        self.export_menu.aboutToShow.connect(self._fill_export)
+        self.export_btn = QToolButton(text='Export Touchstone', popupMode=QToolButton.InstantPopup, toolTip=(
+            "Save one of this run's S-parameter files (each solver's, the de-embedded and part-port ones) as a "
+            "Touchstone file where you choose"))
+        self.export_menu = QMenu(self.export_btn, aboutToShow=self._fill_export)
         self.export_btn.setMenu(self.export_menu)
         top.addWidget(self.export_btn)
-        self.folder_btn = QPushButton('Open folder')
-        self.folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(
+        self.folder_btn = QPushButton('Open folder', clicked=lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(
             self.out if self.analysis and self.out else self.win.out_dir())))
         top.addWidget(self.folder_btn)
-        self.set_box = QComboBox()                                  # a result with several curve sets: which
-        self.set_box.setToolTip("The result's curves to plot (a circuit: each point's voltages and currents)")
-        self.set_box.setMinimumWidth(220)
-        self.set_box.currentIndexChanged.connect(self._pick_set)
-        self.set_box.hide()
+        self.set_box = QComboBox(visible=False, minimumWidth=220, currentIndexChanged=self._pick_set, toolTip=(
+            "The result's curves to plot (a circuit: each point's voltages and currents)"))   # several sets: which
         top.addWidget(self.set_box)
         lay.addLayout(top)
         from .steering import SteeringBar
@@ -194,15 +174,6 @@ class ResultsTab(QWidget):
         self.show_files(self._files)
         return True
 
-    def add_file(self, path, label):
-        """One Touchstone file laid over the run shown (a part value's combination), under `label`."""
-        path = os.path.abspath(path)
-        if path in self.compared() or not os.path.exists(path):
-            return False
-        self.added.append((label, [(label, path)], path))
-        self.show_files(self._files)
-        return True
-
     def sweeps(self):
         """The shown run's variations to lay over it: [(label, 'folder' | 'file', path)]: each run of its --vary
         (<name>_vary.json: a folder each) and each part value combination of its solvers (--part-value: a file)."""
@@ -227,7 +198,14 @@ class ResultsTab(QWidget):
         return out
 
     def _add_sweep(self, kind, path, label):
-        return self.add_folder(path) if kind == 'folder' else self.add_file(path, label)
+        if kind == 'folder':
+            return self.add_folder(path)
+        path = os.path.abspath(path)                                # one Touchstone file (a part value's combination)
+        if path in self.compared() or not os.path.exists(path):
+            return False
+        self.added.append((label, [(label, path)], path))
+        self.show_files(self._files)
+        return True
 
     def remove_folder(self, d=None):
         """One compared run off the page (None: all of the kind shown)."""
@@ -246,23 +224,22 @@ class ResultsTab(QWidget):
         m.clear()
         kind, on = self.kind(), self.compared()
         here = os.path.abspath(self.out) if self.out else None
-        srcs = self.win.sources() if hasattr(self.win, 'sources') else []
         listed = set()
-        for src in srcs:
+
+        def ticked(label, checked, toggled):
+            a = m.addAction(label)
+            a.setCheckable(True)
+            a.setChecked(checked)
+            a.toggled.connect(toggled)
+        for src in (self.win.sources() if hasattr(self.win, 'sources') else []):
             d = os.path.abspath(src['folder'])
             if src['kind'] != kind or d == here:
                 continue
-            a = m.addAction(src['label'])
-            a.setCheckable(True)
-            a.setChecked(d in on)
-            a.toggled.connect(lambda tick, d=d: (self.add_folder(d) if tick else self.remove_folder(d)))
+            ticked(src['label'], d in on, lambda tick, d=d: (self.add_folder(d) if tick else self.remove_folder(d)))
             listed.add(d)
         for d in on:                                                # added from elsewhere
             if d not in listed:
-                a = m.addAction(os.path.basename(d))
-                a.setCheckable(True)
-                a.setChecked(True)
-                a.toggled.connect(lambda tick, d=d: None if tick else self.remove_folder(d))
+                ticked(os.path.basename(d), True, lambda tick, d=d: None if tick else self.remove_folder(d))
         if not m.actions():
             a = m.addAction('no other run of this kind for this board yet')
             a.setEnabled(False)
@@ -270,11 +247,8 @@ class ResultsTab(QWidget):
         if sw:                                                      # this run's own variations (R-E5)
             m.addSection('This run varied')
             for label, kind, path in sw:
-                a = m.addAction(label)
-                a.setCheckable(True)
-                a.setChecked(os.path.abspath(path) in on)
-                a.toggled.connect(lambda tick, k=kind, p=path, l=label: (self._add_sweep(k, p, l) if tick
-                                                                         else self.remove_folder(os.path.abspath(p))))
+                ticked(label, os.path.abspath(path) in on, lambda tick, k=kind, p=path, l=label: (
+                    self._add_sweep(k, p, l) if tick else self.remove_folder(os.path.abspath(p))))
             a = m.addAction('All of them')
             a.triggered.connect(lambda: [self._add_sweep(k, p, l) for l, k, p in self.sweeps()])
         m.addSeparator()
@@ -304,16 +278,13 @@ class ResultsTab(QWidget):
         if self.analysis:
             self.out = os.path.abspath(out_dir)
         keep = self.set_box.currentText()
-        self.set_box.blockSignals(True)
-        self.set_box.clear()
-        self.set_box.addItems([cs.title for cs in self.curve_sets])
-        self.set_box.setCurrentIndex(max(self.set_box.findText(keep), 0) if self.curve_sets else -1)
-        self.set_box.blockSignals(False)
+        with QSignalBlocker(self.set_box):
+            self.set_box.clear()
+            self.set_box.addItems([cs.title for cs in self.curve_sets])
+            self.set_box.setCurrentIndex(max(self.set_box.findText(keep), 0) if self.curve_sets else -1)
         self._show_analysis()
         self.export_btn.setVisible(self.analysis is None)           # (an analysis's tables export as CSV)
         return self.analysis is not None
-
-    load_curves = load_analysis                                     # its name before reports
 
     def _with_engines(self, name, folder, report):
         """A result's report with the other engines' answers to the same question beside it: a section 'Engines
@@ -323,18 +294,16 @@ class ResultsTab(QWidget):
         from kicad2ems.core.api.frontend import compare_engines, engines, questions
         try:
             es, qs = engines(), questions()
-            me = es.get(name)
             latest = dict(self.win.latest_results()) if hasattr(self.win, 'latest_results') else {}
             latest[name] = folder
             added = []
-            for q in (me.provides if me is not None else ()):
+            for q in getattr(es.get(name), 'provides', ()):
                 names = [e.name for e in es.values() if e.kind == 'analysis' and q in e.provides and e.name in latest]
                 if len(names) < 2:
                     continue
                 c = compare_engines({n: latest[n] for n in names})
                 if not any(r['spread'] is not None for r in c['rows']):
                     continue                                        # no figure two of them give
-                n = len(c['labels'])
                 rows = [[r['name'], r['unit'], *['' if v is None else v for v in r['values']],
                          '' if r['spread'] is None else r['spread']] for r in c['rows']]
                 where = '; '.join(f"{lab}: {os.path.basename(latest[k])}" for lab, k in zip(c['labels'], c['engines']))
@@ -342,7 +311,7 @@ class ResultsTab(QWidget):
                                   text=f"Each engine's newest result on this board ({where}). A figure both name is "
                                        "the same quantity; one only an engine has is its own.",
                                   table=dict(columns=['figure', 'unit', *c['labels'], 'difference'], rows=rows,
-                                             formats=[None, None, *['.4g'] * n, '.3g'])))
+                                             formats=[None, None, *['.4g'] * len(c['labels']), '.3g'])))
             if not added:
                 return report
             sections = list(report.get('sections') or [])
@@ -369,9 +338,8 @@ class ResultsTab(QWidget):
         if not has:
             return
         self.mode = mode if mode in has else has[0]
-        win = self.win
-        if win is not None and hasattr(win, 'docks'):
-            win.show_panel('Results' if self.mode == 'Plots' else self.mode)
+        if self.win is not None and hasattr(self.win, 'docks'):
+            self.win.show_panel('Results' if self.mode == 'Plots' else self.mode)
 
     def _show_analysis(self):
         """The result of an analysis on its pages (the curves here, the report and its tables on theirs); none:
@@ -420,19 +388,18 @@ class ResultsTab(QWidget):
         from .antennatab import find_antenna, antenna_files, load_sphere, load_array
         self.out = out_dir
         files = antenna_files(out_dir) if out_dir else []
-        self.which.blockSignals(True)
-        self.which.clear()
-        for f in files:
-            try:
-                from kicad2ems.core.api.frontend import read_antenna
-                solver = read_antenna(f).get('solver', 'openems')
-            except (OSError, ValueError):
-                solver = os.path.basename(f)
-            self.which.addItem(solver, f)
-        if files:
-            self.which.setCurrentIndex(files.index(path) if path in files else len(files) - 1)
-        self.which.setVisible(len(files) > 1)
-        self.which.blockSignals(False)
+        with QSignalBlocker(self.which):
+            self.which.clear()
+            for f in files:
+                try:
+                    from kicad2ems.core.api.frontend import read_antenna
+                    solver = read_antenna(f).get('solver', 'openems')
+                except (OSError, ValueError):
+                    solver = os.path.basename(f)
+                self.which.addItem(solver, f)
+            if files:
+                self.which.setCurrentIndex(files.index(path) if path in files else len(files) - 1)
+            self.which.setVisible(len(files) > 1)
         try:
             found = find_antenna(out_dir, path) if files else None
             sph = load_sphere(found[1]) if found and found[1] else None
@@ -478,18 +445,13 @@ class ResultsTab(QWidget):
         """The run's warnings (red) and notes under a fold, open when there is a warning; hidden when none."""
         import html
         self.notes_btn.setVisible(bool(warns or notes))
-        parts = []
-        if warns:
-            parts.append(f"{len(warns)} warning{'s' if len(warns) > 1 else ''}")
-        if notes:
-            parts.append(f"{len(notes)} note{'s' if len(notes) > 1 else ''}")
+        parts = [f"{len(x)} {w}{'s' if len(x) > 1 else ''}" for x, w in ((warns, 'warning'), (notes, 'note')) if x]
         self.notes_btn.setText(f"Notes and warnings ({', '.join(parts)})" if parts else '')
         items = [f"<li style='color:#c62828'>{html.escape(w)}</li>" for w in warns] + \
                 [f"<li>{html.escape(n)}</li>" for n in notes]
         self.notes.setText(f"<ul style='margin:0'>{''.join(items)}</ul>" if items else '')
-        self.notes_btn.blockSignals(True)
-        self.notes_btn.setChecked(bool(warns))
-        self.notes_btn.blockSignals(False)
+        with QSignalBlocker(self.notes_btn):
+            self.notes_btn.setChecked(bool(warns))
         self._fold_notes(bool(warns))
 
     def _fold_notes(self, on):
@@ -510,8 +472,7 @@ class ResultsTab(QWidget):
         if summary and os.path.exists(summary):
             try:
                 from kicad2ems.core.api.frontend import read_summary
-                sm = read_summary(summary)
-                self._summary = sm
+                sm = self._summary = read_summary(summary)
                 self.set_notes(*run_notes(sm))
                 compare = compare or (sm.get('settings') or {}).get('compare')
                 zr = sm.get('zref')
