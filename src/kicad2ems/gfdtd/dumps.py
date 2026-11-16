@@ -189,13 +189,6 @@ def write_h5(path, d, freqs, data):
     replace(tmp, path)
 
 
-def open_h5_td(path, d):
-    """openEMS's time-domain HDF5 dump (file_type 1), opened: /Mesh, and /FieldData/TD to take a dataset per sample
-    (add_h5_td). Returns (file, its group, the temporary name, the final name)."""
-    h = _h5(path + '.part', d)
-    return h, h.create_group('FieldData').create_group('TD'), path + '.part', path
-
-
 def add_h5_td(group, step, t, data):
     """One sample (nx, ny, nz, 3) of a time-domain HDF5 dump: dataset <step>, d_order NXYZ, its time."""
     ds = group.create_dataset(f'{step:010d}', data=np.ascontiguousarray(np.transpose(data, (3, 0, 1, 2)), np.float32))
@@ -243,8 +236,10 @@ class Dumps:
                     if d.get('file_type') == 1:                     # HDF5 (R-B18: time-domain NF2FF reads it)
                         if not self.h5:
                             continue
-                        if k not in self.td:
-                            self.td[k] = open_h5_td(os.path.join(self.path, d['name'] + '.h5'), d)
+                        if k not in self.td:                        # (file, its /FieldData/TD, tmp, final name)
+                            fn = os.path.join(self.path, d['name'] + '.h5')
+                            h = _h5(fn + '.part', d)
+                            self.td[k] = (h, h.create_group('FieldData').create_group('TD'), fn + '.part', fn)
                         add_h5_td(self.td[k][1], step, t, F)
                     else:
                         write_vtr(os.path.join(self.path, f"{d['name']}_{step:010d}.vtr"), d['coords'], F,
