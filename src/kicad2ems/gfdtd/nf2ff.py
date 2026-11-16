@@ -38,21 +38,16 @@ class nf2ff:                                                         # noqa: N80
         self.freq = None if frequency is None else list(np.atleast_1d(np.asarray(frequency, float)))
         self.e_file, self.h_file = f"{name}_E", f"{name}_H"
         kw = {k: v for k, v in kw.items() if k not in ('dump_type', 'dump_mode', 'file_type')}
-        if self.freq is None:                                       # time domain (R-B18: it had been refused)
-            self.e_dump = CSX.AddDump(self.e_file, dump_type=0, dump_mode=1, file_type=1, **kw)
-            self.h_dump = CSX.AddDump(self.h_file, dump_type=1, dump_mode=1, file_type=1, **kw)
-        else:
-            self.e_dump = CSX.AddDump(self.e_file, dump_type=10, dump_mode=1, file_type=1, frequency=self.freq, **kw)
-            self.h_dump = CSX.AddDump(self.h_file, dump_type=11, dump_mode=1, file_type=1, frequency=self.freq, **kw)
+        td = self.freq is None                                      # time domain (R-B18: it had been refused)
+        fd = {} if td else dict(frequency=self.freq)
+        self.e_dump = CSX.AddDump(self.e_file, dump_type=0 if td else 10, dump_mode=1, file_type=1, **fd, **kw)
+        self.h_dump = CSX.AddDump(self.h_file, dump_type=1 if td else 11, dump_mode=1, file_type=1, **fd, **kw)
         self.faces = []                                             # (axis, +1 / -1) of each box, in dump order
         for a in range(3):
             for side in (0, 1):
                 if self.directions[2 * a + side]:
                     s, e = self.start.copy(), self.stop.copy()
-                    if side:
-                        s[a] = e[a]
-                    else:
-                        e[a] = s[a]
+                    s[a] = e[a] = (self.stop if side else self.start)[a]
                     self.e_dump.AddBox(s, e)
                     self.h_dump.AddBox(s, e)
                     self.faces.append((a, 1 if side else -1))

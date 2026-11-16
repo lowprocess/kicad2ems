@@ -36,14 +36,8 @@ _TYPES = {'V': 'float', 'I': 'float', 'G': 'float', 'code': 'C', 'tpole': 'int',
           'descE': 'idx_t', 'boxH': 'int', 'boxE': 'int', 'ex_idx': 'idx_t', 'pl_idx': 'idx_t', 'se_idx': 'idx_t',
           'm0': 'idx_t', 'm1': 'idx_t', 'part': 'double', 'pl_L': 'double', 'se_L': 'double', 'se_Cinv': 'double',
           'pv_idx': 'idx_t', 'pv_pid': 'idx_t', 'pi_idx': 'idx_t', 'pi_pid': 'idx_t'}
-
-
-def _model_struct():
-    lines = []
-    for n, k in MODEL:
-        lines.append(f"    {_TYPES.get(n, 'float')}* {n};" if k == 'p' else f"    {'int' if k == 'i' else 'float'} {n};")
-    return "struct Model {\n" + "\n".join(lines) + "\n};\n"
-
+MODEL_STRUCT = "struct Model {\n" + "".join(f"    {_TYPES.get(n, 'float')}* {n};\n" if k == 'p' else
+                                            f"    {dict(i='int', f='float')[k]} {n};\n" for n, k in MODEL) + "};\n"
 
 KERNELS = r'''
 uniform Model* M;
@@ -379,7 +373,7 @@ def source(code_t='uint16_t', block=128, idx='int'):
         head = fh.read()
     pre = (f"#define GF_DEV\n#define GF_GPU 1\n#define GF_BLOCK {int(block)}\n#define CODE_T {code_t}\n"
            f"#define GF_IDX {idx}\n#define GF_ADD(p, v) InterlockedAdd(*(p), (v))\n")
-    return pre + head + "\n" + _model_struct() + KERNELS
+    return pre + head + "\n" + MODEL_STRUCT + KERNELS
 
 
 
