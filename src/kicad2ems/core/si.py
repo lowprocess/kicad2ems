@@ -434,9 +434,10 @@ def run(a, echo=print):
     for key, r in summary.get('solved', {}).items():
         if not r.get('touchstone'):
             continue
-        f, S = read_touchstone(os.path.join(out, r["touchstone"]))[:2]
-        S = renormalised(S, summary.get('zref') or 50.0, a.z0)
-        rows = crosstalk(f, S, names, rise, aggressors, unknown_terms(os.path.join(out, r['touchstone'])))
+        ts = os.path.join(out, r['touchstone'])
+        f, S = read_touchstone(ts)
+        rows = crosstalk(f, renormalised(S, summary.get('zref') or 50.0, a.z0), names, rise, aggressors,
+                         unknown_terms(ts))
         solved[key] = dict(label=r.get('label', key), touchstone=r['touchstone'], f_Hz=[float(x) for x in f],
                            pairs=rows, victims=victims(rows, f))
     if not solved:
@@ -453,10 +454,9 @@ def run(a, echo=print):
                ports={p: dict(net=n, end=e) for p, (n, e) in names.items()},
                ends={net: dict(near=_end(n), far=_end(fr), length_mm=n['length']) for net, (n, fr) in ordered.items()},
                solved=solved, answer=ref, sections=secs, warnings=summary.get('warnings', []) + left_out)
-    res['worst'] = worst(res)
+    res['worst'] = w = worst(res)
     with open(os.path.join(out, RESULT), 'w', encoding='utf-8') as fh:
         json.dump(res, fh, indent=1)
-    w = res['worst']
     echo(f"crosstalk: NEXT {w['next_pct']:.2f} % ({w['next_victim']} from {w['next_aggressor']}), FEXT "
          f"{w['fext_pct']:.2f} % ({w['fext_victim']} from {w['fext_aggressor']}) for a {a.rise:g} ps edge"
          + (f"; limit {a.limit:g} %: {verdict(w)}" if a.limit is not None else ''))

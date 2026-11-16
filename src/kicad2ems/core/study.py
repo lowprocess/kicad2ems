@@ -599,10 +599,9 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
                     failed.add(a.name)
                 state.append((st, 'done' if code == 0 else f"failed (exit {code})", folder, time.time() - t0, tag))
             continue
-        took = time.time() - t0
         if code != 0:
             failed.add(st.name)
-        state.append((st, 'done' if code == 0 else f"failed (exit {code})", folder, took, ''))
+        state.append((st, 'done' if code == 0 else f"failed (exit {code})", folder, time.time() - t0, ''))
     echo('study:')
     qs, es = questions(), engines()
     for st, text, folder, took, tag in state:

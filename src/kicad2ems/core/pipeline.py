@@ -27,6 +27,7 @@ report.py renders that dict and nothing else. Every message goes through Job.log
 report, and sent to --events as JSON lines).
 """
 import dataclasses, datetime, json, os, sys, threading, time
+from collections import Counter
 import numpy as np
 
 from . import __version__, stop
@@ -402,38 +403,34 @@ class Job:
         """The transmission-line model: sections, coupled groups, discontinuities (and their plot). A ballpark aid
         and what the line solvers solve: whatever goes wrong here is a warning, never the end of the run."""
         try:
-            self._lines()
+            from .lines.builder import build
+            self.lm = lm = build(self.m, field=getattr(self.s, 'lines_field', None))
+            if not lm.paths:
+                self.log("transmission lines: no routed path from the ports" +
+                         (f" ({'; '.join(lm.notes)})" if lm.notes else ''))
+                return
+            self.summary['lines'] = lm.summary()
+            out = self.path('_lines.json')                          # the sections' geometry: the GUI's overlay
+            with open(out, 'w', encoding='utf-8') as fh:
+                json.dump(lm.drawing(getattr(self.m, 'cu_z', None)), fh)
+            self.wrote('line model sections (JSON)', out)
+            for p, q, secs, branches in lm.paths:
+                zs = [e.z0 for e, _, _ in secs if e.z0]
+                self.log(f"transmission line {p} -> {q or 'end'}: {len(secs)} sections, "
+                         f"{sum(e.length for e, _, _ in secs):.2f} mm" +
+                         (f", Z0 {min(zs):.1f}..{max(zs):.1f} ohm" if zs else '') +
+                         (f", {len(branches)} branch(es)" if branches else ''))
+            if lm.groups or lm.junctions:
+                cnt = Counter(j['kind'] for j in lm.junctions)
+                self.log(f"  {len(lm.groups)} coupled section(s)" +
+                         (" (" + ", ".join(f"{len(g['members'])} lines {g['length']:.2f} mm" for g in lm.groups[:6]) +
+                          (", ..." if len(lm.groups) > 6 else "") + ")" if lm.groups else "") +
+                         "; discontinuities: " + (", ".join(f"{n} {k}" for k, n in sorted(cnt.items())) or "none"))
+            self.figure(plot_lines(lm, self.m, self.name), '_tlines.png', 'lines', 'transmission-line sections')
         except Exception as e:
             self.log(f"WARNING: transmission-line model failed: {type(e).__name__}: {e}")
             self.lm = None
             self.summary.pop('lines', None)
-
-    def _lines(self):
-        from .lines.builder import build
-        self.lm = build(self.m, field=getattr(self.s, 'lines_field', None))
-        if not self.lm.paths:
-            self.log("transmission lines: no routed path from the ports" +
-                     (f" ({'; '.join(self.lm.notes)})" if self.lm.notes else ''))
-            return
-        self.summary['lines'] = self.lm.summary()
-        out = self.path('_lines.json')                              # the sections' geometry: the GUI's overlay
-        with open(out, 'w', encoding='utf-8') as fh:
-            json.dump(self.lm.drawing(getattr(self.m, 'cu_z', None)), fh)
-        self.wrote('line model sections (JSON)', out)
-        for p, q, secs, branches in self.lm.paths:
-            zs = [e.z0 for e, _, _ in secs if e.z0]
-            self.log(f"transmission line {p} -> {q or 'end'}: {len(secs)} sections, "
-                     f"{sum(e.length for e, _, _ in secs):.2f} mm" +
-                     (f", Z0 {min(zs):.1f}..{max(zs):.1f} ohm" if zs else '') +
-                     (f", {len(branches)} branch(es)" if branches else ''))
-        if self.lm.groups or self.lm.junctions:
-            from collections import Counter
-            cnt = Counter(j['kind'] for j in self.lm.junctions)
-            self.log(f"  {len(self.lm.groups)} coupled section(s)" +
-                     (" (" + ", ".join(f"{len(g['members'])} lines {g['length']:.2f} mm" for g in self.lm.groups[:6]) +
-                      (", ..." if len(self.lm.groups) > 6 else "") + ")" if self.lm.groups else "") +
-                     "; discontinuities: " + (", ".join(f"{n} {k}" for k, n in sorted(cnt.items())) or "none"))
-        self.figure(plot_lines(self.lm, self.m, self.name), '_tlines.png', 'lines', 'transmission-line sections')
 
     def choose(self):
         """--solvers auto: the full-wave solver (consumes the board) estimated cheapest among those that can run,
@@ -714,10 +711,7 @@ class Job:
             self.summary['solved'][n] = entry
             self.log(f"{reg[n].label}: -> {out}")
         self.join_bands()
-        overlays = []
-        if s.compare:
-            fc, Sc = read_touchstone(s.compare)
-            overlays.append((fc, Sc, os.path.basename(s.compare), '--'))
+        overlays = [(*read_touchstone(s.compare), os.path.basename(s.compare), '--')] if s.compare else []
         others = [n for n in done[1:] if self.results[n].names == ref.names]
         overlays += [(freq, self.results[n].S, reg[n].label, OVERLAY_STYLES[i % len(OVERLAY_STYLES)])
                      for i, n in enumerate(others)]

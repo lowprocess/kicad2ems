@@ -95,7 +95,7 @@ def path_abcd(lm, port, length_mm, f, sigma=None, sheet=True):
     return T if length_mm > 0 else np.linalg.inv(T)
 
 
-def apply(S, names, zref, f, lines=None, files=None, lm=None, sigma=None, log=print):
+def apply(S, names, zref, f, lines=None, files=None, lm=None, sigma=None):
     """S with each port's reference moved (lines {port: mm}) and its fixture removed (files {port: Touchstone}).
     Returns (S, what was done: [str])."""
     from .touchstone import read_touchstone
