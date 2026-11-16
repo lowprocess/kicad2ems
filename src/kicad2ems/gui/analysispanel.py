@@ -17,6 +17,7 @@ Nothing here knows one analysis from another; what an analysis does differently 
 """
 import os
 import re
+from contextlib import contextmanager
 
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFontDatabase
@@ -54,6 +55,13 @@ def typed(option, value):
     return text
 
 
+def _cell(v):
+    """A value as a runs table's cell: a list comma-separated, a float as %g, None empty."""
+    if isinstance(v, (list, tuple)):
+        return ', '.join(map(str, v))
+    return '' if v is None else f"{v:g}" if isinstance(v, float) else str(v)
+
+
 def config_values(panel, base=None, vals=None):
     """What a config's [analysis.<name>] table holds of a panel: the options set (of vals, a run of its table,
     when given), and its own board and folder; paths (the analysis's, and those two) relative to `base`."""
@@ -84,8 +92,7 @@ class AnalysisPanel(QWidget):
         self.required = set()                               # options a run needs set (proposed without a value)
         self.options = list(analysis.options())
         self.w, self.sections, self.forms = {}, {}, {}      # an option's field; a group's section, and its form
-        v = QVBoxLayout(self)
-        self._layout = v
+        v = self._layout = QVBoxLayout(self)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(2)
         files = QWidget()
@@ -287,38 +294,32 @@ class AnalysisPanel(QWidget):
         """A name picked on the board into setting `key`: one that holds several takes it in, or out when it is
         there already; one that holds one is set. Returns the names it now holds."""
         kind = self.pick_kind(key) or ''
-        if key == CELL:
-            cell = self._cell()
-            if cell is None or not kind:
-                return []
-            names = self.picked_names(key)
-            names = ([n for n in names if n != name] if name in names else names + [name]) if kind.endswith('s') else [name]
-            self.table.item(cell[0], self.run_keys.index(cell[1])).setText(', '.join(names))
-            return names
-        w = self.w[key]
-        if kind.endswith('s'):
-            names = self.picked_names(key)
-            names = [n for n in names if n != name] if name in names else names + [name]
-            (w.setPlainText('\n'.join(names)) if isinstance(w, QPlainTextEdit) else w.setText(', '.join(names)))
-        else:
+        cell = self._cell() if key == CELL else None
+        if key == CELL and (cell is None or not kind):
+            return []
+        names = self.picked_names(key)
+        if not kind.endswith('s'):
             names = [name]
-            w.setPlainText(name) if isinstance(w, QPlainTextEdit) else w.setText(name)
+        elif name in names:
+            names = [n for n in names if n != name]
+        else:
+            names = names + [name]
+        if cell is not None:
+            self.table.item(cell[0], self.run_keys.index(cell[1])).setText(', '.join(names))
+        elif isinstance(self.w[key], QPlainTextEdit):
+            self.w[key].setPlainText('\n'.join(names))
+        else:
+            self.w[key].setText(', '.join(names))
         return names
 
     def add_run(self, values=None):
         """A row of the table (a run): from values, else empty (its fields' defaults)."""
         t = self.table
-        self._setting += 1
-        try:
+        with self._quiet():
             r = t.rowCount()
             t.insertRow(r)
             for c, k in enumerate(self.run_keys):
-                v = (values or {}).get(k)
-                text = ', '.join(map(str, v)) if isinstance(v, (list, tuple)) else ('' if v is None else
-                                                                                    f"{v:g}" if isinstance(v, float) else str(v))
-                t.setItem(r, c, QTableWidgetItem(text))
-        finally:
-            self._setting -= 1
+                t.setItem(r, c, QTableWidgetItem(_cell((values or {}).get(k))))
         self._fit_table()
         if values is None:
             self._edited()
@@ -326,10 +327,8 @@ class AnalysisPanel(QWidget):
     def _fit_table(self):
         """The table as tall as its rows (two at least), not a box of empty space."""
         t = self.table
-        rows = max(t.rowCount(), 2)
-        h = t.horizontalHeader().height() + rows * t.verticalHeader().defaultSectionSize() + 2 * t.frameWidth()
-        bar = t.horizontalScrollBar().sizeHint().height()
-        t.setFixedHeight(h + bar)
+        h = t.horizontalHeader().height() + max(t.rowCount(), 2) * t.verticalHeader().defaultSectionSize()
+        t.setFixedHeight(h + 2 * t.frameWidth() + t.horizontalScrollBar().sizeHint().height())
 
     def remove_run(self):
         """The selected row out (the last one stays: a run is of one at least)."""
@@ -355,7 +354,7 @@ class AnalysisPanel(QWidget):
         nothing in it is left out, unless it is the only one."""
         if not self.table:
             return [self.values()]
-        shared = self._shared()
+        shared = {k: v for k, v in self._form_values().items() if k not in self.run_keys}
         rows = [self._row(r) for r in range(self.table.rowCount())]
         filled = [r for r in rows if any(r.values())] or rows[:1]
         return [dict(shared, **r) for r in filled]
@@ -366,18 +365,21 @@ class AnalysisPanel(QWidget):
         self.set_values(runs[0])
         if not self.table:
             return
-        self._setting += 1
-        try:
+        with self._quiet():
             self.table.setRowCount(0)
-        finally:
-            self._setting -= 1
         for r in runs:
             self.add_run(r)
 
-    def _shared(self):
-        return {k: v for k, v in self._form_values().items() if k not in self.run_keys}
-
     # ---- the settings ----
+    @contextmanager
+    def _quiet(self):
+        """Fields set by the panel itself, not edits: no `changed` meanwhile."""
+        self._setting += 1
+        try:
+            yield
+        finally:
+            self._setting -= 1
+
     def _edited(self, *_):
         if not self._setting:
             self.changed.emit()
@@ -451,21 +453,13 @@ class AnalysisPanel(QWidget):
     def set_values(self, vals):
         """Some of the form's fields (the others stay): a list as lines, None as empty. With a table of runs, its
         keys into the first row."""
-        if self.table and any(k in vals for k in self.run_keys):
-            if not self.table.rowCount():
-                self.add_run({})
-            self._setting += 1
-            try:
+        with self._quiet():
+            if self.table and any(k in vals for k in self.run_keys):
+                if not self.table.rowCount():
+                    self.add_run({})
                 for c, k in enumerate(self.run_keys):
                     if k in vals:
-                        v = vals[k]
-                        text = ', '.join(map(str, v)) if isinstance(v, (list, tuple)) else (
-                            '' if v is None else f"{v:g}" if isinstance(v, float) else str(v))
-                        self.table.setItem(0, c, QTableWidgetItem(text))
-            finally:
-                self._setting -= 1
-        self._setting += 1
-        try:
+                        self.table.setItem(0, c, QTableWidgetItem(_cell(vals[k])))
             for k, v in vals.items():
                 wid = self.w.get(k)
                 if wid is None:
@@ -478,31 +472,26 @@ class AnalysisPanel(QWidget):
                     wid.setCurrentIndex(max(wid.findText(str(v)), 0) if v not in (None, '') else 0)
                 else:
                     wid.setText('' if v is None else (f"{v:g}" if isinstance(v, float) else str(v)))
-        finally:
-            self._setting -= 1
         self.required -= {k for k, v in vals.items() if str(v if v is not None else '').strip()}
 
     def set_own(self, board, out):
         """The panel's own board and output folder (None or '': the study's)."""
-        self._setting += 1
-        self.board.setText(str(board or ''))
-        self.outdir.setText(str(out or ''))
-        self._setting -= 1
+        with self._quiet():
+            self.board.setText(str(board or ''))
+            self.outdir.setText(str(out or ''))
 
     def reset(self):
         """The form as it is made: every field empty (its default), no board or folder of its own."""
         self.set_values({o['key']: (bool(o['default']) if o['kind'] == 'bool' else '') for o in self.options})
-        self._setting += 1
-        self.board.clear()
-        self.outdir.clear()
-        self._setting -= 1
+        with self._quiet():
+            self.board.clear()
+            self.outdir.clear()
         self.required = set()
         self.result = None
         self._suggestions([])
         if self.table:
-            self._setting += 1
-            self.table.setRowCount(0)
-            self._setting -= 1
+            with self._quiet():
+                self.table.setRowCount(0)
             self.add_run({})
         if self.isEnabled():
             self.status.setText('')
