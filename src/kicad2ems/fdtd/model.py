@@ -24,17 +24,17 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR', ) * 6, end_db=-40,
                diel_fref=1e9, exc_fmax=None, api=None, rough=None,
                copper_kw=None, line_plan=None):
     """sigma: copper conductivity (conducting sheets; None: PEC). rough: um RMS,
-    the sheets' own roughness (an engine with it: gfdtd 1.2; None: smooth).
+    the sheets' own roughness (an engine with it: gfdtd; None: smooth).
     diel: 'fixed' (loss as a conductivity fitted at the band centre) or
     'wideband' (Djordjevic-Sarkar model matched at diel_fref Hz, as Debye poles;
     see dielectric.py). exc_fmax: upper edge of the Gaussian excitation (default
     fmax; antenna runs extend it, see antenna.py). api: (ContinuousStructure,
     openEMS) classes to build with (engines.engine_api; None: the default
     engine; readback.py records the calls). copper_kw: dict(faces=, finish=)
-    from the plugin's copper_kw(): faces marks thick copper's sheets as faces
-    (gfdtd 1.3); finish puts the surface finish on the outer layers - with thick
+    from the solver's copper_kw(): faces marks thick copper's sheets as faces
+    (gfdtd); finish puts the surface finish on the outer layers - with thick
     copper on their outer face's own sheet, else on their sheets weighted by the
-    strip's share; as the sheets' own (finish['wideband'], gfdtd 1.3) or as the
+    strip's share; as the sheets' own (finish['wideband'], gfdtd) or as the
     conductivity of the same loss at the band centre. line_plan:
     lineport.plan_ports' plan, the line probes behind those ports (R-E1); then
     (FDTD, CSX, ports, probes {port index: probe port}) is returned."""
@@ -224,7 +224,7 @@ def _finished_sheet(CSX, name, sigma, t_mm, fin, share, rkw, face):
     """A conducting sheet of copper (sigma, t_mm) with the surface finish fin on
     `share` of its loss. face: the sheet is the outer face of thick copper
     (sigma / 4, twice the thickness: one face of the copper's half), all of it
-    finished. As the sheet's own finish (fin['wideband']: gfdtd 1.3), else as
+    finished. As the sheet's own finish (fin['wideband']: gfdtd), else as
     the conductivity whose loss at the band centre is the finished sheet's (the
     face's impedance of half the copper, or the strip's weighted)."""
     s, th = (sigma / 4, 2 * t_mm * 1e-3) if face else (sigma, t_mm * 1e-3)

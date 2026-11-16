@@ -33,8 +33,6 @@ import sys
 
 from kicad2ems.core.api.analysis import Analysis
 
-# kicad2ems.core.api it is written against: 2.8 figures, 2.11 pick
-API = (2, 11)
 ORDER = ('Coils and plates', 'Nets and loads', 'Heat', 'Air and board', 'Mesh',
          'Solver')
 GROUPS = dict(coil='Coils and plates', plate='Coils and plates',
@@ -47,7 +45,7 @@ GROUPS = dict(coil='Coils and plates', plate='Coils and plates',
               thick='Mesh', order='Solver', np='Solver')
 
 
-# settings a front end may pick on the board (API 2.11)
+# settings a front end may pick on the board
 PICK = dict(net='nets', copper='nets', source='part')
 
 
@@ -104,7 +102,6 @@ def argv(module, options, values, board, out):
 class _Fem(Analysis):
     """One of the package's tools: its module, its parser, the program it needs,
     its result file."""
-    api = API
     module = ''
     program = 'elmer'
 

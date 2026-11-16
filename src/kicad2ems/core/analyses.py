@@ -16,10 +16,6 @@ holds.
         # ('pdn', False): whose result, and whether a preview
 
 An analysis declares (class attributes)
-  api                     the kicad2ems.core.api version it is written against,
-                          (major, minor): (2, 5); a plugin imports what it needs
-                          from kicad2ems.core.api.analysis, the rest of
-                          kicad2ems is private
   name, label, tool       'pdn', 'Power integrity', 'kicad2ems.pcbqs.pdn' (what
                           runs it, as lists show it); name is also its config
                           table [analysis.pdn] and the tag of its run folders
@@ -30,6 +26,9 @@ An analysis declares (class attributes)
                           solve)
   needs                   the analyses it cannot run without the results of (a
                           front end runs those first)
+  uses                    the analyses whose latest result it can start from,
+                          when there is one (the temperature from a circuit's
+                          losses): not required, as `needs` are
   result, preview_result  the file a finished run (a preview) leaves in its
                           folder ('pdn.json'): how a folder is known as its
                           result
@@ -38,13 +37,37 @@ An analysis declares (class attributes)
   page                    False: its settings and its results are all a front
                           end needs to show; True: it has an editor of its own
                           in the GUI (the circuit's schematic)
+  provides                the questions it answers (kicad2ems.core.study:
+                          QUESTIONS: 'dc', 'pdn', 'thermal' ...), from one run:
+                          (); then it is one question of its own name
+  engine                  the program's name as a list shows it beside a
+                          question ('pcbqs', 'Elmer'); '': its label
+  questions               study.Question objects of its own, for what kicad2ems
+                          has no question for
+  several                 what a study may hold several settings of it by, each
+                          a run of its own, as a front end names them ('rail':
+                          a board's rails; a config's [[analysis.<name>]]
+                          tables, read_sets); '': one. A run's tag(values)
+                          tells them apart
+  several_keys            the options that differ from one of them to the next
+                          (a rail's net, its voltage, its loads): a front end
+                          shows them as a table, a row a run, the others shared
+  fields                  the bool option that makes it write field dumps too
+                          ('fields'); '': none
+  env                     environment variables its command runs with (a thread
+                          cap), or {}
 and implements
   check()                 (usable, one line): its version and origin, or what is
                           missing and how to get it
   options()               its settings: [dict(key, flag, kind, default, help,
                           group, choices)], kind one of 'str', 'int', 'float',
                           'bool' (a switch) or 'list' (repeatable); the form of
-                          its tool's `--describe --json`
+                          its tool's `--describe --json`. A row's 'level':
+                          'basic', one of the few a run is set up with
+                          (Option.level); its 'pick': what the setting names on
+                          the board, for a front end to pick there
+                          (kicad2ems.core.layout): 'net', 'part', or 'nets',
+                          'parts' where it takes several (absent: typed)
   tag(values)             a short name for a run of these settings (the rail,
                           the converter): its folder's
   command(values, board, out, preview=False, results=None)
@@ -56,6 +79,13 @@ and implements
                           from another's (the temperature from a circuit's
                           losses). ValueError says what is missing ("name the
                           rail")
+  missing(values, board, results=None)
+                          what a run still needs, [dict(text, key)]: the default
+                          is what command() raises
+  for_questions(values, asked)
+                          its settings for a run that is asked only some of its
+                          questions (the rail's drop without its impedance): the
+                          values, changed where that matters
   status(line)            the progress a line of its output states, or None
                           (most lines)
   finds, discover(values, board), choices(text) what the board can propose
@@ -63,6 +93,9 @@ and implements
                           converters"), the command that lists them ([program,
                           argument ...]) and its output as [(label, {option key:
                           value})] to pick from; finds '': none
+  owns(folder, preview)   whether the folder holds its result (its preview): by
+                          default, that its result file is there. An engine
+                          whose file another engine also writes looks inside it
   report(folder)          what a result holds, to read: dict(title, summary,
                           sections=[dict(title, text, table= dict(columns=[...],
                           rows=[[...]], formats=[...]), notes=[...])], notes,
@@ -75,6 +108,11 @@ and implements
   curves(folder)          what a result holds, to plot: [dict(title, xlabel,
                           ylabel, logx, logy, info, curves= [dict(name, x, y,
                           role='data' | 'reference' | 'limit', unit)])], or []
+  figures(folder)         the figures of its answer by name, [dict(name, value,
+                          unit)], for a table of engines against figures: two
+                          engines that answer one question give the same
+                          quantity the same name (the question says which:
+                          study.Question.figures), and may add their own
   suggest(folder)         settings a result proposes for other analyses:
                           [dict(to, label, values, note, need)] (a converter's
                           input rail, for the power-integrity analysis; the
@@ -84,52 +122,6 @@ and implements
                           the other's questions with it
   examples()              the examples it ships: [dict(name, config, group,
                           title, files)] (kicad2ems.examples)
-  env                     environment variables its command runs with (a thread
-                          cap), or {}
-and, since 2.6 (kicad2ems.core.study: questions and engines),
-  provides   the questions it answers (kicad2ems.core.study.QUESTIONS: 'dc',
-             'pdn', 'thermal' ...), from one run: (); then it is one question of
-             its own name
-  engine     the program's name as a list shows it beside a question ('pcbqs',
-             'Elmer'); '': its label
-  questions  study.Question objects of its own, for what kicad2ems has no
-             question for
-and, since 2.10,
-  several       what a study may hold several settings of it by, each a run of
-                its own, as a front end names them ('rail': a board's rails; a
-                config's [[analysis.<name>]] tables, read_sets); '': one. A
-                run's tag(values) tells them apart
-  several_keys  the options that differ from one of them to the next (a rail's
-                net, its voltage, its loads): a front end shows them as a table,
-                a row a run, the others shared
-and, since 2.9,
-  missing(values, board, results=None)
-                       what a run still needs, [dict(text, key)]: the default is
-                       what command() raises
-  uses                 the analyses whose latest result it can start from, when
-                       there is one (the temperature from a circuit's losses):
-                       not required, as `needs` are
-  an option's 'level'  'basic' in an options() row: one of the few a run is set
-                       up with (Option.level)
-and, since 2.11,
-  an option's 'pick'     what the setting names on the board, for a front end to
-                         pick there (kicad2ems.core.layout): 'net', 'part', or
-                         'nets', 'parts' where it takes several; absent: typed
-  fields                 the bool option that makes it write field dumps too
-                         ('fields'); '': none
-  for_questions(values, asked)
-                         its settings for a run that is asked only some of its
-                         questions (the rail's drop without its impedance): the
-                         values, changed where that matters
-  owns(folder, preview)  whether the folder holds its result (its preview): by
-                         default, that its result file is there. An engine whose
-                         file another engine also writes looks inside it
-and, since 2.8,
-  figures(folder)  the figures of its answer by name, [dict(name, value, unit)],
-                   for a table of engines against figures: two engines that
-                   answer one question give the same quantity the same name (the
-                   question says which: study.Question.figures), and may add
-                   their own
 
 The fields of a result (the maps a Viewer turns and cuts) need nothing here: an
 analysis writes them as field dumps (kicad2ems.core.api.solver: Dump,
@@ -174,7 +166,6 @@ class Analysis:
     front end calls check, options and examples when it starts, tag and command
     to run it, status while it runs, and report, curves and suggest on a folder
     that holds its result."""
-    api = None
     name = ''
     label = ''
     tool = ''
@@ -228,7 +219,7 @@ class Analysis:
     def missing(self, values, board, results=None):
         """What a run of these settings still needs, before it is started:
         [dict(text, key)], key the option it is set by (None: not one option). A
-        front end lists them and does not start the run (2.9). The default is
+        front end lists them and does not start the run. The default is
         what command() raises; an analysis that can tell more from the board (a
         load with no pad on ground) adds it here, cheaply: it is asked on every
         change. results: as command's, and None for an analysis that is asked

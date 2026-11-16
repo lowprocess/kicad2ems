@@ -32,7 +32,6 @@ def test_registry_and_aliases():
 
 class _Fake(solvers.Solver):
     name, aliases, label, rank = 'fake', ('fk',), 'fake solver', 0
-    api = (2, 0)
     capabilities = {k: 'yes' for k in solvers.FEATURES}
     options = [
         solvers.Option('fake_level', 3, "level", int, name='level',

@@ -118,7 +118,6 @@ def _temperature_dump(folder, hottest):
 
 
 class _Fake(Analysis):
-    api = (2, 6)
     engine = 'fake'
     OPTIONS = ()
 

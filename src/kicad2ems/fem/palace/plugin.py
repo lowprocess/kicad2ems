@@ -77,7 +77,6 @@ def palace_status():
 
 
 class Palace(Solver):
-    api = (2, 1)
     name, aliases, label = 'palace', ('fem',), 'Palace (FEM)'
     in_auto = False                 # experimental: only when named
     rank, order = 2, 40

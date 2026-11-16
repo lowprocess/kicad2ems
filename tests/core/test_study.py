@@ -8,8 +8,7 @@ from kicad2ems.core.api.analysis import Analysis, Question
 
 
 class Drop(Analysis):
-    api, name, label, tool, engine = (
-        2, 6), 'pdn', 'Power integrity', 'fake.pdn', 'fake'
+    name, label, tool, engine = 'pdn', 'Power integrity', 'fake.pdn', 'fake'
     about, result, order = "a rail's drop and impedance", 'pdn.json', 20
     provides = ('dc', 'pdn')
 
@@ -18,15 +17,14 @@ class Drop(Analysis):
 
 
 class Warm(Analysis):
-    api, name, label, tool, engine = (
-        2, 6), 'thermal', 'Thermal', 'fake.thermal', 'fake'
+    name, label, tool, engine = 'thermal', 'Thermal', 'fake.thermal', 'fake'
     about, result, order, provides, fields = ('the temperature', 'thermal.json',
                                               50, ('thermal', ), 'maps')
 
 
 class Elmer(Analysis):
-    api, name, label, tool, engine = (
-        2, 6), 'elmer_thermal', 'Temperature (Elmer)', 'fem.thermal', 'Elmer'
+    name, label, tool, engine = ('elmer_thermal', 'Temperature (Elmer)',
+                                 'fem.thermal', 'Elmer')
     about, result, order, provides = ('the temperature, in 3D', 'thermal.json',
                                       60, ('thermal', ))
 
@@ -36,14 +34,14 @@ class Elmer(Analysis):
         return not preview and os.path.isfile(f) and 'elmer' in open(f).read()
 
 
-class Old(Analysis):  # a 2.5 plugin: declares no questions
-    api, name, label, tool, about, result = (
-        2, 5), 'mqs', 'Near field', 'fake.mqs', 'a near field', 'mqs.json'
+class Old(Analysis):  # declares no questions
+    name, label, tool, about, result = ('mqs', 'Near field', 'fake.mqs',
+                                        'a near field', 'mqs.json')
 
 
 class Noise(Analysis):  # brings a question of its own
-    api, name, label, tool, about, result = (
-        2, 6), 'emission', 'Emissions', 'x.emi', 'radiated emission', 'emi.json'
+    name, label, tool, about, result = ('emission', 'Emissions', 'x.emi',
+                                        'radiated emission', 'emi.json')
     provides = ('emissions',)
     questions = (Question('emissions', 'Radiated emission', 'RF',
                           'the field at 3 m', order=90), )
@@ -185,8 +183,7 @@ def test_check_lists_the_questions(plugins):
 # ---- a config's study, its plan, and the command that runs it ---------------
 class Circuit(Analysis):
     """Writes its losses, as a tool would: python -c."""
-    api, name, label, tool, engine = (
-        2, 6), 'circuit', 'Circuit', 'fake.circuit', 'fake'
+    name, label, tool, engine = 'circuit', 'Circuit', 'fake.circuit', 'fake'
     about, result, order, provides, fields = ('a circuit', 'circuit.json', 40,
                                               ('circuit', ), 'fields')
 
@@ -212,8 +209,7 @@ class Circuit(Analysis):
 
 class Heat(Analysis):
     """Starts from the circuit's result; `fail` makes its tool exit 3."""
-    api, name, label, tool, engine = (
-        2, 6), 'thermal', 'Thermal', 'fake.thermal', 'fake'
+    name, label, tool, engine = 'thermal', 'Thermal', 'fake.thermal', 'fake'
     about, result, order, provides = ('the temperature', 'thermal.json', 50,
                                       ('thermal', ))
     key = 'grid'
@@ -493,7 +489,7 @@ class Rails(Drop):
     """A rail's tool, as a study runs it for each of a board's rails: writes
     what it was given; a rail named 'bad' exits 4, one with no name does not
     start."""
-    api, several = (2, 10), 'rail'
+    several = 'rail'
 
     def tag(self, values):
         return str(values.get('rail') or 'rail')
@@ -518,8 +514,8 @@ class Rails(Drop):
 
 def test_an_analysis_given_several_tables_is_a_run_for_each(
         plugins, tmp_path, capsys):
-    """API 2.10. [[analysis.pdn]]: a board's rails, each a run of its own in its
-    own folder, named by its tag; one that fails or cannot start does not stop
+    """[[analysis.pdn]]: a board's rails, each a run of its own in its own
+    folder, named by its tag; one that fails or cannot start does not stop
     the others, and the study says which."""
     import json
     import re
@@ -658,7 +654,7 @@ def test_two_engines_answers_side_by_side(plugins, tmp_path):
 
 def test_what_a_run_still_needs_and_what_is_shown_first(plugins, tmp_path,
                                                         demo_files):
-    """API 2.9. rf_needs: what an S-parameter run of a form's values lacks, with
+    """rf_needs: what an S-parameter run of a form's values lacks, with
     the setting it is set by (cheap: the board's footprints, no model). An
     analysis's missing(): what its command raises, unless what it uses is to
     come in the same run. An option's level: kicad2ems's few, and those a solver

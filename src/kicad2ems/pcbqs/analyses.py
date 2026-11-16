@@ -21,8 +21,6 @@ import sys
 
 from kicad2ems.core.api.analysis import Analysis
 
-# kicad2ems.core.api it is written against: 2.10 several, 2.11 pick
-API = (2, 11)
 
 
 def argv(module, options, values, board, out):
@@ -61,8 +59,8 @@ def argv(module, options, values, board, out):
     return out_argv
 
 
-# the settings that name a net or a part of the board (kicad2ems API 2.11: an
-# option's `pick`; plural: several)
+# the settings that name a net or a part of the board (an option's `pick`;
+# plural: several)
 PICK = dict(rail='net', ground='nets', vin='net', source='part',
             ground_source='part', converter='part', inductor='part',
             through='parts', stop='parts', capacitors='parts')
@@ -71,7 +69,6 @@ PICK = dict(rail='net', ground='nets', vin='net', source='part',
 class _Tool(Analysis):
     """One of pcbqs's command-line tools: its options table (pcbqs._cli's form),
     its command, its results."""
-    api = API
     engine = 'pcbqs'
     module = ''
     pick = {}                               # a tool's own word over PICK's
@@ -534,7 +531,7 @@ class Thermal(_Tool):
     result = 'thermal.json'
     provides = ('thermal',)
     paths = ('circuit',)
-    # its losses, when none are typed (kicad2ems 2.9: Analysis.uses)
+    # its losses, when none are typed (Analysis.uses)
     uses = ('circuit',)
 
     def owns(self, folder, preview=False):
@@ -628,12 +625,11 @@ class QuasiStatic(Solver):
     asks for it (R, L and C). For the low end of a band, to about a tenth of a
     wavelength, where the full-wave solvers are slow or lose accuracy; it is
     never picked by `--solvers auto`."""
-    api = API
     name, aliases, label = ('pcbqs', ('qs', 'quasistatic'),
                             'pcbqs (quasi-static, low frequency)')
     # asked for by name: a low band's solver, not a full-wave one
     in_auto = in_all = False
-    # what a run is set up with (kicad2ems 2.9: Solver.basic)
+    # what a run is set up with (Solver.basic)
     basic = ('qs_dmax',)
     consumes, previewed, rank, order = 'board', False, 1, 60
     dumps = False  # its current maps are always written: nothing to ask for

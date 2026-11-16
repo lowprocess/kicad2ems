@@ -456,9 +456,8 @@ class AnalysisPanel(QWidget):
     def needs(self, asked=(), to_come=()):
         """What a run of these settings still needs, [dict(text, key)]: the
         options a proposal left without a value, and what the analysis says
-        (Analysis.missing: kicad2ems API 2.9; before it, nothing more). to_come:
-        the analyses asked with it that run before it and have no result yet:
-        what they will give is not missing."""
+        (Analysis.missing). to_come: the analyses asked with it that run before
+        it and have no result yet: what they will give is not missing."""
         out = []
         runs = self.runs()
         # each run's (a table's rows: said by which)

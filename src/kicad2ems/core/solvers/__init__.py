@@ -13,10 +13,6 @@ kicad2ems from kicad2ems.core.api.solver.
     [sv.label for sv in registry().values()]
 
 A solver declares (class attributes)
-  api                   the kicad2ems.core.api version it is written against,
-                        (major, minor): (2, 1); a plugin imports what it needs
-                        from kicad2ems.core.api.solver, the rest of kicad2ems is
-                        private
   name, aliases, label  'mom25d', ('mom',), 'mom25d (MoM)'; name is also its
                         table [solver.mom25d]
   consumes              'board' (the geometry) or 'network' (the line model,
@@ -51,7 +47,7 @@ and implements
                           optional
   reusable(run)           whether an earlier run's result may stand for its
                           solve (no outputs() then): by default only where it
-                          has no outputs() (API 2.12, kicad2ems.core.reuse)
+                          has no outputs() (kicad2ems.core.reuse)
   deviations(run, prep)   [Deviation]: what it models differently from the
                           board, by its own rules (vias moved onto a mesh, parts
                           split, walls as via rows), for the report and the
@@ -169,8 +165,7 @@ class Solver:
     capabilities = {}
     options = []
     # the keys of its options a run is set up with (its main cell size): a
-    # window shows them first, the rest under "More settings" (Option.level;
-    # API 2.9)
+    # window shows them first, the rest under "More settings" (Option.level)
     basic = ()
 
     def check(self, s=None):
@@ -214,10 +209,9 @@ class Solver:
 
     def reusable(self, run):
         """Whether an earlier run's result may stand for its solve in this run
-        (kicad2ems.core.reuse; API 2.12): its outputs() is not called for one,
-        so a solver whose outputs need what its solve keeps says no where this
-        run asks for them. By default: only a solver with no outputs() of its
-        own."""
+        (kicad2ems.core.reuse): its outputs() is not called for one, so a solver
+        whose outputs need what its solve keeps says no where this run asks for
+        them. By default: only a solver with no outputs() of its own."""
         return type(self).outputs is Solver.outputs
 
     def deviations(self, run, prep):

@@ -478,7 +478,7 @@ def all_options(reg=None):
             out.setdefault(o.key, (sv.name, o))
             if (o.key in getattr(sv, 'basic', ())
                     and getattr(o, 'level', None) is None):
-                # (a plugin names them: Solver.basic, since API 2.9)
+                # (a solver names them: Solver.basic)
                 o.level = 'basic'
     return list(out.values())
 

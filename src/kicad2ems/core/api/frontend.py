@@ -14,38 +14,37 @@ starts runs and reads their results (the GUI, the KiCad plugin, dfsynth's
                       every net's copper and the footprints, no ports asked for:
                       to show before a run), net_at, part_at (the net and the
                       part under a point: a setting picked on the board, an
-                      option's `pick`) (2.11)
+                      option's `pick`)
   the line model      build_lines (Board -> LineModel), RefCopper (its reference
                       copper, built once), overlay (the module: the line model
                       drawn on the board), sections (the module: one section's
                       field), impedance (the module: a stack-up's Z0 without a
-                      board: Line, calculate, fit, element) (2.5)
+                      board: Line, calculate, fit, element)
   settings            Settings, build_settings, read_toml, all_options,
                       default_out, PATH_KEYS, sitecfg (the module: the user's
                       settings file), G_DUMP (the field-dump settings group)
   solvers             registry, get_solver, resolve_lines, AUTO, LINES
-  analyses            analyses ({name: Analysis}: the analysis plugins
-                      installed, kicad2ems.core.analyses), analysis_of (whose
-                      result a folder holds), read_analyses (a config's
-                      [analysis] tables) (2.5), read_analysis_sets (every table
-                      of each: an analysis given several, a run each) (2.10)
+  analyses            analyses ({name: Analysis}: kicad2ems.core.analyses),
+                      analysis_of (whose result a folder holds), read_analyses
+                      (a config's [analysis] tables), read_analysis_sets (every
+                      table of each: an analysis given several, a run each)
   the study           study_tree (what to list: by group, each question with the
                       engines that answer it), questions, engines ({name:
                       Engine}: solvers and analyses alike), runs_for ({engine:
                       the questions asked of it}), mark_run and run_mark (a run
-                      folder's mark: who made it) (2.6); a config's study:
+                      folder's mark: who made it); a config's study:
                       Study, read_study, write_study (its [study] tables),
                       study_plan (the runs it takes, in order: [Step]),
                       engine_named (an engine by what a config calls it),
-                      latest_results ({analysis: its newest result's folder})
-                      (2.7); default_fields (what an engine is asked when its
-                      field dumps are wanted and none is set), compare_engines
-                      (two engines' named figures side by side:
-                      Analysis.figures) (2.8)
+                      latest_results ({analysis: its newest result's
+                      folder}); default_fields (what an engine is asked when
+                      its field dumps are wanted and none is set),
+                      compare_engines (two engines' named figures side by side:
+                      Analysis.figures)
   runs                Run, EventTail, stop_runs, find_results, toml_value,
                       write_toml; where a front end's runs go (a folder each
                       under the output folder): run_dir, preview_dir, tool_dir,
-                      tool_preview_dir, board_name (2.7)
+                      tool_preview_dir, board_name
   files it writes     read_summary (<name>_run.json), read_antenna
                       (<name>_antenna.json), check_format (a JSON of
                       kicad2ems's, e.g. python -m kicad2ems.core.sysinfo's:
@@ -62,9 +61,9 @@ starts runs and reads their results (the GUI, the KiCad plugin, dfsynth's
                       example's config and board, copied or generated into a
                       folder of the user's: open it from there), examples_folder
                       (that folder), example_index (every example with its group
-                      and title, the analyses' own among them) (2.5)
+                      and title, the analyses' own among them)
 """
-from . import API_VERSION, lazy  # noqa: F401
+from . import lazy
 
 NAMES = dict(
     KiCadBoard='.importers.kicad:KiCadBoard',
@@ -141,5 +140,5 @@ NAMES = dict(
     sphere_gain='.fields.antenna:sphere_gain',
     core_threads='kicad2ems.emsdev.cpu:core_threads',
 )
-__all__ = ['API_VERSION', *NAMES]
+__all__ = list(NAMES)
 __getattr__, __dir__ = lazy(__name__, NAMES)

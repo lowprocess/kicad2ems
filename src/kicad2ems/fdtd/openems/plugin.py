@@ -14,8 +14,6 @@ from ..plugin import FDTD, MESH, RUN, CONVERGE
 
 
 class OpenEMS(FDTD):
-    # kicad2ems.core.api (2.4: resolve_finish, the finish row; 2.9: basic)
-    api = (2, 9)
     name, aliases, label = 'openems', ('fdtd',), 'openEMS (FDTD)'
     previewed = True
     order = 10                      # first in kicad2ems's lists: the reference

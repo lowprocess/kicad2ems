@@ -74,11 +74,10 @@ def test_a_point_names_the_part_whose_pads_are_under_it(boards):
 
 def test_options_say_what_a_front_end_may_pick_on_the_board():
     from kicad2ems.core.si import Crosstalk
-    from kicad2ems.core.api import frontend, API_VERSION
+    from kicad2ems.core.api import frontend
     picks = {o['key']: o.get('pick') for o in Crosstalk().options()}
     assert (picks['nets'] == 'nets' and picks['aggressor'] == 'nets'
             and picks['near'] == 'parts')
     assert picks['rise'] is None
     assert (frontend.board_layout is board_layout and frontend.net_at is net_at
             and frontend.part_at is part_at)
-    assert API_VERSION >= (2, 11)

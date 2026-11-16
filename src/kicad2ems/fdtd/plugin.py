@@ -295,12 +295,12 @@ class FDTD(Solver):
         dispersion='yes: fitted at mid-band, or wideband Debye',
         radiation='yes', cavity='yes', antenna='yes')
     options = MESH + RUN
-    # what a run is set up with, of these (kicad2ems 2.9: Solver.basic)
+    # what a run is set up with, of these (Solver.basic)
     basic = ('res',)
     tag = ''
     # --sigma as conducting sheets (False: PEC copper)
     conductor_loss = True
-    # --rough as the sheets' own (gfdtd 1.2), else at the band centre in sigma
+    # --rough as the sheets' own (gfdtd), else at the band centre in sigma
     roughness = False
 
     def copper(self, run):
@@ -315,13 +315,13 @@ class FDTD(Solver):
             return s.sigma, s.rough
         return band_sigma(s, run.fmin, run.fmax), None
 
-    # --finish as the sheets' own (gfdtd 1.3), else at the band centre in sigma
+    # --finish as the sheets' own (gfdtd), else at the band centre in sigma
     finish_wideband = False
-    # sheets can be marked one face of thick copper (gfdtd 1.3: face=True)
+    # sheets can be marked one face of thick copper (gfdtd: face=True)
     face_sheets = False
 
     def copper_kw(self, run):
-        """What build_fdtd needs beyond (sigma, rough): faces (gfdtd 1.3: thick
+        """What build_fdtd needs beyond (sigma, rough): faces (gfdtd: thick
         copper's sheets marked as faces, so that their roughness takes the
         copper's skin depth) and finish (the run's surface finish: its metal
         layers, per outer layer the strip's share of the loss, wideband in the

@@ -73,7 +73,7 @@ def test_the_settings_are_the_tools_own_options():
             and cap['far']['choices'] == ['open', 'ground']
             and cap['np']['kind'] == 'int')
     # what names a net or a part says so, for a front end to pick it on the
-    # board (kicad2ems API 2.11)
+    # board
     assert (dc['net']['pick'] == 'nets' and dc['source']['pick'] == 'part'
             and 'pick' not in dc['load'])
     assert th['copper']['pick'] == 'nets' and cap['net']['pick'] == 'nets'

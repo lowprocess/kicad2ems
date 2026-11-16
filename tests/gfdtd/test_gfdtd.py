@@ -935,16 +935,14 @@ def test_command_line_runs_an_xml(tmp_path, capsys):
     assert os.path.exists(tmp_path / 'run' / 'port_ut_1')
 
 
-def test_api_version_and_its_names():
-    """API_VERSION names what other packages may use (kicad2ems-fdtd): each of
+def test_the_names_the_fdtd_solvers_use():
+    """What kicad2ems.fdtd uses of gfdtd (its docstring lists them): each of
     those is here."""
     import inspect
     from kicad2ems import gfdtd
     from kicad2ems.gfdtd import engine
-    assert gfdtd.API_VERSION == (1, 3)
     sheet = (inspect.signature(
         gfdtd.ContinuousStructure.AddConductingSheet).parameters)
-    # 1.2, 1.3
     assert {'roughness', 'finish', 'finish_share', 'face'} <= set(sheet)
     assert ('backend' in inspect.signature(gfdtd.openEMS).parameters
             and gfdtd.ContinuousStructure)
@@ -956,7 +954,7 @@ def test_api_version_and_its_names():
 
 
 def test_finished_sheet_fit_and_xml(tmp_path):
-    """A finished sheet (gfdtd 1.3): the wideband fit follows the target (ENIG
+    """A finished sheet: the wideband fit follows the target (ENIG
     on all of one face: its resistance 2-5x the bare face's from 1 to 10 GHz),
     the share scales it, and finish / share / face survive the XML."""
     import numpy as np

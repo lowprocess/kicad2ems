@@ -1,14 +1,13 @@
 """kicad2ems.core.api: every public name resolves, importing a surface loads
-nothing, the registry refuses a plugin written for another API version, and
-sysinfo asks the solvers what they run on (Solver.resources)."""
+nothing, and sysinfo asks the solvers what they run on (Solver.resources)."""
 import os
 import subprocess
 import sys
 
 import pytest
 from kicad2ems.core import solvers, sysinfo
-from kicad2ems.core.api import (API_VERSION, compatible, solver as solver_api,
-                                frontend, analysis as analysis_api)
+from kicad2ems.core.api import (solver as solver_api, frontend,
+                                analysis as analysis_api)
 
 from test_plugins import _Fake
 
@@ -35,16 +34,6 @@ def test_a_surface_loads_on_first_use():
     out = subprocess.run([sys.executable, '-c', code], capture_output=True,
                          text=True, check=True).stdout.split()
     assert out == ['[]', 'True']
-
-
-def test_compatible():
-    major, minor = API_VERSION
-    assert compatible((major, 0)) is None and compatible(API_VERSION) is None
-    # unversioned: 1.0, from before 2.0
-    assert 'update the plugin' in compatible(None)
-    assert 'update kicad2ems' in compatible((major, minor + 1))
-    assert ('update the plugin' in compatible((major - 1, 0))
-            and 'update kicad2ems' in compatible((major + 1, 0)))
 
 
 def test_sysinfo_asks_the_solvers(monkeypatch):

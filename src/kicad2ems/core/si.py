@@ -739,9 +739,7 @@ def _result(folder):
 
 
 class Crosstalk(Analysis):
-    """Crosstalk between traces (this module), kicad2ems's own analysis: built
-    in, not an entry point."""
-    api = (2, 10)
+    """Crosstalk between traces (this module)."""
     name, label, tool = 'crosstalk', 'Crosstalk', 'kicad2ems.core.si'
     about = ("near- and far-end crosstalk between traces for an edge, and what "
              "in the layout makes it")

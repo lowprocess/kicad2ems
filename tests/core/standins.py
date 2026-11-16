@@ -107,7 +107,6 @@ def thru(m, freq):
 
 
 class FDTD(Solver):
-    api = (2, 0)
     rank, previewed, tag, conductor_loss = 2, False, '', True
     capabilities = dict(ports='yes', gap_ports='yes', diff_pairs='yes',
                         parts='yes', vias='yes', outline='yes', planes='yes',
@@ -227,7 +226,6 @@ def solve(m, freq, **kw):
 
 
 class MoM25D(Solver):
-    api = (2, 0)
     name, aliases, label = 'mom25d', ('mom',), 'mom25d (MoM)'
     consumes, rank, order = 'board', 1, 20
     capabilities = dict(

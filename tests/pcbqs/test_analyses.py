@@ -39,17 +39,16 @@ def cells(rep):
 
 # ---- the plugins ------------------------------------------------------------
 def test_the_four_register_with_kicad2ems():
-    """Declared as kicad2ems expects (its api, a name, a result file, options of
-    its kinds), in the Study's order."""
-    from kicad2ems.core.api.analysis import Analysis, KINDS, API_VERSION
+    """Declared as kicad2ems expects (a name, a result file, options of its
+    kinds), in the Study's order."""
+    from kicad2ems.core.api.analysis import Analysis, KINDS
     made = [
         cls() for cls in (A.PowerIntegrity, A.NearField, A.Circuit, A.Thermal)
     ]
     assert ([a.name for a in made] == ['pdn', 'mqs', 'circuit', 'thermal'] ==
             [a.name for a in sorted(made, key=lambda a: a.order)])
     for a in made:
-        assert (isinstance(a, Analysis) and a.api[0] == API_VERSION[0]
-                and a.api <= API_VERSION)
+        assert isinstance(a, Analysis)
         assert (a.label and a.tool.startswith('kicad2ems.pcbqs.')
                 and a.result.endswith('.json') and a.about)
         assert a.check() == (True, a.check()[1]) and 'pcbqs' in a.check()[1]
@@ -60,7 +59,7 @@ def test_the_four_register_with_kicad2ems():
     assert (made[1].previewed and made[1].preview_result == 'mqs-preview.json'
             and made[2].page)
     # what names a net or a part says so, for a front end to pick it on the
-    # board (kicad2ems API 2.11)
+    # board
     pick = lambda a: {o['key']: o['pick'] for o in a.options() if 'pick' in o}
     assert (pick(made[0]) == dict(rail='net', ground='nets', source='part',
                                   ground_source='part', through='parts',
@@ -497,9 +496,7 @@ def test_the_tools_are_engines_of_the_questions_they_answer(tmp_path):
     assert all(q in study.QUESTIONS
                for a in (pdn, mqs, circuit, thermal)
                for q in a.provides)
-    assert ({a.engine
-             for a in (pdn, mqs, circuit, thermal)} == {'pcbqs'}
-            and pdn.api == (2, 11))
+    assert {a.engine for a in (pdn, mqs, circuit, thermal)} == {'pcbqs'}
     assert (circuit.fields == 'fields'
             and any(o['key'] == 'fields' and o['kind'] == 'bool'
                     for o in circuit.options()))
@@ -617,13 +614,10 @@ def test_a_load_with_no_pad_on_ground(monkeypatch, tmp_path):
 
 
 def test_a_study_s_rails_are_a_run_each(tmp_path):
-    """kicad2ems 2.10: the rail tool says a study may hold several rails
+    """The rail tool says a study may hold several rails
     (`several`), and a config's [[analysis.pdn]] tables are a run each of
     `kicad2ems study`, each rail's result in a folder named by it."""
     import re
-    from kicad2ems.core.api import API_VERSION
-    if API_VERSION < (2, 10):
-        pytest.skip('kicad2ems before 2.10 reads one table of an analysis')
     from kicad2ems.core import study
     from test_pdn_rail import board
     assert ((A.PowerIntegrity.several, A.NearField.several, A.Circuit.several,

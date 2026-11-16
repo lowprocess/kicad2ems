@@ -1,15 +1,14 @@
-"""The analysis plugins: the registry (entry points, the API version, names and
-option kinds), whose result a folder holds, a config's [analysis] tables, the
+"""The analyses: the registry (here fakes of its form), whose result a folder
+holds, a config's [analysis] tables, the
 examples an analysis ships (index, prepared in a folder) and --check's lines."""
 import os
 
 import pytest
 from kicad2ems.core import analyses
-from kicad2ems.core.api import API_VERSION, analysis as analysis_api, frontend
+from kicad2ems.core.api import analysis as analysis_api, frontend
 
 
 class Heat(analyses.Analysis):
-    api = (2, 5)
     name, label, tool, order = 'heat', 'Heat', 'fake.heat', 30
     result, preview_result, paths = ('heat.json', 'heat-preview.json',
                                      ('losses', ))
@@ -54,8 +53,7 @@ def plugins(monkeypatch):
 def test_every_name_resolves():
     for name in analysis_api.NAMES:
         assert getattr(analysis_api, name) is not None, name
-    assert (analysis_api.Analysis is analyses.Analysis
-            and analysis_api.API_VERSION == API_VERSION)
+    assert analysis_api.Analysis is analyses.Analysis
     assert (frontend.analyses is analyses.registry
             and frontend.analysis_of is analyses.analysis_of)
 
@@ -102,7 +100,7 @@ def test_a_config_s_analysis_tables(plugins, tmp_path):
     assert (analyses.read_config(str(cfg)) == (None, {})
             and analyses.read_sets(str(cfg)) == {})
     assert frontend.read_analyses is analyses.read_config
-    # several tables of one analysis (2.10): each with its paths; read_config
+    # several tables of one analysis: each with its paths; read_config
     # gives the first
     cfg.write_text(
         '[[analysis.heat]]\nlosses = "a.json"\n[[analysis.heat]]\nlosses = '
