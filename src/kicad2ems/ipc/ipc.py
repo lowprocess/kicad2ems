@@ -80,9 +80,8 @@ class Live:
     # ---- the selection ----
     def selection_box(self):
         """(x0, y0, x1, y1) KiCad mm around the items selected in KiCad, or None."""
-        items = list(self.board.get_selection())
         boxes = []
-        for it in items:
+        for it in self.board.get_selection():
             try:
                 b = self.board.get_item_bounding_box(it)
             except Exception:                                       # an item without a box (a net, a group...)
@@ -171,7 +170,7 @@ def draw(board, items, layer='User.9', width=0.1, message='kicad2ems'):
 
 def _polygon(bt, it, nm, layer_of):
     """A filled board polygon of ('poly', layer, outer ring, [hole rings], '#rrggbb') (KiCad mm)."""
-    from kipy.geometry import PolygonWithHoles, PolyLine, PolyLineNode, Vector2
+    from kipy.geometry import PolygonWithHoles, PolyLine, PolyLineNode
     def line(ring):
         pl = PolyLine()
         for x, y in ring:

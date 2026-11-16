@@ -2,7 +2,7 @@
 Net classes and the impedance each one asks for (no Qt here).
 
     nc = NetClasses.from_project('board.kicad_pro', nets)   # the classes of the project file (KiCad 7 and later)
-    nc = NetClasses.from_map({net: ['50R_SE'], ...}, nets)  # the classes KiCad reports through its API
+    nc = NetClasses({net: ['50R_SE'], ...}, nets)           # the classes KiCad reports through its API
     nc.of(net)            # 'Default', '100ohm', ...: the net's class (the first of several, KiCad 9+)
     nc.target(net)        # (100.0, 'diff') / (50.0, 'se') / None
     nc.disabled(net)      # True for anything #PWR: never mapped
@@ -53,10 +53,6 @@ class NetClasses:
         self.nets = set(nets)
         self.classes = {n: list(classes.get(n) or [DEFAULT]) for n in self.nets}
         self._paired = {c for n, cs in self.classes.items() if partner(n) in self.nets for c in cs}
-
-    @classmethod
-    def from_map(cls, classes, nets):
-        return cls(classes, nets)
 
     @classmethod
     def from_project(cls, path, nets):
