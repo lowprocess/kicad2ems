@@ -232,7 +232,8 @@ def test_map_cache(tmp_path, lowpass):
 
 
 def test_session_and_run_settings(plan, tmp_path):
-    from kicad2ems.ipc.model import Session, run_values, write_config, session_path, outside
+    from kicad2ems.ipc.model import (Session, run_values, write_config,
+                                     session_path, outside)
     from kicad2ems.core.config import build_settings
     # KiCad's env: gfdtd
     s = Session(region=[-1.0, -1.0, 14.0, 12.0], fmin=1.0, fmax=6.0,

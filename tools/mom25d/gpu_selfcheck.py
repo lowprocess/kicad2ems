@@ -41,8 +41,7 @@ print(
     f"largest model for the GPU LU with this much free VRAM: ~{nmax:,} unknowns"
 )
 
-# ---- 2. LU accuracy and speed
-# ----------------------------------------------------------------
+# ---- 2. LU accuracy and speed -----------------------------------------------
 rng = np.random.default_rng(1)
 for n in sorted({min(a.n, nmax), min(a.n // 2, nmax)}):
     if n < 256:
@@ -68,8 +67,7 @@ for n in sorted({min(a.n, nmax), min(a.n // 2, nmax)}):
     if res > 1e-4:
         print("  WARNING: residual too large - the GPU LU result looks wrong")
 
-# ---- 3. a small simulation, GPU vs CPU
-# -------------------------------------------------------
+# ---- 3. a small simulation, GPU vs CPU --------------------------------------
 if not a.skip_sim:
     from shapely.geometry import box
     from kicad2ems.mom25d.multilayer import Layer, LayerStack

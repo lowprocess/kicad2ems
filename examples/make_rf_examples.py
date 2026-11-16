@@ -67,8 +67,10 @@ import math, os, sys
 
 sys.path.insert(
     0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
-from kicad2ems.core.lines.tlines import microstrip, cpwg, stripline as strip_z  # noqa: E402
-from kicad2ems.core.lines.coupled import coupled_microstrip, coupled_stripline  # noqa: E402
+from kicad2ems.core.lines.tlines import (  # noqa: E402
+    microstrip, cpwg, stripline as strip_z)
+from kicad2ems.core.lines.coupled import (  # noqa: E402
+    coupled_microstrip, coupled_stripline)
 # (the generators' shared items)
 from _pcb import u, Items  # noqa: E402
 

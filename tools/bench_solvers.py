@@ -12,9 +12,10 @@ model.
     python tools/bench_solvers.py --all
         # every example config
     python tools/bench_solvers.py --only filter hairpin --skip openems
-    python tools/bench_solvers.py --plot-only --only filter hairpin     # the graph
-        of what was measured
-    python tools/bench_solvers.py --out build/bench-vulkan --skip openems "line model" "mom25d fast"
+    python tools/bench_solvers.py --plot-only --only filter hairpin
+        # the graph of what was measured
+    python tools/bench_solvers.py --out build/bench-vulkan --skip openems \\
+        "line model" "mom25d fast"
 
 Writes build/bench/results.json, results.md and results.png (time and memory per
 solver, per example; the median of --repeat runs, with their range). Run it
@@ -29,14 +30,14 @@ import numpy as np
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(REPO, 'build', 'bench')
 GENERATED = {  # config -> the command that writes its board
-    'demo_transition': ['examples/'
-                        'make_demo_board.py', 'examples/demo_transition'],
-    'demo_lowpass': ['examples/'
-                     'make_demo_board.py', 'examples/demo_lowpass', 'lowpass'],
-    'demo_highpass': ['examples/'
-                      'make_demo_board.py', 'examples/demo_highpass', 'highpass'],
-    'demo_bandpass': ['examples/'
-                      'make_demo_board.py', 'examples/demo_bandpass', 'bandpass'],
+    'demo_transition': ['examples/make_demo_board.py',
+                        'examples/demo_transition'],
+    'demo_lowpass': ['examples/make_demo_board.py', 'examples/demo_lowpass',
+                     'lowpass'],
+    'demo_highpass': ['examples/make_demo_board.py', 'examples/demo_highpass',
+                      'highpass'],
+    'demo_bandpass': ['examples/make_demo_board.py', 'examples/demo_bandpass',
+                      'bandpass'],
 }
 for kind in ('patch', 'ifa', 'dipole', 'slot', 'array2x2'):
     GENERATED[f'antenna_{kind}'] = [
@@ -212,11 +213,11 @@ def main():
             json.dump(results, open(path, 'w', encoding='utf-8'), indent=1)
             spread = (f" ({min(runs):.1f}-{max(runs):.1f})"
                       if len(runs) > 1 else '')
+            failed = 'FAILED: ' + row.get('error', '') if p.returncode else ''
             print(
                 f"{cfg:16s} {name:11s} median {row['seconds']:7.1f} s{spread}, "
                 f"peak {row['peak_gb'] or 0:5.2f} "
-                f"GB{_where(name, row).replace('*', '')} "
-                f"{'' if not p.returncode else 'FAILED: ' + row.get('error', '')}",
+                f"GB{_where(name, row).replace('*', '')} {failed}",
                 flush=True)
     write_md(results)
     print('wrote', plot(results, configs))
@@ -380,8 +381,8 @@ def _cut(results, cfgs, key):
             if r.get(key) is not None and not r['code']
         ] or [0])
         for c in cfgs)
-    return (1.25 * top[-2]
-            if len(top) > 1 and top[-1] > 2.5 * top[-2] else None), top[-1]
+    return (1.25 * top[-2] if len(top) > 1 and top[-1] > 2.5 * top[-2]
+            else None), top[-1]
 
 
 def _cut_off(ax, x, w, cap, label):
@@ -427,8 +428,8 @@ def write_md(results):
                 cells.append(cell + _where(n, r))
         cells.append(best or '')
         o, mo = (rows.get('openems') or rows.get('gfdtd GPU')
-                 or rows.get('gfdtd Vulkan') or {}, rows.get('mom25d GPU')
-                 or rows.get('mom25d Vulkan') or {})
+                 or rows.get('gfdtd Vulkan') or {},
+                 rows.get('mom25d GPU') or rows.get('mom25d Vulkan') or {})
         cells.append(f"{o.get('cells', '')} cells, {o.get('steps', '')} steps"
                      if o.get('cells') else '')
         for mo in (mo, rows.get('mom25d fast', {})):

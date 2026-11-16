@@ -1,7 +1,8 @@
 """Copper-port extraction on a real board (the circuit tool's 11 frequencies):
 time, peak memory, GMRES iterations.
 
-    python tools/pcbqs/benchmark_ports.py SHEETS [SOLVER [PRECONDITIONER]] [--board PCB] [--save Z.npy] [--compare Z.npy]
+    python tools/pcbqs/benchmark_ports.py SHEETS [SOLVER [PRECONDITIONER]] \\
+        [--board PCB] [--save Z.npy] [--compare Z.npy]
 
 SHEETS 1 or 2 (face sheets); SOLVER auto | direct | iterative | dense (the dense
 backend); PRECONDITIONER auto | graph | faces (mqs_iterative.port_method). One

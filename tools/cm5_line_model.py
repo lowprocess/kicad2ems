@@ -10,7 +10,8 @@ coupled pairs are from their cuts' values. The board is not in the repository
 (CERN-OHL-S, KiCad's demos):
 
     curl -O https://gitlab.com/kicad/code/kicad/-/raw/master/demos/cm5_minima/CM5_MINIMA_3.kicad_pcb
-    python tools/cm5_line_model.py CM5_MINIMA_3.kicad_pcb [--nets HDMI] [--modes formulas,off,default,field]
+    python tools/cm5_line_model.py CM5_MINIMA_3.kicad_pcb [--nets HDMI] \\
+        [--modes formulas,off,default,field]
 """
 import argparse, os, sys, time
 

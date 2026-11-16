@@ -7,13 +7,13 @@ file the window writes). Started plainly, they outlived a Stop: 8 Palace ranks
 went on for their half hour.
 
     p = popen(cmd, **kw)        # subprocess.Popen in a session of its own,
-                                watched as above
+                                # watched as above
     r = run(cmd, timeout=None)  # subprocess.run's result (text captured); a
-                                timeout stops it: RuntimeError
+                                # timeout stops it: RuntimeError
     stopped(p)                  # whether it was stopped for a stop request
-                                (raise_stopped then)
+                                # (raise_stopped then)
     guard()                     # in a tool's main: SIGTERM stops its solvers,
-                                then the tool
+                                # then the tool
 """
 import atexit
 import os

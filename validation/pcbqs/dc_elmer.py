@@ -3,7 +3,7 @@
 conductance).
 
     python validation/dc_elmer.py [case ...]  # cases: strip, via_single,
-                                              via_hop, wpthb_vhb, jetson_1v15
+                                              # via_hop, wpthb_vhb, jetson_1v15
 
 Each case: one net's copper, a source terminal held at 0 V and loads drawing
 their currents as equipotential pads. Compared: each load's voltage (the drop)
@@ -17,7 +17,9 @@ from pathlib import Path
 from shapely.geometry import box, mapping
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from common import OUT, IMAGES, SIGMA_CU, copper_model, elmergrid, elmer, save_scalars, write_json  # noqa: E402
+from common import (  # noqa: E402
+    OUT, IMAGES, SIGMA_CU, copper_model, elmergrid, elmer, save_scalars,
+    write_json)
 
 PLATING = 0.025
 

@@ -46,8 +46,8 @@ def test_elmer_from_the_environment_then_the_installer(site, tmp_path,
 def test_palace_from_the_environment_then_the_installer_then_path(
         site, tmp_path, monkeypatch):
     monkeypatch.setattr(
-        palace.shutil, 'which', lambda name: '/on/the/path/palace'
-        if name == 'palace' else None)
+        palace.shutil, 'which',
+        lambda name: '/on/the/path/palace' if name == 'palace' else None)
     assert palace.launcher() == ('native', '/on/the/path/palace')
     site['palace'] = str(tmp_path / 'view' / 'bin' / 'palace')
     assert palace.launcher() == ('native', site['palace'])
@@ -56,8 +56,8 @@ def test_palace_from_the_environment_then_the_installer_then_path(
     monkeypatch.delenv('K2E_PALACE')
     site.clear()
     monkeypatch.setattr(
-        palace.shutil, 'which', lambda name: '/usr/bin/podman'
-        if name == 'podman' else None)
+        palace.shutil, 'which',
+        lambda name: '/usr/bin/podman' if name == 'podman' else None)
     image = tmp_path / 'image'
     (image / 'opt' / 'views' / 'view' / 'bin').mkdir(parents=True)
     site['palace_rootfs'] = str(image)

@@ -6,12 +6,16 @@ import numpy as np
 import pytest
 from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
-from kicad2ems.core.lines.coupled import coupled_microstrip, coupled_stripline, coupled_offset_stripline, group_lc, mtl_s
+from kicad2ems.core.lines.coupled import (coupled_microstrip, coupled_stripline,
+                                          coupled_offset_stripline, group_lc,
+                                          mtl_s)
 from kicad2ems.core.lines.strips import shape_strips, rectilinear
 from kicad2ems.core.lines.tlines import microstrip, stripline, build
 from kicad2ems.core.importers.kicad import KiCadBoard
 from kicad2ems.core.board import Board
-from kicad2ems.core.solvers.lines.fastsolve import solve, qucs_netlist, find_qucsator, read_qucs_dataset
+from kicad2ems.core.solvers.lines.fastsolve import (solve, qucs_netlist,
+                                                    find_qucsator,
+                                                    read_qucs_dataset)
 
 ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

@@ -23,7 +23,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from kicad2ems.core.api.solver import Option, strlist, items, floatlist, floats, G_DUMP
+from kicad2ems.core.api.solver import (Option, strlist, items, floatlist,
+                                       floats, G_DUMP)
 from kicad2ems.core.api.solver import Solver, Result, Deviation, registry
 from .engines import engine_name
 
@@ -232,7 +233,8 @@ def _peak_delay(run):
     """The line model's largest group delay (s) over its terms that carry
     signal: how long the board rings. None without a line model or a circuit
     solver for it."""
-    from kicad2ems.core.api.solver import solve_lines as solve, lines_backend as resolve_backend
+    from kicad2ems.core.api.solver import (solve_lines as solve,
+                                           lines_backend as resolve_backend)
     if run.lm is None or not run.lm.paths:
         return None
     try:
@@ -350,8 +352,7 @@ class FDTD(Solver):
         solver: the top level)."""
         return run.summary.setdefault(self.name, {})
 
-    # ---- what it changes, and what it holds
-    # -------------------------------------------------------------
+    # ---- what it changes, and what it holds ---------------------------------
     def deviations(self, run, p):
         """Vias moved onto mesh lines, parts split in two elements, edge walls
         moved onto mesh lines."""
@@ -427,8 +428,7 @@ class FDTD(Solver):
             gb=g['info']['mem_gb'], what=
             f"{cells / 1e6:.2f} M cells, {runs} run(s) of ~{steps:,} timesteps")
 
-    # ---- the run
-    # ---------------------------------------------------------------------------------------
+    # ---- the run ------------------------------------------------------------
     def mesh(self, run, p, **kw):
         """The mesh that gives the result; with --converge also the coarser
         levels, in p.levels (the finest gives the result)."""
@@ -480,7 +480,8 @@ class FDTD(Solver):
                            zone=mesh_zone(s), thickness=s.thickness == 'on',
                            nz_mask=s.nz_mask, log=log)
         if m.walls:
-            from kicad2ems.core.api.solver import describe_edges as describe, snap_edges as snap
+            from kicad2ems.core.api.solver import (describe_edges as describe,
+                                                   snap_edges as snap)
             for g in [p.grid] + [lm for _, lm in (p.levels or [])]:
                 g['walls'] = snap(m.walls, g)
                 g['info']['edge_walls'] = describe(m.walls, m).split(': ', 1)[1]
@@ -811,12 +812,14 @@ class FDTD(Solver):
                     run.wrote(f"field map {prefix}{dname} ({pname})", q)
                 # one period at each frequency
                 if s.dump_animate and d.normal is not None:
-                    from kicad2ems.core.api.solver import DumpSource, save_animation
+                    from kicad2ems.core.api.solver import (DumpSource,
+                                                           save_animation)
                     src = DumpSource(os.path.dirname(path), dname, 'FD')
                     for i, f in enumerate(src.freqs):
                         q = save_animation(
                             src,
-                            f"{run.path(f'_{tag}')}_{dname}_{f / 1e9:g}GHz.{s.dump_animate}",
+                            f"{run.path(f'_{tag}')}_{dname}_{f / 1e9:g}GHz."
+                            f"{s.dump_animate}",
                             d.normal, 0, 'mag', [i])
                         run.wrote(
                             f"field animation {prefix}{dname} ({pname}, "

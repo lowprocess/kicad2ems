@@ -6,7 +6,8 @@ sqrt(int V^2 / int I^2) of the wave passing a probe. FDTD's own error at the
 edges is a few %, so the ratio thick / sheet is what compares with the field
 solver's. About 20 s a case on 24 cores:
 
-    LD_LIBRARY_PATH=/opt/openems/lib /opt/openems/venv/bin/python tools/xsection_fullwave.py OUT
+    LD_LIBRARY_PATH=/opt/openems/lib /opt/openems/venv/bin/python \\
+        tools/xsection_fullwave.py OUT
 """
 import os, sys, numpy as np
 from CSXCAD import ContinuousStructure

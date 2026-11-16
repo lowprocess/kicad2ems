@@ -3,7 +3,8 @@ triangle reference on kicad2ems boards: unknowns, a solve's time (double
 precision, CPU) and the largest |dS| at three frequencies. For kicad2ems's docs
 (docs/mom.md#coarsen).
 
-    python tools/mom25d/quad_configs_study.py out.json board.json:f1,f2,f3 [board.json:f1,f2,f3 ...]
+    python tools/mom25d/quad_configs_study.py out.json board.json:f1,f2,f3 \\
+        [board.json:f1,f2,f3 ...]
         # GHz; then the plot
     python tools/mom25d/quad_configs_study.py out.json --plot-only out.png
 """

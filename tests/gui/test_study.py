@@ -129,12 +129,12 @@ def test_study_dock(window):
     assert (st.panels['circuit'] is w.pages['circuit'].panel
             and st.panels['circuit'].isAncestorOf(w.pages['circuit'].params))
     assert pdn.board.placeholderText() == "the study's board"
-    # no page per analysis: the
+    # no page per analysis: the circuit's editor alone
     assert (list(w.places) == [
         'Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Section',
         'Filter', 'Circuit'
     ])
-    tree.rows['dc'].setCheckState(0, Qt.Checked)  # circuit's editor alone
+    tree.rows['dc'].setCheckState(0, Qt.Checked)
     assert (tree.asked() == dict(sparams=[], dc=[])
             and tree.ticked() == ['rf', 'pdn']
             and '2 asked' in st.study_section.head.text())
@@ -802,9 +802,9 @@ def test_still_needed_and_what_run_says(window, tmp_path):
     w.update_needed()
     assert ('losses' in need.items[0]['text']
             and run.text().startswith('Give the parts'))
-    # with the circuit asked, which runs first and
+    # with the circuit asked, which runs first and will give them: nothing to
+    # ask for
     w.study.set_ticked(['circuit', 'thermal'])
-    # will give them: nothing to ask for
     w.update_needed()
     assert ([m for m in need.items if m['run'] == 'thermal'] == []
             and w.needs(['circuit', 'thermal'])['thermal'] == [])

@@ -34,85 +34,99 @@ GPUS = [
 # as CSXCAD 0.7 / openEMS 0.37 write it (FDTD.Write2XML), trimmed
 OPENEMS_XML = '''<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <openEMS>
-    <FDTD NumberOfTimesteps="1000" endCriteria="0.0001" OverSampling="4" TimeStepMethod="3">
-        <Excitation Type="0" f0="3e+09" fc="2.5e+09" />
-        <BoundaryCond xmin="MUR" xmax="MUR" ymin="PML_8" ymax="PEC" zmin="PMC" zmax="2" />
-    </FDTD>
-    <ContinuousStructure CoordSystem="0">
-        <RectilinearGrid DeltaUnit="0.001" CoordSystem="0">
-            <XLines Qty="11">0,1,2,3,4,5,6,7,8,9,10</XLines>
-            <YLines Qty="6">0,1,2,3,4,5</YLines>
-            <ZLines Qty="4">0,0.5,1,2</ZLines>
-        </RectilinearGrid>
-        <BackgroundMaterial Epsilon="1" Mue="1" Kappa="0" Sigma="0" />
-        <ParameterSet />
-        <Properties>
-            <Material ID="0" Name="FR4" Isotropy="1">
-                <FillColor R="103" G="198" B="105" a="123" />
-                <Primitives>
-                    <LinPoly Priority="1" Elevation="0.000000e+00" NormDir="2" QtyVertices="4" Length="1.000000e+00">
-                        <Vertex X1="0.000000e+00" X2="0.000000e+00" />
-                        <Vertex X1="1.000000e+01" X2="0.000000e+00" />
-                        <Vertex X1="1.000000e+01" X2="5.000000e+00" />
-                        <Vertex X1="0.000000e+00" X2="5.000000e+00" />
-                    </LinPoly>
-                </Primitives>
-                <Property Epsilon="4.300000e+00,1.000000e+00,1.000000e+00" Mue="1.000000e+00,1.000000e+00,1.000000e+00" Kappa="1.000000e-02,0.000000e+00,0.000000e+00" Sigma="0.000000e+00,0.000000e+00,0.000000e+00" Density="0.000000e+00" />
-            </Material>
-            <Metal ID="1" Name="cu">
-                <Primitives>
-                    <Polygon Priority="10" Elevation="1.000000e+00" NormDir="2" QtyVertices="4">
-                        <Vertex X1="1.000000e+00" X2="2.000000e+00" />
-                        <Vertex X1="9.000000e+00" X2="2.000000e+00" />
-                        <Vertex X1="9.000000e+00" X2="3.000000e+00" />
-                        <Vertex X1="1.000000e+00" X2="3.000000e+00" />
-                    </Polygon>
-                </Primitives>
-            </Metal>
-            <Metal ID="3" Name="vias">
-                <Primitives>
-                    <Cylinder Priority="11" Radius="2.000000e-01">
-                        <P1 X="5.000000e+00" Y="2.500000e+00" Z="0.000000e+00" />
-                        <P2 X="5.000000e+00" Y="2.500000e+00" Z="1.000000e+00" />
-                    </Cylinder>
-                </Primitives>
-            </Metal>
-            <LumpedElement ID="5" Name="port_resist_1" Direction="2" Caps="1" R="5.000000e+01" LEtype="0.000000e+00">
-                <Primitives>
-                    <Box Priority="12">
-                        <P1 X="1.000000e+00" Y="2.000000e+00" Z="0.000000e+00" />
-                        <P2 X="1.000000e+00" Y="3.000000e+00" Z="1.000000e+00" />
-                    </Box>
-                </Primitives>
-            </LumpedElement>
-            <Excitation ID="6" Name="port_excite_1" Number="0" Enabled="1" Frequency="0.000000e+00" Delay="0.000000e+00" Type="0" Excite="0.000000e+00,0.000000e+00,-1.000000e+00" PropDir="0.000000e+00,0.000000e+00,0.000000e+00">
-                <Primitives>
-                    <Box Priority="12">
-                        <P1 X="1.000000e+00" Y="2.000000e+00" Z="0.000000e+00" />
-                        <P2 X="1.000000e+00" Y="3.000000e+00" Z="1.000000e+00" />
-                    </Box>
-                </Primitives>
-                <Weight X="1.000000e+00" Y="1.000000e+00" Z="1.000000e+00" />
-            </Excitation>
-            <ProbeBox ID="7" Name="port_ut_1" Visible="0" Number="0" Type="0" Weight="-1" NormDir="-1" StartTime="0" StopTime="0">
-                <Primitives>
-                    <Box Priority="0">
-                        <P1 X="1.000000e+00" Y="2.500000e+00" Z="0.000000e+00" />
-                        <P2 X="1.000000e+00" Y="2.500000e+00" Z="1.000000e+00" />
-                    </Box>
-                </Primitives>
-            </ProbeBox>
-            <ProbeBox ID="8" Name="port_it_1" Visible="0" Number="0" Type="1" Weight="1" NormDir="2" StartTime="0" StopTime="0">
-                <Primitives>
-                    <Box Priority="0">
-                        <P1 X="1.000000e+00" Y="2.000000e+00" Z="5.000000e-01" />
-                        <P2 X="1.000000e+00" Y="3.000000e+00" Z="5.000000e-01" />
-                    </Box>
-                </Primitives>
-            </ProbeBox>
-            <RotPoly ID="9" Name="odd"><Primitives /></RotPoly>
-        </Properties>
-    </ContinuousStructure>
+  <FDTD NumberOfTimesteps="1000" endCriteria="0.0001" OverSampling="4"
+        TimeStepMethod="3">
+    <Excitation Type="0" f0="3e+09" fc="2.5e+09" />
+    <BoundaryCond xmin="MUR" xmax="MUR" ymin="PML_8" ymax="PEC" zmin="PMC"
+                  zmax="2" />
+  </FDTD>
+  <ContinuousStructure CoordSystem="0">
+    <RectilinearGrid DeltaUnit="0.001" CoordSystem="0">
+      <XLines Qty="11">0,1,2,3,4,5,6,7,8,9,10</XLines>
+      <YLines Qty="6">0,1,2,3,4,5</YLines>
+      <ZLines Qty="4">0,0.5,1,2</ZLines>
+    </RectilinearGrid>
+    <BackgroundMaterial Epsilon="1" Mue="1" Kappa="0" Sigma="0" />
+    <ParameterSet />
+    <Properties>
+      <Material ID="0" Name="FR4" Isotropy="1">
+        <FillColor R="103" G="198" B="105" a="123" />
+        <Primitives>
+          <LinPoly Priority="1" Elevation="0.000000e+00" NormDir="2"
+                   QtyVertices="4" Length="1.000000e+00">
+            <Vertex X1="0.000000e+00" X2="0.000000e+00" />
+            <Vertex X1="1.000000e+01" X2="0.000000e+00" />
+            <Vertex X1="1.000000e+01" X2="5.000000e+00" />
+            <Vertex X1="0.000000e+00" X2="5.000000e+00" />
+          </LinPoly>
+        </Primitives>
+        <Property Epsilon="4.300000e+00,1.000000e+00,1.000000e+00"
+                  Mue="1.000000e+00,1.000000e+00,1.000000e+00"
+                  Kappa="1.000000e-02,0.000000e+00,0.000000e+00"
+                  Sigma="0.000000e+00,0.000000e+00,0.000000e+00"
+                  Density="0.000000e+00" />
+      </Material>
+      <Metal ID="1" Name="cu">
+        <Primitives>
+          <Polygon Priority="10" Elevation="1.000000e+00" NormDir="2"
+                   QtyVertices="4">
+            <Vertex X1="1.000000e+00" X2="2.000000e+00" />
+            <Vertex X1="9.000000e+00" X2="2.000000e+00" />
+            <Vertex X1="9.000000e+00" X2="3.000000e+00" />
+            <Vertex X1="1.000000e+00" X2="3.000000e+00" />
+          </Polygon>
+        </Primitives>
+      </Metal>
+      <Metal ID="3" Name="vias">
+        <Primitives>
+          <Cylinder Priority="11" Radius="2.000000e-01">
+            <P1 X="5.000000e+00" Y="2.500000e+00" Z="0.000000e+00" />
+            <P2 X="5.000000e+00" Y="2.500000e+00" Z="1.000000e+00" />
+          </Cylinder>
+        </Primitives>
+      </Metal>
+      <LumpedElement ID="5" Name="port_resist_1" Direction="2" Caps="1"
+                     R="5.000000e+01" LEtype="0.000000e+00">
+        <Primitives>
+          <Box Priority="12">
+            <P1 X="1.000000e+00" Y="2.000000e+00" Z="0.000000e+00" />
+            <P2 X="1.000000e+00" Y="3.000000e+00" Z="1.000000e+00" />
+          </Box>
+        </Primitives>
+      </LumpedElement>
+      <Excitation ID="6" Name="port_excite_1" Number="0" Enabled="1"
+                  Frequency="0.000000e+00" Delay="0.000000e+00" Type="0"
+                  Excite="0.000000e+00,0.000000e+00,-1.000000e+00"
+                  PropDir="0.000000e+00,0.000000e+00,0.000000e+00">
+        <Primitives>
+          <Box Priority="12">
+            <P1 X="1.000000e+00" Y="2.000000e+00" Z="0.000000e+00" />
+            <P2 X="1.000000e+00" Y="3.000000e+00" Z="1.000000e+00" />
+          </Box>
+        </Primitives>
+        <Weight X="1.000000e+00" Y="1.000000e+00" Z="1.000000e+00" />
+      </Excitation>
+      <ProbeBox ID="7" Name="port_ut_1" Visible="0" Number="0" Type="0"
+                Weight="-1" NormDir="-1" StartTime="0" StopTime="0">
+        <Primitives>
+          <Box Priority="0">
+            <P1 X="1.000000e+00" Y="2.500000e+00" Z="0.000000e+00" />
+            <P2 X="1.000000e+00" Y="2.500000e+00" Z="1.000000e+00" />
+          </Box>
+        </Primitives>
+      </ProbeBox>
+      <ProbeBox ID="8" Name="port_it_1" Visible="0" Number="0" Type="1"
+                Weight="1" NormDir="2" StartTime="0" StopTime="0">
+        <Primitives>
+          <Box Priority="0">
+            <P1 X="1.000000e+00" Y="2.000000e+00" Z="5.000000e-01" />
+            <P2 X="1.000000e+00" Y="3.000000e+00" Z="5.000000e-01" />
+          </Box>
+        </Primitives>
+      </ProbeBox>
+      <RotPoly ID="9" Name="odd"><Primitives /></RotPoly>
+    </Properties>
+  </ContinuousStructure>
 </openEMS>
 '''
 

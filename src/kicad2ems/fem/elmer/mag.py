@@ -1,26 +1,35 @@
-"""Coils with ferrite, with Elmer: the inductance of wound coils and the coupling between them, beside ferrite plates.
+"""Coils with ferrite, with Elmer: the inductance of wound coils and the
+coupling between them, beside ferrite plates.
 
-    python -m kicad2ems.fem.elmer.mag --coil tx:turns=10,inner=10,outer=22,z=0,t=1 \\
-        --coil rx:turns=14,inner=8,outer=16,z=5,t=0.5 --plate z=-2.5,t=2.5,size=50x50,mur=2000 --out mag
+    python -m kicad2ems.fem.elmer.mag \\
+        --coil tx:turns=10,inner=10,outer=22,z=0,t=1 \\
+        --coil rx:turns=14,inner=8,outer=16,z=5,t=0.5 \\
+        --plate z=-2.5,t=2.5,size=50x50,mur=2000 --out mag
 
-A coil is a flat ring of winding (mm: inner and outer radius, z of its lower face, thickness t; x, y of its centre, 0
-when not given) that carries its turns' current spread evenly over its section: litz or fine wire well below its
-resonance, not one solid turn. A plate is a ferrite slab (size=AxB or r=RADIUS, z, t, mur; x, y). Every coil's axis
-is z. Elmer solves the static field of each coil alone and of each pair together in an air ball; the inductances come
-from the field energy. Writes <out>/mag.json: L (H, the matrix), k, and `air`, the same coils without ferrite from
-the ring formulas (air_core below), which no ferrite run needs but every result can be read against.
+A coil is a flat ring of winding (mm: inner and outer radius, z of its lower
+face, thickness t; x, y of its centre, 0 when not given) that carries its turns'
+current spread evenly over its section: litz or fine wire well below its
+resonance, not one solid turn. A plate is a ferrite slab (size=AxB or r=RADIUS,
+z, t, mur; x, y). Every coil's axis is z. Elmer solves the static field of each
+coil alone and of each pair together in an air ball; the inductances come from
+the field energy. Writes <out>/mag.json: L (H, the matrix), k, and `air`, the
+same coils without ferrite from the ring formulas (air_core below), which no
+ferrite run needs but every result can be read against.
 
     from kicad2ems.fem.elmer.mag import solve, air_core
-    r = solve([dict(name='tx', turns=10, inner=10, outer=22, z=0, t=1)], [dict(z=-2.5, t=2.5, size=(50, 50), mur=2000)], 'mag')
+    r = solve([dict(name='tx', turns=10, inner=10, outer=22, z=0, t=1)],
+              [dict(z=-2.5, t=2.5, size=(50, 50), mur=2000)], 'mag')
     r['L'][0][0], r['air'][0][0]
 
-With --freq F (R-E21), each coil alone again in the time-harmonic field at F: its inductance there and its series
-resistance from the ferrite's loss (a plate's mur_im, mu''), from the eddy currents of metal plates (sigma=: a
-shield, a battery's can, as a surface impedance) and its winding's own (r=, given), and its Q: `ac` in mag.json.
+With --freq F (R-E21), each coil alone again in the time-harmonic field at F:
+its inductance there and its series resistance from the ferrite's loss (a
+plate's mur_im, mu''), from the eddy currents of metal plates (sigma=: a shield,
+a battery's can, as a surface impedance) and its winding's own (r=, given), and
+its Q: `ac` in mag.json.
 
-What is left out: the winding's skin and proximity loss (the turns' current is spread over the section), the
-ferrite's saturation, a metal plate thinner than a few skin depths, and coils drawn as board copper (pcbqs has
-those in air).
+What is left out: the winding's skin and proximity loss (the turns' current is
+spread over the section), the ferrite's saturation, a metal plate thinner than a
+few skin depths, and coils drawn as board copper (pcbqs has those in air).
 """
 import argparse
 import re
@@ -40,8 +49,7 @@ METAL0 = 101         # a metal plate's faces (a hole in the air), j-th
 FERRITE = 'ferrite'  # a lossy ferrite plate's body mask, j-th from 1
 
 
-# -- the rings in air
-# ---------------------------------------------------------------------------------------------
+# -- the rings in air ---------------------------------------------------------
 
 def _maxwell(r1, r2, d):
     """Mutual inductance of two coaxial circles (m), H: Maxwell's
@@ -117,8 +125,7 @@ def air_core(coils, cells=0.25):
     return L
 
 
-# -- the model
-# ----------------------------------------------------------------------------------------------------
+# -- the model ----------------------------------------------------------------
 
 def _check(coils, plates):
     if not coils:
@@ -264,15 +271,13 @@ def mag_model(coils, plates, path, h=None, margin=6.0, log=print, threads=8,
         ball = [t for t in outside if not any(t in f for f in hole_faces)]
         gmsh.model.addPhysicalGroup(2, ball, OUTER)
         fields = []
-        # the size at each part,
+        # the size at each part, growing with distance
         for m, size in zip(maps[1:] + [[(2, t) for t in f] for f in hole_faces],
                            sizes):
-            # growing with distance
-            faces = ([tag for d, tag in m
-                      if d == 2] if m and m[0][0] == 2 else [
-                          tag for _, tag in gmsh.model.getBoundary(
-                              m, combined=False, oriented=False)
-                      ])
+            faces = ([tag for d, tag in m if d == 2]
+                     if m and m[0][0] == 2 else
+                     [tag for _, tag in gmsh.model.getBoundary(
+                         m, combined=False, oriented=False)])
             dist = gmsh.model.mesh.field.add('Distance')
             gmsh.model.mesh.field.setNumbers(dist, 'SurfacesList', faces)
             gmsh.model.mesh.field.setNumber(dist, 'Sampling', 60)
@@ -294,8 +299,8 @@ def mag_model(coils, plates, path, h=None, margin=6.0, log=print, threads=8,
         gmsh.write(str(path))
     finally:
         gmsh.finalize()
-    log(f'mesh: {tets:,} tetrahedra; {min(sizes):.3g} mm at the parts, air to '
-        f'{radius:.4g} mm'
+    log(f'mesh: {tets:,} tetrahedra; {min(sizes):.3g} mm at the parts, '
+        f'air to {radius:.4g} mm'
         + (f'; {len(holes)} metal plate(s) as surface impedances'
            if holes else ''))
     return dict(bodies=bodies, metals=metals, tets=tets, radius=radius,
@@ -326,51 +331,54 @@ def sif(m, coils, plates, amps, freq=None):
         coil = kind == 'coil'
         lossy = bool(freq) and kind == 'plate' and bool(plates[i].get('mur_im'))
         bodies += (
-            f"Body {k + 1}\n  Name = "
-            f"\"{kind}{'' if kind == 'air' else i + 1}\"\n  Target Bodies(1) = "
-            f"{body}\n  Equation = {2 if coil else 1}\n  Material = {k + 1}\n" +
+            f"Body {k + 1}\n"
+            f"  Name = \"{kind}{'' if kind == 'air' else i + 1}\"\n"
+            f"  Target Bodies(1) = {body}\n"
+            f"  Equation = {2 if coil else 1}\n  Material = {k + 1}\n" +
             (f"  {FERRITE}{i + 1} = Logical True\n" if lossy else '') + "End\n")
         if lossy:  # its |B|^2 integral (m^3 T^2), for its loss (_ac)
             n_save += 1
             saves += (
-                f'  Variable {n_save} = "Magnetic Flux Density E"\n  Operator '
-                f'{n_save} = "body int square"\n  Mask Name {n_save} = '
-                f'"{FERRITE}{i + 1}"\n')
+                f'  Variable {n_save} = "Magnetic Flux Density E"\n'
+                f'  Operator {n_save} = "body int square"\n'
+                f'  Mask Name {n_save} = "{FERRITE}{i + 1}"\n')
         mur = plates[i]['mur'] if kind == 'plate' else 1.0
-        materials += (f"Material {k + 1}\n  Relative Permeability = "
-                      f"{mur:.12g}\nEnd\n")
+        materials += (f"Material {k + 1}\n"
+                      f"  Relative Permeability = {mur:.12g}\nEnd\n")
         if coil:
             c = coils[i]
             density = (c['turns'] * amps[i] /
                        ((c['outer'] - c['inner']) * c['t'] * 1e-6))
             components += (
-                f"Component {i + 1}\n  Name = \"{c['name']}\"\n  Coil Type = "
-                f"\"test\"\n  Master Bodies(1) = {k + 1}\n  Desired Current "
-                f"Density = Real {density:.9g}\n  Coil Normal(3) = 0 0 "
-                "1\nEnd\n")
+                f"Component {i + 1}\n  Name = \"{c['name']}\"\n"
+                "  Coil Type = \"test\"\n"
+                f"  Master Bodies(1) = {k + 1}\n"
+                f"  Desired Current Density = Real {density:.9g}\n"
+                "  Coil Normal(3) = 0 0 1\nEnd\n")
     harm = bool(freq)
     w = 2 * np.pi * float(freq or 0)
     av = 'AV[AV re:1 AV im:1]' if harm else 'AV'
-    zero = (
-        '  AV re {e} = 0.0\n  AV im {e} = 0.0\n  AV re = 0.0\n  AV im = 0.0\n'
-        if harm else '  AV {e} = 0.0\n  AV = 0.0\n')
+    zero = ('  AV re {e} = 0.0\n  AV im {e} = 0.0\n'
+            '  AV re = 0.0\n  AV im = 0.0\n' if harm else
+            '  AV {e} = 0.0\n  AV = 0.0\n')
     metal_bcs = ''
-    for n_, (b,
-             j) in enumerate((m.get('metals') or {}).items() if harm else ()):
+    for n_, (b, j) in enumerate(
+            (m.get('metals') or {}).items() if harm else ()):
         metal_bcs += (
-            f"Boundary Condition {n_ + 2}\n  Target Boundaries(1) = {b}\n  "
-            f"Layer Electric Conductivity = Real {plates[j]['sigma']:.9g}\n  "
-            "Layer Relative Permeability = Real "
-            f"{plates[j].get('mur', 1.0):g}\nEnd\n"
-        )
+            f"Boundary Condition {n_ + 2}\n  Target Boundaries(1) = {b}\n"
+            "  Layer Electric Conductivity = Real "
+            f"{plates[j]['sigma']:.9g}\n"
+            "  Layer Relative Permeability = Real "
+            f"{plates[j].get('mur', 1.0):g}\nEnd\n")
     solver2 = (
-        '  Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"\n  '
-        f'Variable = "{av}"\n  Angular Frequency = Real {w:.12g}\n'
-        if harm else '  Procedure = "MagnetoDynamics" "WhitneyAVSolver"\n')
-    calc = (f'  Angular Frequency = Real {w:.12g}\n' + (
-        '  Calculate Magnetic Flux Density = Logical True\n  Calculate '
-        'Elemental Fields = Logical True\n'
-        if saves else '') if harm else '')
+        '  Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"\n'
+        f'  Variable = "{av}"\n  Angular Frequency = Real {w:.12g}\n'
+        if harm else
+        '  Procedure = "MagnetoDynamics" "WhitneyAVSolver"\n')
+    calc = (f'  Angular Frequency = Real {w:.12g}\n'
+            + ('  Calculate Magnetic Flux Density = Logical True\n'
+               '  Calculate Elemental Fields = Logical True\n'
+               if saves else '') if harm else '')
     return elmer.header(level=5) + f"""Constants
   Permeability Of Vacuum = {MU0:.12g}
 End

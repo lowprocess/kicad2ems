@@ -42,13 +42,13 @@ VARIANTS = {                                      # label: kicad2ems arguments
     'meshed': MESH,
     'planes pec': ['--mom-planes', 'pec', '--mom-stitching-pads', 'keep'],
     'pads drop': ['--mom-planes', 'mesh', '--mom-stitching-pads', 'drop'],
-    'planes pec + pads drop '
-    '(default)': ['--mom-planes', 'pec', '--mom-stitching-pads', 'drop'],
+    'planes pec + pads drop (default)': ['--mom-planes', 'pec',
+                                         '--mom-stitching-pads', 'drop'],
     'zone': MESH + ['--mom-zone', 'on'],
     'zone + quads': MESH + ['--mom-zone', 'on', '--mom-quads', 'on'],
-    'all: pec, drop, zone, '
-    'quads': ['--mom-planes', 'pec', '--mom-stitching-pads', 'drop', '--mom-zone', 'on',
-                                    '--mom-quads', 'on'],
+    'all: pec, drop, zone, quads': ['--mom-planes', 'pec',
+                                    '--mom-stitching-pads', 'drop',
+                                    '--mom-zone', 'on', '--mom-quads', 'on'],
 }
 
 

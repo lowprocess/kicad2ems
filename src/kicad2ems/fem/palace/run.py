@@ -1,10 +1,11 @@
 """
 Running Palace and reading its S-parameters.
 
-    launcher()                            # how Palace is
-        started here: ('native', path) or ('podman', rootfs), or None
-    run(workdir, 'palace.json')           # runs it there
-        (np: one rank per fast core), returns its log
+    launcher()
+        # how Palace is started here: ('native', path) or ('podman', rootfs),
+        # or None
+    run(workdir, 'palace.json')
+        # runs it there (np: one rank per fast core), returns its log
     f, S = read_s(workdir + '/postpro', nports)
     f, P = read_incident(workdir + '/postpro', 1)
         # the driven port's incident power, each solve
@@ -21,8 +22,8 @@ Palace is found as
                      Spack view in /opt/views/view): run in rootless podman with
                      that as its root, no network, as the user; default
                      ~/opt/palace/rootfs
-  each also as kicad2ems's installer recorded it (kicad2ems-site.toml: palace, palace_rootfs), after the
-  environment's and before PATH's
+  each also as kicad2ems's installer recorded it (kicad2ems-site.toml:
+  palace, palace_rootfs), after the environment's and before PATH's
 """
 import json
 import os

@@ -6,7 +6,7 @@ renders the 3D field views.
 
     python tools/gui/readme_media.py  # runs, then every picture
     python tools/gui/readme_media.py --skip-runs  # only the pictures, from the
-                                                  last runs
+                                                  # last runs
     python tools/gui/readme_media.py --only hairpin filter
         # (cases: hairpin, stub, patch, filter, start)
 
@@ -50,10 +50,9 @@ def run_cases(only):
         t = time.time()
         with open(os.path.join(RUNS, name + '.log'), 'w') as log:
             p = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT)
-        print(
-            "  "
-            f"{'ok' if p.returncode == 0 else f'FAILED ({p.returncode}): see build/readme/{name}.log'} "
-            f"({time.time() - t:.0f} s)", flush=True)
+        status = ('ok' if p.returncode == 0 else
+                  f'FAILED ({p.returncode}): see build/readme/{name}.log')
+        print(f"  {status} ({time.time() - t:.0f} s)", flush=True)
 
 
 def gif_resized(src, dst, width=720, every=1):
@@ -157,9 +156,9 @@ def gui_media(only):
         if pick is not None:
             w.viewer.select(pick['id'])
             w.viewer.plan.plot.autoRange()
-            # the section's page, under the plan it is
+            # the section's page, under the plan it is picked on: solved once
+            # it is in view
             shot(w, None, 'Section', 'Plan', share=0.55)
-            # picked on: solved once it is in view
             t = time.time()
             while w.viewer.section.busy() and time.time() - t < 60:
                 pump(2)

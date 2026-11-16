@@ -3,7 +3,8 @@ Capacitance between nets with Elmer's electrostatic solver: the same model and
 mesh as Palace's tool (palace/cap.py: the finite dielectric, air around it, each
 net's copper a conductor), solved by a second program.
 
-    python -m kicad2ems.fem.elmer.cap board.kicad_pcb --net SW --net VIN --net GND --out cap_sw
+    python -m kicad2ems.fem.elmer.cap board.kicad_pcb \\
+        --net SW --net VIN --net GND --out cap_sw
     r = solve(board, ['SW', 'VIN', 'GND'], 'cap_sw')
         # r['C']: the Maxwell matrix (F), r['names']
 
@@ -34,19 +35,20 @@ def sif(m, order=2, far='open'):
         raise ValueError("far: 'open' or 'ground'")
     mats = [(a, er) for a, er in m['diel']] + [(m['air'], 1.0)]
     bodies = ''.join(
-        f"Body {i + 1}\n  Target Bodies(1) = {a}\n  Equation = 1\n  Material = "
-        f"{i + 1}\nEnd\n"
+        f"Body {i + 1}\n  Target Bodies(1) = {a}\n  Equation = 1\n"
+        f"  Material = {i + 1}\nEnd\n"
         for i, (a, _) in enumerate(mats))
     materials = ''.join(
         f"Material {i + 1}\n  Relative Permittivity = {er:.9g}\nEnd\n"
         for i, (_, er) in enumerate(mats))
     bcs = ''.join(
-        f"Boundary Condition {i + 1}\n  Name = \"{name}\"\n  Target "
-        f"Boundaries(1) = {a}\n  Capacitance Body = {i + 1}\nEnd\n"
+        f"Boundary Condition {i + 1}\n  Name = \"{name}\"\n"
+        f"  Target Boundaries(1) = {a}\n  Capacitance Body = {i + 1}\nEnd\n"
         for i, (name, a) in enumerate(m['terminals']))
     if far == 'ground':
         bcs += (
-            f"Boundary Condition {len(m['terminals']) + 1}\n  Target Boundaries(1) = {m['outer']}\n"
+            f"Boundary Condition {len(m['terminals']) + 1}\n"
+            f"  Target Boundaries(1) = {m['outer']}\n"
             "  Potential = 0.0\nEnd\n")
     return elmer.header() + f"""Constants
   Permittivity Of Vacuum = {EPS0:.10g}

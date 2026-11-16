@@ -122,8 +122,7 @@ def field_panel(ax, xs, window, volts=None, cmap=SEQ, vmin=0.0, vmax=1.0,
     return im
 
 
-# ---- the figures
-# ------------------------------------------------------------------------------------------------
+# ---- the figures ------------------------------------------------------------
 HDMI = dict(w=0.13, s=0.25, h=0.0994, er=4.45, t=0.035, mask=0.01, er_mask=3.8)
 
 
@@ -182,8 +181,9 @@ def cases(out):
     from kicad2ems.core.lines.reference import _cut_section
     h, w, er = 0.2, 0.35, 4.3
     diel = ((0.0, h, er, 0.0),)
-    plane = lambda edge: ((0.0, edge is None, ((-math.inf, math.inf), )
-                           if edge is None else ((-math.inf, edge), )), )
+    plane = lambda edge: ((0.0, edge is None,
+                           ((-math.inf, math.inf), ) if edge is None
+                           else ((-math.inf, edge), )), )
     zf = F.microstrip(w, h, er)[0]
     rows = [
         ('Microstrip over a whole plane',
@@ -209,8 +209,8 @@ def cases(out):
     for ax, (title, xs, ref) in zip(axs.flat, rows):
         z0 = xs.solve().single()[0]
         top = max(c.z1 for c in xs.conductors if math.isfinite(c.x0) or True)
-        zt = ((max(xs.planes) + 0.03) if len([p for p in xs.planes
-                                              if p > 0.05]) else 0.55)
+        zt = ((max(xs.planes) + 0.03)
+              if len([p for p in xs.planes if p > 0.05]) else 0.55)
         field_panel(ax, xs, (-0.75, 0.75, -0.03, zt), None, SEQ, 0, 1)
         ax.set_title(f"{title}\nZ0 {z0:.1f} ohm   ({ref})", fontsize=9)
     fig.suptitle(

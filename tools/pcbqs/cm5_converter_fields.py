@@ -1,7 +1,8 @@
 """Crop CM5 Minima's U702 converter and plot its copper loops and magnetic near
 field.
 
-    OPENBLAS_NUM_THREADS=2 python tools/pcbqs/cm5_converter_fields.py CM5_MINIMA_3_board.json --out cm5-fields
+    OPENBLAS_NUM_THREADS=2 python tools/pcbqs/cm5_converter_fields.py \\
+        CM5_MINIMA_3_board.json --out cm5-fields
     python tools/pcbqs/cm5_converter_fields.py --out cm5-fields --render-only
 
 Independent 1 A RMS harmonic drives: VIN->PGND (hot-loop component), and
@@ -153,8 +154,8 @@ def compute(args, out):
     heights = np.array([1., 3.])
     volume_heights = np.linspace(.5, 5., 19)
     ztop = q.z_of.max()
-    results, J, planes, volume, convergence, direct_errors, timings, residuals = (
-        [], [], [], [], {}, {}, {}, {})
+    (results, J, planes, volume, convergence, direct_errors, timings,
+     residuals) = ([], [], [], [], {}, {}, {}, {})
     ends = q.br+[(q.term_node[p['a']], q.term_node[p['b']]) for p in q.parts]
     from scipy.sparse import coo_matrix
     a, b = np.array(ends).T; indices = np.arange(len(ends))
@@ -652,12 +653,15 @@ amplitudes can be combined linearly for a specified operating waveform.
 - all_layer_currents.png: each source's distribution through all six layers.
 - magnetic_fields.png: RMS magnetic field, 1 and 3 mm above top copper.
 - field_cross_section.png: vertical decay through the sampled field volume.
-- frequency_response.png: field transfer at 100 kHz, 1 MHz and 10 MHz; not an EMI spectrum.
+- frequency_response.png: field transfer at 100 kHz, 1 MHz and 10 MHz; not an
+  EMI spectrum.
 - hot_phase.gif / ripple_phase.gif: instantaneous direction and signed Bz.
-- currents_fields.npz: complex branch/sheet currents and vector H data in SI units.
+- currents_fields.npz: complex branch/sheet currents and vector H data in SI
+  units.
 - branch_currents.csv: capacitor/inductor/source current magnitude and phase.
 - mqs/: standard kicad2ems current, field-plane and field-volume dumps.
-- summary.json: excitation, mesh, convergence, direct-field checks and assumptions.
+- summary.json: excitation, mesh, convergence, direct-field checks and
+  assumptions.
 
 The inductor's 2.2 uH comes from the board, but its magnetic winding/core
 leakage is **not** modelled: field plots show copper/interconnect currents and

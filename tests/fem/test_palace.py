@@ -195,9 +195,9 @@ def test_a_wall_ends_on_the_wall_it_crosses():
     # half a micron past one, 0.1 mm past the other
     assert model.wall_ends(b, *b.walls[0]) == (-7.9995, 8.0)
     assert model.wall_ends(b, *b.walls[1]) == (0.5005, 19.5)
-    # no longer reaching the third wall,
+    # no longer reaching the third wall, which ends on the corner of the
+    # copper it joins
     b.walls[0] = ('x', 0.5005, -8.0, 7.0, 0.0, 0.2)
-    # which ends on the corner of the copper it joins
     b.copper['F.Cu'][1] = box(0.502, 1.5, 20, 7.9)
     assert model.wall_ends(b, *b.walls[2]) == (0.502, 19.5)
 
@@ -438,8 +438,7 @@ def test_config_asks_for_mesh_refinement():
     assert r == dict(MaxIts=2, Tol=5e-3, SaveAdaptIterations=False)
 
 
-def test_the_feature_size_is_every_pieces_nearest_gap_and_the_copper_is_straightened(
-):
+def test_feature_size_is_every_pieces_nearest_gap_copper_straightened():
     """R-B21: a layer of 100 pieces whose narrowest gap is between the last two
     (the first 60 had been sampled), and an arc drawn in 256 segments
     straightened to the tolerance, its area kept."""

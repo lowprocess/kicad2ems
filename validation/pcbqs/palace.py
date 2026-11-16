@@ -5,7 +5,7 @@ kicad2ems-palace does) or a native `palace` (K2E_PALACE).
 
     run(folder, config, np=8)  # Palace's log tail; results in folder/postpro
     port_z(folder, R)          # (f Hz, Z[f, i, j]) from Palace's port voltages
-                               and currents
+                               # and currents
 """
 import csv
 import json

@@ -12,7 +12,8 @@ from kicad2ems.mom25d.via import ViaKernels
 from kicad2ems.mom25d.sing import offplane_pairs
 from kicad2ems.emsdev.numerics.geo import gap_zones
 from kicad2ems.mom25d.geo import mesh_polygons, LinePort
-from kicad2ems.mom25d.sim import Simulation, SeriesLumped, Via, ViaPort, line_char_xs
+from kicad2ems.mom25d.sim import (Simulation, SeriesLumped, Via, ViaPort,
+                                  line_char_xs)
 from kicad2ems.mom25d.afs import aaa
 
 

@@ -13,7 +13,8 @@ has one) or OPENEMS_INSTALL_PATH / CSXCAD_INSTALL_PATH: dll_dirs() adds them to
 the DLL search (os.add_dll_directory), which is what LD_LIBRARY_PATH is on
 Linux.
 
-    venv.activate() -> None, or why the setting could not be used (a note for the check)
+    venv.activate() -> None, or why the setting could not be used (a note for
+                       the check)
     venv.dll_dirs() -> [folders added to Windows' DLL search]
 """
 import glob, os, re, sys

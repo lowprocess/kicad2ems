@@ -87,9 +87,9 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR', ) * 6, end_db=-40,
         z0, z1 = zm(l['z0']), zm(l['z1'])
         mat.AddLinPoly(pts, 'z', float(z0), float(z1 - z0), priority=1)
     holes = list(getattr(m.outline, 'interiors', []))
-    # the outline's cut-outs: air through the
+    # the outline's cut-outs: air through the dielectric (R-E6; it had been
+    # substrate)
     if holes and m.layers:
-        # dielectric (R-E6; it had been substrate)
         air = CSX.AddMaterial('cutout', epsilon=1.0)
         zb, zt = (min(zm(l['z0'])
                       for l in m.layers), max(zm(l['z1']) for l in m.layers))
@@ -248,10 +248,10 @@ def _debye_material(CSX, name, layer, fref, fmin, fmax, dt):
     structure has AddDebyeMaterial (openems/engine.py adds it to a CSXCAD
     without it)."""
     from .dielectric import fit_debye
-    # (its laminate's
     e_inf, poles, kappa = fit_debye(layer['er'], layer['tand'],
+                                    # (its laminate's own: R-E4)
                                     layer.get('fref') or fref, fmin, fmax,
-                                    tau_min=2.5 * dt)  # own: R-E4)
+                                    tau_min=2.5 * dt)
     if not poles:
         return CSX.AddMaterial(name, epsilon=float(e_inf), kappa=float(kappa))
     mat = CSX.AddDebyeMaterial(name, order=len(poles), epsilon=float(e_inf),

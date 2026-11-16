@@ -5,7 +5,10 @@ import pytest
 from kicad2ems.core.importers.kicad import KiCadBoard
 from kicad2ems.core.board import Board
 from kicad2ems.core.lines.tlines import build
-from kicad2ems.core.solvers.lines.fastsolve import solve, qucs_netlist, read_qucs_dataset, part_impedance, find_qucsator
+from kicad2ems.core.solvers.lines.fastsolve import (solve, qucs_netlist,
+                                                    read_qucs_dataset,
+                                                    part_impedance,
+                                                    find_qucsator)
 from kicad2ems.core.parts import Part
 
 FREQ = np.linspace(1e9, 8e9, 15)

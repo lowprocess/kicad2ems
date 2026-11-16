@@ -9,7 +9,8 @@ from kicad2ems.core.importers.kicad import KiCadBoard, board_outline
 HEAD = '''(kicad_pcb (version 20240108) (generator "test")
   (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user))
   (setup (stackup (layer "F.Cu" (type "copper") (thickness 0.035))
-    (layer "dielectric 1" (type "core") (thickness 0.2) (epsilon_r 4.3) (loss_tangent 0.02))
+    (layer "dielectric 1" (type "core") (thickness 0.2) (epsilon_r 4.3)
+      (loss_tangent 0.02))
     (layer "B.Cu" (type "copper") (thickness 0.035))))
   (net 0 "") (net 1 "GND") (net 2 "RF")
 '''
@@ -46,17 +47,25 @@ def test_outline_from_arcs_kicad5_and_footprint_edges():
     # footprint adds a slot
     r = 2.0
     body = (
-        f'  (gr_line (start {r} 0) (end {20 - r} 0) (layer "Edge.Cuts") (width 0.05))\n'
-        f'  (gr_line (start 20 {r}) (end 20 {10 - r}) (layer "Edge.Cuts") (width 0.05))\n'
-        f'  (gr_line (start {20 - r} 10) (end {r} 10) (layer "Edge.Cuts") (width 0.05))\n'
-        f'  (gr_line (start 0 {10 - r}) (end 0 {r}) (layer "Edge.Cuts") (width 0.05))\n'
-        f'  (gr_arc (start {r} {r}) (end 0 {r}) (angle 90) (layer "Edge.Cuts") (width 0.05))\n'
-        f'  (gr_arc (start {20 - r} {r}) (end {20 - r} 0) (angle 90) (layer "Edge.Cuts") (width 0.05))\n'
-        f'  (gr_arc (start {20 - r} {10 - r}) (end 20 {10 - r}) (angle 90) (layer "Edge.Cuts") (width 0.05))\n'
-        f'  (gr_arc (start {r} {10 - r}) (end {r} 10) (angle 90) (layer "Edge.Cuts") (width 0.05))\n'
+        f'  (gr_line (start {r} 0) (end {20 - r} 0)'
+        ' (layer "Edge.Cuts") (width 0.05))\n'
+        f'  (gr_line (start 20 {r}) (end 20 {10 - r})'
+        ' (layer "Edge.Cuts") (width 0.05))\n'
+        f'  (gr_line (start {20 - r} 10) (end {r} 10)'
+        ' (layer "Edge.Cuts") (width 0.05))\n'
+        f'  (gr_line (start 0 {10 - r}) (end 0 {r})'
+        ' (layer "Edge.Cuts") (width 0.05))\n'
+        f'  (gr_arc (start {r} {r}) (end 0 {r}) (angle 90)'
+        ' (layer "Edge.Cuts") (width 0.05))\n'
+        f'  (gr_arc (start {20 - r} {r}) (end {20 - r} 0) (angle 90)'
+        ' (layer "Edge.Cuts") (width 0.05))\n'
+        f'  (gr_arc (start {20 - r} {10 - r}) (end 20 {10 - r}) (angle 90)'
+        ' (layer "Edge.Cuts") (width 0.05))\n'
+        f'  (gr_arc (start {r} {10 - r}) (end {r} 10) (angle 90)'
+        ' (layer "Edge.Cuts") (width 0.05))\n'
         '  (footprint "slot" (layer "F.Cu") (at 10 5 90)\n'
-        '    (fp_rect (start -1 -0.5) (end 1 0.5) (stroke (width 0.05)) (fill none) (layer "Edge.Cuts")))\n'
-    )
+        '    (fp_rect (start -1 -0.5) (end 1 0.5) (stroke (width 0.05))'
+        ' (fill none) (layer "Edge.Cuts")))\n')
     ol = board_outline(board(body))
     assert ol.area == pytest.approx(200 - (4 - math.pi) * r * r, rel=2e-3)
     holed = board_outline(board(body), with_holes=True)

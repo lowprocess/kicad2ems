@@ -3,7 +3,8 @@ Capacitance between nets, by Palace's electrostatic solver on the real stack:
 the dielectric slabs inside the board outline (finite, as built), air around
 them, the copper of each net a conductor.
 
-    python -m kicad2ems.fem.palace.cap board.kicad_pcb --net SW --net VIN --net GND --out cap_sw
+    python -m kicad2ems.fem.palace.cap board.kicad_pcb \\
+        --net SW --net VIN --net GND --out cap_sw
     r = solve(board, ['SW', 'VIN', 'GND'], 'cap_sw')
         # r['C']: the Maxwell matrix (F), r['names']
 
@@ -35,7 +36,8 @@ import time
 import numpy as np
 from shapely.geometry import box, shape
 
-from ..geometry import copper_of, layers as layer_names, load_board, polygons, slab
+from ..geometry import (copper_of, layers as layer_names, load_board, polygons,
+                        slab)
 from .model import _polys, _surface, box_faces, fragment, graded
 
 DIEL0, AIR, OUTER, TERM0 = 1, 99, 101, 201

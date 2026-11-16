@@ -2,13 +2,13 @@
 SaveScalars output.
 
     found()                       # (True, where) or (False, why); require():
-                                  RuntimeError(why)
+                                  # RuntimeError(why)
     header()                      # a .sif's Header and Simulation sections
     elmergrid(msh, folder)        # Elmer's mesh folder from a gmsh .msh
-                                  (version 2)
+                                  # (version 2)
     solve(case_folder, sif_text)  # ElmerSolver's log; raises with the log's
-                                  tail on failure # (threads=1: for a .sif whose
-                                  solvers are not thread safe)
+                                  # tail on failure (threads=1: for a .sif
+                                  # whose solvers are not thread safe)
     scalars(path)                 # {column name: value} of a SaveScalars file
 
 Elmer is found as K2E_ELMER (the folder with ElmerSolver and ElmerGrid), the
@@ -44,8 +44,9 @@ def found():
     missing = [n for n in ('ElmerSolver', 'ElmerGrid') if _tool(n) is None]
     if missing:
         return (False, (
-            f"Elmer not found ({', '.join(missing)}): install Elmer (elmerfem), or set K2E_ELMER to the "
-            "folder with ElmerSolver and ElmerGrid"))
+            f"Elmer not found ({', '.join(missing)}): install Elmer "
+            "(elmerfem), or set K2E_ELMER to the folder with ElmerSolver "
+            "and ElmerGrid"))
     return True, f"Elmer ({Path(_tool('ElmerSolver')).parent})"
 
 
@@ -57,14 +58,16 @@ def require():
 
 
 def header(
-        simulation='  Simulation Type = Steady State\n  Steady State Max '
-                   'Iterations = 1\n',
+        simulation=('  Simulation Type = Steady State\n'
+                    '  Steady State Max Iterations = 1\n'),
         level=4):
     """A .sif's Header and Simulation sections: the mesh in the case's folder
     'mesh', its coordinates in mm."""
     return (
-        'Header\n  Mesh DB "." "mesh"\nEnd\nSimulation\n  Coordinate System = Cartesian 3D\n'
-        f'  Coordinate Scaling = 1.0e-3\n{simulation}  Max Output Level = {level}\nEnd\n'
+        'Header\n  Mesh DB "." "mesh"\nEnd\n'
+        'Simulation\n  Coordinate System = Cartesian 3D\n'
+        f'  Coordinate Scaling = 1.0e-3\n{simulation}'
+        f'  Max Output Level = {level}\nEnd\n'
     )
 
 
@@ -90,8 +93,8 @@ def solve(case, sif_text, timeout=7200, threads=None):
     case = Path(case)
     (case / 'case.sif').write_text(sif_text)
     (case / 'ELMERSOLVER_STARTINFO').write_text('case.sif\n1\n')
-    from .. import children  # its own process group, stopped with the tool; a
-    # timeout: RuntimeError
+    from .. import children
+    # its own process group, stopped with the tool; a timeout: RuntimeError
     p = children.run([_tool('ElmerSolver'), 'case.sif'], cwd=case,
                      timeout=timeout,
                      env=(None if threads is None else

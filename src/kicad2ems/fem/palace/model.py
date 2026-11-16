@@ -199,11 +199,9 @@ def wall_ends(board, axis, c, t0, t1, z0, z1, snap=5e-3):
     mm of one: a wall drawn a hair past either would leave elements that
     small."""
     a = 0 if axis in ('x', 0) else 1
-    ts = [
-        w[1]
-        for w in getattr(board, 'walls', None) or []
-        if (0 if w[0] in ('x', 0) else 1) != a and w[2] - snap < c < w[3] + snap
-    ]
+    ts = [w[1] for w in getattr(board, 'walls', None) or []
+          if (0 if w[0] in ('x', 0) else 1) != a
+          and w[2] - snap < c < w[3] + snap]
     for lay, z in board.cu_z.items():
         if min(abs(z - z0), abs(z - z1)) > 1e-6:
             continue
@@ -215,9 +213,8 @@ def wall_ends(board, axis, c, t0, t1, z0, z1, snap=5e-3):
     if not ts:
         return t0, t1
     ts = np.asarray(ts)
-    near = lambda t: (lambda v: v
-                      if abs(v - t) < snap else t)(float(ts[np.argmin(
-                          np.abs(ts - t))]))
+    near = lambda t: (lambda v: v if abs(v - t) < snap else t)(
+        float(ts[np.argmin(np.abs(ts - t))]))
     return near(t0), near(t1)
 
 
@@ -307,9 +304,9 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
         for i, v in enumerate(board.vias):  # the via barrels (holes)
             x, y, r, za, zc = v[:5]
             if zc > za:
-                # a ground via: a hexagonal hole, whose
+                # a ground via: a hexagonal hole, whose flat walls take wide
+                # triangles
                 if planes and i < len(via_nets) and via_nets[i] in gnd:
-                    # flat walls take wide triangles
                     dt = [(3, _prism(occ, x, y, r, za, zc))]
                     tags.setdefault('plane', []).extend(dt)
                 else:

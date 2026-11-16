@@ -44,7 +44,8 @@ Spack; never by default), and a launcher entry and desktop icon for the GUI (a
 boards that are not in the repository (examples/make_boards.py), next to their
 configs. Run it again to change anything: an existing venv is kept and added to
 (or made anew if you say so)."""
-import argparse, glob, json, os, re, shutil, subprocess, sys, sysconfig, tempfile
+import argparse, glob, json, os, re, shutil, subprocess, sys, sysconfig
+import tempfile
 
 CUPY_WHEELS = ('cupy-rocm-7-0', 'cupy-cuda12x', 'cupy-cuda13x')
 # their compiled cores hold the mesher (CDT): required
@@ -66,8 +67,7 @@ class Abort(Exception):
         self.code = code
 
 
-# ---- talking
-# --------------------------------------------------------------------------------------------
+# ---- talking ----------------------------------------------------------------
 def bold(text):
     print((f"\n\033[1m{text}\033[0m" if sys.stdout.isatty() else f"\n{text}"),
           flush=True)
@@ -121,8 +121,7 @@ def askpath(q, default=''):
     return _input(f"  {q} [{default or 'skip'}] ").strip() or default
 
 
-# ---- the machine
-# ---------------------------------------------------------------------------------------
+# ---- the machine ------------------------------------------------------------
 def venv_bin(venv):
     """A venv's scripts folder: Scripts on Windows, bin elsewhere."""
     return os.path.join(venv, 'Scripts' if WINDOWS else 'bin')
@@ -159,6 +158,9 @@ def py_out(py, code, *args):
     except OSError:
         return ''
     return r.stdout.strip() if r.returncode == 0 else ''
+
+
+PY_VERSION = 'import sys; print(sys.version.split()[0])'  # for py_out
 
 
 def py_ok(py, code):
@@ -248,8 +250,7 @@ def give_to_user(path):
             pass
 
 
-# ---- the PATH on Windows
-# ---------------------------------------------------------------------------------
+# ---- the PATH on Windows ----------------------------------------------------
 def _env_key(scope, write=False):
     import winreg
     if scope == 'system':
@@ -311,8 +312,7 @@ def on_path(folder):
     })
 
 
-# ---- links, shims, launchers
-# ---------------------------------------------------------------------------------
+# ---- links, shims, launchers ------------------------------------------------
 def link_dir(src, dst):
     """dst as a link to the folder src: a symbolic link, or on Windows a
     junction (no privileges needed)."""
@@ -371,7 +371,8 @@ def desktop_entry(gui_cmd, icon):
 Type=Application
 Name=kicad2ems
 GenericName=EM simulation of KiCad boards
-Comment=S-parameters, fields and antennas of KiCad boards: openEMS, mom25d and the line model
+Comment=S-parameters, fields and antennas of KiCad boards: openEMS, mom25d \
+and the line model
 Exec="{gui_cmd}" %f
 Icon={icon}
 Terminal=false
@@ -380,8 +381,7 @@ StartupWMClass=kicad2ems
 """
 
 
-# ---- the target: where it all goes
-# ----------------------------------------------------------------------
+# ---- the target: where it all goes ------------------------------------------
 class Target:
     """The folders of an install target: the venv (None: into the Python
     itself), the PATH folder for the commands, the launcher's, openEMS's build
@@ -464,8 +464,7 @@ def recorded(path):
         return []
 
 
-# ---- update
-# -----------------------------------------------------------------------------------------------
+# ---- update -----------------------------------------------------------------
 def core_dir(vpy, pkg):
     """The installed folder of a part with a compiled core (kicad2ems.<pkg>; ''
     when kicad2ems isn't installed)."""
@@ -655,15 +654,10 @@ class Installer:
                       'import sys; sys.exit(sys.version_info < (3, 10))')):
             raise Abort(
                 f"  kicad2ems needs Python 3.10 or newer; {self.py} is "
-                f"{py_out(self.py, 'import sys; print(sys.version.split()[0])') or '?'}"
-            )
+                f"{py_out(self.py, PY_VERSION) or '?'}")
         self.pyver = py_out(
             self.py, 'import sys; print("%d.%d" % sys.version_info[:2])')
-        note(
-            "Python "
-            f"{py_out(self.py, 'import sys; print(sys.version.split()[0])')} "
-            f"({self.py})"
-        )
+        note(f"Python {py_out(self.py, PY_VERSION)} ({self.py})")
         if (self.t.name == 'python' and py_ok(
                 self.py,
                 'import sys, sysconfig, os; sys.exit(not '
@@ -814,10 +808,10 @@ class Installer:
                         f"openEMS for {self.pyver}.")
                     self.oems = 'none'
                 else:
-                    note(
-                        f"linking the openEMS of {self.ext_py} "
-                        f"({py_out(self.ext_py, 'import openEMS, os; print(os.path.dirname(openEMS.__file__))')})"
-                    )
+                    where = py_out(
+                        self.ext_py, 'import openEMS, os; '
+                        'print(os.path.dirname(openEMS.__file__))')
+                    note(f"linking the openEMS of {self.ext_py} ({where})")
         if self.oems == 'this' and not sys_oems:
             self.oems = 'none'
 
@@ -828,11 +822,10 @@ class Installer:
         out = []
         for pkg in ('CSXCAD', 'openEMS'):
             hits = sorted(
-                glob.glob(
-                    os.path.join(self.oems_dir, 'python',
-                                 f'{pkg}-*-{tag}-*.whl')) + glob.glob(
-                                     os.path.join(self.oems_dir, 'python', '*',
-                                                  f'{pkg}-*-{tag}-*.whl')))
+                glob.glob(os.path.join(self.oems_dir, 'python',
+                                       f'{pkg}-*-{tag}-*.whl'))
+                + glob.glob(os.path.join(self.oems_dir, 'python', '*',
+                                         f'{pkg}-*-{tag}-*.whl')))
             if not hits:
                 return []
             out.append(hits[-1])
@@ -843,21 +836,18 @@ class Installer:
         if t.venv:
             bold(f"Virtual environment: {t.venv}")
             vpy = venv_python(t.venv)
-            if (os.path.isfile(vpy) and ask(
+            if os.path.isfile(vpy) and ask(
                     "it exists: make it anew (otherwise it is kept and added "
-                    "to)?",
-                    'n')):
+                    "to)?", 'n'):
                 shutil.rmtree(t.venv)
             if not os.path.isfile(vpy):
                 os.makedirs(os.path.dirname(os.path.abspath(t.venv)),
                             exist_ok=True)
                 site = ['--system-site-packages'] if self.oems == 'this' else []
                 run([self.py, '-m', 'venv', *site, t.venv], check=True)
-                note(
-                    "made with Python "
-                    f"{py_out(vpy, 'import sys; print(sys.version.split()[0])')}"
-                    +
-                    (", seeing the system packages (openEMS)" if site else ''))
+                note(f"made with Python {py_out(vpy, PY_VERSION)}"
+                     + (", seeing the system packages (openEMS)"
+                        if site else ''))
             self.vpy = vpy
         else:
             self.vpy = self.py
@@ -982,9 +972,8 @@ class Installer:
                 default = {'12': 2, '13': 3}.get(cuda, 0)
         if WINDOWS:
             cards = (powershell(
-                "Get-CimInstance Win32_VideoController | ForEach-Object { "
-                "$_.Name }"
-            ) or '')
+                "Get-CimInstance Win32_VideoController"
+                " | ForEach-Object { $_.Name }") or '')
             amd = next((c.strip()
                         for c in cards.splitlines()
                         if re.search(r'\b(AMD|Radeon)\b', c)), None)
@@ -1064,8 +1053,7 @@ class Installer:
                 "CPU)?",
                 'n')
 
-    # ---- qucsator: the line model's circuit solver, a separate program
-    # --------------------------------------
+    # ---- qucsator: the line model's circuit solver, a separate program ------
     def find_qucsator(self):
         exe = shutil.which('qucsator_rf') or shutil.which('qucsator')
         if exe or not WINDOWS:
@@ -1188,8 +1176,8 @@ class Installer:
             "second opinion that takes minutes)"
         )
         a = self.a
-        self.fem, self.elmer, self.palace, self.build_elmer, self.build_palace = (
-            False, None, None, False, False)
+        (self.fem, self.elmer, self.palace, self.build_elmer,
+         self.build_palace) = (False, None, None, False, False)
         elmer, palace = self.find_elmer(), self.find_palace()
         if elmer:
             note(f"found Elmer: {elmer}")
@@ -1331,8 +1319,8 @@ class Installer:
                 'xz-utils', 'unzip', 'python3'
             ])
             if ask(
-                    "build Palace now (several hours, ~10 GB; it can also be run later: bash tools/build_palace.sh "
-                    f"{prefix})?", 'y'):
+                    "build Palace now (several hours, ~10 GB; it can also be "
+                    f"run later: bash tools/build_palace.sh {prefix})?", 'y'):
                 exe = os.path.join(prefix, 'bin', 'palace')
                 if (run([
                         'bash',
@@ -1352,10 +1340,8 @@ class Installer:
         spec = REPO + (f"[{','.join(self.extras)}]" if self.extras else '')
         how = (" (editable: this checkout's code is what runs)"
                if t.editable else ' (a copy of this checkout)')
-        bold(
-            "Installing "
-            f"kicad2ems{' [' + ','.join(self.extras) + ']' if self.extras else ''}{how}"
-        )
+        extras = f" [{','.join(self.extras)}]" if self.extras else ''
+        bold(f"Installing kicad2ems{extras}{how}")
         if self.oems == 'folder':
             bold(f"openEMS's Python packages from {self.oems_dir}")
             self.pip(*self.openems_wheels(self.pyver))
@@ -1420,8 +1406,7 @@ class Installer:
                         MESH_CORES else "runs on NumPy")
                      + " (see the error above)")
 
-    # ---- openEMS: linked in from another venv, or built from source
-    # ---------------------------------------
+    # ---- openEMS: linked in from another venv, or built from source ---------
     def link_openems(self):
         if self.oems != 'elsewhere':
             return
@@ -1497,15 +1482,16 @@ class Installer:
             # kicad2ems started from it too
             act = (os.path.join(venv_bin(self.t.venv), 'activate')
                    if self.t.venv else None)
-            if (act and 'kicad2ems: openEMS libraries' not in open(
-                    act, encoding='utf-8').read()):
+            if act and ('kicad2ems: openEMS libraries'
+                        not in open(act, encoding='utf-8').read()):
                 with open(act, 'a', encoding='utf-8') as fh:
                     fh.write(
-                        f'\n# kicad2ems: openEMS libraries (install.py)\nexport LD_LIBRARY_PATH="{prefix}/lib'
+                        '\n# kicad2ems: openEMS libraries (install.py)\n'
+                        f'export LD_LIBRARY_PATH="{prefix}/lib'
                         '${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\n')
-            os.environ['LD_LIBRARY_PATH'] = os.pathsep.join(
-                filter(None, (os.path.join(
-                    prefix, 'lib'), os.environ.get('LD_LIBRARY_PATH'))))
+            os.environ['LD_LIBRARY_PATH'] = os.pathsep.join(filter(None, (
+                os.path.join(prefix, 'lib'),
+                os.environ.get('LD_LIBRARY_PATH'))))
             self.oems = 'built'
         else:
             note(
@@ -1541,8 +1527,7 @@ class Installer:
             note(f"{k}: {v} (in {self.sitecfg})")
         self.t.remember(self.sitecfg)
 
-    # ---- commands on the PATH, the launcher entry, a desktop icon
-    # -------------------------------------------
+    # ---- commands on the PATH, the launcher entry, a desktop icon -----------
     def commands(self):
         t = self.t
         if not t.bin:
@@ -1673,8 +1658,7 @@ class Installer:
                 t.remember(p)
                 note(p)
 
-    # ---- the example boards, the check, the end
-    # --------------------------------------------------------------
+    # ---- the example boards, the check, the end -----------------------------
     def make_examples(self):
         # most examples' boards are not in the repository (rf_*, antenna_*,
         # demo_*: .gitignore) but made by their generators (examples/make_*.py,
@@ -1709,10 +1693,11 @@ class Installer:
         t = self.t
         print(f"\nDone ({t.name} install). Use it with:")
         if t.name == 'checkout':
-            rel = (os.path.relpath(t.venv, REPO) if os.path.normcase(
-                t.venv).startswith(os.path.normcase(REPO)) else t.venv)
-            print(f"  {os.path.join(rel, 'Scripts', 'activate')}"
-                  if WINDOWS else f"  source {rel}/bin/activate")
+            rel = (os.path.relpath(t.venv, REPO)
+                   if os.path.normcase(t.venv).startswith(
+                       os.path.normcase(REPO)) else t.venv)
+            print(f"  {os.path.join(rel, 'Scripts', 'activate')}" if WINDOWS
+                  else f"  source {rel}/bin/activate")
             print(
                 "  kicad2ems examples/demo_transition.toml        # or: "
                 "kicad2ems-gui"
@@ -1730,8 +1715,7 @@ class Installer:
             f"{t.name}"
         )
 
-    # ---- update: only the code, in an install that exists
-    # ---------------------------------------------------
+    # ---- update: only the code, in an install that exists -------------------
     def update(self):
         t = self.t
         self.vpy = t.python(self.a.python)
@@ -1793,8 +1777,7 @@ class Installer:
         print("\nUpdated, with the failures above.")
         return 1
 
-    # ---- uninstall
-    # ----------------------------------------------------------------------------------------
+    # ---- uninstall ----------------------------------------------------------
     def uninstall(self):
         t = self.t
         self.need_privileges()

@@ -158,9 +158,8 @@ def test_a_config_opens_as_a_study_and_saves_back(window, tmp_path):
         dict(rail='+1V8')
     ])
     assert many.read_text().count('[[analysis.pdn]]') == 3
-    # a config that says nothing of analyses:
+    # a config that says nothing of analyses: S-parameters, the panels cleared
     plain = tmp_path / 'rf.toml'
-    # S-parameters, the panels cleared
     plain.write_text('board = "b.kicad_pcb"\n')
     assert w.setup.load(str(plain))
     assert (w.study.ticked() == ['rf'] and pdn.values()['rail'] == ''

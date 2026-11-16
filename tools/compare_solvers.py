@@ -7,7 +7,8 @@ against the reference's. Run it before a release; it takes hours with openEMS.
 
     python tools/compare_solvers.py
         # every board, openEMS, gfdtd, mom25d, the line model
-    python tools/compare_solvers.py --only steplpf stubnotch --solvers mom25d lines
+    python tools/compare_solvers.py --only steplpf stubnotch \\
+        --solvers mom25d lines
     python tools/compare_solvers.py --reference-only
         # the references' figures alone (no runs)
     python tools/compare_solvers.py --table-only

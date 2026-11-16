@@ -7,9 +7,9 @@ reduced-order model fitted to a few full solves) over the run's points.
     cfg = config(mdl, ffr, tol=0, excite=[0], farfield=angles, out='postpro_ff')
         # an antenna's far field
     cfg = config(mdl, freq, box='pec')  # the board in a metal can: the air
-                                        box's faces PEC
+                                        # box's faces PEC
     cfg = eigen(mdl, n=4, target=4e9, box='pec')  # its resonances above 4 GHz,
-                                                  each one's Q (R-E19)
+                                                  # each one's Q (R-E19)
 
 The model's lumped parts are Palace lumped ports that are never excited: a
 boundary with the part's R, L or C. In an eigenmode run the ports are their
@@ -62,9 +62,8 @@ def config(mdl, freq, order=2, tol=1e-3, out='postpro', verbose=2,
         raise ValueError(
             "a far field needs the absorbing box (box='absorbing')")
     f = np.asarray(freq, float) / 1e9                       # GHz
-    driven_ports = (set(range(len(mdl.ports)))
-                    if excite is None else {int(k)
-                                            for k in excite})
+    driven_ports = (set(range(len(mdl.ports))) if excite is None
+                    else {int(k) for k in excite})
     ports = _ports(mdl, driven_ports)
     materials = _materials(mdl)
     uniform = (len(f) > 1 and np.allclose(np.diff(f), (f[-1] - f[0]) /

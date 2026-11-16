@@ -12,7 +12,8 @@ from kicad2ems.pcbqs.power_spice import library_entry
 
 LIBRARY = """* a vendor's library, as they come
 .model DSCHOTTKY D(IS=1e-6 N=1.1 RS=0.02 CJO=150p)
-.model QVD VDMOS(VTO=3 KP=20 RDS=1e10 CGDMIN=50p CGDMAX=50p CGS=1n CJO=500p RB=0.02 IS=1e-12)
+.model QVD VDMOS(VTO=3 KP=20 RDS=1e10 CGDMIN=50p CGDMAX=50p CGS=1n CJO=500p \
+RB=0.02 IS=1e-12)
 .SUBCKT QSUB drain gate source Tj
 + Tcase PARAMS: dVth=0
 M1 drain gate source QVD

@@ -14,8 +14,7 @@ import kicad2ems.mom25d.gpu as mom25d_gpu
 pytest.importorskip('kicad2ems.mom25d._core')
 
 
-# ---- NumPy stand-ins with the semantics of the real libraries
-# ----------------------------------
+# ---- NumPy stand-ins with the semantics of the real libraries ---------------
 def fake_cupy(mem=8e9):
     cp = types.ModuleType('cupy')
     pool = types.SimpleNamespace(free_all_blocks=lambda: None)
@@ -88,7 +87,6 @@ def bad_factor(v):
 
 
 # ---- small two-layer model with vias (same as the core/solver agreement test)
-# --------------------
 def make_sim(gpu):
     from shapely.geometry import box, Point
     st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.2e-3, 4.3, 0.02)])
@@ -170,9 +168,8 @@ def test_gpu_refinement_that_stalls_falls_back_to_double_nearby(clean, S_cpu):
         clean.setitem(sys.modules, k, v)
     sim = make_sim('cupy')
     gpu = mom25d_gpu.get_backend('cupy')
-    # a useless preconditioner,
+    # a useless preconditioner, on the GPU and the CPU
     clean.setattr(type(gpu), 'download', bad_factor(1e3))
-    # on the GPU and the CPU
     clean.setattr(type(gpu), 'solve',
                   lambda self, R: np.asarray(R, complex) * 1e-3)
     S = sim.sparams(4e9)
@@ -234,8 +231,7 @@ def test_a_nan_solve_is_redone_on_the_cpu_or_refused(clean, S_cpu):
         sim.sparams(4e9)
 
 
-# ---- the Vulkan backend on the real GPU
-# --------------------------------------------------------------------------
+# ---- the Vulkan backend on the real GPU -------------------------------------
 def _vulkan_ok():
     try:
         from kicad2ems.emsdev import gpu as devices

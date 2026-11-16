@@ -2,7 +2,8 @@
 data/wpthb_bridge.json, with its copper: a case folder of pcbqs.circuit's
 ngspice run).
 
-    python tools/pcbqs/benchmark_circuit_options.py <circuit case folder with circuit.cir> [variant ...] [--out DIR]
+    python tools/pcbqs/benchmark_circuit_options.py \\
+        <circuit case folder with circuit.cir> [variant ...] [--out DIR]
 
 Each variant rewrites only the .options line; measurements (last switching
 cycle: the model's measures and the supply's and the load's power) are compared

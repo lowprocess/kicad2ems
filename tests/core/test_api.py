@@ -7,7 +7,8 @@ import sys
 
 import pytest
 from kicad2ems.core import solvers, sysinfo
-from kicad2ems.core.api import API_VERSION, compatible, solver as solver_api, frontend, analysis as analysis_api
+from kicad2ems.core.api import (API_VERSION, compatible, solver as solver_api,
+                                frontend, analysis as analysis_api)
 
 from test_plugins import _EP, _Fake
 
@@ -162,8 +163,9 @@ def test_example_boards_made_in_a_folder(tmp_path, monkeypatch):
              } == {'demo_lowpass.kicad_pcb', 'rf_gcpw.kicad_pcb'})
     real = ex.generator
     monkeypatch.setattr(
-        ex, 'generator', lambda stem: ('no_such_generator.py', [], [])
-        if stem == 'rf_gcpw' else real(stem))
+        ex, 'generator',
+        lambda stem: (('no_such_generator.py', [], []) if stem == 'rf_gcpw'
+                      else real(stem)))
     failed = ex.make_boards(str(tmp_path), names=['rf_gcpw', 'antenna_patch'],
                             log=None)
     assert (list(failed) == ['rf_gcpw.kicad_pcb']

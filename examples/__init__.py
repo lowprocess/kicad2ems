@@ -251,11 +251,10 @@ def make_boards(folder=HERE, names=None, log=print):
             os.path.join(folder, stem), *after
         ], cwd=folder, capture_output=True, text=True)
         if p.returncode:
-            failed[stem + '.kicad_pcb'] = (((p.stderr
-                                             or p.stdout).strip().splitlines()
-                                            or ['?'])[-1])
+            failed[stem + '.kicad_pcb'] = (
+                ((p.stderr or p.stdout).strip().splitlines() or ['?'])[-1])
         if log:
             log(f"  [{i + 1}/{len(boards)}] {stem}.kicad_pcb"
-                + (f": FAILED ({failed[stem + '.kicad_pcb']})" if p.
-                   returncode else ''))
+                + (f": FAILED ({failed[stem + '.kicad_pcb']})"
+                   if p.returncode else ''))
     return failed

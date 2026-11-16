@@ -358,8 +358,8 @@ def test_auto_runs_on_the_cpu_where_the_gpu_is_too_small(monkeypatch):
             E.fits(op, 1e6, 'a small GPU')
 
     monkeypatch.setattr(
-        E, 'resolve_backend', lambda name='auto': 'vulkan'
-        if name in ('auto', 'vulkan') else 'numpy')
+        E, 'resolve_backend',
+        lambda name='auto': 'vulkan' if name in ('auto', 'vulkan') else 'numpy')
     monkeypatch.setattr(E, 'VulkanBackend', Small)
     monkeypatch.delenv('GFDTD_BACKEND', raising=False)
     be = E.make_backend(op, 'auto')
@@ -409,8 +409,8 @@ def test_openems_other_excitations_and_its_max_time(tmp_path):
         op = build(csx, F.settings())
         r = Engine(op, 'numpy').run(str(tmp_path / f'run{kind}'), 300, 1e-5,
                                     verbose=0, out=lambda *a: None)
-        assert (r['steps'] == 300 and r['reason'] == 'steps'
-                if kind != 2 else r['steps'] <= 300)
+        assert (r['steps'] == 300 and r['reason'] == 'steps' if kind != 2
+                else r['steps'] <= 300)
     lines = []
     r = Engine(op, 'numpy').run(str(tmp_path / 'short'), 10**6, 0, verbose=0,
                                 out=lines.append, max_time=1e-9)

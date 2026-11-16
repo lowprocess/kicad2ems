@@ -61,8 +61,9 @@ def describe(parser):
         if not a.option_strings or a.dest in ('help', 'out'):
             continue
         kind = ('bool' if a.nargs == 0 else
-                'list' if type(a).__name__ == '_AppendAction' else 'float'
-                if a.type is float else 'int' if a.type is int else 'str')
+                'list' if type(a).__name__ == '_AppendAction' else
+                'float' if a.type is float else
+                'int' if a.type is int else 'str')
         out.append(
             dict(
                 key=a.dest, flag=a.option_strings[0], kind=kind,
@@ -273,15 +274,14 @@ class ElmerThermal(_Fem):
         r = self._read(folder) or {}
         if not isinstance(r.get('T_max'), (int, float)):
             return []
-        return ([dict(name='hottest', value=float(r['T_max']), unit='C')] + [
-            dict(name=ref, value=float(t), unit='C')
-            for ref, t in (r.get('parts') or {}).items()
-        ] + ([dict(name='coolest', value=float(r['T_min']), unit='C')]
-             if isinstance(r.get('T_min'), (int, float)) else []) + [
-                 dict(name=f"{ref} to 63 %", value=float(t63), unit='s')
-                 for ref, t63 in (
-                     (r.get('transient') or {}).get('to_63_s') or {}).items()
-             ])
+        return ([dict(name='hottest', value=float(r['T_max']), unit='C')]
+                + [dict(name=ref, value=float(t), unit='C')
+                   for ref, t in (r.get('parts') or {}).items()]
+                + ([dict(name='coolest', value=float(r['T_min']), unit='C')]
+                   if isinstance(r.get('T_min'), (int, float)) else [])
+                + [dict(name=f"{ref} to 63 %", value=float(t63), unit='s')
+                   for ref, t63 in ((r.get('transient') or {})
+                                    .get('to_63_s') or {}).items()])
 
     def report(self, folder):
         r = self._read(folder)
@@ -487,8 +487,10 @@ class PalaceLoop(_FromRun):
             "Palace's copper is PEC: the high-frequency limit of pcbqs's, "
             "whose current leaves the copper's bulk for its surfaces over the "
             "harmonics; compare at the higher ones.",
-            f"The input capacitors ({', '.join(r['straps']) or 'none'}) are metal straps, as pcbqs's copper "
-            "inductance has them; the source a lumped port across the converter's closest input and ground pads."
+            f"The input capacitors ({', '.join(r['straps']) or 'none'}) "
+            "are metal straps, as pcbqs's copper inductance has them; the "
+            "source a lumped port across the converter's closest input and "
+            "ground pads."
         ]
         if r.get('missing_capacitors'):
             notes.append(
@@ -567,13 +569,14 @@ class PalacePDN(_FromRun):
             )
         last = next(iter(r['z'].values()))
         return dict(
-            title=f"Rail impedance (Palace): {r['rail']}", summary=
-            f"{next(iter(r['z']))}: |Z| {last['mag'][-1] * 1e3:.3g} mOhm at "
-            f"{f[-1] / 1e6:g} MHz"
-            + (f" (pcbqs {last['pcbqs_mag'][-1] * 1e3:.3g})"
-               if last.get('pcbqs_mag') else ''), sections=sections,
-            notes=notes, footer=
-            f"Palace, {r.get('tets', 0):,} tetrahedra, {_seconds(r):.0f} s")
+            title=f"Rail impedance (Palace): {r['rail']}",
+            summary=(f"{next(iter(r['z']))}: |Z| "
+                     f"{last['mag'][-1] * 1e3:.3g} mOhm at {f[-1] / 1e6:g} MHz"
+                     + (f" (pcbqs {last['pcbqs_mag'][-1] * 1e3:.3g})"
+                        if last.get('pcbqs_mag') else '')),
+            sections=sections, notes=notes,
+            footer=(f"Palace, {r.get('tets', 0):,} tetrahedra, "
+                    f"{_seconds(r):.0f} s"))
 
 
 class ElmerMag(_Fem):

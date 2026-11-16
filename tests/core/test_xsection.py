@@ -10,7 +10,8 @@ import pytest
 from kicad2ems.core.constants import C0, EPS0
 from kicad2ems.core.lines import xsection as X
 from kicad2ems.core.lines.formulas import microstrip, stripline, cpwg, ellipk
-from kicad2ems.core.lines.coupled import coupled_stripline, coupled_microstrip, mtl_s
+from kicad2ems.core.lines.coupled import (coupled_stripline, coupled_microstrip,
+                                          mtl_s)
 
 
 def _cohn(w, b, er):
@@ -97,8 +98,7 @@ def test_conductors_must_not_touch():
         xs.solve()
 
 
-# ---- the mesh
-# --------------------------------------------------------------------------------------------
+# ---- the mesh ---------------------------------------------------------------
 def _random_section(seed):
     """A cut as a real board has them: strips, thick and not, pieces of ground
     on several levels, sliver gaps, a plane or two, a layer of mask."""
@@ -253,8 +253,7 @@ def test_a_dielectric_of_limited_width():
             and ee == pytest.approx(fine[1], rel=3e-3))
 
 
-# ---- the line model on the field solver (lines.reference.FIELD)
-# --------------------------------------------
+# ---- the line model on the field solver (lines.reference.FIELD) -------------
 class _Copper:
     """Reference copper as RefCopper has it (geom per layer), without tiles."""
     def __init__(self, geom):
@@ -394,7 +393,8 @@ def test_bins_stay_narrow():
     edge moved hundreds of mm: on the CM5 Minima's wide traces, conductors
     reversed and the solve failed (27 sections), and others moved without a
     word."""
-    from kicad2ems.core.lines.reference import BIN_MAX, FIELD_REACH, _distance_bins, _snap_distance
+    from kicad2ems.core.lines.reference import (BIN_MAX, FIELD_REACH,
+                                                _distance_bins, _snap_distance)
     assert np.diff(_distance_bins(X.SIMILAR)).max() <= BIN_MAX
     for x in np.linspace(0.0, FIELD_REACH + 5, 400):
         assert abs(_snap_distance(x, X.SIMILAR) - x) <= BIN_MAX / 2 + 1e-9
@@ -474,8 +474,7 @@ def test_the_potential():
     assert np.allclose(phi[mid], 0, atol=1e-6)  # the odd mode's electric wall
 
 
-# ---- the field, to look at
-# ------------------------------------------------------------------------
+# ---- the field, to look at --------------------------------------------------
 def test_field_between_plates_is_exact():
     """Two dielectrics between plates: phi linear in each, E steps at the
     interface with D continuous, copper and what lies beyond the box NaN."""

@@ -9,7 +9,8 @@ import pytest
 from shapely.geometry import box, mapping
 
 from kicad2ems.pcbqs.thermal import Problem, solve
-from kicad2ems.pcbqs.thermal.problem import FILM, RADIATION, RHO_C_CU, RHO_C_FR4, Held, forced_film
+from kicad2ems.pcbqs.thermal.problem import (FILM, RADIATION, RHO_C_CU,
+                                             RHO_C_FR4, Held, forced_film)
 
 EXAMPLES = (Path(__file__).resolve().parents[2] / 'src' / 'kicad2ems' / 'pcbqs'
             / 'circuit' / 'examples')

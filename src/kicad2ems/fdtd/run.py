@@ -77,10 +77,11 @@ class PortWatch:
     the energy from openEMS's status lines (openems.log). It writes ABORT into
     the run folder (openEMS stops and finishes normally) and records why in
     run_end.json when all of these hold:
-      - the time is past t_min (the excitation pulse) and the largest u^2 + (z i)^2 of any port over the
-        last `window` s is end_db below its peak;
-      - the energy has stalled: over the last quarter of the steps so far (and at least 8 status lines)
-        it fell by less than `stall_db`.
+      - the time is past t_min (the excitation pulse) and the largest
+        u^2 + (z i)^2 of any port over the last `window` s is end_db below its
+        peak;
+      - the energy has stalled: over the last quarter of the steps so far (and
+        at least 8 status lines) it fell by less than `stall_db`.
     The second condition matters: in a high-Q circuit (a filter) the stored
     energy leaks out through the ports slowly, the port signals sit far below
     their peak while it does, and stopping then cuts the ring-down off (the
@@ -90,8 +91,8 @@ class PortWatch:
     timesteps where 20k were enough)."""
     def __init__(self, path, end_db, t_min, window, z=50.0, interval=2.0,
                  stall_db=1.5):
-        self.path, self.end_db, self.t_min, self.window, self.z, self.interval = (
-            path, end_db, t_min, window, z, interval)
+        (self.path, self.end_db, self.t_min, self.window, self.z,
+         self.interval) = (path, end_db, t_min, window, z, interval)
         self.stall_db, self.energy, self._pos = stall_db, [], 0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -243,9 +244,9 @@ def execute(FDTD, path, threads=0, verbose=1, progress=None, watch=None):
         else:
             log = log_path(path)
             open(log, 'w', encoding='utf-8').close()
-            # gfdtd: its output to the log itself (runs in
+            # gfdtd: its output to the log itself (runs in threads share the
+            # process's stdout)
             own = getattr(FDTD, 'writes_log', False)
-            # threads share the process's stdout)
             kw = dict(log=log) if own else {}
             with (contextlib.nullcontext()
                   if own else redirect_output(log)) as terminal:
@@ -290,8 +291,8 @@ class RunResult:
     incident wave), seconds / steps {port: value} per run, extra {port: what the
     run's `analyse` hook returned} (antenna mode: the far-field results)."""
     def __init__(self, S):
-        self.S, self.dump_files, self.dump_norm, self.seconds, self.steps, self.extra = (
-            S, {}, {}, {}, {}, {})
+        (self.S, self.dump_files, self.dump_norm, self.seconds, self.steps,
+         self.extra) = (S, {}, {}, {}, {}, {})
         # {port: dict(reason='ports', t_ns, level_db)} when PortWatch ended it
         self.ended = {}
         # {port: its run's line-probe readings} (R-E1, lineport.py)
@@ -467,7 +468,8 @@ def run_excitations(m, mesh, freq, excite, bc, out_dir, end_db=-40, sigma=None,
             collect(_run_port(**t, **common, progress=progress))
         return res
     import multiprocessing
-    from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+    from concurrent.futures import (ProcessPoolExecutor, ThreadPoolExecutor,
+                                    as_completed)
     from .progress import Monitor, Tracker
     mod = engine_module(engine)
     slots = getattr(mod, 'GPU_SLOTS', None)

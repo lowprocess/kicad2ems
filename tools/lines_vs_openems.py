@@ -5,7 +5,7 @@ difference (dB), by scikit-rf and qucsator (the circuit solver), with the
 formulas throughout, by default, and with --lines-field.
 
     python tools/lines_vs_openems.py [BOARD ...]  # default: every board with an
-                                                  openEMS reference
+                                                  # openEMS reference
 
 `install.py` makes the generated examples' boards (examples/make_boards.py), or
 demo_transition is skipped.

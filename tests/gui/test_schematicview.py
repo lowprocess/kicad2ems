@@ -169,7 +169,8 @@ target=Path(sys.argv[sys.argv.index('--output')+1])
 if 'netlist' in sys.argv:
     target.write_text('<export><components/><nets/></export>')
 else:
-    (target/'sheet.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><circle cx="20" cy="20" r="10"/></svg>')
+    (target/'sheet.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" \
+width="100" height="50"><circle cx="20" cy="20" r="10"/></svg>')
 ''')
     cli.chmod(0o755)
     monkeypatch.setattr(schematicview.shutil, 'which', lambda _: str(cli))

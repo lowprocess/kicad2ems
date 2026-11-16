@@ -39,8 +39,8 @@ def test_a_librarys_kind_then_value(ref, value, kind, v):
     had been skipped); another letter first is not a value."""
     from kicad2ems.core.parts import kind_value
     k, got = kind_value(dict(ref=ref, value=value, props={}))
-    assert (k == kind and (got == pytest.approx(v)
-                           if v is not None else got is None or k is None))
+    assert (k == kind and (got == pytest.approx(v) if v is not None
+                           else got is None or k is None))
 
 
 def test_parts_detected_and_skipped(rlc):

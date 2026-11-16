@@ -2,15 +2,15 @@
 board.json dict, shared by the solvers.
 
     load_board(path, nets)         # board.json's dict: a .kicad_pcb through
-                                   kicad2ems, or a <name>_board.json
+                                   # kicad2ems, or a <name>_board.json
     copper_of(board, nets, layer)  # one shapely geometry, or None
     polygons(geom, tol)            # its polygons, simplified to tol mm, slivers
-                                   and tiny holes dropped
+                                   # and tiny holes dropped
     pads_of(board, ref, nets)      # [(layer, polygon)]: a part's pads on those
-                                   nets (through-hole: every layer)
+                                   # nets (through-hole: every layer)
     part_copper(board, ref, keep)  # the same of the pads keep(pad) passes
     slab(board, layer)             # (bottom, top) z of a copper layer's
-                                   thickness, mm
+                                   # thickness, mm
 """
 import json
 from pathlib import Path

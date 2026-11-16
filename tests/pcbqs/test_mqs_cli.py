@@ -214,11 +214,9 @@ def test_a_discrete_cell_is_selected_and_solved(tmp_path):
     ]))
     assert (res['selection']['low'] == 'D1'
             and 0.5e-9 < res['copper_L_H'][0] < 5e-9)
-    assert any(
-        n.startswith(
-            'A discrete switching cell: the current through Q1 to the switch '
-            'node sw'
-        ) for n in res['notes'])
+    assert any(n.startswith('A discrete switching cell: the current through '
+                            'Q1 to the switch node sw')
+               for n in res['notes'])
     # a discrete buck: its own parts
     model = json.loads((tmp_path / 'nf' / 'circuit-model.json').read_text())
     assert model['board']['parts'] == dict(QH='Q1', V1='J1', RL='J2')

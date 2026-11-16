@@ -6,7 +6,8 @@ small, so --plane-min 50.
 """
 import csv
 import numpy as np
-from _common import JETSON, OUT, need, run, keep, load, style, grid, INK, MUTED, SERIES
+from _common import (JETSON, OUT, need, run, keep, load, style, grid, INK,
+                     MUTED, SERIES)
 
 out = OUT / '02-jetson-1v15'
 run('kicad2ems.pcbqs.pdn', need(JETSON, 'Jetson AGX Thor board (KICAD_DEMOS)'),

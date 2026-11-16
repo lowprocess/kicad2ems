@@ -277,8 +277,8 @@ def test_compiler_choice(monkeypatch):
     monkeypatch.setattr(build.sys, 'platform', 'win32')
     monkeypatch.setattr(build, 'vs_installs', lambda: [])
     monkeypatch.setattr(
-        build.shutil, 'which', lambda n: r'C:\msys64\ucrt64\bin\g++.exe'
-        if n == 'g++' else None)
+        build.shutil, 'which',
+        lambda n: r'C:\msys64\ucrt64\bin\g++.exe' if n == 'g++' else None)
     assert build.compiler() == 'gcc'
     monkeypatch.setattr(build, 'vs_installs', lambda: [r'C:\VS'])
     assert build.compiler() == 'msvc'

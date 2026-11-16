@@ -80,7 +80,8 @@ def fasthenry_inp(h, tp, cell=0.125, nw=31, nh=5):
     zt, zb = c['F.Cu'][0], c['B.Cu'][0]
     return f""".units mm
 .default sigma=5.8e4 nhinc={nh} nwinc=1 rw=2 rh=2
-G1 x1={x0} y1={y0} z1={zb} x2={x1} y2={y0} z2={zb} x3={x1} y3={y1} z3={zb} thick={tp} seg1={s1} seg2={s2}
+G1 x1={x0} y1={y0} z1={zb} x2={x1} y2={y0} z2={zb} x3={x1} y3={y1} z3={zb} \
+thick={tp} seg1={s1} seg2={s2}
 + nhinc={nh} relx=0 rely=0 relz=0
 + npa (10,0,{zb})
 + npb (-11.5,0,{zb})
