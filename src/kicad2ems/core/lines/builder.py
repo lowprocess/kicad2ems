@@ -56,10 +56,6 @@ def _split_at_junctions(tracks, tol=1e-4):
     return out
 
 
-def _key(layer, x, y):
-    return f"{layer}:{x:.4f}:{y:.4f}"
-
-
 def _footprint_pads(fp, nets, model, inside):
     """(node, pad, ref) for the footprint's pads on the line nets, in model coordinates. Pads sharing a
     number, net and layers that touch are one pad (a connector's signal pad drawn as several shapes):
@@ -179,7 +175,7 @@ def _build(model, nets, refcu):
                 node = f"via{vias[hit[0]]['i']}:{layer}"
                 parallel[node] = len(hit)
                 return node, None
-        return _key(layer, *xy), None
+        return f"{layer}:{xy[0]:.4f}:{xy[1]:.4f}", None
 
     # ---- traces (split at T-junctions, shortened by the pads they end in) ----
     clipped = []

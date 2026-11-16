@@ -14,7 +14,8 @@ centreline lengths); where both end there it is a corner.
     tracks = shape_strips(poly, 'F.Cu', 'RF')        # model coordinates; dicts like board.tracks
 """
 import numpy as np
-from shapely.geometry import box, Point
+import shapely
+from shapely.geometry import box
 from shapely.ops import unary_union
 
 TOL = 1e-6
@@ -94,10 +95,8 @@ class _Strip:
         return (a, c) if self.axis == 0 else (c, a)
 
     def polyline(self):
-        pts = []
         first = self.slices[0]
-        start = self.ext[0] if self.ext[0] is not None else self.pt(self.a0, first[2])
-        pts.append(start)
+        pts = [self.ext[0] if self.ext[0] is not None else self.pt(self.a0, first[2])]
         if self.ext[0] is not None and abs(self.ext[0][self.axis] - self.a0) > TOL:    # onto the other strip's
             pts.append(self.pt(self.a0, first[2]))                                     # centreline: then along
         prev_c = first[2]
@@ -132,10 +131,7 @@ def shape_strips(poly, layer, net, aspect=1.0):
     nx, ny = len(xs) - 1, len(ys) - 1
     if nx < 1 or ny < 1:
         return []
-    inside = np.zeros((nx, ny), bool)
-    for i in range(nx):
-        for j in range(ny):
-            inside[i, j] = poly.contains(Point(0.5 * (xs[i] + xs[i + 1]), 0.5 * (ys[j] + ys[j + 1])))
+    inside = shapely.contains_xy(poly, *np.meshgrid(0.5 * (xs[:-1] + xs[1:]), 0.5 * (ys[:-1] + ys[1:]), indexing='ij'))
     lh = _runs(inside, np.diff(xs))                        # horizontal run through each cell
     lv = _runs(inside.T, np.diff(ys)).T
     cls = np.where(lh * aspect >= lv, 0, 1)

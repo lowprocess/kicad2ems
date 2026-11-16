@@ -6,23 +6,8 @@ tee, cross, gap).
 """
 import functools, heapq, math
 import numpy as np
-from ..constants import C0
 from .elements import Element
-
-
-def _shortest(lm, adj, src):
-    """Dijkstra by physical length: (distance, previous (element, node)) per node."""
-    dist, prev, heap = {src: 0.0}, {}, [(0.0, src)]
-    while heap:
-        d0, u = heapq.heappop(heap)
-        if d0 > dist.get(u, math.inf):
-            continue
-        for i, v in adj.get(u, []):
-            nd = d0 + lm.elements[i].length + 1e-9
-            if nd < dist.get(v, math.inf):
-                dist[v], prev[v] = nd, (i, u)
-                heapq.heappush(heap, (nd, v))
-    return dist, prev
+from .xsection import mode
 
 
 def _paths(lm):
@@ -31,7 +16,16 @@ def _paths(lm):
     done = set()
     for p in names:
         src = lm.ports[p]
-        dist, prev = _shortest(lm, adj, src)
+        dist, prev, heap = {src: 0.0}, {}, [(0.0, src)]        # Dijkstra by physical length: each node's distance
+        while heap:                                             # and previous (element, node)
+            d0, u = heapq.heappop(heap)
+            if d0 > dist.get(u, math.inf):
+                continue
+            for i, v in adj.get(u, []):
+                nd = d0 + lm.elements[i].length + 1e-9
+                if nd < dist.get(v, math.inf):
+                    dist[v], prev[v] = nd, (i, u)
+                    heapq.heappush(heap, (nd, v))
         targets = [(q, lm.ports[q]) for q in names if q != p and lm.ports[q] in dist and (q, p) not in done]
         if not targets and not any(p in pair for pair in done):
             far = max((n for n in dist if n != 'gnd'), key=lambda n: dist[n], default=None)
@@ -406,11 +400,7 @@ def _pair_modes(C, Ca, k):
     """(Ze, Zo, eeff_e, eeff_o) of lines k and k + 1 of N, the others held at ground (their mean self terms: a pair
     of slightly unequal widths taken as symmetric)."""
     c11, ca11 = 0.5 * (C[k, k] + C[k + 1, k + 1]), 0.5 * (Ca[k, k] + Ca[k + 1, k + 1])
-    out = []
-    for s in (1, -1):
-        c, ca = c11 + s * C[k, k + 1], ca11 + s * Ca[k, k + 1]
-        out.append((1 / (C0 * math.sqrt(c * ca)), c / ca))
-    (ze, ee), (zo, eo) = out
+    (ze, ee), (zo, eo) = (mode(c11 + s * C[k, k + 1], ca11 + s * Ca[k, k + 1]) for s in (1, -1))
     return ze, zo, ee, eo
 
 

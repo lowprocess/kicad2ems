@@ -124,23 +124,22 @@ class Result:
 
     def single(self, i=0):
         """(Z0, eeff) of conductor i alone, the others held at ground."""
-        c, ca = self.C[i, i], self.Ca[i, i]
-        return 1 / (C0 * math.sqrt(c * ca)), c / ca
+        return mode(self.C[i, i], self.Ca[i, i])
 
     def pair(self):
         """(Ze, Zo, eeff_even, eeff_odd) of a symmetric pair (conductors 0 and 1), as coupled.coupled gives
         them; the differential impedance is 2 Zo, the common-mode Ze / 2."""
-        out = []
-        for s in (1, -1):
-            c = self.C[0, 0] + s * self.C[0, 1]
-            ca = self.Ca[0, 0] + s * self.Ca[0, 1]
-            out.append((1 / (C0 * math.sqrt(c * ca)), c / ca))
-        (ze, ee), (zo, eo) = out
+        (ze, ee), (zo, eo) = (mode(self.C[0, 0] + s * self.C[0, 1], self.Ca[0, 0] + s * self.Ca[0, 1]) for s in (1, -1))
         return ze, zo, ee, eo
 
     def tand_eff(self, i=0):
         """Effective loss tangent of conductor i's line: G / (w C)."""
         return self.G_w[i, i] / self.C[i, i]
+
+
+def mode(c, ca):
+    """(Z0, eeff) of a line's mode from its capacitance per metre c, and ca without the dielectric."""
+    return 1 / (C0 * math.sqrt(c * ca)), c / ca
 
 
 def snap(v, rel=None):
