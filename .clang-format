@@ -1,0 +1,26 @@
+# How the project's C++ is laid out (the cores: src/kicad2ems/*/core, and
+# emsdev/native). Run it on the lines an edit changed, not on whole files:
+#     clang-format -i --lines=N:M FILE
+# gfdtd/core has its own (its functions' braces on a line of their own,
+# pointers by the type); the vendored emsdev/native/CDT is not formatted.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 80
+PointerAlignment: Right
+DerivePointerAlignment: false
+SortIncludes: Never
+AccessModifierOffset: -4
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortBlocksOnASingleLine: Always
+AllowShortCaseLabelsOnASingleLine: true
+BreakTemplateDeclarations: MultiLine
+BreakConstructorInitializers: AfterColon
+PackConstructorInitializers: BinPack
+SpacesBeforeTrailingComments: 2
+AlignTrailingComments: Leave
+AlignEscapedNewlines: Left
+# long // comments are wrapped by hand: clang-format's reflow breaks the
+# comment tables (a term, then its description under a hanging indent)
+ReflowComments: false
