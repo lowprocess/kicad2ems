@@ -223,10 +223,7 @@ def registry():
 
 def aliases():
     """{name or alias: name} of every solver."""
-    out = {}
-    for sv in registry().values():
-        out.update({a: sv.name for a in sv.aliases}, **{sv.name: sv.name})
-    return out
+    return {a: sv.name for sv in registry().values() for a in (*sv.aliases, sv.name)}
 
 
 def missing(name):

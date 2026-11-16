@@ -464,11 +464,8 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
             elif j['kind'] == 'step':
                 L.append(f'MSTEP:{nm} {arms[0]} {arms[1]} Subst="{sub(e0)}" W1="{ws[0] * 1e-3:.6g}" '
                          f'W2="{ws[1] * 1e-3:.6g}" {ms}')
-            elif j['kind'] == 'tee':
-                L.append(f'MTEE:{nm} {arms[0]} {arms[1]} {arms[2]} Subst="{sub(e0)}" ' +
-                         " ".join(f'W{n + 1}="{w * 1e-3:.6g}"' for n, w in enumerate(ws)) + f' {ms}')
-            elif j['kind'] == 'cross':
-                L.append(f'MCROSS:{nm} {" ".join(arms)} Subst="{sub(e0)}" ' +
+            elif j['kind'] in ('tee', 'cross'):
+                L.append(f'{"MTEE" if j["kind"] == "tee" else "MCROSS"}:{nm} {" ".join(arms)} Subst="{sub(e0)}" ' +
                          " ".join(f'W{n + 1}="{w * 1e-3:.6g}"' for n, w in enumerate(ws)) + f' {ms}')
             elif j['kind'] == 'bend':                       # another angle than MCORN's: its capacitance (R-E15)
                 c = discontinuity_c(j, sheet)
