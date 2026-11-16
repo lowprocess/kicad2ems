@@ -80,7 +80,8 @@ def board_text(design, title=''):
     freq = f'{f0 / 1e9:.4g} GHz' if f0 >= 1e9 else f'{f0 / 1e6:.4g} MHz'
     note = f'{design.spec.kind} {design.spec.topology} {freq}'
     L.append(
-        f'  (gr_text "{note}" (at 1 {H + 1.5:.3f} 0) (layer "Cmts.User") (uuid "{_u()}") '
+        f'  (gr_text "{note}" (at 1 {H + 1.5:.3f} 0) (layer "Cmts.User") '
+        f'(uuid "{_u()}") '
         '(effects (font (size 1 1) (thickness 0.15)) (justify left)))')
     L.append(
         f'  (gr_rect (start 0 0) (end {W:.4f} {H:.4f}) (stroke (width 0.1) '

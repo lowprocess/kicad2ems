@@ -3,7 +3,8 @@ A small ABCD circuit simulator for the filters: ideal (TEM) elements for
 checking a synthesis, and microstrip elements on a Substrate (dispersion, loss,
 open ends, gaps, vias) for the expected response of a layout.
 
-    net = [MLine(sub, w, 12.0), MStub(sub, w2, 8.4, 'open'), MLine(sub, w, 12.0)]
+    net = [MLine(sub, w, 12.0), MStub(sub, w2, 8.4, 'open'),
+           MLine(sub, w, 12.0)]
     s11, s21 = sparams(net, f)  # complex arrays over f (Hz), 50 ohm ports
 """
 import math

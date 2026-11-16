@@ -2,8 +2,8 @@
 Low-pass prototype element values (g0 ... g_{n+1}) and order estimation.
 
     g = gvalues('chebyshev', 5, ripple_db=0.1)  # [1, g1, ..., g5, 1]
-    n = estimate_order('butterworth', 40, 2.0)  # 40 dB at twice the normalised
-                                                cut-off
+    n = estimate_order('butterworth', 40, 2.0)
+        # 40 dB at twice the normalised cut-off
 
 The band edge of a Chebyshev prototype is the ripple level (equal-ripple band
 edge); of a Butterworth prototype the -3 dB point. Every filter designed from

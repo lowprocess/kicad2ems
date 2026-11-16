@@ -1,12 +1,17 @@
 """
-dfsynth: distributed-element microstrip filter synthesis -> KiCad layout (+ kicad2ems validation).
+dfsynth: distributed-element microstrip filter synthesis -> KiCad layout
+(+ kicad2ems validation).
 
-    dfsynth --type bandpass --topology coupled --f0 2.4G --bw 200M --order 5 --substrate RO4003C-0.508 \\
-            -o out/bpf --validate mom,lines
-    dfsynth --type lowpass --topology stepped --f0 1.5G --atten 40@3G --substrate FR4-1.6 -o out/lpf
-    dfsynth --type bandstop --topology stub --f0 2.4G --bw 1G -o out/bsf --validate mom --em-tune 2
+    dfsynth --type bandpass --topology coupled --f0 2.4G --bw 200M \\
+            --order 5 --substrate RO4003C-0.508 -o out/bpf \\
+            --validate mom,lines
+    dfsynth --type lowpass --topology stepped --f0 1.5G --atten 40@3G \\
+            --substrate FR4-1.6 -o out/lpf
+    dfsynth --type bandstop --topology stub --f0 2.4G --bw 1G -o out/bsf \\
+            --validate mom --em-tune 2
     dfsynth --list
-    dfsynth --describe --json           # the types, topologies, presets and options, for a front end (the GUI)
+    dfsynth --describe --json
+        # the types, topologies, presets and options, for a front end (the GUI)
 """
 import argparse
 import json
@@ -20,8 +25,10 @@ import numpy as np
 from . import __version__
 from .microstrip import Substrate, PRESETS
 from .prototype import estimate_order, RESPONSES
-from .topologies import FabViolation, violations, Spec, KINDS, build, prepare, VIA_DRILL, VIA_SIZE
-from .calibrate import calibrate, targets, sweep, model_response, band, space_map, REFINE_SECONDS
+from .topologies import (FabViolation, violations, Spec, KINDS, build, prepare,
+                         VIA_DRILL, VIA_SIZE)
+from .calibrate import (calibrate, targets, sweep, model_response, band,
+                        space_map, REFINE_SECONDS)
 from . import kicad, validate as val
 
 
@@ -191,7 +198,8 @@ def order_from_atten(spec, atten):
 def describe(design, log=print):
     sp, sub = design.spec, design.sub
     log(f"\n{sp.kind} / {sp.topology}: "
-        f"{sp.response}{f' {sp.ripple} dB' if sp.response == 'chebyshev' else ''}, "
+        f"{sp.response}"
+        f"{f' {sp.ripple} dB' if sp.response == 'chebyshev' else ''}, "
         f"order {sp.order}, "
         f"{'f0' if sp.kind in ('bandpass', 'bandstop') else 'fc'} {_fmt(sp.f0)}"
         + (f", bandwidth {sp.bw / 1e6:.1f} MHz" if sp.bw else ''))
@@ -274,7 +282,8 @@ def main(argv=None):
     if violations(design) and not a.allow_fab_violations:
         print(
             "\ndfsynth: the design cannot be made as asked "
-            f"(fabrication limits --min-width {sub.min_width}, --min-gap {sub.min_gap} mm):",
+            f"(fabrication limits --min-width {sub.min_width}, "
+            f"--min-gap {sub.min_gap} mm):",
             file=sys.stderr)
         for v in violations(design):
             print(f"  {v}", file=sys.stderr)
@@ -373,8 +382,9 @@ def main(argv=None):
                 rb = 1 + pred[1] / 100 if pred[1] is not None else None
                 if rb is not None and not 0.5 < rb < 2:
                     print(
-                        f"  bandwidth error {pred[1]:+.0f}% is too large to tune from (a distorted pass band?): "
-                        "tuning the centre only")
+                        f"  bandwidth error {pred[1]:+.0f}% is too large to "
+                        "tune from (a distorted pass band?): tuning the "
+                        "centre only")
                     rb = None
                 kf = design.kf / (1 + pred[0] / 100)
                 kb = (design.kb
@@ -421,8 +431,8 @@ def main(argv=None):
             },
             fh,
             indent=2,
-            default=lambda o: float(o)
-            if isinstance(o, np.floating) else str(o))
+            default=lambda o: (float(o) if isinstance(o, np.floating)
+                               else str(o)))
     print(f"wrote {base}_design.json")
     return 0
 

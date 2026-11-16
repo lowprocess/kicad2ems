@@ -46,7 +46,8 @@ def strip_caps(widths, gaps, h, er, per=16):
     a ground plane. Pulse charges on `per` edge-refined segments of each strip,
     matched at their centres to the strip's potential; the Green's function of a
     line charge on the slab's surface is the image series
-        G(x) = sum_n K^n ln((x^2 + (2 (n + 1) h)^2) / (x^2 + (2 n h)^2)) / (2 pi eps0 (1 + er)),
+        G(x) = sum_n K^n ln((x^2 + (2 (n + 1) h)^2) / (x^2 + (2 n h)^2))
+               / (2 pi eps0 (1 + er)),
     K = (1 - er) / (1 + er). Within 1 % of Hammerstad-Jensen and
     Kirschning-Jansen (single and coupled strips)."""
     lo, hi, x = [], [], 0.0

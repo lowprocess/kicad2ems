@@ -27,7 +27,8 @@ from dataclasses import dataclass, field
 
 from .microstrip import C0
 from .prototype import gvalues
-from .circuit import Ideal, MLine, MStub, MCoupled, MGap, MRadial, radial_admittance, RADIAL_RI_LINE
+from .circuit import (Ideal, MLine, MStub, MCoupled, MGap, MRadial,
+                      radial_admittance, RADIAL_RI_LINE)
 from . import mtl
 
 KINDS = {
@@ -900,9 +901,9 @@ def bandpass_hairpin(spec, sub, kf=1.0, kb=1.0):
         ]
 
     notes.append(
-        f"hairpin: {inner:.2f} mm between a resonator's own arms; their self-coupling and the arms' "
-        "couplings past their neighbours are in the multiconductor line model, the bends are not"
-    )
+        f"hairpin: {inner:.2f} mm between a resonator's own arms; their "
+        "self-coupling and the arms' couplings past their neighbours are in "
+        "the multiconductor line model, the bends are not")
     return Design(spec, sub, kf, kb, geo, None, model, rows, g, notes)
 
 
@@ -1101,13 +1102,13 @@ def bandpass_interdigital(spec, sub, kf=1.0, kb=1.0):
     M = [fbw / math.sqrt(g[i + 1] * g[i + 2]) for i in range(n - 1)]
     if max(M) > ms.max():
         raise ValueError(
-            f"interdigital: coupling {max(M):.3f} needs rods closer than {gaps_t[0]:.2f} mm: "
-            "narrow the band or raise --zstub")
+            f"interdigital: coupling {max(M):.3f} needs rods closer than "
+            f"{gaps_t[0]:.2f} mm: narrow the band or raise --zstub")
     gaps = [_interp_desc(m, gaps_t, ms) for m in M]
     qe = [g[0] * g[1] / fbw, g[n] * g[n + 1] / fbw]
     taps = [_interp_desc(q, us, qs) for q in qe]
-    tr = (list(spec.trim)
-          if spec.trim and len(spec.trim) == 2 * n + 1 else [1.0] * (2 * n + 1))
+    tr = (list(spec.trim) if spec.trim and len(spec.trim) == 2 * n + 1
+          else [1.0] * (2 * n + 1))
     gaps = [s * t for s, t in zip(gaps, tr[:n - 1])]
     taps = [min(0.95, u * t) for u, t in zip(taps, tr[n - 1:n + 1])]
     L = _rod_length(sub, wr, fd)
@@ -1199,8 +1200,8 @@ def bandpass_interdigital(spec, sub, kf=1.0, kb=1.0):
         ]
 
     notes.append(
-        f"interdigital: {n * max(1, nv)} ground vias ({VIA_DRILL} mm drill); gaps and taps from the "
-        "multiconductor line model")
+        f"interdigital: {n * max(1, nv)} ground vias ({VIA_DRILL} mm drill); "
+        "gaps and taps from the multiconductor line model")
     return Design(spec, sub, kf, kb, geo, None, model, rows, g, notes)
 
 
@@ -1213,9 +1214,9 @@ def bandstop_stub(spec, sub, kf=1.0, kb=1.0):
     zmin, zmax = _z_limits(sub)
     if max(zs) > zmax:
         notes.append(
-            f"stub impedances up to {max(zs):.0f} ohm exceed the {zmax:.0f} ohm of a minimum-width strip: "
-            "those stubs are clamped to the minimum width, so the stop band comes out wider than asked"
-        )
+            f"stub impedances up to {max(zs):.0f} ohm exceed the {zmax:.0f} "
+            "ohm of a minimum-width strip: those stubs are clamped to the "
+            "minimum width, so the stop band comes out wider than asked")
         zs = [min(z, zmax) for z in zs]
     wst = [sub.width(z) for z in zs]
     wl = [sub.width(z) for z in zl]

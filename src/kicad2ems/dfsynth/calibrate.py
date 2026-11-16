@@ -16,7 +16,8 @@ from threadpoolctl import threadpool_limits
 
 from .circuit import sparams, db, MLine
 from .prototype import gvalues, lowpass_s21_db
-from .topologies import build, highpass_band, prepare, _z_limits, radial_stub_range
+from .topologies import (build, highpass_band, prepare, _z_limits,
+                         radial_stub_range)
 
 
 def band(spec):
