@@ -3,15 +3,22 @@ The KiCad plugin's model (no Qt here: testable without a display): the board as
 kicad2ems sees it, its impedance map, the region and ports the user picks, and
 the run they make.
 
-    plan = Plan(text, path)                      # the board's text from KiCad's API (ipc.Live.board_text)
-    for done, total, nets in plan.map_steps(cache=path): ...   # the impedance map, a net (or pair) at a time,
-                                                 # over worker processes, kept in a cache file: plan.lines
-    s = Session.load(path) or Session()          # region (KiCad mm, y down), ports, band, solvers
-    s.ports.append(plan.port_at(x, y, layer, tol, s))   # a port where the user clicked (model mm, y up)
-    s.use(plan.setup_for_nets(['D_P']))          # or: a run of a net / pair / set of nets (region, ports, parts)
-    values = run_values(s, plan, text, folder)   # the board snapshot and the settings of a kicad2ems run
-    res = results(out, stem)                     # after the run: its S-parameters; comparison(res): against the
-                                                 # line model
+    plan = Plan(text, path)
+        # the board's text from KiCad's API (ipc.Live.board_text)
+    for done, total, nets in plan.map_steps(cache=path): ...
+        # the impedance map, a net (or pair) at a time, over worker
+        # processes, kept in a cache file: plan.lines
+    s = Session.load(path) or Session()
+        # region (KiCad mm, y down), ports, band, solvers
+    s.ports.append(plan.port_at(x, y, layer, tol, s))
+        # a port where the user clicked (model mm, y up)
+    s.use(plan.setup_for_nets(['D_P']))
+        # or: a run of a net / pair / set of nets (region, ports, parts)
+    values = run_values(s, plan, text, folder)
+        # the board snapshot and the settings of a kicad2ems run
+    res = results(out, stem)
+        # after the run: its S-parameters; comparison(res): against the
+        # line model
 
 Coordinates: the plan view and the line model are in model mm (y up); KiCad, the
 region and the port specs in KiCad mm (y down): y_kicad = -y_model.
@@ -59,8 +66,8 @@ class Plan:
                  if n} | {v['net']
                           for v in self.raw.vias
                           if v['net']})
-        self.nc = (NetClasses(classes, nets)
-                   if classes is not None else NetClasses.from_project(
+        self.nc = (NetClasses(classes, nets) if classes is not None
+                   else NetClasses.from_project(
                        os.path.splitext(path)[0] + '.kicad_pro', nets))
         routed = {
             t['net']
@@ -168,8 +175,7 @@ class Plan:
             if t['net'] in sig and LineString(t['pts']).intersects(b)
         })
 
-    # ---- simulating a set of nets
-    # ----------------------------------------------------------------------------
+    # ---- simulating a set of nets -------------------------------------------
     def setup_for_nets(self, nets, margin=NET_MARGIN):
         """The set-up of a run of `nets` (a net, a pair, a set of nets; a pair's
         other leg comes along): the region (KiCad mm) around their copper,
@@ -202,8 +208,9 @@ class Plan:
             if fp['ref'] not in self.m.port_refs
         ]
         kinds = {
-            fp['ref']: kind_value(fp)[0]
-            if not (fp.get('dnp') or fp.get('exclude_from_sim')) else None
+            fp['ref']: (kind_value(fp)[0]
+                        if not (fp.get('dnp') or fp.get('exclude_from_sim'))
+                        else None)
             for fp in fps
         }
         run, notes, parts, added = list(want), [], {}, []
@@ -258,9 +265,9 @@ class Plan:
         for fp in fps:
             if fp['ref'] in parts:
                 continue
-            # one port per net on a footprint (a pass-through
+            # one port per net on a footprint (a pass-through ESD part has two
+            # pads on the line)
             seen = set()
-            # ESD part has two pads on the line)
             for q in fp['pads']:
                 if (q['net'] in run and q['net'] not in board_net
                         and q['layers'] and q['net'] not in seen):
@@ -288,10 +295,11 @@ class Plan:
             legs = [(e, '')]
             if j is not None:  # a pair's legs: the positive one (+ / P) first
                 used.add(j)
-                legs = list(
-                    zip(
-                        sorted([e, ends[j]], key=lambda t: not (bool(t[
-                            0]) and t[0][-1] in '+Pp')), '+-'))
+                legs = list(zip(
+                    sorted([e, ends[j]],
+                           key=lambda t: not (bool(t[0])
+                                              and t[0][-1] in '+Pp')),
+                    '+-'))
             for (net, lay, x, y, pad, what), leg in legs:
                 spec = (f"P{n}{leg}={pad}"
                         if pad else f"P{n}{leg}@{x:.4f},{y:.4f},{lay}")
@@ -403,8 +411,7 @@ class Plan:
             min(r[3], round(-o[1], 4))
         ]
 
-    # ---- ports
-    # ----------------------------------------------------------------------------------------------
+    # ---- ports --------------------------------------------------------------
     def port_at(self, x, y, layer, tol, session, elements=None):
         """A port where the user clicked (model mm): on the pad under the point
         (P<n>=REF.PAD), else on the centre line of the nearest trace section of
@@ -448,10 +455,10 @@ class Plan:
         extra_port_fps(self.raw, [spec])
         return dict(
             name=f"P{n}", spec=spec, net=e.get('net'), layer=layer,
-            x=float(p.x), y=float(p.y), what=
-            (f"{e.get('net')} trace {e.get('w') or 0:.3g} mm, Z0 {e['z0']:.1f} "
-             "ohm"
-             if e.get('z0') else f"{e.get('net')} trace"))
+            x=float(p.x), y=float(p.y),
+            what=(f"{e.get('net')} trace {e.get('w') or 0:.3g} mm, "
+                  f"Z0 {e['z0']:.1f} ohm"
+                  if e.get('z0') else f"{e.get('net')} trace"))
 
     def section_track(self, e):
         """(layer, net, KiCad mm start, end) of a map section, to find its track
@@ -513,8 +520,7 @@ def _renumber_pairs(ports):
     return out
 
 
-# ---- the map's work: groups of nets, here or in worker processes
-# -------------------------------------------------
+# ---- the map's work: groups of nets, here or in worker processes ------------
 def _map_group(m, refcu, chunk, field=False):
     """The line model's sections (drawing elements) of a group, with the pair
     impedance of coupled legs (Zdiff = 2 Zodd)."""
@@ -575,9 +581,9 @@ def _run_groups(m, refcu, groups, jobs, stop, field=False):
             out = f.result()
             done.add(futs[f])
             yield out
-    # no workers here (BrokenProcessPool is a RuntimeError):
+    # no workers here (BrokenProcessPool is a RuntimeError): the rest in this
+    # process
     except (OSError, EOFError, RuntimeError) as e:
-        # the rest in this process
         import warnings
         warnings.warn(
             f"impedance map: worker processes failed ({type(e).__name__}: "
@@ -672,8 +678,7 @@ class MapCache:
         os.replace(tmp, self.path)
 
 
-# ---- the session: what the user set up, kept next to the board
-# -------------------------------------------------
+# ---- the session: what the user set up, kept next to the board --------------
 class Session:
     """region (x0, y0, x1, y1 KiCad mm, or None), ports ([dict(name, spec,
     ...)]), cut_ports, fmin / fmax (GHz), solvers, classes (the net classes the
@@ -851,8 +856,7 @@ def legend(lines):
 
 
 
-# ---- results: the run's S-parameters, each solver against the line model
-# ------------------------------------------
+# ---- results: the run's S-parameters, each solver against the line model ----
 def results(out_dir, stem):
     """The S-parameters of a finished run (<out>/<stem>_run.json and its
     Touchstone files), or None: dict(freq Hz, solved [dict(key, label, names, S,
@@ -895,8 +899,9 @@ def terms(names):
         if not (n.endswith('c') and n[:-1] + 'd' in names)
     ]
     lab = {
-        i: names[i][:-1]
-        if names[i].endswith('d') and names[i][:-1] + 'c' in names else names[i]
+        i: (names[i][:-1]
+            if names[i].endswith('d') and names[i][:-1] + 'c' in names
+            else names[i])
         for i in keep
     }
     dd = {

@@ -10,7 +10,8 @@ Plugin and Content Manager installs the same files from its package
                        environment (kicad2ems, kicad-python, Qt)
   icon-24.png, icon-48.png
 
-    python plugin/kicad2ems_plugin.py install [--kicad-version 10.0] [--dir FOLDER] [--exec]
+    python plugin/kicad2ems_plugin.py install [--kicad-version 10.0]
+        [--dir FOLDER] [--exec]
     python plugin/kicad2ems_plugin.py uninstall
 
 install copies the folder (runtime "python": KiCad builds the environment from

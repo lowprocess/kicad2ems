@@ -7,12 +7,13 @@ its S-parameters against the line model's, or the same set-up opened in
 kicad2ems's GUI.
 
     python plugin/kicad2ems_plugin.py  # what KiCad's toolbar button runs
-                                       (install.py)
+                                       # (install.py)
 """
 import os, re, sys
 
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QProcess, QUrl, QEvent
-from PySide6.QtGui import QColor, QIcon, QDesktopServices, QLinearGradient, QBrush, QPainter
+from PySide6.QtGui import (QColor, QIcon, QDesktopServices, QLinearGradient,
+                           QBrush, QPainter)
 from PySide6.QtWidgets import (
     QApplication, QDialog, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLabel, QPushButton, QCheckBox, QDoubleSpinBox, QComboBox,
@@ -21,7 +22,8 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QHeaderView)
 import pyqtgraph as pg
 
-from kicad2ems.core.api.frontend import registry, overlay as ov, Run, EventTail, stop_runs
+from kicad2ems.core.api.frontend import (registry, overlay as ov, Run,
+                                         EventTail, stop_runs)
 from kicad2ems.gui.api import PlanView, SectionView
 from . import model as md
 from .netclass import partner

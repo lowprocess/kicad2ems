@@ -8,10 +8,10 @@ where tracks cross the region edge), and runs kicad2ems on them (or opens the
 set-up in kicad2ems's GUI).
 
     python plugin/kicad2ems_plugin.py install  # the button in KiCad
-                                               (install.py; or the Plugin and
-                                               Content Manager)
+                                               # (install.py; or the Plugin and
+                                               # Content Manager)
     python plugin/kicad2ems_plugin.py          # the window, with a KiCad
-                                               running
+                                               # running
 
   ipc.py      the link to KiCad (kipy): the board as text, the selection,
               selecting tracks

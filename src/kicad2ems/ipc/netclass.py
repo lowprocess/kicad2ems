@@ -3,10 +3,10 @@ Net classes and the impedance each one asks for (no Qt here).
 
     nc = NetClasses.from_project('board.kicad_pro', nets)
         # the classes of the project file (KiCad 7 and later)
-    nc = NetClasses({net: ['50R_SE'], ...}, nets)           # the classes KiCad
-                          reports through its API
+    nc = NetClasses({net: ['50R_SE'], ...}, nets)
+        # the classes KiCad reports through its API
     nc.of(net)  # 'Default', '100ohm', ...: the net's class (the first of
-                several, KiCad 9+)
+                # several, KiCad 9+)
     nc.target(net)  # (100.0, 'diff') / (50.0, 'se') / None
     nc.disabled(net)  # True for anything #PWR: never mapped
 
@@ -54,8 +54,8 @@ def parse_target(name):
 
 
 def label(t):
-    return ('no impedance target'
-            if not t else f"{t[0]:g} ohm {'diff' if t[1] == 'diff' else 'SE'}")
+    return ('no impedance target' if not t
+            else f"{t[0]:g} ohm {'diff' if t[1] == 'diff' else 'SE'}")
 
 
 class NetClasses:

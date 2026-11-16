@@ -5,16 +5,16 @@ in its environment (KICAD_API_SOCKET, KICAD_API_TOKEN), which kipy reads; run
 from a shell, it finds a running KiCad on its default socket.
 
     live = Live.connect()              # raises LinkError with what to do when
-                                       there is no KiCad to talk to
+                                       # there is no KiCad to talk to
     text = live.board_text()           # the open board as KiCad has it now,
-                                       unsaved edits included
+                                       # unsaved edits included
     live.board_path(), live.project_dir()
     live.selection_box()               # (x0, y0, x1, y1) KiCad mm of the
-                                       selected items, or None
-    live.net_classes()                 # {net: [class names]}, as KiCad resolves
-                                       them
+                                       # selected items, or None
+    live.net_classes()                 # {net: [class names]}, as KiCad
+                                       # resolves them
     live.show_track(layer, net, a, b)  # select the track a map section came
-                                       from (KiCad mm), in KiCad
+                                       # from (KiCad mm), in KiCad
 
 Lengths are nm in the API and mm here (KiCad coordinates, y down).
 """
