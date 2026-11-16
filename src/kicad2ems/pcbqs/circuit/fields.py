@@ -58,23 +58,11 @@ def unit_fields(model, board, x, y, z, log=print):
     V}, {net: its capacitance to everything else, F}). The copper's charge for those voltages comes from its
     coefficients of potential, in the board's dielectric stack."""
     from scipy.linalg import solve
-    from ..mqs import MQS, Result
-    from ..pdn.rail import parts_of
-    from ..contacts import contact_terminal
-    from shapely.ops import unary_union
-    from .copper import pins
-    mesh = (model.get('board') or {}).get('mesh', {})
-    _, terminals, _ = pins(model, board)
-    footprints = {p.ref: p for p in parts_of(board)}
-    terms = {name: contact_terminal(footprints[fp], footprints[fp].on({net}), mesh.get('pad_contact', 'termination'))
-             for name, (fp, net) in terminals.items()}
-    nets = {net for _, net in terminals.values()}
-    extent = unary_union([p for vv in terms.values() for _, p in vv])
+    from ..mqs import Result
+    from .copper import copper_mesh
     stack = bool(board.get('stack', {}).get('layers'))             # the board's dielectrics, when it says them
-    q = MQS(board, nets, terminals=terms, region=extent.buffer(mesh.get('margin_mm', 2)).envelope,
-            dmax=mesh.get('coarse_mm', 3), fine=extent.buffer(0.6).envelope, dmax_fine=mesh.get('fine_mm', 1.6),
-            capacitance=True, dielectric='stack' if stack else 'homogeneous', thickness_sheets=1, matrix_backend='dense',
-            fill_backend=mesh.get('backend', 'auto'), fill_workers=mesh.get('workers', 8), log=log)
+    q, _, terminals = copper_mesh(model, board, log, capacitance=True, dielectric='stack' if stack else 'homogeneous',
+                                  thickness_sheets=1, matrix_backend='dense')
     C, labels, of_terminal = q.capacitance_matrix()
     conductor = {}
     for name, k in of_terminal.items():
@@ -240,24 +228,23 @@ def export(model, summary, copper, out, log=print):
         rms = lambda F: np.sqrt((mag(F) ** 2).mean(axis=0))            # over the period, at each point
         ac = lambda F: rms(F - F.mean(axis=0))                       # without what does not change: the DC current's
         kept = float(2 * np.sum(np.abs(coef[1:]) ** 2))              # H, the rails' E
+        Hac, Hrms, Eac, Erms = ac(Ht), rms(Ht), ac(Et), rms(Et)        # (x, y, plane)
         fields = dict(
             file=str(folder / 'fields.npz'), picture=str(folder / 'fields.png'), heights_mm=[float(h) for h in s['heights_mm']],
             harmonics=count, highest_Hz=count / period,
             port_current_AC_left_out=float(max(0.0, total - kept) / max(total, 1e-30)),
-            H_ac_rms_max_A_per_m=[float(ac(Ht)[:, :, k].max()) for k in range(len(z))],
-            H_rms_max_A_per_m=[float(rms(Ht)[:, :, k].max()) for k in range(len(z))],
-            H_peak_A_per_m=[float(mag(Ht)[:, :, :, k].max()) for k in range(len(z))],
-            E_ac_rms_max_V_per_m=[float(ac(Et)[:, :, k].max()) for k in range(len(z))],
-            E_rms_max_V_per_m=[float(rms(Et)[:, :, k].max()) for k in range(len(z))],
-            E_peak_V_per_m=[float(mag(Et)[:, :, :, k].max()) for k in range(len(z))],
+            H_ac_rms_max_A_per_m=Hac.max(axis=(0, 1)).tolist(), H_rms_max_A_per_m=Hrms.max(axis=(0, 1)).tolist(),
+            H_peak_A_per_m=mag(Ht).max(axis=(0, 1, 2)).tolist(),
+            E_ac_rms_max_V_per_m=Eac.max(axis=(0, 1)).tolist(), E_rms_max_V_per_m=Erms.max(axis=(0, 1)).tolist(),
+            E_peak_V_per_m=mag(Et).max(axis=(0, 1, 2)).tolist(),
             net_voltage_swing_V=swing, net_capacitance_F=capacitance, grid=info, key=fkey + ':' + str(case.get('fingerprint')),
             scope='copper and vias only, no part bodies; quasi-static, Coulomb E, the ground copper at zero volts; '
                   'H band-limited to the harmonics kept')
         np.savez_compressed(
             folder / 'fields.npz', x_mm=x, y_mm=y, heights_mm=np.asarray(s['heights_mm'], float), z_mm=z, time_s=theta * period,
             H_A_per_m=Ht.astype(np.float32), E_V_per_m=Et.astype(np.float32),
-            H_rms_A_per_m=rms(Ht).astype(np.float32), E_rms_V_per_m=rms(Et).astype(np.float32),
-            H_ac_rms_A_per_m=ac(Ht).astype(np.float32), E_ac_rms_V_per_m=ac(Et).astype(np.float32),
+            H_rms_A_per_m=Hrms.astype(np.float32), E_rms_V_per_m=Erms.astype(np.float32),
+            H_ac_rms_A_per_m=Hac.astype(np.float32), E_ac_rms_V_per_m=Eac.astype(np.float32),
             H_harmonics_A_per_m=np.linalg.norm(np.abs(H), axis=3).astype(np.float32) * weights / np.sqrt(2),
             frequencies_Hz=np.arange(count + 1) / period)
         try:                                                        # the frames the Viewer plays over the period
@@ -265,7 +252,7 @@ def export(model, summary, copper, out, log=print):
         except Exception as exc:                                    # noqa: BLE001  (the npz has them)
             case.setdefault('notes', []).append(f"the fields' dumps were not written: {type(exc).__name__}: {exc}")
         try:
-            picture(folder / 'fields.png', board, model, case, x, y, ac(Ht), ac(Et), s['heights_mm'])
+            picture(folder / 'fields.png', board, model, case, x, y, Hac, Eac, s['heights_mm'])
         except Exception as exc:                                    # noqa: BLE001  (a picture is not the result)
             fields['picture'] = None
             case.setdefault('notes', []).append(f"fields.png was not drawn: {type(exc).__name__}: {exc}")
@@ -290,8 +277,9 @@ def write_dumps(exc, q, board, x, y, z, heights, Ht, Et, period):
     """H and E (time, x, y, height, 3) over the period as time-domain field dumps in exc (a viewer's run folder):
     a plane a height, a frame a sample. [the dumps' names]"""
     import shutil
-    from shapely.geometry import box, shape
+    from shapely.geometry import box
     from .._artifacts import Dump, write_info
+    from ..pdn.viewer import dump_layout
     if exc.exists():
         shutil.rmtree(exc)                                          # a rerun's frames: none of the last one's
     exc.mkdir(parents=True)
@@ -302,21 +290,7 @@ def write_dumps(exc, q, board, x, y, z, heights, Ht, Et, period):
             for t in range(F.shape[0]):
                 write_vtr(exc / f"{dm.name}_{t:04d}.vtr", x, y, z[k], F[t, :, :, k, :])
             dumps.append(dm)
-    crop = box(x[0], y[0], x[-1], y[-1])
-    copper = {}
-    for lay, records in board['copper'].items():
-        polys = []
-        for record in records:
-            if record['net'] not in q.nets:
-                continue
-            g = shape(record['polygon']).intersection(crop)
-            polys.extend(p for p in getattr(g, 'geoms', [g]) if p.geom_type == 'Polygon' and not p.is_empty)
-        copper[lay] = polys
-    from types import SimpleNamespace
-    m = SimpleNamespace(outline=crop, cu_z={c['name']: c['z'] for c in board['stack']['copper']}, copper=copper,
-                        ports=[], vias=[(v['x'], v['y'], v['r'], v['z0'], v['z1']) for v in board['vias']
-                                        if v['net'] in q.nets and crop.contains(__import__('shapely').Point(v['x'], v['y']))],
-                        thickness=board['stack'].get('thickness', max(c['z'] for c in board['stack']['copper'])))
+    m = dump_layout(board, q.nets, box(x[0], y[0], x[-1], y[-1]), crop=True)
     write_info(str(exc), dumps, m, dt_ps=period / Ht.shape[0] * 1e12)
     return [d.name for d in dumps]
 

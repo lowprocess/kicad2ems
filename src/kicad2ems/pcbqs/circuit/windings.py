@@ -116,7 +116,7 @@ def ac_winding_loss(t, i, period, table, dcr):
     return float(rms2 @ excess + rest * excess[-1])
 
 
-def losses(model, result, deck, period):
+def losses(model, result, period):
     """{ref: dict(core_loss_W, AC_winding_loss_W, added_loss_W)} for the model's inductors that give AC_R_ohm or
     core_loss; {} when none does."""
     out = {}

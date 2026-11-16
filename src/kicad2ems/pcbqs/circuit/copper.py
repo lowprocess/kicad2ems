@@ -118,9 +118,9 @@ def frequencies(model):
     return sorted(out)
 
 
-def geometry(model, board, log=print):
-    """The solver's model of the board's copper with a port at every pad but one of each net:
-    (MQS, ports [{name, terminal, reference, net}], same {terminal: the terminal it is one mesh node with})."""
+def copper_mesh(model, board, log=print, **options):
+    """The solver (MQS, with `options` of its own) on the copper between the model's pads, meshed over them and a
+    margin as board.mesh says: (MQS, pins' where, pins' terminals)."""
     from shapely.ops import unary_union
     from ..mqs import MQS
     from ..pdn.rail import parts_of
@@ -133,13 +133,22 @@ def geometry(model, board, log=print):
     for name, shapes in terms.items():
         if not shapes:
             raise BoardError(f"board: {name} has no contact area")
-    nets = {net for _, net in terminals.values()}
     extent = unary_union([p for vv in terms.values() for _, p in vv])
-    q = MQS(board, nets, terminals=terms, region=extent.buffer(mesh.get('margin_mm', 2)).envelope,
-            dmax=mesh.get('coarse_mm', 3), fine=extent.buffer(0.6).envelope, dmax_fine=mesh.get('fine_mm', 1.6),
-            conductor_loss='slab', conductor_faces=2, thickness_sheets=int(mesh.get('thickness_sheets', 1)),
-            matrix_backend=mesh.get('matrix_backend', 'hierarchical'), fill_backend=mesh.get('backend', 'auto'),
-            fill_workers=mesh.get('workers', 8), log=log)
+    q = MQS(board, {net for _, net in terminals.values()}, terminals=terms,
+            region=extent.buffer(mesh.get('margin_mm', 2)).envelope, dmax=mesh.get('coarse_mm', 3),
+            fine=extent.buffer(0.6).envelope, dmax_fine=mesh.get('fine_mm', 1.6),
+            fill_backend=mesh.get('backend', 'auto'), fill_workers=mesh.get('workers', 8), log=log, **options)
+    return q, where, terminals
+
+
+def geometry(model, board, log=print):
+    """The solver's model of the board's copper with a port at every pad but one of each net:
+    (MQS, ports [{name, terminal, reference, net}], same {terminal: the terminal it is one mesh node with})."""
+    mesh = (model.get('board') or {}).get('mesh', {})
+    q, where, terminals = copper_mesh(model, board, log, conductor_loss='slab', conductor_faces=2,
+                                      thickness_sheets=int(mesh.get('thickness_sheets', 1)),
+                                      matrix_backend=mesh.get('matrix_backend', 'hierarchical'))
+    nets = {net for _, net in terminals.values()}
     order = [t for part in model['parts'] for k in (0, 1) if (t := where.get((part['ref'], k)))]     # the model's order
     chosen = (model.get('board') or {}).get('reference', {})
     reference = {}
