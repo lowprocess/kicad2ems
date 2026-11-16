@@ -5,9 +5,9 @@ and a converter's input current for the near-field tool (pcbqs.mqs --spectrum
 FILE).
 
     rows = currents(model, result, period)  # engine.run_case calls it; a case's
-                                            'supply'
+                                            # 'supply'
     write(folder, rows)                     # <case>/supply-<footprint>.csv,
-                                            their names into the rows
+                                            # their names into the rows
 
 A supply node is one a DC voltage source is on (its + side; the other on
 ground). Every other part with a pin on it draws a current from it, but the
@@ -65,10 +65,11 @@ def currents(model, result, period, harmonics=HARMONICS):
         p for p in model['parts']
         if p.get('enabled', True) and p['nodes'][0] != p['nodes'][1]
     ]
-    where = lambda part, node: footprint_of(model, part['ref'], part['nodes'].
-                                            index(node)) or part['ref']
-    held = lambda node: any(p['type'] == 'capacitor' and node in p['nodes'] and
-                            set(p['nodes']) & set(GROUND) for p in live)
+    where = lambda part, node: (footprint_of(model, part['ref'],
+                                             part['nodes'].index(node))
+                                or part['ref'])
+    held = lambda node: any(p['type'] == 'capacitor' and node in p['nodes']
+                            and set(p['nodes']) & set(GROUND) for p in live)
     rows = []
     for src in live:
         if (src['type'] != 'source' or 'dc_V' not in src

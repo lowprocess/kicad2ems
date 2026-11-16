@@ -16,7 +16,7 @@ the edge from line i to i+1 at y_j, z_k; H_x[i, j, k] sits at x_i, y_j+1/2,
 z_k+1/2. Indices past the last edge hold zero coefficients.
 
     op = build(csx, fdtd)  # fdtd: dict(bc=[6], f0, fc, nr_ts, end_crit,
-                           oversampling)
+                           # oversampling)
 
 Materials are sampled at cell centres (highest priority wins) and averaged over
 the four quarter cells around each edge. Metals take the edges whose midpoint is
@@ -790,9 +790,8 @@ def _core(csx, fdtd):
         Epsilon=1.0, Kappa=0.0))
     eps = np.full(ncell, float(bg.get('Epsilon', 1.0)))
     kap = np.full(ncell, float(bg.get('Kappa', 0.0)))
-    # (R-B18: openEMS's Mue and Sigma, the
+    # (R-B18: openEMS's Mue and Sigma, the magnetic loss, had been dropped)
     mue = np.full(ncell, float(bg.get('Mue', 1.0)))
-    # magnetic loss, had been dropped)
     sig = np.full(ncell, float(bg.get('Sigma', 0.0)))
     prio = np.full(ncell, -np.inf)
     # the Debye material of each cell (index)

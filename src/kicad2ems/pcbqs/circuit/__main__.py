@@ -104,7 +104,7 @@ def main(argv=None):
         M.validate(model)
         if a.warm < 0:
             ap.error('--warm must be 0 or more')
-        say = lambda s: print(s, flush=True)                        # noqa: E731
+        say = lambda s: print(s, flush=True)  # noqa: E731
         if a.warm:
             from . import warm
             summary = warm.run(model, a.out, a.warm, log=say,

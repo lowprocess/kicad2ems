@@ -3,7 +3,7 @@ Running a model: the starting state, the periods until it repeats, the targets'
 knobs, what is measured.
 
     summary = run(model, out, jobs=1)     # every point of the sweep, each in
-                                          its own folder under out
+                                          # its own folder under out
     row = run_case(model, point, folder)  # one point
 
 One point goes like this (analysis: the model's settings for it, all optional):
@@ -98,9 +98,9 @@ def add_measures(deck, model):
     wound = {r for g in deck.coupled for r in g}
     for ref, kind in deck.kinds.items():
         deck.measures[f"part.{ref}.power_W"] = ('AVG', f"@{ref}.V@*@{ref}.I@")
-        # a coupled winding: its V·I is also the power
+        # a coupled winding: its V·I is also the power it passes on; its own
+        # loss is its resistances'
         own = deck.own_loss(ref) if ref in wound else None
-        # it passes on; its own loss is its resistances'
         if own:
             deck.measures[f"part.{ref}.loss_W"] = ('AVG', own)
         for name, (stat, expr) in PART_STATS[kind].items():
@@ -354,9 +354,9 @@ def count_out_storage(stats, result, model, deck):
         elif ref.startswith('coupling:'):
             # its windings: the parts' powers add up to the
             for r in ref[len('coupling:'):].split('+'):
-                # loss (it had only come off the loss: a run not
+                # loss (it had only come off the loss: a run not quite settled,
+                # 29 mW apart on ngspice 45)
                 if r in stats['parts']:
-                    # quite settled, 29 mW apart on ngspice 45)
                     stats['parts'][r]['power_W'] -= w / 2
     total = sum(kept.values())
     stats['stored_energy_change_W'] = total
@@ -630,9 +630,9 @@ def simulate(model, state, cycles, folder, a, reltol, log, label='',
     # reproducible from circuit.cir
     (folder / 'transient.raw').unlink(missing_ok=True)
     result['_measures'].update(sampled_measures(deck, result, period))
-    # the copper's currents, harmonic by harmonic, from
+    # the copper's currents, harmonic by harmonic, from ngspice's own steps (for
+    # the fields)
     if deck.ports:
-        # ngspice's own steps (for the fields)
         from ..power_waveforms import save_port_spectrum
         save_port_spectrum(
             folder, list(deck.signals), f,
@@ -694,9 +694,8 @@ def fingerprint(model, copper=None):
     # (the board is left out above)
     h.update(
         json.dumps((model.get('board') or {}).get('temperature_C')).encode())
-    # a vendor library's contents (an edited .lib had
+    # a vendor library's contents (an edited .lib had left a point "unchanged")
     for part in model.get('parts', []):
-        # left a point "unchanged")
         lib = (part.get('model') or {}).get('library')
         if lib and Path(lib).expanduser().is_file():
             h.update(Path(lib).expanduser().read_bytes())

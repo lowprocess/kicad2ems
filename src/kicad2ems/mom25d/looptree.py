@@ -51,9 +51,9 @@ has the other's part, so M is right to rounding at any frequency
     lt.to_ideal(Z); lt.cols(Z, core); lt.rows(Z, core)
         # Z <- K^T Mmap^T Z Mmap K, in place
     lt.charge_into(Z, Mq, area, core)  # + A_T^T Gc A_T on the tree (after the
-                                       scaling)
+                                       # scaling)
     u = lt.from_ideal(lt.from_tree(x))  # basis currents from loop and tree
-                                        amplitudes
+                                        # amplitudes
 """
 import numpy as np
 from scipy import sparse

@@ -5,7 +5,7 @@ copper, E from the voltages on it.
     python -m kicad2ems.pcbqs.circuit model.json --out result --fields
         # implies --copper
     export(model, summary, copper, out, log)  # engine.run(..., fields=True)
-                                              calls it
+                                              # calls it
 
 For each case, on planes 1 and 5 mm above the top copper (fields.heights_mm),
 over the last period:
@@ -293,9 +293,8 @@ def export(model, summary, copper, out, log=print):
         mag = lambda F: np.linalg.norm(F, axis=-1)
         # over the period, at each point
         rms = lambda F: np.sqrt((mag(F) ** 2).mean(axis=0))
-        # without what does not change: the DC current's
+        # without what does not change: the DC current's H, the rails' E
         ac = lambda F: rms(F - F.mean(axis=0))
-        # H, the rails' E
         kept = float(2 * np.sum(np.abs(coef[1:]) ** 2))
         Hac, Hrms, Eac, Erms = ac(Ht), rms(Ht), ac(Et), rms(Et)  # (x, y, plane)
         fields = dict(

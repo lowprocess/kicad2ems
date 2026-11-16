@@ -9,11 +9,11 @@ load's drawing its current.
         # rail.py: the tree, the source, the parts
     res = solve_rail(rail, volts=3.3, dmax=1.0)
     res['loads']['U21']  # dict(V: what it sees, its supply pads' minus its
-                         ground pads', drop, power_drop, #      ground_rise)
+                         # ground pads', drop, power_drop, ground_rise)
     res['power'].sheets  # {layer: Sheet with V (node volts), J (A per mm of
-                         width per triangle)}
+                         # width per triangle)}
     res['power'].vias  # [dict(x, y, r, I, segments)]; res['series']: each
-                       series part's current and drop
+                       # series part's current and drop
 
 The network (Network) is the copper of a set of nets (a rail tree, or the
 ground); a terminal is a set of pads ([(layer, polygon)]: a through-hole pad on

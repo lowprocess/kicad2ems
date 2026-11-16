@@ -7,7 +7,7 @@ coefficient arrays), the energy as a block reduction, and the sparse kernels on
 flat indices into the (3, Nx, Ny, Nz) arrays.
 
     source('unsigned short')  # the module's source, for uint16 or uint32
-                              (unsigned int) codes
+                              # (unsigned int) codes
 """
 import os
 

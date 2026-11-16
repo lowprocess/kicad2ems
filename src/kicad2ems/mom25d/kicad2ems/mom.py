@@ -169,8 +169,8 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
         log(f"  mom25d: conductor loss sigma {sigma:g} S/m, {t_mm * 1e3:g} um "
             "copper"
             + (f", {rough:g} um RMS rough (Hammerstad)" if rough else "")
-            + (f", {finish.name} on {', '.join(sorted(metal.on))}" if metal.
-               on else ""))
+            + (f", {finish.name} on {', '.join(sorted(metal.on))}"
+               if metal.on else ""))
     kw.update(metal=metal, max_solves=max_solves,
               log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
               progress=progress, on_step=on_step, core=core, keep_at=keep_at)

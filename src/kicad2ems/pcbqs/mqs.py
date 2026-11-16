@@ -11,8 +11,8 @@ pcbqs.biot).
     q.source('hot', 'U1.VIN', 'U1.PGND', part_h=0.5)
         # a current source in the part between its pads
     q.element('C1', 'C1.1', 'C1.2', C=10e-6, ESR=3e-3, ESL=0.4e-9)
-    r = q.solve([1e6, 3e6])  # per frequency: currents, the sources' Z = R + j w
-                             L
+    r = q.solve([1e6, 3e6])  # per frequency: currents, the sources'
+                             # Z = R + j w L
     H = q.h_field(r, 0, pts)  # (n, 3) A/m at points (m) for 1 A in the sources
 
 The copper of the nets on every layer (cropped to `region`, mm) is meshed by

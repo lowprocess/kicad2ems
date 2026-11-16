@@ -24,7 +24,7 @@ ports in one model, so their mutual inductance is in it too), extracted by the
 quasi-static solver (pcbqs.mqs) and fitted over frequency.
 
     cu = prepare(model, out, log)      # extract, or read back
-                                       <out>/copper-model.json
+                                       # <out>/copper-model.json
     deck = build(resolved, state, cu)  # circuit/deck.py
 
 A part with no footprint on the board (a coil on a cable, a bench supply) is at
@@ -201,13 +201,12 @@ def geometry(model, board, log=print):
             (chosen[n] for n in chosen if net_name(model, n, nets) == net),
             None))
         if want:
-            # a footprint, or a part's (its
+            # a footprint, or a part's (its pins' footprints: the one on this
+            # net)
             given = (model.get('board') or {}).get('parts', {}).get(want, want)
-            # pins' footprints: the one on
             fp = next(
                 (
                     f for f in (given if isinstance(given, list) else [given])
-                    # this net)
                     if f and f"{f}.{net}" in mine),
                 None)
             if fp is None:

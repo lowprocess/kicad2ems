@@ -7,7 +7,7 @@ or its XML files, so a model made for openEMS runs here unchanged:
     from kicad2ems.gfdtd import ContinuousStructure, openEMS
         # instead of CSXCAD's / openEMS's
     python -m kicad2ems.gfdtd model.xml  # an openEMS XML file, as `openEMS
-                                         model.xml`
+                                         # model.xml`
 
 What it models (the MVP): rectilinear grids; isotropic dielectrics with
 conductivity (kappa); metals as PEC, conducting sheets with conductor loss
@@ -54,12 +54,6 @@ API_VERSION = (1, 3)
 
 from .csx import ContinuousStructure  # noqa: E402,F401
 from .fdtd import openEMS, LumpedPort  # noqa: E402,F401
-from .ports import (
-    MSLPort,
-    StripLinePort,
-    CPWPort,
-    CoaxialPort,
-    WaveguidePort,
-    RectWGPort,
-    CircWGPort,  # noqa: E402,F401
-    CurvePort)
+from .ports import (MSLPort, StripLinePort, CPWPort,  # noqa: E402,F401
+                    CoaxialPort, WaveguidePort, RectWGPort, CircWGPort,
+                    CurvePort)

@@ -7,7 +7,7 @@ MoM solver is the first user of this seam).
     res = solve_board('out/filter_board.json', np.linspace(1e9, 6e9, 401),
                       dmax=0.3e-3)
     res.S, res.names, res.zref  # (nf, n, n) at the ports' reference impedances,
-                                port names, ohms
+                                # port names, ohms
     res.ports, res.unknowns, res.solves, res.seconds, res.notes
 
 The board is kicad2ems's file format (see board.BoardModel): the path of a

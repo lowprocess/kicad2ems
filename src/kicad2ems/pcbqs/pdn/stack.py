@@ -9,9 +9,9 @@ output before its sense resistor) as lumped nodes.
     rail = Rail(board, '+3V3', loads={'U21': 2.0})
     pdn = RailPDN(rail, vrm=dict(R=1e-3, L=30e-9))
     Z = pdn.z(f)  # {load: |Z(f)| complex}, with every decap and the regulator
-                  attached
+                  # attached
     pdn.parts     # per part: its connection (cavity vias or lumped node), mount
-                  L, element
+                  # L, element
 
 Joined:
   * two cavities sharing the rail plane (a plane between two grounds) at every

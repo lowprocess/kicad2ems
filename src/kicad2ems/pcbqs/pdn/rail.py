@@ -4,11 +4,11 @@ on it and what each one is.
 
     r = Rail(board, '+3V3', ground=('GND',), loads={'U21': 2.0, 'U14': 1.0})
     r.nets    # {'+3V3', '/DCDC/3V3_OUT'}: joined through the series parts in
-              r.series
+              # r.series
     r.series  # [Series(part, a, b, kind, R, z100)]: sense / 0 ohm resistors,
-              beads, jumpers
+              # beads, jumpers
     r.source  # the terminal the rail is fed from (a power inductor's output
-              pad, or the part named source=)
+              # pad, or the part named source=)
     r.ground_source, r.decaps, r.loads
 
 The tree is grown from `net` through two-pad parts between two non-ground nets

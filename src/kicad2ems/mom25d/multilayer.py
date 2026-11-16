@@ -389,7 +389,7 @@ class GreenTableML:
 
 
 # ---- Mesh: non-uniform tensor grid (fine across narrow strips, coarse along
-# them) ----
+# them) -----------------------------------------------------------------------
 def _axis_lines(edge_vals, port_vals, dmax, ncross, narrow, grade=0.0):
     e = np.unique(np.round(np.asarray(edge_vals, float), 12))
     pv = np.unique(np.round(np.asarray(port_vals, float), 12))

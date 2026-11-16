@@ -1110,8 +1110,8 @@ class Simulation:
         order = np.argsort(key, kind='stable')
         groups = {}
         for g in np.unique(key):
-            sel = (order[np.searchsorted(key[order], g, 'left'):np.
-                         searchsorted(key[order], g, 'right')])
+            sel = order[np.searchsorted(key[order], g, 'left'):
+                        np.searchsorted(key[order], g, 'right')]
             groups[(spans[g // len(spans)],
                     spans[g % len(spans)])] = (m[sel], n[sel], d[sel])
         from scipy import sparse
@@ -1130,8 +1130,8 @@ class Simulation:
         the current's: its static part cancels the end charges', so it goes as
         jw."""
         w, r = 2 * np.pi * f, self.rwg
-        B, C = (np.zeros((self.Ne, self.Nv),
-                         complex), np.zeros((self.Nv, self.Nv), complex))
+        B, C = (np.zeros((self.Ne, self.Nv), complex),
+                np.zeros((self.Nv, self.Nv), complex))
         if self.frills:
             self._frill_blocks(f, B, C)
         if self.slots:
@@ -1141,9 +1141,9 @@ class Simulation:
         geo = self._via_geometry()
         # fan-distributed end charges (G_q between triangles, same machinery as
         # strips)
-        # (dF: a chain's few fan triangles a column; as a
         if len(self.F) and charges:
-            # dense product it was 1.4 s of 317 vias' 3.4 s)
+            # (dF: a chain's few fan triangles a column; as a dense product it
+            # was 1.4 s of 317 vias' 3.4 s)
             dF = geo['dF']
             # (Nt, Nv) potential of fan charges
             T = np.asarray((dF.T @ QF.T).T)
@@ -1474,15 +1474,14 @@ class Simulation:
                 f"wave-fit residual {resid[i]:.1e} - sample cuts too close to "
                 "a discontinuity (use s1) or too short a feed for this "
                 "frequency")
-        # A, B: the waves of each
         self.last = dict(
             f=f,
             I=I if keep else None,
             gamma=gam,
             resid=resid,
+            # A, B: the waves of each excitation column
             A=Ap,
             B=Bp,
-            # excitation column
             scale=scale)
         return S
 

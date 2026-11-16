@@ -614,7 +614,7 @@ class Thermal(_Tool):
 
 
 # ---- a solver: S-parameters at low frequency, from the copper's quasi-static
-# currents (sparams.py) ----
+# currents (sparams.py) -------------------------------------------------------
 from kicad2ems.core.api.solver import (Deviation, Option, Result,  # noqa: E402
                                        Solver, mixed_mode)
 

@@ -15,7 +15,7 @@ solved, between the frequencies it was solved at: a resonance between two
 samples is as sharp as they show it.
 
     t, v = droop(f, Z, step=1.0, rise=1e-9)  # v: the rail's drop, V (positive:
-                                             down)
+                                             # down)
 """
 import numpy as np
 from scipy.special import sici

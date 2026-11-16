@@ -478,9 +478,9 @@ def run(a):
         print(f'mqs: wrote mesh preview to {out}',flush=True)
         return summary
     ref=selected['converter'];vin=selected['vin']
-    # a discrete cell: through the upper part to the switch node,
+    # a discrete cell: through the upper part to the switch node, through the
+    # lower part to ground
     if selected.get('low'):
-        # through the lower part to ground
         sw,low=selected['switch'],selected['low']
         q.source(ref,f'{ref}:{vin}',f'{ref}:{sw}',part_h=a.part_height)
         q.element(low, f'{low}:{sw}', f'{low}:{a.ground}', R=LOW_SIDE_R,

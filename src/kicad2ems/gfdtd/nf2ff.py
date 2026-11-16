@@ -6,7 +6,8 @@ over (theta, phi), written in openEMS's result file and returned as openEMS's
 nf2ff_results.
 
     nf = FDTD.CreateNF2FFBox(frequency=[2.4e9])  # before the run: the faces
-                                                 inside the absorbing boundaries
+                                                 # inside the absorbing
+                                                 # boundaries
     FDTD.Run(path)
     r = nf.CalcNF2FF(path, [2.4e9], theta, phi, center=[0, 0, 0])
     r.Dmax, r.Prad, r.E_norm[0]  # (theta, phi) per frequency

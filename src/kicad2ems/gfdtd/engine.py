@@ -1027,9 +1027,9 @@ class VulkanBackend(_Compressed, NumpyBackend):
             return
         groups = min((m + self.BLOCK - 1) // self.BLOCK, self.max_groups)
         enc = self._encoder()
-        # the pass and cursor directly: half the host
+        # the pass and cursor directly: half the host time of
+        # ComputeKernel.dispatch(vars=...)
         p = enc.begin_compute_pass()
-        # time of ComputeKernel.dispatch(vars=...)
         cur = self.spy.ShaderCursor(p.bind_pipeline(self.k[name]))
         cur['M'] = self.model.addr
         cur['stride'] = groups * self.BLOCK
@@ -1197,12 +1197,11 @@ def gpu_bytes(op):
     n = int(np.prod(op.shape))
     code = 1 if n < 2 ** 8 else 2  # (its codes' type: a guess before compress)
     sh = tuple(op.shape)
-    # psi: E and H, two
+    # psi: E and H, two components, float32
     pml = sum(16 * int(sl['n'])
               * int(np.prod([sh[b]
                              for b in range(3)
                              if b != sl['axis']]))
-              # components, float32
               for sl in (op.pml or []))
     return 24 * n + code * n + 4 * n + pml + 64e6
 

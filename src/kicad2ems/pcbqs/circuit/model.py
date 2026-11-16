@@ -509,8 +509,8 @@ def templates():
             key=lambda f: f.name):
         if f.name.endswith('.json'):
             m = json.loads(f.read_text(encoding='utf-8'))
-            out[f.name[:-5].split('_', 1)[1] if f.name[:2].isdigit() else f.
-                name[:-5]] = m.get('description', m.get('name', ''))
+            out[f.name[:-5].split('_', 1)[1] if f.name[:2].isdigit()
+                else f.name[:-5]] = m.get('description', m.get('name', ''))
     return out
 
 

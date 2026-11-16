@@ -8,7 +8,7 @@ so a triangle is all copper or none on each layer and the layers share their
 vertices (one unknown per vertex per layer).
 
     r = solve(problem, dmax=1.0)  # problem.Result: r.nodes, r.tris, r.T
-                                  (layers, N) C, r.parts
+                                  # (layers, N) C, r.parts
 """
 import time
 

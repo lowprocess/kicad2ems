@@ -612,9 +612,8 @@ class VulkanBackend:
         N, nb = A.rows, self.nb
         # the panel, down to the CPU and back
         hdn = self._host('panel', 8 * N * nb)
-        # by step parity: S2 may read them while
+        # by step parity: S2 may read them while the host writes the next step's
         hrows = [self._host(f'rows{i}', 4 * 2 * nb) for i in (0, 1)]
-        # the host writes the next step's
         hsrc = [self._host(f'src{i}', 4 * 2 * nb) for i in (0, 1)]
         tmpS = self._work('swap', 8 * 2 * nb * N)
         U12 = self._work('u12', 8 * nb * N)

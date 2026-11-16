@@ -607,9 +607,9 @@ class Circuit:
             *measures,
             *adaptive_export,
             'linearize ' + ' '.join(output_names),
-            # binary, read into numpy as it is (the text
+            # binary, read into numpy as it is (the text wrdata wrote was 98 MB
+            # a wpthb run and 0.5 s
             'set filetype=binary',
-            # wrdata wrote was 98 MB a wpthb run and 0.5 s
             'write transient.raw ' + ' '.join(output_names),
             'rusage all',
             'quit',

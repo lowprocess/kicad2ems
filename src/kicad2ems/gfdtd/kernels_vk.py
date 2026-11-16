@@ -15,9 +15,9 @@ is). The differences are Vulkan's:
 - probe() adds the voltage and the current probes in one launch.
 
     source('uint16_t')  # the module's source, for uint8_t / uint16_t / uint32_t
-                        codes
+                        # codes
     MODEL               # Model's fields in order: (name, kind), kind 'p' a
-                        pointer, 'i' int32, 'f' float32
+                        # pointer, 'i' int32, 'f' float32
 """
 
 

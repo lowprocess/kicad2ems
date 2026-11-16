@@ -10,7 +10,7 @@ Copper caps the crowding at about its thickness; averaging the kernel over it
 does the same, as FastHenry's rectangular filaments do.
 
     D = delta_inductance(rwg, z, t)  # sparse, over RWG branches: added to
-                                     either backend's point-kernel L
+                                     # either backend's point-kernel L
 
 For a pair at heights zp, zq with thicknesses tp, tq the offset between a point
 of each slab is spread over a trapezoid (the convolution of two uniform
