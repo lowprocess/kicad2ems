@@ -2,7 +2,8 @@
 Where the return current goes when a trace changes layers, as low-frequency
 S-parameters (pcbqs.sparams).
 
-    python examples/return-path/return_path.py [--out DIR] [--figure docs/images/sparams-return.png]
+    python examples/return-path/return_path.py [--out DIR] \\
+        [--figure docs/images/sparams-return.png]
 
 A 0.35 mm trace runs 15 mm on F.Cu over the In1 ground plane, drops through a
 via and runs 15 mm on B.Cu over the In2 ground plane: a 40 x 20 mm, four-layer
@@ -100,9 +101,8 @@ def main(argv=None):
     quiet = dict(log=lambda *x: None)
     f = np.geomspace(1e3, 1e7, 25)
     L, maps = {}, {}
-    print(
-        f"{'ground via':<16s}{'R at 1 kHz':>12s}{'L at 1 kHz':>12s}{'L at 1 MHz':>12s}{'L at 10 MHz':>13s}"
-    )
+    print(f"{'ground via':<16s}{'R at 1 kHz':>12s}{'L at 1 kHz':>12s}"
+          f"{'L at 1 MHz':>12s}{'L at 10 MHz':>13s}")
     for name, vias in VIAS.items():
         b = board(vias)
         with open(os.path.join(a.out, f"{name.replace(' ', '_')}_board.json"),

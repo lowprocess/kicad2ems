@@ -17,7 +17,9 @@ from pathlib import Path
 from shapely.geometry import box, mapping
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from common import OUT, IMAGES, SIGMA_CU, copper_model, elmergrid, elmer, save_scalars, write_json  # noqa: E402
+from common import (  # noqa: E402
+    OUT, IMAGES, SIGMA_CU, copper_model, elmergrid, elmer, save_scalars,
+    write_json)
 
 PLATING = 0.025
 

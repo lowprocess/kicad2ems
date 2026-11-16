@@ -71,7 +71,8 @@ def plane_return_inp(nw, nh, seg=(120, 64)):
     zt, zb = 1.6 + T / 2, -T / 2
     return f""".units mm
 .default sigma=5.8e4 nhinc={nh} nwinc={nw} rw=2 rh=2
-G1 x1=-15 y1=-8 z1={zb} x2=15 y2=-8 z2={zb} x3=15 y3=8 z3={zb} thick={T} seg1={seg[0]} seg2={seg[1]}
+G1 x1=-15 y1=-8 z1={zb} x2=15 y2=-8 z2={zb} x3=15 y3=8 z3={zb} thick={T} \
+seg1={seg[0]} seg2={seg[1]}
 + nhinc={nh} relx=0 rely=0 relz=0
 + npa (10,0,{zb})
 + npb (-11.5,0,{zb})

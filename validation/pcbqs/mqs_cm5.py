@@ -2,7 +2,8 @@
 C704-C706) in pcbqs.mqs.MQS, Palace (PEC sheets) and FastHenry (volume
 filaments), the three given the same copper.
 
-    python validation/mqs_cm5.py [geometry|pcbqs|palace|fasthenry|figure|report] ...
+    python validation/mqs_cm5.py \\
+        [geometry|pcbqs|palace|fasthenry|figure|report] ...
 
 The copper is the +5V and GND copper of all six layers inside a 9.4 x 13.7 mm
 box around the parts (pcbqs's own crop for this loop), with the vias of both
@@ -333,8 +334,8 @@ def figure():
     rows = r['rows']
     plt = style()
     fig, ax = plt.subplots(1, 2, figsize=(10, 3.8))
-    one = lambda x: x['tool'] == 'pcbqs' and x['sheets'] == 1 and x[
-        'backend'] == 'hierarchical'
+    one = lambda x: (x['tool'] == 'pcbqs' and x['sheets'] == 1
+                     and x['backend'] == 'hierarchical')
     two = lambda x: x['tool'] == 'pcbqs' and x['sheets'] == 2
     series = [('pcbqs, one sheet', PCBQS, 'o-', one),
               ('pcbqs, two face sheets', PCBQS, 's--', two),

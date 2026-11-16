@@ -2,29 +2,39 @@
 Writes small KiCad 8 antenna boards for kicad2ems --mode antenna (no KiCad
 needed), most for 2.45 GHz on FR4 (er 4.4, tan d 0.02):
 
-  patch   inset-fed rectangular patch (37.2 x 28.8 mm) on 1.6 mm FR4, 50 ohm microstrip feed from the
-          board edge, B.Cu ground
-  ifa     PCB inverted-F antenna above the top edge of a B.Cu ground plane, shorting leg via to
-          ground, fed at the ground edge (port from the feed leg to the plane below)
-  dipole  printed half-wave dipole on 0.8 mm FR4 without ground, fed in the centre gap (gap port,
-          port.z0 = 73 ohm)
-  slot    52 mm slot in the B.Cu ground plane, fed off-centre by a microstrip crossing it with an
-          open quarter-wave stub
-  vivaldi exponentially tapered slot in a B.Cu ground on 0.8 mm FR4 (50 x 70 mm, W= H=), endfire off the top edge,
-          microstrip-to-slotline feed with a radial stub and a circular slot cavity; wideband, 3-10 GHz
-  vivaldi_antipodal  the flare split between the layers: one half on F.Cu, on the microstrip, the other on
-          B.Cu, out of the ground, overlapping by ov (0.5 mm) at the throat; same size and band as the vivaldi
-  array2x2  four of the patch, 100 mm apart, from one 50 ohm feed through a corporate network (T junctions
-          and quarter-wave transformers), the bottom row's branch half a guided wavelength longer
-  array2x2_phased  four of the patch, 70 mm apart, a feed per row (P1 the top row, P2 the bottom one): driven
-          with a phase difference (drive = ["P1@0", "P2@60"]) the beam tilts in the yz plane
-  array4x4_phased  sixteen of the patch, 65 mm apart, each with its own feed line and port (P1..P16 row by
-          row): grid = "4x4" and steer = [X, Y] (deg per column, per row) tilt the beam in both planes
-  cp_patch  circularly polarised patch: corners cut, probe-fed (a port.width 1.3 mm vertical port inside it)
-  aperture  aperture-coupled patch, 4 layers: patch on F.Cu, slotted ground on In2.Cu, feed on B.Cu
+  patch   inset-fed rectangular patch (37.2 x 28.8 mm) on 1.6 mm FR4, 50 ohm
+          microstrip feed from the board edge, B.Cu ground
+  ifa     PCB inverted-F antenna above the top edge of a B.Cu ground plane,
+          shorting leg via to ground, fed at the ground edge (port from the feed
+          leg to the plane below)
+  dipole  printed half-wave dipole on 0.8 mm FR4 without ground, fed in the
+          centre gap (gap port, port.z0 = 73 ohm)
+  slot    52 mm slot in the B.Cu ground plane, fed off-centre by a microstrip
+          crossing it with an open quarter-wave stub
+  vivaldi exponentially tapered slot in a B.Cu ground on 0.8 mm FR4 (50 x 70 mm,
+          W= H=), endfire off the top edge, microstrip-to-slotline feed with a
+          radial stub and a circular slot cavity; wideband, 3-10 GHz
+  vivaldi_antipodal  the flare split between the layers: one half on F.Cu, on
+          the microstrip, the other on B.Cu, out of the ground, overlapping by
+          ov (0.5 mm) at the throat; same size and band as the vivaldi
+  array2x2  four of the patch, 100 mm apart, from one 50 ohm feed through a
+          corporate network (T junctions and quarter-wave transformers), the
+          bottom row's branch half a guided wavelength longer
+  array2x2_phased  four of the patch, 70 mm apart, a feed per row (P1 the top
+          row, P2 the bottom one): driven with a phase difference (drive =
+          ["P1@0", "P2@60"]) the beam tilts in the yz plane
+  array4x4_phased  sixteen of the patch, 65 mm apart, each with its own feed
+          line and port (P1..P16 row by row): grid = "4x4" and steer = [X, Y]
+          (deg per column, per row) tilt the beam in both planes
+  cp_patch  circularly polarised patch: corners cut, probe-fed (a port.width 1.3
+          mm vertical port inside it)
+  aperture  aperture-coupled patch, 4 layers: patch on F.Cu, slotted ground on
+          In2.Cu, feed on B.Cu
   monopole  meander monopole above a finite ground (the ground radiates too)
-  yagi      printed Yagi-Uda: gap-fed dipole, reflector, two directors, no ground
-  lpda      printed log-periodic dipole array, about 1.6-4.5 GHz, feeders on F.Cu and B.Cu
+  yagi      printed Yagi-Uda: gap-fed dipole, reflector, two directors, no
+          ground
+  lpda      printed log-periodic dipole array, about 1.6-4.5 GHz, feeders on
+          F.Cu and B.Cu
   bowtie    printed bowtie, gap-fed, no ground
   uwb       UWB disc monopole on a partial ground, 3-10 GHz
   loop      full-wave square loop, gap-fed, no ground
@@ -282,9 +292,8 @@ def vivaldi(path, ap=44.0, lt=40.0, ws=0.3, ls=2.0, rc=3.0, wf=1.5, xf=15.0,
     circular cavity of radius rc (the slot's open end) below it. A 50 ohm (wf)
     microstrip on F.Cu comes up from the bottom edge xf mm left of the slot,
     turns and crosses the slot, and ends past it in a radial stub of radius rs,
-    fan degrees wide:
-    the stub and the cavity make the crossing a wideband microstrip-to-slotline
-    balun."""
+    fan degrees wide: the stub and the cavity make the crossing a wideband
+    microstrip-to-slotline balun."""
     import math
     b = Board(0.8)
     xc, hs = W / 2, ws / 2
@@ -473,8 +482,8 @@ def vivaldi_antipodal(path, W=50.0, H=70.0, dext=0.0, dl=0.0, dw=6.0, dy=0.0,
         lt, ap, ov, rate = (opt.get(k, d)
                             for k, d in (('lt', 40.0), ('ap', 44.0),
                                          ('ov', 0.5), ('rate', 4.0)))
-        gap = lambda y: -ov + (ap + ov) * math.expm1(rate * (lt - y) / lt
-                                                     ) / math.expm1(rate)
+        gap = lambda y: (-ov + (ap + ov) * math.expm1(rate * (lt - y) / lt)
+                         / math.expm1(rate))
         y_end = dl / 2 - dy  # the director's end inside the aperture
         if y_end > 0 and gap(y_end) / 2 < dw / 2 + 0.5:
             raise ValueError(
