@@ -22,14 +22,6 @@ POLL_S = 0.5                    # how often a running solver's run is asked whet
 GRACE_S = 3.0                   # how long a solver has after SIGTERM before SIGKILL
 
 
-def _requested():
-    try:
-        from kicad2ems.core.stop import requested
-    except ImportError:                                         # (kicad2ems older than its stop module)
-        return False
-    return requested()
-
-
 def _signal(p, sig):
     try:
         if os.name == 'posix':
@@ -63,8 +55,9 @@ def stop_all():
 
 
 def _watch(p):
+    from kicad2ems.core.stop import requested
     while p.poll() is None:
-        if _requested():
+        if requested():
             p.stop_requested = True
             stop(p)
             break
@@ -91,11 +84,8 @@ def stopped(p):
 
 
 def raise_stopped():
-    """kicad2ems.core.stop.Stopped (the run gives no result), or RuntimeError without kicad2ems's stop module."""
-    try:
-        from kicad2ems.core.stop import Stopped
-    except ImportError:
-        Stopped = RuntimeError
+    """kicad2ems.core.stop.Stopped: the run gives no result."""
+    from kicad2ems.core.stop import Stopped
     raise Stopped('stop requested')
 
 

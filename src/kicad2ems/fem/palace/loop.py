@@ -25,24 +25,8 @@ import time
 from pathlib import Path
 
 import numpy as np
-from shapely.geometry import Point, shape
+from shapely.geometry import shape
 from shapely.ops import nearest_points
-
-
-
-def read_mqs(folder):
-    """A pcbqs near-field run's mqs.json, and the KiCad file it read."""
-    path = Path(folder) / 'mqs.json'
-    if not path.is_file():
-        raise ValueError(f"{folder}: no mqs.json (a pcbqs near-field run's folder)")
-    r = json.loads(path.read_text())
-    sel = r.get('selection') or {}
-    if sel.get('low') or sel.get('switch'):
-        raise ValueError("a discrete switching cell's loop (two switches) is not modelled here yet: a converter IC's")
-    board = r.get('source_path') or ''
-    if not board.lower().endswith('.kicad_pcb') or not os.path.isfile(board):
-        raise ValueError(f"the run's board {board!r} is not a KiCad file here")
-    return r, board
 
 
 def port_spec(raw, converter, vin, ground):
@@ -86,8 +70,16 @@ def solve(mqs, out='loop', order=2, feature=1.0, hmin=0.25, hmax=2.0, margin=10.
     from kicad2ems.core.board import Board
     from kicad2ems.core.importers import open_board
     from . import config, model, run as prun
-    r, board_file = read_mqs(mqs)
-    sel = r['selection']
+    path = Path(mqs) / 'mqs.json'                                   # the run's mqs.json and the KiCad file it read
+    if not path.is_file():
+        raise ValueError(f"{mqs}: no mqs.json (a pcbqs near-field run's folder)")
+    r = json.loads(path.read_text())
+    sel = r.get('selection') or {}
+    if sel.get('low') or sel.get('switch'):
+        raise ValueError("a discrete switching cell's loop (two switches) is not modelled here yet: a converter IC's")
+    board_file = r.get('source_path') or ''
+    if not board_file.lower().endswith('.kicad_pcb') or not os.path.isfile(board_file):
+        raise ValueError(f"the run's board {board_file!r} is not a KiCad file here")
     vin, ground, caps = sel['vin'], sel.get('ground') or 'GND', list(sel.get('capacitors') or [])
     f = np.asarray(r['frequencies_Hz'], float)
     out = Path(out)

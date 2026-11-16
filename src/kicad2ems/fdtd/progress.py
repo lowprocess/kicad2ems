@@ -36,6 +36,18 @@ def parse_line(line):
     return dict(t=_seconds(t), step=int(step), speed=float(speed), db=db)
 
 
+def read_new(path, pos):
+    """The whole lines a log has gained since byte `pos`, and the position after them ([] while it cannot be read)."""
+    try:
+        with open(path, 'rb') as fh:
+            fh.seek(pos)
+            chunk = fh.read()
+    except OSError:
+        return [], pos
+    cut = chunk.rfind(b'\n') + 1                                    # an incomplete last line waits for the next read
+    return chunk[:cut].decode('utf-8', 'replace').splitlines(), pos + cut
+
+
 def fmt_time(s):
     if s is None or s != s or s == float('inf'):
         return '?'
@@ -153,15 +165,7 @@ class Monitor:
 
     def _read(self):
         for i, (label, path, tr) in enumerate(self.runs):
-            try:
-                with open(path, 'rb') as fh:
-                    fh.seek(self._pos[i])
-                    chunk = fh.read()
-            except OSError:
-                continue
-            cut = chunk.rfind(b'\n') + 1                            # an incomplete last line waits for the next read
-            self._pos[i] += cut
-            lines = chunk[:cut].decode('utf-8', 'replace').splitlines()
+            lines, self._pos[i] = read_new(path, self._pos[i])
             for line in lines:
                 p = parse_line(line)
                 tr.feed(p)

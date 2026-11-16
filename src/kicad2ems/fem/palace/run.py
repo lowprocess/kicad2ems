@@ -19,26 +19,24 @@ Palace is found as
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
 
 import numpy as np
 
+from ..elmer.run import site
+
 ROOTFS = os.path.expanduser('~/opt/palace/rootfs')
 VIEW_ENV = '/.singularity.d/env/91-environment.sh'       # the image's PATH to its Spack view
 
 
-def _site(key):
-    from ..elmer.run import site
-    return site(key)
-
-
 def launcher():
-    exe = os.environ.get('K2E_PALACE') or _site('palace') or shutil.which('palace')
+    exe = os.environ.get('K2E_PALACE') or site('palace') or shutil.which('palace')
     if exe:
         return 'native', exe
-    root = os.environ.get('K2E_PALACE_ROOTFS') or _site('palace_rootfs') or ROOTFS
+    root = os.environ.get('K2E_PALACE_ROOTFS') or site('palace_rootfs') or ROOTFS
     if os.path.isdir(os.path.join(root, 'opt/views/view/bin')) and shutil.which('podman'):
         return 'podman', root
     return None
@@ -144,7 +142,6 @@ def read_s(postpro, n):
     cols = [h.strip() for h in head]
     f = data[:, 0] * 1e9
     S = np.full((len(f), n, n), np.nan + 0j)
-    import re
     for c, h in enumerate(cols):
         m = re.match(r'\|S\[(\d+)\]\[(\d+)\]\| \(dB\)', h)
         if not m:
@@ -218,7 +215,6 @@ def read_modes(postpro):
     q_ext = {int(k): {} for k in idx}                     # by the mode's number, the two files' rows matched by it
     pq = os.path.join(postpro, 'port-Q.csv')
     if os.path.exists(pq):
-        import re
         pcols, pdata = table(pq)
         for c, h in enumerate(pcols):
             m = re.match(r'Q_ext\[(\d+)\]', h)

@@ -10,16 +10,10 @@ from kicad2ems.core.api.solver import EPS0
 from kicad2ems.core.api.solver import split_holes
 
 
-def _f(v):
-    """Plain Python float: older CSXCAD / openEMS releases reject numpy scalars (type checks)."""
-    return float(v)
-
-
-
 def _fl(v):
-    """List of plain floats (coordinates)."""
+    """List of plain floats (coordinates): older CSXCAD / openEMS releases reject numpy scalars (type checks), so every
+    number given them is a float."""
     return [float(x) for x in v]
-
 
 
 def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=None, max_steps=1_000_000,
@@ -39,18 +33,18 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
         from .engines import engine_api
         api = engine_api(None)
     ContinuousStructure, openEMS = api
-    FDTD = openEMS(NrTS=int(max_steps), EndCriteria=_f(10 ** (end_db / 10)))
+    FDTD = openEMS(NrTS=int(max_steps), EndCriteria=float(10 ** (end_db / 10)))
     fe = fmax if exc_fmax is None else exc_fmax
-    f0, fc = _f(0.5 * (fmin + fe)), _f(0.5 * (fe - fmin) * 1.05)
+    f0, fc = float(0.5 * (fmin + fe)), float(0.5 * (fe - fmin) * 1.05)
     FDTD.SetGaussExcite(f0, fc)
     FDTD.SetBoundaryCond([str(b) for b in bc])
     CSX = ContinuousStructure()
     FDTD.SetCSX(CSX)
     grid = CSX.GetGrid()
     grid.SetDeltaUnit(1e-3)
-    grid.SetLines('x', np.asarray(mesh['x'], float)); grid.SetLines('y', np.asarray(mesh['y'], float))
-    grid.SetLines('z', np.asarray(mesh['z'], float))
     lines = [np.asarray(mesh[a], float) for a in 'xyz']
+    for a, v in zip('xyz', lines):
+        grid.SetLines(a, v)
 
     def on_mesh(s, e, tol=1e-5):
         """A box's flat sides (start = stop on an axis) moved exactly onto the nearest mesh line: openEMS
@@ -76,17 +70,17 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
         if diel == 'wideband' and l['tand'] > 0:
             mat = _debye_material(CSX, name, l, diel_fref, fmin, fmax, mesh['info']['dt_ps'] * 1e-12)
         else:                                                       # loss at the centre frequency
-            kappa = _f(2 * np.pi * f0 * EPS0 * l['er'] * l['tand'])
-            mat = CSX.AddMaterial(name, epsilon=_f(l['er']), kappa=kappa)
+            kappa = float(2 * np.pi * f0 * EPS0 * l['er'] * l['tand'])
+            mat = CSX.AddMaterial(name, epsilon=float(l['er']), kappa=kappa)
         z0, z1 = zm(l['z0']), zm(l['z1'])
-        mat.AddLinPoly(pts, 'z', _f(z0), _f(z1 - z0), priority=1)
+        mat.AddLinPoly(pts, 'z', float(z0), float(z1 - z0), priority=1)
     holes = list(getattr(m.outline, 'interiors', []))
     if holes and m.layers:                                          # the outline's cut-outs: air through the
         air = CSX.AddMaterial('cutout', epsilon=1.0)                # dielectric (R-E6; it had been substrate)
         zb, zt = min(zm(l['z0']) for l in m.layers), max(zm(l['z1']) for l in m.layers)
         for h in holes:
             hx, hy = h.xy
-            air.AddLinPoly([np.asarray(hx[:-1], float), np.asarray(hy[:-1], float)], 'z', _f(zb), _f(zt - zb),
+            air.AddLinPoly([np.asarray(hx[:-1], float), np.asarray(hy[:-1], float)], 'z', float(zb), float(zt - zb),
                            priority=2)
     ckw = copper_kw or {}
     fin = ckw.get('finish') if sigma else None
@@ -95,20 +89,20 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
         t = m.cu_t.get(lay, 0.0)
         slab = thick.faces(m, th, lay) if th and t > 0 else None
         body = outer = None
-        rkw = dict(roughness=_f(rough * 1e-6)) if rough else {}
+        rkw = dict(roughness=float(rough * 1e-6)) if rough else {}
         share = fin['share'].get(lay, 0.0) if fin else 0.0
         if slab:                                                    # solid copper: PEC; with sigma its faces lossy
             body = CSX.AddMetal(f"cu_{lay}_body") if sigma else CSX.AddMetal(f"cu_{lay}")
             if sigma:                                               # one side of a conductor t / 2 thick each
                 fkw = dict(face=True) if ckw.get('faces') else {}
-                metal = CSX.AddConductingSheet(f"cu_{lay}", conductivity=_f(sigma / 4), thickness=_f(2 * t * 1e-3),
-                                               **rkw, **fkw)
+                metal = CSX.AddConductingSheet(f"cu_{lay}", conductivity=float(sigma / 4),
+                                               thickness=float(2 * t * 1e-3), **rkw, **fkw)
                 if fin and lay in fin['share']:                     # the outer face: finished, a sheet of its own
                     z_out = slab[1] if lay == m.cu_order[-1] else slab[0]
                     outer = (z_out, _finished_sheet(CSX, f"cu_{lay}_finish", sigma, t, fin, 1.0, rkw, face=True))
         elif sigma:
             metal = (_finished_sheet(CSX, f"cu_{lay}", sigma, t, fin, share, rkw, face=False) if share > 0 else
-                     CSX.AddConductingSheet(f"cu_{lay}", conductivity=_f(sigma), thickness=_f(t * 1e-3), **rkw))
+                     CSX.AddConductingSheet(f"cu_{lay}", conductivity=float(sigma), thickness=float(t * 1e-3), **rkw))
         else:
             metal = CSX.AddMetal(f"cu_{lay}")
         if not slab:
@@ -118,13 +112,13 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
                 x, y = q.exterior.xy
                 xy = [np.asarray(x[:-1], float), np.asarray(y[:-1], float)]
                 if not slab:
-                    metal.AddPolygon(xy, 'z', _f(zm(m.cu_z[lay])), priority=10)
+                    metal.AddPolygon(xy, 'z', float(zm(m.cu_z[lay])), priority=10)
                     continue
-                body.AddLinPoly(xy, 'z', _f(slab[0]), _f(slab[1] - slab[0]), priority=9 if sigma else 10)
+                body.AddLinPoly(xy, 'z', float(slab[0]), float(slab[1] - slab[0]), priority=9 if sigma else 10)
                 if sigma:
                     for zf in slab:
                         sheet = outer[1] if outer and abs(zf - outer[0]) < 1e-12 else metal
-                        sheet.AddPolygon(xy, 'z', _f(zf), priority=10)
+                        sheet.AddPolygon(xy, 'z', float(zf), priority=10)
     over = (lambda z0, z1: thick.span(m, th, z0, z1)) if th else (lambda z0, z1: tuple(sorted((z0, z1))))
     across = (lambda z: thick.slab(m, th, z)) if th else (lambda z: (z, z))
     vias = mesh.get('vias', m.vias)                                 # as placed by the mesher (snapped)
@@ -132,7 +126,7 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
         vm = CSX.AddMetal('vias')
         for (x, y, r, z0, z1) in vias:
             z0, z1 = over(z0, z1)
-            vm.AddCylinder(_fl([x, y, z0]), _fl([x, y, z1]), _f(r), priority=11)
+            vm.AddCylinder(_fl([x, y, z0]), _fl([x, y, z1]), float(r), priority=11)
     walls = mesh.get('walls') or []                                # --edge-walls: PEC sheets where the planes end
     if walls:
         wm = CSX.AddMetal('edge_walls')
@@ -154,7 +148,7 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
             continue
         for suffix, vals, series, ps, pe in pt.pieces():
             ps, pe = on_mesh(*flat(ps, pe))
-            kw = {k: _f(v) for k, v in vals.items()}
+            kw = {k: float(v) for k, v in vals.items()}
             if series:
                 kw['LEtype'] = 1
             try:
@@ -173,7 +167,7 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
             else:                                                   # from face to face, toward each other
                 s[2], e[2] = thick.toward(m, th, s[2], e[2]), thick.toward(m, th, e[2], s[2])
         s, e = on_mesh(s, e)
-        ports.append(FDTD.AddLumpedPort(i + 1, _f(p.z0), _fl(s), _fl(e), getattr(p, 'direction', 'z'),
+        ports.append(FDTD.AddLumpedPort(i + 1, float(p.z0), _fl(s), _fl(e), getattr(p, 'direction', 'z'),
                                         excite=1.0 if i == excite else 0.0, priority=12))
     if dumps:
         from kicad2ems.core.api.solver import add_dumps
@@ -184,7 +178,6 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR',) * 6, end_db=-40, sigma=N
     return FDTD, CSX, ports
 
 
-
 def _finished_sheet(CSX, name, sigma, t_mm, fin, share, rkw, face):
     """A conducting sheet of copper (sigma, t_mm) with the surface finish fin on `share` of its loss. face: the
     sheet is the outer face of thick copper (sigma / 4, twice the thickness: one face of the copper's half), all of
@@ -192,13 +185,13 @@ def _finished_sheet(CSX, name, sigma, t_mm, fin, share, rkw, face):
     band centre is the finished sheet's (the face's impedance of half the copper, or the strip's weighted)."""
     s, th = (sigma / 4, 2 * t_mm * 1e-3) if face else (sigma, t_mm * 1e-3)
     if fin['wideband']:
-        kw = dict(finish=[(_f(a), _f(b)) for a, b in fin['layers']], finish_share=_f(share), face=face)
-        return CSX.AddConductingSheet(name, conductivity=_f(s), thickness=_f(th), **rkw, **kw)
+        kw = dict(finish=[(float(a), float(b)) for a, b in fin['layers']], finish_share=float(share), face=face)
+        return CSX.AddConductingSheet(name, conductivity=float(s), thickness=float(th), **rkw, **kw)
     from kicad2ems.core.api.solver import finish_band_sigma
     lay = [(None, a, b) for a, b in fin['layers']]
     t_face = (t_mm / 2 if face else t_mm) * 1e-3
     eff = finish_band_sigma(sigma, lay, share, *fin['band'], t=t_face)
-    return CSX.AddConductingSheet(name, conductivity=_f(eff / 4 if face else eff), thickness=_f(th), **rkw)
+    return CSX.AddConductingSheet(name, conductivity=float(eff / 4 if face else eff), thickness=float(th), **rkw)
 
 
 def _debye_material(CSX, name, layer, fref, fmin, fmax, dt):
@@ -209,12 +202,11 @@ def _debye_material(CSX, name, layer, fref, fmin, fmax, dt):
     e_inf, poles, kappa = fit_debye(layer['er'], layer['tand'], layer.get('fref') or fref, fmin, fmax,   # (its laminate's
                                     tau_min=2.5 * dt)                                                     # own: R-E4)
     if not poles:
-        return CSX.AddMaterial(name, epsilon=_f(e_inf), kappa=_f(kappa))
-    mat = CSX.AddDebyeMaterial(name, order=len(poles), epsilon=_f(e_inf), kappa=_f(kappa))
+        return CSX.AddMaterial(name, epsilon=float(e_inf), kappa=float(kappa))
+    mat = CSX.AddDebyeMaterial(name, order=len(poles), epsilon=float(e_inf), kappa=float(kappa))
     for i, (d, tau) in enumerate(poles):
-        mat.SetDispersiveMaterialProperty(order=i, eps_delta=_f(d), eps_relax=_f(tau))
+        mat.SetDispersiveMaterialProperty(order=i, eps_delta=float(d), eps_relax=float(tau))
     return mat
-
 
 
 def port_index(m, names):
@@ -228,15 +220,11 @@ def port_index(m, names):
     return idx
 
 
-
 def pulse_steps(fmin, fmax, dt_ps, exc_fmax=None):
     """Length of openEMS's Gaussian excitation in timesteps (2 * 9 / (2 pi fc) / dt, fc as set in build_fdtd),
     with the mesher's time step estimate (openEMS's own step is often ~10 % smaller, so the true count is a
     little higher). The fields must ring down after it: allow --max-steps well above this."""
-    fe = fmax if exc_fmax is None else exc_fmax
-    fc = 0.5 * (fe - fmin) * 1.05
-    return int(np.ceil(2 * 9 / (2 * np.pi * fc) / (dt_ps * 1e-12)))
-
+    return int(np.ceil(pulse_time(fmin, fmax if exc_fmax is None else exc_fmax) / (dt_ps * 1e-12)))
 
 
 def pulse_time(fmin, fmax):

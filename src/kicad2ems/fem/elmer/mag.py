@@ -168,15 +168,14 @@ def mag_model(coils, plates, path, h=None, margin=6.0, log=print, threads=8, gro
             a, b = p['size']
             return (3, occ.addBox(p['x'] - a / 2, p['y'] - b / 2, p['z'], a, b, p['t'])), max(a, b) / 2
         kinds = [('coil', i) for i in range(len(coils))]
-        for j in keep:
-            dt, reach_p = slab(plates[j])
-            parts.append(dt)
-            kinds.append(('plate', j))
-            sizes.append(h or float(np.clip(plates[j]['t'], reach_p / 25, reach_p / 6)))
         cutters = []
-        for j in holes:
+        for j in keep + holes:
             dt, reach_p = slab(plates[j])
-            cutters.append(dt)
+            if j in holes:
+                cutters.append(dt)
+            else:
+                parts.append(dt)
+                kinds.append(('plate', j))
             sizes.append(h or float(np.clip(plates[j]['t'], reach_p / 25, reach_p / 6)))
         for i, a in enumerate(parts):
             for b in parts[i + 1:]:
@@ -227,13 +226,10 @@ def mag_model(coils, plates, path, h=None, margin=6.0, log=print, threads=8, gro
         low = gmsh.model.mesh.field.add('Min')
         gmsh.model.mesh.field.setNumbers(low, 'FieldsList', fields)
         gmsh.model.mesh.field.setAsBackgroundMesh(low)
-        for name in ('MeshSizeExtendFromBoundary', 'MeshSizeFromPoints', 'MeshSizeFromCurvature'):
-            gmsh.option.setNumber('Mesh.' + name, 0)
-        gmsh.option.setNumber('Mesh.MeshSizeMax', radius / 3)
-        gmsh.option.setNumber('Mesh.Algorithm3D', 10)
-        gmsh.option.setNumber('Mesh.SecondOrderLinear', 1)
-        gmsh.option.setNumber('Mesh.MshFileVersion', 2.2)
-        gmsh.option.setNumber('Mesh.Binary', 0)
+        for k, v in dict(MeshSizeExtendFromBoundary=0, MeshSizeFromPoints=0, MeshSizeFromCurvature=0,
+                         MeshSizeMax=radius / 3, Algorithm3D=10, SecondOrderLinear=1, MshFileVersion=2.2,
+                         Binary=0).items():
+            gmsh.option.setNumber('Mesh.' + k, v)
         gmsh.model.mesh.generate(3)
         gmsh.model.mesh.setOrder(2)                              # see sif(): second-order elements
         tets = int(sum(len(t) for t in gmsh.model.mesh.getElements(3)[1]))
@@ -294,17 +290,7 @@ def sif(m, coils, plates, amps, freq=None):
     calc = (f'  Angular Frequency = Real {w:.12g}\n' + ('  Calculate Magnetic Flux Density = Logical True\n  Calculate Elemental Fields = Logical True\n'
                                                    if saves else '')
             if harm else '')
-    return f"""Header
-  Mesh DB "." "mesh"
-End
-Simulation
-  Coordinate System = Cartesian 3D
-  Coordinate Scaling = 1.0e-3
-  Simulation Type = Steady State
-  Steady State Max Iterations = 1
-  Max Output Level = 5
-End
-Constants
+    return elmer.header(level=5) + f"""Constants
   Permeability Of Vacuum = {MU0:.12g}
 End
 {bodies}Equation 1
@@ -374,9 +360,7 @@ def solve(coils, plates=(), out='mag', h=None, margin=6.0, log=print, freq=None)
     tets, seconds; with freq (Hz), `ac`: each coil alone at that frequency (R-E21), dict(name, L, R_ferrite,
     R_metal, R_winding, R, Q), from the harmonic field: L from its energy, R twice the time-averaged loss of a 1 A
     peak current."""
-    ok, why = elmer.found()
-    if not ok:
-        raise RuntimeError(why)
+    elmer.require()
     coils, plates = [dict(c) for c in coils], [dict(p) for p in plates]
     _check(coils, plates)
     out = Path(out)

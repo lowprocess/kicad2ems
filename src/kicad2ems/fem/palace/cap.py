@@ -30,7 +30,7 @@ import numpy as np
 from shapely.geometry import box, shape
 
 from ..geometry import copper_of, layers as layer_names, load_board, polygons, slab
-from .model import _polys, _surface
+from .model import _polys, _surface, box_faces, fragment, graded
 
 DIEL0, AIR, OUTER, TERM0 = 1, 99, 101, 201
 
@@ -124,14 +124,7 @@ def cap_model(board, nets, path, thick=False, h=None, hmax=None, margin=None, cr
                     add(('cu', gi), [(3, occ.addCylinder(v['x'], v['y'], za, 0, 0, zc - za, v['r']))])
             if not n:
                 raise ValueError(f"no copper of {name}" + (' in the region' if crop is not None else ''))
-        _, omap = occ.fragment(ents, [])
-        occ.synchronize()
-        role_of = {}
-        for dt, kids in zip(ents, omap):
-            for role, dts in tags.items():
-                if dt in dts:
-                    for kid in kids:
-                        role_of.setdefault(kid, set()).add(role)
+        role_of = fragment(occ, ents, tags)
 
         def group_of(dt):
             return sorted({r[1] for r in role_of.get(dt, ()) if isinstance(r, tuple) and r[0] == 'cu'})
@@ -164,12 +157,7 @@ def cap_model(board, nets, path, thick=False, h=None, hmax=None, margin=None, cr
             for b in range(a + 1, len(groups)):
                 if term[a] & term[b] or rim[a] & rim[b]:   # a shared face, or sheets edge to edge
                     raise ValueError(f"{groups[a][0]} and {groups[b][0]} touch: join them (A+B) or drop one")
-        bb = (x0 - margin, y0 - margin, zb - margin, x1 + margin, y1 + margin, zt + margin)
-        outer = []
-        for _, s in gmsh.model.getEntities(2):
-            b = gmsh.model.getBoundingBox(2, s)
-            if any(abs(b[ax] - bb[ax + k]) < 1e-6 and abs(b[ax + 3] - bb[ax + k]) < 1e-6 for ax in range(3) for k in (0, 3)):
-                outer.append(s)
+        outer = box_faces(gmsh, (x0 - margin, y0 - margin, zb - margin, x1 + margin, y1 + margin, zt + margin))
 
         diel = []
         for i, l in enumerate(slabs):
@@ -183,15 +171,8 @@ def cap_model(board, nets, path, thick=False, h=None, hmax=None, margin=None, cr
             gmsh.model.addPhysicalGroup(2, sorted(term[gi]), TERM0 + gi)
             terminals.append((name, TERM0 + gi))
 
-        edges = set().union(*rim.values())
         fd = gmsh.model.mesh.field
-        dist = fd.add('Distance')
-        fd.setNumbers(dist, 'CurvesList', sorted(edges))
-        fd.setNumber(dist, 'Sampling', 40)
-        thr = fd.add('Threshold')
-        for k, v in dict(InField=dist, SizeMin=h, SizeMax=hmax, DistMin=h, DistMax=grade * hmax).items():
-            fd.setNumber(thr, k, v)
-        fd.setAsBackgroundMesh(thr)
+        fd.setAsBackgroundMesh(graded(fd, set().union(*rim.values()), h, hmax, grade * hmax))
         for k, v in {'Mesh.MeshSizeExtendFromBoundary': 0, 'Mesh.MeshSizeFromPoints': 0, 'Mesh.MeshSizeFromCurvature': 0,
                      'Mesh.MeshSizeMax': hmax * 2, 'Mesh.Algorithm': 6, 'Mesh.Algorithm3D': 10}.items():
             gmsh.option.setNumber(k, v)
@@ -274,9 +255,10 @@ def report(r):
     return '\n'.join(lines)
 
 
-def parser():
+def parser(prog='kicad2ems-fem-cap', doc=__doc__, palace=True):
+    """The tool's options; Elmer's tool's (elmer/cap.py: palace=False) are the same but for --np."""
     import argparse
-    ap = argparse.ArgumentParser(prog='kicad2ems-fem-cap', description=__doc__.split('\n\n')[0])
+    ap = argparse.ArgumentParser(prog=prog, description=doc.split('\n\n')[0])
     ap.add_argument('board', help='a .kicad_pcb, or a kicad2ems <name>_board.json')
     ap.add_argument('--net', action='append', required=True, help='a conductor: a net, or nets joined as A+B; repeat')
     ap.add_argument('--out', required=True, help='the folder of the results')
@@ -286,8 +268,10 @@ def parser():
     ap.add_argument('--margin', type=float, help='air around the board, mm')
     ap.add_argument('--region', help='x0,y0,x1,y1 (mm, model coordinates): only the board inside it')
     ap.add_argument('--far', choices=('open', 'ground'), default='open', help="the air box's faces (default open)")
-    ap.add_argument('--order', type=int, default=2, help="Palace's element order (default 2)")
-    ap.add_argument('--np', type=int, default=0, help="Palace's MPI processes (default 0: one per fast core)")
+    ap.add_argument('--order', type=int, default=2,
+                    help=("Palace's" if palace else "the") + " element order (default 2)")
+    if palace:
+        ap.add_argument('--np', type=int, default=0, help="Palace's MPI processes (default 0: one per fast core)")
     return ap
 
 

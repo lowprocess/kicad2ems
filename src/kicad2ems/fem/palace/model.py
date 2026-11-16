@@ -185,8 +185,8 @@ def ground_planes(board, lay, reach):
     than `reach` from their own edge. [bool per polygon]; all False for a board that does not name its nets."""
     nets = (getattr(board, 'copper_nets', None) or {}).get(lay) or []
     gnd = getattr(board, 'ground_nets', None) or ()
-    polys = board.copper[lay]
-    return [i < len(nets) and nets[i] in gnd and g.buffer(-reach).area > 0.5 * g.area for i, g in enumerate(polys)]
+    return [i < len(nets) and nets[i] in gnd and g.buffer(-reach).area > 0.5 * g.area
+            for i, g in enumerate(board.copper[lay])]
 
 
 def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0, per_wave=8.0, grade=3.0,
@@ -224,8 +224,7 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
             if l['z1'] <= l['z0']:
                 continue
             for poly in _polys(board.outline):
-                s = _surface(occ, poly, l['z0'])
-                ext = occ.extrude([(2, s)], 0, 0, l['z1'] - l['z0'])
+                ext = occ.extrude([(2, _surface(occ, poly, l['z0']))], 0, 0, l['z1'] - l['z0'])
                 add(('diel', i), [d for d in ext if d[0] == 3])
         add('air', [(3, occ.addBox(x0 - margin, y0 - margin, zb - margin, x1 - x0 + 2 * margin,
                                    y1 - y0 + 2 * margin, zt - zb + 2 * margin))])
@@ -278,22 +277,14 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
                 continue
             s, e = ([c, t0, z0], [c, t1, z1]) if axis in ('x', 0) else ([t0, c, z0], [t1, c, z1])
             add('wall', [(2, _vertical(occ, 0 if axis in ('x', 0) else 1, s, e))])
-        out, omap = occ.fragment(ents, [])
-        occ.synchronize()
-        role_of = {}                                            # fragment piece -> roles
-        for dt, kids in zip(ents, omap):
-            for role, dts in tags.items():
-                if dt in dts:
-                    for kid in kids:
-                        role_of.setdefault(kid, set()).add(role)
-        vols = [dt for dt in gmsh.model.getEntities(3)]
+        role_of = fragment(occ, ents, tags)
+        vols = gmsh.model.getEntities(3)
         via_v = {dt for dt in vols if 'via' in role_of.get(dt, ())}
         diel_v = {}
         for dt in vols:
             if dt in via_v:
                 continue
-            rs = role_of.get(dt, set())
-            d = [r for r in rs if isinstance(r, tuple) and r[0] == 'diel']
+            d = [r for r in role_of.get(dt, ()) if isinstance(r, tuple) and r[0] == 'diel']
             if d:
                 diel_v.setdefault(d[0][1], []).append(dt[1])
         air_v = [dt[1] for dt in vols if dt not in via_v and not any(isinstance(r, tuple) and r[0] == 'diel'
@@ -309,22 +300,11 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
                 return bool(meshed.intersection(up))
             c = occ.getCenterOfMass(2, s)   # a sheet inside a volume (an edge wall in from the edge) bounds none
             return not any(gmsh.model.isInside(3, v, c) for _, v in via_v)
-        walls = set()
-        for dt in via_v:
-            for f in gmsh.model.getBoundary([dt], oriented=False):
-                walls.add(abs(f[1]))
+        walls = {abs(f[1]) for dt in via_v for f in gmsh.model.getBoundary([dt], oriented=False)}
         for lay, s in cu_l.items():
             cu_l[lay] = {t for t in s - walls if live(t)}
         walls = {t for t in walls if live(t)}       # a hole through several slabs is several pieces: not the discs between
-        bb = (x0 - margin, y0 - margin, zb - margin, x1 + margin, y1 + margin, zt + margin)
-        outer = []
-        for _, s in gmsh.model.getEntities(2):
-            b = gmsh.model.getBoundingBox(2, s)
-            for ax in range(3):
-                if (abs(b[ax] - bb[ax]) < 1e-6 and abs(b[ax + 3] - bb[ax]) < 1e-6) or \
-                        (abs(b[ax] - bb[ax + 3]) < 1e-6 and abs(b[ax + 3] - bb[ax + 3]) < 1e-6):
-                    outer.append(s)
-                    break
+        outer = box_faces(gmsh, (x0 - margin, y0 - margin, zb - margin, x1 + margin, y1 + margin, zt + margin))
         port_s = {k: [dt[1] for dt in gmsh.model.getEntities(2) if ('port', k) in role_of.get(dt, ())]
                   for k in range(len(board.ports))}
         part_s = {j: [dt[1] for dt in gmsh.model.getEntities(2) if ('part', j) in role_of.get(dt, ())]
@@ -389,15 +369,7 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
             for c in gmsh.model.getBoundary([(2, s)], oriented=False):
                 edges.add(abs(c[1]))
         fd = gmsh.model.mesh.field
-        dist = fd.add('Distance')
-        fd.setNumbers(dist, 'CurvesList', sorted(edges))
-        fd.setNumber(dist, 'Sampling', 40)
-        thr = fd.add('Threshold')
-        fd.setNumber(thr, 'InField', dist)
-        fd.setNumber(thr, 'SizeMin', hmin)
-        fd.setNumber(thr, 'SizeMax', hair)
-        fd.setNumber(thr, 'DistMin', hmin)
-        fd.setNumber(thr, 'DistMax', grade * hair)          # hmin to the air's size over this distance
+        thr = graded(fd, edges, hmin, hair, grade * hair)       # hmin to the air's size over grade * hair
         fields = [thr]
         for i, ts in diel_v.items():                        # the slabs: their shorter wavelength, their thickness
             hs = min(hmax, flat * (board.layers[i]['z1'] - board.layers[i]['z0'])) if flat else hmax
@@ -409,23 +381,16 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
                 fields.append(slab)
         hpart = max(min([w for *_, w in part_list], default=hmin) / per_feature, 0.02)
         if hpart < hmin:                                    # the part sheets narrower than that: finer at them only
-            near = fd.add('Distance')
-            fd.setNumbers(near, 'CurvesList', sorted({abs(c[1]) for ss in part_s.values() for s in ss
-                                                      for c in gmsh.model.getBoundary([(2, s)], oriented=False)}))
-            fd.setNumber(near, 'Sampling', 40)
-            fine = fd.add('Threshold')
-            for k, v in dict(InField=near, SizeMin=hpart, SizeMax=hair, DistMin=hpart, DistMax=grade * hair).items():
-                fd.setNumber(fine, k, v)
-            fields.append(fine)
+            fields.append(graded(fd, {abs(c[1]) for ss in part_s.values() for s in ss
+                                      for c in gmsh.model.getBoundary([(2, s)], oriented=False)},
+                                 hpart, hair, grade * hair))
         if len(fields) > 1:
             thr = fd.add('Min')
             fd.setNumbers(thr, 'FieldsList', fields)
         fd.setAsBackgroundMesh(thr)
-        gmsh.option.setNumber('Mesh.MeshSizeExtendFromBoundary', 0)
-        gmsh.option.setNumber('Mesh.MeshSizeFromPoints', 0)
-        gmsh.option.setNumber('Mesh.MeshSizeFromCurvature', 0)
-        gmsh.option.setNumber('Mesh.MeshSizeMax', hair * 2)
-        gmsh.option.setNumber('Mesh.Algorithm', 6)
+        for k, v in dict(MeshSizeExtendFromBoundary=0, MeshSizeFromPoints=0, MeshSizeFromCurvature=0,
+                         MeshSizeMax=hair * 2, Algorithm=6).items():
+            gmsh.option.setNumber('Mesh.' + k, v)
         for alg in (10, 1):                                     # HXT (parallel); Delaunay where it cannot recover
             gmsh.option.setNumber('Mesh.Algorithm3D', alg)      # the faces of a thin slab from wide triangles
             try:
@@ -440,7 +405,7 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
         gmsh.option.setNumber('Mesh.SaveAll', 0)                # only the physical groups: the via holes are left out
         gmsh.write(path)
         nodes = len(gmsh.model.mesh.getNodes()[0])
-        tets = _count_tets(gmsh)
+        tets = sum(len(e) for _, v in gmsh.model.getEntities(3) for e in gmsh.model.mesh.getElements(3, v)[1])
         if not tets:
             raise RuntimeError('gmsh made no volume mesh of the board')
     finally:
@@ -474,9 +439,37 @@ def _prism(occ, x, y, r, za, zc, n=6):
     return [d for d in occ.extrude([(2, s)], 0, 0, zc - za) if d[0] == 3][0][1]
 
 
-def _count_tets(gmsh):
-    n = 0
-    for _, v in gmsh.model.getEntities(3):
-        types, elems, _ = gmsh.model.mesh.getElements(3, v)
-        n += sum(len(e) for e in elems)
-    return n
+def fragment(occ, ents, tags):
+    """occ.fragment of the entities, synchronized: {piece: the roles of the entities it came from} (tags: role ->
+    [(dim, tag)] before the fragment)."""
+    _, omap = occ.fragment(ents, [])
+    occ.synchronize()
+    role_of = {}
+    for dt, kids in zip(ents, omap):
+        for role, dts in tags.items():
+            if dt in dts:
+                for kid in kids:
+                    role_of.setdefault(kid, set()).add(role)
+    return role_of
+
+
+def box_faces(gmsh, bb):
+    """The surfaces lying on a face of the box bb (x0, y0, z0, x1, y1, z1): the air box's outer faces."""
+    out = []
+    for _, s in gmsh.model.getEntities(2):
+        b = gmsh.model.getBoundingBox(2, s)
+        if any(abs(b[ax] - bb[ax + k]) < 1e-6 and abs(b[ax + 3] - bb[ax + k]) < 1e-6
+               for ax in range(3) for k in (0, 3)):
+            out.append(s)
+    return out
+
+
+def graded(fd, curves, size, far, reach):
+    """A Threshold field: `size` at the curves, growing to `far` over `reach` from them (from `size` away)."""
+    dist = fd.add('Distance')
+    fd.setNumbers(dist, 'CurvesList', sorted(curves))
+    fd.setNumber(dist, 'Sampling', 40)
+    thr = fd.add('Threshold')
+    for k, v in dict(InField=dist, SizeMin=size, SizeMax=far, DistMin=size, DistMax=reach).items():
+        fd.setNumber(thr, k, v)
+    return thr

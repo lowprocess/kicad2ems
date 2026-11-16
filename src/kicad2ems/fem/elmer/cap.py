@@ -17,7 +17,7 @@ import numpy as np
 from shapely.geometry import box
 
 from ..geometry import load_board
-from ..palace.cap import _groups, cap_model, report
+from ..palace.cap import _groups, cap_model, parser as palace_parser, report
 from . import run as elmer
 
 EPS0 = 8.8541878128e-12
@@ -37,17 +37,7 @@ def sif(m, order=2, far='open'):
     if far == 'ground':
         bcs += (f"Boundary Condition {len(m['terminals']) + 1}\n  Target Boundaries(1) = {m['outer']}\n"
                 "  Potential = 0.0\nEnd\n")
-    return f"""Header
-  Mesh DB "." "mesh"
-End
-Simulation
-  Coordinate System = Cartesian 3D
-  Coordinate Scaling = 1.0e-3
-  Simulation Type = Steady State
-  Steady State Max Iterations = 1
-  Max Output Level = 4
-End
-Constants
+    return elmer.header() + f"""Constants
   Permittivity Of Vacuum = {EPS0:.10g}
 End
 {bodies}Equation 1
@@ -84,9 +74,7 @@ def maxwell(E):
 def solve(board, nets, out, thick=False, h=None, hmax=None, margin=None, crop=None, order=2, far='open', log=print):
     """The capacitance matrix between `nets` (each a conductor; 'A+B' joins nets). Returns dict(names, C (F), tets,
     h, hmax, margin, seconds) and writes it to <out>/cap.json; Elmer's case is in <out>/elmer."""
-    ok, why = elmer.found()
-    if not ok:
-        raise RuntimeError(why)
+    elmer.require()
     if isinstance(board, (str, os.PathLike)):
         board = load_board(board, {n for _, ns in _groups(nets) for n in ns})
     case = os.path.join(str(out), 'elmer')
@@ -111,19 +99,7 @@ def solve(board, nets, out, thick=False, h=None, hmax=None, margin=None, crop=No
 
 
 def parser():
-    import argparse
-    ap = argparse.ArgumentParser(prog='python -m kicad2ems.fem.elmer.cap', description=__doc__.split('\n\n')[0])
-    ap.add_argument('board', help='a .kicad_pcb, or a kicad2ems <name>_board.json')
-    ap.add_argument('--net', action='append', required=True, help='a conductor: a net, or nets joined as A+B; repeat')
-    ap.add_argument('--out', required=True, help='the folder of the results')
-    ap.add_argument('--thick', action='store_true', help='copper as solids of its thickness, not sheets')
-    ap.add_argument('--h', type=float, help='mesh size at the copper edges, mm')
-    ap.add_argument('--hmax', type=float, help='mesh size away from the copper, mm')
-    ap.add_argument('--margin', type=float, help='air around the board, mm')
-    ap.add_argument('--region', help='x0,y0,x1,y1 (mm, model coordinates): only the board inside it')
-    ap.add_argument('--far', choices=('open', 'ground'), default='open', help="the air box's faces (default open)")
-    ap.add_argument('--order', type=int, default=2, help="the element order (default 2)")
-    return ap
+    return palace_parser('python -m kicad2ems.fem.elmer.cap', __doc__, palace=False)
 
 
 def main(argv=None):

@@ -31,9 +31,9 @@ import time
 from pathlib import Path
 
 import numpy as np
-from shapely.geometry import box, shape
+from shapely.geometry import box
 
-from ..geometry import layers as layer_names, load_board, pads_of
+from ..geometry import load_board, pads_of, part_copper
 from . import run as elmer
 from .layered import BARREL, BARREL_E, BOARD, COPPER, COPPER_E, layered_mesh
 from .model import SIGMA_CU
@@ -51,16 +51,7 @@ NAMES = {COPPER_E: 'copper, current', BARREL_E: 'vias, current', COPPER: 'copper
 def part_pads(board, spec):
     """[(layer, polygon)] of a part's pads that are copper ('REF'), or of one pad ('REF.PAD')."""
     ref, _, pad = spec.partition('.')
-    names = layer_names(board)
-    fp = next((f for f in board['prims']['footprints'] if f['ref'] == ref), None)
-    if fp is None:
-        raise ValueError(f'no part {ref} on the board')
-    out = []
-    for p in fp.get('pads', []):
-        if not p.get('geom') or (pad and str(p.get('name')) != pad):
-            continue
-        ls = names if any(l in ('*.Cu', '*.Cu*') for l in p.get('layers', [])) else [l for l in p.get('layers', []) if l in names]
-        out += [(l, shape(p['geom'])) for l in ls]
+    out = part_copper(board, ref, lambda p: not pad or str(p.get('name')) == pad)
     if not out:
         raise ValueError(f"part {ref} has no copper pad{' ' + pad if pad else ''}")
     return out
@@ -182,15 +173,7 @@ End
                   '  Save Geometry Ids = Logical True\nEnd\n')
     equations = ("Equation 1\n  Active Solvers(2) = 1 2\nEnd\nEquation 2\n  Active Solvers(1) = 2\nEnd\n" if electric
                  else "Equation 1\n  Active Solvers(1) = 1\nEnd\n")
-    return f"""Header
-  Mesh DB "." "mesh"
-End
-Simulation
-  Coordinate System = Cartesian 3D
-  Coordinate Scaling = 1.0e-3
-{simulation}  Max Output Level = 4
-End
-{bodies}{equations}Initial Condition 1
+    return elmer.header(simulation) + f"""{bodies}{equations}Initial Condition 1
   Temperature = {ambient:g}
 End
 {materials}{current}Solver {first + 1}
@@ -255,9 +238,7 @@ def solve(board, out='thermal', heat=None, nets=None, source=None, loads=None, c
         raise ValueError("--transient takes the parts' heat only, not a net's current")
     if transient and transient < 0:
         raise ValueError('--transient: seconds, positive')
-    ok, why = elmer.found()
-    if not ok:
-        raise RuntimeError(why)
+    elmer.require()
     heat, loads = dict(heat or {}), dict(loads or {})
     nets = set() if nets is None else {nets} if isinstance(nets, str) else set(nets)
     if nets and (not source or not loads or any(a <= 0 for a in loads.values())):

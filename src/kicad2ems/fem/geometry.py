@@ -4,6 +4,7 @@
     copper_of(board, nets, layer)       # one shapely geometry, or None
     polygons(geom, tol)                 # its polygons, simplified to tol mm, slivers and tiny holes dropped
     pads_of(board, ref, nets)           # [(layer, polygon)]: a part's pads on those nets (through-hole: every layer)
+    part_copper(board, ref, keep)       # the same of the pads keep(pad) passes
     slab(board, layer)                  # (bottom, top) z of a copper layer's thickness, mm
 """
 import json
@@ -59,20 +60,26 @@ def slab(board, layer):
     return z, z + t
 
 
-def pads_of(board, ref, nets):
-    """[(layer, polygon)] of part `ref`'s pads on `nets`: an SMD pad on its layer, a through-hole one (*.Cu or
-    several layers) on every copper layer."""
-    nets = {nets} if isinstance(nets, str) else set(nets)
+def part_copper(board, ref, keep):
+    """[(layer, polygon)] of part `ref`'s pads that keep(pad) passes: an SMD pad on its layer, a through-hole one
+    (*.Cu or several layers) on every copper layer."""
     names = layers(board)
     fp = next((f for f in board['prims']['footprints'] if f['ref'] == ref), None)
     if fp is None:
         raise ValueError(f'no part {ref} on the board')
     out = []
     for p in fp.get('pads', []):
-        if p.get('net') not in nets or not p.get('geom'):
-            continue
-        ls = names if any(l in ('*.Cu', '*.Cu*') for l in p.get('layers', [])) else [l for l in p.get('layers', []) if l in names]
-        out += [(l, shape(p['geom'])) for l in ls]
+        if p.get('geom') and keep(p):
+            on = p.get('layers', [])
+            ls = names if any(l in ('*.Cu', '*.Cu*') for l in on) else [l for l in on if l in names]
+            out += [(l, shape(p['geom'])) for l in ls]
+    return out
+
+
+def pads_of(board, ref, nets):
+    """part_copper of part `ref`'s pads on `nets`."""
+    nets = {nets} if isinstance(nets, str) else set(nets)
+    out = part_copper(board, ref, lambda p: p.get('net') in nets)
     if not out:
         raise ValueError(f'part {ref} has no pad on {", ".join(sorted(nets))}')
     return out

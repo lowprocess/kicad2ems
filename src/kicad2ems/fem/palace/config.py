@@ -121,25 +121,21 @@ def _boundaries(mdl, loss, sigma, plating, box, abc=1):
     """The copper (PEC, or lossy sheets) and the air box's faces: absorbing, or PEC (a can)."""
     if box not in BOXES:
         raise ValueError(f"box: one of {', '.join(BOXES)}, not {box!r}")
-    out = _metal(mdl, loss, sigma, plating)
+    if not loss:
+        out = dict(PEC=dict(Attributes=list(mdl.pec) if isinstance(mdl.pec, (list, tuple)) else [mdl.pec]))
+    elif not getattr(mdl, 'sheets', None):
+        raise ValueError('conductor loss needs the model to tag each copper layer (palace.model.build)')
+    else:
+        out = dict(Conductivity=[dict(Attributes=[a], Conductivity=float(sigma), Thickness=float(t), External=False)
+                                 for a, t in mdl.sheets])
+        if mdl.via_wall is not None:
+            out['Conductivity'].append(dict(Attributes=[mdl.via_wall], Conductivity=float(sigma),
+                                            Thickness=float(plating), External=True))
+        if getattr(mdl, 'edge_wall', None) is not None:    # the edge walls stay PEC
+            out['PEC'] = dict(Attributes=[mdl.edge_wall])
     if box == 'pec':
         pec = out.setdefault('PEC', dict(Attributes=[]))
         pec['Attributes'] = list(pec['Attributes']) + [mdl.absorb]
     else:
         out['Absorbing'] = dict(Attributes=[mdl.absorb], Order=int(abc))
-    return out
-
-
-def _metal(mdl, loss, sigma, plating):
-    pec = list(mdl.pec) if isinstance(mdl.pec, (list, tuple)) else [mdl.pec]
-    if not loss:
-        return dict(PEC=dict(Attributes=pec))
-    if not getattr(mdl, 'sheets', None):
-        raise ValueError('conductor loss needs the model to tag each copper layer (palace.model.build)')
-    cond = [dict(Attributes=[a], Conductivity=float(sigma), Thickness=float(t), External=False) for a, t in mdl.sheets]
-    if mdl.via_wall is not None:
-        cond.append(dict(Attributes=[mdl.via_wall], Conductivity=float(sigma), Thickness=float(plating), External=True))
-    out = dict(Conductivity=cond)
-    if getattr(mdl, 'edge_wall', None) is not None:        # the edge walls stay PEC
-        out['PEC'] = dict(Attributes=[mdl.edge_wall])
     return out

@@ -74,12 +74,3 @@ def slab(m, th, z):
 def all_faces(m, th):
     """{layer: (lower, upper)}."""
     return {lay: faces(m, th, lay) for lay in m.cu_z}
-
-
-def top(m, th):
-    """The board's top in the thick model: the highest copper's upper face, or the mapped thickness."""
-    return max([z_map(m, th, m.thickness)] + [f[1] for f in all_faces(m, th).values()])
-
-
-def bottom(m, th):
-    return min([0.0] + [f[0] for f in all_faces(m, th).values()])

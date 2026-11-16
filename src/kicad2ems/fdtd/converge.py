@@ -4,6 +4,7 @@ wavelength, fine / f at the copper edges (the fine cell of level 1 as the base) 
 through each dielectric; everything else unchanged. The finest level is the reference; each coarser
 level is compared with it.
 """
+from itertools import combinations_with_replacement
 import numpy as np
 from .mesh import auto_mesh
 
@@ -35,10 +36,6 @@ def describe_levels(levels):
     return lines
 
 
-def _pairs(n):
-    return [(i, j) for j in range(n) for i in range(j, n)]
-
-
 def compare_levels(S_levels, names, floor_db=-40.0):
     """Each level against the last (finest). S_levels: list of (nf, n, n) arrays. Returns one dict per
     coarser level: {'params': {'S(a,b)': (max |d dB|, max |d phase| deg)}, 'max_db', 'max_deg'}.
@@ -47,7 +44,7 @@ def compare_levels(S_levels, names, floor_db=-40.0):
     out = []
     for S in S_levels[:-1]:
         params = {}
-        for i, j in _pairs(ref.shape[1]):
+        for j, i in combinations_with_replacement(range(ref.shape[1]), 2):         # i >= j
             r, s = ref[:, i, j], S[:, i, j]
             ok = np.isfinite(r) & np.isfinite(s) & (20 * np.log10(np.abs(r) + 1e-15) > floor_db)
             if not ok.any():

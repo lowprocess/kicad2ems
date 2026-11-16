@@ -25,6 +25,26 @@ from . import run as elmer
 from .model import SIGMA_CU, copper_model
 
 PLATING = 0.025
+DIRECT = "  ! direct: the thin copper slabs' flat elements made the iterative solvers diverge\n"
+
+
+def _solvers(masks, bcs, note=''):
+    """The .sif's solvers, the current's (direct; note: comment lines in it) and the loads' mean potentials saved,
+    and the boundary conditions."""
+    return f"""Solver 1
+  Equation = "StatCurrent"
+  Variable = "Potential"
+  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+{note}  Linear System Solver = "Direct"
+  Linear System Direct Method = "Umfpack"
+End
+Solver 2
+  Exec Solver = After All
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "scalars.dat"
+{''.join(masks)}End
+{''.join(bcs)}"""
 
 
 def sif(m, loads):
@@ -40,17 +60,7 @@ def sif(m, loads):
                    f"  Potential Constant = Logical True\n  Potential Constant Flux = Real {-amps:.12g}\n"
                    f"  load{k} = Logical True\nEnd\n")
         masks.append(f"  Variable {k + 1} = Potential\n  Operator {k + 1} = boundary mean\n  Mask Name {k + 1} = load{k}\n")
-    return f"""Header
-  Mesh DB "." "mesh"
-End
-Simulation
-  Coordinate System = Cartesian 3D
-  Coordinate Scaling = 1.0e-3
-  Simulation Type = Steady State
-  Steady State Max Iterations = 1
-  Max Output Level = 4
-End
-{bodies}Equation 1
+    return elmer.header() + f"""{bodies}Equation 1
   Active Solvers(2) = 1 2
 End
 Material 1
@@ -59,27 +69,12 @@ End
 Material 2
   Electric Conductivity = {m['barrel_sigma']:.6g}
 End
-Solver 1
-  Equation = "StatCurrent"
-  Variable = "Potential"
-  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
-  ! direct: the thin copper slabs' flat elements made the iterative solvers diverge
-  Linear System Solver = "Direct"
-  Linear System Direct Method = "Umfpack"
-End
-Solver 2
-  Exec Solver = After All
-  Equation = "SaveScalars"
-  Procedure = "SaveData" "SaveScalars"
-  Filename = "scalars.dat"
-{''.join(masks)}End
-{''.join(bcs)}"""
+{_solvers(masks, bcs, DIRECT)}"""
 
 
 def layered_sif(m, loads, plating=PLATING):
     """The .sif on the layered mesh (layered_mesh's description, boundaries named 'I:source' and 'I:<load>'): the
     current in the net's copper and barrels, the other bodies left out of the solve."""
-    import numpy as np
     from .layered import COPPER_E, BARREL_E
     r = m['via_r']
     fill = float(np.mean((r ** 2 - np.maximum(r - plating, 0) ** 2) / r ** 2)) if len(r) else 1.0
@@ -101,17 +96,7 @@ def layered_sif(m, loads, plating=PLATING):
                 k += 1
         if lines:
             bcs.append(f"Boundary Condition {len(bcs) + 1}\n  Target Boundaries(1) = {tag}\n" + '\n'.join(lines) + "\nEnd\n")
-    return f"""Header
-  Mesh DB "." "mesh"
-End
-Simulation
-  Coordinate System = Cartesian 3D
-  Coordinate Scaling = 1.0e-3
-  Simulation Type = Steady State
-  Steady State Max Iterations = 1
-  Max Output Level = 4
-End
-{bodies}Equation 1
+    return elmer.header() + f"""{bodies}Equation 1
   Active Solvers(1) = 1
 End
 Equation 2
@@ -126,28 +111,13 @@ End
 Material 3
   Electric Conductivity = 0.0
 End
-Solver 1
-  Equation = "StatCurrent"
-  Variable = "Potential"
-  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
-  Linear System Solver = "Direct"
-  Linear System Direct Method = "Umfpack"
-End
-Solver 2
-  Exec Solver = After All
-  Equation = "SaveScalars"
-  Procedure = "SaveData" "SaveScalars"
-  Filename = "scalars.dat"
-{''.join(masks)}End
-{''.join(bcs)}"""
+{_solvers(masks, bcs)}"""
 
 
 def solve(board, nets, source, loads, out='dc', h=0.25, h_fine=0.05, plating=PLATING, mesh='wedge', log=print):
     """Each load's voltage (V, relative to the source: negative, the drop) and the copper's loss (W). mesh: 'wedge'
     (the layered mesh, R-D23) or 'tet' (gmsh's tetrahedra of the copper)."""
-    ok, why = elmer.found()
-    if not ok:
-        raise RuntimeError(why)
+    elmer.require()
     if not loads or any(a <= 0 for a in loads.values()):
         raise ValueError('loads: one or more, each a positive current')
     if mesh not in ('wedge', 'tet'):
