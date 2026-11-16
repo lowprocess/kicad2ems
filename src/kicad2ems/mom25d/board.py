@@ -227,8 +227,8 @@ def lone_pads(data, layers):
         # demo_bandpass's shunt parts land on ground pads with a via, which once were dropped as lone: |dS| 1.98)
         at = [_gap_box(p) if p.get('internal') and p.get('gap') else Point(*p['c'][:2])     # (a part's port: its
               for p in data.get('ports', []) if p['layer'] == lay] + \
-             [box(min(q['s'][0], q['e'][0]), min(q['s'][1], q['e'][1]), max(q['s'][0], q['e'][0]),
-                  max(q['s'][1], q['e'][1])) for q in data.get('parts', []) if q['layer'] == lay]     # gap, as a part's)
+             [box(*np.minimum(q['s'][:2], q['e'][:2]), *np.maximum(q['s'][:2], q['e'][:2]))
+              for q in data.get('parts', []) if q['layer'] == lay]                                   # gap, as a part's)
         z = cu_z[lay]
         through = [Point(v['x'], v['y']) for v in data.get('vias', [])
                    if v.get('net') in gnets and v['z0'] - 1e-9 <= z <= v['z1'] + 1e-9]
@@ -274,17 +274,17 @@ class BoardModel(PlanarModel):
         # ---- the ground: z = 0 of the solver (whole stack: the lowest copper layer, meshed) ----
         self.whole = isinstance(ground, str) and ground.lower() == 'none'     # not None: the board's own ground
         slot_layer = None
+        solid = [l for l in sorted(cu_z, key=cu_z.get)                    # the copper layers over half the board
+                 if sum(p.area for p in copper.get(l, [])) >= 0.5 * outline.area]
         if planes == 'slots':                       # the whole stack's layers, the ground among them a slot plane
             slot_layer = (ground if ground and not self.whole else None) or data.get('ground')
             if slot_layer is None:
-                solid = [l for l in sorted(cu_z, key=cu_z.get) if sum(p.area for p in copper.get(l, [])) >= 0.5 * outline.area]
                 if not solid:
                     raise ValueError("planes 'slots': no ground layer named and no solid copper layer")
                 slot_layer = solid[0]
             self.whole = True
         name = min(cu_z, key=cu_z.get) if self.whole else ground or data.get('ground')
         if name is None:
-            solid = [l for l in sorted(cu_z, key=cu_z.get) if sum(p.area for p in copper.get(l, [])) >= 0.5 * outline.area]
             if not solid:
                 raise ValueError("no solid ground plane (no copper layer covers half the board): name the ground layer")
             name = solid[0]
@@ -379,8 +379,8 @@ class BoardModel(PlanarModel):
         # a ground via under a part's pad (a shunt part to ground) carries the part's current: meshed as a signal
         # via is, its pad as drawn (squared as a stitching via outside the zone, demo_bandpass's lost its parts:
         # |dS| 1.98)
-        gaps = [box(min(q['s'][0], q['e'][0]), min(q['s'][1], q['e'][1]), max(q['s'][0], q['e'][0]),
-                    max(q['s'][1], q['e'][1])) for q in data.get('parts', [])]
+        gaps = [box(*np.minimum(q['s'][:2], q['e'][:2]), *np.maximum(q['s'][:2], q['e'][:2]))
+                for q in data.get('parts', [])]
         made = {}
         for i, v in enumerate(data.get('vias', [])):
             via = made[i] = self._via(v['x'], v['y'], v['z0'], v['z1'], v['r'], f"{v.get('net', '')}@({v['x']:.2f},{-v['y']:.2f})")

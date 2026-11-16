@@ -226,14 +226,15 @@ def _model_kw(s):
                 wideband=getattr(s, 'diel_fref', 1.0) * 1e9 if wide else None)
 
 
-def _mesh_kw(s, m):
-    """solve()'s mesh options from kicad2ems's settings (the run's and the preview's) for the board m: --mom-quads,
-    --mom-quad-tol, --mom-coarsen, --mom-zone, the vias, --mom-lines, --mom-stack (resolved: _stack) and the
-    BoardModel's."""
-    return dict(quads={'off': False, 'on': True}.get(s.mom_quads, s.mom_quads), quad_tol=s.mom_quad_tol,
-                coarsen=s.mom_coarsen or None, cells=getattr(s, 'mom_cells', 30.0), zone='auto' if s.mom_zone == 'on' else None,
-                signal_vias=s.mom_signal_vias, stitching_vias=s.mom_stitching_vias, lines=s.mom_lines,
-                stack=_stack(s, m), **_model_kw(s))
+def _mesh_kw(s, m=None):
+    """solve()'s mesh options from kicad2ems's settings (the run's, the preview's and mixed's): --mom-quads,
+    --mom-quad-tol, --mom-coarsen, --mom-cells, --mom-zone, the vias, --mom-lines; for the board m also --mom-stack
+    (resolved: _stack) and the BoardModel's."""
+    kw = dict(quads={'off': False, 'on': True}.get(s.mom_quads, s.mom_quads), quad_tol=s.mom_quad_tol,
+              coarsen=s.mom_coarsen or None, cells=getattr(s, 'mom_cells', 30.0),
+              zone='auto' if s.mom_zone == 'on' else None, signal_vias=s.mom_signal_vias,
+              stitching_vias=s.mom_stitching_vias, lines=s.mom_lines)
+    return kw if m is None else dict(kw, stack=_stack(s, m), **_model_kw(s))
 
 
 _held_apertures = [None, None]                  # (board, its apertures): the last board's, asked for several times

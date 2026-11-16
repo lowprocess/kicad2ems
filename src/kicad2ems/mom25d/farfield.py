@@ -34,15 +34,6 @@ from kicad2ems.emsdev.numerics.base import C0, MU0, EPS0
 ETA0 = np.sqrt(MU0 / EPS0)
 
 
-def _via_Eu(st, kr, w, o, layers):
-    """E_u on interface o (spectral) from a unit +z current through `layers` (TM only): -j k_rho S~ (module doc)."""
-    k2 = (w / C0) ** 2
-    S = 0.0
-    for j in layers:
-        S = S + (st.voltage(kr, w, j, o, 'e') - st.voltage(kr, w, j - 1, o, 'e')) / (k2 * st.eps(j) - kr ** 2)
-    return -1j * kr * S
-
-
 def _tangential(sim, I, w, o, kr, cphi, sphi):
     """E_u, E_v on interface o at the plane-wave directions (kr, cos / sin phi) from all the currents: the surface
     currents of every layer, and the via chains' (sim.chains, unknowns after the Ne edges, when the sim has them).
@@ -68,9 +59,13 @@ def _tangential(sim, I, w, o, kr, cphi, sphi):
         spans = {}
         for c, (v, a, b) in enumerate(chains):                          # one kernel per span, summed over its vias
             spans.setdefault((a, b), []).append((v.x, v.y, c))
+        k2 = (w / C0) ** 2
         for (a, b), vs in spans.items():
+            S = 0.0                                                     # E_u = -j k_rho S~ (module doc), TM only
+            for j in range(a + 1, b + 1):
+                S = S + (st.voltage(kr, w, j, o, 'e') - st.voltage(kr, w, j - 1, o, 'e')) / (k2 * st.eps(j) - kr ** 2)
             xy, rows = np.array([(x, y) for x, y, _ in vs]), [c for _, _, c in vs]
-            Eu = Eu + _via_Eu(st, kr, w, o, range(a + 1, b + 1))[:, None] * (
+            Eu = Eu + (-1j * kr * S)[:, None] * (
                 np.exp(1j * (np.outer(kx, xy[:, 0]) + np.outer(ky, xy[:, 1]))) @ Iv[rows])
     slots = getattr(sim, 'slots', None) or []
     if slots and ne is not None:                                        # the openings of PEC planes: their field

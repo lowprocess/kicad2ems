@@ -53,7 +53,8 @@ import numpy as np
 from kicad2ems.emsdev.numerics.base import MU0, EPS0, RWG, qform, combine, quad_pts, _BAR3, _W3, _BAR6, _W6
 from .base import singular_moments, moments7, quad_moments
 from .frill import bessel_int
-from .via import sommerfeld_contour, hankel, Table1D, _layers
+from .multilayer import GreenTableML
+from .via import sommerfeld_contour, Table1D, _layers
 
 NEAR = 4.0              # an opening's triangle and a strip's are near within NEAR x (the larger's size + the height)
 SUB_MAX = 3             # the opening's triangles subdivided at most 4^SUB_MAX times for a near strip
@@ -85,16 +86,6 @@ class Slot:
         V = r.nodes[r.tris]
         self.size = np.linalg.norm(V - np.roll(V, 1, axis=1), axis=2).max(1)
         return r
-
-    def field_integrals(self):
-        """(Ex, Ey) (ntri x Ne, sparse): the integral of E_n = z x f_n over each of the opening's triangles."""
-        r = self.rwg
-        cx, cy, A = r.cent[:, 0], r.cent[:, 1], r.area
-        from scipy import sparse
-        D = lambda v: sparse.diags(v)
-        fx = D(cx) @ r.Aal - r.Bx                            # f = Aal r - (Bx, By) on a triangle, its integral
-        fy = D(cy) @ r.Aal - r.By                            # A (Aal c - B)
-        return (D(A) @ (-fy)).tocsr(), (D(A) @ fx).tocsr()   # z x f = (-f_y, f_x)
 
 
 def _sub_points(level):
@@ -156,16 +147,16 @@ class SlotKernels:
         return self._rem[(p, span)]
 
 
-class SlotTable:
-    """The kernels of an opening's own equation on plane p, as GreenTableML's (its 'A' and 'q', what base.combine
-    and the singular moments take): A = G_e / (jw), q = jw G_d (module doc), their 1/rho parts cA / rho, cq / rho
-    extracted, and the nearest image (a dielectric step or metal close to the plane) where there is one within
-    IMAGE_REACH."""
+class SlotTable(GreenTableML):
+    """The kernels of an opening's own equation on plane p, a GreenTableML of that interface (its 'A' and 'q', what
+    base.combine and the singular moments take): A = G_e / (jw), q = jw G_d (module doc), their 1/rho parts
+    cA / rho, cq / rho extracted, and the nearest image (a dielectric step or metal close to the plane) where there
+    is one within IMAGE_REACH."""
     IMAGE_REACH = 0.6e-3
 
     def __init__(self, f, stack, p, rho_max, nrho=260, nfine=8192):
         w = 2 * np.pi * f
-        self.p, self.f, self.d = p, f, 0.0
+        self.p, self.f, self.d, self.o, self.s = p, f, 0.0, p, p
         self.cA = EPS0 * stack.eps_sum(p) / (2 * np.pi)
         self.cq = 1.0 / (np.pi * MU0)
         kr, dk, K = sommerfeld_contour(f, stack, rho_max)
@@ -179,11 +170,7 @@ class SlotTable:
             fac = K1 * np.exp(K1 * self.dimg) / (2 * np.pi)
             self.cAi = complex((ga[0] - 2 * np.pi * self.cA / K1) * fac)
             self.cqi = complex((gq[0] - 2 * np.pi * self.cq / K1) * fac)
-        for d, cA, cq in self.extracted():
-            e = 2 * np.pi * np.exp(-kr * d) / kr
-            GA, Gq = GA - cA * e, Gq - cq * e
-        rho = rho_max * np.linspace(0, 1, nrho) ** 2
-        self._tab = Table1D(rho, hankel(np.stack([GA, Gq]), kr, dk, rho).T, rho_max, nfine)
+        self._tabulate(GA, Gq, kr, dk, rho_max, nrho, nfine)
 
     @staticmethod
     def spectral(stack, kr, w, p):
@@ -192,13 +179,6 @@ class SlotTable:
         _, _, _, Yd, Yu = stack._network(kr, w, 'h')
         Yh = Yu[p] + Yd[p]
         return Ye / (1j * w), 1j * w * (Yh - Ye) / kr ** 2
-
-    def extracted(self):
-        return [(0.0, self.cA, self.cq)] + ([(self.dimg, self.cAi, self.cqi)] if self.dimg else [])
-
-    def AQ(self, r):
-        v = self._tab(r)
-        return v[..., 0], v[..., 1]
 
 
 def self_block(slots, table, w, near_fac=5.0, cache=None):
@@ -418,11 +398,15 @@ def coupling(sim, slots, kern, B, C, col0):
 def spectrum(slots, v, kx, ky):
     """(Ex, Ey) (nk[, nexc]): the openings' field transformed at the plane-wave directions (kx, ky), sum of
     int E e^{j k.rho} (far field, farfield.py), with v their unknowns in the order of `slots`."""
+    from scipy.sparse import diags
     Ex = Ey = 0
     col = 0
     for s in slots:
-        n = s.count
-        ix, iy = s.field_integrals()
+        n, r = s.count, s.rwg
+        # the integral of E_n = z x f_n = (-f_y, f_x) over each of the opening's triangles: f = Aal r - (Bx, By) on a
+        # triangle, its integral A (Aal c - B)
+        fx, fy = diags(r.cent[:, 0]) @ r.Aal - r.Bx, diags(r.cent[:, 1]) @ r.Aal - r.By
+        ix, iy = (diags(r.area) @ (-fy)).tocsr(), (diags(r.area) @ fx).tocsr()
         vv = v[col:col + n]
         ph = np.exp(1j * (np.outer(kx, s.rwg.cent[:, 0]) + np.outer(ky, s.rwg.cent[:, 1])))
         Ex, Ey = Ex + ph @ (ix @ vv), Ey + ph @ (iy @ vv)

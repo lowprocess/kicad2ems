@@ -458,11 +458,12 @@ class FastOperator:
         return H[:m, :n] + H[:m, n:] + H[m:, :n] + H[m:, n:]
 
     # ---- near correction ----------------------------------------------------------------------------
-    def _near_moments(self):
-        """Accurate minus centroid moments (base.moments7's order) for the near triangle pairs."""
-        sim, r, P, Q = self.sim, self.sim.rwg, self.nP, self.nQ
+    def _near_matrix(self):
+        """Sparse (Ne x Ne) correction from triangle-pair moments; keeps their G_q part (_qcorr: the via fans')."""
+        sim, r, Ne, w, P, Q = self.sim, self.sim.rwg, self.sim.Ne, self.w, self.nP, self.nQ
+        # accurate minus centroid moments (base.moments7's order) for the near triangle pairs
         la, lb = self.layer_of_tri[P], self.layer_of_tri[Q]
-        out = np.zeros((len(P), 7), complex)
+        M = np.zeros((len(P), 7), complex)
         for a in self.layers:
             for b in self.layers:
                 m = np.nonzero((la == a) & (lb == b))[0]
@@ -470,16 +471,28 @@ class FastOperator:
                     continue
                 gt, p, q = self.tables[(min(a, b), max(a, b))], P[m], Q[m]
                 # smooth rest by quadrature, plus the analytic singular / near-singular parts
-                out[m] = quad_moments(*((sim.P3, sim.W3) if a == b else (sim.P6, sim.W6)), p, q, gt).T
+                M[m] = quad_moments(*((sim.P3, sim.W3) if a == b else (sim.P6, sim.W6)), p, q, gt).T
                 for d, cA, cq in gt.extracted():
                     if (a, b, d) not in self._static_cache:
                         self._static_cache[(a, b, d)] = offplane_pairs(r.nodes, r.tris, p, q, d)
-                    out[m] += np.stack(offplane_moments(cA, cq, self._static_cache[(a, b, d)]), 1)
+                    M[m] += np.stack(offplane_moments(cA, cq, self._static_cache[(a, b, d)]), 1)
                 # less the centroid-rule value used by the far operator
                 GA, GQ = self._kern(a, b, np.linalg.norm(r.cent[p] - r.cent[q], axis=1))
                 wgt = r.area[p] * r.area[q]
-                out[m] -= np.stack(moments7(GA * wgt, GQ * wgt, r.cent[p], r.cent[q]), 1)
-        return out
+                M[m] -= np.stack(moments7(GA * wgt, GQ * wgt, r.cent[p], r.cent[q]), 1)
+        self._qcorr = M[:, 6]
+        rows, cols, vals = [], [], []
+        for i in range(3):
+            for j in range(3):
+                hi, hj = self.tri_halves[P, i], self.tri_halves[Q, j]
+                ok = (hi >= 0) & (hj >= 0)
+                hi, hj, mm = hi[ok], hj[ok], M[ok]
+                vi, vj = self.h_v[hi], self.h_v[hj]
+                A = (mm[:, 5] - (vj[:, 0] * mm[:, 1] + vj[:, 1] * mm[:, 2])
+                     - (vi[:, 0] * mm[:, 3] + vi[:, 1] * mm[:, 4]) + (vi * vj).sum(1) * mm[:, 0])
+                rows.append(hi % Ne); cols.append(hj % Ne)
+                vals.append(self.h_alpha[hi] * self.h_alpha[hj] * (1j * w * A + 4 * mm[:, 6] / (1j * w)))
+        return sparse.csr_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(Ne, Ne))
 
     def _fan_columns(self):
         """Accurate G_q moments between every triangle and the via fan triangles (Nt x |F|)."""
@@ -497,24 +510,6 @@ class FastOperator:
         pos, sel = {q: j for j, q in enumerate(F)}, np.isin(self.nQ, F)
         np.add.at(QF, (self.nP[sel], np.array([pos[q] for q in self.nQ[sel]], int)), self._qcorr[sel])
         return QF
-
-    def _near_matrix(self):
-        """Sparse (Ne x Ne) correction from triangle-pair moments; keeps their G_q part (_qcorr: the via fans')."""
-        Ne, w, P, Q = self.sim.Ne, self.w, self.nP, self.nQ
-        M = self._near_moments()
-        self._qcorr = M[:, 6]
-        rows, cols, vals = [], [], []
-        for i in range(3):
-            for j in range(3):
-                hi, hj = self.tri_halves[P, i], self.tri_halves[Q, j]
-                ok = (hi >= 0) & (hj >= 0)
-                hi, hj, mm = hi[ok], hj[ok], M[ok]
-                vi, vj = self.h_v[hi], self.h_v[hj]
-                A = (mm[:, 5] - (vj[:, 0] * mm[:, 1] + vj[:, 1] * mm[:, 2])
-                     - (vi[:, 0] * mm[:, 3] + vi[:, 1] * mm[:, 4]) + (vi * vj).sum(1) * mm[:, 0])
-                rows.append(hi % Ne); cols.append(hj % Ne)
-                vals.append(self.h_alpha[hi] * self.h_alpha[hj] * (1j * w * A + 4 * mm[:, 6] / (1j * w)))
-        return sparse.csr_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(Ne, Ne))
 
     def _near_exact(self):
         """The core's exact near-field correction (sparse, double); keeps its via-fan part (_qcorr)."""
