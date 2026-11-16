@@ -1,0 +1,155 @@
+"""
+mom25d.api - one call for a program that hands mom25d a board and wants S-parameters back, without reaching
+into the Simulation's internals (kicad2ems's MoM solver is the first user of this seam).
+
+    from mom25d.api import solve_board
+    res = solve_board('out/filter_board.json', np.linspace(1e9, 6e9, 401), dmax=0.3e-3)
+    res.S, res.names, res.zref        # (nf, n, n) at the ports' reference impedances, port names, ohms
+    res.ports, res.unknowns, res.solves, res.seconds, res.notes
+
+The board is kicad2ems's file format (see board.BoardModel): the path of a <name>_board.json, or its content.
+Fields of Result are the stable part; Result.model and Result.sim give the objects behind it for anything
+else (and change with mom25d).
+"""
+import json
+import os
+import time
+from dataclasses import dataclass, field
+
+import numpy as np
+
+
+@dataclass
+class Result:
+    f: np.ndarray                   # Hz: the requested frequencies
+    S: np.ndarray                   # (nf, n, n) at zref
+    names: list                     # port names (a differential pair with pairs=True: P1d / P1c modes)
+    zref: list                      # output reference impedance per port, ohms
+    ports: list                     # [dict(name, kind='wave' | 'lumped', zc=line impedance of a wave port)]
+    unknowns: int                   # RWG edges + via chains
+    triangles: int
+    solver: str                     # 'dense', 'direct', 'blr', 'aca'
+    precision: str                  # 'double' or 'mixed'
+    mesher: str                     # what was asked for ('auto': Triangle)
+    solves: int                     # EM solves of the sweep
+    solved: list                    # the frequencies solved (Hz)
+    seconds: float                  # model, mesh, port characterisation and sweep
+    core: bool                      # the compiled core was used
+    notes: list = field(default_factory=list)
+    afs: list = field(default_factory=list)     # the adaptive sweep's history (afs.adaptive_sweep), one dict a model
+    afs_tol: float = None                       # its tolerance (max |dS|)
+    model: object = None            # the BoardModel
+    sim: object = None              # the Simulation
+
+
+LINE_STEP = 2.0    # lines=: the line functions' columns, x dmax (1-3 x gave the same S on the test boards)
+CELLS = 30.0       # cells per wavelength the mesh grows to away from the features (0: dmax everywhere)
+ZONE_OUT = 5.0     # zone=: cells up to this x dmax outside the zone around the signal copper
+
+
+def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto', pairs=False, mesher='auto', metal=None,
+                ground=None, max_solves=60, afs_tol=5e-3, log=print, progress=None, on_step=None,
+                core='auto', quads=False, zone=None, signal_vias='round', stitching_vias='auto', lines=None,
+                keep_at=(), quad_tol=35.0, coarsen=None, planes='pec', stitching_pads='drop', wideband=None,
+                cells=CELLS):
+    """S-parameters of a board (a <name>_board.json path, or its content) on `freq` (Hz).
+
+    dmax (m): largest cell along the copper; layers whose metal covers more than half the board (planes) get
+    plane_factor x dmax (refined near the copper of other layers). port: 'auto' (de-embedded wave ports where
+    the straight feed spans enough for the fit down to the lowest frequency, else lumped), 'wave' or 'via'
+    (lumped). pairs: P<n>+ / P<n>- ports as one mixed-mode port. metal: a sim.Metal (conductor loss), or None
+    (lossless). log: lines of progress (the adaptive sweep's); progress(solves, max_solves, f): after each
+    EM solve. on_step(entry): after each
+    model of the adaptive sweep (its change and prediction error, afs.adaptive_sweep). core: 'auto' (the
+    compiled core where built, NumPy's dense solver without it), 'compiled' (the core for every size) or
+    'python' (NumPy only), fast.use_core. quads: near-rectangular triangle pairs as quad cells (True, or 'centre'),
+    quad_tol: the largest deviation of their corners from 90 degrees. coarsen: cells grow from dmax at corners, vias
+    and ports to coarsen x dmax away from them (geo.mesh_polygons; None: dmax everywhere). planes: 'pec' (default:
+    solid planes as the ground and a PEC cover, not meshed: mom25d.board) or 'mesh'. stitching_pads: 'drop'
+    (default: a ground via's pad with nothing else on its layer left out, the via kept) or 'keep'. wideband: None
+    (constant er, tand) or the frequency (Hz) the stack's er and tand hold at, Djordjevic-Sarkar elsewhere."""
+    from . import fast
+    from .geo import LinePort
+    from .run import solve_band
+    name = os.path.basename(board) if isinstance(board, str) else 'board'
+    freq = np.asarray(freq, float)
+    fmin, fmax = float(freq[0]), float(freq[-1])
+    t0, prev = time.time(), fast.use_core(core)
+    try:
+        model, sim = build_board(board, fmin, fmax, dmax=dmax, plane_factor=plane_factor, port=port, pairs=pairs,
+                                 mesher=mesher, metal=metal, ground=ground, log=log, core=core,
+                                 quads=quads, zone=zone, signal_vias=signal_vias, stitching_vias=stitching_vias,
+                                 lines=lines, quad_tol=quad_tol, coarsen=coarsen, planes=planes,
+                                 stitching_pads=stitching_pads, wideband=wideband, title=name, cells=cells)
+        f, S, info = solve_band(sim, fmin, fmax, points=len(freq), zref=model.port_z0, max_solves=max_solves,
+                                afs_tol=afs_tol, log=log, progress=progress, on_step=on_step, keep_at=keep_at,
+                                freq=freq)
+        core_used = fast._core is not None
+    finally:
+        fast.set_core(prev)
+    if len(f) != len(freq) or not np.allclose(f, freq):              # the sweep's grid onto the requested one
+        S = np.apply_along_axis(lambda s: np.interp(freq, f, s.real) + 1j * np.interp(freq, f, s.imag), 0, S)
+    return Result(f=freq, S=S, names=list(info['names']), zref=list(info['zref']),
+                  ports=[dict(name=p.name, kind='wave' if isinstance(p, LinePort) else 'lumped',
+                              zc=float(getattr(p, 'zc', 0) or 0)) for p in sim.ports],
+                  unknowns=int(sim.qT.shape[1]) if getattr(sim, 'qT', None) is not None else int(sim.Ne + sim.Nv),
+                  triangles=int(len(sim.rwg.tris)), solver=sim.solver,
+                  precision=getattr(sim, 'precision', 'double'), mesher=mesher, solves=int(info['solves']),
+                  solved=list(info['solved']), seconds=time.time() - t0, core=core_used,
+                  notes=list(model.notes) + list(sim.log.notes), model=model, sim=sim,
+                  afs=list(info.get('afs', [])), afs_tol=info.get('afs_tol'))
+
+
+def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto', pairs=False, mesher='auto',
+                metal=None, ground=None, log=print, core='auto', quads=False, zone=None,
+                signal_vias='round', stitching_vias='auto', lines=None, quad_tol=35.0, coarsen=None, planes='pec',
+                stitching_pads='drop', wideband=None, title=None, mesh_only=False, characterize=True,
+                cells=CELLS):
+    """(BoardModel, Simulation) of a board as solve_board builds them, with its options (solve_board's). mesh_only:
+    stop once the mesh and its unknowns are known (a preview of the mesh solve_board would solve on; the quad
+    cells are paired only after that, so a mesh_only simulation has none)."""
+    from .board import BoardModel
+    if isinstance(board, str):
+        title = title or os.path.basename(board)
+        with open(board, encoding='utf-8') as fh:
+            board = json.load(fh)
+    model = BoardModel(board, ground=ground, port=port, pairs=pairs, planes=planes, stitching_pads=stitching_pads,
+                       wideband=wideband, log=log)
+    if metal is not None and metal.on and any(isinstance(k, str) for k in metal.on):
+        import copy                                         # a finish named by copper layer: on its interface
+        metal = copy.copy(metal)
+        metal.on = {model.iface.get(k, k) if isinstance(k, str) else k: v for k, v in metal.on.items()}
+        metal.on = {k: v for k, v in metal.on.items() if not isinstance(k, str)}    # layers not modelled: none
+    if cells and cells > 0:
+        coarsen = wavelength_coarsen(model, fmax, dmax, cells, coarsen, log)
+    layer_dmax = {k: plane_factor * dmax for k, gs in model.shapes.items()
+                  if sum(g.area for g in gs) > 0.5 * model.outline_area}
+    sim = model.simulation(dmax=dmax, dmax_layer=layer_dmax, fmin=fmin, fmax=fmax, solver='auto', verbose=False,
+                           wave_down_to=fmin, mesher=mesher, title=title or 'board', metal=metal,
+                           core=core, quads=quads, quad_tol=quad_tol, coarsen=coarsen, signal_vias=signal_vias,
+                           stitching_vias=stitching_vias, mesh_only=mesh_only,
+                           characterize=characterize,
+                           **(dict(line_basis=lines, line_step=LINE_STEP) if lines and lines != 'off' else {}),
+                           **(dict(zone=zone, dmax_out=ZONE_OUT * dmax) if zone else {}))
+    return model, sim
+
+
+def wavelength_coarsen(model, fmax, dmax, cells, coarsen=None, log=None):
+    """The coarsening that takes the cells to the wavelength's size: dmax stays at the features (corners, line ends,
+    vias, ports; the edge rings as they are) and the cells grow away from them to lambda / cells in the densest
+    dielectric at fmax, at most 4 x the narrowest conductor (longer cells cannot follow its current). As planar MoM
+    tools size their cells (30 per wavelength: the current along a line within about 1 %). Never under `coarsen`.
+    On 16 Solver Matrix boards against openEMS: 38 % of dmax's unknowns, a quarter of the time, the median RMS
+    0.059 against 0.057 (2026-11-15); the same size everywhere, not graded, lost 0.04 on resonators and via boards."""
+    from .sim import Simulation
+    planes = {k for k, gs in model.shapes.items() if sum(g.area for g in gs) > 0.5 * model.outline_area}
+    er = max(l.er for l in model.stack.layers)
+    lam = 299792458.0 / (fmax * er ** 0.5)
+    ws = [Simulation._guess_wref(g, []) for k, gs in model.shapes.items() if k not in planes for g in gs
+          if not g.is_empty]
+    size = min([lam / cells] + ([4 * min(ws)] if ws else []))
+    x = max(coarsen or 1.0, size / dmax)
+    if log is not None and x > (coarsen or 1.0):
+        log(f"  cells grow from {dmax * 1e3:g} mm at the features to {x * dmax * 1e3:.3g} mm (a wavelength / {cells:g} at "
+            f"{fmax / 1e9:g} GHz, er {er:g}" + (", 4 x the narrowest conductor" if size < lam / cells else "") + ")")
+    return x if x > 1.0 else None

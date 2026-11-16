@@ -1,0 +1,123 @@
+# mom25d
+
+A 2.5D method-of-moments solver for circuit boards: copper as zero-thickness sheets on the interfaces of a
+layered dielectric over an infinite ground plane, vias as vertical wires, lumped parts as series elements.
+It takes a board file and gives its S-parameters, on the CPU (NumPy, or a compiled C++ / OpenMP core) with an
+optional GPU LU (Vulkan through slangpy on any GPU with a Vulkan driver, run on AMD and NVIDIA cards and on
+Mesa's llvmpipe in CI; or CuPy on NVIDIA CUDA or AMD ROCm).
+
+<p align="center">
+  <img src="https://github.com/lowprocess/kicad2ems/raw/main/docs/img/readme/stub_current.gif" width="60%"
+       alt="mom25d's surface current on a stub notch filter at its notch">
+</p>
+
+*The surface current on a stub notch filter at its 2.4 GHz notch (kicad2ems `--mom-dump 2.4 --dump-animate gif`):
+the quarter-wave stub holds the standing wave and nothing passes it.*
+
+It is the planar solver of [kicad2ems](https://github.com/lowprocess/kicad2ems), which reads KiCad and Gerber
+files and writes the board file (`<name>_board.json`) every solver gets. mom25d reads that file without kicad2ems;
+kicad2ems's [mom25d page](https://github.com/lowprocess/kicad2ems/blob/main/docs/mom.md) covers what it models,
+its ports, the mesh, antenna mode, the GPU paths and its speed against openEMS.
+
+## Install
+
+```bash
+pip install .                       # numpy, scipy, shapely, emsdev (the GPU and memory probes)
+pip install '.[core]'               # pybind11, then build the compiled core (g++ with OpenMP; Windows: MSVC or MinGW):
+python -m mom25d.core.build         # mom25d/_core*.so (.pyd on Windows): the mesher, and kernels ~5x faster
+pip install '.[gpu-vulkan]'         # the GPU LU through Vulkan: slangpy (any GPU)
+pip install '.[gpu-cuda12]'         # optional: the CuPy wheel for your stack (gpu-cuda12, gpu-cuda13, gpu-rocm7)
+```
+
+On Windows the core builds with Visual Studio 2022 or its Build Tools, or MinGW-w64's g++ (see
+[emsdev](https://github.com/lowprocess/emsdev)); CuPy has no ROCm wheel there.
+
+The compiled core is needed: the mesher's triangulation is in it (CDT, vendored in `src/mom25d/core/CDT`). The
+kernels keep NumPy fallbacks (`MOM25D_NO_CORE`); the mesher has none.
+
+`MOM25D_GPU=off` turns the GPU off; `MOM25D_GPU=vulkan|cupy` picks a backend (`auto` tries Vulkan first, and CuPy
+first only where it runs on CUDA). Consumer AMD cards outside ROCm's support list may need
+`HSA_OVERRIDE_GFX_VERSION=11.0.0` (RDNA3) or `10.3.0` (RDNA2) for CuPy; Vulkan needs only the GPU's driver.
+
+The compiled core's threads (the matrix fill, OpenMP) and the LU's BLAS run on the fastest physical cores only: a
+hybrid CPU's E-cores and hyperthreads held them back (an i7-13700K's fill took 1.5-3.1 s a frequency on 24 threads,
+0.87 s on 8). `MOM25D_OMP_THREADS` and `MOM25D_BLAS_THREADS` (or `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`) set
+them instead.
+
+A wave port's line, characterised as a short line of its own, is kept on disk by its cross-section and the code
+that solved it (`linecache.py`), so a board run again does not solve it again (the launch board's set-up: 0.5 s for
+14.5). `MOM25D_CACHE` names the folder (default `~/.cache/mom25d`); `MOM25D_CACHE=off` keeps nothing.
+
+## Use
+
+```python
+import numpy as np
+from mom25d.api import solve_board
+
+res = solve_board('coupler_board.json', np.linspace(1e9, 6e9, 101), dmax=0.3e-3)
+res.f, res.S, res.names, res.zref                  # Hz, (nf, n, n), port names, reference impedances
+```
+
+DC/PDN, quasistatic fields and operational circuits now live in
+[pcbqs](https://github.com/lowprocess/pcbqs), an independent package. Install
+`kicad2ems[qs]` for the integrated GUI workflow, or `pcbqs` directly. The former
+`mom25d.pdn`, `mom25d.mqs` and circuit namespaces have been removed; see
+[the migration guide](https://github.com/lowprocess/pcbqs/blob/main/docs/migration.md).
+MoM's RF API, shared numerical implementation and native core are unchanged.
+
+`solve_board` builds the model, meshes it and runs an adaptive frequency sweep; its docstring lists the options
+(cell size, port kind, mixed-mode pairs, conductor loss, the compiled core). The steps it
+wraps are public too:
+
+```python
+from mom25d.board import BoardModel                # the board file as a planar model
+from mom25d.run import solve_band                  # the adaptive sweep over a Simulation
+m = BoardModel(board_dict)
+sim = m.simulation(dmax=0.3e-3, fmin=1e9, fmax=6e9)
+f, S, info = solve_band(sim, 1e9, 6e9, points=101, zref=m.port_z0)
+```
+
+## Inside mom25d
+
+| Module | Contents |
+|---|---|
+| `api.py` | `solve_board`: a board file in, S-parameters out |
+| `board.py` | the board file as a planar model |
+| `model.py` | stack, metal, vias, ports, port characterisation |
+| `sim.py` | `Simulation`: mesh, ports, parts, solver choice (`memory_plan`) |
+| `multilayer.py` | layered-media Green's functions |
+| `base.py` | RWG basis functions, the 1/R moment integrals, the port wave fits |
+| `via.py` | via kernels |
+| `frill.py` | a via through a hole in a PEC plane inside the stack: the hole's field as a few unknowns, axisymmetric and of the first azimuthal order (`planes='holes'`) |
+| `geo.py`, `cdtmesh.py` | the mesher (offset rings along the copper edges; a hexagonal seed inside, smoothed; CDT in the core triangulates) |
+| `line.py`, `quads.py` | line basis functions on straight runs; quad cells |
+| `fast.py` | the matrix fill and the solvers |
+| `looptree.py` | the loop/tree basis the direct solver takes at low frequency (pcbqs's) |
+| `gpu.py` | the GPU backends |
+| `gpu_vk.py` | the Vulkan backend: a hybrid LU (panels on the CPU, updates on the GPU) and its GPU solves |
+| `blr.py` | the block low-rank solver's tiling (its factor is compiled in `core/`: the large boards' path) |
+| `afs.py`, `run.py` | the adaptive frequency sweep (its fit is emsdev's `emsdev.afs`, which pcbqs shares) |
+| `farfield.py` | far and near fields from the currents |
+| `core/` | the compiled C++ kernels |
+| `kicad2ems/` | kicad2ems's solver plugins, `mom25d` and `mixed` (the `kicad2ems.solvers` entry points; only kicad2ems imports them) |
+
+The formulation is a mixed-potential integral equation with RWG basis functions. Layered-media kernels
+come from a spectral transmission-line network. The singular terms are integrated analytically.
+
+The tests check it against exact solutions and textbook formulas: layered Green's functions to about 1e-5,
+stripline impedance to 0.6 % (Cohn's), coupled striplines' even and odd modes to 2.5 %, a plane cavity's resonance
+to 0.7 % of the cavity model (Hammerstad's fringing), and the 10 dB coupler to 0.1 dB of openEMS (S21, S31), with
+stored S-parameters of two boards beside them (`tests/test_validation.py`). The board
+files they read (`tests/boards`) are kicad2ems's example boards. `tools/` holds the GPU self-check and the studies
+behind kicad2ems's mom25d page (mesher, zone, quad cells).
+
+**Limits**: copper is zero-thickness (`Metal(rough=)` scales its loss by Hammerstad's roughness factor), and wave ports need a straight
+feed line.
+
+## Licence
+
+GPL-3.0-or-later.
+
+The mesher's triangulation is CDT 2.0.1 by Artem Amirkhanov, vendored unmodified in `src/mom25d/core/CDT` under its
+MPL-2.0 (its `predicates.h` BSD-3-Clause, `portable_nth_element.hpp` Apache-2.0 with LLVM exceptions;
+`src/mom25d/core/CDT/README.md`), all compatible with the GPL.

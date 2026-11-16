@@ -1,0 +1,931 @@
+"""
+Stage-3 checks (fast): vias, off-plane integrals, mesher robustness, lumped elements, AAA,
+fast operator vs dense.
+"""
+import numpy as np
+import pytest
+from scipy.integrate import quad
+
+from mom25d.base import C0, MU0, EPS0
+from mom25d.multilayer import Layer, LayerStack
+from mom25d.via import ViaKernels
+from mom25d.sing import offplane_pairs
+from mom25d.geo import mesh_polygons, gap_zones, LinePort
+from mom25d.sim import Simulation, SeriesLumped, Via, ViaPort, line_char_xs
+from mom25d.afs import aaa
+
+
+def test_via_kernels_exact_in_air():
+    """Via-via reaction (self and mutual) and the via->strip correction D against images."""
+    h, a, f = 0.5e-3, 0.15e-3, 10e9
+    w = 2 * np.pi * f; k = w / C0
+    vk = ViaKernels(f, LayerStack([Layer(h, 1.0)]), [(0, 1)], [1], 20e-3)
+    assert np.max(np.abs(vk.D[(1, (0, 1))](np.array([1e-4, 1e-3])))) < 1e-10      # D == 0 in air
+    for d in (a, 1e-3):
+        tot = vk.R((0, 1), (0, 1), d)[0] + vk.homog((0, 1), (0, 1), d)[0]
+        Rp = np.hypot(d, 2 * h)
+        phi = (np.exp(-1j * k * d) / d - np.exp(-1j * k * Rp) / Rp) / (1j * w * 4 * np.pi * EPS0)
+        g = lambda z, zp: np.exp(-1j * k * np.hypot(d, z - zp)) / np.hypot(d, z - zp)
+        I = sum((1j ** p) * quad(lambda z: quad(lambda zp: (g(z, zp).real, g(z, zp).imag)[p], -h, h,
+                                                points=[z], limit=200)[0], 0, h, limit=200)[0] for p in (0, 1))
+        ref = 1j * w * MU0 / (4 * np.pi) * I + phi
+        assert abs(tot + phi - ref) / abs(ref) < 1e-4
+
+
+def test_via_via_table_matches_the_direct_transform():
+    """The tabulated via-via remainder (boards with many via pairs) against the transform at each distance."""
+    st = LayerStack([Layer(0.2e-3, 4.3), Layer(1.0e-3, 4.3), Layer(0.2e-3, 4.3)])
+    vk = ViaKernels(5e9, st, [(0, 3), (1, 3)], [1, 2, 3], 40e-3)
+    d = np.concatenate([[0.15e-3], np.geomspace(0.3e-3, 38e-3, 60)])
+    for sm, sn in (((0, 3), (0, 3)), ((0, 3), (1, 3))):
+        exact, tab = vk.R(sm, sn, d), vk.R_table(sm, sn)(d)
+        assert np.abs(tab - exact).max() < 1e-4 * np.abs(exact).max()
+
+
+def test_offplane_reduces_to_inplane_and_converges():
+    from mom25d.base import RWG, singular_moments
+    from mom25d_reference import make_mesh
+    nodes, tris = make_mesh([(0, 0, 0.3e-3, 0.06e-3)], 0.15e-3, 0.03e-3)
+    M0, _, _ = singular_moments(RWG(nodes, tris))
+    m0, *_ = offplane_pairs(nodes, tris, [0, 0], [0, 3], 0.0)
+    assert np.allclose(m0, [M0[0, 0], M0[0, 3]], rtol=1e-12)
+    a, *_ = offplane_pairs(nodes, tris, [0], [3], 1e-3)          # far: ~ A_p A_q / R
+    V = nodes[tris]
+    ar = 0.5 * np.abs((V[:, 1, 0] - V[:, 0, 0]) * (V[:, 2, 1] - V[:, 0, 1]) - (V[:, 1, 1] - V[:, 0, 1]) * (V[:, 2, 0] - V[:, 0, 0]))
+    R = np.sqrt(np.sum((V[0].mean(0) - V[3].mean(0)) ** 2) + 1e-6)
+    assert abs(a[0] / (ar[0] * ar[3] / R) - 1) < 0.02
+
+
+def test_a_pair_s_moments_are_one_value_with_the_rule_over_the_smaller_triangle():
+    """The extracted 1/R moments of a pair: the 6-point rule over the smaller triangle, the analytic integral over
+    the larger, whichever is the observation. With the rule over a 0.9 mm plane cell and a 0.3 mm trace cell 0.2 mm
+    under it the moment was 1.3 % off, and Z not symmetric: transmission through a via differed by 0.4 % between
+    its two directions with lumped ports."""
+    from mom25d.sing import rule_over
+    tri = lambda c, size, rot: np.c_[c[0] + size * np.cos(rot + np.array([0, 2.1, 4.2])),
+                                     c[1] + size * np.sin(rot + np.array([0, 2.1, 4.2]))]
+    nodes = np.vstack([tri((0, 0), 0.54, 0.3), tri((0.3, 0.03), 0.18, 1.1), tri((0.5, 0.2), 0.18, 1.1)]) * 1e-3
+    tris = np.arange(9).reshape(3, 3)
+    V = nodes[tris]
+    area = 0.5 * np.abs((V[:, 1, 0] - V[:, 0, 0]) * (V[:, 2, 1] - V[:, 0, 1]) - (V[:, 1, 1] - V[:, 0, 1]) * (V[:, 2, 0] - V[:, 0, 0]))
+    assert rule_over(area, [0, 1, 1, 2, 2], [1, 0, 2, 1, 2]).tolist() == [False, True, True, False, True]
+    d = 0.2e-3
+    m0, mro, mrs, mrr = offplane_pairs(nodes, tris, [0, 1], [1, 2], d)            # large and small; two alike
+    n0, nro, nrs, nrr = offplane_pairs(nodes, tris, [1, 2], [0, 1], d)            # the same pairs the other way
+    assert np.array_equal(m0, n0) and np.array_equal(mrr, nrr)
+    assert np.array_equal(mro, nrs) and np.array_equal(mrs, nro)
+    ref = offplane_pairs(nodes, tris, [0, 1], [1, 2], d, outer_levels=4)
+    for got, want in zip((m0, mro, mrs, mrr), ref):
+        assert np.abs(got - want).max() < 2e-4 * np.abs(want).max()
+    core = pytest.importorskip('mom25d._core')
+    from mom25d.sing import _offplane_geometry
+    P6 = _offplane_geometry(nodes, tris)[5]
+    W6 = np.tile(np.asarray(_offplane_geometry(nodes, tris)[6])[None], (3, 1)) * area[:, None]
+    c0, cro, crs, crr = core.offplane_pairs(nodes, tris.astype(np.int32), np.ascontiguousarray(P6), W6,
+                                            np.array([0, 1, 1, 2], np.int32), np.array([1, 2, 0, 1], np.int32), d)
+    assert np.allclose(c0, np.r_[m0, n0], rtol=1e-12) and np.allclose(crr, np.r_[mrr, nrr], rtol=1e-12)
+    assert np.allclose(cro, np.r_[mro, nro], rtol=1e-12, atol=0) and np.allclose(crs, np.r_[mrs, nrs], rtol=1e-12, atol=0)
+
+
+def test_balance_takes_the_ports_scales_out():
+    """sim.balance: the S of wave ports whose waves are scaled (their characterised impedances a little off) is
+    D S D^-1 of the reciprocal one. The scales come out where ports are coupled; a stop band's noise is averaged."""
+    from mom25d.sim import balance
+    rng = np.random.default_rng(1)
+    S0 = rng.normal(size=(4, 4)) + 1j * rng.normal(size=(4, 4))
+    S0 = 0.2 * (S0 + S0.T)
+    d = np.array([1.02, 0.97, 1.0, 1.05])
+    S, got = balance(S0 * (d[:, None] / d[None, :]))
+    assert np.abs(S - S0).max() < 1e-4 and np.allclose(got / got[2], d, atol=3e-3)
+    S, got = balance(S0 * (d[:, None] / d[None, :]), np.array([False, False, True, False]))     # a lumped port: exact
+    assert np.abs(S - S0).max() < 1e-4 and np.allclose(got, d, atol=3e-3)
+    weak = np.array([[0.9, 0.012], [0.004, 0.9]], complex)
+    S, got = balance(weak)
+    assert np.allclose(got, 1, atol=5e-3) and S[0, 1] == S[1, 0] == pytest.approx(0.008, abs=1e-4)
+    assert np.array_equal(np.diag(S), np.diag(weak))                                # reflections are not touched
+
+
+def test_a_pec_plane_inside_the_stack_is_two_stacks():
+    """LayerStack(pec=): the copper above the plane sees it as its ground, the copper below as its cover, and
+    neither sees the other: the kernels of the whole stack are those of the two stacks it is."""
+    L = [Layer(0.2e-3, 4.3, 0.02), Layer(0.15e-3, 3.6, 0.01), Layer(0.25e-3, 4.3, 0.02), Layer(0.1e-3, 3.2, 0.0)]
+    whole, upper, lower = LayerStack(L, pec=(2,)), LayerStack(L[2:]), LayerStack(L[:2], top='pec')
+    assert whole.metal_interfaces == [1, 3, 4] and whole.is_pec(2) and whole.apart(1, 3) and not whole.apart(3, 4)
+    assert whole.nearest_discontinuity(3) == pytest.approx(0.1e-3) and whole.nearest_discontinuity(1) == pytest.approx(0.15e-3)
+    w, kr = 2 * np.pi * 5e9, np.array([10.0, 300.0, 2e3 + 5j, 4e4])
+    for (o, s), (st, oo, ss) in {(3, 3): (upper, 1, 1), (4, 3): (upper, 2, 1), (4, 4): (upper, 2, 2), (1, 1): (lower, 1, 1)}.items():
+        assert np.allclose(whole.spectral(kr, w, o, s), st.spectral(kr, w, oo, ss), rtol=1e-12, atol=0)
+    assert not np.any(whole.spectral(kr, w, 3, 1)) and not np.any(whole.spectral(kr, w, 1, 4))
+    # a hole in the plane drives the network there: 1 at the plane, e^(-kr d) far up the spectrum, 0 at the ground
+    assert np.all(whole.transfer(kr, w, 2, 2) == 1) and not np.any(whole.transfer(kr, w, 2, 0))
+    assert abs(whole.transfer(np.array([2e4 + 0j]), w, 2, 3)[0]) == pytest.approx(np.exp(-2e4 * 0.25e-3), rel=0.25)
+    d = np.array([0.15e-3, 1e-3, 5e-3])
+    vw = ViaKernels(5e9, whole, [(3, 4), (0, 1), (2, 4), (0, 2)], [1, 3, 4], 20e-3)
+    vu, vl = ViaKernels(5e9, upper, [(1, 2), (0, 2)], [1, 2], 20e-3), ViaKernels(5e9, lower, [(0, 1), (0, 2)], [1], 20e-3)
+    close = lambda a, b: np.abs(a - b).max() < 1e-4 * np.abs(b).max()
+    assert close(vw.D[(3, (3, 4))](d), vu.D[(1, (1, 2))](d)) and close(vw.D[(1, (0, 1))](d), vl.D[(1, (0, 1))](d))
+    assert close(vw.R((2, 4), (2, 4), d), vu.R((0, 2), (0, 2), d)) and close(vw.R((0, 2), (0, 2), d), vl.R((0, 2), (0, 2), d))
+    assert not np.any(vw.D[(1, (3, 4))](d)) and not np.any(vw.R((0, 1), (3, 4), d))
+
+
+def test_a_hole_s_potential_and_admittance():
+    """frill.py: the potential a hole in a PEC plane leaves on the interfaces (1 V across it), and its admittance:
+    close over the plane it is the hole's own potential, far away nothing; the admittance is a capacitance into
+    both sides, the same at 0.1 and 1 GHz, and two holes couple weakly, with the other sign."""
+    from types import SimpleNamespace as NS
+    from mom25d.frill import Frill, FrillKernels, profile
+    st = LayerStack([Layer(0.2e-3, 4.3), Layer(0.02e-3, 4.3), Layer(3e-3, 4.3)], top_er=4.3, pec=(1,))
+    a, b = 0.15e-3, 0.35e-3
+    fr, fr2 = Frill(NS(x=0.0, y=0.0, a=a), 1, b, modes=2, dipoles=0), Frill(NS(x=2e-3, y=0.0, a=a), 1, b, modes=1, dipoles=0)
+    assert Frill(NS(x=0.0, y=0.0, a=a), 1, b).count == 6 and fr.count == 2          # (2 axisymmetric, 2 x (cos, sin))
+    fk = FrillKernels(1e8, st, [fr, fr2], [2, 3], 10e-3)
+    assert [(u[0] is fr, u[1]) for u in fk.unknowns] == [(True, 0), (True, 1), (False, 0)]
+    s0, rho = fk.shape(fr, 0), np.array([0.0, a, 0.25e-3, b, 1e-3, 3e-3])
+    near, far = fk.psi[(s0, 2)](rho).real, fk.psi[(s0, 3)](rho).real
+    assert 0.85 < near[0] < 1 and near[1] > near[2] > near[3] > near[4] and abs(near[5]) < 1e-3     # 0.02 mm over it
+    assert np.abs(far).max() < 5e-3 and np.all(np.diff(far) < 0)                                    # 3 mm over it
+    assert fk.shape(fr, 0) == fk.shape(fr2, 0)                                                      # holes alike: one table
+    C = fk.Y((fr, 0), (fr, 0)).imag / (2 * np.pi * 1e8)
+    C1 = FrillKernels(1e9, st, [fr], [2, 3], 10e-3).Y((fr, 0), (fr, 0)).imag / (2 * np.pi * 1e9)
+    assert 40e-15 < C < 120e-15 and C1 == pytest.approx(C, rel=0.01)
+    assert fk.Y((fr, 0), (fr, 1)) == pytest.approx(fk.Y((fr, 1), (fr, 0)), rel=1e-12)       # (symmetric to rounding)
+    Cm = fk.Y((fr, 0), (fr2, 0)).imag / (2 * np.pi * 1e8)
+    assert -0.01 * C < Cm < 0 and fk.Y((fr, 0), (Frill(NS(x=0.0, y=0.0, a=a), 2, b, dipoles=0), 0)) == 0.0     # another plane
+    # the first shape: 1 V across the hole (its transform's integral: int e dkr = int g drho); the coaxial field's
+    # transform where the hole is narrow against the wavelength of kr
+    kr = np.linspace(1.0, 4e5, 40001)
+    assert np.trapezoid(profile(kr, a, b), kr) == pytest.approx(1.0, abs=0.02)
+
+
+def test_a_hole_s_first_order_shapes_are_their_tm_and_te_parts():
+    """frill.dipole_shapes: a shape that goes as cos(phi) about the via is a part along k (TM: a potential,
+    psi cos(phi)) and a part across it (TE: a field, U0 and U2). Put back together at the plane itself (transfer
+    1) they are the shape's own field inside the hole, and nothing on the metal: every sign and factor between
+    e1, h1, the potential and the field (FrillKernels' tables, with the network's transfers in)."""
+    from scipy.special import jv
+    from mom25d.frill import dipole_shapes, DIPOLE_SHAPES
+    a, b = 0.15e-3, 0.45e-3
+    kr = np.linspace(1e-3 / b, 250 / b, 100001)
+    dk = (kr[1] - kr[0]) * np.exp(-0.5 * (kr * 0.01 * b) ** 2)     # (smoothed over b / 100: the integrals converge)
+    for j in (0, 1):
+        e1, h1 = dipole_shapes(kr, a, b, j)
+        R, F = DIPOLE_SHAPES[j]
+        for x in (0.2, 0.5, 0.8, 1.2):
+            rho = x * b
+            z = kr * rho
+            J0, J1, J2 = jv(0, z), jv(1, z), jv(2, z)
+            dpsi, psi_r = -np.sum(e1 * (J0 - J1 / z) * kr * dk), -np.sum(e1 * J1 * dk) / rho
+            U0, U2 = 0.5 * np.sum(h1 * J0 * kr * dk), 0.5 * np.sum(h1 * J2 * kr * dk)
+            Er, Ef = -dpsi + U0 + U2, psi_r - U0 + U2          # E_rho at phi = 0, E_phi at phi = pi / 2
+            inside = a < rho < b
+            c = np.sqrt(1 - x * x) if inside else 1.0
+            want = ((R(c, a / rho) if R else 0.0) if inside else 0.0, (F(c, a / rho) if F else 0.0) if inside else 0.0)
+            assert Er * b == pytest.approx(want[0], abs=0.01) and Ef * b == pytest.approx(want[1], abs=0.01), (j, x)
+
+
+def test_the_first_order_s_admittance_turns_with_the_holes():
+    """FrillKernels.Y between the cos and sin unknowns: of one hole they are alike and apart (from each other and
+    from the axisymmetric ones); of two holes the matrix is that of two dipoles, the same whatever direction the
+    second hole lies in once the shapes are taken along and across that direction."""
+    from types import SimpleNamespace as NS
+    from mom25d.frill import Frill, FrillKernels
+    st = LayerStack([Layer(0.2e-3, 4.3, 0.02) for _ in range(3)], pec=(2,))
+    a, b, d = 0.15e-3, 0.45e-3, 1.2e-3
+
+    def Y(gamma):
+        f1 = Frill(NS(x=0.3e-3, y=-0.2e-3, a=a), 2, b, modes=1, dipoles=2)
+        f2 = Frill(NS(x=0.3e-3 + d * np.cos(gamma), y=-0.2e-3 + d * np.sin(gamma), a=a), 2, b, modes=1, dipoles=2)
+        fk = FrillKernels(5e9, st, [f1, f2], [1, 3], 10e-3)
+        assert [u[1] for u in fk.unknowns[:5]] == [0, ('c', 0), ('s', 0), ('c', 1), ('s', 1)]
+        return np.array([[fk.Y(u, v) for v in fk.unknowns] for u in fk.unknowns])
+    Y0 = Y(0.0)
+    n = Y0.shape[0] // 2
+    assert n == 5 and np.abs(Y0 - Y0.T).max() < 1e-12 * np.abs(Y0).max()
+    own = Y0[:n, :n]
+    assert own[1, 1] == pytest.approx(own[2, 2], rel=1e-12) and own[1, 2] == 0 and own[0, 1] == 0 and own[1, 4] == 0
+    assert own[1, 3] == pytest.approx(own[2, 4], rel=1e-12) and abs(own[1, 3]) > 0      # two shapes of one hole
+    assert own[1, 1].imag < 0 < own[0, 0].imag              # (the dipoles' is the TE part's: inductive at 5 GHz)
+    g = 0.7
+    c, s = np.cos(g), np.sin(g)
+    R1 = np.eye(n, dtype=complex)                           # the hole's (c, s) along and across the direction g
+    for i in (1, 3):
+        R1[i:i + 2, i:i + 2] = [[c, -s], [s, c]]
+    R = np.block([[R1, 0 * R1], [0 * R1, R1]])
+    Yg = R.T @ Y(g) @ R
+    assert np.abs(Yg - Y0).max() < 1e-9 * np.abs(Y0).max()
+    cross = Y0[:n, n:]
+    assert abs(cross[0, 2]) < 1e-12 * abs(cross[0, 1]) and abs(cross[1, 2]) < 1e-12 * abs(cross[1, 1])  # along / across
+    assert cross[0, 1] == pytest.approx(-cross[1, 0], rel=1e-9)     # a dipole seen from either end
+
+
+def test_a_trace_over_a_plane_s_hole():
+    """What the axisymmetric hole lacked: a trace that crosses the hole's rim on its way to the via's pad (a
+    microstrip above the plane, a stripline below it). With the plane meshed and with the plane as PEC and the
+    hole's unknowns, S agrees to the meshes' own difference with the first azimuthal order (frill.dipoles), and
+    is three times as far without it (0.006 and 0.05)."""
+    pytest.importorskip('mom25d._core')
+    from shapely.geometry import box, Point
+    from mom25d.frill import Frill
+    mm = 1e-3
+    a, b, L, w3, w1, pad = 0.15 * mm, 0.45 * mm, 4 * mm, 0.35 * mm, 0.15 * mm, 0.3 * mm
+    layers = [Layer(0.2 * mm, 4.3, 0.02) for _ in range(3)]
+    top = lambda: [box(-L, -w3 / 2, 0, w3 / 2), Point(0, 0).buffer(pad)]
+    bot = lambda: [box(0, -w1 / 2, L, w1 / 2), Point(0, 0).buffer(pad)]
+    ports = lambda: [ViaPort(Via(-L, 0, 2, 3, 0.1 * mm), name='P1'), ViaPort(Via(L, 0, 0, 1, 0.07 * mm), name='P2')]
+    gv = lambda: [Via(x * mm, s * 1.5 * mm, 0, 2, 0.15 * mm) for x in np.arange(-4.5, 4.51, 1.5) for s in (1, -1)]
+    kw = dict(dmax=0.3 * mm, w_ref={3: w3, 1: w1}, solver='direct', precision='double', gpu='off', verbose=False)
+    fs = (5e9, 10e9)
+    sig = Via(0, 0, 1, 3, a, name='sig')
+    plane = box(-6 * mm, -3 * mm, 6 * mm, 3 * mm).difference(Point(0, 0).buffer(b, 32))
+    # the meshed plane at 0.3 mm: a coarser one is itself 0.03 off (0.6 mm, CDT's mesh; 2026-11-15)
+    meshed = Simulation(LayerStack(layers), {1: bot(), 2: [plane], 3: top()}, ports(), vias=[sig] + gv(),
+                        dmax_layer={2: 0.3 * mm}, **kw)
+    ref = np.array([meshed.sparams(f) for f in fs])
+    err = {}
+    for dip in (0, 2):
+        v = Via(0, 0, 1, 3, a, name='sig')
+        s = Simulation(LayerStack(layers, pec=(2,)), {1: bot(), 3: top()}, ports(), vias=[v] + gv(),
+                       frills=[Frill(v, 2, b, dipoles=dip)], **kw)
+        assert s.Nv == len(s.chains) + 2 + 2 * dip and s.Ne < 0.5 * meshed.Ne
+        S = np.array([s.sparams(f) for f in fs])
+        assert np.abs(S - S.transpose(0, 2, 1)).max() < 1e-6 and np.linalg.svd(S, compute_uv=False).max() < 1.0
+        err[dip] = np.abs(S - ref).max()
+    assert err[2] < 0.02 and err[0] > 3 * err[2], err
+
+
+def test_pads_joined_by_a_via_through_a_plane_s_hole():
+    """Two pads either side of a plane, a via through its hole between them: their capacitance with the plane
+    meshed (the hole in its mesh) and with the plane as PEC and the hole's unknowns (frill.py), within 1.5 %;
+    with the hole closed it is 39 % more. Axisymmetric: what the model has. (A trace over the hole is what it
+    lacks: the transition of tests/boards/demo.json is 0.08 from its meshed plane at 8 GHz.)"""
+    pytest.importorskip('mom25d._core')
+    from shapely.geometry import box, Point
+    from mom25d.frill import Frill
+    mm, f = 1e-3, 1e8
+    layers = [Layer(0.2 * mm, 4.3) for _ in range(3)]
+    pad = lambda: [Point(0, 0).buffer(0.3 * mm, 32)]
+    sig = lambda: Via(0, 0, 1, 3, 0.15 * mm, name='sig')
+    port = lambda: [ViaPort(Via(0.18 * mm, 0, 0, 1, 0.03 * mm), name='P1')]
+    gv = lambda: [Via(x * mm, y * mm, 0, 2, 0.15 * mm) for x, y in ((-2, -2), (0, -2), (2, -2), (-2, 2), (0, 2), (2, 2), (2, 0), (-2, 0))]
+    kw = dict(dmax=0.1 * mm, solver='direct', precision='double', gpu='off', verbose=False)
+    cap = lambda s: ((1 - (S := s.sparams(f)[0, 0])) / (1 + S) / 50).imag / (2 * np.pi * f)
+    b = 0.45 * mm
+    plane = box(-3 * mm, -3 * mm, 3 * mm, 3 * mm).difference(Point(0, 0).buffer(b, 48))
+    meshed = Simulation(LayerStack(layers), {1: pad(), 2: [plane], 3: pad()}, port(), vias=[sig()] + gv(),
+                        dmax_layer={2: 0.3 * mm}, **kw)
+
+    def holes(modes, couple=True):
+        v = sig()
+        s = Simulation(LayerStack(layers, pec=(2,)), {1: pad(), 3: pad()}, port(), vias=[v] + gv(),
+                       frills=[Frill(v, 2, b, modes=modes, dipoles=0)], **kw)
+        if not couple:                                          # the hole closed: its unknown on its own
+            blocks = s._frill_blocks
+
+            def alone(f, B, C):
+                blocks(f, B, C)
+                n = len(s.chains)
+                B[:, n:] = 0; C[:n, n:] = 0; C[n:, :n] = 0
+            s._frill_blocks = alone
+        return s
+    one = holes(1)
+    assert one.Nv == len(one.chains) + 1 and holes(3).Nv == len(one.chains) + 3
+    assert len(one.chains) == len(meshed.chains) and one.Ne < 0.5 * meshed.Ne
+    C = cap(meshed)
+    assert 180e-15 < C < 230e-15
+    assert cap(one) == pytest.approx(C, rel=0.015) and cap(holes(2)) == pytest.approx(C, rel=0.01)
+    assert cap(holes(1, couple=False)) > 1.3 * C
+    with pytest.raises(ValueError, match='a hole is in a PEC plane inside the stack'):
+        Simulation(LayerStack(layers), {1: pad(), 3: pad()}, port(), vias=[sig()], frills=[Frill(sig(), 2, b)], **kw)
+    both = Simulation(LayerStack(layers, pec=(2,)), {1: pad(), 3: pad()}, port(), vias=[v := sig()] + gv(),
+                      frills=[Frill(v, 2, b)], **kw)             # the first order too: nothing here drives it much
+    assert both.Nv == len(one.chains) + 6 and cap(both) == pytest.approx(C, rel=0.01)
+
+
+def test_mesher_t_junction_port_lines():
+    """Port cut lines ending on a polygon edge must split the edge exactly (no sliver cascade)."""
+    from shapely.geometry import box
+    w = 0.15e-3
+    g = box(14e-3, -5.075e-3, 22.075e-3, -4.925e-3)
+    lp = LinePort(1, (21.85e-3, -5e-3), (-1, 0), w, 0.0)
+    lines = [lp.line(s) for s in np.arange(0, 6e-3, 0.3e-3)]
+    nodes, tris, _ = mesh_polygons(g, 0.3e-3, w, 4, lines=lines)
+    near = (np.abs(nodes[:, 0] - 17.95e-3) < 0.02e-3) & (np.abs(nodes[:, 1] + 5.075e-3) < 1e-6)
+    assert near.sum() <= 2
+
+
+def test_gap_rings_only_along_narrow_gaps():
+    """gap_zones: two strips 0.14 mm apart are one gap (0.14 mm, along the coupled length); a track's round end
+    meeting a strip at a tangent (a bridged part, rf_combline) and a lone strip are none. The rings it adds stay
+    in the gap's zone."""
+    import shapely
+    from shapely.geometry import LineString, box
+    w, g = 1.28e-3, 0.14e-3
+    pair = shapely.union_all([box(0, 0, 10e-3, w), box(0, w + g, 10e-3, 2 * w + g)])
+    z = gap_zones(pair, 0.35e-3, 0.3e-3)
+    assert len(z) == 1 and abs(z[0][1] - g) < 1e-9
+    assert z[0][0].bounds[2] - z[0][0].bounds[0] > 9e-3
+    track = LineString([(0, 0), (0, 3e-3)]).buffer(0.45e-3, quad_segs=4)      # its round end at y = -0.45 mm
+    bridged = shapely.union_all([track, box(-0.45e-3, -0.65e-3, 0.45e-3, -0.25e-3)])
+    assert gap_zones(bridged, 0.35e-3, 0.3e-3) == []
+    assert gap_zones(box(0, 0, 10e-3, w), 0.35e-3, 0.3e-3) == []
+    n0 = len(mesh_polygons(pair, 0.3e-3, w)[0])
+    nodes = mesh_polygons(pair, 0.3e-3, w, gap_rings=(1 / 4, 1 / 8, 1 / 16))[0]
+    extra = len(nodes) - n0
+    assert 150 < extra < 300                                                 # 3 rings on 2 edges, ~34 points each
+    y = nodes[:, 1]
+    for d in (g / 4, g / 8, g / 16):                                          # each ring, on both facing edges
+        assert np.sum(np.abs(y - (w - d)) < 1e-9) > 20 and np.sum(np.abs(y - (w + g + d)) < 1e-9) > 20
+
+
+def test_series_resistor_matches_circuit_theory():
+    w, h = 0.35e-3, 0.2e-3
+    st = LayerStack([Layer(h, 4.3)])
+    g, zc = line_char_xs(st, 1, w, [5e9]); z = zc[0].real
+    L = 12e-3
+    p1 = LinePort(1, (-L / 2 + 0.5e-3, 0), (1, 0), w, 4e-3, s0=1.5e-3, step=0.7e-3, zc=z)
+    p2 = LinePort(1, (L / 2 - 0.5e-3, 0), (-1, 0), w, 4e-3, s0=1.5e-3, step=0.7e-3, zc=z)
+    sim = Simulation(st, {1: [(-L / 2, -w / 2, L / 2, w / 2)]}, [p1, p2],
+                     lumped=[SeriesLumped(1, (0, 0), (1, 0), w, 50.0)], dmax=0.25e-3, w_ref=w, verbose=False)
+    S = sim.sparams(5e9)
+    assert abs(abs(S[1, 0]) - 2 * z / (2 * z + 50)) < 0.01
+
+
+def test_via_ports_on_a_line_are_reciprocal_and_lossless():
+    from shapely.geometry import box, Point
+    w, h, L = 0.35e-3, 0.2e-3, 10e-3
+    st = LayerStack([Layer(h, 4.3)])
+    v1, v2 = Via(-L / 2, 0, 0, 1, 0.1e-3), Via(L / 2, 0, 0, 1, 0.1e-3)
+    geo = [box(-L / 2, -w / 2, L / 2, w / 2), Point(-L / 2, 0).buffer(0.25e-3), Point(L / 2, 0).buffer(0.25e-3)]
+    sim = Simulation(st, {1: geo}, [ViaPort(v1, 54.0), ViaPort(v2, 54.0)], dmax=0.3e-3, w_ref=w, verbose=False)
+    S = sim.sparams(2e9)
+    assert abs(S[0, 1] - S[1, 0]) < 1e-8
+    assert abs(np.sum(np.abs(S[:, 0]) ** 2) - 1) < 2e-3
+
+
+def test_aaa_interpolates_resonances():
+    def F(f):
+        g = f / 1e9
+        return np.array([sum(1 / (1j * (g - p) + 0.01) for p in (2.4, 3.6))])
+    fs = np.linspace(1e9, 6e9, 25)
+    r = aaa(fs / 1e9, np.array([F(f) for f in fs]))
+    fg = np.linspace(1e9, 6e9, 301)
+    assert np.max(np.abs(r(fg / 1e9)[:, 0] - np.array([F(f)[0] for f in fg]))) < 1e-6
+
+
+def test_batched_gmres_reaches_its_tolerance_on_a_complex_system():
+    # complex Hessenberg entries: with unconjugated Givens rotations the residual estimate stopped early
+    from mom25d.fast import gmres_batched
+    rng = np.random.default_rng(1)
+    n = 200
+    ev = (1 + rng.random(n)) * np.exp(1j * rng.uniform(-1.2, 1.2, n))       # eigenvalues of many phases
+    Q = np.linalg.qr(rng.standard_normal((n, n)) + 1j * rng.standard_normal((n, n)))[0]
+    A = Q @ np.diag(ev) @ Q.conj().T + 0.2 * (rng.standard_normal((n, n)) + 1j * rng.standard_normal((n, n))) / np.sqrt(n)
+    B = rng.standard_normal((n, 2)) + 1j * rng.standard_normal((n, 2))
+    X, _ = gmres_batched(lambda V: A @ V, B, rtol=1e-10, restart=60, maxiter=5)
+    assert np.max(np.linalg.norm(A @ X - B, axis=0) / np.linalg.norm(B, axis=0)) < 1e-9
+    # stall: a preconditioner that is no inverse (a GPU's triangular solves that lost an ill-conditioned factor) is
+    # given up after a few iterations instead of all of them; a good one is not disturbed
+    calls = []
+    good = np.linalg.inv(A + 1e-3 * rng.standard_normal((n, n)))
+    X, it = gmres_batched(lambda V: A @ V, B, M=lambda R: calls.append(1) or good @ R, rtol=1e-8, restart=30, maxiter=1,
+                          stall=(4, 0.1))
+    assert max(it) <= 4 and np.max(np.linalg.norm(A @ X - B, axis=0) / np.linalg.norm(B, axis=0)) < 1e-7
+    del calls[:]
+    bad = rng.standard_normal((n, n)) + 1j * rng.standard_normal((n, n))
+    X, it = gmres_batched(lambda V: A @ V, B, M=lambda R: calls.append(1) or bad @ R, rtol=1e-8, restart=30, maxiter=3,
+                          stall=(4, 0.1))
+    assert it == [4, 4] and len(calls) == 4 and np.isfinite(X).all()
+    assert gmres_batched(lambda V: A @ V, B, M=lambda R: bad @ R, rtol=1e-8, restart=30, maxiter=1)[1] == [30, 30]
+
+
+def test_afs_does_not_stop_on_a_model_that_ignores_new_samples(monkeypatch):
+    """Regression (d5787ca): a fit that a new sample does not move changes by nothing between iterations while
+    it is still wrong (seen on a 10 dB coupler: stopped at 9 solves, -14 dB coupling instead of -11 dB). The
+    sweep must also see the model predict each new sample before it stops."""
+    import mom25d.afs as afs
+    import emsdev.afs as shared                                     # (the sweep is emsdev's, mom25d's its wrapper)
+    real, first = shared.aaa, []
+    def stale(z, F, **kw):                                          # fitted to the first samples, ever after
+        first.append(first[0] if first else (z, F))
+        return real(*first[-1], **kw)
+    monkeypatch.setattr(shared, 'aaa', stale)
+    truth = lambda f: np.array([[0.3 + 0.2 * np.sin(f / 4e8)]], complex)
+    seen = []
+    _, _, fs, _, hist = afs.adaptive_sweep(lambda f: seen.append(f) or truth(f), 1e9, 6e9, n0=5, tol=2e-3,
+                                           max_points=12, ngrid=401, log=lambda *a: None)
+    assert len(fs) == 12                                            # ran to the cap: never converged
+    assert all(h['change'] < 2e-3 for h in hist[2:])                # although the model stopped changing
+    assert [h['solves'] for h in hist] == list(range(6, 13)) and hist[-1]['f_new'] is None
+    assert all(h['f_new'] in seen for h in hist[:-1])
+
+
+def test_fast_operators_match_dense():
+    """Direct (centroid far field + exact near correction) and ACA/GMRES against the dense reference
+    on a two-port line between via ports."""
+    from shapely.geometry import box, Point
+    w, h, L = 0.35e-3, 0.2e-3, 10e-3
+    st = LayerStack([Layer(h, 4.3, 0.02)])
+    v1, v2 = Via(-L / 2, 0, 0, 1, 0.1e-3), Via(L / 2, 0, 0, 1, 0.1e-3)
+    geo = [box(-L / 2, -w / 2, L / 2, w / 2), Point(-L / 2, 0).buffer(0.25e-3), Point(L / 2, 0).buffer(0.25e-3)]
+    out = {}
+    for solver in ('dense', 'direct', 'aca'):
+        sim = Simulation(st, {1: geo}, [ViaPort(v1, 54.0), ViaPort(v2, 54.0)], dmax=0.3e-3, w_ref=w,
+                         solver=solver, verbose=False)
+        out[solver] = sim.sparams(4e9)
+    assert np.max(np.abs(out['direct'] - out['dense'])) < 0.01
+    assert np.max(np.abs(out['aca'] - out['direct'])) < 1e-3
+
+
+
+def test_a_wideband_stack_is_its_constant_stack_at_each_frequency():
+    """A Djordjevic-Sarkar stack (Layer(fref=)) solved at f: the S of the constant stack with that frequency's
+    permittivity, on the dense path (its static charge part rescaled per layer) and the direct one (two layers:
+    a via between them, the via kernels), and not the S at fref's permittivity."""
+    from shapely.geometry import box, Point
+    from mom25d.multilayer import djordjevic_sarkar
+    w, L, f = 0.35e-3, 8e-3, 9e9
+    v1 = Via(L / 2, 0, 0, 2, 0.1e-3)
+    geo2 = [box(-L / 2, -w / 2, L / 2, w / 2), Point(L / 2, 0).buffer(0.25e-3)]
+    geo1 = [box(-L / 2, -2e-3, L / 2 + 1e-3, 2e-3).difference(Point(L / 2, 0).buffer(0.5e-3))]
+
+    def S(layers, solver):
+        sim = Simulation(LayerStack(layers), {1: geo1, 2: geo2}, [ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)), ViaPort(v1)],
+                         dmax=0.4e-3, dmax_layer={1: 0.6e-3}, w_ref={2: w, 1: 1e-3}, solver=solver, verbose=False)
+        return sim.sparams(f)
+    e1, e2 = djordjevic_sarkar(4.4, 0.02, 1e9, f), djordjevic_sarkar(3.5, 0.004, 1e9, f)
+    wide = [Layer(0.2e-3, 4.4, 0.02, fref=1e9), Layer(0.3e-3, 3.5, 0.004, fref=1e9)]
+    fixed = [Layer(0.2e-3, e1.real, -e1.imag / e1.real), Layer(0.3e-3, e2.real, -e2.imag / e2.real)]
+    for solver in ('dense', 'direct'):
+        Sw, Sf = S(wide, solver), S(fixed, solver)
+        assert np.abs(Sw - Sf).max() < 1e-9, solver
+        assert np.abs(Sw - S([Layer(0.2e-3, 4.4, 0.02), Layer(0.3e-3, 3.5, 0.004)], solver)).max() > 0.01
+
+
+def test_core_matches_numpy_and_solvers_agree(monkeypatch):
+    """Compiled core (if built) vs NumPy fallback, and direct/mixed/BLR agreement."""
+    pytest.importorskip('mom25d._core')
+    from shapely.geometry import box, Point
+    st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.2e-3, 4.3, 0.02)])
+    w, L = 0.35e-3, 8e-3
+    v1 = Via(L / 2, 0, 0, 2, 0.1e-3)
+    geo2 = [box(-L / 2, -w / 2, L / 2, w / 2), Point(L / 2, 0).buffer(0.25e-3)]
+    geo1 = [box(-L / 2, -2e-3, L / 2 + 1e-3, 2e-3).difference(Point(L / 2, 0).buffer(0.5e-3))]
+    mk = lambda s, p='double': Simulation(st, {1: geo1, 2: geo2}, [ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)), ViaPort(v1)],
+                                          dmax=0.4e-3, dmax_layer={1: 0.6e-3}, w_ref={2: w, 1: 1e-3}, solver=s,
+                                          precision=p, verbose=False)
+    sim = mk('direct')
+    fo = sim.fast
+    fo.setup(4e9, mode='aca')
+    rows, cols = np.arange(0, sim.Ne, 7), np.arange(0, sim.Ne, 5)
+    Bc = fo.entry(rows, cols)
+    fo.core = None
+    Bp = fo.entry(rows, cols)
+    assert np.abs(Bc - Bp).max() < 1e-12 * np.abs(Bp).max()
+    S = {k: mk(*k).sparams(4e9) for k in (('direct', 'double'), ('direct', 'mixed'), ('blr', 'double'))}
+    ref = S[('direct', 'double')]
+    assert np.abs(ref - ref.T).max() < 1e-6                     # through a via, cells of two sizes: reciprocal
+    for k, v in S.items():
+        assert np.abs(v - ref).max() < 1e-6, k
+    # a factorisation kept from 4 GHz preconditions 4.4 GHz (fast._solve_kept: dense, several kept; _solve_reused:
+    # matrix-free, one): the same S as a fresh one
+    from mom25d import fast
+    for k, keep in ((('direct', 'mixed'), 4), (('direct', 'mixed'), 0), (('blr', 'double'), 4)):
+        S1 = {}
+        monkeypatch.setattr(fast, 'REUSE_KEEP', keep)
+        for reuse in ('off', 'auto'):
+            sim = mk(*k)
+            sim.gpu, sim.reuse = 'off', reuse
+            sim.sparams(4e9)
+            S1[reuse] = sim.sparams(4.4e9)
+            assert any('reused' in n for n in sim.log.notes) == (reuse == 'auto'), (k, reuse)
+        assert np.abs(S1['auto'] - S1['off']).max() < 1e-5, k
+
+
+def test_coupled_stripline_even_odd_vs_cohn():
+    from mom25d.sim import line_char_pair, coupled_stripline_cohn
+    b, er, w, s = 0.4e-3, 4.3, 0.15e-3, 0.15e-3
+    st = LayerStack([Layer(b / 2, er), Layer(b / 2, er)], top='pec')
+    ge, ze, go, zo = line_char_pair(st, 1, w, s, [5e9])
+    Ze, Zo = coupled_stripline_cohn(w, s, b, er)
+    assert abs(ze[0].real / Ze - 1) < 0.025 and abs(zo[0].real / Zo - 1) < 0.025
+    k0 = 2 * np.pi * 5e9 / C0
+    assert abs((ge[0].imag / k0) ** 2 / er - 1) < 0.003 and abs((go[0].imag / k0) ** 2 / er - 1) < 0.003
+
+
+def test_differential_through_line():
+    from mom25d.sim import DiffPort
+    st = LayerStack([Layer(0.2e-3, 4.3)])
+    w, s, L = 0.25e-3, 0.2e-3, 16e-3
+    yc = (w + s) / 2
+    shapes = {1: [(-L / 2, yc - w / 2, L / 2, yc + w / 2), (-L / 2, -yc - w / 2, L / 2, -yc + w / 2)]}
+
+    def dp(x, d, name):
+        kw = dict(s0=0.6e-3, s1=6e-3, step=0.6e-3)
+        return DiffPort(LinePort(1, (x, yc), (d, 0), w, -0.3e-3, **kw), LinePort(1, (x, -yc), (d, 0), w, -0.3e-3, **kw),
+                        112.4, 36.5, name)
+    sim = Simulation(st, shapes, [dp(-L / 2 + 0.3e-3, 1, 'P1'), dp(L / 2 - 0.3e-3, -1, 'P2')], dmax=0.3e-3,
+                     w_ref=w, ncross=4, verbose=False)
+    S = sim.sparams(5e9)
+    assert [p.name for p in sim.ports] == ['P1d', 'P1c', 'P2d', 'P2c']
+    assert abs(abs(S[2, 0]) - 1) < 2e-3 and abs(S[0, 0]) < 0.01          # matched, lossless, differential
+    assert abs(S[3, 0]) < 1e-3 and abs(S[0, 1]) < 1e-3                    # no mode conversion (symmetric)
+    assert np.abs(S - S.T).max() < 1e-8
+    assert sim.last['resid'].max() < 1e-2
+
+
+def test_far_field_of_a_dipole_over_ground():
+    """mom25d.farfield on a small x-directed current at height h above the ground in air against the image
+    solution: |r E| = eta k p / (4 pi) * 2 sin(k h cos theta) * (cos theta cos phi, -sin phi), shape and size."""
+    from types import SimpleNamespace as NS
+    from mom25d.farfield import far_field
+    f = 3e9
+    k0 = 2 * np.pi * f / C0
+    for h in (0.01, 0.2):
+        H = h * C0 / f
+        sim = NS(st=LayerStack([Layer(H, 1.0)]), rwg=NS(cent=np.array([[0.0, 0.0, H]]), area=np.array([1e-6])),
+                 tri_idx={1: np.array([0])}, current_density=lambda I: (np.array([1.0 + 0j]), np.array([0j])))
+        th, ph = np.array([0.0, 30, 60, 85]), np.array([0.0, 45, 90])
+        Et, Ep = far_field(sim, None, f, th, ph)
+        T, P = np.meshgrid(np.radians(th), np.radians(ph))
+        amp = np.sqrt(MU0 / EPS0) * k0 * 1e-6 / (4 * np.pi) * 2 * np.sin(k0 * H * np.cos(T))
+        assert np.allclose(np.abs(Et), amp * np.abs(np.cos(T) * np.cos(P)), rtol=1e-6, atol=1e-12)
+        assert np.allclose(np.abs(Ep), amp * np.abs(np.sin(P)), rtol=1e-6, atol=1e-12)
+
+
+def test_near_field_of_a_dipole_over_ground():
+    """mom25d.farfield.near_field (plane-wave spectrum, zero-padded FFT) against the exact field of a small x
+    dipole 2 mm above the ground and its image, on planes 0.5 and 1 mm above it."""
+    from types import SimpleNamespace as NS
+    from mom25d.farfield import near_field
+    f = 3e9
+    w, k = 2 * np.pi * f, 2 * np.pi * f / C0
+    H, h, n = 2e-3, 0.1e-3, 256
+    x = (np.arange(n) - n // 2) * h
+    Jx = np.zeros((n, n), complex)
+    Jx[n // 2, n // 2] = 1.0 / (h * h)                                  # moment 1 A m along x
+
+    def dipole(r, rs, p):
+        R = r - rs
+        Rm = np.linalg.norm(R, axis=-1)[..., None]
+        u, kr = R / Rm, k * Rm
+        g = np.exp(-1j * kr) / (4 * np.pi * Rm)
+        return -1j * w * MU0 * g * ((1 + 1 / (1j * kr) - 1 / kr ** 2) * p - (1 + 3 / (1j * kr) - 3 / kr ** 2) *
+                                    (u @ p)[..., None] * u)
+    pts = np.array([[0, 0], [1e-3, 0], [0, 1e-3], [2e-3, 1.5e-3]])
+    i = (pts / h).round().astype(int) + n // 2
+    p = np.array([1.0, 0, 0])
+    for d in (0.5e-3, 1e-3):
+        E = near_field(NS(st=LayerStack([Layer(H, 1.0)])), {1: (Jx, 0 * Jx)}, x, x, f, d)[i[:, 0], i[:, 1]]
+        obs = np.column_stack([pts, np.full(len(pts), H + d)])
+        exact = dipole(obs, np.array([0, 0, H]), p) + dipole(obs, np.array([0, 0, -H]), -p)
+        assert np.abs(E - exact).max() < 1e-3 * np.abs(exact).max()
+
+
+def test_new_core_kernels_match_numpy():
+    """near_pairs, hankel_real (j0_sum), fan_q, scale_c64 and the via blocks' radial_table_sum of the compiled core
+    against their NumPy versions."""
+    core = pytest.importorskip('mom25d._core')
+    from shapely.geometry import box, Point
+    from scipy.spatial import cKDTree
+    from mom25d.via import j0_sum, j0_matrix
+    st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.2e-3, 4.3, 0.02)])
+    w, L = 0.35e-3, 8e-3
+    geo2 = [box(-L / 2, -w / 2, L / 2, w / 2), Point(L / 2, 0).buffer(0.25e-3)]
+    geo1 = [box(-L / 2, -2e-3, L / 2 + 1e-3, 2e-3).difference(Point(L / 2, 0).buffer(0.5e-3))]
+    sim = Simulation(st, {1: geo1, 2: geo2}, [ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)), ViaPort(Via(L / 2, 0, 0, 2, 0.1e-3))],
+                     dmax=0.4e-3, dmax_layer={1: 0.6e-3}, w_ref={2: w, 1: 1e-3}, solver='direct', verbose=False)
+    fo, r = sim.fast, sim.rwg
+    # near pairs: the KD-tree + np.unique of before, the same pairs in the same order
+    size = sim.tri_size
+    lists = cKDTree(r.cent).query_ball_point(r.cent, fo.near_fac * size)
+    P = np.concatenate([np.full(len(q), p) for p, q in enumerate(lists)])
+    Q = np.concatenate([np.asarray(q, int) for q in lists])
+    key = np.unique(np.concatenate([P * len(size) + Q, Q * len(size) + P]))
+    P, Q = key // len(size), key % len(size)
+    dz = np.abs(st.z[fo.layer_of_tri[P]] - st.z[fo.layer_of_tri[Q]])
+    keep = np.linalg.norm(r.cent[P] - r.cent[Q], axis=1) ** 2 + dz ** 2 < (fo.near_fac * np.maximum(size[P], size[Q])) ** 2
+    assert np.array_equal(fo.nP, P[keep]) and np.array_equal(fo.nQ, Q[keep])
+    # the Sommerfeld sums: a contour lifted at the start, real after it
+    t = np.linspace(0, 2e4, 3000)
+    kr = t + 1j * np.where(t < 500, 50 * np.sin(np.pi * t / 500), 0.0)
+    rho = np.linspace(0, 5e-3, 41)
+    W = np.random.default_rng(0).normal(size=(2, len(kr))) * (1 + 0.3j)
+    ref = (j0_matrix(rho, kr) @ W.T).T
+    assert np.abs(j0_sum(rho, kr, W) - ref).max() < 1e-12 * np.abs(ref).max()
+    # the fan columns
+    fo.setup(4e9, mode='sparse')
+    assert len(sim.F)
+    Qc = fo._fan_columns()
+    keep_core, fo.core = fo.core, None
+    Qp = fo._fan_columns()
+    fo.core = keep_core
+    assert np.abs(Qc - Qp).max() < 1e-12 * np.abs(Qp).max()
+    # Z <- D Z D and its complex64 copy
+    Z = np.random.default_rng(1).normal(size=(50, 50)) + 1j * np.random.default_rng(2).normal(size=(50, 50))
+    d = np.random.default_rng(3).uniform(0.5, 2, 50)
+    Zr = Z * d[:, None] * d[None, :]
+    Z64 = core.scale_c64(Z, d)
+    assert np.allclose(Z, Zr) and Z64.dtype == np.complex64 and np.allclose(Z64, Zr, rtol=1e-6)
+    # the via blocks: the chains' kernel on the triangles in the core (a chain at a time in NumPy before), the
+    # same B and C
+    from mom25d import fast
+    Qf = fo._fan_columns()
+    Bc, Cc = sim._via_blocks(4e9, Qf)
+    fast._core, keep = None, fast._core
+    try:
+        Bp, Cp = sim._via_blocks(4e9, Qf)
+    finally:
+        fast._core = keep
+    assert np.abs(Bc - Bp).max() < 1e-12 * np.abs(Bp).max() and np.abs(Cc - Cp).max() < 1e-12 * np.abs(Cp).max()
+
+
+def test_core_choice():
+    """core='auto' and 'compiled': the core's direct solver for a small board too; use_core('python'): no compiled
+    kernels, NumPy's dense solver; the answers agree."""
+    pytest.importorskip('mom25d._core')
+    from shapely.geometry import box, Point
+    from mom25d import fast
+    w, h, L = 0.35e-3, 0.2e-3, 10e-3
+    st = LayerStack([Layer(h, 4.3, 0.02)])
+    geo = [box(-L / 2, -w / 2, L / 2, w / 2), Point(-L / 2, 0).buffer(0.25e-3), Point(L / 2, 0).buffer(0.25e-3)]
+    mk = lambda core: Simulation(st, {1: geo}, [ViaPort(Via(-L / 2, 0, 0, 1, 0.1e-3), 54.0),
+                                                ViaPort(Via(L / 2, 0, 0, 1, 0.1e-3), 54.0)],
+                                 dmax=0.3e-3, w_ref=w, solver='auto', core=core, verbose=False)
+    auto, comp = mk('auto'), mk('compiled')
+    assert auto.solver == 'direct' and comp.solver == 'direct'
+    prev = fast.use_core('python')
+    try:
+        dense = mk('auto')
+        assert fast._core is None and dense.solver == 'dense'
+        assert np.abs(auto.sparams(4e9) - dense.sparams(4e9)).max() < 0.01
+    finally:
+        fast.set_core(prev)
+    assert fast._core is not None
+    with pytest.raises(ValueError):
+        fast.use_core('gpu')
+
+
+def test_memory_plan_cpu_mixed():
+    """Above MIXED_MIN_N, 'auto' is mixed precision on the CPU too (complex64 LU + refinement); double below
+    it and without the compiled core."""
+    from mom25d.sim import memory_plan, MIXED_MIN_N
+    big = memory_plan(MIXED_MIN_N + 1000, has_core=True, avail=64e9, gpu=None, solver='direct')
+    assert (big['precision'], big['path']) == ('mixed', 'cpu-mixed')
+    assert memory_plan(MIXED_MIN_N - 500, has_core=True, avail=64e9, gpu=None, solver='direct')['precision'] == 'double'
+    assert memory_plan(MIXED_MIN_N + 1000, has_core=False, avail=64e9, gpu=None, solver='direct')['precision'] == 'double'
+    assert memory_plan(MIXED_MIN_N + 1000, has_core=True, avail=64e9, gpu=None, precision='double',
+                       solver='direct')['precision'] == 'double'
+
+
+def test_quad_cells_match_triangles_with_fewer_unknowns():
+    """quads=True (quads.py): triangle pairs on straight runs merged into constant-divergence quad cells. A
+    stepped microstrip on the tensor mesh: about a third fewer unknowns, S within 0.01 of the triangles, the
+    merged currents carry the same charge density on both triangles of a quad."""
+    w, W, h = 0.35e-3, 1.5e-3, 0.2e-3
+    st = LayerStack([Layer(h, 4.3)])
+    g, zc = line_char_xs(st, 1, w, [6e9]); z = zc[0].real
+    L, Lw = 16e-3, 5e-3
+    rects = [(-L / 2, -w / 2, L / 2, w / 2), (-Lw / 2, -W / 2, Lw / 2, W / 2)]
+    out = {}
+    for q in (False, True):
+        ports = [LinePort(1, (-L / 2 + 0.5e-3, 0), (1, 0), w, 4e-3, s0=1.5e-3, step=0.7e-3, zc=z),
+                 LinePort(1, (L / 2 - 0.5e-3, 0), (-1, 0), w, 4e-3, s0=1.5e-3, step=0.7e-3, zc=z)]
+        sim = Simulation(st, {1: rects}, ports, dmax=0.4e-3, w_ref=w, ncross=4, verbose=False, quads=q,
+                         solver='direct', precision='double')
+        out[q] = sim, sim.sparams(6e9)
+    (s0, S0), (s1, S1) = out[False], out[True]
+    n0, n1 = s0.Ne + s0.Nv, s1.qT.shape[1]
+    assert n1 < 0.8 * n0
+    assert np.abs(S1 - S0).max() < 0.01
+    assert abs(S1[0, 1] - S1[1, 0]) < 1e-3                  # wave-port fits: ~5e-5 either way
+    I = s1.qT @ np.random.default_rng(0).standard_normal(n1)
+    rho, d = s1.rwg.D @ I[:s1.Ne], s1.quad_info['elim']
+    assert np.abs(rho[s1.rwg.tp[d]] - rho[s1.rwg.tm[d]]).max() < 1e-12 * np.abs(rho).max()
+
+
+def test_signal_zone_coarsens_away_from_the_signal():
+    """zone= (experimental): edge rings, via octagons and pad detail only near the signal copper. A microstrip
+    between two rows of stitching-via pads: far fewer unknowns, S within 0.02, the pads become squares."""
+    from shapely.geometry import box, Point
+    from mom25d.sim import _simplify_outside
+    w, h, L = 0.35e-3, 0.2e-3, 10e-3
+    st = LayerStack([Layer(h, 4.3)])
+    g, zc = line_char_xs(st, 1, w, [5e9]); z = zc[0].real
+    xs = np.arange(-3.5e-3, 3.6e-3, 1.0e-3)
+    pads = [Point(x, y).buffer(0.3e-3) for x in xs for y in (-1.2e-3, 1.2e-3)]
+    out = {}
+    for zone in (None, box(-L / 2, -w / 2, L / 2, w / 2).buffer(0.5e-3)):
+        ports = [LinePort(1, (-L / 2 + 0.5e-3, 0), (1, 0), w, 3e-3, s0=1.0e-3, step=0.6e-3, zc=z),
+                 LinePort(1, (L / 2 - 0.5e-3, 0), (-1, 0), w, 3e-3, s0=1.0e-3, step=0.6e-3, zc=z)]
+        vias = [Via(p.centroid.x, p.centroid.y, 0, 1, 0.15e-3) for p in pads]
+        sim = Simulation(st, {1: [box(-L / 2, -w / 2, L / 2, w / 2)] + pads}, ports, vias=vias, dmax=0.3e-3, w_ref=w,
+                         verbose=False, solver='direct', precision='double', zone=zone, dmax_out=1.5e-3)
+        out[zone is None] = sim.Ne + sim.Nv, sim.sparams(5e9)
+    (n0, S0), (n1, S1) = out[True], out[False]
+    assert n1 < 0.6 * n0
+    assert np.abs(S1 - S0).max() < 0.02
+    sq = _simplify_outside(pads[0], box(0, 0, 1e-3, 1e-3).buffer(-0.4e-3).union(Point(1, 1).buffer(1e-3)))
+    assert len(sq.exterior.coords) == 5 and abs(sq.area - pads[0].area) < 1e-3 * pads[0].area
+
+
+def test_square_vias_pads_and_antipads():
+    """_square_vias: a pad on its own becomes a same-area square, a pad on a trace the square around it (still
+    joined), a round antipad a same-area square hole; a via in a pour is left alone."""
+    from shapely.geometry import box, Point
+    from mom25d.sim import _square_vias
+    pad = Point(0, 0).buffer(0.3e-3)
+    g = _square_vias(pad, [(0, 0)])
+    assert len(g.exterior.coords) == 5 and abs(g.area - pad.area) < 1e-3 * pad.area
+    joined = pad.union(box(0, -0.1e-3, 3e-3, 0.1e-3))
+    g = _square_vias(joined, [(0, 0)])
+    assert g.geom_type == 'Polygon' and g.contains(pad.buffer(-1e-7)) and g.contains(Point(2.9e-3, 0))
+    hole = Point(5e-3, 5e-3).buffer(0.5e-3)
+    pour = box(0, 0, 10e-3, 10e-3).difference(hole)
+    g = _square_vias(pour, [(5e-3, 5e-3)])
+    assert len(g.interiors) == 1 and len(g.interiors[0].coords) == 5 and abs(g.area - pour.area) < 1e-3 * hole.area
+    assert _square_vias(pour, [(2e-3, 2e-3)]).equals(pour)
+    hexa = _square_vias(pad, [(0, 0)], sides=6)
+    assert len(hexa.exterior.coords) == 7 and abs(hexa.area - pad.area) < 1e-3 * pad.area
+
+
+def test_line_functions_on_a_straight_run():
+    """line_basis= (line.py): the RWG unknowns inside a straight run of trace replaced by a few functions per
+    column with the edge-peaked profile across it. A 10 mm line between via ports: ~8x fewer unknowns in the run,
+    S within 0.003 of the triangles."""
+    from shapely.geometry import box, Point
+    w, h, L = 0.35e-3, 0.2e-3, 10e-3
+    st = LayerStack([Layer(h, 4.3)])
+    out = {}
+    for lb in (None, 'on'):
+        v1, v2 = Via(-L / 2, 0, 0, 1, 0.1e-3), Via(L / 2, 0, 0, 1, 0.1e-3)
+        geo = [box(-L / 2, -w / 2, L / 2, w / 2), Point(-L / 2, 0).buffer(0.25e-3), Point(L / 2, 0).buffer(0.25e-3)]
+        sim = Simulation(st, {1: geo}, [ViaPort(v1, 50.0), ViaPort(v2, 50.0)], dmax=0.3e-3, w_ref=w, ncross=4,
+                         verbose=False, solver='direct', precision='double', line_basis=lb)
+        out[lb] = sim, sim.sparams(6e9)
+    (_, S0), (s1, S1) = out[None], out['on']
+    qi = s1.quad_info
+    assert qi['runs'] == 1 and qi['functions'] < qi['edges_replaced'] / 6
+    assert np.abs(S1 - S0).max() < 0.003
+
+
+# ---- the whole stack (LayerStack bottom='open'): no infinite ground, metal on interface 0 ---------------------
+def test_open_bottom_network_is_free_space_in_a_homogeneous_stack():
+    """With air in every layer and both half-spaces, the TM and TE line voltages between any two interfaces
+    (interface 0 included) are free space's, e^{-j kz |z - z'|} / (2 Y0); the PEC bottom keeps zero there."""
+    st = LayerStack([Layer(0.3e-3, 1.0), Layer(0.5e-3, 1.0), Layer(0.2e-3, 1.0)], bottom='open')
+    assert st.metal_interfaces == [0, 1, 2, 3] and not st.is_pec(0)
+    f = 5e9
+    w, k0 = 2 * np.pi * f, 2 * np.pi * f / C0
+    kr = np.array([0.3, 0.9, 1.5, 4, 30]) * k0 + 1e-3j * k0
+    kz = -1j * np.sqrt(kr ** 2 - k0 ** 2)
+    for mode, Y0 in (('e', w * EPS0 / kz), ('h', kz / (w * MU0))):
+        for o in range(4):
+            for s in range(4):
+                ex = np.exp(-1j * kz * abs(st.z[o] - st.z[s])) / (2 * Y0)
+                assert np.allclose(st.voltage(kr, w, o, s, mode), ex, rtol=1e-12)
+    pec = LayerStack([Layer(0.3e-3, 1.0)])
+    assert pec.metal_interfaces == [1] and pec.is_pec(0) and not np.any(pec.voltage(kr, w, 0, 1, 'e'))
+
+
+def _line_sims(m, bottom_open=True, flip=False, layers=None):
+    """A 10 mm microstrip with via ports at both ends: over the PEC ground, or with an open bottom and a ground
+    plane margin m round it meshed on interface 0; flip: the same board upside down (the strip on interface 0)."""
+    from shapely.geometry import box, Point
+    w, h, L = 0.35e-3, 0.2e-3, 10e-3
+    layers = layers or [Layer(h, 4.3)]
+    strip = [box(-L / 2, -w / 2, L / 2, w / 2), Point(-L / 2, 0).buffer(0.25e-3), Point(L / 2, 0).buffer(0.25e-3)]
+    if not bottom_open:
+        st = LayerStack(layers)
+        return Simulation(st, {st.N: strip}, [ViaPort(Via(x, 0, 0, st.N, 0.1e-3), 54.0) for x in (-L / 2, L / 2)],
+                          dmax=0.3e-3, w_ref=w, verbose=False)
+    st = LayerStack(list(reversed(layers)) if flip else layers, bottom='open')
+    plane = [box(-L / 2 - m, -m, L / 2 + m, m)]
+    shapes = {0: strip, st.N: plane} if flip else {0: plane, st.N: strip}
+    return Simulation(st, shapes, [ViaPort(Via(x, 0, 0, st.N, 0.1e-3), 54.0) for x in (-L / 2, L / 2)],
+                      dmax=0.3e-3, dmax_layer={st.N if flip else 0: 0.3e-3}, w_ref=w, verbose=False)
+
+
+def test_a_meshed_ground_converges_to_the_infinite_one():
+    """The same line over its ground plane meshed on interface 0 (open bottom): reciprocal, and as the plane
+    widens S21 comes to the infinite ground's (the plane's mesh sets how close S11 at -33 dB gets)."""
+    ref = _line_sims(0, bottom_open=False).sparams(2e9)
+    err = []
+    for m in (0.5e-3, 2e-3):
+        S = _line_sims(m).sparams(2e9)
+        assert abs(S[0, 1] - S[1, 0]) < 1e-10
+        err.append(abs(S[1, 0] - ref[1, 0]))
+    assert err[1] < 0.15 * err[0] and err[1] < 2e-3, err
+    assert abs(S[0, 0] - ref[0, 0]) < 6e-3
+
+
+def test_upside_down_board_is_the_same_board():
+    """A strip on interface 0 under its plane (B.Cu microstrip) gives what the strip on top over the plane gives
+    (F.Cu): one layer, and two layers of different permittivity reversed."""
+    for layers in ([Layer(0.2e-3, 4.3)], [Layer(0.1e-3, 3.0), Layer(0.1e-3, 6.0)]):
+        top = _line_sims(1e-3, layers=layers).sparams(2e9)
+        bot = _line_sims(1e-3, flip=True, layers=layers).sparams(2e9)
+        assert np.abs(np.abs(top) - np.abs(bot)).max() < 3e-4
+
+
+def _point_sim(st, k, Jx, chains=(), Iv=()):
+    """A stand-in sim: one 1 mm^2 triangle of current density Jx on interface k, and via chains with currents Iv."""
+    from types import SimpleNamespace as NS
+    return (NS(st=st, rwg=NS(cent=np.array([[0.0, 0.0, st.z[k]]]), area=np.array([1e-6])), tri_idx={k: np.array([0])},
+               current_density=lambda I: (np.array([Jx + 0j]), np.array([0j])), chains=list(chains), Ne=1),
+            np.array([0] + list(Iv), complex))
+
+
+def test_far_field_both_half_spaces_and_vias():
+    """far_field against free-space dipoles: in a homogeneous whole space (open bottom) an x element and a via
+    radiate their free-space patterns above and below the board, with the right sign and phase between them
+    (E ~ (theta_hat . p) e^{j k r_hat . r'}); a via over the PEC ground radiates with its image, nothing below."""
+    from types import SimpleNamespace as NS
+    from mom25d.farfield import far_field
+    eta, f = np.sqrt(MU0 / EPS0), 3e9
+    k0 = 2 * np.pi * f / C0
+    H = 0.05 * C0 / f
+    th, ph = np.array([10.0, 30, 60, 85, 95, 120, 150, 170]), np.array([0.0, 45, 90, 200])
+    T, P = np.meshgrid(np.radians(th), np.radians(ph))
+    st = LayerStack([Layer(H, 1.0), Layer(H, 1.0)], bottom='open')
+    Et, Ep = far_field(*_point_sim(st, 1, 1.0)[:1], _point_sim(st, 1, 1.0)[1], f, th, ph)
+    amp = eta * k0 * 1e-6 / (4 * np.pi)
+    assert np.allclose(np.abs(Et), amp * np.abs(np.cos(T) * np.cos(P)), atol=1e-6 * amp)
+    assert np.allclose(np.abs(Ep), amp * np.abs(np.sin(P)), atol=1e-6 * amp)
+    via = NS(x=0.0, y=0.0)
+    sim, I = _point_sim(st, 1, 0.0, chains=[(via, 1, 2)], Iv=[1.0])
+    Ev, Epv = far_field(sim, I, f, th, ph)
+    sinc = np.sinc(k0 * H * np.cos(T) / (2 * np.pi))
+    assert np.allclose(np.abs(Ev), eta * k0 * H / (4 * np.pi) * np.sin(T) * np.abs(sinc), rtol=1e-6) and not Epv.any()
+    zx, zv = st.z[1], 0.5 * (st.z[1] + st.z[2])
+    want = (-np.sin(T) * H * np.exp(1j * k0 * np.cos(T) * zv) * sinc) / \
+        (np.cos(T) * np.cos(P) * 1e-6 * np.exp(1j * k0 * np.cos(T) * zx))
+    ok = np.abs(np.cos(P)) > 0.1
+    assert np.allclose(Ev[ok] / Et[ok], want[ok], rtol=1e-5)
+    sim, I = _point_sim(LayerStack([Layer(H, 1.0)]), 1, 0.0, chains=[(via, 0, 1)], Iv=[1.0])
+    Eg, _ = far_field(sim, I, f, th, ph)
+    up = T < np.pi / 2
+    ampg = eta * k0 * 2 * H / (4 * np.pi) * np.sin(T) * np.abs(np.sinc(k0 * 2 * H * np.cos(T) / (2 * np.pi)))
+    assert np.allclose(np.abs(Eg[up]), ampg[up], rtol=1e-6) and not Eg[~up].any()
+
+
+def test_a_log_sweep_is_sampled_and_given_in_log_f():
+    """A sweep of decades (10 Hz to 1 GHz, a pole at 100 kHz): its first samples and gaps in log f and the model
+    given at the frequencies asked for. It had been seeded and checked on a linear grid (one solve below 1 MHz) and
+    interpolated linearly onto the log points: |dS| up to 1.8."""
+    import mom25d.afs as afs
+    fc = 100e3
+    truth = lambda f: np.array([[(1 - 1j * f / fc) / (1 + 1j * f / fc)]])
+    freq = np.geomspace(10, 1e9, 201)
+    f, S, fs, _, hist = afs.adaptive_sweep(truth, freq[0], freq[-1], tol=2e-3, ngrid=len(freq), max_points=40,
+                                           log=lambda *a: None, grid=freq)
+    assert np.array_equal(f, freq) and hist[-1]['converged']
+    assert (fs < 1e6).sum() >= 3
+    assert np.abs(S[:, 0, 0] - [truth(x)[0, 0] for x in freq]).max() < 1e-6
+    _, _, _, _, hist = afs.adaptive_sweep(truth, freq[0], freq[-1], tol=1e-12, ngrid=len(freq), max_points=6,
+                                          n0=5, log=lambda *a: None, grid=freq)
+    assert hist[-1]['converged'] is False                           # stopped at its cap: said
+
+
+def test_a_blas_thread_setting_leaves_the_openmp_cap():
+    """OPENBLAS_NUM_THREADS set by the user had switched the compiled core's OpenMP cap off with the BLAS one."""
+    import subprocess, sys
+    pytest.importorskip('threadpoolctl')
+    from mom25d import fast
+    if fast._core is None:
+        pytest.skip('no compiled core')
+    code = "import mom25d.fast as F; F.cap_blas_threads(); print(F._core.num_threads())"
+    run = lambda **env: int(subprocess.check_output([sys.executable, '-c', code], text=True,
+                                                    env={**__import__('os').environ, **env}).split()[-1])
+    assert run(OPENBLAS_NUM_THREADS='8', MOM25D_OMP_THREADS='3') == 3
+    assert run(OPENBLAS_NUM_THREADS='8') == run()
+
+
+def test_the_openmp_cap_holds_in_every_thread():
+    """libgomp keeps omp_set_num_threads per calling thread: a solve in another thread than the one the cap was set
+    in (kicad2ems's --solver-jobs, a window's worker) is capped in its own (it ran on every CPU)."""
+    import subprocess, sys
+    from mom25d import fast
+    if fast._core is None:
+        pytest.skip('no compiled core')
+    code = ("import threading, mom25d.fast as F; F.cap_blas_threads(); out = []\n"
+            "t = threading.Thread(target=lambda: (F.cap_blas_threads(), out.append(F._core.num_threads())))\n"
+            "t.start(); t.join(); print(F._core.num_threads(), out[0])")
+    got = subprocess.check_output([sys.executable, '-c', code], text=True,
+                                  env={**__import__('os').environ, 'MOM25D_OMP_THREADS': '3'}).split()
+    assert got[-2:] == ['3', '3']
+
+
+def test_an_unconverged_compressed_solve_is_no_answer(monkeypatch):
+    """ACA's GMRES that ends far from the answer: an error, as the block low-rank solve's (it had been returned with a
+    warning note, its currents written as S-parameters)."""
+    from shapely.geometry import box, Point
+    import mom25d.fast as F
+    w, h, L = 0.35e-3, 0.2e-3, 10e-3
+    st = LayerStack([Layer(h, 4.3, 0.02)])
+    v1, v2 = Via(-L / 2, 0, 0, 1, 0.1e-3), Via(L / 2, 0, 0, 1, 0.1e-3)
+    geo = [box(-L / 2, -w / 2, L / 2, w / 2), Point(-L / 2, 0).buffer(0.25e-3), Point(L / 2, 0).buffer(0.25e-3)]
+    sim = Simulation(st, {1: geo}, [ViaPort(v1, 54.0), ViaPort(v2, 54.0)], dmax=0.3e-3, w_ref=w, solver='aca',
+                     verbose=False)
+    monkeypatch.setattr(F, 'gmres', lambda A, b, **kw: (np.zeros_like(b), 1))
+    with pytest.raises(FloatingPointError, match='did not converge'):
+        sim.sparams(4e9)
