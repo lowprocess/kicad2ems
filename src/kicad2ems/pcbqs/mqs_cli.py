@@ -73,6 +73,12 @@ SWITCHING = r'(Q|D|M)\d'      # the parts a discrete switching cell is made of: 
 LOW_SIDE_R = 0.01            # ohms: the lower part of a discrete cell, conducting while the upper one is off
 
 
+def _inputs(nets, caps):
+    """[dict(vin, capacitors)]: those of the nets that capacitors of `caps` are on, with those capacitors."""
+    found=((net,[p.ref for p in caps if net in p.nets()]) for net in sorted(nets))
+    return [dict(vin=net,capacitors=refs) for net,refs in found if refs]
+
+
 def discover(board, ground='GND'):
     """Structural candidates only; ambiguity is returned, never resolved by picking the first net or part.
 
@@ -93,11 +99,7 @@ def discover(board, ground='GND'):
         for reg in regulators:
             switch=(ind.nets() & reg.nets())-{ground}
             for sw in sorted(switch):
-                inputs=[]
-                for net in sorted(reg.nets()-{ground,sw}-ind.nets()):
-                    cc=[p for p in caps if net in p.nets()]
-                    if cc:
-                        inputs.append(dict(vin=net,capacitors=[p.ref for p in cc]))
+                inputs=_inputs(reg.nets()-{ground,sw}-ind.nets(),caps)
                 if inputs:
                     candidates.append(dict(converter=reg.ref,inductor=ind.ref,switch=sw,inputs=inputs))
     cells=[p for p in parts if re.match(SWITCHING,p.ref.upper())]
@@ -110,11 +112,7 @@ def discover(board, ground='GND'):
                     continue
                 if not any(re.match(r'(Q|M)\d',p.ref.upper()) for p in (up,low)):
                     continue                            # two diodes: a rectifier's leg, nothing switched
-                inputs=[]
-                for net in sorted(up.nets()-{sw}):
-                    cc=[p for p in caps if net in p.nets() and sw not in p.nets()]
-                    if cc:
-                        inputs.append(dict(vin=net,capacitors=[p.ref for p in cc]))
+                inputs=_inputs(up.nets()-{sw},[p for p in caps if sw not in p.nets()])
                 if inputs:
                     ind=[p.ref for p in inductors if sw in p.nets()]
                     candidates.append(dict(converter=up.ref,inductor=ind[0] if len(ind)==1 else '',switch=sw,
@@ -270,20 +268,14 @@ def write_outputs(out, board, q, r, H, x, y, heights, summary):
         write_npz(exc/(dm.name+'.npz'),dict(x=x,y=y,z=z),r.f,np.moveaxis(H,-1,0))
         dumps.append(dm)
     from .mqs_layout import save_layout, geometry
+    from .pdn.viewer import _copper
     crop=shape(summary['crop'])
     layout=save_layout(out,board,q,crop,summary['selection'])
-    copper={}
-    for lay,records in board['copper'].items():
-        polys=[]
-        for record in records:
-            if record['net'] not in q.nets:continue
-            g=shape(record['polygon']).intersection(crop)
-            polys.extend(p for p in getattr(g,'geoms',[g]) if p.geom_type=='Polygon' and not p.is_empty)
-        copper[lay]=polys
     vias=[v for v in board['vias'] if v['net'] in q.nets]
     inside=shapely.intersects_xy(crop,[v['x'] for v in vias],[v['y'] for v in vias]) if vias else []
     m=SimpleNamespace(outline=crop,cu_z={c['name']:c['z'] for c in board['stack']['copper']},
-        copper=copper,ports=[],vias=[(v['x'],v['y'],v['r'],v['z0'],v['z1']) for v,keep in zip(vias,inside) if keep],
+        copper=_copper(board,q.nets,crop),ports=[],
+        vias=[(v['x'],v['y'],v['r'],v['z0'],v['z1']) for v,keep in zip(vias,inside) if keep],
         thickness=board['stack'].get('thickness',top))
     # The frontend also discovers files absent from the metadata. Remove only
     # obsolete generated H dumps in this command's reserved excitation folder.

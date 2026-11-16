@@ -37,15 +37,14 @@ class CopperPorts:
         if f.ndim!=1 or not np.isfinite(f).all() or (f<0).any():
             raise ValueError('port frequencies must be finite and nonnegative')
         q=self.q
+        m=q._assemble()
         if q.matrix_backend=='hierarchical':             # compressed: direct or GMRES (mqs_iterative.port_method)
             from .mqs_iterative import port_matrix
-            q._assemble();Z,branch=port_matrix(q,f,log=log)
-            branch[:,len(q.br):]=0                      # fictitious port connectors are never radiators
-            return PortResponse(f,self.names,Z,branch)
-        m=q._assemble();offset=len(q.br)
-        sc=np.array([m['src'][offset+i] for i in range(len(q.parts))])
-        Z,branch=direct_ports(q,m['C'],m['Rl'],m['Ll'],sc,f,log)
-        branch[:,offset:]=0                             # fictitious port connectors are never radiators
+            Z,branch=port_matrix(q,f,log=log)
+        else:
+            sc=np.array([m['src'][len(q.br)+i] for i in range(len(q.parts))])
+            Z,branch=direct_ports(q,m['C'],m['Rl'],m['Ll'],sc,f,log)
+        branch[:,len(q.br):]=0                          # fictitious port connectors are never radiators
         return PortResponse(f,self.names,Z,branch)
 
 
@@ -87,7 +86,6 @@ def rl_equivalent(response, index=-1, tolerance=1e-7):
 
 
 def rl_error(model, response):
-    R=np.array(model['R_ohm']);L=np.array(model['L_H'])
     if model['names']!=response.names:raise ValueError('copper port order differs')
     modeled=model_impedance(model,response.frequencies)
     return [float(np.linalg.norm(M-Z)/max(np.linalg.norm(Z),1e-30)) for M,Z in zip(modeled,response.impedance)]

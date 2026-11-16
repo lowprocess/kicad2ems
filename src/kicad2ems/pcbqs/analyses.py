@@ -413,9 +413,15 @@ class Thermal(_Tool):
         from .thermal.__main__ import OPTIONS
         return OPTIONS
 
-    def _plan(self, values, board, results):
-        """(values, board) of a run: the losses typed, else a circuit run's (the one named, else the latest in
-        `results`); the board that run's model names (its losses are that board's parts'), else the one given."""
+    def tag(self, values):
+        """The circuit case named, else where the losses are from: typed ('losses'), or a circuit run ('circuit')."""
+        typed = values.get('loss')
+        typed = typed if isinstance(typed, (list, tuple)) else str(typed or '').strip()
+        return str(values.get('case') or '').strip() or ('circuit' if values.get('circuit') or not typed else 'losses')
+
+    def command(self, values, board, out, preview=False, results=None):
+        # the losses typed, else a circuit run's (the one named, else the latest in `results`); the board that run's
+        # model names (its losses are that board's parts'), else the one given
         values = dict(values)
         typed = values.get('loss')
         typed = [s for s in (typed if isinstance(typed, (list, tuple)) else str(typed or '').replace(',', '\n').splitlines())
@@ -429,17 +435,7 @@ class Thermal(_Tool):
                 raise ValueError("give the parts' losses (REF=W), or run the Circuit analysis first")
             values['circuit'] = circuit
         board = (circuit_run(circuit) if circuit else '') or board
-        return values, self._board(board)
-
-    def tag(self, values):
-        """The circuit case named, else where the losses are from: typed ('losses'), or a circuit run ('circuit')."""
-        typed = values.get('loss')
-        typed = typed if isinstance(typed, (list, tuple)) else str(typed or '').strip()
-        return str(values.get('case') or '').strip() or ('circuit' if values.get('circuit') or not typed else 'losses')
-
-    def command(self, values, board, out, preview=False, results=None):
-        values, board = self._plan(values, board, results)
-        return argv(self.module, self.options(), values, board, out)
+        return argv(self.module, self.options(), values, self._board(board), out)
 
     def status(self, line):
         keep = line.startswith(('thermal ', 'losses of', 'results in')) or ' W into the board' in line

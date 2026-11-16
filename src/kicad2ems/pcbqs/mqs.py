@@ -213,7 +213,6 @@ class MQS:
         """
         if matrix_backend not in ('dense','hierarchical'):
             raise ValueError('matrix_backend must be dense or hierarchical')
-
         for name,value in [('compression_tol',compression_tol),('solver_tol',solver_tol)]:
             if not np.isfinite(value) or not 0 < value < 1:
                 raise ValueError(name+' must be between 0 and 1')
