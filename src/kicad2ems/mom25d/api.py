@@ -36,7 +36,7 @@ class Result:
     triangles: int
     solver: str     # 'dense', 'direct', 'blr', 'aca'
     precision: str  # 'double' or 'mixed'
-    mesher: str     # what was asked for ('auto': Triangle)
+    mesher: str     # what was asked for ('auto': mesh2d's triangulation)
     solves: int     # EM solves of the sweep
     solved: list    # the frequencies solved (Hz)
     seconds: float  # model, mesh, port characterisation and sweep

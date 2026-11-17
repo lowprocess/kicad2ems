@@ -1,8 +1,7 @@
 """
-cdtmesh - the points of geo.mesh_polygons' triangulation: CDT (a compiled core's
-cdt_triangulate, mom25d's or pcbqs's:
-emsdev/native/cdt_mesh.hpp, CDT vendored in emsdev/native/CDT, MPL-2.0)
-triangulates; the points inside the copper are placed here.
+cdtmesh - the points of geo.mesh_polygons' triangulation: mesh2d (a compiled
+core's cdt_triangulate, mom25d's or pcbqs's: emsdev/native/cdt_mesh.hpp and
+mesh2d.hpp) triangulates; the points inside the copper are placed here.
 
     T = mesh(V, segs, limit, inside, core, frozen=None, sizes=(1.0,),
              min_angle=0, max_steiner=0)
@@ -27,12 +26,15 @@ runs' cells; None: nowhere).
           its triangles' circumcentres; the outlines' points stay), then the
           limits again, to POST_TOL
   min_angle
-          (degrees) at the end, no triangle with a smaller angle (CDT's Ruppert
-          refinement, segments split where encroached, at most max_steiner
-          points; pcbqs's DC and thermal meshes: 25)
+          (degrees) at the end, no triangle with a smaller angle (mesh2d's
+          Ruppert refinement with off-centres, segments split where
+          encroached, at most max_steiner points; pcbqs's DC and thermal
+          meshes: 25)
 
 Against Triangle, which this replaced (2026-11-15): on mom25d's Solver Matrix
 boards the same S within 0.005 on all but a few, with 2-10 % fewer unknowns.
+mesh2d replaced CDT (2026-11-17): the same meshes but for the diagonals of
+cocircular cells, either Delaunay (S as close to openEMS's).
 Returns dict(vertices, triangles, info): V first, in its order (the triangles
 outside the outline left out; geo also drops those in its holes), info
 dict(rounds, added, seed, over, steiner).

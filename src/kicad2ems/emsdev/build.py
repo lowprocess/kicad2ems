@@ -30,7 +30,7 @@ MSVC_ARCH = {
 OMP_DLL = 'libomp140.x86_64.dll'
 MINGW_DLLS = ('libgomp-1.dll', 'libwinpthread-1.dll', 'libstdc++-6.dll',
               'libgcc_s_seh-1.dll')
-# sources the cores share (the mesher's CDT)
+# sources the cores share (the mesher's triangulator, mesh2d.hpp)
 NATIVE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'native')
 
 

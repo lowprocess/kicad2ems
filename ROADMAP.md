@@ -35,7 +35,8 @@ What the CI leaves out is where most of the list above came from.
    - pcbqs's real-board regressions need `~/Desktop/wpthb`;
    - the edge-ring validation scripts live outside the repository.
 5. **A release** (R-C12, C16, C17, M). Semantic versions (0.3.0, tagged), the authors and the LICENSEs are done
-   (2026-11-14), and Triangle, whose terms were not the GPL's, is replaced by CDT (MPL-2.0, 2026-11-15). Left:
+   (2026-11-14), and Triangle, whose terms were not the GPL's, is replaced by CDT (MPL-2.0, 2026-11-15) and CDT by
+   kicad2ems's own mesh2d (2026-11-17): no third-party code is vendored. Left:
    - PyPI, which refuses direct-URL dependencies (not yet: the user's call, 2026-11-14);
    - the KiCad plugin's PCM entry and its v0.1.0 tag;
    - a benchmark that runs today's stack (benchmark-results is from 2026-11-08 and imports modules that are gone).
@@ -262,7 +263,7 @@ that does not need N² memory. In this order:
    kernels).
 4. **`fast.py` split** (the rest of R-F3; the three paths are retired, now in the CHANGELOG).
 5. **The numerics shared with pcbqs** (R-F4): one copy since 2026-11-16, `kicad2ems.emsdev.numerics` (the RWG
-   functions, the mesher with pcbqs's minimum-angle option, the off-plane integrals, Biot-Savart), the CDT in
+   functions, the mesher with pcbqs's minimum-angle option, the off-plane integrals, Biot-Savart), mesh2d in
    `emsdev/native`. Left to port: mom25d's singular rule over the smaller triangle into pcbqs (`mom25d.sing` wraps
    the shared `offplane_pairs` with it), with pcbqs's compiled static, compressed and layered kernels and its CuPy
    kernel (they integrate over p too; ported in Python alone, fourteen of pcbqs's tests held them apart).

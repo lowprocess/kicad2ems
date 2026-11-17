@@ -155,8 +155,6 @@ GPL-3.0-or-later (see [LICENSE](LICENSE)). kicad2ems uses openEMS (GPL-3.0-or-la
 (LGPL-3.0-or-later) as Python packages and runs qucsator (GPL-2.0-or-later), ngspice (BSD-style), Elmer
 (GPL-2.0-or-later) and Palace (Apache-2.0) as separate programs.
 
-One piece of third-party code is copied into the repository: [CDT](https://github.com/artem-ogre/CDT) 2.0.1
-(MPL-2.0), the constrained Delaunay triangulation that mom25d's and pcbqs's compiled cores mesh with, in
-`src/kicad2ems/emsdev/native/CDT` with its licence. Two of its headers carry their
-own: `predicates.h` BSD-3-Clause, `portable_nth_element.hpp` Apache-2.0 with LLVM exceptions. Those files keep
-their licences; the rest of kicad2ems is GPL-3.0-or-later.
+No third-party code is copied into the repository: the constrained Delaunay triangulation that mom25d's and
+pcbqs's compiled cores mesh with is kicad2ems's own (`src/kicad2ems/emsdev/native/mesh2d.hpp`), like the rest
+GPL-3.0-or-later.

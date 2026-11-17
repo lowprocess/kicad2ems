@@ -34,7 +34,7 @@ Component models and parasitics are explicit assumptions; footprints do not
 imply calibrated models.
 
 The compiled core is needed: it meshes (the constrained Delaunay triangulation of
-[CDT](https://github.com/artem-ogre/CDT), vendored in `src/kicad2ems/emsdev/native/CDT`) and holds the
+`src/kicad2ems/emsdev/native/mesh2d.hpp`) and holds the
 CPU kernels. Build it with `pip install '.[core]'` followed by `python -m kicad2ems.pcbqs.core.build`
 (a C++17 compiler; the kicad2ems installer does this). The kernels keep their NumPy/threaded
 fallbacks (`PCBQS_NO_CORE`); the mesher has none. CuPy GPU
@@ -72,7 +72,5 @@ other part at run time; RF/full-wave solvers remain in `mom25d`.
 
 ## Licence
 
-GPL-3.0-or-later (see [LICENSE](../../LICENSE)). The mesher's triangulation is CDT 2.0.1 by
-Artem Amirkhanov, vendored unmodified in `src/kicad2ems/emsdev/native/CDT` under its MPL-2.0 (its
-`predicates.h` BSD-3-Clause, `portable_nth_element.hpp` Apache-2.0 with LLVM exceptions;
-`src/kicad2ems/emsdev/native/CDT/README.md`), all compatible with the GPL.
+GPL-3.0-or-later (see [LICENSE](../../LICENSE)), the mesher's triangulation
+(`src/kicad2ems/emsdev/native/mesh2d.hpp`) included.

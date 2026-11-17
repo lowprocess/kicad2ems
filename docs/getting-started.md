@@ -75,7 +75,7 @@ pip install '.[gpu-vulkan]'     # optional: the GPU through Vulkan (slangpy); or
 ```
 
 mom25d and pcbqs mesh in their compiled cores (the constrained Delaunay triangulation of
-[CDT](https://github.com/artem-ogre/CDT), vendored in each): building them needs a C++17 compiler and pybind11
+kicad2ems's own `mesh2d.hpp`): building them needs a C++17 compiler and pybind11
 (the `core` extras). The installer builds them for you.
 
 openEMS is not on PyPI. On Linux, install it from your distribution, or build it with `tools/build_openems.sh

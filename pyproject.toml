@@ -108,8 +108,8 @@ include-package-data = false
                      "circuit/examples/*.kicad_pcb", "circuit/examples/*.toml",
                      "PROVENANCE.json"]
 "kicad2ems.pcbqs.core" = ["*.cpp", "*.hpp"]
-# what both cores include: the mesher's CDT
-"kicad2ems.emsdev" = ["native/*.hpp", "native/CDT/*"]
+# what both cores include: the mesher's triangulator (mesh2d)
+"kicad2ems.emsdev" = ["native/*.hpp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -48,7 +48,7 @@ import argparse, glob, json, os, re, shutil, subprocess, sys, sysconfig
 import tempfile
 
 CUPY_WHEELS = ('cupy-rocm-7-0', 'cupy-cuda12x', 'cupy-cuda13x')
-# their compiled cores hold the mesher (CDT): required
+# their compiled cores hold the mesher's triangulator: required
 MESH_CORES = ('mom25d', 'pcbqs')
 # the parts with a compiled core (kicad2ems.<part>.core.build)
 CORES = ('mom25d', 'pcbqs', 'gfdtd')
@@ -483,7 +483,7 @@ def core_file(vpy, folder):
 
 def core_stale(folder, built):
     """The compiled core is missing, or a source of it (core/*.cpp, *.h, *.hpp,
-    a vendored CDT's, and for the mesh cores those they share in emsdev/native)
+    and for the mesh cores those they share in emsdev/native)
     is newer."""
     if not os.path.isfile(built):
         return True
@@ -494,7 +494,7 @@ def core_stale(folder, built):
     return any(
         os.path.getmtime(f) > t
         for d in dirs
-        for pat in ('*.cpp', '*.h', '*.hpp', os.path.join('CDT', '*'))
+        for pat in ('*.cpp', '*.h', '*.hpp')
         for f in glob.glob(os.path.join(d, pat)))
 
 

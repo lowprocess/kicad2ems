@@ -270,7 +270,7 @@ kicad2ems examples/rf_stubnotch.toml --solvers mom --mom-dump 2.4,1.2 --dump-ani
 <a id="meshers"></a>
 ## The mesh
 
-mom25d meshes each copper layer into triangles (Triangle). The current peaks sharply at conductor edges, so the
+mom25d meshes each copper layer into triangles (mesh2d, in the compiled core). The current peaks sharply at conductor edges, so the
 mesher adds thin rings of cells inside each edge. A study on a coupled-line filter (`tools/mesher_study.py` in
 mom25d) found that edge resolution sets the accuracy, not the cell size along the copper: thin edge cells gave 2–4
 times smaller errors than evenly shaped cells, with a third of the unknowns. gmsh and DistMesh did worse:
@@ -369,7 +369,7 @@ The mesher keeps `--mom-dmax` (0.3 mm) at the features (the outline's corners an
 the edge rings as they are, and lets the cells grow away from the features to a wavelength / `--mom-cells` (30) in
 the densest dielectric at `fmax`, at most 4 × the narrowest trace: as planar MoM tools size their cells (30 per
 wavelength: the current along a line within about 1 %). Inside the copper the cells are equilateral (a hexagonal
-seed, smoothed; the triangulation is CDT's, in the compiled core). On 16 of the Solver Matrix's boards against
+seed, smoothed; the triangulation is mesh2d's, in the compiled core). On 16 of the Solver Matrix's boards against
 openEMS (2026-11-15): 38 % of the unknowns of 0.3 mm cells everywhere and a quarter of the time, the median RMS
 0.059 against 0.057; three boards moved by more than 0.005 (antenna_cp_patch 0.098 → 0.115, 208 s → 3 s). The same
 size everywhere, not graded from the features, lost 0.04 on resonators and via boards; fewer edge rings lost as much

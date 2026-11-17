@@ -109,7 +109,8 @@ def test_the_edges_default_to_the_faces_and_can_be_insulated():
 
 
 # ('mesh', 2.0): 0.18 at the centre on the CDT mesh, 0.13 off it on Triangle's
-# (2026-11-15); at 1.0 0.017 and 0.033
+# (2026-11-15), 0.184 on mesh2d's with off-centres (2026-11-17); at 1.0 0.017
+# and 0.033
 @pytest.mark.parametrize('method,size,tol', [('grid', 1.0, 0.1),
                                              ('grid', 0.5, 0.06),
                                              ('mesh', 2.0, 0.2),

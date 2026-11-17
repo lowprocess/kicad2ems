@@ -244,11 +244,11 @@ def test_the_cores_are_built_without_asking(inst, monkeypatch):
 
 
 def test_core_stale_sees_headers(inst, tmp_path):
-    (tmp_path / 'core' / 'CDT').mkdir(parents=True)
+    (tmp_path / 'core').mkdir(parents=True)
     built = tmp_path / '_core.so'
     built.write_text('x')
     os.utime(built, (1000, 1000))
-    for name in ('k.hpp', os.path.join('CDT', 'CDT.h')):
+    for name in ('k.hpp', 'k.h', 'k.cpp'):
         f = tmp_path / 'core' / name
         f.write_text('x')
         os.utime(f, (2000, 2000))

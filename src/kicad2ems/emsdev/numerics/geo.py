@@ -329,8 +329,8 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(),
                   gap_rings=None, quality=None, area_scale=1.0,
                   coarsen_fine=True, core=None):
     """
-    geom   : shapely (Multi)Polygon of one metal layer (triangulated by CDT in a
-             compiled core: cdtmesh.py)
+    geom   : shapely (Multi)Polygon of one metal layer (triangulated by mesh2d
+             in a compiled core: cdtmesh.py)
     dmax   : max edge length along conductors / in open regions
     w_ref  : reference strip width for the edge grading (narrowest trace on the
              layer)
@@ -372,12 +372,12 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(),
              strips) S31 -10.64 dB, against -10.24 to -10.29 from refined FDTD,
              until the edge cells came down to the gap's scale; isolated traces
              and planes keep their cost
-    quality : the minimum angle (degrees: CDT's refinement), on the uncoarsened
-             path only. Off by default (the edge-ring strips of the RF meshes
-             would split into fans); without it a small feature (a via's
-             octagon) fans out to far vertices in long slivers, and the linear
-             elements then underestimate the log spreading around it (DC: ~0.1
-             mOhm per via junction)
+    quality : the minimum angle (degrees: mesh2d's refinement), on the
+             uncoarsened path only. Off by default (the edge-ring strips of the
+             RF meshes would split into fans); without it a small feature (a
+             via's octagon) fans out to far vertices in long slivers, and the
+             linear elements then underestimate the log spreading around it
+             (DC: ~0.1 mOhm per via junction)
     core   : the compiled core that triangulates (cdt_triangulate:
              emsdev/native/cdt_mesh.hpp); None: pcbqs's, else mom25d's (the same
              code in both)
@@ -565,7 +565,7 @@ CORES = ('kicad2ems.pcbqs._core', 'kicad2ems.mom25d._core')
 def _cdt(V, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u,
          dmax_fine, runs_u, area_scale, coarsen_fine, min_angle, max_steiner,
          core):
-    """mesh_polygons' triangulation (cdtmesh: CDT and the points inside; core
+    """mesh_polygons' triangulation (cdtmesh: mesh2d and the points inside; core
     None: the first of CORES built), the area limits: amax, afine in the fine
     regions, with coarsen the field's 0.5 h^2 (none in the structured runs'
     cells; the fine regions kept at afine unless coarsen_fine); all of them x

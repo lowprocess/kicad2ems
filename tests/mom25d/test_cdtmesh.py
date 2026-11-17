@@ -1,5 +1,5 @@
-"""The mesher's triangulation: the compiled core's cdt_triangulate (CDT) and
-cdtmesh.py's points inside the copper."""
+"""The mesher's triangulation: the compiled core's cdt_triangulate (mesh2d)
+and cdtmesh.py's points inside the copper."""
 import numpy as np
 import pytest
 import shapely
@@ -136,3 +136,90 @@ def test_the_interior_is_equilateral_cells():
             (len(v) - n))
     assert ((_min_angles(v, t) > 55).mean() > 0.6 and a.max() <= 0.5 * dm**2 *
             (1 + cdtmesh.POST_TOL))
+
+
+def _incircle_exact(a, b, c, d):
+    from fractions import Fraction as Fr
+    m = [[Fr(p[0]) - Fr(d[0]), Fr(p[1]) - Fr(d[1])] for p in (a, b, c)]
+    m = [r + [r[0]**2 + r[1]**2] for r in m]
+    return (m[0][0] * (m[1][1] * m[2][2] - m[2][1] * m[1][2])
+            - m[1][0] * (m[0][1] * m[2][2] - m[2][1] * m[0][2])
+            + m[2][0] * (m[0][1] * m[1][2] - m[1][1] * m[0][2]))
+
+
+def _plate_with_holes():
+    g = box(0, 0, 6, 4).difference(Point(2, 2).buffer(
+        0.7, quad_segs=3)).difference(box(4, 1, 4.3, 3))
+    rings = [np.asarray(r.coords)[:-1] for r in [g.exterior, *g.interiors]]
+    segs, off = [], 0
+    for r in rings:
+        segs += [(off + i, off + (i + 1) % len(r)) for i in range(len(r))]
+        off += len(r)
+    return g, rings, np.array(segs, np.int32)
+
+
+@pytest.mark.parametrize('lattice', [False, True])
+def test_core_is_constrained_delaunay(lattice):
+    """mesh2d's triangulation is the constrained Delaunay one, exactly (its
+    predicates are exact): no edge off the segments has a point of its other
+    triangle inside its circle, also on a lattice (cocircular everywhere)."""
+    g, rings, segs = _plate_with_holes()
+    if lattice:
+        X, Y = np.meshgrid(np.arange(0.25, 6, 0.25), np.arange(0.25, 4, 0.25))
+        P = np.column_stack([X.ravel(), Y.ravel()])
+    else:
+        P = np.random.default_rng(1).random((400, 2)) * [6, 4]
+    P = P[shapely.contains_xy(g.buffer(-0.02), P[:, 0], P[:, 1])]
+    V = np.vstack(rings + [P])
+    v, t = fast._built.cdt_triangulate(V, segs, 1e-12)
+    a = _areas(v, t)
+    assert (a > 0).all() and len(v) == len(V)
+    # (the holes are kept: geo drops them)
+    assert abs(a.sum() - 24.0) < 1e-9
+    S = {tuple(sorted(s)) for s in segs.tolist()}
+    opp = {}
+    for i, tri in enumerate(t):
+        for k in range(3):
+            e = tuple(sorted((tri[(k + 1) % 3], tri[(k + 2) % 3])))
+            opp.setdefault(e, []).append((i, tri[k]))
+    assert all(e in opp for e in S)
+    for e, sides in opp.items():
+        if len(sides) == 2 and e not in S:
+            (i, _), (_, d) = sides
+            assert _incircle_exact(*v[t[i]], v[d]) <= 0
+
+
+def test_core_splits_segments_at_points_on_them():
+    """A segment through a point (exactly, or within min_dist) is split there;
+    a point a hair outside min_dist is not taken onto it; crossing segments
+    are split where they cross."""
+    V = np.array([[0, 0], [4, 0], [4, 2], [0, 2], [1, 1], [3, 1], [2, 1],
+                  [2.5, 1 + 1e-13], [1.5, 1 + 1e-6]], float)
+    E = np.array([[0, 1], [1, 2], [2, 3], [3, 0], [4, 5]], np.int32)
+    v, t = fast._built.cdt_triangulate(V, E, 1e-10)
+    edges = {
+        tuple(sorted(e))
+        for tri in t
+        for e in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0]))
+    }
+    # (4-6 direct: not through 8)
+    assert ({(4, 6), (6, 7), (5, 7)} <= edges and (4, 5) not in edges
+            and len(v) == len(V))
+    V = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], float)
+    E = np.array([[0, 2], [1, 3], [0, 1], [1, 2], [2, 3], [3, 0]], np.int32)
+    v, t = fast._built.cdt_triangulate(V, E, 1e-10)
+    assert len(v) == 5 and np.allclose(v[4], [0.5, 0.5]) and len(t) == 4
+
+
+def test_core_refines_to_the_angle_with_off_centres():
+    """min_angle: no triangle under it but at the input's own sharp corners;
+    the off-centres reach it with fewer points than circumcentres (Triangle's
+    constant: on wpthb's PDN layers 24-40 % fewer)."""
+    g, rings, segs = _plate_with_holes()
+    V = np.vstack(rings)
+    v, t = fast._built.cdt_triangulate(V, segs, 1e-12, 25.0, 0)
+    keep = shapely.contains_xy(g, *v[t].mean(1).T)
+    assert _min_angles(v, t[keep]).min() >= 25.0 - 1e-9
+    assert abs(_areas(v, t[keep]).sum() - g.area) < 1e-9
+    assert len(v) - len(V) < 150
+
