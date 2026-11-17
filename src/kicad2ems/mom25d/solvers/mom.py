@@ -437,7 +437,7 @@ class MoM25D(Solver):
         edge_walls='approximated: via rows every 0.5 mm',
         thickness=('approximated: the edges as plates (no top face); '
                    '--mom-thickness grow: the effective width; edge: the '
-                   "edges' near terms corrected; off: sheets'),
+                   "edges' near terms corrected; off: sheets"),
         conductor_loss='yes',
         roughness='yes: Hammerstad at each frequency',
         finish=('approximated: on the outer copper, weighted by the finished '
