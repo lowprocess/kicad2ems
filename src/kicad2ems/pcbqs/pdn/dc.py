@@ -210,16 +210,23 @@ class Network:
                 "source"
             )
         free = np.flatnonzero(live & ~np.isin(np.arange(self.n), fx))
+        # solved relative to the first fixed voltage: with the rail's volts in
+        # the right-hand side (through the stiff ties) the residual grew with
+        # the mesh (wpthb at dmax 0.2: 3 mA)
+        v0 = V[fx[0]]
         if not inj[free].any() and len(set(fixed.values())) == 1:
             # no current anywhere (a return no load reaches): one voltage
-            V[free] = V[fx[0]]
+            V[free] = v0
         else:
-            V[free] = spsolve(G[free][:, free].tocsc(),
-                              inj[free] - G[free][:, fx] @ V[fx])
+            V[free] = v0 + spsolve(G[free][:, free].tocsc(),
+                                   inj[free] - G[free][:, fx] @ (V[fx] - v0))
         Vz = np.nan_to_num(V)
-        # the loss as the power the terminals put in (Tellegen): V.G.V cancels
-        # across the stiff ties
-        loss = float(Vz[fx] @ (G[fx] @ Vz) + Vz[free] @ inj[free])
+        # the loss as the sum over the branches of g dV^2 (copper, vias, ties,
+        # series parts): the terminals' power (Tellegen) took the solve's
+        # residual times the rail's volts (buck at dmax 0.2: 0.20 mW for 0.79)
+        C = G.tocoo()
+        b = (C.row < C.col) & live[C.row] & live[C.col]
+        loss = float(-np.sum(C.data[b] * (Vz[C.row[b]] - Vz[C.col[b]])**2))
         out = DCResult(self.nets, self.sheets, [], {}, loss, self.n_mesh, notes)
         for lay, sh in self.sheets.items():
             sh.V = V[sh.off:sh.off + len(sh.nodes)]
