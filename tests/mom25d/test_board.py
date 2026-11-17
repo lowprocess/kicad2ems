@@ -426,3 +426,23 @@ def test_a_feed_with_another_trace_beside_it_takes_a_lumped_port():
     m = BoardModel(board('thru'), log=quiet)
     assert ([type(p).__name__ for p in m.ports(dmax=0.3e-3)] == ['LinePort'] * 2
             and not any('beside' in n for n in m.notes))
+
+
+def test_thickness_grow_moves_the_copper_edges_out():
+    """thickness='grow': each layer's copper grows by GROW_T x its thickness
+    (mitred: the area by about the perimeter times that); 'off' leaves the
+    sheets as they are; anything else is refused."""
+    from kicad2ems.mom25d.board import GROW_T
+    data = stripline()
+    t = {c['name']: c['t'] for c in data['stack']['copper']}
+    off = BoardModel(data, log=quiet)
+    grow = BoardModel(data, thickness='grow', log=quiet)
+    lay = next(l for l, k in off.iface.items())
+    k = off.iface[lay]
+    a, b = off.shapes[k][0], grow.shapes[k][0]
+    g = GROW_T * t[lay] * 1e-3
+    assert b.contains(a) and b.area - a.area == pytest.approx(
+        a.length * g, rel=0.05)
+    with pytest.raises(ValueError):
+        BoardModel(data, thickness='thick', log=quiet)
+

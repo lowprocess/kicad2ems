@@ -65,7 +65,8 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 on_step=None, core='auto', quads=False, zone=None,
                 signal_vias='round', stitching_vias='auto', lines=None,
                 keep_at=(), quad_tol=35.0, coarsen=None, planes='pec',
-                stitching_pads='drop', wideband=None, cells=CELLS):
+                stitching_pads='drop', wideband=None, cells=CELLS,
+                thickness='off'):
     """S-parameters of a board (a <name>_board.json path, or its content) on
     `freq` (Hz).
 
@@ -87,8 +88,10 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
     planes: 'pec' (default: solid planes as the ground and a PEC cover, not
     meshed: mom25d.board) or 'mesh'. stitching_pads: 'drop' (default: a ground
     via's pad with nothing else on its layer left out, the via kept) or 'keep'.
-    wideband: None (constant er, tand) or the frequency (Hz) the stack's er and
-    tand hold at, Djordjevic-Sarkar elsewhere."""
+    thickness: 'off' (default: zero-thickness sheets) or 'grow' (the copper's
+    edges moved out by mom25d.board.GROW_T x its thickness). wideband: None
+    (constant er, tand) or the frequency (Hz) the stack's er and tand hold at,
+    Djordjevic-Sarkar elsewhere."""
     from . import fast
     from .geo import LinePort
     from .run import solve_band
@@ -103,7 +106,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
             core=core, quads=quads, zone=zone, signal_vias=signal_vias,
             stitching_vias=stitching_vias, lines=lines, quad_tol=quad_tol,
             coarsen=coarsen, planes=planes, stitching_pads=stitching_pads,
-            wideband=wideband, title=name, cells=cells)
+            wideband=wideband, title=name, cells=cells, thickness=thickness)
         f, S, info = solve_band(sim, fmin, fmax, points=len(freq),
                                 zref=model.port_z0, max_solves=max_solves,
                                 afs_tol=afs_tol, log=log, progress=progress,
@@ -136,7 +139,8 @@ def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 core='auto', quads=False, zone=None, signal_vias='round',
                 stitching_vias='auto', lines=None, quad_tol=35.0, coarsen=None,
                 planes='pec', stitching_pads='drop', wideband=None, title=None,
-                mesh_only=False, characterize=True, cells=CELLS):
+                mesh_only=False, characterize=True, cells=CELLS,
+                thickness='off'):
     """(BoardModel, Simulation) of a board as solve_board builds them, with its
     options (solve_board's). mesh_only: stop once the mesh and its unknowns are
     known (a preview of the mesh solve_board would solve on; the quad cells are
@@ -148,7 +152,7 @@ def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
             board = json.load(fh)
     model = BoardModel(board, ground=ground, port=port, pairs=pairs,
                        planes=planes, stitching_pads=stitching_pads,
-                       wideband=wideband, log=log)
+                       wideband=wideband, thickness=thickness, log=log)
     if (metal is not None and metal.on
             and any(isinstance(k, str) for k in metal.on)):
         import copy  # a finish named by copper layer: on its interface

@@ -60,6 +60,13 @@ WALL_R = 0.05                       # mm: the barrel radius of an edge-wall via
 WALL_GAP = 0.1
 # planes='pec': a solid plane covers this much of the outline
 SOLID = 0.98
+# thickness='grow': a copper edge moves out by this x the copper's thickness,
+# the effective width of thick copper (Hammerstad, Kirschning-Jansen: strips
+# wider, gaps narrower by the same). Against gfdtd with solid copper (2x grid,
+# 17 boards, 2026-11-17) 0.57 (0.02 mm on 35 um) took the median RMS from
+# 0.065 to 0.052, better on 11; worse on narrow-gap resonators (hairpin 0.21
+# -> 0.23, rf_interdig 0.12 -> 0.14), whose coupling is the gap's side walls
+GROW_T = 0.57
 # mm2: stitching_pads='drop': a lone pad is smaller than this
 PAD_AREA = 2.0
 # ground_apertures: the signal copper's reach, in heights over the ground
@@ -346,15 +353,18 @@ def lone_pads(data, layers):
 class BoardModel(PlanarModel):
     def __init__(self, data, ground=None, port='auto', pairs=False,
                  wall_pitch=0.5e-3, planes='pec', stitching_pads='drop',
-                 wideband=None, log=print):
+                 wideband=None, thickness='off', log=print):
         """data: the board (board.json's content). ground: a copper layer name
         (default: the board's own, else the lowest solid one). port: 'auto' |
         'wave' | 'via' (lumped). pairs: P<n>+ / P<n>- legs as one mixed-mode
         port. wall_pitch (m): via spacing along edge walls. planes: 'pec'
         (default: solid planes as the ground and a PEC cover) | 'mesh'.
         stitching_pads: 'drop' (default: lone pads of ground vias left out) |
-        'keep'. wideband: None (default: each dielectric's er and tand constant
-        over frequency) or a frequency (a layer's own fref first: the frequency
+        'keep'. thickness: 'off' (default: the copper as zero-thickness sheets)
+        | 'grow' (each sheet's edges moved out by GROW_T x its copper's
+        thickness: the effective width of thick copper; see GROW_T).
+        wideband: None (default: each dielectric's er and tand constant over
+        frequency) or a frequency (a layer's own fref first: the frequency
         kicad2ems's material library quotes its laminate at) (Hz) at which they
         hold, the Djordjevic-Sarkar model elsewhere
         (multilayer.djordjevic_sarkar). planes 'holes' (experimental): as 'pec',
@@ -541,8 +551,17 @@ class BoardModel(PlanarModel):
                 f"the board's, not modelled), {len(holes)} opening(s) meshed "
                 f"({sum(h.area for h in holes):.1f} mm2; planes 'slots')"
             )
+        if thickness not in ('off', 'grow'):
+            raise ValueError(f"thickness {thickness!r}: off or grow")
+        # thickness='grow': each layer's copper grown by GROW_T x its thickness
+        grow = {
+            c['name']: GROW_T * c.get('t', 0.0)
+            for c in data['stack']['copper']
+        } if thickness == 'grow' else {}
         self.shapes = {
-            k: [S(unary_union(copper[lay])).buffer(0)]
+            k: [S(unary_union(copper[lay]).buffer(grow[lay],
+                                                  join_style='mitre')
+                  if grow.get(lay) else unary_union(copper[lay])).buffer(0)]
             for lay, k in self.iface.items()
             if copper.get(lay) and k not in self._pec_geom
         }

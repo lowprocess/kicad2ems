@@ -18,7 +18,7 @@ five times faster.
 
 ## What mom25d models
 
-- Copper is zero-thickness sheets on the layer interfaces.
+- Copper is zero-thickness sheets on the layer interfaces ([thickness](#thickness): an effective-width option).
 - The dielectric layers extend sideways to infinity, over an **infinite ground plane**: the board's `ground`
   layer, or the lowest layer whose copper covers half the board. Copper below it is left out.
 - Vias are vertical wires between the layers they connect; edge walls become rows of vias every 0.5 mm.
@@ -32,6 +32,19 @@ five times faster.
 
 Other copper layers, inner planes and pours included, are meshed, except solid planes and lone stitching-via pads
 (below). Large meshed planes add many unknowns and slow mom25d down ([speed](#runtime)).
+
+<a id="thickness"></a>
+### Copper thickness
+
+mom25d's copper is a zero-thickness sheet. Real copper (35 µm) shifts S by a median RMS of about 0.04 on 17
+of the matrix's boards, and by up to 0.17 on narrow-gap filters (gfdtd with solid copper against its sheets,
+both on a twice finer grid; 2026-11-17). `--mom-thickness grow` moves every copper edge out by 0.57 × the
+copper's thickness: the effective width of thick copper (Hammerstad; Kirschning-Jansen for coupled lines),
+strips wider and gaps narrower by the same, no extra unknowns. Against gfdtd with solid copper the median RMS
+went from 0.065 to 0.052, better on 11 of the 17 boards (rf_stripline 0.058 → 0.030, demo_transition 0.049 →
+0.023). It is worse on resonators coupled across narrow gaps (hairpin 0.21 → 0.23, rf_interdig 0.12 → 0.14):
+there the coupling is the side walls facing each other across the gap, which a sheet cannot carry. The
+default stays `off`: the openEMS references of the Solver Matrix are zero-thickness sheets too.
 
 <a id="planes"></a>
 ### Solid planes and stitching pads

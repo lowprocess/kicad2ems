@@ -148,8 +148,8 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
     current dumps'). mesh: _board_kw's options (quads, quad_tol, coarsen, zone,
     cells, the vias, lines; stack: 'ground' (an infinite ground plane) or
     'whole' (every copper layer meshed, mom25d.board ground='none'); planes,
-    stitching_pads, wideband: mom25d.board's (wideband: the frequency, Hz, of a
-    Djordjevic-Sarkar stack's er and tand, or None))."""
+    stitching_pads, thickness, wideband: mom25d.board's (wideband: the
+    frequency, Hz, of a Djordjevic-Sarkar stack's er and tand, or None))."""
     from kicad2ems.core.api.solver import mixed_mode
     pairs, kw = _board_kw(m, dmax, port, **mesh)
     wideband = mesh.get('wideband')
@@ -213,7 +213,7 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
 def _board_kw(m, dmax, port, quads=False, quad_tol=35.0, coarsen=None,
               zone=None, signal_vias='round', stitching_vias='auto', lines=None,
               stack='ground', planes='pec', stitching_pads='drop',
-              wideband=None, cells=30.0):
+              wideband=None, cells=30.0, thickness='off'):
     """(pairs, mom25d.api's board and mesh options) of solve()'s settings: what
     the run meshes, and the preview."""
     kind = 'via' if port == 'lumped' else port
@@ -222,7 +222,7 @@ def _board_kw(m, dmax, port, quads=False, quad_tol=35.0, coarsen=None,
             dict(dmax=dmax * 1e-3, port=kind, quads=quads, quad_tol=quad_tol,
                  coarsen=coarsen, zone=zone, cells=cells, planes=planes,
                  stitching_pads=stitching_pads, wideband=wideband,
-                 signal_vias=signal_vias,
+                 thickness=thickness, signal_vias=signal_vias,
                  stitching_vias=stitching_vias, lines=lines,
                  **(dict(ground='none') if stack == 'whole' else {})))
 
@@ -299,6 +299,7 @@ def _model_kw(s):
     wide = getattr(s, 'diel', 'fixed') == 'wideband'
     return dict(planes=getattr(s, 'mom_planes', 'pec'),
                 stitching_pads=getattr(s, 'mom_stitching_pads', 'drop'),
+                thickness=getattr(s, 'mom_thickness', 'off'),
                 wideband=(getattr(s, 'diel_fref', 1.0) * 1e9 if wide else None))
 
 
@@ -434,7 +435,8 @@ class MoM25D(Solver):
         outline='ignored: laterally infinite dielectric',
         planes='yes: meshed (slow on plane-heavy boards)',
         edge_walls='approximated: via rows every 0.5 mm',
-        thickness='ignored: sheets', conductor_loss='yes',
+        thickness=('ignored: sheets; --mom-thickness grow: the effective '
+                   'width'), conductor_loss='yes',
         roughness='yes: Hammerstad at each frequency',
         finish=('approximated: on the outer copper, weighted by the finished '
                 'faces\' share of the strip\'s loss (the port trace\'s), at '
@@ -537,6 +539,15 @@ class MoM25D(Solver):
             "(docs/mom.md#planes)",
             choices=('drop', 'keep'), name='stitching_pads',
             gui='MoM lone stitching-via pads', group=G),
+        Option(
+            'mom_thickness', 'off',
+            "off (default): the copper as zero-thickness sheets; grow: each "
+            "copper edge moved out by 0.57 x the copper's thickness (the "
+            "effective width of thick copper: against an FDTD with solid "
+            "copper the median RMS of 17 boards 0.065 to 0.052; narrow-gap "
+            "resonators worse, hairpin 0.21 to 0.23) (docs/mom.md#thickness)",
+            choices=('off', 'grow'), name='thickness',
+            gui='MoM copper thickness', group=G),
         Option(
             'mom_lines', 'off',
             "experimental: line basis functions on straight runs of trace - "
