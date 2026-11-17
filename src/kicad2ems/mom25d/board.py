@@ -569,14 +569,18 @@ class BoardModel(PlanarModel):
         # a via's vertical current: around a via through a meshed plane's
         # antipad they misplace its return, rf_msvia's whole stack S11 -15 dB
         # at 5 GHz, sheets -34, gfdtd with solid copper -23; there the copper
-        # stays sheets)
+        # takes the corrected edges, mom25d.edge: S11 -22.8 dB at 8 GHz as
+        # gfdtd's, sides -12.8, sheets -31.8)
         why = ('the whole stack meshed' if self.whole else
                f"planes {planes!r}" if planes != 'pec' else None)
         if 'sides' in thickness and why:
+            # (edge not tried with the holes' and openings' unknowns)
+            alt = ('grow' if thickness != 'sides' else
+                   'off' if planes in ('holes', 'slots') else 'edge')
             self.notes.append(
                 f"thickness {thickness!r}: no sides with {why} (not "
-                "modelled), the copper as sheets")
-            thickness = thickness.replace('sides', '').strip('+') or 'off'
+                f"modelled), thickness {alt!r}")
+            thickness = alt
         # thickness='grow': each layer's copper grown by GROW_T x its thickness
         grow = {
             c['name']: GROW_T * c.get('t', 0.0)

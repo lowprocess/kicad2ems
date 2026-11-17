@@ -427,25 +427,25 @@ class PlanarModel:
             kw.setdefault('slots', list(self.slots))
         if getattr(self, 'signal', None) is not None:
             kw.setdefault('signal', self.signal)
-        if getattr(self, 'sides', None):
-            # thick copper's sides (thickness 'sides', mom25d.sides); not with
-            # wave ports: a side breaks at each of a feed's sample cuts, which
-            # the fit's reference line has all along (its Zc 50.9 -> 53.2 ohm
-            # with sides, solid copper's lower), rf_diffvia's RMS 0.13 -> 0.24
+        # thick copper (mom25d.sides, mom25d.edge); not with wave ports: their
+        # S moves 3-7 x what gfdtd's solid copper moves it (rf_diffvia's
+        # pairs: 0.24 with sides, 0.32 with edge, gfdtd 0.043; lumped ports
+        # 0.046 and 0.065)
+        thick = {k: v for k in ('sides', 'edge')
+                 for v in [getattr(self, k, None)] if v}
+        if thick:
             from .sim import DiffPort
             from .geo import LinePort
             wave = [p.name for p in ports
                     if isinstance(p, (LinePort, DiffPort))]
             if wave:
                 self.notes.append(
-                    f"thickness: no sides with wave ports ({', '.join(wave)}; "
-                    "not modelled), the copper as sheets: --mom-port lumped "
-                    "for the sides")
+                    f"thickness: no {' or '.join(thick)} with wave ports "
+                    f"({', '.join(wave)}; not modelled), the copper as "
+                    "sheets: --mom-port lumped for them")
             else:
-                kw.setdefault('sides', self.sides)
-        if getattr(self, 'edge', None):
-            # thick copper's edges (thickness 'edge', mom25d.edge)
-            kw.setdefault('edge', self.edge)
+                for k, v in thick.items():
+                    kw.setdefault(k, v)
         zone = kw.pop('zone', None)
         if zone is not None and zone != 'off':
             # (experimental) mesh detail only near the signal copper: zone = the

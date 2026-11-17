@@ -64,10 +64,11 @@ side breaks where a port's gap, its sample cuts or a lumped element cross the co
 sheet's edges'). Not modelled: the copper's top face,
 the vias' vertical current with the plates' (only through their charge and the smooth potential), the plates
 with holes and openings of PEC planes, and around a via through a meshed plane's antipad (rf_msvia's whole
-stack: S11 −15 dB at 5 GHz, sheets −34, gfdtd with solid copper −23). With `--mom-planes mesh`, `holes` or
-`slots`, or `--mom-stack whole`, the copper stays sheets, and the log says so; with wave ports too (a side
-breaks at each of a feed's sample cuts, and the fit's reference line has them all along: its Zc rose 50.9 →
-53.2 Ω with sides, rf_diffvia's RMS 0.13 → 0.24), so `--mom-port lumped` for the sides; at low frequency the loop/tree basis is not used with them. `--mom-thickness off` gives the sheets: the
+stack: S11 −15 dB at 5 GHz, sheets −34, gfdtd with solid copper −23). With `--mom-planes mesh` or
+`--mom-stack whole` the copper takes `edge` instead (rf_msvia: S11 −22.8 dB at 8 GHz, gfdtd's −22.8, sheets
+−31.8), with `holes` or `slots` it stays sheets, and the log says so; with wave ports it stays sheets too, for `edge` as
+well (a wave port's S moved 3-7 times what gfdtd's solid copper moves it: rf_diffvia's pairs 0.24 with sides,
+0.32 with edge, gfdtd 0.043, lumped ports 0.046 and 0.065), so `--mom-port lumped` for them; at low frequency the loop/tree basis is not used with them. `--mom-thickness off` gives the sheets: the
 openEMS references of the Solver Matrix are zero-thickness sheets, so compare with `off` there.
 
 `--mom-thickness edge` adds no unknowns: a triangle on a copper edge has its charge and current
