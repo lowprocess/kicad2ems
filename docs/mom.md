@@ -58,8 +58,8 @@ solid copper the median RMS of the 17 boards went from 0.065 to 0.037 (`grow` 0.
 0.20; worse on rf_ratrace (0.039 → 0.056, where gfdtd's two grids differ by 0.07). Plates only on the edges
 facing copper across a narrow gap did little (median 0.049 within 0.4 or 0.8 mm, 0.065 within 0.2 mm): the
 sides matter on every edge. `grow+sides` does both (median 0.040, mean 0.050 against `sides`' 0.051). The
-cost: three unknowns a plate (+30-45 % on these boards, +26 % on sma_launch) and the plates' blocks in Python:
-4-6 times the solve time (sma_launch 703 s against 165 s). A side breaks where a port's gap, its sample cuts or
+cost: three unknowns a plate (+30-45 % on these boards, +26 % on sma_launch) and their blocks (in the compiled
+core): 1.7-2 times the solve time (sma_launch 314 s against 165 s, hairpin 11.9 s against 6.8). A side breaks where a port's gap, its sample cuts or
 a lumped element cross the copper (their current is the sheet's edges'). Not modelled: the copper's top face,
 the vias' vertical current with the plates' (only through their charge and the smooth potential), the plates
 with holes and openings of PEC planes; at low frequency the loop/tree basis is not used with them. The default

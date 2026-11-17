@@ -33,7 +33,7 @@ from scipy import sparse
 from scipy.spatial import cKDTree
 
 from kicad2ems.emsdev.numerics.base import _BAR3, _W3, EPS0, MU0
-from kicad2ems.pcbqs.panels3d import pair_moments
+from kicad2ems.pcbqs.panels3d import _rule
 
 from .sing import offplane_pairs
 
@@ -103,7 +103,7 @@ class Sides:
             self.cut_node.update(self.ib[on][d < 1e-9].tolist())
         if self.np_:
             self._functions(sim, po)
-        self._near = None
+        self._near = self._hal = None
 
     def __len__(self):
         return self.N
@@ -172,18 +172,18 @@ class Sides:
         # 3-point rule on the sources and on the PT observers
         self.sp = np.einsum('qk,skc->sqc', _BAR3, self.src_V)  # (Ns, 3, 3)
         self.sw = area[:, None] * _W3[None]
-        Ns = len(self.src_V)
+        # the source points' functions (CSR by point 3 s + q): the half's
+        # current (x, y) and charge there, the rule's weight in
         rows = (3 * self.h_src[:, None] + np.arange(3)[None]).ravel()
-        cols = np.repeat(self.h_fn, 3)
-        pts = self.sp[self.h_src]                       # (nh, 3, 3)
         wts = self.sw[self.h_src]
         f = self.h_alpha[:, None, None] * wts[..., None] * (
-            pts - self.h_v[:, None, :])
-        shp = (3 * Ns, self.N)
-        self.Fx = sparse.csr_matrix((f[..., 0].ravel(), (rows, cols)), shp)
-        self.Fy = sparse.csr_matrix((f[..., 1].ravel(), (rows, cols)), shp)
-        self.Dq = sparse.csr_matrix(
-            ((2 * self.h_alpha[:, None] * wts).ravel(), (rows, cols)), shp)
+            self.sp[self.h_src] - self.h_v[:, None, :])
+        k = np.argsort(rows, kind='stable')
+        self.src_csr = (
+            np.r_[0, np.cumsum(np.bincount(rows, minlength=3 * len(
+                self.src_V)))], np.repeat(self.h_fn, 3)[k],
+            f[..., 0].ravel()[k], f[..., 1].ravel()[k],
+            (2 * self.h_alpha[:, None] * wts).ravel()[k])
         self.op = np.einsum('qk,skc->sqc', _BAR3, self.PT)  # PT observers
         self.ow = np.repeat(apt, 2)[:, None] * _W3[None]
         self.obs_layer = np.r_[sim.tri_layer, self.pt_layer]
@@ -207,22 +207,27 @@ class Sides:
         """Geometry only, once: the static corrections of the near pairs at the
         observers' level, (dM1, dMx, dMy, dMz) for the vector potential
         (x mu0 / 4 pi) and per layer (X1, X2, X3) for the charge (x the
-        layer's cq, 1 / (4 pi eps0 eps1), G / (4 pi eps0 eps1)): sparse (Nobs,
-        N) each."""
+        layer's cq, 1 / (4 pi eps0 eps1), G / (4 pi eps0 eps1)): the values of
+        one (Nobs, N) pattern (ptr, functions)."""
         if self._near is not None:
             return self._near
+        core = _need_core()
         Vo, so, Po, Wo = self._obs_geometry(sim)
         Vs = self.src_V
         ss = np.linalg.norm(Vs - np.roll(Vs, 1, axis=1), axis=2).max(1)
         co, cs = Vo.mean(1), Vs.mean(1)
         to, ts = cKDTree(co), cKDTree(cs)
-        pairs = set()
-        for j, lst in enumerate(to.query_ball_point(cs, NEAR * ss)):
-            pairs.update((i, j) for i in lst)
-        for i, lst in enumerate(ts.query_ball_point(co, NEAR * so)):
-            pairs.update((i, j) for j in lst)
-        p = np.array(sorted(pairs), int).reshape(-1, 2)
-        o, s = p[:, 0], p[:, 1]
+        # the pairs either way round, once each, sorted (o, s)
+        ls = to.query_ball_point(cs, NEAR * ss)
+        lo = ts.query_ball_point(co, NEAR * so)
+        n = np.fromiter(map(len, ls), int, len(ls))
+        m = np.fromiter(map(len, lo), int, len(lo))
+        key = np.unique(np.r_[
+            np.concatenate([*ls, []]).astype(int) * len(Vs)
+            + np.repeat(np.arange(len(Vs)), n),
+            np.repeat(np.arange(len(Vo)), m) * len(Vs)
+            + np.concatenate([*lo, []]).astype(int)])
+        o, s = key // len(Vs), key % len(Vs)
         same = self.obs_layer[o] == self.src_layer[s]
         o, s = o[same], s[same]
         dist = np.linalg.norm(co[o] - cs[s], axis=1)
@@ -249,28 +254,21 @@ class Sides:
         ao, as_ = _areas(Vo[o]), _areas(Vs[s])
         sw = ao > as_
         for lev, m in ((2, close & ~sheet), (1, ~close & ~sheet)):
-            for c in np.array_split(np.flatnonzero(m),
-                                    max(1, m.sum() // 20000)):
-                if not len(c):
+            for sel, flip in ((m & ~sw, False), (m & sw, True)):
+                if not sel.any():
                     continue
-                x, y = sw[c], ~sw[c]
-                for sel, flip in ((c[y], False), (c[x], True)):
-                    if not len(sel):
-                        continue
-                    A, B = Vo[o[sel]], Vs[s[sel]]
-                    q0, qo, qs, qr = pair_moments(*((B, A) if flip else
-                                                    (A, B)), outer_levels=lev)
-                    if flip:
-                        qo, qs = qs, qo
-                    m0[sel], mro[sel], mrs[sel], mrr[sel] = q0, qo, qs, qr
+                A, B = Vo[o[sel]], Vs[s[sel]]
+                q0, qo, qs, qr = _pm(core, *((B, A) if flip else (A, B)), lev)
+                if flip:
+                    qo, qs = qs, qo
+                m0[sel], mro[sel], mrs[sel], mrr[sel] = q0, qo, qs, qr
         both = (o >= self.Nt) & self.src_pt[s]
         img = np.zeros(len(o))
         if both.any():
             Vm = Vs[s[both]].copy()
             Vm[..., 2] *= -1.0
             Vm = Vm[:, ::-1]  # (keep the triangle counter-clockwise)
-            img[both] = pair_moments(Vo[o[both]], Vm, outer_levels=2,
-                                     scalar_only=True)
+            img[both] = _pm(core, Vo[o[both]], Vm, 2, scalar_only=True)
         # the rule's static part on these pairs: 1/rho as the tables
         # interpolate it, horizontal distances
         rho = np.linspace(0, sim.rho_max, 8192)
@@ -282,15 +280,14 @@ class Sides:
         Tq = (inv[ii] * (1 - (u - ii)) + inv[ii + 1] * (u - ii)) * (
             Wo[o][:, :, None] * self.sw[s][:, None, :])   # (np, 3, 3)
         m0r = Tq.sum((1, 2))
-        # per pair and source half: the half's contributions
-        hs = [[] for _ in range(len(Vs))]
-        for h, sj in enumerate(self.h_src):
-            hs[sj].append(h)
-        pr, hh = [], []
-        for q, sj in enumerate(s):
-            for h in hs[sj]:
-                pr.append(q); hh.append(h)
-        pr, hh = np.array(pr, int), np.array(hh, int)
+        # per pair and source half: the half's contributions (the pairs in
+        # order, a pair's halves in their order)
+        hs = np.argsort(self.h_src, kind='stable')
+        cnt = np.bincount(self.h_src, minlength=len(Vs))
+        start = np.r_[0, np.cumsum(cnt)[:-1]]
+        pr = np.repeat(np.arange(len(s)), cnt[s])
+        hh = hs[start[s[pr]] + np.arange(len(pr))
+                - np.repeat(np.cumsum(cnt[s]) - cnt[s], cnt[s])]
         al, v = self.h_alpha[hh], self.h_v[hh]
         # exact: M1 = a (mrr - v . mro), M0v = a (mrs - v m0)
         e1 = al * (mrr[pr] - (v * mro[pr]).sum(1))
@@ -301,10 +298,11 @@ class Sides:
         Tp = Tq[pr]                                         # (n, 3o, 3s)
         r1 = al * np.einsum('nab,nac,nbc->n', Tp, ro, rs)
         r0 = al[:, None] * np.einsum('nab,nbc->nc', Tp, rs)
-        Nobs = len(Vo)
-        sh = (Nobs, self.N)
-        row, col = o[pr], self.h_fn[hh]
-        mk = lambda x: sparse.csr_matrix((x, (row, col)), sh)
+        # one pattern (CSR by observer) for all of them
+        key, inv = np.unique(o[pr] * self.N + self.h_fn[hh],
+                             return_inverse=True)
+        mk = lambda x: np.bincount(inv, x, len(key))
+        ptr = np.searchsorted(key // self.N, np.arange(len(Vo) + 1))
         dA = (mk(e1 - r1), mk(e0[:, 0] - r0[:, 0]), mk(e0[:, 1] - r0[:, 1]),
               mk(e0[:, 2]))
         div = 2 * al
@@ -317,7 +315,8 @@ class Sides:
             dq[k] = (mk(np.where(m, x1, 0.0)),
                      mk(np.where(m & pp, m0[pr] * div, 0.0)),
                      mk(np.where(m & pp, img[pr] * div, 0.0)))
-        self._near = (dA, dq, Po, Wo)
+        pat = (ptr, (key % self.N).astype(np.int32))
+        self._near = (pat, dA, dq, Po, Wo)
         return self._near
 
     def via_d(self, sim, vk, geo):
@@ -325,7 +324,7 @@ class Sides:
         its E_t = grad D on an interface) tested with each function's charge,
         as sim._via_blocks tests the strips' (3-point rule)."""
         from .fast import _core
-        _, _, Po, Wo = self.near(sim)
+        Po, Wo = self.near(sim)[3:]
         out = np.zeros((self.N, len(sim.chains)), complex)
         Hd = sparse.csr_matrix((2 * self.h_alpha, (self.h_fn, self.h_obs)),
                                (self.N, len(Po)))
@@ -344,85 +343,79 @@ class Sides:
         with the sides' functions, the functions with each other, and the
         potential integral of each function's charge over each via fan
         triangle (their coupling: with sim.dF, / jw). The Green tables are
-        sim.tables (sim.green_tables(f), as the strips' blocks). The
-        observers a chunk at a time (sma_launch: 11k observers x 3.4k
-        functions)."""
-        from .fast import _core
+        sim.tables (sim.green_tables(f), as the strips' blocks); the sums in
+        the compiled core (sides_blocks)."""
+        core = _need_core()
         r, st, w = sim.rwg, sim.st.at(f), 2 * np.pi * f
-        dA, dq, Po, Wo = self.near(sim)
+        (ptr, fn), dA, dq, Po, Wo = self.near(sim)
         Nobs, N = len(Po), self.N
         cA = MU0 / (4 * np.pi)
-        # the charge corrections' coefficients at f, per layer
-        cq = []
+        # the charge corrections at f: the layers' coefficients
+        nQ = np.zeros(len(fn), complex)
         for k, (x1, x2, x3) in dq.items():
             up = self.h[self.k == k][0] > 0
             e1, e2 = ((st.eps(k + 1), st.eps(k)) if up else
                       (st.eps(k), st.eps(k + 1)))
             c1 = 1.0 / (4 * np.pi * EPS0 * e1)
-            cq.append((x1, 1.0 / (2 * np.pi * EPS0 * st.eps_sum(k))))
-            cq += [(x2, c1), (x3, c1 * (e1 - e2) / (e1 + e2))]
-        tabs = {}
-        for ks in self.layers:
-            si = np.flatnonzero(self.src_layer == ks)
-            rows = (3 * si[:, None] + np.arange(3)[None]).ravel()
-            tabs[ks] = (self.sp[si][..., 0].ravel(),
-                        self.sp[si][..., 1].ravel(),
-                        self.Fx[rows].T.tocsr(), self.Fy[rows].T.tocsr(),
-                        self.Dq[rows].T.tocsr())
-        Bw = np.zeros((r.Ne, N), complex)
-        Cw = np.zeros((N, N), complex)
-        Fpos = np.full(Nobs, -1)
-        Fpos[sim.F] = np.arange(len(sim.F))
-        QF = np.zeros((len(sim.F), N), complex)
-        # the halves by observer: the sheet edges' (T+, T-), the functions'
-        hal = [(r.tp, np.arange(r.Ne), r.l / (2 * r.area[r.tp]),
-                np.c_[r.vp, np.zeros(r.Ne)], True),
-               (r.tm, np.arange(r.Ne), -r.l / (2 * r.area[r.tm]),
-                np.c_[r.vm, np.zeros(r.Ne)], True),
-               (self.h_obs, self.h_fn, self.h_alpha, self.h_v, False)]
+            nQ += x1 / (2 * np.pi * EPS0 * st.eps_sum(k))
+            nQ += c1 * x2 + c1 * (e1 - e2) / (e1 + e2) * x3
+        lay = sorted(set(sim.layers) | set(self.layers))
+        li = {k: i for i, k in enumerate(lay)}
+        lt = np.full((len(lay), len(lay)), -1, np.int32)
+        tabs, drs = [], []
         for ko in sim.layers:
-            oi = np.flatnonzero(self.obs_layer == ko)
-            for c in np.array_split(oi, max(1, len(oi) // 1500)):
-                M1, M0x, M0y, Q = (np.zeros((len(c), N), complex)
-                                   for _ in range(4))
-                px, py, W = Po[c, :, 0], Po[c, :, 1], Wo[c]
-                for ks in self.layers:
-                    vx, vy, Fx, Fy, Dq = tabs[ks]
-                    gt = sim.tables[(min(ko, ks), max(ko, ks))]
-                    vA, vQ, dr = _total(gt)
-                    K = _rts(_core, px, py, W, vx, vy, vA, dr).T
-                    M0x += (Fx @ K).T
-                    M0y += (Fy @ K).T
-                    M1 += (Fx @ _rts(_core, px, py, W * px, vx, vy, vA,
-                                     dr).T).T
-                    M1 += (Fy @ _rts(_core, px, py, W * py, vx, vy, vA,
-                                     dr).T).T
-                    Q += (Dq @ _rts(_core, px, py, W, vx, vy, vQ, dr).T).T
-                M1 += cA * dA[0][c].toarray()
-                M0x += cA * dA[1][c].toarray()
-                M0y += cA * dA[2][c].toarray()
-                M0z = cA * dA[3][c].toarray()
-                for x, k in cq:
-                    Q += k * x[c].toarray()
-                loc = np.full(Nobs, -1)
-                loc[c] = np.arange(len(c))
-                f_ = Fpos[c] >= 0
-                QF[Fpos[c][f_]] = Q[f_]
-                for tri, row, al, v, sheet in hal:
-                    m = np.flatnonzero(loc[tri] >= 0)
-                    if not len(m):
-                        continue
-                    j = loc[tri[m]]
-                    val = al[m, None] * (1j * w * (
-                        M1[j] - v[m, :1] * M0x[j] - v[m, 1:2] * M0y[j]
-                        - v[m, 2:] * M0z[j]) + 2 * Q[j] / (1j * w))
-                    if sheet:  # (an edge once in each of T+'s, T-'s)
-                        Bw[row[m]] += val
-                    else:
-                        Cw += sparse.csr_matrix(
-                            (np.ones(len(m)), (row[m], np.arange(len(m)))),
-                            (N, len(m))) @ val
-        return Bw, 0.5 * (Cw + Cw.T), QF
+            for ks in self.layers:
+                A, Q, dr = _total(sim.tables[(min(ko, ks), max(ko, ks))])
+                lt[li[ko], li[ks]] = len(tabs)
+                tabs.append(np.stack([A, Q], 1))
+                drs.append(dr)
+        olay = np.array([li[k] if k in sim.layers else -1
+                         for k in self.obs_layer.tolist()], np.int32)
+        slay = np.array([li[k] for k in self.src_layer.tolist()], np.int32)
+        hptr, tgt, al, v = self._halves(sim)
+        fpos = np.full(Nobs, -1, np.int32)
+        fpos[sim.F] = np.arange(len(sim.F))
+        sptr, sfn, sfx, sfy, sdq = self.src_csr
+        chunk = int(np.clip(2 ** 28 // (80 * N), 64, 2048))
+        out, QF = core.sides_blocks(
+            Po, Wo, olay, self.sp, slay, lt, tabs, np.array(drs), sptr, sfn,
+            sfx, sfy, sdq, ptr, fn, cA * dA[0], cA * dA[1], cA * dA[2],
+            cA * dA[3], nQ, hptr, tgt, al, v, fpos, r.Ne + N, N, len(sim.F),
+            w, chunk)
+        Cw = out[r.Ne:]
+        return out[:r.Ne], 0.5 * (Cw + Cw.T), QF
+
+    def _halves(self, sim):
+        """The halves by observer (a CSR: ptr, target row, alpha, v (3D)): the
+        sheet edges' (T+, T-; rows 0..Ne - 1), the functions' (Ne + n)."""
+        if self._hal is None:
+            r = sim.rwg
+            z = np.zeros((r.Ne, 1))
+            obs = np.r_[r.tp, r.tm, self.h_obs]
+            k = np.argsort(obs, kind='stable')
+            self._hal = (
+                np.r_[0, np.cumsum(np.bincount(obs, minlength=len(
+                    self.obs_layer)))],
+                np.r_[np.arange(r.Ne), np.arange(r.Ne),
+                      r.Ne + self.h_fn][k].astype(np.int32),
+                np.r_[r.l / (2 * r.area[r.tp]), -r.l / (2 * r.area[r.tm]),
+                      self.h_alpha][k],
+                np.concatenate([np.c_[r.vp, z], np.c_[r.vm, z], self.h_v])[k])
+        return self._hal
+
+
+def _need_core():
+    from .fast import _core
+    if _core is None or not hasattr(_core, 'sides_blocks'):
+        raise RuntimeError("thickness 'sides' needs mom25d's compiled core "
+                           "(python -m kicad2ems.mom25d.core.build)")
+    return _core
+
+
+def _pm(core, Vo, Vs, levels, scalar_only=False):
+    """pcbqs.panels3d.pair_moments (outer_levels=levels), the core's."""
+    bar, w = _rule(levels)
+    return core.pair_moments3d(Vo, Vs, bar, w, scalar_only)
 
 
 def _areas(V):

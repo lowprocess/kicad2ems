@@ -23,6 +23,10 @@
 //                   (via.Table1D): each via's smooth kernel on the triangles'
 //                   quadrature points (sim._via_blocks; a Python loop over the
 //                   vias had been 1.5 s of a 8 s solve with 888 of them)
+//   pair_moments3d: 1/R moments of triangle pairs in 3D (pcbqs.panels3d's,
+//                   mom25d.sides' near pairs)
+//   sides_blocks  : mom25d.sides' blocks at a frequency (the plates' functions
+//                   against the sheet's edges and each other)
 //   slot_coupling : an opening's TM potential and TE field moments against a
 //                   layer's strip triangles (slots.py)
 //   scale_c64     : Z <- D Z D (equilibration) and its complex64 copy, one pass
@@ -1689,6 +1693,282 @@ py::array_t<cd> radial_table_sum(arr<double> px, arr<double> py_, arr<double> W,
 }
 
 // -----------------------------------------------------------------------------
+// pair_moments3d: pcbqs.panels3d.pair_moments compiled (mom25d.sides' near
+// pairs): for each pair (Vo[k], Vs[k]) of triangles in 3D, m0 = int int 1/R,
+// mro = int r int 1/R, mrs = int int r'/R, mrr = int int r.r'/R; the source
+// integral analytic in the source's own frame, the observer's the rule (bar,
+// w) given. scalar_only: m0 alone. Pair-parallel.
+// -----------------------------------------------------------------------------
+static inline void cross3(const double *a, const double *b, double *c) {
+    c[0] = a[1] * b[2] - a[2] * b[1];
+    c[1] = a[2] * b[0] - a[0] * b[2];
+    c[2] = a[0] * b[1] - a[1] * b[0];
+}
+static inline double dot3(const double *a, const double *b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+py::object pair_moments3d(arr<double> Vo, arr<double> Vs, arr<double> bar,
+                          arr<double> wq, bool scalar_only) {
+    const i64 m = Vo.shape(0), nq = bar.shape(0);
+    if (Vs.shape(0) != m || Vo.ndim() != 3 || Vs.ndim() != 3 ||
+        Vo.shape(1) != 3 || Vo.shape(2) != 3 || Vs.shape(1) != 3 ||
+        Vs.shape(2) != 3 || bar.shape(1) != 3 || wq.shape(0) != nq)
+        throw std::invalid_argument(
+            "pair_moments3d: Vo, Vs (m, 3, 3), bar (nq, 3), w (nq,)");
+    py::array_t<double> M0(m), MRO({m, (i64)3}), MRS({m, (i64)3}), MRR(m);
+    const double *vo = Vo.data(), *vs = Vs.data(), *br = bar.data(),
+                 *w = wq.data();
+    double *m0 = M0.mutable_data(), *mro = MRO.mutable_data(),
+           *mrs = MRS.mutable_data(), *mrr = MRR.mutable_data();
+    bool bad = false;
+    {
+        py::gil_scoped_release nogil;
+#pragma omp parallel for schedule(static) reduction(|| : bad)
+        for (i64 k = 0; k < m; ++k) {
+            const double *A = vo + 9 * k, *S3 = vs + 9 * k;
+            double a[3], b[3], c[3], n[3], e1[3], e2[3];
+            for (int i = 0; i < 3; ++i) {
+                a[i] = S3[3 + i] - S3[i];
+                b[i] = S3[6 + i] - S3[i];
+            }
+            cross3(a, b, c);
+            const double area2 = std::sqrt(dot3(c, c)),
+                         la = std::sqrt(dot3(a, a));
+            if (!(area2 > 0)) {
+                bad = true;
+                continue;
+            }
+            for (int i = 0; i < 3; ++i) {
+                n[i] = c[i] / area2;
+                e1[i] = a[i] / la;
+            }
+            cross3(n, e1, e2);
+            for (int i = 0; i < 3; ++i) {
+                a[i] = A[3 + i] - A[i];
+                b[i] = A[6 + i] - A[i];
+            }
+            cross3(a, b, c);
+            const double Ao = 0.5 * std::sqrt(dot3(c, c));
+            if (!(Ao > 0)) {
+                bad = true;
+                continue;
+            }
+            // the source in its frame: vertices, edges' lengths, tangents,
+            // outward normals
+            double S[3][2], L[3], tau[3][2], un[3][2];
+            for (int v = 0; v < 3; ++v) {
+                double rel[3];
+                for (int i = 0; i < 3; ++i) rel[i] = S3[3 * v + i] - S3[i];
+                S[v][0] = dot3(rel, e1);
+                S[v][1] = dot3(rel, e2);
+            }
+            for (int v = 0; v < 3; ++v) {
+                const int u = (v + 1) % 3;
+                const double ex = S[u][0] - S[v][0], ey = S[u][1] - S[v][1];
+                L[v] = std::sqrt(ex * ex + ey * ey);
+                tau[v][0] = ex / L[v];
+                tau[v][1] = ey / L[v];
+                un[v][0] = tau[v][1];
+                un[v][1] = -tau[v][0];
+            }
+            double s0 = 0, so[3] = {0, 0, 0}, ss[3] = {0, 0, 0}, sr = 0;
+            for (i64 q = 0; q < nq; ++q) {
+                double P[3], pr[3];
+                for (int i = 0; i < 3; ++i) {
+                    P[i] = br[3 * q] * A[i] + br[3 * q + 1] * A[3 + i] +
+                           br[3 * q + 2] * A[6 + i];
+                    pr[i] = P[i] - S3[i];
+                }
+                const double r2[2] = {dot3(pr, e1), dot3(pr, e2)},
+                             dz = dot3(pr, n), ad = std::abs(dz);
+                double I1 = 0, IR[2] = {0, 0};
+                for (int v = 0; v < 3; ++v) {
+                    const double dvx = S[v][0] - r2[0], dvy = S[v][1] - r2[1];
+                    const double sm = dvx * tau[v][0] + dvy * tau[v][1],
+                                 sp = sm + L[v],
+                                 t0 = dvx * un[v][0] + dvy * un[v][1];
+                    const double R02 = t0 * t0 + dz * dz, R0 = std::sqrt(R02);
+                    const double Rm = std::sqrt(R02 + sm * sm),
+                                 Rp = std::sqrt(R02 + sp * sp);
+                    const double lg = R0 > 1e-14 * L[v]
+                                          ? std::asinh(sp / R0) -
+                                                std::asinh(sm / R0)
+                                          : 0.0;
+                    const double beta =
+                        std::atan2(t0 * sp, R02 + ad * Rp) -
+                        std::atan2(t0 * sm, R02 + ad * Rm);
+                    I1 += t0 * lg - ad * beta;
+                    if (!scalar_only) {
+                        const double eR = 0.5 * (R02 * lg + sp * Rp - sm * Rm);
+                        IR[0] += eR * un[v][0];
+                        IR[1] += eR * un[v][1];
+                    }
+                }
+                const double wk = w[q] * Ao;
+                s0 += wk * I1;
+                if (scalar_only) continue;
+                const double W2[2] = {IR[0] + r2[0] * I1, IR[1] + r2[1] * I1};
+                double Wv[3];
+                for (int i = 0; i < 3; ++i) {
+                    Wv[i] = S3[i] * I1 + W2[0] * e1[i] + W2[1] * e2[i];
+                    so[i] += wk * P[i] * I1;
+                    ss[i] += wk * Wv[i];
+                }
+                sr += wk * dot3(P, Wv);
+            }
+            m0[k] = s0;
+            if (scalar_only) continue;
+            for (int i = 0; i < 3; ++i) {
+                mro[3 * k + i] = so[i];
+                mrs[3 * k + i] = ss[i];
+            }
+            mrr[k] = sr;
+        }
+    }
+    if (bad) throw std::invalid_argument("pair_moments3d: degenerate triangle");
+    if (scalar_only) return std::move(M0);
+    return py::make_tuple(M0, MRO, MRS, MRR);
+}
+
+// -----------------------------------------------------------------------------
+// sides_blocks: mom25d.sides' blocks at a frequency in one pass. For each
+// observer triangle o (Po (No, 3, 3), Wo (No, 3): its 3 points and weights;
+// olay its layer's index, -1 none) and each source point p (sp (Ns, 3, 3),
+// its triangle's layer slay), the layered tables tab[lt[olay, slay]] ((n, 2):
+// G_A, G_q on a grid of step dr) at the horizontal distance give a0 = sum_q
+// G_A w, ax, ay (the same weighted by the observer's x, y) and q0 = sum_q G_q
+// w; the source points' functions (CSR sptr, sfn; fx, fy, dq: the half's
+// current's x, y and its charge at the point, the rule's weight in) take
+//   M1 += fx ax + fy ay,  M0x += fx a0,  M0y += fy a0,  Q += dq q0,
+// the near pairs' corrections added (CSR nptr, nfn; d1, dx, dy, dz, dq). The
+// observer's halves (hptr, a CSR by observer: target row, alpha, v (3D)) add
+//   alpha (jw (M1 - v . M0) + 2 Q / jw)
+// to out (Nrow, N); an observer with fpos >= 0 copies its Q into QF[fpos].
+// Observers a chunk at a time (the rows of M: 5 N complex each), each chunk
+// observer-parallel, its scatter column-parallel (no two threads on an entry).
+// -----------------------------------------------------------------------------
+py::tuple sides_blocks(arr<double> Po, arr<double> Wo, arr<int> olay,
+                       arr<double> sp, arr<int> slay, arr<int> lt,
+                       py::list tabs, arr<double> drs, arr<i64> sptr,
+                       arr<int> sfn, arr<double> sfx, arr<double> sfy,
+                       arr<double> sdq, arr<i64> nptr, arr<int> nfn,
+                       arr<double> d1, arr<double> dx, arr<double> dy,
+                       arr<double> dz, arr<cd> dq, arr<i64> hptr,
+                       arr<int> htgt, arr<double> hal, arr<double> hv,
+                       arr<int> fpos, i64 Nrow, i64 N, i64 nF, double w,
+                       i64 chunk) {
+    const i64 No = Po.shape(0), Ns = sp.shape(0), nl = lt.shape(0),
+              nt = (i64)tabs.size();
+    if (Wo.shape(0) != No || olay.shape(0) != No || slay.shape(0) != Ns ||
+        sptr.shape(0) != 3 * Ns + 1 || nptr.shape(0) != No + 1 ||
+        hptr.shape(0) != No + 1 || fpos.shape(0) != No ||
+        drs.shape(0) != nt || lt.ndim() != 2 || lt.shape(1) != nl)
+        throw std::invalid_argument("sides_blocks: shapes");
+    std::vector<arr<cd>> keep;
+    std::vector<const cd *> tp(nt);
+    std::vector<double> top(nt);
+    for (i64 k = 0; k < nt; ++k) {
+        keep.push_back(tabs[k].cast<arr<cd>>());
+        const auto &t = keep.back();
+        if (t.ndim() != 2 || t.shape(1) != 2 || t.shape(0) < 2)
+            throw std::invalid_argument("sides_blocks: tables (n, 2)");
+        tp[k] = t.data();
+        top[k] = (double)t.shape(0) - 1.000001;
+    }
+    py::array_t<cd> out({Nrow, N}), QF({nF, N});
+    cd *O = out.mutable_data(), *F = QF.mutable_data();
+    std::fill(O, O + Nrow * N, cd(0.0));
+    std::fill(F, F + nF * N, cd(0.0));
+    const double *po = Po.data(), *wo = Wo.data(), *ps = sp.data(),
+                 *dr = drs.data(), *fx = sfx.data(), *fy = sfy.data(),
+                 *fq = sdq.data(), *n1 = d1.data(), *nx = dx.data(),
+                 *ny = dy.data(), *nz = dz.data(), *al = hal.data(),
+                 *v = hv.data();
+    const int *ol = olay.data(), *sl = slay.data(), *L = lt.data(),
+              *sf = sfn.data(), *nf = nfn.data(), *tg = htgt.data(),
+              *fp = fpos.data();
+    const i64 *spt = sptr.data(), *npt = nptr.data(), *hpt = hptr.data();
+    const cd *nq = dq.data();
+    const cd jw(0.0, w), ijw = 1.0 / jw;
+    chunk = std::max<i64>(1, std::min(chunk, No));
+    std::vector<cd> buf(chunk * 5 * N);
+    {
+        py::gil_scoped_release nogil;
+        for (i64 o0 = 0; o0 < No; o0 += chunk) {
+            const i64 o1 = std::min(No, o0 + chunk);
+#pragma omp parallel for schedule(dynamic, 2)
+            for (i64 o = o0; o < o1; ++o) {
+                cd *M1 = &buf[(o - o0) * 5 * N], *Mx = M1 + N, *My = Mx + N,
+                   *Mz = My + N, *Q = Mz + N;
+                std::fill(M1, M1 + 5 * N, cd(0.0));
+                if (ol[o] < 0) continue;
+                const double *P = po + 9 * o, *W = wo + 3 * o;
+                const double x[3] = {P[0], P[3], P[6]},
+                             y[3] = {P[1], P[4], P[7]};
+                const double wx[3] = {W[0] * x[0], W[1] * x[1], W[2] * x[2]},
+                             wy[3] = {W[0] * y[0], W[1] * y[1], W[2] * y[2]};
+                for (i64 p = 0; p < 3 * Ns; ++p) {
+                    if (spt[p] == spt[p + 1]) continue;
+                    const int k = L[ol[o] * nl + sl[p / 3]];
+                    if (k < 0) continue;
+                    const cd *T = tp[k];
+                    const double ir = 1.0 / dr[k], tk = top[k];
+                    const double sx = ps[3 * p], sy = ps[3 * p + 1];
+                    cd a0(0.0), ax(0.0), ay(0.0), q0(0.0);
+                    for (int q = 0; q < 3; ++q) {
+                        const double u = std::min(
+                            std::hypot(x[q] - sx, y[q] - sy) * ir, tk);
+                        const i64 i = (i64)u;
+                        const double f = u - (double)i, g = 1.0 - f;
+                        const cd A = T[2 * i] * g + T[2 * i + 2] * f,
+                                 G = T[2 * i + 1] * g + T[2 * i + 3] * f;
+                        a0 += A * W[q];
+                        ax += A * wx[q];
+                        ay += A * wy[q];
+                        q0 += G * W[q];
+                    }
+                    for (i64 e = spt[p]; e < spt[p + 1]; ++e) {
+                        const int n = sf[e];
+                        M1[n] += fx[e] * ax + fy[e] * ay;
+                        Mx[n] += fx[e] * a0;
+                        My[n] += fy[e] * a0;
+                        Q[n] += fq[e] * q0;
+                    }
+                }
+                for (i64 e = npt[o]; e < npt[o + 1]; ++e) {
+                    const int n = nf[e];
+                    M1[n] += n1[e];
+                    Mx[n] += nx[e];
+                    My[n] += ny[e];
+                    Mz[n] += nz[e];
+                    Q[n] += nq[e];
+                }
+                if (fp[o] >= 0) std::copy(Q, Q + N, F + fp[o] * N);
+            }
+            const i64 h0 = hpt[o0], h1 = hpt[o1], cb = 64;
+#pragma omp parallel for schedule(dynamic, 1)
+            for (i64 c0 = 0; c0 < N; c0 += cb) {
+                const i64 c1 = std::min(N, c0 + cb);
+                i64 o = o0;
+                for (i64 h = h0; h < h1; ++h) {
+                    while (hpt[o + 1] <= h) ++o;
+                    const cd *M1 = &buf[(o - o0) * 5 * N], *Mx = M1 + N,
+                             *My = Mx + N, *Mz = My + N, *Q = Mz + N;
+                    const double a = al[h], *vh = v + 3 * h;
+                    cd *R = O + (i64)tg[h] * N;
+                    for (i64 n = c0; n < c1; ++n)
+                        R[n] += a * (jw * (M1[n] - vh[0] * Mx[n] -
+                                           vh[1] * My[n] - vh[2] * Mz[n]) +
+                                     2.0 * Q[n] * ijw);
+                }
+            }
+        }
+    }
+    return py::make_tuple(out, QF);
+}
+
+// -----------------------------------------------------------------------------
 // slot_coupling: the triangle-pair moments of an opening's kernels between
 // every strip triangle t (on one metal interface, dz from the plane) and every
 // triangle u of an opening (slots.coupling's, which this mirrors): the TM
@@ -2185,6 +2465,10 @@ PYBIND11_MODULE(_core, m) {
           "J_n(z) for complex z, n = 0, 1, 2 (elementwise, any shape)");
     m.def("radial_table_sum", &radial_table_sum,
           "sum_q D(|P[t, q] - V[v]|) W[t, q] of a radial table D");
+    m.def("pair_moments3d", &pair_moments3d,
+          "1/R moments of triangle pairs in 3D (pcbqs.panels3d's)");
+    m.def("sides_blocks", &sides_blocks,
+          "mom25d.sides' blocks at a frequency");
     m.def("slot_coupling", &slot_coupling,
           "an opening's TM / TE pair moments against a layer's strips "
           "(slots.py)");

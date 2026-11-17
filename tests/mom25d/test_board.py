@@ -474,3 +474,22 @@ def test_thickness_sides_stand_the_copper_edges_up():
         out[th] = (np.sqrt(B / C).real, (beta / (2 * np.pi * f[0] / 3e8)) ** 2)
     z, e = (out['sides'][i] / out['off'][i] for i in range(2))
     assert 0.93 < z < 0.98 and 0.95 < e < 0.99
+
+
+def test_thickness_sides_blocks_regression():
+    """The plates' blocks in the compiled core (pair_moments3d, sides_blocks)
+    against the NumPy ones they replaced (0228e3f): the thru line's S at 1 and
+    3 GHz to rounding (|dS| 9e-14 when moved)."""
+    from kicad2ems.mom25d.api import solve_board
+    ref = np.array([
+        [[-0.023526524176041 - 0.011159914608115j,
+          0.428235560040414 - 0.903288772767169j],
+         [0.428235560034460 - 0.903288772754609j,
+          -0.023529681407333 - 0.011153254907013j]],
+        [[-0.007336127834070 - 0.029177408590434j,
+          -0.969750553568269 + 0.241968482622342j],
+         [-0.969750553465853 + 0.241968482596795j,
+          -0.007335474507931 - 0.029177571534827j]]])
+    S = solve_board(board('thru'), np.array([1e9, 3e9]), port='via',
+                    thickness='sides', log=quiet).S
+    assert np.abs(S - ref).max() < 1e-9
