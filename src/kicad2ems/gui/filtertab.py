@@ -215,7 +215,10 @@ class FilterTab(QWidget):
         self.desc = describe()
         self.opts = options(self.desc)
         old = self.split.widget(0)
-        self.split.replaceWidget(0, self._form())
+        # (kept: replaceWidget leaves the form Python's, which freed it with
+        # its widgets once this returned)
+        self._form_w = self._form()
+        self.split.replaceWidget(0, self._form_w)
         old.deleteLater()
         self.split.setSizes([380, 900])
         self._type_changed()
