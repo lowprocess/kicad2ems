@@ -234,7 +234,8 @@ def test_a_plane_only_vias_run_through_as_a_pec_plane_with_holes():
     # from finer ones; 2026-11-15)
     res = {
         p: solve_board(data, f, planes=p, port='via', log=quiet, max_solves=4,
-                       plane_factor=2.0 if p == 'pec' else 3.0)
+                       plane_factor=2.0 if p == 'pec' else 3.0,
+                       thickness='off')  # (no sides with 'holes')
         for p in ('pec', 'holes')
     }
     assert res['holes'].unknowns < 0.3 * res['pec'].unknowns

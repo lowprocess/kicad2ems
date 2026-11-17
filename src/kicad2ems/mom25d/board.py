@@ -359,18 +359,19 @@ def lone_pads(data, layers):
 class BoardModel(PlanarModel):
     def __init__(self, data, ground=None, port='auto', pairs=False,
                  wall_pitch=0.5e-3, planes='pec', stitching_pads='drop',
-                 wideband=None, thickness='off', log=print):
+                 wideband=None, thickness='sides', log=print):
         """data: the board (board.json's content). ground: a copper layer name
         (default: the board's own, else the lowest solid one). port: 'auto' |
         'wave' | 'via' (lumped). pairs: P<n>+ / P<n>- legs as one mixed-mode
         port. wall_pitch (m): via spacing along edge walls. planes: 'pec'
         (default: solid planes as the ground and a PEC cover) | 'mesh'.
         stitching_pads: 'drop' (default: lone pads of ground vias left out) |
-        'keep'. thickness: 'off' (default: the copper as zero-thickness sheets)
-        | 'grow' (each sheet's edges moved out by GROW_T x its copper's
-        thickness: the effective width of thick copper; see GROW_T) | 'sides'
-        (experimental: every copper edge stood up as a plate the copper's
-        thickness high, mom25d.sides) | 'grow+sides' (both).
+        'keep'. thickness: 'sides' (default: every copper edge stood up as a
+        plate the copper's thickness high, mom25d.sides; sheets with planes
+        'holes' or 'slots') | 'off' (the copper as zero-thickness sheets) |
+        'grow' (each sheet's edges moved out by GROW_T x its copper's
+        thickness: the effective width of thick copper; see GROW_T) |
+        'grow+sides' (both).
         wideband: None (default: each dielectric's er and tand constant over
         frequency) or a frequency (a layer's own fref first: the frequency
         kicad2ems's material library quotes its laminate at) (Hz) at which they
@@ -562,6 +563,18 @@ class BoardModel(PlanarModel):
         if thickness not in ('off', 'grow', 'sides', 'grow+sides'):
             raise ValueError(
                 f"thickness {thickness!r}: off, grow, sides or grow+sides")
+        # (the plates do not couple to the planes' holes and openings, nor to
+        # a via's vertical current: around a via through a meshed plane's
+        # antipad they misplace its return, rf_msvia's whole stack S11 -15 dB
+        # at 5 GHz, sheets -34, gfdtd with solid copper -23; there the copper
+        # stays sheets)
+        why = ('the whole stack meshed' if self.whole else
+               f"planes {planes!r}" if planes != 'pec' else None)
+        if 'sides' in thickness and why:
+            self.notes.append(
+                f"thickness {thickness!r}: no sides with {why} (not "
+                "modelled), the copper as sheets")
+            thickness = thickness.replace('sides', '').strip('+') or 'off'
         # thickness='grow': each layer's copper grown by GROW_T x its thickness
         grow = {
             c['name']: GROW_T * c.get('t', 0.0)

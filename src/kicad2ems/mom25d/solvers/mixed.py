@@ -270,8 +270,15 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, rough=None, finish=None,
     fmin, fmax = float(freq[0]), float(freq[-1])
     dm = dmax * 1e-3
     metal = _metal(m, sigma, rough, finish)[0]
+    # (the copper as sheets: the cut stretches are sheets' lines, and the
+    # sides break at their cuts)
+    kw = dict(model_kw or {})
+    if 'sides' in kw.get('thickness', 'sides'):
+        log("mixed: the copper as sheets (no sides with lines cut out)")
+        kw['thickness'] = kw.get('thickness', 'sides').replace(
+            'sides', '').strip('+') or 'off'
     model = BoardModel(data, port=('via' if port == 'lumped' else port),
-                       log=lambda *a: None, **(model_kw or {}))
+                       log=lambda *a: None, **kw)
     # the board's own ports, from the uncut copper: a cut would shorten their
     # straight feeds (wave ports turned lumped, and so different terminations);
     # the cuts keep out of their feeds (each wave port's feed capped at what its

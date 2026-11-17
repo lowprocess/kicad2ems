@@ -213,7 +213,7 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
 def _board_kw(m, dmax, port, quads=False, quad_tol=35.0, coarsen=None,
               zone=None, signal_vias='round', stitching_vias='auto', lines=None,
               stack='ground', planes='pec', stitching_pads='drop',
-              wideband=None, cells=30.0, thickness='off'):
+              wideband=None, cells=30.0, thickness='sides'):
     """(pairs, mom25d.api's board and mesh options) of solve()'s settings: what
     the run meshes, and the preview."""
     kind = 'via' if port == 'lumped' else port
@@ -299,7 +299,7 @@ def _model_kw(s):
     wide = getattr(s, 'diel', 'fixed') == 'wideband'
     return dict(planes=getattr(s, 'mom_planes', 'pec'),
                 stitching_pads=getattr(s, 'mom_stitching_pads', 'drop'),
-                thickness=getattr(s, 'mom_thickness', 'off'),
+                thickness=getattr(s, 'mom_thickness', 'sides'),
                 wideband=(getattr(s, 'diel_fref', 1.0) * 1e9 if wide else None))
 
 
@@ -435,8 +435,8 @@ class MoM25D(Solver):
         outline='ignored: laterally infinite dielectric',
         planes='yes: meshed (slow on plane-heavy boards)',
         edge_walls='approximated: via rows every 0.5 mm',
-        thickness=('ignored: sheets; --mom-thickness grow: the effective '
-                   'width; sides: the edges as plates'),
+        thickness=('approximated: the edges as plates (no top face); '
+                   '--mom-thickness grow: the effective width; off: sheets'),
         conductor_loss='yes',
         roughness='yes: Hammerstad at each frequency',
         finish=('approximated: on the outer copper, weighted by the finished '
@@ -541,15 +541,16 @@ class MoM25D(Solver):
             choices=('drop', 'keep'), name='stitching_pads',
             gui='MoM lone stitching-via pads', group=G),
         Option(
-            'mom_thickness', 'off',
-            "off (default): the copper as zero-thickness sheets; grow: each "
-            "copper edge moved out by 0.57 x the copper's thickness (the "
-            "effective width of thick copper: against an FDTD with solid "
-            "copper the median RMS of 17 boards 0.065 to 0.052; narrow-gap "
-            "resonators worse, hairpin 0.21 to 0.23); sides (experimental): "
-            "every copper edge stood up as a plate the copper's thickness "
-            "high, carrying charge and current (median RMS 0.037, hairpin "
-            "0.037; about 1.4x the unknowns, 4x the time); grow+sides: both "
+            'mom_thickness', 'sides',
+            "sides (default): every copper edge stood up as a plate the "
+            "copper's thickness high, carrying charge and current (against "
+            "an FDTD with solid copper the median RMS of 17 boards 0.065 to "
+            "0.037, better on 16; about 1.4x the unknowns, 1.7-2x the time; "
+            "sheets with wave ports, so --mom-port lumped, and with meshed "
+            "or holed planes or the whole stack); off: the copper as "
+            "zero-thickness sheets; grow: each copper edge "
+            "moved out by 0.57 x the copper's thickness (the effective "
+            "width: median 0.052, no extra unknowns); grow+sides: both "
             "(docs/mom.md#thickness)",
             choices=('off', 'grow', 'sides', 'grow+sides'), name='thickness',
             gui='MoM copper thickness', group=G),

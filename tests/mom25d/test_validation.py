@@ -24,11 +24,13 @@ def cpu(monkeypatch):
 
 def _solved(name, freqs, fmin, fmax):
     """S of a board in tests/boards, renormalised to its ports' reference
-    impedances, as solve_board gives it."""
+    impedances, as solve_board gives it, the copper as sheets (thickness
+    'off': openEMS's references and the stored S are sheets too)."""
     from kicad2ems.mom25d.api import build_board
     from kicad2ems.mom25d.run import renorm, _zc, out_refs
     d = json.loads((HERE / 'boards' / f'{name}.json').read_text())
-    model, sim = build_board(d, fmin, fmax, log=lambda *a, **k: None)
+    model, sim = build_board(d, fmin, fmax, thickness='off',
+                             log=lambda *a, **k: None)
     return np.array([
         renorm(sim.sparams(f), _zc(sim, f), out_refs(sim, model.port_z0))
         for f in freqs

@@ -428,8 +428,21 @@ class PlanarModel:
         if getattr(self, 'signal', None) is not None:
             kw.setdefault('signal', self.signal)
         if getattr(self, 'sides', None):
-            # thick copper's sides (thickness 'sides', mom25d.sides)
-            kw.setdefault('sides', self.sides)
+            # thick copper's sides (thickness 'sides', mom25d.sides); not with
+            # wave ports: a side breaks at each of a feed's sample cuts, which
+            # the fit's reference line has all along (its Zc 50.9 -> 53.2 ohm
+            # with sides, solid copper's lower), rf_diffvia's RMS 0.13 -> 0.24
+            from .sim import DiffPort
+            from .geo import LinePort
+            wave = [p.name for p in ports
+                    if isinstance(p, (LinePort, DiffPort))]
+            if wave:
+                self.notes.append(
+                    f"thickness: no sides with wave ports ({', '.join(wave)}; "
+                    "not modelled), the copper as sheets: --mom-port lumped "
+                    "for the sides")
+            else:
+                kw.setdefault('sides', self.sides)
         zone = kw.pop('zone', None)
         if zone is not None and zone != 'off':
             # (experimental) mesh detail only near the signal copper: zone = the

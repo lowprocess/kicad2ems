@@ -377,7 +377,7 @@ def test_mixed_cuts_a_coupled_pair_as_two_modal_lines(monkeypatch):
     quiet = lambda *a, **k: None
     data = _two_traces(0.3)
     freq = np.linspace(3e9, 9e9, 13)
-    ref = solve_board(data, freq, log=quiet, max_solves=24)
+    ref = solve_board(data, freq, log=quiet, max_solves=24, thickness='off')
     monkeypatch.setattr(
         ks, 'mixed_mode', lambda S, m:
         (S, [p.name for p in m.ports], [50.0] * len(m.ports)))
@@ -549,7 +549,8 @@ def test_part_ports_are_delta_gaps_closing_to_the_parts(tmp_path, run_cli,
     """kicad2ems R-E5: a part port is a delta gap across the part's strip (the
     strip and its pads kept: a shunt part's ground pad with its vias is not a
     lone stitching pad), and closed by the parts' values it is the board with
-    its parts."""
+    its parts (as sheets: the sides break at a port's sample cuts too, not
+    only at its gap, 5e-3 apart)."""
     pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
     from kicad2ems.core.config import build_settings
     from kicad2ems.core.pipeline import board_from_settings
@@ -575,6 +576,7 @@ def test_part_ports_are_delta_gaps_closing_to_the_parts(tmp_path, run_cli,
         extra = ['--part-ports', 'all'] if pp == 'all' else []
         code, so, err = run_cli(toml, '--solvers', 'mom25d', '--mom-port',
                                 'lumped', '--excite', 'P1,P2', '--points', '41',
+                                '--mom-thickness', 'off',
                                 '--no-report', '--no-reuse', '--out',
                                 tmp_path / pp, *extra)
         assert code == 0, so + err

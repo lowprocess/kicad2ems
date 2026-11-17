@@ -66,7 +66,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 signal_vias='round', stitching_vias='auto', lines=None,
                 keep_at=(), quad_tol=35.0, coarsen=None, planes='pec',
                 stitching_pads='drop', wideband=None, cells=CELLS,
-                thickness='off'):
+                thickness='sides'):
     """S-parameters of a board (a <name>_board.json path, or its content) on
     `freq` (Hz).
 
@@ -88,9 +88,9 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
     planes: 'pec' (default: solid planes as the ground and a PEC cover, not
     meshed: mom25d.board) or 'mesh'. stitching_pads: 'drop' (default: a ground
     via's pad with nothing else on its layer left out, the via kept) or 'keep'.
-    thickness: 'off' (default: zero-thickness sheets), 'grow' (the copper's
-    edges moved out by mom25d.board.GROW_T x its thickness), 'sides' (its
-    edges stood up as plates, mom25d.sides) or 'grow+sides'. wideband: None
+    thickness: 'sides' (default: the copper's edges stood up as plates,
+    mom25d.sides), 'off' (zero-thickness sheets), 'grow' (its edges moved
+    out by mom25d.board.GROW_T x its thickness) or 'grow+sides'. wideband: None
     (constant er, tand) or the frequency (Hz) the stack's er and tand hold at,
     Djordjevic-Sarkar elsewhere."""
     from . import fast
@@ -141,7 +141,7 @@ def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 stitching_vias='auto', lines=None, quad_tol=35.0, coarsen=None,
                 planes='pec', stitching_pads='drop', wideband=None, title=None,
                 mesh_only=False, characterize=True, cells=CELLS,
-                thickness='off'):
+                thickness='sides'):
     """(BoardModel, Simulation) of a board as solve_board builds them, with its
     options (solve_board's). mesh_only: stop once the mesh and its unknowns are
     known (a preview of the mesh solve_board would solve on; the quad cells are
