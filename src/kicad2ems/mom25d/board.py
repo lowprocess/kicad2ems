@@ -67,6 +67,12 @@ SOLID = 0.98
 # 0.065 to 0.052, better on 11; worse on narrow-gap resonators (hairpin 0.21
 # -> 0.23, rf_interdig 0.12 -> 0.14), whose coupling is the gap's side walls
 GROW_T = 0.57
+# thickness='sides': a copper edge is a plate where copper of its layer faces
+# it within this (m), None: every edge. Against gfdtd with solid copper (17
+# boards, 2026-11-17) every edge took the median RMS from 0.065 to 0.037; the
+# edges facing copper within 0.4 or 0.8 mm only to 0.049, within 0.2 mm 0.065:
+# a side matters on every edge, not only across a narrow gap
+SIDES_SMAX = None
 # mm2: stitching_pads='drop': a lone pad is smaller than this
 PAD_AREA = 2.0
 # ground_apertures: the signal copper's reach, in heights over the ground
@@ -362,7 +368,9 @@ class BoardModel(PlanarModel):
         stitching_pads: 'drop' (default: lone pads of ground vias left out) |
         'keep'. thickness: 'off' (default: the copper as zero-thickness sheets)
         | 'grow' (each sheet's edges moved out by GROW_T x its copper's
-        thickness: the effective width of thick copper; see GROW_T).
+        thickness: the effective width of thick copper; see GROW_T) | 'sides'
+        (experimental: every copper edge stood up as a plate the copper's
+        thickness high, mom25d.sides) | 'grow+sides' (both).
         wideband: None (default: each dielectric's er and tand constant over
         frequency) or a frequency (a layer's own fref first: the frequency
         kicad2ems's material library quotes its laminate at) (Hz) at which they
@@ -551,13 +559,25 @@ class BoardModel(PlanarModel):
                 f"the board's, not modelled), {len(holes)} opening(s) meshed "
                 f"({sum(h.area for h in holes):.1f} mm2; planes 'slots')"
             )
-        if thickness not in ('off', 'grow'):
-            raise ValueError(f"thickness {thickness!r}: off or grow")
+        if thickness not in ('off', 'grow', 'sides', 'grow+sides'):
+            raise ValueError(
+                f"thickness {thickness!r}: off, grow, sides or grow+sides")
         # thickness='grow': each layer's copper grown by GROW_T x its thickness
         grow = {
             c['name']: GROW_T * c.get('t', 0.0)
             for c in data['stack']['copper']
-        } if thickness == 'grow' else {}
+        } if 'grow' in thickness else {}
+        # thickness='sides': the copper's sides as plates (mom25d.sides), the
+        # copper's thickness high, up from the sheet (the board's lowest
+        # copper: down), as fdtd.thick grows it
+        self.sides = None
+        if 'sides' in thickness:
+            low = min(cu_z, key=cu_z.get)
+            tk = {k: c.get('t', 0.0) * MM for c in st['copper']
+                  for k in [self.iface.get(c['name'])] if k is not None}
+            self.sides = dict(
+                t=tk, up={k: lay != low for lay, k in self.iface.items()},
+                s_max=SIDES_SMAX)
         self.shapes = {
             k: [S(unary_union(copper[lay]).buffer(grow[lay],
                                                   join_style='mitre')

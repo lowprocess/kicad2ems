@@ -18,7 +18,8 @@ five times faster.
 
 ## What mom25d models
 
-- Copper is zero-thickness sheets on the layer interfaces ([thickness](#thickness): an effective-width option).
+- Copper is zero-thickness sheets on the layer interfaces ([thickness](#thickness): an effective width, or its sides
+  as plates).
 - The dielectric layers extend sideways to infinity, over an **infinite ground plane**: the board's `ground`
   layer, or the lowest layer whose copper covers half the board. Copper below it is left out.
 - Vias are vertical wires between the layers they connect; edge walls become rows of vias every 0.5 mm.
@@ -43,8 +44,26 @@ copper's thickness: the effective width of thick copper (Hammerstad; Kirschning-
 strips wider and gaps narrower by the same, no extra unknowns. Against gfdtd with solid copper the median RMS
 went from 0.065 to 0.052, better on 11 of the 17 boards (rf_stripline 0.058 → 0.030, demo_transition 0.049 →
 0.023). It is worse on resonators coupled across narrow gaps (hairpin 0.21 → 0.23, rf_interdig 0.12 → 0.14):
-there the coupling is the side walls facing each other across the gap, which a sheet cannot carry. The
-default stays `off`: the openEMS references of the Solver Matrix are zero-thickness sheets too.
+there the coupling is the side walls facing each other across the gap, which a sheet cannot carry.
+
+`--mom-thickness sides` (experimental) stands every copper edge up as a plate the copper's thickness high (up
+into the layer above; the board's lowest copper down, as gfdtd's thick copper grows), two triangles with RWG
+functions in 3D: the fold from the sheet, the diagonal, and the edge shared with the next plate. A side so
+carries charge (in the medium beside the copper: the air over a microstrip) and current along the trace. Both
+matter: thick copper lowers a microstrip's effective permittivity because its inductance falls more than its
+capacitance rises (a 30 mm line, w 0.38 mm on 0.2 mm FR4: the plates took eeff 2.8 % and Z0 4.4 % down,
+Hammerstad-Jensen 3.5 % and 4.4 %); the sides' charge without their current moves eeff up. Against gfdtd with
+solid copper the median RMS of the 17 boards went from 0.065 to 0.037 (`grow` 0.052), better on 16: hairpin
+0.21 → 0.037, rf_meander 0.13 → 0.050, sma_launch 0.090 → 0.032, rf_steplpf 0.083 → 0.041, rf_combline 0.26 →
+0.20; worse on rf_ratrace (0.039 → 0.056, where gfdtd's two grids differ by 0.07). Plates only on the edges
+facing copper across a narrow gap did little (median 0.049 within 0.4 or 0.8 mm, 0.065 within 0.2 mm): the
+sides matter on every edge. `grow+sides` does both (median 0.040, mean 0.050 against `sides`' 0.051). The
+cost: three unknowns a plate (+30-45 % on these boards, +26 % on sma_launch) and the plates' blocks in Python:
+4-6 times the solve time (sma_launch 703 s against 165 s). A side breaks where a port's gap, its sample cuts or
+a lumped element cross the copper (their current is the sheet's edges'). Not modelled: the copper's top face,
+the vias' vertical current with the plates' (only through their charge and the smooth potential), the plates
+with holes and openings of PEC planes; at low frequency the loop/tree basis is not used with them. The default
+stays `off`: the openEMS references of the Solver Matrix are zero-thickness sheets too.
 
 <a id="planes"></a>
 ### Solid planes and stitching pads

@@ -421,12 +421,15 @@ class Simulation:
                  line_basis=None, line_w_max=2.0e-3, line_step=2.0,
                  coarsen=None, grow=0.5, structured='auto',
                  gap_rings=(1 / 4, 1 / 8,
-                            1 / 16), frills=(), slots=(), dmax_slot=None):
+                            1 / 16), frills=(), slots=(), dmax_slot=None,
+                 sides=None):
         # frills (frill.Frill): the holes of the stack's internal PEC planes
         # (stack.pec) that a via runs through slots (slots.Slot): openings of
         # the stack's PEC planes, each meshed, its field the unknowns (slot
         # planes) mesh_only: stop once the mesh and the unknowns (Ne, Nv) are
-        # known (a cost estimate; nothing to solve with) coarsen (experimental):
+        # known (a cost estimate; nothing to solve with) sides (experimental):
+        # dict(t, up, s_max) of mom25d.sides.Sides, thick copper's sides as
+        # plates (their unknowns after the openings') coarsen:
         # cells grow from dmax at the features (corners, vias, ports) to coarsen
         # x dmax away from them, by grow x the distance (geo.mesh_polygons):
         # straight runs and plane interiors in larger cells. structured:
@@ -716,8 +719,19 @@ class Simulation:
                       and ds > 2.4 * dmax else None), dmax_fine=2 * dmax,
                 w_max=4 * dmax)
         self.Ne = r.Ne
+        self.sides = None
+        if sides:
+            from .sides import Sides
+            # (no current along a side across a port's gap, its sample cuts
+            # or a lumped element: the sheet's edges there carry it all)
+            self.sides = Sides(self, **sides, cuts={
+                k: [lp.line(x) for lp, x in lines[k]] for k in self.layers})
+            self.log.note(self.sides.notes(sides.get('s_max')))
+            if not len(self.sides):
+                self.sides = None
         self.Nv = (len(self.chains) + sum(fr.count for fr in self.frills)
-                   + sum(sl.count for sl in self.slots))
+                   + sum(sl.count for sl in self.slots)
+                   + (len(self.sides) if self.sides is not None else 0))
         if mesh_only:
             return
         self.tri_idx = {
@@ -1149,6 +1163,18 @@ class Simulation:
             T = np.asarray((dF.T @ QF.T).T)
             B += (r.D.T @ T) / (1j * w)
             C += (dF.T @ T[self.F]) / (1j * w)
+        if self.sides is not None and charges:
+            # the sides' functions (mom25d.sides): with the strips', each
+            # other's and the via chains' fan charges
+            with self.log.timer('sides', f"{len(self.sides)} functions"):
+                Bw, Cw, QF = self.sides.blocks(self, f)
+                c0 = self.Nv - len(self.sides)
+                B[:, c0:] += Bw
+                C[c0:, c0:] += Cw
+                if len(self.F) and c0:
+                    X = np.asarray(geo['dF'][:, :c0].T @ QF) / (1j * w)
+                    C[:c0, c0:] += X
+                    C[c0:, :c0] += X.T
         # smooth via -> strip kernel D(rho), Galerkin-tested with the RWG
         # divergence: in the compiled core the chains of a span a block at a
         # time (a chain and a layer at a time, NumPy's, had been 1.5 s of an 8 s
@@ -1176,6 +1202,14 @@ class Simulation:
                                     self.P6[idx, :, 1] - v.y)
                     c[idx] = (vk.D[(k, (kb, kt))](dist) * self.W6[idx]).sum(1)
                 B[:, n] += r.D.T @ c
+        if self.sides is not None and len(self.chains):
+            # the chains' smooth potential (D) on the sides' charges, as on
+            # the strips' (else a fold would see the difference between its
+            # strip triangle's potential and its plate's)
+            Xd = self.sides.via_d(self, vk, geo)
+            c0, Nc = self.Nv - len(self.sides), len(self.chains)
+            C[c0:, :Nc] += Xd
+            C[:Nc, c0:] += Xd.T
         # via-via: all pairs grouped by (span_m, span_n), each group's Hankel
         # transform evaluated once
         for (sm, sn), (m, n, dd) in geo['groups'].items():

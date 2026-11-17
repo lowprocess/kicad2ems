@@ -436,7 +436,8 @@ class MoM25D(Solver):
         planes='yes: meshed (slow on plane-heavy boards)',
         edge_walls='approximated: via rows every 0.5 mm',
         thickness=('ignored: sheets; --mom-thickness grow: the effective '
-                   'width'), conductor_loss='yes',
+                   'width; sides: the edges as plates'),
+        conductor_loss='yes',
         roughness='yes: Hammerstad at each frequency',
         finish=('approximated: on the outer copper, weighted by the finished '
                 'faces\' share of the strip\'s loss (the port trace\'s), at '
@@ -545,8 +546,12 @@ class MoM25D(Solver):
             "copper edge moved out by 0.57 x the copper's thickness (the "
             "effective width of thick copper: against an FDTD with solid "
             "copper the median RMS of 17 boards 0.065 to 0.052; narrow-gap "
-            "resonators worse, hairpin 0.21 to 0.23) (docs/mom.md#thickness)",
-            choices=('off', 'grow'), name='thickness',
+            "resonators worse, hairpin 0.21 to 0.23); sides (experimental): "
+            "every copper edge stood up as a plate the copper's thickness "
+            "high, carrying charge and current (median RMS 0.037, hairpin "
+            "0.037; about 1.4x the unknowns, 4x the time); grow+sides: both "
+            "(docs/mom.md#thickness)",
+            choices=('off', 'grow', 'sides', 'grow+sides'), name='thickness',
             gui='MoM copper thickness', group=G),
         Option(
             'mom_lines', 'off',

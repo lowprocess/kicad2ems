@@ -1116,7 +1116,9 @@ class FastOperator:
             'quad cells or line functions' if sim.qT is not None else
             'holes of PEC planes (frills)' if sim.frills else
             'openings of PEC planes (slots)' if getattr(sim, 'slots', None
-                                                        ) else None)
+                                                        ) else
+            'the sides of thick copper' if getattr(sim, 'sides', None
+                                                   ) is not None else None)
         if why is None:
             from .sim import available_memory
             N, Nt = sim.Ne + sim.Nv, len(sim.rwg.tris)

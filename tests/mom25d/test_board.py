@@ -446,3 +446,31 @@ def test_thickness_grow_moves_the_copper_edges_out():
     with pytest.raises(ValueError):
         BoardModel(data, thickness='thick', log=quiet)
 
+
+
+def test_thickness_sides_stand_the_copper_edges_up():
+    """thickness='sides' (mom25d.sides): every boundary edge of the copper is a
+    plate the copper's thickness high, three functions each round a closed
+    outline (the fold, the diagonal, the edge shared with the next plate). On a
+    30 mm microstrip (w 0.38 mm on 0.2 mm, er 4.3, t 35 um) eeff and Z0 fall as
+    thick copper's do (Hammerstad-Jensen for the 0.4 / 0.21 mm line: -3.5 % and
+    -4.4 %; the plates' 2026-11-17: -2.8 %, -4.4 %)."""
+    from kicad2ems.mom25d.api import build_board, solve_board
+    data = board('thru')
+    _, sim = build_board(data, 1e9, 2e9, port='via', thickness='sides',
+                         mesh_only=True, log=quiet)
+    sd = sim.sides
+    assert sd.np_ > 100 and len(sd) == 3 * sd.np_
+    assert sd.L.sum() == pytest.approx(sim.geoms[1].length, rel=1e-6)
+    f = np.array([1e9, 2e9])
+    out = {}
+    for th in ('off', 'sides'):
+        s = solve_board(data, f, port='via', thickness=th, log=quiet).S[0]
+        s11, s12, s21, s22 = s[0, 0], s[0, 1], s[1, 0], s[1, 1]
+        A = ((1 + s11) * (1 - s22) + s12 * s21) / (2 * s21)
+        B = 50 * ((1 + s11) * (1 + s22) - s12 * s21) / (2 * s21)
+        C = ((1 - s11) * (1 - s22) - s12 * s21) / (2 * s21) / 50
+        beta = abs(np.arccosh(A).imag) / 0.030
+        out[th] = (np.sqrt(B / C).real, (beta / (2 * np.pi * f[0] / 3e8)) ** 2)
+    z, e = (out['sides'][i] / out['off'][i] for i in range(2))
+    assert 0.93 < z < 0.98 and 0.95 < e < 0.99

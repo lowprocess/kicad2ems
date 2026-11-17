@@ -88,8 +88,9 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
     planes: 'pec' (default: solid planes as the ground and a PEC cover, not
     meshed: mom25d.board) or 'mesh'. stitching_pads: 'drop' (default: a ground
     via's pad with nothing else on its layer left out, the via kept) or 'keep'.
-    thickness: 'off' (default: zero-thickness sheets) or 'grow' (the copper's
-    edges moved out by mom25d.board.GROW_T x its thickness). wideband: None
+    thickness: 'off' (default: zero-thickness sheets), 'grow' (the copper's
+    edges moved out by mom25d.board.GROW_T x its thickness), 'sides' (its
+    edges stood up as plates, mom25d.sides) or 'grow+sides'. wideband: None
     (constant er, tand) or the frequency (Hz) the stack's er and tand hold at,
     Djordjevic-Sarkar elsewhere."""
     from . import fast
