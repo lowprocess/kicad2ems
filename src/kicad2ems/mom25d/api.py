@@ -90,7 +90,8 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
     via's pad with nothing else on its layer left out, the via kept) or 'keep'.
     thickness: 'sides' (default: the copper's edges stood up as plates,
     mom25d.sides), 'off' (zero-thickness sheets), 'grow' (its edges moved
-    out by mom25d.board.GROW_T x its thickness) or 'grow+sides'. wideband: None
+    out by mom25d.board.GROW_T x its thickness), 'grow+sides' or 'edge'
+    (the edges' near terms corrected, mom25d.edge). wideband: None
     (constant er, tand) or the frequency (Hz) the stack's er and tand hold at,
     Djordjevic-Sarkar elsewhere."""
     from . import fast

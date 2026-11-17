@@ -477,6 +477,35 @@ def test_thickness_sides_stand_the_copper_edges_up():
     assert 0.93 < z < 0.98 and 0.95 < e < 0.99
 
 
+def test_thickness_edge_corrects_the_edge_near_terms():
+    """thickness='edge' (mom25d.edge): no unknowns added, the edge triangles'
+    near pairs corrected; on the 30 mm microstrip Z0 and eeff fall as thick
+    copper's do (fd2d, solid against sheet: -4.2 %, -3.2 %; the corrections
+    2026-11-17: -4.1 %, -3.3 %), and copper without thickness is the sheet."""
+    from kicad2ems.mom25d.api import build_board, solve_board
+    from kicad2ems.mom25d.edge import Edges, edge_triangles
+    data = board('thru')
+    _, sim = build_board(data, 1e9, 2e9, port='via', thickness='edge',
+                         log=quiet)
+    _, off = build_board(data, 1e9, 2e9, port='via', log=quiet)
+    on = edge_triangles(sim.rwg)
+    assert sim.Ne == off.Ne and 0 < on.sum() < len(on)
+    assert set(sim.edge.P) >= set(np.nonzero(on)[0])
+    assert not len(Edges(sim, t={k: 0.0 for k in sim.layers}, up={}))
+    f = np.array([1e9, 2e9])
+    out = {}
+    for th in ('off', 'edge'):
+        s = solve_board(data, f, port='via', thickness=th, log=quiet).S[0]
+        s11, s12, s21, s22 = s[0, 0], s[0, 1], s[1, 0], s[1, 1]
+        A = ((1 + s11) * (1 - s22) + s12 * s21) / (2 * s21)
+        B = 50 * ((1 + s11) * (1 + s22) - s12 * s21) / (2 * s21)
+        C = ((1 - s11) * (1 - s22) - s12 * s21) / (2 * s21) / 50
+        beta = abs(np.arccosh(A).imag) / 0.030
+        out[th] = (np.sqrt(B / C).real, (beta / (2 * np.pi * f[0] / 3e8)) ** 2)
+    z, e = (out['edge'][i] / out['off'][i] for i in range(2))
+    assert 0.95 < z < 0.97 and 0.96 < e < 0.975
+
+
 def test_thickness_sides_blocks_regression():
     """The plates' blocks in the compiled core (pair_moments3d, sides_blocks)
     against the NumPy ones they replaced (0228e3f): the thru line's S at 1 and

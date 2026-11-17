@@ -422,14 +422,16 @@ class Simulation:
                  coarsen=None, grow=0.5, structured='auto',
                  gap_rings=(1 / 4, 1 / 8,
                             1 / 16), frills=(), slots=(), dmax_slot=None,
-                 sides=None):
+                 sides=None, edge=None):
         # frills (frill.Frill): the holes of the stack's internal PEC planes
         # (stack.pec) that a via runs through slots (slots.Slot): openings of
         # the stack's PEC planes, each meshed, its field the unknowns (slot
         # planes) mesh_only: stop once the mesh and the unknowns (Ne, Nv) are
         # known (a cost estimate; nothing to solve with) sides (experimental):
         # dict(t, up, s_max) of mom25d.sides.Sides, thick copper's sides as
-        # plates (their unknowns after the openings') coarsen:
+        # plates (their unknowns after the openings') edge: dict(t, up) of
+        # mom25d.edge.Edges, thick copper's edges as corrected
+        # near terms coarsen:
         # cells grow from dmax at the features (corners, vias, ports) to coarsen
         # x dmax away from them, by grow x the distance (geo.mesh_polygons):
         # straight runs and plane interiors in larger cells. structured:
@@ -772,6 +774,14 @@ class Simulation:
         self.tri_size = np.linalg.norm(V - np.roll(V, 1, axis=1), axis=2).max(1)
         self.P3, self.W3 = quad_pts(r, _BAR3), r.area[:, None] * _W3[None, :]
         self.P6, self.W6 = quad_pts(r, _BAR6), r.area[:, None] * _W6[None, :]
+        self.edge = None
+        if edge:
+            from .edge import Edges
+            with self.log.timer('edge corrections (static, once)'):
+                self.edge = Edges(self, **edge)
+            self.log.note(self.edge.notes())
+            if not len(self.edge):
+                self.edge = None
         ext = np.vstack([r.nodes] + [sl.rwg.nodes for sl in self.slots])
         self.rho_max = 1.05 * np.hypot(*(ext.max(0) - ext.min(0))) + 1e-4
         self._slot_cache = {}
@@ -1079,6 +1089,8 @@ class Simulation:
             Z[:self.Ne,
               self.Ne:], Z[self.Ne:, :self.Ne], Z[self.Ne:,
                                                   self.Ne:] = (B, B.T, C)
+        if self.edge is not None:
+            Z += self.edge.matrix(self, f).toarray()
         for el, (idx, sig) in zip(self.lumped, self.lumped_edges):
             u = np.zeros(N); u[idx] = sig * r.l[idx]
             Z += el.Z(f) * np.outer(u, u)

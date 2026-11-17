@@ -443,6 +443,9 @@ class PlanarModel:
                     "for the sides")
             else:
                 kw.setdefault('sides', self.sides)
+        if getattr(self, 'edge', None):
+            # thick copper's edges (thickness 'edge', mom25d.edge)
+            kw.setdefault('edge', self.edge)
         zone = kw.pop('zone', None)
         if zone is not None and zone != 'off':
             # (experimental) mesh detail only near the signal copper: zone = the

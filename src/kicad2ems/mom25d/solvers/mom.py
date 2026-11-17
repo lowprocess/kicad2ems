@@ -436,7 +436,8 @@ class MoM25D(Solver):
         planes='yes: meshed (slow on plane-heavy boards)',
         edge_walls='approximated: via rows every 0.5 mm',
         thickness=('approximated: the edges as plates (no top face); '
-                   '--mom-thickness grow: the effective width; off: sheets'),
+                   '--mom-thickness grow: the effective width; edge: the '
+                   "edges' near terms corrected; off: sheets'),
         conductor_loss='yes',
         roughness='yes: Hammerstad at each frequency',
         finish=('approximated: on the outer copper, weighted by the finished '
@@ -550,9 +551,12 @@ class MoM25D(Solver):
             "or holed planes or the whole stack); off: the copper as "
             "zero-thickness sheets; grow: each copper edge "
             "moved out by 0.57 x the copper's thickness (the effective "
-            "width: median 0.052, no extra unknowns); grow+sides: both "
-            "(docs/mom.md#thickness)",
-            choices=('off', 'grow', 'sides', 'grow+sides'), name='thickness',
+            "width: median 0.052, no extra unknowns); grow+sides: both; "
+            "edge: no unknowns added, the edge triangles' near terms "
+            "averaged over the copper's height (median RMS 0.048, hairpin "
+            "0.052) (docs/mom.md#thickness)",
+            choices=('off', 'grow', 'sides', 'grow+sides', 'edge'),
+            name='thickness',
             gui='MoM copper thickness', group=G),
         Option(
             'mom_lines', 'off',

@@ -70,6 +70,24 @@ breaks at each of a feed's sample cuts, and the fit's reference line has them al
 53.2 Ω with sides, rf_diffvia's RMS 0.13 → 0.24), so `--mom-port lumped` for the sides; at low frequency the loop/tree basis is not used with them. `--mom-thickness off` gives the sheets: the
 openEMS references of the Solver Matrix are zero-thickness sheets, so compare with `off` there.
 
+`--mom-thickness edge` adds no unknowns: a triangle on a copper edge has its charge and current
+spread up a wall, so its static 1/R with each near triangle is averaged over the height between them (two edge
+triangles: the difference of two uniform heights; an edge and an interior triangle: one), the analytic
+integrals at four offsets (mom25d.edge). The vector and the scalar potential take their own heights, fitted once
+to 2D Laplace solves of solid against sheet copper: 2.35 × t for the current, and for the charge 1.08 × t ×
+(2 εw / (εw + εo))^0.79, εw the permittivity the side stands in (0.50 × t in air over FR4; in a homogeneous
+stripline L and C change alike and eeff stays). Against the 2D solves (w 0.2-1.0 mm, t 35-70 µm, single lines
+and pairs 0.1-1 mm apart, even and odd) its Z0 and eeff changes are off by an RMS of 1.08 % points (`sides`
+1.03, `grow` 4.0). Against gfdtd with solid copper (17 boards): median RMS 0.048, mean 0.058 (`grow` 0.052 /
+0.078, `sides` 0.037 / 0.051), better than `off` on 14: hairpin 0.21 → 0.052, rf_meander 0.13 → 0.054,
+rf_steplpf 0.083 → 0.045, sma_launch 0.090 → 0.039; worse on rf_pcoupled (0.065 → 0.074), rf_ratrace (0.039 →
+0.068) and demo_transition (0.049 → 0.051). Its cost: 0.5-2 s once and a few ms a frequency (a sparse addition
+to Z). Limits: the heights are fitted on the default mesh, and the correction grows on cells coarser across a
+strip (a microstrip's eeff -4.2 % at 3 cells across, -3.2 % at 6, -2.4 % at 10); boards differ in which height
+suits them (hairpin 2.35, rf_meander 2.9, demo_transition 1.8), which a per-board choice would not fix; the
+copper's top face is not modelled (a stripline's Z0 falls 10.5 %, solid copper's 17 %); the loop/tree basis is
+not used with it.
+
 <a id="planes"></a>
 ### Solid planes and stitching pads
 

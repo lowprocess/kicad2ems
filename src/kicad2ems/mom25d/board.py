@@ -371,7 +371,9 @@ class BoardModel(PlanarModel):
         'holes' or 'slots') | 'off' (the copper as zero-thickness sheets) |
         'grow' (each sheet's edges moved out by GROW_T x its copper's
         thickness: the effective width of thick copper; see GROW_T) |
-        'grow+sides' (both).
+        'grow+sides' (both) | 'edge' (the edge triangles' near terms
+        corrected, mom25d.edge: in place of the sides where they are not
+        modelled).
         wideband: None (default: each dielectric's er and tand constant over
         frequency) or a frequency (a layer's own fref first: the frequency
         kicad2ems's material library quotes its laminate at) (Hz) at which they
@@ -560,9 +562,9 @@ class BoardModel(PlanarModel):
                 f"the board's, not modelled), {len(holes)} opening(s) meshed "
                 f"({sum(h.area for h in holes):.1f} mm2; planes 'slots')"
             )
-        if thickness not in ('off', 'grow', 'sides', 'grow+sides'):
-            raise ValueError(
-                f"thickness {thickness!r}: off, grow, sides or grow+sides")
+        if thickness not in ('off', 'grow', 'sides', 'grow+sides', 'edge'):
+            raise ValueError(f"thickness {thickness!r}: off, grow, sides, "
+                             "grow+sides or edge")
         # (the plates do not couple to the planes' holes and openings, nor to
         # a via's vertical current: around a via through a meshed plane's
         # antipad they misplace its return, rf_msvia's whole stack S11 -15 dB
@@ -591,6 +593,14 @@ class BoardModel(PlanarModel):
             self.sides = dict(
                 t=tk, up={k: lay != low for lay, k in self.iface.items()},
                 s_max=SIDES_SMAX)
+        # thickness='edge': the edges' near terms corrected (mom25d.edge)
+        self.edge = None
+        if thickness == 'edge':
+            low = min(cu_z, key=cu_z.get)
+            self.edge = dict(
+                t={k: c.get('t', 0.0) * MM for c in st['copper']
+                   for k in [self.iface.get(c['name'])] if k is not None},
+                up={k: lay != low for lay, k in self.iface.items()})
         self.shapes = {
             k: [S(unary_union(copper[lay]).buffer(grow[lay],
                                                   join_style='mitre')

@@ -801,6 +801,9 @@ class FastOperator:
             S[:Ne, :Ne] = (S[:Ne, :Ne] +
                            (sparse.diags(zs) @ sparse.csr_matrix(sim._gram) if
                             np.ndim(zs) else zs * sparse.csr_matrix(sim._gram)))
+        if getattr(sim, 'edge', None) is not None:
+            # thick copper's edges (mom25d.edge)
+            return (S.tocsr() + sim.edge.matrix(sim, f)).tocsr()
         return S.tocsr()
 
     def _refine(self, A, B, M, restart, maxiter, stall=None, timed=True):
@@ -1118,6 +1121,8 @@ class FastOperator:
             'openings of PEC planes (slots)' if getattr(sim, 'slots', None
                                                         ) else
             'the sides of thick copper' if getattr(sim, 'sides', None
+                                                   ) is not None else
+            'the edges of thick copper' if getattr(sim, 'edge', None
                                                    ) is not None else None)
         if why is None:
             from .sim import available_memory
