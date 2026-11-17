@@ -243,9 +243,12 @@ class Network:
         # along its current
         out.series = {
             name: dict(I=abs(float((Vz[self.tj[a]] - Vz[self.tj[b]]) / R)),
-                       drop=abs(float(Vz[self.tj[a]] - Vz[self.tj[b]])))
+                       drop=abs(float(Vz[self.tj[a]] - Vz[self.tj[b]])),
+                       loss_W=float((Vz[self.tj[a]] - Vz[self.tj[b]])**2 / R))
             for name, a, b, R in self.links
         }
+        # the series parts' own loss is theirs (design data), not the copper's
+        out.loss -= sum(s['loss_W'] for s in out.series.values())
         return out
 
 
@@ -304,7 +307,7 @@ def solve_rail(rail, volts, dmax=1.0, sigma=SIGMA_CU, plating=0.025, log=print,
     """A rail (rail.Rail) and its return at DC: the source's pads held at
     `volts`, each load drawing rail.loads[ref] amps over its pads on the tree
     and returning it over its ground pads. {'loads': {ref: dict(V, drop,
-    power_drop, ground_rise, I)}, 'series': {ref: dict(I, drop)}, 'power':
+    power_drop, ground_rise, I)}, 'series': {ref: dict(I, drop, loss_W)}, 'power':
     DCResult, 'ground': DCResult, 'notes'}."""
     from .rail import terminal
     layers = list(stack_z(rail.board))
@@ -345,8 +348,10 @@ def solve_rail(rail, volts, dmax=1.0, sigma=SIGMA_CU, plating=0.025, log=print,
         "names the part it returns through)" for r in no_gnd
     ])
     if loads:
+        ser = sum(s['loss_W'] for s in rp.series.values())
         log(f"dc rail {rail.net}: {(rp.loss + rg.loss) * 1e3:.1f} mW in the "
-            "copper; worst drop "
+            "copper" + (f", {ser * 1e3:.1f} mW in the series parts"
+                        if rp.series else '') + "; worst drop "
             f"{max(l['drop'] for l in loads.values()) * 1e3:.2f} mV")
     return dict(loads=loads, series=rp.series, power=rp, ground=rg, notes=notes,
                 no_return=no_gnd)

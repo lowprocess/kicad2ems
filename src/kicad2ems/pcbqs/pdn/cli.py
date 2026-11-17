@@ -324,7 +324,8 @@ def run(a):
                     power_drop=v['power_drop'], ground_rise=v['ground_rise'])
             for r, v in dc['loads'].items()
         }, series=dict(dc['series']),
-        loss_W=dc['power'].loss + dc['ground'].loss, vias={
+        loss_W=dc['power'].loss + dc['ground'].loss,
+        series_loss_W=sum(s['loss_W'] for s in dc['series'].values()), vias={
             side: sorted(
                 [dict(x=v['x'], y=v['y'], I=v['I'])
                  for v in dc[side].vias], key=lambda v: -v['I'])[:20]

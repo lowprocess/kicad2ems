@@ -219,6 +219,10 @@ class PowerIntegrity(_Tool):
             out.append(
                 dict(name='loss with return', value=r['loss_W'] * 1e3,
                      unit='mW'))
+        if r.get('series_loss_W'):
+            out.append(
+                dict(name='series parts loss', value=r['series_loss_W'] * 1e3,
+                     unit='mW'))
         return out
 
     def table(self):

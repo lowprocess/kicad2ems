@@ -68,7 +68,8 @@ def pdn_report(res, folder=''):
     text = (
         f"Rail tree: {', '.join(res['nets'])}; source "
         f"{', '.join(res['source'])}; {res['loss_W'] * 1e3:.1f} mW in the "
-        "copper.")
+        "copper" + (f", {res['series_loss_W'] * 1e3:.1f} mW in the series "
+                    "parts" if res.get('series_loss_W') else '') + ".")
     if res.get('assumed_loads'):
         text += (" The loads' currents are assumed (shared by pad count), not "
                  "known.")
@@ -88,14 +89,16 @@ def pdn_report(res, folder=''):
                 (' (DCR assumed)' if t.get('defaulted') else ''), t['R'],
                 t['L'] * 1e6 if t.get('L') else '',
                 s.get('I', 0.0),
-                s.get('drop', 0.0) * 1e3, f"{t['a']} → {t['b']}"
+                s.get('drop', 0.0) * 1e3, s.get('loss_W', 0.0) * 1e3,
+                f"{t['a']} → {t['b']}"
             ])
         out['sections'].append(
             dict(
                 title='Series parts', table=_table([
                     'part', 'kind', 'R (Ω)', 'L (µH)', 'current (A)',
-                    'drop (mV)', 'between'
-                ], rows, [None, None, '.3g', '.3g', '.3g', '.2f', None])))
+                    'drop (mV)', 'loss (mW)', 'between'
+                ], rows, [None, None, '.3g', '.3g', '.3g', '.2f', '.3g',
+                          None])))
     rows = [[
         r, l['I'], l['V'], l['drop'] * 1e3, l['power_drop'] * 1e3,
         l['ground_rise'] * 1e3
