@@ -344,7 +344,7 @@ class FDTD(Solver):
         return out if (out['faces'] or 'finish' in out) else None
 
     def engine(self, s):
-        """The engine string of engines.py ('openems', 'gfdtd:cupy')."""
+        """The engine string of engines.py ('openems', 'gfdtd:gpu')."""
         raise NotImplementedError
 
     def summary(self, run):

@@ -1,14 +1,17 @@
 """
-The Vulkan kernels (Slang, compiled to SPIR-V by slangpy): kernels.py's, kernel
-for kernel, around the same update maths (core/fdtd_core.h, read by Slang as it
-is). The differences are Vulkan's:
+The GPU kernels (Slang, compiled to SPIR-V by slangpy) around the update maths
+the CPU core runs (core/fdtd_core.h, read by Slang as it is): one thread per
+node for the H and E updates (on the compressed operator: codes, tables and
+line arrays, no coefficient arrays), the sparse kernels on flat indices into
+the (3, Nx, Ny, Nz) arrays. A CUDA version for CuPy, kernel for kernel the same,
+was removed in 2026-11. What is Vulkan's own:
 
 - the model's arrays are reached through one struct in device memory (Model:
   their device addresses and the sizes), so a launch sets a pointer and a few
   values, not twenty arguments (each costs host time in slangpy);
 - a launch's threads cover its range in a grid-stride loop (`stride`: the
-  threads launched), the node index in 32 bits as on CUDA (the backend keeps 3
-  nx ny nz below 2^31);
+  threads launched), the node index in 32 bits (the backend keeps 3 nx ny nz
+  below 2^31);
 - the energy: a double per workgroup into part[], their sum on the host (no
   float64 atomics on RDNA's Vulkan), and the lumped branches' energy in
   part[nblk] by the first thread;
@@ -19,9 +22,13 @@ is). The differences are Vulkan's:
     MODEL               # Model's fields in order: (name, kind), kind 'p' a
                         # pointer, 'i' int32, 'f' float32
 """
+import os
 
-
-from .kernels import HEADER
+HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'core',
+                      'fdtd_core.h')
+# the PML kernels' slab table: start, m, axis, s0, cnt, offset of b / c, per
+# slab
+SLAB = 6
 
 NAMES = ('update_h', 'update_e', 'energy', 'step_h', 'step_e', 'step_post',
          'pml_e', 'pml_h', 'mur_pre', 'mur_post', 'excite', 'assign', 'par_l',
@@ -146,7 +153,7 @@ void energy(uint3 tid: SV_DispatchThreadID,
     }
 }
 
-// one timestep in three launches, as kernels.py's step_h / step_e / step_post
+// one timestep in three launches: step_h, step_e, step_post
 [shader("compute")] [numthreads(GF_BLOCK, 1, 1)]
 void step_h(uint3 tid: SV_DispatchThreadID)
 {
@@ -331,7 +338,7 @@ void copy_words(uint3 tid: SV_DispatchThreadID)
     GF_LOOP(nw_) { dst_w[t] = src_w[t]; }
 }
 
-// ---- field dumps (kernels.py's dump): field 0 E, 1 H, 2 J (rot H); cell:
+// ---- field dumps: field 0 E, 1 H, 2 J (rot H); cell:
 // cell centres, else nodes --------------------------------------------------
 float gf_fE(float* V, float* G, Dims D, int a, int i, int j, int k)
 {

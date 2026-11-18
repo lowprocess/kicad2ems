@@ -2,10 +2,9 @@
 """
 Run time and peak memory of every solver on every example config, each solver in
 a process of its own:
-openEMS, gfdtd on the GPU (CuPy, and Vulkan: GFDTD_BACKEND=vulkan) and on the
-CPU, mom25d with the GPU (CuPy, and Vulkan: MOM25D_GPU=vulkan), mom25d on the
-CPU only (MOM25D_GPU=off), mom25d fast (quads on a coarsened mesh) and the line
-model.
+openEMS, gfdtd on the GPU (Vulkan) and on the CPU, mom25d with the GPU (CuPy,
+and Vulkan: MOM25D_GPU=vulkan), mom25d on the CPU only (MOM25D_GPU=off), mom25d
+fast (quads on a coarsened mesh) and the line model.
 
     python tools/bench_solvers.py --openems-python /opt/openems/venv/bin/python
         # the critical boards (CRITICAL)
@@ -58,8 +57,6 @@ def solvers(openems_py):
     me = sys.executable
     return {
         'openems': (openems_py, ['--solvers', 'openems'], {}),
-        'gfdtd GPU': (me, ['--solvers', 'gfdtd', '--gfdtd-backend',
-                           'gpu'], {'GFDTD_BACKEND': 'cupy'}),
         'gfdtd Vulkan': (me, ['--solvers', 'gfdtd', '--gfdtd-backend',
                               'gpu'], {'GFDTD_BACKEND': 'vulkan'}),
         'gfdtd CPU': (me, ['--solvers', 'gfdtd', '--gfdtd-backend', 'cpu'], {}),

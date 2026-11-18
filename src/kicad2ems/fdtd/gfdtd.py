@@ -1,6 +1,6 @@
 """
 gfdtd as a kicad2ems solver and FDTD engine (engines.py): the FDTD model
-(solver.py) solved by gfdtd's engine (the GPU via CuPy or Vulkan, its compiled
+(solver.py) solved by gfdtd's engine (the GPU via Vulkan, its compiled
 CPU core, or numpy) through its CSXCAD / openEMS interface. The board, the mesh
 (--res, --fine, --nz, ...), the ports, the parts and the end criteria are the
 FDTD settings shared with openEMS; only the engine differs. Runs go to
@@ -20,11 +20,10 @@ from .solver import FDTD, MESH, RUN, CONVERGE
 G = 'gfdtd'                                     # its section in kicad2ems's GUI
 # gfdtd's speed over openEMS's estimate (24 threads), per backend: the examples'
 # runs on an RX 7800 XT and an i7-13700K, 8-20x on the GPU and 2-2.3x on the
-# core (docs/gfdtd.md#speed); numpy ~10x slower than openEMS. Vulkan runs the
-# same kernels within a few per cent of CuPy's speed there. START: seconds of
+# core (docs/gfdtd.md#speed); numpy ~10x slower than openEMS. START: seconds of
 # setup a run (the GPU kernels, the core's threads)
-SPEEDUP, START = dict(cupy=8.0, vulkan=8.0, core=2.0, numpy=0.1), 2.0
-GPU_BACKENDS = ('cupy', 'vulkan')
+SPEEDUP, START = dict(vulkan=8.0, core=2.0, numpy=0.1), 2.0
+GPU_BACKENDS = ('vulkan',)
 
 
 class GFDTD(FDTD):
@@ -48,11 +47,10 @@ class GFDTD(FDTD):
     options = (MESH + CONVERGE + RUN + [
         Option(
             'gfdtd_backend', 'auto',
-            "gfdtd: where it runs - auto (the GPU when Vulkan or CuPy finds "
-            "one, else the CPU), gpu (Vulkan through slangpy, else CuPy; CuPy "
-            "first on NVIDIA CUDA) or cpu (the compiled core: python -m "
-            "kicad2ems.gfdtd.core.build; else numpy, slow); "
-            "GFDTD_BACKEND=cupy|vulkan picks the GPU's; its mesh and run "
+            "gfdtd: where it runs - auto (the GPU when Vulkan finds one, else "
+            "the CPU), gpu (Vulkan through slangpy) or cpu (the compiled "
+            "core: python -m kicad2ems.gfdtd.core.build; else numpy, slow); "
+            "GFDTD_BACKEND=vulkan|core|numpy overrides it; its mesh and run "
             "settings are the FDTD ones shared with openEMS (--res, --end-db, "
             "...)",
             choices=('auto', 'gpu', 'cpu'), name='backend', gui='Runs on',
@@ -99,15 +97,12 @@ class GFDTD(FDTD):
                 + ('' if gpu else f"; {what}"))
 
     def resources(self):
-        """The GPU gfdtd's engine would run on (the best Vulkan GPU, else CuPy's
-        first device; CuPy's first on CUDA), or why there is none."""
+        """The GPU gfdtd's engine would run on (the best Vulkan GPU), or why
+        there is none."""
         from kicad2ems.emsdev import gpu
         from kicad2ems.gfdtd.engine import gpu_backend, gpu_info
         try:
-            b = gpu_backend()
-            if b == 'cupy':
-                return dict(gpus=[gpu.cupy_device(0).as_dict()], why='')
-            if b == 'vulkan':
+            if gpu_backend() == 'vulkan':
                 from kicad2ems.gfdtd.engine import VULKAN_NEEDS
                 return dict(
                     gpus=[gpu.vulkan_device(need=VULKAN_NEEDS).as_dict()],
@@ -137,7 +132,7 @@ class GFDTD(FDTD):
         where = resolve_backend(self.engine(run.s).partition(':')[2])
         return dict(
             e, seconds=e['seconds'] / SPEEDUP[where] + START, what=e['what'] + {
-                'cupy': ' on the GPU', 'vulkan': ' on the GPU (Vulkan)',
+                'vulkan': ' on the GPU (Vulkan)',
                 'core': ' on the CPU core'
             }.get(where, ' in numpy'))
 
@@ -185,7 +180,7 @@ class GFDTD(FDTD):
         return concurrent_runs(p.grid['info']['cells'], len(p.excite))
 
     def engine(self, s):
-        # gpu: Vulkan's, else CuPy's; cpu: the core, else numpy
+        # gpu: Vulkan's; cpu: the core, else numpy
         return 'gfdtd:' + s.gfdtd_backend
 
     def about(self, s):
@@ -320,7 +315,7 @@ IN_THREADS = True  # one process: the runs share the GPU (a stream each)
 
 def api(backend=''):
     """(ContinuousStructure, openEMS) of gfdtd's engine (engines.py) on a
-    backend: gpu, cupy, vulkan, core, numpy or auto."""
+    backend: gpu, vulkan, core, numpy or auto."""
     import functools
     from kicad2ems import gfdtd
     return (gfdtd.ContinuousStructure,

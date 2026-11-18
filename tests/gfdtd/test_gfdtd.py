@@ -1,6 +1,6 @@
 """gfdtd: CSXCAD / openEMS compatibility (the API, XML both ways), the operator,
-the physics on small models with known answers (numpy backend; the GPU backends
-against it: CuPy's when it finds a GPU, Vulkan's when slangpy does)."""
+the physics on small models with known answers (numpy backend; the GPU backend
+against it, Vulkan's, when slangpy finds a GPU)."""
 import os
 
 import numpy as np
@@ -27,8 +27,7 @@ def _has(probe):
 GPUS = [
     pytest.param(
         b, marks=pytest.mark.skipif(not _has(p), reason=f'no GPU for {b}'))
-    for b, p in (('cupy', lambda: _devices.cupy_device(0)),
-                 ('vulkan', _devices.vulkan_device))
+    for b, p in (('vulkan', _devices.vulkan_device), )
 ]
 
 # as CSXCAD 0.7 / openEMS 0.37 write it (FDTD.Write2XML), trimmed

@@ -300,9 +300,9 @@ own. kicad2ems.fdtd connects it (`kicad2ems.fdtd.gfdtd`). What it relies on:
 
 | Name | What |
 |---|---|
-| `ContinuousStructure`, `openEMS(..., backend=)` | openEMS's and CSXCAD's Python interface, as openEMS scripts use it; `backend`: `'auto'`, `'gpu'`, `'cupy'`, `'vulkan'`, `'core'`, `'numpy'` |
+| `ContinuousStructure`, `openEMS(..., backend=)` | openEMS's and CSXCAD's Python interface, as openEMS scripts use it; `backend`: `'auto'`, `'gpu'`, `'vulkan'`, `'core'`, `'numpy'` |
 | `engine.gpu_info()`, `engine.core_info()` | `(usable, one line)` of the GPU and the compiled CPU core |
-| `engine.resolve_backend(name)` | `'cupy'`, `'vulkan'`, `'core'` or `'numpy'` for `'auto'`, `'gpu'`, `'cpu'`, ... |
+| `engine.resolve_backend(name)` | `'vulkan'`, `'core'` or `'numpy'` for `'auto'`, `'gpu'`, `'cpu'`, ... |
 | `engine.concurrent_runs(cells, runs)` | how many runs to keep on the GPU at once |
 | `__version__` | the release |
 

@@ -22,7 +22,7 @@ fast). `--solvers auto` picks it over openEMS whenever it can run
 solver](usage.md#which)).
 
 ```bash
-kicad2ems examples/rf_coupler.toml --solvers gfdtd              # the GPU when Vulkan or CuPy finds one, else the CPU
+kicad2ems examples/rf_coupler.toml --solvers gfdtd              # the GPU when Vulkan finds one, else the CPU
 kicad2ems examples/rf_coupler.toml --solvers openems,gfdtd      # both, compared in the report
 kicad2ems board.toml --solvers gfdtd --gfdtd-backend cpu        # the CPU core (numpy without it: slow)
 kicad2ems board.toml --solvers gfdtd --bc PML_8 --diel wideband --dump "E@F.Cu-0.05@2,4"
@@ -31,11 +31,10 @@ kicad2ems examples/antenna_dipole.toml --solvers gfdtd          # antenna mode: 
 
 | Setting | Meaning |
 |---|---|
-| `--gfdtd-backend auto\|gpu\|cpu` (`[solver.gfdtd] backend`) | `auto` (default): the GPU when Vulkan or CuPy finds one, else the CPU. `gpu`: Vulkan (slangpy, any GPU), else CuPy (used first on NVIDIA CUDA), or the run stops. `cpu`: the compiled core, else numpy. `GFDTD_BACKEND=vulkan\|cupy\|core\|numpy` overrides it for every run |
+| `--gfdtd-backend auto\|gpu\|cpu` (`[solver.gfdtd] backend`) | `auto` (default): the GPU when Vulkan finds one, else the CPU. `gpu`: Vulkan (slangpy, any GPU), or the run stops. `cpu`: the compiled core, else numpy. `GFDTD_BACKEND=vulkan\|core\|numpy` overrides it for every run |
 
 It comes with kicad2ems (`kicad2ems.gfdtd`). The GPU needs slangpy (the
-`gpu-vulkan` extra) or, optionally, CuPy for your stack, as for mom25d
-([GPU](mom.md#gpu)); the CPU core is built once, `python -m
+`gpu-vulkan` extra; [GPU](mom.md#gpu)); the CPU core is built once, `python -m
 kicad2ems.gfdtd.core.build` (g++ with OpenMP and pybind11;
 `GFDTD_ARCH=-march=x86-64-v3` for a portable build), without which the CPU runs
 on numpy, some 15 times slower. `kicad2ems --check` shows which backend gfdtd

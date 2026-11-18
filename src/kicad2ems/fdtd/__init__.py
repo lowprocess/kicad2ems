@@ -11,7 +11,7 @@ kicad2ems.core.api.solver.
     dielectric  dielectric loss: a conductivity at the band centre, or wideband
                 Debye poles
     model       the CSX model (build_fdtd), the excitation, port selection
-    engines     engines by name ('openems', 'gfdtd:cupy') -> their
+    engines     engines by name ('openems', 'gfdtd:gpu') -> their
                 ContinuousStructure / openEMS classes
     run         one run per excited port, end criteria (PortWatch), progress,
                 RunResult
@@ -22,7 +22,7 @@ kicad2ems.core.api.solver.
     solver      FDTD, the solvers' common class, and their shared settings
     openems     the solver 'openems' (alias fdtd) on openEMS's engine: its
                 import check, openems_venv, --converge
-    gfdtd       the solver 'gfdtd' on gfdtd's engine (GPU via CuPy, its compiled
+    gfdtd       the solver 'gfdtd' on gfdtd's engine (GPU via Vulkan, its compiled
                 CPU core, or numpy)
 """
 __version__ = '0.3.0'

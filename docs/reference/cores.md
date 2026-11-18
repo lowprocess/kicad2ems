@@ -12,7 +12,7 @@ The method of moments' kernels: the singular and near-singular integrals and the
 
 ## gfdtd
 
-The FDTD update, shared by the GPU kernels (CuPy) and the CPU core.
+The FDTD update, shared by the GPU kernels (Vulkan) and the CPU core.
 
 ```{doxygenfile} fdtd_core.h
 ```

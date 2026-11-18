@@ -26,7 +26,7 @@ def test_engine_api_and_run_dir():
     from kicad2ems.fdtd.engines import engine_api, engine_name
     from kicad2ems.fdtd.run import run_dir
     assert (engine_name(None) == ('openems', 'openEMS')
-            and engine_name('gfdtd:cupy') == ('gfdtd', 'gfdtd'))
+            and engine_name('gfdtd:gpu') == ('gfdtd', 'gfdtd'))
     with pytest.raises(ValueError, match='unknown FDTD engine'):
         engine_api('hfss')
     cs, fd = engine_api('gfdtd:numpy')
@@ -39,7 +39,7 @@ def test_engine_api_and_run_dir():
         ports = [P()]
     assert run_dir(M, 0, '/o').endswith(os.path.join('openems', 'exc_P1p'))
     assert run_dir(M, 0, '/o',
-                   'gfdtd:cupy').endswith(os.path.join('gfdtd', 'exc_P1p'))
+                   'gfdtd:gpu').endswith(os.path.join('gfdtd', 'exc_P1p'))
 
 
 def test_build_fdtd_builds_the_board_on_gfdtd(demo_files):

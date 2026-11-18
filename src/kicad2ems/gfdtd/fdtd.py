@@ -272,13 +272,12 @@ class openEMS:  # noqa: N801
         """Run in sim_path (made if missing; cleanup: remove openEMS's own
         outputs there first). Returns 0. numThreads: the CPU core's threads (0:
         all); openEMS's debug options are accepted and ignored; backend:
-        'auto', 'gpu', 'vulkan', 'cupy', 'cpu', 'core', 'numpy'
+        'auto', 'gpu', 'vulkan', 'cpu', 'core', 'numpy'
         (engine.resolve_backend); log: a file for the output (appended) in place
-        of stdout. On the GPU a run has a stream of its own, so that runs in
-        several threads overlap."""
+        of stdout."""
         from . import __version__
         from .operator import build
-        from .engine import Engine, resolve_backend, backend_info
+        from .engine import Engine, backend_info
         with contextlib.ExitStack() as stack:
             if log is None:
                 out = lambda line: print(line, flush=True)
@@ -301,9 +300,6 @@ class openEMS:  # noqa: N801
                 "-----------------------------------"
                 "----------------------------------- ")
             self.op = build(self.csx, self.settings(), log=out)
-            if resolve_backend(backend or self.backend) == 'cupy':
-                import cupy
-                stack.enter_context(cupy.cuda.Stream(non_blocking=True))
             eng = Engine(self.op, backend or self.backend)
             if eng.be.name == 'core' and int(kw.get('numThreads') or 0) > 0:
                 eng.be.core.set_threads(int(kw['numThreads']))
@@ -389,15 +385,15 @@ class LumpedPort(P.Port):
 
 def main(argv=None):
     """python -m kicad2ems.gfdtd model.xml [--backend
-    auto|gpu|cupy|vulkan|cpu|numpy] [--path DIR]: run an openEMS XML file
+    auto|gpu|vulkan|cpu|numpy] [--path DIR]: run an openEMS XML file
     (outputs in the current folder, or --path), as `openEMS model.xml` does."""
     import argparse
     ap = argparse.ArgumentParser(prog='gfdtd', description=main.__doc__)
     ap.add_argument('xml')
     ap.add_argument(
         '--backend', default='auto',
-        help="auto (the GPU when CuPy or Vulkan finds one), gpu, cupy, "
-        "vulkan, cpu, core or numpy")
+        help="auto (the GPU when Vulkan finds one), gpu, vulkan, cpu, core "
+        "or numpy")
     ap.add_argument(
         '--path', default='.',
         help="folder for the probe files (default: the current folder)")
