@@ -1,12 +1,11 @@
 # Temperature (`kicad2ems.pcbqs.thermal`)
 
 A trial of a lightweight thermal solver inside pcbqs: the steady temperature of a board from what its parts
-dissipate, in a fraction of a second, with two discretisations of one model to compare. The 3D reference remains
+dissipate, in a fraction of a second, on a regular grid. The 3D reference remains
 Elmer through kicad2ems-fem, and the two agree within 2 K on eleven boards (below).
 
     python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=0.35 --loss D1=0.5
     python -m kicad2ems.pcbqs.thermal --circuit circuit-results               # the board and losses of a circuit run
-    python -m kicad2ems.pcbqs.thermal --circuit circuit-results --method both # grid and mesh, with their difference
     python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss U1=1.2 --theta U1=8 --film 12 --ambient 40
     python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=0.35 --film-edge 0  # the edges insulated
     python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=2 --theta Q1=3 --air Q1=15    # a heatsink on Q1
@@ -19,14 +18,11 @@ that run's board.
 
 It writes `thermal.json` (each part's temperature, each layer's hottest and mean, heat in and out, the board and
 the circuit case they came from),
-`thermal.npz` (the maps) and `thermal.png`; with `--method both` a picture per solver and
-`thermal-compare.png`. The maps also go where kicad2ems's viewer reads a run's (`thermal/viewer.py`):
+`thermal.npz` (the maps) and `thermal.png`. The maps also go where kicad2ems's viewer reads a run's (`thermal/viewer.py`):
 `thermal_board.json` and, under `thermal/exc_board/`, each layer's temperature as a field dump in °C (NaN off the
-board; with both solvers each one's, and mesh minus grid in K), so the Viewer turns, cuts and probes them in 2D and
+board), so the Viewer turns, cuts and probes them in 2D and
 3D on a colour scale from the board's coolest point to its hottest. The report (`reports.thermal_report`: the
 parts' and the layers' tables) is on its Report and Tables pages.
-
-![The synchronous buck's top layer from the grid and the mesh, and their difference](images/thermal-compare.png)
 
 ## The model
 
@@ -72,7 +68,7 @@ sparse solve.
   part's first seconds read quick. A single sheet's time constant comes out 2 % late.
 
 In code: `p.air = {'Q1': 15.0}`, `p.hold(board, {'H1': 40.0})`, `forced_film(1.5, 80.0)`, and
-`solve(p, 'grid', 0.5, transient=1800)` (its `r.transient`).
+`solve(p, 0.5, transient=1800)` (its `r.transient`).
 
 With a circuit run on its board's copper and `--fields`, the copper's own loss heats the board where its currents
 are (the run's `copper-loss.npz`: each triangle's share, gathered into 1 mm squares); without `--fields` the
@@ -87,21 +83,20 @@ and each is said.
 In code:
 
 ```python
-from pcbqs.thermal import Problem, solve
+from kicad2ems.pcbqs.thermal import Problem, solve
 p = Problem.of(board, {'Q1': 0.35, 'D1': 0.5}, film=10.0, theta={'Q1': 2.0})
 p.edge_film                                         # W/m2/K at the edges: the faces' mean (edge_film=0: none)
 p.heat('shunt', [('F.Cu', polygon)], 0.2)           # heat over any area of a layer
-r = solve(p, 'grid', 0.5)                           # or 'mesh', 1.0
+r = solve(p, 0.5)                                   # the grid's pitch, mm
 r.parts['Q1']                                       # dict(power_W, board_C, part_C)
 r.out_W, r.edge_W                                   # the heat given off, and of it through the edges
-r.T                                                 # grid: (layers, ny, nx) C; mesh: (layers, vertices), r.nodes, r.tris
-r.sample('F.Cu', x, y)                              # either, at points (mm)
+r.T                                                 # (layers, ny, nx) C
+r.sample('F.Cu', x, y)                              # at points (mm)
 ```
 
-`sample` is the solution's own interpolation: between cell centres on the grid, and on the mesh's own triangles
-(NaN off the board, and in its holes).
+`sample` interpolates between cell centres (NaN off the board, and in its holes).
 
-## The two solvers
+## The solver
 
 **Grid** (`grid.py`): square cells over the outline's bounding box, one unknown per cell on the board per layer
 (finite volumes). The copper of each layer is put on a raster much finer than the cells (1/16 mm; exact in
@@ -110,14 +105,10 @@ each fine row is a chain in series, the rows in parallel. So a gap narrower than
 trace narrower than a cell still carries it, a slot in the board still parts it, and nothing follows the outline
 of the copper: the number of unknowns depends on the board's area and layer count only.
 
-**Mesh** (`mesh.py`): pcbqs's triangle mesher (the one the DC drop uses), linear elements. One mesh of the
-board's outline carries every layer: the outlines of each layer's copper, of the heated pads and a ring at each
-via are made mesh edges, so the layers share their vertices. It follows the copper exactly, and pays for it: the
-mesh has to resolve every outline of every layer at once.
-
 ## What the trial found
 
-Both against the exact solution for a heated disc on a two-layer plate (the sum and the difference of the two
+The trial had a second solver to check the grid, a **mesh** (pcbqs's triangle mesher, linear elements, one mesh
+of the outline carrying every layer's copper outlines); it was removed in 2026-11. Both against the exact solution for a heated disc on a two-layer plate (the sum and the difference of the two
 layers each obey a screened Poisson equation; 1 W over 10 mm, 15 K rise at the centre):
 
 | | size | unknowns | worst error | time |
@@ -159,21 +150,21 @@ The mesh cannot be coarse there: 1.5 million unknowns are spent on following out
 the temperature, and it is still converging from below at 2 million. The grid at 0.5 mm is within 0.1 K of its
 own answer at 0.25 mm.
 
-So the grid is the one to take forward, and it is the default: its cost does not depend on the copper, it needs
-no mesher, and its maps are images. The mesh stays as the check on it.
+So the grid is the one taken forward: its cost does not depend on the copper, it needs no mesher, and its maps
+are images. Elmer (below) is the check on it.
 
 Two things the trial turned up in the grid, both fixed and tested: a board that ends inside a cell lost that
 cell's conduction to its neighbour (the whole board read 1 K hot), and a drawn raster made thin traces a
 quarter wider than they are (the raster is now exact in area).
 
-The grid-mesh tables above were taken before the edges lost heat; both solvers take the edges the same way.
+The grid-mesh tables above were taken before the edges lost heat.
 
 ## Against Elmer
 
 `validation/thermal_elmer.py` runs each demo circuit and gives its lossiest case's part losses to the grid
-(0.5 mm), the mesh (0.5 mm) and Elmer through kicad2ems-fem (`elmer/thermal.py`: 3D conduction in the copper,
+(0.5 mm) and Elmer through kicad2ems-fem (`elmer/thermal.py`: 3D conduction in the copper,
 the barrels and an anisotropic laminate, wedge elements, the same film on every exposed face), with the same
-film, ambient and conductivities. Each part's temperature is the mean under its pads in all three.
+film, ambient and conductivities. Each part's temperature is the mean under its pads in both.
 
 | | parts | worst part | within 1 K | grid time | Elmer time |
 |---|---|---|---|---|---|
@@ -181,7 +172,8 @@ film, ambient and conductivities. Each part's temperature is the mean under its 
 | wpthb, 4 layers, Q1 Q2 L3 1 W | 3 | 0.9 K, 3.1 % (L3) | 3 of 3 | 0.4 s | 12 s |
 
 Both are converged: from 1 to 0.125 mm the grid moves under 0.2 K, and from 30,000 to 330,000 wedges Elmer
-moves under 0.2 K. The grid and the mesh agree within 0.2 K on the demo boards (0.9 K on wpthb's L3).
+moves under 0.2 K. The mesh, while it was there, agreed with the grid within 0.2 K on the demo boards (0.9 K on
+wpthb's L3).
 
 Two things the comparison found:
 
@@ -206,8 +198,7 @@ Two things the comparison found:
   boards it is milliwatts.
 - **Resistance against temperature** feeds back into the circuit's losses with `kicad2ems.pcbqs.circuit --warm`
   ([circuit.md](circuit.md#parts-at-their-temperatures)); the DC drop's copper is still at 25 °C.
-- **A transient on the mesh**, and a transient of changing losses (a load step): the heating is from cold, at
-  the losses given.
+- **A transient of changing losses** (a load step): the heating is from cold, at the losses given.
 - **The laminate between the sheets.** Its in-plane conduction sits on the sheets (above); one more sheet per
   dielectric, at mid-thickness, would follow the 3D board more closely near hot parts, for 2L-1 unknowns per
   cell instead of L.

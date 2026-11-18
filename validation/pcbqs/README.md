@@ -9,7 +9,7 @@ Last run 2026-11-09. Reference tools: Elmer 26.2, Palace 0.18.1, FastHenry 3.0.1
 | DC drop (`pdn` DC) | 2D copper sheets + via barrels (`pdn.dc.Network`) | Elmer 26.2 `StatCurrentSolver`: 3D copper slabs and barrels, direct solve | `dc_elmer.py` |
 | Loop inductance, near field (`mqs`) | PEEC on the copper sheets (`MQS`) | Palace 0.18 driven FEM: PEC copper sheets, PEC via rods, air box, lumped port | `mqs_palace.py` |
 | Copper R(f), L(f) (`mqs`) | the same, slab loss model | FastHenry 3.0: volume filaments across width and thickness (skin and proximity effect) | `mqs_fasthenry.py` |
-| Board temperature (`thermal`) | layered sheets: copper + laminate per layer, dielectric and barrels between, films on faces and edges (grid and mesh) | Elmer 26.2 heat equation through kicad2ems-fem: 3D copper, barrels, anisotropic laminate (wedges) | `thermal_elmer.py` |
+| Board temperature (`thermal`) | layered sheets: copper + laminate per layer, dielectric and barrels between, films on faces and edges (the grid) | Elmer 26.2 heat equation through kicad2ems-fem: 3D copper, barrels, anisotropic laminate (wedges) | `thermal_elmer.py` |
 | Plane-pair impedance (`pdn` PDN) | 2D cavity (`pdn.cavity.PlanePair`) | Palace driven FEM: dielectric between PEC planes, open sides, lumped ports; analytic modal sum | `pdn_palace.py` |
 
 ## The mesher: CDT in place of Triangle (2026-11-15)

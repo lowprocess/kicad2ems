@@ -50,7 +50,7 @@ remain supported. Another static-fill backend is registered with
 - [Circuits](circuit.md): any circuit of parts, nodes and drives, by ngspice: its parts' losses for the
   thermal analysis, its copper's currents for the fields; ten examples, each with a board whose copper can be put in, and the wpthb full bridge; KiCad boards,
   schematics and netlists read into a model
-- [Temperature](thermal.md): a trial of a lightweight thermal solver, on a grid and on the triangle mesh
+- [Temperature](thermal.md): a trial of a lightweight thermal solver on a grid
 - [Validation and limits](quasistatic-validation.md)
 - [Migration](migration.md)
 - [Copied-code provenance](PROVENANCE.json)

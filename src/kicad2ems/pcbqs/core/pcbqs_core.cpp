@@ -38,7 +38,6 @@ PYBIND11_MODULE(_core, m) {
     bind_hmatrix_build(m);
     m.def("loop_system", &loop_system);
     m.def("peec_system", &peec_system);
-    m.def("tri_locate", &tri_locate);
 #ifdef _OPENMP
     m.attr("static_openmp") = true;
 #else

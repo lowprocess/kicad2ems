@@ -1,6 +1,5 @@
 """
-The steady temperature of a board as one problem that both solvers (grid.py,
-mesh.py) take.
+The steady temperature of a board as one problem, which grid.py solves.
 
 The board is a stack of sheets, one per copper layer. A sheet conducts along the
 board: its copper (k x thickness where there is copper) and its share of the
@@ -430,9 +429,8 @@ def losses_of(case, model):
 
 @dataclass
 class Result:
-    """Temperatures, C. grid: T (layers, ny, nx), NaN off the board, cell
-    centres at x0 + (i + 0.5) pitch. mesh: nodes (N, 2) mm, tris, T (layers,
-    N)."""
+    """Temperatures, C: T (layers, ny, nx), NaN off the board, cell centres
+    at x0 + (i + 0.5) pitch."""
     method: str
     problem: Problem
     T: np.ndarray
@@ -440,11 +438,9 @@ class Result:
     unknowns: int
     seconds: dict  # build, solve
     out_W: float   # the heat leaving through the films (faces and edges)
-    size: float    # mm: the grid's pitch or the mesh's longest edge
+    size: float    # mm: the grid's pitch
     x0: float = 0.0
     y0: float = 0.0
-    nodes: np.ndarray = None
-    tris: np.ndarray = None
     notes: list = field(default_factory=list)
     # of out_W, the heat leaving through the edges
     edge_W: float = 0.0
@@ -462,41 +458,27 @@ class Result:
         NaN off the board."""
         i = layer if isinstance(layer, int) else self.problem.index(layer)
         x, y = np.asarray(x, float), np.asarray(y, float)
-        if self.method == 'grid':
-            T = self.T[i]
-            ny, nx = T.shape
-            # in cell centres
-            u, v = (x - self.x0) / self.size - 0.5, (
-                y - self.y0) / self.size - 0.5
-            c, r = np.floor(u).astype(int), np.floor(v).astype(int)
-            fu, fv = u - c, v - r
-            pad = np.full((ny + 2, nx + 2), np.nan)
-            pad[1:-1, 1:-1] = T
-            ok = (c >= -1) & (c < nx) & (r >= -1) & (r < ny)
-            c, r = np.clip(c, -1, nx - 1) + 1, np.clip(r, -1, ny - 1) + 1
-            q = np.stack(
-                [pad[r, c], pad[r, c + 1], pad[r + 1, c], pad[r + 1, c + 1]])
-            w = np.stack([(1 - fu) * (1 - fv), fu * (1 - fv), (1 - fu) * fv,
-                          fu * fv])
-            # at the board's edge: the cells there are
-            w = np.where(np.isnan(q), 0.0, w)
-            tot = w.sum(axis=0)
-            with np.errstate(invalid='ignore', divide='ignore'):
-                out = np.where(tot > 0,
-                               (w * np.nan_to_num(q)).sum(axis=0) / tot, np.nan)
-            return np.where(ok, out, np.nan)
-        # on the mesh's own triangles (the solution is linear on each): a
-        # point's triangle and its weights on the corners. (It was a Delaunay
-        # triangulation of the nodes, made again at every call and masked by the
-        # outline: 1.7 s a layer on 60,000 nodes, and not the solution's
-        # triangles where the mesh is not Delaunay.)
-        from ..kernels import tri_locate
-        index, weight = tri_locate(self.nodes, self.tris, np.c_[x.ravel(),
-                                                                y.ravel()])
-        out = np.full(len(index), np.nan)
-        ok = index >= 0
-        out[ok] = (self.T[i][self.tris[index[ok]]] * weight[ok]).sum(axis=1)
-        return out.reshape(x.shape)
+        T = self.T[i]
+        ny, nx = T.shape
+        # in cell centres
+        u, v = (x - self.x0) / self.size - 0.5, (y - self.y0) / self.size - 0.5
+        c, r = np.floor(u).astype(int), np.floor(v).astype(int)
+        fu, fv = u - c, v - r
+        pad = np.full((ny + 2, nx + 2), np.nan)
+        pad[1:-1, 1:-1] = T
+        ok = (c >= -1) & (c < nx) & (r >= -1) & (r < ny)
+        c, r = np.clip(c, -1, nx - 1) + 1, np.clip(r, -1, ny - 1) + 1
+        q = np.stack(
+            [pad[r, c], pad[r, c + 1], pad[r + 1, c], pad[r + 1, c + 1]])
+        w = np.stack([(1 - fu) * (1 - fv), fu * (1 - fv), (1 - fu) * fv,
+                      fu * fv])
+        # at the board's edge: the cells there are
+        w = np.where(np.isnan(q), 0.0, w)
+        tot = w.sum(axis=0)
+        with np.errstate(invalid='ignore', divide='ignore'):
+            out = np.where(tot > 0, (w * np.nan_to_num(q)).sum(axis=0) / tot,
+                           np.nan)
+        return np.where(ok, out, np.nan)
 
     def summary(self):
         p = self.problem

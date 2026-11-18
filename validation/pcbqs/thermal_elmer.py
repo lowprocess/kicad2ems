@@ -1,4 +1,4 @@
-"""Steady temperature: pcbqs.thermal (grid and mesh, layered sheets) against
+"""Steady temperature: pcbqs.thermal (the grid, layered sheets) against
 Elmer (kicad2ems-fem's elmer/thermal.py: 3D heat conduction in the copper, the
 barrels and an anisotropic laminate, a film on every exposed face).
 
@@ -27,14 +27,13 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from common import OUT, write_json  # noqa: E402
 
 from kicad2ems.pcbqs.thermal import Problem, solve, losses_of  # noqa: E402
 from kicad2ems.pcbqs._cli import load_board  # noqa: E402
 
-EXAMPLES = (Path(__file__).resolve().parents[1] / 'src' / 'pcbqs' / 'circuit'
-            / 'examples')
+EXAMPLES = (Path(__file__).resolve().parents[2] / 'src' / 'kicad2ems' / 'pcbqs'
+            / 'circuit' / 'examples')
 WPTHB = Path.home() / 'Desktop' / 'wpthb' / 'wpthb.kicad_pcb'
 FILM, AMBIENT = 10.0, 25.0
 quiet = lambda *a, **k: None
@@ -80,7 +79,7 @@ def circuit_losses(name):
     return model['board']['file'], losses
 
 
-def compare(name, board_file, losses, pitch=0.5, dmax=0.5, h=0.3, hmax=2.0,
+def compare(name, board_file, losses, pitch=0.5, h=0.3, hmax=2.0,
             transient=0.0):
     et = elmer_module()
     layered = et.layered_mesh
@@ -94,20 +93,18 @@ def compare(name, board_file, losses, pitch=0.5, dmax=0.5, h=0.3, hmax=2.0,
             heat = {k: w for k, w in p.powers.items() if w > 0}
             r = row[key] = dict(watts=p.watts, layers=len(p.layers))
             tr = transient if edges else 0.0
-            for method, size in (('grid', pitch), ('mesh', dmax)):
-                t = time.perf_counter()
-                s = solve(
-                    p, method, size, log=quiet,
-                    **(dict(transient=tr) if tr and method == 'grid' else {}))
-                r[method] = dict(
-                    seconds=time.perf_counter() - t, unknowns=s.unknowns,
-                    edge_W=s.edge_W,
-                    parts={k: v['board_C']
-                           for k, v in s.parts.items()})
-                if tr and method == 'grid':
-                    r['grid_transient'] = dict(times_s=s.transient['times_s'],
-                                               parts=s.transient['parts'],
-                                               to_63_s=s.transient['to_63_s'])
+            t = time.perf_counter()
+            s = solve(p, pitch, log=quiet,
+                      **(dict(transient=tr) if tr else {}))
+            r['grid'] = dict(
+                seconds=time.perf_counter() - t, unknowns=s.unknowns,
+                edge_W=s.edge_W,
+                parts={k: v['board_C']
+                       for k, v in s.parts.items()})
+            if tr:
+                r['grid_transient'] = dict(times_s=s.transient['times_s'],
+                                           parts=s.transient['parts'],
+                                           to_63_s=s.transient['to_63_s'])
             et.layered_mesh = layered if edges else insulated_sides(layered)
             t = time.perf_counter()
             folder = OUT / 'thermal' / 'elmer' / f'{name}_{key}'
@@ -137,16 +134,16 @@ def report(rows):
             f"{r['elmer']['wedges']:,} wedges, {r['elmer']['seconds']:.1f} s; "
             f"grid {r['grid']['seconds']:.2f} s")
         print(
-            f"  {'part':6s} {'elmer':>7s} {'grid':>7s} {'mesh':>7s} "
+            f"  {'part':6s} {'elmer':>7s} {'grid':>7s} "
             f"{'grid-elmer':>11s}   insulated edges: grid-elmer"
         )
         for ref, te in sorted(r['elmer']['parts'].items(),
                               key=lambda kv: -kv[1]):
-            g, m = r['grid']['parts'][ref], r['mesh']['parts'][ref]
+            g = r['grid']['parts'][ref]
             n = row['no_edges']
             d0 = n['grid']['parts'][ref] - n['elmer']['parts'][ref]
             print(
-                f"  {ref:6s} {te:7.2f} {g:7.2f} {m:7.2f} {g - te:+6.2f} K "
+                f"  {ref:6s} {te:7.2f} {g:7.2f} {g - te:+6.2f} K "
                 f"{100 * (g - te) / (te - AMBIENT):+5.1f}%   {d0:+6.2f} K")
         if 'elmer_transient' in r:
             import numpy as np

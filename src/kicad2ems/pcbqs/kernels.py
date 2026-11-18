@@ -1,6 +1,6 @@
 """
 Kernels with a compiled twin: the dense systems of the frequency loops, filled
-in one pass, and points located in a triangle mesh. Each is the compiled core's
+in one pass. Each is the compiled core's
 (pcbqs._core, core/dense_kernels.hpp) where it is built, and numpy's here
 otherwise (no core, PCBQS_NO_CORE set, or a core that predates the kernel);
 `numpy=True` asks for the twin, which is how the tests hold the two to each
@@ -10,8 +10,6 @@ other.
                                           complex (rows, cols)
     peec_system(R, L, jw, pscale, nl, electro, S)  the charge solve's scaled
                                                    system and its scale
-    tri_locate(nodes, tris, points)  each point's triangle (-1: none) and its
-                                     weights on the corners
     lu_factor_rows(a), lu_solve_rows(lu, b)  LAPACK's LU of a row-major matrix
                                              in place (no copy of it)
     solve_symmetric(P, B)  P^-1 B for a symmetric P: by Cholesky where it is
@@ -97,34 +95,6 @@ def peec_system(R, L, jw, pscale, nl, electro, S=None, numpy=False):
     system[:, nl:] = complex(jw) * Z[:, nl:] / pscale
     system[nl:, nl:] += electro
     return system, float(zscale)
-
-
-def tri_locate(nodes, tris, points, tol=1e-9, numpy=False):
-    """Which triangle of the mesh (nodes (N, 2), tris (M, 3)) holds each of
-    `points` (K, 2): (index (K,), -1 where none does; weights (K, 3) on the
-    triangle's corners, NaN where none). A value at the nodes is then
-    (values[tris[index]] * weights).sum(1) at the points: the mesh's own linear
-    interpolation."""
-    nodes, tris = (np.ascontiguousarray(nodes, float),
-                   np.ascontiguousarray(tris, np.int64))
-    points = np.ascontiguousarray(points, float).reshape(-1, 2)
-    fn = None if numpy else core('tri_locate')
-    if fn is not None:
-        return fn(nodes, tris, points, float(tol), _workers())
-    from matplotlib.tri import Triangulation
-    index = np.full(len(points), -1, np.int64)
-    weight = np.full((len(points), 3), np.nan)
-    if len(tris) and len(points):
-        find = Triangulation(nodes[:, 0], nodes[:, 1], tris).get_trifinder()
-        index = np.asarray(find(points[:, 0], points[:, 1]), np.int64)
-        ok = index >= 0
-        a, b, c = (nodes[tris[index[ok], k]] for k in range(3))
-        e1, e2, d = b - a, c - a, points[ok] - a
-        det = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
-        w1 = (d[:, 0] * e2[:, 1] - d[:, 1] * e2[:, 0]) / det
-        w2 = (e1[:, 0] * d[:, 1] - e1[:, 1] * d[:, 0]) / det
-        weight[ok] = np.c_[1 - w1 - w2, w1, w2]
-    return index, weight
 
 
 def blas_threads():

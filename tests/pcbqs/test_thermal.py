@@ -1,6 +1,5 @@
-"""The thermal trial: the layered steady-state model on a grid and on the
-triangle mesh, against exact solutions, against each other, and from the command
-line."""
+"""The thermal trial: the layered steady-state model on a grid, against exact
+solutions and from the command line."""
 import json
 from pathlib import Path
 
@@ -59,23 +58,21 @@ def disc_exact(p, a, watts, film):
                       (f(r, Ls) - f(r, Ld)) / 2)
 
 
-@pytest.mark.parametrize('method,size', [('grid', 1.0), ('mesh', 2.0)])
-def test_a_face_heated_all_over_is_uniform_and_exact(method, size):
+def test_a_face_heated_all_over_is_uniform_and_exact():
     # the infinite plate's answer: no edges
     p = Problem.of(plate(40), film=10.0, edge_film=0.0)
     p.heat('all', [('F.Cu', box(0, 0, 40, 40))], 2.0)
     q, h, c = 2.0 / 0.04 ** 2, 10.0, p.gaps[0]
     top = q / (h + c - c * c / (h + c))
-    r = solve(p, method, size, log=quiet)
+    r = solve(p, 1.0, log=quiet)
     assert np.nanmax(np.abs(r.T[1] - (25 + top))) < 1e-6
     assert np.nanmax(np.abs(r.T[0] - (25 + c * top / (h + c)))) < 1e-6
     assert r.out_W == pytest.approx(2.0, rel=1e-9)
 
 
-@pytest.mark.parametrize('method,size', [('grid', 1.0), ('grid', 0.7),
-                                         ('mesh', 2.0)])
+@pytest.mark.parametrize('size', [1.0, 0.7])
 @pytest.mark.parametrize('hole', [False, True])
-def test_the_edges_give_heat_over_the_board_s_thickness(method, size, hole):
+def test_the_edges_give_heat_over_the_board_s_thickness(size, hole):
     """A plate that conducts so well it is one temperature: the rise is the loss
     over the faces' and the edges' conductances, the edges being the outline and
     its cut-out, the board's whole thickness high."""
@@ -86,7 +83,7 @@ def test_the_edges_give_heat_over_the_board_s_thickness(method, size, hole):
                    k_cu=1e7, k_z=1e7)
     assert sum(l.edge for l in p.layers) == pytest.approx(1.5)
     p.heat('u', [('F.Cu', box(30, 3, 34, 7))], 1.0)
-    r = solve(p, method, size, log=quiet)
+    r = solve(p, size, log=quiet)
     faces = (8.0 + 12.0) * out.area * 1e-6
     edges = 15.0 * out.length * 1.5e-6
     rise = 1.0 / (faces + edges)
@@ -99,26 +96,20 @@ def test_the_edges_default_to_the_faces_and_can_be_insulated():
     p = Problem.of(plate(40), film=(6.0, 10.0))
     assert p.edge_film == 8.0
     p.heat('u', [('F.Cu', box(18, 18, 22, 22))], 0.5)
-    on = solve(p, 'grid', 1.0, log=quiet)
+    on = solve(p, 1.0, log=quiet)
     p.edge_film = 0.0
-    off = solve(p, 'grid', 1.0, log=quiet)
+    off = solve(p, 1.0, log=quiet)
     assert off.edge_W == 0.0 and 0 < on.edge_W < 0.1 * 0.5
     assert off.parts['u']['board_C'] > on.parts['u']['board_C']
     with pytest.raises(ValueError):
         Problem.of(plate(40), edge_film=-1.0)
 
 
-# ('mesh', 2.0): 0.18 at the centre on the CDT mesh, 0.13 off it on Triangle's
-# (2026-11-15), 0.184 on mesh2d's with off-centres (2026-11-17); at 1.0 0.017
-# and 0.033
-@pytest.mark.parametrize('method,size,tol', [('grid', 1.0, 0.1),
-                                             ('grid', 0.5, 0.06),
-                                             ('mesh', 2.0, 0.2),
-                                             ('mesh', 1.0, 0.06)])
-def test_a_heated_disc_matches_the_exact_solution(method, size, tol):
+@pytest.mark.parametrize('size,tol', [(1.0, 0.1), (0.5, 0.06)])
+def test_a_heated_disc_matches_the_exact_solution(size, tol):
     p = disc_problem()
     exact = disc_exact(p, 5.0, 1.0, 50.0)
-    r = solve(p, method, size, log=quiet)
+    r = solve(p, size, log=quiet)
     rr = np.array([0.0, 2.5, 7.5, 10, 15, 20, 30])
     ang = np.arange(8) * np.pi / 4 + 0.1
     top = np.mean([
@@ -136,14 +127,6 @@ def test_a_heated_disc_matches_the_exact_solution(method, size, tol):
     assert r.out_W == pytest.approx(1.0, rel=1e-9)
 
 
-def test_the_two_solvers_agree_on_the_disc():
-    p = disc_problem()
-    g, m = solve(p, 'grid', 0.5, log=quiet), solve(p, 'mesh', 1.0, log=quiet)
-    assert (g.parts['disc']['board_C'] == pytest.approx(
-        m.parts['disc']['board_C'], abs=0.05))
-    assert g.hottest == pytest.approx(m.hottest, abs=0.05)
-
-
 def test_a_board_that_ends_inside_a_cell_keeps_its_edge_strip():
     """20.5 mm at a 1 mm pitch: the last row of cells is half board. Its
     conduction to the row before must not be lost (it was: every chain to its
@@ -153,7 +136,7 @@ def test_a_board_that_ends_inside_a_cell_keeps_its_edge_strip():
     def at(pitch, height):
         p = Problem.of(plate(30, height), film=10.0)
         p.heat('u', [('F.Cu', box(12, 8, 16, 12))], 0.5)
-        return solve(p, 'grid', pitch, log=quiet).parts['u']['board_C']
+        return solve(p, pitch, log=quiet).parts['u']['board_C']
     fine = at(0.25, 20.0) - at(0.25, 20.5)
     assert fine > 0.5
     assert at(1.0, 20.0) - at(1.0, 20.5) == pytest.approx(fine, abs=0.05)
@@ -166,39 +149,32 @@ def test_a_slot_narrower_than_a_cell_still_parts_the_board():
     p = Problem.of(plate(40, 20, outline=out), film=10.0)
     p.heat('u', [('F.Cu', box(5, 8, 9, 12))], 0.5)
     for pitch in (1.0, 0.7):
-        r = solve(p, 'grid', pitch, log=quiet)
+        r = solve(p, pitch, log=quiet)
         far = r.sample('F.Cu', np.array([25.0, 30.0, 38.0]),
                        np.array([10.0, 10.0, 10.0]))
         assert np.all(np.abs(far - 25.0) < 1e-6)
         assert r.out_W == pytest.approx(0.5, rel=1e-9)
-    m = solve(p, 'mesh', 1.0, log=quiet)
-    assert (abs(m.sample('F.Cu', np.array([30.0]), np.array([10.0]))[0] - 25.0)
-            < 1e-6)
 
 
 def test_a_gap_in_the_copper_narrower_than_a_cell_holds_heat_back():
     """Two islands 0.2 mm apart on a 1 mm grid: the far island must sit well
-    below the heated one, as on the mesh."""
+    below the heated one."""
     b = plate(40, 20)
     isl = box(1, 1, 19.9, 19).union(box(20.1, 1, 39, 19))
     b['copper'] = {'F.Cu': [dict(net='a', polygon=mapping(isl))], 'B.Cu': []}
     p = Problem.of(b, film=10.0)
     p.heat('u', [('F.Cu', box(8, 8, 12, 12))], 0.5)
-    g, m = solve(p, 'grid', 1.0, log=quiet), solve(p, 'mesh', 0.5, log=quiet)
+    g = solve(p, 1.0, log=quiet)
     x, y = np.array([15.0, 25.0, 35.0]), np.array([10.0, 10.0, 10.0])
-    tg, tm = g.sample('F.Cu', x, y), m.sample('F.Cu', x, y)
-    assert tm[0] - tm[1] > 5.0                              # the gap matters
-    assert np.max(np.abs(tg - tm)) < 0.5
-    assert (g.parts['u']['board_C'] == pytest.approx(m.parts['u']['board_C'],
-                                                     abs=0.3))
+    tg = g.sample('F.Cu', x, y)
+    assert tg[0] - tg[1] > 5.0                              # the gap matters
 
 
-@pytest.mark.parametrize('method,size', [('grid', 0.5), ('mesh', 1.0)])
-def test_vias_bring_the_two_faces_together(method, size):
+def test_vias_bring_the_two_faces_together():
     def gap(vias):
         p = Problem.of(plate(30, vias=vias), film=10.0)
         p.heat('u', [('F.Cu', box(13, 13, 17, 17))], 1.0)
-        r = solve(p, method, size, log=quiet)
+        r = solve(p, 0.5, log=quiet)
         return (r.sample('F.Cu', np.array([15.0]), np.array([15.0]))[0]
                 - r.sample('B.Cu', np.array([15.0]), np.array([15.0]))[0])
 
@@ -228,7 +204,7 @@ def test_heat_is_shared_over_pads_by_area_and_missing_parts_are_said():
 def test_a_part_reads_its_pads_plus_its_own_rise():
     p = Problem.of(plate(20), film=10.0, theta={'u': 20.0})
     p.heat('u', [('F.Cu', box(8, 8, 12, 12))], 0.5)
-    r = solve(p, 'grid', 1.0, log=quiet)
+    r = solve(p, 1.0, log=quiet)
     assert (r.parts['u']['part_C'] == pytest.approx(r.parts['u']['board_C']
                                                     + 10.0))
     assert r.summary()['parts']['u']['power_W'] == pytest.approx(0.5)
@@ -276,19 +252,15 @@ def test_circuit_losses_leave_out_what_is_not_on_the_board():
 
 def test_sampling_off_the_board_is_nan():
     p = disc_problem(side=20.0, a=2.0, film=10.0)
-    for r in (solve(p, 'grid', 1.0, log=quiet), solve(p, 'mesh', 2.0,
-                                                      log=quiet)):
-        t = r.sample(1, np.array([-1.0, 10.0, 25.0]),
-                     np.array([10.0, 10.0, 10.0]))
-        assert np.isnan(t[0]) and np.isnan(t[2]) and t[1] > 25
+    r = solve(p, 1.0, log=quiet)
+    t = r.sample(1, np.array([-1.0, 10.0, 25.0]), np.array([10.0, 10.0, 10.0]))
+    assert np.isnan(t[0]) and np.isnan(t[2]) and t[1] > 25
 
 
-def test_bad_sizes_and_methods_are_refused():
+def test_bad_sizes_are_refused():
     p = disc_problem(side=20.0, a=2.0)
     with pytest.raises(ValueError):
-        solve(p, 'grid', -1.0)
-    with pytest.raises(ValueError):
-        solve(p, 'cubes')
+        solve(p, -1.0)
 
 
 # ---- on a demo board (through kicad2ems)
@@ -299,22 +271,18 @@ def demo(name):
     return load_board(str(EXAMPLES / f'{name}.kicad_pcb'))
 
 
-def test_the_two_solvers_agree_on_a_demo_board():
+def test_a_demo_board_s_heat_balances_and_converges():
     board = demo('05_buck_synchronous')
     p = Problem.of(board,
                    {'L1': 0.48, 'Q2': 0.2, 'Q1': 0.1, 'C1': 0.006, 'ZZ9': 1.0})
     assert any(n.startswith('ZZ9:') for n in p.notes)
-    g, m = solve(p, 'grid', 0.5, log=quiet), solve(p, 'mesh', 1.0, log=quiet)
+    g = solve(p, 0.5, log=quiet)
     assert set(g.parts) == {'L1', 'Q2', 'Q1', 'C1'}
-    for ref in g.parts:
-        assert (g.parts[ref]['board_C'] == pytest.approx(
-            m.parts[ref]['board_C'], abs=0.4))
-    assert (g.out_W == pytest.approx(p.watts, rel=1e-9)
-            and m.out_W == pytest.approx(p.watts, rel=1e-9))
-    coarse = solve(p, 'grid', 2.0, log=quiet)
+    assert g.out_W == pytest.approx(p.watts, rel=1e-9)
+    coarse = solve(p, 2.0, log=quiet)
     for ref in g.parts:
         assert (coarse.parts[ref]['board_C'] == pytest.approx(
-            m.parts[ref]['board_C'], abs=1.0))
+            g.parts[ref]['board_C'], abs=1.0))
 
 
 def test_the_command_line_takes_a_circuit_run(tmp_path, capsys):
@@ -342,25 +310,20 @@ def test_the_command_line_takes_a_circuit_run(tmp_path, capsys):
     out = tmp_path / 'thermal'
     assert (main([
         '--circuit',
-        str(run), '--method', 'both', '--theta', 'D1=10', '--out',
+        str(run), '--theta', 'D1=10', '--out',
         str(out)
     ]) == 0)
     said = capsys.readouterr().out
-    assert 'losses of case full' in said and 'mesh against grid' in said
+    assert 'losses of case full' in said
     res = json.loads((out / 'thermal.json').read_text())
-    assert set(res) == {'grid', 'mesh', 'difference'}
-    assert set(res['grid']['parts']) == {'C1', 'L1', 'Q1', 'D1', 'C2'}
-    d1 = res['grid']['parts']['D1']
+    assert res['method'] == 'grid'
+    assert set(res['parts']) == {'C1', 'L1', 'Q1', 'D1', 'C2'}
+    d1 = res['parts']['D1']
     assert d1['part_C'] == pytest.approx(d1['board_C'] + 2.28, abs=1e-6)
-    assert (res['grid']['heat_out_W'] == pytest.approx(res['grid']['heat_in_W'],
-                                                       rel=1e-9))
-    assert max(abs(v) for v in res['difference']['parts_K'].values()) < 0.5
-    for f in ('thermal-grid.png', 'thermal-mesh.png', 'thermal-compare.png',
-              'thermal.npz'):
+    assert res['heat_out_W'] == pytest.approx(res['heat_in_W'], rel=1e-9)
+    for f in ('thermal.png', 'thermal.npz'):
         assert (out / f).stat().st_size > 1000
-    z = np.load(out / 'thermal.npz')
-    assert (z['grid_T'].shape[0] == 2
-            and z['mesh_T'].shape == (2, len(z['mesh_nodes'])))
+    assert np.load(out / 'thermal.npz')['grid_T'].shape[0] == 2
     assert (main([
         '--circuit',
         str(run), '--case', 'light', '--out',
@@ -389,7 +352,7 @@ def test_the_options_describe_themselves_for_the_window(capsys, tmp_path):
     assert (opts['film_edge']['flag'] == '--film-edge'
             and opts['film']['default'] == 10.0)
     assert ({
-        'circuit', 'case', 'theta', 'ambient', 'film_bottom', 'method', 'size'
+        'circuit', 'case', 'theta', 'ambient', 'film_bottom', 'size'
     } <= set(opts))
     demo('05_buck_synchronous')
     out = tmp_path / 'th'
@@ -405,7 +368,7 @@ def test_the_options_describe_themselves_for_the_window(capsys, tmp_path):
     with pytest.raises(SystemExit):
         main([
             str(EXAMPLES / '05_buck_synchronous.kicad_pcb'), '--loss', 'L1=0.4',
-            '--method', 'cubes', '--out',
+            '--size', 'x', '--out',
             str(out)
         ])
 
@@ -425,7 +388,7 @@ def test_a_part_s_limit_and_its_theta_from_its_footprint(tmp_path):
     assert theta == {'Q1': 20.0} and tmax == {'Q1': 125.0}
     p = disc_problem(side=20.0, a=2.0, film=10.0)
     p.theta, p.tmax = {'disc': 300.0}, {'disc': 60.0}
-    r = solve(p, 'grid', 1.0, log=quiet)
+    r = solve(p, 1.0, log=quiet)
     u = r.parts['disc']
     assert (u['theta_K_W'] == 300.0
             and u['margin_K'] == pytest.approx(60.0 - u['part_C'])
@@ -452,5 +415,5 @@ def test_the_board_copper_s_loss_heats_where_its_currents_are(tmp_path):
              y_mm=np.array([5.1, 5.3, 9.0]), W=np.array([0.01, 0.005, 0.005]))
     add_copper_loss(p, case, None)
     assert p.powers['board copper'] == pytest.approx(0.02)
-    r = solve(p, 'grid', 1.0, log=quiet)
+    r = solve(p, 1.0, log=quiet)
     assert r.summary()['heat_in_W'] == pytest.approx(1.02)

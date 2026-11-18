@@ -168,7 +168,7 @@ real-board runs, not controlled medians; see the
 
 ## After the fill: the solve's own kernels
 
-The core also holds what the frequency loops and the thermal maps did in NumPy, where a profile of each tool
+The core also holds what the frequency loops did in NumPy, where a profile of each tool
 (`tools/pcbqs/perf/workloads.py`) found the time in pcbqs's own Python rather than in LAPACK or the fill. Each has a
 NumPy twin in `pcbqs/kernels.py`, which is what runs without the core (or with `PCBQS_NO_CORE`) and what the
 tests hold the compiled one to; the results agree to rounding.
@@ -177,15 +177,12 @@ tests hold the compiled one to; the results agree to rounding.
 |---|---|---|
 | `peec_system` | the charge solve's system at one frequency, R + jωL with the parts' impedances and the conductors' change of resistance (both sparse), scaled, in one pass | `peec.solve` |
 | `loop_system` | the loop impedance on the unknowns kept (the free loops' block, the sources' rows and columns) | `MQS._solve_dense`, `mqs_ports.direct_ports` |
-| `tri_locate` | each point's triangle in a mesh and its weights on the corners | `thermal.Result.sample` |
 | `solve_symmetric` (NumPy and LAPACK only) | P⁻¹B for the coefficients of potential, by Cholesky where P is real in value | `peec.capacitance_matrix`, `peec.node_potential`, `peec.solve` |
 
 The two systems were built as NumPy expressions: a temporary of the whole matrix per operation, then the block to
 be factored copied out of it, and copied once more by SciPy's `lu_factor` (which wants column-major). They are
 filled row by row in parallel and factored in their own memory (`kernels.lu_factor_rows`: LAPACK factors the
 transpose, which is the same memory read by columns, and `lu_solve_rows` solves with the transpose of that).
-A thermal mesh was sampled through a Delaunay triangulation of its nodes, made again at every call; it is
-sampled on its own triangles, which is also what the solution is linear on.
 
 | Case | Before | After |
 |---|---|---|
@@ -195,7 +192,6 @@ sampled on its own triangles, which is also what the solution is linear on.
 | Copper ports of the 24 V bridge for the circuit tool, one sheet, 11 frequencies | 19.0 s, 2.5 GB | 12.6 s, 2.0 GB |
 | Capacitance matrix of two traces on FR4, 14,538 triangles: the solve for the conductors' charges | 12.9 s | 3.9 s |
 | the same run, whole | 18.5 s | 8.9 s |
-| Thermal map of a 100 x 80 mm board, mesh of 60,000 nodes: one layer sampled for a picture | 1.7 s | 0.02 s |
 | the same run with its pictures, whole | 38.6 s | 15.7 s |
 
 The coefficients of potential were solved by LAPACK's symmetric indefinite routine (`sysv`), because a layered

@@ -381,38 +381,32 @@ def plate():
         ]))
 
 
-@pytest.mark.parametrize('method', ['grid', 'both'])
-def test_temperature_report_and_its_maps_for_the_viewer(tmp_path, method):
+def test_temperature_report_and_its_maps_for_the_viewer(tmp_path):
     """The parts' and layers' tables; each layer's map a 0 Hz plane dump in C
-    with NaN off the board, its colours spanning its own values; with both
-    solvers, each one's and their difference."""
+    with NaN off the board, its colours spanning its own values."""
     from kicad2ems.pcbqs.thermal.__main__ import main
     b = tmp_path / 'b_board.json'
     b.write_text(json.dumps(plate()))
     out = tmp_path / 'th'
     assert (main([
-        str(b), '--loss', 'Q1=0.5', '--theta', 'Q1=10', '--method', method,
-        '--out',
+        str(b), '--loss', 'Q1=0.5', '--theta', 'Q1=10', '--out',
         str(out)
     ]) == 0)
     res = json.loads((out / 'thermal.json').read_text())
-    one = res['grid'] if method == 'both' else res
+    one = res
     rep = A.Thermal().report(str(out))
     t = cells(rep)
     cols, rows = t['Parts']
     assert (cols == [
         'part', 'loss (W)',
-        *(['board °C (grid)', 'board °C (mesh)'] if method == 'both'
-          else ['board °C (grid)']),
+        'board °C (grid)',
         'part °C', 'from', 'rise (K)'
     ])
     assert (rows[0][0] == 'Q1' and rows[0][-3]
             == pytest.approx(one['parts']['Q1']['board_C'] + 5.0))
     assert ([r[0] for r in t['Layers'][1]] == ['B.Cu', 'F.Cu']
             and rep['title'].startswith('Hottest copper'))
-    assert (('Mesh against grid' in {s['title']
-                                     for s in rep['sections']})
-            == (method == 'both') and rep['images'] == [])
+    assert rep['images'] == []
     v = one['viewer']
     assert ((out / v['board']).is_file() and json.loads(
         (out / v['board']).read_text())['active_parts'] == ['Q1'])
@@ -421,8 +415,7 @@ def test_temperature_report_and_its_maps_for_the_viewer(tmp_path, method):
     temps = [d for d in info['dumps'] if d['unit'] == '°C']
     assert all(d['field'] == 'T' and d['range'] == 'data'
                and d['freqs'] == [0.0] and d['normal'] == 2 for d in temps)
-    assert (len(temps) == (4 if method == 'both' else 2)
-            and len(info['dumps']) == (6 if method == 'both' else 2))
+    assert len(temps) == len(info['dumps']) == 2
     assert (info['components'][0]['ref'] == 'Q1'
             and info['cu_z'] == {'B.Cu': 0.0, 'F.Cu': 1.5})
     top = next(d for d in v['dumps']

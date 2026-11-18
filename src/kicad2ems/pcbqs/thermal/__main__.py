@@ -5,7 +5,6 @@ what its parts dissipate.
         --loss D1=0.5
     python -m kicad2ems.pcbqs.thermal --circuit circuit-results
         # the board and the losses of a circuit run
-    python -m kicad2ems.pcbqs.thermal --circuit circuit-results --method both
     python -m kicad2ems.pcbqs.thermal --describe --json
         # the options, for kicad2ems-gui's form
 
@@ -72,10 +71,7 @@ OPTIONS = [
      "s: also the heating from cold over this long (the grid's; the board's "
      "heat capacity, not the parts' bodies'): thermal-transient.json and .png",
      'Solver'),
-    ('method', 'str', 'grid', 'grid, mesh, or both (and their difference)',
-     'Solver'),
-    ('size', 'float', None,
-     'mm: the grid pitch (0.5) or the mesh\'s longest edge (1)', 'Solver'),
+    ('size', 'float', None, 'mm: the grid pitch (0.5)', 'Solver'),
 ]
 
 
@@ -162,8 +158,6 @@ def main(argv=None):
     if a.describe:
         print_describe(describe(), a.json)
         return 0
-    if a.method not in ('grid', 'mesh', 'both'):
-        ap.error(f"--method {a.method!r}: grid, mesh or both")
     # (R-E11: a sweep had one map, its worst point)
     if a.circuit and a.case == 'all':
         return every_case(a, argv)
@@ -234,38 +228,17 @@ def main(argv=None):
         ap.error('none of the losses is on the board')
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    from .picture import picture, compare, difference
-    methods = ('grid', 'mesh') if a.method == 'both' else (a.method,)
+    from .picture import picture
     if a.transient < 0:
         ap.error('--transient: seconds, positive')
-    res = {
-        m: solve(
-            p, m, (a.size if len(methods) == 1 else None),
-            **(dict(
-                transient=a.transient) if a.transient and m == 'grid' else {}))
-        for m in methods
-    }
-    if a.transient and 'grid' not in res:
-        p.notes.append(
-            '--transient is the grid method\'s: none was worked out on the mesh'
-        )
-    summary = {
-        m: dict(r.summary(), board=str(Path(board_file).resolve()),
-                circuit=str(a.circuit or ''), case=case_name,
-                figure=(f'thermal-{m}.png' if len(res) > 1 else 'thermal.png'))
-        for m, r in res.items()
-    }
-    arrays = {}
-    for m, r in res.items():
-        arrays[f'{m}_T'] = r.T
-        if m == 'mesh':
-            arrays.update(mesh_nodes=r.nodes, mesh_tris=r.tris)
-        else:
-            arrays.update(grid_origin=np.array([r.x0, r.y0]),
-                          grid_pitch=np.array(r.size))
-        picture(r, out /
-                (f'thermal-{m}.png' if len(res) > 1 else 'thermal.png'))
-    first = res[methods[0]]
+    first = solve(p, a.size,
+                  **(dict(transient=a.transient) if a.transient else {}))
+    summary = dict(first.summary(), board=str(Path(board_file).resolve()),
+                   circuit=str(a.circuit or ''), case=case_name,
+                   figure='thermal.png')
+    arrays = dict(grid_T=first.T, grid_origin=np.array([first.x0, first.y0]),
+                  grid_pitch=np.array(first.size))
+    picture(first, out / 'thermal.png')
     extra = first.extra or {}
     print(
         f"{p.watts:.3f} W into the board, {first.out_W:.3f} W out through the "
@@ -275,13 +248,11 @@ def main(argv=None):
         + (f", {sum(extra['held_W'].values()):.3f} W out through the held "
            "footprints" if extra.get('held_W') else '')
         + f"; ambient {p.ambient:g} C")
-    print(f"{'part':8s} {'W':>7s} "
-          + ' '.join(f"{m + ' C':>9s}" for m in methods))
+    print(f"{'part':8s} {'W':>7s} {'C':>9s}")
     for ref in sorted(first.parts, key=lambda k: -first.parts[k]['part_C']):
-        print(f"{ref:8s} {first.parts[ref]['power_W']:7.3f} " +
-              ' '.join(f"{res[m].parts[ref]['part_C']:9.1f}" for m in methods))
-    print(f"{'hottest copper':16s} "
-          + ' '.join(f"{res[m].hottest:9.1f}" for m in methods))
+        print(f"{ref:8s} {first.parts[ref]['power_W']:7.3f} "
+              f"{first.parts[ref]['part_C']:9.1f}")
+    print(f"{'hottest copper':16s} {first.hottest:9.1f}")
     for name, d in first.parts.items():
         if 'to_air_W' in d:
             print(
@@ -290,8 +261,8 @@ def main(argv=None):
             )
     for name, w in ((first.extra or {}).get('held_W') or {}).items():
         print(f"{name}: held, {w:.3f} W out through it")
-    if 'grid' in res and res['grid'].transient:
-        tr = res['grid'].transient
+    if first.transient:
+        tr = first.transient
         (out / 'thermal-transient.json').write_text(json.dumps(tr, indent=1))
         from .picture import heating_picture
         heating_picture(tr, out / 'thermal-transient.png')
@@ -299,39 +270,22 @@ def main(argv=None):
         print("heating from cold: "
               + ', '.join(f"{k} 63 % in {v:.0f} s" for k, v in slow)
               + " (thermal-transient.json)")
-        summary['grid']['transient'] = dict(file='thermal-transient.json',
-                                            seconds=a.transient,
-                                            to_63_s=tr['to_63_s'])
-    if len(res) == 2:
-        g, m = res['grid'], res['mesh']
-        d = [difference(g, m, l) for l in range(len(p.layers))]
-        summary['difference'] = dict(
-            largest_K=float(max(np.nanmax(np.abs(x)) for x in d)), parts_K={
-                k: m.parts[k]['board_C'] - g.parts[k]['board_C']
-                for k in g.parts
-            })
-        compare(g, m, out / 'thermal-compare.png')
-        parts_k = max(abs(v) for v in summary['difference']['parts_K'].values())
-        print(
-            f"mesh against grid: parts within {parts_k:.2f} K, the maps within "
-            f"{summary['difference']['largest_K']:.2f} K")
+        summary['transient'] = dict(file='thermal-transient.json',
+                                    seconds=a.transient, to_63_s=tr['to_63_s'])
     for n in p.notes:
         print('note:', n)
     np.savez_compressed(out / 'thermal.npz',
                         layers=np.array([l.name for l in p.layers]), **arrays)
     try:  # the same maps for the viewer; a failure costs only them
         from .viewer import write_viewer
-        shown = write_viewer(str(out), board, p, res)
+        shown = write_viewer(str(out), board, p, first)
     except Exception as e:
         shown = None
         print(
             f"note: the viewer's maps were not written: {type(e).__name__}: {e}"
         )
-    for m in res:
-        summary[m]['viewer'] = shown
-    (out / 'thermal.json').write_text(
-        json.dumps((summary if len(res) > 1 else summary[methods[0]]),
-                   indent=1))
+    summary['viewer'] = shown
+    (out / 'thermal.json').write_text(json.dumps(summary, indent=1))
     print(f"results in {out}")
     return 0
 

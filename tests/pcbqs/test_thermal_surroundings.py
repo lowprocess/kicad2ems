@@ -34,12 +34,11 @@ def board_conductance(p, area):
     return area * (h + c - c * c / (p.film[0] + c))
 
 
-@pytest.mark.parametrize('method,size', [('grid', 1.0), ('mesh', 2.0)])
-def test_a_parts_own_path_to_the_air_takes_its_share(method, size):
+def test_a_parts_own_path_to_the_air_takes_its_share():
     p = Problem.of(plate(40), film=10.0, edge_film=0.0)
     p.heat('Q1', [('F.Cu', box(0, 0, 40, 40))], 2.0)
     p.theta, p.air = {'Q1': 5.0}, {'Q1': 20.0}
-    r = solve(p, method, size, log=quiet)
+    r = solve(p, 1.0, log=quiet)
     gb, theta, R, P = board_conductance(p, 0.04 ** 2), 5.0, 20.0, 2.0
     # its node: through theta to the plate, or to air
     part = P / (gb / (1 + theta * gb) + 1 / R)
@@ -52,13 +51,11 @@ def test_a_parts_own_path_to_the_air_takes_its_share(method, size):
     assert r.summary()['heat_out_parts_air_W'] == pytest.approx(q['to_air_W'])
 
 
-@pytest.mark.parametrize('method,size', [('grid', 1.0), ('mesh', 2.0)])
-def test_a_held_footprint_holds_its_pads_and_says_what_leaves_through_it(
-        method, size):
+def test_a_held_footprint_holds_its_pads_and_says_what_leaves_through_it():
     p = Problem.of(plate(40), film=10.0, edge_film=0.0)
     # the whole top face at 60 C, nothing heated
     p.held.append(Held('H1', 1, box(0, 0, 40, 40), 60.0))
-    r = solve(p, method, size, log=quiet)
+    r = solve(p, 1.0, log=quiet)
     assert np.nanmax(np.abs(r.T[1] - 60.0)) < 1e-3
     h, c = p.film[0], p.gaps[0]
     assert np.nanmean(r.T[0]) == pytest.approx(25 + 35 * c / (h + c), rel=1e-4)
@@ -82,7 +79,7 @@ def test_the_heating_from_cold_is_the_boards_time_constant():
     # one sheet: one time constant
     p = Problem.of(plate(40, layers=(('F.Cu', 0.0),)), film=10.0, edge_film=0.0)
     p.heat('all', [('F.Cu', box(0, 0, 40, 40))], 1.0)
-    r = solve(p, 'grid', 1.0, log=quiet, transient=3000.0)
+    r = solve(p, 1.0, log=quiet, transient=3000.0)
     tr = r.transient
     C = 0.04 ** 2 * (1.5e-3 * RHO_C_FR4 + 0.035e-3 * RHO_C_CU)
     G = 0.04 ** 2 * 2 * 10.0
